@@ -50,18 +50,18 @@ window.doLogin = async () => {
 
   try {
     await signInWithEmailAndPassword(auth, e, p);
-  } catch (err) {
-    console.log(err.code);
+  catch (err) {
+  console.log("LOGIN ERROR:", err.code);
 
-    if (err.code === 'auth/user-not-found') {
-      lerr.textContent = 'El usuario no existe';
-    } else if (err.code === 'auth/wrong-password') {
-      lerr.textContent = 'Contraseña incorrecta';
-    } else if (err.code === 'auth/invalid-email') {
-      lerr.textContent = 'Correo inválido';
-    } else {
-      lerr.textContent = 'Error: ' + err.code;
-    }
+  if (err.code === 'auth/user-not-found') {
+    lerr.textContent = 'El usuario no existe';
+  } else if (err.code === 'auth/wrong-password') {
+    lerr.textContent = 'Contraseña incorrecta';
+  } else if (err.code === 'auth/invalid-credential') {
+    lerr.textContent = 'Datos incorrectos';
+  } else {
+    lerr.textContent = err.code;
+  }
   }
 };
 
