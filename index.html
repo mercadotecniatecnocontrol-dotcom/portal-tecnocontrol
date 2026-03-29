@@ -1,355 +1,173 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Portal Actividades · Tecnocontrol</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<style>
-  :root {
-    --azul:#0f1b35;--azul-med:#1a2e5a;--azul-cla:#1a6faf;--acento:#3b9eff;
-    --rojo:#e03e3e;--verde:#22c55e;--naranja:#f59e0b;--blanco:#ffffff;
-    --gris-bg:#f4f6fa;--gris-brd:#e2e8f0;--texto:#1e293b;--muted:#64748b;
-  }
-  *{margin:0;padding:0;box-sizing:border-box;}
-  body{font-family:'DM Sans',sans-serif;background:var(--gris-bg);color:var(--texto);min-height:100vh;}
-  #login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#0f1b35 0%,#1a2e5a 60%,#1a6faf 100%);}
-  .login-box{background:#fff;border-radius:16px;padding:40px 36px;width:100%;max-width:380px;box-shadow:0 24px 48px rgba(0,0,0,0.2);}
-  .login-logo{font-size:11px;font-weight:600;letter-spacing:0.15em;text-transform:uppercase;color:var(--acento);margin-bottom:6px;}
-  .login-title{font-size:22px;font-weight:600;color:var(--azul);margin-bottom:4px;}
-  .login-sub{font-size:13px;color:var(--muted);margin-bottom:28px;}
-  .fg{margin-bottom:16px;}
-  .fg label{font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:6px;}
-  .fg input,.fg select{width:100%;padding:10px 14px;border:1px solid var(--gris-brd);border-radius:8px;font-size:14px;font-family:'DM Sans',sans-serif;color:var(--texto);background:#fff;outline:none;transition:border 0.15s;}
-  .fg input:focus,.fg select:focus{border-color:var(--acento);}
-  .btn-primary{width:100%;padding:12px;background:var(--azul);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;transition:background 0.15s;margin-top:8px;}
-  .btn-primary:hover{background:var(--azul-med);}
-  .login-error{font-size:12px;color:var(--rojo);margin-top:10px;text-align:center;min-height:18px;}
-  #app-screen{display:none;}
-  .sidebar{position:fixed;left:0;top:0;bottom:0;width:220px;background:var(--azul);display:flex;flex-direction:column;z-index:100;padding:0 0 24px;}
-  .sl{padding:24px 20px;border-bottom:1px solid rgba(255,255,255,0.08);}
-  .sl .br{font-size:10px;font-weight:600;letter-spacing:0.15em;text-transform:uppercase;color:var(--acento);margin-bottom:4px;}
-  .sl .nm{font-size:16px;font-weight:600;color:#fff;}
-  .sl .ar{font-size:11px;color:rgba(255,255,255,0.5);margin-top:3px;}
-  .nav{padding:16px 12px;flex:1;display:flex;flex-direction:column;gap:3px;}
-  .nl{font-size:10px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.3);padding:10px 12px 5px;margin-top:6px;}
-  .ni{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;cursor:pointer;color:rgba(255,255,255,0.6);font-size:13px;transition:all 0.15s;border:none;background:none;width:100%;text-align:left;}
-  .ni:hover{background:rgba(255,255,255,0.07);color:#fff;}
-  .ni.active{background:rgba(59,158,255,0.18);color:var(--acento);font-weight:500;}
-  .ni .ic{font-size:15px;width:20px;text-align:center;}
-  .su{padding:16px 20px;border-top:1px solid rgba(255,255,255,0.08);font-size:12px;color:rgba(255,255,255,0.5);}
-  .su b{color:rgba(255,255,255,0.85);display:block;margin-bottom:2px;}
-  .btn-lo{margin-top:8px;font-size:11px;color:rgba(255,255,255,0.4);background:none;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;padding:0;}
-  .btn-lo:hover{color:#fff;}
-  .main{margin-left:220px;min-height:100vh;display:flex;flex-direction:column;}
-  .topbar{background:#fff;border-bottom:1px solid var(--gris-brd);padding:14px 28px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50;}
-  .tt{font-size:15px;font-weight:600;}
-  .ts{font-size:12px;color:var(--muted);margin-top:1px;}
-  .bl{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:500;color:var(--verde);background:#dcfce7;padding:4px 10px;border-radius:99px;}
-  .bl .dot{width:6px;height:6px;border-radius:50%;background:var(--verde);animation:pulse 1.5s ease-in-out infinite;}
-  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
-  .content{padding:24px 28px;flex:1;}
-  .section{display:none;}
-  .section.active{display:block;}
-  .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px;}
-  .kc{background:#fff;border-radius:12px;padding:18px;border:1px solid var(--gris-brd);position:relative;overflow:hidden;}
-  .kc::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;border-radius:12px 12px 0 0;}
-  .kc.az::before{background:var(--azul-cla)}.kc.vd::before{background:var(--verde)}.kc.rj::before{background:var(--rojo)}.kc.nr::before{background:var(--naranja)}
-  .kl{font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);margin-bottom:6px;}
-  .kv{font-size:32px;font-weight:600;line-height:1;margin-bottom:3px;}
-  .ks{font-size:11px;color:var(--muted);}
-  .kc.az .kv{color:var(--azul-cla)}.kc.vd .kv{color:var(--verde)}.kc.rj .kv{color:var(--rojo)}.kc.nr .kv{color:var(--naranja)}
-  .panel{background:#fff;border-radius:12px;border:1px solid var(--gris-brd);margin-bottom:18px;overflow:hidden;}
-  .ph{padding:14px 18px;border-bottom:1px solid var(--gris-brd);display:flex;align-items:center;justify-content:space-between;}
-  .pt{font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;}
-  .pb{padding:18px;}
-  .tw{overflow-x:auto;}
-  table{width:100%;border-collapse:collapse;font-size:12px;}
-  th{background:var(--gris-bg);padding:8px 12px;text-align:left;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);border-bottom:1px solid var(--gris-brd);white-space:nowrap;}
-  td{padding:9px 12px;border-bottom:1px solid #f1f5f9;color:var(--texto);vertical-align:middle;}
-  tr:last-child td{border-bottom:none;}
-  tr:hover td{background:#f8fafc;}
-  .chip{display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:99px;white-space:nowrap;}
-  .cr{background:#fee2e2;color:#b91c1c}.cn{background:#fef3c7;color:#b45309}.cv{background:#dcfce7;color:#15803d}.ca{background:#dbeafe;color:#1d4ed8}.cg{background:#f1f5f9;color:#475569}.cp{background:#ede9fe;color:#6d28d9}
-  .fg2{margin-bottom:14px;}
-  .fg2 label{font-size:11px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:5px;}
-  .fg2 input,.fg2 select,.fg2 textarea{width:100%;padding:9px 12px;border:1px solid var(--gris-brd);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;color:var(--texto);background:#fff;outline:none;}
-  .fg2 input:focus,.fg2 select:focus,.fg2 textarea:focus{border-color:var(--acento);}
-  .fg-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
-  .full{grid-column:1/-1;}
-  .btn-add{padding:9px 20px;background:var(--azul);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;}
-  .btn-add:hover{background:var(--azul-med);}
-  .btn-done{padding:5px 10px;background:#dcfce7;color:#15803d;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;}
-  .btn-del{padding:5px 10px;background:#fee2e2;color:#b91c1c;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;}
-  .fb{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
-  .fb button{font-size:11px;font-weight:500;padding:5px 12px;border-radius:99px;border:1px solid var(--gris-brd);background:#fff;color:var(--muted);cursor:pointer;transition:all 0.15s;font-family:'DM Sans',sans-serif;}
-  .fb button:hover{border-color:var(--azul-cla);color:var(--azul-cla);}
-  .fb button.active{background:var(--azul);color:#fff;border-color:var(--azul);}
-  .empty{text-align:center;padding:32px;color:var(--muted);font-size:13px;}
-  .empty .big{font-size:32px;margin-bottom:8px;}
-  .ok{background:#dcfce7;color:#15803d;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:14px;display:none;}
-  @media(max-width:900px){
-    .sidebar{width:56px;}.sl .nm,.sl .ar,.sl .br,.nl,.ni span:not(.ic),.su,.btn-lo{display:none;}
-    .main{margin-left:56px;}.kpi-grid{grid-template-columns:repeat(2,1fr);}.fg-grid{grid-template-columns:1fr;}.content{padding:16px;}
-  }
-</style>
-</head>
-<body>
-
-<div id="login-screen">
-  <div class="login-box">
-    <div class="login-logo">Tecnocontrol</div>
-    <div class="login-title">Portal de Actividades</div>
-    <div class="login-sub">Ingresa con tu cuenta de área</div>
-    <div class="fg"><label>Correo</label><input type="email" id="le" placeholder="correo@tecnocontrol.com.mx"></div>
-    <div class="fg"><label>Contraseña</label><input type="password" id="lp" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"></div>
-    <button class="btn-primary" onclick="doLogin()">Entrar al portal</button>
-    <div class="login-error" id="lerr"></div>
-  </div>
-</div>
-
-<div id="app-screen">
-  <nav class="sidebar">
-    <div class="sl"><div class="br">Tecnocontrol</div><div class="nm">Portal</div><div class="ar" id="sarea">—</div></div>
-    <div class="nav">
-      <div class="nl">Principal</div>
-      <button class="ni active" onclick="show('dashboard',this)"><span class="ic">📊</span><span>Dashboard</span></button>
-      <button class="ni" onclick="show('mis',this)"><span class="ic">📋</span><span>Mis actividades</span></button>
-      <button class="ni" onclick="show('nueva',this)"><span class="ic">➕</span><span>Nueva actividad</span></button>
-      <div class="nl" id="anl" style="display:none">Administración</div>
-      <button class="ni" id="ntodas" style="display:none" onclick="show('todas',this)"><span class="ic">🏢</span><span>Todas las áreas</span></button>
-      <button class="ni" id="nadmin" style="display:none" onclick="show('admin',this)"><span class="ic">⚙️</span><span>Administrar</span></button>
-    </div>
-    <div class="su"><b id="semail">—</b><span id="srol"></span><br><button class="btn-lo" onclick="doLogout()">Cerrar sesión</button></div>
-  </nav>
-
-  <div class="main">
-    <div class="topbar">
-      <div><div class="tt" id="ptitle">Dashboard</div><div class="ts" id="psub">Resumen de mis actividades</div></div>
-      <div class="bl"><div class="dot"></div>En vivo</div>
-    </div>
-    <div class="content">
-
-      <!-- DASHBOARD -->
-      <div class="section active" id="section-dashboard">
-        <div class="kpi-grid">
-          <div class="kc az"><div class="kl">Total</div><div class="kv" id="kt">0</div><div class="ks">actividades</div></div>
-          <div class="kc vd"><div class="kl">Completadas</div><div class="kv" id="kc2">0</div><div class="ks" id="kcp">0%</div></div>
-          <div class="kc rj"><div class="kl">Vencidas</div><div class="kv" id="kv2">0</div><div class="ks">atención urgente</div></div>
-          <div class="kc nr"><div class="kl">En proceso</div><div class="kv" id="kp">0</div><div class="ks">activas</div></div>
-        </div>
-        <div class="panel">
-          <div class="ph"><div class="pt">🚨 Vencidas de mi área</div></div>
-          <div class="tw"><table><thead><tr><th>Actividad</th><th>Prioridad</th><th>Fecha límite</th><th>Días vencida</th></tr></thead><tbody id="dvenc"><tr><td colspan="4" class="empty">Cargando...</td></tr></tbody></table></div>
-        </div>
-      </div>
-
-      <!-- MIS ACTIVIDADES -->
-      <div class="section" id="section-mis">
-        <div class="fb">
-          <button class="active" onclick="fmis('todas',this)">Todas</button>
-          <button onclick="fmis('pendiente',this)">⏳ Pendientes</button>
-          <button onclick="fmis('en proceso',this)">🔵 En proceso</button>
-          <button onclick="fmis('completada',this)">✅ Completadas</button>
-          <button onclick="fmis('vencida',this)">🔴 Vencidas</button>
-        </div>
-        <div class="panel">
-          <div class="ph"><div class="pt">📋 Mis actividades</div><div style="font-size:12px;color:var(--muted)" id="misct"></div></div>
-          <div class="tw"><table><thead><tr><th>Actividad</th><th>Tipo</th><th>Prioridad</th><th>Fecha límite</th><th>Estatus</th><th>Días</th><th>Acciones</th></tr></thead><tbody id="misbody"><tr><td colspan="7" class="empty"><div class="big">📋</div>Cargando...</td></tr></tbody></table></div>
-        </div>
-      </div>
-
-      <!-- NUEVA -->
-      <div class="section" id="section-nueva">
-        <div class="panel">
-          <div class="ph"><div class="pt">➕ Nueva actividad</div></div>
-          <div class="pb">
-            <div class="ok" id="okm">✅ Actividad guardada correctamente</div>
-            <div class="fg-grid">
-              <div class="fg2 full"><label>Actividad / Descripción</label><input type="text" id="fa" placeholder="Describe la actividad..."></div>
-              <div class="fg2"><label>Tipo</label><select id="ft"><option>Administrativo</option><option>Diseño</option><option>Pagina Web</option><option>Ejecución</option><option>Redes Sociales</option><option>CRM</option><option>Maquinaria</option><option>Reporte Cristina</option><option>RH</option><option>Facturación</option><option>Contabilidad</option><option>Otro</option></select></div>
-              <div class="fg2"><label>Prioridad</label><select id="fp"><option>Alta</option><option>Media</option><option>Baja</option></select></div>
-              <div class="fg2"><label>Fecha límite</label><input type="date" id="ff"></div>
-              <div class="fg2"><label>Estatus</label><select id="fe"><option>Pendiente</option><option>En proceso</option><option>No iniciado</option></select></div>
-              <div class="fg2 full"><label>Notas (opcional)</label><textarea id="fn" rows="2" placeholder="Información adicional..."></textarea></div>
-            </div>
-            <div style="margin-top:16px"><button class="btn-add" onclick="agregar()">Guardar actividad</button></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- TODAS (admin) -->
-      <div class="section" id="section-todas">
-        <div class="fb" id="fareas"></div>
-        <div class="panel">
-          <div class="ph"><div class="pt">🏢 Todas las áreas</div><div style="font-size:12px;color:var(--muted)" id="todasct"></div></div>
-          <div class="tw"><table><thead><tr><th>Área</th><th>Actividad</th><th>Tipo</th><th>Prioridad</th><th>Fecha límite</th><th>Estatus</th><th>Días</th></tr></thead><tbody id="todasbody"><tr><td colspan="7" class="empty">Cargando...</td></tr></tbody></table></div>
-        </div>
-      </div>
-
-      <!-- ADMIN -->
-      <div class="section" id="section-admin">
-        <div class="panel">
-          <div class="ph"><div class="pt">⚙️ Crear usuario de área</div></div>
-          <div class="pb">
-            <div class="ok" id="adok">✅ Usuario creado correctamente</div>
-            <div class="fg-grid">
-              <div class="fg2"><label>Correo</label><input type="email" id="ae" placeholder="rh@tecnocontrol.com.mx"></div>
-              <div class="fg2"><label>Contraseña temporal</label><input type="text" id="ap" placeholder="Mínimo 6 caracteres"></div>
-              <div class="fg2"><label>Área / Departamento</label><input type="text" id="aa" placeholder="ej. Recursos Humanos"></div>
-              <div class="fg2"><label>Rol</label><select id="ar2"><option value="usuario">Usuario (solo su área)</option><option value="admin">Admin (todas las áreas)</option></select></div>
-            </div>
-            <div style="margin-top:16px"><button class="btn-add" onclick="crearUsuario()">Crear usuario</button></div>
-          </div>
-        </div>
-        <div class="panel">
-          <div class="ph"><div class="pt">👥 Usuarios registrados</div></div>
-          <div class="tw"><table><thead><tr><th>Correo</th><th>Área</th><th>Rol</th><th>Creado</th></tr></thead><tbody id="ubody"><tr><td colspan="4" class="empty">Cargando...</td></tr></tbody></table></div>
-        </div>
-      </div>
-
-    </div>
-  </div>
-</div>
-
 <script type="module">
-import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import{getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged,createUserWithEmailAndPassword}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import{getFirestore,collection,addDoc,query,where,onSnapshot,doc,updateDoc,deleteDoc,setDoc,getDocs,orderBy}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import {
+  getAuth,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  createUserWithEmailAndPassword
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
-const app=initializeApp({apiKey:"AIzaSyBXh-P0oMtMiDjyz9PObuJ8DNfROlXvhLE",authDomain:"tecnocontrol-1c42f.firebaseapp.com",projectId:"tecnocontrol-1c42f",storageBucket:"tecnocontrol-1c42f.firebasestorage.app",messagingSenderId:"27642771956",appId:"1:27642771956:web:54225af9e386afded8a1a1"});
-const auth=getAuth(app),db=getFirestore(app);
-let cu=null,cp=null,uA=null,uT=null,fmisAct='todas',farea='todas',cachedMis=[],cachedTodas=[];
+import {
+  getFirestore,
+  collection,
+  addDoc,
+  query,
+  where,
+  onSnapshot,
+  doc,
+  updateDoc,
+  deleteDoc,
+  setDoc,
+  getDocs,
+  orderBy
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-window.doLogin=async()=>{
-  const e=document.getElementById('le').value.trim(),p=document.getElementById('lp').value;
-  document.getElementById('lerr').textContent='';
-  try{await signInWithEmailAndPassword(auth,e,p);}
-  catch(err){document.getElementById('lerr').textContent=err.code==='auth/invalid-credential'?'Correo o contraseña incorrectos':'Error al iniciar sesión';}
+const app = initializeApp({
+  apiKey: "AIzaSyBXh-P0oMtMiDjyz9PObuJ8DNfROlXvhLE",
+  authDomain: "tecnocontrol-1c42f.firebaseapp.com",
+  projectId: "tecnocontrol-1c42f",
+  storageBucket: "tecnocontrol-1c42f.firebasestorage.app",
+  messagingSenderId: "27642771956",
+  appId: "1:27642771956:web:54225af9e386afded8a1a1"
+});
+
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+let cu = null, cp = null, uA = null, uT = null;
+
+// ================= LOGIN PRO =================
+window.doLogin = async () => {
+  const e = le.value.trim();
+  const p = lp.value;
+  lerr.textContent = '';
+
+  if (!e || !p) {
+    lerr.textContent = 'Completa correo y contraseña';
+    return;
+  }
+
+  try {
+    await signInWithEmailAndPassword(auth, e, p);
+  } catch (err) {
+    console.log(err.code);
+
+    if (err.code === 'auth/user-not-found') {
+      lerr.textContent = 'El usuario no existe';
+    } else if (err.code === 'auth/wrong-password') {
+      lerr.textContent = 'Contraseña incorrecta';
+    } else if (err.code === 'auth/invalid-email') {
+      lerr.textContent = 'Correo inválido';
+    } else {
+      lerr.textContent = 'Error: ' + err.code;
+    }
+  }
 };
-window.doLogout=()=>signOut(auth);
 
-onAuthStateChanged(auth,async u=>{
-  if(u){
-    cu=u;
-    const snap=await getDocs(query(collection(db,'usuarios'),where('uid','==',u.uid)));
-    cp=snap.empty?{area:u.email.split('@')[0],rol:'usuario',email:u.email}:snap.docs[0].data();
-    document.getElementById('login-screen').style.display='none';
-    document.getElementById('app-screen').style.display='block';
-    arrancar();
-  }else{
-    cu=null;cp=null;
-    document.getElementById('login-screen').style.display='flex';
-    document.getElementById('app-screen').style.display='none';
-    if(uA)uA();if(uT)uT();
+window.doLogout = () => signOut(auth);
+
+// ================= AUTH STATE =================
+onAuthStateChanged(auth, async user => {
+  console.log("SESIÓN:", user ? user.email : "SIN SESIÓN");
+
+  if (user) {
+    cu = user;
+
+    const snap = await getDocs(
+      query(collection(db, 'usuarios'), where('uid', '==', user.uid))
+    );
+
+    cp = snap.empty
+      ? { area: user.email, rol: 'usuario', email: user.email }
+      : snap.docs[0].data();
+
+    login-screen.style.display = 'none';
+    app-screen.style.display = 'block';
+  } else {
+    login-screen.style.display = 'flex';
+    app-screen.style.display = 'none';
   }
 });
 
-function arrancar(){
-  const isAdmin=cp?.rol==='admin';
-  document.getElementById('semail').textContent=cu.email;
-  document.getElementById('sarea').textContent=cp?.area||'—';
-  document.getElementById('srol').textContent=isAdmin?'🔑 Admin':cp?.area||'';
-  if(isAdmin){
-    document.getElementById('anl').style.display='';
-    document.getElementById('ntodas').style.display='';
-    document.getElementById('nadmin').style.display='';
+// ================= CREAR USUARIO PRO =================
+window.crearUsuario = async () => {
+  const e = ae.value.trim();
+  const p = ap.value;
+  const a = aa.value.trim();
+  const r = ar2.value;
+
+  if (!e || !p || !a) {
+    alert('Llena todos los campos');
+    return;
   }
-  uA=onSnapshot(query(collection(db,'actividades'),where('uid','==',cu.uid),orderBy('fechaCreacion','desc')),snap=>{
-    cachedMis=snap.docs.map(d=>({id:d.id,...d.data()}));
-    renderDash(cachedMis);renderMis(cachedMis);
-  });
-  if(isAdmin){
-    uT=onSnapshot(query(collection(db,'actividades'),orderBy('fechaCreacion','desc')),snap=>{
-      cachedTodas=snap.docs.map(d=>({id:d.id,...d.data()}));renderTodas(cachedTodas);
+
+  try {
+    const adminEmail = auth.currentUser.email;
+
+    const cred = await createUserWithEmailAndPassword(auth, e, p);
+
+    await setDoc(doc(db, 'usuarios', cred.user.uid), {
+      uid: cred.user.uid,
+      email: e,
+      area: a,
+      rol: r,
+      creadoPor: adminEmail,
+      fechaCreacion: new Date().toISOString()
     });
-    loadUsers();
+
+    // 🔥 regresar al admin
+    await signOut(auth);
+
+    const pass = prompt("Reingresa tu contraseña de admin:");
+    await signInWithEmailAndPassword(auth, adminEmail, pass);
+
+    ae.value = '';
+    ap.value = '';
+    aa.value = '';
+
+    alert("Usuario creado correctamente");
+
+  } catch (err) {
+    console.log(err.code);
+
+    if (err.code === 'auth/email-already-in-use') {
+      alert('Correo ya registrado');
+    } else {
+      alert(err.message);
+    }
   }
-}
-
-function dias(f){if(!f)return 0;const l=new Date(f);l.setHours(0,0,0,0);const h=new Date();h.setHours(0,0,0,0);return Math.round((l-h)/86400000);}
-function chipP(p){if(!p)return'—';const c=p==='Alta'?'cr':p==='Media'?'cn':'cv';return`<span class="chip ${c}">${p}</span>`;}
-function chipE(e){if(!e)return'—';const l=e.toLowerCase(),c=l==='completada'?'cv':l==='en proceso'?'ca':l==='pendiente'?'cn':'cg';return`<span class="chip ${c}">${e}</span>`;}
-
-function renderDash(rows){
-  let tot=0,comp=0,venc=0,proc=0;const vArr=[];
-  rows.forEach(r=>{tot++;const e=(r.estatus||'').toLowerCase();if(e==='completada'){comp++;return;}const d=dias(r.fechaLimite);if(d<0){venc++;vArr.push(r);}else proc++;});
-  document.getElementById('kt').textContent=tot;
-  document.getElementById('kc2').textContent=comp;
-  document.getElementById('kcp').textContent=tot?Math.round(comp/tot*100)+'% completadas':'0%';
-  document.getElementById('kv2').textContent=venc;
-  document.getElementById('kp').textContent=proc;
-  vArr.sort((a,b)=>dias(a.fechaLimite)-dias(b.fechaLimite));
-  document.getElementById('dvenc').innerHTML=vArr.length===0
-    ?'<tr><td colspan="4" class="empty"><div class="big">✅</div>Sin vencidas</td></tr>'
-    :vArr.map(r=>`<tr><td>${r.actividad}</td><td>${chipP(r.prioridad)}</td><td style="font-family:'DM Mono',monospace;font-size:11px">${r.fechaLimite||'—'}</td><td><span style="color:#e03e3e;font-weight:700">${dias(r.fechaLimite)}d</span></td></tr>`).join('');
-}
-
-function renderMis(rows){
-  let f=rows;
-  if(fmisAct!=='todas') f=rows.filter(r=>{const e=(r.estatus||'').toLowerCase();if(fmisAct==='vencida')return dias(r.fechaLimite)<0&&e!=='completada';return e===fmisAct;});
-  document.getElementById('misct').textContent=f.length+' actividades';
-  document.getElementById('misbody').innerHTML=f.length===0
-    ?'<tr><td colspan="7" class="empty"><div class="big">📋</div>Sin actividades</td></tr>'
-    :f.map(r=>{const d=dias(r.fechaLimite),ec=(r.estatus||'').toLowerCase()==='completada';
-      return`<tr><td style="max-width:240px">${r.actividad}</td><td><span class="chip cg">${r.tipo||'—'}</span></td><td>${chipP(r.prioridad)}</td><td style="font-family:'DM Mono',monospace;font-size:11px">${r.fechaLimite||'—'}</td><td>${chipE(r.estatus)}</td><td style="font-weight:600;color:${ec?'#22c55e':d<0?'#e03e3e':d<=3?'#f59e0b':'#1a6faf'}">${ec?'✓':d+'d'}</td><td style="display:flex;gap:5px">${!ec?`<button class="btn-done" onclick="completar('${r.id}')">✓</button>`:''}<button class="btn-del" onclick="eliminar('${r.id}')">✕</button></td></tr>`;
-    }).join('');
-}
-
-function renderTodas(rows){
-  const areas=[...new Set(rows.map(r=>r.area||'Sin área'))].sort();
-  document.getElementById('fareas').innerHTML=`<button class="${farea==='todas'?'active':''}" onclick="setArea('todas',this)">Todas</button>`+areas.map(a=>`<button class="${farea===a?'active':''}" onclick="setArea('${a}',this)">${a}</button>`).join('');
-  const f=farea==='todas'?rows:rows.filter(r=>(r.area||'Sin área')===farea);
-  document.getElementById('todasct').textContent=f.length+' actividades';
-  document.getElementById('todasbody').innerHTML=f.length===0
-    ?'<tr><td colspan="7" class="empty">Sin actividades</td></tr>'
-    :f.map(r=>{const d=dias(r.fechaLimite),ec=(r.estatus||'').toLowerCase()==='completada';
-      return`<tr><td><span class="chip cp">${r.area||'—'}</span></td><td style="max-width:200px">${r.actividad}</td><td><span class="chip cg">${r.tipo||'—'}</span></td><td>${chipP(r.prioridad)}</td><td style="font-family:'DM Mono',monospace;font-size:11px">${r.fechaLimite||'—'}</td><td>${chipE(r.estatus)}</td><td style="font-weight:600;color:${ec?'#22c55e':d<0?'#e03e3e':d<=3?'#f59e0b':'#1a6faf'}">${ec?'✓':d+'d'}</td></tr>`;
-    }).join('');
-}
-
-window.agregar=async()=>{
-  const a=document.getElementById('fa').value.trim(),f=document.getElementById('ff').value;
-  if(!a){alert('Escribe la actividad');return;}if(!f){alert('Selecciona fecha límite');return;}
-  await addDoc(collection(db,'actividades'),{actividad:a,tipo:document.getElementById('ft').value,prioridad:document.getElementById('fp').value,fechaLimite:f,estatus:document.getElementById('fe').value,notas:document.getElementById('fn').value.trim(),uid:cu.uid,email:cu.email,area:cp?.area||'Sin área',fechaCreacion:new Date().toISOString()});
-  document.getElementById('fa').value='';document.getElementById('ff').value='';document.getElementById('fn').value='';
-  const m=document.getElementById('okm');m.style.display='block';setTimeout(()=>m.style.display='none',3000);
 };
 
-window.completar=async id=>await updateDoc(doc(db,'actividades',id),{estatus:'Completada'});
-window.eliminar=async id=>{if(confirm('¿Eliminar esta actividad?'))await deleteDoc(doc(db,'actividades',id));};
+// ================= CRUD =================
+window.agregar = async () => {
+  if (!fa.value || !ff.value) return alert("Faltan datos");
 
-window.crearUsuario=async()=>{
-  const e=document.getElementById('ae').value.trim(),p=document.getElementById('ap').value,a=document.getElementById('aa').value.trim(),r=document.getElementById('ar2').value;
-  if(!e||!p||!a){alert('Llena todos los campos');return;}
-  try{
-    const cred=await createUserWithEmailAndPassword(auth,e,p);
-    await setDoc(doc(db,'usuarios',cred.user.uid),{uid:cred.user.uid,email:e,area:a,rol:r,creadoPor:cu.email,fechaCreacion:new Date().toISOString()});
-    document.getElementById('ae').value='';document.getElementById('ap').value='';document.getElementById('aa').value='';
-    const m=document.getElementById('adok');m.style.display='block';setTimeout(()=>m.style.display='none',3000);
-    loadUsers();
-  }catch(err){alert(err.code==='auth/email-already-in-use'?'Correo ya registrado':err.message);}
+  await addDoc(collection(db, 'actividades'), {
+    actividad: fa.value,
+    tipo: ft.value,
+    prioridad: fp.value,
+    fechaLimite: ff.value,
+    estatus: fe.value,
+    uid: cu.uid,
+    email: cu.email,
+    area: cp.area,
+    fechaCreacion: new Date().toISOString()
+  });
+
+  fa.value = '';
+  ff.value = '';
 };
 
-async function loadUsers(){
-  const snap=await getDocs(collection(db,'usuarios'));
-  const rows=snap.docs.map(d=>d.data());
-  document.getElementById('ubody').innerHTML=rows.length===0
-    ?'<tr><td colspan="4" class="empty">Sin usuarios</td></tr>'
-    :rows.map(r=>`<tr><td>${r.email}</td><td><span class="chip cp">${r.area}</span></td><td><span class="chip ${r.rol==='admin'?'cr':'ca'}">${r.rol}</span></td><td style="font-size:11px;color:var(--muted)">${r.fechaCreacion?new Date(r.fechaCreacion).toLocaleDateString('es-MX'):'—'}</td></tr>`).join('');
-}
+window.completar = async id => {
+  await updateDoc(doc(db, 'actividades', id), {
+    estatus: 'Completada'
+  });
+};
 
-window.fmis=(f,btn)=>{fmisAct=f;document.querySelectorAll('#section-mis .fb button').forEach(b=>b.classList.remove('active'));btn.classList.add('active');renderMis(cachedMis);};
-window.setArea=(f,btn)=>{farea=f;renderTodas(cachedTodas);};
-
-const titles={dashboard:['Dashboard','Resumen de mis actividades'],mis:['Mis actividades','Listado completo de tareas'],nueva:['Nueva actividad','Registra una nueva tarea'],todas:['Todas las áreas','Vista global — administradores'],admin:['Administración','Gestión de usuarios y áreas']};
-window.show=(id,btn)=>{
-  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
-  document.querySelectorAll('.ni').forEach(b=>b.classList.remove('active'));
-  document.getElementById('section-'+id).classList.add('active');btn.classList.add('active');
-  const[t,s]=titles[id]||[id,''];document.getElementById('ptitle').textContent=t;document.getElementById('psub').textContent=s;
+window.eliminar = async id => {
+  if (confirm("¿Eliminar?")) {
+    await deleteDoc(doc(db, 'actividades', id));
+  }
 };
 </script>
-</body>
-</html>
-
