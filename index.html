@@ -1,173 +1,66 @@
+<!-- SOLO TE PONGO LA PARTE CORREGIDA DEL SCRIPT (lo demás déjalo igual) -->
+
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import {
-  getAuth,
-  signInWithEmailAndPassword,
-  signOut,
-  onAuthStateChanged,
-  createUserWithEmailAndPassword
+import { 
+  getAuth, 
+  signInWithEmailAndPassword, 
+  signOut, 
+  onAuthStateChanged 
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-
-import {
-  getFirestore,
-  collection,
-  addDoc,
-  query,
-  where,
-  onSnapshot,
-  doc,
-  updateDoc,
-  deleteDoc,
-  setDoc,
-  getDocs,
-  orderBy
-} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const app = initializeApp({
   apiKey: "AIzaSyBXh-P0oMtMiDjyz9PObuJ8DNfROlXvhLE",
   authDomain: "tecnocontrol-1c42f.firebaseapp.com",
-  projectId: "tecnocontrol-1c42f",
-  storageBucket: "tecnocontrol-1c42f.firebasestorage.app",
-  messagingSenderId: "27642771956",
-  appId: "1:27642771956:web:54225af9e386afded8a1a1"
+  projectId: "tecnocontrol-1c42f"
 });
 
 const auth = getAuth(app);
-const db = getFirestore(app);
 
-let cu = null, cp = null, uA = null, uT = null;
 
-// ================= LOGIN PRO =================
+// 🔥 LOGIN CORREGIDO
 window.doLogin = async () => {
-  const e = le.value.trim();
-  const p = lp.value;
-  lerr.textContent = '';
+  const email = document.getElementById('le').value.trim();
+  const password = document.getElementById('lp').value;
+  const errorBox = document.getElementById('lerr');
 
-  if (!e || !p) {
-    lerr.textContent = 'Completa correo y contraseña';
+  errorBox.textContent = '';
+
+  if (!email || !password) {
+    errorBox.textContent = "Ingresa correo y contraseña";
     return;
   }
 
   try {
-    await signInWithEmailAndPassword(auth, e, p);
-  catch (err) {
-  console.log("LOGIN ERROR:", err.code);
-
-  if (err.code === 'auth/user-not-found') {
-    lerr.textContent = 'El usuario no existe';
-  } else if (err.code === 'auth/wrong-password') {
-    lerr.textContent = 'Contraseña incorrecta';
-  } else if (err.code === 'auth/invalid-credential') {
-    lerr.textContent = 'Datos incorrectos';
-  } else {
-    lerr.textContent = err.code;
-  }
-  }
-};
-
-window.doLogout = () => signOut(auth);
-
-// ================= AUTH STATE =================
-onAuthStateChanged(auth, async user => {
-  console.log("SESIÓN:", user ? user.email : "SIN SESIÓN");
-
-  if (user) {
-    cu = user;
-
-    const snap = await getDocs(
-      query(collection(db, 'usuarios'), where('uid', '==', user.uid))
-    );
-
-    cp = snap.empty
-      ? { area: user.email, rol: 'usuario', email: user.email }
-      : snap.docs[0].data();
-
-    login-screen.style.display = 'none';
-    app-screen.style.display = 'block';
-  } else {
-    login-screen.style.display = 'flex';
-    app-screen.style.display = 'none';
-  }
-});
-
-// ================= CREAR USUARIO PRO =================
-window.crearUsuario = async () => {
-  const e = ae.value.trim();
-  const p = ap.value;
-  const a = aa.value.trim();
-  const r = ar2.value;
-
-  if (!e || !p || !a) {
-    alert('Llena todos los campos');
-    return;
-  }
-
-  try {
-    const adminEmail = auth.currentUser.email;
-
-    const cred = await createUserWithEmailAndPassword(auth, e, p);
-
-    await setDoc(doc(db, 'usuarios', cred.user.uid), {
-      uid: cred.user.uid,
-      email: e,
-      area: a,
-      rol: r,
-      creadoPor: adminEmail,
-      fechaCreacion: new Date().toISOString()
-    });
-
-    // 🔥 regresar al admin
-    await signOut(auth);
-
-    const pass = prompt("Reingresa tu contraseña de admin:");
-    await signInWithEmailAndPassword(auth, adminEmail, pass);
-
-    ae.value = '';
-    ap.value = '';
-    aa.value = '';
-
-    alert("Usuario creado correctamente");
-
+    await signInWithEmailAndPassword(auth, email, password);
   } catch (err) {
-    console.log(err.code);
+    console.error(err);
 
-    if (err.code === 'auth/email-already-in-use') {
-      alert('Correo ya registrado');
+    if (err.code === 'auth/invalid-credential') {
+      errorBox.textContent = "Correo o contraseña incorrectos";
+    } else if (err.code === 'auth/user-not-found') {
+      errorBox.textContent = "Usuario no registrado";
     } else {
-      alert(err.message);
+      errorBox.textContent = "Error al iniciar sesión";
     }
   }
 };
 
-// ================= CRUD =================
-window.agregar = async () => {
-  if (!fa.value || !ff.value) return alert("Faltan datos");
 
-  await addDoc(collection(db, 'actividades'), {
-    actividad: fa.value,
-    tipo: ft.value,
-    prioridad: fp.value,
-    fechaLimite: ff.value,
-    estatus: fe.value,
-    uid: cu.uid,
-    email: cu.email,
-    area: cp.area,
-    fechaCreacion: new Date().toISOString()
-  });
-
-  fa.value = '';
-  ff.value = '';
+// 🔥 LOGOUT
+window.doLogout = () => {
+  signOut(auth);
 };
 
-window.completar = async id => {
-  await updateDoc(doc(db, 'actividades', id), {
-    estatus: 'Completada'
-  });
-};
 
-window.eliminar = async id => {
-  if (confirm("¿Eliminar?")) {
-    await deleteDoc(doc(db, 'actividades', id));
+// 🔥 CONTROL DE SESIÓN
+onAuthStateChanged(auth, (user) => {
+  if (user) {
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('app-screen').style.display = 'block';
+  } else {
+    document.getElementById('login-screen').style.display = 'flex';
+    document.getElementById('app-screen').style.display = 'none';
   }
-};
+});
 </script>
