@@ -2,7 +2,9 @@
 const EMAIL_DESTINO = "mercadotecnia@tecnocontrol.com.mx, mercadotecniatecnocontrol@gmail.com";
 const NOMBRE_HOJA   = "Actividades";
 const FILA_INICIO   = 12;
-const LINK_SHEET    = "https://docs.google.com/spreadsheets/d/TU_ID_AQUI";
+
+// ✅ YA INTEGRADO
+const LINK_SHEET = "https://docs.google.com/spreadsheets/d/18iNKYxSs_qK7IG3ppHiGjIsA57dbG7r0ioLlxB-6Ic4/edit";
 
 // Índices
 const CI_ACTIVIDAD  = 1;
@@ -10,7 +12,6 @@ const CI_TIPO       = 2;
 const CI_ENCARGADO  = 6;
 const CI_ESTATUS    = 8;
 const CI_DIAS_REST  = 10;
-// ─────────────────────────────────────────────
 
 function enviarResumenSemanal() {
 
@@ -23,7 +24,6 @@ function enviarResumenSemanal() {
   const enProceso = [];
   const noIniciadas = [];
   const completadas = [];
-
   const ranking = {};
 
   for (let i = FILA_INICIO - 1; i < datos.length; i++) {
@@ -43,13 +43,11 @@ function enviarResumenSemanal() {
 
     const item = { actividad, encargado, tipo, diasRest };
 
-    // COMPLETADAS
     if (estatus.includes("finalizado") || estatus.includes("completad")) {
       completadas.push(item);
       continue;
     }
 
-    // CLASIFICACIÓN
     if (diasRest < 0) {
       vencidas.push(item);
       ranking[encargado].vencidas++;
@@ -59,16 +57,13 @@ function enviarResumenSemanal() {
     else enProceso.push(item);
   }
 
-  // KPIs
   const total = vencidas.length + urgentes.length + enProceso.length + noIniciadas.length + completadas.length;
   const cumplimiento = total === 0 ? 0 : Math.round((completadas.length / total) * 100);
 
-  // SEMÁFORO
   let semaforo = "🟢 CONTROLADO";
   if (vencidas.length > 5) semaforo = "🔴 CRÍTICO";
   else if (vencidas.length > 0) semaforo = "🟡 EN RIESGO";
 
-  // TOP PRIORIDADES
   const top = [...vencidas, ...urgentes]
     .sort((a,b)=>a.diasRest-b.diasRest)
     .slice(0,5);
@@ -77,7 +72,6 @@ function enviarResumenSemanal() {
     <li>${t.actividad} — <b>${t.encargado}</b> (${t.diasRest} días)</li>
   `).join("");
 
-  // RANKING HTML
   const rankingHTML = Object.entries(ranking)
     .sort((a,b)=>b[1].vencidas - a[1].vencidas)
     .slice(0,5)
@@ -95,10 +89,8 @@ function enviarResumenSemanal() {
     weekday:"long", year:"numeric", month:"long", day:"numeric"
   });
 
-  // ── DASHBOARD PRO ─────────────────────────────
   const cuerpo = `
-  <div style="font-family:Arial, sans-serif; max-width:900px; margin:auto; background:#f4f6f9; padding:20px;">
-
+  <div style="font-family:Arial; max-width:900px; margin:auto; background:#f4f6f9; padding:20px;">
     <div style="background:white; padding:20px; border-radius:12px;">
 
       <h2>📊 Dashboard Ejecutivo · Tecnocontrol</h2>
@@ -106,107 +98,49 @@ function enviarResumenSemanal() {
 
       <h3>${semaforo}</h3>
 
-      <!-- KPIs -->
       <div style="display:flex; gap:12px; margin:20px 0;">
-
         <div style="flex:1; background:#ecf0f1; padding:15px; border-radius:10px; text-align:center;">
-          <div style="font-size:22px; font-weight:bold;">${total}</div>
-          <div>Total</div>
+          <b>${total}</b><br>Total
         </div>
-
         <div style="flex:1; background:#eafaf1; padding:15px; border-radius:10px; text-align:center;">
-          <div style="font-size:22px; font-weight:bold; color:#27ae60;">${cumplimiento}%</div>
-          <div>Cumplimiento</div>
+          <b style="color:#27ae60;">${cumplimiento}%</b><br>Cumplimiento
         </div>
-
         <div style="flex:1; background:#fdecea; padding:15px; border-radius:10px; text-align:center;">
-          <div style="font-size:22px; font-weight:bold; color:#c0392b;">${vencidas.length}</div>
-          <div>Vencidas</div>
+          <b style="color:#c0392b;">${vencidas.length}</b><br>Vencidas
         </div>
-
         <div style="flex:1; background:#fff4e5; padding:15px; border-radius:10px; text-align:center;">
-          <div style="font-size:22px; font-weight:bold; color:#e67e22;">${urgentes.length}</div>
-          <div>Riesgo</div>
+          <b style="color:#e67e22;">${urgentes.length}</b><br>Riesgo
         </div>
-
       </div>
 
-      <!-- PROGRESO -->
-      <div style="margin:25px 0;">
-        <b>Avance general</b>
-        <div style="background:#ddd; border-radius:10px;">
+      <div style="margin:20px 0;">
+        <b>Avance</b>
+        <div style="background:#ddd;">
           <div style="width:${cumplimiento}%; background:#27ae60; color:white; text-align:center;">
             ${cumplimiento}%
           </div>
         </div>
       </div>
 
-      <!-- BOTÓN -->
-      <div style="text-align:center; margin:25px 0;">
-        <a href="${LINK_SHEET}" 
-           style="background:linear-gradient(90deg,#2c3e50,#4ca1af);
-                  color:white;
-                  padding:12px 20px;
-                  text-decoration:none;
-                  border-radius:8px;
-                  font-weight:bold;">
-          📂 Abrir tablero completo
+      <div style="text-align:center; margin:20px;">
+        <a href="${LINK_SHEET}" style="background:#2c3e50;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;">
+          📂 Abrir tablero
         </a>
       </div>
 
-      <!-- PRIORIDADES -->
-      <div style="background:#fff8e1; padding:15px; border-radius:10px;">
-        <h3>⚠️ Prioridades clave</h3>
-        <ul>${topHTML}</ul>
-      </div>
+      <h3>⚠️ Prioridades</h3>
+      <ul>${topHTML}</ul>
 
-      <!-- RANKING -->
-      <h3 style="margin-top:20px;">👤 Responsables críticos</h3>
+      <h3>👤 Responsables</h3>
       <table style="width:100%; border-collapse:collapse;">
-        <tr style="background:#2c3e50; color:white;">
-          <th style="padding:8px;">Encargado</th>
-          <th>Total</th>
-          <th>Vencidas</th>
+        <tr style="background:#2c3e50;color:white;">
+          <th>Encargado</th><th>Total</th><th>Vencidas</th>
         </tr>
         ${rankingHTML}
       </table>
 
-      <!-- MINI GRÁFICAS -->
-      <h3 style="margin-top:20px;">📊 Distribución</h3>
-
-      <div>🔴 Vencidas</div>
-      <div style="background:#ddd;">
-        <div style="width:${total ? (vencidas.length/total)*100 : 0}%; background:#c0392b; color:white;">
-          ${vencidas.length}
-        </div>
-      </div>
-
-      <div>🟠 Riesgo</div>
-      <div style="background:#ddd;">
-        <div style="width:${total ? (urgentes.length/total)*100 : 0}%; background:#e67e22; color:white;">
-          ${urgentes.length}
-        </div>
-      </div>
-
-      <div>🔵 En proceso</div>
-      <div style="background:#ddd;">
-        <div style="width:${total ? (enProceso.length/total)*100 : 0}%; background:#2980b9; color:white;">
-          ${enProceso.length}
-        </div>
-      </div>
-
-      <!-- RESUMEN -->
-      <h3 style="margin-top:20px;">📌 Resumen</h3>
-      <ul>
-        <li>Vencidas: ${vencidas.length}</li>
-        <li>En riesgo: ${urgentes.length}</li>
-        <li>En proceso: ${enProceso.length}</li>
-        <li>No iniciadas: ${noIniciadas.length}</li>
-        <li>Completadas: ${completadas.length}</li>
-      </ul>
-
-      <p style="font-size:12px; color:#999;">
-        Reporte automático · Nivel CEO · Tecnocontrol 2026
+      <p style="font-size:12px;color:#999;">
+        Reporte automático · Nivel CEO
       </p>
 
     </div>
@@ -218,5 +152,4 @@ function enviarResumenSemanal() {
     subject: `📊 REPORTE CEO — ${semaforo}`,
     htmlBody: cuerpo
   });
-
 }
