@@ -1,54 +1,121 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Portal Tecnocontrol</title>
+    <meta charset="UTF-8">
+    <title>Portal Tecnocontrol - Gestión Real</title>
+    <style>
+        body { font-family: 'Segoe UI', Arial; background:#0f1b35; color:white; margin:0; padding:20px; }
+        .login-box { background:white; color:black; padding:30px; border-radius:10px; width:300px; margin: 100px auto; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        .dashboard { display:none; max-width: 900px; margin: auto; }
+        input, select, button { width:100%; margin-bottom:10px; padding:12px; border-radius:5px; border:1px solid #ccc; box-sizing: border-box; }
+        table { width:100%; border-collapse: collapse; background: white; color: black; margin-top:20px; border-radius: 8px; overflow: hidden; }
+        th, td { padding: 12px; border-bottom: 1px solid #ddd; text-align: left; }
+        th { background: #1a2a4a; color: white; }
+        .btn-delete { background: #dc3545; color: white; border: none; padding: 5px 10px; cursor: pointer; border-radius: 3px; }
+        .status-badge { padding: 5px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+    </style>
 </head>
+<body>
 
-<body style="font-family: Arial; display:flex; justify-content:center; align-items:center; height:100vh; background:#0f1b35; color:white;">
+    <div id="auth-container" class="login-box">
+        <center><img src="https://via.placeholder.com/150x50?text=TECNOCONTROL" style="margin-bottom:20px"></center>
+        <input id="email" type="email" placeholder="Usuario (Gmail)">
+        <input id="password" type="password" placeholder="Contraseña">
+        <button onclick="login()" style="background:#0f1b35; color:white; cursor:pointer;">Entrar al Sistema</button>
+        <p id="error" style="color:red; text-align:center;"></p>
+    </div>
 
-<div style="background:white; color:black; padding:30px; border-radius:10px; width:300px;">
-  <h2>Login</h2>
+    <div id="dashboard-container" class="dashboard">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <h2>Panel de Actividades 2026</h2>
+            <button onclick="location.reload()" style="width:auto; background:transparent; border:1px solid white; color:white;">Cerrar Sesión</button>
+        </div>
+        
+        <div style="background:#1a2a4a; padding:20px; border-radius:10px; display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px;">
+            <input id="task-name" type="text" placeholder="¿Qué actividad sigue?">
+            <select id="task-area">
+                <option value="Marketing">Marketing</option>
+                <option value="Ventas">Ventas</option>
+                <option value="Mantenimiento">Mantenimiento</option>
+                <option value="Administración">Administración</option>
+            </select>
+            <button onclick="addActivity()" style="background:#28a745; color:white; border:none; font-weight:bold; cursor:pointer;">+ Agregar</button>
+        </div>
 
-  <input id="email" type="email" placeholder="Correo" style="width:100%; margin-bottom:10px; padding:8px;">
-  <input id="password" type="password" placeholder="Contraseña" style="width:100%; margin-bottom:10px; padding:8px;">
-
-  <button onclick="login()" style="width:100%; padding:10px;">Entrar</button>
-
-  <p id="error" style="color:red;"></p>
-</div>
+        <table id="actividades-tabla">
+            <thead>
+                <tr>
+                    <th>Actividad</th>
+                    <th>Área</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody id="table-body"></tbody>
+        </table>
+    </div>
 
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+    import { getFirestore, collection, addDoc, onSnapshot, query, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-// 🔥 TU CONFIG ORIGINAL
-const firebaseConfig = {
-  apiKey: "AIzaSyBXh-P0oMtMiDjyz9PObuJ8DNfROlXvhLE",
-  authDomain: "tecnocontrol-1c42f.firebaseapp.com",
-  projectId: "tecnocontrol-1c42f"
-};
+    const firebaseConfig = {
+        apiKey: "AIzaSyBXh-P0oMtMiDjyz9PObuJ8DNfROlXvhLE",
+        authDomain: "tecnocontrol-1c42f.firebaseapp.com",
+        projectId: "tecnocontrol-1c42f"
+    };
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
 
-// LOGIN
-window.login = async () => {
-  const email = document.getElementById("email").value;
-  const password = document.getElementById("password").value;
+    window.login = async () => {
+        const email = document.getElementById("email").value;
+        const password = document.getElementById("password").value;
+        try {
+            await signInWithEmailAndPassword(auth, email, password);
+            document.getElementById("auth-container").style.display = "none";
+            document.getElementById("dashboard-container").style.display = "block";
+            loadActivities();
+        } catch (error) {
+            document.getElementById("error").textContent = "Acceso denegado.";
+        }
+    };
 
-  document.getElementById("error").textContent = "";
+    window.addActivity = async () => {
+        const nombre = document.getElementById("task-name").value;
+        const area = document.getElementById("task-area").value;
+        if(!nombre) return;
 
-  try {
-    await signInWithEmailAndPassword(auth, email, password);
-    alert("Login correcto ✅");
-  } catch (error) {
-    console.error(error);
-    document.getElementById("error").textContent = "Error: " + error.code;
-  }
-};
+        await addDoc(collection(db, "actividades"), { nombre, area });
+        document.getElementById("task-name").value = "";
+    };
+
+    // FUNCIÓN PARA ELIMINAR (Nuevo)
+    window.deleteActivity = async (id) => {
+        if(confirm("¿Seguro que quieres eliminar esta actividad?")) {
+            await deleteDoc(doc(db, "actividades", id));
+        }
+    };
+
+    function loadActivities() {
+        onSnapshot(collection(db, "actividades"), (snapshot) => {
+            const tableBody = document.getElementById("table-body");
+            tableBody.innerHTML = "";
+            snapshot.forEach((doc) => {
+                const data = doc.data();
+                tableBody.innerHTML += `
+                    <tr>
+                        <td>${data.nombre}</td>
+                        <td><span class="status-badge" style="background:#eee">${data.area}</span></td>
+                        <td>
+                            <button class="btn-delete" onclick="deleteActivity('${doc.id}')">Eliminar</button>
+                        </td>
+                    </tr>
+                `;
+            });
+        });
+    }
 </script>
-
 </body>
 </html>
