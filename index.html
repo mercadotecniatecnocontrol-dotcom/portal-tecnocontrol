@@ -1,269 +1,341 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tecnocontrol | Enterprise OS</title>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;800&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --bg-sidebar: #0f172a; 
-            --bg-main: #f1f5f9;    
-            --accent-blue: #3b82f6; 
-            --accent-cyan: #06b6d4; 
-            --text-dark: #1e293b;
-            --text-light: #64748b;
-            --white: #ffffff;
-            --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-        }
-
-        body { font-family: 'Plus Jakarta Sans', sans-serif; margin: 0; display: flex; height: 100vh; background-color: var(--bg-main); overflow: hidden; }
-
-        /* SIDEBAR */
-        .sidebar { width: 280px; background-color: var(--bg-sidebar); color: white; display: flex; flex-direction: column; padding: 40px 25px; flex-shrink: 0; }
-        .logo { font-size: 20px; font-weight: 800; margin-bottom: 45px; letter-spacing: 1px; }
-        .logo span { color: var(--accent-cyan); }
-        .nav-label { font-size: 10px; text-transform: uppercase; color: #475569; margin: 20px 0 10px 10px; font-weight: 800; }
-        .nav-item { padding: 14px 18px; border-radius: 12px; display: flex; align-items: center; gap: 12px; cursor: pointer; margin-bottom: 5px; transition: 0.3s; font-size: 14px; color: #94a3b8; }
-        .nav-item:hover { background: rgba(255, 255, 255, 0.05); color: white; }
-        .nav-item.active { background: rgba(59, 130, 246, 0.15); color: white; border-left: 4px solid var(--accent-blue); font-weight: 600; }
-
-        /* MAIN CONTENT */
-        .main-content { flex-grow: 1; overflow-y: auto; padding: 50px; }
-        .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; }
-        .metrics-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 25px; margin-bottom: 40px; max-width: 800px; }
-        .metric-card { background: var(--white); padding: 30px; border-radius: 24px; box-shadow: var(--shadow); border-top: 4px solid var(--accent-blue); }
-        .metric-value { font-size: 36px; font-weight: 800; margin: 12px 0; color: var(--bg-sidebar); }
-
-        /* TABLA Y FORMULARIO */
-        .content-card { background: var(--white); border-radius: 28px; padding: 35px; box-shadow: var(--shadow); min-height: 400px; }
-        #add-panel-container { display: none; background: #f8fafc; padding: 25px; border-radius: 18px; margin-bottom: 35px; border: 1px dashed #cbd5e1; }
-        .form-inline { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr auto; gap: 15px; }
-        input, select { border: 1px solid #cbd5e1; padding: 12px; border-radius: 10px; font-size: 13px; outline: none; }
-        input:focus { border-color: var(--accent-blue); }
-        .btn-add { background: var(--accent-blue); color: white; border: none; padding: 12px 25px; border-radius: 10px; font-weight: 700; cursor: pointer; transition: 0.2s; }
-        .btn-add:hover { background: #2563eb; transform: translateY(-2px); }
-
-        .task-row { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 120px; padding: 20px 0; border-bottom: 1px solid #f1f5f9; align-items: center; animation: fadeIn 0.5s; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        .badge { padding: 5px 10px; border-radius: 8px; font-size: 11px; font-weight: 700; background: #eff6ff; color: var(--accent-blue); text-transform: uppercase; }
-        
-        /* FOOTER SIDEBAR */
-        .user-box { margin-top: auto; padding: 20px; background: rgba(255,255,255,0.05); border-radius: 15px; }
-        .btn-logout { width: 100%; margin-top: 10px; background: #1e293b; border: 1px solid #475569; color: white; font-size: 11px; cursor: pointer; padding: 8px; border-radius: 8px; transition: 0.3s; }
-        .btn-logout:hover { background: #ef4444; border-color: #ef4444; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tecnocontrol · Portal Actividades</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{--sidebar:#0f172a;--accent:#3b82f6;--cyan:#06b6d4;--bg:#f1f5f9;--white:#ffffff;--dark:#1e293b;--muted:#64748b;--border:#e2e8f0;--red:#ef4444;--green:#22c55e;--orange:#f59e0b;}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--bg);min-height:100vh;}
+#login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 60%,#0284c7 100%);}
+.lbox{background:#fff;border-radius:20px;padding:44px 40px;width:100%;max-width:400px;box-shadow:0 32px 64px rgba(0,0,0,0.25);}
+.lbrand{font-size:13px;font-weight:800;letter-spacing:0.15em;text-transform:uppercase;color:var(--cyan);margin-bottom:8px;}
+.ltitle{font-size:24px;font-weight:800;color:var(--dark);margin-bottom:4px;}
+.lsub{font-size:13px;color:var(--muted);margin-bottom:28px;}
+.lf{margin-bottom:16px;}
+.lf label{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:6px;}
+.lf input{width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:'Plus Jakarta Sans',sans-serif;outline:none;transition:border 0.2s;}
+.lf input:focus{border-color:var(--accent);}
+.btnl{width:100%;padding:13px;background:var(--accent);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;margin-top:6px;}
+.btnl:hover{background:#2563eb;}
+.lerr{font-size:12px;color:var(--red);margin-top:10px;text-align:center;min-height:16px;}
+#app-screen{display:none;}
+.layout{display:flex;min-height:100vh;}
+.sidebar{width:260px;background:var(--sidebar);display:flex;flex-direction:column;padding:32px 20px 24px;flex-shrink:0;position:fixed;top:0;bottom:0;left:0;z-index:100;}
+.slogo{font-size:18px;font-weight:800;color:#fff;letter-spacing:1px;margin-bottom:36px;}
+.slogo span{color:var(--cyan);}
+.slabel{font-size:10px;font-weight:800;text-transform:uppercase;color:#475569;margin:20px 0 8px 8px;letter-spacing:0.1em;}
+.sitem{padding:12px 16px;border-radius:10px;display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:3px;transition:all 0.2s;font-size:13px;color:#94a3b8;border:none;background:none;width:100%;text-align:left;font-family:'Plus Jakarta Sans',sans-serif;}
+.sitem:hover{background:rgba(255,255,255,0.06);color:#fff;}
+.sitem.active{background:rgba(59,130,246,0.15);color:#fff;border-left:3px solid var(--accent);font-weight:600;padding-left:13px;}
+.sitem .ic{font-size:15px;width:20px;text-align:center;}
+.admin-only{display:none;}
+.suser{margin-top:auto;padding:16px;background:rgba(255,255,255,0.05);border-radius:12px;}
+.suser .nm{font-size:13px;font-weight:700;color:#fff;margin-bottom:2px;}
+.suser .rl{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:0.06em;}
+.btnlo{width:100%;margin-top:10px;padding:8px;background:#1e293b;border:1px solid #334155;color:#94a3b8;font-size:11px;font-weight:600;cursor:pointer;border-radius:8px;font-family:'Plus Jakarta Sans',sans-serif;}
+.btnlo:hover{background:var(--red);border-color:var(--red);color:#fff;}
+.main{margin-left:260px;flex:1;padding:40px 44px;min-height:100vh;}
+.toprow{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:32px;}
+.ptitle{font-size:26px;font-weight:800;color:var(--dark);margin-bottom:4px;}
+.psub{font-size:13px;color:var(--muted);}
+.livebadge{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--green);background:#dcfce7;padding:5px 12px;border-radius:99px;}
+.livebadge .dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:pulse 1.5s infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+.krow{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-bottom:28px;}
+.kc{background:#fff;border-radius:16px;padding:22px;box-shadow:0 1px 3px rgba(0,0,0,0.08);border-top:3px solid var(--accent);}
+.kc.c2{border-top-color:var(--cyan)}.kc.c3{border-top-color:var(--red)}.kc.c4{border-top-color:var(--orange)}
+.kl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);margin-bottom:6px;}
+.kv{font-size:30px;font-weight:800;color:var(--dark);line-height:1;margin-bottom:3px;}
+.ks{font-size:11px;color:var(--muted);}
+.panel{background:#fff;border-radius:18px;padding:28px;box-shadow:0 1px 3px rgba(0,0,0,0.08);margin-bottom:20px;}
+.ph{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;}
+.pt{font-size:14px;font-weight:700;color:var(--dark);}
+.fgrid{display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:12px;align-items:end;}
+.fg4{display:flex;flex-direction:column;gap:5px;}
+.fg4 label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;}
+.fg4 input,.fg4 select{padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:'Plus Jakarta Sans',sans-serif;outline:none;}
+.fg4 input:focus,.fg4 select:focus{border-color:var(--accent);}
+.btns{padding:10px 20px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;height:42px;}
+.btns:hover{background:#2563eb;}
+.thead{display:grid;padding:8px 12px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);}
+.trow{display:grid;padding:14px 12px;border-bottom:1px solid #f8fafc;align-items:center;transition:background 0.15s;}
+.trow:hover{background:#f8fafc;}
+.trow:last-child{border-bottom:none;}
+.tname{font-size:13px;font-weight:600;color:var(--dark);}
+.tsub{font-size:11px;color:var(--muted);margin-top:2px;}
+.chip{display:inline-block;font-size:10px;font-weight:700;padding:3px 9px;border-radius:6px;}
+.cb{background:#eff6ff;color:#1d4ed8}.cg2{background:#dcfce7;color:#15803d}.cr{background:#fee2e2;color:#b91c1c}.co{background:#fef3c7;color:#b45309}.cgr{background:#f1f5f9;color:#475569}.cp{background:#ede9fe;color:#6d28d9}
+.dv{font-size:13px;font-weight:700;}
+.bdone{padding:4px 10px;background:#dcfce7;color:#15803d;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;}
+.bdel{padding:4px 10px;background:#fee2e2;color:#b91c1c;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;}
+.empty{padding:40px;text-align:center;color:var(--muted);font-size:13px;}
+.eicon{font-size:36px;margin-bottom:8px;}
+.frow{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;}
+.fb2{font-size:11px;font-weight:600;padding:5px 14px;border-radius:99px;border:1.5px solid var(--border);background:#fff;color:var(--muted);cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;}
+.fb2:hover{border-color:var(--accent);color:var(--accent);}
+.fb2.active{background:var(--dark);color:#fff;border-color:var(--dark);}
+.ugrid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
+.ucard{background:#f8fafc;border-radius:12px;padding:16px;border:1px solid var(--border);}
+.ucard .ue{font-size:12px;font-weight:700;color:var(--dark);margin-bottom:6px;}
+.ok{background:#dcfce7;color:#15803d;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600;margin-bottom:16px;display:none;}
+.section{display:none;}
+.section.active{display:block;}
+@media(max-width:768px){.sidebar{width:56px;padding:20px 8px;}.slogo,.slabel,.sitem span,.suser .nm,.suser .rl,.btnlo{display:none;}.sitem{padding:12px;justify-content:center;}.main{margin-left:56px;padding:20px;}.krow{grid-template-columns:1fr 1fr;}.fgrid{grid-template-columns:1fr;}}
+</style>
 </head>
 <body>
 
-    <div class="sidebar">
-        <div class="logo">TECNOCONTROL<span>.</span></div>
-        
-        <div class="nav-group">
-            <span class="nav-label">General</span>
-            <div class="nav-item active" onclick="window.switchDept('General', this)">🏠 Dashboard Global</div>
-            
-            <span class="nav-label">Departamentos</span>
-            <div class="nav-item" onclick="window.switchDept('Marketing', this)">○ Marketing</div>
-            <div class="nav-item" onclick="window.switchDept('Ventas', this)">○ Ventas</div>
-            <div class="nav-item" onclick="window.switchDept('Mantenimiento', this)">○ Mantenimiento</div>
-            <div class="nav-item" onclick="window.switchDept('Facturacion', this)">○ Facturación</div>
-            <div class="nav-item" onclick="window.switchDept('Contabilidad', this)">○ Contabilidad</div>
-            <div class="nav-item" onclick="window.switchDept('RH', this)">○ RH</div>
-            <div class="nav-item" onclick="window.switchDept('Administracion', this)">○ Administración</div>
-        </div>
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="lbox">
+    <div class="lbrand">Tecnocontrol</div>
+    <div class="ltitle">Portal de Actividades</div>
+    <div class="lsub">Inicia sesión con tu cuenta de área</div>
+    <div class="lf"><label>Correo electrónico</label><input type="email" id="le" placeholder="correo@tecnocontrol.com.mx"></div>
+    <div class="lf"><label>Contraseña</label><input type="password" id="lp" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"></div>
+    <button class="btnl" onclick="doLogin()">Entrar al portal</button>
+    <div class="lerr" id="lerr"></div>
+  </div>
+</div>
 
-        <div class="user-box">
-            <div id="user-name-display" style="font-weight:700; font-size:13px; color:white;">Cargando...</div>
-            <div id="user-role-display" style="font-size:10px; color:#94a3b8; margin-top:2px;">Iniciando sesión</div>
-            <button class="btn-logout" onclick="window.logout()">Cerrar Sesión</button>
-        </div>
+<!-- APP -->
+<div id="app-screen">
+<div class="layout">
+  <nav class="sidebar">
+    <div class="slogo">TECNOCONTROL<span>.</span></div>
+    <div class="slabel">Principal</div>
+    <button class="sitem active" onclick="go('dashboard',this)"><span class="ic">📊</span><span>Dashboard</span></button>
+    <button class="sitem" onclick="go('mis',this)"><span class="ic">📋</span><span>Mis actividades</span></button>
+    <button class="sitem" onclick="go('nueva',this)"><span class="ic">➕</span><span>Nueva actividad</span></button>
+    <div class="slabel admin-only">Administración</div>
+    <button class="sitem admin-only" onclick="go('todas',this)"><span class="ic">🏢</span><span>Todas las áreas</span></button>
+    <button class="sitem admin-only" onclick="go('usuarios',this)"><span class="ic">👥</span><span>Usuarios</span></button>
+    <div class="suser">
+      <div class="nm" id="snm">—</div>
+      <div class="rl" id="srl">—</div>
+      <button class="btnlo" onclick="doLogout()">Cerrar sesión</button>
+    </div>
+  </nav>
+
+  <div class="main">
+    <div class="toprow">
+      <div><div class="ptitle" id="ptitle">Dashboard</div><div class="psub" id="psub">Resumen de mis actividades</div></div>
+      <div class="livebadge"><div class="dot"></div>En vivo</div>
     </div>
 
-    <div class="main-content">
-        <div class="header-row">
-            <div>
-                <h1 id="dept-title" style="margin:0;">Dashboard Global</h1>
-                <p style="color:var(--text-light); margin:5px 0 0 0;">Control operativo centralizado 2026</p>
-            </div>
-        </div>
-        
-        <div class="metrics-grid">
-            <div class="metric-card">
-                <div style="font-size:11px; font-weight:700; color:var(--text-light); letter-spacing:1px;">PROGRESO ÁREA</div>
-                <div class="metric-value" id="val-progreso">0%</div>
-            </div>
-            <div class="metric-card" style="border-top-color: var(--accent-cyan)">
-                <div style="font-size:11px; font-weight:700; color:var(--text-light); letter-spacing:1px;">TAREAS ACTIVAS</div>
-                <div class="metric-value" id="val-activas">0</div>
-            </div>
-        </div>
-
-        <div class="content-card">
-            <div id="add-panel-container">
-                <div style="margin-bottom:15px; font-weight:700; font-size:14px; color:var(--bg-sidebar);">Nueva Actividad</div>
-                <div class="form-inline">
-                    <input id="t-name" type="text" placeholder="¿Qué actividad sigue?">
-                    <select id="t-area">
-                        <option value="Marketing">Marketing</option>
-                        <option value="Ventas">Ventas</option>
-                        <option value="Mantenimiento">Mantenimiento</option>
-                        <option value="Facturacion">Facturación</option>
-                        <option value="Contabilidad">Contabilidad</option>
-                        <option value="RH">RH</option>
-                        <option value="Administracion">Administración</option>
-                    </select>
-                    <input id="t-end" type="date">
-                    <input id="t-owner" type="text" placeholder="Responsable">
-                    <button class="btn-add" onclick="window.addTask()">+ ASIGNAR</button>
-                </div>
-            </div>
-
-            <div id="main-list">
-                <div style="padding:40px; text-align:center; color:#94a3b8;">Conectando con base de datos...</div>
-            </div>
-        </div>
+    <!-- DASHBOARD -->
+    <div class="section active" id="sec-dashboard">
+      <div class="krow">
+        <div class="kc">   <div class="kl">Total</div><div class="kv" id="kt">0</div><div class="ks">actividades</div></div>
+        <div class="kc c2"><div class="kl">Completadas</div><div class="kv" id="kc2">0</div><div class="ks" id="kcp">0%</div></div>
+        <div class="kc c3"><div class="kl">Vencidas</div><div class="kv" id="kv2">0</div><div class="ks">atención urgente</div></div>
+        <div class="kc c4"><div class="kl">En proceso</div><div class="kv" id="kp2">0</div><div class="ks">activas</div></div>
+      </div>
+      <div class="panel">
+        <div class="ph"><div class="pt">🚨 Mis actividades vencidas</div></div>
+        <div class="thead" style="grid-template-columns:2.5fr 1fr 1fr 1fr 1fr"><div>Actividad</div><div>Prioridad</div><div>Área</div><div>Fecha límite</div><div>Días vencida</div></div>
+        <div id="dvenc"><div class="empty"><div class="eicon">⏳</div>Cargando...</div></div>
+      </div>
     </div>
 
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, updateDoc, doc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    <!-- MIS -->
+    <div class="section" id="sec-mis">
+      <div class="frow">
+        <button class="fb2 active" onclick="fmis('todas',this)">Todas</button>
+        <button class="fb2" onclick="fmis('pendiente',this)">⏳ Pendientes</button>
+        <button class="fb2" onclick="fmis('en proceso',this)">🔵 En proceso</button>
+        <button class="fb2" onclick="fmis('completada',this)">✅ Completadas</button>
+        <button class="fb2" onclick="fmis('vencida',this)">🔴 Vencidas</button>
+      </div>
+      <div class="panel">
+        <div class="ph"><div class="pt">📋 Mis actividades</div><div style="font-size:12px;color:var(--muted)" id="misct"></div></div>
+        <div class="thead" style="grid-template-columns:2.5fr 1fr 1fr 1fr 1fr 90px"><div>Actividad</div><div>Tipo</div><div>Prioridad</div><div>Fecha límite</div><div>Días</div><div>Acciones</div></div>
+        <div id="misbody"><div class="empty"><div class="eicon">📋</div>Cargando...</div></div>
+      </div>
+    </div>
 
-        const firebaseConfig = {
-            // PEGA AQUÍ TU CONFIGURACIÓN DE FIREBASE
-        };
+    <!-- NUEVA -->
+    <div class="section" id="sec-nueva">
+      <div class="panel">
+        <div class="ph"><div class="pt">➕ Nueva actividad</div></div>
+        <div class="ok" id="oknueva">✅ Actividad guardada correctamente</div>
+        <div class="fgrid">
+          <div class="fg4"><label>Actividad</label><input type="text" id="fa" placeholder="¿Qué actividad sigue?"></div>
+          <div class="fg4"><label>Tipo</label><select id="ft"><option>Administrativo</option><option>Diseño</option><option>Pagina Web</option><option>Ejecución</option><option>Redes Sociales</option><option>CRM</option><option>Maquinaria</option><option>RH</option><option>Facturación</option><option>Contabilidad</option><option>Reporte Cristina</option><option>Otro</option></select></div>
+          <div class="fg4"><label>Prioridad</label><select id="fpr"><option>Alta</option><option>Media</option><option>Baja</option></select></div>
+          <div class="fg4"><label>Fecha límite</label><input type="date" id="ff"></div>
+          <div class="fg4"><label>&nbsp;</label><button class="btns" onclick="agregar()">+ Guardar</button></div>
+        </div>
+        <div style="margin-top:14px"><div class="fg4"><label>Notas (opcional)</label><input type="text" id="fn" placeholder="Información adicional..."></div></div>
+      </div>
+    </div>
 
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
+    <!-- TODAS -->
+    <div class="section" id="sec-todas">
+      <div class="frow" id="fareas"></div>
+      <div class="panel">
+        <div class="ph"><div class="pt">🏢 Todas las áreas</div><div style="font-size:12px;color:var(--muted)" id="todasct"></div></div>
+        <div class="thead" style="grid-template-columns:2.5fr 1fr 1fr 1fr 1fr 1fr"><div>Actividad</div><div>Área</div><div>Prioridad</div><div>Fecha límite</div><div>Días</div><div>Estatus</div></div>
+        <div id="todasbody"><div class="empty"><div class="eicon">🏢</div>Cargando...</div></div>
+      </div>
+    </div>
 
-        // --- LÓGICA DE SESIÓN GLOBAL ---
-        window.logout = function() {
-            localStorage.removeItem("usuarioTecnocontrol");
-            window.location.href = "login.html";
-        };
+    <!-- USUARIOS -->
+    <div class="section" id="sec-usuarios">
+      <div class="panel">
+        <div class="ph"><div class="pt">➕ Crear usuario de área</div></div>
+        <div class="ok" id="okuser">✅ Usuario creado correctamente</div>
+        <div class="fgrid">
+          <div class="fg4"><label>Correo</label><input type="email" id="ue" placeholder="area@tecnocontrol.com.mx"></div>
+          <div class="fg4"><label>Contraseña temporal</label><input type="text" id="up" placeholder="Mínimo 6 caracteres"></div>
+          <div class="fg4"><label>Área / Departamento</label><input type="text" id="ua" placeholder="ej. Recursos Humanos"></div>
+          <div class="fg4"><label>Rol</label><select id="ur"><option value="usuario">Usuario (solo su área)</option><option value="admin">Admin (todas las áreas)</option></select></div>
+          <div class="fg4"><label>&nbsp;</label><button class="btns" onclick="crearUsuario()">Crear</button></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="ph"><div class="pt">👥 Usuarios registrados</div></div>
+        <div class="ugrid" id="ugrid"><div class="empty">Cargando...</div></div>
+      </div>
+    </div>
 
-        function verificarSesion() {
-            const user = JSON.parse(localStorage.getItem("usuarioTecnocontrol"));
-            if (!user) {
-                window.location.href = "login.html"; // Redirigir si no hay sesión
-                return;
-            }
-            document.getElementById("user-name-display").innerText = user.correo || "Usuario";
-            document.getElementById("user-role-display").innerText = (user.rol || "staff").toUpperCase();
-            window.userArea = user.area ? user.area.toLowerCase() : ""; 
-            window.userRole = user.rol ? user.rol.toLowerCase() : "";
-            
-            // Carga inicial
-            loadData();
-        }
+  </div>
+</div>
+</div>
 
-        // --- LÓGICA DE DEPARTAMENTOS ---
-        window.currentDept = "General";
-        window.switchDept = function(dept, el) {
-            // UI: Activar botón
-            document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
-            el.classList.add('active');
-            
-            // Cambiar contexto
-            window.currentDept = dept;
-            document.getElementById('dept-title').innerText = (dept === 'General') ? 'Dashboard Global' : `Panel de ${dept}`;
-            
-            // Permiso: Solo el dueño del área o admin ve el formulario
-            const container = document.getElementById("add-panel-container");
-            if (window.userRole === "admin" || window.userArea === dept.toLowerCase()) {
-                container.style.display = "block";
-            } else {
-                container.style.display = "none";
-            }
-            
-            loadData();
-        };
+<script type="module">
+import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import{getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged,createUserWithEmailAndPassword}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import{getFirestore,collection,addDoc,query,where,onSnapshot,doc,updateDoc,deleteDoc,setDoc,getDocs,orderBy}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-        // --- FIREBASE OPERACIONES ---
-        window.addTask = async function() {
-            const name = document.getElementById("t-name").value;
-            const area = document.getElementById("t-area").value;
-            const entrega = document.getElementById("t-end").value;
-            const responsable = document.getElementById("t-owner").value;
+const app=initializeApp({apiKey:"AIzaSyBXh-P0oMtMiDjyz9PObuJ8DNfROlXvhLE",authDomain:"tecnocontrol-1c42f.firebaseapp.com",projectId:"tecnocontrol-1c42f",storageBucket:"tecnocontrol-1c42f.firebasestorage.app",messagingSenderId:"27642771956",appId:"1:27642771956:web:54225af9e386afded8a1a1"});
+const auth=getAuth(app),db=getFirestore(app);
+let cu=null,cp=null,uM=null,uT=null,cM=[],cT=[],fM='todas',fA='todas';
 
-            if(!name || !entrega) return alert("Completa los datos de la actividad");
+window.doLogin=async()=>{
+  const e=document.getElementById('le').value.trim(),p=document.getElementById('lp').value;
+  document.getElementById('lerr').textContent='';
+  try{await signInWithEmailAndPassword(auth,e,p);}
+  catch(err){document.getElementById('lerr').textContent=err.code==='auth/invalid-credential'||err.code==='auth/wrong-password'?'Correo o contraseña incorrectos':'Error: '+err.message;}
+};
+window.doLogout=()=>signOut(auth);
 
-            try {
-                await addDoc(collection(db, "actividades"), {
-                    nombre: name,
-                    area: area,
-                    entrega: entrega,
-                    responsable: responsable,
-                    estatus: "En tiempo",
-                    creado: Date.now()
-                });
-                document.getElementById("t-name").value = "";
-                document.getElementById("t-owner").value = "";
-            } catch (e) {
-                console.error("Error al guardar:", e);
-            }
-        };
+onAuthStateChanged(auth,async u=>{
+  if(u){
+    cu=u;
+    const s=await getDocs(query(collection(db,'usuarios'),where('uid','==',u.uid)));
+    cp=s.empty?{area:u.email.split('@')[0],rol:'usuario',email:u.email}:s.docs[0].data();
+    document.getElementById('login-screen').style.display='none';
+    document.getElementById('app-screen').style.display='block';
+    init();
+  }else{
+    cu=null;cp=null;
+    document.getElementById('login-screen').style.display='flex';
+    document.getElementById('app-screen').style.display='none';
+    if(uM)uM();if(uT)uT();
+  }
+});
 
-        window.loadData = function() {
-            const q = query(collection(db, "actividades"), orderBy("creado", "desc"));
-            
-            onSnapshot(q, (snapshot) => {
-                const list = document.getElementById("main-list");
-                list.innerHTML = "";
-                let total = 0, completas = 0;
+function init(){
+  const isA=cp?.rol==='admin';
+  document.getElementById('snm').textContent=cp?.area||cu.email;
+  document.getElementById('srl').textContent=isA?'🔑 Administrador':cp?.area||'Usuario';
+  document.querySelectorAll('.admin-only').forEach(el=>el.style.display=isA?'':' none');
+  uM=onSnapshot(query(collection(db,'actividades'),where('uid','==',cu.uid),orderBy('fechaCreacion','desc')),s=>{
+    cM=s.docs.map(d=>({id:d.id,...d.data()}));rDash(cM);rMis(cM);
+  });
+  if(isA){
+    uT=onSnapshot(query(collection(db,'actividades'),orderBy('fechaCreacion','desc')),s=>{
+      cT=s.docs.map(d=>({id:d.id,...d.data()}));rTodas(cT);
+    });
+    loadU();
+  }
+}
 
-                snapshot.forEach((d) => {
-                    const item = d.data();
-                    
-                    // Filtrado por departamento activo
-                    if (window.currentDept !== "General" && item.area !== window.currentDept) return;
+const dias=f=>{if(!f)return 0;const l=new Date(f);l.setHours(0,0,0,0);const h=new Date();h.setHours(0,0,0,0);return Math.round((l-h)/86400000);};
+const dc=(d,ec)=>ec?'#22c55e':d<0?'#ef4444':d<=3?'#f59e0b':'#3b82f6';
+const cP=p=>{const c=p==='Alta'?'cr':p==='Media'?'co':'cg2';return`<span class="chip ${c}">${p||'—'}</span>`;};
+const cE=e=>{const l=(e||'').toLowerCase(),c=l==='completada'?'cg2':l==='en proceso'?'cb':l==='pendiente'?'co':'cgr';return`<span class="chip ${c}">${e||'—'}</span>`;};
 
-                    total++;
-                    if(item.estatus === "Completada") completas++;
+function rDash(rows){
+  let tot=0,comp=0,venc=0,proc=0;const vA=[];
+  rows.forEach(r=>{tot++;const ec=(r.estatus||'').toLowerCase()==='completada',d=dias(r.fechaLimite);if(ec){comp++;return;}if(d<0){venc++;vA.push(r);}else proc++;});
+  document.getElementById('kt').textContent=tot;
+  document.getElementById('kc2').textContent=comp;
+  document.getElementById('kcp').textContent=tot?Math.round(comp/tot*100)+'% del total':'0%';
+  document.getElementById('kv2').textContent=venc;
+  document.getElementById('kp2').textContent=proc;
+  vA.sort((a,b)=>dias(a.fechaLimite)-dias(b.fechaLimite));
+  document.getElementById('dvenc').innerHTML=vA.length===0
+    ?'<div class="empty"><div class="eicon">✅</div>Sin actividades vencidas</div>'
+    :vA.map(r=>`<div class="trow" style="grid-template-columns:2.5fr 1fr 1fr 1fr 1fr"><div><div class="tname">${r.actividad}</div><div class="tsub">${r.tipo||''}</div></div><div>${cP(r.prioridad)}</div><div><span class="chip cp">${r.area||'—'}</span></div><div style="font-size:12px;color:var(--muted)">${r.fechaLimite||'—'}</div><div class="dv" style="color:#ef4444">${dias(r.fechaLimite)}d</div></div>`).join('');
+}
 
-                    list.innerHTML += `
-                        <div class="task-row">
-                            <div>
-                                <div style="font-weight:700; color:var(--text-dark);">${item.nombre}</div>
-                                <div style="font-size:10px; color:var(--text-light); margin-top:4px;">Asignado a: ${item.responsable || 'Sin asignar'}</div>
-                            </div>
-                            <div><span class="badge">${item.area}</span></div>
-                            <div style="font-size:13px; color:var(--text-light);">${item.entrega}</div>
-                            <div>
-                                <select onchange="window.updateStatus('${d.id}', this.value)" 
-                                    style="padding:5px; border-radius:5px; font-size:11px;"
-                                    ${(window.userRole === 'admin' || window.userArea === item.area.toLowerCase()) ? '' : 'disabled'}>
-                                    <option value="En tiempo" ${item.estatus === 'En tiempo' ? 'selected' : ''}>⏳ En tiempo</option>
-                                    <option value="Completada" ${item.estatus === 'Completada' ? 'selected' : ''}>✅ Completada</option>
-                                </select>
-                            </div>
-                            <div style="text-align:right;">
-                                <button onclick="alert('Funcionalidad de comentarios próximamente')" 
-                                    style="background:none; border:none; cursor:pointer; font-size:16px;">💬</button>
-                            </div>
-                        </div>`;
-                });
+function rMis(rows){
+  let f=rows;
+  if(fM!=='todas')f=rows.filter(r=>{const e=(r.estatus||'').toLowerCase(),d=dias(r.fechaLimite),ec=e==='completada';if(fM==='vencida')return d<0&&!ec;return e===fM;});
+  document.getElementById('misct').textContent=f.length+' actividades';
+  document.getElementById('misbody').innerHTML=f.length===0
+    ?'<div class="empty"><div class="eicon">📋</div>Sin actividades en este filtro</div>'
+    :f.map(r=>{const d=dias(r.fechaLimite),ec=(r.estatus||'').toLowerCase()==='completada';
+      return`<div class="trow" style="grid-template-columns:2.5fr 1fr 1fr 1fr 1fr 90px"><div><div class="tname">${r.actividad}</div><div class="tsub">${r.notas||''}</div></div><div><span class="chip cgr">${r.tipo||'—'}</span></div><div>${cP(r.prioridad)}</div><div style="font-size:12px;color:var(--muted)">${r.fechaLimite||'—'}</div><div class="dv" style="color:${dc(d,ec)}">${ec?'✓':d+'d'}</div><div style="display:flex;gap:5px">${!ec?`<button class="bdone" onclick="comp('${r.id}')">✓</button>`:''}<button class="bdel" onclick="del('${r.id}')">✕</button></div></div>`;
+    }).join('');
+}
 
-                // Actualizar métricas
-                document.getElementById("val-progreso").innerText = Math.round((completas / total) * 100 || 0) + "%";
-                document.getElementById("val-activas").innerText = total - completas;
+function rTodas(rows){
+  const areas=[...new Set(rows.map(r=>r.area||'Sin área'))].sort();
+  document.getElementById('fareas').innerHTML=`<button class="fb2 ${fA==='todas'?'active':''}" onclick="sA('todas',this)">Todas</button>`+areas.map(a=>`<button class="fb2 ${fA===a?'active':''}" onclick="sA('${a}',this)">${a}</button>`).join('');
+  const f=fA==='todas'?rows:rows.filter(r=>(r.area||'Sin área')===fA);
+  document.getElementById('todasct').textContent=f.length+' actividades';
+  document.getElementById('todasbody').innerHTML=f.length===0
+    ?'<div class="empty"><div class="eicon">🏢</div>Sin actividades</div>'
+    :f.map(r=>{const d=dias(r.fechaLimite),ec=(r.estatus||'').toLowerCase()==='completada';
+      return`<div class="trow" style="grid-template-columns:2.5fr 1fr 1fr 1fr 1fr 1fr"><div><div class="tname">${r.actividad}</div><div class="tsub">${r.email||''}</div></div><div><span class="chip cp">${r.area||'—'}</span></div><div>${cP(r.prioridad)}</div><div style="font-size:12px;color:var(--muted)">${r.fechaLimite||'—'}</div><div class="dv" style="color:${dc(d,ec)}">${ec?'✓':d+'d'}</div><div>${cE(r.estatus)}</div></div>`;
+    }).join('');
+}
 
-                if (total === 0) {
-                    list.innerHTML = `<div style="padding:40px; text-align:center; color:#94a3b8;">No hay actividades registradas en ${window.currentDept}</div>`;
-                }
-            });
-        };
+window.agregar=async()=>{
+  const a=document.getElementById('fa').value.trim(),f=document.getElementById('ff').value;
+  if(!a){alert('Escribe la actividad');return;}if(!f){alert('Selecciona fecha límite');return;}
+  await addDoc(collection(db,'actividades'),{actividad:a,tipo:document.getElementById('ft').value,prioridad:document.getElementById('fpr').value,fechaLimite:f,estatus:'Pendiente',notas:document.getElementById('fn').value.trim(),uid:cu.uid,email:cu.email,area:cp?.area||'Sin área',fechaCreacion:new Date().toISOString()});
+  document.getElementById('fa').value='';document.getElementById('ff').value='';document.getElementById('fn').value='';
+  const m=document.getElementById('oknueva');m.style.display='block';setTimeout(()=>m.style.display='none',3000);
+};
 
-        window.updateStatus = async function(id, val) {
-            try {
-                await updateDoc(doc(db, "actividades", id), { estatus: val });
-            } catch (e) {
-                alert("No tienes permisos para editar esta tarea");
-            }
-        };
+window.comp=async id=>updateDoc(doc(db,'actividades',id),{estatus:'Completada'});
+window.del =async id=>{if(confirm('¿Eliminar esta actividad?'))deleteDoc(doc(db,'actividades',id));};
 
-        // Iniciar todo
-        verificarSesion();
-    </script>
+window.crearUsuario=async()=>{
+  const e=document.getElementById('ue').value.trim(),p=document.getElementById('up').value,a=document.getElementById('ua').value.trim(),r=document.getElementById('ur').value;
+  if(!e||!p||!a){alert('Llena todos los campos');return;}
+  try{
+    const cred=await createUserWithEmailAndPassword(auth,e,p);
+    await setDoc(doc(db,'usuarios',cred.user.uid),{uid:cred.user.uid,email:e,area:a,rol:r,creadoPor:cu.email,fechaCreacion:new Date().toISOString()});
+    document.getElementById('ue').value='';document.getElementById('up').value='';document.getElementById('ua').value='';
+    const m=document.getElementById('okuser');m.style.display='block';setTimeout(()=>m.style.display='none',3000);
+    loadU();
+  }catch(err){alert(err.code==='auth/email-already-in-use'?'Correo ya registrado':err.message);}
+};
+
+async function loadU(){
+  const s=await getDocs(collection(db,'usuarios'));
+  document.getElementById('ugrid').innerHTML=s.empty
+    ?'<div class="empty">Sin usuarios registrados</div>'
+    :s.docs.map(d=>{const r=d.data();return`<div class="ucard"><div class="ue">${r.email}</div><div style="margin-top:4px"><span class="chip cp">${r.area}</span> &nbsp; <span class="chip ${r.rol==='admin'?'cr':'cb'}">${r.rol}</span></div><div style="font-size:11px;color:var(--muted);margin-top:6px">${r.fechaCreacion?new Date(r.fechaCreacion).toLocaleDateString('es-MX'):'—'}</div></div>`;}).join('');
+}
+
+const titles={dashboard:['Dashboard','Resumen de mis actividades'],mis:['Mis actividades','Listado completo de tareas'],nueva:['Nueva actividad','Registra una nueva tarea'],todas:['Todas las áreas','Vista global — administradores'],usuarios:['Usuarios','Gestión de cuentas y áreas']};
+window.go=(id,btn)=>{
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.sitem').forEach(b=>b.classList.remove('active'));
+  document.getElementById('sec-'+id).classList.add('active');btn.classList.add('active');
+  const[t,s]=titles[id]||[id,''];document.getElementById('ptitle').textContent=t;document.getElementById('psub').textContent=s;
+};
+window.fmis=(f,btn)=>{fM=f;document.querySelectorAll('#sec-mis .fb2').forEach(b=>b.classList.remove('active'));btn.classList.add('active');rMis(cM);};
+window.sA=(f,btn)=>{fA=f;rTodas(cT);};
+</script>
 </body>
 </html>
