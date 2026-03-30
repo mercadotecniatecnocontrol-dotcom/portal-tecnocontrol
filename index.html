@@ -3,223 +3,214 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tecnocontrol Ops Center</title>
+    <title>Tecnocontrol | Enterprise Blue OS</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;800&display=swap" rel="stylesheet">
     <style>
         :root {
-            --primary: #0b132b; 
-            --navbar-bg: #111b36; 
-            --card-bg: #1a2a4a; 
-            --table-row-bg: #ffffff; 
-            --text-main: #f8fafc;
-            --text-dark: #334155;
-            --red: #ef4444;
-            --green: #10b981;
-            --yellow: #f59e0b;
-            --blue: #3b82f6;
-            --purple: #8b5cf6;
-            --pink: #ec4899;
-            --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1);
+            /* Paleta de Azules Profesionales */
+            --bg-sidebar: #0f172a; /* Azul Oxford */
+            --bg-main: #f1f5f9;    /* Gris azulado muy claro */
+            --accent-blue: #3b82f6; /* Azul Eléctrico */
+            --accent-cyan: #06b6d4; /* Cian para métricas */
+            --text-dark: #1e293b;
+            --text-light: #64748b;
+            --white: #ffffff;
+            --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
         }
-        
+
         body {
-            font-family: 'Inter', sans-serif;
-            background-color: var(--primary);
-            color: var(--text-main);
+            font-family: 'Plus Jakarta Sans', sans-serif;
             margin: 0;
-            padding: 0;
-            font-size: 14px;
-        }
-
-        .navbar {
-            background-color: var(--navbar-bg);
-            padding: 15px 50px;
             display: flex;
-            justify-content: space-between;
-            align-items:center;
-            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
-            position: sticky;
-            top: 0;
-            z-index: 1000;
+            height: 100vh;
+            background-color: var(--bg-main);
+            color: var(--text-dark);
         }
 
-        .container {
-            max-width: 1500px;
-            margin: 40px auto;
-            padding: 0 50px;
+        /* SIDEBAR AZUL PROFUNDO */
+        .sidebar {
+            width: 280px;
+            background-color: var(--bg-sidebar);
+            color: white;
+            display: flex;
+            flex-direction: column;
+            padding: 40px 25px;
         }
 
-        /* Dashboard Expandido para 7 Departamentos */
-        .stats-grid { 
-            display: grid; 
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); 
-            gap: 15px; 
-            margin-bottom: 30px; 
-        }
-        .stat-card { 
-            background: var(--card-bg); 
-            padding: 20px; 
-            border-radius: 12px; 
-            text-align: center;
-            border-bottom: 4px solid transparent;
-        }
-        .stat-area { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; }
-        .stat-value { font-size: 28px; font-weight: 800; margin-top: 5px; }
+        .logo { font-size: 20px; font-weight: 800; margin-bottom: 45px; letter-spacing: 1px; color: var(--white); }
+        .logo span { color: var(--accent-cyan); }
 
-        .admin-panel { background: var(--card-bg); padding: 30px; border-radius: 12px; margin-bottom: 40px; box-shadow: var(--shadow-lg); }
-        .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+        .nav-label { font-size: 11px; text-transform: uppercase; color: #475569; margin-bottom: 15px; display: block; font-weight: 700; }
         
-        input, select { padding: 12px; border-radius: 8px; border: 1px solid #44587c; background: #111b36; color: white; font-size: 13px; }
-        
-        .btn-save { background: var(--green); color: white; border: none; border-radius: 8px; font-weight: 700; cursor: pointer; }
-
-        /* Filtros Rápidos */
-        .filter-container { margin-bottom: 20px; display: flex; gap: 8px; flex-wrap: wrap; }
-        .filter-btn { 
-            padding: 6px 12px; border-radius: 20px; border: 1px solid #44587c; 
-            background: transparent; color: #a1a1aa; cursor: pointer; font-size: 11px;
+        .nav-item {
+            padding: 14px 18px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+            margin-bottom: 8px;
+            transition: 0.3s;
+            font-size: 14px;
+            color: #94a3b8;
         }
-        .filter-btn:hover { background: var(--blue); color: white; }
 
-        /* Lista de Actividades */
-        .activity-card { 
-            display: grid; 
-            grid-template-columns: 2fr 1fr 1fr 0.8fr 0.5fr 0.7fr; 
-            gap: 15px; background: white; color: var(--text-dark); 
-            padding: 20px; border-radius: 12px; margin-bottom: 10px; 
-            align-items: center; border-left: 6px solid #ccc;
+        .nav-item:hover, .nav-item.active { background: rgba(59, 130, 246, 0.15); color: var(--white); }
+        .nav-item.active { border-left: 4px solid var(--accent-blue); color: var(--white); font-weight: 600; }
+
+        /* CONTENIDO PRINCIPAL */
+        .main-content {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 50px; /* Margen amplio para que respire */
         }
-        .act-name { font-weight: 700; font-size: 14px; }
-        .act-area-tag { font-size: 11px; font-weight: 800; color: var(--blue); }
-        .comment-box { font-size: 11px; color: #64748b; margin-top: 5px; border-top: 1px solid #f1f5f9; padding-top: 5px; }
+
+        .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; }
+        .header-row h1 { font-size: 32px; font-weight: 800; color: var(--bg-sidebar); }
+
+        /* TARJETAS DE MÉTRICAS EN AZUL */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 25px;
+            margin-bottom: 40px;
+        }
+
+        .metric-card {
+            background: var(--white);
+            padding: 30px;
+            border-radius: 24px;
+            box-shadow: var(--shadow);
+            border-top: 4px solid var(--accent-blue);
+        }
+
+        .metric-title { font-size: 11px; color: var(--text-light); font-weight: 700; text-transform: uppercase; }
+        .metric-value { font-size: 36px; font-weight: 800; margin: 12px 0; color: var(--bg-sidebar); }
+        .metric-trend { font-size: 12px; color: var(--accent-cyan); font-weight: 600; }
+
+        /* PANEL DE TAREAS */
+        .content-card {
+            background: var(--white);
+            border-radius: 28px;
+            padding: 35px;
+            box-shadow: var(--shadow);
+        }
+
+        .form-inline {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1fr auto;
+            gap: 15px;
+            margin-bottom: 35px;
+            background: #f8fafc;
+            padding: 25px;
+            border-radius: 18px;
+        }
+
+        input, select {
+            border: 1px solid #cbd5e1;
+            padding: 14px;
+            border-radius: 12px;
+            font-size: 13px;
+        }
+
+        .btn-add { background: var(--accent-blue); color: white; border: none; padding: 14px 28px; border-radius: 12px; font-weight: 700; cursor: pointer; transition: 0.2s; }
+        .btn-add:hover { background: #2563eb; transform: translateY(-2px); }
+
+        .task-row {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1fr 100px;
+            padding: 20px 0;
+            border-bottom: 1px solid #f1f5f9;
+            align-items: center;
+        }
+
+        .act-name { font-weight: 700; color: var(--bg-sidebar); }
+        .act-area-badge { font-size: 10px; font-weight: 800; color: var(--accent-blue); background: #eff6ff; padding: 4px 8px; border-radius: 6px; }
     </style>
 </head>
 <body>
 
-<div class="navbar">
-    <h1 style="font-size:18px">TECNOCONTROL <span style="font-weight:200">| Panel Administrativo</span></h1>
-    <button style="background:transparent; border:1px solid #44587c; color:white; padding:5px 15px; border-radius:5px; cursor:pointer;" onclick="location.reload()">Cerrar Sesión</button>
-</div>
-
-<div class="container">
-
-    <div class="stats-grid">
-        <div class="stat-card" style="border-color: var(--blue)"><div class="stat-area">Marketing</div><div class="stat-value" id="stat-Marketing">0%</div></div>
-        <div class="stat-card" style="border-color: var(--green)"><div class="stat-area">Ventas</div><div class="stat-value" id="stat-Ventas">0%</div></div>
-        <div class="stat-card" style="border-color: var(--yellow)"><div class="stat-area">Mantenimiento</div><div class="stat-value" id="stat-Mantenimiento">0%</div></div>
-        <div class="stat-card" style="border-color: var(--purple)"><div class="stat-area">Facturación</div><div class="stat-value" id="stat-Facturacion">0%</div></div>
-        <div class="stat-card" style="border-color: var(--pink)"><div class="stat-area">Contabilidad</div><div class="stat-value" id="stat-Contabilidad">0%</div></div>
-        <div class="stat-card" style="border-color: #06b6d4"><div class="stat-area">RH</div><div class="stat-value" id="stat-RH">0%</div></div>
-        <div class="stat-card" style="border-color: #f97316"><div class="stat-area">Administración</div><div class="stat-value" id="stat-Administracion">0%</div></div>
-    </div>
-
-    <div class="admin-panel">
-        <div style="margin-bottom:15px; font-weight:700">Asignar Nueva Tarea Operativa</div>
-        <div class="form-row">
-            <input id="t-name" type="text" placeholder="Descripción de la tarea">
-            <select id="t-area">
-                <option value="Marketing">Marketing</option>
-                <option value="Ventas">Ventas</option>
-                <option value="Mantenimiento">Mantenimiento</option>
-                <option value="Facturacion">Facturación</option>
-                <option value="Contabilidad">Contabilidad</option>
-                <option value="RH">Recursos Humanos (RH)</option>
-                <option value="Administracion">Administración</option>
-            </select>
-            <input id="t-end" type="date">
-            <input id="t-owner" type="text" placeholder="Responsable">
-            <select id="t-status">
-                <option value="En tiempo">En tiempo</option>
-                <option value="En proceso">En proceso</option>
-                <option value="Completada">Completada</option>
-            </select>
-            <button class="btn-save" onclick="addTask()">ASIGNAR</button>
-        </div>
-    </div>
-
-    <div class="filter-container">
-        <button class="filter-btn" onclick="filtrar('Todas')">Todas</button>
-        <button class="filter-btn" onclick="filtrar('Marketing')">Marketing</button>
-        <button class="filter-btn" onclick="filtrar('Facturacion')">Facturación</button>
-        <button class="filter-btn" onclick="filtrar('Contabilidad')">Contabilidad</button>
-        <button class="filter-btn" onclick="filtrar('RH')">RH</button>
-        <button class="filter-btn" onclick="filtrar('Administracion')">Administración</button>
-    </div>
-
-    <div id="main-list">
-        </div>
-</div>
-
-<script type="module">
-    // IMPORTANTE: Asegúrate de tener aquí tu configuración de Firebase (apiKey, projectId, etc.)
-    // ... (Tu código de importación de Firebase aquí) ...
-
-    window.addTask = async () => {
-        const nombre = document.getElementById("t-name").value;
-        if(!nombre) return alert("Ingresa la actividad");
+    <div class="sidebar">
+        <div class="logo">TECNOCONTROL<span>.</span></div>
         
-        await addDoc(collection(db, "actividades"), {
-            nombre: nombre,
-            area: document.getElementById("t-area").value,
-            entrega: document.getElementById("t-end").value,
-            responsable: document.getElementById("t-owner").value,
-            estatus: document.getElementById("t-status").value,
-            comentario: "",
-            creado: Date.now()
-        });
-        document.getElementById("t-name").value = "";
-    };
+        <div class="nav-group">
+            <span class="nav-label">General</span>
+            <div class="nav-item active" onclick="switchDept('General', this)">◈ Dashboard Global</div>
+            
+            <span class="nav-label" style="margin-top:25px">Departamentos</span>
+            <div class="nav-item" onclick="switchDept('Marketing', this)">○ Marketing</div>
+            <div class="nav-item" onclick="switchDept('Ventas', this)">○ Ventas</div>
+            <div class="nav-item" onclick="switchDept('Mantenimiento', this)">○ Mantenimiento</div>
+            <div class="nav-item" onclick="switchDept('Facturacion', this)">○ Facturación</div>
+            <div class="nav-item" onclick="switchDept('Contabilidad', this)">○ Contabilidad</div>
+            <div class="nav-item" onclick="switchDept('RH', this)">○ RH</div>
+            <div class="nav-item" onclick="switchDept('Administracion', this)">○ Administración</div>
+        </div>
 
-    // La función loadData actualizará automáticamente los porcentajes de los 7 departamentos
-    function loadData() {
-        const q = query(collection(db, "actividades"), orderBy("creado", "desc"));
-        onSnapshot(q, (snapshot) => {
-            const list = document.getElementById("main-list");
-            list.innerHTML = "";
-            let stats = { 
-                Marketing: {c:0, t:0}, Ventas: {c:0, t:0}, Mantenimiento: {c:0, t:0},
-                Facturacion: {c:0, t:0}, Contabilidad: {c:0, t:0}, RH: {c:0, t:0}, Administracion: {c:0, t:0}
-            };
+        <div class="user-profile">
+            <div style="width:40px; height:40px; border-radius:12px; background:var(--accent-blue); display:grid; place-items:center; font-weight:800">M</div>
+            <div style="font-size:12px">
+                <div style="font-weight:700">Manu Aguilar</div>
+                <div style="opacity:0.5">Admin Pro</div>
+            </div>
+        </div>
+    </div>
 
-            snapshot.forEach((d) => {
-                const item = d.data();
-                const id = d.id;
-                
-                // Cálculo de porcentajes
-                if(stats[item.area]) {
-                    stats[item.area].t++;
-                    if(item.estatus === "Completada") stats[item.area].c++;
-                }
+    <div class="main-content">
+        <div class="header-row">
+            <div>
+                <h1 id="dept-title">Dashboard Global</h1>
+                <p style="color:var(--text-light); margin-top:5px">Control operativo centralizado 2026</p>
+            </div>
+            <button class="btn-add" style="background:#f1f5f9; color:#475569; border:1px solid #e2e8f0">Cerrar Sesión</button>
+        </div>
 
-                list.innerHTML += `
-                    <div class="activity-card" style="border-left-color: ${getAreaColor(item.area)}">
-                        <div>
-                            <div class="act-name">${item.nombre}</div>
-                            <div class="act-area-tag">${item.area.toUpperCase()}</div>
-                            <div class="comment-box">💬 ${item.comentario || 'Sin observaciones'}</div>
-                        </div>
-                        <div style="font-size:12px">${item.entrega}</div>
-                        <div style="font-size:12px">${item.responsable}</div>
-                        <div><span style="background:#f1f5f9; padding:4px 8px; border-radius:10px; font-size:10px; font-weight:700">${item.estatus}</span></div>
-                        <div style="font-weight:700">1d</div>
-                        <button onclick="addComment('${id}')" style="background:#f1f5f9; border:none; padding:5px; border-radius:5px; font-size:10px; cursor:pointer">Nota</button>
-                    </div>
-                `;
-            });
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-title">Progreso Operativo</div>
+                <div class="metric-value" id="val-progreso">74%</div>
+                <div class="metric-trend">↑ 4% vs mes anterior</div>
+            </div>
+            <div class="metric-card" style="border-top-color: var(--accent-cyan)">
+                <div class="metric-title">Tareas en Proceso</div>
+                <div class="metric-value" id="val-activas">12</div>
+                <div class="metric-trend" style="color:var(--text-light)">Asignadas a equipo</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-title">Días para Auditoría</div>
+                <div class="metric-value">15</div>
+                <div class="metric-trend">Próximo hito: Abril</div>
+            </div>
+            <div class="metric-card" style="border-top-color: #a855f7">
+                <div class="metric-title">Eficiencia de Área</div>
+                <div class="metric-value" style="font-size:24px">Ventas</div>
+                <div class="metric-trend">98% cumplimiento</div>
+            </div>
+        </div>
 
-            // Actualizar visualmente los porcentajes en las tarjetas superiores
-            for (let area in stats) {
-                const porc = Math.round((stats[area].c / stats[area].t) * 100) || 0;
-                document.getElementById(`stat-${area}`).innerText = porc + "%";
-            }
-        });
-    }
+        <div class="content-card">
+            <div style="margin-bottom:25px; font-weight:800; font-size:20px; color:var(--bg-sidebar)">Lista de Actividades</div>
+            
+            <div class="form-inline">
+                <input id="t-name" type="text" placeholder="¿Qué tarea sigue?">
+                <select id="t-area">
+                    <option value="Marketing">Marketing</option>
+                    <option value="Ventas">Ventas</option>
+                    <option value="Mantenimiento">Mantenimiento</option>
+                    <option value="Facturacion">Facturación</option>
+                    <option value="Contabilidad">Contabilidad</option>
+                    <option value="RH">RH</option>
+                    <option value="Administracion">Administración</option>
+                </select>
+                <input id="t-end" type="date">
+                <input id="t-owner" type="text" placeholder="Responsable">
+                <button class="btn-add" onclick="addTask()">+ ASIGNAR</button>
+            </div>
 
-    function getAreaColor(area) {
-        const colors = { Marketing: '#3b82f6', Ventas: '#10b981', Mantenimiento: '#f59e0b', Facturacion: '#8b5cf6', Contabilidad: '#ec4899', RH: '#06b6d4', Administracion: '#f97316' };
-        return colors[area] || '#ccc';
-    }
-    
-    loadData();
-</script>
+            <div id="main-list">
+                </div>
+        </div>
+    </div>
+
 </body>
 </html>
