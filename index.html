@@ -3,171 +3,259 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TECNOCONTROL · Acceso Restringido</title>
+    <title>TECNOCONTROL · Sistema Operativo 2026</title>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
     <style>
-        :root{--sidebar:#0f172a;--accent:#3b82f6;--cyan:#06b6d4;--bg:#f1f5f9;--white:#ffffff;--red:#ef4444;--green:#22c55e;}
+        :root{--sidebar:#0f172a;--accent:#3b82f6;--bg:#f1f5f9;--white:#ffffff;--red:#ef4444;--green:#22c55e;--orange:#f59e0b;}
         *{margin:0;padding:0;box-sizing:border-box;font-family:'Plus Jakarta Sans',sans-serif;}
         
-        /* Pantalla de Login (Se muestra si no hay sesión) */
-        #auth-screen { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: var(--sidebar); position: fixed; width: 100%; z-index: 2000; }
-        .login-card { background: white; padding: 40px; border-radius: 20px; width: 100%; max-width: 400px; text-align: center; }
-        .login-card input { width: 100%; padding: 12px; margin: 10px 0; border-radius: 10px; border: 1px solid #ddd; outline: none; }
-        .btn-login { width: 100%; padding: 12px; background: var(--accent); color: white; border: none; border-radius: 10px; font-weight: 800; cursor: pointer; margin-top: 10px; }
+        /* Pantalla de Bloqueo */
+        #auth-screen { display:flex; align-items:center; justify-content:center; min-height:100vh; background:var(--sidebar); position:fixed; width:100%; z-index:2000; }
+        .login-card { background:white; padding:40px; border-radius:20px; width:360px; text-align:center; }
+        .login-card input { width:100%; padding:12px; margin:10px 0; border-radius:10px; border:1px solid #ddd; outline:none; }
+        .btn-login { width:100%; padding:12px; background:var(--accent); color:white; border:none; border-radius:10px; font-weight:800; cursor:pointer; }
 
-        /* Portal (Oculto por defecto) */
-        #app-portal { display: none; min-height: 100vh; background: var(--bg); }
-        .sidebar { width: 260px; background: var(--sidebar); display: flex; flex-direction: column; padding: 30px 15px; position: fixed; top: 0; bottom: 0; left: 0; }
-        .sitem { padding: 12px 15px; border-radius: 10px; display: flex; align-items: center; gap: 10px; cursor: pointer; color: #94a3b8; border: none; background: none; width: 100%; text-align: left; margin-bottom: 5px; font-size: 13px; }
-        .sitem.active { background: var(--accent); color: #fff; }
-        .main { margin-left: 260px; padding: 40px; width: calc(100% - 260px); }
-        .panel { background: white; border-radius: 20px; padding: 25px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        .section { display: none; }
-        .section.active { display: block; }
-        .trow { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr auto; padding: 15px; border-bottom: 1px solid #eee; align-items: center; }
+        /* Estructura Principal */
+        #app-portal { display:none; min-height:100vh; background:var(--bg); }
+        .sidebar { width:260px; background:var(--sidebar); display:flex; flex-direction:column; padding:30px 15px; position:fixed; top:0; bottom:0; left:0; }
+        .sitem { padding:12px 15px; border-radius:10px; display:flex; align-items:center; justify-content:space-between; cursor:pointer; color:#94a3b8; border:none; background:none; width:100%; text-align:left; margin-bottom:5px; font-size:13px; transition:0.3s; }
+        .sitem:hover, .sitem.active { background:var(--accent); color:#fff; }
+        .notif-badge { background:var(--red); color:white; font-size:10px; padding:2px 6px; border-radius:10px; font-weight:800; }
+        
+        .main { margin-left:260px; padding:40px; width:calc(100% - 260px); }
+        .panel { background:white; border-radius:20px; padding:25px; box-shadow:0 4px 15px rgba(0,0,0,0.05); margin-bottom:20px; }
+        .section { display:none; }
+        .section.active { display:block; }
+
+        /* Métricas por Departamento */
+        .grid-stats { display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap:20px; margin-top:20px; }
+        .dept-card { background:white; border-radius:15px; padding:20px; border:1px solid #eee; }
+        .stat-line { display:flex; justify-content:space-between; font-size:12px; margin-bottom:8px; padding-bottom:4px; border-bottom:1px solid #f8fafc; }
+        
+        /* Tablas */
+        .trow { display:grid; grid-template-columns: 2fr 1fr 1fr 1fr auto; padding:15px; border-bottom:1px solid #eee; align-items:center; font-size:13px; }
+        .btn-check { background:var(--green); color:white; border:none; padding:8px 12px; border-radius:6px; cursor:pointer; font-weight:800; }
+        .btn-comm { background:#f1f5f9; border:none; padding:8px 12px; border-radius:6px; cursor:pointer; font-size:12px; }
+
+        /* Modal Comentarios */
+        #modal-c { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:3000; align-items:center; justify-content:center; }
+        .modal-box { background:white; padding:30px; border-radius:20px; width:450px; max-height:80vh; display:flex; flex-direction:column; }
+        #chat-box { flex-grow:1; overflow-y:auto; margin:15px 0; padding:10px; background:#f8fafc; border-radius:10px; }
     </style>
 </head>
 <body>
 
 <div id="auth-screen">
     <div class="login-card">
-        <h2 style="margin-bottom: 10px;">TECNOCONTROL</h2>
-        <p style="font-size: 12px; color: #64748b; margin-bottom: 20px;">Ingresa tus credenciales</p>
-        <input type="email" id="log-email" placeholder="Correo electrónico">
-        <input type="password" id="log-pass" placeholder="Contraseña">
-        <button class="btn-login" onclick="iniciarSesion()">ENTRAR AL SISTEMA</button>
+        <h2 style="margin-bottom:10px;">TECNOCONTROL</h2>
+        <p style="font-size:12px; color:#64748b; margin-bottom:20px;">Portal Administrativo</p>
+        <input type="email" id="l-email" placeholder="Correo corporativo">
+        <input type="password" id="l-pass" placeholder="Contraseña">
+        <button class="btn-login" onclick="iniciar()">ENTRAR</button>
     </div>
 </div>
 
 <div id="app-portal">
     <nav class="sidebar">
-        <div style="color:white; font-size:18px; font-weight:800; margin-bottom:30px; padding-left:10px;">PORTAL ÁREAS</div>
-        <button class="sitem active" id="b-dash" onclick="nav('dashboard', this)"> Dashboard Global</button>
-        <button class="sitem" onclick="nav('nueva', this)">➕ Nueva Actividad</button>
+        <div style="color:white; font-size:18px; font-weight:800; margin-bottom:30px; padding-left:10px;">CONTROL DE ÁREAS</div>
+        <button class="sitem active" id="m-dash" onclick="navegar('dashboard', this)">📊 Dashboard Global</button>
+        <button class="sitem" onclick="navegar('nueva', this)">➕ Asignar Tarea</button>
         <p style="color:#475569; font-size:10px; font-weight:800; margin:20px 0 10px 10px;">DEPARTAMENTOS</p>
-        <button class="sitem" onclick="verArea('Facturación', this)"> Facturación</button>
-        <button class="sitem" onclick="verArea('Contabilidad', this)"> Contabilidad</button>
-        <button class="sitem" onclick="verArea('Recursos Humanos', this)"> Recursos Humanos</button>
-        <button class="sitem" onclick="verArea('Marketing', this)"> Marketing</button>
-        <button class="sitem" onclick="verArea('Administración', this)"> Administración</button>
-        <button class="sitem" onclick="verArea('Ventas', this)"> Ventas</button>
+        <div id="nav-dept"></div>
         <div style="margin-top:auto;">
-            <p id="usr-tag" style="color:#64748b; font-size:10px; text-align:center; margin-bottom:10px;"></p>
-            <button onclick="salirForzado()" style="width:100%; padding:10px; background:rgba(239,68,68,0.1); color:var(--red); border:none; border-radius:8px; cursor:pointer; font-weight:800; font-size:11px;">CERRAR SESIÓN</button>
+            <p id="u-tag" style="color:#64748b; font-size:10px; text-align:center; margin-bottom:10px;"></p>
+            <button onclick="cerrarSesion()" style="width:100%; padding:10px; background:rgba(239,68,68,0.1); color:var(--red); border:none; border-radius:8px; cursor:pointer; font-weight:800; font-size:11px;">CERRAR SESIÓN</button>
         </div>
     </nav>
 
     <main class="main">
         <div class="section active" id="sec-dashboard">
-            <div class="panel"><h3>Resumen de Actividades</h3><div id="graph-box" style="margin-top:20px;"></div></div>
+            <div class="panel">
+                <h3>Resumen de Productividad</h3>
+                <div class="grid-stats" id="stats-grid"></div>
+            </div>
         </div>
+
         <div class="section" id="sec-area">
-            <div class="panel"><h2 id="area-h2">-</h2><div id="table-area"></div></div>
+            <div class="panel">
+                <h2 id="area-title">-</h2>
+                <div id="area-table" style="margin-top:20px;"></div>
+            </div>
         </div>
+
         <div class="section" id="sec-nueva">
             <div class="panel">
-                <h3>Crear Nueva Actividad</h3>
-                <input type="text" id="nt-desc" placeholder="Tarea..." style="width:100%; padding:12px; margin:15px 0; border:1px solid #ddd; border-radius:8px;">
-                <select id="nt-area" style="padding:10px; border-radius:8px;">
-                    <option>Facturación</option><option>Contabilidad</option><option>Recursos Humanos</option>
-                    <option>Marketing</option><option>Administración</option><option>Ventas</option>
-                </select>
-                <input type="date" id="nt-date" style="padding:10px; border-radius:8px;">
-                <button onclick="guardar()" style="background:var(--accent); color:white; border:none; padding:10px 20px; border-radius:8px; cursor:pointer; font-weight:800;">GUARDAR</button>
+                <h3>Asignar Nueva Tarea</h3>
+                <input type="text" id="n-desc" placeholder="Nombre de la actividad..." style="width:100%; padding:14px; margin:15px 0; border:1px solid #ddd; border-radius:10px; outline:none;">
+                <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;">
+                    <select id="n-area" style="padding:12px; border-radius:10px; border:1px solid #ddd;"></select>
+                    <input type="date" id="n-date" style="padding:12px; border-radius:10px; border:1px solid #ddd;">
+                    <button onclick="guardarTarea()" style="background:var(--accent); color:white; border:none; border-radius:10px; font-weight:800; cursor:pointer;">PUBLICAR</button>
+                </div>
             </div>
         </div>
     </main>
 </div>
 
+<div id="modal-c">
+    <div class="modal-box">
+        <h3 id="c-title">Comentarios</h3>
+        <div id="chat-box"></div>
+        <input type="text" id="c-input" placeholder="Escribe un mensaje..." style="padding:12px; border-radius:8px; border:1px solid #ddd; outline:none; margin-bottom:10px;">
+        <div style="display:flex; gap:10px;">
+            <button onclick="enviarComentario()" style="flex:1; background:var(--accent); color:white; border:none; padding:10px; border-radius:8px; font-weight:800;">Enviar</button>
+            <button onclick="cerrarModal()" style="background:#eee; border:none; padding:10px; border-radius:8px;">Cerrar</button>
+        </div>
+    </div>
+</div>
+
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const config = { apiKey:"AIzaSyBXh-P0oMtMiDjyz9PObuJ8DNfROlXvhLE", authDomain:"tecnocontrol-1c42f.firebaseapp.com", projectId:"tecnocontrol-1c42f", storageBucket:"tecnocontrol-1c42f.firebasestorage.app", messagingSenderId:"27642771956", appId:"1:27642771956:web:54225af9e386afded8a1a1" };
 const app = initializeApp(config);
 const db = getFirestore(app);
 const auth = getAuth(app);
 
-let dataLocal = [];
-let fArea = "";
+const ADMIN = "mercadotecniatecnocontrol@gmail.com";
+const DEPTOS = ["Facturación", "Contabilidad", "Recursos Humanos", "Marketing", "Administración", "Ventas"];
+let localDB = [];
+let areaActual = "";
+let tareaIdActiva = "";
 
-// --- SISTEMA DE BLOQUEO DE SESIÓN ---
+// Cargar Menú Lateral
+document.getElementById('nav-dept').innerHTML = DEPTOS.map(d => `
+    <button class="sitem" id="nav-${d}" onclick="verDepartamento('${d}', this)">
+        <span>${d}</span>
+        <span id="badge-${d}" class="notif-badge" style="display:none">0</span>
+    </button>`).join('');
+document.getElementById('n-area').innerHTML = DEPTOS.map(d => `<option>${d}</option>`).join('');
+
 onAuthStateChanged(auth, user => {
     if(user) {
         document.getElementById('auth-screen').style.display = 'none';
         document.getElementById('app-portal').style.display = 'flex';
-        document.getElementById('usr-tag').innerText = user.email;
-        cargarDatos();
+        document.getElementById('u-tag').innerText = user.email;
+        escuchar();
     } else {
         document.getElementById('auth-screen').style.display = 'flex';
         document.getElementById('app-portal').style.display = 'none';
     }
 });
 
-window.iniciarSesion = async () => {
-    const e = document.getElementById('log-email').value;
-    const p = document.getElementById('log-pass').value;
-    try { await signInWithEmailAndPassword(auth, e, p); } 
-    catch (err) { alert("Credenciales incorrectas"); }
+window.iniciar = async () => {
+    try { await signInWithEmailAndPassword(auth, document.getElementById('l-email').value, document.getElementById('l-pass').value); }
+    catch(e) { alert("Acceso Incorrecto"); }
 };
 
-window.salirForzado = async () => {
-    await signOut(auth);
-    localStorage.clear();
-    sessionStorage.clear();
-    location.reload();
+window.cerrarSesion = async () => { await signOut(auth); localStorage.clear(); location.reload(); };
+
+function escuchar() {
+    onSnapshot(query(collection(db, 'actividades'), orderBy('fechaCreacion', 'desc')), s => {
+        localDB = s.docs.map(d => ({id:d.id, ...d.data()}));
+        renderDashboard();
+        renderNotificaciones();
+        if(areaActual) renderTablaArea();
+    });
+}
+
+function renderDashboard() {
+    document.getElementById('stats-grid').innerHTML = DEPTOS.map(a => {
+        const t = localDB.filter(r => r.area === a);
+        const comp = t.filter(r => r.estatus === 'Completada').length;
+        const pen = t.filter(r => r.estatus === 'Pendiente').length;
+        return `
+            <div class="dept-card">
+                <h4 style="margin-bottom:15px; color:var(--sidebar)">${a}</h4>
+                <div class="stat-line"><span>Total:</span><b>${t.length}</b></div>
+                <div class="stat-line" style="color:var(--green)"><span>Completadas:</span><b>${comp}</b></div>
+                <div class="stat-line" style="color:var(--orange)"><span>En Proceso:</span><b>${pen}</b></div>
+                <div class="stat-line" style="color:var(--red)"><span>Sin Iniciar:</span><b>${t.length - comp - pen}</b></div>
+            </div>`;
+    }).join('');
+}
+
+function renderNotificaciones() {
+    DEPTOS.forEach(d => {
+        const tareasNuevas = localDB.filter(r => r.area === d && r.estatus === 'Pendiente').length;
+        const badge = document.getElementById(`badge-${d}`);
+        if(tareasNuevas > 0) { badge.innerText = tareasNuevas; badge.style.display = 'block'; }
+        else { badge.style.display = 'none'; }
+    });
+}
+
+window.verDepartamento = (area, b) => { areaActual = area; document.getElementById('area-title').innerText = "Área: " + area; navegar('area', b); renderTablaArea(); };
+
+function renderTablaArea() {
+    const filt = localDB.filter(r => r.area === areaActual);
+    const yo = auth.currentUser.email;
+    document.getElementById('area-table').innerHTML = filt.map(r => {
+        // SEGURIDAD: Solo admin o el dueño de la tarea pueden ver el botón de completar
+        const puedeVerificar = (r.responsable === yo || yo === ADMIN);
+        return `
+        <div class="trow">
+            <div><b>${r.actividad}</b></div>
+            <div>${r.fechaLimite}</div>
+            <div style="font-size:10px; color:#64748b">${r.responsable}</div>
+            <div><span style="background:#f1f5f9; padding:4px 8px; border-radius:5px; font-weight:800; font-size:10px;">${r.estatus}</span></div>
+            <div style="display:flex; gap:8px;">
+                <button class="btn-comm" onclick="abrirChat('${r.id}', '${r.actividad}')">💬 ${r.comentarios ? r.comentarios.length : 0}</button>
+                ${puedeVerificar && r.estatus !== 'Completada' ? `<button class="btn-check" onclick="marcarHecho('${r.id}')">✓</button>` : ''}
+            </div>
+        </div>`;
+    }).join('') || '<p style="text-align:center; padding:20px;">Sin actividades registradas.</p>';
+}
+
+window.abrirChat = (id, title) => {
+    tareaIdActiva = id;
+    document.getElementById('c-title').innerText = title;
+    document.getElementById('modal-c').style.display = 'flex';
+    const t = localDB.find(x => x.id === id);
+    document.getElementById('chat-box').innerHTML = (t.comentarios || []).map(c => `
+        <div style="background:white; padding:8px; border-radius:8px; margin-bottom:5px; font-size:11px; border-left:3px solid var(--accent)">
+            <b style="color:var(--accent)">${c.u}:</b> ${c.m}
+        </div>`).join('') || 'Sin comentarios.';
 };
 
-// --- NAVEGACIÓN Y DATOS ---
-window.nav = (id, b) => {
+window.enviarComentario = async () => {
+    const msg = document.getElementById('c-input').value;
+    if(!msg) return;
+    await updateDoc(doc(db, 'actividades', tareaIdActiva), {
+        comentarios: arrayUnion({ u: auth.currentUser.email, m: msg, f: new Date().toISOString() })
+    });
+    document.getElementById('c-input').value = "";
+    abrirChat(tareaIdActiva, document.getElementById('c-title').innerText);
+};
+
+window.cerrarModal = () => document.getElementById('modal-c').style.display = 'none';
+
+window.guardarTarea = async () => {
+    const d = document.getElementById('n-desc').value;
+    if(!d) return alert("Escribe la descripción");
+    await addDoc(collection(db, 'actividades'), {
+        actividad: d,
+        area: document.getElementById('n-area').value,
+        fechaLimite: document.getElementById('n-date').value,
+        estatus: 'Pendiente',
+        fechaCreacion: new Date().toISOString(),
+        responsable: auth.currentUser.email,
+        comentarios: []
+    });
+    document.getElementById('n-desc').value = "";
+    alert("Actividad Asignada");
+    navegar('dashboard', document.getElementById('m-dash'));
+};
+
+window.marcarHecho = (id) => updateDoc(doc(db, 'actividades', id), { estatus: 'Completada' });
+
+window.navegar = (id, b) => {
     document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
     document.getElementById('sec-'+id).classList.add('active');
     document.querySelectorAll('.sitem').forEach(i => i.classList.remove('active'));
     if(b) b.classList.add('active');
 };
-
-window.verArea = (a, b) => { fArea = a; document.getElementById('area-h2').innerText = a; nav('area', b); dibujar(); };
-
-function cargarDatos() {
-    onSnapshot(query(collection(db, 'actividades'), orderBy('fechaCreacion', 'desc')), s => {
-        dataLocal = s.docs.map(d => ({id:d.id, ...d.data()}));
-        document.getElementById('graph-box').innerHTML = ["Facturación","Contabilidad","Recursos Humanos","Marketing","Administración","Ventas"].map(a => {
-            const t = dataLocal.filter(r => r.area === a);
-            const d = t.filter(r => r.estatus === 'Completada').length;
-            const p = t.length ? Math.round((d/t.length)*100) : 0;
-            return `<div style="margin-bottom:10px;">${a}: ${p}% <div style="background:#eee; height:8px; border-radius:5px;"><div style="width:${p}%; background:var(--accent); height:100%; border-radius:5px;"></div></div></div>`;
-        }).join('');
-        if(fArea) dibujar();
-    });
-}
-
-function dibujar() {
-    const res = dataLocal.filter(r => r.area === fArea);
-    document.getElementById('table-area').innerHTML = res.map(r => `
-        <div class="trow">
-            <div><b>${r.actividad}</b></div>
-            <div>${r.fechaLimite}</div>
-            <div style="font-size:10px;">${r.responsable}</div>
-            <div>${r.estatus}</div>
-            <button onclick="check('${r.id}')">✓</button>
-        </div>`).join('') || 'Sin tareas';
-}
-
-window.guardar = async () => {
-    await addDoc(collection(db, 'actividades'), {
-        actividad: document.getElementById('nt-desc').value,
-        area: document.getElementById('nt-area').value,
-        fechaLimite: document.getElementById('nt-date').value,
-        estatus: 'Pendiente',
-        fechaCreacion: new Date().toISOString(),
-        responsable: auth.currentUser.email
-    });
-    alert("¡Guardado!");
-    nav('dashboard', document.getElementById('b-dash'));
-};
-
-window.check = (id) => updateDoc(doc(db, 'actividades', id), { estatus: 'Completada' });
 </script>
 </body>
 </html>
