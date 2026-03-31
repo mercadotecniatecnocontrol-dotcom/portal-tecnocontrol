@@ -121,7 +121,7 @@ const db = getFirestore(app);
 const auth = getAuth(app);
 
 const ADMIN = "mercadotecniatecnocontrol@gmail.com";
-const DEPTOS = ["Ingresos", "Contabilidad", "Recursos Humanos", "Marketing", "Administración","Egresos" "Ventas"];
+const DEPTOS = ["Ingresos", "Egresos", "Contabilidad", "Recursos Humanos", "Marketing", "Administración", "Ventas"];
 
 let localDB = [];
 let areaActual = "";
@@ -273,7 +273,6 @@ function renderTablaArea() {
 
         const tieneAlerta = r.comentarios?.length > 0 && r.comentarios[r.comentarios.length - 1].u !== yo;
         
-        // LÓGICA DE COLOR DE LA PALOMITA
         const esCompletada = r.estatus === 'Completada';
         const colorPalomita = esCompletada ? 'var(--green)' : 'var(--light-gray)';
         const colorTextoPalomita = esCompletada ? 'white' : 'var(--slate)';
