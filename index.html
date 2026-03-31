@@ -41,7 +41,6 @@
         .btn-action { border:none; padding:8px; border-radius:6px; cursor:pointer; font-weight:800; transition: 0.2s; display: flex; align-items: center; justify-content: center; }
         .btn-comm { background:#f1f5f9; font-size:12px; color: var(--slate); position: relative; }
         
-        /* NOTIFICACIÓN VISUAL EN TABLA */
         .comm-alert { 
             position: absolute; top: -6px; right: -6px; width: 14px; height: 14px; 
             background: var(--red); border-radius: 50%; border: 2px solid white;
@@ -53,7 +52,6 @@
             100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
         }
 
-        /* TOAST - VENTANA EMERGENTE COSTADO */
         #toast-container { position: fixed; top: 20px; right: 20px; z-index: 5000; display: flex; flex-direction: column; gap: 10px; }
         .toast { 
             background: var(--sidebar); color: white; padding: 15px 20px; border-radius: 12px; 
@@ -107,8 +105,23 @@
                 <div class="grid-stats" id="stats-grid"></div>
             </div>
         </div>
-        <div class="section" id="sec-area"><div class="panel"><h2 id="area-title">-</h2><div id="area-table" style="margin-top:20px;"></div></div></div>
-        <div class="section" id="sec-nueva"><div class="panel"><h3>Asignar Nueva Tarea</h3><input type="text" id="n-desc" placeholder="Descripción..." style="width:100%; padding:14px; margin:15px 0; border:1px solid #ddd; border-radius:10px;"><div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;"><select id="n-area" style="padding:12px; border-radius:10px; border:1px solid #ddd;"></select><input type="date" id="n-date" style="padding:12px; border-radius:10px; border:1px solid #ddd;"><button onclick="guardarTarea()" style="background:var(--accent); color:white; border:none; border-radius:10px; font-weight:800; cursor:pointer;">PUBLICAR</button></div></div></div>
+        <div class="section" id="sec-area">
+            <div class="panel">
+                <h2 id="area-title">-</h2>
+                <div id="area-table" style="margin-top:20px;"></div>
+            </div>
+        </div>
+        <div class="section" id="sec-nueva">
+            <div class="panel">
+                <h3>Asignar Nueva Tarea</h3>
+                <input type="text" id="n-desc" placeholder="Descripción..." style="width:100%; padding:14px; margin:15px 0; border:1px solid #ddd; border-radius:10px;">
+                <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;">
+                    <select id="n-area" style="padding:12px; border-radius:10px; border:1px solid #ddd;"></select>
+                    <input type="date" id="n-date" style="padding:12px; border-radius:10px; border:1px solid #ddd;">
+                    <button onclick="guardarTarea()" style="background:var(--accent); color:white; border:none; border-radius:10px; font-weight:800; cursor:pointer;">PUBLICAR</button>
+                </div>
+            </div>
+        </div>
     </main>
 </div>
 
@@ -140,7 +153,6 @@ onAuthStateChanged(auth, user => {
         document.getElementById('auth-screen').style.display = 'none';
         document.getElementById('app-portal').style.display = 'flex';
         document.getElementById('u-tag').innerText = user.email;
-        // Solicitar permiso para notificaciones de escritorio
         if (Notification.permission !== "granted") Notification.requestPermission();
         escuchar();
     } else {
@@ -159,12 +171,10 @@ window.cerrarSesion = () => signOut(auth).then(() => location.reload());
 function escuchar() {
     onSnapshot(query(collection(db, 'actividades'), orderBy('fechaCreacion', 'desc')), s => {
         const newData = s.docs.map(d => ({id:d.id, ...d.data()}));
-        
-        // DETECCIÓN DE NUEVOS COMENTARIOS PARA ALERTAS
         if (!primerCarga) {
             newData.forEach(tarea => {
                 const vieja = localDB.find(v => v.id === tarea.id);
-                if (vieja && tarea.comentarios?.length > vieja.comentarios?.length) {
+                if (vieja && tarea.comentarios?.length > (vieja.comentarios?.length || 0)) {
                     const ultimo = tarea.comentarios[tarea.comentarios.length - 1];
                     if (ultimo.u !== auth.currentUser.email) {
                         lanzarAlerta(ultimo.u.split('@')[0], ultimo.m, tarea.actividad);
@@ -172,7 +182,6 @@ function escuchar() {
                 }
             });
         }
-
         localDB = newData;
         primerCarga = false;
         renderDashboard();
@@ -182,24 +191,12 @@ function escuchar() {
 }
 
 function lanzarAlerta(usuario, mensaje, tarea) {
-    // 1. Notificación de Escritorio (Fuera de la pestaña)
     if (Notification.permission === "granted") {
-        new Notification("TECNOCONTROL: Nuevo Mensaje", {
-            body: `${usuario} comentó en "${tarea}": ${mensaje}`,
-            icon: "https://cdn-icons-png.flaticon.com/512/2593/2593491.png"
-        });
+        new Notification("TECNOCONTROL: Mensaje", { body: `${usuario}: ${mensaje}`, icon: "https://cdn-icons-png.flaticon.com/512/2593/2593491.png" });
     }
-
-    // 2. Toast Interno (Esquina de la pantalla)
     const toast = document.createElement('div');
     toast.className = 'toast';
-    toast.innerHTML = `
-        <div style="font-size: 20px;">💬</div>
-        <div>
-            <div style="font-size: 10px; font-weight: 800; color: var(--accent);">${usuario.toUpperCase()} EN ${tarea.substring(0,20)}...</div>
-            <div style="font-size: 12px;">${mensaje.substring(0,40)}...</div>
-        </div>
-    `;
+    toast.innerHTML = `<div style="font-size:20px;">💬</div><div><div style="font-size:10px; font-weight:800; color:var(--accent);">${usuario.toUpperCase()} EN ${tarea.substring(0,15)}...</div><div style="font-size:12px;">${mensaje}</div></div>`;
     document.getElementById('toast-container').appendChild(toast);
     setTimeout(() => toast.remove(), 5000);
 }
@@ -248,7 +245,7 @@ function renderNotificaciones() {
     DEPTOS.forEach(d => {
         const count = localDB.filter(r => r.area === d && r.estatus === 'Sin Iniciar').length;
         const badge = document.getElementById(`badge-${d}`);
-        badge.innerText = count; badge.style.display = count > 0 ? 'block' : 'none';
+        if(badge) { badge.innerText = count; badge.style.display = count > 0 ? 'block' : 'none'; }
     });
 }
 
@@ -263,12 +260,17 @@ function renderTablaArea() {
         const esAdmin = yo === ADMIN;
         const esMio = r.responsable === yo;
         const tienePermiso = esAdmin || esMio;
+
+        // CORRECCIÓN: Definición de fechas para el contador
+        const inicio = new Date(r.fechaCreacion);
+        const fin = r.fechaFinalizacion ? new Date(r.fechaFinalizacion) : ahora;
         const diffDias = Math.floor((fin - inicio) / (1000 * 60 * 60 * 24));
+        
         const tieneAlerta = r.comentarios?.length > 0 && r.comentarios[r.comentarios.length - 1].u !== yo;
 
         return `
         <div class="trow">
-            <div><b>${r.actividad}</b><br><span class="day-counter ${diffDias >= 5 ? 'days-high' : 'days-low'}">⏱️ ${diffDias} días</span></div>
+            <div><b>${r.actividad}</b><br><span class="day-counter ${diffDias >= 5 ? 'days-high' : 'days-low'}">⏱️ ${diffDias === 0 ? 'Hoy' : diffDias + ' d'}</span></div>
             <div>${tienePermiso ? `<input type="date" class="edit-date" value="${r.fechaLimite || ''}" onchange="cambiarFecha('${r.id}', this.value)">` : `<span style="font-size:11px;">📅 ${r.fechaLimite || '--'}</span>`}</div>
             <div style="font-size:10px; color:#94a3b8">${r.responsable.split('@')[0]}</div>
             <div><span class="status-pill status-${r.estatus.replace(/\s+/g, '-')}">${r.estatus}</span></div>
