@@ -7,7 +7,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        :root{--sidebar:#0f172a;--accent:#3b82f6;--bg:#f1f5f9;--white:#ffffff;--red:#ef4444;--green:#22c55e;--orange:#f59e0b;--slate:#64748b;}
+        :root{--sidebar:#0f172a;--accent:#3b82f6;--bg:#f1f5f9;--white:#ffffff;--red:#ef4444;--green:#22c55e;--orange:#f59e0b;--slate:#64748b;--light-gray:#e2e8f0;}
         *{margin:0;padding:0;box-sizing:border-box;font-family:'Plus Jakarta Sans',sans-serif;}
         
         #auth-screen { display:flex; align-items:center; justify-content:center; min-height:100vh; background:var(--sidebar); position:fixed; width:100%; z-index:2000; }
@@ -272,6 +272,11 @@ function renderTablaArea() {
         }
 
         const tieneAlerta = r.comentarios?.length > 0 && r.comentarios[r.comentarios.length - 1].u !== yo;
+        
+        // LÓGICA DE COLOR DE LA PALOMITA
+        const esCompletada = r.estatus === 'Completada';
+        const colorPalomita = esCompletada ? 'var(--green)' : 'var(--light-gray)';
+        const colorTextoPalomita = esCompletada ? 'white' : 'var(--slate)';
 
         return `
         <div class="trow ${claseUrgencia}">
@@ -287,7 +292,8 @@ function renderTablaArea() {
                     ${tieneAlerta ? `<span class="comm-alert"></span>` : ''}
                 </button>
                 <button class="btn-action" onclick="${tienePermiso ? `cambiarEstado('${r.id}', 'En Proceso')` : `alert('Sin permiso')`}" title="En Proceso">⏳</button>
-                <button class="btn-action" onclick="${tienePermiso ? `marcarCompletado('${r.id}')` : `alert('Sin permiso')`}" style="background:var(--green); color:white;" title="Completar">✓</button>
+                <button class="btn-action" onclick="${tienePermiso ? `marcarCompletado('${r.id}')` : `alert('Sin permiso')`}" 
+                        style="background:${colorPalomita}; color:${colorTextoPalomita};" title="Completar">✓</button>
                 ${esAdmin ? `<button class="btn-action" onclick="eliminarTarea('${r.id}')" style="background:rgba(239,68,68,0.1); color:var(--red);" title="Eliminar">🗑️</button>` : ''}
             </div>
         </div>`;
