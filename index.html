@@ -6,16 +6,14 @@
     <title>TECNOCONTROL · Sistema Operativo 2026</title>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
     <style>
-        :root{--sidebar:#0f172a;--accent:#3b82f6;--bg:#f1f5f9;--white:#ffffff;--red:#ef4444;--green:#22c55e;--orange:#f59e0b;}
+        :root{--sidebar:#0f172a;--accent:#3b82f6;--bg:#f1f5f9;--white:#ffffff;--red:#ef4444;--green:#22c55e;--orange:#f59e0b;--slate:#64748b;}
         *{margin:0;padding:0;box-sizing:border-box;font-family:'Plus Jakarta Sans',sans-serif;}
         
-        /* Pantalla de Bloqueo */
         #auth-screen { display:flex; align-items:center; justify-content:center; min-height:100vh; background:var(--sidebar); position:fixed; width:100%; z-index:2000; }
         .login-card { background:white; padding:40px; border-radius:20px; width:360px; text-align:center; }
         .login-card input { width:100%; padding:12px; margin:10px 0; border-radius:10px; border:1px solid #ddd; outline:none; }
         .btn-login { width:100%; padding:12px; background:var(--accent); color:white; border:none; border-radius:10px; font-weight:800; cursor:pointer; }
 
-        /* Estructura Principal */
         #app-portal { display:none; min-height:100vh; background:var(--bg); }
         .sidebar { width:260px; background:var(--sidebar); display:flex; flex-direction:column; padding:30px 15px; position:fixed; top:0; bottom:0; left:0; }
         .sitem { padding:12px 15px; border-radius:10px; display:flex; align-items:center; justify-content:space-between; cursor:pointer; color:#94a3b8; border:none; background:none; width:100%; text-align:left; margin-bottom:5px; font-size:13px; transition:0.3s; }
@@ -27,17 +25,23 @@
         .section { display:none; }
         .section.active { display:block; }
 
-        /* Métricas por Departamento */
         .grid-stats { display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap:20px; margin-top:20px; }
         .dept-card { background:white; border-radius:15px; padding:20px; border:1px solid #eee; }
         .stat-line { display:flex; justify-content:space-between; font-size:12px; margin-bottom:8px; padding-bottom:4px; border-bottom:1px solid #f8fafc; }
         
-        /* Tablas */
-        .trow { display:grid; grid-template-columns: 2fr 1fr 1fr 1fr auto; padding:15px; border-bottom:1px solid #eee; align-items:center; font-size:13px; }
-        .btn-check { background:var(--green); color:white; border:none; padding:8px 12px; border-radius:6px; cursor:pointer; font-weight:800; }
-        .btn-comm { background:#f1f5f9; border:none; padding:8px 12px; border-radius:6px; cursor:pointer; font-size:12px; }
+        /* Tablas Pro */
+        .trow { display:grid; grid-template-columns: 2fr 1fr 1.5fr 1fr auto; padding:15px; border-bottom:1px solid #eee; align-items:center; font-size:13px; }
+        .status-pill { padding:4px 8px; border-radius:6px; font-weight:800; font-size:10px; text-transform: uppercase; }
+        .status-Sin-Iniciar { background: #fee2e2; color: var(--red); }
+        .status-En-Proceso { background: #fef3c7; color: var(--orange); }
+        .status-Completada { background: #dcfce7; color: var(--green); }
 
-        /* Modal Comentarios */
+        .btn-action { border:none; padding:8px; border-radius:6px; cursor:pointer; font-weight:800; transition: 0.2s; }
+        .btn-check { background:var(--green); color:white; }
+        .btn-process { background:var(--orange); color:white; }
+        .btn-delete { background:rgba(239,68,68,0.1); color:var(--red); }
+        .btn-comm { background:#f1f5f9; font-size:12px; }
+
         #modal-c { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:3000; align-items:center; justify-content:center; }
         .modal-box { background:white; padding:30px; border-radius:20px; width:450px; max-height:80vh; display:flex; flex-direction:column; }
         #chat-box { flex-grow:1; overflow-y:auto; margin:15px 0; padding:10px; background:#f8fafc; border-radius:10px; }
@@ -78,7 +82,10 @@
 
         <div class="section" id="sec-area">
             <div class="panel">
-                <h2 id="area-title">-</h2>
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <h2 id="area-title">-</h2>
+                    <span style="font-size:11px; color:var(--slate)">Gestión de Tareas Activas</span>
+                </div>
                 <div id="area-table" style="margin-top:20px;"></div>
             </div>
         </div>
@@ -112,7 +119,7 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const config = { apiKey:"AIzaSyBXh-P0oMtMiDjyz9PObuJ8DNfROlXvhLE", authDomain:"tecnocontrol-1c42f.firebaseapp.com", projectId:"tecnocontrol-1c42f", storageBucket:"tecnocontrol-1c42f.firebasestorage.app", messagingSenderId:"27642771956", appId:"1:27642771956:web:54225af9e386afded8a1a1" };
 const app = initializeApp(config);
@@ -125,12 +132,7 @@ let localDB = [];
 let areaActual = "";
 let tareaIdActiva = "";
 
-// Cargar Menú Lateral
-document.getElementById('nav-dept').innerHTML = DEPTOS.map(d => `
-    <button class="sitem" id="nav-${d}" onclick="verDepartamento('${d}', this)">
-        <span>${d}</span>
-        <span id="badge-${d}" class="notif-badge" style="display:none">0</span>
-    </button>`).join('');
+document.getElementById('nav-dept').innerHTML = DEPTOS.map(d => `<button class="sitem" id="nav-${d}" onclick="verDepartamento('${d}', this)"><span>${d}</span><span id="badge-${d}" class="notif-badge" style="display:none">0</span></button>`).join('');
 document.getElementById('n-area').innerHTML = DEPTOS.map(d => `<option>${d}</option>`).join('');
 
 onAuthStateChanged(auth, user => {
@@ -165,21 +167,22 @@ function renderDashboard() {
     document.getElementById('stats-grid').innerHTML = DEPTOS.map(a => {
         const t = localDB.filter(r => r.area === a);
         const comp = t.filter(r => r.estatus === 'Completada').length;
-        const pen = t.filter(r => r.estatus === 'Pendiente').length;
+        const proc = t.filter(r => r.estatus === 'En Proceso').length;
+        const sin = t.filter(r => r.estatus === 'Sin Iniciar').length;
         return `
             <div class="dept-card">
                 <h4 style="margin-bottom:15px; color:var(--sidebar)">${a}</h4>
                 <div class="stat-line"><span>Total:</span><b>${t.length}</b></div>
                 <div class="stat-line" style="color:var(--green)"><span>Completadas:</span><b>${comp}</b></div>
-                <div class="stat-line" style="color:var(--orange)"><span>En Proceso:</span><b>${pen}</b></div>
-                <div class="stat-line" style="color:var(--red)"><span>Sin Iniciar:</span><b>${t.length - comp - pen}</b></div>
+                <div class="stat-line" style="color:var(--orange)"><span>En Proceso:</span><b>${proc}</b></div>
+                <div class="stat-line" style="color:var(--red)"><span>Sin Iniciar:</span><b>${sin}</b></div>
             </div>`;
     }).join('');
 }
 
 function renderNotificaciones() {
     DEPTOS.forEach(d => {
-        const tareasNuevas = localDB.filter(r => r.area === d && r.estatus === 'Pendiente').length;
+        const tareasNuevas = localDB.filter(r => r.area === d && r.estatus === 'Sin Iniciar').length;
         const badge = document.getElementById(`badge-${d}`);
         if(tareasNuevas > 0) { badge.innerText = tareasNuevas; badge.style.display = 'block'; }
         else { badge.style.display = 'none'; }
@@ -192,21 +195,40 @@ function renderTablaArea() {
     const filt = localDB.filter(r => r.area === areaActual);
     const yo = auth.currentUser.email;
     document.getElementById('area-table').innerHTML = filt.map(r => {
-        // SEGURIDAD: Solo admin o el dueño de la tarea pueden ver el botón de completar
-        const puedeVerificar = (r.responsable === yo || yo === ADMIN);
+        const esAdmin = yo === ADMIN;
+        const esMio = r.responsable === yo;
+        const statusClass = `status-${r.estatus.replace(/\s+/g, '-')}`;
+
         return `
         <div class="trow">
-            <div><b>${r.actividad}</b></div>
-            <div>${r.fechaLimite}</div>
+            <div><b style="color:var(--sidebar)">${r.actividad}</b></div>
+            <div style="color:var(--slate)">${r.fechaLimite}</div>
             <div style="font-size:10px; color:#64748b">${r.responsable}</div>
-            <div><span style="background:#f1f5f9; padding:4px 8px; border-radius:5px; font-weight:800; font-size:10px;">${r.estatus}</span></div>
-            <div style="display:flex; gap:8px;">
-                <button class="btn-comm" onclick="abrirChat('${r.id}', '${r.actividad}')">💬 ${r.comentarios ? r.comentarios.length : 0}</button>
-                ${puedeVerificar && r.estatus !== 'Completada' ? `<button class="btn-check" onclick="marcarHecho('${r.id}')">✓</button>` : ''}
+            <div><span class="status-pill ${statusClass}">${r.estatus}</span></div>
+            <div style="display:flex; gap:6px;">
+                <button class="btn-action btn-comm" onclick="abrirChat('${r.id}', '${r.actividad}')">💬 ${r.comentarios ? r.comentarios.length : 0}</button>
+                
+                ${(esMio || esAdmin) && r.estatus !== 'En Proceso' && r.estatus !== 'Completada' ? 
+                    `<button class="btn-action btn-process" title="En Proceso" onclick="cambiarEstado('${r.id}', 'En Proceso')">⏳</button>` : ''}
+                
+                ${(esMio || esAdmin) && r.estatus !== 'Completada' ? 
+                    `<button class="btn-action btn-check" title="Completar" onclick="cambiarEstado('${r.id}', 'Completada')">✓</button>` : ''}
+                
+                ${esAdmin ? `<button class="btn-action btn-delete" title="Eliminar" onclick="eliminarTarea('${r.id}')">🗑️</button>` : ''}
             </div>
         </div>`;
-    }).join('') || '<p style="text-align:center; padding:20px;">Sin actividades registradas.</p>';
+    }).join('') || '<p style="text-align:center; padding:20px; color:var(--slate)">No hay actividades en esta área.</p>';
 }
+
+window.cambiarEstado = (id, nuevoEstatus) => {
+    updateDoc(doc(db, 'actividades', id), { estatus: nuevoEstatus });
+};
+
+window.eliminarTarea = async (id) => {
+    if(confirm("¿Estás seguro de eliminar esta tarea? Solo el administrador puede hacer esto.")) {
+        await deleteDoc(doc(db, 'actividades', id));
+    }
+};
 
 window.abrirChat = (id, title) => {
     tareaIdActiva = id;
@@ -238,17 +260,15 @@ window.guardarTarea = async () => {
         actividad: d,
         area: document.getElementById('n-area').value,
         fechaLimite: document.getElementById('n-date').value,
-        estatus: 'Pendiente',
+        estatus: 'Sin Iniciar',
         fechaCreacion: new Date().toISOString(),
         responsable: auth.currentUser.email,
         comentarios: []
     });
     document.getElementById('n-desc').value = "";
-    alert("Actividad Asignada");
+    alert("Actividad Asignada con éxito");
     navegar('dashboard', document.getElementById('m-dash'));
 };
-
-window.marcarHecho = (id) => updateDoc(doc(db, 'actividades', id), { estatus: 'Completada' });
 
 window.navegar = (id, b) => {
     document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
