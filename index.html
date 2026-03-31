@@ -42,7 +42,7 @@
         .status-En-Proceso { background: #fef3c7; color: var(--orange); }
         .status-Completada { background: #dcfce7; color: var(--green); }
 
-        .btn-action { border:none; padding:8px; border-radius:6px; cursor:pointer; font-weight:800; transition: 0.2s; display: flex; align-items: center; justify-content: center; }
+        .btn-action { border:none; padding:8px; border-radius:6px; cursor:pointer; font-weight:800; transition: 0.2s; display: flex; align-items: center; justify-content: center; min-width: 35px; }
         .btn-comm { background:#f1f5f9; font-size:12px; color: var(--slate); position: relative; }
         .comm-alert { position: absolute; top: -6px; right: -6px; width: 14px; height: 14px; background: var(--red); border-radius: 50%; border: 2px solid white; animation: pulse 1.5s infinite; z-index: 5; }
         @keyframes pulse { 0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); } 70% { transform: scale(1.3); box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); } 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
@@ -51,7 +51,7 @@
         .toast { background: var(--sidebar); color: white; padding: 15px 20px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); display: flex; align-items: center; gap: 12px; animation: slideIn 0.3s ease-out; border-left: 4px solid var(--accent); min-width: 280px; pointer-events: auto; }
         @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 
-        .edit-date { border: 1px dashed #cbd5e1; padding: 4px; border-radius: 4px; cursor: pointer; font-size: 11px; color: var(--accent); }
+        .edit-date { border: 1px dashed #cbd5e1; padding: 4px; border-radius: 4px; cursor: pointer; font-size: 11px; color: var(--accent); background: transparent; }
         #modal-c { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:3000; align-items:center; justify-content:center; }
         .modal-box { background:white; padding:30px; border-radius:20px; width:450px; max-height:80vh; display:flex; flex-direction:column; }
         #chat-box { flex-grow:1; overflow-y:auto; margin:15px 0; padding:10px; background:#f8fafc; border-radius:10px; }
@@ -257,10 +257,10 @@ window.verDepartamento = (area, b) => { areaActual = area; document.getElementBy
 function renderTablaArea() {
     const filt = localDB.filter(r => r.area === areaActual);
     const yo = auth.currentUser.email;
+    const esAdmin = yo === ADMIN;
     const hoy = new Date(); hoy.setHours(0,0,0,0);
 
     document.getElementById('area-table').innerHTML = filt.map(r => {
-        const esAdmin = yo === ADMIN;
         const tienePermiso = esAdmin || r.responsable === yo;
         let claseUrgencia = ""; let prefijo = "";
         
@@ -282,16 +282,23 @@ function renderTablaArea() {
             <div>${tienePermiso ? `<input type="date" class="edit-date" value="${r.fechaLimite || ''}" onchange="cambiarFecha('${r.id}', this.value)">` : `📅 ${r.fechaLimite || '--'}`}</div>
             <div><span class="status-pill status-${r.estatus.replace(/\s+/g, '-')}">${r.estatus}</span></div>
             <div style="display:flex; gap:6px;">
-                <button class="btn-action btn-comm" onclick="abrirChat('${r.id}', '${r.actividad}')">
+                <button class="btn-action btn-comm" onclick="abrirChat('${r.id}', '${r.actividad}')" title="Comentarios">
                     💬 ${r.comentarios?.length || 0}
                     ${tieneAlerta ? `<span class="comm-alert"></span>` : ''}
                 </button>
-                <button class="btn-action" onclick="${tienePermiso ? `cambiarEstado('${r.id}', 'En Proceso')` : `alert('Sin permiso')`}">⏳</button>
-                <button class="btn-action" onclick="${tienePermiso ? `marcarCompletado('${r.id}')` : `alert('Sin permiso')`}" style="background:var(--green); color:white;">✓</button>
+                <button class="btn-action" onclick="${tienePermiso ? `cambiarEstado('${r.id}', 'En Proceso')` : `alert('Sin permiso')`}" title="En Proceso">⏳</button>
+                <button class="btn-action" onclick="${tienePermiso ? `marcarCompletado('${r.id}')` : `alert('Sin permiso')`}" style="background:var(--green); color:white;" title="Completar">✓</button>
+                ${esAdmin ? `<button class="btn-action" onclick="eliminarTarea('${r.id}')" style="background:rgba(239,68,68,0.1); color:var(--red);" title="Eliminar">🗑️</button>` : ''}
             </div>
         </div>`;
     }).join('') || 'Sin actividades.';
 }
+
+window.eliminarTarea = async (id) => {
+    if(confirm("¿Estás seguro de eliminar esta tarea permanentemente?")) {
+        await deleteDoc(doc(db, 'actividades', id));
+    }
+};
 
 window.cambiarFecha = (id, fecha) => updateDoc(doc(db, 'actividades', id), { fechaLimite: fecha });
 window.cambiarEstado = (id, est) => updateDoc(doc(db, 'actividades', id), { estatus: est, fechaFinalizacion: null });
