@@ -32,6 +32,11 @@
         .dept-info h4 { margin-bottom: 10px; color: var(--sidebar); font-size: 14px; border-bottom: 1px solid #f1f5f9; padding-bottom: 5px; }
         .stat-row { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 4px; font-weight: 600; }
 
+        /* Report Styles */
+        .report-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .report-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .report-mini-card { background: #f8fafc; padding: 15px; border-radius: 12px; margin-bottom: 10px; border-left: 4px solid var(--accent); }
+
         .trow { display:grid; grid-template-columns: 2fr 1.2fr 1fr 1fr auto; padding:15px; border-bottom:1px solid #eee; align-items:center; font-size:13px; transition: 0.3s; }
         .row-critical { border-left: 5px solid var(--red); background: rgba(239, 68, 68, 0.05); }
         .row-warning { border-left: 5px solid var(--orange); background: rgba(245, 158, 11, 0.05); }
@@ -75,6 +80,7 @@
     <nav class="sidebar">
         <div style="color:white; font-size:18px; font-weight:800; margin-bottom:30px; padding-left:10px;">CONTROL DE ÁREAS</div>
         <button class="sitem active" id="m-dash" onclick="navegar('dashboard', this)">📊 Dashboard Global</button>
+        <button class="sitem" onclick="navegar('reportes', this)">📈 Reporte Mensual</button>
         <button class="sitem" onclick="navegar('nueva', this)">➕ Asignar Tarea</button>
         <p style="color:#475569; font-size:10px; font-weight:800; margin:20px 0 10px 10px;">DEPARTAMENTOS</p>
         <div id="nav-dept"></div>
@@ -87,13 +93,36 @@
     <main class="main">
         <div class="section active" id="sec-dashboard">
             <div class="panel">
-                <h3>Resumen Ejecutivo por Área</h3>
+                <h3>Resumen Operativo Actual</h3>
                 <div class="grid-stats" id="stats-grid"></div>
             </div>
         </div>
+
+        <div class="section" id="sec-reportes">
+            <div class="panel">
+                <div class="report-header">
+                    <h3>Presentación de Resultados</h3>
+                    <div style="display:flex; gap:10px;">
+                        <select id="rep-mes" style="padding:8px; border-radius:8px; border:1px solid #ddd;" onchange="renderReporteMensual()">
+                            <option value="0">Enero</option><option value="1">Febrero</option><option value="2">Marzo</option>
+                            <option value="3">Abril</option><option value="4">Mayo</option><option value="5">Junio</option>
+                            <option value="6">Julio</option><option value="7">Agosto</option><option value="8">Septiembre</option>
+                            <option value="9">Octubre</option><option value="10">Noviembre</option><option value="11">Diciembre</option>
+                        </select>
+                        <select id="rep-anio" style="padding:8px; border-radius:8px; border:1px solid #ddd;" onchange="renderReporteMensual()">
+                            <option>2025</option><option selected>2026</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="height:250px; margin-bottom:40px;"><canvas id="barChartMensual"></canvas></div>
+                <div class="grid-stats" id="report-grid-details"></div>
+            </div>
+        </div>
+
         <div class="section" id="sec-area">
             <div class="panel"><h2 id="area-title">-</h2><div id="area-table" style="margin-top:20px;"></div></div>
         </div>
+
         <div class="section" id="sec-nueva">
             <div class="panel">
                 <h3>Asignar Nueva Tarea</h3>
@@ -127,16 +156,18 @@ let localDB = [];
 let areaActual = "";
 let tareaIdActiva = "";
 let primerCarga = true;
+let barChart = null;
 
+// Inicialización de Menú
 document.getElementById('nav-dept').innerHTML = DEPTOS.map(d => `<button class="sitem" id="nav-${d}" onclick="verDepartamento('${d}', this)"><span>${d}</span><span id="badge-${d}" class="notif-badge" style="display:none">0</span></button>`).join('');
 document.getElementById('n-area').innerHTML = DEPTOS.map(d => `<option>${d}</option>`).join('');
+document.getElementById('rep-mes').value = new Date().getMonth();
 
 onAuthStateChanged(auth, user => {
     if(user) {
         document.getElementById('auth-screen').style.display = 'none';
         document.getElementById('app-portal').style.display = 'flex';
         document.getElementById('u-tag').innerText = user.email;
-        if (Notification.permission !== "granted") Notification.requestPermission();
         escuchar();
     } else {
         document.getElementById('auth-screen').style.display = 'flex';
@@ -153,51 +184,12 @@ window.cerrarSesion = () => signOut(auth).then(() => location.reload());
 
 function escuchar() {
     onSnapshot(query(collection(db, 'actividades'), orderBy('fechaCreacion', 'desc')), s => {
-        const newData = s.docs.map(d => ({id:d.id, ...d.data()}));
-        if (!primerCarga) {
-            newData.forEach(tarea => {
-                const vieja = localDB.find(v => v.id === tarea.id);
-                if (vieja && (tarea.comentarios?.length || 0) > (vieja.comentarios?.length || 0)) {
-                    const ultimo = tarea.comentarios[tarea.comentarios.length - 1];
-                    if (ultimo.u !== auth.currentUser.email) {
-                        lanzarAlerta("💬 " + ultimo.u.split('@')[0], ultimo.m, "var(--accent)");
-                    }
-                }
-            });
-        }
-        localDB = newData;
-        primerCarga = false;
-        verificarVencimientos();
+        localDB = s.docs.map(d => ({id:d.id, ...d.data()}));
         renderDashboard();
         renderNotificaciones();
+        renderReporteMensual();
         if(areaActual) renderTablaArea();
     });
-}
-
-function verificarVencimientos() {
-    const hoy = new Date(); hoy.setHours(0,0,0,0);
-    localDB.forEach(t => {
-        if (t.estatus !== 'Completada' && t.fechaLimite) {
-            const limite = new Date(t.fechaLimite); limite.setHours(0,0,0,0);
-            const diff = Math.ceil((limite - hoy) / (1000 * 60 * 60 * 24));
-            if ([1, 3, 5].includes(diff)) {
-                const key = `notif_${t.id}_${diff}`;
-                if (!sessionStorage.getItem(key)) {
-                    lanzarAlerta(`⚠️ VENCE EN ${diff} DÍAS`, t.actividad, "var(--red)");
-                    sessionStorage.setItem(key, "true");
-                }
-            }
-        }
-    });
-}
-
-function lanzarAlerta(titulo, msg, color) {
-    const toast = document.createElement('div');
-    toast.className = 'toast';
-    toast.style.borderLeft = `4px solid ${color}`;
-    toast.innerHTML = `<div><div style="font-size:10px; font-weight:800; color:${color}">${titulo}</div><div style="font-size:12px;">${msg}</div></div>`;
-    document.getElementById('toast-container').appendChild(toast);
-    setTimeout(() => toast.remove(), 6000);
 }
 
 function renderDashboard() {
@@ -206,17 +198,13 @@ function renderDashboard() {
     grid.innerHTML = DEPTOS.map(a => {
         const t = localDB.filter(r => r.area === a);
         const done = t.filter(x => x.estatus === 'Completada').length;
-        const proc = t.filter(x => x.estatus === 'En Proceso').length;
-        const none = t.filter(x => x.estatus === 'Sin Iniciar').length;
         return `
             <div class="dept-card">
                 <div style="width:100px; height:100px;"><canvas id="chart-${a.replace(/\s+/g, '')}"></canvas></div>
                 <div class="dept-info">
                     <h4>${a}</h4>
-                    <div class="stat-row"><span>Total:</span> <span>${t.length}</span></div>
-                    <div class="stat-row" style="color:var(--green)"><span>Hechas:</span> <span>${done}</span></div>
-                    <div class="stat-row" style="color:var(--orange)"><span>Proceso:</span> <span>${proc}</span></div>
-                    <div class="stat-row" style="color:var(--red)"><span>Pendientes:</span> <span>${none}</span></div>
+                    <div class="stat-row"><span>Pendientes:</span> <span>${t.length - done}</span></div>
+                    <div class="stat-row" style="color:var(--green)"><span>Terminadas:</span> <span>${done}</span></div>
                 </div>
             </div>`;
     }).join('');
@@ -231,18 +219,59 @@ function renderDashboard() {
         new Chart(canvas, {
             type: 'doughnut',
             data: { datasets: [{ data: [done, t.length - done], backgroundColor: ['#22c55e', '#e2e8f0'], borderWidth: 0 }] },
-            options: { cutout: '75%', plugins: { legend: { display: false }, tooltip: { enabled: false } } },
+            options: { cutout: '75%', plugins: { legend: { display: false } } },
             plugins: [{
                 id: 'centerText',
                 afterDraw: (chart) => {
                     const { ctx, width, height } = chart;
-                    ctx.save(); ctx.font = 'bold 14px Plus Jakarta Sans'; ctx.fillStyle = '#0f172a';
-                    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(perc + '%', width / 2, height / 2); ctx.restore();
+                    ctx.save(); ctx.font = 'bold 14px Plus Jakarta Sans'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                    ctx.fillText(perc + '%', width / 2, height / 2); ctx.restore();
                 }
             }]
         });
     });
 }
+
+window.renderReporteMensual = () => {
+    const mes = parseInt(document.getElementById('rep-mes').value);
+    const anio = parseInt(document.getElementById('rep-anio').value);
+    const grid = document.getElementById('report-grid-details');
+    
+    // Filtrar tareas completadas en ese mes
+    const tareasMes = localDB.filter(t => {
+        if (t.estatus !== 'Completada' || !t.fechaFinalizacion) return false;
+        const f = new Date(t.fechaFinalizacion);
+        return f.getMonth() === mes && f.getFullYear() === anio;
+    });
+
+    // Datos para Gráfica de Barras
+    const labels = DEPTOS;
+    const dataBarras = DEPTOS.map(d => tareasMes.filter(t => t.area === d).length);
+
+    if(barChart) barChart.destroy();
+    const ctx = document.getElementById('barChartMensual').getContext('2d');
+    barChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{ label: 'Tareas Logradas', data: dataBarras, backgroundColor: '#3b82f6', borderRadius: 8 }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+    });
+
+    // Detalle por departamento
+    grid.innerHTML = DEPTOS.map(d => {
+        const tDepto = tareasMes.filter(t => t.area === d);
+        return `
+            <div class="panel" style="border:1px solid #eee;">
+                <h4 style="color:var(--accent); margin-bottom:15px;">${d}</h4>
+                <div class="stat-row"><span>Logros del mes:</span> <b>${tDepto.length}</b></div>
+                <div style="margin-top:10px; max-height:150px; overflow-y:auto;">
+                    ${tDepto.map(t => `<div style="font-size:11px; padding:5px 0; border-bottom:1px solid #f8fafc;">✓ ${t.actividad}</div>`).join('') || '<span style="color:var(--slate); font-size:11px;">Sin logros este mes</span>'}
+                </div>
+            </div>`;
+    }).join('');
+};
 
 function renderNotificaciones() {
     DEPTOS.forEach(d => {
@@ -265,17 +294,14 @@ function renderTablaArea() {
         let claseUrgencia = ""; let prefijo = "";
         
         if (r.estatus !== 'Completada' && r.fechaLimite) {
-            const limite = new Date(r.fechaLimite); limite.setHours(0,0,0,0);
+            const limite = new Date(r.fechaLimite);
             const diff = Math.ceil((limite - hoy) / (1000 * 60 * 60 * 24));
             if (diff <= 1) { claseUrgencia = "row-critical"; prefijo = "⚠️ CRÍTICO: "; }
             else if (diff <= 3) { claseUrgencia = "row-warning"; prefijo = "⏳ PRONTO: "; }
         }
 
         const tieneAlerta = r.comentarios?.length > 0 && r.comentarios[r.comentarios.length - 1].u !== yo;
-        
-        const esCompletada = r.estatus === 'Completada';
-        const colorPalomita = esCompletada ? 'var(--green)' : 'var(--light-gray)';
-        const colorTextoPalomita = esCompletada ? 'white' : 'var(--slate)';
+        const esComp = r.estatus === 'Completada';
 
         return `
         <div class="trow ${claseUrgencia}">
@@ -286,59 +312,39 @@ function renderTablaArea() {
             <div>${tienePermiso ? `<input type="date" class="edit-date" value="${r.fechaLimite || ''}" onchange="cambiarFecha('${r.id}', this.value)">` : `📅 ${r.fechaLimite || '--'}`}</div>
             <div><span class="status-pill status-${r.estatus.replace(/\s+/g, '-')}">${r.estatus}</span></div>
             <div style="display:flex; gap:6px;">
-                <button class="btn-action btn-comm" onclick="abrirChat('${r.id}', '${r.actividad}')" title="Comentarios">
+                <button class="btn-action btn-comm" onclick="abrirChat('${r.id}', '${r.actividad}')">
                     💬 ${r.comentarios?.length || 0}
                     ${tieneAlerta ? `<span class="comm-alert"></span>` : ''}
                 </button>
-                <button class="btn-action" onclick="${tienePermiso ? `cambiarEstado('${r.id}', 'En Proceso')` : `alert('Sin permiso')`}" title="En Proceso">⏳</button>
+                <button class="btn-action" onclick="${tienePermiso ? `cambiarEstado('${r.id}', 'En Proceso')` : `alert('Sin permiso')`}">⏳</button>
                 <button class="btn-action" onclick="${tienePermiso ? `marcarCompletado('${r.id}')` : `alert('Sin permiso')`}" 
-                        style="background:${colorPalomita}; color:${colorTextoPalomita};" title="Completar">✓</button>
-                ${esAdmin ? `<button class="btn-action" onclick="eliminarTarea('${r.id}')" style="background:rgba(239,68,68,0.1); color:var(--red);" title="Eliminar">🗑️</button>` : ''}
+                        style="background:${esComp ? 'var(--green)' : 'var(--light-gray)'}; color:${esComp ? 'white' : 'var(--slate)'};">✓</button>
+                ${esAdmin ? `<button class="btn-action" onclick="eliminarTarea('${r.id}')" style="background:rgba(239,68,68,0.1); color:var(--red);">🗑️</button>` : ''}
             </div>
         </div>`;
     }).join('') || 'Sin actividades.';
 }
 
-window.eliminarTarea = async (id) => {
-    if(confirm("¿Estás seguro de eliminar esta tarea permanentemente?")) {
-        await deleteDoc(doc(db, 'actividades', id));
-    }
-};
-
 window.cambiarFecha = (id, fecha) => updateDoc(doc(db, 'actividades', id), { fechaLimite: fecha });
 window.cambiarEstado = (id, est) => updateDoc(doc(db, 'actividades', id), { estatus: est, fechaFinalizacion: null });
 window.marcarCompletado = (id) => updateDoc(doc(db, 'actividades', id), { estatus: 'Completada', fechaFinalizacion: new Date().toISOString() });
+window.eliminarTarea = async (id) => confirm("¿Eliminar?") && await deleteDoc(doc(db, 'actividades', id));
 
 window.guardarTarea = async () => {
-    const d = document.getElementById('n-desc').value;
-    if(!d) return alert("Falta descripción");
-    await addDoc(collection(db, 'actividades'), {
-        actividad: d, area: document.getElementById('n-area').value, fechaLimite: document.getElementById('n-date').value,
-        estatus: 'Sin Iniciar', fechaCreacion: new Date().toISOString(), responsable: auth.currentUser.email, comentarios: []
-    });
+    const d = document.getElementById('n-desc').value; if(!d) return;
+    await addDoc(collection(db, 'actividades'), { actividad: d, area: document.getElementById('n-area').value, fechaLimite: document.getElementById('n-date').value, estatus: 'Sin Iniciar', fechaCreacion: new Date().toISOString(), responsable: auth.currentUser.email, comentarios: [] });
     document.getElementById('n-desc').value = ""; navegar('dashboard', document.getElementById('m-dash'));
 };
 
 window.abrirChat = (id, title) => {
-    tareaIdActiva = id; 
-    document.getElementById('c-title').innerText = title; 
-    document.getElementById('modal-c').style.display = 'flex';
-    
+    tareaIdActiva = id; document.getElementById('c-title').innerText = title; document.getElementById('modal-c').style.display = 'flex';
     const t = localDB.find(x => x.id === id);
-    document.getElementById('chat-box').innerHTML = (t.comentarios || []).map(c => {
-        const fechaMsg = c.f ? new Date(c.f).toLocaleString('es-MX', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : '';
-        return `
+    document.getElementById('chat-box').innerHTML = (t.comentarios || []).map(c => `
         <div style="background:#f1f5f9; padding:10px; border-radius:10px; margin-bottom:10px; font-size:11px; border-left:3px solid var(--accent);">
-            <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
-                <b style="color:var(--accent)">${c.u.split('@')[0].toUpperCase()}</b>
-                <span style="font-size:9px; color:var(--slate)">${fechaMsg}</span>
-            </div>
-            <div style="color:#334155; line-height:1.4;">${c.m}</div>
-        </div>`;
-    }).join('') || '<p style="text-align:center; color:var(--slate); font-size:12px;">Sin mensajes aún.</p>';
-    
-    const box = document.getElementById('chat-box');
-    box.scrollTop = box.scrollHeight;
+            <div style="display:flex; justify-content:space-between;"><b>${c.u.split('@')[0].toUpperCase()}</b></div>
+            <div>${c.m}</div>
+        </div>`).join('') || 'Sin mensajes.';
+    const box = document.getElementById('chat-box'); box.scrollTop = box.scrollHeight;
 };
 
 window.enviarComentario = async () => {
