@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TECNOCONTROL · Sistema Operativo 2026</title>
+    <title>TECNOCONTROL · Centro Operativo 2026</title>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
@@ -32,10 +32,12 @@
         .dept-info h4 { margin-bottom: 10px; color: var(--sidebar); font-size: 14px; border-bottom: 1px solid #f1f5f9; padding-bottom: 5px; }
         .stat-row { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 4px; font-weight: 600; }
 
-        .report-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        .report-mini-card { background: #f8fafc; padding: 15px; border-radius: 12px; margin-bottom: 10px; border-left: 4px solid var(--accent); border: 1px solid #e2e8f0; border-left-width: 4px; }
+        .area-group { margin-bottom: 25px; }
+        .area-group-title { font-size: 11px; font-weight: 800; color: var(--accent); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; display: flex; align-items: center; gap: 10px; }
+        .area-group-title::after { content: ""; flex: 1; height: 1px; background: #e2e8f0; }
+        .task-mini-row { background: #f8fafc; padding: 12px 15px; border-radius: 10px; margin-bottom: 6px; border: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; border-left: 4px solid var(--orange); }
 
-        .trow { display:grid; grid-template-columns: 2fr 1.2fr 1fr 1fr auto; padding:15px; border-bottom:1px solid #eee; align-items:center; font-size:13px; transition: 0.3s; }
+        .trow { display:grid; grid-template-columns: 2fr 1.2fr 1fr 1fr auto; padding:15px; border-bottom:1px solid #eee; align-items:center; font-size:13px; }
         .row-critical { border-left: 5px solid var(--red); background: rgba(239, 68, 68, 0.05); }
         .row-warning { border-left: 5px solid var(--orange); background: rgba(245, 158, 11, 0.05); }
         .text-critical { color: var(--red); font-weight: 800; }
@@ -45,9 +47,11 @@
         .status-En-Proceso { background: #fef3c7; color: var(--orange); }
         .status-Completada { background: #dcfce7; color: var(--green); }
 
-        .btn-action { border:none; padding:8px; border-radius:6px; cursor:pointer; font-weight:800; transition: 0.2s; display: flex; align-items: center; justify-content: center; min-width: 35px; }
+        .btn-action { border:none; padding:8px; border-radius:6px; cursor:pointer; font-weight:800; display: flex; align-items: center; justify-content: center; min-width: 35px; }
         .btn-comm { background:#f1f5f9; font-size:12px; color: var(--slate); position: relative; }
-        .comm-alert { position: absolute; top: -6px; right: -6px; width: 14px; height: 14px; background: var(--red); border-radius: 50%; border: 2px solid white; z-index: 5; }
+        .comm-alert { position: absolute; top: -6px; right: -6px; width: 14px; height: 14px; background: var(--red); border-radius: 50%; border: 2px solid white; animation: pulse 1.5s infinite; }
+
+        @keyframes pulse { 0% { transform: scale(0.9); } 50% { transform: scale(1.1); } 100% { transform: scale(0.9); } }
 
         .edit-date { border: 1px dashed #cbd5e1; padding: 4px; border-radius: 4px; cursor: pointer; font-size: 11px; color: var(--accent); background: transparent; }
         #modal-c { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:3000; align-items:center; justify-content:center; }
@@ -89,9 +93,8 @@
             </div>
             
             <div class="panel">
-                <h3 style="margin-bottom:15px;">🚀 Actividades en Curso (Todas las áreas)</h3>
-                <div id="tasks-in-progress" style="display: flex; flex-direction: column; gap: 10px;">
-                    </div>
+                <h3 style="margin-bottom:20px;">🚀 Actividades en Curso por Departamento</h3>
+                <div id="tasks-in-progress-split"></div>
             </div>
         </div>
 
@@ -100,12 +103,7 @@
                 <div class="report-header">
                     <h3>Presentación de Resultados Mensuales</h3>
                     <div style="display:flex; gap:10px;">
-                        <select id="rep-mes" style="padding:8px; border-radius:8px; border:1px solid #ddd;" onchange="renderReporteMensual()">
-                            <option value="0">Enero</option><option value="1">Febrero</option><option value="2">Marzo</option>
-                            <option value="3">Abril</option><option value="4">Mayo</option><option value="5">Junio</option>
-                            <option value="6">Julio</option><option value="7">Agosto</option><option value="8">Septiembre</option>
-                            <option value="9">Octubre</option><option value="10">Noviembre</option><option value="11">Diciembre</option>
-                        </select>
+                        <select id="rep-mes" style="padding:8px; border-radius:8px; border:1px solid #ddd;" onchange="renderReporteMensual()"></select>
                         <select id="rep-anio" style="padding:8px; border-radius:8px; border:1px solid #ddd;" onchange="renderReporteMensual()">
                             <option>2025</option><option selected>2026</option>
                         </select>
@@ -148,22 +146,25 @@ const auth = getAuth(app);
 
 const ADMIN = "mercadotecniatecnocontrol@gmail.com";
 const DEPTOS = ["Ingresos", "Egresos", "Contabilidad", "Recursos Humanos", "Marketing", "Administración", "Ventas"];
+const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
 let localDB = [];
 let areaActual = "";
 let tareaIdActiva = "";
 let barChart = null;
+let isFirstLoad = true;
 
-// Init Menu
+// Setup Inicial
 document.getElementById('nav-dept').innerHTML = DEPTOS.map(d => `<button class="sitem" id="nav-${d}" onclick="verDepartamento('${d}', this)"><span>${d}</span><span id="badge-${d}" class="notif-badge" style="display:none">0</span></button>`).join('');
 document.getElementById('n-area').innerHTML = DEPTOS.map(d => `<option>${d}</option>`).join('');
-document.getElementById('rep-mes').value = new Date().getMonth();
+document.getElementById('rep-mes').innerHTML = MESES.map((m, i) => `<option value="${i}" ${i === new Date().getMonth() ? 'selected' : ''}>${m}</option>`).join('');
 
 onAuthStateChanged(auth, user => {
     if(user) {
         document.getElementById('auth-screen').style.display = 'none';
         document.getElementById('app-portal').style.display = 'flex';
         document.getElementById('u-tag').innerText = user.email;
+        if (Notification.permission !== "granted") Notification.requestPermission();
         escuchar();
     } else {
         document.getElementById('auth-screen').style.display = 'flex';
@@ -180,7 +181,31 @@ window.cerrarSesion = () => signOut(auth).then(() => location.reload());
 
 function escuchar() {
     onSnapshot(query(collection(db, 'actividades'), orderBy('fechaCreacion', 'desc')), s => {
-        localDB = s.docs.map(d => ({id:d.id, ...d.data()}));
+        const newData = s.docs.map(d => ({id:d.id, ...d.data()}));
+        
+        // Lógica de Notificaciones Push
+        if (!isFirstLoad) {
+            newData.forEach(nt => {
+                const oldT = localDB.find(ot => ot.id === nt.id);
+                // Si hay comentario nuevo de alguien más
+                if (oldT && nt.comentarios?.length > oldT.comentarios?.length) {
+                    const lastMsg = nt.comentarios[nt.comentarios.length - 1];
+                    if (lastMsg.u !== auth.currentUser.email) {
+                        dispararNotificacion("Nuevo Mensaje", `${lastMsg.u.split('@')[0]}: ${lastMsg.m}`);
+                    }
+                }
+                // Si es una tarea nueva para mi área
+                if (!oldT && nt.area !== "Marketing" && nt.responsable !== auth.currentUser.email) {
+                    dispararNotificacion("Nueva Tarea Asignada", `${nt.area}: ${nt.actividad}`);
+                }
+            });
+        } else {
+            // Revisar vencimientos al entrar
+            revisarVencimientos(newData);
+            isFirstLoad = false;
+        }
+
+        localDB = newData;
         renderDashboard();
         renderNotificaciones();
         renderReporteMensual();
@@ -188,12 +213,30 @@ function escuchar() {
     });
 }
 
+function dispararNotificacion(titulo, cuerpo) {
+    if (Notification.permission === "granted") {
+        new Notification(titulo, { body: cuerpo, icon: 'https://cdn-icons-png.flaticon.com/512/1827/1827347.png' });
+    }
+}
+
+function revisarVencimientos(data) {
+    const hoy = new Date(); hoy.setHours(0,0,0,0);
+    const urgentes = data.filter(t => {
+        if (!t.fechaLimite || t.estatus === 'Completada') return false;
+        const limite = new Date(t.fechaLimite);
+        const diff = Math.ceil((limite - hoy) / (1000 * 60 * 60 * 24));
+        return diff <= 1;
+    });
+    if (urgentes.length > 0) {
+        dispararNotificacion("Tareas Críticas", `Tienes ${urgentes.length} tareas vencidas o por vencer hoy.`);
+    }
+}
+
 function renderDashboard() {
     const grid = document.getElementById('stats-grid');
-    const progressContainer = document.getElementById('tasks-in-progress');
-    if(!grid || !progressContainer) return;
+    const splitContainer = document.getElementById('tasks-in-progress-split');
+    if(!grid || !splitContainer) return;
 
-    // 1. Gráficas de Dona
     grid.innerHTML = DEPTOS.map(a => {
         const t = localDB.filter(r => r.area === a);
         const done = t.filter(x => x.estatus === 'Completada').length;
@@ -208,17 +251,24 @@ function renderDashboard() {
             </div>`;
     }).join('');
 
-    // 2. Listado "En Proceso"
+    let htmlDesglose = "";
     const enProceso = localDB.filter(t => t.estatus === 'En Proceso');
-    progressContainer.innerHTML = enProceso.map(t => `
-        <div class="report-mini-card" style="margin-bottom:0; display:flex; justify-content:space-between; align-items:center;">
-            <div>
-                <b style="font-size:13px;">${t.actividad}</b><br>
-                <span style="font-size:10px; color:var(--accent)">Área: ${t.area} | Resp: ${t.responsable.split('@')[0]}</span>
-            </div>
-            <span class="status-pill status-En-Proceso">En Proceso</span>
-        </div>
-    `).join('') || '<p style="text-align:center; color:var(--slate); padding:20px; font-size:12px;">No hay actividades en curso.</p>';
+    if(enProceso.length === 0) {
+        htmlDesglose = '<p style="text-align:center; color:var(--slate); padding:20px; font-size:12px;">Sin actividades en curso.</p>';
+    } else {
+        DEPTOS.forEach(depto => {
+            const tareasDepto = enProceso.filter(t => t.area === depto);
+            if(tareasDepto.length > 0) {
+                htmlDesglose += `<div class="area-group"><div class="area-group-title">${depto}</div>` + 
+                tareasDepto.map(t => `
+                    <div class="task-mini-row">
+                        <div><b>${t.actividad}</b><br><span style="font-size:9px; color:var(--slate)">Por: ${t.responsable.split('@')[0]}</span></div>
+                        <button class="btn-action btn-comm" onclick="abrirChat('${t.id}', '${t.actividad}')">💬 ${t.comentarios?.length || 0}</button>
+                    </div>`).join('') + `</div>`;
+            }
+        });
+    }
+    splitContainer.innerHTML = htmlDesglose;
     
     DEPTOS.forEach(a => {
         const canvas = document.getElementById(`chart-${a.replace(/\s+/g, '')}`);
@@ -248,38 +298,15 @@ window.renderReporteMensual = () => {
     const anio = parseInt(document.getElementById('rep-anio').value);
     const grid = document.getElementById('report-grid-details');
     if(!grid) return;
-
-    const tareasMes = localDB.filter(t => {
-        if (t.estatus !== 'Completada' || !t.fechaFinalizacion) return false;
-        const f = new Date(t.fechaFinalizacion);
-        return f.getMonth() === mes && f.getFullYear() === anio;
-    });
-
-    const labels = DEPTOS;
+    const tareasMes = localDB.filter(t => t.estatus === 'Completada' && t.fechaFinalizacion && new Date(t.fechaFinalizacion).getMonth() === mes && new Date(t.fechaFinalizacion).getFullYear() === anio);
     const dataBarras = DEPTOS.map(d => tareasMes.filter(t => t.area === d).length);
-
     if(barChart) barChart.destroy();
-    const ctx = document.getElementById('barChartMensual').getContext('2d');
-    barChart = new Chart(ctx, {
+    barChart = new Chart(document.getElementById('barChartMensual').getContext('2d'), {
         type: 'bar',
-        data: {
-            labels: labels,
-            datasets: [{ label: 'Tareas Logradas', data: dataBarras, backgroundColor: '#3b82f6', borderRadius: 8 }]
-        },
+        data: { labels: DEPTOS, datasets: [{ label: 'Completadas', data: dataBarras, backgroundColor: '#3b82f6', borderRadius: 8 }] },
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
     });
-
-    grid.innerHTML = DEPTOS.map(d => {
-        const tDepto = tareasMes.filter(t => t.area === d);
-        return `
-            <div class="panel" style="border:1px solid #eee;">
-                <h4 style="color:var(--accent); margin-bottom:15px; border-bottom:1px solid #f1f5f9; padding-bottom:5px;">${d}</h4>
-                <div class="stat-row" style="margin-bottom:10px;"><span>Logros del mes:</span> <b style="color:var(--green)">+${tDepto.length}</b></div>
-                <div style="max-height:120px; overflow-y:auto;">
-                    ${tDepto.map(t => `<div style="font-size:11px; padding:6px 0; border-bottom:1px solid #f8fafc; color:#475569;">✓ ${t.actividad}</div>`).join('') || '<span style="color:var(--slate); font-size:11px;">Sin registros.</span>'}
-                </div>
-            </div>`;
-    }).join('');
+    grid.innerHTML = DEPTOS.map(d => `<div class="panel" style="border:1px solid #eee;"><h4>${d}</h4><div class="stat-row"><span>Logros:</span> <b>+${tareasMes.filter(t => t.area === d).length}</b></div></div>`).join('');
 };
 
 function renderNotificaciones() {
@@ -301,44 +328,30 @@ function renderTablaArea() {
     document.getElementById('area-table').innerHTML = filt.map(r => {
         const tienePermiso = esAdmin || r.responsable === yo;
         let claseUrgencia = ""; let prefijo = "";
-        
         if (r.estatus !== 'Completada' && r.fechaLimite) {
             const limite = new Date(r.fechaLimite);
             const diff = Math.ceil((limite - hoy) / (1000 * 60 * 60 * 24));
-            if (diff <= 1) { claseUrgencia = "row-critical"; prefijo = "⚠️ CRÍTICO: "; }
-            else if (diff <= 3) { claseUrgencia = "row-warning"; prefijo = "⏳ PRONTO: "; }
+            if (diff <= 1) { claseUrgencia = "row-critical"; prefijo = "⚠️ "; }
+            else if (diff <= 3) { claseUrgencia = "row-warning"; prefijo = "⏳ "; }
         }
-
         const tieneAlerta = r.comentarios?.length > 0 && r.comentarios[r.comentarios.length - 1].u !== yo;
-        const esComp = r.estatus === 'Completada';
-
         return `
         <div class="trow ${claseUrgencia}">
-            <div class="${claseUrgencia === 'row-critical' ? 'text-critical' : ''}">
-                <b>${prefijo}${r.actividad}</b><br>
-                <span style="font-size:10px; color:var(--slate)">Asignado por: ${r.responsable.split('@')[0]}</span>
-            </div>
-            <div>${tienePermiso ? `<input type="date" class="edit-date" value="${r.fechaLimite || ''}" onchange="cambiarFecha('${r.id}', this.value)">` : `📅 ${r.fechaLimite || '--'}`}</div>
+            <div><b class="${claseUrgencia==='row-critical'?'text-critical':''}">${prefijo}${r.actividad}</b></div>
+            <div>${tienePermiso ? `<input type="date" class="edit-date" value="${r.fechaLimite||''}" onchange="cambiarFecha('${r.id}', this.value)">` : `📅 ${r.fechaLimite||'--'}`}</div>
             <div><span class="status-pill status-${r.estatus.replace(/\s+/g, '-')}">${r.estatus}</span></div>
             <div style="display:flex; gap:6px;">
-                <button class="btn-action btn-comm" onclick="abrirChat('${r.id}', '${r.actividad}')">
-                    💬 ${r.comentarios?.length || 0}
-                    ${tieneAlerta ? `<span class="comm-alert"></span>` : ''}
-                </button>
-                <button class="btn-action" title="En Proceso" onclick="${tienePermiso ? `cambiarEstado('${r.id}', 'En Proceso')` : `alert('Sin permiso')`}">⏳</button>
-                <button class="btn-action" title="Completar" onclick="${tienePermiso ? `marcarCompletado('${r.id}')` : `alert('Sin permiso')`}" 
-                        style="background:${esComp ? 'var(--green)' : 'var(--light-gray)'}; color:${esComp ? 'white' : 'var(--slate)'};">✓</button>
-                ${esAdmin ? `<button class="btn-action" onclick="eliminarTarea('${r.id}')" style="background:rgba(239,68,68,0.1); color:var(--red);">🗑️</button>` : ''}
+                <button class="btn-action btn-comm" onclick="abrirChat('${r.id}', '${r.actividad}')">💬 ${r.comentarios?.length || 0}${tieneAlerta ? `<span class="comm-alert"></span>` : ''}</button>
+                <button class="btn-action" onclick="${tienePermiso ? `cambiarEstado('${r.id}', 'En Proceso')` : `alert('Sin permiso')`}">⏳</button>
+                <button class="btn-action" onclick="${tienePermiso ? `marcarCompletado('${r.id}')` : `alert('Sin permiso')`}" style="background:${r.estatus==='Completada'?'var(--green)':'var(--light-gray)'}; color:white;">✓</button>
             </div>
         </div>`;
-    }).join('') || 'Sin actividades en esta área.';
+    }).join('');
 }
 
-window.cambiarFecha = (id, fecha) => updateDoc(doc(db, 'actividades', id), { fechaLimite: fecha });
-window.cambiarEstado = (id, est) => updateDoc(doc(db, 'actividades', id), { estatus: est, fechaFinalizacion: null });
+window.cambiarFecha = (id, f) => updateDoc(doc(db, 'actividades', id), { fechaLimite: f });
+window.cambiarEstado = (id, e) => updateDoc(doc(db, 'actividades', id), { estatus: e, fechaFinalizacion: null });
 window.marcarCompletado = (id) => updateDoc(doc(db, 'actividades', id), { estatus: 'Completada', fechaFinalizacion: new Date().toISOString() });
-window.eliminarTarea = async (id) => confirm("¿Deseas eliminar permanentemente esta tarea?") && await deleteDoc(doc(db, 'actividades', id));
-
 window.guardarTarea = async () => {
     const d = document.getElementById('n-desc').value; if(!d) return;
     await addDoc(collection(db, 'actividades'), { actividad: d, area: document.getElementById('n-area').value, fechaLimite: document.getElementById('n-date').value, estatus: 'Sin Iniciar', fechaCreacion: new Date().toISOString(), responsable: auth.currentUser.email, comentarios: [] });
@@ -348,17 +361,18 @@ window.guardarTarea = async () => {
 window.abrirChat = (id, title) => {
     tareaIdActiva = id; document.getElementById('c-title').innerText = title; document.getElementById('modal-c').style.display = 'flex';
     const t = localDB.find(x => x.id === id);
-    document.getElementById('chat-box').innerHTML = (t.comentarios || []).map(c => `
-        <div style="background:#f1f5f9; padding:10px; border-radius:10px; margin-bottom:10px; font-size:11px; border-left:3px solid var(--accent);">
-            <div style="display:flex; justify-content:space-between;"><b>${c.u.split('@')[0].toUpperCase()}</b></div>
-            <div>${c.m}</div>
-        </div>`).join('') || 'Sin mensajes.';
-    const box = document.getElementById('chat-box'); box.scrollTop = box.scrollHeight;
+    document.getElementById('chat-box').innerHTML = (t.comentarios || []).map(c => {
+        const f = new Date(c.f);
+        return `<div style="background:#f1f5f9; padding:10px; border-radius:10px; margin-bottom:10px; font-size:11px; border-left:3px solid var(--accent);">
+            <div style="display:flex; justify-content:space-between;"><b>${c.u.split('@')[0].toUpperCase()}</b><span>${f.toLocaleDateString()} ${f.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span></div>
+            <div>${c.m}</div></div>`;
+    }).join('') || 'Sin mensajes.';
+    document.getElementById('chat-box').scrollTop = 9999;
 };
 
 window.enviarComentario = async () => {
-    const msg = document.getElementById('c-input').value; if(!msg) return;
-    await updateDoc(doc(db, 'actividades', tareaIdActiva), { comentarios: arrayUnion({ u: auth.currentUser.email, m: msg, f: new Date().toISOString() }) });
+    const m = document.getElementById('c-input').value; if(!m) return;
+    await updateDoc(doc(db, 'actividades', tareaIdActiva), { comentarios: arrayUnion({ u: auth.currentUser.email, m: m, f: new Date().toISOString() }) });
     document.getElementById('c-input').value = ""; cerrarModal();
 };
 
