@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TECNOCONTROL · Portal Operativo Pro 2026</title>
+    <title>TECNOCONTROL · Portal Operativo Pro</title>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
@@ -22,34 +22,39 @@
         .notif-badge { background:var(--red); color:white; font-size:10px; padding:2px 6px; border-radius:10px; font-weight:800; }
         
         .main { margin-left:260px; padding:40px; width:calc(100% - 260px); }
-        .panel { background:white; border-radius:20px; padding:25px; box-shadow:0 4px 15px rgba(0,0,0,0.05); margin-bottom:20px; }
+        .panel { background:white; border-radius:20px; padding:25px; box-shadow:0 4px 15px rgba(0,0,0,0.05); margin-bottom:20px; border: 1px solid #eef2f6; }
         .section { display:none; }
         .section.active { display:block; }
 
-        /* Estilos Dashboard y Tablas */
+        /* Dashboard Global */
         .grid-dash { display:grid; grid-template-columns: repeat(3, 1fr); gap:20px; margin-top:20px; }
-        .dept-card-ref { background:white; border-radius:15px; padding:20px; border:1px solid #eee; display: flex; align-items: center; gap: 15px; cursor: pointer; transition: 0.3s; }
-        .dept-card-ref:hover { box-shadow: 0 5px 15px rgba(0,0,0,0.1); border-color: var(--accent); }
-        
-        .calendar-panel { background: white; border-radius: 15px; padding: 20px; border: 1px solid #eee; }
-        .calendar-header { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; font-size: 10px; font-weight: 800; color: var(--slate); margin-bottom: 10px; }
-        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; font-size: 12px; }
-        .calendar-day { padding: 10px 5px; border-radius: 8px; position: relative; }
+        .dept-card-pro { background:white; border-radius:20px; padding:20px; position:relative; cursor:pointer; transition: 0.3s; border: 1px solid #eef2f6; }
+        .dept-card-pro:hover { transform: translateY(-5px); box-shadow: 0 10px 20px rgba(0,0,0,0.08); }
+        .chart-container { position:relative; width:100px; height:100px; margin: 0 auto 15px; }
+        .perc-center { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-weight:800; font-size:16px; color:var(--sidebar); }
+        .stat-line { display:flex; justify-content:space-between; font-size:11px; color:var(--slate); margin-top:5px; padding-top:5px; border-top:1px solid #f8fafc; }
+
+        /* Reporte Mensual Estilo Imagen */
+        .calendar-panel { background: white; border-radius: 20px; padding: 25px; border: 1px solid #eef2f6; }
+        .calendar-header { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; font-size: 11px; font-weight: 800; color: var(--slate); margin-bottom: 15px; }
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; text-align: center; }
+        .calendar-day { padding: 12px 5px; border-radius: 12px; font-size: 13px; font-weight: 600; color: #1e293b; position: relative; border: 1px solid #f8fafc; }
+        .day-active { background: #22c55e; color: white !important; }
         
         /* Semáforo de Tareas */
         .row-critical { border-left: 6px solid var(--red); background: #fff1f2; }
         .row-warning { border-left: 6px solid var(--orange); background: #fffbeb; }
         .row-safe { border-left: 6px solid var(--accent); background: #eff6ff; }
         
-        .trow { display:grid; grid-template-columns: 2fr 1.2fr 1fr 1fr auto; padding:15px; border-bottom:1px solid #eee; align-items:center; font-size:13px; margin-bottom: 8px; border-radius: 10px; }
-        .btn-comm { background:#f1f5f9; font-size:12px; color: var(--slate); position: relative; border:none; padding:8px; border-radius:8px; cursor:pointer; }
+        .trow { display:grid; grid-template-columns: 2fr 1fr 1fr 1.5fr auto; padding:15px; border-bottom:1px solid #eee; align-items:center; font-size:13px; margin-bottom: 8px; border-radius: 12px; }
+        .btn-status { padding: 6px 12px; border-radius: 8px; border: none; font-size: 11px; font-weight: 800; cursor: pointer; color: white; transition: 0.2s; }
         .comm-alert { position: absolute; top: -5px; right: -5px; width: 12px; height: 12px; background: var(--red); border-radius: 50%; border: 2px solid white; animation: pulse 1.5s infinite; }
         @keyframes pulse { 0% { transform: scale(0.95); } 50% { transform: scale(1.15); } 100% { transform: scale(0.95); } }
 
-        /* Modal Chat */
-        #modal-c { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:3000; align-items:center; justify-content:center; }
-        .modal-box { background:white; padding:30px; border-radius:20px; width:450px; max-height:85vh; display:flex; flex-direction:column; }
-        #chat-box { flex-grow:1; overflow-y:auto; margin:15px 0; padding:15px; background:#f8fafc; border-radius:12px; }
+        /* Chat Modal */
+        #modal-c { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(15, 23, 42, 0.9); z-index:3000; align-items:center; justify-content:center; }
+        .modal-box { background:white; padding:30px; border-radius:24px; width:480px; max-height:85vh; display:flex; flex-direction:column; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); }
+        #chat-box { flex-grow:1; overflow-y:auto; margin:15px 0; padding:15px; background:#f8fafc; border-radius:16px; border: 1px solid #e2e8f0; }
     </style>
 </head>
 <body>
@@ -67,7 +72,7 @@
 <div id="app-portal">
     <nav class="sidebar">
         <div style="color:white; font-size:16px; font-weight:800; margin-bottom:30px; padding-left:10px;">CONTROL ÁREAS</div>
-        <button class="sitem active" onclick="navegar('dashboard', this)">📊 Dashboard Global</button>
+        <button class="sitem active" onclick="navegar('dashboard', this)">📊 Dashboard Global Pro</button>
         <button class="sitem" onclick="navegar('reportes', this)">📈 Reporte Mensual</button>
         <button class="sitem" onclick="navegar('nueva', this)">➕ Asignar Tarea</button>
         <div id="nav-dept" style="margin-top:20px;"></div>
@@ -76,59 +81,76 @@
 
     <main class="main">
         <div class="section active" id="sec-dashboard">
-            <h2 style="margin-bottom:20px;">Resumen Operativo</h2>
-            <div class="grid-dash" id="dash-donuts"></div>
+            <h2 style="margin-bottom:25px; color:var(--sidebar);">Resumen de Operaciones</h2>
+            <div class="grid-dash" id="dash-pro"></div>
         </div>
 
         <div class="section" id="sec-reportes">
             <div class="panel">
-                <div style="display:flex; justify-content:space-between; margin-bottom:20px;">
-                    <h3>Resultados Mensuales</h3>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:30px;">
+                    <h2 style="color:var(--sidebar)">Resultados Mensuales: <span id="mes-header-txt" style="color:var(--accent)">-</span></h2>
                     <div style="display:flex; gap:10px;">
-                        <select id="rep-mes" onchange="renderReporteMensual()" style="padding:8px; border-radius:8px;"></select>
-                        <select id="rep-anio" onchange="renderReporteMensual()" style="padding:8px; border-radius:8px;"><option selected>2026</option></select>
+                        <select id="rep-mes" onchange="renderReporteMensual()" class="sel-pro" style="padding:10px; border-radius:10px; border:1px solid #ddd;"></select>
+                        <select id="rep-anio" onchange="renderReporteMensual()" style="padding:10px; border-radius:10px; border:1px solid #ddd;"><option selected>2026</option></select>
                     </div>
                 </div>
-                <div style="display:grid; grid-template-columns: 1fr 1.5fr; gap:20px;">
+                
+                <div style="display:grid; grid-template-columns: 1fr 1.8fr; gap:25px;">
                     <div class="calendar-panel">
-                        <h4 id="cal-titulo" style="text-align:center; margin-bottom:15px; color:var(--accent);"></h4>
+                        <h4 id="cal-mes-name" style="text-align:center; margin-bottom:20px; color:var(--accent); font-size:18px;"></h4>
                         <div class="calendar-header"><span>DO</span><span>LU</span><span>MA</span><span>MI</span><span>JU</span><span>VI</span><span>SA</span></div>
-                        <div class="calendar-grid" id="cal-dias"></div>
+                        <div class="calendar-grid" id="cal-grid-dots"></div>
                     </div>
-                    <div id="mes-kpi-list"></div>
+                    <div class="panel" style="margin-bottom:0;">
+                        <h4 style="margin-bottom:20px;">Líderes de Cumplimiento por Área</h4>
+                        <div id="mes-ranking-list"></div>
+                    </div>
                 </div>
-                <div class="panel" style="margin-top:20px;">
-                    <h4>Eficiencia de Cierre (Interpretación de Tendencias)</h4>
-                    <p style="font-size:11px; color:var(--slate); margin-bottom:10px;">Picos elevados indican mayor productividad en días específicos del mes.</p>
-                    <div style="height:200px;"><canvas id="mesChart"></canvas></div>
+
+                <div class="panel" style="margin-top:25px;">
+                    <h4>Comparativo de Tendencias Mensuales</h4>
+                    <p style="font-size:11px; color:var(--slate); margin-bottom:15px;">Muestra la frecuencia de cierre de tareas por departamento durante el mes.</p>
+                    <div style="height:300px;"><canvas id="lineChartMes"></canvas></div>
                 </div>
+
+                <div class="grid-dash" id="mes-logros-cards"></div>
             </div>
         </div>
 
         <div class="section" id="sec-area">
-            <div class="panel"><h2 id="area-title">-</h2><div id="area-table" style="margin-top:20px;"></div></div>
+            <div class="panel">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <h2 id="area-title">-</h2>
+                    <div id="area-stats-mini" style="font-size:12px; color:var(--slate);"></div>
+                </div>
+                <div id="area-table" style="margin-top:25px;"></div>
+            </div>
         </div>
 
         <div class="section" id="sec-nueva">
             <div class="panel">
-                <h3>Asignar Actividad</h3>
-                <input type="text" id="n-desc" placeholder="Descripción..." style="width:100%; padding:14px; margin:15px 0; border:1px solid #ddd; border-radius:12px;">
-                <select id="n-area" style="padding:12px; margin-right:10px; border-radius:12px; border:1px solid #ddd;"></select>
-                <input type="date" id="n-date" style="padding:12px; margin-right:10px; border-radius:12px; border:1px solid #ddd;">
-                <button onclick="guardarTarea()" style="padding:12px 25px; background:var(--accent); color:white; border:none; border-radius:12px; font-weight:800; cursor:pointer;">PUBLICAR</button>
+                <h3>Asignar Nueva Actividad</h3>
+                <div style="margin-top:20px;">
+                    <input type="text" id="n-desc" placeholder="¿Qué actividad se realizará?" style="width:100%; padding:15px; margin-bottom:15px; border-radius:12px; border:1px solid #ddd;">
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px;">
+                        <select id="n-area" style="padding:15px; border-radius:12px; border:1px solid #ddd;"></select>
+                        <input type="date" id="n-date" style="padding:15px; border-radius:12px; border:1px solid #ddd;">
+                    </div>
+                    <button onclick="guardarTarea()" style="width:100%; margin-top:20px; padding:15px; background:var(--accent); color:white; border:none; border-radius:12px; font-weight:800; cursor:pointer;">PUBLICAR ACTIVIDAD</button>
+                </div>
             </div>
         </div>
     </main>
 </div>
 
-<div id="modal-c"><div class="modal-box"><h3 id="c-title">Seguimiento</h3><div id="chat-box"></div><input type="text" id="c-input" placeholder="Mensaje..." style="padding:12px; border-radius:10px; border:1px solid #ddd; margin-bottom:10px;"><button onclick="enviarComentario()" style="background:var(--accent); color:white; border:none; padding:12px; border-radius:10px; font-weight:800;">Enviar</button><button onclick="cerrarModal()" style="margin-top:5px; background:none; border:none; color:var(--slate);">Cerrar</button></div></div>
+<div id="modal-c"><div class="modal-box"><h3 id="c-title" style="color:var(--sidebar)"></h3><div id="chat-box"></div><div style="display:flex; gap:10px;"><input type="text" id="c-input" placeholder="Escribe un comentario..." style="flex:1; padding:12px; border-radius:12px; border:1px solid #ddd;"><button onclick="enviarComentario()" style="background:var(--accent); color:white; border:none; padding:12px 20px; border-radius:12px; font-weight:800; cursor:pointer;">Enviar</button></div><button onclick="cerrarModal()" style="margin-top:15px; background:none; border:none; color:var(--slate); font-weight:600; cursor:pointer;">Cerrar Ventana</button></div></div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-const config = { apiKey:"AIzaSyBXh-P0oMtMiDjyz9PObuJ8DNfROlXvhLE", authDomain:"tecnocontrol-1c42f.firebaseapp.com", projectId:"tecnocontrol-1c42f", storageBucket:"tecnocontrol-1c42f.firebasestorage.app", messagingSenderId:"27642771956", appId:"1:27642771956:web:54225af9e386afded8a1a1" };
+const config = { apiKey:"AIzaSyBXh-P0oMtMiDjyz9PObuJ8DNfROlXvhLE", authDomain:"tecnocontrol-1c42f.firebaseapp.com", projectId:"tecnocontrol-1c42f", storageBucket:"tecnocontrol-1c42f.firebasestorage.app", appId:"1:27642771956:web:54225af9e386afded8a1a1" };
 const app = initializeApp(config); const db = getFirestore(app); const auth = getAuth(app);
 
 const ADMIN = "mercadotecniatecnocontrol@gmail.com";
@@ -136,7 +158,7 @@ const DEPTOS = ["Ingresos", "Egresos", "Contabilidad", "Recursos Humanos", "Mark
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 const COLORES = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#0f172a', '#a855f7', '#64748b'];
 
-let localDB = []; let areaActual = ""; let tareaIdActiva = ""; let mesChartObj = null;
+let localDB = []; let areaActual = ""; let tareaIdActiva = ""; let lineChartObj = null;
 
 document.getElementById('nav-dept').innerHTML = DEPTOS.map(d => `<button class="sitem" onclick="verArea('${d}', this)"><span>${d}</span><span id="badge-${d}" class="notif-badge" style="display:none">0</span></button>`).join('');
 document.getElementById('n-area').innerHTML = DEPTOS.map(d => `<option>${d}</option>`).join('');
@@ -144,66 +166,113 @@ document.getElementById('rep-mes').innerHTML = MESES.map((m, i) => `<option valu
 
 onAuthStateChanged(auth, user => { if(user) { document.getElementById('auth-screen').style.display='none'; document.getElementById('app-portal').style.display='flex'; escuchar(); } });
 
-window.iniciar = async () => { try { await signInWithEmailAndPassword(auth, document.getElementById('l-email').value, document.getElementById('l-pass').value); } catch(e) { alert("Acceso denegado"); } };
+window.iniciar = async () => { try { await signInWithEmailAndPassword(auth, document.getElementById('l-email').value, document.getElementById('l-pass').value); } catch(e) { alert("Credenciales incorrectas"); } };
 window.cerrarSesion = () => signOut(auth).then(() => location.reload());
 
 function escuchar() {
     onSnapshot(query(collection(db, 'actividades'), orderBy('fechaCreacion', 'desc')), s => {
         localDB = s.docs.map(d => ({id:d.id, ...d.data()}));
-        renderDashboard(); renderNotificaciones(); renderReporteMensual();
+        renderDashboardPro(); renderNotificaciones(); renderReporteMensual();
         if(areaActual) renderTabla();
     });
 }
 
-function renderDashboard() {
-    const grid = document.getElementById('dash-donuts');
+function renderDashboardPro() {
+    const grid = document.getElementById('dash-pro');
     grid.innerHTML = DEPTOS.map(a => {
         const t = localDB.filter(r => r.area === a);
         const done = t.filter(x => x.estatus === 'Completada').length;
+        const proc = t.filter(x => x.estatus === 'En Proceso').length;
         const perc = t.length > 0 ? Math.round((done / t.length) * 100) : 0;
-        return `<div class="dept-card-ref" onclick="verArea('${a}')">
-            <div style="width:80px; height:80px;"><canvas id="chart-${a}"></canvas></div>
-            <div><h4 style="font-size:14px;">${a}</h4><b style="font-size:18px;">${perc}%</b></div>
-        </div>`;
+        return `
+            <div class="dept-card-pro" onclick="verArea('${a}')">
+                <div class="chart-container">
+                    <canvas id="canvas-${a}"></canvas>
+                    <div class="perc-center">${perc}%</div>
+                </div>
+                <h4 style="text-align:center; margin-bottom:15px;">${a}</h4>
+                <div class="stat-line"><span>Total Actividades</span><b>${t.length}</b></div>
+                <div class="stat-line"><span>Completadas</span><b style="color:var(--green)">${done}</b></div>
+                <div class="stat-line"><span>En Proceso</span><b style="color:var(--orange)">${proc}</b></div>
+            </div>`;
     }).join('');
+    
     DEPTOS.forEach(a => {
         const t = localDB.filter(r => r.area === a);
         const done = t.filter(x => x.estatus === 'Completada').length;
-        new Chart(document.getElementById(`chart-${a}`), { type:'doughnut', data:{ datasets:[{data:[done, t.length-done||1], backgroundColor:['#22c55e', '#e2e8f0'], borderWidth:0}] }, options:{ cutout:'70%', plugins:{legend:{display:false}} } });
+        new Chart(document.getElementById(`canvas-${a}`), { 
+            type:'doughnut', 
+            data:{ datasets:[{data:[done, t.length-done||1], backgroundColor:['#22c55e', '#f1f5f9'], borderWidth:0}] }, 
+            options:{ cutout:'75%', plugins:{legend:{display:false}}, animation:{duration:1000} } 
+        });
     });
 }
 
 window.renderReporteMensual = () => {
     const mes = parseInt(document.getElementById('rep-mes').value);
     const anio = 2026;
-    document.getElementById('cal-titulo').innerText = MESES[mes];
+    document.getElementById('mes-header-txt').innerText = `${MESES[mes]} ${anio}`;
+    document.getElementById('cal-mes-name').innerText = MESES[mes];
+
     const tareasMes = localDB.filter(t => t.fechaLimite && new Date(t.fechaLimite+"T00:00:00").getMonth() === mes);
 
-    // Calendario con Puntos
-    const first = new Date(anio, mes, 1).getDay(); const total = new Date(anio, mes + 1, 0).getDate();
+    // 1. Calendario con puntos de colores
+    const first = new Date(anio, mes, 1).getDay();
+    const total = new Date(anio, mes + 1, 0).getDate();
     let h = ''; for(let i=0; i<first; i++) h+='<div></div>';
     for(let i=1; i<=total; i++) {
         const tDia = tareasMes.filter(t => new Date(t.fechaLimite+"T00:00:00").getDate() === i);
-        const dots = tDia.map(t => `<span style="width:4px; height:4px; background:${COLORES[DEPTOS.indexOf(t.area)]}; border-radius:50%; display:inline-block; margin:1px;"></span>`).join('');
-        h += `<div class="calendar-day">${i}<div style="display:flex; justify-content:center; flex-wrap:wrap;">${dots}</div></div>`;
+        const dots = tDia.slice(0,3).map(t => `<span style="width:5px; height:5px; background:${COLORES[DEPTOS.indexOf(t.area)]}; border-radius:50%; display:inline-block; margin:1px;"></span>`).join('');
+        const isToday = new Date().getDate() === i && new Date().getMonth() === mes;
+        h += `<div class="calendar-day ${isToday?'day-active':''}">${i}<div style="display:flex; justify-content:center; flex-wrap:wrap; margin-top:3px;">${dots}</div></div>`;
     }
-    document.getElementById('cal-dias').innerHTML = h;
+    document.getElementById('cal-grid-dots').innerHTML = h;
 
-    // KPI Líderes
-    document.getElementById('mes-kpi-list').innerHTML = DEPTOS.map(a => {
+    // 2. Ranking de Líderes
+    document.getElementById('mes-ranking-list').innerHTML = DEPTOS.map(a => {
         const tA = tareasMes.filter(t => t.area === a);
-        const done = tA.filter(t => t.estatus === 'Completada').length;
-        const p = tA.length > 0 ? Math.round((done/tA.length)*100) : 0;
-        return `<div style="margin-bottom:10px;"><b>${a} (${p}%)</b><div style="width:100%; height:8px; background:#eee; border-radius:4px;"><div style="width:${p}%; height:8px; background:var(--accent); border-radius:4px;"></div></div></div>`;
+        const d = tA.filter(t => t.estatus === 'Completada').length;
+        const p = tA.length > 0 ? Math.round((d/tA.length)*100) : 0;
+        return `
+            <div style="margin-bottom:15px;">
+                <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:5px;"><b>${a}</b> <span>${p}%</span></div>
+                <div style="width:100%; height:10px; background:#f1f5f9; border-radius:10px; overflow:hidden;">
+                    <div style="width:${p}%; height:100%; background:var(--accent);"></div>
+                </div>
+            </div>`;
     }).join('');
 
-    // Gráfica Mensual
-    if(mesChartObj) mesChartObj.destroy();
-    const dias = Array.from({length: total}, (_, i) => i + 1);
-    mesChartObj = new Chart(document.getElementById('mesChart').getContext('2d'), {
-        type:'line', data:{ labels:dias, datasets: DEPTOS.map((d,idx) => ({ label:d, borderColor:COLORES[idx], tension:0.4, data: dias.map(dia => tareasMes.filter(t => t.area === d && t.estatus === 'Completada' && new Date(t.fechaFinalizacion).getDate() === dia).length) })) },
-        options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}} }
+    // 3. Gráfica de Tendencias (Líneas)
+    if(lineChartObj) lineChartObj.destroy();
+    const diasArray = Array.from({length: total}, (_, i) => i + 1);
+    lineChartObj = new Chart(document.getElementById('lineChartMes').getContext('2d'), {
+        type: 'line',
+        data: {
+            labels: diasArray,
+            datasets: DEPTOS.map((d, idx) => ({
+                label: d,
+                data: diasArray.map(dia => tareasMes.filter(t => t.area === d && t.estatus === 'Completada' && t.fechaFinalizacion && new Date(t.fechaFinalizacion).getDate() === dia).length),
+                borderColor: COLORES[idx],
+                tension: 0.4,
+                borderWidth: 2,
+                pointRadius: 2
+            }))
+        },
+        options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }, plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } } }
     });
+
+    // 4. Logros Detallados (Mini listado)
+    document.getElementById('mes-logros-cards').innerHTML = DEPTOS.map(a => {
+        const compl = tareasMes.filter(t => t.area === a && t.estatus === 'Completada');
+        if(compl.length === 0) return '';
+        return `
+            <div class="panel" style="margin-bottom:0;">
+                <h5 style="color:var(--accent); margin-bottom:10px;">Logros: ${a}</h5>
+                <ul style="font-size:11px; color:var(--slate); list-style:none;">
+                    ${compl.map(c => `<li style="margin-bottom:5px;">✅ ${c.actividad}</li>`).join('')}
+                </ul>
+            </div>`;
+    }).join('');
 };
 
 window.verArea = (a, b) => { areaActual = a; document.getElementById('area-title').innerText = a; navegar('area', b); renderTabla(); };
@@ -216,24 +285,32 @@ function renderTabla() {
     document.getElementById('area-table').innerHTML = filt.map(r => {
         const lim = new Date(r.fechaLimite + "T00:00:00");
         const diff = Math.ceil((lim - hoy) / (1000 * 3600 * 24));
-        let c = "row-safe"; if(diff <= 1) c="row-critical"; else if(diff <= 3) c="row-warning";
-        const alerta = r.comentarios?.length > 0 && r.comentarios[r.comentarios.length-1].u !== yo;
+        let semaforo = "row-safe"; 
+        if(diff <= 1) semaforo="row-critical"; else if(diff <= 3) semaforo="row-warning";
+        
+        const tieneMsgNuevo = r.comentarios?.length > 0 && r.comentarios[r.comentarios.length-1].u !== yo;
 
-        return `<div class="trow ${c}">
-            <div><b>${r.actividad}</b><br><small>${r.responsable.split('@')[0]}</small></div>
-            <div>${r.fechaLimite || '--'}</div>
-            <div style="font-weight:800;">${r.estatus}</div>
-            <div style="display:flex; gap:10px;">
-                <button class="btn-comm" onclick="abrirChat('${r.id}', '${r.actividad}')">💬 ${r.comentarios?.length||0} ${alerta?'<span class="comm-alert"></span>':''}</button>
-                <button onclick="cambiarEstatus('${r.id}', 'Completada')" style="border:none; background:var(--green); color:white; padding:8px; border-radius:8px; cursor:pointer;">✓</button>
-                ${yo === ADMIN ? `<button onclick="borrar('${r.id}')" style="background:none; border:none; color:var(--red); cursor:pointer;">🗑️</button>` : ''}
-            </div>
-        </div>`;
+        return `
+            <div class="trow ${semaforo}">
+                <div><b>${r.actividad}</b><br><small>${r.responsable.split('@')[0]}</small></div>
+                <div>${r.fechaLimite || '--'}</div>
+                <div><span style="padding:4px 8px; border-radius:6px; background:#f1f5f9; font-weight:800; font-size:10px;">${r.estatus}</span></div>
+                <div style="display:flex; gap:5px; flex-wrap:wrap;">
+                    <button class="btn-status" style="background:var(--orange)" onclick="cambiarEstatus('${r.id}', 'En Proceso')">En Proceso</button>
+                    <button class="btn-status" style="background:var(--green)" onclick="cambiarEstatus('${r.id}', 'Completada')">Completada</button>
+                </div>
+                <div style="display:flex; gap:15px; align-items:center;">
+                    <button style="position:relative; background:none; border:none; cursor:pointer; font-size:20px;" onclick="abrirChat('${r.id}', '${r.actividad}')">
+                        💬 ${tieneMsgNuevo ? '<span class="comm-alert"></span>' : ''}
+                    </button>
+                    ${yo === ADMIN ? `<button onclick="borrarTarea('${r.id}')" style="background:none; border:none; color:var(--red); cursor:pointer; font-size:18px;">🗑️</button>` : ''}
+                </div>
+            </div>`;
     }).join('');
 }
 
-window.cambiarEstatus = (id, e) => updateDoc(doc(db, 'actividades', id), { estatus: e, fechaFinalizacion: new Date().toISOString() });
-window.borrar = (id) => confirm("¿Eliminar?") && deleteDoc(doc(db, 'actividades', id));
+window.cambiarEstatus = (id, e) => updateDoc(doc(db, 'actividades', id), { estatus: e, fechaFinalizacion: e === 'Completada' ? new Date().toISOString() : null });
+window.borrarTarea = (id) => confirm("¿Seguro que deseas eliminar esta actividad?") && deleteDoc(doc(db, 'actividades', id));
 window.guardarTarea = async () => {
     const d = document.getElementById('n-desc').value; if(!d) return;
     await addDoc(collection(db, 'actividades'), { actividad:d, area:document.getElementById('n-area').value, fechaLimite:document.getElementById('n-date').value, estatus:'Sin Iniciar', fechaCreacion:new Date().toISOString(), responsable:auth.currentUser.email, comentarios:[] });
@@ -245,8 +322,15 @@ window.abrirChat = (id, t) => {
     const tar = localDB.find(x => x.id === id);
     document.getElementById('chat-box').innerHTML = (tar.comentarios || []).map(c => {
         const f = new Date(c.f);
-        return `<div style="margin-bottom:10px; font-size:12px;"><b>${c.u.split('@')[0].toUpperCase()}</b> <small style="color:var(--slate)">${f.toLocaleDateString()} ${f.getHours()}:${f.getMinutes()}</small><br>${c.m}</div>`;
+        return `<div style="margin-bottom:12px; padding:10px; background:white; border-radius:12px; border:1px solid #eee;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+                <b style="font-size:11px; color:var(--accent)">${c.u.toUpperCase()}</b>
+                <small style="color:var(--slate)">${f.toLocaleDateString()} ${f.getHours()}:${f.getMinutes()}</small>
+            </div>
+            <div style="font-size:13px;">${c.m}</div>
+        </div>`;
     }).join('');
+    setTimeout(() => { const b = document.getElementById('chat-box'); b.scrollTop = b.scrollHeight; }, 100);
 };
 
 window.enviarComentario = async () => {
@@ -256,7 +340,7 @@ window.enviarComentario = async () => {
 };
 
 window.cerrarModal = () => document.getElementById('modal-c').style.display='none';
-function renderNotificaciones() { DEPTOS.forEach(d => { const c = localDB.filter(r => r.area === d && r.estatus === 'Sin Iniciar').length; const b = document.getElementById(`badge-${d}`); if(b){ b.innerText=c; b.style.display=c>0?'block':'none'; } }); }
+function renderNotificaciones() { DEPTOS.forEach(d => { const c = localDB.filter(r => r.area === d && r.estatus !== 'Completada').length; const b = document.getElementById(`badge-${d}`); if(b){ b.innerText=c; b.style.display=c>0?'block':'none'; } }); }
 window.navegar = (id, b) => { document.querySelectorAll('.section').forEach(s => s.classList.remove('active')); document.getElementById('sec-'+id).classList.add('active'); if(b){ document.querySelectorAll('.sitem').forEach(i => i.classList.remove('active')); b.classList.add('active'); } };
 </script>
 </body>
