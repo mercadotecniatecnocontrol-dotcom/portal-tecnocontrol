@@ -77,8 +77,6 @@
         .dept-name{text-align:center;font-size:13px;font-weight:700;color:var(--text);margin-bottom:14px;}
         .stat-line{display:flex;justify-content:space-between;font-size:11px;color:var(--text2);margin-top:6px;padding-top:6px;border-top:1px solid var(--border);}
         .stat-line b{color:var(--text);}
-
-        /* RANKING SIDEBAR */
         .dept-list-card{background:var(--glass);border:1px solid var(--border);border-radius:18px;padding:20px;grid-row:span 2;}
         .dept-list-title{font-size:13px;font-weight:700;margin-bottom:16px;color:var(--text2);letter-spacing:1px;text-transform:uppercase;}
         .dept-list-item{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer;transition:0.2s;}
@@ -101,32 +99,24 @@
         .trow:hover{background:var(--glass2);}
         .task-name{font-weight:700;font-size:13px;color:var(--text);margin-bottom:2px;}
         .task-user{font-size:11px;color:var(--text3);}
-
-        /* Pills de días */
         .days-pill{font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;display:inline-block;white-space:nowrap;}
         .days-pill.red{background:rgba(255,77,109,0.15);color:var(--red);}
         .days-pill.yellow{background:rgba(255,209,102,0.15);color:var(--yellow);}
         .days-pill.teal{background:rgba(0,201,167,0.12);color:var(--teal);}
-
-        /* Chip de estatus (solo visual, sin botones duplicados) */
         .status-chip{padding:5px 12px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:0.3px;white-space:nowrap;}
         .s-sin{background:rgba(255,255,255,0.08);color:var(--text2);}
         .s-proc{background:rgba(255,209,102,0.15);color:var(--yellow);}
         .s-comp{background:rgba(0,201,167,0.15);color:var(--teal);}
-
-        /* Botones acción */
         .btn-accion{padding:7px 14px;border-radius:8px;border:none;font-size:11px;font-weight:700;cursor:pointer;transition:0.2s;letter-spacing:0.3px;}
         .btn-editar{background:rgba(26,127,232,0.15);color:var(--blue);border:1px solid rgba(26,127,232,0.3);}
         .btn-editar:hover{background:rgba(26,127,232,0.3);}
         .btn-delete{background:none;border:none;color:var(--red);cursor:pointer;font-size:16px;opacity:0.6;padding:4px;}
         .btn-delete:hover{opacity:1;}
-
-        /* Botón chat */
         .comm-btn{background:none;border:none;cursor:pointer;font-size:18px;position:relative;padding:2px;}
         .comm-alert{position:absolute;top:-3px;right:-3px;width:10px;height:10px;background:var(--red);border-radius:50%;border:2px solid var(--navy);animation:pulse 1.5s infinite;}
         @keyframes pulse{0%,100%{transform:scale(0.95)}50%{transform:scale(1.2)}}
 
-        /* MODAL CHAT */
+        /* MODALES */
         #modal-c,#modal-edit{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);backdrop-filter:blur(8px);z-index:3000;align-items:center;justify-content:center;}
         .modal-box{background:linear-gradient(135deg,#0f1e38,#0b1426);border:1px solid var(--border);padding:28px;border-radius:20px;width:480px;max-height:85vh;display:flex;flex-direction:column;}
         .modal-title{font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;margin-bottom:16px;}
@@ -137,14 +127,12 @@
         .chat-msg-time{font-size:10px;color:var(--text3);}
         .chat-msg-body{font-size:13px;color:var(--text);}
         .modal-input-row{display:flex;gap:10px;}
-        .modal-input-row input,.modal-edit-input{flex:1;padding:12px 16px;border-radius:10px;border:1px solid var(--border);background:rgba(255,255,255,0.06);color:var(--text);font-size:13px;outline:none;font-family:'DM Sans',sans-serif;}
-        .modal-input-row input:focus,.modal-edit-input:focus{border-color:var(--teal);}
-        .modal-input-row input::placeholder,.modal-edit-input::placeholder{color:var(--text3);}
+        .modal-input-row input{flex:1;padding:12px 16px;border-radius:10px;border:1px solid var(--border);background:rgba(255,255,255,0.06);color:var(--text);font-size:13px;outline:none;font-family:'DM Sans',sans-serif;}
+        .modal-input-row input:focus{border-color:var(--teal);}
+        .modal-input-row input::placeholder{color:var(--text3);}
         .btn-send{padding:12px 20px;background:linear-gradient(135deg,var(--teal),var(--blue));color:white;border:none;border-radius:10px;font-weight:700;cursor:pointer;}
         .btn-close-modal{background:none;border:none;color:var(--text3);font-size:13px;cursor:pointer;margin-top:12px;text-align:center;width:100%;}
         .btn-close-modal:hover{color:var(--text);}
-
-        /* MODAL EDITAR */
         .edit-box{background:linear-gradient(135deg,#0f1e38,#0b1426);border:1px solid var(--border);padding:32px;border-radius:20px;width:500px;}
         .edit-title{font-family:'Space Grotesk',sans-serif;font-size:17px;font-weight:700;margin-bottom:24px;}
         .edit-label{font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px;display:block;}
@@ -200,6 +188,107 @@
         ::-webkit-scrollbar{width:5px;}
         ::-webkit-scrollbar-track{background:transparent;}
         ::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:10px;}
+
+        /* ═══════════════════════════════════════════
+           CALENDARIO 360 — MÓDULO NUEVO
+        ═══════════════════════════════════════════ */
+
+        /* Filtros de tipo */
+        .cal360-filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:24px;}
+        .cal360-filter{padding:7px 16px;border-radius:20px;border:1px solid var(--border);background:var(--glass);color:var(--text2);font-size:12px;font-weight:700;cursor:pointer;transition:0.2s;letter-spacing:0.5px;}
+        .cal360-filter:hover{background:var(--glass2);color:var(--text);}
+        .cal360-filter.active{color:#fff;}
+        .cal360-filter[data-tipo="todos"].active{background:rgba(255,255,255,0.15);border-color:rgba(255,255,255,0.3);}
+        .cal360-filter[data-tipo="RH"].active{background:rgba(0,201,167,0.2);border-color:var(--teal);color:var(--teal);}
+        .cal360-filter[data-tipo="Marketing"].active{background:rgba(26,127,232,0.2);border-color:var(--blue);color:var(--blue);}
+        .cal360-filter[data-tipo="Comercial"].active{background:rgba(255,209,102,0.2);border-color:var(--yellow);color:var(--yellow);}
+        .cal360-filter[data-tipo="Industria"].active{background:rgba(255,140,66,0.2);border-color:var(--orange);color:var(--orange);}
+        .cal360-filter[data-tipo="Festivo"].active{background:rgba(124,92,252,0.2);border-color:var(--purple);color:var(--purple);}
+
+        /* Layout principal: calendario + panel lateral */
+        .cal360-layout{display:grid;grid-template-columns:1fr 340px;gap:20px;align-items:start;}
+
+        /* Navegación de mes */
+        .cal360-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;}
+        .cal360-nav-btn{background:var(--glass);border:1px solid var(--border);color:var(--text2);padding:8px 16px;border-radius:10px;cursor:pointer;font-size:18px;transition:0.2s;line-height:1;}
+        .cal360-nav-btn:hover{background:var(--glass2);color:var(--text);}
+        .cal360-mes-label{font-family:'Space Grotesk',sans-serif;font-size:20px;font-weight:700;}
+
+        /* Grid del calendario */
+        .cal360-wrap{background:var(--glass);border:1px solid var(--border);border-radius:20px;padding:24px;}
+        .cal360-dow{display:grid;grid-template-columns:repeat(7,1fr);text-align:center;font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1.5px;margin-bottom:10px;}
+        .cal360-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;}
+        .cal360-cell{min-height:72px;border-radius:10px;padding:7px;border:1px solid transparent;transition:0.2s;position:relative;cursor:default;}
+        .cal360-cell.has-events{cursor:pointer;border-color:var(--border);}
+        .cal360-cell.has-events:hover{background:var(--glass2);border-color:rgba(0,201,167,0.3);transform:translateY(-1px);}
+        .cal360-cell.today{border-color:var(--teal);background:rgba(0,201,167,0.08);}
+        .cal360-cell.other-month{opacity:0.25;}
+        .cal360-day-num{font-size:12px;font-weight:700;color:var(--text2);margin-bottom:4px;}
+        .cal360-cell.today .cal360-day-num{color:var(--teal);}
+        .cal360-dots{display:flex;flex-wrap:wrap;gap:3px;margin-top:2px;}
+        .cal360-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+        .cal360-ev-mini{font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;}
+
+        /* Colores por tipo */
+        .tipo-RH       { background:rgba(0,201,167,0.18); color:var(--teal); }
+        .tipo-Marketing{ background:rgba(26,127,232,0.18); color:#60a5fa; }
+        .tipo-Comercial{ background:rgba(255,209,102,0.18);color:var(--yellow); }
+        .tipo-Industria{ background:rgba(255,140,66,0.18); color:var(--orange); }
+        .tipo-Festivo  { background:rgba(124,92,252,0.18); color:#a78bfa; }
+        .dot-RH        { background:var(--teal); }
+        .dot-Marketing { background:#60a5fa; }
+        .dot-Comercial { background:var(--yellow); }
+        .dot-Industria { background:var(--orange); }
+        .dot-Festivo   { background:#a78bfa; }
+
+        /* Panel lateral de detalle */
+        .cal360-side{display:flex;flex-direction:column;gap:16px;}
+        .cal360-upcoming{background:var(--glass);border:1px solid var(--border);border-radius:18px;padding:20px;}
+        .cal360-side-title{font-size:11px;font-weight:700;color:var(--text3);letter-spacing:2px;text-transform:uppercase;margin-bottom:14px;}
+        .cal360-ev-item{display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);}
+        .cal360-ev-item:last-child{border-bottom:none;}
+        .cal360-ev-date{min-width:36px;text-align:center;}
+        .cal360-ev-day{font-family:'Space Grotesk',sans-serif;font-size:18px;font-weight:700;line-height:1;color:var(--text);}
+        .cal360-ev-dow{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;}
+        .cal360-ev-info{flex:1;}
+        .cal360-ev-name{font-size:13px;font-weight:700;color:var(--text);margin-bottom:3px;}
+        .cal360-ev-accion{font-size:11px;color:var(--text3);}
+        .cal360-ev-badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;display:inline-block;margin-top:4px;}
+
+        /* Resumen de leyenda */
+        .cal360-leyenda{background:var(--glass);border:1px solid var(--border);border-radius:14px;padding:16px;}
+        .cal360-ley-row{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:12px;color:var(--text2);}
+        .cal360-ley-row:last-child{margin-bottom:0;}
+        .cal360-ley-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+
+        /* Tooltip de hover */
+        #cal360-tooltip{
+            position:fixed; z-index:9999; pointer-events:none;
+            background:linear-gradient(135deg,#0f1e38,#0b1426);
+            border:1px solid var(--border); border-radius:14px;
+            padding:14px 16px; min-width:220px; max-width:280px;
+            box-shadow:0 8px 32px rgba(0,0,0,0.5);
+            opacity:0; transition:opacity 0.15s; display:none;
+        }
+        #cal360-tooltip.visible{opacity:1; display:block;}
+        .tt-fecha{font-size:10px;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;}
+        .tt-evento{margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid var(--border);}
+        .tt-evento:last-child{border-bottom:none;margin-bottom:0;padding-bottom:0;}
+        .tt-name{font-size:13px;font-weight:700;color:var(--text);margin-bottom:2px;}
+        .tt-accion{font-size:11px;color:var(--text3);}
+        .tt-responsable{font-size:10px;font-weight:700;margin-top:3px;}
+
+        /* Modal detalle día */
+        #modal-cal360{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);backdrop-filter:blur(8px);z-index:3000;align-items:center;justify-content:center;}
+        .cal360-modal-box{background:linear-gradient(135deg,#0f1e38,#0b1426);border:1px solid var(--border);padding:28px;border-radius:20px;width:500px;max-height:80vh;overflow-y:auto;}
+        .cal360-modal-fecha{font-size:11px;color:var(--text3);letter-spacing:2px;text-transform:uppercase;margin-bottom:16px;}
+        .cal360-modal-ev{background:var(--glass);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:10px;}
+        .cal360-modal-ev-name{font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px;}
+        .cal360-modal-row{display:flex;gap:6px;align-items:center;margin-bottom:4px;font-size:12px;color:var(--text2);}
+        .cal360-modal-label{color:var(--text3);min-width:80px;}
+        .pri-alta{color:var(--red);font-weight:700;}
+        .pri-media{color:var(--yellow);font-weight:700;}
+        .pri-baja{color:var(--teal);font-weight:700;}
     </style>
 </head>
 <body>
@@ -228,6 +317,9 @@
         </button>
         <button class="sitem" onclick="navegar('reportes',this)">
             <div class="sitem-left"><span>📈</span> Reporte Mensual</div>
+        </button>
+        <button class="sitem" onclick="navegar('cal360',this)">
+            <div class="sitem-left"><span>🗓️</span> Calendario 360</div>
         </button>
         <button class="sitem" onclick="navegar('nueva',this)">
             <div class="sitem-left"><span>➕</span> Asignar Tarea</div>
@@ -287,6 +379,64 @@
                 <div style="height:280px;"><canvas id="lineChartMes"></canvas></div>
             </div>
             <div class="logros-grid" id="mes-logros-cards"></div>
+        </div>
+
+        <!-- CALENDARIO 360 -->
+        <div class="section" id="sec-cal360">
+            <div class="page-header">
+                <div>
+                    <div class="page-title">Calendario 360°</div>
+                    <div class="page-date">Fechas estratégicas · Hedma Tecnocontrol 2026</div>
+                </div>
+                <div class="header-badge">📅 2026</div>
+            </div>
+
+            <!-- Filtros -->
+            <div class="cal360-filters">
+                <button class="cal360-filter active" data-tipo="todos" onclick="filtrarCal('todos',this)">Todos</button>
+                <button class="cal360-filter" data-tipo="Festivo" onclick="filtrarCal('Festivo',this)">🟣 Festivos Oficiales</button>
+                <button class="cal360-filter" data-tipo="RH" onclick="filtrarCal('RH',this)">🟢 Recursos Humanos</button>
+                <button class="cal360-filter" data-tipo="Marketing" onclick="filtrarCal('Marketing',this)">🔵 Marketing</button>
+                <button class="cal360-filter" data-tipo="Comercial" onclick="filtrarCal('Comercial',this)">🟡 Comercial / Ventas</button>
+                <button class="cal360-filter" data-tipo="Industria" onclick="filtrarCal('Industria',this)">🟠 Industria Hidrocarburo</button>
+            </div>
+
+            <div class="cal360-layout">
+                <!-- Calendario -->
+                <div>
+                    <div class="cal360-wrap">
+                        <div class="cal360-nav">
+                            <button class="cal360-nav-btn" onclick="cal360Prev()">‹</button>
+                            <div class="cal360-mes-label" id="cal360-mes-label"></div>
+                            <button class="cal360-nav-btn" onclick="cal360Next()">›</button>
+                        </div>
+                        <div class="cal360-dow">
+                            <span>DOM</span><span>LUN</span><span>MAR</span><span>MIÉ</span><span>JUE</span><span>VIE</span><span>SÁB</span>
+                        </div>
+                        <div class="cal360-grid" id="cal360-grid"></div>
+                    </div>
+                </div>
+
+                <!-- Panel lateral -->
+                <div class="cal360-side">
+                    <!-- Próximos eventos del mes -->
+                    <div class="cal360-upcoming">
+                        <div class="cal360-side-title">Próximos del mes</div>
+                        <div id="cal360-proximos"></div>
+                    </div>
+                    <!-- Leyenda -->
+                    <div class="cal360-leyenda">
+                        <div class="cal360-side-title">Leyenda</div>
+                        <div class="cal360-ley-row"><div class="cal360-ley-dot dot-Festivo"></div> Festivos oficiales / Días inhábiles</div>
+                        <div class="cal360-ley-row"><div class="cal360-ley-dot dot-RH"></div> Recursos Humanos / Nómina</div>
+                        <div class="cal360-ley-row"><div class="cal360-ley-dot dot-Marketing"></div> Marketing / Comunicación</div>
+                        <div class="cal360-ley-row"><div class="cal360-ley-dot dot-Comercial"></div> Comercial / Ventas / Prospección</div>
+                        <div class="cal360-ley-row"><div class="cal360-ley-dot dot-Industria"></div> Industria / Hidrocarburos / NOM</div>
+                    </div>
+                    <!-- Contador del mes -->
+                    <div class="cal360-leyenda" id="cal360-contador"></div>
+                </div>
+            </div>
         </div>
 
         <!-- ÁREA -->
@@ -349,10 +499,8 @@
     <div class="edit-box">
         <div class="edit-title">✏️ Editar Actividad</div>
         <input type="hidden" id="edit-id">
-
         <label class="edit-label">Descripción de la actividad</label>
         <input type="text" id="edit-desc" class="edit-field" placeholder="Descripción...">
-
         <div class="edit-row">
             <div>
                 <label class="edit-label">Fecha límite</label>
@@ -374,6 +522,19 @@
     </div>
 </div>
 
+<!-- MODAL DETALLE DÍA -->
+<div id="modal-cal360">
+    <div class="cal360-modal-box">
+        <div class="modal-title" id="cal360-modal-titulo"></div>
+        <div class="cal360-modal-fecha" id="cal360-modal-fecha"></div>
+        <div id="cal360-modal-eventos"></div>
+        <button class="btn-cancel-edit" style="margin-top:20px;" onclick="document.getElementById('modal-cal360').style.display='none'">✕ Cerrar</button>
+    </div>
+</div>
+
+<!-- TOOLTIP -->
+<div id="cal360-tooltip"></div>
+
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
@@ -389,8 +550,329 @@ const DEPTOS = ["Ingresos","Egresos","Contabilidad","Recursos Humanos","Marketin
 const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 const COLORES = ['#00c9a7','#1a7fe8','#ffd166','#ff4d6d','#7c5cfc','#ff8c42','#00d4e8'];
 const ICONS = ['💰','📤','🧾','👥','📣','⚙️','🤝'];
+const DIAS_SEMANA = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
 
 let localDB = []; let areaActual = ""; let tareaIdActiva = ""; let lineChartObj = null;
+
+// ══════════════════════════════════════════════════════
+// BASE DE DATOS DEL CALENDARIO 360 — 2026
+// Fuentes: LFT, SHCP, COFEPRIS, CRE, SEMARNAT, STPS
+// ══════════════════════════════════════════════════════
+const EVENTOS_360 = [
+  // ── ENERO ──
+  {f:"2026-01-01",n:"Año Nuevo",t:"Festivo",p:"Alta",a:"Día inhábil obligatorio",r:"RH"},
+  {f:"2026-01-06",n:"Día de Reyes Magos",t:"Marketing",p:"Media",a:"Campaña de awareness y branding estacional",r:"Marketing"},
+  {f:"2026-01-15",n:"Arranque fiscal 2026",t:"Comercial",p:"Alta",a:"Prospección masiva de nuevos clientes. Presentar propuestas de contratos anuales.",r:"Ventas"},
+  {f:"2026-01-17",n:"Declaración mensual IEPS hidrocarburos",t:"Industria",p:"Alta",a:"Verificar declaraciones IEPS para estaciones de servicio clientes",r:"Administración"},
+  {f:"2026-01-31",n:"Cierre enero / revisión NOM-005",t:"Industria",p:"Alta",a:"Auditoría equipos contra incendio en estaciones de servicio",r:"Servicios Técnicos"},
+
+  // ── FEBRERO ──
+  {f:"2026-02-02",n:"Día de la Constitución (festivo oficial)",t:"Festivo",p:"Alta",a:"Día inhábil obligatorio LFT",r:"RH"},
+  {f:"2026-02-02",n:"Constitución — Cierre operativo",t:"RH",p:"Alta",a:"Ajuste de nómina y guardias mínimas",r:"RH"},
+  {f:"2026-02-14",n:"San Valentín",t:"Marketing",p:"Media",a:"Campaña emocional: 'El amor también necesita mantenimiento'. Segmento transportistas.",r:"Marketing"},
+  {f:"2026-02-17",n:"Declaración mensual IEPS",t:"Industria",p:"Alta",a:"Apoyo técnico a clientes estaciones para cumplimiento SAT",r:"Administración"},
+  {f:"2026-02-24",n:"Aniversario Constitución Política",t:"Marketing",p:"Baja",a:"Contenido institucional en redes",r:"Marketing"},
+  {f:"2026-02-28",n:"Renovación licencias operación CRE (plazo)",t:"Industria",p:"Alta",a:"Verificar vencimientos de permisos CRE de clientes",r:"Servicios Técnicos"},
+
+  // ── MARZO ──
+  {f:"2026-03-01",n:"Día del Empleado de Mostrador",t:"RH",p:"Baja",a:"Reconocimiento interno",r:"RH"},
+  {f:"2026-03-08",n:"Día Internacional de la Mujer",t:"RH",p:"Alta",a:"Programa de equidad e inclusión. Comunicado interno.",r:"RH"},
+  {f:"2026-03-08",n:"Día Internacional de la Mujer — Campaña",t:"Marketing",p:"Alta",a:"Contenido: mujeres en la industria de hidrocarburos",r:"Marketing"},
+  {f:"2026-03-16",n:"Natalicio Benito Juárez (festivo oficial)",t:"Festivo",p:"Alta",a:"Día inhábil obligatorio",r:"RH"},
+  {f:"2026-03-17",n:"Declaración mensual IEPS",t:"Industria",p:"Alta",a:"Cierre y apoyo técnico a estaciones clientes",r:"Administración"},
+  {f:"2026-03-21",n:"Primer día de primavera",t:"Marketing",p:"Baja",a:"Contenido de redes: 'Arranca la temporada, arranca tu mantenimiento'",r:"Marketing"},
+  {f:"2026-03-31",n:"Cierre Q1 — Revisión de pipeline comercial",t:"Comercial",p:"Alta",a:"Evaluar cierres del trimestre. Ajustar forecast Q2.",r:"Ventas"},
+
+  // ── ABRIL ──
+  {f:"2026-04-02",n:"Jueves Santo (cuasicontractual)",t:"Festivo",p:"Alta",a:"Operación reducida. Guardia mínima.",r:"RH"},
+  {f:"2026-04-03",n:"Viernes Santo (festivo oficial)",t:"Festivo",p:"Alta",a:"Día inhábil obligatorio",r:"RH"},
+  {f:"2026-04-05",n:"Semana Santa — Servicios urgentes",t:"Comercial",p:"Alta",a:"Despliegue de servicios técnicos urgentes. Alta demanda en carreteras.",r:"Ventas"},
+  {f:"2026-04-17",n:"Declaración mensual IEPS",t:"Industria",p:"Alta",a:"Apoyo técnico a estaciones para cumplimiento SAT",r:"Administración"},
+  {f:"2026-04-22",n:"Día de la Tierra",t:"Marketing",p:"Alta",a:"Campaña: 'Hidrocarburos responsables. NOM-EM como compromiso ambiental'.",r:"Marketing"},
+  {f:"2026-04-30",n:"Revisión semestral equipos NOM-EM-005",t:"Industria",p:"Alta",a:"Auditoría preventiva en estaciones clientes. Generar cotizaciones.",r:"Servicios Técnicos"},
+
+  // ── MAYO ──
+  {f:"2026-05-01",n:"Día del Trabajo (festivo oficial)",t:"Festivo",p:"Alta",a:"Día inhábil obligatorio LFT Art. 74",r:"RH"},
+  {f:"2026-05-01",n:"Día del Trabajo — Campaña",t:"Marketing",p:"Alta",a:"Contenido: reconocimiento a técnicos de la industria",r:"Marketing"},
+  {f:"2026-05-10",n:"Día de las Madres",t:"Marketing",p:"Alta",a:"Campaña emocional dirigida a operadoras y colaboradoras",r:"Marketing"},
+  {f:"2026-05-15",n:"Declaración mensual IEPS",t:"Industria",p:"Alta",a:"Apoyo a clientes con declaraciones SAT",r:"Administración"},
+  {f:"2026-05-15",n:"Día del Maestro",t:"RH",p:"Baja",a:"Reconocimiento a personal de capacitación interna",r:"RH"},
+  {f:"2026-05-18",n:"Revisión NOM-016 (combustibles automotrices)",t:"Industria",p:"Alta",a:"Verificación calidad de combustibles en estaciones clientes",r:"Servicios Técnicos"},
+  {f:"2026-05-25",n:"Arranque temporada alta transporte",t:"Comercial",p:"Alta",a:"Campaña de contratos de mantenimiento preventivo. Temporada alta carretera.",r:"Ventas"},
+
+  // ── JUNIO ──
+  {f:"2026-06-01",n:"Día de la Marina",t:"Marketing",p:"Baja",a:"Contenido institucional de seguridad industrial",r:"Marketing"},
+  {f:"2026-06-05",n:"Día Mundial del Medio Ambiente",t:"Marketing",p:"Alta",a:"Campaña: cumplimiento SEMARNAT y buenas prácticas en estaciones de servicio",r:"Marketing"},
+  {f:"2026-06-05",n:"Auditoría NOM-138 SEMARNAT (semestral)",t:"Industria",p:"Alta",a:"Verificación de protección de suelo en estaciones. Oportunidad de servicio.",r:"Servicios Técnicos"},
+  {f:"2026-06-15",n:"Declaración mensual IEPS",t:"Industria",p:"Alta",a:"Apoyo técnico clientes",r:"Administración"},
+  {f:"2026-06-21",n:"Día del Padre",t:"Marketing",p:"Media",a:"Campaña dirigida a operadores de flota y transportistas",r:"Marketing"},
+  {f:"2026-06-30",n:"Cierre Q2 — Revisión anual de contratos",t:"Comercial",p:"Alta",a:"Renovación de contratos de servicio. Presentar propuestas de mejora.",r:"Ventas"},
+
+  // ── JULIO ──
+  {f:"2026-07-01",n:"Aniversario CRE (Comisión Reguladora de Energía)",t:"Industria",p:"Media",a:"Contenido sobre regulación energética y cumplimiento",r:"Marketing"},
+  {f:"2026-07-15",n:"Declaración mensual IEPS",t:"Industria",p:"Alta",a:"Apoyo a estaciones clientes",r:"Administración"},
+  {f:"2026-07-20",n:"Revisión semestral controles automáticos de tanques",t:"Industria",p:"Alta",a:"Auditoría ATG en estaciones clientes. Generar propuestas de actualización.",r:"Servicios Técnicos"},
+  {f:"2026-07-31",n:"Cierre julio — Evaluación campañas Q3",t:"Comercial",p:"Media",a:"Análisis de desempeño comercial y ajuste de estrategia",r:"Ventas"},
+
+  // ── AGOSTO ──
+  {f:"2026-08-10",n:"Arranque campaña back to school transporte",t:"Marketing",p:"Media",a:"Campaña mantenimiento preventivo para flotas escolares",r:"Marketing"},
+  {f:"2026-08-15",n:"Declaración mensual IEPS",t:"Industria",p:"Alta",a:"Apoyo a clientes",r:"Administración"},
+  {f:"2026-08-17",n:"Revisión NOM-005 extintores (anual)",t:"Industria",p:"Alta",a:"Certificación y recarga de extintores en estaciones clientes",r:"Servicios Técnicos"},
+  {f:"2026-08-31",n:"Cierre agosto — Proyecciones Q4",t:"Comercial",p:"Alta",a:"Definir presupuesto y metas Q4. Arrancar prospección para Buen Fin.",r:"Ventas"},
+
+  // ── SEPTIEMBRE ──
+  {f:"2026-09-01",n:"Apertura período fiscal (declaraciones anuales)",t:"Industria",p:"Alta",a:"Apoyo a estaciones clientes con revisiones SHCP",r:"Administración"},
+  {f:"2026-09-15",n:"Declaración mensual IEPS",t:"Industria",p:"Alta",a:"Apoyo técnico",r:"Administración"},
+  {f:"2026-09-16",n:"Independencia de México (festivo oficial)",t:"Festivo",p:"Alta",a:"Día inhábil obligatorio",r:"RH"},
+  {f:"2026-09-16",n:"Independencia — Campaña institucional",t:"Marketing",p:"Alta",a:"Contenido: 'Orgullosamente mexicanos, operando con calidad nacional'",r:"Marketing"},
+  {f:"2026-09-19",n:"Aniversario sismos 1985/2017 — Simulacro nacional",t:"RH",p:"Alta",a:"Simulacro obligatorio STPS. Verificar protocolos de emergencia.",r:"RH"},
+  {f:"2026-09-28",n:"Día Mundial de la Seguridad Vial",t:"Marketing",p:"Media",a:"Campaña: seguridad en el transporte y mantenimiento de unidades",r:"Marketing"},
+  {f:"2026-09-30",n:"Cierre Q3 — Arranque campaña Q4",t:"Comercial",p:"Alta",a:"Evaluar resultados. Arrancar campaña de Buen Fin y cierre de año.",r:"Ventas"},
+
+  // ── OCTUBRE ──
+  {f:"2026-10-01",n:"Inicio temporada verificaciones ambientales",t:"Industria",p:"Alta",a:"Revisión de dispensarios y medidores para dictámenes CRE",r:"Servicios Técnicos"},
+  {f:"2026-10-15",n:"Declaración mensual IEPS",t:"Industria",p:"Alta",a:"Apoyo técnico a estaciones",r:"Administración"},
+  {f:"2026-10-16",n:"Día Mundial de la Alimentación — Seguridad energética",t:"Marketing",p:"Baja",a:"Contenido sobre energía y cadena de suministro",r:"Marketing"},
+  {f:"2026-10-31",n:"Halloween — Campaña creativa",t:"Marketing",p:"Baja",a:"Contenido de humor industrial: 'El único susto que aceptamos es una fuga sin detectar'",r:"Marketing"},
+
+  // ── NOVIEMBRE ──
+  {f:"2026-11-02",n:"Día de Muertos",t:"Marketing",p:"Media",a:"Contenido cultural. Conectar con tradición y prevención de accidentes.",r:"Marketing"},
+  {f:"2026-11-16",n:"Revolución Mexicana (festivo oficial)",t:"Festivo",p:"Alta",a:"Día inhábil obligatorio",r:"RH"},
+  {f:"2026-11-13",n:"Buen Fin (inicio esperado)",t:"Comercial",p:"Alta",a:"Promociones en refacciones y contratos de mantenimiento anual. Meta: +30% ventas.",r:"Ventas"},
+  {f:"2026-11-15",n:"Declaración mensual IEPS",t:"Industria",p:"Alta",a:"Apoyo técnico clientes",r:"Administración"},
+  {f:"2026-11-20",n:"Revolución — Campaña institucional",t:"Marketing",p:"Media",a:"Contenido: historia de la industria energética en México",r:"Marketing"},
+  {f:"2026-11-25",n:"Arranque Revisiones NOM-EM fin de año",t:"Industria",p:"Alta",a:"Auditorías preventivas antes de cierre de año. Prioridad alta.",r:"Servicios Técnicos"},
+  {f:"2026-11-30",n:"Cierre de noviembre — Evaluación Buen Fin",t:"Comercial",p:"Alta",a:"Análisis de resultados del Buen Fin. Proyecciones diciembre.",r:"Ventas"},
+
+  // ── DICIEMBRE ──
+  {f:"2026-12-01",n:"Temporada navideña — Arranque campaña",t:"Marketing",p:"Alta",a:"Campaña: 'Cierra el año con tus equipos al 100%'. Mantenimiento preventivo.",r:"Marketing"},
+  {f:"2026-12-12",n:"Día de la Virgen de Guadalupe",t:"Festivo",p:"Media",a:"Peregrinaciones: alta demanda de combustible en rutas. Informar a clientes.",r:"Ventas"},
+  {f:"2026-12-15",n:"Declaración mensual IEPS (antepenúltima)",t:"Industria",p:"Alta",a:"Apoyo técnico prioritario antes de cierre de año",r:"Administración"},
+  {f:"2026-12-16",n:"Posadas (inicio)",t:"Marketing",p:"Media",a:"Campaña de cierre de año. Tarjetas digitales a clientes y colaboradores.",r:"Marketing"},
+  {f:"2026-12-20",n:"Inventario anual y cierre contable",t:"RH",p:"Alta",a:"Cierre de inventario de refacciones. Auditoría interna.",r:"Administración"},
+  {f:"2026-12-23",n:"Última semana laboral (reducida)",t:"RH",p:"Alta",a:"Definir guardias mínimas. Comunicar a clientes horarios de emergencia.",r:"RH"},
+  {f:"2026-12-25",n:"Navidad (festivo oficial)",t:"Festivo",p:"Alta",a:"Día inhábil obligatorio",r:"RH"},
+  {f:"2026-12-31",n:"Fin de año — Cierre anual",t:"RH",p:"Alta",a:"Cierre operativo. Guardia mínima. Revisión de metas anuales.",r:"RH"},
+];
+
+let cal360Mes = new Date().getMonth();
+let cal360Anio = 2026;
+let cal360Filtro = "todos";
+
+// ══════════════════════════════════════════════════════
+// FUNCIONES CALENDARIO 360
+// ══════════════════════════════════════════════════════
+
+function getEventosFiltrados(){
+    if(cal360Filtro === "todos") return EVENTOS_360;
+    return EVENTOS_360.filter(e => e.t === cal360Filtro);
+}
+
+function renderCal360(){
+    const mes = cal360Mes;
+    const anio = cal360Anio;
+    document.getElementById('cal360-mes-label').innerText = `${MESES[mes]} ${anio}`;
+
+    const first = new Date(anio, mes, 1).getDay();
+    const totalDias = new Date(anio, mes+1, 0).getDate();
+    const hoy = new Date();
+
+    const eventos = getEventosFiltrados();
+    const eventosPorDia = {};
+    eventos.forEach(ev => {
+        const d = new Date(ev.f + "T00:00:00");
+        if(d.getFullYear() === anio && d.getMonth() === mes){
+            const k = d.getDate();
+            if(!eventosPorDia[k]) eventosPorDia[k] = [];
+            eventosPorDia[k].push(ev);
+        }
+    });
+
+    const prevDias = new Date(anio, mes, 0).getDate();
+    let html = '';
+
+    // Celdas del mes anterior
+    for(let i = first-1; i >= 0; i--){
+        html += `<div class="cal360-cell other-month"><div class="cal360-day-num">${prevDias-i}</div></div>`;
+    }
+
+    // Días del mes actual
+    for(let d = 1; d <= totalDias; d++){
+        const isToday = hoy.getDate()===d && hoy.getMonth()===mes && hoy.getFullYear()===anio;
+        const evsDia = eventosPorDia[d] || [];
+        const hasEv = evsDia.length > 0;
+
+        const dots = evsDia.slice(0,4).map(e => `<div class="cal360-dot dot-${e.t}"></div>`).join('');
+        const miniLabel = evsDia.length === 1
+            ? `<div class="cal360-ev-mini tipo-${evsDia[0].t}">${evsDia[0].n}</div>`
+            : evsDia.length > 1
+            ? `<div class="cal360-ev-mini tipo-${evsDia[0].t}">${evsDia[0].n}</div><div style="font-size:9px;color:var(--text3);margin-top:2px;">+${evsDia.length-1} más</div>`
+            : '';
+
+        const dataEvs = hasEv ? `data-dia="${d}"` : '';
+        html += `<div class="cal360-cell${isToday?' today':''}${hasEv?' has-events':''}" ${dataEvs}
+            ${hasEv ? `onmouseenter="showTooltip(event,${d})" onmouseleave="hideTooltip()" onclick="abrirDia(${d})"` : ''}>
+            <div class="cal360-day-num">${d}</div>
+            <div class="cal360-dots">${dots}</div>
+            ${miniLabel}
+        </div>`;
+    }
+
+    // Celdas del siguiente mes
+    const total = first + totalDias;
+    const remain = total % 7 === 0 ? 0 : 7 - (total % 7);
+    for(let i = 1; i <= remain; i++){
+        html += `<div class="cal360-cell other-month"><div class="cal360-day-num">${i}</div></div>`;
+    }
+
+    document.getElementById('cal360-grid').innerHTML = html;
+    renderProximos();
+    renderContador();
+}
+
+function renderProximos(){
+    const hoy = new Date(); hoy.setHours(0,0,0,0);
+    const eventos = getEventosFiltrados()
+        .filter(e => {
+            const d = new Date(e.f + "T00:00:00");
+            return d.getFullYear() === cal360Anio && d.getMonth() === cal360Mes && d >= hoy;
+        })
+        .sort((a,b) => new Date(a.f) - new Date(b.f))
+        .slice(0, 6);
+
+    if(eventos.length === 0){
+        document.getElementById('cal360-proximos').innerHTML = '<div style="color:var(--text3);font-size:12px;text-align:center;padding:16px;">Sin eventos próximos este mes</div>';
+        return;
+    }
+
+    document.getElementById('cal360-proximos').innerHTML = eventos.map(ev => {
+        const d = new Date(ev.f + "T00:00:00");
+        const dia = d.getDate();
+        const dow = DIAS_SEMANA[d.getDay()];
+        return `<div class="cal360-ev-item">
+            <div class="cal360-ev-date">
+                <div class="cal360-ev-day">${dia}</div>
+                <div class="cal360-ev-dow">${dow}</div>
+            </div>
+            <div class="cal360-ev-info">
+                <div class="cal360-ev-name">${ev.n}</div>
+                <div class="cal360-ev-accion">${ev.a.length > 60 ? ev.a.slice(0,60)+'…' : ev.a}</div>
+                <span class="cal360-ev-badge tipo-${ev.t}">${ev.t}</span>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function renderContador(){
+    const eventos = getEventosFiltrados().filter(e => {
+        const d = new Date(e.f + "T00:00:00");
+        return d.getFullYear() === cal360Anio && d.getMonth() === cal360Mes;
+    });
+    const tipos = {RH:0, Marketing:0, Comercial:0, Industria:0, Festivo:0};
+    eventos.forEach(e => { if(tipos[e.t]!==undefined) tipos[e.t]++; });
+
+    document.getElementById('cal360-contador').innerHTML = `
+        <div class="cal360-side-title">Este mes · ${eventos.length} evento${eventos.length!==1?'s':''}</div>
+        ${Object.entries(tipos).filter(([,v])=>v>0).map(([k,v])=>`
+        <div class="cal360-ley-row">
+            <div class="cal360-ley-dot dot-${k}"></div>
+            <span>${k}</span>
+            <span style="margin-left:auto;font-weight:700;color:var(--text)">${v}</span>
+        </div>`).join('')}`;
+}
+
+window.showTooltip = (e, dia) => {
+    const eventos = getEventosFiltrados().filter(ev => {
+        const d = new Date(ev.f + "T00:00:00");
+        return d.getFullYear()===cal360Anio && d.getMonth()===cal360Mes && d.getDate()===dia;
+    });
+    if(!eventos.length) return;
+
+    const d = new Date(cal360Anio, cal360Mes, dia);
+    const fecha = d.toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long'});
+
+    const tt = document.getElementById('cal360-tooltip');
+    tt.innerHTML = `<div class="tt-fecha">${fecha}</div>` +
+        eventos.map(ev => `<div class="tt-evento">
+            <div class="tt-name">${ev.n}</div>
+            <div class="tt-accion">${ev.a}</div>
+            <div class="tt-responsable tipo-${ev.t}">${ev.t} · ${ev.r} · Prioridad: ${ev.p}</div>
+        </div>`).join('');
+
+    tt.style.display = 'block';
+    setTimeout(()=>tt.classList.add('visible'),10);
+    posicionarTooltip(e, tt);
+};
+
+function posicionarTooltip(e, tt){
+    const x = e.clientX + 12;
+    const y = e.clientY + 12;
+    const ancho = tt.offsetWidth || 260;
+    const alto = tt.offsetHeight || 150;
+    tt.style.left = (x + ancho > window.innerWidth - 20 ? x - ancho - 24 : x) + 'px';
+    tt.style.top  = (y + alto  > window.innerHeight - 20 ? y - alto - 24 : y) + 'px';
+}
+
+document.addEventListener('mousemove', e => {
+    const tt = document.getElementById('cal360-tooltip');
+    if(tt.classList.contains('visible')) posicionarTooltip(e, tt);
+});
+
+window.hideTooltip = () => {
+    const tt = document.getElementById('cal360-tooltip');
+    tt.classList.remove('visible');
+    setTimeout(()=>{ if(!tt.classList.contains('visible')) tt.style.display='none'; }, 150);
+};
+
+window.abrirDia = (dia) => {
+    const eventos = EVENTOS_360.filter(ev => {
+        const d = new Date(ev.f + "T00:00:00");
+        return d.getFullYear()===cal360Anio && d.getMonth()===cal360Mes && d.getDate()===dia;
+    });
+    if(!eventos.length) return;
+
+    const d = new Date(cal360Anio, cal360Mes, dia);
+    const fecha = d.toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+
+    document.getElementById('cal360-modal-titulo').innerText = `📅 ${dia} de ${MESES[cal360Mes]}`;
+    document.getElementById('cal360-modal-fecha').innerText = fecha.toUpperCase();
+    document.getElementById('cal360-modal-eventos').innerHTML = eventos.map(ev => `
+        <div class="cal360-modal-ev">
+            <div class="cal360-modal-ev-name">${ev.n}</div>
+            <div class="cal360-modal-row"><span class="cal360-modal-label">Tipo</span><span class="cal360-ev-badge tipo-${ev.t}">${ev.t}</span></div>
+            <div class="cal360-modal-row"><span class="cal360-modal-label">Prioridad</span><span class="pri-${ev.p.toLowerCase()}">${ev.p}</span></div>
+            <div class="cal360-modal-row"><span class="cal360-modal-label">Responsable</span>${ev.r}</div>
+            <div class="cal360-modal-row" style="align-items:flex-start;"><span class="cal360-modal-label">Acción</span><span>${ev.a}</span></div>
+        </div>`).join('');
+
+    document.getElementById('modal-cal360').style.display = 'flex';
+};
+
+window.cal360Prev = () => {
+    cal360Mes--;
+    if(cal360Mes < 0){ cal360Mes = 11; cal360Anio--; }
+    renderCal360();
+};
+window.cal360Next = () => {
+    cal360Mes++;
+    if(cal360Mes > 11){ cal360Mes = 0; cal360Anio++; }
+    renderCal360();
+};
+window.filtrarCal = (tipo, btn) => {
+    cal360Filtro = tipo;
+    document.querySelectorAll('.cal360-filter').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderCal360();
+};
+
+document.getElementById('modal-cal360').addEventListener('click', e => {
+    if(e.target === document.getElementById('modal-cal360'))
+        document.getElementById('modal-cal360').style.display='none';
+});
+
+// ══════════════════════════════════════════════════════
+// FIREBASE / PORTAL EXISTENTE (sin cambios)
+// ══════════════════════════════════════════════════════
 
 document.getElementById('fecha-hoy').innerText = new Date().toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
 document.getElementById('nav-dept').innerHTML = DEPTOS.map(d=>`
@@ -406,6 +888,7 @@ onAuthStateChanged(auth, user=>{
         document.getElementById('auth-screen').style.display='none';
         document.getElementById('app-portal').style.display='block';
         escuchar();
+        renderCal360();
     }
 });
 
@@ -423,27 +906,18 @@ function escuchar(){
     });
 }
 
-// ──────────────────────────────────────────────────────────
-// DASHBOARD
-// ──────────────────────────────────────────────────────────
 function renderDashboard(){
-    const total = localDB.length;
-    const completadas = localDB.filter(x=>x.estatus==='Completada').length;
-    const proceso = localDB.filter(x=>x.estatus==='En Proceso').length;
-    const sinIniciar = localDB.filter(x=>x.estatus==='Sin Iniciar').length;
-    const perc = total>0 ? Math.round(completadas/total*100) : 0;
-
+    const total=localDB.length, completadas=localDB.filter(x=>x.estatus==='Completada').length;
+    const proceso=localDB.filter(x=>x.estatus==='En Proceso').length, sinIniciar=localDB.filter(x=>x.estatus==='Sin Iniciar').length;
+    const perc=total>0?Math.round(completadas/total*100):0;
     document.getElementById('kpi-strip').innerHTML=`
         <div class="kpi-card blue"><div class="kpi-label">Total Actividades</div><div class="kpi-value">${total}</div><div class="kpi-sub">En todas las áreas</div><div class="kpi-icon">📋</div></div>
         <div class="kpi-card teal"><div class="kpi-label">Completadas</div><div class="kpi-value">${completadas}</div><div class="kpi-sub">${perc}% de cumplimiento</div><div class="kpi-icon">✅</div></div>
         <div class="kpi-card purple"><div class="kpi-label">En Proceso</div><div class="kpi-value">${proceso}</div><div class="kpi-sub">Actividades activas</div><div class="kpi-icon">⚡</div></div>
         <div class="kpi-card orange"><div class="kpi-label">Sin Iniciar</div><div class="kpi-value">${sinIniciar}</div><div class="kpi-sub">Pendientes de arranque</div><div class="kpi-icon">⏳</div></div>`;
-
-    document.getElementById('dash-cards').innerHTML = DEPTOS.map(a=>{
-        const t = localDB.filter(r=>r.area===a);
-        const done = t.filter(x=>x.estatus==='Completada').length;
-        const proc = t.filter(x=>x.estatus==='En Proceso').length;
-        const p = t.length>0 ? Math.round(done/t.length*100) : 0;
+    document.getElementById('dash-cards').innerHTML=DEPTOS.map(a=>{
+        const t=localDB.filter(r=>r.area===a), done=t.filter(x=>x.estatus==='Completada').length;
+        const proc=t.filter(x=>x.estatus==='En Proceso').length, p=t.length>0?Math.round(done/t.length*100):0;
         return `<div class="dept-card" onclick="verArea('${a}')">
             <div class="chart-container"><canvas id="cv-${a.replace(/\s/g,'_')}"></canvas><div class="perc-center">${p}%</div></div>
             <div class="dept-name">${ICONS[DEPTOS.indexOf(a)]} ${a}</div>
@@ -452,15 +926,13 @@ function renderDashboard(){
             <div class="stat-line"><span>En Proceso</span><b style="color:var(--yellow)">${proc}</b></div>
         </div>`;
     }).join('');
-
-    // Ranking
-    const sorted = [...DEPTOS].sort((a,b)=>{
-        const ta=localDB.filter(r=>r.area===a), tb=localDB.filter(r=>r.area===b);
+    const sorted=[...DEPTOS].sort((a,b)=>{
+        const ta=localDB.filter(r=>r.area===a),tb=localDB.filter(r=>r.area===b);
         const pa=ta.length>0?ta.filter(x=>x.estatus==='Completada').length/ta.length:0;
         const pb=tb.length>0?tb.filter(x=>x.estatus==='Completada').length/tb.length:0;
         return pb-pa;
     });
-    document.getElementById('dept-list-items').innerHTML = sorted.map(a=>{
+    document.getElementById('dept-list-items').innerHTML=sorted.map(a=>{
         const t=localDB.filter(r=>r.area===a);
         const p=t.length>0?Math.round(t.filter(x=>x.estatus==='Completada').length/t.length*100):0;
         return `<div class="dept-list-item" onclick="verArea('${a}')">
@@ -469,103 +941,47 @@ function renderDashboard(){
             <div class="dept-list-pct">${p}%</div>
         </div>`;
     }).join('');
-
-    // ── FIX DONA 100% ──
-    // Se usa un mínimo invisible (0.001) en vez de ||1 para no romper el 100%
     DEPTOS.forEach(a=>{
-        const el = document.getElementById(`cv-${a.replace(/\s/g,'_')}`);
-        if(!el) return;
-        const t = localDB.filter(r=>r.area===a);
-        const done = t.filter(x=>x.estatus==='Completada').length;
-        const resto = Math.max(t.length-done, 0);
-        // Si done===total pero total>0, ponemos resto=0.001 invisible para que Chart.js
-        // no ponga el arco vacío como si fuera mitad/mitad
-        const dataResto = (done>0 && resto===0) ? 0.001 : (resto||0.001);
-        new Chart(el,{
-            type:'doughnut',
-            data:{datasets:[{
-                data:[done, dataResto],
-                backgroundColor:[COLORES[DEPTOS.indexOf(a)],'rgba(255,255,255,0.06)'],
-                borderWidth:0,
-                borderRadius:done>0&&resto===0?0:4
-            }]},
-            options:{cutout:'76%',plugins:{legend:{display:false}},animation:{duration:800}}
-        });
+        const el=document.getElementById(`cv-${a.replace(/\s/g,'_')}`); if(!el) return;
+        const t=localDB.filter(r=>r.area===a), done=t.filter(x=>x.estatus==='Completada').length;
+        const resto=Math.max(t.length-done,0);
+        const dataResto=(done>0&&resto===0)?0.001:(resto||0.001);
+        new Chart(el,{type:'doughnut',data:{datasets:[{data:[done,dataResto],backgroundColor:[COLORES[DEPTOS.indexOf(a)],'rgba(255,255,255,0.06)'],borderWidth:0,borderRadius:done>0&&resto===0?0:4}]},options:{cutout:'76%',plugins:{legend:{display:false}},animation:{duration:800}}});
     });
 }
 
-// ──────────────────────────────────────────────────────────
-// TABLA ÁREA — con edición y sin duplicidad de estatus
-// ──────────────────────────────────────────────────────────
-window.verArea=(a,b)=>{
-    areaActual=a;
-    document.getElementById('area-title').innerText=`${ICONS[DEPTOS.indexOf(a)]} ${a}`;
-    navegar('area',b);
-    renderTabla();
-};
+window.verArea=(a,b)=>{ areaActual=a; document.getElementById('area-title').innerText=`${ICONS[DEPTOS.indexOf(a)]} ${a}`; navegar('area',b); renderTabla(); };
 
 function renderTabla(){
     const hoy=new Date(); hoy.setHours(0,0,0,0);
     const filt=localDB.filter(r=>r.area===areaActual);
-    const yo=auth.currentUser.email;
-    const esAdmin=yo===ADMIN;
-    const total=filt.length;
-    const done=filt.filter(x=>x.estatus==='Completada').length;
+    const yo=auth.currentUser.email, esAdmin=yo===ADMIN;
+    const total=filt.length, done=filt.filter(x=>x.estatus==='Completada').length;
     document.getElementById('area-stats-mini').innerText=`${done} de ${total} completadas · ${total>0?Math.round(done/total*100):0}% cumplimiento`;
-
-    if(filt.length===0){
-        document.getElementById('area-table').innerHTML='<div style="text-align:center;color:var(--text3);padding:40px;">No hay actividades registradas para esta área</div>';
-        return;
-    }
-
-    document.getElementById('area-table').innerHTML = filt.map(r=>{
-        const lim=new Date(r.fechaLimite+"T00:00:00");
-        const diff=Math.ceil((lim-hoy)/(1000*3600*24));
+    if(!filt.length){ document.getElementById('area-table').innerHTML='<div style="text-align:center;color:var(--text3);padding:40px;">No hay actividades registradas para esta área</div>'; return; }
+    document.getElementById('area-table').innerHTML=filt.map(r=>{
+        const lim=new Date(r.fechaLimite+"T00:00:00"), diff=Math.ceil((lim-hoy)/(1000*3600*24));
         let semaforo="row-safe";
-        if(r.estatus!=='Completada'){
-            if(diff<=1) semaforo="row-critical";
-            else if(diff<=3) semaforo="row-warning";
-        }
-
-        let daysPill, daysText;
-        if(r.estatus==='Completada'){
-            daysPill='teal'; daysText='✓ Lista';
-        } else if(!r.fechaLimite){
-            daysPill='teal'; daysText='Sin fecha';
-        } else if(diff<0){
-            daysPill='red'; daysText='Vencida';
-        } else if(diff===0){
-            daysPill='red'; daysText='Hoy';
-        } else if(diff<=1){
-            daysPill='red'; daysText='1d';
-        } else if(diff<=3){
-            daysPill='yellow'; daysText=`${diff}d`;
-        } else {
-            daysPill='teal'; daysText=`${diff}d`;
-        }
-
+        if(r.estatus!=='Completada'){ if(diff<=1) semaforo="row-critical"; else if(diff<=3) semaforo="row-warning"; }
+        let daysPill,daysText;
+        if(r.estatus==='Completada'){daysPill='teal';daysText='✓ Lista';}
+        else if(!r.fechaLimite){daysPill='teal';daysText='Sin fecha';}
+        else if(diff<0){daysPill='red';daysText='Vencida';}
+        else if(diff===0){daysPill='red';daysText='Hoy';}
+        else if(diff<=1){daysPill='red';daysText='1d';}
+        else if(diff<=3){daysPill='yellow';daysText=`${diff}d`;}
+        else{daysPill='teal';daysText=`${diff}d`;}
         const statusClass=r.estatus==='Completada'?'s-comp':r.estatus==='En Proceso'?'s-proc':'s-sin';
-        const tieneMsgNuevo=r.comentarios?.length>0 && r.comentarios[r.comentarios.length-1].u!==yo;
-
-        // Puede editar: es admin O es el responsable de la tarea
-        const puedeEditar = esAdmin || r.responsable===yo;
-
+        const tieneMsgNuevo=r.comentarios?.length>0&&r.comentarios[r.comentarios.length-1].u!==yo;
+        const puedeEditar=esAdmin||r.responsable===yo;
         return `<div class="trow ${semaforo}">
-            <div>
-                <div class="task-name">${r.actividad}</div>
-                <div class="task-user">${r.responsable.split('@')[0]}</div>
-            </div>
+            <div><div class="task-name">${r.actividad}</div><div class="task-user">${r.responsable.split('@')[0]}</div></div>
             <div style="color:var(--text2);font-size:12px;">${r.fechaLimite||'--'}</div>
             <div><span class="days-pill ${daysPill}">${daysText}</span></div>
             <div><span class="status-chip ${statusClass}">${r.estatus}</span></div>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                ${puedeEditar
-                    ? `<button class="btn-accion btn-editar" onclick="abrirEdit('${r.id}')">✏️ Editar</button>`
-                    : `<span style="font-size:11px;color:var(--text3);">Solo lectura</span>`
-                }
-                <button class="comm-btn" onclick="abrirChat('${r.id}','${r.actividad.replace(/'/g,"\\'").replace(/"/g,'&quot;')}')">
-                    💬${tieneMsgNuevo?'<span class="comm-alert"></span>':''}
-                </button>
+                ${puedeEditar?`<button class="btn-accion btn-editar" onclick="abrirEdit('${r.id}')">✏️ Editar</button>`:`<span style="font-size:11px;color:var(--text3);">Solo lectura</span>`}
+                <button class="comm-btn" onclick="abrirChat('${r.id}','${r.actividad.replace(/'/g,"\\'").replace(/"/g,'&quot;')}')">💬${tieneMsgNuevo?'<span class="comm-alert"></span>':''}</button>
                 ${esAdmin?`<button class="btn-delete" onclick="borrarTarea('${r.id}')" title="Eliminar">🗑</button>`:''}
             </div>
             <div></div>
@@ -573,166 +989,21 @@ function renderTabla(){
     }).join('');
 }
 
-// ──────────────────────────────────────────────────────────
-// MODAL EDITAR
-// ──────────────────────────────────────────────────────────
-window.abrirEdit=(id)=>{
-    const r=localDB.find(x=>x.id===id); if(!r) return;
-    document.getElementById('edit-id').value=id;
-    document.getElementById('edit-desc').value=r.actividad||'';
-    document.getElementById('edit-fecha').value=r.fechaLimite||'';
-    document.getElementById('edit-estatus').value=r.estatus||'Sin Iniciar';
-    document.getElementById('modal-edit').style.display='flex';
-};
-
-window.guardarEdicion=async()=>{
-    const id=document.getElementById('edit-id').value;
-    const nuevoEstatus=document.getElementById('edit-estatus').value;
-    const tareaAnterior=localDB.find(x=>x.id===id);
-    const fueCompletada=tareaAnterior?.estatus!=='Completada' && nuevoEstatus==='Completada';
-    await updateDoc(doc(db,'actividades',id),{
-        actividad:document.getElementById('edit-desc').value,
-        fechaLimite:document.getElementById('edit-fecha').value,
-        estatus:nuevoEstatus,
-        fechaFinalizacion:fueCompletada ? new Date().toISOString() : (nuevoEstatus!=='Completada' ? null : tareaAnterior?.fechaFinalizacion||null)
-    });
-    cerrarEdit();
-};
-
+window.abrirEdit=(id)=>{ const r=localDB.find(x=>x.id===id); if(!r) return; document.getElementById('edit-id').value=id; document.getElementById('edit-desc').value=r.actividad||''; document.getElementById('edit-fecha').value=r.fechaLimite||''; document.getElementById('edit-estatus').value=r.estatus||'Sin Iniciar'; document.getElementById('modal-edit').style.display='flex'; };
+window.guardarEdicion=async()=>{ const id=document.getElementById('edit-id').value, nuevoEstatus=document.getElementById('edit-estatus').value, tareaAnterior=localDB.find(x=>x.id===id), fueCompletada=tareaAnterior?.estatus!=='Completada'&&nuevoEstatus==='Completada'; await updateDoc(doc(db,'actividades',id),{actividad:document.getElementById('edit-desc').value,fechaLimite:document.getElementById('edit-fecha').value,estatus:nuevoEstatus,fechaFinalizacion:fueCompletada?new Date().toISOString():(nuevoEstatus!=='Completada'?null:tareaAnterior?.fechaFinalizacion||null)}); cerrarEdit(); };
 window.cerrarEdit=()=>{ document.getElementById('modal-edit').style.display='none'; };
-
-// Cierra modales al click fuera
 document.getElementById('modal-edit').addEventListener('click',e=>{ if(e.target===document.getElementById('modal-edit')) cerrarEdit(); });
 document.getElementById('modal-c').addEventListener('click',e=>{ if(e.target===document.getElementById('modal-c')) cerrarModal(); });
-
-// ──────────────────────────────────────────────────────────
-// OTRAS ACCIONES
-// ──────────────────────────────────────────────────────────
-window.borrarTarea=(id)=> confirm("¿Seguro que deseas eliminar esta actividad?") && deleteDoc(doc(db,'actividades',id));
-
-window.guardarTarea=async()=>{
-    const d=document.getElementById('n-desc').value; if(!d) return;
-    await addDoc(collection(db,'actividades'),{
-        actividad:d,
-        area:document.getElementById('n-area').value,
-        fechaLimite:document.getElementById('n-date').value,
-        estatus:'Sin Iniciar',
-        fechaCreacion:new Date().toISOString(),
-        responsable:auth.currentUser.email,
-        comentarios:[]
-    });
-    document.getElementById('n-desc').value='';
-    navegar('dashboard');
-};
-
-// ──────────────────────────────────────────────────────────
-// CHAT
-// ──────────────────────────────────────────────────────────
-window.abrirChat=(id,t)=>{
-    tareaIdActiva=id;
-    document.getElementById('c-title').innerText=t;
-    document.getElementById('modal-c').style.display='flex';
-    const tar=localDB.find(x=>x.id===id);
-    document.getElementById('chat-box').innerHTML=(tar?.comentarios||[]).map(c=>{
-        const f=new Date(c.f);
-        return `<div class="chat-msg">
-            <div class="chat-msg-header">
-                <span class="chat-msg-user">${c.u.split('@')[0].toUpperCase()}</span>
-                <span class="chat-msg-time">${f.toLocaleDateString()} ${f.getHours()}:${String(f.getMinutes()).padStart(2,'0')}</span>
-            </div>
-            <div class="chat-msg-body">${c.m}</div>
-        </div>`;
-    }).join('') || '<div style="text-align:center;color:var(--text3);font-size:13px;padding:20px;">Sin comentarios aún</div>';
-    setTimeout(()=>{ const b=document.getElementById('chat-box'); b.scrollTop=b.scrollHeight; },100);
-};
-
-window.enviarComentario=async()=>{
-    const m=document.getElementById('c-input').value; if(!m) return;
-    await updateDoc(doc(db,'actividades',tareaIdActiva),{comentarios:arrayUnion({u:auth.currentUser.email,m:m,f:new Date().toISOString()})});
-    document.getElementById('c-input').value='';
-    cerrarModal();
-};
+window.borrarTarea=(id)=>confirm("¿Seguro que deseas eliminar esta actividad?")&&deleteDoc(doc(db,'actividades',id));
+window.guardarTarea=async()=>{ const d=document.getElementById('n-desc').value; if(!d) return; await addDoc(collection(db,'actividades'),{actividad:d,area:document.getElementById('n-area').value,fechaLimite:document.getElementById('n-date').value,estatus:'Sin Iniciar',fechaCreacion:new Date().toISOString(),responsable:auth.currentUser.email,comentarios:[]}); document.getElementById('n-desc').value=''; navegar('dashboard'); };
+window.abrirChat=(id,t)=>{ tareaIdActiva=id; document.getElementById('c-title').innerText=t; document.getElementById('modal-c').style.display='flex'; const tar=localDB.find(x=>x.id===id); document.getElementById('chat-box').innerHTML=(tar?.comentarios||[]).map(c=>{ const f=new Date(c.f); return `<div class="chat-msg"><div class="chat-msg-header"><span class="chat-msg-user">${c.u.split('@')[0].toUpperCase()}</span><span class="chat-msg-time">${f.toLocaleDateString()} ${f.getHours()}:${String(f.getMinutes()).padStart(2,'0')}</span></div><div class="chat-msg-body">${c.m}</div></div>`; }).join('')||'<div style="text-align:center;color:var(--text3);font-size:13px;padding:20px;">Sin comentarios aún</div>'; setTimeout(()=>{ const b=document.getElementById('chat-box'); b.scrollTop=b.scrollHeight; },100); };
+window.enviarComentario=async()=>{ const m=document.getElementById('c-input').value; if(!m) return; await updateDoc(doc(db,'actividades',tareaIdActiva),{comentarios:arrayUnion({u:auth.currentUser.email,m:m,f:new Date().toISOString()})}); document.getElementById('c-input').value=''; cerrarModal(); };
 window.cerrarModal=()=>document.getElementById('modal-c').style.display='none';
 
-// ──────────────────────────────────────────────────────────
-// REPORTE MENSUAL
-// ──────────────────────────────────────────────────────────
-window.renderReporteMensual=()=>{
-    const mes=parseInt(document.getElementById('rep-mes').value);
-    const anio=2026;
-    document.getElementById('rep-header-sub').innerText=`${MESES[mes]} ${anio}`;
-    document.getElementById('cal-mes-name').innerText=MESES[mes];
+window.renderReporteMensual=()=>{ const mes=parseInt(document.getElementById('rep-mes').value), anio=2026; document.getElementById('rep-header-sub').innerText=`${MESES[mes]} ${anio}`; document.getElementById('cal-mes-name').innerText=MESES[mes]; const tareasMes=localDB.filter(t=>t.fechaLimite&&new Date(t.fechaLimite+"T00:00:00").getMonth()===mes); const first=new Date(anio,mes,1).getDay(), total=new Date(anio,mes+1,0).getDate(); let h=''; for(let i=0;i<first;i++) h+='<div></div>'; for(let i=1;i<=total;i++){ const tDia=tareasMes.filter(t=>new Date(t.fechaLimite+"T00:00:00").getDate()===i); const dots=tDia.slice(0,3).map(t=>`<span style="width:5px;height:5px;background:${COLORES[DEPTOS.indexOf(t.area)]};border-radius:50%;display:inline-block;margin:1px;"></span>`).join(''); const isToday=new Date().getDate()===i&&new Date().getMonth()===mes; h+=`<div class="calendar-day ${isToday?'day-active':''}">${i}<div style="display:flex;justify-content:center;flex-wrap:wrap;margin-top:2px;">${dots}</div></div>`; } document.getElementById('cal-grid-dots').innerHTML=h; document.getElementById('mes-ranking-list').innerHTML=DEPTOS.map(a=>{ const tA=tareasMes.filter(t=>t.area===a); const p=tA.length>0?Math.round(tA.filter(t=>t.estatus==='Completada').length/tA.length*100):0; return `<div class="ranking-bar-row"><div class="ranking-bar-header"><span class="ranking-bar-name">${a}</span><span class="ranking-bar-pct">${p}%</span></div><div class="ranking-bar-track"><div class="ranking-bar-fill" style="width:${p}%"></div></div></div>`; }).join(''); if(lineChartObj) lineChartObj.destroy(); const diasArray=Array.from({length:total},(_,i)=>i+1); lineChartObj=new Chart(document.getElementById('lineChartMes').getContext('2d'),{type:'line',data:{labels:diasArray,datasets:DEPTOS.map((d,idx)=>({label:d,data:diasArray.map(dia=>tareasMes.filter(t=>t.area===d&&t.estatus==='Completada'&&t.fechaFinalizacion&&new Date(t.fechaFinalizacion).getDate()===dia).length),borderColor:COLORES[idx],backgroundColor:'transparent',tension:0.4,borderWidth:2,pointRadius:2}))},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:11},color:'#8fa3bf'}}},scales:{x:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#546e8a',font:{size:10}}},y:{beginAtZero:true,ticks:{stepSize:1,color:'#546e8a',font:{size:10}},grid:{color:'rgba(255,255,255,0.04)'}}}}}); document.getElementById('mes-logros-cards').innerHTML=DEPTOS.map(a=>{ const compl=tareasMes.filter(t=>t.area===a&&t.estatus==='Completada'); if(compl.length===0) return ''; return `<div class="logro-card"><div class="logro-card-title">${ICONS[DEPTOS.indexOf(a)]} ${a}</div>${compl.map(c=>`<div class="logro-item"><div class="logro-dot"></div>${c.actividad}</div>`).join('')}</div>`; }).join(''); };
 
-    const tareasMes=localDB.filter(t=>t.fechaLimite&&new Date(t.fechaLimite+"T00:00:00").getMonth()===mes);
-
-    const first=new Date(anio,mes,1).getDay();
-    const total=new Date(anio,mes+1,0).getDate();
-    let h=''; for(let i=0;i<first;i++) h+='<div></div>';
-    for(let i=1;i<=total;i++){
-        const tDia=tareasMes.filter(t=>new Date(t.fechaLimite+"T00:00:00").getDate()===i);
-        const dots=tDia.slice(0,3).map(t=>`<span style="width:5px;height:5px;background:${COLORES[DEPTOS.indexOf(t.area)]};border-radius:50%;display:inline-block;margin:1px;"></span>`).join('');
-        const isToday=new Date().getDate()===i&&new Date().getMonth()===mes;
-        h+=`<div class="calendar-day ${isToday?'day-active':''}">${i}<div style="display:flex;justify-content:center;flex-wrap:wrap;margin-top:2px;">${dots}</div></div>`;
-    }
-    document.getElementById('cal-grid-dots').innerHTML=h;
-
-    document.getElementById('mes-ranking-list').innerHTML=DEPTOS.map(a=>{
-        const tA=tareasMes.filter(t=>t.area===a);
-        const p=tA.length>0?Math.round(tA.filter(t=>t.estatus==='Completada').length/tA.length*100):0;
-        return `<div class="ranking-bar-row">
-            <div class="ranking-bar-header"><span class="ranking-bar-name">${a}</span><span class="ranking-bar-pct">${p}%</span></div>
-            <div class="ranking-bar-track"><div class="ranking-bar-fill" style="width:${p}%"></div></div>
-        </div>`;
-    }).join('');
-
-    if(lineChartObj) lineChartObj.destroy();
-    const diasArray=Array.from({length:total},(_,i)=>i+1);
-    lineChartObj=new Chart(document.getElementById('lineChartMes').getContext('2d'),{
-        type:'line',
-        data:{
-            labels:diasArray,
-            datasets:DEPTOS.map((d,idx)=>({
-                label:d,
-                data:diasArray.map(dia=>tareasMes.filter(t=>t.area===d&&t.estatus==='Completada'&&t.fechaFinalizacion&&new Date(t.fechaFinalizacion).getDate()===dia).length),
-                borderColor:COLORES[idx],backgroundColor:'transparent',tension:0.4,borderWidth:2,pointRadius:2
-            }))
-        },
-        options:{
-            responsive:true,maintainAspectRatio:false,
-            plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:11},color:'#8fa3bf'}}},
-            scales:{
-                x:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#546e8a',font:{size:10}}},
-                y:{beginAtZero:true,ticks:{stepSize:1,color:'#546e8a',font:{size:10}},grid:{color:'rgba(255,255,255,0.04)'}}
-            }
-        }
-    });
-
-    document.getElementById('mes-logros-cards').innerHTML=DEPTOS.map(a=>{
-        const compl=tareasMes.filter(t=>t.area===a&&t.estatus==='Completada');
-        if(compl.length===0) return '';
-        return `<div class="logro-card">
-            <div class="logro-card-title">${ICONS[DEPTOS.indexOf(a)]} ${a}</div>
-            ${compl.map(c=>`<div class="logro-item"><div class="logro-dot"></div>${c.actividad}</div>`).join('')}
-        </div>`;
-    }).join('');
-};
-
-// ──────────────────────────────────────────────────────────
-// NAV / NOTIFICACIONES
-// ──────────────────────────────────────────────────────────
-function renderNotificaciones(){
-    DEPTOS.forEach(d=>{
-        const c=localDB.filter(r=>r.area===d&&r.estatus!=='Completada').length;
-        const b=document.getElementById(`badge-${d}`);
-        if(b){ b.innerText=c; b.style.display=c>0?'inline-block':'none'; }
-    });
-}
-
-window.navegar=(id,b)=>{
-    document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
-    document.getElementById('sec-'+id).classList.add('active');
-    if(b){ document.querySelectorAll('.sitem').forEach(i=>i.classList.remove('active')); b.classList.add('active'); }
-};
+function renderNotificaciones(){ DEPTOS.forEach(d=>{ const c=localDB.filter(r=>r.area===d&&r.estatus!=='Completada').length; const b=document.getElementById(`badge-${d}`); if(b){ b.innerText=c; b.style.display=c>0?'inline-block':'none'; } }); }
+window.navegar=(id,b)=>{ document.querySelectorAll('.section').forEach(s=>s.classList.remove('active')); document.getElementById('sec-'+id).classList.add('active'); if(b){ document.querySelectorAll('.sitem').forEach(i=>i.classList.remove('active')); b.classList.add('active'); } if(id==='cal360') renderCal360(); };
 </script>
 </body>
 </html>
