@@ -979,39 +979,81 @@ window.cerrarSesion = ()=>signOut(auth).then(()=>location.reload());
 // ══════════════════════════════════════════════════════════════
 // FIRESTORE — escucha en tiempo real + notificaciones push
 // ══════════════════════════════════════════════════════════════
-let ultimoSnapshot = {}; // Para detectar cambios nuevos
+
+// Clave localStorage: guarda el timestamp ISO del último comentario
+// visto por ESTE usuario en ESTE navegador. Persiste entre sesiones.
+function getNotifKey(email){ return 'tc_last_notif_' + btoa(email).replace(/=/g,''); }
+
+function getUltimoVisto(email){
+    try{ return localStorage.getItem(getNotifKey(email)) || ''; }
+    catch(e){ return ''; }
+}
+function setUltimoVisto(email, isoTs){
+    try{ localStorage.setItem(getNotifKey(email), isoTs); }
+    catch(e){}
+}
+
+// True si este es el PRIMER snapshot (página recién cargada)
+// — en ese caso guardamos el estado actual sin notificar nada
+let primeraEscucha = true;
 
 function escuchar(){
     onSnapshot(query(collection(db,'actividades'),orderBy('fechaCreacion','desc')), s=>{
         const yo = auth.currentUser?.email || '';
+
+        if(primeraEscucha){
+            // Primera carga: registrar el timestamp del comentario más reciente
+            // de cada tarea sin disparar notificaciones
+            let maxTs = getUltimoVisto(yo);
+            s.docs.forEach(d => {
+                const data = d.data();
+                const coms = data.comentarios || [];
+                if(coms.length){
+                    const ts = coms[coms.length-1].f || '';
+                    if(ts > maxTs) maxTs = ts;
+                }
+            });
+            if(maxTs) setUltimoVisto(yo, maxTs);
+            primeraEscucha = false;
+            localDB = s.docs.map(d=>({id:d.id,...d.data()}));
+            renderDashboard(); renderNotificaciones(); renderReporteMensual();
+            if(areaActual) renderTabla();
+            return;
+        }
+
+        // Snapshots siguientes: detectar comentarios nuevos por timestamp
+        const ultimoVisto = getUltimoVisto(yo);
+        let nuevoMaxTs = ultimoVisto;
+        const miDepto = obtenerDeptoUsuario(yo);
+
         s.docs.forEach(d => {
             const data = d.data();
-            const id = d.id;
-            const prev = ultimoSnapshot[id];
-            // Detectar comentario nuevo
-            if (prev) {
-                const prevLen = prev.comentarios?.length || 0;
-                const newLen  = data.comentarios?.length || 0;
-                if (newLen > prevLen) {
-                    const ultimo = data.comentarios[newLen-1];
-                    // Notificar si:
-                    // a) el último no lo escribí yo
-                    // b) O me mencionan
-                    const menciones = extraerMenciones(ultimo.m || '');
-                    const miDepto = obtenerDeptoUsuario(yo);
-                    const meMencionan = menciones.some(m => m.toLowerCase().includes(miDepto.toLowerCase()));
+            const coms = data.comentarios || [];
+            coms.forEach(c => {
+                const ts = c.f || '';
+                // Es nuevo si su timestamp es posterior al último que vimos
+                // y no lo escribimos nosotros mismos
+                if(ts > ultimoVisto && c.u !== yo){
+                    const menciones = extraerMenciones(c.m || '');
+                    const meMencionan = menciones.some(m =>
+                        miDepto && m.toLowerCase().includes(miDepto.toLowerCase())
+                    );
                     const esMiTarea = data.responsable === yo;
-                    if (ultimo.u !== yo && (esMiTarea || meMencionan)) {
-                        const quien = ultimo.u.split('@')[0];
+                    if(esMiTarea || meMencionan){
+                        const quien = c.u.split('@')[0];
                         const msg = meMencionan
-                            ? `📣 ${quien} te mencionó en "${data.actividad}"`
-                            : `💬 ${quien} comentó en "${data.actividad}"`;
-                        mostrarNotif('Tecnocontrol · Portal', msg, id);
+                            ? '📣 ' + quien + ' te mencionó en "' + data.actividad + '"'
+                            : '💬 ' + quien + ' comentó en "' + data.actividad + '"';
+                        mostrarNotif('Tecnocontrol · Portal', msg, d.id);
                     }
                 }
-            }
-            ultimoSnapshot[id] = data;
+                if(ts > nuevoMaxTs) nuevoMaxTs = ts;
+            });
         });
+
+        // Actualizar el timestamp más reciente visto
+        if(nuevoMaxTs > ultimoVisto) setUltimoVisto(yo, nuevoMaxTs);
+
         localDB = s.docs.map(d=>({id:d.id,...d.data()}));
         renderDashboard(); renderNotificaciones(); renderReporteMensual();
         if(areaActual) renderTabla();
