@@ -491,66 +491,21 @@
 
 <div id="cal360-tooltip"></div>
 
-<!-- ═══════════════════════════════════════════════════════
-     SERVICE WORKER INLINE para Push Notifications (FCM)
-     Se registra como blob URL para funcionar sin servidor
-═══════════════════════════════════════════════════════ -->
+<!-- ═══════════════════════════════════════════════════
+     NOTIFICACIONES — API nativa del navegador
+     Compatible con GitHub Pages sin Service Worker
+═══════════════════════════════════════════════════ -->
 <script>
-// Service Worker como string para registrar inline
-const SW_CODE = `
-self.addEventListener('push', function(e) {
-    const data = e.data ? e.data.json() : {};
-    const title = data.title || 'Tecnocontrol';
-    const options = {
-        body: data.body || 'Tienes un nuevo mensaje',
-        icon: data.icon || '',
-        badge: '',
-        tag: data.tag || 'tecnocontrol-notif',
-        data: data,
-        requireInteraction: false,
-        vibrate: [200, 100, 200]
-    };
-    e.waitUntil(self.registration.showNotification(title, options));
-});
-self.addEventListener('notificationclick', function(e) {
-    e.notification.close();
-    e.waitUntil(clients.openWindow('/'));
-});
-self.addEventListener('message', function(e) {
-    if(e.data && e.data.type === 'SHOW_NOTIF') {
-        self.registration.showNotification(e.data.title, {
-            body: e.data.body,
-            tag: e.data.tag || 'tc',
-            icon: '',
-            requireInteraction: false,
-            vibrate: [150, 50, 150]
-        });
-    }
-});
-`;
-
-let swRegistration = null;
-
-async function registrarSW() {
-    if (!('serviceWorker' in navigator) || !('Notification' in window)) return;
-    try {
-        const blob = new Blob([SW_CODE], {type: 'application/javascript'});
-        const swUrl = URL.createObjectURL(blob);
-        swRegistration = await navigator.serviceWorker.register(swUrl, {scope: '/'});
-        console.log('[SW] Registrado OK');
-    } catch(e) {
-        console.warn('[SW] No se pudo registrar:', e);
-    }
-}
-
 async function solicitarPush() {
     document.getElementById('push-banner').style.display = 'none';
-    if (!('Notification' in window)) { alert('Tu navegador no soporta notificaciones'); return; }
+    if (!('Notification' in window)) {
+        alert('Tu navegador no soporta notificaciones'); return;
+    }
     const perm = await Notification.requestPermission();
     localStorage.setItem('pushPerm', perm);
     actualizarPushStatus(perm);
     if (perm === 'granted') {
-        mostrarNotif('✅ Tecnocontrol', 'Notificaciones activadas. Te avisaremos cuando alguien te mencione o comente.');
+        mostrarNotif('✅ Tecnocontrol', 'Notificaciones activadas. Te avisaremos cuando alguien comente o te mencione.');
     }
 }
 
@@ -565,20 +520,18 @@ function actualizarPushStatus(perm) {
 }
 
 function mostrarNotif(titulo, cuerpo, tag) {
-    if (!swRegistration || Notification.permission !== 'granted') {
-        // Fallback: notificación directa del navegador
-        if (Notification.permission === 'granted') {
-            new Notification(titulo, { body: cuerpo, tag: tag || 'tc' });
-        }
-        return;
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    try {
+        new Notification(titulo, {
+            body: cuerpo,
+            tag: tag || 'tc-portal',
+            icon: '',
+            silent: false
+        });
+    } catch(e) {
+        // iOS Safari no soporta Notification — falla silenciosamente
     }
-    navigator.serviceWorker.ready.then(reg => {
-        reg.active?.postMessage({ type: 'SHOW_NOTIF', title: titulo, body: cuerpo, tag: tag || 'tc' });
-    });
 }
-
-// Iniciar SW al cargar
-registrarSW();
 </script>
 
 <script type="module">
