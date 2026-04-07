@@ -980,61 +980,46 @@ window.cerrarSesion = ()=>signOut(auth).then(()=>location.reload());
 // FIRESTORE — escucha en tiempo real + notificaciones push
 // ══════════════════════════════════════════════════════════════
 
-// Clave localStorage por usuario
-function getNotifKey(email){ return 'tc_notif_' + btoa(email).replace(/=/g,''); }
+// localStorage: guarda ISO timestamp del último comentario procesado por usuario
+function getNotifKey(email){ return 'tc_nv2_' + btoa(email).replace(/[=+/]/g,''); }
 function getUltimoVisto(email){ try{ return localStorage.getItem(getNotifKey(email))||''; }catch(e){ return ''; } }
 function setUltimoVisto(email,ts){ try{ localStorage.setItem(getNotifKey(email),ts); }catch(e){} }
 
-let primeraEscucha = true;
-
-// Decide si este usuario debe recibir notificación de un comentario en esta tarea.
-// Recibe el email del usuario, el email del responsable de la tarea, y el área de la tarea.
-// Lógica: notificar si eres el responsable exacto, O si tu email contiene el área de la tarea.
-function debeNotificar(yo, responsable, areaTarea){
-    if(!yo) return false;
-    // 1. Eres el responsable exacto de la tarea
-    if(responsable && responsable.toLowerCase() === yo.toLowerCase()) return true;
-    // 2. El área de la tarea aparece en tu email (ej: "rh@..." para área RH)
-    if(areaTarea){
-        const areaLower = areaTarea.toLowerCase()
-            .replace('recursos humanos','rh')
-            .replace('administración','administracion')
-            .replace(/\s+/g,'');
-        const emailLower = yo.toLowerCase();
-        if(emailLower.includes(areaLower)) return true;
-        // También mapeo inverso: si email tiene parte del nombre del área
-        const palabras = areaTarea.toLowerCase().split(/\s+/);
-        for(const p of palabras){
-            if(p.length > 3 && emailLower.includes(p)) return true;
-        }
-    }
-    return false;
+// Limpia claves viejas de versiones anteriores para evitar timestamps corruptos
+function limpiarNotifViejas(email){
+    try{
+        const viejas = ['tc_last_notif_','tc_notif_','pushPerm','pushDeclined'];
+        Object.keys(localStorage).forEach(k=>{
+            if(viejas.some(v=>k.startsWith(v))) localStorage.removeItem(k);
+        });
+    }catch(e){}
 }
+
+let primeraEscucha = true;
+// Timestamp en que esta sesión arrancó — ningún comentario anterior a esto es "nuevo"
+const SESSION_START = new Date().toISOString();
 
 function escuchar(){
     onSnapshot(query(collection(db,'actividades'),orderBy('fechaCreacion','desc')), s=>{
         const yo = auth.currentUser?.email || '';
 
         if(primeraEscucha){
-            // Primera carga: guardar timestamp actual como "ya visto", sin notificar
-            let maxTs = getUltimoVisto(yo);
-            s.docs.forEach(d => {
-                const coms = d.data().comentarios || [];
-                coms.forEach(c => { if((c.f||'') > maxTs) maxTs = c.f; });
-            });
-            // Si no había nada guardado, usar ahora como punto de partida
-            if(!maxTs) maxTs = new Date().toISOString();
-            setUltimoVisto(yo, maxTs);
             primeraEscucha = false;
+            // Limpiar datos viejos corruptos
+            limpiarNotifViejas(yo);
+            // Marcar como "visto" todo lo que ya existe al momento de entrar
+            // Usamos SESSION_START para que solo lleguen comentarios escritos DESPUÉS de ahora
+            setUltimoVisto(yo, SESSION_START);
             localDB = s.docs.map(d=>({id:d.id,...d.data()}));
             renderDashboard(); renderNotificaciones(); renderReporteMensual();
             if(areaActual) renderTabla();
             return;
         }
 
-        // Snapshots siguientes: buscar comentarios con timestamp > último visto
-        const ultimoVisto = getUltimoVisto(yo);
+        // A partir del segundo snapshot: detectar comentarios nuevos
+        const ultimoVisto = getUltimoVisto(yo) || SESSION_START;
         let nuevoMaxTs = ultimoVisto;
+        const esAdmin = yo === ADMIN;
 
         s.docs.forEach(d => {
             const data = d.data();
@@ -1042,19 +1027,26 @@ function escuchar(){
             coms.forEach(c => {
                 const ts = c.f || '';
                 if(!ts) return;
-                // Actualizar max aunque no notifiquemos
                 if(ts > nuevoMaxTs) nuevoMaxTs = ts;
-                // Solo notificar si: es posterior al último visto Y no lo escribí yo
-                if(ts <= ultimoVisto) return;
-                if(c.u === yo) return;
-                // ¿Me corresponde esta notificación?
+
+                // Filtros básicos
+                if(ts <= ultimoVisto) return;   // ya lo vimos
+                if(c.u === yo) return;           // lo escribí yo
+
+                // ¿Me toca esta notificación?
+                // Admin: recibe TODO
+                // Otros: reciben si son el responsable o su email tiene relación con el área
+                const esMiTarea = (data.responsable||'').toLowerCase() === yo.toLowerCase();
+                const miArea = (data.area||'').toLowerCase();
+                const enMiEmail = miArea.length > 2 && yo.toLowerCase().includes(
+                    miArea.replace('recursos humanos','rh').replace('administración','administracion').replace(/\s+/g,'').substring(0,6)
+                );
                 const menciones = extraerMenciones(c.m || '');
                 const miDepto = obtenerDeptoUsuario(yo);
-                const meMencionan = menciones.length > 0 && menciones.some(m =>
-                    miDepto ? m.toLowerCase().includes(miDepto.toLowerCase()) : false
-                );
-                const meCorresponde = debeNotificar(yo, data.responsable, data.area) || meMencionan;
-                if(!meCorresponde) return;
+                const meMencionan = menciones.some(m => m.toLowerCase().includes((miDepto||yo.split('@')[0]).toLowerCase()));
+
+                if(!esAdmin && !esMiTarea && !enMiEmail && !meMencionan) return;
+
                 const quien = (c.u||'').split('@')[0];
                 const tarea = data.actividad || 'una tarea';
                 const msg = meMencionan
