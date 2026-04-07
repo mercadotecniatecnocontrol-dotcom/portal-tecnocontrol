@@ -550,46 +550,66 @@
 <div id="cal360-tooltip"></div>
 
 <!-- ═══════════════════════════════════════════════════
-     NOTIFICACIONES — API nativa del navegador
-     Compatible con GitHub Pages sin Service Worker
+     NOTIFICACIONES — Service Worker real (sw.js)
+     Funciona con pantalla minimizada, suspendida
+     y cuando la pestaña NO está en foco.
+     REQUISITO: subir sw.js a la raíz del repo GitHub Pages
 ═══════════════════════════════════════════════════ -->
 <script>
+let _swReg = null;
+
+// Registra el SW desde el archivo físico sw.js del repositorio
+async function registrarSW() {
+    if (!('serviceWorker' in navigator)) return;
+    try {
+        _swReg = await navigator.serviceWorker.register('./sw.js', { scope: './' });
+        console.log('[TC] Service Worker registrado:', _swReg.scope);
+    } catch(err) {
+        console.warn('[TC] SW no disponible (desarrollo local?):', err.message);
+    }
+}
+
 async function solicitarPush() {
     document.getElementById('push-banner').style.display = 'none';
-    if (!('Notification' in window)) {
-        alert('Tu navegador no soporta notificaciones'); return;
-    }
+    if (!('Notification' in window)) { alert('Tu navegador no soporta notificaciones'); return; }
+
     const perm = await Notification.requestPermission();
     localStorage.setItem('pushPerm', perm);
     actualizarPushStatus(perm);
+
     if (perm === 'granted') {
-        mostrarNotif('✅ Tecnocontrol', 'Notificaciones activadas. Te avisaremos cuando alguien comente o te mencione.');
+        // Confirmar con una notificación real inmediata
+        mostrarNotif('✅ Tecnocontrol', 'Notificaciones activadas. Te avisaremos aunque tengas la pantalla minimizada.', 'tc-confirm');
     }
 }
 
 function actualizarPushStatus(perm) {
     const bar = document.getElementById('push-status-bar');
     if (!bar) return;
-    if (perm === 'granted') {
-        bar.innerHTML = '<div class="push-status push-on">🔔 Notificaciones activas</div>';
-    } else {
-        bar.innerHTML = '<div class="push-status push-off" onclick="solicitarPush()">🔕 Activar notificaciones</div>';
-    }
+    bar.innerHTML = perm === 'granted'
+        ? '<div class="push-status push-on">🔔 Notificaciones activas</div>'
+        : '<div class="push-status push-off" onclick="solicitarPush()">🔕 Activar notificaciones</div>';
 }
 
-function mostrarNotif(titulo, cuerpo, tag) {
+async function mostrarNotif(titulo, cuerpo, tag) {
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
+
+    // Intentar via SW primero (funciona con pantalla suspendida / minimizada)
     try {
-        new Notification(titulo, {
-            body: cuerpo,
-            tag: tag || 'tc-portal',
-            icon: '',
-            silent: false
-        });
-    } catch(e) {
-        // iOS Safari no soporta Notification — falla silenciosamente
-    }
+        const reg = _swReg || await navigator.serviceWorker.ready;
+        if (reg && reg.active) {
+            reg.active.postMessage({ type: 'SHOW_NOTIF', title: titulo, body: cuerpo, tag: tag || 'tc' });
+            return;
+        }
+    } catch(e) { /* SW no listo, usar fallback */ }
+
+    // Fallback: Notification directa (solo funciona con pestaña en foco)
+    try { new Notification(titulo, { body: cuerpo, tag: tag || 'tc', icon: '' }); }
+    catch(e) {}
 }
+
+// Arrancar SW al cargar la página
+registrarSW();
 </script>
 
 <script type="module">
