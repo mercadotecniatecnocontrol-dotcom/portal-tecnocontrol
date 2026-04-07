@@ -375,7 +375,15 @@
         <div class="section" id="sec-cal360">
             <div class="page-header">
                 <div><div class="page-title">Calendario 360°</div><div class="page-date">Fechas estratégicas · Hedma Tecnocontrol 2026</div></div>
-                <div class="header-badge">📅 2026</div>
+                <div style="display:flex;gap:10px;align-items:center;">
+                    <div id="btn-cal-add" style="display:none;">
+                        <button onclick="document.getElementById('modal-cal-add').style.display='flex'"
+                            style="padding:8px 16px;background:linear-gradient(135deg,var(--teal),var(--blue));color:white;border:none;border-radius:10px;font-weight:700;font-size:12px;cursor:pointer;letter-spacing:0.5px;">
+                            ➕ Agregar evento
+                        </button>
+                    </div>
+                    <div class="header-badge">📅 2026</div>
+                </div>
             </div>
             <div class="cal360-filters">
                 <button class="cal360-filter active" data-tipo="todos" onclick="filtrarCal('todos',this)">Todos</button>
@@ -417,8 +425,15 @@
             <div class="page-header">
                 <div><div class="page-title" id="area-title">-</div><div class="page-date" id="area-stats-mini"></div></div>
             </div>
-            <div class="table-header">
-                <span>Actividad / Responsable</span><span>Fecha Límite</span><span>Días Rest.</span><span>Estatus</span><span>Acciones</span><span></span>
+            <div style="margin-bottom:16px;display:flex;gap:12px;align-items:center;">
+                <div style="position:relative;flex:1;max-width:460px;">
+                    <span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:15px;pointer-events:none;">🔍</span>
+                    <input type="text" id="area-search" placeholder="Buscar actividad o responsable..."
+                        oninput="renderTabla()"
+                        style="width:100%;padding:11px 16px 11px 42px;border-radius:12px;border:1px solid var(--border);background:rgba(255,255,255,0.06);color:var(--text);font-size:13px;outline:none;font-family:'DM Sans',sans-serif;transition:0.2s;"
+                        onfocus="this.style.borderColor='var(--teal)'" onblur="this.style.borderColor='var(--border)'">
+                </div>
+                <span id="area-search-count" style="font-size:12px;color:var(--text3);white-space:nowrap;"></span>
             </div>
             <div id="area-table"></div>
         </div>
@@ -486,6 +501,49 @@
         <div class="cal360-modal-fecha" id="cal360-modal-fecha"></div>
         <div id="cal360-modal-eventos"></div>
         <button class="btn-cancel-edit" style="margin-top:20px;" onclick="document.getElementById('modal-cal360').style.display='none'">✕ Cerrar</button>
+    </div>
+</div>
+
+<!-- MODAL AGREGAR EVENTO CALENDARIO (solo admin) -->
+<div id="modal-cal-add" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);backdrop-filter:blur(8px);z-index:3000;align-items:center;justify-content:center;">
+    <div style="background:linear-gradient(135deg,#0f1e38,#0b1426);border:1px solid var(--border);padding:30px;border-radius:20px;width:480px;">
+        <div style="font-family:'Space Grotesk',sans-serif;font-size:17px;font-weight:700;margin-bottom:22px;">➕ Agregar evento al calendario</div>
+        <label class="edit-label">Nombre del evento</label>
+        <input type="text" id="caladd-nombre" class="edit-field" placeholder="Ej: Revisión CRE trimestral">
+        <div class="edit-row" style="margin-bottom:18px;">
+            <div>
+                <label class="edit-label">Fecha</label>
+                <input type="date" id="caladd-fecha" class="edit-field" style="margin-bottom:0;">
+            </div>
+            <div>
+                <label class="edit-label">Tipo</label>
+                <select id="caladd-tipo" class="edit-field" style="margin-bottom:0;">
+                    <option value="Festivo">🟣 Festivo</option>
+                    <option value="RH">🟢 RH</option>
+                    <option value="Marketing" selected>🔵 Marketing</option>
+                    <option value="Comercial">🟡 Comercial</option>
+                    <option value="Industria">🟠 Industria</option>
+                </select>
+            </div>
+        </div>
+        <div class="edit-row" style="margin-bottom:18px;">
+            <div>
+                <label class="edit-label">Prioridad</label>
+                <select id="caladd-prioridad" class="edit-field" style="margin-bottom:0;">
+                    <option value="Alta">Alta</option>
+                    <option value="Media" selected>Media</option>
+                    <option value="Baja">Baja</option>
+                </select>
+            </div>
+            <div>
+                <label class="edit-label">Responsable</label>
+                <input type="text" id="caladd-resp" class="edit-field" placeholder="Ej: Marketing" style="margin-bottom:0;">
+            </div>
+        </div>
+        <label class="edit-label">Acción / Descripción</label>
+        <input type="text" id="caladd-accion" class="edit-field" placeholder="¿Qué se debe hacer ese día?">
+        <button class="btn-guardar-edit" onclick="guardarEventoCal()">GUARDAR EVENTO</button>
+        <button class="btn-cancel-edit" onclick="document.getElementById('modal-cal-add').style.display='none'">Cancelar</button>
     </div>
 </div>
 
@@ -690,13 +748,58 @@ async function cargarFestivosAPI() {
                 });
             }
         });
-        EVENTOS_360 = [...EVENTOS_BASE, ...eventosAPI];
+        mergeEventos();
         // Si el calendario ya está visible, re-renderizar
         if (document.getElementById('sec-cal360').classList.contains('active')) renderCal360();
     } catch(e) {
         console.warn('[Calendario] API de festivos no disponible, usando base local.');
     }
 }
+
+// ══════════════════════════════════════════════════════════════
+// EVENTOS PERSONALIZADOS DEL CALENDARIO (localStorage, solo admin)
+// ══════════════════════════════════════════════════════════════
+const CAL_CUSTOM_KEY = 'tc_cal_custom_events';
+
+function cargarEventosCustom(){
+    try{
+        const raw = localStorage.getItem(CAL_CUSTOM_KEY);
+        if(!raw) return [];
+        return JSON.parse(raw);
+    }catch(e){ return []; }
+}
+
+function guardarEventosCustom(evs){
+    localStorage.setItem(CAL_CUSTOM_KEY, JSON.stringify(evs));
+}
+
+function mergeEventos(){
+    const custom = cargarEventosCustom();
+    EVENTOS_360 = [...EVENTOS_BASE, ...eventosAPI, ...custom];
+}
+
+window.guardarEventoCal = () => {
+    const nombre = document.getElementById('caladd-nombre').value.trim();
+    const fecha  = document.getElementById('caladd-fecha').value;
+    const tipo   = document.getElementById('caladd-tipo').value;
+    const prio   = document.getElementById('caladd-prioridad').value;
+    const resp   = document.getElementById('caladd-resp').value.trim() || 'Admin';
+    const accion = document.getElementById('caladd-accion').value.trim() || 'Evento agregado manualmente';
+    if(!nombre){ alert('Escribe el nombre del evento'); return; }
+    if(!fecha){  alert('Selecciona una fecha'); return; }
+    const nuevo = {f:fecha, n:nombre, t:tipo, p:prio, a:accion, r:resp, fuente:'Manual'};
+    const custom = cargarEventosCustom();
+    custom.push(nuevo);
+    guardarEventosCustom(custom);
+    mergeEventos();
+    document.getElementById('modal-cal-add').style.display='none';
+    // Limpiar form
+    ['caladd-nombre','caladd-fecha','caladd-resp','caladd-accion'].forEach(id=>{ document.getElementById(id).value=''; });
+    // Navegar al mes del evento agregado
+    const d = new Date(fecha+"T00:00:00");
+    cal360Mes = d.getMonth(); cal360Anio = d.getFullYear();
+    renderCal360();
+};
 
 // ══════════════════════════════════════════════════════════════
 // MENCIONES @depto — lógica completa
@@ -830,6 +933,12 @@ onAuthStateChanged(auth, user=>{
         document.getElementById('app-portal').style.display='block';
         escuchar();
         renderCal360();
+        mergeEventos();
+        // Mostrar botón "Agregar evento" solo al admin
+        if(user.email === ADMIN){
+            const btn=document.getElementById('btn-cal-add');
+            if(btn) btn.style.display='block';
+        }
         // Push: mostrar banner si nunca respondió
         const perm = localStorage.getItem('pushPerm');
         const declined = localStorage.getItem('pushDeclined');
@@ -951,49 +1060,111 @@ function renderDashboard(){
 }
 
 // ══════════════════════════════════════════════════════════════
-// TABLA ÁREA
+// TABLA ÁREA — con buscador y ordenamiento automático por estado
 // ══════════════════════════════════════════════════════════════
 window.verArea=(a,b)=>{
     areaActual=a;
     document.getElementById('area-title').innerText=`${ICONS[DEPTOS.indexOf(a)]} ${a}`;
+    const srch=document.getElementById('area-search');
+    if(srch) srch.value='';
     navegar('area',b); renderTabla();
 };
 
+// Peso de ordenamiento: pendiente primero, completada al final
+function pesoEstatus(e){ return e==='Sin Iniciar'?0:e==='En Proceso'?1:2; }
+
+function buildTrow(r, hoy, yo, esAdmin){
+    const lim=new Date(r.fechaLimite+"T00:00:00"), diff=Math.ceil((lim-hoy)/(1000*3600*24));
+    let semaforo="row-safe";
+    if(r.estatus!=='Completada'){ if(diff<=1) semaforo="row-critical"; else if(diff<=3) semaforo="row-warning"; }
+    let daysPill,daysText;
+    if(r.estatus==='Completada'){daysPill='teal';daysText='✓ Lista';}
+    else if(!r.fechaLimite){daysPill='teal';daysText='Sin fecha';}
+    else if(diff<0){daysPill='red';daysText='Vencida';}
+    else if(diff===0){daysPill='red';daysText='Hoy';}
+    else if(diff<=1){daysPill='red';daysText='1d';}
+    else if(diff<=3){daysPill='yellow';daysText=`${diff}d`;}
+    else{daysPill='teal';daysText=`${diff}d`;}
+    const statusClass=r.estatus==='Completada'?'s-comp':r.estatus==='En Proceso'?'s-proc':'s-sin';
+    const tieneMsgNuevo=r.comentarios?.length>0&&r.comentarios[r.comentarios.length-1].u!==yo;
+    const puedeEditar=esAdmin||r.responsable===yo;
+    return `<div class="trow ${semaforo}" style="${r.estatus==='Completada'?'opacity:0.6;':''}">
+        <div><div class="task-name">${r.actividad}</div><div class="task-user">${r.responsable.split('@')[0]}</div></div>
+        <div style="color:var(--text2);font-size:12px;">${r.fechaLimite||'--'}</div>
+        <div><span class="days-pill ${daysPill}">${daysText}</span></div>
+        <div><span class="status-chip ${statusClass}">${r.estatus}</span></div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            ${puedeEditar?`<button class="btn-accion btn-editar" onclick="abrirEdit('${r.id}')">✏️ Editar</button>`:`<span style="font-size:11px;color:var(--text3);">Solo lectura</span>`}
+            <button class="comm-btn" onclick="abrirChat('${r.id}','${r.actividad.replace(/'/g,"\'").replace(/"/g,'&quot;')}','${r.area||''}')">💬${tieneMsgNuevo?'<span class="comm-alert"></span>':''}</button>
+            ${esAdmin?`<button class="btn-delete" onclick="borrarTarea('${r.id}')" title="Eliminar">🗑</button>`:''}
+        </div>
+        <div></div>
+    </div>`;
+}
+
+function renderGrupo(titulo, items, colorDot, hoy, yo, esAdmin){
+    if(!items.length) return '';
+    return `<div style="margin-bottom:24px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-left:4px;">
+            <div style="width:8px;height:8px;border-radius:50%;background:${colorDot};flex-shrink:0;"></div>
+            <span style="font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);">${titulo}</span>
+            <span style="font-size:11px;color:var(--text3);margin-left:4px;">(${items.length})</span>
+        </div>
+        ${items.map(r=>buildTrow(r,hoy,yo,esAdmin)).join('')}
+    </div>`;
+}
+
 function renderTabla(){
     const hoy=new Date(); hoy.setHours(0,0,0,0);
-    const filt=localDB.filter(r=>r.area===areaActual);
+    const query=(document.getElementById('area-search')?.value||'').toLowerCase().trim();
+    let filt=localDB.filter(r=>r.area===areaActual);
+    const total=filt.length;
     const yo=auth.currentUser.email, esAdmin=yo===ADMIN;
-    const total=filt.length, done=filt.filter(x=>x.estatus==='Completada').length;
+    const done=filt.filter(x=>x.estatus==='Completada').length;
     document.getElementById('area-stats-mini').innerText=`${done} de ${total} completadas · ${total>0?Math.round(done/total*100):0}% cumplimiento`;
-    if(!filt.length){ document.getElementById('area-table').innerHTML='<div style="text-align:center;color:var(--text3);padding:40px;">No hay actividades registradas para esta área</div>'; return; }
-    document.getElementById('area-table').innerHTML=filt.map(r=>{
-        const lim=new Date(r.fechaLimite+"T00:00:00"), diff=Math.ceil((lim-hoy)/(1000*3600*24));
-        let semaforo="row-safe";
-        if(r.estatus!=='Completada'){ if(diff<=1) semaforo="row-critical"; else if(diff<=3) semaforo="row-warning"; }
-        let daysPill,daysText;
-        if(r.estatus==='Completada'){daysPill='teal';daysText='✓ Lista';}
-        else if(!r.fechaLimite){daysPill='teal';daysText='Sin fecha';}
-        else if(diff<0){daysPill='red';daysText='Vencida';}
-        else if(diff===0){daysPill='red';daysText='Hoy';}
-        else if(diff<=1){daysPill='red';daysText='1d';}
-        else if(diff<=3){daysPill='yellow';daysText=`${diff}d`;}
-        else{daysPill='teal';daysText=`${diff}d`;}
-        const statusClass=r.estatus==='Completada'?'s-comp':r.estatus==='En Proceso'?'s-proc':'s-sin';
-        const tieneMsgNuevo=r.comentarios?.length>0&&r.comentarios[r.comentarios.length-1].u!==yo;
-        const puedeEditar=esAdmin||r.responsable===yo;
-        return `<div class="trow ${semaforo}">
-            <div><div class="task-name">${r.actividad}</div><div class="task-user">${r.responsable.split('@')[0]}</div></div>
-            <div style="color:var(--text2);font-size:12px;">${r.fechaLimite||'--'}</div>
-            <div><span class="days-pill ${daysPill}">${daysText}</span></div>
-            <div><span class="status-chip ${statusClass}">${r.estatus}</span></div>
-            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                ${puedeEditar?`<button class="btn-accion btn-editar" onclick="abrirEdit('${r.id}')">✏️ Editar</button>`:`<span style="font-size:11px;color:var(--text3);">Solo lectura</span>`}
-                <button class="comm-btn" onclick="abrirChat('${r.id}','${r.actividad.replace(/'/g,"\\'").replace(/"/g,'&quot;')}','${r.area||''}')">💬${tieneMsgNuevo?'<span class="comm-alert"></span>':''}</button>
-                ${esAdmin?`<button class="btn-delete" onclick="borrarTarea('${r.id}')" title="Eliminar">🗑</button>`:''}
-            </div>
-            <div></div>
-        </div>`;
-    }).join('');
+
+    // Aplicar búsqueda
+    if(query){
+        filt=filt.filter(r=>
+            r.actividad?.toLowerCase().includes(query)||
+            r.responsable?.toLowerCase().includes(query)||
+            r.estatus?.toLowerCase().includes(query)
+        );
+    }
+
+    // Contador búsqueda
+    const cEl=document.getElementById('area-search-count');
+    if(cEl) cEl.innerText=query?`${filt.length} resultado${filt.length!==1?'s':''}${filt.length<total?' de '+total:''}`:'' ;
+
+    if(!filt.length){
+        document.getElementById('area-table').innerHTML=query
+            ?`<div style="text-align:center;color:var(--text3);padding:40px;">🔍 Sin resultados para "<b style='color:var(--text)'>${query}</b>"</div>`
+            :`<div style="text-align:center;color:var(--text3);padding:40px;">No hay actividades registradas para esta área</div>`;
+        return;
+    }
+
+    // Ordenar: Sin Iniciar → En Proceso → Completada; dentro de cada grupo por días restantes
+    filt.sort((a,b)=>{
+        const pe=pesoEstatus(a.estatus)-pesoEstatus(b.estatus);
+        if(pe!==0) return pe;
+        const da=a.fechaLimite?new Date(a.fechaLimite+"T00:00:00"):new Date(9999,0,1);
+        const db2=b.fechaLimite?new Date(b.fechaLimite+"T00:00:00"):new Date(9999,0,1);
+        return da-db2;
+    });
+
+    const pendientes=filt.filter(r=>r.estatus==='Sin Iniciar');
+    const enproceso=filt.filter(r=>r.estatus==='En Proceso');
+    const completadas=filt.filter(r=>r.estatus==='Completada');
+
+    // Mostrar tabla de cabecera solo si hay resultados sin buscar
+    const header=`<div style="display:grid;grid-template-columns:2fr 1fr 0.8fr 1fr 1.8fr auto;padding:8px 20px;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);margin-bottom:4px;">
+        <span>Actividad / Responsable</span><span>Fecha Límite</span><span>Días Rest.</span><span>Estatus</span><span>Acciones</span><span></span>
+    </div>`;
+
+    document.getElementById('area-table').innerHTML=header+
+        renderGrupo('Pendientes · Sin Iniciar', pendientes, 'var(--text3)', hoy, yo, esAdmin)+
+        renderGrupo('En Proceso', enproceso, 'var(--yellow)', hoy, yo, esAdmin)+
+        renderGrupo('Completadas', completadas, 'var(--teal)', hoy, yo, esAdmin);
 }
 
 // ══════════════════════════════════════════════════════════════
