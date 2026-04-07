@@ -429,9 +429,7 @@
                 <div style="position:relative;flex:1;max-width:460px;">
                     <span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:15px;pointer-events:none;">🔍</span>
                     <input type="text" id="area-search" placeholder="Buscar actividad o responsable..."
-                        oninput="renderTabla()"
-                        style="width:100%;padding:11px 16px 11px 42px;border-radius:12px;border:1px solid var(--border);background:rgba(255,255,255,0.06);color:var(--text);font-size:13px;outline:none;font-family:'DM Sans',sans-serif;transition:0.2s;"
-                        onfocus="this.style.borderColor='var(--teal)'" onblur="this.style.borderColor='var(--border)'">
+                        style="width:100%;padding:11px 16px 11px 42px;border-radius:12px;border:1px solid var(--border);background:rgba(255,255,255,0.06);color:var(--text);font-size:13px;outline:none;font-family:'DM Sans',sans-serif;transition:0.2s;">
                 </div>
                 <span id="area-search-count" style="font-size:12px;color:var(--text3);white-space:nowrap;"></span>
             </div>
@@ -1186,6 +1184,16 @@ function renderTabla(){
         renderGrupo('En Proceso', enproceso, 'var(--yellow)', hoy, yo, esAdmin)+
         renderGrupo('Completadas', completadas, 'var(--teal)', hoy, yo, esAdmin);
 }
+
+// Conectar buscador via addEventListener (módulos no exponen al HTML inline)
+document.addEventListener('DOMContentLoaded', ()=>{
+    const s = document.getElementById('area-search');
+    if(s){
+        s.addEventListener('input', ()=> renderTabla());
+        s.addEventListener('focus', ()=>{ s.style.borderColor='var(--teal)'; });
+        s.addEventListener('blur',  ()=>{ s.style.borderColor='var(--border)'; });
+    }
+});
 
 // ══════════════════════════════════════════════════════════════
 // MODAL EDITAR
