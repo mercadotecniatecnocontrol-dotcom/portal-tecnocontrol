@@ -1003,18 +1003,16 @@ function escuchar(){
                 if(!ts || ts <= SESSION_START) return;
                 // No notificarme mis propios comentarios
                 if(c.u === yo) return;
-                // ¿Me toca? Admin recibe todo. Otros: su tarea o su área o mención
+                // ¿Me toca? Admin recibe todo. Otros: su tarea, su área, o mención.
                 const esAdmin = yo === ADMIN;
                 const esMiTarea = (data.responsable||'') === yo;
-                const miArea = (data.area||'').toLowerCase()
-                    .replace('recursos humanos','rh')
-                    .replace('administración','administracion')
-                    .replace(/\s+/g,'');
-                const enMiEmail = miArea.length>2 && yo.toLowerCase().includes(miArea.slice(0,5));
-                const menciones = extraerMenciones(c.m||'');
                 const miDepto = obtenerDeptoUsuario(yo);
-                const meMencionan = miDepto && menciones.some(m=>m.toLowerCase().includes(miDepto.toLowerCase()));
-                if(!esAdmin && !esMiTarea && !enMiEmail && !meMencionan) return;
+                const esMiArea = miDepto !== '' && miDepto === (data.area||'');
+                const menciones = extraerMenciones(c.m||'');
+                const meMencionan = miDepto && menciones.some(m=>
+                    m.toLowerCase().includes(miDepto.toLowerCase())
+                );
+                if(!esAdmin && !esMiTarea && !esMiArea && !meMencionan) return;
                 // Disparar notificación
                 const quien = (c.u||'').split('@')[0];
                 const tarea = data.actividad||'una tarea';
@@ -1031,15 +1029,34 @@ function escuchar(){
     });
 }
 
+// ── Mapa exacto email → área ──────────────────────────────────
+// Agrega aquí los emails reales de cada usuario cuando los tengas.
+// La clave es el email en minúsculas, el valor es el área exacta como
+// aparece en la base de datos (mayúsculas/acentos incluidos).
+const EMAIL_AREA_MAP = {
+    'c.acosta@tecnocontrol.com.mx':         'Administración',
+    'rh@tecnocontrol.com.mx':               'Recursos Humanos',
+    'facturacion@tecnocontrol.com.mx':      'Ingresos',
+    'aux.contable@tecnocontrol.com.mx':     'Egresos',
+    'mercadotecniatecnocontrol@gmail.com':  'Marketing',
+    'contabilidad@tecnocontrol.com.mx':     'Contabilidad',
+    // ── Agregar aquí los siguientes usuarios ──
+    // 'nuevo@tecnocontrol.com.mx': 'Ventas',
+};
+
 function obtenerDeptoUsuario(email) {
-    // Mapeo simple email → depto
-    const map = {
-        'ingresos': 'Ingresos', 'egresos': 'Egresos', 'contabilidad': 'Contabilidad',
-        'rh': 'Recursos Humanos', 'recursos': 'Recursos Humanos',
-        'marketing': 'Marketing', 'administracion': 'Administración', 'ventas': 'Ventas'
+    if(!email) return '';
+    // 1. Buscar por email exacto (más confiable)
+    const exacto = EMAIL_AREA_MAP[email.toLowerCase().trim()];
+    if(exacto) return exacto;
+    // 2. Fallback: buscar por fragmento del email (para emails futuros no mapeados)
+    const fragmentos = {
+        'rh@':'Recursos Humanos', 'facturacion':'Ingresos', 'contabilidad':'Contabilidad',
+        'aux.contable':'Egresos', 'ventas':'Ventas', 'marketing':'Marketing',
+        'mercadotecnia':'Marketing', 'administracion':'Administración', 'c.acosta':'Administración'
     };
     const lower = email.toLowerCase();
-    for (const [k,v] of Object.entries(map)) { if(lower.includes(k)) return v; }
+    for(const [k,v] of Object.entries(fragmentos)){ if(lower.includes(k)) return v; }
     return '';
 }
 
