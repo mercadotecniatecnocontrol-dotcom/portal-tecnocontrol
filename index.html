@@ -592,18 +592,22 @@ function actualizarPushStatus(perm) {
 async function mostrarNotif(titulo, cuerpo, tag) {
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
 
-    // Intentar via SW primero (funciona con pantalla suspendida / minimizada)
+    // SIEMPRE usar new Notification() directo — funciona en Mac y Windows
+    // El SW también recibe el mensaje para cuando la pestaña está cerrada
     try {
-        const reg = _swReg || await navigator.serviceWorker.ready;
+        new Notification(titulo, { body: cuerpo, tag: tag || 'tc', icon: '' });
+    } catch(e) {
+        // Safari u otro navegador que no soporta constructor directo
+        console.warn('[TC] Notification directa falló:', e.message);
+    }
+
+    // Adicionalmente notificar via SW (para pestaña cerrada / pantalla suspendida)
+    try {
+        const reg = _swReg || (_swReg = await navigator.serviceWorker.getRegistration('./'));
         if (reg && reg.active) {
             reg.active.postMessage({ type: 'SHOW_NOTIF', title: titulo, body: cuerpo, tag: tag || 'tc' });
-            return;
         }
-    } catch(e) { /* SW no listo, usar fallback */ }
-
-    // Fallback: Notification directa (solo funciona con pestaña en foco)
-    try { new Notification(titulo, { body: cuerpo, tag: tag || 'tc', icon: '' }); }
-    catch(e) {}
+    } catch(e) { /* SW no disponible, la notificación directa ya se mostró */ }
 }
 
 // Arrancar SW al cargar la página
