@@ -210,6 +210,20 @@
         ::-webkit-scrollbar-track{background:transparent;}
         ::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:10px;}
 
+        /* ── NOTIFICACIONES IN-APP estilo WhatsApp ── */
+        #push-container{position:fixed;bottom:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:10px;pointer-events:none;}
+        .push-notification{pointer-events:auto;width:320px;background:rgba(15,30,56,0.97);backdrop-filter:blur(12px);border-left:4px solid var(--teal);border-radius:12px;padding:16px;box-shadow:0 10px 30px rgba(0,0,0,0.4);color:white;display:flex;align-items:flex-start;gap:12px;animation:slideIn 0.4s cubic-bezier(0.175,0.885,0.32,1.275) forwards;cursor:pointer;transition:transform 0.2s,opacity 0.3s;}
+        .push-notification:hover{transform:translateX(-5px);}
+        .push-notification.push-mention{border-left-color:var(--cyan);}
+        .push-icon{font-size:20px;background:var(--glass2);width:40px;height:40px;display:flex;align-items:center;justify-content:center;border-radius:50%;flex-shrink:0;}
+        .push-content{flex:1;min-width:0;}
+        .push-title{font-weight:700;font-size:13px;margin-bottom:3px;color:var(--teal);}
+        .push-notification.push-mention .push-title{color:var(--cyan);}
+        .push-msg{font-size:12px;color:var(--text2);line-height:1.4;word-break:break-word;}
+        .push-time{font-size:10px;color:var(--text3);margin-top:4px;}
+        .push-fade-out{opacity:0;transform:scale(0.85) translateX(20px);transition:0.3s;}
+        @keyframes slideIn{from{opacity:0;transform:translateX(110%) scale(0.9);}to{opacity:1;transform:translateX(0) scale(1);}}
+
         /* ═══════ CALENDARIO 360 ═══════ */
         .cal360-filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:24px;}
         .cal360-filter{padding:7px 16px;border-radius:20px;border:1px solid var(--border);background:var(--glass);color:var(--text2);font-size:12px;font-weight:700;cursor:pointer;transition:0.2s;}
@@ -546,6 +560,7 @@
 </div>
 
 <div id="cal360-tooltip"></div>
+<div id="push-container"></div>
 
 <!-- ═══════════════════════════════════════════════════
      NOTIFICACIONES — API nativa (sin Service Worker)
@@ -581,6 +596,36 @@ function mostrarNotif(titulo, cuerpo, tag) {
             silent: false
         });
     } catch(e) {}
+}
+
+// ── Notificación visual in-app estilo WhatsApp ──────────────
+// Funciona para TODOS sin permisos del sistema operativo.
+// Se apilan en la esquina inferior derecha y se auto-cierran en 5s.
+window.mostrarPush = (titulo, mensaje, icono = '💬', esMencion = false) => {
+    const container = document.getElementById('push-container');
+    if(!container) return;
+    const n = document.createElement('div');
+    n.className = 'push-notification' + (esMencion ? ' push-mention' : '');
+    const hora = new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
+    n.innerHTML = `
+        <div class="push-icon">${icono}</div>
+        <div class="push-content">
+            <div class="push-title">${titulo}</div>
+            <div class="push-msg">${mensaje}</div>
+            <div class="push-time">${hora}</div>
+        </div>`;
+    container.appendChild(n);
+    // Limitar a 5 notificaciones apiladas
+    const all = container.querySelectorAll('.push-notification');
+    if(all.length > 5) all[0].remove();
+    // Auto-cerrar en 5 segundos
+    const timer = setTimeout(() => cerrarPush(n), 5000);
+    n.onclick = () => { clearTimeout(timer); cerrarPush(n); };
+};
+
+function cerrarPush(el) {
+    el.classList.add('push-fade-out');
+    setTimeout(() => el.remove(), 300);
 }
 </script>
 
@@ -974,46 +1019,45 @@ function escuchar(){
             const data = d.data();
             const id = d.id;
             const prev = ultimoSnapshot[id];
+            const prevLen = prev?.comentarios?.length ?? -1;
+            const newLen  = (data.comentarios||[]).length;
 
-            // Solo analizar si ya teníamos este documento en el snapshot anterior
-            if(prev) {
-                const prevLen = prev.comentarios?.length || 0;
-                const newLen  = (data.comentarios||[]).length;
+            if(prev && newLen > prevLen && prevLen >= 0) {
+                const ultimo = data.comentarios[newLen-1];
+                if(ultimo.u !== yo) {
+                    const miDepto = obtenerDeptoUsuario(yo);
+                    const esAdmin = yo === ADMIN;
+                    const esMiTarea = data.responsable === yo;
+                    const esMiArea = miDepto !== '' &&
+                        miDepto.toLowerCase() === (data.area||'').toLowerCase();
+                    const menciones = extraerMenciones(ultimo.m || '');
+                    const meMencionan = menciones.some(m =>
+                        miDepto && m.toLowerCase().includes(miDepto.toLowerCase())
+                    );
 
-                if(newLen > prevLen) {
-                    const ultimo = data.comentarios[newLen-1];
-                    // No notificar si lo escribí yo
-                    if(ultimo.u !== yo) {
-                        const miDepto = obtenerDeptoUsuario(yo);
-                        const esAdmin = yo === ADMIN;
-
-                        // Caso 1: soy el responsable exacto
-                        const esMiTarea = data.responsable === yo;
-
-                        // Caso 2: soy el dueño del área
-                        const esMiArea = miDepto !== '' &&
-                            miDepto.toLowerCase() === (data.area||'').toLowerCase();
-
-                        // Caso 3: me mencionaron con @
-                        const menciones = extraerMenciones(ultimo.m || '');
-                        const meMencionan = menciones.some(m =>
-                            miDepto && m.toLowerCase().includes(miDepto.toLowerCase())
-                        );
-
-                        if(esAdmin || esMiTarea || esMiArea || meMencionan) {
-                            const quien = ultimo.u.split('@')[0];
-                            const tarea = data.actividad || 'una tarea';
-                            const msg = meMencionan
-                                ? `📣 ${quien} te mencionó en "${tarea}"`
-                                : esMiTarea
-                                    ? `💬 ${quien} comentó en tu tarea "${tarea}"`
-                                    : `💬 ${quien} comentó en "${tarea}" · ${data.area||''}`;
-                            mostrarNotif('Tecnocontrol · Portal', msg, id);
+                    if(esAdmin || esMiTarea || esMiArea || meMencionan) {
+                        const quien = ultimo.u.split('@')[0];
+                        const tarea = data.actividad || 'una tarea';
+                        // ── Notificación visual in-app (funciona para TODOS) ──
+                        if(meMencionan) {
+                            window.mostrarPush('📣 Te mencionaron',
+                                `${quien} te mencionó en "${tarea}"`, '📣', true);
+                        } else if(esMiTarea) {
+                            window.mostrarPush('💬 Nuevo comentario en tu tarea',
+                                `${quien}: "${(ultimo.m||'').slice(0,80)}"`, '💬');
+                        } else {
+                            window.mostrarPush(`💬 ${data.area||'Portal'}`,
+                                `${quien} comentó en "${tarea}"`,
+                                ICONS[DEPTOS.indexOf(data.area||'')] || '💬');
                         }
+                        // ── Notificación del SO si el navegador lo permite ──
+                        const msgSys = meMencionan
+                            ? `📣 ${quien} te mencionó en "${tarea}"`
+                            : `💬 ${quien} comentó en "${tarea}"`;
+                        mostrarNotif('Tecnocontrol · Portal', msgSys, id);
                     }
                 }
             }
-            // Guardar estado actual para el próximo snapshot
             ultimoSnapshot[id] = data;
         });
 
@@ -1132,7 +1176,11 @@ function buildTrow(r, hoy, yo, esAdmin){
     else if(diff<=3){daysPill='yellow';daysText=`${diff}d`;}
     else{daysPill='teal';daysText=`${diff}d`;}
     const statusClass=r.estatus==='Completada'?'s-comp':r.estatus==='En Proceso'?'s-proc':'s-sin';
-    const tieneMsgNuevo=r.comentarios?.length>0&&r.comentarios[r.comentarios.length-1].u!==yo;
+    // Hay mensaje nuevo si algún comentario no fue escrito por mí
+    // y el total de comentarios es mayor al que tenía cuando lo abrí
+    const totalComs = r.comentarios?.length || 0;
+    const leidos = parseInt(localStorage.getItem('tc_read_'+r.id+'_'+btoa(yo).slice(0,8)) || '0');
+    const tieneMsgNuevo = totalComs > leidos && (r.comentarios||[]).some(cm => cm.u !== yo);
     const puedeEditar=esAdmin||r.responsable===yo;
     return `<div class="trow ${semaforo}" style="${r.estatus==='Completada'?'opacity:0.6;':''}">
         <div><div class="task-name">${r.actividad}</div><div class="task-user">${r.responsable.split('@')[0]}</div></div>
@@ -1227,7 +1275,22 @@ document.addEventListener('DOMContentLoaded', ()=>{
 // MODAL EDITAR
 // ══════════════════════════════════════════════════════════════
 window.abrirEdit=(id)=>{ const r=localDB.find(x=>x.id===id); if(!r) return; document.getElementById('edit-id').value=id; document.getElementById('edit-desc').value=r.actividad||''; document.getElementById('edit-fecha').value=r.fechaLimite||''; document.getElementById('edit-estatus').value=r.estatus||'Sin Iniciar'; document.getElementById('modal-edit').style.display='flex'; };
-window.guardarEdicion=async()=>{ const id=document.getElementById('edit-id').value, nuevoEstatus=document.getElementById('edit-estatus').value, tareaAnterior=localDB.find(x=>x.id===id), fueCompletada=tareaAnterior?.estatus!=='Completada'&&nuevoEstatus==='Completada'; await updateDoc(doc(db,'actividades',id),{actividad:document.getElementById('edit-desc').value,fechaLimite:document.getElementById('edit-fecha').value,estatus:nuevoEstatus,fechaFinalizacion:fueCompletada?new Date().toISOString():(nuevoEstatus!=='Completada'?null:tareaAnterior?.fechaFinalizacion||null)}); cerrarEdit(); };
+window.guardarEdicion=async()=>{
+    const id=document.getElementById('edit-id').value;
+    const nuevoEstatus=document.getElementById('edit-estatus').value;
+    const tareaAnterior=localDB.find(x=>x.id===id);
+    const fueCompletada=tareaAnterior?.estatus!=='Completada'&&nuevoEstatus==='Completada';
+    const desc=document.getElementById('edit-desc').value;
+    await updateDoc(doc(db,'actividades',id),{
+        actividad:desc,
+        fechaLimite:document.getElementById('edit-fecha').value,
+        estatus:nuevoEstatus,
+        fechaFinalizacion:fueCompletada?new Date().toISOString():(nuevoEstatus!=='Completada'?null:tareaAnterior?.fechaFinalizacion||null)
+    });
+    if(fueCompletada) window.mostrarPush('✅ Tarea completada', `"${desc}" marcada como completada`, '✅');
+    else if(nuevoEstatus==='En Proceso') window.mostrarPush('⚡ En proceso', `"${desc}" está en proceso`, '⚡');
+    cerrarEdit();
+};
 window.cerrarEdit=()=>{ document.getElementById('modal-edit').style.display='none'; };
 document.getElementById('modal-edit').addEventListener('click',e=>{ if(e.target===document.getElementById('modal-edit')) cerrarEdit(); });
 document.getElementById('modal-c').addEventListener('click',e=>{ if(e.target===document.getElementById('modal-c')) cerrarModal(); });
@@ -1241,6 +1304,10 @@ window.abrirChat=(id, t, area)=>{
     document.getElementById('c-title').innerText=t;
     document.getElementById('c-area-label').innerText = area ? `📁 ${area}` : '';
     document.getElementById('modal-c').style.display='flex';
+    // Marcar como leído al abrir
+    const yo2 = auth.currentUser?.email || '';
+    const tar2 = localDB.find(x=>x.id===id);
+    if(tar2) localStorage.setItem('tc_read_'+id+'_'+btoa(yo2).slice(0,8), String(tar2.comentarios?.length||0));
     const tar=localDB.find(x=>x.id===id);
     const yo = auth.currentUser?.email || '';
     document.getElementById('chat-box').innerHTML=(tar?.comentarios||[]).map(c=>{
@@ -1281,7 +1348,19 @@ window.cerrarModal=()=>{ document.getElementById('modal-c').style.display='none'
 // ACCIONES GENERALES
 // ══════════════════════════════════════════════════════════════
 window.borrarTarea=(id)=>confirm("¿Seguro que deseas eliminar esta actividad?")&&deleteDoc(doc(db,'actividades',id));
-window.guardarTarea=async()=>{ const d=document.getElementById('n-desc').value; if(!d) return; await addDoc(collection(db,'actividades'),{actividad:d,area:document.getElementById('n-area').value,fechaLimite:document.getElementById('n-date').value,estatus:'Sin Iniciar',fechaCreacion:new Date().toISOString(),responsable:auth.currentUser.email,comentarios:[]}); document.getElementById('n-desc').value=''; navegar('dashboard'); };
+window.guardarTarea=async()=>{
+    const d=document.getElementById('n-desc').value; if(!d) return;
+    const area=document.getElementById('n-area').value;
+    await addDoc(collection(db,'actividades'),{
+        actividad:d, area:area,
+        fechaLimite:document.getElementById('n-date').value,
+        estatus:'Sin Iniciar', fechaCreacion:new Date().toISOString(),
+        responsable:auth.currentUser.email, comentarios:[]
+    });
+    document.getElementById('n-desc').value='';
+    window.mostrarPush('✅ Tarea publicada', `"${d}" asignada a ${area}`, '📋');
+    navegar('dashboard');
+};
 
 // ══════════════════════════════════════════════════════════════
 // REPORTE MENSUAL
