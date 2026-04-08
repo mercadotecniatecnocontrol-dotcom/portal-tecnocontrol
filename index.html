@@ -238,6 +238,79 @@
         ::-webkit-scrollbar-track{background:transparent;}
         ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:10px;}
 
+        /* ══ MINI-DASHBOARD RH ══════════════════════════════════ */
+        #rh-dashboard{display:none;margin-bottom:28px;}
+        .rh-dash-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;}
+        .rh-dash-title{font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;color:#1e293b;display:flex;align-items:center;gap:8px;}
+        .rh-dash-badge{background:#fce7f3;color:#be185d;font-size:10px;font-weight:700;padding:4px 10px;border-radius:20px;letter-spacing:1px;text-transform:uppercase;}
+        .rh-mes-selector{display:flex;align-items:center;gap:8px;font-size:12px;color:#64748b;}
+        .rh-mes-btn{background:#ffffff;border:1px solid #cbd5e1;color:#475569;padding:5px 12px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;transition:0.2s;}
+        .rh-mes-btn:hover{background:#eff6ff;color:#1e293b;}
+        .rh-mes-label{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:13px;color:#1e293b;min-width:90px;text-align:center;}
+
+        /* KPIs RH */
+        .rh-kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px;}
+        .rh-kpi{background:#ffffff;border-radius:16px;padding:18px 16px;border:1px solid rgba(59,130,246,0.10);box-shadow:0 2px 8px rgba(37,99,235,0.05);position:relative;overflow:hidden;cursor:pointer;transition:0.2s;}
+        .rh-kpi:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,0,0,0.10);}
+        .rh-kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;}
+        .rh-kpi.rotacion::before{background:linear-gradient(90deg,#f43f5e,#fb7185);}
+        .rh-kpi.faltas::before{background:linear-gradient(90deg,#f97316,#fb923c);}
+        .rh-kpi.retardos::before{background:linear-gradient(90deg,#f59e0b,#fbbf24);}
+        .rh-kpi.descuentos::before{background:linear-gradient(90deg,#8b5cf6,#a78bfa);}
+        .rh-kpi.vacantes::before{background:linear-gradient(90deg,#2563eb,#60a5fa);}
+        .rh-kpi-icon{font-size:22px;margin-bottom:8px;}
+        .rh-kpi-val{font-family:'Space Grotesk',sans-serif;font-size:26px;font-weight:700;color:#1e293b;line-height:1;}
+        .rh-kpi-label{font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-top:4px;}
+        .rh-kpi-delta{font-size:10px;margin-top:6px;font-weight:700;}
+        .rh-kpi-delta.up{color:#dc2626;}
+        .rh-kpi-delta.down{color:#16a34a;}
+        .rh-kpi-delta.neutral{color:#64748b;}
+
+        /* Gráficas RH */
+        .rh-charts{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:14px;margin-bottom:20px;}
+        .rh-chart-card{background:#ffffff;border-radius:16px;padding:20px;border:1px solid rgba(59,130,246,0.10);box-shadow:0 2px 8px rgba(37,99,235,0.05);}
+        .rh-chart-title{font-size:12px;font-weight:700;color:#1e293b;margin-bottom:4px;}
+        .rh-chart-sub{font-size:10px;color:#64748b;margin-bottom:14px;}
+
+        /* Vacantes tabla */
+        .rh-vacantes{background:#ffffff;border-radius:16px;padding:20px;border:1px solid rgba(59,130,246,0.10);box-shadow:0 2px 8px rgba(37,99,235,0.05);margin-bottom:20px;}
+        .rh-vac-title{font-size:12px;font-weight:700;color:#1e293b;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;}
+        .rh-vac-row{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;padding:10px 12px;border-radius:10px;font-size:12px;align-items:center;margin-bottom:6px;border:1px solid rgba(59,130,246,0.08);}
+        .rh-vac-row.header{background:#f8faff;font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;}
+        .rh-vac-row:not(.header){background:#ffffff;}
+        .rh-vac-row:not(.header):hover{background:#f8faff;}
+        .vac-status{padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;display:inline-block;}
+        .vac-abierta{background:#eff6ff;color:#2563eb;}
+        .vac-nueva{background:#f0fdf4;color:#16a34a;}
+        .vac-concretada{background:#fce7f3;color:#be185d;}
+
+        /* Actas admin */
+        .rh-actas{background:#ffffff;border-radius:16px;padding:20px;border:1px solid rgba(59,130,246,0.10);box-shadow:0 2px 8px rgba(37,99,235,0.05);margin-bottom:20px;}
+        .rh-acta-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid rgba(59,130,246,0.06);font-size:12px;}
+        .rh-acta-row:last-child{border-bottom:none;}
+        .rh-acta-emp{font-weight:700;color:#1e293b;}
+        .rh-acta-motivo{color:#64748b;}
+        .rh-acta-fecha{color:#94a3b8;font-size:10px;}
+        .acta-tipo{padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;}
+        .acta-falta{background:#fee2e2;color:#dc2626;}
+        .acta-retardo{background:#fef9c3;color:#a16207;}
+        .acta-conducta{background:#f3e8ff;color:#7c3aed;}
+
+        /* Botón agregar RH */
+        .rh-add-btn{padding:7px 14px;background:linear-gradient(135deg,#db2777,#be185d);color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;transition:0.2s;letter-spacing:0.5px;}
+        .rh-add-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(190,24,93,0.3);}
+
+        /* Modal RH */
+        #modal-rh{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);z-index:3000;align-items:center;justify-content:center;}
+        .rh-modal-box{background:#ffffff;border-radius:20px;padding:28px;width:520px;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.15);}
+        .rh-modal-title{font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;color:#1e293b;margin-bottom:20px;}
+        .rh-form-label{font-size:10px;font-weight:700;color:#64748b;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px;display:block;margin-top:14px;}
+        .rh-form-input{width:100%;padding:11px 14px;border-radius:10px;border:1px solid rgba(59,130,246,0.2);background:#f8faff;color:#1e293b;font-size:13px;outline:none;font-family:'DM Sans',sans-serif;}
+        .rh-form-input:focus{border-color:#2563eb;background:#eff6ff;}
+        .rh-tabs{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;}
+        .rh-tab{padding:8px 16px;border-radius:10px;border:1px solid #cbd5e1;background:#ffffff;color:#475569;font-size:12px;font-weight:700;cursor:pointer;transition:0.2s;}
+        .rh-tab.active{background:#db2777;color:#ffffff;border-color:#db2777;}
+
         /* ── NOTIFICACIONES IN-APP estilo WhatsApp ── */
         #push-container{position:fixed;bottom:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:10px;pointer-events:none;}
         .push-notification{pointer-events:auto;width:320px;background:#1e3a8a;backdrop-filter:blur(12px);border-left:4px solid #60a5fa;border-radius:12px;padding:16px;box-shadow:0 10px 30px rgba(37,99,235,0.35);color:white;display:flex;align-items:flex-start;gap:12px;animation:slideIn 0.4s cubic-bezier(0.175,0.885,0.32,1.275) forwards;cursor:pointer;transition:transform 0.2s,opacity 0.3s;}
@@ -469,6 +542,106 @@
             <div class="page-header">
                 <div><div class="page-title" id="area-title">-</div><div class="page-date" id="area-stats-mini" style="color:#64748b;"></div></div>
             </div>
+            <!-- MINI-DASHBOARD RH (solo visible en Recursos Humanos) -->
+            <div id="rh-dashboard">
+                <div class="rh-dash-header">
+                    <div class="rh-dash-title">👥 Indicadores RH
+                        <span class="rh-dash-badge">Confidencial</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <div class="rh-mes-selector">
+                            <button class="rh-mes-btn" onclick="rhMesPrev()">‹</button>
+                            <span class="rh-mes-label" id="rh-mes-label"></span>
+                            <button class="rh-mes-btn" onclick="rhMesNext()">›</button>
+                        </div>
+                        <button class="rh-add-btn" onclick="abrirModalRH()">➕ Registrar</button>
+                    </div>
+                </div>
+
+                <!-- KPIs -->
+                <div class="rh-kpis">
+                    <div class="rh-kpi rotacion" onclick="abrirModalRH('rotacion')">
+                        <div class="rh-kpi-icon">🔄</div>
+                        <div class="rh-kpi-val" id="rh-val-rotacion">—</div>
+                        <div class="rh-kpi-label">Rotación</div>
+                        <div class="rh-kpi-delta" id="rh-delta-rotacion"></div>
+                    </div>
+                    <div class="rh-kpi faltas" onclick="abrirModalRH('faltas')">
+                        <div class="rh-kpi-icon">📅</div>
+                        <div class="rh-kpi-val" id="rh-val-faltas">—</div>
+                        <div class="rh-kpi-label">Faltas</div>
+                        <div class="rh-kpi-delta" id="rh-delta-faltas"></div>
+                    </div>
+                    <div class="rh-kpi retardos" onclick="abrirModalRH('retardos')">
+                        <div class="rh-kpi-icon">⏰</div>
+                        <div class="rh-kpi-val" id="rh-val-retardos">—</div>
+                        <div class="rh-kpi-label">Retardos</div>
+                        <div class="rh-kpi-delta" id="rh-delta-retardos"></div>
+                    </div>
+                    <div class="rh-kpi descuentos" onclick="abrirModalRH('descuentos')">
+                        <div class="rh-kpi-icon">💰</div>
+                        <div class="rh-kpi-val" id="rh-val-descuentos">—</div>
+                        <div class="rh-kpi-label">Descuentos</div>
+                        <div class="rh-kpi-delta" id="rh-delta-descuentos"></div>
+                    </div>
+                    <div class="rh-kpi vacantes" onclick="abrirModalRH('vacantes')">
+                        <div class="rh-kpi-icon">🎯</div>
+                        <div class="rh-kpi-val" id="rh-val-vacantes">—</div>
+                        <div class="rh-kpi-label">Vacantes</div>
+                        <div class="rh-kpi-delta" id="rh-delta-vacantes"></div>
+                    </div>
+                </div>
+
+                <!-- Gráficas -->
+                <div class="rh-charts">
+                    <div class="rh-chart-card">
+                        <div class="rh-chart-title">Tendencia mensual</div>
+                        <div class="rh-chart-sub">Faltas y retardos últimos 6 meses</div>
+                        <div style="height:140px;"><canvas id="rh-chart-tendencia"></canvas></div>
+                    </div>
+                    <div class="rh-chart-card" style="display:flex;flex-direction:column;align-items:center;">
+                        <div class="rh-chart-title" style="width:100%;">Ausentismo</div>
+                        <div class="rh-chart-sub" style="width:100%;">Faltas vs presencia</div>
+                        <div style="position:relative;width:120px;height:120px;">
+                            <canvas id="rh-chart-ausentismo"></canvas>
+                            <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14px;color:#1e293b;" id="rh-ausentismo-pct">—</div>
+                        </div>
+                    </div>
+                    <div class="rh-chart-card" style="display:flex;flex-direction:column;align-items:center;">
+                        <div class="rh-chart-title" style="width:100%;">Vacantes</div>
+                        <div class="rh-chart-sub" style="width:100%;">Estado actual</div>
+                        <div style="position:relative;width:120px;height:120px;">
+                            <canvas id="rh-chart-vacantes"></canvas>
+                            <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:12px;color:#1e293b;text-align:center;line-height:1.2;" id="rh-vacantes-total">—</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Vacantes detalle -->
+                <div class="rh-vacantes">
+                    <div class="rh-vac-title">
+                        <span>📋 Detalle de Vacantes</span>
+                        <button class="rh-add-btn" onclick="abrirModalRH('vacantes')" style="font-size:10px;padding:5px 10px;">+ Nueva</button>
+                    </div>
+                    <div class="rh-vac-row header">
+                        <span>Puesto</span><span>Área</span><span>Apertura</span><span>Estatus</span>
+                    </div>
+                    <div id="rh-vacantes-lista"><div style="text-align:center;color:#94a3b8;padding:16px;font-size:12px;">Sin vacantes registradas este mes</div></div>
+                </div>
+
+                <!-- Actas administrativas -->
+                <div class="rh-actas">
+                    <div class="rh-vac-title">
+                        <span>📁 Actas Administrativas</span>
+                        <button class="rh-add-btn" onclick="abrirModalRH('acta')" style="font-size:10px;padding:5px 10px;">+ Nueva acta</button>
+                    </div>
+                    <div class="rh-vac-row header" style="grid-template-columns:1.5fr 1fr 1fr 0.7fr;">
+                        <span>Empleado</span><span>Motivo</span><span>Tipo</span><span>Fecha</span>
+                    </div>
+                    <div id="rh-actas-lista"><div style="text-align:center;color:#94a3b8;padding:16px;font-size:12px;">Sin actas registradas este mes</div></div>
+                </div>
+            </div>
+
             <div style="margin-bottom:16px;display:flex;gap:12px;align-items:center;">
                 <div style="position:relative;flex:1;max-width:460px;">
                     <span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:15px;pointer-events:none;">🔍</span>
@@ -586,6 +759,26 @@
         <input type="text" id="caladd-accion" class="edit-field" placeholder="¿Qué se debe hacer ese día?">
         <button class="btn-guardar-edit" onclick="guardarEventoCal()">GUARDAR EVENTO</button>
         <button class="btn-cancel-edit" onclick="document.getElementById('modal-cal-add').style.display='none'">Cancelar</button>
+    </div>
+</div>
+
+<!-- MODAL RH -->
+<div id="modal-rh">
+    <div class="rh-modal-box">
+        <div class="rh-modal-title" id="rh-modal-title">📝 Registrar indicador RH</div>
+        <div class="rh-tabs">
+            <button class="rh-tab active" onclick="rhTabSwitch('rotacion',this)">🔄 Rotación</button>
+            <button class="rh-tab" onclick="rhTabSwitch('faltas',this)">📅 Faltas</button>
+            <button class="rh-tab" onclick="rhTabSwitch('retardos',this)">⏰ Retardos</button>
+            <button class="rh-tab" onclick="rhTabSwitch('descuentos',this)">💰 Descuentos</button>
+            <button class="rh-tab" onclick="rhTabSwitch('vacantes',this)">🎯 Vacante</button>
+            <button class="rh-tab" onclick="rhTabSwitch('acta',this)">📁 Acta</button>
+        </div>
+        <div id="rh-form-container"></div>
+        <div style="display:flex;gap:10px;margin-top:20px;">
+            <button class="rh-add-btn" style="flex:1;padding:12px;" onclick="guardarDatoRH()">GUARDAR</button>
+            <button class="btn-cancel-edit" style="flex:1;" onclick="document.getElementById('modal-rh').style.display='none'">Cancelar</button>
+        </div>
     </div>
 </div>
 
@@ -1192,10 +1385,14 @@ window.verArea=(a,b)=>{
     areaActual=a;
     const titleEl = document.getElementById('area-title');
     titleEl.innerText=`${ICONS[DEPTOS.indexOf(a)]} ${a}`;
-    titleEl.style.color = a==='Recursos Humanos' ? 'var(--fuchsia)' : '';
+    titleEl.style.color = a==='Recursos Humanos' ? '#db2777' : '';
     const srch=document.getElementById('area-search');
     if(srch) srch.value='';
-    navegar('area',b); renderTabla();
+    navegar('area',b);
+    renderTabla();
+    // Mostrar mini-dashboard RH solo si corresponde
+    const yo = auth.currentUser?.email || '';
+    toggleRHDash(a, yo);
 };
 
 // Peso de ordenamiento: pendiente primero, completada al final
@@ -1462,6 +1659,323 @@ document.getElementById('modal-cal360').addEventListener('click',e=>{ if(e.targe
 // ══════════════════════════════════════════════════════════════
 function renderNotificaciones(){ DEPTOS.forEach(d=>{ const c=localDB.filter(r=>r.area===d&&r.estatus!=='Completada').length; const b=document.getElementById(`badge-${d}`); if(b){b.innerText=c;b.style.display=c>0?'inline-block':'none';} }); }
 window.navegar=(id,b)=>{ document.querySelectorAll('.section').forEach(s=>s.classList.remove('active')); document.getElementById('sec-'+id).classList.add('active'); if(b){document.querySelectorAll('.sitem').forEach(i=>i.classList.remove('active'));b.classList.add('active');} if(id==='cal360') renderCal360(); };
+
+// ══════════════════════════════════════════════════════════════
+// MÓDULO RH — Indicadores confidenciales
+// Solo visible para rh@tecnocontrol.com.mx y admin
+// Datos guardados en Firestore colección: rh_indicadores
+// ══════════════════════════════════════════════════════════════
+const RH_EMAIL = 'rh@tecnocontrol.com.mx';
+const MESES_RH = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+let rhMes = new Date().getMonth();
+let rhAnio = new Date().getFullYear();
+let rhData = {}; // cache local de datos RH por mes
+let rhChartTendencia = null, rhChartAus = null, rhChartVac = null;
+let rhTabActual = 'rotacion';
+
+function puedeVerRH(email){ return email === RH_EMAIL || email === ADMIN; }
+
+function rhKey(mes, anio){ return `${anio}-${String(mes+1).padStart(2,'0')}`; }
+
+// Mostrar/ocultar el dashboard RH según el área
+function toggleRHDash(area, email){
+    const dash = document.getElementById('rh-dashboard');
+    if(!dash) return;
+    if(area === 'Recursos Humanos' && puedeVerRH(email)){
+        dash.style.display = 'block';
+        actualizarLabelMesRH();
+        cargarDatosRH();
+    } else {
+        dash.style.display = 'none';
+    }
+}
+
+function actualizarLabelMesRH(){
+    const el = document.getElementById('rh-mes-label');
+    if(el) el.innerText = `${MESES_RH[rhMes]} ${rhAnio}`;
+}
+
+window.rhMesPrev = () => { rhMes--; if(rhMes<0){rhMes=11;rhAnio--;} actualizarLabelMesRH(); cargarDatosRH(); };
+window.rhMesNext = () => { rhMes++; if(rhMes>11){rhMes=0;rhAnio++;} actualizarLabelMesRH(); cargarDatosRH(); };
+
+// Cargar datos RH del mes seleccionado desde Firestore
+async function cargarDatosRH(){
+    const key = rhKey(rhMes, rhAnio);
+    try {
+        const { getDocs, collection: col, query: q2, where } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        // Cargar indicadores del mes
+        const snap = await getDocs(q2(col(db,'rh_indicadores'), where('mesAnio','==',key)));
+        const mesData = { rotacion:0, faltas:0, retardos:0, descuentos:0, vacantes:[], actas:[], totalEmpleados:0 };
+        snap.docs.forEach(d => {
+            const data = d.data();
+            if(data.tipo === 'kpi') {
+                mesData.rotacion = data.rotacion || 0;
+                mesData.faltas = data.faltas || 0;
+                mesData.retardos = data.retardos || 0;
+                mesData.descuentos = data.descuentos || 0;
+                mesData.totalEmpleados = data.totalEmpleados || 0;
+            } else if(data.tipo === 'vacante') {
+                mesData.vacantes.push({id: d.id, ...data});
+            } else if(data.tipo === 'acta') {
+                mesData.actas.push({id: d.id, ...data});
+            }
+        });
+        rhData[key] = mesData;
+        renderRHDash(mesData, key);
+    } catch(e) {
+        console.warn('[RH] Error cargando datos:', e.message);
+        renderRHDash({ rotacion:0, faltas:0, retardos:0, descuentos:0, vacantes:[], actas:[], totalEmpleados:0 }, key);
+    }
+}
+
+// Renderizar el dashboard con los datos cargados
+function renderRHDash(data, key){
+    const prevKey = rhKey(rhMes-1 < 0 ? 11 : rhMes-1, rhMes-1 < 0 ? rhAnio-1 : rhAnio);
+    const prev = rhData[prevKey] || {};
+
+    function delta(curr, prevVal, invertido=false){
+        if(!prevVal || prevVal === 0) return '<span class="rh-kpi-delta neutral">— Sin comparativo</span>';
+        const diff = curr - prevVal;
+        const pct = Math.abs(Math.round(diff/prevVal*100));
+        const sube = diff > 0;
+        const malo = invertido ? !sube : sube;
+        return `<span class="rh-kpi-delta ${malo?'up':'down'}">${sube?'▲':'▼'} ${pct}% vs mes anterior</span>`;
+    }
+
+    // KPIs
+    document.getElementById('rh-val-rotacion').innerText = data.rotacion + '%';
+    document.getElementById('rh-delta-rotacion').innerHTML = delta(data.rotacion, prev.rotacion, false);
+    document.getElementById('rh-val-faltas').innerText = data.faltas;
+    document.getElementById('rh-delta-faltas').innerHTML = delta(data.faltas, prev.faltas, false);
+    document.getElementById('rh-val-retardos').innerText = data.retardos;
+    document.getElementById('rh-delta-retardos').innerHTML = delta(data.retardos, prev.retardos, false);
+    document.getElementById('rh-val-descuentos').innerText = '$' + (data.descuentos||0).toLocaleString('es-MX');
+    document.getElementById('rh-delta-descuentos').innerHTML = delta(data.descuentos, prev.descuentos, false);
+    const totalVac = (data.vacantes||[]).length;
+    document.getElementById('rh-val-vacantes').innerText = totalVac;
+    document.getElementById('rh-delta-vacantes').innerHTML = `<span class="rh-kpi-delta neutral">${(data.vacantes||[]).filter(v=>v.estatus==='concretada').length} concretadas</span>`;
+
+    // Gráfica: dona ausentismo
+    const totalDias = 22; // días laborables aprox
+    const totalEmps = data.totalEmpleados || 1;
+    const diasEsperados = totalDias * totalEmps;
+    const diasFaltados = (data.faltas || 0) + Math.round((data.retardos||0) * 0.25);
+    const pctAus = Math.min(100, Math.round(diasFaltados / diasEsperados * 100)) || 0;
+    const elAus = document.getElementById('rh-chart-ausentismo');
+    if(elAus){
+        if(rhChartAus) rhChartAus.destroy();
+        rhChartAus = new Chart(elAus, {
+            type:'doughnut',
+            data:{datasets:[{data:[pctAus, Math.max(0.001, 100-pctAus)], backgroundColor:['#f43f5e','#e2e8f0'], borderWidth:0, borderRadius:pctAus>0&&pctAus<100?4:0}]},
+            options:{cutout:'76%', plugins:{legend:{display:false}}, animation:{duration:600}}
+        });
+        document.getElementById('rh-ausentismo-pct').innerText = pctAus + '%';
+    }
+
+    // Gráfica: dona vacantes
+    const abiertas = (data.vacantes||[]).filter(v=>v.estatus==='abierta').length;
+    const nuevas = (data.vacantes||[]).filter(v=>v.estatus==='nueva').length;
+    const concretadas = (data.vacantes||[]).filter(v=>v.estatus==='concretada').length;
+    const elVac = document.getElementById('rh-chart-vacantes');
+    if(elVac){
+        if(rhChartVac) rhChartVac.destroy();
+        const totalV = abiertas + nuevas + concretadas || 0.001;
+        rhChartVac = new Chart(elVac, {
+            type:'doughnut',
+            data:{datasets:[{data:[abiertas, nuevas, concretadas], backgroundColor:['#2563eb','#16a34a','#db2777'], borderWidth:0, borderRadius:4}]},
+            options:{cutout:'70%', plugins:{legend:{display:false}}, animation:{duration:600}}
+        });
+        document.getElementById('rh-vacantes-total').innerHTML = `${totalV === 0.001 ? 0 : abiertas+nuevas+concretadas}<br><span style="font-size:9px;font-weight:400;color:#64748b;">total</span>`;
+    }
+
+    // Gráfica línea tendencia (últimos 6 meses)
+    const labels = [], faltasHist = [], retardosHist = [];
+    for(let i=5; i>=0; i--){
+        let m = rhMes - i; let a = rhAnio;
+        if(m < 0){ m += 12; a--; }
+        labels.push(MESES_RH[m].slice(0,3));
+        const k = rhKey(m, a);
+        faltasHist.push(rhData[k]?.faltas || 0);
+        retardosHist.push(rhData[k]?.retardos || 0);
+    }
+    const elTend = document.getElementById('rh-chart-tendencia');
+    if(elTend){
+        if(rhChartTendencia) rhChartTendencia.destroy();
+        rhChartTendencia = new Chart(elTend, {
+            type:'line',
+            data:{labels, datasets:[
+                {label:'Faltas', data:faltasHist, borderColor:'#f43f5e', backgroundColor:'rgba(244,63,94,0.08)', tension:0.4, borderWidth:2, pointRadius:3, fill:true},
+                {label:'Retardos', data:retardosHist, borderColor:'#f59e0b', backgroundColor:'rgba(245,158,11,0.08)', tension:0.4, borderWidth:2, pointRadius:3, fill:true}
+            ]},
+            options:{responsive:true, maintainAspectRatio:false,
+                plugins:{legend:{position:'bottom', labels:{boxWidth:8, font:{size:10}, color:'#64748b'}}},
+                scales:{
+                    x:{grid:{color:'rgba(59,130,246,0.05)'}, ticks:{color:'#94a3b8', font:{size:9}}},
+                    y:{beginAtZero:true, ticks:{stepSize:1, color:'#94a3b8', font:{size:9}}, grid:{color:'rgba(59,130,246,0.05)'}}
+                }
+            }
+        });
+    }
+
+    // Lista vacantes
+    const vacLista = document.getElementById('rh-vacantes-lista');
+    if(vacLista){
+        if(!(data.vacantes||[]).length){
+            vacLista.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:16px;font-size:12px;">Sin vacantes registradas</div>';
+        } else {
+            vacLista.innerHTML = (data.vacantes||[]).map(v => `
+                <div class="rh-vac-row">
+                    <span style="font-weight:700;color:#1e293b;">${v.puesto||'—'}</span>
+                    <span style="color:#475569;">${v.area||'—'}</span>
+                    <span style="color:#94a3b8;font-size:11px;">${v.fecha||'—'}</span>
+                    <span><span class="vac-status vac-${v.estatus||'abierta'}">${v.estatus==='abierta'?'Abierta':v.estatus==='nueva'?'Nueva':'Concretada'}</span></span>
+                </div>`).join('');
+        }
+    }
+
+    // Lista actas
+    const actaLista = document.getElementById('rh-actas-lista');
+    if(actaLista){
+        if(!(data.actas||[]).length){
+            actaLista.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:16px;font-size:12px;">Sin actas registradas</div>';
+        } else {
+            actaLista.innerHTML = (data.actas||[]).map(a => `
+                <div class="rh-acta-row">
+                    <div><div class="rh-acta-emp">${a.empleado||'—'}</div><div class="rh-acta-motivo">${a.descripcion||'—'}</div></div>
+                    <span style="color:#475569;font-size:11px;">${a.motivo||'—'}</span>
+                    <span><span class="acta-tipo acta-${a.tipoActa||'conducta'}">${a.tipoActa==='falta'?'Falta':a.tipoActa==='retardo'?'Retardo':'Conducta'}</span></span>
+                    <span class="rh-acta-fecha">${a.fecha||'—'}</span>
+                </div>`).join('');
+        }
+    }
+}
+
+// ── Modal RH: formularios por tipo ──
+const RH_FORMS = {
+    rotacion: `
+        <label class="rh-form-label">Total de empleados activos</label>
+        <input class="rh-form-input" id="rh-f-totalEmps" type="number" min="0" placeholder="Ej: 45">
+        <label class="rh-form-label">Bajas este mes</label>
+        <input class="rh-form-input" id="rh-f-bajas" type="number" min="0" placeholder="Ej: 2">
+        <label class="rh-form-label">% Rotación calculado (o déjalo vacío para calcular)</label>
+        <input class="rh-form-input" id="rh-f-rotacion" type="number" min="0" step="0.1" placeholder="Se calcula automáticamente">`,
+    faltas: `
+        <label class="rh-form-label">Número de faltas injustificadas</label>
+        <input class="rh-form-input" id="rh-f-faltas" type="number" min="0" placeholder="Ej: 5">
+        <label class="rh-form-label">Número de faltas justificadas</label>
+        <input class="rh-form-input" id="rh-f-faltasJ" type="number" min="0" placeholder="Ej: 2">`,
+    retardos: `
+        <label class="rh-form-label">Número de retardos registrados</label>
+        <input class="rh-form-input" id="rh-f-retardos" type="number" min="0" placeholder="Ej: 8">`,
+    descuentos: `
+        <label class="rh-form-label">Total descuentos aplicados ($)</label>
+        <input class="rh-form-input" id="rh-f-descuentos" type="number" min="0" placeholder="Ej: 3500">
+        <label class="rh-form-label">Motivo principal</label>
+        <input class="rh-form-input" id="rh-f-descMotivo" type="text" placeholder="Ej: Retardos, faltas, préstamos">`,
+    vacantes: `
+        <label class="rh-form-label">Puesto / Posición</label>
+        <input class="rh-form-input" id="rh-f-puesto" type="text" placeholder="Ej: Técnico en campo">
+        <label class="rh-form-label">Área solicitante</label>
+        <input class="rh-form-input" id="rh-f-vacArea" type="text" placeholder="Ej: Servicios Técnicos">
+        <label class="rh-form-label">Fecha de apertura</label>
+        <input class="rh-form-input" id="rh-f-vacFecha" type="date">
+        <label class="rh-form-label">Estatus</label>
+        <select class="rh-form-input" id="rh-f-vacEstatus">
+            <option value="nueva">Nueva</option>
+            <option value="abierta">Abierta</option>
+            <option value="concretada">Concretada</option>
+        </select>`,
+    acta: `
+        <label class="rh-form-label">Nombre del empleado</label>
+        <input class="rh-form-input" id="rh-f-empleado" type="text" placeholder="Nombre completo">
+        <label class="rh-form-label">Motivo del acta</label>
+        <input class="rh-form-input" id="rh-f-actaMotivo" type="text" placeholder="Ej: Retardo reincidente">
+        <label class="rh-form-label">Tipo de acta</label>
+        <select class="rh-form-input" id="rh-f-tipoActa">
+            <option value="falta">Falta injustificada</option>
+            <option value="retardo">Retardo reincidente</option>
+            <option value="conducta">Conducta inapropiada</option>
+        </select>
+        <label class="rh-form-label">Descripción / Notas</label>
+        <input class="rh-form-input" id="rh-f-actaDesc" type="text" placeholder="Detalles del incidente">
+        <label class="rh-form-label">Fecha del acta</label>
+        <input class="rh-form-input" id="rh-f-actaFecha" type="date">`
+};
+
+window.abrirModalRH = (tab = 'rotacion') => {
+    rhTabActual = tab;
+    document.querySelectorAll('.rh-tab').forEach(t => {
+        t.classList.toggle('active', t.getAttribute('onclick').includes(`'${tab}'`));
+    });
+    document.getElementById('rh-form-container').innerHTML = RH_FORMS[tab] || '';
+    document.getElementById('modal-rh').style.display = 'flex';
+};
+
+window.rhTabSwitch = (tab, btn) => {
+    rhTabActual = tab;
+    document.querySelectorAll('.rh-tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('rh-form-container').innerHTML = RH_FORMS[tab] || '';
+};
+
+window.guardarDatoRH = async () => {
+    const key = rhKey(rhMes, rhAnio);
+    const btn = document.querySelector('#modal-rh .rh-add-btn');
+    if(btn){ btn.textContent = 'Guardando...'; btn.disabled = true; }
+    try {
+        let docData = { mesAnio: key, creadoEn: new Date().toISOString(), creadoPor: auth.currentUser?.email || '' };
+
+        if(rhTabActual === 'rotacion' || rhTabActual === 'faltas' || rhTabActual === 'retardos' || rhTabActual === 'descuentos'){
+            // KPIs del mes — buscar doc existente y actualizar o crear
+            const totalEmps = parseInt(document.getElementById('rh-f-totalEmps')?.value || '0');
+            const bajas = parseInt(document.getElementById('rh-f-bajas')?.value || '0');
+            const rotacion = parseFloat(document.getElementById('rh-f-rotacion')?.value) ||
+                             (totalEmps > 0 ? Math.round(bajas/totalEmps*100*10)/10 : 0);
+            const faltas = parseInt(document.getElementById('rh-f-faltas')?.value || '0') +
+                           parseInt(document.getElementById('rh-f-faltasJ')?.value || '0');
+            const retardos = parseInt(document.getElementById('rh-f-retardos')?.value || '0');
+            const descuentos = parseFloat(document.getElementById('rh-f-descuentos')?.value || '0');
+            const existing = rhData[key];
+            docData = { ...docData, tipo:'kpi',
+                totalEmpleados: totalEmps || existing?.totalEmpleados || 0,
+                rotacion: rhTabActual==='rotacion' ? rotacion : (existing?.rotacion || 0),
+                faltas: rhTabActual==='faltas' ? faltas : (existing?.faltas || 0),
+                retardos: rhTabActual==='retardos' ? retardos : (existing?.retardos || 0),
+                descuentos: rhTabActual==='descuentos' ? descuentos : (existing?.descuentos || 0)
+            };
+            await addDoc(collection(db,'rh_indicadores'), docData);
+        } else if(rhTabActual === 'vacantes'){
+            docData = { ...docData, tipo:'vacante',
+                puesto: document.getElementById('rh-f-puesto')?.value || '',
+                area: document.getElementById('rh-f-vacArea')?.value || '',
+                fecha: document.getElementById('rh-f-vacFecha')?.value || '',
+                estatus: document.getElementById('rh-f-vacEstatus')?.value || 'abierta'
+            };
+            await addDoc(collection(db,'rh_indicadores'), docData);
+        } else if(rhTabActual === 'acta'){
+            docData = { ...docData, tipo:'acta',
+                empleado: document.getElementById('rh-f-empleado')?.value || '',
+                motivo: document.getElementById('rh-f-actaMotivo')?.value || '',
+                tipoActa: document.getElementById('rh-f-tipoActa')?.value || 'conducta',
+                descripcion: document.getElementById('rh-f-actaDesc')?.value || '',
+                fecha: document.getElementById('rh-f-actaFecha')?.value || new Date().toISOString().slice(0,10)
+            };
+            await addDoc(collection(db,'rh_indicadores'), docData);
+        }
+
+        document.getElementById('modal-rh').style.display = 'none';
+        window.mostrarPush('✅ Dato RH guardado', `Registro de ${rhTabActual} guardado correctamente`, '👥');
+        cargarDatosRH();
+    } catch(e) {
+        alert('Error al guardar: ' + e.message);
+    } finally {
+        if(btn){ btn.textContent = 'GUARDAR'; btn.disabled = false; }
+    }
+};
+
+document.getElementById('modal-rh').addEventListener('click', e => {
+    if(e.target === document.getElementById('modal-rh')) document.getElementById('modal-rh').style.display = 'none';
+});
 </script>
 </body>
 </html>
