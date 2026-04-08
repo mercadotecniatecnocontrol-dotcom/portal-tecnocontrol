@@ -999,6 +999,9 @@ function escuchar(){
         }
 
         // Snapshots posteriores: revisar cada comentario
+        // Normaliza texto para comparar sin acentos ni mayúsculas
+        const norm = t => (t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+
         s.docs.forEach(d => {
             const data = d.data();
             (data.comentarios||[]).forEach(c => {
@@ -1007,22 +1010,44 @@ function escuchar(){
                 if(!ts || ts <= SESSION_START) return;
                 // No notificarme mis propios comentarios
                 if(c.u === yo) return;
-                // ¿Me toca? Admin recibe todo. Otros: su tarea, su área, o mención.
+
                 const esAdmin = yo === ADMIN;
-                const esMiTarea = (data.responsable||'') === yo;
+
+                // 1. ¿Soy el responsable exacto de la tarea?
+                const esMiTarea = norm(data.responsable) === norm(yo);
+
+                // 2. ¿Soy el dueño del área de esta tarea?
                 const miDepto = obtenerDeptoUsuario(yo);
-                const esMiArea = miDepto !== '' && miDepto === (data.area||'');
+                const esMiArea = miDepto !== '' && norm(miDepto) === norm(data.area);
+
+                // 3. ¿Me mencionaron con @MiArea o @MiNombre?
                 const menciones = extraerMenciones(c.m||'');
-                const meMencionan = miDepto && menciones.some(m=>
-                    m.toLowerCase().includes(miDepto.toLowerCase())
-                );
+                const meMencionan = menciones.some(m => {
+                    const mn = norm(m);
+                    // Coincide con mi área
+                    if(miDepto && mn.includes(norm(miDepto))) return true;
+                    // Coincide con mi nombre (parte antes del @)
+                    const miNombre = yo.split('@')[0];
+                    if(mn.includes(norm(miNombre))) return true;
+                    return false;
+                });
+
+                // Si ninguna condición aplica, no notificar
                 if(!esAdmin && !esMiTarea && !esMiArea && !meMencionan) return;
-                // Disparar notificación
+
+                // Armar mensaje según caso
                 const quien = (c.u||'').split('@')[0];
                 const tarea = data.actividad||'una tarea';
-                const msg = meMencionan
-                    ? '📣 '+quien+' te mencionó en "'+tarea+'"'
-                    : '💬 '+quien+' comentó en "'+tarea+'"';
+                let msg = '';
+                if(meMencionan){
+                    msg = '📣 '+quien+' te mencionó en "'+tarea+'"';
+                } else if(esMiTarea){
+                    msg = '💬 '+quien+' comentó en tu tarea "'+tarea+'"';
+                } else if(esMiArea){
+                    msg = '💬 '+quien+' comentó en "'+tarea+'" ('+data.area+')';
+                } else {
+                    msg = '💬 '+quien+' comentó en "'+tarea+'"';
+                }
                 mostrarNotif('Tecnocontrol · Portal', msg, d.id);
             });
         });
@@ -1050,14 +1075,16 @@ const EMAIL_AREA_MAP = {
 
 function obtenerDeptoUsuario(email) {
     if(!email) return '';
-    // 1. Buscar por email exacto (más confiable)
+    // 1. Email exacto (insensible a mayúsculas)
     const exacto = EMAIL_AREA_MAP[email.toLowerCase().trim()];
     if(exacto) return exacto;
-    // 2. Fallback: buscar por fragmento del email (para emails futuros no mapeados)
+    // 2. Fallback por fragmento — cubre emails futuros no mapeados aún
     const fragmentos = {
-        'rh@':'Recursos Humanos', 'facturacion':'Ingresos', 'contabilidad':'Contabilidad',
-        'aux.contable':'Egresos', 'ventas':'Ventas', 'marketing':'Marketing',
-        'mercadotecnia':'Marketing', 'administracion':'Administración', 'c.acosta':'Administración'
+        'rh@':'Recursos Humanos', 'facturacion':'Ingresos',
+        'contabilidad':'Contabilidad', 'aux.contable':'Egresos',
+        'ventas':'Ventas', 'marketing':'Marketing',
+        'mercadotecnia':'Marketing', 'administracion':'Administración',
+        'c.acosta':'Administración', 'egresos':'Egresos', 'ingresos':'Ingresos'
     };
     const lower = email.toLowerCase();
     for(const [k,v] of Object.entries(fragmentos)){ if(lower.includes(k)) return v; }
