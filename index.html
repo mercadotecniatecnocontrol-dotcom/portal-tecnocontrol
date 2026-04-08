@@ -7,7 +7,7 @@
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        :root{--navy:#0b1426;--navy2:#0f1e38;--teal:#00c9a7;--teal2:#00a087;--blue:#1a7fe8;--blue2:#0d5fba;--cyan:#00d4e8;--purple:#7c5cfc;--orange:#ff8c42;--red:#ff4d6d;--green:#00c9a7;--yellow:#ffd166;--glass:rgba(255,255,255,0.06);--glass2:rgba(255,255,255,0.10);--border:rgba(255,255,255,0.10);--text:#e8edf5;--text2:#8fa3bf;--text3:#546e8a;}
+        :root{--navy:#0b1426;--navy2:#0f1e38;--teal:#00c9a7;--teal2:#00a087;--blue:#1a7fe8;--blue2:#0d5fba;--cyan:#00d4e8;--purple:#7c5cfc;--orange:#ff8c42;--red:#ff4d6d;--green:#00c9a7;--yellow:#ffd166;--fuchsia:#ff2d8b;--fuchsia2:#c4006a;--glass:rgba(255,255,255,0.06);--glass2:rgba(255,255,255,0.10);--border:rgba(255,255,255,0.10);--text:#e8edf5;--text2:#8fa3bf;--text3:#546e8a;}
         *{margin:0;padding:0;box-sizing:border-box;font-family:'DM Sans',sans-serif;}
         body{background:var(--navy);color:var(--text);min-height:100vh;overflow-x:hidden;}
 
@@ -36,6 +36,7 @@
         .sitem:hover{background:var(--glass2);color:var(--text);}
         .sitem.active{background:linear-gradient(135deg,rgba(0,201,167,0.2),rgba(26,127,232,0.15));color:#fff;border:1px solid rgba(0,201,167,0.25);}
         .notif-badge{background:var(--red);color:white;font-size:10px;padding:2px 7px;border-radius:20px;font-weight:700;line-height:16px;}
+        .notif-badge.rh-badge{background:var(--fuchsia);}
         .sidebar-footer{margin-top:auto;padding:14px;background:rgba(255,75,109,0.08);border:1px solid rgba(255,75,109,0.15);border-radius:10px;cursor:pointer;color:var(--red);font-size:13px;font-weight:700;text-align:center;transition:0.2s;}
         .sidebar-footer:hover{background:rgba(255,75,109,0.15);}
 
@@ -73,6 +74,8 @@
         .dash-grid{display:grid;grid-template-columns:repeat(3,1fr) 1.2fr;gap:16px;}
         .dept-card{background:var(--glass);border:1px solid var(--border);border-radius:18px;padding:20px;cursor:pointer;transition:0.3s;position:relative;overflow:hidden;}
         .dept-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--teal),var(--blue));}
+        .dept-card.rh-card::before{background:linear-gradient(90deg,var(--fuchsia2),var(--fuchsia));}
+        .dept-card.rh-card:hover{border-color:rgba(255,45,139,0.4);}
         .dept-card:hover{background:var(--glass2);transform:translateY(-3px);border-color:rgba(0,201,167,0.3);}
         .chart-container{position:relative;width:90px;height:90px;margin:0 auto 14px;}
         .perc-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:15px;color:#fff;}
@@ -215,6 +218,8 @@
         .push-notification{pointer-events:auto;width:320px;background:rgba(15,30,56,0.97);backdrop-filter:blur(12px);border-left:4px solid var(--teal);border-radius:12px;padding:16px;box-shadow:0 10px 30px rgba(0,0,0,0.4);color:white;display:flex;align-items:flex-start;gap:12px;animation:slideIn 0.4s cubic-bezier(0.175,0.885,0.32,1.275) forwards;cursor:pointer;transition:transform 0.2s,opacity 0.3s;}
         .push-notification:hover{transform:translateX(-5px);}
         .push-notification.push-mention{border-left-color:var(--cyan);}
+        .push-notification.push-rh{border-left-color:var(--fuchsia);}
+        .push-notification.push-rh .push-title{color:var(--fuchsia);}
         .push-icon{font-size:20px;background:var(--glass2);width:40px;height:40px;display:flex;align-items:center;justify-content:center;border-radius:50%;flex-shrink:0;}
         .push-content{flex:1;min-width:0;}
         .push-title{font-weight:700;font-size:13px;margin-bottom:3px;color:var(--teal);}
@@ -253,12 +258,12 @@
         .cal360-dots{display:flex;flex-wrap:wrap;gap:2px;margin-top:2px;}
         .cal360-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
         .cal360-ev-mini{font-size:9px;font-weight:700;padding:1px 4px;border-radius:4px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;display:block;}
-        .tipo-RH{background:rgba(0,201,167,0.18);color:var(--teal);}
+        .tipo-RH{background:rgba(255,45,139,0.15);color:var(--fuchsia);}
         .tipo-Marketing{background:rgba(26,127,232,0.18);color:#60a5fa;}
         .tipo-Comercial{background:rgba(255,209,102,0.18);color:var(--yellow);}
         .tipo-Industria{background:rgba(255,140,66,0.18);color:var(--orange);}
         .tipo-Festivo{background:rgba(124,92,252,0.18);color:#a78bfa;}
-        .dot-RH{background:var(--teal);}
+        .dot-RH{background:var(--fuchsia);}
         .dot-Marketing{background:#60a5fa;}
         .dot-Comercial{background:var(--yellow);}
         .dot-Industria{background:var(--orange);}
@@ -642,7 +647,7 @@ const auth = getAuth(app);
 const ADMIN = "mercadotecniatecnocontrol@gmail.com";
 const DEPTOS = ["Ingresos","Egresos","Contabilidad","Recursos Humanos","Marketing","Administración","Ventas"];
 const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
-const COLORES = ['#00c9a7','#1a7fe8','#ffd166','#ff4d6d','#7c5cfc','#ff8c42','#00d4e8'];
+const COLORES = ['#00c9a7','#1a7fe8','#ffd166','#ff2d8b','#7c5cfc','#ff8c42','#00d4e8'];
 const ICONS = ['💰','📤','🧾','👥','📣','⚙️','🤝'];
 const DIAS_SEMANA = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
 
@@ -957,7 +962,7 @@ document.getElementById('fecha-hoy').innerText = new Date().toLocaleDateString('
 document.getElementById('nav-dept').innerHTML = DEPTOS.map(d=>`
     <button class="sitem" onclick="verArea('${d}',this)">
         <div class="sitem-left"><span>${ICONS[DEPTOS.indexOf(d)]}</span> ${d}</div>
-        <span id="badge-${d}" class="notif-badge" style="display:none">0</span>
+        <span id="badge-${d}" class="notif-badge${d==='Recursos Humanos'?' rh-badge':''}" style="display:none">0</span>
     </button>`).join('');
 document.getElementById('n-area').innerHTML = DEPTOS.map(d=>`<option>${d}</option>`).join('');
 document.getElementById('rep-mes').innerHTML = MESES.map((m,i)=>`<option value="${i}" ${i===new Date().getMonth()?'selected':''}>${m}</option>`).join('');
@@ -1046,9 +1051,15 @@ function escuchar(){
                             window.mostrarPush('💬 Nuevo comentario en tu tarea',
                                 `${quien}: "${(ultimo.m||'').slice(0,80)}"`, '💬');
                         } else {
+                            const isRH = (data.area||'') === 'Recursos Humanos';
+                            const container = document.getElementById('push-container');
                             window.mostrarPush(`💬 ${data.area||'Portal'}`,
                                 `${quien} comentó en "${tarea}"`,
                                 ICONS[DEPTOS.indexOf(data.area||'')] || '💬');
+                            // Agregar clase fuchsia si es RH
+                            if(isRH && container?.lastElementChild) {
+                                container.lastElementChild.classList.add('push-rh');
+                            }
                         }
                         // ── Notificación del SO si el navegador lo permite ──
                         const msgSys = meMencionan
@@ -1117,7 +1128,7 @@ function renderDashboard(){
     document.getElementById('dash-cards').innerHTML=DEPTOS.map(a=>{
         const t=localDB.filter(r=>r.area===a), done=t.filter(x=>x.estatus==='Completada').length;
         const proc=t.filter(x=>x.estatus==='En Proceso').length, p=t.length>0?Math.round(done/t.length*100):0;
-        return `<div class="dept-card" onclick="verArea('${a}')">
+        return `<div class="dept-card${a==='Recursos Humanos'?' rh-card':''}" onclick="verArea('${a}')">
             <div class="chart-container"><canvas id="cv-${a.replace(/\s/g,'_')}"></canvas><div class="perc-center">${p}%</div></div>
             <div class="dept-name">${ICONS[DEPTOS.indexOf(a)]} ${a}</div>
             <div class="stat-line"><span>Total</span><b>${t.length}</b></div>
@@ -1154,7 +1165,9 @@ function renderDashboard(){
 // ══════════════════════════════════════════════════════════════
 window.verArea=(a,b)=>{
     areaActual=a;
-    document.getElementById('area-title').innerText=`${ICONS[DEPTOS.indexOf(a)]} ${a}`;
+    const titleEl = document.getElementById('area-title');
+    titleEl.innerText=`${ICONS[DEPTOS.indexOf(a)]} ${a}`;
+    titleEl.style.color = a==='Recursos Humanos' ? 'var(--fuchsia)' : '';
     const srch=document.getElementById('area-search');
     if(srch) srch.value='';
     navegar('area',b); renderTabla();
