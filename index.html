@@ -988,11 +988,30 @@ window.cerrarSesion = ()=>signOut(auth).then(()=>location.reload());
 // ══════════════════════════════════════════════════════════════
 
 // Mapa: id de tarea → cantidad de comentarios en el último snapshot
-let snapComentarios = {};
-let primeraEscucha = true;
+// Expuestas en window para poder diagnosticar desde la consola
+window._tcSnap = {};
+window._tcPrimera = true;
+let snapComentarios = window._tcSnap;
+let primeraEscucha = window._tcPrimera;
 
 // Normaliza texto para comparar sin acentos ni mayúsculas
 const norm = t => (t||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().trim();
+
+// Función de diagnóstico — escribe tc_debug() en la consola
+window.tc_debug = () => {
+    const email = document.querySelector('#l-email')?.value || '(usa auth interno)';
+    const snap = window._tcSnap;
+    const tareas = Object.keys(snap).length;
+    const totalComs = Object.values(snap).reduce((a,b)=>a+b,0);
+    console.log('═══ TECNOCONTROL DEBUG ═══');
+    console.log('primeraEscucha:', window._tcPrimera);
+    console.log('Tareas en snap:', tareas);
+    console.log('Total comentarios registrados:', totalComs);
+    console.log('Notification.permission:', Notification.permission);
+    console.log('SW registrado:', !!window._swReg);
+    console.log('Para ver tu área: revisa EMAIL_AREA_MAP en el código');
+    console.log('═══════════════════════════');
+};
 
 function escuchar(){
     onSnapshot(query(collection(db,'actividades'),orderBy('fechaCreacion','desc')), s=>{
@@ -1060,6 +1079,7 @@ function escuchar(){
 
         // Después del primer snapshot, activar notificaciones
         primeraEscucha = false;
+        window._tcPrimera = false;
 
         localDB = s.docs.map(d=>({id:d.id,...d.data()}));
         renderDashboard(); renderNotificaciones(); renderReporteMensual();
@@ -1071,6 +1091,7 @@ function escuchar(){
 // Agrega aquí los emails reales de cada usuario cuando los tengas.
 // La clave es el email en minúsculas, el valor es el área exacta como
 // aparece en la base de datos (mayúsculas/acentos incluidos).
+window.EMAIL_AREA_MAP = window.EMAIL_AREA_MAP || {};
 const EMAIL_AREA_MAP = {
     'c.acosta@tecnocontrol.com.mx':         'Administración',
     'rh@tecnocontrol.com.mx':               'Recursos Humanos',
@@ -1099,6 +1120,7 @@ function obtenerDeptoUsuario(email) {
     for(const [k,v] of Object.entries(fragmentos)){ if(lower.includes(k)) return v; }
     return '';
 }
+window.obtenerDeptoUsuario = obtenerDeptoUsuario;
 
 // ══════════════════════════════════════════════════════════════
 // DASHBOARD
