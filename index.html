@@ -548,36 +548,18 @@
 <div id="cal360-tooltip"></div>
 
 <!-- ═══════════════════════════════════════════════════
-     NOTIFICACIONES — Service Worker real (sw.js)
-     Funciona con pantalla minimizada, suspendida
-     y cuando la pestaña NO está en foco.
-     REQUISITO: subir sw.js a la raíz del repo GitHub Pages
+     NOTIFICACIONES — API nativa (sin Service Worker)
+     Igual que la versión que funcionaba con sonido
 ═══════════════════════════════════════════════════ -->
 <script>
-let _swReg = null;
-
-// Registra el SW desde el archivo físico sw.js del repositorio
-async function registrarSW() {
-    if (!('serviceWorker' in navigator)) return;
-    try {
-        _swReg = await navigator.serviceWorker.register('./sw.js', { scope: './' });
-        console.log('[TC] Service Worker registrado:', _swReg.scope);
-    } catch(err) {
-        console.warn('[TC] SW no disponible (desarrollo local?):', err.message);
-    }
-}
-
 async function solicitarPush() {
     document.getElementById('push-banner').style.display = 'none';
     if (!('Notification' in window)) { alert('Tu navegador no soporta notificaciones'); return; }
-
     const perm = await Notification.requestPermission();
     localStorage.setItem('pushPerm', perm);
     actualizarPushStatus(perm);
-
     if (perm === 'granted') {
-        // Confirmar con una notificación real inmediata
-        mostrarNotif('✅ Tecnocontrol', 'Notificaciones activadas. Te avisaremos aunque tengas la pantalla minimizada.', 'tc-confirm');
+        mostrarNotif('✅ Tecnocontrol', 'Notificaciones activadas. Te avisaremos cuando comenten en tus tareas.', 'tc-confirm');
     }
 }
 
@@ -589,29 +571,17 @@ function actualizarPushStatus(perm) {
         : '<div class="push-status push-off" onclick="solicitarPush()">🔕 Activar notificaciones</div>';
 }
 
-async function mostrarNotif(titulo, cuerpo, tag) {
+function mostrarNotif(titulo, cuerpo, tag) {
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
-
-    // SIEMPRE usar new Notification() directo — funciona en Mac y Windows
-    // El SW también recibe el mensaje para cuando la pestaña está cerrada
     try {
-        new Notification(titulo, { body: cuerpo, tag: tag || 'tc', icon: '' });
-    } catch(e) {
-        // Safari u otro navegador que no soporta constructor directo
-        console.warn('[TC] Notification directa falló:', e.message);
-    }
-
-    // Adicionalmente notificar via SW (para pestaña cerrada / pantalla suspendida)
-    try {
-        const reg = _swReg || (_swReg = await navigator.serviceWorker.getRegistration('./'));
-        if (reg && reg.active) {
-            reg.active.postMessage({ type: 'SHOW_NOTIF', title: titulo, body: cuerpo, tag: tag || 'tc' });
-        }
-    } catch(e) { /* SW no disponible, la notificación directa ya se mostró */ }
+        new Notification(titulo, {
+            body: cuerpo,
+            tag: tag || 'tc-portal',
+            icon: '',
+            silent: false
+        });
+    } catch(e) {}
 }
-
-// Arrancar SW al cargar la página
-registrarSW();
 </script>
 
 <script type="module">
@@ -978,33 +948,21 @@ window.cerrarSesion = ()=>signOut(auth).then(()=>location.reload());
 
 // ══════════════════════════════════════════════════════════════
 // FIRESTORE — escucha en tiempo real + notificaciones
-// Detecta comentarios nuevos comparando longitud del array
-// entre el snapshot anterior y el actual — la lógica más simple
-// y confiable que no depende de timestamps ni localStorage.
+// Lógica restaurada de v5 (la que funcionaba con sonido).
+// Compara el objeto completo del snapshot anterior vs actual.
 // Notifica en 3 casos:
-//   1. Eres el responsable de la tarea
-//   2. Eres el dueño del área de la tarea
+//   1. Eres el responsable exacto de la tarea
+//   2. Eres el dueño del área de la tarea (EMAIL_AREA_MAP)
 //   3. Te mencionaron con @
 // ══════════════════════════════════════════════════════════════
-
-// Variables de notificación expuestas en window para diagnóstico
-// y para evitar problemas de scope entre módulo y window
-window._tcSnap    = {};   // id tarea → nº comentarios en último snapshot
-window._tcPrimera = true; // true = primera carga, no notificar
-
-// Normaliza texto: sin acentos, minúsculas, sin espacios extras
-const norm = t => (t||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().trim();
+let ultimoSnapshot = {};
 
 // Diagnóstico desde consola: escribe tc_debug()
 window.tc_debug = () => {
-    const tareas = Object.keys(window._tcSnap).length;
-    const totalComs = Object.values(window._tcSnap).reduce((a,b)=>a+b,0);
+    const tareas = Object.keys(ultimoSnapshot).length;
     console.log('═══ TECNOCONTROL DEBUG ═══');
-    console.log('primeraEscucha:', window._tcPrimera);
-    console.log('Tareas en snap:', tareas);
-    console.log('Total comentarios registrados:', totalComs);
+    console.log('Tareas en snapshot:', tareas);
     console.log('Notification.permission:', Notification.permission);
-    console.log('SW registrado:', !!window._swReg);
     console.log('═══════════════════════════');
 };
 
@@ -1015,65 +973,49 @@ function escuchar(){
         s.docs.forEach(d => {
             const data = d.data();
             const id = d.id;
-            const coms = data.comentarios || [];
-            const prevLen = window._tcSnap[id] ?? coms.length; // primera vez: no notificar
-            const newLen = coms.length;
+            const prev = ultimoSnapshot[id];
 
-            // Guardar conteo actual para el próximo snapshot
-            window._tcSnap[id] = newLen;
+            // Solo analizar si ya teníamos este documento en el snapshot anterior
+            if(prev) {
+                const prevLen = prev.comentarios?.length || 0;
+                const newLen  = (data.comentarios||[]).length;
 
-            // En la primera escucha solo guardamos conteos, no notificamos
-            if(window._tcPrimera) return;
+                if(newLen > prevLen) {
+                    const ultimo = data.comentarios[newLen-1];
+                    // No notificar si lo escribí yo
+                    if(ultimo.u !== yo) {
+                        const miDepto = obtenerDeptoUsuario(yo);
+                        const esAdmin = yo === ADMIN;
 
-            // Si no hay comentarios nuevos, saltar
-            if(newLen <= prevLen) return;
+                        // Caso 1: soy el responsable exacto
+                        const esMiTarea = data.responsable === yo;
 
-            // Revisar solo los comentarios nuevos (los que no existían antes)
-            const nuevos = coms.slice(prevLen);
-            nuevos.forEach(c => {
-                // No notificarme mis propios comentarios
-                if((c.u||'') === yo) return;
+                        // Caso 2: soy el dueño del área
+                        const esMiArea = miDepto !== '' &&
+                            miDepto.toLowerCase() === (data.area||'').toLowerCase();
 
-                const esAdmin = yo === ADMIN;
-                const miDepto = obtenerDeptoUsuario(yo);
+                        // Caso 3: me mencionaron con @
+                        const menciones = extraerMenciones(ultimo.m || '');
+                        const meMencionan = menciones.some(m =>
+                            miDepto && m.toLowerCase().includes(miDepto.toLowerCase())
+                        );
 
-                // Caso 1: soy el responsable exacto de la tarea
-                const esMiTarea = norm(data.responsable) === norm(yo);
-
-                // Caso 2: soy el dueño del área de esta tarea
-                const esMiArea = miDepto !== '' && norm(miDepto) === norm(data.area);
-
-                // Caso 3: me mencionaron con @MiArea o @MiNombre
-                const menciones = extraerMenciones(c.m||'');
-                const meMencionan = menciones.some(m => {
-                    const mn = norm(m);
-                    if(miDepto && mn.includes(norm(miDepto))) return true;
-                    const miNombre = (yo.split('@')[0]||'');
-                    if(miNombre.length > 2 && mn.includes(norm(miNombre))) return true;
-                    return false;
-                });
-
-                if(!esAdmin && !esMiTarea && !esMiArea && !meMencionan) return;
-
-                // Mensaje según el caso que aplica
-                const quien = (c.u||'').split('@')[0];
-                const tarea = data.actividad || 'una tarea';
-                let msg;
-                if(meMencionan){
-                    msg = '📣 ' + quien + ' te mencionó en "' + tarea + '"';
-                } else if(esMiTarea){
-                    msg = '💬 ' + quien + ' comentó en tu tarea "' + tarea + '"';
-                } else if(esMiArea){
-                    msg = '💬 ' + quien + ' comentó en "' + tarea + '" · ' + (data.area||'');
-                } else {
-                    msg = '💬 ' + quien + ' comentó en "' + tarea + '"';
+                        if(esAdmin || esMiTarea || esMiArea || meMencionan) {
+                            const quien = ultimo.u.split('@')[0];
+                            const tarea = data.actividad || 'una tarea';
+                            const msg = meMencionan
+                                ? `📣 ${quien} te mencionó en "${tarea}"`
+                                : esMiTarea
+                                    ? `💬 ${quien} comentó en tu tarea "${tarea}"`
+                                    : `💬 ${quien} comentó en "${tarea}" · ${data.area||''}`;
+                            mostrarNotif('Tecnocontrol · Portal', msg, id);
+                        }
+                    }
                 }
-                mostrarNotif('Tecnocontrol · Portal', msg, id);
-            });
+            }
+            // Guardar estado actual para el próximo snapshot
+            ultimoSnapshot[id] = data;
         });
-
-        // Después del primer snapshot, activar notificaciones
-        window._tcPrimera = false;
 
         localDB = s.docs.map(d=>({id:d.id,...d.data()}));
         renderDashboard(); renderNotificaciones(); renderReporteMensual();
