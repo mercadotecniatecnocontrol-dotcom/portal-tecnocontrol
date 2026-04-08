@@ -987,29 +987,24 @@ window.cerrarSesion = ()=>signOut(auth).then(()=>location.reload());
 //   3. Te mencionaron con @
 // ══════════════════════════════════════════════════════════════
 
-// Mapa: id de tarea → cantidad de comentarios en el último snapshot
-// Expuestas en window para poder diagnosticar desde la consola
-window._tcSnap = {};
-window._tcPrimera = true;
-let snapComentarios = window._tcSnap;
-let primeraEscucha = window._tcPrimera;
+// Variables de notificación expuestas en window para diagnóstico
+// y para evitar problemas de scope entre módulo y window
+window._tcSnap    = {};   // id tarea → nº comentarios en último snapshot
+window._tcPrimera = true; // true = primera carga, no notificar
 
-// Normaliza texto para comparar sin acentos ni mayúsculas
+// Normaliza texto: sin acentos, minúsculas, sin espacios extras
 const norm = t => (t||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().trim();
 
-// Función de diagnóstico — escribe tc_debug() en la consola
+// Diagnóstico desde consola: escribe tc_debug()
 window.tc_debug = () => {
-    const email = document.querySelector('#l-email')?.value || '(usa auth interno)';
-    const snap = window._tcSnap;
-    const tareas = Object.keys(snap).length;
-    const totalComs = Object.values(snap).reduce((a,b)=>a+b,0);
+    const tareas = Object.keys(window._tcSnap).length;
+    const totalComs = Object.values(window._tcSnap).reduce((a,b)=>a+b,0);
     console.log('═══ TECNOCONTROL DEBUG ═══');
     console.log('primeraEscucha:', window._tcPrimera);
     console.log('Tareas en snap:', tareas);
     console.log('Total comentarios registrados:', totalComs);
     console.log('Notification.permission:', Notification.permission);
     console.log('SW registrado:', !!window._swReg);
-    console.log('Para ver tu área: revisa EMAIL_AREA_MAP en el código');
     console.log('═══════════════════════════');
 };
 
@@ -1021,14 +1016,14 @@ function escuchar(){
             const data = d.data();
             const id = d.id;
             const coms = data.comentarios || [];
-            const prevLen = snapComentarios[id] ?? coms.length; // primera vez: no notificar
+            const prevLen = window._tcSnap[id] ?? coms.length; // primera vez: no notificar
             const newLen = coms.length;
 
             // Guardar conteo actual para el próximo snapshot
-            snapComentarios[id] = newLen;
+            window._tcSnap[id] = newLen;
 
             // En la primera escucha solo guardamos conteos, no notificamos
-            if(primeraEscucha) return;
+            if(window._tcPrimera) return;
 
             // Si no hay comentarios nuevos, saltar
             if(newLen <= prevLen) return;
@@ -1078,7 +1073,6 @@ function escuchar(){
         });
 
         // Después del primer snapshot, activar notificaciones
-        primeraEscucha = false;
         window._tcPrimera = false;
 
         localDB = s.docs.map(d=>({id:d.id,...d.data()}));
