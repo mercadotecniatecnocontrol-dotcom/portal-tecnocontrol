@@ -977,80 +977,89 @@ window.iniciar = async()=>{
 window.cerrarSesion = ()=>signOut(auth).then(()=>location.reload());
 
 // ══════════════════════════════════════════════════════════════
-// FIRESTORE — escucha en tiempo real + notificaciones push
-// SESSION_START = momento exacto en que el usuario abrió el portal.
-// Solo se notifican comentarios con timestamp POSTERIOR a SESSION_START.
-// Así no hay comparaciones con localStorage ni versiones viejas.
+// FIRESTORE — escucha en tiempo real + notificaciones
+// Detecta comentarios nuevos comparando longitud del array
+// entre el snapshot anterior y el actual — la lógica más simple
+// y confiable que no depende de timestamps ni localStorage.
+// Notifica en 3 casos:
+//   1. Eres el responsable de la tarea
+//   2. Eres el dueño del área de la tarea
+//   3. Te mencionaron con @
 // ══════════════════════════════════════════════════════════════
-const SESSION_START = new Date().toISOString();
+
+// Mapa: id de tarea → cantidad de comentarios en el último snapshot
+let snapComentarios = {};
 let primeraEscucha = true;
+
+// Normaliza texto para comparar sin acentos ni mayúsculas
+const norm = t => (t||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().trim();
 
 function escuchar(){
     onSnapshot(query(collection(db,'actividades'),orderBy('fechaCreacion','desc')), s=>{
         const yo = auth.currentUser?.email || '';
 
-        // Primera carga: solo pintar UI, NO notificar nada
-        if(primeraEscucha){
-            primeraEscucha = false;
-            localDB = s.docs.map(d=>({id:d.id,...d.data()}));
-            renderDashboard(); renderNotificaciones(); renderReporteMensual();
-            if(areaActual) renderTabla();
-            return;
-        }
-
-        // Snapshots posteriores: revisar cada comentario
-        // Normaliza texto para comparar sin acentos ni mayúsculas
-        const norm = t => (t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
-
         s.docs.forEach(d => {
             const data = d.data();
-            (data.comentarios||[]).forEach(c => {
-                const ts = c.f || '';
-                // Solo comentarios escritos DESPUÉS de que abrí el portal
-                if(!ts || ts <= SESSION_START) return;
+            const id = d.id;
+            const coms = data.comentarios || [];
+            const prevLen = snapComentarios[id] ?? coms.length; // primera vez: no notificar
+            const newLen = coms.length;
+
+            // Guardar conteo actual para el próximo snapshot
+            snapComentarios[id] = newLen;
+
+            // En la primera escucha solo guardamos conteos, no notificamos
+            if(primeraEscucha) return;
+
+            // Si no hay comentarios nuevos, saltar
+            if(newLen <= prevLen) return;
+
+            // Revisar solo los comentarios nuevos (los que no existían antes)
+            const nuevos = coms.slice(prevLen);
+            nuevos.forEach(c => {
                 // No notificarme mis propios comentarios
-                if(c.u === yo) return;
+                if((c.u||'') === yo) return;
 
                 const esAdmin = yo === ADMIN;
+                const miDepto = obtenerDeptoUsuario(yo);
 
-                // 1. ¿Soy el responsable exacto de la tarea?
+                // Caso 1: soy el responsable exacto de la tarea
                 const esMiTarea = norm(data.responsable) === norm(yo);
 
-                // 2. ¿Soy el dueño del área de esta tarea?
-                const miDepto = obtenerDeptoUsuario(yo);
+                // Caso 2: soy el dueño del área de esta tarea
                 const esMiArea = miDepto !== '' && norm(miDepto) === norm(data.area);
 
-                // 3. ¿Me mencionaron con @MiArea o @MiNombre?
+                // Caso 3: me mencionaron con @MiArea o @MiNombre
                 const menciones = extraerMenciones(c.m||'');
                 const meMencionan = menciones.some(m => {
                     const mn = norm(m);
-                    // Coincide con mi área
                     if(miDepto && mn.includes(norm(miDepto))) return true;
-                    // Coincide con mi nombre (parte antes del @)
-                    const miNombre = yo.split('@')[0];
-                    if(mn.includes(norm(miNombre))) return true;
+                    const miNombre = (yo.split('@')[0]||'');
+                    if(miNombre.length > 2 && mn.includes(norm(miNombre))) return true;
                     return false;
                 });
 
-                // Si ninguna condición aplica, no notificar
                 if(!esAdmin && !esMiTarea && !esMiArea && !meMencionan) return;
 
-                // Armar mensaje según caso
+                // Mensaje según el caso que aplica
                 const quien = (c.u||'').split('@')[0];
-                const tarea = data.actividad||'una tarea';
-                let msg = '';
+                const tarea = data.actividad || 'una tarea';
+                let msg;
                 if(meMencionan){
-                    msg = '📣 '+quien+' te mencionó en "'+tarea+'"';
+                    msg = '📣 ' + quien + ' te mencionó en "' + tarea + '"';
                 } else if(esMiTarea){
-                    msg = '💬 '+quien+' comentó en tu tarea "'+tarea+'"';
+                    msg = '💬 ' + quien + ' comentó en tu tarea "' + tarea + '"';
                 } else if(esMiArea){
-                    msg = '💬 '+quien+' comentó en "'+tarea+'" ('+data.area+')';
+                    msg = '💬 ' + quien + ' comentó en "' + tarea + '" · ' + (data.area||'');
                 } else {
-                    msg = '💬 '+quien+' comentó en "'+tarea+'"';
+                    msg = '💬 ' + quien + ' comentó en "' + tarea + '"';
                 }
-                mostrarNotif('Tecnocontrol · Portal', msg, d.id);
+                mostrarNotif('Tecnocontrol · Portal', msg, id);
             });
         });
+
+        // Después del primer snapshot, activar notificaciones
+        primeraEscucha = false;
 
         localDB = s.docs.map(d=>({id:d.id,...d.data()}));
         renderDashboard(); renderNotificaciones(); renderReporteMensual();
