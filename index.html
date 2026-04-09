@@ -2748,22 +2748,50 @@ window.sincronizarStock = async () => {
 
         const lines = text.split('\n').filter(l=>l.trim());
         if(lines.length < 2) throw new Error('El archivo parece vacío');
-        const headers = parseCSVRow(lines[0]).map(h=>h.replace(/"/g,'').trim());
-        const datos = lines.slice(1).map(line=>{
+
+        // ── Auto-detectar fila de encabezados reales ──
+        // Tu Sheet tiene fila 1 = aviso "NO DESCARGAR", fila 2 = encabezados reales
+        // Buscamos la primera fila que contenga palabras clave de encabezado
+        let headerLineIdx = 0;
+        for(let i=0; i<Math.min(5, lines.length); i++){
+            const row = parseCSVRow(lines[i]).map(h=>h.replace(/"/g,'').trim().toLowerCase());
+            if(row.some(h => /articulo|nombre|sku|codigo|linea|completo|producto/.test(h))){
+                headerLineIdx = i;
+                break;
+            }
+        }
+
+        const headers = parseCSVRow(lines[headerLineIdx]).map(h=>h.replace(/"/g,'').trim());
+        const datos = lines.slice(headerLineIdx+1).map(line=>{
             const vals = parseCSVRow(line);
             return Object.fromEntries(headers.map((h,i)=>[h,(vals[i]||'').replace(/"/g,'').trim()]));
-        }).filter(d=>Object.values(d).some(v=>v)); // quitar filas vacías
+        }).filter(d=>Object.values(d).some(v=>v));
 
         // ── Detectar columnas clave ──
-        const colCompleto = headers.find(h=>/completo/i.test(h));         // "Esta en COMPLETO"
-        const colTipo     = headers.find(h=>/^tipo$/i.test(h));            // "Tipo"
+        // "Esta en COMPLETO" — columna W de tu Sheet
+        const colCompleto = headers.find(h=>/esta.*completo/i.test(h))
+                         || headers.find(h=>/^completo$/i.test(h));
+        // "Linea" — columna G de tu Sheet (tu categoría/tipo)
+        const colTipo = headers.find(h=>/^linea$/i.test(h))
+                     || headers.find(h=>/^tipo$/i.test(h))
+                     || headers.find(h=>/linea|tipo|categ/i.test(h));
+        // "Articulo" y "Nombre"
         const colArticulo = headers.find(h=>/^articulo$/i.test(h))
                          || headers.find(h=>/nombre|item|producto/i.test(h))
                          || headers[0];
-        const colNombre   = headers.find(h=>/^nombre$/i.test(h)) || colArticulo;
-        const colSku      = headers.find(h=>/sku|codigo|código/i.test(h));
+        const colNombre = headers.find(h=>/^nombre$/i.test(h)) || colArticulo;
+        const colSku    = headers.find(h=>/^sku$|^codigo/i.test(h));
 
         const total = datos.length;
+
+        // ── Log de diagnóstico (visible en consola F12) ──
+        console.log('[STOCK] Fila encabezados:', headerLineIdx, '| Total filas:', total);
+        console.log('[STOCK] Encabezados detectados:', headers.slice(0,10));
+        console.log('[STOCK] colCompleto:', colCompleto, '| colTipo:', colTipo, '| colArticulo:', colArticulo);
+        if(colCompleto){
+            const muestra = datos.slice(0,3).map(d=>d[colCompleto]);
+            console.log('[STOCK] Muestra col "Esta en COMPLETO":', muestra);
+        }
 
         // ── Contar completitud ──
         // VERDADERO / TRUE / 1 / SI = completo
