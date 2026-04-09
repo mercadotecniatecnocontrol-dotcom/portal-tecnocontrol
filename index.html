@@ -2719,73 +2719,170 @@ window.configurarSheetURL = () => {
     }
 };
 
+// Variable para guardar el chart de completitud (para poder destruirlo al re-renderizar)
+let stockCompletitudChart = null;
+
 window.sincronizarStock = async () => {
     const url = localStorage.getItem(MKT_SHEET_KEY);
     const status = document.getElementById('mkt-stock-status');
     const content = document.getElementById('mkt-stock-content');
-    if(!url){
-        if(status) status.innerText='⚠️ Configura la URL primero';
-        return;
-    }
+    if(!url){ if(status) status.innerText='⚠️ Configura la URL primero'; return; }
     if(status) status.innerText='🔄 Sincronizando...';
     try {
         const r = await fetch(url);
         if(!r.ok) throw new Error('No se pudo leer el archivo');
         const text = await r.text();
-        const rows = text.split('\n').filter(l=>l.trim()).map(l=>l.split(','));
-        if(rows.length < 2){ throw new Error('El archivo parece vacío'); }
-        const headers = rows[0].map(h=>h.replace(/"/g,'').trim());
-        const datos = rows.slice(1).map(row=>
-            Object.fromEntries(headers.map((h,i)=>[h, (row[i]||'').replace(/"/g,'').trim()]))
-        );
-        // Detectar columnas clave automáticamente
-        const colArticulo = headers.find(h=>/articulo|producto|nombre|item/i.test(h)) || headers[0];
-        const colStock = headers.find(h=>/stock|cantidad|qty|existencia/i.test(h)) || headers[1];
-        const colMin = headers.find(h=>/min|minimo|mínimo/i.test(h));
-        const colCateg = headers.find(h=>/categ|tipo|categoria/i.test(h));
-        if(status) status.innerText=`✅ ${datos.length} artículos · ${new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})}`;
-        // Contar estados
-        let ok=0, low=0, out=0;
-        const filas = datos.slice(0,50).map(d=>{
-            const articulo = d[colArticulo]||'—';
-            const stock = Number(d[colStock])||0;
-            const min = colMin ? Number(d[colMin])||0 : 0;
-            let estadoClass='stock-ok', estadoText='OK';
-            if(stock===0){estadoClass='stock-out';estadoText='Sin stock';out++;}
-            else if(min>0 && stock<=min){estadoClass='stock-low';estadoText='Bajo';low++;}
-            else ok++;
-            const categ = colCateg ? d[colCateg] : '';
-            return `<tr>
-                <td>${articulo}</td>
-                ${colCateg?`<td>${categ}</td>`:''}
-                <td style="text-align:center;font-weight:700;">${stock}</td>
-                ${colMin?`<td style="text-align:center;color:#94a3b8;">${d[colMin]||'—'}</td>`:''}
-                <td style="text-align:center;"><span class="${estadoClass}">${estadoText}</span></td>
-            </tr>`;
-        }).join('');
+
+        // Parseo robusto de CSV (maneja comas dentro de comillas)
+        const parseCSVRow = row => {
+            const result=[]; let cur=''; let inQ=false;
+            for(let i=0;i<row.length;i++){
+                const ch=row[i];
+                if(ch==='"'){inQ=!inQ;}
+                else if(ch===','&&!inQ){result.push(cur.trim());cur='';}
+                else{cur+=ch;}
+            }
+            result.push(cur.trim());
+            return result;
+        };
+
+        const lines = text.split('\n').filter(l=>l.trim());
+        if(lines.length < 2) throw new Error('El archivo parece vacío');
+        const headers = parseCSVRow(lines[0]).map(h=>h.replace(/"/g,'').trim());
+        const datos = lines.slice(1).map(line=>{
+            const vals = parseCSVRow(line);
+            return Object.fromEntries(headers.map((h,i)=>[h,(vals[i]||'').replace(/"/g,'').trim()]));
+        }).filter(d=>Object.values(d).some(v=>v)); // quitar filas vacías
+
+        // ── Detectar columnas clave ──
+        const colCompleto = headers.find(h=>/completo/i.test(h));         // "Esta en COMPLETO"
+        const colTipo     = headers.find(h=>/^tipo$/i.test(h));            // "Tipo"
+        const colArticulo = headers.find(h=>/^articulo$/i.test(h))
+                         || headers.find(h=>/nombre|item|producto/i.test(h))
+                         || headers[0];
+        const colNombre   = headers.find(h=>/^nombre$/i.test(h)) || colArticulo;
+        const colSku      = headers.find(h=>/sku|codigo|código/i.test(h));
+
+        const total = datos.length;
+
+        // ── Contar completitud ──
+        // VERDADERO / TRUE / 1 / SI = completo
+        const esCompleto = v => /^(verdadero|true|1|si|sí|yes|completo)$/i.test((v||'').trim());
+        const completos   = datos.filter(d => colCompleto && esCompleto(d[colCompleto]));
+        const incompletos = datos.filter(d => colCompleto && !esCompleto(d[colCompleto]));
+        const pctCompleto = total > 0 ? Math.round(completos.length / total * 100) : 0;
+
+        // ── Estadísticas por Tipo ──
+        const porTipo = {};
+        if(colTipo){
+            datos.forEach(d=>{
+                const tipo = d[colTipo] || 'Sin tipo';
+                if(!porTipo[tipo]) porTipo[tipo] = {total:0, completos:0};
+                porTipo[tipo].total++;
+                if(colCompleto && esCompleto(d[colCompleto])) porTipo[tipo].completos++;
+            });
+        }
+        const tiposOrdenados = Object.entries(porTipo)
+            .sort((a,b)=>b[1].total-a[1].total)
+            .slice(0,8); // top 8 tipos
+
+        const coloresTipo = ['#2563eb','#10b981','#f59e0b','#ef4444','#8b5cf6','#e1306c','#1877f2','#059669'];
+
+        if(status) status.innerText = `✅ ${total} artículos · ${new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})}`;
+
+        // ── Renderizar ──
         content.innerHTML = `
-            <div style="display:flex;gap:12px;margin-bottom:12px;">
-                <span style="background:#dcfce7;color:#16a34a;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;">✅ OK: ${ok}</span>
-                <span style="background:#fef9c3;color:#a16207;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;">⚠️ Bajo: ${low}</span>
-                <span style="background:#fee2e2;color:#dc2626;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;">❌ Sin stock: ${out}</span>
-                ${datos.length>50?`<span style="color:#94a3b8;font-size:11px;">Mostrando 50 de ${datos.length}</span>`:''}
+        <div style="display:grid;grid-template-columns:220px 1fr;gap:20px;align-items:start;margin-bottom:20px;">
+
+            <!-- Dona de completitud -->
+            <div style="text-align:center;">
+                <div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:4px;">Completitud del catálogo</div>
+                <div style="font-size:10px;color:#64748b;margin-bottom:12px;">Artículos con datos completos</div>
+                <div style="position:relative;width:160px;height:160px;margin:0 auto;">
+                    <canvas id="chart-completitud"></canvas>
+                    <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;">
+                        <div style="font-family:'Space Grotesk',sans-serif;font-size:28px;font-weight:700;color:${pctCompleto>=80?'#16a34a':pctCompleto>=50?'#f59e0b':'#ef4444'};">${pctCompleto}%</div>
+                        <div style="font-size:10px;color:#64748b;">completado</div>
+                    </div>
+                </div>
+                <div style="margin-top:12px;display:flex;justify-content:center;gap:14px;font-size:11px;">
+                    <span><span style="color:#16a34a;font-weight:700;">✅ ${completos.length}</span> completos</span>
+                    <span><span style="color:#ef4444;font-weight:700;">⬜ ${incompletos.length}</span> pendientes</span>
+                </div>
+            </div>
+
+            <!-- Estadísticas por tipo -->
+            <div>
+                <div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:12px;">Completitud por tipo de producto</div>
+                ${tiposOrdenados.map(([tipo,data],i)=>{
+                    const pct = data.total>0 ? Math.round(data.completos/data.total*100) : 0;
+                    const color = coloresTipo[i%coloresTipo.length];
+                    return `<div style="margin-bottom:10px;">
+                        <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
+                            <span style="font-size:12px;font-weight:600;color:#1e293b;">${tipo}</span>
+                            <span style="font-size:11px;color:#64748b;">${data.completos}/${data.total} &nbsp;<b style="color:${pct>=80?'#16a34a':pct>=50?'#f59e0b':'#ef4444'};">${pct}%</b></span>
+                        </div>
+                        <div style="height:7px;background:#e2e8f0;border-radius:4px;overflow:hidden;">
+                            <div style="height:100%;width:${pct}%;background:${color};border-radius:4px;transition:width 0.8s ease;"></div>
+                        </div>
+                    </div>`;
+                }).join('')}
+                ${tiposOrdenados.length===0?'<div style="color:#94a3b8;font-size:12px;">No se detectó columna "Tipo" en el Sheet</div>':''}
+            </div>
+        </div>
+
+        <!-- Artículos incompletos (top 20) -->
+        ${incompletos.length > 0 ? `
+        <div style="border-top:1px solid rgba(59,130,246,0.08);padding-top:16px;">
+            <div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:10px;">
+                ⬜ Artículos pendientes de completar
+                <span style="font-weight:400;color:#64748b;font-size:11px;margin-left:8px;">Mostrando ${Math.min(20,incompletos.length)} de ${incompletos.length}</span>
             </div>
             <div style="overflow-x:auto;">
             <table class="mkt-stock-table">
                 <thead><tr>
-                    <th>${colArticulo}</th>
-                    ${colCateg?`<th>Categoría</th>`:''}
-                    <th style="text-align:center;">Stock</th>
-                    ${colMin?`<th style="text-align:center;">Mínimo</th>`:''}
+                    ${colSku?'<th>SKU</th>':''}
+                    <th>Artículo / Nombre</th>
+                    ${colTipo?'<th>Tipo</th>':''}
                     <th style="text-align:center;">Estado</th>
                 </tr></thead>
-                <tbody>${filas}</tbody>
+                <tbody>
+                ${incompletos.slice(0,20).map(d=>`<tr>
+                    ${colSku?`<td style="color:#94a3b8;font-size:11px;">${d[colSku]||'—'}</td>`:''}
+                    <td style="font-weight:600;">${d[colNombre]||'—'}</td>
+                    ${colTipo?`<td style="color:#64748b;">${d[colTipo]||'—'}</td>`:''}
+                    <td style="text-align:center;"><span style="background:#fee2e2;color:#dc2626;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;">⬜ Incompleto</span></td>
+                </tr>`).join('')}
+                </tbody>
             </table>
-            </div>`;
+            </div>
+        </div>` : `<div style="text-align:center;padding:16px;color:#16a34a;font-weight:700;font-size:13px;">🎉 ¡Todos los artículos están completos!</div>`}
+        `;
+
+        // ── Renderizar dona Chart.js ──
+        const elDona = document.getElementById('chart-completitud');
+        if(elDona){
+            if(stockCompletitudChart) stockCompletitudChart.destroy();
+            stockCompletitudChart = new Chart(elDona, {
+                type:'doughnut',
+                data:{datasets:[{
+                    data:[completos.length, Math.max(0.001, incompletos.length)],
+                    backgroundColor:[
+                        pctCompleto>=80?'#16a34a':pctCompleto>=50?'#f59e0b':'#ef4444',
+                        '#e2e8f0'
+                    ],
+                    borderWidth:0,
+                    borderRadius: completos.length>0 && incompletos.length>0 ? 4 : 0
+                }]},
+                options:{cutout:'76%', plugins:{legend:{display:false}}, animation:{duration:800}}
+            });
+        }
+
     } catch(e){
         if(status) status.innerText='❌ Error al sincronizar';
         content.innerHTML=`<div style="text-align:center;color:#ef4444;padding:16px;font-size:12px;">
-            Error: ${e.message}<br><span style="color:#94a3b8;font-size:10px;">Verifica que el Sheet esté publicado como CSV</span>
+            Error: ${e.message}<br>
+            <span style="color:#94a3b8;font-size:10px;">Verifica que el Sheet esté publicado como CSV (Archivo → Publicar en la web → CSV)</span>
         </div>`;
     }
 };
