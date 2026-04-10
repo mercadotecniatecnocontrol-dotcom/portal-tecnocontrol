@@ -3125,13 +3125,131 @@ function renderRHDash(data, key){
 }
 
 
+// ── Selector de áreas ──────────────────────────────────────
+const RH_AREAS_LIST = ['Ingresos','Egresos','Contabilidad','Recursos Humanos','Marketing','Administración','Ventas'];
+const RH_AREA_SEL = () => `<select class="rh-form-input" id="rh-f-area">
+    ${RH_AREAS_LIST.map(a=>`<option>${a}</option>`).join('')}
+</select>`;
+
+const TODAY = new Date().toISOString().slice(0,10);
+
+// ── Formularios por tipo ────────────────────────────────────
+const RH_FORMS = {
+    retardo: () => `
+        <p style="font-size:11px;color:#64748b;margin-bottom:12px;">Registra cada retardo individualmente con colaborador y hora exacta.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div><label class="rh-form-label">Nombre del colaborador</label>
+                <input class="rh-form-input" id="rh-f-nombre" type="text" placeholder="Nombre completo" autofocus></div>
+            <div><label class="rh-form-label">Área</label>${RH_AREA_SEL()}</div>
+            <div><label class="rh-form-label">Fecha</label>
+                <input class="rh-form-input" id="rh-f-fecha" type="date" value="${TODAY}"></div>
+            <div><label class="rh-form-label">Hora de entrada real</label>
+                <input class="rh-form-input" id="rh-f-hora" type="time"></div>
+        </div>
+        <label class="rh-form-label" style="margin-top:12px;">Minutos de retraso</label>
+        <input class="rh-form-input" id="rh-f-minutos" type="number" min="1" placeholder="Ej: 25">
+        <label class="rh-form-label">Notas / justificación</label>
+        <input class="rh-form-input" id="rh-f-notas" type="text" placeholder="Ej: Tráfico, cita médica...">`,
+
+    falta: () => `
+        <p style="font-size:11px;color:#64748b;margin-bottom:12px;">Registra cada falta individualmente.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div><label class="rh-form-label">Nombre del colaborador</label>
+                <input class="rh-form-input" id="rh-f-nombre" type="text" placeholder="Nombre completo"></div>
+            <div><label class="rh-form-label">Área</label>${RH_AREA_SEL()}</div>
+            <div><label class="rh-form-label">Fecha de la falta</label>
+                <input class="rh-form-input" id="rh-f-fecha" type="date" value="${TODAY}"></div>
+            <div><label class="rh-form-label">Tipo de falta</label>
+                <select class="rh-form-input" id="rh-f-tipoFalta">
+                    <option value="injustificada">Injustificada</option>
+                    <option value="justificada">Justificada</option>
+                    <option value="permiso">Permiso sin goce</option>
+                </select></div>
+        </div>
+        <label class="rh-form-label" style="margin-top:12px;">Motivo / observaciones</label>
+        <input class="rh-form-input" id="rh-f-notas" type="text" placeholder="Ej: Sin aviso, enfermedad con comprobante...">`,
+
+    descuento: () => `
+        <p style="font-size:11px;color:#64748b;margin-bottom:12px;">Registra descuentos aplicados en nómina.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div><label class="rh-form-label">Nombre del colaborador</label>
+                <input class="rh-form-input" id="rh-f-nombre" type="text" placeholder="Nombre completo"></div>
+            <div><label class="rh-form-label">Área</label>${RH_AREA_SEL()}</div>
+            <div><label class="rh-form-label">Monto descontado ($)</label>
+                <input class="rh-form-input" id="rh-f-monto" type="number" min="0" step="0.01" placeholder="Ej: 350.00"></div>
+            <div><label class="rh-form-label">Fecha de aplicación</label>
+                <input class="rh-form-input" id="rh-f-fecha" type="date" value="${TODAY}"></div>
+        </div>
+        <label class="rh-form-label" style="margin-top:12px;">Motivo del descuento</label>
+        <select class="rh-form-input" id="rh-f-motivoDesc">
+            <option>Retardo</option><option>Falta injustificada</option>
+            <option>Préstamo</option><option>Daño a equipo</option><option>Otro</option>
+        </select>
+        <label class="rh-form-label">Notas adicionales</label>
+        <input class="rh-form-input" id="rh-f-notas" type="text" placeholder="Detalles...">`,
+
+    rotacion: () => `
+        <p style="font-size:11px;color:#64748b;margin-bottom:12px;">Registra bajas o altas de personal esta semana.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div><label class="rh-form-label">Nombre del colaborador</label>
+                <input class="rh-form-input" id="rh-f-nombre" type="text" placeholder="Nombre completo"></div>
+            <div><label class="rh-form-label">Área</label>${RH_AREA_SEL()}</div>
+            <div><label class="rh-form-label">Tipo de movimiento</label>
+                <select class="rh-form-input" id="rh-f-movimiento">
+                    <option value="baja">Baja voluntaria</option>
+                    <option value="baja-involuntaria">Baja involuntaria</option>
+                    <option value="alta">Alta / Nuevo ingreso</option>
+                    <option value="cambio">Cambio de área</option>
+                </select></div>
+            <div><label class="rh-form-label">Fecha del movimiento</label>
+                <input class="rh-form-input" id="rh-f-fecha" type="date" value="${TODAY}"></div>
+        </div>
+        <label class="rh-form-label" style="margin-top:12px;">Motivo / observaciones</label>
+        <input class="rh-form-input" id="rh-f-notas" type="text" placeholder="Ej: Mejor oferta, fin de contrato...">`,
+
+    vacante: () => `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div><label class="rh-form-label">Puesto / Posición</label>
+                <input class="rh-form-input" id="rh-f-puesto" type="text" placeholder="Ej: Técnico en campo"></div>
+            <div><label class="rh-form-label">Área solicitante</label>${RH_AREA_SEL()}</div>
+            <div><label class="rh-form-label">Fecha de apertura</label>
+                <input class="rh-form-input" id="rh-f-fecha" type="date" value="${TODAY}"></div>
+            <div><label class="rh-form-label">Estatus</label>
+                <select class="rh-form-input" id="rh-f-vacEstatus">
+                    <option value="nueva">Nueva</option>
+                    <option value="abierta">Abierta / En proceso</option>
+                    <option value="concretada">Concretada</option>
+                </select></div>
+        </div>
+        <label class="rh-form-label" style="margin-top:12px;">Perfil requerido / notas</label>
+        <input class="rh-form-input" id="rh-f-notas" type="text" placeholder="Ej: Experiencia en industria, licencia tipo B...">`,
+
+    acta: () => `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div><label class="rh-form-label">Nombre del colaborador</label>
+                <input class="rh-form-input" id="rh-f-nombre" type="text" placeholder="Nombre completo"></div>
+            <div><label class="rh-form-label">Área</label>${RH_AREA_SEL()}</div>
+            <div><label class="rh-form-label">Tipo de acta</label>
+                <select class="rh-form-input" id="rh-f-tipoActa">
+                    <option value="falta">Falta injustificada</option>
+                    <option value="retardo">Retardo reincidente</option>
+                    <option value="conducta">Conducta inapropiada</option>
+                    <option value="incumplimiento">Incumplimiento de normas</option>
+                </select></div>
+            <div><label class="rh-form-label">Fecha del acta</label>
+                <input class="rh-form-input" id="rh-f-fecha" type="date" value="${TODAY}"></div>
+        </div>
+        <label class="rh-form-label" style="margin-top:12px;">Descripción del incidente</label>
+        <input class="rh-form-input" id="rh-f-notas" type="text" placeholder="Describe los hechos con detalle...">`
+};
+
 window.abrirModalRH = (tab = 'retardo', editId = null) => {
     rhTabActual = tab;
     rhEditandoId = editId;
     document.querySelectorAll('.rh-tab').forEach(t => {
         t.classList.toggle('active', t.getAttribute('onclick')?.includes(`'${tab}'`));
     });
-    document.getElementById('rh-form-container').innerHTML = RH_FORMS[tab] || '';
+    document.getElementById('rh-form-container').innerHTML = (RH_FORMS[tab] ? RH_FORMS[tab]() : '');
     const titulo = document.getElementById('rh-modal-title');
     if(titulo) titulo.innerText = editId ? `✏️ Editar registro de ${tab}` : `📝 Registrar indicador RH`;
     document.getElementById('modal-rh').style.display = 'flex';
@@ -3142,7 +3260,7 @@ window.rhTabSwitch = (tab, btn) => {
     rhEditandoId = null;
     document.querySelectorAll('.rh-tab').forEach(t => t.classList.remove('active'));
     btn.classList.add('active');
-    document.getElementById('rh-form-container').innerHTML = RH_FORMS[tab] || '';
+    document.getElementById('rh-form-container').innerHTML = (RH_FORMS[tab] ? RH_FORMS[tab]() : '');
 };
 
 const rhGet = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
