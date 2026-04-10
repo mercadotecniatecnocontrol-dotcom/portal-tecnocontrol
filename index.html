@@ -2372,8 +2372,8 @@ window.mktMesNext = () => { mktMes++; if(mktMes>11){mktMes=0;mktAnio++;} actuali
 async function cargarDatosMkt(){
     const key = mktKey(mktMes, mktAnio);
     try {
-        const { getDocs, collection: col, query: q2, where } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-        const snap = await getDocs(q2(col(db,'mkt_indicadores'), where('mesAnio','==',key)));
+        const fbMkt = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const snap = await fbMkt.getDocs(fbMkt.query(fbMkt.collection(db,'mkt_indicadores'), fbMkt.where('mesAnio','==',key)));
         const d = { kpis:{}, canales:{}, presupuesto:{}, campanas:[] };
         snap.docs.forEach(doc => {
             const data = doc.data();
@@ -2705,8 +2705,7 @@ document.getElementById('modal-mkt').addEventListener('click',e=>{
 window.eliminarMkt = async (id) => {
     if(!confirm('¿Eliminar este registro? No se puede deshacer.')) return;
     try {
-        const { deleteDoc: delDoc, doc: docRef3 } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-        await delDoc(docRef3(db,'mkt_indicadores',id));
+        await deleteDoc(doc(db,'mkt_indicadores',id));
         window.mostrarPush('🗑 Eliminado','Registro de Marketing eliminado','📣');
         cargarDatosMkt();
     } catch(e){ alert('Error: '+e.message); }
@@ -2973,12 +2972,12 @@ window.rhMesNext = () => { rhSemanaOffset++; if(rhSemanaOffset>0) rhSemanaOffset
 async function cargarDatosRH(){
     const key = rhKey();
     try {
-        const { getDocs, collection: col, query: q2, where } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-        // cargar semana
-        const snap = await getDocs(q2(col(db,'rh_indicadores'), where('semanaKey','==',key)));
-        const snap = await getDocs(q2(col(db,'rh_indicadores'), where('semanaKey','==',key)));
+        const fbRH = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const rhSnap = await fbRH.getDocs(fbRH.query(fbRH.collection(db,'rh_indicadores'), fbRH.where('semanaKey','==',key)));
+        window._rhDeleteDoc = (id) => fbRH.deleteDoc(fbRH.doc(db,'rh_indicadores',id));
+        window._rhUpdate    = (id, data) => fbRH.updateDoc(fbRH.doc(db,'rh_indicadores',id), data);
         const semData = { retardos:[], faltas:[], descuentos:[], vacantes:[], actas:[], rotacion:[] };
-        snap.docs.forEach(d => {
+        rhSnap.docs.forEach(d => {
             const data = d.data();
             const tipo = data.tipo;
             if(semData[tipo]) semData[tipo].push({id:d.id,...data});
@@ -3198,15 +3197,11 @@ window.guardarDatoRH = async () => {
     }
 
     try {
-        // Importar lo necesario de Firestore
-        const fbModule = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-        const { updateDoc: updDoc, doc: docRef2, addDoc: addDocument, collection: col2 } = fbModule;
-
         if(rhEditandoId){
-            await updDoc(docRef2(db,'rh_indicadores', rhEditandoId), docData);
+            await updateDoc(doc(db,'rh_indicadores', rhEditandoId), docData);
             rhEditandoId = null;
         } else {
-            await addDocument(col2(db,'rh_indicadores'), docData);
+            await addDoc(collection(db,'rh_indicadores'), docData);
         }
 
         document.getElementById('modal-rh').style.display = 'none';
@@ -3223,12 +3218,10 @@ window.guardarDatoRH = async () => {
 window.eliminarRH = async (id) => {
     if(!confirm('¿Eliminar este registro? Esta acción no se puede deshacer.')) return;
     try {
-        const { deleteDoc, doc: docRef3 } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-        await deleteDoc(docRef3(db,'rh_indicadores', id));
+        await deleteDoc(doc(db,'rh_indicadores', id));
         window.mostrarPush('🗑 Eliminado', 'Registro eliminado correctamente', '👥');
         cargarDatosRH();
     } catch(e) {
-        console.error('[RH eliminar]', e);
         alert('Error al eliminar: ' + e.message);
     }
 };
