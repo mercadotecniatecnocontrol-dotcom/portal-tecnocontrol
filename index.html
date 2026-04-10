@@ -1653,11 +1653,13 @@ function escuchar(){
         s.docs.forEach(d => {
             const data = d.data();
             const id = d.id;
-            const prev = ultimoSnapshot[id];
-            const prevLen = prev?.comentarios?.length ?? -1;
-            const newLen  = (data.comentarios||[]).length;
+            // prevLen = -1 en primera carga (no notificar), >= 0 en siguientes
+            const prevLen = ultimoSnapshot.hasOwnProperty(id)
+                ? (ultimoSnapshot[id]?.comentarios?.length ?? 0)
+                : -1;
+            const newLen = (data.comentarios||[]).length;
 
-            if(prev && newLen > prevLen && prevLen >= 0) {
+            if(prevLen >= 0 && newLen > prevLen) {
                 const ultimo = data.comentarios[newLen-1];
                 if(ultimo.u !== yo) {
                     const miDepto = obtenerDeptoUsuario(yo);
