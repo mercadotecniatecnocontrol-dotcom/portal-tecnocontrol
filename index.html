@@ -877,31 +877,31 @@
 
                 <!-- KPIs -->
                 <div class="rh-kpis">
-                    <div class="rh-kpi rotacion" onclick="abrirModalRH('rotacion')">
+                    <div class="rh-kpi rotacion" onclick="abrirModalRH('retardo')">
                         <div class="rh-kpi-icon">🔄</div>
                         <div class="rh-kpi-val" id="rh-val-rotacion">—</div>
                         <div class="rh-kpi-label">Rotación</div>
                         <div class="rh-kpi-delta" id="rh-delta-rotacion"></div>
                     </div>
-                    <div class="rh-kpi faltas" onclick="abrirModalRH('faltas')">
+                    <div class="rh-kpi faltas" onclick="abrirModalRH('falta')">
                         <div class="rh-kpi-icon">📅</div>
                         <div class="rh-kpi-val" id="rh-val-faltas">—</div>
                         <div class="rh-kpi-label">Faltas</div>
                         <div class="rh-kpi-delta" id="rh-delta-faltas"></div>
                     </div>
-                    <div class="rh-kpi retardos" onclick="abrirModalRH('retardos')">
+                    <div class="rh-kpi retardos" onclick="abrirModalRH('retardo')">
                         <div class="rh-kpi-icon">⏰</div>
                         <div class="rh-kpi-val" id="rh-val-retardos">—</div>
                         <div class="rh-kpi-label">Retardos</div>
                         <div class="rh-kpi-delta" id="rh-delta-retardos"></div>
                     </div>
-                    <div class="rh-kpi descuentos" onclick="abrirModalRH('descuentos')">
+                    <div class="rh-kpi descuentos" onclick="abrirModalRH('descuento')">
                         <div class="rh-kpi-icon">💰</div>
                         <div class="rh-kpi-val" id="rh-val-descuentos">—</div>
                         <div class="rh-kpi-label">Descuentos</div>
                         <div class="rh-kpi-delta" id="rh-delta-descuentos"></div>
                     </div>
-                    <div class="rh-kpi vacantes" onclick="abrirModalRH('vacantes')">
+                    <div class="rh-kpi vacantes" onclick="abrirModalRH('vacante')">
                         <div class="rh-kpi-icon">🎯</div>
                         <div class="rh-kpi-val" id="rh-val-vacantes">—</div>
                         <div class="rh-kpi-label">Vacantes</div>
@@ -938,7 +938,7 @@
                 <div class="rh-vacantes">
                     <div class="rh-vac-title">
                         <span>📋 Detalle de Vacantes</span>
-                        <button class="rh-add-btn" onclick="abrirModalRH('vacantes')" style="font-size:10px;padding:5px 10px;">+ Nueva</button>
+                        <button class="rh-add-btn" onclick="abrirModalRH('vacante')" style="font-size:10px;padding:5px 10px;">+ Nueva</button>
                     </div>
                     <div class="rh-vac-row header">
                         <span>Puesto</span><span>Área</span><span>Apertura</span><span>Estatus</span>
@@ -1143,11 +1143,11 @@
     <div class="rh-modal-box">
         <div class="rh-modal-title" id="rh-modal-title">📝 Registrar indicador RH</div>
         <div class="rh-tabs">
-            <button class="rh-tab active" onclick="rhTabSwitch('rotacion',this)">🔄 Rotación</button>
-            <button class="rh-tab" onclick="rhTabSwitch('faltas',this)">📅 Faltas</button>
-            <button class="rh-tab" onclick="rhTabSwitch('retardos',this)">⏰ Retardos</button>
-            <button class="rh-tab" onclick="rhTabSwitch('descuentos',this)">💰 Descuentos</button>
-            <button class="rh-tab" onclick="rhTabSwitch('vacantes',this)">🎯 Vacante</button>
+            <button class="rh-tab active" onclick="rhTabSwitch('retardo',this)">⏰ Retardo</button>
+            <button class="rh-tab" onclick="rhTabSwitch('falta',this)">📅 Falta</button>
+            <button class="rh-tab" onclick="rhTabSwitch('descuento',this)">💰 Descuento</button>
+            <button class="rh-tab" onclick="rhTabSwitch('rotacion',this)">🔄 Rotación</button>
+            <button class="rh-tab" onclick="rhTabSwitch('vacante',this)">🎯 Vacante</button>
             <button class="rh-tab" onclick="rhTabSwitch('acta',this)">📁 Acta</button>
         </div>
         <div id="rh-form-container"></div>
@@ -2702,6 +2702,16 @@ document.getElementById('modal-mkt').addEventListener('click',e=>{
     if(e.target===document.getElementById('modal-mkt')) document.getElementById('modal-mkt').style.display='none';
 });
 
+window.eliminarMkt = async (id) => {
+    if(!confirm('¿Eliminar este registro? No se puede deshacer.')) return;
+    try {
+        const { deleteDoc: delDoc, doc: docRef3 } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        await delDoc(docRef3(db,'mkt_indicadores',id));
+        window.mostrarPush('🗑 Eliminado','Registro de Marketing eliminado','📣');
+        cargarDatosMkt();
+    } catch(e){ alert('Error: '+e.message); }
+};
+
 // ── Google Sheets: sincronizar stock ────────────────────────
 window.configurarSheetURL = () => {
     const input = document.getElementById('mkt-sheets-url');
@@ -2859,34 +2869,9 @@ window.sincronizarStock = async () => {
             </div>
         </div>
 
-        <!-- Artículos incompletos (top 20) -->
-        ${incompletos.length > 0 ? `
-        <div style="border-top:1px solid rgba(59,130,246,0.08);padding-top:16px;">
-            <div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:10px;">
-                ⬜ Artículos pendientes de completar
-                <span style="font-weight:400;color:#64748b;font-size:11px;margin-left:8px;">Mostrando ${Math.min(20,incompletos.length)} de ${incompletos.length}</span>
-            </div>
-            <div style="overflow-x:auto;">
-            <table class="mkt-stock-table">
-                <thead><tr>
-                    ${colSku?'<th>SKU</th>':''}
-                    <th>Artículo / Nombre</th>
-                    ${colTipo?'<th>Tipo</th>':''}
-                    <th style="text-align:center;">Estado</th>
-                </tr></thead>
-                <tbody>
-                ${incompletos.slice(0,20).map(d=>`<tr>
-                    ${colSku?`<td style="color:#94a3b8;font-size:11px;">${d[colSku]||'—'}</td>`:''}
-                    <td style="font-weight:600;">${d[colNombre]||'—'}</td>
-                    ${colTipo?`<td style="color:#64748b;">${d[colTipo]||'—'}</td>`:''}
-                    <td style="text-align:center;"><span style="background:#fee2e2;color:#dc2626;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;">⬜ Incompleto</span></td>
-                </tr>`).join('')}
-                </tbody>
-            </table>
-            </div>
-        </div>` : `<div style="text-align:center;padding:16px;color:#16a34a;font-weight:700;font-size:13px;">🎉 ¡Todos los artículos están completos!</div>`}
+        <!-- Solo dona y estadísticas por tipo — sin lista de pendientes -->
+        ${pctCompleto === 100 ? '<div style="text-align:center;padding:12px;color:#16a34a;font-weight:700;font-size:13px;">🎉 ¡Todos los artículos están completos!</div>' : ''}
         `;
-
         // ── Renderizar dona Chart.js ──
         const elDona = document.getElementById('chart-completitud');
         if(elDona){
@@ -2922,15 +2907,40 @@ window.sincronizarStock = async () => {
 // ══════════════════════════════════════════════════════════════
 const RH_EMAIL = 'rh@tecnocontrol.com.mx';
 const MESES_RH = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
-let rhMes = new Date().getMonth();
-let rhAnio = new Date().getFullYear();
-let rhData = {}; // cache local de datos RH por mes
+let rhData = {};
 let rhChartTendencia = null, rhChartAus = null, rhChartVac = null;
-let rhTabActual = 'rotacion';
+let rhTabActual = 'retardo'; // tab por defecto
+let rhEditandoId = null; // id del doc que se está editando
+
+// ── Semana actual ──
+function getISOWeek(d){ 
+    const dt = new Date(d); dt.setHours(0,0,0,0);
+    dt.setDate(dt.getDate()+4-(dt.getDay()||7));
+    const yearStart = new Date(dt.getFullYear(),0,1);
+    return Math.ceil((((dt-yearStart)/86400000)+1)/7);
+}
+function getSemanaKey(d){
+    const dt = d || new Date();
+    return `${dt.getFullYear()}-S${String(getISOWeek(dt)).padStart(2,'0')}`;
+}
+function getInicioSemana(d){
+    const dt = new Date(d||new Date()); 
+    const day = dt.getDay()||7;
+    dt.setDate(dt.getDate()-day+1); dt.setHours(0,0,0,0);
+    return dt;
+}
+
+let rhSemanaOffset = 0; // 0=semana actual, -1=anterior, etc.
+
+function getRhSemanaActual(){
+    const d = new Date();
+    d.setDate(d.getDate() + rhSemanaOffset*7);
+    return d;
+}
+
+function rhKey(){ return getSemanaKey(getRhSemanaActual()); }
 
 function puedeVerRH(email){ return email === RH_EMAIL || email === ADMIN; }
-
-function rhKey(mes, anio){ return `${anio}-${String(mes+1).padStart(2,'0')}`; }
 
 // Mostrar/ocultar el dashboard RH según el área
 function toggleRHDash(area, email){
@@ -2947,285 +2957,259 @@ function toggleRHDash(area, email){
 
 function actualizarLabelMesRH(){
     const el = document.getElementById('rh-mes-label');
-    if(el) el.innerText = `${MESES_RH[rhMes]} ${rhAnio}`;
+    if(!el) return;
+    const d = getRhSemanaActual();
+    const inicio = getInicioSemana(d);
+    const fin = new Date(inicio); fin.setDate(fin.getDate()+6);
+    const fmt = dt => dt.toLocaleDateString('es-MX',{day:'numeric',month:'short'});
+    const semNum = getISOWeek(d);
+    el.innerText = `Sem ${semNum} · ${fmt(inicio)} – ${fmt(fin)}`;
 }
 
-window.rhMesPrev = () => { rhMes--; if(rhMes<0){rhMes=11;rhAnio--;} actualizarLabelMesRH(); cargarDatosRH(); };
-window.rhMesNext = () => { rhMes++; if(rhMes>11){rhMes=0;rhAnio++;} actualizarLabelMesRH(); cargarDatosRH(); };
+window.rhMesPrev = () => { rhSemanaOffset--; actualizarLabelMesRH(); cargarDatosRH(); };
+window.rhMesNext = () => { rhSemanaOffset++; if(rhSemanaOffset>0) rhSemanaOffset=0; actualizarLabelMesRH(); cargarDatosRH(); };
 
 // Cargar datos RH del mes seleccionado desde Firestore
 async function cargarDatosRH(){
-    const key = rhKey(rhMes, rhAnio);
+    const key = rhKey();
     try {
-        const { getDocs, collection: col, query: q2, where } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-        // Cargar indicadores del mes
-        const snap = await getDocs(q2(col(db,'rh_indicadores'), where('mesAnio','==',key)));
-        const mesData = { rotacion:0, faltas:0, retardos:0, descuentos:0, vacantes:[], actas:[], totalEmpleados:0 };
+        const { getDocs, collection: col, query: q2, where, deleteDoc: delDoc, doc: docRef } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        window._rhDeleteDoc = (id) => delDoc(docRef(db,'rh_indicadores',id));
+        window._rhDocRef = (id) => docRef(db,'rh_indicadores',id);
+        const snap = await getDocs(q2(col(db,'rh_indicadores'), where('semanaKey','==',key)));
+        const semData = { retardos:[], faltas:[], descuentos:[], vacantes:[], actas:[], rotacion:[] };
         snap.docs.forEach(d => {
             const data = d.data();
-            if(data.tipo === 'kpi') {
-                mesData.rotacion = data.rotacion || 0;
-                mesData.faltas = data.faltas || 0;
-                mesData.retardos = data.retardos || 0;
-                mesData.descuentos = data.descuentos || 0;
-                mesData.totalEmpleados = data.totalEmpleados || 0;
-            } else if(data.tipo === 'vacante') {
-                mesData.vacantes.push({id: d.id, ...data});
-            } else if(data.tipo === 'acta') {
-                mesData.actas.push({id: d.id, ...data});
-            }
+            const tipo = data.tipo;
+            if(semData[tipo]) semData[tipo].push({id:d.id,...data});
         });
-        rhData[key] = mesData;
-        renderRHDash(mesData, key);
+        rhData[key] = semData;
+        renderRHDash(semData, key);
     } catch(e) {
-        console.warn('[RH] Error cargando datos:', e.message);
-        renderRHDash({ rotacion:0, faltas:0, retardos:0, descuentos:0, vacantes:[], actas:[], totalEmpleados:0 }, key);
+        console.warn('[RH]', e.message);
+        renderRHDash({ retardos:[], faltas:[], descuentos:[], vacantes:[], actas:[], rotacion:[] }, key);
     }
 }
 
 // Renderizar el dashboard con los datos cargados
 function renderRHDash(data, key){
-    const prevKey = rhKey(rhMes-1 < 0 ? 11 : rhMes-1, rhMes-1 < 0 ? rhAnio-1 : rhAnio);
-    const prev = rhData[prevKey] || {};
+    // data contiene listas: retardos[], faltas[], descuentos[], rotacion[], vacantes[], actas[]
+    const ret   = data.retardos  || [];
+    const falt  = data.faltas    || [];
+    const desc  = data.descuentos|| [];
+    const rot   = data.rotacion  || [];
+    const vac   = data.vacantes  || [];
+    const act   = data.actas     || [];
 
-    function delta(curr, prevVal, invertido=false){
-        if(!prevVal || prevVal === 0) return '<span class="rh-kpi-delta neutral">— Sin comparativo</span>';
-        const diff = curr - prevVal;
-        const pct = Math.abs(Math.round(diff/prevVal*100));
-        const sube = diff > 0;
-        const malo = invertido ? !sube : sube;
-        return `<span class="rh-kpi-delta ${malo?'up':'down'}">${sube?'▲':'▼'} ${pct}% vs mes anterior</span>`;
-    }
+    // ── KPIs calculados de los registros ──
+    const totalRetardos  = ret.length;
+    const totalFaltas    = falt.length;
+    const totalDescuentos= desc.reduce((s,d)=>s+(Number(d.monto)||0),0);
+    const totalVacantes  = vac.length;
+    const minutosRetardo = ret.reduce((s,r)=>s+(Number(r.minutos)||0),0);
 
-    // KPIs
-    document.getElementById('rh-val-rotacion').innerText = data.rotacion + '%';
-    document.getElementById('rh-delta-rotacion').innerHTML = delta(data.rotacion, prev.rotacion, false);
-    document.getElementById('rh-val-faltas').innerText = data.faltas;
-    document.getElementById('rh-delta-faltas').innerHTML = delta(data.faltas, prev.faltas, false);
-    document.getElementById('rh-val-retardos').innerText = data.retardos;
-    document.getElementById('rh-delta-retardos').innerHTML = delta(data.retardos, prev.retardos, false);
-    document.getElementById('rh-val-descuentos').innerText = '$' + (data.descuentos||0).toLocaleString('es-MX');
-    document.getElementById('rh-delta-descuentos').innerHTML = delta(data.descuentos, prev.descuentos, false);
-    const totalVac = (data.vacantes||[]).length;
-    document.getElementById('rh-val-vacantes').innerText = totalVac;
-    document.getElementById('rh-delta-vacantes').innerHTML = `<span class="rh-kpi-delta neutral">${(data.vacantes||[]).filter(v=>v.estatus==='concretada').length} concretadas</span>`;
+    // Actualizar KPIs en pantalla
+    document.getElementById('rh-val-rotacion').innerText   = rot.filter(r=>r.movimiento?.includes('baja')).length;
+    document.getElementById('rh-delta-rotacion').innerHTML = `<span class="rh-kpi-delta neutral">${rot.filter(r=>r.movimiento==='alta').length} altas esta semana</span>`;
+    document.getElementById('rh-val-faltas').innerText     = totalFaltas;
+    document.getElementById('rh-delta-faltas').innerHTML   = `<span class="rh-kpi-delta neutral">${falt.filter(f=>f.tipoFalta==='injustificada').length} injust. · ${falt.filter(f=>f.tipoFalta==='justificada').length} just.</span>`;
+    document.getElementById('rh-val-retardos').innerText   = totalRetardos;
+    document.getElementById('rh-delta-retardos').innerHTML = `<span class="rh-kpi-delta neutral">≈${minutosRetardo} min totales</span>`;
+    document.getElementById('rh-val-descuentos').innerText = '$'+totalDescuentos.toLocaleString('es-MX');
+    document.getElementById('rh-delta-descuentos').innerHTML= `<span class="rh-kpi-delta neutral">${desc.length} descuentos</span>`;
+    document.getElementById('rh-val-vacantes').innerText   = totalVacantes;
+    document.getElementById('rh-delta-vacantes').innerHTML = `<span class="rh-kpi-delta neutral">${vac.filter(v=>v.estatus==='concretada').length} concretadas</span>`;
 
-    // Gráfica: dona ausentismo
-    const totalDias = 22; // días laborables aprox
-    const totalEmps = data.totalEmpleados || 1;
-    const diasEsperados = totalDias * totalEmps;
-    const diasFaltados = (data.faltas || 0) + Math.round((data.retardos||0) * 0.25);
-    const pctAus = Math.min(100, Math.round(diasFaltados / diasEsperados * 100)) || 0;
+    // ── Helper para tabla de registros con editar/eliminar ──
+    const tablaRegistros = (lista, cols, tipo) => {
+        if(!lista.length) return `<div style="text-align:center;color:#94a3b8;padding:12px;font-size:12px;">Sin registros esta semana</div>`;
+        return lista.map(r => {
+            const ficha = cols.map(col => {
+                if(col === 'acciones') return `
+                    <div style="display:flex;gap:6px;">
+                        <button onclick="abrirModalRH('${tipo}','${r.id}')" style="padding:4px 8px;background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;">✏️</button>
+                        <button onclick="eliminarRH('${r.id}')" style="padding:4px 8px;background:#fee2e2;color:#dc2626;border:1px solid #fecaca;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;">🗑</button>
+                    </div>`;
+                return `<span style="font-size:12px;color:#1e293b;">${r[col] || '—'}</span>`;
+            }).join('');
+            return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid rgba(59,130,246,0.06);gap:8px;">${ficha}</div>`;
+        }).join('');
+    };
+
+    // ── Tabla auxiliar con columnas legibles ──
+    const tablaRH = (lista, campos, tipo) => {
+        if(!lista.length) return `<div style="text-align:center;color:#94a3b8;padding:12px;font-size:12px;">Sin registros esta semana</div>`;
+        return lista.map(r => `
+            <div style="display:grid;grid-template-columns:${Array(campos.length).fill('1fr').join(' ')} 80px;gap:8px;padding:9px 12px;border-bottom:1px solid rgba(59,130,246,0.06);align-items:center;">
+                ${campos.map(f=>`<span style="font-size:12px;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r[f.key]||''}">${f.prefix||''}${r[f.key]||'—'}</span>`).join('')}
+                <div style="display:flex;gap:4px;justify-content:flex-end;">
+                    <button onclick="abrirModalRH('${tipo}','${r.id}')" style="padding:3px 7px;background:#eff6ff;color:#2563eb;border:none;border-radius:6px;font-size:10px;cursor:pointer;">✏️</button>
+                    <button onclick="eliminarRH('${r.id}')" style="padding:3px 7px;background:#fee2e2;color:#dc2626;border:none;border-radius:6px;font-size:10px;cursor:pointer;">🗑</button>
+                </div>
+            </div>`).join('');
+    };
+
+    const headerRH = (cols) => `
+        <div style="display:grid;grid-template-columns:${Array(cols.length).fill('1fr').join(' ')} 80px;gap:8px;padding:7px 12px;background:#f8faff;border-radius:8px;margin-bottom:4px;">
+            ${cols.map(c=>`<span style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;">${c}</span>`).join('')}
+            <span></span>
+        </div>`;
+
+    // ── Gráfica dona ausentismo ──
     const elAus = document.getElementById('rh-chart-ausentismo');
     if(elAus){
         if(rhChartAus) rhChartAus.destroy();
-        rhChartAus = new Chart(elAus, {
+        const totalAus = totalFaltas + Math.round(totalRetardos*0.25);
+        const diasEsp = 5 * Math.max(1, Math.round((falt[0]?.totalEmpleados||1)));
+        const pctAus = Math.min(100, Math.round(totalAus/Math.max(1,diasEsp)*100))||0;
+        rhChartAus = new Chart(elAus,{
             type:'doughnut',
-            data:{datasets:[{data:[pctAus, Math.max(0.001, 100-pctAus)], backgroundColor:['#f43f5e','#e2e8f0'], borderWidth:0, borderRadius:pctAus>0&&pctAus<100?4:0}]},
-            options:{cutout:'76%', plugins:{legend:{display:false}}, animation:{duration:600}}
+            data:{datasets:[{data:[pctAus, Math.max(0.001,100-pctAus)],
+                backgroundColor:['#f43f5e','#e2e8f0'],borderWidth:0}]},
+            options:{cutout:'76%',plugins:{legend:{display:false}},animation:{duration:600}}
         });
-        document.getElementById('rh-ausentismo-pct').innerText = pctAus + '%';
+        document.getElementById('rh-ausentismo-pct').innerText = totalFaltas+totalRetardos;
     }
 
-    // Gráfica: dona vacantes
-    const abiertas = (data.vacantes||[]).filter(v=>v.estatus==='abierta').length;
-    const nuevas = (data.vacantes||[]).filter(v=>v.estatus==='nueva').length;
-    const concretadas = (data.vacantes||[]).filter(v=>v.estatus==='concretada').length;
+    // ── Dona vacantes ──
     const elVac = document.getElementById('rh-chart-vacantes');
     if(elVac){
         if(rhChartVac) rhChartVac.destroy();
-        const totalV = abiertas + nuevas + concretadas || 0.001;
-        rhChartVac = new Chart(elVac, {
+        const ab=vac.filter(v=>v.estatus==='abierta').length;
+        const nu=vac.filter(v=>v.estatus==='nueva').length;
+        const co=vac.filter(v=>v.estatus==='concretada').length;
+        rhChartVac = new Chart(elVac,{
             type:'doughnut',
-            data:{datasets:[{data:[abiertas, nuevas, concretadas], backgroundColor:['#2563eb','#16a34a','#db2777'], borderWidth:0, borderRadius:4}]},
-            options:{cutout:'70%', plugins:{legend:{display:false}}, animation:{duration:600}}
+            data:{datasets:[{data:[ab,nu,co],
+                backgroundColor:['#2563eb','#16a34a','#db2777'],borderWidth:2,borderColor:'#ffffff'}]},
+            options:{cutout:'70%',plugins:{legend:{display:false}},animation:{duration:600}}
         });
-        document.getElementById('rh-vacantes-total').innerHTML = `${totalV === 0.001 ? 0 : abiertas+nuevas+concretadas}<br><span style="font-size:9px;font-weight:400;color:#64748b;">total</span>`;
+        document.getElementById('rh-vacantes-total').innerHTML=`${ab+nu+co}<br><span style="font-size:9px;font-weight:400;color:#64748b;">total</span>`;
     }
 
-    // Gráfica línea tendencia (últimos 6 meses)
-    const labels = [], faltasHist = [], retardosHist = [];
-    for(let i=5; i>=0; i--){
-        let m = rhMes - i; let a = rhAnio;
-        if(m < 0){ m += 12; a--; }
-        labels.push(MESES_RH[m].slice(0,3));
-        const k = rhKey(m, a);
-        faltasHist.push(rhData[k]?.faltas || 0);
-        retardosHist.push(rhData[k]?.retardos || 0);
-    }
-    const elTend = document.getElementById('rh-chart-tendencia');
-    if(elTend){
-        if(rhChartTendencia) rhChartTendencia.destroy();
-        rhChartTendencia = new Chart(elTend, {
-            type:'line',
-            data:{labels, datasets:[
-                {label:'Faltas', data:faltasHist, borderColor:'#f43f5e', backgroundColor:'rgba(244,63,94,0.08)', tension:0.4, borderWidth:2, pointRadius:3, fill:true},
-                {label:'Retardos', data:retardosHist, borderColor:'#f59e0b', backgroundColor:'rgba(245,158,11,0.08)', tension:0.4, borderWidth:2, pointRadius:3, fill:true}
-            ]},
-            options:{responsive:true, maintainAspectRatio:false,
-                plugins:{legend:{position:'bottom', labels:{boxWidth:8, font:{size:10}, color:'#64748b'}}},
-                scales:{
-                    x:{grid:{color:'rgba(59,130,246,0.05)'}, ticks:{color:'#94a3b8', font:{size:9}}},
-                    y:{beginAtZero:true, ticks:{stepSize:1, color:'#94a3b8', font:{size:9}}, grid:{color:'rgba(59,130,246,0.05)'}}
-                }
-            }
-        });
+    // ── Renderizar listas ──
+    const el = id => document.getElementById(id);
+
+    // Retardos
+    const rEl = el('rh-vacantes-lista');
+    if(rEl){
+        rEl.previousElementSibling?.remove?.();
+        const retEl = document.createElement('div');
+        retEl.innerHTML = headerRH(['Colaborador','Área','Fecha','Hora','Min.']) +
+            tablaRH(ret,[{key:'nombre'},{key:'area'},{key:'fecha'},{key:'hora'},{key:'minutos'}],'retardo');
+        rEl.innerHTML = retEl.innerHTML;
     }
 
-    // Lista vacantes
-    const vacLista = document.getElementById('rh-vacantes-lista');
-    if(vacLista){
-        if(!(data.vacantes||[]).length){
-            vacLista.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:16px;font-size:12px;">Sin vacantes registradas</div>';
-        } else {
-            vacLista.innerHTML = (data.vacantes||[]).map(v => `
-                <div class="rh-vac-row">
-                    <span style="font-weight:700;color:#1e293b;">${v.puesto||'—'}</span>
-                    <span style="color:#475569;">${v.area||'—'}</span>
-                    <span style="color:#94a3b8;font-size:11px;">${v.fecha||'—'}</span>
-                    <span><span class="vac-status vac-${v.estatus||'abierta'}">${v.estatus==='abierta'?'Abierta':v.estatus==='nueva'?'Nueva':'Concretada'}</span></span>
-                </div>`).join('');
-        }
+    // Faltas
+    const fEl = el('rh-actas-lista');
+    if(fEl){
+        // Usar mismo contenedor para faltas+actas+descuentos en secciones
+        const sectFaltas = document.getElementById('rh-faltas-lista');
+        const sectDesc   = document.getElementById('rh-descuentos-lista');
+        const sectAct    = document.getElementById('rh-actas2-lista');
+        if(sectFaltas) sectFaltas.innerHTML = headerRH(['Colaborador','Área','Fecha','Tipo']) +
+            tablaRH(falt,[{key:'nombre'},{key:'area'},{key:'fecha'},{key:'tipoFalta'}],'falta');
+        if(sectDesc) sectDesc.innerHTML = headerRH(['Colaborador','Área','Fecha','Monto']) +
+            tablaRH(desc,[{key:'nombre'},{key:'area'},{key:'fecha'},{key:'monto',prefix:'$'}],'descuento');
+        if(sectAct) sectAct.innerHTML = headerRH(['Colaborador','Área','Fecha','Tipo']) +
+            tablaRH(act,[{key:'nombre'},{key:'area'},{key:'fecha'},{key:'tipoActa'}],'acta');
+        // fallback para sección de actas original
+        fEl.innerHTML = headerRH(['Colaborador','Área','Fecha','Tipo','Descripción']) +
+            tablaRH(act,[{key:'nombre'},{key:'area'},{key:'fecha'},{key:'tipoActa'},{key:'notas'}],'acta');
     }
 
-    // Lista actas
-    const actaLista = document.getElementById('rh-actas-lista');
-    if(actaLista){
-        if(!(data.actas||[]).length){
-            actaLista.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:16px;font-size:12px;">Sin actas registradas</div>';
-        } else {
-            actaLista.innerHTML = (data.actas||[]).map(a => `
-                <div class="rh-acta-row">
-                    <div><div class="rh-acta-emp">${a.empleado||'—'}</div><div class="rh-acta-motivo">${a.descripcion||'—'}</div></div>
-                    <span style="color:#475569;font-size:11px;">${a.motivo||'—'}</span>
-                    <span><span class="acta-tipo acta-${a.tipoActa||'conducta'}">${a.tipoActa==='falta'?'Falta':a.tipoActa==='retardo'?'Retardo':'Conducta'}</span></span>
-                    <span class="rh-acta-fecha">${a.fecha||'—'}</span>
-                </div>`).join('');
-        }
-    }
+    // Vacantes
+    const vacEl = el('rh-vacantes-lista');
+    if(vacEl) vacEl.innerHTML = headerRH(['Puesto','Área','Fecha','Estatus']) +
+        tablaRH(vac,[{key:'puesto'},{key:'area'},{key:'fecha'},{key:'estatus'}],'vacante');
+
 }
 
-// ── Modal RH: formularios por tipo ──
-const RH_FORMS = {
-    rotacion: `
-        <label class="rh-form-label">Total de empleados activos</label>
-        <input class="rh-form-input" id="rh-f-totalEmps" type="number" min="0" placeholder="Ej: 45">
-        <label class="rh-form-label">Bajas este mes</label>
-        <input class="rh-form-input" id="rh-f-bajas" type="number" min="0" placeholder="Ej: 2">
-        <label class="rh-form-label">% Rotación calculado (o déjalo vacío para calcular)</label>
-        <input class="rh-form-input" id="rh-f-rotacion" type="number" min="0" step="0.1" placeholder="Se calcula automáticamente">`,
-    faltas: `
-        <label class="rh-form-label">Número de faltas injustificadas</label>
-        <input class="rh-form-input" id="rh-f-faltas" type="number" min="0" placeholder="Ej: 5">
-        <label class="rh-form-label">Número de faltas justificadas</label>
-        <input class="rh-form-input" id="rh-f-faltasJ" type="number" min="0" placeholder="Ej: 2">`,
-    retardos: `
-        <label class="rh-form-label">Número de retardos registrados</label>
-        <input class="rh-form-input" id="rh-f-retardos" type="number" min="0" placeholder="Ej: 8">`,
-    descuentos: `
-        <label class="rh-form-label">Total descuentos aplicados ($)</label>
-        <input class="rh-form-input" id="rh-f-descuentos" type="number" min="0" placeholder="Ej: 3500">
-        <label class="rh-form-label">Motivo principal</label>
-        <input class="rh-form-input" id="rh-f-descMotivo" type="text" placeholder="Ej: Retardos, faltas, préstamos">`,
-    vacantes: `
-        <label class="rh-form-label">Puesto / Posición</label>
-        <input class="rh-form-input" id="rh-f-puesto" type="text" placeholder="Ej: Técnico en campo">
-        <label class="rh-form-label">Área solicitante</label>
-        <input class="rh-form-input" id="rh-f-vacArea" type="text" placeholder="Ej: Servicios Técnicos">
-        <label class="rh-form-label">Fecha de apertura</label>
-        <input class="rh-form-input" id="rh-f-vacFecha" type="date">
-        <label class="rh-form-label">Estatus</label>
-        <select class="rh-form-input" id="rh-f-vacEstatus">
-            <option value="nueva">Nueva</option>
-            <option value="abierta">Abierta</option>
-            <option value="concretada">Concretada</option>
-        </select>`,
-    acta: `
-        <label class="rh-form-label">Nombre del empleado</label>
-        <input class="rh-form-input" id="rh-f-empleado" type="text" placeholder="Nombre completo">
-        <label class="rh-form-label">Motivo del acta</label>
-        <input class="rh-form-input" id="rh-f-actaMotivo" type="text" placeholder="Ej: Retardo reincidente">
-        <label class="rh-form-label">Tipo de acta</label>
-        <select class="rh-form-input" id="rh-f-tipoActa">
-            <option value="falta">Falta injustificada</option>
-            <option value="retardo">Retardo reincidente</option>
-            <option value="conducta">Conducta inapropiada</option>
-        </select>
-        <label class="rh-form-label">Descripción / Notas</label>
-        <input class="rh-form-input" id="rh-f-actaDesc" type="text" placeholder="Detalles del incidente">
-        <label class="rh-form-label">Fecha del acta</label>
-        <input class="rh-form-input" id="rh-f-actaFecha" type="date">`
-};
 
-window.abrirModalRH = (tab = 'rotacion') => {
+window.abrirModalRH = (tab = 'retardo', editId = null) => {
     rhTabActual = tab;
+    rhEditandoId = editId;
     document.querySelectorAll('.rh-tab').forEach(t => {
-        t.classList.toggle('active', t.getAttribute('onclick').includes(`'${tab}'`));
+        t.classList.toggle('active', t.getAttribute('onclick')?.includes(`'${tab}'`));
     });
     document.getElementById('rh-form-container').innerHTML = RH_FORMS[tab] || '';
+    const titulo = document.getElementById('rh-modal-title');
+    if(titulo) titulo.innerText = editId ? `✏️ Editar registro de ${tab}` : `📝 Registrar indicador RH`;
     document.getElementById('modal-rh').style.display = 'flex';
 };
 
 window.rhTabSwitch = (tab, btn) => {
     rhTabActual = tab;
+    rhEditandoId = null;
     document.querySelectorAll('.rh-tab').forEach(t => t.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById('rh-form-container').innerHTML = RH_FORMS[tab] || '';
 };
 
+const rhGet = id => document.getElementById(id)?.value || '';
+
 window.guardarDatoRH = async () => {
-    const key = rhKey(rhMes, rhAnio);
+    const key = rhKey();
     const btn = document.querySelector('#modal-rh .rh-add-btn');
     if(btn){ btn.textContent = 'Guardando...'; btn.disabled = true; }
     try {
-        let docData = { mesAnio: key, creadoEn: new Date().toISOString(), creadoPor: auth.currentUser?.email || '' };
+        const base = {
+            semanaKey: key,
+            mesAnio: key.split('-S')[0] + '-' + String(new Date().getMonth()+1).padStart(2,'0'),
+            creadoEn: new Date().toISOString(),
+            creadoPor: auth.currentUser?.email || '',
+            tipo: rhTabActual
+        };
 
-        if(rhTabActual === 'rotacion' || rhTabActual === 'faltas' || rhTabActual === 'retardos' || rhTabActual === 'descuentos'){
-            // KPIs del mes — buscar doc existente y actualizar o crear
-            const totalEmps = parseInt(document.getElementById('rh-f-totalEmps')?.value || '0');
-            const bajas = parseInt(document.getElementById('rh-f-bajas')?.value || '0');
-            const rotacion = parseFloat(document.getElementById('rh-f-rotacion')?.value) ||
-                             (totalEmps > 0 ? Math.round(bajas/totalEmps*100*10)/10 : 0);
-            const faltas = parseInt(document.getElementById('rh-f-faltas')?.value || '0') +
-                           parseInt(document.getElementById('rh-f-faltasJ')?.value || '0');
-            const retardos = parseInt(document.getElementById('rh-f-retardos')?.value || '0');
-            const descuentos = parseFloat(document.getElementById('rh-f-descuentos')?.value || '0');
-            const existing = rhData[key];
-            docData = { ...docData, tipo:'kpi',
-                totalEmpleados: totalEmps || existing?.totalEmpleados || 0,
-                rotacion: rhTabActual==='rotacion' ? rotacion : (existing?.rotacion || 0),
-                faltas: rhTabActual==='faltas' ? faltas : (existing?.faltas || 0),
-                retardos: rhTabActual==='retardos' ? retardos : (existing?.retardos || 0),
-                descuentos: rhTabActual==='descuentos' ? descuentos : (existing?.descuentos || 0)
-            };
-            await addDoc(collection(db,'rh_indicadores'), docData);
-        } else if(rhTabActual === 'vacantes'){
-            docData = { ...docData, tipo:'vacante',
-                puesto: document.getElementById('rh-f-puesto')?.value || '',
-                area: document.getElementById('rh-f-vacArea')?.value || '',
-                fecha: document.getElementById('rh-f-vacFecha')?.value || '',
-                estatus: document.getElementById('rh-f-vacEstatus')?.value || 'abierta'
-            };
-            await addDoc(collection(db,'rh_indicadores'), docData);
+        let docData = {};
+        if(rhTabActual === 'retardo'){
+            if(!rhGet('rh-f-nombre')) { alert('Escribe el nombre del colaborador'); return; }
+            docData = {...base, nombre:rhGet('rh-f-nombre'), area:rhGet('rh-f-area'),
+                fecha:rhGet('rh-f-fecha'), hora:rhGet('rh-f-hora'),
+                minutos:Number(rhGet('rh-f-minutos'))||0, notas:rhGet('rh-f-notas')};
+        } else if(rhTabActual === 'falta'){
+            if(!rhGet('rh-f-nombre')) { alert('Escribe el nombre del colaborador'); return; }
+            docData = {...base, nombre:rhGet('rh-f-nombre'), area:rhGet('rh-f-area'),
+                fecha:rhGet('rh-f-fecha'), tipoFalta:rhGet('rh-f-tipoFalta'), notas:rhGet('rh-f-notas')};
+        } else if(rhTabActual === 'descuento'){
+            if(!rhGet('rh-f-nombre')) { alert('Escribe el nombre del colaborador'); return; }
+            docData = {...base, nombre:rhGet('rh-f-nombre'), area:rhGet('rh-f-area'),
+                fecha:rhGet('rh-f-fecha'), monto:Number(rhGet('rh-f-monto'))||0,
+                motivoDesc:rhGet('rh-f-motivoDesc'), notas:rhGet('rh-f-notas')};
+        } else if(rhTabActual === 'rotacion'){
+            if(!rhGet('rh-f-nombre')) { alert('Escribe el nombre del colaborador'); return; }
+            docData = {...base, nombre:rhGet('rh-f-nombre'), area:rhGet('rh-f-area'),
+                fecha:rhGet('rh-f-fecha'), movimiento:rhGet('rh-f-movimiento'), notas:rhGet('rh-f-notas')};
+        } else if(rhTabActual === 'vacante'){
+            docData = {...base, puesto:rhGet('rh-f-puesto'), area:rhGet('rh-f-area'),
+                fecha:rhGet('rh-f-fecha'), estatus:rhGet('rh-f-vacEstatus'), notas:rhGet('rh-f-notas')};
         } else if(rhTabActual === 'acta'){
-            docData = { ...docData, tipo:'acta',
-                empleado: document.getElementById('rh-f-empleado')?.value || '',
-                motivo: document.getElementById('rh-f-actaMotivo')?.value || '',
-                tipoActa: document.getElementById('rh-f-tipoActa')?.value || 'conducta',
-                descripcion: document.getElementById('rh-f-actaDesc')?.value || '',
-                fecha: document.getElementById('rh-f-actaFecha')?.value || new Date().toISOString().slice(0,10)
-            };
+            if(!rhGet('rh-f-nombre')) { alert('Escribe el nombre del colaborador'); return; }
+            docData = {...base, nombre:rhGet('rh-f-nombre'), area:rhGet('rh-f-area'),
+                fecha:rhGet('rh-f-fecha'), tipoActa:rhGet('rh-f-tipoActa'), notas:rhGet('rh-f-notas')};
+        }
+
+        const { updateDoc: updDoc, doc: docRef2 } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        if(rhEditandoId){
+            await updDoc(docRef2(db,'rh_indicadores',rhEditandoId), docData);
+        } else {
             await addDoc(collection(db,'rh_indicadores'), docData);
         }
 
         document.getElementById('modal-rh').style.display = 'none';
-        window.mostrarPush('✅ Dato RH guardado', `Registro de ${rhTabActual} guardado correctamente`, '👥');
+        window.mostrarPush('✅ RH guardado', `${rhTabActual} registrado`, '👥');
         cargarDatosRH();
-    } catch(e) {
-        alert('Error al guardar: ' + e.message);
-    } finally {
-        if(btn){ btn.textContent = 'GUARDAR'; btn.disabled = false; }
-    }
+    } catch(e) { alert('Error: ' + e.message); }
+    finally { if(btn){ btn.textContent='GUARDAR'; btn.disabled=false; } }
+};
+
+window.eliminarRH = async (id) => {
+    if(!confirm('¿Eliminar este registro? Esta acción no se puede deshacer.')) return;
+    try {
+        if(window._rhDeleteDoc) await window._rhDeleteDoc(id);
+        window.mostrarPush('🗑 Registro eliminado', 'El registro fue eliminado correctamente', '👥');
+        cargarDatosRH();
+    } catch(e) { alert('Error al eliminar: ' + e.message); }
 };
 
 document.getElementById('modal-rh').addEventListener('click', e => {
