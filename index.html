@@ -2973,9 +2973,9 @@ window.rhMesNext = () => { rhSemanaOffset++; if(rhSemanaOffset>0) rhSemanaOffset
 async function cargarDatosRH(){
     const key = rhKey();
     try {
-        const { getDocs, collection: col, query: q2, where, deleteDoc: delDoc, doc: docRef } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-        window._rhDeleteDoc = (id) => delDoc(docRef(db,'rh_indicadores',id));
-        window._rhDocRef = (id) => docRef(db,'rh_indicadores',id);
+        const { getDocs, collection: col, query: q2, where } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        // cargar semana
+        const snap = await getDocs(q2(col(db,'rh_indicadores'), where('semanaKey','==',key)));
         const snap = await getDocs(q2(col(db,'rh_indicadores'), where('semanaKey','==',key)));
         const semData = { retardos:[], faltas:[], descuentos:[], vacantes:[], actas:[], rotacion:[] };
         snap.docs.forEach(d => {
@@ -3146,70 +3146,91 @@ window.rhTabSwitch = (tab, btn) => {
     document.getElementById('rh-form-container').innerHTML = RH_FORMS[tab] || '';
 };
 
-const rhGet = id => document.getElementById(id)?.value || '';
+const rhGet = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
 
 window.guardarDatoRH = async () => {
     const key = rhKey();
     const btn = document.querySelector('#modal-rh .rh-add-btn');
+
+    // Validar nombre donde se requiere
+    const needsNombre = ['retardo','falta','descuento','rotacion','acta'];
+    if(needsNombre.includes(rhTabActual) && !rhGet('rh-f-nombre')){
+        alert('Escribe el nombre del colaborador');
+        return;
+    }
+
     if(btn){ btn.textContent = 'Guardando...'; btn.disabled = true; }
+
+    const base = {
+        semanaKey: key,
+        mesAnio: key.split('-S')[0] + '-' + String(new Date().getMonth()+1).padStart(2,'0'),
+        creadoEn: new Date().toISOString(),
+        creadoPor: auth.currentUser?.email || '',
+        tipo: rhTabActual
+    };
+
+    let docData = { ...base };
+
+    if(rhTabActual === 'retardo'){
+        docData = {...docData, nombre:rhGet('rh-f-nombre'), area:rhGet('rh-f-area'),
+            fecha:rhGet('rh-f-fecha'), hora:rhGet('rh-f-hora'),
+            minutos:Number(rhGet('rh-f-minutos'))||0, notas:rhGet('rh-f-notas')};
+    } else if(rhTabActual === 'falta'){
+        docData = {...docData, nombre:rhGet('rh-f-nombre'), area:rhGet('rh-f-area'),
+            fecha:rhGet('rh-f-fecha'), tipoFalta:rhGet('rh-f-tipoFalta')||'injustificada',
+            notas:rhGet('rh-f-notas')};
+    } else if(rhTabActual === 'descuento'){
+        docData = {...docData, nombre:rhGet('rh-f-nombre'), area:rhGet('rh-f-area'),
+            fecha:rhGet('rh-f-fecha'), monto:Number(rhGet('rh-f-monto'))||0,
+            motivoDesc:rhGet('rh-f-motivoDesc')||'Otro', notas:rhGet('rh-f-notas')};
+    } else if(rhTabActual === 'rotacion'){
+        docData = {...docData, nombre:rhGet('rh-f-nombre'), area:rhGet('rh-f-area'),
+            fecha:rhGet('rh-f-fecha'), movimiento:rhGet('rh-f-movimiento')||'baja',
+            notas:rhGet('rh-f-notas')};
+    } else if(rhTabActual === 'vacante'){
+        docData = {...docData, puesto:rhGet('rh-f-puesto'), area:rhGet('rh-f-area'),
+            fecha:rhGet('rh-f-fecha'), estatus:rhGet('rh-f-vacEstatus')||'nueva',
+            notas:rhGet('rh-f-notas')};
+    } else if(rhTabActual === 'acta'){
+        docData = {...docData, nombre:rhGet('rh-f-nombre'), area:rhGet('rh-f-area'),
+            fecha:rhGet('rh-f-fecha'), tipoActa:rhGet('rh-f-tipoActa')||'conducta',
+            notas:rhGet('rh-f-notas')};
+    }
+
     try {
-        const base = {
-            semanaKey: key,
-            mesAnio: key.split('-S')[0] + '-' + String(new Date().getMonth()+1).padStart(2,'0'),
-            creadoEn: new Date().toISOString(),
-            creadoPor: auth.currentUser?.email || '',
-            tipo: rhTabActual
-        };
+        // Importar lo necesario de Firestore
+        const fbModule = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const { updateDoc: updDoc, doc: docRef2, addDoc: addDocument, collection: col2 } = fbModule;
 
-        let docData = {};
-        if(rhTabActual === 'retardo'){
-            if(!rhGet('rh-f-nombre')) { alert('Escribe el nombre del colaborador'); return; }
-            docData = {...base, nombre:rhGet('rh-f-nombre'), area:rhGet('rh-f-area'),
-                fecha:rhGet('rh-f-fecha'), hora:rhGet('rh-f-hora'),
-                minutos:Number(rhGet('rh-f-minutos'))||0, notas:rhGet('rh-f-notas')};
-        } else if(rhTabActual === 'falta'){
-            if(!rhGet('rh-f-nombre')) { alert('Escribe el nombre del colaborador'); return; }
-            docData = {...base, nombre:rhGet('rh-f-nombre'), area:rhGet('rh-f-area'),
-                fecha:rhGet('rh-f-fecha'), tipoFalta:rhGet('rh-f-tipoFalta'), notas:rhGet('rh-f-notas')};
-        } else if(rhTabActual === 'descuento'){
-            if(!rhGet('rh-f-nombre')) { alert('Escribe el nombre del colaborador'); return; }
-            docData = {...base, nombre:rhGet('rh-f-nombre'), area:rhGet('rh-f-area'),
-                fecha:rhGet('rh-f-fecha'), monto:Number(rhGet('rh-f-monto'))||0,
-                motivoDesc:rhGet('rh-f-motivoDesc'), notas:rhGet('rh-f-notas')};
-        } else if(rhTabActual === 'rotacion'){
-            if(!rhGet('rh-f-nombre')) { alert('Escribe el nombre del colaborador'); return; }
-            docData = {...base, nombre:rhGet('rh-f-nombre'), area:rhGet('rh-f-area'),
-                fecha:rhGet('rh-f-fecha'), movimiento:rhGet('rh-f-movimiento'), notas:rhGet('rh-f-notas')};
-        } else if(rhTabActual === 'vacante'){
-            docData = {...base, puesto:rhGet('rh-f-puesto'), area:rhGet('rh-f-area'),
-                fecha:rhGet('rh-f-fecha'), estatus:rhGet('rh-f-vacEstatus'), notas:rhGet('rh-f-notas')};
-        } else if(rhTabActual === 'acta'){
-            if(!rhGet('rh-f-nombre')) { alert('Escribe el nombre del colaborador'); return; }
-            docData = {...base, nombre:rhGet('rh-f-nombre'), area:rhGet('rh-f-area'),
-                fecha:rhGet('rh-f-fecha'), tipoActa:rhGet('rh-f-tipoActa'), notas:rhGet('rh-f-notas')};
-        }
-
-        const { updateDoc: updDoc, doc: docRef2 } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
         if(rhEditandoId){
-            await updDoc(docRef2(db,'rh_indicadores',rhEditandoId), docData);
+            await updDoc(docRef2(db,'rh_indicadores', rhEditandoId), docData);
+            rhEditandoId = null;
         } else {
-            await addDoc(collection(db,'rh_indicadores'), docData);
+            await addDocument(col2(db,'rh_indicadores'), docData);
         }
 
         document.getElementById('modal-rh').style.display = 'none';
-        window.mostrarPush('✅ RH guardado', `${rhTabActual} registrado`, '👥');
+        window.mostrarPush('✅ RH guardado', `${rhTabActual} registrado correctamente`, '👥');
         cargarDatosRH();
-    } catch(e) { alert('Error: ' + e.message); }
-    finally { if(btn){ btn.textContent='GUARDAR'; btn.disabled=false; } }
+    } catch(e) {
+        console.error('[RH guardar]', e);
+        alert('Error al guardar: ' + e.message);
+    } finally {
+        if(btn){ btn.textContent = 'GUARDAR'; btn.disabled = false; }
+    }
 };
 
 window.eliminarRH = async (id) => {
     if(!confirm('¿Eliminar este registro? Esta acción no se puede deshacer.')) return;
     try {
-        if(window._rhDeleteDoc) await window._rhDeleteDoc(id);
-        window.mostrarPush('🗑 Registro eliminado', 'El registro fue eliminado correctamente', '👥');
+        const { deleteDoc, doc: docRef3 } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        await deleteDoc(docRef3(db,'rh_indicadores', id));
+        window.mostrarPush('🗑 Eliminado', 'Registro eliminado correctamente', '👥');
         cargarDatosRH();
-    } catch(e) { alert('Error al eliminar: ' + e.message); }
+    } catch(e) {
+        console.error('[RH eliminar]', e);
+        alert('Error al eliminar: ' + e.message);
+    }
 };
 
 document.getElementById('modal-rh').addEventListener('click', e => {
