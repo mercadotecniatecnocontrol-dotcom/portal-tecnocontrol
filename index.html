@@ -1180,6 +1180,21 @@
                         <textarea class="mkt-form-input" id="cl-notas" rows="3" placeholder="Información adicional del cliente..." style="resize:vertical;"></textarea>
                     </div>
                 </div>
+                <!-- KPIs de ventas (solo lectura, vienen del Excel) -->
+                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:16px;" id="cl-kpis-ventas" style="display:none;">
+                    <div style="background:#f8faff;border-radius:10px;padding:12px;text-align:center;border:1px solid #e2e8f0;">
+                        <div style="font-family:'Space Grotesk',sans-serif;font-size:18px;font-weight:700;color:#2563eb;" id="cl-kpi-2025">—</div>
+                        <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:1px;">Total 2025</div>
+                    </div>
+                    <div style="background:#f8faff;border-radius:10px;padding:12px;text-align:center;border:1px solid #e2e8f0;">
+                        <div style="font-family:'Space Grotesk',sans-serif;font-size:18px;font-weight:700;color:#16a34a;" id="cl-kpi-2026">—</div>
+                        <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:1px;">2026 acumulado</div>
+                    </div>
+                    <div style="background:#f8faff;border-radius:10px;padding:12px;text-align:center;border:1px solid #e2e8f0;">
+                        <div style="font-family:'Space Grotesk',sans-serif;font-size:18px;font-weight:700;color:#7c3aed;" id="cl-kpi-mar26">—</div>
+                        <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:1px;">Marzo 2026</div>
+                    </div>
+                </div>
                 <div style="display:flex;gap:10px;margin-top:20px;">
                     <button onclick="guardarCliente()" style="flex:1;padding:12px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:white;border:none;border-radius:10px;font-weight:700;cursor:pointer;">GUARDAR CLIENTE</button>
                     <button onclick="document.getElementById('modal-cliente').style.display='none'" style="flex:1;padding:12px;background:#f1f5f9;border:none;border-radius:10px;color:#475569;font-weight:700;cursor:pointer;">Cancelar</button>
@@ -4105,17 +4120,18 @@ window.navegar = (id, b) => {
 
 // Llamar esto desde verArea cuando el área es Ventas
 function toggleVentasMapa(area, email){
-    const sec = document.getElementById('sec-ventas-mapa');
-    if(!sec) return;
+    const secMapa = document.getElementById('sec-ventas-mapa');
+    const secArea = document.getElementById('sec-area');
+    if(!secMapa) return;
     if(area === 'Ventas'){
-        sec.style.display = 'block';
-        // Mostrar esta sección en lugar del kanban normal
-        document.getElementById('sec-area').style.display = 'none';
+        // En Ventas: mostrar mapa ENCIMA del kanban (no en lugar de)
+        secMapa.style.display = 'block';
+        if(secArea) secArea.style.display = 'block';
         inicializarMapa();
         cargarClientes();
     } else {
-        sec.style.display = 'none';
-        document.getElementById('sec-area').style.display = 'block';
+        secMapa.style.display = 'none';
+        if(secArea) secArea.style.display = 'block';
     }
 }
 
@@ -4173,23 +4189,13 @@ function renderMapa(lista){
         const color = colorSector[cl.sector] || '#2563eb';
         const marker = L.marker([Number(cl.lat), Number(cl.lng)], {icon: pulsarIcon(color)});
 
+        // Popup simple — solo info básica de ubicación
         const popupHTML = `<div class="cliente-popup">
             <div class="cliente-popup-nombre">${cl.nombre||'—'}</div>
-            <div class="cliente-popup-chip">${cl.sector||'—'}</div>
-            <div class="cliente-popup-dir">📍 ${cl.ciudad||''}, ${cl.estado||''}<br>${cl.direccion||''}</div>
-            <div class="cliente-popup-kpi">
-                <div class="cliente-popup-kpi-item">
-                    <div class="cliente-popup-kpi-val">${cl.visitas||0}</div>
-                    <div class="cliente-popup-kpi-label">Visitas</div>
-                </div>
-                <div class="cliente-popup-kpi-item">
-                    <div class="cliente-popup-kpi-val" style="font-size:11px;">${(cl.producto||'—').slice(0,12)}</div>
-                    <div class="cliente-popup-kpi-label">Producto top</div>
-                </div>
-            </div>
-            ${cl.contacto?`<div class="cliente-popup-visitas">👤 ${cl.contacto} ${cl.tel?'· '+cl.tel:''}</div>`:''}
-            ${cl.notas?`<div style="font-size:11px;color:#64748b;margin-bottom:8px;font-style:italic;">${cl.notas.slice(0,100)}${cl.notas.length>100?'…':''}</div>`:''}
-            <button class="cliente-popup-btn" onclick="editarCliente('${cl.id}')">✏️ Editar cliente</button>
+            ${cl.ciudad||cl.estado ? `<div class="cliente-popup-dir">📍 ${[cl.ciudad,cl.estado].filter(Boolean).join(', ')}</div>` : ''}
+            ${cl.vendedor ? `<div style="font-size:11px;color:#64748b;margin:4px 0;">👤 ${cl.vendedor}</div>` : ''}
+            ${cl.sector ? `<div class="cliente-popup-chip">${cl.sector}</div>` : ''}
+            <button class="cliente-popup-btn" onclick="editarCliente('${cl.id}')">Ver detalle / Editar</button>
         </div>`;
 
         marker.bindPopup(popupHTML, {maxWidth:260, className:'cliente-popup-wrap'});
@@ -4264,6 +4270,15 @@ window.editarCliente = (id) => {
     document.getElementById('cl-visitas').value = cl.visitas||0;
     document.getElementById('cl-producto').value = cl.producto||'';
     document.getElementById('cl-notas').value = cl.notas||'';
+    // Mostrar KPIs de ventas si existen
+    const kpisDiv = document.getElementById('cl-kpis-ventas');
+    if(kpisDiv && (cl.total2025||cl.total2026)){
+        kpisDiv.style.display = 'grid';
+        const fmtMXN = n => n>0 ? '$'+Number(n).toLocaleString('es-MX',{minimumFractionDigits:0,maximumFractionDigits:0}) : '—';
+        document.getElementById('cl-kpi-2025').innerText = fmtMXN(cl.total2025||0);
+        document.getElementById('cl-kpi-2026').innerText = fmtMXN(cl.total2026||0);
+        document.getElementById('cl-kpi-mar26').innerText = fmtMXN(cl.mar26||0);
+    }
     document.getElementById('modal-cliente').style.display='flex';
 };
 
