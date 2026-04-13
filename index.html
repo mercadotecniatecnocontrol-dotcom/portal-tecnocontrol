@@ -2,7 +2,13 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Tecnocontrol">
+    <meta name="theme-color" content="#1e3a8a">
+    <link rel="manifest" href="manifest.json">
     <title>TECNOCONTROL · Portal Operativo</title>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -240,6 +246,53 @@
         ::-webkit-scrollbar-track{background:transparent;}
         ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:10px;}
 
+        /* ══ RESPONSIVE MÓVIL ══════════════════════════════════ */
+        @media (max-width: 768px){
+            .sidebar{width:100%;height:auto;position:fixed;bottom:0;top:auto;flex-direction:row;padding:8px;z-index:200;border-radius:0;overflow-x:auto;overflow-y:hidden;}
+            .sidebar-logo{display:none;}
+            .sidebar-section-label{display:none;}
+            .sitem{flex-direction:column;min-width:56px;padding:6px 4px;font-size:9px;border-radius:10px;}
+            .sitem .sitem-left span:first-child{font-size:16px;display:block;margin-bottom:2px;}
+            .sitem .sitem-left{flex-direction:column;align-items:center;gap:0;}
+            .main-content{margin-left:0;padding:16px 12px 80px;}
+            .kanban-board{grid-template-columns:1fr;gap:12px;}
+            .kanban-col{min-height:unset;}
+            .mkt-kpis{grid-template-columns:repeat(3,1fr);}
+            .mkt-charts-row{grid-template-columns:1fr;}
+            .mkt-canales{grid-template-columns:repeat(2,1fr);}
+            .parrilla-grid{grid-template-columns:repeat(4,1fr);}
+            .preview-box{grid-template-columns:1fr;width:95vw;}
+            .preview-col-img{border-radius:16px 16px 0 0;min-height:200px;}
+            .exec-grid{grid-template-columns:1fr;}
+            .cliente-modal-box{width:95vw;padding:18px;}
+            #mapa-clientes{height:320px;}
+            .rh-kpi-row{grid-template-columns:repeat(2,1fr);}
+            .mkt-form-grid{grid-template-columns:1fr;}
+            .form-grid{grid-template-columns:1fr;}
+            .page-header{flex-direction:column;gap:10px;align-items:flex-start;}
+            .parrilla-header{flex-direction:column;gap:8px;}
+            .parrilla-filtros{flex-wrap:wrap;}
+            /* Bottom nav labels */
+            .sitem-badge{font-size:8px;min-width:14px;height:14px;}
+            /* Inputs más grandes en móvil */
+            .form-input, .mkt-form-input, .rh-form-input{font-size:16px !important;} /* evita zoom en iOS */
+            /* Check-in button flotante en móvil */
+            #btn-checkin-flotante{display:flex;}
+        }
+        @media (min-width: 769px){
+            #btn-checkin-flotante{display:none;}
+        }
+        /* Botón check-in flotante para móvil */
+        #btn-checkin-flotante{
+            position:fixed;bottom:90px;right:16px;z-index:500;
+            width:56px;height:56px;border-radius:50%;
+            background:linear-gradient(135deg,#2563eb,#1d4ed8);
+            color:white;border:none;font-size:22px;cursor:pointer;
+            box-shadow:0 4px 16px rgba(37,99,235,0.4);
+            align-items:center;justify-content:center;
+            display:none;
+        }
+
         /* ══ MAPA DE CLIENTES — Ventas ═══════════════════════ */
         #ventas-dashboard{display:none;margin-bottom:28px;}
         .mapa-wrap{background:#ffffff;border-radius:16px;padding:18px;border:1px solid rgba(59,130,246,0.10);box-shadow:0 2px 8px rgba(37,99,235,0.05);margin-bottom:16px;}
@@ -258,6 +311,21 @@
         .cliente-row{display:grid;grid-template-columns:1.8fr 1fr 1fr 1fr auto;gap:8px;padding:10px 12px;border-radius:10px;font-size:12px;align-items:center;margin-bottom:6px;border:1px solid rgba(59,130,246,0.08);background:#ffffff;}
         .cliente-row:hover{background:#f8faff;}
         .cliente-row.header{background:#f8faff;font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;border:none;}
+        /* Metas y KPIs vendedores */
+        .meta-card{background:#ffffff;border-radius:14px;padding:16px;border:1px solid rgba(59,130,246,0.10);box-shadow:0 2px 6px rgba(37,99,235,0.05);}
+        .meta-vendedor{font-weight:700;color:#1e293b;font-size:13px;margin-bottom:6px;}
+        .meta-bar-wrap{height:10px;background:#e2e8f0;border-radius:6px;overflow:hidden;margin:6px 0;}
+        .meta-bar-fill{height:100%;border-radius:6px;transition:width 0.8s ease;}
+        .meta-nums{display:flex;justify-content:space-between;font-size:11px;color:#64748b;}
+        .checkin-card{background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:10px 12px;margin-bottom:8px;font-size:12px;}
+        .checkin-card-nombre{font-weight:700;color:#14532d;}
+        .checkin-card-meta{color:#64748b;font-size:10px;margin-top:2px;}
+        /* Modal check-in */
+        #modal-checkin{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);z-index:4000;align-items:center;justify-content:center;}
+        .checkin-box{background:#ffffff;border-radius:20px;padding:24px;width:360px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.2);}
+        /* Modal metas */
+        #modal-metas{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);z-index:3500;align-items:center;justify-content:center;}
+        .metas-box{background:#ffffff;border-radius:20px;padding:24px;width:480px;max-width:95vw;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.15);}
         /* Modal cliente */
         #modal-cliente{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);z-index:3000;align-items:center;justify-content:center;}
         .cliente-modal-box{background:#ffffff;border-radius:20px;padding:28px;width:560px;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.15);}
@@ -1102,9 +1170,22 @@
                     <div class="page-title">📍 Mapa de Clientes</div>
                     <div class="page-date" id="ventas-mapa-stats">Cargando clientes...</div>
                 </div>
-                <div style="display:flex;gap:10px;align-items:center;">
-                    <input type="text" id="ventas-buscador" placeholder="🔍 Buscar cliente, ciudad..." style="padding:9px 14px;border-radius:10px;border:1px solid #cbd5e1;font-size:12px;width:220px;outline:none;" oninput="filtrarClientesMapa()">
-                    <button onclick="abrirModalCliente()" style="padding:9px 16px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:white;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;">➕ Nuevo cliente</button>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                    <input type="text" id="ventas-buscador" placeholder="🔍 Buscar cliente, ciudad..." style="padding:9px 14px;border-radius:10px;border:1px solid #cbd5e1;font-size:12px;width:200px;outline:none;" oninput="filtrarClientesMapa()">
+                    <button onclick="abrirModalCheckin()" style="padding:9px 14px;background:linear-gradient(135deg,#059669,#047857);color:white;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;">📍 Check-in</button>
+                    <button onclick="abrirModalMetas()" style="padding:9px 14px;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:white;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;">🎯 Metas</button>
+                    <button onclick="abrirModalCliente()" style="padding:9px 14px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:white;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;">➕ Cliente</button>
+                </div>
+            </div>
+            <!-- Dashboard métricas vendedores -->
+            <div id="ventas-metricas" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;">
+                <div class="mapa-wrap" style="padding:16px;">
+                    <div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:12px;">🎯 Metas de visitas</div>
+                    <div id="ventas-metas-content"><div style="color:#94a3b8;font-size:12px;text-align:center;padding:12px;">Sin metas configuradas</div></div>
+                </div>
+                <div class="mapa-wrap" style="padding:16px;">
+                    <div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:12px;">📊 Check-ins recientes</div>
+                    <div id="ventas-checkins-content"><div style="color:#94a3b8;font-size:12px;text-align:center;padding:12px;">Sin check-ins registrados</div></div>
                 </div>
             </div>
             <!-- Mapa -->
@@ -1145,11 +1226,26 @@
                     </div>
                     <div>
                         <label class="mkt-form-label">Latitud</label>
-                        <input class="mkt-form-input" id="cl-lat" type="number" step="0.0001" placeholder="Ej: 20.6597">
+                        <input class="mkt-form-input" id="cl-lat" type="number" step="0.000001" placeholder="Ej: 20.6597">
                     </div>
                     <div>
                         <label class="mkt-form-label">Longitud</label>
-                        <input class="mkt-form-input" id="cl-lng" type="number" step="0.0001" placeholder="Ej: -103.3496">
+                        <input class="mkt-form-input" id="cl-lng" type="number" step="0.000001" placeholder="Ej: -103.3496">
+                    </div>
+                    <div style="grid-column:span 2">
+                        <button type="button" onclick="usarGPSCliente()" style="width:100%;padding:11px;background:linear-gradient(135deg,#059669,#047857);color:white;border:none;border-radius:10px;font-weight:700;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;gap:8px;">
+                            📍 Usar mi ubicación actual (GPS)
+                        </button>
+                        <div id="cl-gps-status" style="font-size:11px;color:#64748b;text-align:center;margin-top:4px;"></div>
+                    </div>
+                    <div style="grid-column:span 2">
+                        <label class="mkt-form-label">Foto del local / sucursal</label>
+                        <div style="border:2px dashed #cbd5e1;border-radius:10px;padding:16px;text-align:center;cursor:pointer;transition:0.2s;" onclick="document.getElementById('cl-foto-input').click()" id="cl-foto-zone">
+                            <div id="cl-foto-text" style="color:#94a3b8;font-size:12px;">📷 Clic para tomar foto o subir imagen del local</div>
+                            <img id="cl-foto-preview" style="display:none;width:100%;max-height:180px;object-fit:cover;border-radius:8px;margin-top:8px;">
+                        </div>
+                        <input type="file" id="cl-foto-input" accept="image/*" capture="environment" style="display:none;" onchange="previewFotoLocal(this)">
+                        <input type="hidden" id="cl-foto-url">
                     </div>
                     <div>
                         <label class="mkt-form-label">Contacto principal</label>
@@ -1201,6 +1297,42 @@
                 </div>
             </div>
         </div>
+
+        <!-- MODAL CHECK-IN -->
+        <div id="modal-checkin">
+            <div class="checkin-box">
+                <div style="font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;color:#1e293b;margin-bottom:16px;">📍 Registrar Check-in</div>
+                <label class="mkt-form-label">Cliente visitado</label>
+                <select class="mkt-form-input" id="checkin-cliente" style="margin-bottom:12px;">
+                    <option value="">Selecciona el cliente...</option>
+                </select>
+                <label class="mkt-form-label">Notas de la visita</label>
+                <textarea class="mkt-form-input" id="checkin-notas" rows="3" placeholder="¿Qué se trató? ¿Pedido? ¿Seguimiento?" style="resize:vertical;margin-bottom:12px;"></textarea>
+                <div id="checkin-gps-info" style="background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:10px;font-size:12px;color:#14532d;margin-bottom:12px;display:none;">
+                    📍 Ubicación capturada correctamente
+                </div>
+                <div style="display:flex;gap:8px;">
+                    <button onclick="registrarCheckin()" style="flex:1;padding:11px;background:linear-gradient(135deg,#059669,#047857);color:white;border:none;border-radius:10px;font-weight:700;cursor:pointer;">✅ Registrar visita</button>
+                    <button onclick="document.getElementById('modal-checkin').style.display='none'" style="flex:1;padding:11px;background:#f1f5f9;border:none;border-radius:10px;color:#475569;font-weight:700;cursor:pointer;">Cancelar</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL METAS (solo admin y Martín) -->
+        <div id="modal-metas">
+            <div class="metas-box">
+                <div style="font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;color:#1e293b;margin-bottom:16px;">🎯 Configurar Metas de Visitas</div>
+                <p style="font-size:12px;color:#64748b;margin-bottom:16px;">Define cuántas visitas debe hacer cada vendedor. Las metas aplican para la semana y el mes en curso.</p>
+                <div id="metas-form-content"></div>
+                <div style="display:flex;gap:8px;margin-top:16px;">
+                    <button onclick="guardarMetas()" style="flex:1;padding:11px;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:white;border:none;border-radius:10px;font-weight:700;cursor:pointer;">GUARDAR METAS</button>
+                    <button onclick="document.getElementById('modal-metas').style.display='none'" style="flex:1;padding:11px;background:#f1f5f9;border:none;border-radius:10px;color:#475569;font-weight:700;cursor:pointer;">Cerrar</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Botón check-in flotante para móvil -->
+        <button id="btn-checkin-flotante" onclick="abrirModalCheckin()" title="Check-in">📍</button>
 
         <!-- NUEVA TAREA -->
         <div class="section" id="sec-nueva">
@@ -4325,6 +4457,316 @@ document.getElementById('modal-cliente').addEventListener('click', e=>{
     if(e.target===document.getElementById('modal-cliente'))
         document.getElementById('modal-cliente').style.display='none';
 });
+document.getElementById('modal-checkin').addEventListener('click', e=>{
+    if(e.target===document.getElementById('modal-checkin'))
+        document.getElementById('modal-checkin').style.display='none';
+});
+document.getElementById('modal-metas').addEventListener('click', e=>{
+    if(e.target===document.getElementById('modal-metas'))
+        document.getElementById('modal-metas').style.display='none';
+});
+
+// ── GPS para cliente ────────────────────────────────────────
+window.usarGPSCliente = () => {
+    const status = document.getElementById('cl-gps-status');
+    if(!navigator.geolocation){ status.innerText='❌ Tu navegador no soporta GPS'; return; }
+    status.innerText='⏳ Obteniendo ubicación...';
+    navigator.geolocation.getCurrentPosition(
+        pos => {
+            document.getElementById('cl-lat').value = pos.coords.latitude.toFixed(6);
+            document.getElementById('cl-lng').value = pos.coords.longitude.toFixed(6);
+            status.innerHTML = `✅ Ubicación capturada · Precisión: ${Math.round(pos.coords.accuracy)}m`;
+            status.style.color = '#16a34a';
+        },
+        err => {
+            status.innerText = `❌ Error: ${err.message}`;
+            status.style.color = '#dc2626';
+        },
+        { enableHighAccuracy: true, timeout: 15000 }
+    );
+};
+
+// ── Foto del local ──────────────────────────────────────────
+window.previewFotoLocal = (input) => {
+    const file = input.files[0];
+    if(!file) return;
+    if(file.size > 3*1024*1024){ alert('Imagen muy grande. Máximo 3MB.'); return; }
+    const reader = new FileReader();
+    reader.onload = e => {
+        const prev = document.getElementById('cl-foto-preview');
+        prev.src = e.target.result;
+        prev.style.display = 'block';
+        document.getElementById('cl-foto-text').style.display = 'none';
+        document.getElementById('cl-foto-url').value = e.target.result;
+    };
+    reader.readAsDataURL(file);
+};
+
+// Actualizar guardarCliente para incluir foto y hacer lat/lng opcional
+window.guardarCliente = async () => {
+    const nombre = document.getElementById('cl-nombre').value.trim();
+    if(!nombre){ alert('Escribe el nombre del cliente'); return; }
+    const lat = parseFloat(document.getElementById('cl-lat').value) || null;
+    const lng = parseFloat(document.getElementById('cl-lng').value) || null;
+    const data = {
+        nombre, lat, lng,
+        ciudad:    document.getElementById('cl-ciudad').value.trim(),
+        estado:    document.getElementById('cl-estado').value.trim(),
+        direccion: document.getElementById('cl-direccion').value.trim(),
+        contacto:  document.getElementById('cl-contacto').value.trim(),
+        tel:       document.getElementById('cl-tel').value.trim(),
+        sector:    document.getElementById('cl-sector').value,
+        visitas:   Number(document.getElementById('cl-visitas').value)||0,
+        producto:  document.getElementById('cl-producto').value.trim(),
+        notas:     document.getElementById('cl-notas').value.trim(),
+        fotoUrl:   document.getElementById('cl-foto-url')?.value || '',
+        actualizadoEn:  new Date().toISOString(),
+        actualizadoPor: auth.currentUser?.email||''
+    };
+    try {
+        const editId = document.getElementById('cliente-edit-id').value;
+        if(editId){ await updateDoc(doc(db,'ventas_clientes',editId), data); }
+        else { await addDoc(collection(db,'ventas_clientes'), data); }
+        document.getElementById('modal-cliente').style.display='none';
+        window.mostrarPush('📍 Cliente guardado', nombre, '📍');
+        cargarClientes();
+    } catch(e){ alert('Error: '+e.message); }
+};
+
+// Actualizar editarCliente para cargar foto
+const _editarClienteOrig = window.editarCliente;
+window.editarCliente = (id) => {
+    _editarClienteOrig(id);
+    const cl = clientesDB.find(x=>x.id===id);
+    if(!cl) return;
+    const prev = document.getElementById('cl-foto-preview');
+    const txt  = document.getElementById('cl-foto-text');
+    const urlEl= document.getElementById('cl-foto-url');
+    if(cl.fotoUrl){ prev.src=cl.fotoUrl; prev.style.display='block'; txt.style.display='none'; if(urlEl) urlEl.value=cl.fotoUrl; }
+    else{ if(prev) prev.style.display='none'; if(txt) txt.style.display='block'; if(urlEl) urlEl.value=''; }
+};
+
+// ── Foto en popup del mapa ───────────────────────────────────
+// Sobreescribir renderMapa para incluir foto
+const _renderMapaOrig = renderMapa;
+window.renderMapa = (lista) => {
+    if(!mapaLeaflet) return;
+    const datos = lista || clientesDB;
+    clientesMarkers.forEach(m=>m.remove());
+    clientesMarkers = [];
+    const pulsarIcon = (color='#2563eb') => L.divIcon({
+        className:'',
+        html:`<div style="position:relative;width:20px;height:20px;">
+            <div style="position:absolute;inset:0;background:${color};border-radius:50%;opacity:0.3;animation:pulsar 1.5s infinite;"></div>
+            <div style="position:absolute;top:4px;left:4px;width:12px;height:12px;background:${color};border-radius:50%;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);"></div>
+        </div>
+        <style>@keyframes pulsar{0%,100%{transform:scale(1);opacity:0.3;}50%{transform:scale(2);opacity:0;}}</style>`,
+        iconSize:[20,20], iconAnchor:[10,10], popupAnchor:[0,-12]
+    });
+    const colorSector = {'Hidrocarburos':'#2563eb','Industria':'#7c3aed','Comercial':'#059669','Gobierno':'#dc2626','Construcción':'#d97706','Otro':'#64748b'};
+    datos.forEach(cl => {
+        if(!cl.lat || !cl.lng) return;
+        const color = colorSector[cl.sector] || '#2563eb';
+        const marker = L.marker([Number(cl.lat), Number(cl.lng)], {icon: pulsarIcon(color)});
+        const fotoHTML = cl.fotoUrl ? `<img src="${cl.fotoUrl}" style="width:100%;height:90px;object-fit:cover;border-radius:8px;margin-bottom:6px;" onerror="this.style.display='none'">` : '';
+        const popupHTML = `<div class="cliente-popup">
+            ${fotoHTML}
+            <div class="cliente-popup-nombre">${cl.nombre||'—'}</div>
+            ${cl.ciudad||cl.estado?`<div class="cliente-popup-dir">📍 ${[cl.ciudad,cl.estado].filter(Boolean).join(', ')}</div>`:''}
+            ${cl.vendedor?`<div style="font-size:11px;color:#64748b;margin:4px 0;">👤 ${cl.vendedor}</div>`:''}
+            ${cl.sector?`<div class="cliente-popup-chip">${cl.sector}</div>`:''}
+            <button class="cliente-popup-btn" onclick="editarCliente('${cl.id}')">Ver detalle / Editar</button>
+            <button class="cliente-popup-btn" style="margin-top:4px;background:#059669;" onclick="abrirCheckinCliente('${cl.id}')">📍 Registrar visita</button>
+        </div>`;
+        marker.bindPopup(popupHTML, {maxWidth:240});
+        marker.addTo(mapaLeaflet);
+        clientesMarkers.push(marker);
+    });
+};
+
+// ── CHECK-IN GPS ─────────────────────────────────────────────
+let checkinLat = null, checkinLng = null;
+
+window.abrirModalCheckin = (clienteId=null) => {
+    // Poblar select de clientes
+    const sel = document.getElementById('checkin-cliente');
+    sel.innerHTML = '<option value="">Selecciona el cliente...</option>' +
+        [...clientesDB].sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''))
+        .map(cl=>`<option value="${cl.id}">${cl.nombre}</option>`).join('');
+    if(clienteId) sel.value = clienteId;
+    document.getElementById('checkin-notas').value = '';
+    document.getElementById('checkin-gps-info').style.display = 'none';
+    checkinLat = null; checkinLng = null;
+    // Obtener GPS automáticamente
+    if(navigator.geolocation){
+        navigator.geolocation.getCurrentPosition(pos => {
+            checkinLat = pos.coords.latitude;
+            checkinLng = pos.coords.longitude;
+            const info = document.getElementById('checkin-gps-info');
+            info.style.display = 'block';
+            info.innerHTML = `📍 Ubicación: ${checkinLat.toFixed(4)}, ${checkinLng.toFixed(4)} · Precisión: ${Math.round(pos.coords.accuracy)}m`;
+        }, ()=>{}, {enableHighAccuracy:true, timeout:10000});
+    }
+    document.getElementById('modal-checkin').style.display = 'flex';
+};
+
+window.abrirCheckinCliente = (id) => {
+    if(mapaLeaflet) mapaLeaflet.closePopup();
+    abrirModalCheckin(id);
+};
+
+window.registrarCheckin = async () => {
+    const clienteId = document.getElementById('checkin-cliente').value;
+    const notas = document.getElementById('checkin-notas').value.trim();
+    if(!clienteId){ alert('Selecciona un cliente'); return; }
+    const cl = clientesDB.find(x=>x.id===clienteId);
+    const yo = auth.currentUser?.email || '';
+    const ahora = new Date();
+    const checkin = {
+        clienteId, clienteNombre: cl?.nombre||'',
+        vendedor: yo,
+        lat: checkinLat, lng: checkinLng,
+        notas,
+        fecha: ahora.toISOString().slice(0,10),
+        hora: ahora.toTimeString().slice(0,5),
+        timestamp: ahora.toISOString()
+    };
+    try {
+        await addDoc(collection(db,'ventas_checkins'), checkin);
+        // Incrementar contador de visitas del cliente
+        if(cl){ await updateDoc(doc(db,'ventas_clientes',clienteId),{ visitas:(cl.visitas||0)+1 }); }
+        document.getElementById('modal-checkin').style.display='none';
+        window.mostrarPush('✅ Visita registrada', cl?.nombre||'', '📍');
+        cargarClientes();
+        cargarCheckins();
+    } catch(e){ alert('Error: '+e.message); }
+};
+
+// ── Cargar check-ins recientes ───────────────────────────────
+async function cargarCheckins(){
+    try {
+        const fbC = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const snap = await fbC.getDocs(fbC.query(
+            fbC.collection(db,'ventas_checkins'),
+            fbC.orderBy('timestamp','desc'),
+            fbC.limit(20)
+        ));
+        const checkins = snap.docs.map(d=>({id:d.id,...d.data()}));
+        renderCheckins(checkins);
+        cargarMetas(checkins);
+    } catch(e){ console.warn('[CHECKINS]',e.message); }
+}
+
+function renderCheckins(checkins){
+    const el = document.getElementById('ventas-checkins-content');
+    if(!el) return;
+    if(!checkins.length){ el.innerHTML='<div style="color:#94a3b8;font-size:12px;text-align:center;padding:12px;">Sin check-ins aún</div>'; return; }
+    el.innerHTML = checkins.slice(0,8).map(ch=>`
+        <div class="checkin-card">
+            <div class="checkin-card-nombre">📍 ${ch.clienteNombre||'—'}</div>
+            <div class="checkin-card-meta">👤 ${nombreUsuario(ch.vendedor)} · ${ch.fecha||''} ${ch.hora||''}</div>
+            ${ch.notas?`<div style="font-size:11px;color:#475569;margin-top:3px;">${ch.notas.slice(0,60)}${ch.notas.length>60?'…':''}</div>`:''}
+        </div>`).join('');
+}
+
+// ── METAS DE VISITAS ─────────────────────────────────────────
+let metasDB = {};
+const VENDEDORES_LIST = ['DANIEL GALLARDO','PALOMA PINEDO','GUILLERMO DURSTEWITZ','MARTIN ROBERTO DE LA O MAESE','FATIMA SAUZAMEDA'];
+const MARTIN_EMAIL = 'martin@tecnocontrol.com.mx'; // ← cambiar por email real de Martín
+
+async function cargarMetas(checkins){
+    try {
+        const fbM2 = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const snap = await fbM2.getDocs(fbM2.collection(db,'ventas_metas'));
+        metasDB = {};
+        snap.docs.forEach(d=>{ metasDB[d.id] = d.data(); });
+        renderMetas(checkins||[]);
+    } catch(e){ console.warn('[METAS]',e.message); renderMetas([]); }
+}
+
+function renderMetas(checkins){
+    const el = document.getElementById('ventas-metas-content');
+    if(!el) return;
+    const hoy = new Date();
+    const mesKey = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}`;
+    // Contar visitas por vendedor este mes
+    const visitasMes = {};
+    checkins.forEach(ch => {
+        if(ch.timestamp && ch.timestamp.startsWith(mesKey)){
+            const v = ch.vendedor || 'Sin asignar';
+            visitasMes[v] = (visitasMes[v]||0) + 1;
+        }
+    });
+    const metas = metasDB[mesKey] || {};
+    const colores = ['#2563eb','#059669','#7c3aed','#f59e0b','#ef4444'];
+    const vendedores = Object.keys({...metas, ...Object.fromEntries(Object.entries(visitasMes).map(([k])=>[k,true]))});
+    if(!vendedores.length){ el.innerHTML='<div style="color:#94a3b8;font-size:12px;text-align:center;padding:12px;">Sin metas configuradas</div>'; return; }
+    el.innerHTML = vendedores.map((v,i)=>{
+        const meta = Number(metas[v]||0);
+        const real = Number(visitasMes[v]||0);
+        const pct = meta>0 ? Math.min(100,Math.round(real/meta*100)) : 0;
+        const color = colores[i%colores.length];
+        return `<div class="meta-card" style="margin-bottom:10px;">
+            <div class="meta-vendedor">${nombreUsuario(v) || v.split(' ')[0]}</div>
+            <div class="meta-bar-wrap"><div class="meta-bar-fill" style="width:${pct}%;background:${color};"></div></div>
+            <div class="meta-nums"><span>${real} visitas</span><span style="color:${color};font-weight:700;">${pct}%</span><span>Meta: ${meta}</span></div>
+        </div>`;
+    }).join('');
+}
+
+window.abrirModalMetas = () => {
+    const yo = auth.currentUser?.email||'';
+    if(yo !== ADMIN && yo !== MARTIN_EMAIL){ alert('Solo el administrador puede configurar metas'); return; }
+    const hoy = new Date();
+    const mesKey = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}`;
+    const metas = metasDB[mesKey] || {};
+    document.getElementById('metas-form-content').innerHTML = `
+        <div style="font-size:11px;color:#64748b;margin-bottom:12px;">Mes actual: <b>${mesKey}</b></div>
+        ${VENDEDORES_LIST.map(v=>`
+            <div style="display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;margin-bottom:10px;">
+                <label style="font-size:12px;font-weight:600;color:#1e293b;">${v.split(' ')[0]} ${v.split(' ')[1]||''}</label>
+                <input type="number" min="0" id="meta-${v.replace(/\s/g,'_')}" value="${metas[v]||0}"
+                    style="width:80px;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;text-align:center;">
+            </div>`).join('')}
+        <p style="font-size:11px;color:#94a3b8;margin-top:8px;">Meta = número de visitas (check-ins) esperadas en el mes</p>`;
+    document.getElementById('modal-metas').style.display = 'flex';
+};
+
+window.guardarMetas = async () => {
+    const hoy = new Date();
+    const mesKey = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}`;
+    const metas = {};
+    VENDEDORES_LIST.forEach(v => {
+        const val = Number(document.getElementById(`meta-${v.replace(/\s/g,'_')}`)?.value||0);
+        if(val > 0) metas[v] = val;
+    });
+    try {
+        const fbMe = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        await fbMe.setDoc(fbMe.doc(db,'ventas_metas',mesKey), metas);
+        metasDB[mesKey] = metas;
+        document.getElementById('modal-metas').style.display='none';
+        window.mostrarPush('✅ Metas guardadas', `Mes ${mesKey}`, '🎯');
+        cargarCheckins();
+    } catch(e){ alert('Error: '+e.message); }
+};
+
+// Conectar cargarCheckins al entrar a Ventas
+const _toggleVentasOrig = window.toggleVentasMapa || function(){};
+window.toggleVentasMapa = (area, email) => {
+    const secMapa = document.getElementById('sec-ventas-mapa');
+    const secArea = document.getElementById('sec-area');
+    if(!secMapa) return;
+    if(area === 'Ventas'){
+        secMapa.style.display = 'block';
+        if(secArea) secArea.style.display = 'block';
+        inicializarMapa();
+        cargarClientes();
+        cargarCheckins();
+    } else {
+        secMapa.style.display = 'none';
+        if(secArea) secArea.style.display = 'block';
+    }
+};
 </script>
 </body>
 </html>
