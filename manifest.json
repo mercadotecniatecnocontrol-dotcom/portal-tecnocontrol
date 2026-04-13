@@ -1,0 +1,14 @@
+{
+  "name": "Tecnocontrol · Portal Operativo",
+  "short_name": "Tecnocontrol",
+  "description": "Portal operativo interno Tecnocontrol",
+  "start_url": "/portal-tecnocontrol/",
+  "display": "standalone",
+  "background_color": "#1e3a8a",
+  "theme_color": "#1e3a8a",
+  "orientation": "portrait-primary",
+  "icons": [
+    { "src": "https://ui-avatars.com/api/?name=TC&background=1e3a8a&color=fff&size=192", "sizes": "192x192", "type": "image/png" },
+    { "src": "https://ui-avatars.com/api/?name=TC&background=1e3a8a&color=fff&size=512", "sizes": "512x512", "type": "image/png" }
+  ]
+}
