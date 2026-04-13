@@ -459,6 +459,49 @@
         .stock-low{color:#f59e0b;font-weight:700;}
         .stock-out{color:#ef4444;font-weight:700;}
 
+        /* ══ PARRILLA DE CONTENIDO ═════════════════════════════ */
+        .parrilla-wrap{background:#ffffff;border-radius:16px;padding:18px;border:1px solid rgba(59,130,246,0.10);box-shadow:0 2px 8px rgba(37,99,235,0.05);margin-bottom:16px;}
+        .parrilla-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;}
+        .parrilla-filtros{display:flex;gap:8px;flex-wrap:wrap;}
+        .parrilla-filtro{padding:5px 14px;border-radius:20px;border:1px solid #cbd5e1;background:#ffffff;color:#475569;font-size:11px;font-weight:700;cursor:pointer;transition:0.2s;}
+        .parrilla-filtro.active{background:#2563eb;color:#ffffff;border-color:#2563eb;}
+        .parrilla-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:0;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;}
+        .parrilla-dow{background:#f8faff;padding:8px 4px;text-align:center;font-size:10px;font-weight:700;color:#64748b;letter-spacing:1px;text-transform:uppercase;border-bottom:1px solid #e2e8f0;}
+        .parrilla-cell{min-height:120px;padding:6px;border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;vertical-align:top;position:relative;background:#ffffff;}
+        .parrilla-cell:nth-child(7n){border-right:none;}
+        .parrilla-cell.otro-mes{background:#fafafa;}
+        .parrilla-cell.hoy{background:#eff6ff;}
+        .parrilla-cell-day{font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center;}
+        .parrilla-cell-day.hoy-num{color:#2563eb;background:#dbeafe;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;}
+        .parrilla-add-cell{background:none;border:none;color:#cbd5e1;font-size:16px;cursor:pointer;padding:0;line-height:1;transition:0.15s;}
+        .parrilla-add-cell:hover{color:#2563eb;}
+        /* Tarjeta de post */
+        .post-card{border-radius:8px;padding:6px 8px;margin-bottom:4px;font-size:10px;cursor:pointer;transition:0.15s;border-left:3px solid transparent;position:relative;}
+        .post-card:hover{filter:brightness(0.95);}
+        .post-card.empresa-tecnocontrol{background:#dbeafe;border-left-color:#2563eb;color:#1e40af;}
+        .post-card.empresa-akuris{background:#dcfce7;border-left-color:#16a34a;color:#14532d;}
+        .post-card.empresa-noka{background:#fef9c3;border-left-color:#ca8a04;color:#78350f;}
+        .post-card.empresa-otra{background:#f3e8ff;border-left-color:#7c3aed;color:#4c1d95;}
+        .post-card-hora{font-weight:700;font-size:9px;opacity:0.75;}
+        .post-card-copy{font-weight:600;line-height:1.3;margin-top:1px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
+        .post-card-canal{font-size:9px;opacity:0.7;margin-top:2px;}
+        .post-card-actions{display:none;position:absolute;top:3px;right:3px;gap:2px;}
+        .post-card:hover .post-card-actions{display:flex;}
+        .post-card-btn{background:rgba(255,255,255,0.8);border:none;border-radius:4px;width:16px;height:16px;font-size:9px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;}
+        /* Vista lista */
+        .parrilla-lista{width:100%;border-collapse:collapse;font-size:12px;}
+        .parrilla-lista th{background:#f8faff;color:#64748b;font-size:10px;text-transform:uppercase;letter-spacing:1px;padding:8px 12px;text-align:left;font-weight:700;}
+        .parrilla-lista td{padding:10px 12px;border-bottom:1px solid rgba(59,130,246,0.06);color:#1e293b;vertical-align:middle;}
+        .parrilla-lista tr:hover td{background:#f8faff;}
+        .empresa-chip{padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;display:inline-block;}
+        .canal-chip{padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;background:#f1f5f9;color:#475569;}
+        /* Modal parrilla */
+        #modal-parrilla{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);z-index:3500;align-items:center;justify-content:center;}
+        .parrilla-modal-box{background:#ffffff;border-radius:20px;padding:28px;width:580px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.15);}
+        .parrilla-img-preview{width:100%;height:160px;object-fit:cover;border-radius:10px;margin-top:8px;display:none;}
+        .parrilla-drop-zone{border:2px dashed #cbd5e1;border-radius:10px;padding:24px;text-align:center;color:#94a3b8;font-size:12px;cursor:pointer;transition:0.2s;margin-top:6px;}
+        .parrilla-drop-zone:hover{border-color:#2563eb;color:#2563eb;background:#eff6ff;}
+
         /* Modal Marketing */
         #modal-mkt{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);z-index:3000;align-items:center;justify-content:center;}
         .mkt-modal-box{background:#ffffff;border-radius:20px;padding:28px;width:560px;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.15);}
@@ -857,6 +900,40 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- ═══ PARRILLA DE CONTENIDO ═══════════════════════════ -->
+                <div class="parrilla-wrap">
+                    <div class="parrilla-header">
+                        <div style="display:flex;align-items:center;gap:10px;">
+                            <span style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14px;color:#1e293b;">📅 Parrilla de Contenido</span>
+                            <span id="parrilla-mes-label" style="font-size:12px;color:#64748b;"></span>
+                        </div>
+                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                            <!-- Filtros por empresa -->
+                            <div class="parrilla-filtros" id="parrilla-filtros">
+                                <button class="parrilla-filtro active" data-empresa="todos" onclick="filtrarParrilla('todos',this)">Todos</button>
+                                <button class="parrilla-filtro" data-empresa="tecnocontrol" onclick="filtrarParrilla('tecnocontrol',this)">🔵 Tecnocontrol</button>
+                                <button class="parrilla-filtro" data-empresa="akuris" onclick="filtrarParrilla('akuris',this)">🟢 Akuris</button>
+                                <button class="parrilla-filtro" data-empresa="noka" onclick="filtrarParrilla('noka',this)">🟡 Noka</button>
+                                <button class="parrilla-filtro" data-empresa="otra" onclick="filtrarParrilla('otra',this)">🟣 Otra</button>
+                            </div>
+                            <!-- Nav mes -->
+                            <div style="display:flex;align-items:center;gap:6px;">
+                                <button class="rh-mes-btn" onclick="parrillaMesPrev()">‹</button>
+                                <span id="parrilla-nav-label" style="font-size:12px;font-weight:700;color:#1e293b;min-width:90px;text-align:center;"></span>
+                                <button class="rh-mes-btn" onclick="parrillaMesNext()">›</button>
+                            </div>
+                            <!-- Vista -->
+                            <div style="display:flex;gap:4px;">
+                                <button id="btn-vista-cal" onclick="setVistaParrilla('calendario')" style="padding:5px 10px;border-radius:8px;border:1px solid #2563eb;background:#2563eb;color:white;font-size:11px;font-weight:700;cursor:pointer;">📅 Calendario</button>
+                                <button id="btn-vista-lista" onclick="setVistaParrilla('lista')" style="padding:5px 10px;border-radius:8px;border:1px solid #cbd5e1;background:#ffffff;color:#475569;font-size:11px;font-weight:700;cursor:pointer;">📋 Lista</button>
+                            </div>
+                            <button class="mkt-add-btn" onclick="abrirModalParrilla()">➕ Nuevo post</button>
+                        </div>
+                    </div>
+                    <!-- Contenido: calendario o lista -->
+                    <div id="parrilla-content"></div>
+                </div>
             </div>
 
             <!-- MINI-DASHBOARD RH (solo visible en Recursos Humanos) -->
@@ -1134,6 +1211,61 @@
         <div style="display:flex;gap:10px;margin-top:20px;">
             <button class="mkt-add-btn" style="flex:1;padding:12px;" onclick="guardarDatoMkt()">GUARDAR</button>
             <button class="btn-cancel-edit" style="flex:1;" onclick="document.getElementById('modal-mkt').style.display='none'">Cancelar</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL PARRILLA DE CONTENIDO -->
+<div id="modal-parrilla">
+    <div class="parrilla-modal-box">
+        <div style="font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;color:#1e293b;margin-bottom:20px;" id="parrilla-modal-title">📝 Nuevo post</div>
+        <input type="hidden" id="parrilla-edit-id">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div>
+                <label class="mkt-form-label">Fecha de publicación</label>
+                <input class="mkt-form-input" id="par-fecha" type="date">
+            </div>
+            <div>
+                <label class="mkt-form-label">Hora</label>
+                <input class="mkt-form-input" id="par-hora" type="time" value="09:00">
+            </div>
+            <div>
+                <label class="mkt-form-label">Empresa</label>
+                <select class="mkt-form-input" id="par-empresa">
+                    <option value="tecnocontrol">🔵 Tecnocontrol</option>
+                    <option value="akuris">🟢 Akuris</option>
+                    <option value="noka">🟡 Noka</option>
+                    <option value="otra">🟣 Otra</option>
+                </select>
+            </div>
+            <div>
+                <label class="mkt-form-label">Canal / Red social</label>
+                <select class="mkt-form-input" id="par-canal">
+                    <option>Instagram</option>
+                    <option>Facebook</option>
+                    <option>Instagram + Facebook</option>
+                    <option>LinkedIn</option>
+                    <option>TikTok</option>
+                    <option>Multicanal</option>
+                </select>
+            </div>
+        </div>
+        <label class="mkt-form-label" style="margin-top:14px;">Copy / Texto del post</label>
+        <textarea class="mkt-form-input" id="par-copy" rows="4" placeholder="Escribe el copy del post aquí... incluye hashtags y call to action" style="resize:vertical;min-height:90px;"></textarea>
+        <label class="mkt-form-label">Imagen / Arte</label>
+        <div class="parrilla-drop-zone" id="par-drop-zone" onclick="document.getElementById('par-img-input').click()">
+            <div id="par-drop-text">🖼️ Clic para seleccionar imagen o arrastra aquí<br><span style="font-size:10px;">JPG, PNG, GIF — máx. 2MB</span></div>
+            <img id="par-img-preview" class="parrilla-img-preview">
+        </div>
+        <input type="file" id="par-img-input" accept="image/*" style="display:none;" onchange="previewParrillaImg(this)">
+        <input type="hidden" id="par-img-url">
+        <label class="mkt-form-label">URL de imagen (alternativo)</label>
+        <input class="mkt-form-input" id="par-img-link" type="url" placeholder="https://... (si tienes la imagen en Drive o servidor)">
+        <label class="mkt-form-label">Notas / instrucciones para el diseñador</label>
+        <input class="mkt-form-input" id="par-notas" type="text" placeholder="Ej: Usar paleta azul, incluir logo, formato cuadrado...">
+        <div style="display:flex;gap:10px;margin-top:20px;">
+            <button class="mkt-add-btn" style="flex:1;padding:12px;" onclick="guardarPostParrilla()">GUARDAR POST</button>
+            <button class="btn-cancel-edit" style="flex:1;" onclick="cerrarModalParrilla()">Cancelar</button>
         </div>
     </div>
 </div>
@@ -2335,6 +2467,322 @@ function renderEjecutivo(){
 }
 
 // ══════════════════════════════════════════════════════════════
+// PARRILLA DE CONTENIDO — Posts por mes, empresa y canal
+// Colección Firestore: mkt_parrilla
+// ══════════════════════════════════════════════════════════════
+let parrillaMes = new Date().getMonth();
+let parrillaAnio = new Date().getFullYear();
+let parrillaFiltroEmpresa = 'todos';
+let parrillaVista = 'calendario'; // 'calendario' | 'lista'
+let parrillaPosts = []; // cache local
+const DIAS_SEMANA_PAR = ['DOM','LUN','MAR','MIÉ','JUE','VIE','SÁB'];
+const MESES_PAR = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+
+const EMPRESA_INFO = {
+    tecnocontrol: { label:'Tecnocontrol', emoji:'🔵', class:'empresa-tecnocontrol' },
+    akuris:       { label:'Akuris',       emoji:'🟢', class:'empresa-akuris' },
+    noka:         { label:'Noka',         emoji:'🟡', class:'empresa-noka' },
+    otra:         { label:'Otra',         emoji:'🟣', class:'empresa-otra' },
+};
+
+function actualizarLabelParrilla(){
+    const el = document.getElementById('parrilla-nav-label');
+    if(el) el.innerText = `${MESES_PAR[parrillaMes]} ${parrillaAnio}`;
+}
+
+window.parrillaMesPrev = () => {
+    parrillaMes--; if(parrillaMes<0){parrillaMes=11;parrillaAnio--;}
+    actualizarLabelParrilla(); cargarParrilla();
+};
+window.parrillaMesNext = () => {
+    parrillaMes++; if(parrillaMes>11){parrillaMes=0;parrillaAnio++;}
+    actualizarLabelParrilla(); cargarParrilla();
+};
+
+window.filtrarParrilla = (empresa, btn) => {
+    parrillaFiltroEmpresa = empresa;
+    document.querySelectorAll('.parrilla-filtro').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    renderParrilla();
+};
+
+window.setVistaParrilla = (vista) => {
+    parrillaVista = vista;
+    document.getElementById('btn-vista-cal').style.background = vista==='calendario'?'#2563eb':'#ffffff';
+    document.getElementById('btn-vista-cal').style.color = vista==='calendario'?'white':'#475569';
+    document.getElementById('btn-vista-cal').style.borderColor = vista==='calendario'?'#2563eb':'#cbd5e1';
+    document.getElementById('btn-vista-lista').style.background = vista==='lista'?'#2563eb':'#ffffff';
+    document.getElementById('btn-vista-lista').style.color = vista==='lista'?'white':'#475569';
+    document.getElementById('btn-vista-lista').style.borderColor = vista==='lista'?'#2563eb':'#cbd5e1';
+    renderParrilla();
+};
+
+async function cargarParrilla(){
+    try {
+        const fbP = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const mesKey = `${parrillaAnio}-${String(parrillaMes+1).padStart(2,'0')}`;
+        const snap = await fbP.getDocs(fbP.query(
+            fbP.collection(db,'mkt_parrilla'),
+            fbP.where('mesKey','==',mesKey),
+            fbP.orderBy('fecha','asc'),
+            fbP.orderBy('hora','asc')
+        ));
+        parrillaPosts = snap.docs.map(d=>({id:d.id,...d.data()}));
+        renderParrilla();
+    } catch(e){
+        console.warn('[PARRILLA]', e.message);
+        parrillaPosts = [];
+        renderParrilla();
+    }
+}
+
+function getPostsFiltrados(){
+    if(parrillaFiltroEmpresa === 'todos') return parrillaPosts;
+    return parrillaPosts.filter(p=>p.empresa===parrillaFiltroEmpresa);
+}
+
+function renderParrilla(){
+    const content = document.getElementById('parrilla-content');
+    if(!content) return;
+    if(parrillaVista === 'lista') renderParrillaLista(content);
+    else renderParrillaCalendario(content);
+}
+
+function postCardHTML(p){
+    const info = EMPRESA_INFO[p.empresa] || EMPRESA_INFO.otra;
+    const copy = (p.copy||'Sin copy').slice(0,60) + ((p.copy||'').length>60?'…':'');
+    const imgThumb = (p.imgUrl||p.imgLink) ?
+        `<img src="${p.imgUrl||p.imgLink}" style="width:100%;height:36px;object-fit:cover;border-radius:4px;margin-top:3px;" onerror="this.style.display='none'">` : '';
+    return `<div class="post-card ${info.class}" onclick="editarPost('${p.id}')">
+        <div class="post-card-actions">
+            <button class="post-card-btn" onclick="event.stopPropagation();editarPost('${p.id}')" title="Editar">✏️</button>
+            <button class="post-card-btn" onclick="event.stopPropagation();eliminarPost('${p.id}')" title="Eliminar">🗑</button>
+        </div>
+        <div class="post-card-hora">${p.hora||''} · ${info.emoji}</div>
+        <div class="post-card-copy">${copy}</div>
+        ${imgThumb}
+        <div class="post-card-canal">${p.canal||''}</div>
+    </div>`;
+}
+
+function renderParrillaCalendario(content){
+    const hoy = new Date(); hoy.setHours(0,0,0,0);
+    const firstDay = new Date(parrillaAnio, parrillaMes, 1).getDay();
+    const totalDias = new Date(parrillaAnio, parrillaMes+1, 0).getDate();
+    const prevDias = new Date(parrillaAnio, parrillaMes, 0).getDate();
+    const posts = getPostsFiltrados();
+
+    // Agrupar posts por día
+    const porDia = {};
+    posts.forEach(p=>{
+        if(!p.fecha) return;
+        const dia = parseInt(p.fecha.split('-')[2]);
+        if(!porDia[dia]) porDia[dia] = [];
+        porDia[dia].push(p);
+    });
+
+    // Header días semana
+    let html = `<div class="parrilla-grid">`;
+    DIAS_SEMANA_PAR.forEach(d=>{ html+=`<div class="parrilla-dow">${d}</div>`; });
+
+    // Días del mes anterior
+    for(let i=firstDay-1; i>=0; i--){
+        html+=`<div class="parrilla-cell otro-mes"><div class="parrilla-cell-day" style="color:#d1d5db;">${prevDias-i}</div></div>`;
+    }
+
+    // Días del mes actual
+    for(let d=1; d<=totalDias; d++){
+        const esHoy = hoy.getDate()===d && hoy.getMonth()===parrillaMes && hoy.getFullYear()===parrillaAnio;
+        const dPosts = porDia[d] || [];
+        const fechaStr = `${parrillaAnio}-${String(parrillaMes+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        html+=`<div class="parrilla-cell${esHoy?' hoy':''}">
+            <div class="parrilla-cell-day">
+                <span${esHoy?' style="color:#2563eb;font-weight:900;"':''}>${d}</span>
+                <button class="parrilla-add-cell" onclick="abrirModalParrilla('${fechaStr}')" title="Agregar post">+</button>
+            </div>
+            ${dPosts.map(p=>postCardHTML(p)).join('')}
+        </div>`;
+    }
+
+    // Días del mes siguiente
+    const remain = (firstDay + totalDias) % 7;
+    if(remain>0){
+        for(let i=1; i<=7-remain; i++){
+            html+=`<div class="parrilla-cell otro-mes"><div class="parrilla-cell-day" style="color:#d1d5db;">${i}</div></div>`;
+        }
+    }
+    html+=`</div>`;
+
+    // Resumen debajo del calendario
+    const total = posts.length;
+    const byEmp = Object.entries(EMPRESA_INFO).map(([k,v])=>{
+        const n = posts.filter(p=>p.empresa===k).length;
+        return n>0?`<span style="font-size:11px;">${v.emoji} ${v.label}: <b>${n}</b></span>`:'';
+    }).filter(Boolean).join(' &nbsp;·&nbsp; ');
+    html+=`<div style="margin-top:12px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;font-size:11px;color:#64748b;">
+        <span><b style="color:#1e293b;">${total}</b> posts programados</span>
+        ${byEmp ? `&nbsp;·&nbsp; ${byEmp}` : ''}
+    </div>`;
+
+    content.innerHTML = html;
+}
+
+function renderParrillaLista(content){
+    const posts = getPostsFiltrados();
+    if(!posts.length){
+        content.innerHTML='<div style="text-align:center;color:#94a3b8;padding:32px;font-size:12px;">Sin posts programados este mes. Haz clic en "➕ Nuevo post" para agregar.</div>';
+        return;
+    }
+    content.innerHTML=`<div style="overflow-x:auto;">
+    <table class="parrilla-lista">
+        <thead><tr>
+            <th>Fecha</th><th>Hora</th><th>Empresa</th><th>Canal</th>
+            <th>Copy / Texto</th><th>Imagen</th><th>Notas</th><th>Acciones</th>
+        </tr></thead>
+        <tbody>
+        ${posts.map(p=>{
+            const info = EMPRESA_INFO[p.empresa]||EMPRESA_INFO.otra;
+            const img = (p.imgUrl||p.imgLink)?`<img src="${p.imgUrl||p.imgLink}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;" onerror="this.style.display='none'">`:
+                `<span style="color:#d1d5db;font-size:11px;">Sin imagen</span>`;
+            return `<tr>
+                <td style="white-space:nowrap;font-weight:700;">${p.fecha||'—'}</td>
+                <td style="white-space:nowrap;">${p.hora||'—'}</td>
+                <td><span class="empresa-chip ${info.class}">${info.emoji} ${info.label}</span></td>
+                <td><span class="canal-chip">${p.canal||'—'}</span></td>
+                <td style="max-width:220px;font-size:11px;line-height:1.4;">${p.copy||'—'}</td>
+                <td>${img}</td>
+                <td style="font-size:11px;color:#64748b;max-width:160px;">${p.notas||'—'}</td>
+                <td>
+                    <div style="display:flex;gap:4px;">
+                        <button onclick="editarPost('${p.id}')" style="padding:4px 8px;background:#eff6ff;color:#2563eb;border:none;border-radius:6px;font-size:10px;cursor:pointer;">✏️</button>
+                        <button onclick="eliminarPost('${p.id}')" style="padding:4px 8px;background:#fee2e2;color:#dc2626;border:none;border-radius:6px;font-size:10px;cursor:pointer;">🗑</button>
+                    </div>
+                </td>
+            </tr>`;
+        }).join('')}
+        </tbody>
+    </table></div>`;
+}
+
+// ── Modal parrilla ──────────────────────────────────────────
+window.abrirModalParrilla = (fechaPreset=null) => {
+    document.getElementById('parrilla-edit-id').value = '';
+    document.getElementById('parrilla-modal-title').innerText = '📝 Nuevo post';
+    document.getElementById('par-fecha').value = fechaPreset || new Date().toISOString().slice(0,10);
+    document.getElementById('par-hora').value = '09:00';
+    document.getElementById('par-empresa').value = 'tecnocontrol';
+    document.getElementById('par-canal').value = 'Instagram';
+    document.getElementById('par-copy').value = '';
+    document.getElementById('par-img-link').value = '';
+    document.getElementById('par-notas').value = '';
+    document.getElementById('par-img-url').value = '';
+    const prev = document.getElementById('par-img-preview');
+    prev.style.display='none'; prev.src='';
+    document.getElementById('par-drop-text').style.display='block';
+    document.getElementById('modal-parrilla').style.display='flex';
+};
+
+window.cerrarModalParrilla = () => {
+    document.getElementById('modal-parrilla').style.display='none';
+};
+
+window.editarPost = async (id) => {
+    const p = parrillaPosts.find(x=>x.id===id);
+    if(!p) return;
+    document.getElementById('parrilla-edit-id').value = id;
+    document.getElementById('parrilla-modal-title').innerText = '✏️ Editar post';
+    document.getElementById('par-fecha').value = p.fecha||'';
+    document.getElementById('par-hora').value = p.hora||'';
+    document.getElementById('par-empresa').value = p.empresa||'tecnocontrol';
+    document.getElementById('par-canal').value = p.canal||'Instagram';
+    document.getElementById('par-copy').value = p.copy||'';
+    document.getElementById('par-img-link').value = p.imgLink||'';
+    document.getElementById('par-notas').value = p.notas||'';
+    document.getElementById('par-img-url').value = p.imgUrl||'';
+    const prev = document.getElementById('par-img-preview');
+    const imgSrc = p.imgUrl || p.imgLink;
+    if(imgSrc){ prev.src=imgSrc; prev.style.display='block'; document.getElementById('par-drop-text').style.display='none'; }
+    else { prev.style.display='none'; document.getElementById('par-drop-text').style.display='block'; }
+    document.getElementById('modal-parrilla').style.display='flex';
+};
+
+window.previewParrillaImg = (input) => {
+    const file = input.files[0];
+    if(!file) return;
+    if(file.size > 2*1024*1024){ alert('La imagen es muy grande. Máximo 2MB.'); return; }
+    const reader = new FileReader();
+    reader.onload = e => {
+        const prev = document.getElementById('par-img-preview');
+        prev.src = e.target.result;
+        prev.style.display='block';
+        document.getElementById('par-drop-text').style.display='none';
+        document.getElementById('par-img-url').value = e.target.result; // base64
+    };
+    reader.readAsDataURL(file);
+};
+
+// Drag & drop en la zona de imagen
+document.getElementById('modal-parrilla').addEventListener('dragover', e=>e.preventDefault());
+document.getElementById('modal-parrilla').addEventListener('drop', e=>{
+    e.preventDefault();
+    const file = e.dataTransfer?.files[0];
+    if(file && file.type.startsWith('image/')){
+        const fakeInput = {files:[file]};
+        window.previewParrillaImg(fakeInput);
+    }
+});
+
+window.guardarPostParrilla = async () => {
+    const fecha = document.getElementById('par-fecha').value;
+    const copy  = document.getElementById('par-copy').value.trim();
+    if(!fecha){ alert('Selecciona una fecha'); return; }
+    if(!copy){ alert('Escribe el copy del post'); return; }
+
+    const mesKey = `${parrillaAnio}-${String(parrillaMes+1).padStart(2,'0')}`;
+    const docData = {
+        mesKey,
+        fecha,
+        hora:    document.getElementById('par-hora').value,
+        empresa: document.getElementById('par-empresa').value,
+        canal:   document.getElementById('par-canal').value,
+        copy,
+        imgUrl:  document.getElementById('par-img-url').value,
+        imgLink: document.getElementById('par-img-link').value,
+        notas:   document.getElementById('par-notas').value.trim(),
+        creadoPor: auth.currentUser?.email||'',
+        creadoEn:  new Date().toISOString(),
+    };
+
+    const btn = document.querySelector('#modal-parrilla .mkt-add-btn');
+    if(btn){ btn.textContent='Guardando...'; btn.disabled=true; }
+    try {
+        const editId = document.getElementById('parrilla-edit-id').value;
+        if(editId){
+            await updateDoc(doc(db,'mkt_parrilla',editId), docData);
+        } else {
+            await addDoc(collection(db,'mkt_parrilla'), docData);
+        }
+        cerrarModalParrilla();
+        window.mostrarPush('📅 Post guardado',`${docData.empresa} · ${fecha}`,'📣');
+        cargarParrilla();
+    } catch(e){ alert('Error: '+e.message); }
+    finally{ if(btn){ btn.textContent='GUARDAR POST'; btn.disabled=false; } }
+};
+
+window.eliminarPost = async (id) => {
+    if(!confirm('¿Eliminar este post? No se puede deshacer.')) return;
+    try {
+        await deleteDoc(doc(db,'mkt_parrilla',id));
+        window.mostrarPush('🗑 Post eliminado','','📣');
+        cargarParrilla();
+    } catch(e){ alert('Error: '+e.message); }
+};
+
+document.getElementById('modal-parrilla').addEventListener('click', e=>{
+    if(e.target===document.getElementById('modal-parrilla')) cerrarModalParrilla();
+});
+
+// ══════════════════════════════════════════════════════════════
 // MÓDULO MARKETING — KPIs digitales, campañas, stock
 // Solo visible para mercadotecniatecnocontrol@gmail.com y admin
 // Datos en Firestore colección: mkt_indicadores
@@ -2358,6 +2806,8 @@ function toggleMktDash(area, email){
         dash.style.display = 'block';
         actualizarLabelMesMkt();
         cargarDatosMkt();
+        actualizarLabelParrilla();
+        cargarParrilla();
     } else {
         dash.style.display = 'none';
     }
