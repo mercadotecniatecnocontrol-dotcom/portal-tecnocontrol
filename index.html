@@ -485,9 +485,9 @@
         .post-card-hora{font-weight:700;font-size:9px;opacity:0.75;}
         .post-card-copy{font-weight:600;line-height:1.3;margin-top:1px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
         .post-card-canal{font-size:9px;opacity:0.7;margin-top:2px;}
-        .post-card-actions{display:none;position:absolute;top:3px;right:3px;gap:2px;}
-        .post-card:hover .post-card-actions{display:flex;}
-        .post-card-btn{background:rgba(255,255,255,0.8);border:none;border-radius:4px;width:16px;height:16px;font-size:9px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;}
+        .post-card-actions{display:flex;position:absolute;top:3px;right:3px;gap:2px;}
+        .post-card-btn{background:rgba(255,255,255,0.8);border:none;border-radius:4px;width:18px;height:18px;font-size:9px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:0.15s;}
+        .post-card-btn:hover{background:rgba(255,255,255,1);transform:scale(1.1);}
         /* Vista lista */
         .parrilla-lista{width:100%;border-collapse:collapse;font-size:12px;}
         .parrilla-lista th{background:#f8faff;color:#64748b;font-size:10px;text-transform:uppercase;letter-spacing:1px;padding:8px 12px;text-align:left;font-weight:700;}
@@ -2521,13 +2521,14 @@ async function cargarParrilla(){
     try {
         const fbP = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
         const mesKey = `${parrillaAnio}-${String(parrillaMes+1).padStart(2,'0')}`;
+        // Sin orderBy compuesto — evita requerir índice en Firestore. Se ordena en cliente.
         const snap = await fbP.getDocs(fbP.query(
             fbP.collection(db,'mkt_parrilla'),
-            fbP.where('mesKey','==',mesKey),
-            fbP.orderBy('fecha','asc'),
-            fbP.orderBy('hora','asc')
+            fbP.where('mesKey','==',mesKey)
         ));
-        parrillaPosts = snap.docs.map(d=>({id:d.id,...d.data()}));
+        parrillaPosts = snap.docs
+            .map(d=>({id:d.id,...d.data()}))
+            .sort((a,b)=>((a.fecha||'')+(a.hora||'')).localeCompare((b.fecha||'')+(b.hora||'')));
         renderParrilla();
     } catch(e){
         console.warn('[PARRILLA]', e.message);
@@ -2550,15 +2551,18 @@ function renderParrilla(){
 
 function postCardHTML(p){
     const info = EMPRESA_INFO[p.empresa] || EMPRESA_INFO.otra;
-    const copy = (p.copy||'Sin copy').slice(0,60) + ((p.copy||'').length>60?'…':'');
+    const copy = (p.copy||'Sin copy').slice(0,55) + ((p.copy||'').length>55?'…':'');
     const imgThumb = (p.imgUrl||p.imgLink) ?
         `<img src="${p.imgUrl||p.imgLink}" style="width:100%;height:36px;object-fit:cover;border-radius:4px;margin-top:3px;" onerror="this.style.display='none'">` : '';
-    return `<div class="post-card ${info.class}" onclick="editarPost('${p.id}')">
-        <div class="post-card-actions">
-            <button class="post-card-btn" onclick="event.stopPropagation();editarPost('${p.id}')" title="Editar">✏️</button>
-            <button class="post-card-btn" onclick="event.stopPropagation();eliminarPost('${p.id}')" title="Eliminar">🗑</button>
+    // Usar data-id para evitar problemas con comillas en IDs de Firestore
+    return `<div class="post-card ${info.class}" data-postid="${p.id}" style="cursor:pointer;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <div class="post-card-hora">${p.hora||''} · ${info.emoji}</div>
+            <div style="display:flex;gap:2px;flex-shrink:0;">
+                <button class="post-card-btn" data-editid="${p.id}" title="Editar" style="background:rgba(255,255,255,0.85);border:none;border-radius:4px;width:18px;height:18px;font-size:9px;cursor:pointer;">✏️</button>
+                <button class="post-card-btn" data-delid="${p.id}" title="Eliminar" style="background:rgba(255,255,255,0.85);border:none;border-radius:4px;width:18px;height:18px;font-size:9px;cursor:pointer;">🗑</button>
+            </div>
         </div>
-        <div class="post-card-hora">${p.hora||''} · ${info.emoji}</div>
         <div class="post-card-copy">${copy}</div>
         ${imgThumb}
         <div class="post-card-canal">${p.canal||''}</div>
@@ -2780,6 +2784,22 @@ window.eliminarPost = async (id) => {
 
 document.getElementById('modal-parrilla').addEventListener('click', e=>{
     if(e.target===document.getElementById('modal-parrilla')) cerrarModalParrilla();
+});
+
+// Delegación de eventos para tarjetas del calendario (más robusto que onclick inline)
+document.addEventListener('click', e => {
+    const editBtn = e.target.closest('[data-editid]');
+    const delBtn  = e.target.closest('[data-delid]');
+    const card    = e.target.closest('[data-postid]');
+    if(editBtn){
+        e.stopPropagation();
+        window.editarPost(editBtn.dataset.editid);
+    } else if(delBtn){
+        e.stopPropagation();
+        window.eliminarPost(delBtn.dataset.delid);
+    } else if(card && !editBtn && !delBtn){
+        window.editarPost(card.dataset.postid);
+    }
 });
 
 // ══════════════════════════════════════════════════════════════
