@@ -6,6 +6,8 @@
     <title>TECNOCONTROL · Portal Operativo</title>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
         :root{
     /* ── Fondos principales (grises fríos como la imagen) ── */
@@ -237,6 +239,28 @@
         ::-webkit-scrollbar{width:5px;}
         ::-webkit-scrollbar-track{background:transparent;}
         ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:10px;}
+
+        /* ══ MAPA DE CLIENTES — Ventas ═══════════════════════ */
+        #ventas-dashboard{display:none;margin-bottom:28px;}
+        .mapa-wrap{background:#ffffff;border-radius:16px;padding:18px;border:1px solid rgba(59,130,246,0.10);box-shadow:0 2px 8px rgba(37,99,235,0.05);margin-bottom:16px;}
+        #mapa-clientes{width:100%;height:520px;border-radius:12px;border:1px solid #e2e8f0;background:#f8faff;}
+        .cliente-popup{min-width:220px;}
+        .cliente-popup-nombre{font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:700;color:#1e293b;margin-bottom:6px;}
+        .cliente-popup-dir{font-size:11px;color:#64748b;margin-bottom:8px;}
+        .cliente-popup-chip{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;background:#dbeafe;color:#1e40af;margin-bottom:8px;}
+        .cliente-popup-kpi{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;}
+        .cliente-popup-kpi-item{background:#f8faff;border-radius:8px;padding:6px 8px;text-align:center;}
+        .cliente-popup-kpi-val{font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;color:#2563eb;}
+        .cliente-popup-kpi-label{font-size:9px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;}
+        .cliente-popup-visitas{font-size:11px;color:#475569;margin-bottom:8px;}
+        .cliente-popup-btn{width:100%;padding:7px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;margin-top:4px;}
+        .clientes-lista-wrap{margin-top:16px;}
+        .cliente-row{display:grid;grid-template-columns:1.8fr 1fr 1fr 1fr auto;gap:8px;padding:10px 12px;border-radius:10px;font-size:12px;align-items:center;margin-bottom:6px;border:1px solid rgba(59,130,246,0.08);background:#ffffff;}
+        .cliente-row:hover{background:#f8faff;}
+        .cliente-row.header{background:#f8faff;font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;border:none;}
+        /* Modal cliente */
+        #modal-cliente{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);z-index:3000;align-items:center;justify-content:center;}
+        .cliente-modal-box{background:#ffffff;border-radius:20px;padding:28px;width:560px;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.15);}
 
         /* ── VISTA EJECUTIVA ── */
         .exec-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px;}
@@ -480,7 +504,7 @@
         .post-card:hover{filter:brightness(0.95);}
         .post-card.empresa-tecnocontrol{background:#dbeafe;border-left-color:#2563eb;color:#1e40af;}
         .post-card.empresa-akuris{background:#dcfce7;border-left-color:#16a34a;color:#14532d;}
-        .post-card.empresa-Jomar{background:#fef9c3;border-left-color:#ca8a04;color:#78350f;}
+        .post-card.empresa-noka{background:#fef9c3;border-left-color:#ca8a04;color:#78350f;}
         .post-card.empresa-otra{background:#f3e8ff;border-left-color:#7c3aed;color:#4c1d95;}
         .post-card-hora{font-weight:700;font-size:9px;opacity:0.75;}
         .post-card-copy{font-weight:600;line-height:1.3;margin-top:1px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
@@ -499,15 +523,19 @@
         #modal-parrilla{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);z-index:3500;align-items:center;justify-content:center;}
         /* Modal vista previa post */
         #modal-preview-post{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);backdrop-filter:blur(10px);z-index:3600;align-items:center;justify-content:center;}
-        .preview-box{background:#ffffff;border-radius:20px;width:460px;max-height:88vh;overflow-y:auto;box-shadow:0 24px 64px rgba(0,0,0,0.25);}
-        .preview-img{width:100%;max-height:300px;object-fit:cover;border-radius:20px 20px 0 0;}
-        .preview-body{padding:20px;}
-        .preview-empresa-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;margin-bottom:12px;}
-        .preview-copy{font-size:13px;color:#1e293b;line-height:1.7;white-space:pre-wrap;margin-bottom:16px;border-left:3px solid #e2e8f0;padding-left:12px;}
-        .preview-meta{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:#64748b;margin-bottom:16px;}
-        .preview-meta span{display:flex;align-items:center;gap:4px;background:#f8faff;padding:3px 10px;border-radius:10px;}
-        .preview-notas{font-size:11px;color:#64748b;background:#fef9c3;border-radius:8px;padding:10px 12px;margin-bottom:16px;}
-        .preview-acciones{display:flex;gap:10px;}
+        /* Preview post — dos columnas */
+        .preview-box{background:#ffffff;border-radius:20px;width:820px;max-width:96vw;max-height:90vh;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,0.25);display:grid;grid-template-columns:1fr 1fr;}
+        .preview-col-img{position:relative;background:#0f172a;display:flex;align-items:center;justify-content:center;min-height:400px;border-radius:20px 0 0 20px;overflow:hidden;}
+        .preview-img{width:100%;height:100%;object-fit:cover;display:block;}
+        .preview-no-img-inner{text-align:center;color:#64748b;padding:40px;}
+        .preview-col-info{padding:28px;overflow-y:auto;max-height:90vh;display:flex;flex-direction:column;}
+        .preview-empresa-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700;margin-bottom:14px;align-self:flex-start;}
+        .preview-copy{font-size:13px;color:#1e293b;line-height:1.75;white-space:pre-wrap;margin-bottom:16px;flex:1;overflow-y:auto;max-height:260px;padding-right:4px;}
+        .preview-meta{display:flex;gap:8px;flex-wrap:wrap;font-size:11px;color:#64748b;margin-bottom:14px;}
+        .preview-meta span{display:flex;align-items:center;gap:4px;background:#f8faff;padding:3px 10px;border-radius:10px;border:1px solid #e2e8f0;}
+        .preview-notas{font-size:11px;color:#64748b;background:#fef9c3;border-radius:8px;padding:10px 12px;margin-bottom:16px;border:1px solid #fde68a;}
+        .preview-acciones{display:flex;flex-direction:column;gap:8px;margin-top:auto;}
+        .preview-acciones button{width:100%;padding:11px;border-radius:10px;font-weight:700;font-size:12px;cursor:pointer;border:none;}
         .parrilla-modal-box{background:#ffffff;border-radius:20px;padding:28px;width:580px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.15);}
         .parrilla-img-preview{width:100%;height:160px;object-fit:cover;border-radius:10px;margin-top:8px;display:none;}
         .parrilla-drop-zone{border:2px dashed #cbd5e1;border-radius:10px;padding:24px;text-align:center;color:#94a3b8;font-size:12px;cursor:pointer;transition:0.2s;margin-top:6px;}
@@ -925,7 +953,7 @@
                                 <button class="parrilla-filtro active" data-empresa="todos" onclick="filtrarParrilla('todos',this)">Todos</button>
                                 <button class="parrilla-filtro" data-empresa="tecnocontrol" onclick="filtrarParrilla('tecnocontrol',this)">🔵 Tecnocontrol</button>
                                 <button class="parrilla-filtro" data-empresa="akuris" onclick="filtrarParrilla('akuris',this)">🟢 Akuris</button>
-                                <button class="parrilla-filtro" data-empresa="Jomar" onclick="filtrarParrilla('Jomar',this)">🟡 Jomar</button>
+                                <button class="parrilla-filtro" data-empresa="noka" onclick="filtrarParrilla('noka',this)">🟡 Noka</button>
                                 <button class="parrilla-filtro" data-empresa="otra" onclick="filtrarParrilla('otra',this)">🟣 Otra</button>
                             </div>
                             <!-- Nav mes -->
@@ -1065,6 +1093,98 @@
                 <div class="header-badge">🔒 Dirección</div>
             </div>
             <div id="ejecutivo-content"></div>
+        </div>
+
+        <!-- MAPA DE CLIENTES — Ventas -->
+        <div class="section" id="sec-ventas-mapa" style="display:none;">
+            <div class="page-header">
+                <div>
+                    <div class="page-title">📍 Mapa de Clientes</div>
+                    <div class="page-date" id="ventas-mapa-stats">Cargando clientes...</div>
+                </div>
+                <div style="display:flex;gap:10px;align-items:center;">
+                    <input type="text" id="ventas-buscador" placeholder="🔍 Buscar cliente, ciudad..." style="padding:9px 14px;border-radius:10px;border:1px solid #cbd5e1;font-size:12px;width:220px;outline:none;" oninput="filtrarClientesMapa()">
+                    <button onclick="abrirModalCliente()" style="padding:9px 16px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:white;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;">➕ Nuevo cliente</button>
+                </div>
+            </div>
+            <!-- Mapa -->
+            <div class="mapa-wrap">
+                <div id="mapa-clientes"></div>
+            </div>
+            <!-- Lista de clientes -->
+            <div class="mapa-wrap" style="padding:14px 18px;">
+                <div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:12px;">📋 Directorio de clientes</div>
+                <div class="cliente-row header">
+                    <span>Empresa / Contacto</span><span>Ciudad</span><span>Visitas</span><span>Producto top</span><span></span>
+                </div>
+                <div id="clientes-lista-content"></div>
+            </div>
+        </div>
+
+        <!-- MODAL CLIENTE -->
+        <div id="modal-cliente">
+            <div class="cliente-modal-box">
+                <div style="font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;color:#1e293b;margin-bottom:20px;" id="cliente-modal-title">➕ Nuevo cliente</div>
+                <input type="hidden" id="cliente-edit-id">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                    <div style="grid-column:span 2">
+                        <label class="mkt-form-label">Nombre de la empresa / cliente</label>
+                        <input class="mkt-form-input" id="cl-nombre" type="text" placeholder="Ej: Pemex Exploración">
+                    </div>
+                    <div>
+                        <label class="mkt-form-label">Ciudad</label>
+                        <input class="mkt-form-input" id="cl-ciudad" type="text" placeholder="Ej: Guadalajara">
+                    </div>
+                    <div>
+                        <label class="mkt-form-label">Estado</label>
+                        <input class="mkt-form-input" id="cl-estado" type="text" placeholder="Ej: Jalisco">
+                    </div>
+                    <div style="grid-column:span 2">
+                        <label class="mkt-form-label">Dirección completa</label>
+                        <input class="mkt-form-input" id="cl-direccion" type="text" placeholder="Ej: Av. Principal 123, Col. Centro">
+                    </div>
+                    <div>
+                        <label class="mkt-form-label">Latitud</label>
+                        <input class="mkt-form-input" id="cl-lat" type="number" step="0.0001" placeholder="Ej: 20.6597">
+                    </div>
+                    <div>
+                        <label class="mkt-form-label">Longitud</label>
+                        <input class="mkt-form-input" id="cl-lng" type="number" step="0.0001" placeholder="Ej: -103.3496">
+                    </div>
+                    <div>
+                        <label class="mkt-form-label">Contacto principal</label>
+                        <input class="mkt-form-input" id="cl-contacto" type="text" placeholder="Nombre del contacto">
+                    </div>
+                    <div>
+                        <label class="mkt-form-label">Teléfono</label>
+                        <input class="mkt-form-input" id="cl-tel" type="text" placeholder="Ej: 614 123 4567">
+                    </div>
+                    <div>
+                        <label class="mkt-form-label">Sector / Industria</label>
+                        <select class="mkt-form-input" id="cl-sector">
+                            <option>Hidrocarburos</option><option>Industria</option>
+                            <option>Comercial</option><option>Gobierno</option>
+                            <option>Construcción</option><option>Otro</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="mkt-form-label">Visitas realizadas</label>
+                        <input class="mkt-form-input" id="cl-visitas" type="number" min="0" placeholder="0">
+                    </div>
+                    <div style="grid-column:span 2">
+                        <label class="mkt-form-label">Producto / servicio más vendido</label>
+                        <input class="mkt-form-input" id="cl-producto" type="text" placeholder="Ej: Medidores de flujo, calibración...">
+                    </div>
+                    <div style="grid-column:span 2">
+                        <label class="mkt-form-label">Notas / observaciones</label>
+                        <textarea class="mkt-form-input" id="cl-notas" rows="3" placeholder="Información adicional del cliente..." style="resize:vertical;"></textarea>
+                    </div>
+                </div>
+                <div style="display:flex;gap:10px;margin-top:20px;">
+                    <button onclick="guardarCliente()" style="flex:1;padding:12px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:white;border:none;border-radius:10px;font-weight:700;cursor:pointer;">GUARDAR CLIENTE</button>
+                    <button onclick="document.getElementById('modal-cliente').style.display='none'" style="flex:1;padding:12px;background:#f1f5f9;border:none;border-radius:10px;color:#475569;font-weight:700;cursor:pointer;">Cancelar</button>
+                </div>
+            </div>
         </div>
 
         <!-- NUEVA TAREA -->
@@ -1227,20 +1347,27 @@
 </div>
 
 <!-- MODAL PARRILLA DE CONTENIDO -->
-<!-- MODAL VISTA PREVIA POST -->
+<!-- MODAL VISTA PREVIA POST — dos columnas -->
 <div id="modal-preview-post">
     <div class="preview-box">
-        <img id="preview-img" class="preview-img" style="display:none;" onerror="this.style.display='none'">
-        <div id="preview-no-img" style="height:80px;background:linear-gradient(135deg,#dbeafe,#eff6ff);border-radius:20px 20px 0 0;display:flex;align-items:center;justify-content:center;font-size:32px;">🖼️</div>
-        <div class="preview-body">
+        <!-- Columna izquierda: imagen completa -->
+        <div class="preview-col-img">
+            <img id="preview-img" class="preview-img" style="display:none;" onerror="this.style.display='none'">
+            <div id="preview-no-img" class="preview-no-img-inner">
+                <div style="font-size:48px;margin-bottom:8px;">🖼️</div>
+                <div style="font-size:12px;">Sin imagen adjunta</div>
+            </div>
+        </div>
+        <!-- Columna derecha: info + acciones -->
+        <div class="preview-col-info">
             <div id="preview-empresa-chip" class="preview-empresa-chip"></div>
             <div class="preview-meta" id="preview-meta"></div>
             <div class="preview-copy" id="preview-copy"></div>
             <div class="preview-notas" id="preview-notas" style="display:none;"></div>
             <div class="preview-acciones">
-                <button id="preview-btn-editar" class="mkt-add-btn" style="flex:1;padding:11px;">✏️ Editar post</button>
-                <button id="preview-btn-eliminar" class="mkt-add-btn" style="flex:1;padding:11px;background:linear-gradient(135deg,#ef4444,#dc2626);">🗑 Eliminar</button>
-                <button onclick="document.getElementById('modal-preview-post').style.display='none'" style="flex:1;padding:11px;background:#f1f5f9;border:none;border-radius:10px;color:#475569;font-weight:700;cursor:pointer;">Cerrar</button>
+                <button id="preview-btn-editar" style="background:linear-gradient(135deg,#2563eb,#1d4ed8);color:white;">✏️ Editar post</button>
+                <button id="preview-btn-eliminar" style="background:linear-gradient(135deg,#ef4444,#dc2626);color:white;">🗑 Eliminar post</button>
+                <button onclick="document.getElementById('modal-preview-post').style.display='none'" style="background:#f1f5f9;color:#475569;">✕ Cerrar</button>
             </div>
         </div>
     </div>
@@ -1970,6 +2097,7 @@ window.verArea=(a,b)=>{
     const yo = auth.currentUser?.email || '';
     toggleMktDash(a, yo);
     toggleRHDash(a, yo);
+    toggleVentasMapa(a, yo);
 };
 
 // Peso de ordenamiento: pendiente primero, completada al final
@@ -2731,7 +2859,7 @@ window.editarPost = (id) => {
     const img = document.getElementById('preview-img');
     const noImg = document.getElementById('preview-no-img');
     if(imgSrc){ img.src=imgSrc; img.style.display='block'; noImg.style.display='none'; }
-    else { img.style.display='none'; noImg.style.display='flex'; }
+    else { img.style.display='none'; noImg.style.display='flex'; noImg.style.flexDirection='column'; }
 
     // Empresa chip
     const chip = document.getElementById('preview-empresa-chip');
@@ -3701,10 +3829,30 @@ function renderRHDash(data, key){
 
 
 // ── Selector de áreas ──────────────────────────────────────
-const RH_AREAS_LIST = ['Ingresos','Egresos','Contabilidad','Recursos Humanos','Marketing','Administración','Ventas'];
-const RH_AREA_SEL = () => `<select class="rh-form-input" id="rh-f-area">
-    ${RH_AREAS_LIST.map(a=>`<option>${a}</option>`).join('')}
-</select>`;
+// Áreas RH — lista base + campo para escribir una diferente
+const RH_AREAS_LIST = ['Ingresos','Egresos','Contabilidad','Recursos Humanos','Marketing','Administración','Ventas',
+    'Operaciones','Logística','Almacén','Servicios Técnicos','Compras','TI / Sistemas','Dirección General'];
+const RH_AREA_SEL = () => `
+    <select class="rh-form-input" id="rh-f-area-sel" onchange="rhAreaSelChange(this)" style="margin-bottom:4px;">
+        ${RH_AREAS_LIST.map(a=>`<option value="${a}">${a}</option>`).join('')}
+        <option value="__otra__">✏️ Otra (escribir)...</option>
+    </select>
+    <input type="text" class="rh-form-input" id="rh-f-area" placeholder="Nombre del departamento" style="display:none;margin-top:4px;">`;
+
+// Mostrar/ocultar campo texto según selección
+window.rhAreaSelChange = (sel) => {
+    const input = document.getElementById('rh-f-area');
+    const selEl = document.getElementById('rh-f-area-sel');
+    if(!input || !selEl) return;
+    if(sel.value === '__otra__'){
+        input.style.display = 'block';
+        input.focus();
+        input.value = '';
+    } else {
+        input.style.display = 'none';
+        input.value = sel.value;
+    }
+};
 
 const TODAY = new Date().toISOString().slice(0,10);
 
@@ -3838,7 +3986,19 @@ window.rhTabSwitch = (tab, btn) => {
     document.getElementById('rh-form-container').innerHTML = (RH_FORMS[tab] ? RH_FORMS[tab]() : '');
 };
 
-const rhGet = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+const rhGet = id => {
+    if(id === 'rh-f-area'){
+        // Si está mostrando el campo libre, tomar ese valor
+        const input = document.getElementById('rh-f-area');
+        const sel   = document.getElementById('rh-f-area-sel');
+        if(input && input.style.display !== 'none' && input.value.trim()) return input.value.trim();
+        if(sel && sel.value !== '__otra__') return sel.value;
+        if(input) return input.value.trim();
+        return '';
+    }
+    const el = document.getElementById(id);
+    return el ? el.value.trim() : '';
+};
 
 window.guardarDatoRH = async () => {
     const key = rhKey();
@@ -3921,6 +4081,234 @@ window.eliminarRH = async (id) => {
 
 document.getElementById('modal-rh').addEventListener('click', e => {
     if(e.target === document.getElementById('modal-rh')) document.getElementById('modal-rh').style.display = 'none';
+});
+
+// ══════════════════════════════════════════════════════════════
+// MÓDULO VENTAS — Mapa de clientes con Leaflet.js + Firestore
+// Colección Firestore: ventas_clientes
+// ══════════════════════════════════════════════════════════════
+let mapaLeaflet = null;
+let clientesDB = [];
+let clientesMarkers = [];
+let mapaInicializado = false;
+
+function puedeVerVentas(email){
+    return email === ADMIN || obtenerDeptoUsuario(email) === 'Ventas';
+}
+
+// Mostrar sección mapa al hacer clic en Ventas en el sidebar
+const _navOriginal = window.navegar;
+window.navegar = (id, b) => {
+    _navOriginal(id, b);
+    // Si navega a área Ventas, mostrar el mapa
+};
+
+// Llamar esto desde verArea cuando el área es Ventas
+function toggleVentasMapa(area, email){
+    const sec = document.getElementById('sec-ventas-mapa');
+    if(!sec) return;
+    if(area === 'Ventas'){
+        sec.style.display = 'block';
+        // Mostrar esta sección en lugar del kanban normal
+        document.getElementById('sec-area').style.display = 'none';
+        inicializarMapa();
+        cargarClientes();
+    } else {
+        sec.style.display = 'none';
+        document.getElementById('sec-area').style.display = 'block';
+    }
+}
+
+function inicializarMapa(){
+    if(mapaInicializado) return;
+    mapaInicializado = true;
+    // Centrado en México
+    mapaLeaflet = L.map('mapa-clientes').setView([23.6345, -102.5528], 5);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap',
+        maxZoom: 18
+    }).addTo(mapaLeaflet);
+    setTimeout(()=>mapaLeaflet.invalidateSize(), 300);
+}
+
+async function cargarClientes(){
+    try {
+        const fbV = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const snap = await fbV.getDocs(fbV.collection(db,'ventas_clientes'));
+        clientesDB = snap.docs.map(d=>({id:d.id,...d.data()}));
+        renderMapa();
+        renderListaClientes(clientesDB);
+        document.getElementById('ventas-mapa-stats').innerText =
+            `${clientesDB.length} clientes registrados · ${clientesDB.reduce((s,c)=>s+(Number(c.visitas)||0),0)} visitas totales`;
+    } catch(e){
+        console.warn('[VENTAS]', e.message);
+    }
+}
+
+function renderMapa(lista){
+    if(!mapaLeaflet) return;
+    const datos = lista || clientesDB;
+    // Limpiar markers anteriores
+    clientesMarkers.forEach(m=>m.remove());
+    clientesMarkers = [];
+
+    // Ícono palpitante azul personalizado
+    const pulsarIcon = (color='#2563eb') => L.divIcon({
+        className:'',
+        html:`<div style="position:relative;width:20px;height:20px;">
+            <div style="position:absolute;inset:0;background:${color};border-radius:50%;opacity:0.3;animation:pulsar 1.5s infinite;"></div>
+            <div style="position:absolute;top:4px;left:4px;width:12px;height:12px;background:${color};border-radius:50%;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);"></div>
+        </div>
+        <style>@keyframes pulsar{0%,100%{transform:scale(1);opacity:0.3;}50%{transform:scale(2);opacity:0;}}</style>`,
+        iconSize:[20,20], iconAnchor:[10,10], popupAnchor:[0,-12]
+    });
+
+    const colorSector = {
+        'Hidrocarburos':'#2563eb','Industria':'#7c3aed','Comercial':'#059669',
+        'Gobierno':'#dc2626','Construcción':'#d97706','Otro':'#64748b'
+    };
+
+    datos.forEach(cl => {
+        if(!cl.lat || !cl.lng) return;
+        const color = colorSector[cl.sector] || '#2563eb';
+        const marker = L.marker([Number(cl.lat), Number(cl.lng)], {icon: pulsarIcon(color)});
+
+        const popupHTML = `<div class="cliente-popup">
+            <div class="cliente-popup-nombre">${cl.nombre||'—'}</div>
+            <div class="cliente-popup-chip">${cl.sector||'—'}</div>
+            <div class="cliente-popup-dir">📍 ${cl.ciudad||''}, ${cl.estado||''}<br>${cl.direccion||''}</div>
+            <div class="cliente-popup-kpi">
+                <div class="cliente-popup-kpi-item">
+                    <div class="cliente-popup-kpi-val">${cl.visitas||0}</div>
+                    <div class="cliente-popup-kpi-label">Visitas</div>
+                </div>
+                <div class="cliente-popup-kpi-item">
+                    <div class="cliente-popup-kpi-val" style="font-size:11px;">${(cl.producto||'—').slice(0,12)}</div>
+                    <div class="cliente-popup-kpi-label">Producto top</div>
+                </div>
+            </div>
+            ${cl.contacto?`<div class="cliente-popup-visitas">👤 ${cl.contacto} ${cl.tel?'· '+cl.tel:''}</div>`:''}
+            ${cl.notas?`<div style="font-size:11px;color:#64748b;margin-bottom:8px;font-style:italic;">${cl.notas.slice(0,100)}${cl.notas.length>100?'…':''}</div>`:''}
+            <button class="cliente-popup-btn" onclick="editarCliente('${cl.id}')">✏️ Editar cliente</button>
+        </div>`;
+
+        marker.bindPopup(popupHTML, {maxWidth:260, className:'cliente-popup-wrap'});
+        marker.addTo(mapaLeaflet);
+        clientesMarkers.push(marker);
+    });
+}
+
+function renderListaClientes(lista){
+    const el = document.getElementById('clientes-lista-content');
+    if(!el) return;
+    if(!lista.length){
+        el.innerHTML='<div style="text-align:center;color:#94a3b8;padding:20px;font-size:12px;">Sin clientes registrados. Agrega tu primer cliente con el botón ➕</div>';
+        return;
+    }
+    el.innerHTML = lista.map(cl=>`
+        <div class="cliente-row">
+            <div>
+                <div style="font-weight:700;color:#1e293b;">${cl.nombre||'—'}</div>
+                <div style="font-size:10px;color:#64748b;">${cl.sector||''} · ${cl.contacto||''}</div>
+            </div>
+            <span style="color:#475569;">${cl.ciudad||'—'}</span>
+            <span style="font-weight:700;color:#2563eb;">${cl.visitas||0}</span>
+            <span style="font-size:11px;color:#64748b;">${(cl.producto||'—').slice(0,20)}</span>
+            <div style="display:flex;gap:4px;">
+                <button onclick="editarCliente('${cl.id}')" style="padding:4px 8px;background:#eff6ff;color:#2563eb;border:none;border-radius:6px;font-size:10px;cursor:pointer;">✏️</button>
+                <button onclick="eliminarCliente('${cl.id}')" style="padding:4px 8px;background:#fee2e2;color:#dc2626;border:none;border-radius:6px;font-size:10px;cursor:pointer;">🗑</button>
+            </div>
+        </div>`).join('');
+}
+
+window.filtrarClientesMapa = () => {
+    const q = document.getElementById('ventas-buscador')?.value.toLowerCase().trim()||'';
+    const filtrados = q ? clientesDB.filter(cl=>
+        (cl.nombre||'').toLowerCase().includes(q)||
+        (cl.ciudad||'').toLowerCase().includes(q)||
+        (cl.estado||'').toLowerCase().includes(q)||
+        (cl.sector||'').toLowerCase().includes(q)||
+        (cl.contacto||'').toLowerCase().includes(q)
+    ) : clientesDB;
+    renderMapa(filtrados);
+    renderListaClientes(filtrados);
+};
+
+window.abrirModalCliente = (id=null) => {
+    document.getElementById('cliente-edit-id').value = id||'';
+    document.getElementById('cliente-modal-title').innerText = id ? '✏️ Editar cliente' : '➕ Nuevo cliente';
+    if(!id){
+        ['cl-nombre','cl-ciudad','cl-estado','cl-direccion','cl-lat','cl-lng',
+         'cl-contacto','cl-tel','cl-producto','cl-notas','cl-visitas'].forEach(f=>{
+            const el=document.getElementById(f); if(el) el.value='';
+        });
+        document.getElementById('cl-visitas').value='0';
+    }
+    document.getElementById('modal-cliente').style.display='flex';
+};
+
+window.editarCliente = (id) => {
+    const cl = clientesDB.find(x=>x.id===id);
+    if(!cl) return;
+    document.getElementById('cliente-edit-id').value = id;
+    document.getElementById('cliente-modal-title').innerText = '✏️ Editar cliente';
+    document.getElementById('cl-nombre').value = cl.nombre||'';
+    document.getElementById('cl-ciudad').value = cl.ciudad||'';
+    document.getElementById('cl-estado').value = cl.estado||'';
+    document.getElementById('cl-direccion').value = cl.direccion||'';
+    document.getElementById('cl-lat').value = cl.lat||'';
+    document.getElementById('cl-lng').value = cl.lng||'';
+    document.getElementById('cl-contacto').value = cl.contacto||'';
+    document.getElementById('cl-tel').value = cl.tel||'';
+    document.getElementById('cl-sector').value = cl.sector||'Hidrocarburos';
+    document.getElementById('cl-visitas').value = cl.visitas||0;
+    document.getElementById('cl-producto').value = cl.producto||'';
+    document.getElementById('cl-notas').value = cl.notas||'';
+    document.getElementById('modal-cliente').style.display='flex';
+};
+
+window.guardarCliente = async () => {
+    const nombre = document.getElementById('cl-nombre').value.trim();
+    const lat = document.getElementById('cl-lat').value;
+    const lng = document.getElementById('cl-lng').value;
+    if(!nombre){ alert('Escribe el nombre del cliente'); return; }
+    if(!lat||!lng){ alert('Las coordenadas (latitud y longitud) son necesarias para mostrarlo en el mapa'); return; }
+    const data = {
+        nombre, lat:Number(lat), lng:Number(lng),
+        ciudad:document.getElementById('cl-ciudad').value.trim(),
+        estado:document.getElementById('cl-estado').value.trim(),
+        direccion:document.getElementById('cl-direccion').value.trim(),
+        contacto:document.getElementById('cl-contacto').value.trim(),
+        tel:document.getElementById('cl-tel').value.trim(),
+        sector:document.getElementById('cl-sector').value,
+        visitas:Number(document.getElementById('cl-visitas').value)||0,
+        producto:document.getElementById('cl-producto').value.trim(),
+        notas:document.getElementById('cl-notas').value.trim(),
+        actualizadoEn:new Date().toISOString(),
+        actualizadoPor:auth.currentUser?.email||''
+    };
+    try {
+        const editId = document.getElementById('cliente-edit-id').value;
+        if(editId){ await updateDoc(doc(db,'ventas_clientes',editId), data); }
+        else { await addDoc(collection(db,'ventas_clientes'), data); }
+        document.getElementById('modal-cliente').style.display='none';
+        window.mostrarPush('📍 Cliente guardado',nombre,'📍');
+        cargarClientes();
+    } catch(e){ alert('Error: '+e.message); }
+};
+
+window.eliminarCliente = async (id) => {
+    if(!confirm('¿Eliminar este cliente del mapa?')) return;
+    try {
+        await deleteDoc(doc(db,'ventas_clientes',id));
+        window.mostrarPush('🗑 Cliente eliminado','','📍');
+        cargarClientes();
+    } catch(e){ alert('Error: '+e.message); }
+};
+
+document.getElementById('modal-cliente').addEventListener('click', e=>{
+    if(e.target===document.getElementById('modal-cliente'))
+        document.getElementById('modal-cliente').style.display='none';
 });
 </script>
 </body>
