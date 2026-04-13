@@ -478,9 +478,9 @@
         /* Tarjeta de post */
         .post-card{border-radius:8px;padding:6px 8px;margin-bottom:4px;font-size:10px;cursor:pointer;transition:0.15s;border-left:3px solid transparent;position:relative;}
         .post-card:hover{filter:brightness(0.95);}
-        .post-card.empresa-Tecnocontrol{background:#dbeafe;border-left-color:#2563eb;color:#1e40af;}
-        .post-card.empresa-Akuris{background:#dcfce7;border-left-color:#16a34a;color:#14532d;}
-        .post-card.empresa-Jomar{background:#fef9c3;border-left-color:#ca8a04;color:#78350f;}
+        .post-card.empresa-tecnocontrol{background:#dbeafe;border-left-color:#2563eb;color:#1e40af;}
+        .post-card.empresa-akuris{background:#dcfce7;border-left-color:#16a34a;color:#14532d;}
+        .post-card.empresa-noka{background:#fef9c3;border-left-color:#ca8a04;color:#78350f;}
         .post-card.empresa-otra{background:#f3e8ff;border-left-color:#7c3aed;color:#4c1d95;}
         .post-card-hora{font-weight:700;font-size:9px;opacity:0.75;}
         .post-card-copy{font-weight:600;line-height:1.3;margin-top:1px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
@@ -497,6 +497,17 @@
         .canal-chip{padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;background:#f1f5f9;color:#475569;}
         /* Modal parrilla */
         #modal-parrilla{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);z-index:3500;align-items:center;justify-content:center;}
+        /* Modal vista previa post */
+        #modal-preview-post{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);backdrop-filter:blur(10px);z-index:3600;align-items:center;justify-content:center;}
+        .preview-box{background:#ffffff;border-radius:20px;width:460px;max-height:88vh;overflow-y:auto;box-shadow:0 24px 64px rgba(0,0,0,0.25);}
+        .preview-img{width:100%;max-height:300px;object-fit:cover;border-radius:20px 20px 0 0;}
+        .preview-body{padding:20px;}
+        .preview-empresa-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;margin-bottom:12px;}
+        .preview-copy{font-size:13px;color:#1e293b;line-height:1.7;white-space:pre-wrap;margin-bottom:16px;border-left:3px solid #e2e8f0;padding-left:12px;}
+        .preview-meta{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:#64748b;margin-bottom:16px;}
+        .preview-meta span{display:flex;align-items:center;gap:4px;background:#f8faff;padding:3px 10px;border-radius:10px;}
+        .preview-notas{font-size:11px;color:#64748b;background:#fef9c3;border-radius:8px;padding:10px 12px;margin-bottom:16px;}
+        .preview-acciones{display:flex;gap:10px;}
         .parrilla-modal-box{background:#ffffff;border-radius:20px;padding:28px;width:580px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.15);}
         .parrilla-img-preview{width:100%;height:160px;object-fit:cover;border-radius:10px;margin-top:8px;display:none;}
         .parrilla-drop-zone{border:2px dashed #cbd5e1;border-radius:10px;padding:24px;text-align:center;color:#94a3b8;font-size:12px;cursor:pointer;transition:0.2s;margin-top:6px;}
@@ -1216,6 +1227,25 @@
 </div>
 
 <!-- MODAL PARRILLA DE CONTENIDO -->
+<!-- MODAL VISTA PREVIA POST -->
+<div id="modal-preview-post">
+    <div class="preview-box">
+        <img id="preview-img" class="preview-img" style="display:none;" onerror="this.style.display='none'">
+        <div id="preview-no-img" style="height:80px;background:linear-gradient(135deg,#dbeafe,#eff6ff);border-radius:20px 20px 0 0;display:flex;align-items:center;justify-content:center;font-size:32px;">🖼️</div>
+        <div class="preview-body">
+            <div id="preview-empresa-chip" class="preview-empresa-chip"></div>
+            <div class="preview-meta" id="preview-meta"></div>
+            <div class="preview-copy" id="preview-copy"></div>
+            <div class="preview-notas" id="preview-notas" style="display:none;"></div>
+            <div class="preview-acciones">
+                <button id="preview-btn-editar" class="mkt-add-btn" style="flex:1;padding:11px;">✏️ Editar post</button>
+                <button id="preview-btn-eliminar" class="mkt-add-btn" style="flex:1;padding:11px;background:linear-gradient(135deg,#ef4444,#dc2626);">🗑 Eliminar</button>
+                <button onclick="document.getElementById('modal-preview-post').style.display='none'" style="flex:1;padding:11px;background:#f1f5f9;border:none;border-radius:10px;color:#475569;font-weight:700;cursor:pointer;">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div id="modal-parrilla">
     <div class="parrilla-modal-box">
         <div style="font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;color:#1e293b;margin-bottom:20px;" id="parrilla-modal-title">📝 Nuevo post</div>
@@ -2690,13 +2720,60 @@ window.cerrarModalParrilla = () => {
     document.getElementById('modal-parrilla').style.display='none';
 };
 
-window.editarPost = async (id) => {
+// Abrir VISTA PREVIA del post (clic en tarjeta)
+window.editarPost = (id) => {
+    const p = parrillaPosts.find(x=>x.id===id);
+    if(!p) return;
+    const info = EMPRESA_INFO[p.empresa] || EMPRESA_INFO.otra;
+    const imgSrc = p.imgUrl || p.imgLink || '';
+
+    // Imagen
+    const img = document.getElementById('preview-img');
+    const noImg = document.getElementById('preview-no-img');
+    if(imgSrc){ img.src=imgSrc; img.style.display='block'; noImg.style.display='none'; }
+    else { img.style.display='none'; noImg.style.display='flex'; }
+
+    // Empresa chip
+    const chip = document.getElementById('preview-empresa-chip');
+    const colors = {tecnocontrol:'background:#dbeafe;color:#1e40af',akuris:'background:#dcfce7;color:#14532d',noka:'background:#fef9c3;color:#78350f',otra:'background:#f3e8ff;color:#4c1d95'};
+    chip.style.cssText = colors[p.empresa]||colors.otra;
+    chip.innerHTML = `${info.emoji} ${info.label}`;
+
+    // Meta
+    document.getElementById('preview-meta').innerHTML = `
+        <span>📅 ${p.fecha||'—'}</span>
+        <span>⏰ ${p.hora||'—'}</span>
+        <span>📱 ${p.canal||'—'}</span>`;
+
+    // Copy
+    document.getElementById('preview-copy').innerText = p.copy || '—';
+
+    // Notas
+    const notasEl = document.getElementById('preview-notas');
+    if(p.notas){ notasEl.innerHTML = `📝 <b>Notas:</b> ${p.notas}`; notasEl.style.display='block'; }
+    else notasEl.style.display='none';
+
+    // Botones
+    document.getElementById('preview-btn-editar').onclick = () => {
+        document.getElementById('modal-preview-post').style.display='none';
+        abrirEditorPost(id);
+    };
+    document.getElementById('preview-btn-eliminar').onclick = () => {
+        document.getElementById('modal-preview-post').style.display='none';
+        window.eliminarPost(id);
+    };
+
+    document.getElementById('modal-preview-post').style.display='flex';
+};
+
+// Abrir EDITOR del post (botón editar dentro de la vista previa)
+window.abrirEditorPost = (id) => {
     const p = parrillaPosts.find(x=>x.id===id);
     if(!p) return;
     document.getElementById('parrilla-edit-id').value = id;
     document.getElementById('parrilla-modal-title').innerText = '✏️ Editar post';
     document.getElementById('par-fecha').value = p.fecha||'';
-    document.getElementById('par-hora').value = p.hora||'';
+    document.getElementById('par-hora').value = p.hora||'09:00';
     document.getElementById('par-empresa').value = p.empresa||'tecnocontrol';
     document.getElementById('par-canal').value = p.canal||'Instagram';
     document.getElementById('par-copy').value = p.copy||'';
@@ -2784,6 +2861,10 @@ window.eliminarPost = async (id) => {
 
 document.getElementById('modal-parrilla').addEventListener('click', e=>{
     if(e.target===document.getElementById('modal-parrilla')) cerrarModalParrilla();
+});
+document.getElementById('modal-preview-post').addEventListener('click', e=>{
+    if(e.target===document.getElementById('modal-preview-post'))
+        document.getElementById('modal-preview-post').style.display='none';
 });
 
 // Delegación de eventos para tarjetas del calendario (más robusto que onclick inline)
@@ -3384,22 +3465,42 @@ let rhTabActual = 'retardo'; // tab por defecto
 let rhEditandoId = null; // id del doc que se está editando
 
 // ── Semana actual ──
-function getISOWeek(d){ 
+// ── Semana RH: Sábado → Viernes ─────────────────────────────
+// Sábado = día 6 en JS (0=Dom, 1=Lun... 6=Sáb)
+function getInicioSemanaRH(d){
+    // Encuentra el Sábado que inicia la semana
+    const dt = new Date(d||new Date()); dt.setHours(0,0,0,0);
+    const day = dt.getDay(); // 0=Dom, 6=Sáb
+    // Si hoy es Sáb(6): offset=0. Si Dom(0): offset=-1... Vie(5): offset=-6
+    const diffToSab = day === 6 ? 0 : -(day + 1);
+    dt.setDate(dt.getDate() + diffToSab);
+    return dt;
+}
+function getFinSemanaRH(inicioSab){
+    const fin = new Date(inicioSab);
+    fin.setDate(fin.getDate() + 6); // Sáb + 6 = Viernes
+    return fin;
+}
+function getSemanaKeyRH(d){
+    const inicio = getInicioSemanaRH(d||new Date());
+    const anio = inicio.getFullYear();
+    // Número de semana basado en cuántos sábados han pasado desde inicio de año
+    const inicioAnio = new Date(anio, 0, 1);
+    const primerSab = new Date(inicioAnio);
+    const dayInicio = primerSab.getDay();
+    if(dayInicio !== 6) primerSab.setDate(primerSab.getDate() + (6 - dayInicio + 7) % 7);
+    const semNum = Math.floor((inicio - primerSab) / (7*24*3600*1000)) + 1;
+    return `${anio}-RHS${String(Math.max(1,semNum)).padStart(2,'0')}`;
+}
+// Mantener compatibilidad con funciones anteriores
+function getISOWeek(d){
     const dt = new Date(d); dt.setHours(0,0,0,0);
     dt.setDate(dt.getDate()+4-(dt.getDay()||7));
     const yearStart = new Date(dt.getFullYear(),0,1);
     return Math.ceil((((dt-yearStart)/86400000)+1)/7);
 }
-function getSemanaKey(d){
-    const dt = d || new Date();
-    return `${dt.getFullYear()}-S${String(getISOWeek(dt)).padStart(2,'0')}`;
-}
-function getInicioSemana(d){
-    const dt = new Date(d||new Date()); 
-    const day = dt.getDay()||7;
-    dt.setDate(dt.getDate()-day+1); dt.setHours(0,0,0,0);
-    return dt;
-}
+function getSemanaKey(d){ return getSemanaKeyRH(d); }
+function getInicioSemana(d){ return getInicioSemanaRH(d); }
 
 let rhSemanaOffset = 0; // 0=semana actual, -1=anterior, etc.
 
@@ -3409,7 +3510,7 @@ function getRhSemanaActual(){
     return d;
 }
 
-function rhKey(){ return getSemanaKey(getRhSemanaActual()); }
+function rhKey(){ return getSemanaKeyRH(getRhSemanaActual()); }
 
 function puedeVerRH(email){ return email === RH_EMAIL || email === ADMIN; }
 
@@ -3430,11 +3531,13 @@ function actualizarLabelMesRH(){
     const el = document.getElementById('rh-mes-label');
     if(!el) return;
     const d = getRhSemanaActual();
-    const inicio = getInicioSemana(d);
-    const fin = new Date(inicio); fin.setDate(fin.getDate()+6);
+    const inicio = getInicioSemanaRH(d);
+    const fin = getFinSemanaRH(inicio);
     const fmt = dt => dt.toLocaleDateString('es-MX',{day:'numeric',month:'short'});
-    const semNum = getISOWeek(d);
-    el.innerText = `Sem ${semNum} · ${fmt(inicio)} – ${fmt(fin)}`;
+    // Calcular número de semana RH
+    const key = getSemanaKeyRH(d);
+    const semNum = key.split('RHS')[1] || '—';
+    el.innerText = `Sem ${semNum} · ${fmt(inicio)} (Sáb) – ${fmt(fin)} (Vie)`;
 }
 
 window.rhMesPrev = () => { rhSemanaOffset--; actualizarLabelMesRH(); cargarDatosRH(); };
