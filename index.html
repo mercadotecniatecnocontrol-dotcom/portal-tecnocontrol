@@ -1195,10 +1195,12 @@
                         <button class="rh-add-btn" onclick="abrirModalRH('acta')" style="font-size:10px;padding:5px 10px;">+ Nueva acta</button>
                     </div>
                     <div class="rh-vac-row header" style="grid-template-columns:1.5fr 1fr 1fr 0.7fr;">
-                        <span>Empleado</span><span>Motivo</span><span>Tipo</span><span>Fecha</span>
+                        <span>Empleado</span><span>Área</span><span>Tipo</span><span>Fecha</span>
                     </div>
-                    <div id="rh-actas-lista"><div style="text-align:center;color:#94a3b8;padding:16px;font-size:12px;">Sin actas registradas este mes</div></div>
+                    <div id="rh-actas-lista"><div style="text-align:center;color:#94a3b8;padding:16px;font-size:12px;">Sin actas registradas esta semana</div></div>
                 </div>
+                <!-- Registros dinámicos: retardos, faltas, descuentos, capacitaciones, incapacidades -->
+                <div id="rh-registros-extra"></div>
             </div>
 
             <div style="margin-bottom:16px;display:flex;gap:12px;align-items:center;">
@@ -1647,6 +1649,8 @@
             <button class="rh-tab" onclick="rhTabSwitch('rotacion',this)">🔄 Rotación</button>
             <button class="rh-tab" onclick="rhTabSwitch('vacante',this)">🎯 Vacante</button>
             <button class="rh-tab" onclick="rhTabSwitch('acta',this)">📁 Acta</button>
+            <button class="rh-tab" onclick="rhTabSwitch('capacitacion',this)">🎓 Capacitación</button>
+            <button class="rh-tab" onclick="rhTabSwitch('incapacidad',this)">🏥 Incapacidad</button>
         </div>
         <div id="rh-form-container"></div>
         <div style="display:flex;gap:10px;margin-top:20px;">
@@ -2234,7 +2238,7 @@ function escuchar(){
                         miDepto && m.toLowerCase().includes(miDepto.toLowerCase())
                     );
 
-                    if(esAdmin || esMiTarea || esMiArea || meMencionan) {
+                    if(esAdmin || puedeVerTarea(data, yo) && (esMiTarea || esMiArea || meMencionan)) {
                         const quien = ultimo.u.split('@')[0];
                         const tarea = data.actividad || 'una tarea';
                         // ── Notificación visual in-app (funciona para TODOS) ──
@@ -2291,6 +2295,30 @@ const EMAIL_AREA_MAP = {
     // 'nuevo@tecnocontrol.com.mx': 'Ventas',
 };
 
+// ── Grupos de visibilidad de tareas ─────────────────────────
+const GRUPOS_VISIBILIDAD = {
+    'Ingresos':         ['Ingresos','Egresos','Contabilidad','Administración'],
+    'Egresos':          ['Ingresos','Egresos','Contabilidad','Administración'],
+    'Contabilidad':     ['Ingresos','Egresos','Contabilidad','Administración'],
+    'Administración':   ['Ingresos','Egresos','Contabilidad','Administración','Recursos Humanos','Marketing','Ventas'],
+    'Recursos Humanos': ['Recursos Humanos','Marketing','Administración'],
+    'Marketing':        ['Recursos Humanos','Marketing','Administración'],
+    'Ventas':           ['Ventas'],
+};
+
+function puedeVerTarea(tarea, email){
+    if(!tarea || !email) return false;
+    if(esAdminTotal(email)) return true;
+    if(tarea.responsable === email || tarea.encargado === email) return true;
+    const miDepto = obtenerDeptoUsuario(email);
+    if(!miDepto) return true;
+    const misAreas = GRUPOS_VISIBILIDAD[miDepto] || [miDepto];
+    if(misAreas.includes(tarea.area)) return true;
+    return (tarea.comentarios||[]).some(cm =>
+        miDepto && (cm.m||'').toLowerCase().includes(miDepto.toLowerCase())
+    );
+}
+
 function obtenerDeptoUsuario(email) {
     if(!email) return '';
     // 1. Email exacto (insensible a mayúsculas)
@@ -2314,8 +2342,12 @@ window.obtenerDeptoUsuario = obtenerDeptoUsuario;
 // DASHBOARD
 // ══════════════════════════════════════════════════════════════
 function renderDashboard(){
-    const total=localDB.length, completadas=localDB.filter(x=>x.estatus==='Completada').length;
-    const proceso=localDB.filter(x=>x.estatus==='En Proceso').length, sinIniciar=localDB.filter(x=>x.estatus==='Sin Iniciar').length;
+    // Solo tareas que el usuario puede ver
+    const localDBVisible = esAdminTotal(auth.currentUser?.email||'')
+        ? localDB
+        : localDB.filter(r => puedeVerTarea(r, auth.currentUser?.email||''));
+    const total=localDBVisible.length, completadas=localDBVisible.filter(x=>x.estatus==='Completada').length;
+    const proceso=localDBVisible.filter(x=>x.estatus==='En Proceso').length, sinIniciar=localDBVisible.filter(x=>x.estatus==='Sin Iniciar').length;
     const perc=total>0?Math.round(completadas/total*100):0;
     document.getElementById('kpi-strip').innerHTML=`
         <div class="kpi-card blue"><div class="kpi-label">Total Actividades</div><div class="kpi-value">${total}</div><div class="kpi-sub">En todas las áreas</div><div class="kpi-icon">📋</div></div>
@@ -2457,7 +2489,8 @@ function renderColumna(titulo, items, colClass, dotColor, hoy, yo, esAdmin){
 function renderTabla(){
     const hoy=new Date(); hoy.setHours(0,0,0,0);
     const query=(document.getElementById('area-search')?.value||'').toLowerCase().trim();
-    let filt=localDB.filter(r=>r.area===areaActual);
+    // Filtrar tareas según permisos del usuario
+    let filt=localDB.filter(r=>r.area===areaActual && puedeVerTarea(r, yo));
     const total=filt.length;
     const yo=auth.currentUser.email, esAdmin=yo===ADMIN;
     const done=filt.filter(x=>x.estatus==='Completada').length;
@@ -4002,7 +4035,7 @@ async function cargarDatosRH(){
         const rhSnap = await fbRH.getDocs(fbRH.query(fbRH.collection(db,'rh_indicadores'), fbRH.where('semanaKey','==',key)));
         window._rhDeleteDoc = (id) => fbRH.deleteDoc(fbRH.doc(db,'rh_indicadores',id));
         window._rhUpdate    = (id, data) => fbRH.updateDoc(fbRH.doc(db,'rh_indicadores',id), data);
-        const semData = { retardos:[], faltas:[], descuentos:[], vacantes:[], actas:[], rotacion:[] };
+        const semData = { retardos:[], faltas:[], descuentos:[], vacantes:[], actas:[], rotacion:[], capacitacion:[], incapacidad:[] };
         rhSnap.docs.forEach(d => {
             const data = d.data();
             const tipo = data.tipo;
@@ -4112,42 +4145,55 @@ function renderRHDash(data, key){
         document.getElementById('rh-vacantes-total').innerHTML=`${ab+nu+co}<br><span style="font-size:9px;font-weight:400;color:#64748b;">total</span>`;
     }
 
-    // ── Renderizar listas ──
-    const el = id => document.getElementById(id);
+    // ── Renderizar listas en el HTML ─────────────────────────
+    // Vacantes → rh-vacantes-lista (existe en HTML)
+    const vacListEl = document.getElementById('rh-vacantes-lista');
+    if(vacListEl) vacListEl.innerHTML = vac.length
+        ? headerRH(['Puesto','Área','Apertura','Estatus']) +
+          tablaRH(vac,[{key:'puesto'},{key:'area'},{key:'fecha'},{key:'estatus'}],'vacante')
+        : '<div style="text-align:center;color:#94a3b8;padding:12px;font-size:12px;">Sin vacantes esta semana</div>';
 
-    // Retardos
-    const rEl = el('rh-vacantes-lista');
-    if(rEl){
-        rEl.previousElementSibling?.remove?.();
-        const retEl = document.createElement('div');
-        retEl.innerHTML = headerRH(['Colaborador','Área','Fecha','Hora','Min.']) +
-            tablaRH(ret,[{key:'nombre'},{key:'area'},{key:'fecha'},{key:'hora'},{key:'minutos'}],'retardo');
-        rEl.innerHTML = retEl.innerHTML;
+    // Actas → rh-actas-lista (existe en HTML)
+    const actListEl = document.getElementById('rh-actas-lista');
+    if(actListEl) actListEl.innerHTML = act.length
+        ? headerRH(['Colaborador','Área','Fecha','Tipo']) +
+          tablaRH(act,[{key:'nombre'},{key:'area'},{key:'fecha'},{key:'tipoActa'}],'acta')
+        : '<div style="text-align:center;color:#94a3b8;padding:12px;font-size:12px;">Sin actas esta semana</div>';
+
+    // Registros adicionales (retardos, faltas, descuentos, capacitaciones, incapacidades)
+    // Se inyectan en bloques dinámicos después de las gráficas
+    const rhExtraEl = document.getElementById('rh-registros-extra');
+    if(rhExtraEl){
+        const seccion = (titulo, emoji, lista, campos, tipo, color) => !lista.length ? '' : `
+            <div style="background:#ffffff;border-radius:14px;padding:16px;border:1px solid rgba(59,130,246,0.08);margin-bottom:12px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                    <span style="font-size:12px;font-weight:700;color:#1e293b;">${emoji} ${titulo} <span style="font-weight:400;color:#64748b;">(${lista.length})</span></span>
+                    <button onclick="abrirModalRH('${tipo}')" style="padding:4px 10px;background:${color};color:white;border:none;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;">+ Agregar</button>
+                </div>
+                ${headerRH(campos.map(f=>f.label))}
+                ${tablaRH(lista, campos.map(f=>({key:f.key})), tipo)}
+            </div>`;
+
+        rhExtraEl.innerHTML =
+            seccion('Retardos','⏰', ret,
+                [{label:'Colaborador',key:'nombre'},{label:'Área',key:'area'},{label:'Fecha',key:'fecha'},{label:'Hora',key:'hora'},{label:'Min.',key:'minutos'}],
+                'retardo','#2563eb') +
+            seccion('Faltas y Permisos','📅', falt,
+                [{label:'Colaborador',key:'nombre'},{label:'Área',key:'area'},{label:'Fecha',key:'fecha'},{label:'Tipo',key:'tipoFalta'},{label:'Días',key:'dias'}],
+                'falta','#f59e0b') +
+            seccion('Descuentos','💰', desc,
+                [{label:'Colaborador',key:'nombre'},{label:'Área',key:'area'},{label:'Fecha',key:'fecha'},{label:'Monto',key:'monto'}],
+                'descuento','#7c3aed') +
+            seccion('Capacitaciones','🎓', data.capacitacion||[],
+                [{label:'Capacitación',key:'nombre'},{label:'Imparte',key:'impartidor'},{label:'Fecha',key:'fecha'},{label:'Lugar',key:'lugar'}],
+                'capacitacion','#059669') +
+            seccion('Incapacidades','🏥', data.incapacidad||[],
+                [{label:'Colaborador',key:'nombre'},{label:'Área',key:'area'},{label:'Folio',key:'folio'},{label:'Días',key:'dias'}],
+                'incapacidad','#ef4444') +
+            seccion('Rotación de Personal','🔄', rot,
+                [{label:'Colaborador',key:'nombre'},{label:'Área',key:'area'},{label:'Movimiento',key:'movimiento'},{label:'Fecha',key:'fecha'}],
+                'rotacion','#64748b');
     }
-
-    // Faltas
-    const fEl = el('rh-actas-lista');
-    if(fEl){
-        // Usar mismo contenedor para faltas+actas+descuentos en secciones
-        const sectFaltas = document.getElementById('rh-faltas-lista');
-        const sectDesc   = document.getElementById('rh-descuentos-lista');
-        const sectAct    = document.getElementById('rh-actas2-lista');
-        if(sectFaltas) sectFaltas.innerHTML = headerRH(['Colaborador','Área','Fecha','Tipo']) +
-            tablaRH(falt,[{key:'nombre'},{key:'area'},{key:'fecha'},{key:'tipoFalta'}],'falta');
-        if(sectDesc) sectDesc.innerHTML = headerRH(['Colaborador','Área','Fecha','Monto']) +
-            tablaRH(desc,[{key:'nombre'},{key:'area'},{key:'fecha'},{key:'monto',prefix:'$'}],'descuento');
-        if(sectAct) sectAct.innerHTML = headerRH(['Colaborador','Área','Fecha','Tipo']) +
-            tablaRH(act,[{key:'nombre'},{key:'area'},{key:'fecha'},{key:'tipoActa'}],'acta');
-        // fallback para sección de actas original
-        fEl.innerHTML = headerRH(['Colaborador','Área','Fecha','Tipo','Descripción']) +
-            tablaRH(act,[{key:'nombre'},{key:'area'},{key:'fecha'},{key:'tipoActa'},{key:'notas'}],'acta');
-    }
-
-    // Vacantes
-    const vacEl = el('rh-vacantes-lista');
-    if(vacEl) vacEl.innerHTML = headerRH(['Puesto','Área','Fecha','Estatus']) +
-        tablaRH(vac,[{key:'puesto'},{key:'area'},{key:'fecha'},{key:'estatus'}],'vacante');
-
 }
 
 
@@ -4203,17 +4249,22 @@ const RH_FORMS = {
             <div><label class="rh-form-label">Nombre del colaborador</label>
                 <input class="rh-form-input" id="rh-f-nombre" type="text" placeholder="Nombre completo"></div>
             <div><label class="rh-form-label">Área</label>${RH_AREA_SEL()}</div>
-            <div><label class="rh-form-label">Fecha de la falta</label>
+            <div><label class="rh-form-label">Fecha</label>
                 <input class="rh-form-input" id="rh-f-fecha" type="date" value="${TODAY}"></div>
-            <div><label class="rh-form-label">Tipo de falta</label>
+            <div><label class="rh-form-label">Tipo</label>
                 <select class="rh-form-input" id="rh-f-tipoFalta">
                     <option value="injustificada">Injustificada</option>
                     <option value="justificada">Justificada</option>
-                    <option value="permiso">Permiso sin goce</option>
+                    <option value="permiso-sin-goce">Permiso sin goce</option>
+                    <option value="permiso-con-goce">Permiso con goce de sueldo</option>
                 </select></div>
+            <div><label class="rh-form-label">Días</label>
+                <input class="rh-form-input" id="rh-f-dias" type="number" min="1" value="1" placeholder="Núm. de días"></div>
+            <div><label class="rh-form-label">Fecha de regreso</label>
+                <input class="rh-form-input" id="rh-f-fecha-regreso" type="date"></div>
         </div>
         <label class="rh-form-label" style="margin-top:12px;">Motivo / observaciones</label>
-        <input class="rh-form-input" id="rh-f-notas" type="text" placeholder="Ej: Sin aviso, enfermedad con comprobante...">`,
+        <input class="rh-form-input" id="rh-f-notas" type="text" placeholder="Ej: Sin aviso, enfermedad con comprobante, permiso autorizado por...">`,
 
     descuento: () => `
         <p style="font-size:11px;color:#64748b;margin-bottom:12px;">Registra descuentos aplicados en nómina.</p>
@@ -4286,7 +4337,57 @@ const RH_FORMS = {
                 <input class="rh-form-input" id="rh-f-fecha" type="date" value="${TODAY}"></div>
         </div>
         <label class="rh-form-label" style="margin-top:12px;">Descripción del incidente</label>
-        <input class="rh-form-input" id="rh-f-notas" type="text" placeholder="Describe los hechos con detalle...">`
+        <input class="rh-form-input" id="rh-f-notas" type="text" placeholder="Describe los hechos con detalle...">`,
+
+    capacitacion: () => `
+        <p style="font-size:11px;color:#64748b;margin-bottom:12px;">Registra capacitaciones y eventos de formación del equipo.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div style="grid-column:span 2"><label class="rh-form-label">Nombre de la capacitación</label>
+                <input class="rh-form-input" id="rh-f-capNombre" type="text" placeholder="Ej: Manejo de materiales peligrosos, NOM-005..."></div>
+            <div><label class="rh-form-label">Quien imparte</label>
+                <input class="rh-form-input" id="rh-f-capImpartidor" type="text" placeholder="Nombre del instructor o empresa"></div>
+            <div><label class="rh-form-label">Fecha</label>
+                <input class="rh-form-input" id="rh-f-fecha" type="date" value="${TODAY}"></div>
+            <div><label class="rh-form-label">Lugar</label>
+                <input class="rh-form-input" id="rh-f-capLugar" type="text" placeholder="Ej: Sala de juntas, planta, en línea..."></div>
+            <div><label class="rh-form-label">Duración (horas)</label>
+                <input class="rh-form-input" id="rh-f-capDuracion" type="number" min="1" placeholder="Ej: 8"></div>
+            <div style="grid-column:span 2"><label class="rh-form-label">Asistentes (nombres separados por coma)</label>
+                <textarea class="rh-form-input" id="rh-f-capAsistentes" rows="3" placeholder="Ej: Juan Pérez, María López, Carlos García..." style="resize:vertical;"></textarea></div>
+        </div>
+        <label class="rh-form-label">Notas / observaciones</label>
+        <input class="rh-form-input" id="rh-f-notas" type="text" placeholder="Temas cubiertos, material entregado, etc.">`,
+
+    incapacidad: () => `
+        <p style="font-size:11px;color:#64748b;margin-bottom:12px;">Registra incapacidades del IMSS u otras.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div><label class="rh-form-label">Nombre del colaborador</label>
+                <input class="rh-form-input" id="rh-f-nombre" type="text" placeholder="Nombre completo"></div>
+            <div><label class="rh-form-label">Área</label>${RH_AREA_SEL()}</div>
+            <div><label class="rh-form-label">Folio de incapacidad</label>
+                <input class="rh-form-input" id="rh-f-incFolio" type="text" placeholder="Ej: 12345678"></div>
+            <div><label class="rh-form-label">Ramo de seguro</label>
+                <select class="rh-form-input" id="rh-f-incRamo">
+                    <option value="enfermedad-general">Enfermedad general</option>
+                    <option value="riesgo-trabajo">Riesgo de trabajo</option>
+                    <option value="maternidad">Maternidad</option>
+                    <option value="invalidez">Invalidez</option>
+                </select></div>
+            <div><label class="rh-form-label">Tipo de incapacidad</label>
+                <select class="rh-form-input" id="rh-f-incTipo">
+                    <option value="inicial">Inicial</option>
+                    <option value="subsecuente">Subsecuente</option>
+                    <option value="alta-medica">Alta médica</option>
+                </select></div>
+            <div><label class="rh-form-label">Fecha inicio</label>
+                <input class="rh-form-input" id="rh-f-fecha" type="date" value="${TODAY}"></div>
+            <div><label class="rh-form-label">Días de incapacidad</label>
+                <input class="rh-form-input" id="rh-f-incDias" type="number" min="1" placeholder="Ej: 7"></div>
+            <div><label class="rh-form-label">Fecha de alta / regreso</label>
+                <input class="rh-form-input" id="rh-f-fecha-regreso" type="date"></div>
+        </div>
+        <label class="rh-form-label" style="margin-top:12px;">Diagnóstico / notas</label>
+        <input class="rh-form-input" id="rh-f-notas" type="text" placeholder="Diagnóstico médico o notas adicionales...">`
 };
 
 window.abrirModalRH = (tab = 'retardo', editId = null) => {
