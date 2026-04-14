@@ -301,6 +301,13 @@
             .mob-nav-btn{position:relative;}
             /* Ajustes de layout para móvil */
             .kanban-board{grid-template-columns:1fr;gap:10px;}
+            /* Columnas kanban con color de fondo visible en móvil */
+            .kanban-col{border-radius:12px;padding:10px;}
+            .kcard{padding:10px 12px;}
+            .kcard-title{font-size:12px;}
+            .kcard-footer{padding-top:8px;}
+            .prio-pill{font-size:9px;padding:1px 6px;}
+            .origen-tag{font-size:9px;padding:1px 5px;}
             .kanban-col{min-height:unset;}
             .mkt-kpis{grid-template-columns:repeat(2,1fr);gap:8px;}
             .mkt-charts-row{grid-template-columns:1fr;gap:10px;}
@@ -310,7 +317,27 @@
             .preview-col-img{border-radius:16px 16px 0 0;min-height:180px;}
             .exec-grid{grid-template-columns:1fr;}
             .cliente-modal-box{width:96vw;padding:16px;border-radius:16px;}
-            #mapa-clientes{height:300px;}
+            #mapa-clientes{height:260px;}
+            /* Ventas móvil optimizado */
+            #sec-ventas-mapa .page-header{flex-direction:row;align-items:center;justify-content:space-between;padding:0;}
+            #sec-ventas-mapa .page-title{font-size:16px;}
+            .ventas-mob-btns{display:flex;gap:6px;}
+            .ventas-mob-btns button{padding:8px 10px !important;font-size:11px !important;border-radius:8px !important;}
+            #ventas-metricas{grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;}
+            #ventas-metricas .mapa-wrap{padding:10px 12px !important;border-radius:12px;}
+            #ventas-metricas .mapa-wrap > div:first-child{font-size:11px !important;margin-bottom:6px !important;}
+            .meta-card{margin-bottom:6px !important;padding:8px 10px !important;}
+            .meta-vendedor{font-size:11px !important;}
+            .meta-nums{font-size:10px !important;}
+            .checkin-card{padding:7px 10px !important;margin-bottom:5px !important;}
+            .checkin-card-nombre{font-size:11px !important;}
+            .checkin-card-meta{font-size:9px !important;}
+            /* Lista clientes compacta en móvil */
+            .cliente-row{grid-template-columns:1.5fr 0.8fr 0.5fr auto !important;font-size:11px !important;padding:8px 10px !important;}
+            .cliente-row.header{font-size:9px !important;}
+            .cliente-row span:nth-child(4){display:none;} /* ocultar vendedor en lista móvil */
+            /* Buscador full width en móvil */
+            #ventas-buscador{width:100% !important;}
             .mkt-form-grid{grid-template-columns:1fr;}
             .form-grid{grid-template-columns:1fr;}
             .page-header{flex-direction:column;gap:8px;align-items:flex-start;}
@@ -324,6 +351,14 @@
             .kcard-title{font-size:12px;}
             /* Inputs — evitar zoom en iOS */
             input, select, textarea{font-size:16px !important;}
+            /* Calendario 360 en móvil */
+            #cal360-tooltip{max-width:85vw;max-height:60vh;overflow-y:auto;font-size:11px;}
+            .cal360-filter{padding:5px 10px;font-size:10px;}
+            .cal360-nav{font-size:12px;}
+            /* Parrilla calendario en móvil */
+            .parrilla-grid{grid-template-columns:repeat(7,1fr);font-size:9px;}
+            .post-card{padding:3px 4px;}
+            .post-card-copy{font-size:8px;-webkit-line-clamp:1;}
             /* Modales full width */
             .parrilla-modal-box{width:96vw;padding:16px;border-radius:16px;}
             .rh-modal-box, .mkt-modal-box{width:96vw;padding:16px;}
@@ -354,7 +389,7 @@
         /* ══ MAPA DE CLIENTES — Ventas ═══════════════════════ */
         #ventas-dashboard{display:none;margin-bottom:28px;}
         .mapa-wrap{background:#ffffff;border-radius:16px;padding:18px;border:1px solid rgba(59,130,246,0.10);box-shadow:0 2px 8px rgba(37,99,235,0.05);margin-bottom:16px;}
-        #mapa-clientes{width:100%;height:520px;border-radius:12px;border:1px solid #e2e8f0;background:#f8faff;}
+        #mapa-clientes{width:100%;height:clamp(260px,45vw,520px);border-radius:12px;border:1px solid #e2e8f0;background:#f8faff;}
         .cliente-popup{min-width:220px;}
         .cliente-popup-nombre{font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:700;color:#1e293b;margin-bottom:6px;}
         .cliente-popup-dir{font-size:11px;color:#64748b;margin-bottom:8px;}
@@ -380,7 +415,7 @@
         .checkin-card-meta{color:#64748b;font-size:10px;margin-top:2px;}
         /* Modal check-in */
         #modal-checkin{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);z-index:4000;align-items:center;justify-content:center;}
-        .checkin-box{background:#ffffff;border-radius:20px;padding:24px;width:360px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.2);}
+        .checkin-box{background:#ffffff;border-radius:20px;padding:24px;width:360px;max-width:95vw;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.2);}
         /* Modal metas */
         #modal-metas{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);z-index:3500;align-items:center;justify-content:center;}
         .metas-box{background:#ffffff;border-radius:20px;padding:24px;width:480px;max-width:95vw;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.15);}
@@ -1225,15 +1260,15 @@
 
         <!-- MAPA DE CLIENTES — Ventas -->
         <div class="section" id="sec-ventas-mapa" style="display:none;">
-            <div class="page-header">
-                <div>
-                    <div class="page-title">📍 Mapa de Clientes</div>
-                    <div class="page-date" id="ventas-mapa-stats">Cargando clientes...</div>
+            <div class="page-header" style="align-items:center;">
+                <div style="min-width:0;">
+                    <div class="page-title" style="font-size:clamp(14px,4vw,20px);">📍 Mapa de Clientes</div>
+                    <div class="page-date" id="ventas-mapa-stats" style="font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Cargando...</div>
                 </div>
-                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                    <button onclick="abrirModalCheckin()" style="padding:9px 14px;background:linear-gradient(135deg,#059669,#047857);color:white;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;">📍 Check-in</button>
-                    <button onclick="abrirModalMetas()" id="btn-abrir-metas" style="padding:9px 14px;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:white;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;">🎯 Metas</button>
-                    <button onclick="abrirModalCliente()" style="padding:9px 14px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:white;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;">➕ Cliente</button>
+                <div class="ventas-mob-btns" style="display:flex;gap:6px;align-items:center;flex-shrink:0;">
+                    <button onclick="abrirModalCheckin()" style="padding:9px 14px;background:linear-gradient(135deg,#059669,#047857);color:white;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">📍 Check-in</button>
+                    <button onclick="abrirModalMetas()" id="btn-abrir-metas" style="padding:9px 14px;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:white;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">🎯 Metas</button>
+                    <button onclick="abrirModalCliente()" style="padding:9px 14px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:white;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">➕</button>
                 </div>
             </div>
             <!-- Dashboard métricas vendedores -->
@@ -1252,11 +1287,11 @@
                 <div id="mapa-clientes"></div>
             </div>
             <!-- Buscador + Lista de clientes DEBAJO del mapa -->
-            <div class="mapa-wrap" style="padding:16px 18px;">
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
+            <div class="mapa-wrap" style="padding:12px 14px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
                     <div style="font-size:13px;font-weight:700;color:#1e293b;">📋 Directorio de clientes</div>
                     <input type="text" id="ventas-buscador" placeholder="🔍 Buscar cliente, ciudad, vendedor..." 
-                        style="padding:9px 14px;border-radius:10px;border:1px solid #cbd5e1;font-size:13px;width:280px;outline:none;transition:0.2s;" 
+                        style="padding:9px 14px;border-radius:10px;border:1px solid #cbd5e1;font-size:13px;width:min(280px,100%);outline:none;transition:0.2s;flex:1;" 
                         oninput="filtrarClientesMapa()">
                 </div>
                 <div class="cliente-row header">
@@ -4988,6 +5023,9 @@ window.toggleVentasMapa = (area, email) => {
         inicializarMapa();
         cargarClientes();
         cargarCheckins();
+        // Forzar resize del mapa al mostrarse (crítico en móvil)
+        setTimeout(()=>{ if(mapaLeaflet) mapaLeaflet.invalidateSize(); }, 400);
+        window.addEventListener('resize', ()=>{ if(mapaLeaflet) mapaLeaflet.invalidateSize(); }, {once:true});
     } else {
         secMapa.style.display = 'none';
         if(secArea) secArea.style.display = 'block';
