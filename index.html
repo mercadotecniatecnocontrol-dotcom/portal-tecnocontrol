@@ -267,10 +267,16 @@
         .drawer-badge{background:#ef4444;color:white;font-size:10px;font-weight:700;min-width:18px;height:18px;border-radius:9px;display:flex;align-items:center;justify-content:center;padding:0 4px;margin-left:auto;}
 
         @media (max-width: 768px){
-            /* Ocultar sidebar de escritorio */
+            /* Ocultar sidebar de escritorio completamente */
             .sidebar{display:none !important;}
-            /* Contenido sin margen izquierdo y con padding inferior para la barra */
-            .main-content{margin-left:0 !important;padding:16px 12px 76px !important;}
+            /* Contenido ocupa toda la pantalla */
+            .main-content{
+                margin-left:0 !important;
+                padding:12px 10px 72px !important;
+                width:100vw !important;
+                box-sizing:border-box !important;
+                overflow-x:hidden !important;
+            }
             /* Barra de navegación inferior fija */
             #mobile-bottom-nav{
                 display:flex;position:fixed;bottom:0;left:0;right:0;
@@ -318,27 +324,51 @@
             .exec-grid{grid-template-columns:1fr;}
             .cliente-modal-box{width:96vw;padding:16px;border-radius:16px;}
             #mapa-clientes{height:260px;}
-            /* Ventas móvil optimizado */
-            #sec-ventas-mapa .page-header{flex-direction:row;align-items:center;justify-content:space-between;padding:0;}
-            #sec-ventas-mapa .page-title{font-size:16px;}
-            .ventas-mob-btns{display:flex;gap:6px;}
-            .ventas-mob-btns button{padding:8px 10px !important;font-size:11px !important;border-radius:8px !important;}
-            #ventas-metricas{grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;}
-            #ventas-metricas .mapa-wrap{padding:10px 12px !important;border-radius:12px;}
-            #ventas-metricas .mapa-wrap > div:first-child{font-size:11px !important;margin-bottom:6px !important;}
-            .meta-card{margin-bottom:6px !important;padding:8px 10px !important;}
-            .meta-vendedor{font-size:11px !important;}
-            .meta-nums{font-size:10px !important;}
-            .checkin-card{padding:7px 10px !important;margin-bottom:5px !important;}
-            .checkin-card-nombre{font-size:11px !important;}
-            .checkin-card-meta{font-size:9px !important;}
-            /* Lista clientes compacta en móvil */
-            .cliente-row{grid-template-columns:1.5fr 0.8fr 0.5fr auto !important;font-size:11px !important;padding:8px 10px !important;}
-            .cliente-row.header{font-size:9px !important;}
-            .cliente-row span:nth-child(4){display:none;} /* ocultar vendedor en lista móvil */
-            /* Buscador full width en móvil */
-            #ventas-buscador{width:100% !important;}
-            .mkt-form-grid{grid-template-columns:1fr;}
+            /* ═══ VENTAS MÓVIL — Optimizado ═══ */
+            #sec-ventas-mapa{padding:0 !important;}
+            #sec-ventas-mapa .page-header{
+                flex-direction:row !important;align-items:center !important;
+                padding:10px 10px 8px !important;margin-bottom:8px !important;
+                background:#fff;border-radius:12px;
+            }
+            #sec-ventas-mapa .page-title{font-size:15px !important;white-space:nowrap;}
+            #sec-ventas-mapa .page-date{font-size:10px !important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px;}
+            .ventas-mob-btns button{padding:7px 9px !important;font-size:10px !important;border-radius:8px !important;white-space:nowrap;}
+            /* Métricas en 2 columnas compactas */
+            #ventas-metricas{grid-template-columns:1fr 1fr !important;gap:6px !important;margin-bottom:8px !important;}
+            #ventas-metricas .mapa-wrap{padding:8px 10px !important;border-radius:10px !important;margin-bottom:0 !important;}
+            #ventas-metricas .mapa-wrap > div:first-child{font-size:10px !important;margin-bottom:4px !important;}
+            .meta-card{margin-bottom:4px !important;padding:6px 8px !important;}
+            .meta-vendedor{font-size:10px !important;}
+            .meta-bar-wrap{height:5px !important;}
+            .meta-nums{font-size:9px !important;}
+            .checkin-card{padding:6px 8px !important;margin-bottom:4px !important;}
+            .checkin-card-nombre{font-size:10px !important;}
+            .checkin-card-meta{font-size:8px !important;}
+            /* Mapa ocupa todo el ancho */
+            .mapa-wrap{border-radius:10px !important;padding:0 !important;margin-bottom:8px !important;}
+            #mapa-clientes{border-radius:10px !important;}
+            /* Directorio compacto */
+            .cliente-row{
+                grid-template-columns:2fr 1fr auto !important;
+                font-size:11px !important;padding:7px 8px !important;
+                gap:6px !important;
+            }
+            .cliente-row.header{font-size:9px !important;padding:5px 8px !important;}
+            .cliente-row > span:nth-child(3),.cliente-row > span:nth-child(4){display:none !important;}
+            #ventas-buscador{width:100% !important;font-size:14px !important;}
+            /* Form inputs */
+            .mkt-form-grid{grid-template-columns:1fr !important;}
+            /* Modal cliente full screen en móvil */
+            #modal-cliente .cliente-modal-box{
+                width:100vw !important;max-width:100vw !important;
+                border-radius:16px 16px 0 0 !important;
+                position:fixed !important;bottom:0 !important;
+                max-height:90vh !important;
+            }
+            #modal-checkin .checkin-box, #modal-metas .metas-box{
+                width:96vw !important;border-radius:16px !important;
+            }
             .form-grid{grid-template-columns:1fr;}
             .page-header{flex-direction:column;gap:8px;align-items:flex-start;}
             .parrilla-header{flex-direction:column;gap:8px;}
@@ -1387,7 +1417,8 @@
                         <select class="mkt-form-input" id="cl-vendedor">
                             <option value="">Sin asignar</option>
                             <option value="PALOMA PINEDO">Paloma Pinedo</option>
-                            <option value="DANIEL GALLARDO">Daniel Gallardo</option>
+                            <option value="JORGE ENRIQUEZ">Jorge Enríquez</option>
+                            <option value="MIGUEL MONTELLANO">Miguel Montellano</option>
                             <option value="GUILLERMO DURSTEWITZ">Guillermo Durstewitz</option>
                             <option value="MARTIN ROBERTO DE LA O MAESE">Martín De la O</option>
                             <option value="FATIMA SAUZAMEDA">Fátima Sauzameda</option>
@@ -1465,8 +1496,15 @@
                 <label class="form-label">Descripción de la actividad</label>
                 <input type="text" id="n-desc" placeholder="¿Qué actividad se realizará?" class="form-input">
                 <div class="form-grid">
-                    <div><label class="form-label">Área responsable</label><select id="n-area" class="form-input sel-style" onchange="actualizarEncargados()" style="margin-bottom:0;"></select></div>
-                    <div><label class="form-label">Encargado / Responsable</label><select id="n-encargado" class="form-input sel-style" style="margin-bottom:0;"></select></div>
+                    <div>
+                        <label class="form-label">Área responsable</label>
+                        <select id="n-area" class="form-input sel-style" onchange="actualizarEncargados()" style="margin-bottom:0;"></select>
+                    </div>
+                    <div>
+                        <label class="form-label">Encargado / Responsable</label>
+                        <select id="n-encargado" class="form-input sel-style" style="margin-bottom:4px;"></select>
+                        <input type="text" id="n-encargado-extra" class="form-input" placeholder="O escribe email adicional (opcional)" style="margin-bottom:0;font-size:12px;">
+                    </div>
                 </div>
                 <div class="form-grid" style="margin-top:16px;">
                     <div><label class="form-label">Fecha de inicio</label><input type="date" id="n-inicio" class="form-input" style="margin-bottom:0;"></div>
@@ -1848,10 +1886,10 @@ const auth = getAuth(app);
 
 const ADMIN = "mercadotecniatecnocontrol@gmail.com";
 const ADMIN_EMAILS = [
-    "mercadotecniatecnocontrol@gmail.com",  // Marketing (Glen) — admin principal
-    "c.acosta@tecnocontrol.com.mx",          // Administración — ve todo (email correcto)
-    // Para agregar más admins, copia una línea con el email:
-    // "otro.admin@tecnocontrol.com.mx",
+    "mercadotecniatecnocontrol@gmail.com",  // Glen — admin principal
+    "c.acosta@tecnocontrol.com.mx",          // C. Acosta — Administración
+    "p.pinedo@tecnocontrol.com.mx",          // Paloma Pinedo — Directora
+    "m.delao@tecnocontrol.com.mx",           // Martín De la O — Director
 ];
 // Función centralizada: ¿es admin o tiene permisos totales?
 function esAdminTotal(email){
@@ -1884,7 +1922,8 @@ const USUARIOS_AREA = {
     'Administración':  ['c.acosta@tecnocontrol.com.mx'],
     'Ventas':          [
         'paloma@tecnocontrol.com.mx',
-        'daniel@tecnocontrol.com.mx',
+        'jorge@tecnocontrol.com.mx',
+        'miguel@tecnocontrol.com.mx',
         'guillermo@tecnocontrol.com.mx',
         'martin@tecnocontrol.com.mx',
         'fatima@tecnocontrol.com.mx',
@@ -4059,15 +4098,18 @@ function getFinSemanaRH(inicioSab){
     return fin;
 }
 function getSemanaKeyRH(d){
-    const inicio = getInicioSemanaRH(d||new Date());
-    const anio = inicio.getFullYear();
-    // Número de semana basado en cuántos sábados han pasado desde inicio de año
-    const inicioAnio = new Date(anio, 0, 1);
-    const primerSab = new Date(inicioAnio);
-    const dayInicio = primerSab.getDay();
-    if(dayInicio !== 6) primerSab.setDate(primerSab.getDate() + (6 - dayInicio + 7) % 7);
-    const semNum = Math.floor((inicio - primerSab) / (7*24*3600*1000)) + 1;
-    return `${anio}-RHS${String(Math.max(1,semNum)).padStart(2,'0')}`;
+    // Formato: YYYY-WNN donde NN = número de semana ISO
+    // La semana RH va Sáb→Vie pero usamos el lunes de esa semana como referencia
+    const dt = new Date(d||new Date()); dt.setHours(0,0,0,0);
+    // Obtener el lunes de la semana ISO
+    const day = dt.getDay(); // 0=Dom, 6=Sáb
+    const diffToMon = (day === 0) ? -6 : 1 - day;
+    const lunes = new Date(dt);
+    lunes.setDate(dt.getDate() + diffToMon);
+    // Calcular semana ISO
+    const yearStart = new Date(lunes.getFullYear(), 0, 1);
+    const weekNum = Math.ceil(((lunes - yearStart) / 86400000 + yearStart.getDay() + 1) / 7);
+    return `${lunes.getFullYear()}-W${String(weekNum).padStart(2,'0')}`;
 }
 // Mantener compatibilidad con funciones anteriores
 function getISOWeek(d){
@@ -4111,9 +4153,8 @@ function actualizarLabelMesRH(){
     const inicio = getInicioSemanaRH(d);
     const fin = getFinSemanaRH(inicio);
     const fmt = dt => dt.toLocaleDateString('es-MX',{day:'numeric',month:'short'});
-    // Calcular número de semana RH
     const key = getSemanaKeyRH(d);
-    const semNum = key.split('RHS')[1] || '—';
+    const semNum = key.split('-W')[1] || '—';
     el.innerText = `Sem ${semNum} · ${fmt(inicio)} (Sáb) – ${fmt(fin)} (Vie)`;
 }
 
@@ -4123,23 +4164,58 @@ window.rhMesNext = () => { rhSemanaOffset++; if(rhSemanaOffset>0) rhSemanaOffset
 // Cargar datos RH del mes seleccionado desde Firestore
 async function cargarDatosRH(){
     const key = rhKey();
+    console.log('[RH] Cargando semana key:', key);
     try {
         const fbRH = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-        const rhSnap = await fbRH.getDocs(fbRH.query(fbRH.collection(db,'rh_indicadores'), fbRH.where('semanaKey','==',key)));
         window._rhDeleteDoc = (id) => fbRH.deleteDoc(fbRH.doc(db,'rh_indicadores',id));
         window._rhUpdate    = (id, data) => fbRH.updateDoc(fbRH.doc(db,'rh_indicadores',id), data);
+
+        // Buscar con semanaKey exacto
+        const q1 = fbRH.query(fbRH.collection(db,'rh_indicadores'), fbRH.where('semanaKey','==',key));
+        const snap1 = await fbRH.getDocs(q1);
+        
+        // Si no hay resultados, cargar los últimos 50 y filtrar en cliente
+        // (para compatibilidad con registros guardados con key anterior)
+        let docs = snap1.docs;
+        if(docs.length === 0){
+            console.log('[RH] Sin resultados con key exacto, cargando todos...');
+            const snapAll = await fbRH.getDocs(fbRH.collection(db,'rh_indicadores'));
+            docs = snapAll.docs;
+            console.log('[RH] Total docs en colección:', snapAll.docs.length);
+            if(snapAll.docs.length > 0){
+                console.log('[RH] Ejemplo semanaKey guardada:', snapAll.docs[0].data().semanaKey);
+            }
+        }
+
         const semData = { retardos:[], faltas:[], descuentos:[], vacantes:[], actas:[], rotacion:[], capacitacion:[], incapacidad:[] };
-        rhSnap.docs.forEach(d => {
+        docs.forEach(d => {
             const data = d.data();
-            const tipo = data.tipo;
-            if(semData[tipo]) semData[tipo].push({id:d.id,...data});
+            // Incluir si coincide con la semana actual O si es de esta semana por fecha
+            const matchKey = data.semanaKey === key;
+            const matchFecha = data.fecha && isEnSemanaActual(data.fecha);
+            if(matchKey || (docs === snap1.docs ? false : matchFecha)){
+                const tipo = data.tipo;
+                if(semData[tipo]) semData[tipo].push({id:d.id,...data});
+            }
         });
+        console.log('[RH] Registros encontrados:', Object.entries(semData).map(([k,v])=>`${k}:${v.length}`).join(', '));
         rhData[key] = semData;
         renderRHDash(semData, key);
     } catch(e) {
-        console.warn('[RH]', e.message);
-        renderRHDash({ retardos:[], faltas:[], descuentos:[], vacantes:[], actas:[], rotacion:[] }, key);
+        console.warn('[RH] Error:', e.message);
+        renderRHDash({ retardos:[], faltas:[], descuentos:[], vacantes:[], actas:[], rotacion:[], capacitacion:[], incapacidad:[] }, key);
     }
+}
+
+// Verificar si una fecha cae en la semana RH actual (Sáb-Vie)
+function isEnSemanaActual(fechaStr){
+    try {
+        const fecha = new Date(fechaStr + 'T12:00:00');
+        const inicio = getInicioSemanaRH(getRhSemanaActual());
+        const fin = getFinSemanaRH(inicio);
+        fin.setHours(23,59,59);
+        return fecha >= inicio && fecha <= fin;
+    } catch(e){ return false; }
 }
 
 // Renderizar el dashboard con los datos cargados
@@ -5016,8 +5092,8 @@ function renderCheckins(checkins){
 
 // ── METAS DE VISITAS ─────────────────────────────────────────
 let metasDB = {};
-const VENDEDORES_LIST = ['DANIEL GALLARDO','PALOMA PINEDO','GUILLERMO DURSTEWITZ','MARTIN ROBERTO DE LA O MAESE','FATIMA SAUZAMEDA'];
-const MARTIN_EMAIL = 'martin@tecnocontrol.com.mx'; // ← cambiar por email real de Martín
+const VENDEDORES_LIST = ['PALOMA PINEDO','JORGE ENRIQUEZ','MIGUEL MONTELLANO','GUILLERMO DURSTEWITZ','MARTIN ROBERTO DE LA O MAESE','FATIMA SAUZAMEDA'];
+const MARTIN_EMAIL = 'm.delao@tecnocontrol.com.mx'; // Email real de Martín
 
 async function cargarMetas(checkins){
     try {
