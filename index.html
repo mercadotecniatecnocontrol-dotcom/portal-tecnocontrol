@@ -280,6 +280,11 @@
         }
 
         @media (max-width: 768px){
+            /* Ocultar elementos de escritorio en ventas */
+            #ventas-mapa-desktop, #ventas-metricas, #sec-ventas-mapa .page-header,
+            #sec-ventas-mapa .mapa-wrap:not(#ventas-mapa-desktop){
+                display:none !important;
+            }
             /* ═══════════════════════════════════════════
                MOBILE LAYOUT — Diseño tipo app nativa
                ═══════════════════════════════════════════ */
@@ -381,8 +386,88 @@
             .rh-kpi-val{font-size:20px !important;}
             .cliente-modal-box{width:96vw;padding:16px;border-radius:16px;}
             #mapa-clientes{height:260px;}
-            /* ═══ VENTAS MÓVIL — Optimizado ═══ */
-            #sec-ventas-mapa{padding:0 !important;}
+            /* ═══ VENTAS MÓVIL — Estilo app nativa ═══ */
+            #sec-ventas-mapa{padding:0 !important;position:relative !important;}
+            /* Mapa ocupa 60% de la pantalla */
+            #ventas-mapa-mobile-wrap{
+                position:relative;width:100%;
+                height:55vh;min-height:280px;max-height:380px;
+            }
+            #mapa-clientes{
+                width:100% !important;
+                height:100% !important;
+                border-radius:0 !important;
+            }
+            /* Header flotante sobre el mapa */
+            #ventas-header-flotante{
+                position:absolute;top:12px;left:12px;right:12px;z-index:500;
+                display:flex;align-items:center;justify-content:space-between;gap:8px;
+            }
+            .ventas-pill{
+                background:rgba(255,255,255,0.95);backdrop-filter:blur(10px);
+                border-radius:50px;padding:10px 16px;
+                display:flex;align-items:center;gap:8px;
+                box-shadow:0 4px 16px rgba(0,0,0,0.15);font-size:12px;font-weight:700;
+                color:#1e3a8a;cursor:pointer;border:none;
+                -webkit-tap-highlight-color:transparent;
+            }
+            .ventas-pill-icon{font-size:16px;}
+            /* Panel deslizable inferior */
+            #ventas-panel-inferior{
+                background:#ffffff;
+                border-radius:24px 24px 0 0;
+                padding:12px 16px 80px;
+                box-shadow:0 -4px 24px rgba(0,0,0,0.12);
+                min-height:40vh;
+                overflow-y:auto;
+            }
+            .ventas-panel-handle{
+                width:40px;height:4px;background:#e2e8f0;
+                border-radius:4px;margin:0 auto 16px;
+            }
+            /* Botones de acción principales */
+            .ventas-acciones-grid{
+                display:grid;grid-template-columns:repeat(4,1fr);
+                gap:8px;margin-bottom:16px;
+            }
+            .ventas-accion-btn{
+                display:flex;flex-direction:column;align-items:center;
+                gap:6px;padding:12px 4px;background:#f8faff;
+                border-radius:14px;border:1px solid rgba(37,99,235,0.1);
+                cursor:pointer;transition:0.2s;
+                -webkit-tap-highlight-color:transparent;
+            }
+            .ventas-accion-btn:active{transform:scale(0.95);background:#eff6ff;}
+            .ventas-accion-icon{font-size:22px;line-height:1;}
+            .ventas-accion-label{font-size:10px;font-weight:700;color:#1e3a8a;text-align:center;line-height:1.2;}
+            /* Stats rápidos */
+            .ventas-stats-row{
+                display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;
+            }
+            .ventas-stat-card{
+                background:linear-gradient(135deg,#1e3a8a,#2563eb);
+                border-radius:14px;padding:14px;color:white;
+            }
+            .ventas-stat-val{font-family:'Space Grotesk',sans-serif;font-size:24px;font-weight:700;}
+            .ventas-stat-label{font-size:10px;opacity:0.8;margin-top:2px;}
+            /* Checkins recientes compactos */
+            .ventas-checkin-item{
+                display:flex;align-items:center;gap:10px;
+                padding:10px 0;border-bottom:1px solid #f1f5f9;
+            }
+            .ventas-checkin-avatar{
+                width:36px;height:36px;border-radius:50%;
+                background:linear-gradient(135deg,#2563eb,#1d4ed8);
+                color:white;font-size:14px;font-weight:700;
+                display:flex;align-items:center;justify-content:center;flex-shrink:0;
+            }
+            /* Modal checkin con buscador */
+            #modal-checkin .checkin-box{width:100vw !important;border-radius:24px 24px 0 0 !important;position:fixed !important;bottom:0 !important;left:0 !important;max-height:85vh !important;overflow-y:auto !important;}
+            #modal-checkin{align-items:flex-end !important;}
+            #checkin-search{width:100%;padding:10px 14px;border:1px solid #e2e8f0;border-radius:10px;font-size:14px;margin-bottom:8px;outline:none;}
+            .checkin-cliente-item{padding:10px 12px;border-radius:10px;cursor:pointer;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:#1e293b;border-bottom:1px solid #f1f5f9;}
+            .checkin-cliente-item:active{background:#eff6ff;}
+            #checkin-lista-scroll{max-height:220px;overflow-y:auto;}
             #sec-ventas-mapa .page-header{
                 flex-direction:row !important;align-items:center !important;
                 padding:10px 10px 8px !important;margin-bottom:8px !important;
@@ -1408,8 +1493,8 @@
                     <div id="ventas-checkins-content"><div style="color:#94a3b8;font-size:12px;text-align:center;padding:12px;">Sin check-ins registrados</div></div>
                 </div>
             </div>
-            <!-- Mapa -->
-            <div class="mapa-wrap">
+            <!-- Mapa (escritorio) -->
+            <div class="mapa-wrap" id="ventas-mapa-desktop">
                 <div id="mapa-clientes"></div>
             </div>
             <!-- Buscador + Lista de clientes DEBAJO del mapa -->
@@ -1847,26 +1932,48 @@
 
     <!-- BARRA NAV INFERIOR — solo móvil -->
     <nav id="mobile-bottom-nav" style="display:none;">
-        <button class="mob-nav-btn active" onclick="mobNav('dashboard')" id="mob-btn-dashboard">
-            <span class="mob-nav-icon">📊</span>
-            <span class="mob-nav-label">Inicio</span>
-        </button>
-        <button class="mob-nav-btn" onclick="mobNav('reportes')" id="mob-btn-reportes">
-            <span class="mob-nav-icon">📋</span>
-            <span class="mob-nav-label">Reportes</span>
-        </button>
-        <button class="mob-nav-btn" onclick="mobNav('cal360')" id="mob-btn-cal360">
-            <span class="mob-nav-icon">📅</span>
-            <span class="mob-nav-label">Calendario</span>
-        </button>
-        <button class="mob-nav-btn" onclick="mobNav('nueva')" id="mob-btn-nueva">
-            <span class="mob-nav-icon">➕</span>
-            <span class="mob-nav-label">Nueva</span>
-        </button>
-        <button class="mob-nav-btn" onclick="abrirDrawer()" id="mob-btn-areas">
-            <span class="mob-nav-icon">☰</span>
-            <span class="mob-nav-label">Áreas</span>
-        </button>
+        <!-- Nav normal (no Ventas) -->
+        <div id="mob-nav-normal" style="display:flex;width:100%;justify-content:space-around;align-items:center;">
+            <button class="mob-nav-btn active" onclick="mobNav('dashboard')" id="mob-btn-dashboard">
+                <span class="mob-nav-icon">📊</span>
+                <span class="mob-nav-label">Inicio</span>
+            </button>
+            <button class="mob-nav-btn" onclick="mobNav('cal360')" id="mob-btn-cal360">
+                <span class="mob-nav-icon">📅</span>
+                <span class="mob-nav-label">Calendario</span>
+            </button>
+            <button class="mob-nav-btn" onclick="mobNav('nueva')" id="mob-btn-nueva">
+                <span class="mob-nav-icon">➕</span>
+                <span class="mob-nav-label">Nueva</span>
+            </button>
+            <button class="mob-nav-btn" onclick="abrirDrawer()" id="mob-btn-areas">
+                <span class="mob-nav-icon">☰</span>
+                <span class="mob-nav-label">Áreas</span>
+            </button>
+        </div>
+        <!-- Nav Ventas — mapa + acciones rápidas -->
+        <div id="mob-nav-ventas" style="display:none;width:100%;justify-content:space-around;align-items:center;">
+            <button class="mob-nav-btn active" onclick="verArea('Ventas')" id="mob-btn-ventas-mapa">
+                <span class="mob-nav-icon">🗺️</span>
+                <span class="mob-nav-label">Mapa</span>
+            </button>
+            <button class="mob-nav-btn" onclick="abrirModalCheckin()">
+                <span class="mob-nav-icon">📍</span>
+                <span class="mob-nav-label">Check-in</span>
+            </button>
+            <button class="mob-nav-btn" onclick="abrirModalCliente()">
+                <span class="mob-nav-icon">➕</span>
+                <span class="mob-nav-label">Cliente</span>
+            </button>
+            <button class="mob-nav-btn" onclick="mobNav('nueva')">
+                <span class="mob-nav-icon">✅</span>
+                <span class="mob-nav-label">Actividad</span>
+            </button>
+            <button class="mob-nav-btn" onclick="abrirDrawer()">
+                <span class="mob-nav-icon">☰</span>
+                <span class="mob-nav-label">Menú</span>
+            </button>
+        </div>
     </nav>
 
     <!-- DRAWER LATERAL — Áreas, solo móvil -->
@@ -3189,9 +3296,13 @@ function renderDrawerAreas(localDB, yo){
 }
 
 // Mostrar/ocultar barra móvil según si está logueado
-function mostrarNavMobile(show){
+function mostrarNavMobile(show, esVentas=false){
     const nav = document.getElementById('mobile-bottom-nav');
     if(nav) nav.style.display = show&&isMobile() ? 'flex' : 'none';
+    const navNormal = document.getElementById('mob-nav-normal');
+    const navVentas = document.getElementById('mob-nav-ventas');
+    if(navNormal) navNormal.style.display = esVentas ? 'none' : 'flex';
+    if(navVentas) navVentas.style.display = esVentas ? 'flex' : 'none';
     const drawer = document.getElementById('mobile-drawer');
     if(drawer&&!show) drawer.style.display='none';
 }
@@ -4673,13 +4784,18 @@ window.rhTabSwitch = (tab, btn) => {
 
 const rhGet = id => {
     if(id === 'rh-f-area'){
-        // Si está mostrando el campo libre, tomar ese valor
-        const input = document.getElementById('rh-f-area');
-        const sel   = document.getElementById('rh-f-area-sel');
-        if(input && input.style.display !== 'none' && input.value.trim()) return input.value.trim();
-        if(sel && sel.value !== '__otra__') return sel.value;
-        if(input) return input.value.trim();
-        return '';
+        // Primero intentar el SELECT principal (rh-f-area-sel)
+        const sel = document.getElementById('rh-f-area-sel');
+        if(sel){
+            if(sel.value && sel.value !== '__otra__') return sel.value;
+            // Si es "otra", tomar el input de texto libre
+            const inputLibre = document.getElementById('rh-f-area');
+            if(inputLibre && inputLibre.value.trim()) return inputLibre.value.trim();
+            return sel.options[0]?.value || 'General';
+        }
+        // Fallback: input directo
+        const el = document.getElementById('rh-f-area');
+        return el ? el.value.trim() : 'General';
     }
     const el = document.getElementById(id);
     return el ? el.value.trim() : '';
@@ -4781,21 +4897,28 @@ window.guardarDatoRH = async () => {
             console.warn('[RH] Tipo no reconocido:', rhTabActual);
     }
 
-    console.log('[RH] Guardando tipo:', rhTabActual, '| key:', key, '| data:', docData);
+    // Asegurar que docData tenga al menos los campos base
+    if(!docData.tipo) docData.tipo = rhTabActual;
+    if(!docData.semanaKey) docData.semanaKey = key;
+    // Limpiar campos undefined/vacíos
+    Object.keys(docData).forEach(k => { if(docData[k] === undefined) delete docData[k]; });
+    
+    console.log('[RH] Guardando:', JSON.stringify(docData));
 
     try {
         if(rhEditandoId){
             await updateDoc(doc(db,'rh_indicadores', rhEditandoId), docData);
             rhEditandoId = null;
         } else {
-            await addDoc(collection(db,'rh_indicadores'), docData);
+            const ref = await addDoc(collection(db,'rh_indicadores'), docData);
+            console.log('[RH] Guardado con ID:', ref.id);
         }
         document.getElementById('modal-rh').style.display = 'none';
-        window.mostrarPush('✅ RH guardado', `${rhTabActual} registrado`, '👥');
+        window.mostrarPush('✅ Guardado', `${rhTabActual} registrado`, '👥');
         cargarDatosRH();
     } catch(e) {
-        console.error('[RH guardar error]', e);
-        alert('Error al guardar: ' + e.message);
+        console.error('[RH error]', e.code, e.message);
+        alert('Error: ' + e.message + '\n\nRevisa la consola F12 para más detalles.');
     } finally {
         if(btn){ btn.textContent = 'GUARDAR'; btn.disabled = false; }
     }
@@ -5115,26 +5238,88 @@ window.renderMapa = (lista) => {
 let checkinLat = null, checkinLng = null;
 
 window.abrirModalCheckin = (clienteId=null) => {
-    // Poblar select de clientes
-    const sel = document.getElementById('checkin-cliente');
-    sel.innerHTML = '<option value="">Selecciona el cliente...</option>' +
-        [...clientesDB].sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''))
-        .map(cl=>`<option value="${cl.id}">${cl.nombre}</option>`).join('');
-    if(clienteId) sel.value = clienteId;
     document.getElementById('checkin-notas').value = '';
     document.getElementById('checkin-gps-info').style.display = 'none';
     checkinLat = null; checkinLng = null;
-    // Obtener GPS automáticamente
+
+    // Reemplazar select con buscador + lista
+    const sel = document.getElementById('checkin-cliente');
+    if(sel) sel.style.display = 'none';
+
+    // Crear buscador dinámico si no existe
+    let searchWrap = document.getElementById('checkin-search-wrap');
+    if(!searchWrap){
+        searchWrap = document.createElement('div');
+        searchWrap.id = 'checkin-search-wrap';
+        searchWrap.innerHTML = `
+            <input type="text" id="checkin-search" placeholder="🔍 Buscar cliente..." oninput="filtrarCheckinClientes(this.value)">
+            <div id="checkin-lista-scroll">
+                <div style="text-align:center;color:#94a3b8;padding:12px;font-size:12px;">Escribe para buscar...</div>
+            </div>
+            <div id="checkin-cliente-sel" style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px;margin-top:8px;display:none;font-size:12px;font-weight:700;color:#1e40af;"></div>
+        `;
+        if(sel) sel.parentNode.insertBefore(searchWrap, sel);
+    }
+    document.getElementById('checkin-search').value = '';
+    document.getElementById('checkin-lista-scroll').innerHTML = '<div style="text-align:center;color:#94a3b8;padding:12px;font-size:12px;">Escribe para buscar...</div>';
+    document.getElementById('checkin-cliente-sel').style.display = 'none';
+    if(sel) sel.value = '';
+
+    // Si viene con cliente preseleccionado
+    if(clienteId){
+        const cl = clientesDB.find(x=>x.id===clienteId);
+        if(cl){
+            if(sel) sel.value = clienteId;
+            const selDiv = document.getElementById('checkin-cliente-sel');
+            if(selDiv){ selDiv.innerHTML = `✅ ${cl.nombre}`; selDiv.style.display='block'; }
+        }
+    }
+
+    // GPS automático
     if(navigator.geolocation){
         navigator.geolocation.getCurrentPosition(pos => {
             checkinLat = pos.coords.latitude;
             checkinLng = pos.coords.longitude;
             const info = document.getElementById('checkin-gps-info');
-            info.style.display = 'block';
-            info.innerHTML = `📍 Ubicación: ${checkinLat.toFixed(4)}, ${checkinLng.toFixed(4)} · Precisión: ${Math.round(pos.coords.accuracy)}m`;
+            if(info){ info.style.display='block'; info.innerHTML=`📍 ${checkinLat.toFixed(4)}, ${checkinLng.toFixed(4)} · ±${Math.round(pos.coords.accuracy)}m`; }
         }, ()=>{}, {enableHighAccuracy:true, timeout:10000});
     }
     document.getElementById('modal-checkin').style.display = 'flex';
+    setTimeout(()=>document.getElementById('checkin-search')?.focus(), 300);
+};
+
+window.filtrarCheckinClientes = (q) => {
+    const lista = document.getElementById('checkin-lista-scroll');
+    if(!lista) return;
+    const filtrados = q.trim().length < 1 ? [] :
+        clientesDB.filter(cl =>
+            (cl.nombre||'').toLowerCase().includes(q.toLowerCase()) ||
+            (cl.ciudad||'').toLowerCase().includes(q.toLowerCase()) ||
+            (cl.cve||'').includes(q)
+        ).slice(0, 15);
+
+    if(!q.trim()){ lista.innerHTML='<div style="text-align:center;color:#94a3b8;padding:12px;font-size:12px;">Escribe para buscar...</div>'; return; }
+    if(!filtrados.length){ lista.innerHTML='<div style="text-align:center;color:#94a3b8;padding:12px;font-size:12px;">Sin resultados</div>'; return; }
+
+    lista.innerHTML = filtrados.map(cl=>`
+        <div class="checkin-cliente-item" onclick="seleccionarCheckinCliente('${cl.id}','${cl.nombre.replace(/'/g,"\'")}')">
+            <span style="font-size:16px;">📍</span>
+            <div>
+                <div style="font-weight:700;font-size:12px;">${cl.nombre}</div>
+                <div style="font-size:10px;color:#64748b;">${cl.ciudad||''} ${cl.estado?'· '+cl.estado:''}</div>
+            </div>
+        </div>`).join('');
+};
+
+window.seleccionarCheckinCliente = (id, nombre) => {
+    const sel = document.getElementById('checkin-cliente');
+    if(sel) sel.value = id;
+    const selDiv = document.getElementById('checkin-cliente-sel');
+    if(selDiv){ selDiv.innerHTML=`✅ ${nombre}`; selDiv.style.display='block'; }
+    const search = document.getElementById('checkin-search');
+    if(search) search.value = nombre;
+    const lista = document.getElementById('checkin-lista-scroll');
+    if(lista) lista.innerHTML = '';
 };
 
 window.abrirCheckinCliente = (id) => {
@@ -5194,6 +5379,28 @@ function renderCheckins(checkins){
             <div class="checkin-card-meta">👤 ${nombreUsuario(ch.vendedor)} · ${ch.fecha||''} ${ch.hora||''}</div>
             ${ch.notas?`<div style="font-size:11px;color:#475569;margin-top:3px;">${ch.notas.slice(0,60)}${ch.notas.length>60?'…':''}</div>`:''}
         </div>`).join('');
+    // También actualizar el panel móvil si existe
+    const mobEl = document.getElementById('ventas-mob-checkins');
+    if(mobEl){
+        if(!checkins.length){ mobEl.innerHTML='<div style="color:#94a3b8;font-size:12px;text-align:center;padding:12px;">Sin visitas aún</div>'; return; }
+        mobEl.innerHTML = checkins.slice(0,5).map(ch=>`
+            <div class="ventas-checkin-item">
+                <div class="ventas-checkin-avatar">${(ch.clienteNombre||'?')[0]}</div>
+                <div style="flex:1;min-width:0;">
+                    <div style="font-weight:700;font-size:12px;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${ch.clienteNombre||'—'}</div>
+                    <div style="font-size:10px;color:#64748b;">${nombreUsuario(ch.vendedor)} · ${ch.fecha||''}</div>
+                    ${ch.notas?`<div style="font-size:10px;color:#94a3b8;margin-top:1px;">${ch.notas.slice(0,40)}${ch.notas.length>40?'…':''}</div>`:''}
+                </div>
+                <div style="font-size:18px;opacity:0.4;">›</div>
+            </div>`).join('');
+    }
+    // Stats
+    const totalEl = document.getElementById('vmob-total-clientes');
+    const visitasEl = document.getElementById('vmob-total-visitas');
+    const statsLabel = document.getElementById('ventas-mob-stats-label');
+    if(totalEl) totalEl.innerText = clientesDB.length;
+    if(visitasEl) visitasEl.innerText = checkins.length;
+    if(statsLabel) statsLabel.innerText = `${clientesDB.filter(cl=>cl.lat&&cl.lng).length} en mapa · ${checkins.length} visitas`;
 }
 
 // ── METAS DE VISITAS ─────────────────────────────────────────
@@ -5286,18 +5493,97 @@ window.toggleVentasMapa = (area, email) => {
     const secArea = document.getElementById('sec-area');
     if(!secMapa) return;
     if(area === 'Ventas'){
+        const btnMetas = document.getElementById('btn-abrir-metas');
+        if(btnMetas) btnMetas.style.display = (esAdminTotal(email)||email===MARTIN_EMAIL) ? 'block' : 'none';
         secMapa.style.display = 'block';
-        if(secArea) secArea.style.display = 'block';
         inicializarMapa();
         cargarClientes();
         cargarCheckins();
-        // Forzar resize del mapa al mostrarse (crítico en móvil)
+        if(isMobile()){
+            if(secArea) secArea.style.display = 'none';
+            renderVentasMobile(email);
+            mostrarNavMobile(true, true); // nav modo Ventas
+        } else {
+            if(secArea) secArea.style.display = 'block';
+        }
         setTimeout(()=>{ if(mapaLeaflet) mapaLeaflet.invalidateSize(); }, 400);
-        window.addEventListener('resize', ()=>{ if(mapaLeaflet) mapaLeaflet.invalidateSize(); }, {once:true});
     } else {
         secMapa.style.display = 'none';
         if(secArea) secArea.style.display = 'block';
+        const mobView = document.getElementById('ventas-mobile-view');
+        if(mobView) mobView.remove();
+        mostrarNavMobile(true, false); // restaurar nav normal
     }
+};
+
+function renderVentasMobile(email){
+    let existing = document.getElementById('ventas-mobile-view');
+    if(existing) existing.remove();
+    const secMapa = document.getElementById('sec-ventas-mapa');
+    const esAdmin2 = esAdminTotal(email);
+    const div = document.createElement('div');
+    div.id = 'ventas-mobile-view';
+    div.innerHTML = `
+        <div id="ventas-mapa-mobile-wrap">
+            <div id="ventas-header-flotante">
+                <div class="ventas-pill">
+                    <span class="ventas-pill-icon">📍</span>
+                    <span id="ventas-mob-stats-label">Cargando...</span>
+                </div>
+                <button class="ventas-pill" onclick="abrirModalCliente()" style="padding:10px 12px;">➕</button>
+            </div>
+        </div>
+        <div id="ventas-panel-inferior">
+            <div class="ventas-panel-handle"></div>
+            <div class="ventas-acciones-grid">
+                <div class="ventas-accion-btn" onclick="abrirModalCheckin()">
+                    <span class="ventas-accion-icon">📍</span>
+                    <span class="ventas-accion-label">Check-in</span>
+                </div>
+                <div class="ventas-accion-btn" onclick="abrirModalCliente()">
+                    <span class="ventas-accion-icon">👤</span>
+                    <span class="ventas-accion-label">Nuevo cliente</span>
+                </div>
+                ${esAdmin2 ? `<div class="ventas-accion-btn" onclick="abrirModalMetas()">
+                    <span class="ventas-accion-icon">🎯</span>
+                    <span class="ventas-accion-label">Metas</span>
+                </div>` : `<div class="ventas-accion-btn" onclick="mostrarDirectorioMob()">
+                    <span class="ventas-accion-icon">📋</span>
+                    <span class="ventas-accion-label">Directorio</span>
+                </div>`}
+                <div class="ventas-accion-btn" onclick="mostrarDirectorioMob()">
+                    <span class="ventas-accion-icon">📋</span>
+                    <span class="ventas-accion-label">Directorio</span>
+                </div>
+            </div>
+            <div class="ventas-stats-row">
+                <div class="ventas-stat-card">
+                    <div class="ventas-stat-val" id="vmob-total-clientes">—</div>
+                    <div class="ventas-stat-label">Clientes</div>
+                </div>
+                <div class="ventas-stat-card" style="background:linear-gradient(135deg,#059669,#047857);">
+                    <div class="ventas-stat-val" id="vmob-total-visitas">—</div>
+                    <div class="ventas-stat-label">Visitas totales</div>
+                </div>
+            </div>
+            <div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:10px;">📊 Visitas recientes</div>
+            <div id="ventas-mob-checkins">
+                <div style="text-align:center;color:#94a3b8;padding:16px;font-size:12px;">Sin visitas aún</div>
+            </div>
+        </div>`;
+    secMapa.insertBefore(div, secMapa.firstChild);
+    // Mover el mapa al nuevo contenedor
+    const mapaEl = document.getElementById('mapa-clientes');
+    const mapaWrap = document.getElementById('ventas-mapa-mobile-wrap');
+    if(mapaEl && mapaWrap && !mapaWrap.contains(mapaEl)){
+        mapaWrap.insertBefore(mapaEl, mapaWrap.firstChild);
+    }
+    setTimeout(()=>{ if(mapaLeaflet) mapaLeaflet.invalidateSize(); }, 300);
+}
+
+window.mostrarDirectorioMob = () => {
+    const buscEl = document.getElementById('ventas-buscador');
+    if(buscEl){ buscEl.focus(); buscEl.scrollIntoView({behavior:'smooth'}); }
 };
 </script>
 </body>
