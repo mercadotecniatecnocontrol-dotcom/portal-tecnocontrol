@@ -2238,7 +2238,7 @@ function escuchar(){
                         miDepto && m.toLowerCase().includes(miDepto.toLowerCase())
                     );
 
-                    if(esAdmin || puedeVerTarea(data, yo) && (esMiTarea || esMiArea || meMencionan)) {
+                    if(esAdmin || esMiTarea || esMiArea || meMencionan) {
                         const quien = ultimo.u.split('@')[0];
                         const tarea = data.actividad || 'una tarea';
                         // ── Notificación visual in-app (funciona para TODOS) ──
@@ -2307,16 +2307,19 @@ const GRUPOS_VISIBILIDAD = {
 };
 
 function puedeVerTarea(tarea, email){
-    if(!tarea || !email) return false;
-    if(esAdminTotal(email)) return true;
-    if(tarea.responsable === email || tarea.encargado === email) return true;
-    const miDepto = obtenerDeptoUsuario(email);
-    if(!miDepto) return true;
-    const misAreas = GRUPOS_VISIBILIDAD[miDepto] || [miDepto];
-    if(misAreas.includes(tarea.area)) return true;
-    return (tarea.comentarios||[]).some(cm =>
-        miDepto && (cm.m||'').toLowerCase().includes(miDepto.toLowerCase())
-    );
+    try {
+        if(!tarea || !email) return true; // por defecto mostrar
+        if(esAdminTotal(email)) return true;
+        if(tarea.responsable === email || tarea.encargado === email) return true;
+        const miDepto = typeof obtenerDeptoUsuario === 'function' ? obtenerDeptoUsuario(email) : '';
+        if(!miDepto) return true; // sin depto = ve todo
+        const grupos = typeof GRUPOS_VISIBILIDAD !== 'undefined' ? GRUPOS_VISIBILIDAD : {};
+        const misAreas = grupos[miDepto] || [miDepto];
+        if(misAreas.includes(tarea.area)) return true;
+        return (tarea.comentarios||[]).some(cm =>
+            miDepto && (cm.m||'').toLowerCase().includes(miDepto.toLowerCase())
+        );
+    } catch(e){ return true; } // en caso de error, mostrar la tarea
 }
 
 function obtenerDeptoUsuario(email) {
@@ -2342,10 +2345,15 @@ window.obtenerDeptoUsuario = obtenerDeptoUsuario;
 // DASHBOARD
 // ══════════════════════════════════════════════════════════════
 function renderDashboard(){
-    // Solo tareas que el usuario puede ver
-    const localDBVisible = esAdminTotal(auth.currentUser?.email||'')
-        ? localDB
-        : localDB.filter(r => puedeVerTarea(r, auth.currentUser?.email||''));
+    // Tareas visibles — admin ve todo, usuarios ven su grupo
+    const _yo = auth.currentUser?.email||'';
+    const _miDepto = typeof obtenerDeptoUsuario === 'function' ? obtenerDeptoUsuario(_yo) : '';
+    const _misAreas = (typeof GRUPOS_VISIBILIDAD !== 'undefined' && _miDepto && !esAdminTotal(_yo))
+        ? (GRUPOS_VISIBILIDAD[_miDepto] || [_miDepto])
+        : null; // null = ver todo
+    const localDBVisible = _misAreas
+        ? localDB.filter(r => _misAreas.includes(r.area) || r.responsable===_yo || r.encargado===_yo)
+        : localDB;
     const total=localDBVisible.length, completadas=localDBVisible.filter(x=>x.estatus==='Completada').length;
     const proceso=localDBVisible.filter(x=>x.estatus==='En Proceso').length, sinIniciar=localDBVisible.filter(x=>x.estatus==='Sin Iniciar').length;
     const perc=total>0?Math.round(completadas/total*100):0;
@@ -2490,7 +2498,8 @@ function renderTabla(){
     const hoy=new Date(); hoy.setHours(0,0,0,0);
     const query=(document.getElementById('area-search')?.value||'').toLowerCase().trim();
     // Filtrar tareas según permisos del usuario
-    let filt=localDB.filter(r=>r.area===areaActual && puedeVerTarea(r, yo));
+    // Filtrar por área — permisos de visibilidad aplicados al navegar entre áreas
+    let filt=localDB.filter(r=>r.area===areaActual);
     const total=filt.length;
     const yo=auth.currentUser.email, esAdmin=yo===ADMIN;
     const done=filt.filter(x=>x.estatus==='Completada').length;
