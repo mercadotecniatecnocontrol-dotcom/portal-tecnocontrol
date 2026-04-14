@@ -665,7 +665,7 @@
         .post-card:hover{filter:brightness(0.95);}
         .post-card.empresa-tecnocontrol{background:#dbeafe;border-left-color:#2563eb;color:#1e40af;}
         .post-card.empresa-akuris{background:#dcfce7;border-left-color:#16a34a;color:#14532d;}
-        .post-card.empresa-noka{background:#fef9c3;border-left-color:#ca8a04;color:#78350f;}
+        .post-card.empresa-jomar{background:#fef9c3;border-left-color:#ca8a04;color:#78350f;}
         .post-card.empresa-otra{background:#f3e8ff;border-left-color:#7c3aed;color:#4c1d95;}
         .post-card-hora{font-weight:700;font-size:9px;opacity:0.75;}
         .post-card-copy{font-weight:600;line-height:1.3;margin-top:1px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
@@ -1114,7 +1114,7 @@
                                 <button class="parrilla-filtro active" data-empresa="todos" onclick="filtrarParrilla('todos',this)">Todos</button>
                                 <button class="parrilla-filtro" data-empresa="tecnocontrol" onclick="filtrarParrilla('tecnocontrol',this)">🔵 Tecnocontrol</button>
                                 <button class="parrilla-filtro" data-empresa="akuris" onclick="filtrarParrilla('akuris',this)">🟢 Akuris</button>
-                                <button class="parrilla-filtro" data-empresa="noka" onclick="filtrarParrilla('noka',this)">🟡 Noka</button>
+                                <button class="parrilla-filtro" data-empresa="jomar" onclick="filtrarParrilla('jomar',this)">🟡 Jomar</button>
                                 <button class="parrilla-filtro" data-empresa="otra" onclick="filtrarParrilla('otra',this)">🟣 Otra</button>
                             </div>
                             <!-- Nav mes -->
@@ -1183,6 +1183,18 @@
                         <div class="rh-kpi-val" id="rh-val-vacantes">—</div>
                         <div class="rh-kpi-label">Vacantes</div>
                         <div class="rh-kpi-delta" id="rh-delta-vacantes"></div>
+                    </div>
+                    <div class="rh-kpi" style="border-top:3px solid #059669;" onclick="abrirModalRH('capacitacion')">
+                        <div class="rh-kpi-icon">🎓</div>
+                        <div class="rh-kpi-val" id="rh-val-capacitacion">—</div>
+                        <div class="rh-kpi-label">Capacitaciones</div>
+                        <div class="rh-kpi-delta" id="rh-delta-capacitacion"></div>
+                    </div>
+                    <div class="rh-kpi" style="border-top:3px solid #ef4444;" onclick="abrirModalRH('incapacidad')">
+                        <div class="rh-kpi-icon">🏥</div>
+                        <div class="rh-kpi-val" id="rh-val-incapacidad">—</div>
+                        <div class="rh-kpi-label">Incapacidades</div>
+                        <div class="rh-kpi-delta" id="rh-delta-incapacidad"></div>
                     </div>
                 </div>
 
@@ -1366,9 +1378,22 @@
                         <label class="mkt-form-label">Visitas realizadas</label>
                         <input class="mkt-form-input" id="cl-visitas" type="number" min="0" placeholder="0">
                     </div>
-                    <div style="grid-column:span 2">
+                    <div>
                         <label class="mkt-form-label">Producto / servicio más vendido</label>
                         <input class="mkt-form-input" id="cl-producto" type="text" placeholder="Ej: Medidores de flujo, calibración...">
+                    </div>
+                    <div>
+                        <label class="mkt-form-label">Vendedor asignado</label>
+                        <select class="mkt-form-input" id="cl-vendedor">
+                            <option value="">Sin asignar</option>
+                            <option value="PALOMA PINEDO">Paloma Pinedo</option>
+                            <option value="DANIEL GALLARDO">Daniel Gallardo</option>
+                            <option value="GUILLERMO DURSTEWITZ">Guillermo Durstewitz</option>
+                            <option value="MARTIN ROBERTO DE LA O MAESE">Martín De la O</option>
+                            <option value="FATIMA SAUZAMEDA">Fátima Sauzameda</option>
+                            <option value="MONTERREY">Monterrey</option>
+                            <option value="SERVICIO">Servicio</option>
+                        </select>
                     </div>
                     <div style="grid-column:span 2">
                         <label class="mkt-form-label">Notas / observaciones</label>
@@ -1637,7 +1662,7 @@
                 <select class="mkt-form-input" id="par-empresa">
                     <option value="tecnocontrol">🔵 Tecnocontrol</option>
                     <option value="akuris">🟢 Akuris</option>
-                    <option value="noka">🟡 Noka</option>
+                    <option value="jomar">🟡 Jomar</option>
                     <option value="otra">🟣 Otra</option>
                 </select>
             </div>
@@ -1857,8 +1882,14 @@ const USUARIOS_AREA = {
     'Recursos Humanos':['rh@tecnocontrol.com.mx'],
     'Marketing':       ['mercadotecniatecnocontrol@gmail.com'],
     'Administración':  ['c.acosta@tecnocontrol.com.mx'],
-    'Ventas':          [],
-    // Agrega más usuarios: 'Área': ['email1', 'email2'],
+    'Ventas':          [
+        'paloma@tecnocontrol.com.mx',
+        'daniel@tecnocontrol.com.mx',
+        'guillermo@tecnocontrol.com.mx',
+        'martin@tecnocontrol.com.mx',
+        'fatima@tecnocontrol.com.mx',
+        // ← Reemplaza con los emails reales de cada vendedor
+    ],
 };
 const DEPTOS = ["Ingresos","Egresos","Contabilidad","Recursos Humanos","Marketing","Administración","Ventas"];
 const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
@@ -2073,15 +2104,28 @@ const MENTION_MAP = {
     'ventas':        {icon:'🤝', label:'Ventas'},
 };
 // Orden fijo para mostrar en dropdown
-const MENTION_LIST = [
-    {key:'ingresos',      icon:'💰', label:'Ingresos',         hint:'Área de Ingresos'},
-    {key:'egresos',       icon:'📤', label:'Egresos',          hint:'Área de Egresos'},
-    {key:'contabilidad',  icon:'🧾', label:'Contabilidad',     hint:'Área de Contabilidad'},
-    {key:'rh',            icon:'👥', label:'Recursos Humanos', hint:'RH / Nómina'},
-    {key:'marketing',     icon:'📣', label:'Marketing',        hint:'Marketing / Comunicación'},
-    {key:'administracion',icon:'⚙️', label:'Administración',   hint:'Administración General'},
-    {key:'ventas',        icon:'🤝', label:'Ventas',           hint:'Equipo Comercial'},
-];
+// Función dinámica: genera la lista de menciones con áreas + usuarios individuales
+function buildMentionList(){
+    const base = [
+        {key:'ingresos',      icon:'💰', label:'Ingresos',         hint:'Área de Ingresos'},
+        {key:'egresos',       icon:'📤', label:'Egresos',          hint:'Área de Egresos'},
+        {key:'contabilidad',  icon:'🧾', label:'Contabilidad',     hint:'Área de Contabilidad'},
+        {key:'rh',            icon:'👥', label:'RH',               hint:'Recursos Humanos / Nómina'},
+        {key:'marketing',     icon:'📣', label:'Marketing',        hint:'Marketing / Comunicación'},
+        {key:'administracion',icon:'⚙️', label:'Administración',   hint:'Administración General'},
+        {key:'ventas',        icon:'🤝', label:'Ventas',           hint:'Equipo Comercial'},
+    ];
+    // Agregar usuarios individuales del NOMBRE_MAP
+    const individuales = Object.entries(NOMBRE_MAP).map(([email, nombre]) => ({
+        key: nombre.toLowerCase().replace(/[^a-z0-9]/g,''),
+        icon: '👤',
+        label: nombre,
+        hint: email,
+        email: email
+    }));
+    return [...base, ...individuales];
+}
+const MENTION_LIST = buildMentionList();
 
 let dropdownVisible = false;
 let dropdownFiltro = '';
@@ -2857,10 +2901,15 @@ window.exportarReportePDF = () => {
 function renderNotificaciones(){ DEPTOS.forEach(d=>{ const c=localDB.filter(r=>r.area===d&&r.estatus!=='Completada').length; const b=document.getElementById(`badge-${d}`); if(b){b.innerText=c;b.style.display=c>0?'inline-block':'none';} }); }
 window.navegar=(id,b)=>{
     document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
-    document.getElementById('sec-'+id).classList.add('active');
+    document.getElementById('sec-'+id)?.classList.add('active');
     if(b){document.querySelectorAll('.sitem').forEach(i=>i.classList.remove('active'));b.classList.add('active');}
     if(id==='cal360') renderCal360();
     if(id==='ejecutivo') renderEjecutivo();
+    // Ocultar sección de Ventas mapa si no estamos en un área (bug del fantasma)
+    if(id!=='area'){
+        const secMapa = document.getElementById('sec-ventas-mapa');
+        if(secMapa) secMapa.style.display='none';
+    }
 };
 
 // ── Email de Cristina (directora) — puede ver vista ejecutiva ──
@@ -3039,7 +3088,7 @@ const MESES_PAR = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Ago
 const EMPRESA_INFO = {
     tecnocontrol: { label:'Tecnocontrol', emoji:'🔵', class:'empresa-tecnocontrol' },
     akuris:       { label:'Akuris',       emoji:'🟢', class:'empresa-akuris' },
-    noka:         { label:'Noka',         emoji:'🟡', class:'empresa-noka' },
+    jomar:         { label:'Jomar',         emoji:'🟡', class:'empresa-jomar' },
     otra:         { label:'Otra',         emoji:'🟣', class:'empresa-otra' },
 };
 
@@ -3263,7 +3312,7 @@ window.editarPost = (id) => {
 
     // Empresa chip
     const chip = document.getElementById('preview-empresa-chip');
-    const colors = {tecnocontrol:'background:#dbeafe;color:#1e40af',akuris:'background:#dcfce7;color:#14532d',noka:'background:#fef9c3;color:#78350f',otra:'background:#f3e8ff;color:#4c1d95'};
+    const colors = {tecnocontrol:'background:#dbeafe;color:#1e40af',akuris:'background:#dcfce7;color:#14532d',jomar:'background:#fef9c3;color:#78350f',otra:'background:#f3e8ff;color:#4c1d95'};
     chip.style.cssText = colors[p.empresa]||colors.otra;
     chip.innerHTML = `${info.emoji} ${info.label}`;
 
@@ -4111,6 +4160,8 @@ function renderRHDash(data, key){
     const minutosRetardo = ret.reduce((s,r)=>s+(Number(r.minutos)||0),0);
 
     // Actualizar KPIs en pantalla
+    const cap = data.capacitacion||[];
+    const inc = data.incapacidad||[];
     document.getElementById('rh-val-rotacion').innerText   = rot.filter(r=>r.movimiento?.includes('baja')).length;
     document.getElementById('rh-delta-rotacion').innerHTML = `<span class="rh-kpi-delta neutral">${rot.filter(r=>r.movimiento==='alta').length} altas esta semana</span>`;
     document.getElementById('rh-val-faltas').innerText     = totalFaltas;
@@ -4121,6 +4172,12 @@ function renderRHDash(data, key){
     document.getElementById('rh-delta-descuentos').innerHTML= `<span class="rh-kpi-delta neutral">${desc.length} descuentos</span>`;
     document.getElementById('rh-val-vacantes').innerText   = totalVacantes;
     document.getElementById('rh-delta-vacantes').innerHTML = `<span class="rh-kpi-delta neutral">${vac.filter(v=>v.estatus==='concretada').length} concretadas</span>`;
+    const capEl = document.getElementById('rh-val-capacitacion');
+    if(capEl){ capEl.innerText = cap.length;
+        document.getElementById('rh-delta-capacitacion').innerHTML = `<span class="rh-kpi-delta neutral">${cap.reduce((s,c)=>s+(Number(c.asistentes?.split(',').length)||0),0)} asistentes</span>`; }
+    const incEl = document.getElementById('rh-val-incapacidad');
+    if(incEl){ incEl.innerText = inc.length;
+        document.getElementById('rh-delta-incapacidad').innerHTML = `<span class="rh-kpi-delta neutral">${inc.reduce((s,i)=>s+(Number(i.dias)||0),0)} días totales</span>`; }
 
     // ── Helper para tabla de registros con editar/eliminar ──
     const tablaRegistros = (lista, cols, tipo) => {
@@ -4483,7 +4540,7 @@ window.guardarDatoRH = async () => {
 
     const base = {
         semanaKey: key,
-        mesAnio: key.split('-S')[0] + '-' + String(new Date().getMonth()+1).padStart(2,'0'),
+        mesAnio: new Date().getFullYear() + '-' + String(new Date().getMonth()+1).padStart(2,'0'),
         creadoEn: new Date().toISOString(),
         creadoPor: auth.currentUser?.email || '',
         tipo: rhTabActual
@@ -4514,6 +4571,32 @@ window.guardarDatoRH = async () => {
     } else if(rhTabActual === 'acta'){
         docData = {...docData, nombre:rhGet('rh-f-nombre'), area:rhGet('rh-f-area'),
             fecha:rhGet('rh-f-fecha'), tipoActa:rhGet('rh-f-tipoActa')||'conducta',
+            notas:rhGet('rh-f-notas')};
+    } else if(rhTabActual === 'falta'){
+        docData = {...docData, nombre:rhGet('rh-f-nombre'), area:rhGet('rh-f-area'),
+            fecha:rhGet('rh-f-fecha'), tipoFalta:rhGet('rh-f-tipoFalta')||'injustificada',
+            dias:Number(rhGet('rh-f-dias'))||1,
+            fechaRegreso:rhGet('rh-f-fecha-regreso')||'',
+            notas:rhGet('rh-f-notas')};
+    } else if(rhTabActual === 'capacitacion'){
+        const capNombre = rhGet('rh-f-capNombre');
+        if(!capNombre){ alert('Escribe el nombre de la capacitación'); return; }
+        docData = {...docData,
+            nombre: capNombre,
+            impartidor: rhGet('rh-f-capImpartidor'),
+            fecha: rhGet('rh-f-fecha'),
+            lugar: rhGet('rh-f-capLugar'),
+            duracion: Number(rhGet('rh-f-capDuracion'))||0,
+            asistentes: rhGet('rh-f-capAsistentes'),
+            notas: rhGet('rh-f-notas')};
+    } else if(rhTabActual === 'incapacidad'){
+        docData = {...docData, nombre:rhGet('rh-f-nombre'), area:rhGet('rh-f-area'),
+            folio:rhGet('rh-f-incFolio'),
+            ramo:rhGet('rh-f-incRamo')||'enfermedad-general',
+            tipoIncapacidad:rhGet('rh-f-incTipo')||'inicial',
+            fecha:rhGet('rh-f-fecha'),
+            dias:Number(rhGet('rh-f-incDias'))||0,
+            fechaRegreso:rhGet('rh-f-fecha-regreso')||'',
             notas:rhGet('rh-f-notas')};
     }
 
@@ -4687,6 +4770,8 @@ window.editarCliente = (id) => {
     document.getElementById('cl-visitas').value = cl.visitas||0;
     document.getElementById('cl-producto').value = cl.producto||'';
     document.getElementById('cl-notas').value = cl.notas||'';
+    const vendEl = document.getElementById('cl-vendedor');
+    if(vendEl) vendEl.value = cl.vendedor||'';
     // Foto del local
     const prev = document.getElementById('cl-foto-preview');
     const txt  = document.getElementById('cl-foto-text');
@@ -4782,6 +4867,7 @@ window.guardarCliente = async () => {
         visitas:   Number(document.getElementById('cl-visitas').value)||0,
         producto:  document.getElementById('cl-producto').value.trim(),
         notas:     document.getElementById('cl-notas').value.trim(),
+        vendedor:  document.getElementById('cl-vendedor')?.value.trim() || '',
         fotoUrl:   document.getElementById('cl-foto-url')?.value || '',
         actualizadoEn:  new Date().toISOString(),
         actualizadoPor: auth.currentUser?.email||''
