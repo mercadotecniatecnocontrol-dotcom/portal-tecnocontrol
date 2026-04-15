@@ -2712,17 +2712,41 @@ function renderDashboard(){
 window.verArea=(a,b)=>{
     areaActual=a;
     const titleEl = document.getElementById('area-title');
-    titleEl.innerText=`${ICONS[DEPTOS.indexOf(a)]} ${a}`;
-    titleEl.style.color = a==='Recursos Humanos' ? '#db2777' : '';
+    if(titleEl){
+        titleEl.innerText=`${ICONS[DEPTOS.indexOf(a)]} ${a}`;
+        titleEl.style.color = a==='Recursos Humanos' ? '#db2777' : '';
+    }
     const srch=document.getElementById('area-search');
     if(srch) srch.value='';
+
+    // En móvil + Ventas: mostrar vista nativa, NO el kanban
+    if(isMobile() && a === 'Ventas'){
+        navegar('area',b);
+        // Ocultar completamente el kanban y buscador de escritorio
+        const secArea = document.getElementById('sec-area');
+        if(secArea){
+            // Ocultar elementos de escritorio dentro de sec-area
+            const kanban = secArea.querySelector('.kanban-board');
+            const buscador = secArea.querySelector('#area-search');
+            const header = secArea.querySelector('.page-header');
+            if(kanban) kanban.style.display='none';
+            if(buscador) buscador.parentElement.style.display='none';
+            if(header) header.style.display='none';
+        }
+        const yo = auth.currentUser?.email || '';
+        toggleVentasMapa(a, yo);
+        mostrarNavMobile(true, true);
+        return;
+    }
+
     navegar('area',b);
     renderTabla();
-    // Mostrar mini-dashboards según el área
     const yo = auth.currentUser?.email || '';
     toggleMktDash(a, yo);
     toggleRHDash(a, yo);
     toggleVentasMapa(a, yo);
+    // En móvil sin Ventas: restaurar nav normal
+    if(isMobile()) mostrarNavMobile(true, false);
 };
 
 // Peso de ordenamiento: pendiente primero, completada al final
@@ -3135,10 +3159,20 @@ window.navegar=(id,b)=>{
     if(b){document.querySelectorAll('.sitem').forEach(i=>i.classList.remove('active'));b.classList.add('active');}
     if(id==='cal360') renderCal360();
     if(id==='ejecutivo') renderEjecutivo();
-    // Ocultar sección de Ventas mapa si no estamos en un área (bug del fantasma)
     if(id!=='area'){
         const secMapa = document.getElementById('sec-ventas-mapa');
         if(secMapa) secMapa.style.display='none';
+        // Restaurar elementos de sec-area ocultados en vista Ventas móvil
+        const secArea = document.getElementById('sec-area');
+        if(secArea && isMobile()){
+            const kanban = secArea.querySelector('.kanban-board');
+            const buscadorWrap = secArea.querySelector('#area-search')?.parentElement;
+            const header = secArea.querySelector('.page-header');
+            if(kanban) kanban.style.display='';
+            if(buscadorWrap) buscadorWrap.style.display='';
+            if(header) header.style.display='';
+        }
+        if(isMobile()) mostrarNavMobile(true, false);
     }
 };
 
@@ -3259,7 +3293,13 @@ function renderEjecutivo(){
 // ══════════════════════════════════════════════════════════════
 // NAVEGACIÓN MÓVIL
 // ══════════════════════════════════════════════════════════════
-function isMobile(){ return window.innerWidth <= 768; }
+function isMobile(){
+    // Múltiples métodos para detectar móvil correctamente en iOS Safari
+    if(window.innerWidth <= 768) return true;
+    if(screen.width <= 768) return true;
+    if(/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) return true;
+    return false;
+}
 
 window.mobNav = (id) => {
     // En móvil usar la barra inferior para navegación general
@@ -4897,28 +4937,26 @@ window.guardarDatoRH = async () => {
             console.warn('[RH] Tipo no reconocido:', rhTabActual);
     }
 
-    // Asegurar que docData tenga al menos los campos base
-    if(!docData.tipo) docData.tipo = rhTabActual;
-    if(!docData.semanaKey) docData.semanaKey = key;
-    // Limpiar campos undefined/vacíos
+    // Limpiar campos vacíos
     Object.keys(docData).forEach(k => { if(docData[k] === undefined) delete docData[k]; });
-    
-    console.log('[RH] Guardando:', JSON.stringify(docData));
+    console.log('[RH] Guardando tipo:', rhTabActual, 'key:', key);
 
     try {
+        // Reimportar Firestore para asegurar disponibilidad
+        const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
         if(rhEditandoId){
-            await updateDoc(doc(db,'rh_indicadores', rhEditandoId), docData);
+            await fs.updateDoc(fs.doc(db,'rh_indicadores', rhEditandoId), docData);
             rhEditandoId = null;
         } else {
-            const ref = await addDoc(collection(db,'rh_indicadores'), docData);
-            console.log('[RH] Guardado con ID:', ref.id);
+            const ref = await fs.addDoc(fs.collection(db,'rh_indicadores'), docData);
+            console.log('[RH] ✅ Guardado ID:', ref.id, 'tipo:', rhTabActual);
         }
         document.getElementById('modal-rh').style.display = 'none';
-        window.mostrarPush('✅ Guardado', `${rhTabActual} registrado`, '👥');
+        window.mostrarPush('✅ Guardado', rhTabActual + ' registrado', '👥');
         cargarDatosRH();
     } catch(e) {
         console.error('[RH error]', e.code, e.message);
-        alert('Error: ' + e.message + '\n\nRevisa la consola F12 para más detalles.');
+        alert('Error al guardar: ' + e.message);
     } finally {
         if(btn){ btn.textContent = 'GUARDAR'; btn.disabled = false; }
     }
