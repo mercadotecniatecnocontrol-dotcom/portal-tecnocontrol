@@ -4472,41 +4472,41 @@ window.rhMesNext = () => { rhSemanaOffset++; if(rhSemanaOffset>0) rhSemanaOffset
 // Cargar datos RH del mes seleccionado desde Firestore
 async function cargarDatosRH(){
     const key = rhKey();
-    console.log('[RH] Cargando semana key:', key);
     try {
         const fbRH = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
         window._rhDeleteDoc = (id) => fbRH.deleteDoc(fbRH.doc(db,'rh_indicadores',id));
         window._rhUpdate    = (id, data) => fbRH.updateDoc(fbRH.doc(db,'rh_indicadores',id), data);
 
-        // Buscar con semanaKey exacto
-        const q1 = fbRH.query(fbRH.collection(db,'rh_indicadores'), fbRH.where('semanaKey','==',key));
-        const snap1 = await fbRH.getDocs(q1);
-        
-        // Si no hay resultados, cargar los últimos 50 y filtrar en cliente
-        // (para compatibilidad con registros guardados con key anterior)
-        let docs = snap1.docs;
-        if(docs.length === 0){
-            console.log('[RH] Sin resultados con key exacto, cargando todos...');
-            const snapAll = await fbRH.getDocs(fbRH.collection(db,'rh_indicadores'));
-            docs = snapAll.docs;
-            console.log('[RH] Total docs en colección:', snapAll.docs.length);
-            if(snapAll.docs.length > 0){
-                console.log('[RH] Ejemplo semanaKey guardada:', snapAll.docs[0].data().semanaKey);
-            }
-        }
+        // Calcular rango de la semana actual para filtrar por fecha
+        const inicio = getInicioSemanaRH(getRhSemanaActual());
+        const fin = getFinSemanaRH(inicio);
+        const fechaIni = inicio.toISOString().slice(0,10); // YYYY-MM-DD
+        const fechaFin = fin.toISOString().slice(0,10);
 
+        // Cargar todos los docs y filtrar en cliente por fecha O semanaKey
+        const snapAll = await fbRH.getDocs(fbRH.collection(db,'rh_indicadores'));
+        
         const semData = { retardos:[], faltas:[], descuentos:[], vacantes:[], actas:[], rotacion:[], capacitacion:[], incapacidad:[] };
-        docs.forEach(d => {
+        
+        snapAll.docs.forEach(d => {
             const data = d.data();
-            // Incluir si coincide con la semana actual O si es de esta semana por fecha
+            const tipo = data.tipo;
+            if(!tipo || !semData[tipo]) return;
+            
+            // Incluir si coincide semanaKey O si la fecha cae en el rango
             const matchKey = data.semanaKey === key;
-            const matchFecha = data.fecha && isEnSemanaActual(data.fecha);
-            if(matchKey || (docs === snap1.docs ? false : matchFecha)){
-                const tipo = data.tipo;
-                if(semData[tipo]) semData[tipo].push({id:d.id,...data});
+            const matchFecha = data.fecha >= fechaIni && data.fecha <= fechaFin;
+            const matchMesAnio = data.mesAnio === key.slice(0,7).replace('-W','') || 
+                                  data.mesAnio === (inicio.getFullYear()+'-'+String(inicio.getMonth()+1).padStart(2,'0'));
+            
+            if(matchKey || matchFecha){
+                semData[tipo].push({id:d.id,...data});
             }
         });
-        console.log('[RH] Registros encontrados:', Object.entries(semData).map(([k,v])=>`${k}:${v.length}`).join(', '));
+
+        console.log('[RH] Semana:', fechaIni, '→', fechaFin, '| Registros:', 
+            Object.entries(semData).map(([k,v])=>v.length?`${k}:${v.length}`:'').filter(Boolean).join(', ') || 'ninguno');
+        
         rhData[key] = semData;
         renderRHDash(semData, key);
     } catch(e) {
@@ -4546,16 +4546,18 @@ function renderRHDash(data, key){
     // Actualizar KPIs en pantalla
     const cap = data.capacitacion||[];
     const inc = data.incapacidad||[];
-    document.getElementById('rh-val-rotacion').innerText   = rot.filter(r=>r.movimiento?.includes('baja')).length;
-    document.getElementById('rh-delta-rotacion').innerHTML = `<span class="rh-kpi-delta neutral">${rot.filter(r=>r.movimiento==='alta').length} altas esta semana</span>`;
-    document.getElementById('rh-val-faltas').innerText     = totalFaltas;
-    document.getElementById('rh-delta-faltas').innerHTML   = `<span class="rh-kpi-delta neutral">${falt.filter(f=>f.tipoFalta==='injustificada').length} injust. · ${falt.filter(f=>f.tipoFalta==='justificada').length} just.</span>`;
-    document.getElementById('rh-val-retardos').innerText   = totalRetardos;
-    document.getElementById('rh-delta-retardos').innerHTML = `<span class="rh-kpi-delta neutral">≈${minutosRetardo} min totales</span>`;
-    document.getElementById('rh-val-descuentos').innerText = '$'+totalDescuentos.toLocaleString('es-MX');
-    document.getElementById('rh-delta-descuentos').innerHTML= `<span class="rh-kpi-delta neutral">${desc.length} descuentos</span>`;
-    document.getElementById('rh-val-vacantes').innerText   = totalVacantes;
-    document.getElementById('rh-delta-vacantes').innerHTML = `<span class="rh-kpi-delta neutral">${vac.filter(v=>v.estatus==='concretada').length} concretadas</span>`;
+    // KPIs — usar directamente los arrays para asegurar conteos correctos
+    const setKPI = (id, val, delta='') => {
+        const el = document.getElementById(id);
+        if(el) el.innerText = val;
+        const del = document.getElementById(id.replace('val','delta'));
+        if(del && delta) del.innerHTML = `<span class="rh-kpi-delta neutral">${delta}</span>`;
+    };
+    setKPI('rh-val-rotacion', rot.length, `${rot.filter(r=>r.movimiento==='alta').length} altas · ${rot.filter(r=>r.movimiento?.includes('baja')).length} bajas`);
+    setKPI('rh-val-faltas', falt.length, `${falt.filter(f=>f.tipoFalta==='injustificada').length} injust. · ${falt.filter(f=>f.tipoFalta?.includes('permiso')).length} permisos`);
+    setKPI('rh-val-retardos', ret.length, `≈${ret.reduce((s,r)=>s+(Number(r.minutos)||0),0)} min totales`);
+    setKPI('rh-val-descuentos', '$'+desc.reduce((s,d)=>s+(Number(d.monto)||0),0).toLocaleString('es-MX'), `${desc.length} descuentos`);
+    setKPI('rh-val-vacantes', vac.length, `${vac.filter(v=>v.estatus==='concretada').length} concretadas`);
     const capEl = document.getElementById('rh-val-capacitacion');
     if(capEl){ capEl.innerText = cap.length;
         document.getElementById('rh-delta-capacitacion').innerHTML = `<span class="rh-kpi-delta neutral">${cap.reduce((s,c)=>s+(Number(c.asistentes?.split(',').length)||0),0)} asistentes</span>`; }
@@ -4649,7 +4651,8 @@ function renderRHDash(data, key){
     // Se inyectan en bloques dinámicos después de las gráficas
     const rhExtraEl = document.getElementById('rh-registros-extra');
     if(rhExtraEl){
-        const seccion = (titulo, emoji, lista, campos, tipo, color) => !lista.length ? '' : `
+        // Mostrar siempre las secciones principales (con o sin datos)
+        const seccion = (titulo, emoji, lista, campos, tipo, color, siempre=false) => (!lista.length && !siempre) ? '' : `
             <div style="background:#ffffff;border-radius:14px;padding:16px;border:1px solid rgba(59,130,246,0.08);margin-bottom:12px;">
                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
                     <span style="font-size:12px;font-weight:700;color:#1e293b;">${emoji} ${titulo} <span style="font-weight:400;color:#64748b;">(${lista.length})</span></span>
@@ -4662,13 +4665,13 @@ function renderRHDash(data, key){
         rhExtraEl.innerHTML =
             seccion('Retardos','⏰', ret,
                 [{label:'Colaborador',key:'nombre'},{label:'Área',key:'area'},{label:'Fecha',key:'fecha'},{label:'Hora',key:'hora'},{label:'Min.',key:'minutos'}],
-                'retardo','#2563eb') +
+                'retardo','#2563eb', true) +
             seccion('Faltas y Permisos','📅', falt,
                 [{label:'Colaborador',key:'nombre'},{label:'Área',key:'area'},{label:'Fecha',key:'fecha'},{label:'Tipo',key:'tipoFalta'},{label:'Días',key:'dias'}],
-                'falta','#f59e0b') +
+                'falta','#f59e0b', true) +
             seccion('Descuentos','💰', desc,
                 [{label:'Colaborador',key:'nombre'},{label:'Área',key:'area'},{label:'Fecha',key:'fecha'},{label:'Monto',key:'monto'}],
-                'descuento','#7c3aed') +
+                'descuento','#7c3aed', true) +
             seccion('Capacitaciones','🎓', data.capacitacion||[],
                 [{label:'Capacitación',key:'nombre'},{label:'Imparte',key:'impartidor'},{label:'Fecha',key:'fecha'},{label:'Lugar',key:'lugar'}],
                 'capacitacion','#059669') +
@@ -4938,10 +4941,12 @@ window.guardarRHInline = async () => {
 
     if(btn){ btn.textContent='💾 Guardando...'; btn.disabled=true; }
 
+    const hoy = new Date();
     const base = {
         semanaKey: key,
-        mesAnio: new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0'),
-        creadoEn: new Date().toISOString(),
+        mesAnio: hoy.getFullYear()+'-'+String(hoy.getMonth()+1).padStart(2,'0'),
+        fecha: hoy.toISOString().slice(0,10), // fecha por defecto = hoy
+        creadoEn: hoy.toISOString(),
         creadoPor: auth.currentUser?.email||'',
         tipo: rhTabActual
     };
