@@ -10,6 +10,7 @@
     <meta name="theme-color" content="#1e3a8a">
     <link rel="manifest" href="manifest.json">
     <title>TECNOCONTROL · Portal Operativo</title>
+    <meta name="version" content="1776262807">
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
@@ -386,17 +387,37 @@
             .rh-kpi-val{font-size:20px !important;}
             .cliente-modal-box{width:96vw;padding:16px;border-radius:16px;}
             #mapa-clientes{height:260px;}
-            /* ═══ VENTAS MÓVIL — Estilo app nativa ═══ */
-            #sec-ventas-mapa{padding:0 !important;position:relative !important;}
-            /* Mapa ocupa 60% de la pantalla */
-            #ventas-mapa-mobile-wrap{
-                position:relative;width:100%;
-                height:55vh;min-height:280px;max-height:380px;
+            /* ═══ VENTAS MÓVIL — CSS directo ═══ */
+            #sec-ventas-mapa{
+                padding:0 !important;
+                position:relative !important;
+                display:flex !important;
+                flex-direction:column !important;
+                height:calc(100vh - 62px) !important;
+                overflow:hidden !important;
+            }
+            /* Mapa ocupa 55% superior */
+            #ventas-mapa-desktop{
+                flex:0 0 55vh !important;
+                position:relative !important;
+                min-height:260px !important;
             }
             #mapa-clientes{
                 width:100% !important;
                 height:100% !important;
                 border-radius:0 !important;
+            }
+            /* Panel inferior scrollable */
+            #ventas-panel-inferior{
+                flex:1 !important;
+                overflow-y:auto !important;
+                background:#fff !important;
+                border-radius:20px 20px 0 0 !important;
+                box-shadow:0 -4px 20px rgba(0,0,0,0.12) !important;
+                padding:12px 14px 20px !important;
+                margin-top:-16px !important;
+                position:relative !important;
+                z-index:10 !important;
             }
             /* Header flotante sobre el mapa */
             #ventas-header-flotante{
@@ -603,6 +624,20 @@
         .cliente-row{display:grid;grid-template-columns:1.8fr 1fr 1fr 1fr auto;gap:8px;padding:10px 12px;border-radius:10px;font-size:12px;align-items:center;margin-bottom:6px;border:1px solid rgba(59,130,246,0.08);background:#ffffff;}
         .cliente-row:hover{background:#f8faff;}
         .cliente-row.header{background:#f8faff;font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;border:none;}
+        /* ── Panel inline RH por KPI ── */
+        .rh-panel-inline{
+            display:none;
+            background:#f8faff;border:1px solid rgba(37,99,235,0.12);
+            border-radius:14px;padding:20px;margin-top:12px;
+            animation:slideDown 0.2s ease;
+        }
+        .rh-panel-inline.open{ display:block; }
+        @keyframes slideDown{ from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:translateY(0)} }
+        .rh-panel-title{font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:700;color:#1e293b;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;}
+        .rh-panel-close{background:none;border:none;font-size:18px;cursor:pointer;color:#94a3b8;padding:0;}
+        .rh-panel-form{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+        .rh-panel-save{width:100%;padding:11px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:white;border:none;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;margin-top:12px;}
+        .rh-panel-save:hover{opacity:0.9;}
         /* Metas y KPIs vendedores */
         .meta-card{background:#ffffff;border-radius:14px;padding:16px;border:1px solid rgba(59,130,246,0.10);box-shadow:0 2px 6px rgba(37,99,235,0.05);}
         .meta-vendedor{font-weight:700;color:#1e293b;font-size:13px;margin-bottom:6px;}
@@ -706,6 +741,20 @@
 
         /* ══ MINI-DASHBOARD RH ══════════════════════════════════ */
         #rh-dashboard{display:none;margin-bottom:28px;}
+        /* Form inline RH — se abre debajo de los KPIs */
+        #rh-inline-form{
+            display:none;background:#fff;border-radius:16px;
+            border:2px solid #2563eb;padding:20px;margin:12px 0;
+            box-shadow:0 4px 20px rgba(37,99,235,0.12);
+            animation:slideDown 0.2s ease;
+        }
+        @keyframes slideDown{from{opacity:0;transform:translateY(-10px);}to{opacity:1;transform:translateY(0);}}
+        #rh-inline-form .rh-form-title{
+            font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;
+            color:#1e3a8a;margin-bottom:16px;display:flex;align-items:center;gap:8px;
+        }
+        .rh-inline-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;}
+        @media(max-width:768px){.rh-inline-grid{grid-template-columns:1fr !important;}}
         .rh-dash-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;}
         .rh-dash-title{font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;color:#1e293b;display:flex;align-items:center;gap:8px;}
         .rh-dash-badge{background:#fce7f3;color:#be185d;font-size:10px;font-weight:700;padding:4px 10px;border-radius:20px;letter-spacing:1px;text-transform:uppercase;}
@@ -1353,47 +1402,57 @@
 
                 <!-- KPIs -->
                 <div class="rh-kpis">
-                    <div class="rh-kpi rotacion" onclick="abrirModalRH('retardo')">
+                    <div class="rh-kpi rotacion" onclick="abrirRHInline('rotacion')">
                         <div class="rh-kpi-icon">🔄</div>
                         <div class="rh-kpi-val" id="rh-val-rotacion">—</div>
                         <div class="rh-kpi-label">Rotación</div>
                         <div class="rh-kpi-delta" id="rh-delta-rotacion"></div>
                     </div>
-                    <div class="rh-kpi faltas" onclick="abrirModalRH('falta')">
+                    <div class="rh-kpi faltas" onclick="abrirRHInline('falta')">
                         <div class="rh-kpi-icon">📅</div>
                         <div class="rh-kpi-val" id="rh-val-faltas">—</div>
                         <div class="rh-kpi-label">Faltas</div>
                         <div class="rh-kpi-delta" id="rh-delta-faltas"></div>
                     </div>
-                    <div class="rh-kpi retardos" onclick="abrirModalRH('retardo')">
+                    <div class="rh-kpi retardos" onclick="abrirRHInline('retardo')">
                         <div class="rh-kpi-icon">⏰</div>
                         <div class="rh-kpi-val" id="rh-val-retardos">—</div>
                         <div class="rh-kpi-label">Retardos</div>
                         <div class="rh-kpi-delta" id="rh-delta-retardos"></div>
                     </div>
-                    <div class="rh-kpi descuentos" onclick="abrirModalRH('descuento')">
+                    <div class="rh-kpi descuentos" onclick="abrirRHInline('descuento')">
                         <div class="rh-kpi-icon">💰</div>
                         <div class="rh-kpi-val" id="rh-val-descuentos">—</div>
                         <div class="rh-kpi-label">Descuentos</div>
                         <div class="rh-kpi-delta" id="rh-delta-descuentos"></div>
                     </div>
-                    <div class="rh-kpi vacantes" onclick="abrirModalRH('vacante')">
+                    <div class="rh-kpi vacantes" onclick="abrirRHInline('vacante')">
                         <div class="rh-kpi-icon">🎯</div>
                         <div class="rh-kpi-val" id="rh-val-vacantes">—</div>
                         <div class="rh-kpi-label">Vacantes</div>
                         <div class="rh-kpi-delta" id="rh-delta-vacantes"></div>
                     </div>
-                    <div class="rh-kpi" style="border-top:3px solid #059669;" onclick="abrirModalRH('capacitacion')">
+                    <div class="rh-kpi" style="border-top:3px solid #059669;" onclick="abrirRHInline('capacitacion')">
                         <div class="rh-kpi-icon">🎓</div>
                         <div class="rh-kpi-val" id="rh-val-capacitacion">—</div>
                         <div class="rh-kpi-label">Capacitaciones</div>
                         <div class="rh-kpi-delta" id="rh-delta-capacitacion"></div>
                     </div>
-                    <div class="rh-kpi" style="border-top:3px solid #ef4444;" onclick="abrirModalRH('incapacidad')">
+                    <div class="rh-kpi" style="border-top:3px solid #ef4444;" onclick="abrirRHInline('incapacidad')">
                         <div class="rh-kpi-icon">🏥</div>
                         <div class="rh-kpi-val" id="rh-val-incapacidad">—</div>
                         <div class="rh-kpi-label">Incapacidades</div>
                         <div class="rh-kpi-delta" id="rh-delta-incapacidad"></div>
+                    </div>
+                </div>
+
+                <!-- Form inline — se activa al click en KPI -->
+                <div id="rh-inline-form">
+                    <div class="rh-form-title" id="rh-inline-title">📝 Registrar</div>
+                    <div id="rh-inline-content"></div>
+                    <div style="display:flex;gap:10px;margin-top:16px;">
+                        <button onclick="guardarRHInline()" style="flex:1;padding:11px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:white;border:none;border-radius:10px;font-weight:700;cursor:pointer;font-size:13px;">💾 GUARDAR REGISTRO</button>
+                        <button onclick="cerrarRHInline()" style="flex:1;padding:11px;background:#f1f5f9;border:none;border-radius:10px;color:#475569;font-weight:700;cursor:pointer;font-size:13px;">Cancelar</button>
                     </div>
                 </div>
 
@@ -2719,20 +2778,9 @@ window.verArea=(a,b)=>{
     const srch=document.getElementById('area-search');
     if(srch) srch.value='';
 
-    // En móvil + Ventas: mostrar vista nativa, NO el kanban
+    // En móvil + Ventas: mostrar solo el mapa
     if(isMobile() && a === 'Ventas'){
-        navegar('area',b);
-        // Ocultar completamente el kanban y buscador de escritorio
-        const secArea = document.getElementById('sec-area');
-        if(secArea){
-            // Ocultar elementos de escritorio dentro de sec-area
-            const kanban = secArea.querySelector('.kanban-board');
-            const buscador = secArea.querySelector('#area-search');
-            const header = secArea.querySelector('.page-header');
-            if(kanban) kanban.style.display='none';
-            if(buscador) buscador.parentElement.style.display='none';
-            if(header) header.style.display='none';
-        }
+        navegar('area', b);
         const yo = auth.currentUser?.email || '';
         toggleVentasMapa(a, yo);
         mostrarNavMobile(true, true);
@@ -3777,6 +3825,7 @@ async function cargarDatosMkt(){
     const key = mktKey(mktMes, mktAnio);
     try {
         const fbMkt = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        // Cargar tanto docs con ID compuesto (nuevo) como docs sin ID fijo (histórico)
         const snap = await fbMkt.getDocs(fbMkt.query(fbMkt.collection(db,'mkt_indicadores'), fbMkt.where('mesAnio','==',key)));
         const d = { kpis:{}, canales:{}, presupuesto:{}, campanas:[] };
         snap.docs.forEach(doc => {
@@ -4067,34 +4116,58 @@ window.guardarDatoMkt = async () => {
         const get = id => { const el=document.getElementById(id); return el?el.value:''; };
         const getNum = id => Number(get(id))||0;
 
+        // Usar setDoc con merge para preservar datos existentes del mes
+        const fbMktSave = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const docId = `${key}_${mktTabActual}`; // ID único por mes+tipo
+        const docRef = fbMktSave.doc(db, 'mkt_indicadores', docId);
+
+        // Solo guardar campos que el usuario llenó (no sobreescribir vacíos)
+        const getIfFilled = id => { const v = get(id); return v !== '' ? v : undefined; };
+        const getNumIfFilled = id => { const v = getNum(id); return v !== 0 ? v : undefined; };
+
+        let newData = {...base, tipo: mktTabActual};
+
         if(mktTabActual === 'kpis'){
-            await addDoc(collection(db,'mkt_indicadores'),{...base, tipo:'kpis',
-                alcance:getNum('mkt-f-alcance'), engagement:getNum('mkt-f-engagement'),
-                leads:getNum('mkt-f-leads'), conversiones:getNum('mkt-f-conversiones'),
-                posts:getNum('mkt-f-posts'), seguidores:getNum('mkt-f-seguidores'),
-                notas:get('mkt-f-notas')
-            });
+            const fields = {
+                alcance: getNumIfFilled('mkt-f-alcance'),
+                engagement: getNumIfFilled('mkt-f-engagement'),
+                leads: getNumIfFilled('mkt-f-leads'),
+                conversiones: getNumIfFilled('mkt-f-conversiones'),
+                posts: getNumIfFilled('mkt-f-posts'),
+                seguidores: getNumIfFilled('mkt-f-seguidores'),
+                notas: getIfFilled('mkt-f-notas')
+            };
+            Object.keys(fields).forEach(k => { if(fields[k] !== undefined) newData[k] = fields[k]; });
         } else if(mktTabActual === 'canales'){
-            await addDoc(collection(db,'mkt_indicadores'),{...base, tipo:'canales',
-                igSeg:getNum('mkt-f-igSeg'), igAlc:getNum('mkt-f-igAlc'),
-                fbSeg:getNum('mkt-f-fbSeg'), fbAlc:getNum('mkt-f-fbAlc'),
-                gadsImp:getNum('mkt-f-gadsImp'), gadsClicks:getNum('mkt-f-gadsClicks'),
-                webVis:getNum('mkt-f-webVis'), webBounce:getNum('mkt-f-webBounce')
-            });
+            const fields = {
+                igSeg: getNumIfFilled('mkt-f-igSeg'), igAlc: getNumIfFilled('mkt-f-igAlc'),
+                fbSeg: getNumIfFilled('mkt-f-fbSeg'), fbAlc: getNumIfFilled('mkt-f-fbAlc'),
+                gadsImp: getNumIfFilled('mkt-f-gadsImp'), gadsClicks: getNumIfFilled('mkt-f-gadsClicks'),
+                webVis: getNumIfFilled('mkt-f-webVis'), webBounce: getNumIfFilled('mkt-f-webBounce')
+            };
+            Object.keys(fields).forEach(k => { if(fields[k] !== undefined) newData[k] = fields[k]; });
         } else if(mktTabActual === 'presupuesto'){
-            await addDoc(collection(db,'mkt_indicadores'),{...base, tipo:'presupuesto',
-                asignado:getNum('mkt-f-presAsig'), gastado:getNum('mkt-f-presGast'),
-                gastMeta:getNum('mkt-f-gastMeta'), gastGoogle:getNum('mkt-f-gastGoogle'),
-                gastSwm:getNum('mkt-f-gastSwm'), gastOtros:getNum('mkt-f-gastOtros')
-            });
+            const fields = {
+                asignado: getNumIfFilled('mkt-f-presAsig'), gastado: getNumIfFilled('mkt-f-presGast'),
+                gastMeta: getNumIfFilled('mkt-f-gastMeta'), gastGoogle: getNumIfFilled('mkt-f-gastGoogle'),
+                gastSwm: getNumIfFilled('mkt-f-gastSwm'), gastOtros: getNumIfFilled('mkt-f-gastOtros')
+            };
+            Object.keys(fields).forEach(k => { if(fields[k] !== undefined) newData[k] = fields[k]; });
         } else if(mktTabActual === 'campana'){
-            await addDoc(collection(db,'mkt_indicadores'),{...base, tipo:'campana',
+            await fbMktSave.addDoc(fbMktSave.collection(db,'mkt_indicadores'),{...base, tipo:'campana',
                 nombre:get('mkt-f-campNombre'), canal:get('mkt-f-campCanal'),
                 estatus:get('mkt-f-campEstatus'), presupuesto:getNum('mkt-f-campPres'),
                 gastado:getNum('mkt-f-campGast'), fechaInicio:get('mkt-f-campInicio'),
                 fechaFin:get('mkt-f-campFin'), objetivo:get('mkt-f-campObj')
             });
+            document.getElementById('modal-mkt').style.display='none';
+            window.mostrarPush('✅ Campaña guardada','','📣');
+            cargarDatosMkt(); return;
         }
+
+        // setDoc con merge=true: actualiza solo los campos proporcionados, preserva los demás
+        await fbMktSave.setDoc(docRef, newData, { merge: true });
+        console.log('[MKT] ✅ Guardado con merge en', docId);
         document.getElementById('modal-mkt').style.display='none';
         window.mostrarPush('✅ Dato Marketing guardado',`Registro de ${mktTabActual} guardado`,'📣');
         cargarDatosMkt();
@@ -4803,6 +4876,12 @@ const RH_FORMS = {
 };
 
 window.abrirModalRH = (tab = 'retardo', editId = null) => {
+    // Redirigir al form inline si el dashboard está visible
+    const dash = document.getElementById('rh-dashboard');
+    if(dash && dash.style.display !== 'none'){
+        abrirRHInline(tab, editId);
+        return;
+    }
     rhTabActual = tab;
     rhEditandoId = editId;
     document.querySelectorAll('.rh-tab').forEach(t => {
@@ -4812,6 +4891,88 @@ window.abrirModalRH = (tab = 'retardo', editId = null) => {
     const titulo = document.getElementById('rh-modal-title');
     if(titulo) titulo.innerText = editId ? `✏️ Editar registro de ${tab}` : `📝 Registrar indicador RH`;
     document.getElementById('modal-rh').style.display = 'flex';
+};
+
+const RH_TITULOS = {
+    retardo:'⏰ Registrar Retardo', falta:'📅 Registrar Falta / Permiso',
+    descuento:'💰 Registrar Descuento', rotacion:'🔄 Registrar Rotación',
+    vacante:'🎯 Registrar Vacante', acta:'📁 Nueva Acta Administrativa',
+    capacitacion:'🎓 Registrar Capacitación', incapacidad:'🏥 Registrar Incapacidad'
+};
+
+window.abrirRHInline = (tab, editId = null) => {
+    rhTabActual = tab;
+    rhEditandoId = editId || null;
+    // Activar tab correspondiente en el modal también
+    document.querySelectorAll('.rh-tab').forEach(t => {
+        t.classList.toggle('active', t.getAttribute('onclick')?.includes(`'${tab}'`));
+    });
+    const formEl = document.getElementById('rh-inline-form');
+    const titleEl = document.getElementById('rh-inline-title');
+    const contentEl = document.getElementById('rh-inline-content');
+    if(!formEl || !contentEl) return;
+    titleEl.innerHTML = RH_TITULOS[tab] || '📝 Registrar';
+    contentEl.innerHTML = RH_FORMS[tab] ? RH_FORMS[tab]() : '<p style="color:#94a3b8;">Formulario no disponible</p>';
+    formEl.style.display = 'block';
+    // Scroll suave al form
+    setTimeout(()=>formEl.scrollIntoView({behavior:'smooth', block:'start'}), 100);
+};
+
+window.cerrarRHInline = () => {
+    const formEl = document.getElementById('rh-inline-form');
+    if(formEl) formEl.style.display = 'none';
+    rhEditandoId = null;
+};
+
+window.guardarRHInline = async () => {
+    const key = rhKey();
+    const btn = document.querySelector('#rh-inline-form button');
+    
+    const needsNombre = ['retardo','falta','descuento','rotacion','acta','incapacidad'];
+    if(needsNombre.includes(rhTabActual) && !rhGet('rh-f-nombre')){
+        alert('Escribe el nombre del colaborador'); return;
+    }
+    if(rhTabActual === 'capacitacion' && !rhGet('rh-f-capNombre')){
+        alert('Escribe el nombre de la capacitación'); return;
+    }
+
+    if(btn){ btn.textContent='💾 Guardando...'; btn.disabled=true; }
+
+    const base = {
+        semanaKey: key,
+        mesAnio: new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0'),
+        creadoEn: new Date().toISOString(),
+        creadoPor: auth.currentUser?.email||'',
+        tipo: rhTabActual
+    };
+
+    let docData = {...base};
+    switch(rhTabActual){
+        case 'retardo': docData={...docData, nombre:rhGet('rh-f-nombre'), area:rhGet('rh-f-area'), fecha:rhGet('rh-f-fecha'), hora:rhGet('rh-f-hora'), minutos:Number(rhGet('rh-f-minutos'))||0, notas:rhGet('rh-f-notas')}; break;
+        case 'falta': docData={...docData, nombre:rhGet('rh-f-nombre'), area:rhGet('rh-f-area'), fecha:rhGet('rh-f-fecha'), tipoFalta:rhGet('rh-f-tipoFalta')||'injustificada', dias:Number(rhGet('rh-f-dias'))||1, fechaRegreso:rhGet('rh-f-fecha-regreso')||'', notas:rhGet('rh-f-notas')}; break;
+        case 'descuento': docData={...docData, nombre:rhGet('rh-f-nombre'), area:rhGet('rh-f-area'), fecha:rhGet('rh-f-fecha'), monto:Number(rhGet('rh-f-monto'))||0, motivoDesc:rhGet('rh-f-motivoDesc')||'Otro', notas:rhGet('rh-f-notas')}; break;
+        case 'rotacion': docData={...docData, nombre:rhGet('rh-f-nombre'), area:rhGet('rh-f-area'), fecha:rhGet('rh-f-fecha'), movimiento:rhGet('rh-f-movimiento')||'baja', notas:rhGet('rh-f-notas')}; break;
+        case 'vacante': docData={...docData, puesto:rhGet('rh-f-puesto'), area:rhGet('rh-f-area'), fecha:rhGet('rh-f-fecha'), estatus:rhGet('rh-f-vacEstatus')||'nueva', notas:rhGet('rh-f-notas')}; break;
+        case 'acta': docData={...docData, nombre:rhGet('rh-f-nombre'), area:rhGet('rh-f-area'), fecha:rhGet('rh-f-fecha'), tipoActa:rhGet('rh-f-tipoActa')||'conducta', notas:rhGet('rh-f-notas')}; break;
+        case 'capacitacion': docData={...docData, nombre:rhGet('rh-f-capNombre'), impartidor:rhGet('rh-f-capImpartidor'), fecha:rhGet('rh-f-fecha'), lugar:rhGet('rh-f-capLugar'), duracion:Number(rhGet('rh-f-capDuracion'))||0, asistentes:rhGet('rh-f-capAsistentes'), notas:rhGet('rh-f-notas')}; break;
+        case 'incapacidad': docData={...docData, nombre:rhGet('rh-f-nombre'), area:rhGet('rh-f-area'), folio:rhGet('rh-f-incFolio'), ramo:rhGet('rh-f-incRamo')||'enfermedad-general', tipoIncapacidad:rhGet('rh-f-incTipo')||'inicial', fecha:rhGet('rh-f-fecha'), dias:Number(rhGet('rh-f-incDias'))||0, fechaRegreso:rhGet('rh-f-fecha-regreso')||'', notas:rhGet('rh-f-notas')}; break;
+    }
+    Object.keys(docData).forEach(k=>{if(docData[k]===undefined) delete docData[k];});
+    console.log('[RH Inline] Guardando:', docData);
+
+    try {
+        const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const ref = await fs.addDoc(fs.collection(db,'rh_indicadores'), docData);
+        console.log('[RH Inline] ✅ ID:', ref.id);
+        cerrarRHInline();
+        window.mostrarPush('✅ Guardado', rhTabActual+' registrado correctamente','👥');
+        cargarDatosRH();
+    } catch(e){
+        console.error('[RH Inline] Error:', e);
+        alert('Error al guardar: '+e.message);
+    } finally {
+        if(btn){ btn.textContent='💾 GUARDAR REGISTRO'; btn.disabled=false; }
+    }
 };
 
 window.rhTabSwitch = (tab, btn) => {
@@ -5534,23 +5695,25 @@ window.toggleVentasMapa = (area, email) => {
         const btnMetas = document.getElementById('btn-abrir-metas');
         if(btnMetas) btnMetas.style.display = (esAdminTotal(email)||email===MARTIN_EMAIL) ? 'block' : 'none';
         secMapa.style.display = 'block';
+        // En móvil: ocultar kanban, mostrar solo mapa
+        if(isMobile()){
+            if(secArea) secArea.style.display = 'none';
+            const panelInf = document.getElementById('ventas-panel-inferior');
+            if(panelInf) panelInf.style.display = 'block';
+            mostrarNavMobile(true, true);
+        } else {
+            const panelInf = document.getElementById('ventas-panel-inferior');
+            if(panelInf) panelInf.style.display = 'none';
+            if(secArea) secArea.style.display = 'block';
+        }
         inicializarMapa();
         cargarClientes();
         cargarCheckins();
-        if(isMobile()){
-            if(secArea) secArea.style.display = 'none';
-            renderVentasMobile(email);
-            mostrarNavMobile(true, true); // nav modo Ventas
-        } else {
-            if(secArea) secArea.style.display = 'block';
-        }
-        setTimeout(()=>{ if(mapaLeaflet) mapaLeaflet.invalidateSize(); }, 400);
+        setTimeout(()=>{ if(mapaLeaflet) mapaLeaflet.invalidateSize(); }, 500);
     } else {
         secMapa.style.display = 'none';
         if(secArea) secArea.style.display = 'block';
-        const mobView = document.getElementById('ventas-mobile-view');
-        if(mobView) mobView.remove();
-        mostrarNavMobile(true, false); // restaurar nav normal
+        mostrarNavMobile(true, false);
     }
 };
 
@@ -5623,6 +5786,285 @@ window.mostrarDirectorioMob = () => {
     const buscEl = document.getElementById('ventas-buscador');
     if(buscEl){ buscEl.focus(); buscEl.scrollIntoView({behavior:'smooth'}); }
 };
+
+// ══════════════════════════════════════════════════════════════
+// RH INLINE — Sistema de registro sin modal
+// ══════════════════════════════════════════════════════════════
+let rhPanelActual = null;
+
+const RH_INLINE_FORMS = {
+    retardo: () => {
+        const hoy = new Date().toISOString().slice(0,10);
+        return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div><label class="rh-form-label">Nombre del colaborador *</label>
+                <input class="rh-form-input" id="rhp-nombre" type="text" placeholder="Nombre completo" autofocus></div>
+            <div><label class="rh-form-label">Área</label>
+                <select class="rh-form-input" id="rhp-area">
+                    <option>Ingresos</option><option>Egresos</option><option>Contabilidad</option>
+                    <option>Recursos Humanos</option><option>Marketing</option>
+                    <option>Administración</option><option>Ventas</option>
+                </select></div>
+            <div><label class="rh-form-label">Fecha *</label>
+                <input class="rh-form-input" id="rhp-fecha" type="date" value="${hoy}"></div>
+            <div><label class="rh-form-label">Hora de entrada real</label>
+                <input class="rh-form-input" id="rhp-hora" type="time"></div>
+            <div><label class="rh-form-label">Minutos de retraso</label>
+                <input class="rh-form-input" id="rhp-minutos" type="number" min="1" placeholder="Ej: 25"></div>
+            <div><label class="rh-form-label">Notas</label>
+                <input class="rh-form-input" id="rhp-notas" type="text" placeholder="Justificación..."></div>
+        </div>`;
+    },
+    falta: () => {
+        const hoy = new Date().toISOString().slice(0,10);
+        return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div><label class="rh-form-label">Nombre *</label>
+                <input class="rh-form-input" id="rhp-nombre" type="text" placeholder="Nombre completo" autofocus></div>
+            <div><label class="rh-form-label">Área</label>
+                <select class="rh-form-input" id="rhp-area">
+                    <option>Ingresos</option><option>Egresos</option><option>Contabilidad</option>
+                    <option>Recursos Humanos</option><option>Marketing</option>
+                    <option>Administración</option><option>Ventas</option>
+                </select></div>
+            <div><label class="rh-form-label">Fecha *</label>
+                <input class="rh-form-input" id="rhp-fecha" type="date" value="${hoy}"></div>
+            <div><label class="rh-form-label">Tipo</label>
+                <select class="rh-form-input" id="rhp-tipoFalta">
+                    <option value="injustificada">Injustificada</option>
+                    <option value="justificada">Justificada</option>
+                    <option value="permiso-sin-goce">Permiso sin goce</option>
+                    <option value="permiso-con-goce">Permiso con goce de sueldo</option>
+                </select></div>
+            <div><label class="rh-form-label">Días</label>
+                <input class="rh-form-input" id="rhp-dias" type="number" min="1" value="1"></div>
+            <div><label class="rh-form-label">Fecha de regreso</label>
+                <input class="rh-form-input" id="rhp-fechaRegreso" type="date"></div>
+            <div style="grid-column:span 2"><label class="rh-form-label">Notas</label>
+                <input class="rh-form-input" id="rhp-notas" type="text" placeholder="Motivo..."></div>
+        </div>`;
+    },
+    descuento: () => {
+        const hoy = new Date().toISOString().slice(0,10);
+        return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div><label class="rh-form-label">Nombre *</label>
+                <input class="rh-form-input" id="rhp-nombre" type="text" placeholder="Nombre completo" autofocus></div>
+            <div><label class="rh-form-label">Área</label>
+                <select class="rh-form-input" id="rhp-area">
+                    <option>Ingresos</option><option>Egresos</option><option>Contabilidad</option>
+                    <option>Recursos Humanos</option><option>Marketing</option>
+                    <option>Administración</option><option>Ventas</option>
+                </select></div>
+            <div><label class="rh-form-label">Monto ($) *</label>
+                <input class="rh-form-input" id="rhp-monto" type="number" min="0" step="0.01" placeholder="0.00"></div>
+            <div><label class="rh-form-label">Fecha</label>
+                <input class="rh-form-input" id="rhp-fecha" type="date" value="${hoy}"></div>
+            <div><label class="rh-form-label">Motivo</label>
+                <select class="rh-form-input" id="rhp-motivo">
+                    <option>Retardo</option><option>Falta injustificada</option>
+                    <option>Préstamo</option><option>Daño a equipo</option><option>Otro</option>
+                </select></div>
+            <div><label class="rh-form-label">Notas</label>
+                <input class="rh-form-input" id="rhp-notas" type="text" placeholder="Detalles..."></div>
+        </div>`;
+    },
+    rotacion: () => {
+        const hoy = new Date().toISOString().slice(0,10);
+        return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div><label class="rh-form-label">Nombre *</label>
+                <input class="rh-form-input" id="rhp-nombre" type="text" placeholder="Nombre completo" autofocus></div>
+            <div><label class="rh-form-label">Área</label>
+                <select class="rh-form-input" id="rhp-area">
+                    <option>Ingresos</option><option>Egresos</option><option>Contabilidad</option>
+                    <option>Recursos Humanos</option><option>Marketing</option>
+                    <option>Administración</option><option>Ventas</option>
+                </select></div>
+            <div><label class="rh-form-label">Tipo de movimiento</label>
+                <select class="rh-form-input" id="rhp-movimiento">
+                    <option value="baja">Baja voluntaria</option>
+                    <option value="baja-involuntaria">Baja involuntaria</option>
+                    <option value="alta">Alta / Nuevo ingreso</option>
+                    <option value="cambio">Cambio de área</option>
+                </select></div>
+            <div><label class="rh-form-label">Fecha</label>
+                <input class="rh-form-input" id="rhp-fecha" type="date" value="${hoy}"></div>
+            <div style="grid-column:span 2"><label class="rh-form-label">Notas</label>
+                <input class="rh-form-input" id="rhp-notas" type="text" placeholder="Motivo del movimiento..."></div>
+        </div>`;
+    },
+    vacante: () => {
+        const hoy = new Date().toISOString().slice(0,10);
+        return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div><label class="rh-form-label">Puesto *</label>
+                <input class="rh-form-input" id="rhp-puesto" type="text" placeholder="Ej: Técnico en campo" autofocus></div>
+            <div><label class="rh-form-label">Área solicitante</label>
+                <select class="rh-form-input" id="rhp-area">
+                    <option>Ingresos</option><option>Egresos</option><option>Contabilidad</option>
+                    <option>Recursos Humanos</option><option>Marketing</option>
+                    <option>Administración</option><option>Ventas</option>
+                </select></div>
+            <div><label class="rh-form-label">Fecha apertura</label>
+                <input class="rh-form-input" id="rhp-fecha" type="date" value="${hoy}"></div>
+            <div><label class="rh-form-label">Estatus</label>
+                <select class="rh-form-input" id="rhp-estatus">
+                    <option value="nueva">Nueva</option>
+                    <option value="abierta">Abierta / En proceso</option>
+                    <option value="concretada">Concretada</option>
+                </select></div>
+            <div style="grid-column:span 2"><label class="rh-form-label">Perfil requerido / notas</label>
+                <input class="rh-form-input" id="rhp-notas" type="text" placeholder="Experiencia requerida..."></div>
+        </div>`;
+    },
+    capacitacion: () => {
+        const hoy = new Date().toISOString().slice(0,10);
+        return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div style="grid-column:span 2"><label class="rh-form-label">Nombre de la capacitación *</label>
+                <input class="rh-form-input" id="rhp-capNombre" type="text" placeholder="Ej: Manejo de materiales peligrosos" autofocus></div>
+            <div><label class="rh-form-label">Quien imparte</label>
+                <input class="rh-form-input" id="rhp-impartidor" type="text" placeholder="Instructor o empresa"></div>
+            <div><label class="rh-form-label">Fecha</label>
+                <input class="rh-form-input" id="rhp-fecha" type="date" value="${hoy}"></div>
+            <div><label class="rh-form-label">Lugar</label>
+                <input class="rh-form-input" id="rhp-lugar" type="text" placeholder="Sala juntas, en línea..."></div>
+            <div><label class="rh-form-label">Duración (horas)</label>
+                <input class="rh-form-input" id="rhp-duracion" type="number" min="1" placeholder="8"></div>
+            <div style="grid-column:span 2"><label class="rh-form-label">Asistentes (separados por coma)</label>
+                <textarea class="rh-form-input" id="rhp-asistentes" rows="2" placeholder="Juan Pérez, María López..."></textarea></div>
+        </div>`;
+    },
+    incapacidad: () => {
+        const hoy = new Date().toISOString().slice(0,10);
+        return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div><label class="rh-form-label">Nombre *</label>
+                <input class="rh-form-input" id="rhp-nombre" type="text" placeholder="Nombre completo" autofocus></div>
+            <div><label class="rh-form-label">Área</label>
+                <select class="rh-form-input" id="rhp-area">
+                    <option>Ingresos</option><option>Egresos</option><option>Contabilidad</option>
+                    <option>Recursos Humanos</option><option>Marketing</option>
+                    <option>Administración</option><option>Ventas</option>
+                </select></div>
+            <div><label class="rh-form-label">Folio</label>
+                <input class="rh-form-input" id="rhp-folio" type="text" placeholder="Núm. de folio IMSS"></div>
+            <div><label class="rh-form-label">Ramo de seguro</label>
+                <select class="rh-form-input" id="rhp-ramo">
+                    <option value="enfermedad-general">Enfermedad general</option>
+                    <option value="riesgo-trabajo">Riesgo de trabajo</option>
+                    <option value="maternidad">Maternidad</option>
+                </select></div>
+            <div><label class="rh-form-label">Días</label>
+                <input class="rh-form-input" id="rhp-dias" type="number" min="1" placeholder="7"></div>
+            <div><label class="rh-form-label">Fecha inicio</label>
+                <input class="rh-form-input" id="rhp-fecha" type="date" value="${hoy}"></div>
+            <div><label class="rh-form-label">Fecha de regreso</label>
+                <input class="rh-form-input" id="rhp-fechaRegreso" type="date"></div>
+            <div><label class="rh-form-label">Notas</label>
+                <input class="rh-form-input" id="rhp-notas" type="text" placeholder="Diagnóstico..."></div>
+        </div>`;
+    }
+};
+
+// RH_TITULOS ya definido arriba
+window.toggleRHPanel = (tipo) => {
+    const panel = document.getElementById('rh-panel-inline');
+    if(!panel) return;
+    // Si el mismo panel ya está abierto, cerrar
+    if(rhPanelActual === tipo && panel.classList.contains('open')){
+        cerrarRHPanel(); return;
+    }
+    rhPanelActual = tipo;
+    document.getElementById('rh-panel-titulo').innerText = RH_TITULOS[tipo] || 'Registrar';
+    const formEl = document.getElementById('rh-panel-form-content');
+    if(formEl && RH_INLINE_FORMS[tipo]) formEl.innerHTML = RH_INLINE_FORMS[tipo]();
+    panel.classList.add('open');
+    panel.scrollIntoView({behavior:'smooth', block:'nearest'});
+    // Focus en primer input
+    setTimeout(()=>{ const inp = panel.querySelector('input[autofocus]'); if(inp) inp.focus(); }, 100);
+};
+
+window.cerrarRHPanel = () => {
+    const panel = document.getElementById('rh-panel-inline');
+    if(panel) panel.classList.remove('open');
+    rhPanelActual = null;
+};
+
+const rhpGet = id => { const el=document.getElementById(id); return el?el.value.trim():''; };
+
+window.guardarDatoRHInline = async () => {
+    if(!rhPanelActual){ alert('Selecciona un tipo de registro'); return; }
+    const key = rhKey();
+    const btn = document.querySelector('.rh-panel-save');
+    if(btn){ btn.textContent='Guardando...'; btn.disabled=true; }
+
+    const base = {
+        semanaKey: key,
+        mesAnio: new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0'),
+        creadoEn: new Date().toISOString(),
+        creadoPor: auth.currentUser?.email||'',
+        tipo: rhPanelActual
+    };
+
+    let data = {...base};
+    switch(rhPanelActual){
+        case 'retardo':
+            if(!rhpGet('rhp-nombre')){ alert('Escribe el nombre'); if(btn){btn.textContent='💾 GUARDAR REGISTRO';btn.disabled=false;} return; }
+            data = {...data, nombre:rhpGet('rhp-nombre'), area:rhpGet('rhp-area'),
+                fecha:rhpGet('rhp-fecha'), hora:rhpGet('rhp-hora'),
+                minutos:Number(rhpGet('rhp-minutos'))||0, notas:rhpGet('rhp-notas')};
+            break;
+        case 'falta':
+            if(!rhpGet('rhp-nombre')){ alert('Escribe el nombre'); if(btn){btn.textContent='💾 GUARDAR REGISTRO';btn.disabled=false;} return; }
+            data = {...data, nombre:rhpGet('rhp-nombre'), area:rhpGet('rhp-area'),
+                fecha:rhpGet('rhp-fecha'), tipoFalta:rhpGet('rhp-tipoFalta'),
+                dias:Number(rhpGet('rhp-dias'))||1, fechaRegreso:rhpGet('rhp-fechaRegreso'),
+                notas:rhpGet('rhp-notas')};
+            break;
+        case 'descuento':
+            if(!rhpGet('rhp-nombre')){ alert('Escribe el nombre'); if(btn){btn.textContent='💾 GUARDAR REGISTRO';btn.disabled=false;} return; }
+            data = {...data, nombre:rhpGet('rhp-nombre'), area:rhpGet('rhp-area'),
+                monto:Number(rhpGet('rhp-monto'))||0, fecha:rhpGet('rhp-fecha'),
+                motivoDesc:rhpGet('rhp-motivo'), notas:rhpGet('rhp-notas')};
+            break;
+        case 'rotacion':
+            if(!rhpGet('rhp-nombre')){ alert('Escribe el nombre'); if(btn){btn.textContent='💾 GUARDAR REGISTRO';btn.disabled=false;} return; }
+            data = {...data, nombre:rhpGet('rhp-nombre'), area:rhpGet('rhp-area'),
+                movimiento:rhpGet('rhp-movimiento'), fecha:rhpGet('rhp-fecha'),
+                notas:rhpGet('rhp-notas')};
+            break;
+        case 'vacante':
+            if(!rhpGet('rhp-puesto')){ alert('Escribe el puesto'); if(btn){btn.textContent='💾 GUARDAR REGISTRO';btn.disabled=false;} return; }
+            data = {...data, puesto:rhpGet('rhp-puesto'), area:rhpGet('rhp-area'),
+                fecha:rhpGet('rhp-fecha'), estatus:rhpGet('rhp-estatus'),
+                notas:rhpGet('rhp-notas')};
+            break;
+        case 'capacitacion':
+            if(!rhpGet('rhp-capNombre')){ alert('Escribe el nombre de la capacitación'); if(btn){btn.textContent='💾 GUARDAR REGISTRO';btn.disabled=false;} return; }
+            data = {...data, nombre:rhpGet('rhp-capNombre'), impartidor:rhpGet('rhp-impartidor'),
+                fecha:rhpGet('rhp-fecha'), lugar:rhpGet('rhp-lugar'),
+                duracion:Number(rhpGet('rhp-duracion'))||0,
+                asistentes:rhpGet('rhp-asistentes'), notas:rhpGet('rhp-notas')};
+            break;
+        case 'incapacidad':
+            if(!rhpGet('rhp-nombre')){ alert('Escribe el nombre'); if(btn){btn.textContent='💾 GUARDAR REGISTRO';btn.disabled=false;} return; }
+            data = {...data, nombre:rhpGet('rhp-nombre'), area:rhpGet('rhp-area'),
+                folio:rhpGet('rhp-folio'), ramo:rhpGet('rhp-ramo'),
+                dias:Number(rhpGet('rhp-dias'))||0, fecha:rhpGet('rhp-fecha'),
+                fechaRegreso:rhpGet('rhp-fechaRegreso'), notas:rhpGet('rhp-notas')};
+            break;
+    }
+
+    try {
+        const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const ref = await fs.addDoc(fs.collection(db,'rh_indicadores'), data);
+        console.log('[RH Inline] ✅ Guardado:', ref.id, rhPanelActual);
+        cerrarRHPanel();
+        window.mostrarPush('✅ Registro guardado', RH_TITULOS[rhPanelActual]||rhPanelActual, '👥');
+        cargarDatosRH();
+    } catch(e){
+        console.error('[RH Inline error]', e);
+        alert('Error: '+e.message);
+    } finally {
+        if(btn){ btn.textContent='💾 GUARDAR REGISTRO'; btn.disabled=false; }
+    }
+};
+
 </script>
 </body>
 </html>
