@@ -6093,5 +6093,371 @@ window.guardarDatoRHInline = async () => {
 };
 
 </script>
+    <!-- 
+  ══════════════════════════════════════════════════════
+  FIX RH v2 — PEGA ESTE BLOQUE COMPLETO EN TU index.html
+  JUSTO ANTES DE LA LÍNEA:  </body>
+  (es decir, DESPUÉS del cierre </script> del módulo principal)
+  ══════════════════════════════════════════════════════
+-->
+<script>
+// ══════════════════════════════════════════════════════════════
+// RH FIX v2 — Override de funciones buggy
+// Se ejecuta DESPUÉS del módulo principal y sobreescribe
+// las funciones expuestas via window.*
+// ══════════════════════════════════════════════════════════════
+
+(function(){
+    'use strict';
+
+    // ── Esperar a que el módulo principal cargue ──
+    // Las funciones window.* se asignan durante la ejecución del módulo.
+    // Este script corre después, así que puede sobreescribirlas.
+
+    const CHECK_INTERVAL = 200; // ms
+    const MAX_ATTEMPTS = 50; // 10 segundos máximo
+
+    let attempts = 0;
+    const waitForModule = setInterval(() => {
+        attempts++;
+        
+        // Verificar que las funciones originales existen
+        if(typeof window.guardarRHInline !== 'function' || 
+           typeof window.abrirRHInline !== 'function'){
+            if(attempts >= MAX_ATTEMPTS){
+                clearInterval(waitForModule);
+                console.warn('[RH FIX] Timeout esperando funciones del módulo');
+            }
+            return;
+        }
+
+        clearInterval(waitForModule);
+        aplicarFixes();
+    }, CHECK_INTERVAL);
+
+    function aplicarFixes(){
+        console.log('[RH FIX v2] Aplicando correcciones...');
+
+        // ══════════════════════════════════════════════════
+        // FIX: Función UNIFICADA de guardado RH
+        // Reemplaza guardarRHInline Y guardarDatoRH
+        // ══════════════════════════════════════════════════
+
+        // Necesitamos acceso a variables del módulo via window
+        // rhTabActual, rhEditandoId, rhData, etc. son variables del módulo
+        // PERO las funciones window.* sí pueden accederlas porque se definieron
+        // en el mismo scope. El truco es que nuestro override llama funciones
+        // auxiliares que SÍ están en el scope del módulo (rhGet, rhKey, etc.)
+
+        // Guardar referencia a funciones auxiliares originales
+        const _origCerrarInline = window.cerrarRHInline;
+        const _origMostrarPush = window.mostrarPush;
+
+        // ── Override: guardarRHInline ─────────────────────
+        window.guardarRHInline = async function(){
+            await guardarRegistroRH_fix('inline');
+        };
+
+        // ── Override: guardarDatoRH ──────────────────────
+        window.guardarDatoRH = async function(){
+            await guardarRegistroRH_fix('modal');
+        };
+
+        // ── Función unificada de guardado ────────────────
+        async function guardarRegistroRH_fix(origen){
+            // Acceder a variables del módulo via evaluación indirecta
+            // rhTabActual y rhEditandoId son variables del módulo,
+            // pero las funciones window.* las leen correctamente porque
+            // se definieron en el mismo scope.
+            
+            // Leer rhTabActual desde el tab activo en el DOM
+            const activeTab = document.querySelector('.rh-tab.active');
+            let tipo = '';
+            if(activeTab){
+                const onclick = activeTab.getAttribute('onclick') || '';
+                const match = onclick.match(/rhTabSwitch\('([^']+)'/);
+                if(match) tipo = match[1];
+            }
+            // Fallback: intentar leer del título del form inline
+            if(!tipo){
+                const titleEl = document.getElementById('rh-inline-title');
+                if(titleEl){
+                    const txt = titleEl.textContent.toLowerCase();
+                    if(txt.includes('retardo')) tipo = 'retardo';
+                    else if(txt.includes('falta') || txt.includes('permiso')) tipo = 'falta';
+                    else if(txt.includes('descuento')) tipo = 'descuento';
+                    else if(txt.includes('rotación') || txt.includes('rotacion')) tipo = 'rotacion';
+                    else if(txt.includes('vacante')) tipo = 'vacante';
+                    else if(txt.includes('acta')) tipo = 'acta';
+                    else if(txt.includes('capacitación') || txt.includes('capacitacion')) tipo = 'capacitacion';
+                    else if(txt.includes('incapacidad')) tipo = 'incapacidad';
+                }
+            }
+
+            if(!tipo){ 
+                alert('No se pudo determinar el tipo de registro. Intenta abrir el formulario de nuevo.'); 
+                return; 
+            }
+
+            console.log('[RH FIX] Tipo detectado:', tipo, '| Origen:', origen);
+
+            // ── Leer campos del formulario ──
+            const get = (id) => {
+                if(id === 'rh-f-area'){
+                    const sel = document.getElementById('rh-f-area-sel');
+                    if(sel){
+                        if(sel.value && sel.value !== '__otra__') return sel.value;
+                        const inputLibre = document.getElementById('rh-f-area');
+                        if(inputLibre && inputLibre.value.trim()) return inputLibre.value.trim();
+                        return sel.options[0]?.value || 'General';
+                    }
+                    const el = document.getElementById('rh-f-area');
+                    return el ? el.value.trim() : 'General';
+                }
+                const el = document.getElementById(id);
+                return el ? el.value.trim() : '';
+            };
+
+            // ── Validaciones ──
+            const needsNombre = ['retardo','falta','descuento','rotacion','acta','incapacidad'];
+            if(needsNombre.includes(tipo) && !get('rh-f-nombre')){
+                alert('Escribe el nombre del colaborador'); return;
+            }
+            if(tipo === 'capacitacion' && !get('rh-f-capNombre')){
+                alert('Escribe el nombre de la capacitación'); return;
+            }
+
+            // ── Fecha del FORMULARIO (nunca hardcodeada) ──
+            const fechaForm = get('rh-f-fecha') || new Date().toISOString().slice(0,10);
+            const fechaObj = new Date(fechaForm + 'T12:00:00');
+            
+            // ── Calcular semanaKey desde la fecha del form ──
+            function calcSemanaKey(d){
+                const dt = new Date(d); dt.setHours(0,0,0,0);
+                const day = dt.getDay();
+                const diffToMon = (day === 0) ? -6 : 1 - day;
+                const lunes = new Date(dt);
+                lunes.setDate(dt.getDate() + diffToMon);
+                const yearStart = new Date(lunes.getFullYear(), 0, 1);
+                const weekNum = Math.ceil(((lunes - yearStart) / 86400000 + yearStart.getDay() + 1) / 7);
+                return `${lunes.getFullYear()}-W${String(weekNum).padStart(2,'0')}`;
+            }
+
+            const semanaKeyCalc = calcSemanaKey(fechaObj);
+            const mesAnioCalc = fechaObj.getFullYear() + '-' + String(fechaObj.getMonth()+1).padStart(2,'0');
+
+            console.log(`[RH FIX SAVE] tipo=${tipo} fecha=${fechaForm} semKey=${semanaKeyCalc} mes=${mesAnioCalc}`);
+
+            // ── Feedback visual ──
+            const btnInline = document.querySelector('#rh-inline-form button');
+            const btnModal = document.querySelector('#modal-rh .rh-add-btn');
+            const btn = origen === 'inline' ? btnInline : btnModal;
+            if(btn){ btn.textContent = '💾 Guardando...'; btn.disabled = true; }
+
+            // ── Detectar si es edición ──
+            // rhEditandoId está en el scope del módulo, intentamos leerlo via un hidden input
+            let editId = null;
+            // Buscar en el DOM si hay algún indicador de edición
+            const titleEl = document.getElementById('rh-inline-title') || document.getElementById('rh-modal-title');
+            if(titleEl && titleEl.textContent.includes('Editar')){
+                // Intentar obtener el ID del registro que se está editando
+                // Lo guardamos como data attribute cuando se abre para editar
+                editId = document.getElementById('rh-inline-form')?.dataset?.editId || null;
+            }
+
+            // ── Construir documento ──
+            const base = {
+                semanaKey: semanaKeyCalc,
+                mesAnio: mesAnioCalc,
+                fecha: fechaForm,
+                creadoEn: new Date().toISOString(),
+                creadoPor: '', // se llena abajo con auth
+                tipo
+            };
+
+            let docData = { ...base };
+
+            switch(tipo){
+                case 'retardo':
+                    Object.assign(docData, { nombre: get('rh-f-nombre'), area: get('rh-f-area'), hora: get('rh-f-hora'), minutos: Number(get('rh-f-minutos')) || 0, notas: get('rh-f-notas') }); break;
+                case 'falta':
+                    Object.assign(docData, { nombre: get('rh-f-nombre'), area: get('rh-f-area'), tipoFalta: get('rh-f-tipoFalta') || 'injustificada', dias: Number(get('rh-f-dias')) || 1, fechaRegreso: get('rh-f-fecha-regreso') || '', notas: get('rh-f-notas') }); break;
+                case 'descuento':
+                    Object.assign(docData, { nombre: get('rh-f-nombre'), area: get('rh-f-area'), monto: Number(get('rh-f-monto')) || 0, motivoDesc: get('rh-f-motivoDesc') || 'Otro', notas: get('rh-f-notas') }); break;
+                case 'rotacion':
+                    Object.assign(docData, { nombre: get('rh-f-nombre'), area: get('rh-f-area'), movimiento: get('rh-f-movimiento') || 'baja', notas: get('rh-f-notas') }); break;
+                case 'vacante':
+                    Object.assign(docData, { puesto: get('rh-f-puesto'), area: get('rh-f-area'), estatus: get('rh-f-vacEstatus') || 'nueva', notas: get('rh-f-notas') }); break;
+                case 'acta':
+                    Object.assign(docData, { nombre: get('rh-f-nombre'), area: get('rh-f-area'), tipoActa: get('rh-f-tipoActa') || 'conducta', notas: get('rh-f-notas') }); break;
+                case 'capacitacion':
+                    Object.assign(docData, { nombre: get('rh-f-capNombre'), impartidor: get('rh-f-capImpartidor'), lugar: get('rh-f-capLugar'), duracion: Number(get('rh-f-capDuracion')) || 0, asistentes: get('rh-f-capAsistentes'), notas: get('rh-f-notas') }); break;
+                case 'incapacidad':
+                    Object.assign(docData, { nombre: get('rh-f-nombre'), area: get('rh-f-area'), folio: get('rh-f-incFolio'), ramo: get('rh-f-incRamo') || 'enfermedad-general', tipoIncapacidad: get('rh-f-incTipo') || 'inicial', dias: Number(get('rh-f-incDias')) || 0, fechaRegreso: get('rh-f-fecha-regreso') || '', notas: get('rh-f-notas') }); break;
+                default:
+                    console.warn('[RH FIX] Tipo no reconocido:', tipo);
+                    if(btn){ btn.textContent = '💾 GUARDAR REGISTRO'; btn.disabled = false; }
+                    return;
+            }
+
+            // Limpiar undefined
+            Object.keys(docData).forEach(k => { if(docData[k] === undefined) delete docData[k]; });
+            console.log('[RH FIX SAVE] docData:', JSON.stringify(docData));
+
+            try {
+                // Importar Firebase
+                const { getFirestore, collection, addDoc, doc, updateDoc, getAuth } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+                const { getAuth: getAuthFn } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+                
+                // Obtener instancia de Firestore desde la app existente
+                const { initializeApp, getApps } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+                const apps = getApps();
+                const app = apps[0]; // La app ya inicializada
+                const db = getFirestore(app);
+                const auth = getAuthFn(app);
+                
+                docData.creadoPor = auth.currentUser?.email || '';
+
+                if(editId){
+                    await updateDoc(doc(db, 'rh_indicadores', editId), docData);
+                    console.log('[RH FIX SAVE] ✅ Actualizado:', editId);
+                } else {
+                    const ref = await addDoc(collection(db, 'rh_indicadores'), docData);
+                    console.log('[RH FIX SAVE] ✅ Creado ID:', ref.id);
+                }
+
+                // Cerrar UI
+                if(origen === 'inline'){
+                    const formEl = document.getElementById('rh-inline-form');
+                    if(formEl) formEl.style.display = 'none';
+                } else {
+                    const modal = document.getElementById('modal-rh');
+                    if(modal) modal.style.display = 'none';
+                }
+
+                // Notificación
+                if(window.mostrarPush){
+                    window.mostrarPush('✅ Registro guardado', `${tipo} · ${docData.nombre || docData.puesto || tipo}`, '👥');
+                }
+
+                // Recargar dashboard RH
+                // Disparar un re-render navegando al área de nuevo
+                const btnRH = document.querySelector('[onclick*="verArea(\'Recursos Humanos"]') || 
+                              document.querySelector('.drawer-item[onclick*="Recursos Humanos"]');
+                if(btnRH) btnRH.click();
+                else {
+                    // Fallback: recargar manualmente
+                    if(window.verArea) window.verArea('Recursos Humanos');
+                }
+
+            } catch(e) {
+                console.error('[RH FIX SAVE ERROR]', e.code, e.message, e);
+                alert('Error al guardar: ' + e.message + '\n\nAbre consola (F12) para ver detalles.');
+            } finally {
+                if(btn){ btn.textContent = '💾 GUARDAR REGISTRO'; btn.disabled = false; }
+            }
+        }
+
+        // ══════════════════════════════════════════════════
+        // FIX: abrirRHInline con pre-llenado para edición
+        // ══════════════════════════════════════════════════
+        const _origAbrirInline = window.abrirRHInline;
+        
+        window.abrirRHInline = function(tab, editId){
+            editId = editId || null;
+            
+            // Llamar la función original primero (renderiza el form)
+            if(_origAbrirInline) _origAbrirInline(tab, editId);
+
+            // Guardar editId como data attribute para que guardarRegistroRH lo encuentre
+            const formEl = document.getElementById('rh-inline-form');
+            if(formEl){
+                if(editId) formEl.dataset.editId = editId;
+                else delete formEl.dataset.editId;
+            }
+
+            // Si es edición, esperar a que el DOM se renderice y pre-llenar
+            if(editId){
+                setTimeout(() => {
+                    preLlenarFormRH(editId);
+                }, 150);
+            }
+        };
+
+        function preLlenarFormRH(editId){
+            // Buscar el registro en Firestore directamente
+            import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js').then(appMod => {
+                const app = appMod.getApps()[0];
+                return import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js').then(fsMod => {
+                    const db = fsMod.getFirestore(app);
+                    return fsMod.getDoc(fsMod.doc(db, 'rh_indicadores', editId));
+                });
+            }).then(snap => {
+                if(!snap.exists()){
+                    console.warn('[RH FIX EDIT] Registro no encontrado:', editId);
+                    return;
+                }
+                const r = snap.data();
+                console.log('[RH FIX EDIT] Pre-llenando:', editId, r.tipo, r.nombre || r.puesto);
+
+                const setVal = (id, val) => { 
+                    const el = document.getElementById(id); 
+                    if(el && val !== undefined && val !== null && val !== '') el.value = val; 
+                };
+
+                setVal('rh-f-nombre', r.nombre);
+                setVal('rh-f-fecha', r.fecha);
+                setVal('rh-f-notas', r.notas);
+                setVal('rh-f-hora', r.hora);
+                setVal('rh-f-minutos', r.minutos);
+                setVal('rh-f-tipoFalta', r.tipoFalta);
+                setVal('rh-f-dias', r.dias);
+                setVal('rh-f-fecha-regreso', r.fechaRegreso);
+                setVal('rh-f-monto', r.monto);
+                setVal('rh-f-motivoDesc', r.motivoDesc);
+                setVal('rh-f-movimiento', r.movimiento);
+                setVal('rh-f-puesto', r.puesto);
+                setVal('rh-f-vacEstatus', r.estatus);
+                setVal('rh-f-tipoActa', r.tipoActa);
+                setVal('rh-f-capNombre', r.nombre);
+                setVal('rh-f-capImpartidor', r.impartidor);
+                setVal('rh-f-capLugar', r.lugar);
+                setVal('rh-f-capDuracion', r.duracion);
+                setVal('rh-f-capAsistentes', r.asistentes);
+                setVal('rh-f-incFolio', r.folio);
+                setVal('rh-f-incRamo', r.ramo);
+                setVal('rh-f-incTipo', r.tipoIncapacidad);
+                setVal('rh-f-incDias', r.dias);
+
+                // Área select
+                const areaSel = document.getElementById('rh-f-area-sel');
+                const areaInput = document.getElementById('rh-f-area');
+                if(areaSel && r.area){
+                    const opciones = [...areaSel.options].map(o => o.value);
+                    if(opciones.includes(r.area)){
+                        areaSel.value = r.area;
+                        if(areaInput) areaInput.style.display = 'none';
+                    } else {
+                        areaSel.value = '__otra__';
+                        if(areaInput){ areaInput.style.display = 'block'; areaInput.value = r.area; }
+                    }
+                }
+
+                // Actualizar título
+                const titleEl = document.getElementById('rh-inline-title');
+                if(titleEl) titleEl.innerHTML = '✏️ Editando: ' + (r.nombre || r.puesto || r.tipo);
+
+            }).catch(e => {
+                console.error('[RH FIX EDIT ERROR]', e);
+            });
+        }
+
+        console.log('[RH FIX v2] ✅ Todas las correcciones aplicadas');
+        console.log('[RH FIX v2] guardarRHInline → guardarRegistroRH_fix("inline")');
+        console.log('[RH FIX v2] guardarDatoRH → guardarRegistroRH_fix("modal")');
+        console.log('[RH FIX v2] abrirRHInline → versión con pre-llenado');
+    }
+})();
+</script>
 </body>
 </html>
