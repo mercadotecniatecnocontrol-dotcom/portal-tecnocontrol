@@ -6093,132 +6093,343 @@ window.guardarDatoRHInline = async () => {
 };
 
 </script>
-    <!-- 
-  ══════════════════════════════════════════════════════
-  FIX RH v2 — PEGA ESTE BLOQUE COMPLETO EN TU index.html
-  JUSTO ANTES DE LA LÍNEA:  </body>
-  (es decir, DESPUÉS del cierre </script> del módulo principal)
-  ══════════════════════════════════════════════════════
+  <!-- 
+  ═══════════════════════════════════════════════════════════
+  FIX RH v3 — REEMPLAZA la versión v2 que ya pegaste
+  
+  INSTRUCCIONES:
+  1. Abre tu index.html
+  2. BORRA el bloque <script>...</script> del FIX v2 que pegaste antes
+     (el que empieza con "RH FIX v2 — Override de funciones buggy")
+  3. PEGA este bloque completo en su lugar, justo antes de </body>
+  ═══════════════════════════════════════════════════════════
 -->
 <script>
 // ══════════════════════════════════════════════════════════════
-// RH FIX v2 — Override de funciones buggy
-// Se ejecuta DESPUÉS del módulo principal y sobreescribe
-// las funciones expuestas via window.*
+// RH FIX v3 — Override completo incluyendo recarga de datos
+// Corrige: guardado, edición, y VISUALIZACIÓN después de guardar
 // ══════════════════════════════════════════════════════════════
 
 (function(){
     'use strict';
 
-    // ── Esperar a que el módulo principal cargue ──
-    // Las funciones window.* se asignan durante la ejecución del módulo.
-    // Este script corre después, así que puede sobreescribirlas.
-
-    const CHECK_INTERVAL = 200; // ms
-    const MAX_ATTEMPTS = 50; // 10 segundos máximo
-
+    const CHECK_INTERVAL = 200;
+    const MAX_ATTEMPTS = 50;
     let attempts = 0;
+
     const waitForModule = setInterval(() => {
         attempts++;
-        
-        // Verificar que las funciones originales existen
         if(typeof window.guardarRHInline !== 'function' || 
-           typeof window.abrirRHInline !== 'function'){
+           typeof window.abrirRHInline !== 'function' ||
+           typeof window.verArea !== 'function'){
             if(attempts >= MAX_ATTEMPTS){
                 clearInterval(waitForModule);
-                console.warn('[RH FIX] Timeout esperando funciones del módulo');
+                console.warn('[RH FIX v3] Timeout');
             }
             return;
         }
-
         clearInterval(waitForModule);
         aplicarFixes();
     }, CHECK_INTERVAL);
 
     function aplicarFixes(){
-        console.log('[RH FIX v2] Aplicando correcciones...');
+        console.log('[RH FIX v3] Aplicando correcciones completas...');
 
         // ══════════════════════════════════════════════════
-        // FIX: Función UNIFICADA de guardado RH
-        // Reemplaza guardarRHInline Y guardarDatoRH
+        // Helper para detectar tipo actual del formulario
         // ══════════════════════════════════════════════════
-
-        // Necesitamos acceso a variables del módulo via window
-        // rhTabActual, rhEditandoId, rhData, etc. son variables del módulo
-        // PERO las funciones window.* sí pueden accederlas porque se definieron
-        // en el mismo scope. El truco es que nuestro override llama funciones
-        // auxiliares que SÍ están en el scope del módulo (rhGet, rhKey, etc.)
-
-        // Guardar referencia a funciones auxiliares originales
-        const _origCerrarInline = window.cerrarRHInline;
-        const _origMostrarPush = window.mostrarPush;
-
-        // ── Override: guardarRHInline ─────────────────────
-        window.guardarRHInline = async function(){
-            await guardarRegistroRH_fix('inline');
-        };
-
-        // ── Override: guardarDatoRH ──────────────────────
-        window.guardarDatoRH = async function(){
-            await guardarRegistroRH_fix('modal');
-        };
-
-        // ── Función unificada de guardado ────────────────
-        async function guardarRegistroRH_fix(origen){
-            // Acceder a variables del módulo via evaluación indirecta
-            // rhTabActual y rhEditandoId son variables del módulo,
-            // pero las funciones window.* las leen correctamente porque
-            // se definieron en el mismo scope.
-            
-            // Leer rhTabActual desde el tab activo en el DOM
+        function detectarTipoRH(){
+            // 1. Tab activo
             const activeTab = document.querySelector('.rh-tab.active');
-            let tipo = '';
             if(activeTab){
                 const onclick = activeTab.getAttribute('onclick') || '';
-                const match = onclick.match(/rhTabSwitch\('([^']+)'/);
-                if(match) tipo = match[1];
+                const m = onclick.match(/rhTabSwitch\('([^']+)'/);
+                if(m) return m[1];
             }
-            // Fallback: intentar leer del título del form inline
-            if(!tipo){
-                const titleEl = document.getElementById('rh-inline-title');
-                if(titleEl){
-                    const txt = titleEl.textContent.toLowerCase();
-                    if(txt.includes('retardo')) tipo = 'retardo';
-                    else if(txt.includes('falta') || txt.includes('permiso')) tipo = 'falta';
-                    else if(txt.includes('descuento')) tipo = 'descuento';
-                    else if(txt.includes('rotación') || txt.includes('rotacion')) tipo = 'rotacion';
-                    else if(txt.includes('vacante')) tipo = 'vacante';
-                    else if(txt.includes('acta')) tipo = 'acta';
-                    else if(txt.includes('capacitación') || txt.includes('capacitacion')) tipo = 'capacitacion';
-                    else if(txt.includes('incapacidad')) tipo = 'incapacidad';
+            // 2. Desde el título del form inline
+            const titleEl = document.getElementById('rh-inline-title');
+            if(titleEl){
+                const txt = titleEl.textContent.toLowerCase();
+                if(txt.includes('retardo')) return 'retardo';
+                if(txt.includes('falta') || txt.includes('permiso')) return 'falta';
+                if(txt.includes('descuento')) return 'descuento';
+                if(txt.includes('rotación') || txt.includes('rotacion')) return 'rotacion';
+                if(txt.includes('vacante')) return 'vacante';
+                if(txt.includes('acta')) return 'acta';
+                if(txt.includes('capacitación') || txt.includes('capacitacion')) return 'capacitacion';
+                if(txt.includes('incapacidad')) return 'incapacidad';
+            }
+            // 3. Desde los IDs de campos presentes
+            if(document.getElementById('rh-f-minutos')) return 'retardo';
+            if(document.getElementById('rh-f-tipoFalta')) return 'falta';
+            if(document.getElementById('rh-f-monto')) return 'descuento';
+            if(document.getElementById('rh-f-movimiento')) return 'rotacion';
+            if(document.getElementById('rh-f-vacEstatus')) return 'vacante';
+            if(document.getElementById('rh-f-tipoActa')) return 'acta';
+            if(document.getElementById('rh-f-capNombre')) return 'capacitacion';
+            if(document.getElementById('rh-f-incFolio')) return 'incapacidad';
+            return '';
+        }
+
+        // ══════════════════════════════════════════════════
+        // Helper para leer campos
+        // ══════════════════════════════════════════════════
+        function get(id){
+            if(id === 'rh-f-area'){
+                const sel = document.getElementById('rh-f-area-sel');
+                if(sel){
+                    if(sel.value && sel.value !== '__otra__') return sel.value;
+                    const inputLibre = document.getElementById('rh-f-area');
+                    if(inputLibre && inputLibre.value.trim()) return inputLibre.value.trim();
+                    return sel.options[0]?.value || 'General';
                 }
+                const el = document.getElementById('rh-f-area');
+                return el ? el.value.trim() : 'General';
             }
+            const el = document.getElementById(id);
+            return el ? el.value.trim() : '';
+        }
 
-            if(!tipo){ 
-                alert('No se pudo determinar el tipo de registro. Intenta abrir el formulario de nuevo.'); 
-                return; 
-            }
+        // ══════════════════════════════════════════════════
+        // Calcular semana ISO desde una fecha
+        // ══════════════════════════════════════════════════
+        function calcSemanaKey(d){
+            const dt = new Date(d); dt.setHours(0,0,0,0);
+            const day = dt.getDay();
+            const diffToMon = (day === 0) ? -6 : 1 - day;
+            const lunes = new Date(dt);
+            lunes.setDate(dt.getDate() + diffToMon);
+            const yearStart = new Date(lunes.getFullYear(), 0, 1);
+            const weekNum = Math.ceil(((lunes - yearStart) / 86400000 + yearStart.getDay() + 1) / 7);
+            return `${lunes.getFullYear()}-W${String(weekNum).padStart(2,'0')}`;
+        }
 
-            console.log('[RH FIX] Tipo detectado:', tipo, '| Origen:', origen);
+        // ══════════════════════════════════════════════════
+        // Rango Sábado → Viernes (como el sistema original)
+        // ══════════════════════════════════════════════════
+        function getRangoSemanaActual(){
+            const d = new Date(); d.setHours(0,0,0,0);
+            const day = d.getDay();
+            const diffToSab = day === 6 ? 0 : -(day + 1);
+            const inicio = new Date(d);
+            inicio.setDate(d.getDate() + diffToSab);
+            const fin = new Date(inicio);
+            fin.setDate(inicio.getDate() + 6);
+            return {
+                inicio,
+                fin,
+                iniStr: inicio.toISOString().slice(0,10),
+                finStr: fin.toISOString().slice(0,10),
+                mesAnio: inicio.getFullYear() + '-' + String(inicio.getMonth()+1).padStart(2,'0'),
+                semanaKey: calcSemanaKey(inicio)
+            };
+        }
 
-            // ── Leer campos del formulario ──
-            const get = (id) => {
-                if(id === 'rh-f-area'){
-                    const sel = document.getElementById('rh-f-area-sel');
-                    if(sel){
-                        if(sel.value && sel.value !== '__otra__') return sel.value;
-                        const inputLibre = document.getElementById('rh-f-area');
-                        if(inputLibre && inputLibre.value.trim()) return inputLibre.value.trim();
-                        return sel.options[0]?.value || 'General';
+        // ══════════════════════════════════════════════════
+        // Obtener instancias de Firebase
+        // ══════════════════════════════════════════════════
+        async function getFirebase(){
+            const appMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+            const fsMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+            const authMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+            const app = appMod.getApps()[0];
+            return {
+                db: fsMod.getFirestore(app),
+                auth: authMod.getAuth(app),
+                fs: fsMod
+            };
+        }
+
+        // ══════════════════════════════════════════════════
+        // RENDERIZAR secciones de RH con datos frescos
+        // ══════════════════════════════════════════════════
+        async function recargarYRenderizarRH(){
+            try {
+                const { db, fs } = await getFirebase();
+                const rango = getRangoSemanaActual();
+                
+                console.log(`[RH FIX v3] Cargando datos semana: ${rango.iniStr} → ${rango.finStr} (${rango.semanaKey})`);
+
+                const snap = await fs.getDocs(fs.collection(db, 'rh_indicadores'));
+                
+                // Mapa tipo → clave plural (como usa el código original)
+                const tipoMap = {
+                    'retardo':'retardos', 'falta':'faltas', 'descuento':'descuentos',
+                    'vacante':'vacantes', 'acta':'actas', 'rotacion':'rotacion',
+                    'capacitacion':'capacitacion', 'incapacidad':'incapacidad'
+                };
+
+                const semData = { 
+                    retardos:[], faltas:[], descuentos:[], vacantes:[], 
+                    actas:[], rotacion:[], capacitacion:[], incapacidad:[] 
+                };
+
+                let totalDocs = 0;
+                let matched = 0;
+
+                snap.docs.forEach(d => {
+                    const data = d.data();
+                    const tipo = data.tipo;
+                    totalDocs++;
+                    const arrayKey = tipoMap[tipo];
+                    if(!arrayKey || !semData[arrayKey]) return;
+
+                    // MÚLTIPLES criterios de match (OR) — muy permisivo
+                    const matchKey = data.semanaKey === rango.semanaKey;
+                    const matchFecha = data.fecha && data.fecha >= rango.iniStr && data.fecha <= rango.finStr;
+                    const creadoFecha = data.creadoEn ? data.creadoEn.slice(0,10) : '';
+                    const matchCreado = creadoFecha >= rango.iniStr && creadoFecha <= rango.finStr;
+                    const matchMes = data.mesAnio === rango.mesAnio;
+
+                    if(matchKey || matchFecha || matchCreado || matchMes){
+                        semData[arrayKey].push({id: d.id, ...data});
+                        matched++;
                     }
-                    const el = document.getElementById('rh-f-area');
-                    return el ? el.value.trim() : 'General';
-                }
+                });
+
+                console.log(`[RH FIX v3] Total docs: ${totalDocs} | Matched: ${matched}`);
+                console.log('[RH FIX v3] Desglose:', Object.entries(semData)
+                    .map(([k,v]) => v.length ? `${k}:${v.length}` : '')
+                    .filter(Boolean).join(' | ') || 'ninguno');
+
+                // ── Forzar actualización visual ──
+                // Actualizar los KPIs directamente en el DOM
+                actualizarKPIsRH(semData);
+                // Actualizar las tablas de secciones
+                actualizarSeccionesRH(semData);
+
+            } catch(e) {
+                console.error('[RH FIX v3 LOAD ERROR]', e);
+            }
+        }
+
+        function actualizarKPIsRH(data){
+            const setKPI = (id, val) => {
                 const el = document.getElementById(id);
-                return el ? el.value.trim() : '';
+                if(el) el.innerText = val;
+            };
+            const setDelta = (id, html) => {
+                const el = document.getElementById(id);
+                if(el) el.innerHTML = `<span class="rh-kpi-delta neutral">${html}</span>`;
             };
 
-            // ── Validaciones ──
+            const ret = data.retardos || [];
+            const falt = data.faltas || [];
+            const desc = data.descuentos || [];
+            const rot = data.rotacion || [];
+            const vac = data.vacantes || [];
+            const cap = data.capacitacion || [];
+            const inc = data.incapacidad || [];
+
+            setKPI('rh-val-rotacion', rot.length);
+            setDelta('rh-delta-rotacion', `${rot.filter(r=>r.movimiento==='alta').length} altas · ${rot.filter(r=>(r.movimiento||'').includes('baja')).length} bajas`);
+
+            setKPI('rh-val-faltas', falt.length);
+            setDelta('rh-delta-faltas', `${falt.filter(f=>f.tipoFalta==='injustificada').length} injust. · ${falt.filter(f=>(f.tipoFalta||'').includes('permiso')).length} permisos`);
+
+            setKPI('rh-val-retardos', ret.length);
+            setDelta('rh-delta-retardos', `≈${ret.reduce((s,r)=>s+(Number(r.minutos)||0),0)} min totales`);
+
+            const totalDesc = desc.reduce((s,d)=>s+(Number(d.monto)||0),0);
+            setKPI('rh-val-descuentos', '$' + totalDesc.toLocaleString('es-MX'));
+            setDelta('rh-delta-descuentos', `${desc.length} descuentos`);
+
+            setKPI('rh-val-vacantes', vac.length);
+            setDelta('rh-delta-vacantes', `${vac.filter(v=>v.estatus==='concretada').length} concretadas`);
+
+            setKPI('rh-val-capacitacion', cap.length);
+            setDelta('rh-delta-capacitacion', `${cap.reduce((s,c)=>{
+                const asis = (c.asistentes||'').split(',').filter(Boolean).length;
+                return s + asis;
+            }, 0)} asistentes`);
+
+            setKPI('rh-val-incapacidad', inc.length);
+            setDelta('rh-delta-incapacidad', `${inc.reduce((s,i)=>s+(Number(i.dias)||0),0)} días totales`);
+        }
+
+        function actualizarSeccionesRH(data){
+            // Helper para armar tabla
+            const tabla = (lista, campos, tipo) => {
+                if(!lista.length) return '<div style="text-align:center;color:#94a3b8;padding:12px;font-size:12px;">Sin registros esta semana</div>';
+                return lista.map(r => `
+                    <div style="display:grid;grid-template-columns:${Array(campos.length).fill('1fr').join(' ')} 80px;gap:8px;padding:9px 12px;border-bottom:1px solid rgba(59,130,246,0.06);align-items:center;">
+                        ${campos.map(f=>`<span style="font-size:12px;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r[f.key]||''}">${f.prefix||''}${r[f.key]||'—'}</span>`).join('')}
+                        <div style="display:flex;gap:4px;justify-content:flex-end;">
+                            <button onclick="abrirModalRH('${tipo}','${r.id}')" style="padding:3px 7px;background:#eff6ff;color:#2563eb;border:none;border-radius:6px;font-size:10px;cursor:pointer;">✏️</button>
+                            <button onclick="eliminarRH('${r.id}')" style="padding:3px 7px;background:#fee2e2;color:#dc2626;border:none;border-radius:6px;font-size:10px;cursor:pointer;">🗑</button>
+                        </div>
+                    </div>`).join('');
+            };
+
+            const header = (cols) => `
+                <div style="display:grid;grid-template-columns:${Array(cols.length).fill('1fr').join(' ')} 80px;gap:8px;padding:7px 12px;background:#f8faff;border-radius:8px;margin-bottom:4px;">
+                    ${cols.map(c=>`<span style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;">${c}</span>`).join('')}
+                    <span></span>
+                </div>`;
+
+            // Vacantes
+            const vacEl = document.getElementById('rh-vacantes-lista');
+            if(vacEl){
+                vacEl.innerHTML = (data.vacantes||[]).length
+                    ? header(['Puesto','Área','Apertura','Estatus']) + tabla(data.vacantes, [
+                        {key:'puesto'},{key:'area'},{key:'fecha'},{key:'estatus'}
+                    ], 'vacante')
+                    : '<div style="text-align:center;color:#94a3b8;padding:12px;font-size:12px;">Sin vacantes esta semana</div>';
+            }
+
+            // Actas
+            const actEl = document.getElementById('rh-actas-lista');
+            if(actEl){
+                actEl.innerHTML = (data.actas||[]).length
+                    ? header(['Colaborador','Área','Fecha','Tipo']) + tabla(data.actas, [
+                        {key:'nombre'},{key:'area'},{key:'fecha'},{key:'tipoActa'}
+                    ], 'acta')
+                    : '<div style="text-align:center;color:#94a3b8;padding:12px;font-size:12px;">Sin actas esta semana</div>';
+            }
+
+            // Registros extra (retardos, faltas, descuentos, capacitaciones, incapacidades, rotación)
+            const rhExtraEl = document.getElementById('rh-registros-extra');
+            if(rhExtraEl){
+                const seccion = (titulo, emoji, lista, campos, tipo, color) => `
+                    <div style="background:#ffffff;border-radius:14px;padding:16px;border:1px solid rgba(59,130,246,0.08);margin-bottom:12px;">
+                        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                            <span style="font-size:12px;font-weight:700;color:#1e293b;">${emoji} ${titulo} <span style="font-weight:400;color:#64748b;">(${lista.length})</span></span>
+                            <button onclick="abrirModalRH('${tipo}')" style="padding:4px 10px;background:${color};color:white;border:none;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;">+ Agregar</button>
+                        </div>
+                        ${header(campos.map(f=>f.label))}
+                        ${tabla(lista, campos.map(f=>({key:f.key})), tipo)}
+                    </div>`;
+
+                rhExtraEl.innerHTML =
+                    seccion('Retardos','⏰', data.retardos||[],
+                        [{label:'Colaborador',key:'nombre'},{label:'Área',key:'area'},{label:'Fecha',key:'fecha'},{label:'Hora',key:'hora'},{label:'Min.',key:'minutos'}],
+                        'retardo','#2563eb') +
+                    seccion('Faltas y Permisos','📅', data.faltas||[],
+                        [{label:'Colaborador',key:'nombre'},{label:'Área',key:'area'},{label:'Fecha',key:'fecha'},{label:'Tipo',key:'tipoFalta'},{label:'Días',key:'dias'}],
+                        'falta','#f59e0b') +
+                    seccion('Descuentos','💰', data.descuentos||[],
+                        [{label:'Colaborador',key:'nombre'},{label:'Área',key:'area'},{label:'Fecha',key:'fecha'},{label:'Monto',key:'monto'}],
+                        'descuento','#7c3aed') +
+                    seccion('Capacitaciones','🎓', data.capacitacion||[],
+                        [{label:'Capacitación',key:'nombre'},{label:'Imparte',key:'impartidor'},{label:'Fecha',key:'fecha'},{label:'Lugar',key:'lugar'}],
+                        'capacitacion','#059669') +
+                    seccion('Incapacidades','🏥', data.incapacidad||[],
+                        [{label:'Colaborador',key:'nombre'},{label:'Área',key:'area'},{label:'Folio',key:'folio'},{label:'Días',key:'dias'}],
+                        'incapacidad','#ef4444') +
+                    seccion('Rotación de Personal','🔄', data.rotacion||[],
+                        [{label:'Colaborador',key:'nombre'},{label:'Área',key:'area'},{label:'Movimiento',key:'movimiento'},{label:'Fecha',key:'fecha'}],
+                        'rotacion','#64748b');
+            }
+        }
+
+        // ══════════════════════════════════════════════════
+        // Override guardarRHInline y guardarDatoRH
+        // ══════════════════════════════════════════════════
+        async function guardarRegistroRH(origen){
+            const tipo = detectarTipoRH();
+            if(!tipo){ alert('No se pudo determinar el tipo de registro'); return; }
+
+            // Validaciones
             const needsNombre = ['retardo','falta','descuento','rotacion','acta','incapacidad'];
             if(needsNombre.includes(tipo) && !get('rh-f-nombre')){
                 alert('Escribe el nombre del colaborador'); return;
@@ -6227,55 +6438,28 @@ window.guardarDatoRHInline = async () => {
                 alert('Escribe el nombre de la capacitación'); return;
             }
 
-            // ── Fecha del FORMULARIO (nunca hardcodeada) ──
             const fechaForm = get('rh-f-fecha') || new Date().toISOString().slice(0,10);
             const fechaObj = new Date(fechaForm + 'T12:00:00');
-            
-            // ── Calcular semanaKey desde la fecha del form ──
-            function calcSemanaKey(d){
-                const dt = new Date(d); dt.setHours(0,0,0,0);
-                const day = dt.getDay();
-                const diffToMon = (day === 0) ? -6 : 1 - day;
-                const lunes = new Date(dt);
-                lunes.setDate(dt.getDate() + diffToMon);
-                const yearStart = new Date(lunes.getFullYear(), 0, 1);
-                const weekNum = Math.ceil(((lunes - yearStart) / 86400000 + yearStart.getDay() + 1) / 7);
-                return `${lunes.getFullYear()}-W${String(weekNum).padStart(2,'0')}`;
-            }
-
             const semanaKeyCalc = calcSemanaKey(fechaObj);
             const mesAnioCalc = fechaObj.getFullYear() + '-' + String(fechaObj.getMonth()+1).padStart(2,'0');
 
-            console.log(`[RH FIX SAVE] tipo=${tipo} fecha=${fechaForm} semKey=${semanaKeyCalc} mes=${mesAnioCalc}`);
+            console.log(`[RH SAVE] tipo=${tipo} fecha=${fechaForm} semKey=${semanaKeyCalc} mes=${mesAnioCalc}`);
 
-            // ── Feedback visual ──
             const btnInline = document.querySelector('#rh-inline-form button');
             const btnModal = document.querySelector('#modal-rh .rh-add-btn');
             const btn = origen === 'inline' ? btnInline : btnModal;
             if(btn){ btn.textContent = '💾 Guardando...'; btn.disabled = true; }
 
-            // ── Detectar si es edición ──
-            // rhEditandoId está en el scope del módulo, intentamos leerlo via un hidden input
-            let editId = null;
-            // Buscar en el DOM si hay algún indicador de edición
-            const titleEl = document.getElementById('rh-inline-title') || document.getElementById('rh-modal-title');
-            if(titleEl && titleEl.textContent.includes('Editar')){
-                // Intentar obtener el ID del registro que se está editando
-                // Lo guardamos como data attribute cuando se abre para editar
-                editId = document.getElementById('rh-inline-form')?.dataset?.editId || null;
-            }
+            const editId = document.getElementById('rh-inline-form')?.dataset?.editId || null;
 
-            // ── Construir documento ──
-            const base = {
+            let docData = {
                 semanaKey: semanaKeyCalc,
                 mesAnio: mesAnioCalc,
                 fecha: fechaForm,
                 creadoEn: new Date().toISOString(),
-                creadoPor: '', // se llena abajo con auth
+                creadoPor: '',
                 tipo
             };
-
-            let docData = { ...base };
 
             switch(tipo){
                 case 'retardo':
@@ -6294,36 +6478,23 @@ window.guardarDatoRHInline = async () => {
                     Object.assign(docData, { nombre: get('rh-f-capNombre'), impartidor: get('rh-f-capImpartidor'), lugar: get('rh-f-capLugar'), duracion: Number(get('rh-f-capDuracion')) || 0, asistentes: get('rh-f-capAsistentes'), notas: get('rh-f-notas') }); break;
                 case 'incapacidad':
                     Object.assign(docData, { nombre: get('rh-f-nombre'), area: get('rh-f-area'), folio: get('rh-f-incFolio'), ramo: get('rh-f-incRamo') || 'enfermedad-general', tipoIncapacidad: get('rh-f-incTipo') || 'inicial', dias: Number(get('rh-f-incDias')) || 0, fechaRegreso: get('rh-f-fecha-regreso') || '', notas: get('rh-f-notas') }); break;
-                default:
-                    console.warn('[RH FIX] Tipo no reconocido:', tipo);
-                    if(btn){ btn.textContent = '💾 GUARDAR REGISTRO'; btn.disabled = false; }
-                    return;
             }
 
-            // Limpiar undefined
             Object.keys(docData).forEach(k => { if(docData[k] === undefined) delete docData[k]; });
-            console.log('[RH FIX SAVE] docData:', JSON.stringify(docData));
+            console.log('[RH SAVE] docData:', JSON.stringify(docData));
 
             try {
-                // Importar Firebase
-                const { getFirestore, collection, addDoc, doc, updateDoc, getAuth } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-                const { getAuth: getAuthFn } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
-                
-                // Obtener instancia de Firestore desde la app existente
-                const { initializeApp, getApps } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
-                const apps = getApps();
-                const app = apps[0]; // La app ya inicializada
-                const db = getFirestore(app);
-                const auth = getAuthFn(app);
-                
+                const { db, auth, fs } = await getFirebase();
                 docData.creadoPor = auth.currentUser?.email || '';
 
                 if(editId){
-                    await updateDoc(doc(db, 'rh_indicadores', editId), docData);
-                    console.log('[RH FIX SAVE] ✅ Actualizado:', editId);
+                    await fs.updateDoc(fs.doc(db, 'rh_indicadores', editId), docData);
+                    console.log('[RH SAVE] ✅ Actualizado:', editId);
+                    const formEl = document.getElementById('rh-inline-form');
+                    if(formEl) delete formEl.dataset.editId;
                 } else {
-                    const ref = await addDoc(collection(db, 'rh_indicadores'), docData);
-                    console.log('[RH FIX SAVE] ✅ Creado ID:', ref.id);
+                    const ref = await fs.addDoc(fs.collection(db, 'rh_indicadores'), docData);
+                    console.log('[RH SAVE] ✅ Creado ID:', ref.id);
                 }
 
                 // Cerrar UI
@@ -6335,74 +6506,55 @@ window.guardarDatoRHInline = async () => {
                     if(modal) modal.style.display = 'none';
                 }
 
-                // Notificación
                 if(window.mostrarPush){
                     window.mostrarPush('✅ Registro guardado', `${tipo} · ${docData.nombre || docData.puesto || tipo}`, '👥');
                 }
 
-                // Recargar dashboard RH
-                // Disparar un re-render navegando al área de nuevo
-                const btnRH = document.querySelector('[onclick*="verArea(\'Recursos Humanos"]') || 
-                              document.querySelector('.drawer-item[onclick*="Recursos Humanos"]');
-                if(btnRH) btnRH.click();
-                else {
-                    // Fallback: recargar manualmente
-                    if(window.verArea) window.verArea('Recursos Humanos');
-                }
+                // RECARGA INMEDIATA DE LA VISTA
+                await recargarYRenderizarRH();
 
             } catch(e) {
-                console.error('[RH FIX SAVE ERROR]', e.code, e.message, e);
-                alert('Error al guardar: ' + e.message + '\n\nAbre consola (F12) para ver detalles.');
+                console.error('[RH SAVE ERROR]', e);
+                alert('Error al guardar: ' + e.message);
             } finally {
                 if(btn){ btn.textContent = '💾 GUARDAR REGISTRO'; btn.disabled = false; }
             }
         }
 
+        window.guardarRHInline = () => guardarRegistroRH('inline');
+        window.guardarDatoRH = () => guardarRegistroRH('modal');
+
         // ══════════════════════════════════════════════════
-        // FIX: abrirRHInline con pre-llenado para edición
+        // Override abrirRHInline con pre-llenado
         // ══════════════════════════════════════════════════
         const _origAbrirInline = window.abrirRHInline;
-        
         window.abrirRHInline = function(tab, editId){
             editId = editId || null;
-            
-            // Llamar la función original primero (renderiza el form)
             if(_origAbrirInline) _origAbrirInline(tab, editId);
-
-            // Guardar editId como data attribute para que guardarRegistroRH lo encuentre
             const formEl = document.getElementById('rh-inline-form');
             if(formEl){
                 if(editId) formEl.dataset.editId = editId;
                 else delete formEl.dataset.editId;
             }
-
-            // Si es edición, esperar a que el DOM se renderice y pre-llenar
             if(editId){
-                setTimeout(() => {
-                    preLlenarFormRH(editId);
-                }, 150);
+                setTimeout(() => preLlenarFormRH(editId), 150);
             }
         };
 
-        function preLlenarFormRH(editId){
-            // Buscar el registro en Firestore directamente
-            import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js').then(appMod => {
-                const app = appMod.getApps()[0];
-                return import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js').then(fsMod => {
-                    const db = fsMod.getFirestore(app);
-                    return fsMod.getDoc(fsMod.doc(db, 'rh_indicadores', editId));
-                });
-            }).then(snap => {
+        async function preLlenarFormRH(editId){
+            try {
+                const { db, fs } = await getFirebase();
+                const snap = await fs.getDoc(fs.doc(db, 'rh_indicadores', editId));
                 if(!snap.exists()){
-                    console.warn('[RH FIX EDIT] Registro no encontrado:', editId);
+                    console.warn('[RH EDIT] No encontrado:', editId);
                     return;
                 }
                 const r = snap.data();
-                console.log('[RH FIX EDIT] Pre-llenando:', editId, r.tipo, r.nombre || r.puesto);
+                console.log('[RH EDIT] Pre-llenando:', editId, r.tipo);
 
-                const setVal = (id, val) => { 
-                    const el = document.getElementById(id); 
-                    if(el && val !== undefined && val !== null && val !== '') el.value = val; 
+                const setVal = (id, val) => {
+                    const el = document.getElementById(id);
+                    if(el && val !== undefined && val !== null && val !== '') el.value = val;
                 };
 
                 setVal('rh-f-nombre', r.nombre);
@@ -6429,7 +6581,6 @@ window.guardarDatoRHInline = async () => {
                 setVal('rh-f-incTipo', r.tipoIncapacidad);
                 setVal('rh-f-incDias', r.dias);
 
-                // Área select
                 const areaSel = document.getElementById('rh-f-area-sel');
                 const areaInput = document.getElementById('rh-f-area');
                 if(areaSel && r.area){
@@ -6443,19 +6594,57 @@ window.guardarDatoRHInline = async () => {
                     }
                 }
 
-                // Actualizar título
                 const titleEl = document.getElementById('rh-inline-title');
                 if(titleEl) titleEl.innerHTML = '✏️ Editando: ' + (r.nombre || r.puesto || r.tipo);
 
-            }).catch(e => {
-                console.error('[RH FIX EDIT ERROR]', e);
-            });
+            } catch(e) {
+                console.error('[RH EDIT ERROR]', e);
+            }
         }
 
-        console.log('[RH FIX v2] ✅ Todas las correcciones aplicadas');
-        console.log('[RH FIX v2] guardarRHInline → guardarRegistroRH_fix("inline")');
-        console.log('[RH FIX v2] guardarDatoRH → guardarRegistroRH_fix("modal")');
-        console.log('[RH FIX v2] abrirRHInline → versión con pre-llenado');
+        // ══════════════════════════════════════════════════
+        // Recargar datos cuando entra a Recursos Humanos
+        // ══════════════════════════════════════════════════
+        const _origVerArea = window.verArea;
+        window.verArea = function(area, btn){
+            if(_origVerArea) _origVerArea(area, btn);
+            if(area === 'Recursos Humanos'){
+                setTimeout(() => recargarYRenderizarRH(), 500);
+            }
+        };
+
+        // ══════════════════════════════════════════════════
+        // Eliminar — recargar después
+        // ══════════════════════════════════════════════════
+        const _origEliminar = window.eliminarRH;
+        window.eliminarRH = async function(id){
+            if(!confirm('¿Eliminar este registro? Esta acción no se puede deshacer.')) return;
+            try {
+                const { db, fs } = await getFirebase();
+                await fs.deleteDoc(fs.doc(db, 'rh_indicadores', id));
+                if(window.mostrarPush) window.mostrarPush('🗑 Eliminado', 'Registro eliminado', '👥');
+                await recargarYRenderizarRH();
+            } catch(e){
+                alert('Error al eliminar: ' + e.message);
+            }
+        };
+
+        // ══════════════════════════════════════════════════
+        // Cargar datos iniciales si ya estamos en RH
+        // ══════════════════════════════════════════════════
+        setTimeout(() => {
+            const secArea = document.getElementById('sec-area');
+            const titleEl = document.getElementById('area-title');
+            if(secArea && secArea.classList.contains('active') && 
+               titleEl && titleEl.innerText.includes('Recursos Humanos')){
+                recargarYRenderizarRH();
+            }
+        }, 1000);
+
+        console.log('[RH FIX v3] ✅ Todas las correcciones aplicadas');
+        console.log('[RH FIX v3] guardar → guardarRegistroRH');
+        console.log('[RH FIX v3] abrir edición → con pre-llenado');
+        console.log('[RH FIX v3] recarga automática después de guardar/eliminar');
     }
 })();
 </script>
