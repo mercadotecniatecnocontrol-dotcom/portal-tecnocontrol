@@ -1393,6 +1393,114 @@
         <div id="pag-registros-lista"></div>
     </div>
 </div>
+    <!-- ═══ MINI-DASHBOARD EGRESOS v2 — Registros individuales ═══ -->
+<div id="egresos-dashboard" style="display:none;margin-bottom:28px;">
+    <div class="rh-dash-header">
+        <div class="rh-dash-title">📤 Indicadores Egresos
+            <span class="rh-dash-badge" style="background:#fef3c7;color:#92400e;">Mensual · Auto-calculado</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;">
+            <div class="rh-mes-selector">
+                <button class="rh-mes-btn" onclick="egresosMesPrev()">‹</button>
+                <span class="rh-mes-label" id="egresos-mes-label"></span>
+                <button class="rh-mes-btn" onclick="egresosMesNext()">›</button>
+            </div>
+            <button class="mkt-add-btn" onclick="abrirEgresosRegistro()" style="background:linear-gradient(135deg,#f59e0b,#d97706);">➕ Nuevo registro</button>
+        </div>
+    </div>
+
+    <!-- KPIs -->
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:18px 0;">
+        <div class="rh-kpi" style="border-top:3px solid #2563eb;cursor:pointer;" onclick="egrFiltrar('registro')">
+            <div class="rh-kpi-icon">⏱️</div>
+            <div class="rh-kpi-val" id="egr-val-registro">—</div>
+            <div class="rh-kpi-label">Registro oportuno</div>
+            <div class="rh-kpi-delta neutral" id="egr-delta-registro"></div>
+        </div>
+        <div class="rh-kpi" style="border-top:3px solid #059669;cursor:pointer;" onclick="egrFiltrar('precision')">
+            <div class="rh-kpi-icon">✅</div>
+            <div class="rh-kpi-val" id="egr-val-precision">—</div>
+            <div class="rh-kpi-label">Precisión</div>
+            <div class="rh-kpi-delta neutral" id="egr-delta-precision"></div>
+        </div>
+        <div class="rh-kpi" style="border-top:3px solid #7c3aed;cursor:pointer;" onclick="egrFiltrar('soporte')">
+            <div class="rh-kpi-icon">📎</div>
+            <div class="rh-kpi-val" id="egr-val-soporte">—</div>
+            <div class="rh-kpi-label">Soporte completo</div>
+            <div class="rh-kpi-delta neutral" id="egr-delta-soporte"></div>
+        </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px;">
+        <div class="rh-kpi" style="border-top:3px solid #ef4444;cursor:pointer;" onclick="egrFiltrar('sinsoporte')">
+            <div class="rh-kpi-icon">⚠️</div>
+            <div class="rh-kpi-val" id="egr-val-sinsoporte">—</div>
+            <div class="rh-kpi-label">Sin soporte</div>
+            <div class="rh-kpi-delta neutral" id="egr-delta-sinsoporte"></div>
+        </div>
+        <div class="rh-kpi" style="border-top:3px solid #f59e0b;cursor:pointer;" onclick="egrFiltrar('reclass')">
+            <div class="rh-kpi-icon">🔄</div>
+            <div class="rh-kpi-val" id="egr-val-reclass">—</div>
+            <div class="rh-kpi-label">Reclasificaciones</div>
+            <div class="rh-kpi-delta neutral" id="egr-delta-reclass"></div>
+        </div>
+        <div class="rh-kpi" style="border-top:3px solid #0891b2;cursor:pointer;" onclick="egrFiltrar('conciliacion')">
+            <div class="rh-kpi-icon">🏦</div>
+            <div class="rh-kpi-val" id="egr-val-conciliacion">—</div>
+            <div class="rh-kpi-label">Conciliación</div>
+            <div class="rh-kpi-delta neutral" id="egr-delta-conciliacion"></div>
+        </div>
+    </div>
+
+    <!-- Gráficas -->
+    <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:14px;margin-bottom:18px;">
+        <div class="mkt-card">
+            <div class="mkt-card-title">📈 Tendencia mensual</div>
+            <div class="mkt-card-sub">KPIs calculados de registros individuales</div>
+            <div style="height:180px;"><canvas id="egr-chart-tendencia"></canvas></div>
+        </div>
+        <div class="mkt-card" style="text-align:center;">
+            <div class="mkt-card-title" style="text-align:left;">🎯 Cumplimiento global</div>
+            <div class="mkt-card-sub" style="text-align:left;">Promedio ponderado</div>
+            <div style="position:relative;width:140px;height:140px;margin:0 auto;">
+                <canvas id="egr-chart-global"></canvas>
+                <div id="egr-global-pct" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:18px;color:#1e293b;">—</div>
+            </div>
+            <div id="egr-global-detalle" style="font-size:11px;color:#64748b;margin-top:8px;"></div>
+        </div>
+    </div>
+
+    <!-- Form inline -->
+    <div id="egresos-inline-form" style="display:none;background:#fff;border-radius:16px;border:2px solid #f59e0b;padding:20px;margin:12px 0;box-shadow:0 4px 20px rgba(245,158,11,0.12);animation:slideDown 0.2s ease;">
+        <div style="font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;color:#92400e;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;">
+            <span id="egresos-form-titulo">📤 Nuevo registro</span>
+            <button onclick="cerrarEgresosInline()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#94a3b8;">✕</button>
+        </div>
+        <div id="egresos-form-content"></div>
+        <div style="display:flex;gap:10px;margin-top:16px;">
+            <button onclick="guardarEgresoRegistro()" style="flex:1;padding:11px;background:linear-gradient(135deg,#f59e0b,#d97706);color:white;border:none;border-radius:10px;font-weight:700;cursor:pointer;font-size:13px;">💾 GUARDAR REGISTRO</button>
+            <button onclick="cerrarEgresosInline()" style="flex:1;padding:11px;background:#f1f5f9;border:none;border-radius:10px;color:#475569;font-weight:700;cursor:pointer;font-size:13px;">Cancelar</button>
+        </div>
+    </div>
+
+    <!-- Lista registros -->
+    <div class="mkt-card" style="margin-bottom:18px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <div class="mkt-card-title">📋 Registros del mes <span id="egr-registros-count" style="font-weight:400;color:#64748b;font-size:12px;"></span></div>
+            <div style="display:flex;gap:6px;align-items:center;">
+                <input type="text" id="egr-buscar" placeholder="🔍 Buscar..." oninput="egrBuscar()" style="padding:7px 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;width:180px;outline:none;">
+                <select id="egr-filtro-cat" onchange="egrBuscar()" style="padding:7px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:11px;color:#475569;outline:none;">
+                    <option value="todos">Todos</option>
+                    <option value="no_oportuno">⏱️ No oportunos</option>
+                    <option value="con_error">❌ Con error</option>
+                    <option value="sin_soporte">⚠️ Sin soporte</option>
+                    <option value="reclasificado">🔄 Reclasificados</option>
+                    <option value="no_conciliado">🏦 No conciliados</option>
+                </select>
+            </div>
+        </div>
+        <div id="egr-registros-lista"></div>
+    </div>
+</div>        
       <!-- ═══ MINI-DASHBOARD CONTABILIDAD v2 — Registros individuales ═══ -->
 <div id="conta-dashboard" style="display:none;margin-bottom:28px;">
     <div class="rh-dash-header">
