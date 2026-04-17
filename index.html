@@ -1279,6 +1279,96 @@
         </div>
     </div>
 </div>
+            <!-- ═══ MINI-DASHBOARD EGRESOS ═══ -->
+<div id="egresos-dashboard" style="display:none;margin-bottom:28px;">
+    <div class="rh-dash-header">
+        <div class="rh-dash-title">📤 Indicadores Egresos
+            <span class="rh-dash-badge" style="background:#fef3c7;color:#92400e;">Mensual</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;">
+            <div class="rh-mes-selector">
+                <button class="rh-mes-btn" onclick="egresosMesPrev()">‹</button>
+                <span class="rh-mes-label" id="egresos-mes-label"></span>
+                <button class="rh-mes-btn" onclick="egresosMesNext()">›</button>
+            </div>
+            <button class="mkt-add-btn" onclick="abrirEgresosInline()" style="background:linear-gradient(135deg,#f59e0b,#d97706);">📊 Registrar datos</button>
+        </div>
+    </div>
+
+    <!-- KPIs -->
+    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin:18px 0;">
+        <div class="rh-kpi" style="border-top:3px solid #2563eb;cursor:default;">
+            <div class="rh-kpi-icon">⏱️</div>
+            <div class="rh-kpi-val" id="egr-val-registro">—</div>
+            <div class="rh-kpi-label">Registro oportuno</div>
+            <div class="rh-kpi-delta neutral" id="egr-delta-registro"></div>
+        </div>
+        <div class="rh-kpi" style="border-top:3px solid #059669;cursor:default;">
+            <div class="rh-kpi-icon">✅</div>
+            <div class="rh-kpi-val" id="egr-val-precision">—</div>
+            <div class="rh-kpi-label">Precisión</div>
+            <div class="rh-kpi-delta neutral" id="egr-delta-precision"></div>
+        </div>
+        <div class="rh-kpi" style="border-top:3px solid #7c3aed;cursor:default;">
+            <div class="rh-kpi-icon">📎</div>
+            <div class="rh-kpi-val" id="egr-val-soporte">—</div>
+            <div class="rh-kpi-label">Soporte completo</div>
+            <div class="rh-kpi-delta neutral" id="egr-delta-soporte"></div>
+        </div>
+        <div class="rh-kpi" style="border-top:3px solid #ef4444;cursor:default;">
+            <div class="rh-kpi-icon">⚠️</div>
+            <div class="rh-kpi-val" id="egr-val-sinsoporte">—</div>
+            <div class="rh-kpi-label">Sin soporte</div>
+            <div class="rh-kpi-delta neutral" id="egr-delta-sinsoporte"></div>
+        </div>
+        <div class="rh-kpi" style="border-top:3px solid #f59e0b;cursor:default;">
+            <div class="rh-kpi-icon">🔄</div>
+            <div class="rh-kpi-val" id="egr-val-reclass">—</div>
+            <div class="rh-kpi-label">Reclasificaciones</div>
+            <div class="rh-kpi-delta neutral" id="egr-delta-reclass"></div>
+        </div>
+        <div class="rh-kpi" style="border-top:3px solid #0891b2;cursor:default;">
+            <div class="rh-kpi-icon">🏦</div>
+            <div class="rh-kpi-val" id="egr-val-conciliacion">—</div>
+            <div class="rh-kpi-label">Conciliación</div>
+            <div class="rh-kpi-delta neutral" id="egr-delta-conciliacion"></div>
+        </div>
+    </div>
+
+    <!-- Gráficas -->
+    <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:14px;margin-bottom:18px;">
+        <div class="mkt-card">
+            <div class="mkt-card-title">📈 Tendencia mensual</div>
+            <div class="mkt-card-sub">Registro oportuno, Precisión y Conciliación últimos 6 meses</div>
+            <div style="height:180px;"><canvas id="egr-chart-tendencia"></canvas></div>
+        </div>
+        <div class="mkt-card" style="text-align:center;">
+            <div class="mkt-card-title" style="text-align:left;">🎯 Cumplimiento global</div>
+            <div class="mkt-card-sub" style="text-align:left;">Promedio de KPIs positivos</div>
+            <div style="position:relative;width:140px;height:140px;margin:0 auto;">
+                <canvas id="egr-chart-global"></canvas>
+                <div id="egr-global-pct" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:18px;color:#1e293b;">—</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detalle -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:18px;">
+        <div class="mkt-card" id="egr-detalle-1"></div>
+        <div class="mkt-card" id="egr-detalle-2"></div>
+        <div class="mkt-card" id="egr-detalle-3"></div>
+    </div>
+
+    <!-- Form inline -->
+    <div id="egresos-inline-form" style="display:none;background:#fff;border-radius:16px;border:2px solid #f59e0b;padding:20px;margin:12px 0;box-shadow:0 4px 20px rgba(245,158,11,0.12);animation:slideDown 0.2s ease;">
+        <div style="font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;color:#92400e;margin-bottom:16px;display:flex;align-items:center;gap:8px;">📤 Registrar datos de Egresos</div>
+        <div id="egresos-form-content"></div>
+        <div style="display:flex;gap:10px;margin-top:16px;">
+            <button onclick="guardarEgresosInline()" style="flex:1;padding:11px;background:linear-gradient(135deg,#f59e0b,#d97706);color:white;border:none;border-radius:10px;font-weight:700;cursor:pointer;font-size:13px;">💾 GUARDAR</button>
+            <button onclick="cerrarEgresosInline()" style="flex:1;padding:11px;background:#f1f5f9;border:none;border-radius:10px;color:#475569;font-weight:700;cursor:pointer;font-size:13px;">Cancelar</button>
+        </div>
+    </div>
+</div>
             <!-- ═══ MINI-DASHBOARD CONTABILIDAD ═══ -->
 <div id="conta-dashboard" style="display:none;margin-bottom:28px;">
     <div class="rh-dash-header">
@@ -6807,6 +6897,251 @@ window.guardarDatoRHInline = async () => {
     }, 200);
 
     console.log('[CONTA DASHBOARD] ✅ Módulo cargado');
+})();
+</script>
+    <script>
+// ══════════════════════════════════════════════════════════════
+// DASHBOARD EGRESOS — KPIs mensuales
+// ══════════════════════════════════════════════════════════════
+(function(){
+    'use strict';
+
+    let egrMes = new Date().getMonth();
+    let egrAnio = new Date().getFullYear();
+    let egrData = {};
+    let egrChartTend = null, egrChartGlobal = null;
+    const MESES_E = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+
+    function egrKey(){ return `${egrAnio}-${String(egrMes+1).padStart(2,'0')}`; }
+
+    async function getFirebaseEgr(){
+        const appMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+        const fsMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const authMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+        const app = appMod.getApps()[0];
+        return { db: fsMod.getFirestore(app), auth: authMod.getAuth(app), fs: fsMod };
+    }
+
+    function actualizarLabelEgr(){
+        const el = document.getElementById('egresos-mes-label');
+        if(el) el.innerText = `${MESES_E[egrMes]} ${egrAnio}`;
+    }
+
+    window.egresosMesPrev = () => { egrMes--; if(egrMes<0){egrMes=11;egrAnio--;} actualizarLabelEgr(); cargarDatosEgr(); };
+    window.egresosMesNext = () => { egrMes++; if(egrMes>11){egrMes=0;egrAnio++;} actualizarLabelEgr(); cargarDatosEgr(); };
+
+    async function cargarDatosEgr(){
+        const key = egrKey();
+        try {
+            const { db, fs } = await getFirebaseEgr();
+            const snap = await fs.getDoc(fs.doc(db, 'egresos_indicadores', key));
+            egrData[key] = snap.exists() ? snap.data() : {};
+            renderEgrDash(egrData[key], key);
+        } catch(e){
+            console.warn('[EGR]', e.message);
+            renderEgrDash({}, key);
+        }
+    }
+
+    function pctColorE(val, meta, inv){
+        const v = Number(val) || 0;
+        if(inv) return v <= meta ? '#16a34a' : v <= meta*2 ? '#f59e0b' : '#ef4444';
+        return v >= meta ? '#16a34a' : v >= meta*0.85 ? '#f59e0b' : '#ef4444';
+    }
+
+    function miniBarE(val, meta, inv){
+        const v = Number(val) || 0;
+        const realPct = Math.min(100, Math.max(0, inv ? (v<=meta ? 100 : Math.max(0,100-((v-meta)/meta*100))) : (v/meta*100)));
+        const color = pctColorE(val, meta, inv);
+        return `<div style="height:6px;background:#e2e8f0;border-radius:4px;overflow:hidden;margin-top:4px;"><div style="height:100%;width:${realPct}%;background:${color};border-radius:4px;transition:width 0.8s;"></div></div>`;
+    }
+
+    function renderEgrDash(d, key){
+        const setKPI = (id, val) => { const el = document.getElementById(id); if(el) el.innerText = val; };
+        const setDelta = (id, html) => { const el = document.getElementById(id); if(el) el.innerHTML = `<span class="rh-kpi-delta neutral">${html}</span>`; };
+
+        setKPI('egr-val-registro', d.registroOportuno !== undefined ? d.registroOportuno+'%' : '—');
+        setDelta('egr-delta-registro', 'Meta ≥ 95%');
+
+        setKPI('egr-val-precision', d.precision !== undefined ? d.precision+'%' : '—');
+        setDelta('egr-delta-precision', 'Meta ≥ 98%');
+
+        setKPI('egr-val-soporte', d.soporteCompleto !== undefined ? d.soporteCompleto+'%' : '—');
+        setDelta('egr-delta-soporte', 'Meta ≥ 98%');
+
+        setKPI('egr-val-sinsoporte', d.sinSoporte !== undefined ? d.sinSoporte+'%' : '—');
+        setDelta('egr-delta-sinsoporte', 'Meta ≤ 2%');
+
+        setKPI('egr-val-reclass', d.reclasificaciones !== undefined ? d.reclasificaciones+'%' : '—');
+        setDelta('egr-delta-reclass', 'Meta ≤ 3%');
+
+        setKPI('egr-val-conciliacion', d.conciliacion !== undefined ? d.conciliacion+'%' : '—');
+        setDelta('egr-delta-conciliacion', 'Meta ≥ 98%');
+
+        // Detalle cards
+        renderDetalleE('egr-detalle-1', '⏱️ Registro y Precisión', [
+            {label:'Registro oportuno', val:d.registroOportuno, meta:95, unit:'%'},
+            {label:'Precisión en registros', val:d.precision, meta:98, unit:'%'}
+        ]);
+        renderDetalleE('egr-detalle-2', '📎 Soporte documental', [
+            {label:'Soporte completo', val:d.soporteCompleto, meta:98, unit:'%'},
+            {label:'Egresos sin soporte', val:d.sinSoporte, meta:2, unit:'%', invertido:true}
+        ]);
+        renderDetalleE('egr-detalle-3', '🏦 Control contable', [
+            {label:'Reclasificaciones', val:d.reclasificaciones, meta:3, unit:'%', invertido:true},
+            {label:'Conciliación vs bancos', val:d.conciliacion, meta:98, unit:'%'}
+        ]);
+
+        // Promedio global (solo KPIs positivos)
+        const positivos = [d.registroOportuno, d.precision, d.soporteCompleto, d.conciliacion].filter(v=>v!==undefined&&v!==null&&v!=='');
+        const promedio = positivos.length > 0 ? Math.round(positivos.reduce((s,v)=>s+Number(v),0)/positivos.length) : 0;
+
+        const elG = document.getElementById('egr-chart-global');
+        if(elG){
+            if(egrChartGlobal) egrChartGlobal.destroy();
+            egrChartGlobal = new Chart(elG, {
+                type:'doughnut',
+                data:{datasets:[{data:[promedio, Math.max(0.001,100-promedio)], backgroundColor:[promedio>=80?'#16a34a':promedio>=50?'#f59e0b':'#ef4444','#e2e8f0'], borderWidth:0}]},
+                options:{cutout:'76%', plugins:{legend:{display:false}}, animation:{duration:600}}
+            });
+            document.getElementById('egr-global-pct').innerText = promedio + '%';
+        }
+
+        // Tendencia 6 meses
+        const elT = document.getElementById('egr-chart-tendencia');
+        if(elT){
+            if(egrChartTend) egrChartTend.destroy();
+            const labels=[], dReg=[], dPrec=[], dConc=[];
+            for(let i=5;i>=0;i--){
+                let m=egrMes-i, a=egrAnio; if(m<0){m+=12;a--;}
+                labels.push(MESES_E[m].slice(0,3));
+                const k=`${a}-${String(m+1).padStart(2,'0')}`;
+                const cd=egrData[k]||{};
+                dReg.push(cd.registroOportuno||0);
+                dPrec.push(cd.precision||0);
+                dConc.push(cd.conciliacion||0);
+            }
+            egrChartTend = new Chart(elT, {
+                type:'line',
+                data:{labels, datasets:[
+                    {label:'Registro',data:dReg,borderColor:'#2563eb',tension:0.4,borderWidth:2,pointRadius:3,fill:false},
+                    {label:'Precisión',data:dPrec,borderColor:'#059669',tension:0.4,borderWidth:2,pointRadius:3,fill:false},
+                    {label:'Conciliación',data:dConc,borderColor:'#0891b2',tension:0.4,borderWidth:2,pointRadius:3,fill:false}
+                ]},
+                options:{responsive:true,maintainAspectRatio:false,
+                    plugins:{legend:{position:'bottom',labels:{boxWidth:8,font:{size:10},color:'#64748b'}}},
+                    scales:{y:{min:0,max:100,ticks:{callback:v=>v+'%',color:'#94a3b8',font:{size:9}},grid:{color:'rgba(59,130,246,0.05)'}},x:{ticks:{color:'#94a3b8',font:{size:9}},grid:{display:false}}}
+                }
+            });
+        }
+    }
+
+    function renderDetalleE(elId, titulo, items){
+        const el = document.getElementById(elId);
+        if(!el) return;
+        el.innerHTML = `<div class="mkt-card-title">${titulo}</div>
+        <div style="margin-top:10px;">
+            ${items.map(it=>{
+                const v = it.val !== undefined && it.val !== '' ? Number(it.val) : null;
+                const color = v !== null ? pctColorE(v, it.meta, it.invertido) : '#94a3b8';
+                const metaLabel = it.invertido ? `≤ ${it.meta}${it.unit}` : `≥ ${it.meta}${it.unit}`;
+                return `<div style="margin-bottom:10px;">
+                    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px;">
+                        <span style="color:#475569;">${it.label}</span>
+                        <span style="font-weight:700;color:${color};">${v!==null?v+it.unit:'—'} <span style="font-weight:400;color:#94a3b8;font-size:10px;">Meta: ${metaLabel}</span></span>
+                    </div>
+                    ${v!==null?miniBarE(v,it.meta,it.invertido):'<div style="height:6px;background:#e2e8f0;border-radius:4px;"></div>'}
+                </div>`;
+            }).join('')}
+        </div>`;
+    }
+
+    // Form inline
+    window.abrirEgresosInline = () => {
+        const form = document.getElementById('egresos-inline-form');
+        const content = document.getElementById('egresos-form-content');
+        if(!form || !content) return;
+        const key = egrKey();
+        const d = egrData[key] || {};
+
+        content.innerHTML = `
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+            <div><label class="rh-form-label">Registro oportuno (%)</label><input class="rh-form-input" id="ef-registro" type="number" min="0" max="100" step="0.1" value="${d.registroOportuno||''}" placeholder="Meta ≥ 95%"></div>
+            <div><label class="rh-form-label">Precisión registros (%)</label><input class="rh-form-input" id="ef-precision" type="number" min="0" max="100" step="0.1" value="${d.precision||''}" placeholder="Meta ≥ 98%"></div>
+            <div><label class="rh-form-label">Soporte completo (%)</label><input class="rh-form-input" id="ef-soporte" type="number" min="0" max="100" step="0.1" value="${d.soporteCompleto||''}" placeholder="Meta ≥ 98%"></div>
+            <div><label class="rh-form-label">Sin soporte (%)</label><input class="rh-form-input" id="ef-sinsoporte" type="number" min="0" max="100" step="0.1" value="${d.sinSoporte||''}" placeholder="Meta ≤ 2%"></div>
+            <div><label class="rh-form-label">Reclasificaciones (%)</label><input class="rh-form-input" id="ef-reclass" type="number" min="0" max="100" step="0.1" value="${d.reclasificaciones||''}" placeholder="Meta ≤ 3%"></div>
+            <div><label class="rh-form-label">Conciliación (%)</label><input class="rh-form-input" id="ef-conciliacion" type="number" min="0" max="100" step="0.1" value="${d.conciliacion||''}" placeholder="Meta ≥ 98%"></div>
+        </div>
+        <label class="rh-form-label" style="margin-top:12px;">Notas / observaciones del mes</label>
+        <input class="rh-form-input" id="ef-notas" type="text" value="${d.notas||''}" placeholder="Comentarios adicionales...">`;
+        form.style.display = 'block';
+        form.scrollIntoView({behavior:'smooth', block:'start'});
+    };
+
+    window.cerrarEgresosInline = () => {
+        const form = document.getElementById('egresos-inline-form');
+        if(form) form.style.display = 'none';
+    };
+
+    window.guardarEgresosInline = async () => {
+        const key = egrKey();
+        const getNum = id => { const el=document.getElementById(id); const v=el?el.value.trim():''; return v!==''?Number(v):undefined; };
+        const getStr = id => { const el=document.getElementById(id); return el?el.value.trim():''; };
+        const btn = document.querySelector('#egresos-inline-form button');
+        if(btn){ btn.textContent='💾 Guardando...'; btn.disabled=true; }
+
+        const docData = {
+            mesAnio: key,
+            registroOportuno: getNum('ef-registro'),
+            precision: getNum('ef-precision'),
+            soporteCompleto: getNum('ef-soporte'),
+            sinSoporte: getNum('ef-sinsoporte'),
+            reclasificaciones: getNum('ef-reclass'),
+            conciliacion: getNum('ef-conciliacion'),
+            notas: getStr('ef-notas'),
+            actualizadoEn: new Date().toISOString()
+        };
+
+        Object.keys(docData).forEach(k => { if(docData[k] === undefined) delete docData[k]; });
+
+        try {
+            const { db, fs, auth } = await getFirebaseEgr();
+            docData.creadoPor = auth.currentUser?.email || '';
+            await fs.setDoc(fs.doc(db, 'egresos_indicadores', key), docData, { merge: true });
+            console.log('[EGR] ✅ Guardado:', key);
+            cerrarEgresosInline();
+            if(window.mostrarPush) window.mostrarPush('✅ Egresos guardado', `${MESES_E[egrMes]} ${egrAnio}`, '📤');
+            egrData[key] = {...(egrData[key]||{}), ...docData};
+            renderEgrDash(egrData[key], key);
+        } catch(e){
+            console.error('[EGR ERROR]', e);
+            alert('Error: ' + e.message);
+        } finally {
+            if(btn){ btn.textContent='💾 GUARDAR'; btn.disabled=false; }
+        }
+    };
+
+    // Hook: mostrar/ocultar
+    const CHECK_EGR = setInterval(()=>{
+        if(typeof window.verArea !== 'function') return;
+        clearInterval(CHECK_EGR);
+        const _orig = window.verArea;
+        window.verArea = function(area, btn){
+            _orig(area, btn);
+            const dash = document.getElementById('egresos-dashboard');
+            if(!dash) return;
+            if(area === 'Egresos'){
+                dash.style.display = 'block';
+                actualizarLabelEgr();
+                cargarDatosEgr();
+            } else {
+                dash.style.display = 'none';
+            }
+        };
+    }, 200);
+
+    console.log('[EGRESOS DASHBOARD] ✅ Módulo cargado');
 })();
 </script>
   <!-- 
