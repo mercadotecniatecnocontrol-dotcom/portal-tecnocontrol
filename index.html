@@ -1483,11 +1483,11 @@
         </div>
     </div>
 </div>
-            <!-- ═══ MINI-DASHBOARD CONTABILIDAD ═══ -->
+      <!-- ═══ MINI-DASHBOARD CONTABILIDAD v2 — Registros individuales ═══ -->
 <div id="conta-dashboard" style="display:none;margin-bottom:28px;">
     <div class="rh-dash-header">
         <div class="rh-dash-title">🧾 Indicadores Contabilidad
-            <span class="rh-dash-badge" style="background:#eff6ff;color:#2563eb;">Mensual</span>
+            <span class="rh-dash-badge" style="background:#eff6ff;color:#2563eb;">Mensual · Auto-calculado</span>
         </div>
         <div style="display:flex;align-items:center;gap:12px;">
             <div class="rh-mes-selector">
@@ -1495,37 +1495,37 @@
                 <span class="rh-mes-label" id="conta-mes-label"></span>
                 <button class="rh-mes-btn" onclick="contaMesNext()">›</button>
             </div>
-            <button class="mkt-add-btn" onclick="abrirContaInline()" style="background:linear-gradient(135deg,#2563eb,#1d4ed8);">📊 Registrar datos</button>
+            <button class="mkt-add-btn" onclick="abrirContaRegistro()" style="background:linear-gradient(135deg,#2563eb,#1d4ed8);">➕ Nuevo registro</button>
         </div>
     </div>
 
-    <!-- KPIs -->
+    <!-- KPIs auto-calculados -->
     <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:18px 0;">
-        <div class="rh-kpi" style="border-top:3px solid #2563eb;cursor:default;">
+        <div class="rh-kpi" style="border-top:3px solid #2563eb;cursor:pointer;" onclick="contaFiltrar('balanza')">
             <div class="rh-kpi-icon">📒</div>
             <div class="rh-kpi-val" id="conta-val-balanza">—</div>
             <div class="rh-kpi-label">Balanza</div>
             <div class="rh-kpi-delta neutral" id="conta-delta-balanza"></div>
         </div>
-        <div class="rh-kpi" style="border-top:3px solid #059669;cursor:default;">
+        <div class="rh-kpi" style="border-top:3px solid #059669;cursor:pointer;" onclick="contaFiltrar('edosfin')">
             <div class="rh-kpi-icon">📊</div>
             <div class="rh-kpi-val" id="conta-val-edosfin">—</div>
             <div class="rh-kpi-label">Edos. Financieros</div>
             <div class="rh-kpi-delta neutral" id="conta-delta-edosfin"></div>
         </div>
-        <div class="rh-kpi" style="border-top:3px solid #f59e0b;cursor:default;">
+        <div class="rh-kpi" style="border-top:3px solid #f59e0b;cursor:pointer;" onclick="contaFiltrar('deudores')">
             <div class="rh-kpi-icon">🤝</div>
             <div class="rh-kpi-val" id="conta-val-deudores">—</div>
             <div class="rh-kpi-label">Deudores/Acreed.</div>
             <div class="rh-kpi-delta neutral" id="conta-delta-deudores"></div>
         </div>
-        <div class="rh-kpi" style="border-top:3px solid #7c3aed;cursor:default;">
+        <div class="rh-kpi" style="border-top:3px solid #7c3aed;cursor:pointer;" onclick="contaFiltrar('inventarios')">
             <div class="rh-kpi-icon">📦</div>
             <div class="rh-kpi-val" id="conta-val-inventarios">—</div>
             <div class="rh-kpi-label">Inventarios</div>
             <div class="rh-kpi-delta neutral" id="conta-delta-inventarios"></div>
         </div>
-        <div class="rh-kpi" style="border-top:3px solid #ef4444;cursor:default;">
+        <div class="rh-kpi" style="border-top:3px solid #ef4444;cursor:pointer;" onclick="contaFiltrar('impuestos')">
             <div class="rh-kpi-icon">🏛️</div>
             <div class="rh-kpi-val" id="conta-val-impuestos">—</div>
             <div class="rh-kpi-label">Impuestos</div>
@@ -1537,36 +1537,50 @@
     <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:14px;margin-bottom:18px;">
         <div class="mkt-card">
             <div class="mkt-card-title">📈 Tendencia mensual</div>
-            <div class="mkt-card-sub">Cumplimiento por categoría últimos 6 meses</div>
+            <div class="mkt-card-sub">Cumplimiento por categoría</div>
             <div style="height:180px;"><canvas id="conta-chart-tendencia"></canvas></div>
         </div>
         <div class="mkt-card" style="text-align:center;">
             <div class="mkt-card-title" style="text-align:left;">🎯 Cumplimiento global</div>
-            <div class="mkt-card-sub" style="text-align:left;">Promedio de todos los KPIs</div>
+            <div class="mkt-card-sub" style="text-align:left;">Promedio ponderado</div>
             <div style="position:relative;width:140px;height:140px;margin:0 auto;">
                 <canvas id="conta-chart-global"></canvas>
                 <div id="conta-global-pct" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:18px;color:#1e293b;">—</div>
             </div>
+            <div id="conta-global-detalle" style="font-size:11px;color:#64748b;margin-top:8px;"></div>
         </div>
-    </div>
-
-    <!-- Detalle por categoría -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;">
-        <div class="mkt-card" id="conta-detalle-balanza"></div>
-        <div class="mkt-card" id="conta-detalle-edosfin"></div>
-        <div class="mkt-card" id="conta-detalle-deudores"></div>
-        <div class="mkt-card" id="conta-detalle-inventarios"></div>
-        <div class="mkt-card" id="conta-detalle-impuestos" style="grid-column:span 2;"></div>
     </div>
 
     <!-- Form inline -->
     <div id="conta-inline-form" style="display:none;background:#fff;border-radius:16px;border:2px solid #2563eb;padding:20px;margin:12px 0;box-shadow:0 4px 20px rgba(37,99,235,0.12);animation:slideDown 0.2s ease;">
-        <div style="font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;color:#1e3a8a;margin-bottom:16px;display:flex;align-items:center;gap:8px;">🧾 Registrar datos de Contabilidad</div>
+        <div style="font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;color:#1e3a8a;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;">
+            <span id="conta-form-titulo">🧾 Nuevo registro</span>
+            <button onclick="cerrarContaInline()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#94a3b8;">✕</button>
+        </div>
         <div id="conta-form-content"></div>
         <div style="display:flex;gap:10px;margin-top:16px;">
-            <button onclick="guardarContaInline()" style="flex:1;padding:11px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:white;border:none;border-radius:10px;font-weight:700;cursor:pointer;font-size:13px;">💾 GUARDAR</button>
+            <button onclick="guardarContaRegistro()" style="flex:1;padding:11px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:white;border:none;border-radius:10px;font-weight:700;cursor:pointer;font-size:13px;">💾 GUARDAR REGISTRO</button>
             <button onclick="cerrarContaInline()" style="flex:1;padding:11px;background:#f1f5f9;border:none;border-radius:10px;color:#475569;font-weight:700;cursor:pointer;font-size:13px;">Cancelar</button>
         </div>
+    </div>
+
+    <!-- Lista de registros -->
+    <div class="mkt-card" style="margin-bottom:18px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <div class="mkt-card-title">📋 Registros del mes <span id="conta-registros-count" style="font-weight:400;color:#64748b;font-size:12px;"></span></div>
+            <div style="display:flex;gap:6px;align-items:center;">
+                <input type="text" id="conta-buscar" placeholder="🔍 Buscar..." oninput="contaBuscar()" style="padding:7px 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;width:180px;outline:none;">
+                <select id="conta-filtro-cat" onchange="contaBuscar()" style="padding:7px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:11px;color:#475569;outline:none;">
+                    <option value="todos">Todas</option>
+                    <option value="balanza">📒 Balanza</option>
+                    <option value="edosfin">📊 Edos. Fin.</option>
+                    <option value="deudores">🤝 Deudores</option>
+                    <option value="inventarios">📦 Inventarios</option>
+                    <option value="impuestos">🏛️ Impuestos</option>
+                </select>
+            </div>
+        </div>
+        <div id="conta-registros-lista"></div>
     </div>
 </div>
             <!-- MINI-DASHBOARD MARKETING (solo visible en Marketing) -->
@@ -6714,25 +6728,27 @@ window.guardarDatoRHInline = async () => {
 </script>
     <script>
 // ══════════════════════════════════════════════════════════════
-// DASHBOARD CONTABILIDAD — KPIs mensuales
+// DASHBOARD CONTABILIDAD v2 — Registros individuales
 // ══════════════════════════════════════════════════════════════
 (function(){
     'use strict';
 
     let contaMes = new Date().getMonth();
     let contaAnio = new Date().getFullYear();
-    let contaData = {};
+    let contaRegs = [];
     let contaChartTend = null, contaChartGlobal = null;
+    let contaEditId = null;
     const MESES_C = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+    const CATS = {balanza:'📒 Balanza',edosfin:'📊 Edos. Financieros',deudores:'🤝 Deudores/Acreed.',inventarios:'📦 Inventarios',impuestos:'🏛️ Impuestos'};
 
     function contaKey(){ return `${contaAnio}-${String(contaMes+1).padStart(2,'0')}`; }
 
-    async function getFirebaseConta(){
-        const appMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
-        const fsMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-        const authMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
-        const app = appMod.getApps()[0];
-        return { db: fsMod.getFirestore(app), auth: authMod.getAuth(app), fs: fsMod };
+    async function getFB(){
+        const a = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+        const f = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const au = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+        const app = a.getApps()[0];
+        return {db:f.getFirestore(app), auth:au.getAuth(app), fs:f};
     }
 
     function actualizarLabelConta(){
@@ -6740,277 +6756,331 @@ window.guardarDatoRHInline = async () => {
         if(el) el.innerText = `${MESES_C[contaMes]} ${contaAnio}`;
     }
 
-    window.contaMesPrev = () => { contaMes--; if(contaMes<0){contaMes=11;contaAnio--;} actualizarLabelConta(); cargarDatosConta(); };
-    window.contaMesNext = () => { contaMes++; if(contaMes>11){contaMes=0;contaAnio++;} actualizarLabelConta(); cargarDatosConta(); };
+    window.contaMesPrev = () => { contaMes--; if(contaMes<0){contaMes=11;contaAnio--;} actualizarLabelConta(); cargarContaRegs(); };
+    window.contaMesNext = () => { contaMes++; if(contaMes>11){contaMes=0;contaAnio++;} actualizarLabelConta(); cargarContaRegs(); };
 
-    async function cargarDatosConta(){
+    async function cargarContaRegs(){
         const key = contaKey();
         try {
-            const { db, fs } = await getFirebaseConta();
-            const ref = fs.doc(db, 'conta_indicadores', key);
-            const snap = await fs.getDoc(ref);
-            contaData[key] = snap.exists() ? snap.data() : {};
-            renderContaDash(contaData[key], key);
+            const {db,fs} = await getFB();
+            const snap = await fs.getDocs(fs.query(fs.collection(db,'conta_registros'),fs.where('mesKey','==',key)));
+            contaRegs = snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
+            calcContaKPIs();
+            renderContaLista();
         } catch(e){
-            console.warn('[CONTA]', e.message);
-            renderContaDash({}, key);
+            console.warn('[CONTA v2]',e.message);
+            contaRegs=[];
+            calcContaKPIs();
+            renderContaLista();
         }
     }
 
-    function pctColor(val, meta, invertido){
-        const v = Number(val) || 0;
-        if(invertido) return v <= meta ? '#16a34a' : v <= meta*1.5 ? '#f59e0b' : '#ef4444';
-        return v >= meta ? '#16a34a' : v >= meta*0.8 ? '#f59e0b' : '#ef4444';
-    }
+    function calcContaKPIs(){
+        const set = (id,v) => {const el=document.getElementById(id);if(el)el.innerText=v;};
+        const setD = (id,h) => {const el=document.getElementById(id);if(el)el.innerHTML=`<span class="rh-kpi-delta neutral">${h}</span>`;};
+        const total = contaRegs.length;
 
-    function miniBar(val, meta, invertido){
-        const v = Number(val) || 0;
-        const pct = invertido ? Math.max(0, 100 - (v/meta*100)) + (v<=meta?100-((meta-v)/meta*100):0) : Math.min(100, v/meta*100);
-        const realPct = Math.min(100, Math.max(0, invertido ? (v<=meta ? 100 : Math.max(0,100-((v-meta)/meta*100))) : (v/meta*100)));
-        const color = pctColor(val, meta, invertido);
-        return `<div style="height:6px;background:#e2e8f0;border-radius:4px;overflow:hidden;margin-top:4px;"><div style="height:100%;width:${realPct}%;background:${color};border-radius:4px;transition:width 0.8s;"></div></div>`;
-    }
+        if(!total){
+            ['conta-val-balanza','conta-val-edosfin','conta-val-deudores','conta-val-inventarios','conta-val-impuestos'].forEach(id=>set(id,'—'));
+            ['conta-delta-balanza','conta-delta-edosfin','conta-delta-deudores','conta-delta-inventarios','conta-delta-impuestos'].forEach(id=>setD(id,'Sin registros'));
+            document.getElementById('conta-global-pct').innerText='—';
+            return;
+        }
 
-    function renderContaDash(d, key){
-        const bal = d.balanza || {};
-        const edo = d.edosFin || {};
-        const deu = d.deudores || {};
-        const inv = d.inventarios || {};
-        const imp = d.impuestos || {};
+        const byCat = (cat) => contaRegs.filter(r=>r.categoria===cat);
+        const pctOk = (arr, field) => {if(!arr.length) return 0; return Math.round(arr.filter(r=>r[field]==='si').length/arr.length*100);};
+        const colorP = (v,m,inv) => {if(inv) return v<=m?'#16a34a':v<=m*2?'#f59e0b':'#ef4444'; return v>=m?'#16a34a':v>=m*0.85?'#f59e0b':'#ef4444';};
 
-        // KPI principal = promedio de conciliadas + entrega + saldos conc + reg actualizados + cumplimiento
-        const vals = [bal.conciliadas, edo.entregaTiempo, deu.saldosConciliados, inv.registrosActualizados, imp.cumplimientoTiempo].filter(v=>v!==undefined && v!==null && v!=='');
-        const promedio = vals.length > 0 ? Math.round(vals.reduce((s,v)=>s+Number(v),0)/vals.length) : 0;
+        const bal = byCat('balanza');
+        const pBal = pctOk(bal,'conciliada');
+        set('conta-val-balanza', bal.length?pBal+'%':'—');
+        setD('conta-delta-balanza', `${bal.filter(r=>r.conciliada==='si').length}/${bal.length} conc. · Meta ≥ 98%`);
 
-        const setKPI = (id, val) => { const el = document.getElementById(id); if(el) el.innerText = val; };
-        const setDelta = (id, html) => { const el = document.getElementById(id); if(el) el.innerHTML = `<span class="rh-kpi-delta neutral">${html}</span>`; };
+        const edo = byCat('edosfin');
+        const pEdo = pctOk(edo,'entregaTiempo');
+        set('conta-val-edosfin', edo.length?pEdo+'%':'—');
+        setD('conta-delta-edosfin', `${edo.filter(r=>r.entregaTiempo==='si').length}/${edo.length} en tiempo · Meta 100%`);
 
-        setKPI('conta-val-balanza', bal.conciliadas !== undefined ? bal.conciliadas+'%' : '—');
-        setDelta('conta-delta-balanza', `Correg: ${bal.diferenciasCorregidas||'—'}%`);
+        const deu = byCat('deudores');
+        const pDeu = pctOk(deu,'saldoConciliado');
+        set('conta-val-deudores', deu.length?pDeu+'%':'—');
+        const vencidos = deu.length?Math.round(deu.filter(r=>r.estaVencido==='si').length/deu.length*100):0;
+        setD('conta-delta-deudores', `Conc: ${pDeu}% · Venc: ${vencidos}%`);
 
-        setKPI('conta-val-edosfin', edo.entregaTiempo !== undefined ? edo.entregaTiempo+'%' : '—');
-        setDelta('conta-delta-edosfin', `Exactitud: ${edo.exactitud||'—'}%`);
+        const inv = byCat('inventarios');
+        const pInv = pctOk(inv,'registroActualizado');
+        set('conta-val-inventarios', inv.length?pInv+'%':'—');
+        const difInv = inv.length?Math.round(inv.filter(r=>r.tieneDiferencia==='si').length/inv.length*100):0;
+        setD('conta-delta-inventarios', `Actual: ${pInv}% · Dif: ${difInv}%`);
 
-        setKPI('conta-val-deudores', deu.saldosConciliados !== undefined ? deu.saldosConciliados+'%' : '—');
-        setDelta('conta-delta-deudores', `Vencidos: ${deu.saldosVencidos||'—'}% · Dif: ${deu.diferencias||'—'}%`);
+        const imp = byCat('impuestos');
+        const pImp = pctOk(imp,'cumpleTiempo');
+        set('conta-val-impuestos', imp.length?pImp+'%':'—');
+        setD('conta-delta-impuestos', `${imp.filter(r=>r.cumpleTiempo==='si').length}/${imp.length} en tiempo · Meta 100%`);
 
-        setKPI('conta-val-inventarios', inv.registrosActualizados !== undefined ? inv.registrosActualizados+'%' : '—');
-        setDelta('conta-delta-inventarios', `Dif físico-contable: ${inv.diferencias||'—'}%`);
+        const vals = [pBal,pEdo,pDeu,pInv,pImp].filter((_,i)=>[bal,edo,deu,inv,imp][i].length>0);
+        const promedio = vals.length?Math.round(vals.reduce((s,v)=>s+v,0)/vals.length):0;
 
-        setKPI('conta-val-impuestos', imp.cumplimientoTiempo !== undefined ? imp.cumplimientoTiempo+'%' : '—');
-        setDelta('conta-delta-impuestos', `Conc. fiscal: ${imp.conciliacionFiscal||'—'}%`);
-
-        // Detalle por categoría
-        renderDetalle('conta-detalle-balanza', '📒 Balanza de comprobación', [
-            {label:'Cuentas conciliadas', val:bal.conciliadas, meta:98, unit:'%'},
-            {label:'Diferencias corregidas', val:bal.diferenciasCorregidas, meta:100, unit:'%'}
-        ]);
-        renderDetalle('conta-detalle-edosfin', '📊 Estados financieros', [
-            {label:'Entrega en tiempo', val:edo.entregaTiempo, meta:100, unit:'%'},
-            {label:'Exactitud (sin ajustes)', val:edo.exactitud, meta:98, unit:'%'}
-        ]);
-        renderDetalle('conta-detalle-deudores', '🤝 Deudores y acreedores', [
-            {label:'Saldos conciliados', val:deu.saldosConciliados, meta:98, unit:'%'},
-            {label:'Saldos vencidos', val:deu.saldosVencidos, meta:15, unit:'%', invertido:true},
-            {label:'Diferencias en cuentas', val:deu.diferencias, meta:2, unit:'%', invertido:true}
-        ]);
-        renderDetalle('conta-detalle-inventarios', '📦 Inventarios', [
-            {label:'Diferencias físico vs contable', val:inv.diferencias, meta:2, unit:'%', invertido:true},
-            {label:'Registros actualizados', val:inv.registrosActualizados, meta:98, unit:'%'}
-        ]);
-        renderDetalle('conta-detalle-impuestos', '🏛️ Impuestos', [
-            {label:'Cumplimiento en tiempo', val:imp.cumplimientoTiempo, meta:100, unit:'%'},
-            {label:'Conciliación contable-fiscal', val:imp.conciliacionFiscal, meta:98, unit:'%'}
-        ]);
-
-        // Dona global
         const elG = document.getElementById('conta-chart-global');
         if(elG){
             if(contaChartGlobal) contaChartGlobal.destroy();
-            const rest = Math.max(0.001, 100 - promedio);
-            contaChartGlobal = new Chart(elG, {
-                type:'doughnut',
-                data:{datasets:[{data:[promedio, rest], backgroundColor:[promedio>=80?'#16a34a':promedio>=50?'#f59e0b':'#ef4444','#e2e8f0'], borderWidth:0}]},
-                options:{cutout:'76%', plugins:{legend:{display:false}}, animation:{duration:600}}
-            });
-            document.getElementById('conta-global-pct').innerText = promedio + '%';
-        }
-
-        // Tendencia 6 meses
-        const elT = document.getElementById('conta-chart-tendencia');
-        if(elT){
-            if(contaChartTend) contaChartTend.destroy();
-            const labels = [], dBal=[], dEdo=[], dImp=[];
-            for(let i=5;i>=0;i--){
-                let m=contaMes-i, a=contaAnio; if(m<0){m+=12;a--;}
-                labels.push(MESES_C[m].slice(0,3));
-                const k=`${a}-${String(m+1).padStart(2,'0')}`;
-                const cd = contaData[k] || {};
-                dBal.push(cd.balanza?.conciliadas || 0);
-                dEdo.push(cd.edosFin?.entregaTiempo || 0);
-                dImp.push(cd.impuestos?.cumplimientoTiempo || 0);
-            }
-            contaChartTend = new Chart(elT, {
-                type:'line',
-                data:{labels, datasets:[
-                    {label:'Balanza',data:dBal,borderColor:'#2563eb',tension:0.4,borderWidth:2,pointRadius:3,fill:false},
-                    {label:'Edos.Fin.',data:dEdo,borderColor:'#059669',tension:0.4,borderWidth:2,pointRadius:3,fill:false},
-                    {label:'Impuestos',data:dImp,borderColor:'#ef4444',tension:0.4,borderWidth:2,pointRadius:3,fill:false}
-                ]},
-                options:{responsive:true,maintainAspectRatio:false,
-                    plugins:{legend:{position:'bottom',labels:{boxWidth:8,font:{size:10},color:'#64748b'}}},
-                    scales:{y:{min:0,max:100,ticks:{callback:v=>v+'%',color:'#94a3b8',font:{size:9}},grid:{color:'rgba(59,130,246,0.05)'}},x:{ticks:{color:'#94a3b8',font:{size:9}},grid:{display:false}}}
-                }
-            });
+            contaChartGlobal = new Chart(elG,{type:'doughnut',data:{datasets:[{data:[promedio,Math.max(0.001,100-promedio)],backgroundColor:[promedio>=80?'#16a34a':promedio>=50?'#f59e0b':'#ef4444','#e2e8f0'],borderWidth:0}]},options:{cutout:'76%',plugins:{legend:{display:false}},animation:{duration:600}}});
+            document.getElementById('conta-global-pct').innerText=promedio+'%';
+            const det=document.getElementById('conta-global-detalle');
+            if(det) det.innerHTML=`<b>${total}</b> registros · Bal:${bal.length} Edo:${edo.length} Deu:${deu.length} Inv:${inv.length} Imp:${imp.length}`;
         }
     }
 
-    function renderDetalle(elId, titulo, items){
-        const el = document.getElementById(elId);
+    function renderContaLista(){
+        const el = document.getElementById('conta-registros-lista');
+        const countEl = document.getElementById('conta-registros-count');
         if(!el) return;
-        el.innerHTML = `<div class="mkt-card-title">${titulo}</div>
-        <div style="margin-top:10px;">
-            ${items.map(it=>{
-                const v = it.val !== undefined && it.val !== '' ? Number(it.val) : null;
-                const color = v !== null ? pctColor(v, it.meta, it.invertido) : '#94a3b8';
-                const metaLabel = it.invertido ? `≤ ${it.meta}${it.unit}` : `≥ ${it.meta}${it.unit}`;
-                return `<div style="margin-bottom:10px;">
-                    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px;">
-                        <span style="color:#475569;">${it.label}</span>
-                        <span style="font-weight:700;color:${color};">${v !== null ? v+it.unit : '—'} <span style="font-weight:400;color:#94a3b8;font-size:10px;">Meta: ${metaLabel}</span></span>
-                    </div>
-                    ${v !== null ? miniBar(v, it.meta, it.invertido) : '<div style="height:6px;background:#e2e8f0;border-radius:4px;"></div>'}
-                </div>`;
-            }).join('')}
-        </div>`;
+        let lista = [...contaRegs];
+        const q = (document.getElementById('conta-buscar')?.value||'').toLowerCase();
+        const catF = document.getElementById('conta-filtro-cat')?.value||'todos';
+        if(q) lista=lista.filter(r=>(r.descripcion||'').toLowerCase().includes(q)||(r.cuenta||'').toLowerCase().includes(q)||(r.responsable||'').toLowerCase().includes(q)||(r.proveedor||'').toLowerCase().includes(q)||(r.producto||'').toLowerCase().includes(q));
+        if(catF!=='todos') lista=lista.filter(r=>r.categoria===catF);
+        if(countEl) countEl.innerText=`(${lista.length} de ${contaRegs.length})`;
+        if(!lista.length){el.innerHTML='<div style="text-align:center;color:#94a3b8;padding:24px;font-size:12px;">Sin registros. Clic en "➕ Nuevo registro".</div>';return;}
+
+        const catColors = {balanza:'#2563eb',edosfin:'#059669',deudores:'#f59e0b',inventarios:'#7c3aed',impuestos:'#ef4444'};
+        const chipOk='<span style="background:#dcfce7;color:#16a34a;padding:2px 6px;border-radius:6px;font-size:9px;font-weight:700;">✓</span>';
+        const chipNo='<span style="background:#fee2e2;color:#dc2626;padding:2px 6px;border-radius:6px;font-size:9px;font-weight:700;">✗</span>';
+
+        el.innerHTML=lista.map(r=>{
+            const cat=CATS[r.categoria]||r.categoria;
+            const color=catColors[r.categoria]||'#64748b';
+            const mainField = r.descripcion||r.cuenta||r.proveedor||r.producto||r.tipoImpuesto||'—';
+            const statusField = r.conciliada||r.entregaTiempo||r.saldoConciliado||r.registroActualizado||r.cumpleTiempo||'';
+            return `<div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-bottom:1px solid rgba(59,130,246,0.06);border-left:3px solid ${color};">
+                <div style="flex:1;min-width:0;">
+                    <div style="font-weight:700;color:#1e293b;font-size:12px;">${mainField}</div>
+                    <div style="font-size:10px;color:#64748b;margin-top:2px;">${cat} · ${r.fecha||''} · ${r.responsable||''}</div>
+                    ${r.monto?`<div style="font-size:10px;color:#94a3b8;">$${Number(r.monto).toLocaleString('es-MX')}</div>`:''}
+                </div>
+                <div>${statusField==='si'?chipOk:statusField==='no'?chipNo:''}</div>
+                <div style="display:flex;gap:4px;">
+                    <button onclick="editarContaReg('${r.id}')" style="padding:3px 7px;background:#eff6ff;color:#2563eb;border:none;border-radius:6px;font-size:10px;cursor:pointer;">✏️</button>
+                    <button onclick="eliminarContaReg('${r.id}')" style="padding:3px 7px;background:#fee2e2;color:#dc2626;border:none;border-radius:6px;font-size:10px;cursor:pointer;">🗑</button>
+                </div>
+            </div>`;
+        }).join('');
     }
 
-    // Form inline
-    window.abrirContaInline = () => {
+    window.contaBuscar = () => renderContaLista();
+    window.contaFiltrar = (cat) => {const sel=document.getElementById('conta-filtro-cat');if(sel)sel.value=cat;renderContaLista();};
+
+    // ══════════════════════════════════════════════════
+    // Formulario dinámico según categoría
+    // ══════════════════════════════════════════════════
+    const FORMS = {
+        balanza: (r={}) => `
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
+                <div><label class="rh-form-label">Cuenta contable</label><input class="rh-form-input" id="cr-cuenta" type="text" value="${r.cuenta||''}" placeholder="Ej: 1101 Bancos"></div>
+                <div><label class="rh-form-label">Tipo de cuenta</label><select class="rh-form-input" id="cr-tipocuenta"><option ${r.tipoCuenta==='Bancos'?'selected':''}>Bancos</option><option ${r.tipoCuenta==='Clientes'?'selected':''}>Clientes</option><option ${r.tipoCuenta==='Proveedores'?'selected':''}>Proveedores</option><option ${r.tipoCuenta==='Impuestos'?'selected':''}>Impuestos</option><option ${r.tipoCuenta==='Gastos'?'selected':''}>Gastos</option><option ${r.tipoCuenta==='Otro'?'selected':''}>Otro</option></select></div>
+                <div><label class="rh-form-label">Área responsable</label><input class="rh-form-input" id="cr-area" type="text" value="${r.areaResponsable||''}" placeholder="Ej: CxP, Tesorería..."></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
+                <div><label class="rh-form-label">¿Conciliada?</label><select class="rh-form-input" id="cr-conciliada"><option value="si" ${r.conciliada!=='no'?'selected':''}>✅ Sí</option><option value="no" ${r.conciliada==='no'?'selected':''}>❌ No</option></select></div>
+                <div><label class="rh-form-label">¿Cuenta crítica?</label><select class="rh-form-input" id="cr-critica"><option value="no" ${r.cuentaCritica!=='si'?'selected':''}>No</option><option value="si" ${r.cuentaCritica==='si'?'selected':''}>Sí</option></select></div>
+                <div><label class="rh-form-label">Días sin conciliar</label><input class="rh-form-input" id="cr-diassinconc" type="number" min="0" value="${r.diasSinConciliar||''}" placeholder="0"></div>
+                <div><label class="rh-form-label">Método</label><select class="rh-form-input" id="cr-metodo"><option ${r.metodoConciliacion==='Sistema'?'selected':''}>Sistema</option><option ${r.metodoConciliacion==='Manual'?'selected':''}>Manual</option></select></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+                <div><label class="rh-form-label">Monto diferencia ($)</label><input class="rh-form-input" id="cr-monto" type="number" min="0" step="0.01" value="${r.monto||''}" placeholder="0.00"></div>
+                <div><label class="rh-form-label">Motivo no conciliación</label><select class="rh-form-input" id="cr-motivo"><option value="" ${!r.motivoNoConciliacion?'selected':''}>N/A</option><option ${r.motivoNoConciliacion==='Falta info'?'selected':''}>Falta info</option><option ${r.motivoNoConciliacion==='Diferencia'?'selected':''}>Diferencia</option><option ${r.motivoNoConciliacion==='Error registro'?'selected':''}>Error registro</option><option ${r.motivoNoConciliacion==='Timing'?'selected':''}>Timing</option></select></div>
+                <div><label class="rh-form-label">Responsable</label><input class="rh-form-input" id="cr-responsable" type="text" value="${r.responsable||''}" placeholder="Quién concilia"></div>
+            </div>`,
+
+        edosfin: (r={}) => `
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
+                <div><label class="rh-form-label">Descripción / Etapa</label><input class="rh-form-input" id="cr-descripcion" type="text" value="${r.descripcion||''}" placeholder="Ej: Balance general, Estado de resultados..."></div>
+                <div><label class="rh-form-label">Área que entrega info</label><select class="rh-form-input" id="cr-areaentrega"><option ${r.areaEntrega==='CxP'?'selected':''}>CxP</option><option ${r.areaEntrega==='CxC'?'selected':''}>CxC</option><option ${r.areaEntrega==='Inventarios'?'selected':''}>Inventarios</option><option ${r.areaEntrega==='Impuestos'?'selected':''}>Impuestos</option><option ${r.areaEntrega==='Nómina'?'selected':''}>Nómina</option><option ${r.areaEntrega==='Otra'?'selected':''}>Otra</option></select></div>
+                <div><label class="rh-form-label">Etapa del cierre</label><select class="rh-form-input" id="cr-etapacierre"><option ${r.etapaCierre==='Pre-cierre'?'selected':''}>Pre-cierre</option><option ${r.etapaCierre==='Ajustes'?'selected':''}>Ajustes</option><option ${r.etapaCierre==='Revisión'?'selected':''}>Revisión</option><option ${r.etapaCierre==='Emisión'?'selected':''}>Emisión</option></select></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
+                <div><label class="rh-form-label">¿Entrega en tiempo?</label><select class="rh-form-input" id="cr-entregatiempo"><option value="si" ${r.entregaTiempo!=='no'?'selected':''}>✅ Sí</option><option value="no" ${r.entregaTiempo==='no'?'selected':''}>❌ No</option></select></div>
+                <div><label class="rh-form-label">¿Sin ajustes?</label><select class="rh-form-input" id="cr-sinajustes"><option value="si" ${r.sinAjustes!=='no'?'selected':''}>✅ Sí</option><option value="no" ${r.sinAjustes==='no'?'selected':''}>❌ No</option></select></div>
+                <div><label class="rh-form-label">Versiones previas (#)</label><input class="rh-form-input" id="cr-versiones" type="number" min="0" value="${r.versionesPrevias||''}" placeholder="0"></div>
+                <div><label class="rh-form-label">Fecha cierre</label><input class="rh-form-input" id="cr-fechacierre" type="date" value="${r.fechaCierre||''}"></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div><label class="rh-form-label">Tipo ajuste (si aplica)</label><select class="rh-form-input" id="cr-tipoajuste"><option value="">N/A</option><option ${r.tipoAjuste==='Contable'?'selected':''}>Contable</option><option ${r.tipoAjuste==='Fiscal'?'selected':''}>Fiscal</option><option ${r.tipoAjuste==='Reclasificación'?'selected':''}>Reclasificación</option></select></div>
+                <div><label class="rh-form-label">Responsable</label><input class="rh-form-input" id="cr-responsable" type="text" value="${r.responsable||''}" placeholder="Quién entrega"></div>
+            </div>`,
+
+        deudores: (r={}) => `
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
+                <div><label class="rh-form-label">Cliente / Proveedor</label><input class="rh-form-input" id="cr-proveedor" type="text" value="${r.proveedor||''}" placeholder="Nombre"></div>
+                <div><label class="rh-form-label">Tipo</label><select class="rh-form-input" id="cr-tipodeu"><option ${r.tipoDeudor==='Cliente'?'selected':''}>Cliente</option><option ${r.tipoDeudor==='Proveedor'?'selected':''}>Proveedor</option></select></div>
+                <div><label class="rh-form-label">Área (CxC / CxP)</label><select class="rh-form-input" id="cr-areadeu"><option ${r.areaDeu==='CxC'?'selected':''}>CxC</option><option ${r.areaDeu==='CxP'?'selected':''}>CxP</option></select></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
+                <div><label class="rh-form-label">¿Saldo conciliado?</label><select class="rh-form-input" id="cr-saldoconc"><option value="si" ${r.saldoConciliado!=='no'?'selected':''}>✅ Sí</option><option value="no" ${r.saldoConciliado==='no'?'selected':''}>❌ No</option></select></div>
+                <div><label class="rh-form-label">¿Está vencido?</label><select class="rh-form-input" id="cr-vencido"><option value="no" ${r.estaVencido!=='si'?'selected':''}>No</option><option value="si" ${r.estaVencido==='si'?'selected':''}>⚠️ Sí</option></select></div>
+                <div><label class="rh-form-label">Antigüedad</label><select class="rh-form-input" id="cr-aging"><option ${r.aging==='0-30'?'selected':''}>0-30 días</option><option ${r.aging==='30-60'?'selected':''}>30-60 días</option><option ${r.aging==='60-90'?'selected':''}>60-90 días</option><option ${r.aging==='90-120'?'selected':''}>90-120 días</option><option ${r.aging==='120+'?'selected':''}>120+ días</option></select></div>
+                <div><label class="rh-form-label">Monto ($)</label><input class="rh-form-input" id="cr-monto" type="number" min="0" step="0.01" value="${r.monto||''}" placeholder="0.00"></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div><label class="rh-form-label">Tipo diferencia</label><select class="rh-form-input" id="cr-tipodif"><option value="">N/A</option><option ${r.tipoDiferencia==='Factura no registrada'?'selected':''}>Factura no registrada</option><option ${r.tipoDiferencia==='Pago no aplicado'?'selected':''}>Pago no aplicado</option><option ${r.tipoDiferencia==='Nota de crédito'?'selected':''}>Nota de crédito</option><option ${r.tipoDiferencia==='Error'?'selected':''}>Error</option></select></div>
+                <div><label class="rh-form-label">Responsable</label><input class="rh-form-input" id="cr-responsable" type="text" value="${r.responsable||''}" placeholder="Responsable de seguimiento"></div>
+            </div>`,
+
+        inventarios: (r={}) => `
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
+                <div><label class="rh-form-label">Producto / SKU</label><input class="rh-form-input" id="cr-producto" type="text" value="${r.producto||''}" placeholder="Nombre o código"></div>
+                <div><label class="rh-form-label">Ubicación</label><input class="rh-form-input" id="cr-ubicacion" type="text" value="${r.ubicacion||''}" placeholder="Almacén, sucursal..."></div>
+                <div><label class="rh-form-label">Tipo inventario</label><select class="rh-form-input" id="cr-tipoinv"><option ${r.tipoInventario==='Crítico'?'selected':''}>Crítico</option><option ${r.tipoInventario==='Rotación alta'?'selected':''}>Rotación alta</option><option ${r.tipoInventario==='Regular'?'selected':''}>Regular</option><option ${r.tipoInventario==='Obsoleto'?'selected':''}>Obsoleto</option></select></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
+                <div><label class="rh-form-label">¿Tiene diferencia?</label><select class="rh-form-input" id="cr-tienedif"><option value="no" ${r.tieneDiferencia!=='si'?'selected':''}>✅ No</option><option value="si" ${r.tieneDiferencia==='si'?'selected':''}>❌ Sí</option></select></div>
+                <div><label class="rh-form-label">¿Registro actualizado?</label><select class="rh-form-input" id="cr-regactualizado"><option value="si" ${r.registroActualizado!=='no'?'selected':''}>✅ Sí</option><option value="no" ${r.registroActualizado==='no'?'selected':''}>❌ No</option></select></div>
+                <div><label class="rh-form-label">Tipo diferencia</label><select class="rh-form-input" id="cr-tipodif"><option value="">N/A</option><option ${r.tipoDiferencia==='Merma'?'selected':''}>Merma</option><option ${r.tipoDiferencia==='Error captura'?'selected':''}>Error captura</option><option ${r.tipoDiferencia==='Robo'?'selected':''}>Robo</option><option ${r.tipoDiferencia==='Ajuste'?'selected':''}>Ajuste</option></select></div>
+                <div><label class="rh-form-label">Monto dif. ($)</label><input class="rh-form-input" id="cr-monto" type="number" min="0" step="0.01" value="${r.monto||''}" placeholder="0.00"></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div><label class="rh-form-label">Tipo movimiento</label><select class="rh-form-input" id="cr-tipomov"><option ${r.tipoMovimiento==='Entrada'?'selected':''}>Entrada</option><option ${r.tipoMovimiento==='Salida'?'selected':''}>Salida</option><option ${r.tipoMovimiento==='Ajuste'?'selected':''}>Ajuste</option></select></div>
+                <div><label class="rh-form-label">Responsable almacén</label><input class="rh-form-input" id="cr-responsable" type="text" value="${r.responsable||''}" placeholder="Nombre"></div>
+            </div>`,
+
+        impuestos: (r={}) => `
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
+                <div><label class="rh-form-label">Tipo de impuesto</label><select class="rh-form-input" id="cr-tipoimpuesto"><option ${r.tipoImpuesto==='IVA'?'selected':''}>IVA</option><option ${r.tipoImpuesto==='ISR'?'selected':''}>ISR</option><option ${r.tipoImpuesto==='Retenciones'?'selected':''}>Retenciones</option><option ${r.tipoImpuesto==='IEPS'?'selected':''}>IEPS</option><option ${r.tipoImpuesto==='Locales'?'selected':''}>Locales</option><option ${r.tipoImpuesto==='Otro'?'selected':''}>Otro</option></select></div>
+                <div><label class="rh-form-label">Fecha límite</label><input class="rh-form-input" id="cr-fechalimite" type="date" value="${r.fechaLimite||''}"></div>
+                <div><label class="rh-form-label">Fecha presentación</label><input class="rh-form-input" id="cr-fechapres" type="date" value="${r.fechaPresentacion||''}"></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
+                <div><label class="rh-form-label">¿Cumple en tiempo?</label><select class="rh-form-input" id="cr-cumpletiempo"><option value="si" ${r.cumpleTiempo!=='no'?'selected':''}>✅ Sí</option><option value="no" ${r.cumpleTiempo==='no'?'selected':''}>❌ No</option></select></div>
+                <div><label class="rh-form-label">¿Conciliado fiscal?</label><select class="rh-form-input" id="cr-concfiscal"><option value="si" ${r.conciliadoFiscal!=='no'?'selected':''}>✅ Sí</option><option value="no" ${r.conciliadoFiscal==='no'?'selected':''}>❌ No</option></select></div>
+                <div><label class="rh-form-label">Multas / recargos ($)</label><input class="rh-form-input" id="cr-multas" type="number" min="0" step="0.01" value="${r.multas||''}" placeholder="0.00"></div>
+                <div><label class="rh-form-label">Monto variación ($)</label><input class="rh-form-input" id="cr-monto" type="number" min="0" step="0.01" value="${r.monto||''}" placeholder="0.00"></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div><label class="rh-form-label">Tipo diferencia fiscal</label><select class="rh-form-input" id="cr-tipodiffiscal"><option value="">N/A</option><option ${r.tipoDifFiscal==='Timing'?'selected':''}>Timing</option><option ${r.tipoDifFiscal==='Deducción'?'selected':''}>Deducción</option><option ${r.tipoDifFiscal==='Error'?'selected':''}>Error</option></select></div>
+                <div><label class="rh-form-label">Responsable</label><input class="rh-form-input" id="cr-responsable" type="text" value="${r.responsable||''}" placeholder="Quién presenta"></div>
+            </div>`
+    };
+
+    window.abrirContaRegistro = (editId) => {
+        contaEditId = editId || null;
         const form = document.getElementById('conta-inline-form');
         const content = document.getElementById('conta-form-content');
-        if(!form || !content) return;
+        const titulo = document.getElementById('conta-form-titulo');
+        if(!form||!content) return;
+        if(titulo) titulo.innerText = editId ? '✏️ Editar registro' : '🧾 Nuevo registro';
 
-        const key = contaKey();
-        const d = contaData[key] || {};
-        const bal = d.balanza || {};
-        const edo = d.edosFin || {};
-        const deu = d.deudores || {};
-        const inv = d.inventarios || {};
-        const imp = d.impuestos || {};
+        const r = editId ? contaRegs.find(x=>x.id===editId) || {} : {};
+        const catVal = r.categoria || 'balanza';
 
         content.innerHTML = `
-        <div style="font-size:12px;font-weight:700;color:#2563eb;margin-bottom:8px;">📒 Balanza de comprobación</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
-            <div><label class="rh-form-label">Cuentas conciliadas (%)</label><input class="rh-form-input" id="cf-bal-conciliadas" type="number" min="0" max="100" step="0.1" value="${bal.conciliadas||''}" placeholder="Meta ≥ 98%"></div>
-            <div><label class="rh-form-label">Diferencias corregidas (%)</label><input class="rh-form-input" id="cf-bal-difCorregidas" type="number" min="0" max="100" step="0.1" value="${bal.diferenciasCorregidas||''}" placeholder="Meta 100%"></div>
+        <div style="margin-bottom:14px;">
+            <label class="rh-form-label">Categoría del registro</label>
+            <select class="rh-form-input" id="cr-categoria" onchange="renderContaFormCat()">
+                ${Object.entries(CATS).map(([k,v])=>`<option value="${k}" ${catVal===k?'selected':''}>${v}</option>`).join('')}
+            </select>
         </div>
-        <div style="font-size:12px;font-weight:700;color:#059669;margin-bottom:8px;">📊 Estados financieros</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
-            <div><label class="rh-form-label">Entrega en tiempo (%)</label><input class="rh-form-input" id="cf-edo-entrega" type="number" min="0" max="100" step="0.1" value="${edo.entregaTiempo||''}" placeholder="Meta 100%"></div>
-            <div><label class="rh-form-label">Exactitud sin ajustes (%)</label><input class="rh-form-input" id="cf-edo-exactitud" type="number" min="0" max="100" step="0.1" value="${edo.exactitud||''}" placeholder="Meta ≥ 98%"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+            <div><label class="rh-form-label">Fecha del registro</label><input class="rh-form-input" id="cr-fecha" type="date" value="${r.fecha||new Date().toISOString().slice(0,10)}"></div>
+            <div><label class="rh-form-label">Descripción general</label><input class="rh-form-input" id="cr-desc-general" type="text" value="${r.descripcion||''}" placeholder="Resumen breve del registro"></div>
         </div>
-        <div style="font-size:12px;font-weight:700;color:#f59e0b;margin-bottom:8px;">🤝 Deudores y acreedores</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px;">
-            <div><label class="rh-form-label">Saldos conciliados (%)</label><input class="rh-form-input" id="cf-deu-conciliados" type="number" min="0" max="100" step="0.1" value="${deu.saldosConciliados||''}" placeholder="Meta ≥ 98%"></div>
-            <div><label class="rh-form-label">Saldos vencidos (%)</label><input class="rh-form-input" id="cf-deu-vencidos" type="number" min="0" max="100" step="0.1" value="${deu.saldosVencidos||''}" placeholder="Meta ≤ 15%"></div>
-            <div><label class="rh-form-label">Diferencias cuentas (%)</label><input class="rh-form-input" id="cf-deu-diferencias" type="number" min="0" max="100" step="0.1" value="${deu.diferencias||''}" placeholder="Meta ≤ 2%"></div>
-        </div>
-        <div style="font-size:12px;font-weight:700;color:#7c3aed;margin-bottom:8px;">📦 Inventarios</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
-            <div><label class="rh-form-label">Diferencias físico vs contable (%)</label><input class="rh-form-input" id="cf-inv-diferencias" type="number" min="0" max="100" step="0.1" value="${inv.diferencias||''}" placeholder="Meta ≤ 2%"></div>
-            <div><label class="rh-form-label">Registros actualizados (%)</label><input class="rh-form-input" id="cf-inv-actualizados" type="number" min="0" max="100" step="0.1" value="${inv.registrosActualizados||''}" placeholder="Meta ≥ 98%"></div>
-        </div>
-        <div style="font-size:12px;font-weight:700;color:#ef4444;margin-bottom:8px;">🏛️ Impuestos</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-            <div><label class="rh-form-label">Cumplimiento en tiempo (%)</label><input class="rh-form-input" id="cf-imp-cumplimiento" type="number" min="0" max="100" step="0.1" value="${imp.cumplimientoTiempo||''}" placeholder="Meta 100%"></div>
-            <div><label class="rh-form-label">Conciliación contable-fiscal (%)</label><input class="rh-form-input" id="cf-imp-conciliacion" type="number" min="0" max="100" step="0.1" value="${imp.conciliacionFiscal||''}" placeholder="Meta ≥ 98%"></div>
-        </div>`;
+        <div id="cr-campos-cat"></div>
+        <label class="rh-form-label" style="margin-top:12px;">Notas / observaciones</label>
+        <input class="rh-form-input" id="cr-notas" type="text" value="${r.notas||''}" placeholder="Información adicional...">`;
+
+        window._contaEditData = r;
+        renderContaFormCat();
         form.style.display = 'block';
-        form.scrollIntoView({behavior:'smooth', block:'start'});
+        form.scrollIntoView({behavior:'smooth',block:'start'});
+    };
+
+    window.renderContaFormCat = () => {
+        const cat = document.getElementById('cr-categoria')?.value || 'balanza';
+        const el = document.getElementById('cr-campos-cat');
+        if(!el) return;
+        const r = window._contaEditData || {};
+        el.innerHTML = FORMS[cat] ? FORMS[cat](r) : '';
     };
 
     window.cerrarContaInline = () => {
         const form = document.getElementById('conta-inline-form');
         if(form) form.style.display = 'none';
+        contaEditId = null;
+        window._contaEditData = null;
     };
 
-    window.guardarContaInline = async () => {
-        const key = contaKey();
-        const getNum = id => { const el=document.getElementById(id); const v=el?el.value.trim():''; return v!==''?Number(v):undefined; };
-        const btn = document.querySelector('#conta-inline-form button');
-        if(btn){ btn.textContent='💾 Guardando...'; btn.disabled=true; }
+    window.editarContaReg = (id) => { abrirContaRegistro(id); };
+    window.eliminarContaReg = async (id) => {
+        if(!confirm('¿Eliminar este registro?')) return;
+        try { const{db,fs}=await getFB(); await fs.deleteDoc(fs.doc(db,'conta_registros',id)); if(window.mostrarPush) window.mostrarPush('🗑 Eliminado','','🧾'); cargarContaRegs(); }
+        catch(e){ alert('Error: '+e.message); }
+    };
 
-        const docData = {
-            mesAnio: key,
-            balanza: {
-                conciliadas: getNum('cf-bal-conciliadas'),
-                diferenciasCorregidas: getNum('cf-bal-difCorregidas')
-            },
-            edosFin: {
-                entregaTiempo: getNum('cf-edo-entrega'),
-                exactitud: getNum('cf-edo-exactitud')
-            },
-            deudores: {
-                saldosConciliados: getNum('cf-deu-conciliados'),
-                saldosVencidos: getNum('cf-deu-vencidos'),
-                diferencias: getNum('cf-deu-diferencias')
-            },
-            inventarios: {
-                diferencias: getNum('cf-inv-diferencias'),
-                registrosActualizados: getNum('cf-inv-actualizados')
-            },
-            impuestos: {
-                cumplimientoTiempo: getNum('cf-imp-cumplimiento'),
-                conciliacionFiscal: getNum('cf-imp-conciliacion')
-            },
+    window.guardarContaRegistro = async () => {
+        const g = id => {const el=document.getElementById(id);return el?el.value.trim():'';};
+        const gn = id => {const v=g(id);return v?Number(v):undefined;};
+        const cat = g('cr-categoria');
+        if(!cat){ alert('Selecciona una categoría'); return; }
+
+        const btn = document.querySelector('#conta-inline-form button');
+        if(btn){btn.textContent='💾 Guardando...';btn.disabled=true;}
+
+        const base = {
+            mesKey: contaKey(),
+            categoria: cat,
+            fecha: g('cr-fecha') || new Date().toISOString().slice(0,10),
+            descripcion: g('cr-desc-general'),
+            notas: g('cr-notas'),
             actualizadoEn: new Date().toISOString()
         };
 
-        // Limpiar undefined dentro de sub-objetos
-        Object.values(docData).forEach(v => {
-            if(v && typeof v === 'object' && !Array.isArray(v)){
-                Object.keys(v).forEach(k => { if(v[k] === undefined) delete v[k]; });
-            }
-        });
+        let extra = {};
+        switch(cat){
+            case 'balanza': extra={cuenta:g('cr-cuenta'),tipoCuenta:g('cr-tipocuenta'),areaResponsable:g('cr-area'),conciliada:g('cr-conciliada'),cuentaCritica:g('cr-critica'),diasSinConciliar:gn('cr-diassinconc'),metodoConciliacion:g('cr-metodo'),monto:gn('cr-monto'),motivoNoConciliacion:g('cr-motivo'),responsable:g('cr-responsable')};break;
+            case 'edosfin': extra={areaEntrega:g('cr-areaentrega'),etapaCierre:g('cr-etapacierre'),entregaTiempo:g('cr-entregatiempo'),sinAjustes:g('cr-sinajustes'),versionesPrevias:gn('cr-versiones'),fechaCierre:g('cr-fechacierre'),tipoAjuste:g('cr-tipoajuste'),responsable:g('cr-responsable')};break;
+            case 'deudores': extra={proveedor:g('cr-proveedor'),tipoDeudor:g('cr-tipodeu'),areaDeu:g('cr-areadeu'),saldoConciliado:g('cr-saldoconc'),estaVencido:g('cr-vencido'),aging:g('cr-aging'),monto:gn('cr-monto'),tipoDiferencia:g('cr-tipodif'),responsable:g('cr-responsable')};break;
+            case 'inventarios': extra={producto:g('cr-producto'),ubicacion:g('cr-ubicacion'),tipoInventario:g('cr-tipoinv'),tieneDiferencia:g('cr-tienedif'),registroActualizado:g('cr-regactualizado'),tipoDiferencia:g('cr-tipodif'),monto:gn('cr-monto'),tipoMovimiento:g('cr-tipomov'),responsable:g('cr-responsable')};break;
+            case 'impuestos': extra={tipoImpuesto:g('cr-tipoimpuesto'),fechaLimite:g('cr-fechalimite'),fechaPresentacion:g('cr-fechapres'),cumpleTiempo:g('cr-cumpletiempo'),conciliadoFiscal:g('cr-concfiscal'),multas:gn('cr-multas'),monto:gn('cr-monto'),tipoDifFiscal:g('cr-tipodiffiscal'),responsable:g('cr-responsable')};break;
+        }
+
+        const docData = {...base,...extra};
+        Object.keys(docData).forEach(k=>{if(docData[k]===undefined||docData[k]==='')delete docData[k];});
 
         try {
-            const { db, fs, auth } = await getFirebaseConta();
-            docData.creadoPor = auth.currentUser?.email || '';
-            await fs.setDoc(fs.doc(db, 'conta_indicadores', key), docData, { merge: true });
-            console.log('[CONTA] ✅ Guardado:', key);
+            const{db,fs,auth}=await getFB();
+            docData.creadoPor=auth.currentUser?.email||'';
+            if(contaEditId){
+                await fs.updateDoc(fs.doc(db,'conta_registros',contaEditId),docData);
+                console.log('[CONTA v2] ✅ Actualizado:',contaEditId);
+            } else {
+                const ref=await fs.addDoc(fs.collection(db,'conta_registros'),docData);
+                console.log('[CONTA v2] ✅ Creado:',ref.id);
+            }
             cerrarContaInline();
-            if(window.mostrarPush) window.mostrarPush('✅ Contabilidad guardada', `${MESES_C[contaMes]} ${contaAnio}`, '🧾');
-            contaData[key] = {...(contaData[key]||{}), ...docData};
-            renderContaDash(contaData[key], key);
+            if(window.mostrarPush) window.mostrarPush('✅ Registro guardado',docData.descripcion||cat,'🧾');
+            cargarContaRegs();
         } catch(e){
-            console.error('[CONTA ERROR]', e);
-            alert('Error: ' + e.message);
+            console.error('[CONTA v2 ERROR]',e);
+            alert('Error: '+e.message);
         } finally {
-            if(btn){ btn.textContent='💾 GUARDAR'; btn.disabled=false; }
+            if(btn){btn.textContent='💾 GUARDAR REGISTRO';btn.disabled=false;}
         }
     };
 
-    // Hook: mostrar/ocultar al entrar a Contabilidad
-    const CHECK_CONTA = setInterval(()=>{
-        if(typeof window.verArea !== 'function') return;
-        clearInterval(CHECK_CONTA);
+    // Hook
+    const CHECK_C = setInterval(()=>{
+        if(typeof window.verArea!=='function') return;
+        clearInterval(CHECK_C);
         const _orig = window.verArea;
-        window.verArea = function(area, btn){
-            _orig(area, btn);
-            const dash = document.getElementById('conta-dashboard');
+        window.verArea = function(area,btn){
+            _orig(area,btn);
+            const dash=document.getElementById('conta-dashboard');
             if(!dash) return;
-            if(area === 'Contabilidad'){
-                dash.style.display = 'block';
-                actualizarLabelConta();
-                cargarDatosConta();
-            } else {
-                dash.style.display = 'none';
-            }
+            if(area==='Contabilidad'){dash.style.display='block';actualizarLabelConta();cargarContaRegs();}
+            else{dash.style.display='none';}
         };
-    }, 200);
+    },200);
 
-    console.log('[CONTA DASHBOARD] ✅ Módulo cargado');
+    console.log('[CONTA v2] ✅ Módulo cargado');
 })();
 </script>
     <script>
