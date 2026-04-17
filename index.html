@@ -1279,6 +1279,104 @@
         </div>
     </div>
 </div>
+            <!-- ═══ MINI-DASHBOARD PAGOS ═══ -->
+<div id="pagos-dashboard" style="display:none;margin-bottom:28px;">
+    <div class="rh-dash-header">
+        <div class="rh-dash-title">💳 Indicadores Pagos
+            <span class="rh-dash-badge" style="background:#ecfdf5;color:#065f46;">Mensual</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;">
+            <div class="rh-mes-selector">
+                <button class="rh-mes-btn" onclick="pagosMesPrev()">‹</button>
+                <span class="rh-mes-label" id="pagos-mes-label"></span>
+                <button class="rh-mes-btn" onclick="pagosMesNext()">›</button>
+            </div>
+            <button class="mkt-add-btn" onclick="abrirPagosInline()" style="background:linear-gradient(135deg,#0891b2,#0e7490);">📊 Registrar datos</button>
+        </div>
+    </div>
+
+    <!-- KPIs -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0;">
+        <div class="rh-kpi" style="border-top:3px solid #2563eb;cursor:default;">
+            <div class="rh-kpi-icon">⏱️</div>
+            <div class="rh-kpi-val" id="pag-val-tiempo">—</div>
+            <div class="rh-kpi-label">Pagos en tiempo</div>
+            <div class="rh-kpi-delta neutral" id="pag-delta-tiempo"></div>
+        </div>
+        <div class="rh-kpi" style="border-top:3px solid #059669;cursor:default;">
+            <div class="rh-kpi-icon">📎</div>
+            <div class="rh-kpi-val" id="pag-val-docs">—</div>
+            <div class="rh-kpi-label">Doc. completa</div>
+            <div class="rh-kpi-delta neutral" id="pag-delta-docs"></div>
+        </div>
+        <div class="rh-kpi" style="border-top:3px solid #7c3aed;cursor:default;">
+            <div class="rh-kpi-icon">📅</div>
+            <div class="rh-kpi-val" id="pag-val-calendario">—</div>
+            <div class="rh-kpi-label">Cumpl. calendario</div>
+            <div class="rh-kpi-delta neutral" id="pag-delta-calendario"></div>
+        </div>
+        <div class="rh-kpi" style="border-top:3px solid #0891b2;cursor:default;">
+            <div class="rh-kpi-icon">⚡</div>
+            <div class="rh-kpi-val" id="pag-val-respuesta">—</div>
+            <div class="rh-kpi-label">Tiempo respuesta</div>
+            <div class="rh-kpi-delta neutral" id="pag-delta-respuesta"></div>
+        </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px;">
+        <div class="rh-kpi" style="border-top:3px solid #ef4444;cursor:default;">
+            <div class="rh-kpi-icon">❌</div>
+            <div class="rh-kpi-val" id="pag-val-errores">—</div>
+            <div class="rh-kpi-label">Errores en pagos</div>
+            <div class="rh-kpi-delta neutral" id="pag-delta-errores"></div>
+        </div>
+        <div class="rh-kpi" style="border-top:3px solid #f59e0b;cursor:default;">
+            <div class="rh-kpi-icon">🚨</div>
+            <div class="rh-kpi-val" id="pag-val-urgentes">—</div>
+            <div class="rh-kpi-label">Pagos urgentes</div>
+            <div class="rh-kpi-delta neutral" id="pag-delta-urgentes"></div>
+        </div>
+        <div class="rh-kpi" style="border-top:3px solid #dc2626;cursor:default;">
+            <div class="rh-kpi-icon">🔙</div>
+            <div class="rh-kpi-val" id="pag-val-rechazados">—</div>
+            <div class="rh-kpi-label">Pagos rechazados</div>
+            <div class="rh-kpi-delta neutral" id="pag-delta-rechazados"></div>
+        </div>
+    </div>
+
+    <!-- Gráficas -->
+    <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:14px;margin-bottom:18px;">
+        <div class="mkt-card">
+            <div class="mkt-card-title">📈 Tendencia mensual</div>
+            <div class="mkt-card-sub">Pagos en tiempo, Documentación y Calendario últimos 6 meses</div>
+            <div style="height:180px;"><canvas id="pag-chart-tendencia"></canvas></div>
+        </div>
+        <div class="mkt-card" style="text-align:center;">
+            <div class="mkt-card-title" style="text-align:left;">🎯 Cumplimiento global</div>
+            <div class="mkt-card-sub" style="text-align:left;">Promedio de KPIs positivos</div>
+            <div style="position:relative;width:140px;height:140px;margin:0 auto;">
+                <canvas id="pag-chart-global"></canvas>
+                <div id="pag-global-pct" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:18px;color:#1e293b;">—</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detalle -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:18px;">
+        <div class="mkt-card" id="pag-detalle-1"></div>
+        <div class="mkt-card" id="pag-detalle-2"></div>
+        <div class="mkt-card" id="pag-detalle-3"></div>
+    </div>
+
+    <!-- Form inline -->
+    <div id="pagos-inline-form" style="display:none;background:#fff;border-radius:16px;border:2px solid #0891b2;padding:20px;margin:12px 0;box-shadow:0 4px 20px rgba(8,145,178,0.12);animation:slideDown 0.2s ease;">
+        <div style="font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;color:#0e7490;margin-bottom:16px;display:flex;align-items:center;gap:8px;">💳 Registrar datos de Pagos</div>
+        <div id="pagos-form-content"></div>
+        <div style="display:flex;gap:10px;margin-top:16px;">
+            <button onclick="guardarPagosInline()" style="flex:1;padding:11px;background:linear-gradient(135deg,#0891b2,#0e7490);color:white;border:none;border-radius:10px;font-weight:700;cursor:pointer;font-size:13px;">💾 GUARDAR</button>
+            <button onclick="cerrarPagosInline()" style="flex:1;padding:11px;background:#f1f5f9;border:none;border-radius:10px;color:#475569;font-weight:700;cursor:pointer;font-size:13px;">Cancelar</button>
+        </div>
+    </div>
+</div>
             <!-- ═══ MINI-DASHBOARD EGRESOS ═══ -->
 <div id="egresos-dashboard" style="display:none;margin-bottom:28px;">
     <div class="rh-dash-header">
@@ -7142,6 +7240,259 @@ window.guardarDatoRHInline = async () => {
     }, 200);
 
     console.log('[EGRESOS DASHBOARD] ✅ Módulo cargado');
+})();
+</script>
+    <script>
+// ══════════════════════════════════════════════════════════════
+// DASHBOARD PAGOS — KPIs mensuales
+// ══════════════════════════════════════════════════════════════
+(function(){
+    'use strict';
+
+    let pagMes = new Date().getMonth();
+    let pagAnio = new Date().getFullYear();
+    let pagData = {};
+    let pagChartTend = null, pagChartGlobal = null;
+    const MESES_P = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+
+    function pagKey(){ return `${pagAnio}-${String(pagMes+1).padStart(2,'0')}`; }
+
+    async function getFirebasePag(){
+        const appMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+        const fsMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const authMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+        const app = appMod.getApps()[0];
+        return { db: fsMod.getFirestore(app), auth: authMod.getAuth(app), fs: fsMod };
+    }
+
+    function actualizarLabelPag(){
+        const el = document.getElementById('pagos-mes-label');
+        if(el) el.innerText = `${MESES_P[pagMes]} ${pagAnio}`;
+    }
+
+    window.pagosMesPrev = () => { pagMes--; if(pagMes<0){pagMes=11;pagAnio--;} actualizarLabelPag(); cargarDatosPag(); };
+    window.pagosMesNext = () => { pagMes++; if(pagMes>11){pagMes=0;pagAnio++;} actualizarLabelPag(); cargarDatosPag(); };
+
+    async function cargarDatosPag(){
+        const key = pagKey();
+        try {
+            const { db, fs } = await getFirebasePag();
+            const snap = await fs.getDoc(fs.doc(db, 'pagos_indicadores', key));
+            pagData[key] = snap.exists() ? snap.data() : {};
+            renderPagDash(pagData[key], key);
+        } catch(e){
+            console.warn('[PAG]', e.message);
+            renderPagDash({}, key);
+        }
+    }
+
+    function pctColorP(val, meta, inv){
+        const v = Number(val) || 0;
+        if(inv) return v <= meta ? '#16a34a' : v <= meta*2 ? '#f59e0b' : '#ef4444';
+        return v >= meta ? '#16a34a' : v >= meta*0.85 ? '#f59e0b' : '#ef4444';
+    }
+
+    function miniBarP(val, meta, inv){
+        const v = Number(val) || 0;
+        const realPct = Math.min(100, Math.max(0, inv ? (v<=meta ? 100 : Math.max(0,100-((v-meta)/meta*100))) : (v/meta*100)));
+        const color = pctColorP(val, meta, inv);
+        return `<div style="height:6px;background:#e2e8f0;border-radius:4px;overflow:hidden;margin-top:4px;"><div style="height:100%;width:${realPct}%;background:${color};border-radius:4px;transition:width 0.8s;"></div></div>`;
+    }
+
+    function renderPagDash(d, key){
+        const setKPI = (id, val) => { const el = document.getElementById(id); if(el) el.innerText = val; };
+        const setDelta = (id, html) => { const el = document.getElementById(id); if(el) el.innerHTML = `<span class="rh-kpi-delta neutral">${html}</span>`; };
+
+        setKPI('pag-val-tiempo', d.pagosTiempo !== undefined ? d.pagosTiempo+'%' : '—');
+        setDelta('pag-delta-tiempo', 'Meta ≥ 98%');
+
+        setKPI('pag-val-docs', d.docCompleta !== undefined ? d.docCompleta+'%' : '—');
+        setDelta('pag-delta-docs', 'Meta 100%');
+
+        setKPI('pag-val-calendario', d.cumplCalendario !== undefined ? d.cumplCalendario+'%' : '—');
+        setDelta('pag-delta-calendario', 'Meta ≥ 98%');
+
+        setKPI('pag-val-respuesta', d.tiempoRespuesta !== undefined ? d.tiempoRespuesta+' hrs' : '—');
+        setDelta('pag-delta-respuesta', 'Meta ≤ 48 hrs');
+
+        setKPI('pag-val-errores', d.errores !== undefined ? d.errores+'%' : '—');
+        setDelta('pag-delta-errores', 'Meta ≤ 1%');
+
+        setKPI('pag-val-urgentes', d.pagosUrgentes !== undefined ? d.pagosUrgentes+'%' : '—');
+        setDelta('pag-delta-urgentes', 'Meta ≤ 5%');
+
+        setKPI('pag-val-rechazados', d.rechazados !== undefined ? d.rechazados+'%' : '—');
+        setDelta('pag-delta-rechazados', 'Meta ≤ 1%');
+
+        // Detalle cards
+        renderDetalleP('pag-detalle-1', '⏱️ Oportunidad y Calendario', [
+            {label:'Pagos en tiempo', val:d.pagosTiempo, meta:98, unit:'%'},
+            {label:'Cumpl. calendario', val:d.cumplCalendario, meta:98, unit:'%'},
+            {label:'Tiempo de respuesta', val:d.tiempoRespuesta, meta:48, unit:' hrs', invertido:true}
+        ]);
+        renderDetalleP('pag-detalle-2', '📎 Documentación y Calidad', [
+            {label:'Doc. completa', val:d.docCompleta, meta:100, unit:'%'},
+            {label:'Errores en pagos', val:d.errores, meta:1, unit:'%', invertido:true}
+        ]);
+        renderDetalleP('pag-detalle-3', '🚨 Riesgos', [
+            {label:'Pagos urgentes', val:d.pagosUrgentes, meta:5, unit:'%', invertido:true},
+            {label:'Pagos rechazados', val:d.rechazados, meta:1, unit:'%', invertido:true}
+        ]);
+
+        // Promedio global
+        const positivos = [d.pagosTiempo, d.docCompleta, d.cumplCalendario].filter(v=>v!==undefined&&v!==null&&v!=='');
+        const promedio = positivos.length > 0 ? Math.round(positivos.reduce((s,v)=>s+Number(v),0)/positivos.length) : 0;
+
+        const elG = document.getElementById('pag-chart-global');
+        if(elG){
+            if(pagChartGlobal) pagChartGlobal.destroy();
+            pagChartGlobal = new Chart(elG, {
+                type:'doughnut',
+                data:{datasets:[{data:[promedio, Math.max(0.001,100-promedio)], backgroundColor:[promedio>=80?'#16a34a':promedio>=50?'#f59e0b':'#ef4444','#e2e8f0'], borderWidth:0}]},
+                options:{cutout:'76%', plugins:{legend:{display:false}}, animation:{duration:600}}
+            });
+            document.getElementById('pag-global-pct').innerText = promedio + '%';
+        }
+
+        // Tendencia 6 meses
+        const elT = document.getElementById('pag-chart-tendencia');
+        if(elT){
+            if(pagChartTend) pagChartTend.destroy();
+            const labels=[], dTiempo=[], dDoc=[], dCal=[];
+            for(let i=5;i>=0;i--){
+                let m=pagMes-i, a=pagAnio; if(m<0){m+=12;a--;}
+                labels.push(MESES_P[m].slice(0,3));
+                const k=`${a}-${String(m+1).padStart(2,'0')}`;
+                const cd=pagData[k]||{};
+                dTiempo.push(cd.pagosTiempo||0);
+                dDoc.push(cd.docCompleta||0);
+                dCal.push(cd.cumplCalendario||0);
+            }
+            pagChartTend = new Chart(elT, {
+                type:'line',
+                data:{labels, datasets:[
+                    {label:'En tiempo',data:dTiempo,borderColor:'#2563eb',tension:0.4,borderWidth:2,pointRadius:3,fill:false},
+                    {label:'Doc. completa',data:dDoc,borderColor:'#059669',tension:0.4,borderWidth:2,pointRadius:3,fill:false},
+                    {label:'Calendario',data:dCal,borderColor:'#7c3aed',tension:0.4,borderWidth:2,pointRadius:3,fill:false}
+                ]},
+                options:{responsive:true,maintainAspectRatio:false,
+                    plugins:{legend:{position:'bottom',labels:{boxWidth:8,font:{size:10},color:'#64748b'}}},
+                    scales:{y:{min:0,max:100,ticks:{callback:v=>v+'%',color:'#94a3b8',font:{size:9}},grid:{color:'rgba(59,130,246,0.05)'}},x:{ticks:{color:'#94a3b8',font:{size:9}},grid:{display:false}}}
+                }
+            });
+        }
+    }
+
+    function renderDetalleP(elId, titulo, items){
+        const el = document.getElementById(elId);
+        if(!el) return;
+        el.innerHTML = `<div class="mkt-card-title">${titulo}</div>
+        <div style="margin-top:10px;">
+            ${items.map(it=>{
+                const v = it.val !== undefined && it.val !== '' ? Number(it.val) : null;
+                const color = v !== null ? pctColorP(v, it.meta, it.invertido) : '#94a3b8';
+                const metaLabel = it.invertido ? `≤ ${it.meta}${it.unit}` : `≥ ${it.meta}${it.unit}`;
+                return `<div style="margin-bottom:10px;">
+                    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px;">
+                        <span style="color:#475569;">${it.label}</span>
+                        <span style="font-weight:700;color:${color};">${v!==null?v+it.unit:'—'} <span style="font-weight:400;color:#94a3b8;font-size:10px;">Meta: ${metaLabel}</span></span>
+                    </div>
+                    ${v!==null?miniBarP(v,it.meta,it.invertido):'<div style="height:6px;background:#e2e8f0;border-radius:4px;"></div>'}
+                </div>`;
+            }).join('')}
+        </div>`;
+    }
+
+    // Form inline
+    window.abrirPagosInline = () => {
+        const form = document.getElementById('pagos-inline-form');
+        const content = document.getElementById('pagos-form-content');
+        if(!form || !content) return;
+        const key = pagKey();
+        const d = pagData[key] || {};
+
+        content.innerHTML = `
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
+            <div><label class="rh-form-label">Pagos en tiempo (%)</label><input class="rh-form-input" id="pf-tiempo" type="number" min="0" max="100" step="0.1" value="${d.pagosTiempo||''}" placeholder="Meta ≥ 98%"></div>
+            <div><label class="rh-form-label">Doc. completa (%)</label><input class="rh-form-input" id="pf-docs" type="number" min="0" max="100" step="0.1" value="${d.docCompleta||''}" placeholder="Meta 100%"></div>
+            <div><label class="rh-form-label">Cumpl. calendario (%)</label><input class="rh-form-input" id="pf-calendario" type="number" min="0" max="100" step="0.1" value="${d.cumplCalendario||''}" placeholder="Meta ≥ 98%"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
+            <div><label class="rh-form-label">Errores pagos (%)</label><input class="rh-form-input" id="pf-errores" type="number" min="0" max="100" step="0.1" value="${d.errores||''}" placeholder="Meta ≤ 1%"></div>
+            <div><label class="rh-form-label">Pagos urgentes (%)</label><input class="rh-form-input" id="pf-urgentes" type="number" min="0" max="100" step="0.1" value="${d.pagosUrgentes||''}" placeholder="Meta ≤ 5%"></div>
+            <div><label class="rh-form-label">Rechazados (%)</label><input class="rh-form-input" id="pf-rechazados" type="number" min="0" max="100" step="0.1" value="${d.rechazados||''}" placeholder="Meta ≤ 1%"></div>
+            <div><label class="rh-form-label">Tiempo respuesta (hrs)</label><input class="rh-form-input" id="pf-respuesta" type="number" min="0" step="1" value="${d.tiempoRespuesta||''}" placeholder="Meta ≤ 48 hrs"></div>
+        </div>
+        <label class="rh-form-label">Notas / observaciones</label>
+        <input class="rh-form-input" id="pf-notas" type="text" value="${d.notas||''}" placeholder="Comentarios del mes...">`;
+        form.style.display = 'block';
+        form.scrollIntoView({behavior:'smooth', block:'start'});
+    };
+
+    window.cerrarPagosInline = () => {
+        const form = document.getElementById('pagos-inline-form');
+        if(form) form.style.display = 'none';
+    };
+
+    window.guardarPagosInline = async () => {
+        const key = pagKey();
+        const getNum = id => { const el=document.getElementById(id); const v=el?el.value.trim():''; return v!==''?Number(v):undefined; };
+        const getStr = id => { const el=document.getElementById(id); return el?el.value.trim():''; };
+        const btn = document.querySelector('#pagos-inline-form button');
+        if(btn){ btn.textContent='💾 Guardando...'; btn.disabled=true; }
+
+        const docData = {
+            mesAnio: key,
+            pagosTiempo: getNum('pf-tiempo'),
+            docCompleta: getNum('pf-docs'),
+            cumplCalendario: getNum('pf-calendario'),
+            errores: getNum('pf-errores'),
+            pagosUrgentes: getNum('pf-urgentes'),
+            rechazados: getNum('pf-rechazados'),
+            tiempoRespuesta: getNum('pf-respuesta'),
+            notas: getStr('pf-notas'),
+            actualizadoEn: new Date().toISOString()
+        };
+
+        Object.keys(docData).forEach(k => { if(docData[k] === undefined) delete docData[k]; });
+
+        try {
+            const { db, fs, auth } = await getFirebasePag();
+            docData.creadoPor = auth.currentUser?.email || '';
+            await fs.setDoc(fs.doc(db, 'pagos_indicadores', key), docData, { merge: true });
+            console.log('[PAG] ✅ Guardado:', key);
+            cerrarPagosInline();
+            if(window.mostrarPush) window.mostrarPush('✅ Pagos guardado', `${MESES_P[pagMes]} ${pagAnio}`, '💳');
+            pagData[key] = {...(pagData[key]||{}), ...docData};
+            renderPagDash(pagData[key], key);
+        } catch(e){
+            console.error('[PAG ERROR]', e);
+            alert('Error: ' + e.message);
+        } finally {
+            if(btn){ btn.textContent='💾 GUARDAR'; btn.disabled=false; }
+        }
+    };
+
+    // Hook
+    const CHECK_PAG = setInterval(()=>{
+        if(typeof window.verArea !== 'function') return;
+        clearInterval(CHECK_PAG);
+        const _orig = window.verArea;
+        window.verArea = function(area, btn){
+            _orig(area, btn);
+            const dash = document.getElementById('pagos-dashboard');
+            if(!dash) return;
+            if(area === 'Pagos'){
+                dash.style.display = 'block';
+                actualizarLabelPag();
+                cargarDatosPag();
+            } else {
+                dash.style.display = 'none';
+            }
+        };
+    }, 200);
+
+    console.log('[PAGOS DASHBOARD] ✅ Módulo cargado');
 })();
 </script>
   <!-- 
