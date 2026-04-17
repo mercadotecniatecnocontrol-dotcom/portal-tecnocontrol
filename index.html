@@ -6173,6 +6173,255 @@ window.guardarDatoRHInline = async () => {
 };
 
 </script>
+    <script>
+// ══════════════════════════════════════════════════════════════
+// PARRILLA UNIVERSAL POR ÁREA — Documentos Google Drive
+// ══════════════════════════════════════════════════════════════
+(function(){
+    'use strict';
+
+    let apMes = new Date().getMonth();
+    let apAnio = new Date().getFullYear();
+    let apAreaActual = '';
+    let apDocs = [];
+    const AP_MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+    const AP_DIAS = ['DOM','LUN','MAR','MIÉ','JUE','VIE','SÁB'];
+
+    // Áreas que YA tienen su propia parrilla (Marketing) — no duplicar
+    const AREAS_CON_PARRILLA_PROPIA = ['Marketing'];
+
+    async function getFirebaseAP(){
+        const appMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+        const fsMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const authMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+        const app = appMod.getApps()[0];
+        return { db: fsMod.getFirestore(app), auth: authMod.getAuth(app), fs: fsMod };
+    }
+
+    function drivePreviewUrl(url){
+        if(!url) return '';
+        let fileId = '';
+        const m1 = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+        const m2 = url.match(/id=([a-zA-Z0-9_-]+)/);
+        const m3 = url.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+        if(m1) fileId = m1[1];
+        else if(m2) fileId = m2[1];
+        else if(m3) fileId = m3[1];
+        if(fileId) return `https://drive.google.com/file/d/${fileId}/preview`;
+        return url;
+    }
+
+    function driveThumbnail(url){
+        if(!url) return '';
+        let fileId = '';
+        const m1 = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+        const m2 = url.match(/id=([a-zA-Z0-9_-]+)/);
+        if(m1) fileId = m1[1];
+        else if(m2) fileId = m2[1];
+        if(fileId) return `https://drive.google.com/thumbnail?id=${fileId}&sz=w400`;
+        return '';
+    }
+
+    function actualizarLabelAP(){
+        const el = document.getElementById('ap-nav-label');
+        if(el) el.innerText = `${AP_MESES[apMes]} ${apAnio}`;
+        const lbl = document.getElementById('ap-area-label');
+        if(lbl) lbl.innerText = apAreaActual;
+    }
+
+    window.apMesPrev = () => { apMes--; if(apMes<0){apMes=11;apAnio--;} actualizarLabelAP(); cargarDocsAP(); };
+    window.apMesNext = () => { apMes++; if(apMes>11){apMes=0;apAnio++;} actualizarLabelAP(); cargarDocsAP(); };
+
+    async function cargarDocsAP(){
+        if(!apAreaActual) return;
+        try {
+            const { db, fs } = await getFirebaseAP();
+            const mesKey = `${apAnio}-${String(apMes+1).padStart(2,'0')}`;
+            const snap = await fs.getDocs(fs.query(
+                fs.collection(db, 'area_parrilla'),
+                fs.where('area','==',apAreaActual),
+                fs.where('mesKey','==',mesKey)
+            ));
+            apDocs = snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>((a.fecha||'')+(a.hora||'')).localeCompare((b.fecha||'')+(b.hora||'')));
+            renderCalAP();
+        } catch(e){
+            console.warn('[AP]', e.message);
+            apDocs = [];
+            renderCalAP();
+        }
+    }
+
+    function renderCalAP(){
+        const content = document.getElementById('ap-content');
+        if(!content) return;
+        const hoy = new Date(); hoy.setHours(0,0,0,0);
+        const firstDay = new Date(apAnio, apMes, 1).getDay();
+        const totalDias = new Date(apAnio, apMes+1, 0).getDate();
+        const prevDias = new Date(apAnio, apMes, 0).getDate();
+
+        const porDia = {};
+        apDocs.forEach(p=>{ if(!p.fecha) return; const dia=parseInt(p.fecha.split('-')[2]); if(!porDia[dia]) porDia[dia]=[]; porDia[dia].push(p); });
+
+        let html = '<div class="parrilla-grid">';
+        AP_DIAS.forEach(d=>{ html+=`<div class="parrilla-dow">${d}</div>`; });
+
+        for(let i=firstDay-1;i>=0;i--) html+=`<div class="parrilla-cell otro-mes"><div class="parrilla-cell-day" style="color:#d1d5db;">${prevDias-i}</div></div>`;
+
+        for(let d=1;d<=totalDias;d++){
+            const esHoy = hoy.getDate()===d && hoy.getMonth()===apMes && hoy.getFullYear()===apAnio;
+            const dDocs = porDia[d] || [];
+            const fechaStr = `${apAnio}-${String(apMes+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+            html+=`<div class="parrilla-cell${esHoy?' hoy':''}">
+                <div class="parrilla-cell-day">
+                    <span${esHoy?' style="color:#2563eb;font-weight:900;"':''}>${d}</span>
+                    <button class="parrilla-add-cell" onclick="abrirModalAP('${fechaStr}')" title="Agregar">+</button>
+                </div>
+                ${dDocs.map(p=>docCardHTML(p)).join('')}
+            </div>`;
+        }
+
+        const remain = (firstDay + totalDias) % 7;
+        if(remain>0) for(let i=1;i<=7-remain;i++) html+=`<div class="parrilla-cell otro-mes"><div class="parrilla-cell-day" style="color:#d1d5db;">${i}</div></div>`;
+        html+='</div>';
+
+        const total = apDocs.length;
+        html+=`<div style="margin-top:12px;font-size:11px;color:#64748b;"><b style="color:#1e293b;">${total}</b> documentos este mes</div>`;
+        content.innerHTML = html;
+    }
+
+    function docCardHTML(p){
+        const thumb = driveThumbnail(p.link);
+        const tipoColor = {'Factura':'#2563eb','Orden de compra':'#059669','Cotización':'#f59e0b','Contrato':'#7c3aed','Reporte':'#0891b2','Nómina':'#db2777','Póliza':'#64748b','Recibo':'#ea580c'};
+        const color = tipoColor[p.tipo] || '#475569';
+        return `<div data-apdocid="${p.id}" style="border-radius:8px;padding:5px 7px;margin-bottom:4px;font-size:10px;cursor:pointer;border-left:3px solid ${color};background:rgba(${color==='#2563eb'?'37,99,235':color==='#059669'?'5,150,105':color==='#f59e0b'?'245,158,11':'124,58,252'},0.08);transition:0.15s;" onclick="previewDocAP('${p.id}')">
+            ${thumb?`<img src="${thumb}" style="width:100%;height:32px;object-fit:cover;border-radius:4px;margin-bottom:3px;" onerror="this.style.display='none'">`:''}
+            <div style="font-weight:700;line-height:1.2;color:#1e293b;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">${p.desc||'Sin título'}</div>
+            <div style="opacity:0.7;margin-top:1px;">${p.tipo||''}</div>
+        </div>`;
+    }
+
+    window.abrirModalAP = (fechaPreset) => {
+        fechaPreset = fechaPreset || null;
+        document.getElementById('ap-edit-id').value = '';
+        document.getElementById('ap-modal-title').innerText = '📄 Nuevo documento';
+        document.getElementById('ap-fecha').value = fechaPreset || new Date().toISOString().slice(0,10);
+        document.getElementById('ap-tipo').value = 'Factura';
+        document.getElementById('ap-desc').value = '';
+        document.getElementById('ap-link').value = '';
+        document.getElementById('ap-responsable').value = '';
+        document.getElementById('ap-notas').value = '';
+        document.getElementById('modal-ap').style.display = 'flex';
+    };
+
+    window.guardarDocAP = async () => {
+        const fecha = document.getElementById('ap-fecha').value;
+        const desc = document.getElementById('ap-desc').value.trim();
+        if(!fecha){ alert('Selecciona una fecha'); return; }
+        if(!desc){ alert('Escribe la descripción del documento'); return; }
+
+        const mesKey = `${apAnio}-${String(apMes+1).padStart(2,'0')}`;
+        const docData = {
+            area: apAreaActual,
+            mesKey,
+            fecha,
+            tipo: document.getElementById('ap-tipo').value,
+            desc,
+            link: document.getElementById('ap-link').value.trim(),
+            responsable: document.getElementById('ap-responsable').value.trim(),
+            notas: document.getElementById('ap-notas').value.trim(),
+            creadoEn: new Date().toISOString()
+        };
+
+        const btn = document.querySelector('#modal-ap .mkt-add-btn');
+        if(btn){ btn.textContent='Guardando...'; btn.disabled=true; }
+        try {
+            const { db, fs, auth } = await getFirebaseAP();
+            docData.creadoPor = auth.currentUser?.email || '';
+            const editId = document.getElementById('ap-edit-id').value;
+            if(editId){
+                await fs.updateDoc(fs.doc(db,'area_parrilla',editId), docData);
+            } else {
+                await fs.addDoc(fs.collection(db,'area_parrilla'), docData);
+            }
+            document.getElementById('modal-ap').style.display='none';
+            if(window.mostrarPush) window.mostrarPush('📄 Documento guardado', desc, '📋');
+            cargarDocsAP();
+        } catch(e){ alert('Error: '+e.message); }
+        finally{ if(btn){ btn.textContent='GUARDAR'; btn.disabled=false; } }
+    };
+
+    window.previewDocAP = (id) => {
+        const p = apDocs.find(x=>x.id===id);
+        if(!p) return;
+        document.getElementById('ap-prev-titulo').innerText = p.desc || 'Documento';
+        document.getElementById('ap-prev-meta').innerHTML = `${p.tipo||''} · ${p.fecha||''} · ${p.responsable||''}${p.notas?' · '+p.notas:''}`;
+        const previewUrl = drivePreviewUrl(p.link);
+        document.getElementById('ap-prev-iframe').src = previewUrl || 'about:blank';
+        document.getElementById('ap-prev-link').href = p.link || '#';
+        document.getElementById('ap-prev-edit').onclick = () => {
+            document.getElementById('modal-ap-preview').style.display='none';
+            editarDocAP(id);
+        };
+        document.getElementById('ap-prev-del').onclick = () => {
+            document.getElementById('modal-ap-preview').style.display='none';
+            eliminarDocAP(id);
+        };
+        document.getElementById('modal-ap-preview').style.display='flex';
+    };
+
+    function editarDocAP(id){
+        const p = apDocs.find(x=>x.id===id);
+        if(!p) return;
+        document.getElementById('ap-edit-id').value = id;
+        document.getElementById('ap-modal-title').innerText = '✏️ Editar documento';
+        document.getElementById('ap-fecha').value = p.fecha||'';
+        document.getElementById('ap-tipo').value = p.tipo||'Otro';
+        document.getElementById('ap-desc').value = p.desc||'';
+        document.getElementById('ap-link').value = p.link||'';
+        document.getElementById('ap-responsable').value = p.responsable||'';
+        document.getElementById('ap-notas').value = p.notas||'';
+        document.getElementById('modal-ap').style.display='flex';
+    }
+
+    async function eliminarDocAP(id){
+        if(!confirm('¿Eliminar este documento?')) return;
+        try {
+            const { db, fs } = await getFirebaseAP();
+            await fs.deleteDoc(fs.doc(db,'area_parrilla',id));
+            if(window.mostrarPush) window.mostrarPush('🗑 Eliminado','','📋');
+            cargarDocsAP();
+        } catch(e){ alert('Error: '+e.message); }
+    }
+
+    // Cerrar modales al clic fuera
+    document.getElementById('modal-ap')?.addEventListener('click', e=>{ if(e.target.id==='modal-ap') e.target.style.display='none'; });
+    document.getElementById('modal-ap-preview')?.addEventListener('click', e=>{ if(e.target.id==='modal-ap-preview'){ e.target.style.display='none'; document.getElementById('ap-prev-iframe').src='about:blank'; }});
+
+    // Hook: mostrar/ocultar parrilla al navegar entre áreas
+    const CHECK2 = setInterval(()=>{
+        if(typeof window.verArea !== 'function') return;
+        clearInterval(CHECK2);
+        const _origVerArea2 = window.verArea;
+        window.verArea = function(area, btn){
+            _origVerArea2(area, btn);
+            const wrap = document.getElementById('area-parrilla-wrap');
+            if(!wrap) return;
+            if(AREAS_CON_PARRILLA_PROPIA.includes(area)){
+                wrap.style.display = 'none';
+            } else {
+                wrap.style.display = 'block';
+                apAreaActual = area;
+                apMes = new Date().getMonth();
+                apAnio = new Date().getFullYear();
+                actualizarLabelAP();
+                cargarDocsAP();
+            }
+        };
+    }, 200);
+
+    console.log('[PARRILLA UNIVERSAL] ✅ Módulo cargado');
+})();
+</script>
   <!-- 
   ═══════════════════════════════════════════════════════════
   FIX RH v3 — REEMPLAZA la versión v2 que ya pegaste
