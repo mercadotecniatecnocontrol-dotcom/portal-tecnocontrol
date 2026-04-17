@@ -1279,6 +1279,92 @@
         </div>
     </div>
 </div>
+            <!-- ═══ MINI-DASHBOARD CONTABILIDAD ═══ -->
+<div id="conta-dashboard" style="display:none;margin-bottom:28px;">
+    <div class="rh-dash-header">
+        <div class="rh-dash-title">🧾 Indicadores Contabilidad
+            <span class="rh-dash-badge" style="background:#eff6ff;color:#2563eb;">Mensual</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;">
+            <div class="rh-mes-selector">
+                <button class="rh-mes-btn" onclick="contaMesPrev()">‹</button>
+                <span class="rh-mes-label" id="conta-mes-label"></span>
+                <button class="rh-mes-btn" onclick="contaMesNext()">›</button>
+            </div>
+            <button class="mkt-add-btn" onclick="abrirContaInline()" style="background:linear-gradient(135deg,#2563eb,#1d4ed8);">📊 Registrar datos</button>
+        </div>
+    </div>
+
+    <!-- KPIs -->
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:18px 0;">
+        <div class="rh-kpi" style="border-top:3px solid #2563eb;cursor:default;">
+            <div class="rh-kpi-icon">📒</div>
+            <div class="rh-kpi-val" id="conta-val-balanza">—</div>
+            <div class="rh-kpi-label">Balanza</div>
+            <div class="rh-kpi-delta neutral" id="conta-delta-balanza"></div>
+        </div>
+        <div class="rh-kpi" style="border-top:3px solid #059669;cursor:default;">
+            <div class="rh-kpi-icon">📊</div>
+            <div class="rh-kpi-val" id="conta-val-edosfin">—</div>
+            <div class="rh-kpi-label">Edos. Financieros</div>
+            <div class="rh-kpi-delta neutral" id="conta-delta-edosfin"></div>
+        </div>
+        <div class="rh-kpi" style="border-top:3px solid #f59e0b;cursor:default;">
+            <div class="rh-kpi-icon">🤝</div>
+            <div class="rh-kpi-val" id="conta-val-deudores">—</div>
+            <div class="rh-kpi-label">Deudores/Acreed.</div>
+            <div class="rh-kpi-delta neutral" id="conta-delta-deudores"></div>
+        </div>
+        <div class="rh-kpi" style="border-top:3px solid #7c3aed;cursor:default;">
+            <div class="rh-kpi-icon">📦</div>
+            <div class="rh-kpi-val" id="conta-val-inventarios">—</div>
+            <div class="rh-kpi-label">Inventarios</div>
+            <div class="rh-kpi-delta neutral" id="conta-delta-inventarios"></div>
+        </div>
+        <div class="rh-kpi" style="border-top:3px solid #ef4444;cursor:default;">
+            <div class="rh-kpi-icon">🏛️</div>
+            <div class="rh-kpi-val" id="conta-val-impuestos">—</div>
+            <div class="rh-kpi-label">Impuestos</div>
+            <div class="rh-kpi-delta neutral" id="conta-delta-impuestos"></div>
+        </div>
+    </div>
+
+    <!-- Gráficas -->
+    <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:14px;margin-bottom:18px;">
+        <div class="mkt-card">
+            <div class="mkt-card-title">📈 Tendencia mensual</div>
+            <div class="mkt-card-sub">Cumplimiento por categoría últimos 6 meses</div>
+            <div style="height:180px;"><canvas id="conta-chart-tendencia"></canvas></div>
+        </div>
+        <div class="mkt-card" style="text-align:center;">
+            <div class="mkt-card-title" style="text-align:left;">🎯 Cumplimiento global</div>
+            <div class="mkt-card-sub" style="text-align:left;">Promedio de todos los KPIs</div>
+            <div style="position:relative;width:140px;height:140px;margin:0 auto;">
+                <canvas id="conta-chart-global"></canvas>
+                <div id="conta-global-pct" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:18px;color:#1e293b;">—</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detalle por categoría -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;">
+        <div class="mkt-card" id="conta-detalle-balanza"></div>
+        <div class="mkt-card" id="conta-detalle-edosfin"></div>
+        <div class="mkt-card" id="conta-detalle-deudores"></div>
+        <div class="mkt-card" id="conta-detalle-inventarios"></div>
+        <div class="mkt-card" id="conta-detalle-impuestos" style="grid-column:span 2;"></div>
+    </div>
+
+    <!-- Form inline -->
+    <div id="conta-inline-form" style="display:none;background:#fff;border-radius:16px;border:2px solid #2563eb;padding:20px;margin:12px 0;box-shadow:0 4px 20px rgba(37,99,235,0.12);animation:slideDown 0.2s ease;">
+        <div style="font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;color:#1e3a8a;margin-bottom:16px;display:flex;align-items:center;gap:8px;">🧾 Registrar datos de Contabilidad</div>
+        <div id="conta-form-content"></div>
+        <div style="display:flex;gap:10px;margin-top:16px;">
+            <button onclick="guardarContaInline()" style="flex:1;padding:11px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:white;border:none;border-radius:10px;font-weight:700;cursor:pointer;font-size:13px;">💾 GUARDAR</button>
+            <button onclick="cerrarContaInline()" style="flex:1;padding:11px;background:#f1f5f9;border:none;border-radius:10px;color:#475569;font-weight:700;cursor:pointer;font-size:13px;">Cancelar</button>
+        </div>
+    </div>
+</div>
             <!-- MINI-DASHBOARD MARKETING (solo visible en Marketing) -->
             <div id="mkt-dashboard">
                 <div class="mkt-header">
