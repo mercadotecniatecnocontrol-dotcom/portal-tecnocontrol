@@ -7260,15 +7260,16 @@ window.guardarDatoRHInline = async () => {
 </script>
     <script>
 // ══════════════════════════════════════════════════════════════
-// DASHBOARD PAGOS — KPIs mensuales
+// DASHBOARD PAGOS v2 — Registros individuales con auto-cálculo
 // ══════════════════════════════════════════════════════════════
 (function(){
     'use strict';
 
     let pagMes = new Date().getMonth();
     let pagAnio = new Date().getFullYear();
-    let pagData = {};
+    let pagRegistros = [];
     let pagChartTend = null, pagChartGlobal = null;
+    let pagEditId = null;
     const MESES_P = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
     function pagKey(){ return `${pagAnio}-${String(pagMes+1).padStart(2,'0')}`; }
@@ -7286,79 +7287,95 @@ window.guardarDatoRHInline = async () => {
         if(el) el.innerText = `${MESES_P[pagMes]} ${pagAnio}`;
     }
 
-    window.pagosMesPrev = () => { pagMes--; if(pagMes<0){pagMes=11;pagAnio--;} actualizarLabelPag(); cargarDatosPag(); };
-    window.pagosMesNext = () => { pagMes++; if(pagMes>11){pagMes=0;pagAnio++;} actualizarLabelPag(); cargarDatosPag(); };
+    window.pagosMesPrev = () => { pagMes--; if(pagMes<0){pagMes=11;pagAnio--;} actualizarLabelPag(); cargarRegistrosPag(); };
+    window.pagosMesNext = () => { pagMes++; if(pagMes>11){pagMes=0;pagAnio++;} actualizarLabelPag(); cargarRegistrosPag(); };
 
-    async function cargarDatosPag(){
+    // ══════════════════════════════════════════════════
+    // Cargar registros del mes desde Firestore
+    // ══════════════════════════════════════════════════
+    async function cargarRegistrosPag(){
         const key = pagKey();
         try {
             const { db, fs } = await getFirebasePag();
-            const snap = await fs.getDoc(fs.doc(db, 'pagos_indicadores', key));
-            pagData[key] = snap.exists() ? snap.data() : {};
-            renderPagDash(pagData[key], key);
+            const snap = await fs.getDocs(fs.query(
+                fs.collection(db, 'pagos_registros'),
+                fs.where('mesKey','==',key)
+            ));
+            pagRegistros = snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
+            console.log(`[PAG v2] ${pagRegistros.length} registros en ${key}`);
+            calcularKPIs();
+            renderListaPag();
         } catch(e){
-            console.warn('[PAG]', e.message);
-            renderPagDash({}, key);
+            console.warn('[PAG v2]', e.message);
+            pagRegistros = [];
+            calcularKPIs();
+            renderListaPag();
         }
     }
 
-    function pctColorP(val, meta, inv){
-        const v = Number(val) || 0;
-        if(inv) return v <= meta ? '#16a34a' : v <= meta*2 ? '#f59e0b' : '#ef4444';
-        return v >= meta ? '#16a34a' : v >= meta*0.85 ? '#f59e0b' : '#ef4444';
-    }
-
-    function miniBarP(val, meta, inv){
-        const v = Number(val) || 0;
-        const realPct = Math.min(100, Math.max(0, inv ? (v<=meta ? 100 : Math.max(0,100-((v-meta)/meta*100))) : (v/meta*100)));
-        const color = pctColorP(val, meta, inv);
-        return `<div style="height:6px;background:#e2e8f0;border-radius:4px;overflow:hidden;margin-top:4px;"><div style="height:100%;width:${realPct}%;background:${color};border-radius:4px;transition:width 0.8s;"></div></div>`;
-    }
-
-    function renderPagDash(d, key){
+    // ══════════════════════════════════════════════════
+    // Calcular KPIs automáticamente de los registros
+    // ══════════════════════════════════════════════════
+    function calcularKPIs(){
+        const total = pagRegistros.length;
         const setKPI = (id, val) => { const el = document.getElementById(id); if(el) el.innerText = val; };
         const setDelta = (id, html) => { const el = document.getElementById(id); if(el) el.innerHTML = `<span class="rh-kpi-delta neutral">${html}</span>`; };
 
-        setKPI('pag-val-tiempo', d.pagosTiempo !== undefined ? d.pagosTiempo+'%' : '—');
-        setDelta('pag-delta-tiempo', 'Meta ≥ 98%');
+        if(total === 0){
+            ['pag-val-tiempo','pag-val-docs','pag-val-calendario','pag-val-respuesta','pag-val-errores','pag-val-urgentes','pag-val-rechazados'].forEach(id=>setKPI(id,'—'));
+            ['pag-delta-tiempo','pag-delta-docs','pag-delta-calendario','pag-delta-respuesta','pag-delta-errores','pag-delta-urgentes','pag-delta-rechazados'].forEach(id=>setDelta(id,'Sin registros'));
+            document.getElementById('pag-global-pct').innerText = '—';
+            return;
+        }
 
-        setKPI('pag-val-docs', d.docCompleta !== undefined ? d.docCompleta+'%' : '—');
-        setDelta('pag-delta-docs', 'Meta 100%');
+        // Calcular cada KPI
+        const enTiempo = pagRegistros.filter(r=>r.enTiempo==='si').length;
+        const pctTiempo = Math.round(enTiempo/total*100);
 
-        setKPI('pag-val-calendario', d.cumplCalendario !== undefined ? d.cumplCalendario+'%' : '—');
-        setDelta('pag-delta-calendario', 'Meta ≥ 98%');
+        const docOk = pagRegistros.filter(r=>r.docCompleta==='si').length;
+        const pctDocs = Math.round(docOk/total*100);
 
-        setKPI('pag-val-respuesta', d.tiempoRespuesta !== undefined ? d.tiempoRespuesta+' hrs' : '—');
-        setDelta('pag-delta-respuesta', 'Meta ≤ 48 hrs');
+        const calOk = pagRegistros.filter(r=>r.cumpleCalendario==='si').length;
+        const pctCal = Math.round(calOk/total*100);
 
-        setKPI('pag-val-errores', d.errores !== undefined ? d.errores+'%' : '—');
-        setDelta('pag-delta-errores', 'Meta ≤ 1%');
+        const conError = pagRegistros.filter(r=>r.tieneError==='si').length;
+        const pctErrores = total>0?Math.round(conError/total*1000)/10:0;
 
-        setKPI('pag-val-urgentes', d.pagosUrgentes !== undefined ? d.pagosUrgentes+'%' : '—');
-        setDelta('pag-delta-urgentes', 'Meta ≤ 5%');
+        const urgentes = pagRegistros.filter(r=>r.esUrgente==='si').length;
+        const pctUrgentes = total>0?Math.round(urgentes/total*1000)/10:0;
 
-        setKPI('pag-val-rechazados', d.rechazados !== undefined ? d.rechazados+'%' : '—');
-        setDelta('pag-delta-rechazados', 'Meta ≤ 1%');
+        const rechazados = pagRegistros.filter(r=>r.rechazado==='si').length;
+        const pctRechazados = total>0?Math.round(rechazados/total*1000)/10:0;
 
-        // Detalle cards
-        renderDetalleP('pag-detalle-1', '⏱️ Oportunidad y Calendario', [
-            {label:'Pagos en tiempo', val:d.pagosTiempo, meta:98, unit:'%'},
-            {label:'Cumpl. calendario', val:d.cumplCalendario, meta:98, unit:'%'},
-            {label:'Tiempo de respuesta', val:d.tiempoRespuesta, meta:48, unit:' hrs', invertido:true}
-        ]);
-        renderDetalleP('pag-detalle-2', '📎 Documentación y Calidad', [
-            {label:'Doc. completa', val:d.docCompleta, meta:100, unit:'%'},
-            {label:'Errores en pagos', val:d.errores, meta:1, unit:'%', invertido:true}
-        ]);
-        renderDetalleP('pag-detalle-3', '🚨 Riesgos', [
-            {label:'Pagos urgentes', val:d.pagosUrgentes, meta:5, unit:'%', invertido:true},
-            {label:'Pagos rechazados', val:d.rechazados, meta:1, unit:'%', invertido:true}
-        ]);
+        const tiemposResp = pagRegistros.filter(r=>r.horasRespuesta>0).map(r=>Number(r.horasRespuesta));
+        const promResp = tiemposResp.length>0?Math.round(tiemposResp.reduce((s,v)=>s+v,0)/tiemposResp.length):0;
 
-        // Promedio global
-        const positivos = [d.pagosTiempo, d.docCompleta, d.cumplCalendario].filter(v=>v!==undefined&&v!==null&&v!=='');
-        const promedio = positivos.length > 0 ? Math.round(positivos.reduce((s,v)=>s+Number(v),0)/positivos.length) : 0;
+        // Pintar KPIs
+        const colorPct = (v,meta,inv) => { if(inv) return v<=meta?'#16a34a':v<=meta*2?'#f59e0b':'#ef4444'; return v>=meta?'#16a34a':v>=meta*0.85?'#f59e0b':'#ef4444'; };
 
+        setKPI('pag-val-tiempo', pctTiempo+'%');
+        setDelta('pag-delta-tiempo', `<span style="color:${colorPct(pctTiempo,98,false)}">${enTiempo}/${total}</span> · Meta ≥ 98%`);
+
+        setKPI('pag-val-docs', pctDocs+'%');
+        setDelta('pag-delta-docs', `<span style="color:${colorPct(pctDocs,100,false)}">${docOk}/${total}</span> · Meta 100%`);
+
+        setKPI('pag-val-calendario', pctCal+'%');
+        setDelta('pag-delta-calendario', `<span style="color:${colorPct(pctCal,98,false)}">${calOk}/${total}</span> · Meta ≥ 98%`);
+
+        setKPI('pag-val-respuesta', promResp+' hrs');
+        setDelta('pag-delta-respuesta', `<span style="color:${colorPct(promResp,48,true)}">Prom. ${tiemposResp.length} pagos</span> · Meta ≤ 48h`);
+
+        setKPI('pag-val-errores', pctErrores+'%');
+        setDelta('pag-delta-errores', `<span style="color:${colorPct(pctErrores,1,true)}">${conError}/${total}</span> · Meta ≤ 1%`);
+
+        setKPI('pag-val-urgentes', pctUrgentes+'%');
+        setDelta('pag-delta-urgentes', `<span style="color:${colorPct(pctUrgentes,5,true)}">${urgentes}/${total}</span> · Meta ≤ 5%`);
+
+        setKPI('pag-val-rechazados', pctRechazados+'%');
+        setDelta('pag-delta-rechazados', `<span style="color:${colorPct(pctRechazados,1,true)}">${rechazados}/${total}</span> · Meta ≤ 1%`);
+
+        // Dona global
+        const promedio = Math.round((pctTiempo + pctDocs + pctCal) / 3);
         const elG = document.getElementById('pag-chart-global');
         if(elG){
             if(pagChartGlobal) pagChartGlobal.destroy();
@@ -7367,80 +7384,186 @@ window.guardarDatoRHInline = async () => {
                 data:{datasets:[{data:[promedio, Math.max(0.001,100-promedio)], backgroundColor:[promedio>=80?'#16a34a':promedio>=50?'#f59e0b':'#ef4444','#e2e8f0'], borderWidth:0}]},
                 options:{cutout:'76%', plugins:{legend:{display:false}}, animation:{duration:600}}
             });
-            document.getElementById('pag-global-pct').innerText = promedio + '%';
-        }
-
-        // Tendencia 6 meses
-        const elT = document.getElementById('pag-chart-tendencia');
-        if(elT){
-            if(pagChartTend) pagChartTend.destroy();
-            const labels=[], dTiempo=[], dDoc=[], dCal=[];
-            for(let i=5;i>=0;i--){
-                let m=pagMes-i, a=pagAnio; if(m<0){m+=12;a--;}
-                labels.push(MESES_P[m].slice(0,3));
-                const k=`${a}-${String(m+1).padStart(2,'0')}`;
-                const cd=pagData[k]||{};
-                dTiempo.push(cd.pagosTiempo||0);
-                dDoc.push(cd.docCompleta||0);
-                dCal.push(cd.cumplCalendario||0);
-            }
-            pagChartTend = new Chart(elT, {
-                type:'line',
-                data:{labels, datasets:[
-                    {label:'En tiempo',data:dTiempo,borderColor:'#2563eb',tension:0.4,borderWidth:2,pointRadius:3,fill:false},
-                    {label:'Doc. completa',data:dDoc,borderColor:'#059669',tension:0.4,borderWidth:2,pointRadius:3,fill:false},
-                    {label:'Calendario',data:dCal,borderColor:'#7c3aed',tension:0.4,borderWidth:2,pointRadius:3,fill:false}
-                ]},
-                options:{responsive:true,maintainAspectRatio:false,
-                    plugins:{legend:{position:'bottom',labels:{boxWidth:8,font:{size:10},color:'#64748b'}}},
-                    scales:{y:{min:0,max:100,ticks:{callback:v=>v+'%',color:'#94a3b8',font:{size:9}},grid:{color:'rgba(59,130,246,0.05)'}},x:{ticks:{color:'#94a3b8',font:{size:9}},grid:{display:false}}}
-                }
-            });
+            document.getElementById('pag-global-pct').innerText = promedio+'%';
+            const det = document.getElementById('pag-global-detalle');
+            if(det) det.innerHTML = `<b>${total}</b> pagos registrados este mes`;
         }
     }
 
-    function renderDetalleP(elId, titulo, items){
-        const el = document.getElementById(elId);
+    // ══════════════════════════════════════════════════
+    // Render lista de registros
+    // ══════════════════════════════════════════════════
+    function renderListaPag(filtro){
+        const el = document.getElementById('pag-registros-lista');
+        const countEl = document.getElementById('pag-registros-count');
         if(!el) return;
-        el.innerHTML = `<div class="mkt-card-title">${titulo}</div>
-        <div style="margin-top:10px;">
-            ${items.map(it=>{
-                const v = it.val !== undefined && it.val !== '' ? Number(it.val) : null;
-                const color = v !== null ? pctColorP(v, it.meta, it.invertido) : '#94a3b8';
-                const metaLabel = it.invertido ? `≤ ${it.meta}${it.unit}` : `≥ ${it.meta}${it.unit}`;
-                return `<div style="margin-bottom:10px;">
-                    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px;">
-                        <span style="color:#475569;">${it.label}</span>
-                        <span style="font-weight:700;color:${color};">${v!==null?v+it.unit:'—'} <span style="font-weight:400;color:#94a3b8;font-size:10px;">Meta: ${metaLabel}</span></span>
-                    </div>
-                    ${v!==null?miniBarP(v,it.meta,it.invertido):'<div style="height:6px;background:#e2e8f0;border-radius:4px;"></div>'}
-                </div>`;
-            }).join('')}
-        </div>`;
+
+        let lista = [...pagRegistros];
+        const q = (document.getElementById('pag-buscar')?.value||'').toLowerCase();
+        const kpiFiltro = document.getElementById('pag-filtro-kpi')?.value || 'todos';
+
+        if(q) lista = lista.filter(r=>
+            (r.proveedor||'').toLowerCase().includes(q)||
+            (r.areaSolicitante||'').toLowerCase().includes(q)||
+            (r.responsable||'').toLowerCase().includes(q)||
+            (r.metodoPago||'').toLowerCase().includes(q)||
+            (r.concepto||'').toLowerCase().includes(q)
+        );
+
+        if(kpiFiltro==='atrasado') lista=lista.filter(r=>r.enTiempo==='no');
+        if(kpiFiltro==='doc_incompleta') lista=lista.filter(r=>r.docCompleta==='no');
+        if(kpiFiltro==='error') lista=lista.filter(r=>r.tieneError==='si');
+        if(kpiFiltro==='urgente') lista=lista.filter(r=>r.esUrgente==='si');
+        if(kpiFiltro==='rechazado') lista=lista.filter(r=>r.rechazado==='si');
+
+        if(countEl) countEl.innerText = `(${lista.length} de ${pagRegistros.length})`;
+
+        if(!lista.length){
+            el.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:24px;font-size:12px;">Sin registros este mes. Clic en "➕ Registrar pago" para comenzar.</div>';
+            return;
+        }
+
+        el.innerHTML = `
+        <div style="display:grid;grid-template-columns:0.8fr 1.5fr 1fr 0.8fr 0.6fr 0.6fr 0.6fr 0.6fr 80px;gap:6px;padding:8px 12px;background:#f8faff;border-radius:8px;margin-bottom:6px;font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;">
+            <span>Fecha</span><span>Proveedor</span><span>Área</span><span>Método</span><span>Tiempo</span><span>Doc</span><span>Error</span><span>Urgente</span><span></span>
+        </div>
+        ${lista.map(r=>{
+            const chipSi = '<span style="background:#dcfce7;color:#16a34a;padding:2px 6px;border-radius:6px;font-size:9px;font-weight:700;">✓</span>';
+            const chipNo = '<span style="background:#fee2e2;color:#dc2626;padding:2px 6px;border-radius:6px;font-size:9px;font-weight:700;">✗</span>';
+            return `<div style="display:grid;grid-template-columns:0.8fr 1.5fr 1fr 0.8fr 0.6fr 0.6fr 0.6fr 0.6fr 80px;gap:6px;padding:9px 12px;border-bottom:1px solid rgba(59,130,246,0.06);align-items:center;font-size:12px;">
+                <span style="color:#64748b;font-size:11px;">${r.fecha||'—'}</span>
+                <div>
+                    <div style="font-weight:700;color:#1e293b;">${r.proveedor||'—'}</div>
+                    <div style="font-size:10px;color:#94a3b8;">${r.concepto||''}</div>
+                </div>
+                <span>${r.areaSolicitante||'—'}</span>
+                <span style="font-size:11px;">${r.metodoPago||'—'}</span>
+                <span>${r.enTiempo==='si'?chipSi:chipNo}</span>
+                <span>${r.docCompleta==='si'?chipSi:chipNo}</span>
+                <span>${r.tieneError==='si'?chipNo:chipSi}</span>
+                <span>${r.esUrgente==='si'?'<span style="background:#fef9c3;color:#a16207;padding:2px 6px;border-radius:6px;font-size:9px;font-weight:700;">⚠️</span>':chipSi}</span>
+                <div style="display:flex;gap:4px;justify-content:flex-end;">
+                    <button onclick="editarPagoReg('${r.id}')" style="padding:3px 7px;background:#eff6ff;color:#2563eb;border:none;border-radius:6px;font-size:10px;cursor:pointer;">✏️</button>
+                    <button onclick="eliminarPagoReg('${r.id}')" style="padding:3px 7px;background:#fee2e2;color:#dc2626;border:none;border-radius:6px;font-size:10px;cursor:pointer;">🗑</button>
+                </div>
+            </div>`;
+        }).join('')}`;
     }
 
-    // Form inline
-    window.abrirPagosInline = () => {
+    window.pagBuscar = () => renderListaPag();
+    window.pagFiltrar = (tipo) => {
+        const sel = document.getElementById('pag-filtro-kpi');
+        const map = {tiempo:'atrasado',docs:'doc_incompleta',errores:'error',urgentes:'urgente',rechazados:'rechazado',calendario:'todos',respuesta:'todos'};
+        if(sel) sel.value = map[tipo]||'todos';
+        renderListaPag();
+    };
+
+    // ══════════════════════════════════════════════════
+    // Formulario de registro individual
+    // ══════════════════════════════════════════════════
+    window.abrirPagosRegistro = (editId) => {
+        pagEditId = editId || null;
         const form = document.getElementById('pagos-inline-form');
         const content = document.getElementById('pagos-form-content');
+        const titulo = document.getElementById('pagos-form-titulo');
         if(!form || !content) return;
-        const key = pagKey();
-        const d = pagData[key] || {};
+
+        if(titulo) titulo.innerText = editId ? '✏️ Editar registro de pago' : '💳 Registrar pago';
+
+        const r = editId ? pagRegistros.find(x=>x.id===editId) || {} : {};
 
         content.innerHTML = `
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
-            <div><label class="rh-form-label">Pagos en tiempo (%)</label><input class="rh-form-input" id="pf-tiempo" type="number" min="0" max="100" step="0.1" value="${d.pagosTiempo||''}" placeholder="Meta ≥ 98%"></div>
-            <div><label class="rh-form-label">Doc. completa (%)</label><input class="rh-form-input" id="pf-docs" type="number" min="0" max="100" step="0.1" value="${d.docCompleta||''}" placeholder="Meta 100%"></div>
-            <div><label class="rh-form-label">Cumpl. calendario (%)</label><input class="rh-form-input" id="pf-calendario" type="number" min="0" max="100" step="0.1" value="${d.cumplCalendario||''}" placeholder="Meta ≥ 98%"></div>
+        <div style="font-size:12px;font-weight:700;color:#0e7490;margin-bottom:8px;">📋 Datos del pago</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px;">
+            <div><label class="rh-form-label">Fecha del pago</label><input class="rh-form-input" id="pr-fecha" type="date" value="${r.fecha||new Date().toISOString().slice(0,10)}"></div>
+            <div><label class="rh-form-label">Proveedor / Beneficiario</label><input class="rh-form-input" id="pr-proveedor" type="text" value="${r.proveedor||''}" placeholder="Nombre del proveedor" list="pr-proveedores-list"></div>
+            <div><label class="rh-form-label">Concepto</label><input class="rh-form-input" id="pr-concepto" type="text" value="${r.concepto||''}" placeholder="Descripción breve del pago"></div>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
-            <div><label class="rh-form-label">Errores pagos (%)</label><input class="rh-form-input" id="pf-errores" type="number" min="0" max="100" step="0.1" value="${d.errores||''}" placeholder="Meta ≤ 1%"></div>
-            <div><label class="rh-form-label">Pagos urgentes (%)</label><input class="rh-form-input" id="pf-urgentes" type="number" min="0" max="100" step="0.1" value="${d.pagosUrgentes||''}" placeholder="Meta ≤ 5%"></div>
-            <div><label class="rh-form-label">Rechazados (%)</label><input class="rh-form-input" id="pf-rechazados" type="number" min="0" max="100" step="0.1" value="${d.rechazados||''}" placeholder="Meta ≤ 1%"></div>
-            <div><label class="rh-form-label">Tiempo respuesta (hrs)</label><input class="rh-form-input" id="pf-respuesta" type="number" min="0" step="1" value="${d.tiempoRespuesta||''}" placeholder="Meta ≤ 48 hrs"></div>
+        <datalist id="pr-proveedores-list">${[...new Set(pagRegistros.map(r=>r.proveedor).filter(Boolean))].map(p=>`<option value="${p}">`).join('')}</datalist>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:14px;">
+            <div><label class="rh-form-label">Monto ($)</label><input class="rh-form-input" id="pr-monto" type="number" min="0" step="0.01" value="${r.monto||''}" placeholder="0.00"></div>
+            <div><label class="rh-form-label">Método de pago</label>
+                <select class="rh-form-input" id="pr-metodo">
+                    <option ${r.metodoPago==='Transferencia'?'selected':''}>Transferencia</option>
+                    <option ${r.metodoPago==='SPEI'?'selected':''}>SPEI</option>
+                    <option ${r.metodoPago==='Cheque'?'selected':''}>Cheque</option>
+                    <option ${r.metodoPago==='Efectivo'?'selected':''}>Efectivo</option>
+                    <option ${r.metodoPago==='Tarjeta'?'selected':''}>Tarjeta</option>
+                    <option ${r.metodoPago==='Otro'?'selected':''}>Otro</option>
+                </select></div>
+            <div><label class="rh-form-label">Área solicitante</label><input class="rh-form-input" id="pr-area" type="text" value="${r.areaSolicitante||''}" placeholder="Ej: Operaciones, Compras..." list="pr-areas-list"></div>
+            <div><label class="rh-form-label">Tipo proveedor</label>
+                <select class="rh-form-input" id="pr-tipoprov">
+                    <option ${r.tipoProveedor==='Crítico'?'selected':''}>Crítico</option>
+                    <option ${r.tipoProveedor==='Regular'?'selected':''}>Regular</option>
+                    <option ${r.tipoProveedor==='Ocasional'?'selected':''}>Ocasional</option>
+                </select></div>
         </div>
-        <label class="rh-form-label">Notas / observaciones</label>
-        <input class="rh-form-input" id="pf-notas" type="text" value="${d.notas||''}" placeholder="Comentarios del mes...">`;
+        <datalist id="pr-areas-list">${[...new Set(pagRegistros.map(r=>r.areaSolicitante).filter(Boolean))].map(a=>`<option value="${a}">`).join('')}</datalist>
+
+        <div style="font-size:12px;font-weight:700;color:#0e7490;margin:14px 0 8px;">📊 Indicadores del pago</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;">
+            <div><label class="rh-form-label">¿Se pagó en tiempo?</label>
+                <select class="rh-form-input" id="pr-entiempo"><option value="si" ${r.enTiempo==='si'||!r.enTiempo?'selected':''}>✅ Sí</option><option value="no" ${r.enTiempo==='no'?'selected':''}>❌ No</option></select></div>
+            <div><label class="rh-form-label">¿Doc. completa?</label>
+                <select class="rh-form-input" id="pr-doccompleta"><option value="si" ${r.docCompleta==='si'||!r.docCompleta?'selected':''}>✅ Sí</option><option value="no" ${r.docCompleta==='no'?'selected':''}>❌ No</option></select></div>
+            <div><label class="rh-form-label">¿Cumple calendario?</label>
+                <select class="rh-form-input" id="pr-calendario"><option value="si" ${r.cumpleCalendario==='si'||!r.cumpleCalendario?'selected':''}>✅ Sí</option><option value="no" ${r.cumpleCalendario==='no'?'selected':''}>❌ No</option></select></div>
+            <div><label class="rh-form-label">Hrs de respuesta</label><input class="rh-form-input" id="pr-horas" type="number" min="0" step="1" value="${r.horasRespuesta||''}" placeholder="Ej: 24"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;">
+            <div><label class="rh-form-label">¿Tiene error?</label>
+                <select class="rh-form-input" id="pr-error" onchange="document.getElementById('pr-error-detalle').style.display=this.value==='si'?'block':'none'"><option value="no" ${r.tieneError!=='si'?'selected':''}>✅ No</option><option value="si" ${r.tieneError==='si'?'selected':''}>❌ Sí</option></select></div>
+            <div><label class="rh-form-label">¿Es urgente?</label>
+                <select class="rh-form-input" id="pr-urgente" onchange="document.getElementById('pr-urgente-detalle').style.display=this.value==='si'?'block':'none'"><option value="no" ${r.esUrgente!=='si'?'selected':''}>✅ No</option><option value="si" ${r.esUrgente==='si'?'selected':''}>🚨 Sí</option></select></div>
+            <div><label class="rh-form-label">¿Fue rechazado?</label>
+                <select class="rh-form-input" id="pr-rechazado" onchange="document.getElementById('pr-rechazo-detalle').style.display=this.value==='si'?'block':'none'"><option value="no" ${r.rechazado!=='si'?'selected':''}>✅ No</option><option value="si" ${r.rechazado==='si'?'selected':''}>🔙 Sí</option></select></div>
+        </div>
+
+        <!-- Detalles condicionales -->
+        <div id="pr-error-detalle" style="display:${r.tieneError==='si'?'block':'none'};background:#fff5f5;border:1px solid #fecaca;border-radius:10px;padding:12px;margin-bottom:12px;">
+            <div style="font-size:11px;font-weight:700;color:#dc2626;margin-bottom:8px;">❌ Detalle del error</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                <div><label class="rh-form-label">Tipo de error</label>
+                    <select class="rh-form-input" id="pr-tipoerror"><option ${r.tipoError==='Monto incorrecto'?'selected':''}>Monto incorrecto</option><option ${r.tipoError==='Duplicado'?'selected':''}>Duplicado</option><option ${r.tipoError==='Datos bancarios'?'selected':''}>Datos bancarios</option><option ${r.tipoError==='Razón social'?'selected':''}>Razón social</option><option ${r.tipoError==='Otro'?'selected':''}>Otro</option></select></div>
+                <div><label class="rh-form-label">Etapa del error</label>
+                    <select class="rh-form-input" id="pr-etapaerror"><option ${r.etapaError==='Captura'?'selected':''}>Captura</option><option ${r.etapaError==='Autorización'?'selected':''}>Autorización</option><option ${r.etapaError==='Ejecución'?'selected':''}>Ejecución</option></select></div>
+                <div><label class="rh-form-label">Responsable del error</label><input class="rh-form-input" id="pr-resperror" type="text" value="${r.responsableError||''}" placeholder="Quién cometió el error"></div>
+                <div><label class="rh-form-label">Impacto económico ($)</label><input class="rh-form-input" id="pr-impacto" type="number" min="0" step="0.01" value="${r.impactoEconomico||''}" placeholder="0.00"></div>
+            </div>
+        </div>
+
+        <div id="pr-urgente-detalle" style="display:${r.esUrgente==='si'?'block':'none'};background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px;margin-bottom:12px;">
+            <div style="font-size:11px;font-weight:700;color:#a16207;margin-bottom:8px;">🚨 Detalle de urgencia</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                <div><label class="rh-form-label">Motivo de urgencia</label>
+                    <select class="rh-form-input" id="pr-motivourg"><option ${r.motivoUrgencia==='Falta de planeación'?'selected':''}>Falta de planeación</option><option ${r.motivoUrgencia==='Emergencia real'?'selected':''}>Emergencia real</option><option ${r.motivoUrgencia==='Presión externa'?'selected':''}>Presión externa</option><option ${r.motivoUrgencia==='Otro'?'selected':''}>Otro</option></select></div>
+                <div><label class="rh-form-label">¿Realmente era urgente?</label>
+                    <select class="rh-form-input" id="pr-realurg"><option value="si" ${r.realmenteUrgente!=='no'?'selected':''}>Sí</option><option value="no" ${r.realmenteUrgente==='no'?'selected':''}>No — auditar</option></select></div>
+            </div>
+        </div>
+
+        <div id="pr-rechazo-detalle" style="display:${r.rechazado==='si'?'block':'none'};background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:12px;margin-bottom:12px;">
+            <div style="font-size:11px;font-weight:700;color:#dc2626;margin-bottom:8px;">🔙 Detalle del rechazo</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                <div><label class="rh-form-label">Motivo de rechazo</label>
+                    <select class="rh-form-input" id="pr-motivorechazo"><option ${r.motivoRechazo==='Bancario'?'selected':''}>Bancario</option><option ${r.motivoRechazo==='Fiscal'?'selected':''}>Fiscal</option><option ${r.motivoRechazo==='Interno'?'selected':''}>Interno</option><option ${r.motivoRechazo==='Error datos'?'selected':''}>Error datos</option></select></div>
+                <div><label class="rh-form-label">Banco / plataforma</label><input class="rh-form-input" id="pr-bancorechazo" type="text" value="${r.bancoRechazo||''}" placeholder="Ej: BBVA, Banorte..."></div>
+            </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div><label class="rh-form-label">Fecha programada original</label><input class="rh-form-input" id="pr-fechaprog" type="date" value="${r.fechaProgramada||''}"></div>
+            <div><label class="rh-form-label">Motivo de atraso (si aplica)</label>
+                <select class="rh-form-input" id="pr-motivoatraso"><option value="" ${!r.motivoAtraso?'selected':''}>No aplica</option><option ${r.motivoAtraso==='Falta de autorización'?'selected':''}>Falta de autorización</option><option ${r.motivoAtraso==='Error en captura'?'selected':''}>Error en captura</option><option ${r.motivoAtraso==='Falta de liquidez'?'selected':''}>Falta de liquidez</option><option ${r.motivoAtraso==='Doc. incompleta'?'selected':''}>Doc. incompleta</option><option ${r.motivoAtraso==='Otro'?'selected':''}>Otro</option></select></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;">
+            <div><label class="rh-form-label">Responsable del pago</label><input class="rh-form-input" id="pr-responsable" type="text" value="${r.responsable||''}" placeholder="Quién ejecutó el pago"></div>
+            <div><label class="rh-form-label">Doc. faltante (si aplica)</label><input class="rh-form-input" id="pr-docfaltante" type="text" value="${r.docFaltante||''}" placeholder="Ej: Factura, OC, contrato..."></div>
+        </div>
+        <label class="rh-form-label" style="margin-top:10px;">Notas / observaciones</label>
+        <input class="rh-form-input" id="pr-notas" type="text" value="${r.notas||''}" placeholder="Información adicional...">`;
+
         form.style.display = 'block';
         form.scrollIntoView({behavior:'smooth', block:'start'});
     };
@@ -7448,44 +7571,87 @@ window.guardarDatoRHInline = async () => {
     window.cerrarPagosInline = () => {
         const form = document.getElementById('pagos-inline-form');
         if(form) form.style.display = 'none';
+        pagEditId = null;
     };
 
-    window.guardarPagosInline = async () => {
-        const key = pagKey();
-        const getNum = id => { const el=document.getElementById(id); const v=el?el.value.trim():''; return v!==''?Number(v):undefined; };
-        const getStr = id => { const el=document.getElementById(id); return el?el.value.trim():''; };
+    window.editarPagoReg = (id) => { abrirPagosRegistro(id); };
+
+    window.eliminarPagoReg = async (id) => {
+        if(!confirm('¿Eliminar este registro de pago?')) return;
+        try {
+            const { db, fs } = await getFirebasePag();
+            await fs.deleteDoc(fs.doc(db,'pagos_registros',id));
+            if(window.mostrarPush) window.mostrarPush('🗑 Eliminado','','💳');
+            cargarRegistrosPag();
+        } catch(e){ alert('Error: '+e.message); }
+    };
+
+    // ══════════════════════════════════════════════════
+    // Guardar registro individual
+    // ══════════════════════════════════════════════════
+    window.guardarPagoRegistro = async () => {
+        const getVal = id => { const el=document.getElementById(id); return el?el.value.trim():''; };
+        const getNum = id => { const v=getVal(id); return v?Number(v):undefined; };
+
+        if(!getVal('pr-proveedor')){ alert('Escribe el nombre del proveedor'); return; }
+
         const btn = document.querySelector('#pagos-inline-form button');
         if(btn){ btn.textContent='💾 Guardando...'; btn.disabled=true; }
 
+        const mesKey = pagKey();
         const docData = {
-            mesAnio: key,
-            pagosTiempo: getNum('pf-tiempo'),
-            docCompleta: getNum('pf-docs'),
-            cumplCalendario: getNum('pf-calendario'),
-            errores: getNum('pf-errores'),
-            pagosUrgentes: getNum('pf-urgentes'),
-            rechazados: getNum('pf-rechazados'),
-            tiempoRespuesta: getNum('pf-respuesta'),
-            notas: getStr('pf-notas'),
+            mesKey,
+            fecha: getVal('pr-fecha') || new Date().toISOString().slice(0,10),
+            proveedor: getVal('pr-proveedor'),
+            concepto: getVal('pr-concepto'),
+            monto: getNum('pr-monto'),
+            metodoPago: getVal('pr-metodo'),
+            areaSolicitante: getVal('pr-area'),
+            tipoProveedor: getVal('pr-tipoprov'),
+            enTiempo: getVal('pr-entiempo'),
+            docCompleta: getVal('pr-doccompleta'),
+            cumpleCalendario: getVal('pr-calendario'),
+            horasRespuesta: getNum('pr-horas'),
+            tieneError: getVal('pr-error'),
+            esUrgente: getVal('pr-urgente'),
+            rechazado: getVal('pr-rechazado'),
+            fechaProgramada: getVal('pr-fechaprog'),
+            motivoAtraso: getVal('pr-motivoatraso'),
+            responsable: getVal('pr-responsable'),
+            docFaltante: getVal('pr-docfaltante'),
+            notas: getVal('pr-notas'),
+            // Detalles condicionales
+            tipoError: getVal('pr-tipoerror'),
+            etapaError: getVal('pr-etapaerror'),
+            responsableError: getVal('pr-resperror'),
+            impactoEconomico: getNum('pr-impacto'),
+            motivoUrgencia: getVal('pr-motivourg'),
+            realmenteUrgente: getVal('pr-realurg'),
+            motivoRechazo: getVal('pr-motivorechazo'),
+            bancoRechazo: getVal('pr-bancorechazo'),
             actualizadoEn: new Date().toISOString()
         };
 
-        Object.keys(docData).forEach(k => { if(docData[k] === undefined) delete docData[k]; });
+        Object.keys(docData).forEach(k=>{ if(docData[k]===undefined||docData[k]==='') delete docData[k]; });
 
         try {
             const { db, fs, auth } = await getFirebasePag();
             docData.creadoPor = auth.currentUser?.email || '';
-            await fs.setDoc(fs.doc(db, 'pagos_indicadores', key), docData, { merge: true });
-            console.log('[PAG] ✅ Guardado:', key);
+            if(pagEditId){
+                await fs.updateDoc(fs.doc(db,'pagos_registros',pagEditId), docData);
+                console.log('[PAG v2] ✅ Actualizado:', pagEditId);
+            } else {
+                const ref = await fs.addDoc(fs.collection(db,'pagos_registros'), docData);
+                console.log('[PAG v2] ✅ Creado:', ref.id);
+            }
             cerrarPagosInline();
-            if(window.mostrarPush) window.mostrarPush('✅ Pagos guardado', `${MESES_P[pagMes]} ${pagAnio}`, '💳');
-            pagData[key] = {...(pagData[key]||{}), ...docData};
-            renderPagDash(pagData[key], key);
+            if(window.mostrarPush) window.mostrarPush('✅ Pago registrado', docData.proveedor, '💳');
+            cargarRegistrosPag();
         } catch(e){
-            console.error('[PAG ERROR]', e);
-            alert('Error: ' + e.message);
+            console.error('[PAG v2 ERROR]', e);
+            alert('Error: '+e.message);
         } finally {
-            if(btn){ btn.textContent='💾 GUARDAR'; btn.disabled=false; }
+            if(btn){ btn.textContent='💾 GUARDAR REGISTRO'; btn.disabled=false; }
         }
     };
 
@@ -7501,14 +7667,14 @@ window.guardarDatoRHInline = async () => {
             if(area === 'Pagos'){
                 dash.style.display = 'block';
                 actualizarLabelPag();
-                cargarDatosPag();
+                cargarRegistrosPag();
             } else {
                 dash.style.display = 'none';
             }
         };
     }, 200);
 
-    console.log('[PAGOS DASHBOARD] ✅ Módulo cargado');
+    console.log('[PAGOS v2] ✅ Módulo cargado');
 })();
 </script>
   <!-- 
