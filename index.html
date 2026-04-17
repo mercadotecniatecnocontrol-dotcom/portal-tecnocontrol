@@ -6508,6 +6508,307 @@ window.guardarDatoRHInline = async () => {
     console.log('[PARRILLA UNIVERSAL] ✅ Módulo cargado');
 })();
 </script>
+    <script>
+// ══════════════════════════════════════════════════════════════
+// DASHBOARD CONTABILIDAD — KPIs mensuales
+// ══════════════════════════════════════════════════════════════
+(function(){
+    'use strict';
+
+    let contaMes = new Date().getMonth();
+    let contaAnio = new Date().getFullYear();
+    let contaData = {};
+    let contaChartTend = null, contaChartGlobal = null;
+    const MESES_C = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+
+    function contaKey(){ return `${contaAnio}-${String(contaMes+1).padStart(2,'0')}`; }
+
+    async function getFirebaseConta(){
+        const appMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+        const fsMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const authMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+        const app = appMod.getApps()[0];
+        return { db: fsMod.getFirestore(app), auth: authMod.getAuth(app), fs: fsMod };
+    }
+
+    function actualizarLabelConta(){
+        const el = document.getElementById('conta-mes-label');
+        if(el) el.innerText = `${MESES_C[contaMes]} ${contaAnio}`;
+    }
+
+    window.contaMesPrev = () => { contaMes--; if(contaMes<0){contaMes=11;contaAnio--;} actualizarLabelConta(); cargarDatosConta(); };
+    window.contaMesNext = () => { contaMes++; if(contaMes>11){contaMes=0;contaAnio++;} actualizarLabelConta(); cargarDatosConta(); };
+
+    async function cargarDatosConta(){
+        const key = contaKey();
+        try {
+            const { db, fs } = await getFirebaseConta();
+            const ref = fs.doc(db, 'conta_indicadores', key);
+            const snap = await fs.getDoc(ref);
+            contaData[key] = snap.exists() ? snap.data() : {};
+            renderContaDash(contaData[key], key);
+        } catch(e){
+            console.warn('[CONTA]', e.message);
+            renderContaDash({}, key);
+        }
+    }
+
+    function pctColor(val, meta, invertido){
+        const v = Number(val) || 0;
+        if(invertido) return v <= meta ? '#16a34a' : v <= meta*1.5 ? '#f59e0b' : '#ef4444';
+        return v >= meta ? '#16a34a' : v >= meta*0.8 ? '#f59e0b' : '#ef4444';
+    }
+
+    function miniBar(val, meta, invertido){
+        const v = Number(val) || 0;
+        const pct = invertido ? Math.max(0, 100 - (v/meta*100)) + (v<=meta?100-((meta-v)/meta*100):0) : Math.min(100, v/meta*100);
+        const realPct = Math.min(100, Math.max(0, invertido ? (v<=meta ? 100 : Math.max(0,100-((v-meta)/meta*100))) : (v/meta*100)));
+        const color = pctColor(val, meta, invertido);
+        return `<div style="height:6px;background:#e2e8f0;border-radius:4px;overflow:hidden;margin-top:4px;"><div style="height:100%;width:${realPct}%;background:${color};border-radius:4px;transition:width 0.8s;"></div></div>`;
+    }
+
+    function renderContaDash(d, key){
+        const bal = d.balanza || {};
+        const edo = d.edosFin || {};
+        const deu = d.deudores || {};
+        const inv = d.inventarios || {};
+        const imp = d.impuestos || {};
+
+        // KPI principal = promedio de conciliadas + entrega + saldos conc + reg actualizados + cumplimiento
+        const vals = [bal.conciliadas, edo.entregaTiempo, deu.saldosConciliados, inv.registrosActualizados, imp.cumplimientoTiempo].filter(v=>v!==undefined && v!==null && v!=='');
+        const promedio = vals.length > 0 ? Math.round(vals.reduce((s,v)=>s+Number(v),0)/vals.length) : 0;
+
+        const setKPI = (id, val) => { const el = document.getElementById(id); if(el) el.innerText = val; };
+        const setDelta = (id, html) => { const el = document.getElementById(id); if(el) el.innerHTML = `<span class="rh-kpi-delta neutral">${html}</span>`; };
+
+        setKPI('conta-val-balanza', bal.conciliadas !== undefined ? bal.conciliadas+'%' : '—');
+        setDelta('conta-delta-balanza', `Correg: ${bal.diferenciasCorregidas||'—'}%`);
+
+        setKPI('conta-val-edosfin', edo.entregaTiempo !== undefined ? edo.entregaTiempo+'%' : '—');
+        setDelta('conta-delta-edosfin', `Exactitud: ${edo.exactitud||'—'}%`);
+
+        setKPI('conta-val-deudores', deu.saldosConciliados !== undefined ? deu.saldosConciliados+'%' : '—');
+        setDelta('conta-delta-deudores', `Vencidos: ${deu.saldosVencidos||'—'}% · Dif: ${deu.diferencias||'—'}%`);
+
+        setKPI('conta-val-inventarios', inv.registrosActualizados !== undefined ? inv.registrosActualizados+'%' : '—');
+        setDelta('conta-delta-inventarios', `Dif físico-contable: ${inv.diferencias||'—'}%`);
+
+        setKPI('conta-val-impuestos', imp.cumplimientoTiempo !== undefined ? imp.cumplimientoTiempo+'%' : '—');
+        setDelta('conta-delta-impuestos', `Conc. fiscal: ${imp.conciliacionFiscal||'—'}%`);
+
+        // Detalle por categoría
+        renderDetalle('conta-detalle-balanza', '📒 Balanza de comprobación', [
+            {label:'Cuentas conciliadas', val:bal.conciliadas, meta:98, unit:'%'},
+            {label:'Diferencias corregidas', val:bal.diferenciasCorregidas, meta:100, unit:'%'}
+        ]);
+        renderDetalle('conta-detalle-edosfin', '📊 Estados financieros', [
+            {label:'Entrega en tiempo', val:edo.entregaTiempo, meta:100, unit:'%'},
+            {label:'Exactitud (sin ajustes)', val:edo.exactitud, meta:98, unit:'%'}
+        ]);
+        renderDetalle('conta-detalle-deudores', '🤝 Deudores y acreedores', [
+            {label:'Saldos conciliados', val:deu.saldosConciliados, meta:98, unit:'%'},
+            {label:'Saldos vencidos', val:deu.saldosVencidos, meta:15, unit:'%', invertido:true},
+            {label:'Diferencias en cuentas', val:deu.diferencias, meta:2, unit:'%', invertido:true}
+        ]);
+        renderDetalle('conta-detalle-inventarios', '📦 Inventarios', [
+            {label:'Diferencias físico vs contable', val:inv.diferencias, meta:2, unit:'%', invertido:true},
+            {label:'Registros actualizados', val:inv.registrosActualizados, meta:98, unit:'%'}
+        ]);
+        renderDetalle('conta-detalle-impuestos', '🏛️ Impuestos', [
+            {label:'Cumplimiento en tiempo', val:imp.cumplimientoTiempo, meta:100, unit:'%'},
+            {label:'Conciliación contable-fiscal', val:imp.conciliacionFiscal, meta:98, unit:'%'}
+        ]);
+
+        // Dona global
+        const elG = document.getElementById('conta-chart-global');
+        if(elG){
+            if(contaChartGlobal) contaChartGlobal.destroy();
+            const rest = Math.max(0.001, 100 - promedio);
+            contaChartGlobal = new Chart(elG, {
+                type:'doughnut',
+                data:{datasets:[{data:[promedio, rest], backgroundColor:[promedio>=80?'#16a34a':promedio>=50?'#f59e0b':'#ef4444','#e2e8f0'], borderWidth:0}]},
+                options:{cutout:'76%', plugins:{legend:{display:false}}, animation:{duration:600}}
+            });
+            document.getElementById('conta-global-pct').innerText = promedio + '%';
+        }
+
+        // Tendencia 6 meses
+        const elT = document.getElementById('conta-chart-tendencia');
+        if(elT){
+            if(contaChartTend) contaChartTend.destroy();
+            const labels = [], dBal=[], dEdo=[], dImp=[];
+            for(let i=5;i>=0;i--){
+                let m=contaMes-i, a=contaAnio; if(m<0){m+=12;a--;}
+                labels.push(MESES_C[m].slice(0,3));
+                const k=`${a}-${String(m+1).padStart(2,'0')}`;
+                const cd = contaData[k] || {};
+                dBal.push(cd.balanza?.conciliadas || 0);
+                dEdo.push(cd.edosFin?.entregaTiempo || 0);
+                dImp.push(cd.impuestos?.cumplimientoTiempo || 0);
+            }
+            contaChartTend = new Chart(elT, {
+                type:'line',
+                data:{labels, datasets:[
+                    {label:'Balanza',data:dBal,borderColor:'#2563eb',tension:0.4,borderWidth:2,pointRadius:3,fill:false},
+                    {label:'Edos.Fin.',data:dEdo,borderColor:'#059669',tension:0.4,borderWidth:2,pointRadius:3,fill:false},
+                    {label:'Impuestos',data:dImp,borderColor:'#ef4444',tension:0.4,borderWidth:2,pointRadius:3,fill:false}
+                ]},
+                options:{responsive:true,maintainAspectRatio:false,
+                    plugins:{legend:{position:'bottom',labels:{boxWidth:8,font:{size:10},color:'#64748b'}}},
+                    scales:{y:{min:0,max:100,ticks:{callback:v=>v+'%',color:'#94a3b8',font:{size:9}},grid:{color:'rgba(59,130,246,0.05)'}},x:{ticks:{color:'#94a3b8',font:{size:9}},grid:{display:false}}}
+                }
+            });
+        }
+    }
+
+    function renderDetalle(elId, titulo, items){
+        const el = document.getElementById(elId);
+        if(!el) return;
+        el.innerHTML = `<div class="mkt-card-title">${titulo}</div>
+        <div style="margin-top:10px;">
+            ${items.map(it=>{
+                const v = it.val !== undefined && it.val !== '' ? Number(it.val) : null;
+                const color = v !== null ? pctColor(v, it.meta, it.invertido) : '#94a3b8';
+                const metaLabel = it.invertido ? `≤ ${it.meta}${it.unit}` : `≥ ${it.meta}${it.unit}`;
+                return `<div style="margin-bottom:10px;">
+                    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px;">
+                        <span style="color:#475569;">${it.label}</span>
+                        <span style="font-weight:700;color:${color};">${v !== null ? v+it.unit : '—'} <span style="font-weight:400;color:#94a3b8;font-size:10px;">Meta: ${metaLabel}</span></span>
+                    </div>
+                    ${v !== null ? miniBar(v, it.meta, it.invertido) : '<div style="height:6px;background:#e2e8f0;border-radius:4px;"></div>'}
+                </div>`;
+            }).join('')}
+        </div>`;
+    }
+
+    // Form inline
+    window.abrirContaInline = () => {
+        const form = document.getElementById('conta-inline-form');
+        const content = document.getElementById('conta-form-content');
+        if(!form || !content) return;
+
+        const key = contaKey();
+        const d = contaData[key] || {};
+        const bal = d.balanza || {};
+        const edo = d.edosFin || {};
+        const deu = d.deudores || {};
+        const inv = d.inventarios || {};
+        const imp = d.impuestos || {};
+
+        content.innerHTML = `
+        <div style="font-size:12px;font-weight:700;color:#2563eb;margin-bottom:8px;">📒 Balanza de comprobación</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+            <div><label class="rh-form-label">Cuentas conciliadas (%)</label><input class="rh-form-input" id="cf-bal-conciliadas" type="number" min="0" max="100" step="0.1" value="${bal.conciliadas||''}" placeholder="Meta ≥ 98%"></div>
+            <div><label class="rh-form-label">Diferencias corregidas (%)</label><input class="rh-form-input" id="cf-bal-difCorregidas" type="number" min="0" max="100" step="0.1" value="${bal.diferenciasCorregidas||''}" placeholder="Meta 100%"></div>
+        </div>
+        <div style="font-size:12px;font-weight:700;color:#059669;margin-bottom:8px;">📊 Estados financieros</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+            <div><label class="rh-form-label">Entrega en tiempo (%)</label><input class="rh-form-input" id="cf-edo-entrega" type="number" min="0" max="100" step="0.1" value="${edo.entregaTiempo||''}" placeholder="Meta 100%"></div>
+            <div><label class="rh-form-label">Exactitud sin ajustes (%)</label><input class="rh-form-input" id="cf-edo-exactitud" type="number" min="0" max="100" step="0.1" value="${edo.exactitud||''}" placeholder="Meta ≥ 98%"></div>
+        </div>
+        <div style="font-size:12px;font-weight:700;color:#f59e0b;margin-bottom:8px;">🤝 Deudores y acreedores</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px;">
+            <div><label class="rh-form-label">Saldos conciliados (%)</label><input class="rh-form-input" id="cf-deu-conciliados" type="number" min="0" max="100" step="0.1" value="${deu.saldosConciliados||''}" placeholder="Meta ≥ 98%"></div>
+            <div><label class="rh-form-label">Saldos vencidos (%)</label><input class="rh-form-input" id="cf-deu-vencidos" type="number" min="0" max="100" step="0.1" value="${deu.saldosVencidos||''}" placeholder="Meta ≤ 15%"></div>
+            <div><label class="rh-form-label">Diferencias cuentas (%)</label><input class="rh-form-input" id="cf-deu-diferencias" type="number" min="0" max="100" step="0.1" value="${deu.diferencias||''}" placeholder="Meta ≤ 2%"></div>
+        </div>
+        <div style="font-size:12px;font-weight:700;color:#7c3aed;margin-bottom:8px;">📦 Inventarios</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+            <div><label class="rh-form-label">Diferencias físico vs contable (%)</label><input class="rh-form-input" id="cf-inv-diferencias" type="number" min="0" max="100" step="0.1" value="${inv.diferencias||''}" placeholder="Meta ≤ 2%"></div>
+            <div><label class="rh-form-label">Registros actualizados (%)</label><input class="rh-form-input" id="cf-inv-actualizados" type="number" min="0" max="100" step="0.1" value="${inv.registrosActualizados||''}" placeholder="Meta ≥ 98%"></div>
+        </div>
+        <div style="font-size:12px;font-weight:700;color:#ef4444;margin-bottom:8px;">🏛️ Impuestos</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div><label class="rh-form-label">Cumplimiento en tiempo (%)</label><input class="rh-form-input" id="cf-imp-cumplimiento" type="number" min="0" max="100" step="0.1" value="${imp.cumplimientoTiempo||''}" placeholder="Meta 100%"></div>
+            <div><label class="rh-form-label">Conciliación contable-fiscal (%)</label><input class="rh-form-input" id="cf-imp-conciliacion" type="number" min="0" max="100" step="0.1" value="${imp.conciliacionFiscal||''}" placeholder="Meta ≥ 98%"></div>
+        </div>`;
+        form.style.display = 'block';
+        form.scrollIntoView({behavior:'smooth', block:'start'});
+    };
+
+    window.cerrarContaInline = () => {
+        const form = document.getElementById('conta-inline-form');
+        if(form) form.style.display = 'none';
+    };
+
+    window.guardarContaInline = async () => {
+        const key = contaKey();
+        const getNum = id => { const el=document.getElementById(id); const v=el?el.value.trim():''; return v!==''?Number(v):undefined; };
+        const btn = document.querySelector('#conta-inline-form button');
+        if(btn){ btn.textContent='💾 Guardando...'; btn.disabled=true; }
+
+        const docData = {
+            mesAnio: key,
+            balanza: {
+                conciliadas: getNum('cf-bal-conciliadas'),
+                diferenciasCorregidas: getNum('cf-bal-difCorregidas')
+            },
+            edosFin: {
+                entregaTiempo: getNum('cf-edo-entrega'),
+                exactitud: getNum('cf-edo-exactitud')
+            },
+            deudores: {
+                saldosConciliados: getNum('cf-deu-conciliados'),
+                saldosVencidos: getNum('cf-deu-vencidos'),
+                diferencias: getNum('cf-deu-diferencias')
+            },
+            inventarios: {
+                diferencias: getNum('cf-inv-diferencias'),
+                registrosActualizados: getNum('cf-inv-actualizados')
+            },
+            impuestos: {
+                cumplimientoTiempo: getNum('cf-imp-cumplimiento'),
+                conciliacionFiscal: getNum('cf-imp-conciliacion')
+            },
+            actualizadoEn: new Date().toISOString()
+        };
+
+        // Limpiar undefined dentro de sub-objetos
+        Object.values(docData).forEach(v => {
+            if(v && typeof v === 'object' && !Array.isArray(v)){
+                Object.keys(v).forEach(k => { if(v[k] === undefined) delete v[k]; });
+            }
+        });
+
+        try {
+            const { db, fs, auth } = await getFirebaseConta();
+            docData.creadoPor = auth.currentUser?.email || '';
+            await fs.setDoc(fs.doc(db, 'conta_indicadores', key), docData, { merge: true });
+            console.log('[CONTA] ✅ Guardado:', key);
+            cerrarContaInline();
+            if(window.mostrarPush) window.mostrarPush('✅ Contabilidad guardada', `${MESES_C[contaMes]} ${contaAnio}`, '🧾');
+            contaData[key] = {...(contaData[key]||{}), ...docData};
+            renderContaDash(contaData[key], key);
+        } catch(e){
+            console.error('[CONTA ERROR]', e);
+            alert('Error: ' + e.message);
+        } finally {
+            if(btn){ btn.textContent='💾 GUARDAR'; btn.disabled=false; }
+        }
+    };
+
+    // Hook: mostrar/ocultar al entrar a Contabilidad
+    const CHECK_CONTA = setInterval(()=>{
+        if(typeof window.verArea !== 'function') return;
+        clearInterval(CHECK_CONTA);
+        const _orig = window.verArea;
+        window.verArea = function(area, btn){
+            _orig(area, btn);
+            const dash = document.getElementById('conta-dashboard');
+            if(!dash) return;
+            if(area === 'Contabilidad'){
+                dash.style.display = 'block';
+                actualizarLabelConta();
+                cargarDatosConta();
+            } else {
+                dash.style.display = 'none';
+            }
+        };
+    }, 200);
+
+    console.log('[CONTA DASHBOARD] ✅ Módulo cargado');
+})();
+</script>
   <!-- 
   ═══════════════════════════════════════════════════════════
   FIX RH v3 — REEMPLAZA la versión v2 que ya pegaste
