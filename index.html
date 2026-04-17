@@ -1279,11 +1279,11 @@
         </div>
     </div>
 </div>
-            <!-- ═══ MINI-DASHBOARD PAGOS ═══ -->
+<!-- ═══ MINI-DASHBOARD PAGOS v2 — Registros individuales ═══ -->
 <div id="pagos-dashboard" style="display:none;margin-bottom:28px;">
     <div class="rh-dash-header">
         <div class="rh-dash-title">💳 Indicadores Pagos
-            <span class="rh-dash-badge" style="background:#ecfdf5;color:#065f46;">Mensual</span>
+            <span class="rh-dash-badge" style="background:#ecfdf5;color:#065f46;">Mensual · Auto-calculado</span>
         </div>
         <div style="display:flex;align-items:center;gap:12px;">
             <div class="rh-mes-selector">
@@ -1291,31 +1291,31 @@
                 <span class="rh-mes-label" id="pagos-mes-label"></span>
                 <button class="rh-mes-btn" onclick="pagosMesNext()">›</button>
             </div>
-            <button class="mkt-add-btn" onclick="abrirPagosInline()" style="background:linear-gradient(135deg,#0891b2,#0e7490);">📊 Registrar datos</button>
+            <button class="mkt-add-btn" onclick="abrirPagosRegistro()" style="background:linear-gradient(135deg,#0891b2,#0e7490);">➕ Registrar pago</button>
         </div>
     </div>
 
-    <!-- KPIs -->
+    <!-- KPIs auto-calculados -->
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0;">
-        <div class="rh-kpi" style="border-top:3px solid #2563eb;cursor:default;">
+        <div class="rh-kpi" style="border-top:3px solid #2563eb;cursor:pointer;" onclick="pagFiltrar('tiempo')">
             <div class="rh-kpi-icon">⏱️</div>
             <div class="rh-kpi-val" id="pag-val-tiempo">—</div>
             <div class="rh-kpi-label">Pagos en tiempo</div>
             <div class="rh-kpi-delta neutral" id="pag-delta-tiempo"></div>
         </div>
-        <div class="rh-kpi" style="border-top:3px solid #059669;cursor:default;">
+        <div class="rh-kpi" style="border-top:3px solid #059669;cursor:pointer;" onclick="pagFiltrar('docs')">
             <div class="rh-kpi-icon">📎</div>
             <div class="rh-kpi-val" id="pag-val-docs">—</div>
             <div class="rh-kpi-label">Doc. completa</div>
             <div class="rh-kpi-delta neutral" id="pag-delta-docs"></div>
         </div>
-        <div class="rh-kpi" style="border-top:3px solid #7c3aed;cursor:default;">
+        <div class="rh-kpi" style="border-top:3px solid #7c3aed;cursor:pointer;" onclick="pagFiltrar('calendario')">
             <div class="rh-kpi-icon">📅</div>
             <div class="rh-kpi-val" id="pag-val-calendario">—</div>
             <div class="rh-kpi-label">Cumpl. calendario</div>
             <div class="rh-kpi-delta neutral" id="pag-delta-calendario"></div>
         </div>
-        <div class="rh-kpi" style="border-top:3px solid #0891b2;cursor:default;">
+        <div class="rh-kpi" style="border-top:3px solid #0891b2;cursor:pointer;" onclick="pagFiltrar('respuesta')">
             <div class="rh-kpi-icon">⚡</div>
             <div class="rh-kpi-val" id="pag-val-respuesta">—</div>
             <div class="rh-kpi-label">Tiempo respuesta</div>
@@ -1323,19 +1323,19 @@
         </div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px;">
-        <div class="rh-kpi" style="border-top:3px solid #ef4444;cursor:default;">
+        <div class="rh-kpi" style="border-top:3px solid #ef4444;cursor:pointer;" onclick="pagFiltrar('errores')">
             <div class="rh-kpi-icon">❌</div>
             <div class="rh-kpi-val" id="pag-val-errores">—</div>
             <div class="rh-kpi-label">Errores en pagos</div>
             <div class="rh-kpi-delta neutral" id="pag-delta-errores"></div>
         </div>
-        <div class="rh-kpi" style="border-top:3px solid #f59e0b;cursor:default;">
+        <div class="rh-kpi" style="border-top:3px solid #f59e0b;cursor:pointer;" onclick="pagFiltrar('urgentes')">
             <div class="rh-kpi-icon">🚨</div>
             <div class="rh-kpi-val" id="pag-val-urgentes">—</div>
             <div class="rh-kpi-label">Pagos urgentes</div>
             <div class="rh-kpi-delta neutral" id="pag-delta-urgentes"></div>
         </div>
-        <div class="rh-kpi" style="border-top:3px solid #dc2626;cursor:default;">
+        <div class="rh-kpi" style="border-top:3px solid #dc2626;cursor:pointer;" onclick="pagFiltrar('rechazados')">
             <div class="rh-kpi-icon">🔙</div>
             <div class="rh-kpi-val" id="pag-val-rechazados">—</div>
             <div class="rh-kpi-label">Pagos rechazados</div>
@@ -1347,34 +1347,50 @@
     <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:14px;margin-bottom:18px;">
         <div class="mkt-card">
             <div class="mkt-card-title">📈 Tendencia mensual</div>
-            <div class="mkt-card-sub">Pagos en tiempo, Documentación y Calendario últimos 6 meses</div>
+            <div class="mkt-card-sub">KPIs calculados de registros individuales</div>
             <div style="height:180px;"><canvas id="pag-chart-tendencia"></canvas></div>
         </div>
         <div class="mkt-card" style="text-align:center;">
             <div class="mkt-card-title" style="text-align:left;">🎯 Cumplimiento global</div>
-            <div class="mkt-card-sub" style="text-align:left;">Promedio de KPIs positivos</div>
+            <div class="mkt-card-sub" style="text-align:left;">Promedio ponderado</div>
             <div style="position:relative;width:140px;height:140px;margin:0 auto;">
                 <canvas id="pag-chart-global"></canvas>
                 <div id="pag-global-pct" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:18px;color:#1e293b;">—</div>
             </div>
+            <div id="pag-global-detalle" style="font-size:11px;color:#64748b;margin-top:8px;"></div>
         </div>
     </div>
 
-    <!-- Detalle -->
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:18px;">
-        <div class="mkt-card" id="pag-detalle-1"></div>
-        <div class="mkt-card" id="pag-detalle-2"></div>
-        <div class="mkt-card" id="pag-detalle-3"></div>
-    </div>
-
-    <!-- Form inline -->
+    <!-- Form inline registro individual -->
     <div id="pagos-inline-form" style="display:none;background:#fff;border-radius:16px;border:2px solid #0891b2;padding:20px;margin:12px 0;box-shadow:0 4px 20px rgba(8,145,178,0.12);animation:slideDown 0.2s ease;">
-        <div style="font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;color:#0e7490;margin-bottom:16px;display:flex;align-items:center;gap:8px;">💳 Registrar datos de Pagos</div>
+        <div style="font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;color:#0e7490;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;">
+            <span id="pagos-form-titulo">💳 Registrar pago</span>
+            <button onclick="cerrarPagosInline()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#94a3b8;">✕</button>
+        </div>
         <div id="pagos-form-content"></div>
         <div style="display:flex;gap:10px;margin-top:16px;">
-            <button onclick="guardarPagosInline()" style="flex:1;padding:11px;background:linear-gradient(135deg,#0891b2,#0e7490);color:white;border:none;border-radius:10px;font-weight:700;cursor:pointer;font-size:13px;">💾 GUARDAR</button>
+            <button onclick="guardarPagoRegistro()" style="flex:1;padding:11px;background:linear-gradient(135deg,#0891b2,#0e7490);color:white;border:none;border-radius:10px;font-weight:700;cursor:pointer;font-size:13px;">💾 GUARDAR REGISTRO</button>
             <button onclick="cerrarPagosInline()" style="flex:1;padding:11px;background:#f1f5f9;border:none;border-radius:10px;color:#475569;font-weight:700;cursor:pointer;font-size:13px;">Cancelar</button>
         </div>
+    </div>
+
+    <!-- Lista de registros del mes -->
+    <div class="mkt-card" style="margin-bottom:18px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <div class="mkt-card-title">📋 Registros del mes <span id="pag-registros-count" style="font-weight:400;color:#64748b;font-size:12px;"></span></div>
+            <div style="display:flex;gap:6px;align-items:center;">
+                <input type="text" id="pag-buscar" placeholder="🔍 Buscar proveedor, área..." oninput="pagBuscar()" style="padding:7px 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;width:200px;outline:none;">
+                <select id="pag-filtro-kpi" onchange="pagBuscar()" style="padding:7px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:11px;color:#475569;outline:none;">
+                    <option value="todos">Todos</option>
+                    <option value="atrasado">⏱️ Atrasados</option>
+                    <option value="doc_incompleta">📎 Doc. incompleta</option>
+                    <option value="error">❌ Con error</option>
+                    <option value="urgente">🚨 Urgentes</option>
+                    <option value="rechazado">🔙 Rechazados</option>
+                </select>
+            </div>
+        </div>
+        <div id="pag-registros-lista"></div>
     </div>
 </div>
             <!-- ═══ MINI-DASHBOARD EGRESOS ═══ -->
