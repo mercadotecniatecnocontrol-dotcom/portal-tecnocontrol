@@ -3224,6 +3224,17 @@ function renderDashboard(){
 // TABLA ÁREA — con buscador y ordenamiento automático por estado
 // ══════════════════════════════════════════════════════════════
 window.verArea=(a,b)=>{
+    // Verificar permisos de área
+    const yo2 = auth.currentUser?.email || '';
+    const miDepto2 = obtenerDeptoUsuario(yo2);
+    const esAdmin2 = esAdminTotal(yo2);
+    if(!esAdmin2 && miDepto2 !== 'Administración'){
+        const misAreas2 = GRUPOS_VISIBILIDAD[miDepto2] || [miDepto2];
+        if(!misAreas2.includes(a)){
+            if(window.mostrarPush) window.mostrarPush('🔒 Acceso restringido', 'No tienes permisos para ver ' + a, '⚠️');
+            return;
+        }
+    }
     areaActual=a;
     const titleEl = document.getElementById('area-title');
     if(titleEl){
