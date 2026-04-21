@@ -2910,11 +2910,56 @@ function extraerMenciones(texto) {
 // ══════════════════════════════════════════════════════════════
 document.getElementById('fecha-hoy').innerText = new Date().toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
 document.addEventListener('DOMContentLoaded', ()=>{ setTimeout(()=>{ if(window.actualizarEncargados) window.actualizarEncargados(); }, 500); });
-document.getElementById('nav-dept').innerHTML = DEPTOS.map(d=>`
-    <button class="sitem" onclick="verArea('${d}',this)">
-        <div class="sitem-left"><span>${ICONS[DEPTOS.indexOf(d)]}</span> ${d}</div>
-        <span id="badge-${d}" class="notif-badge${d==='Recursos Humanos'?' rh-badge':''}" style="display:none">0</span>
-    </button>`).join('');
+// Sidebar dinámico — solo muestra áreas permitidas al usuario
+function renderSidebarAreas(){
+    const yo = auth.currentUser?.email || '';
+    const miDepto = obtenerDeptoUsuario(yo);
+    const esAdmin = esAdminTotal(yo);
+    const misAreas = esAdmin ? DEPTOS : (GRUPOS_VISIBILIDAD[miDepto] || [miDepto]);
+    
+    document.getElementById('nav-dept').innerHTML = DEPTOS
+        .filter(d => esAdmin || misAreas.includes(d))
+        .map(d => `
+        <button class="sitem" onclick="verArea('${d}',this)">
+            <div class="sitem-left"><span>${ICONS[DEPTOS.indexOf(d)]}</span> ${d}</div>
+            <span id="badge-${d}" class="notif-badge${d==='Recursos Humanos'?' rh-badge':''}" style="display:none">0</span>
+        </button>`).join('');
+
+    // Ocultar/mostrar secciones restringidas
+    const btnReporte = document.querySelector('[onclick*="reportes"]');
+    const btnCal360 = document.querySelector('[onclick*="cal360"]');
+    const btnEjecutivo = document.getElementById('btn-ejecutivo');
+    
+    if(!esAdmin && miDepto !== 'Administración'){
+        if(btnReporte) btnReporte.style.display = 'none';
+        if(btnCal360) btnCal360.style.display = 'none';
+    }
+    if(btnEjecutivo && !puedeVerEjecutivo(yo)){
+        btnEjecutivo.style.display = 'none';
+    }
+    
+    // Drawer móvil también
+    renderDrawerAreasFiltered(yo);
+}
+
+function renderDrawerAreasFiltered(yo){
+    const el = document.getElementById('drawer-areas-list');
+    if(!el) return;
+    const miDepto = obtenerDeptoUsuario(yo);
+    const esAdmin = esAdminTotal(yo);
+    const misAreas = esAdmin ? DEPTOS : (GRUPOS_VISIBILIDAD[miDepto] || [miDepto]);
+    
+    el.innerHTML = DEPTOS
+        .filter(d => esAdmin || misAreas.includes(d))
+        .map((a,i) => {
+            const pendientes = localDB.filter(t=>t.area===a&&t.estatus!=='Completada').length;
+            return `<div class="drawer-item" onclick="verArea('${a}');cerrarDrawer();">
+                <span>${ICONS[DEPTOS.indexOf(a)]||'📁'}</span>
+                <span>${a}</span>
+                ${pendientes>0?`<span class="drawer-badge">${pendientes}</span>`:''}
+            </div>`;
+        }).join('');
+}
 document.getElementById('n-area').innerHTML = DEPTOS.map(d=>`<option>${d}</option>`).join('');
 document.getElementById('rep-mes').innerHTML = MESES.map((m,i)=>`<option value="${i}" ${i===new Date().getMonth()?'selected':''}>${m}</option>`).join('');
 
@@ -2939,6 +2984,7 @@ onAuthStateChanged(auth, user=>{
         // (ya está manejado con esAdminTotal en escuchar())
         // Inicializar encargados en el formulario de nueva tarea
         if(window.actualizarEncargados) window.actualizarEncargados();
+        renderSidebarAreas();
         // Nav móvil
         mostrarNavMobile(true);
         const mobUserLabel = document.getElementById('mob-user-label');
@@ -3067,13 +3113,18 @@ const EMAIL_AREA_MAP = {
 
 // ── Grupos de visibilidad de tareas ─────────────────────────
 const GRUPOS_VISIBILIDAD = {
-    'Ingresos':         ['Ingresos','Egresos','Contabilidad','Administración'],
-    'Egresos':          ['Ingresos','Egresos','Contabilidad','Administración'],
-    'Contabilidad':     ['Ingresos','Egresos','Contabilidad','Administración'],
-    'Administración':   ['Ingresos','Egresos','Contabilidad','Administración','Recursos Humanos','Marketing','Ventas'],
-    'Recursos Humanos': ['Recursos Humanos','Marketing','Administración'],
-    'Marketing':        ['Recursos Humanos','Marketing','Administración'],
+    'Ingresos':         ['Ingresos','Egresos','Contabilidad'],
+    'Egresos':          ['Ingresos','Egresos','Contabilidad'],
+    'Contabilidad':     ['Ingresos','Egresos','Contabilidad'],
+    'Administración':   ['Ingresos','Egresos','Contabilidad','Recursos Humanos','Marketing','Administración','Ventas','Pagos','Gestoría','Almacén','Compras','Operaciones'],
+    'Recursos Humanos': ['Recursos Humanos','Administración','Marketing'],
+    'Marketing':        ['Marketing'],
     'Ventas':           ['Ventas'],
+    'Pagos':            ['Pagos'],
+    'Gestoría':         ['Gestoría'],
+    'Almacén':          ['Almacén'],
+    'Compras':          ['Compras'],
+    'Operaciones':      ['Operaciones'],
 };
 
 function puedeVerTarea(tarea, email){
