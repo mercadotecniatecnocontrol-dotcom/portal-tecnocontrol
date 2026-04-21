@@ -6612,13 +6612,12 @@ window.guardarDatoRHInline = async () => {
     }
 
     function docCardHTML(p){
-        const thumb = driveThumbnail(p.link);
-        const tipoColor = {'Factura':'#2563eb','Orden de compra':'#059669','Cotización':'#f59e0b','Contrato':'#7c3aed','Reporte':'#0891b2','Nómina':'#db2777','Póliza':'#64748b','Recibo':'#ea580c'};
+        const tipoColor = {'Factura':'#2563eb','Orden de compra':'#059669','Cotización':'#f59e0b','Contrato':'#7c3aed','Reporte':'#0891b2','Nómina':'#db2777','Póliza':'#64748b','Recibo':'#ea580c','Memo':'#6366f1'};
         const color = tipoColor[p.tipo] || '#475569';
-        return `<div data-apdocid="${p.id}" style="border-radius:8px;padding:5px 7px;margin-bottom:4px;font-size:10px;cursor:pointer;border-left:3px solid ${color};background:rgba(${color==='#2563eb'?'37,99,235':color==='#059669'?'5,150,105':color==='#f59e0b'?'245,158,11':'124,58,252'},0.08);transition:0.15s;" onclick="previewDocAP('${p.id}')">
-            ${thumb?`<img src="${thumb}" style="width:100%;height:32px;object-fit:cover;border-radius:4px;margin-bottom:3px;" onerror="this.style.display='none'">`:''}
-            <div style="font-weight:700;line-height:1.2;color:#1e293b;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">${p.desc||'Sin título'}</div>
-            <div style="opacity:0.7;margin-top:1px;">${p.tipo||''}</div>
+        const tipoIcon = {'Factura':'📄','Orden de compra':'📋','Cotización':'💲','Contrato':'📑','Reporte':'📊','Nómina':'💰','Póliza':'📁','Recibo':'🧾','Memo':'📝'};
+        const icon = tipoIcon[p.tipo] || '📄';
+        return `<div data-apdocid="${p.id}" style="border-radius:6px;padding:3px 6px;margin-bottom:3px;font-size:10px;cursor:pointer;border-left:3px solid ${color};background:rgba(255,255,255,0.85);transition:0.15s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" onclick="previewDocAP('${p.id}')" title="${p.desc||''} — ${p.tipo||''}">
+            <span style="font-size:9px;">${icon}</span> ${p.desc||'Sin título'}
         </div>`;
     }
 
@@ -6667,6 +6666,27 @@ window.guardarDatoRHInline = async () => {
             }
             document.getElementById('modal-ap').style.display='none';
             if(window.mostrarPush) window.mostrarPush('📄 Documento guardado', desc, '📋');
+            
+            // ── Auto-crear tarea en el kanban ──
+            try {
+                const tareaData = {
+                    actividad: '📄 ' + desc,
+                    area: apAreaActual,
+                    fechaLimite: fecha,
+                    fechaInicio: fecha,
+                    fechaCreacion: new Date().toISOString(),
+                    estatus: 'Sin Iniciar',
+                    prioridad: 'Media',
+                    responsable: auth.currentUser?.email || '',
+                    encargado: docData.responsable || auth.currentUser?.email || '',
+                    origen: 'Parrilla de documentos',
+                    comentarios: []
+                };
+                const { db: db2, fs: fs2 } = await getFirebaseAP();
+                await fs2.addDoc(fs2.collection(db2, 'actividades'), tareaData);
+                console.log('[AP] ✅ Tarea auto-creada:', desc);
+            } catch(e2){ console.warn('[AP] Error al crear tarea:', e2.message); }
+            
             cargarDocsAP();
         } catch(e){ alert('Error: '+e.message); }
         finally{ if(btn){ btn.textContent='GUARDAR'; btn.disabled=false; } }
