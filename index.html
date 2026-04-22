@@ -8622,7 +8622,7 @@ window.guardarDatoRHInline = async () => {
                 case 'descuento':
                     Object.assign(docData, { nombre: get('rh-f-nombre'), area: get('rh-f-area'), monto: Number(get('rh-f-monto')) || 0, motivoDesc: get('rh-f-motivoDesc') || 'Otro', notas: get('rh-f-notas') }); break;
                 case 'rotacion':
-                    Object.assign(docData, { nombre: get('rh-f-nombre'), area: get('rh-f-area'), movimiento: get('rh-f-movimiento') || 'baja', notas: get('rh-f-notas') }); break;
+            Object.assign(docData, { nombre: get('rh-f-nombre'), area: get('rh-f-area'), movimiento: get('rh-f-movimiento') || 'baja', empresa: (document.getElementById('rh-f-empresa')?.value || ''), notas: get('rh-f-notas') }); break;
                 case 'vacante':
                     Object.assign(docData, { puesto: get('rh-f-puesto'), area: get('rh-f-area'), estatus: get('rh-f-vacEstatus') || 'nueva', notas: get('rh-f-notas') }); break;
                 case 'acta':
