@@ -1159,13 +1159,8 @@
                 </div>
             </div>
             <div class="cal360-filters">
-                <button class="cal360-filter active" data-tipo="todos" onclick="filtrarCal('todos',this)">Todos</button>
                 <button class="cal360-filter" data-tipo="Festivo" onclick="filtrarCal('Festivo',this)">🟣 Festivos</button>
                 <button class="cal360-filter" data-tipo="RH" onclick="filtrarCal('RH',this)">🟢 RH</button>
-                <button class="cal360-filter" data-tipo="Marketing" onclick="filtrarCal('Marketing',this)">🔵 Marketing</button>
-                <button class="cal360-filter" data-tipo="Comercial" onclick="filtrarCal('Comercial',this)">🟡 Comercial</button>
-                <button class="cal360-filter" data-tipo="Industria" onclick="filtrarCal('Industria',this)">🟠 Industria</button>
-                <button class="cal360-filter" data-tipo="Tarea" onclick="filtrarCal('Tarea',this)">🔵 Tareas</button>
             </div>
             <div class="cal360-layout">
                 <div>
@@ -2930,9 +2925,13 @@ function renderSidebarAreas(){
     const btnCal360 = document.querySelector('[onclick*="cal360"]');
     const btnEjecutivo = document.getElementById('btn-ejecutivo');
     
+    const puedeVerCal360 = ['Administración','Recursos Humanos','Marketing'];
+    if(!esAdmin && !puedeVerCal360.includes(miDepto)){
+        if(btnCal360) btnCal360.style.display = 'none';
+    }
     if(!esAdmin && miDepto !== 'Administración'){
         if(btnReporte) btnReporte.style.display = 'none';
-        if(btnCal360) btnCal360.style.display = 'none';
+    }
     }
     if(btnEjecutivo && !puedeVerEjecutivo(yo)){
         btnEjecutivo.style.display = 'none';
