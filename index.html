@@ -1901,6 +1901,42 @@
                     </div>
                     <div id="rh-actas-lista"><div style="text-align:center;color:#94a3b8;padding:16px;font-size:12px;">Sin actas registradas esta semana</div></div>
                 </div>
+                <!-- ═══ ROTACIÓN POR EMPRESA ═══ -->
+<div id="rh-rotacion-empresa" style="display:none;">
+    <div class="mkt-card" style="margin-bottom:16px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+            <div class="mkt-card-title">🔄 Rotación por Empresa</div>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <select id="rot-filtro-empresa" onchange="filtrarRotEmpresa()" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:11px;outline:none;">
+                    <option value="todos">Todas las empresas</option>
+                    <option value="Tecnocontrol">Tecnocontrol</option>
+                    <option value="Jomar">Jomar</option>
+                    <option value="VH Verificaciones">VH Verificaciones</option>
+                    <option value="Desarrollos y Construcciones">Desarrollos y Construcciones</option>
+                    <option value="Otra">Otra</option>
+                </select>
+                <button onclick="abrirConfigPlantilla()" style="padding:6px 12px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:8px;font-size:11px;font-weight:700;color:#475569;cursor:pointer;">⚙️ Plantilla</button>
+            </div>
+        </div>
+        <!-- KPIs por empresa -->
+        <div id="rot-kpis-empresas" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:16px;"></div>
+        <!-- Lista de registros -->
+        <div id="rot-lista-empresas"></div>
+    </div>
+
+    <!-- Modal configurar plantilla -->
+    <div id="modal-plantilla" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);z-index:3500;align-items:center;justify-content:center;">
+        <div style="background:#ffffff;border-radius:20px;padding:28px;width:480px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.15);">
+            <div style="font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;color:#1e293b;margin-bottom:16px;">⚙️ Configurar Plantilla por Empresa</div>
+            <p style="font-size:12px;color:#64748b;margin-bottom:16px;">Define cuántos empleados tiene cada empresa. Se usa para calcular el % de rotación.</p>
+            <div id="plantilla-form-content"></div>
+            <div style="display:flex;gap:10px;margin-top:20px;">
+                <button onclick="guardarPlantilla()" style="flex:1;padding:11px;background:linear-gradient(135deg,#db2777,#be185d);color:white;border:none;border-radius:10px;font-weight:700;cursor:pointer;font-size:13px;">💾 GUARDAR</button>
+                <button onclick="document.getElementById('modal-plantilla').style.display='none'" style="flex:1;padding:11px;background:#f1f5f9;border:none;border-radius:10px;color:#475569;font-weight:700;cursor:pointer;font-size:13px;">Cancelar</button>
+            </div>
+        </div>
+    </div>
+</div>
                 <!-- Registros dinámicos: retardos, faltas, descuentos, capacitaciones, incapacidades -->
                 <div id="rh-registros-extra"></div>
             </div>
@@ -6824,6 +6860,312 @@ window.guardarDatoRHInline = async () => {
     }, 200);
 
     console.log('[PARRILLA UNIVERSAL] ✅ Módulo cargado');
+})();
+</script>
+    <script>
+// ══════════════════════════════════════════════════════════════
+// ROTACIÓN POR EMPRESA — KPI mejorado para RH
+// ══════════════════════════════════════════════════════════════
+(function(){
+    'use strict';
+
+    const EMPRESAS = ['Tecnocontrol','Jomar','VH Verificaciones','Desarrollos y Construcciones','Otra'];
+    const EMPRESA_COLORS = {'Tecnocontrol':'#2563eb','Jomar':'#f59e0b','VH Verificaciones':'#059669','Desarrollos y Construcciones':'#7c3aed','Otra':'#64748b'};
+    let plantillaData = {};
+    let rotFiltro = 'todos';
+
+    async function getFBRot(){
+        const a = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+        const f = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const au = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+        const app = a.getApps()[0];
+        return {db:f.getFirestore(app), auth:au.getAuth(app), fs:f};
+    }
+
+    // Cargar plantilla desde Firestore
+    async function cargarPlantilla(){
+        try {
+            const {db,fs} = await getFBRot();
+            const snap = await fs.getDoc(fs.doc(db,'rh_config','plantilla_empresas'));
+            plantillaData = snap.exists() ? snap.data() : {};
+            console.log('[ROT] Plantilla cargada:', plantillaData);
+        } catch(e){ console.warn('[ROT] Plantilla:', e.message); }
+    }
+
+    window.abrirConfigPlantilla = async () => {
+        await cargarPlantilla();
+        const content = document.getElementById('plantilla-form-content');
+        if(!content) return;
+        content.innerHTML = EMPRESAS.map(emp => {
+            const color = EMPRESA_COLORS[emp] || '#64748b';
+            return `<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+                <div style="width:12px;height:12px;border-radius:50%;background:${color};flex-shrink:0;"></div>
+                <label style="font-size:13px;font-weight:600;color:#1e293b;min-width:200px;">${emp}</label>
+                <input type="number" min="0" id="plt-${emp.replace(/\s/g,'_')}" value="${plantillaData[emp]||''}" 
+                    placeholder="# empleados" style="flex:1;padding:8px 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;outline:none;text-align:center;">
+            </div>`;
+        }).join('') + `
+        <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px;font-size:11px;color:#1e40af;margin-top:8px;">
+            💡 El % de rotación se calcula: (Bajas del mes ÷ Total empleados) × 100
+        </div>`;
+        document.getElementById('modal-plantilla').style.display = 'flex';
+    };
+
+    window.guardarPlantilla = async () => {
+        const data = {};
+        EMPRESAS.forEach(emp => {
+            const el = document.getElementById('plt-'+emp.replace(/\s/g,'_'));
+            const val = el ? parseInt(el.value) : 0;
+            if(val > 0) data[emp] = val;
+        });
+        try {
+            const {db,fs} = await getFBRot();
+            await fs.setDoc(fs.doc(db,'rh_config','plantilla_empresas'), data);
+            plantillaData = data;
+            document.getElementById('modal-plantilla').style.display = 'none';
+            if(window.mostrarPush) window.mostrarPush('✅ Plantilla guardada','','👥');
+            renderRotacionEmpresa();
+        } catch(e){ alert('Error: '+e.message); }
+    };
+
+    window.filtrarRotEmpresa = () => {
+        rotFiltro = document.getElementById('rot-filtro-empresa')?.value || 'todos';
+        renderRotacionEmpresa();
+    };
+
+    function getRotacionRegs(){
+        // Leer registros de rotación del rhData actual
+        // Necesitamos acceder a los datos de RH ya cargados
+        const seccion = document.getElementById('rh-registros-extra');
+        if(!seccion) return [];
+        // Buscar en el DOM los registros — mejor acceder via Firestore directamente
+        return window._rotRegsCache || [];
+    }
+
+    async function cargarRotacionRegs(){
+        try {
+            const {db,fs} = await getFBRot();
+            // Obtener semana actual de RH
+            const hoy = new Date();
+            const mesAnio = hoy.getFullYear()+'-'+String(hoy.getMonth()+1).padStart(2,'0');
+            
+            // Cargar TODOS los registros de rotación del mes
+            const snap = await fs.getDocs(fs.collection(db,'rh_indicadores'));
+            const regs = [];
+            snap.docs.forEach(d => {
+                const data = d.data();
+                if(data.tipo !== 'rotacion') return;
+                // Filtrar por mes actual
+                const regMes = data.mesAnio || (data.fecha ? data.fecha.slice(0,7) : '');
+                if(regMes === mesAnio || (data.fecha && data.fecha.startsWith(mesAnio))){
+                    regs.push({id:d.id, ...data});
+                }
+            });
+            window._rotRegsCache = regs;
+            console.log('[ROT] Registros mes:', regs.length);
+            renderRotacionEmpresa();
+        } catch(e){ console.warn('[ROT]', e.message); }
+    }
+
+    function renderRotacionEmpresa(){
+        const kpisEl = document.getElementById('rot-kpis-empresas');
+        const listaEl = document.getElementById('rot-lista-empresas');
+        if(!kpisEl || !listaEl) return;
+
+        const regs = window._rotRegsCache || [];
+        const filtrados = rotFiltro === 'todos' ? regs : regs.filter(r => r.empresa === rotFiltro);
+
+        // KPIs por empresa
+        const stats = {};
+        EMPRESAS.forEach(emp => {
+            const empRegs = regs.filter(r => r.empresa === emp);
+            const bajas = empRegs.filter(r => (r.movimiento||'').includes('baja')).length;
+            const altas = empRegs.filter(r => r.movimiento === 'alta').length;
+            const plantilla = plantillaData[emp] || 0;
+            const pctRot = plantilla > 0 ? Math.round(bajas / plantilla * 1000) / 10 : 0;
+            stats[emp] = { bajas, altas, total: empRegs.length, plantilla, pctRot };
+        });
+
+        // Totales globales
+        const totalBajas = Object.values(stats).reduce((s,v)=>s+v.bajas,0);
+        const totalAltas = Object.values(stats).reduce((s,v)=>s+v.altas,0);
+        const totalPlantilla = Object.values(stats).reduce((s,v)=>s+v.plantilla,0);
+        const pctGlobal = totalPlantilla > 0 ? Math.round(totalBajas / totalPlantilla * 1000) / 10 : 0;
+
+        kpisEl.innerHTML = `
+            <div style="background:linear-gradient(135deg,#1e3a8a,#2563eb);border-radius:14px;padding:14px;color:white;">
+                <div style="font-size:10px;opacity:0.8;text-transform:uppercase;letter-spacing:1px;">Rotación global</div>
+                <div style="font-family:'Space Grotesk',sans-serif;font-size:28px;font-weight:700;">${pctGlobal}%</div>
+                <div style="font-size:10px;opacity:0.7;margin-top:4px;">${totalBajas} bajas · ${totalAltas} altas · ${totalPlantilla} plantilla</div>
+            </div>
+            ${EMPRESAS.map(emp => {
+                const s = stats[emp];
+                const color = EMPRESA_COLORS[emp];
+                const pctColor = s.pctRot <= 3 ? '#16a34a' : s.pctRot <= 8 ? '#f59e0b' : '#ef4444';
+                return `<div style="background:#ffffff;border-radius:14px;padding:14px;border:1px solid rgba(59,130,246,0.10);border-left:4px solid ${color};">
+                    <div style="font-size:11px;font-weight:700;color:#1e293b;margin-bottom:6px;">${emp}</div>
+                    <div style="font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:700;color:${pctColor};">${s.pctRot}%</div>
+                    <div style="font-size:10px;color:#64748b;margin-top:4px;">
+                        ${s.bajas} bajas · ${s.altas} altas
+                        ${s.plantilla>0?`<br>Plantilla: ${s.plantilla}`:'<br><span style="color:#f59e0b;">⚠️ Sin plantilla</span>'}
+                    </div>
+                    ${s.plantilla>0?`<div style="height:4px;background:#e2e8f0;border-radius:4px;margin-top:6px;overflow:hidden;"><div style="height:100%;width:${Math.min(100,s.pctRot*5)}%;background:${pctColor};border-radius:4px;"></div></div>`:''}
+                </div>`;
+            }).join('')}`;
+
+        // Lista de registros filtrados
+        if(!filtrados.length){
+            listaEl.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:16px;font-size:12px;">Sin registros de rotación este mes</div>';
+            return;
+        }
+
+        const chipBaja = '<span style="background:#fee2e2;color:#dc2626;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700;">Baja</span>';
+        const chipAlta = '<span style="background:#dcfce7;color:#16a34a;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700;">Alta</span>';
+        const chipCambio = '<span style="background:#eff6ff;color:#2563eb;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700;">Cambio</span>';
+
+        listaEl.innerHTML = `
+        <div style="display:grid;grid-template-columns:1.2fr 1fr 0.8fr 0.8fr 0.8fr 60px;gap:6px;padding:8px 10px;background:#f8faff;border-radius:8px;margin-bottom:6px;font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;">
+            <span>Colaborador</span><span>Empresa</span><span>Área</span><span>Movimiento</span><span>Fecha</span><span></span>
+        </div>
+        ${filtrados.sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||'')).map(r => {
+            const color = EMPRESA_COLORS[r.empresa] || '#64748b';
+            const mov = (r.movimiento||'').includes('baja') ? chipBaja : r.movimiento==='alta' ? chipAlta : chipCambio;
+            return `<div style="display:grid;grid-template-columns:1.2fr 1fr 0.8fr 0.8fr 0.8fr 60px;gap:6px;padding:9px 10px;border-bottom:1px solid rgba(59,130,246,0.06);align-items:center;font-size:11px;">
+                <div style="font-weight:700;color:#1e293b;">${r.nombre||'—'}</div>
+                <div style="display:flex;align-items:center;gap:6px;">
+                    <div style="width:8px;height:8px;border-radius:50%;background:${color};flex-shrink:0;"></div>
+                    <span>${r.empresa||'—'}</span>
+                </div>
+                <span style="color:#64748b;">${r.area||'—'}</span>
+                <span>${mov}</span>
+                <span style="color:#64748b;font-size:10px;">${r.fecha||'—'}</span>
+                <div style="display:flex;gap:3px;justify-content:flex-end;">
+                    <button onclick="eliminarRotEmp('${r.id}')" style="padding:3px 6px;background:#fee2e2;color:#dc2626;border:none;border-radius:6px;font-size:9px;cursor:pointer;">🗑</button>
+                </div>
+            </div>`;
+        }).join('')}`;
+    }
+
+    window.eliminarRotEmp = async (id) => {
+        if(!confirm('¿Eliminar este registro de rotación?')) return;
+        try {
+            const {db,fs} = await getFBRot();
+            await fs.deleteDoc(fs.doc(db,'rh_indicadores',id));
+            if(window.mostrarPush) window.mostrarPush('🗑 Eliminado','','👥');
+            cargarRotacionRegs();
+        } catch(e){ alert('Error: '+e.message); }
+    };
+
+    // Agregar campo "Empresa" al formulario de rotación existente
+    function inyectarCampoEmpresa(){
+        const check = setInterval(()=>{
+            const origAbrir = window.abrirRHInline;
+            if(!origAbrir) return;
+            clearInterval(check);
+            
+            const _prev = window.abrirRHInline;
+            window.abrirRHInline = function(tab, editId){
+                _prev(tab, editId);
+                // Si es rotación, agregar campo Empresa
+                if(tab === 'rotacion'){
+                    setTimeout(()=>{
+                        const areaField = document.getElementById('rh-f-area-sel');
+                        if(!areaField) return;
+                        // Verificar si ya existe el campo empresa
+                        if(document.getElementById('rh-f-empresa')) return;
+                        const wrapper = areaField.closest('div');
+                        if(!wrapper || !wrapper.parentElement) return;
+                        const empresaDiv = document.createElement('div');
+                        empresaDiv.innerHTML = `
+                            <label class="rh-form-label">Empresa</label>
+                            <select class="rh-form-input" id="rh-f-empresa">
+                                ${EMPRESAS.map(e=>`<option value="${e}">${e}</option>`).join('')}
+                            </select>`;
+                        wrapper.parentElement.insertBefore(empresaDiv, wrapper.nextSibling);
+                    }, 200);
+                }
+            };
+        }, 300);
+    }
+
+    // Interceptar guardado de rotación para incluir empresa
+    function inyectarEmpresaEnGuardado(){
+        const check = setInterval(()=>{
+            if(!window.guardarRHInline) return;
+            clearInterval(check);
+            
+            const _prevGuardar = window.guardarRHInline;
+            window.guardarRHInline = async function(){
+                // Antes de guardar, inyectar empresa en el DOM como campo hidden
+                const empresaSel = document.getElementById('rh-f-empresa');
+                if(empresaSel){
+                    // Crear campo hidden temporal
+                    let hidden = document.getElementById('rh-f-empresa-val');
+                    if(!hidden){
+                        hidden = document.createElement('input');
+                        hidden.type = 'hidden';
+                        hidden.id = 'rh-f-empresa-val';
+                        empresaSel.parentElement.appendChild(hidden);
+                    }
+                    hidden.value = empresaSel.value;
+                }
+                await _prevGuardar();
+                // Después de guardar, recargar rotación
+                setTimeout(()=> cargarRotacionRegs(), 1000);
+            };
+        }, 300);
+    }
+
+    // Override del guardado en FIX v3 para incluir empresa
+    function patchGuardadoRotacion(){
+        const check = setInterval(()=>{
+            if(!window.guardarRHInline) return;
+            clearInterval(check);
+
+            // Interceptar el guardado para agregar campo empresa a los datos de rotación
+            const origFetch = window.fetch;
+            // Método más directo: interceptar addDoc para rh_indicadores
+            const _origGuardar = window.guardarRHInline;
+            window.guardarRHInline = async function(){
+                // Agregar empresa al dataset del form para que el FIX v3 lo incluya
+                const empresaSel = document.getElementById('rh-f-empresa');
+                const formEl = document.getElementById('rh-inline-form');
+                if(empresaSel && formEl){
+                    formEl.dataset.empresa = empresaSel.value;
+                }
+                await _origGuardar();
+                setTimeout(()=> cargarRotacionRegs(), 1500);
+            };
+        }, 500);
+    }
+
+    // Hook: mostrar panel cuando entra a RH
+    const CHECK_ROT = setInterval(()=>{
+        if(typeof window.verArea !== 'function') return;
+        clearInterval(CHECK_ROT);
+        const _orig = window.verArea;
+        window.verArea = function(area, btn){
+            _orig(area, btn);
+            const panel = document.getElementById('rh-rotacion-empresa');
+            if(!panel) return;
+            if(area === 'Recursos Humanos'){
+                panel.style.display = 'block';
+                cargarPlantilla().then(()=> cargarRotacionRegs());
+            } else {
+                panel.style.display = 'none';
+            }
+        };
+    }, 200);
+
+    // Modal plantilla cerrar al clic fuera
+    document.getElementById('modal-plantilla')?.addEventListener('click', e=>{
+        if(e.target.id==='modal-plantilla') e.target.style.display='none';
+    });
+
+    inyectarCampoEmpresa();
+    patchGuardadoRotacion();
+
+    console.log('[ROTACION EMPRESA] ✅ Módulo cargado');
 })();
 </script>
     <script>
