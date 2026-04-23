@@ -6758,6 +6758,28 @@ window.guardarDatoRHInline = async () => {
         </div>`;
     }
 
+    // Agregar botón compartir en el preview de documento
+    const _origPreviewDoc = window.previewDocAP;
+    window.previewDocAP = function(id){
+        _origPreviewDoc(id);
+        const p = apDocs.find(x=>x.id===id);
+        if(!p) return;
+        setTimeout(()=>{
+            const editBtn = document.getElementById('ap-prev-edit');
+            if(editBtn && !document.getElementById('ap-prev-compartir')){
+                const shareBtn = document.createElement('button');
+                shareBtn.id = 'ap-prev-compartir';
+                shareBtn.style.cssText = 'padding:11px 20px;background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;border-radius:10px;font-weight:700;font-size:12px;cursor:pointer;';
+                shareBtn.innerText = '📤 Compartir';
+                shareBtn.onclick = () => {
+                    document.getElementById('modal-ap-preview').style.display='none';
+                    abrirCompartir('documento', p.id, p.desc||'Documento', (p.tipo||'')+' · '+(p.responsable||''));
+                };
+                editBtn.parentElement.insertBefore(shareBtn, editBtn);
+            }
+        }, 100);
+    };
+
     window.abrirModalAP = (fechaPreset) => {
         fechaPreset = fechaPreset || null;
         document.getElementById('ap-edit-id').value = '';
