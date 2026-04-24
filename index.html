@@ -3389,11 +3389,7 @@ function buildKcard(r, hoy, yo, esAdmin){
             <div class="kcard-actions">
                 <button class="kcard-comm" onclick="abrirChat('${r.id}','${actTitle}','${r.area||''}')">💬${tieneMsgNuevo?'<span class="comm-alert"></span>':''}</button>
                 ${puedeEditar?`<button class="kbtn kbtn-edit" onclick="abrirEdit('${r.id}')">✏️</button>`:''}
-                <button class="kbtn kbtn-edit"
-                onclick="abrirCompartir('tarea','${r.id}',this.dataset.titulo,this.dataset.detalle)"
-                data-titulo="${(r.actividad||'').replace(/"/g,'&quot;')}" data
-                -detalle="${(r.area||'')} · ${nombreMostrar}" title="Compartir" style="font
-                -size:11px;">📤</button>
+                <button class="kbtn kbtn-edit" onclick="window._compartirTarea('${r.id}')" title="Compartir" style="font-size:11px;">📤</button>
                 ${esAdmin?`<button class="kbtn-del" onclick="borrarTarea('${r.id}')" title="Eliminar">🗑</button>`:''}
             </div>
         </div>
