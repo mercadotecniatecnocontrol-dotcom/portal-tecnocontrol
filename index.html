@@ -1111,38 +1111,23 @@
                 <div><div class="page-title">Resumen de Operaciones</div><div class="page-date" id="fecha-hoy"></div></div>
                 <div class="header-badge">● EN VIVO</div>
             </div>
-            <!-- ═══ COMPARTIDO CONMIGO ═══ -->
-<div id="compartido-conmigo" style="display:none;margin-bottom:20px;">
-    <div style="background:#ffffff;border:1px solid rgba(59,130,246,0.12);border-radius:18px;padding:20px;box-shadow:0 2px 8px rgba(37,99,235,0.06);">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
-            <div style="font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;color:#1e293b;display:flex;align-items:center;gap:8px;">
-                📨 Compartido conmigo
-                <span id="compartido-count" style="background:#eff6ff;color:#2563eb;font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;"></span>
-            </div>
-            <button onclick="toggleCompartido()" id="btn-toggle-compartido" style="padding:5px 12px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:8px;font-size:11px;cursor:pointer;color:#475569;">▼ Mostrar</button>
-        </div>
-        <div id="compartido-lista" style="display:none;"></div>
-    </div>
-</div>
 
-<!-- MODAL COMPARTIR -->
-<div id="modal-compartir" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);z-index:3500;align-items:center;justify-content:center;">
-    <div style="background:#ffffff;border-radius:20px;padding:28px;width:460px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.15);">
-        <div style="font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;color:#1e293b;margin-bottom:6px;">📤 Compartir</div>
+<<!-- ═══ MODAL COMPARTIR v2 ═══ -->
+<div id="modal-compartir" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);z-index:9999;align-items:center;justify-content:center;">
+    <div style="background:#ffffff;border-radius:20px;padding:28px;width:460px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.25);position:relative;">
+        <div style="font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;color:#1e293b;margin-bottom:6px;">📤 Compartir actividad</div>
         <div id="compartir-item-preview" style="font-size:12px;color:#64748b;margin-bottom:16px;"></div>
-        <input type="hidden" id="compartir-tipo">
-        <input type="hidden" id="compartir-ref-id">
-        <input type="hidden" id="compartir-data">
+        <input type="hidden" id="compartir-tarea-id">
         <label style="font-size:10px;font-weight:700;color:#64748b;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px;display:block;">Compartir con</label>
         <div style="display:flex;gap:8px;margin-bottom:12px;">
             <button id="comp-modo-usuario" onclick="setModoCompartir('usuario')" style="flex:1;padding:8px;border-radius:8px;border:2px solid #2563eb;background:#eff6ff;color:#2563eb;font-weight:700;font-size:12px;cursor:pointer;">👤 Usuario</button>
             <button id="comp-modo-area" onclick="setModoCompartir('area')" style="flex:1;padding:8px;border-radius:8px;border:1px solid #cbd5e1;background:#ffffff;color:#475569;font-weight:700;font-size:12px;cursor:pointer;">🏢 Área</button>
         </div>
         <div id="compartir-destino-wrap">
-            <select class="mkt-form-input" id="compartir-destino" style="margin-bottom:12px;"></select>
+            <input class="mkt-form-input" id="compartir-destino" type="email" placeholder="Escribe el correo del usuario..." style="margin-bottom:12px;">
         </div>
         <label style="font-size:10px;font-weight:700;color:#64748b;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px;display:block;">Mensaje (opcional)</label>
-        <input class="mkt-form-input" id="compartir-mensaje" type="text" placeholder="Ej: Revisa este resultado del mes..." style="margin-bottom:16px;">
+        <input class="mkt-form-input" id="compartir-mensaje" type="text" placeholder="Ej: Revisa esta actividad por favor..." style="margin-bottom:16px;">
         <div style="display:flex;gap:10px;">
             <button onclick="enviarCompartido()" style="flex:1;padding:11px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:white;border:none;border-radius:10px;font-weight:700;cursor:pointer;font-size:13px;">📤 Compartir</button>
             <button onclick="document.getElementById('modal-compartir').style.display='none'" style="flex:1;padding:11px;background:#f1f5f9;border:none;border-radius:10px;color:#475569;font-weight:700;cursor:pointer;font-size:13px;">Cancelar</button>
@@ -3203,18 +3188,24 @@ const GRUPOS_VISIBILIDAD = {
 
 function puedeVerTarea(tarea, email){
     try {
-        if(!tarea || !email) return true; // por defecto mostrar
+        if(!tarea || !email) return true;
         if(esAdminTotal(email)) return true;
         if(tarea.responsable === email || tarea.encargado === email) return true;
         const miDepto = typeof obtenerDeptoUsuario === 'function' ? obtenerDeptoUsuario(email) : '';
-        if(!miDepto) return true; // sin depto = ve todo
+        if(!miDepto) return true;
         const grupos = typeof GRUPOS_VISIBILIDAD !== 'undefined' ? GRUPOS_VISIBILIDAD : {};
         const misAreas = grupos[miDepto] || [miDepto];
         if(misAreas.includes(tarea.area)) return true;
+        // Verificar si fue compartida conmigo
+        const compartidos = tarea.compartidoCon || [];
+        const compartidoConmigo = compartidos.some(c => 
+            c.destinoEmail === email || c.destinoArea === miDepto
+        );
+        if(compartidoConmigo) return true;
         return (tarea.comentarios||[]).some(cm =>
             miDepto && (cm.m||'').toLowerCase().includes(miDepto.toLowerCase())
         );
-    } catch(e){ return true; } // en caso de error, mostrar la tarea
+    } catch(e){ return true; }
 }
 
 function obtenerDeptoUsuario(email) {
@@ -3376,6 +3367,7 @@ function buildKcard(r, hoy, yo, esAdmin){
     const actTitle = r.actividad.replace(/'/g,"\'").replace(/"/g,'&quot;');
     return `<div class="kcard ${cardClass}" style="${r.estatus==='Completada'?'opacity:0.7;':''}">
         <div class="kcard-title">${r.actividad}</div>
+        ${(r.compartidoCon||[]).length > 0 ? '<div style="font-size:9px;background:#eff6ff;color:#2563eb;padding:2px 8px;border-radius:6px;display:inline-block;margin-bottom:4px;font-weight:700;">📨 Compartida · ' + r.compartidoCon.map(c=>c.destino).join(', ') + '</div>' : ''}
         ${r.origen?`<div class="kcard-origen">📌 ${r.origen}</div>`:''}
         <div class="kcard-meta">${prioHTML}${durTag}</div>
         <div class="kcard-footer">
@@ -7231,13 +7223,12 @@ window.guardarDatoRHInline = async () => {
 </script>
     <script>
 // ══════════════════════════════════════════════════════════════
-// SISTEMA COMPARTIR — Documentos, tareas y KPIs entre áreas
+// SISTEMA COMPARTIR v2 — Desbloquea visibilidad de tareas
 // ══════════════════════════════════════════════════════════════
 (function(){
     'use strict';
 
     const DEPTOS_COMP = ["Ingresos","Egresos","Contabilidad","Recursos Humanos","Marketing","Administración","Ventas","Pagos","Gestoría","Almacén","Compras","Operaciones"];
-    let compartidosMios = [];
     let modoCompartir = 'usuario';
 
     async function getFBComp(){
@@ -7248,14 +7239,7 @@ window.guardarDatoRHInline = async () => {
         return {db:f.getFirestore(app), auth:au.getAuth(app), fs:f};
     }
 
-    // Obtener lista de usuarios conocidos
-    function getUsuariosConocidos(){
-        if(typeof NOMBRE_MAP !== 'undefined'){
-            return Object.entries(NOMBRE_MAP).map(([email,nombre])=>({email,nombre}));
-        }
-        return [];
-    }
-
+    // Modo compartir: usuario o área
     window.setModoCompartir = (modo) => {
         modoCompartir = modo;
         const btnU = document.getElementById('comp-modo-usuario');
@@ -7275,252 +7259,93 @@ window.guardarDatoRHInline = async () => {
             if(modo === 'usuario'){
                 wrap.innerHTML = '<input class="mkt-form-input" id="compartir-destino" type="email" placeholder="Escribe el correo del usuario..." style="margin-bottom:12px;">';
             } else {
-                wrap.innerHTML = `<select class="mkt-form-input" id="compartir-destino" style="margin-bottom:12px;">
-                    <option value="">Selecciona área...</option>
-                    ${DEPTOS_COMP.map(d => '<option value="'+d+'">'+d+'</option>').join('')}
-                </select>`;
+                wrap.innerHTML = '<select class="mkt-form-input" id="compartir-destino" style="margin-bottom:12px;"><option value="">Selecciona área...</option>' + DEPTOS_COMP.map(d => '<option value="'+d+'">'+d+'</option>').join('') + '</select>';
             }
         }
     };
 
-    // Abrir modal de compartir
-    window.abrirCompartir = (tipo, refId, titulo, detalle) => {
-        document.getElementById('compartir-tipo').value = tipo;
-        document.getElementById('compartir-ref-id').value = refId || '';
-        document.getElementById('compartir-data').value = JSON.stringify({titulo, detalle});
-        document.getElementById('compartir-item-preview').innerHTML = `
-            <div style="background:#f8faff;border:1px solid #e2e8f0;border-radius:10px;padding:10px;margin-top:6px;">
-                <div style="font-weight:700;color:#1e293b;font-size:13px;">${titulo||'—'}</div>
-                <div style="font-size:11px;color:#64748b;margin-top:2px;">${detalle||''}</div>
-            </div>`;
+    // Abrir modal compartir
+    window.abrirCompartir = (tipo, tareaId, titulo, detalle) => {
+        const modal = document.getElementById('modal-compartir');
+        if(!modal) { console.error('[COMPARTIR] Modal no encontrado'); return; }
+        document.getElementById('compartir-tarea-id').value = tareaId || '';
+        document.getElementById('compartir-item-preview').innerHTML =
+            '<div style="background:#f8faff;border:1px solid #e2e8f0;border-radius:10px;padding:10px;margin-top:6px;">' +
+            '<div style="font-weight:700;color:#1e293b;font-size:13px;">' + (titulo||'—') + '</div>' +
+            '<div style="font-size:11px;color:#64748b;margin-top:2px;">' + (detalle||'') + '</div></div>';
         document.getElementById('compartir-mensaje').value = '';
         setModoCompartir('usuario');
-        const modalComp = document.getElementById('modal-compartir');
-        modalComp.style.display = 'flex';
-        modalComp.style.zIndex = '9999';
-        setTimeout(()=> modalComp.scrollIntoView({behavior:'smooth',block:'center'}), 50);
+        modal.style.display = 'flex';
     };
 
-    // Enviar compartido
+    // Compartir tarea desde kanban
+    window._compTarea = (btn) => {
+        const id = btn.dataset.compid;
+        if(!id) return;
+        const titulo = btn.closest('.kcard')?.querySelector('.kcard-title')?.innerText || 'Tarea';
+        const usuario = btn.closest('.kcard')?.querySelector('.kcard-user div div:first-child')?.innerText || '';
+        window.abrirCompartir('tarea', id, titulo, usuario);
+    };
+
+    // Enviar compartido — agrega campo compartidoCon a la tarea
     window.enviarCompartido = async () => {
-        const destino = document.getElementById('compartir-destino')?.value;
-        if(!destino){ alert('Selecciona con quién compartir'); return; }
+        const destino = document.getElementById('compartir-destino')?.value?.trim();
+        if(!destino){ alert('Escribe el correo o selecciona un área'); return; }
 
-        const tipo = document.getElementById('compartir-tipo').value;
-        const refId = document.getElementById('compartir-ref-id').value;
-        const dataStr = document.getElementById('compartir-data').value;
+        const tareaId = document.getElementById('compartir-tarea-id').value;
+        if(!tareaId){ alert('No se encontró la tarea'); return; }
+
         const mensaje = document.getElementById('compartir-mensaje')?.value || '';
-        let itemData = {};
-        try { itemData = JSON.parse(dataStr); } catch(e){}
-
         const btn = document.querySelector('#modal-compartir button');
         if(btn){ btn.textContent = '📤 Enviando...'; btn.disabled = true; }
 
         try {
             const {db,fs,auth} = await getFBComp();
             const yo = auth.currentUser?.email || '';
+            const nombre = typeof nombreUsuario === 'function' ? nombreUsuario(yo) : yo;
 
-            const doc = {
-                tipo,
-                refId,
-                titulo: itemData.titulo || '',
-                detalle: itemData.detalle || '',
-                mensaje,
+            // Leer tarea actual
+            const tareaRef = fs.doc(db, 'actividades', tareaId);
+            const tareaSnap = await fs.getDoc(tareaRef);
+            if(!tareaSnap.exists()){ alert('Tarea no encontrada'); return; }
+
+            const tareaData = tareaSnap.data();
+            const compartidoCon = tareaData.compartidoCon || [];
+
+            // Agregar nuevo compartido
+            compartidoCon.push({
                 modo: modoCompartir,
-                destino,
-                destinoArea: modoCompartir === 'area' ? destino : '',
+                destino: destino,
                 destinoEmail: modoCompartir === 'usuario' ? destino : '',
+                destinoArea: modoCompartir === 'area' ? destino : '',
+                mensaje: mensaje,
                 compartidoPor: yo,
-                compartidoPorNombre: typeof nombreUsuario === 'function' ? nombreUsuario(yo) : yo,
-                fecha: new Date().toISOString(),
-                leido: false,
-                comentarios: []
-            };
+                compartidoPorNombre: nombre,
+                fecha: new Date().toISOString()
+            });
 
-            await fs.addDoc(fs.collection(db, 'compartidos'), doc);
+            // Actualizar tarea en Firestore
+            await fs.updateDoc(tareaRef, { compartidoCon: compartidoCon });
+
             document.getElementById('modal-compartir').style.display = 'none';
-            if(window.mostrarPush) window.mostrarPush('📤 Compartido', `${itemData.titulo} → ${destino}`, '📨');
+            if(window.mostrarPush) window.mostrarPush('📤 Compartido exitosamente', destino, '📨');
+            console.log('[COMPARTIR] ✅ Tarea', tareaId, 'compartida con', destino);
+
         } catch(e){
             console.error('[COMPARTIR ERROR]', e);
-            alert('Error: ' + e.message);
+            alert('Error al compartir: ' + e.message);
         } finally {
             if(btn){ btn.textContent = '📤 Compartir'; btn.disabled = false; }
         }
     };
 
-    // Cargar compartidos conmigo
-    async function cargarCompartidosConmigo(){
-        try {
-            const {db,fs,auth} = await getFBComp();
-            const yo = auth.currentUser?.email || '';
-            const miDepto = typeof obtenerDeptoUsuario === 'function' ? obtenerDeptoUsuario(yo) : '';
-
-            const snap = await fs.getDocs(fs.collection(db, 'compartidos'));
-            compartidosMios = [];
-            snap.docs.forEach(d => {
-                const data = d.data();
-                const esParaMi = data.destinoEmail === yo || data.destinoArea === miDepto;
-                if(esParaMi) compartidosMios.push({id:d.id, ...data});
-            });
-
-            compartidosMios.sort((a,b) => (b.fecha||'').localeCompare(a.fecha||''));
-
-            const panel = document.getElementById('compartido-conmigo');
-            const countEl = document.getElementById('compartido-count');
-            if(panel){
-                panel.style.display = compartidosMios.length > 0 ? 'block' : 'none';
-            }
-            if(countEl){
-                const noLeidos = compartidosMios.filter(c => !c.leido).length;
-                countEl.innerText = noLeidos > 0 ? `${noLeidos} nuevo${noLeidos>1?'s':''}` : `${compartidosMios.length}`;
-            }
-            renderCompartidos();
-        } catch(e){ console.warn('[COMPARTIDOS]', e.message); }
-    }
-
-    window.toggleCompartido = () => {
-        const lista = document.getElementById('compartido-lista');
-        const btn = document.getElementById('btn-toggle-compartido');
-        if(!lista) return;
-        if(lista.style.display === 'none'){
-            lista.style.display = 'block';
-            if(btn) btn.innerText = '▲ Ocultar';
-        } else {
-            lista.style.display = 'none';
-            if(btn) btn.innerText = '▼ Mostrar';
-        }
-    };
-
-    function renderCompartidos(){
-        const el = document.getElementById('compartido-lista');
-        if(!el) return;
-        if(!compartidosMios.length){
-            el.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:16px;font-size:12px;">Nada compartido contigo aún</div>';
-            return;
-        }
-
-        const tipoIcons = {documento:'📄',tarea:'📋',kpi:'📊',resultado:'📈'};
-
-        el.innerHTML = compartidosMios.map(c => {
-            const icon = tipoIcons[c.tipo] || '📨';
-            const noLeido = !c.leido;
-            const fecha = c.fecha ? new Date(c.fecha).toLocaleDateString('es-MX',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : '';
-            const totalComs = (c.comentarios||[]).length;
-
-            return `<div style="display:flex;gap:12px;padding:12px;border-bottom:1px solid rgba(59,130,246,0.08);${noLeido?'background:#eff6ff;':''}border-radius:8px;margin-bottom:4px;">
-                <div style="font-size:24px;flex-shrink:0;">${icon}</div>
-                <div style="flex:1;min-width:0;">
-                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
-                        <span style="font-weight:700;color:#1e293b;font-size:13px;">${c.titulo||'Sin título'}</span>
-                        ${noLeido?'<span style="background:#2563eb;color:white;font-size:8px;padding:2px 6px;border-radius:10px;font-weight:700;">NUEVO</span>':''}
-                    </div>
-                    <div style="font-size:11px;color:#64748b;margin-bottom:4px;">${c.detalle||''}</div>
-                    ${c.mensaje?`<div style="font-size:11px;color:#2563eb;background:#eff6ff;padding:4px 8px;border-radius:6px;margin-bottom:4px;">💬 "${c.mensaje}"</div>`:''}
-                    <div style="font-size:10px;color:#94a3b8;">De: <b>${c.compartidoPorNombre||c.compartidoPor||'—'}</b> · ${fecha}</div>
-                    ${totalComs>0?`<div style="font-size:10px;color:#2563eb;margin-top:2px;">💬 ${totalComs} comentario${totalComs>1?'s':''}</div>`:''}
-                </div>
-                <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">
-                    ${noLeido?`<button onclick="marcarLeido('${c.id}')" style="padding:4px 8px;background:#dcfce7;color:#16a34a;border:none;border-radius:6px;font-size:9px;font-weight:700;cursor:pointer;">✓ Leído</button>`:''}
-                    <button onclick="abrirComentarCompartido('${c.id}')" style="padding:4px 8px;background:#eff6ff;color:#2563eb;border:none;border-radius:6px;font-size:9px;font-weight:700;cursor:pointer;">💬</button>
-                </div>
-            </div>`;
-        }).join('');
-    }
-
-    window.marcarLeido = async (id) => {
-        try {
-            const {db,fs} = await getFBComp();
-            await fs.updateDoc(fs.doc(db,'compartidos',id), {leido:true});
-            cargarCompartidosConmigo();
-        } catch(e){ console.warn(e); }
-    };
-
-    // Comentar en compartido
-    window.abrirComentarCompartido = (id) => {
-        const item = compartidosMios.find(c=>c.id===id);
-        if(!item) return;
-
-        const comentarios = item.comentarios || [];
-        const yo = '';
-        try { yo = typeof auth !== 'undefined' ? auth.currentUser?.email : ''; } catch(e){}
-
-        const html = `
-        <div style="position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);z-index:3600;display:flex;align-items:center;justify-content:center;" id="modal-comp-comentar" onclick="if(event.target===this)this.remove()">
-            <div style="background:#fff;border-radius:20px;padding:24px;width:460px;max-width:95vw;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.15);">
-                <div style="font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;margin-bottom:4px;">💬 Comentarios</div>
-                <div style="font-size:12px;color:#64748b;margin-bottom:14px;">${item.titulo||''}</div>
-                <div style="flex:1;overflow-y:auto;max-height:300px;background:#f8faff;border-radius:10px;padding:10px;margin-bottom:12px;min-height:80px;" id="comp-chat-${id}">
-                    ${comentarios.length===0?'<div style="text-align:center;color:#94a3b8;font-size:12px;padding:20px;">Sin comentarios aún</div>':''}
-                    ${comentarios.map(cm => `<div style="margin-bottom:8px;padding:8px 10px;background:#fff;border-radius:8px;border:1px solid #e2e8f0;">
-                        <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
-                            <span style="font-size:11px;font-weight:700;color:#2563eb;">${cm.usuario||'—'}</span>
-                            <span style="font-size:9px;color:#94a3b8;">${cm.fecha?new Date(cm.fecha).toLocaleDateString('es-MX',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):''}</span>
-                        </div>
-                        <div style="font-size:12px;color:#1e293b;">${cm.texto||''}</div>
-                    </div>`).join('')}
-                </div>
-                <div style="display:flex;gap:8px;">
-                    <input type="text" id="comp-input-${id}" placeholder="Escribe un comentario..." style="flex:1;padding:10px 14px;border:1px solid #cbd5e1;border-radius:10px;font-size:13px;outline:none;">
-                    <button onclick="enviarComentarioComp('${id}')" style="padding:10px 16px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:white;border:none;border-radius:10px;font-weight:700;font-size:12px;cursor:pointer;">Enviar</button>
-                </div>
-            </div>
-        </div>`;
-        document.body.insertAdjacentHTML('beforeend', html);
-    };
-
-    window.enviarComentarioComp = async (id) => {
-        const input = document.getElementById('comp-input-'+id);
-        const texto = input?.value?.trim();
-        if(!texto) return;
-
-        try {
-            const {db,fs,auth} = await getFBComp();
-            const yo = auth.currentUser?.email || '';
-            const nombre = typeof nombreUsuario === 'function' ? nombreUsuario(yo) : yo;
-
-            const item = compartidosMios.find(c=>c.id===id);
-            const coms = item?.comentarios || [];
-            coms.push({ usuario:nombre, email:yo, texto, fecha:new Date().toISOString() });
-
-            await fs.updateDoc(fs.doc(db,'compartidos',id), { comentarios:coms });
-
-            // Cerrar modal y recargar
-            const modal = document.getElementById('modal-comp-comentar');
-            if(modal) modal.remove();
-            cargarCompartidosConmigo();
-            if(window.mostrarPush) window.mostrarPush('💬 Comentario enviado','','📨');
-        } catch(e){
-            alert('Error: '+e.message);
-        }
-    };
-
-    // Hook: cargar compartidos al entrar al dashboard
-    const CHECK_COMP = setInterval(()=>{
-        if(typeof window.navegar !== 'function') return;
-        clearInterval(CHECK_COMP);
-        const _origNav = window.navegar;
-        window.navegar = function(id, b){
-            _origNav(id, b);
-            if(id === 'dashboard') cargarCompartidosConmigo();
-        };
-        // Cargar al inicio
-        setTimeout(()=> cargarCompartidosConmigo(), 2000);
-    }, 300);
-
-    // Cerrar modal compartir al clic fuera
+    // Cerrar modal al clic fuera
     document.getElementById('modal-compartir')?.addEventListener('click', e=>{
         if(e.target.id==='modal-compartir') e.target.style.display='none';
     });
-    // Helper para compartir tarea desde kanban
-    window._compTarea = (btn) => {
-        const id = btn.dataset.compid;
-        if(!id) return;
-        // Buscar tarea en el DOM o en localDB
-        const titulo = btn.closest('.kcard')?.querySelector('.kcard-title')?.innerText || 'Tarea';
-        const area = btn.closest('.kcard')?.querySelector('.kcard-origen')?.innerText || '';
-        window.abrirCompartir('tarea', id, titulo, area);
-    };
-    console.log('[COMPARTIR] ✅ Módulo cargado');
+
+    console.log('[COMPARTIR v2] ✅ Módulo cargado');
+})();
 })();
 </script>
     <script>
