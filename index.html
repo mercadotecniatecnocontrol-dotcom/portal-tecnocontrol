@@ -7260,7 +7260,7 @@ window.guardarDatoRHInline = async () => {
         modoCompartir = modo;
         const btnU = document.getElementById('comp-modo-usuario');
         const btnA = document.getElementById('comp-modo-area');
-        const sel = document.getElementById('compartir-destino');
+        const wrap = document.getElementById('compartir-destino-wrap');
         if(btnU){
             btnU.style.borderColor = modo==='usuario' ? '#2563eb' : '#cbd5e1';
             btnU.style.background = modo==='usuario' ? '#eff6ff' : '#ffffff';
@@ -7271,14 +7271,14 @@ window.guardarDatoRHInline = async () => {
             btnA.style.background = modo==='area' ? '#eff6ff' : '#ffffff';
             btnA.style.color = modo==='area' ? '#2563eb' : '#475569';
         }
-        if(sel){
+        if(wrap){
             if(modo === 'usuario'){
-                const usuarios = getUsuariosConocidos();
-                sel.innerHTML = '<option value="">Selecciona usuario...</option>' + 
-                    usuarios.map(u => `<option value="${u.email}">${u.nombre} (${u.email})</option>`).join('');
+                wrap.innerHTML = '<input class="mkt-form-input" id="compartir-destino" type="email" placeholder="Escribe el correo del usuario..." style="margin-bottom:12px;">';
             } else {
-                sel.innerHTML = '<option value="">Selecciona área...</option>' + 
-                    DEPTOS_COMP.map(d => `<option value="${d}">${d}</option>`).join('');
+                wrap.innerHTML = `<select class="mkt-form-input" id="compartir-destino" style="margin-bottom:12px;">
+                    <option value="">Selecciona área...</option>
+                    ${DEPTOS_COMP.map(d => '<option value="'+d+'">'+d+'</option>').join('')}
+                </select>`;
             }
         }
     };
@@ -7295,7 +7295,10 @@ window.guardarDatoRHInline = async () => {
             </div>`;
         document.getElementById('compartir-mensaje').value = '';
         setModoCompartir('usuario');
-        document.getElementById('modal-compartir').style.display = 'flex';
+        const modalComp = document.getElementById('modal-compartir');
+        modalComp.style.display = 'flex';
+        modalComp.style.zIndex = '9999';
+        setTimeout(()=> modalComp.scrollIntoView({behavior:'smooth',block:'center'}), 50);
     };
 
     // Enviar compartido
