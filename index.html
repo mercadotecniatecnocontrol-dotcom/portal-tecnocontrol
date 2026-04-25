@@ -7031,7 +7031,7 @@ window.guardarDatoRHInline = async () => {
         // KPIs por empresa
         const stats = {};
         EMPRESAS.forEach(emp => {
-            const empRegs = regs.filter(r => r.empresa === emp);
+            const empRegs = regs.filter(r => r.empresa === emp || (!r.empresa && emp === 'Otra'));
             const bajas = empRegs.filter(r => (r.movimiento||'').includes('baja')).length;
             const altas = empRegs.filter(r => r.movimiento === 'alta').length;
             const plantilla = plantillaData[emp] || 0;
@@ -8748,9 +8748,7 @@ window.guardarDatoRHInline = async () => {
                     seccion('Incapacidades','🏥', data.incapacidad||[],
                         [{label:'Colaborador',key:'nombre'},{label:'Área',key:'area'},{label:'Folio',key:'folio'},{label:'Días',key:'dias'}],
                         'incapacidad','#ef4444') +
-                    seccion('Rotación de Personal','🔄', data.rotacion||[],
-                        [{label:'Colaborador',key:'nombre'},{label:'Área',key:'area'},{label:'Movimiento',key:'movimiento'},{label:'Fecha',key:'fecha'}],
-                        'rotacion','#64748b');
+                    '';
             }
         }
 
