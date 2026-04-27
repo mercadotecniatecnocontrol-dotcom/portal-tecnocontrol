@@ -5032,30 +5032,31 @@ async function cargarDatosRH(){
         const mesAnioActual = inicio.getFullYear()+'-'+String(inicio.getMonth()+1).padStart(2,'0');
 
         const snapAll = await fbRH.getDocs(fbRH.collection(db,'rh_indicadores'));
-        const semData = { retardos:[], faltas:[], descuentos:[], vacantes:[], actas:[], rotacion:[], capacitacion:[], incapacidad:[] };
+       const semData = { retardos:[], faltas:[], descuentos:[], vacantes:[], actas:[], rotacion:[], capacitacion:[], incapacidad:[] };
         
+        const tipoMapRH = {
+            'retardo':'retardos', 'falta':'faltas', 'descuento':'descuentos',
+            'vacante':'vacantes', 'acta':'actas', 'rotacion':'rotacion',
+            'capacitacion':'capacitacion', 'incapacidad':'incapacidad'
+        };
+
         snapAll.docs.forEach(d => {
             const data = d.data();
             const tipo = data.tipo;
-            if(!tipo || !semData[tipo]) return;
+            const arrayKey = tipoMapRH[tipo];
+            if(!arrayKey || !semData[arrayKey]) return;
             
-            // Múltiples criterios de match — cualquiera es suficiente
             const matchKey = data.semanaKey === key;
-            
-            // Match por fecha del registro (campo fecha)
             const matchFecha = data.fecha && data.fecha >= fechaIni && data.fecha <= fechaFin;
-            
-            // Match por creadoEn (siempre existe, es ISO string)
             const creadoFecha = data.creadoEn ? data.creadoEn.slice(0,10) : '';
             const matchCreado = creadoFecha >= fechaIni && creadoFecha <= fechaFin;
-            
-            // Match por mesAnio (mes actual)  
             const matchMes = data.mesAnio === mesAnioActual;
 
-            const esMensual2 = tipo === 'vacante' || tipo === 'acta';
-                    if(esMensual2){
-                        if(matchMes || matchFecha) semData[tipo] ? semData[tipo].push({id:d.id,...data}) : null;
-                    } else {
+            const esMensual = tipo === 'vacante' || tipo === 'acta';
+            if(esMensual){
+                if(matchMes || matchFecha) semData[arrayKey].push({id:d.id,...data});
+            } else {
+                if(matchKey || matchFecha || matchCreado || matchMes) semData[arrayKey].push({id:d.id,...data});
             }
         });
 
