@@ -5052,8 +5052,12 @@ async function cargarDatosRH(){
             // Match por mesAnio (mes actual)  
             const matchMes = data.mesAnio === mesAnioActual;
 
-            if(matchKey || matchFecha || matchCreado || matchMes){
-                semData[tipo].push({id:d.id,...data});
+            const esMensual2 = tipo === 'vacante' || tipo === 'acta';
+                    if(esMensual2){
+                        if(matchMes || matchFecha) semData[tipo] ? semData[tipo].push({id:d.id,...data}) : null;
+                    } else {
+                        if(matchKey || matchFecha || matchCreado || matchMes) semData[tipo] ? semData[tipo].push({id:d.id,...data}) : null;
+                    }
             }
         });
 
