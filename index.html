@@ -1060,6 +1060,9 @@
         .push-on{background:rgba(255,255,255,0.15);color:#ffffff;border:1px solid rgba(255,255,255,0.25);}
         .push-off{background:rgba(255,255,255,0.10);color:rgba(255,255,255,0.60);border:1px solid rgba(255,255,255,0.15);cursor:pointer;}
         .push-off:hover{background:rgba(255,255,255,0.20);}
+        /* Modal compartir */
+        #modal-compartir{position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);z-index:99999;align-items:center;justify-content:center;display:none !important;}
+        #modal-compartir.modal-visible{display:flex !important;}
     </style>
 </head>
 <body>
@@ -1130,7 +1133,7 @@
         <input class="mkt-form-input" id="compartir-mensaje" type="text" placeholder="Ej: Revisa esta actividad por favor..." style="margin-bottom:16px;">
         <div style="display:flex;gap:10px;">
             <button onclick="enviarCompartido()" style="flex:1;padding:11px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:white;border:none;border-radius:10px;font-weight:700;cursor:pointer;font-size:13px;">📤 Compartir</button>
-            <button onclick="document.getElementById('modal-compartir').style.display='none'" style="flex:1;padding:11px;background:#f1f5f9;border:none;border-radius:10px;color:#475569;font-weight:700;cursor:pointer;font-size:13px;">Cancelar</button>
+            <button onclick="document.getElementById('modal-compartir').className=''" style="flex:1;padding:11px;background:#f1f5f9;border:none;border-radius:10px;color:#475569;font-weight:700;cursor:pointer;font-size:13px;">Cancelar</button>
         </div>
     </div>
 </div>
@@ -7280,7 +7283,7 @@ window.guardarDatoRHInline = async () => {
             '<div style="font-size:11px;color:#64748b;margin-top:2px;">' + (detalle||'') + '</div></div>';
         document.getElementById('compartir-mensaje').value = '';
         setModoCompartir('usuario');
-        modal.style.display = 'flex';
+        modal.className = 'modal-visible';
     };
 
     // Compartir tarea desde kanban
