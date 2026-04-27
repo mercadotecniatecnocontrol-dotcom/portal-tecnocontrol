@@ -7412,8 +7412,9 @@ window.guardarDatoRHInline = async () => {
             snap.docs.forEach(d => {
                 const data = d.data();
                 const compartidos = data.compartidoCon || [];
+                const areaViewing = typeof areaActual !== 'undefined' ? areaActual : '';
                 const esParaMi = compartidos.some(c =>
-                    c.destinoEmail === yo || c.destinoArea === miDepto
+                    c.destinoEmail === yo || c.destinoArea === miDepto || c.destinoArea === areaViewing
                 );
                 if(esParaMi) idsCompartidas.add(d.id);
             });
