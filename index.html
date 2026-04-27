@@ -6809,25 +6809,28 @@ window.guardarDatoRHInline = async () => {
             document.getElementById('modal-ap').style.display='none';
             if(window.mostrarPush) window.mostrarPush('📄 Documento guardado', desc, '📋');
             
-            // ── Auto-crear tarea en el kanban ──
-            try {
-                const tareaData = {
-                    actividad: '📄 ' + desc,
-                    area: apAreaActual,
-                    fechaLimite: fecha,
-                    fechaInicio: fecha,
-                    fechaCreacion: new Date().toISOString(),
-                    estatus: 'Sin Iniciar',
-                    prioridad: 'Media',
-                    responsable: auth.currentUser?.email || '',
-                    encargado: docData.responsable || auth.currentUser?.email || '',
-                    origen: 'Parrilla de documentos',
-                    comentarios: []
-                };
-                const { db: db2, fs: fs2 } = await getFirebaseAP();
-                await fs2.addDoc(fs2.collection(db2, 'actividades'), tareaData);
-                console.log('[AP] ✅ Tarea auto-creada:', desc);
-            } catch(e2){ console.warn('[AP] Error al crear tarea:', e2.message); }
+            // ── Auto-crear tarea en el kanban (solo documentos nuevos) ──
+            if(!editId){
+                try {
+                    const tareaData = {
+                        actividad: '📄 ' + desc,
+                        area: apAreaActual,
+                        fechaLimite: fecha,
+                        fechaInicio: fecha,
+                        fechaCreacion: new Date().toISOString(),
+                        estatus: 'Sin Iniciar',
+                        prioridad: 'Media',
+                        responsable: auth.currentUser?.email || '',
+                        encargado: docData.responsable || auth.currentUser?.email || '',
+                        origen: 'Parrilla de documentos',
+                        docId: editId || '',
+                        comentarios: []
+                    };
+                    const { db: db2, fs: fs2 } = await getFirebaseAP();
+                    await fs2.addDoc(fs2.collection(db2, 'actividades'), tareaData);
+                    console.log('[AP] ✅ Tarea auto-creada:', desc);
+                } catch(e2){ console.warn('[AP] Error al crear tarea:', e2.message); }
+            }
             
             cargarDocsAP();
         } catch(e){ alert('Error: '+e.message); }
