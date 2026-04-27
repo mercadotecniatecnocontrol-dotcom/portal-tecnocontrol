@@ -5509,7 +5509,7 @@ window.guardarRHInline = async () => {
         case 'retardo': docData={...docData, nombre:rhGet('rh-f-nombre'), area:rhGet('rh-f-area'), fecha:rhGet('rh-f-fecha'), hora:rhGet('rh-f-hora'), minutos:Number(rhGet('rh-f-minutos'))||0, notas:rhGet('rh-f-notas')}; break;
         case 'falta': docData={...docData, nombre:rhGet('rh-f-nombre'), area:rhGet('rh-f-area'), fecha:rhGet('rh-f-fecha'), tipoFalta:rhGet('rh-f-tipoFalta')||'injustificada', dias:Number(rhGet('rh-f-dias'))||1, fechaRegreso:rhGet('rh-f-fecha-regreso')||'', notas:rhGet('rh-f-notas')}; break;
         case 'descuento': docData={...docData, nombre:rhGet('rh-f-nombre'), area:rhGet('rh-f-area'), fecha:rhGet('rh-f-fecha'), monto:Number(rhGet('rh-f-monto'))||0, motivoDesc:rhGet('rh-f-motivoDesc')||'Otro', notas:rhGet('rh-f-notas')}; break;
-        case 'rotacion': docData={...docData, nombre:rhGet('rh-f-nombre'), area:rhGet('rh-f-area'), fecha:rhGet('rh-f-fecha'), movimiento:rhGet('rh-f-movimiento')||'baja', notas:rhGet('rh-f-notas')}; break;
+        case 'rotacion': docData={...docData, nombre:rhGet('rh-f-nombre'), area:rhGet('rh-f-area'), fecha:rhGet('rh-f-fecha'), movimiento:rhGet('rh-f-movimiento')||'baja', empresa:(document.getElementById('rh-f-empresa')?.value||''), notas:rhGet('rh-f-notas')}; break;
         case 'vacante': docData={...docData, puesto:rhGet('rh-f-puesto'), area:rhGet('rh-f-area'), fecha:rhGet('rh-f-fecha'), estatus:rhGet('rh-f-vacEstatus')||'nueva', notas:rhGet('rh-f-notas')}; break;
         case 'acta': docData={...docData, nombre:rhGet('rh-f-nombre'), area:rhGet('rh-f-area'), fecha:rhGet('rh-f-fecha'), tipoActa:rhGet('rh-f-tipoActa')||'conducta', notas:rhGet('rh-f-notas')}; break;
         case 'capacitacion': docData={...docData, nombre:rhGet('rh-f-capNombre'), impartidor:rhGet('rh-f-capImpartidor'), fecha:rhGet('rh-f-fecha'), lugar:rhGet('rh-f-capLugar'), duracion:Number(rhGet('rh-f-capDuracion'))||0, asistentes:rhGet('rh-f-capAsistentes'), notas:rhGet('rh-f-notas')}; break;
@@ -5615,7 +5615,8 @@ window.guardarDatoRH = async () => {
                 nombre:rhGet('rh-f-nombre'), area:rhGet('rh-f-area'),
                 fecha:rhGet('rh-f-fecha'),
                 movimiento:rhGet('rh-f-movimiento')||'baja',
-                notas:rhGet('rh-f-notas')};
+            empresa:(document.getElementById('rh-f-empresa')?.value||''),
+            notas:rhGet('rh-f-notas')};
             break;
         case 'vacante':
             docData = {...docData,
@@ -6584,7 +6585,8 @@ window.guardarDatoRHInline = async () => {
             if(!rhpGet('rhp-nombre')){ alert('Escribe el nombre'); if(btn){btn.textContent='💾 GUARDAR REGISTRO';btn.disabled=false;} return; }
             data = {...data, nombre:rhpGet('rhp-nombre'), area:rhpGet('rhp-area'),
                 movimiento:rhpGet('rhp-movimiento'), fecha:rhpGet('rhp-fecha'),
-                notas:rhpGet('rhp-notas')};
+            empresa:(document.getElementById('rh-f-empresa')?.value||document.getElementById('rhp-empresa')?.value||''),
+            notas:rhpGet('rhp-notas')};
             break;
         case 'vacante':
             if(!rhpGet('rhp-puesto')){ alert('Escribe el puesto'); if(btn){btn.textContent='💾 GUARDAR REGISTRO';btn.disabled=false;} return; }
