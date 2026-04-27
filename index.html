@@ -1946,6 +1946,11 @@
             </div>
 
             <div style="margin-bottom:16px;display:flex;gap:12px;align-items:center;">
+                <div id="filtro-compartidas" style="display:flex;gap:6px;margin-bottom:12px;">
+                <button onclick="setFiltroCompartidas('todas')" id="btn-filtro-todas" style="padding:6px 14px;border-radius:8px;border:2px solid #2563eb;background:#2563eb;color:white;font-weight:700;font-size:11px;cursor:pointer;">📋 Todas</button>
+                <button onclick="setFiltroCompartidas('compartidas')" id="btn-filtro-compartidas" style="padding:6px 14px;border-radius:8px;border:1px solid #cbd5e1;background:#ffffff;color:#475569;font-weight:700;font-size:11px;cursor:pointer;">📨 Compartidas conmigo</button>
+                <span id="compartidas-count" style="font-size:11px;color:#64748b;align-self:center;"></span>
+            </div>
                 <div style="position:relative;flex:1;max-width:460px;">
                     <span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:15px;pointer-events:none;">🔍</span>
                     <input type="text" id="area-search" placeholder="Buscar actividad o responsable..."
@@ -7329,6 +7334,105 @@ window.guardarDatoRHInline = async () => {
     document.getElementById('modal-compartir')?.addEventListener('click', e=>{
         if(e.target.id==='modal-compartir') e.target.style.display='none';
     });
+    // Filtro de tareas compartidas en el kanban
+    let filtroCompartidas = 'todas';
+
+    window.setFiltroCompartidas = (modo) => {
+        filtroCompartidas = modo;
+        const btnTodas = document.getElementById('btn-filtro-todas');
+        const btnComp = document.getElementById('btn-filtro-compartidas');
+        if(btnTodas){
+            btnTodas.style.background = modo==='todas' ? '#2563eb' : '#ffffff';
+            btnTodas.style.color = modo==='todas' ? 'white' : '#475569';
+            btnTodas.style.borderColor = modo==='todas' ? '#2563eb' : '#cbd5e1';
+        }
+        if(btnComp){
+            btnComp.style.background = modo==='compartidas' ? '#2563eb' : '#ffffff';
+            btnComp.style.color = modo==='compartidas' ? 'white' : '#475569';
+            btnComp.style.borderColor = modo==='compartidas' ? '#2563eb' : '#cbd5e1';
+        }
+        // Forzar re-render del kanban
+        if(typeof renderTabla === 'function') renderTabla();
+    };
+
+    // Interceptar renderTabla para aplicar filtro de compartidas
+    const CHECK_FILTRO = setInterval(()=>{
+        if(typeof window.renderTabla !== 'function' && typeof renderTabla !== 'function') return;
+        clearInterval(CHECK_FILTRO);
+
+        // No podemos interceptar renderTabla directamente porque está en el módulo
+        // En vez de eso, filtramos visualmente las tarjetas después del render
+        const observer = new MutationObserver(()=>{
+            if(filtroCompartidas !== 'compartidas') return;
+            aplicarFiltroCompartidas();
+        });
+
+        const areaTable = document.getElementById('area-table');
+        if(areaTable) observer.observe(areaTable, {childList:true, subtree:true});
+
+        // También aplicar al cambiar filtro
+        const _origSetFiltro = window.setFiltroCompartidas;
+        window.setFiltroCompartidas = (modo) => {
+            filtroCompartidas = modo;
+            const btnTodas = document.getElementById('btn-filtro-todas');
+            const btnComp = document.getElementById('btn-filtro-compartidas');
+            if(btnTodas){
+                btnTodas.style.background = modo==='todas' ? '#2563eb' : '#ffffff';
+                btnTodas.style.color = modo==='todas' ? 'white' : '#475569';
+                btnTodas.style.borderColor = modo==='todas' ? '#2563eb' : '#cbd5e1';
+            }
+            if(btnComp){
+                btnComp.style.background = modo==='compartidas' ? '#2563eb' : '#ffffff';
+                btnComp.style.color = modo==='compartidas' ? 'white' : '#475569';
+                btnComp.style.borderColor = modo==='compartidas' ? '#2563eb' : '#cbd5e1';
+            }
+            if(modo === 'todas'){
+                // Mostrar todas las tarjetas
+                document.querySelectorAll('.kcard').forEach(card => card.style.display = '');
+                const countEl = document.getElementById('compartidas-count');
+                if(countEl) countEl.innerText = '';
+            } else {
+                aplicarFiltroCompartidas();
+            }
+        };
+    }, 500);
+
+    async function aplicarFiltroCompartidas(){
+        try {
+            const {db,fs,auth} = await getFBComp();
+            const yo = auth.currentUser?.email || '';
+            const miDepto = typeof obtenerDeptoUsuario === 'function' ? obtenerDeptoUsuario(yo) : '';
+
+            // Obtener IDs de tareas compartidas conmigo
+            const snap = await fs.getDocs(fs.collection(db,'actividades'));
+            const idsCompartidas = new Set();
+            snap.docs.forEach(d => {
+                const data = d.data();
+                const compartidos = data.compartidoCon || [];
+                const esParaMi = compartidos.some(c =>
+                    c.destinoEmail === yo || c.destinoArea === miDepto
+                );
+                if(esParaMi) idsCompartidas.add(d.id);
+            });
+
+            // Ocultar/mostrar tarjetas
+            let visibles = 0;
+            document.querySelectorAll('.kcard').forEach(card => {
+                const compBtn = card.querySelector('[data-compid]');
+                const id = compBtn?.dataset?.compid || '';
+                if(idsCompartidas.has(id)){
+                    card.style.display = '';
+                    visibles++;
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+
+            const countEl = document.getElementById('compartidas-count');
+            if(countEl) countEl.innerText = `${visibles} tarea${visibles!==1?'s':''} compartida${visibles!==1?'s':''}`;
+
+        } catch(e){ console.warn('[FILTRO COMPARTIDAS]', e.message); }
+    }
 
     console.log('[COMPARTIR v2] ✅ Módulo cargado');
 })();
