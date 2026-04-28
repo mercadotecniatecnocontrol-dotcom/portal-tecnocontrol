@@ -1392,6 +1392,142 @@
         <div id="pag-registros-lista"></div>
     </div>
 </div>
+     <!-- ═══ MÓDULO FORMULARIOS — OPERACIONES ═══ -->
+<div id="operaciones-forms" style="display:none;margin-bottom:28px;">
+    <div class="rh-dash-header">
+        <div class="rh-dash-title">🏗️ Formularios Operaciones
+            <span class="rh-dash-badge" style="background:#fef3c7;color:#92400e;">Servicio Técnico</span>
+        </div>
+        <div style="display:flex;gap:8px;">
+            <button onclick="abrirFormServicio()" class="mkt-add-btn" style="background:linear-gradient(135deg,#4f46e5,#4338ca);">📋 Nuevo Servicio Técnico</button>
+            <button onclick="toggleListaServicios()" class="mkt-add-btn" style="background:linear-gradient(135deg,#059669,#047857);">📊 Ver registros</button>
+        </div>
+    </div>
+
+    <!-- Form Servicio Técnico -->
+    <div id="form-servicio-tecnico" style="display:none;background:#fff;border-radius:16px;border:2px solid #4f46e5;padding:24px;margin:16px 0;box-shadow:0 4px 20px rgba(79,70,229,0.12);animation:slideDown 0.2s ease;">
+        <div style="font-family:'Space Grotesk',sans-serif;font-size:17px;font-weight:700;color:#312e81;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;">
+            <span>📋 Reporte de Servicio Técnico</span>
+            <button onclick="cerrarFormServicio()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#94a3b8;">✕</button>
+        </div>
+        <input type="hidden" id="srv-edit-id">
+
+        <!-- Datos del cliente -->
+        <div style="font-size:12px;font-weight:700;color:#4f46e5;margin-bottom:8px;border-bottom:2px solid #e0e7ff;padding-bottom:6px;">🏢 DATOS DEL CLIENTE</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+            <div><label class="rh-form-label">Cliente</label><input class="rh-form-input" id="srv-cliente" type="text" placeholder="Nombre del cliente"></div>
+            <div><label class="rh-form-label">Razón social</label><input class="rh-form-input" id="srv-razon" type="text" placeholder="Razón social"></div>
+            <div><label class="rh-form-label">Estación de servicio</label><input class="rh-form-input" id="srv-estacion" type="text" placeholder="Nombre o número de estación"></div>
+            <div><label class="rh-form-label">No. Folio / O.S.</label><input class="rh-form-input" id="srv-folio" type="text" placeholder="Número de orden de servicio"></div>
+        </div>
+
+        <!-- Ubicación -->
+        <div style="font-size:12px;font-weight:700;color:#4f46e5;margin-bottom:8px;border-bottom:2px solid #e0e7ff;padding-bottom:6px;">📍 UBICACIÓN</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;margin-bottom:8px;">
+            <div><label class="rh-form-label">Latitud</label><input class="rh-form-input" id="srv-lat" type="number" step="0.000001" placeholder="Ej: 28.6353"></div>
+            <div><label class="rh-form-label">Longitud</label><input class="rh-form-input" id="srv-lng" type="number" step="0.000001" placeholder="Ej: -106.0889"></div>
+            <div style="align-self:flex-end;"><button onclick="srvUsarGPS()" style="padding:10px 16px;background:linear-gradient(135deg,#059669,#047857);color:white;border:none;border-radius:10px;font-weight:700;cursor:pointer;font-size:12px;white-space:nowrap;">📍 GPS</button></div>
+        </div>
+        <div id="srv-gps-status" style="font-size:11px;color:#64748b;margin-bottom:16px;"></div>
+
+        <!-- Datos del servicio -->
+        <div style="font-size:12px;font-weight:700;color:#4f46e5;margin-bottom:8px;border-bottom:2px solid #e0e7ff;padding-bottom:6px;">🔧 DATOS DEL SERVICIO</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
+            <div><label class="rh-form-label">Fecha de servicio</label><input class="rh-form-input" id="srv-fecha" type="date"></div>
+            <div><label class="rh-form-label">Hora de servicio</label><input class="rh-form-input" id="srv-hora" type="time"></div>
+            <div><label class="rh-form-label">Técnico auxiliar</label>
+                <select class="rh-form-input" id="srv-tecnico">
+                    <option value="">Seleccionar técnico...</option>
+                    <option>Carlos Martínez</option>
+                    <option>José López</option>
+                    <option>Miguel Hernández</option>
+                    <option>Roberto Sánchez</option>
+                    <option>Otro</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Orden de servicio (imagen) -->
+        <div style="margin-bottom:14px;">
+            <label class="rh-form-label">Orden de servicio (imagen)</label>
+            <div id="srv-os-zone" onclick="document.getElementById('srv-os-input').click()" style="border:2px dashed #cbd5e1;border-radius:10px;padding:20px;text-align:center;cursor:pointer;transition:0.2s;">
+                <div id="srv-os-text" style="color:#94a3b8;font-size:12px;">📷 Clic para subir imagen de la orden de servicio</div>
+                <img id="srv-os-preview" style="display:none;width:100%;max-height:200px;object-fit:contain;border-radius:8px;margin-top:8px;">
+            </div>
+            <input type="file" id="srv-os-input" accept="image/*" capture="environment" style="display:none;" onchange="srvPreviewImg(this,'srv-os-preview','srv-os-text','srv-os-url')">
+            <input type="hidden" id="srv-os-url">
+        </div>
+
+        <!-- Descripción -->
+        <label class="rh-form-label">Descripción del servicio realizado</label>
+        <textarea class="rh-form-input" id="srv-descripcion" rows="3" placeholder="Describe brevemente el servicio realizado..." style="resize:vertical;margin-bottom:14px;"></textarea>
+
+        <!-- ¿Se concluyó? -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+            <div><label class="rh-form-label">¿Se concluyó satisfactoriamente?</label>
+                <select class="rh-form-input" id="srv-concluido" onchange="document.getElementById('srv-no-porque').style.display=this.value==='no'?'block':'none'">
+                    <option value="si">✅ Sí</option>
+                    <option value="no">❌ No</option>
+                </select>
+            </div>
+            <div id="srv-no-porque" style="display:none;">
+                <label class="rh-form-label">¿Por qué no se concluyó?</label>
+                <input class="rh-form-input" id="srv-motivo-no" type="text" placeholder="Motivo...">
+            </div>
+        </div>
+
+        <!-- Evidencia foto -->
+        <div style="font-size:12px;font-weight:700;color:#4f46e5;margin-bottom:8px;border-bottom:2px solid #e0e7ff;padding-bottom:6px;">📸 EVIDENCIAS</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+            <div>
+                <label class="rh-form-label">Foto de evidencia</label>
+                <div onclick="document.getElementById('srv-foto-input').click()" style="border:2px dashed #cbd5e1;border-radius:10px;padding:16px;text-align:center;cursor:pointer;">
+                    <div id="srv-foto-text" style="color:#94a3b8;font-size:11px;">📷 Clic para tomar foto</div>
+                    <img id="srv-foto-preview" style="display:none;width:100%;max-height:150px;object-fit:cover;border-radius:8px;margin-top:6px;">
+                </div>
+                <input type="file" id="srv-foto-input" accept="image/*" capture="environment" style="display:none;" onchange="srvPreviewImg(this,'srv-foto-preview','srv-foto-text','srv-foto-url')">
+                <input type="hidden" id="srv-foto-url">
+            </div>
+            <div>
+                <label class="rh-form-label">Video de evidencia</label>
+                <div onclick="document.getElementById('srv-video-input').click()" style="border:2px dashed #cbd5e1;border-radius:10px;padding:16px;text-align:center;cursor:pointer;">
+                    <div id="srv-video-text" style="color:#94a3b8;font-size:11px;">🎥 Clic para grabar video</div>
+                    <video id="srv-video-preview" style="display:none;width:100%;max-height:150px;border-radius:8px;margin-top:6px;" controls></video>
+                </div>
+                <input type="file" id="srv-video-input" accept="video/*" capture="environment" style="display:none;" onchange="srvPreviewVideo(this)">
+                <input type="hidden" id="srv-video-url">
+            </div>
+        </div>
+
+        <!-- Firma digital -->
+        <div style="font-size:12px;font-weight:700;color:#4f46e5;margin-bottom:8px;border-bottom:2px solid #e0e7ff;padding-bottom:6px;">✍️ FIRMA DE CONFORMIDAD</div>
+        <div style="margin-bottom:8px;">
+            <label class="rh-form-label">Nombre de quien firma</label>
+            <input class="rh-form-input" id="srv-firma-nombre" type="text" placeholder="Nombre completo del cliente o responsable" style="margin-bottom:8px;">
+        </div>
+        <div style="position:relative;border:2px solid #cbd5e1;border-radius:12px;background:#fafafa;margin-bottom:8px;overflow:hidden;">
+            <canvas id="srv-firma-canvas" width="600" height="180" style="width:100%;height:180px;cursor:crosshair;touch-action:none;"></canvas>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:16px;">
+            <button onclick="limpiarFirma()" style="padding:6px 14px;background:#fee2e2;color:#dc2626;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">🗑 Limpiar firma</button>
+            <span style="font-size:10px;color:#94a3b8;align-self:center;">Firma con el dedo o mouse sobre el recuadro</span>
+        </div>
+
+        <!-- Botón enviar -->
+        <button onclick="enviarFormServicio()" style="width:100%;padding:14px;background:linear-gradient(135deg,#4f46e5,#4338ca);color:white;border:none;border-radius:12px;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:15px;cursor:pointer;letter-spacing:0.5px;">📤 ENVIAR FORMULARIO</button>
+    </div>
+
+    <!-- Lista de servicios registrados -->
+    <div id="servicios-lista-wrap" style="display:none;">
+        <div class="mkt-card">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+                <div class="mkt-card-title">📊 Servicios registrados</div>
+                <input type="text" id="srv-buscar" placeholder="🔍 Buscar cliente, folio..." oninput="buscarServicios()" style="padding:7px 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;width:200px;outline:none;">
+            </div>
+            <div id="servicios-lista-content"></div>
+        </div>
+    </div>
+</div>       
     <!-- ═══ MINI-DASHBOARD EGRESOS v2 — Registros individuales ═══ -->
 <div id="egresos-dashboard" style="display:none;margin-bottom:28px;">
     <div class="rh-dash-header">
@@ -7442,6 +7578,322 @@ window.guardarDatoRHInline = async () => {
 })();
 </script>
     <script>
+    <script>
+// ══════════════════════════════════════════════════════════════
+// FORMULARIOS OPERACIONES — Servicio Técnico
+// ══════════════════════════════════════════════════════════════
+(function(){
+    'use strict';
+
+    let serviciosDB = [];
+    let firmaCtx = null;
+    let firmaDibujando = false;
+
+    async function getFBSrv(){
+        const a = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+        const f = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const au = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+        const app = a.getApps()[0];
+        return {db:f.getFirestore(app), auth:au.getAuth(app), fs:f};
+    }
+
+    // GPS
+    window.srvUsarGPS = () => {
+        const status = document.getElementById('srv-gps-status');
+        if(!navigator.geolocation){status.innerText='❌ GPS no disponible';return;}
+        status.innerText='⏳ Obteniendo ubicación...';
+        navigator.geolocation.getCurrentPosition(pos=>{
+            document.getElementById('srv-lat').value=pos.coords.latitude.toFixed(6);
+            document.getElementById('srv-lng').value=pos.coords.longitude.toFixed(6);
+            status.innerHTML=`✅ Ubicación capturada · Precisión: ${Math.round(pos.coords.accuracy)}m`;
+            status.style.color='#16a34a';
+        },err=>{
+            status.innerText='❌ '+err.message;status.style.color='#dc2626';
+        },{enableHighAccuracy:true,timeout:15000});
+    };
+
+    // Preview imágenes
+    window.srvPreviewImg = (input, previewId, textId, urlId) => {
+        const file=input.files[0];if(!file)return;
+        if(file.size>5*1024*1024){alert('Imagen muy grande. Máximo 5MB.');return;}
+        const reader=new FileReader();
+        reader.onload=e=>{
+            const prev=document.getElementById(previewId);
+            prev.src=e.target.result;prev.style.display='block';
+            document.getElementById(textId).style.display='none';
+            document.getElementById(urlId).value=e.target.result;
+        };
+        reader.readAsDataURL(file);
+    };
+
+    // Preview video
+    window.srvPreviewVideo = (input) => {
+        const file=input.files[0];if(!file)return;
+        if(file.size>20*1024*1024){alert('Video muy grande. Máximo 20MB.');return;}
+        const reader=new FileReader();
+        reader.onload=e=>{
+            const prev=document.getElementById('srv-video-preview');
+            prev.src=e.target.result;prev.style.display='block';
+            document.getElementById('srv-video-text').style.display='none';
+            document.getElementById('srv-video-url').value=e.target.result;
+        };
+        reader.readAsDataURL(file);
+    };
+
+    // ══════════════════════════════════════════════════
+    // FIRMA DIGITAL — Canvas con mouse y touch
+    // ══════════════════════════════════════════════════
+    function initFirma(){
+        const canvas=document.getElementById('srv-firma-canvas');
+        if(!canvas)return;
+        firmaCtx=canvas.getContext('2d');
+        firmaCtx.strokeStyle='#1e293b';
+        firmaCtx.lineWidth=2;
+        firmaCtx.lineCap='round';
+        firmaCtx.lineJoin='round';
+
+        function getPos(e){
+            const rect=canvas.getBoundingClientRect();
+            const scaleX=canvas.width/rect.width;
+            const scaleY=canvas.height/rect.height;
+            if(e.touches){
+                return{x:(e.touches[0].clientX-rect.left)*scaleX,y:(e.touches[0].clientY-rect.top)*scaleY};
+            }
+            return{x:(e.clientX-rect.left)*scaleX,y:(e.clientY-rect.top)*scaleY};
+        }
+
+        function startDraw(e){e.preventDefault();firmaDibujando=true;const p=getPos(e);firmaCtx.beginPath();firmaCtx.moveTo(p.x,p.y);}
+        function draw(e){if(!firmaDibujando)return;e.preventDefault();const p=getPos(e);firmaCtx.lineTo(p.x,p.y);firmaCtx.stroke();}
+        function stopDraw(){firmaDibujando=false;}
+
+        canvas.addEventListener('mousedown',startDraw);
+        canvas.addEventListener('mousemove',draw);
+        canvas.addEventListener('mouseup',stopDraw);
+        canvas.addEventListener('mouseleave',stopDraw);
+        canvas.addEventListener('touchstart',startDraw,{passive:false});
+        canvas.addEventListener('touchmove',draw,{passive:false});
+        canvas.addEventListener('touchend',stopDraw);
+    }
+
+    window.limpiarFirma = () => {
+        const canvas=document.getElementById('srv-firma-canvas');
+        if(canvas&&firmaCtx){firmaCtx.clearRect(0,0,canvas.width,canvas.height);}
+    };
+
+    function getFirmaData(){
+        const canvas=document.getElementById('srv-firma-canvas');
+        if(!canvas)return'';
+        const ctx=canvas.getContext('2d');
+        const pixels=ctx.getImageData(0,0,canvas.width,canvas.height).data;
+        let blank=true;
+        for(let i=3;i<pixels.length;i+=4){if(pixels[i]>0){blank=false;break;}}
+        return blank?'':canvas.toDataURL('image/png');
+    }
+
+    // Abrir formulario
+    window.abrirFormServicio = (editId) => {
+        const form=document.getElementById('form-servicio-tecnico');
+        if(!form)return;
+        document.getElementById('srv-edit-id').value=editId||'';
+
+        if(!editId){
+            ['srv-cliente','srv-razon','srv-estacion','srv-folio','srv-lat','srv-lng',
+             'srv-descripcion','srv-motivo-no','srv-firma-nombre'].forEach(id=>{
+                const el=document.getElementById(id);if(el)el.value='';
+            });
+            document.getElementById('srv-fecha').value=new Date().toISOString().slice(0,10);
+            document.getElementById('srv-hora').value=new Date().toTimeString().slice(0,5);
+            document.getElementById('srv-concluido').value='si';
+            document.getElementById('srv-tecnico').value='';
+            document.getElementById('srv-no-porque').style.display='none';
+            ['srv-os-preview','srv-foto-preview','srv-video-preview'].forEach(id=>{
+                const el=document.getElementById(id);if(el)el.style.display='none';
+            });
+            ['srv-os-text','srv-foto-text','srv-video-text'].forEach(id=>{
+                const el=document.getElementById(id);if(el)el.style.display='block';
+            });
+            ['srv-os-url','srv-foto-url','srv-video-url'].forEach(id=>{
+                const el=document.getElementById(id);if(el)el.value='';
+            });
+            document.getElementById('srv-gps-status').innerText='';
+            limpiarFirma();
+        }
+
+        form.style.display='block';
+        form.scrollIntoView({behavior:'smooth',block:'start'});
+        setTimeout(()=>initFirma(),200);
+    };
+
+    window.cerrarFormServicio = () => {
+        const form=document.getElementById('form-servicio-tecnico');
+        if(form)form.style.display='none';
+    };
+
+    // Enviar formulario
+    window.enviarFormServicio = async () => {
+        const g=id=>{const el=document.getElementById(id);return el?el.value.trim():'';};
+        const gn=id=>{const v=g(id);return v?Number(v):undefined;};
+
+        if(!g('srv-cliente')){alert('Escribe el nombre del cliente');return;}
+        if(!g('srv-folio')){alert('Escribe el número de folio/O.S.');return;}
+
+        const firmaData=getFirmaData();
+        if(!firmaData){alert('Se requiere la firma de conformidad');return;}
+
+        const btn=document.querySelector('#form-servicio-tecnico button[onclick*="enviarFormServicio"]');
+        if(btn){btn.textContent='📤 Enviando...';btn.disabled=true;}
+
+        const docData={
+            tipo:'servicio_tecnico',
+            cliente:g('srv-cliente'),
+            razonSocial:g('srv-razon'),
+            estacion:g('srv-estacion'),
+            folio:g('srv-folio'),
+            lat:gn('srv-lat'),
+            lng:gn('srv-lng'),
+            fecha:g('srv-fecha')||new Date().toISOString().slice(0,10),
+            hora:g('srv-hora'),
+            tecnico:g('srv-tecnico'),
+            ordenServicioImg:g('srv-os-url'),
+            descripcion:g('srv-descripcion'),
+            concluido:g('srv-concluido'),
+            motivoNo:g('srv-motivo-no'),
+            fotoEvidencia:g('srv-foto-url'),
+            videoEvidencia:g('srv-video-url'),
+            firmaNombre:g('srv-firma-nombre'),
+            firmaImg:firmaData,
+            mesKey:new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0'),
+            creadoEn:new Date().toISOString()
+        };
+
+        Object.keys(docData).forEach(k=>{if(docData[k]===undefined||docData[k]==='')delete docData[k];});
+
+        try{
+            const{db,fs,auth}=await getFBSrv();
+            docData.creadoPor=auth.currentUser?.email||'';
+            const editId=g('srv-edit-id');
+            if(editId){
+                await fs.updateDoc(fs.doc(db,'formularios_servicio',editId),docData);
+                console.log('[SRV] ✅ Actualizado:',editId);
+            }else{
+                const ref=await fs.addDoc(fs.collection(db,'formularios_servicio'),docData);
+                console.log('[SRV] ✅ Creado:',ref.id);
+            }
+            cerrarFormServicio();
+            if(window.mostrarPush)window.mostrarPush('✅ Servicio registrado',docData.cliente+' · '+docData.folio,'🔧');
+            cargarServicios();
+        }catch(e){
+            console.error('[SRV ERROR]',e);
+            alert('Error: '+e.message);
+        }finally{
+            if(btn){btn.textContent='📤 ENVIAR FORMULARIO';btn.disabled=false;}
+        }
+    };
+
+    // Cargar servicios
+    async function cargarServicios(){
+        try{
+            const{db,fs}=await getFBSrv();
+            const snap=await fs.getDocs(fs.collection(db,'formularios_servicio'));
+            serviciosDB=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
+            renderListaServicios();
+        }catch(e){console.warn('[SRV]',e.message);}
+    }
+
+    window.toggleListaServicios = () => {
+        const wrap=document.getElementById('servicios-lista-wrap');
+        if(!wrap)return;
+        if(wrap.style.display==='none'){wrap.style.display='block';cargarServicios();}
+        else wrap.style.display='none';
+    };
+
+    window.buscarServicios = () => renderListaServicios();
+
+    function renderListaServicios(){
+        const el=document.getElementById('servicios-lista-content');
+        if(!el)return;
+        let lista=[...serviciosDB];
+        const q=(document.getElementById('srv-buscar')?.value||'').toLowerCase();
+        if(q)lista=lista.filter(r=>(r.cliente||'').toLowerCase().includes(q)||(r.folio||'').toLowerCase().includes(q)||(r.tecnico||'').toLowerCase().includes(q)||(r.estacion||'').toLowerCase().includes(q));
+
+        if(!lista.length){el.innerHTML='<div style="text-align:center;color:#94a3b8;padding:24px;font-size:12px;">Sin servicios registrados</div>';return;}
+
+        el.innerHTML=`
+        <div style="display:grid;grid-template-columns:0.7fr 1.2fr 1fr 0.8fr 0.6fr 0.5fr 80px;gap:6px;padding:8px 10px;background:#f8faff;border-radius:8px;margin-bottom:6px;font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;">
+            <span>Fecha</span><span>Cliente</span><span>Estación</span><span>Folio</span><span>Técnico</span><span>Status</span><span></span>
+        </div>
+        ${lista.map(r=>{
+            const ok='<span style="background:#dcfce7;color:#16a34a;padding:2px 6px;border-radius:6px;font-size:9px;font-weight:700;">✓</span>';
+            const no='<span style="background:#fee2e2;color:#dc2626;padding:2px 6px;border-radius:6px;font-size:9px;font-weight:700;">✗</span>';
+            return`<div style="display:grid;grid-template-columns:0.7fr 1.2fr 1fr 0.8fr 0.6fr 0.5fr 80px;gap:6px;padding:9px 10px;border-bottom:1px solid rgba(59,130,246,0.06);align-items:center;font-size:11px;">
+                <span style="color:#64748b;font-size:10px;">${r.fecha||'—'}</span>
+                <div><div style="font-weight:700;color:#1e293b;">${r.cliente||'—'}</div><div style="font-size:9px;color:#94a3b8;">${r.razonSocial||''}</div></div>
+                <span>${r.estacion||'—'}</span>
+                <span style="font-weight:700;color:#4f46e5;">${r.folio||'—'}</span>
+                <span style="font-size:10px;">${r.tecnico||'—'}</span>
+                <span>${r.concluido==='si'?ok:no}</span>
+                <div style="display:flex;gap:3px;justify-content:flex-end;">
+                    <button onclick="verServicio('${r.id}')" style="padding:3px 6px;background:#eff6ff;color:#2563eb;border:none;border-radius:6px;font-size:9px;cursor:pointer;">👁</button>
+                    <button onclick="eliminarServicio('${r.id}')" style="padding:3px 6px;background:#fee2e2;color:#dc2626;border:none;border-radius:6px;font-size:9px;cursor:pointer;">🗑</button>
+                </div>
+            </div>`;
+        }).join('')}`;
+    }
+
+    // Ver detalle de servicio
+    window.verServicio = (id) => {
+        const r=serviciosDB.find(x=>x.id===id);
+        if(!r)return;
+        const html=`<div style="position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(8px);z-index:99999;display:flex;align-items:center;justify-content:center;" id="modal-ver-servicio" onclick="if(event.target===this)this.remove()">
+            <div style="background:#fff;border-radius:20px;padding:28px;width:600px;max-width:95vw;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.25);">
+                <div style="font-family:'Space Grotesk',sans-serif;font-size:17px;font-weight:700;color:#312e81;margin-bottom:16px;">📋 Servicio Técnico · ${r.folio||'—'}</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:12px;margin-bottom:16px;">
+                    <div><b>Cliente:</b> ${r.cliente||'—'}</div>
+                    <div><b>Razón social:</b> ${r.razonSocial||'—'}</div>
+                    <div><b>Estación:</b> ${r.estacion||'—'}</div>
+                    <div><b>Folio:</b> ${r.folio||'—'}</div>
+                    <div><b>Fecha:</b> ${r.fecha||'—'} ${r.hora||''}</div>
+                    <div><b>Técnico:</b> ${r.tecnico||'—'}</div>
+                    <div><b>Concluido:</b> ${r.concluido==='si'?'✅ Sí':'❌ No — '+r.motivoNo||''}</div>
+                    <div><b>Registrado por:</b> ${r.creadoPor||'—'}</div>
+                </div>
+                ${r.descripcion?`<div style="background:#f8faff;border:1px solid #e2e8f0;border-radius:10px;padding:12px;margin-bottom:12px;font-size:12px;"><b>Descripción:</b><br>${r.descripcion}</div>`:''}
+                ${r.lat&&r.lng?`<div style="margin-bottom:12px;"><a href="https://www.google.com/maps?q=${r.lat},${r.lng}" target="_blank" style="color:#2563eb;font-size:12px;font-weight:700;">📍 Ver ubicación en Google Maps</a></div>`:''}
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+                    ${r.ordenServicioImg?`<div><div style="font-size:10px;font-weight:700;color:#64748b;margin-bottom:4px;">Orden de servicio</div><img src="${r.ordenServicioImg}" style="width:100%;border-radius:8px;max-height:200px;object-fit:contain;"></div>`:''}
+                    ${r.fotoEvidencia?`<div><div style="font-size:10px;font-weight:700;color:#64748b;margin-bottom:4px;">Evidencia</div><img src="${r.fotoEvidencia}" style="width:100%;border-radius:8px;max-height:200px;object-fit:contain;"></div>`:''}
+                </div>
+                ${r.videoEvidencia?`<div style="margin-bottom:12px;"><div style="font-size:10px;font-weight:700;color:#64748b;margin-bottom:4px;">Video</div><video src="${r.videoEvidencia}" controls style="width:100%;border-radius:8px;max-height:200px;"></video></div>`:''}
+                ${r.firmaImg?`<div style="margin-bottom:12px;"><div style="font-size:10px;font-weight:700;color:#64748b;margin-bottom:4px;">Firma de conformidad ${r.firmaNombre?'— '+r.firmaNombre:''}</div><img src="${r.firmaImg}" style="max-width:300px;border:1px solid #e2e8f0;border-radius:8px;background:#fafafa;"></div>`:''}
+                <button onclick="this.closest('#modal-ver-servicio').remove()" style="width:100%;padding:11px;background:#f1f5f9;border:none;border-radius:10px;color:#475569;font-weight:700;cursor:pointer;font-size:13px;">✕ Cerrar</button>
+            </div>
+        </div>`;
+        document.body.insertAdjacentHTML('beforeend',html);
+    };
+
+    window.eliminarServicio = async(id) => {
+        if(!confirm('¿Eliminar este registro de servicio?'))return;
+        try{const{db,fs}=await getFBSrv();await fs.deleteDoc(fs.doc(db,'formularios_servicio',id));if(window.mostrarPush)window.mostrarPush('🗑 Eliminado','','🔧');cargarServicios();}
+        catch(e){alert('Error: '+e.message);}
+    };
+
+    // Hook: mostrar en Operaciones
+    const CHECK_SRV=setInterval(()=>{
+        if(typeof window.verArea!=='function')return;
+        clearInterval(CHECK_SRV);
+        const _orig=window.verArea;
+        window.verArea=function(area,btn){
+            _orig(area,btn);
+            const panel=document.getElementById('operaciones-forms');
+            if(!panel)return;
+            if(area==='Operaciones'){panel.style.display='block';cargarServicios();}
+            else{panel.style.display='none';}
+        };
+    },200);
+
+    console.log('[FORMULARIOS SRV] ✅ Módulo cargado');
+})();
+</script>    
 // ══════════════════════════════════════════════════════════════
 // DASHBOARD CONTABILIDAD v2 — Registros individuales
 // ══════════════════════════════════════════════════════════════
