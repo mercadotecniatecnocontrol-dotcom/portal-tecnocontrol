@@ -1394,6 +1394,20 @@
 </div>
      <!-- ═══ MÓDULO FORMULARIOS — OPERACIONES ═══ -->
 <div id="operaciones-forms" style="display:none;margin-bottom:28px;">
+    <div id="operaciones-forms" style="display:none;">
+    <div id="reloj-checador-ui" style="background: #fff; padding: 20px; border-radius: 15px; border: 1px solid #e2e8f0; margin-bottom: 20px;">
+        <h4 style="margin: 0 0 15px 0; color: #1e293b; font-size: 14px;">⏲️ Reloj de Control Operativo</h4>
+        <div style="display: flex; gap: 10px;">
+            <button onclick="registrarAsistencia('ENTRADA')" style="flex: 1; padding: 12px; background: #16a34a; color: white; border: none; border-radius: 8px; font-weight: 700; cursor: pointer;">CHECAR ENTRADA</button>
+            <button onclick="registrarAsistencia('SALIDA')" style="flex: 1; padding: 12px; background: #dc2626; color: white; border: none; border-radius: 8px; font-weight: 700; cursor: pointer;">CHECAR SALIDA</button>
+        </div>
+    </div>
+    ```
+
+### Resumen del error:
+El código que empieza con `<div` es **HTML** (diseño) y debe ir fuera de las etiquetas `<script>`. El código que empieza con `window.registrarAsistencia` es **JavaScript** (lógica) y ese sí va donde lo pusiste en la línea **7910**.
+
+¿Lograste encontrar la línea `<div id="operaciones-forms"` más arriba en tu código para mover el diseño ahí?
     <div class="rh-dash-header">
         <div class="rh-dash-title">🏗️ Formularios Operaciones
             <span class="rh-dash-badge" style="background:#fef3c7;color:#92400e;">Servicio Técnico</span>
@@ -7891,6 +7905,58 @@ window.guardarDatoRHInline = async () => {
     },200);
 
     console.log('[FORMULARIOS SRV] ✅ Módulo cargado');
+    // ══════════════════════════════════════════════════
+    // RELOJ DE CHECADOR (TIME CLOCK) - Tecnocontrol
+    // ══════════════════════════════════════════════════
+    window.registrarAsistencia = async (tipo) => {
+        const btn = event.target;
+        const originalText = btn.textContent;
+        
+        if (!navigator.geolocation) {
+            alert('❌ Tu navegador no soporta GPS.');
+            return;
+        }
+
+        btn.textContent = '⏳ Ubicando...';
+        btn.disabled = true;
+
+        navigator.geolocation.getCurrentPosition(async (pos) => {
+            try {
+                const { db, fs, auth } = await getFBSrv();
+                const userEmail = auth.currentUser?.email || 'Usuario Desconocido';
+                
+                const asistenciaData = {
+                    colaborador: userEmail,
+                    tipo: tipo, // "ENTRADA" o "SALIDA"
+                    fecha: new Date().toISOString().slice(0, 10),
+                    hora: new Date().toTimeString().slice(0, 5),
+                    timestamp: new Date().toISOString(),
+                    lat: pos.coords.latitude,
+                    lng: pos.coords.longitude,
+                    precision: pos.coords.accuracy
+                };
+
+                await fs.addDoc(fs.collection(db, 'asistencias'), asistenciaData);
+
+                if (window.mostrarPush) {
+                    window.mostrarPush(`✅ ${tipo} Registrada`, `A las ${asistenciaData.hora}`, '⏲️');
+                } else {
+                    alert(`✅ ${tipo} registrada con éxito.`);
+                }
+
+            } catch (e) {
+                console.error('[CLOCK ERROR]', e);
+                alert('Error al registrar: ' + e.message);
+            } finally {
+                btn.textContent = originalText;
+                btn.disabled = false;
+            }
+        }, (err) => {
+            alert('❌ Error GPS: ' + err.message);
+            btn.textContent = originalText;
+            btn.disabled = false;
+        }, { enableHighAccuracy: true });
+    };
 })();
 </script>
 <script>
