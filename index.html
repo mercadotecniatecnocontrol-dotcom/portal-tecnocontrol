@@ -7891,58 +7891,6 @@ window.guardarDatoRHInline = async () => {
     },200);
 
     console.log('[FORMULARIOS SRV] ✅ Módulo cargado');
-    // ══════════════════════════════════════════════════
-    // RELOJ DE CHECADOR (TIME CLOCK) - Tecnocontrol
-    // ══════════════════════════════════════════════════
-    window.registrarAsistencia = async (tipo) => {
-        const btn = event.target;
-        const originalText = btn.textContent;
-        
-        if (!navigator.geolocation) {
-            alert('❌ Tu navegador no soporta GPS.');
-            return;
-        }
-
-        btn.textContent = '⏳ Ubicando...';
-        btn.disabled = true;
-
-        navigator.geolocation.getCurrentPosition(async (pos) => {
-            try {
-                const { db, fs, auth } = await getFBSrv();
-                const userEmail = auth.currentUser?.email || 'Usuario Desconocido';
-                
-                const asistenciaData = {
-                    colaborador: userEmail,
-                    tipo: tipo, // "ENTRADA" o "SALIDA"
-                    fecha: new Date().toISOString().slice(0, 10),
-                    hora: new Date().toTimeString().slice(0, 5),
-                    timestamp: new Date().toISOString(),
-                    lat: pos.coords.latitude,
-                    lng: pos.coords.longitude,
-                    precision: pos.coords.accuracy
-                };
-
-                await fs.addDoc(fs.collection(db, 'asistencias'), asistenciaData);
-
-                if (window.mostrarPush) {
-                    window.mostrarPush(`✅ ${tipo} Registrada`, `A las ${asistenciaData.hora}`, '⏲️');
-                } else {
-                    alert(`✅ ${tipo} registrada con éxito.`);
-                }
-
-            } catch (e) {
-                console.error('[CLOCK ERROR]', e);
-                alert('Error al registrar: ' + e.message);
-            } finally {
-                btn.textContent = originalText;
-                btn.disabled = false;
-            }
-        }, (err) => {
-            alert('❌ Error GPS: ' + err.message);
-            btn.textContent = originalText;
-            btn.disabled = false;
-        }, { enableHighAccuracy: true });
-    };
 })();
 </script>
 <script>
