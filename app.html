@@ -850,10 +850,9 @@
     <nav class="bottom-nav">
         <button class="nav-item active" onclick="showPage('home',this)"><span class="nav-icon">🏠</span>Inicio</button>
         <button class="nav-item" onclick="showPage('tasks',this)"><span class="nav-icon">📋</span>Tareas</button>
-        <button class="nav-item" onclick="showPage('ventas',this)"><span class="nav-icon">🗺️</span>Ventas</button>
         <button class="nav-fab" onclick="openNewTask()">+</button>
+        <button class="nav-item" onclick="showPage('ventas',this)"><span class="nav-icon">🗺️</span>Ventas</button>
         <button class="nav-item" onclick="showPage('calendar',this)"><span class="nav-icon">📅</span>Calendario</button>
-        <button class="nav-item" onclick="showPage('profile',this)"><span class="nav-icon">👤</span>Perfil</button>
     </nav>
 </div>
 
@@ -1112,7 +1111,8 @@ function renderCalendar() {
     const todayStr = today.toISOString().slice(0,10);
 
     // Task dates for dots
-    const taskDates = new Set(allTasks.filter(t=>t.fechaLimite).map(t=>t.fechaLimite));
+    const myEmail3 = currentUser?.email || '';
+    const taskDates = new Set(allTasks.filter(t=>t.fechaLimite && (t.encargado===myEmail3 || t.responsable===myEmail3)).map(t=>t.fechaLimite));
 
     let html = '';
     // Previous month days
@@ -1139,7 +1139,8 @@ function renderCalendar() {
 
     // Show tasks for selected day
     if(selectedDay) {
-        const dayTasks = allTasks.filter(t => t.fechaLimite === selectedDay);
+        const myEmail2 = currentUser?.email || '';
+        const dayTasks = allTasks.filter(t => t.fechaLimite === selectedDay && (t.encargado === myEmail2 || t.responsable === myEmail2));
         const dayDate = new Date(selectedDay+'T12:00:00');
         const dayLabel = dayDate.toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long'});
         document.getElementById('cal-day-tasks').innerHTML = `
@@ -1307,7 +1308,7 @@ window.showPage = (pageId, btn) => {
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     if(btn) btn.classList.add('active');
     else {
-        const navMap = {home:0, tasks:1, calendar:3, profile:4};
+        const navMap = {home:0, tasks:1, ventas:3, calendar:4};
         const idx = navMap[pageId];
         if(idx !== undefined) document.querySelectorAll('.nav-item')[idx]?.classList.add('active');
     }
