@@ -729,7 +729,117 @@
         <button class="profile-btn" onclick="window.location.href='index.html'">💻 Portal Web</button>
         <button class="profile-btn" onclick="cerrarSesionApp()" style="color:var(--accent-red);">↩ Cerrar Sesión</button>
     </div>
+    <!-- PAGE: Ventas Map -->
+    <div class="page" id="page-ventas">
+        <div class="sec-title">🗺️ Mapa de Clientes
+            <button class="sec-title-btn" onclick="showClientList()">📋 Lista →</button>
+        </div>
+        <div id="checkin-bar" class="checkin-bar" style="display:none;">
+            <div class="checkin-client" id="ci-client-name">—</div>
+            <div class="checkin-addr" id="ci-client-addr">—</div>
+            <div id="ci-status"></div>
+            <div class="checkin-btns" id="ci-buttons"></div>
+        </div>
+        <div id="visit-result-form" class="visit-result" style="display:none;">
+            <div style="font-size:14px;font-weight:700;margin-bottom:4px;">📝 Resultado de la visita</div>
+            <div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px;" id="vr-client">—</div>
+            <div class="result-options" id="vr-options">
+                <button class="result-opt" onclick="selectResult('Venta realizada',this)">✅ Venta realizada</button>
+                <button class="result-opt" onclick="selectResult('Cotización',this)">📄 Cotización</button>
+                <button class="result-opt" onclick="selectResult('Seguimiento',this)">🔄 Seguimiento</button>
+                <button class="result-opt" onclick="selectResult('No concretado',this)">❌ No concretado</button>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Notas de la visita</label>
+                <textarea class="form-input form-textarea" id="vr-notas" rows="2" placeholder="¿Qué pasó en la visita?"></textarea>
+            </div>
+            <button class="form-submit" onclick="guardarVisita()" style="background:linear-gradient(135deg,#10b981,#059669);">✅ Guardar visita</button>
+        </div>
+        <div class="map-container" id="map-container">
+            <div id="ventas-map" style="height:100%;"></div>
+            <div class="map-fab">
+                <button class="map-fab-btn" style="background:var(--accent);color:white;" onclick="centrarEnMi()">📍</button>
+                <button class="map-fab-btn" style="background:var(--accent-green);color:white;" onclick="openNewClient()">➕</button>
+            </div>
+        </div>
+        <div class="stats-row" id="ventas-stats"></div>
+    </div>
 
+    <!-- PAGE: Client List -->
+    <div class="page" id="page-clients">
+        <div class="form-header">
+            <div class="form-title">📋 Clientes</div>
+            <button class="form-close" onclick="showPage('ventas')">←</button>
+        </div>
+        <div class="search-wrap">
+            <span class="search-icon">🔍</span>
+            <input class="search-input" id="clients-search" placeholder="Buscar cliente..." oninput="renderClientList()">
+        </div>
+        <div id="clients-list"></div>
+    </div>
+
+    <!-- PAGE: Client Detail -->
+    <div class="page" id="page-client-detail">
+        <div class="form-header">
+            <div class="form-title" id="cd-name">—</div>
+            <button class="form-close" onclick="showPage('ventas')">←</button>
+        </div>
+        <div id="cd-content"></div>
+    </div>
+
+    <!-- Form: New Client -->
+    <div class="form-overlay" id="form-new-client">
+        <div class="form-header">
+            <div class="form-title">➕ Nuevo Cliente</div>
+            <button class="form-close" onclick="closeNewClient()">✕</button>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Nombre del cliente / Empresa</label>
+            <input class="form-input" id="nc-nombre" placeholder="Ej: Estación Pemex #1234">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Dirección</label>
+            <input class="form-input" id="nc-direccion" placeholder="Calle, número, colonia, ciudad">
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">Teléfono</label>
+                <input class="form-input" id="nc-telefono" type="tel" placeholder="(614) 123-4567">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Contacto</label>
+                <input class="form-input" id="nc-contacto" placeholder="Nombre del contacto">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">Latitud</label>
+                <input class="form-input" id="nc-lat" type="number" step="0.000001" placeholder="28.6353">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Longitud</label>
+                <input class="form-input" id="nc-lng" type="number" step="0.000001" placeholder="-106.0889">
+            </div>
+        </div>
+        <button class="form-submit" onclick="capturarGPSCliente()" style="background:linear-gradient(135deg,#10b981,#059669);margin-bottom:12px;">📍 Usar mi ubicación actual</button>
+        <div id="nc-gps-status" style="font-size:11px;color:var(--text-secondary);margin-bottom:12px;text-align:center;"></div>
+        <div class="form-group">
+            <label class="form-label">Tipo de cliente</label>
+            <select class="form-select" id="nc-tipo">
+                <option>Estación de servicio</option>
+                <option>Empresa</option>
+                <option>Industria</option>
+                <option>Comercio</option>
+                <option>Otro</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Notas</label>
+            <input class="form-input" id="nc-notas" placeholder="Información adicional...">
+        </div>
+        <button class="form-submit" onclick="guardarNuevoCliente()">💾 Guardar Cliente</button>
+    </div>
+    
     <!-- Bottom Nav -->
     <nav class="bottom-nav">
         <button class="nav-item active" onclick="showPage('home',this)"><span class="nav-icon">🏠</span>Inicio</button>
@@ -1212,6 +1322,248 @@ function toast(msg) {
 // ══════════════════════════════
 // PWA INSTALL
 // ══════════════════════════════
+// ══════════════════════════════
+// VENTAS MAP MODULE
+// ══════════════════════════════
+let ventasMap = null;
+let clientesDB = [];
+let visitasDB = [];
+let markersLayer = null;
+let miUbicacion = null;
+let miMarker = null;
+let clienteActivo = null;
+let visitaActiva = null;
+let resultadoVisita = '';
+
+async function cargarClientes() {
+    const snap = await getDocs(collection(db, 'ventas_clientes'));
+    clientesDB = snap.docs.map(d => ({id: d.id, ...d.data()}));
+    renderMapMarkers();
+    renderVentasStats();
+}
+
+async function cargarVisitas() {
+    const snap = await getDocs(collection(db, 'ventas_checkins'));
+    visitasDB = snap.docs.map(d => ({id: d.id, ...d.data()}));
+}
+
+function initMap() {
+    if(ventasMap) return;
+    setTimeout(() => {
+        const container = document.getElementById('ventas-map');
+        if(!container) return;
+        ventasMap = L.map('ventas-map', { zoomControl: false, attributionControl: false }).setView([28.6353, -106.0889], 12);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(ventasMap);
+        L.control.zoom({ position: 'topleft' }).addTo(ventasMap);
+        markersLayer = L.layerGroup().addTo(ventasMap);
+        if(navigator.geolocation) {
+            navigator.geolocation.watchPosition(pos => {
+                miUbicacion = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                if(miMarker) miMarker.remove();
+                miMarker = L.circleMarker([miUbicacion.lat, miUbicacion.lng], {
+                    radius: 8, fillColor: '#3b82f6', fillOpacity: 1, color: 'white', weight: 3
+                }).addTo(ventasMap).bindPopup('📍 Mi ubicación');
+            }, null, { enableHighAccuracy: true });
+        }
+        cargarClientes();
+        cargarVisitas();
+    }, 300);
+}
+
+function renderMapMarkers() {
+    if(!markersLayer) return;
+    markersLayer.clearLayers();
+    clientesDB.forEach(c => {
+        if(!c.lat || !c.lng) return;
+        const icon = L.divIcon({
+            className: '',
+            html: '<div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#f59e0b,#d97706);display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,0.3);border:2px solid white;cursor:pointer;">📍</div>',
+            iconSize: [32, 32], iconAnchor: [16, 16]
+        });
+        const marker = L.marker([c.lat, c.lng], { icon }).addTo(markersLayer);
+        marker.on('click', () => seleccionarCliente(c));
+    });
+}
+
+function seleccionarCliente(c) {
+    clienteActivo = c;
+    const bar = document.getElementById('checkin-bar');
+    document.getElementById('ci-client-name').innerText = c.nombre || '—';
+    document.getElementById('ci-client-addr').innerText = c.direccion || c.dir || '—';
+    if(visitaActiva && visitaActiva.clienteId === c.id) {
+        document.getElementById('ci-status').innerHTML = '<div style="color:var(--accent-green);font-size:12px;font-weight:700;margin-bottom:8px;">✅ Check-in activo · ' + new Date(visitaActiva.checkinTime).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'}) + '</div>';
+        document.getElementById('ci-buttons').innerHTML = '<button class="checkin-btn btn-checkout" onclick="hacerCheckout()">📤 Check-out</button><button class="checkin-btn btn-cancel" onclick="cancelarCheckin()">✕</button>';
+    } else {
+        document.getElementById('ci-status').innerHTML = '';
+        document.getElementById('ci-buttons').innerHTML = '<button class="checkin-btn btn-checkin" onclick="hacerCheckin()">📥 Check-in</button><button class="checkin-btn btn-cancel" onclick="verDetalleCliente(\''+c.id+'\')">ℹ️ Detalle</button><button class="checkin-btn btn-cancel" onclick="cerrarCheckinBar()">✕</button>';
+    }
+    bar.style.display = 'block';
+    if(ventasMap) ventasMap.setView([c.lat, c.lng], 15);
+}
+
+window.cerrarCheckinBar = () => { document.getElementById('checkin-bar').style.display = 'none'; clienteActivo = null; };
+
+window.hacerCheckin = () => {
+    if(!clienteActivo) return;
+    visitaActiva = { clienteId: clienteActivo.id, clienteNombre: clienteActivo.nombre, checkinTime: new Date().toISOString(), checkinLat: miUbicacion?.lat || null, checkinLng: miUbicacion?.lng || null };
+    toast('📥 Check-in: ' + clienteActivo.nombre);
+    seleccionarCliente(clienteActivo);
+};
+
+window.hacerCheckout = () => {
+    if(!visitaActiva) return;
+    document.getElementById('visit-result-form').style.display = 'block';
+    document.getElementById('vr-client').innerText = visitaActiva.clienteNombre;
+    document.getElementById('checkin-bar').style.display = 'none';
+    resultadoVisita = '';
+    document.querySelectorAll('.result-opt').forEach(b => b.classList.remove('selected'));
+};
+
+window.selectResult = (result, btn) => {
+    resultadoVisita = result;
+    document.querySelectorAll('.result-opt').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+};
+
+window.cancelarCheckin = () => { visitaActiva = null; document.getElementById('checkin-bar').style.display = 'none'; toast('❌ Check-in cancelado'); };
+
+window.guardarVisita = async () => {
+    if(!visitaActiva) return;
+    if(!resultadoVisita) { toast('Selecciona un resultado'); return; }
+    const btn = document.querySelector('#visit-result-form .form-submit');
+    if(btn) { btn.textContent = '💾 Guardando...'; btn.disabled = true; }
+    const data = {
+        clienteId: visitaActiva.clienteId, clienteNombre: visitaActiva.clienteNombre,
+        checkinTime: visitaActiva.checkinTime, checkinLat: visitaActiva.checkinLat, checkinLng: visitaActiva.checkinLng,
+        checkoutTime: new Date().toISOString(), checkoutLat: miUbicacion?.lat || null, checkoutLng: miUbicacion?.lng || null,
+        resultado: resultadoVisita, notas: document.getElementById('vr-notas')?.value?.trim() || '',
+        vendedor: currentUser.email, duracionMin: Math.round((new Date() - new Date(visitaActiva.checkinTime)) / 60000),
+        fecha: new Date().toISOString().slice(0,10)
+    };
+    try {
+        await addDoc(collection(db, 'ventas_checkins'), data);
+        toast('✅ Visita registrada: ' + resultadoVisita);
+        visitaActiva = null; resultadoVisita = '';
+        document.getElementById('visit-result-form').style.display = 'none';
+        document.getElementById('vr-notas').value = '';
+        cargarVisitas(); renderVentasStats();
+    } catch(e) { toast('❌ Error: ' + e.message); }
+    finally { if(btn) { btn.textContent = '✅ Guardar visita'; btn.disabled = false; } }
+};
+
+function renderVentasStats() {
+    const hoy = new Date().toISOString().slice(0,10);
+    const misVisitas = visitasDB.filter(v => v.vendedor === currentUser?.email);
+    const hoyVisitas = misVisitas.filter(v => v.fecha === hoy);
+    const mesActual = hoy.slice(0,7);
+    const mesVisitas = misVisitas.filter(v => (v.fecha||'').startsWith(mesActual));
+    const ventas = mesVisitas.filter(v => v.resultado === 'Venta realizada').length;
+    document.getElementById('ventas-stats').innerHTML = `
+        <div class="stat-card"><div class="stat-icon">📍</div><div class="stat-val">${clientesDB.length}</div><div class="stat-label">Clientes</div></div>
+        <div class="stat-card"><div class="stat-icon">🚗</div><div class="stat-val" style="color:var(--accent)">${hoyVisitas.length}</div><div class="stat-label">Visitas hoy</div></div>
+        <div class="stat-card"><div class="stat-icon">📊</div><div class="stat-val" style="color:var(--accent-amber)">${mesVisitas.length}</div><div class="stat-label">Visitas mes</div></div>
+        <div class="stat-card"><div class="stat-icon">💰</div><div class="stat-val" style="color:var(--accent-green)">${ventas}</div><div class="stat-label">Ventas mes</div></div>`;
+}
+
+window.centrarEnMi = () => {
+    if(miUbicacion && ventasMap) ventasMap.setView([miUbicacion.lat, miUbicacion.lng], 15);
+    else toast('📍 Obteniendo ubicación...');
+};
+
+window.showClientList = () => { showPage('clients'); renderClientList(); };
+
+window.renderClientList = () => {
+    const q = (document.getElementById('clients-search')?.value || '').toLowerCase();
+    let lista = [...clientesDB];
+    if(q) lista = lista.filter(c => (c.nombre||'').toLowerCase().includes(q) || (c.direccion||c.dir||'').toLowerCase().includes(q));
+    lista.sort((a,b) => (a.nombre||'').localeCompare(b.nombre||''));
+    document.getElementById('clients-list').innerHTML = lista.length ? lista.map(c => {
+        const visits = visitasDB.filter(v => v.clienteId === c.id).length;
+        return '<div class="client-card" onclick="verDetalleCliente(\''+c.id+'\')"><div class="client-name">📍 '+(c.nombre||'—')+'</div><div class="client-addr">'+(c.direccion||c.dir||'—')+'</div>'+(visits>0?'<div class="client-visits">'+visits+' visita'+(visits>1?'s':'')+' registrada'+(visits>1?'s':'')+'</div>':'')+'</div>';
+    }).join('') : '<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-text">Sin clientes</div></div>';
+};
+
+window.verDetalleCliente = (id) => {
+    const c = clientesDB.find(x => x.id === id);
+    if(!c) return;
+    document.getElementById('cd-name').innerText = c.nombre || '—';
+    const visitas = visitasDB.filter(v => v.clienteId === id).sort((a,b) => (b.fecha||'').localeCompare(a.fecha||''));
+    const resultColors = {'Venta realizada':'vh-venta','Cotización':'vh-cotizacion','Seguimiento':'vh-seguimiento','No concretado':'vh-noconcretado'};
+    document.getElementById('cd-content').innerHTML = `
+        <div class="detail-section">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div><div class="detail-label">Dirección</div><div class="detail-value">${c.direccion||c.dir||'—'}</div></div>
+                <div><div class="detail-label">Teléfono</div><div class="detail-value">${c.telefono||c.tel||'—'}</div></div>
+                <div><div class="detail-label">Contacto</div><div class="detail-value">${c.contacto||'—'}</div></div>
+                <div><div class="detail-label">Tipo</div><div class="detail-value">${c.tipo||'—'}</div></div>
+            </div>
+            ${c.lat&&c.lng?'<div style="margin-top:12px;"><a href="https://www.google.com/maps?q='+c.lat+','+c.lng+'" target="_blank" style="color:var(--accent);font-size:12px;font-weight:700;text-decoration:none;">📍 Ver en Google Maps</a></div>':''}
+        </div>
+        <div class="detail-section">
+            <div class="detail-label">📊 Historial de visitas (${visitas.length})</div>
+            ${visitas.length ? visitas.map(v => '<div class="visit-history-item"><span class="vh-date">'+(v.fecha||'—')+'</span><span class="vh-result '+(resultColors[v.resultado]||'')+'">'+(v.resultado||'—')+'</span><span style="color:var(--text-muted);font-size:10px;margin-left:6px;">'+(v.duracionMin||0)+' min</span>'+(v.notas?'<div style="color:var(--text-secondary);font-size:11px;margin-top:2px;">💬 '+v.notas+'</div>':'')+'</div>').join('') : '<div style="color:var(--text-muted);font-size:12px;padding:8px 0;">Sin visitas registradas</div>'}
+        </div>
+        <div class="detail-actions">
+            <button class="detail-btn btn-complete" onclick="irAClienteMapa('${c.id}')">🗺️ Ver en mapa</button>
+            <button class="detail-btn btn-delete" onclick="eliminarCliente('${c.id}')">🗑 Eliminar</button>
+        </div>`;
+    showPage('client-detail');
+};
+
+window.irAClienteMapa = (id) => {
+    const c = clientesDB.find(x => x.id === id);
+    if(!c) return;
+    showPage('ventas');
+    setTimeout(() => { if(ventasMap && c.lat && c.lng) { ventasMap.setView([c.lat, c.lng], 16); seleccionarCliente(c); } }, 400);
+};
+
+window.eliminarCliente = async (id) => {
+    if(!confirm('¿Eliminar este cliente?')) return;
+    try { await deleteDoc(doc(db, 'ventas_clientes', id)); toast('🗑 Cliente eliminado'); showPage('ventas'); cargarClientes(); }
+    catch(e) { toast('❌ Error'); }
+};
+
+window.openNewClient = () => { document.getElementById('form-new-client').classList.add('active'); };
+window.closeNewClient = () => { document.getElementById('form-new-client').classList.remove('active'); };
+
+window.capturarGPSCliente = () => {
+    const status = document.getElementById('nc-gps-status');
+    if(!navigator.geolocation) { status.innerText = '❌ GPS no disponible'; return; }
+    status.innerText = '⏳ Obteniendo ubicación...';
+    navigator.geolocation.getCurrentPosition(pos => {
+        document.getElementById('nc-lat').value = pos.coords.latitude.toFixed(6);
+        document.getElementById('nc-lng').value = pos.coords.longitude.toFixed(6);
+        status.innerHTML = '✅ Ubicación capturada'; status.style.color = '#10b981';
+    }, err => { status.innerText = '❌ ' + err.message; status.style.color = '#ef4444'; }, { enableHighAccuracy: true, timeout: 15000 });
+};
+
+window.guardarNuevoCliente = async () => {
+    const nombre = document.getElementById('nc-nombre').value.trim();
+    if(!nombre) { toast('Escribe el nombre del cliente'); return; }
+    const btn = document.querySelector('#form-new-client .form-submit:last-child');
+    if(btn) { btn.textContent = '💾 Guardando...'; btn.disabled = true; }
+    const data = {
+        nombre, direccion: document.getElementById('nc-direccion').value.trim(),
+        telefono: document.getElementById('nc-telefono').value.trim(), contacto: document.getElementById('nc-contacto').value.trim(),
+        lat: parseFloat(document.getElementById('nc-lat').value) || null, lng: parseFloat(document.getElementById('nc-lng').value) || null,
+        tipo: document.getElementById('nc-tipo').value, notas: document.getElementById('nc-notas').value.trim(),
+        creadoPor: currentUser.email, creadoEn: new Date().toISOString()
+    };
+    try {
+        await addDoc(collection(db, 'ventas_clientes'), data);
+        toast('✅ Cliente agregado'); closeNewClient();
+        ['nc-nombre','nc-direccion','nc-telefono','nc-contacto','nc-lat','nc-lng','nc-notas'].forEach(id => document.getElementById(id).value = '');
+        cargarClientes();
+    } catch(e) { toast('❌ Error: ' + e.message); }
+    finally { if(btn) { btn.textContent = '💾 Guardar Cliente'; btn.disabled = false; } }
+};
+
+// Hook: init map when ventas page shown
+const _origShowPage = window.showPage;
+window.showPage = (pageId, btn) => {
+    _origShowPage(pageId, btn);
+    if(pageId === 'ventas') { initMap(); setTimeout(() => { if(ventasMap) ventasMap.invalidateSize(); }, 400); }
+};    
 if('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(()=>{});
 }
