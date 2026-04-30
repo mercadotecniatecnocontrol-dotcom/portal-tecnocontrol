@@ -126,13 +126,6 @@
 .header-greeting { color: rgba(255,255,255,0.8) !important; }
 .header-name { color: white !important; }
         .header-left { display: flex; align-items: center; gap: 10px; }
-        .header-logo {
-    width: 45px;   /* Esto controla el tamaño horizontal */
-    height: 45px;  /* Esto controla el tamaño vertical */
-    object-fit: contain; /* Esto evita que se estire feo */
-    flex-shrink: 0;      /* Esto evita que otros elementos la aplasten */
-    margin-right: 5px;   /* Espacio entre el logo y el texto */
-}
             width: 36px; height: 36px;
             border-radius: 50%;
             background: linear-gradient(135deg, #3b82f6, #8b5cf6);
@@ -671,7 +664,7 @@
     <!-- Header -->
     <div class="app-header">
         <div class="header-left">
-            <img src="https://lh3.googleusercontent.com/u/0/d/1akpYZTF-HFOkv2NGXwLT-dX7i7Ms3qSz" alt="Logo" class="header-logo">
+            <div class="header-avatar">T</div>
             <div>
                 <div class="header-greeting" id="app-greeting">Buen día</div>
                 <div class="header-name" id="app-username">Tecnocontrol</div>
