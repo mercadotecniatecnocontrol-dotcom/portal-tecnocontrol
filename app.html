@@ -712,7 +712,7 @@
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:20px;" id="form-shortcuts">
             <button onclick="showPage('servicios');setTimeout(()=>abrirFormSrv(),300)" style="padding:14px 8px;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;color:var(--text-primary);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;"><span style="font-size:24px;">🔧</span>Servicio Técnico</button>
             <button onclick="showPage('poliza');setTimeout(()=>abrirFormPoliza(),300)" style="padding:14px 8px;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;color:var(--text-primary);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;"><span style="font-size:24px;">🛡️</span>Póliza Manto.</button>
-            <button onclick="toast('🚧 Próximamente')" style="padding:14px 8px;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;color:var(--text-primary);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;"><span style="font-size:24px;">🚗</span>Manto. Vehicular</button>
+            <button onclick="showPage('vehicular');setTimeout(()=>abrirFormVeh(),300)" style="padding:14px 8px;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;color:var(--text-primary);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;"><span style="font-size:24px;">🚗</span>Manto. Vehicular</button>
             <button onclick="toast('🚧 Próximamente')" style="padding:14px 8px;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;color:var(--text-primary);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;"><span style="font-size:24px;">📝</span>Remisiones</button>
             <button onclick="toast('🚧 Próximamente')" style="padding:14px 8px;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;color:var(--text-primary);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;"><span style="font-size:24px;">🔨</span>Inv. Herramienta</button>
             <button onclick="toast('🚧 Próximamente')" style="padding:14px 8px;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;color:var(--text-primary);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;"><span style="font-size:24px;">⚙️</span>Inv. Refacciones</button>
@@ -2139,6 +2139,166 @@ window.eliminarSrv = async (id) => {
     try { await deleteDoc(doc(db,'formularios_servicio',id)); toast('🗑 Eliminado'); cerrarSrvDetail(); cargarSrv(); }
     catch(e) { toast('❌ Error'); }
 };
+    // ══════════════════════════════
+// MANTENIMIENTO VEHICULAR
+// ══════════════════════════════
+let vehDB = [];
+let vehFirmaCtx = null;
+let vehDibujando = false;
+
+async function cargarVeh() {
+    const snap = await getDocs(collection(db, 'formularios_vehicular'));
+    vehDB = snap.docs.map(d => ({id:d.id,...d.data()})).sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
+    renderVehList();
+}
+
+window.renderVehList = () => {
+    const q = (document.getElementById('veh-search')?.value||'').toLowerCase();
+    let lista = [...vehDB];
+    if(q) lista = lista.filter(s => (s.economico||'').toLowerCase().includes(q)||(s.empresa||'').toLowerCase().includes(q)||(s.descripcion||'').toLowerCase().includes(q)||(s.nombreTaller||'').toLowerCase().includes(q));
+    const el = document.getElementById('veh-list');
+    if(!el) return;
+    if(!lista.length) { el.innerHTML = '<div class="empty-state"><div class="empty-icon">🚗</div><div class="empty-text">Sin registros</div><div class="empty-sub">Toca ➕ Nuevo para crear uno</div></div>'; return; }
+    el.innerHTML = lista.map(s => `<div class="srv-card" onclick="verVehDetail('${s.id}')">
+        <div class="srv-folio">🚗 ${s.economico||'Sin No.'} · ${s.empresa||''}</div>
+        <div class="srv-cliente">${s.descripcion?s.descripcion.slice(0,60)+'...':'Sin descripción'}</div>
+        <div class="srv-meta">${s.fecha||'—'} · ${s.ingresoTaller==='si'?'🔧 '+s.nombreTaller:'Sin taller'}</div>
+        <span class="srv-status ${s.ingresoTaller==='si'?'srv-no':'srv-ok'}">${s.ingresoTaller==='si'?'🔧 En taller':'✅ En campo'}</span>
+    </div>`).join('');
+};
+
+window.abrirFormVeh = (editId) => {
+    document.getElementById('veh-edit-id').value = editId||'';
+    if(!editId) {
+        ['veh-economico','veh-nombre-taller','veh-lat','veh-lng','veh-desc','veh-firma-nombre'].forEach(id => { const e=document.getElementById(id); if(e) e.value=''; });
+        document.getElementById('veh-fecha').value = new Date().toISOString().slice(0,10);
+        document.getElementById('veh-empresa').value = 'Tecnocontrol';
+        document.getElementById('veh-taller').value = 'no';
+        document.getElementById('veh-taller-wrap').style.display = 'none';
+        ['veh-foto1-prev','veh-foto2-prev'].forEach(id => { const e=document.getElementById(id); if(e) e.style.display='none'; });
+        ['veh-foto1-label','veh-foto2-label'].forEach(id => { const e=document.getElementById(id); if(e) e.style.display='block'; });
+        ['veh-foto1-data','veh-foto2-data'].forEach(id => { const e=document.getElementById(id); if(e) e.value=''; });
+        document.getElementById('veh-gps-msg').innerText = '';
+        limpiarFirmaVeh();
+    }
+    document.getElementById('form-veh').classList.add('active');
+    setTimeout(() => initFirmaVeh(), 300);
+};
+
+window.cerrarFormVeh = () => { document.getElementById('form-veh').classList.remove('active'); };
+
+window.vehGPS = () => {
+    const msg = document.getElementById('veh-gps-msg');
+    if(!navigator.geolocation) { msg.innerText = '❌ GPS no disponible'; return; }
+    msg.innerText = '⏳ Obteniendo ubicación...';
+    navigator.geolocation.getCurrentPosition(pos => {
+        document.getElementById('veh-lat').value = pos.coords.latitude.toFixed(6);
+        document.getElementById('veh-lng').value = pos.coords.longitude.toFixed(6);
+        msg.innerText = '✅ Ubicación capturada'; msg.style.color = '#10b981';
+    }, err => { msg.innerText = '❌ '+err.message; msg.style.color = '#ef4444'; }, { enableHighAccuracy:true, timeout:15000 });
+};
+
+function initFirmaVeh() {
+    const canvas = document.getElementById('veh-firma-canvas');
+    if(!canvas) return;
+    vehFirmaCtx = canvas.getContext('2d');
+    vehFirmaCtx.strokeStyle = '#1e293b';
+    vehFirmaCtx.lineWidth = 2;
+    vehFirmaCtx.lineCap = 'round';
+    vehFirmaCtx.lineJoin = 'round';
+    function getPos(e) {
+        const rect=canvas.getBoundingClientRect();
+        const sx=canvas.width/rect.width, sy=canvas.height/rect.height;
+        if(e.touches) return {x:(e.touches[0].clientX-rect.left)*sx, y:(e.touches[0].clientY-rect.top)*sy};
+        return {x:(e.clientX-rect.left)*sx, y:(e.clientY-rect.top)*sy};
+    }
+    function start(e){e.preventDefault();vehDibujando=true;const p=getPos(e);vehFirmaCtx.beginPath();vehFirmaCtx.moveTo(p.x,p.y);}
+    function draw(e){if(!vehDibujando)return;e.preventDefault();const p=getPos(e);vehFirmaCtx.lineTo(p.x,p.y);vehFirmaCtx.stroke();}
+    function stop(){vehDibujando=false;}
+    canvas.onmousedown=start;canvas.onmousemove=draw;canvas.onmouseup=stop;canvas.onmouseleave=stop;
+    canvas.ontouchstart=start;canvas.ontouchmove=draw;canvas.ontouchend=stop;
+}
+
+window.limpiarFirmaVeh = () => {
+    const canvas=document.getElementById('veh-firma-canvas');
+    if(canvas&&vehFirmaCtx) vehFirmaCtx.clearRect(0,0,canvas.width,canvas.height);
+};
+
+function getVehFirmaData() {
+    const canvas=document.getElementById('veh-firma-canvas');
+    if(!canvas) return '';
+    const px=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
+    for(let i=3;i<px.length;i+=4) if(px[i]>0) return canvas.toDataURL('image/png');
+    return '';
+}
+
+window.enviarVeh = async () => {
+    const g=id=>{const e=document.getElementById(id);return e?e.value.trim():'';};
+    const gn=id=>{const v=g(id);return v?Number(v):undefined;};
+    if(!g('veh-economico')){toast('Escribe el No. Económico');return;}
+    const firma=getVehFirmaData();
+    if(!firma){toast('Se requiere la firma del empleado');return;}
+
+    const btn=document.querySelector('#form-veh .form-submit:last-child');
+    if(btn){btn.textContent='📤 Enviando...';btn.disabled=true;}
+
+    const data = {
+        tipo:'mantenimiento_vehicular',
+        empresa:g('veh-empresa'), economico:g('veh-economico'),
+        fecha:g('veh-fecha')||new Date().toISOString().slice(0,10),
+        ingresoTaller:g('veh-taller'), nombreTaller:g('veh-nombre-taller'),
+        lat:gn('veh-lat'), lng:gn('veh-lng'),
+        descripcion:g('veh-desc'),
+        foto1:g('veh-foto1-data'), foto2:g('veh-foto2-data'),
+        firmaNombre:g('veh-firma-nombre'), firmaImg:firma,
+        creadoPor:currentUser.email, creadoEn:new Date().toISOString(),
+        mesKey:new Date().toISOString().slice(0,7)
+    };
+    Object.keys(data).forEach(k=>{if(data[k]===undefined||data[k]==='')delete data[k];});
+
+    try {
+        const editId=g('veh-edit-id');
+        if(editId){await updateDoc(doc(db,'formularios_vehicular',editId),data);}
+        else{await addDoc(collection(db,'formularios_vehicular'),data);}
+        toast('✅ Mantenimiento registrado');
+        cerrarFormVeh();
+        cargarVeh();
+    } catch(e){toast('❌ Error: '+e.message);}
+    finally{if(btn){btn.textContent='📤 ENVIAR FORMULARIO';btn.disabled=false;}}
+};
+
+window.verVehDetail = (id) => {
+    const s=vehDB.find(x=>x.id===id);
+    if(!s) return;
+    document.getElementById('vehd-title').innerText='🚗 '+(s.economico||'Vehículo');
+    document.getElementById('vehd-content').innerHTML = `
+        <div class="detail-section">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div><div class="detail-label">Empresa</div><div class="detail-value">${s.empresa||'—'}</div></div>
+                <div><div class="detail-label">No. Económico</div><div class="detail-value">${s.economico||'—'}</div></div>
+                <div><div class="detail-label">Fecha</div><div class="detail-value">${s.fecha||'—'}</div></div>
+                <div><div class="detail-label">Taller</div><div class="detail-value">${s.ingresoTaller==='si'?'✅ '+s.nombreTaller:'❌ No ingresó'}</div></div>
+                <div><div class="detail-label">Registrado por</div><div class="detail-value">${s.creadoPor||'—'}</div></div>
+            </div>
+        </div>
+        ${s.descripcion?'<div class="detail-section"><div class="detail-label">Descripción</div><div class="detail-value">'+s.descripcion+'</div></div>':''}
+        ${s.lat&&s.lng?'<div class="detail-section"><a href="https://www.google.com/maps?q='+s.lat+','+s.lng+'" target="_blank" style="color:var(--accent);font-size:13px;font-weight:700;text-decoration:none;">📍 Ver ubicación en Google Maps</a></div>':''}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            ${s.foto1?'<div class="detail-section"><div class="detail-label">Evidencia 1</div><img src="'+s.foto1+'" style="width:100%;border-radius:8px;max-height:200px;object-fit:contain;"></div>':''}
+            ${s.foto2?'<div class="detail-section"><div class="detail-label">Evidencia 2</div><img src="'+s.foto2+'" style="width:100%;border-radius:8px;max-height:200px;object-fit:contain;"></div>':''}
+        </div>
+        ${s.firmaImg?'<div class="detail-section"><div class="detail-label">Firma'+(s.firmaNombre?' — '+s.firmaNombre:'')+'</div><img src="'+s.firmaImg+'" style="max-width:100%;border:1px solid var(--border);border-radius:8px;background:white;"></div>':''}
+        <div class="detail-actions">
+            <button class="detail-btn btn-delete" onclick="eliminarVeh('${s.id}')">🗑 Eliminar</button>
+        </div>`;
+    document.getElementById('veh-detail').classList.add('active');
+};
+
+window.eliminarVeh = async (id) => {
+    if(!confirm('¿Eliminar este registro?')) return;
+    try{await deleteDoc(doc(db,'formularios_vehicular',id));toast('🗑 Eliminado');document.getElementById('veh-detail').classList.remove('active');cargarVeh();}
+    catch(e){toast('❌ Error');}
+};
 // ══════════════════════════════
 // PÓLIZA DE MANTENIMIENTO
 // ══════════════════════════════
@@ -2308,6 +2468,7 @@ window.showPage = (pageId, btn) => {
     if(pageId === 'ventas') { initMap(); setTimeout(() => { if(ventasMap) ventasMap.invalidateSize(); }, 400); }
     if(pageId === 'servicios') { cargarSrv(); }
     if(pageId === 'poliza') { cargarPol(); }
+    if(pageId === 'vehicular') { cargarVeh(); }
     
 };    
 if('serviceWorker' in navigator) {
