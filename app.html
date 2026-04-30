@@ -779,7 +779,11 @@ import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.12
 import { getFirestore, collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where, onSnapshot, orderBy } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 
-const firebaseConfig = { apiKey:"AIzaSyBXh-P0oMtMlDjyz9PObuJ8DNfRO1XvhLE", authDomain:"tecnocontrol-1c42f.firebaseapp.com", projectId:"tecnocontrol-1c42f", storageBucket:"tecnocontrol-1c42f.firebasestorage.app", appId:"1:276427719:web:tu_app_id" };
+const firebaseConfig = {apiKey: "AIzaSyBXh-P0oMtMiDjyz9PObuJ8DNfROlXvhLE",
+    authDomain: "tecnocontrol-1c42f.firebaseapp.com",
+    projectId: "tecnocontrol-1c42f",
+    storageBucket: "tecnocontrol-1c42f.firebasestorage.app",
+    appId: "1:27642771956:web:54225af9e386afded8a1a1" };
 
 // Use existing app or init
 const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
