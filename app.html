@@ -603,7 +603,38 @@
         .empty-icon { font-size: 48px; margin-bottom: 12px; }
         .empty-text { font-size: 14px; font-weight: 500; }
         .empty-sub { font-size: 12px; margin-top: 4px; }
+        .map-container { position:relative;height:calc(100dvh - 170px);border-radius:var(--radius);overflow:hidden;margin-bottom:12px;border:1px solid var(--border); }
+    .map-container .leaflet-container { height:100%;width:100%;background:#0a0f1e; }
+    .map-fab { position:absolute;bottom:16px;right:16px;z-index:800;display:flex;flex-direction:column;gap:8px; }
+    .map-fab-btn { width:48px;height:48px;border-radius:50%;border:none;font-size:20px;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;transition:0.2s; }
+    .map-fab-btn:active { transform:scale(0.9); }
+    .checkin-bar { background:var(--bg-card);border-radius:var(--radius);padding:16px;border:1px solid var(--border);margin-bottom:12px; }
+    .checkin-client { font-size:16px;font-weight:700;margin-bottom:4px; }
+    .checkin-addr { font-size:12px;color:var(--text-secondary);margin-bottom:12px; }
+    .checkin-btns { display:flex;gap:8px; }
+    .checkin-btn { flex:1;padding:12px;border:none;border-radius:var(--radius-sm);font-family:'Outfit',sans-serif;font-weight:700;font-size:13px;cursor:pointer; }
+    .btn-checkin { background:var(--accent-green);color:white; }
+    .btn-checkout { background:var(--accent-red);color:white; }
+    .btn-cancel { background:var(--bg-input);color:var(--text-secondary);border:1px solid var(--border) !important; }
+    .visit-result { background:var(--bg-card);border-radius:var(--radius);padding:16px;border:1px solid var(--border);margin-bottom:12px; }
+    .result-options { display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0; }
+    .result-opt { padding:12px;border-radius:var(--radius-sm);border:2px solid var(--border);background:var(--bg-input);color:var(--text-primary);font-family:'Outfit',sans-serif;font-size:12px;font-weight:600;cursor:pointer;text-align:center;transition:0.2s; }
+    .result-opt.selected { border-color:var(--accent);background:rgba(59,130,246,0.1);color:var(--accent); }
+    .client-card { background:var(--bg-card);border-radius:var(--radius);padding:14px;margin-bottom:10px;border:1px solid var(--border);cursor:pointer;transition:0.2s; }
+    .client-card:active { background:var(--bg-card-hover); }
+    .client-name { font-size:14px;font-weight:700; }
+    .client-addr { font-size:11px;color:var(--text-secondary);margin-top:2px; }
+    .client-visits { font-size:10px;color:var(--accent);margin-top:4px;font-weight:600; }
+    .visit-history-item { padding:10px 0;border-bottom:1px solid var(--border);font-size:12px; }
+    .vh-date { font-weight:700; }
+    .vh-result { display:inline-block;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:700;margin-left:6px; }
+    .vh-venta { background:rgba(16,185,129,0.15);color:#34d399; }
+    .vh-cotizacion { background:rgba(245,158,11,0.15);color:#fbbf24; }
+    .vh-seguimiento { background:rgba(59,130,246,0.15);color:#60a5fa; }
+    .vh-noconcretado { background:rgba(239,68,68,0.15);color:#f87171; }
     </style>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
 <body>
 
