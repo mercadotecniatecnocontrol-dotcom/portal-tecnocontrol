@@ -708,6 +708,16 @@
     <!-- PAGE: Home -->
     <div class="page active" id="page-home">
         <div class="stats-row" id="home-stats"></div>
+        <div class="sec-title">📋 Formularios</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:20px;" id="form-shortcuts">
+            <button onclick="showPage('servicios');setTimeout(()=>abrirFormSrv(),300)" style="padding:14px 8px;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;color:var(--text-primary);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;"><span style="font-size:24px;">🔧</span>Servicio Técnico</button>
+            <button onclick="showPage('poliza');setTimeout(()=>abrirFormPoliza(),300)" style="padding:14px 8px;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;color:var(--text-primary);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;"><span style="font-size:24px;">🛡️</span>Póliza Manto.</button>
+            <button onclick="toast('🚧 Próximamente')" style="padding:14px 8px;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;color:var(--text-primary);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;"><span style="font-size:24px;">🚗</span>Manto. Vehicular</button>
+            <button onclick="toast('🚧 Próximamente')" style="padding:14px 8px;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;color:var(--text-primary);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;"><span style="font-size:24px;">📝</span>Remisiones</button>
+            <button onclick="toast('🚧 Próximamente')" style="padding:14px 8px;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;color:var(--text-primary);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;"><span style="font-size:24px;">🔨</span>Inv. Herramienta</button>
+            <button onclick="toast('🚧 Próximamente')" style="padding:14px 8px;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;color:var(--text-primary);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;"><span style="font-size:24px;">⚙️</span>Inv. Refacciones</button>
+            <button onclick="toast('🚧 Próximamente')" style="padding:14px 8px;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;color:var(--text-primary);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;"><span style="font-size:24px;">📐</span>Calibraciones Jomar</button>
+        </div>
         <div class="sec-title">Hoy <button class="sec-title-btn" onclick="showPage('tasks')">Ver todo →</button></div>
         <div id="home-today-tasks"></div>
         <div class="sec-title" style="margin-top:20px;">Próximas <button class="sec-title-btn" onclick="showPage('calendar')">Calendario →</button></div>
@@ -967,6 +977,141 @@
         <button onclick="limpiarFirmaSrv()" style="padding:6px 14px;background:rgba(239,68,68,0.1);color:#ef4444;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;margin-bottom:16px;">🗑 Limpiar firma</button>
 
         <button class="form-submit" onclick="enviarSrv()" style="background:linear-gradient(135deg,#4f46e5,#4338ca);">📤 ENVIAR FORMULARIO</button>
+    </div>
+    <!-- PAGE: Póliza Mantenimiento -->
+    <div class="page" id="page-poliza">
+        <div class="sec-title">🛡️ Póliza de Mantenimiento
+            <button class="sec-title-btn" onclick="abrirFormPoliza()">➕ Nueva →</button>
+        </div>
+        <div class="search-wrap">
+            <span class="search-icon">🔍</span>
+            <input class="search-input" id="pol-search" placeholder="Buscar cliente, O.S...." oninput="renderPolList()">
+        </div>
+        <div id="pol-list"></div>
+    </div>
+
+    <!-- Form: Póliza Mantenimiento -->
+    <div class="form-overlay" id="form-poliza">
+        <div class="form-header">
+            <div class="form-title">🛡️ Póliza de Mantenimiento</div>
+            <button class="form-close" onclick="cerrarFormPoliza()">✕</button>
+        </div>
+        <input type="hidden" id="pol-edit-id">
+
+        <div class="srv-section-title">🏢 Datos del cliente</div>
+        <div class="form-group">
+            <label class="form-label">Cliente</label>
+            <input class="form-input" id="pol-cliente" placeholder="Nombre del cliente">
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">Razón social / Empresa</label>
+                <input class="form-input" id="pol-razon" placeholder="Razón social">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Orden de servicio</label>
+                <input class="form-input" id="pol-os" placeholder="No. de O.S.">
+            </div>
+        </div>
+
+        <div class="srv-section-title">📍 Estación de servicio</div>
+        <div class="form-group">
+            <label class="form-label">Estación</label>
+            <input class="form-input" id="pol-estacion" placeholder="Nombre o número de estación">
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">Latitud</label>
+                <input class="form-input" id="pol-lat" type="number" step="0.000001">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Longitud</label>
+                <input class="form-input" id="pol-lng" type="number" step="0.000001">
+            </div>
+        </div>
+        <button class="form-submit" onclick="polGPS()" style="background:linear-gradient(135deg,#10b981,#059669);margin-bottom:4px;">📍 Capturar ubicación GPS</button>
+        <div id="pol-gps-msg" style="font-size:11px;color:var(--text-secondary);text-align:center;margin-bottom:12px;"></div>
+
+        <div class="srv-section-title">📅 Fecha y hora</div>
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">Fecha</label>
+                <input class="form-input" id="pol-fecha" type="date">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Hora</label>
+                <input class="form-input" id="pol-hora" type="time">
+            </div>
+        </div>
+
+        <div class="srv-section-title">📷 Orden de servicio (foto)</div>
+        <div class="img-upload-zone" onclick="document.getElementById('pol-os-file').click()">
+            <div id="pol-os-label" style="color:var(--text-muted);font-size:12px;">📷 Toca para subir foto de la O.S.</div>
+            <img id="pol-os-prev" class="img-preview" style="display:none;">
+        </div>
+        <input type="file" id="pol-os-file" accept="image/*" capture="environment" style="display:none;" onchange="srvPreview(this,'pol-os-prev','pol-os-label','pol-os-data')">
+        <input type="hidden" id="pol-os-data">
+
+        <div class="srv-section-title">📝 Descripción del servicio</div>
+        <div class="form-group">
+            <textarea class="form-input form-textarea" id="pol-desc" rows="3" placeholder="Describe el servicio realizado o piezas instaladas..."></textarea>
+        </div>
+
+        <div class="srv-section-title">✅ Resultado</div>
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">¿Se concluyó la póliza?</label>
+                <select class="form-select" id="pol-concluido" onchange="document.getElementById('pol-falta-wrap').style.display=this.value==='no'?'block':'none'">
+                    <option value="si">✅ Sí</option>
+                    <option value="no">❌ No</option>
+                </select>
+            </div>
+            <div class="form-group" id="pol-falta-wrap" style="display:none;">
+                <label class="form-label">¿Qué faltó?</label>
+                <input class="form-input" id="pol-falta" placeholder="Lo que quedó pendiente...">
+            </div>
+        </div>
+
+        <div class="srv-section-title">📸 Evidencia del servicio</div>
+        <div class="form-row">
+            <div>
+                <div class="img-upload-zone" onclick="document.getElementById('pol-foto1-file').click()">
+                    <div id="pol-foto1-label" style="color:var(--text-muted);font-size:11px;">📷 Foto 1</div>
+                    <img id="pol-foto1-prev" class="img-preview" style="display:none;">
+                </div>
+                <input type="file" id="pol-foto1-file" accept="image/*" capture="environment" style="display:none;" onchange="srvPreview(this,'pol-foto1-prev','pol-foto1-label','pol-foto1-data')">
+                <input type="hidden" id="pol-foto1-data">
+            </div>
+            <div>
+                <div class="img-upload-zone" onclick="document.getElementById('pol-foto2-file').click()">
+                    <div id="pol-foto2-label" style="color:var(--text-muted);font-size:11px;">📷 Foto 2</div>
+                    <img id="pol-foto2-prev" class="img-preview" style="display:none;">
+                </div>
+                <input type="file" id="pol-foto2-file" accept="image/*" capture="environment" style="display:none;" onchange="srvPreview(this,'pol-foto2-prev','pol-foto2-label','pol-foto2-data')">
+                <input type="hidden" id="pol-foto2-data">
+            </div>
+        </div>
+
+        <div class="srv-section-title">✍️ Firma de conformidad</div>
+        <div class="form-group">
+            <label class="form-label">Nombre de quien firma</label>
+            <input class="form-input" id="pol-firma-nombre" placeholder="Nombre completo del cliente">
+        </div>
+        <div class="firma-canvas-wrap">
+            <canvas id="pol-firma-canvas" class="firma-canvas" width="600" height="150"></canvas>
+        </div>
+        <button onclick="limpiarFirmaPoliza()" style="padding:6px 14px;background:rgba(239,68,68,0.1);color:#ef4444;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;margin-bottom:16px;">🗑 Limpiar firma</button>
+
+        <button class="form-submit" onclick="enviarPoliza()" style="background:linear-gradient(135deg,#7c3aed,#6d28d9);">📤 ENVIAR PÓLIZA</button>
+    </div>
+
+    <!-- Detail: Póliza -->
+    <div class="detail-overlay" id="pol-detail">
+        <div class="form-header">
+            <div class="form-title" id="pold-title">—</div>
+            <button class="form-close" onclick="document.getElementById('pol-detail').classList.remove('active')">✕</button>
+        </div>
+        <div id="pold-content"></div>
     </div>
 
     <!-- Detail: Servicio -->
