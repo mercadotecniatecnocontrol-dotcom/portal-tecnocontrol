@@ -610,7 +610,7 @@
         .empty-text { font-size: 14px; font-weight: 500; }
         .empty-sub { font-size: 12px; margin-top: 4px; }
         .map-container { position:relative;height:calc(100dvh - 170px);border-radius:var(--radius);overflow:hidden;margin-bottom:12px;border:1px solid var(--border); }
-    .map-container .leaflet-container { height:100%;width:100%;background:#0a0f1e; }
+    .map-container .leaflet-container { height:100%;width:100%;background:#f1f5f9; }
     .map-fab { position:absolute;bottom:16px;right:16px;z-index:800;display:flex;flex-direction:column;gap:8px; }
     .map-fab-btn { width:48px;height:48px;border-radius:50%;border:none;font-size:20px;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;transition:0.2s; }
     .map-fab-btn:active { transform:scale(0.9); }
@@ -1073,7 +1073,7 @@ window.renderTasks = () => {
     const q = (document.getElementById('tasks-search')?.value || '').toLowerCase();
     const myEmail = currentUser?.email || '';
 
-    let filtered = allTasks.filter(t => t.encargado === myEmail || t.responsable === myEmail);
+    let filtered = allTasks.filter(t => t.encargado === myEmail || t.responsable === myEmail || (t.compartidoCon||[]).some(c=>c.destinoEmail===myEmail));
 
     if(currentFilter !== 'todas') {
         const filterMap = {'pendientes':'Sin Iniciar','proceso':'En Proceso','completadas':'Completada'};
@@ -1360,7 +1360,7 @@ function initMap() {
         const container = document.getElementById('ventas-map');
         if(!container) return;
         ventasMap = L.map('ventas-map', { zoomControl: false, attributionControl: false }).setView([28.6353, -106.0889], 12);
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(ventasMap);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(ventasMap);
         L.control.zoom({ position: 'topleft' }).addTo(ventasMap);
         markersLayer = L.layerGroup().addTo(ventasMap);
         if(navigator.geolocation) {
