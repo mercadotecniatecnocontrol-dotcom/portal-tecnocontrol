@@ -126,7 +126,13 @@
 .header-greeting { color: rgba(255,255,255,0.8) !important; }
 .header-name { color: white !important; }
         .header-left { display: flex; align-items: center; gap: 10px; }
-        .header-avatar {
+        .header-logo {
+    width: 45px;   /* Esto controla el tamaño horizontal */
+    height: 45px;  /* Esto controla el tamaño vertical */
+    object-fit: contain; /* Esto evita que se estire feo */
+    flex-shrink: 0;      /* Esto evita que otros elementos la aplasten */
+    margin-right: 5px;   /* Espacio entre el logo y el texto */
+}
             width: 36px; height: 36px;
             border-radius: 50%;
             background: linear-gradient(135deg, #3b82f6, #8b5cf6);
