@@ -111,17 +111,21 @@
 
         /* ── HEADER ── */
         .app-header {
-            padding: calc(var(--safe-top) + 12px) 16px 12px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            background: rgba(37, 99, 30, 0.85);
-            backdrop-filter: blur(20px);
-            border-bottom: border-bottom: 1px solid rgba(255, 255, 255, 0.1); var(--border);
-        }
+    padding: calc(var(--safe-top) + 12px) 16px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: #2563eb; /* Azul Rey Vibrante */
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    color: white; /* Esto pone el nombre y saludo en blanco */
+}
+
+/* Añade esto justo debajo para asegurar que el saludo no se quede gris */
+.header-greeting { color: rgba(255,255,255,0.8) !important; }
+.header-name { color: white !important; }
         .header-left { display: flex; align-items: center; gap: 10px; }
         .header-avatar {
             width: 36px; height: 36px;
@@ -151,50 +155,39 @@
 
         /* ── BOTTOM NAV ── */
         .bottom-nav {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            height: calc(var(--nav-h) + var(--safe-bottom));
-            padding-bottom: var(--safe-bottom);
-            background: #1d4ed8; 
-            backdrop-filter: blur(24px);
-            border-top: 1px solid rgba(255, 255, 255, 0.1); var(--border);
-            display: flex;
-            z-index: 200;
-        }
-        .nav-item {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 3px;
-            color: var(--text-muted);
-            font-size: 10px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: 0.2s;
-            border: none;
-            background: none;
-            font-family: 'Outfit', sans-serif;
-        }
-        .nav-item.active { color: var(--accent); }
-        .nav-icon { font-size: 22px; }
-        .nav-fab {
-            width: 52px; height: 52px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, #3b82f6, #2563eb);
-            border: none;
-            color: white;
-            font-size: 26px;
-            cursor: pointer;
-            margin-top: -20px;
-            box-shadow: 0 4px 20px var(--accent-glow);
-            display: flex; align-items: center; justify-content: center;
-            transition: 0.2s;
-        }
-        .nav-fab:active { transform: scale(0.9); }
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: calc(var(--nav-h) + var(--safe-bottom));
+    padding-bottom: var(--safe-bottom);
+    background: #1d4ed8; /* Azul un poco más intenso para la base */
+    border-top: 1px solid rgba(255,255,255,0.1);
+    display: flex;
+    z-index: 200;
+}
+
+/* Para que los nombres de los iconos (Inicio, Tareas, etc.) sean blancos */
+.nav-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    color: rgba(255,255,255,0.7); /* Blanco traslúcido para los no seleccionados */
+    font-size: 10px;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    background: none;
+    font-family: 'Outfit', sans-serif;
+}
+
+/* Para que el icono activo resalte en blanco puro */
+.nav-item.active { 
+    color: #ffffff !important; 
+}
 
         /* ── PAGES ── */
         .page { display: none; padding: 16px; animation: fadeIn 0.25s ease; }
