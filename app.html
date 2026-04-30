@@ -126,6 +126,7 @@
 .header-greeting { color: rgba(255,255,255,0.8) !important; }
 .header-name { color: white !important; }
         .header-left { display: flex; align-items: center; gap: 10px; }
+        .header-avatar {
             width: 36px; height: 36px;
             border-radius: 50%;
             background: linear-gradient(135deg, #3b82f6, #8b5cf6);
@@ -664,7 +665,7 @@
     <!-- Header -->
     <div class="app-header">
         <div class="header-left">
-            <div class="header-avatar">T</div>
+            <div class="header-avatar" id="app-avatar">T</div>
             <div>
                 <div class="header-greeting" id="app-greeting">Buen día</div>
                 <div class="header-name" id="app-username">Tecnocontrol</div>
@@ -849,6 +850,7 @@
     <nav class="bottom-nav">
         <button class="nav-item active" onclick="showPage('home',this)"><span class="nav-icon">🏠</span>Inicio</button>
         <button class="nav-item" onclick="showPage('tasks',this)"><span class="nav-icon">📋</span>Tareas</button>
+        <button class="nav-item" onclick="showPage('ventas',this)"><span class="nav-icon">🗺️</span>Ventas</button>
         <button class="nav-fab" onclick="openNewTask()">+</button>
         <button class="nav-item" onclick="showPage('calendar',this)"><span class="nav-icon">📅</span>Calendario</button>
         <button class="nav-item" onclick="showPage('profile',this)"><span class="nav-icon">👤</span>Perfil</button>
