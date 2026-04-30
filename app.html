@@ -609,11 +609,22 @@
         .empty-icon { font-size: 48px; margin-bottom: 12px; }
         .empty-text { font-size: 14px; font-weight: 500; }
         .empty-sub { font-size: 12px; margin-top: 4px; }
-        .map-container { position:relative;height:calc(100dvh - 170px);border-radius:var(--radius);overflow:hidden;margin-bottom:12px;border:1px solid var(--border); }
+        .map-container { position:relative;height:calc(100dvh - 120px);border-radius:0;overflow:hidden;margin:-16px -16px 0;border:none; }
     .map-container .leaflet-container { height:100%;width:100%;background:#f1f5f9; }
-    .map-fab { position:absolute;bottom:16px;right:16px;z-index:800;display:flex;flex-direction:column;gap:8px; }
-    .map-fab-btn { width:48px;height:48px;border-radius:50%;border:none;font-size:20px;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;transition:0.2s; }
+    .map-container .leaflet-control-zoom { display:none; }
+    .map-fab { position:absolute;bottom:90px;right:12px;z-index:800;display:flex;flex-direction:column;gap:8px; }
+    .map-fab-btn { width:44px;height:44px;border-radius:50%;border:none;font-size:18px;cursor:pointer;box-shadow:0 2px 12px rgba(0,0,0,0.2);display:flex;align-items:center;justify-content:center;transition:0.2s; }
     .map-fab-btn:active { transform:scale(0.9); }
+    .map-search-bar { position:absolute;top:12px;left:12px;right:12px;z-index:800; }
+    .map-search-input { width:100%;padding:14px 16px 14px 42px;background:white;border:none;border-radius:12px;font-family:'Outfit',sans-serif;font-size:14px;color:#1e293b;box-shadow:0 2px 12px rgba(0,0,0,0.1);outline:none; }
+    .map-search-icon { position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:16px;color:#94a3b8;z-index:1; }
+    .map-stats-bar { position:absolute;bottom:12px;left:12px;right:70px;z-index:800;display:flex;gap:6px; }
+    .map-stat-pill { flex:1;background:white;border-radius:12px;padding:10px 8px;text-align:center;box-shadow:0 2px 12px rgba(0,0,0,0.1); }
+    .map-stat-num { font-size:18px;font-weight:800;font-family:'JetBrains Mono',monospace;color:#1e293b; }
+    .map-stat-label { font-size:8px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.5px; }
+    @keyframes pulse { 0%{transform:scale(1);opacity:0.8} 50%{transform:scale(2.5);opacity:0} 100%{transform:scale(1);opacity:0} }
+    .my-location-pulse { animation:pulse 2s infinite; }
+    .checkin-bar { background:white;border-radius:16px;padding:16px;border:none;margin:-16px 0 12px;box-shadow:0 -4px 20px rgba(0,0,0,0.1);position:relative;z-index:900; }
     .checkin-bar { background:var(--bg-card);border-radius:var(--radius);padding:16px;border:1px solid var(--border);margin-bottom:12px; }
     .checkin-client { font-size:16px;font-weight:700;margin-bottom:4px; }
     .checkin-addr { font-size:12px;color:var(--text-secondary);margin-bottom:12px; }
@@ -762,13 +773,23 @@
             <button class="form-submit" onclick="guardarVisita()" style="background:linear-gradient(135deg,#10b981,#059669);">✅ Guardar visita</button>
         </div>
         <div class="map-container" id="map-container">
+            <div class="map-search-bar">
+                <span class="map-search-icon">🔍</span>
+                <input class="map-search-input" id="map-search" placeholder="Buscar cliente o dirección..." oninput="buscarEnMapa()">
+                <div id="map-search-results" style="display:none;background:white;border-radius:12px;margin-top:6px;box-shadow:0 4px 20px rgba(0,0,0,0.12);max-height:200px;overflow-y:auto;"></div>
+            </div>
             <div id="ventas-map" style="height:100%;"></div>
+            <div class="map-stats-bar" id="map-stats-bar">
+                <div class="map-stat-pill"><div class="map-stat-num" id="ms-clientes">0</div><div class="map-stat-label">Clientes</div></div>
+                <div class="map-stat-pill"><div class="map-stat-num" id="ms-hoy" style="color:#2563eb;">0</div><div class="map-stat-label">Visitas hoy</div></div>
+                <div class="map-stat-pill"><div class="map-stat-num" id="ms-mes" style="color:#f59e0b;">0</div><div class="map-stat-label">Mes</div></div>
+                <div class="map-stat-pill"><div class="map-stat-num" id="ms-ventas" style="color:#10b981;">0</div><div class="map-stat-label">Ventas</div></div>
+            </div>
             <div class="map-fab">
-                <button class="map-fab-btn" style="background:var(--accent);color:white;" onclick="centrarEnMi()">📍</button>
-                <button class="map-fab-btn" style="background:var(--accent-green);color:white;" onclick="openNewClient()">➕</button>
+                <button class="map-fab-btn" style="background:white;color:#2563eb;box-shadow:0 2px 12px rgba(0,0,0,0.15);" onclick="centrarEnMi()">📍</button>
+                <button class="map-fab-btn" style="background:#10b981;color:white;" onclick="openNewClient()">➕</button>
             </div>
         </div>
-        <div class="stats-row" id="ventas-stats"></div>
     </div>
 
     <!-- PAGE: Client List -->
@@ -1368,9 +1389,12 @@ function initMap() {
             navigator.geolocation.watchPosition(pos => {
                 miUbicacion = { lat: pos.coords.latitude, lng: pos.coords.longitude };
                 if(miMarker) miMarker.remove();
-                miMarker = L.circleMarker([miUbicacion.lat, miUbicacion.lng], {
-                    radius: 8, fillColor: '#3b82f6', fillOpacity: 1, color: 'white', weight: 3
-                }).addTo(ventasMap).bindPopup('📍 Mi ubicación');
+                const pulseIcon = L.divIcon({
+                    className: '',
+                    html: '<div style="position:relative;"><div style="width:16px;height:16px;border-radius:50%;background:#2563eb;border:3px solid white;box-shadow:0 2px 8px rgba(37,99,235,0.4);"></div><div class="my-location-pulse" style="position:absolute;top:-4px;left:-4px;width:24px;height:24px;border-radius:50%;border:2px solid #2563eb;"></div></div>',
+                    iconSize: [16, 16], iconAnchor: [8, 8]
+                });
+                miMarker = L.marker([miUbicacion.lat, miUbicacion.lng], { icon: pulseIcon }).addTo(ventasMap);
             }, null, { enableHighAccuracy: true });
         }
         cargarClientes();
@@ -1466,13 +1490,37 @@ function renderVentasStats() {
     const mesActual = hoy.slice(0,7);
     const mesVisitas = misVisitas.filter(v => (v.fecha||'').startsWith(mesActual));
     const ventas = mesVisitas.filter(v => v.resultado === 'Venta realizada').length;
-    document.getElementById('ventas-stats').innerHTML = `
-        <div class="stat-card"><div class="stat-icon">📍</div><div class="stat-val">${clientesDB.length}</div><div class="stat-label">Clientes</div></div>
-        <div class="stat-card"><div class="stat-icon">🚗</div><div class="stat-val" style="color:var(--accent)">${hoyVisitas.length}</div><div class="stat-label">Visitas hoy</div></div>
-        <div class="stat-card"><div class="stat-icon">📊</div><div class="stat-val" style="color:var(--accent-amber)">${mesVisitas.length}</div><div class="stat-label">Visitas mes</div></div>
-        <div class="stat-card"><div class="stat-icon">💰</div><div class="stat-val" style="color:var(--accent-green)">${ventas}</div><div class="stat-label">Ventas mes</div></div>`;
+    const e = id => document.getElementById(id);
+    if(e('ms-clientes')) e('ms-clientes').innerText = clientesDB.length;
+    if(e('ms-hoy')) e('ms-hoy').innerText = hoyVisitas.length;
+    if(e('ms-mes')) e('ms-mes').innerText = mesVisitas.length;
+    if(e('ms-ventas')) e('ms-ventas').innerText = ventas;
 }
+    
+window.buscarEnMapa = () => {
+    const q = (document.getElementById('map-search')?.value||'').toLowerCase();
+    const results = document.getElementById('map-search-results');
+    if(!results) return;
+    if(q.length < 2) { results.style.display = 'none'; return; }
+    const found = clientesDB.filter(c => (c.nombre||'').toLowerCase().includes(q) || (c.direccion||c.dir||'').toLowerCase().includes(q)).slice(0,5);
+    if(!found.length) { results.style.display = 'none'; return; }
+    results.style.display = 'block';
+    results.innerHTML = found.map(c => `<div style="padding:12px 14px;border-bottom:1px solid #f1f5f9;cursor:pointer;font-size:13px;" onclick="irAClienteDesdeSearch('${c.id}')">
+        <div style="font-weight:700;color:#1e293b;">📍 ${c.nombre||'—'}</div>
+        <div style="font-size:11px;color:#64748b;margin-top:2px;">${c.direccion||c.dir||'—'}</div>
+    </div>`).join('');
+};
 
+window.irAClienteDesdeSearch = (id) => {
+    const c = clientesDB.find(x => x.id === id);
+    if(!c) return;
+    document.getElementById('map-search').value = '';
+    document.getElementById('map-search-results').style.display = 'none';
+    if(ventasMap && c.lat && c.lng) {
+        ventasMap.setView([c.lat, c.lng], 16);
+        seleccionarCliente(c);
+    }
+};
 window.centrarEnMi = () => {
     if(miUbicacion && ventasMap) ventasMap.setView([miUbicacion.lat, miUbicacion.lng], 15);
     else toast('📍 Obteniendo ubicación...');
