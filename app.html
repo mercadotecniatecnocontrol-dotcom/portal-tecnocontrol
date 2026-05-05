@@ -2474,6 +2474,7 @@ window.eliminarVeh = async (id) => {
     try{await deleteDoc(doc(db,'formularios_vehicular',id));toast('🗑 Eliminado');document.getElementById('veh-detail').classList.remove('active');cargarVeh();}
     catch(e){toast('❌ Error');}
 };
+    
 // ══════════════════════════════
 // PÓLIZA DE MANTENIMIENTO
 // ══════════════════════════════
