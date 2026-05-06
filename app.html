@@ -1105,6 +1105,242 @@
         <button class="form-submit" onclick="enviarPoliza()" style="background:linear-gradient(135deg,#7c3aed,#6d28d9);">📤 ENVIAR PÓLIZA</button>
     </div>
 
+    <!-- PAGE: Mantenimiento Vehicular -->
+    <div class="page" id="page-vehicular">
+        <div class="sec-title">🚗 Manto. Vehicular
+            <button class="sec-title-btn" onclick="abrirFormVeh()">➕ Nuevo →</button>
+        </div>
+        <div class="search-wrap">
+            <span class="search-icon">🔍</span>
+            <input class="search-input" id="veh-search" placeholder="Buscar no. económico..." oninput="renderVehList()">
+        </div>
+        <div id="veh-list"></div>
+    </div>
+
+    <!-- Form: Mantenimiento Vehicular -->
+    <div class="form-overlay" id="form-veh">
+        <div class="form-header">
+            <div class="form-title">🚗 Mantenimiento Vehicular</div>
+            <button class="form-close" onclick="cerrarFormVeh()">✕</button>
+        </div>
+        <input type="hidden" id="veh-edit-id">
+
+        <div class="srv-section-title">🏢 Datos generales</div>
+        <div class="form-group">
+            <label class="form-label">Empresa</label>
+            <select class="form-select" id="veh-empresa">
+                <option>Tecnocontrol</option>
+                <option>Jomar</option>
+                <option>VH Verificaciones</option>
+                <option>Desarrollos y Construcciones</option>
+                <option>Otra</option>
+            </select>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">No. Económico</label>
+                <input class="form-input" id="veh-economico" placeholder="Ej: TC-01">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Fecha</label>
+                <input class="form-input" id="veh-fecha" type="date">
+            </div>
+        </div>
+
+        <div class="srv-section-title">🔧 Mantenimiento</div>
+        <div class="form-group">
+            <label class="form-label">¿Ingresó a taller?</label>
+            <select class="form-select" id="veh-taller" onchange="document.getElementById('veh-taller-wrap').style.display=this.value==='si'?'block':'none'">
+                <option value="no">❌ No</option>
+                <option value="si">✅ Sí</option>
+            </select>
+        </div>
+        <div class="form-group" id="veh-taller-wrap" style="display:none;">
+            <label class="form-label">Nombre del taller</label>
+            <input class="form-input" id="veh-nombre-taller" placeholder="Nombre del taller">
+        </div>
+
+        <div class="srv-section-title">📍 Ubicación</div>
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">Latitud</label>
+                <input class="form-input" id="veh-lat" type="number" step="0.000001">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Longitud</label>
+                <input class="form-input" id="veh-lng" type="number" step="0.000001">
+            </div>
+        </div>
+        <button class="form-submit" onclick="vehGPS()" style="background:linear-gradient(135deg,#10b981,#059669);margin-bottom:4px;">📍 Capturar ubicación GPS</button>
+        <div id="veh-gps-msg" style="font-size:11px;color:var(--text-secondary);text-align:center;margin-bottom:12px;"></div>
+
+        <div class="srv-section-title">📝 Descripción</div>
+        <div class="form-group">
+            <textarea class="form-input form-textarea" id="veh-desc" rows="3" placeholder="Describe el mantenimiento o cambio de refacción realizado..."></textarea>
+        </div>
+
+        <div class="srv-section-title">📸 Evidencias</div>
+        <div class="form-row">
+            <div>
+                <div class="img-upload-zone" onclick="document.getElementById('veh-foto1-file').click()">
+                    <div id="veh-foto1-label" style="color:var(--text-muted);font-size:11px;">📷 Foto 1</div>
+                    <img id="veh-foto1-prev" class="img-preview" style="display:none;">
+                </div>
+                <input type="file" id="veh-foto1-file" accept="image/*" capture="environment" style="display:none;" onchange="srvPreview(this,'veh-foto1-prev','veh-foto1-label','veh-foto1-data')">
+                <input type="hidden" id="veh-foto1-data">
+            </div>
+            <div>
+                <div class="img-upload-zone" onclick="document.getElementById('veh-foto2-file').click()">
+                    <div id="veh-foto2-label" style="color:var(--text-muted);font-size:11px;">📷 Foto 2</div>
+                    <img id="veh-foto2-prev" class="img-preview" style="display:none;">
+                </div>
+                <input type="file" id="veh-foto2-file" accept="image/*" capture="environment" style="display:none;" onchange="srvPreview(this,'veh-foto2-prev','veh-foto2-label','veh-foto2-data')">
+                <input type="hidden" id="veh-foto2-data">
+            </div>
+        </div>
+
+        <div class="srv-section-title">✍️ Firma del empleado</div>
+        <div class="form-group">
+            <label class="form-label">Nombre de quien firma</label>
+            <input class="form-input" id="veh-firma-nombre" placeholder="Nombre completo">
+        </div>
+        <div class="firma-canvas-wrap">
+            <canvas id="veh-firma-canvas" class="firma-canvas" width="600" height="150"></canvas>
+        </div>
+        <button onclick="limpiarFirmaVeh()" style="padding:6px 14px;background:rgba(239,68,68,0.1);color:#ef4444;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;margin-bottom:16px;">🗑 Limpiar firma</button>
+
+        <button class="form-submit" onclick="enviarVeh()" style="background:linear-gradient(135deg,#0ea5e9,#0284c7);">📤 ENVIAR FORMULARIO</button>
+    </div>
+
+    <!-- Detail: Vehicular -->
+    <div class="detail-overlay" id="veh-detail">
+        <div class="form-header">
+            <div class="form-title" id="vehd-title">—</div>
+            <button class="form-close" onclick="document.getElementById('veh-detail').classList.remove('active')">✕</button>
+        </div>
+        <div id="vehd-content"></div>
+    </div>
+
+    <!-- PAGE: Remisiones -->
+    <div class="page" id="page-remisiones">
+        <div class="sec-title">📝 Remisiones
+            <button class="sec-title-btn" onclick="abrirFormRem()">➕ Nueva →</button>
+        </div>
+        <div class="search-wrap">
+            <span class="search-icon">🔍</span>
+            <input class="search-input" id="rem-search" placeholder="Buscar empresa, O.S...." oninput="renderRemList()">
+        </div>
+        <div id="rem-list"></div>
+    </div>
+
+    <!-- Form: Remisión -->
+    <div class="form-overlay" id="form-rem">
+        <div class="form-header">
+            <div class="form-title">📝 Remisión Firmada</div>
+            <button class="form-close" onclick="cerrarFormRem()">✕</button>
+        </div>
+        <input type="hidden" id="rem-edit-id">
+
+        <div class="srv-section-title">🏢 Empresa</div>
+        <div class="form-group">
+            <label class="form-label">Empresa</label>
+            <select class="form-select" id="rem-empresa" onchange="updateRemLogo()">
+                <option>Tecnocontrol</option>
+                <option>Jomar</option>
+                <option>VH Verificaciones</option>
+                <option>Desarrollos y Construcciones</option>
+                <option>Otra</option>
+            </select>
+        </div>
+        <div id="rem-logo" style="text-align:center;padding:12px;background:var(--bg-card);border-radius:12px;margin-bottom:16px;font-size:14px;font-weight:700;"><span style="font-size:28px;">🔵</span> <span id="rem-logo-name">Tecnocontrol</span></div>
+        <div class="form-group">
+            <label class="form-label">Razón social</label>
+            <input class="form-input" id="rem-razon" placeholder="Razón social del cliente">
+        </div>
+        <div class="form-group">
+            <label class="form-label">No. de Remisión / O.S.</label>
+            <input class="form-input" id="rem-os" placeholder="Número de remisión">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Solicita</label>
+            <input class="form-input" id="rem-solicita" placeholder="Nombre de quien solicita">
+        </div>
+
+        <div class="srv-section-title">📍 Lugar de entrega</div>
+        <div class="form-group">
+            <label class="form-label">Lugar</label>
+            <input class="form-input" id="rem-lugar" placeholder="Dirección o nombre del lugar">
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">Latitud</label>
+                <input class="form-input" id="rem-lat" type="number" step="0.000001">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Longitud</label>
+                <input class="form-input" id="rem-lng" type="number" step="0.000001">
+            </div>
+        </div>
+        <button class="form-submit" onclick="remGPS()" style="background:linear-gradient(135deg,#10b981,#059669);margin-bottom:4px;">📍 Capturar ubicación GPS</button>
+        <div id="rem-gps-msg" style="font-size:11px;color:var(--text-secondary);text-align:center;margin-bottom:12px;"></div>
+
+        <div class="srv-section-title">📷 Remisión (foto)</div>
+        <div class="img-upload-zone" onclick="document.getElementById('rem-os-file').click()">
+            <div id="rem-os-label" style="color:var(--text-muted);font-size:12px;">📷 Foto de la remisión</div>
+            <img id="rem-os-prev" class="img-preview" style="display:none;">
+        </div>
+        <input type="file" id="rem-os-file" accept="image/*" capture="environment" style="display:none;" onchange="srvPreview(this,'rem-os-prev','rem-os-label','rem-os-data')">
+        <input type="hidden" id="rem-os-data">
+
+        <div class="srv-section-title">📸 Evidencias</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+            <div>
+                <div class="img-upload-zone" onclick="document.getElementById('rem-ev1-file').click()">
+                    <div id="rem-ev1-label" style="color:var(--text-muted);font-size:10px;">📷 Foto 1</div>
+                    <img id="rem-ev1-prev" class="img-preview" style="display:none;">
+                </div>
+                <input type="file" id="rem-ev1-file" accept="image/*" capture="environment" style="display:none;" onchange="srvPreview(this,'rem-ev1-prev','rem-ev1-label','rem-ev1-data')">
+                <input type="hidden" id="rem-ev1-data">
+            </div>
+            <div>
+                <div class="img-upload-zone" onclick="document.getElementById('rem-ev2-file').click()">
+                    <div id="rem-ev2-label" style="color:var(--text-muted);font-size:10px;">📷 Foto 2</div>
+                    <img id="rem-ev2-prev" class="img-preview" style="display:none;">
+                </div>
+                <input type="file" id="rem-ev2-file" accept="image/*" capture="environment" style="display:none;" onchange="srvPreview(this,'rem-ev2-prev','rem-ev2-label','rem-ev2-data')">
+                <input type="hidden" id="rem-ev2-data">
+            </div>
+            <div>
+                <div class="img-upload-zone" onclick="document.getElementById('rem-ev3-file').click()">
+                    <div id="rem-ev3-label" style="color:var(--text-muted);font-size:10px;">📷 Foto 3</div>
+                    <img id="rem-ev3-prev" class="img-preview" style="display:none;">
+                </div>
+                <input type="file" id="rem-ev3-file" accept="image/*" capture="environment" style="display:none;" onchange="srvPreview(this,'rem-ev3-prev','rem-ev3-label','rem-ev3-data')">
+                <input type="hidden" id="rem-ev3-data">
+            </div>
+        </div>
+
+        <div class="srv-section-title">✍️ Firma del cliente</div>
+        <div class="form-group">
+            <label class="form-label">Nombre de quien firma</label>
+            <input class="form-input" id="rem-firma-nombre" placeholder="Nombre completo del cliente">
+        </div>
+        <div class="firma-canvas-wrap">
+            <canvas id="rem-firma-canvas" class="firma-canvas" width="600" height="150"></canvas>
+        </div>
+        <button onclick="limpiarFirmaRem()" style="padding:6px 14px;background:rgba(239,68,68,0.1);color:#ef4444;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;margin-bottom:16px;">🗑 Limpiar firma</button>
+
+        <button class="form-submit" onclick="enviarRem()" style="background:linear-gradient(135deg,#f59e0b,#d97706);">📤 ENVIAR REMISIÓN</button>
+    </div>
+
+    <!-- Detail: Remisión -->
+    <div class="detail-overlay" id="rem-detail">
+        <div class="form-header">
+            <div class="form-title" id="remd-title">—</div>
+            <button class="form-close" onclick="document.getElementById('rem-detail').classList.remove('active')">✕</button>
+        </div>
+        <div id="remd-content"></div>
+    </div>
     <!-- Detail: Póliza -->
     <div class="detail-overlay" id="pol-detail">
         <div class="form-header">
