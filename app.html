@@ -3793,6 +3793,364 @@ window.showPage = (pageId, btn) => {
     if(pageId === 'cotizaciones') { cargarCot(); }
     
 };    
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- MÓDULO CLOUDINARY — Subida de imágenes y firmas               -->
+<!-- Pega este <script> justo DESPUÉS del <script type="module">   -->
+<!-- de Firebase (después del cierre </script> de Firebase)        -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<script>
+// ══════════════════════════════════════════════════════
+// CLOUDINARY CONFIG
+// ══════════════════════════════════════════════════════
+const CLD_CLOUD    = 'daorprxxn';
+const CLD_PRESET   = 'tecnocontrol_app';
+const CLD_API_KEY  = '725188326585565';
+const CLD_BASE_URL = `https://api.cloudinary.com/v1_1/${CLD_CLOUD}/image/upload`;
+
+// ── Subir archivo (File object) a Cloudinary ──────────
+// Retorna la URL pública de la imagen
+async function subirArchivoCloudinary(file, carpeta) {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('upload_preset', CLD_PRESET);
+    fd.append('folder', 'tecnocontrol/' + (carpeta||'general'));
+    fd.append('api_key', CLD_API_KEY);
+
+    const res = await fetch(CLD_BASE_URL, { method: 'POST', body: fd });
+    if(!res.ok) throw new Error('Error subiendo imagen: ' + res.status);
+    const data = await res.json();
+    return data.secure_url;
+}
+
+// ── Subir base64 (canvas/firma) a Cloudinary ─────────
+// Retorna la URL pública
+async function subirBase64Cloudinary(base64str, carpeta) {
+    if(!base64str) return '';
+    const fd = new FormData();
+    fd.append('file', base64str);
+    fd.append('upload_preset', CLD_PRESET);
+    fd.append('folder', 'tecnocontrol/' + (carpeta||'firmas'));
+    fd.append('api_key', CLD_API_KEY);
+
+    const res = await fetch(CLD_BASE_URL, { method: 'POST', body: fd });
+    if(!res.ok) throw new Error('Error subiendo firma: ' + res.status);
+    const data = await res.json();
+    return data.secure_url;
+}
+
+// ── Preview imagen + guardar File en memoria ──────────
+// Reemplaza el srvPreview para todos los formularios
+window.srvPreview = (input, prevId, labelId, dataId) => {
+    const file = input.files[0]; if(!file) return;
+    if(file.size > 10*1024*1024) { toast('Imagen muy grande. Max 10MB'); return; }
+
+    // Preview visual inmediato
+    const reader = new FileReader();
+    reader.onload = e => {
+        const prev = document.getElementById(prevId);
+        if(prev) { prev.src = e.target.result; prev.style.display = 'block'; }
+        const label = document.getElementById(labelId);
+        if(label) label.style.display = 'none';
+    };
+    reader.readAsDataURL(file);
+
+    // Guardar el File object en el input hidden como referencia
+    // (se sube a Cloudinary al momento de enviar el formulario)
+    const dataEl = document.getElementById(dataId);
+    if(dataEl) {
+        dataEl._file = file; // guardar referencia al File
+        dataEl.value = 'pending'; // marcar como pendiente
+    }
+};
+
+// ── Subir todas las imágenes pendientes de un form ───
+// imgs = array de { dataId, carpeta }
+// Retorna objeto { dataId: url, ... }
+async function subirImagenesPendientes(imgs) {
+    const urls = {};
+    for(const { dataId, carpeta } of imgs) {
+        const el = document.getElementById(dataId);
+        if(!el) continue;
+        if(el._file) {
+            // Es un archivo nuevo — subir a Cloudinary
+            try {
+                urls[dataId] = await subirArchivoCloudinary(el._file, carpeta);
+            } catch(e) {
+                console.error('Error subiendo ' + dataId, e);
+                urls[dataId] = '';
+            }
+        } else if(el.value && el.value !== 'pending') {
+            // Ya es una URL (edición) — mantener
+            urls[dataId] = el.value;
+        } else {
+            urls[dataId] = '';
+        }
+    }
+    return urls;
+}
+
+// ── Subir firma desde canvas ──────────────────────────
+async function subirFirmaCanvas(canvasId, carpeta) {
+    const canvas = document.getElementById(canvasId);
+    if(!canvas) return '';
+    // Verificar si hay firma dibujada
+    const px = canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
+    let hayFirma = false;
+    for(let i=3; i<px.length; i+=4) { if(px[i]>0) { hayFirma=true; break; } }
+    if(!hayFirma) return '';
+    const base64 = canvas.toDataURL('image/png');
+    return await subirBase64Cloudinary(base64, carpeta);
+}
+
+// ══════════════════════════════════════════════════════
+// REEMPLAZOS DE enviarSrv, enviarPoliza, enviarVeh,
+// enviarRem, generarCotizacion — ahora usan Cloudinary
+// ══════════════════════════════════════════════════════
+
+// ── SERVICIO TÉCNICO ──────────────────────────────────
+window.enviarSrv = async () => {
+    const g = id => { const e=document.getElementById(id); return e?e.value.trim():''; };
+    const gn = id => { const v=g(id); return v?Number(v):undefined; };
+    if(!g('srv-cliente')) { toast('Escribe el nombre del cliente'); return; }
+
+    const btn = document.querySelector('#form-srv .form-submit:last-child');
+    if(btn) { btn.textContent = 'Subiendo imagenes...'; btn.disabled = true; }
+
+    try {
+        // Subir firma
+        const firmaUrl = await subirFirmaCanvas('srv-firma-canvas', 'servicios/firmas');
+        if(!firmaUrl) { toast('Se requiere la firma de conformidad'); if(btn){btn.textContent='Enviar';btn.disabled=false;} return; }
+
+        if(btn) btn.textContent = 'Guardando...';
+
+        // Subir imágenes
+        const imgs = await subirImagenesPendientes([
+            { dataId:'srv-os-data',   carpeta:'servicios/ordenes' },
+            { dataId:'srv-foto-data', carpeta:'servicios/evidencias' },
+            { dataId:'srv-video-data',carpeta:'servicios/videos' },
+        ]);
+
+        const data = {
+            tipo:'servicio_tecnico',
+            cliente:g('srv-cliente'), razonSocial:g('srv-razon'), folio:g('srv-folio'),
+            estacion:g('srv-estacion'), lat:gn('srv-lat'), lng:gn('srv-lng'),
+            fecha:g('srv-fecha')||new Date().toISOString().slice(0,10), hora:g('srv-hora'),
+            tecnico:g('srv-tecnico'), descripcion:g('srv-desc'),
+            concluido:g('srv-concluido'), motivoNo:g('srv-motivo'),
+            ordenServicioImg: imgs['srv-os-data']   || '',
+            fotoEvidencia:    imgs['srv-foto-data']  || '',
+            videoEvidencia:   imgs['srv-video-data'] || '',
+            firmaNombre:g('srv-firma-nombre'), firmaImg:firmaUrl,
+            creadoPor:window.currentUser?.email||'', creadoEn:new Date().toISOString(),
+            mesKey:new Date().toISOString().slice(0,7)
+        };
+        Object.keys(data).forEach(k => { if(data[k]===undefined||data[k]==='') delete data[k]; });
+
+        const editId = g('srv-edit-id');
+        if(editId) { await window._updateDoc(window._doc(window._db,'formularios_servicio',editId), data); }
+        else { await window._addDoc(window._collection(window._db,'formularios_servicio'), data); }
+
+        toast('Servicio registrado correctamente');
+        cerrarFormSrv();
+        cargarSrv();
+    } catch(e) {
+        toast('Error: ' + e.message);
+    } finally {
+        if(btn) { btn.textContent = 'Enviar Formulario'; btn.disabled = false; }
+    }
+};
+
+// ── PÓLIZA MANTENIMIENTO ──────────────────────────────
+window.enviarPoliza = async () => {
+    const g = id => { const e=document.getElementById(id); return e?e.value.trim():''; };
+    const gn = id => { const v=g(id); return v?Number(v):undefined; };
+    if(!g('pol-cliente')) { toast('Escribe el cliente'); return; }
+
+    const btn = document.querySelector('#form-poliza .form-submit:last-child');
+    if(btn) { btn.textContent = 'Subiendo imagenes...'; btn.disabled = true; }
+
+    try {
+        const firmaUrl = await subirFirmaCanvas('pol-firma-canvas', 'polizas/firmas');
+        if(!firmaUrl) { toast('Se requiere la firma de conformidad'); if(btn){btn.textContent='Enviar';btn.disabled=false;} return; }
+
+        if(btn) btn.textContent = 'Guardando...';
+
+        const imgs = await subirImagenesPendientes([
+            { dataId:'pol-os-data',    carpeta:'polizas/ordenes' },
+            { dataId:'pol-foto1-data', carpeta:'polizas/evidencias' },
+            { dataId:'pol-foto2-data', carpeta:'polizas/evidencias' },
+        ]);
+
+        const data = {
+            tipo:'poliza_mantenimiento',
+            cliente:g('pol-cliente'), razonSocial:g('pol-razon'), os:g('pol-os'),
+            estacion:g('pol-estacion'), lat:gn('pol-lat'), lng:gn('pol-lng'),
+            fecha:g('pol-fecha')||new Date().toISOString().slice(0,10), hora:g('pol-hora'),
+            ordenServicioImg: imgs['pol-os-data']    || '',
+            descripcion:g('pol-desc'),
+            concluido:g('pol-concluido'), faltante:g('pol-falta'),
+            foto1: imgs['pol-foto1-data'] || '',
+            foto2: imgs['pol-foto2-data'] || '',
+            firmaNombre:g('pol-firma-nombre'), firmaImg:firmaUrl,
+            creadoPor:window.currentUser?.email||'', creadoEn:new Date().toISOString(),
+            mesKey:new Date().toISOString().slice(0,7)
+        };
+        Object.keys(data).forEach(k => { if(data[k]===undefined||data[k]==='') delete data[k]; });
+
+        const editId = g('pol-edit-id');
+        if(editId) { await window._updateDoc(window._doc(window._db,'formularios_poliza',editId), data); }
+        else { await window._addDoc(window._collection(window._db,'formularios_poliza'), data); }
+
+        toast('Poliza registrada correctamente');
+        cerrarFormPoliza();
+        cargarPol();
+    } catch(e) {
+        toast('Error: ' + e.message);
+    } finally {
+        if(btn) { btn.textContent = 'Enviar Poliza'; btn.disabled = false; }
+    }
+};
+
+// ── MANTENIMIENTO VEHICULAR ───────────────────────────
+window.enviarVeh = async () => {
+    const g = id => { const e=document.getElementById(id); return e?e.value.trim():''; };
+    const gn = id => { const v=g(id); return v?Number(v):undefined; };
+    if(!g('veh-economico')) { toast('Escribe el No. Economico'); return; }
+
+    const btn = document.querySelector('#form-veh .form-submit:last-child');
+    if(btn) { btn.textContent = 'Subiendo imagenes...'; btn.disabled = true; }
+
+    try {
+        const firmaUrl = await subirFirmaCanvas('veh-firma-canvas', 'vehicular/firmas');
+        if(!firmaUrl) { toast('Se requiere la firma del empleado'); if(btn){btn.textContent='Enviar';btn.disabled=false;} return; }
+
+        if(btn) btn.textContent = 'Guardando...';
+
+        const imgs = await subirImagenesPendientes([
+            { dataId:'veh-foto1-data', carpeta:'vehicular/evidencias' },
+            { dataId:'veh-foto2-data', carpeta:'vehicular/evidencias' },
+        ]);
+
+        const data = {
+            tipo:'mantenimiento_vehicular',
+            empresa:g('veh-empresa'), economico:g('veh-economico'),
+            fecha:g('veh-fecha')||new Date().toISOString().slice(0,10),
+            ingresoTaller:g('veh-taller'), nombreTaller:g('veh-nombre-taller'),
+            lat:gn('veh-lat'), lng:gn('veh-lng'),
+            descripcion:g('veh-desc'),
+            foto1: imgs['veh-foto1-data'] || '',
+            foto2: imgs['veh-foto2-data'] || '',
+            firmaNombre:g('veh-firma-nombre'), firmaImg:firmaUrl,
+            creadoPor:window.currentUser?.email||'', creadoEn:new Date().toISOString(),
+            mesKey:new Date().toISOString().slice(0,7)
+        };
+        Object.keys(data).forEach(k => { if(data[k]===undefined||data[k]==='') delete data[k]; });
+
+        const editId = g('veh-edit-id');
+        if(editId) { await window._updateDoc(window._doc(window._db,'formularios_vehicular',editId), data); }
+        else { await window._addDoc(window._collection(window._db,'formularios_vehicular'), data); }
+
+        toast('Mantenimiento registrado correctamente');
+        cerrarFormVeh();
+        cargarVeh();
+    } catch(e) {
+        toast('Error: ' + e.message);
+    } finally {
+        if(btn) { btn.textContent = 'Enviar Formulario'; btn.disabled = false; }
+    }
+};
+
+// ── REMISIONES ────────────────────────────────────────
+window.enviarRem = async () => {
+    const g = id => { const e=document.getElementById(id); return e?e.value.trim():''; };
+    const gn = id => { const v=g(id); return v?Number(v):undefined; };
+    if(!g('rem-empresa')) { toast('Selecciona empresa'); return; }
+
+    const btn = document.querySelector('#form-rem .form-submit:last-child');
+    if(btn) { btn.textContent = 'Subiendo imagenes...'; btn.disabled = true; }
+
+    try {
+        const firmaUrl = await subirFirmaCanvas('rem-firma-canvas', 'remisiones/firmas');
+        if(!firmaUrl) { toast('Se requiere la firma del cliente'); if(btn){btn.textContent='Enviar';btn.disabled=false;} return; }
+
+        if(btn) btn.textContent = 'Guardando...';
+
+        const imgs = await subirImagenesPendientes([
+            { dataId:'rem-os-data',   carpeta:'remisiones/documentos' },
+            { dataId:'rem-ev1-data',  carpeta:'remisiones/evidencias' },
+            { dataId:'rem-ev2-data',  carpeta:'remisiones/evidencias' },
+            { dataId:'rem-ev3-data',  carpeta:'remisiones/evidencias' },
+        ]);
+
+        const data = {
+            tipo:'remision',
+            empresa:g('rem-empresa'), razon:g('rem-razon'), os:g('rem-os'),
+            solicita:g('rem-solicita'), lugar:g('rem-lugar'),
+            lat:gn('rem-lat'), lng:gn('rem-lng'),
+            remisionImg:  imgs['rem-os-data']  || '',
+            evidencia1:   imgs['rem-ev1-data'] || '',
+            evidencia2:   imgs['rem-ev2-data'] || '',
+            evidencia3:   imgs['rem-ev3-data'] || '',
+            firmaNombre:g('rem-firma-nombre'), firmaImg:firmaUrl,
+            creadoPor:window.currentUser?.email||'', creadoEn:new Date().toISOString(),
+            mesKey:new Date().toISOString().slice(0,7)
+        };
+        Object.keys(data).forEach(k => { if(data[k]===undefined||data[k]==='') delete data[k]; });
+
+        const editId = g('rem-edit-id');
+        if(editId) { await window._updateDoc(window._doc(window._db,'formularios_remision',editId), data); }
+        else { await window._addDoc(window._collection(window._db,'formularios_remision'), data); }
+
+        toast('Remision registrada correctamente');
+        cerrarFormRem();
+        cargarRem();
+    } catch(e) {
+        toast('Error: ' + e.message);
+    } finally {
+        if(btn) { btn.textContent = 'Enviar Remision'; btn.disabled = false; }
+    }
+};
+
+// ── COTIZACIONES ──────────────────────────────────────
+window.generarCotizacion = async () => {
+    if(!cotCarrito.length) { alert('Agrega al menos un producto'); return; }
+    const cliente = document.getElementById('cot-cliente')?.value.trim();
+    const subtotal = cotCarrito.reduce((s,i) => s+i.precioCot*i.qty, 0);
+    const iva = subtotal * 0.16;
+    const total = subtotal + iva;
+    const folio = 'COT-' + Date.now().toString().slice(-6);
+
+    try {
+        // Subir firma de cotización
+        const firmaUrl = await subirFirmaCanvas('cot-firma-canvas', 'cotizaciones/firmas');
+
+        const data = {
+            folio, cliente,
+            notas: document.getElementById('cot-notas-cliente')?.value.trim()||'',
+            lista: LISTAS_NOMBRES[cotListaIdx], listaIdx: cotListaIdx,
+            moneda: cotMoneda, tipoCambio: cotTC,
+            items: cotCarrito.map(i => ({
+                sku:i.sku, nombre:i.nombre,
+                prodMoneda:i.prodMoneda, precioBase:i.precioBase,
+                precioCot:i.precioCot, qty:i.qty, subtotal:i.precioCot*i.qty
+            })),
+            subtotal, iva, total,
+            firmaNombre: document.getElementById('cot-firma-nombre')?.value.trim()||'',
+            firmaImg: firmaUrl,
+            fecha: new Date().toISOString().slice(0,10),
+            creadoPor: window.currentUser?.email||'',
+            creadoEn: new Date().toISOString()
+        };
+
+        await window._addDoc(window._collection(window._db,'cotizaciones'), data);
+        alert('Cotizacion guardada: ' + folio);
+        cerrarCot();
+        cargarCot();
+    } catch(e) { alert('Error: ' + e.message); }
+};
+
+console.log('Cloudinary module loaded — Cloud: daorprxxn');
+</script>    
 if('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(()=>{});
 }
