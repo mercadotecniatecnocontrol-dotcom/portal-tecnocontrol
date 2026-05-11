@@ -2492,7 +2492,7 @@ window.limpiarFirmaCot=()=>{
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <!-- PERFIL DE CLIENTE COMPLETO — Estilo Salesforce          -->
-<!-- Agrega justo antes del <!-- Bottom Nav -->              -->
+<!-- Agrega justo antes del Bottom Nav -->
 <!-- ═══════════════════════════════════════════════════════ -->
 
 <!-- PAGE: Cliente Perfil -->
@@ -2724,650 +2724,7 @@ window.limpiarFirmaCot=()=>{
 .p-baja { background:rgba(16,185,129,0.12); color:#059669; }
 </style>
 
-<script>
-// ══════════════════════════════════════════════════════
-// MÓDULO PERFIL DE CLIENTE
-// ══════════════════════════════════════════════════════
 
-let cpClienteActual = null;
-let cpActividadesDB = [];
-let cpCotizacionesDB = [];
-let cpActTipo = 'Llamada';
-let cpTabActual = 'general';
-
-const ACT_COLORS = {
-    'Llamada':    { bg: '#dbeafe', color: '#2563eb' },
-    'Visita':     { bg: '#dcfce7', color: '#16a34a' },
-    'Tarea':      { bg: '#fef3c7', color: '#d97706' },
-    'Email':      { bg: '#f3e8ff', color: '#9333ea' },
-    'Cotizacion': { bg: '#f0fdfa', color: '#0891b2' },
-    'Nota':       { bg: '#f1f5f9', color: '#64748b' },
-};
-
-const ACT_ICONS = {
-    'Llamada':    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.99 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.92 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 8.91a16 16 0 0 0 5.99 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>',
-    'Visita':     '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
-    'Tarea':      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>',
-    'Email':      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>',
-    'Cotizacion': '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>',
-    'Nota':       '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
-};
-
-function fmtFecha(iso) {
-    if(!iso) return '—';
-    const d = new Date(iso);
-    return d.toLocaleDateString('es-MX', {day:'numeric',month:'short',year:'numeric'});
-}
-function fmtFechaCorta(iso) {
-    if(!iso) return '—';
-    const d = new Date(iso);
-    return d.toLocaleDateString('es-MX', {day:'numeric',month:'short'});
-}
-
-// Abrir perfil de cliente
-window.verPerfilCliente = async (clienteId) => {
-    // Buscar cliente en clientesDB
-    const c = clientesDB.find(x => x.id === clienteId);
-    if(!c) return;
-    cpClienteActual = c;
-    cpTabActual = 'general';
-
-    // Header
-    document.getElementById('cp-nombre').innerText = c.nombre || '—';
-    document.getElementById('cp-sub').innerText = [c.razonSocial||c.sector, c.ciudad, c.vendedor].filter(Boolean).join(' · ');
-
-    // Cargar datos paralelos
-    await Promise.all([
-        cpCargarActividades(clienteId),
-        cpCargarCotizaciones(clienteId),
-    ]);
-
-    // KPIs
-    const visitas = visitasDB.filter(v => v.clienteId === clienteId);
-    const estaciones = (c.estaciones || []);
-    document.getElementById('cp-kpi-cotizaciones').innerText = cpCotizacionesDB.length;
-    document.getElementById('cp-kpi-visitas').innerText = visitas.length;
-    document.getElementById('cp-kpi-estaciones').innerText = estaciones.length || 1;
-    document.getElementById('cp-kpi-total').innerText = c.total2026 ? '$' + Math.round(c.total2026/1000) + 'K' : '$0';
-
-    // Reset tabs
-    document.querySelectorAll('.cp-tab').forEach((b,i) => b.classList.toggle('active', i===0));
-    cpTab('general', document.querySelectorAll('.cp-tab')[0]);
-
-    showPage('cliente-perfil');
-};
-
-async function cpCargarActividades(clienteId) {
-    try {
-        if(!window._getDocs) return;
-        const snap = await window._getDocs(
-            window._query(
-                window._collection(window._db, 'actividades_cliente'),
-                window._where('clienteId', '==', clienteId),
-                window._orderBy('creadoEn', 'desc')
-            )
-        );
-        cpActividadesDB = snap.docs.map(d => ({id:d.id,...d.data()}));
-    } catch(e) {
-        // Si no existe la colección aún, array vacío
-        cpActividadesDB = [];
-    }
-}
-
-async function cpCargarCotizaciones(clienteId) {
-    try {
-        if(!window._getDocs) return;
-        const snap = await window._getDocs(
-            window._query(
-                window._collection(window._db, 'cotizaciones'),
-                window._where('clienteId', '==', clienteId)
-            )
-        );
-        cpCotizacionesDB = snap.docs.map(d => ({id:d.id,...d.data()}))
-            .sort((a,b) => (b.creadoEn||'').localeCompare(a.creadoEn||''));
-    } catch(e) {
-        cpCotizacionesDB = [];
-    }
-}
-
-// Tabs
-window.cpTab = (tab, btn) => {
-    cpTabActual = tab;
-    document.querySelectorAll('.cp-tab').forEach(b => b.classList.remove('active'));
-    if(btn) btn.classList.add('active');
-    const el = document.getElementById('cp-content');
-    if(!el) return;
-
-    switch(tab) {
-        case 'general':      el.innerHTML = cpTabGeneral(); break;
-        case 'actividad':    el.innerHTML = cpTabActividad(); break;
-        case 'cotizaciones': el.innerHTML = cpTabCotizaciones(); break;
-        case 'estaciones':   el.innerHTML = cpTabEstaciones(); break;
-        case 'documentos':   el.innerHTML = cpTabDocumentos(); break;
-        case 'facturacion':  el.innerHTML = cpTabFacturacion(); break;
-    }
-};
-
-function cpTabGeneral() {
-    const c = cpClienteActual;
-    const visitas = visitasDB.filter(v => v.clienteId === c.id);
-    const ultimaVisita = visitas.sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''))[0];
-    const ultimaAct = cpActividadesDB[0];
-
-    return `
-    <!-- Alertas pendientes -->
-    ${cpActividadesDB.filter(a=>a.prioridad==='Urgente'&&a.estatus!=='Completada').length > 0 ? `
-    <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:12px;margin-bottom:12px;display:flex;align-items:center;gap:8px;">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        <span style="font-size:11px;font-weight:700;color:#dc2626;">${cpActividadesDB.filter(a=>a.prioridad==='Urgente'&&a.estatus!=='Completada').length} actividad(es) urgente(s) pendiente(s)</span>
-    </div>` : ''}
-
-    <!-- Datos generales -->
-    <div class="detail-section" style="margin-bottom:10px;">
-        <div class="detail-label" style="margin-bottom:10px;font-size:11px;font-weight:700;color:#1e3a8a;">Informacion general</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-            <div><div class="detail-label">CVE</div><div class="detail-value">${c.cve||'—'}</div></div>
-            <div><div class="detail-label">Sector</div><div class="detail-value">${c.sector||'—'}</div></div>
-            <div><div class="detail-label">Ciudad</div><div class="detail-value">${c.ciudad||'—'}</div></div>
-            <div><div class="detail-label">Estado</div><div class="detail-value">${c.estado||'—'}</div></div>
-            <div style="grid-column:1/-1;"><div class="detail-label">Direccion</div><div class="detail-value">${c.direccion||c.dir||'—'}</div></div>
-        </div>
-    </div>
-
-    <!-- Contactos -->
-    <div class="detail-section" style="margin-bottom:10px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-            <div class="detail-label" style="font-size:11px;font-weight:700;color:#1e3a8a;">Contactos</div>
-            <button onclick="cpAgregarContacto()" style="font-size:10px;padding:4px 10px;background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;border-radius:6px;font-family:'Outfit',sans-serif;font-weight:700;cursor:pointer;">+ Agregar</button>
-        </div>
-        ${c.contacto ? `
-        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;">
-            <div style="width:32px;height:32px;border-radius:50%;background:#1e3a8a;display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:13px;flex-shrink:0;">${(c.contacto||'?')[0]}</div>
-            <div style="flex:1;">
-                <div style="font-size:13px;font-weight:700;color:#1e293b;">${c.contacto||'—'}</div>
-                <div style="font-size:11px;color:#64748b;">Contacto principal · ${c.tel||'—'}</div>
-            </div>
-            ${c.tel ? `<a href="tel:${c.tel}" style="width:32px;height:32px;border-radius:50%;background:#dcfce7;display:flex;align-items:center;justify-content:center;text-decoration:none;">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.99 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.92 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 8.91a16 16 0 0 0 5.99 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-            </a>` : ''}
-        </div>
-        ${(c.contactos||[]).map(ct => `
-        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid #f1f5f9;">
-            <div style="width:32px;height:32px;border-radius:50%;background:#64748b;display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:13px;flex-shrink:0;">${(ct.nombre||'?')[0]}</div>
-            <div style="flex:1;">
-                <div style="font-size:13px;font-weight:700;color:#1e293b;">${ct.nombre}</div>
-                <div style="font-size:11px;color:#64748b;">${ct.puesto||'—'} · ${ct.tel||'—'}</div>
-            </div>
-        </div>`).join('')}` : '<div style="font-size:12px;color:#94a3b8;padding:8px 0;">Sin contactos registrados</div>'}
-    </div>
-
-    <!-- Ultima actividad -->
-    <div class="detail-section" style="margin-bottom:10px;">
-        <div class="detail-label" style="font-size:11px;font-weight:700;color:#1e3a8a;margin-bottom:8px;">Ultima actividad</div>
-        ${ultimaAct ? `
-        <div style="display:flex;gap:10px;align-items:flex-start;">
-            <div class="timeline-dot" style="background:${ACT_COLORS[ultimaAct.tipo]?.bg||'#f1f5f9'};color:${ACT_COLORS[ultimaAct.tipo]?.color||'#64748b'};">${ACT_ICONS[ultimaAct.tipo]||''}</div>
-            <div>
-                <div style="font-size:13px;font-weight:700;color:#1e293b;">${ultimaAct.titulo||'—'}</div>
-                <div style="font-size:10px;color:#94a3b8;">${ultimaAct.tipo} · ${fmtFecha(ultimaAct.creadoEn)}</div>
-                ${ultimaAct.descripcion?`<div style="font-size:11px;color:#64748b;margin-top:4px;">${ultimaAct.descripcion.slice(0,80)}...</div>`:''}
-            </div>
-        </div>` : '<div style="font-size:12px;color:#94a3b8;">Sin actividades registradas</div>'}
-    </div>
-
-    <!-- Notas del cliente -->
-    <div class="detail-section" style="margin-bottom:10px;">
-        <div class="detail-label" style="font-size:11px;font-weight:700;color:#1e3a8a;margin-bottom:8px;">Notas</div>
-        <div style="font-size:12px;color:#475569;">${c.notas||'Sin notas'}</div>
-        ${c.lat&&c.lng?`<div style="margin-top:10px;"><a href="https://www.google.com/maps?q=${c.lat},${c.lng}" target="_blank" style="font-size:11px;color:#2563eb;font-weight:700;text-decoration:none;">Ver en Google Maps</a></div>`:''}
-    </div>
-
-    <!-- Acciones rapidas -->
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:16px;">
-        <button onclick="cpIniciarActividad()" style="padding:12px 6px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;font-family:'Outfit',sans-serif;font-size:10px;font-weight:700;color:#2563eb;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.99 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.92 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 8.91a16 16 0 0 0 5.99 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-            Llamar
-        </button>
-        <button onclick="cpNuevaCotizacion()" style="padding:12px 6px;background:#f0fdfa;border:1px solid #99f6e4;border-radius:12px;font-family:'Outfit',sans-serif;font-size:10px;font-weight:700;color:#0891b2;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
-            Cotizar
-        </button>
-        <button onclick="cpWhatsApp()" style="padding:12px 6px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;font-family:'Outfit',sans-serif;font-size:10px;font-weight:700;color:#16a34a;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-            WhatsApp
-        </button>
-    </div>`;
-}
-
-function cpTabActividad() {
-    const prioOrder = { 'Urgente': 0, 'Alta': 1, 'Normal': 2, 'Baja': 3 };
-    const actividades = [...cpActividadesDB].sort((a,b) => {
-        if(a.estatus === 'Completada' && b.estatus !== 'Completada') return 1;
-        if(a.estatus !== 'Completada' && b.estatus === 'Completada') return -1;
-        return (prioOrder[a.prioridad]||2) - (prioOrder[b.prioridad]||2);
-    });
-
-    // Agrupar: Pendientes, En Proceso, Completadas
-    const pendientes = actividades.filter(a => a.estatus === 'Pendiente' || !a.estatus);
-    const enProceso = actividades.filter(a => a.estatus === 'En Proceso');
-    const completadas = actividades.filter(a => a.estatus === 'Completada');
-
-    const renderActs = (lista) => lista.map(a => {
-        const col = ACT_COLORS[a.tipo] || { bg: '#f1f5f9', color: '#64748b' };
-        const pBadge = a.prioridad === 'Urgente' ? 'p-urgente' : a.prioridad === 'Alta' ? 'p-alta' : a.prioridad === 'Baja' ? 'p-baja' : 'p-normal';
-        const ultimoComentario = (a.comentarios||[]).slice(-1)[0];
-        return `<div class="timeline-item" onclick="verActividadDetail('${a.id}')">
-            <div class="timeline-dot" style="background:${col.bg};color:${col.color};">${ACT_ICONS[a.tipo]||''}</div>
-            <div class="timeline-body">
-                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                    <span class="timeline-titulo">${a.titulo||'—'}</span>
-                    <span class="prioridad-badge ${pBadge}">${a.prioridad||'Normal'}</span>
-                </div>
-                <div class="timeline-meta">${a.tipo} · ${fmtFecha(a.fechaProgramada||a.creadoEn)} · ${(a.responsable||'').split('@')[0]}</div>
-                ${a.descripcion?`<div class="timeline-desc">${a.descripcion.slice(0,60)}${a.descripcion.length>60?'...':''}</div>`:''}
-                ${ultimoComentario?`<div class="timeline-ultimo">Ultimo: ${ultimoComentario.texto.slice(0,50)}</div>`:''}
-                <div style="display:flex;gap:8px;margin-top:6px;">
-                    <span style="font-size:9px;color:#94a3b8;">${(a.comentarios||[]).length} comentarios</span>
-                    ${a.subtareas&&a.subtareas.length?`<span style="font-size:9px;color:#94a3b8;">${a.subtareas.filter(s=>s.ok).length}/${a.subtareas.length} subtareas</span>`:''}
-                </div>
-            </div>
-            <div style="flex-shrink:0;">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-            </div>
-        </div>`;
-    }).join('');
-
-    return `
-    <button onclick="cpIniciarActividad()" style="width:100%;padding:12px;background:#1e3a8a;color:white;border:none;border-radius:12px;font-family:'Outfit',sans-serif;font-weight:700;font-size:13px;cursor:pointer;margin-bottom:12px;">
-        + Nueva Actividad
-    </button>
-    ${pendientes.length ? `
-    <div class="detail-section" style="margin-bottom:10px;">
-        <div style="font-size:10px;font-weight:700;color:#d97706;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Pendientes (${pendientes.length})</div>
-        ${renderActs(pendientes)}
-    </div>` : ''}
-    ${enProceso.length ? `
-    <div class="detail-section" style="margin-bottom:10px;">
-        <div style="font-size:10px;font-weight:700;color:#2563eb;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">En Proceso (${enProceso.length})</div>
-        ${renderActs(enProceso)}
-    </div>` : ''}
-    ${completadas.length ? `
-    <div class="detail-section" style="margin-bottom:10px;">
-        <div style="font-size:10px;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Completadas (${completadas.length})</div>
-        ${renderActs(completadas)}
-    </div>` : ''}
-    ${!actividades.length ? '<div class="empty-state"><div class="empty-icon"></div><div class="empty-text">Sin actividades</div><div class="empty-sub">Toca + Nueva Actividad para comenzar</div></div>' : ''}`;
-}
-
-function cpTabCotizaciones() {
-    // Filtros
-    const mesActual = new Date().toISOString().slice(0,7);
-    const todas = cpCotizacionesDB;
-
-    const renderCot = (lista) => lista.map(c => {
-        const statusClass = c.statusCot === 'Colocada' ? 'badge-colocada' : c.statusCot === 'Cancelada' ? 'badge-cancelada' : c.statusCot === 'Enviada' ? 'badge-enviada' : 'badge-pendiente';
-        const fmtTotal = c.moneda === 'USD' ? `USD $${(c.total||0).toLocaleString('en-US',{minimumFractionDigits:2})}` : `$${(c.total||0).toLocaleString('es-MX',{minimumFractionDigits:2})}`;
-        const diasVenc = c.fechaVencimiento ? Math.ceil((new Date(c.fechaVencimiento)-new Date())/86400000) : null;
-        return `<div style="background:#f8fafc;border-radius:12px;padding:12px;margin-bottom:8px;border:1px solid #e2e8f0;">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-                <span style="font-size:11px;font-weight:800;color:#2563eb;">${c.folio||'—'}</span>
-                <span class="cot-status-badge ${statusClass}">${c.statusCot||'Pendiente'}</span>
-            </div>
-            <div style="font-size:13px;font-weight:800;color:#10b981;margin-bottom:4px;">${fmtTotal}</div>
-            <div style="font-size:10px;color:#94a3b8;">${c.lista||'—'} · ${c.fecha||'—'} · ${(c.items||[]).length} productos</div>
-            ${diasVenc !== null ? `<div style="font-size:10px;color:${diasVenc<0?'#dc2626':diasVenc<3?'#d97706':'#94a3b8'};margin-top:4px;">${diasVenc<0?'Vencida hace '+Math.abs(diasVenc)+'d':diasVenc===0?'Vence hoy':'Vence en '+diasVenc+'d'}</div>` : ''}
-            <div style="display:flex;gap:6px;margin-top:8px;">
-                <button onclick="cambiarStatusCot('${c.id}','Enviada')" style="flex:1;padding:5px;font-size:9px;font-weight:700;border:1px solid #bfdbfe;background:${c.statusCot==='Enviada'?'#2563eb':'white'};color:${c.statusCot==='Enviada'?'white':'#2563eb'};border-radius:6px;font-family:'Outfit',sans-serif;cursor:pointer;">Enviada</button>
-                <button onclick="cambiarStatusCot('${c.id}','Colocada')" style="flex:1;padding:5px;font-size:9px;font-weight:700;border:1px solid #bbf7d0;background:${c.statusCot==='Colocada'?'#16a34a':'white'};color:${c.statusCot==='Colocada'?'white':'#16a34a'};border-radius:6px;font-family:'Outfit',sans-serif;cursor:pointer;">Colocada</button>
-                <button onclick="cambiarStatusCot('${c.id}','Cancelada')" style="flex:1;padding:5px;font-size:9px;font-weight:700;border:1px solid #fecaca;background:${c.statusCot==='Cancelada'?'#dc2626':'white'};color:${c.statusCot==='Cancelada'?'white':'#dc2626'};border-radius:6px;font-family:'Outfit',sans-serif;cursor:pointer;">Cancelada</button>
-            </div>
-        </div>`;
-    }).join('');
-
-    return `
-    <button onclick="cpNuevaCotizacion()" style="width:100%;padding:12px;background:#0891b2;color:white;border:none;border-radius:12px;font-family:'Outfit',sans-serif;font-weight:700;font-size:13px;cursor:pointer;margin-bottom:12px;">
-        + Nueva Cotizacion
-    </button>
-    ${todas.length ? renderCot(todas) : '<div class="empty-state"><div class="empty-icon"></div><div class="empty-text">Sin cotizaciones</div></div>'}`;
-}
-
-function cpTabEstaciones() {
-    const c = cpClienteActual;
-    const estaciones = c.estaciones || [];
-    return `
-    <button onclick="cpAgregarEstacion()" style="width:100%;padding:12px;background:#7c3aed;color:white;border:none;border-radius:12px;font-family:'Outfit',sans-serif;font-weight:700;font-size:13px;cursor:pointer;margin-bottom:12px;">
-        + Agregar Estacion
-    </button>
-    ${estaciones.length ? estaciones.map((e,i) => `
-    <div class="estacion-card">
-        <div style="display:flex;align-items:center;justify-content:space-between;">
-            <div>
-                <div class="estacion-nombre">${e.nombre||'Estacion '+(i+1)}</div>
-                <div class="estacion-dir">${e.direccion||'—'}</div>
-                ${e.permisoCRE?`<div style="font-size:10px;color:#7c3aed;margin-top:2px;">CRE: ${e.permisoCRE}</div>`:''}
-            </div>
-            ${e.lat&&e.lng?`<a href="https://www.google.com/maps?q=${e.lat},${e.lng}" target="_blank" style="width:32px;height:32px;border-radius:50%;background:#ede9fe;display:flex;align-items:center;justify-content:center;text-decoration:none;">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-            </a>`:''}
-        </div>
-    </div>`).join('') : `
-    <div class="detail-section">
-        <div style="font-size:12px;color:#94a3b8;text-align:center;padding:16px;">
-            Sin estaciones registradas.<br>Este cliente puede tener multiples estaciones de servicio.
-        </div>
-    </div>`}`;
-}
-
-function cpTabDocumentos() {
-    const c = cpClienteActual;
-    const docs = c.documentos || [];
-
-    const tiposDoc = [
-        'Permiso CRE', 'Dictamen ASEA', 'NOM-005-ASEA', 'NOM-004-ASEA',
-        'SASISOPA', 'COA', 'MIA', 'UVIE', 'Integridad de Tanques',
-        'Recuperacion de Vapores', 'Proteccion Civil', 'Contrato Tecnocontrol'
-    ];
-
-    return `
-    <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:12px;padding:12px;margin-bottom:12px;font-size:11px;color:#92400e;">
-        <strong>Cloudinary:</strong> Gratis hasta 25 GB. PDFs y documentos hasta ~10 MB cada uno. Para Tecnocontrol alcanza facilmente 2-3 anos sin costo.
-    </div>
-    <button onclick="cpSubirDocumento()" style="width:100%;padding:12px;background:#f59e0b;color:white;border:none;border-radius:12px;font-family:'Outfit',sans-serif;font-weight:700;font-size:13px;cursor:pointer;margin-bottom:12px;">
-        + Subir Documento
-    </button>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px;">
-        ${tiposDoc.map(tipo => {
-            const doc = docs.find(d => d.tipo === tipo);
-            const vence = doc?.fechaVencimiento;
-            const diasVenc = vence ? Math.ceil((new Date(vence)-new Date())/86400000) : null;
-            const color = !doc ? '#94a3b8' : diasVenc !== null && diasVenc < 30 ? '#dc2626' : '#16a34a';
-            return `<div style="background:#f8fafc;border-radius:10px;padding:10px;border:1px solid ${!doc?'#e2e8f0':diasVenc!==null&&diasVenc<30?'#fecaca':'#bbf7d0'};">
-                <div style="font-size:10px;font-weight:700;color:${color};">● ${tipo}</div>
-                ${doc ? `<div style="font-size:9px;color:#64748b;margin-top:2px;">${vence?'Vence: '+vence:'Sin fecha'}</div>` : '<div style="font-size:9px;color:#94a3b8;margin-top:2px;">Sin documento</div>'}
-            </div>`;
-        }).join('')}
-    </div>
-    ${docs.filter(d=>d.url).map(d => `
-    <div class="doc-item" onclick="window.open('${d.url}','_blank')">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-        <div style="flex:1;">
-            <div class="doc-nombre">${d.tipo||d.nombre||'Documento'}</div>
-            <div class="doc-meta">${d.fechaSubida?fmtFecha(d.fechaSubida):'—'} ${d.fechaVencimiento?'· Vence: '+d.fechaVencimiento:''}</div>
-        </div>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-    </div>`).join('')}`;
-}
-
-function cpTabFacturacion() {
-    const c = cpClienteActual;
-    return `
-    <div class="detail-section" style="margin-bottom:10px;">
-        <div class="detail-label" style="font-size:11px;font-weight:700;color:#1e3a8a;margin-bottom:10px;">Datos de facturacion</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-            <div style="grid-column:1/-1;"><div class="detail-label">Razon Social</div><div class="detail-value">${c.razonSocial||'—'}</div></div>
-            <div><div class="detail-label">RFC</div><div class="detail-value">${c.rfc||'—'}</div></div>
-            <div><div class="detail-label">Regimen Fiscal</div><div class="detail-value">${c.regimenFiscal||'—'}</div></div>
-            <div><div class="detail-label">Lista de Precio</div><div class="detail-value" style="color:#2563eb;font-weight:700;">${c.listaPrecio||'—'}</div></div>
-            <div><div class="detail-label">Credito</div><div class="detail-value">${c.diasCredito?c.diasCredito+' dias':'Contado'}</div></div>
-            <div style="grid-column:1/-1;"><div class="detail-label">Direccion fiscal</div><div class="detail-value">${c.direccionFiscal||c.direccion||'—'}</div></div>
-            <div><div class="detail-label">Codigo Postal</div><div class="detail-value">${c.cp||'—'}</div></div>
-            <div><div class="detail-label">Email facturacion</div><div class="detail-value">${c.emailFacturacion||'—'}</div></div>
-        </div>
-    </div>
-    <div class="detail-section">
-        <div class="detail-label" style="font-size:11px;font-weight:700;color:#1e3a8a;margin-bottom:10px;">Datos de envio</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-            <div style="grid-column:1/-1;"><div class="detail-label">Direccion de entrega</div><div class="detail-value">${c.direccionEnvio||c.direccion||'—'}</div></div>
-            <div><div class="detail-label">Responsable de recepcion</div><div class="detail-value">${c.responsableEnvio||c.contacto||'—'}</div></div>
-            <div><div class="detail-label">Tel. para entrega</div><div class="detail-value">${c.telEnvio||c.tel||'—'}</div></div>
-            <div><div class="detail-label">Horario de entrega</div><div class="detail-value">${c.horarioEntrega||'—'}</div></div>
-        </div>
-    </div>
-    <button onclick="cpEditarFacturacion()" style="width:100%;padding:13px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:12px;font-family:'Outfit',sans-serif;font-weight:700;font-size:13px;color:#1e293b;cursor:pointer;margin-top:8px;">
-        Editar datos de facturacion
-    </button>`;
-}
-
-// Actividades
-window.selActTipo = (tipo, btn) => {
-    cpActTipo = tipo;
-    document.querySelectorAll('.act-tipo-btn').forEach(b => {
-        b.style.background = '#f8fafc';
-        b.style.borderColor = '#e2e8f0';
-        b.style.color = '#64748b';
-    });
-    btn.style.background = ACT_COLORS[tipo]?.bg || '#eff6ff';
-    btn.style.borderColor = ACT_COLORS[tipo]?.color || '#2563eb';
-    btn.style.color = ACT_COLORS[tipo]?.color || '#2563eb';
-};
-
-window.cpIniciarActividad = () => {
-    const c = cpClienteActual;
-    if(!c) return;
-    document.getElementById('act-cliente-id').value = c.id;
-    document.getElementById('act-cliente-nombre').value = c.nombre;
-    document.getElementById('act-titulo').value = '';
-    document.getElementById('act-desc').value = '';
-    document.getElementById('act-fecha').value = new Date().toISOString().slice(0,10);
-    document.getElementById('act-hora').value = new Date().toTimeString().slice(0,5);
-    document.getElementById('act-prioridad').value = 'Normal';
-    cpActTipo = 'Llamada';
-    document.getElementById('form-actividad').classList.add('active');
-};
-
-window.cerrarActividad = () => { document.getElementById('form-actividad').classList.remove('active'); };
-
-window.guardarActividad = async () => {
-    const g = id => { const e=document.getElementById(id); return e?e.value.trim():''; };
-    if(!g('act-titulo')) { alert('Escribe un titulo'); return; }
-    const btn = document.querySelector('#form-actividad .form-submit');
-    if(btn) { btn.textContent = 'Guardando...'; btn.disabled = true; }
-    const clienteId = g('act-cliente-id');
-    const data = {
-        clienteId,
-        clienteNombre: g('act-cliente-nombre'),
-        tipo: cpActTipo,
-        titulo: g('act-titulo'),
-        descripcion: g('act-desc'),
-        fechaProgramada: g('act-fecha'),
-        hora: g('act-hora'),
-        prioridad: g('act-prioridad'),
-        estatus: 'Pendiente',
-        comentarios: [],
-        subtareas: [],
-        responsable: window.currentUser?.email || '',
-        creadoEn: new Date().toISOString(),
-        creadoPor: window.currentUser?.email || '',
-    };
-    // Si se agrega al calendario también crear en actividades
-    if(g('act-calendario') === 'si') {
-        try {
-            await window._addDoc(window._collection(window._db,'actividades'), {
-                actividad: data.titulo,
-                area: 'Ventas',
-                fechaLimite: data.fechaProgramada,
-                encargado: data.responsable,
-                responsable: data.responsable,
-                estatus: 'Sin Iniciar',
-                prioridad: data.prioridad,
-                descripcion: data.descripcion,
-                clienteId,
-                origen: 'CRM Cliente',
-                fechaCreacion: new Date().toISOString(),
-                comentarios: [],
-            });
-        } catch(e) { console.warn('No se pudo agregar al calendario:', e); }
-    }
-    try {
-        await window._addDoc(window._collection(window._db,'actividades_cliente'), data);
-        cerrarActividad();
-        await cpCargarActividades(clienteId);
-        cpTab(cpTabActual, null);
-        alert('Actividad guardada');
-    } catch(e) { alert('Error: '+e.message); }
-    finally { if(btn) { btn.textContent = 'Guardar Actividad'; btn.disabled = false; } }
-};
-
-// Detalle de actividad tipo Salesforce
-window.verActividadDetail = (id) => {
-    const a = cpActividadesDB.find(x => x.id === id);
-    if(!a) return;
-    const col = ACT_COLORS[a.tipo] || { bg:'#f1f5f9', color:'#64748b' };
-    const hdr = document.getElementById('actd-header');
-    hdr.style.background = col.color;
-    document.getElementById('actd-title').innerText = a.titulo || '—';
-
-    const comentariosHtml = (a.comentarios||[]).map(cm => `
-        <div style="background:#f8fafc;border-radius:8px;padding:10px;margin-bottom:6px;border-left:3px solid ${col.color};">
-            <div style="font-size:10px;font-weight:700;color:${col.color};">${(cm.usuario||'').split('@')[0].replace('.',' ')}</div>
-            <div style="font-size:12px;color:#1e293b;margin-top:2px;">${cm.texto}</div>
-            <div style="font-size:9px;color:#94a3b8;margin-top:2px;">${fmtFecha(cm.fecha)}</div>
-        </div>`).join('');
-
-    const subtareasHtml = (a.subtareas||[]).map((s,i) => `
-        <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f1f5f9;">
-            <input type="checkbox" ${s.ok?'checked':''} onchange="toggleSubtarea('${id}',${i},this.checked)" style="width:16px;height:16px;cursor:pointer;">
-            <span style="font-size:12px;color:#1e293b;${s.ok?'text-decoration:line-through;color:#94a3b8':''}">${s.texto}</span>
-        </div>`).join('');
-
-    document.getElementById('actd-content').innerHTML = `
-        <div class="detail-section">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
-                <span style="padding:3px 10px;background:${col.bg};color:${col.color};border-radius:20px;font-size:10px;font-weight:700;">${a.tipo}</span>
-                <span class="prioridad-badge ${a.prioridad==='Urgente'?'p-urgente':a.prioridad==='Alta'?'p-alta':a.prioridad==='Baja'?'p-baja':'p-normal'}">${a.prioridad||'Normal'}</span>
-                <span style="padding:3px 10px;background:#f1f5f9;color:#64748b;border-radius:20px;font-size:10px;font-weight:700;">${a.estatus||'Pendiente'}</span>
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-                <div><div class="detail-label">Fecha</div><div class="detail-value">${a.fechaProgramada||'—'} ${a.hora||''}</div></div>
-                <div><div class="detail-label">Responsable</div><div class="detail-value">${(a.responsable||'').split('@')[0]}</div></div>
-                <div><div class="detail-label">Cliente</div><div class="detail-value">${a.clienteNombre||'—'}</div></div>
-            </div>
-            ${a.descripcion?`<div style="margin-top:10px;"><div class="detail-label">Descripcion</div><div class="detail-value">${a.descripcion}</div></div>`:''}
-        </div>
-
-        <!-- Cambiar estatus -->
-        <div class="detail-section">
-            <div class="detail-label" style="margin-bottom:8px;">Estatus</div>
-            <div style="display:flex;gap:6px;">
-                ${['Pendiente','En Proceso','Completada'].map(s=>`<button onclick="cambiarEstatusAct('${id}','${s}')" style="flex:1;padding:8px;font-size:10px;font-weight:700;border-radius:8px;border:none;cursor:pointer;font-family:'Outfit',sans-serif;background:${a.estatus===s?col.color:'#f1f5f9'};color:${a.estatus===s?'white':'#64748b'};">${s}</button>`).join('')}
-            </div>
-        </div>
-
-        <!-- Subtareas -->
-        <div class="detail-section">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-                <div class="detail-label">Subtareas (${(a.subtareas||[]).filter(s=>s.ok).length}/${(a.subtareas||[]).length})</div>
-                <button onclick="agregarSubtarea('${id}')" style="font-size:10px;padding:4px 10px;background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;border-radius:6px;font-family:'Outfit',sans-serif;font-weight:700;cursor:pointer;">+ Agregar</button>
-            </div>
-            <div id="subtareas-list">${subtareasHtml || '<div style="font-size:11px;color:#94a3b8;">Sin subtareas</div>'}</div>
-        </div>
-
-        <!-- Comentarios -->
-        <div class="detail-section">
-            <div class="detail-label" style="margin-bottom:8px;">Comentarios y seguimiento (${(a.comentarios||[]).length})</div>
-            <div id="act-comentarios">${comentariosHtml || '<div style="font-size:11px;color:#94a3b8;padding:8px 0;">Sin comentarios</div>'}</div>
-            <div class="comment-input-wrap" style="margin-top:10px;">
-                <input class="comment-input" id="act-comment-input" placeholder="Agregar comentario o avance...">
-                <button class="comment-send" onclick="enviarComentarioAct('${id}')" style="background:${col.color};">→</button>
-            </div>
-        </div>
-
-        <div class="detail-actions">
-            <button class="detail-btn btn-delete" onclick="eliminarActividad('${id}')">Eliminar</button>
-        </div>`;
-    document.getElementById('actividad-detail').classList.add('active');
-};
-
-window.cerrarActividadDetail = () => { document.getElementById('actividad-detail').classList.remove('active'); };
-
-window.cambiarEstatusAct = async (id, nuevoEstatus) => {
-    try {
-        await window._updateDoc(window._doc(window._db,'actividades_cliente',id), { estatus: nuevoEstatus, actualizadoEn: new Date().toISOString() });
-        const a = cpActividadesDB.find(x=>x.id===id); if(a) a.estatus = nuevoEstatus;
-        verActividadDetail(id);
-        cpTab(cpTabActual, null);
-    } catch(e) { alert('Error: '+e.message); }
-};
-
-window.enviarComentarioAct = async (id) => {
-    const input = document.getElementById('act-comment-input');
-    const texto = input?.value?.trim(); if(!texto) return;
-    const a = cpActividadesDB.find(x=>x.id===id); if(!a) return;
-    const comentarios = a.comentarios || [];
-    comentarios.push({ texto, usuario: window.currentUser?.email||'', fecha: new Date().toISOString() });
-    try {
-        await window._updateDoc(window._doc(window._db,'actividades_cliente',id), { comentarios, actualizadoEn: new Date().toISOString() });
-        a.comentarios = comentarios; input.value = '';
-        verActividadDetail(id);
-    } catch(e) { alert('Error: '+e.message); }
-};
-
-window.agregarSubtarea = async (id) => {
-    const texto = prompt('Subtarea:'); if(!texto) return;
-    const a = cpActividadesDB.find(x=>x.id===id); if(!a) return;
-    const subtareas = a.subtareas || [];
-    subtareas.push({ texto, ok: false });
-    try {
-        await window._updateDoc(window._doc(window._db,'actividades_cliente',id), { subtareas });
-        a.subtareas = subtareas; verActividadDetail(id);
-    } catch(e) { alert('Error'); }
-};
-
-window.toggleSubtarea = async (id, idx, ok) => {
-    const a = cpActividadesDB.find(x=>x.id===id); if(!a) return;
-    const subtareas = a.subtareas || [];
-    if(subtareas[idx]) subtareas[idx].ok = ok;
-    try {
-        await window._updateDoc(window._doc(window._db,'actividades_cliente',id), { subtareas });
-        a.subtareas = subtareas;
-    } catch(e) {}
-};
-
-window.eliminarActividad = async (id) => {
-    if(!confirm('Eliminar esta actividad?')) return;
-    try {
-        await window._deleteDoc(window._doc(window._db,'actividades_cliente',id));
-        cpActividadesDB = cpActividadesDB.filter(x=>x.id!==id);
-        cerrarActividadDetail(); cpTab(cpTabActual, null);
-    } catch(e) { alert('Error'); }
-};
-
-window.cambiarStatusCot = async (cotId, status) => {
-    try {
-        await window._updateDoc(window._doc(window._db,'cotizaciones',cotId), { statusCot: status, actualizadoEn: new Date().toISOString() });
-        const c = cpCotizacionesDB.find(x=>x.id===cotId); if(c) c.statusCot = status;
-        cpTab('cotizaciones', null);
-    } catch(e) { alert('Error'); }
-};
-
-// Acciones rápidas desde perfil
-window.cpNuevaCotizacion = () => {
-    const c = cpClienteActual; if(!c) return;
-    showPage('cotizaciones');
-    setTimeout(() => {
-        abrirNuevaCot();
-        setTimeout(() => {
-            const el = document.getElementById('cot-cliente');
-            if(el) el.value = c.nombre;
-        }, 300);
-    }, 300);
-};
-
-window.cpWhatsApp = () => {
-    const c = cpClienteActual; if(!c) return;
-    const tel = (c.tel||'').replace(/\D/g,'');
-    const url = tel ? `https://wa.me/52${tel}` : `https://wa.me/`;
-    window.open(url, '_blank');
-};
-
-window.cpAgregarContacto = () => { alert('Proxima funcion: agregar contacto adicional'); };
-window.cpAgregarEstacion = () => { alert('Proxima funcion: agregar estacion de servicio'); };
-window.cpSubirDocumento = () => { alert('Proxima funcion: subir documento a Cloudinary'); };
-window.cpEditarFacturacion = () => { alert('Proxima funcion: editar datos de facturacion'); };
-
-// Exponer query functions necesarias
-// Se agregan al módulo Firebase via bridge
-</script>
 
     <!-- Bottom Nav -->
     <nav class="bottom-nav">
@@ -5353,6 +4710,651 @@ window.eliminarOpp = async (id) => {
     } catch(e) { alert('Error'); }
 };
 // ── FIN MÓDULO CRM ──────────────────────────────────
+
+// ── MÓDULO PERFIL CLIENTE (dentro de Firebase module) ──────
+// ══════════════════════════════════════════════════════
+// MÓDULO PERFIL DE CLIENTE
+// ══════════════════════════════════════════════════════
+
+let cpClienteActual = null;
+let cpActividadesDB = [];
+let cpCotizacionesDB = [];
+let cpActTipo = 'Llamada';
+let cpTabActual = 'general';
+
+const ACT_COLORS = {
+    'Llamada':    { bg: '#dbeafe', color: '#2563eb' },
+    'Visita':     { bg: '#dcfce7', color: '#16a34a' },
+    'Tarea':      { bg: '#fef3c7', color: '#d97706' },
+    'Email':      { bg: '#f3e8ff', color: '#9333ea' },
+    'Cotizacion': { bg: '#f0fdfa', color: '#0891b2' },
+    'Nota':       { bg: '#f1f5f9', color: '#64748b' },
+};
+
+const ACT_ICONS = {
+    'Llamada':    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.99 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.92 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 8.91a16 16 0 0 0 5.99 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>',
+    'Visita':     '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
+    'Tarea':      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>',
+    'Email':      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>',
+    'Cotizacion': '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>',
+    'Nota':       '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
+};
+
+function fmtFecha(iso) {
+    if(!iso) return '—';
+    const d = new Date(iso);
+    return d.toLocaleDateString('es-MX', {day:'numeric',month:'short',year:'numeric'});
+}
+function fmtFechaCorta(iso) {
+    if(!iso) return '—';
+    const d = new Date(iso);
+    return d.toLocaleDateString('es-MX', {day:'numeric',month:'short'});
+}
+
+// Abrir perfil de cliente
+window.verPerfilCliente = async (clienteId) => {
+    // Buscar cliente en clientesDB
+    const c = clientesDB.find(x => x.id === clienteId);
+    if(!c) return;
+    cpClienteActual = c;
+    cpTabActual = 'general';
+
+    // Header
+    document.getElementById('cp-nombre').innerText = c.nombre || '—';
+    document.getElementById('cp-sub').innerText = [c.razonSocial||c.sector, c.ciudad, c.vendedor].filter(Boolean).join(' · ');
+
+    // Cargar datos paralelos
+    await Promise.all([
+        cpCargarActividades(clienteId),
+        cpCargarCotizaciones(clienteId),
+    ]);
+
+    // KPIs
+    const visitas = visitasDB.filter(v => v.clienteId === clienteId);
+    const estaciones = (c.estaciones || []);
+    document.getElementById('cp-kpi-cotizaciones').innerText = cpCotizacionesDB.length;
+    document.getElementById('cp-kpi-visitas').innerText = visitas.length;
+    document.getElementById('cp-kpi-estaciones').innerText = estaciones.length || 1;
+    document.getElementById('cp-kpi-total').innerText = c.total2026 ? '$' + Math.round(c.total2026/1000) + 'K' : '$0';
+
+    // Reset tabs
+    document.querySelectorAll('.cp-tab').forEach((b,i) => b.classList.toggle('active', i===0));
+    cpTab('general', document.querySelectorAll('.cp-tab')[0]);
+
+    showPage('cliente-perfil');
+};
+
+async function cpCargarActividades(clienteId) {
+    try {
+        if(!window._getDocs) return;
+        const snap = await window._getDocs(
+            window._query(
+                window._collection(window._db, 'actividades_cliente'),
+                window._where('clienteId', '==', clienteId),
+                window._orderBy('creadoEn', 'desc')
+            )
+        );
+        cpActividadesDB = snap.docs.map(d => ({id:d.id,...d.data()}));
+    } catch(e) {
+        // Si no existe la colección aún, array vacío
+        cpActividadesDB = [];
+    }
+}
+
+async function cpCargarCotizaciones(clienteId) {
+    try {
+        if(!window._getDocs) return;
+        const snap = await window._getDocs(
+            window._query(
+                window._collection(window._db, 'cotizaciones'),
+                window._where('clienteId', '==', clienteId)
+            )
+        );
+        cpCotizacionesDB = snap.docs.map(d => ({id:d.id,...d.data()}))
+            .sort((a,b) => (b.creadoEn||'').localeCompare(a.creadoEn||''));
+    } catch(e) {
+        cpCotizacionesDB = [];
+    }
+}
+
+// Tabs
+window.cpTab = (tab, btn) => {
+    cpTabActual = tab;
+    document.querySelectorAll('.cp-tab').forEach(b => b.classList.remove('active'));
+    if(btn) btn.classList.add('active');
+    const el = document.getElementById('cp-content');
+    if(!el) return;
+
+    switch(tab) {
+        case 'general':      el.innerHTML = cpTabGeneral(); break;
+        case 'actividad':    el.innerHTML = cpTabActividad(); break;
+        case 'cotizaciones': el.innerHTML = cpTabCotizaciones(); break;
+        case 'estaciones':   el.innerHTML = cpTabEstaciones(); break;
+        case 'documentos':   el.innerHTML = cpTabDocumentos(); break;
+        case 'facturacion':  el.innerHTML = cpTabFacturacion(); break;
+    }
+};
+
+function cpTabGeneral() {
+    const c = cpClienteActual;
+    const visitas = visitasDB.filter(v => v.clienteId === c.id);
+    const ultimaVisita = visitas.sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''))[0];
+    const ultimaAct = cpActividadesDB[0];
+
+    return `
+    <!-- Alertas pendientes -->
+    ${cpActividadesDB.filter(a=>a.prioridad==='Urgente'&&a.estatus!=='Completada').length > 0 ? `
+    <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:12px;margin-bottom:12px;display:flex;align-items:center;gap:8px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <span style="font-size:11px;font-weight:700;color:#dc2626;">${cpActividadesDB.filter(a=>a.prioridad==='Urgente'&&a.estatus!=='Completada').length} actividad(es) urgente(s) pendiente(s)</span>
+    </div>` : ''}
+
+    <!-- Datos generales -->
+    <div class="detail-section" style="margin-bottom:10px;">
+        <div class="detail-label" style="margin-bottom:10px;font-size:11px;font-weight:700;color:#1e3a8a;">Informacion general</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div><div class="detail-label">CVE</div><div class="detail-value">${c.cve||'—'}</div></div>
+            <div><div class="detail-label">Sector</div><div class="detail-value">${c.sector||'—'}</div></div>
+            <div><div class="detail-label">Ciudad</div><div class="detail-value">${c.ciudad||'—'}</div></div>
+            <div><div class="detail-label">Estado</div><div class="detail-value">${c.estado||'—'}</div></div>
+            <div style="grid-column:1/-1;"><div class="detail-label">Direccion</div><div class="detail-value">${c.direccion||c.dir||'—'}</div></div>
+        </div>
+    </div>
+
+    <!-- Contactos -->
+    <div class="detail-section" style="margin-bottom:10px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+            <div class="detail-label" style="font-size:11px;font-weight:700;color:#1e3a8a;">Contactos</div>
+            <button onclick="cpAgregarContacto()" style="font-size:10px;padding:4px 10px;background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;border-radius:6px;font-family:'Outfit',sans-serif;font-weight:700;cursor:pointer;">+ Agregar</button>
+        </div>
+        ${c.contacto ? `
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;">
+            <div style="width:32px;height:32px;border-radius:50%;background:#1e3a8a;display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:13px;flex-shrink:0;">${(c.contacto||'?')[0]}</div>
+            <div style="flex:1;">
+                <div style="font-size:13px;font-weight:700;color:#1e293b;">${c.contacto||'—'}</div>
+                <div style="font-size:11px;color:#64748b;">Contacto principal · ${c.tel||'—'}</div>
+            </div>
+            ${c.tel ? `<a href="tel:${c.tel}" style="width:32px;height:32px;border-radius:50%;background:#dcfce7;display:flex;align-items:center;justify-content:center;text-decoration:none;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.99 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.92 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 8.91a16 16 0 0 0 5.99 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+            </a>` : ''}
+        </div>
+        ${(c.contactos||[]).map(ct => `
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid #f1f5f9;">
+            <div style="width:32px;height:32px;border-radius:50%;background:#64748b;display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:13px;flex-shrink:0;">${(ct.nombre||'?')[0]}</div>
+            <div style="flex:1;">
+                <div style="font-size:13px;font-weight:700;color:#1e293b;">${ct.nombre}</div>
+                <div style="font-size:11px;color:#64748b;">${ct.puesto||'—'} · ${ct.tel||'—'}</div>
+            </div>
+        </div>`).join('')}` : '<div style="font-size:12px;color:#94a3b8;padding:8px 0;">Sin contactos registrados</div>'}
+    </div>
+
+    <!-- Ultima actividad -->
+    <div class="detail-section" style="margin-bottom:10px;">
+        <div class="detail-label" style="font-size:11px;font-weight:700;color:#1e3a8a;margin-bottom:8px;">Ultima actividad</div>
+        ${ultimaAct ? `
+        <div style="display:flex;gap:10px;align-items:flex-start;">
+            <div class="timeline-dot" style="background:${ACT_COLORS[ultimaAct.tipo]?.bg||'#f1f5f9'};color:${ACT_COLORS[ultimaAct.tipo]?.color||'#64748b'};">${ACT_ICONS[ultimaAct.tipo]||''}</div>
+            <div>
+                <div style="font-size:13px;font-weight:700;color:#1e293b;">${ultimaAct.titulo||'—'}</div>
+                <div style="font-size:10px;color:#94a3b8;">${ultimaAct.tipo} · ${fmtFecha(ultimaAct.creadoEn)}</div>
+                ${ultimaAct.descripcion?`<div style="font-size:11px;color:#64748b;margin-top:4px;">${ultimaAct.descripcion.slice(0,80)}...</div>`:''}
+            </div>
+        </div>` : '<div style="font-size:12px;color:#94a3b8;">Sin actividades registradas</div>'}
+    </div>
+
+    <!-- Notas del cliente -->
+    <div class="detail-section" style="margin-bottom:10px;">
+        <div class="detail-label" style="font-size:11px;font-weight:700;color:#1e3a8a;margin-bottom:8px;">Notas</div>
+        <div style="font-size:12px;color:#475569;">${c.notas||'Sin notas'}</div>
+        ${c.lat&&c.lng?`<div style="margin-top:10px;"><a href="https://www.google.com/maps?q=${c.lat},${c.lng}" target="_blank" style="font-size:11px;color:#2563eb;font-weight:700;text-decoration:none;">Ver en Google Maps</a></div>`:''}
+    </div>
+
+    <!-- Acciones rapidas -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:16px;">
+        <button onclick="cpIniciarActividad()" style="padding:12px 6px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;font-family:'Outfit',sans-serif;font-size:10px;font-weight:700;color:#2563eb;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.99 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.92 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 8.91a16 16 0 0 0 5.99 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+            Llamar
+        </button>
+        <button onclick="cpNuevaCotizacion()" style="padding:12px 6px;background:#f0fdfa;border:1px solid #99f6e4;border-radius:12px;font-family:'Outfit',sans-serif;font-size:10px;font-weight:700;color:#0891b2;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+            Cotizar
+        </button>
+        <button onclick="cpWhatsApp()" style="padding:12px 6px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;font-family:'Outfit',sans-serif;font-size:10px;font-weight:700;color:#16a34a;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            WhatsApp
+        </button>
+    </div>`;
+}
+
+function cpTabActividad() {
+    const prioOrder = { 'Urgente': 0, 'Alta': 1, 'Normal': 2, 'Baja': 3 };
+    const actividades = [...cpActividadesDB].sort((a,b) => {
+        if(a.estatus === 'Completada' && b.estatus !== 'Completada') return 1;
+        if(a.estatus !== 'Completada' && b.estatus === 'Completada') return -1;
+        return (prioOrder[a.prioridad]||2) - (prioOrder[b.prioridad]||2);
+    });
+
+    // Agrupar: Pendientes, En Proceso, Completadas
+    const pendientes = actividades.filter(a => a.estatus === 'Pendiente' || !a.estatus);
+    const enProceso = actividades.filter(a => a.estatus === 'En Proceso');
+    const completadas = actividades.filter(a => a.estatus === 'Completada');
+
+    const renderActs = (lista) => lista.map(a => {
+        const col = ACT_COLORS[a.tipo] || { bg: '#f1f5f9', color: '#64748b' };
+        const pBadge = a.prioridad === 'Urgente' ? 'p-urgente' : a.prioridad === 'Alta' ? 'p-alta' : a.prioridad === 'Baja' ? 'p-baja' : 'p-normal';
+        const ultimoComentario = (a.comentarios||[]).slice(-1)[0];
+        return `<div class="timeline-item" onclick="verActividadDetail('${a.id}')">
+            <div class="timeline-dot" style="background:${col.bg};color:${col.color};">${ACT_ICONS[a.tipo]||''}</div>
+            <div class="timeline-body">
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                    <span class="timeline-titulo">${a.titulo||'—'}</span>
+                    <span class="prioridad-badge ${pBadge}">${a.prioridad||'Normal'}</span>
+                </div>
+                <div class="timeline-meta">${a.tipo} · ${fmtFecha(a.fechaProgramada||a.creadoEn)} · ${(a.responsable||'').split('@')[0]}</div>
+                ${a.descripcion?`<div class="timeline-desc">${a.descripcion.slice(0,60)}${a.descripcion.length>60?'...':''}</div>`:''}
+                ${ultimoComentario?`<div class="timeline-ultimo">Ultimo: ${ultimoComentario.texto.slice(0,50)}</div>`:''}
+                <div style="display:flex;gap:8px;margin-top:6px;">
+                    <span style="font-size:9px;color:#94a3b8;">${(a.comentarios||[]).length} comentarios</span>
+                    ${a.subtareas&&a.subtareas.length?`<span style="font-size:9px;color:#94a3b8;">${a.subtareas.filter(s=>s.ok).length}/${a.subtareas.length} subtareas</span>`:''}
+                </div>
+            </div>
+            <div style="flex-shrink:0;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </div>
+        </div>`;
+    }).join('');
+
+    return `
+    <button onclick="cpIniciarActividad()" style="width:100%;padding:12px;background:#1e3a8a;color:white;border:none;border-radius:12px;font-family:'Outfit',sans-serif;font-weight:700;font-size:13px;cursor:pointer;margin-bottom:12px;">
+        + Nueva Actividad
+    </button>
+    ${pendientes.length ? `
+    <div class="detail-section" style="margin-bottom:10px;">
+        <div style="font-size:10px;font-weight:700;color:#d97706;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Pendientes (${pendientes.length})</div>
+        ${renderActs(pendientes)}
+    </div>` : ''}
+    ${enProceso.length ? `
+    <div class="detail-section" style="margin-bottom:10px;">
+        <div style="font-size:10px;font-weight:700;color:#2563eb;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">En Proceso (${enProceso.length})</div>
+        ${renderActs(enProceso)}
+    </div>` : ''}
+    ${completadas.length ? `
+    <div class="detail-section" style="margin-bottom:10px;">
+        <div style="font-size:10px;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Completadas (${completadas.length})</div>
+        ${renderActs(completadas)}
+    </div>` : ''}
+    ${!actividades.length ? '<div class="empty-state"><div class="empty-icon"></div><div class="empty-text">Sin actividades</div><div class="empty-sub">Toca + Nueva Actividad para comenzar</div></div>' : ''}`;
+}
+
+function cpTabCotizaciones() {
+    // Filtros
+    const mesActual = new Date().toISOString().slice(0,7);
+    const todas = cpCotizacionesDB;
+
+    const renderCot = (lista) => lista.map(c => {
+        const statusClass = c.statusCot === 'Colocada' ? 'badge-colocada' : c.statusCot === 'Cancelada' ? 'badge-cancelada' : c.statusCot === 'Enviada' ? 'badge-enviada' : 'badge-pendiente';
+        const fmtTotal = c.moneda === 'USD' ? `USD $${(c.total||0).toLocaleString('en-US',{minimumFractionDigits:2})}` : `$${(c.total||0).toLocaleString('es-MX',{minimumFractionDigits:2})}`;
+        const diasVenc = c.fechaVencimiento ? Math.ceil((new Date(c.fechaVencimiento)-new Date())/86400000) : null;
+        return `<div style="background:#f8fafc;border-radius:12px;padding:12px;margin-bottom:8px;border:1px solid #e2e8f0;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                <span style="font-size:11px;font-weight:800;color:#2563eb;">${c.folio||'—'}</span>
+                <span class="cot-status-badge ${statusClass}">${c.statusCot||'Pendiente'}</span>
+            </div>
+            <div style="font-size:13px;font-weight:800;color:#10b981;margin-bottom:4px;">${fmtTotal}</div>
+            <div style="font-size:10px;color:#94a3b8;">${c.lista||'—'} · ${c.fecha||'—'} · ${(c.items||[]).length} productos</div>
+            ${diasVenc !== null ? `<div style="font-size:10px;color:${diasVenc<0?'#dc2626':diasVenc<3?'#d97706':'#94a3b8'};margin-top:4px;">${diasVenc<0?'Vencida hace '+Math.abs(diasVenc)+'d':diasVenc===0?'Vence hoy':'Vence en '+diasVenc+'d'}</div>` : ''}
+            <div style="display:flex;gap:6px;margin-top:8px;">
+                <button onclick="cambiarStatusCot('${c.id}','Enviada')" style="flex:1;padding:5px;font-size:9px;font-weight:700;border:1px solid #bfdbfe;background:${c.statusCot==='Enviada'?'#2563eb':'white'};color:${c.statusCot==='Enviada'?'white':'#2563eb'};border-radius:6px;font-family:'Outfit',sans-serif;cursor:pointer;">Enviada</button>
+                <button onclick="cambiarStatusCot('${c.id}','Colocada')" style="flex:1;padding:5px;font-size:9px;font-weight:700;border:1px solid #bbf7d0;background:${c.statusCot==='Colocada'?'#16a34a':'white'};color:${c.statusCot==='Colocada'?'white':'#16a34a'};border-radius:6px;font-family:'Outfit',sans-serif;cursor:pointer;">Colocada</button>
+                <button onclick="cambiarStatusCot('${c.id}','Cancelada')" style="flex:1;padding:5px;font-size:9px;font-weight:700;border:1px solid #fecaca;background:${c.statusCot==='Cancelada'?'#dc2626':'white'};color:${c.statusCot==='Cancelada'?'white':'#dc2626'};border-radius:6px;font-family:'Outfit',sans-serif;cursor:pointer;">Cancelada</button>
+            </div>
+        </div>`;
+    }).join('');
+
+    return `
+    <button onclick="cpNuevaCotizacion()" style="width:100%;padding:12px;background:#0891b2;color:white;border:none;border-radius:12px;font-family:'Outfit',sans-serif;font-weight:700;font-size:13px;cursor:pointer;margin-bottom:12px;">
+        + Nueva Cotizacion
+    </button>
+    ${todas.length ? renderCot(todas) : '<div class="empty-state"><div class="empty-icon"></div><div class="empty-text">Sin cotizaciones</div></div>'}`;
+}
+
+function cpTabEstaciones() {
+    const c = cpClienteActual;
+    const estaciones = c.estaciones || [];
+    return `
+    <button onclick="cpAgregarEstacion()" style="width:100%;padding:12px;background:#7c3aed;color:white;border:none;border-radius:12px;font-family:'Outfit',sans-serif;font-weight:700;font-size:13px;cursor:pointer;margin-bottom:12px;">
+        + Agregar Estacion
+    </button>
+    ${estaciones.length ? estaciones.map((e,i) => `
+    <div class="estacion-card">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+            <div>
+                <div class="estacion-nombre">${e.nombre||'Estacion '+(i+1)}</div>
+                <div class="estacion-dir">${e.direccion||'—'}</div>
+                ${e.permisoCRE?`<div style="font-size:10px;color:#7c3aed;margin-top:2px;">CRE: ${e.permisoCRE}</div>`:''}
+            </div>
+            ${e.lat&&e.lng?`<a href="https://www.google.com/maps?q=${e.lat},${e.lng}" target="_blank" style="width:32px;height:32px;border-radius:50%;background:#ede9fe;display:flex;align-items:center;justify-content:center;text-decoration:none;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            </a>`:''}
+        </div>
+    </div>`).join('') : `
+    <div class="detail-section">
+        <div style="font-size:12px;color:#94a3b8;text-align:center;padding:16px;">
+            Sin estaciones registradas.<br>Este cliente puede tener multiples estaciones de servicio.
+        </div>
+    </div>`}`;
+}
+
+function cpTabDocumentos() {
+    const c = cpClienteActual;
+    const docs = c.documentos || [];
+
+    const tiposDoc = [
+        'Permiso CRE', 'Dictamen ASEA', 'NOM-005-ASEA', 'NOM-004-ASEA',
+        'SASISOPA', 'COA', 'MIA', 'UVIE', 'Integridad de Tanques',
+        'Recuperacion de Vapores', 'Proteccion Civil', 'Contrato Tecnocontrol'
+    ];
+
+    return `
+    <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:12px;padding:12px;margin-bottom:12px;font-size:11px;color:#92400e;">
+        <strong>Cloudinary:</strong> Gratis hasta 25 GB. PDFs y documentos hasta ~10 MB cada uno. Para Tecnocontrol alcanza facilmente 2-3 anos sin costo.
+    </div>
+    <button onclick="cpSubirDocumento()" style="width:100%;padding:12px;background:#f59e0b;color:white;border:none;border-radius:12px;font-family:'Outfit',sans-serif;font-weight:700;font-size:13px;cursor:pointer;margin-bottom:12px;">
+        + Subir Documento
+    </button>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px;">
+        ${tiposDoc.map(tipo => {
+            const doc = docs.find(d => d.tipo === tipo);
+            const vence = doc?.fechaVencimiento;
+            const diasVenc = vence ? Math.ceil((new Date(vence)-new Date())/86400000) : null;
+            const color = !doc ? '#94a3b8' : diasVenc !== null && diasVenc < 30 ? '#dc2626' : '#16a34a';
+            return `<div style="background:#f8fafc;border-radius:10px;padding:10px;border:1px solid ${!doc?'#e2e8f0':diasVenc!==null&&diasVenc<30?'#fecaca':'#bbf7d0'};">
+                <div style="font-size:10px;font-weight:700;color:${color};">● ${tipo}</div>
+                ${doc ? `<div style="font-size:9px;color:#64748b;margin-top:2px;">${vence?'Vence: '+vence:'Sin fecha'}</div>` : '<div style="font-size:9px;color:#94a3b8;margin-top:2px;">Sin documento</div>'}
+            </div>`;
+        }).join('')}
+    </div>
+    ${docs.filter(d=>d.url).map(d => `
+    <div class="doc-item" onclick="window.open('${d.url}','_blank')">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <div style="flex:1;">
+            <div class="doc-nombre">${d.tipo||d.nombre||'Documento'}</div>
+            <div class="doc-meta">${d.fechaSubida?fmtFecha(d.fechaSubida):'—'} ${d.fechaVencimiento?'· Vence: '+d.fechaVencimiento:''}</div>
+        </div>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+    </div>`).join('')}`;
+}
+
+function cpTabFacturacion() {
+    const c = cpClienteActual;
+    return `
+    <div class="detail-section" style="margin-bottom:10px;">
+        <div class="detail-label" style="font-size:11px;font-weight:700;color:#1e3a8a;margin-bottom:10px;">Datos de facturacion</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div style="grid-column:1/-1;"><div class="detail-label">Razon Social</div><div class="detail-value">${c.razonSocial||'—'}</div></div>
+            <div><div class="detail-label">RFC</div><div class="detail-value">${c.rfc||'—'}</div></div>
+            <div><div class="detail-label">Regimen Fiscal</div><div class="detail-value">${c.regimenFiscal||'—'}</div></div>
+            <div><div class="detail-label">Lista de Precio</div><div class="detail-value" style="color:#2563eb;font-weight:700;">${c.listaPrecio||'—'}</div></div>
+            <div><div class="detail-label">Credito</div><div class="detail-value">${c.diasCredito?c.diasCredito+' dias':'Contado'}</div></div>
+            <div style="grid-column:1/-1;"><div class="detail-label">Direccion fiscal</div><div class="detail-value">${c.direccionFiscal||c.direccion||'—'}</div></div>
+            <div><div class="detail-label">Codigo Postal</div><div class="detail-value">${c.cp||'—'}</div></div>
+            <div><div class="detail-label">Email facturacion</div><div class="detail-value">${c.emailFacturacion||'—'}</div></div>
+        </div>
+    </div>
+    <div class="detail-section">
+        <div class="detail-label" style="font-size:11px;font-weight:700;color:#1e3a8a;margin-bottom:10px;">Datos de envio</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div style="grid-column:1/-1;"><div class="detail-label">Direccion de entrega</div><div class="detail-value">${c.direccionEnvio||c.direccion||'—'}</div></div>
+            <div><div class="detail-label">Responsable de recepcion</div><div class="detail-value">${c.responsableEnvio||c.contacto||'—'}</div></div>
+            <div><div class="detail-label">Tel. para entrega</div><div class="detail-value">${c.telEnvio||c.tel||'—'}</div></div>
+            <div><div class="detail-label">Horario de entrega</div><div class="detail-value">${c.horarioEntrega||'—'}</div></div>
+        </div>
+    </div>
+    <button onclick="cpEditarFacturacion()" style="width:100%;padding:13px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:12px;font-family:'Outfit',sans-serif;font-weight:700;font-size:13px;color:#1e293b;cursor:pointer;margin-top:8px;">
+        Editar datos de facturacion
+    </button>`;
+}
+
+// Actividades
+window.selActTipo = (tipo, btn) => {
+    cpActTipo = tipo;
+    document.querySelectorAll('.act-tipo-btn').forEach(b => {
+        b.style.background = '#f8fafc';
+        b.style.borderColor = '#e2e8f0';
+        b.style.color = '#64748b';
+    });
+    btn.style.background = ACT_COLORS[tipo]?.bg || '#eff6ff';
+    btn.style.borderColor = ACT_COLORS[tipo]?.color || '#2563eb';
+    btn.style.color = ACT_COLORS[tipo]?.color || '#2563eb';
+};
+
+window.cpIniciarActividad = () => {
+    const c = cpClienteActual;
+    if(!c) return;
+    document.getElementById('act-cliente-id').value = c.id;
+    document.getElementById('act-cliente-nombre').value = c.nombre;
+    document.getElementById('act-titulo').value = '';
+    document.getElementById('act-desc').value = '';
+    document.getElementById('act-fecha').value = new Date().toISOString().slice(0,10);
+    document.getElementById('act-hora').value = new Date().toTimeString().slice(0,5);
+    document.getElementById('act-prioridad').value = 'Normal';
+    cpActTipo = 'Llamada';
+    document.getElementById('form-actividad').classList.add('active');
+};
+
+window.cerrarActividad = () => { document.getElementById('form-actividad').classList.remove('active'); };
+
+window.guardarActividad = async () => {
+    const g = id => { const e=document.getElementById(id); return e?e.value.trim():''; };
+    if(!g('act-titulo')) { alert('Escribe un titulo'); return; }
+    const btn = document.querySelector('#form-actividad .form-submit');
+    if(btn) { btn.textContent = 'Guardando...'; btn.disabled = true; }
+    const clienteId = g('act-cliente-id');
+    const data = {
+        clienteId,
+        clienteNombre: g('act-cliente-nombre'),
+        tipo: cpActTipo,
+        titulo: g('act-titulo'),
+        descripcion: g('act-desc'),
+        fechaProgramada: g('act-fecha'),
+        hora: g('act-hora'),
+        prioridad: g('act-prioridad'),
+        estatus: 'Pendiente',
+        comentarios: [],
+        subtareas: [],
+        responsable: window.currentUser?.email || '',
+        creadoEn: new Date().toISOString(),
+        creadoPor: window.currentUser?.email || '',
+    };
+    // Si se agrega al calendario también crear en actividades
+    if(g('act-calendario') === 'si') {
+        try {
+            await window._addDoc(window._collection(window._db,'actividades'), {
+                actividad: data.titulo,
+                area: 'Ventas',
+                fechaLimite: data.fechaProgramada,
+                encargado: data.responsable,
+                responsable: data.responsable,
+                estatus: 'Sin Iniciar',
+                prioridad: data.prioridad,
+                descripcion: data.descripcion,
+                clienteId,
+                origen: 'CRM Cliente',
+                fechaCreacion: new Date().toISOString(),
+                comentarios: [],
+            });
+        } catch(e) { console.warn('No se pudo agregar al calendario:', e); }
+    }
+    try {
+        await window._addDoc(window._collection(window._db,'actividades_cliente'), data);
+        cerrarActividad();
+        await cpCargarActividades(clienteId);
+        cpTab(cpTabActual, null);
+        alert('Actividad guardada');
+    } catch(e) { alert('Error: '+e.message); }
+    finally { if(btn) { btn.textContent = 'Guardar Actividad'; btn.disabled = false; } }
+};
+
+// Detalle de actividad tipo Salesforce
+window.verActividadDetail = (id) => {
+    const a = cpActividadesDB.find(x => x.id === id);
+    if(!a) return;
+    const col = ACT_COLORS[a.tipo] || { bg:'#f1f5f9', color:'#64748b' };
+    const hdr = document.getElementById('actd-header');
+    hdr.style.background = col.color;
+    document.getElementById('actd-title').innerText = a.titulo || '—';
+
+    const comentariosHtml = (a.comentarios||[]).map(cm => `
+        <div style="background:#f8fafc;border-radius:8px;padding:10px;margin-bottom:6px;border-left:3px solid ${col.color};">
+            <div style="font-size:10px;font-weight:700;color:${col.color};">${(cm.usuario||'').split('@')[0].replace('.',' ')}</div>
+            <div style="font-size:12px;color:#1e293b;margin-top:2px;">${cm.texto}</div>
+            <div style="font-size:9px;color:#94a3b8;margin-top:2px;">${fmtFecha(cm.fecha)}</div>
+        </div>`).join('');
+
+    const subtareasHtml = (a.subtareas||[]).map((s,i) => `
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f1f5f9;">
+            <input type="checkbox" ${s.ok?'checked':''} onchange="toggleSubtarea('${id}',${i},this.checked)" style="width:16px;height:16px;cursor:pointer;">
+            <span style="font-size:12px;color:#1e293b;${s.ok?'text-decoration:line-through;color:#94a3b8':''}">${s.texto}</span>
+        </div>`).join('');
+
+    document.getElementById('actd-content').innerHTML = `
+        <div class="detail-section">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+                <span style="padding:3px 10px;background:${col.bg};color:${col.color};border-radius:20px;font-size:10px;font-weight:700;">${a.tipo}</span>
+                <span class="prioridad-badge ${a.prioridad==='Urgente'?'p-urgente':a.prioridad==='Alta'?'p-alta':a.prioridad==='Baja'?'p-baja':'p-normal'}">${a.prioridad||'Normal'}</span>
+                <span style="padding:3px 10px;background:#f1f5f9;color:#64748b;border-radius:20px;font-size:10px;font-weight:700;">${a.estatus||'Pendiente'}</span>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div><div class="detail-label">Fecha</div><div class="detail-value">${a.fechaProgramada||'—'} ${a.hora||''}</div></div>
+                <div><div class="detail-label">Responsable</div><div class="detail-value">${(a.responsable||'').split('@')[0]}</div></div>
+                <div><div class="detail-label">Cliente</div><div class="detail-value">${a.clienteNombre||'—'}</div></div>
+            </div>
+            ${a.descripcion?`<div style="margin-top:10px;"><div class="detail-label">Descripcion</div><div class="detail-value">${a.descripcion}</div></div>`:''}
+        </div>
+
+        <!-- Cambiar estatus -->
+        <div class="detail-section">
+            <div class="detail-label" style="margin-bottom:8px;">Estatus</div>
+            <div style="display:flex;gap:6px;">
+                ${['Pendiente','En Proceso','Completada'].map(s=>`<button onclick="cambiarEstatusAct('${id}','${s}')" style="flex:1;padding:8px;font-size:10px;font-weight:700;border-radius:8px;border:none;cursor:pointer;font-family:'Outfit',sans-serif;background:${a.estatus===s?col.color:'#f1f5f9'};color:${a.estatus===s?'white':'#64748b'};">${s}</button>`).join('')}
+            </div>
+        </div>
+
+        <!-- Subtareas -->
+        <div class="detail-section">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                <div class="detail-label">Subtareas (${(a.subtareas||[]).filter(s=>s.ok).length}/${(a.subtareas||[]).length})</div>
+                <button onclick="agregarSubtarea('${id}')" style="font-size:10px;padding:4px 10px;background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;border-radius:6px;font-family:'Outfit',sans-serif;font-weight:700;cursor:pointer;">+ Agregar</button>
+            </div>
+            <div id="subtareas-list">${subtareasHtml || '<div style="font-size:11px;color:#94a3b8;">Sin subtareas</div>'}</div>
+        </div>
+
+        <!-- Comentarios -->
+        <div class="detail-section">
+            <div class="detail-label" style="margin-bottom:8px;">Comentarios y seguimiento (${(a.comentarios||[]).length})</div>
+            <div id="act-comentarios">${comentariosHtml || '<div style="font-size:11px;color:#94a3b8;padding:8px 0;">Sin comentarios</div>'}</div>
+            <div class="comment-input-wrap" style="margin-top:10px;">
+                <input class="comment-input" id="act-comment-input" placeholder="Agregar comentario o avance...">
+                <button class="comment-send" onclick="enviarComentarioAct('${id}')" style="background:${col.color};">→</button>
+            </div>
+        </div>
+
+        <div class="detail-actions">
+            <button class="detail-btn btn-delete" onclick="eliminarActividad('${id}')">Eliminar</button>
+        </div>`;
+    document.getElementById('actividad-detail').classList.add('active');
+};
+
+window.cerrarActividadDetail = () => { document.getElementById('actividad-detail').classList.remove('active'); };
+
+window.cambiarEstatusAct = async (id, nuevoEstatus) => {
+    try {
+        await window._updateDoc(window._doc(window._db,'actividades_cliente',id), { estatus: nuevoEstatus, actualizadoEn: new Date().toISOString() });
+        const a = cpActividadesDB.find(x=>x.id===id); if(a) a.estatus = nuevoEstatus;
+        verActividadDetail(id);
+        cpTab(cpTabActual, null);
+    } catch(e) { alert('Error: '+e.message); }
+};
+
+window.enviarComentarioAct = async (id) => {
+    const input = document.getElementById('act-comment-input');
+    const texto = input?.value?.trim(); if(!texto) return;
+    const a = cpActividadesDB.find(x=>x.id===id); if(!a) return;
+    const comentarios = a.comentarios || [];
+    comentarios.push({ texto, usuario: window.currentUser?.email||'', fecha: new Date().toISOString() });
+    try {
+        await window._updateDoc(window._doc(window._db,'actividades_cliente',id), { comentarios, actualizadoEn: new Date().toISOString() });
+        a.comentarios = comentarios; input.value = '';
+        verActividadDetail(id);
+    } catch(e) { alert('Error: '+e.message); }
+};
+
+window.agregarSubtarea = async (id) => {
+    const texto = prompt('Subtarea:'); if(!texto) return;
+    const a = cpActividadesDB.find(x=>x.id===id); if(!a) return;
+    const subtareas = a.subtareas || [];
+    subtareas.push({ texto, ok: false });
+    try {
+        await window._updateDoc(window._doc(window._db,'actividades_cliente',id), { subtareas });
+        a.subtareas = subtareas; verActividadDetail(id);
+    } catch(e) { alert('Error'); }
+};
+
+window.toggleSubtarea = async (id, idx, ok) => {
+    const a = cpActividadesDB.find(x=>x.id===id); if(!a) return;
+    const subtareas = a.subtareas || [];
+    if(subtareas[idx]) subtareas[idx].ok = ok;
+    try {
+        await window._updateDoc(window._doc(window._db,'actividades_cliente',id), { subtareas });
+        a.subtareas = subtareas;
+    } catch(e) {}
+};
+
+window.eliminarActividad = async (id) => {
+    if(!confirm('Eliminar esta actividad?')) return;
+    try {
+        await window._deleteDoc(window._doc(window._db,'actividades_cliente',id));
+        cpActividadesDB = cpActividadesDB.filter(x=>x.id!==id);
+        cerrarActividadDetail(); cpTab(cpTabActual, null);
+    } catch(e) { alert('Error'); }
+};
+
+window.cambiarStatusCot = async (cotId, status) => {
+    try {
+        await window._updateDoc(window._doc(window._db,'cotizaciones',cotId), { statusCot: status, actualizadoEn: new Date().toISOString() });
+        const c = cpCotizacionesDB.find(x=>x.id===cotId); if(c) c.statusCot = status;
+        cpTab('cotizaciones', null);
+    } catch(e) { alert('Error'); }
+};
+
+// Acciones rápidas desde perfil
+window.cpNuevaCotizacion = () => {
+    const c = cpClienteActual; if(!c) return;
+    showPage('cotizaciones');
+    setTimeout(() => {
+        abrirNuevaCot();
+        setTimeout(() => {
+            const el = document.getElementById('cot-cliente');
+            if(el) el.value = c.nombre;
+        }, 300);
+    }, 300);
+};
+
+window.cpWhatsApp = () => {
+    const c = cpClienteActual; if(!c) return;
+    const tel = (c.tel||'').replace(/\D/g,'');
+    const url = tel ? `https://wa.me/52${tel}` : `https://wa.me/`;
+    window.open(url, '_blank');
+};
+
+window.cpAgregarContacto = () => { alert('Proxima funcion: agregar contacto adicional'); };
+window.cpAgregarEstacion = () => { alert('Proxima funcion: agregar estacion de servicio'); };
+window.cpSubirDocumento = () => { alert('Proxima funcion: subir documento a Cloudinary'); };
+window.cpEditarFacturacion = () => { alert('Proxima funcion: editar datos de facturacion'); };
+
+// Exponer query functions necesarias
+// Se agregan al módulo Firebase via bridge
+// ── FIN MÓDULO PERFIL CLIENTE ─────────────────────────────
 
 // Hook: init map when ventas page shown
 const _origShowPage = window.showPage;
