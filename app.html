@@ -2100,6 +2100,7 @@ window.verCotDetail = (id) => {
             <button class="detail-btn btn-edit" onclick="editarCotizacion('${c.id}')">Editar</button>
             <button class="detail-btn btn-complete" onclick="descargarPDFCot('${c.id}')">PDF</button>
             <button class="detail-btn btn-complete" style="background:#25D366;" onclick="reenviarCotWA('${c.id}')">WhatsApp</button>
+            <button class="detail-btn" style="background:#f59e0b;color:white;" onclick="programarSeguimientoCot('${c.id}')">Seguimiento</button>
             <button class="detail-btn btn-delete" onclick="eliminarCot('${c.id}')">Eliminar</button>
         </div>`;
     document.getElementById('cot-detail').classList.add('active');
@@ -6075,8 +6076,602 @@ window.guardarOportunidad = async () => {
     }
 };
 
+
+// ══════════════════════════════════════════════════════════════
+// MEGA BLOQUE — Perfil Cliente: Estaciones, Contactos, Docs, Facturación
+// CRM mejorado, Gmail link, Notificaciones vencimiento
+// ══════════════════════════════════════════════════════════════
+
+// ─── OVERLAYS HTML para las funciones del perfil ───
+// Se insertan dinámicamente al primer uso
+
+function asegurarOverlayEstacion() {
+    if(document.getElementById('form-estacion')) return;
+    const div = document.createElement('div');
+    div.innerHTML = `
+    <div class="form-overlay" id="form-estacion" style="background:#f8fafc;">
+        <div class="form-header" style="background:#7c3aed;margin:-16px -16px 16px;padding:16px;border-radius:0;">
+            <div class="form-title" style="color:white;">Nueva Estacion de Servicio</div>
+            <button class="form-close" onclick="cerrarFormEstacion()" style="background:rgba(255,255,255,0.15);border:none;color:white;">x</button>
+        </div>
+        <div style="background:white;border-radius:14px;padding:16px;margin-bottom:12px;border:1px solid #e2e8f0;">
+            <div class="form-group">
+                <label class="form-label">Nombre de la estacion</label>
+                <input class="form-input" id="est-nombre" placeholder="Ej: Estacion Pemex #1234">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Direccion</label>
+                <input class="form-input" id="est-direccion" placeholder="Calle, numero, colonia, ciudad">
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Ciudad</label>
+                    <input class="form-input" id="est-ciudad" placeholder="Ciudad">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Estado</label>
+                    <input class="form-input" id="est-estado" placeholder="Estado">
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Permiso CRE</label>
+                <input class="form-input" id="est-cre" placeholder="No. de permiso CRE">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Contacto en la estacion</label>
+                <input class="form-input" id="est-contacto" placeholder="Nombre del encargado">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Telefono</label>
+                <input class="form-input" id="est-tel" type="tel" placeholder="(614) 000-0000">
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Latitud</label>
+                    <input class="form-input" id="est-lat" type="number" step="0.000001">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Longitud</label>
+                    <input class="form-input" id="est-lng" type="number" step="0.000001">
+                </div>
+            </div>
+            <button onclick="estGPS()" style="width:100%;padding:10px;background:linear-gradient(135deg,#10b981,#059669);color:white;border:none;border-radius:10px;font-family:'Outfit',sans-serif;font-weight:700;font-size:12px;cursor:pointer;margin-bottom:4px;">Capturar GPS</button>
+            <div id="est-gps-msg" style="font-size:10px;color:#94a3b8;text-align:center;"></div>
+        </div>
+        <button onclick="guardarEstacion()" style="width:100%;padding:14px;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:white;border:none;border-radius:12px;font-family:'Outfit',sans-serif;font-weight:700;font-size:14px;cursor:pointer;">
+            Guardar Estacion
+        </button>
+    </div>`;
+    document.body.appendChild(div.firstElementChild);
+}
+
+function asegurarOverlayContacto() {
+    if(document.getElementById('form-contacto-extra')) return;
+    const div = document.createElement('div');
+    div.innerHTML = `
+    <div class="form-overlay" id="form-contacto-extra" style="background:#f8fafc;">
+        <div class="form-header" style="background:#0891b2;margin:-16px -16px 16px;padding:16px;border-radius:0;">
+            <div class="form-title" style="color:white;">Nuevo Contacto</div>
+            <button class="form-close" onclick="cerrarFormContacto()" style="background:rgba(255,255,255,0.15);border:none;color:white;">x</button>
+        </div>
+        <div style="background:white;border-radius:14px;padding:16px;margin-bottom:12px;border:1px solid #e2e8f0;">
+            <div class="form-group">
+                <label class="form-label">Nombre completo</label>
+                <input class="form-input" id="cont-nombre" placeholder="Nombre del contacto">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Puesto / Cargo</label>
+                <input class="form-input" id="cont-puesto" placeholder="Ej: Gerente, Encargado, Director">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Telefono</label>
+                <input class="form-input" id="cont-tel" type="tel" placeholder="(614) 000-0000">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Email</label>
+                <input class="form-input" id="cont-email" type="email" placeholder="correo@empresa.com">
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label">Notas</label>
+                <input class="form-input" id="cont-notas" placeholder="Informacion adicional">
+            </div>
+        </div>
+        <button onclick="guardarContacto()" style="width:100%;padding:14px;background:linear-gradient(135deg,#0891b2,#0369a1);color:white;border:none;border-radius:12px;font-family:'Outfit',sans-serif;font-weight:700;font-size:14px;cursor:pointer;">
+            Guardar Contacto
+        </button>
+    </div>`;
+    document.body.appendChild(div.firstElementChild);
+}
+
+function asegurarOverlayDocumento() {
+    if(document.getElementById('form-documento')) return;
+    const div = document.createElement('div');
+    div.innerHTML = `
+    <div class="form-overlay" id="form-documento" style="background:#f8fafc;">
+        <div class="form-header" style="background:#f59e0b;margin:-16px -16px 16px;padding:16px;border-radius:0;">
+            <div class="form-title" style="color:white;">Subir Documento</div>
+            <button class="form-close" onclick="cerrarFormDocumento()" style="background:rgba(255,255,255,0.15);border:none;color:white;">x</button>
+        </div>
+        <div style="background:white;border-radius:14px;padding:16px;margin-bottom:12px;border:1px solid #e2e8f0;">
+            <div class="form-group">
+                <label class="form-label">Tipo de documento</label>
+                <select class="form-select" id="doc-tipo">
+                    <option>Permiso CRE</option>
+                    <option>Dictamen ASEA</option>
+                    <option>NOM-005-ASEA</option>
+                    <option>NOM-004-ASEA</option>
+                    <option>SASISOPA</option>
+                    <option>COA</option>
+                    <option>MIA</option>
+                    <option>UVIE</option>
+                    <option>Integridad de Tanques</option>
+                    <option>Recuperacion de Vapores</option>
+                    <option>Proteccion Civil</option>
+                    <option>Contrato Tecnocontrol</option>
+                    <option>Otro</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Fecha de vencimiento</label>
+                <input class="form-input" id="doc-vencimiento" type="date">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Notas del documento</label>
+                <input class="form-input" id="doc-notas" placeholder="Observaciones...">
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label">Archivo (PDF o imagen)</label>
+                <div class="img-upload-zone" onclick="document.getElementById('doc-archivo').click()" id="doc-upload-zone">
+                    <div id="doc-archivo-label" style="color:#94a3b8;font-size:12px;">Toca para seleccionar archivo (PDF, JPG, PNG)</div>
+                </div>
+                <input type="file" id="doc-archivo" accept=".pdf,image/*" style="display:none;" onchange="docPreview(this)">
+                <div id="doc-archivo-nombre" style="font-size:11px;color:#10b981;margin-top:6px;display:none;"></div>
+            </div>
+        </div>
+        <div id="doc-upload-progress" style="display:none;text-align:center;padding:10px;font-size:12px;color:#2563eb;font-weight:700;">
+            Subiendo documento...
+        </div>
+        <button onclick="guardarDocumento()" id="doc-submit-btn" style="width:100%;padding:14px;background:linear-gradient(135deg,#f59e0b,#d97706);color:white;border:none;border-radius:12px;font-family:'Outfit',sans-serif;font-weight:700;font-size:14px;cursor:pointer;">
+            Subir Documento
+        </button>
+    </div>`;
+    document.body.appendChild(div.firstElementChild);
+}
+
+function asegurarOverlayFacturacion() {
+    if(document.getElementById('form-facturacion')) return;
+    const div = document.createElement('div');
+    div.innerHTML = `
+    <div class="form-overlay" id="form-facturacion" style="background:#f8fafc;">
+        <div class="form-header" style="background:#1e3a8a;margin:-16px -16px 16px;padding:16px;border-radius:0;">
+            <div class="form-title" style="color:white;">Datos de Facturacion y Envio</div>
+            <button class="form-close" onclick="cerrarFormFacturacion()" style="background:rgba(255,255,255,0.15);border:none;color:white;">x</button>
+        </div>
+        <div style="background:white;border-radius:14px;padding:16px;margin-bottom:12px;border:1px solid #e2e8f0;">
+            <div class="srv-section-title" style="margin-top:0;">Datos de facturacion</div>
+            <div class="form-group">
+                <label class="form-label">Razon Social</label>
+                <input class="form-input" id="fact-razon" placeholder="Razon social completa">
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">RFC</label>
+                    <input class="form-input" id="fact-rfc" placeholder="RFC">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Codigo Postal</label>
+                    <input class="form-input" id="fact-cp" placeholder="CP">
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Regimen Fiscal</label>
+                <select class="form-select" id="fact-regimen">
+                    <option value="">Seleccionar...</option>
+                    <option>601 - General de Ley Personas Morales</option>
+                    <option>603 - Personas Morales con Fines no Lucrativos</option>
+                    <option>605 - Sueldos y Salarios</option>
+                    <option>606 - Arrendamiento</option>
+                    <option>608 - Demas Ingresos</option>
+                    <option>612 - Personas Fisicas con Actividades Empresariales</option>
+                    <option>616 - Sin Obligaciones Fiscales</option>
+                    <option>621 - Incorporacion Fiscal</option>
+                    <option>626 - Resico</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Direccion fiscal</label>
+                <input class="form-input" id="fact-direccion" placeholder="Calle, numero, colonia">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Email para facturacion</label>
+                <input class="form-input" id="fact-email" type="email" placeholder="facturacion@empresa.com">
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Dias de credito</label>
+                    <input class="form-input" id="fact-credito" type="number" placeholder="0 = contado">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Lista de precio</label>
+                    <select class="form-select" id="fact-lista">
+                        <option value="">Sin asignar</option>
+                        <option>Publico General</option>
+                        <option>Clientes Nuevos</option>
+                        <option>+5 Compras</option>
+                        <option>Grupos Frecuentes</option>
+                        <option>Sub-Distribuidor</option>
+                        <option>Autoriza Martin</option>
+                        <option>Precio ARTE</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        <div style="background:white;border-radius:14px;padding:16px;margin-bottom:12px;border:1px solid #e2e8f0;">
+            <div class="srv-section-title" style="margin-top:0;">Datos de envio</div>
+            <div class="form-group">
+                <label class="form-label">Responsable de recepcion</label>
+                <input class="form-input" id="fact-resp-envio" placeholder="Nombre del responsable">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Telefono para entrega</label>
+                <input class="form-input" id="fact-tel-envio" type="tel" placeholder="(614) 000-0000">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Direccion de entrega</label>
+                <input class="form-input" id="fact-dir-envio" placeholder="Si es diferente a la fiscal">
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label">Horario de recepcion</label>
+                <input class="form-input" id="fact-horario" placeholder="Ej: Lun-Vie 9am-6pm">
+            </div>
+        </div>
+        <button onclick="guardarFacturacion()" id="fact-submit-btn" style="width:100%;padding:14px;background:linear-gradient(135deg,#1e3a8a,#2563eb);color:white;border:none;border-radius:12px;font-family:'Outfit',sans-serif;font-weight:700;font-size:14px;cursor:pointer;">
+            Guardar Datos
+        </button>
+    </div>`;
+    document.body.appendChild(div.firstElementChild);
+}
+
+// ─── FUNCIONES DE ESTACIONES ───
+window.cpAgregarEstacion = () => {
+    asegurarOverlayEstacion();
+    ['est-nombre','est-direccion','est-ciudad','est-estado','est-cre','est-contacto','est-tel','est-lat','est-lng'].forEach(id=>{
+        const e=document.getElementById(id); if(e) e.value='';
+    });
+    document.getElementById('est-gps-msg').innerText='';
+    document.getElementById('form-estacion').classList.add('active');
+};
+
+window.cerrarFormEstacion = () => { document.getElementById('form-estacion')?.classList.remove('active'); };
+
+window.estGPS = () => {
+    const msg = document.getElementById('est-gps-msg');
+    if(!navigator.geolocation){ msg.innerText='GPS no disponible'; return; }
+    msg.innerText='Obteniendo ubicacion...';
+    navigator.geolocation.getCurrentPosition(pos=>{
+        document.getElementById('est-lat').value = pos.coords.latitude.toFixed(6);
+        document.getElementById('est-lng').value = pos.coords.longitude.toFixed(6);
+        msg.innerText='Ubicacion capturada'; msg.style.color='#10b981';
+    }, err=>{ msg.innerText='Error: '+err.message; msg.style.color='#ef4444'; }, {enableHighAccuracy:true,timeout:15000});
+};
+
+window.guardarEstacion = async () => {
+    const g = id => { const e=document.getElementById(id); return e?e.value.trim():''; };
+    if(!g('est-nombre')){ alert('Escribe el nombre de la estacion'); return; }
+    const c = cpClienteActual; if(!c) return;
+    const btn = document.querySelector('#form-estacion button:last-child');
+    if(btn){ btn.textContent='Guardando...'; btn.disabled=true; }
+    const estaciones = c.estaciones || [];
+    estaciones.push({
+        nombre: g('est-nombre'), direccion: g('est-direccion'),
+        ciudad: g('est-ciudad'), estado: g('est-estado'),
+        permisoCRE: g('est-cre'), contacto: g('est-contacto'),
+        tel: g('est-tel'),
+        lat: parseFloat(g('est-lat'))||null, lng: parseFloat(g('est-lng'))||null,
+        agregadoEn: new Date().toISOString()
+    });
+    try {
+        await updateDoc(doc(db,'ventas_clientes',c.id), { estaciones });
+        c.estaciones = estaciones;
+        // Actualizar en clientesDB
+        const idx = clientesDB.findIndex(x=>x.id===c.id);
+        if(idx>=0) clientesDB[idx].estaciones = estaciones;
+        cerrarFormEstacion();
+        document.getElementById('cp-kpi-estaciones').innerText = estaciones.length;
+        cpTab('estaciones', null);
+        alert('Estacion guardada');
+    } catch(e){ alert('Error: '+e.message); }
+    finally{ if(btn){ btn.textContent='Guardar Estacion'; btn.disabled=false; } }
+};
+
+// ─── FUNCIONES DE CONTACTOS ───
+window.cpAgregarContacto = () => {
+    asegurarOverlayContacto();
+    ['cont-nombre','cont-puesto','cont-tel','cont-email','cont-notas'].forEach(id=>{
+        const e=document.getElementById(id); if(e) e.value='';
+    });
+    document.getElementById('form-contacto-extra').classList.add('active');
+};
+
+window.cerrarFormContacto = () => { document.getElementById('form-contacto-extra')?.classList.remove('active'); };
+
+window.guardarContacto = async () => {
+    const g = id => { const e=document.getElementById(id); return e?e.value.trim():''; };
+    if(!g('cont-nombre')){ alert('Escribe el nombre del contacto'); return; }
+    const c = cpClienteActual; if(!c) return;
+    const btn = document.querySelector('#form-contacto-extra button:last-child');
+    if(btn){ btn.textContent='Guardando...'; btn.disabled=true; }
+    const contactos = c.contactos || [];
+    contactos.push({
+        nombre: g('cont-nombre'), puesto: g('cont-puesto'),
+        tel: g('cont-tel'), email: g('cont-email'),
+        notas: g('cont-notas'), agregadoEn: new Date().toISOString()
+    });
+    try {
+        await updateDoc(doc(db,'ventas_clientes',c.id), { contactos });
+        c.contactos = contactos;
+        const idx = clientesDB.findIndex(x=>x.id===c.id);
+        if(idx>=0) clientesDB[idx].contactos = contactos;
+        cerrarFormContacto();
+        cpTab('general', null);
+        alert('Contacto guardado');
+    } catch(e){ alert('Error: '+e.message); }
+    finally{ if(btn){ btn.textContent='Guardar Contacto'; btn.disabled=false; } }
+};
+
+// ─── FUNCIONES DE DOCUMENTOS ───
+let _docArchivo = null;
+
+window.docPreview = (input) => {
+    const file = input.files[0]; if(!file) return;
+    _docArchivo = file;
+    document.getElementById('doc-archivo-nombre').style.display='block';
+    document.getElementById('doc-archivo-nombre').innerText = file.name + ' (' + (file.size/1024).toFixed(0) + ' KB)';
+    document.getElementById('doc-upload-zone').style.borderColor='#10b981';
+};
+
+window.cpSubirDocumento = () => {
+    asegurarOverlayDocumento();
+    _docArchivo = null;
+    document.getElementById('doc-archivo-nombre').style.display='none';
+    document.getElementById('doc-upload-zone').style.borderColor='';
+    document.getElementById('doc-vencimiento').value='';
+    document.getElementById('doc-notas').value='';
+    document.getElementById('doc-upload-progress').style.display='none';
+    document.getElementById('form-documento').classList.add('active');
+};
+
+window.cerrarFormDocumento = () => { document.getElementById('form-documento')?.classList.remove('active'); };
+
+window.guardarDocumento = async () => {
+    if(!_docArchivo){ alert('Selecciona un archivo'); return; }
+    const c = cpClienteActual; if(!c) return;
+    const tipo = document.getElementById('doc-tipo')?.value;
+    const vencimiento = document.getElementById('doc-vencimiento')?.value;
+    const btn = document.getElementById('doc-submit-btn');
+    const progress = document.getElementById('doc-upload-progress');
+    if(btn){ btn.style.display='none'; }
+    if(progress){ progress.style.display='block'; progress.innerText='Subiendo a Cloudinary...'; }
+
+    try {
+        // Subir a Cloudinary
+        const carpeta = 'tecnocontrol/documentos/' + c.id;
+        const url = await subirArchivoCloudinary(_docArchivo, carpeta);
+        if(!url) throw new Error('No se obtuvo URL de Cloudinary');
+
+        progress.innerText = 'Guardando en Firebase...';
+
+        const documentos = c.documentos || [];
+        // Reemplazar si ya existe el mismo tipo
+        const idxDoc = documentos.findIndex(d => d.tipo === tipo);
+        const nuevoDoc = {
+            tipo, url, vencimiento: vencimiento||'',
+            nombre: _docArchivo.name,
+            tamano: _docArchivo.size,
+            notas: document.getElementById('doc-notas')?.value.trim()||'',
+            fechaSubida: new Date().toISOString(),
+            subidoPor: window.currentUser?.email||''
+        };
+        if(idxDoc >= 0) { documentos[idxDoc] = nuevoDoc; }
+        else { documentos.push(nuevoDoc); }
+
+        await updateDoc(doc(db,'ventas_clientes',c.id), { documentos });
+        c.documentos = documentos;
+        const idx = clientesDB.findIndex(x=>x.id===c.id);
+        if(idx>=0) clientesDB[idx].documentos = documentos;
+
+        cerrarFormDocumento();
+        cpTab('documentos', null);
+        alert('Documento subido correctamente');
+    } catch(e){
+        progress.innerText = 'Error: ' + e.message;
+        progress.style.color = '#ef4444';
+        alert('Error al subir: ' + e.message);
+    } finally {
+        if(btn){ btn.style.display='block'; btn.textContent='Subir Documento'; }
+    }
+};
+
+// ─── FUNCIONES DE FACTURACIÓN ───
+window.cpEditarFacturacion = () => {
+    asegurarOverlayFacturacion();
+    const c = cpClienteActual; if(!c) return;
+    // Precargar datos existentes
+    const setVal = (id, val) => { const e=document.getElementById(id); if(e) e.value=val||''; };
+    setVal('fact-razon', c.razonSocial);
+    setVal('fact-rfc', c.rfc);
+    setVal('fact-cp', c.cp);
+    setVal('fact-regimen', c.regimenFiscal);
+    setVal('fact-direccion', c.direccionFiscal||c.direccion);
+    setVal('fact-email', c.emailFacturacion);
+    setVal('fact-credito', c.diasCredito);
+    setVal('fact-lista', c.listaPrecio);
+    setVal('fact-resp-envio', c.responsableEnvio||c.contacto);
+    setVal('fact-tel-envio', c.telEnvio||c.tel);
+    setVal('fact-dir-envio', c.direccionEnvio);
+    setVal('fact-horario', c.horarioEntrega);
+    document.getElementById('form-facturacion').classList.add('active');
+};
+
+window.cerrarFormFacturacion = () => { document.getElementById('form-facturacion')?.classList.remove('active'); };
+
+window.guardarFacturacion = async () => {
+    const g = id => { const e=document.getElementById(id); return e?e.value.trim():''; };
+    const c = cpClienteActual; if(!c) return;
+    const btn = document.getElementById('fact-submit-btn');
+    if(btn){ btn.textContent='Guardando...'; btn.disabled=true; }
+    const data = {
+        razonSocial: g('fact-razon'), rfc: g('fact-rfc'),
+        cp: g('fact-cp'), regimenFiscal: g('fact-regimen'),
+        direccionFiscal: g('fact-direccion'), emailFacturacion: g('fact-email'),
+        diasCredito: parseInt(g('fact-credito'))||0,
+        listaPrecio: g('fact-lista'),
+        responsableEnvio: g('fact-resp-envio'), telEnvio: g('fact-tel-envio'),
+        direccionEnvio: g('fact-dir-envio'), horarioEntrega: g('fact-horario'),
+        actualizadoEn: new Date().toISOString(),
+        actualizadoPor: window.currentUser?.email||''
+    };
+    try {
+        await updateDoc(doc(db,'ventas_clientes',c.id), data);
+        Object.assign(c, data);
+        const idx = clientesDB.findIndex(x=>x.id===c.id);
+        if(idx>=0) Object.assign(clientesDB[idx], data);
+        cerrarFormFacturacion();
+        cpTab('facturacion', null);
+        // Actualizar header del perfil
+        document.getElementById('cp-sub').innerText = [c.razonSocial||c.sector, c.ciudad, c.vendedor].filter(Boolean).join(' · ');
+        alert('Datos guardados correctamente');
+    } catch(e){ alert('Error: '+e.message); }
+    finally{ if(btn){ btn.textContent='Guardar Datos'; btn.disabled=false; } }
+};
+
+// ─── NOTIFICACIONES DE VENCIMIENTO ───
+window.verificarVencimientos = async () => {
+    // Revisar cotizaciones próximas a vencer (15 días)
+    const hoy = new Date();
+    const en15 = new Date(); en15.setDate(en15.getDate()+15);
+    const cotsPorVencer = (cotDB||[]).filter(c => {
+        if(!c.fechaVencimiento || c.statusCot === 'Colocada' || c.statusCot === 'Cancelada') return false;
+        const fv = new Date(c.fechaVencimiento);
+        return fv >= hoy && fv <= en15;
+    });
+    if(cotsPorVencer.length > 0) {
+        const msg = `${cotsPorVencer.length} cotizacion(es) vencen en los proximos 15 dias`;
+        const el = document.getElementById('app-toast');
+        if(el) {
+            el.innerText = msg;
+            el.style.display='block';
+            el.style.background='#fef3c7';
+            el.style.borderColor='#f59e0b';
+            el.style.color='#92400e';
+            setTimeout(()=>{ el.style.display='none'; el.style.background=''; el.style.color=''; }, 5000);
+        }
+    }
+    // Revisar documentos de clientes próximos a vencer
+    const docsVencer = [];
+    (clientesDB||[]).forEach(c => {
+        (c.documentos||[]).forEach(d => {
+            if(!d.vencimiento) return;
+            const fv = new Date(d.vencimiento);
+            const diasRestantes = Math.ceil((fv-hoy)/86400000);
+            if(diasRestantes >= 0 && diasRestantes <= 30) {
+                docsVencer.push({cliente:c.nombre, tipo:d.tipo, dias:diasRestantes});
+            }
+        });
+    });
+    return { cotsPorVencer, docsVencer };
+};
+
+// Ejecutar verificación al cargar
+setTimeout(() => { if(typeof verificarVencimientos === 'function') verificarVencimientos(); }, 3000);
+
+// ─── MEJORAS CRM: Etiquetas en lista de clientes ───
+// Sobreescribir renderClientList para agregar etiquetas
+const _origRenderClientList = window.renderClientList;
+window.renderClientList = () => {
+    const q = (document.getElementById('clients-search')?.value || '').toLowerCase();
+    let lista = [...(clientesDB||[])];
+    if(q) lista = lista.filter(c => (c.nombre||'').toLowerCase().includes(q) || (c.direccion||c.dir||'').toLowerCase().includes(q));
+    lista.sort((a,b) => (a.nombre||'').localeCompare(b.nombre||''));
+    const el = document.getElementById('clients-list');
+    if(!el) return;
+    if(!lista.length) {
+        el.innerHTML = '<div class="empty-state"><div style="font-size:48px;margin-bottom:12px;"></div><div style="font-size:14px;font-weight:500;color:#94a3b8;">Sin clientes</div></div>';
+        return;
+    }
+    const hoy = new Date().toISOString().slice(0,10);
+    el.innerHTML = lista.map(c => {
+        const visits = (visitasDB||[]).filter(v => v.clienteId === c.id);
+        const cotsPend = (cotDB||[]).filter(x => x.clienteId === c.id && x.statusCot !== 'Colocada' && x.statusCot !== 'Cancelada');
+        const docsPorVencer = (c.documentos||[]).filter(d => {
+            if(!d.vencimiento) return false;
+            const dias = Math.ceil((new Date(d.vencimiento)-new Date())/86400000);
+            return dias >= 0 && dias <= 30;
+        });
+        const tags = [];
+        if(cotsPend.length > 0) tags.push(`<span style="background:#dbeafe;color:#2563eb;font-size:9px;font-weight:700;padding:2px 6px;border-radius:10px;">${cotsPend.length} cot. pendiente${cotsPend.length>1?'s':''}</span>`);
+        if(docsPorVencer.length > 0) tags.push(`<span style="background:#fee2e2;color:#dc2626;font-size:9px;font-weight:700;padding:2px 6px;border-radius:10px;">Doc. por vencer</span>`);
+        if(c.listaPrecio) tags.push(`<span style="background:#f3e8ff;color:#7c3aed;font-size:9px;font-weight:700;padding:2px 6px;border-radius:10px;">${c.listaPrecio}</span>`);
+
+        return `<div class="client-card" onclick="verDetalleCliente('${c.id}')">
+            <div class="client-name">${c.nombre||'—'}</div>
+            <div class="client-addr">${c.direccion||c.dir||'—'}</div>
+            ${tags.length ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">${tags.join('')}</div>` : ''}
+            ${visits.length > 0 ? `<div class="client-visits">${visits.length} visita${visits.length>1?'s':''} registrada${visits.length>1?'s':''}</div>` : ''}
+        </div>`;
+    }).join('');
+};
+
+// ─── INTEGRACIÓN GMAIL — Click to compose ───
+window.cpEnviarEmail = (destinatario, asunto, cuerpo) => {
+    const to = destinatario || (cpClienteActual?.emailFacturacion || '');
+    const subject = asunto || ('Tecnocontrol - ' + (cpClienteActual?.nombre||''));
+    const body = cuerpo || ('Estimado cliente,\n\nEsperamos que se encuentre bien.\n\nQuedamos a sus ordenes.\n\nTecnocontrol');
+    const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.open(gmailUrl, '_blank');
+};
+
+// ─── SEGUIMIENTO PROGRAMADO en cotizaciones ───
+window.programarSeguimientoCot = async (cotId) => {
+    const c = (cotDB||[]).find(x => x.id === cotId);
+    if(!c) return;
+    const fecha = prompt('Fecha de seguimiento (YYYY-MM-DD):', new Date().toISOString().slice(0,10));
+    if(!fecha) return;
+    const nota = prompt('Nota del seguimiento:', 'Seguimiento de cotizacion ' + c.folio) || '';
+    try {
+        await addDoc(collection(db,'actividades'), {
+            actividad: 'Seguimiento cotizacion ' + c.folio,
+            area: 'Ventas',
+            fechaLimite: fecha,
+            encargado: window.currentUser?.email||'',
+            responsable: window.currentUser?.email||'',
+            estatus: 'Sin Iniciar',
+            prioridad: 'Alta',
+            descripcion: nota + ' | Cliente: ' + c.cliente,
+            cotizacionId: cotId,
+            origen: 'Cotizacion',
+            fechaCreacion: new Date().toISOString(),
+            comentarios: [],
+        });
+        alert('Seguimiento programado para ' + fecha);
+    } catch(e){ alert('Error: '+e.message); }
+};
+
+// ─── BOTÓN EMAIL EN PERFIL CLIENTE ───
+// Sobreescribir cpWhatsApp para agregar Email
+const _origCpWhatsApp = window.cpWhatsApp;
+window.cpWhatsApp = () => {
+    const c = cpClienteActual; if(!c) return;
+    const tel = (c.tel||'').replace(/\D/g,'');
+    const url = tel ? `https://wa.me/52${tel}` : `https://wa.me/`;
+    window.open(url, '_blank');
+};
+
+console.log('MEGA BLOQUE cargado: Estaciones, Contactos, Documentos, Facturacion, Vencimientos, Gmail, Seguimientos');
+
 </script>
 
 
 </body>
 </html>
+                                    
