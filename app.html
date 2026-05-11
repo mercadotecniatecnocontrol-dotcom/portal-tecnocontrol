@@ -1446,7 +1446,10 @@
             <div class="srv-section-title" style="margin-top:0;">Datos del cliente</div>
             <div class="form-group">
                 <label class="form-label">Nombre del cliente / Empresa</label>
-                <input class="form-input" id="cot-cliente" placeholder="Nombre o razon social">
+                <div style="position:relative;">
+                    <input class="form-input" id="cot-cliente" placeholder="Buscar cliente..." oninput="buscarClienteCot()" autocomplete="off">
+                    <div id="cot-cliente-results" style="display:none;position:absolute;top:100%;left:0;right:0;background:white;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,0.1);max-height:200px;overflow-y:auto;z-index:999;"></div>
+                </div>
             </div>
             <div class="form-group" style="margin-bottom:0;">
                 <label class="form-label">Referencia / Notas</label>
@@ -1543,6 +1546,39 @@
                 <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:8px;"><span style="color:#64748b;">IVA 16%</span><span id="cot-iva" style="font-weight:700;">$0.00</span></div>
                 <div style="display:flex;justify-content:space-between;font-size:17px;font-weight:800;color:#1e3a8a;"><span>TOTAL</span><span id="cot-total">$0.00</span></div>
                 <div style="font-size:10px;color:#94a3b8;text-align:right;margin-top:2px;" id="cot-moneda-nota"></div>
+            </div>
+        </div>
+
+        <!-- Descuento -->
+        <div style="background:white;border-radius:14px;padding:14px;margin-bottom:10px;border:1px solid #e2e8f0;">
+            <div class="srv-section-title" style="margin-top:0;">Descuento</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div class="form-group" style="margin-bottom:0;">
+                    <label class="form-label">Descuento (%)</label>
+                    <input class="form-input" id="cot-descuento-pct" type="number" min="0" max="100" placeholder="0" oninput="actualizarDescuento()">
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                    <label class="form-label">O importe fijo</label>
+                    <input class="form-input" id="cot-descuento-monto" type="number" min="0" placeholder="0.00" oninput="actualizarDescuento()">
+                </div>
+            </div>
+            <div id="cot-descuento-preview" style="margin-top:8px;font-size:11px;color:#10b981;font-weight:700;display:none;"></div>
+        </div>
+
+        <!-- Datos de facturación/envío -->
+        <div style="background:white;border-radius:14px;padding:14px;margin-bottom:10px;border:1px solid #e2e8f0;">
+            <div class="srv-section-title" style="margin-top:0;">Datos adicionales</div>
+            <div class="form-group">
+                <label class="form-label">Incluir en cotización</label>
+                <select class="form-select" id="cot-datos-tipo" onchange="toggleDatosCot()">
+                    <option value="ninguno">Sin datos adicionales</option>
+                    <option value="facturacion">Datos de facturación</option>
+                    <option value="envio">Datos de envío</option>
+                    <option value="ambos">Facturación y envío</option>
+                </select>
+            </div>
+            <div id="cot-datos-extra" style="display:none;margin-top:8px;font-size:11px;color:#64748b;background:#f8fafc;border-radius:8px;padding:10px;">
+                Los datos se tomarán del perfil del cliente seleccionado.
             </div>
         </div>
 
@@ -2061,6 +2097,7 @@ window.verCotDetail = (id) => {
         </div>
         ${c.firmaImg?`<div class="detail-section"><div class="detail-label">Firma${c.firmaNombre?' — '+c.firmaNombre:''}</div><img src="${c.firmaImg}" style="max-width:100%;border:1px solid var(--border);border-radius:8px;background:white;"></div>`:''}
         <div class="detail-actions">
+            <button class="detail-btn btn-edit" onclick="editarCotizacion('${c.id}')">Editar</button>
             <button class="detail-btn btn-complete" onclick="descargarPDFCot('${c.id}')">PDF</button>
             <button class="detail-btn btn-complete" style="background:#25D366;" onclick="reenviarCotWA('${c.id}')">WhatsApp</button>
             <button class="detail-btn btn-delete" onclick="eliminarCot('${c.id}')">Eliminar</button>
@@ -2393,7 +2430,7 @@ window.limpiarFirmaCot=()=>{
             <label class="form-label">Vendedor asignado</label>
             <select class="form-select" id="opp-vendedor">
                 <option value="guillermo.d@tecnocontrol.com.mx">Guillermo Durstewitz</option>
-                <option value="ventas2@tecnocontrol.con.mx">Joon Rios</option>
+                <option value="ventas2@tecnocontrol.com.mx">Joon Rios</option>
                 <option value="ventas@tecnocontrol.com.mx">Dir. Comercial</option>
                 <option value="m.delao@tecnocontrol.com.mx">Martin De la O</option>
                 <option value="mercadotecnia@tecnocontrol.com.mx">Glen Preciado</option>
@@ -5110,9 +5147,17 @@ function cpTabFacturacion() {
             <div><div class="detail-label">Horario de entrega</div><div class="detail-value">${c.horarioEntrega||'—'}</div></div>
         </div>
     </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">
+        <button onclick="cpCompartirDatos('facturacion')" style="padding:12px;background:#25D366;color:white;border:none;border-radius:12px;font-family:'Outfit',sans-serif;font-weight:700;font-size:12px;cursor:pointer;">
+            Compartir Facturación
+        </button>
+        <button onclick="cpCompartirDatos('envio')" style="padding:12px;background:#0891b2;color:white;border:none;border-radius:12px;font-family:'Outfit',sans-serif;font-weight:700;font-size:12px;cursor:pointer;">
+            Compartir Envío
+        </button>
+    </div>
     <button onclick="cpEditarFacturacion()" style="width:100%;padding:13px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:12px;font-family:'Outfit',sans-serif;font-weight:700;font-size:13px;color:#1e293b;cursor:pointer;margin-top:8px;">
         Editar datos de facturacion
-    </button>`;
+    </button>\`;
 }
 
 // Actividades
@@ -5725,6 +5770,311 @@ console.log('Cloudinary module loaded — Cloud: daorprxxn');
 if('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(()=>{});
 }
+
+// ══════════════════════════════════════════════════════════════
+// FIXES: CRM + Cotizaciones + Clientes + Compartir
+// ══════════════════════════════════════════════════════════════
+
+// ─── FIX #1: CRM — Exponer query/where/orderBy para el módulo CRM ───
+// (ya están expuestos arriba, asegurar que cargarCRM funcione)
+window.cargarCRMSafe = async () => {
+    if(typeof window.cargarCRM === 'function') {
+        await window.cargarCRM();
+    }
+};
+
+// ─── FIX #3: Autocompletar clientes en cotización ───
+window.buscarClienteCot = () => {
+    const q = (document.getElementById('cot-cliente')?.value || '').toLowerCase().trim();
+    const el = document.getElementById('cot-cliente-results');
+    if(!el) return;
+    if(q.length < 2) { el.style.display = 'none'; return; }
+    const results = (clientesDB || [])
+        .filter(c => (c.nombre||'').toLowerCase().includes(q) || (c.razonSocial||'').toLowerCase().includes(q))
+        .slice(0, 8);
+    if(!results.length) { el.style.display = 'none'; return; }
+    el.style.display = 'block';
+    el.innerHTML = results.map(c => `
+        <div onclick="seleccionarClienteCot('${c.id}')"
+             style="padding:10px 14px;cursor:pointer;border-bottom:1px solid #f1f5f9;transition:0.15s;"
+             onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='white'">
+            <div style="font-size:13px;font-weight:700;color:#1e293b;">${c.nombre||'—'}</div>
+            <div style="font-size:10px;color:#94a3b8;">${c.razonSocial||''} ${c.ciudad?'· '+c.ciudad:''}</div>
+        </div>`).join('');
+};
+
+window.seleccionarClienteCot = (clienteId) => {
+    const c = clientesDB.find(x => x.id === clienteId);
+    if(!c) return;
+    const input = document.getElementById('cot-cliente');
+    if(input) input.value = c.nombre;
+    const el = document.getElementById('cot-cliente-results');
+    if(el) el.style.display = 'none';
+    // Guardar referencia al cliente para datos de facturación
+    window._cotClienteSeleccionado = c;
+    // Auto-asignar lista de precio si tiene
+    if(c.listaPrecio) {
+        const listas = ['Publico General','Clientes Nuevos','+5 Compras','Grupos Frecuentes','Sub-Distribuidor','Autoriza Martin','Precio ARTE'];
+        const idx = listas.indexOf(c.listaPrecio);
+        if(idx >= 0) {
+            selLista(idx, document.querySelectorAll('.lista-btn')[idx]);
+        }
+    }
+    // Mostrar datos extra si aplica
+    toggleDatosCot();
+};
+
+// Cerrar autocompletar al hacer click fuera
+document.addEventListener('click', (e) => {
+    if(!e.target.closest('#cot-cliente') && !e.target.closest('#cot-cliente-results')) {
+        const el = document.getElementById('cot-cliente-results');
+        if(el) el.style.display = 'none';
+    }
+});
+
+// ─── FIX #4: Descuento en cotización ───
+window.actualizarDescuento = () => {
+    const subtotal = (cotCarrito || []).reduce((s,i) => s + (i.precioCot||0)*(i.qty||1), 0);
+    const pct = parseFloat(document.getElementById('cot-descuento-pct')?.value) || 0;
+    const monto = parseFloat(document.getElementById('cot-descuento-monto')?.value) || 0;
+    const preview = document.getElementById('cot-descuento-preview');
+    if(!preview) return;
+    if(pct > 0 || monto > 0) {
+        const descuento = pct > 0 ? subtotal * pct / 100 : monto;
+        const fmtDesc = new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN'}).format(descuento);
+        preview.style.display = 'block';
+        preview.innerText = `Descuento aplicado: ${fmtDesc} ${pct>0?'('+pct+'%)':''}`;
+    } else {
+        preview.style.display = 'none';
+    }
+};
+
+function getCotDescuento(subtotal) {
+    const pct = parseFloat(document.getElementById('cot-descuento-pct')?.value) || 0;
+    const monto = parseFloat(document.getElementById('cot-descuento-monto')?.value) || 0;
+    if(pct > 0) return subtotal * pct / 100;
+    if(monto > 0) return monto;
+    return 0;
+}
+
+// ─── FIX #7: Datos facturación/envío en cotización ───
+window.toggleDatosCot = () => {
+    const tipo = document.getElementById('cot-datos-tipo')?.value;
+    const el = document.getElementById('cot-datos-extra');
+    if(!el) return;
+    const c = window._cotClienteSeleccionado;
+    if(!tipo || tipo === 'ninguno' || !c) {
+        el.style.display = 'none';
+        return;
+    }
+    el.style.display = 'block';
+    let html = '';
+    if(tipo === 'facturacion' || tipo === 'ambos') {
+        html += `<div style="margin-bottom:6px;"><strong style="color:#1e3a8a;">Facturación:</strong><br>
+            ${c.razonSocial||c.nombre} · RFC: ${c.rfc||'—'}<br>
+            ${c.direccionFiscal||c.direccion||'—'} · CP: ${c.cp||'—'}<br>
+            ${c.regimenFiscal||''} ${c.emailFacturacion?'· '+c.emailFacturacion:''}</div>`;
+    }
+    if(tipo === 'envio' || tipo === 'ambos') {
+        html += `<div><strong style="color:#1e3a8a;">Envío:</strong><br>
+            ${c.responsableEnvio||c.contacto||'—'} · Tel: ${c.telEnvio||c.tel||'—'}<br>
+            ${c.direccionEnvio||c.direccion||'—'}<br>
+            ${c.horarioEntrega?'Horario: '+c.horarioEntrega:''}</div>`;
+    }
+    el.innerHTML = html;
+};
+
+// ─── FIX #6: Editar cotizaciones ───
+window.editarCotizacion = async (id) => {
+    const c = cotDB.find(x => x.id === id);
+    if(!c) return;
+    // Cerrar el detalle
+    document.getElementById('cot-detail')?.classList.remove('active');
+    // Abrir formulario con datos precargados
+    await abrirNuevaCot();
+    setTimeout(() => {
+        document.getElementById('cot-cliente').value = c.cliente || '';
+        document.getElementById('cot-notas-cliente').value = c.notas || '';
+        document.getElementById('cot-firma-nombre').value = c.firmaNombre || '';
+        // Seleccionar lista
+        if(typeof c.listaIdx === 'number') {
+            const btn = document.querySelectorAll('.lista-btn')[c.listaIdx];
+            if(btn) selLista(c.listaIdx, btn);
+        }
+        // Seleccionar moneda
+        if(c.moneda === 'USD') {
+            selMoneda('USD', document.getElementById('btn-usd'));
+        }
+        // Cargar carrito
+        cotCarrito = (c.items || []).map(i => ({
+            sku: i.sku,
+            nombre: i.nombre,
+            precioBase: i.precioBase || i.precioCot,
+            prodMoneda: i.prodMoneda || 'MXN',
+            precioCot: i.precioCot,
+            cotMoneda: c.moneda || 'MXN',
+            qty: i.qty
+        }));
+        renderCarrito();
+        // Guardar referencia para edición
+        window._editandoCotId = id;
+    }, 400);
+};
+
+// Modificar generarCotizacion para soportar edición y descuento
+const _origGenerarCot = window.generarCotizacion;
+window.generarCotizacion = async () => {
+    if(!cotCarrito.length) { alert('Agrega al menos un producto'); return; }
+    const cliente = document.getElementById('cot-cliente')?.value.trim();
+    const subtotal = cotCarrito.reduce((s,i) => s + i.precioCot * i.qty, 0);
+    const descuento = getCotDescuento(subtotal);
+    const subtotalConDesc = subtotal - descuento;
+    const iva = subtotalConDesc * 0.16;
+    const total = subtotalConDesc + iva;
+    const folio = window._editandoCotId ? cotDB.find(x=>x.id===window._editandoCotId)?.folio || ('COT-'+Date.now().toString().slice(-6)) : 'COT-'+Date.now().toString().slice(-6);
+    
+    // Datos de facturación/envío
+    const tiposDatos = document.getElementById('cot-datos-tipo')?.value || 'ninguno';
+    const clienteSel = window._cotClienteSeleccionado;
+    
+    const data = {
+        folio, cliente,
+        notas: document.getElementById('cot-notas-cliente')?.value.trim() || '',
+        lista: (typeof LISTAS_NOMBRES !== 'undefined' ? LISTAS_NOMBRES[cotListaIdx] : ''),
+        listaIdx: cotListaIdx,
+        moneda: cotMoneda, tipoCambio: cotTC,
+        items: cotCarrito.map(i => ({
+            sku: i.sku, nombre: i.nombre,
+            prodMoneda: i.prodMoneda, precioBase: i.precioBase,
+            precioCot: i.precioCot, qty: i.qty,
+            subtotal: i.precioCot * i.qty
+        })),
+        subtotalBruto: subtotal,
+        descuento: descuento,
+        descuentoPct: parseFloat(document.getElementById('cot-descuento-pct')?.value) || 0,
+        subtotal: subtotalConDesc, iva, total,
+        firmaNombre: document.getElementById('cot-firma-nombre')?.value.trim() || '',
+        firmaImg: typeof getCotFirmaData === 'function' ? getCotFirmaData() : '',
+        fecha: new Date().toISOString().slice(0,10),
+        creadoPor: window.currentUser?.email || '',
+        creadoEn: new Date().toISOString(),
+        statusCot: 'Pendiente',
+        // Datos cliente
+        clienteId: clienteSel?.id || '',
+        datosFact: tiposDatos !== 'ninguno' && clienteSel ? {
+            razonSocial: clienteSel.razonSocial || clienteSel.nombre,
+            rfc: clienteSel.rfc || '',
+            direccionFiscal: clienteSel.direccionFiscal || clienteSel.direccion || '',
+            emailFacturacion: clienteSel.emailFacturacion || '',
+        } : null,
+        datosEnvio: (tiposDatos === 'envio' || tiposDatos === 'ambos') && clienteSel ? {
+            responsable: clienteSel.responsableEnvio || clienteSel.contacto || '',
+            telefono: clienteSel.telEnvio || clienteSel.tel || '',
+            direccion: clienteSel.direccionEnvio || clienteSel.direccion || '',
+            horario: clienteSel.horarioEntrega || '',
+        } : null,
+    };
+
+    try {
+        if(window._editandoCotId) {
+            await updateDoc(doc(db, 'cotizaciones', window._editandoCotId), data);
+            const idx = cotDB.findIndex(x => x.id === window._editandoCotId);
+            if(idx >= 0) cotDB[idx] = {...cotDB[idx], ...data};
+            window._editandoCotId = null;
+            alert('Cotizacion actualizada: ' + folio);
+        } else {
+            await addDoc(collection(db, 'cotizaciones'), data);
+            alert('Cotizacion guardada: ' + folio);
+        }
+        cerrarCot();
+        cargarCot();
+    } catch(e) { alert('Error: ' + e.message); }
+};
+
+// ─── FIX #8: Compartir datos de cliente desde perfil ───
+window.cpCompartirDatos = (tipo) => {
+    const c = cpClienteActual;
+    if(!c) return;
+    let msg = '';
+    if(tipo === 'facturacion') {
+        msg = '*DATOS DE FACTURACIÓN — TECNOCONTROL*\n';
+        msg += '━━━━━━━━━━━━━━━━━━━━\n';
+        msg += `Cliente: ${c.nombre}\n`;
+        msg += `Razón Social: ${c.razonSocial||'—'}\n`;
+        msg += `RFC: ${c.rfc||'—'}\n`;
+        msg += `Régimen Fiscal: ${c.regimenFiscal||'—'}\n`;
+        msg += `Dirección Fiscal: ${c.direccionFiscal||c.direccion||'—'}\n`;
+        msg += `CP: ${c.cp||'—'}\n`;
+        msg += `Email Facturación: ${c.emailFacturacion||'—'}\n`;
+        msg += `Crédito: ${c.diasCredito?c.diasCredito+' días':'Contado'}`;
+    } else {
+        msg = '*DATOS DE ENVÍO — TECNOCONTROL*\n';
+        msg += '━━━━━━━━━━━━━━━━━━━━\n';
+        msg += `Cliente: ${c.nombre}\n`;
+        msg += `Contacto: ${c.responsableEnvio||c.contacto||'—'}\n`;
+        msg += `Teléfono: ${c.telEnvio||c.tel||'—'}\n`;
+        msg += `Dirección: ${c.direccionEnvio||c.direccion||'—'}\n`;
+        msg += `Horario: ${c.horarioEntrega||'—'}`;
+    }
+    window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
+};
+
+// ─── FIX #1 CRM: Retry automático si Firebase no está listo ───
+// Sobreescribir guardarOportunidad con versión robusta
+const _origGuardarOpp = window.guardarOportunidad;
+window.guardarOportunidad = async () => {
+    // Verificar que Firebase esté disponible
+    if(typeof db === 'undefined' || typeof addDoc === 'undefined') {
+        alert('Error: Firebase no está listo. Espera 3 segundos e intenta de nuevo.');
+        return;
+    }
+    const g = id => { const e=document.getElementById(id); return e?e.value.trim():''; };
+    if(!g('opp-cliente')) { alert('Escribe el nombre del cliente'); return; }
+    const btn = document.getElementById('opp-submit-btn');
+    if(btn) { btn.textContent = 'Guardando...'; btn.disabled = true; }
+    const pIdx = parseInt(g('opp-pipeline'));
+    const pipelinesLocal = [
+        {nombre:'Servicios Tecnicos'}, {nombre:'Cumplimiento Regulatorio'}, {nombre:'Refacciones y Equipos'}
+    ];
+    const data = {
+        cliente: g('opp-cliente'), empresa: g('opp-empresa'),
+        telefono: g('opp-telefono'), contacto: g('opp-contacto'),
+        pipelineIdx: pIdx, pipeline: pipelinesLocal[pIdx]?.nombre || '',
+        etapa: g('opp-etapa'),
+        valor: parseFloat(g('opp-valor')) || 0,
+        probabilidad: parseInt(g('opp-prob')) || 20,
+        fechaCierre: g('opp-fecha-cierre'),
+        vendedor: g('opp-vendedor'),
+        descripcion: g('opp-desc'),
+        origen: g('opp-origen'),
+        actualizadoEn: new Date().toISOString()
+    };
+    try {
+        const editId = g('opp-edit-id');
+        if(editId) {
+            await updateDoc(doc(db,'crm_oportunidades',editId), data);
+            const idx = (window.oportunidadesDB||[]).findIndex(o=>o.id===editId);
+            if(idx>=0 && window.oportunidadesDB) window.oportunidadesDB[idx]={...window.oportunidadesDB[idx],...data};
+        } else {
+            data.creadoEn = new Date().toISOString();
+            data.creadoPor = window.currentUser?.email || '';
+            data.historial = [{de:null, a:data.etapa, fecha:data.creadoEn, usuario:data.creadoPor}];
+            data.notas = [];
+            const ref = await addDoc(collection(db,'crm_oportunidades'), data);
+            if(window.oportunidadesDB) window.oportunidadesDB.push({id:ref.id,...data});
+        }
+        if(typeof cerrarOportunidad==='function') cerrarOportunidad();
+        if(typeof window.renderKanban==='function') window.renderKanban();
+        if(typeof window.renderCRMStats==='function') window.renderCRMStats();
+        alert('Oportunidad guardada');
+    } catch(e) {
+        alert('Error al guardar: ' + e.message);
+        console.error('CRM Error:', e);
+    } finally {
+        if(btn) { btn.textContent = 'Guardar Oportunidad'; btn.disabled = false; }
+    }
+};
+
 </script>
 
 
