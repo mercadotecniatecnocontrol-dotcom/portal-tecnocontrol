@@ -4069,7 +4069,7 @@ function crmPuedoVerTodo() {
     return ['superadmin','admin'].includes(crmUserRole());
 }
 
-async function cargarCRM() {
+window.cargarCRM = async function cargarCRM() {
     try {
         if(!window.crmCargarFirebase) {
             setTimeout(cargarCRM, 500);
@@ -4102,7 +4102,7 @@ function getOportunidades() {
     return opps;
 }
 
-function renderCRMStats() {
+window.renderCRMStats = function renderCRMStats() {
     const opps = getOportunidades();
     const activas = opps.filter(o => !['Ganado','Perdido','Cobrado','Cancelado','Dictamen Emitido','Rechazado'].includes(o.etapa));
     const ganadas = opps.filter(o => ['Ganado','Cobrado','Dictamen Emitido'].includes(o.etapa));
@@ -4124,7 +4124,7 @@ function fmtCRMMXN(v) {
     return '$' + Math.round(v);
 }
 
-function renderKanban() {
+window.renderKanban = function renderKanban() {
     const pipeline = PIPELINES[crmPipelineIdx];
     const opps = getOportunidades();
     const el = document.getElementById('crm-kanban');
@@ -4480,7 +4480,7 @@ window.showPage = (pageId, btn) => {
     if(pageId === 'vehicular') { cargarVeh(); }
     if(pageId === 'remisiones') { cargarRem(); }
     if(pageId === 'cotizaciones') { cargarCot(); }
-    if(pageId === 'crm') { cargarCRM(); }
+    if(pageId === 'crm') { if(typeof cargarCRM === 'function') cargarCRM(); else setTimeout(()=>{ if(typeof cargarCRM === 'function') cargarCRM(); }, 1000); }
     
 };    
 
