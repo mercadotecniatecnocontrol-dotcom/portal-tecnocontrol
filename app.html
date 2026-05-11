@@ -716,6 +716,7 @@
             <button onclick="showPage('vehicular');setTimeout(()=>abrirFormVeh(),300)" style="padding:14px 8px;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;color:var(--text-primary);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;"><span style="font-size:24px;">🚗</span>Manto. Vehicular</button>
             <button onclick="showPage('remisiones');setTimeout(()=>abrirFormRem(),300)" style="padding:14px 8px;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;color:var(--text-primary);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;"><span style="font-size:24px;">📝</span>Remisiones</button>
             <button onclick="showPage('cotizaciones');setTimeout(()=>cargarCot(),300)" style="padding:14px 8px;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;color:var(--text-primary);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;"><span style="font-size:24px;">💼</span>Cotizaciones</button>
+            <button onclick="showPage('crm');setTimeout(()=>cargarCRM(),300)" style="padding:14px 8px;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;color:var(--text-primary);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;"><span style="font-size:24px;">📊</span>CRM</button>
             <button onclick="toast('🚧 Próximamente')" style="padding:14px 8px;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;color:var(--text-primary);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;"><span style="font-size:24px;">🔨</span>Inv. Herramienta</button>
             <button onclick="toast('🚧 Próximamente')" style="padding:14px 8px;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;color:var(--text-primary);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;"><span style="font-size:24px;">⚙️</span>Inv. Refacciones</button>
             <button onclick="toast('🚧 Próximamente')" style="padding:14px 8px;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;color:var(--text-primary);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;"><span style="font-size:24px;">📐</span>Calibraciones Jomar</button>
@@ -2307,7 +2308,650 @@ window.limpiarFirmaCot=()=>{
     if(c&&cotFirmaCtx)cotFirmaCtx.clearRect(0,0,c.width,c.height);
 };
 </script>
-    
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- MÓDULO CRM — Pipeline Kanban con 3 pipelines                  -->
+<!-- Pegar justo antes de <!-- Bottom Nav -->                       -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<!-- PAGE: CRM Pipeline -->
+<div class="page" id="page-crm">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <div style="font-size:16px;font-weight:800;color:#1e293b;">CRM Pipeline</div>
+        <button onclick="abrirNuevaOportunidad()" style="padding:8px 14px;background:#2563eb;color:white;border:none;border-radius:10px;font-family:'Outfit',sans-serif;font-weight:700;font-size:12px;cursor:pointer;">+ Nueva</button>
+    </div>
+
+    <!-- Selector de Pipeline -->
+    <div style="display:flex;gap:6px;margin-bottom:12px;overflow-x:auto;padding-bottom:4px;">
+        <button class="pipeline-tab active" onclick="selPipeline(0,this)" style="padding:8px 14px;background:#2563eb;color:white;border:none;border-radius:20px;font-family:'Outfit',sans-serif;font-size:11px;font-weight:700;white-space:nowrap;cursor:pointer;">Servicios Tecnicos</button>
+        <button class="pipeline-tab" onclick="selPipeline(1,this)" style="padding:8px 14px;background:#f1f5f9;color:#64748b;border:none;border-radius:20px;font-family:'Outfit',sans-serif;font-size:11px;font-weight:700;white-space:nowrap;cursor:pointer;">Cumplimiento Regulatorio</button>
+        <button class="pipeline-tab" onclick="selPipeline(2,this)" style="padding:8px 14px;background:#f1f5f9;color:#64748b;border:none;border-radius:20px;font-family:'Outfit',sans-serif;font-size:11px;font-weight:700;white-space:nowrap;cursor:pointer;">Refacciones y Equipos</button>
+    </div>
+
+    <!-- Stats del pipeline -->
+    <div class="stats-row" id="crm-stats" style="margin-bottom:12px;"></div>
+
+    <!-- Kanban Board -->
+    <div id="crm-kanban" style="display:flex;gap:10px;overflow-x:auto;padding-bottom:16px;min-height:400px;-webkit-overflow-scrolling:touch;scroll-snap-type:x mandatory;"></div>
+</div>
+
+<!-- OVERLAY: Nueva Oportunidad -->
+<div class="form-overlay" id="form-oportunidad" style="background:#f8fafc;">
+    <div class="form-header" style="background:#1e3a8a;margin:-16px -16px 16px;padding:16px;border-radius:0;">
+        <div class="form-title" style="color:white;" id="opp-form-title">Nueva Oportunidad</div>
+        <button class="form-close" onclick="cerrarOportunidad()" style="background:rgba(255,255,255,0.15);border:none;color:white;">x</button>
+    </div>
+    <input type="hidden" id="opp-edit-id">
+
+    <div style="background:white;border-radius:14px;padding:16px;margin-bottom:12px;border:1px solid #e2e8f0;">
+        <div class="srv-section-title" style="margin-top:0;">Datos del cliente</div>
+        <div class="form-group">
+            <label class="form-label">Nombre del cliente / Estacion</label>
+            <input class="form-input" id="opp-cliente" placeholder="Ej: Estacion Pemex #1234">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Empresa / Razon social</label>
+            <input class="form-input" id="opp-empresa" placeholder="Razon social">
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">Telefono</label>
+                <input class="form-input" id="opp-telefono" type="tel" placeholder="(614) 000-0000">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Contacto</label>
+                <input class="form-input" id="opp-contacto" placeholder="Nombre contacto">
+            </div>
+        </div>
+    </div>
+
+    <div style="background:white;border-radius:14px;padding:16px;margin-bottom:12px;border:1px solid #e2e8f0;">
+        <div class="srv-section-title" style="margin-top:0;">Oportunidad</div>
+        <div class="form-group">
+            <label class="form-label">Pipeline</label>
+            <select class="form-select" id="opp-pipeline" onchange="actualizarEtapas()">
+                <option value="0">Servicios Tecnicos</option>
+                <option value="1">Cumplimiento Regulatorio</option>
+                <option value="2">Refacciones y Equipos</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Etapa actual</label>
+            <select class="form-select" id="opp-etapa"></select>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">Valor estimado (MXN)</label>
+                <input class="form-input" id="opp-valor" type="number" placeholder="0.00">
+            </div>
+            <div class="form-group">
+                <label class="form-label">% Probabilidad</label>
+                <input class="form-input" id="opp-prob" type="number" min="0" max="100" placeholder="50">
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Fecha estimada de cierre</label>
+            <input class="form-input" id="opp-fecha-cierre" type="date">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Vendedor asignado</label>
+            <select class="form-select" id="opp-vendedor">
+                <option value="guillermo.d@tecnocontrol.com.mx">Guillermo Durstewitz</option>
+                <option value="ventas2@tecnocontrol.con.mx">Joon Rios</option>
+                <option value="ventas@tecnocontrol.com.mx">Dir. Comercial</option>
+                <option value="m.delao@tecnocontrol.com.mx">Martin De la O</option>
+                <option value="mercadotecnia@tecnocontrol.com.mx">Glen Preciado</option>
+            </select>
+        </div>
+    </div>
+
+    <div style="background:white;border-radius:14px;padding:16px;margin-bottom:12px;border:1px solid #e2e8f0;">
+        <div class="srv-section-title" style="margin-top:0;">Detalles</div>
+        <div class="form-group">
+            <label class="form-label">Descripcion / Necesidad detectada</label>
+            <textarea class="form-input form-textarea" id="opp-desc" rows="3" placeholder="Describe la oportunidad, que necesita el cliente..."></textarea>
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+            <label class="form-label">Origen del lead</label>
+            <select class="form-select" id="opp-origen">
+                <option>Visita en frio</option>
+                <option>Referido</option>
+                <option>Facebook / Instagram</option>
+                <option>WhatsApp</option>
+                <option>Llamada entrante</option>
+                <option>Cliente existente</option>
+                <option>Evento / Expo</option>
+                <option>Pagina web</option>
+            </select>
+        </div>
+    </div>
+
+    <button class="form-submit" onclick="guardarOportunidad()" id="opp-submit-btn" style="background:linear-gradient(135deg,#1e3a8a,#2563eb);">
+        Guardar Oportunidad
+    </button>
+</div>
+
+<!-- DETAIL: Oportunidad -->
+<div class="detail-overlay" id="opp-detail">
+    <div class="form-header" id="opp-detail-header">
+        <div class="form-title" id="opp-detail-title">—</div>
+        <button class="form-close" onclick="cerrarOppDetail()">x</button>
+    </div>
+    <div id="opp-detail-content"></div>
+</div>
+
+<style>
+.kanban-col {
+    min-width: 200px;
+    max-width: 200px;
+    scroll-snap-align: start;
+    flex-shrink: 0;
+    background: #f1f5f9;
+    border-radius: 14px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 70vh;
+    overflow-y: auto;
+}
+.kanban-col::-webkit-scrollbar { display: none; }
+.kanban-col-header {
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+}
+.kanban-card {
+    background: white;
+    border-radius: 12px;
+    padding: 12px;
+    border: 1px solid #e2e8f0;
+    cursor: pointer;
+    transition: 0.2s;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+.kanban-card:active { transform: scale(0.98); box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
+.kanban-card-cliente { font-size: 12px; font-weight: 700; color: #1e293b; margin-bottom: 4px; }
+.kanban-card-empresa { font-size: 10px; color: #64748b; margin-bottom: 6px; }
+.kanban-card-valor { font-size: 13px; font-weight: 800; color: #10b981; }
+.kanban-card-meta { font-size: 9px; color: #94a3b8; margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap; }
+.kanban-card-prob { display: inline-block; padding: 2px 6px; border-radius: 10px; font-size: 9px; font-weight: 700; }
+.opp-timeline { padding: 8px 0; border-bottom: 1px solid #f1f5f9; }
+.opp-timeline-date { font-size: 10px; color: #94a3b8; }
+.opp-timeline-text { font-size: 12px; color: #1e293b; margin-top: 2px; }
+.nota-item { background: #f8fafc; border-radius: 8px; padding: 10px; margin-bottom: 8px; border-left: 3px solid #2563eb; }
+.nota-autor { font-size: 10px; font-weight: 700; color: #2563eb; }
+.nota-texto { font-size: 12px; color: #1e293b; margin-top: 3px; }
+.nota-fecha { font-size: 9px; color: #94a3b8; margin-top: 2px; }
+</style>
+
+<script>
+// ══════════════════════════════════════════════════════
+// MÓDULO CRM — Pipeline Kanban
+// ══════════════════════════════════════════════════════
+
+// Roles de acceso
+const CRM_SUPERADMIN = [
+    'm.delao@tecnocontrol.com.mx',
+    'p.pinedo@tecnocontrol.com.mx',
+    'j.uribe@tecnocontrol.com.mx',
+    'mercadotecnia@tecnocontrol.com.mx'
+];
+const CRM_ADMIN = [
+    'c.acosta@tecnocontrol.com.mx',
+    'compras@tecnocontrol.com.mx',
+    'd.gutierrez@tecnocontrol.com.mx',
+    'clientes@tecnocontrol.com.mx',
+    'u.nunez@tecnocontrol.com.mx',
+    'facturacion@tecncontrol.con.mx',
+    'ventas@tecnocontrol.com.mx'
+];
+
+// Pipelines y etapas
+const PIPELINES = [
+    {
+        nombre: 'Servicios Tecnicos',
+        color: '#2563eb',
+        etapas: [
+            { nombre: 'Prospecto',          color: '#94a3b8', prob: 10 },
+            { nombre: 'Contacto Inicial',   color: '#f59e0b', prob: 20 },
+            { nombre: 'Diagnostico',        color: '#f97316', prob: 35 },
+            { nombre: 'Cotizacion Enviada', color: '#8b5cf6', prob: 50 },
+            { nombre: 'Seguimiento',        color: '#06b6d4', prob: 65 },
+            { nombre: 'O.S. Autorizada',    color: '#10b981', prob: 85 },
+            { nombre: 'En Ejecucion',       color: '#059669', prob: 95 },
+            { nombre: 'Ganado',             color: '#16a34a', prob: 100 },
+            { nombre: 'Perdido',            color: '#ef4444', prob: 0  }
+        ]
+    },
+    {
+        nombre: 'Cumplimiento Regulatorio',
+        color: '#7c3aed',
+        etapas: [
+            { nombre: 'Vencimiento Detectado', color: '#94a3b8', prob: 15 },
+            { nombre: 'Contacto Preventivo',   color: '#f59e0b', prob: 30 },
+            { nombre: 'Propuesta Enviada',      color: '#8b5cf6', prob: 50 },
+            { nombre: 'Docs en Proceso',        color: '#06b6d4', prob: 70 },
+            { nombre: 'Tramite ante ASEA/CRE',  color: '#f97316', prob: 85 },
+            { nombre: 'Dictamen Emitido',       color: '#16a34a', prob: 100 },
+            { nombre: 'Rechazado',              color: '#ef4444', prob: 0  }
+        ]
+    },
+    {
+        nombre: 'Refacciones y Equipos',
+        color: '#0891b2',
+        etapas: [
+            { nombre: 'Necesidad Detectada',  color: '#94a3b8', prob: 15 },
+            { nombre: 'Cotizacion Enviada',   color: '#8b5cf6', prob: 40 },
+            { nombre: 'Negociacion',          color: '#f59e0b', prob: 60 },
+            { nombre: 'Pedido Confirmado',    color: '#10b981', prob: 85 },
+            { nombre: 'Surtido / Entregado',  color: '#059669', prob: 95 },
+            { nombre: 'Cobrado',              color: '#16a34a', prob: 100 },
+            { nombre: 'Cancelado',            color: '#ef4444', prob: 0  }
+        ]
+    }
+];
+
+let crmPipelineIdx = 0;
+let oportunidadesDB = [];
+let dragCard = null;
+
+function crmUserRole() {
+    const email = window.currentUser?.email || '';
+    if(CRM_SUPERADMIN.includes(email)) return 'superadmin';
+    if(CRM_ADMIN.includes(email)) return 'admin';
+    return 'vendedor';
+}
+
+function crmPuedoVerTodo() {
+    return ['superadmin','admin'].includes(crmUserRole());
+}
+
+async function cargarCRM() {
+    try {
+        const snap = await window._getDocs(window._collection(window._db, 'crm_oportunidades'));
+        oportunidadesDB = snap.docs.map(d => ({id:d.id,...d.data()}));
+        renderKanban();
+        renderCRMStats();
+    } catch(e) { console.error('cargarCRM:', e); }
+}
+
+window.selPipeline = (idx, btn) => {
+    crmPipelineIdx = idx;
+    document.querySelectorAll('.pipeline-tab').forEach(b => {
+        b.style.background = '#f1f5f9';
+        b.style.color = '#64748b';
+    });
+    btn.style.background = PIPELINES[idx].color;
+    btn.style.color = 'white';
+    renderKanban();
+    renderCRMStats();
+};
+
+function getOportunidades() {
+    const email = window.currentUser?.email || '';
+    let opps = oportunidadesDB.filter(o => o.pipelineIdx === crmPipelineIdx && o.estatus !== 'archivado');
+    if(!crmPuedoVerTodo()) {
+        opps = opps.filter(o => o.vendedor === email);
+    }
+    return opps;
+}
+
+function renderCRMStats() {
+    const opps = getOportunidades();
+    const activas = opps.filter(o => !['Ganado','Perdido','Cobrado','Cancelado','Dictamen Emitido','Rechazado'].includes(o.etapa));
+    const ganadas = opps.filter(o => ['Ganado','Cobrado','Dictamen Emitido'].includes(o.etapa));
+    const valorTotal = activas.reduce((s,o) => s+(o.valor||0), 0);
+    const valorPond = activas.reduce((s,o) => s+(o.valor||0)*(o.probabilidad||0)/100, 0);
+
+    const el = document.getElementById('crm-stats');
+    if(!el) return;
+    el.innerHTML = `
+        <div class="stat-card"><div class="stat-icon">📋</div><div class="stat-val">${activas.length}</div><div class="stat-label">Activas</div></div>
+        <div class="stat-card"><div class="stat-icon">✅</div><div class="stat-val" style="color:#10b981">${ganadas.length}</div><div class="stat-label">Ganadas</div></div>
+        <div class="stat-card"><div class="stat-icon">💰</div><div class="stat-val" style="color:#2563eb;font-size:13px;">${fmtCRMMXN(valorTotal)}</div><div class="stat-label">En pipeline</div></div>
+        <div class="stat-card"><div class="stat-icon">🎯</div><div class="stat-val" style="color:#f59e0b;font-size:13px;">${fmtCRMMXN(valorPond)}</div><div class="stat-label">Ponderado</div></div>`;
+}
+
+function fmtCRMMXN(v) {
+    if(v >= 1000000) return '$' + (v/1000000).toFixed(1) + 'M';
+    if(v >= 1000) return '$' + (v/1000).toFixed(0) + 'K';
+    return '$' + Math.round(v);
+}
+
+function renderKanban() {
+    const pipeline = PIPELINES[crmPipelineIdx];
+    const opps = getOportunidades();
+    const el = document.getElementById('crm-kanban');
+    if(!el) return;
+
+    el.innerHTML = pipeline.etapas.map((etapa, ei) => {
+        const cards = opps.filter(o => o.etapa === etapa.nombre);
+        const total = cards.reduce((s,o) => s+(o.valor||0), 0);
+
+        const cardsHtml = cards.map(opp => {
+            const diasCierre = opp.fechaCierre
+                ? Math.ceil((new Date(opp.fechaCierre) - new Date()) / 86400000)
+                : null;
+            const alertColor = diasCierre !== null && diasCierre < 7 ? '#ef4444' : '#94a3b8';
+            const probBg = opp.probabilidad >= 70 ? 'rgba(16,185,129,0.1)' : opp.probabilidad >= 40 ? 'rgba(245,158,11,0.1)' : 'rgba(239,68,68,0.1)';
+            const probColor = opp.probabilidad >= 70 ? '#10b981' : opp.probabilidad >= 40 ? '#f59e0b' : '#ef4444';
+
+            return `<div class="kanban-card"
+                onclick="verOppDetail('${opp.id}')"
+                draggable="true"
+                ondragstart="dragStart(event,'${opp.id}')"
+                ondragend="dragEnd(event)">
+                <div class="kanban-card-cliente">${opp.cliente||'—'}</div>
+                <div class="kanban-card-empresa">${opp.empresa||''}</div>
+                ${opp.valor ? `<div class="kanban-card-valor">${fmtCRMMXN(opp.valor)}</div>` : ''}
+                <div class="kanban-card-meta">
+                    <span class="kanban-card-prob" style="background:${probBg};color:${probColor};">${opp.probabilidad||0}%</span>
+                    ${diasCierre !== null ? `<span style="color:${alertColor};">⏰ ${diasCierre < 0 ? 'Vencido' : diasCierre + 'd'}</span>` : ''}
+                    <span>${(opp.vendedor||'').split('@')[0].split('.')[0]}</span>
+                </div>
+            </div>`;
+        }).join('');
+
+        return `<div class="kanban-col"
+            ondragover="dragOver(event)"
+            ondrop="dropCard(event,'${etapa.nombre}')"
+            data-etapa="${etapa.nombre}">
+            <div class="kanban-col-header" style="background:${etapa.color}20;color:${etapa.color};">
+                <span>${etapa.nombre}</span>
+                <span style="background:${etapa.color};color:white;padding:1px 6px;border-radius:10px;font-size:9px;">${cards.length}</span>
+            </div>
+            ${total > 0 ? `<div style="font-size:9px;color:#64748b;text-align:center;padding:2px;">${fmtCRMMXN(total)}</div>` : ''}
+            ${cardsHtml}
+            <div style="height:4px;flex-shrink:0;"></div>
+        </div>`;
+    }).join('');
+}
+
+// ── Drag & Drop ───────────────────────────────────────
+window.dragStart = (e, id) => {
+    dragCard = id;
+    e.dataTransfer.effectAllowed = 'move';
+};
+window.dragEnd = (e) => { dragCard = null; };
+window.dragOver = (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; };
+window.dropCard = async (e, nuevaEtapa) => {
+    e.preventDefault();
+    if(!dragCard) return;
+    const opp = oportunidadesDB.find(o => o.id === dragCard);
+    if(!opp || opp.etapa === nuevaEtapa) return;
+    const pipeline = PIPELINES[crmPipelineIdx];
+    const etapaObj = pipeline.etapas.find(et => et.nombre === nuevaEtapa);
+    const nuevaProb = etapaObj?.prob ?? opp.probabilidad;
+
+    // Agregar al historial
+    const historial = opp.historial || [];
+    historial.push({
+        de: opp.etapa,
+        a: nuevaEtapa,
+        fecha: new Date().toISOString(),
+        usuario: window.currentUser?.email || ''
+    });
+
+    try {
+        await window._updateDoc(window._doc(window._db,'crm_oportunidades',dragCard), {
+            etapa: nuevaEtapa,
+            probabilidad: nuevaProb,
+            historial,
+            actualizadoEn: new Date().toISOString()
+        });
+        opp.etapa = nuevaEtapa;
+        opp.probabilidad = nuevaProb;
+        opp.historial = historial;
+        renderKanban();
+        renderCRMStats();
+    } catch(err) { console.error('Error moviendo tarjeta:', err); }
+};
+
+// ── Formulario ────────────────────────────────────────
+window.actualizarEtapas = () => {
+    const pIdx = parseInt(document.getElementById('opp-pipeline')?.value || '0');
+    const sel = document.getElementById('opp-etapa');
+    if(!sel) return;
+    sel.innerHTML = PIPELINES[pIdx].etapas.map(e => `<option>${e.nombre}</option>`).join('');
+};
+
+window.abrirNuevaOportunidad = () => {
+    document.getElementById('opp-edit-id').value = '';
+    document.getElementById('opp-form-title').innerText = 'Nueva Oportunidad';
+    document.getElementById('opp-submit-btn').innerText = 'Guardar Oportunidad';
+    ['opp-cliente','opp-empresa','opp-telefono','opp-contacto','opp-desc'].forEach(id => {
+        const e = document.getElementById(id); if(e) e.value = '';
+    });
+    document.getElementById('opp-pipeline').value = crmPipelineIdx;
+    document.getElementById('opp-prob').value = '20';
+    document.getElementById('opp-valor').value = '';
+    const hoy = new Date(); hoy.setMonth(hoy.getMonth()+1);
+    document.getElementById('opp-fecha-cierre').value = hoy.toISOString().slice(0,10);
+    // Preseleccionar vendedor si es vendedor
+    const email = window.currentUser?.email || '';
+    const selVend = document.getElementById('opp-vendedor');
+    if(selVend) {
+        const opt = [...selVend.options].find(o => o.value === email);
+        if(opt) selVend.value = email;
+    }
+    actualizarEtapas();
+    document.getElementById('form-oportunidad').classList.add('active');
+};
+
+window.cerrarOportunidad = () => { document.getElementById('form-oportunidad').classList.remove('active'); };
+
+window.guardarOportunidad = async () => {
+    const g = id => { const e=document.getElementById(id); return e?e.value.trim():''; };
+    if(!g('opp-cliente')) { alert('Escribe el nombre del cliente'); return; }
+
+    const btn = document.getElementById('opp-submit-btn');
+    if(btn) { btn.textContent = 'Guardando...'; btn.disabled = true; }
+
+    const pIdx = parseInt(g('opp-pipeline'));
+    const data = {
+        cliente: g('opp-cliente'),
+        empresa: g('opp-empresa'),
+        telefono: g('opp-telefono'),
+        contacto: g('opp-contacto'),
+        pipelineIdx: pIdx,
+        pipeline: PIPELINES[pIdx].nombre,
+        etapa: g('opp-etapa'),
+        valor: parseFloat(g('opp-valor')) || 0,
+        probabilidad: parseInt(g('opp-prob')) || 20,
+        fechaCierre: g('opp-fecha-cierre'),
+        vendedor: g('opp-vendedor'),
+        descripcion: g('opp-desc'),
+        origen: g('opp-origen'),
+        actualizadoEn: new Date().toISOString()
+    };
+
+    try {
+        const editId = g('opp-edit-id');
+        if(editId) {
+            await window._updateDoc(window._doc(window._db,'crm_oportunidades',editId), data);
+            const idx = oportunidadesDB.findIndex(o => o.id === editId);
+            if(idx >= 0) oportunidadesDB[idx] = {...oportunidadesDB[idx], ...data};
+        } else {
+            data.creadoEn = new Date().toISOString();
+            data.creadoPor = window.currentUser?.email || '';
+            data.historial = [{ de: null, a: data.etapa, fecha: data.creadoEn, usuario: data.creadoPor }];
+            data.notas = [];
+            const ref = await window._addDoc(window._collection(window._db,'crm_oportunidades'), data);
+            oportunidadesDB.push({id: ref.id, ...data});
+        }
+        cerrarOportunidad();
+        renderKanban();
+        renderCRMStats();
+    } catch(e) { alert('Error: ' + e.message); }
+    finally { if(btn) { btn.textContent = 'Guardar Oportunidad'; btn.disabled = false; } }
+};
+
+// ── Detalle ───────────────────────────────────────────
+window.verOppDetail = (id) => {
+    const opp = oportunidadesDB.find(x => x.id === id);
+    if(!opp) return;
+    const pipeline = PIPELINES[opp.pipelineIdx || 0];
+    const etapaObj = pipeline.etapas.find(e => e.nombre === opp.etapa);
+    const color = etapaObj?.color || '#2563eb';
+
+    document.getElementById('opp-detail-header').style.background = color;
+    document.getElementById('opp-detail-title').innerText = opp.cliente || '—';
+
+    const histHtml = (opp.historial||[]).slice().reverse().map(h => `
+        <div class="opp-timeline">
+            <div class="opp-timeline-date">${h.fecha ? new Date(h.fecha).toLocaleDateString('es-MX',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : '—'} · ${(h.usuario||'').split('@')[0]}</div>
+            <div class="opp-timeline-text">${h.de ? h.de + ' → ' : 'Creada en '}<strong>${h.a}</strong></div>
+        </div>`).join('');
+
+    const notasHtml = (opp.notas||[]).slice().reverse().map(n => `
+        <div class="nota-item">
+            <div class="nota-autor">${(n.usuario||'').split('@')[0].replace('.',' ')}</div>
+            <div class="nota-texto">${n.texto}</div>
+            <div class="nota-fecha">${n.fecha ? new Date(n.fecha).toLocaleDateString('es-MX',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : ''}</div>
+        </div>`).join('') || '<div style="font-size:12px;color:#94a3b8;padding:8px 0;">Sin notas aun</div>';
+
+    const diasCierre = opp.fechaCierre
+        ? Math.ceil((new Date(opp.fechaCierre) - new Date()) / 86400000)
+        : null;
+
+    document.getElementById('opp-detail-content').innerHTML = `
+        <div class="detail-section">
+            <div style="display:inline-block;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;background:${color}20;color:${color};margin-bottom:12px;">${opp.etapa||'—'}</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div><div class="detail-label">Empresa</div><div class="detail-value">${opp.empresa||'—'}</div></div>
+                <div><div class="detail-label">Contacto</div><div class="detail-value">${opp.contacto||'—'}</div></div>
+                <div><div class="detail-label">Telefono</div>
+                    <div class="detail-value">
+                        ${opp.telefono ? `<a href="tel:${opp.telefono}" style="color:#2563eb;text-decoration:none;font-weight:700;">${opp.telefono}</a>` : '—'}
+                    </div>
+                </div>
+                <div><div class="detail-label">Pipeline</div><div class="detail-value">${opp.pipeline||'—'}</div></div>
+                <div><div class="detail-label">Valor estimado</div><div class="detail-value" style="color:#10b981;font-weight:800;">${opp.valor ? '$'+opp.valor.toLocaleString('es-MX') : '—'}</div></div>
+                <div><div class="detail-label">Probabilidad</div><div class="detail-value">${opp.probabilidad||0}%</div></div>
+                <div><div class="detail-label">Cierre estimado</div><div class="detail-value" style="color:${diasCierre !== null && diasCierre < 7 ? '#ef4444' : '#1e293b'}">${opp.fechaCierre||'—'} ${diasCierre !== null ? '('+diasCierre+'d)' : ''}</div></div>
+                <div><div class="detail-label">Vendedor</div><div class="detail-value">${(opp.vendedor||'').split('@')[0].replace('.',' ')}</div></div>
+                <div><div class="detail-label">Origen</div><div class="detail-value">${opp.origen||'—'}</div></div>
+            </div>
+            ${opp.descripcion ? `<div style="margin-top:12px;"><div class="detail-label">Descripcion</div><div class="detail-value">${opp.descripcion}</div></div>` : ''}
+        </div>
+
+        <!-- Cambiar etapa rapido -->
+        <div class="detail-section">
+            <div class="detail-label" style="margin-bottom:8px;">Mover a etapa</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                ${pipeline.etapas.map(e => `<button onclick="moverEtapa('${id}','${e.nombre}')" style="padding:6px 10px;border:1px solid ${e.color};border-radius:8px;background:${e.nombre===opp.etapa?e.color:'white'};color:${e.nombre===opp.etapa?'white':e.color};font-family:'Outfit',sans-serif;font-size:10px;font-weight:700;cursor:pointer;">${e.nombre}</button>`).join('')}
+            </div>
+        </div>
+
+        <!-- Notas -->
+        <div class="detail-section">
+            <div class="detail-label" style="margin-bottom:8px;">Notas y seguimiento</div>
+            <div id="opp-notas-list">${notasHtml}</div>
+            <div class="comment-input-wrap" style="margin-top:10px;">
+                <input class="comment-input" id="opp-nota-input" placeholder="Agregar nota...">
+                <button class="comment-send" onclick="agregarNota('${id}')">→</button>
+            </div>
+        </div>
+
+        <!-- Historial -->
+        <div class="detail-section">
+            <div class="detail-label" style="margin-bottom:8px;">Historial de movimientos</div>
+            ${histHtml || '<div style="font-size:12px;color:#94a3b8;">Sin historial</div>'}
+        </div>
+
+        <div class="detail-actions">
+            <button class="detail-btn btn-edit" onclick="editarOportunidad('${id}')">Editar</button>
+            <button class="detail-btn" style="background:linear-gradient(135deg,#25D366,#128C7E);color:white;" onclick="whatsappOpp('${id}')">WhatsApp</button>
+            <button class="detail-btn btn-delete" onclick="eliminarOpp('${id}')">Eliminar</button>
+        </div>`;
+
+    document.getElementById('opp-detail').classList.add('active');
+};
+
+window.cerrarOppDetail = () => { document.getElementById('opp-detail').classList.remove('active'); };
+
+window.moverEtapa = async (id, nuevaEtapa) => {
+    const opp = oportunidadesDB.find(o => o.id === id);
+    if(!opp) return;
+    const pipeline = PIPELINES[opp.pipelineIdx || 0];
+    const etapaObj = pipeline.etapas.find(e => e.nombre === nuevaEtapa);
+    const historial = opp.historial || [];
+    historial.push({ de: opp.etapa, a: nuevaEtapa, fecha: new Date().toISOString(), usuario: window.currentUser?.email||'' });
+    try {
+        await window._updateDoc(window._doc(window._db,'crm_oportunidades',id), {
+            etapa: nuevaEtapa, probabilidad: etapaObj?.prob ?? opp.probabilidad,
+            historial, actualizadoEn: new Date().toISOString()
+        });
+        opp.etapa = nuevaEtapa; opp.probabilidad = etapaObj?.prob ?? opp.probabilidad; opp.historial = historial;
+        renderKanban(); renderCRMStats();
+        verOppDetail(id); // refrescar detalle
+    } catch(e) { alert('Error: '+e.message); }
+};
+
+window.agregarNota = async (id) => {
+    const input = document.getElementById('opp-nota-input');
+    const texto = input?.value?.trim();
+    if(!texto) return;
+    const opp = oportunidadesDB.find(o => o.id === id);
+    if(!opp) return;
+    const notas = opp.notas || [];
+    notas.push({ texto, usuario: window.currentUser?.email||'', fecha: new Date().toISOString() });
+    try {
+        await window._updateDoc(window._doc(window._db,'crm_oportunidades',id), { notas, actualizadoEn: new Date().toISOString() });
+        opp.notas = notas;
+        input.value = '';
+        verOppDetail(id);
+    } catch(e) { alert('Error: '+e.message); }
+};
+
+window.editarOportunidad = (id) => {
+    const opp = oportunidadesDB.find(o => o.id === id);
+    if(!opp) return;
+    document.getElementById('opp-edit-id').value = id;
+    document.getElementById('opp-form-title').innerText = 'Editar Oportunidad';
+    document.getElementById('opp-submit-btn').innerText = 'Actualizar';
+    document.getElementById('opp-cliente').value = opp.cliente||'';
+    document.getElementById('opp-empresa').value = opp.empresa||'';
+    document.getElementById('opp-telefono').value = opp.telefono||'';
+    document.getElementById('opp-contacto').value = opp.contacto||'';
+    document.getElementById('opp-pipeline').value = opp.pipelineIdx||0;
+    document.getElementById('opp-prob').value = opp.probabilidad||20;
+    document.getElementById('opp-valor').value = opp.valor||'';
+    document.getElementById('opp-fecha-cierre').value = opp.fechaCierre||'';
+    document.getElementById('opp-vendedor').value = opp.vendedor||'';
+    document.getElementById('opp-desc').value = opp.descripcion||'';
+    document.getElementById('opp-origen').value = opp.origen||'Visita en frio';
+    actualizarEtapas();
+    document.getElementById('opp-etapa').value = opp.etapa||'';
+    cerrarOppDetail();
+    document.getElementById('form-oportunidad').classList.add('active');
+};
+
+window.whatsappOpp = (id) => {
+    const opp = oportunidadesDB.find(o => o.id === id);
+    if(!opp) return;
+    const tel = (opp.telefono||'').replace(/\D/g,'');
+    const msg = `Hola ${opp.contacto||opp.cliente}, le contactamos de Tecnocontrol respecto a ${opp.descripcion||opp.pipeline||'nuestra propuesta'}. Quedamos a sus ordenes.`;
+    const url = tel ? `https://wa.me/52${tel}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+    window.open(url, '_blank');
+};
+
+window.eliminarOpp = async (id) => {
+    if(!confirm('Eliminar esta oportunidad?')) return;
+    try {
+        await window._deleteDoc(window._doc(window._db,'crm_oportunidades',id));
+        oportunidadesDB = oportunidadesDB.filter(o => o.id !== id);
+        cerrarOppDetail(); renderKanban(); renderCRMStats();
+    } catch(e) { alert('Error'); }
+};
+</script>
     <!-- Bottom Nav -->
     <nav class="bottom-nav">
         <button class="nav-item active" onclick="showPage('home',this)"><span class="nav-icon">🏠</span>Inicio</button>
@@ -3788,6 +4432,7 @@ window.showPage = (pageId, btn) => {
     if(pageId === 'vehicular') { cargarVeh(); }
     if(pageId === 'remisiones') { cargarRem(); }
     if(pageId === 'cotizaciones') { cargarCot(); }
+    if(pageId === 'crm') { cargarCRM(); }
     
 };    
 </script>
