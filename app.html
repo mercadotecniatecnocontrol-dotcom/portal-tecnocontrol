@@ -2571,10 +2571,12 @@ function crmPuedoVerTodo() {
 }
 
 async function cargarCRM() {
-    await esperarFirebase();
     try {
-        const snap = await window._getDocs(window._collection(window._db, 'crm_oportunidades'));
-        oportunidadesDB = snap.docs.map(d => ({id:d.id,...d.data()}));
+        if(!window.crmCargarFirebase) {
+            setTimeout(cargarCRM, 500);
+            return;
+        }
+        oportunidadesDB = await window.crmCargarFirebase('crm_oportunidades');
         renderKanban();
         renderCRMStats();
     } catch(e) { console.error('cargarCRM:', e); }
@@ -2762,9 +2764,12 @@ window.guardarOportunidad = async () => {
     const btn = document.getElementById('opp-submit-btn');
     if(btn) { btn.textContent = 'Guardando...'; btn.disabled = true; }
 
-    // Esperar Firebase
-    const fbListo = await esperarFirebase();
-    if(!fbListo) { alert('Error: No se pudo conectar a Firebase. Intenta de nuevo.'); if(btn){btn.textContent='Guardar Oportunidad';btn.disabled=false;} return; }
+    // Verificar Firebase directo
+    if(!window._addDoc || !window._db) {
+        alert('Cargando base de datos, intenta en 3 segundos...');
+        if(btn){btn.textContent='Guardar Oportunidad';btn.disabled=false;}
+        return;
+    }
 
     const pIdx = parseInt(g('opp-pipeline'));
     const data = {
@@ -2787,7 +2792,7 @@ window.guardarOportunidad = async () => {
     try {
         const editId = g('opp-edit-id');
         if(editId) {
-            await window._updateDoc(window._doc(window._db,'crm_oportunidades',editId), data);
+            await window.crmGuardarFirebase('crm_oportunidades', editId, data);
             const idx = oportunidadesDB.findIndex(o => o.id === editId);
             if(idx >= 0) oportunidadesDB[idx] = {...oportunidadesDB[idx], ...data};
         } else {
@@ -2795,13 +2800,13 @@ window.guardarOportunidad = async () => {
             data.creadoPor = window.currentUser?.email || '';
             data.historial = [{ de: null, a: data.etapa, fecha: data.creadoEn, usuario: data.creadoPor }];
             data.notas = [];
-            const ref = await window._addDoc(window._collection(window._db,'crm_oportunidades'), data);
-            oportunidadesDB.push({id: ref.id, ...data});
+            const newId = await window.crmGuardarFirebase('crm_oportunidades', null, data);
+            oportunidadesDB.push({id: newId, ...data});
         }
         cerrarOportunidad();
         renderKanban();
         renderCRMStats();
-    } catch(e) { alert('Error: ' + e.message); }
+    } catch(e) { alert('Error al guardar: ' + e.message); }
     finally { if(btn) { btn.textContent = 'Guardar Oportunidad'; btn.disabled = false; } }
 };
 
@@ -2909,7 +2914,6 @@ window.moverEtapa = async (id, nuevaEtapa) => {
 };
 
 window.agregarNota = async (id) => {
-    await esperarFirebase();
     const input = document.getElementById('opp-nota-input');
     const texto = input?.value?.trim();
     if(!texto) return;
@@ -2918,7 +2922,7 @@ window.agregarNota = async (id) => {
     const notas = opp.notas || [];
     notas.push({ texto, usuario: window.currentUser?.email||'', fecha: new Date().toISOString() });
     try {
-        await window._updateDoc(window._doc(window._db,'crm_oportunidades',id), { notas, actualizadoEn: new Date().toISOString() });
+        await window.crmGuardarFirebase('crm_oportunidades', id, { notas, actualizadoEn: new Date().toISOString() });
         opp.notas = notas;
         input.value = '';
         verOppDetail(id);
@@ -2959,9 +2963,8 @@ window.whatsappOpp = (id) => {
 
 window.eliminarOpp = async (id) => {
     if(!confirm('Eliminar esta oportunidad?')) return;
-    await esperarFirebase();
     try {
-        await window._deleteDoc(window._doc(window._db,'crm_oportunidades',id));
+        await window.crmEliminarFirebase('crm_oportunidades', id);
         oportunidadesDB = oportunidadesDB.filter(o => o.id !== id);
         cerrarOppDetail(); renderKanban(); renderCRMStats();
     } catch(e) { alert('Error'); }
@@ -4437,7 +4440,33 @@ window._getDocs = getDocs;
 window._deleteDoc = deleteDoc;
 window._updateDoc = updateDoc;
 window._collection = collection;
-window._doc = doc;   
+window._doc = doc;
+window._firebaseReady = true;
+
+
+// ── PUENTE CRM-Firebase ────────────────────────────
+// Estas funciones se ejecutan dentro del módulo Firebase
+// para tener acceso directo a db, addDoc, etc.
+
+window.crmGuardarFirebase = async (coleccion, id, data) => {
+    if(id) {
+        await updateDoc(doc(db, coleccion, id), data);
+        return id;
+    } else {
+        const ref = await addDoc(collection(db, coleccion), data);
+        return ref.id;
+    }
+};
+
+window.crmCargarFirebase = async (coleccion) => {
+    const snap = await getDocs(collection(db, coleccion));
+    return snap.docs.map(d => ({id: d.id, ...d.data()}));
+};
+
+window.crmEliminarFirebase = async (coleccion, id) => {
+    await deleteDoc(doc(db, coleccion, id));
+};
+
 // Hook: init map when ventas page shown
 const _origShowPage = window.showPage;
 window.showPage = (pageId, btn) => {
