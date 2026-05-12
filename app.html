@@ -1421,16 +1421,85 @@
 
 <!-- PAGE: Cotizaciones -->
 <div class="page" id="page-cotizaciones">
-    <div class="sec-title">Cotizaciones
-        <button class="sec-title-btn" onclick="abrirNuevaCot()">+ Nueva</button>
+    <!-- Header con stats -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <div style="font-size:16px;font-weight:800;color:#1e293b;">Cotizaciones</div>
+        <button onclick="abrirNuevaCot()" style="padding:8px 14px;background:#2563eb;color:white;border:none;border-radius:10px;font-family:'Outfit',sans-serif;font-weight:700;font-size:12px;cursor:pointer;">+ Nueva</button>
     </div>
-    <div class="search-wrap">
-        <span class="search-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
-        <input class="search-input" id="cot-search-hist" placeholder="Buscar cotización..." oninput="renderCotList()">
+    <div class="stats-row" id="cot-stats" style="margin-bottom:12px;"></div>
+
+    <!-- Filtros tipo Salesforce -->
+    <div style="background:#f8fafc;border-radius:14px;padding:12px;margin-bottom:12px;border:1px solid #e2e8f0;">
+        <div style="display:flex;gap:6px;overflow-x:auto;margin-bottom:10px;padding-bottom:4px;">
+            <button class="cot-filter-btn active" onclick="setCotFiltro('todas',this)">Todas</button>
+            <button class="cot-filter-btn" onclick="setCotFiltro('pendiente',this)">Pendientes</button>
+            <button class="cot-filter-btn" onclick="setCotFiltro('enviada',this)">Enviadas</button>
+            <button class="cot-filter-btn" onclick="setCotFiltro('colocada',this)">Colocadas</button>
+            <button class="cot-filter-btn" onclick="setCotFiltro('cancelada',this)">Canceladas</button>
+            <button class="cot-filter-btn" onclick="setCotFiltro('seguimiento',this)">Con Seguimiento</button>
+            <button class="cot-filter-btn" onclick="setCotFiltro('vencidas',this)" style="color:#dc2626;">Vencidas</button>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+            <div style="flex:1;position:relative;">
+                <svg style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#94a3b8;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input class="search-input" id="cot-search-hist" placeholder="Buscar cliente, folio..." oninput="renderCotList()" style="padding-left:32px;">
+            </div>
+            <select id="cot-filtro-mes" onchange="renderCotList()" class="form-select" style="width:120px;padding:10px 8px;font-size:12px;">
+                <option value="">Todos los meses</option>
+                <option value="2026-01">Enero 2026</option>
+                <option value="2026-02">Febrero 2026</option>
+                <option value="2026-03">Marzo 2026</option>
+                <option value="2026-04">Abril 2026</option>
+                <option value="2026-05">Mayo 2026</option>
+                <option value="2026-06">Junio 2026</option>
+            </select>
+        </div>
     </div>
-    <div class="stats-row" id="cot-stats"></div>
+
+    <!-- Lista de cotizaciones -->
     <div id="cot-list"></div>
 </div>
+
+<style>
+.cot-filter-btn {
+    padding: 6px 12px;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 20px;
+    font-family: 'Outfit', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    color: #64748b;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: 0.2s;
+    flex-shrink: 0;
+}
+.cot-filter-btn.active {
+    background: #1e3a8a;
+    color: white;
+    border-color: #1e3a8a;
+}
+.cot-card-sf {
+    background: white;
+    border-radius: 14px;
+    padding: 14px;
+    margin-bottom: 10px;
+    border: 1px solid #e2e8f0;
+    cursor: pointer;
+    transition: 0.2s;
+}
+.cot-card-sf:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+.cot-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.cot-folio { font-size: 13px; font-weight: 800; color: #2563eb; }
+.cot-total-sf { font-size: 16px; font-weight: 800; color: #10b981; }
+.cot-cliente-sf { font-size: 14px; font-weight: 700; color: #1e293b; margin-bottom: 4px; }
+.cot-meta-sf { font-size: 11px; color: #94a3b8; margin-bottom: 8px; }
+.cot-progress { display: flex; height: 6px; border-radius: 3px; overflow: hidden; margin-bottom: 8px; gap: 2px; }
+.cot-progress-seg { flex: 1; border-radius: 3px; }
+.cot-seguimiento-tag { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; background: #fef3c7; color: #92400e; border-radius: 8px; font-size: 10px; font-weight: 700; }
+.cot-vencida-tag { background: #fee2e2; color: #dc2626; }
+</style>
 
 <!-- OVERLAY: Nueva Cotización -->
 <div class="form-overlay" id="form-cot" style="background:#f8fafc;">
@@ -2294,6 +2363,39 @@ window.descargarPDFCot = (id) => {
         doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(15,23,42);
         doc.text(c.firmaNombre||'',ML+36,y+33,{align:'center'});
         doc.setTextColor(100,116,139);doc.text('Nombre y firma de conformidad',ML+36,y+37,{align:'center'});
+    }
+
+    // ── Datos facturación/envío ───────────────────────────
+    let datosFact2 = c.datosFact;
+    let datosEnvio2 = c.datosEnvio;
+    // Fallback: buscar en clientesDB si no están guardados en la cotización
+    if(!datosFact2 && c.clienteId && typeof clientesDB !== 'undefined') {
+        const cli2 = (clientesDB||[]).find(x=>x.id===c.clienteId);
+        if(cli2 && cli2.razonSocial) {
+            datosFact2 = {razonSocial:cli2.razonSocial, rfc:cli2.rfc||'', direccionFiscal:cli2.direccionFiscal||cli2.direccion||'', emailFacturacion:cli2.emailFacturacion||''};
+        }
+    }
+    if(datosFact2 || datosEnvio2) {
+        y += 4;
+        if(y > 235) { doc.addPage(); y=15; }
+        doc.setDrawColor(226,232,240); doc.setLineWidth(0.3); doc.line(ML,y,ML+CW,y); y+=4;
+        if(datosFact2 && datosFact2.razonSocial) {
+            doc.setFont('helvetica','bold');doc.setFontSize(7.5);doc.setTextColor(30,58,138);
+            doc.text('DATOS DE FACTURACION',ML,y); y+=4;
+            doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(15,23,42);
+            if(datosFact2.razonSocial) {doc.text('Razon Social: '+datosFact2.razonSocial.slice(0,60),ML,y);y+=3.5;}
+            if(datosFact2.rfc) {doc.text('RFC: '+datosFact2.rfc,ML,y);y+=3.5;}
+            if(datosFact2.direccionFiscal) {doc.text('Dir. Fiscal: '+datosFact2.direccionFiscal.slice(0,70),ML,y);y+=3.5;}
+            if(datosFact2.emailFacturacion) {doc.text('Email: '+datosFact2.emailFacturacion,ML,y);y+=4;}
+        }
+        if(datosEnvio2 && datosEnvio2.responsable) {
+            doc.setFont('helvetica','bold');doc.setFontSize(7.5);doc.setTextColor(8,145,178);
+            doc.text('DATOS DE ENVIO',ML,y); y+=4;
+            doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(15,23,42);
+            if(datosEnvio2.responsable) {doc.text('Responsable: '+datosEnvio2.responsable,ML,y);y+=3.5;}
+            if(datosEnvio2.telefono) {doc.text('Tel: '+datosEnvio2.telefono,ML,y);y+=3.5;}
+            if(datosEnvio2.direccion) {doc.text('Dir: '+datosEnvio2.direccion.slice(0,70),ML,y);y+=3.5;}
+        }
     }
 
     // Footer
@@ -4342,6 +4444,7 @@ const PIPELINES = [
 
 let crmPipelineIdx = 0;
 let oportunidadesDB = [];
+window.oportunidadesDB = oportunidadesDB; // exponer globalmente
 let dragCard = null;
 
 function crmUserRole() {
@@ -4359,6 +4462,7 @@ window.cargarCRM = async function cargarCRM() {
     try {
         const snap = await getDocs(collection(db, 'crm_oportunidades'));
         oportunidadesDB = snap.docs.map(d => ({id:d.id,...d.data()}));
+        window.oportunidadesDB = oportunidadesDB; // sincronizar
         window.renderKanban();
         window.renderCRMStats();
     } catch(e) { 
@@ -4587,9 +4691,10 @@ window.guardarOportunidad = async () => {
             const newId = await window.crmGuardarFirebase('crm_oportunidades', null, data);
             oportunidadesDB.push({id: newId, ...data});
         }
+        window.oportunidadesDB = oportunidadesDB; // sincronizar
         cerrarOportunidad();
-        renderKanban();
-        renderCRMStats();
+        window.renderKanban();
+        window.renderCRMStats();
     } catch(e) { alert('Error al guardar: ' + e.message); }
     finally { if(btn) { btn.textContent = 'Guardar Oportunidad'; btn.disabled = false; } }
 };
@@ -4830,33 +4935,54 @@ window.verPerfilCliente = async (clienteId) => {
 
 async function cpCargarActividades(clienteId) {
     try {
-        if(!window._getDocs) return;
-        const snap = await window._getDocs(
-            window._query(
-                window._collection(window._db, 'actividades_cliente'),
-                window._where('clienteId', '==', clienteId),
-                window._orderBy('creadoEn', 'desc')
+        const snap = await getDocs(
+            query(
+                collection(db, 'actividades_cliente'),
+                where('clienteId', '==', clienteId),
+                orderBy('creadoEn', 'desc')
             )
         );
         cpActividadesDB = snap.docs.map(d => ({id:d.id,...d.data()}));
     } catch(e) {
-        // Si no existe la colección aún, array vacío
-        cpActividadesDB = [];
+        console.warn('cpCargarActividades:', e);
+        // Fallback sin orderBy si no hay índice
+        try {
+            const snap2 = await getDocs(query(
+                collection(db, 'actividades_cliente'),
+                where('clienteId', '==', clienteId)
+            ));
+            cpActividadesDB = snap2.docs.map(d => ({id:d.id,...d.data()}))
+                .sort((a,b)=>(b.creadoEn||'').localeCompare(a.creadoEn||''));
+        } catch(e2) {
+            cpActividadesDB = [];
+        }
     }
 }
 
 async function cpCargarCotizaciones(clienteId) {
     try {
-        if(!window._getDocs) return;
-        const snap = await window._getDocs(
-            window._query(
-                window._collection(window._db, 'cotizaciones'),
-                window._where('clienteId', '==', clienteId)
-            )
-        );
-        cpCotizacionesDB = snap.docs.map(d => ({id:d.id,...d.data()}))
-            .sort((a,b) => (b.creadoEn||'').localeCompare(a.creadoEn||''));
+        // Buscar por clienteId en colección principal
+        const snap = await getDocs(query(
+            collection(db, 'cotizaciones'),
+            where('clienteId', '==', clienteId)
+        ));
+        let cots = snap.docs.map(d => ({id:d.id,...d.data()}));
+        
+        // También buscar por nombre del cliente como fallback
+        const clienteObj = (clientesDB||[]).find(x=>x.id===clienteId);
+        if(clienteObj && clienteObj.nombre) {
+            const snapNombre = await getDocs(query(
+                collection(db, 'cotizaciones'),
+                where('cliente', '==', clienteObj.nombre)
+            ));
+            const porNombre = snapNombre.docs.map(d => ({id:d.id,...d.data()}))
+                .filter(c => !cots.find(x=>x.id===c.id)); // evitar duplicados
+            cots = [...cots, ...porNombre];
+        }
+        
+        cpCotizacionesDB = cots.sort((a,b) => (b.creadoEn||'').localeCompare(a.creadoEn||''));
     } catch(e) {
+        console.warn('cpCargarCotizaciones:', e);
         cpCotizacionesDB = [];
     }
 }
@@ -5221,7 +5347,7 @@ window.guardarActividad = async () => {
     // Si se agrega al calendario también crear en actividades
     if(g('act-calendario') === 'si') {
         try {
-            await window._addDoc(window._collection(window._db,'actividades'), {
+            await addDoc(collection(db,'actividades'), {
                 actividad: data.titulo,
                 area: 'Ventas',
                 fechaLimite: data.fechaProgramada,
@@ -5238,7 +5364,7 @@ window.guardarActividad = async () => {
         } catch(e) { console.warn('No se pudo agregar al calendario:', e); }
     }
     try {
-        await window._addDoc(window._collection(window._db,'actividades_cliente'), data);
+        await addDoc(collection(db,'actividades_cliente'), data);
         cerrarActividad();
         await cpCargarActividades(clienteId);
         cpTab(cpTabActual, null);
@@ -5321,7 +5447,7 @@ window.cerrarActividadDetail = () => { document.getElementById('actividad-detail
 
 window.cambiarEstatusAct = async (id, nuevoEstatus) => {
     try {
-        await window._updateDoc(window._doc(window._db,'actividades_cliente',id), { estatus: nuevoEstatus, actualizadoEn: new Date().toISOString() });
+        await updateDoc(doc(db,'actividades_cliente',id), { estatus: nuevoEstatus, actualizadoEn: new Date().toISOString() });
         const a = cpActividadesDB.find(x=>x.id===id); if(a) a.estatus = nuevoEstatus;
         verActividadDetail(id);
         cpTab(cpTabActual, null);
@@ -5335,7 +5461,7 @@ window.enviarComentarioAct = async (id) => {
     const comentarios = a.comentarios || [];
     comentarios.push({ texto, usuario: window.currentUser?.email||'', fecha: new Date().toISOString() });
     try {
-        await window._updateDoc(window._doc(window._db,'actividades_cliente',id), { comentarios, actualizadoEn: new Date().toISOString() });
+        await updateDoc(doc(db,'actividades_cliente',id), { comentarios, actualizadoEn: new Date().toISOString() });
         a.comentarios = comentarios; input.value = '';
         verActividadDetail(id);
     } catch(e) { alert('Error: '+e.message); }
@@ -5347,7 +5473,7 @@ window.agregarSubtarea = async (id) => {
     const subtareas = a.subtareas || [];
     subtareas.push({ texto, ok: false });
     try {
-        await window._updateDoc(window._doc(window._db,'actividades_cliente',id), { subtareas });
+        await updateDoc(doc(db,'actividades_cliente',id), { subtareas });
         a.subtareas = subtareas; verActividadDetail(id);
     } catch(e) { alert('Error'); }
 };
@@ -5357,7 +5483,7 @@ window.toggleSubtarea = async (id, idx, ok) => {
     const subtareas = a.subtareas || [];
     if(subtareas[idx]) subtareas[idx].ok = ok;
     try {
-        await window._updateDoc(window._doc(window._db,'actividades_cliente',id), { subtareas });
+        await updateDoc(doc(db,'actividades_cliente',id), { subtareas });
         a.subtareas = subtareas;
     } catch(e) {}
 };
@@ -5365,7 +5491,7 @@ window.toggleSubtarea = async (id, idx, ok) => {
 window.eliminarActividad = async (id) => {
     if(!confirm('Eliminar esta actividad?')) return;
     try {
-        await window._deleteDoc(window._doc(window._db,'actividades_cliente',id));
+        await deleteDoc(doc(db,'actividades_cliente',id));
         cpActividadesDB = cpActividadesDB.filter(x=>x.id!==id);
         cerrarActividadDetail(); cpTab(cpTabActual, null);
     } catch(e) { alert('Error'); }
@@ -5373,10 +5499,12 @@ window.eliminarActividad = async (id) => {
 
 window.cambiarStatusCot = async (cotId, status) => {
     try {
-        await window._updateDoc(window._doc(window._db,'cotizaciones',cotId), { statusCot: status, actualizadoEn: new Date().toISOString() });
+        await updateDoc(doc(db,'cotizaciones',cotId), { statusCot: status, actualizadoEn: new Date().toISOString() });
         const c = cpCotizacionesDB.find(x=>x.id===cotId); if(c) c.statusCot = status;
+        const cg = (cotDB||[]).find(x=>x.id===cotId); if(cg) cg.statusCot = status;
         cpTab('cotizaciones', null);
-    } catch(e) { alert('Error'); }
+        renderCotList(); renderCotStats();
+    } catch(e) { alert('Error: '+e.message); }
 };
 
 // Acciones rápidas desde perfil
@@ -5966,8 +6094,8 @@ window.generarCotizacion = async () => {
         creadoPor: window.currentUser?.email || '',
         creadoEn: new Date().toISOString(),
         statusCot: 'Pendiente',
-        // Datos cliente
-        clienteId: clienteSel?.id || '',
+        // Datos cliente - buscar por nombre si no se seleccionó del autocompletar
+        clienteId: clienteSel?.id || ((clientesDB||[]).find(c=>(c.nombre||'').toLowerCase()===cliente.toLowerCase())?.id) || '',
         datosFact: tiposDatos !== 'ninguno' && clienteSel ? {
             razonSocial: clienteSel.razonSocial || clienteSel.nombre,
             rfc: clienteSel.rfc || '',
@@ -6415,9 +6543,9 @@ window.guardarDocumento = async () => {
         formData.append('file', _docArchivo);
         formData.append('upload_preset', CLD_PRESET_LOCAL);
         formData.append('folder', 'tecnocontrol/documentos/' + c.id);
-        // Usar auto para soportar PDF e imágenes
-        const uploadType = _docArchivo.type === 'application/pdf' ? 'raw' : 'image';
-        const cldRes = await fetch(`https://api.cloudinary.com/v1_1/${CLD_CLOUD_LOCAL}/${uploadType}/upload`, {
+        formData.append('resource_type', 'auto');
+        // Usar 'auto' para soportar PDF, imágenes y cualquier archivo
+        const cldRes = await fetch(`https://api.cloudinary.com/v1_1/${CLD_CLOUD_LOCAL}/auto/upload`, {
             method: 'POST', body: formData
         });
         if(!cldRes.ok) throw new Error('Error Cloudinary: ' + cldRes.status);
@@ -6662,6 +6790,173 @@ window.cpWhatsApp = () => {
 };
 
 console.log('MEGA BLOQUE cargado: Estaciones, Contactos, Documentos, Facturacion, Vencimientos, Gmail, Seguimientos');
+
+
+// ══════════════════════════════════════════════════════════════
+// COTIZACIONES ESTILO SALESFORCE — Vista mejorada
+// ══════════════════════════════════════════════════════════════
+
+let cotFiltroActual = 'todas';
+
+window.setCotFiltro = (filtro, btn) => {
+    cotFiltroActual = filtro;
+    document.querySelectorAll('.cot-filter-btn').forEach(b => b.classList.remove('active'));
+    if(btn) btn.classList.add('active');
+    renderCotList();
+};
+
+// Sobreescribir renderCotStats con versión mejorada
+const _origRenderCotStats = window.renderCotStats || function(){};
+window.renderCotStats = () => {
+    const hoy = new Date().toISOString().slice(0,10);
+    const mes = hoy.slice(0,7);
+    const todas = cotDB || [];
+    const mesActual = todas.filter(c=>(c.creadoEn||'').startsWith(mes));
+    const colocadas = todas.filter(c=>c.statusCot==='Colocada');
+    const pendientes = todas.filter(c=>!c.statusCot||c.statusCot==='Pendiente');
+    const conSeguimiento = todas.filter(c=>c.fechaSeguimiento);
+    const valorMes = mesActual.filter(c=>c.statusCot==='Colocada').reduce((s,c)=>s+(c.total||0),0);
+    const valorPipeline = pendientes.reduce((s,c)=>s+(c.total||0),0);
+    const fmtK = v => v>=1000000?'$'+(v/1000000).toFixed(1)+'M':v>=1000?'$'+(v/1000).toFixed(0)+'K':'$'+Math.round(v);
+
+    const el = document.getElementById('cot-stats');
+    if(!el) return;
+    el.innerHTML = `
+        <div class="stat-card"><div style="font-size:18px;margin-bottom:4px;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+        </div><div class="stat-val">${todas.length}</div><div class="stat-label">Total</div></div>
+        <div class="stat-card"><div class="stat-val" style="color:#10b981">${colocadas.length}</div><div class="stat-label">Colocadas</div><div style="font-size:10px;color:#10b981;font-weight:700;">${fmtK(valorMes)}</div></div>
+        <div class="stat-card"><div class="stat-val" style="color:#f59e0b">${pendientes.length}</div><div class="stat-label">Pipeline</div><div style="font-size:10px;color:#f59e0b;font-weight:700;">${fmtK(valorPipeline)}</div></div>
+        <div class="stat-card"><div class="stat-val" style="color:#7c3aed">${conSeguimiento.length}</div><div class="stat-label">Seguimiento</div></div>`;
+};
+
+// Sobreescribir renderCotList con vista estilo Salesforce
+window.renderCotList = () => {
+    const q = (document.getElementById('cot-search-hist')?.value||'').toLowerCase();
+    const mes = document.getElementById('cot-filtro-mes')?.value||'';
+    const hoy = new Date().toISOString().slice(0,10);
+    let lista = [...(cotDB||[])];
+
+    // Filtro por texto
+    if(q) lista = lista.filter(c =>
+        (c.cliente||'').toLowerCase().includes(q) ||
+        (c.folio||'').toLowerCase().includes(q) ||
+        (c.lista||'').toLowerCase().includes(q)
+    );
+
+    // Filtro por mes
+    if(mes) lista = lista.filter(c => (c.creadoEn||'').startsWith(mes));
+
+    // Filtro por estado
+    switch(cotFiltroActual) {
+        case 'pendiente':   lista = lista.filter(c=>!c.statusCot||c.statusCot==='Pendiente'); break;
+        case 'enviada':     lista = lista.filter(c=>c.statusCot==='Enviada'); break;
+        case 'colocada':    lista = lista.filter(c=>c.statusCot==='Colocada'); break;
+        case 'cancelada':   lista = lista.filter(c=>c.statusCot==='Cancelada'); break;
+        case 'seguimiento': lista = lista.filter(c=>c.fechaSeguimiento); break;
+        case 'vencidas':    lista = lista.filter(c=>c.fechaVencimiento && c.fechaVencimiento < hoy && c.statusCot !== 'Colocada'); break;
+    }
+
+    // Ordenar: pendientes primero, luego por fecha descendente
+    lista.sort((a,b)=>{
+        const prioA = a.statusCot==='Colocada'?2:a.statusCot==='Cancelada'?3:0;
+        const prioB = b.statusCot==='Colocada'?2:b.statusCot==='Cancelada'?3:0;
+        if(prioA!==prioB) return prioA-prioB;
+        return (b.creadoEn||'').localeCompare(a.creadoEn||'');
+    });
+
+    const el = document.getElementById('cot-list');
+    if(!el) return;
+
+    if(!lista.length) {
+        el.innerHTML = '<div class="empty-state"><div style="font-size:48px;margin-bottom:12px;text-align:center;"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg></div><div class="empty-text">Sin cotizaciones</div><div class="empty-sub">Toca + Nueva para crear una</div></div>';
+        return;
+    }
+
+    const fmtMon = (v,m) => m==='USD' ? new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(v||0) : new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN'}).format(v||0);
+
+    el.innerHTML = lista.map(c => {
+        const status = c.statusCot||'Pendiente';
+        const statusColors = {
+            'Pendiente': {bg:'#fef3c7',color:'#92400e'},
+            'Enviada':   {bg:'#dbeafe',color:'#1d4ed8'},
+            'Colocada':  {bg:'#dcfce7',color:'#15803d'},
+            'Cancelada': {bg:'#fee2e2',color:'#b91c1c'},
+        };
+        const sc = statusColors[status]||statusColors['Pendiente'];
+
+        // Barra de progreso visual
+        const progreso = status==='Colocada'?100:status==='Cancelada'?0:status==='Enviada'?60:30;
+        const colorProg = status==='Colocada'?'#10b981':status==='Cancelada'?'#ef4444':status==='Enviada'?'#2563eb':'#f59e0b';
+
+        // Días para seguimiento
+        const diasSeg = c.fechaSeguimiento
+            ? Math.ceil((new Date(c.fechaSeguimiento)-new Date())/86400000)
+            : null;
+
+        // Vencimiento de la cotización (15 días por defecto)
+        const fechaVenc = c.fechaVencimiento || (c.fecha ? new Date(new Date(c.fecha).getTime()+15*86400000).toISOString().slice(0,10) : null);
+        const diasVenc = fechaVenc ? Math.ceil((new Date(fechaVenc)-new Date())/86400000) : null;
+        const estaVencida = diasVenc !== null && diasVenc < 0 && status !== 'Colocada' && status !== 'Cancelada';
+
+        return `<div class="cot-card-sf" onclick="verCotDetail('${c.id}')">
+            <div class="cot-card-header">
+                <div>
+                    <span class="cot-folio">${c.folio||'—'}</span>
+                    <span style="margin-left:6px;font-size:10px;color:#94a3b8;">${c.moneda||'MXN'}</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <span style="padding:3px 10px;border-radius:20px;font-size:9px;font-weight:800;background:${sc.bg};color:${sc.color};">${status.toUpperCase()}</span>
+                    <span class="cot-total-sf">${fmtMon(c.total,c.moneda)}</span>
+                </div>
+            </div>
+            <div class="cot-cliente-sf">${c.cliente||'—'}</div>
+            <div class="cot-meta-sf">${c.lista||'—'} · ${(c.items||[]).length} productos · ${c.fecha||'—'} · ${(c.creadoPor||'').split('@')[0]}</div>
+
+            <!-- Barra de progreso -->
+            <div style="background:#f1f5f9;height:5px;border-radius:3px;margin-bottom:8px;overflow:hidden;">
+                <div style="height:100%;width:${progreso}%;background:${colorProg};border-radius:3px;transition:0.3s;"></div>
+            </div>
+
+            <!-- Tags informativos -->
+            <div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center;">
+                ${diasVenc!==null&&!estaVencida&&status!=='Colocada'&&status!=='Cancelada'?`
+                <span style="font-size:9px;padding:2px 7px;border-radius:8px;background:${diasVenc<3?'#fee2e2':'#f1f5f9'};color:${diasVenc<3?'#dc2626':'#64748b'};font-weight:700;">
+                    ${diasVenc===0?'Vence hoy':diasVenc<0?'Vencida':diasVenc+'d para vencer'}
+                </span>`:''}
+                ${estaVencida?'<span class="cot-seguimiento-tag cot-vencida-tag">Cotizacion vencida</span>':''}
+                ${c.fechaSeguimiento?`<span class="cot-seguimiento-tag ${diasSeg!==null&&diasSeg<=0?'cot-vencida-tag':''}">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    Seguimiento: ${c.fechaSeguimiento}${diasSeg!==null?' ('+Math.abs(diasSeg)+'d'+(diasSeg<=0?' atrás':'')+')'  :''}
+                </span>`:''}
+                ${c.descuento>0?`<span style="font-size:9px;padding:2px 7px;border-radius:8px;background:#f3e8ff;color:#7c3aed;font-weight:700;">Desc. ${c.descuentoPct||''}${c.descuentoPct?'%':''}</span>`:''}
+            </div>
+
+            <!-- Acciones rápidas al fondo -->
+            <div style="display:flex;gap:6px;margin-top:8px;border-top:1px solid #f1f5f9;padding-top:8px;" onclick="event.stopPropagation()">
+                <button onclick="cambiarStatusCotLista('${c.id}','Enviada')" style="flex:1;padding:5px;font-size:9px;font-weight:700;border-radius:6px;border:1px solid #bfdbfe;background:${status==='Enviada'?'#2563eb':'white'};color:${status==='Enviada'?'white':'#2563eb'};font-family:'Outfit',sans-serif;cursor:pointer;">Enviada</button>
+                <button onclick="cambiarStatusCotLista('${c.id}','Colocada')" style="flex:1;padding:5px;font-size:9px;font-weight:700;border-radius:6px;border:1px solid #bbf7d0;background:${status==='Colocada'?'#16a34a':'white'};color:${status==='Colocada'?'white':'#16a34a'};font-family:'Outfit',sans-serif;cursor:pointer;">Colocada</button>
+                <button onclick="cambiarStatusCotLista('${c.id}','Cancelada')" style="flex:1;padding:5px;font-size:9px;font-weight:700;border-radius:6px;border:1px solid #fecaca;background:${status==='Cancelada'?'#dc2626':'white'};color:${status==='Cancelada'?'white':'#dc2626'};font-family:'Outfit',sans-serif;cursor:pointer;">Cancelada</button>
+                <button onclick="programarSeguimientoCot('${c.id}')" style="flex:1;padding:5px;font-size:9px;font-weight:700;border-radius:6px;border:1px solid #fde68a;background:${c.fechaSeguimiento?'#f59e0b':'white'};color:${c.fechaSeguimiento?'white':'#d97706'};font-family:'Outfit',sans-serif;cursor:pointer;">
+                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline;margin-right:2px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    ${c.fechaSeguimiento?c.fechaSeguimiento.slice(5):'Seguim.'}
+                </button>
+            </div>
+        </div>`;
+    }).join('');
+};
+
+// Función de cambio rápido de status desde la lista
+window.cambiarStatusCotLista = async (cotId, status) => {
+    event.stopPropagation();
+    try {
+        await updateDoc(doc(db,'cotizaciones',cotId), { statusCot: status, actualizadoEn: new Date().toISOString() });
+        const c = (cotDB||[]).find(x=>x.id===cotId);
+        if(c) c.statusCot = status;
+        renderCotList();
+        renderCotStats();
+    } catch(e) { alert('Error: '+e.message); }
+};
 
 </script>
 
