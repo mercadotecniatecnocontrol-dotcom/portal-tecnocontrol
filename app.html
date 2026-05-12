@@ -2090,6 +2090,13 @@ window.verCotDetail = (id) => {
                 <tbody>${itemsHtml}</tbody>
             </table>
         </div>
+        ${(c.datosFact||c.datosEnvio)?`
+        <div class="detail-section">
+            ${c.datosFact?`<div style="margin-bottom:8px;"><div class="detail-label" style="color:#1e3a8a;">Facturación</div>
+                <div style="font-size:11px;color:#475569;">${c.datosFact.razonSocial||''} · RFC: ${c.datosFact.rfc||'—'}<br>${c.datosFact.direccionFiscal||''}</div></div>`:''}
+            ${c.datosEnvio?`<div><div class="detail-label" style="color:#0891b2;">Envío</div>
+                <div style="font-size:11px;color:#475569;">${c.datosEnvio.responsable||''} · ${c.datosEnvio.telefono||''}<br>${c.datosEnvio.direccion||''}</div></div>`:''}
+        </div>`:``}
         <div class="detail-section">
             <div style="display:flex;justify-content:space-between;margin-bottom:5px;font-size:13px;"><span style="color:#64748b;">Subtotal</span><span style="font-weight:700;">${fmtC(c.subtotal||0)}</span></div>
             <div style="display:flex;justify-content:space-between;margin-bottom:8px;font-size:13px;"><span style="color:#64748b;">IVA 16%</span><span style="font-weight:700;">${fmtC(c.iva||0)}</span></div>
@@ -4350,14 +4357,13 @@ function crmPuedoVerTodo() {
 
 window.cargarCRM = async function cargarCRM() {
     try {
-        if(!window.crmCargarFirebase) {
-            setTimeout(cargarCRM, 500);
-            return;
-        }
-        oportunidadesDB = await window.crmCargarFirebase('crm_oportunidades');
-        renderKanban();
-        renderCRMStats();
-    } catch(e) { console.error('cargarCRM:', e); }
+        const snap = await getDocs(collection(db, 'crm_oportunidades'));
+        oportunidadesDB = snap.docs.map(d => ({id:d.id,...d.data()}));
+        window.renderKanban();
+        window.renderCRMStats();
+    } catch(e) { 
+        console.error('cargarCRM error:', e);
+    }
 }
 
 window.selPipeline = (idx, btn) => {
@@ -6023,58 +6029,6 @@ window.cpCompartirDatos = (tipo) => {
 // ─── FIX #1 CRM: Retry automático si Firebase no está listo ───
 // Sobreescribir guardarOportunidad con versión robusta
 const _origGuardarOpp = window.guardarOportunidad;
-window.guardarOportunidad = async () => {
-    // Verificar que Firebase esté disponible
-    if(typeof db === 'undefined' || typeof addDoc === 'undefined') {
-        alert('Error: Firebase no está listo. Espera 3 segundos e intenta de nuevo.');
-        return;
-    }
-    const g = id => { const e=document.getElementById(id); return e?e.value.trim():''; };
-    if(!g('opp-cliente')) { alert('Escribe el nombre del cliente'); return; }
-    const btn = document.getElementById('opp-submit-btn');
-    if(btn) { btn.textContent = 'Guardando...'; btn.disabled = true; }
-    const pIdx = parseInt(g('opp-pipeline'));
-    const pipelinesLocal = [
-        {nombre:'Servicios Tecnicos'}, {nombre:'Cumplimiento Regulatorio'}, {nombre:'Refacciones y Equipos'}
-    ];
-    const data = {
-        cliente: g('opp-cliente'), empresa: g('opp-empresa'),
-        telefono: g('opp-telefono'), contacto: g('opp-contacto'),
-        pipelineIdx: pIdx, pipeline: pipelinesLocal[pIdx]?.nombre || '',
-        etapa: g('opp-etapa'),
-        valor: parseFloat(g('opp-valor')) || 0,
-        probabilidad: parseInt(g('opp-prob')) || 20,
-        fechaCierre: g('opp-fecha-cierre'),
-        vendedor: g('opp-vendedor'),
-        descripcion: g('opp-desc'),
-        origen: g('opp-origen'),
-        actualizadoEn: new Date().toISOString()
-    };
-    try {
-        const editId = g('opp-edit-id');
-        if(editId) {
-            await updateDoc(doc(db,'crm_oportunidades',editId), data);
-            const idx = (window.oportunidadesDB||[]).findIndex(o=>o.id===editId);
-            if(idx>=0 && window.oportunidadesDB) window.oportunidadesDB[idx]={...window.oportunidadesDB[idx],...data};
-        } else {
-            data.creadoEn = new Date().toISOString();
-            data.creadoPor = window.currentUser?.email || '';
-            data.historial = [{de:null, a:data.etapa, fecha:data.creadoEn, usuario:data.creadoPor}];
-            data.notas = [];
-            const ref = await addDoc(collection(db,'crm_oportunidades'), data);
-            if(window.oportunidadesDB) window.oportunidadesDB.push({id:ref.id,...data});
-        }
-        if(typeof cerrarOportunidad==='function') cerrarOportunidad();
-        if(typeof window.renderKanban==='function') window.renderKanban();
-        if(typeof window.renderCRMStats==='function') window.renderCRMStats();
-        alert('Oportunidad guardada');
-    } catch(e) {
-        alert('Error al guardar: ' + e.message);
-        console.error('CRM Error:', e);
-    } finally {
-        if(btn) { btn.textContent = 'Guardar Oportunidad'; btn.disabled = false; }
-    }
-};
 
 
 // ══════════════════════════════════════════════════════════════
@@ -6454,9 +6408,21 @@ window.guardarDocumento = async () => {
     if(progress){ progress.style.display='block'; progress.innerText='Subiendo a Cloudinary...'; }
 
     try {
-        // Subir a Cloudinary
-        const carpeta = 'tecnocontrol/documentos/' + c.id;
-        const url = await subirArchivoCloudinary(_docArchivo, carpeta);
+        // Subir a Cloudinary usando fetch directo
+        const CLD_CLOUD_LOCAL = 'daorprxxn';
+        const CLD_PRESET_LOCAL = 'tecnocontrol_app';
+        const formData = new FormData();
+        formData.append('file', _docArchivo);
+        formData.append('upload_preset', CLD_PRESET_LOCAL);
+        formData.append('folder', 'tecnocontrol/documentos/' + c.id);
+        // Usar auto para soportar PDF e imágenes
+        const uploadType = _docArchivo.type === 'application/pdf' ? 'raw' : 'image';
+        const cldRes = await fetch(`https://api.cloudinary.com/v1_1/${CLD_CLOUD_LOCAL}/${uploadType}/upload`, {
+            method: 'POST', body: formData
+        });
+        if(!cldRes.ok) throw new Error('Error Cloudinary: ' + cldRes.status);
+        const cldData = await cldRes.json();
+        const url = cldData.secure_url;
         if(!url) throw new Error('No se obtuvo URL de Cloudinary');
 
         progress.innerText = 'Guardando en Firebase...';
@@ -6637,24 +6603,52 @@ window.programarSeguimientoCot = async (cotId) => {
     if(!c) return;
     const fecha = prompt('Fecha de seguimiento (YYYY-MM-DD):', new Date().toISOString().slice(0,10));
     if(!fecha) return;
-    const nota = prompt('Nota del seguimiento:', 'Seguimiento de cotizacion ' + c.folio) || '';
+    const nota = prompt('Nota del seguimiento:', 'Seguimiento cotizacion ' + (c.folio||'')) || '';
+    const actData = {
+        actividad: 'Seguimiento ' + (c.folio||'cotizacion'),
+        area: 'Ventas',
+        fechaLimite: fecha,
+        encargado: window.currentUser?.email||'',
+        responsable: window.currentUser?.email||'',
+        estatus: 'Sin Iniciar',
+        prioridad: 'Alta',
+        descripcion: nota + ' | Cliente: ' + (c.cliente||'') + ' | Total: ' + (c.total||0),
+        cotizacionId: cotId,
+        folioCot: c.folio||'',
+        clienteNombre: c.cliente||'',
+        clienteId: c.clienteId||'',
+        origen: 'Cotizacion',
+        fechaCreacion: new Date().toISOString(),
+        comentarios: [],
+    };
     try {
-        await addDoc(collection(db,'actividades'), {
-            actividad: 'Seguimiento cotizacion ' + c.folio,
-            area: 'Ventas',
-            fechaLimite: fecha,
-            encargado: window.currentUser?.email||'',
-            responsable: window.currentUser?.email||'',
-            estatus: 'Sin Iniciar',
-            prioridad: 'Alta',
-            descripcion: nota + ' | Cliente: ' + c.cliente,
-            cotizacionId: cotId,
-            origen: 'Cotizacion',
-            fechaCreacion: new Date().toISOString(),
-            comentarios: [],
+        // 1. Guardar en actividades (calendario)
+        await addDoc(collection(db,'actividades'), actData);
+        
+        // 2. Si hay cliente asociado, guardar también en actividades_cliente
+        if(c.clienteId) {
+            await addDoc(collection(db,'actividades_cliente'), {
+                ...actData,
+                clienteId: c.clienteId,
+                tipo: 'Cotizacion',
+                titulo: 'Seguimiento ' + (c.folio||''),
+                creadoEn: new Date().toISOString(),
+                creadoPor: window.currentUser?.email||'',
+                estatus: 'Pendiente',
+            });
+        }
+        
+        // 3. Actualizar cotización con fecha de seguimiento
+        await updateDoc(doc(db,'cotizaciones',cotId), {
+            fechaSeguimiento: fecha,
+            notaSeguimiento: nota,
+            actualizadoEn: new Date().toISOString()
         });
-        alert('Seguimiento programado para ' + fecha);
-    } catch(e){ alert('Error: '+e.message); }
+        const cotIdx = (cotDB||[]).findIndex(x=>x.id===cotId);
+        if(cotIdx>=0) { cotDB[cotIdx].fechaSeguimiento=fecha; cotDB[cotIdx].notaSeguimiento=nota; }
+        
+        alert('Seguimiento guardado para ' + fecha + '. Aparecera en el calendario y en el perfil del cliente.');
+    } catch(e){ alert('Error: '+e.message); console.error(e); }
 };
 
 // ─── BOTÓN EMAIL EN PERFIL CLIENTE ───
@@ -6674,4 +6668,3 @@ console.log('MEGA BLOQUE cargado: Estaciones, Contactos, Documentos, Facturacion
 
 </body>
 </html>
-                                    
