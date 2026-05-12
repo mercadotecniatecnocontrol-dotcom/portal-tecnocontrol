@@ -4733,15 +4733,16 @@ window.guardarOportunidad = async () => {
         return;
     }
 
-    const pIdx = parseInt(g('opp-pipeline'));
+    const pIdx = parseInt(g('opp-pipeline')) || 0;
+    const etapaVal = g('opp-etapa') || (PIPELINES[pIdx]?.etapas[0]?.nombre || 'Prospecto');
     const data = {
         cliente: g('opp-cliente'),
         empresa: g('opp-empresa'),
         telefono: g('opp-telefono'),
         contacto: g('opp-contacto'),
         pipelineIdx: pIdx,
-        pipeline: PIPELINES[pIdx].nombre,
-        etapa: g('opp-etapa'),
+        pipeline: PIPELINES[pIdx]?.nombre || '',
+        etapa: etapaVal,
         valor: parseFloat(g('opp-valor')) || 0,
         probabilidad: parseInt(g('opp-prob')) || 20,
         fechaCierre: g('opp-fecha-cierre'),
@@ -4767,6 +4768,16 @@ window.guardarOportunidad = async () => {
         }
         window.oportunidadesDB = oportunidadesDB; // sincronizar
         cerrarOportunidad();
+        // Activar el pipeline del registro guardado
+        if(typeof crmPipelineIdx !== 'undefined') {
+            crmPipelineIdx = pIdx;
+            document.querySelectorAll('.pipeline-tab').forEach((b,i) => {
+                if(PIPELINES[i]) {
+                    b.style.background = i===pIdx ? PIPELINES[pIdx].color : '#f1f5f9';
+                    b.style.color = i===pIdx ? 'white' : '#64748b';
+                }
+            });
+        }
         window.renderKanban();
         window.renderCRMStats();
     } catch(e) { alert('Error al guardar: ' + e.message); }
@@ -5402,47 +5413,60 @@ window.guardarActividad = async () => {
     const btn = document.querySelector('#form-actividad .form-submit');
     if(btn) { btn.textContent = 'Guardando...'; btn.disabled = true; }
     const clienteId = g('act-cliente-id');
+    const fechaAct = g('act-fecha');
     const data = {
         clienteId,
         clienteNombre: g('act-cliente-nombre'),
         tipo: cpActTipo,
         titulo: g('act-titulo'),
         descripcion: g('act-desc'),
-        fechaProgramada: g('act-fecha'),
+        fechaProgramada: fechaAct,
+        fechaLimite: fechaAct, // para que aparezca en calendario
         hora: g('act-hora'),
         prioridad: g('act-prioridad'),
         estatus: 'Pendiente',
         comentarios: [],
         subtareas: [],
         responsable: window.currentUser?.email || '',
+        encargado: window.currentUser?.email || '',
         creadoEn: new Date().toISOString(),
         creadoPor: window.currentUser?.email || '',
     };
-    // Si se agrega al calendario también crear en actividades
-    if(g('act-calendario') === 'si') {
-        try {
-            await addDoc(collection(db,'actividades'), {
-                actividad: data.titulo,
-                area: 'Ventas',
-                fechaLimite: data.fechaProgramada,
-                encargado: data.responsable,
-                responsable: data.responsable,
-                estatus: 'Sin Iniciar',
-                prioridad: data.prioridad,
-                descripcion: data.descripcion,
-                clienteId,
-                origen: 'CRM Cliente',
-                fechaCreacion: new Date().toISOString(),
-                comentarios: [],
-            });
-        } catch(e) { console.warn('No se pudo agregar al calendario:', e); }
-    }
+    // Siempre guardar en actividades para que aparezca en calendario
+    // (el checkbox solo indica si crear como tarea con más visibilidad)
+    const actividadCalendario = {
+        actividad: data.titulo,
+        area: 'Ventas',
+        fechaLimite: fechaAct,
+        fechaProgramada: fechaAct,
+        encargado: data.responsable,
+        responsable: data.responsable,
+        estatus: 'Sin Iniciar',
+        prioridad: data.prioridad,
+        descripcion: data.descripcion,
+        clienteId,
+        clienteNombre: data.clienteNombre,
+        tipo: cpActTipo,
+        origen: 'CRM Cliente',
+        fechaCreacion: new Date().toISOString(),
+        comentarios: [],
+    };
+    try {
+        const refCal = await addDoc(collection(db,'actividades'), actividadCalendario);
+        // Agregar a allTasks local para que el calendario se actualice sin recargar
+        if(typeof allTasks !== 'undefined') {
+            allTasks.push({id: refCal.id, ...actividadCalendario});
+        }
+    } catch(e) { console.warn('No se pudo agregar al calendario:', e); }
     try {
         await addDoc(collection(db,'actividades_cliente'), data);
         cerrarActividad();
         await cpCargarActividades(clienteId);
         cpTab(cpTabActual, null);
-        alert('Actividad guardada');
+        // Refrescar calendario si está visible
+        if(typeof renderCalendar === 'function') renderCalendar();
+        if(typeof renderHome === 'function') renderHome();
+        alert('Actividad guardada y agregada al calendario');
     } catch(e) { alert('Error: '+e.message); }
     finally { if(btn) { btn.textContent = 'Guardar Actividad'; btn.disabled = false; } }
 };
@@ -7458,4 +7482,3 @@ console.log('Reportes ejecutivos cargados');
 
 </body>
 </html>
-                
