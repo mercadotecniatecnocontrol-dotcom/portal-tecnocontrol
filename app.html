@@ -720,6 +720,7 @@
             <button onclick="toast('<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg> Próximamente')" style="padding:14px 8px;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;color:var(--text-primary);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;transition:0.2s;"><span style="font-size:24px;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2l6 6-1 1-6-6zM3 16l5 5 9-9-5-5z"/><line x1="3" y1="21" x2="8" y2="16"/></svg></span>Inv. Herramienta</button>
             <button onclick="toast('<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg> Próximamente')" style="padding:14px 8px;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;color:var(--text-primary);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;transition:0.2s;"><span style="font-size:24px;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41M4.93 4.93l1.41 1.41M20 12h-2M6 12H4M19.07 19.07l-1.41-1.41M4.93 19.07l1.41-1.41M12 18v2M12 4V2"/></svg></span>Inv. Refacciones</button>
             <button onclick="toast('<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg> Próximamente')" style="padding:14px 8px;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;color:var(--text-primary);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;transition:0.2s;"><span style="font-size:24px;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg></span>Calibraciones Jomar</button>
+            <button onclick="showPage('reportes');setTimeout(()=>cargarReportes(),300)" style="padding:14px 8px;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;color:var(--text-primary);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;transition:0.2s;"><span style="font-size:24px;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span>Reportes</button>
         </div>
         <div class="sec-title">Hoy <button class="sec-title-btn" onclick="showPage('tasks')">Ver todo →</button></div>
         <div id="home-today-tasks"></div>
@@ -2873,7 +2874,80 @@ window.limpiarFirmaCot=()=>{
 
 
 
-    <!-- Bottom Nav -->
+    
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- MÓDULO REPORTES EJECUTIVOS                              -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="page" id="page-reportes">
+    <!-- Header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+        <div>
+            <div style="font-size:18px;font-weight:800;color:#1e293b;">Reportes</div>
+            <div style="font-size:11px;color:#94a3b8;" id="rep-periodo">Cargando...</div>
+        </div>
+        <div style="display:flex;gap:6px;">
+            <select id="rep-mes-sel" onchange="cargarReportes()" class="form-select" style="padding:8px;font-size:11px;width:110px;">
+                <option value="2026-05">Mayo 2026</option>
+                <option value="2026-04">Abril 2026</option>
+                <option value="2026-03">Marzo 2026</option>
+                <option value="2026-02">Febrero 2026</option>
+                <option value="2026-01">Enero 2026</option>
+                <option value="todos">Todo el año</option>
+            </select>
+            <button onclick="cargarReportes()" style="padding:8px 12px;background:#1e3a8a;color:white;border:none;border-radius:10px;font-family:'Outfit',sans-serif;font-size:11px;font-weight:700;cursor:pointer;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- KPIs principales -->
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px;" id="rep-kpis"></div>
+
+    <!-- Gráfica cotizaciones por mes -->
+    <div style="background:white;border-radius:16px;padding:16px;margin-bottom:14px;border:1px solid #e2e8f0;">
+        <div style="font-size:12px;font-weight:800;color:#1e293b;margin-bottom:12px;">Cotizaciones por Mes</div>
+        <canvas id="rep-chart-cot" height="160"></canvas>
+    </div>
+
+    <!-- Pipeline de cotizaciones -->
+    <div style="background:white;border-radius:16px;padding:16px;margin-bottom:14px;border:1px solid #e2e8f0;">
+        <div style="font-size:12px;font-weight:800;color:#1e293b;margin-bottom:12px;">Pipeline de Cotizaciones</div>
+        <div id="rep-pipeline"></div>
+    </div>
+
+    <!-- Top vendedores -->
+    <div style="background:white;border-radius:16px;padding:16px;margin-bottom:14px;border:1px solid #e2e8f0;">
+        <div style="font-size:12px;font-weight:800;color:#1e293b;margin-bottom:12px;">Top Vendedores — Cotizaciones Colocadas</div>
+        <div id="rep-vendedores"></div>
+    </div>
+
+    <!-- Actividades por tipo -->
+    <div style="background:white;border-radius:16px;padding:16px;margin-bottom:14px;border:1px solid #e2e8f0;">
+        <div style="font-size:12px;font-weight:800;color:#1e293b;margin-bottom:12px;">Actividades del Periodo</div>
+        <canvas id="rep-chart-act" height="140"></canvas>
+    </div>
+
+    <!-- Visitas por vendedor -->
+    <div style="background:white;border-radius:16px;padding:16px;margin-bottom:14px;border:1px solid #e2e8f0;">
+        <div style="font-size:12px;font-weight:800;color:#1e293b;margin-bottom:12px;">Visitas a Clientes</div>
+        <div id="rep-visitas"></div>
+    </div>
+
+    <!-- Clientes más activos -->
+    <div style="background:white;border-radius:16px;padding:16px;margin-bottom:14px;border:1px solid #e2e8f0;">
+        <div style="font-size:12px;font-weight:800;color:#1e293b;margin-bottom:12px;">Clientes con más Actividad</div>
+        <div id="rep-clientes-top"></div>
+    </div>
+
+    <!-- CRM por pipeline -->
+    <div style="background:white;border-radius:16px;padding:16px;margin-bottom:80px;border:1px solid #e2e8f0;">
+        <div style="font-size:12px;font-weight:800;color:#1e293b;margin-bottom:12px;">CRM — Oportunidades Activas</div>
+        <div id="rep-crm"></div>
+    </div>
+</div>
+
+
+<!-- Bottom Nav -->
     <nav class="bottom-nav">
         <button class="nav-item active" onclick="showPage('home',this)"><span class="nav-icon" style="display:flex;align-items:center;justify-content:center;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span>Inicio</button>
         <button class="nav-item" onclick="showPage('tasks',this)"><span class="nav-icon" style="display:flex;align-items:center;justify-content:center;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg></span>Tareas</button>
@@ -5548,6 +5622,7 @@ window.showPage = (pageId, btn) => {
     if(pageId === 'cotizaciones') { cargarCot(); }
     if(pageId === 'cliente-perfil') { /* datos ya cargados */ }
         if(pageId === 'crm') { if(typeof cargarCRM === 'function') cargarCRM(); else setTimeout(()=>{ if(typeof cargarCRM === 'function') cargarCRM(); }, 1000); }
+        if(pageId === 'reportes') { if(typeof cargarReportes === 'function') setTimeout(()=>cargarReportes(), 400); }
     
 };    
 
@@ -6958,8 +7033,429 @@ window.cambiarStatusCotLista = async (cotId, status) => {
     } catch(e) { alert('Error: '+e.message); }
 };
 
+
+// ══════════════════════════════════════════════════════════════
+// MÓDULO REPORTES EJECUTIVOS
+// ══════════════════════════════════════════════════════════════
+
+let repChartCot = null;
+let repChartAct = null;
+
+window.cargarReportes = async () => {
+    const mes = document.getElementById('rep-mes-sel')?.value || '2026-05';
+    const esTodo = mes === 'todos';
+    const año = mes.slice(0,4);
+
+    // Actualizar periodo
+    const meses = {
+        '01':'Enero','02':'Febrero','03':'Marzo','04':'Abril',
+        '05':'Mayo','06':'Junio','07':'Julio','08':'Agosto',
+        '09':'Septiembre','10':'Octubre','11':'Noviembre','12':'Diciembre'
+    };
+    const periodoLabel = esTodo ? 'Año '+año : meses[mes.slice(5)] + ' ' + año;
+    const el = document.getElementById('rep-periodo');
+    if(el) el.innerText = periodoLabel;
+
+    // Filtrar datos por periodo
+    const filtrar = (arr, campoFecha) => {
+        if(esTodo) return arr.filter(x => (x[campoFecha]||'').startsWith(año));
+        return arr.filter(x => (x[campoFecha]||'').startsWith(mes));
+    };
+
+    const cotsAll = cotDB || [];
+    const cots = filtrar(cotsAll, 'creadoEn');
+    const acts = filtrar(cpActividadesDB || [], 'creadoEn');
+    const visitas = filtrar(visitasDB || [], 'fecha');
+
+    // ── KPIs ─────────────────────────────────────────────────
+    const colocadas = cots.filter(c=>c.statusCot==='Colocada');
+    const enviadas = cots.filter(c=>c.statusCot==='Enviada');
+    const pendientes = cots.filter(c=>!c.statusCot||c.statusCot==='Pendiente');
+    const valorColocado = colocadas.reduce((s,c)=>s+(c.total||0),0);
+    const valorPipeline = [...enviadas,...pendientes].reduce((s,c)=>s+(c.total||0),0);
+    const tasaConversion = cots.length > 0 ? Math.round(colocadas.length/cots.length*100) : 0;
+
+    const fmtM = v => v>=1000000 ? '$'+(v/1000000).toFixed(1)+'M' : v>=1000 ? '$'+(v/1000).toFixed(0)+'K' : '$'+Math.round(v);
+
+    const kpisEl = document.getElementById('rep-kpis');
+    if(kpisEl) kpisEl.innerHTML = `
+        <div style="background:linear-gradient(135deg,#1e3a8a,#2563eb);border-radius:14px;padding:14px;color:white;">
+            <div style="font-size:10px;font-weight:600;opacity:0.8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Cotizaciones</div>
+            <div style="font-size:28px;font-weight:800;">${cots.length}</div>
+            <div style="font-size:10px;opacity:0.7;margin-top:2px;">${colocadas.length} colocadas · ${pendientes.length} pendientes</div>
+        </div>
+        <div style="background:linear-gradient(135deg,#059669,#10b981);border-radius:14px;padding:14px;color:white;">
+            <div style="font-size:10px;font-weight:600;opacity:0.8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Valor Colocado</div>
+            <div style="font-size:22px;font-weight:800;">${fmtM(valorColocado)}</div>
+            <div style="font-size:10px;opacity:0.7;margin-top:2px;">Conversión: ${tasaConversion}%</div>
+        </div>
+        <div style="background:linear-gradient(135deg,#d97706,#f59e0b);border-radius:14px;padding:14px;color:white;">
+            <div style="font-size:10px;font-weight:600;opacity:0.8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Pipeline</div>
+            <div style="font-size:22px;font-weight:800;">${fmtM(valorPipeline)}</div>
+            <div style="font-size:10px;opacity:0.7;margin-top:2px;">${enviadas.length+pendientes.length} cotizaciones activas</div>
+        </div>
+        <div style="background:linear-gradient(135deg,#7c3aed,#8b5cf6);border-radius:14px;padding:14px;color:white;">
+            <div style="font-size:10px;font-weight:600;opacity:0.8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Actividades</div>
+            <div style="font-size:28px;font-weight:800;">${(cpActividadesDB||[]).length + acts.length}</div>
+            <div style="font-size:10px;opacity:0.7;margin-top:2px;">${visitas.length} visitas · ${acts.filter(a=>a.estatus==='Completada').length} completadas</div>
+        </div>`;
+
+    // ── Gráfica cotizaciones por mes ─────────────────────────
+    repRenderChartCot(cotsAll, año);
+
+    // ── Pipeline visual ──────────────────────────────────────
+    repRenderPipeline(cots);
+
+    // ── Top vendedores ───────────────────────────────────────
+    repRenderVendedores(cots);
+
+    // ── Gráfica actividades ──────────────────────────────────
+    repRenderChartAct(cots);
+
+    // ── Visitas ──────────────────────────────────────────────
+    repRenderVisitas(visitas);
+
+    // ── Clientes top ─────────────────────────────────────────
+    repRenderClientesTop(cots);
+
+    // ── CRM ──────────────────────────────────────────────────
+    repRenderCRM();
+};
+
+// ── Gráfica barras cotizaciones por mes ──────────────────────
+function repRenderChartCot(cotsAll, año) {
+    const canvas = document.getElementById('rep-chart-cot');
+    if(!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    const mesesNombres = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+    const datos = mesesNombres.map((m, i) => {
+        const key = `${año}-${String(i+1).padStart(2,'0')}`;
+        const mes_cots = cotsAll.filter(c => (c.creadoEn||'').startsWith(key));
+        return {
+            label: m,
+            total: mes_cots.length,
+            colocadas: mes_cots.filter(c=>c.statusCot==='Colocada').length,
+            valor: mes_cots.filter(c=>c.statusCot==='Colocada').reduce((s,c)=>s+(c.total||0),0)
+        };
+    });
+
+    // Destruir gráfica anterior
+    if(repChartCot) { repChartCot.destroy(); }
+
+    const maxVal = Math.max(...datos.map(d=>d.total), 1);
+    const W = canvas.offsetWidth || 340;
+    const H = 160;
+    canvas.width = W;
+    canvas.height = H;
+
+    ctx.clearRect(0,0,W,H);
+    const padL=30, padR=10, padT=10, padB=30;
+    const chartW = W - padL - padR;
+    const chartH = H - padT - padB;
+    const barW = Math.floor(chartW / 12) - 3;
+
+    // Líneas guía
+    ctx.strokeStyle = '#f1f5f9';
+    ctx.lineWidth = 1;
+    [0.25,0.5,0.75,1].forEach(pct => {
+        const y = padT + chartH * (1-pct);
+        ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(W-padR,y); ctx.stroke();
+        ctx.fillStyle = '#94a3b8'; ctx.font = '9px Outfit,sans-serif'; ctx.textAlign='right';
+        ctx.fillText(Math.round(maxVal*pct), padL-3, y+3);
+    });
+
+    // Barras
+    datos.forEach((d, i) => {
+        const x = padL + i * (chartW/12);
+        const hTotal = d.total > 0 ? (d.total/maxVal)*chartH : 0;
+        const hCol = d.colocadas > 0 ? (d.colocadas/maxVal)*chartH : 0;
+
+        // Barra total (fondo)
+        if(hTotal > 0) {
+            ctx.fillStyle = '#dbeafe';
+            ctx.beginPath();
+            ctx.roundRect(x+2, padT+chartH-hTotal, barW, hTotal, 3);
+            ctx.fill();
+        }
+
+        // Barra colocadas (encima)
+        if(hCol > 0) {
+            ctx.fillStyle = '#2563eb';
+            ctx.beginPath();
+            ctx.roundRect(x+2, padT+chartH-hCol, barW, hCol, 3);
+            ctx.fill();
+        }
+
+        // Etiqueta mes
+        ctx.fillStyle = '#64748b'; ctx.font='8px Outfit,sans-serif'; ctx.textAlign='center';
+        ctx.fillText(d.label, x+barW/2+2, H-padB+12);
+
+        // Número si hay datos
+        if(d.total > 0) {
+            ctx.fillStyle='#1e293b'; ctx.font='bold 8px Outfit,sans-serif';
+            ctx.fillText(d.total, x+barW/2+2, padT+chartH-hTotal-3);
+        }
+    });
+
+    // Leyenda
+    ctx.fillStyle='#dbeafe'; ctx.fillRect(padL, H-12, 12, 8);
+    ctx.fillStyle='#64748b'; ctx.font='8px Outfit,sans-serif'; ctx.textAlign='left';
+    ctx.fillText('Total', padL+15, H-5);
+    ctx.fillStyle='#2563eb'; ctx.fillRect(padL+55, H-12, 12, 8);
+    ctx.fillText('Colocadas', padL+70, H-5);
+}
+
+// ── Pipeline visual ───────────────────────────────────────────
+function repRenderPipeline(cots) {
+    const el = document.getElementById('rep-pipeline');
+    if(!el) return;
+
+    const estados = [
+        {label:'Pendiente', key:'pendiente', color:'#f59e0b', bg:'#fef3c7'},
+        {label:'Enviada',   key:'enviada',   color:'#2563eb', bg:'#dbeafe'},
+        {label:'Colocada',  key:'colocada',  color:'#10b981', bg:'#dcfce7'},
+        {label:'Cancelada', key:'cancelada', color:'#ef4444', bg:'#fee2e2'},
+    ];
+
+    const fmtM = v => v>=1000000?'$'+(v/1000000).toFixed(1)+'M':v>=1000?'$'+(v/1000).toFixed(0)+'K':'$'+Math.round(v);
+    const total = cots.length || 1;
+
+    el.innerHTML = estados.map(e => {
+        const lista = cots.filter(c => {
+            const s = (c.statusCot||'Pendiente').toLowerCase();
+            return s === e.key || (e.key==='pendiente' && !c.statusCot);
+        });
+        const valor = lista.reduce((s,c)=>s+(c.total||0),0);
+        const pct = Math.round(lista.length/total*100);
+        return `
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+            <div style="width:80px;font-size:11px;font-weight:700;color:${e.color};">${e.label}</div>
+            <div style="flex:1;background:#f1f5f9;border-radius:6px;height:20px;overflow:hidden;">
+                <div style="height:100%;width:${pct}%;background:${e.color};border-radius:6px;transition:0.4s;display:flex;align-items:center;justify-content:flex-end;padding-right:6px;">
+                    ${pct>10?`<span style="font-size:9px;color:white;font-weight:700;">${lista.length}</span>`:''}
+                </div>
+            </div>
+            <div style="width:70px;text-align:right;">
+                <div style="font-size:11px;font-weight:700;color:#1e293b;">${lista.length} cots.</div>
+                <div style="font-size:9px;color:#94a3b8;">${fmtM(valor)}</div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// ── Top vendedores ────────────────────────────────────────────
+function repRenderVendedores(cots) {
+    const el = document.getElementById('rep-vendedores');
+    if(!el) return;
+
+    const vendMap = {};
+    cots.forEach(c => {
+        const v = c.vendedor || (c.creadoPor||'').split('@')[0] || 'Sin asignar';
+        if(!vendMap[v]) vendMap[v] = {total:0, colocadas:0, valor:0};
+        vendMap[v].total++;
+        if(c.statusCot==='Colocada') { vendMap[v].colocadas++; vendMap[v].valor+=(c.total||0); }
+    });
+
+    const vendedores = Object.entries(vendMap)
+        .map(([nombre,d]) => ({nombre,...d, tasa:d.total>0?Math.round(d.colocadas/d.total*100):0}))
+        .sort((a,b) => b.valor - a.valor);
+
+    const fmtM = v => v>=1000000?'$'+(v/1000000).toFixed(1)+'M':v>=1000?'$'+(v/1000).toFixed(0)+'K':'$'+Math.round(v);
+    const maxVal = Math.max(...vendedores.map(v=>v.valor), 1);
+
+    if(!vendedores.length) { el.innerHTML='<div style="font-size:12px;color:#94a3b8;text-align:center;padding:12px;">Sin datos</div>'; return; }
+
+    el.innerHTML = vendedores.slice(0,5).map((v, i) => {
+        const colores = ['#2563eb','#10b981','#f59e0b','#8b5cf6','#ef4444'];
+        const col = colores[i] || '#64748b';
+        const inicial = v.nombre.charAt(0).toUpperCase();
+        return `
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;padding:10px;background:#f8fafc;border-radius:10px;">
+            <div style="width:34px;height:34px;border-radius:50%;background:${col};display:flex;align-items:center;justify-content:center;color:white;font-weight:800;font-size:14px;flex-shrink:0;">${inicial}</div>
+            <div style="flex:1;min-width:0;">
+                <div style="font-size:12px;font-weight:700;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${v.nombre}</div>
+                <div style="background:#e2e8f0;height:5px;border-radius:3px;margin-top:4px;overflow:hidden;">
+                    <div style="height:100%;width:${Math.round(v.valor/maxVal*100)}%;background:${col};border-radius:3px;"></div>
+                </div>
+            </div>
+            <div style="text-align:right;flex-shrink:0;">
+                <div style="font-size:12px;font-weight:800;color:${col};">${fmtM(v.valor)}</div>
+                <div style="font-size:9px;color:#94a3b8;">${v.colocadas}/${v.total} · ${v.tasa}%</div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// ── Gráfica actividades por tipo ──────────────────────────────
+function repRenderChartAct(cots) {
+    const canvas = document.getElementById('rep-chart-act');
+    if(!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    // Usar cotizaciones por estado como proxy de actividades si no hay actividades_cliente cargadas
+    const datos = [
+        {label:'Colocadas', val:cots.filter(c=>c.statusCot==='Colocada').length, color:'#10b981'},
+        {label:'Enviadas',  val:cots.filter(c=>c.statusCot==='Enviada').length,  color:'#2563eb'},
+        {label:'Pendientes',val:cots.filter(c=>!c.statusCot||c.statusCot==='Pendiente').length, color:'#f59e0b'},
+        {label:'Canceladas',val:cots.filter(c=>c.statusCot==='Cancelada').length, color:'#ef4444'},
+    ].filter(d=>d.val>0);
+
+    if(!datos.length) { canvas.style.display='none'; return; }
+    canvas.style.display='block';
+
+    const W = canvas.offsetWidth || 340;
+    const H = 140;
+    canvas.width = W;
+    canvas.height = H;
+    ctx.clearRect(0,0,W,H);
+
+    const total = datos.reduce((s,d)=>s+d.val,0);
+    const cx = H/2 + 10, cy = H/2, r = H/2 - 10, rIn = H/4;
+    let startAngle = -Math.PI/2;
+
+    datos.forEach(d => {
+        const slice = (d.val/total)*2*Math.PI;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, r, startAngle, startAngle+slice);
+        ctx.closePath();
+        ctx.fillStyle = d.color;
+        ctx.fill();
+        startAngle += slice;
+    });
+
+    // Donut hole
+    ctx.beginPath();
+    ctx.arc(cx, cy, rIn, 0, 2*Math.PI);
+    ctx.fillStyle = 'white';
+    ctx.fill();
+
+    // Total en centro
+    ctx.fillStyle='#1e293b'; ctx.font='bold 14px Outfit,sans-serif'; ctx.textAlign='center';
+    ctx.fillText(total, cx, cy+5);
+
+    // Leyenda
+    const legX = H + 20;
+    let legY = 15;
+    datos.forEach(d => {
+        ctx.fillStyle = d.color;
+        ctx.fillRect(legX, legY-8, 10, 10);
+        ctx.fillStyle = '#1e293b'; ctx.font='11px Outfit,sans-serif'; ctx.textAlign='left';
+        ctx.fillText(`${d.label}: ${d.val}`, legX+14, legY+1);
+        legY += 22;
+    });
+}
+
+// ── Visitas por vendedor ──────────────────────────────────────
+function repRenderVisitas(visitas) {
+    const el = document.getElementById('rep-visitas');
+    if(!el) return;
+
+    if(!visitas.length) {
+        el.innerHTML='<div style="font-size:12px;color:#94a3b8;text-align:center;padding:12px;">Sin visitas registradas en este periodo</div>';
+        return;
+    }
+
+    const vendMap = {};
+    visitas.forEach(v => {
+        const vend = v.vendedor || v.usuario || v.email || 'Sin asignar';
+        if(!vendMap[vend]) vendMap[vend] = 0;
+        vendMap[vend]++;
+    });
+
+    const maxVisits = Math.max(...Object.values(vendMap), 1);
+    el.innerHTML = Object.entries(vendMap)
+        .sort((a,b)=>b[1]-a[1])
+        .map(([nombre, count]) => `
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+            <div style="font-size:11px;color:#1e293b;font-weight:600;width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${nombre.split('@')[0]}</div>
+            <div style="flex:1;background:#f1f5f9;border-radius:4px;height:16px;overflow:hidden;">
+                <div style="height:100%;width:${Math.round(count/maxVisits*100)}%;background:#7c3aed;border-radius:4px;"></div>
+            </div>
+            <div style="font-size:11px;font-weight:800;color:#7c3aed;width:30px;text-align:right;">${count}</div>
+        </div>`).join('');
+}
+
+// ── Clientes más activos ──────────────────────────────────────
+function repRenderClientesTop(cots) {
+    const el = document.getElementById('rep-clientes-top');
+    if(!el) return;
+
+    const clienteMap = {};
+    cots.forEach(c => {
+        const key = c.cliente || 'Sin nombre';
+        if(!clienteMap[key]) clienteMap[key] = {cots:0, valor:0, colocadas:0};
+        clienteMap[key].cots++;
+        clienteMap[key].valor += (c.total||0);
+        if(c.statusCot==='Colocada') clienteMap[key].colocadas++;
+    });
+
+    const lista = Object.entries(clienteMap)
+        .map(([nombre,d])=>({nombre,...d}))
+        .sort((a,b)=>b.valor-a.valor)
+        .slice(0,6);
+
+    const fmtM = v => v>=1000000?'$'+(v/1000000).toFixed(1)+'M':v>=1000?'$'+(v/1000).toFixed(0)+'K':'$'+Math.round(v);
+
+    if(!lista.length) { el.innerHTML='<div style="font-size:12px;color:#94a3b8;text-align:center;padding:12px;">Sin datos</div>'; return; }
+
+    el.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;">
+        ${lista.map(c=>`
+        <div style="background:#f8fafc;border-radius:10px;padding:10px;border:1px solid #e2e8f0;">
+            <div style="font-size:11px;font-weight:700;color:#1e293b;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.nombre}</div>
+            <div style="font-size:14px;font-weight:800;color:#10b981;">${fmtM(c.valor)}</div>
+            <div style="font-size:9px;color:#94a3b8;margin-top:2px;">${c.cots} cots · ${c.colocadas} colocadas</div>
+        </div>`).join('')}
+    </div>`;
+}
+
+// ── CRM Oportunidades ─────────────────────────────────────────
+function repRenderCRM() {
+    const el = document.getElementById('rep-crm');
+    if(!el) return;
+
+    const opps = window.oportunidadesDB || [];
+    if(!opps.length) {
+        el.innerHTML='<div style="font-size:12px;color:#94a3b8;text-align:center;padding:12px;">Sin oportunidades registradas</div>';
+        return;
+    }
+
+    const PIPE_NAMES = ['Servicios Tecnicos','Cumplimiento Regulatorio','Refacciones y Equipos'];
+    const PIPE_COLORS = ['#2563eb','#7c3aed','#f59e0b'];
+
+    const byPipeline = PIPE_NAMES.map((nombre, idx) => ({
+        nombre, color: PIPE_COLORS[idx],
+        opps: opps.filter(o=>o.pipelineIdx===idx && o.estatus!=='archivado')
+    }));
+
+    const fmtM = v => v>=1000000?'$'+(v/1000000).toFixed(1)+'M':v>=1000?'$'+(v/1000).toFixed(0)+'K':'$'+Math.round(v);
+
+    el.innerHTML = byPipeline.map(p=>{
+        if(!p.opps.length) return '';
+        const valor = p.opps.reduce((s,o)=>s+(o.valor||0),0);
+        return `
+        <div style="margin-bottom:12px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                <div style="font-size:11px;font-weight:700;color:${p.color};">${p.nombre}</div>
+                <div style="font-size:10px;color:#94a3b8;">${p.opps.length} oportunidades · ${fmtM(valor)}</div>
+            </div>
+            ${p.opps.slice(0,3).map(o=>`
+            <div style="background:#f8fafc;border-radius:8px;padding:8px 10px;margin-bottom:4px;border-left:3px solid ${p.color};">
+                <div style="font-size:12px;font-weight:700;color:#1e293b;">${o.cliente||'—'}</div>
+                <div style="font-size:10px;color:#94a3b8;">${o.etapa||'—'} · ${fmtM(o.valor||0)} · ${o.probabilidad||0}%</div>
+            </div>`).join('')}
+            ${p.opps.length>3?`<div style="font-size:10px;color:${p.color};text-align:center;padding:4px;">+${p.opps.length-3} más</div>`:''}
+        </div>`;
+    }).filter(Boolean).join('');
+}
+
+console.log('Reportes ejecutivos cargados');
+
 </script>
 
 
 </body>
 </html>
+                
