@@ -4560,9 +4560,14 @@ window.selPipeline = (idx, btn) => {
 
 function getOportunidades() {
     const email = window.currentUser?.email || '';
-    let opps = oportunidadesDB.filter(o => o.pipelineIdx === crmPipelineIdx && o.estatus !== 'archivado');
+    // Filtrar por pipeline actual (comparar como número)
+    let opps = oportunidadesDB.filter(o => {
+        const pidx = parseInt(o.pipelineIdx);
+        return pidx === crmPipelineIdx && o.estatus !== 'archivado';
+    });
+    // Si no es superadmin/admin, solo ver las propias o donde es vendedor
     if(!crmPuedoVerTodo()) {
-        opps = opps.filter(o => o.vendedor === email);
+        opps = opps.filter(o => o.vendedor === email || o.creadoPor === email);
     }
     return opps;
 }
