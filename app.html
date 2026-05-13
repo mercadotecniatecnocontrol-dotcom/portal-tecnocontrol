@@ -8758,7 +8758,7 @@ window.guardarInvRefacciones = async () => {
                 fd.append('file',foto.file);
                 fd.append('upload_preset','tecnocontrol_app');
                 fd.append('folder','tecnocontrol/inventarios/refacciones');
-                const res = await fetch('https://api.cloudinary.com/v1_1/daorprxxn/image/upload',{method:'POST',body:fd});
+                const res = await fetch('https://api.cloudinary.com/v1_1/daorprxxn/auto/upload',{method:'POST',body:fd});
                 const d = await res.json();
                 if(d.secure_url) urlsFotos.push(d.secure_url);
             } catch(e) { console.warn('Foto no subida:',e); }
@@ -8798,7 +8798,7 @@ window.guardarInvRefacciones = async () => {
                     const fd2=new FormData(); fd2.append('file',foto.file);
                     fd2.append('upload_preset','tecnocontrol_app');
                     fd2.append('folder','tecnocontrol/inventarios/refacciones');
-                    const r2=await fetch('https://api.cloudinary.com/v1_1/daorprxxn/image/upload',{method:'POST',body:fd2});
+                    const r2=await fetch('https://api.cloudinary.com/v1_1/daorprxxn/auto/upload',{method:'POST',body:fd2});
                     const d2=await r2.json(); if(d2.secure_url) urlsF.push(d2.secure_url);
                 } catch(e){console.warn(e);}
             }
@@ -8923,7 +8923,7 @@ window.guardarCalibracion = async () => {
                     fd.append('file',foto.file);
                     fd.append('upload_preset','tecnocontrol_app');
                     fd.append('folder',`tecnocontrol/calibraciones/disp-${i+1}`);
-                    const res = await fetch('https://api.cloudinary.com/v1_1/daorprxxn/image/upload',{method:'POST',body:fd});
+                    const res = await fetch('https://api.cloudinary.com/v1_1/daorprxxn/auto/upload',{method:'POST',body:fd});
                     const dd = await res.json();
                     if(dd.secure_url) urlsFotos.push(dd.secure_url);
                 } catch(e) { console.warn('Foto dispensario no subida:',e); }
@@ -9000,6 +9000,15 @@ document.addEventListener('click', e => {
 });
 
 console.log('Formularios Inventarios + Calibraciones cargados');
+
+
+// ── limpiarFirma genérica para todos los canvas ──────────────
+window.limpiarFirma = (canvasId) => {
+    const canvas = document.getElementById(canvasId);
+    if(!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+};
 
 </script>
 
