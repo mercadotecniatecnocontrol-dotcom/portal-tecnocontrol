@@ -3099,7 +3099,7 @@ window.limpiarFirmaCot=()=>{
             </div>
         </div>
         <input type="file" id="inv-herr-logo-input" accept=".svg,.png,.jpg,.jpeg" style="display:none;" onchange="prevLogoEmpresa(this,'inv-herr-logo-preview','inv-herr-logo-data')">
-        <input type="hidden" id="inv-herr-logo-data">
+        <input type="hidden" id="inv-herr-logo-data"><input type="hidden" id="inv-herr-cliente-id">
     </div>
 
     <!-- Fecha, hora, equipo -->
@@ -8203,23 +8203,31 @@ window.renderHerramientas = async (itemsParam) => {
     const el = document.getElementById('herr-list'); if(!el) return;
     let items = itemsParam;
     if(!items) {
-        const snap = await getDocs(collection(db,'inv_herramientas'));
-        items = snap.docs.map(d=>({id:d.id,...d.data()}));
+        const snap = await getDocs(collection(db,'inventarios_herramientas'));
+        items = snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.creadoEn||'').localeCompare(a.creadoEn||''));
     }
     const q = (document.getElementById('herr-search')?.value||'').toLowerCase();
-    if(q) items = items.filter(i=>(i.nombre||'').toLowerCase().includes(q)||(i.codigo||'').toLowerCase().includes(q));
-    if(!items.length){el.innerHTML='<div class="empty-state"><div class="empty-text">Sin herramientas registradas</div></div>';return;}
+    if(q) items = items.filter(i=>
+        (i.empresa||'').toLowerCase().includes(q)||
+        (i.noEquipo||'').toLowerCase().includes(q)||
+        (i.nombreTecnico||'').toLowerCase().includes(q)
+    );
+    if(!items.length){el.innerHTML='<div class="empty-state"><div class="empty-text">Sin inventarios registrados</div><div class="empty-sub">Toca + Agregar para registrar un inventario</div></div>';return;}
     el.innerHTML = items.map(i => {
-        const estColor = i.estado==='Mantenimiento'?'#f59e0b':i.estado==='Baja'?'#ef4444':'#10b981';
-        return `<div class="detail-section" style="margin-bottom:8px;cursor:pointer;" onclick="verDetalleHerramienta('${i.id}')">
-            <div style="display:flex;align-items:center;justify-content:space-between;">
+        const fotos = i.fotos || [];
+        return `<div class="detail-section" style="margin-bottom:10px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
                 <div>
-                    <div style="font-size:13px;font-weight:700;color:#1e293b;">${i.nombre||'—'}</div>
-                    <div style="font-size:11px;color:#94a3b8;">${i.codigo||'—'} · ${i.ubicacion||'—'}</div>
+                    <div style="font-size:13px;font-weight:700;color:#1e293b;">${i.empresa||'—'}</div>
+                    <div style="font-size:11px;color:#94a3b8;">${i.fechaInventario||'—'} ${i.hora?'· '+i.hora:''} · ${i.noEquipo?'Equipo: '+i.noEquipo:''}</div>
+                    <div style="font-size:11px;color:#64748b;margin-top:2px;">${i.resultado?i.resultado.slice(0,60)+'...':''}</div>
                 </div>
-                <span style="padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;background:${estColor}15;color:${estColor};">${i.estado||'Activo'}</span>
+                <div style="text-align:right;flex-shrink:0;">
+                    <div style="font-size:10px;color:#10b981;font-weight:700;">${i.estatus||'Guardado'}</div>
+                    <div style="font-size:9px;color:#94a3b8;">${fotos.length} foto(s)</div>
+                </div>
             </div>
-            ${i.ultimoMantenimiento?`<div style="font-size:10px;color:#94a3b8;margin-top:4px;">Último mantenimiento: ${i.ultimoMantenimiento}</div>`:''}
+            ${i.firmaTecnico?`<div style="display:flex;gap:8px;align-items:center;"><img src="${i.firmaTecnico}" style="height:30px;border:1px solid #e2e8f0;border-radius:4px;"><div style="font-size:10px;color:#64748b;">${i.nombreTecnico||'Técnico'}</div></div>`:''}
         </div>`;
     }).join('');
 };
@@ -8227,7 +8235,7 @@ window.renderHerramientas = async (itemsParam) => {
 // abrirFormHerramienta definida abajo
 
 window.verDetalleHerramienta = async (id) => {
-    const snap = await getDocs(collection(db,'inv_herramientas'));
+    const snap = await getDocs(collection(db,'inventarios_herramientas'));
     const item = snap.docs.find(d=>d.id===id);
     if(!item) return;
     const data = item.data();
@@ -8241,7 +8249,7 @@ Nuevo estado (Activo/Mantenimiento/Baja):`, data.estado||'Activo');
 
 // ─── INVENTARIO DE REFACCIONES ────────────────────────────────
 window.cargarRefacciones = async () => {
-    const snap = await getDocs(collection(db,'inv_refacciones'));
+    const snap = await getDocs(collection(db,'inventarios_refacciones'));
     const items = snap.docs.map(d=>({id:d.id,...d.data()}));
     renderRefaccionStats(items);
     renderRefacciones(items);
@@ -8261,10 +8269,10 @@ function renderRefaccionStats(items) {
 window.renderRefacciones = async (itemsParam) => {
     const el = document.getElementById('ref-list'); if(!el) return;
     let items = itemsParam;
-    if(!items){const snap=await getDocs(collection(db,'inv_refacciones'));items=snap.docs.map(d=>({id:d.id,...d.data()}));}
+    if(!items){const snap = await getDocs(collection(db,'inventarios_refacciones'));items=snap.docs.map(d=>({id:d.id,...d.data()}));}
     const q=(document.getElementById('ref-search')?.value||'').toLowerCase();
     if(q) items=items.filter(i=>(i.nombre||'').toLowerCase().includes(q)||(i.sku||'').toLowerCase().includes(q));
-    if(!items.length){el.innerHTML='<div class="empty-state"><div class="empty-text">Sin refacciones registradas</div></div>';return;}
+    if(!items.length){el.innerHTML='<div class="empty-state"><div class="empty-text">Sin inventarios de refacciones</div><div class="empty-sub">Toca + Agregar para registrar</div></div>';return;}
     el.innerHTML=items.map(i=>{
         const cant=parseInt(i.cantidad)||0;
         const cantColor=cant<=0?'#ef4444':cant<=5?'#f59e0b':'#10b981';
@@ -8293,7 +8301,7 @@ window.ajustarCantidad = async (id, delta, coleccion) => {
     if(!item) return;
     const nuevaCant = Math.max(0,(parseInt(item.data().cantidad)||0)+delta);
     await updateDoc(doc(db,coleccion,id),{cantidad:nuevaCant,actualizadoEn:new Date().toISOString()});
-    if(coleccion==='inv_refacciones') cargarRefacciones();
+    if(coleccion==='inventarios_refacciones') cargarRefacciones();
 };
 
 window.abrirFormRefaccion = () => {
@@ -8340,7 +8348,7 @@ window.renderCalibraciones = async (itemsParam) => {
     if(!items){const snap=await getDocs(collection(db,'calibraciones_jomar'));items=snap.docs.map(d=>({id:d.id,...d.data()}));}
     const q=(document.getElementById('cal-search')?.value||'').toLowerCase();
     if(q) items=items.filter(i=>(i.equipo||'').toLowerCase().includes(q)||(i.noSerie||'').toLowerCase().includes(q));
-    if(!items.length){el.innerHTML='<div class="empty-state"><div class="empty-text">Sin calibraciones registradas</div></div>';return;}
+    if(!items.length){el.innerHTML='<div class="empty-state"><div class="empty-text">Sin calibraciones registradas</div><div class="empty-sub">Toca + Nueva para registrar una calibración</div></div>';return;}
     const hoy=new Date();
     el.innerHTML=items.map(i=>{
         const dias=i.fechaProxima?Math.ceil((new Date(i.fechaProxima)-hoy)/86400000):null;
@@ -8471,9 +8479,8 @@ window.buscarEmpresaForm = (inputId, resultsId, logoPreviewId) => {
     if(!results.length) { el.style.display='none'; return; }
     el.style.display = 'block';
     el.innerHTML = results.map(c => `
-        <div onclick="selEmpresaForm('${c.id}','${inputId}','${resultsId}','${logoPreviewId}')"
-             style="padding:10px 14px;cursor:pointer;border-bottom:1px solid #f1f5f9;"
-             onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='white'">
+        <div ontouchstart="selEmpresaForm('${c.id}','${inputId}','${resultsId}','${logoPreviewId}')" onclick="selEmpresaForm('${c.id}','${inputId}','${resultsId}','${logoPreviewId}')"
+             style="padding:12px 14px;cursor:pointer;border-bottom:1px solid #f1f5f9;-webkit-tap-highlight-color:transparent;">
             <div style="font-size:13px;font-weight:700;color:#1e293b;">${c.nombre||'—'}</div>
             <div style="font-size:10px;color:#94a3b8;">${c.razonSocial||''} ${c.ciudad?'· '+c.ciudad:''}</div>
         </div>`).join('');
@@ -8622,22 +8629,10 @@ window.guardarInvHerramienta = async () => {
     const btn = document.getElementById('inv-herr-submit');
     if(btn) { btn.textContent='Guardando...'; btn.disabled=true; }
     try {
-        // Subir fotos a Cloudinary
-        const urlsFotos = [];
-        for(const foto of invHerrFotos) {
-            try {
-                const fd = new FormData();
-                fd.append('file', foto.file);
-                fd.append('upload_preset','tecnocontrol_app');
-                fd.append('folder','tecnocontrol/inventarios/herramientas');
-                const res = await fetch('https://api.cloudinary.com/v1_1/daorprxxn/image/upload',{method:'POST',body:fd});
-                const d = await res.json();
-                if(d.secure_url) urlsFotos.push(d.secure_url);
-            } catch(e) { console.warn('Foto no subida:', e); }
-        }
         // Firmas
         const firmaTec = document.getElementById('inv-herr-firma-tecnico')?.toDataURL() || '';
         const firmaEnc = document.getElementById('inv-herr-firma-encargado')?.toDataURL() || '';
+        // Guardar PRIMERO en Firebase (sin esperar fotos)
         const data = {
             empresa: g('inv-herr-empresa'),
             fechaInventario: g('inv-herr-fecha'),
@@ -8649,14 +8644,44 @@ window.guardarInvHerramienta = async () => {
             firmaTecnico: firmaTec,
             firmaEncargado: firmaEnc,
             logoEmpresa: document.getElementById('inv-herr-logo-data')?.value || '',
-            fotos: urlsFotos,
+            fotos: [], // se actualizan después
             tipo: 'herramienta',
+            estatus: 'Guardado',
             creadoEn: new Date().toISOString(),
             creadoPor: window.currentUser?.email || '',
         };
-        await addDoc(collection(db,'inv_herramientas_formularios'), data);
+        const ref = await addDoc(collection(db,'inventarios_herramientas'), data);
+        // Guardar logo en perfil del cliente si hay uno
+        const clienteIdHerr = document.getElementById('inv-herr-cliente-id')?.value || '';
+        const logoDataHerr = document.getElementById('inv-herr-logo-data')?.value || '';
+        if(clienteIdHerr && logoDataHerr) {
+            try {
+                await updateDoc(doc(db,'ventas_clientes',clienteIdHerr), {logoUrl: logoDataHerr});
+                const cidx = (clientesDB||[]).findIndex(c=>c.id===clienteIdHerr);
+                if(cidx>=0) clientesDB[cidx].logoUrl = logoDataHerr;
+            } catch(e){ console.warn('Logo no guardado en cliente:', e); }
+        }
         cerrarInvHerramienta();
-        alert('Inventario de herramientas enviado correctamente');
+        cargarHerramientas();
+        alert('Inventario guardado. Las fotos se subirán en segundo plano.');
+        // Subir fotos en background
+        if(invHerrFotos.length > 0) {
+            const urlsFotos = [];
+            for(const foto of invHerrFotos) {
+                try {
+                    const fd = new FormData();
+                    fd.append('file', foto.file);
+                    fd.append('upload_preset','tecnocontrol_app');
+                    fd.append('folder','tecnocontrol/inventarios/herramientas');
+                    const res = await fetch('https://api.cloudinary.com/v1_1/daorprxxn/image/upload',{method:'POST',body:fd});
+                    const d = await res.json();
+                    if(d.secure_url) urlsFotos.push(d.secure_url);
+                } catch(e) { console.warn('Foto no subida:', e); }
+            }
+            if(urlsFotos.length > 0) {
+                await updateDoc(doc(db,'inventarios_herramientas',ref.id), {fotos:urlsFotos});
+            }
+        }
     } catch(e) { alert('Error: '+e.message); }
     finally { if(btn){btn.textContent='Enviar Inventario';btn.disabled=false;} }
 };
@@ -8761,9 +8786,24 @@ window.guardarInvRefacciones = async () => {
             creadoEn: new Date().toISOString(),
             creadoPor: window.currentUser?.email||'',
         };
-        await addDoc(collection(db,'inv_refacciones_formularios'), data);
+        const refRef = await addDoc(collection(db,'inventarios_refacciones'), data);
         cerrarInvRefacciones();
-        alert('Inventario de refacciones enviado correctamente');
+        cargarRefacciones();
+        alert('Inventario de refacciones guardado.');
+        // Subir fotos en background
+        if(invRefFotos.length > 0) {
+            const urlsF = [];
+            for(const foto of invRefFotos) {
+                try {
+                    const fd2=new FormData(); fd2.append('file',foto.file);
+                    fd2.append('upload_preset','tecnocontrol_app');
+                    fd2.append('folder','tecnocontrol/inventarios/refacciones');
+                    const r2=await fetch('https://api.cloudinary.com/v1_1/daorprxxn/image/upload',{method:'POST',body:fd2});
+                    const d2=await r2.json(); if(d2.secure_url) urlsF.push(d2.secure_url);
+                } catch(e){console.warn(e);}
+            }
+            if(urlsF.length>0) await updateDoc(doc(db,'inventarios_refacciones',refRef.id),{fotos:urlsF});
+        }
     } catch(e) { alert('Error: '+e.message); }
     finally { if(btn){btn.textContent='Enviar Inventario';btn.disabled=false;} }
 };
@@ -8939,8 +8979,8 @@ window.guardarCalibracion = async () => {
         }
 
         cerrarFormCalibracion();
-        cargarCalibraciones();
-        alert('Calibración JOMAR enviada correctamente');
+        setTimeout(()=>cargarCalibraciones(), 500);
+        alert('Calibración JOMAR guardada correctamente');
     } catch(e) { alert('Error: '+e.message); console.error(e); }
     finally { if(btn){btn.textContent='Enviar Calibración';btn.disabled=false;} }
 };
