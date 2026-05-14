@@ -67,6 +67,10 @@
         .nav-label{font-size:10px;letter-spacing:2px;color:rgba(255,255,255,0.45);text-transform:uppercase;padding:0 12px;margin:16px 0 8px;}
         .sitem{padding:10px 14px;border-radius:10px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;color:rgba(255,255,255,0.70);border:none;background:none;width:100%;text-align:left;margin-bottom:3px;font-size:13px;font-family:'DM Sans',sans-serif;transition:0.2s;gap:8px;}
         .sitem-left{display:flex;align-items:center;gap:10px;}
+        .sitem-left>span:first-child{display:flex;align-items:center;justify-content:center;width:18px;height:18px;flex-shrink:0;opacity:0.9;}
+        .sitem-left>span:first-child svg{width:16px !important;height:16px !important;}
+        .sitem-left span{display:flex;align-items:center;justify-content:center;width:20px;height:20px;flex-shrink:0;}
+        .sitem-left span svg{width:16px !important;height:16px !important;stroke:currentColor;}
         .sitem:hover{background:rgba(255,255,255,0.15);color:#ffffff;}
         .sitem.active{background:rgba(255,255,255,0.20);color:#ffffff;border:1px solid rgba(255,255,255,0.30);}
         .notif-badge{background:var(--red);color:white;font-size:10px;padding:2px 7px;border-radius:20px;font-weight:700;line-height:16px;}
@@ -1063,7 +1067,43 @@
         /* Modal compartir */
         #modal-compartir{position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);z-index:999999 !important;align-items:center;justify-content:center;display:none !important;}
         #modal-compartir.modal-visible{display:flex !important;}
-    </style>
+    
+/* ═══ RESPONSIVE MEJORADO PORTAL ═══ */
+@media(max-width:900px){
+    .sidebar{width:200px;}
+    .main{margin-left:200px;}
+}
+@media(max-width:768px){
+    .rh-inline-grid{grid-template-columns:1fr !important;}
+    .main{margin-left:0;padding:12px;padding-bottom:80px;}
+    .nav{display:none;}
+    .page-header{flex-direction:column;gap:8px;align-items:flex-start;}
+    .page-title{font-size:18px !important;}
+    .nueva-card{padding:16px;}
+    .form-grid{grid-template-columns:1fr !important;}
+    /* Kanban horizontal scroll en móvil */
+    .kanban-board{overflow-x:auto;gap:12px;-webkit-overflow-scrolling:touch;}
+    .kboard-col{min-width:260px;flex-shrink:0;}
+    /* Modal detalle full screen en móvil */
+    #modal-detalle-act > div{width:100% !important;}
+    /* Tablas responsivas */
+    .tabla-wrap{overflow-x:auto;}
+    /* Header portal compacto */
+    .portal-header-inner{padding:10px 14px;}
+    /* Botones más grandes para touch */
+    .kbtn,.kcard-comm{min-width:32px;min-height:32px;}
+    /* Parrilla documentos */
+    .parrilla-grid{grid-template-columns:1fr !important;}
+    /* Navegación móvil bottom */
+    .mobile-bottom-nav{display:flex !important;}
+}
+@media(max-width:480px){
+    .main{padding:8px;padding-bottom:80px;}
+    .page-title{font-size:16px !important;}
+    .kcard{padding:10px;}
+    #modal-detalle-act > div{border-radius:0;}
+}
+</style>
 </head>
 <body>
 
@@ -2095,7 +2135,7 @@
             <div style="margin-bottom:16px;display:flex;gap:12px;align-items:center;">
                 <div id="filtro-compartidas" style="display:flex;gap:6px;margin-bottom:12px;">
                 <button onclick="setFiltroCompartidas('todas')" id="btn-filtro-todas" style="padding:6px 14px;border-radius:8px;border:2px solid #2563eb;background:#2563eb;color:white;font-weight:700;font-size:11px;cursor:pointer;">📋 Todas</button>
-                <button onclick="setFiltroCompartidas('compartidas')" id="btn-filtro-compartidas" style="padding:6px 14px;border-radius:8px;border:1px solid #cbd5e1;background:#ffffff;color:#475569;font-weight:700;font-size:11px;cursor:pointer;">📨 Compartidas conmigo</button>
+                <button onclick="setFiltroCompartidas('compartidas')" id="btn-filtro-compartidas" style="padding:6px 14px;border-radius:8px;border:1px solid #cbd5e1;background:#ffffff;color:#475569;font-weight:700;font-size:11px;cursor:pointer;">Compartidas conmigo</button>
                 <span id="compartidas-count" style="font-size:11px;color:#64748b;align-self:center;"></span>
             </div>
                 <div style="position:relative;flex:1;max-width:460px;">
@@ -2329,22 +2369,114 @@
                 </div>
                 <div class="form-grid" style="margin-top:16px;">
                     <div>
+                        <label class="form-label">Tipo de actividad</label>
+                        <select id="n-tipo" class="form-input sel-style" style="margin-bottom:0;">
+                            <option value="Tarea">Tarea</option>
+                            <option value="Reunión">Reunión</option>
+                            <option value="Llamada">Llamada</option>
+                            <option value="Email">Email</option>
+                            <option value="Visita">Visita</option>
+                            <option value="Reporte">Reporte</option>
+                            <option value="Seguimiento">Seguimiento</option>
+                        </select>
+                    </div>
+                    <div>
                         <label class="form-label">Prioridad</label>
                         <select id="n-prioridad" class="form-input sel-style" style="margin-bottom:0;">
-                            <option value="Alta">🔴 Alta</option>
+                            <option value="Urgente">🔴 Urgente</option>
+                            <option value="Alta">🟠 Alta</option>
                             <option value="Media" selected>🟡 Media</option>
                             <option value="Baja">🟢 Baja</option>
                         </select>
                     </div>
+                </div>
+                <div style="margin-top:16px;">
+                    <label class="form-label">Descripción / Notas</label>
+                    <textarea id="n-descripcion" class="form-input" rows="2" placeholder="Detalles adicionales de la actividad..." style="resize:vertical;font-family:inherit;"></textarea>
+                </div>
+                <div class="form-grid" style="margin-top:16px;">
                     <div>
                         <label class="form-label">Origen / Solicitante</label>
                         <input type="text" id="n-origen" placeholder="Ej: Martín, Paloma, Empresa X…" class="form-input" style="margin-bottom:0;">
+                    </div>
+                    <div>
+                        <label class="form-label">Subtareas (opcional)</label>
+                        <input type="text" id="n-subtarea-input" class="form-input" placeholder="Escribe y presiona Enter..." style="margin-bottom:4px;" onkeydown="if(event.key==='Enter'){event.preventDefault();agregarSubtareaForm();}">
+                        <div id="n-subtareas-list" style="max-height:80px;overflow-y:auto;"></div>
                     </div>
                 </div>
                 <button class="btn-publicar" onclick="guardarTarea()" style="margin-top:20px;">PUBLICAR ACTIVIDAD</button>
             </div>
         </div>
     </main>
+</div>
+
+
+<!-- MODAL DETALLE ACTIVIDAD — estilo Jira/Salesforce -->
+<div id="modal-detalle-act" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);backdrop-filter:blur(4px);z-index:5000;align-items:flex-start;justify-content:flex-end;">
+    <div style="background:white;width:min(680px,100%);height:100vh;overflow-y:auto;box-shadow:-4px 0 20px rgba(0,0,0,0.15);display:flex;flex-direction:column;">
+        <!-- Header -->
+        <div id="det-header" style="padding:16px 20px;border-bottom:1px solid #e2e8f0;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;position:sticky;top:0;background:white;z-index:1;">
+            <div style="flex:1;">
+                <div id="det-tipo-badge" style="margin-bottom:6px;"></div>
+                <div id="det-titulo" style="font-size:16px;font-weight:800;color:#1e293b;line-height:1.3;"></div>
+            </div>
+            <button onclick="cerrarDetalleActividad()" style="background:none;border:none;cursor:pointer;color:#94a3b8;flex-shrink:0;padding:4px;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <!-- Estatus rápido -->
+        <div style="padding:12px 20px;border-bottom:1px solid #f1f5f9;display:flex;gap:6px;flex-wrap:wrap;">
+            <span style="font-size:11px;color:#64748b;font-weight:600;align-self:center;">Estatus:</span>
+            <button onclick="cambiarEstatus('Sin Iniciar')" class="det-est-btn" data-est="Sin Iniciar" style="padding:4px 10px;border-radius:20px;font-size:10px;font-weight:700;border:1px solid #cbd5e1;cursor:pointer;background:white;color:#64748b;">Sin Iniciar</button>
+            <button onclick="cambiarEstatus('En Proceso')" class="det-est-btn" data-est="En Proceso" style="padding:4px 10px;border-radius:20px;font-size:10px;font-weight:700;border:1px solid #fbbf24;cursor:pointer;background:white;color:#f59e0b;">En Proceso</button>
+            <button onclick="cambiarEstatus('En Revisión')" class="det-est-btn" data-est="En Revisión" style="padding:4px 10px;border-radius:20px;font-size:10px;font-weight:700;border:1px solid #c4b5fd;cursor:pointer;background:white;color:#8b5cf6;">En Revisión</button>
+            <button onclick="cambiarEstatus('Bloqueada')" class="det-est-btn" data-est="Bloqueada" style="padding:4px 10px;border-radius:20px;font-size:10px;font-weight:700;border:1px solid #fca5a5;cursor:pointer;background:white;color:#ef4444;">Bloqueada</button>
+            <button onclick="cambiarEstatus('Completada')" class="det-est-btn" data-est="Completada" style="padding:4px 10px;border-radius:20px;font-size:10px;font-weight:700;border:1px solid #86efac;cursor:pointer;background:white;color:#10b981;">Completada</button>
+        </div>
+        <!-- Metadatos -->
+        <div id="det-meta" style="padding:14px 20px;border-bottom:1px solid #f1f5f9;display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px;"></div>
+        <!-- Descripción -->
+        <div style="padding:14px 20px;border-bottom:1px solid #f1f5f9;">
+            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Descripción</div>
+            <div id="det-descripcion" style="font-size:13px;color:#475569;line-height:1.5;"></div>
+            <textarea id="det-desc-edit" style="display:none;width:100%;border:1px solid #e2e8f0;border-radius:8px;padding:8px;font-size:13px;font-family:inherit;resize:vertical;outline:none;" rows="3" placeholder="Agregar descripción..."></textarea>
+            <button id="det-desc-btn" onclick="toggleDescEdit()" style="margin-top:6px;font-size:11px;color:#2563eb;background:none;border:none;cursor:pointer;padding:0;">Editar</button>
+        </div>
+        <!-- Subtareas -->
+        <div style="padding:14px 20px;border-bottom:1px solid #f1f5f9;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;">Subtareas</div>
+                <span id="det-subt-count" style="font-size:10px;color:#94a3b8;"></span>
+            </div>
+            <!-- Barra de progreso -->
+            <div id="det-subt-progress" style="display:none;margin-bottom:10px;">
+                <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                    <span style="font-size:10px;color:#64748b;" id="det-subt-pct-label"></span>
+                </div>
+                <div style="height:4px;background:#e2e8f0;border-radius:2px;overflow:hidden;">
+                    <div id="det-subt-bar" style="height:100%;background:#10b981;border-radius:2px;transition:width 0.3s;"></div>
+                </div>
+            </div>
+            <div id="det-subtareas-list" style="margin-bottom:8px;"></div>
+            <!-- Agregar subtarea -->
+            <div style="display:flex;gap:8px;margin-top:8px;">
+                <input id="det-nueva-subtarea" type="text" placeholder="Nueva subtarea..." style="flex:1;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;font-family:inherit;outline:none;" onkeydown="if(event.key==='Enter'){agregarSubtarea();}">
+                <button onclick="agregarSubtarea()" style="padding:8px 12px;background:#2563eb;color:white;border:none;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;">+</button>
+            </div>
+        </div>
+        <!-- Comentarios -->
+        <div style="padding:14px 20px;flex:1;">
+            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px;">Comentarios y seguimiento</div>
+            <div id="det-comentarios" style="margin-bottom:12px;max-height:300px;overflow-y:auto;"></div>
+            <div style="display:flex;gap:8px;align-items:flex-end;">
+                <textarea id="det-nuevo-comentario" rows="2" placeholder="Escribe un comentario o nota de seguimiento..." style="flex:1;padding:10px;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;font-family:inherit;resize:none;outline:none;"></textarea>
+                <button onclick="enviarComentarioDetalle()" style="padding:10px 14px;background:#2563eb;color:white;border:none;border-radius:8px;cursor:pointer;font-weight:700;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                </button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- MODAL CHAT -->
@@ -3509,10 +3641,39 @@ function buildKcard(r, hoy, yo, esAdmin){
     const leidos = parseInt(localStorage.getItem('tc_read_'+r.id+'_'+btoa(yo).slice(0,8)) || '0');
     const tieneMsgNuevo = totalComs > leidos && (r.comentarios||[]).some(cm=>cm.u!==yo);
     const actTitle = r.actividad.replace(/'/g,"\'").replace(/"/g,'&quot;');
-    return `<div class="kcard ${cardClass}" style="${r.estatus==='Completada'?'opacity:0.7;':''}">
+    // Datos para Jira-style card
+    const subtareas = r.subtareas || [];
+    const subtDone = subtareas.filter(s=>s.done).length;
+    const subtTotal = subtareas.length;
+    const tipoColor = {'Tarea':'#2563eb','Reunión':'#7c3aed','Llamada':'#059669','Email':'#0891b2','Visita':'#d97706','Reporte':'#64748b','Seguimiento':'#db2777'};
+    const tipoIcon = {'Tarea':'<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>','Reunión':'<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>','Llamada':'<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 2.18h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>','Email':'<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>'};
+    const tipo = r.tipo || 'Tarea';
+    const tipoClr = tipoColor[tipo]||'#64748b';
+    const tipoIco = tipoIcon[tipo]||tipoIcon['Tarea'];
+    const estatusColors = {'Sin Iniciar':'#94a3b8','En Proceso':'#f59e0b','En Revisión':'#8b5cf6','Bloqueada':'#ef4444','Completada':'#10b981'};
+    const estatusClr = estatusColors[r.estatus]||'#94a3b8';
+    const numComentarios = (r.comentarios||[]).length;
+
+    return `<div class="kcard ${cardClass}" style="${r.estatus==='Completada'?'opacity:0.75;':''}border-top:3px solid ${tipoClr};">
+        <!-- Header: tipo + estatus -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+            <span style="display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:700;color:${tipoClr};background:${tipoClr}15;padding:2px 6px;border-radius:4px;">${tipoIco} ${tipo}</span>
+            <span style="font-size:9px;font-weight:700;color:${estatusClr};background:${estatusClr}15;padding:2px 6px;border-radius:4px;">${r.estatus||'Sin Iniciar'}</span>
+        </div>
         <div class="kcard-title">${r.actividad}</div>
-        ${(r.compartidoCon||[]).length > 0 ? '<div style="font-size:9px;background:#eff6ff;color:#2563eb;padding:2px 8px;border-radius:6px;display:inline-block;margin-bottom:4px;font-weight:700;">📨 Compartida · ' + r.compartidoCon.map(c=>c.destino).join(', ') + '</div>' : ''}
-        ${r.origen?`<div class="kcard-origen">📌 ${r.origen}</div>`:''}
+        ${r.descripcion?`<div style="font-size:10px;color:#64748b;margin-bottom:4px;line-height:1.3;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">${r.descripcion}</div>`:''}
+        ${(r.compartidoCon||[]).length > 0 ? `<div style="font-size:9px;background:#eff6ff;color:#2563eb;padding:2px 8px;border-radius:6px;display:inline-block;margin-bottom:4px;font-weight:700;">Compartida · ${r.compartidoCon.map(c=>c.destino).join(', ')}</div>` : ''}
+        ${r.origen?`<div class="kcard-origen" style="font-size:9px;">${r.origen}</div>`:''}
+        <!-- Subtareas progress -->
+        ${subtTotal>0?`<div style="margin:6px 0 2px;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:2px;">
+                <span style="font-size:9px;color:#64748b;">Subtareas ${subtDone}/${subtTotal}</span>
+                <span style="font-size:9px;font-weight:700;color:${subtDone===subtTotal?'#10b981':'#f59e0b'};">${Math.round(subtDone/subtTotal*100)}%</span>
+            </div>
+            <div style="height:3px;background:#e2e8f0;border-radius:2px;overflow:hidden;">
+                <div style="height:100%;width:${Math.round(subtDone/subtTotal*100)}%;background:${subtDone===subtTotal?'#10b981':'#f59e0b'};border-radius:2px;"></div>
+            </div>
+        </div>`:''}
         <div class="kcard-meta">${prioHTML}${durTag}</div>
         <div class="kcard-footer">
             <div class="kcard-user">
@@ -3523,8 +3684,15 @@ function buildKcard(r, hoy, yo, esAdmin){
                 </div>
             </div>
             <div class="kcard-actions">
-                <button class="kcard-comm" onclick="abrirChat('${r.id}','${actTitle}','${r.area||''}')">💬${tieneMsgNuevo?'<span class="comm-alert"></span>':''}</button>
-                ${puedeEditar?`<button class="kbtn kbtn-edit" onclick="abrirEdit('${r.id}')">✏️</button>`:''}
+                <button class="kcard-comm" onclick="abrirChat('${r.id}','${actTitle}','${r.area||''}')" style="position:relative;">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                    ${numComentarios>0?`<span style="font-size:8px;font-weight:700;color:#64748b;">${numComentarios}</span>`:''}
+                    ${tieneMsgNuevo?'<span class="comm-alert"></span>':''}
+                </button>
+                ${puedeEditar?`<button class="kbtn kbtn-edit" onclick="abrirDetalleActividad('${r.id}')" title="Ver detalle"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>`:''}
+                <button class="kbtn kbtn-edit" onclick="${puedeEditar?`abrirEdit('${r.id}')`:'void(0)'}" title="Editar" ${!puedeEditar?'style="opacity:0.3;"':''}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+                </button>
                 <button class="kbtn kbtn-edit" data-compid="${r.id}" onclick="window._compTarea(this)" title="Compartir" style="font-size:11px;">📤</button>
                 ${esAdmin?`<button class="kbtn-del" onclick="borrarTarea('${r.id}')" title="Eliminar">🗑</button>`:''}
             </div>
@@ -3732,17 +3900,22 @@ window.guardarTarea=async()=>{
     const area=document.getElementById('n-area').value;
     const encargado=document.getElementById('n-encargado')?.value || auth.currentUser.email;
     const prioridad=document.getElementById('n-prioridad')?.value || 'Media';
+    const tipo=document.getElementById('n-tipo')?.value || 'Tarea';
+    const descripcion=document.getElementById('n-descripcion')?.value.trim() || '';
     const origen=document.getElementById('n-origen')?.value.trim() || '';
     const fechaInicio=document.getElementById('n-inicio')?.value || '';
     const fechaLimite=document.getElementById('n-date')?.value || '';
+    const subtareas = typeof _formSubtareas !== 'undefined' ? [..._formSubtareas] : [];
     await addDoc(collection(db,'actividades'),{
         actividad:d, area, fechaLimite, fechaInicio, prioridad, origen,
+        tipo, descripcion, subtareas,
         estatus:'Sin Iniciar', fechaCreacion:new Date().toISOString(),
         responsable:auth.currentUser.email, encargado, comentarios:[]
     });
-    // Limpiar form
-    ['n-desc','n-inicio','n-date','n-origen'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
-    window.mostrarPush('✅ Tarea publicada', `"${d}" — ${area} · ${prioridad}`, '📋');
+    ['n-desc','n-inicio','n-date','n-origen','n-descripcion'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+    if(typeof _formSubtareas !== 'undefined') _formSubtareas = [];
+    if(typeof renderFormSubtareas === 'function') renderFormSubtareas();
+    window.mostrarPush('Actividad publicada', `"${d}" — ${area} · ${tipo}`, '');
     navegar('dashboard');
 };
 
@@ -9584,6 +9757,306 @@ window.guardarDatoRHInline = async () => {
         console.log('[RH FIX v3] recarga automática después de guardar/eliminar');
     }
 })();
+
+// ══════════════════════════════════════════════════════════════
+// MODAL DETALLE ACTIVIDAD — Jira/Salesforce style
+// ══════════════════════════════════════════════════════════════
+
+let _detalleActId = null;
+let _detalleActData = null;
+
+window.abrirDetalleActividad = async (id) => {
+    _detalleActId = id;
+    const r = localDB.find(x=>x.id===id);
+    if(!r) return;
+    _detalleActData = {...r};
+
+    const modal = document.getElementById('modal-detalle-act');
+    if(!modal) return;
+    modal.style.display = 'flex';
+
+    // Header
+    const tipoColor = {'Tarea':'#2563eb','Reunión':'#7c3aed','Llamada':'#059669','Email':'#0891b2','Visita':'#d97706','Reporte':'#64748b','Seguimiento':'#db2777'};
+    const tipo = r.tipo || 'Tarea';
+    const tipoClr = tipoColor[tipo]||'#64748b';
+    const tipoBadge = document.getElementById('det-tipo-badge');
+    if(tipoBadge) tipoBadge.innerHTML = `<span style="font-size:10px;font-weight:700;color:${tipoClr};background:${tipoClr}15;padding:3px 8px;border-radius:4px;">${tipo} · ${r.area||''}</span>`;
+    
+    const tituloEl = document.getElementById('det-titulo');
+    if(tituloEl) tituloEl.textContent = r.actividad || '—';
+
+    // Estatus botones activo
+    document.querySelectorAll('.det-est-btn').forEach(btn => {
+        btn.style.background = btn.dataset.est === r.estatus ? tipoClr : 'white';
+        btn.style.color = btn.dataset.est === r.estatus ? 'white' : '';
+    });
+
+    // Metadatos
+    const metaEl = document.getElementById('det-meta');
+    if(metaEl) {
+        const yo = auth.currentUser?.email || '';
+        const encargado = r.encargado || r.responsable || '—';
+        const fechaLimite = r.fechaLimite || r.fechaLimite || '—';
+        const dias = r.fechaLimite ? Math.ceil((new Date(r.fechaLimite)-new Date())/86400000) : null;
+        const diasText = dias === null ? '—' : dias < 0 ? `Venció hace ${Math.abs(dias)}d` : dias === 0 ? 'Hoy' : `${dias}d restantes`;
+        const diasColor = dias !== null && dias < 0 ? '#ef4444' : dias !== null && dias <= 3 ? '#f59e0b' : '#10b981';
+        metaEl.innerHTML = `
+            <div><span style="font-size:10px;color:#94a3b8;display:block;margin-bottom:2px;">Encargado</span><span style="font-size:12px;font-weight:600;color:#1e293b;">${encargado.split('@')[0]}</span></div>
+            <div><span style="font-size:10px;color:#94a3b8;display:block;margin-bottom:2px;">Fecha límite</span><span style="font-size:12px;font-weight:600;color:${diasColor};">${fechaLimite} ${diasText!=='—'?'· '+diasText:''}</span></div>
+            <div><span style="font-size:10px;color:#94a3b8;display:block;margin-bottom:2px;">Prioridad</span><span style="font-size:12px;font-weight:600;color:#1e293b;">${r.prioridad||'Media'}</span></div>
+            <div><span style="font-size:10px;color:#94a3b8;display:block;margin-bottom:2px;">Origen</span><span style="font-size:12px;font-weight:600;color:#1e293b;">${r.origen||'—'}</span></div>`;
+    }
+
+    // Descripción
+    const descEl = document.getElementById('det-descripcion');
+    const descEdit = document.getElementById('det-desc-edit');
+    if(descEl) descEl.textContent = r.descripcion || 'Sin descripción';
+    if(descEdit) descEdit.value = r.descripcion || '';
+
+    // Subtareas
+    renderSubtareasDetalle(r.subtareas || []);
+
+    // Comentarios
+    renderComentariosDetalle(r.comentarios || []);
+};
+
+window.cerrarDetalleActividad = () => {
+    const modal = document.getElementById('modal-detalle-act');
+    if(modal) modal.style.display = 'none';
+    _detalleActId = null;
+};
+
+window.cambiarEstatus = async (nuevoEstatus) => {
+    if(!_detalleActId) return;
+    try {
+        await updateDoc(doc(db,'actividades',_detalleActId), {estatus: nuevoEstatus});
+        const idx = localDB.findIndex(x=>x.id===_detalleActId);
+        if(idx>=0) localDB[idx].estatus = nuevoEstatus;
+        // Actualizar botones
+        const tipoColor = {'Tarea':'#2563eb','Reunión':'#7c3aed','Llamada':'#059669','Email':'#0891b2','Visita':'#d97706','Reporte':'#64748b','Seguimiento':'#db2777'};
+        const tipo = localDB[idx]?.tipo || 'Tarea';
+        const tipoClr = tipoColor[tipo]||'#64748b';
+        document.querySelectorAll('.det-est-btn').forEach(btn => {
+            btn.style.background = btn.dataset.est === nuevoEstatus ? tipoClr : 'white';
+            btn.style.color = btn.dataset.est === nuevoEstatus ? 'white' : '';
+        });
+        renderTabla();
+        window.mostrarPush('Estatus actualizado', nuevoEstatus, '');
+    } catch(e) { alert('Error: '+e.message); }
+};
+
+function renderSubtareasDetalle(subtareas) {
+    const lista = document.getElementById('det-subtareas-list');
+    const count = document.getElementById('det-subt-count');
+    const progress = document.getElementById('det-subt-progress');
+    const bar = document.getElementById('det-subt-bar');
+    const pctLabel = document.getElementById('det-subt-pct-label');
+    if(!lista) return;
+
+    const done = subtareas.filter(s=>s.done).length;
+    const total = subtareas.length;
+    if(count) count.textContent = total > 0 ? `${done}/${total}` : '';
+    if(progress) progress.style.display = total > 0 ? 'block' : 'none';
+    if(bar) bar.style.width = total > 0 ? `${Math.round(done/total*100)}%` : '0%';
+    if(bar) bar.style.background = done===total && total>0 ? '#10b981' : '#f59e0b';
+    if(pctLabel) pctLabel.textContent = total > 0 ? `${Math.round(done/total*100)}% completado` : '';
+
+    lista.innerHTML = subtareas.map((s,i) => `
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f8fafc;">
+            <input type="checkbox" ${s.done?'checked':''} onchange="toggleSubtarea(${i})" style="width:14px;height:14px;accent-color:#10b981;cursor:pointer;flex-shrink:0;">
+            <span style="font-size:12px;color:#${s.done?'94a3b8':'475569'};text-decoration:${s.done?'line-through':'none'};flex:1;">${s.texto}</span>
+            <button onclick="eliminarSubtarea(${i})" style="background:none;border:none;cursor:pointer;color:#cbd5e1;padding:2px 4px;font-size:12px;">✕</button>
+        </div>`).join('') || '<div style="font-size:12px;color:#94a3b8;padding:4px 0;">Sin subtareas. Agrega una abajo.</div>';
+}
+
+window.agregarSubtarea = async () => {
+    const input = document.getElementById('det-nueva-subtarea');
+    const texto = input?.value.trim();
+    if(!texto || !_detalleActId) return;
+    const r = localDB.find(x=>x.id===_detalleActId);
+    if(!r) return;
+    const subtareas = [...(r.subtareas||[]), {texto, done:false, creadoEn:new Date().toISOString()}];
+    try {
+        await updateDoc(doc(db,'actividades',_detalleActId), {subtareas});
+        const idx = localDB.findIndex(x=>x.id===_detalleActId);
+        if(idx>=0) localDB[idx].subtareas = subtareas;
+        if(input) input.value = '';
+        renderSubtareasDetalle(subtareas);
+        renderTabla();
+    } catch(e) { alert('Error: '+e.message); }
+};
+
+window.toggleSubtarea = async (subt_idx) => {
+    if(!_detalleActId) return;
+    const r = localDB.find(x=>x.id===_detalleActId);
+    if(!r) return;
+    const subtareas = [...(r.subtareas||[])];
+    subtareas[subt_idx] = {...subtareas[subt_idx], done: !subtareas[subt_idx].done};
+    try {
+        await updateDoc(doc(db,'actividades',_detalleActId), {subtareas});
+        const idx = localDB.findIndex(x=>x.id===_detalleActId);
+        if(idx>=0) localDB[idx].subtareas = subtareas;
+        renderSubtareasDetalle(subtareas);
+        renderTabla();
+    } catch(e) { console.error(e); }
+};
+
+window.eliminarSubtarea = async (subt_idx) => {
+    if(!_detalleActId) return;
+    const r = localDB.find(x=>x.id===_detalleActId);
+    if(!r) return;
+    const subtareas = (r.subtareas||[]).filter((_,i)=>i!==subt_idx);
+    try {
+        await updateDoc(doc(db,'actividades',_detalleActId), {subtareas});
+        const idx = localDB.findIndex(x=>x.id===_detalleActId);
+        if(idx>=0) localDB[idx].subtareas = subtareas;
+        renderSubtareasDetalle(subtareas);
+        renderTabla();
+    } catch(e) { console.error(e); }
+};
+
+window.toggleDescEdit = () => {
+    const descEl = document.getElementById('det-descripcion');
+    const descEdit = document.getElementById('det-desc-edit');
+    const btn = document.getElementById('det-desc-btn');
+    if(!descEl || !descEdit) return;
+    const editing = descEdit.style.display !== 'none';
+    if(editing) {
+        // Guardar
+        const newDesc = descEdit.value.trim();
+        if(_detalleActId) {
+            updateDoc(doc(db,'actividades',_detalleActId), {descripcion: newDesc}).then(()=>{
+                const idx = localDB.findIndex(x=>x.id===_detalleActId);
+                if(idx>=0) localDB[idx].descripcion = newDesc;
+                descEl.textContent = newDesc || 'Sin descripción';
+                renderTabla();
+            });
+        }
+        descEdit.style.display = 'none';
+        descEl.style.display = 'block';
+        if(btn) btn.textContent = 'Editar';
+    } else {
+        descEdit.style.display = 'block';
+        descEl.style.display = 'none';
+        if(btn) btn.textContent = 'Guardar';
+        descEdit.focus();
+    }
+};
+
+function renderComentariosDetalle(comentarios) {
+    const el = document.getElementById('det-comentarios');
+    if(!el) return;
+    if(!comentarios.length) {
+        el.innerHTML = '<div style="font-size:12px;color:#94a3b8;text-align:center;padding:16px;">Sin comentarios aún. Sé el primero.</div>';
+        return;
+    }
+    el.innerHTML = comentarios.map(c => {
+        const fecha = c.fecha ? new Date(c.fecha).toLocaleDateString('es-MX',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : '';
+        const inicial = (c.u||c.autor||'?').charAt(0).toUpperCase();
+        return `<div style="display:flex;gap:10px;margin-bottom:12px;">
+            <div style="width:28px;height:28px;border-radius:50%;background:#2563eb;color:white;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;">${inicial}</div>
+            <div style="flex:1;">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">
+                    <span style="font-size:11px;font-weight:700;color:#1e293b;">${(c.u||c.autor||'—').split('@')[0]}</span>
+                    <span style="font-size:10px;color:#94a3b8;">${fecha}</span>
+                </div>
+                <div style="font-size:12px;color:#475569;background:#f8fafc;padding:8px 10px;border-radius:0 8px 8px 8px;line-height:1.4;">${c.texto||c.msg||''}</div>
+            </div>
+        </div>`;
+    }).join('');
+    el.scrollTop = el.scrollHeight;
+}
+
+window.enviarComentarioDetalle = async () => {
+    const input = document.getElementById('det-nuevo-comentario');
+    const texto = input?.value.trim();
+    if(!texto || !_detalleActId) return;
+    const yo = auth.currentUser?.email || '';
+    const nuevo = {u: yo, texto, fecha: new Date().toISOString()};
+    const r = localDB.find(x=>x.id===_detalleActId);
+    const comentarios = [...(r?.comentarios||[]), nuevo];
+    try {
+        await updateDoc(doc(db,'actividades',_detalleActId), {comentarios});
+        const idx = localDB.findIndex(x=>x.id===_detalleActId);
+        if(idx>=0) localDB[idx].comentarios = comentarios;
+        if(input) input.value = '';
+        renderComentariosDetalle(comentarios);
+        renderTabla();
+    } catch(e) { alert('Error: '+e.message); }
+};
+
+// Subtareas en el formulario de nueva actividad
+let _formSubtareas = [];
+
+window.agregarSubtareaForm = () => {
+    const input = document.getElementById('n-subtarea-input');
+    const texto = input?.value.trim();
+    if(!texto) return;
+    _formSubtareas.push({texto, done:false});
+    if(input) input.value = '';
+    renderFormSubtareas();
+};
+
+function renderFormSubtareas() {
+    const el = document.getElementById('n-subtareas-list');
+    if(!el) return;
+    el.innerHTML = _formSubtareas.map((s,i) => `
+        <div style="display:flex;align-items:center;gap:6px;padding:3px 0;">
+            <span style="font-size:10px;color:#64748b;flex:1;">• ${s.texto}</span>
+            <button onclick="_formSubtareas.splice(${i},1);renderFormSubtareas();" style="background:none;border:none;cursor:pointer;color:#cbd5e1;font-size:10px;">✕</button>
+        </div>`).join('');
+}
+
+// Guardar actividad con campos nuevos
+const _origGuardarTarea = window.guardarTarea;
+window.guardarTarea = async () => {
+    const d = document.getElementById('n-desc').value.trim();
+    if(!d) return;
+    const area = document.getElementById('n-area').value;
+    const encargado = document.getElementById('n-encargado')?.value || auth.currentUser.email;
+    const prioridad = document.getElementById('n-prioridad')?.value || 'Media';
+    const tipo = document.getElementById('n-tipo')?.value || 'Tarea';
+    const descripcion = document.getElementById('n-descripcion')?.value.trim() || '';
+    const origen = document.getElementById('n-origen')?.value.trim() || '';
+    const fechaInicio = document.getElementById('n-inicio')?.value || '';
+    const fechaLimite = document.getElementById('n-date')?.value || '';
+    const subtareas = [..._formSubtareas];
+
+    await addDoc(collection(db,'actividades'),{
+        actividad: d, area, fechaLimite, fechaInicio, prioridad, origen,
+        tipo, descripcion, subtareas,
+        estatus: 'Sin Iniciar',
+        fechaCreacion: new Date().toISOString(),
+        responsable: auth.currentUser.email,
+        encargado, comentarios: []
+    });
+
+    // Limpiar form
+    ['n-desc','n-inicio','n-date','n-origen','n-descripcion','n-subtarea-input'].forEach(id=>{
+        const el = document.getElementById(id);
+        if(el) el.value = '';
+    });
+    _formSubtareas = [];
+    renderFormSubtareas();
+    window.mostrarPush('Actividad publicada', `"${d}" — ${area} · ${tipo}`, '');
+    navegar('dashboard');
+};
+
+// Cerrar modal al click fuera
+document.getElementById('modal-detalle-act')?.addEventListener('click', (e) => {
+    if(e.target === document.getElementById('modal-detalle-act')) cerrarDetalleActividad();
+});
+
+console.log('Modal Detalle Actividad Jira/Salesforce cargado');
+
+
+document.addEventListener('keydown', e => {
+    if(e.key === 'Escape') {
+        if(document.getElementById('modal-detalle-act')?.style.display === 'flex') {
+            cerrarDetalleActividad();
+        }
+    }
+});
 </script>
     <!-- ═══ MODAL COMPARTIR v2 ═══ -->
 <div id="modal-compartir" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);z-index:99999;align-items:center;justify-content:center;">
