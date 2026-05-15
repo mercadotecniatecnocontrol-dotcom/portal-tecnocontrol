@@ -10095,5 +10095,455 @@ document.addEventListener('keydown', e => {
         </div>
     </div>
 </div>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     MÓDULO GMAIL CRM — Inbox + Redactar + Seguimiento automático
+     Client ID: 1014725100171-fl8k6b558ln3sht48m4cbrt1jfv36g1b.apps.googleusercontent.com
+     Correo de salida: ventas@tecnocontrol.com.mx
+═══════════════════════════════════════════════════════════════════ -->
+
+<!-- MODAL INBOX DE CORREOS -->
+<div id="modal-gmail-inbox" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);z-index:99998;align-items:center;justify-content:center;">
+    <div style="background:#ffffff;border-radius:20px;width:760px;max-width:97vw;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+        <div style="padding:20px 24px 0;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e2e8f0;padding-bottom:14px;">
+            <div style="display:flex;align-items:center;gap:10px;">
+                <span style="font-size:20px;">📧</span>
+                <div>
+                    <div style="font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;color:#1e293b;">Inbox CRM — ventas@tecnocontrol.com.mx</div>
+                    <div id="gmail-inbox-status" style="font-size:11px;color:#64748b;">Conectando...</div>
+                </div>
+            </div>
+            <div style="display:flex;gap:8px;">
+                <button onclick="gmailRedactar()" style="padding:8px 14px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:white;border:none;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer;">✏️ Redactar</button>
+                <button onclick="gmailCargarInbox()" style="padding:8px 14px;background:#f1f5f9;border:none;border-radius:8px;font-weight:700;font-size:12px;color:#475569;cursor:pointer;">🔄 Actualizar</button>
+                <button onclick="document.getElementById('modal-gmail-inbox').style.display='none'" style="padding:8px 14px;background:#fee2e2;border:none;border-radius:8px;font-weight:700;font-size:12px;color:#dc2626;cursor:pointer;">✕ Cerrar</button>
+            </div>
+        </div>
+        <!-- Filtros -->
+        <div style="padding:12px 24px;display:flex;gap:8px;border-bottom:1px solid #f1f5f9;">
+            <button onclick="gmailSetFiltro('todos')" id="gmail-btn-todos" style="padding:6px 14px;border-radius:20px;border:2px solid #2563eb;background:#eff6ff;color:#2563eb;font-weight:700;font-size:11px;cursor:pointer;">Todos</button>
+            <button onclick="gmailSetFiltro('identificados')" id="gmail-btn-identificados" style="padding:6px 14px;border-radius:20px;border:1px solid #e2e8f0;background:#fff;color:#64748b;font-weight:700;font-size:11px;cursor:pointer;">✅ Identificados</button>
+            <button onclick="gmailSetFiltro('pendientes')" id="gmail-btn-pendientes" style="padding:6px 14px;border-radius:20px;border:1px solid #e2e8f0;background:#fff;color:#64748b;font-weight:700;font-size:11px;cursor:pointer;">❓ Sin identificar</button>
+            <button onclick="gmailSetFiltro('enviados')" id="gmail-btn-enviados" style="padding:6px 14px;border-radius:20px;border:1px solid #e2e8f0;background:#fff;color:#64748b;font-weight:700;font-size:11px;cursor:pointer;">📤 Enviados</button>
+        </div>
+        <div id="gmail-inbox-lista" style="overflow-y:auto;flex:1;padding:0;"></div>
+    </div>
+</div>
+
+<!-- MODAL DETALLE DE CORREO -->
+<div id="modal-gmail-detalle" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);z-index:100000;align-items:center;justify-content:center;">
+    <div style="background:#ffffff;border-radius:20px;width:680px;max-width:97vw;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+        <div id="gmail-detalle-header" style="padding:20px 24px;border-bottom:1px solid #e2e8f0;"></div>
+        <div id="gmail-detalle-body" style="padding:20px 24px;overflow-y:auto;flex:1;font-size:14px;color:#1e293b;line-height:1.6;"></div>
+        <div style="padding:14px 24px;border-top:1px solid #e2e8f0;display:flex;gap:8px;">
+            <button onclick="gmailResponder()" style="flex:1;padding:10px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:white;border:none;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;">↩️ Responder</button>
+            <button id="gmail-btn-asignar" onclick="gmailAsignarCliente()" style="flex:1;padding:10px;background:linear-gradient(135deg,#059669,#047857);color:white;border:none;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;">👤 Asignar cliente</button>
+            <button onclick="document.getElementById('modal-gmail-detalle').style.display='none'" style="padding:10px 18px;background:#f1f5f9;border:none;border-radius:10px;font-weight:700;font-size:13px;color:#475569;cursor:pointer;">Cerrar</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL REDACTAR CORREO -->
+<div id="modal-gmail-redactar" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);z-index:100001;align-items:center;justify-content:center;">
+    <div style="background:#ffffff;border-radius:20px;width:620px;max-width:97vw;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+        <div style="padding:20px 24px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;">
+            <div style="font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;color:#1e293b;">✏️ Nuevo correo</div>
+            <div style="font-size:11px;color:#64748b;">Sale de: <b>ventas@tecnocontrol.com.mx</b></div>
+        </div>
+        <div style="padding:16px 24px;display:flex;flex-direction:column;gap:10px;flex:1;overflow-y:auto;">
+            <div>
+                <label style="font-size:10px;font-weight:700;color:#64748b;letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:4px;">Para</label>
+                <input id="gmail-to" type="email" class="mkt-form-input" placeholder="destinatario@email.com">
+            </div>
+            <div>
+                <label style="font-size:10px;font-weight:700;color:#64748b;letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:4px;">Asunto</label>
+                <input id="gmail-subject" type="text" class="mkt-form-input" placeholder="Asunto del correo">
+            </div>
+            <div>
+                <label style="font-size:10px;font-weight:700;color:#64748b;letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:4px;">Mensaje</label>
+                <textarea id="gmail-body" class="mkt-form-input" rows="8" style="resize:vertical;" placeholder="Escribe tu mensaje aquí..."></textarea>
+            </div>
+            <div id="gmail-firma-preview" style="font-size:11px;color:#94a3b8;padding:8px 12px;background:#f8fafc;border-radius:8px;white-space:pre-line;"></div>
+            <div>
+                <label style="font-size:10px;font-weight:700;color:#64748b;letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:4px;">Guardar en perfil de cliente (opcional)</label>
+                <input id="gmail-cliente-id" type="text" class="mkt-form-input" placeholder="ID del cliente para registrar en timeline">
+            </div>
+        </div>
+        <div style="padding:14px 24px;border-top:1px solid #e2e8f0;display:flex;gap:8px;">
+            <button onclick="gmailEnviar()" style="flex:1;padding:11px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:white;border:none;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;">📤 Enviar</button>
+            <button onclick="document.getElementById('modal-gmail-redactar').style.display='none'" style="padding:11px 18px;background:#f1f5f9;border:none;border-radius:10px;font-weight:700;font-size:13px;color:#475569;cursor:pointer;">Cancelar</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// MÓDULO GMAIL CRM
+// ═══════════════════════════════════════════════════════
+
+const GMAIL_CLIENT_ID = '1014725100171-fl8k6b558ln3sht48m4cbrt1jfv36g1b.apps.googleusercontent.com';
+const GMAIL_SCOPES = 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly';
+const CORREO_SALIDA = 'ventas@tecnocontrol.com.mx';
+
+let gmailToken = null;
+let gmailCorreoActual = null;
+let gmailFiltroActual = 'todos';
+let gmailMensajes = [];
+
+// ── Autenticación OAuth2 ──────────────────────────────
+function gmailAutenticar() {
+    return new Promise((resolve, reject) => {
+        if (gmailToken) { resolve(gmailToken); return; }
+
+        const authUrl = `https://accounts.google.com/o/oauth2/auth?` +
+            `client_id=${GMAIL_CLIENT_ID}` +
+            `&redirect_uri=${encodeURIComponent(window.location.origin + window.location.pathname)}` +
+            `&response_type=token` +
+            `&scope=${encodeURIComponent(GMAIL_SCOPES)}` +
+            `&prompt=consent`;
+
+        const popup = window.open(authUrl, 'gmail_auth', 'width=520,height=620,scrollbars=yes');
+
+        const check = setInterval(() => {
+            try {
+                if (popup.closed) { clearInterval(check); reject(new Error('Ventana cerrada')); return; }
+                const hash = popup.location.hash;
+                if (hash && hash.includes('access_token')) {
+                    const params = new URLSearchParams(hash.substring(1));
+                    gmailToken = params.get('access_token');
+                    clearInterval(check);
+                    popup.close();
+                    resolve(gmailToken);
+                }
+            } catch(e) { /* cross-origin, sigue esperando */ }
+        }, 500);
+    });
+}
+
+// ── Abrir inbox ───────────────────────────────────────
+window.abrirGmailInbox = async function() {
+    document.getElementById('modal-gmail-inbox').style.display = 'flex';
+    await gmailCargarInbox();
+};
+
+// ── Cargar mensajes ───────────────────────────────────
+window.gmailCargarInbox = async function() {
+    const statusEl = document.getElementById('gmail-inbox-status');
+    statusEl.textContent = 'Autenticando...';
+    try {
+        await gmailAutenticar();
+        statusEl.textContent = 'Cargando mensajes...';
+        await gmailFetchMensajes();
+    } catch(e) {
+        statusEl.textContent = '⚠️ ' + e.message;
+    }
+};
+
+async function gmailFetchMensajes() {
+    const statusEl = document.getElementById('gmail-inbox-status');
+    const query = gmailFiltroActual === 'enviados' ? 'in:sent' : 'in:inbox';
+    const res = await fetch(
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=30&q=${encodeURIComponent(query)}`,
+        { headers: { Authorization: `Bearer ${gmailToken}` } }
+    );
+    if (!res.ok) {
+        if (res.status === 401) { gmailToken = null; await gmailCargarInbox(); return; }
+        throw new Error('Error al obtener mensajes: ' + res.status);
+    }
+    const data = await res.json();
+    const msgs = data.messages || [];
+    statusEl.textContent = `${msgs.length} mensajes`;
+
+    // Cargar detalles básicos
+    gmailMensajes = [];
+    const detalles = await Promise.all(msgs.slice(0, 25).map(m =>
+        fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`,
+            { headers: { Authorization: `Bearer ${gmailToken}` } }
+        ).then(r => r.json())
+    ));
+    gmailMensajes = detalles;
+    gmailRenderLista();
+}
+
+function gmailRenderLista() {
+    const lista = document.getElementById('gmail-inbox-lista');
+    if (!gmailMensajes.length) {
+        lista.innerHTML = '<div style="padding:40px;text-align:center;color:#94a3b8;">No hay mensajes</div>';
+        return;
+    }
+
+    const clientesEmails = {}; // email → cliente
+    // Buscar clientes para identificar remitentes
+    if (window.allClients) {
+        window.allClients.forEach(c => {
+            const e = (c.email || c.correo || '').toLowerCase().trim();
+            if (e) clientesEmails[e] = c;
+        });
+    }
+
+    lista.innerHTML = gmailMensajes.map(msg => {
+        const hdrs = msg.payload?.headers || [];
+        const from = hdrs.find(h => h.name === 'From')?.value || '';
+        const subject = hdrs.find(h => h.name === 'Subject')?.value || '(sin asunto)';
+        const date = hdrs.find(h => h.name === 'Date')?.value || '';
+        const leido = !msg.labelIds?.includes('UNREAD');
+
+        // Identificar cliente
+        const emailMatch = from.match(/<(.+?)>/) || [null, from];
+        const emailFrom = emailMatch[1].toLowerCase().trim();
+        const clienteEncontrado = clientesEmails[emailFrom];
+
+        const fechaFmt = date ? new Date(date).toLocaleDateString('es-MX', {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '';
+
+        return `<div onclick="gmailVerDetalle('${msg.id}')" style="padding:14px 24px;border-bottom:1px solid #f1f5f9;cursor:pointer;background:${leido?'#fff':'#f0f7ff'};display:flex;align-items:flex-start;gap:12px;transition:background 0.15s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='${leido?'#fff':'#f0f7ff'}'">
+            <div style="width:8px;height:8px;border-radius:50%;background:${leido?'transparent':'#2563eb'};margin-top:6px;flex-shrink:0;border:${leido?'1px solid #cbd5e1':'none'};"></div>
+            <div style="flex:1;min-width:0;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;">
+                    <div style="font-weight:${leido?'500':'700'};font-size:13px;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:280px;">${from.replace(/<.+>/, '').trim() || emailFrom}</div>
+                    <div style="font-size:11px;color:#94a3b8;white-space:nowrap;">${fechaFmt}</div>
+                </div>
+                <div style="font-size:13px;color:#475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${subject}</div>
+                ${clienteEncontrado ? `<div style="margin-top:4px;display:inline-block;padding:2px 8px;background:#dcfce7;border-radius:10px;font-size:10px;font-weight:700;color:#16a34a;">✅ ${clienteEncontrado.nombre || clienteEncontrado.razonSocial || emailFrom}</div>` : `<div style="margin-top:4px;display:inline-block;padding:2px 8px;background:#fef9c3;border-radius:10px;font-size:10px;font-weight:700;color:#854d0e;">❓ Sin identificar</div>`}
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// ── Ver detalle de correo ─────────────────────────────
+window.gmailVerDetalle = async function(msgId) {
+    document.getElementById('modal-gmail-detalle').style.display = 'flex';
+    document.getElementById('gmail-detalle-header').innerHTML = '<div style="color:#94a3b8;font-size:13px;">Cargando...</div>';
+    document.getElementById('gmail-detalle-body').innerHTML = '';
+
+    try {
+        const res = await fetch(
+            `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msgId}?format=full`,
+            { headers: { Authorization: `Bearer ${gmailToken}` } }
+        );
+        const msg = await res.json();
+        gmailCorreoActual = msg;
+
+        const hdrs = msg.payload?.headers || [];
+        const from = hdrs.find(h => h.name === 'From')?.value || '';
+        const to = hdrs.find(h => h.name === 'To')?.value || '';
+        const subject = hdrs.find(h => h.name === 'Subject')?.value || '(sin asunto)';
+        const date = hdrs.find(h => h.name === 'Date')?.value || '';
+        const fechaFmt = date ? new Date(date).toLocaleString('es-MX') : '';
+
+        document.getElementById('gmail-detalle-header').innerHTML = `
+            <div style="font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;color:#1e293b;margin-bottom:8px;">${subject}</div>
+            <div style="font-size:12px;color:#64748b;display:flex;flex-direction:column;gap:2px;">
+                <div><b>De:</b> ${from}</div>
+                <div><b>Para:</b> ${to}</div>
+                <div><b>Fecha:</b> ${fechaFmt}</div>
+            </div>`;
+
+        // Extraer cuerpo
+        let body = '';
+        function extractBody(parts) {
+            if (!parts) return '';
+            for (const p of parts) {
+                if (p.mimeType === 'text/plain' && p.body?.data) {
+                    return atob(p.body.data.replace(/-/g,'+').replace(/_/g,'/'));
+                }
+                if (p.parts) { const r = extractBody(p.parts); if (r) return r; }
+            }
+            return '';
+        }
+        if (msg.payload?.body?.data) {
+            body = atob(msg.payload.body.data.replace(/-/g,'+').replace(/_/g,'/'));
+        } else if (msg.payload?.parts) {
+            body = extractBody(msg.payload.parts);
+        }
+
+        document.getElementById('gmail-detalle-body').innerHTML =
+            `<pre style="white-space:pre-wrap;font-family:inherit;font-size:14px;margin:0;">${body.replace(/</g,'&lt;')}</pre>`;
+
+        // Marcar como leído
+        await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msgId}/modify`,
+            { method:'POST', headers:{ Authorization:`Bearer ${gmailToken}`, 'Content-Type':'application/json' },
+              body: JSON.stringify({ removeLabelIds: ['UNREAD'] }) }
+        ).catch(()=>{});
+
+    } catch(e) {
+        document.getElementById('gmail-detalle-header').innerHTML = `<div style="color:#dc2626;">Error: ${e.message}</div>`;
+    }
+};
+
+// ── Responder correo ──────────────────────────────────
+window.gmailResponder = function() {
+    if (!gmailCorreoActual) return;
+    const hdrs = gmailCorreoActual.payload?.headers || [];
+    const from = hdrs.find(h => h.name === 'From')?.value || '';
+    const subject = hdrs.find(h => h.name === 'Subject')?.value || '';
+    const emailMatch = from.match(/<(.+?)>/) || [null, from];
+
+    document.getElementById('gmail-to').value = emailMatch[1];
+    document.getElementById('gmail-subject').value = subject.startsWith('Re:') ? subject : 'Re: ' + subject;
+    document.getElementById('gmail-body').value = '';
+    document.getElementById('gmail-cliente-id').value = '';
+
+    document.getElementById('modal-gmail-detalle').style.display = 'none';
+    gmailRedactar();
+};
+
+// ── Asignar cliente ───────────────────────────────────
+window.gmailAsignarCliente = async function() {
+    if (!gmailCorreoActual) return;
+    const hdrs = gmailCorreoActual.payload?.headers || [];
+    const from = hdrs.find(h => h.name === 'From')?.value || '';
+    const subject = hdrs.find(h => h.name === 'Subject')?.value || '(sin asunto)';
+    const emailMatch = from.match(/<(.+?)>/) || [null, from];
+    const emailFrom = emailMatch[1].toLowerCase().trim();
+
+    const clienteId = prompt(`Ingresa el ID del cliente al que pertenece este correo de:\n${from}\n\nDeja vacío para buscar por email.`);
+    if (clienteId === null) return;
+
+    let cId = clienteId.trim();
+
+    // Si está vacío, buscar por email en Firebase
+    if (!cId) {
+        alert(`Buscando cliente con email: ${emailFrom}...\nSi no se encuentra, escribe el ID manualmente.`);
+        return;
+    }
+
+    // Guardar como interacción en actividades_cliente
+    try {
+        const { addDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+        await addDoc(collection(window.db, 'actividades_cliente'), {
+            clienteId: cId,
+            tipo: 'Email',
+            titulo: 'Correo recibido: ' + subject,
+            descripcion: `De: ${from}`,
+            estatus: 'Completada',
+            creadoEn: new Date().toISOString(),
+            creadoPor: auth.currentUser?.email || '',
+            origen: 'Gmail CRM',
+            fechaLimite: new Date().toISOString().slice(0,10),
+            encargado: auth.currentUser?.email || ''
+        });
+        alert('✅ Correo registrado en el perfil del cliente.');
+    } catch(e) {
+        alert('Error al guardar: ' + e.message);
+    }
+};
+
+// ── Redactar ──────────────────────────────────────────
+window.gmailRedactar = function(para='', asunto='', clienteId='') {
+    document.getElementById('gmail-to').value = para;
+    document.getElementById('gmail-subject').value = asunto;
+    document.getElementById('gmail-body').value = '';
+    document.getElementById('gmail-cliente-id').value = clienteId;
+
+    // Mostrar firma del vendedor actual
+    const yo = auth.currentUser?.email || '';
+    const firma = typeof firmaVendedor === 'function' ? firmaVendedor(yo) : '';
+    document.getElementById('gmail-firma-preview').textContent = firma;
+
+    document.getElementById('modal-gmail-redactar').style.display = 'flex';
+};
+
+// ── Enviar correo ─────────────────────────────────────
+window.gmailEnviar = async function() {
+    const to = document.getElementById('gmail-to').value.trim();
+    const subject = document.getElementById('gmail-subject').value.trim();
+    const body = document.getElementById('gmail-body').value.trim();
+    const clienteId = document.getElementById('gmail-cliente-id').value.trim();
+
+    if (!to || !subject || !body) { alert('Completa Para, Asunto y Mensaje.'); return; }
+
+    try {
+        await gmailAutenticar();
+
+        const yo = auth.currentUser?.email || '';
+        const nombre = typeof nombreUsuario === 'function' ? nombreUsuario(yo) : yo;
+        const firma = typeof firmaVendedor === 'function' ? firmaVendedor(yo) : '';
+        const cuerpoCompleto = body + firma;
+
+        // Construir email en formato RFC 2822
+        const email = [
+            `From: ${nombre} <${CORREO_SALIDA}>`,
+            `To: ${to}`,
+            `Subject: ${subject}`,
+            `Content-Type: text/plain; charset=utf-8`,
+            ``,
+            cuerpoCompleto
+        ].join('\r\n');
+
+        const encodedEmail = btoa(unescape(encodeURIComponent(email)))
+            .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+        const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${gmailToken}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ raw: encodedEmail })
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error?.message || 'Error al enviar');
+        }
+
+        // Registrar en Firestore si hay clienteId
+        if (clienteId) {
+            try {
+                const { addDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+                await addDoc(collection(window.db, 'actividades_cliente'), {
+                    clienteId,
+                    tipo: 'Email',
+                    titulo: 'Correo enviado: ' + subject,
+                    descripcion: `Para: ${to}\n${cuerpoCompleto.slice(0, 200)}`,
+                    estatus: 'Completada',
+                    creadoEn: new Date().toISOString(),
+                    creadoPor: yo,
+                    origen: 'Gmail CRM',
+                    fechaLimite: new Date().toISOString().slice(0,10),
+                    encargado: yo
+                });
+            } catch(e) { console.warn('No se guardó en cliente:', e); }
+        }
+
+        document.getElementById('modal-gmail-redactar').style.display = 'none';
+        alert('✅ Correo enviado correctamente desde ' + CORREO_SALIDA);
+
+    } catch(e) {
+        alert('❌ Error al enviar: ' + e.message);
+    }
+};
+
+// ── Filtros inbox ─────────────────────────────────────
+window.gmailSetFiltro = function(filtro) {
+    gmailFiltroActual = filtro;
+    ['todos','identificados','pendientes','enviados'].forEach(f => {
+        const btn = document.getElementById(`gmail-btn-${f}`);
+        if (!btn) return;
+        if (f === filtro) {
+            btn.style.borderColor = '#2563eb';
+            btn.style.background = '#eff6ff';
+            btn.style.color = '#2563eb';
+        } else {
+            btn.style.borderColor = '#e2e8f0';
+            btn.style.background = '#fff';
+            btn.style.color = '#64748b';
+        }
+    });
+    gmailFetchMensajes().catch(e => document.getElementById('gmail-inbox-status').textContent = '⚠️ ' + e.message);
+};
+
+// ── Botón Gmail en sidebar ────────────────────────────
+// Se agrega al navegar, cuando el portal ya cargó
+document.addEventListener('DOMContentLoaded', () => {
+    // Agregar botón de Gmail en la barra lateral si existe
+    const sidebarFooter = document.querySelector('.sidebar-footer');
+    if (sidebarFooter) {
+        const btnGmail = document.createElement('div');
+        btnGmail.innerHTML = `<button onclick="abrirGmailInbox()" style="width:100%;padding:10px 16px;background:linear-gradient(135deg,#ea4335,#c5221f);color:white;border:none;border-radius:10px;font-weight:700;font-size:12px;cursor:pointer;margin-bottom:8px;">📧 Inbox CRM</button>`;
+        sidebarFooter.parentElement.insertBefore(btnGmail, sidebarFooter);
+    }
+});
+
+console.log('MÓDULO GMAIL CRM cargado ✅');
+</script>
+
 </body>
 </html>
