@@ -2858,7 +2858,6 @@ const auth = getAuth(app);
 const ADMIN = "mercadotecniatecnocontrol@gmail.com";
 const ADMIN_EMAILS = [
     "mercadotecniatecnocontrol@gmail.com",  // Glen — admin principal
-    "c.acosta@tecnocontrol.com.mx",          // C. Acosta — Administración
     "p.pinedo@tecnocontrol.com.mx",          // Paloma Pinedo — Directora
     "m.delao@tecnocontrol.com.mx",           // Martín De la O — Director
 ];
@@ -2869,14 +2868,21 @@ function esAdminTotal(email){
 
 // ── Mapa email → nombre completo para mostrar en tareas ──────
 const NOMBRE_MAP = {
+    // ── Administradores ──
     'mercadotecniatecnocontrol@gmail.com': 'Glen (Marketing)',
+    'p.pinedo@tecnocontrol.com.mx':        'Paloma Pinedo',
+    'm.delao@tecnocontrol.com.mx':         'Martín De la O',
+    // ── Operaciones internas ──
     'c.acosta@tecnocontrol.com.mx':        'C. Acosta',
     'rh@tecnocontrol.com.mx':              'RH',
     'facturacion@tecnocontrol.com.mx':     'Facturación',
     'aux.contable@tecnocontrol.com.mx':    'Aux. Contable',
     'contabilidad@tecnocontrol.com.mx':    'Contabilidad',
-    // ── Para agregar nuevos usuarios: copia una línea y pon el email y nombre ──
-    // 'nuevo.usuario@tecnocontrol.com.mx': 'Nombre Apellido',
+    // ── Vendedores ──
+    'guillermo.d@tecnocontrol.com.mx':     'Guillermo Durstewitz',
+    'antonio@tecnocontrol.com.mx':         'Antonio Luna',
+    'jenriquez@tecnocontrol.com.mx':       'Jorge Enríquez',
+    'miguel@tecnocontrol.com.mx':          'Miguel Montellano',
 };
 function nombreUsuario(email){
     if(!email) return '—';
@@ -2892,15 +2898,11 @@ const USUARIOS_AREA = {
     'Marketing':       ['mercadotecniatecnocontrol@gmail.com'],
     'Administración':  ['c.acosta@tecnocontrol.com.mx'],
     'Ventas':          [
-        'p.pinedo@tecnocontrol.com.mx',
-        'jorge@tecnocontrol.com.mx',
-        'miguel@tecnocontrol.com.mx',
-        'ventas@tecnocontrol.com.mx',
         'guillermo.d@tecnocontrol.com.mx',
-        'ventas2@tecnocontrol.com.mx',
-        'j.enriquez@tecnocontrol.com.mx',
-        'm.montellano@tecnocontrol.com.mx',
-        'f.sauzameda@tecnocontrol.com.mx',
+        'antonio@tecnocontrol.com.mx',
+        'jenriquez@tecnocontrol.com.mx',
+        'miguel@tecnocontrol.com.mx',
+        'p.pinedo@tecnocontrol.com.mx',
         'm.delao@tecnocontrol.com.mx',
     ],
 };
@@ -3426,16 +3428,21 @@ function escuchar(){
 // aparece en la base de datos (mayúsculas/acentos incluidos).
 window.EMAIL_AREA_MAP = window.EMAIL_AREA_MAP || {};
 const EMAIL_AREA_MAP = {
+    // ── Operaciones internas ──
     'c.acosta@tecnocontrol.com.mx':         'Administración',
     'rh@tecnocontrol.com.mx':               'Recursos Humanos',
     'facturacion@tecnocontrol.com.mx':      'Ingresos',
     'aux.contable@tecnocontrol.com.mx':     'Egresos',
     'mercadotecniatecnocontrol@gmail.com':  'Marketing',
     'contabilidad@tecnocontrol.com.mx':     'Contabilidad',
-    'jenriquez@tecnocontrol.com.mx':     'Ventas',
-    'miguel@tecnocontrol.com.mx':     'Ventas',
-    // ── Agregar aquí los siguientes usuarios ──
-    // 'nuevo@tecnocontrol.com.mx': 'Ventas',
+    // ── Vendedores ──
+    'guillermo.d@tecnocontrol.com.mx':      'Ventas',
+    'antonio@tecnocontrol.com.mx':          'Ventas',
+    'jenriquez@tecnocontrol.com.mx':        'Ventas',
+    'miguel@tecnocontrol.com.mx':           'Ventas',
+    // ── Directores (acceso admin, igual ven todo) ──
+    'p.pinedo@tecnocontrol.com.mx':         'Administración',
+    'm.delao@tecnocontrol.com.mx':          'Administración',
 };
 
 // ── Grupos de visibilidad de tareas ─────────────────────────
@@ -4076,6 +4083,14 @@ window.navegar=(id,b)=>{
 
 // ── Email de Cristina (directora) — puede ver vista ejecutiva ──
 const CRISTINA_EMAIL = 'cristina@tecnocontrol.com.mx'; // ← Cambia por su email real
+// Correo único de salida para el equipo de Ventas
+// Los correos se envían desde esta cuenta pero incluyen el nombre del vendedor en la firma
+const CORREO_SALIDA_VENTAS = 'ventas@tecnocontrol.com.mx';
+// Helper: genera firma identificada por vendedor para correos de Ventas
+function firmaVendedor(email) {
+    const nombre = nombreUsuario(email) || email.split('@')[0];
+    return `\n\n──────────────────────────\n${nombre}\nEquipo Comercial · Tecnocontrol\n📧 ${CORREO_SALIDA_VENTAS}\n🌐 tecnocontrol.com.mx`; 
+}
 
 function puedeVerEjecutivo(email){ return esAdminTotal(email) || email === CRISTINA_EMAIL; }
 
