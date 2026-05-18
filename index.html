@@ -612,6 +612,32 @@
 
         /* ══ MAPA DE CLIENTES — Ventas ═══════════════════════ */
         #ventas-dashboard{display:none;margin-bottom:28px;}
+
+
+        /* ── Portal CP (Perfil Cliente) ── */
+        .portal-cp-tab { transition: color 0.15s, border-color 0.15s; }
+        .portal-cp-tab:hover { color: #2563eb !important; }
+        #modal-perfil-cliente.modal-visible { display: flex !important; }
+        .pcp-section { background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:14px;margin-bottom:10px; }
+        .pcp-label { font-size:10px;font-weight:700;color:#1e3a8a;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px; }
+        .pcp-val { font-size:13px;color:#1e293b;font-weight:600; }
+        .pcp-meta { font-size:11px;color:#64748b;margin-top:2px; }
+        .pcp-timeline-item { display:flex;gap:10px;padding:10px 0;border-bottom:1px solid #f1f5f9; }
+        .pcp-timeline-item:last-child { border-bottom:none; }
+        .pcp-dot { width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0; }
+        .pcp-act-card { background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:12px;margin-bottom:8px;cursor:pointer;transition:0.15s; }
+        .pcp-act-card:hover { border-color:#93c5fd;box-shadow:0 2px 8px rgba(37,99,235,0.1); }
+        .pcp-cot-card { background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:12px;margin-bottom:8px; }
+        .pcp-badge { font-size:9px;font-weight:700;padding:2px 7px;border-radius:8px; }
+        .pcp-badge-pend { background:#fef3c7;color:#d97706; }
+        .pcp-badge-ok { background:#d1fae5;color:#059669; }
+        .pcp-badge-env { background:#dbeafe;color:#2563eb; }
+        .pcp-badge-can { background:#fee2e2;color:#dc2626; }
+
+        /* ═══ VENTAS DASHBOARD — Override layout ═══ */
+        #sec-ventas-mapa { padding: 0 !important; }
+        .vsb-btn svg { display: block; }
+
         .mapa-wrap{background:#ffffff;border-radius:16px;padding:18px;border:1px solid rgba(59,130,246,0.10);box-shadow:0 2px 8px rgba(37,99,235,0.05);margin-bottom:16px;}
         #mapa-clientes{width:100%;height:clamp(260px,45vw,520px);border-radius:12px;border:1px solid #e2e8f0;background:#f8faff;}
         .cliente-popup{min-width:220px;}
@@ -2158,7 +2184,7 @@
         </div>
 
         <!-- VENTAS — Dashboard con sidebar interno -->
-        <div class="section" id="sec-ventas-mapa" style="display:none;padding:0;margin:-32px;min-height:calc(100vh - 62px);">
+        <div class="section" id="sec-ventas-mapa" style="display:none;padding:0;margin:-32px;height:calc(100vh - 62px);overflow:hidden;">
 
             <style>
                 .vsb-btn:hover { background: rgba(37,99,235,0.4) !important; opacity:1 !important; }
@@ -6133,14 +6159,18 @@ function toggleVentasMapa(area, email){
     const secArea = document.getElementById('sec-area');
     if(!secMapa) return;
     if(area === 'Ventas'){
-        // Mostrar/ocultar botón de Metas según permisos
         const btnMetas = document.getElementById('btn-abrir-metas');
-        if(btnMetas) btnMetas.style.display = (esAdminTotal(email)||email===MARTIN_EMAIL) ? 'block' : 'none';
-        // En Ventas: mostrar mapa ENCIMA del kanban (no en lugar de)
+        if(btnMetas) btnMetas.style.display = (esAdminTotal(email)||email===MARTIN_EMAIL) ? 'flex' : 'none';
+        // Ventas toma TODO el espacio — ocultar sec-area
         secMapa.style.display = 'block';
-        if(secArea) secArea.style.display = 'block';
+        if(secArea) secArea.style.display = 'none';
         inicializarMapa();
         cargarClientes();
+        // Activar sidebar con modulo Mapa
+        setTimeout(() => {
+            const btn = document.getElementById('vsb-mapa');
+            if(typeof ventasSidebar === 'function') ventasSidebar('mapa', btn);
+        }, 400);
     } else {
         secMapa.style.display = 'none';
         if(secArea) secArea.style.display = 'block';
@@ -10147,7 +10177,7 @@ document.addEventListener('keydown', e => {
 });
 </script>
     <!-- ═══ MODAL COMPARTIR v2 ═══ -->
-<div id="modal-compartir" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);z-index:99999;align-items:center;justify-content:center;">
+<div id="modal-compartir" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);z-index:999999 !important;align-items:center;justify-content:center;display:none;">
     <div style="background:#ffffff;border-radius:20px;padding:28px;width:460px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.25);position:relative;">
         <div style="font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;color:#1e293b;margin-bottom:6px;">📤 Compartir actividad</div>
         <div id="compartir-item-preview" style="font-size:12px;color:#64748b;margin-bottom:16px;"></div>
@@ -11506,6 +11536,414 @@ console.log('VENTAS FIXES cargados ✅');
 
 
 </script>
+</script>
+
+
+<!-- ═══ MODAL PERFIL DE CLIENTE (Portal) ═══ -->
+<div id="modal-perfil-cliente" style="display:none;position:fixed;inset:0;z-index:99997;background:rgba(0,0,0,0.5);backdrop-filter:blur(4px);align-items:flex-start;justify-content:flex-end;">
+    <div style="width:480px;max-width:95vw;height:100vh;background:white;display:flex;flex-direction:column;box-shadow:-8px 0 40px rgba(0,0,0,0.2);overflow:hidden;">
+        <!-- Header del cliente -->
+        <div id="portal-cp-header" style="background:linear-gradient(135deg,#1e3a8a,#2563eb);padding:20px;flex-shrink:0;">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+                <button onclick="cerrarPerfilCliente()" style="width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,0.2);border:none;color:white;cursor:pointer;display:flex;align-items:center;justify-content:center;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+                <div style="flex:1;">
+                    <div id="portal-cp-nombre" style="font-size:17px;font-weight:800;color:white;line-height:1.2;">—</div>
+                    <div id="portal-cp-sub" style="font-size:11px;color:rgba(255,255,255,0.75);margin-top:3px;">—</div>
+                </div>
+                <button onclick="portalCpNuevaActividad()" style="padding:8px 12px;background:white;color:#1e3a8a;border:none;border-radius:10px;font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:800;cursor:pointer;">+ Actividad</button>
+            </div>
+            <!-- KPIs -->
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
+                <div style="background:rgba(255,255,255,0.12);border-radius:10px;padding:8px;text-align:center;">
+                    <div id="portal-cp-kpi-cot" style="font-size:16px;font-weight:800;color:white;">0</div>
+                    <div style="font-size:9px;color:rgba(255,255,255,0.7);text-transform:uppercase;">Cotizaciones</div>
+                </div>
+                <div style="background:rgba(255,255,255,0.12);border-radius:10px;padding:8px;text-align:center;">
+                    <div id="portal-cp-kpi-vis" style="font-size:16px;font-weight:800;color:white;">0</div>
+                    <div style="font-size:9px;color:rgba(255,255,255,0.7);text-transform:uppercase;">Visitas</div>
+                </div>
+                <div style="background:rgba(255,255,255,0.12);border-radius:10px;padding:8px;text-align:center;">
+                    <div id="portal-cp-kpi-act" style="font-size:16px;font-weight:800;color:white;">0</div>
+                    <div style="font-size:9px;color:rgba(255,255,255,0.7);text-transform:uppercase;">Actividades</div>
+                </div>
+                <div style="background:rgba(255,255,255,0.12);border-radius:10px;padding:8px;text-align:center;">
+                    <div id="portal-cp-kpi-total" style="font-size:13px;font-weight:800;color:#86efac;">$0</div>
+                    <div style="font-size:9px;color:rgba(255,255,255,0.7);text-transform:uppercase;">Total 2026</div>
+                </div>
+            </div>
+        </div>
+        <!-- Tabs -->
+        <div style="display:flex;gap:0;overflow-x:auto;border-bottom:1px solid #e2e8f0;flex-shrink:0;scrollbar-width:none;">
+            <button class="portal-cp-tab active" onclick="portalCpTab('general',this)" style="padding:10px 14px;border:none;background:transparent;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:12px;color:#2563eb;border-bottom:2px solid #2563eb;white-space:nowrap;cursor:pointer;">General</button>
+            <button class="portal-cp-tab" onclick="portalCpTab('actividad',this)" style="padding:10px 14px;border:none;background:transparent;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:12px;color:#64748b;border-bottom:2px solid transparent;white-space:nowrap;cursor:pointer;">Actividad</button>
+            <button class="portal-cp-tab" onclick="portalCpTab('cotizaciones',this)" style="padding:10px 14px;border:none;background:transparent;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:12px;color:#64748b;border-bottom:2px solid transparent;white-space:nowrap;cursor:pointer;">Cotizaciones</button>
+            <button class="portal-cp-tab" onclick="portalCpTab('contactos',this)" style="padding:10px 14px;border:none;background:transparent;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:12px;color:#64748b;border-bottom:2px solid transparent;white-space:nowrap;cursor:pointer;">Contactos</button>
+            <button class="portal-cp-tab" onclick="portalCpTab('correos',this)" style="padding:10px 14px;border:none;background:transparent;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:12px;color:#64748b;border-bottom:2px solid transparent;white-space:nowrap;cursor:pointer;">Correos</button>
+        </div>
+        <!-- Contenido tabs -->
+        <div id="portal-cp-content" style="flex:1;overflow-y:auto;padding:16px;"></div>
+    </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// PORTAL — Perfil Completo de Cliente
+// Espejo del perfil de la app, adaptado a panel lateral
+// Mismas colecciones Firebase: actividades_cliente, cotizaciones
+// ═══════════════════════════════════════════════════════════════
+
+let portalCpCliente = null;
+let portalCpActividades = [];
+let portalCpCotizaciones = [];
+let portalCpTabActual = 'general';
+
+const PORTAL_ACT_COLORS = {
+    'Llamada':    { bg: '#dbeafe', color: '#1d4ed8' },
+    'Email':      { bg: '#f3e8ff', color: '#7c3aed' },
+    'Visita':     { bg: '#d1fae5', color: '#059669' },
+    'Cotización': { bg: '#fef3c7', color: '#d97706' },
+    'Seguimiento':{ bg: '#e0f2fe', color: '#0284c7' },
+    'Nota':       { bg: '#f1f5f9', color: '#475569' },
+};
+const PORTAL_ACT_ICONS = {
+    'Llamada': '📞', 'Email': '📧', 'Visita': '📍',
+    'Cotización': '📋', 'Seguimiento': '🔔', 'Nota': '📝'
+};
+
+window.abrirPerfilCliente = async function(clienteId) {
+    const c = (window.clientesDB || []).find(x => x.id === clienteId);
+    if(!c) { console.warn('Cliente no encontrado:', clienteId); return; }
+
+    portalCpCliente = c;
+    portalCpTabActual = 'general';
+
+    // Mostrar modal inmediatamente con datos básicos
+    const modal = document.getElementById('modal-perfil-cliente');
+    modal.className = 'modal-visible';
+
+    document.getElementById('portal-cp-nombre').textContent = c.nombre || '—';
+    document.getElementById('portal-cp-sub').textContent =
+        [c.razonSocial || c.sector, c.ciudad, c.vendedor].filter(Boolean).join(' · ');
+
+    // Mostrar cargando
+    document.getElementById('portal-cp-content').innerHTML =
+        '<div style="text-align:center;padding:40px;color:#94a3b8;">Cargando información...</div>';
+
+    // Reset tabs
+    document.querySelectorAll('.portal-cp-tab').forEach((b,i) => {
+        b.style.color = i===0 ? '#2563eb' : '#64748b';
+        b.style.borderBottom = i===0 ? '2px solid #2563eb' : '2px solid transparent';
+    });
+
+    // Cargar datos en paralelo
+    await Promise.all([
+        portalCpCargarActividades(clienteId),
+        portalCpCargarCotizaciones(clienteId),
+    ]);
+
+    // KPIs
+    const visitas = (window.visitasDB || []).filter(v => v.clienteId === clienteId);
+    document.getElementById('portal-cp-kpi-cot').textContent = portalCpCotizaciones.length;
+    document.getElementById('portal-cp-kpi-vis').textContent = visitas.length;
+    document.getElementById('portal-cp-kpi-act').textContent = portalCpActividades.length;
+    document.getElementById('portal-cp-kpi-total').textContent =
+        c.total2026 ? '$' + Math.round(c.total2026/1000) + 'K' : '$0';
+
+    // Renderizar tab general
+    portalCpTab('general', document.querySelectorAll('.portal-cp-tab')[0]);
+};
+
+async function portalCpCargarActividades(clienteId) {
+    try {
+        const { getDocs, collection, query, where, orderBy } =
+            await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+        const snap = await getDocs(query(
+            collection(window.db, 'actividades_cliente'),
+            where('clienteId', '==', clienteId),
+            orderBy('creadoEn', 'desc')
+        ));
+        portalCpActividades = snap.docs.map(d => ({id:d.id,...d.data()}));
+    } catch(e) {
+        try {
+            const { getDocs, collection, query, where } =
+                await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+            const snap = await getDocs(query(
+                collection(window.db, 'actividades_cliente'),
+                where('clienteId', '==', clienteId)
+            ));
+            portalCpActividades = snap.docs.map(d => ({id:d.id,...d.data()}))
+                .sort((a,b) => (b.creadoEn||'').localeCompare(a.creadoEn||''));
+        } catch(e2) { portalCpActividades = []; }
+    }
+}
+
+async function portalCpCargarCotizaciones(clienteId) {
+    try {
+        const { getDocs, collection, query, where } =
+            await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+        const snap = await getDocs(query(
+            collection(window.db, 'cotizaciones'),
+            where('clienteId', '==', clienteId)
+        ));
+        let cots = snap.docs.map(d => ({id:d.id,...d.data()}));
+
+        // Fallback por nombre
+        const c = portalCpCliente;
+        if(c?.nombre) {
+            const snapN = await getDocs(query(
+                collection(window.db, 'cotizaciones'),
+                where('cliente', '==', c.nombre)
+            ));
+            const porNombre = snapN.docs.map(d => ({id:d.id,...d.data()}))
+                .filter(x => !cots.find(y => y.id === x.id));
+            cots = [...cots, ...porNombre];
+        }
+        portalCpCotizaciones = cots.sort((a,b) => (b.creadoEn||'').localeCompare(a.creadoEn||''));
+    } catch(e) { portalCpCotizaciones = []; }
+}
+
+window.portalCpTab = function(tab, btn) {
+    portalCpTabActual = tab;
+    document.querySelectorAll('.portal-cp-tab').forEach(b => {
+        b.style.color = '#64748b';
+        b.style.borderBottom = '2px solid transparent';
+    });
+    if(btn) {
+        btn.style.color = '#2563eb';
+        btn.style.borderBottom = '2px solid #2563eb';
+    }
+    const el = document.getElementById('portal-cp-content');
+    switch(tab) {
+        case 'general':     el.innerHTML = portalCpGeneral(); break;
+        case 'actividad':   el.innerHTML = portalCpActividad(); break;
+        case 'cotizaciones':el.innerHTML = portalCpCots(); break;
+        case 'contactos':   el.innerHTML = portalCpContactos(); break;
+        case 'correos':     el.innerHTML = portalCpCorreos(); break;
+    }
+};
+
+function fmtFechaPortal(iso) {
+    if(!iso) return '—';
+    try { return new Date(iso).toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}); }
+    catch(e) { return iso.slice(0,10); }
+}
+
+function portalCpGeneral() {
+    const c = portalCpCliente;
+    const visitas = (window.visitasDB || []).filter(v => v.clienteId === c.id);
+    const ultimaVisita = visitas.sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''))[0];
+    const ultimaAct = portalCpActividades[0];
+    const urgentes = portalCpActividades.filter(a => a.prioridad === 'Urgente' && a.estatus !== 'Completada');
+
+    return `
+    ${urgentes.length > 0 ? `
+    <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:8px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <span style="font-size:11px;font-weight:700;color:#dc2626;">${urgentes.length} actividad urgente pendiente</span>
+    </div>` : ''}
+
+    <div class="pcp-section">
+        <div class="pcp-label">Información general</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            ${c.cve ? `<div><div class="pcp-meta">CVE</div><div class="pcp-val">${c.cve}</div></div>` : ''}
+            ${c.sector ? `<div><div class="pcp-meta">Sector</div><div class="pcp-val">${c.sector}</div></div>` : ''}
+            ${c.ciudad ? `<div><div class="pcp-meta">Ciudad</div><div class="pcp-val">${c.ciudad}</div></div>` : ''}
+            ${c.estado ? `<div><div class="pcp-meta">Estado</div><div class="pcp-val">${c.estado}</div></div>` : ''}
+            ${c.tel ? `<div><div class="pcp-meta">Teléfono</div><div class="pcp-val">${c.tel}</div></div>` : ''}
+            ${c.email || c.correo ? `<div><div class="pcp-meta">Email</div><div class="pcp-val" style="font-size:12px;">${c.email||c.correo}</div></div>` : ''}
+            ${c.rfc ? `<div><div class="pcp-meta">RFC</div><div class="pcp-val">${c.rfc}</div></div>` : ''}
+            ${c.vendedor ? `<div><div class="pcp-meta">Vendedor</div><div class="pcp-val">${c.vendedor}</div></div>` : ''}
+        </div>
+        ${c.direccion||c.dir ? `<div style="margin-top:8px;"><div class="pcp-meta">Dirección</div><div class="pcp-val" style="font-size:12px;">${c.direccion||c.dir}</div></div>` : ''}
+        ${c.lat&&c.lng ? `<a href="https://www.google.com/maps?q=${c.lat},${c.lng}" target="_blank" style="display:inline-block;margin-top:8px;font-size:11px;color:#2563eb;font-weight:700;text-decoration:none;">Ver en Google Maps →</a>` : ''}
+    </div>
+
+    ${c.notas ? `<div class="pcp-section"><div class="pcp-label">Notas</div><div style="font-size:12px;color:#475569;">${c.notas}</div></div>` : ''}
+
+    ${ultimaAct ? `
+    <div class="pcp-section">
+        <div class="pcp-label">Última actividad</div>
+        <div style="display:flex;gap:10px;align-items:flex-start;">
+            <div class="pcp-dot" style="background:${(PORTAL_ACT_COLORS[ultimaAct.tipo]||{bg:'#f1f5f9'}).bg};color:${(PORTAL_ACT_COLORS[ultimaAct.tipo]||{color:'#64748b'}).color};">${PORTAL_ACT_ICONS[ultimaAct.tipo]||'📌'}</div>
+            <div>
+                <div style="font-size:13px;font-weight:700;color:#1e293b;">${ultimaAct.titulo||'—'}</div>
+                <div style="font-size:10px;color:#94a3b8;">${ultimaAct.tipo} · ${fmtFechaPortal(ultimaAct.creadoEn)}</div>
+                ${ultimaAct.descripcion ? `<div style="font-size:11px;color:#64748b;margin-top:4px;">${ultimaAct.descripcion.slice(0,80)}...</div>` : ''}
+            </div>
+        </div>
+    </div>` : ''}
+
+    ${ultimaVisita ? `
+    <div class="pcp-section">
+        <div class="pcp-label">Última visita</div>
+        <div style="font-size:13px;font-weight:700;color:#1e293b;">📍 ${ultimaVisita.fecha||'—'}</div>
+        ${ultimaVisita.notas ? `<div style="font-size:11px;color:#64748b;margin-top:4px;">${ultimaVisita.notas.slice(0,80)}</div>` : ''}
+    </div>` : ''}
+
+    <!-- Acciones rápidas -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:4px;">
+        ${c.tel ? `<a href="tel:${c.tel}" style="padding:12px 6px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;text-decoration:none;display:flex;flex-direction:column;align-items:center;gap:4px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.99 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.92 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 8.91a16 16 0 0 0 5.99 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+            <span style="font-size:10px;font-weight:700;color:#2563eb;">Llamar</span>
+        </a>` : '<div></div>'}
+        <button onclick="portalCpNuevaCot()" style="padding:12px 6px;background:#f0fdfa;border:1px solid #99f6e4;border-radius:12px;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0891b2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <span style="font-size:10px;font-weight:700;color:#0891b2;">Cotizar</span>
+        </button>
+        ${c.tel ? `<a href="https://wa.me/52${c.tel.replace(/[^0-9]/g,'')}" target="_blank" style="padding:12px 6px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;text-decoration:none;display:flex;flex-direction:column;align-items:center;gap:4px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            <span style="font-size:10px;font-weight:700;color:#16a34a;">WhatsApp</span>
+        </a>` : '<div></div>'}
+    </div>`;
+}
+
+function portalCpActividad() {
+    const prioOrder = { 'Urgente': 0, 'Alta': 1, 'Normal': 2, 'Baja': 3 };
+    const acts = [...portalCpActividades].sort((a,b) => {
+        if(a.estatus === 'Completada' && b.estatus !== 'Completada') return 1;
+        if(a.estatus !== 'Completada' && b.estatus === 'Completada') return -1;
+        return (prioOrder[a.prioridad]||2) - (prioOrder[b.prioridad]||2);
+    });
+
+    if(!acts.length) return `
+        <button onclick="portalCpNuevaActividad()" style="width:100%;padding:12px;background:#1e3a8a;color:white;border:none;border-radius:12px;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:13px;cursor:pointer;margin-bottom:12px;">+ Nueva Actividad</button>
+        <div style="text-align:center;padding:40px;color:#94a3b8;font-size:13px;">Sin actividades registradas</div>`;
+
+    const prioColors = { 'Urgente': '#dc2626', 'Alta': '#d97706', 'Normal': '#64748b', 'Baja': '#94a3b8' };
+
+    return `
+    <button onclick="portalCpNuevaActividad()" style="width:100%;padding:11px;background:#1e3a8a;color:white;border:none;border-radius:12px;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:13px;cursor:pointer;margin-bottom:12px;">+ Nueva Actividad</button>
+    ${acts.map(a => {
+        const col = PORTAL_ACT_COLORS[a.tipo] || { bg:'#f1f5f9', color:'#64748b' };
+        return `<div class="pcp-act-card">
+            <div style="display:flex;gap:10px;align-items:flex-start;">
+                <div class="pcp-dot" style="background:${col.bg};color:${col.color};">${PORTAL_ACT_ICONS[a.tipo]||'📌'}</div>
+                <div style="flex:1;min-width:0;">
+                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">
+                        <div style="font-size:13px;font-weight:700;color:#1e293b;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${a.titulo||'—'}</div>
+                        <span style="font-size:9px;font-weight:700;color:${prioColors[a.prioridad]||'#64748b'};white-space:nowrap;">${a.prioridad||'Normal'}</span>
+                    </div>
+                    <div style="font-size:10px;color:#94a3b8;">${a.tipo} · ${fmtFechaPortal(a.fechaProgramada||a.creadoEn)} · ${(a.responsable||'').split('@')[0]}</div>
+                    ${a.descripcion ? `<div style="font-size:11px;color:#64748b;margin-top:4px;">${a.descripcion.slice(0,80)}</div>` : ''}
+                    <div style="display:flex;gap:6px;margin-top:6px;">
+                        ${['Pendiente','En Proceso','Completada'].map(st => `
+                        <button onclick="portalCpCambiarEstatus('${a.id}','${st}',this)" style="font-size:9px;padding:3px 8px;border-radius:6px;cursor:pointer;border:1px solid ${a.estatus===st?'#2563eb':'#e2e8f0'};background:${a.estatus===st?'#2563eb':'white'};color:${a.estatus===st?'white':'#64748b'};font-family:'Space Grotesk',sans-serif;font-weight:700;">${st}</button>`).join('')}
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    }).join('')}`;
+}
+
+function portalCpCots() {
+    if(!portalCpCotizaciones.length) return `
+        <div style="text-align:center;padding:40px;color:#94a3b8;font-size:13px;">Sin cotizaciones registradas</div>`;
+
+    return portalCpCotizaciones.map(c => {
+        const st = c.statusCot || 'Pendiente';
+        const badgeClass = st==='colocada'||st==='Colocada' ? 'pcp-badge-ok' : st==='enviada'||st==='Enviada' ? 'pcp-badge-env' : st==='cancelada'||st==='Cancelada' ? 'pcp-badge-can' : 'pcp-badge-pend';
+        const total = c.moneda==='USD' ? `USD $${(c.total||0).toLocaleString('en-US',{minimumFractionDigits:2})}` : `$${(c.total||0).toLocaleString('es-MX',{minimumFractionDigits:2})}`;
+        return `<div class="pcp-cot-card">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                <span style="font-size:11px;font-weight:800;color:#2563eb;">${c.folio||'S/F'}</span>
+                <span class="pcp-badge ${badgeClass}">${st}</span>
+            </div>
+            <div style="font-size:15px;font-weight:800;color:#10b981;">${total}</div>
+            <div style="font-size:10px;color:#94a3b8;margin-top:4px;">${fmtFechaPortal(c.creadoEn)} · ${(c.items||c.carrito||[]).length} productos</div>
+            <button onclick="portalGenerarPDFCot('${c.id}')" style="margin-top:8px;width:100%;padding:7px;background:#f1f5f9;border:none;border-radius:8px;font-size:11px;font-weight:700;color:#475569;cursor:pointer;">📄 Generar PDF</button>
+        </div>`;
+    }).join('');
+}
+
+function portalCpContactos() {
+    const c = portalCpCliente;
+    const contactos = c.contactos || [];
+    const items = [];
+    if(c.contacto) items.push({ nombre: c.contacto, puesto: 'Principal', tel: c.tel });
+    items.push(...contactos);
+
+    if(!items.length) return '<div style="text-align:center;padding:40px;color:#94a3b8;font-size:13px;">Sin contactos registrados</div>';
+
+    return items.map(ct => `
+    <div class="pcp-section" style="display:flex;align-items:center;gap:12px;padding:12px;">
+        <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#1e3a8a,#2563eb);display:flex;align-items:center;justify-content:center;color:white;font-weight:800;font-size:14px;flex-shrink:0;">${(ct.nombre||'?')[0]}</div>
+        <div style="flex:1;min-width:0;">
+            <div style="font-size:13px;font-weight:700;color:#1e293b;">${ct.nombre||'—'}</div>
+            <div style="font-size:11px;color:#64748b;">${ct.puesto||''} ${ct.tel ? '· '+ct.tel : ''}</div>
+            ${ct.email ? `<div style="font-size:11px;color:#2563eb;">${ct.email}</div>` : ''}
+        </div>
+        ${ct.tel ? `<a href="tel:${ct.tel}" style="width:32px;height:32px;border-radius:50%;background:#dcfce7;display:flex;align-items:center;justify-content:center;text-decoration:none;flex-shrink:0;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.99 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.92 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 8.91a16 16 0 0 0 5.99 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+        </a>` : ''}
+    </div>`).join('');
+}
+
+function portalCpCorreos() {
+    const c = portalCpCliente;
+    const emailCliente = c.email || c.correo || '';
+    return `
+    <div class="pcp-section">
+        <div class="pcp-label">Correos relacionados</div>
+        <div style="font-size:12px;color:#64748b;margin-bottom:12px;">Email del cliente: <b>${emailCliente || 'No registrado'}</b></div>
+        <button onclick="gmailRedactar('${emailCliente}','','${c.id}')" style="width:100%;padding:10px;background:#2563eb;color:white;border:none;border-radius:10px;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:12px;cursor:pointer;margin-bottom:8px;">✏️ Redactar correo</button>
+        <button onclick="abrirGmailInbox()" style="width:100%;padding:10px;background:#f1f5f9;color:#475569;border:none;border-radius:10px;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:12px;cursor:pointer;">📧 Ver inbox completo</button>
+        ${portalCpActividades.filter(a=>a.tipo==='Email').length ? `
+        <div style="margin-top:14px;"><div class="pcp-label" style="margin-bottom:8px;">Emails registrados (${portalCpActividades.filter(a=>a.tipo==='Email').length})</div>
+        ${portalCpActividades.filter(a=>a.tipo==='Email').slice(0,5).map(a=>`
+        <div style="padding:8px 0;border-bottom:1px solid #f1f5f9;">
+            <div style="font-size:12px;font-weight:700;color:#1e293b;">${a.titulo||'—'}</div>
+            <div style="font-size:10px;color:#94a3b8;">${fmtFechaPortal(a.creadoEn)}</div>
+        </div>`).join('')}
+        </div>` : ''}`;
+}
+
+window.cerrarPerfilCliente = function() {
+    const modal = document.getElementById('modal-perfil-cliente');
+    if(modal) modal.className = '';
+};
+
+window.portalCpNuevaActividad = function() {
+    alert('Para agregar actividades usa la App Tecnocontrol.\nSe sincronizan automáticamente en el portal.');
+};
+
+window.portalCpNuevaCot = function() {
+    alert('Para crear cotizaciones usa la App Tecnocontrol.\nSe sincronizan automáticamente en el portal.');
+};
+
+window.portalCpCambiarEstatus = async function(actividadId, nuevoEstatus, btn) {
+    try {
+        const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+        await updateDoc(doc(window.db, 'actividades_cliente', actividadId), {
+            estatus: nuevoEstatus,
+            actualizadoEn: new Date().toISOString()
+        });
+        // Refrescar
+        const actIdx = portalCpActividades.findIndex(a => a.id === actividadId);
+        if(actIdx >= 0) {
+            portalCpActividades[actIdx].estatus = nuevoEstatus;
+            portalCpTab('actividad', document.querySelector('.portal-cp-tab[style*="2563eb"]'));
+        }
+    } catch(e) { alert('Error al actualizar: ' + e.message); }
+};
+
+// Hook en ventasSeleccionarCliente para abrir el perfil completo
+const _origVentasSeleccionar = window.ventasSeleccionarCliente;
+window.ventasSeleccionarCliente = function(id) {
+    // Abrir perfil completo en lugar del panel inferior
+    window.abrirPerfilCliente(id);
+    // También enfocar en mapa si es módulo mapa
+    const c = (window.clientesDB||[]).find(x=>x.id===id);
+    if(c && window.mapaLeaflet && c.lat && c.lng) {
+        window.mapaLeaflet.setView([c.lat, c.lng], 14);
+    }
+};
+
+// También llamado desde el mapa (popup "Ver detalle")
+window.verPerfilCliente = window.abrirPerfilCliente;
+
+console.log('PORTAL PERFIL CLIENTE cargado ✅');
 </script>
 
 </body>
