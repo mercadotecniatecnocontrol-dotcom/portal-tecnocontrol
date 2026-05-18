@@ -11116,27 +11116,19 @@ const VENTAS_MODULOS = {
         titulo: '📍 Mapa de Clientes',
         filtros: () => `
             <div style="display:flex;align-items:center;gap:6px;padding:8px 0;">
-                <input id="ventas-buscador" type="text" placeholder="🔍 Buscar cliente, ciudad..."
-                    style="padding:7px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;width:200px;outline:none;"
+                <input id="ventas-buscador" type="text" placeholder="🔍 Buscar cliente..."
+                    style="padding:7px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;width:220px;outline:none;"
                     oninput="filtrarClientesMapa()">
-                <select onchange="filtrarClientesMapa()" id="ventas-filtro-vendedor-mapa"
-                    style="padding:7px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;color:#1e293b;">
-                    <option value="">Todos los vendedores</option>
-                    <option value="GUILLERMO DURSTEWITZ">Guillermo D.</option>
-                    <option value="ANTONIO LUNA">Antonio Luna</option>
-                    <option value="JORGE ENRIQUEZ">Jorge Enríquez</option>
-                    <option value="MIGUEL MONTELLANO">Miguel Montellano</option>
-                </select>
             </div>`,
         cargar: () => {
-            // Mostrar mapa a la derecha, lista de clientes a la izquierda
             const mapa = document.getElementById('ventas-mapa-desktop');
             const det = document.getElementById('ventas-col-detalle');
-            if(mapa) { mapa.style.display = 'block'; det.style.display = 'flex'; }
-            document.getElementById('ventas-panel-detalle').style.display = 'none';
-            // Renderizar lista de clientes en columna izquierda
+            const panel = document.getElementById('ventas-panel-detalle');
+            if(mapa) mapa.style.display = 'flex';
+            if(panel) panel.style.display = 'none';
+            if(det) { det.style.display = 'flex'; det.style.flexDirection = 'column'; }
             ventasRenderClientesMapa();
-            setTimeout(() => { if(window.mapaClientes) window.mapaClientes.invalidateSize(); }, 300);
+            setTimeout(() => { if(window.mapaLeaflet) window.mapaLeaflet.invalidateSize(); }, 300);
         }
     },
     clientes: {
@@ -11146,50 +11138,52 @@ const VENTAS_MODULOS = {
                 <input id="ventas-buscador" type="text" placeholder="🔍 Buscar cliente..."
                     style="padding:7px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;width:220px;outline:none;"
                     oninput="filtrarClientesMapa()">
-                <button onclick="abrirModalCliente()" style="padding:7px 14px;background:#2563eb;color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;margin-left:auto;">➕ Nuevo cliente</button>
+                <button onclick="abrirModalCliente()" style="padding:7px 14px;background:#2563eb;color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;margin-left:auto;">+ Nuevo</button>
             </div>`,
         cargar: () => {
-            // Ocultar mapa, mostrar detalle como panel de estadísticas
-            document.getElementById('ventas-mapa-desktop').style.display = 'none';
-            document.getElementById('ventas-panel-detalle').style.display = 'none';
+            const mapa = document.getElementById('ventas-mapa-desktop');
             const det = document.getElementById('ventas-col-detalle');
-            det.style.display = 'flex';
-            det.style.background = '#f8fafc';
-            det.innerHTML = `<div style="padding:20px;">
-                <div style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:12px;">📊 Resumen</div>
-                <div id="ventas-cliente-stats" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"></div>
-                <div style="margin-top:20px;" id="ventas-cliente-detalle-panel"></div>
-            </div>`;
+            if(mapa) mapa.style.display = 'none';
+            if(det) {
+                det.style.display = 'flex';
+                det.style.flexDirection = 'column';
+                det.style.background = '#f8fafc';
+                det.innerHTML = `<div style="padding:20px;">
+                    <div style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:12px;">📊 Resumen</div>
+                    <div id="ventas-cliente-stats" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"></div>
+                </div>`;
+                ventasRenderClienteStats();
+            }
             ventasRenderClientesMapa();
-            ventasRenderClienteStats();
         }
     },
     crm: {
         titulo: '📊 CRM Pipeline',
         filtros: () => `
-            <div style="display:flex;align-items:center;gap:6px;padding:8px 0;overflow-x:auto;scrollbar-width:none;">
+            <div style="display:flex;align-items:center;gap:6px;padding:8px 0;overflow-x:auto;">
                 <button class="portal-ptab active" onclick="portalSelPipeline(0,this)"
-                    style="padding:6px 12px;background:#2563eb;color:white;border:none;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;cursor:pointer;flex-shrink:0;">Servicios Técnicos</button>
+                    style="padding:6px 12px;background:#2563eb;color:white;border:none;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;cursor:pointer;">Servicios Técnicos</button>
                 <button class="portal-ptab" onclick="portalSelPipeline(1,this)"
-                    style="padding:6px 12px;background:#f1f5f9;color:#64748b;border:none;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;cursor:pointer;flex-shrink:0;">Cumplimiento</button>
+                    style="padding:6px 12px;background:#f1f5f9;color:#64748b;border:none;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;cursor:pointer;">Cumplimiento</button>
                 <button class="portal-ptab" onclick="portalSelPipeline(2,this)"
-                    style="padding:6px 12px;background:#f1f5f9;color:#64748b;border:none;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;cursor:pointer;flex-shrink:0;">Refacciones</button>
-                <div style="flex:1;"></div>
+                    style="padding:6px 12px;background:#f1f5f9;color:#64748b;border:none;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;cursor:pointer;">Refacciones</button>
                 <input id="portal-crm-busqueda" placeholder="🔍 Buscar..." oninput="portalCrmFiltrar()"
-                    style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:11px;width:140px;outline:none;">
+                    style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:11px;width:130px;outline:none;margin-left:auto;">
                 <button onclick="portalNuevaOportunidad()"
-                    style="padding:6px 12px;background:#2563eb;color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;">+ Nueva</button>
+                    style="padding:6px 12px;background:#2563eb;color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">+ Nueva</button>
             </div>`,
         cargar: () => {
-            document.getElementById('ventas-mapa-desktop').style.display = 'none';
+            const mapa = document.getElementById('ventas-mapa-desktop');
             const det = document.getElementById('ventas-col-detalle');
-            det.style.display = 'flex';
-            det.style.flexDirection = 'column';
-            det.innerHTML = `<div style="padding:16px;overflow-y:auto;flex:1;">
-                <div id="portal-crm-stats" style="display:flex;gap:8px;overflow-x:auto;margin-bottom:14px;padding-bottom:4px;scrollbar-width:none;"></div>
-                <div id="portal-crm-kanban" style="display:flex;gap:10px;overflow-x:auto;padding-bottom:16px;min-height:250px;-webkit-overflow-scrolling:touch;"></div>
-            </div>`;
-            // Lista en columna izquierda
+            if(mapa) mapa.style.display = 'none';
+            if(det) {
+                det.style.display = 'flex';
+                det.style.flexDirection = 'column';
+                det.innerHTML = `<div style="padding:16px;overflow-y:auto;flex:1;">
+                    <div id="portal-crm-stats" style="display:flex;gap:8px;overflow-x:auto;margin-bottom:14px;padding-bottom:4px;scrollbar-width:none;"></div>
+                    <div id="portal-crm-kanban" style="display:flex;gap:10px;overflow-x:auto;padding-bottom:16px;min-height:250px;"></div>
+                </div>`;
+            }
             ventasRenderCrmLista();
             portalCargarCRM();
         }
@@ -11197,34 +11191,34 @@ const VENTAS_MODULOS = {
     cotizaciones: {
         titulo: '📋 Cotizaciones',
         filtros: () => `
-            <div style="display:flex;align-items:center;gap:6px;padding:8px 0;overflow-x:auto;scrollbar-width:none;">
+            <div style="display:flex;align-items:center;gap:6px;padding:8px 0;overflow-x:auto;">
                 <button class="portal-cot-fb active" onclick="portalSetCotFiltro('todas',this)"
-                    style="padding:5px 10px;border-radius:20px;border:2px solid #2563eb;background:#eff6ff;color:#2563eb;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;">Todas</button>
+                    style="padding:5px 10px;border-radius:20px;border:2px solid #2563eb;background:#eff6ff;color:#2563eb;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap;">Todas</button>
                 <button class="portal-cot-fb" onclick="portalSetCotFiltro('pendiente',this)"
-                    style="padding:5px 10px;border-radius:20px;border:1px solid #e2e8f0;background:white;color:#64748b;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;">Pendientes</button>
+                    style="padding:5px 10px;border-radius:20px;border:1px solid #e2e8f0;background:white;color:#64748b;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap;">Pendientes</button>
                 <button class="portal-cot-fb" onclick="portalSetCotFiltro('enviada',this)"
-                    style="padding:5px 10px;border-radius:20px;border:1px solid #e2e8f0;background:white;color:#64748b;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;">Enviadas</button>
+                    style="padding:5px 10px;border-radius:20px;border:1px solid #e2e8f0;background:white;color:#64748b;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap;">Enviadas</button>
                 <button class="portal-cot-fb" onclick="portalSetCotFiltro('colocada',this)"
-                    style="padding:5px 10px;border-radius:20px;border:1px solid #e2e8f0;background:white;color:#64748b;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;">Colocadas</button>
-                <button class="portal-cot-fb" onclick="portalSetCotFiltro('vencidas',this)"
-                    style="padding:5px 10px;border-radius:20px;border:1px solid #fee2e2;background:white;color:#dc2626;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;">Vencidas</button>
-                <div style="flex:1;"></div>
+                    style="padding:5px 10px;border-radius:20px;border:1px solid #e2e8f0;background:white;color:#64748b;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap;">Colocadas</button>
                 <input id="portal-cot-search" placeholder="🔍 Buscar..." oninput="portalRenderCotList()"
-                    style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:11px;width:140px;outline:none;flex-shrink:0;">
+                    style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:11px;width:130px;outline:none;margin-left:auto;">
                 <button onclick="portalAbrirNuevaCot()"
-                    style="padding:6px 12px;background:#2563eb;color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;">+ Nueva</button>
+                    style="padding:6px 12px;background:#2563eb;color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">+ Nueva</button>
             </div>`,
         cargar: () => {
-            document.getElementById('ventas-mapa-desktop').style.display = 'none';
+            const mapa = document.getElementById('ventas-mapa-desktop');
             const det = document.getElementById('ventas-col-detalle');
-            det.style.display = 'flex';
-            det.style.flexDirection = 'column';
-            det.innerHTML = `<div style="padding:16px;overflow-y:auto;flex:1;">
-                <div id="portal-cot-stats" style="display:flex;gap:8px;overflow-x:auto;margin-bottom:14px;padding-bottom:4px;scrollbar-width:none;"></div>
-                <div style="font-size:11px;color:#94a3b8;text-align:center;padding:20px;" id="portal-cot-detalle-area">
-                    Selecciona una cotización para ver detalles
-                </div>
-            </div>`;
+            if(mapa) mapa.style.display = 'none';
+            if(det) {
+                det.style.display = 'flex';
+                det.style.flexDirection = 'column';
+                det.innerHTML = `<div style="padding:16px;overflow-y:auto;flex:1;">
+                    <div id="portal-cot-stats" style="display:flex;gap:8px;overflow-x:auto;margin-bottom:14px;padding-bottom:4px;scrollbar-width:none;"></div>
+                    <div id="portal-cot-detalle-area" style="font-size:11px;color:#94a3b8;text-align:center;padding:20px;">
+                        Selecciona una cotización para ver detalles
+                    </div>
+                </div>`;
+            }
             portalCargarCot();
         }
     }
@@ -11476,14 +11470,17 @@ window.ventasCheckinDesdePortal = async function() {
     if(!window.clientesDB || window.clientesDB.length === 0) {
         try {
             const { getDocs, collection } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
-            const snap = await getDocs(collection(window.db, 'ventas_clientes'));
+            const db = window.db || (await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js').then(()=>window.db));
+            if(!db) throw new Error('db no disponible');
+            const snap = await getDocs(collection(db, 'ventas_clientes'));
             window.clientesDB = snap.docs.map(d => ({id:d.id,...d.data()}));
         } catch(e) {
-            console.warn('No se pudo cargar clientesDB:', e);
+            console.warn('No se pudo cargar clientesDB:', e.message);
         }
     }
-    // Abrir modal
-    if(typeof abrirModalCheckin === 'function') abrirModalCheckin();
+    // Abrir modal — usar la función real del portal
+    const fn = window._abrirModalCheckinReal || window.abrirModalCheckin;
+    if(typeof fn === 'function') fn();
 };
 
 // ── Fix: ventasSidebar actualiza vsb-btn correctamente ────────
