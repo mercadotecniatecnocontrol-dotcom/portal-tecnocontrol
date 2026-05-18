@@ -1161,6 +1161,7 @@
 // Las funciones reales se definen más abajo pero estos proxies
 // garantizan que los onclick del HTML no fallen
 
+function vpSetModulo(m,b){ if(window._vpSetModuloReal) window._vpSetModuloReal(m,b); else setTimeout(()=>vpSetModulo(m,b),200); }
 function ventasSidebar(m,b){ if(window._ventasSidebarReal) window._ventasSidebarReal(m,b); else setTimeout(()=>ventasSidebar(m,b),200); }
 function ventasTab(m,b){ ventasSidebar(m,b); }
 function ventasBuscarGlobal(q){ if(window._ventasBuscarReal) window._ventasBuscarReal(q); }
@@ -6395,9 +6396,13 @@ async function cargarClientes(){
         const fbV = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
         const snap = await fbV.getDocs(fbV.collection(db,'ventas_clientes'));
         clientesDB = snap.docs.map(d=>({id:d.id,...d.data()}));
-        if(window.renderMapa) window.renderMapa();  // usar la versión con foto
+        window.clientesDB = clientesDB; // Exponer globalmente para VP
+        if(window.renderMapa) window.renderMapa();
         renderListaClientes(clientesDB);
-        document.getElementById('ventas-mapa-stats').innerText =
+        // Actualizar VP lista si está activo
+        if(typeof vpRenderListaClientes === 'function') vpRenderListaClientes();
+        const statsEl = document.getElementById('ventas-mapa-stats');
+        if(statsEl) statsEl.innerText =
             `${clientesDB.length} clientes registrados · ${clientesDB.reduce((s,c)=>s+(Number(c.visitas)||0),0)} visitas totales`;
     } catch(e){
         console.warn('[VENTAS]', e.message);
@@ -12254,7 +12259,23 @@ window.vpSetModulo = function(modulo, btn) {
 function vpCargarMapa() {
     const mapa = document.getElementById('ventas-mapa-desktop');
     if(mapa) mapa.style.display = 'flex';
-    vpRenderListaClientes();
+    // Si ya hay clientes renderizar inmediatamente
+    if(window.clientesDB && window.clientesDB.length > 0) {
+        vpRenderListaClientes();
+    } else {
+        // Esperar a que cargarClientes() termine
+        const el = document.getElementById('vp-lista-content');
+        if(el) el.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;font-size:13px;">Cargando clientes...</div>';
+        // Intentar cargar si la función existe
+        if(typeof cargarClientes === 'function') {
+            cargarClientes().then(() => vpRenderListaClientes()).catch(()=>{});
+        } else {
+            // Reintentar en 1 segundo
+            setTimeout(() => {
+                if(window.clientesDB && window.clientesDB.length > 0) vpRenderListaClientes();
+            }, 1000);
+        }
+    }
     setTimeout(() => {
         if(window.mapaLeaflet) window.mapaLeaflet.invalidateSize();
         else if(window.mapaClientes) window.mapaClientes.invalidateSize();
@@ -12822,6 +12843,7 @@ window.toggleVentasMapa = function(area, email) {
 
 // Registrar en proxies
 window._ventasSidebarReal = vpSetModulo;
+window._vpSetModuloReal = vpSetModulo;
 window._ventasBuscarReal = vpBuscar;
 window._checkinReal = vpCheckin;
 
