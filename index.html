@@ -2983,6 +2983,10 @@ const config = { apiKey:"AIzaSyBXh-P0oMtMiDjyz9PObuJ8DNfROlXvhLE", authDomain:"t
 const app = initializeApp(config);
 const db = getFirestore(app);
 const auth = getAuth(app);
+// Exponer globalmente para módulos de ventas (CRM, Cotizaciones, Perfil Cliente)
+window.db = db;
+window.auth = auth;
+window.app = app;
 
 const ADMIN = "mercadotecniatecnocontrol@gmail.com";
 const ADMIN_EMAILS = [
@@ -10542,7 +10546,7 @@ window.gmailAsignarCliente = async function() {
 
     // Guardar como interacción en actividades_cliente
     try {
-        const { addDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+        const { addDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
         await addDoc(collection(window.db, 'actividades_cliente'), {
             clienteId: cId,
             tipo: 'Email',
@@ -10620,7 +10624,7 @@ window.gmailEnviar = async function() {
         // Registrar en Firestore si hay clienteId
         if (clienteId) {
             try {
-                const { addDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+                const { addDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
                 await addDoc(collection(window.db, 'actividades_cliente'), {
                     clienteId,
                     tipo: 'Email',
@@ -10726,8 +10730,10 @@ window.portalCargarCot = async function() {
     const lista = document.getElementById('portal-cot-lista');
     if(lista) lista.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;font-size:13px;">Cargando cotizaciones...</div>';
     try {
-        const { getDocs, collection, orderBy, query } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
-        const snap = await getDocs(query(collection(window.db, 'cotizaciones'), orderBy('creadoEn','desc')));
+        const { getDocs, collection, orderBy, query } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const db = window.db;
+        if(!db) throw new Error('Firebase no inicializado aún');
+        const snap = await getDocs(query(collection(db, 'cotizaciones'), orderBy('creadoEn','desc')));
         portalCotDB = snap.docs.map(d => ({id:d.id,...d.data()}));
         portalRenderCotStats();
         portalRenderCotList();
@@ -10950,8 +10956,10 @@ window.portalCargarCRM = async function() {
     const kanban = document.getElementById('portal-crm-kanban');
     if(kanban) kanban.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;font-size:13px;width:100%;">Cargando CRM...</div>';
     try {
-        const { getDocs, collection } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
-        const snap = await getDocs(collection(window.db, 'crm_oportunidades'));
+        const { getDocs, collection } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const db = window.db;
+        if(!db) throw new Error('Firebase no inicializado aún');
+        const snap = await getDocs(collection(db, 'crm_oportunidades'));
         portalCrmDB = snap.docs.map(d => ({id:d.id,...d.data()}));
         portalRenderCrmStats();
         portalRenderCrmKanban();
@@ -11127,7 +11135,14 @@ const VENTAS_MODULOS = {
             if(mapa) mapa.style.display = 'flex';
             if(panel) panel.style.display = 'none';
             if(det) { det.style.display = 'flex'; det.style.flexDirection = 'column'; }
-            ventasRenderClientesMapa();
+            // Cargar clientes si no están en memoria
+            if(!window.clientesDB || window.clientesDB.length === 0) {
+                if(typeof cargarClientes === 'function') {
+                    cargarClientes().then(() => ventasRenderClientesMapa());
+                }
+            } else {
+                ventasRenderClientesMapa();
+            }
             setTimeout(() => { if(window.mapaLeaflet) window.mapaLeaflet.invalidateSize(); }, 300);
         }
     },
@@ -11152,9 +11167,11 @@ const VENTAS_MODULOS = {
                     <div style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:12px;">📊 Resumen</div>
                     <div id="ventas-cliente-stats" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"></div>
                 </div>`;
-                ventasRenderClienteStats();
             }
-            ventasRenderClientesMapa();
+            const render = () => { ventasRenderClienteStats(); ventasRenderClientesMapa(); };
+            if(!window.clientesDB || window.clientesDB.length === 0) {
+                if(typeof cargarClientes === 'function') cargarClientes().then(render);
+            } else { render(); }
         }
     },
     crm: {
@@ -11181,11 +11198,14 @@ const VENTAS_MODULOS = {
                 det.style.flexDirection = 'column';
                 det.innerHTML = `<div style="padding:16px;overflow-y:auto;flex:1;">
                     <div id="portal-crm-stats" style="display:flex;gap:8px;overflow-x:auto;margin-bottom:14px;padding-bottom:4px;scrollbar-width:none;"></div>
-                    <div id="portal-crm-kanban" style="display:flex;gap:10px;overflow-x:auto;padding-bottom:16px;min-height:250px;"></div>
+                    <div id="portal-crm-kanban" style="display:flex;gap:10px;overflow-x:auto;padding-bottom:16px;min-height:250px;-webkit-overflow-scrolling:touch;"></div>
                 </div>`;
             }
-            ventasRenderCrmLista();
-            portalCargarCRM();
+            // Cargar CRM y después renderizar lista izquierda
+            portalCargarCRM().then(() => ventasRenderCrmLista()).catch(e => {
+                const el = document.getElementById('ventas-contenido-principal');
+                if(el) el.innerHTML = '<div style="padding:20px;color:#dc2626;font-size:12px;">Error: ' + e.message + '</div>';
+            });
         }
     },
     cotizaciones: {
@@ -11219,7 +11239,10 @@ const VENTAS_MODULOS = {
                     </div>
                 </div>`;
             }
-            portalCargarCot();
+            portalCargarCot().catch(e => {
+                const el = document.getElementById('ventas-contenido-principal');
+                if(el) el.innerHTML = '<div style="padding:20px;color:#dc2626;font-size:12px;">Error cargando cotizaciones: ' + e.message + '</div>';
+            });
         }
     }
 };
@@ -11469,7 +11492,7 @@ window.ventasCheckinDesdePortal = async function() {
     // Si clientesDB no tiene datos, cargar primero
     if(!window.clientesDB || window.clientesDB.length === 0) {
         try {
-            const { getDocs, collection } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+            const { getDocs, collection } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
             const db = window.db || (await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js').then(()=>window.db));
             if(!db) throw new Error('db no disponible');
             const snap = await getDocs(collection(db, 'ventas_clientes'));
@@ -11712,7 +11735,7 @@ window.abrirPerfilCliente = async function(clienteId) {
 async function portalCpCargarActividades(clienteId) {
     try {
         const { getDocs, collection, query, where, orderBy } =
-            await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+            await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
         const snap = await getDocs(query(
             collection(window.db, 'actividades_cliente'),
             where('clienteId', '==', clienteId),
@@ -11722,7 +11745,7 @@ async function portalCpCargarActividades(clienteId) {
     } catch(e) {
         try {
             const { getDocs, collection, query, where } =
-                await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+                await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
             const snap = await getDocs(query(
                 collection(window.db, 'actividades_cliente'),
                 where('clienteId', '==', clienteId)
@@ -11736,7 +11759,7 @@ async function portalCpCargarActividades(clienteId) {
 async function portalCpCargarCotizaciones(clienteId) {
     try {
         const { getDocs, collection, query, where } =
-            await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+            await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
         const snap = await getDocs(query(
             collection(window.db, 'cotizaciones'),
             where('clienteId', '==', clienteId)
@@ -11968,7 +11991,7 @@ window.portalCpNuevaCot = function() {
 
 window.portalCpCambiarEstatus = async function(actividadId, nuevoEstatus, btn) {
     try {
-        const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+        const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
         await updateDoc(doc(window.db, 'actividades_cliente', actividadId), {
             estatus: nuevoEstatus,
             actualizadoEn: new Date().toISOString()
