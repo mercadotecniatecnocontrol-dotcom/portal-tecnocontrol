@@ -2213,113 +2213,280 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
             <div id="ejecutivo-content"></div>
         </div>
 
-        <!-- VENTAS — Dashboard con sidebar interno -->
+        <!-- VENTAS — Dashboard integrado desde app.html -->
         <div class="section" id="sec-ventas-mapa" style="display:none;padding:0;margin:-32px;height:calc(100vh - 62px);overflow:hidden;">
 
             <style>
-                .vsb-btn:hover { background: rgba(37,99,235,0.4) !important; opacity:1 !important; }
-                .vsb-tooltip { position:absolute;left:72px;background:#1e293b;color:white;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700;white-space:nowrap;pointer-events:none;z-index:999;box-shadow:0 4px 12px rgba(0,0,0,0.3); }
-                #ventas-filtros-bar::-webkit-scrollbar { display:none; }
-                #ventas-col-lista::-webkit-scrollbar { width:4px; }
-                #ventas-col-lista::-webkit-scrollbar-thumb { background:#e2e8f0; border-radius:4px; }
-                #ventas-col-detalle::-webkit-scrollbar { width:4px; }
+            /* ══ CSS app adaptado al portal ══ */
+            #ventas-portal-wrap { height:100%; display:flex; overflow:hidden; background:#f8fafc; }
+
+            /* Sidebar */
+            #ventas-sidebar-icons {
+                width:64px; background:#0f172a; display:flex; flex-direction:column;
+                align-items:center; padding:12px 0; gap:4px; flex-shrink:0;
+            }
+            .vsi-logo { width:40px;height:40px;background:linear-gradient(135deg,#2563eb,#7c3aed);border-radius:12px;display:flex;align-items:center;justify-content:center;margin-bottom:12px;color:white; }
+            .vsi-btn {
+                width:44px;height:44px;border:none;border-radius:12px;cursor:pointer;
+                display:flex;align-items:center;justify-content:center;
+                color:rgba(255,255,255,0.5);background:transparent;transition:all 0.2s;
+            }
+            .vsi-btn.active { background:#2563eb !important; color:white !important; }
+            .vsi-btn:hover { background:rgba(37,99,235,0.35);color:white; }
+            .vsi-spacer { flex:1; }
+            .vsi-action { width:44px;height:44px;border:none;border-radius:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.2s; }
+
+            /* Columna lista */
+            #ventas-col-izq {
+                width:380px; flex-shrink:0; display:flex; flex-direction:column;
+                background:white; border-right:1px solid #e2e8f0; overflow:hidden;
+            }
+            #ventas-col-izq-header {
+                padding:14px 16px 10px; border-bottom:1px solid #f1f5f9;
+                display:flex; align-items:center; justify-content:space-between; flex-shrink:0;
+            }
+            #ventas-col-izq-titulo { font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:800;color:#1e293b; }
+            #ventas-col-izq-body { flex:1; overflow-y:auto; padding:10px 12px; }
+            #ventas-col-izq-body::-webkit-scrollbar { width:4px; }
+            #ventas-col-izq-body::-webkit-scrollbar-thumb { background:#e2e8f0;border-radius:4px; }
+
+            /* Buscador */
+            .ventas-search-wrap {
+                padding:8px 12px; border-bottom:1px solid #f1f5f9; flex-shrink:0;
+            }
+            .ventas-search-inner {
+                display:flex;align-items:center;gap:8px;background:#f8fafc;
+                border:1px solid #e2e8f0;border-radius:10px;padding:8px 12px;
+            }
+            .ventas-search-inner input {
+                flex:1;border:none;background:transparent;font-size:13px;
+                color:#1e293b;outline:none;font-family:'DM Sans',sans-serif;
+            }
+
+            /* Tarjeta cliente */
+            .vp-client-card {
+                display:flex;align-items:center;gap:10px;padding:10px 12px;
+                border-radius:12px;cursor:pointer;transition:0.15s;border:1px solid transparent;
+                margin-bottom:6px;
+            }
+            .vp-client-card:hover { background:#f8faff;border-color:#bfdbfe; }
+            .vp-client-avatar {
+                width:38px;height:38px;border-radius:10px;display:flex;align-items:center;
+                justify-content:center;font-weight:800;font-size:15px;color:white;flex-shrink:0;
+                background:linear-gradient(135deg,#2563eb,#7c3aed);
+            }
+            .vp-client-nombre { font-size:13px;font-weight:700;color:#1e293b; }
+            .vp-client-meta { font-size:11px;color:#64748b;margin-top:2px; }
+            .vp-client-badge { font-size:10px;font-weight:700;color:#2563eb;white-space:nowrap; }
+
+            /* Filtros tabs */
+            .ventas-tabs {
+                display:flex;gap:0;overflow-x:auto;border-bottom:1px solid #f1f5f9;
+                flex-shrink:0;scrollbar-width:none;padding:0 12px;
+            }
+            .ventas-tab {
+                padding:9px 14px;border:none;background:transparent;
+                font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:11px;
+                color:#64748b;border-bottom:2px solid transparent;cursor:pointer;
+                white-space:nowrap;transition:0.15s;
+            }
+            .ventas-tab.active { color:#2563eb;border-bottom:2px solid #2563eb; }
+
+            /* Stats pills */
+            .ventas-stats { display:flex;gap:8px;padding:10px 12px;overflow-x:auto;flex-shrink:0;scrollbar-width:none; }
+            .ventas-stat { min-width:90px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:10px;flex-shrink:0;text-align:center; }
+            .ventas-stat-val { font-family:'Space Grotesk',sans-serif;font-size:17px;font-weight:800;color:#1e293b; }
+            .ventas-stat-lbl { font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:1px; }
+
+            /* Columna derecha */
+            #ventas-col-der { flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0; }
+            #ventas-mapa-desktop { flex:1;min-height:300px; }
+            #mapa-clientes { width:100%;height:100%; }
+
+            /* Panel detalle inferior */
+            #ventas-panel-detalle {
+                display:none;background:white;border-top:2px solid #2563eb;
+                padding:16px 20px;max-height:40%;overflow-y:auto;flex-shrink:0;
+            }
+
+            /* Kanban CRM */
+            .vp-kanban { display:flex;gap:12px;overflow-x:auto;padding:12px;min-height:300px;flex:1; }
+            .vp-kanban::-webkit-scrollbar { height:4px; }
+            .vp-kanban-col {
+                min-width:220px;max-width:240px;flex-shrink:0;border-radius:14px;padding:12px;
+            }
+            .vp-kanban-col-hdr { font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between; }
+            .vp-kanban-card {
+                background:white;border-radius:10px;padding:10px 12px;margin-bottom:8px;
+                box-shadow:0 1px 4px rgba(0,0,0,0.07);cursor:pointer;transition:0.15s;
+            }
+            .vp-kanban-card:hover { transform:translateY(-1px);box-shadow:0 3px 10px rgba(0,0,0,0.1); }
+            .vp-kanban-nombre { font-size:12px;font-weight:700;color:#1e293b;margin-bottom:3px; }
+            .vp-kanban-valor { font-size:13px;font-weight:800;color:#10b981; }
+            .vp-kanban-meta { font-size:10px;color:#94a3b8;margin-top:4px; }
+            .vp-kanban-add { width:100%;padding:7px;border:1px dashed #cbd5e1;background:rgba(255,255,255,0.5);border-radius:8px;font-size:11px;cursor:pointer;font-family:'Space Grotesk',sans-serif;font-weight:700;transition:0.15s; }
+            .vp-kanban-add:hover { background:white; }
+
+            /* Cotizaciones */
+            .vp-cot-card {
+                background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;
+                padding:12px 14px;margin-bottom:8px;cursor:pointer;transition:0.15s;
+            }
+            .vp-cot-card:hover { border-color:#93c5fd;box-shadow:0 2px 8px rgba(37,99,235,0.08); }
+            .vp-cot-folio { font-size:11px;font-weight:800;color:#2563eb; }
+            .vp-cot-cliente { font-size:13px;font-weight:700;color:#1e293b;margin:2px 0; }
+            .vp-cot-total { font-size:14px;font-weight:800;color:#10b981; }
+            .vp-badge { font-size:9px;font-weight:700;padding:2px 7px;border-radius:8px;display:inline-block; }
+            .vp-badge-pend { background:#fef3c7;color:#d97706; }
+            .vp-badge-env { background:#dbeafe;color:#2563eb; }
+            .vp-badge-ok { background:#d1fae5;color:#059669; }
+            .vp-badge-can { background:#fee2e2;color:#dc2626; }
+
+            /* Perfil cliente */
+            .vp-cp-header { background:linear-gradient(135deg,#1e3a8a,#2563eb);padding:16px 20px;flex-shrink:0; }
+            .vp-cp-nombre { font-size:16px;font-weight:800;color:white; }
+            .vp-cp-sub { font-size:11px;color:rgba(255,255,255,0.75);margin-top:2px; }
+            .vp-cp-kpis { display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px; }
+            .vp-cp-kpi { background:rgba(255,255,255,0.12);border-radius:10px;padding:8px;text-align:center; }
+            .vp-cp-kpi-val { font-size:16px;font-weight:800;color:white; }
+            .vp-cp-kpi-lbl { font-size:8px;color:rgba(255,255,255,0.7);text-transform:uppercase; }
+            .vp-cp-tabs { display:flex;border-bottom:1px solid #e2e8f0;flex-shrink:0;overflow-x:auto;scrollbar-width:none; }
+            .vp-cp-tab { padding:10px 14px;border:none;background:transparent;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:11px;color:#64748b;border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap;transition:0.15s; }
+            .vp-cp-tab.active { color:#2563eb;border-bottom-color:#2563eb; }
+            .vp-cp-content { flex:1;overflow-y:auto;padding:14px 16px; }
+            .vp-cp-section { background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:12px;margin-bottom:10px; }
+            .vp-cp-label { font-size:9px;font-weight:700;color:#1e3a8a;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px; }
+
+            /* Ocultar elementos móvil que no aplican en desktop */
+            #ventas-portal-wrap .mob-nav, .bottom-nav, .nav-item { display:none !important; }
             </style>
 
-            <div style="display:flex;width:100%;min-height:calc(100vh - 62px);">
+            <div id="ventas-portal-wrap">
 
-                <!-- ── SIDEBAR IZQUIERDO ── -->
-                <div style="width:64px;background:#0f172a;display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:6px;flex-shrink:0;position:relative;">
-
-                    <!-- Indicador área -->
-                    <div style="width:40px;height:40px;background:linear-gradient(135deg,#2563eb,#7c3aed);border-radius:12px;display:flex;align-items:center;justify-content:center;margin-bottom:12px;color:white;box-shadow:0 4px 12px rgba(37,99,235,0.4);"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>
-
-                    <!-- Nav items -->
-                    <button class="vsb-btn active" id="vsb-mapa" onclick="ventasSidebar('mapa',this)" title="Mapa"
-                        style="width:44px;height:44px;background:#2563eb;border:none;border-radius:12px;cursor:pointer;color:white;display:flex;align-items:center;justify-content:center;transition:all 0.2s;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg></button>
-
-                    <button class="vsb-btn" id="vsb-clientes" onclick="ventasSidebar('clientes',this)" title="Clientes"
-                        style="width:44px;height:44px;background:transparent;border:none;border-radius:12px;cursor:pointer;color:rgba(255,255,255,0.5);display:flex;align-items:center;justify-content:center;transition:all 0.2s;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></button>
-
-                    <button class="vsb-btn" id="vsb-crm" onclick="ventasSidebar('crm',this)" title="CRM"
-                        style="width:44px;height:44px;background:transparent;border:none;border-radius:12px;cursor:pointer;color:rgba(255,255,255,0.5);display:flex;align-items:center;justify-content:center;transition:all 0.2s;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></button>
-
-                    <button class="vsb-btn" id="vsb-cotizaciones" onclick="ventasSidebar('cotizaciones',this)" title="Cotizaciones"
-                        style="width:44px;height:44px;background:transparent;border:none;border-radius:12px;cursor:pointer;color:rgba(255,255,255,0.5);display:flex;align-items:center;justify-content:center;transition:all 0.2s;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></button>
-
-                    <button class="vsb-btn" id="vsb-correos" onclick="abrirGmailInbox()" title="Correos"
-                        style="width:44px;height:44px;background:transparent;border:none;border-radius:12px;cursor:pointer;color:rgba(255,255,255,0.5);display:flex;align-items:center;justify-content:center;transition:all 0.2s;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></button>
-
-                    <div style="flex:1;"></div>
-
-                    <button onclick="ventasCheckinDesdePortal()" title="Registrar Check-in"
-                        style="width:44px;height:44px;background:rgba(5,150,105,0.25);border:1px solid rgba(5,150,105,0.4);border-radius:12px;cursor:pointer;color:#34d399;display:flex;align-items:center;justify-content:center;margin-bottom:4px;transition:all 0.2s;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></button>
-                    <button onclick="abrirModalCliente()" title="Nuevo cliente"
-                        style="width:44px;height:44px;background:rgba(37,99,235,0.25);border:1px solid rgba(37,99,235,0.4);border-radius:12px;cursor:pointer;color:#93c5fd;display:flex;align-items:center;justify-content:center;margin-bottom:8px;transition:all 0.2s;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg></button>
+                <!-- ── SIDEBAR ÍCONOS ── -->
+                <div id="ventas-sidebar-icons">
+                    <div class="vsi-logo">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                    </div>
+                    <button class="vsi-btn active" id="vsi-mapa" onclick="vpSetModulo('mapa',this)" title="Mapa">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+                    </button>
+                    <button class="vsi-btn" id="vsi-clientes" onclick="vpSetModulo('clientes',this)" title="Clientes">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    </button>
+                    <button class="vsi-btn" id="vsi-crm" onclick="vpSetModulo('crm',this)" title="CRM Pipeline">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                    </button>
+                    <button class="vsi-btn" id="vsi-cotizaciones" onclick="vpSetModulo('cotizaciones',this)" title="Cotizaciones">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                    </button>
+                    <button class="vsi-btn" id="vsi-correos" onclick="abrirGmailInbox()" title="Correos">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                    </button>
+                    <div class="vsi-spacer"></div>
+                    <button class="vsi-action" onclick="vpCheckin()" title="Check-in" style="background:rgba(16,185,129,0.2);color:#34d399;margin-bottom:4px;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                    </button>
+                    <button class="vsi-action" onclick="vpNuevoCliente()" title="Nuevo cliente" style="background:rgba(37,99,235,0.2);color:#93c5fd;margin-bottom:8px;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+                    </button>
                 </div>
 
-                <!-- ── ÁREA PRINCIPAL ── -->
-                <div style="flex:1;display:flex;flex-direction:column;min-width:0;background:#f1f5f9;">
-
-                    <!-- Header -->
-                    <div style="background:white;border-bottom:1px solid #e2e8f0;padding:0 20px;display:flex;align-items:center;justify-content:space-between;height:52px;flex-shrink:0;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
-                        <div style="display:flex;align-items:center;gap:10px;">
-                            <div id="ventas-header-titulo" style="font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:800;color:#1e293b;">📍 Mapa de Clientes</div>
-                            <div id="ventas-mapa-stats" style="font-size:11px;color:#94a3b8;"></div>
-                        </div>
-                        <div style="display:flex;gap:8px;align-items:center;">
-                            <div style="position:relative;">
-                                <input type="text" id="ventas-buscador-global" placeholder="Buscar..."
-                                    style="padding:7px 12px 7px 30px;border:1px solid #e2e8f0;border-radius:10px;font-size:12px;width:160px;outline:none;background:#f8fafc;font-family:'DM Sans',sans-serif;"
-                                    oninput="ventasBuscarGlobal(this.value)">
-                                <span style="position:absolute;left:9px;top:50%;transform:translateY(-50%);font-size:12px;pointer-events:none;">🔍</span>
-                            </div>
-                            <button id="btn-abrir-metas" onclick="abrirModalMetas()"
-                                style="padding:7px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;font-size:11px;font-weight:700;color:#475569;cursor:pointer;">🎯 Metas</button>
+                <!-- ── COLUMNA IZQUIERDA: Lista ── -->
+                <div id="ventas-col-izq">
+                    <div id="ventas-col-izq-header">
+                        <div id="ventas-col-izq-titulo">Mapa de Clientes</div>
+                        <div id="vp-header-actions" style="display:flex;gap:6px;"></div>
+                    </div>
+                    <!-- Buscador -->
+                    <div class="ventas-search-wrap">
+                        <div class="ventas-search-inner">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                            <input id="vp-buscador" type="text" placeholder="Buscar..." oninput="vpBuscar(this.value)">
+                            <div id="ventas-mapa-stats" style="font-size:10px;color:#94a3b8;white-space:nowrap;"></div>
                         </div>
                     </div>
-
-                    <!-- Filtros dinámicos -->
-                    <div id="ventas-filtros-bar"
-                        style="background:white;border-bottom:1px solid #f1f5f9;padding:0 20px;min-height:44px;display:flex;align-items:center;gap:6px;overflow-x:auto;flex-shrink:0;">
-                    </div>
-
-                    <!-- Body: 2 columnas -->
-                    <div style="flex:1;display:flex;overflow:hidden;min-height:0;">
-
-                        <!-- Columna izquierda: lista -->
-                        <div id="ventas-col-lista" style="width:340px;min-width:280px;max-width:400px;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:8px;background:#f1f5f9;border-right:1px solid #e2e8f0;flex-shrink:0;">
-                            <div id="ventas-contenido-principal">
-                                <div style="text-align:center;padding:40px 20px;color:#94a3b8;font-size:13px;">Selecciona un módulo</div>
-                            </div>
+                    <!-- Stats -->
+                    <div id="vp-stats-bar" style="display:none;" class="ventas-stats"></div>
+                    <!-- Tabs (visible en CRM) -->
+                    <div id="vp-tabs-bar" style="display:none;" class="ventas-tabs"></div>
+                    <!-- Lista -->
+                    <div id="ventas-col-izq-body">
+                        <div id="vp-lista-content">
+                            <div style="text-align:center;padding:40px 20px;color:#94a3b8;font-size:13px;">Cargando...</div>
                         </div>
-
-                        <!-- Columna derecha: mapa + detalle -->
-                        <div id="ventas-col-detalle" style="flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;">
-
-                            <!-- Mapa (visible por defecto) -->
-                            <div id="ventas-mapa-desktop" style="flex:1;min-height:300px;">
-                                <div id="mapa-clientes" style="width:100%;height:100%;min-height:400px;"></div>
+                        <!-- Contenedores ocultos que usan las funciones de la app -->
+                        <div style="display:none;">
+                            <div id="clients-list"></div>
+                            <div id="clientes-lista-content"></div>
+                            <div id="ventas-buscador-wrap">
+                                <input id="ventas-buscador" type="text">
+                                <input id="clients-search" type="text">
+                                <input id="map-search" type="text">
                             </div>
-
-                            <!-- Panel de detalle (slide-in desde abajo) -->
-                            <div id="ventas-panel-detalle" style="display:none;background:white;border-top:2px solid #2563eb;padding:16px 20px;max-height:220px;overflow-y:auto;flex-shrink:0;"></div>
-
                         </div>
                     </div>
                 </div>
-            </div>
 
-            <!-- IDs ocultos requeridos por funciones existentes -->
+                <!-- ── COLUMNA DERECHA: Mapa + Detalle ── -->
+                <div id="ventas-col-der">
+                    <!-- Mapa -->
+                    <div id="ventas-mapa-desktop" style="flex:1;min-height:300px;">
+                        <div id="mapa-clientes" style="width:100%;height:100%;"></div>
+                    </div>
+                    <!-- Panel detalle perfil cliente -->
+                    <div id="ventas-panel-detalle" style="display:none;flex:1;overflow:hidden;flex-direction:column;">
+                        <div class="vp-cp-header">
+                            <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+                                <button onclick="vpCerrarPerfil()" style="width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.2);border:none;color:white;cursor:pointer;display:flex;align-items:center;justify-content:center;">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                </button>
+                                <div style="flex:1;">
+                                    <div class="vp-cp-nombre" id="vp-cp-nombre">—</div>
+                                    <div class="vp-cp-sub" id="vp-cp-sub">—</div>
+                                </div>
+                                <button onclick="vpNuevaActividad()" style="padding:7px 12px;background:white;color:#1e3a8a;border:none;border-radius:8px;font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:800;cursor:pointer;">+ Actividad</button>
+                            </div>
+                            <div class="vp-cp-kpis">
+                                <div class="vp-cp-kpi"><div class="vp-cp-kpi-val" id="vp-cp-cot">0</div><div class="vp-cp-kpi-lbl">Cotizaciones</div></div>
+                                <div class="vp-cp-kpi"><div class="vp-cp-kpi-val" id="vp-cp-vis">0</div><div class="vp-cp-kpi-lbl">Visitas</div></div>
+                                <div class="vp-cp-kpi"><div class="vp-cp-kpi-val" id="vp-cp-act">0</div><div class="vp-cp-kpi-lbl">Actividades</div></div>
+                                <div class="vp-cp-kpi"><div class="vp-cp-kpi-val" id="vp-cp-total" style="color:#86efac;">$0</div><div class="vp-cp-kpi-lbl">Total 2026</div></div>
+                            </div>
+                        </div>
+                        <div class="vp-cp-tabs">
+                            <button class="vp-cp-tab active" onclick="vpCpTab('general',this)">General</button>
+                            <button class="vp-cp-tab" onclick="vpCpTab('actividad',this)">Actividad</button>
+                            <button class="vp-cp-tab" onclick="vpCpTab('cotizaciones',this)">Cotizaciones</button>
+                            <button class="vp-cp-tab" onclick="vpCpTab('contactos',this)">Contactos</button>
+                            <button class="vp-cp-tab" onclick="vpCpTab('correos',this)">Correos</button>
+                        </div>
+                        <div class="vp-cp-content" id="vp-cp-body"></div>
+                    </div>
+                    <!-- Panel CRM kanban (visible en módulo CRM) -->
+                    <div id="vp-crm-kanban-wrap" style="display:none;flex:1;overflow:hidden;flex-direction:column;">
+                        <div style="padding:12px 16px;border-bottom:1px solid #e2e8f0;display:flex;gap:6px;overflow-x:auto;flex-shrink:0;">
+                            <button class="ventas-tab active" onclick="vpCrmPipeline(0,this)" style="padding:6px 12px;border-radius:20px;border:2px solid #2563eb;background:#eff6ff;color:#2563eb;font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:700;white-space:nowrap;cursor:pointer;">Servicios Técnicos</button>
+                            <button class="ventas-tab" onclick="vpCrmPipeline(1,this)" style="padding:6px 12px;border-radius:20px;border:1px solid #e2e8f0;background:white;color:#64748b;font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:700;white-space:nowrap;cursor:pointer;">Cumplimiento</button>
+                            <button class="ventas-tab" onclick="vpCrmPipeline(2,this)" style="padding:6px 12px;border-radius:20px;border:1px solid #e2e8f0;background:white;color:#64748b;font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:700;white-space:nowrap;cursor:pointer;">Refacciones</button>
+                        </div>
+                        <div id="vp-kanban-body" class="vp-kanban"></div>
+                    </div>
+                    <!-- Panel cotizacion detalle -->
+                    <div id="vp-cot-detalle-wrap" style="display:none;flex:1;overflow-y:auto;padding:16px;flex-direction:column;">
+                        <div style="color:#94a3b8;font-size:12px;text-align:center;padding:30px;">Selecciona una cotización</div>
+                    </div>
+                </div>
+
+            </div><!-- /ventas-portal-wrap -->
+
+            <!-- IDs requeridos por funciones existentes del portal -->
             <div style="display:none;">
                 <div id="ventas-metricas"></div>
                 <div id="ventas-metas-content"></div>
                 <div id="ventas-checkins-content"></div>
-                <input id="ventas-buscador" type="text">
-                <div id="clientes-lista-content"></div>
-                <div id="vtab-mapa"></div>
-                <div id="vtab-clientes"></div>
-                <div id="vtab-crm"></div>
-                <div id="vtab-cotizaciones"></div>
+                <div id="vtab-mapa"></div><div id="vtab-clientes"></div>
+                <div id="vtab-crm"></div><div id="vtab-cotizaciones"></div>
                 <div id="portal-crm-stats"></div>
                 <div id="portal-crm-kanban"></div>
                 <div id="portal-crm-lista"></div>
@@ -11493,7 +11660,7 @@ window.ventasCheckinDesdePortal = async function() {
     if(!window.clientesDB || window.clientesDB.length === 0) {
         try {
             const { getDocs, collection } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-            const db = window.db || (await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js').then(()=>window.db));
+            const db = window.db || (await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js').then(()=>window.db));
             if(!db) throw new Error('db no disponible');
             const snap = await getDocs(collection(db, 'ventas_clientes'));
             window.clientesDB = snap.docs.map(d => ({id:d.id,...d.data()}));
@@ -11506,44 +11673,8 @@ window.ventasCheckinDesdePortal = async function() {
     if(typeof fn === 'function') fn();
 };
 
-// ── Fix: ventasSidebar actualiza vsb-btn correctamente ────────
-const _origVentasSidebar = window.ventasSidebar;
-window.ventasSidebar = function(modulo, btn) {
-    // Actualizar estilos de botones SVG correctamente
-    document.querySelectorAll('.vsb-btn').forEach(b => {
-        b.style.background = 'transparent';
-        b.style.color = 'rgba(255,255,255,0.5)';
-    });
-    if(btn) {
-        btn.style.background = '#2563eb';
-        btn.style.color = 'white';
-    }
-    // Actualizar título
-    const titulos = {
-        mapa: 'Mapa de Clientes',
-        clientes: 'Directorio de Clientes', 
-        crm: 'CRM Pipeline',
-        cotizaciones: 'Cotizaciones'
-    };
-    const titulo = document.getElementById('ventas-header-titulo');
-    if(titulo) titulo.textContent = titulos[modulo] || modulo;
+// ventasSidebar override removido — reemplazado por vpSetModulo
 
-    // Filtros dinámicos
-    const filtrosBar = document.getElementById('ventas-filtros-bar');
-    if(filtrosBar && typeof VENTAS_MODULOS !== 'undefined' && VENTAS_MODULOS[modulo]) {
-        filtrosBar.innerHTML = VENTAS_MODULOS[modulo].filtros();
-    }
-
-    // Contenido
-    const principal = document.getElementById('ventas-contenido-principal');
-    if(principal) principal.innerHTML = '<div style="text-align:center;padding:40px;color:#94a3b8;font-size:13px;">Cargando...</div>';
-
-    // Cargar módulo
-    if(typeof VENTAS_MODULOS !== 'undefined' && VENTAS_MODULOS[modulo]) {
-        VENTAS_MODULOS[modulo].cargar();
-    }
-    window.ventasModuloActivo = modulo;
-};
 
 // ── Fix: buscador global conectado correctamente ───────────────
 window.ventasBuscarGlobal = function(q) {
@@ -12021,6 +12152,685 @@ window.ventasSeleccionarCliente = function(id) {
 window.verPerfilCliente = window.abrirPerfilCliente;
 
 console.log('PORTAL PERFIL CLIENTE cargado ✅');
+</script>
+
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// VENTAS PORTAL (VP) — Wrapper de la app adaptado a desktop
+// Usa las mismas funciones de la app: cargarCRM, cargarCot, etc.
+// Mismas colecciones Firebase → sincronización automática
+// ═══════════════════════════════════════════════════════════════
+
+let vpModuloActivo = 'mapa';
+let vpCrmPipelineActivo = 0;
+let vpCotFiltroActivo = 'todas';
+let vpCrmDB = [];
+let vpCotDB = [];
+let vpClientesDB = [];
+let vpVisitasDB = [];
+let vpCpClienteActual = null;
+let vpCpActividades = [];
+let vpCpCotizaciones = [];
+
+const VP_PIPELINES = [
+    { nombre:'Servicios Técnicos', etapas:['Prospecto','Propuesta','Negociación','Ganada','Perdida'] },
+    { nombre:'Cumplimiento Regulatorio', etapas:['Identificado','Cotizado','Aprobado','En proceso','Cerrado'] },
+    { nombre:'Refacciones y Equipos', etapas:['Solicitud','Cotización','Pedido','Entregado','Cancelado'] },
+];
+const VP_ETAPA_COLORS = {
+    Prospecto:{bg:'#dbeafe',color:'#1d4ed8'},Propuesta:{bg:'#fef3c7',color:'#92400e'},
+    Negociación:{bg:'#ede9fe',color:'#6d28d9'},Ganada:{bg:'#d1fae5',color:'#065f46'},
+    Perdida:{bg:'#fee2e2',color:'#b91c1c'},Identificado:{bg:'#dbeafe',color:'#1d4ed8'},
+    Cotizado:{bg:'#fef3c7',color:'#92400e'},Aprobado:{bg:'#d1fae5',color:'#065f46'},
+    'En proceso':{bg:'#ede9fe',color:'#6d28d9'},Cerrado:{bg:'#f0fdf4',color:'#14532d'},
+    Solicitud:{bg:'#dbeafe',color:'#1d4ed8'},Cotización:{bg:'#fef3c7',color:'#92400e'},
+    Pedido:{bg:'#ede9fe',color:'#6d28d9'},Entregado:{bg:'#d1fae5',color:'#065f46'},
+    Cancelado:{bg:'#fee2e2',color:'#b91c1c'},
+};
+const VP_ACT_ICONS = {Llamada:'📞',Email:'📧',Visita:'📍',Cotización:'📋',Seguimiento:'🔔',Nota:'📝'};
+const VP_ACT_COLORS = {
+    Llamada:{bg:'#dbeafe',color:'#1d4ed8'},Email:{bg:'#f3e8ff',color:'#7c3aed'},
+    Visita:{bg:'#d1fae5',color:'#059669'},Cotización:{bg:'#fef3c7',color:'#d97706'},
+    Seguimiento:{bg:'#e0f2fe',color:'#0284c7'},Nota:{bg:'#f1f5f9',color:'#475569'},
+};
+
+function vpFmt(iso) {
+    if(!iso) return '—';
+    try { return new Date(iso).toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}); }
+    catch(e) { return iso.slice(0,10); }
+}
+
+// ── Navegación principal ────────────────────────────────────
+window.vpSetModulo = function(modulo, btn) {
+    vpModuloActivo = modulo;
+    // Reset botones sidebar
+    document.querySelectorAll('.vsi-btn').forEach(b => {
+        b.style.background = 'transparent';
+        b.style.color = 'rgba(255,255,255,0.5)';
+        b.classList.remove('active');
+    });
+    if(btn) { btn.style.background='#2563eb'; btn.style.color='white'; btn.classList.add('active'); }
+
+    // Reset paneles derechos
+    const mapaDer = document.getElementById('ventas-mapa-desktop');
+    const panelPerfil = document.getElementById('ventas-panel-detalle');
+    const panelKanban = document.getElementById('vp-crm-kanban-wrap');
+    const panelCotDet = document.getElementById('vp-cot-detalle-wrap');
+    if(mapaDer) mapaDer.style.display = 'none';
+    if(panelPerfil) { panelPerfil.style.display = 'none'; panelPerfil.style.flexDirection = ''; }
+    if(panelKanban) panelKanban.style.display = 'none';
+    if(panelCotDet) panelCotDet.style.display = 'none';
+
+    // Stats y tabs
+    const statsBar = document.getElementById('vp-stats-bar');
+    const tabsBar = document.getElementById('vp-tabs-bar');
+    if(statsBar) statsBar.style.display = 'none';
+    if(tabsBar) tabsBar.style.display = 'none';
+
+    // Actualizar título
+    const titulos = {mapa:'Mapa de Clientes',clientes:'Directorio de Clientes',crm:'CRM Pipeline',cotizaciones:'Cotizaciones'};
+    const tituloEl = document.getElementById('ventas-col-izq-titulo');
+    if(tituloEl) tituloEl.textContent = titulos[modulo] || modulo;
+
+    // Actualizar acciones header
+    const actEl = document.getElementById('vp-header-actions');
+    if(actEl) {
+        if(modulo === 'clientes') actEl.innerHTML = `<button onclick="vpNuevoCliente()" style="padding:7px 12px;background:#2563eb;color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Space Grotesk',sans-serif;">+ Nuevo</button>`;
+        else if(modulo === 'crm') actEl.innerHTML = `<button onclick="vpNuevaOportunidad()" style="padding:7px 12px;background:#2563eb;color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Space Grotesk',sans-serif;">+ Nueva</button>`;
+        else if(modulo === 'cotizaciones') actEl.innerHTML = `<button onclick="vpNuevaCotizacion()" style="padding:7px 12px;background:#2563eb;color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Space Grotesk',sans-serif;">+ Nueva</button>`;
+        else actEl.innerHTML = '';
+    }
+
+    switch(modulo) {
+        case 'mapa':        vpCargarMapa(); break;
+        case 'clientes':    vpCargarClientes(); break;
+        case 'crm':         vpCargarCRM(); break;
+        case 'cotizaciones':vpCargarCotizaciones(); break;
+    }
+};
+
+// ── MÓDULO MAPA ─────────────────────────────────────────────
+function vpCargarMapa() {
+    const mapa = document.getElementById('ventas-mapa-desktop');
+    if(mapa) mapa.style.display = 'flex';
+    vpRenderListaClientes();
+    setTimeout(() => {
+        if(window.mapaLeaflet) window.mapaLeaflet.invalidateSize();
+        else if(window.mapaClientes) window.mapaClientes.invalidateSize();
+    }, 300);
+}
+
+function vpRenderListaClientes() {
+    const el = document.getElementById('vp-lista-content');
+    if(!el) return;
+    const q = (document.getElementById('vp-buscador')?.value||'').toLowerCase();
+    const db = window.clientesDB || [];
+    const filtrados = q ? db.filter(c =>
+        (c.nombre||'').toLowerCase().includes(q) ||
+        (c.ciudad||'').toLowerCase().includes(q) ||
+        (c.vendedor||'').toLowerCase().includes(q) ||
+        (c.sector||'').toLowerCase().includes(q)
+    ) : db;
+
+    const statsEl = document.getElementById('ventas-mapa-stats');
+    if(statsEl) statsEl.textContent = filtrados.length + ' clientes';
+
+    if(!filtrados.length) {
+        el.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;font-size:13px;">' + (q ? 'Sin resultados' : 'Sin clientes cargados') + '</div>';
+        return;
+    }
+
+    el.innerHTML = filtrados.map(c => {
+        const inicial = (c.nombre||'?')[0].toUpperCase();
+        const ciudad = [c.ciudad, c.estado].filter(Boolean).join(', ');
+        return `<div class="vp-client-card" onclick="vpVerCliente('${c.id}')">
+            <div class="vp-client-avatar">${inicial}</div>
+            <div style="flex:1;min-width:0;">
+                <div class="vp-client-nombre">${c.nombre||'—'}</div>
+                <div class="vp-client-meta">${ciudad||'—'} · ${c.sector||'—'}</div>
+            </div>
+            <div class="vp-client-badge">${c.visitas||0} visitas</div>
+        </div>`;
+    }).join('');
+}
+
+// ── MÓDULO CLIENTES ─────────────────────────────────────────
+function vpCargarClientes() {
+    const statsBar = document.getElementById('vp-stats-bar');
+    if(statsBar) {
+        statsBar.style.display = 'flex';
+        const db = window.clientesDB || [];
+        const visitas = window.visitasDB || [];
+        statsBar.innerHTML = [
+            {icon:'👥', val:db.length, lbl:'Clientes'},
+            {icon:'📍', val:visitas.length, lbl:'Check-ins'},
+            {icon:'🏙️', val:[...new Set(db.map(c=>c.ciudad).filter(Boolean))].length, lbl:'Ciudades'},
+        ].map(s => `<div class="ventas-stat"><div class="ventas-stat-val">${s.val}</div><div class="ventas-stat-lbl">${s.lbl}</div></div>`).join('');
+    }
+    vpRenderListaClientes();
+    // Panel derecho: mapa
+    const mapa = document.getElementById('ventas-mapa-desktop');
+    if(mapa) mapa.style.display = 'flex';
+}
+
+window.vpVerCliente = async function(id) {
+    const c = (window.clientesDB||[]).find(x=>x.id===id);
+    if(!c) return;
+    vpCpClienteActual = c;
+
+    // Mostrar panel perfil
+    const mapa = document.getElementById('ventas-mapa-desktop');
+    const panel = document.getElementById('ventas-panel-detalle');
+    if(mapa) mapa.style.display = 'none';
+    if(panel) { panel.style.display = 'flex'; panel.style.flexDirection = 'column'; }
+
+    // Llenar header
+    document.getElementById('vp-cp-nombre').textContent = c.nombre || '—';
+    document.getElementById('vp-cp-sub').textContent = [c.razonSocial||c.sector, c.ciudad, c.vendedor].filter(Boolean).join(' · ');
+
+    // Enfocar en mapa
+    if(window.mapaLeaflet && c.lat && c.lng) window.mapaLeaflet.setView([c.lat, c.lng], 14);
+
+    // Cargar datos en paralelo
+    document.getElementById('vp-cp-body').innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;font-size:12px;">Cargando...</div>';
+    await Promise.all([vpCpCargarActividades(id), vpCpCargarCotizaciones(id)]);
+
+    // KPIs
+    const visitas = (window.visitasDB||[]).filter(v=>v.clienteId===id);
+    document.getElementById('vp-cp-cot').textContent = vpCpCotizaciones.length;
+    document.getElementById('vp-cp-vis').textContent = visitas.length;
+    document.getElementById('vp-cp-act').textContent = vpCpActividades.length;
+    document.getElementById('vp-cp-total').textContent = c.total2026 ? '$'+Math.round(c.total2026/1000)+'K' : '$0';
+
+    // Tabs reset
+    document.querySelectorAll('.vp-cp-tab').forEach((b,i) => {
+        b.classList.toggle('active', i===0);
+    });
+    vpCpTab('general', document.querySelector('.vp-cp-tab'));
+};
+
+async function vpCpCargarActividades(clienteId) {
+    try {
+        const {getDocs,collection,query,where,orderBy} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const snap = await getDocs(query(collection(window.db,'actividades_cliente'),where('clienteId','==',clienteId),orderBy('creadoEn','desc')));
+        vpCpActividades = snap.docs.map(d=>({id:d.id,...d.data()}));
+    } catch(e) {
+        try {
+            const {getDocs,collection,query,where} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+            const snap = await getDocs(query(collection(window.db,'actividades_cliente'),where('clienteId','==',clienteId)));
+            vpCpActividades = snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.creadoEn||'').localeCompare(a.creadoEn||''));
+        } catch(e2) { vpCpActividades = []; }
+    }
+}
+
+async function vpCpCargarCotizaciones(clienteId) {
+    try {
+        const {getDocs,collection,query,where} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const snap = await getDocs(query(collection(window.db,'cotizaciones'),where('clienteId','==',clienteId)));
+        let cots = snap.docs.map(d=>({id:d.id,...d.data()}));
+        const c = (window.clientesDB||[]).find(x=>x.id===clienteId);
+        if(c?.nombre) {
+            const snap2 = await getDocs(query(collection(window.db,'cotizaciones'),where('cliente','==',c.nombre)));
+            const extra = snap2.docs.map(d=>({id:d.id,...d.data()})).filter(x=>!cots.find(y=>y.id===x.id));
+            cots = [...cots,...extra];
+        }
+        vpCpCotizaciones = cots.sort((a,b)=>(b.creadoEn||'').localeCompare(a.creadoEn||''));
+    } catch(e) { vpCpCotizaciones = []; }
+}
+
+window.vpCpTab = function(tab, btn) {
+    document.querySelectorAll('.vp-cp-tab').forEach(b => b.classList.remove('active'));
+    if(btn) btn.classList.add('active');
+    const el = document.getElementById('vp-cp-body');
+    if(!el) return;
+    const c = vpCpClienteActual;
+    switch(tab) {
+        case 'general': el.innerHTML = vpCpGeneral(c); break;
+        case 'actividad': el.innerHTML = vpCpActividad(); break;
+        case 'cotizaciones': el.innerHTML = vpCpCots(); break;
+        case 'contactos': el.innerHTML = vpCpContactos(c); break;
+        case 'correos': el.innerHTML = vpCpCorreos(c); break;
+    }
+};
+
+function vpCpGeneral(c) {
+    if(!c) return '';
+    const visitas = (window.visitasDB||[]).filter(v=>v.clienteId===c.id);
+    const ultimaVisita = [...visitas].sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''))[0];
+    const ultimaAct = vpCpActividades[0];
+    const urgentes = vpCpActividades.filter(a=>a.prioridad==='Urgente'&&a.estatus!=='Completada');
+    return `
+    ${urgentes.length ? `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:10px;margin-bottom:10px;font-size:11px;font-weight:700;color:#dc2626;">⚠️ ${urgentes.length} actividad urgente pendiente</div>` : ''}
+    <div class="vp-cp-section">
+        <div class="vp-cp-label">Información general</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;">
+            ${c.cve ? `<div><div style="color:#94a3b8;font-size:10px;">CVE</div><div style="font-weight:700;">${c.cve}</div></div>` : ''}
+            ${c.sector ? `<div><div style="color:#94a3b8;font-size:10px;">Sector</div><div style="font-weight:700;">${c.sector}</div></div>` : ''}
+            ${c.ciudad ? `<div><div style="color:#94a3b8;font-size:10px;">Ciudad</div><div style="font-weight:700;">${c.ciudad}</div></div>` : ''}
+            ${c.vendedor ? `<div><div style="color:#94a3b8;font-size:10px;">Vendedor</div><div style="font-weight:700;">${c.vendedor}</div></div>` : ''}
+            ${c.tel ? `<div><div style="color:#94a3b8;font-size:10px;">Teléfono</div><div style="font-weight:700;">${c.tel}</div></div>` : ''}
+            ${c.rfc ? `<div><div style="color:#94a3b8;font-size:10px;">RFC</div><div style="font-weight:700;">${c.rfc}</div></div>` : ''}
+        </div>
+        ${c.notas ? `<div style="margin-top:8px;font-size:11px;color:#64748b;">${c.notas}</div>` : ''}
+        ${c.lat&&c.lng ? `<a href="https://www.google.com/maps?q=${c.lat},${c.lng}" target="_blank" style="font-size:11px;color:#2563eb;font-weight:700;text-decoration:none;display:block;margin-top:8px;">Ver en Google Maps →</a>` : ''}
+    </div>
+    ${ultimaAct ? `<div class="vp-cp-section"><div class="vp-cp-label">Última actividad</div>
+        <div style="display:flex;gap:8px;"><div style="width:28px;height:28px;border-radius:50%;background:${(VP_ACT_COLORS[ultimaAct.tipo]||{bg:'#f1f5f9'}).bg};display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;">${VP_ACT_ICONS[ultimaAct.tipo]||'📌'}</div>
+        <div><div style="font-size:12px;font-weight:700;">${ultimaAct.titulo||'—'}</div><div style="font-size:10px;color:#94a3b8;">${ultimaAct.tipo} · ${vpFmt(ultimaAct.creadoEn)}</div></div></div></div>` : ''}
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:4px;">
+        ${c.tel ? `<a href="tel:${c.tel}" style="padding:10px 4px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;text-decoration:none;display:flex;flex-direction:column;align-items:center;gap:3px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.99 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.92 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 8.91a16 16 0 0 0 5.99 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+            <span style="font-size:9px;font-weight:700;color:#2563eb;">Llamar</span></a>` : '<div></div>'}
+        <button onclick="vpNuevaCotizacion('${c.id}')" style="padding:10px 4px;background:#f0fdfa;border:1px solid #99f6e4;border-radius:10px;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0891b2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+            <span style="font-size:9px;font-weight:700;color:#0891b2;">Cotizar</span>
+        </button>
+        ${c.tel ? `<a href="https://wa.me/52${c.tel.replace(/[^0-9]/g,'')}" target="_blank" style="padding:10px 4px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;text-decoration:none;display:flex;flex-direction:column;align-items:center;gap:3px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            <span style="font-size:9px;font-weight:700;color:#16a34a;">WhatsApp</span></a>` : '<div></div>'}
+    </div>`;
+}
+
+function vpCpActividad() {
+    const prioC = {Urgente:'#dc2626',Alta:'#d97706',Normal:'#64748b',Baja:'#94a3b8'};
+    if(!vpCpActividades.length) return `<button onclick="vpNuevaActividad()" style="width:100%;padding:10px;background:#1e3a8a;color:white;border:none;border-radius:10px;font-weight:700;font-size:12px;cursor:pointer;margin-bottom:10px;">+ Nueva Actividad</button><div style="text-align:center;padding:30px;color:#94a3b8;font-size:12px;">Sin actividades</div>`;
+    return `<button onclick="vpNuevaActividad()" style="width:100%;padding:10px;background:#1e3a8a;color:white;border:none;border-radius:10px;font-weight:700;font-size:12px;cursor:pointer;margin-bottom:10px;">+ Nueva Actividad</button>` +
+    vpCpActividades.map(a => {
+        const col = VP_ACT_COLORS[a.tipo]||{bg:'#f1f5f9',color:'#64748b'};
+        const st = a.estatus||'Pendiente';
+        return `<div class="vp-cp-section" style="cursor:pointer;">
+            <div style="display:flex;gap:8px;align-items:flex-start;">
+                <div style="width:28px;height:28px;border-radius:50%;background:${col.bg};color:${col.color};display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;">${VP_ACT_ICONS[a.tipo]||'📌'}</div>
+                <div style="flex:1;min-width:0;">
+                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
+                        <div style="font-size:12px;font-weight:700;color:#1e293b;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${a.titulo||'—'}</div>
+                        <span style="font-size:9px;font-weight:700;color:${prioC[a.prioridad]||'#64748b'};flex-shrink:0;">${a.prioridad||'Normal'}</span>
+                    </div>
+                    <div style="font-size:10px;color:#94a3b8;">${a.tipo} · ${vpFmt(a.fechaProgramada||a.creadoEn)}</div>
+                    ${a.descripcion ? `<div style="font-size:11px;color:#64748b;margin-top:3px;">${a.descripcion.slice(0,60)}</div>` : ''}
+                    <div style="display:flex;gap:4px;margin-top:6px;">
+                        ${['Pendiente','En Proceso','Completada'].map(s => `<button onclick="vpCambiarEstatusAct('${a.id}','${s}',this)" style="font-size:9px;padding:2px 7px;border-radius:6px;cursor:pointer;border:1px solid ${st===s?'#2563eb':'#e2e8f0'};background:${st===s?'#2563eb':'white'};color:${st===s?'white':'#64748b'};font-family:'Space Grotesk',sans-serif;font-weight:700;">${s}</button>`).join('')}
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function vpCpCots() {
+    if(!vpCpCotizaciones.length) return '<div style="text-align:center;padding:30px;color:#94a3b8;font-size:12px;">Sin cotizaciones</div>';
+    const ST_CLASS = {pendiente:'vp-badge-pend',enviada:'vp-badge-env',colocada:'vp-badge-ok',cancelada:'vp-badge-can'};
+    return vpCpCotizaciones.map(c => {
+        const st = (c.statusCot||'pendiente').toLowerCase();
+        const total = c.moneda==='USD' ? `USD $${(c.total||0).toLocaleString('en-US',{minimumFractionDigits:2})}` : `$${(c.total||0).toLocaleString('es-MX',{minimumFractionDigits:2})}`;
+        return `<div class="vp-cot-card">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+                <span class="vp-cot-folio">${c.folio||'S/F'}</span>
+                <span class="vp-badge ${ST_CLASS[st]||'vp-badge-pend'}">${(c.statusCot||'Pendiente').toUpperCase()}</span>
+            </div>
+            <div class="vp-cot-total">${total}</div>
+            <div style="font-size:10px;color:#94a3b8;margin-top:3px;">${vpFmt(c.creadoEn)} · ${(c.items||c.carrito||[]).length} productos</div>
+            <button onclick="vpGenerarPDF('${c.id}')" style="margin-top:8px;width:100%;padding:6px;background:#f1f5f9;border:none;border-radius:8px;font-size:10px;font-weight:700;color:#475569;cursor:pointer;font-family:'Space Grotesk',sans-serif;">📄 Generar PDF</button>
+        </div>`;
+    }).join('');
+}
+
+function vpCpContactos(c) {
+    if(!c) return '';
+    const items = [];
+    if(c.contacto) items.push({nombre:c.contacto,puesto:'Principal',tel:c.tel});
+    (c.contactos||[]).forEach(ct => items.push(ct));
+    if(!items.length) return '<div style="text-align:center;padding:30px;color:#94a3b8;font-size:12px;">Sin contactos</div>';
+    return items.map(ct => `<div class="vp-cp-section" style="display:flex;align-items:center;gap:10px;padding:10px;">
+        <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#1e3a8a,#2563eb);display:flex;align-items:center;justify-content:center;color:white;font-weight:800;font-size:13px;flex-shrink:0;">${(ct.nombre||'?')[0]}</div>
+        <div style="flex:1;min-width:0;"><div style="font-size:12px;font-weight:700;">${ct.nombre||'—'}</div><div style="font-size:10px;color:#64748b;">${ct.puesto||''} ${ct.tel?'· '+ct.tel:''}</div></div>
+        ${ct.tel ? `<a href="tel:${ct.tel}" style="width:28px;height:28px;border-radius:50%;background:#dcfce7;display:flex;align-items:center;justify-content:center;text-decoration:none;flex-shrink:0;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.99 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.92 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 8.91a16 16 0 0 0 5.99 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg></a>` : ''}
+    </div>`).join('');
+}
+
+function vpCpCorreos(c) {
+    const email = c?.email||c?.correo||'';
+    return `<div class="vp-cp-section"><div class="vp-cp-label">Correos</div>
+        <div style="font-size:11px;color:#64748b;margin-bottom:10px;">Email: <b>${email||'No registrado'}</b></div>
+        <button onclick="gmailRedactar('${email}','','${c?.id||''}')" style="width:100%;padding:9px;background:#2563eb;color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;margin-bottom:6px;">✏️ Redactar correo</button>
+        <button onclick="abrirGmailInbox()" style="width:100%;padding:9px;background:#f1f5f9;border:none;border-radius:8px;font-size:11px;font-weight:700;color:#475569;cursor:pointer;">📧 Ver inbox</button>
+    </div>`;
+}
+
+window.vpCerrarPerfil = function() {
+    const panel = document.getElementById('ventas-panel-detalle');
+    const mapa = document.getElementById('ventas-mapa-desktop');
+    if(panel) panel.style.display = 'none';
+    if(mapa) mapa.style.display = 'flex';
+};
+
+// ── MÓDULO CRM ──────────────────────────────────────────────
+async function vpCargarCRM() {
+    const lista = document.getElementById('vp-lista-content');
+    if(lista) lista.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;font-size:13px;">Cargando CRM...</div>';
+    const kanban = document.getElementById('vp-kanban-body');
+    const kanbanWrap = document.getElementById('vp-crm-kanban-wrap');
+    if(kanbanWrap) kanbanWrap.style.display = 'flex';
+
+    try {
+        const {getDocs,collection} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const snap = await getDocs(collection(window.db,'crm_oportunidades'));
+        vpCrmDB = snap.docs.map(d=>({id:d.id,...d.data()}));
+        vpRenderCrmLista();
+        vpRenderCrmKanban();
+        vpRenderCrmStats();
+    } catch(e) {
+        if(lista) lista.innerHTML = `<div style="padding:16px;color:#dc2626;font-size:12px;">Error: ${e.message}</div>`;
+    }
+}
+
+function vpRenderCrmStats() {
+    const statsBar = document.getElementById('vp-stats-bar');
+    if(!statsBar) return;
+    statsBar.style.display = 'flex';
+    const pipeline = VP_PIPELINES[vpCrmPipelineActivo];
+    const ops = vpCrmDB.filter(o=>o.pipeline===vpCrmPipelineActivo||o.pipeline===pipeline.nombre);
+    const ganadas = ops.filter(o=>['Ganada','Cerrado','Entregado'].includes(o.etapa));
+    const monto = ops.reduce((s,o)=>s+(o.valor||o.monto||0),0);
+    statsBar.innerHTML = [
+        {val:ops.length,lbl:'Oportunidades'},
+        {val:'$'+Math.round(monto/1000)+'K',lbl:'Valor total'},
+        {val:ganadas.length,lbl:'Ganadas'},
+        {val:ops.length?Math.round(ganadas.length/ops.length*100)+'%':'0%',lbl:'Tasa'},
+    ].map(s=>`<div class="ventas-stat"><div class="ventas-stat-val">${s.val}</div><div class="ventas-stat-lbl">${s.lbl}</div></div>`).join('');
+}
+
+function vpRenderCrmLista() {
+    const el = document.getElementById('vp-lista-content');
+    if(!el) return;
+    const pipeline = VP_PIPELINES[vpCrmPipelineActivo];
+    const ops = vpCrmDB.filter(o=>o.pipeline===vpCrmPipelineActivo||o.pipeline===pipeline.nombre);
+    const q = (document.getElementById('vp-buscador')?.value||'').toLowerCase();
+    const filtradas = q ? ops.filter(o=>(o.cliente||o.nombre||'').toLowerCase().includes(q)) : ops;
+    if(!filtradas.length) { el.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;font-size:13px;">Sin oportunidades en este pipeline</div>'; return; }
+    const colores = VP_ETAPA_COLORS;
+    el.innerHTML = filtradas.map(o => {
+        const col = colores[o.etapa]||{bg:'#f1f5f9',color:'#475569'};
+        return `<div class="vp-client-card" onclick="vpVerOportunidad('${o.id}')">
+            <div style="width:38px;height:38px;border-radius:10px;background:${col.bg};color:${col.color};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;flex-shrink:0;">${(o.cliente||o.nombre||'?')[0]}</div>
+            <div style="flex:1;min-width:0;">
+                <div class="vp-client-nombre">${o.cliente||o.nombre||'—'}</div>
+                <div class="vp-client-meta">${o.etapa||'—'} · ${(o.vendedor||o.asignado||'').split('@')[0]||'—'}</div>
+            </div>
+            <div style="text-align:right;flex-shrink:0;">
+                <div style="font-size:12px;font-weight:800;color:#10b981;">$${((o.valor||o.monto||0)/1000).toFixed(0)}K</div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function vpRenderCrmKanban() {
+    const el = document.getElementById('vp-kanban-body');
+    if(!el) return;
+    const pipeline = VP_PIPELINES[vpCrmPipelineActivo];
+    const ops = vpCrmDB.filter(o=>o.pipeline===vpCrmPipelineActivo||o.pipeline===pipeline.nombre);
+    el.innerHTML = pipeline.etapas.map(etapa => {
+        const tarjetas = ops.filter(o=>o.etapa===etapa);
+        const col = VP_ETAPA_COLORS[etapa]||{bg:'#f8fafc',color:'#475569'};
+        const monto = tarjetas.reduce((s,o)=>s+(o.valor||o.monto||0),0);
+        return `<div class="vp-kanban-col" style="background:${col.bg};border-top:3px solid ${col.color.replace('text','border')||'#e2e8f0'};">
+            <div class="vp-kanban-col-hdr" style="color:${col.color};">
+                <span>${etapa}</span><span style="background:white;padding:1px 7px;border-radius:10px;">${tarjetas.length}</span>
+            </div>
+            ${monto>0 ? `<div style="font-size:10px;color:${col.color};opacity:0.8;margin-bottom:8px;">$${Math.round(monto/1000)}K</div>` : ''}
+            ${tarjetas.map(o=>`<div class="vp-kanban-card" onclick="vpVerOportunidad('${o.id}')">
+                <div class="vp-kanban-nombre">${o.cliente||o.nombre||'—'}</div>
+                ${(o.valor||o.monto)>0?`<div class="vp-kanban-valor">$${(o.valor||o.monto||0).toLocaleString('es-MX')}</div>`:''}
+                ${o.servicio?`<div class="vp-kanban-meta">${o.servicio}</div>`:''}
+                <div class="vp-kanban-meta">${(o.vendedor||o.asignado||'').split('@')[0]||'—'}</div>
+            </div>`).join('')}
+            <button class="vp-kanban-add" onclick="vpNuevaOportunidad('${etapa}')" style="color:${col.color};">+ Agregar</button>
+        </div>`;
+    }).join('');
+}
+
+window.vpCrmPipeline = function(idx, btn) {
+    vpCrmPipelineActivo = idx;
+    document.querySelectorAll('#vp-crm-kanban-wrap .ventas-tab').forEach(b => {
+        b.style.borderWidth='1px'; b.style.borderColor='#e2e8f0'; b.style.background='white'; b.style.color='#64748b';
+    });
+    if(btn) { btn.style.borderWidth='2px'; btn.style.borderColor='#2563eb'; btn.style.background='#eff6ff'; btn.style.color='#2563eb'; }
+    vpRenderCrmLista();
+    vpRenderCrmKanban();
+    vpRenderCrmStats();
+};
+
+window.vpVerOportunidad = function(id) {
+    const o = vpCrmDB.find(x=>x.id===id);
+    if(!o) return;
+    const col = VP_ETAPA_COLORS[o.etapa]||{bg:'#f1f5f9',color:'#475569'};
+    alert([
+        `📋 ${o.cliente||o.nombre||'—'}`,
+        `📊 Etapa: ${o.etapa||'—'}`,
+        `💰 $${((o.valor||o.monto||0)).toLocaleString('es-MX')} MXN`,
+        o.servicio?`🔧 ${o.servicio}`:'',
+        o.notas?`📝 ${o.notas.slice(0,100)}`:'',
+        `👤 ${(o.vendedor||o.asignado||'—').split('@')[0]}`,
+    ].filter(Boolean).join('
+'));
+};
+
+window.vpNuevaOportunidad = async function(etapaInicial) {
+    const pipeline = VP_PIPELINES[vpCrmPipelineActivo];
+    const cliente = prompt('Nombre del cliente o empresa:');
+    if(!cliente) return;
+    const valor = prompt('Valor estimado (MXN):', '0');
+    const servicio = prompt('Servicio o producto:', '');
+    const etapa = etapaInicial || pipeline.etapas[0];
+    const vendedor = window.auth?.currentUser?.email || '';
+    try {
+        const {addDoc,collection} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        await addDoc(collection(window.db,'crm_oportunidades'), {
+            cliente, nombre:cliente, valor:parseFloat(valor)||0, servicio,
+            etapa, pipeline:vpCrmPipelineActivo, vendedor,
+            creadoEn:new Date().toISOString(), actualizadoEn:new Date().toISOString()
+        });
+        await vpCargarCRM();
+    } catch(e) { alert('Error: '+e.message); }
+};
+
+// ── MÓDULO COTIZACIONES ─────────────────────────────────────
+async function vpCargarCotizaciones() {
+    const lista = document.getElementById('vp-lista-content');
+    if(lista) lista.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;font-size:13px;">Cargando cotizaciones...</div>';
+    const detWrap = document.getElementById('vp-cot-detalle-wrap');
+    if(detWrap) detWrap.style.display = 'flex';
+
+    try {
+        const {getDocs,collection,query,orderBy} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const snap = await getDocs(query(collection(window.db,'cotizaciones'),orderBy('creadoEn','desc')));
+        vpCotDB = snap.docs.map(d=>({id:d.id,...d.data()}));
+        vpRenderCotStats();
+        vpRenderCotLista();
+        vpSetCotTabs();
+    } catch(e) {
+        if(lista) lista.innerHTML = `<div style="padding:16px;color:#dc2626;font-size:12px;">Error: ${e.message}</div>`;
+    }
+}
+
+function vpSetCotTabs() {
+    const tabsBar = document.getElementById('vp-tabs-bar');
+    if(!tabsBar) return;
+    tabsBar.style.display = 'flex';
+    const filtros = ['todas','pendiente','enviada','colocada','vencidas'];
+    const labels = ['Todas','Pendientes','Enviadas','Colocadas','Vencidas'];
+    tabsBar.innerHTML = filtros.map((f,i) => `<button class="ventas-tab ${f===vpCotFiltroActivo?'active':''}" onclick="vpSetCotFiltro('${f}',this)">${labels[i]}</button>`).join('');
+}
+
+window.vpSetCotFiltro = function(f, btn) {
+    vpCotFiltroActivo = f;
+    document.querySelectorAll('#vp-tabs-bar .ventas-tab').forEach(b => b.classList.remove('active'));
+    if(btn) btn.classList.add('active');
+    vpRenderCotLista();
+};
+
+function vpRenderCotStats() {
+    const statsBar = document.getElementById('vp-stats-bar');
+    if(!statsBar) return;
+    statsBar.style.display = 'flex';
+    const total = vpCotDB.length;
+    const pend = vpCotDB.filter(c=>!c.statusCot||c.statusCot==='pendiente').length;
+    const ok = vpCotDB.filter(c=>c.statusCot==='colocada').length;
+    const monto = vpCotDB.filter(c=>c.statusCot==='colocada').reduce((s,c)=>s+(c.total||0),0);
+    statsBar.innerHTML = [
+        {val:total,lbl:'Total'},
+        {val:pend,lbl:'Pendientes'},
+        {val:ok,lbl:'Colocadas'},
+        {val:'$'+Math.round(monto/1000)+'K',lbl:'Monto'},
+    ].map(s=>`<div class="ventas-stat"><div class="ventas-stat-val">${s.val}</div><div class="ventas-stat-lbl">${s.lbl}</div></div>`).join('');
+}
+
+function vpRenderCotLista() {
+    const el = document.getElementById('vp-lista-content');
+    if(!el) return;
+    const q = (document.getElementById('vp-buscador')?.value||'').toLowerCase();
+    const hoy = new Date();
+    let cots = vpCotDB.filter(c => {
+        if(q && !(c.cliente||'').toLowerCase().includes(q) && !(c.folio||'').toLowerCase().includes(q)) return false;
+        if(vpCotFiltroActivo==='todas') return true;
+        if(vpCotFiltroActivo==='vencidas') { const v=c.fechaVencimiento?new Date(c.fechaVencimiento):null; return v&&v<hoy&&c.statusCot!=='colocada'&&c.statusCot!=='cancelada'; }
+        return c.statusCot===vpCotFiltroActivo||(!c.statusCot&&vpCotFiltroActivo==='pendiente');
+    });
+    if(!cots.length) { el.innerHTML='<div style="text-align:center;padding:30px;color:#94a3b8;font-size:13px;">Sin resultados</div>'; return; }
+    const ST_CLASS = {pendiente:'vp-badge-pend',enviada:'vp-badge-env',colocada:'vp-badge-ok',cancelada:'vp-badge-can'};
+    el.innerHTML = cots.map(c => {
+        const st=(c.statusCot||'pendiente').toLowerCase();
+        const total=c.moneda==='USD'?`USD $${(c.total||0).toLocaleString('en-US',{minimumFractionDigits:2})}`:`$${(c.total||0).toLocaleString('es-MX',{minimumFractionDigits:2})}`;
+        const fecha=c.creadoEn?new Date(c.creadoEn).toLocaleDateString('es-MX',{day:'2-digit',month:'short'}):'—';
+        return `<div class="vp-cot-card" onclick="vpVerCotizacion('${c.id}')">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;">
+                <span class="vp-cot-folio">${c.folio||'S/F'}</span>
+                <span class="vp-badge ${ST_CLASS[st]||'vp-badge-pend'}">${(c.statusCot||'Pendiente').toUpperCase()}</span>
+            </div>
+            <div class="vp-cot-cliente">${c.cliente||'Sin cliente'}</div>
+            <div class="vp-cot-total">${total}</div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px;">
+                <span style="font-size:10px;color:#94a3b8;">📅 ${fecha}</span>
+                <button onclick="event.stopPropagation();vpGenerarPDF('${c.id}')" style="padding:3px 8px;background:#f1f5f9;border:none;border-radius:6px;font-size:9px;font-weight:700;color:#475569;cursor:pointer;font-family:'Space Grotesk',sans-serif;">📄 PDF</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+window.vpVerCotizacion = function(id) {
+    const c = vpCotDB.find(x=>x.id===id);
+    if(!c) return;
+    const el = document.getElementById('vp-cot-detalle-wrap');
+    if(!el) return;
+    el.style.display = 'flex';
+    const items = c.items||c.carrito||[];
+    const total=c.moneda==='USD'?`USD $${(c.total||0).toLocaleString('en-US',{minimumFractionDigits:2})}`:`$${(c.total||0).toLocaleString('es-MX',{minimumFractionDigits:2})}`;
+    el.innerHTML = `<div style="padding:16px;">
+        <div style="background:linear-gradient(135deg,#1e3a8a,#2563eb);border-radius:14px;padding:14px;margin-bottom:14px;">
+            <div style="font-size:12px;font-weight:800;color:rgba(255,255,255,0.75);">${c.folio||'S/F'}</div>
+            <div style="font-size:16px;font-weight:800;color:white;margin:4px 0;">${c.cliente||'Sin cliente'}</div>
+            <div style="font-size:18px;font-weight:800;color:#86efac;">${total}</div>
+        </div>
+        ${items.length ? `<div style="font-size:10px;font-weight:700;color:#64748b;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">Productos (${items.length})</div>
+        <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:14px;">
+            ${items.slice(0,15).map(i=>`<div style="display:flex;justify-content:space-between;font-size:11px;padding:4px 0;border-bottom:1px solid #f1f5f9;">
+                <span style="flex:1;color:#1e293b;">${(i.nombre||i.sku||'Producto').slice(0,40)}</span>
+                <span style="color:#64748b;margin:0 8px;">×${i.cantidad||1}</span>
+                <span style="font-weight:700;">$${((i.cantidad||1)*(i.precio||i.pu||0)).toLocaleString('es-MX',{minimumFractionDigits:0})}</span>
+            </div>`).join('')}
+        </div>` : ''}
+        <button onclick="vpGenerarPDF('${c.id}')" style="width:100%;padding:11px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:white;border:none;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;">📄 Generar PDF</button>
+    </div>`;
+};
+
+window.vpGenerarPDF = function(id) {
+    const c = vpCotDB.find(x=>x.id===id) || (vpCpCotizaciones||[]).find(x=>x.id===id);
+    if(!c) return;
+    if(typeof portalGenerarPDFCot === 'function') portalGenerarPDFCot(id);
+    else if(typeof descargarPDFCot === 'function') descargarPDFCot(id);
+    else alert('Generador de PDF no disponible');
+};
+
+// ── Acciones rápidas ────────────────────────────────────────
+window.vpCheckin = function() {
+    if(typeof ventasCheckinDesdePortal === 'function') ventasCheckinDesdePortal();
+    else if(typeof abrirModalCheckin === 'function') abrirModalCheckin();
+};
+
+window.vpNuevoCliente = function() {
+    if(typeof abrirModalCliente === 'function') abrirModalCliente();
+};
+
+window.vpNuevaCotizacion = function() {
+    alert('Para crear cotizaciones usa la App Tecnocontrol.\nSe sincronizan automáticamente aquí.');
+};
+
+window.vpNuevaActividad = function() {
+    alert('Para agregar actividades usa la App Tecnocontrol.\nSe sincronizan automáticamente aquí.');
+};
+
+window.vpCambiarEstatusAct = async function(id, estatus) {
+    try {
+        const {doc,updateDoc} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        await updateDoc(doc(window.db,'actividades_cliente',id),{estatus,actualizadoEn:new Date().toISOString()});
+        const idx = vpCpActividades.findIndex(a=>a.id===id);
+        if(idx>=0) { vpCpActividades[idx].estatus=estatus; vpCpTab('actividad',null); }
+    } catch(e) { alert('Error: '+e.message); }
+};
+
+// ── Buscador universal ──────────────────────────────────────
+window.vpBuscar = function(q) {
+    // Sincronizar con IDs de la app
+    ['ventas-buscador','clients-search','map-search'].forEach(id => {
+        const el = document.getElementById(id);
+        if(el) el.value = q;
+    });
+    if(vpModuloActivo==='mapa'||vpModuloActivo==='clientes') vpRenderListaClientes();
+    else if(vpModuloActivo==='crm') { vpRenderCrmLista(); vpRenderCrmKanban(); }
+    else if(vpModuloActivo==='cotizaciones') vpRenderCotLista();
+};
+
+// ── Hook en toggleVentasMapa ────────────────────────────────
+// Inicializar módulo mapa al entrar a Ventas
+const _origToggleVentas = window.toggleVentasMapa;
+window.toggleVentasMapa = function(area, email) {
+    if(area === 'Ventas') {
+        const secMapa = document.getElementById('sec-ventas-mapa');
+        const secArea = document.getElementById('sec-area');
+        if(secMapa) secMapa.style.display = 'block';
+        if(secArea) secArea.style.display = 'none';
+        const btnMetas = document.getElementById('btn-abrir-metas');
+        if(btnMetas) btnMetas.style.display = (typeof esAdminTotal==='function'&&esAdminTotal(email))||email===window.MARTIN_EMAIL ? 'flex' : 'none';
+        if(typeof inicializarMapa==='function') inicializarMapa();
+        if(typeof cargarClientes==='function') {
+            cargarClientes().then(() => {
+                vpRenderListaClientes();
+                const statsEl = document.getElementById('ventas-mapa-stats');
+                if(statsEl && window.clientesDB) statsEl.textContent = window.clientesDB.length + ' clientes';
+            });
+        }
+        // Activar módulo mapa por defecto
+        setTimeout(() => vpSetModulo('mapa', document.getElementById('vsi-mapa')), 300);
+    } else {
+        const secMapa = document.getElementById('sec-ventas-mapa');
+        const secArea = document.getElementById('sec-area');
+        if(secMapa) secMapa.style.display = 'none';
+        if(secArea) secArea.style.display = 'block';
+    }
+};
+
+// Registrar en proxies
+window._ventasSidebarReal = vpSetModulo;
+window._ventasBuscarReal = vpBuscar;
+window._checkinReal = vpCheckin;
+
+// Hook en verPerfilCliente de la app → abrir panel del portal
+window.verPerfilCliente = window.abrirPerfilCliente = function(id) {
+    vpVerCliente(id);
+};
+
+console.log('VENTAS PORTAL v2 cargado ✅ — diseño basado en la app');
 </script>
 
 </body>
