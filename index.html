@@ -1165,6 +1165,7 @@ function vpSetModulo(m,b){ if(window._vpSetModuloReal) window._vpSetModuloReal(m
 function ventasSidebar(m,b){ if(window._ventasSidebarReal) window._ventasSidebarReal(m,b); else setTimeout(()=>ventasSidebar(m,b),200); }
 function ventasTab(m,b){ ventasSidebar(m,b); }
 function ventasBuscarGlobal(q){ if(window._ventasBuscarReal) window._ventasBuscarReal(q); }
+function vpBuscar(q){ if(window._vpBuscarReal) window._vpBuscarReal(q); else setTimeout(()=>{ if(window._vpBuscarReal) window._vpBuscarReal(q); },300); }
 function abrirGmailInbox(){ if(window._abrirGmailReal) window._abrirGmailReal(); else setTimeout(abrirGmailInbox,300); }
 function ventasCheckinDesdePortal(){ if(window._checkinReal) window._checkinReal(); else setTimeout(ventasCheckinDesdePortal,300); }
 function portalSelPipeline(i,b){ if(window._portalSelPipelineReal) window._portalSelPipelineReal(i,b); }
@@ -12633,8 +12634,7 @@ window.vpVerOportunidad = function(id) {
         o.servicio?`🔧 ${o.servicio}`:'',
         o.notas?`📝 ${o.notas.slice(0,100)}`:'',
         `👤 ${(o.vendedor||o.asignado||'—').split('@')[0]}`,
-    ].filter(Boolean).join('
-'));
+    ].filter(Boolean).join('\n'));
 };
 
 window.vpNuevaOportunidad = async function(etapaInicial) {
@@ -12845,6 +12845,7 @@ window.toggleVentasMapa = function(area, email) {
 window._ventasSidebarReal = vpSetModulo;
 window._vpSetModuloReal = vpSetModulo;
 window._ventasBuscarReal = vpBuscar;
+window._vpBuscarReal = window.vpBuscar;
 window._checkinReal = vpCheckin;
 
 // Hook en verPerfilCliente de la app → abrir panel del portal
