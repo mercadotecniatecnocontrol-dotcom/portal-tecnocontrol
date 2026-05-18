@@ -2157,96 +2157,108 @@
             <div id="ejecutivo-content"></div>
         </div>
 
-        <!-- VENTAS — Layout tipo dashboard 3 columnas -->
-        <div class="section" id="sec-ventas-mapa" style="display:none;padding:0;">
+        <!-- VENTAS — Dashboard con sidebar interno -->
+        <div class="section" id="sec-ventas-mapa" style="display:none;padding:0;margin:-32px;min-height:calc(100vh - 62px);">
 
-            <!-- ══ LAYOUT PRINCIPAL ══ -->
-            <div style="display:flex;height:calc(100vh - 120px);min-height:500px;overflow:hidden;">
+            <style>
+                .vsb-btn:hover { background: rgba(37,99,235,0.4) !important; opacity:1 !important; }
+                .vsb-tooltip { position:absolute;left:72px;background:#1e293b;color:white;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700;white-space:nowrap;pointer-events:none;z-index:999;box-shadow:0 4px 12px rgba(0,0,0,0.3); }
+                #ventas-filtros-bar::-webkit-scrollbar { display:none; }
+                #ventas-col-lista::-webkit-scrollbar { width:4px; }
+                #ventas-col-lista::-webkit-scrollbar-thumb { background:#e2e8f0; border-radius:4px; }
+                #ventas-col-detalle::-webkit-scrollbar { width:4px; }
+            </style>
 
-                <!-- ── SIDEBAR IZQUIERDO — Navegación íconos ── -->
-                <div id="ventas-sidebar" style="width:64px;background:#1e293b;display:flex;flex-direction:column;align-items:center;padding:12px 0;gap:4px;flex-shrink:0;border-radius:16px 0 0 16px;">
-                    <!-- Logo área -->
-                    <div style="width:40px;height:40px;background:#2563eb;border-radius:12px;display:flex;align-items:center;justify-content:center;margin-bottom:16px;font-size:18px;">🏢</div>
+            <div style="display:flex;width:100%;min-height:calc(100vh - 62px);">
 
-                    <!-- Íconos de navegación -->
-                    <button class="vsb-btn active" id="vsb-mapa" onclick="ventasSidebar('mapa',this)" title="Mapa de Clientes"
-                        style="width:44px;height:44px;background:#2563eb;border:none;border-radius:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;transition:0.2s;">📍</button>
-                    <button class="vsb-btn" id="vsb-clientes" onclick="ventasSidebar('clientes',this)" title="Directorio de Clientes"
-                        style="width:44px;height:44px;background:transparent;border:none;border-radius:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;transition:0.2s;opacity:0.6;">👥</button>
-                    <button class="vsb-btn" id="vsb-crm" onclick="ventasSidebar('crm',this)" title="CRM Pipeline"
-                        style="width:44px;height:44px;background:transparent;border:none;border-radius:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;transition:0.2s;opacity:0.6;">📊</button>
+                <!-- ── SIDEBAR IZQUIERDO ── -->
+                <div style="width:64px;background:#0f172a;display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:6px;flex-shrink:0;position:relative;">
+
+                    <!-- Indicador área -->
+                    <div style="width:40px;height:40px;background:linear-gradient(135deg,#2563eb,#7c3aed);border-radius:12px;display:flex;align-items:center;justify-content:center;margin-bottom:12px;color:white;box-shadow:0 4px 12px rgba(37,99,235,0.4);"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>
+
+                    <!-- Nav items -->
+                    <button class="vsb-btn active" id="vsb-mapa" onclick="ventasSidebar('mapa',this)" title="Mapa"
+                        style="width:44px;height:44px;background:#2563eb;border:none;border-radius:12px;cursor:pointer;color:white;display:flex;align-items:center;justify-content:center;transition:all 0.2s;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg></button>
+
+                    <button class="vsb-btn" id="vsb-clientes" onclick="ventasSidebar('clientes',this)" title="Clientes"
+                        style="width:44px;height:44px;background:transparent;border:none;border-radius:12px;cursor:pointer;color:rgba(255,255,255,0.5);display:flex;align-items:center;justify-content:center;transition:all 0.2s;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></button>
+
+                    <button class="vsb-btn" id="vsb-crm" onclick="ventasSidebar('crm',this)" title="CRM"
+                        style="width:44px;height:44px;background:transparent;border:none;border-radius:12px;cursor:pointer;color:rgba(255,255,255,0.5);display:flex;align-items:center;justify-content:center;transition:all 0.2s;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></button>
+
                     <button class="vsb-btn" id="vsb-cotizaciones" onclick="ventasSidebar('cotizaciones',this)" title="Cotizaciones"
-                        style="width:44px;height:44px;background:transparent;border:none;border-radius:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;transition:0.2s;opacity:0.6;">📋</button>
-                    <button class="vsb-btn" id="vsb-correos" onclick="abrirGmailInbox()" title="Correos"
-                        style="width:44px;height:44px;background:transparent;border:none;border-radius:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;transition:0.2s;opacity:0.6;">📧</button>
+                        style="width:44px;height:44px;background:transparent;border:none;border-radius:12px;cursor:pointer;color:rgba(255,255,255,0.5);display:flex;align-items:center;justify-content:center;transition:all 0.2s;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></button>
 
-                    <!-- Spacer -->
+                    <button class="vsb-btn" id="vsb-correos" onclick="abrirGmailInbox()" title="Correos"
+                        style="width:44px;height:44px;background:transparent;border:none;border-radius:12px;cursor:pointer;color:rgba(255,255,255,0.5);display:flex;align-items:center;justify-content:center;transition:all 0.2s;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></button>
+
                     <div style="flex:1;"></div>
 
-                    <!-- Acciones rápidas abajo -->
-                    <button onclick="abrirModalCheckin()" title="Check-in"
-                        style="width:44px;height:44px;background:rgba(5,150,105,0.3);border:none;border-radius:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;margin-bottom:4px;">✅</button>
+                    <button onclick="ventasCheckinDesdePortal()" title="Registrar Check-in"
+                        style="width:44px;height:44px;background:rgba(5,150,105,0.25);border:1px solid rgba(5,150,105,0.4);border-radius:12px;cursor:pointer;color:#34d399;display:flex;align-items:center;justify-content:center;margin-bottom:4px;transition:all 0.2s;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></button>
                     <button onclick="abrirModalCliente()" title="Nuevo cliente"
-                        style="width:44px;height:44px;background:rgba(37,99,235,0.3);border:none;border-radius:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:8px;">+</button>
+                        style="width:44px;height:44px;background:rgba(37,99,235,0.25);border:1px solid rgba(37,99,235,0.4);border-radius:12px;cursor:pointer;color:#93c5fd;display:flex;align-items:center;justify-content:center;margin-bottom:8px;transition:all 0.2s;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg></button>
                 </div>
 
-                <!-- ── CONTENIDO PRINCIPAL ── -->
-                <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;background:#f8fafc;">
+                <!-- ── ÁREA PRINCIPAL ── -->
+                <div style="flex:1;display:flex;flex-direction:column;min-width:0;background:#f1f5f9;">
 
-                    <!-- Header superior -->
-                    <div style="background:white;border-bottom:1px solid #e2e8f0;padding:12px 20px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-                        <div style="display:flex;align-items:center;gap:12px;">
-                            <div id="ventas-header-titulo" style="font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:800;color:#1e293b;">📍 Mapa de Clientes</div>
+                    <!-- Header -->
+                    <div style="background:white;border-bottom:1px solid #e2e8f0;padding:0 20px;display:flex;align-items:center;justify-content:space-between;height:52px;flex-shrink:0;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
+                        <div style="display:flex;align-items:center;gap:10px;">
+                            <div id="ventas-header-titulo" style="font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:800;color:#1e293b;">📍 Mapa de Clientes</div>
                             <div id="ventas-mapa-stats" style="font-size:11px;color:#94a3b8;"></div>
                         </div>
                         <div style="display:flex;gap:8px;align-items:center;">
-                            <!-- Buscador universal -->
                             <div style="position:relative;">
                                 <input type="text" id="ventas-buscador-global" placeholder="Buscar..."
-                                    style="padding:8px 12px 8px 32px;border:1px solid #e2e8f0;border-radius:10px;font-size:12px;width:180px;outline:none;background:#f8fafc;"
+                                    style="padding:7px 12px 7px 30px;border:1px solid #e2e8f0;border-radius:10px;font-size:12px;width:160px;outline:none;background:#f8fafc;font-family:'DM Sans',sans-serif;"
                                     oninput="ventasBuscarGlobal(this.value)">
-                                <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:13px;">🔍</span>
+                                <span style="position:absolute;left:9px;top:50%;transform:translateY(-50%);font-size:12px;pointer-events:none;">🔍</span>
                             </div>
                             <button id="btn-abrir-metas" onclick="abrirModalMetas()"
-                                style="padding:8px 12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:10px;font-size:11px;font-weight:700;color:#475569;cursor:pointer;white-space:nowrap;">🎯 Metas</button>
+                                style="padding:7px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;font-size:11px;font-weight:700;color:#475569;cursor:pointer;">🎯 Metas</button>
                         </div>
                     </div>
 
-                    <!-- Filtros / tabs horizontales (cambian según módulo) -->
-                    <div id="ventas-filtros-bar" style="background:white;border-bottom:1px solid #f1f5f9;padding:0 20px;display:flex;align-items:center;gap:6px;overflow-x:auto;flex-shrink:0;scrollbar-width:none;">
-                        <!-- Se llena por JS según módulo activo -->
+                    <!-- Filtros dinámicos -->
+                    <div id="ventas-filtros-bar"
+                        style="background:white;border-bottom:1px solid #f1f5f9;padding:0 20px;min-height:44px;display:flex;align-items:center;gap:6px;overflow-x:auto;flex-shrink:0;">
                     </div>
 
-                    <!-- Área de contenido (2 columnas: lista + detalle/mapa) -->
-                    <div style="flex:1;display:flex;overflow:hidden;">
+                    <!-- Body: 2 columnas -->
+                    <div style="flex:1;display:flex;overflow:hidden;min-height:0;">
 
-                        <!-- Columna lista/principal -->
-                        <div id="ventas-col-lista" style="width:55%;min-width:280px;overflow-y:auto;padding:16px;border-right:1px solid #e2e8f0;">
-                            <div id="ventas-contenido-principal" style="display:flex;flex-direction:column;gap:10px;">
-                                <div style="text-align:center;padding:40px;color:#94a3b8;">Cargando...</div>
+                        <!-- Columna izquierda: lista -->
+                        <div id="ventas-col-lista" style="width:340px;min-width:280px;max-width:400px;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:8px;background:#f1f5f9;border-right:1px solid #e2e8f0;flex-shrink:0;">
+                            <div id="ventas-contenido-principal">
+                                <div style="text-align:center;padding:40px 20px;color:#94a3b8;font-size:13px;">Selecciona un módulo</div>
                             </div>
                         </div>
 
-                        <!-- Columna detalle / mapa -->
-                        <div id="ventas-col-detalle" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;">
-                            <!-- Mapa por defecto -->
+                        <!-- Columna derecha: mapa + detalle -->
+                        <div id="ventas-col-detalle" style="flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;">
+
+                            <!-- Mapa (visible por defecto) -->
                             <div id="ventas-mapa-desktop" style="flex:1;min-height:300px;">
-                                <div id="mapa-clientes" style="width:100%;height:100%;"></div>
+                                <div id="mapa-clientes" style="width:100%;height:100%;min-height:400px;"></div>
                             </div>
-                            <!-- Panel de detalle (se muestra al seleccionar un item) -->
-                            <div id="ventas-panel-detalle" style="display:none;padding:16px;background:white;border-top:1px solid #e2e8f0;max-height:50%;overflow-y:auto;"></div>
+
+                            <!-- Panel de detalle (slide-in desde abajo) -->
+                            <div id="ventas-panel-detalle" style="display:none;background:white;border-top:2px solid #2563eb;padding:16px 20px;max-height:220px;overflow-y:auto;flex-shrink:0;"></div>
+
                         </div>
+                    </div>
+                </div>
+            </div>
 
-                    </div><!-- /flex contenido -->
-                </div><!-- /contenido principal -->
-            </div><!-- /layout 3col -->
-
-            <!-- Contenedores de datos que usan las funciones existentes -->
+            <!-- IDs ocultos requeridos por funciones existentes -->
             <div style="display:none;">
                 <div id="ventas-metricas"></div>
                 <div id="ventas-metas-content"></div>
                 <div id="ventas-checkins-content"></div>
-                <div id="ventas-buscador" style="display:none;"></div>
+                <input id="ventas-buscador" type="text">
                 <div id="clientes-lista-content"></div>
                 <div id="vtab-mapa"></div>
                 <div id="vtab-clientes"></div>
@@ -11395,6 +11407,103 @@ window.cargarVentasMapa = async function() {
 };
 
 console.log('VENTAS DASHBOARD cargado ✅');
+
+// ── Fix: Check-in desde sidebar de Ventas ────────────────────
+// Garantiza que clientesDB esté cargado antes de abrir el modal
+window.ventasCheckinDesdePortal = async function() {
+    // Si clientesDB no tiene datos, cargar primero
+    if(!window.clientesDB || window.clientesDB.length === 0) {
+        try {
+            const { getDocs, collection } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+            const snap = await getDocs(collection(window.db, 'ventas_clientes'));
+            window.clientesDB = snap.docs.map(d => ({id:d.id,...d.data()}));
+        } catch(e) {
+            console.warn('No se pudo cargar clientesDB:', e);
+        }
+    }
+    // Abrir modal
+    if(typeof abrirModalCheckin === 'function') abrirModalCheckin();
+};
+
+// ── Fix: ventasSidebar actualiza vsb-btn correctamente ────────
+const _origVentasSidebar = window.ventasSidebar;
+window.ventasSidebar = function(modulo, btn) {
+    // Actualizar estilos de botones SVG correctamente
+    document.querySelectorAll('.vsb-btn').forEach(b => {
+        b.style.background = 'transparent';
+        b.style.color = 'rgba(255,255,255,0.5)';
+    });
+    if(btn) {
+        btn.style.background = '#2563eb';
+        btn.style.color = 'white';
+    }
+    // Actualizar título
+    const titulos = {
+        mapa: 'Mapa de Clientes',
+        clientes: 'Directorio de Clientes', 
+        crm: 'CRM Pipeline',
+        cotizaciones: 'Cotizaciones'
+    };
+    const titulo = document.getElementById('ventas-header-titulo');
+    if(titulo) titulo.textContent = titulos[modulo] || modulo;
+
+    // Filtros dinámicos
+    const filtrosBar = document.getElementById('ventas-filtros-bar');
+    if(filtrosBar && typeof VENTAS_MODULOS !== 'undefined' && VENTAS_MODULOS[modulo]) {
+        filtrosBar.innerHTML = VENTAS_MODULOS[modulo].filtros();
+    }
+
+    // Contenido
+    const principal = document.getElementById('ventas-contenido-principal');
+    if(principal) principal.innerHTML = '<div style="text-align:center;padding:40px;color:#94a3b8;font-size:13px;">Cargando...</div>';
+
+    // Cargar módulo
+    if(typeof VENTAS_MODULOS !== 'undefined' && VENTAS_MODULOS[modulo]) {
+        VENTAS_MODULOS[modulo].cargar();
+    }
+    window.ventasModuloActivo = modulo;
+};
+
+// ── Fix: buscador global conectado correctamente ───────────────
+window.ventasBuscarGlobal = function(q) {
+    // Sincronizar con buscador local
+    const b = document.getElementById('ventas-buscador');
+    if(b) b.value = q;
+
+    const mod = window.ventasModuloActivo || 'mapa';
+    if(mod === 'mapa' || mod === 'clientes') {
+        ventasRenderClientesMapa();
+    } else if(mod === 'crm') {
+        if(typeof portalCrmFiltros !== 'undefined') portalCrmFiltros.busqueda = q.toLowerCase();
+        if(typeof portalRenderCrmKanban === 'function') portalRenderCrmKanban();
+        if(typeof ventasRenderCrmLista === 'function') ventasRenderCrmLista();
+    } else if(mod === 'cotizaciones') {
+        const cs = document.getElementById('portal-cot-search');
+        if(cs) cs.value = q;
+        if(typeof portalRenderCotList === 'function') portalRenderCotList();
+    }
+};
+
+// ── Fix: hover en botones SVG ─────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.vsb-btn').forEach(btn => {
+        btn.addEventListener('mouseenter', function() {
+            if(this.style.background !== 'rgb(37, 99, 235)') {
+                this.style.background = 'rgba(37,99,235,0.3)';
+                this.style.color = 'white';
+            }
+        });
+        btn.addEventListener('mouseleave', function() {
+            if(this.style.background !== 'rgb(37, 99, 235)') {
+                this.style.background = 'transparent';
+                this.style.color = 'rgba(255,255,255,0.5)';
+            }
+        });
+    });
+});
+
+console.log('VENTAS FIXES cargados ✅');
+
 
 </script>
 </script>
