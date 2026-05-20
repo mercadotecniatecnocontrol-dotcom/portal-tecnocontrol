@@ -319,7 +319,7 @@
             /* Barra de navegación inferior fija */
             #mobile-bottom-nav{
                 display:flex;position:fixed;bottom:0;left:0;right:0;
-                background:#1e3a8a;
+                background:#3d5a7a;
                 z-index:9000;height:62px;align-items:center;
                 justify-content:space-around;
                 padding:0 4px;
@@ -470,7 +470,7 @@
                 display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;
             }
             .ventas-stat-card{
-                background:linear-gradient(135deg,#1e3a8a,#2563eb);
+                background:linear-gradient(135deg,#3d5a7a,#4a6d8c);
                 border-radius:14px;padding:14px;color:white;
             }
             .ventas-stat-val{font-family:'Space Grotesk',sans-serif;font-size:24px;font-weight:700;}
@@ -598,6 +598,7 @@
             #mobile-bottom-nav{display:none !important;}
             #mobile-drawer{display:none !important;}
             #btn-checkin-flotante{display:none;}
+            .bottom-nav-container, #main-bottom-nav{display:none !important;}
         }
         /* Botón check-in flotante para móvil */
         #btn-checkin-flotante{
@@ -1413,7 +1414,8 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
             </div>
             <button onclick="document.getElementById('modal-ap-preview').style.display='none'" style="background:#f1f5f9;border:none;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:14px;">✕</button>
         </div>
-        <div style="flex:1;background:#f8faff;display:flex;align-items:center;justify-content:center;min-height:400px;">
+        <div style="flex:1;background:#f8faff;display:flex;align-items:center;justify-content:center;min-height:400px;overflow:hidden;position:relative;">
+            <img id="ap-prev-img-direct" style="display:none;width:100%;max-height:480px;object-fit:contain;padding:12px;" src="" />
             <iframe id="ap-prev-iframe" style="width:100%;height:100%;min-height:400px;border:none;" src=""></iframe>
         </div>
         <div style="padding:16px 24px;border-top:1px solid #e2e8f0;display:flex;gap:8px;">
@@ -2252,7 +2254,7 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
         </div>
 
         <!-- VENTAS — Dashboard integrado desde app.html -->
-        <div class="section" id="sec-ventas-mapa" style="display:none;padding:0;margin:-32px;height:calc(100vh - 62px);overflow:hidden;">
+        <div class="section" id="sec-ventas-mapa" style="display:none;padding:0;margin:-32px;height:100vh;overflow:hidden;">
 
             <style>
             /* ══ CSS app adaptado al portal ══ */
@@ -2381,7 +2383,7 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
             .vp-badge-can { background:#fee2e2;color:#dc2626; }
 
             /* Perfil cliente */
-            .vp-cp-header { background:linear-gradient(135deg,#1e3a8a,#2563eb);padding:16px 20px;flex-shrink:0; }
+            .vp-cp-header { background:linear-gradient(135deg,#3d5a7a,#4a6d8c);padding:16px 20px;flex-shrink:0; }
             .vp-cp-nombre { font-size:16px;font-weight:800;color:white; }
             .vp-cp-sub { font-size:11px;color:rgba(255,255,255,0.75);margin-top:2px; }
             .vp-cp-kpis { display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px; }
@@ -2391,12 +2393,14 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
             .vp-cp-tabs { display:flex;border-bottom:1px solid #e2e8f0;flex-shrink:0;overflow-x:auto;scrollbar-width:none; }
             .vp-cp-tab { padding:10px 14px;border:none;background:transparent;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:11px;color:#64748b;border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap;transition:0.15s; }
             .vp-cp-tab.active { color:#2563eb;border-bottom-color:#2563eb; }
-            .vp-cp-content { flex:1;overflow-y:auto;padding:14px 16px; }
+            .vp-cp-content { flex:1;overflow-y:auto;padding:14px 16px;background:#f8fafc; }
             .vp-cp-section { background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:12px;margin-bottom:10px; }
             .vp-cp-label { font-size:9px;font-weight:700;color:#1e3a8a;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px; }
 
             /* Ocultar elementos móvil que no aplican en desktop */
             #ventas-portal-wrap .mob-nav, .bottom-nav, .nav-item { display:none !important; }
+            #mobile-bottom-nav { display:none !important; }
+            .main-bottom-bar, .bottom-bar-wrap { display:none !important; }
             </style>
 
             <div id="ventas-portal-wrap">
@@ -2471,7 +2475,7 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
                         <div id="mapa-clientes" style="width:100%;height:100%;"></div>
                     </div>
                     <!-- Panel detalle perfil cliente -->
-                    <div id="ventas-panel-detalle" style="display:none;flex:1;overflow:hidden;flex-direction:column;">
+                    <div id="ventas-panel-detalle" style="display:none;flex:1;overflow:hidden;flex-direction:column;background:#f8fafc;">
                         <div class="vp-cp-header">
                             <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
                                 <button onclick="vpCerrarPerfil()" style="width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.2);border:none;color:white;cursor:pointer;display:flex;align-items:center;justify-content:center;">
@@ -4587,7 +4591,8 @@ function renderDrawerAreas(localDB, yo){
 // Mostrar/ocultar barra móvil según si está logueado
 function mostrarNavMobile(show, esVentas=false){
     const nav = document.getElementById('mobile-bottom-nav');
-    if(nav) nav.style.display = show&&isMobile() ? 'flex' : 'none';
+    const enVentasDesktop = !!document.getElementById('ventas-portal-wrap');
+    if(nav) nav.style.display = (show&&isMobile()&&!enVentasDesktop) ? 'flex' : 'none';
     const navNormal = document.getElementById('mob-nav-normal');
     const navVentas = document.getElementById('mob-nav-ventas');
     if(navNormal) navNormal.style.display = esVentas ? 'none' : 'flex';
@@ -7548,7 +7553,7 @@ window.guardarDatoRHInline = async () => {
         mostrarCarruselDoc(dDocs, 0);
     };
 
-    function mostrarCarruselDoc(dDocs, idx) {
+    window.mostrarCarruselDoc = function(dDocs, idx) {
         _carruselIdx = idx;
         const p = dDocs[idx];
         if(!p) return;
@@ -7563,14 +7568,12 @@ window.guardarDatoRHInline = async () => {
             const empresaBadge = p.empresa ? `<span style="margin-left:6px;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;background:#eff6ff;color:#2563eb;">${p.empresa}</span>` : '';
             meta.innerHTML = `${p.tipo||''} · ${p.fecha||''}${p.fechaFin?' → '+p.fechaFin:''} · ${p.responsable||''}${estatusBadge}${empresaBadge}${p.notas?' · '+p.notas:''}`;
         }
+        const imgPrev = document.getElementById('ap-prev-img-direct');
         if(p.imgUrl){
             if(iframe){ iframe.src='about:blank'; iframe.style.display='none'; }
-            let imgPrev = document.getElementById('ap-prev-img-direct');
-            if(!imgPrev){ imgPrev=document.createElement('img'); imgPrev.id='ap-prev-img-direct'; imgPrev.style.cssText='width:100%;max-height:320px;object-fit:contain;border-radius:8px;margin-bottom:8px;'; if(iframe) iframe.parentNode.insertBefore(imgPrev, iframe); }
-            imgPrev.src = p.imgUrl;
-            imgPrev.style.display = 'block';
+            if(imgPrev){ imgPrev.src = p.imgUrl; imgPrev.style.display = 'block'; }
         } else {
-            let imgPrev=document.getElementById('ap-prev-img-direct'); if(imgPrev) imgPrev.style.display='none';
+            if(imgPrev) imgPrev.style.display='none';
             const previewUrl = typeof drivePreviewUrl==='function' ? drivePreviewUrl(p.link) : (p.link||'about:blank');
             if(iframe){ iframe.src=previewUrl||'about:blank'; iframe.style.display='block'; }
         }
@@ -7689,18 +7692,17 @@ window.guardarDatoRHInline = async () => {
         if(!fecha){ alert('Selecciona una fecha'); return; }
         if(!descRaw){ alert('Escribe la descripción del documento'); return; }
         const mesKey = `${apAnio}-${String(apMes+1).padStart(2,'0')}`;
-        // Subir imagen a Cloudinary si hay una
+        // Guardar imagen/PDF como base64 en Firestore
         let imgUrl = '';
         if(window._apImgFile) {
             try {
-                const fd = new FormData();
-                fd.append('file', window._apImgFile);
-                fd.append('upload_preset','tecnocontrol_app');
-                fd.append('folder','tecnocontrol/documentos/portal');
-                const cldRes = await fetch('https://api.cloudinary.com/v1_1/daorprxxn/auto/upload',{method:'POST',body:fd});
-                const cldData = await cldRes.json();
-                imgUrl = cldData.secure_url || '';
-            } catch(e){ console.warn('Imagen no subida:', e); }
+                imgUrl = await new Promise((res, rej) => {
+                    const reader = new FileReader();
+                    reader.onload = e => res(e.target.result);
+                    reader.onerror = () => rej(new Error('Error leyendo archivo'));
+                    reader.readAsDataURL(window._apImgFile);
+                });
+            } catch(e){ console.warn('Error convirtiendo imagen:', e); imgUrl = ''; }
             window._apImgFile = null;
         }
         const apFechaFinEl = document.getElementById('ap-fecha-fin');
@@ -7774,17 +7776,14 @@ window.guardarDatoRHInline = async () => {
         document.getElementById('ap-prev-meta').innerHTML = `${p.tipo||''} · ${p.fecha||''}${p.fechaFin?' → '+p.fechaFin:''} · ${p.responsable||''}${estatusBadge}${empresaBadge}${p.notas?' · '+p.notas:''}`;
         // Show image directly if uploaded, or iframe for Drive
         const iframe = document.getElementById('ap-prev-iframe');
-        let imgDirect = document.getElementById('ap-prev-img-direct');
-        if(!imgDirect){
-            imgDirect = document.createElement('img');
-            imgDirect.id = 'ap-prev-img-direct';
-            imgDirect.style.cssText = 'width:100%;max-height:320px;object-fit:contain;border-radius:8px;margin-bottom:8px;';
-            if(iframe) iframe.parentNode.insertBefore(imgDirect, iframe);
-        }
+        const imgDirect = document.getElementById('ap-prev-img-direct');
         if(p.imgUrl){
-            imgDirect.src = p.imgUrl;
-            imgDirect.style.display = 'block';
-            if(iframe) iframe.style.display = 'none';
+            if(iframe){ iframe.src='about:blank'; iframe.style.display='none'; }
+            if(imgDirect){ imgDirect.src = p.imgUrl; imgDirect.style.display = 'block'; }
+        } else {
+            if(imgDirect) imgDirect.style.display = 'none';
+            const previewUrl = typeof drivePreviewUrl==='function' ? drivePreviewUrl(p.link) : (p.link||'about:blank');
+            if(iframe){ iframe.src = previewUrl||'about:blank'; iframe.style.display='block'; }
         } else {
             imgDirect.style.display = 'none';
             const previewUrl = drivePreviewUrl(p.link);
@@ -7995,7 +7994,7 @@ window.guardarDatoRHInline = async () => {
         const pctGlobal = totalPlantilla > 0 ? Math.round(totalBajas / totalPlantilla * 1000) / 10 : 0;
 
         kpisEl.innerHTML = `
-            <div style="background:linear-gradient(135deg,#1e3a8a,#2563eb);border-radius:14px;padding:14px;color:white;">
+            <div style="background:linear-gradient(135deg,#3d5a7a,#4a6d8c);border-radius:14px;padding:14px;color:white;">
                 <div style="font-size:10px;opacity:0.8;text-transform:uppercase;letter-spacing:1px;">Rotación global</div>
                 <div style="font-family:'Space Grotesk',sans-serif;font-size:28px;font-weight:700;">${pctGlobal}%</div>
                 <div style="font-size:10px;opacity:0.7;margin-top:4px;">${totalBajas} bajas · ${totalAltas} altas · ${totalPlantilla} plantilla</div>
@@ -12053,7 +12052,7 @@ console.log('VENTAS FIXES cargados ✅');
 <div id="modal-perfil-cliente" style="display:none;position:fixed;inset:0;z-index:99997;background:rgba(0,0,0,0.5);backdrop-filter:blur(4px);align-items:flex-start;justify-content:flex-end;">
     <div style="width:480px;max-width:95vw;height:100vh;background:white;display:flex;flex-direction:column;box-shadow:-8px 0 40px rgba(0,0,0,0.2);overflow:hidden;">
         <!-- Header del cliente -->
-        <div id="portal-cp-header" style="background:linear-gradient(135deg,#1e3a8a,#2563eb);padding:20px;flex-shrink:0;">
+        <div id="portal-cp-header" style="background:linear-gradient(135deg,#3d5a7a,#4a6d8c);padding:20px;flex-shrink:0;">
             <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
                 <button onclick="cerrarPerfilCliente()" style="width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,0.2);border:none;color:white;cursor:pointer;display:flex;align-items:center;justify-content:center;">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -13062,7 +13061,7 @@ window.vpVerCotizacion = function(id) {
     const items = c.items||c.carrito||[];
     const total=c.moneda==='USD'?`USD $${(c.total||0).toLocaleString('en-US',{minimumFractionDigits:2})}`:`$${(c.total||0).toLocaleString('es-MX',{minimumFractionDigits:2})}`;
     el.innerHTML = `<div style="padding:16px;">
-        <div style="background:linear-gradient(135deg,#1e3a8a,#2563eb);border-radius:14px;padding:14px;margin-bottom:14px;">
+        <div style="background:linear-gradient(135deg,#3d5a7a,#4a6d8c);border-radius:14px;padding:14px;margin-bottom:14px;">
             <div style="font-size:12px;font-weight:800;color:rgba(255,255,255,0.75);">${c.folio||'S/F'}</div>
             <div style="font-size:16px;font-weight:800;color:white;margin:4px 0;">${c.cliente||'Sin cliente'}</div>
             <div style="font-size:18px;font-weight:800;color:#86efac;">${total}</div>
