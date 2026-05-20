@@ -1309,6 +1309,15 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
                     <span id="ap-nav-label" style="font-size:12px;font-weight:700;color:#1e293b;min-width:90px;text-align:center;"></span>
                     <button class="rh-mes-btn" onclick="apMesNext()">›</button>
                 </div>
+                <select id="ap-filtro-empresa" onchange="filtrarDocsAPEmpresa()" style="font-size:11px;padding:4px 8px;border-radius:8px;border:1px solid #e2e8f0;background:white;color:#1e293b;font-family:'Space Grotesk',sans-serif;cursor:pointer;">
+                    <option value="">🏢 Todas las empresas</option>
+                    <option value="TECNOCONTROL">TECNOCONTROL</option>
+                    <option value="JOMAR">JOMAR</option>
+                    <option value="DESARROLLOS">DESARROLLOS</option>
+                    <option value="VH">VH</option>
+                    <option value="AKURIS">AKURIS</option>
+                    <option value="TECNOLAB">TECNOLAB</option>
+                </select>
                 <button class="mkt-add-btn" onclick="abrirModalAP()">➕ Nuevo documento</button>
             </div>
         </div>
@@ -1335,7 +1344,10 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
                     <option>Nómina</option><option>Póliza</option>
                     <option>Recibo</option><option>Deudores Diversos</option>
                     <option>Acreedores Diversos</option>
-                    <option>Balanza de Comprobación</option><option>Estado de Resultados</option><option>Balance General</option><option>Otro</option>
+                    <option>Balanza de Comprobación</option><option>Estado de Resultados</option><option>Balance General</option>
+                    <option>Conciliación</option><option>Proveedores</option><option>Clientes</option>
+                    <option>Caja Chica</option><option>Activo Fijo</option><option>Estado de Cuenta</option>
+                    <option>Programación de Pago</option><option>Otro</option>
                 </select>
             </div>
         </div>
@@ -1356,6 +1368,30 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
             <input type="file" id="ap-img-input" accept="image/*,.pdf" style="display:none;" onchange="apPrevImg(this)">
             <input type="hidden" id="ap-img-data">
         </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px;">
+            <div>
+                <label class="mkt-form-label">Fecha de término</label>
+                <input class="mkt-form-input" id="ap-fecha-fin" type="date">
+            </div>
+            <div>
+                <label class="mkt-form-label">Estatus</label>
+                <select class="mkt-form-input" id="ap-estatus">
+                    <option value="Sin Iniciar">Sin Iniciar</option>
+                    <option value="En Proceso">En Proceso</option>
+                    <option value="Completado">Completado</option>
+                </select>
+            </div>
+        </div>
+        <label class="mkt-form-label" style="margin-top:14px;">Empresa</label>
+        <select class="mkt-form-input" id="ap-empresa">
+            <option value="">— Selecciona empresa —</option>
+            <option value="TECNOCONTROL">TECNOCONTROL</option>
+            <option value="JOMAR">JOMAR</option>
+            <option value="DESARROLLOS">DESARROLLOS</option>
+            <option value="VH">VH</option>
+            <option value="AKURIS">AKURIS</option>
+            <option value="TECNOLAB">TECNOLAB</option>
+        </select>
         <label class="mkt-form-label" style="margin-top:14px;">Responsable</label>
         <input class="mkt-form-input" id="ap-responsable" type="text" placeholder="Nombre del responsable">
         <label class="mkt-form-label">Notas</label>
@@ -3931,7 +3967,7 @@ function buildKcard(r, hoy, yo, esAdmin){
     else if(diff===0){daysPill='red';daysText='Vence hoy';}
     else if(diff<=3){daysPill='yellow';daysText=`${diff}d restantes`;}
     else{daysPill='teal';daysText=`${diff}d restantes`;}
-    const puedeEditar = esAdmin || r.responsable===yo || r.encargado===yo;
+    const puedeEditar = true; // Todos pueden editar y completar tareas
     const encargadoEmail = r.encargado || r.responsable || '';
     const nombreMostrar = nombreUsuario(encargadoEmail);
     const inicialAvatar = nombreMostrar.charAt(0).toUpperCase();
@@ -6397,7 +6433,6 @@ async function cargarClientes(){
         clientesDB = snap.docs.map(d=>({id:d.id,...d.data()}));
         window.clientesDB = clientesDB; // Exponer globalmente para VP
         if(window.renderMapa) window.renderMapa();
-        // Calcular alertas en segundo plano y re-renderizar el mapa con colores
         if(window.calcularAlertasClientes) window.calcularAlertasClientes();
         renderListaClientes(clientesDB);
         // Actualizar VP lista si está activo
@@ -6595,126 +6630,90 @@ window.guardarCliente = async () => {
 // editarCliente — carga todos los campos incluyendo foto
 // (declaración principal, no override)
 
-// ══════════════════════════════════════════════════════════════
-// ALERTAS DE CLIENTE — Calcula si un cliente tiene pendientes
-// Retorna: { alerta: bool, razones: string[] }
-// ══════════════════════════════════════════════════════════════
-window._alertasCliente = {}; // cache { clienteId: {alerta, razones} }
+// ══════════════════════════════════════════════════════════
+// ALERTAS DE CLIENTE — puntos rojos en mapa
+// ══════════════════════════════════════════════════════════
+window._alertasCliente = {};
 
 window.calcularAlertasClientes = async () => {
     try {
-        const { getDocs, collection, query, where, orderBy, limit } =
+        const { getDocs, collection, query, where, orderBy } =
             await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-        const db = window.db; if(!db) return;
+        const dbb = window.db; if(!dbb) return;
         const cache = {};
-
-        // ── 1. Tareas pendientes en actividades ─────────────
         try {
-            const snapT = await getDocs(query(
-                collection(db, 'actividades'),
-                where('estatus', 'in', ['Sin Iniciar', 'En Proceso'])
-            ));
+            const snapT = await getDocs(query(collection(dbb,'actividades'), where('estatus','in',['Sin Iniciar','En Proceso'])));
             snapT.forEach(d => {
                 const r = d.data();
-                // Buscar mención de cliente por nombre en actividad u origen
-                const texto = ((r.actividad||'') + ' ' + (r.origen||'') + ' ' + (r.descripcion||'')).toLowerCase();
-                (clientesDB || []).forEach(cl => {
-                    if(!cl.nombre) return;
-                    if(texto.includes(cl.nombre.toLowerCase().substring(0, 6))) {
-                        if(!cache[cl.id]) cache[cl.id] = {alerta:false, razones:[]};
-                        cache[cl.id].alerta = true;
-                        cache[cl.id].razones.push(`📋 Tarea pendiente: ${(r.actividad||'').substring(0,40)}`);
+                const txt = ((r.actividad||'')+(r.origen||'')+(r.descripcion||'')).toLowerCase();
+                (clientesDB||[]).forEach(cl => {
+                    if(cl.nombre && txt.includes(cl.nombre.toLowerCase().substring(0,6))){
+                        if(!cache[cl.id]) cache[cl.id]={alerta:false,razones:[]};
+                        cache[cl.id].alerta=true;
+                        cache[cl.id].razones.push('📋 Tarea: '+(r.actividad||'').substring(0,35));
                     }
                 });
-                // También buscar por clienteId directo si existe
-                if(r.clienteId) {
-                    if(!cache[r.clienteId]) cache[r.clienteId] = {alerta:false, razones:[]};
-                    cache[r.clienteId].alerta = true;
-                    cache[r.clienteId].razones.push(`📋 Tarea pendiente: ${(r.actividad||'').substring(0,40)}`);
+                if(r.clienteId){
+                    if(!cache[r.clienteId]) cache[r.clienteId]={alerta:false,razones:[]};
+                    cache[r.clienteId].alerta=true;
+                    cache[r.clienteId].razones.push('📋 Tarea: '+(r.actividad||'').substring(0,35));
                 }
             });
-        } catch(e) { console.warn('[AlertaMapa] tareas:', e.message); }
-
-        // ── 2. Cotizaciones sin cerrar ───────────────────────
+        } catch(e){}
         try {
-            const snapC = await getDocs(collection(db, 'cotizaciones'));
+            const snapC = await getDocs(collection(dbb,'cotizaciones'));
             snapC.forEach(d => {
-                const r = d.data();
-                const st = (r.statusCot || r.estatus || '').toLowerCase();
-                const pendienteCot = !['colocada','aprobada','cancelada','rechazada','completada'].includes(st);
-                if(!pendienteCot) return;
-                const cid = r.clienteId;
-                if(cid) {
-                    if(!cache[cid]) cache[cid] = {alerta:false, razones:[]};
-                    cache[cid].alerta = true;
-                    cache[cid].razones.push(`💰 Cotización pendiente: ${(r.folio||r.desc||'').substring(0,30) || 'Sin folio'}`);
+                const r=d.data(); const st=(r.statusCot||r.estatus||'').toLowerCase();
+                if(['colocada','aprobada','cancelada','completada'].includes(st)) return;
+                if(r.clienteId){
+                    if(!cache[r.clienteId]) cache[r.clienteId]={alerta:false,razones:[]};
+                    cache[r.clienteId].alerta=true;
+                    cache[r.clienteId].razones.push('💰 Cotización pendiente');
                 } else {
-                    // Buscar por nombre
-                    const nomCot = (r.cliente||'').toLowerCase();
-                    (clientesDB||[]).forEach(cl => {
-                        if(cl.nombre && nomCot && nomCot.includes(cl.nombre.toLowerCase().substring(0,6))) {
-                            if(!cache[cl.id]) cache[cl.id] = {alerta:false, razones:[]};
-                            cache[cl.id].alerta = true;
-                            cache[cl.id].razones.push(`💰 Cotización pendiente: ${(r.folio||'').substring(0,30)}`);
+                    const nomCot=(r.cliente||'').toLowerCase();
+                    (clientesDB||[]).forEach(cl=>{
+                        if(cl.nombre && nomCot && nomCot.includes(cl.nombre.toLowerCase().substring(0,6))){
+                            if(!cache[cl.id]) cache[cl.id]={alerta:false,razones:[]};
+                            cache[cl.id].alerta=true;
+                            cache[cl.id].razones.push('💰 Cotización pendiente');
                         }
                     });
                 }
             });
-        } catch(e) { console.warn('[AlertaMapa] cotizaciones:', e.message); }
-
-        // ── 3. Correos sin leer vinculados a cliente ─────────
-        if(window.gmailMensajes && window.gmailMensajes.length) {
-            const clientesEmails = {};
-            (clientesDB||[]).forEach(cl => {
-                const e = (cl.email||cl.correo||'').toLowerCase().trim();
-                if(e) clientesEmails[e] = cl;
-            });
-            window.gmailMensajes.forEach(msg => {
-                const leido = !msg.labelIds?.includes('UNREAD');
-                if(leido) return;
-                const hdrs = msg.payload?.headers || [];
-                const from = hdrs.find(h=>h.name==='From')?.value || '';
-                const emailMatch = from.match(/<(.+?)>/) || [null, from];
-                const emailFrom = (emailMatch[1]||'').toLowerCase().trim();
-                const cl = clientesEmails[emailFrom];
-                if(cl) {
-                    if(!cache[cl.id]) cache[cl.id] = {alerta:false, razones:[]};
-                    cache[cl.id].alerta = true;
-                    const subj = hdrs.find(h=>h.name==='Subject')?.value || '(sin asunto)';
-                    cache[cl.id].razones.push(`📧 Correo sin leer: ${subj.substring(0,35)}`);
+        } catch(e){}
+        if(window.gmailMensajes && window.gmailMensajes.length){
+            const cEmails={};
+            (clientesDB||[]).forEach(cl=>{ const e=(cl.email||cl.correo||'').toLowerCase().trim(); if(e) cEmails[e]=cl; });
+            window.gmailMensajes.forEach(msg=>{
+                if(!msg.labelIds?.includes('UNREAD')) return;
+                const hdrs=msg.payload?.headers||[];
+                const from=hdrs.find(h=>h.name==='From')?.value||'';
+                const em=(from.match(/<(.+?)>/)||[null,from])[1]||'';
+                const cl=cEmails[em.toLowerCase().trim()];
+                if(cl){
+                    if(!cache[cl.id]) cache[cl.id]={alerta:false,razones:[]};
+                    cache[cl.id].alerta=true;
+                    const subj=hdrs.find(h=>h.name==='Subject')?.value||'(sin asunto)';
+                    cache[cl.id].razones.push('📧 Correo sin leer: '+subj.substring(0,35));
                 }
             });
         }
-
-        // ── 4. Check-in reciente sin seguimiento (>3 días sin nueva visita) ──
         try {
-            const snapV = await getDocs(query(
-                collection(db, 'checkins'),
-                orderBy('fecha', 'desc')
-            ));
-            const ultimaVisita = {}; // clienteId → fecha más reciente
-            snapV.forEach(d => {
-                const r = d.data();
-                if(!r.clienteId) return;
-                if(!ultimaVisita[r.clienteId]) ultimaVisita[r.clienteId] = r.fecha;
-            });
-            const ahora = Date.now();
-            const TRES_DIAS = 3 * 24 * 60 * 60 * 1000;
-            Object.entries(ultimaVisita).forEach(([cid, fechaStr]) => {
-                const diff = ahora - new Date(fechaStr).getTime();
-                if(diff > TRES_DIAS && diff < 30 * 24 * 60 * 60 * 1000) { // entre 3 y 30 días
-                    if(!cache[cid]) cache[cid] = {alerta:false, razones:[]};
-                    cache[cid].alerta = true;
-                    const dias = Math.floor(diff / (24*60*60*1000));
-                    cache[cid].razones.push(`🚶 Última visita hace ${dias} días sin seguimiento`);
+            const snapV = await getDocs(query(collection(dbb,'checkins'), orderBy('fecha','desc')));
+            const ultima={}; snapV.forEach(d=>{const r=d.data(); if(r.clienteId&&!ultima[r.clienteId]) ultima[r.clienteId]=r.fecha;});
+            const ahora=Date.now();
+            Object.entries(ultima).forEach(([cid,f])=>{
+                const diff=ahora-new Date(f).getTime(); const dias=Math.floor(diff/(24*60*60*1000));
+                if(dias>3&&dias<30){
+                    if(!cache[cid]) cache[cid]={alerta:false,razones:[]};
+                    cache[cid].alerta=true;
+                    cache[cid].razones.push('🚶 Sin visita hace '+dias+' días');
                 }
             });
-        } catch(e) { console.warn('[AlertaMapa] checkins:', e.message); }
-
-        window._alertasCliente = cache;
-        // Re-renderiza el mapa con los nuevos colores
+        } catch(e){}
+        window._alertasCliente=cache;
         if(window.renderMapa) window.renderMapa();
-    } catch(e) { console.warn('[AlertaMapa] error general:', e); }
+    } catch(e){ console.warn('[AlertaMapa]',e); }
 };
 
 // ── renderMapa ÚNICA — con foto en popup + alertas rojas ───────
@@ -6723,56 +6722,33 @@ window.renderMapa = (lista) => {
     const datos = lista || clientesDB;
     clientesMarkers.forEach(m=>m.remove());
     clientesMarkers = [];
-
     const pulsarIcon = (color, size=20, tieneAlerta=false) => L.divIcon({
         className:'',
         html:`<div style="position:relative;width:${size}px;height:${size}px;">
             <div style="position:absolute;inset:0;background:${color};border-radius:50%;opacity:0.3;animation:pulsar${tieneAlerta?'Red':'Blue'} 1.5s infinite;"></div>
             <div style="position:absolute;top:${size*0.2}px;left:${size*0.2}px;width:${size*0.6}px;height:${size*0.6}px;background:${color};border-radius:50%;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.35);"></div>
-            ${tieneAlerta ? `<div style="position:absolute;top:-4px;right:-4px;width:9px;height:9px;background:#fff;border-radius:50%;border:1.5px solid ${color};"></div>` : ''}
         </div>
-        <style>
-            @keyframes pulsarBlue{0%,100%{transform:scale(1);opacity:0.3;}50%{transform:scale(2);opacity:0;}}
-            @keyframes pulsarRed{0%,100%{transform:scale(1);opacity:0.4;}50%{transform:scale(2.5);opacity:0;}}
-        </style>`,
+        <style>@keyframes pulsarBlue{0%,100%{transform:scale(1);opacity:0.3;}50%{transform:scale(2);opacity:0;}}
+        @keyframes pulsarRed{0%,100%{transform:scale(1);opacity:0.4;}50%{transform:scale(2.5);opacity:0;}}</style>`,
         iconSize:[size,size], iconAnchor:[size/2,size/2], popupAnchor:[0,-size/2-2]
     });
-
-    // Colores institucionales — azul por sector
     const colorSector = {
-        'Hidrocarburos':'#2563eb',
-        'Industria':    '#1d4ed8',
-        'Comercial':    '#0ea5e9',
-        'Gobierno':     '#6366f1',
-        'Construcción': '#38bdf8',
-        'Otro':         '#93c5fd'
+        'Hidrocarburos':'#2563eb','Industria':'#1d4ed8','Comercial':'#0ea5e9',
+        'Gobierno':'#6366f1','Construcción':'#38bdf8','Otro':'#93c5fd'
     };
-
     datos.forEach(cl => {
         if(!cl.lat || !cl.lng) return;
-
         const alertaInfo = window._alertasCliente[cl.id] || {alerta:false, razones:[]};
         const tieneAlerta = alertaInfo.alerta;
-
-        // 🔴 Rojo si hay pendiente, azul institucional si está al día
         const color = tieneAlerta ? '#dc2626' : (colorSector[cl.sector] || '#2563eb');
         const marker = L.marker([Number(cl.lat), Number(cl.lng)], {
-            icon: pulsarIcon(color, tieneAlerta ? 24 : 20, tieneAlerta),
+            icon: pulsarIcon(color, tieneAlerta?24:20, tieneAlerta),
             zIndexOffset: tieneAlerta ? 1000 : 0
         });
-
-        const fotoHTML = cl.fotoUrl
-            ? `<img src="${cl.fotoUrl}" style="width:100%;height:90px;object-fit:cover;border-radius:8px;margin-bottom:6px;" onerror="this.style.display='none'">`
-            : '';
-
-        // Banner de alertas en el popup
+        const fotoHTML = cl.fotoUrl ? `<img src="${cl.fotoUrl}" style="width:100%;height:90px;object-fit:cover;border-radius:8px;margin-bottom:6px;" onerror="this.style.display='none'">` : '';
         const alertaBanner = tieneAlerta
-            ? `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:7px 10px;margin-bottom:8px;">
-                <div style="font-size:10px;font-weight:800;color:#dc2626;margin-bottom:4px;">⚠️ PENDIENTES</div>
-                ${alertaInfo.razones.slice(0,4).map(r=>`<div style="font-size:10px;color:#7f1d1d;margin-bottom:2px;">• ${r}</div>`).join('')}
-               </div>`
+            ? `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:7px 10px;margin-bottom:8px;"><div style="font-size:10px;font-weight:800;color:#dc2626;margin-bottom:4px;">⚠️ PENDIENTES</div>${alertaInfo.razones.slice(0,4).map(r=>`<div style="font-size:10px;color:#7f1d1d;margin-bottom:2px;">• ${r}</div>`).join('')}</div>`
             : `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:5px 10px;margin-bottom:8px;font-size:10px;font-weight:700;color:#15803d;">✅ Sin pendientes</div>`;
-
         const popupHTML = `<div class="cliente-popup">
             ${fotoHTML}
             <div class="cliente-popup-nombre">${cl.nombre||'—'}</div>
@@ -6787,23 +6763,13 @@ window.renderMapa = (lista) => {
         marker.addTo(mapaLeaflet);
         clientesMarkers.push(marker);
     });
-
-    // Leyenda flotante en el mapa
-    if(!document.getElementById('mapa-leyenda-alertas')) {
-        const ley = L.control({position:'bottomleft'});
-        ley.onAdd = () => {
-            const div = L.DomUtil.create('div','');
-            div.id = 'mapa-leyenda-alertas';
-            div.style.cssText = 'background:white;padding:7px 11px;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.15);font-size:11px;font-family:Space Grotesk,sans-serif;';
-            div.innerHTML = `
-                <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">
-                    <div style="width:11px;height:11px;background:#dc2626;border-radius:50%;flex-shrink:0;"></div>
-                    <span style="color:#7f1d1d;font-weight:700;">Con pendiente / alerta</span>
-                </div>
-                <div style="display:flex;align-items:center;gap:6px;">
-                    <div style="width:11px;height:11px;background:#2563eb;border-radius:50%;flex-shrink:0;"></div>
-                    <span style="color:#1e3a8a;font-weight:700;">Sin pendientes</span>
-                </div>`;
+    if(!document.getElementById('mapa-leyenda-alertas')){
+        const ley=L.control({position:'bottomleft'});
+        ley.onAdd=()=>{
+            const div=L.DomUtil.create('div','');
+            div.id='mapa-leyenda-alertas';
+            div.style.cssText='background:white;padding:7px 11px;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.15);font-size:11px;font-family:Space Grotesk,sans-serif;';
+            div.innerHTML=`<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;"><div style="width:11px;height:11px;background:#dc2626;border-radius:50%;flex-shrink:0;"></div><span style="color:#7f1d1d;font-weight:700;">Con pendiente</span></div><div style="display:flex;align-items:center;gap:6px;"><div style="width:11px;height:11px;background:#2563eb;border-radius:50%;flex-shrink:0;"></div><span style="color:#1e3a8a;font-weight:700;">Sin pendientes</span></div>`;
             return div;
         };
         ley.addTo(mapaLeaflet);
@@ -7522,7 +7488,8 @@ window.guardarDatoRHInline = async () => {
         }
     }
 
-    function renderCalAP(){
+    function renderCalAP(empresaFiltro){
+        empresaFiltro = empresaFiltro !== undefined ? empresaFiltro : (document.getElementById('ap-filtro-empresa')?.value||'');
         const content = document.getElementById('ap-content');
         if(!content) return;
         const hoy = new Date(); hoy.setHours(0,0,0,0);
@@ -7530,8 +7497,13 @@ window.guardarDatoRHInline = async () => {
         const totalDias = new Date(apAnio, apMes+1, 0).getDate();
         const prevDias = new Date(apAnio, apMes, 0).getDate();
 
+        // Filtrar por empresa si aplica
+        const docsFiltrados = empresaFiltro
+            ? apDocs.filter(p => (p.empresa||'') === empresaFiltro)
+            : apDocs;
+
         const porDia = {};
-        apDocs.forEach(p=>{ if(!p.fecha) return; const dia=parseInt(p.fecha.split('-')[2]); if(!porDia[dia]) porDia[dia]=[]; porDia[dia].push(p); });
+        docsFiltrados.forEach(p=>{ if(!p.fecha) return; const dia=parseInt(p.fecha.split('-')[2]); if(!porDia[dia]) porDia[dia]=[]; porDia[dia].push(p); });
 
         let html = '<div class="parrilla-grid">';
         AP_DIAS.forEach(d=>{ html+=`<div class="parrilla-dow">${d}</div>`; });
@@ -7542,9 +7514,11 @@ window.guardarDatoRHInline = async () => {
             const esHoy = hoy.getDate()===d && hoy.getMonth()===apMes && hoy.getFullYear()===apAnio;
             const dDocs = porDia[d] || [];
             const fechaStr = `${apAnio}-${String(apMes+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+            const numDocs = dDocs.length;
             html+=`<div class="parrilla-cell${esHoy?' hoy':''}">
                 <div class="parrilla-cell-day">
                     <span${esHoy?' style="color:#2563eb;font-weight:900;"':''}>${d}</span>
+                    ${numDocs>1 ? `<button onclick="abrirCarruselDia(${d})" title="${numDocs} documentos" style="margin-left:2px;font-size:8px;background:#f1f5f9;border:none;border-radius:4px;padding:1px 4px;cursor:pointer;color:#64748b;font-weight:700;">${numDocs}📄</button>` : ''}
                     <button class="parrilla-add-cell" onclick="abrirModalAP('${fechaStr}')" title="Agregar">+</button>
                 </div>
                 ${dDocs.map(p=>docCardHTML(p)).join('')}
@@ -7555,9 +7529,78 @@ window.guardarDatoRHInline = async () => {
         if(remain>0) for(let i=1;i<=7-remain;i++) html+=`<div class="parrilla-cell otro-mes"><div class="parrilla-cell-day" style="color:#d1d5db;">${i}</div></div>`;
         html+='</div>';
 
-        const total = apDocs.length;
-        html+=`<div style="margin-top:12px;font-size:11px;color:#64748b;"><b style="color:#1e293b;">${total}</b> documentos este mes</div>`;
+        const total = docsFiltrados.length;
+        const totalAll = apDocs.length;
+        html+=`<div style="margin-top:12px;font-size:11px;color:#64748b;"><b style="color:#1e293b;">${total}</b> documentos${empresaFiltro?' ('+empresaFiltro+')':''} este mes${empresaFiltro&&total!==totalAll?' de '+totalAll+' total':''}</div>`;
         content.innerHTML = html;
+    }
+
+    // ── Carrusel de documentos del día ────────────────────────────
+    let _carruselDia = 1;
+    let _carruselIdx = 0;
+    window.abrirCarruselDia = (dia) => {
+        const empresaFiltro = document.getElementById('ap-filtro-empresa')?.value||'';
+        const docsFiltrados = empresaFiltro ? apDocs.filter(p=>(p.empresa||'')===empresaFiltro) : apDocs;
+        const dDocs = docsFiltrados.filter(p => p.fecha && parseInt(p.fecha.split('-')[2])===dia);
+        if(!dDocs.length) return;
+        _carruselDia = dia;
+        _carruselIdx = 0;
+        mostrarCarruselDoc(dDocs, 0);
+    };
+
+    function mostrarCarruselDoc(dDocs, idx) {
+        _carruselIdx = idx;
+        const p = dDocs[idx];
+        if(!p) return;
+        // Reuse the preview modal for the carrusel
+        const titulo = document.getElementById('ap-prev-titulo');
+        const meta = document.getElementById('ap-prev-meta');
+        const iframe = document.getElementById('ap-prev-iframe');
+        const link = document.getElementById('ap-prev-link');
+        if(titulo) titulo.innerText = `${p.desc||'Documento'} (${idx+1}/${dDocs.length})`;
+        if(meta){
+            const estatusBadge = p.estatus ? `<span style="margin-left:6px;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;background:${p.estatus==='Completado'?'#dcfce7':p.estatus==='En Proceso'?'#fef9c3':'#f1f5f9'};color:${p.estatus==='Completado'?'#16a34a':p.estatus==='En Proceso'?'#854d0e':'#475569'};">${p.estatus}</span>` : '';
+            const empresaBadge = p.empresa ? `<span style="margin-left:6px;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;background:#eff6ff;color:#2563eb;">${p.empresa}</span>` : '';
+            meta.innerHTML = `${p.tipo||''} · ${p.fecha||''}${p.fechaFin?' → '+p.fechaFin:''} · ${p.responsable||''}${estatusBadge}${empresaBadge}${p.notas?' · '+p.notas:''}`;
+        }
+        if(p.imgUrl){
+            if(iframe){ iframe.src='about:blank'; iframe.style.display='none'; }
+            let imgPrev = document.getElementById('ap-prev-img-direct');
+            if(!imgPrev){ imgPrev=document.createElement('img'); imgPrev.id='ap-prev-img-direct'; imgPrev.style.cssText='width:100%;max-height:320px;object-fit:contain;border-radius:8px;margin-bottom:8px;'; if(iframe) iframe.parentNode.insertBefore(imgPrev, iframe); }
+            imgPrev.src = p.imgUrl;
+            imgPrev.style.display = 'block';
+        } else {
+            let imgPrev=document.getElementById('ap-prev-img-direct'); if(imgPrev) imgPrev.style.display='none';
+            const previewUrl = typeof drivePreviewUrl==='function' ? drivePreviewUrl(p.link) : (p.link||'about:blank');
+            if(iframe){ iframe.src=previewUrl||'about:blank'; iframe.style.display='block'; }
+        }
+        if(link) link.href = p.link||p.imgUrl||'#';
+        // Nav buttons
+        let navDiv = document.getElementById('ap-carrusel-nav');
+        if(!navDiv){
+            navDiv = document.createElement('div');
+            navDiv.id = 'ap-carrusel-nav';
+            navDiv.style.cssText = 'display:flex;gap:8px;justify-content:center;align-items:center;margin-top:10px;';
+            const editBtn = document.getElementById('ap-prev-edit');
+            if(editBtn && editBtn.parentNode) editBtn.parentNode.insertBefore(navDiv, editBtn);
+        }
+        if(dDocs.length>1){
+            navDiv.innerHTML = `
+                <button onclick="mostrarCarruselDoc(window._carruselDocs, ${idx-1<0?dDocs.length-1:idx-1})" style="padding:4px 12px;border-radius:8px;border:1px solid #e2e8f0;background:white;cursor:pointer;font-size:13px;">‹</button>
+                <span style="font-size:11px;color:#64748b;">${idx+1} / ${dDocs.length}</span>
+                <button onclick="mostrarCarruselDoc(window._carruselDocs, ${idx+1>=dDocs.length?0:idx+1})" style="padding:4px 12px;border-radius:8px;border:1px solid #e2e8f0;background:white;cursor:pointer;font-size:13px;">›</button>
+            `;
+            navDiv.style.display='flex';
+        } else {
+            navDiv.style.display='none';
+        }
+        window._carruselDocs = dDocs;
+        // Edit/delete wiring
+        const editBtn = document.getElementById('ap-prev-edit');
+        if(editBtn) editBtn.onclick = () => { document.getElementById('modal-ap-preview').style.display='none'; editarDocAP(p.id); };
+        const delBtn = document.getElementById('ap-prev-del');
+        if(delBtn) delBtn.onclick = () => eliminarDocAP(p.id);
+        document.getElementById('modal-ap-preview').style.display='flex';
     }
 
     function docCardHTML(p){
@@ -7567,18 +7610,32 @@ window.guardarDatoRHInline = async () => {
             'Póliza':'#64748b','Recibo':'#ea580c','Memo':'#6366f1',
             'Deudores Diversos':'#dc2626','Acreedores Diversos':'#9333ea',
             'Balanza de Comprobación':'#0369a1','Estado de Resultados':'#047857',
-            'Balance General':'#b45309'
+            'Balance General':'#b45309','Conciliación':'#0891b2',
+            'Proveedores':'#7c3aed','Clientes':'#059669','Caja Chica':'#ea580c',
+            'Activo Fijo':'#6366f1','Estado de Cuenta':'#0369a1','Programación de Pago':'#db2777'
         };
         const color = tipoColor[p.tipo] || '#475569';
         const hasFile = p.imgUrl || p.link;
-        return `<div data-apdocid="${p.id}" style="border-radius:6px;padding:4px 6px;margin-bottom:3px;font-size:10px;cursor:pointer;border-left:3px solid ${color};background:rgba(255,255,255,0.9);transition:0.15s;overflow:hidden;" onclick="previewDocAP('${p.id}')" title="${p.desc||''} — ${p.tipo||''}">
+        const estatus = p.estatus || 'Sin Iniciar';
+        const estatusColor = estatus==='Completado' ? '#10b981' : estatus==='En Proceso' ? '#f59e0b' : '#94a3b8';
+        const estatusDot = `<div style="width:6px;height:6px;border-radius:50%;background:${estatusColor};flex-shrink:0;" title="${estatus}"></div>`;
+        const empresaTag = p.empresa ? `<span style="font-size:7px;font-weight:700;color:#2563eb;background:#eff6ff;padding:0 3px;border-radius:2px;">${p.empresa}</span>` : '';
+        return `<div data-apdocid="${p.id}" style="border-radius:6px;padding:4px 6px;margin-bottom:3px;font-size:10px;cursor:pointer;border-left:3px solid ${color};background:rgba(255,255,255,0.9);transition:0.15s;overflow:hidden;" onclick="previewDocAP('${p.id}')" title="${p.desc||''} — ${p.tipo||''} (${estatus})">
             <div style="display:flex;align-items:center;gap:3px;margin-bottom:1px;">
                 <span style="font-size:8px;font-weight:700;color:${color};background:${color}18;padding:1px 4px;border-radius:3px;flex-shrink:0;">${p.tipo||'Doc'}</span>
+                ${estatusDot}
                 ${hasFile ? '<svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>' : ''}
+                ${empresaTag}
             </div>
             <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#1e293b;">${p.desc||'Sin título'}</div>
         </div>`;
     }
+
+    // Filtrar por empresa en la parrilla
+    window.filtrarDocsAPEmpresa = () => {
+        const empresa = document.getElementById('ap-filtro-empresa')?.value || '';
+        renderCalAP(empresa);
+    };
 
     // Agregar botón compartir en el preview de documento
     const _origPreviewDoc = window.previewDocAP;
@@ -7609,11 +7666,18 @@ window.guardarDatoRHInline = async () => {
         document.getElementById('ap-fecha').value = fechaPreset || new Date().toISOString().slice(0,10);
         document.getElementById('ap-tipo').value = 'Factura';
         window._apImgFile=null;
-        const apImgNm=document.getElementById('ap-img-nombre'); if(apImgNm) apImgNm.style.display='none';
+        const apImgNm=document.getElementById('ap-img-nombre'); if(apImgNm){ apImgNm.style.display='none'; apImgNm.innerHTML=''; }
+        const apZone=document.getElementById('ap-img-zone');
+        if(apZone){ apZone.style.borderColor='#cbd5e1'; apZone.style.background='#f8fafc'; }
+        const apHint=apZone?apZone.querySelector('div[style*="color:#94a3b8"]'):null;
+        if(apHint) apHint.textContent='Clic para subir imagen, PDF o documento';
         document.getElementById('ap-desc').value = '';
         document.getElementById('ap-link').value = '';
         document.getElementById('ap-responsable').value = '';
         document.getElementById('ap-notas').value = '';
+        const apFechaFin=document.getElementById('ap-fecha-fin'); if(apFechaFin) apFechaFin.value='';
+        const apEstatus=document.getElementById('ap-estatus'); if(apEstatus) apEstatus.value='Sin Iniciar';
+        const apEmpresa=document.getElementById('ap-empresa'); if(apEmpresa) apEmpresa.value='';
         document.getElementById('modal-ap').style.display = 'flex';
     };
 
@@ -7639,10 +7703,16 @@ window.guardarDatoRHInline = async () => {
             } catch(e){ console.warn('Imagen no subida:', e); }
             window._apImgFile = null;
         }
+        const apFechaFinEl = document.getElementById('ap-fecha-fin');
+        const apEstatusEl = document.getElementById('ap-estatus');
+        const apEmpresaEl = document.getElementById('ap-empresa');
         const docData = {
             area: apAreaActual,
             mesKey,
             fecha,
+            fechaFin: apFechaFinEl ? apFechaFinEl.value : '',
+            estatus: apEstatusEl ? apEstatusEl.value : 'Sin Iniciar',
+            empresa: apEmpresaEl ? apEmpresaEl.value : '',
             tipo,
             desc: descRaw,
             link: document.getElementById('ap-link').value.trim(),
@@ -7672,11 +7742,12 @@ window.guardarDatoRHInline = async () => {
                     const tareaData = {
                         actividad: '📄 ' + desc,
                         area: apAreaActual,
-                        fechaLimite: fecha,
+                        fechaLimite: docData.fechaFin || fecha,
                         fechaInicio: fecha,
                         fechaCreacion: new Date().toISOString(),
-                        estatus: 'Sin Iniciar',
+                        estatus: docData.estatus || 'Sin Iniciar',
                         prioridad: 'Media',
+                        empresa: docData.empresa || '',
                         responsable: auth.currentUser?.email || '',
                         encargado: docData.responsable || auth.currentUser?.email || '',
                         origen: 'Parrilla de documentos',
@@ -7698,10 +7769,28 @@ window.guardarDatoRHInline = async () => {
         const p = apDocs.find(x=>x.id===id);
         if(!p) return;
         document.getElementById('ap-prev-titulo').innerText = p.desc || 'Documento';
-        document.getElementById('ap-prev-meta').innerHTML = `${p.tipo||''} · ${p.fecha||''} · ${p.responsable||''}${p.notas?' · '+p.notas:''}`;
-        const previewUrl = drivePreviewUrl(p.link);
-        document.getElementById('ap-prev-iframe').src = previewUrl || 'about:blank';
-        document.getElementById('ap-prev-link').href = p.link || '#';
+        const estatusBadge = p.estatus ? `<span style="margin-left:6px;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;background:${p.estatus==='Completado'?'#dcfce7':p.estatus==='En Proceso'?'#fef9c3':'#f1f5f9'};color:${p.estatus==='Completado'?'#16a34a':p.estatus==='En Proceso'?'#854d0e':'#475569'};">${p.estatus}</span>` : '';
+        const empresaBadge = p.empresa ? `<span style="margin-left:6px;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;background:#eff6ff;color:#2563eb;">${p.empresa}</span>` : '';
+        document.getElementById('ap-prev-meta').innerHTML = `${p.tipo||''} · ${p.fecha||''}${p.fechaFin?' → '+p.fechaFin:''} · ${p.responsable||''}${estatusBadge}${empresaBadge}${p.notas?' · '+p.notas:''}`;
+        // Show image directly if uploaded, or iframe for Drive
+        const iframe = document.getElementById('ap-prev-iframe');
+        let imgDirect = document.getElementById('ap-prev-img-direct');
+        if(!imgDirect){
+            imgDirect = document.createElement('img');
+            imgDirect.id = 'ap-prev-img-direct';
+            imgDirect.style.cssText = 'width:100%;max-height:320px;object-fit:contain;border-radius:8px;margin-bottom:8px;';
+            if(iframe) iframe.parentNode.insertBefore(imgDirect, iframe);
+        }
+        if(p.imgUrl){
+            imgDirect.src = p.imgUrl;
+            imgDirect.style.display = 'block';
+            if(iframe) iframe.style.display = 'none';
+        } else {
+            imgDirect.style.display = 'none';
+            const previewUrl = drivePreviewUrl(p.link);
+            if(iframe){ iframe.src=previewUrl||'about:blank'; iframe.style.display='block'; }
+        }
+        document.getElementById('ap-prev-link').href = p.link || p.imgUrl || '#';
         document.getElementById('ap-prev-edit').onclick = () => {
             document.getElementById('modal-ap-preview').style.display='none';
             editarDocAP(id);
@@ -7724,6 +7813,15 @@ window.guardarDatoRHInline = async () => {
         document.getElementById('ap-link').value = p.link||'';
         document.getElementById('ap-responsable').value = p.responsable||'';
         document.getElementById('ap-notas').value = p.notas||'';
+        const apFechaFinEl=document.getElementById('ap-fecha-fin'); if(apFechaFinEl) apFechaFinEl.value=p.fechaFin||'';
+        const apEstatusEl=document.getElementById('ap-estatus'); if(apEstatusEl) apEstatusEl.value=p.estatus||'Sin Iniciar';
+        const apEmpresaEl=document.getElementById('ap-empresa'); if(apEmpresaEl) apEmpresaEl.value=p.empresa||'';
+        // Show preview if doc has image
+        const nombre=document.getElementById('ap-img-nombre');
+        if(nombre && p.imgUrl){
+            nombre.innerHTML='<img src="'+p.imgUrl+'" style="max-height:60px;border-radius:6px;margin-top:4px;">';
+            nombre.style.display='block';
+        }
         document.getElementById('modal-ap').style.display='flex';
     }
 
@@ -8368,29 +8466,23 @@ window.guardarDatoRHInline = async () => {
         if(file.size > 10*1024*1024){ alert('Archivo muy grande. Máximo 10MB.'); return; }
         window._apImgFile = file;
         const zone = document.getElementById('ap-img-zone');
+        const hint = zone ? zone.querySelector('div[style*="color:#94a3b8"]') : null;
+        if(hint) hint.textContent = '✅ ' + file.name;
+        if(zone){ zone.style.borderColor='#10b981'; zone.style.background='#f0fdf4'; }
         const nombre = document.getElementById('ap-img-nombre');
-        if(zone){
-            zone.style.borderColor = '#10b981';
-            zone.style.background  = '#f0fdf4';
-        }
         if(nombre){
-            // Show PDF icon or image preview
-            if(file.type === 'application/pdf'){
-                nombre.innerHTML = `📄 ${file.name}`;
-                nombre.style.display = 'block';
-                document.querySelector('#ap-img-zone .ap-img-icon-txt') && (document.querySelector('#ap-img-zone .ap-img-icon-txt').style.display='none');
+            if(file.type==='application/pdf'){
+                nombre.innerHTML = '<span style="font-size:11px;color:#10b981;">📄 '+file.name+'</span>';
+                nombre.style.display='block';
             } else {
                 const reader = new FileReader();
                 reader.onload = e => {
-                    nombre.innerHTML = `<img src="${e.target.result}" style="max-height:60px;border-radius:6px;margin-top:4px;">`;
-                    nombre.style.display = 'block';
+                    nombre.innerHTML = '<img src="'+e.target.result+'" style="max-height:60px;border-radius:6px;margin-top:4px;">';
+                    nombre.style.display='block';
                 };
                 reader.readAsDataURL(file);
             }
         }
-        // Update text hint inside zone
-        const hint = document.querySelector('#ap-img-zone div[style*="color:#94a3b8"]');
-        if(hint) hint.textContent = `✅ ${file.name}`;
     };
 
     // ══════════════════════════════════════════════════
