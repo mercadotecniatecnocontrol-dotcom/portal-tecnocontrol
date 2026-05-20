@@ -6397,6 +6397,8 @@ async function cargarClientes(){
         clientesDB = snap.docs.map(d=>({id:d.id,...d.data()}));
         window.clientesDB = clientesDB; // Exponer globalmente para VP
         if(window.renderMapa) window.renderMapa();
+        // Calcular alertas en segundo plano y re-renderizar el mapa con colores
+        if(window.calcularAlertasClientes) window.calcularAlertasClientes();
         renderListaClientes(clientesDB);
         // Actualizar VP lista si está activo
         if(typeof vpRenderListaClientes === 'function') vpRenderListaClientes();
@@ -6593,48 +6595,219 @@ window.guardarCliente = async () => {
 // editarCliente — carga todos los campos incluyendo foto
 // (declaración principal, no override)
 
-// ── renderMapa ÚNICA — con foto en popup ───────────────────────
+// ══════════════════════════════════════════════════════════════
+// ALERTAS DE CLIENTE — Calcula si un cliente tiene pendientes
+// Retorna: { alerta: bool, razones: string[] }
+// ══════════════════════════════════════════════════════════════
+window._alertasCliente = {}; // cache { clienteId: {alerta, razones} }
+
+window.calcularAlertasClientes = async () => {
+    try {
+        const { getDocs, collection, query, where, orderBy, limit } =
+            await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const db = window.db; if(!db) return;
+        const cache = {};
+
+        // ── 1. Tareas pendientes en actividades ─────────────
+        try {
+            const snapT = await getDocs(query(
+                collection(db, 'actividades'),
+                where('estatus', 'in', ['Sin Iniciar', 'En Proceso'])
+            ));
+            snapT.forEach(d => {
+                const r = d.data();
+                // Buscar mención de cliente por nombre en actividad u origen
+                const texto = ((r.actividad||'') + ' ' + (r.origen||'') + ' ' + (r.descripcion||'')).toLowerCase();
+                (clientesDB || []).forEach(cl => {
+                    if(!cl.nombre) return;
+                    if(texto.includes(cl.nombre.toLowerCase().substring(0, 6))) {
+                        if(!cache[cl.id]) cache[cl.id] = {alerta:false, razones:[]};
+                        cache[cl.id].alerta = true;
+                        cache[cl.id].razones.push(`📋 Tarea pendiente: ${(r.actividad||'').substring(0,40)}`);
+                    }
+                });
+                // También buscar por clienteId directo si existe
+                if(r.clienteId) {
+                    if(!cache[r.clienteId]) cache[r.clienteId] = {alerta:false, razones:[]};
+                    cache[r.clienteId].alerta = true;
+                    cache[r.clienteId].razones.push(`📋 Tarea pendiente: ${(r.actividad||'').substring(0,40)}`);
+                }
+            });
+        } catch(e) { console.warn('[AlertaMapa] tareas:', e.message); }
+
+        // ── 2. Cotizaciones sin cerrar ───────────────────────
+        try {
+            const snapC = await getDocs(collection(db, 'cotizaciones'));
+            snapC.forEach(d => {
+                const r = d.data();
+                const st = (r.statusCot || r.estatus || '').toLowerCase();
+                const pendienteCot = !['colocada','aprobada','cancelada','rechazada','completada'].includes(st);
+                if(!pendienteCot) return;
+                const cid = r.clienteId;
+                if(cid) {
+                    if(!cache[cid]) cache[cid] = {alerta:false, razones:[]};
+                    cache[cid].alerta = true;
+                    cache[cid].razones.push(`💰 Cotización pendiente: ${(r.folio||r.desc||'').substring(0,30) || 'Sin folio'}`);
+                } else {
+                    // Buscar por nombre
+                    const nomCot = (r.cliente||'').toLowerCase();
+                    (clientesDB||[]).forEach(cl => {
+                        if(cl.nombre && nomCot && nomCot.includes(cl.nombre.toLowerCase().substring(0,6))) {
+                            if(!cache[cl.id]) cache[cl.id] = {alerta:false, razones:[]};
+                            cache[cl.id].alerta = true;
+                            cache[cl.id].razones.push(`💰 Cotización pendiente: ${(r.folio||'').substring(0,30)}`);
+                        }
+                    });
+                }
+            });
+        } catch(e) { console.warn('[AlertaMapa] cotizaciones:', e.message); }
+
+        // ── 3. Correos sin leer vinculados a cliente ─────────
+        if(window.gmailMensajes && window.gmailMensajes.length) {
+            const clientesEmails = {};
+            (clientesDB||[]).forEach(cl => {
+                const e = (cl.email||cl.correo||'').toLowerCase().trim();
+                if(e) clientesEmails[e] = cl;
+            });
+            window.gmailMensajes.forEach(msg => {
+                const leido = !msg.labelIds?.includes('UNREAD');
+                if(leido) return;
+                const hdrs = msg.payload?.headers || [];
+                const from = hdrs.find(h=>h.name==='From')?.value || '';
+                const emailMatch = from.match(/<(.+?)>/) || [null, from];
+                const emailFrom = (emailMatch[1]||'').toLowerCase().trim();
+                const cl = clientesEmails[emailFrom];
+                if(cl) {
+                    if(!cache[cl.id]) cache[cl.id] = {alerta:false, razones:[]};
+                    cache[cl.id].alerta = true;
+                    const subj = hdrs.find(h=>h.name==='Subject')?.value || '(sin asunto)';
+                    cache[cl.id].razones.push(`📧 Correo sin leer: ${subj.substring(0,35)}`);
+                }
+            });
+        }
+
+        // ── 4. Check-in reciente sin seguimiento (>3 días sin nueva visita) ──
+        try {
+            const snapV = await getDocs(query(
+                collection(db, 'checkins'),
+                orderBy('fecha', 'desc')
+            ));
+            const ultimaVisita = {}; // clienteId → fecha más reciente
+            snapV.forEach(d => {
+                const r = d.data();
+                if(!r.clienteId) return;
+                if(!ultimaVisita[r.clienteId]) ultimaVisita[r.clienteId] = r.fecha;
+            });
+            const ahora = Date.now();
+            const TRES_DIAS = 3 * 24 * 60 * 60 * 1000;
+            Object.entries(ultimaVisita).forEach(([cid, fechaStr]) => {
+                const diff = ahora - new Date(fechaStr).getTime();
+                if(diff > TRES_DIAS && diff < 30 * 24 * 60 * 60 * 1000) { // entre 3 y 30 días
+                    if(!cache[cid]) cache[cid] = {alerta:false, razones:[]};
+                    cache[cid].alerta = true;
+                    const dias = Math.floor(diff / (24*60*60*1000));
+                    cache[cid].razones.push(`🚶 Última visita hace ${dias} días sin seguimiento`);
+                }
+            });
+        } catch(e) { console.warn('[AlertaMapa] checkins:', e.message); }
+
+        window._alertasCliente = cache;
+        // Re-renderiza el mapa con los nuevos colores
+        if(window.renderMapa) window.renderMapa();
+    } catch(e) { console.warn('[AlertaMapa] error general:', e); }
+};
+
+// ── renderMapa ÚNICA — con foto en popup + alertas rojas ───────
 window.renderMapa = (lista) => {
     if(!mapaLeaflet) return;
     const datos = lista || clientesDB;
     clientesMarkers.forEach(m=>m.remove());
     clientesMarkers = [];
-    const pulsarIcon = (color='#2563eb') => L.divIcon({
+
+    const pulsarIcon = (color, size=20, tieneAlerta=false) => L.divIcon({
         className:'',
-        html:`<div style="position:relative;width:20px;height:20px;">
-            <div style="position:absolute;inset:0;background:${color};border-radius:50%;opacity:0.3;animation:pulsar 1.5s infinite;"></div>
-            <div style="position:absolute;top:4px;left:4px;width:12px;height:12px;background:${color};border-radius:50%;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);"></div>
+        html:`<div style="position:relative;width:${size}px;height:${size}px;">
+            <div style="position:absolute;inset:0;background:${color};border-radius:50%;opacity:0.3;animation:pulsar${tieneAlerta?'Red':'Blue'} 1.5s infinite;"></div>
+            <div style="position:absolute;top:${size*0.2}px;left:${size*0.2}px;width:${size*0.6}px;height:${size*0.6}px;background:${color};border-radius:50%;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.35);"></div>
+            ${tieneAlerta ? `<div style="position:absolute;top:-4px;right:-4px;width:9px;height:9px;background:#fff;border-radius:50%;border:1.5px solid ${color};"></div>` : ''}
         </div>
-        <style>@keyframes pulsar{0%,100%{transform:scale(1);opacity:0.3;}50%{transform:scale(2);opacity:0;}}</style>`,
-        iconSize:[20,20], iconAnchor:[10,10], popupAnchor:[0,-12]
+        <style>
+            @keyframes pulsarBlue{0%,100%{transform:scale(1);opacity:0.3;}50%{transform:scale(2);opacity:0;}}
+            @keyframes pulsarRed{0%,100%{transform:scale(1);opacity:0.4;}50%{transform:scale(2.5);opacity:0;}}
+        </style>`,
+        iconSize:[size,size], iconAnchor:[size/2,size/2], popupAnchor:[0,-size/2-2]
     });
-    // Colores institucionales de la plataforma
+
+    // Colores institucionales — azul por sector
     const colorSector = {
-        'Hidrocarburos':'#2563eb',   // Azul principal
-        'Industria':    '#1d4ed8',   // Azul oscuro
-        'Comercial':    '#0ea5e9',   // Azul cielo
-        'Gobierno':     '#6366f1',   // Índigo
-        'Construcción': '#38bdf8',   // Azul claro
-        'Otro':         '#93c5fd'    // Azul muy claro
+        'Hidrocarburos':'#2563eb',
+        'Industria':    '#1d4ed8',
+        'Comercial':    '#0ea5e9',
+        'Gobierno':     '#6366f1',
+        'Construcción': '#38bdf8',
+        'Otro':         '#93c5fd'
     };
+
     datos.forEach(cl => {
         if(!cl.lat || !cl.lng) return;
-        const color = colorSector[cl.sector] || '#2563eb';
-        const marker = L.marker([Number(cl.lat), Number(cl.lng)], {icon: pulsarIcon(color)});
-        const fotoHTML = cl.fotoUrl ? `<img src="${cl.fotoUrl}" style="width:100%;height:90px;object-fit:cover;border-radius:8px;margin-bottom:6px;" onerror="this.style.display='none'">` : '';
+
+        const alertaInfo = window._alertasCliente[cl.id] || {alerta:false, razones:[]};
+        const tieneAlerta = alertaInfo.alerta;
+
+        // 🔴 Rojo si hay pendiente, azul institucional si está al día
+        const color = tieneAlerta ? '#dc2626' : (colorSector[cl.sector] || '#2563eb');
+        const marker = L.marker([Number(cl.lat), Number(cl.lng)], {
+            icon: pulsarIcon(color, tieneAlerta ? 24 : 20, tieneAlerta),
+            zIndexOffset: tieneAlerta ? 1000 : 0
+        });
+
+        const fotoHTML = cl.fotoUrl
+            ? `<img src="${cl.fotoUrl}" style="width:100%;height:90px;object-fit:cover;border-radius:8px;margin-bottom:6px;" onerror="this.style.display='none'">`
+            : '';
+
+        // Banner de alertas en el popup
+        const alertaBanner = tieneAlerta
+            ? `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:7px 10px;margin-bottom:8px;">
+                <div style="font-size:10px;font-weight:800;color:#dc2626;margin-bottom:4px;">⚠️ PENDIENTES</div>
+                ${alertaInfo.razones.slice(0,4).map(r=>`<div style="font-size:10px;color:#7f1d1d;margin-bottom:2px;">• ${r}</div>`).join('')}
+               </div>`
+            : `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:5px 10px;margin-bottom:8px;font-size:10px;font-weight:700;color:#15803d;">✅ Sin pendientes</div>`;
+
         const popupHTML = `<div class="cliente-popup">
             ${fotoHTML}
             <div class="cliente-popup-nombre">${cl.nombre||'—'}</div>
             ${cl.ciudad||cl.estado?`<div class="cliente-popup-dir">📍 ${[cl.ciudad,cl.estado].filter(Boolean).join(', ')}</div>`:''}
             ${cl.vendedor?`<div style="font-size:11px;color:#64748b;margin:4px 0;">👤 ${cl.vendedor}</div>`:''}
             ${cl.sector?`<div class="cliente-popup-chip">${cl.sector}</div>`:''}
+            ${alertaBanner}
             <button class="cliente-popup-btn" onclick="editarCliente('${cl.id}')">Ver detalle / Editar</button>
             <button class="cliente-popup-btn" style="margin-top:4px;background:#059669;" onclick="abrirCheckinCliente('${cl.id}')">📍 Registrar visita</button>
         </div>`;
-        marker.bindPopup(popupHTML, {maxWidth:240});
+        marker.bindPopup(popupHTML, {maxWidth:260});
         marker.addTo(mapaLeaflet);
         clientesMarkers.push(marker);
     });
+
+    // Leyenda flotante en el mapa
+    if(!document.getElementById('mapa-leyenda-alertas')) {
+        const ley = L.control({position:'bottomleft'});
+        ley.onAdd = () => {
+            const div = L.DomUtil.create('div','');
+            div.id = 'mapa-leyenda-alertas';
+            div.style.cssText = 'background:white;padding:7px 11px;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.15);font-size:11px;font-family:Space Grotesk,sans-serif;';
+            div.innerHTML = `
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">
+                    <div style="width:11px;height:11px;background:#dc2626;border-radius:50%;flex-shrink:0;"></div>
+                    <span style="color:#7f1d1d;font-weight:700;">Con pendiente / alerta</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;">
+                    <div style="width:11px;height:11px;background:#2563eb;border-radius:50%;flex-shrink:0;"></div>
+                    <span style="color:#1e3a8a;font-weight:700;">Sin pendientes</span>
+                </div>`;
+            return div;
+        };
+        ley.addTo(mapaLeaflet);
+    }
 };
 
 // ── CHECK-IN GPS ─────────────────────────────────────────────
@@ -8185,6 +8358,39 @@ window.guardarDatoRHInline = async () => {
             document.getElementById('srv-video-url').value=e.target.result;
         };
         reader.readAsDataURL(file);
+    };
+
+    // ══════════════════════════════════════════════════
+    // AP-PREVIEW-IMG — Subir imagen/PDF en Nuevo Documento
+    // ══════════════════════════════════════════════════
+    window.apPrevImg = (input) => {
+        const file = input.files[0]; if(!file) return;
+        if(file.size > 10*1024*1024){ alert('Archivo muy grande. Máximo 10MB.'); return; }
+        window._apImgFile = file;
+        const zone = document.getElementById('ap-img-zone');
+        const nombre = document.getElementById('ap-img-nombre');
+        if(zone){
+            zone.style.borderColor = '#10b981';
+            zone.style.background  = '#f0fdf4';
+        }
+        if(nombre){
+            // Show PDF icon or image preview
+            if(file.type === 'application/pdf'){
+                nombre.innerHTML = `📄 ${file.name}`;
+                nombre.style.display = 'block';
+                document.querySelector('#ap-img-zone .ap-img-icon-txt') && (document.querySelector('#ap-img-zone .ap-img-icon-txt').style.display='none');
+            } else {
+                const reader = new FileReader();
+                reader.onload = e => {
+                    nombre.innerHTML = `<img src="${e.target.result}" style="max-height:60px;border-radius:6px;margin-top:4px;">`;
+                    nombre.style.display = 'block';
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+        // Update text hint inside zone
+        const hint = document.querySelector('#ap-img-zone div[style*="color:#94a3b8"]');
+        if(hint) hint.textContent = `✅ ${file.name}`;
     };
 
     // ══════════════════════════════════════════════════
