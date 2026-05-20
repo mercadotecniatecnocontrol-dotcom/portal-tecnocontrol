@@ -3945,6 +3945,19 @@ window.verArea=(a,b)=>{
         toggleRHDash(a, yo);
         toggleVentasMapa(a, yo);
         if(isMobile()) mostrarNavMobile(true, false);
+        // Parrilla de documentos — mostrar en todas las áreas excepto Marketing (tiene su propia)
+        const _parrillaWrap = document.getElementById('area-parrilla-wrap');
+        if(_parrillaWrap){
+            const _areasConParrillaPropia = ['Marketing'];
+            if(_areasConParrillaPropia.includes(a)){
+                _parrillaWrap.style.display = 'none';
+            } else {
+                _parrillaWrap.style.display = 'block';
+                if(typeof window.apAreaActual !== 'undefined') window.apAreaActual = a;
+                if(typeof window.actualizarLabelAP === 'function') window.actualizarLabelAP();
+                if(typeof window.cargarDocsAP === 'function') window.cargarDocsAP();
+            }
+        }
     };
     if(auth.currentUser) { _doRender(); } else { setTimeout(_doRender, 300); }
 };
