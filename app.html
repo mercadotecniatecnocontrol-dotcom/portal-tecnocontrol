@@ -3967,6 +3967,70 @@ async function cargarClientes() {
     clientesDB = snap.docs.map(d => ({id: d.id, ...d.data()}));
     renderMapMarkers();
     renderVentasStats();
+    calcularAlertasClientesApp();
+}
+
+window._appAlertasCliente = {};
+
+async function calcularAlertasClientesApp() {
+    try {
+        const cache = {};
+        try {
+            const snapT = await getDocs(query(
+                collection(db, 'actividades'),
+                where('estatus', 'in', ['Sin Iniciar', 'En Proceso'])
+            ));
+            snapT.forEach(d => {
+                const r = d.data();
+                if(r.clienteId) {
+                    if(!cache[r.clienteId]) cache[r.clienteId] = {alerta:false, razones:[]};
+                    cache[r.clienteId].alerta = true;
+                    cache[r.clienteId].razones.push(`📋 ${(r.actividad||'Tarea').substring(0,35)}`);
+                } else {
+                    const txt = ((r.actividad||'')+(r.origen||'')).toLowerCase();
+                    clientesDB.forEach(cl => {
+                        if(cl.nombre && txt.includes(cl.nombre.toLowerCase().substring(0,6))) {
+                            if(!cache[cl.id]) cache[cl.id] = {alerta:false, razones:[]};
+                            cache[cl.id].alerta = true;
+                            cache[cl.id].razones.push(`📋 ${(r.actividad||'Tarea').substring(0,35)}`);
+                        }
+                    });
+                }
+            });
+        } catch(e) {}
+        try {
+            const snapC = await getDocs(collection(db, 'cotizaciones'));
+            snapC.forEach(d => {
+                const r = d.data();
+                const st = (r.statusCot||r.estatus||'').toLowerCase();
+                if(['colocada','aprobada','cancelada','completada'].includes(st)) return;
+                const cid = r.clienteId;
+                if(cid) {
+                    if(!cache[cid]) cache[cid] = {alerta:false, razones:[]};
+                    cache[cid].alerta = true;
+                    cache[cid].razones.push('💰 Cotización pendiente');
+                }
+            });
+        } catch(e) {}
+        try {
+            const { orderBy: ob } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+            const snapV = await getDocs(query(collection(db,'ventas_checkins'), ob('fecha','desc')));
+            const ultima = {};
+            snapV.forEach(d => { const r=d.data(); if(r.clienteId && !ultima[r.clienteId]) ultima[r.clienteId]=r.fecha; });
+            const ahora = Date.now();
+            Object.entries(ultima).forEach(([cid, f]) => {
+                const diff = ahora - new Date(f).getTime();
+                const dias = Math.floor(diff/(24*60*60*1000));
+                if(dias > 3 && dias < 30) {
+                    if(!cache[cid]) cache[cid] = {alerta:false, razones:[]};
+                    cache[cid].alerta = true;
+                    cache[cid].razones.push(`🚶 Sin visita hace ${dias} días`);
+                }
+            });
+        } catch(e) {}
+        window._appAlertasCliente = cache;
+        renderMapMarkers();
+    } catch(e) { console.warn('[AppAlertaMapa]', e); }
 }
 
 async function cargarVisitas() {
@@ -4005,14 +4069,57 @@ function renderMapMarkers() {
     markersLayer.clearLayers();
     clientesDB.forEach(c => {
         if(!c.lat || !c.lng) return;
+        const alertaInfo = (window._appAlertasCliente || {})[c.id] || {alerta:false, razones:[]};
+        const tieneAlerta = alertaInfo.alerta;
+        // 🔴 Rojo con pulso más intenso si hay pendiente, naranja-dorado si está al día
+        const bg = tieneAlerta
+            ? 'linear-gradient(135deg,#dc2626,#b91c1c)'
+            : 'linear-gradient(135deg,#f59e0b,#d97706)';
+        const shadow = tieneAlerta ? '0 2px 10px rgba(220,38,38,0.5)' : '0 2px 8px rgba(0,0,0,0.3)';
+        const pulse = tieneAlerta
+            ? `<div style="position:absolute;inset:-5px;border-radius:50%;border:2px solid #dc2626;animation:appPulseRed 1.2s infinite;opacity:0.6;"></div>`
+            : '';
         const icon = L.divIcon({
             className: '',
-            html: '<div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#f59e0b,#d97706);display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,0.3);border:2px solid white;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div>',
+            html: `<div style="position:relative;width:32px;height:32px;">
+                ${pulse}
+                <div style="width:32px;height:32px;border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:${shadow};border:2px solid white;cursor:pointer;position:relative;z-index:1;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                        <circle cx="12" cy="10" r="3"/>
+                    </svg>
+                </div>
+            </div>
+            <style>@keyframes appPulseRed{0%,100%{transform:scale(1);opacity:0.6;}50%{transform:scale(1.6);opacity:0;}}</style>`,
             iconSize: [32, 32], iconAnchor: [16, 16]
         });
-        const marker = L.marker([c.lat, c.lng], { icon }).addTo(markersLayer);
-        marker.on('click', () => seleccionarCliente(c));
+        const marker = L.marker([c.lat, c.lng], {
+            icon,
+            zIndexOffset: tieneAlerta ? 1000 : 0
+        }).addTo(markersLayer);
+        marker.on('click', () => seleccionarClienteConAlerta(c, alertaInfo));
     });
+}
+
+function seleccionarClienteConAlerta(c, alertaInfo) {
+    seleccionarCliente(c);
+    // Mostrar banner de alertas debajo del nombre en el checkin-bar
+    const bar = document.getElementById('checkin-bar');
+    let alertDiv = document.getElementById('ci-alerta-banner');
+    if(!alertDiv) {
+        alertDiv = document.createElement('div');
+        alertDiv.id = 'ci-alerta-banner';
+        const ciStatus = document.getElementById('ci-status');
+        if(ciStatus && ciStatus.parentNode) ciStatus.parentNode.insertBefore(alertDiv, ciStatus);
+    }
+    if(alertaInfo && alertaInfo.alerta && alertaInfo.razones.length) {
+        alertDiv.style.cssText = 'background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:7px 10px;margin-bottom:8px;';
+        alertDiv.innerHTML = `<div style="font-size:10px;font-weight:800;color:#dc2626;margin-bottom:3px;">⚠️ PENDIENTES</div>`
+            + alertaInfo.razones.slice(0,3).map(r => `<div style="font-size:10px;color:#7f1d1d;">• ${r}</div>`).join('');
+    } else {
+        alertDiv.style.cssText = 'background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:5px 10px;margin-bottom:8px;font-size:10px;font-weight:700;color:#15803d;';
+        alertDiv.innerHTML = '✅ Sin pendientes';
+    }
 }
 
 function seleccionarCliente(c) {
