@@ -1195,7 +1195,7 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
         </div>
         <div class="nav-label">General</div>
         <button class="sitem active" onclick="navegar('dashboard',this)"><div class="sitem-left"><span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></span> Dashboard</div></button>
-        <button class="sitem" onclick="navegar('reportes',this)"><div class="sitem-left"><span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span> Reporte Mensual</div></button>
+        
         <button class="sitem" onclick="navegar('cal360',this)"><div class="sitem-left"><span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span> Calendario 360</div></button>
         <button class="sitem" onclick="navegar('nueva',this)"><div class="sitem-left"><span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg></span> Asignar Tarea</div></button>
         <button class="sitem" id="btn-ejecutivo" style="display:none;" onclick="navegar('ejecutivo',this)"><div class="sitem-left"><span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span> Vista Ejecutiva</div></button>
@@ -1221,7 +1221,7 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
         </div>
 
         <!-- REPORTES -->
-        <div class="section" id="sec-reportes">
+        <div class="section" id="sec-reportes" style="display:none !important;">
             <div class="page-header">
                 <div><div class="page-title">Reporte Mensual</div><div class="page-date" id="rep-header-sub"></div></div>
                 <div style="display:flex;gap:10px;align-items:center;">
@@ -2513,7 +2513,7 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
                         <div id="vp-kanban-body" class="vp-kanban"></div>
                     </div>
                     <!-- Panel cotizacion detalle -->
-                    <div id="vp-cot-detalle-wrap" style="display:none;flex:1;overflow-y:auto;padding:16px;flex-direction:column;">
+                    <div id="vp-cot-detalle-wrap" style="display:none;flex:1;overflow-y:auto;padding:16px;flex-direction:column;background:#f8fafc;">
                         <div style="color:#94a3b8;font-size:12px;text-align:center;padding:30px;">Selecciona una cotización</div>
                     </div>
                 </div>
@@ -3230,6 +3230,7 @@ function nombreUsuario(email){
 }
 
 // ── Usuarios disponibles para asignar tareas (por área) ──────
+const EMPLEADOS_TECNOCONTROL = ['ACEVES MOLINA IVAN ARGENIS', 'ACOSTA CHAVIRA CARLOS', 'ACOSTA CONTRERAS CRISTINA JUDITH', 'BARRAZA LUYA SAUL ISMAEL', 'CALIXTO SANCHEZ RAFAEL', 'CAMPOS GOMEZ ADA JAQUELINE', 'CARMONA LAGUNAS SERGIO', 'CASTRO MUÑOZ SAUL', 'CHACON TERRAZAS LUCERO', 'CHAVEZ ALVAREZ RUTH YADIRA', 'CHAVEZ BARRAZA OSCAR IVAN', 'CHAVEZ CHAVEZ IVAN', 'CONTRERAS MORALES ELVA NIDIA', 'CORONADO VALENZUELA SOCORRO ANNET', 'DE LA CRUZ EMILIO JULIO CESAR', 'DE LA O MAESE MARTIN', 'DURSTEWITZ MAESE GUILLERMO', 'ENRIQUEZ GALLARDO JORGE ALBERTO', 'ESCALANTE JARAMILLO ANA KAREN', 'ESTRADA GOMEZ ALAN ALBERTO', 'GARCIA LEDEZMA JESUS ALVARO', 'GARCIA MONTEMAYOR VERONICA JANETH', 'GONZALEZ BABONOYABA RICARDO ANTONIO', 'GONZALEZ DELGADO ERICKA IDALY', 'GUERRERO GOMEZ JORGE', 'GUTIERREZ ALVARADO NAYRA DIDI', 'GUTIERREZ VILLARREAL DENISSE', 'GUZMAN MORALES FLOR IDALIA', 'GUZMAN NEAVE KENIA YADIRA', 'HERNANDEZ PEREZ RUBEN ALBERTO', 'HERNANDEZ PRIETO JOSUE', 'HERNANDEZ RIOS JESUS RAMON', 'LEAL MARTINEZ ROQUE MANUEL', 'LOPEZ AVILA SANDRA LUCERO', 'LOPEZ DELGADO LUIS HUMBERTO', 'LUNA ESPINOZA JAIME ROEL', 'MEDINA CONTRERAS GIOVANNI ISRAEL', 'MENDOZA BECERRA SERGIO', 'MINJAREZ OCHOA ALBERTO ALAN', 'MONTELLANO PASILLAS MIGUEL ANGEL', 'MORALES CRUZ GABRIEL GAEL', 'MORALES MENDOZA TOMAS', 'MORENO MOLINA REYES', 'MORIEL SAENZ RICARDO SALVADOR', 'MUÑOZ AVILA ROBERTO', 'MUÑOZ BLANCO LIZETH CRISTINA', 'NUÑEZ ALATORRE ULISES', 'OROZCO MIRANDA ANA CRISTINA', 'PARRA BLANCO ZAIRA SIBEL', 'PEREZ GARCIA MARTHA ARACELY', 'PINEDO PALOMA', 'PORTILLO PORTILLO JOSE LUIS', 'PRECIADO GRIJALVA GLEN IVAN', 'REYES GONZALEZ PEDRO', 'RIOS SALCIDO JOON OMAIRA', 'RUIZ OLMEDO NORMA IDALY', 'SALCEDO GARDEA FILIBERTO ISAI', 'SALMON RIVAS FABRICIO ABUNDIO', 'SAUCEDO MARTINEZ IRVING ABRAHAM', 'SAUZAMEDA OCHOA FATIMA ANAHI', 'SEPULVEDA MENDOZA IVAN ROBERTO', 'SOTO GONZALEZ BENITO', 'TERRAZAS SERRANO FERNANDO', 'URIBE MAESE JORGE ALBERTO', 'VALENCIA BARRAZA JESUS BERSAIN', 'VALENCIA MEZA LUIS MIGUEL', 'VALENZUELA LOPEZ JOSE LUIS'];
 const USUARIOS_AREA = {
     'Ingresos':        ['facturacion@tecnocontrol.com.mx'],
     'Egresos':         ['aux.contable@tecnocontrol.com.mx'],
@@ -3953,7 +3954,7 @@ window.verArea=(a,b)=>{
                 _parrillaWrap.style.display = 'none';
             } else {
                 _parrillaWrap.style.display = 'block';
-                if(typeof window.apAreaActual !== 'undefined') window.apAreaActual = a;
+                window.apAreaActual = a; apAreaActual = a;
                 if(typeof window.actualizarLabelAP === 'function') window.actualizarLabelAP();
                 if(typeof window.cargarDocsAP === 'function') window.cargarDocsAP();
             }
@@ -4231,28 +4232,24 @@ window.actualizarEncargados = () => {
     const sel = document.getElementById('n-encargado');
     if(!sel) return;
 
-    // Construir lista completa de todos los usuarios registrados
-    // 1. Todos los del NOMBRE_MAP (usuarios registrados con nombre)
-    // 2. Usuarios extra de USUARIOS_AREA que no estén ya en el mapa
+    const yo = auth.currentUser?.email || '';
+    const opcionYo = yo ? `<option value="${yo}">${nombreUsuario(yo)} (yo)</option>` : '';
+
+    // Lista completa de empleados Tecnocontrol + emails registrados
+    const empOptions = (typeof EMPLEADOS_TECNOCONTROL !== 'undefined' ? EMPLEADOS_TECNOCONTROL : [])
+        .map(n => `<option value="${n}">${n}</option>`)
+        .join('');
+
+    // También incluir emails del sistema por si alguno no está en la lista de nombres
     const todosEmails = new Set();
     Object.keys(NOMBRE_MAP).forEach(e => todosEmails.add(e));
     Object.values(USUARIOS_AREA).flat().forEach(e => todosEmails.add(e));
-
-    // Convertir a array ordenado por nombre
-    const lista = [...todosEmails]
-        .map(email => ({ email, nombre: nombreUsuario(email) }))
-        .sort((a,b) => a.nombre.localeCompare(b.nombre));
-
-    const yo = auth.currentUser?.email || '';
-
-    // Construir opciones: yo primero, luego el resto
-    const opcionYo = `<option value="${yo}">${nombreUsuario(yo)} (yo)</option>`;
-    const opcionesResto = lista
-        .filter(u => u.email !== yo)
-        .map(u => `<option value="${u.email}">${u.nombre}</option>`)
+    const emailOptions = [...todosEmails]
+        .filter(e => e !== yo)
+        .map(e => `<option value="${e}">${nombreUsuario(e)}</option>`)
         .join('');
 
-    sel.innerHTML = opcionYo + opcionesResto;
+    sel.innerHTML = `<option value="">— Seleccionar encargado —</option>${opcionYo}${empOptions}${emailOptions}`;
 };
 
 window.guardarTarea=async()=>{
@@ -7438,6 +7435,7 @@ window.guardarDatoRHInline = async () => {
     let apMes = new Date().getMonth();
     let apAnio = new Date().getFullYear();
     let apAreaActual = '';
+    window.apAreaActual = apAreaActual;
     let apDocs = [];
     const AP_MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
     const AP_DIAS = ['DOM','LUN','MAR','MIÉ','JUE','VIE','SÁB'];
@@ -7477,7 +7475,7 @@ window.guardarDatoRHInline = async () => {
         return '';
     }
 
-    function actualizarLabelAP(){
+    window.actualizarLabelAP = function actualizarLabelAP(){
         const el = document.getElementById('ap-nav-label');
         if(el) el.innerText = `${AP_MESES[apMes]} ${apAnio}`;
         const lbl = document.getElementById('ap-area-label');
@@ -7487,7 +7485,7 @@ window.guardarDatoRHInline = async () => {
     window.apMesPrev = () => { apMes--; if(apMes<0){apMes=11;apAnio--;} actualizarLabelAP(); cargarDocsAP(); };
     window.apMesNext = () => { apMes++; if(apMes>11){apMes=0;apAnio++;} actualizarLabelAP(); cargarDocsAP(); };
 
-    async function cargarDocsAP(){
+    window.cargarDocsAP = async function cargarDocsAP(){
         if(!apAreaActual) return;
         try {
             const { db, fs } = await getFirebaseAP();
@@ -7797,10 +7795,6 @@ window.guardarDatoRHInline = async () => {
             if(imgDirect) imgDirect.style.display = 'none';
             const previewUrl = typeof drivePreviewUrl==='function' ? drivePreviewUrl(p.link) : (p.link||'about:blank');
             if(iframe){ iframe.src = previewUrl||'about:blank'; iframe.style.display='block'; }
-        } else {
-            imgDirect.style.display = 'none';
-            const previewUrl = drivePreviewUrl(p.link);
-            if(iframe){ iframe.src=previewUrl||'about:blank'; iframe.style.display='block'; }
         }
         document.getElementById('ap-prev-link').href = p.link || p.imgUrl || '#';
         document.getElementById('ap-prev-edit').onclick = () => {
@@ -10803,22 +10797,24 @@ const GMAIL_CLIENT_ID = '1014725100171-fl8k6b558ln3sht48m4cbrt1jfv36g1b.apps.goo
 const GMAIL_SCOPES = 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly';
 const CORREO_SALIDA = 'ventas@tecnocontrol.com.mx';
 
-let gmailToken = null;
+// Recuperar token guardado (persiste durante la sesión del navegador)
+let gmailToken = sessionStorage.getItem('gmail_access_token') || null;
 let gmailCorreoActual = null;
 let gmailFiltroActual = 'todos';
 let gmailMensajes = [];
 
-// ── Autenticación OAuth2 ──────────────────────────────
+// ── Autenticación OAuth2 — persiste en sessionStorage ──────────
 function gmailAutenticar() {
     return new Promise((resolve, reject) => {
+        // Usar token guardado si existe
         if (gmailToken) { resolve(gmailToken); return; }
 
+        // Sin prompt=consent para no pedir auth si ya fue autorizado
         const authUrl = `https://accounts.google.com/o/oauth2/auth?` +
             `client_id=${GMAIL_CLIENT_ID}` +
             `&redirect_uri=${encodeURIComponent(window.location.origin + window.location.pathname)}` +
             `&response_type=token` +
-            `&scope=${encodeURIComponent(GMAIL_SCOPES)}` +
-            `&prompt=consent`;
+            `&scope=${encodeURIComponent(GMAIL_SCOPES)}`;
 
         const popup = window.open(authUrl, 'gmail_auth', 'width=520,height=620,scrollbars=yes');
 
@@ -10829,6 +10825,8 @@ function gmailAutenticar() {
                 if (hash && hash.includes('access_token')) {
                     const params = new URLSearchParams(hash.substring(1));
                     gmailToken = params.get('access_token');
+                    // Guardar en sessionStorage para no pedir de nuevo en esta sesión
+                    if(gmailToken) sessionStorage.setItem('gmail_access_token', gmailToken);
                     clearInterval(check);
                     popup.close();
                     resolve(gmailToken);
@@ -10865,7 +10863,7 @@ async function gmailFetchMensajes() {
         { headers: { Authorization: `Bearer ${gmailToken}` } }
     );
     if (!res.ok) {
-        if (res.status === 401) { gmailToken = null; await gmailCargarInbox(); return; }
+        if (res.status === 401) { gmailToken = null; sessionStorage.removeItem('gmail_access_token'); await gmailCargarInbox(); return; }
         throw new Error('Error al obtener mensajes: ' + res.status);
     }
     const data = await res.json();
@@ -12427,11 +12425,23 @@ window.cerrarPerfilCliente = function() {
 };
 
 window.portalCpNuevaActividad = function() {
-    alert('Para agregar actividades usa la App Tecnocontrol.\nSe sincronizan automáticamente en el portal.');
+    const clienteNombre = document.getElementById('portal-cp-nombre')?.textContent || '';
+    const orig = document.getElementById('n-origen');
+    const a = document.getElementById('n-area');
+    if(orig && clienteNombre) orig.value = clienteNombre;
+    if(a) a.value = 'Ventas';
+    if(typeof actualizarEncargados === 'function') actualizarEncargados();
+    navegar('asignar');
 };
 
 window.portalCpNuevaCot = function() {
-    alert('Para crear cotizaciones usa la App Tecnocontrol.\nSe sincronizan automáticamente en el portal.');
+    const clienteNombre = document.getElementById('portal-cp-nombre')?.textContent || '';
+    if(clienteNombre) {
+        const msg = `Para crear una cotización para "${clienteNombre}", usa el módulo de Cotizaciones en Ventas.`;
+        if(window.mostrarPush) window.mostrarPush('💼 Cotizaciones', msg, '📄');
+    }
+    navegar('area', null);
+    if(typeof verArea === 'function') setTimeout(() => verArea('Ventas'), 100);
 };
 
 window.portalCpCambiarEstatus = async function(actividadId, nuevoEstatus, btn) {
@@ -12952,15 +12962,46 @@ window.vpCrmPipeline = function(idx, btn) {
 window.vpVerOportunidad = function(id) {
     const o = vpCrmDB.find(x=>x.id===id);
     if(!o) return;
+    const pipeline = VP_PIPELINES[vpCrmPipelineActivo];
     const col = VP_ETAPA_COLORS[o.etapa]||{bg:'#f1f5f9',color:'#475569'};
-    alert([
-        `📋 ${o.cliente||o.nombre||'—'}`,
-        `📊 Etapa: ${o.etapa||'—'}`,
-        `💰 $${((o.valor||o.monto||0)).toLocaleString('es-MX')} MXN`,
-        o.servicio?`🔧 ${o.servicio}`:'',
-        o.notas?`📝 ${o.notas.slice(0,100)}`:'',
-        `👤 ${(o.vendedor||o.asignado||'—').split('@')[0]}`,
-    ].filter(Boolean).join('\n'));
+    // Crear modal de detalle de oportunidad
+    let modalEl = document.getElementById('vp-op-modal');
+    if(!modalEl){
+        modalEl = document.createElement('div');
+        modalEl.id = 'vp-op-modal';
+        modalEl.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:99999;align-items:center;justify-content:center;';
+        document.body.appendChild(modalEl);
+    }
+    const etapaBtns = pipeline.etapas.map(e => 
+        `<button onclick="vpCambiarEtapa('${id}','${e}')" style="padding:6px 10px;border-radius:8px;border:2px solid ${e===o.etapa?'#2563eb':'#e2e8f0'};background:${e===o.etapa?'#eff6ff':'white'};color:${e===o.etapa?'#2563eb':'#64748b'};font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:700;cursor:pointer;">${e}</button>`
+    ).join('');
+    modalEl.innerHTML = `<div style="background:white;border-radius:20px;padding:24px;width:460px;max-width:95vw;max-height:80vh;overflow-y:auto;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+            <div style="font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:800;color:#1e293b;">${o.cliente||o.nombre||'—'}</div>
+            <button onclick="document.getElementById('vp-op-modal').style.display='none'" style="background:none;border:none;font-size:20px;cursor:pointer;color:#94a3b8;">✕</button>
+        </div>
+        <div style="background:#f8fafc;border-radius:12px;padding:14px;margin-bottom:14px;">
+            <div style="font-size:11px;color:#64748b;margin-bottom:4px;">VALOR</div>
+            <div style="font-size:20px;font-weight:800;color:#10b981;">$${(o.valor||o.monto||0).toLocaleString('es-MX')} MXN</div>
+        </div>
+        ${o.servicio?`<div style="margin-bottom:10px;font-size:13px;color:#475569;"><b>Servicio:</b> ${o.servicio}</div>`:''}
+        ${o.notas?`<div style="margin-bottom:10px;font-size:12px;color:#64748b;background:#f8fafc;padding:10px;border-radius:8px;">${o.notas}</div>`:''}
+        <div style="font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;text-transform:uppercase;">Cambiar etapa</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px;">${etapaBtns}</div>
+        <div style="font-size:11px;color:#94a3b8;">Vendedor: ${(o.vendedor||o.asignado||'—').split('@')[0]}</div>
+    </div>`;
+    modalEl.style.display = 'flex';
+    modalEl.onclick = e => { if(e.target===modalEl) modalEl.style.display='none'; };
+};
+
+window.vpCambiarEtapa = async function(id, nuevaEtapa) {
+    try {
+        const {doc, updateDoc} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        await updateDoc(doc(window.db,'crm_oportunidades',id), { etapa: nuevaEtapa });
+        if(window.mostrarPush) window.mostrarPush('📊 Etapa actualizada', nuevaEtapa, '✅');
+        document.getElementById('vp-op-modal').style.display='none';
+        await vpCargarCRM();
+    } catch(e) { alert('Error: '+e.message); }
 };
 
 window.vpNuevaOportunidad = async function(etapaInicial) {
@@ -13114,7 +13155,13 @@ window.vpNuevaCotizacion = function() {
 };
 
 window.vpNuevaActividad = function() {
-    alert('Para agregar actividades usa la App Tecnocontrol.\nSe sincronizan automáticamente aquí.');
+    const clienteNombre = document.getElementById('vp-cp-nombre')?.textContent || '';
+    const orig = document.getElementById('n-origen');
+    const a = document.getElementById('n-area');
+    if(orig && clienteNombre) orig.value = clienteNombre;
+    if(a) a.value = 'Ventas';
+    if(typeof actualizarEncargados === 'function') actualizarEncargados();
+    navegar('asignar');
 };
 
 window.vpCambiarEstatusAct = async function(id, estatus) {
