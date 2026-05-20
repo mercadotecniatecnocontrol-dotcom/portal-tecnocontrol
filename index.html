@@ -2424,9 +2424,7 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
                     </button>
                     <div class="vsi-spacer"></div>
-                    <button class="vsi-action" onclick="vpCheckin()" title="Check-in" style="background:rgba(16,185,129,0.2);color:#34d399;margin-bottom:4px;">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                    </button>
+
                     <button class="vsi-action" onclick="vpNuevoCliente()" title="Nuevo cliente" style="background:rgba(37,99,235,0.2);color:#93c5fd;margin-bottom:8px;">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
                     </button>
@@ -4414,6 +4412,10 @@ window.navegar=(id,b)=>{
     if(b){document.querySelectorAll('.sitem').forEach(i=>i.classList.remove('active'));b.classList.add('active');}
     if(id==='cal360') renderCal360();
     if(id==='ejecutivo') renderEjecutivo();
+    // Si salimos de ventas, invalidar el mapa para que no se arrastre
+    if(id !== 'ventas-mapa' && typeof mapaLeaflet !== 'undefined' && mapaLeaflet){
+        try { setTimeout(()=>{ if(mapaLeaflet) mapaLeaflet.invalidateSize(); }, 200); } catch(e){}
+    }
     if(id!=='area'){
         const secMapa = document.getElementById('sec-ventas-mapa');
         if(secMapa) secMapa.style.display='none';
@@ -7580,14 +7582,7 @@ window.guardarDatoRHInline = async () => {
             meta.innerHTML = `${p.tipo||''} · ${p.fecha||''}${p.fechaFin?' → '+p.fechaFin:''} · ${p.responsable||''}${estatusBadge}${empresaBadge}${p.notas?' · '+p.notas:''}`;
         }
         const imgPrev = document.getElementById('ap-prev-img-direct');
-        if(p.imgUrl){
-            if(iframe){ iframe.src='about:blank'; iframe.style.display='none'; }
-            if(imgPrev){ imgPrev.src = p.imgUrl; imgPrev.style.display = 'block'; }
-        } else {
-            if(imgPrev) imgPrev.style.display='none';
-            const previewUrl = typeof drivePreviewUrl==='function' ? drivePreviewUrl(p.link) : (p.link||'about:blank');
-            if(iframe){ iframe.src=previewUrl||'about:blank'; iframe.style.display='block'; }
-        }
+        _apMostrarPreview(p, iframe, imgPrev);
         if(link) link.href = p.link||p.imgUrl||'#';
         // Nav buttons
         let navDiv = document.getElementById('ap-carrusel-nav');
@@ -7778,6 +7773,46 @@ window.guardarDatoRHInline = async () => {
         finally{ if(btn){ btn.textContent='GUARDAR'; btn.disabled=false; } }
     };
 
+
+    function _apMostrarPreview(p, iframe, imgDirect) {
+        if(p.imgUrl){
+            if(iframe){ iframe.src='about:blank'; iframe.style.display='none'; }
+            if(imgDirect){ imgDirect.src = p.imgUrl; imgDirect.style.display='block'; }
+        } else if(p.link) {
+            if(imgDirect) imgDirect.style.display='none';
+            const previewUrl = typeof drivePreviewUrl==='function' ? drivePreviewUrl(p.link) : p.link;
+            if(previewUrl && iframe){
+                iframe.src = previewUrl;
+                iframe.style.display='block';
+            } else if(iframe) {
+                // Mostrar mensaje si Drive no puede hacer embed
+                iframe.style.display='none';
+                if(imgDirect){
+                    imgDirect.style.cssText='display:flex;align-items:center;justify-content:center;width:100%;height:300px;flex-direction:column;gap:12px;';
+                    imgDirect.src='';
+                    const parent = imgDirect.parentNode;
+                    let ph = document.getElementById('ap-preview-placeholder');
+                    if(!ph){ ph=document.createElement('div'); ph.id='ap-preview-placeholder'; parent.appendChild(ph); }
+                    ph.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:30px;"><div style="font-size:40px;margin-bottom:12px;">🔗</div><div style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:6px;">Documento externo</div><div style="font-size:11px;">Haz clic en \'Abrir en Google Drive\'</div></div>';
+                    ph.style.display='flex';
+                }
+            }
+        } else {
+            // Sin contenido — placeholder
+            if(iframe){ iframe.src='about:blank'; iframe.style.display='none'; }
+            if(imgDirect) imgDirect.style.display='none';
+            const parent = iframe ? iframe.parentNode : imgDirect?.parentNode;
+            if(parent){
+                let ph = document.getElementById('ap-preview-placeholder');
+                if(!ph){ ph=document.createElement('div'); ph.id='ap-preview-placeholder'; parent.appendChild(ph); }
+                ph.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:40px;"><div style="font-size:48px;margin-bottom:16px;">📄</div><div style="font-size:14px;font-weight:700;color:#1e293b;margin-bottom:8px;">Sin archivo adjunto</div><div style="font-size:12px;">Este documento no tiene archivo ni link de Drive.</div><div style="font-size:11px;margin-top:6px;color:#cbd5e1;">Puedes editarlo y añadir un link o subir un archivo.</div></div>';
+                ph.style.cssText='display:flex;align-items:center;justify-content:center;width:100%;min-height:300px;';
+            }
+        }
+        // Ocultar placeholder si hay contenido real
+        const ph = document.getElementById('ap-preview-placeholder');
+        if(ph && (p.imgUrl || p.link)) ph.style.display='none';
+    }
     window.previewDocAP = (id) => {
         const p = apDocs.find(x=>x.id===id);
         if(!p) return;
@@ -7785,17 +7820,9 @@ window.guardarDatoRHInline = async () => {
         const estatusBadge = p.estatus ? `<span style="margin-left:6px;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;background:${p.estatus==='Completado'?'#dcfce7':p.estatus==='En Proceso'?'#fef9c3':'#f1f5f9'};color:${p.estatus==='Completado'?'#16a34a':p.estatus==='En Proceso'?'#854d0e':'#475569'};">${p.estatus}</span>` : '';
         const empresaBadge = p.empresa ? `<span style="margin-left:6px;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;background:#eff6ff;color:#2563eb;">${p.empresa}</span>` : '';
         document.getElementById('ap-prev-meta').innerHTML = `${p.tipo||''} · ${p.fecha||''}${p.fechaFin?' → '+p.fechaFin:''} · ${p.responsable||''}${estatusBadge}${empresaBadge}${p.notas?' · '+p.notas:''}`;
-        // Show image directly if uploaded, or iframe for Drive
         const iframe = document.getElementById('ap-prev-iframe');
         const imgDirect = document.getElementById('ap-prev-img-direct');
-        if(p.imgUrl){
-            if(iframe){ iframe.src='about:blank'; iframe.style.display='none'; }
-            if(imgDirect){ imgDirect.src = p.imgUrl; imgDirect.style.display = 'block'; }
-        } else {
-            if(imgDirect) imgDirect.style.display = 'none';
-            const previewUrl = typeof drivePreviewUrl==='function' ? drivePreviewUrl(p.link) : (p.link||'about:blank');
-            if(iframe){ iframe.src = previewUrl||'about:blank'; iframe.style.display='block'; }
-        }
+        _apMostrarPreview(p, iframe, imgDirect);
         document.getElementById('ap-prev-link').href = p.link || p.imgUrl || '#';
         document.getElementById('ap-prev-edit').onclick = () => {
             document.getElementById('modal-ap-preview').style.display='none';
@@ -13211,6 +13238,10 @@ window.toggleVentasMapa = function(area, email) {
         const secArea = document.getElementById('sec-area');
         if(secMapa) secMapa.style.display = 'none';
         if(secArea) secArea.style.display = 'block';
+        // Forzar re-render del mapa cuando vuelva a aparecer
+        if(typeof mapaLeaflet !== 'undefined' && mapaLeaflet){
+            try { setTimeout(()=>{ mapaLeaflet.invalidateSize(); }, 300); } catch(e){}
+        }
     }
 };
 
