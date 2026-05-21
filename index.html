@@ -13,6 +13,7 @@
     <meta name="version" content="1776262807">
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
@@ -1550,8 +1551,8 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
             <button onclick="abrirFormServicio()" class="mkt-add-btn" style="background:linear-gradient(135deg,#4f46e5,#4338ca);">📋 Nuevo Servicio Técnico</button>
             <button onclick="toggleListaServicios()" class="mkt-add-btn" style="background:linear-gradient(135deg,#059669,#047857);">📊 Ver registros</button>
-            <button onclick="typeof abrirFormPoliza==='function'?abrirFormPoliza():alert('Módulo Póliza cargando...')" class="mkt-add-btn" style="background:linear-gradient(135deg,#7c3aed,#6d28d9);">📝 Nueva Póliza</button>
-            <button onclick="typeof abrirFormVehicular==='function'?abrirFormVehicular():alert('Módulo Vehicular cargando...')" class="mkt-add-btn" style="background:linear-gradient(135deg,#0891b2,#0e7490);">🚗 Manto. Vehicular</button>
+            <button onclick="typeof abrirFormPoliza==='function'?abrirFormPoliza():(window.mostrarPush?mostrarPush('📝 Póliza','Módulo cargando, intenta en un momento','⏳'):null)" class="mkt-add-btn" style="background:linear-gradient(135deg,#7c3aed,#6d28d9);">📝 Nueva Póliza</button>
+            <button onclick="typeof abrirFormVehicular==='function'?abrirFormVehicular():(window.mostrarPush?mostrarPush('🚗 Vehicular','Módulo cargando, intenta en un momento','⏳'):null)" class="mkt-add-btn" style="background:linear-gradient(135deg,#0891b2,#0e7490);">🚗 Manto. Vehicular</button>
         </div>
     </div>
 
@@ -2498,7 +2499,7 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
                         <div id="mapa-clientes" style="width:100%;height:100%;"></div>
                     </div>
                     <!-- Panel detalle perfil cliente -->
-                    <div id="ventas-panel-detalle" style="display:none;flex:1;overflow:hidden;flex-direction:column;background:#f8fafc;min-height:0;">
+                    <div id="ventas-panel-detalle" style="display:none;flex:1;overflow:hidden;flex-direction:column;background:#f8fafc;min-height:0;height:0;">
                         <div class="vp-cp-header">
                             <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
                                 <button onclick="vpCerrarPerfil()" style="width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.2);border:none;color:white;cursor:pointer;display:flex;align-items:center;justify-content:center;">
@@ -7618,7 +7619,7 @@ window.guardarDatoRHInline = async () => {
             const editBtn = document.getElementById('ap-prev-edit');
             if(editBtn && editBtn.parentNode) editBtn.parentNode.insertBefore(navDiv, editBtn);
         }
-        if(dDocs.length>1){
+        if(dDocs.length>=1){
             navDiv.innerHTML = `
                 <button onclick="mostrarCarruselDoc(window._carruselDocs, ${idx-1<0?dDocs.length-1:idx-1})" style="padding:4px 12px;border-radius:8px;border:1px solid #e2e8f0;background:white;cursor:pointer;font-size:13px;">‹</button>
                 <span style="font-size:11px;color:#64748b;">${idx+1} / ${dDocs.length}</span>
@@ -7629,6 +7630,7 @@ window.guardarDatoRHInline = async () => {
             navDiv.style.display='none';
         }
         window._carruselDocs = dDocs;
+        // Siempre mostrar la nav si hay >1 doc (o si hay más del mismo día)
         // Edit/delete wiring
         const editBtn = document.getElementById('ap-prev-edit');
         if(editBtn) editBtn.onclick = () => { document.getElementById('modal-ap-preview').style.display='none'; editarDocAP(p.id); };
@@ -7841,6 +7843,14 @@ window.guardarDatoRHInline = async () => {
     window.previewDocAP = (id) => {
         const p = apDocs.find(x=>x.id===id);
         if(!p) return;
+        // Buscar todos los docs del mismo día para el carrusel
+        const docsDia = p.fecha ? apDocs.filter(x => x.fecha === p.fecha) : [p];
+        const idxEnDia = docsDia.findIndex(x => x.id === id);
+        window._carruselDocs = docsDia;
+        if(docsDia.length > 1){
+            mostrarCarruselDoc(docsDia, idxEnDia >= 0 ? idxEnDia : 0);
+            return;
+        }
         document.getElementById('ap-prev-titulo').innerText = p.desc || 'Documento';
         const estatusBadge = p.estatus ? `<span style="margin-left:6px;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;background:${p.estatus==='Completado'?'#dcfce7':p.estatus==='En Proceso'?'#fef9c3':'#f1f5f9'};color:${p.estatus==='Completado'?'#16a34a':p.estatus==='En Proceso'?'#854d0e':'#475569'};">${p.estatus}</span>` : '';
         const empresaBadge = p.empresa ? `<span style="margin-left:6px;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;background:#eff6ff;color:#2563eb;">${p.empresa}</span>` : '';
@@ -9928,8 +9938,7 @@ window.guardarDatoRHInline = async () => {
     }, CHECK_INTERVAL);
 
     function aplicarFixes(){
-        console.log('[RH FIX v3] Aplicando correcciones completas...');
-
+        
         // ══════════════════════════════════════════════════
         // Helper para detectar tipo actual del formulario
         // ══════════════════════════════════════════════════
@@ -10443,11 +10452,7 @@ window.guardarDatoRHInline = async () => {
             }
         }, 1000);
 
-        console.log('[RH FIX v3] ✅ Todas las correcciones aplicadas');
-        console.log('[RH FIX v3] guardar → guardarRegistroRH');
-        console.log('[RH FIX v3] abrir edición → con pre-llenado');
-        console.log('[RH FIX v3] recarga automática después de guardar/eliminar');
-    }
+                                    }
 })();
 
 // ══════════════════════════════════════════════════════════════
@@ -11379,7 +11384,7 @@ window.portalVerCot = function(id) {
 };
 
 window.portalEditarCot = function(id) {
-    alert('Para editar cotizaciones usa la App Tecnocontrol en tu dispositivo móvil.');
+    if(window.mostrarPush) mostrarPush('✏️ Editar cotización','Usa la App Tecnocontrol para editar — los cambios se sincronizan aquí','📱');
 };
 
 window.portalGenerarPDFCot = async function(id) {
@@ -11430,7 +11435,7 @@ window.portalGenerarPDFCot = async function(id) {
     doc.text('P.U.', PW-MR-30, y, {align:'right'});
     doc.text('TOTAL', PW-MR, y, {align:'right'});
     y += 6;
-    const items = c.items || c.carrito || [];
+    const items = c.items || c.carrito || c.productos || c.lineas || c.detalle || [];
     items.slice(0,20).forEach(item => {
         if(y > PH-50) { doc.addPage(); y = 20; }
         doc.setFont('helvetica','normal');
@@ -12051,8 +12056,6 @@ window.ventasCheckinDesdePortal = async function() {
     if(typeof fn === 'function') fn();
 };
 
-// ventasSidebar override removido — reemplazado por vpSetModulo
-
 
 // ── Fix: buscador global conectado correctamente ───────────────
 window.ventasBuscarGlobal = function(q) {
@@ -12121,7 +12124,6 @@ console.log('✅ Funciones proxy registradas');
 console.log('VENTAS FIXES cargados ✅');
 
 
-</script>
 </script>
 
 
@@ -12491,17 +12493,89 @@ window.cerrarPerfilCliente = function() {
 };
 
 window.portalCpNuevaActividad = function() {
-    const clienteNombre = document.getElementById('portal-cp-nombre')?.textContent || '';
-    const secVentas = document.getElementById('sec-ventas-mapa');
-    const secArea = document.getElementById('sec-area');
-    if(secVentas) secVentas.style.display = 'none';
-    if(secArea) secArea.style.display = 'block';
-    const orig = document.getElementById('n-origen');
-    const a = document.getElementById('n-area');
-    if(orig && clienteNombre) orig.value = clienteNombre;
-    if(a) a.value = 'Ventas';
-    if(typeof actualizarEncargados === 'function') actualizarEncargados();
-    navegar('nueva');
+    const clienteId = portalCpCliente?.id || '';
+    const clienteNombre = document.getElementById('portal-cp-nombre')?.textContent || portalCpCliente?.nombre || '';
+    // Abrir mini-modal inline dentro del panel del perfil
+    let miniModal = document.getElementById('cp-act-modal');
+    if(!miniModal){
+        miniModal = document.createElement('div');
+        miniModal.id = 'cp-act-modal';
+        miniModal.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:99999;align-items:center;justify-content:center;';
+        document.body.appendChild(miniModal);
+    }
+    const hoy = new Date().toISOString().split('T')[0];
+    const encOptions = (typeof EMPLEADOS_TECNOCONTROL !== 'undefined' ? EMPLEADOS_TECNOCONTROL : [])
+        .map(n=>`<option value="${n}">${n}</option>`).join('');
+    miniModal.innerHTML = `<div style="background:white;border-radius:20px;padding:24px;width:480px;max-width:95vw;max-height:85vh;overflow-y:auto;box-shadow:0 24px 64px rgba(0,0,0,0.25);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+            <div style="font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:800;color:#1e293b;">➕ Nueva Actividad</div>
+            <button onclick="document.getElementById('cp-act-modal').style.display='none'" style="background:none;border:none;font-size:20px;cursor:pointer;color:#94a3b8;">✕</button>
+        </div>
+        <div style="font-size:12px;font-weight:700;color:#2563eb;margin-bottom:4px;">${clienteNombre}</div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+            <div><label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">TÍTULO / DESCRIPCIÓN</label>
+            <input id="cpa-titulo" class="form-input" placeholder="Ej: Seguimiento cotización, Llamada de seguimiento..." style="width:100%;box-sizing:border-box;"></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div><label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">TIPO</label>
+                <select id="cpa-tipo" class="form-input" style="width:100%;box-sizing:border-box;">
+                    <option>Llamada</option><option>Email</option><option selected>Seguimiento</option>
+                    <option>Visita</option><option>Cotización</option><option>Reunión</option><option>Tarea</option>
+                </select></div>
+                <div><label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">PRIORIDAD</label>
+                <select id="cpa-prio" class="form-input" style="width:100%;box-sizing:border-box;">
+                    <option>Urgente</option><option>Alta</option><option selected>Normal</option><option>Baja</option>
+                </select></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div><label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">FECHA LÍMITE</label>
+                <input id="cpa-fecha" type="date" class="form-input" value="${hoy}" style="width:100%;box-sizing:border-box;"></div>
+                <div><label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">RESPONSABLE</label>
+                <select id="cpa-resp" class="form-input" style="width:100%;box-sizing:border-box;">
+                    <option value="">— Seleccionar —</option>${encOptions}
+                </select></div>
+            </div>
+            <div><label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">NOTAS</label>
+            <textarea id="cpa-notas" class="form-input" rows="2" placeholder="Detalles adicionales..." style="width:100%;box-sizing:border-box;resize:vertical;font-family:inherit;"></textarea></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:16px;">
+            <button onclick="guardarCpActividad('${clienteId}','${clienteNombre}')" style="flex:1;padding:12px;background:linear-gradient(135deg,#1e3a8a,#2563eb);color:white;border:none;border-radius:12px;font-weight:700;font-size:13px;cursor:pointer;font-family:'Space Grotesk',sans-serif;">✅ Guardar Actividad</button>
+            <button onclick="document.getElementById('cp-act-modal').style.display='none'" style="padding:12px 20px;background:#f1f5f9;color:#475569;border:none;border-radius:12px;font-weight:700;font-size:13px;cursor:pointer;font-family:'Space Grotesk',sans-serif;">Cancelar</button>
+        </div>
+    </div>`;
+    miniModal.style.display = 'flex';
+    miniModal.onclick = e => { if(e.target===miniModal) miniModal.style.display='none'; };
+};
+
+window.guardarCpActividad = async function(clienteId, clienteNombre) {
+    const titulo = document.getElementById('cpa-titulo')?.value?.trim();
+    if(!titulo){ alert('Escribe el título de la actividad'); return; }
+    const btn = document.querySelector('#cp-act-modal button[onclick*="guardarCpActividad"]');
+    if(btn){ btn.textContent = 'Guardando...'; btn.disabled = true; }
+    try {
+        const {collection, addDoc} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const actData = {
+            titulo, tipo: document.getElementById('cpa-tipo')?.value || 'Seguimiento',
+            prioridad: document.getElementById('cpa-prio')?.value || 'Normal',
+            fechaLimite: document.getElementById('cpa-fecha')?.value || '',
+            responsable: document.getElementById('cpa-resp')?.value || '',
+            descripcion: document.getElementById('cpa-notas')?.value || '',
+            clienteId, clienteNombre, estatus: 'Pendiente',
+            area: 'Ventas', creadoEn: new Date().toISOString(),
+            creadoPor: auth?.currentUser?.email || ''
+        };
+        await addDoc(collection(window.db, 'actividades'), actData);
+        document.getElementById('cp-act-modal').style.display = 'none';
+        if(window.mostrarPush) window.mostrarPush('✅ Actividad creada', titulo, '📋');
+        // Recargar actividades del perfil
+        if(typeof portalCpCargarActividades === 'function') await portalCpCargarActividades(clienteId);
+        // Refrescar la tab de actividad en el panel correcto
+        const _tabBtn = document.querySelector('.portal-cp-tab') || document.querySelector('.vp-cp-tab');
+        if(typeof portalCpTab === 'function') portalCpTab('actividad', _tabBtn);
+        else if(typeof vpCpTab === 'function') vpCpTab('actividad', _tabBtn);
+    } catch(e) {
+        alert('Error al guardar: ' + e.message);
+        if(btn){ btn.textContent = '✅ Guardar Actividad'; btn.disabled = false; }
+    }
 };
 
 window.portalCpNuevaCot = function() {
@@ -12746,6 +12820,7 @@ window.vpVerCliente = async function(id) {
     const c = (window.clientesDB||[]).find(x=>x.id===id);
     if(!c) return;
     vpCpClienteActual = c;
+    window._vpClienteActual = id;
 
     // Mostrar panel perfil
     const mapa = document.getElementById('ventas-mapa-desktop');
@@ -13182,7 +13257,7 @@ window.vpVerCotizacion = function(id) {
     const el = document.getElementById('vp-cot-detalle-wrap');
     if(!el) return;
     el.style.display = 'flex';
-    const items = c.items||c.carrito||[];
+    const items = c.items||c.carrito||c.productos||c.lineas||c.detalle||[];
     const total=c.moneda==='USD'?`USD $${(c.total||0).toLocaleString('en-US',{minimumFractionDigits:2})}`:`$${(c.total||0).toLocaleString('es-MX',{minimumFractionDigits:2})}`;
     el.innerHTML = `<div style="padding:16px;">
         <div style="background:linear-gradient(135deg,#3d5a7a,#4a6d8c);border-radius:14px;padding:14px;margin-bottom:14px;">
@@ -13229,24 +13304,65 @@ window.vpNuevoCliente = function() {
 };
 
 window.vpNuevaCotizacion = function() {
-    alert('Para crear cotizaciones usa la App Tecnocontrol.\nSe sincronizan automáticamente aquí.');
+    if(window.mostrarPush) mostrarPush('💼 Cotizaciones','Crea cotizaciones desde la App Tecnocontrol — se sincronizan aquí automáticamente','📱');
 };
 
 window.vpNuevaActividad = function() {
+    // Usar el mismo mini-modal inline que portalCpNuevaActividad
+    // pero con el cliente del panel de ventas
     const clienteNombre = document.getElementById('vp-cp-nombre')?.textContent || '';
-    // Primero salir de Ventas (sec-ventas-mapa) al layout principal
-    const secVentas = document.getElementById('sec-ventas-mapa');
-    const secArea = document.getElementById('sec-area');
-    if(secVentas) secVentas.style.display = 'none';
-    if(secArea) secArea.style.display = 'block';
-    // Ahora navegar al form
-    const orig = document.getElementById('n-origen');
-    const a = document.getElementById('n-area');
-    if(orig && clienteNombre) orig.value = clienteNombre;
-    if(a) a.value = 'Ventas';
-    if(typeof actualizarEncargados === 'function') actualizarEncargados();
-    navegar('nueva');
-    if(typeof mostrarNavMobile === 'function') mostrarNavMobile(false);
+    // Buscar clienteId en la base de datos de ventas
+    const clienteObj = (typeof clientesDB !== 'undefined' ? clientesDB : []).find(x => x.nombre === clienteNombre || x.id === window._vpClienteActual);
+    const clienteId = clienteObj?.id || window._vpClienteActual || '';
+    // Reusar portalCpNuevaActividad ajustando las referencias
+    let miniModal = document.getElementById('cp-act-modal');
+    if(!miniModal){
+        miniModal = document.createElement('div');
+        miniModal.id = 'cp-act-modal';
+        miniModal.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:99999;align-items:center;justify-content:center;';
+        document.body.appendChild(miniModal);
+    }
+    const hoy = new Date().toISOString().split('T')[0];
+    const encOptions = (typeof EMPLEADOS_TECNOCONTROL !== 'undefined' ? EMPLEADOS_TECNOCONTROL : [])
+        .map(n=>`<option value="${n}">${n}</option>`).join('');
+    miniModal.innerHTML = `<div style="background:white;border-radius:20px;padding:24px;width:480px;max-width:95vw;max-height:85vh;overflow-y:auto;box-shadow:0 24px 64px rgba(0,0,0,0.25);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+            <div style="font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:800;color:#1e293b;">➕ Nueva Actividad</div>
+            <button onclick="document.getElementById('cp-act-modal').style.display='none'" style="background:none;border:none;font-size:20px;cursor:pointer;color:#94a3b8;">✕</button>
+        </div>
+        <div style="font-size:12px;font-weight:700;color:#2563eb;margin-bottom:12px;">${clienteNombre}</div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+            <div><label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">TÍTULO / DESCRIPCIÓN</label>
+            <input id="cpa-titulo" class="form-input" placeholder="Ej: Seguimiento cotización..." style="width:100%;box-sizing:border-box;"></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div><label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">TIPO</label>
+                <select id="cpa-tipo" class="form-input" style="width:100%;box-sizing:border-box;">
+                    <option>Llamada</option><option>Email</option><option selected>Seguimiento</option>
+                    <option>Visita</option><option>Cotización</option><option>Reunión</option><option>Tarea</option>
+                </select></div>
+                <div><label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">PRIORIDAD</label>
+                <select id="cpa-prio" class="form-input" style="width:100%;box-sizing:border-box;">
+                    <option>Urgente</option><option>Alta</option><option selected>Normal</option><option>Baja</option>
+                </select></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div><label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">FECHA LÍMITE</label>
+                <input id="cpa-fecha" type="date" class="form-input" value="${hoy}" style="width:100%;box-sizing:border-box;"></div>
+                <div><label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">RESPONSABLE</label>
+                <select id="cpa-resp" class="form-input" style="width:100%;box-sizing:border-box;">
+                    <option value="">— Seleccionar —</option>${encOptions}
+                </select></div>
+            </div>
+            <div><label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">NOTAS</label>
+            <textarea id="cpa-notas" class="form-input" rows="2" placeholder="Detalles adicionales..." style="width:100%;box-sizing:border-box;resize:vertical;font-family:inherit;"></textarea></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:16px;">
+            <button onclick="guardarCpActividad('${clienteId}','${clienteNombre}')" style="flex:1;padding:12px;background:linear-gradient(135deg,#1e3a8a,#2563eb);color:white;border:none;border-radius:12px;font-weight:700;font-size:13px;cursor:pointer;font-family:'Space Grotesk',sans-serif;">✅ Guardar Actividad</button>
+            <button onclick="document.getElementById('cp-act-modal').style.display='none'" style="padding:12px 20px;background:#f1f5f9;color:#475569;border:none;border-radius:12px;font-weight:700;font-size:13px;cursor:pointer;font-family:'Space Grotesk',sans-serif;">Cancelar</button>
+        </div>
+    </div>`;
+    miniModal.style.display = 'flex';
+    miniModal.onclick = e => { if(e.target===miniModal) miniModal.style.display='none'; };
 };
 
 window.vpCambiarEstatusAct = async function(id, estatus) {
