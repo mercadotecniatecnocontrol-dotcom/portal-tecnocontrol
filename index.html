@@ -1544,10 +1544,14 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
     <div class="rh-dash-header">
         <div class="rh-dash-title">🏗️ Formularios Operaciones
             <span class="rh-dash-badge" style="background:#fef3c7;color:#92400e;">Servicio Técnico</span>
+            <span class="rh-dash-badge" style="background:#ede9fe;color:#5b21b6;">Póliza</span>
+            <span class="rh-dash-badge" style="background:#ecfdf5;color:#065f46;">Manto. Vehicular</span>
         </div>
-        <div style="display:flex;gap:8px;">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
             <button onclick="abrirFormServicio()" class="mkt-add-btn" style="background:linear-gradient(135deg,#4f46e5,#4338ca);">📋 Nuevo Servicio Técnico</button>
             <button onclick="toggleListaServicios()" class="mkt-add-btn" style="background:linear-gradient(135deg,#059669,#047857);">📊 Ver registros</button>
+            <button onclick="typeof abrirFormPoliza==='function'?abrirFormPoliza():alert('Módulo Póliza cargando...')" class="mkt-add-btn" style="background:linear-gradient(135deg,#7c3aed,#6d28d9);">📝 Nueva Póliza</button>
+            <button onclick="typeof abrirFormVehicular==='function'?abrirFormVehicular():alert('Módulo Vehicular cargando...')" class="mkt-add-btn" style="background:linear-gradient(135deg,#0891b2,#0e7490);">🚗 Manto. Vehicular</button>
         </div>
     </div>
 
@@ -1585,10 +1589,31 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
             <div><label class="rh-form-label">Técnico auxiliar</label>
                 <select class="rh-form-input" id="srv-tecnico">
                     <option value="">Seleccionar técnico...</option>
-                    <option>Carlos Martínez</option>
-                    <option>José López</option>
-                    <option>Miguel Hernández</option>
-                    <option>Roberto Sánchez</option>
+                    <option>BARRAZA LUYA SAUL ISMAEL</option>
+                    <option>CARMONA LAGUNAS SERGIO</option>
+                    <option>DE LA CRUZ EMILIO JULIO CESAR</option>
+                    <option>ESTRADA GOMEZ ALAN ALBERTO</option>
+                    <option>GARCIA LEDEZMA JESUS ALVARO</option>
+                    <option>GONZALEZ BABONOYABA RICARDO ANTONIO</option>
+                    <option>GUERRERO GOMEZ JORGE</option>
+                    <option>HERNANDEZ PEREZ RUBEN ALBERTO</option>
+                    <option>HERNANDEZ PRIETO JOSUE</option>
+                    <option>HERNANDEZ RIOS JESUS RAMON</option>
+                    <option>LEAL MARTINEZ ROQUE MANUEL</option>
+                    <option>LUNA ESPINOZA JAIME ROEL</option>
+                    <option>MENDOZA BECERRA SERGIO</option>
+                    <option>MINJAREZ OCHOA ALBERTO ALAN</option>
+                    <option>MORIEL SAENZ RICARDO SALVADOR</option>
+                    <option>MUÑOZ AVILA ROBERTO</option>
+                    <option>NUÑEZ ALATORRE ULISES</option>
+                    <option>PORTILLO PORTILLO JOSE LUIS</option>
+                    <option>SALCEDO GARDEA FILIBERTO ISAI</option>
+                    <option>SALMON RIVAS FABRICIO ABUNDIO</option>
+                    <option>SAUCEDO MARTINEZ IRVING ABRAHAM</option>
+                    <option>SEPULVEDA MENDOZA IVAN ROBERTO</option>
+                    <option>TERRAZAS SERRANO FERNANDO</option>
+                    <option>URIBE MAESE JORGE ALBERTO</option>
+                    <option>VALENCIA BARRAZA JESUS BERSAIN</option>
                     <option>Otro</option>
                 </select>
             </div>
@@ -2393,7 +2418,7 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
             .vp-cp-tabs { display:flex;border-bottom:1px solid #e2e8f0;flex-shrink:0;overflow-x:auto;scrollbar-width:none; }
             .vp-cp-tab { padding:10px 14px;border:none;background:transparent;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:11px;color:#64748b;border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap;transition:0.15s; }
             .vp-cp-tab.active { color:#2563eb;border-bottom-color:#2563eb; }
-            .vp-cp-content { flex:1;overflow-y:auto;padding:14px 16px;background:#f8fafc; }
+            .vp-cp-content { flex:1;overflow-y:auto;padding:14px 16px;background:#f8fafc;min-height:0; }
             .vp-cp-section { background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:12px;margin-bottom:10px; }
             .vp-cp-label { font-size:9px;font-weight:700;color:#1e3a8a;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px; }
 
@@ -2473,7 +2498,7 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
                         <div id="mapa-clientes" style="width:100%;height:100%;"></div>
                     </div>
                     <!-- Panel detalle perfil cliente -->
-                    <div id="ventas-panel-detalle" style="display:none;flex:1;overflow:hidden;flex-direction:column;background:#f8fafc;">
+                    <div id="ventas-panel-detalle" style="display:none;flex:1;overflow:hidden;flex-direction:column;background:#f8fafc;min-height:0;">
                         <div class="vp-cp-header">
                             <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
                                 <button onclick="vpCerrarPerfil()" style="width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.2);border:none;color:white;cursor:pointer;display:flex;align-items:center;justify-content:center;">
@@ -8764,8 +8789,21 @@ window.guardarDatoRHInline = async () => {
             _orig(area,btn);
             const panel=document.getElementById('operaciones-forms');
             if(!panel)return;
-            if(area==='Operaciones'){panel.style.display='block';cargarServicios();}
-            else{panel.style.display='none';}
+            if(area==='Operaciones'){
+                panel.style.display='block';
+                if(typeof cargarServicios==='function') cargarServicios();
+                // También activar módulos adicionales si están cargados
+                const polizaPanel = document.getElementById('poliza-forms');
+                const vehicularPanel = document.getElementById('vehicular-forms');
+                if(polizaPanel) polizaPanel.style.display='block';
+                if(vehicularPanel) vehicularPanel.style.display='block';
+            } else {
+                panel.style.display='none';
+                const pp=document.getElementById('poliza-forms');
+                const vp=document.getElementById('vehicular-forms');
+                if(pp) pp.style.display='none';
+                if(vp) vp.style.display='none';
+            }
         };
     },200);
 
@@ -11400,8 +11438,9 @@ window.portalGenerarPDFCot = async function(id) {
         const nombre = (item.nombre||item.descripcion||item.sku||'Producto').slice(0,55);
         doc.text(nombre, ML+2, y);
         doc.text(String(item.cantidad||1), PW-MR-60, y, {align:'right'});
-        doc.text('$' + ((item.precio||item.pu||0)).toLocaleString('es-MX',{minimumFractionDigits:2}), PW-MR-30, y, {align:'right'});
-        const tot = (item.cantidad||1)*(item.precio||item.pu||0);
+        doc.text('$' + precioU.toLocaleString('es-MX',{minimumFractionDigits:2}), PW-MR-30, y, {align:'right'});
+        const precioU = item.precio||item.pu||item.precioUnitario||item.price||item.unitPrice||item.precioU||0;
+        const tot = (item.cantidad||1)*precioU;
         doc.text('$' + tot.toLocaleString('es-MX',{minimumFractionDigits:2}), PW-MR, y, {align:'right'});
         y += 7;
     });
@@ -12453,12 +12492,16 @@ window.cerrarPerfilCliente = function() {
 
 window.portalCpNuevaActividad = function() {
     const clienteNombre = document.getElementById('portal-cp-nombre')?.textContent || '';
+    const secVentas = document.getElementById('sec-ventas-mapa');
+    const secArea = document.getElementById('sec-area');
+    if(secVentas) secVentas.style.display = 'none';
+    if(secArea) secArea.style.display = 'block';
     const orig = document.getElementById('n-origen');
     const a = document.getElementById('n-area');
     if(orig && clienteNombre) orig.value = clienteNombre;
     if(a) a.value = 'Ventas';
     if(typeof actualizarEncargados === 'function') actualizarEncargados();
-    navegar('asignar');
+    navegar('nueva');
 };
 
 window.portalCpNuevaCot = function() {
@@ -13092,7 +13135,7 @@ function vpRenderCotStats() {
     const total = vpCotDB.length;
     const pend = vpCotDB.filter(c=>!c.statusCot||c.statusCot==='pendiente').length;
     const ok = vpCotDB.filter(c=>c.statusCot==='colocada').length;
-    const monto = vpCotDB.filter(c=>c.statusCot==='colocada').reduce((s,c)=>s+(c.total||0),0);
+    const monto = vpCotDB.filter(c=>c.statusCot==='colocada').reduce((s,c)=>s+(c.total||c.monto||c.valor||0),0);
     statsBar.innerHTML = [
         {val:total,lbl:'Total'},
         {val:pend,lbl:'Pendientes'},
@@ -13150,9 +13193,9 @@ window.vpVerCotizacion = function(id) {
         ${items.length ? `<div style="font-size:10px;font-weight:700;color:#64748b;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">Productos (${items.length})</div>
         <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:14px;">
             ${items.slice(0,15).map(i=>`<div style="display:flex;justify-content:space-between;font-size:11px;padding:4px 0;border-bottom:1px solid #f1f5f9;">
-                <span style="flex:1;color:#1e293b;">${(i.nombre||i.sku||'Producto').slice(0,40)}</span>
-                <span style="color:#64748b;margin:0 8px;">×${i.cantidad||1}</span>
-                <span style="font-weight:700;">$${((i.cantidad||1)*(i.precio||i.pu||0)).toLocaleString('es-MX',{minimumFractionDigits:0})}</span>
+                <span style="flex:1;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px;" title="${i.nombre||i.sku||'Producto'}">${(i.nombre||i.descripcion||i.sku||'Producto').slice(0,50)}</span>
+                <span style="color:#64748b;margin:0 8px;flex-shrink:0;">×${i.cantidad||1}</span>
+                <span style="font-weight:700;flex-shrink:0;">$${((i.cantidad||1)*(i.precio||i.pu||i.precioUnitario||i.price||i.unitPrice||i.precioU||0)).toLocaleString('es-MX',{minimumFractionDigits:0})}</span>
             </div>`).join('')}
         </div>` : ''}
         <button onclick="vpGenerarPDF('${c.id}')" style="width:100%;padding:11px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:white;border:none;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;">📄 Generar PDF</button>
@@ -13160,8 +13203,16 @@ window.vpVerCotizacion = function(id) {
 };
 
 window.vpGenerarPDF = function(id) {
-    const c = vpCotDB.find(x=>x.id===id) || (vpCpCotizaciones||[]).find(x=>x.id===id);
-    if(!c) return;
+    const cotVp = vpCotDB.find(x=>x.id===id) || (vpCpCotizaciones||[]).find(x=>x.id===id);
+    if(!cotVp) return;
+    // Sincronizar a portalCotDB para que portalGenerarPDFCot la encuentre
+    if(typeof portalCotDB !== 'undefined'){
+        const idx = portalCotDB.findIndex(x=>x.id===id);
+        if(idx>=0) portalCotDB[idx] = cotVp;
+        else portalCotDB.push(cotVp);
+    } else {
+        window.portalCotDB = [cotVp];
+    }
     if(typeof portalGenerarPDFCot === 'function') portalGenerarPDFCot(id);
     else if(typeof descargarPDFCot === 'function') descargarPDFCot(id);
     else alert('Generador de PDF no disponible');
@@ -13183,12 +13234,19 @@ window.vpNuevaCotizacion = function() {
 
 window.vpNuevaActividad = function() {
     const clienteNombre = document.getElementById('vp-cp-nombre')?.textContent || '';
+    // Primero salir de Ventas (sec-ventas-mapa) al layout principal
+    const secVentas = document.getElementById('sec-ventas-mapa');
+    const secArea = document.getElementById('sec-area');
+    if(secVentas) secVentas.style.display = 'none';
+    if(secArea) secArea.style.display = 'block';
+    // Ahora navegar al form
     const orig = document.getElementById('n-origen');
     const a = document.getElementById('n-area');
     if(orig && clienteNombre) orig.value = clienteNombre;
     if(a) a.value = 'Ventas';
     if(typeof actualizarEncargados === 'function') actualizarEncargados();
-    navegar('asignar');
+    navegar('nueva');
+    if(typeof mostrarNavMobile === 'function') mostrarNavMobile(false);
 };
 
 window.vpCambiarEstatusAct = async function(id, estatus) {
