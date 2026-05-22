@@ -7039,7 +7039,7 @@ window.abrirModalMetas = () => {
     const yo = auth.currentUser?.email||'';
     // Metas: solo admin total o Martín pueden configurar
     const puedeConfig = esAdminTotal(yo) || yo === MARTIN_EMAIL;
-    if(!puedeConfig){ alert('Solo el gerente o administrador puede configurar metas'); return; }
+    if(!puedeConfig){ if(window.mostrarPush) mostrarPush('🎯 Metas','Solo el gerente o administrador puede configurar metas','⚠️'); else console.warn('Metas: acceso restringido'); return; }
     const hoy = new Date();
     const mesKey = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}`;
     const metas = metasDB[mesKey] || {};
@@ -11794,7 +11794,7 @@ window.portalVerOportunidad = function(id) {
 };
 
 window.portalNuevaOportunidad = function(etapaInicial) {
-    alert('Para crear oportunidades usa la App Tecnocontrol.\n\nSe sincronizan automáticamente en el portal.');
+    if(window.mostrarPush) mostrarPush('📊 CRM','Crea oportunidades desde la App — se sincronizan automáticamente en el portal','📱');
 };
 
 console.log('MÓDULO VENTAS PORTAL cargado ✅ — CRM + Cotizaciones sincronizados con Firebase');
