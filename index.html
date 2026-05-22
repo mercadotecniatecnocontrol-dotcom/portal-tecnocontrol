@@ -2433,9 +2433,9 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
 
                 <!-- ── SIDEBAR ÍCONOS ── -->
                 <div id="ventas-sidebar-icons">
-                    <div class="vsi-logo">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-                    </div>
+                    <button class="vsi-btn" id="vsi-calendario" onclick="vpSetModulo('calendario',this)" title="Calendario de Actividades" style="margin-bottom:4px;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                    </button>
                     <button class="vsi-btn active" id="vsi-mapa" onclick="vpSetModulo('mapa',this)" title="Mapa">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
                     </button>
@@ -2496,7 +2496,7 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
                 <!-- ── COLUMNA DERECHA: Mapa + Detalle ── -->
                 <div id="ventas-col-der" style="position:relative;">
                     <!-- Mapa -->
-                    <div id="ventas-mapa-desktop" style="flex:1;min-height:300px;">
+                    <div id="ventas-mapa-desktop" style="flex:1;min-height:300px;position:relative;">
                         <div id="mapa-clientes" style="width:100%;height:100%;"></div>
                     </div>
                     <!-- Panel detalle perfil cliente -->
@@ -2525,6 +2525,7 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
                             <button class="vp-cp-tab" onclick="vpCpTab('cotizaciones',this)">Cotizaciones</button>
                             <button class="vp-cp-tab" onclick="vpCpTab('contactos',this)">Contactos</button>
                             <button class="vp-cp-tab" onclick="vpCpTab('correos',this)">Correos</button>
+                            <button class="vp-cp-tab" onclick="vpCpTab('facturacion',this)">Facturación</button>
                         </div>
                         <div class="vp-cp-content" id="vp-cp-body"></div>
                     </div>
@@ -11471,7 +11472,137 @@ window.portalGenerarPDFCot = async function(id) {
 
 // Nueva cotización - abre modal adaptado
 window.portalAbrirNuevaCot = function() {
-    alert('Para crear nuevas cotizaciones usa la App Tecnocontrol en tu dispositivo móvil.\n\nLas cotizaciones se sincronizan automáticamente en el portal.');
+    let m = document.getElementById('modal-nueva-cot');
+    if(!m){ m=document.createElement('div'); m.id='modal-nueva-cot';
+        m.style.cssText='display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:99999;align-items:center;justify-content:center;';
+        document.body.appendChild(m); }
+    const hoy = new Date().toLocaleDateString('es-MX');
+    const folio = 'COT-' + Date.now().toString().slice(-6);
+    const clienteOpts = (window.clientesDB||[]).map(cl=>`<option value="${cl.id||cl.nombre}">${cl.nombre}</option>`).join('');
+    m.innerHTML = `<div style="background:white;border-radius:20px;width:580px;max-width:96vw;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,0.3);">
+        <div style="background:linear-gradient(135deg,#1e3a8a,#2563eb);padding:18px 20px;flex-shrink:0;display:flex;justify-content:space-between;align-items:center;">
+            <div>
+                <div style="font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:800;color:white;">📄 Nueva Cotización</div>
+                <div style="font-size:11px;color:rgba(255,255,255,0.7);margin-top:2px;">${folio} · ${hoy}</div>
+            </div>
+            <button onclick="document.getElementById('modal-nueva-cot').style.display='none'" style="background:rgba(255,255,255,0.2);border:none;color:white;width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:16px;">✕</button>
+        </div>
+        <div style="flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:12px;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div>
+                    <label style="font-size:10px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">CLIENTE</label>
+                    <select id="ncot-cliente" class="form-input" style="width:100%;box-sizing:border-box;">
+                        <option value="">— Seleccionar cliente —</option>${clienteOpts}
+                    </select>
+                </div>
+                <div>
+                    <label style="font-size:10px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">MONEDA</label>
+                    <select id="ncot-moneda" class="form-input" style="width:100%;box-sizing:border-box;">
+                        <option value="MXN">MXN — Pesos</option>
+                        <option value="USD">USD — Dólares</option>
+                    </select>
+                </div>
+            </div>
+            <div>
+                <label style="font-size:10px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">NOTAS / CONDICIONES</label>
+                <textarea id="ncot-notas" class="form-input" rows="2" placeholder="Condiciones de pago, vigencia, etc." style="width:100%;box-sizing:border-box;resize:vertical;font-family:inherit;font-size:12px;"></textarea>
+            </div>
+            <div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                    <label style="font-size:10px;font-weight:700;color:#64748b;">PRODUCTOS</label>
+                    <button onclick="ncotAgregarItem()" style="padding:4px 10px;background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">+ Agregar producto</button>
+                </div>
+                <div id="ncot-items" style="display:flex;flex-direction:column;gap:6px;">
+                    <div class="ncot-item" style="display:grid;grid-template-columns:1fr 60px 90px 24px;gap:6px;align-items:center;">
+                        <input class="form-input ncot-nombre" placeholder="Descripción del producto" style="font-size:12px;box-sizing:border-box;">
+                        <input class="form-input ncot-cant" type="number" value="1" min="1" placeholder="Cant." style="font-size:12px;box-sizing:border-box;text-align:center;">
+                        <input class="form-input ncot-precio" type="number" value="0" placeholder="P.U." style="font-size:12px;box-sizing:border-box;text-align:right;">
+                        <button onclick="this.closest('.ncot-item').remove();ncotActualizarTotal()" style="background:#fee2e2;border:none;color:#dc2626;border-radius:6px;cursor:pointer;font-size:14px;width:24px;height:32px;">×</button>
+                    </div>
+                </div>
+                <div style="text-align:right;margin-top:8px;font-family:'Space Grotesk',sans-serif;font-weight:800;font-size:15px;color:#1e293b;">
+                    Total: <span id="ncot-total" style="color:#2563eb;">$0.00</span>
+                </div>
+            </div>
+        </div>
+        <div style="padding:14px 18px;border-top:1px solid #f1f5f9;display:flex;gap:8px;flex-shrink:0;">
+            <button onclick="ncotGuardar('${folio}')" style="flex:1;padding:12px;background:linear-gradient(135deg,#1e3a8a,#2563eb);color:white;border:none;border-radius:12px;font-weight:700;font-size:13px;cursor:pointer;font-family:'Space Grotesk',sans-serif;">✅ Guardar Cotización</button>
+            <button onclick="document.getElementById('modal-nueva-cot').style.display='none'" style="padding:12px 20px;background:#f1f5f9;color:#475569;border:none;border-radius:12px;font-weight:700;font-size:13px;cursor:pointer;">Cancelar</button>
+        </div>
+    </div>`;
+    m.style.display='flex';
+    m.onclick = e => { if(e.target===m) m.style.display='none'; };
+    // Actualizar total al cambiar inputs
+    m.addEventListener('input', ncotActualizarTotal);
+};
+
+window.ncotAgregarItem = function() {
+    const c = document.getElementById('ncot-items');
+    if(!c) return;
+    const div = document.createElement('div');
+    div.className = 'ncot-item';
+    div.style.cssText = 'display:grid;grid-template-columns:1fr 60px 90px 24px;gap:6px;align-items:center;';
+    div.innerHTML = `<input class="form-input ncot-nombre" placeholder="Descripción del producto" style="font-size:12px;box-sizing:border-box;">
+        <input class="form-input ncot-cant" type="number" value="1" min="1" placeholder="Cant." style="font-size:12px;box-sizing:border-box;text-align:center;">
+        <input class="form-input ncot-precio" type="number" value="0" placeholder="P.U." style="font-size:12px;box-sizing:border-box;text-align:right;">
+        <button onclick="this.closest('.ncot-item').remove();ncotActualizarTotal()" style="background:#fee2e2;border:none;color:#dc2626;border-radius:6px;cursor:pointer;font-size:14px;width:24px;height:32px;">×</button>`;
+    c.appendChild(div);
+};
+
+window.ncotActualizarTotal = function() {
+    let total = 0;
+    document.querySelectorAll('.ncot-item').forEach(row => {
+        const cant = parseFloat(row.querySelector('.ncot-cant')?.value) || 1;
+        const precio = parseFloat(row.querySelector('.ncot-precio')?.value) || 0;
+        total += cant * precio;
+    });
+    const moneda = document.getElementById('ncot-moneda')?.value || 'MXN';
+    const span = document.getElementById('ncot-total');
+    if(span) span.textContent = (moneda==='USD'?'USD ':'') + '$' + total.toLocaleString('es-MX',{minimumFractionDigits:2});
+};
+
+window.ncotGuardar = async function(folio) {
+    const clienteSelOpt = document.getElementById('ncot-cliente');
+    const clienteId = clienteSelOpt?.value || '';
+    const clienteNombre = clienteSelOpt?.options[clienteSelOpt.selectedIndex]?.text || '';
+    if(!clienteNombre || clienteNombre.includes('—')) { alert('Selecciona un cliente'); return; }
+    const moneda = document.getElementById('ncot-moneda')?.value || 'MXN';
+    const notas = document.getElementById('ncot-notas')?.value || '';
+    const items = [];
+    let total = 0;
+    document.querySelectorAll('.ncot-item').forEach(row => {
+        const nombre = row.querySelector('.ncot-nombre')?.value?.trim();
+        if(!nombre) return;
+        const cantidad = parseFloat(row.querySelector('.ncot-cant')?.value) || 1;
+        const precio = parseFloat(row.querySelector('.ncot-precio')?.value) || 0;
+        items.push({ nombre, cantidad, precio, precioUnitario: precio });
+        total += cantidad * precio;
+    });
+    if(!items.length) { alert('Agrega al menos un producto'); return; }
+    const btn = document.querySelector('#modal-nueva-cot button[onclick*="ncotGuardar"]');
+    if(btn) { btn.textContent = 'Guardando...'; btn.disabled = true; }
+    try {
+        const {collection, addDoc} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const cotData = {
+            folio, cliente: clienteNombre, clienteId, moneda, notas,
+            items, productos: items, carrito: items,
+            total, statusCot: 'pendiente',
+            vendedor: auth?.currentUser?.email || '',
+            creadoEn: new Date().toISOString(),
+            creadoPor: auth?.currentUser?.email || ''
+        };
+        const ref = await addDoc(collection(window.db, 'cotizaciones'), cotData);
+        cotData.id = ref.id;
+        if(typeof portalCotDB !== 'undefined') portalCotDB.unshift({...cotData, id: ref.id});
+        if(typeof vpCotDB !== 'undefined') vpCotDB.unshift({...cotData, id: ref.id});
+        document.getElementById('modal-nueva-cot').style.display = 'none';
+        if(window.mostrarPush) mostrarPush('✅ Cotización creada', folio + ' — ' + clienteNombre, '📄');
+        if(typeof portalRenderCotList === 'function') portalRenderCotList();
+        if(typeof vpRenderCotLista === 'function') vpRenderCotLista();
+    } catch(e) {
+        alert('Error al guardar: ' + e.message);
+        if(btn) { btn.textContent = '✅ Guardar Cotización'; btn.disabled = false; }
+    }
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -12700,7 +12831,7 @@ window.vpSetModulo = function(modulo, btn) {
     if(tabsBar) tabsBar.style.display = 'none';
 
     // Actualizar título
-    const titulos = {mapa:'Mapa de Clientes',clientes:'Directorio de Clientes',crm:'CRM Pipeline',cotizaciones:'Cotizaciones'};
+    const titulos = {mapa:'Mapa de Clientes',clientes:'Directorio de Clientes',crm:'CRM Pipeline',cotizaciones:'Cotizaciones',calendario:'📅 Calendario de Actividades'};
     const tituloEl = document.getElementById('ventas-col-izq-titulo');
     if(tituloEl) tituloEl.textContent = titulos[modulo] || modulo;
 
@@ -12717,6 +12848,7 @@ window.vpSetModulo = function(modulo, btn) {
         case 'mapa':        vpCargarMapa(); break;
         case 'crm':         vpCargarCRM(); break;
         case 'cotizaciones':vpCargarCotizaciones(); break;
+        case 'calendario':  vpRenderCalendarioActividades(); break;
     }
 };
 
@@ -12900,8 +13032,35 @@ window.vpCpTab = function(tab, btn) {
         case 'cotizaciones': el.innerHTML = vpCpCots(); break;
         case 'contactos': el.innerHTML = vpCpContactos(c); break;
         case 'correos': el.innerHTML = vpCpCorreos(c); break;
+        case 'facturacion': el.innerHTML = vpCpFacturacion(c); break;
     }
 };
+
+function vpCpFacturacion(c) {
+    if(!c) return '';
+    return `<div class="vp-cp-section">
+        <div class="vp-cp-label" style="margin-bottom:12px;">Datos de Facturación</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px;margin-bottom:16px;">
+            <div><div style="color:#94a3b8;font-size:10px;font-weight:700;">RAZÓN SOCIAL</div><div style="font-weight:700;color:#1e293b;">${c.razonSocial||c.nombre||'—'}</div></div>
+            <div><div style="color:#94a3b8;font-size:10px;font-weight:700;">RFC</div><div style="font-weight:700;color:#1e293b;">${c.rfc||'—'}</div></div>
+            <div><div style="color:#94a3b8;font-size:10px;font-weight:700;">RÉGIMEN FISCAL</div><div style="font-weight:700;color:#1e293b;">${c.regimenFiscal||'—'}</div></div>
+            <div><div style="color:#94a3b8;font-size:10px;font-weight:700;">CRÉDITO</div><div style="font-weight:700;color:#1e293b;">${c.credito||'Contado'}</div></div>
+            <div style="grid-column:span 2;"><div style="color:#94a3b8;font-size:10px;font-weight:700;">DIRECCIÓN FISCAL</div><div style="font-weight:700;color:#1e293b;">${c.direccionFiscal||c.direccion||'—'}</div></div>
+            <div><div style="color:#94a3b8;font-size:10px;font-weight:700;">C.P.</div><div style="font-weight:700;color:#1e293b;">${c.cp||'—'}</div></div>
+            <div><div style="color:#94a3b8;font-size:10px;font-weight:700;">EMAIL FACTURACIÓN</div><div style="font-weight:700;color:#1e293b;">${c.emailFacturacion||c.email||'—'}</div></div>
+        </div>
+        <div class="vp-cp-label" style="margin-bottom:10px;">Datos de Envío</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px;margin-bottom:14px;">
+            <div style="grid-column:span 2;"><div style="color:#94a3b8;font-size:10px;font-weight:700;">DIRECCIÓN DE ENTREGA</div><div style="font-weight:700;color:#1e293b;">${c.direccionEntrega||c.direccion||'—'}</div></div>
+            <div><div style="color:#94a3b8;font-size:10px;font-weight:700;">RESPONSABLE RECEPCIÓN</div><div style="font-weight:700;color:#1e293b;">${c.responsableRecepcion||'—'}</div></div>
+            <div><div style="color:#94a3b8;font-size:10px;font-weight:700;">TEL. ENTREGA</div><div style="font-weight:700;color:#1e293b;">${c.telEntrega||c.tel||'—'}</div></div>
+        </div>
+        <div style="display:flex;gap:8px;">
+            <button onclick="navigator.clipboard?.writeText(JSON.stringify({rfc:'${c.rfc||''}',razonSocial:'${c.razonSocial||c.nombre||''}',cp:'${c.cp||''}'})).then(()=>{if(window.mostrarPush)mostrarPush('📋 Copiado','Datos de facturación','✅')})" style="flex:1;padding:10px;background:#10b981;color:white;border:none;border-radius:10px;font-weight:700;font-size:12px;cursor:pointer;">📤 Compartir Facturación</button>
+            <button onclick="if(window.mostrarPush)mostrarPush('📦 Envío','Datos copiados','✅')" style="flex:1;padding:10px;background:#0891b2;color:white;border:none;border-radius:10px;font-weight:700;font-size:12px;cursor:pointer;">🚚 Compartir Envío</button>
+        </div>
+    </div>`;
+}
 
 function vpCpGeneral(c) {
     if(!c) return '';
@@ -13327,7 +13486,15 @@ window.vpVerCotizacion = function(id) {
                 <span style="font-weight:700;flex-shrink:0;">$${((i.cantidad||1)*(i.precio||i.pu||i.precioUnitario||i.price||i.unitPrice||i.precioU||0)).toLocaleString('es-MX',{minimumFractionDigits:0})}</span>
             </div>`).join('')}
         </div>` : ''}
-        <button onclick="vpGenerarPDF('${c.id}')" style="width:100%;padding:11px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:white;border:none;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;">📄 Generar PDF</button>
+        <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;">
+            ${['pendiente','enviada','colocada','cancelada'].map(st=>
+                `<button onclick="vpCambiarStatusCot('${c.id}','${st}')" style="flex:1;min-width:70px;padding:6px 4px;border-radius:8px;border:2px solid ${(c.statusCot||'pendiente')===st?'#2563eb':'#e2e8f0'};background:${(c.statusCot||'pendiente')===st?'#eff6ff':'white'};color:${(c.statusCot||'pendiente')===st?'#2563eb':'#64748b'};font-size:10px;font-weight:700;cursor:pointer;font-family:'Space Grotesk',sans-serif;text-transform:capitalize;">${st}</button>`
+            ).join('')}
+        </div>
+        <div style="display:flex;gap:6px;">
+            <button onclick="vpGenerarPDF('${c.id}')" style="flex:1;padding:11px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:white;border:none;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;">📄 Generar PDF</button>
+            <button onclick="vpProgramarSeguimientoCot('${c.id}','${c.cliente||''}')" style="padding:11px 14px;background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;" title="Programar seguimiento">📅</button>
+        </div>
     </div>`;
 };
 
@@ -13515,6 +13682,191 @@ window.vpOpGuardarComentario = async function(opId) {
         if(lista) lista.innerHTML = `<div style="padding:8px;background:#f8fafc;border-radius:8px;margin-bottom:6px;font-size:11px;"><div style="font-weight:700;">${comentario.autor} <span style="color:#94a3b8;">${comentario.fecha}</span></div><div style="color:#475569;margin-top:3px;">${comentario.texto}</div></div>` + lista.innerHTML;
         if(window.mostrarPush) mostrarPush('💬 Comentario guardado','','✅');
     } catch(e) { alert('Error: '+e.message); }
+};
+
+window.vpCambiarStatusCot = async function(id, nuevoStatus) {
+    try {
+        const {doc, updateDoc} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        await updateDoc(doc(window.db,'cotizaciones',id), { statusCot: nuevoStatus });
+        const cot = vpCotDB.find(x=>x.id===id);
+        if(cot) cot.statusCot = nuevoStatus;
+        if(window.mostrarPush) mostrarPush('✅ Estatus actualizado', nuevoStatus.toUpperCase(), '📄');
+        if(typeof vpRenderCotLista==='function') vpRenderCotLista();
+        if(typeof vpVerCotizacion==='function') vpVerCotizacion(id);
+    } catch(e) { alert('Error: '+e.message); }
+};
+
+window.vpProgramarSeguimientoCot = function(cotId, clienteNombre) {
+    // Reusar el mini-modal de actividad con datos pre-llenados
+    if(typeof portalCpNuevaActividad === 'function') {
+        // Pre-llenar con datos de la cotización
+        window._ncot_prefill = { clienteNombre, titulo: 'Seguimiento cotización ' + cotId };
+    }
+    let miniModal = document.getElementById('cp-act-modal');
+    if(!miniModal){ miniModal=document.createElement('div'); miniModal.id='cp-act-modal';
+        miniModal.style.cssText='display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:99999;align-items:center;justify-content:center;';
+        document.body.appendChild(miniModal); }
+    const hoy = new Date().toISOString().split('T')[0];
+    const encOpts = (typeof EMPLEADOS_TECNOCONTROL!=='undefined'?EMPLEADOS_TECNOCONTROL:[]).map(n=>`<option value="${n}">${n}</option>`).join('');
+    miniModal.innerHTML = `<div style="background:white;border-radius:20px;padding:22px;width:440px;max-width:95vw;box-shadow:0 24px 64px rgba(0,0,0,0.25);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+            <div style="font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:800;color:#1e293b;">📅 Programar seguimiento</div>
+            <button onclick="document.getElementById('cp-act-modal').style.display='none'" style="background:none;border:none;font-size:18px;cursor:pointer;color:#94a3b8;">✕</button>
+        </div>
+        <div style="background:#eff6ff;border-radius:10px;padding:10px;margin-bottom:12px;font-size:12px;color:#1e40af;font-weight:700;">📄 ${clienteNombre} — ${cotId}</div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+            <input id="cpa-titulo" class="form-input" value="Seguimiento cotización ${cotId}" style="width:100%;box-sizing:border-box;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                <div><label style="font-size:10px;font-weight:700;color:#64748b;display:block;margin-bottom:3px;">FECHA</label>
+                <input id="cpa-fecha" type="date" class="form-input" value="${hoy}" style="width:100%;box-sizing:border-box;"></div>
+                <div><label style="font-size:10px;font-weight:700;color:#64748b;display:block;margin-bottom:3px;">RESPONSABLE</label>
+                <select id="cpa-resp" class="form-input" style="width:100%;box-sizing:border-box;"><option value="">— Seleccionar —</option>${encOpts}</select></div>
+            </div>
+            <select id="cpa-tipo" class="form-input" style="box-sizing:border-box;"><option selected>Seguimiento</option><option>Llamada</option><option>Email</option><option>Visita</option></select>
+            <select id="cpa-prio" class="form-input" style="box-sizing:border-box;"><option>Alta</option><option selected>Normal</option><option>Baja</option></select>
+            <textarea id="cpa-notas" class="form-input" rows="2" placeholder="Notas del seguimiento..." style="width:100%;box-sizing:border-box;font-family:inherit;font-size:12px;resize:vertical;"></textarea>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:14px;">
+            <button onclick="guardarCpActividad('','${clienteNombre}')" style="flex:1;padding:11px;background:linear-gradient(135deg,#1e3a8a,#2563eb);color:white;border:none;border-radius:12px;font-weight:700;font-size:13px;cursor:pointer;font-family:'Space Grotesk',sans-serif;">✅ Programar</button>
+            <button onclick="document.getElementById('cp-act-modal').style.display='none'" style="padding:11px 16px;background:#f1f5f9;color:#475569;border:none;border-radius:12px;font-weight:700;cursor:pointer;">Cancelar</button>
+        </div>
+    </div>`;
+    miniModal.style.display='flex';
+    miniModal.onclick = e => { if(e.target===miniModal) miniModal.style.display='none'; };
+};
+
+// ══════════════════════════════════════════════════════════════
+// CALENDARIO DE ACTIVIDADES — Ventas
+// ══════════════════════════════════════════════════════════════
+window.vpRenderCalendarioActividades = async function() {
+    const listEl = document.getElementById('vp-lista-content');
+    const derechoEl = document.getElementById('ventas-mapa-desktop');
+    const perfilEl = document.getElementById('ventas-panel-detalle');
+    const kanbanEl = document.getElementById('vp-crm-kanban-wrap');
+    const cotEl = document.getElementById('vp-cot-detalle-wrap');
+    if(derechoEl) derechoEl.style.display = 'none';
+    if(perfilEl) perfilEl.style.display = 'none';
+    if(kanbanEl) kanbanEl.style.display = 'none';
+    if(cotEl) cotEl.style.display = 'none';
+    if(!listEl) return;
+
+    // Mostrar loading
+    listEl.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;">Cargando actividades...</div>';
+
+    // Cargar actividades de Firestore
+    let acts = [];
+    try {
+        const {getDocs,collection,query,orderBy,limit} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const snap = await getDocs(query(collection(window.db,'actividades'),orderBy('creadoEn','desc'),limit(200)));
+        acts = snap.docs.map(d=>({id:d.id,...d.data()}));
+    } catch(e) { console.warn('Error cargando actividades:', e); }
+
+    const EMPRESAS = ['Todas','TECNOCONTROL','JOMAR','VH','DESARROLLOS','AKURIS','TECNOLAB'];
+    const ESTADOS = ['Todos','Pendiente','En Proceso','Completada'];
+
+    const renderLista = (filtros={}) => {
+        let filtered = acts;
+        if(filtros.empresa && filtros.empresa!=='Todas') filtered = filtered.filter(a=>a.empresa===filtros.empresa||a.area===filtros.empresa);
+        if(filtros.estado && filtros.estado!=='Todos') filtered = filtered.filter(a=>a.estatus===filtros.estado);
+        if(filtros.responsable) filtered = filtered.filter(a=>(a.responsable||a.encargado||'').toLowerCase().includes(filtros.responsable.toLowerCase()));
+        if(filtros.cliente) filtered = filtered.filter(a=>(a.clienteNombre||a.origen||'').toLowerCase().includes(filtros.cliente.toLowerCase()));
+        if(filtros.fecha) filtered = filtered.filter(a=>(a.fechaLimite||a.fechaProgramada||'')===filtros.fecha);
+
+        const pCols = {'Pendiente':'#f59e0b','En Proceso':'#3b82f6','Completada':'#10b981'};
+
+        listEl.innerHTML = `<div style="padding:0;">
+            <!-- Filtros -->
+            <div style="padding:10px 12px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;flex-wrap:wrap;gap:6px;">
+                <select id="cal-fil-empresa" onchange="vpCalFiltrar()" class="form-input" style="font-size:11px;padding:4px 6px;height:28px;">
+                    ${EMPRESAS.map(e=>`<option ${(filtros.empresa||'Todas')===e?'selected':''}>${e}</option>`).join('')}
+                </select>
+                <select id="cal-fil-estado" onchange="vpCalFiltrar()" class="form-input" style="font-size:11px;padding:4px 6px;height:28px;">
+                    ${ESTADOS.map(e=>`<option ${(filtros.estado||'Todos')===e?'selected':''}>${e}</option>`).join('')}
+                </select>
+                <input id="cal-fil-responsable" oninput="vpCalFiltrar()" placeholder="Responsable..." class="form-input" value="${filtros.responsable||''}" style="font-size:11px;padding:4px 6px;height:28px;width:110px;">
+                <input id="cal-fil-cliente" oninput="vpCalFiltrar()" placeholder="Cliente..." class="form-input" value="${filtros.cliente||''}" style="font-size:11px;padding:4px 6px;height:28px;width:100px;">
+                <input id="cal-fil-fecha" type="date" onchange="vpCalFiltrar()" class="form-input" value="${filtros.fecha||''}" style="font-size:11px;padding:4px 6px;height:28px;">
+                <button onclick="vpCalFiltrar(true)" style="padding:4px 8px;background:#f1f5f9;border:none;border-radius:6px;font-size:11px;cursor:pointer;height:28px;">↺ Limpiar</button>
+            </div>
+            <div style="padding:8px 12px;font-size:10px;color:#64748b;">${filtered.length} actividades</div>
+            ${filtered.length===0 ? '<div style="text-align:center;padding:40px;color:#94a3b8;font-size:13px;">Sin actividades</div>' :
+            filtered.map(a => {
+                const col = pCols[a.estatus||'Pendiente']||'#94a3b8';
+                const prioColor = {Urgente:'#dc2626',Alta:'#d97706',Normal:'#64748b',Baja:'#94a3b8'}[a.prioridad]||'#64748b';
+                return `<div style="padding:10px 12px;border-bottom:1px solid #f1f5f9;cursor:pointer;" onclick="vpCalVerActividad('${a.id}')">
+                    <div style="display:flex;align-items:flex-start;gap:8px;">
+                        <div style="width:6px;height:6px;border-radius:50%;background:${col};margin-top:5px;flex-shrink:0;"></div>
+                        <div style="flex:1;min-width:0;">
+                            <div style="font-weight:700;font-size:12px;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${a.titulo||a.descripcion||'Sin título'}</div>
+                            <div style="font-size:10px;color:#64748b;margin-top:2px;">${a.tipo||''} · ${a.clienteNombre||a.origen||''} · ${(a.responsable||'').split('@')[0]}</div>
+                            <div style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap;">
+                                <span style="font-size:9px;padding:1px 6px;border-radius:10px;background:${col}20;color:${col};font-weight:700;">${a.estatus||'Pendiente'}</span>
+                                <span style="font-size:9px;color:${prioColor};font-weight:700;">${a.prioridad||'Normal'}</span>
+                                ${a.fechaLimite?`<span style="font-size:9px;color:#94a3b8;">📅 ${a.fechaLimite}</span>`:''}
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+            }).join('')}
+        </div>`;
+
+        window._vpCalActs = filtered;
+        window._vpCalFiltros = filtros;
+    };
+
+    window.vpCalFiltrar = function(reset=false) {
+        const f = reset ? {} : {
+            empresa: document.getElementById('cal-fil-empresa')?.value||'',
+            estado: document.getElementById('cal-fil-estado')?.value||'',
+            responsable: document.getElementById('cal-fil-responsable')?.value||'',
+            cliente: document.getElementById('cal-fil-cliente')?.value||'',
+            fecha: document.getElementById('cal-fil-fecha')?.value||''
+        };
+        renderLista(f);
+    };
+
+    window.vpCalVerActividad = function(id) {
+        const a = acts.find(x=>x.id===id);
+        if(!a) return;
+        const derechoWrap = document.getElementById('ventas-mapa-desktop');
+        if(derechoWrap) {
+            derechoWrap.style.display = 'flex';
+            derechoWrap.style.flexDirection = 'column';
+            derechoWrap.innerHTML = `<div style="padding:16px;flex:1;overflow-y:auto;">
+                <div style="background:linear-gradient(135deg,#3d5a7a,#4a6d8c);border-radius:14px;padding:16px;margin-bottom:14px;color:white;">
+                    <div style="font-size:14px;font-weight:800;">${a.titulo||'Sin título'}</div>
+                    <div style="font-size:11px;opacity:0.8;margin-top:4px;">${a.tipo||''} · ${a.area||''}</div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:8px;font-size:12px;">
+                    <div><b style="color:#64748b;">Cliente:</b> ${a.clienteNombre||a.origen||'—'}</div>
+                    <div><b style="color:#64748b;">Responsable:</b> ${(a.responsable||'').split('@')[0]||'—'}</div>
+                    <div><b style="color:#64748b;">Fecha límite:</b> ${a.fechaLimite||'—'}</div>
+                    <div><b style="color:#64748b;">Prioridad:</b> ${a.prioridad||'Normal'}</div>
+                    ${a.descripcion?`<div style="background:#f8fafc;border-radius:8px;padding:10px;color:#475569;">${a.descripcion}</div>`:''}
+                </div>
+                <div style="margin-top:14px;">
+                    <div style="font-size:10px;font-weight:700;color:#64748b;margin-bottom:8px;">CAMBIAR ESTATUS</div>
+                    <div style="display:flex;gap:6px;">
+                        ${['Pendiente','En Proceso','Completada'].map(st=>`<button onclick="vpCalCambiarEstatus('${id}','${st}')" style="flex:1;padding:8px;border-radius:8px;border:2px solid ${a.estatus===st?'#2563eb':'#e2e8f0'};background:${a.estatus===st?'#eff6ff':'white'};color:${a.estatus===st?'#2563eb':'#64748b'};font-size:11px;font-weight:700;cursor:pointer;">${st}</button>`).join('')}
+                    </div>
+                </div>
+            </div>`;
+        }
+    };
+
+    window.vpCalCambiarEstatus = async function(id, estatus) {
+        try {
+            const {doc, updateDoc} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+            await updateDoc(doc(window.db,'actividades',id), { estatus });
+            const a = acts.find(x=>x.id===id);
+            if(a) a.estatus = estatus;
+            if(window.mostrarPush) mostrarPush('✅ Estatus actualizado', estatus, '📋');
+            vpCalFiltrar();
+            vpCalVerActividad(id);
+        } catch(e) { alert('Error: '+e.message); }
+    };
+
+    renderLista();
 };
 console.log('VENTAS PORTAL v2 cargado ✅ — diseño basado en la app');
 </script>
