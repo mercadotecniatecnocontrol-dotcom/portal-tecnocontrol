@@ -667,7 +667,26 @@
     .img-upload-zone { border:2px dashed var(--border);border-radius:12px;padding:20px;text-align:center;cursor:pointer;transition:0.2s; }
     .img-upload-zone:active { border-color:var(--accent); }
     .img-preview { width:100%;max-height:150px;object-fit:contain;border-radius:8px;margin-top:8px; }    
-    </style>
+    
+        /* Flotilla tabs */
+        .app-fl-tab {
+            padding: 7px 14px;
+            border-radius: 20px;
+            border: 1.5px solid var(--border);
+            background: var(--bg-card);
+            color: var(--text-secondary);
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            white-space: nowrap;
+            font-family: 'Outfit', sans-serif;
+        }
+        .app-fl-tab-active {
+            background: #059669;
+            border-color: #059669;
+            color: white;
+        }
+</style>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
@@ -714,6 +733,7 @@
             <button onclick="showPage('servicios');setTimeout(()=>abrirFormSrv(),300)" style="padding:14px 8px;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;color:var(--text-primary);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;transition:0.2s;"><span style="font-size:24px;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span>Servicio Técnico</button>
             <button onclick="showPage('poliza');setTimeout(()=>abrirFormPoliza(),300)" style="padding:14px 8px;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;color:var(--text-primary);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;transition:0.2s;"><span style="font-size:24px;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>Póliza Manto.</button>
             <button onclick="showPage('vehicular');setTimeout(()=>abrirFormVeh(),300)" style="padding:14px 8px;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;color:var(--text-primary);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;transition:0.2s;"><span style="font-size:24px;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></span>Manto. Vehicular</button>
+            <button onclick="showPage('flotilla');setTimeout(()=>cargarFlotillaApp(),300)" style="padding:14px 8px;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;color:var(--text-primary);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;transition:0.2s;"><span style="font-size:24px;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></span><span style="color:#059669;">Flotilla</span></button>
             <button onclick="showPage('remisiones');setTimeout(()=>abrirFormRem(),300)" style="padding:14px 8px;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;color:var(--text-primary);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;transition:0.2s;"><span style="font-size:24px;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span>Remisiones</button>
             <button onclick="showPage('cotizaciones');setTimeout(()=>cargarCot(),300)" style="padding:14px 8px;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;color:var(--text-primary);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;transition:0.2s;"><span style="font-size:24px;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg></span>Cotizaciones</button>
             <button onclick="showPage('crm');setTimeout(()=>cargarCRM(),300)" style="padding:14px 8px;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;color:var(--text-primary);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;transition:0.2s;"><span style="font-size:24px;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span>CRM</button>
@@ -3462,6 +3482,63 @@ window.limpiarFirmaCot=()=>{
 .foto-item-cal img { width: 100%; height: 100%; object-fit: cover; }
 .foto-item-cal .foto-del { position: absolute; top: 4px; right: 4px; background: rgba(0,0,0,0.5); border: none; border-radius: 50%; width: 20px; height: 20px; color: white; cursor: pointer; font-size: 10px; }
 </style>
+
+    <!-- ══ PÁGINA FLOTILLA ══ -->
+    <div class="page" id="page-flotilla">
+      <div class="page-header" style="background:linear-gradient(135deg,#059669,#047857);">
+        <button class="header-back" onclick="showPage('home')">←</button>
+        <div class="page-title">🚛 Flotilla Vehicular</div>
+        <button class="header-btn" onclick="abrirFlotillaAppForm()" style="color:white;font-size:18px;background:rgba(255,255,255,0.15);border:none;border-radius:8px;width:34px;height:34px;cursor:pointer;">＋</button>
+      </div>
+      <div style="padding:16px;">
+        <!-- KPIs -->
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:16px;">
+          <div style="background:#fff;border-radius:14px;padding:14px;border:1px solid #e2e8f0;text-align:center;">
+            <div id="app-fl-total" style="font-size:26px;font-weight:800;color:#059669;">—</div>
+            <div style="font-size:10px;color:#94a3b8;font-weight:600;">SOLICITUDES</div>
+          </div>
+          <div style="background:#fff;border-radius:14px;padding:14px;border:1px solid #e2e8f0;text-align:center;">
+            <div id="app-fl-pendientes" style="font-size:26px;font-weight:800;color:#f59e0b;">—</div>
+            <div style="font-size:10px;color:#94a3b8;font-weight:600;">PENDIENTES</div>
+          </div>
+        </div>
+        <!-- Filtro estatus -->
+        <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin-bottom:12px;">
+          <button onclick="appFlFiltrar('')" class="app-fl-tab app-fl-tab-active" id="app-fl-tab-all">Todos</button>
+          <button onclick="appFlFiltrar('Pendiente autorización')" class="app-fl-tab" id="app-fl-tab-pend">Pendientes</button>
+          <button onclick="appFlFiltrar('Autorizada')" class="app-fl-tab" id="app-fl-tab-aut">Autorizadas</button>
+          <button onclick="appFlFiltrar('En taller')" class="app-fl-tab" id="app-fl-tab-tal">En taller</button>
+          <button onclick="appFlFiltrar('Cerrada')" class="app-fl-tab" id="app-fl-tab-cer">Cerradas</button>
+        </div>
+        <!-- Lista -->
+        <div id="app-fl-lista"></div>
+        <!-- FAB -->
+        <button onclick="abrirFlotillaAppForm()" style="position:fixed;bottom:80px;right:20px;width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,#059669,#047857);border:none;color:white;font-size:26px;box-shadow:0 4px 20px rgba(5,150,105,0.4);cursor:pointer;z-index:100;">＋</button>
+      </div>
+    </div>
+
+    <!-- ══ FORM FLOTILLA APP ══ -->
+    <div class="page" id="page-flotilla-form">
+      <div class="page-header" style="background:linear-gradient(135deg,#059669,#047857);">
+        <button class="form-close" onclick="showPage('flotilla')">←</button>
+        <div class="page-title" id="app-fl-form-title">Nueva Solicitud</div>
+      </div>
+      <div style="padding:16px;overflow-y:auto;" id="app-fl-form-body"></div>
+      <div style="padding:16px;padding-top:0;">
+        <button onclick="guardarFlotillaApp()" style="width:100%;padding:15px;background:linear-gradient(135deg,#059669,#047857);border:none;border-radius:14px;color:white;font-size:15px;font-weight:800;cursor:pointer;">💾 Guardar Solicitud</button>
+      </div>
+    </div>
+
+    <!-- ══ DETALLE FLOTILLA APP ══ -->
+    <div class="page" id="page-flotilla-detalle">
+      <div class="page-header" style="background:linear-gradient(135deg,#059669,#047857);">
+        <button class="form-close" onclick="showPage('flotilla')">←</button>
+        <div class="page-title">Detalle Solicitud</div>
+      </div>
+      <div style="padding:16px;" id="app-fl-detalle-body"></div>
+    </div>
+
+
 
 
 <!-- Bottom Nav -->
@@ -9120,5 +9197,299 @@ window.limpiarFirma = (canvasId) => {
 </script>
 
 
-</body>
+<script>
+// ══════════════════════════════════════════════════════════════
+// FLOTILLA APP MODULE v1.0
+// ══════════════════════════════════════════════════════════════
+(function(){
+'use strict';
+
+let appFlRegs = [];
+let appFlEditId = null;
+const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+const now = new Date();
+let appFlMes = now.getMonth();
+let appFlAnio = now.getFullYear();
+
+const VECS = [
+  {num:'VH-001',marca:'Toyota',modelo:'Hilux',placas:'CHH-001-A'},
+  {num:'VH-002',marca:'Nissan',modelo:'NP300',placas:'CHH-002-B'},
+  {num:'VH-003',marca:'Ford',modelo:'F-150',placas:'CHH-003-C'},
+  {num:'VH-004',marca:'Chevrolet',modelo:'Silverado',placas:'CHH-004-D'},
+  {num:'VH-005',marca:'Volkswagen',modelo:'Crafter',placas:'CHH-005-E'},
+];
+
+async function getFB(){
+  const a=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+  const f=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+  const app=a.getApps()[0];
+  return {db:f.getFirestore(app),fs:f};
+}
+
+function flMesKey(){return `${appFlAnio}-${String(appFlMes+1).padStart(2,'0')}`;}
+
+window.cargarFlotillaApp = async function(){
+  const key=flMesKey();
+  try{
+    const{db,fs}=await getFB();
+    const snap=await fs.getDocs(fs.query(fs.collection(db,'flotilla_solicitudes'),fs.where('mesKey','==',key)));
+    appFlRegs=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.fechaSolicitud||'').localeCompare(a.fechaSolicitud||''));
+    const t=document.getElementById('app-fl-total');
+    const p=document.getElementById('app-fl-pendientes');
+    if(t) t.innerText=appFlRegs.length||'0';
+    if(p) p.innerText=appFlRegs.filter(r=>r.estatus==='Pendiente autorización').length||'0';
+    appFlFiltrar('');
+  } catch(e){
+    console.warn('[FL APP]',e.message);
+    appFlRegs=[];
+    appFlFiltrar('');
+  }
+};
+
+window.appFlFiltrar = function(fil){
+  // actualizar tabs
+  document.querySelectorAll('.app-fl-tab').forEach(t=>t.classList.remove('app-fl-tab-active'));
+  const tabId = fil===''?'app-fl-tab-all':fil==='Pendiente autorización'?'app-fl-tab-pend':fil==='Autorizada'?'app-fl-tab-aut':fil==='En taller'?'app-fl-tab-tal':'app-fl-tab-cer';
+  const tab=document.getElementById(tabId);
+  if(tab) tab.classList.add('app-fl-tab-active');
+
+  const data=fil?appFlRegs.filter(r=>r.estatus===fil):appFlRegs;
+  const el=document.getElementById('app-fl-lista');
+  if(!el) return;
+  if(!data.length){
+    el.innerHTML='<div style="padding:32px;text-align:center;color:#94a3b8;font-size:13px;">Sin solicitudes</div>';
+    return;
+  }
+  const col={'Pendiente autorización':'#f59e0b','Autorizada':'#3b82f6','Rechazada':'#ef4444','En taller':'#8b5cf6','Cerrada':'#22c55e'};
+  el.innerHTML=data.map(r=>`
+    <div onclick="verFlotillaApp('${r.id}')" style="background:#fff;border-radius:14px;padding:14px;margin-bottom:10px;border:1px solid #e2e8f0;cursor:pointer;active:background:#f8fafc;">
+      <div style="display:flex;align-items:flex-start;gap:10px;">
+        <div style="width:40px;height:40px;border-radius:12px;background:${(col[r.estatus]||'#94a3b8')}20;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">🚗</div>
+        <div style="flex:1;">
+          <div style="font-weight:700;font-size:13px;color:#1e293b;">${r.vehiculoNum||'—'} · ${r.vehiculoMarca||''} ${r.vehiculoModelo||''}</div>
+          <div style="font-size:11px;color:#64748b;margin-top:2px;">${r.motivo||''}</div>
+          <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">
+            <span style="font-size:10px;padding:2px 8px;border-radius:10px;background:${(col[r.estatus]||'#94a3b8')}20;color:${(col[r.estatus]||'#94a3b8')};font-weight:700;">${r.estatus||'Pendiente'}</span>
+            <span style="font-size:10px;color:#94a3b8;">${r.fechaSolicitud||''}</span>
+          </div>
+        </div>
+        <div style="color:#94a3b8;font-size:18px;">›</div>
+      </div>
+    </div>`).join('');
+};
+
+window.abrirFlotillaAppForm = function(id=null){
+  appFlEditId=id;
+  const r=id?appFlRegs.find(x=>x.id===id):{};
+  const tit=document.getElementById('app-fl-form-title');
+  if(tit) tit.innerText=id?'Editar Solicitud':'Nueva Solicitud';
+  
+  const empOpts=(window.EMPLEADOS_TECNOCONTROL||[]).map(e=>`<option ${r.solicitadoPor===e?'selected':''}>${e}</option>`).join('');
+  const vOpts=VECS.map(v=>`<option value="${v.num}" data-marca="${v.marca}" data-modelo="${v.modelo}" data-placas="${v.placas}" ${r.vehiculoNum===v.num?'selected':''}>${v.num} · ${v.marca} ${v.modelo}</option>`).join('');
+
+  const body=document.getElementById('app-fl-form-body');
+  if(!body) return;
+  body.innerHTML=`
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <div>
+        <label style="font-size:11px;font-weight:700;color:#64748b;margin-bottom:4px;display:block;">MOTIVO *</label>
+        <textarea id="appfl-motivo" rows="3" style="width:100%;padding:12px;border-radius:12px;border:1.5px solid #e2e8f0;font-size:13px;font-family:'Outfit',sans-serif;resize:none;" placeholder="Describe el motivo...">${r.motivo||''}</textarea>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:700;color:#64748b;margin-bottom:4px;display:block;">SOLICITADO POR *</label>
+        <select id="appfl-solicitante" style="width:100%;padding:12px;border-radius:12px;border:1.5px solid #e2e8f0;font-size:13px;font-family:'Outfit',sans-serif;">
+          <option value="">— Seleccionar —</option>${empOpts}
+        </select>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:700;color:#64748b;margin-bottom:4px;display:block;">FECHA DE SOLICITUD</label>
+        <input type="date" id="appfl-fecha" value="${r.fechaSolicitud||new Date().toISOString().slice(0,10)}" style="width:100%;padding:12px;border-radius:12px;border:1.5px solid #e2e8f0;font-size:13px;">
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:700;color:#64748b;margin-bottom:4px;display:block;">VEHÍCULO *</label>
+        <select id="appfl-vehiculo" onchange="appFlAutoFill(this)" style="width:100%;padding:12px;border-radius:12px;border:1.5px solid #e2e8f0;font-size:13px;font-family:'Outfit',sans-serif;">
+          <option value="">— Seleccionar —</option>${vOpts}
+        </select>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div>
+          <label style="font-size:11px;font-weight:700;color:#64748b;margin-bottom:4px;display:block;">KM</label>
+          <input type="number" id="appfl-km" value="${r.kilometraje||''}" style="width:100%;padding:12px;border-radius:12px;border:1.5px solid #e2e8f0;font-size:13px;" placeholder="km actual">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:#64748b;margin-bottom:4px;display:block;">CHOFER</label>
+          <input type="text" id="appfl-chofer" value="${r.chofer||''}" style="width:100%;padding:12px;border-radius:12px;border:1.5px solid #e2e8f0;font-size:13px;" placeholder="Nombre">
+        </div>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:700;color:#64748b;margin-bottom:6px;display:block;">COMBUSTIBLE</label>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          ${['Vacío','1/4','Medio','3/4','Lleno'].map(n=>`
+            <label style="cursor:pointer;">
+              <input type="radio" name="appfl-comb" value="${n}" ${(r.combustible||'Medio')===n?'checked':''} style="display:none;">
+              <span class="appfl-fuel" style="display:inline-block;padding:6px 12px;border-radius:20px;border:2px solid ${(r.combustible||'Medio')===n?'#059669':'#e2e8f0'};background:${(r.combustible||'Medio')===n?'#ecfdf5':'#f8fafc'};color:${(r.combustible||'Medio')===n?'#059669':'#64748b'};font-size:11px;font-weight:600;">${n}</span>
+            </label>`).join('')}
+        </div>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:700;color:#64748b;margin-bottom:4px;display:block;">DAÑOS / INSPECCIÓN VISUAL</label>
+        <textarea id="appfl-danos" rows="3" style="width:100%;padding:12px;border-radius:12px;border:1.5px solid #e2e8f0;font-size:13px;font-family:'Outfit',sans-serif;resize:none;" placeholder="Golpes, rayones, partes a reparar...">${r.danos||''}</textarea>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:700;color:#64748b;margin-bottom:4px;display:block;">TALLER</label>
+        <input type="text" id="appfl-taller" value="${r.taller||''}" style="width:100%;padding:12px;border-radius:12px;border:1.5px solid #e2e8f0;font-size:13px;" placeholder="Nombre del taller">
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:700;color:#64748b;margin-bottom:4px;display:block;">FECHA ENTREGA ESTIMADA</label>
+        <input type="date" id="appfl-entrega" value="${r.fechaEntrega||''}" style="width:100%;padding:12px;border-radius:12px;border:1.5px solid #e2e8f0;font-size:13px;">
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:700;color:#64748b;margin-bottom:4px;display:block;">OBSERVACIONES</label>
+        <textarea id="appfl-obs" rows="2" style="width:100%;padding:12px;border-radius:12px;border:1.5px solid #e2e8f0;font-size:13px;font-family:'Outfit',sans-serif;resize:none;" placeholder="Observaciones...">${r.observaciones||''}</textarea>
+      </div>
+      <div style="height:20px;"></div>
+    </div>
+  `;
+
+  // Activar radio styles
+  body.querySelectorAll('input[name="appfl-comb"]').forEach(radio=>{
+    radio.addEventListener('change',()=>{
+      body.querySelectorAll('input[name="appfl-comb"]').forEach(r2=>{
+        const sp=r2.nextElementSibling;
+        sp.style.borderColor=r2.checked?'#059669':'#e2e8f0';
+        sp.style.background=r2.checked?'#ecfdf5':'#f8fafc';
+        sp.style.color=r2.checked?'#059669':'#64748b';
+      });
+    });
+  });
+
+  showPage('flotilla-form');
+};
+
+window.appFlAutoFill = function(sel){
+  const opt=sel.options[sel.selectedIndex];
+  // placas y modelo se llenan en el portal, en la app no hay campos separados
+};
+
+window.guardarFlotillaApp = async function(){
+  const motivo=document.getElementById('appfl-motivo')?.value.trim();
+  const sol=document.getElementById('appfl-solicitante')?.value;
+  const veh=document.getElementById('appfl-vehiculo')?.value;
+  if(!motivo||!sol||!veh){
+    alert('Completa: Motivo, Solicitante y Vehículo');
+    return;
+  }
+  const combEl=document.querySelector('input[name="appfl-comb"]:checked');
+  const selVeh=document.getElementById('appfl-vehiculo');
+  const opt=selVeh?.options[selVeh.selectedIndex];
+  const data={
+    mesKey: flMesKey(),
+    fechaSolicitud: document.getElementById('appfl-fecha')?.value||new Date().toISOString().slice(0,10),
+    solicitadoPor: sol,
+    motivo: motivo,
+    vehiculoNum: veh,
+    vehiculoMarca: opt?.dataset?.marca||'',
+    vehiculoModelo: opt?.dataset?.modelo||'',
+    placas: opt?.dataset?.placas||'',
+    kilometraje: document.getElementById('appfl-km')?.value||'',
+    chofer: document.getElementById('appfl-chofer')?.value||'',
+    combustible: combEl?.value||'Medio',
+    danos: document.getElementById('appfl-danos')?.value||'',
+    taller: document.getElementById('appfl-taller')?.value||'',
+    fechaEntrega: document.getElementById('appfl-entrega')?.value||'',
+    observaciones: document.getElementById('appfl-obs')?.value||'',
+    estatus: appFlEditId?(appFlRegs.find(r=>r.id===appFlEditId)?.estatus||'Pendiente autorización'):'Pendiente autorización',
+    creadoEn: appFlEditId?(appFlRegs.find(r=>r.id===appFlEditId)?.creadoEn||new Date().toISOString()):new Date().toISOString(),
+    origen: 'app'
+  };
+  try{
+    const{db,fs}=await getFB();
+    if(appFlEditId){
+      await fs.updateDoc(fs.doc(db,'flotilla_solicitudes',appFlEditId),data);
+    } else {
+      await fs.addDoc(fs.collection(db,'flotilla_solicitudes'),data);
+    }
+    appFlEditId=null;
+    await cargarFlotillaApp();
+    showPage('flotilla');
+  } catch(e){ alert('Error: '+e.message); }
+};
+
+window.verFlotillaApp = function(id){
+  const r=appFlRegs.find(x=>x.id===id);
+  if(!r) return;
+  const col={'Pendiente autorización':'#f59e0b','Autorizada':'#3b82f6','Rechazada':'#ef4444','En taller':'#8b5cf6','Cerrada':'#22c55e'};
+  const c=col[r.estatus]||'#94a3b8';
+  const flujo=['Pendiente autorización','Autorizada','En taller','Cerrada'];
+  const pi=flujo.indexOf(r.estatus);
+  const el=document.getElementById('app-fl-detalle-body');
+  if(!el) return;
+  el.innerHTML=`
+    <div style="background:linear-gradient(135deg,#059669,#047857);border-radius:14px;padding:16px;margin-bottom:16px;color:white;">
+      <div style="font-size:15px;font-weight:800;">${r.vehiculoNum} · ${r.vehiculoMarca} ${r.vehiculoModelo}</div>
+      <div style="font-size:11px;opacity:0.8;margin-top:3px;">${r.placas||''} · ${r.fechaSolicitud||''}</div>
+      <div style="margin-top:8px;display:inline-block;padding:4px 12px;border-radius:20px;background:rgba(255,255,255,0.2);font-size:11px;font-weight:700;">${r.estatus}</div>
+    </div>
+
+    <div style="background:#fff;border-radius:14px;padding:14px;margin-bottom:12px;border:1px solid #e2e8f0;">
+      <div style="font-size:10px;font-weight:700;color:#94a3b8;margin-bottom:10px;">FLUJO</div>
+      <div style="display:flex;align-items:center;gap:4px;overflow-x:auto;">
+        ${flujo.map((paso,i)=>`
+          <div style="text-align:center;min-width:60px;">
+            <div style="width:26px;height:26px;border-radius:50%;background:${i<=pi?c:'#e2e8f0'};color:${i<=pi?'#fff':'#94a3b8'};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;margin:0 auto;">${i+1}</div>
+            <div style="font-size:8px;color:${i<=pi?c:'#94a3b8'};margin-top:2px;font-weight:600;">${paso.replace(' autorización','')}</div>
+          </div>
+          ${i<flujo.length-1?`<div style="height:2px;flex:1;background:${i<pi?c:'#e2e8f0'};margin-bottom:12px;"></div>`:''}`).join('')}
+      </div>
+    </div>
+
+    <div style="background:#fff;border-radius:14px;padding:14px;margin-bottom:12px;border:1px solid #e2e8f0;">
+      <div style="font-size:10px;font-weight:700;color:#94a3b8;margin-bottom:10px;">INFORMACIÓN</div>
+      <div style="display:flex;flex-direction:column;gap:8px;font-size:13px;">
+        <div style="display:flex;justify-content:space-between;"><span style="color:#94a3b8;">Solicitante</span><span style="font-weight:600;">${r.solicitadoPor||'—'}</span></div>
+        <div style="display:flex;justify-content:space-between;"><span style="color:#94a3b8;">Chofer</span><span style="font-weight:600;">${r.chofer||'—'}</span></div>
+        <div style="display:flex;justify-content:space-between;"><span style="color:#94a3b8;">Kilometraje</span><span style="font-weight:600;">${r.kilometraje||'—'} km</span></div>
+        <div style="display:flex;justify-content:space-between;"><span style="color:#94a3b8;">Combustible</span><span style="font-weight:600;">${r.combustible||'—'}</span></div>
+        <div style="display:flex;justify-content:space-between;"><span style="color:#94a3b8;">Taller</span><span style="font-weight:600;">${r.taller||'—'}</span></div>
+        <div style="display:flex;justify-content:space-between;"><span style="color:#94a3b8;">Entrega est.</span><span style="font-weight:600;">${r.fechaEntrega||'—'}</span></div>
+      </div>
+      ${r.motivo?`<div style="margin-top:10px;padding-top:10px;border-top:1px solid #f1f5f9;"><div style="font-size:10px;color:#94a3b8;font-weight:700;margin-bottom:4px;">MOTIVO</div><div style="font-size:12px;">${r.motivo}</div></div>`:''}
+      ${r.danos?`<div style="margin-top:10px;padding-top:10px;border-top:1px solid #f1f5f9;"><div style="font-size:10px;color:#94a3b8;font-weight:700;margin-bottom:4px;">DAÑOS / INSPECCIÓN</div><div style="font-size:12px;">${r.danos}</div></div>`:''}
+    </div>
+
+    <div style="background:#fff;border-radius:14px;padding:14px;margin-bottom:12px;border:1px solid #e2e8f0;">
+      <div style="font-size:10px;font-weight:700;color:#94a3b8;margin-bottom:10px;">CAMBIAR ESTATUS</div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        ${['Pendiente autorización','Autorizada','Rechazada','En taller','Cerrada'].map(st=>`
+          <button onclick="appFlCambiarEstatus('${r.id}','${st}')" style="padding:10px;border-radius:10px;border:2px solid ${r.estatus===st?c:'#e2e8f0'};background:${r.estatus===st?c+'15':'#fff'};color:${r.estatus===st?c:'#64748b'};font-size:12px;font-weight:700;cursor:pointer;text-align:left;">${st}</button>`).join('')}
+      </div>
+    </div>
+
+    <button onclick="abrirFlotillaAppForm('${r.id}')" style="width:100%;padding:13px;border-radius:12px;background:#f1f5f9;border:none;font-size:13px;font-weight:700;color:#475569;cursor:pointer;margin-bottom:80px;">✏️ Editar solicitud</button>
+  `;
+  showPage('flotilla-detalle');
+};
+
+window.appFlCambiarEstatus = async function(id, nuevoEstatus){
+  if(nuevoEstatus==='Cerrada'){
+    const r=appFlRegs.find(x=>x.id===id);
+    if(!r?.facturaFinal){
+      alert('⚠️ No puedes cerrar sin adjuntar la factura final.');
+      return;
+    }
+  }
+  try{
+    const{db,fs}=await getFB();
+    await fs.updateDoc(fs.doc(db,'flotilla_solicitudes',id),{estatus:nuevoEstatus,actualizadoEn:new Date().toISOString()});
+    await cargarFlotillaApp();
+    verFlotillaApp(id);
+  } catch(e){ alert('Error: '+e.message); }
+};
+
+console.log('[FLOTILLA APP] ✅ Módulo cargado v1.0');
+})();
+</script>
+
+
+</body></body>
 </html>
