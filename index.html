@@ -13874,270 +13874,644 @@ console.log('VENTAS PORTAL v2 cargado ✅ — diseño basado en la app');
 
 
 <!-- ══════════════════════════════════════════════
-     FLOTILLA DASHBOARD  
+     FLOTILLA VEHICULAR — Vista Kanban + Panel
 ══════════════════════════════════════════════ -->
 <div id="flotilla-dashboard" style="display:none;margin-bottom:28px;">
-  <div class="rh-dash-card" style="border-left:4px solid #059669;">
-    <div class="rh-dash-title">🚛 Flotilla Vehicular
-      <div style="display:flex;gap:8px;align-items:center;">
-        <button class="rh-mes-btn" onclick="flotillaMesPrev()">‹</button>
-        <span class="rh-mes-label" id="flotilla-mes-label"></span>
-        <button class="rh-mes-btn" onclick="flotillaMesNext()">›</button>
-      </div>
-      <button class="mkt-add-btn" onclick="abrirFlotillaForm()" style="background:linear-gradient(135deg,#059669,#047857);">🚗 Nueva Solicitud</button>
+
+  <!-- HEADER BAR -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+    <div>
+      <div style="font-size:20px;font-weight:800;color:#1e293b;">🚛 Flotilla Vehicular</div>
+      <div style="font-size:12px;color:#64748b;margin-top:2px;">Gestión de solicitudes de mantenimiento y reparación</div>
     </div>
-    <div class="rh-kpi-grid" style="grid-template-columns:repeat(4,1fr);">
-      <div class="rh-kpi-box"><div class="rh-kpi-val" id="fl-kpi-total">—</div><div class="rh-kpi-label">Solicitudes</div></div>
-      <div class="rh-kpi-box"><div class="rh-kpi-val" id="fl-kpi-pendientes">—</div><div class="rh-kpi-label">Pendientes</div></div>
-      <div class="rh-kpi-box"><div class="rh-kpi-val" id="fl-kpi-autorizadas">—</div><div class="rh-kpi-label">Autorizadas</div></div>
-      <div class="rh-kpi-box"><div class="rh-kpi-val" id="fl-kpi-cerradas">—</div><div class="rh-kpi-label">Cerradas</div></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+      <div style="display:flex;gap:4px;">
+        <button onclick="flSetVista('kanban')" id="fl-btn-kanban" style="padding:7px 14px;border-radius:8px;border:none;background:#2563eb;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">⬜ Kanban</button>
+        <button onclick="flSetVista('lista')" id="fl-btn-lista" style="padding:7px 14px;border-radius:8px;border:1.5px solid #e2e8f0;background:#fff;color:#475569;font-size:12px;font-weight:700;cursor:pointer;">☰ Lista</button>
+      </div>
+      <select id="fl-filtro-mes" onchange="cargarFlotilla()" style="padding:7px 12px;border-radius:8px;border:1.5px solid #e2e8f0;font-size:12px;color:#475569;background:#fff;"></select>
+      <button onclick="abrirFlotillaForm()" style="padding:8px 16px;border-radius:10px;background:linear-gradient(135deg,#059669,#047857);border:none;color:#fff;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(5,150,105,0.3);">＋ Nueva Solicitud</button>
     </div>
   </div>
 
-  <!-- Lista de solicitudes -->
-  <div id="flotilla-lista-wrap" style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;overflow:hidden;margin-top:8px;">
-    <div style="padding:14px 16px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;">
-      <span style="font-weight:700;font-size:13px;color:#1e293b;">📋 Solicitudes del mes</span>
-      <select id="fl-filtro-estatus" onchange="flotillaFiltrar()" style="font-size:11px;padding:4px 8px;border-radius:8px;border:1px solid #e2e8f0;color:#475569;">
-        <option value="">Todos</option>
-        <option value="Pendiente autorización">Pendiente auth.</option>
-        <option value="Autorizada">Autorizada</option>
-        <option value="Rechazada">Rechazada</option>
-        <option value="En taller">En taller</option>
-        <option value="Cerrada">Cerrada</option>
+  <!-- KPI STRIP -->
+  <div style="display:flex;gap:10px;margin-bottom:16px;overflow-x:auto;padding-bottom:4px;">
+    <div style="flex:1;min-width:120px;background:#fff;border-radius:12px;padding:12px 16px;border:1px solid #e2e8f0;border-left:4px solid #94a3b8;">
+      <div id="fl-k-total" style="font-size:24px;font-weight:800;color:#1e293b;">—</div>
+      <div style="font-size:10px;color:#94a3b8;font-weight:700;margin-top:2px;">TOTAL</div>
+    </div>
+    <div style="flex:1;min-width:120px;background:#fff;border-radius:12px;padding:12px 16px;border:1px solid #e2e8f0;border-left:4px solid #f59e0b;">
+      <div id="fl-k-pend" style="font-size:24px;font-weight:800;color:#f59e0b;">—</div>
+      <div style="font-size:10px;color:#94a3b8;font-weight:700;margin-top:2px;">PENDIENTES</div>
+    </div>
+    <div style="flex:1;min-width:120px;background:#fff;border-radius:12px;padding:12px 16px;border:1px solid #e2e8f0;border-left:4px solid #3b82f6;">
+      <div id="fl-k-aut" style="font-size:24px;font-weight:800;color:#3b82f6;">—</div>
+      <div style="font-size:10px;color:#94a3b8;font-weight:700;margin-top:2px;">AUTORIZADAS</div>
+    </div>
+    <div style="flex:1;min-width:120px;background:#fff;border-radius:12px;padding:12px 16px;border:1px solid #e2e8f0;border-left:4px solid #8b5cf6;">
+      <div id="fl-k-taller" style="font-size:24px;font-weight:800;color:#8b5cf6;">—</div>
+      <div style="font-size:10px;color:#94a3b8;font-weight:700;margin-top:2px;">EN TALLER</div>
+    </div>
+    <div style="flex:1;min-width:120px;background:#fff;border-radius:12px;padding:12px 16px;border:1px solid #e2e8f0;border-left:4px solid #22c55e;">
+      <div id="fl-k-cerradas" style="font-size:24px;font-weight:800;color:#22c55e;">—</div>
+      <div style="font-size:10px;color:#94a3b8;font-weight:700;margin-top:2px;">CERRADAS</div>
+    </div>
+  </div>
+
+  <!-- KANBAN VIEW -->
+  <div id="fl-vista-kanban" style="display:flex;gap:12px;overflow-x:auto;padding-bottom:12px;align-items:flex-start;">
+  </div>
+
+  <!-- LISTA VIEW -->
+  <div id="fl-vista-lista" style="display:none;background:#fff;border-radius:14px;border:1px solid #e2e8f0;overflow:hidden;">
+    <div style="padding:12px 16px;border-bottom:1px solid #f1f5f9;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      <input id="fl-search" oninput="flRenderLista()" placeholder="🔍 Buscar vehículo, motivo, taller..." style="flex:1;min-width:200px;padding:8px 12px;border-radius:8px;border:1.5px solid #e2e8f0;font-size:12px;">
+      <select id="fl-fil-estatus" onchange="flRenderLista()" style="padding:8px 12px;border-radius:8px;border:1.5px solid #e2e8f0;font-size:12px;color:#475569;">
+        <option value="">Todos los estatus</option>
+        <option>Pendiente autorización</option>
+        <option>Autorizada</option>
+        <option>Rechazada</option>
+        <option>En taller</option>
+        <option>Pagos</option>
+        <option>Cerrada</option>
       </select>
     </div>
-    <div id="flotilla-lista" style="max-height:400px;overflow-y:auto;"></div>
+    <div id="fl-lista-body"></div>
   </div>
 
-  <!-- Form inline -->
-  <div id="flotilla-inline-form" style="display:none;background:#fff;border-radius:16px;border:2px solid #059669;padding:20px;margin:12px 0;box-shadow:0 4px 20px rgba(5,150,105,0.12);animation:slideDown 0.2s ease;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-      <span id="flotilla-form-titulo" style="font-weight:800;font-size:15px;color:#059669;">🚗 Nueva Solicitud de Flotilla</span>
-      <button onclick="cerrarFlotillaForm()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#94a3b8;">✕</button>
-    </div>
-    <div id="flotilla-form-content"></div>
-    <div style="display:flex;gap:10px;margin-top:16px;">
-      <button onclick="cerrarFlotillaForm()" style="flex:1;padding:11px;background:#f1f5f9;border:none;border-radius:10px;color:#475569;font-weight:700;cursor:pointer;font-size:13px;">Cancelar</button>
-      <button onclick="guardarFlotillaSolicitud()" id="flotilla-btn-guardar" style="flex:2;padding:11px;background:linear-gradient(135deg,#059669,#047857);border:none;border-radius:10px;color:#fff;font-weight:700;cursor:pointer;font-size:13px;">💾 Guardar Solicitud</button>
-    </div>
+  <!-- PANEL LATERAL DETALLE (Jira-style) -->
+  <div id="fl-panel-overlay" onclick="cerrarFlPanel()" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,0.4);z-index:1000;"></div>
+  <div id="fl-panel" style="display:none;position:fixed;top:0;right:0;width:520px;max-width:95vw;height:100vh;background:#fff;z-index:1001;box-shadow:-4px 0 30px rgba(0,0,0,0.15);overflow-y:auto;transition:transform 0.25s ease;">
+    <div id="fl-panel-content"></div>
   </div>
 
-  <!-- Detalle de solicitud -->
-  <div id="flotilla-detalle-wrap" style="display:none;background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:20px;margin-top:12px;"></div>
+  <!-- FORM MODAL -->
+  <div id="fl-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,0.5);z-index:1100;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;">
+    <div style="background:#fff;border-radius:20px;width:100%;max-width:720px;box-shadow:0 20px 60px rgba(0,0,0,0.2);margin:auto;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;background:linear-gradient(135deg,#059669,#047857);border-radius:20px 20px 0 0;">
+        <div id="fl-modal-titulo" style="font-size:16px;font-weight:800;color:#fff;">🚗 Nueva Solicitud de Flotilla</div>
+        <button onclick="cerrarFlModal()" style="background:rgba(255,255,255,0.2);border:none;border-radius:8px;width:32px;height:32px;color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;">✕</button>
+      </div>
+      <div id="fl-modal-body" style="padding:24px;"></div>
+      <div style="padding:16px 24px;border-top:1px solid #f1f5f9;display:flex;gap:10px;">
+        <button onclick="cerrarFlModal()" style="flex:1;padding:12px;background:#f1f5f9;border:none;border-radius:10px;color:#475569;font-weight:700;cursor:pointer;font-size:13px;">Cancelar</button>
+        <button onclick="guardarFlotillaSolicitud()" id="fl-btn-save" style="flex:2;padding:12px;background:linear-gradient(135deg,#059669,#047857);border:none;border-radius:10px;color:#fff;font-weight:700;cursor:pointer;font-size:13px;">💾 Guardar Solicitud</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
 // ══════════════════════════════════════════════════════════════
-// MÓDULO FLOTILLA VEHICULAR v1.0
+// MÓDULO FLOTILLA VEHICULAR v2.0 — Kanban + Panel Jira-style
 // ══════════════════════════════════════════════════════════════
 (function(){
 'use strict';
 
-let flMes = new Date().getMonth();
-let flAnio = new Date().getFullYear();
+// ── ESTADO ──────────────────────────────────────────────────
 let flRegs = [];
 let flEditId = null;
+let flVista = 'kanban';
+const now = new Date();
+let flMes = now.getMonth();
+let flAnio = now.getFullYear();
+
 const MESES_FL = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
-const VEHICULOS_TECNO = [
-  {num:'VH-001', marca:'Toyota', modelo:'Hilux', placas:'CHH-001-A'},
-  {num:'VH-002', marca:'Nissan', modelo:'NP300', placas:'CHH-002-B'},
-  {num:'VH-003', marca:'Ford',   modelo:'F-150',  placas:'CHH-003-C'},
-  {num:'VH-004', marca:'Chevrolet', modelo:'Silverado', placas:'CHH-004-D'},
-  {num:'VH-005', marca:'Volkswagen', modelo:'Crafter', placas:'CHH-005-E'},
+const FL_FLUJO = [
+  { id:'Pendiente autorización', label:'Pendiente Auth.', color:'#f59e0b', bg:'#fffbeb', icon:'⏳' },
+  { id:'Autorizada',             label:'Autorizada',      color:'#3b82f6', bg:'#eff6ff', icon:'✅' },
+  { id:'Rechazada',              label:'Rechazada',       color:'#ef4444', bg:'#fef2f2', icon:'❌' },
+  { id:'En taller',              label:'En Taller',       color:'#8b5cf6', bg:'#f5f3ff', icon:'🔧' },
+  { id:'Pagos',                  label:'Pagos',           color:'#0891b2', bg:'#ecfeff', icon:'💳' },
+  { id:'Cerrada',                label:'Cerrada',         color:'#22c55e', bg:'#f0fdf4', icon:'🏁' },
 ];
 
+const VEHICULOS_TECNO = [
+  {num:'VH-001', marca:'Toyota',     modelo:'Hilux',     placas:'CHH-001-A', foto:'🚙'},
+  {num:'VH-002', marca:'Nissan',     modelo:'NP300',     placas:'CHH-002-B', foto:'🚗'},
+  {num:'VH-003', marca:'Ford',       modelo:'F-150',     placas:'CHH-003-C', foto:'🛻'},
+  {num:'VH-004', marca:'Chevrolet',  modelo:'Silverado', placas:'CHH-004-D', foto:'🚚'},
+  {num:'VH-005', marca:'Volkswagen', modelo:'Crafter',   placas:'CHH-005-E', foto:'🚐'},
+];
+
+const FL_COLS = { 'Pendiente autorización':'#f59e0b','Autorizada':'#3b82f6','Rechazada':'#ef4444','En taller':'#8b5cf6','Pagos':'#0891b2','Cerrada':'#22c55e' };
+
+// ── FIREBASE ────────────────────────────────────────────────
 async function getFB(){
-  const a=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
-  const f=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-  const au=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
-  const app=a.getApps()[0];
-  return {db:f.getFirestore(app),auth:au.getAuth(app),fs:f};
+  const a  = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+  const f  = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+  const au = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+  const app = a.getApps()[0];
+  return { db: f.getFirestore(app), auth: au.getAuth(app), fs: f };
 }
 
-function flKey(){ return `${flAnio}-${String(flMes+1).padStart(2,'0')}`; }
-
-function actualizarLabelFL(){
-  const el=document.getElementById('flotilla-mes-label');
-  if(el) el.innerText=`${MESES_FL[flMes]} ${flAnio}`;
-}
-
-window.flotillaMesPrev=()=>{ flMes--; if(flMes<0){flMes=11;flAnio--;} actualizarLabelFL(); cargarFlotilla(); };
-window.flotillaMesNext=()=>{ flMes++; if(flMes>11){flMes=0;flAnio++;} actualizarLabelFL(); cargarFlotilla(); };
-
-async function cargarFlotilla(){
-  const key=flKey();
-  try{
-    const{db,fs}=await getFB();
-    const snap=await fs.getDocs(fs.query(fs.collection(db,'flotilla_solicitudes'),fs.where('mesKey','==',key)));
-    flRegs=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.fechaSolicitud||'').localeCompare(a.fechaSolicitud||''));
-    calcFlKPIs();
-    flotillaFiltrar();
-  } catch(e){
-    console.warn('[FLOTILLA]',e.message);
-    flRegs=[];
-    calcFlKPIs();
-    flotillaFiltrar();
+// ── INICIALIZAR SELECT DE MES ────────────────────────────────
+function initFlMesSelect(){
+  const sel = document.getElementById('fl-filtro-mes');
+  if(!sel || sel.options.length > 0) return;
+  for(let i=0; i<12; i++){
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.text  = MESES_FL[i] + ' ' + flAnio;
+    if(i === flMes) opt.selected = true;
+    sel.appendChild(opt);
   }
+  sel.addEventListener('change', () => { flMes = parseInt(sel.value); cargarFlotilla(); });
 }
 
-function calcFlKPIs(){
-  const s=(id,v)=>{const el=document.getElementById(id);if(el)el.innerText=v;};
-  s('fl-kpi-total', flRegs.length||'0');
-  s('fl-kpi-pendientes', flRegs.filter(r=>r.estatus==='Pendiente autorización').length||'0');
-  s('fl-kpi-autorizadas', flRegs.filter(r=>r.estatus==='Autorizada'||r.estatus==='En taller').length||'0');
-  s('fl-kpi-cerradas', flRegs.filter(r=>r.estatus==='Cerrada').length||'0');
-}
-
-window.flotillaFiltrar=function(){
-  const fil=document.getElementById('fl-filtro-estatus')?.value||'';
-  const data=fil?flRegs.filter(r=>r.estatus===fil):flRegs;
-  renderFlotillaLista(data);
+// ── CARGA DATOS ──────────────────────────────────────────────
+window.cargarFlotilla = async function(){
+  const key = `${flAnio}-${String(flMes+1).padStart(2,'0')}`;
+  try{
+    const { db, fs } = await getFB();
+    const snap = await fs.getDocs(fs.query(
+      fs.collection(db,'flotilla_solicitudes'),
+      fs.where('mesKey','==',key)
+    ));
+    flRegs = snap.docs.map(d=>({id:d.id,...d.data()}))
+      .sort((a,b)=>(b.fechaSolicitud||'').localeCompare(a.fechaSolicitud||''));
+  } catch(e){
+    console.warn('[FL v2]', e.message);
+    flRegs = [];
+  }
+  flUpdateKPIs();
+  if(flVista === 'kanban') flRenderKanban();
+  else flRenderLista();
 };
 
-function renderFlotillaLista(data){
-  const el=document.getElementById('flotilla-lista');
-  if(!el) return;
-  if(!data.length){
-    el.innerHTML='<div style="padding:24px;text-align:center;color:#94a3b8;font-size:13px;">Sin solicitudes en este período</div>';
-    return;
-  }
-  const estatusColor={'Pendiente autorización':'#f59e0b','Autorizada':'#3b82f6','Rechazada':'#ef4444','En taller':'#8b5cf6','Cerrada':'#22c55e'};
-  el.innerHTML=data.map(r=>`
-    <div style="padding:12px 16px;border-bottom:1px solid #f8fafc;cursor:pointer;transition:background 0.15s;" 
-         onmouseenter="this.style.background='#f8fafc'" onmouseleave="this.style.background=''" 
-         onclick="verFlotillaSolicitud('${r.id}')">
-      <div style="display:flex;align-items:flex-start;gap:10px;">
-        <div style="width:36px;height:36px;border-radius:10px;background:${(estatusColor[r.estatus]||'#94a3b8')}20;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">🚗</div>
-        <div style="flex:1;min-width:0;">
-          <div style="font-weight:700;font-size:13px;color:#1e293b;">${r.vehiculoNum||'—'} · ${r.vehiculoMarca||''} ${r.vehiculoModelo||''}</div>
-          <div style="font-size:11px;color:#64748b;margin-top:2px;">${r.motivo||'Sin motivo'}</div>
-          <div style="display:flex;gap:6px;margin-top:5px;flex-wrap:wrap;align-items:center;">
-            <span style="font-size:10px;padding:2px 8px;border-radius:10px;background:${(estatusColor[r.estatus]||'#94a3b8')}20;color:${(estatusColor[r.estatus]||'#94a3b8')};font-weight:700;">${r.estatus||'Pendiente'}</span>
-            <span style="font-size:10px;color:#94a3b8;">📅 ${r.fechaSolicitud||'—'}</span>
-            <span style="font-size:10px;color:#94a3b8;">👤 ${(r.solicitadoPor||'').split(' ').slice(0,2).join(' ')}</span>
-          </div>
-        </div>
-        <div style="font-size:18px;color:#94a3b8;">›</div>
-      </div>
-    </div>`).join('');
+// ── KPIs ─────────────────────────────────────────────────────
+function flUpdateKPIs(){
+  const s = (id,v) => { const el=document.getElementById(id); if(el) el.innerText=v; };
+  s('fl-k-total',   flRegs.length||'0');
+  s('fl-k-pend',    flRegs.filter(r=>r.estatus==='Pendiente autorización').length||'0');
+  s('fl-k-aut',     flRegs.filter(r=>r.estatus==='Autorizada').length||'0');
+  s('fl-k-taller',  flRegs.filter(r=>r.estatus==='En taller').length||'0');
+  s('fl-k-cerradas',flRegs.filter(r=>r.estatus==='Cerrada').length||'0');
 }
 
-window.abrirFlotillaForm=function(id=null){
-  flEditId=id;
-  const wrap=document.getElementById('flotilla-inline-form');
-  const tit=document.getElementById('flotilla-form-titulo');
+// ── KANBAN ───────────────────────────────────────────────────
+function flRenderKanban(){
+  const wrap = document.getElementById('fl-vista-kanban');
   if(!wrap) return;
-  wrap.style.display='block';
-  const r=id?flRegs.find(x=>x.id===id):{};
-  if(tit) tit.innerText=id?'✏️ Editar Solicitud':'🚗 Nueva Solicitud de Flotilla';
+  wrap.innerHTML = FL_FLUJO.map(col => {
+    const cards = flRegs.filter(r => r.estatus === col.id);
+    return `
+    <div style="flex:0 0 260px;background:#f8fafc;border-radius:14px;overflow:hidden;border:1px solid #e2e8f0;">
+      <div style="padding:12px 14px;background:${col.bg};border-bottom:2px solid ${col.color};display:flex;align-items:center;justify-content:space-between;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="font-size:14px;">${col.icon}</span>
+          <span style="font-size:12px;font-weight:800;color:${col.color};">${col.label}</span>
+        </div>
+        <span style="background:${col.color};color:#fff;font-size:10px;font-weight:800;padding:2px 8px;border-radius:10px;">${cards.length}</span>
+      </div>
+      <div style="padding:10px;display:flex;flex-direction:column;gap:8px;min-height:100px;max-height:600px;overflow-y:auto;">
+        ${cards.length ? cards.map(r => flKanbanCard(r, col)).join('') : `<div style="padding:16px;text-align:center;color:#cbd5e1;font-size:11px;">Sin solicitudes</div>`}
+        ${col.id === 'Pendiente autorización' ? `<button onclick="abrirFlotillaForm()" style="width:100%;padding:8px;border:1.5px dashed #cbd5e1;border-radius:10px;background:none;color:#94a3b8;font-size:11px;font-weight:600;cursor:pointer;">＋ Nueva</button>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
 
-  const vOpts=VEHICULOS_TECNO.map(v=>`<option value="${v.num}" data-marca="${v.marca}" data-modelo="${v.modelo}" data-placas="${v.placas}" ${r.vehiculoNum===v.num?'selected':''}>${v.num} · ${v.marca} ${v.modelo} (${v.placas})</option>`).join('');
-  const empOpts=(window.EMPLEADOS_TECNOCONTROL||[]).map(e=>`<option ${r.solicitadoPor===e?'selected':''}>${e}</option>`).join('');
+function flKanbanCard(r, col){
+  const veh = VEHICULOS_TECNO.find(v=>v.num===r.vehiculoNum)||{foto:'🚗'};
+  return `
+  <div onclick="verFlotillaSolicitud('${r.id}')" style="background:#fff;border-radius:10px;padding:12px;border:1px solid #e8eef7;cursor:pointer;transition:box-shadow 0.15s;box-shadow:0 1px 3px rgba(0,0,0,0.04);" 
+       onmouseenter="this.style.boxShadow='0 4px 12px rgba(0,0,0,0.1)'" onmouseleave="this.style.boxShadow='0 1px 3px rgba(0,0,0,0.04)'">
+    <div style="display:flex;align-items:flex-start;gap:8px;">
+      <div style="width:36px;height:36px;border-radius:10px;background:${col.bg};display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">${veh.foto}</div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:700;font-size:12px;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.vehiculoNum||'—'} · ${r.vehiculoMarca||''} ${r.vehiculoModelo||''}</div>
+        <div style="font-size:10px;color:#64748b;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.motivo||'Sin motivo'}</div>
+      </div>
+    </div>
+    <div style="margin-top:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px;">
+      <span style="font-size:9px;color:#94a3b8;">📅 ${r.fechaSolicitud||'—'}</span>
+      <span style="font-size:9px;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;max-width:120px;">${(r.solicitadoPor||'').split(' ').slice(0,2).join(' ')}</span>
+    </div>
+    ${r.taller ? `<div style="margin-top:6px;font-size:9px;color:#8b5cf6;font-weight:600;">🔧 ${r.taller}</div>` : ''}
+  </div>`;
+}
 
-  document.getElementById('flotilla-form-content').innerHTML=`
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-      <div class="form-group-rh" style="grid-column:1/-1;">
-        <label class="form-label-rh">Motivo de la solicitud *</label>
-        <textarea id="fl-motivo" rows="2" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid #e2e8f0;font-size:13px;resize:none;" placeholder="Describe el motivo...">${r.motivo||''}</textarea>
-      </div>
-      <div class="form-group-rh">
-        <label class="form-label-rh">Fecha de solicitud *</label>
-        <input type="date" id="fl-fecha" value="${r.fechaSolicitud||new Date().toISOString().slice(0,10)}" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid #e2e8f0;font-size:13px;">
-      </div>
-      <div class="form-group-rh">
-        <label class="form-label-rh">Solicitado por *</label>
-        <select id="fl-solicitante" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid #e2e8f0;font-size:13px;">
-          <option value="">— Seleccionar —</option>${empOpts}
-        </select>
-      </div>
-      <div class="form-group-rh" style="grid-column:1/-1;">
-        <label class="form-label-rh">Vehículo *</label>
-        <select id="fl-vehiculo" onchange="flAutoFillVehiculo(this)" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid #e2e8f0;font-size:13px;">
-          <option value="">— Seleccionar vehículo —</option>${vOpts}
-        </select>
-      </div>
-      <div class="form-group-rh">
-        <label class="form-label-rh">Marca</label>
-        <input type="text" id="fl-marca" value="${r.vehiculoMarca||''}" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid #e2e8f0;font-size:13px;" placeholder="Marca">
-      </div>
-      <div class="form-group-rh">
-        <label class="form-label-rh">Modelo</label>
-        <input type="text" id="fl-modelo" value="${r.vehiculoModelo||''}" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid #e2e8f0;font-size:13px;" placeholder="Modelo">
-      </div>
-      <div class="form-group-rh">
-        <label class="form-label-rh">Placas</label>
-        <input type="text" id="fl-placas" value="${r.placas||''}" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid #e2e8f0;font-size:13px;" placeholder="Placas">
-      </div>
-      <div class="form-group-rh">
-        <label class="form-label-rh">Kilometraje</label>
-        <input type="number" id="fl-km" value="${r.kilometraje||''}" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid #e2e8f0;font-size:13px;" placeholder="km">
-      </div>
-      <div class="form-group-rh">
-        <label class="form-label-rh">Número de serie</label>
-        <input type="text" id="fl-serie" value="${r.numSerie||''}" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid #e2e8f0;font-size:13px;" placeholder="VIN / No. serie">
-      </div>
-      <div class="form-group-rh">
-        <label class="form-label-rh">Técnico / Chofer asignado</label>
-        <input type="text" id="fl-chofer" value="${r.chofer||''}" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid #e2e8f0;font-size:13px;" placeholder="Nombre">
-      </div>
+// ── LISTA VIEW ───────────────────────────────────────────────
+window.flRenderLista = function(){
+  const search = (document.getElementById('fl-search')?.value||'').toLowerCase();
+  const fil    = document.getElementById('fl-fil-estatus')?.value||'';
+  const el = document.getElementById('fl-lista-body');
+  if(!el) return;
+  const data = flRegs.filter(r => {
+    const matchSt = !fil || r.estatus === fil;
+    const matchSr = !search || (r.vehiculoNum+r.vehiculoMarca+r.vehiculoModelo+r.motivo+r.taller+r.solicitadoPor).toLowerCase().includes(search);
+    return matchSt && matchSr;
+  });
+  if(!data.length){
+    el.innerHTML = '<div style="padding:32px;text-align:center;color:#94a3b8;font-size:13px;">Sin resultados</div>';
+    return;
+  }
+  el.innerHTML = `
+  <table style="width:100%;border-collapse:collapse;">
+    <thead>
+      <tr style="background:#f8fafc;">
+        <th style="padding:10px 16px;text-align:left;font-size:10px;font-weight:700;color:#94a3b8;border-bottom:1px solid #f1f5f9;">VEHÍCULO</th>
+        <th style="padding:10px 16px;text-align:left;font-size:10px;font-weight:700;color:#94a3b8;border-bottom:1px solid #f1f5f9;">MOTIVO</th>
+        <th style="padding:10px 16px;text-align:left;font-size:10px;font-weight:700;color:#94a3b8;border-bottom:1px solid #f1f5f9;">ESTATUS</th>
+        <th style="padding:10px 16px;text-align:left;font-size:10px;font-weight:700;color:#94a3b8;border-bottom:1px solid #f1f5f9;">SOLICITANTE</th>
+        <th style="padding:10px 16px;text-align:left;font-size:10px;font-weight:700;color:#94a3b8;border-bottom:1px solid #f1f5f9;">TALLER</th>
+        <th style="padding:10px 16px;text-align:left;font-size:10px;font-weight:700;color:#94a3b8;border-bottom:1px solid #f1f5f9;">FECHA</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${data.map(r=>{
+        const col = FL_COLS[r.estatus]||'#94a3b8';
+        const veh = VEHICULOS_TECNO.find(v=>v.num===r.vehiculoNum)||{foto:'🚗'};
+        return `<tr onclick="verFlotillaSolicitud('${r.id}')" style="cursor:pointer;border-bottom:1px solid #f8fafc;" onmouseenter="this.style.background='#f8fafc'" onmouseleave="this.style.background=''">
+          <td style="padding:12px 16px;font-size:12px;font-weight:700;color:#1e293b;">${veh.foto} ${r.vehiculoNum||'—'}<br><span style="font-weight:400;color:#64748b;font-size:10px;">${r.vehiculoMarca||''} ${r.vehiculoModelo||''} · ${r.placas||''}</span></td>
+          <td style="padding:12px 16px;font-size:12px;color:#475569;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.motivo||'—'}</td>
+          <td style="padding:12px 16px;"><span style="padding:3px 10px;border-radius:10px;background:${col}20;color:${col};font-size:10px;font-weight:700;">${r.estatus||'—'}</span></td>
+          <td style="padding:12px 16px;font-size:11px;color:#64748b;">${(r.solicitadoPor||'—').split(' ').slice(0,2).join(' ')}</td>
+          <td style="padding:12px 16px;font-size:11px;color:#64748b;">${r.taller||'—'}</td>
+          <td style="padding:12px 16px;font-size:11px;color:#94a3b8;">${r.fechaSolicitud||'—'}</td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table>`;
+};
 
-      <!-- Nivel de combustible -->
-      <div class="form-group-rh" style="grid-column:1/-1;">
-        <label class="form-label-rh">Nivel de combustible</label>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          ${['Vacío','1/4','Medio','3/4','Lleno'].map(n=>`
-            <label style="cursor:pointer;">
-              <input type="radio" name="fl-combustible" value="${n}" ${(r.combustible||'Medio')===n?'checked':''} style="display:none;">
-              <span class="fl-fuel-btn" style="display:inline-block;padding:7px 14px;border-radius:20px;border:2px solid ${(r.combustible||'Medio')===n?'#059669':'#e2e8f0'};background:${(r.combustible||'Medio')===n?'#ecfdf5':'#f8fafc'};color:${(r.combustible||'Medio')===n?'#059669':'#64748b'};font-size:12px;font-weight:600;transition:all 0.15s;">${n === 'Vacío'?'⬜':n==='1/4'?'🟥':n==='Medio'?'🟨':n==='3/4'?'🟧':'🟩'} ${n}</span>
-            </label>`).join('')}
+// ── CAMBIO VISTA ─────────────────────────────────────────────
+window.flSetVista = function(v){
+  flVista = v;
+  const kanban = document.getElementById('fl-vista-kanban');
+  const lista  = document.getElementById('fl-vista-lista');
+  const bk = document.getElementById('fl-btn-kanban');
+  const bl = document.getElementById('fl-btn-lista');
+  if(!kanban || !lista) return;
+  if(v === 'kanban'){
+    kanban.style.display = 'flex';
+    lista.style.display  = 'none';
+    if(bk){ bk.style.background='#2563eb'; bk.style.color='#fff'; bk.style.border='none'; }
+    if(bl){ bl.style.background='#fff'; bl.style.color='#475569'; bl.style.border='1.5px solid #e2e8f0'; }
+    flRenderKanban();
+  } else {
+    kanban.style.display = 'none';
+    lista.style.display  = 'block';
+    if(bl){ bl.style.background='#2563eb'; bl.style.color='#fff'; bl.style.border='none'; }
+    if(bk){ bk.style.background='#fff'; bk.style.color='#475569'; bk.style.border='1.5px solid #e2e8f0'; }
+    flRenderLista();
+  }
+};
+
+// ── PANEL DETALLE (Jira-style) ───────────────────────────────
+window.verFlotillaSolicitud = function(id){
+  const r = flRegs.find(x=>x.id===id);
+  if(!r) return;
+  const col = FL_COLS[r.estatus]||'#94a3b8';
+  const pasoActual = FL_FLUJO.findIndex(f=>f.id===r.estatus);
+  const veh = VEHICULOS_TECNO.find(v=>v.num===r.vehiculoNum)||{foto:'🚗',marca:'',modelo:'',placas:''};
+
+  const panel = document.getElementById('fl-panel');
+  const overlay = document.getElementById('fl-panel-overlay');
+  const content = document.getElementById('fl-panel-content');
+  if(!panel || !content) return;
+
+  content.innerHTML = `
+    <!-- PANEL HEADER -->
+    <div style="padding:20px 24px;border-bottom:1px solid #f1f5f9;background:linear-gradient(135deg,#059669,#047857);position:sticky;top:0;z-index:10;">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="width:42px;height:42px;border-radius:12px;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;font-size:24px;">${veh.foto}</div>
+          <div>
+            <div style="font-size:15px;font-weight:800;color:#fff;">${r.vehiculoNum||'—'} · ${r.vehiculoMarca||''} ${r.vehiculoModelo||''}</div>
+            <div style="font-size:11px;color:rgba(255,255,255,0.75);margin-top:2px;">${r.placas||''} · ${r.fechaSolicitud||''}</div>
+          </div>
+        </div>
+        <button onclick="cerrarFlPanel()" style="background:rgba(255,255,255,0.2);border:none;border-radius:8px;width:32px;height:32px;color:#fff;font-size:16px;cursor:pointer;">✕</button>
+      </div>
+      <!-- Estatus badge -->
+      <div style="margin-top:12px;">
+        <span style="background:rgba(255,255,255,0.2);color:#fff;font-size:11px;font-weight:700;padding:4px 14px;border-radius:20px;">${r.estatus||'—'}</span>
+      </div>
+    </div>
+
+    <!-- FLUJO VISUAL -->
+    <div style="padding:16px 24px;border-bottom:1px solid #f1f5f9;background:#fafbfc;">
+      <div style="font-size:10px;font-weight:700;color:#94a3b8;margin-bottom:10px;">FLUJO DE APROBACIÓN</div>
+      <div style="display:flex;align-items:center;overflow-x:auto;gap:0;">
+        ${FL_FLUJO.filter(f=>f.id!=='Rechazada').map((paso,i,arr)=>{
+          const activo = FL_FLUJO.findIndex(f=>f.id===r.estatus) >= FL_FLUJO.findIndex(f=>f.id===paso.id);
+          return `
+          <div style="display:flex;align-items:center;">
+            <div style="text-align:center;min-width:72px;">
+              <div style="width:30px;height:30px;border-radius:50%;background:${activo?paso.color:'#e2e8f0'};color:${activo?'#fff':'#94a3b8'};display:flex;align-items:center;justify-content:center;font-size:13px;margin:0 auto;">${paso.icon}</div>
+              <div style="font-size:8px;color:${activo?paso.color:'#94a3b8'};margin-top:3px;font-weight:600;white-space:nowrap;">${paso.label}</div>
+            </div>
+            ${i<arr.length-1?`<div style="height:2px;width:20px;background:${activo?paso.color:'#e2e8f0'};flex-shrink:0;margin-bottom:14px;"></div>`:''}
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+
+    <!-- CAMBIAR ESTATUS -->
+    <div style="padding:16px 24px;border-bottom:1px solid #f1f5f9;">
+      <div style="font-size:10px;font-weight:700;color:#94a3b8;margin-bottom:10px;">MOVER A</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        ${FL_FLUJO.map(f=>`
+          <button onclick="flCambiarEstatus('${r.id}','${f.id}')" 
+            style="padding:6px 14px;border-radius:20px;border:2px solid ${r.estatus===f.id?f.color:'#e2e8f0'};background:${r.estatus===f.id?f.color+'15':'#fff'};color:${r.estatus===f.id?f.color:'#64748b'};font-size:11px;font-weight:700;cursor:pointer;">
+            ${f.icon} ${f.label}
+          </button>`).join('')}
+      </div>
+    </div>
+
+    <!-- DATOS GENERALES -->
+    <div style="padding:16px 24px;border-bottom:1px solid #f1f5f9;">
+      <div style="font-size:10px;font-weight:700;color:#94a3b8;margin-bottom:12px;">INFORMACIÓN GENERAL</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:12px;">
+        <div><div style="font-size:9px;color:#94a3b8;font-weight:700;margin-bottom:3px;">SOLICITADO POR</div><div style="font-weight:600;color:#1e293b;">${r.solicitadoPor||'—'}</div></div>
+        <div><div style="font-size:9px;color:#94a3b8;font-weight:700;margin-bottom:3px;">TÉCNICO / CHOFER</div><div style="font-weight:600;color:#1e293b;">${r.chofer||'—'}</div></div>
+        <div><div style="font-size:9px;color:#94a3b8;font-weight:700;margin-bottom:3px;">KILOMETRAJE</div><div style="font-weight:600;color:#1e293b;">${r.kilometraje||'—'} km</div></div>
+        <div><div style="font-size:9px;color:#94a3b8;font-weight:700;margin-bottom:3px;">COMBUSTIBLE</div><div style="font-weight:600;color:#1e293b;">${r.combustible||'—'}</div></div>
+        <div><div style="font-size:9px;color:#94a3b8;font-weight:700;margin-bottom:3px;">N° SERIE / VIN</div><div style="font-weight:600;color:#1e293b;">${r.numSerie||'—'}</div></div>
+        <div><div style="font-size:9px;color:#94a3b8;font-weight:700;margin-bottom:3px;">FECHA SOLICITUD</div><div style="font-weight:600;color:#1e293b;">${r.fechaSolicitud||'—'}</div></div>
+      </div>
+      ${r.motivo?`<div style="margin-top:12px;"><div style="font-size:9px;color:#94a3b8;font-weight:700;margin-bottom:4px;">MOTIVO</div><div style="font-size:12px;color:#475569;background:#f8fafc;border-radius:8px;padding:10px;">${r.motivo}</div></div>`:''}
+      ${r.danos?`<div style="margin-top:10px;"><div style="font-size:9px;color:#94a3b8;font-weight:700;margin-bottom:4px;">DAÑOS / INSPECCIÓN VISUAL</div><div style="font-size:12px;color:#475569;background:#fef9ec;border-radius:8px;padding:10px;border-left:3px solid #f59e0b;">${r.danos}</div></div>`:''}
+    </div>
+
+    <!-- TALLER Y PAGOS -->
+    <div style="padding:16px 24px;border-bottom:1px solid #f1f5f9;">
+      <div style="font-size:10px;font-weight:700;color:#94a3b8;margin-bottom:12px;">TALLER Y SEGUIMIENTO</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:12px;">
+        <div><div style="font-size:9px;color:#94a3b8;font-weight:700;margin-bottom:3px;">TALLER ASIGNADO</div><div style="font-weight:600;color:#1e293b;">${r.taller||'—'}</div></div>
+        <div><div style="font-size:9px;color:#94a3b8;font-weight:700;margin-bottom:3px;">ENTREGA ESTIMADA</div><div style="font-weight:600;color:#1e293b;">${r.fechaEntrega||'—'}</div></div>
+        <div><div style="font-size:9px;color:#94a3b8;font-weight:700;margin-bottom:3px;">FECHA ENTRADA TALLER</div><div style="font-weight:600;color:#1e293b;">${r.fechaEntradaTaller||'—'}</div></div>
+        <div><div style="font-size:9px;color:#94a3b8;font-weight:700;margin-bottom:3px;">COTIZACIÓN</div><div style="font-weight:600;color:#1e293b;">${r.cotizacion?'$'+Number(r.cotizacion).toLocaleString('es-MX'):'—'}</div></div>
+      </div>
+      ${r.observaciones?`<div style="margin-top:10px;"><div style="font-size:9px;color:#94a3b8;font-weight:700;margin-bottom:4px;">OBSERVACIONES</div><div style="font-size:12px;color:#475569;">${r.observaciones}</div></div>`:''}
+    </div>
+
+    <!-- CIERRE -->
+    <div style="padding:16px 24px;border-bottom:1px solid #f1f5f9;">
+      <div style="font-size:10px;font-weight:700;color:#94a3b8;margin-bottom:12px;">CIERRE Y FACTURACIÓN</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:12px;">
+        <div><div style="font-size:9px;color:#94a3b8;font-weight:700;margin-bottom:3px;">FACTURA FINAL</div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            ${r.facturaFinal 
+              ? `<span style="color:#22c55e;font-weight:700;">✅ Adjuntada</span>` 
+              : `<span style="color:#ef4444;font-weight:700;">❌ Pendiente</span><button onclick="flAdjuntarFactura('${r.id}')" style="padding:3px 10px;border-radius:6px;background:#ecfdf5;border:1px solid #22c55e;color:#059669;font-size:10px;font-weight:700;cursor:pointer;">Subir</button>`}
+          </div>
+        </div>
+        <div><div style="font-size:9px;color:#94a3b8;font-weight:700;margin-bottom:3px;">EVIDENCIAS</div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            ${r.evidencias?.length 
+              ? `<span style="color:#22c55e;font-weight:700;">✅ ${r.evidencias.length} archivo(s)</span>` 
+              : `<span style="color:#94a3b8;">Sin evidencias</span>`}
+          </div>
         </div>
       </div>
+      ${r.comentarioRechazo?`<div style="margin-top:10px;background:#fef2f2;border-radius:8px;padding:10px;border-left:3px solid #ef4444;"><div style="font-size:9px;color:#ef4444;font-weight:700;margin-bottom:3px;">MOTIVO DE RECHAZO</div><div style="font-size:12px;color:#ef4444;">${r.comentarioRechazo}</div></div>`:''}
+    </div>
 
-      <!-- Daños / Inspección visual -->
-      <div class="form-group-rh" style="grid-column:1/-1;">
-        <label class="form-label-rh">Inspección visual / Daños observados</label>
-        <textarea id="fl-danos" rows="3" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid #e2e8f0;font-size:13px;resize:none;" placeholder="Describir golpes, rayones, piezas a reparar...">${r.danos||''}</textarea>
-      </div>
-
-      <!-- Taller -->
-      <div class="form-group-rh">
-        <label class="form-label-rh">Taller asignado</label>
-        <input type="text" id="fl-taller" value="${r.taller||''}" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid #e2e8f0;font-size:13px;" placeholder="Nombre del taller">
-      </div>
-      <div class="form-group-rh">
-        <label class="form-label-rh">Fecha entrega estimada</label>
-        <input type="date" id="fl-fecha-entrega" value="${r.fechaEntrega||''}" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid #e2e8f0;font-size:13px;">
-      </div>
-
-      <!-- Observaciones -->
-      <div class="form-group-rh" style="grid-column:1/-1;">
-        <label class="form-label-rh">Comentarios / Observaciones</label>
-        <textarea id="fl-obs" rows="2" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid #e2e8f0;font-size:13px;resize:none;" placeholder="Observaciones adicionales...">${r.observaciones||''}</textarea>
+    <!-- ACCIONES -->
+    <div style="padding:16px 24px 32px;">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button onclick="abrirFlotillaForm('${r.id}')" style="flex:1;padding:10px;border-radius:10px;background:#f1f5f9;border:none;cursor:pointer;font-size:12px;font-weight:700;color:#475569;">✏️ Editar</button>
+        ${r.estatus==='Pendiente autorización'?`
+          <button onclick="flAutorizar('${r.id}')" style="flex:1;padding:10px;border-radius:10px;background:#eff6ff;border:1px solid #3b82f6;cursor:pointer;font-size:12px;font-weight:700;color:#3b82f6;">✅ Autorizar</button>
+          <button onclick="flRechazar('${r.id}')" style="flex:1;padding:10px;border-radius:10px;background:#fef2f2;border:1px solid #ef4444;cursor:pointer;font-size:12px;font-weight:700;color:#ef4444;">❌ Rechazar</button>
+        `:''}
+        ${r.estatus==='Cerrada'?'':`<button onclick="flCerrar('${r.id}')" style="flex:1;padding:10px;border-radius:10px;background:#f0fdf4;border:1px solid #22c55e;cursor:pointer;font-size:12px;font-weight:700;color:#22c55e;">🏁 Cerrar</button>`}
+        <button onclick="flEliminar('${r.id}')" style="padding:10px 14px;border-radius:10px;background:#fef2f2;border:none;cursor:pointer;font-size:14px;color:#ef4444;">🗑</button>
       </div>
     </div>
   `;
 
-  // Activar radio buttons con estilo
-  wrap.querySelectorAll('input[name="fl-combustible"]').forEach(radio=>{
-    radio.addEventListener('change',()=>{
-      wrap.querySelectorAll('input[name="fl-combustible"]').forEach(r2=>{
-        const span=r2.nextElementSibling;
-        span.style.borderColor=r2.checked?'#059669':'#e2e8f0';
-        span.style.background=r2.checked?'#ecfdf5':'#f8fafc';
-        span.style.color=r2.checked?'#059669':'#64748b';
-      });
-    });
-  });
-
-  wrap.scrollIntoView({behavior:'smooth',block:'start'});
+  panel.style.display = 'block';
+  overlay.style.display = 'block';
+  setTimeout(()=>{ panel.style.transform='translateX(0)'; },10);
 };
 
-window.flAutoFillVehiculo=function(sel){
-  const opt=sel.options[sel.selectedIndex];
-  const numEl=document.getElementById('fl-vehiculo');
-  if(opt&&opt.dataset.marca){
+window.cerrarFlPanel = function(){
+  const panel = document.getElementById('fl-panel');
+  const overlay = document.getElementById('fl-panel-overlay');
+  if(panel) panel.style.display='none';
+  if(overlay) overlay.style.display='none';
+};
+
+// ── ACCIONES DE FLUJO ────────────────────────────────────────
+window.flCambiarEstatus = async function(id, nuevoEstatus){
+  if(nuevoEstatus === 'Cerrada'){
+    const r = flRegs.find(x=>x.id===id);
+    if(!r?.facturaFinal){
+      alert('⚠️ No puedes cerrar la solicitud sin adjuntar la factura final.');
+      return;
+    }
+  }
+  try{
+    const{db,fs}=await getFB();
+    await fs.updateDoc(fs.doc(db,'flotilla_solicitudes',id),{
+      estatus: nuevoEstatus,
+      actualizadoEn: new Date().toISOString()
+    });
+    if(window.mostrarPush) window.mostrarPush('✅ Estatus actualizado',nuevoEstatus,'🚛');
+    await cargarFlotilla();
+    verFlotillaSolicitud(id);
+  } catch(e){ alert('Error: '+e.message); }
+};
+
+window.flAutorizar = function(id){ flCambiarEstatus(id,'Autorizada'); };
+
+window.flRechazar = async function(id){
+  const motivo = prompt('Motivo del rechazo (requerido):');
+  if(!motivo) return;
+  try{
+    const{db,fs}=await getFB();
+    await fs.updateDoc(fs.doc(db,'flotilla_solicitudes',id),{
+      estatus:'Rechazada',
+      comentarioRechazo: motivo,
+      actualizadoEn: new Date().toISOString()
+    });
+    if(window.mostrarPush) window.mostrarPush('❌ Solicitud rechazada',motivo,'🚛');
+    await cargarFlotilla();
+    verFlotillaSolicitud(id);
+  } catch(e){ alert('Error: '+e.message); }
+};
+
+window.flCerrar = function(id){
+  const r = flRegs.find(x=>x.id===id);
+  if(!r?.facturaFinal){
+    alert('⚠️ No puedes cerrar sin adjuntar la factura final. Usa el botón "Subir" en la sección de Cierre.');
+    return;
+  }
+  flCambiarEstatus(id,'Cerrada');
+};
+
+window.flAdjuntarFactura = function(id){
+  const num = prompt('Número de factura / folio:');
+  if(!num) return;
+  getFB().then(({db,fs})=>{
+    fs.updateDoc(fs.doc(db,'flotilla_solicitudes',id),{
+      facturaFinal: num,
+      fechaFactura: new Date().toISOString().slice(0,10),
+      actualizadoEn: new Date().toISOString()
+    }).then(()=>{
+      if(window.mostrarPush) window.mostrarPush('📄 Factura registrada',num,'🚛');
+      cargarFlotilla().then(()=>verFlotillaSolicitud(id));
+    });
+  });
+};
+
+window.flEliminar = async function(id){
+  if(!confirm('¿Eliminar esta solicitud? Esta acción no se puede deshacer.')) return;
+  try{
+    const{db,fs}=await getFB();
+    await fs.deleteDoc(fs.doc(db,'flotilla_solicitudes',id));
+    cerrarFlPanel();
+    if(window.mostrarPush) window.mostrarPush('🗑 Solicitud eliminada','','🚛');
+    cargarFlotilla();
+  } catch(e){ alert('Error: '+e.message); }
+};
+
+// ── FORM NUEVA / EDITAR ──────────────────────────────────────
+window.abrirFlotillaForm = function(id=null){
+  flEditId = id;
+  const r = id ? flRegs.find(x=>x.id===id) : {};
+  const modal = document.getElementById('fl-modal-overlay');
+  const tit = document.getElementById('fl-modal-titulo');
+  const body = document.getElementById('fl-modal-body');
+  if(!modal) return;
+
+  if(tit) tit.innerText = id ? '✏️ Editar Solicitud' : '🚗 Nueva Solicitud de Flotilla';
+
+  const empOpts = (window.EMPLEADOS_TECNOCONTROL||[]).map(e=>`<option ${r.solicitadoPor===e?'selected':''}>${e}</option>`).join('');
+  const vOpts = VEHICULOS_TECNO.map(v=>`<option value="${v.num}" data-marca="${v.marca}" data-modelo="${v.modelo}" data-placas="${v.placas}" ${r.vehiculoNum===v.num?'selected':''}>${v.num} · ${v.marca} ${v.modelo} (${v.placas})</option>`).join('');
+
+  body.innerHTML = `
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+    <!-- Sección 1: General -->
+    <div style="grid-column:1/-1;background:#f8fafc;border-radius:12px;padding:14px;">
+      <div style="font-size:11px;font-weight:800;color:#059669;margin-bottom:12px;">📋 DATOS GENERALES</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div>
+          <label style="font-size:10px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">FECHA SOLICITUD *</label>
+          <input type="date" id="fl-fecha" value="${r.fechaSolicitud||new Date().toISOString().slice(0,10)}" style="width:100%;padding:9px 12px;border-radius:8px;border:1.5px solid #e2e8f0;font-size:12px;">
+        </div>
+        <div>
+          <label style="font-size:10px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">SOLICITADO POR *</label>
+          <select id="fl-solicitante" style="width:100%;padding:9px 12px;border-radius:8px;border:1.5px solid #e2e8f0;font-size:12px;">
+            <option value="">— Seleccionar —</option>${empOpts}
+          </select>
+        </div>
+        <div style="grid-column:1/-1;">
+          <label style="font-size:10px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">MOTIVO *</label>
+          <textarea id="fl-motivo" rows="2" style="width:100%;padding:9px 12px;border-radius:8px;border:1.5px solid #e2e8f0;font-size:12px;resize:none;" placeholder="Describe el motivo de la solicitud...">${r.motivo||''}</textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sección 2: Vehículo -->
+    <div style="grid-column:1/-1;background:#f8fafc;border-radius:12px;padding:14px;">
+      <div style="font-size:11px;font-weight:800;color:#2563eb;margin-bottom:12px;">🚗 DATOS DEL VEHÍCULO</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div style="grid-column:1/-1;">
+          <label style="font-size:10px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">VEHÍCULO *</label>
+          <select id="fl-vehiculo" onchange="flAutoFillVeh(this)" style="width:100%;padding:9px 12px;border-radius:8px;border:1.5px solid #e2e8f0;font-size:12px;">
+            <option value="">— Seleccionar vehículo —</option>${vOpts}
+          </select>
+        </div>
+        <div>
+          <label style="font-size:10px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">MARCA</label>
+          <input type="text" id="fl-marca" value="${r.vehiculoMarca||''}" style="width:100%;padding:9px 12px;border-radius:8px;border:1.5px solid #e2e8f0;font-size:12px;" placeholder="Marca">
+        </div>
+        <div>
+          <label style="font-size:10px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">MODELO</label>
+          <input type="text" id="fl-modelo" value="${r.vehiculoModelo||''}" style="width:100%;padding:9px 12px;border-radius:8px;border:1.5px solid #e2e8f0;font-size:12px;" placeholder="Modelo">
+        </div>
+        <div>
+          <label style="font-size:10px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">PLACAS</label>
+          <input type="text" id="fl-placas" value="${r.placas||''}" style="width:100%;padding:9px 12px;border-radius:8px;border:1.5px solid #e2e8f0;font-size:12px;" placeholder="Placas">
+        </div>
+        <div>
+          <label style="font-size:10px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">N° SERIE / VIN</label>
+          <input type="text" id="fl-serie" value="${r.numSerie||''}" style="width:100%;padding:9px 12px;border-radius:8px;border:1.5px solid #e2e8f0;font-size:12px;" placeholder="VIN">
+        </div>
+        <div>
+          <label style="font-size:10px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">KILOMETRAJE</label>
+          <input type="number" id="fl-km" value="${r.kilometraje||''}" style="width:100%;padding:9px 12px;border-radius:8px;border:1.5px solid #e2e8f0;font-size:12px;" placeholder="km">
+        </div>
+        <div>
+          <label style="font-size:10px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">TÉCNICO / CHOFER</label>
+          <input type="text" id="fl-chofer" value="${r.chofer||''}" style="width:100%;padding:9px 12px;border-radius:8px;border:1.5px solid #e2e8f0;font-size:12px;" placeholder="Nombre">
+        </div>
+      </div>
+    </div>
+
+    <!-- Sección 3: Combustible -->
+    <div style="grid-column:1/-1;">
+      <label style="font-size:10px;font-weight:700;color:#64748b;display:block;margin-bottom:8px;">⛽ NIVEL DE COMBUSTIBLE</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        ${['Vacío','1/4','Medio','3/4','Lleno'].map(n=>`
+          <label style="cursor:pointer;flex:1;min-width:60px;">
+            <input type="radio" name="fl-comb" value="${n}" ${(r.combustible||'Medio')===n?'checked':''} style="display:none;">
+            <span class="fl-comb-opt" style="display:block;text-align:center;padding:8px 6px;border-radius:10px;border:2px solid ${(r.combustible||'Medio')===n?'#059669':'#e2e8f0'};background:${(r.combustible||'Medio')===n?'#ecfdf5':'#fff'};color:${(r.combustible||'Medio')===n?'#059669':'#64748b'};font-size:11px;font-weight:700;transition:all 0.15s;">${n==='Vacío'?'⬜':n==='1/4'?'🟥':n==='Medio'?'🟨':n==='3/4'?'🟧':'🟩'}<br>${n}</span>
+          </label>`).join('')}
+      </div>
+    </div>
+
+    <!-- Sección 4: Inspección visual -->
+    <div style="grid-column:1/-1;background:#fffbeb;border-radius:12px;padding:14px;border:1px solid #fde68a;">
+      <div style="font-size:11px;font-weight:800;color:#d97706;margin-bottom:10px;">🔍 INSPECCIÓN VISUAL / DAÑOS</div>
+      <textarea id="fl-danos" rows="3" style="width:100%;padding:9px 12px;border-radius:8px;border:1.5px solid #fde68a;font-size:12px;resize:none;background:#fffef7;" placeholder="Describir golpes, rayones, partes a reparar, daños observados...">${r.danos||''}</textarea>
+    </div>
+
+    <!-- Sección 5: Taller -->
+    <div style="grid-column:1/-1;background:#f8fafc;border-radius:12px;padding:14px;">
+      <div style="font-size:11px;font-weight:800;color:#8b5cf6;margin-bottom:12px;">🔧 TALLER Y SEGUIMIENTO</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div style="grid-column:1/-1;">
+          <label style="font-size:10px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">TALLER ASIGNADO</label>
+          <input type="text" id="fl-taller" value="${r.taller||''}" style="width:100%;padding:9px 12px;border-radius:8px;border:1.5px solid #e2e8f0;font-size:12px;" placeholder="Nombre del taller">
+        </div>
+        <div>
+          <label style="font-size:10px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">FECHA ENTRADA TALLER</label>
+          <input type="date" id="fl-entrada-taller" value="${r.fechaEntradaTaller||''}" style="width:100%;padding:9px 12px;border-radius:8px;border:1.5px solid #e2e8f0;font-size:12px;">
+        </div>
+        <div>
+          <label style="font-size:10px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">ENTREGA ESTIMADA</label>
+          <input type="date" id="fl-entrega" value="${r.fechaEntrega||''}" style="width:100%;padding:9px 12px;border-radius:8px;border:1.5px solid #e2e8f0;font-size:12px;">
+        </div>
+        <div>
+          <label style="font-size:10px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">COTIZACIÓN / MONTO ($)</label>
+          <input type="number" id="fl-cotizacion" value="${r.cotizacion||''}" style="width:100%;padding:9px 12px;border-radius:8px;border:1.5px solid #e2e8f0;font-size:12px;" placeholder="0.00">
+        </div>
+        <div style="grid-column:1/-1;">
+          <label style="font-size:10px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">OBSERVACIONES</label>
+          <textarea id="fl-obs" rows="2" style="width:100%;padding:9px 12px;border-radius:8px;border:1.5px solid #e2e8f0;font-size:12px;resize:none;" placeholder="Observaciones adicionales...">${r.observaciones||''}</textarea>
+        </div>
+      </div>
+    </div>
+  </div>`;
+
+  // Activar estilo de radio buttons
+  const initRadios = () => {
+    body.querySelectorAll('input[name="fl-comb"]').forEach(radio=>{
+      radio.addEventListener('change',()=>{
+        body.querySelectorAll('input[name="fl-comb"]').forEach(r2=>{
+          const sp=r2.nextElementSibling;
+          sp.style.borderColor=r2.checked?'#059669':'#e2e8f0';
+          sp.style.background=r2.checked?'#ecfdf5':'#fff';
+          sp.style.color=r2.checked?'#059669':'#64748b';
+        });
+      });
+    });
+  };
+  initRadios();
+
+  modal.style.display='flex';
+};
+
+window.flAutoFillVeh = function(sel){
+  const opt = sel.options[sel.selectedIndex];
+  if(opt?.dataset?.marca){
     const m=document.getElementById('fl-marca');
     const mo=document.getElementById('fl-modelo');
     const p=document.getElementById('fl-placas');
@@ -14147,173 +14521,86 @@ window.flAutoFillVehiculo=function(sel){
   }
 };
 
-window.cerrarFlotillaForm=function(){
-  const el=document.getElementById('flotilla-inline-form');
-  if(el) el.style.display='none';
+window.cerrarFlModal = function(){
+  const modal=document.getElementById('fl-modal-overlay');
+  if(modal) modal.style.display='none';
   flEditId=null;
 };
 
-window.guardarFlotillaSolicitud=async function(){
+window.guardarFlotillaSolicitud = async function(){
   const motivo=document.getElementById('fl-motivo')?.value.trim();
-  const solicitante=document.getElementById('fl-solicitante')?.value;
-  const vehiculoNum=document.getElementById('fl-vehiculo')?.value;
-  if(!motivo||!solicitante||!vehiculoNum){
+  const sol=document.getElementById('fl-solicitante')?.value;
+  const veh=document.getElementById('fl-vehiculo')?.value;
+  if(!motivo||!sol||!veh){
     alert('Completa los campos obligatorios: Motivo, Solicitante y Vehículo');
     return;
   }
-  const combustibleEl=document.querySelector('input[name="fl-combustible"]:checked');
-  const btn=document.getElementById('flotilla-btn-guardar');
+  const combEl=document.querySelector('input[name="fl-comb"]:checked');
+  const btn=document.getElementById('fl-btn-save');
   if(btn){btn.disabled=true;btn.innerText='Guardando...';}
-
   const data={
-    mesKey: flKey(),
-    fechaSolicitud: document.getElementById('fl-fecha')?.value||new Date().toISOString().slice(0,10),
-    solicitadoPor: solicitante,
-    motivo: motivo,
-    vehiculoNum: vehiculoNum,
-    vehiculoMarca: document.getElementById('fl-marca')?.value||'',
-    vehiculoModelo: document.getElementById('fl-modelo')?.value||'',
-    placas: document.getElementById('fl-placas')?.value||'',
-    kilometraje: document.getElementById('fl-km')?.value||'',
-    numSerie: document.getElementById('fl-serie')?.value||'',
-    chofer: document.getElementById('fl-chofer')?.value||'',
-    combustible: combustibleEl?.value||'Medio',
-    danos: document.getElementById('fl-danos')?.value||'',
-    taller: document.getElementById('fl-taller')?.value||'',
-    fechaEntrega: document.getElementById('fl-fecha-entrega')?.value||'',
-    observaciones: document.getElementById('fl-obs')?.value||'',
-    estatus: flEditId?(flRegs.find(r=>r.id===flEditId)?.estatus||'Pendiente autorización'):'Pendiente autorización',
-    creadoEn: flEditId?(flRegs.find(r=>r.id===flEditId)?.creadoEn||new Date().toISOString()):new Date().toISOString(),
+    mesKey:`${flAnio}-${String(flMes+1).padStart(2,'0')}`,
+    fechaSolicitud:document.getElementById('fl-fecha')?.value||new Date().toISOString().slice(0,10),
+    solicitadoPor:sol, motivo, vehiculoNum:veh,
+    vehiculoMarca:document.getElementById('fl-marca')?.value||'',
+    vehiculoModelo:document.getElementById('fl-modelo')?.value||'',
+    placas:document.getElementById('fl-placas')?.value||'',
+    numSerie:document.getElementById('fl-serie')?.value||'',
+    kilometraje:document.getElementById('fl-km')?.value||'',
+    chofer:document.getElementById('fl-chofer')?.value||'',
+    combustible:combEl?.value||'Medio',
+    danos:document.getElementById('fl-danos')?.value||'',
+    taller:document.getElementById('fl-taller')?.value||'',
+    fechaEntradaTaller:document.getElementById('fl-entrada-taller')?.value||'',
+    fechaEntrega:document.getElementById('fl-entrega')?.value||'',
+    cotizacion:document.getElementById('fl-cotizacion')?.value||'',
+    observaciones:document.getElementById('fl-obs')?.value||'',
+    estatus:flEditId?(flRegs.find(r=>r.id===flEditId)?.estatus||'Pendiente autorización'):'Pendiente autorización',
+    creadoEn:flEditId?(flRegs.find(r=>r.id===flEditId)?.creadoEn||new Date().toISOString()):new Date().toISOString(),
   };
   try{
     const{db,fs}=await getFB();
-    if(flEditId){
-      await fs.updateDoc(fs.doc(db,'flotilla_solicitudes',flEditId),data);
-    } else {
-      await fs.addDoc(fs.collection(db,'flotilla_solicitudes'),data);
-    }
-    if(window.mostrarPush) window.mostrarPush('✅ Solicitud guardada','','🚗');
-    cerrarFlotillaForm();
-    cargarFlotilla();
-  } catch(e){
-    alert('Error al guardar: '+e.message);
-  } finally {
-    if(btn){btn.disabled=false;btn.innerText='💾 Guardar Solicitud';}
-  }
-};
-
-window.verFlotillaSolicitud=function(id){
-  const r=flRegs.find(x=>x.id===id);
-  if(!r) return;
-  const wrap=document.getElementById('flotilla-detalle-wrap');
-  if(!wrap) return;
-  wrap.style.display='block';
-  const estatusColor={'Pendiente autorización':'#f59e0b','Autorizada':'#3b82f6','Rechazada':'#ef4444','En taller':'#8b5cf6','Cerrada':'#22c55e'};
-  const col=estatusColor[r.estatus]||'#94a3b8';
-  const flujo=['Pendiente autorización','Autorizada','En taller','Cerrada'];
-  const pasoIdx=flujo.indexOf(r.estatus);
-
-  wrap.innerHTML=`
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-      <div>
-        <div style="font-weight:800;font-size:15px;color:#1e293b;">🚗 ${r.vehiculoNum} · ${r.vehiculoMarca} ${r.vehiculoModelo}</div>
-        <div style="font-size:11px;color:#64748b;margin-top:2px;">${r.placas||'Sin placas'} · ${r.fechaSolicitud||''}</div>
-      </div>
-      <button onclick="document.getElementById('flotilla-detalle-wrap').style.display='none'" style="background:#f1f5f9;border:none;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:12px;color:#475569;">✕ Cerrar</button>
-    </div>
-
-    <!-- Flujo visual -->
-    <div style="display:flex;gap:4px;margin-bottom:16px;overflow-x:auto;padding-bottom:4px;">
-      ${flujo.map((paso,i)=>`
-        <div style="flex:1;min-width:80px;text-align:center;">
-          <div style="width:28px;height:28px;border-radius:50%;background:${i<=pasoIdx?col:'#e2e8f0'};color:${i<=pasoIdx?'#fff':'#94a3b8'};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;margin:0 auto;">${i+1}</div>
-          <div style="font-size:9px;color:${i<=pasoIdx?col:'#94a3b8'};margin-top:3px;font-weight:600;">${paso.replace(' autorización','')}</div>
-        </div>
-        ${i<flujo.length-1?`<div style="height:2px;background:${i<pasoIdx?col:'#e2e8f0'};margin-top:13px;flex:0.5;"></div>`:''}`).join('')}
-    </div>
-
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px;">
-      <div><span style="color:#94a3b8;font-size:10px;font-weight:700;">SOLICITADO POR</span><div style="margin-top:2px;font-weight:600;">${r.solicitadoPor||'—'}</div></div>
-      <div><span style="color:#94a3b8;font-size:10px;font-weight:700;">CHOFER/TÉCNICO</span><div style="margin-top:2px;font-weight:600;">${r.chofer||'—'}</div></div>
-      <div><span style="color:#94a3b8;font-size:10px;font-weight:700;">KM</span><div style="margin-top:2px;font-weight:600;">${r.kilometraje||'—'}</div></div>
-      <div><span style="color:#94a3b8;font-size:10px;font-weight:700;">COMBUSTIBLE</span><div style="margin-top:2px;font-weight:600;">${r.combustible||'—'}</div></div>
-      <div style="grid-column:1/-1;"><span style="color:#94a3b8;font-size:10px;font-weight:700;">MOTIVO</span><div style="margin-top:2px;">${r.motivo||'—'}</div></div>
-      <div style="grid-column:1/-1;"><span style="color:#94a3b8;font-size:10px;font-weight:700;">DAÑOS / INSPECCIÓN</span><div style="margin-top:2px;">${r.danos||'—'}</div></div>
-      <div><span style="color:#94a3b8;font-size:10px;font-weight:700;">TALLER</span><div style="margin-top:2px;font-weight:600;">${r.taller||'—'}</div></div>
-      <div><span style="color:#94a3b8;font-size:10px;font-weight:700;">ENTREGA ESTIMADA</span><div style="margin-top:2px;font-weight:600;">${r.fechaEntrega||'—'}</div></div>
-      ${r.observaciones?`<div style="grid-column:1/-1;"><span style="color:#94a3b8;font-size:10px;font-weight:700;">OBSERVACIONES</span><div style="margin-top:2px;">${r.observaciones}</div></div>`:''}
-    </div>
-
-    <!-- Acciones -->
-    <div style="margin-top:16px;padding-top:14px;border-top:1px solid #f1f5f9;">
-      <div style="font-size:10px;font-weight:700;color:#64748b;margin-bottom:8px;">CAMBIAR ESTATUS</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;">
-        ${['Pendiente autorización','Autorizada','Rechazada','En taller','Cerrada'].map(st=>`
-          <button onclick="cambiarEstatusFlotilla('${r.id}','${st}')" 
-            style="padding:7px 12px;border-radius:8px;border:2px solid ${r.estatus===st?col:'#e2e8f0'};background:${r.estatus===st?col+'15':'white'};color:${r.estatus===st?col:'#64748b'};font-size:10px;font-weight:700;cursor:pointer;">
-            ${st}
-          </button>`).join('')}
-      </div>
-      <div style="display:flex;gap:8px;margin-top:12px;">
-        <button onclick="abrirFlotillaForm('${r.id}')" style="flex:1;padding:9px;border-radius:10px;background:#f1f5f9;border:none;cursor:pointer;font-size:12px;font-weight:700;color:#475569;">✏️ Editar</button>
-        <button onclick="eliminarFlotilla('${r.id}')" style="padding:9px 14px;border-radius:10px;background:#fef2f2;border:none;cursor:pointer;font-size:12px;font-weight:700;color:#ef4444;">🗑</button>
-      </div>
-    </div>
-  `;
-  wrap.scrollIntoView({behavior:'smooth',block:'start'});
-};
-
-window.cambiarEstatusFlotilla=async function(id,nuevoEstatus){
-  if(nuevoEstatus==='Cerrada'){
-    const r=flRegs.find(x=>x.id===id);
-    if(!r||!r.facturaFinal){
-      alert('⚠️ No se puede cerrar la solicitud sin adjuntar la factura final.');
-      return;
-    }
-  }
-  try{
-    const{db,fs}=await getFB();
-    await fs.updateDoc(fs.doc(db,'flotilla_solicitudes',id),{estatus:nuevoEstatus,actualizadoEn:new Date().toISOString()});
-    if(window.mostrarPush) window.mostrarPush('✅ Estatus actualizado',nuevoEstatus,'🚗');
+    if(flEditId){ await fs.updateDoc(fs.doc(db,'flotilla_solicitudes',flEditId),data); }
+    else { await fs.addDoc(fs.collection(db,'flotilla_solicitudes'),data); }
+    if(window.mostrarPush) window.mostrarPush('✅ Solicitud guardada','','🚛');
+    cerrarFlModal();
     await cargarFlotilla();
-    verFlotillaSolicitud(id);
   } catch(e){ alert('Error: '+e.message); }
+  finally{ if(btn){btn.disabled=false;btn.innerText='💾 Guardar Solicitud';} }
 };
 
-window.eliminarFlotilla=async function(id){
-  if(!confirm('¿Eliminar esta solicitud de flotilla?')) return;
-  try{
-    const{db,fs}=await getFB();
-    await fs.deleteDoc(fs.doc(db,'flotilla_solicitudes',id));
-    document.getElementById('flotilla-detalle-wrap').style.display='none';
-    if(window.mostrarPush) window.mostrarPush('🗑 Eliminada','','🚗');
-    cargarFlotilla();
-  } catch(e){ alert('Error: '+e.message); }
-};
+// ── CSS ADICIONAL ────────────────────────────────────────────
+const css = document.createElement('style');
+css.textContent = `
+  #fl-modal-overlay { display:none; }
+  #fl-panel { transform: translateX(100%); }
+  #fl-panel[style*="display: block"] { transform: translateX(0); }
+`;
+document.head.appendChild(css);
 
-// Hook a verArea para mostrar el dashboard de Flotilla
-const CHECK_FL=setInterval(()=>{
-  if(typeof window.verArea!=='function') return;
+// ── HOOK verArea ─────────────────────────────────────────────
+const CHECK_FL = setInterval(()=>{
+  if(typeof window.verArea !== 'function') return;
   clearInterval(CHECK_FL);
-  const _orig=window.verArea;
-  window.verArea=function(area,btn){
-    _orig(area,btn);
-    const panel=document.getElementById('flotilla-dashboard');
+  const _orig = window.verArea;
+  window.verArea = function(area, btn){
+    _orig(area, btn);
+    const panel = document.getElementById('flotilla-dashboard');
     if(!panel) return;
-    if(area==='Flotilla'){
-      panel.style.display='block';
-      actualizarLabelFL();
+    if(area === 'Flotilla'){
+      panel.style.display = 'block';
+      initFlMesSelect();
       cargarFlotilla();
     } else {
-      panel.style.display='none';
+      panel.style.display = 'none';
     }
   };
 },200);
 
-// Inicializar label
-actualizarLabelFL();
 console.log('[FLOTILLA] ✅ Módulo cargado v1.0');
 })();
+
+</script>
 
 
 </body>
