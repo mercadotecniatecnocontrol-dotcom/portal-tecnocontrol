@@ -14777,8 +14777,14 @@ window.flAddDamage = function(e, view){
 function flRenderDamages(){
   // Render markers in each view
   ['front','rear','left','right'].forEach(view=>{
-    const markers=document.getElementById('fl-damage-markers-'+view);
-    if(!markers) return;
+    let markers=document.getElementById('fl-damage-markers-'+view);
+    if(!markers){
+      const svg=document.querySelector(`[data-view="${view}"]`);
+      if(!svg) return;
+      markers=document.createElementNS('http://www.w3.org/2000/svg','g');
+      markers.id='fl-damage-markers-'+view;
+      svg.appendChild(markers);
+    }
     const viewDamages=flDamages.filter(d=>d.view===view);
     markers.innerHTML=viewDamages.map((d,i)=>{
       const globalIdx=flDamages.indexOf(d);
