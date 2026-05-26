@@ -14916,7 +14916,18 @@ tipoVehiculo:window._flVehicleType||'car',
   }
 
   try{
-        else { await fs.addDoc(fs.collection(db,'flotilla_solicitudes'),data); }
+       try{
+    const{db,fs}=await getFB();
+    let docId = flEditId;
+    if(flEditId){ await fs.updateDoc(fs.doc(db,'flotilla_solicitudes',flEditId),data); }
+    else {
+      const docRef = await fs.addDoc(fs.collection(db,'flotilla_solicitudes'),data);
+      docId = docRef.id;
+    }
+    const evidencias = await flSubirEvidencias(docId);
+    if(evidencias.length > 0){
+      await fs.updateDoc(fs.doc(db,'flotilla_solicitudes',docId),{evidencias});
+    }
     if(window.mostrarPush) window.mostrarPush('Solicitud guardada','','');
     cerrarFlModal();
     await cargarFlotilla();
