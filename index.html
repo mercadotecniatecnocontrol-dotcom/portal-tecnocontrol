@@ -14856,16 +14856,12 @@ window.cerrarFlModal = function(){
     reader.readAsDataURL(file);
   });
 };
-
-async function getFBStorage(){
-  const {getStorage, ref, uploadBytes, getDownloadURL} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js');
-  const storage = getStorage(window.app);
-  return {storage, storageRef: ref, uploadBytes, getDownloadURL};
-}
+    
     window.flSubirEvidencias = async function(solicitudId){
   const input = document.getElementById('flf-evidencias');
   if(!input || !input.files || input.files.length === 0) return [];
-  const {storage, storageRef, uploadBytes, getDownloadURL} = await getFBStorage();
+  const {getStorage, ref: storageRef, uploadBytes, getDownloadURL} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js');
+const storage = getStorage(window.app);
   const urls = [];
   for(const file of Array.from(input.files)){
     const ref = storageRef(storage, `flotilla/${solicitudId}/${Date.now()}_${file.name}`);
