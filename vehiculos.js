@@ -22,7 +22,7 @@ function flMakeSVGView(type, viewKey, label){
   const w = vbParts[2], h = vbParts[3];
   return `<div style="position:relative;">
     <div style="font-size:8px;font-weight:800;color:#94a3b8;text-align:center;margin-bottom:3px;text-transform:uppercase;letter-spacing:.06em;">${label}</div>
-    <svg viewBox="${v.vb}" xmlns="http://www.w3.org/2000/svg" style="width:100%;background:#f8fafc;border-radius:8px;border:1.5px solid #e2e8f0;cursor:crosshair;" data-view="${viewKey}">${v.html}<rect x="0" y="0" width="${w}" height="${h}" fill="transparent" style="cursor:crosshair;" onclick="flAddDamage(event,'${viewKey}')"/></svg>
+    <svg viewBox="${v.vb}" xmlns="http://www.w3.org/2000/svg" style="width:100%;background:#f8fafc;border-radius:8px;border:1.5px solid #e2e8f0;cursor:crosshair;" data-view="${viewKey}">${v.html}<rect x="0" y="0" width="100%" height="100%" fill="transparent" onclick="flAddDamage(event,'${viewKey}')"/></svg>
   </div>`;
 }
 
