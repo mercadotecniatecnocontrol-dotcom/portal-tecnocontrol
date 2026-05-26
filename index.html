@@ -14456,7 +14456,7 @@ window.flRechazar = async function(id){
   } catch(e){ alert('Error: '+e.message); }
 };
 window.flEnviarAPagos = async function(id){ await flCambiarEstatus(id,'Pagos'); };
-window.flEnviarCierreFlotilla = async function(id){ await flCambiarEstatus(id,'Solicitud'); };
+window.flEnviarCierreFlotilla = async function(id){ await flCambiarEstatus(id,'Cerrada'); };
 window.flReenviarSolicitud = async function(id){ await flCambiarEstatus(id,'Solicitud'); };
 
 window.flSubirComprobante = async function(id){
