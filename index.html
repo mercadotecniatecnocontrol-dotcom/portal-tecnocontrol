@@ -14459,26 +14459,105 @@ window.flEnviarAPagos = async function(id){ await flCambiarEstatus(id,'Pagos'); 
 window.flEnviarCierreFlotilla = async function(id){ await flCambiarEstatus(id,'Cerrada'); };
 window.flReenviarSolicitud = async function(id){ await flCambiarEstatus(id,'Solicitud'); };
 
+function flAbrirUploadDoc(titulo, callback){
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:24px;width:340px;box-shadow:0 20px 60px rgba(0,0,0,.2);">
+      <div style="font-size:14px;font-weight:800;color:#1e293b;margin-bottom:4px;">${titulo}</div>
+      <div style="font-size:11px;color:#64748b;margin-bottom:16px;">Sube un PDF o imagen como soporte</div>
+      <div id="fl-upload-preview" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;"></div>
+      <label style="display:flex;align-items:center;justify-content:center;gap:8px;padding:10px;border:2px dashed #cbd5e1;border-radius:10px;cursor:pointer;font-size:12px;color:#64748b;background:#f8fafc;margin-bottom:12px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        Seleccionar archivo
+        <input type="file" id="fl-upload-input" accept="image/*,application/pdf" style="display:none;" onchange="flPreviewUploadDoc(this)">
+      </label>
+      <div style="display:flex;gap:8px;">
+        <button onclick="this.closest('div[style*=fixed]').remove()" style="flex:1;padding:10px;border-radius:10px;border:none;background:#f1f5f9;color:#475569;font-weight:700;font-size:12px;cursor:pointer;">Cancelar</button>
+        <button id="fl-upload-btn-ok" onclick="flConfirmarUploadDoc(this)" style="flex:2;padding:10px;border-radius:10px;border:none;background:linear-gradient(135deg,#059669,#047857);color:#fff;font-weight:700;font-size:12px;cursor:pointer;">Guardar</button>
+      </div>
+    </div>`;
+  overlay._callback = callback;
+  document.body.appendChild(overlay);
+}
+
+window.flPreviewUploadDoc = function(input){
+  const preview = document.getElementById('fl-upload-preview');
+  if(!preview || !input.files[0]) return;
+  const file = input.files[0];
+  const reader = new FileReader();
+  reader.onload = e => {
+    if(file.type.startsWith('image/')){
+      preview.innerHTML = `<img src="${e.target.result}" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1.5px solid #e2e8f0;">`;
+    } else {
+      preview.innerHTML = `<div style="width:80px;height:80px;background:#f1f5f9;border-radius:8px;border:1.5px solid #e2e8f0;display:flex;align-items:center;justify-content:center;font-size:10px;color:#64748b;text-align:center;padding:4px;">${file.name}</div>`;
+    }
+  };
+  reader.readAsDataURL(file);
+};
+
+window.flConfirmarUploadDoc = async function(btn){
+  const input = document.getElementById('fl-upload-input');
+  const overlay = btn.closest('div[style*=fixed]');
+  if(!input || !input.files[0]){ alert('Selecciona un archivo.'); return; }
+  btn.disabled = true; btn.innerText = 'Guardando...';
+  const file = input.files[0];
+  const data = await new Promise((res,rej) => {
+    const r = new FileReader();
+    r.onload = e => res({nombre:file.name, tipo:file.type, data:e.target.result});
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+  if(overlay._callback) await overlay._callback(data);
+  overlay.remove();
+};
+
 window.flSubirComprobante = async function(id){
-  const folio=prompt('Número de comprobante / folio de pago:');
-  if(!folio) return;
-  try{
-    const{db,fs}=await getFB();
-    await fs.updateDoc(fs.doc(db,'flotilla_solicitudes',id),{comprobantePago:folio,fechaComprobante:new Date().toISOString().slice(0,10),actualizadoEn:new Date().toISOString()});
-    if(window.mostrarPush) window.mostrarPush('Comprobante registrado',folio,'');
-    await cargarFlotilla(); verFlotillaSolicitud(id);
-  } catch(e){ alert('Error: '+e.message); }
+  flAbrirUploadDoc('📄 Comprobante de Pago', async function(archivo){
+    try{
+      const{db,fs}=await getFB();
+      await fs.updateDoc(fs.doc(db,'flotilla_solicitudes',id),{
+        comprobantePago: archivo.nombre,
+        comprobanteArchivo: archivo,
+        fechaComprobante: new Date().toISOString().slice(0,10),
+        actualizadoEn: new Date().toISOString()
+      });
+      if(window.mostrarPush) window.mostrarPush('Comprobante registrado',archivo.nombre,'');
+      await cargarFlotilla(); verFlotillaSolicitud(id);
+    } catch(e){ alert('Error: '+e.message); }
+  });
 };
 
 window.flSubirFactura = async function(id){
-  const num=prompt('Número de factura:');
-  if(!num) return;
-  try{
-    const{db,fs}=await getFB();
-    await fs.updateDoc(fs.doc(db,'flotilla_solicitudes',id),{facturaFinal:num,fechaFactura:new Date().toISOString().slice(0,10),actualizadoEn:new Date().toISOString()});
-    if(window.mostrarPush) window.mostrarPush('Factura registrada',num,'');
-    await cargarFlotilla(); verFlotillaSolicitud(id);
-  } catch(e){ alert('Error: '+e.message); }
+  flAbrirUploadDoc('🧾 Factura Final', async function(archivo){
+    try{
+      const{db,fs}=await getFB();
+      await fs.updateDoc(fs.doc(db,'flotilla_solicitudes',id),{
+        facturaFinal: archivo.nombre,
+        facturaArchivo: archivo,
+        fechaFactura: new Date().toISOString().slice(0,10),
+        actualizadoEn: new Date().toISOString()
+      });
+      if(window.mostrarPush) window.mostrarPush('Factura registrada',archivo.nombre,'');
+      await cargarFlotilla(); verFlotillaSolicitud(id);
+    } catch(e){ alert('Error: '+e.message); }
+  });
+};
+
+window.flSubirCotizacion = async function(id){
+  flAbrirUploadDoc('💰 Cotización', async function(archivo){
+    const monto = prompt('Monto de la cotización ($):');
+    try{
+      const{db,fs}=await getFB();
+      await fs.updateDoc(fs.doc(db,'flotilla_solicitudes',id),{
+        cotizacion: monto||'',
+        cotizacionArchivo: archivo,
+        actualizadoEn: new Date().toISOString()
+      });
+      if(window.mostrarPush) window.mostrarPush('Cotización registrada',archivo.nombre,'');
+      await cargarFlotilla(); verFlotillaSolicitud(id);
+    } catch(e){ alert('Error: '+e.message); }
+  });
 };
 
 async function flCambiarEstatus(id,nuevoEstatus){
