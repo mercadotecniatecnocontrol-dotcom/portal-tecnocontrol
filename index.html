@@ -14286,7 +14286,7 @@ window.verFlotillaSolicitud = function(id){
       <button class="fl-accion-btn" style="border-color:#f97316;color:#f97316;background:#fff7ed;" onclick="flMoverAValidacion('${r.id}')">
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="5 12 12 5 19 12"/></svg>
         Enviar a Validación
-      </button>
+      </button>`;
   } else if(r.estatus==='Aprobación'){
     const esPaloma = auth.currentUser?.email === 'p.pinedo@tecnocontrol.com.mx';
     accionBtns = esPaloma ? `
