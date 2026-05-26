@@ -14762,7 +14762,9 @@ window.flSelectFuel = function(level){
 
 // Click en el SVG del auto para marcar daños
 window.flAddDamage = function(e, view){
-  const svg = e.currentTarget;
+  let svg = e.currentTarget;
+  if(!svg) return;
+  if(svg.tagName === 'rect') svg = svg.closest('svg');
   if(!svg) return;
   const rect = svg.getBoundingClientRect();
   // Get viewBox dimensions from the SVG
