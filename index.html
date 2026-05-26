@@ -14857,17 +14857,17 @@ window.cerrarFlModal = function(){
   });
 };
     
-    window.flSubirEvidencias = async function(solicitudId){
+window.flSubirEvidencias = async function(){
   const input = document.getElementById('flf-evidencias');
   if(!input || !input.files || input.files.length === 0) return [];
-  const {getStorage, ref: storageRef, uploadBytes, getDownloadURL} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js');
-const storage = getStorage(window.app);
   const urls = [];
   for(const file of Array.from(input.files)){
-    const ref = storageRef(storage, `flotilla/${solicitudId}/${Date.now()}_${file.name}`);
-    await uploadBytes(ref, file);
-    const url = await getDownloadURL(ref);
-    urls.push(url);
+    await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = e => { urls.push({nombre: file.name, tipo: file.type, data: e.target.result}); resolve(); };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
   }
   return urls;
 };
@@ -14924,7 +14924,7 @@ tipoVehiculo:window._flVehicleType||'car',
       const docRef = await fs.addDoc(fs.collection(db,'flotilla_solicitudes'),data);
       docId = docRef.id;
     }
-    const evidencias = await flSubirEvidencias(docId);
+    const evidencias = await flSubirEvidencias();
     if(evidencias.length > 0){
       await fs.updateDoc(fs.doc(db,'flotilla_solicitudes',docId),{evidencias});
     }
