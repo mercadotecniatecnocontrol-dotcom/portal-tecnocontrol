@@ -8841,6 +8841,11 @@ window.guardarDatoRHInline = async () => {
 
     function contaKey(){ return `${contaAnio}-${String(contaMes+1).padStart(2,'0')}`; }
 
+   async function getStorage(){
+  const {getStorage, ref, uploadBytes, getDownloadURL} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js');
+  const storage = getStorage(window.app);
+  return {storage, storageRef: ref, uploadBytes, getDownloadURL};
+}
     async function getFB(){
         const a = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
         const f = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
@@ -14911,9 +14916,7 @@ tipoVehiculo:window._flVehicleType||'car',
   }
 
   try{
-    const{db,fs}=await getFB();
-    if(flEditId){ await fs.updateDoc(fs.doc(db,'flotilla_solicitudes',flEditId),data); }
-    else { await fs.addDoc(fs.collection(db,'flotilla_solicitudes'),data); }
+        else { await fs.addDoc(fs.collection(db,'flotilla_solicitudes'),data); }
     if(window.mostrarPush) window.mostrarPush('Solicitud guardada','','');
     cerrarFlModal();
     await cargarFlotilla();
