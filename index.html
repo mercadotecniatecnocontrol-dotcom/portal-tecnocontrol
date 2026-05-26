@@ -14283,10 +14283,10 @@ window.verFlotillaSolicitud = function(id){
   let accionBtns='';
   if(r.estatus==='Solicitud'){
     accionBtns=`
-      <button class="fl-accion-btn" style="border-color:#3b82f6;color:#3b82f6;background:#eff6ff;" onclick="flMoverAAprobacion('${r.id}')">
+      <button class="fl-accion-btn" style="border-color:#f97316;color:#f97316;background:#fff7ed;" onclick="flMoverAValidacion('${r.id}')">
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="5 12 12 5 19 12"/></svg>
-        Enviar a Aprobación
-      </button>`;
+        Enviar a Validación
+      </button>
   } else if(r.estatus==='Aprobación'){
     const esPaloma = auth.currentUser?.email === 'p.pinedo@tecnocontrol.com.mx';
     accionBtns = esPaloma ? `
@@ -14439,7 +14439,8 @@ window.cerrarFlPanel=function(){
 };
 
 // ── ACCIONES DE FLUJO ──
-window.flMoverAAprobacion = async function(id){
+window.flMoverAValidacion = async function(id){ await flCambiarEstatus(id,'Validación'); };
+    window.flMoverAAprobacion = async function(id){
   const r=flRegs.find(x=>x.id===id);
   if(!r?.cotizacion&&!r?.taller){ alert('Antes de enviar a Aprobación debes registrar al menos el taller y la cotización.'); return; }
   await flCambiarEstatus(id,'Aprobación');
