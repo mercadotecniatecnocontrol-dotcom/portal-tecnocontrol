@@ -771,8 +771,6 @@
         /* ── TABLA con columna extra (prioridad) ── */
         .trow{display:grid;grid-template-columns:2fr 0.8fr 0.7fr 0.9fr 1.6fr auto;padding:14px 16px;align-items:center;font-size:13px;margin-bottom:8px;border-radius:12px;transition:0.2s;border:1px solid rgba(59,130,246,0.10);background:#ffffff;position:relative;overflow:hidden;box-shadow:0 1px 4px rgba(37,99,235,0.05);}
 
-       <!-- MINI-DASHBOARD MARKETING — cargado dinámicamente desde modulos/marketing.js -->
-<div id="mkt-dashboard" style="display:none;"></div>
         /* ══ MINI-DASHBOARD RH ══════════════════════════════════ */
         #rh-dashboard{display:none;margin-bottom:28px;}
         /* Form inline RH — se abre debajo de los KPIs */
@@ -1911,6 +1909,8 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
         <div id="conta-registros-lista"></div>
     </div>
 </div>
+                        <!-- MINI-DASHBOARD MARKETING — cargado dinámicamente desde modulos/marketing.js -->
+            <div id="mkt-dashboard" style="display:none;"></div>
             <!-- MINI-DASHBOARD RH (solo visible en Recursos Humanos) -->
             <div id="rh-dashboard">
                 <div class="rh-dash-header">
