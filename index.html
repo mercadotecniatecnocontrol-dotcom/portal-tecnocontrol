@@ -4363,9 +4363,9 @@ function mostrarNavMobile(show, esVentas=false){
 
 // ── Módulo Marketing — cargado dinámicamente ──
 async function cargarModuloMarketing() {
-    const mod = await import('./modulos/marketing.js');
+    const mod = await import('/portal-tecnocontrol/modulos/marketing.js');
     window.toggleMktDash = mod.toggleMktDash;
-}
+} 
 cargarModuloMarketing();
 
 // ══════════════════════════════════════════════════════════════
