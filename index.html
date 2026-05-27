@@ -1909,7 +1909,7 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
         <div id="conta-registros-lista"></div>
     </div>
 </div>
-            <!-- MINI-DASHBOARD MARKETING — cargado dinámicamente desde modulos/marketing.js -->
+            <!-- MINI-DASHBOARD MARKETING — cargado desde modulos/marketing.js -->
             <div id="mkt-dashboard" style="display:none;"></div>
             <!-- MINI-DASHBOARD RH (solo visible en Recursos Humanos) -->
             <div id="rh-dashboard">
@@ -4365,7 +4365,7 @@ function mostrarNavMobile(show, esVentas=false){
 async function cargarModuloMarketing() {
     const mod = await import('/portal-tecnocontrol/modulos/marketing.js');
     window.toggleMktDash = mod.toggleMktDash;
-}
+} 
 cargarModuloMarketing();
 
 // ══════════════════════════════════════════════════════════════
