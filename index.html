@@ -14376,7 +14376,7 @@ window.verFlotillaSolicitud = function(id){
       </div>
       ${r.motivo?`<div style="margin-top:10px;"><label style="font-size:9px;font-weight:700;color:#94a3b8;display:block;margin-bottom:3px;">MOTIVO</label><div style="font-size:12px;color:#475569;background:#f8fafc;border-radius:8px;padding:10px;">${r.motivo}</div></div>`:''}
       ${r.danos?`<div style="margin-top:8px;"><label style="font-size:9px;font-weight:700;color:#94a3b8;display:block;margin-bottom:3px;">DAÑOS / INSPECCIÓN</label><div style="font-size:12px;color:#475569;background:#fffbeb;border-radius:8px;padding:10px;border-left:3px solid #f59e0b;">${r.danos}</div></div>`:''}
-      ${r.evidencias&&r.evidencias.length?`<div style="margin-top:10px;"><label style="font-size:9px;font-weight:700;color:#94a3b8;display:block;margin-bottom:6px;">EVIDENCIAS FOTOGRÁFICAS</label><div style="display:flex;flex-wrap:wrap;gap:6px;">${r.evidencias.map(e=>e.tipo&&e.tipo.startsWith('image/')?`<img src="${e.data}" style="width:70px;height:70px;object-fit:cover;border-radius:8px;border:1.5px solid #e2e8f0;cursor:pointer;" onclick="window.open(this.src)">` :`<div style="width:70px;height:70px;background:#f1f5f9;border-radius:8px;border:1.5px solid #e2e8f0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;" onclick="flVerArchivo('${e.data}','${e.nombre}')"><svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='#64748b' stroke-width='2'><path d='M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z'/><polyline points='14 2 14 8 20 8'/></svg><span style='font-size:8px;color:#64748b;'>${e.nombre.substring(0,10)}</span></div>`).join('')}</div></div>`:''}
+      ${r.evidencias&&r.evidencias.length?`<div style="margin-top:10px;"><label style="font-size:9px;font-weight:700;color:#94a3b8;display:block;margin-bottom:6px;">EVIDENCIAS FOTOGRÁFICAS</label><div style="display:flex;flex-wrap:wrap;gap:6px;">${r.evidencias.map(e=>e.tipo&&e.tipo.startsWith('image/')?`<img src="${e.data}" style="width:70px;height:70px;object-fit:cover;border-radius:8px;border:1.5px solid #e2e8f0;cursor:pointer;" onclick="flVerArchivoInline(this.src,'')">` :`<div style="width:70px;height:70px;background:#f1f5f9;border-radius:8px;border:1.5px solid #e2e8f0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;" onclick="flVerArchivo('${e.data}','${e.nombre}')"><svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='#64748b' stroke-width='2'><path d='M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z'/><polyline points='14 2 14 8 20 8'/></svg><span style='font-size:8px;color:#64748b;'>${e.nombre.substring(0,10)}</span></div>`).join('')}</div></div>`:''}
     </div>
     </div>
 
@@ -14460,16 +14460,40 @@ window.flRechazar = async function(id){
 };
 window.flEnviarAPagos = async function(id){ await flCambiarEstatus(id,'Pagos'); };
 window.flEnviarCierreFlotilla = async function(id){ await flCambiarEstatus(id,'Cerrada'); };
-    window.flVerArchivo = function(data, nombre){
-  const win = window.open();
-  if(!data) return;
-  if(data.startsWith('data:image/')){
-    win.document.write('<html><body style="margin:0;background:#000;display:flex;align-items:center;justify-content:center;min-height:100vh;"><img src="'+data+'" style="max-width:100%;max-height:100vh;object-fit:contain;"></body></html>');
-  } else {
-    win.document.write('<html><body style="margin:0;"><embed src="'+data+'" width="100%" height="100%" style="position:fixed;inset:0;"></body></html>');
-  }
-  win.document.title = nombre||'Archivo';
-};
+    // Lightbox inline — sin abrir nueva pestaña
+    window.flVerArchivoInline = function(data, nombre){
+      if(!data) return;
+      let existing = document.getElementById('fl-lightbox-overlay');
+      if(existing) existing.remove();
+      const ov = document.createElement('div');
+      ov.id = 'fl-lightbox-overlay';
+      ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;';
+      ov.onclick = e => { if(e.target===ov) ov.remove(); };
+      const isImg = data.startsWith('data:image/');
+      const isPDF = data.startsWith('data:application/pdf') || (nombre||'').toLowerCase().endsWith('.pdf');
+      let content = '';
+      if(isImg){
+        content = `<img src="${data}" style="max-width:90vw;max-height:85vh;object-fit:contain;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,.6);">`;
+      } else if(isPDF){
+        content = `<iframe src="${data}" style="width:88vw;height:85vh;border:none;border-radius:8px;background:#fff;"></iframe>`;
+      } else {
+        content = `<div style="background:#fff;border-radius:12px;padding:32px;text-align:center;color:#1e293b;">
+          <div style="font-size:40px;margin-bottom:12px;">📄</div>
+          <div style="font-size:14px;font-weight:700;margin-bottom:16px;">${nombre||'Archivo'}</div>
+          <a href="${data}" download="${nombre||'archivo'}" style="padding:10px 24px;background:#2563eb;color:white;border-radius:8px;text-decoration:none;font-weight:700;font-size:13px;">⬇️ Descargar</a>
+        </div>`;
+      }
+      ov.innerHTML = `
+        <div style="position:absolute;top:16px;right:16px;display:flex;gap:8px;z-index:1;">
+          ${(isImg||isPDF)?`<a href="${data}" download="${nombre||'archivo'}" style="padding:7px 14px;background:rgba(255,255,255,0.15);color:white;border-radius:8px;font-size:12px;font-weight:700;text-decoration:none;backdrop-filter:blur(4px);">⬇️ Descargar</a>`:''}
+          <button onclick="document.getElementById('fl-lightbox-overlay').remove()" style="padding:7px 14px;background:rgba(255,255,255,0.15);color:white;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;backdrop-filter:blur(4px);">✕ Cerrar</button>
+        </div>
+        ${content}
+        ${nombre?`<div style="color:rgba(255,255,255,0.6);font-size:11px;margin-top:12px;">${nombre}</div>`:''}`;
+      document.body.appendChild(ov);
+    };
+    // Mantener alias para PDFs/docs
+    window.flVerArchivo = function(data, nombre){ window.flVerArchivoInline(data, nombre); };
 window.flReenviarSolicitud = async function(id){ await flCambiarEstatus(id,'Solicitud'); };
 
 function flAbrirUploadDoc(titulo, callback){
