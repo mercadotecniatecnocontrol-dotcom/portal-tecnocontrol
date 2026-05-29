@@ -6,6 +6,92 @@
 //   - esAdminTotal(email), mostrarPush()
 // ══════════════════════════════════════════════════════════════
 
+// ── Inyectar estilos CSS del módulo RH ──────────────────────
+(function inyectarCSSRH() {
+    if (document.getElementById('css-rh')) return;
+    const style = document.createElement('style');
+    style.id = 'css-rh';
+    style.textContent = `
+        /* ══ MINI-DASHBOARD RH ══════════════════════════════════ */
+        #rh-dashboard{display:none;margin-bottom:28px;}
+        #rh-inline-form{display:none;background:#fff;border-radius:16px;border:2px solid #2563eb;padding:20px;margin:12px 0;box-shadow:0 4px 20px rgba(37,99,235,0.12);animation:slideDown 0.2s ease;}
+        @keyframes slideDown{from{opacity:0;transform:translateY(-10px);}to{opacity:1;transform:translateY(0);}}
+        #rh-inline-form .rh-form-title{font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;color:#1e3a8a;margin-bottom:16px;display:flex;align-items:center;gap:8px;}
+        .rh-inline-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;}
+        @media(max-width:768px){.rh-inline-grid{grid-template-columns:1fr !important;}}
+        .rh-dash-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;}
+        .rh-dash-title{font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;color:#1e293b;display:flex;align-items:center;gap:8px;}
+        .rh-dash-badge{background:#fce7f3;color:#be185d;font-size:10px;font-weight:700;padding:4px 10px;border-radius:20px;letter-spacing:1px;text-transform:uppercase;}
+        .rh-mes-selector{display:flex;align-items:center;gap:8px;font-size:12px;color:#64748b;}
+        .rh-mes-btn{background:#ffffff;border:1px solid #cbd5e1;color:#475569;padding:5px 12px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;transition:0.2s;}
+        .rh-mes-btn:hover{background:#eff6ff;color:#1e293b;}
+        .rh-mes-label{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:13px;color:#1e293b;min-width:90px;text-align:center;}
+        .rh-kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px;}
+        .rh-kpi{background:#ffffff;border-radius:16px;padding:18px 16px;border:1px solid rgba(59,130,246,0.10);box-shadow:0 2px 8px rgba(37,99,235,0.05);position:relative;overflow:hidden;cursor:pointer;transition:0.2s;}
+        .rh-kpi:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,0,0,0.10);}
+        .rh-kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;}
+        .rh-kpi.rotacion::before{background:linear-gradient(90deg,#f43f5e,#fb7185);}
+        .rh-kpi.faltas::before{background:linear-gradient(90deg,#f97316,#fb923c);}
+        .rh-kpi.retardos::before{background:linear-gradient(90deg,#f59e0b,#fbbf24);}
+        .rh-kpi.descuentos::before{background:linear-gradient(90deg,#8b5cf6,#a78bfa);}
+        .rh-kpi.vacantes::before{background:linear-gradient(90deg,#2563eb,#60a5fa);}
+        .rh-kpi-icon{font-size:22px;margin-bottom:8px;}
+        .rh-kpi-val{font-family:'Space Grotesk',sans-serif;font-size:26px;font-weight:700;color:#1e293b;line-height:1;}
+        .rh-kpi-label{font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-top:4px;}
+        .rh-kpi-delta{font-size:10px;margin-top:6px;font-weight:700;}
+        .rh-kpi-delta.up{color:#dc2626;}
+        .rh-kpi-delta.down{color:#16a34a;}
+        .rh-kpi-delta.neutral{color:#64748b;}
+        .rh-charts{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:14px;margin-bottom:20px;}
+        .rh-chart-card{background:#ffffff;border-radius:16px;padding:20px;border:1px solid rgba(59,130,246,0.10);box-shadow:0 2px 8px rgba(37,99,235,0.05);}
+        .rh-chart-title{font-size:12px;font-weight:700;color:#1e293b;margin-bottom:4px;}
+        .rh-chart-sub{font-size:10px;color:#64748b;margin-bottom:14px;}
+        .rh-vacantes{background:#ffffff;border-radius:16px;padding:20px;border:1px solid rgba(59,130,246,0.10);box-shadow:0 2px 8px rgba(37,99,235,0.05);margin-bottom:20px;}
+        .rh-vac-title{font-size:12px;font-weight:700;color:#1e293b;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;}
+        .rh-vac-row{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;padding:10px 12px;border-radius:10px;font-size:12px;align-items:center;margin-bottom:6px;border:1px solid rgba(59,130,246,0.08);}
+        .rh-vac-row.header{background:#f8faff;font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;}
+        .rh-vac-row:not(.header){background:#ffffff;}
+        .rh-vac-row:not(.header):hover{background:#f8faff;}
+        .vac-status{padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;display:inline-block;}
+        .vac-abierta{background:#eff6ff;color:#2563eb;}
+        .vac-nueva{background:#f0fdf4;color:#16a34a;}
+        .vac-concretada{background:#fce7f3;color:#be185d;}
+        .rh-actas{background:#ffffff;border-radius:16px;padding:20px;border:1px solid rgba(59,130,246,0.10);box-shadow:0 2px 8px rgba(37,99,235,0.05);margin-bottom:20px;}
+        .rh-acta-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid rgba(59,130,246,0.06);font-size:12px;}
+        .rh-acta-row:last-child{border-bottom:none;}
+        .rh-acta-emp{font-weight:700;color:#1e293b;}
+        .rh-acta-motivo{color:#64748b;}
+        .rh-acta-fecha{color:#94a3b8;font-size:10px;}
+        .acta-tipo{padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;}
+        .acta-falta{background:#fee2e2;color:#dc2626;}
+        .acta-retardo{background:#fef9c3;color:#a16207;}
+        .acta-conducta{background:#f3e8ff;color:#7c3aed;}
+        .rh-add-btn{padding:7px 14px;background:linear-gradient(135deg,#db2777,#be185d);color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;transition:0.2s;letter-spacing:0.5px;}
+        .rh-add-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(190,24,93,0.3);}
+        #modal-rh{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);z-index:3000;align-items:center;justify-content:center;}
+        .rh-modal-box{background:#ffffff;border-radius:20px;padding:28px;width:520px;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.15);}
+        .rh-modal-title{font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;color:#1e293b;margin-bottom:20px;}
+        .rh-form-label{font-size:10px;font-weight:700;color:#64748b;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px;display:block;margin-top:14px;}
+        .rh-form-input{width:100%;padding:11px 14px;border-radius:10px;border:1px solid rgba(59,130,246,0.2);background:#f8faff;color:#1e293b;font-size:13px;outline:none;font-family:'DM Sans',sans-serif;}
+        .rh-form-input:focus{border-color:#2563eb;background:#eff6ff;}
+        .rh-tabs{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;}
+        .rh-tab{padding:8px 16px;border-radius:10px;border:1px solid #cbd5e1;background:#ffffff;color:#475569;font-size:12px;font-weight:700;cursor:pointer;transition:0.2s;}
+        .rh-tab.active{background:#db2777;color:#ffffff;border-color:#db2777;}
+        @media(max-width:768px){
+            .rh-charts{grid-template-columns:1fr !important;}
+            .rh-kpis{grid-template-columns:repeat(2,1fr) !important;gap:8px !important;}
+            .rh-kpi{padding:10px 8px !important;}
+            .rh-kpi-val{font-size:20px !important;}
+            .rh-tabs{gap:4px;}
+            .rh-tab{padding:6px 10px;font-size:11px;}
+            .rh-modal-box{width:96vw;padding:16px;border-radius:20px 20px 0 0;position:fixed;bottom:0;left:0;max-height:92vh;}
+            #modal-rh{align-items:flex-end !important;}
+        }
+    `;
+    document.head.appendChild(style);
+})();
+
+
 // ── JS del módulo RH ─────────────────────────────────────────
 // MÓDULO RH — Indicadores confidenciales
 // Solo visible para rh@tecnocontrol.com.mx y admin
@@ -72,7 +158,7 @@ function rhKey(){ return getSemanaKeyRH(getRhSemanaActual()); }
 function puedeVerRH(email){ return email === RH_EMAIL || esAdminTotal(email); }
 
 // Mostrar/ocultar el dashboard RH según el área
-function toggleRHDash(area, email){
+function _toggleRHDash(area, email){
     const dash = document.getElementById('rh-dashboard');
     if(!dash) return;
     if(area === 'Recursos Humanos' && puedeVerRH(email)){
@@ -788,8 +874,7 @@ document.getElementById('modal-rh').addEventListener('click', e => {
 
 // Exportar función principal
 export function toggleRHDash(area, email) {
-    if (typeof toggleRhPanel === 'function') toggleRhPanel(area, email);
-    if (typeof verRHDash === 'function') verRHDash(area, email);
+    _toggleRHDash(area, email);
 }
 
 console.log('[rh.js] ✅ Módulo RH cargado');
