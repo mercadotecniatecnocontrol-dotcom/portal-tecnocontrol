@@ -1832,8 +1832,6 @@ window.guardarDatoRHInline = async () => {
     }
 };
 
-</script>
-    <script>
 // ══════════════════════════════════════════════════════════════
 // PARRILLA UNIVERSAL POR ÁREA — Documentos Google Drive
 // ══════════════════════════════════════════════════════════════
@@ -2311,8 +2309,7 @@ window.guardarDatoRHInline = async () => {
 
     console.log('[PARRILLA UNIVERSAL] ✅ Módulo cargado');
 })();
-</script>
-    <script>
+
 // ══════════════════════════════════════════════════════════════
 // ROTACIÓN POR EMPRESA — KPI mejorado para RH
 // ══════════════════════════════════════════════════════════════
@@ -2617,8 +2614,7 @@ window.guardarDatoRHInline = async () => {
 
     console.log('[ROTACION EMPRESA] ✅ Módulo cargado');
 })();
-</script>
-    <script>
+
 // ══════════════════════════════════════════════════════════════
 // SISTEMA COMPARTIR v2 — Desbloquea visibilidad de tareas
 // ══════════════════════════════════════════════════════════════
@@ -2843,8 +2839,7 @@ window.guardarDatoRHInline = async () => {
 
     console.log('[COMPARTIR v2] ✅ Módulo cargado');
 })();
-</script>
-    <script>
+
 // ══════════════════════════════════════════════════════════════
 // FORMULARIOS OPERACIONES — Servicio Técnico
 // ══════════════════════════════════════════════════════════════
@@ -3199,8 +3194,7 @@ window.guardarDatoRHInline = async () => {
 
     console.log('[FORMULARIOS SRV] ✅ Módulo cargado');
 })();
-</script>
-<script>
+
 // ══════════════════════════════════════════════════════════════
 // DASHBOARD CONTABILIDAD v2 — Registros individuales
 // ══════════════════════════════════════════════════════════════
@@ -3561,8 +3555,7 @@ window.guardarDatoRHInline = async () => {
 
     console.log('[CONTA v2] ✅ Módulo cargado');
 })();
-</script>
-    <script>
+
 // ══════════════════════════════════════════════════════════════
 // DASHBOARD EGRESOS v2 — Registros individuales
 // ══════════════════════════════════════════════════════════════
@@ -3863,8 +3856,7 @@ window.guardarDatoRHInline = async () => {
 
     console.log('[EGRESOS v2] ✅ Módulo cargado');
 })();
-</script>
-    <script>
+
 // ══════════════════════════════════════════════════════════════
 // DASHBOARD PAGOS v2 — Registros individuales con auto-cálculo
 // ══════════════════════════════════════════════════════════════
@@ -4282,19 +4274,19 @@ window.guardarDatoRHInline = async () => {
 
     console.log('[PAGOS v2] ✅ Módulo cargado');
 })();
-</script>
+
   <!-- 
   ═══════════════════════════════════════════════════════════
   FIX RH v3 — REEMPLAZA la versión v2 que ya pegaste
   
   INSTRUCCIONES:
   1. Abre tu index.html
-  2. BORRA el bloque <script>...</script> del FIX v2 que pegaste antes
+  2. BORRA el bloque ... del FIX v2 que pegaste antes
      (el que empieza con "RH FIX v2 — Override de funciones buggy")
   3. PEGA este bloque completo en su lugar, justo antes de </body>
   ═══════════════════════════════════════════════════════════
 -->
-<script>
+
 // ══════════════════════════════════════════════════════════════
 // RH FIX v3 — Override completo incluyendo recarga de datos
 // Corrige: guardado, edición, y VISUALIZACIÓN después de guardar
@@ -5139,7 +5131,7 @@ document.addEventListener('keydown', e => {
         }
     }
 });
-</script>
+
     <!-- ═══ MODAL COMPARTIR v2 ═══ -->
 <div id="modal-compartir" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);z-index:999999 !important;align-items:center;justify-content:center;display:none;">
     <div style="background:#ffffff;border-radius:20px;padding:28px;width:460px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.25);position:relative;">
@@ -5243,7 +5235,7 @@ document.addEventListener('keydown', e => {
     </div>
 </div>
 
-<script>
+
 // ═══════════════════════════════════════════════════════
 // MÓDULO GMAIL CRM
 // ═══════════════════════════════════════════════════════
@@ -5606,9 +5598,7 @@ window.gmailSetFiltro = function(filtro) {
 // El botón de Correos ya está en el área de Ventas — no se agrega al sidebar
 // Fix: usar window.auth en lugar de auth directamente
 console.log('MÓDULO GMAIL CRM cargado ✅');
-</script>
 
-<script>
 // ═══════════════════════════════════════════════════════════════
 // PORTAL VENTAS — Módulos integrados desde app.html
 // Mismo Firebase: tecnocontrol-1c42f → sincronización automática
@@ -6641,7 +6631,7 @@ console.log('✅ Funciones proxy registradas');
 console.log('VENTAS FIXES cargados ✅');
 
 
-</script>
+
 
 
 <!-- ═══ MODAL PERFIL DE CLIENTE (Portal) ═══ -->
@@ -6692,7 +6682,7 @@ console.log('VENTAS FIXES cargados ✅');
     </div>
 </div>
 
-<script>
+
 // ═══════════════════════════════════════════════════════════════
 // PORTAL — Perfil Completo de Cliente
 // Espejo del perfil de la app, adaptado a panel lateral
@@ -7137,10 +7127,7 @@ window.ventasSeleccionarCliente = function(id) {
 window.verPerfilCliente = window.abrirPerfilCliente;
 
 console.log('PORTAL PERFIL CLIENTE cargado ✅');
-</script>
 
-
-<script>
 // ═══════════════════════════════════════════════════════════════
 // VENTAS PORTAL (VP) — Wrapper de la app adaptado a desktop
 // Usa las mismas funciones de la app: cargarCRM, cargarCot, etc.
@@ -8253,9 +8240,6 @@ window.vpRenderCalendarioActividades = async function() {
 };
 console.log('VENTAS PORTAL v2 cargado ✅ — diseño basado en la app');
 
-// Exponer función principal globalmente
-window.toggleVentasMapa = (typeof toggleVentasMapa === "function") ? toggleVentasMapa : function(area, email) {
-    console.warn('[ventas.js] toggleVentasMapa no encontrada');
-};
+window.toggleVentasMapa = (typeof toggleVentasMapa === "function") ? toggleVentasMapa : function(area,email){};
 
 console.log("[ventas.js] ✅ Módulo Ventas cargado");
