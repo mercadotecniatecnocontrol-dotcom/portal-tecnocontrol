@@ -8253,9 +8253,9 @@ window.vpRenderCalendarioActividades = async function() {
 };
 console.log('VENTAS PORTAL v2 cargado ✅ — diseño basado en la app');
 
-// Exportar función principal para que index.html la use
-export function toggleVentasDash(area, email) {
-    if (typeof toggleVentasMapa === "function") toggleVentasMapa(area, email);
-}
+// Exponer función principal globalmente
+window.toggleVentasMapa = (typeof toggleVentasMapa === "function") ? toggleVentasMapa : function(area, email) {
+    console.warn('[ventas.js] toggleVentasMapa no encontrada');
+};
 
 console.log("[ventas.js] ✅ Módulo Ventas cargado");
