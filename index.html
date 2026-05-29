@@ -2725,6 +2725,7 @@ const ADMIN_EMAILS = [
 function esAdminTotal(email){
     return ADMIN_EMAILS.includes((email||'').toLowerCase().trim());
 }
+window.esAdminTotal = esAdminTotal;
 
 // ── Mapa email → nombre completo para mostrar en tareas ──────
 const NOMBRE_MAP = {
