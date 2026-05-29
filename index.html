@@ -4367,6 +4367,12 @@ async function cargarModuloMarketing() {
     const mod = await import('/portal-tecnocontrol/marketing.js');
     window.toggleMktDash = mod.toggleMktDash;
 }
+// ── Módulo Core — funciones compartidas ──
+async function cargarModuloCore() {
+    await import('/portal-tecnocontrol/core.js');
+}
+cargarModuloCore();
+
 cargarModuloMarketing();
 
 // MÓDULO RH — Indicadores confidenciales
