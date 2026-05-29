@@ -1909,8 +1909,191 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
         <div id="conta-registros-lista"></div>
     </div>
 </div>
-            <!-- MINI-DASHBOARD MARKETING — módulo en marketing.js -->
-            <div id="mkt-dashboard" style="display:none;"></div>
+            <!-- MINI-DASHBOARD MARKETING (solo visible en Marketing) -->
+            <div id="mkt-dashboard">
+                <div class="mkt-header">
+                    <div class="mkt-title">📣 Indicadores Marketing
+                        <span class="mkt-badge">Digital · Mensual</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:#64748b;">
+                            <button class="rh-mes-btn" onclick="mktMesPrev()">‹</button>
+                            <span class="rh-mes-label" id="mkt-mes-label" style="min-width:90px;text-align:center;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:13px;color:#1e293b;"></span>
+                            <button class="rh-mes-btn" onclick="mktMesNext()">›</button>
+                        </div>
+                        <button class="mkt-add-btn" onclick="abrirModalMkt()">➕ Registrar datos</button>
+                        <button class="mkt-add-btn" onclick="sincronizarStock()" style="background:linear-gradient(135deg,#059669,#047857);" id="btn-sync-stock">🔄 Sync Stock</button>
+                    </div>
+                </div>
+
+                <!-- 6 KPIs principales -->
+                <div class="mkt-kpis">
+                    <div class="mkt-kpi k-seguidores" onclick="abrirModalMkt('kpis')">
+                        <div class="mkt-kpi-icon">👥</div>
+                        <div class="mkt-kpi-val" id="mkt-val-seguidores">—</div>
+                        <div class="mkt-kpi-label">Seguidores totales</div>
+                        <div class="mkt-kpi-delta" id="mkt-delta-seguidores"></div>
+                    </div>
+                    <div class="mkt-kpi k-alcance" onclick="abrirModalMkt('kpis')">
+                        <div class="mkt-kpi-icon">📡</div>
+                        <div class="mkt-kpi-val" id="mkt-val-alcance">—</div>
+                        <div class="mkt-kpi-label">Alcance mensual</div>
+                        <div class="mkt-kpi-delta" id="mkt-delta-alcance"></div>
+                    </div>
+                    <div class="mkt-kpi k-engagement" onclick="abrirModalMkt('kpis')">
+                        <div class="mkt-kpi-icon">❤️</div>
+                        <div class="mkt-kpi-val" id="mkt-val-engagement">—</div>
+                        <div class="mkt-kpi-label">Engagement rate</div>
+                        <div class="mkt-kpi-delta" id="mkt-delta-engagement"></div>
+                    </div>
+                    <div class="mkt-kpi k-leads" onclick="abrirModalMkt('kpis')">
+                        <div class="mkt-kpi-icon">🎯</div>
+                        <div class="mkt-kpi-val" id="mkt-val-leads">—</div>
+                        <div class="mkt-kpi-label">Leads generados</div>
+                        <div class="mkt-kpi-delta" id="mkt-delta-leads"></div>
+                    </div>
+                    <div class="mkt-kpi k-presupuesto" onclick="abrirModalMkt('presupuesto')">
+                        <div class="mkt-kpi-icon">💰</div>
+                        <div class="mkt-kpi-val" id="mkt-val-presupuesto">—</div>
+                        <div class="mkt-kpi-label">Presupuesto usado</div>
+                        <div class="mkt-kpi-delta" id="mkt-delta-presupuesto"></div>
+                    </div>
+                    <div class="mkt-kpi k-conversiones" onclick="abrirModalMkt('kpis')">
+                        <div class="mkt-kpi-icon">🔥</div>
+                        <div class="mkt-kpi-val" id="mkt-val-conversiones">—</div>
+                        <div class="mkt-kpi-label">Conversiones</div>
+                        <div class="mkt-kpi-delta" id="mkt-delta-conversiones"></div>
+                    </div>
+                </div>
+
+                <!-- Gráficas principales -->
+                <div class="mkt-charts-row">
+                    <div class="mkt-card">
+                        <div class="mkt-card-title">📈 Tendencia de alcance</div>
+                        <div class="mkt-card-sub">Seguidores y alcance últimos 6 meses</div>
+                        <div style="height:160px;"><canvas id="mkt-chart-tendencia"></canvas></div>
+                    </div>
+                    <div class="mkt-card" style="text-align:center;">
+                        <div class="mkt-card-title" style="text-align:left;">💰 Presupuesto</div>
+                        <div class="mkt-card-sub" style="text-align:left;">Gastado vs asignado</div>
+                        <div style="position:relative;width:130px;height:130px;margin:0 auto;">
+                            <canvas id="mkt-chart-budget"></canvas>
+                            <div id="mkt-budget-pct" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:15px;color:#1e293b;">—</div>
+                        </div>
+                        <div id="mkt-budget-detalle" style="font-size:11px;color:#64748b;margin-top:8px;"></div>
+                    </div>
+                    <div class="mkt-card" style="text-align:center;">
+                        <div class="mkt-card-title" style="text-align:left;">📊 Mix de canales</div>
+                        <div class="mkt-card-sub" style="text-align:left;">Distribución de alcance</div>
+                        <div style="position:relative;width:130px;height:130px;margin:0 auto;">
+                            <canvas id="mkt-chart-mix"></canvas>
+                        </div>
+                        <div id="mkt-mix-leyenda" style="font-size:10px;color:#64748b;margin-top:8px;text-align:left;"></div>
+                    </div>
+                </div>
+
+                <!-- Canales individuales -->
+                <div class="mkt-canales">
+                    <div class="mkt-canal">
+                        <div class="mkt-canal-icon">📸</div>
+                        <div class="mkt-canal-name">Instagram</div>
+                        <div class="mkt-canal-val" id="mkt-ig-seg">—</div>
+                        <div class="mkt-canal-sub">seguidores</div>
+                        <div class="mkt-canal-bar"><div class="mkt-canal-fill" id="mkt-ig-bar" style="width:0%;background:linear-gradient(90deg,#e1306c,#833ab4);"></div></div>
+                        <div style="font-size:10px;color:#64748b;margin-top:4px;">Alcance: <b id="mkt-ig-alc">—</b></div>
+                    </div>
+                    <div class="mkt-canal">
+                        <div class="mkt-canal-icon">👍</div>
+                        <div class="mkt-canal-name">Facebook</div>
+                        <div class="mkt-canal-val" id="mkt-fb-seg">—</div>
+                        <div class="mkt-canal-sub">seguidores</div>
+                        <div class="mkt-canal-bar"><div class="mkt-canal-fill" id="mkt-fb-bar" style="width:0%;background:linear-gradient(90deg,#1877f2,#42a5f5);"></div></div>
+                        <div style="font-size:10px;color:#64748b;margin-top:4px;">Alcance: <b id="mkt-fb-alc">—</b></div>
+                    </div>
+                    <div class="mkt-canal">
+                        <div class="mkt-canal-icon">🔍</div>
+                        <div class="mkt-canal-name">Google Ads</div>
+                        <div class="mkt-canal-val" id="mkt-gads-clicks">—</div>
+                        <div class="mkt-canal-sub">clics</div>
+                        <div class="mkt-canal-bar"><div class="mkt-canal-fill" id="mkt-gads-bar" style="width:0%;background:linear-gradient(90deg,#4285f4,#34a853);"></div></div>
+                        <div style="font-size:10px;color:#64748b;margin-top:4px;">Impresiones: <b id="mkt-gads-imp">—</b></div>
+                    </div>
+                    <div class="mkt-canal">
+                        <div class="mkt-canal-icon">🌐</div>
+                        <div class="mkt-canal-name">Sitio Web</div>
+                        <div class="mkt-canal-val" id="mkt-web-vis">—</div>
+                        <div class="mkt-canal-sub">visitas</div>
+                        <div class="mkt-canal-bar"><div class="mkt-canal-fill" id="mkt-web-bar" style="width:0%;background:linear-gradient(90deg,#10b981,#34d399);"></div></div>
+                        <div style="font-size:10px;color:#64748b;margin-top:4px;">Bounce rate: <b id="mkt-web-bounce">—</b></div>
+                    </div>
+                </div>
+
+                <!-- Campañas activas -->
+                <div class="mkt-campanas">
+                    <div class="rh-vac-title">
+                        <span>🚀 Campañas del mes</span>
+                        <button class="mkt-add-btn" onclick="abrirModalMkt('campana')" style="font-size:10px;padding:5px 10px;">+ Nueva campaña</button>
+                    </div>
+                    <div class="mkt-camp-row header">
+                        <span>Campaña</span><span>Canal</span><span>Presupuesto</span><span>Avance</span><span>Estatus</span>
+                    </div>
+                    <div id="mkt-campanas-lista"><div style="text-align:center;color:#94a3b8;padding:16px;font-size:12px;">Sin campañas registradas este mes</div></div>
+                </div>
+
+                <!-- Stock Tecnocontrol desde Google Sheets -->
+                <div class="mkt-stock">
+                    <div class="rh-vac-title">
+                        <span>📦 Revisión de Artículos en Stock <span style="font-size:10px;color:#64748b;font-weight:400;">(Google Sheets)</span></span>
+                        <div style="display:flex;gap:8px;align-items:center;">
+                            <span id="mkt-stock-status" style="font-size:10px;color:#94a3b8;"></span>
+                            <button class="mkt-add-btn" onclick="sincronizarStock()" style="font-size:10px;padding:5px 10px;">🔄 Actualizar</button>
+                            <input type="text" id="mkt-sheets-url" placeholder="URL del Google Sheet publicado (CSV)" style="font-size:11px;padding:5px 10px;border-radius:8px;border:1px solid #cbd5e1;color:#475569;width:300px;display:none;" />
+                            <button onclick="configurarSheetURL()" style="font-size:10px;padding:5px 10px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:8px;cursor:pointer;color:#475569;" id="btn-config-sheet">⚙️ Configurar</button>
+                        </div>
+                    </div>
+                    <div id="mkt-stock-content">
+                        <div style="text-align:center;color:#94a3b8;padding:24px;font-size:12px;">
+                            Configura la URL de tu Google Sheet para sincronizar el stock.<br>
+                            <span style="font-size:10px;">Archivo → Publicar en la web → CSV → copiar URL</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ═══ PARRILLA DE CONTENIDO ═══════════════════════════ -->
+                <div class="parrilla-wrap">
+                    <div class="parrilla-header">
+                        <div style="display:flex;align-items:center;gap:10px;">
+                            <span style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14px;color:#1e293b;">📅 Parrilla de Contenido</span>
+                            <span id="parrilla-mes-label" style="font-size:12px;color:#64748b;"></span>
+                        </div>
+                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                            <!-- Filtros por empresa -->
+                            <div class="parrilla-filtros" id="parrilla-filtros">
+                                <button class="parrilla-filtro active" data-empresa="todos" onclick="filtrarParrilla('todos',this)">Todos</button>
+                                <button class="parrilla-filtro" data-empresa="tecnocontrol" onclick="filtrarParrilla('tecnocontrol',this)">🔵 Tecnocontrol</button>
+                                <button class="parrilla-filtro" data-empresa="akuris" onclick="filtrarParrilla('akuris',this)">🟢 Akuris</button>
+                                <button class="parrilla-filtro" data-empresa="jomar" onclick="filtrarParrilla('jomar',this)">🟡 Jomar</button>
+                                <button class="parrilla-filtro" data-empresa="otra" onclick="filtrarParrilla('otra',this)">🟣 Otra</button>
+                            </div>
+                            <!-- Nav mes -->
+                            <div style="display:flex;align-items:center;gap:6px;">
+                                <button class="rh-mes-btn" onclick="parrillaMesPrev()">‹</button>
+                                <span id="parrilla-nav-label" style="font-size:12px;font-weight:700;color:#1e293b;min-width:90px;text-align:center;"></span>
+                                <button class="rh-mes-btn" onclick="parrillaMesNext()">›</button>
+                            </div>
+                            <!-- Vista -->
+                            <div style="display:flex;gap:4px;">
+                                <button id="btn-vista-cal" onclick="setVistaParrilla('calendario')" style="padding:5px 10px;border-radius:8px;border:1px solid #2563eb;background:#2563eb;color:white;font-size:11px;font-weight:700;cursor:pointer;">📅 Calendario</button>
+                                <button id="btn-vista-lista" onclick="setVistaParrilla('lista')" style="padding:5px 10px;border-radius:8px;border:1px solid #cbd5e1;background:#ffffff;color:#475569;font-size:11px;font-weight:700;cursor:pointer;">📋 Lista</button>
+                            </div>
+                            <button class="mkt-add-btn" onclick="abrirModalParrilla()">➕ Nuevo post</button>
+                        </div>
+                    </div>
+                    <!-- Contenido: calendario o lista -->
+                    <div id="parrilla-content"></div>
+                </div>
+            </div>
+
             <!-- MINI-DASHBOARD RH (solo visible en Recursos Humanos) -->
             <div id="rh-dashboard">
                 <div class="rh-dash-header">
