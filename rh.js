@@ -872,9 +872,9 @@ document.getElementById('modal-rh').addEventListener('click', e => {
 // ══════════════════════════════════════════════════════════════
 
 
-// Exportar función principal
-export function toggleRHDash(area, email) {
+// Exponer función principal globalmente
+window.toggleRHDash = function(area, email) {
     _toggleRHDash(area, email);
-}
+};
 
 console.log('[rh.js] ✅ Módulo RH cargado');
