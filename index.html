@@ -3450,7 +3450,7 @@ window.verArea=(a,b)=>{
     if(isMobile() && a === 'Ventas'){
         navegar('area', b);
         const yo = auth.currentUser?.email || '';
-        if(window.toggleVentasMapa) window.toggleVentasMapa(a, yo);
+        toggleVentasMapa(a, yo);
         mostrarNavMobile(true, true);
         return;
     }
@@ -3467,7 +3467,7 @@ window.verArea=(a,b)=>{
         const yo = auth.currentUser?.email || '';
         toggleMktDash(a, yo);
         toggleRHDash(a, yo);
-        if(window.toggleVentasMapa) window.toggleVentasMapa(a, yo);
+        toggleVentasMapa(a, yo);
         if(isMobile()) mostrarNavMobile(true, false);
         // Parrilla de documentos — mostrar en todas las áreas excepto Marketing (tiene su propia)
         const _parrillaWrap = document.getElementById('area-parrilla-wrap');
@@ -4149,8 +4149,11 @@ async function cargarModuloMarketing() {
 cargarModuloMarketing();
 
 
-// rh.js se carga como script clásico — expone window.toggleRHDash directamente
+// rh.js se carga como script clásico
 
+
+
+// ══════════════════════════════════════════════════════════════
 // MÓDULO VENTAS — Mapa de clientes con Leaflet.js + Firestore
 // Colección Firestore: ventas_clientes
 // ══════════════════════════════════════════════════════════════
@@ -5189,7 +5192,8 @@ window.guardarDatoRHInline = async () => {
     }
 };
 
-
+</script>
+    <script>
 // ══════════════════════════════════════════════════════════════
 // PARRILLA UNIVERSAL POR ÁREA — Documentos Google Drive
 // ══════════════════════════════════════════════════════════════
