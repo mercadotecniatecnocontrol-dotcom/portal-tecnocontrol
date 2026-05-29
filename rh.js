@@ -155,7 +155,7 @@ function getRhSemanaActual(){
 
 function rhKey(){ return getSemanaKeyRH(getRhSemanaActual()); }
 
-function puedeVerRH(email){ return email === RH_EMAIL || esAdminTotal(email); }
+function puedeVerRH(email){ return email === RH_EMAIL || (typeof esAdminTotal === 'function' && esAdminTotal(email)) || (typeof window.esAdminTotal === 'function' && window.esAdminTotal(email)); }
 
 // Mostrar/ocultar el dashboard RH según el área
 function _toggleRHDash(area, email){
