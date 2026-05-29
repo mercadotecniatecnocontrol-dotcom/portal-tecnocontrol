@@ -4148,11 +4148,7 @@ async function cargarModuloMarketing() {
 cargarModuloMarketing();
 
 
-async function cargarModuloRH() {
-    const mod = await import('/portal-tecnocontrol/rh.js');
-    window.toggleRHDash = mod.toggleRHDash;
-}
-cargarModuloRH();
+// rh.js se carga como script clásico — expone window.toggleRHDash directamente
 
 // ══════════════════════════════════════════════════════════════
 // MÓDULO VENTAS — Mapa de clientes con Leaflet.js + Firestore
@@ -12815,5 +12811,6 @@ console.log('[FLOTILLA v3] Módulo cargado');
 </script>
 
 <script src="vehiculos.js"></script>
+<script src="rh.js"></script>
 </body>
 </html>
