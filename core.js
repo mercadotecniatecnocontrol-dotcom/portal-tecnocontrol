@@ -252,12 +252,13 @@ async function cargarDatosRH(){
 // ══════════════════════════════════════════════════════════════
 // Exportar todo para uso como módulo ES6
 // ══════════════════════════════════════════════════════════════
-export {
-    solicitarPush, mostrarNotif, mostrarPush, cerrarPush,
-    esAdminTotal, nombreUsuario, obtenerDeptoUsuario,
-    verArea, navegar, rhKey, cargarDatosRH,
-    ventasSidebar, abrirModalCheckin, abrirModalCliente,
-    abrirModalMetas, filtrarClientesMapa
-};
+// Exponer todo via window para acceso global desde cualquier módulo
+window.esAdminTotal = esAdminTotal;
+window.nombreUsuario = nombreUsuario;
+window.obtenerDeptoUsuario = obtenerDeptoUsuario;
+window.rhKey = rhKey;
+window.cargarDatosRH = cargarDatosRH;
+// Nota: verArea, navegar, mostrarPush, mostrarNotif, cerrarPush
+// ya están asignados a window dentro de sus definiciones
 
 console.log('[core.js] ✅ Funciones core cargadas');
