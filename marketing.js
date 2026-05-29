@@ -1074,6 +1074,8 @@ function mktDelta(curr, prev, invertido=false){
 }
 
 function renderMktDash(d, key){
+    // Guard: si el dashboard no está en el DOM todavía, no hacer nada
+    if(!document.getElementById('mkt-val-seguidores')) return;
     const prevKey = mktKey(mktMes-1<0?11:mktMes-1, mktMes-1<0?mktAnio-1:mktAnio);
     const prev = mktData[prevKey]||{};
     const kpis = d.kpis||{}; const prevKpis = prev.kpis||{};
