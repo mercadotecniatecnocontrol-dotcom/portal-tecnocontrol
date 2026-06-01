@@ -341,7 +341,43 @@ function css(){
 .fl-spin{width:16px;height:16px;border:2px solid #E2E8F0;border-top-color:#2563EB;border-radius:50%;animation:fR .7s linear infinite;}
 @keyframes fR{to{transform:rotate(360deg)}}
 
+/* SVG DAÑOS */
+.fl-dmg-wrap{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px;}
+.fl-dmg-view{background:#F0F4FA;border:1.5px solid #E2E8F0;border-radius:10px;overflow:hidden;cursor:crosshair;position:relative;}
+.fl-dmg-view:hover{border-color:#2563EB;}
+.fl-dmg-lbl{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:#64748B;padding:5px 8px;background:#fff;border-bottom:1px solid #E2E8F0;display:flex;align-items:center;justify-content:space-between;}
+.fl-dmg-lbl button{font-size:8.5px;font-weight:700;color:#EF4444;background:none;border:none;cursor:pointer;padding:0;font-family:inherit;}
+.fl-dmg-pt{position:absolute;width:18px;height:18px;background:#EF4444;border:2px solid #fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:800;color:#fff;transform:translate(-50%,-50%);pointer-events:none;box-shadow:0 2px 6px rgba(239,68,68,.4);}
+.fl-dmg-pts{font-size:10px;color:#64748B;margin-top:5px;}
+
+/* PANEL VEHÍCULO EN SOLICITUDES */
+.fl-sol-vh{background:#0A1628;border-radius:10px;padding:12px 14px;color:#fff;margin-bottom:12px;display:none;}
+.fl-sol-vh.vis{display:block;}
+.fl-sol-vh-top{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:#93C5FD;margin-bottom:6px;}
+.fl-sol-vh-name{font-size:15px;font-weight:800;letter-spacing:-.3px;}
+.fl-sol-vh-sub{font-size:11px;color:rgba(255,255,255,.55);margin-top:2px;}
+.fl-sol-vh-row{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px;}
+.fl-sol-vh-d dt{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:rgba(255,255,255,.4);}
+.fl-sol-vh-d dd{font-size:11.5px;font-weight:700;color:#fff;font-family:'JetBrains Mono',monospace;}
+
+/* TIPO PERSONALIZADO */
+#fl-tipo-custom-wrap{margin-top:6px;display:none;}
+#fl-tipo-custom-wrap.vis{display:block;}
+
 /* RESPONSIVE */
+@media(max-width:900px){
+  #flotilla-dashboard{margin-left:0;}
+  .fl-lay{grid-template-columns:1fr;}
+  .fl-sb{border-right:none;border-bottom:1px solid #E8EDF5;max-height:190px;}
+  .fl-kpis,.fl-specs{grid-template-columns:1fr 1fr;}
+  .fl-ig-r{grid-template-columns:1fr;}
+  .fl-ig-c:nth-child(odd){border-right:none;}
+  .fl-fr{grid-template-columns:1fr;}
+  .fl-in{padding:14px;}
+  .fl-hero-top{flex-direction:column;}
+  .fl-hero-right{display:none;}
+  .fl-dmg-wrap{grid-template-columns:1fr;}
+}
 @media(max-width:900px){
   #flotilla-dashboard{margin-left:0;}
   .fl-lay{grid-template-columns:1fr;}
@@ -898,5 +934,280 @@ function flRefresh(){
   else if(vistaAct==='bajas')       flBajasVista();
 }
 
+// ── MAPA DE DAÑOS (estado) ──
+let dmgPts={frente:[],trasera:[],lateral_izq:[],lateral_der:[]};solEvidencias=[];
+
+function dmgSVG(vista){
+  const w=260,h=130;
+  // Formas base por vista
+  const shapes={
+    frente:`
+      <rect x="80" y="20" width="100" height="80" rx="12" fill="#CBD5E1" stroke="#94A3B8" stroke-width="1.5"/>
+      <rect x="88" y="28" width="84" height="36" rx="6" fill="#BFDBFE" stroke="#93C5FD" stroke-width="1"/>
+      <rect x="88" y="70" width="38" height="16" rx="4" fill="#FDE68A" stroke="#F59E0B" stroke-width="1"/>
+      <rect x="134" y="70" width="38" height="16" rx="4" fill="#FDE68A" stroke="#F59E0B" stroke-width="1"/>
+      <circle cx="94" cy="98" r="10" fill="#374151" stroke="#1F2937" stroke-width="2"/>
+      <circle cx="166" cy="98" r="10" fill="#374151" stroke="#1F2937" stroke-width="2"/>
+      <rect x="114" y="84" width="32" height="8" rx="3" fill="#94A3B8"/>`,
+    trasera:`
+      <rect x="80" y="20" width="100" height="80" rx="12" fill="#CBD5E1" stroke="#94A3B8" stroke-width="1.5"/>
+      <rect x="88" y="28" width="84" height="36" rx="6" fill="#BFDBFE" stroke="#93C5FD" stroke-width="1"/>
+      <rect x="88" y="70" width="38" height="16" rx="4" fill="#FCA5A5" stroke="#EF4444" stroke-width="1"/>
+      <rect x="134" y="70" width="38" height="16" rx="4" fill="#FCA5A5" stroke="#EF4444" stroke-width="1"/>
+      <circle cx="94" cy="98" r="10" fill="#374151" stroke="#1F2937" stroke-width="2"/>
+      <circle cx="166" cy="98" r="10" fill="#374151" stroke="#1F2937" stroke-width="2"/>
+      <rect x="114" y="86" width="32" height="5" rx="2" fill="#94A3B8"/>`,
+    lateral_izq:`
+      <ellipse cx="75" cy="92" rx="16" ry="16" fill="#374151" stroke="#1F2937" stroke-width="2"/>
+      <ellipse cx="185" cy="92" rx="16" ry="16" fill="#374151" stroke="#1F2937" stroke-width="2"/>
+      <rect x="48" y="55" width="164" height="42" rx="8" fill="#CBD5E1" stroke="#94A3B8" stroke-width="1.5"/>
+      <rect x="58" y="28" width="80" height="30" rx="6" fill="#BFDBFE" stroke="#93C5FD" stroke-width="1"/>
+      <rect x="144" y="30" width="42" height="26" rx="5" fill="#BFDBFE" stroke="#93C5FD" stroke-width="1"/>
+      <rect x="44" y="62" width="20" height="16" rx="3" fill="#FDE68A" stroke="#F59E0B" stroke-width="1"/>`,
+    lateral_der:`
+      <ellipse cx="75" cy="92" rx="16" ry="16" fill="#374151" stroke="#1F2937" stroke-width="2"/>
+      <ellipse cx="185" cy="92" rx="16" ry="16" fill="#374151" stroke="#1F2937" stroke-width="2"/>
+      <rect x="48" y="55" width="164" height="42" rx="8" fill="#CBD5E1" stroke="#94A3B8" stroke-width="1.5"/>
+      <rect x="122" y="28" width="80" height="30" rx="6" fill="#BFDBFE" stroke="#93C5FD" stroke-width="1"/>
+      <rect x="74" y="30" width="42" height="26" rx="5" fill="#BFDBFE" stroke="#93C5FD" stroke-width="1"/>
+      <rect x="196" y="62" width="20" height="16" rx="3" fill="#FCA5A5" stroke="#EF4444" stroke-width="1"/>`,
+  };
+  const pts=(dmgPts[vista]||[]).map((p,i)=>`<circle cx="${p.x}" cy="${p.y}" r="7" fill="#EF4444" stroke="#fff" stroke-width="2" opacity=".9"/><text x="${p.x}" y="${p.y+3}" text-anchor="middle" font-size="7" font-weight="800" fill="#fff">${i+1}</text>`).join('');
+  const nom={frente:'Frente',trasera:'Trasera',lateral_izq:'Lateral Izq.',lateral_der:'Lateral Der.'};
+  return`<div class="fl-dmg-view" id="fl-dv-${vista}" onclick="flDmgClick(event,'${vista}')">
+    <div class="fl-dmg-lbl">${nom[vista]} <button onclick="event.stopPropagation();flDmgLimpiar('${vista}')">✕ Limpiar</button></div>
+    <svg id="fl-ds-${vista}" width="100%" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">
+      ${shapes[vista]}
+      <g id="fl-dp-${vista}">${pts}</g>
+    </svg>
+    <div class="fl-dmg-pts" id="fl-dpt-${vista}" style="padding:0 8px 5px">${(dmgPts[vista]||[]).length?`${dmgPts[vista].length} punto(s) marcado(s)`:'Sin daños marcados'}</div>
+  </div>`;
+}
+
+window.flDmgClick=function(e,vista){
+  const svg=document.getElementById('fl-ds-'+vista);
+  if(!svg) return;
+  const rect=svg.getBoundingClientRect();
+  const vb=svg.viewBox.baseVal;
+  const x=((e.clientX-rect.left)/rect.width)*vb.width;
+  const y=((e.clientY-rect.top)/rect.height)*vb.height;
+  if(!dmgPts[vista]) dmgPts[vista]=[];
+  dmgPts[vista].push({x:Math.round(x),y:Math.round(y)});
+  // Re-render solo el grupo de puntos
+  const g=document.getElementById('fl-dp-'+vista);
+  if(g) g.innerHTML=dmgPts[vista].map((p,i)=>`<circle cx="${p.x}" cy="${p.y}" r="7" fill="#EF4444" stroke="#fff" stroke-width="2" opacity=".9"/><text x="${p.x}" y="${p.y+3}" text-anchor="middle" font-size="7" font-weight="800" fill="#fff">${i+1}</text>`).join('');
+  const lbl=document.getElementById('fl-dpt-'+vista);
+  if(lbl) lbl.textContent=`${dmgPts[vista].length} punto(s) marcado(s)`;
+};
+window.flDmgLimpiar=function(vista){
+  dmgPts[vista]=[];
+  const g=document.getElementById('fl-dp-'+vista);
+  if(g) g.innerHTML='';
+  const lbl=document.getElementById('fl-dpt-'+vista);
+  if(lbl) lbl.textContent='Sin daños marcados';
+};
+
+// ── NUEVA SOLICITUD — MODAL ──
+window.flAbrirModal=function(ecoPresel){
+  dmgPts={frente:[],trasera:[],lateral_izq:[],lateral_der:[]};
+  const TIPOS=['Mantenimiento preventivo','Mantenimiento correctivo','Reposición de llanta','Falla eléctrica','Siniestro / Accidente','Revisión de documentos','Otro','Personalizado…'];
+  const vehs=flV.filter(v=>v.status!=='baja');
+  const ov=document.createElement('div'); ov.className='fl-ov'; ov.id='fl-modal-nueva';
+  ov.innerHTML=`<div class="fl-modal" style="max-width:640px">
+    <div class="fl-mh">
+      <h3>${I.plus} Nueva solicitud de servicio</h3>
+      <button class="fl-mx" onclick="this.closest('.fl-ov').remove()">✕</button>
+    </div>
+    <div class="fl-mb">
+      <div class="fl-form">
+
+        <!-- SELECTOR VEHÍCULO -->
+        <div class="fl-fld">
+          <label>Unidad / Vehículo</label>
+          <select id="fl-s-veh" onchange="flModalSelVeh(this.value)">
+            <option value="">— Selecciona una unidad —</option>
+            ${vehs.map(v=>`<option value="${v.id}" ${ecoPresel&&v.eco===ecoPresel?'selected':''}>${v.eco} · ${v.unidad||'—'} · ${v.placas||'—'}</option>`).join('')}
+          </select>
+        </div>
+
+        <!-- PANEL INFO VEHÍCULO (solo al seleccionar) -->
+        <div class="fl-sol-vh" id="fl-sol-vh-panel">
+          <div class="fl-sol-vh-top">${I.car} Información del vehículo</div>
+          <div class="fl-sol-vh-name" id="fl-svh-nombre">—</div>
+          <div class="fl-sol-vh-sub" id="fl-svh-sub">—</div>
+          <div class="fl-sol-vh-row">
+            <dl class="fl-sol-vh-d"><dt>Placas</dt><dd id="fl-svh-placas">—</dd></dl>
+            <dl class="fl-sol-vh-d"><dt>Responsable</dt><dd id="fl-svh-resp">—</dd></dl>
+            <dl class="fl-sol-vh-d"><dt>Status</dt><dd id="fl-svh-status">—</dd></dl>
+          </div>
+        </div>
+
+        <!-- TIPO DE SOLICITUD -->
+        <div class="fl-fr">
+          <div class="fl-fld">
+            <label>Tipo de solicitud</label>
+            <select id="fl-s-tipo" onchange="flModalTipo(this.value)">
+              <option value="">— Selecciona —</option>
+              ${TIPOS.slice(0,7).map(t=>`<option value="${t}">${t}</option>`).join('')}
+              <option value="__custom__">Otro / Personalizado…</option>
+            </select>
+            <div id="fl-tipo-custom-wrap">
+              <input type="text" id="fl-s-tipo-custom" placeholder="Describe el tipo de solicitud…" style="margin-top:6px">
+            </div>
+          </div>
+          <div class="fl-fld">
+            <label>Prioridad</label>
+            <select id="fl-s-prior">
+              <option value="Normal">Normal</option>
+              <option value="Alta">Alta</option>
+              <option value="Urgente">Urgente</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- DESCRIPCIÓN -->
+        <div class="fl-fld">
+          <label>Descripción del problema</label>
+          <textarea id="fl-s-desc" placeholder="Describe el problema o servicio que se requiere…"></textarea>
+        </div>
+
+        <!-- KILOMETRAJE + TALLER -->
+        <div class="fl-fr">
+          <div class="fl-fld">
+            <label>Kilometraje actual (km)</label>
+            <input type="number" id="fl-s-km" placeholder="Ej. 85000">
+          </div>
+          <div class="fl-fld">
+            <label>Taller sugerido (opcional)</label>
+            <input type="text" id="fl-s-taller" placeholder="Nombre del taller">
+          </div>
+        </div>
+
+        <!-- SVG DAÑOS -->
+        <div>
+          <div style="font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#374151;margin-bottom:6px">${I.alert} Marcar zonas dañadas <span style="font-size:10px;font-weight:500;color:#94A3B8;text-transform:none">(clic en la vista para agregar punto)</span></div>
+          <div class="fl-dmg-wrap">
+            ${dmgSVG('frente')}
+            ${dmgSVG('trasera')}
+            ${dmgSVG('lateral_izq')}
+            ${dmgSVG('lateral_der')}
+          </div>
+        </div>
+
+        <!-- EVIDENCIAS -->
+        <div class="fl-fld">
+          <label>${I.camera} Evidencias fotográficas</label>
+          <label class="fl-up" onclick="document.getElementById('fl-s-ev-inp').click()">
+            ${I.upload} Subir fotos (múltiple)
+          </label>
+          <input type="file" id="fl-s-ev-inp" accept="image/*" multiple style="display:none" onchange="flModalEv(this)">
+          <div class="fl-pills" id="fl-s-ev-pills"></div>
+        </div>
+
+        <!-- SOLICITANTE (automático) -->
+        <div class="fl-fasig">
+          ${I.user} Solicitante: <strong>${window.auth?.currentUser?.displayName||window.auth?.currentUser?.email||'—'}</strong>
+        </div>
+
+        <div class="fl-fa">
+          <button class="fb outline" style="color:#0A1628;background:#fff;border-color:#E8EDF5" onclick="this.closest('.fl-ov').remove()">Cancelar</button>
+          <button class="fb accent" onclick="flGuardarSol()">${I.check} Crear solicitud</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+  // Si viene con vehículo preseleccionado
+  if(ecoPresel){
+    const sel=document.getElementById('fl-s-veh');
+    if(sel) flModalSelVeh(sel.value);
+  }
+};
+
+window.flModalSelVeh=function(id){
+  const panel=document.getElementById('fl-sol-vh-panel'); if(!panel) return;
+  if(!id){panel.classList.remove('vis');return;}
+  const v=flV.find(x=>x.id===id); if(!v){panel.classList.remove('vis');return;}
+  document.getElementById('fl-svh-nombre').textContent=`${v.unidad||'—'}`;
+  document.getElementById('fl-svh-sub').textContent=`ECO ${v.eco} · Año ${v.año||v.anio||'—'} · ${v.color||'—'}`;
+  document.getElementById('fl-svh-placas').textContent=v.placas||'—';
+  document.getElementById('fl-svh-resp').textContent=(v.responsable||'Sin asignar').split(' ')[0];
+  document.getElementById('fl-svh-status').textContent=(v.status||'activo').toUpperCase();
+  panel.classList.add('vis');
+};
+
+window.flModalTipo=function(val){
+  const wrap=document.getElementById('fl-tipo-custom-wrap'); if(!wrap) return;
+  wrap.classList.toggle('vis',val==='__custom__');
+  if(val==='__custom__') document.getElementById('fl-s-tipo-custom')?.focus();
+};
+
+let solEvidencias=[];
+window.flModalEv=function(input){
+  const files=Array.from(input.files); if(!files.length) return;
+  files.forEach(f=>{
+    const r=new FileReader();
+    r.onload=e=>{
+      solEvidencias.push(e.target.result);
+      const pills=document.getElementById('fl-s-ev-pills');
+      if(pills) pills.innerHTML=solEvidencias.map((b,i)=>`<span class="fl-pill">${I.camera} Foto ${i+1}</span>`).join('');
+    };
+    r.readAsDataURL(f);
+  });
+};
+
+window.flGuardarSol=async function(){
+  const vId=document.getElementById('fl-s-veh')?.value;
+  const tipoRaw=document.getElementById('fl-s-tipo')?.value;
+  const tipoCustom=document.getElementById('fl-s-tipo-custom')?.value?.trim();
+  const tipo=tipoRaw==='__custom__'?(tipoCustom||'Personalizado'):tipoRaw;
+  const desc=document.getElementById('fl-s-desc')?.value?.trim();
+  const km=document.getElementById('fl-s-km')?.value;
+  const taller=document.getElementById('fl-s-taller')?.value?.trim();
+  const prior=document.getElementById('fl-s-prior')?.value||'Normal';
+
+  if(!vId){alert('Selecciona una unidad.');return;}
+  if(!tipo){alert('Selecciona el tipo de solicitud.');return;}
+  if(!desc){alert('Describe el problema.');return;}
+
+  const v=flV.find(x=>x.id===vId);
+  const doc={
+    vehiculoId:vId,
+    vehiculoEco:v?.eco||'',
+    vehiculo:`${v?.eco} · ${v?.unidad||''}`,
+    tipo,
+    prioridad:prior,
+    descripcion:desc,
+    kilometrajeReportado:km||'',
+    taller:taller||'',
+    estatus:'Solicitud',
+    solicitante:window.auth?.currentUser?.displayName||window.auth?.currentUser?.email||'—',
+    creadoPor:window.auth?.currentUser?.email||'',
+    creadoEn:new Date().toISOString(),
+    evidencias:solEvidencias,
+    danos:{frente:dmgPts.frente,trasera:dmgPts.trasera,lateral_izq:dmgPts.lateral_izq,lateral_der:dmgPts.lateral_der},
+  };
+
+  const btn=document.querySelector('#fl-modal-nueva .fb.accent');
+  if(btn){btn.disabled=true;btn.textContent='Guardando…';}
+  try{
+    await fs.addDoc(fs.collection(db,C.SOLS),doc);
+    // Actualizar km del vehículo si se proporcionó
+    if(km&&v&&!v.id.startsWith('eco-')){
+      await fs.updateDoc(fs.doc(db,C.VEHS,v.id),{km:Number(km)}).catch(()=>{});
+    }
+    solEvidencias=[];
+    dmgPts={frente:[],trasera:[],lateral_izq:[],lateral_der:[]};
+    document.getElementById('fl-modal-nueva')?.remove();
+    await loadSols();
+    flRefresh();
+    if(window.mostrarPush) window.mostrarPush('Solicitud creada','Se notificará al equipo de flotilla.','✓');
+  }catch(e){
+    console.error('[FLOTILLA]',e);
+    alert('Error al guardar: '+e.message);
+    if(btn){btn.disabled=false;btn.textContent=`${I.check} Crear solicitud`;}
+  }
+};  
 console.log('[FLOTILLA v7] Gestión Vehicular Tecnocontrol — '+CAT.length+' unidades en catálogo');
 })();
