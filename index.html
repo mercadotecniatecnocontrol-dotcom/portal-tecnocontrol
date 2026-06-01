@@ -3468,6 +3468,16 @@ window.verArea=(a,b)=>{
         toggleMktDash(a, yo);
         toggleRHDash(a, yo);
         toggleVentasMapa(a, yo);
+        // Flotilla
+        const _flPanel = document.getElementById('flotilla-dashboard');
+        if(_flPanel){
+            if(a === 'Flotilla'){
+                _flPanel.style.display = 'block';
+                if(typeof window.cargarFlotilla === 'function') window.cargarFlotilla();
+            } else {
+                _flPanel.style.display = 'none';
+            }
+        }
         if(isMobile()) mostrarNavMobile(true, false);
         // Parrilla de documentos — mostrar en todas las áreas excepto Marketing (tiene su propia)
         const _parrillaWrap = document.getElementById('area-parrilla-wrap');
