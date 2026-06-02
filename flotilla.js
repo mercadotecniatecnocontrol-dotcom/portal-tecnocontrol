@@ -252,7 +252,7 @@ function injectCSS(){
 .fl-ck-foto-btn.has{border-color:#22C55E;color:#15803D;background:#DCFCE7;}
 
 /* ── DAÑOS LIST ── */
-.fl-dmg-list{background:#fff;border-top:1px solid #E8EDF5;padding:10px 14px;}
+.fl-dmg-list{background:#fff;border-top:2px solid #E8EDF5;padding:14px 20px;margin-top:2px;}
 .fl-dmg-list-t{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin-bottom:8px;}
 .fl-dmg-item{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #F8FAFD;font-size:11.5px;}
 .fl-dmg-item:last-child{border-bottom:none;}
@@ -267,13 +267,13 @@ function injectCSS(){
 .fl-rp-upload label{display:inline-flex;align-items:center;gap:4px;padding:4px 8px;background:rgba(10,22,40,.7);color:#fff;border-radius:6px;font-size:9.5px;font-weight:700;cursor:pointer;backdrop-filter:blur(4px);}
 .fl-rp-head{padding:10px 12px 2px;font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;}
 .fl-rp-num{font-size:24px;font-weight:900;font-family:'JetBrains Mono',monospace;padding:0 12px 8px;line-height:1;border-bottom:1px solid #F1F5F9;}
-.fl-rp-row{padding:6px 12px;border-bottom:1px solid #F1F5F9;}
-.fl-rp-row dt{font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px;}
-.fl-rp-row dd{font-size:13px;font-weight:700;color:#0A0F1E;}
-.fl-rp-row dd.big{font-size:15px;font-weight:900;}
-.fl-rp-row dd.mono{font-family:'JetBrains Mono',monospace;font-size:12px;}
-.fl-rp-row dd.green{color:#15803D;}
-.fl-rp-row dd.red{color:#B91C1C;}
+.fl-rp-row{padding:8px 14px;border-bottom:1px solid #F1F5F9;}
+.fl-rp-row dt{font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin-bottom:3px;}
+.fl-rp-row dd{font-size:13.5px;font-weight:700;color:#0A0F1E;line-height:1.2;}
+.fl-rp-row dd.big{font-size:15px;font-weight:900;letter-spacing:-.2px;}
+.fl-rp-row dd.mono{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.3px;}
+.fl-rp-row dd.green{color:#15803D;font-weight:800;}
+.fl-rp-row dd.red{color:#B91C1C;font-weight:800;}
 .fl-rp-docs{padding:10px 12px;border-bottom:1px solid #F1F5F9;}
 .fl-rp-docs-t{font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin-bottom:8px;}
 .fl-rp-doc-btn{display:flex;align-items:center;gap:6px;padding:6px 10px;border:1.5px solid #E2E8F0;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;color:#374151;background:#F8FAFD;width:100%;margin-bottom:5px;font-family:inherit;transition:all .12s;}
@@ -456,10 +456,26 @@ window.flSbTipo=function(t){
 window.flSbSel=function(id){
   document.querySelectorAll('.fl-sb-item').forEach(e=>e.classList.remove('on'));
   document.getElementById('fl-sbi-'+id)?.classList.add('on');
-  ST.vehId=id;
-  // Actualizar panel derecho
+  // Reset TOTAL del estado al cambiar vehículo
+  const vNuevo=flV.find(x=>x.id===id);
+  const esGrande=vNuevo&&(vNuevo.tipo==='camioneta'||vNuevo.tipo==='camion');
+  ST={
+    vehId:id,
+    tipoVeh:esGrande?'troca':'auto',
+    vistaImg:'frente',
+    modo:'entrada',
+    dmg:{frente:[],atras:[],derecha:[],izquierda:[]},
+    chk:{},
+    chkFotos:{},
+    evFotos:[],
+    tipo:'',
+    prior:'Normal',
+    desc:'',
+    km:'',
+    taller:'',
+    gasolina:50,
+  };
   renderRP(id);
-  // Si estamos en solicitudes, actualizar la vista
   if(vistaAct==='sols')rSols();
 };
 
@@ -524,13 +540,14 @@ function rSols(){
     <!-- BARRA DETALLES VEHÍCULO -->
     <div class="fl-det-bar" style="padding:12px 20px;">
       <div class="fl-det-bar-t">Detalles del vehículo</div>
-      <div class="fl-det-fields">
-        <div class="fl-det-field"><label>Placas</label><input readonly value="${v?.placas||'—'}"></div>
-        <div class="fl-det-field"><label>Vehículo</label><input readonly value="${v?.unidad||'—'}" style="min-width:120px"></div>
-        <div class="fl-det-field"><label>Marca</label><input readonly value="${v?.unidad?.split(' ')[0]||'—'}"></div>
-        <div class="fl-det-field"><label>Modelo</label><input readonly value="${v?.año||'—'}"></div>
-        <div class="fl-det-field"><label>Fecha</label><input readonly value="${fecha}"></div>
-        <div class="fl-det-field"><label>Hora</label><input readonly value="${hora}"></div>
+      <div class="fl-det-fields" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+        <div class="fl-det-field"><label>Placas</label><input readonly value="${v?.placas||'—'}" style="width:100px"></div>
+        <div class="fl-det-field"><label>Vehículo</label><input readonly value="${v?.unidad||'—'}" style="width:140px"></div>
+        <div class="fl-det-field"><label>Marca</label><input readonly value="${(v?.unidad||'—').split(' ')[0]}" style="width:90px"></div>
+        <div class="fl-det-field"><label>Modelo</label><input readonly value="${v?.año||'—'}" style="width:70px"></div>
+        <div class="fl-det-field"><label>Fecha</label><input readonly value="${fecha}" style="width:90px"></div>
+        <div class="fl-det-field"><label>Hora</label><input readonly value="${hora}" style="width:80px"></div>
+        ${!v?'<div style="font-size:11.5px;color:#94A3B8;font-weight:600;align-self:center">← Selecciona un vehículo del panel izquierdo</div>':''}
       </div>
     </div>
 
@@ -549,20 +566,16 @@ function rSols(){
         <option>Normal</option><option>Alta</option><option>Urgente</option>
       </select>
       <!-- SELECTOR TIPO VEHÍCULO -->
-      <button class="fl-tipo-pill ${ST.tipoVeh==='auto'?'on':''}" id="fl-pill-auto" onclick="flSetTipoVeh('auto')">
-        <svg width="24" height="14" viewBox="0 0 54 24" fill="none"><rect x="6" y="7" width="42" height="13" rx="4" fill="${ST.tipoVeh==='auto'?'#fff':'#CBD5E1'}"/><rect x="10" y="2" width="26" height="9" rx="3" fill="${ST.tipoVeh==='auto'?'rgba(255,255,255,.6)':'#93C5FD'}"/><circle cx="13" cy="20" r="4" fill="${ST.tipoVeh==='auto'?'rgba(255,255,255,.8)':'#374151'}"/><circle cx="41" cy="20" r="4" fill="${ST.tipoVeh==='auto'?'rgba(255,255,255,.8)':'#374151'}"/></svg>
-        CARRO
-      </button>
-      <button class="fl-tipo-pill ${ST.tipoVeh==='troca'?'on':''}" id="fl-pill-troca" onclick="flSetTipoVeh('troca')">
-        <svg width="28" height="14" viewBox="0 0 62 24" fill="none"><rect x="2" y="9" width="60" height="11" rx="3" fill="${ST.tipoVeh==='troca'?'#fff':'#CBD5E1'}"/><rect x="6" y="3" width="20" height="9" rx="2" fill="${ST.tipoVeh==='troca'?'rgba(255,255,255,.6)':'#93C5FD'}"/><rect x="26" y="5" width="30" height="7" rx="2" fill="${ST.tipoVeh==='troca'?'rgba(255,255,255,.7)':'#94A3B8'}"/><circle cx="11" cy="20" r="4" fill="${ST.tipoVeh==='troca'?'rgba(255,255,255,.8)':'#374151'}"/><circle cx="50" cy="20" r="4" fill="${ST.tipoVeh==='troca'?'rgba(255,255,255,.8)':'#374151'}"/></svg>
-        TROCA
-      </button>
+      <div style="display:flex;border:2px solid #E2E8F0;border-radius:9px;overflow:hidden">
+        <button id="fl-pill-auto" onclick="flSetTipoVeh('auto')" style="padding:8px 18px;border:none;font-family:inherit;font-size:12px;font-weight:800;cursor:pointer;transition:all .15s;background:${ST.tipoVeh==='auto'?'#1E3A5F':'#fff'};color:${ST.tipoVeh==='auto'?'#fff':'#374151'}">CARRO</button>
+        <button id="fl-pill-troca" onclick="flSetTipoVeh('troca')" style="padding:8px 18px;border:none;border-left:2px solid #E2E8F0;font-family:inherit;font-size:12px;font-weight:800;cursor:pointer;transition:all .15s;background:${ST.tipoVeh==='troca'?'#1E3A5F':'#fff'};color:${ST.tipoVeh==='troca'?'#fff':'#374151'}">TROCA</button>
+      </div>
       <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
-        <div style="display:flex;border:2px solid #2563EB;border-radius:8px;overflow:hidden">
-          <button id="fl-modo-entrada" onclick="flSetModo('entrada')" style="padding:6px 14px;background:${ST.modo==='entrada'?'#2563EB':'#fff'};color:${ST.modo==='entrada'?'#fff':'#2563EB'};border:none;font-family:inherit;font-size:11.5px;font-weight:800;cursor:pointer;transition:all .15s">ENTRADA</button>
-          <button id="fl-modo-salida"  onclick="flSetModo('salida')"  style="padding:6px 14px;background:${ST.modo==='salida'?'#16A34A':'#fff'};color:${ST.modo==='salida'?'#fff':'#16A34A'};border:none;border-left:2px solid #E2E8F0;font-family:inherit;font-size:11.5px;font-weight:800;cursor:pointer;transition:all .15s">SALIDA</button>
+        <div style="display:flex;border:2px solid #E2E8F0;border-radius:9px;overflow:hidden">
+          <button id="fl-modo-entrada" onclick="flSetModo('entrada')" style="padding:8px 18px;background:${ST.modo==='entrada'?'#2563EB':'#fff'};color:${ST.modo==='entrada'?'#fff':'#2563EB'};border:none;font-family:inherit;font-size:12px;font-weight:800;cursor:pointer;transition:all .15s;letter-spacing:.3px">ENTRADA</button>
+          <button id="fl-modo-salida"  onclick="flSetModo('salida')"  style="padding:8px 18px;background:${ST.modo==='salida'?'#16A34A':'#fff'};color:${ST.modo==='salida'?'#fff':'#16A34A'};border:none;border-left:2px solid #E2E8F0;font-family:inherit;font-size:12px;font-weight:800;cursor:pointer;transition:all .15s;letter-spacing:.3px">SALIDA</button>
         </div>
-        <button class="fl-sol-bar-btn blue" onclick="flSolGuardar()">${I.check} Crear solicitud</button>
+        <button style="padding:8px 20px;background:#1E3A5F;color:#fff;border:none;border-radius:9px;font-family:inherit;font-size:12px;font-weight:800;cursor:pointer;letter-spacing:.3px;display:inline-flex;align-items:center;gap:6px" onclick="flSolGuardar()">${I.check} Crear solicitud</button>
       </div>
     </div>
 
@@ -585,7 +598,7 @@ function rSols(){
           <div id="fl-dmg-list-items">${renderDmgList()}</div>
         </div>
         <!-- DESCRIPCIÓN + KM -->
-        <div style="background:#fff;border-top:1px solid #E8EDF5;padding:12px 14px;display:flex;gap:10px">
+        <div style="background:#fff;border-top:2px solid #E8EDF5;padding:16px 20px;display:flex;gap:14px">
           <div style="flex:1"><label style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">Descripción del problema</label>
             <textarea id="fl-sol-desc" placeholder="Describe el problema o servicio requerido…" style="width:100%;padding:8px;border:1.5px solid #E2E8F0;border-radius:7px;font-family:inherit;font-size:12.5px;resize:none;height:62px;outline:none;background:#F8FAFD"></textarea>
           </div>
@@ -597,7 +610,7 @@ function rSols(){
           </div>
         </div>
         <!-- EVIDENCIAS -->
-        <div style="background:#fff;border-top:1px solid #E8EDF5;padding:10px 14px">
+        <div style="background:#fff;border-top:2px solid #E8EDF5;padding:14px 20px">
           <label style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:6px">${I.camera} Evidencias fotográficas</label>
           <label class="fl-up" onclick="document.getElementById('fl-ev-inp').click()" style="height:36px">${I.upload} Subir fotos del vehículo</label>
           <input type="file" id="fl-ev-inp" accept="image/*" multiple style="display:none" onchange="flSolEvs(this)">
@@ -613,7 +626,10 @@ function rSols(){
         <!-- GAUGE GASOLINA -->
         <div class="fl-gauge-wrap">${buildGaugeHTML()}</div>
         <!-- CHECK LIST -->
-        <div class="fl-ck-head">CHECKLIST &nbsp;${ST.modo.toUpperCase()} &nbsp;·&nbsp; SI &nbsp; NO &nbsp; FOTO</div>
+        <div class="fl-ck-head" style="background:${ST.modo==='entrada'?'#1E3A5F':'#15803D'};display:flex;align-items:center;justify-content:space-between;padding:9px 12px">
+          <span style="font-size:11px;font-weight:900;letter-spacing:.5px;color:#fff">CHECKLIST · ${ST.modo==='entrada'?'ENTRADA':'SALIDA'}</span>
+          <span style="font-size:9px;color:rgba(255,255,255,.7);font-weight:700">SI &nbsp;·&nbsp; NO &nbsp;·&nbsp; FOTO</span>
+        </div>
         <div class="fl-ck-body" style="flex:1;overflow-y:auto">
           ${renderChkFull()}
         </div>
@@ -655,8 +671,13 @@ function renderGauge(){
     <!-- Aguja -->
     <line x1="${cx}" y1="${cy}" x2="${(cx+72*Math.cos(toRad(angEnd))).toFixed(1)}" y2="${(cy+72*Math.sin(toRad(angEnd))).toFixed(1)}" stroke="#0A1628" stroke-width="3" stroke-linecap="round"/>
     <circle cx="${cx}" cy="${cy}" r="8" fill="#0A1628" stroke="#fff" stroke-width="2.5"/>
-    <!-- Icono gasolina -->
-    <text x="${cx}" y="38" text-anchor="middle" font-size="16">⛽</text>
+    <!-- Ícono gasolina SVG -->
+    <g transform="translate(${cx-10},14)">
+      <rect x="2" y="0" width="14" height="18" rx="2" fill="#1E3A5F" opacity=".15"/>
+      <rect x="4" y="2" width="10" height="8" rx="1" fill="#1E3A5F" opacity=".3"/>
+      <line x1="9" y1="10" x2="9" y2="14" stroke="#1E3A5F" stroke-width="2" opacity=".4"/>
+      <circle cx="9" cy="16" r="2" fill="#1E3A5F" opacity=".4"/>
+    </g>
   </svg>`;
 }
 
@@ -668,7 +689,7 @@ window.flGasChange=function(v){
 function buildGaugeHTML(){
   return`<div class="fl-gauge-t">Nivel de gasolina</div>
     ${renderGauge()}
-    <div class="fl-gauge-labels"><span>BACIO</span><span>2/4</span><span>MEDIO</span><span>3/4</span><span>LLENO</span></div>
+    <div class="fl-gauge-labels"><span>VACÍO</span><span>2/4</span><span>MEDIO</span><span>3/4</span><span>LLENO</span></div>
     <input type="range" min="0" max="100" value="${ST.gasolina}" id="fl-gas-range" oninput="flGasChange(this.value)" style="width:100%;margin-top:6px;accent-color:#2563EB">`;
 }
 
@@ -734,15 +755,37 @@ window.flDmgRemove=function(vista,idx){
 // TIPO VEHÍCULO
 window.flSetTipoVeh=function(t){
   ST.tipoVeh=t;
-  rSols();
+  const autoBtn=document.getElementById('fl-pill-auto');
+  const trocaBtn=document.getElementById('fl-pill-troca');
+  if(autoBtn){autoBtn.style.background=t==='auto'?'#1E3A5F':'#fff';autoBtn.style.color=t==='auto'?'#fff':'#374151';}
+  if(trocaBtn){trocaBtn.style.background=t==='troca'?'#1E3A5F':'#fff';trocaBtn.style.color=t==='troca'?'#fff':'#374151';}
+  // Actualizar grid de imágenes sin re-render completo
+  ['frente','atras','derecha','izquierda'].forEach(v=>{
+    const cell=document.getElementById('fl-gc-'+v);
+    if(cell){
+      const img=cell.querySelector('img,div[style]');
+      // Reemplazar solo el contenido de imagen
+      const newHtml=getImgSrc(t,v);
+      const tmp=document.createElement('div');
+      tmp.innerHTML=newHtml;
+      const newEl=tmp.firstElementChild;
+      if(img&&newEl){cell.replaceChild(newEl,img);}
+    }
+  });
 };
 window.flSetModo=function(m){
   ST.modo=m;
-  // Actualizar botones
   const be=document.getElementById('fl-modo-entrada');
   const bs=document.getElementById('fl-modo-salida');
   if(be){be.style.background=m==='entrada'?'#2563EB':'#fff';be.style.color=m==='entrada'?'#fff':'#2563EB';}
   if(bs){bs.style.background=m==='salida'?'#16A34A':'#fff';bs.style.color=m==='salida'?'#fff':'#16A34A';}
+  // Actualizar header del checklist
+  const ckh=document.querySelector('.fl-ck-head');
+  if(ckh){
+    ckh.style.background=m==='entrada'?'#1E3A5F':'#15803D';
+    const span=ckh.querySelector('span');
+    if(span)span.textContent=`CHECKLIST · ${m==='entrada'?'ENTRADA':'SALIDA'}`;
+  }
 };
 
 // CHECKLIST
@@ -828,7 +871,7 @@ function renderRP(id){
   if(d!==null&&d<0)alts.push({e:true,t:'Póliza VENCIDA'});
   else if(d!==null&&d<90)alts.push({e:false,t:`Póliza vence en ${d} días`});
   rp.innerHTML=`
-    <!-- FOTO / CARRUSEL -->
+    <!-- FOTO / CARRUSEL — específica por vehículo -->
     <div class="fl-rp-img" id="fl-rp-car">
       ${fotos.length?`
       <div style="position:relative;overflow:hidden">
@@ -840,7 +883,10 @@ function renderRP(id){
         <button onclick="flRPCar(1)"  style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:rgba(10,22,40,.6);border:none;color:#fff;width:24px;height:24px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center">${I.chevR}</button>
         <div style="position:absolute;bottom:6px;left:50%;transform:translateX(-50%);display:flex;gap:4px">${fotos.map((_,i)=>`<div onclick="flRPCarTo(${i})" style="width:5px;height:5px;border-radius:50%;background:${i===0?'#fff':'rgba(255,255,255,.4)'};cursor:pointer" id="fl-rpd-${i}"></div>`).join('')}</div>`:''}
       </div>`:`
-      <div class="fl-rp-img-empty">${I.camera}<span style="font-size:9px">Sube fotos en la sección de evidencias</span></div>`}
+      <div style="height:140px;background:linear-gradient(135deg,#E8F0FA,#C7D7F0);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px;color:#4A6FA5">
+        <div style="font-size:42px">${hEmo(v.tipo)}</div>
+        <div style="font-size:10px;font-weight:700;color:#4A6FA5">ECO ${v.eco}</div>
+      </div>`}
       <div class="fl-rp-upload">
         <label onclick="document.getElementById('fl-rp-f').click()">${I.upload} Subir imagen</label>
         <input type="file" id="fl-rp-f" accept="image/*" style="display:none" onchange="flRPFoto(this,'${id}')">
