@@ -111,7 +111,7 @@ const I={
 let flV=[], flS=[], flCom=[];
 let vistaAct='panel';
 let ST={
-  vehId:null, tipoVeh:'auto', vistaImg:'frente',
+  vehId:null, tipoVeh:'auto', vistaImg:'frente', modo:'entrada',
   dmg:{frente:[],atras:[],derecha:[],izquierda:[]},
   chk:{}, chkFotos:{}, evFotos:[],
   tipo:'', prior:'Normal', desc:'', km:'', taller:'', gasolina:50,
@@ -130,12 +130,23 @@ function hBadge(e){
 }
 
 function getImgSrc(tipo,vista){
-  if(tipo==='troca'||tipo==='camion'){
+  // tipo puede ser: 'auto','camioneta','camion','troca'
+  const esGrande = tipo==='troca'||tipo==='camion'||tipo==='camioneta';
+  if(esGrande){
     const key='troca_'+vista;
-    return SVG_TROCA[key]||'';
+    return SVG_TROCA[key]?`<div style="pointer-events:none">${SVG_TROCA[key]}</div>`:'';
   }
   const key='auto_'+vista;
-  return IMG_VEH[key]?`<img src="${IMG_VEH[key]}" style="width:100%;height:100%;object-fit:contain;display:block">`:SVG_TROCA['troca_'+vista]||'';
+  return IMG_VEH[key]
+    ? `<img src="${IMG_VEH[key]}" style="width:100%;height:100%;object-fit:contain;display:block;background:#E8F0FA">`
+    : (SVG_TROCA['troca_'+vista]?`<div style="pointer-events:none">${SVG_TROCA['troca_'+vista]}</div>`:'');
+}
+
+function getTipoVehActivo(){
+  if(!ST.vehId) return ST.tipoVeh;
+  const v=flV.find(x=>x.id===ST.vehId);
+  if(!v) return ST.tipoVeh;
+  return v.tipo==='camioneta'||v.tipo==='camion'?'troca':'auto';
 }
 
 // CSS
@@ -165,7 +176,7 @@ function injectCSS(){
 .fl-wrap{display:flex;min-height:calc(100vh - 54px);}
 
 /* ── SIDEBAR IZQUIERDO VEHÍCULOS ── */
-.fl-sb{width:200px;flex-shrink:0;background:#fff;border-right:1px solid #E8EDF5;display:flex;flex-direction:column;height:calc(100vh - 54px);position:sticky;top:54px;}
+.fl-sb{width:210px;flex-shrink:0;background:#fff;border-right:1px solid #E8EDF5;display:flex;flex-direction:column;height:calc(100vh - 54px);position:sticky;top:54px;}
 .fl-sb-top{padding:10px;border-bottom:1px solid #E8EDF5;}
 .fl-sb-search{position:relative;}
 .fl-sb-search input{width:100%;padding:7px 10px 7px 28px;border:1.5px solid #E2E8F0;border-radius:7px;font-family:inherit;font-size:12px;outline:none;background:#F8FAFD;}
@@ -206,7 +217,8 @@ function injectCSS(){
 .fl-sol-bar-btn.blue:hover{background:#1D4ED8;}
 .fl-sol-bar-btn.green{background:#16A34A;color:#fff;}
 .fl-sol-bar-btn.green:hover{background:#15803D;}
-.fl-sol-tipo-sel{padding:7px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;background:#F8FAFD;outline:none;cursor:pointer;font-weight:600;}
+.fl-sol-tipo-sel{padding:7px 12px;border:1.5px solid #CBD5E1;border-radius:8px;font-family:inherit;font-size:12.5px;background:#fff;outline:none;cursor:pointer;font-weight:600;color:#0A0F1E;}
+.fl-sol-tipo-sel:focus{border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,.1);}
 
 /* ── GRID 2x2 FOTOS ── */
 .fl-grid{display:grid;grid-template-columns:1fr 1fr;gap:2px;background:#0A1628;}
@@ -214,7 +226,7 @@ function injectCSS(){
 .fl-grid-cell img{width:100%;height:100%;object-fit:contain;display:block;background:#F0F4F8;}
 .fl-grid-cell-svg{width:100%;height:100%;display:block;}
 .fl-grid-overlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;}
-.fl-grid-lbl{position:absolute;bottom:0;left:0;right:0;padding:4px 8px;background:rgba(10,22,40,.7);font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:rgba(255,255,255,.8);}
+.fl-grid-lbl{position:absolute;top:8px;left:8px;padding:4px 10px;background:rgba(10,22,40,.75);border-radius:5px;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#fff;backdrop-filter:blur(4px);}
 .fl-dmg-pt{position:absolute;transform:translate(-50%,-50%);pointer-events:auto;cursor:pointer;}
 .fl-dmg-pt-circle{width:22px;height:22px;border-radius:50%;background:#EF4444;border:2.5px solid #fff;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;color:#fff;box-shadow:0 2px 8px rgba(239,68,68,.5);}
 
@@ -362,7 +374,7 @@ function buildHTML(){
       <span id="fl-cnt-s" class="fl-tab-cnt" style="display:none">0</span>
     </div>
     <div style="position:relative;margin-left:6px">
-      <button class="fl-tab-btn" id="fl-tb-comis" onclick="flVista('comis')" title="Uso de vehículos / Comisiones">${I.truck}</button>
+      <button class="fl-tab-btn" id="fl-tb-comis" onclick="flVista('comis')" title="Utilitarios">${I.truck}</button>
     </div>
     <div style="position:relative;margin-left:6px">
       <button class="fl-tab-btn" id="fl-tb-bajas" onclick="flVista('bajas')" title="Vehículos de baja">${I.archive}</button>
@@ -509,7 +521,7 @@ function rSols(){
   const hora=now.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
   setContent(`
     <!-- BARRA DETALLES VEHÍCULO -->
-    <div class="fl-det-bar">
+    <div class="fl-det-bar" style="padding:12px 20px;">
       <div class="fl-det-bar-t">Detalles del vehículo</div>
       <div class="fl-det-fields">
         <div class="fl-det-field"><label>Placas</label><input readonly value="${v?.placas||'—'}"></div>
@@ -522,7 +534,7 @@ function rSols(){
     </div>
 
     <!-- TOOLBAR TIPO SOLICITUD + BOTONES -->
-    <div class="fl-sol-bar">
+    <div class="fl-sol-bar" style="padding:10px 20px;">
       <span style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8">Tipo de solicitud</span>
       <select class="fl-sol-tipo-sel" id="fl-sol-tipo">
         <option value="">— Selecciona —</option>
@@ -541,9 +553,12 @@ function rSols(){
         <svg width="28" height="14" viewBox="0 0 62 24" fill="none"><rect x="2" y="9" width="60" height="11" rx="3" fill="${ST.tipoVeh==='troca'?'#fff':'#CBD5E1'}"/><rect x="6" y="3" width="20" height="9" rx="2" fill="${ST.tipoVeh==='troca'?'rgba(255,255,255,.6)':'#93C5FD'}"/><rect x="26" y="5" width="30" height="7" rx="2" fill="${ST.tipoVeh==='troca'?'rgba(255,255,255,.7)':'#94A3B8'}"/><circle cx="11" cy="20" r="4" fill="${ST.tipoVeh==='troca'?'rgba(255,255,255,.8)':'#374151'}"/><circle cx="50" cy="20" r="4" fill="${ST.tipoVeh==='troca'?'rgba(255,255,255,.8)':'#374151'}"/></svg>
         TROCA
       </button>
-      <div style="margin-left:auto;display:flex;gap:8px">
-        <button class="fl-sol-bar-btn blue" onclick="flSolGuardar()">${I.check} CHECK LIST</button>
-        <button class="fl-sol-bar-btn green" onclick="flSolGuardar()">${I.plus} ENTRADA / SALIDA</button>
+      <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+        <div style="display:flex;border:2px solid #2563EB;border-radius:8px;overflow:hidden">
+          <button id="fl-modo-entrada" onclick="flSetModo('entrada')" style="padding:6px 14px;background:${ST.modo==='entrada'?'#2563EB':'#fff'};color:${ST.modo==='entrada'?'#fff':'#2563EB'};border:none;font-family:inherit;font-size:11.5px;font-weight:800;cursor:pointer;transition:all .15s">ENTRADA</button>
+          <button id="fl-modo-salida"  onclick="flSetModo('salida')"  style="padding:6px 14px;background:${ST.modo==='salida'?'#16A34A':'#fff'};color:${ST.modo==='salida'?'#fff':'#16A34A'};border:none;border-left:2px solid #E2E8F0;font-family:inherit;font-size:11.5px;font-weight:800;cursor:pointer;transition:all .15s">SALIDA</button>
+        </div>
+        <button class="fl-sol-bar-btn blue" onclick="flSolGuardar()">${I.check} Crear solicitud</button>
       </div>
     </div>
 
@@ -552,10 +567,10 @@ function rSols(){
       <!-- IZQUIERDA: grid 2x2 + daños list -->
       <div>
         <!-- GRID 2x2 IMÁGENES -->
-        <div class="fl-grid" style="height:460px" id="fl-img-grid">
+        <div class="fl-grid" style="height:480px;margin:12px" id="fl-img-grid">
           ${VISTAS.map(v=>`
             <div class="fl-grid-cell" id="fl-gc-${v}" onclick="flGridClick(event,'${v}')">
-              ${getImgSrc(ST.tipoVeh,v)}
+              ${getImgSrc(getTipoVehActivo(),v)}
               <div class="fl-grid-lbl">${VISTA_NOM[v]}</div>
               <div id="fl-gp-${v}">${renderGridPts(v)}</div>
             </div>`).join('')}
@@ -599,7 +614,7 @@ function rSols(){
           <input type="range" min="0" max="100" value="${ST.gasolina}" id="fl-gas-range" oninput="flGasChange(this.value)" style="width:100%;margin-top:6px;accent-color:#2563EB">
         </div>
         <!-- CHECK LIST -->
-        <div class="fl-ck-head">Motor &nbsp; · &nbsp; SI &nbsp; NO &nbsp; SUBIR ARCHIVO / FOTO (MAX 3PC)</div>
+        <div class="fl-ck-head">CHECKLIST &nbsp;${ST.modo.toUpperCase()} &nbsp;·&nbsp; SI &nbsp; NO &nbsp; FOTO</div>
         <div class="fl-ck-body" style="flex:1;overflow-y:auto">
           ${renderChkFull()}
         </div>
@@ -665,11 +680,14 @@ function renderChkFull(){
       const key=`${cat}__${i}`;
       const val=ST.chk[key]||'';
       const hasFoto=!!ST.chkFotos[key];
-      html+=`<div class="fl-ck-row">
+      const fotoSrc=ST.chkFotos[key]||'';
+      html+=`<div class="fl-ck-row" id="fl-ckrow-${key}">
         <span class="fl-ck-name">${item}</span>
         <button class="fl-ck-btn ${val==='si'?'si':''}" onclick="flChk('${key}','si')">SI</button>
         <button class="fl-ck-btn ${val==='no'?'no':''}" onclick="flChk('${key}','no')">NO</button>
-        <button class="fl-ck-foto-btn ${hasFoto?'has':''}" onclick="document.getElementById('fl-ck-f-${key}').click()" title="${hasFoto?'Ver foto':'Subir foto'}">${I.camera}</button>
+        <button class="fl-ck-foto-btn ${fotoSrc?'has':''}" onclick="${fotoSrc?`flImg('${fotoSrc}')`:`document.getElementById('fl-ck-f-${key}').click()`}" title="${fotoSrc?'Ver foto':'Subir foto'}">
+          ${fotoSrc?`<img src="${fotoSrc}" style="width:20px;height:20px;object-fit:cover;border-radius:3px">`:I.camera}
+        </button>
         <input type="file" id="fl-ck-f-${key}" accept="image/*" style="display:none" onchange="flChkFoto(this,'${key}')">
       </div>`;
     });
@@ -697,7 +715,15 @@ window.flDmgRemove=function(vista,idx){
 // TIPO VEHÍCULO
 window.flSetTipoVeh=function(t){
   ST.tipoVeh=t;
-  rSols(); // re-render con nuevo tipo
+  rSols();
+};
+window.flSetModo=function(m){
+  ST.modo=m;
+  // Actualizar botones
+  const be=document.getElementById('fl-modo-entrada');
+  const bs=document.getElementById('fl-modo-salida');
+  if(be){be.style.background=m==='entrada'?'#2563EB':'#fff';be.style.color=m==='entrada'?'#fff':'#2563EB';}
+  if(bs){bs.style.background=m==='salida'?'#16A34A':'#fff';bs.style.color=m==='salida'?'#fff':'#16A34A';}
 };
 
 // CHECKLIST
@@ -711,7 +737,17 @@ window.flChk=function(key,val){
 window.flChkFoto=function(inp,key){
   const f=inp.files[0];if(!f)return;
   const r=new FileReader();
-  r.onload=e=>{ST.chkFotos[key]=e.target.result;const b=document.querySelector(`[onclick="document.getElementById('fl-ck-f-${key}').click()"]`);if(b)b.classList.add('has');};
+  r.onload=e=>{
+    const src=e.target.result;
+    ST.chkFotos[key]=src;
+    // Actualizar botón de foto en la fila
+    const btn=document.querySelector(`#fl-ckrow-${key} .fl-ck-foto-btn`);
+    if(btn){
+      btn.classList.add('has');
+      btn.innerHTML=`<img src="${src}" style="width:20px;height:20px;object-fit:cover;border-radius:3px">`;
+      btn.onclick=()=>flImg(src);
+    }
+  };
   r.readAsDataURL(f);
 };
 
@@ -756,7 +792,7 @@ window.flSolGuardar=async function(){
     await fs.addDoc(fs.collection(db,C.SOLS),docObj);
     if(km&&v&&!v.id.startsWith('eco-'))await fs.updateDoc(fs.doc(db,C.VEHS,v.id),{km:Number(km)}).catch(()=>{});
     // Reset
-    ST={...ST,dmg:{frente:[],atras:[],derecha:[],izquierda:[]},chk:{},chkFotos:{},evFotos:[],gasolina:50};
+    ST={...ST,dmg:{frente:[],atras:[],derecha:[],izquierda:[]},chk:{},chkFotos:{},evFotos:[],gasolina:50,modo:'entrada'};
     await ldSols();rSols();
     if(window.mostrarPush)window.mostrarPush('Solicitud creada','En proceso de validación.','✓');
   }catch(e){console.error('[FL]',e);alert('Error: '+e.message);if(btn){btn.disabled=false;btn.textContent=`${I.check} Crear solicitud`;}}
@@ -965,8 +1001,8 @@ window.flVerSol=function(id){
 function rComis(){
   setContent(padded(`
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-      <div><div style="font-size:17px;font-weight:900;letter-spacing:-.4px">Préstamos y Comisiones</div><div style="font-size:11px;color:#64748B;margin-top:2px">Vehículos prestados</div></div>
-      <button class="fb acc" onclick="flAbrirCom()">${I.plus} Registrar comisión</button>
+      <div><div style="font-size:17px;font-weight:900;letter-spacing:-.4px">Utilitarios</div><div style="font-size:11px;color:#64748B;margin-top:2px">Vehículos prestados y uso general</div></div>
+      <button class="fb acc" onclick="flAbrirCom()">${I.plus} Registrar utilitario</button>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:12px">
       <select style="padding:7px 11px;border:1.5px solid #E2E8F0;border-radius:7px;font-family:inherit;font-size:12px;background:#fff;outline:none" id="fl-ct" onchange="flFCom()"><option value="">Todos</option><option>Corto plazo</option><option>Largo plazo</option></select>
@@ -987,7 +1023,7 @@ window.flAbrirCom=function(){
   const vehs=flV.filter(v=>!v.status||v.status==='activo');
   let comEv=[];
   const ov=document.createElement('div');ov.className='fl-ov';ov.id='fl-mcom';
-  ov.innerHTML=`<div class="fl-modal"><div class="fl-mh"><h3>${I.truck} Registrar comisión</h3><button class="fl-mx" onclick="this.closest('.fl-ov').remove()">✕</button></div>
+  ov.innerHTML=`<div class="fl-modal"><div class="fl-mh"><h3>${I.truck} Registrar utilitario</h3><button class="fl-mx" onclick="this.closest('.fl-ov').remove()">✕</button></div>
     <div class="fl-mb"><div class="fl-form">
       <div class="fl-fld"><label>Vehículo</label><select id="fl-cv"><option value="">—</option>${vehs.map(v=>`<option value="${v.id}" data-eco="${v.eco}">${v.eco} · ${v.unidad||'—'} · ${v.placas||'—'}</option>`).join('')}</select></div>
       <div class="fl-fr"><div class="fl-fld"><label>Responsable</label><input type="text" id="fl-cre"></div><div class="fl-fld"><label>Tipo</label><select id="fl-cti"><option>Corto plazo</option><option>Largo plazo</option></select></div></div>
