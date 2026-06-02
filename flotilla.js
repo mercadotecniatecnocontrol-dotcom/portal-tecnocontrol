@@ -186,9 +186,9 @@ function injectCSS(){
 .fl-sb-tipo{flex:1;padding:4px 0;border:1.5px solid #E2E8F0;border-radius:6px;background:#fff;font-family:inherit;font-size:9.5px;font-weight:700;cursor:pointer;text-align:center;color:#64748B;transition:all .12s;}
 .fl-sb-tipo.on{border-color:#2563EB;background:#EFF6FF;color:#2563EB;}
 .fl-sb-list{flex:1;overflow-y:auto;padding:4px;}
-.fl-sb-item{display:flex;align-items:center;gap:7px;padding:7px 8px;border-radius:7px;cursor:pointer;transition:all .1s;border-left:3px solid transparent;}
+.fl-sb-item{display:flex;align-items:center;gap:7px;padding:8px 10px;border-radius:7px;cursor:pointer;transition:all .1s;border-left:3px solid transparent;}
 .fl-sb-item:hover{background:#F1F5F9;}
-.fl-sb-item.on{background:#EFF6FF;border-left-color:#2563EB;}
+.fl-sb-item.on{background:#EFF6FF;border-left-color:#2563EB;font-weight:700;}
 .fl-sb-eco{font-size:11px;font-weight:800;font-family:'JetBrains Mono',monospace;color:#374151;min-width:22px;}
 .fl-sb-name{font-size:11px;font-weight:500;color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;}
 .fl-sb-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
@@ -203,27 +203,28 @@ function injectCSS(){
 .fl-det-bar{background:#fff;border-bottom:1px solid #E8EDF5;padding:10px 16px;}
 .fl-det-bar-t{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:#94A3B8;margin-bottom:8px;}
 .fl-det-fields{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
-.fl-det-field{display:flex;flex-direction:column;gap:2px;}
-.fl-det-field label{font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;}
-.fl-det-field input{padding:5px 10px;border:none;background:#F1F7FF;border-radius:6px;font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:700;color:#1E3A5F;outline:none;min-width:80px;}
+.fl-det-field{display:flex;flex-direction:column;gap:3px;}
+.fl-det-field label{font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:#94A3B8;}
+.fl-det-field input{padding:7px 12px;border:none;background:#1E3A5F;border-radius:7px;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:#fff;outline:none;min-width:80px;letter-spacing:.3px;}
+.fl-det-field input::placeholder{color:rgba(255,255,255,.4);}
 
 /* ── TOOLBAR SOLICITUD ── */
-.fl-sol-bar{background:#fff;border-bottom:1px solid #E8EDF5;padding:8px 16px;display:flex;align-items:center;gap:10px;}
-.fl-tipo-pill{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;border:1.5px solid #E2E8F0;background:#fff;cursor:pointer;font-family:inherit;font-size:11.5px;font-weight:700;color:#374151;transition:all .15s;}
-.fl-tipo-pill:hover{border-color:#2563EB;color:#2563EB;}
-.fl-tipo-pill.on{background:#2563EB;border-color:#2563EB;color:#fff;}
-.fl-sol-bar-btn{display:inline-flex;align-items:center;gap:5px;padding:7px 16px;border-radius:8px;border:none;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;}
-.fl-sol-bar-btn.blue{background:#2563EB;color:#fff;}
+.fl-sol-bar{background:#fff;border-bottom:2px solid #E8EDF5;padding:10px 20px;display:flex;align-items:center;gap:12px;}
+.fl-tipo-pill{display:inline-flex;align-items:center;gap:8px;padding:9px 18px;border-radius:10px;border:2px solid #E2E8F0;background:#fff;cursor:pointer;font-family:inherit;font-size:12px;font-weight:800;color:#374151;transition:all .15s;letter-spacing:.3px;}
+.fl-tipo-pill:hover{border-color:#2563EB;color:#2563EB;background:#EFF6FF;}
+.fl-tipo-pill.on{background:#2563EB;border-color:#2563EB;color:#fff;box-shadow:0 4px 12px rgba(37,99,235,.3);}
+.fl-sol-bar-btn{display:inline-flex;align-items:center;gap:6px;padding:9px 20px;border-radius:9px;border:none;font-family:inherit;font-size:12.5px;font-weight:800;cursor:pointer;transition:all .15s;letter-spacing:.3px;}
+.fl-sol-bar-btn.blue{background:#2563EB;color:#fff;box-shadow:0 4px 12px rgba(37,99,235,.25);}
 .fl-sol-bar-btn.blue:hover{background:#1D4ED8;}
-.fl-sol-bar-btn.green{background:#16A34A;color:#fff;}
+.fl-sol-bar-btn.green{background:#16A34A;color:#fff;box-shadow:0 4px 12px rgba(22,163,74,.25);}
 .fl-sol-bar-btn.green:hover{background:#15803D;}
 .fl-sol-tipo-sel{padding:7px 12px;border:1.5px solid #CBD5E1;border-radius:8px;font-family:inherit;font-size:12.5px;background:#fff;outline:none;cursor:pointer;font-weight:600;color:#0A0F1E;}
 .fl-sol-tipo-sel:focus{border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,.1);}
 
 /* ── GRID 2x2 FOTOS ── */
-.fl-grid{display:grid;grid-template-columns:1fr 1fr;gap:2px;background:#0A1628;}
-.fl-grid-cell{position:relative;background:#EEF2F7;overflow:hidden;cursor:crosshair;}
-.fl-grid-cell img{width:100%;height:100%;object-fit:contain;display:block;background:#F0F4F8;}
+.fl-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px;background:#1E3A5F;}
+.fl-grid-cell{position:relative;background:#E8F0FA;overflow:hidden;cursor:crosshair;}
+.fl-grid-cell img{width:100%;height:100%;object-fit:cover;display:block;background:#E8F0FA;}
 .fl-grid-cell-svg{width:100%;height:100%;display:block;}
 .fl-grid-overlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;}
 .fl-grid-lbl{position:absolute;top:8px;left:8px;padding:4px 10px;background:rgba(10,22,40,.75);border-radius:5px;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#fff;backdrop-filter:blur(4px);}
@@ -232,11 +233,11 @@ function injectCSS(){
 
 /* ── PANEL CHECKLIST + GAUGE ── */
 .fl-ck-panel{background:#fff;border-left:1px solid #E8EDF5;}
-.fl-gauge-wrap{padding:12px;border-bottom:1px solid #E8EDF5;}
-.fl-gauge-t{font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin-bottom:8px;}
+.fl-gauge-wrap{padding:14px 12px 10px;border-bottom:1.5px solid #E8EDF5;background:linear-gradient(180deg,#f8fafc,#fff);}
+.fl-gauge-t{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:#94A3B8;margin-bottom:10px;text-align:center;}
 .fl-gauge-svg{display:block;margin:0 auto;}
-.fl-gauge-labels{display:flex;justify-content:space-between;font-size:9.5px;font-weight:700;color:#64748B;margin-top:4px;padding:0 4px;}
-.fl-ck-head{background:#0A1628;color:rgba(255,255,255,.7);padding:6px 10px;font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;}
+.fl-gauge-labels{display:flex;justify-content:space-between;font-size:9px;font-weight:700;color:#64748B;margin-top:6px;padding:0 2px;}
+.fl-ck-head{background:#1E3A5F;color:rgba(255,255,255,.85);padding:8px 10px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;}
 .fl-ck-body{overflow-y:auto;}
 .fl-ck-grp{background:#F1F5F9;padding:4px 10px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#64748B;}
 .fl-ck-row{display:flex;align-items:center;gap:6px;padding:6px 8px;border-bottom:1px solid #F8FAFD;}
@@ -258,7 +259,7 @@ function injectCSS(){
 .fl-dmg-num{width:20px;height:20px;border-radius:50%;background:#EF4444;color:#fff;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
 
 /* ── PANEL DERECHO INFO VEHÍCULO ── */
-.fl-rp{width:280px;flex-shrink:0;background:#fff;border-left:1px solid #E8EDF5;height:calc(100vh - 54px);position:sticky;top:54px;overflow-y:auto;}
+.fl-rp{width:300px;flex-shrink:0;background:#fff;border-left:1.5px solid #E8EDF5;height:calc(100vh - 54px);position:sticky;top:54px;overflow-y:auto;}
 .fl-rp-img{position:relative;overflow:hidden;background:#EEF2F7;}
 .fl-rp-img img{width:100%;height:160px;object-fit:contain;display:block;background:#E8EEFA;}
 .fl-rp-img-empty{height:130px;background:linear-gradient(135deg,#EEF2F7,#E2E8F0);display:flex;align-items:center;justify-content:center;color:#94A3B8;font-size:11px;flex-direction:column;gap:6px;}
@@ -536,11 +537,14 @@ function rSols(){
     <!-- TOOLBAR TIPO SOLICITUD + BOTONES -->
     <div class="fl-sol-bar" style="padding:10px 20px;">
       <span style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8">Tipo de solicitud</span>
-      <select class="fl-sol-tipo-sel" id="fl-sol-tipo">
-        <option value="">— Selecciona —</option>
-        ${TIPOS_SOL.map(t=>`<option>${t}</option>`).join('')}
-        <option value="__c">Personalizado…</option>
-      </select>
+      <div style="position:relative;display:inline-block">
+        <select class="fl-sol-tipo-sel" id="fl-sol-tipo" style="padding:9px 36px 9px 14px;background:#1E3A5F;color:#fff;border:none;border-radius:9px;font-family:inherit;font-size:12.5px;font-weight:800;cursor:pointer;appearance:none;-webkit-appearance:none;min-width:190px;letter-spacing:.2px;">
+          <option value="" style="background:#1E3A5F;color:#fff">TIPO DE SOLICITUD</option>
+          ${TIPOS_SOL.map(t=>`<option style="background:#fff;color:#0A0F1E">${t}</option>`).join('')}
+          <option value="__c" style="background:#fff;color:#0A0F1E">Personalizado…</option>
+        </select>
+        <div style="position:absolute;right:10px;top:50%;transform:translateY(-50%);pointer-events:none;color:#fff">▼</div>
+      </div>
       <select class="fl-sol-tipo-sel" id="fl-sol-prior" style="min-width:90px">
         <option>Normal</option><option>Alta</option><option>Urgente</option>
       </select>
@@ -607,12 +611,7 @@ function rSols(){
       <!-- DERECHA: GAUGE + CHECKLIST -->
       <div class="fl-ck-panel" style="display:flex;flex-direction:column;height:calc(100vh - 200px);overflow:hidden">
         <!-- GAUGE GASOLINA -->
-        <div class="fl-gauge-wrap">
-          <div class="fl-gauge-t">Nivel de gasolina</div>
-          ${renderGauge()}
-          <div class="fl-gauge-labels"><span>E</span><span>2/4</span><span>MEDIO</span><span>3/4</span><span>F</span></div>
-          <input type="range" min="0" max="100" value="${ST.gasolina}" id="fl-gas-range" oninput="flGasChange(this.value)" style="width:100%;margin-top:6px;accent-color:#2563EB">
-        </div>
+        <div class="fl-gauge-wrap">${buildGaugeHTML()}</div>
         <!-- CHECK LIST -->
         <div class="fl-ck-head">CHECKLIST &nbsp;${ST.modo.toUpperCase()} &nbsp;·&nbsp; SI &nbsp; NO &nbsp; FOTO</div>
         <div class="fl-ck-body" style="flex:1;overflow-y:auto">
@@ -631,27 +630,47 @@ function rSols(){
 
 function renderGauge(){
   const pct=ST.gasolina/100;
-  const ang=-120+pct*240;
-  const rad=(ang-90)*Math.PI/180;
-  const cx=60,cy=55,R=44;
-  const nx=cx+R*Math.cos(rad),ny=cy+R*Math.sin(rad);
-  const col=pct<.25?'#EF4444':pct<.5?'#F59E0B':'#22C55E';
-  return`<svg class="fl-gauge-svg" width="120" height="80" viewBox="0 0 120 80" id="fl-gauge-svg">
-    <path d="M12,72 A48,48 0 0,1 108,72" fill="none" stroke="#F1F5F9" stroke-width="10" stroke-linecap="round"/>
-    <path d="M12,72 A48,48 0 0,1 ${nx.toFixed(1)},${ny.toFixed(1)}" fill="none" stroke="${col}" stroke-width="10" stroke-linecap="round"/>
-    <circle cx="${nx.toFixed(1)}" cy="${ny.toFixed(1)}" r="7" fill="${col}" stroke="#fff" stroke-width="2.5"/>
-    <circle cx="${cx}" cy="${cy}" r="4" fill="#0A1628"/>
+  // Arco de -120° a +120° (total 240°)
+  const angStart=-120, angEnd=angStart+pct*240;
+  const toRad=a=>(a-90)*Math.PI/180;
+  const cx=115,cy=105,R=88;
+  const ex=cx+R*Math.cos(toRad(angEnd)), ey=cy+R*Math.sin(toRad(angEnd));
+  // Segmentos de color (rojo→amarillo→verde)
+  const col=pct<.25?'#EF4444':pct<.6?'#F59E0B':'#22C55E';
+  // Gradiente fondo
+  const sx=cx+R*Math.cos(toRad(angStart)), sy=cy+R*Math.sin(toRad(angStart));
+  const large=pct*240>180?1:0;
+  return`<svg class="fl-gauge-svg" width="230" height="140" viewBox="0 0 230 140" id="fl-gauge-svg">
+    <defs>
+      <linearGradient id="ggrad" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" style="stop-color:#EF4444"/>
+        <stop offset="40%" style="stop-color:#F59E0B"/>
+        <stop offset="100%" style="stop-color:#22C55E"/>
+      </linearGradient>
+    </defs>
+    <!-- Arco fondo -->
+    <path d="M${(cx+R*Math.cos(toRad(-120))).toFixed(1)},${(cy+R*Math.sin(toRad(-120))).toFixed(1)} A${R},${R} 0 1,1 ${(cx+R*Math.cos(toRad(120))).toFixed(1)},${(cy+R*Math.sin(toRad(120))).toFixed(1)}" fill="none" stroke="#E8EDF5" stroke-width="14" stroke-linecap="round"/>
+    <!-- Arco progreso -->
+    ${pct>0?`<path d="M${sx.toFixed(1)},${sy.toFixed(1)} A${R},${R} 0 ${large},1 ${ex.toFixed(1)},${ey.toFixed(1)}" fill="none" stroke="url(#ggrad)" stroke-width="14" stroke-linecap="round"/>`:''}
+    <!-- Aguja -->
+    <line x1="${cx}" y1="${cy}" x2="${(cx+72*Math.cos(toRad(angEnd))).toFixed(1)}" y2="${(cy+72*Math.sin(toRad(angEnd))).toFixed(1)}" stroke="#0A1628" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="${cx}" cy="${cy}" r="8" fill="#0A1628" stroke="#fff" stroke-width="2.5"/>
+    <!-- Icono gasolina -->
+    <text x="${cx}" y="38" text-anchor="middle" font-size="16">⛽</text>
   </svg>`;
 }
 
 window.flGasChange=function(v){
   ST.gasolina=Number(v);
-  const g=document.getElementById('fl-gauge-svg');
-  if(g)g.outerHTML=renderGauge();
-  // Re-render gauge area
   const wrap=document.querySelector('.fl-gauge-wrap');
-  if(wrap)wrap.innerHTML=`<div class="fl-gauge-t">Nivel de gasolina</div>${renderGauge()}<div class="fl-gauge-labels"><span>E</span><span>2/4</span><span>MEDIO</span><span>3/4</span><span>F</span></div><input type="range" min="0" max="100" value="${ST.gasolina}" id="fl-gas-range" oninput="flGasChange(this.value)" style="width:100%;margin-top:6px;accent-color:#2563EB">`;
+  if(wrap)wrap.innerHTML=buildGaugeHTML();
 };
+function buildGaugeHTML(){
+  return`<div class="fl-gauge-t">Nivel de gasolina</div>
+    ${renderGauge()}
+    <div class="fl-gauge-labels"><span>BACIO</span><span>2/4</span><span>MEDIO</span><span>3/4</span><span>LLENO</span></div>
+    <input type="range" min="0" max="100" value="${ST.gasolina}" id="fl-gas-range" oninput="flGasChange(this.value)" style="width:100%;margin-top:6px;accent-color:#2563EB">`;
+}
 
 function renderGridPts(vista){
   return(ST.dmg[vista]||[]).map((p,i)=>`
@@ -828,6 +847,10 @@ function renderRP(id){
       </div>
     </div>
 
+    <!-- Nombre modelo grande arriba -->
+    <div style="padding:10px 12px 6px;border-bottom:1px solid #F1F5F9;background:linear-gradient(180deg,#F8FAFF,#fff)">
+      <div style="font-size:11px;font-weight:700;color:#64748B;letter-spacing:.3px;margin-bottom:2px">${v.unidad||'—'}</div>
+    </div>
     <div class="fl-rp-head">NÚMERO ECONÓMICO</div>
     <div class="fl-rp-num">${v.eco}</div>
     <div class="fl-rp-row"><dt>UNIDAD / DESCRIPCIÓN</dt><dd class="big">${v.unidad||'—'}</dd></div>
