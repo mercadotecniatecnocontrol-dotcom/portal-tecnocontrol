@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover, user-scalable=no">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -29,6 +29,18 @@
     #splash-bar{width:48px;height:3px;background:rgba(255,255,255,.15);border-radius:100px;margin-top:32px;overflow:hidden;}
     #splash-prog{height:100%;width:0;background:#3B82F6;border-radius:100px;transition:width .1s linear;}
     #splash.hide{opacity:0;pointer-events:none;}
+    /* Ocultar barra navegador en móvil */
+    html{height:100%;overflow:hidden;}
+    body{height:100dvh;overflow:hidden;position:fixed;width:100%;top:0;left:0;}
+    #fl-m-root{height:100dvh!important;overflow:hidden;}
+    .fm-content{overflow-y:auto;-webkit-overflow-scrolling:touch;}
+    /* Banner instalar PWA */
+    #pwa-banner{position:fixed;bottom:0;left:0;right:0;background:#0A1628;padding:12px 16px;display:none;align-items:center;gap:10px;z-index:500;border-top:1px solid rgba(255,255,255,.1);}
+    #pwa-banner.show{display:flex;}
+    #pwa-banner p{font-family:-apple-system,sans-serif;font-size:12px;color:rgba(255,255,255,.8);flex:1;margin:0;line-height:1.4;}
+    #pwa-banner button{padding:8px 14px;border-radius:8px;border:none;font-family:-apple-system,sans-serif;font-size:12px;font-weight:700;cursor:pointer;}
+    #pwa-btn-install{background:#2563EB;color:#fff;}
+    #pwa-btn-close{background:rgba(255,255,255,.1);color:#fff;margin-left:4px;}
   </style>
 </head>
 <body>
@@ -72,12 +84,43 @@ const firebaseConfig = {
 };
 
 firebase.initializeApp(firebaseConfig);
+
+// Habilitar persistencia offline para Firestore
+const _db = firebase.firestore();
+_db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
+
+// NOTA: Asegúrate de que las reglas de Firestore permitan lectura.
+// En Firebase Console → Firestore → Reglas, usa temporalmente:
+// rules_version = '2';
+// service cloud.firestore {
+//   match /databases/{database}/documents {
+//     match /{document=**} {
+//       allow read, write: if request.auth != null;
+//     }
+//   }
+// }
 const auth = firebase.auth();
-const db   = firebase.firestore();
+const db   = _db; // usar instancia con persistencia
 
 // Exponer globalmente para flotilla-movil.js
 window.auth = auth;
 window.db   = db;
+
+// Prueba de conexión inmediata
+window.addEventListener('load', async ()=>{
+  try{
+    const user = auth.currentUser;
+    if(user){
+      // Timeout de 10 segundos para detectar cuelgues
+      const timeout = new Promise((_,rej)=>setTimeout(()=>rej(new Error('TIMEOUT: Firestore no respondió en 10s')),10000));
+      const query = db.collection('flotilla_vehiculos').limit(1).get();
+      await Promise.race([query, timeout]);
+      console.log('[FLOTILLA-APP] Conexión Firestore OK');
+    }
+  }catch(e){
+    console.error('[FLOTILLA-APP] Error Firestore:', e.message);
+  }
+});
 
 // Exponer firebase/firestore helpers que usa flotilla-movil.js
 window.fs = {
@@ -97,6 +140,18 @@ window.fs = {
   limit      : (n)              => q => q.limit(n),
 };
 </script>
+
+<!-- BANNER PWA INSTALAR -->
+<div id="pwa-banner">
+  <svg width="32" height="32" viewBox="0 0 56 56" fill="none" style="flex-shrink:0">
+    <circle cx="28" cy="28" r="26" stroke="white" stroke-width="2"/>
+    <circle cx="28" cy="28" r="16" stroke="#3B82F6" stroke-width="2"/>
+    <circle cx="28" cy="28" r="6" fill="#3B82F6"/>
+  </svg>
+  <p>Instala la app para usarla sin barra del navegador</p>
+  <button id="pwa-btn-install" onclick="pwaInstalar()">Instalar</button>
+  <button id="pwa-btn-close" onclick="document.getElementById('pwa-banner').classList.remove('show')">✕</button>
+</div>
 
 <!-- LOGIN PANTALLA (si no hay sesión) -->
 <div id="fl-login" style="display:none;position:fixed;inset:0;background:#0A1628;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:28px;z-index:1000">
@@ -130,11 +185,20 @@ window.fs = {
 <!-- CONTENEDOR APP -->
 <div id="fl-movil-root" style="display:none;height:100vh"></div>
 
-<!-- App móvil -->
-<script src="./flotilla-movil.js"></script>
-
 <script>
 // ── DETECCIÓN DE SESIÓN ──
+// Cargar flotilla-movil.js dinámicamente DESPUÉS de que Firebase esté listo
+function cargarAppMovil(){
+  return new Promise((resolve)=>{
+    if(typeof initFlotillaMovil === 'function'){resolve();return;}
+    const script=document.createElement('script');
+    script.src='./flotilla-movil.js?v='+Date.now();
+    script.onload=()=>resolve();
+    script.onerror=()=>{console.error('Error cargando flotilla-movil.js');resolve();};
+    document.head.appendChild(script);
+  });
+}
+
 auth.onAuthStateChanged(async (user) => {
   clearInterval(iv);
   bar.style.width = '100%';
@@ -143,9 +207,13 @@ auth.onAuthStateChanged(async (user) => {
   document.getElementById('splash').classList.add('hide');
 
   if (user) {
-    // Hay sesión → mostrar app
+    // Hay sesión → cargar y mostrar app
     document.getElementById('fl-login').style.display  = 'none';
     document.getElementById('fl-movil-root').style.display = 'block';
+    // Asegurar que db y auth estén globales ANTES de cargar flotilla-movil.js
+    window.auth = auth;
+    window.db   = db;
+    await cargarAppMovil();
     if (typeof initFlotillaMovil === 'function') initFlotillaMovil();
   } else {
     // Sin sesión → mostrar login
@@ -188,9 +256,45 @@ document.getElementById('login-pass')?.addEventListener('keydown', e => {
   if (e.key === 'Enter') doLogin();
 });
 
+// ── OCULTAR BARRA NAVEGADOR (scroll trick) ──
+function ocultarBarraNav(){
+  if(window.innerHeight < window.screen.height){
+    window.scrollTo(0,1);
+    setTimeout(()=>window.scrollTo(0,0),100);
+  }
+}
+window.addEventListener('load', ocultarBarraNav);
+window.addEventListener('orientationchange', ()=>setTimeout(ocultarBarraNav,300));
+
+// ── PWA INSTALL PROMPT ──
+let deferredPrompt=null;
+window.addEventListener('beforeinstallprompt',(e)=>{
+  e.preventDefault();
+  deferredPrompt=e;
+  // Mostrar banner después de 3 segundos
+  setTimeout(()=>{
+    if(!window.matchMedia('(display-mode: standalone)').matches){
+      document.getElementById('pwa-banner')?.classList.add('show');
+    }
+  },3000);
+});
+
+window.pwaInstalar=async function(){
+  if(!deferredPrompt)return;
+  deferredPrompt.prompt();
+  const {outcome}=await deferredPrompt.userChoice;
+  deferredPrompt=null;
+  document.getElementById('pwa-banner')?.classList.remove('show');
+};
+
+// Si ya está instalada como PWA, ocultar banner
+if(window.matchMedia('(display-mode: standalone)').matches){
+  document.getElementById('pwa-banner')?.remove();
+}
+
 // ── SERVICE WORKER ──
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./sw.js').catch(() => {});
+  navigator.serviceWorker.register('./sw-flotilla.js').catch(() => {});
 }
 </script>
 
