@@ -384,11 +384,27 @@ function buildHTML(){
     </div>
     <div style="position:relative;margin-left:6px">
       <button class="fl-tab-btn" id="fl-tb-bajas" onclick="flVista('bajas')" title="Vehículos de baja">${I.archive}</button>
-      ${hAdm()?`
-      <div class="fl-tb-sep" style="width:1px;height:28px;background:rgba(255,255,255,.12);margin:0 4px"></div>
-      <button class="fl-tab-btn" id="fl-tb-admin" onclick="flVista('admin')" title="Administrar flotilla" style="background:rgba(234,179,8,.12);color:#FCD34D">
-        ${I.users}
-      </button>`:''}
+      ${Adm() ? `
+
+<div class="fl-tb-sep" style="width:1px;height:28px;background:rgba(255,255,255,.12);margin:0 4px"></div>
+
+<button class="fl-tab-btn"
+        id="fl-tb-responsables"
+        onclick="flVista('responsables')"
+        title="Control de Responsables"
+        style="background:rgba(34,197,94,.12);color:#22C55E">
+  👥
+</button>
+
+<button class="fl-tab-btn"
+        id="fl-tb-admin"
+        onclick="flVista('admin')"
+        title="Administrar flotilla"
+        style="background:rgba(234,179,8,.12);color:#FCD34D">
+  ${I.users}
+</button>
+
+`:''}
     </div>
     <div class="fl-tb-profile">
       <span class="fl-tb-pname">${nombre.toUpperCase()}</span>
@@ -491,14 +507,22 @@ window.flSbSel=function(id){
 
 // NAVEGACIÓN
 window.flVista=function(v){
+
   vistaAct=v;
-  document.querySelectorAll('.fl-tab-btn').forEach(b=>b.classList.remove('on'));
-  document.getElementById('fl-tb-'+v)?.classList.add('on');
-  if(v==='panel')rPanel();
-  else if(v==='sols')rSols();
-  else if(v==='comis')rComis();
-  else if(v==='bajas')rBajas();
-  else if(v==='admin')rAdmin();
+
+  document.querySelectorAll('.fl-tab-btn')
+    .forEach(b=>b.classList.remove('on'));
+
+  document.getElementById('fl-tb-'+v)
+    ?.classList.add('on');
+
+  if(v==='panel') rPanel();
+  else if(v==='sols') rSols();
+  else if(v==='comis') rComis();
+  else if(v==='bajas') rBajas();
+  else if(v==='responsables') rResponsables();
+  else if(v==='admin') rAdmin();
+
 };
 function setContent(h){const c=document.getElementById('fl-content');if(c)c.innerHTML=h;}
 function padded(h){return`<div style="padding:16px">${h}</div>`;}
