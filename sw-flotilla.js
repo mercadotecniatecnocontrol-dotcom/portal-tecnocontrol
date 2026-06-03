@@ -2,7 +2,7 @@
 // sw.js — Service Worker Tecnocontrol PWA Móvil
 // Cache first + offline queue para solicitudes
 // ══════════════════════════════════════════════════
-const CACHE = 'tcn-movil-v1';
+const CACHE = 'tcn-movil-v4';
 const PRECACHE = [
   './app.html',
   './flotilla-movil.js',
