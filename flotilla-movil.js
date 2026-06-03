@@ -622,7 +622,7 @@ window.fmCargarVehs=async function(){
   try{
     dbg('Intentando db.collection(flotilla_vehiculos).get()…','info');
     // Timeout de 8 segundos
-    const timeout=new Promise((_,rej)=>setTimeout(()=>rej(new Error('TIMEOUT 8s — Firestore no responde')),8000));
+    const timeout=new Promise((_,rej)=>setTimeout(()=>rej(new Error('TIMEOUT 5s — usando catálogo local')),5000));
     const query=db.collection('flotilla_vehiculos').get();
     const snap=await Promise.race([query,timeout]);
     dbg('Snap recibido. Docs: '+snap.size,'ok');
