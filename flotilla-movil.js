@@ -99,6 +99,30 @@ function sellarImg(src,meta){
   });
 }
 
+// ── DEBUG PANEL (visible en pantalla) ──
+function dbg(msg, tipo='info'){
+  const col={info:'#1E3A5F',ok:'#15803D',err:'#B91C1C',warn:'#B45309'}[tipo]||'#1E3A5F';
+  let panel=document.getElementById('fl-dbg');
+  if(!panel){
+    panel=document.createElement('div');
+    panel.id='fl-dbg';
+    panel.style.cssText='position:fixed;top:80px;left:10px;right:10px;background:rgba(0,0,0,.85);border-radius:10px;padding:10px;z-index:9998;max-height:40vh;overflow-y:auto;font-family:monospace;font-size:11px;';
+    const closeBtn=document.createElement('button');
+    closeBtn.textContent='✕ Cerrar debug';
+    closeBtn.style.cssText='display:block;width:100%;padding:5px;background:#333;color:#fff;border:none;border-radius:5px;cursor:pointer;margin-bottom:6px;font-family:monospace;font-size:11px;';
+    closeBtn.onclick=()=>panel.remove();
+    panel.appendChild(closeBtn);
+    document.body.appendChild(panel);
+  }
+  const line=document.createElement('div');
+  const ts=new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  line.style.cssText=`color:${col};padding:2px 0;border-bottom:1px solid rgba(255,255,255,.1);`;
+  line.textContent=`[${ts}] ${msg}`;
+  panel.appendChild(line);
+  panel.scrollTop=panel.scrollHeight;
+  console.log('[FL-MOVIL]',msg);
+}
+
 // ── TOAST ──
 function toast(txt,tipo='info'){
   const col={info:'#1E3A5F',ok:'#15803D',err:'#B91C1C'}[tipo]||'#1E3A5F';
@@ -386,7 +410,11 @@ window.initFlotillaMovil=async function(){
     await cargarPerfil(user);
   }
 
+  dbg('Iniciando app móvil…','info');
+  dbg('Usuario: '+(window.auth?.currentUser?.email||'sin sesión'),'info');
+  dbg('Online: '+navigator.onLine,'info');
   await Promise.all([cargarMiVeh(),cargarMisSols(),cargarMisTareas()]);
+  dbg('Datos cargados. Vehículo: '+(miVeh?'ECO '+miVeh.eco:'ninguno'),'ok');
   actualizarBadges();
   fmVista('vehiculo');
 
@@ -588,23 +616,31 @@ function renderVincular(){
 
 window.fmCargarVehs=async function(){
   toast('Cargando vehículos…','info');
+  dbg('Iniciando carga de vehículos…','info');
+  dbg('db disponible: '+(!!window.db),'info');
+  dbg('auth.currentUser: '+(window.auth?.currentUser?.email||'NO HAY SESIÓN'),'info');
   try{
+    dbg('Intentando db.collection(flotilla_vehiculos).get()…','info');
     const snap=await db.collection('flotilla_vehiculos').get();
+    dbg('Snap recibido. Docs: '+snap.size,'ok');
     if(!snap.empty){
       window._fmAllVehs=snap.docs.map(d=>({id:d.id,...d.data()}));
+      dbg('Vehículos de Firestore: '+window._fmAllVehs.length,'ok');
     } else {
-      // Firestore vacío — usar catálogo local
+      dbg('Firestore vacío — usando catálogo local ('+CAT.length+' unidades)','warn');
       window._fmAllVehs=CAT.map(v=>({id:'eco-'+v.eco,...v}));
     }
   }catch(e){
-    console.warn('[MOVIL] Firestore no disponible, usando catálogo local:',e.message);
-    // Fallback al catálogo hardcodeado
+    dbg('ERROR Firestore: '+e.code+' — '+e.message,'err');
+    dbg('Usando catálogo local fallback ('+CAT.length+' unidades)','warn');
     window._fmAllVehs=CAT.map(v=>({id:'eco-'+v.eco,...v}));
   }
   if(!window._fmAllVehs||window._fmAllVehs.length===0){
+    dbg('Lista vacía después de todo','err');
     toast('No se encontraron vehículos','err');
     return;
   }
+  dbg('Total vehículos disponibles: '+window._fmAllVehs.length,'ok');
   toast(window._fmAllVehs.length+' vehículos disponibles','ok');
   renderVincular();
 };
