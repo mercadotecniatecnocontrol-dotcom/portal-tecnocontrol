@@ -384,6 +384,11 @@ function buildHTML(){
     </div>
     <div style="position:relative;margin-left:6px">
       <button class="fl-tab-btn" id="fl-tb-bajas" onclick="flVista('bajas')" title="Vehículos de baja">${I.archive}</button>
+      ${hAdm()?`
+      <div class="fl-tb-sep" style="width:1px;height:28px;background:rgba(255,255,255,.12);margin:0 4px"></div>
+      <button class="fl-tab-btn" id="fl-tb-admin" onclick="flVista('admin')" title="Administrar flotilla" style="background:rgba(234,179,8,.12);color:#FCD34D">
+        ${I.users}
+      </button>`:''}
     </div>
     <div class="fl-tb-profile">
       <span class="fl-tb-pname">${nombre.toUpperCase()}</span>
@@ -493,9 +498,264 @@ window.flVista=function(v){
   else if(v==='sols')rSols();
   else if(v==='comis')rComis();
   else if(v==='bajas')rBajas();
+  else if(v==='admin')rAdmin();
 };
 function setContent(h){const c=document.getElementById('fl-content');if(c)c.innerHTML=h;}
 function padded(h){return`<div style="padding:16px">${h}</div>`;}
+
+
+// ══════════════════════════════════════════════════════
+// VISTA ADMIN — Gestión de vehículos y responsables
+// ══════════════════════════════════════════════════════
+let admEditId=null; // ID del vehículo en edición
+let admFiltro=''; let admFiltroPlaza=''; let admFiltroStatus='';
+
+function rAdmin(){
+  if(!hAdm()){setContent(pad('<div class="fl-empty"><div class="fl-empty-ico">🔒</div><h3>Acceso restringido</h3><p>Solo administradores pueden acceder a este panel.</p></div>'));return;}
+
+  const act=flV.filter(v=>v.status==='activo'||!v.status).length;
+  const tall=flV.filter(v=>v.status==='taller').length;
+  const com=flV.filter(v=>v.status==='comision').length;
+  const baj=flV.filter(v=>v.status==='baja').length;
+  const sinResp=flV.filter(v=>!v.responsable||v.responsable==='—').length;
+
+  // Obtener plazas únicas
+  const plazas=[...new Set(flV.map(v=>v.plaza).filter(Boolean))].sort();
+
+  setContent(pad(`
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div>
+        <div style="font-size:20px;font-weight:900;letter-spacing:-.5px">Administración de Flotilla</div>
+        <div style="font-size:11.5px;color:#64748B;margin-top:3px">Gestión de vehículos, responsables y asignaciones</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="fb gho" onclick="admExportar()" style="gap:5px">${I.doc} Exportar</button>
+        <button class="fb acc" onclick="admGuardarTodo()" id="adm-btn-save" style="display:none;gap:5px">${I.save} Guardar cambios</button>
+      </div>
+    </div>
+
+    <!-- KPIs rápidos -->
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:20px">
+      <div class="fl-adm-kpi"><div class="fl-adm-kpi-v">${flV.length}</div><div class="fl-adm-kpi-l">Total flotilla</div></div>
+      <div class="fl-adm-kpi"><div class="fl-adm-kpi-v" style="color:#16A34A">${act}</div><div class="fl-adm-kpi-l">Activos</div></div>
+      <div class="fl-adm-kpi"><div class="fl-adm-kpi-v" style="color:#D97706">${tall}</div><div class="fl-adm-kpi-l">En taller</div></div>
+      <div class="fl-adm-kpi"><div class="fl-adm-kpi-v" style="color:#7C3AED">${com}</div><div class="fl-adm-kpi-l">Comisión</div></div>
+      <div class="fl-adm-kpi"><div class="fl-adm-kpi-v" style="color:#EF4444">${sinResp}</div><div class="fl-adm-kpi-l">Sin responsable</div></div>
+    </div>
+
+    <!-- FILTROS -->
+    <div class="fl-adm-filters">
+      <div class="fl-adm-search">${I.search}<input type="text" id="adm-q" placeholder="ECO, unidad, responsable, placas…" oninput="admFiltrar()" value="${admFiltro}"></div>
+      <select class="fl-adm-fsel" id="adm-plaza" onchange="admFiltrar()">
+        <option value="">Todas las plazas</option>
+        ${plazas.map(p=>`<option ${admFiltroPlaza===p?'selected':''}>${p}</option>`).join('')}
+      </select>
+      <select class="fl-adm-fsel" id="adm-status" onchange="admFiltrar()">
+        <option value="">Todos los estatus</option>
+        <option ${admFiltroStatus==='activo'?'selected':''}>activo</option>
+        <option ${admFiltroStatus==='taller'?'selected':''}>taller</option>
+        <option ${admFiltroStatus==='comision'?'selected':''}>comision</option>
+        <option ${admFiltroStatus==='baja'?'selected':''}>baja</option>
+      </select>
+      <button class="fb gho sm" onclick="admLimpiarFiltros()">✕ Limpiar</button>
+      <span style="font-size:11px;color:#94A3B8;margin-left:auto" id="adm-count">${flV.length} vehículos</span>
+    </div>
+
+    <!-- TABLA -->
+    <div class="fl-tw" style="overflow:auto;max-height:calc(100vh - 320px)">
+      <table class="fl-adm-table" id="adm-tabla">
+        <thead><tr>
+          <th>ECO</th>
+          <th>Unidad</th>
+          <th>Placas</th>
+          <th>Responsable</th>
+          <th>Plaza</th>
+          <th>Estatus</th>
+          <th>KM actual</th>
+          <th>NIP</th>
+          <th>Póliza seguro</th>
+          <th>Vto. póliza</th>
+          <th>Color</th>
+          <th>Tipo</th>
+          <th style="text-align:center">Editar</th>
+        </tr></thead>
+        <tbody id="adm-tbody">
+          ${renderAdmRows(flV)}
+        </tbody>
+      </table>
+    </div>
+  `));
+}
+
+function renderAdmRows(lista){
+  if(!lista.length)return`<tr><td colspan="13" style="text-align:center;padding:24px;color:#94A3B8">Sin vehículos que mostrar</td></tr>`;
+  return lista.map(v=>{
+    const isEditing=admEditId===v.id;
+    const statCls={activo:'fl-adm-stat-activo',taller:'fl-adm-stat-taller',comision:'fl-adm-stat-comision',baja:'fl-adm-stat-baja'}[v.status||'activo']||'fl-adm-stat-activo';
+    const hD=f=>(!f||f==='—')?null:Math.round((new Date(f)-new Date())/864e5);
+    const d=hD(v.pv);
+    const pvColor=d===null?'#0A0F1E':d<0?'#B91C1C':d<90?'#B45309':'#15803D';
+    if(isEditing){
+      return`<tr class="editing" id="adm-row-${v.id}">
+        <td><strong style="font-family:'JetBrains Mono',monospace">${v.eco}</strong></td>
+        <td><input class="fl-adm-inp" id="adm-unidad-${v.id}" value="${v.unidad||''}"></td>
+        <td><input class="fl-adm-inp" id="adm-placas-${v.id}" value="${v.placas||''}"></td>
+        <td><input class="fl-adm-inp" id="adm-resp-${v.id}" value="${v.responsable||''}"></td>
+        <td><input class="fl-adm-inp" id="adm-plaza-${v.id}" value="${v.plaza||''}"></td>
+        <td><select class="fl-adm-sel" id="adm-status-${v.id}">
+          <option ${(v.status||'activo')==='activo'?'selected':''}>activo</option>
+          <option ${v.status==='taller'?'selected':''}>taller</option>
+          <option ${v.status==='comision'?'selected':''}>comision</option>
+          <option ${v.status==='baja'?'selected':''}>baja</option>
+        </select></td>
+        <td><input class="fl-adm-inp" type="number" id="adm-km-${v.id}" value="${v.km||0}" style="width:80px"></td>
+        <td><input class="fl-adm-inp" id="adm-nip-${v.id}" value="${v.nip||''}"></td>
+        <td><input class="fl-adm-inp" id="adm-pol-${v.id}" value="${v.pol||''}"></td>
+        <td><input class="fl-adm-inp" type="date" id="adm-pv-${v.id}" value="${v.pv&&v.pv!=='—'?v.pv:''}" style="width:130px"></td>
+        <td><input class="fl-adm-inp" id="adm-color-${v.id}" value="${v.color||''}"></td>
+        <td><select class="fl-adm-sel" id="adm-tipo-${v.id}" style="width:100px">
+          <option ${v.tipo==='auto'?'selected':''}>auto</option>
+          <option ${v.tipo==='camioneta'?'selected':''}>camioneta</option>
+          <option ${v.tipo==='camion'?'selected':''}>camion</option>
+        </select></td>
+        <td style="text-align:center">
+          <div style="display:flex;gap:4px;justify-content:center">
+            <button class="fb acc sm" onclick="admGuardar('${v.id}')" title="Guardar">${I.check}</button>
+            <button class="fb gho sm" onclick="admCancelar()" title="Cancelar">${I.x}</button>
+          </div>
+        </td>
+      </tr>`;
+    }
+    return`<tr id="adm-row-${v.id}">
+      <td><strong style="font-family:'JetBrains Mono',monospace;font-size:13px">${v.eco}</strong></td>
+      <td style="font-weight:600">${v.unidad||'—'}</td>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:11px">${v.placas||'—'}</td>
+      <td>${v.responsable&&v.responsable!=='—'?v.responsable:`<span style="color:#EF4444;font-size:11px;font-weight:700">Sin asignar</span>`}</td>
+      <td><span style="font-size:11px">${v.plaza||'—'}</span></td>
+      <td><span class="fl-adm-badge ${statCls}">${v.status||'activo'}</span></td>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:11px">${v.km||0} km</td>
+      <td style="font-size:11px">${v.nip||'—'}</td>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:10px">${v.pol||'—'}</td>
+      <td style="font-size:11px;font-weight:700;color:${pvColor}">${v.pv&&v.pv!=='—'?v.pv:'—'}</td>
+      <td style="font-size:11px">${v.color||'—'}</td>
+      <td style="font-size:11px">${v.tipo||'—'}</td>
+      <td style="text-align:center">
+        <button class="fb gho sm" onclick="admEditar('${v.id}')" title="Editar">${I.edit}</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// EDITAR FILA
+window.admEditar=function(id){
+  admEditId=id;
+  const tbody=document.getElementById('adm-tbody');
+  if(!tbody)return;
+  // Re-render solo las filas filtradas
+  const lista=admGetFiltrado();
+  tbody.innerHTML=renderAdmRows(lista);
+  // Mostrar botón guardar todo
+  const btn=document.getElementById('adm-btn-save');if(btn)btn.style.display='';
+  // Focus en responsable
+  setTimeout(()=>document.getElementById('adm-resp-'+id)?.focus(),100);
+};
+
+window.admCancelar=function(){
+  admEditId=null;
+  const lista=admGetFiltrado();
+  const tbody=document.getElementById('adm-tbody');
+  if(tbody)tbody.innerHTML=renderAdmRows(lista);
+  const btn=document.getElementById('adm-btn-save');if(btn)btn.style.display='none';
+};
+
+// GUARDAR UN VEHÍCULO
+window.admGuardar=async function(id){
+  const v=flV.find(x=>x.id===id);if(!v)return;
+  const nuevos={
+    unidad:document.getElementById('adm-unidad-'+id)?.value?.trim()||v.unidad,
+    placas:document.getElementById('adm-placas-'+id)?.value?.trim()||v.placas,
+    responsable:document.getElementById('adm-resp-'+id)?.value?.trim()||v.responsable,
+    plaza:document.getElementById('adm-plaza-'+id)?.value?.trim()||v.plaza,
+    status:document.getElementById('adm-status-'+id)?.value||v.status,
+    km:Number(document.getElementById('adm-km-'+id)?.value)||v.km||0,
+    nip:document.getElementById('adm-nip-'+id)?.value?.trim()||v.nip||'',
+    pol:document.getElementById('adm-pol-'+id)?.value?.trim()||v.pol||'',
+    pv:document.getElementById('adm-pv-'+id)?.value||v.pv||'—',
+    color:document.getElementById('adm-color-'+id)?.value?.trim()||v.color||'',
+    tipo:document.getElementById('adm-tipo-'+id)?.value||v.tipo||'auto',
+  };
+  // Actualizar local
+  Object.assign(v,nuevos);
+  // Guardar en Firestore
+  try{
+    if(!id.startsWith('eco-')){
+      await fs.updateDoc(fs.doc(db,C.VEHS,id),{...nuevos,actualizadoEn:new Date().toISOString(),actualizadoPor:window.auth?.currentUser?.email||''});
+    } else {
+      // Vehículo del catálogo — crear documento en Firestore
+      const docRef=await fs.addDoc(fs.collection(db,C.VEHS),{...v,...nuevos,eco:v.eco,año:v.año,serie:v.serie,rend:v.rend,creadoEn:new Date().toISOString()});
+      v.id=docRef.id;
+    }
+    admEditId=null;
+    renderSB();
+    if(window.mostrarPush)window.mostrarPush('Vehículo actualizado','ECO '+v.eco+' guardado correctamente','✓');
+  }catch(e){
+    console.error('[ADMIN]',e);
+    if(window.mostrarPush)window.mostrarPush('Error al guardar',e.message,'✗');
+  }
+  const lista=admGetFiltrado();
+  const tbody=document.getElementById('adm-tbody');
+  if(tbody)tbody.innerHTML=renderAdmRows(lista);
+  const btn=document.getElementById('adm-btn-save');if(btn)btn.style.display='none';
+};
+
+// GUARDAR TODOS LOS PENDIENTES
+window.admGuardarTodo=async function(){
+  if(admEditId)await admGuardar(admEditId);
+};
+
+// FILTRAR
+function admGetFiltrado(){
+  let res=flV;
+  if(admFiltro){
+    const q=admFiltro.toLowerCase();
+    res=res.filter(v=>(v.eco+v.unidad+v.responsable+v.placas+v.serie+'').toLowerCase().includes(q));
+  }
+  if(admFiltroPlaza)res=res.filter(v=>v.plaza===admFiltroPlaza);
+  if(admFiltroStatus)res=res.filter(v=>(v.status||'activo')===admFiltroStatus);
+  return res;
+}
+
+window.admFiltrar=function(){
+  admFiltro=document.getElementById('adm-q')?.value||'';
+  admFiltroPlaza=document.getElementById('adm-plaza')?.value||'';
+  admFiltroStatus=document.getElementById('adm-status')?.value||'';
+  admEditId=null;
+  const lista=admGetFiltrado();
+  const tbody=document.getElementById('adm-tbody');
+  if(tbody)tbody.innerHTML=renderAdmRows(lista);
+  const cnt=document.getElementById('adm-count');
+  if(cnt)cnt.textContent=lista.length+' vehículos';
+};
+
+window.admLimpiarFiltros=function(){
+  admFiltro='';admFiltroPlaza='';admFiltroStatus='';
+  const q=document.getElementById('adm-q');if(q)q.value='';
+  const p=document.getElementById('adm-plaza');if(p)p.value='';
+  const s=document.getElementById('adm-status');if(s)s.value='';
+  admFiltrar();
+};
+
+// EXPORTAR CSV
+window.admExportar=function(){
+  const cols=['ECO','Unidad','Placas','Responsable','Plaza','Estatus','KM','NIP','Póliza','Vto.Póliza','Color','Tipo','Serie','Año','Rendimiento'];
+  const rows=flV.map(v=>[v.eco,v.unidad||'',v.placas||'',v.responsable||'',v.plaza||'',v.status||'activo',v.km||0,v.nip||'',v.pol||'',v.pv||'',v.color||'',v.tipo||'',v.serie||'',v.año||'',v.rend||'']);
+  const csv=[cols,...rows].map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=`flotilla_tecnocontrol_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+  if(window.mostrarPush)window.mostrarPush('CSV exportado','flotilla_tecnocontrol_'+new Date().toISOString().slice(0,10)+'.csv','✓');
+};
 
 // ── PANEL GENERAL ──
 function rPanel(){
