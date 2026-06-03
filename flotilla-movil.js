@@ -114,9 +114,12 @@ function genCod(){
 function getGPS(){
   return new Promise(res=>{
     if(!navigator.geolocation){res(null);return;}
+    // Timeout de 5s — si no responde continúa sin GPS
+    const timer=setTimeout(()=>res(null),5000);
     navigator.geolocation.getCurrentPosition(
-      p=>res({lat:p.coords.latitude.toFixed(6),lng:p.coords.longitude.toFixed(6),acc:Math.round(p.coords.accuracy)}),
-      ()=>res(null),{timeout:8000,maximumAge:0,enableHighAccuracy:true}
+      p=>{clearTimeout(timer);res({lat:p.coords.latitude.toFixed(6),lng:p.coords.longitude.toFixed(6),acc:Math.round(p.coords.accuracy)});},
+      ()=>{clearTimeout(timer);res(null);},
+      {timeout:5000,maximumAge:30000,enableHighAccuracy:false}
     );
   });
 }
@@ -252,7 +255,7 @@ body{margin:0;padding:0;background:#F0F2F7;font-family:'Plus Jakarta Sans',-appl
 .fm-card{background:#fff;border-radius:16px;padding:16px;margin-bottom:12px;border:1px solid #E8EDF5;}
 .fm-card-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
 .fm-card-t{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;}
-.fm-veh-eco{font-size:36px;font-weight:900;font-family:'JetBrains Mono',monospace;color:#0A1628;line-height:1;}
+.fm-veh-eco{font-size:42px;font-weight:900;font-family:'JetBrains Mono',monospace;color:#fff;line-height:1;opacity:.9;}
 .fm-veh-name{font-size:18px;font-weight:800;color:#0A1628;margin-top:2px;letter-spacing:-.3px;}
 .fm-veh-sub{font-size:12px;color:#64748B;margin-top:3px;}
 .fm-data-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;}
@@ -277,8 +280,8 @@ body{margin:0;padding:0;background:#F0F2F7;font-family:'Plus Jakarta Sans',-appl
 
 /* FORM */
 .fm-fld{margin-bottom:12px;}
-.fm-fld label{display:block;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#64748B;margin-bottom:5px;}
-.fm-fld input,.fm-fld select,.fm-fld textarea{width:100%;padding:12px 14px;border:1.5px solid #E2E8F0;border-radius:10px;font-family:inherit;font-size:14px;color:#0A0F1E;background:#F8FAFD;outline:none;-webkit-appearance:none;appearance:none;}
+.fm-fld label{display:block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#1E3A5F;margin-bottom:6px;}
+.fm-fld input,.fm-fld select,.fm-fld textarea{width:100%;padding:12px 14px;border:2px solid #CBD5E1;border-radius:10px;font-family:inherit;font-size:14px;color:#0A0F1E;background:#fff;outline:none;-webkit-appearance:none;appearance:none;font-weight:500;}
 .fm-fld input:focus,.fm-fld select:focus,.fm-fld textarea:focus{border-color:#2563EB;background:#fff;}
 .fm-fld textarea{min-height:80px;resize:none;}
 .fm-select-wrap{position:relative;}
@@ -293,12 +296,14 @@ body{margin:0;padding:0;background:#F0F2F7;font-family:'Plus Jakarta Sans',-appl
 .fm-modo-btn.salida.on{background:#15803D;color:#fff;}
 
 /* CHECKLIST */
-.fm-chk-cat{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;padding:8px 0 5px;border-bottom:1px solid #F1F5F9;margin-bottom:2px;}
+.fm-chk-cat{font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.6px;color:#1E3A5F;padding:12px 0 6px;border-bottom:2px solid #E2E8F0;margin-bottom:4px;}
 .fm-chk-row{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid #F8FAFD;}
-.fm-chk-name{flex:1;font-size:13px;color:#374151;}
-.fm-chk-si,.fm-chk-no{padding:5px 12px;border-radius:6px;border:1.5px solid #E2E8F0;font-family:inherit;font-size:11px;font-weight:800;cursor:pointer;background:#fff;transition:all .12s;}
-.fm-chk-si.on{background:#DCFCE7;border-color:#86EFAC;color:#15803D;}
-.fm-chk-no.on{background:#FEE2E2;border-color:#FCA5A5;color:#B91C1C;}
+.fm-chk-name{flex:1;font-size:13.5px;color:#0A0F1E;font-weight:500;}
+.fm-chk-si,.fm-chk-no{padding:6px 14px;border-radius:7px;border:2px solid #CBD5E1;font-family:inherit;font-size:12px;font-weight:800;cursor:pointer;background:#fff;color:#374151;transition:all .12s;}
+.fm-chk-si:hover{border-color:#22C55E;color:#15803D;}
+.fm-chk-no:hover{border-color:#EF4444;color:#B91C1C;}
+.fm-chk-si.on{background:#15803D;border-color:#15803D;color:#fff;}
+.fm-chk-no.on{background:#B91C1C;border-color:#B91C1C;color:#fff;}
 .fm-chk-cam{width:34px;height:34px;border-radius:8px;border:1.5px solid #E2E8F0;background:#F8FAFD;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all .12s;}
 .fm-chk-cam.has{border-color:#22C55E;background:#DCFCE7;}
 .fm-chk-cam.has img{width:26px;height:26px;object-fit:cover;border-radius:5px;}
