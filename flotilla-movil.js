@@ -123,7 +123,7 @@ async function offlineSync(){
   for(const doc of q){
     try{
       const {_offlineId,_pendiente,...clean}=doc;
-      await fs.addDoc(fs.collection(db,C.SOLS),{...clean,creadoEn:clean.creadoEn||new Date().toISOString(),sincronizadoOffline:true});
+      await db.collection(C.SOLS).add({...clean,creadoEn:clean.creadoEn||new Date().toISOString(),sincronizadoOffline:true});
       synced++;
     }catch(e){console.warn('[MOVIL offline]',e);}
   }
@@ -402,18 +402,15 @@ window.initFlotillaMovil=async function(){
 // ── CARGAR DATOS ──
 async function cargarPerfil(user){
   try{
-    // Buscar perfil en Firestore
-    const snap=await fs.getDocs(fs.query(
-      fs.collection(db,C.USUARIOS),
-      fs.where('email','==',user.email)
-    ));
+    // Usar SDK compat directamente
+    const snap=await db.collection(C.USUARIOS).where('email','==',user.email).get();
     if(!snap.empty){
       miPerfil={...snap.docs[0].data(),uid:snap.docs[0].id};
     } else {
-      // Crear perfil básico
       miPerfil={email:user.email,nombre:user.displayName||user.email,ecoVinculado:null};
     }
-  }catch{
+  }catch(e){
+    console.error('[MOVIL perfil]',e);
     miPerfil={email:user?.email||'',nombre:user?.displayName||user?.email||'',ecoVinculado:null};
   }
 }
@@ -421,29 +418,22 @@ async function cargarPerfil(user){
 async function cargarMiVeh(){
   if(!miPerfil?.ecoVinculado){miVeh=null;return;}
   try{
-    const snap=await fs.getDocs(fs.query(
-      fs.collection(db,C.VEHS),
-      fs.where('eco','==',String(miPerfil.ecoVinculado))
-    ));
+    const snap=await db.collection(C.VEHS).where('eco','==',String(miPerfil.ecoVinculado)).get();
     miVeh=snap.empty?null:{id:snap.docs[0].id,...snap.docs[0].data()};
-  }catch{miVeh=null;}
+  }catch(e){console.error('[MOVIL mi veh]',e);miVeh=null;}
 }
 
 async function cargarMisSols(){
   if(!miVeh&&!miPerfil?.email){misSols=[];return;}
   try{
-    const q=miVeh
-      ? fs.query(fs.collection(db,C.SOLS),fs.where('vehiculoEco','==',miVeh.eco),fs.orderBy('creadoEn','desc'),fs.limit(20))
-      : fs.query(fs.collection(db,C.SOLS),fs.where('creadoPor','==',miPerfil.email),fs.orderBy('creadoEn','desc'),fs.limit(20));
-    const snap=await fs.getDocs(q);
+    let q=miVeh
+      ? db.collection(C.SOLS).where('vehiculoEco','==',miVeh.eco).orderBy('creadoEn','desc').limit(20)
+      : db.collection(C.SOLS).where('creadoPor','==',miPerfil?.email||'').orderBy('creadoEn','desc').limit(20);
+    const snap=await q.get();
     misSols=snap.docs.map(d=>({id:d.id,...d.data()}));
   }catch{
-    // Fallback sin orderBy si falta índice
     try{
-      const snap=await fs.getDocs(fs.query(
-        fs.collection(db,C.SOLS),
-        fs.where('creadoPor','==',miPerfil?.email||'')
-      ));
+      const snap=await db.collection(C.SOLS).where('creadoPor','==',miPerfil?.email||'').get();
       misSols=snap.docs.map(d=>({id:d.id,...d.data()}));
       misSols.sort((a,b)=>(b.creadoEn||'').localeCompare(a.creadoEn||''));
     }catch{misSols=[];}
@@ -453,15 +443,13 @@ async function cargarMisSols(){
 async function cargarMisTareas(){
   if(!miPerfil?.email){misTareas=[];return;}
   try{
-    const snap=await fs.getDocs(fs.query(
-      fs.collection(db,C.TAREAS),
-      fs.where('asignadoA','==',miPerfil.email),
-      fs.where('estatus','!=','Completada')
-    ));
-    misTareas=snap.docs.map(d=>({id:d.id,...d.data()}));
-    // Notificaciones = solicitudes recientes de mi vehículo
+    const snap=await db.collection(C.TAREAS)
+      .where('asignadoA','==',miPerfil.email)
+      .get();
+    misTareas=snap.docs.map(d=>({id:d.id,...d.data()}))
+      .filter(t=>t.estatus!=='Completada');
     misNotif=misSols.filter(s=>['Aprobada','Rechazada','Cotización'].includes(s.estatus)).slice(0,10);
-  }catch{misTareas=[];}
+  }catch(e){console.error('[MOVIL tareas]',e);misTareas=[];}
 }
 
 function actualizarBadges(){
@@ -601,10 +589,19 @@ function renderVincular(){
 window.fmCargarVehs=async function(){
   toast('Cargando vehículos…','info');
   try{
-    const snap=await fs.getDocs(fs.collection(db,'flotilla_vehiculos'));
+    // Usar el SDK compat directamente
+    const snap=await db.collection('flotilla_vehiculos').get();
     window._fmAllVehs=snap.docs.map(d=>({id:d.id,...d.data()}));
+    if(window._fmAllVehs.length===0){
+      toast('No se encontraron vehículos','err');
+      return;
+    }
+    toast(window._fmAllVehs.length+' vehículos cargados','ok');
     renderVincular();
-  }catch{toast('Error al cargar vehículos','err');}
+  }catch(e){
+    console.error('[MOVIL cargar vehs]',e);
+    toast('Error: '+e.message,'err');
+  }
 };
 
 window.fmVincular=async function(){
@@ -613,11 +610,10 @@ window.fmVincular=async function(){
   const user=window.auth?.currentUser;
   if(!user){toast('No hay sesión activa','err');return;}
   try{
-    // Guardar vínculo en fl_usuarios
-    const snap=await fs.getDocs(fs.query(fs.collection(db,C.USUARIOS),fs.where('email','==',user.email)));
+    const snap=await db.collection(C.USUARIOS).where('email','==',user.email).get();
     const datos={email:user.email,nombre:user.displayName||user.email,ecoVinculado:eco,vinculadoEn:new Date().toISOString()};
-    if(snap.empty){await fs.addDoc(fs.collection(db,C.USUARIOS),datos);}
-    else{await fs.updateDoc(fs.doc(db,C.USUARIOS,snap.docs[0].id),{ecoVinculado:eco});}
+    if(snap.empty){await db.collection(C.USUARIOS).add(datos);}
+    else{await db.collection(C.USUARIOS).doc(snap.docs[0].id).update({ecoVinculado:eco});}
     miPerfil={...miPerfil,...datos};
     await cargarMiVeh();
     await cargarMisSols();
@@ -904,9 +900,9 @@ window.fmGuardar=async function(){
     return;
   }
   try{
-    await fs.addDoc(fs.collection(db,C.SOLS),docObj);
+    await db.collection(C.SOLS).add(docObj);
     if(km&&miVeh&&!miVeh.id.startsWith('eco-')){
-      await fs.updateDoc(fs.doc(db,C.VEHS,miVeh.id),{km:Number(km)}).catch(()=>{});
+      await db.collection(C.VEHS).doc(miVeh.id).update({km:Number(km)}).catch(()=>{});
     }
     await cargarMisSols();
     toast('Solicitud creada correctamente','ok');
@@ -953,7 +949,7 @@ function renderTareas(){
 
 window.fmMarcarTarea=async function(id,est){
   try{
-    await fs.updateDoc(fs.doc(db,C.TAREAS,id),{estatus:est,actualizadoEn:new Date().toISOString()});
+    await db.collection(C.TAREAS).doc(id).update({estatus:est,actualizadoEn:new Date().toISOString()});
     await cargarMisTareas();
     actualizarBadges();
     renderTareas();
