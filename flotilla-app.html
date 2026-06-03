@@ -85,9 +85,10 @@ const firebaseConfig = {
 
 firebase.initializeApp(firebaseConfig);
 
-// Habilitar persistencia offline para Firestore
+// Sin persistencia — más compatible con iOS Safari
 const _db = firebase.firestore();
-_db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
+// Configurar settings para mejor compatibilidad móvil
+_db.settings({experimentalForceLongPolling: true, merge: true});
 
 // NOTA: Asegúrate de que las reglas de Firestore permitan lectura.
 // En Firebase Console → Firestore → Reglas, usa temporalmente:
