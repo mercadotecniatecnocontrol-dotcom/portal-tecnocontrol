@@ -244,7 +244,7 @@ body{margin:0;padding:0;background:#F0F2F7;font-family:'Plus Jakarta Sans',-appl
 
 /* BOTTOM NAV */
 .fm-nav{background:#0A1628;padding:0 0 env(safe-area-inset-bottom,0);border-top:1px solid rgba(255,255,255,.08);}
-.fm-nav-inner{display:grid;grid-template-columns:repeat(4,1fr);height:56px;}
+.fm-nav-inner{display:grid;grid-template-columns:repeat(5,1fr);height:56px;}
 .fm-nav-btn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border:none;background:transparent;color:rgba(255,255,255,.45);cursor:pointer;font-family:inherit;padding:6px 4px;position:relative;transition:color .15s;}
 .fm-nav-btn.on{color:#3B82F6;}
 .fm-nav-btn svg{width:22px;height:22px;display:block;}
@@ -345,7 +345,8 @@ body{margin:0;padding:0;background:#F0F2F7;font-family:'Plus Jakarta Sans',-appl
 
 /* EMPTY */
 .fm-empty{text-align:center;padding:32px 20px;color:#64748B;}
-.fm-empty-ico{font-size:40px;opacity:.25;margin-bottom:10px;}
+.fm-empty-ico{font-size:40px;opacity:.35;margin-bottom:10px;display:flex;align-items:center;justify-content:center;}
+.fm-empty-ico svg{width:48px;height:48px;}
 .fm-empty h3{font-size:14px;font-weight:700;color:#0A0F1E;margin-bottom:4px;}
 .fm-empty p{font-size:12.5px;line-height:1.5;}
 
@@ -383,6 +384,11 @@ const IC={
   wifi:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0119 12.55M5 12.55a10.94 10.94 0 015.17-2.39M10.71 5.05A16 16 0 0122.56 9M1.42 9a15.91 15.91 0 014.7-2.88M8.53 16.11a6 6 0 016.95 0M12 20h.01"/></svg>`,
   user:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
   shield:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
+  link:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>`,
+  swap:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>`,
+  sign:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 3a2.828 2.828 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>`,
+  doc:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`,
+  car:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 17H3a2 2 0 01-2-2V9a2 2 0 012-2h1l3-3h12l3 3h1a2 2 0 012 2v6a2 2 0 01-2 2h-2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>`,
 };
 
 // ── HTML BASE ──
@@ -413,7 +419,7 @@ function buildHTML(){
     </div>
     <!-- CONTENIDO -->
     <div class="fm-content" id="fm-content">
-      <div class="fm-empty"><div class="fm-empty-ico">🚗</div><h3>Cargando…</h3></div>
+      <div class="fm-empty"><div class="fm-empty-ico" style="color:var(--color-text-secondary,#94A3B8)">${IC.car}</div><h3>Cargando…</h3></div>
     </div>
     <!-- NAV BOTTOM -->
     <div class="fm-nav">
@@ -427,6 +433,9 @@ function buildHTML(){
         <button class="fm-nav-btn" id="fm-nb-tareas" onclick="fmVista('tareas')">
           ${IC.tasks}<span class="fm-nav-lbl">Tareas</span>
           <span class="fm-nav-badge" id="fm-badge-tareas" style="display:none">0</span>
+        </button>
+        <button class="fm-nav-btn" id="fm-nb-util" onclick="fmVista('util')">
+          ${IC.swap}<span class="fm-nav-lbl">Utilitario</span>
         </button>
         <button class="fm-nav-btn" id="fm-nb-notif" onclick="fmVista('notif')">
           ${IC.bell}<span class="fm-nav-lbl">Avisos</span>
@@ -567,6 +576,7 @@ window.fmVista=function(v){
   else if(v==='solicitud')renderNuevaSol();
   else if(v==='tareas')renderTareas();
   else if(v==='notif')renderNotif();
+  else if(v==='util')renderUtil();
 };
 
 // ══════════════════════════════════════════
@@ -663,7 +673,7 @@ function renderVincular(){
   setContent(`
     <div style="padding-top:20px">
       <div class="fm-vincular">
-        <div class="fm-vincular-ico">🔗</div>
+        <div class="fm-empty-ico" style="color:#1E3A5F">${IC.link}</div>
         <h2>Vincular mi vehículo</h2>
         <p>Selecciona el vehículo que tienes asignado. Esto se guarda en tu perfil y no podrá cambiarse sin autorización.</p>
         ${allVehs.length?`
@@ -741,7 +751,7 @@ window.fmVincular=async function(){
 // ══════════════════════════════════════════
 function renderNuevaSol(){
   if(!miVeh){
-    setContent(`<div style="padding-top:20px"><div class="fm-vincular"><div class="fm-vincular-ico">🚗</div><h2>Sin vehículo vinculado</h2><p>Primero vincula tu vehículo asignado.</p><button class="fm-btn primary" onclick="fmVista('vehiculo')">Ir a Mi Vehículo</button></div></div>`);
+    setContent(`<div style="padding-top:20px"><div class="fm-vincular"><div class="fm-empty-ico" style="color:#1E3A5F">${IC.car}</div><h2>Sin vehículo vinculado</h2><p>Primero vincula tu vehículo asignado.</p><button class="fm-btn primary" onclick="fmVista('vehiculo')">Ir a Mi Vehículo</button></div></div>`);
     return;
   }
   // Reset estado
@@ -1040,7 +1050,7 @@ function renderTareas(){
         <div class="fm-sec-s">${pend.length} pendiente(s)</div>
       </div>
     </div>
-    ${!pend.length?`<div class="fm-empty"><div class="fm-empty-ico">✅</div><h3>Sin tareas pendientes</h3><p>No tienes tareas asignadas por el momento.</p></div>`:
+    ${!pend.length?`<div class="fm-empty"><div class="fm-empty-ico" style="color:#15803D">${IC.check}</div><h3>Sin tareas pendientes</h3><p>No tienes tareas asignadas por el momento.</p></div>`:
     pend.map(t=>`
       <div class="fm-tarea-card">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:6px">
@@ -1077,8 +1087,8 @@ window.fmMarcarTarea=async function(id,est){
 function renderNotif(){
   const items=[
     ...misNotif.map(s=>({
-      ico:s.estatus==='Aprobada'?'✅':s.estatus==='Rechazada'?'❌':'💬',
-      bg:s.estatus==='Aprobada'?'#DCFCE7':s.estatus==='Rechazada'?'#FEE2E2':'#EDE9FE',
+      ico:s.estatus==='Aprobada'?'ok':s.estatus==='Rechazada'?'err':'msg',
+      bg:s.estatus==='Aprobada'?'#DCFCE7':s.estatus==='Rechazada'?'#FEE2E2':'#EDE9FE',icoSvg:s.estatus==='Aprobada'?IC.check:s.estatus==='Rechazada'?IC.x:IC.bell,
       t:`Solicitud ${s.estatus.toLowerCase()}`,
       s:`${s.tipo||'—'} · ECO ${s.vehiculoEco||'—'}`,
       time:hF(s.actualizadoEn||s.creadoEn),
@@ -1086,7 +1096,7 @@ function renderNotif(){
     })),
   ];
   const dv=hD(miVeh?.pv);
-  if(dv!==null&&dv<90)items.unshift({ico:'⚠️',bg:'#FEF3C7',t:'Póliza de seguro',s:dv<0?'Póliza VENCIDA — renovar urgente':`Vence en ${dv} días`,time:'Hoy',unread:dv<0});
+  if(dv!==null&&dv<90)items.unshift({ico:'warn',bg:'#FEF3C7',icoSvg:IC.alert,t:'Póliza de seguro',s:dv<0?'Póliza VENCIDA — renovar urgente':`Vence en ${dv} días`,time:'Hoy',unread:dv<0});
 
   setContent(`
     <div class="fm-sec-hd">
@@ -1095,9 +1105,9 @@ function renderNotif(){
         <div class="fm-sec-s">${items.length} notificacion(es)</div>
       </div>
     </div>
-    ${!items.length?`<div class="fm-empty"><div class="fm-empty-ico">🔔</div><h3>Sin avisos</h3><p>No hay notificaciones nuevas.</p></div>`:
+    ${!items.length?`<div class="fm-empty"><div class="fm-empty-ico" style="color:var(--color-text-secondary,#94A3B8)">${IC.bell}</div><h3>Sin avisos</h3><p>No hay notificaciones nuevas.</p></div>`:
     items.map(n=>`<div class="fm-notif ${n.unread?'unread':''}">
-      <div class="fm-notif-ico" style="background:${n.bg}">${n.ico}</div>
+      <div class="fm-notif-ico" style="background:${n.bg};color:${n.ico==='ok'?'#15803D':n.ico==='err'?'#B91C1C':n.ico==='warn'?'#B45309':'#6D28D9'}">${n.icoSvg||IC.bell}</div>
       <div class="fm-notif-body">
         <div class="fm-notif-t">${n.t}</div>
         <div class="fm-notif-s">${n.s}</div>
@@ -1161,3 +1171,403 @@ window.abrirPerfil=function(){
 
 console.log('[FLOTILLA MÓVIL] Tecnocontrol · App técnicos · Offline ready');
 })();
+
+// ══════════════════════════════════════════════════════
+// VISTA 5 — UTILITARIOS / TRANSFERENCIA DE VEHÍCULO
+// ══════════════════════════════════════════════════════
+let utilState={
+  modo:null, // 'entregar' | 'recibir'
+  codigo:'',
+  chk:{}, chkFotos:{}, evFotos:[],
+  km:'', gasolina:50,
+  firma:null, // base64 del canvas de firma
+  paso:1, // 1=selección modo, 2=datos, 3=firma, 4=confirmado
+};
+
+function renderUtil(){
+  setContent(`
+    <div class="fm-sec-hd">
+      <div>
+        <div class="fm-sec-t">Utilitarios</div>
+        <div class="fm-sec-s">Transferencia de vehículo</div>
+      </div>
+    </div>
+
+    ${utilState.paso===1?renderUtilPaso1():
+      utilState.paso===2?renderUtilPaso2():
+      utilState.paso===3?renderUtilPaso3():
+      renderUtilPaso4()}
+  `);
+
+  // Inicializar canvas de firma si estamos en paso 3
+  if(utilState.paso===3)setTimeout(initFirmaCanvas,100);
+}
+
+// PASO 1: Elegir modo
+function renderUtilPaso1(){
+  return`
+    <div class="fm-card" style="text-align:center;padding:24px">
+      <div style="color:#1E3A5F;margin-bottom:12px">${IC.swap}</div>
+      <h2 style="font-size:17px;font-weight:800;margin-bottom:8px">¿Qué deseas hacer?</h2>
+      <p style="font-size:13px;color:#64748B;margin-bottom:20px;line-height:1.5">Selecciona si vas a entregar o recibir un vehículo</p>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <button class="fm-btn primary" onclick="utilSetModo('entregar')" style="background:#1E3A5F">
+          ${IC.car} Entregar mi vehículo
+        </button>
+        <button class="fm-btn" onclick="utilSetModo('recibir')" style="background:#15803D;color:#fff">
+          ${IC.check} Recibir un vehículo
+        </button>
+      </div>
+    </div>
+
+    <!-- Historial de transferencias -->
+    <div style="margin-top:16px">
+      <div style="font-size:13px;font-weight:800;margin-bottom:10px;color:#1E3A5F">Mis transferencias recientes</div>
+      <div id="util-hist-list">
+        <div class="fm-empty" style="padding:16px">
+          <div style="color:#94A3B8">${IC.doc}</div>
+          <p style="font-size:12px;color:#94A3B8;margin-top:6px">Sin transferencias registradas</p>
+        </div>
+      </div>
+    </div>
+    <div style="height:20px"></div>
+  `;
+  // Cargar historial en paralelo
+  setTimeout(()=>cargarUtilHist(),100);
+}
+
+async function cargarUtilHist(){
+  try{
+    const email=window.auth?.currentUser?.email||'';
+    const snap=await db.collection('flotilla_transferencias')
+      .where('emails','array-contains',email)
+      .orderBy('creadoEn','desc').limit(5).get();
+    const items=snap.docs.map(d=>({id:d.id,...d.data()}));
+    const el=document.getElementById('util-hist-list');
+    if(!el)return;
+    if(!items.length){el.innerHTML=`<div class="fm-empty" style="padding:16px"><p style="font-size:12px;color:#94A3B8">Sin transferencias registradas</p></div>`;return;}
+    el.innerHTML=items.map(t=>`
+      <div class="fm-sol-card" style="margin-bottom:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <span style="font-size:13px;font-weight:700">ECO ${t.vehiculoEco} — ${t.vehiculoUnidad||'—'}</span>
+          ${badge(t.estatus||'Completada')}
+        </div>
+        <div style="font-size:11.5px;color:#64748B">
+          De: ${t.entregaNombre||'—'} → Para: ${t.recibioNombre||'—'}
+        </div>
+        <div style="font-size:10.5px;color:#94A3B8;margin-top:2px">${t.creadoEn?t.creadoEn.substring(0,10):'—'} · Código: ${t.codigo||'—'}</div>
+      </div>`).join('');
+  }catch(e){console.warn('[UTIL hist]',e);}
+}
+
+// PASO 2a: Datos de entrega
+function renderUtilPaso2(){
+  const v=miVeh;
+  const esEntrega=utilState.modo==='entregar';
+  return`
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
+      <button onclick="utilState.paso=1;renderUtil()" style="background:none;border:none;cursor:pointer;color:#1E3A5F;padding:0">${IC.tasks}</button>
+      <div>
+        <div style="font-size:15px;font-weight:800">${esEntrega?'Entrega de vehículo':'Recepción de vehículo'}</div>
+        <div style="font-size:11px;color:#64748B">${esEntrega?'Paso 1 de 3':'Paso 1 de 2'}</div>
+      </div>
+    </div>
+
+    ${esEntrega?`
+    <!-- DATOS VEHÍCULO -->
+    <div class="fm-card" style="background:linear-gradient(135deg,#0A1628,#1E3A5F);color:#fff;border:none;margin-bottom:12px">
+      <div style="font-size:28px;font-weight:900;font-family:'JetBrains Mono',monospace;opacity:.9">${v?.eco||'—'}</div>
+      <div style="font-size:16px;font-weight:800;margin-top:2px">${v?.unidad||'—'}</div>
+      <div style="font-size:12px;color:rgba(255,255,255,.55);margin-top:2px">${v?.placas||'—'} · ${v?.año||'—'}</div>
+    </div>
+
+    <div class="fm-fld"><label>¿A quién se entrega?</label>
+      <input type="text" id="util-receptor" placeholder="Nombre del técnico que recibe"></div>
+
+    <div class="fm-fld"><label>KM al entregar</label>
+      <input type="number" id="util-km" placeholder="${v?.km||0}" inputmode="numeric"></div>
+
+    <div class="fm-fld">
+      <label>Nivel de gasolina</label>
+      <div id="util-gauge-wrap">${renderGaugeSVG(utilState.gasolina)}<div class="fm-gauge-labels" style="width:200px"><span>VACÍO</span><span>2/4</span><span>MEDIO</span><span>3/4</span><span>LLENO</span></div></div>
+      <input type="range" min="0" max="100" value="${utilState.gasolina}" oninput="utilGas(this.value)" style="width:100%;margin-top:6px;accent-color:#2563EB">
+    </div>
+
+    <div class="fm-fld">
+      <label>Fotos del vehículo al entregar <span style="font-size:9px;font-weight:500;text-transform:none;color:#94A3B8">(cámara obligatoria)</span></label>
+      <button onclick="utilCapturar()" class="fm-btn primary" style="margin-bottom:8px">${IC.camera} Tomar fotos del vehículo</button>
+      <div id="util-fotos-wrap" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+    </div>
+
+    <!-- CHECKLIST RÁPIDO ENTREGA -->
+    <div class="fm-fld">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <label style="margin:0">Checklist de entrega</label>
+        <span id="util-chk-cnt" style="font-size:10px;color:#64748B">0 revisados</span>
+      </div>
+      <div id="util-chk">${renderChkUtil()}</div>
+    </div>
+
+    <button class="fm-btn primary" onclick="utilSiguiente()" style="margin-top:8px">Continuar a firma</button>
+    `:`
+    <!-- MODO RECIBIR: ingresar código -->
+    <div class="fm-card" style="text-align:center;padding:20px">
+      <div style="color:#15803D;margin-bottom:12px;display:flex;justify-content:center">${IC.link}</div>
+      <h3 style="font-size:15px;font-weight:800;margin-bottom:6px">Ingresa el código de transferencia</h3>
+      <p style="font-size:12.5px;color:#64748B;margin-bottom:16px;line-height:1.5">El técnico que entrega te proporcionó un código único</p>
+      <div class="fm-fld">
+        <label>Código TCN-TR-XXXX</label>
+        <input type="text" id="util-codigo" placeholder="TCN-TR-XXXX" style="text-align:center;font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:700;letter-spacing:2px;text-transform:uppercase" oninput="this.value=this.value.toUpperCase()">
+      </div>
+      <button class="fm-btn primary" onclick="utilVerificarCodigo()" style="width:100%;margin-top:8px">Verificar código</button>
+      <div id="util-codigo-msg" style="margin-top:10px;font-size:12px"></div>
+    </div>
+    `}
+    <div style="height:20px"></div>
+  `;
+}
+
+// PASO 3: Firma digital
+function renderUtilPaso3(){
+  const esEntrega=utilState.modo==='entregar';
+  return`
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
+      <button onclick="utilState.paso=2;renderUtil()" style="background:none;border:none;cursor:pointer;color:#1E3A5F;padding:0">${IC.tasks}</button>
+      <div>
+        <div style="font-size:15px;font-weight:800">Firma digital</div>
+        <div style="font-size:11px;color:#64748B">${esEntrega?'Paso 2 de 3':'Paso 2 de 2'} · Responsiva de ${esEntrega?'entrega':'recepción'}</div>
+      </div>
+    </div>
+
+    <div class="fm-card">
+      <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:6px">Firma aquí abajo</div>
+      <div style="border:2px solid #E2E8F0;border-radius:10px;overflow:hidden;background:#F8FAFD;touch-action:none">
+        <canvas id="firma-canvas" width="320" height="160" style="display:block;width:100%;touch-action:none;cursor:crosshair"></canvas>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="fm-btn ghost fm-btn-sm" onclick="limpiarFirma()" style="flex:1">Limpiar</button>
+      </div>
+    </div>
+
+    <div class="fm-card" style="background:#F8FAFD">
+      <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:8px">Datos de la responsiva</div>
+      ${[
+        ['Vehículo', utilState.datosEntrega?.vehiculo||miVeh?.unidad||'—'],
+        ['ECO', utilState.datosEntrega?.eco||miVeh?.eco||'—'],
+        ['KM', utilState.datosEntrega?.km||'—'],
+        ['Gasolina', Math.round(utilState.gasolina)+'%'],
+        ['Entrega', utilState.datosEntrega?.nombre||window.auth?.currentUser?.displayName||'—'],
+        ['Recibe', utilState.datosEntrega?.receptor||'—'],
+        ['Fecha', new Date().toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'})],
+        ['Hora', new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})],
+      ].map(([l,v])=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #F1F5F9;font-size:12.5px"><span style="color:#64748B">${l}</span><span style="font-weight:700;color:#0A0F1E">${v}</span></div>`).join('')}
+    </div>
+
+    <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:12px;margin-bottom:12px;font-size:12px;color:#92400E">
+      ${IC.alert} Al firmar aceptas la responsabilidad sobre el estado del vehículo en este momento.
+    </div>
+
+    <button class="fm-btn primary" onclick="utilConfirmarFirma()" id="util-btn-firmar">
+      ${IC.sign} Firmar y confirmar
+    </button>
+    <div style="height:20px"></div>
+  `;
+}
+
+// PASO 4: Confirmado
+function renderUtilPaso4(){
+  const cod=utilState.codigoGenerado||'—';
+  const esEntrega=utilState.modo==='entregar';
+  return`
+    <div style="text-align:center;padding:32px 20px">
+      <div style="width:64px;height:64px;border-radius:50%;background:#DCFCE7;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;color:#15803D">
+        ${IC.check}
+      </div>
+      <h2 style="font-size:20px;font-weight:900;margin-bottom:8px;color:#15803D">${esEntrega?'Entrega registrada':'Recepción registrada'}</h2>
+      <p style="font-size:13px;color:#64748B;line-height:1.5;margin-bottom:20px">La responsiva ha sido guardada correctamente.</p>
+
+      ${esEntrega?`
+      <div style="background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:12px;padding:16px;margin-bottom:20px">
+        <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#1D4ED8;margin-bottom:6px">Código para el técnico que recibe</div>
+        <div style="font-size:24px;font-weight:900;font-family:'JetBrains Mono',monospace;letter-spacing:3px;color:#1E3A5F">${cod}</div>
+        <div style="font-size:11px;color:#64748B;margin-top:6px">Compártelo por WhatsApp con quien recibirá el vehículo</div>
+        <button onclick="navigator.share?navigator.share({title:'Código transferencia',text:'Tu código de recepción de vehículo Tecnocontrol: ${cod}'}):navigator.clipboard.writeText('${cod}')" class="fm-btn primary" style="margin-top:10px;padding:8px 20px;font-size:12px">
+          ${IC.swap} Compartir código
+        </button>
+      </div>`:''}
+
+      <button class="fm-btn ghost" onclick="utilState={modo:null,codigo:'',chk:{},chkFotos:{},evFotos:[],km:'',gasolina:50,firma:null,paso:1};renderUtil()">
+        Listo
+      </button>
+    </div>
+  `;
+}
+
+// HELPERS UTILITARIOS
+window.utilSetModo=function(m){utilState.modo=m;utilState.paso=2;renderUtil();};
+window.utilGas=function(v){utilState.gasolina=Number(v);const w=document.getElementById('util-gauge-wrap');if(w)w.innerHTML=renderGaugeSVG(Number(v))+'<div class="fm-gauge-labels" style="width:200px"><span>VACÍO</span><span>2/4</span><span>MEDIO</span><span>3/4</span><span>LLENO</span></div>';};
+
+function renderChkUtil(){
+  const items=['Carrocería sin daños nuevos','Cristales completos','Llantas en buen estado','Herramienta completa','Sin multas vigentes','Documentos en orden'];
+  return items.map((item,i)=>{
+    const key='util_'+i;
+    const val=utilState.chk[key]||'';
+    return`<div class="fm-chk-row" id="util-cr-${key}">
+      <span class="fm-chk-name">${item}</span>
+      <button class="fm-chk-si ${val==='si'?'on':''}" onclick="utilChk('${key}','si')">SI</button>
+      <button class="fm-chk-no ${val==='no'?'on':''}" onclick="utilChk('${key}','no')">NO</button>
+    </div>`;
+  }).join('');
+}
+
+window.utilChk=function(key,val){
+  utilState.chk[key]=utilState.chk[key]===val?'':val;
+  const si=document.querySelector(`#util-cr-${key} .fm-chk-si`);
+  const no=document.querySelector(`#util-cr-${key} .fm-chk-no`);
+  if(si)si.classList.toggle('on',utilState.chk[key]==='si');
+  if(no)no.classList.toggle('on',utilState.chk[key]==='no');
+  const rev=Object.values(utilState.chk).filter(v=>v).length;
+  const cnt=document.getElementById('util-chk-cnt');if(cnt)cnt.textContent=rev+' revisados';
+};
+
+window.utilCapturar=async function(){
+  toast('Obteniendo GPS…','info');
+  const gps=await getGPS();
+  const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.capture='environment';inp.style.display='none';
+  document.body.appendChild(inp);
+  inp.onchange=async function(){
+    const file=this.files[0];if(!file){document.body.removeChild(inp);return;}
+    toast('Procesando foto…','info');
+    const reader=new FileReader();
+    reader.onload=async function(e){
+      const now=new Date();
+      const meta={codigo:genCod(),fecha:now.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}),hora:now.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',second:'2-digit'}),timestamp:now.toISOString(),gps,eco:miVeh?.eco||'—',unidad:miVeh?.unidad||'—',usuario:window.auth?.currentUser?.email||'—',modo:'utilitario'};
+      const sellada=await sellarImg(e.target.result,meta);
+      utilState.evFotos.push({src:sellada,meta});
+      const wrap=document.getElementById('util-fotos-wrap');
+      if(wrap){const pill=document.createElement('div');pill.className='fm-ev-pill';pill.onclick=()=>fmVerFoto({src:sellada,meta});pill.innerHTML=`<img src="${sellada}"><span style="font-size:9px">${meta.codigo}</span>`;wrap.appendChild(pill);}
+      toast(`Foto registrada · ${meta.codigo}`,'ok');
+      document.body.removeChild(inp);
+    };reader.readAsDataURL(file);
+  };inp.click();
+};
+
+window.utilSiguiente=function(){
+  const receptor=document.getElementById('util-receptor')?.value?.trim();
+  const km=document.getElementById('util-km')?.value;
+  if(!receptor){toast('Ingresa el nombre de quien recibe','err');return;}
+  if(utilState.evFotos.length===0){toast('Toma al menos una foto del vehículo','err');return;}
+  utilState.datosEntrega={
+    vehiculo:miVeh?.unidad||'—',eco:miVeh?.eco||'—',
+    km:km||miVeh?.km||'0',receptor,
+    nombre:window.auth?.currentUser?.displayName||window.auth?.currentUser?.email||'—',
+  };
+  utilState.paso=3;renderUtil();
+};
+
+window.utilVerificarCodigo=async function(){
+  const cod=document.getElementById('util-codigo')?.value?.trim().toUpperCase();
+  if(!cod||!cod.startsWith('TCN-TR-')){toast('Código inválido','err');return;}
+  toast('Verificando…','info');
+  const msg=document.getElementById('util-codigo-msg');
+  try{
+    const snap=await db.collection('flotilla_transferencias').where('codigo','==',cod).where('estatus','==','Pendiente recepción').get();
+    if(snap.empty){if(msg)msg.innerHTML=`<span style="color:#B91C1C">Código no encontrado o ya fue utilizado</span>`;return;}
+    const t={id:snap.docs[0].id,...snap.docs[0].data()};
+    utilState.transferenciaId=t.id;
+    utilState.datosEntrega={vehiculo:t.vehiculoUnidad,eco:t.vehiculoEco,km:t.kmEntrega,receptor:window.auth?.currentUser?.displayName||window.auth?.currentUser?.email||'—',nombre:t.entregaNombre};
+    toast('Código válido — ECO '+t.vehiculoEco,'ok');
+    setTimeout(()=>{utilState.paso=3;renderUtil();},800);
+  }catch(e){if(msg)msg.innerHTML=`<span style="color:#B91C1C">Error: ${e.message}</span>`;}
+};
+
+// CANVAS DE FIRMA
+function initFirmaCanvas(){
+  const canvas=document.getElementById('firma-canvas');if(!canvas)return;
+  const ctx=canvas.getContext('2d');
+  ctx.strokeStyle='#1E3A5F';ctx.lineWidth=2.5;ctx.lineCap='round';ctx.lineJoin='round';
+  let drawing=false,lastX=0,lastY=0;
+  function getPos(e){const r=canvas.getBoundingClientRect();const scaleX=canvas.width/r.width;const scaleY=canvas.height/r.height;const src=e.touches?e.touches[0]:e;return{x:(src.clientX-r.left)*scaleX,y:(src.clientY-r.top)*scaleY};}
+  canvas.addEventListener('mousedown',e=>{drawing=true;const p=getPos(e);lastX=p.x;lastY=p.y;});
+  canvas.addEventListener('mousemove',e=>{if(!drawing)return;const p=getPos(e);ctx.beginPath();ctx.moveTo(lastX,lastY);ctx.lineTo(p.x,p.y);ctx.stroke();lastX=p.x;lastY=p.y;});
+  canvas.addEventListener('mouseup',()=>drawing=false);
+  canvas.addEventListener('touchstart',e=>{e.preventDefault();drawing=true;const p=getPos(e);lastX=p.x;lastY=p.y;},{passive:false});
+  canvas.addEventListener('touchmove',e=>{e.preventDefault();if(!drawing)return;const p=getPos(e);ctx.beginPath();ctx.moveTo(lastX,lastY);ctx.lineTo(p.x,p.y);ctx.stroke();lastX=p.x;lastY=p.y;},{passive:false});
+  canvas.addEventListener('touchend',()=>drawing=false);
+}
+
+window.limpiarFirma=function(){const c=document.getElementById('firma-canvas');if(c){const ctx=c.getContext('2d');ctx.clearRect(0,0,c.width,c.height);}};
+
+window.utilConfirmarFirma=async function(){
+  const canvas=document.getElementById('firma-canvas');
+  if(!canvas){toast('Error al obtener firma','err');return;}
+  // Verificar que hay firma
+  const ctx=canvas.getContext('2d');
+  const data=ctx.getImageData(0,0,canvas.width,canvas.height).data;
+  const tieneFirma=data.some((_,i)=>i%4===3&&data[i]>0);
+  if(!tieneFirma){toast('Dibuja tu firma primero','err');return;}
+  utilState.firma=canvas.toDataURL('image/png');
+  const btn=document.getElementById('util-btn-firmar');
+  if(btn){btn.disabled=true;btn.textContent='Guardando…';}
+  const esEntrega=utilState.modo==='entregar';
+  // Generar código único de transferencia
+  const now=new Date();
+  const dd=String(now.getFullYear())+String(now.getMonth()+1).padStart(2,'0')+String(now.getDate()).padStart(2,'0');
+  const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let rand='';for(let i=0;i<4;i++)rand+=chars[Math.floor(Math.random()*chars.length)];
+  const codigo=`TCN-TR-${dd}-${rand}`;
+  utilState.codigoGenerado=codigo;
+  const userEmail=window.auth?.currentUser?.email||'';
+  const userName=window.auth?.currentUser?.displayName||userEmail;
+  try{
+    if(esEntrega){
+      // Crear documento de transferencia
+      const docObj={
+        codigo,tipo:'transferencia',
+        vehiculoEco:miVeh?.eco||'',vehiculoId:miVeh?.id||'',vehiculoUnidad:miVeh?.unidad||'',
+        entregaEmail:userEmail,entregaNombre:userName,entregaFirma:utilState.firma,
+        entregaKm:utilState.datosEntrega?.km||'',entregaGasolina:utilState.gasolina,
+        entregaChk:{...utilState.chk},entregaFotos:utilState.evFotos.map(e=>e.src),
+        entregaFotosMeta:utilState.evFotos.map(e=>e.meta),
+        receptorNombre:utilState.datosEntrega?.receptor||'',
+        estatus:'Pendiente recepción',
+        emails:[userEmail],
+        creadoEn:now.toISOString(),
+      };
+      await db.collection('flotilla_transferencias').add(docObj);
+      // Notificar administradores
+      await db.collection('flotilla_notificaciones').add({
+        tipo:'transferencia_iniciada',codigo,vehiculoEco:miVeh?.eco||'',
+        mensaje:`${userName} inició transferencia del ECO ${miVeh?.eco||'—'} a ${utilState.datosEntrega?.receptor||'—'}`,
+        leido:false,creadoEn:now.toISOString(),
+      });
+    } else {
+      // Completar transferencia existente
+      if(utilState.transferenciaId){
+        await db.collection('flotilla_transferencias').doc(utilState.transferenciaId).update({
+          recibioEmail:userEmail,recibioNombre:userName,recibioFirma:utilState.firma,
+          recibioKm:utilState.datosEntrega?.km||'',
+          recibioChk:{...utilState.chk},
+          estatus:'Completada',completadoEn:now.toISOString(),
+          emails:[...(utilState.emails||[]),userEmail],
+        });
+        // Reasignar vehículo
+        await db.collection('fl_usuarios').where('email','==',userEmail).get().then(snap=>{
+          if(!snap.empty)return snap.docs[0].ref.update({ecoVinculado:utilState.datosEntrega?.eco||''});
+          return db.collection('fl_usuarios').add({email:userEmail,nombre:userName,ecoVinculado:utilState.datosEntrega?.eco||'',vinculadoEn:now.toISOString()});
+        });
+        // Notificar
+        await db.collection('flotilla_notificaciones').add({
+          tipo:'transferencia_completada',codigo:utilState.codigo,vehiculoEco:utilState.datosEntrega?.eco||'',
+          mensaje:`Transferencia completada. ${userName} recibió el ECO ${utilState.datosEntrega?.eco||'—'}`,
+          leido:false,creadoEn:now.toISOString(),
+        });
+      }
+    }
+    utilState.paso=4;renderUtil();
+    toast('Responsiva guardada correctamente','ok');
+  }catch(e){
+    console.error('[UTIL firma]',e);
+    toast('Error al guardar: '+e.message,'err');
+    if(btn){btn.disabled=false;btn.textContent='Firmar y confirmar';}
+  }
+};
