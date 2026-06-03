@@ -501,8 +501,18 @@ async function cargarMiVeh(){
   if(!miPerfil?.ecoVinculado){miVeh=null;return;}
   try{
     const snap=await db.collection(C.VEHS).where('eco','==',String(miPerfil.ecoVinculado)).get();
-    miVeh=snap.empty?null:{id:snap.docs[0].id,...snap.docs[0].data()};
-  }catch(e){console.error('[MOVIL mi veh]',e);miVeh=null;}
+    if(!snap.empty){
+      miVeh={id:snap.docs[0].id,...snap.docs[0].data()};
+    } else {
+      // Buscar en catálogo local
+      miVeh=window.CAT_FL?.find(v=>String(v.eco)===String(miPerfil.ecoVinculado))||null;
+      if(miVeh)miVeh={id:'eco-'+miVeh.eco,...miVeh};
+    }
+  }catch(e){
+    // Fallback catálogo local
+    const found=window.CAT_FL?.find(v=>String(v.eco)===String(miPerfil.ecoVinculado));
+    miVeh=found?{id:'eco-'+found.eco,...found}:null;
+  }
 }
 
 async function cargarMisSols(){
@@ -716,7 +726,8 @@ window.fmVincular=async function(){
     await cargarMiVeh();
     await cargarMisSols();
     toast(`ECO ${eco} vinculado correctamente`,'ok');
-    fmVista('vehiculo');
+    // Esperar un momento y navegar al vehículo
+    setTimeout(()=>fmVista('vehiculo'), 800);
   }catch(e){toast('Error al vincular: '+e.message,'err');}
 };
 
