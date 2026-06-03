@@ -589,19 +589,24 @@ function renderVincular(){
 window.fmCargarVehs=async function(){
   toast('Cargando vehículos…','info');
   try{
-    // Usar el SDK compat directamente
     const snap=await db.collection('flotilla_vehiculos').get();
-    window._fmAllVehs=snap.docs.map(d=>({id:d.id,...d.data()}));
-    if(window._fmAllVehs.length===0){
-      toast('No se encontraron vehículos','err');
-      return;
+    if(!snap.empty){
+      window._fmAllVehs=snap.docs.map(d=>({id:d.id,...d.data()}));
+    } else {
+      // Firestore vacío — usar catálogo local
+      window._fmAllVehs=CAT.map(v=>({id:'eco-'+v.eco,...v}));
     }
-    toast(window._fmAllVehs.length+' vehículos cargados','ok');
-    renderVincular();
   }catch(e){
-    console.error('[MOVIL cargar vehs]',e);
-    toast('Error: '+e.message,'err');
+    console.warn('[MOVIL] Firestore no disponible, usando catálogo local:',e.message);
+    // Fallback al catálogo hardcodeado
+    window._fmAllVehs=CAT.map(v=>({id:'eco-'+v.eco,...v}));
   }
+  if(!window._fmAllVehs||window._fmAllVehs.length===0){
+    toast('No se encontraron vehículos','err');
+    return;
+  }
+  toast(window._fmAllVehs.length+' vehículos disponibles','ok');
+  renderVincular();
 };
 
 window.fmVincular=async function(){
