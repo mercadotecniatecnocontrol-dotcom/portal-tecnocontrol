@@ -342,6 +342,11 @@ function injectCSS(){
 .fl-comcard:hover{border-color:#93C5FD;}
 .fl-comcard-h{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #F1F5F9;}
 .fl-comcard-b{padding:10px 16px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+.fl-ev-sello{position:relative;border-radius:9px;overflow:hidden;cursor:pointer;}
+.fl-ev-sello img{width:100%;height:80px;object-fit:cover;display:block;}
+.fl-ev-sello-info{background:rgba(10,22,40,.8);padding:4px 7px;}
+.fl-ev-sello-cod{font-size:9px;font-weight:700;color:#FCD34D;font-family:'JetBrains Mono',monospace;}
+.fl-ev-sello-fecha{font-size:8.5px;color:rgba(255,255,255,.7);font-family:'JetBrains Mono',monospace;}
 @media(max-width:1200px){.fl-rp{display:none;}.fl-kpis{grid-template-columns:1fr 1fr;}}
 @media(max-width:900px){#flotilla-dashboard{margin-left:0;}.fl-sb{display:none;}}
 `;
@@ -611,10 +616,12 @@ function rSols(){
         </div>
         <!-- EVIDENCIAS -->
         <div style="background:#fff;border-top:2px solid #E8EDF5;padding:14px 20px">
-          <label style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:6px">${I.camera} Evidencias fotográficas</label>
-          <label class="fl-up" onclick="document.getElementById('fl-ev-inp').click()" style="height:36px">${I.upload} Subir fotos del vehículo</label>
-          <input type="file" id="fl-ev-inp" accept="image/*" multiple style="display:none" onchange="flSolEvs(this)">
-          <div class="fl-pills" id="fl-ev-pills">${ST.evFotos.map((b,i)=>`<span class="fl-pill" onclick="flImg('${b}')">${I.camera} Foto ${i+1}</span>`).join('')}</div>
+          <label style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:8px">${I.camera} Evidencias fotográficas <span style="font-size:8px;color:#94A3B8;font-weight:500;text-transform:none">(solo cámara en vivo · galería bloqueada)</span></label>
+          <button onclick="flCapturarEvidencia('general')" style="width:100%;padding:11px;background:#1E3A5F;color:#fff;border:none;border-radius:9px;font-family:inherit;font-size:12.5px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;letter-spacing:.3px">
+            ${I.camera} Tomar foto con cámara
+          </button>
+          <div style="font-size:10px;color:#94A3B8;text-align:center;margin-top:5px">Genera código único · Sella GPS + fecha + usuario</div>
+          <div class="fl-pills" id="fl-ev-pills" style="margin-top:8px">${ST.evFotos.map((ev,i)=>{const src=typeof ev==='string'?ev:ev.src;const cod=ev.meta?.codigo||('Foto '+(i+1));return`<span class="fl-pill" onclick="flVerEvidencia(ST.evFotos[${i}])" style="cursor:pointer"><img src="${src}" style="width:20px;height:20px;object-fit:cover;border-radius:3px;margin-right:3px"><span style="font-size:10px;font-family:'JetBrains Mono',monospace">${cod}</span></span>`;}).join('')}</div>
           <div style="display:flex;justify-content:flex-end;margin-top:10px">
             <button class="fb acc" onclick="flSolGuardar()" id="fl-btn-guardar">${I.check} Crear solicitud</button>
           </div>
@@ -720,15 +727,15 @@ function renderChkFull(){
       const key=`${cat}__${i}`;
       const val=ST.chk[key]||'';
       const hasFoto=!!ST.chkFotos[key];
-      const fotoSrc=ST.chkFotos[key]||'';
+      const fotoObj=ST.chkFotos[key]||null;
+      const fotoSrc=fotoObj?(typeof fotoObj==='string'?fotoObj:fotoObj.src):'';
       html+=`<div class="fl-ck-row" id="fl-ckrow-${key}">
         <span class="fl-ck-name">${item}</span>
         <button class="fl-ck-btn ${val==='si'?'si':''}" onclick="flChk('${key}','si')">SI</button>
         <button class="fl-ck-btn ${val==='no'?'no':''}" onclick="flChk('${key}','no')">NO</button>
-        <button class="fl-ck-foto-btn ${fotoSrc?'has':''}" onclick="${fotoSrc?`flImg('${fotoSrc}')`:`document.getElementById('fl-ck-f-${key}').click()`}" title="${fotoSrc?'Ver foto':'Subir foto'}">
+        <button class="fl-ck-foto-btn ${fotoSrc?'has':''}" onclick="${fotoSrc?`flVerEvidencia(ST.chkFotos['${key}'])`:`flCapturarEvidencia('checklist','${key}')`}" title="${fotoSrc?'Ver evidencia':'Tomar foto'}">
           ${fotoSrc?`<img src="${fotoSrc}" style="width:20px;height:20px;object-fit:cover;border-radius:3px">`:I.camera}
         </button>
-        <input type="file" id="fl-ck-f-${key}" accept="image/*" style="display:none" onchange="flChkFoto(this,'${key}')">
       </div>`;
     });
   }
@@ -796,36 +803,228 @@ window.flChk=function(key,val){
   if(si)si.className=`fl-ck-btn ${ST.chk[key]==='si'?'si':''}`;
   if(no)no.className=`fl-ck-btn ${ST.chk[key]==='no'?'no':''}`;
 };
-window.flChkFoto=function(inp,key){
-  const f=inp.files[0];if(!f)return;
-  const r=new FileReader();
-  r.onload=e=>{
-    const src=e.target.result;
-    ST.chkFotos[key]=src;
-    // Actualizar botón de foto en la fila
-    const btn=document.querySelector(`#fl-ckrow-${key} .fl-ck-foto-btn`);
-    if(btn){
-      btn.classList.add('has');
-      btn.innerHTML=`<img src="${src}" style="width:20px;height:20px;object-fit:cover;border-radius:3px">`;
-      btn.onclick=()=>flImg(src);
-    }
-  };
-  r.readAsDataURL(f);
-};
+// flChkFoto reemplazado por flCapturarEvidencia
 
 // EVIDENCIAS
-window.flSolEvs=function(inp){
-  Array.from(inp.files).forEach(f=>{
-    const r=new FileReader();
-    r.onload=e=>{
-      ST.evFotos.push(e.target.result);
-      const p=document.getElementById('fl-ev-pills');
-      if(p)p.innerHTML=ST.evFotos.map((b,i)=>`<span class="fl-pill" onclick="flImg('${b}')">${I.camera} Foto ${i+1}</span>`).join('');
-      // Actualizar panel derecho con nueva foto
-      if(ST.vehId)renderRP(ST.vehId);
-    };r.readAsDataURL(f);
+// flSolEvs reemplazado por flCapturarEvidencia
+
+
+// ══════════════════════════════════════════════════════
+// MOTOR DE EVIDENCIAS CON TRAZABILIDAD FORENSE
+// ══════════════════════════════════════════════════════
+
+// Generar código único irrepetible
+function genCodigo(){
+  const now=new Date();
+  const dd=String(now.getFullYear())+String(now.getMonth()+1).padStart(2,'0')+String(now.getDate()).padStart(2,'0');
+  const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let rand='';for(let i=0;i<4;i++)rand+=chars[Math.floor(Math.random()*chars.length)];
+  return `TCN-EV-${dd}-${rand}`;
+}
+
+// Obtener coordenadas GPS
+function getGPS(){
+  return new Promise((res)=>{
+    if(!navigator.geolocation){res(null);return;}
+    navigator.geolocation.getCurrentPosition(
+      p=>res({lat:p.coords.latitude.toFixed(6),lng:p.coords.longitude.toFixed(6),acc:Math.round(p.coords.accuracy)}),
+      ()=>res(null),
+      {timeout:8000,maximumAge:0,enableHighAccuracy:true}
+    );
   });
+}
+
+// Quemar sello sobre la imagen con canvas
+function sellarImagen(imgSrc, meta){
+  return new Promise(res=>{
+    const img=new Image();
+    img.onload=function(){
+      const c=document.createElement('canvas');
+      c.width=img.width; c.height=img.height;
+      const ctx=c.getContext('2d');
+      ctx.drawImage(img,0,0);
+      // Fondo sello inferior
+      const sh=Math.round(img.height*0.22);
+      ctx.fillStyle='rgba(0,0,0,0.72)';
+      ctx.fillRect(0,img.height-sh,img.width,sh);
+      // Línea acento color
+      const modeColor=meta.modo==='salida'?'#22C55E':'#3B82F6';
+      ctx.fillStyle=modeColor;
+      ctx.fillRect(0,img.height-sh,img.width,4);
+      // Textos
+      const fs=Math.round(img.width*0.038);
+      ctx.fillStyle='#FCD34D';
+      ctx.font=`bold ${fs}px monospace`;
+      ctx.fillText(meta.codigo, 12, img.height-sh+fs+6);
+      ctx.fillStyle='#ffffff';
+      ctx.font=`${fs}px monospace`;
+      ctx.fillText(meta.fecha+' · '+meta.hora, 12, img.height-sh+fs*2+10);
+      ctx.fillStyle='rgba(255,255,255,0.7)';
+      ctx.font=`${Math.round(fs*0.85)}px monospace`;
+      ctx.fillText(meta.gps?`${meta.gps.lat}, ${meta.gps.lng}`:'GPS no disponible', 12, img.height-sh+fs*3+12);
+      // Lado derecho
+      const rsz=Math.round(fs*0.85);
+      ctx.font=`${rsz}px monospace`;
+      ctx.textAlign='right';
+      ctx.fillStyle='rgba(255,255,255,0.6)';
+      ctx.fillText(`ECO ${meta.eco} · ${meta.unidad}`, img.width-10, img.height-sh+rsz+6);
+      ctx.fillText(meta.usuario, img.width-10, img.height-sh+rsz*2+10);
+      ctx.fillStyle=modeColor;
+      ctx.fillText(meta.modo.toUpperCase(), img.width-10, img.height-sh+rsz*3+14);
+      ctx.textAlign='left';
+      res(c.toDataURL('image/jpeg',0.88));
+    };
+    img.src=imgSrc;
+  });
+}
+
+// CAPTURAR EVIDENCIA — cámara forzada, sello automático
+window.flCapturarEvidencia=async function(tipo, key){
+  // tipo: 'general' | 'checklist'
+  // key: solo para checklist
+
+  // Verificar vehículo seleccionado
+  if(!ST.vehId){
+    flMsgError('Selecciona un vehículo antes de tomar evidencias.');
+    return;
+  }
+
+  // Solicitar GPS primero
+  flMsgInfo('Obteniendo ubicación GPS…');
+  const gps=await getGPS();
+  if(!gps){
+    const continuar=confirm('No se pudo obtener GPS.\n¿Deseas continuar sin coordenadas?\n\nSe registrará sin ubicación verificable.');
+    if(!continuar)return;
+  }
+
+  // Crear input de cámara forzada (capture="environment" bloquea galería en móvil)
+  const inp=document.createElement('input');
+  inp.type='file';
+  inp.accept='image/*';
+  inp.capture='environment'; // FUERZA cámara trasera, bloquea galería en móvil
+  inp.style.display='none';
+  document.body.appendChild(inp);
+
+  inp.onchange=async function(){
+    const file=this.files[0];
+    if(!file){document.body.removeChild(inp);return;}
+
+    flMsgInfo('Procesando evidencia…');
+
+    const reader=new FileReader();
+    reader.onload=async function(e){
+      const rawSrc=e.target.result;
+      const v=flV.find(x=>x.id===ST.vehId);
+      const now=new Date();
+      const meta={
+        codigo: genCodigo(),
+        fecha: now.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}),
+        hora: now.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',second:'2-digit'}),
+        timestamp: now.toISOString(),
+        gps,
+        eco: v?.eco||'—',
+        unidad: v?.unidad||'—',
+        usuario: window.auth?.currentUser?.displayName||window.auth?.currentUser?.email||'—',
+        modo: ST.modo,
+        vehId: ST.vehId,
+        tipo,
+        key: key||null,
+      };
+
+      // Sellar imagen
+      const sellada=await sellarImagen(rawSrc,meta);
+
+      // Guardar según tipo
+      if(tipo==='checklist'&&key){
+        ST.chkFotos[key]={src:sellada,meta};
+        // Actualizar botón en checklist
+        const btn=document.querySelector(`#fl-ckrow-${key} .fl-ck-foto-btn`);
+        if(btn){
+          btn.classList.add('has');
+          btn.innerHTML=`<img src="${sellada}" style="width:20px;height:20px;object-fit:cover;border-radius:3px">`;
+          btn.onclick=()=>flVerEvidencia(ST.chkFotos[key]);
+        }
+      } else {
+        ST.evFotos.push({src:sellada,meta});
+        actualizarPillsEv();
+        // Actualizar carrusel panel derecho
+        if(ST.vehId)renderRP(ST.vehId);
+      }
+
+      flMsgOk(`Evidencia registrada · ${meta.codigo}`);
+      document.body.removeChild(inp);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  inp.click();
 };
+
+// Ver evidencia con metadatos completos
+window.flVerEvidencia=function(ev){
+  if(!ev)return;
+  const src=typeof ev==='string'?ev:ev.src;
+  const meta=typeof ev==='object'?ev.meta:null;
+  const ov=document.createElement('div');
+  ov.className='fl-ov';
+  ov.innerHTML=`<div style="max-width:400px;width:100%;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.4)">
+    <img src="${src}" style="width:100%;display:block;max-height:300px;object-fit:contain;background:#0A1628">
+    ${meta?`<div style="padding:14px 16px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+        ${[
+          ['Código',meta.codigo||'—'],
+          ['Fecha y hora',(meta.fecha||'—')+' '+( meta.hora||'')],
+          ['GPS',meta.gps?`${meta.gps.lat}, ${meta.gps.lng}`:'No disponible'],
+          ['Precisión',meta.gps?`±${meta.gps.acc}m`:'—'],
+          ['Vehículo',`ECO ${meta.eco} · ${meta.unidad}`],
+          ['Usuario',meta.usuario||'—'],
+          ['Modo',(meta.modo||'—').toUpperCase()],
+          ['Tipo',meta.tipo||'—'],
+        ].map(([l,v])=>`<div style="background:#F8FAFD;border-radius:7px;padding:7px 9px">
+          <div style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">${l}</div>
+          <div style="font-size:11.5px;font-weight:600;color:#0A0F1E;font-family:'JetBrains Mono',monospace">${v}</div>
+        </div>`).join('')}
+      </div>
+      <div style="display:flex;gap:8px">
+        <button onclick="this.closest('.fl-ov').remove()" style="flex:1;padding:9px;background:#F1F5F9;border:none;border-radius:8px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;color:#374151">Cerrar</button>
+        ${meta.gps?`<button onclick="window.open('https://maps.google.com/?q=${meta.gps.lat},${meta.gps.lng}','_blank')" style="flex:1;padding:9px;background:#2563EB;border:none;border-radius:8px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;color:#fff">Ver en mapa</button>`:''}
+      </div>
+    </div>`:`<div style="padding:14px 16px;display:flex;justify-content:flex-end"><button onclick="this.closest('.fl-ov').remove()" style="padding:9px 18px;background:#F1F5F9;border:none;border-radius:8px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer">Cerrar</button></div>`}
+  </div>`;
+  document.body.appendChild(ov);
+  ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+};
+
+// Actualizar pills de evidencias generales
+function actualizarPillsEv(){
+  const p=document.getElementById('fl-ev-pills');
+  if(!p)return;
+  p.innerHTML=ST.evFotos.map((ev,i)=>{
+    const src=typeof ev==='string'?ev:ev.src;
+    const cod=ev.meta?.codigo||`Foto ${i+1}`;
+    return`<span class="fl-pill" onclick="flVerEvidencia(ST.evFotos[${i}])" style="cursor:pointer">
+      <img src="${src}" style="width:20px;height:20px;object-fit:cover;border-radius:3px;margin-right:3px">
+      <span style="font-size:10px;font-family:'JetBrains Mono',monospace">${cod}</span>
+    </span>`;
+  }).join('');
+}
+
+// Mensajes toast
+function flMsgInfo(txt){flToast(txt,'#1E3A5F','#fff');}
+function flMsgOk(txt){flToast(txt,'#15803D','#fff');}
+function flMsgError(txt){flToast(txt,'#B91C1C','#fff');}
+function flToast(txt,bg,color){
+  const t=document.createElement('div');
+  t.style.cssText=`position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:${bg};color:${color};padding:10px 20px;border-radius:100px;font-size:12.5px;font-weight:700;z-index:9999;font-family:'Plus Jakarta Sans',sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.25);max-width:90vw;text-align:center;animation:flTIn .2s ease`;
+  t.textContent=txt;
+  if(!document.getElementById('fl-toast-css')){
+    const s=document.createElement('style');s.id='fl-toast-css';
+    s.textContent='@keyframes flTIn{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}';
+    document.head.appendChild(s);
+  }
+  document.body.appendChild(t);
+  setTimeout(()=>{t.style.opacity='0';t.style.transition='opacity .3s';setTimeout(()=>t.remove(),300);},2800);
+}
 
 // GUARDAR SOLICITUD
 window.flSolGuardar=async function(){
@@ -846,7 +1045,9 @@ window.flSolGuardar=async function(){
     taller:taller||'',gasolina:ST.gasolina,tipoUnidad:ST.tipoVeh,
     estatus:'Solicitud',solicitante:window.auth?.currentUser?.displayName||window.auth?.currentUser?.email||'—',
     creadoPor:window.auth?.currentUser?.email||'',creadoEn:new Date().toISOString(),
-    evidencias:ST.evFotos,danos:JSON.parse(JSON.stringify(ST.dmg)),
+    evidencias:ST.evFotos.map(e=>typeof e==='string'?e:e.src),
+    evidenciasMeta:ST.evFotos.map(e=>typeof e==='object'?e.meta:null).filter(Boolean),
+    danos:JSON.parse(JSON.stringify(ST.dmg)),
     checklist:chkFinal,chkFotos:ST.chkFotos,
   };
   const btn=document.getElementById('fl-btn-guardar');if(btn){btn.disabled=true;btn.textContent='Guardando…';}
@@ -865,7 +1066,7 @@ function renderRP(id){
   const rp=document.getElementById('fl-rp');if(!rp)return;
   const v=flV.find(x=>x.id===id);if(!v){rp.innerHTML=rpVacio();return;}
   const d=hD(v.pv);const pvOk=d===null||d>=90;
-  const fotos=[...(v.fotos||[]),...ST.evFotos];
+  const fotos=[...(v.fotos||[]),...ST.evFotos.map(e=>typeof e==='string'?e:e.src)];
   const hist=flS.filter(s=>s.vehiculoEco===v.eco).slice(0,4);
   const alts=[];
   if(d!==null&&d<0)alts.push({e:true,t:'Póliza VENCIDA'});
@@ -924,6 +1125,14 @@ function renderRP(id){
       <button class="fl-rp-doc-btn" onclick="flRPDoc('factura','${id}')">${I.doc} Factura del vehículo</button>
     </div>
 
+    <!-- BOTÓN COMPARAR EVIDENCIAS -->
+    ${flS.filter(s=>(s.vehiculoEco===v.eco)&&s.evidencias?.length).length>=2?`
+    <div style="padding:10px 12px;border-bottom:1px solid #F1F5F9">
+      <button onclick="flCompararEvidencias('${v.eco}')" style="width:100%;padding:9px;background:#1E3A5F;color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:12px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">
+        ${I.eye} Comparar evidencias del vehículo
+      </button>
+    </div>`:''}
+
     <!-- HISTORIAL -->
     <div class="fl-rp-hist">
       <div class="fl-rp-hist-t">Historial (${hist.length} solicitudes)</div>
@@ -940,7 +1149,7 @@ function renderRP(id){
 let rpCarIdx=0;
 window.flRPCar=function(d){
   const v=ST.vehId?flV.find(x=>x.id===ST.vehId):null;
-  const fotos=[...(v?.fotos||[]),...ST.evFotos];
+  const fotos=[...(v?.fotos||[]),...ST.evFotos.map(e=>typeof e==='string'?e:e.src)];
   const n=fotos.length;if(n<2)return;
   rpCarIdx=(rpCarIdx+d+n)%n;flRPCarTo(rpCarIdx);
 };
@@ -1020,6 +1229,55 @@ function tSols(list,pA){
   </tr>`).join('')}</tbody></table></div>`;
 }
 
+
+// COMPARAR EVIDENCIAS POR VEHÍCULO
+window.flCompararEvidencias=function(eco){
+  const sols=flS.filter(s=>s.vehiculoEco===eco&&s.evidencias?.length);
+  if(!sols.length){flMsgInfo('Sin evidencias para comparar.');return;}
+  const ov=document.createElement('div');ov.className='fl-ov';
+  const v=flV.find(x=>x.eco===eco);
+  let html=`<div style="background:#fff;border-radius:16px;width:100%;max-width:680px;max-height:92vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,.3)">
+    <div style="padding:16px 20px 12px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #F1F5F9;position:sticky;top:0;background:#fff;z-index:2">
+      <div>
+        <div style="font-size:15px;font-weight:800">Comparar evidencias · ECO ${eco}</div>
+        <div style="font-size:11px;color:#64748B;margin-top:2px">${v?.unidad||''} · ${sols.reduce((a,s)=>a+(s.evidencias?.length||0),0)} fotos en ${sols.length} solicitudes</div>
+      </div>
+      <button onclick="this.closest('.fl-ov').remove()" style="width:26px;height:26px;border:none;background:#F1F5F9;border-radius:6px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center">✕</button>
+    </div>
+    <div style="padding:16px 20px">`;
+
+  sols.forEach(s=>{
+    const metas=s.evidenciasMeta||[];
+    html+=`<div style="margin-bottom:20px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8">${s.tipo||'—'}</div>
+        <div style="font-size:10px;color:#94A3B8">·</div>
+        <div style="font-size:10px;color:#94A3B8">${s.creadoEn?s.creadoEn.substring(0,10):'—'}</div>
+        <div style="font-size:10px;color:#94A3B8">·</div>
+        <div style="display:inline-flex;font-size:10px;font-weight:700;padding:2px 8px;border-radius:100px;background:${s.modo==='salida'?'#DCFCE7':'#DBEAFE'};color:${s.modo==='salida'?'#15803D':'#1D4ED8'}">${(s.modo||'entrada').toUpperCase()}</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px">
+        ${(s.evidencias||[]).map((src,i)=>{
+          const m=metas[i];
+          return`<div style="border-radius:9px;overflow:hidden;border:1px solid #E8EDF5;cursor:pointer" onclick="flVerEvidencia({src:'${src}',meta:${m?JSON.stringify(m):'null'}})">
+            <img src="${src}" style="width:100%;height:100px;object-fit:cover;display:block">
+            <div style="padding:6px 8px;background:#F8FAFD">
+              <div style="font-size:9px;font-weight:700;color:#2563EB;font-family:'JetBrains Mono',monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${m?.codigo||('Foto '+(i+1))}</div>
+              <div style="font-size:9px;color:#64748B;margin-top:1px">${m?.fecha||'—'}</div>
+              ${m?.gps?`<div style="font-size:8.5px;color:#94A3B8;margin-top:1px;font-family:'JetBrains Mono',monospace">${m.gps.lat}, ${m.gps.lng}</div>`:'<div style="font-size:8.5px;color:#EF4444;margin-top:1px">Sin GPS</div>'}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  });
+
+  html+=`</div></div>`;
+  ov.innerHTML=html;
+  document.body.appendChild(ov);
+  ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+};
+
 // VER SOLICITUD EXISTENTE
 window.flVerSol=function(id){
   const s=flS.find(x=>x.id===id);if(!s)return;
@@ -1052,7 +1310,16 @@ window.flVerSol=function(id){
             </div>`;
           }).join('')}
         </div>`:''}
-      ${s.evidencias?.length?`<div class="fl-sep"></div><div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin-bottom:6px">Evidencias (${s.evidencias.length})</div><div class="fl-pills">${s.evidencias.map((e,i)=>`<span class="fl-pill" onclick="flImg('${e}')">${I.camera} Foto ${i+1}</span>`).join('')}</div>`:''}
+      ${s.evidencias?.length?`<div class="fl-sep"></div>
+        <div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin-bottom:8px">Evidencias (${s.evidencias.length})</div>
+        <div class="fl-pills">${s.evidencias.map((src,i)=>{
+          const meta=(s.evidenciasMeta||[])[i];
+          const cod=meta?.codigo||('Foto '+(i+1));
+          return`<span class="fl-pill" onclick="flVerEvidencia({src:'${src}',meta:${meta?JSON.stringify(meta):'null'}})" style="cursor:pointer">
+            <img src="${src}" style="width:22px;height:22px;object-fit:cover;border-radius:3px;margin-right:4px">
+            <span style="font-size:10px;font-family:'JetBrains Mono',monospace">${cod}</span>
+          </span>`;
+        }).join('')}</div>`:''}
       <div class="fl-sep"></div>
       <div style="display:flex;flex-wrap:wrap;gap:7px">
         ${pV&&s.estatus==='Solicitud'?`<button class="fb acc" onclick="flEst('${s.id}','Validada');this.closest('.fl-ov').remove()">${I.check} Validar</button>`:''}
