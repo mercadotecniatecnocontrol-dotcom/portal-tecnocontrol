@@ -13,7 +13,1099 @@ const C={
   USUARIOS:'fl_usuarios',
   OFFLINE_KEY:'tcn_offline_queue',
 };
+// ══════════════════════════════════════════════════════════════
+// flotilla-movil.js — App móvil técnicos Tecnocontrol
+// Peso: ~40KB · Sin imágenes base64 · Offline ready
+// Vistas: Mi Vehículo · Nueva Solicitud · Mis Tareas · Notificaciones
+// ══════════════════════════════════════════════════════════════
+(function(){
+'use strict';
 
+const C={
+  VEHS:'flotilla_vehiculos',
+  SOLS:'flotilla_solicitudes',
+  TAREAS:'actividades',
+  USUARIOS:'fl_usuarios',
+  OFFLINE_KEY:'tcn_offline_queue',
+};
+
+const TIPOS_SOL=[
+  'Mantenimiento preventivo','Mantenimiento correctivo',
+  'Reposición de llanta','Falla eléctrica',
+  'Siniestro / Accidente','Revisión de documentos','Otro',
+];
+
+const CHK_CATS={
+  Cristales:  ['Medallón delantero','Vidrio trasero','Lat. der. delantero','Lat. der. trasero','Lat. izq. delantero','Lat. izq. trasero'],
+  Espejos:    ['Retrovisor izquierdo','Retrovisor derecho','Espejo central'],
+  Neumáticos: ['Llanta del. der.','Llanta del. izq.','Llanta tra. der.','Llanta tra. izq.','Refacción'],
+  Interiores: ['Póliza / Manual','Radio','Pantallas','Asientos','Tablero','Tapetes'],
+  Motor:      ['Batería','Tapón agua','Tapón radiador','Tapón dirección'],
+  Cajuela:    ['Herramienta','Cables arranque','Extintor','Llave L','Llave cruz'],
+  Legal:      ['Sin multas vigentes','Verificación vigente','Tenencia al corriente','Tarjeta circulación'],
+};
+
+// ── ESTADO ──
+let miVeh=null, misSols=[], misTareas=[], misNotif=[];
+let vistaAct='vehiculo';
+let solState={modo:'entrada',tipo:'',prior:'Normal',desc:'',km:'',taller:'',gasolina:50,chk:{},chkFotos:{},evFotos:[],dmg:{}};
+let miPerfil=null; // {email, nombre, ecoVinculado}
+let onlineStatus=navigator.onLine;
+
+// ── HELPERS ──
+const hF=iso=>iso&&iso!=='—'?String(iso).substring(0,10):'—';
+const hD=f=>(!f||f==='—')?null:Math.round((new Date(f)-new Date())/864e5);
+
+function badge(e){
+  const m={Solicitud:'#6D28D9',Validada:'#1D4ED8',Cotización:'#B45309',Aprobada:'#15803D',Rechazada:'#B91C1C',Cierre:'#7C3AED',Cerrada:'#475569','En proceso':'#0369A1',Pendiente:'#B45309',Completada:'#15803D'};
+  const bg={Solicitud:'#EDE9FE',Validada:'#DBEAFE',Cotización:'#FEF3C7',Aprobada:'#DCFCE7',Rechazada:'#FEE2E2',Cierre:'#F3E8FF',Cerrada:'#F1F5F9','En proceso':'#E0F2FE',Pendiente:'#FEF3C7',Completada:'#DCFCE7'};
+  return`<span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:100px;background:${bg[e]||'#F1F5F9'};color:${m[e]||'#475569'}">${e||'—'}</span>`;
+}
+
+// ── GENERAR CÓDIGO EVIDENCIA ──
+function genCod(){
+  const d=new Date();
+  const dd=String(d.getFullYear())+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0');
+  const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let r='';for(let i=0;i<4;i++)r+=chars[Math.floor(Math.random()*chars.length)];
+  return`TCN-EV-${dd}-${r}`;
+}
+
+// ── GPS ──
+function getGPS(){
+  return new Promise(res=>{
+    if(!navigator.geolocation){res(null);return;}
+    navigator.geolocation.getCurrentPosition(
+      p=>res({lat:p.coords.latitude.toFixed(6),lng:p.coords.longitude.toFixed(6),acc:Math.round(p.coords.accuracy)}),
+      ()=>res(null),{timeout:8000,maximumAge:0,enableHighAccuracy:true}
+    );
+  });
+}
+
+// ── SELLAR IMAGEN ──
+function sellarImg(src,meta){
+  return new Promise(res=>{
+    const img=new Image();
+    img.onload=function(){
+      const c=document.createElement('canvas');
+      c.width=Math.min(img.width,1024);
+      c.height=Math.round(img.height*(c.width/img.width));
+      const ctx=c.getContext('2d');
+      ctx.drawImage(img,0,0,c.width,c.height);
+      const sh=Math.round(c.height*0.20);
+      ctx.fillStyle='rgba(0,0,0,0.75)';
+      ctx.fillRect(0,c.height-sh,c.width,sh);
+      const mc=meta.modo==='salida'?'#22C55E':'#3B82F6';
+      ctx.fillStyle=mc;ctx.fillRect(0,c.height-sh,c.width,4);
+      const fs=Math.max(12,Math.round(c.width*0.035));
+      ctx.fillStyle='#FCD34D';ctx.font=`bold ${fs}px monospace`;
+      ctx.fillText(meta.codigo,10,c.height-sh+fs+4);
+      ctx.fillStyle='#fff';ctx.font=`${fs}px monospace`;
+      ctx.fillText(`${meta.fecha} · ${meta.hora}`,10,c.height-sh+fs*2+8);
+      ctx.fillStyle='rgba(255,255,255,.65)';ctx.font=`${Math.round(fs*.85)}px monospace`;
+      ctx.fillText(meta.gps?`${meta.gps.lat}, ${meta.gps.lng}`:'Sin GPS',10,c.height-sh+fs*3+10);
+      ctx.textAlign='right';ctx.fillStyle='rgba(255,255,255,.6)';
+      ctx.fillText(meta.eco?`ECO ${meta.eco}`:'',c.width-8,c.height-sh+fs+4);
+      ctx.fillText(meta.modo.toUpperCase(),c.width-8,c.height-sh+fs*2+8);
+      ctx.textAlign='left';
+      res(c.toDataURL('image/jpeg',0.75));
+    };
+    img.src=src;
+  });
+}
+
+// ── DEBUG PANEL (visible en pantalla) ──
+function dbg(msg, tipo='info'){
+  const col={info:'#1E3A5F',ok:'#15803D',err:'#B91C1C',warn:'#B45309'}[tipo]||'#1E3A5F';
+  let panel=document.getElementById('fl-dbg');
+  if(!panel){
+    panel=document.createElement('div');
+    panel.id='fl-dbg';
+    panel.style.cssText='position:fixed;top:80px;left:10px;right:10px;background:rgba(0,0,0,.85);border-radius:10px;padding:10px;z-index:9998;max-height:40vh;overflow-y:auto;font-family:monospace;font-size:11px;';
+    const closeBtn=document.createElement('button');
+    closeBtn.textContent='✕ Cerrar debug';
+    closeBtn.style.cssText='display:block;width:100%;padding:5px;background:#333;color:#fff;border:none;border-radius:5px;cursor:pointer;margin-bottom:6px;font-family:monospace;font-size:11px;';
+    closeBtn.onclick=()=>panel.remove();
+    panel.appendChild(closeBtn);
+    document.body.appendChild(panel);
+  }
+  const line=document.createElement('div');
+  const ts=new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  line.style.cssText=`color:${col};padding:2px 0;border-bottom:1px solid rgba(255,255,255,.1);`;
+  line.textContent=`[${ts}] ${msg}`;
+  panel.appendChild(line);
+  panel.scrollTop=panel.scrollHeight;
+  console.log('[FL-MOVIL]',msg);
+}
+
+// ── TOAST ──
+function toast(txt,tipo='info'){
+  const col={info:'#1E3A5F',ok:'#15803D',err:'#B91C1C'}[tipo]||'#1E3A5F';
+  const t=document.createElement('div');
+  t.style.cssText=`position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:${col};color:#fff;padding:10px 20px;border-radius:100px;font-size:13px;font-weight:700;z-index:9999;font-family:inherit;box-shadow:0 8px 24px rgba(0,0,0,.25);max-width:85vw;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis`;
+  t.textContent=txt;
+  document.body.appendChild(t);
+  setTimeout(()=>{t.style.opacity='0';t.style.transition='opacity .3s';setTimeout(()=>t.remove(),300)},2500);
+}
+
+// ── OFFLINE QUEUE ──
+function offlineGuardar(doc){
+  const q=JSON.parse(localStorage.getItem(C.OFFLINE_KEY)||'[]');
+  q.push({...doc,_offlineId:Date.now(),_pendiente:true});
+  localStorage.setItem(C.OFFLINE_KEY,JSON.stringify(q));
+  toast('Sin conexión — guardado localmente',  'info');
+}
+async function offlineSync(){
+  const q=JSON.parse(localStorage.getItem(C.OFFLINE_KEY)||'[]');
+  if(!q.length)return;
+  let synced=0;
+  for(const doc of q){
+    try{
+      const {_offlineId,_pendiente,...clean}=doc;
+      await db.collection(C.SOLS).add({...clean,creadoEn:clean.creadoEn||new Date().toISOString(),sincronizadoOffline:true});
+      synced++;
+    }catch(e){console.warn('[MOVIL offline]',e);}
+  }
+  if(synced>0){
+    localStorage.setItem(C.OFFLINE_KEY,'[]');
+    toast(`${synced} solicitud(es) sincronizada(s)`, 'ok');
+    await cargarMisSols();
+    if(vistaAct==='vehiculo')renderVehiculo();
+  }
+}
+
+// ── CSS MÓVIL ──
+function injectCSS(){
+  if(document.getElementById('fl-m-css'))return;
+  const s=document.createElement('style');s.id='fl-m-css';
+  s.textContent=`
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap');
+body{margin:0;padding:0;background:#F0F2F7;font-family:'Plus Jakarta Sans',-apple-system,sans-serif;color:#0A0F1E;overscroll-behavior:none;}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+
+/* STATUS BAR AREA */
+#fl-m-root{display:flex;flex-direction:column;height:100dvh;max-width:430px;margin:0 auto;background:#F0F2F7;position:relative;}
+
+/* HEADER */
+.fm-header{background:#0A1628;padding:env(safe-area-inset-top,0) 16px 0;position:sticky;top:0;z-index:100;}
+.fm-header-inner{display:flex;align-items:center;justify-content:space-between;padding:12px 0 10px;}
+.fm-header-brand{display:flex;align-items:center;gap:8px;}
+.fm-header-brand-txt{font-size:14px;font-weight:900;color:#fff;letter-spacing:-.3px;}
+.fm-header-brand-txt em{color:#3B82F6;font-style:normal;}
+.fm-status{display:flex;align-items:center;gap:6px;}
+.fm-online-dot{width:7px;height:7px;border-radius:50%;background:#22C55E;box-shadow:0 0 0 2px rgba(34,197,94,.25);}
+.fm-online-dot.off{background:#EF4444;box-shadow:0 0 0 2px rgba(239,68,68,.25);}
+.fm-user-btn{width:32px;height:32px;border-radius:50%;background:#2563EB;border:none;color:#fff;font-weight:800;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:inherit;}
+
+/* CONTENT */
+.fm-content{flex:1;overflow-y:auto;padding:16px 14px 0;-webkit-overflow-scrolling:touch;}
+
+/* BOTTOM NAV */
+.fm-nav{background:#0A1628;padding:0 0 env(safe-area-inset-bottom,0);border-top:1px solid rgba(255,255,255,.08);}
+.fm-nav-inner{display:grid;grid-template-columns:repeat(4,1fr);height:56px;}
+.fm-nav-btn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border:none;background:transparent;color:rgba(255,255,255,.45);cursor:pointer;font-family:inherit;padding:6px 4px;position:relative;transition:color .15s;}
+.fm-nav-btn.on{color:#3B82F6;}
+.fm-nav-btn svg{width:22px;height:22px;display:block;}
+.fm-nav-lbl{font-size:9px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;}
+.fm-nav-badge{position:absolute;top:6px;right:calc(50% - 14px);background:#EF4444;color:#fff;font-size:8px;font-weight:800;min-width:16px;height:16px;border-radius:100px;display:flex;align-items:center;justify-content:center;padding:0 4px;}
+
+/* CARDS */
+.fm-card{background:#fff;border-radius:16px;padding:16px;margin-bottom:12px;border:1px solid #E8EDF5;}
+.fm-card-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+.fm-card-t{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;}
+.fm-veh-eco{font-size:36px;font-weight:900;font-family:'JetBrains Mono',monospace;color:#0A1628;line-height:1;}
+.fm-veh-name{font-size:18px;font-weight:800;color:#0A1628;margin-top:2px;letter-spacing:-.3px;}
+.fm-veh-sub{font-size:12px;color:#64748B;margin-top:3px;}
+.fm-data-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;}
+.fm-data-item{background:#F8FAFD;border-radius:10px;padding:10px 12px;}
+.fm-data-item dt{font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:3px;}
+.fm-data-item dd{font-size:13px;font-weight:700;color:#0A0F1E;}
+.fm-data-item dd.mono{font-family:'JetBrains Mono',monospace;font-size:11.5px;}
+.fm-data-item dd.green{color:#15803D;}
+.fm-data-item dd.red{color:#B91C1C;}
+.fm-data-item dd.amber{color:#B45309;}
+
+/* BOTONES */
+.fm-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:14px;border-radius:12px;border:none;font-family:inherit;font-size:14px;font-weight:800;cursor:pointer;transition:all .15s;letter-spacing:.2px;}
+.fm-btn.primary{background:#1E3A5F;color:#fff;}
+.fm-btn.primary:active{background:#142a47;transform:scale(.98);}
+.fm-btn.green{background:#15803D;color:#fff;}
+.fm-btn.green:active{background:#14532d;}
+.fm-btn.ghost{background:#F1F5F9;color:#374151;}
+.fm-btn.ghost:active{background:#E2E8F0;}
+.fm-btn.danger{background:#FEF2F2;color:#B91C1C;}
+.fm-btn-sm{padding:8px 16px;border-radius:8px;font-size:12px;width:auto;}
+
+/* FORM */
+.fm-fld{margin-bottom:12px;}
+.fm-fld label{display:block;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#64748B;margin-bottom:5px;}
+.fm-fld input,.fm-fld select,.fm-fld textarea{width:100%;padding:12px 14px;border:1.5px solid #E2E8F0;border-radius:10px;font-family:inherit;font-size:14px;color:#0A0F1E;background:#F8FAFD;outline:none;-webkit-appearance:none;appearance:none;}
+.fm-fld input:focus,.fm-fld select:focus,.fm-fld textarea:focus{border-color:#2563EB;background:#fff;}
+.fm-fld textarea{min-height:80px;resize:none;}
+.fm-select-wrap{position:relative;}
+.fm-select-wrap::after{content:'▼';position:absolute;right:14px;top:50%;transform:translateY(-50%);font-size:10px;color:#94A3B8;pointer-events:none;}
+
+/* MODO TOGGLE */
+.fm-modo{display:flex;border:2px solid #E2E8F0;border-radius:10px;overflow:hidden;margin-bottom:14px;}
+.fm-modo-btn{flex:1;padding:11px;border:none;font-family:inherit;font-size:13px;font-weight:800;cursor:pointer;transition:all .15s;}
+.fm-modo-btn.entrada{background:#EFF6FF;color:#1D4ED8;}
+.fm-modo-btn.entrada.on{background:#2563EB;color:#fff;}
+.fm-modo-btn.salida{background:#F0FDF4;color:#15803D;}
+.fm-modo-btn.salida.on{background:#15803D;color:#fff;}
+
+/* CHECKLIST */
+.fm-chk-cat{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;padding:8px 0 5px;border-bottom:1px solid #F1F5F9;margin-bottom:2px;}
+.fm-chk-row{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid #F8FAFD;}
+.fm-chk-name{flex:1;font-size:13px;color:#374151;}
+.fm-chk-si,.fm-chk-no{padding:5px 12px;border-radius:6px;border:1.5px solid #E2E8F0;font-family:inherit;font-size:11px;font-weight:800;cursor:pointer;background:#fff;transition:all .12s;}
+.fm-chk-si.on{background:#DCFCE7;border-color:#86EFAC;color:#15803D;}
+.fm-chk-no.on{background:#FEE2E2;border-color:#FCA5A5;color:#B91C1C;}
+.fm-chk-cam{width:34px;height:34px;border-radius:8px;border:1.5px solid #E2E8F0;background:#F8FAFD;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all .12s;}
+.fm-chk-cam.has{border-color:#22C55E;background:#DCFCE7;}
+.fm-chk-cam.has img{width:26px;height:26px;object-fit:cover;border-radius:5px;}
+
+/* SOL CARDS */
+.fm-sol-card{background:#fff;border-radius:14px;padding:14px;margin-bottom:10px;border:1px solid #E8EDF5;cursor:pointer;transition:all .15s;}
+.fm-sol-card:active{background:#F8FAFD;}
+.fm-sol-tipo{font-size:14px;font-weight:700;color:#0A0F1E;margin-bottom:4px;}
+.fm-sol-meta{font-size:11.5px;color:#64748B;}
+
+/* TAREA CARDS */
+.fm-tarea-card{background:#fff;border-radius:14px;padding:14px;margin-bottom:10px;border:1px solid #E8EDF5;}
+.fm-tarea-title{font-size:14px;font-weight:700;color:#0A0F1E;margin-bottom:4px;}
+.fm-tarea-meta{font-size:11.5px;color:#64748B;margin-bottom:8px;}
+.fm-tarea-prior{font-size:10px;font-weight:800;padding:2px 8px;border-radius:100px;}
+
+/* GAUGE */
+.fm-gauge-wrap{display:flex;flex-direction:column;align-items:center;padding:10px 0 6px;}
+.fm-gauge-labels{display:flex;justify-content:space-between;width:200px;font-size:10px;font-weight:700;color:#64748B;margin-top:4px;}
+
+/* NOTIF */
+.fm-notif{display:flex;gap:10px;padding:12px;background:#fff;border-radius:12px;margin-bottom:8px;border:1px solid #E8EDF5;}
+.fm-notif-ico{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:16px;}
+.fm-notif-body{flex:1;min-width:0;}
+.fm-notif-t{font-size:13px;font-weight:700;color:#0A0F1E;}
+.fm-notif-s{font-size:11.5px;color:#64748B;margin-top:2px;line-height:1.4;}
+.fm-notif-time{font-size:10px;color:#94A3B8;margin-top:3px;}
+.fm-notif.unread{border-left:3px solid #2563EB;background:#FAFBFF;}
+
+/* VINCULACIÓN */
+.fm-vincular{background:#fff;border-radius:16px;padding:24px 20px;text-align:center;}
+.fm-vincular-ico{font-size:48px;margin-bottom:12px;}
+.fm-vincular h2{font-size:18px;font-weight:800;margin-bottom:6px;}
+.fm-vincular p{font-size:13px;color:#64748B;line-height:1.5;margin-bottom:16px;}
+
+/* OFFLINE BANNER */
+.fm-offline-bar{background:#B45309;color:#fff;text-align:center;padding:6px 14px;font-size:11.5px;font-weight:700;display:none;}
+.fm-offline-bar.show{display:block;}
+
+/* EMPTY */
+.fm-empty{text-align:center;padding:32px 20px;color:#64748B;}
+.fm-empty-ico{font-size:40px;opacity:.25;margin-bottom:10px;}
+.fm-empty h3{font-size:14px;font-weight:700;color:#0A0F1E;margin-bottom:4px;}
+.fm-empty p{font-size:12.5px;line-height:1.5;}
+
+/* SECCIÓN HEADER */
+.fm-sec-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+.fm-sec-t{font-size:18px;font-weight:900;letter-spacing:-.4px;}
+.fm-sec-s{font-size:11.5px;color:#64748B;margin-top:2px;}
+
+/* PILL EVIDENCIA */
+.fm-ev-pill{display:inline-flex;align-items:center;gap:6px;background:#F1F5F9;border-radius:8px;padding:5px 8px;margin:3px;cursor:pointer;border:1px solid #E2E8F0;}
+.fm-ev-pill img{width:24px;height:24px;object-fit:cover;border-radius:4px;}
+.fm-ev-pill span{font-size:10px;font-weight:600;font-family:'JetBrains Mono',monospace;color:#374151;}
+
+/* MODAL */
+.fm-ov{position:fixed;inset:0;background:rgba(10,15,30,.75);z-index:3000;display:flex;align-items:flex-end;justify-content:center;padding:0;backdrop-filter:blur(6px);}
+.fm-sheet{background:#fff;border-radius:20px 20px 0 0;width:100%;max-width:430px;max-height:92vh;overflow-y:auto;padding:0 0 env(safe-area-inset-bottom,0);}
+.fm-sheet-hd{padding:16px 18px 12px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #F1F5F9;position:sticky;top:0;background:#fff;z-index:2;}
+.fm-sheet-hd h3{font-size:16px;font-weight:800;}
+.fm-sheet-x{width:28px;height:28px;border:none;background:#F1F5F9;border-radius:8px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;}
+.fm-sheet-body{padding:14px 18px 20px;}
+`;
+  document.head.appendChild(s);
+}
+
+// ── SVG ÍCONOS ──
+const IC={
+  car:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 17H3a2 2 0 01-2-2V9a2 2 0 012-2h1l3-3h12l3 3h1a2 2 0 012 2v6a2 2 0 01-2 2h-2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>`,
+  plus:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
+  tasks:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>`,
+  bell:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"/></svg>`,
+  camera:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>`,
+  check:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>`,
+  alert:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+  wrench:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>`,
+  wifi:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0119 12.55M5 12.55a10.94 10.94 0 015.17-2.39M10.71 5.05A16 16 0 0122.56 9M1.42 9a15.91 15.91 0 014.7-2.88M8.53 16.11a6 6 0 016.95 0M12 20h.01"/></svg>`,
+  user:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
+  shield:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
+};
+
+// ── HTML BASE ──
+function buildHTML(){
+  const el=document.getElementById('fl-movil-root')||document.body;
+  const div=document.createElement('div');div.id='fl-m-root';
+  div.innerHTML=`
+    <!-- OFFLINE BANNER -->
+    <div class="fm-offline-bar" id="fm-offline-bar">
+      ${IC.wifi} Sin conexión — trabajando offline
+    </div>
+    <!-- HEADER -->
+    <div class="fm-header">
+      <div class="fm-header-inner">
+        <div class="fm-header-brand">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="10" stroke="#fff" stroke-width="1.5"/>
+            <circle cx="12" cy="12" r="6" stroke="#3B82F6" stroke-width="1.5"/>
+            <circle cx="12" cy="12" r="2.5" fill="#3B82F6"/>
+          </svg>
+          <span class="fm-header-brand-txt">TECNO<em>CONTROL</em></span>
+        </div>
+        <div class="fm-status">
+          <div class="fm-online-dot" id="fm-dot"></div>
+          <button class="fm-user-btn" id="fm-user-btn" onclick="abrirPerfil()">?</button>
+        </div>
+      </div>
+    </div>
+    <!-- CONTENIDO -->
+    <div class="fm-content" id="fm-content">
+      <div class="fm-empty"><div class="fm-empty-ico">🚗</div><h3>Cargando…</h3></div>
+    </div>
+    <!-- NAV BOTTOM -->
+    <div class="fm-nav">
+      <div class="fm-nav-inner">
+        <button class="fm-nav-btn on" id="fm-nb-vehiculo" onclick="fmVista('vehiculo')">
+          ${IC.car}<span class="fm-nav-lbl">Vehículo</span>
+        </button>
+        <button class="fm-nav-btn" id="fm-nb-solicitud" onclick="fmVista('solicitud')">
+          ${IC.plus}<span class="fm-nav-lbl">Solicitud</span>
+        </button>
+        <button class="fm-nav-btn" id="fm-nb-tareas" onclick="fmVista('tareas')">
+          ${IC.tasks}<span class="fm-nav-lbl">Tareas</span>
+          <span class="fm-nav-badge" id="fm-badge-tareas" style="display:none">0</span>
+        </button>
+        <button class="fm-nav-btn" id="fm-nb-notif" onclick="fmVista('notif')">
+          ${IC.bell}<span class="fm-nav-lbl">Avisos</span>
+          <span class="fm-nav-badge" id="fm-badge-notif" style="display:none">0</span>
+        </button>
+      </div>
+    </div>`;
+  if(el===document.body){document.body.innerHTML='';document.body.appendChild(div);}
+  else el.appendChild(div);
+}
+
+function setContent(h){const c=document.getElementById('fm-content');if(c)c.innerHTML=h;}
+
+// ── INIT ──
+window.initFlotillaMovil=async function(){
+  injectCSS();buildHTML();
+  // Detectar online/offline
+  window.addEventListener('online',()=>{
+    onlineStatus=true;
+    document.getElementById('fm-dot')?.classList.remove('off');
+    document.getElementById('fm-offline-bar')?.classList.remove('show');
+    offlineSync();
+  });
+  window.addEventListener('offline',()=>{
+    onlineStatus=false;
+    document.getElementById('fm-dot')?.classList.add('off');
+    document.getElementById('fm-offline-bar')?.classList.add('show');
+  });
+  if(!onlineStatus){
+    document.getElementById('fm-dot')?.classList.add('off');
+    document.getElementById('fm-offline-bar')?.classList.add('show');
+  }
+
+  // Cargar perfil del usuario
+  const user=window.auth?.currentUser;
+  if(user){
+    const inicial=(user.displayName||user.email||'?').charAt(0).toUpperCase();
+    const btn=document.getElementById('fm-user-btn');
+    if(btn)btn.textContent=inicial;
+    await cargarPerfil(user);
+  }
+
+  dbg('Iniciando app móvil…','info');
+  dbg('Usuario: '+(window.auth?.currentUser?.email||'sin sesión'),'info');
+  dbg('Online: '+navigator.onLine,'info');
+  await Promise.all([cargarMiVeh(),cargarMisSols(),cargarMisTareas()]);
+  dbg('Datos cargados. Vehículo: '+(miVeh?'ECO '+miVeh.eco:'ninguno'),'ok');
+  actualizarBadges();
+  fmVista('vehiculo');
+
+  // Sincronizar offline queue si hay conexión
+  if(onlineStatus)await offlineSync();
+
+  // Registrar Service Worker
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.register('./sw.js').catch(()=>{});
+  }
+};
+
+// ── CARGAR DATOS ──
+async function cargarPerfil(user){
+  try{
+    // Usar SDK compat directamente
+    const snap=await db.collection(C.USUARIOS).where('email','==',user.email).get();
+    if(!snap.empty){
+      miPerfil={...snap.docs[0].data(),uid:snap.docs[0].id};
+    } else {
+      miPerfil={email:user.email,nombre:user.displayName||user.email,ecoVinculado:null};
+    }
+  }catch(e){
+    console.error('[MOVIL perfil]',e);
+    miPerfil={email:user?.email||'',nombre:user?.displayName||user?.email||'',ecoVinculado:null};
+  }
+}
+
+async function cargarMiVeh(){
+  if(!miPerfil?.ecoVinculado){miVeh=null;return;}
+  try{
+    const snap=await db.collection(C.VEHS).where('eco','==',String(miPerfil.ecoVinculado)).get();
+    miVeh=snap.empty?null:{id:snap.docs[0].id,...snap.docs[0].data()};
+  }catch(e){console.error('[MOVIL mi veh]',e);miVeh=null;}
+}
+
+async function cargarMisSols(){
+  if(!miVeh&&!miPerfil?.email){misSols=[];return;}
+  try{
+    let q=miVeh
+      ? db.collection(C.SOLS).where('vehiculoEco','==',miVeh.eco).orderBy('creadoEn','desc').limit(20)
+      : db.collection(C.SOLS).where('creadoPor','==',miPerfil?.email||'').orderBy('creadoEn','desc').limit(20);
+    const snap=await q.get();
+    misSols=snap.docs.map(d=>({id:d.id,...d.data()}));
+  }catch{
+    try{
+      const snap=await db.collection(C.SOLS).where('creadoPor','==',miPerfil?.email||'').get();
+      misSols=snap.docs.map(d=>({id:d.id,...d.data()}));
+      misSols.sort((a,b)=>(b.creadoEn||'').localeCompare(a.creadoEn||''));
+    }catch{misSols=[];}
+  }
+}
+
+async function cargarMisTareas(){
+  if(!miPerfil?.email){misTareas=[];return;}
+  try{
+    const snap=await db.collection(C.TAREAS)
+      .where('asignadoA','==',miPerfil.email)
+      .get();
+    misTareas=snap.docs.map(d=>({id:d.id,...d.data()}))
+      .filter(t=>t.estatus!=='Completada');
+    misNotif=misSols.filter(s=>['Aprobada','Rechazada','Cotización'].includes(s.estatus)).slice(0,10);
+  }catch(e){console.error('[MOVIL tareas]',e);misTareas=[];}
+}
+
+function actualizarBadges(){
+  const bt=document.getElementById('fm-badge-tareas');
+  const bn=document.getElementById('fm-badge-notif');
+  const pend=misTareas.filter(t=>t.estatus==='Pendiente'||t.estatus==='En proceso').length;
+  const notif=misNotif.length;
+  if(bt){bt.textContent=pend;bt.style.display=pend?'flex':'none';}
+  if(bn){bn.textContent=notif;bn.style.display=notif?'flex':'none';}
+}
+
+// ── NAVEGACIÓN ──
+window.fmVista=function(v){
+  vistaAct=v;
+  document.querySelectorAll('.fm-nav-btn').forEach(b=>b.classList.remove('on'));
+  document.getElementById('fm-nb-'+v)?.classList.add('on');
+  if(v==='vehiculo')renderVehiculo();
+  else if(v==='solicitud')renderNuevaSol();
+  else if(v==='tareas')renderTareas();
+  else if(v==='notif')renderNotif();
+};
+
+// ══════════════════════════════════════════
+// VISTA 1 — MI VEHÍCULO
+// ══════════════════════════════════════════
+function renderVehiculo(){
+  if(!miPerfil?.ecoVinculado||!miVeh){
+    renderVincular();return;
+  }
+  const v=miVeh;
+  const d=hD(v.pv);
+  const pvOk=d===null||d>=90;
+  const offline=JSON.parse(localStorage.getItem(C.OFFLINE_KEY)||'[]');
+  const solsPend=misSols.filter(s=>['Solicitud','Validada','Cotización'].includes(s.estatus));
+  setContent(`
+    <div class="fm-sec-hd">
+      <div>
+        <div class="fm-sec-t">Mi vehículo</div>
+        <div class="fm-sec-s">ECO ${v.eco} · ${new Date().toLocaleDateString('es-MX',{weekday:'short',day:'numeric',month:'short'})}</div>
+      </div>
+      <button onclick="fmVista('solicitud')" class="fm-btn primary fm-btn-sm" style="gap:5px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Solicitud
+      </button>
+    </div>
+
+    ${offline.length?`<div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px;margin-bottom:12px;display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:#B45309">
+      ${IC.wifi} ${offline.length} solicitud(es) pendiente(s) de sincronizar
+    </div>`:''}
+
+    <!-- CARD VEHÍCULO -->
+    <div class="fm-card" style="background:linear-gradient(135deg,#0A1628,#1E3A5F);color:#fff;border:none">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between">
+        <div>
+          <div class="fm-veh-eco">${v.eco}</div>
+          <div class="fm-veh-name">${v.unidad||'—'}</div>
+          <div class="fm-veh-sub" style="color:rgba(255,255,255,.55)">${v.placas||'—'} · ${v.año||'—'}</div>
+        </div>
+        <div style="background:rgba(255,255,255,.1);border-radius:10px;padding:8px 12px;text-align:center">
+          <div style="font-size:24px">🛻</div>
+          <div style="font-size:9px;font-weight:700;color:rgba(255,255,255,.5);margin-top:2px;text-transform:uppercase">${v.tipo||'—'}</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px">
+        ${[['Plaza',v.plaza||'—'],['Color',v.color||'—'],['KM',`${v.km||0}`]].map(([l,val])=>`
+        <div style="background:rgba(255,255,255,.08);border-radius:8px;padding:8px 10px">
+          <div style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:rgba(255,255,255,.4);margin-bottom:2px">${l}</div>
+          <div style="font-size:12.5px;font-weight:700;color:#fff">${val}</div>
+        </div>`).join('')}
+      </div>
+    </div>
+
+    <!-- ALERTAS -->
+    ${!pvOk?`<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:12px;padding:12px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px">
+      <div style="color:#B91C1C;flex-shrink:0">${IC.alert}</div>
+      <div><div style="font-size:13px;font-weight:700;color:#B91C1C">Póliza de seguro ${d<0?'VENCIDA':'próxima a vencer'}</div>
+      <div style="font-size:11.5px;color:#991B1B;margin-top:2px">${hF(v.pv)}${d!==null?` · ${d<0?Math.abs(d)+' días vencida':d+' días restantes'}`:''}</div></div>
+    </div>`:''  }
+
+    <!-- DATOS TÉCNICOS -->
+    <div class="fm-card">
+      <div class="fm-card-hd"><div class="fm-card-t">Datos del vehículo</div></div>
+      <div class="fm-data-grid">
+        <div class="fm-data-item"><dt>Serie / VIN</dt><dd class="mono" style="font-size:10px">${v.serie||'—'}</dd></div>
+        <div class="fm-data-item"><dt>Póliza seguro</dt><dd class="mono" style="font-size:10px">${v.pol||'—'}</dd></div>
+        <div class="fm-data-item"><dt>Vto. póliza</dt><dd class="${pvOk?'green':'red'}">${hF(v.pv)}</dd></div>
+        <div class="fm-data-item"><dt>Rendimiento</dt><dd>${v.rend||'—'}</dd></div>
+        <div class="fm-data-item"><dt>Estatus</dt><dd class="${v.status==='activo'?'green':v.status==='taller'?'amber':'red'}">${v.status||'activo'}</dd></div>
+        ${v.nip?`<div class="fm-data-item"><dt>NIP</dt><dd>${v.nip}</dd></div>`:'<div></div>'}
+      </div>
+    </div>
+
+    <!-- MIS SOLICITUDES RECIENTES -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div style="font-size:14px;font-weight:800">Mis solicitudes</div>
+      ${solsPend.length?`<span style="font-size:10px;font-weight:700;background:#EDE9FE;color:#6D28D9;padding:3px 9px;border-radius:100px">${solsPend.length} activa(s)</span>`:''}
+    </div>
+    ${misSols.length?misSols.slice(0,5).map(s=>`
+      <div class="fm-sol-card" onclick="fmVerSol('${s.id}')">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <div class="fm-sol-tipo">${s.tipo||'—'}</div>
+          ${badge(s.estatus)}
+        </div>
+        <div class="fm-sol-meta">${hF(s.creadoEn)} · ${s.modo?s.modo.toUpperCase():'—'} · ${s.prioridad||'Normal'}</div>
+      </div>`).join('')
+    :`<div class="fm-empty" style="padding:20px"><div class="fm-empty-ico" style="font-size:32px">📋</div><p style="font-size:13px;color:#94A3B8">Sin solicitudes registradas</p></div>`}
+    <div style="height:20px"></div>
+  `);
+}
+
+// PANTALLA DE VINCULACIÓN
+function renderVincular(){
+  const allVehs=window._fmAllVehs||[];
+  setContent(`
+    <div style="padding-top:20px">
+      <div class="fm-vincular">
+        <div class="fm-vincular-ico">🔗</div>
+        <h2>Vincular mi vehículo</h2>
+        <p>Selecciona el vehículo que tienes asignado. Esto se guarda en tu perfil y no podrá cambiarse sin autorización.</p>
+        ${allVehs.length?`
+        <div class="fm-fld">
+          <label>Selecciona tu vehículo</label>
+          <div class="fm-select-wrap">
+            <select id="fm-sel-veh">
+              <option value="">— Selecciona —</option>
+              ${allVehs.filter(v=>v.status!=='baja').map(v=>`<option value="${v.eco}">ECO ${v.eco} · ${v.unidad} · ${v.placas}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <button class="fm-btn primary" onclick="fmVincular()">Vincular este vehículo</button>`:`
+        <button class="fm-btn primary" onclick="fmCargarVehs()">Cargar lista de vehículos</button>`}
+      </div>
+    </div>
+  `);
+}
+
+window.fmCargarVehs=async function(){
+  toast('Cargando vehículos…','info');
+  dbg('Iniciando carga de vehículos…','info');
+  dbg('db disponible: '+(!!window.db),'info');
+  dbg('auth.currentUser: '+(window.auth?.currentUser?.email||'NO HAY SESIÓN'),'info');
+  try{
+    dbg('Intentando db.collection(flotilla_vehiculos).get()…','info');
+    // Timeout de 8 segundos
+    const timeout=new Promise((_,rej)=>setTimeout(()=>rej(new Error('TIMEOUT 8s — Firestore no responde')),8000));
+    const query=db.collection('flotilla_vehiculos').get();
+    const snap=await Promise.race([query,timeout]);
+    dbg('Snap recibido. Docs: '+snap.size,'ok');
+    if(!snap.empty){
+      window._fmAllVehs=snap.docs.map(d=>({id:d.id,...d.data()}));
+      dbg('Vehículos de Firestore: '+window._fmAllVehs.length,'ok');
+    } else {
+      dbg('Firestore vacío — usando catálogo local ('+CAT_FL.length+' unidades)','warn');
+      window._fmAllVehs=CAT_FL.map(v=>({id:'eco-'+v.eco,...v}));
+    }
+  }catch(e){
+    dbg('ERROR Firestore: '+e.code+' — '+e.message,'err');
+    dbg('Usando catálogo local fallback ('+CAT_FL.length+' unidades)','warn');
+    window._fmAllVehs=CAT_FL.map(v=>({id:'eco-'+v.eco,...v}));
+  }
+  if(!window._fmAllVehs||window._fmAllVehs.length===0){
+    dbg('Lista vacía después de todo','err');
+    toast('No se encontraron vehículos','err');
+    return;
+  }
+  dbg('Total vehículos disponibles: '+window._fmAllVehs.length,'ok');
+  toast(window._fmAllVehs.length+' vehículos disponibles','ok');
+  renderVincular();
+};
+
+window.fmVincular=async function(){
+  const eco=document.getElementById('fm-sel-veh')?.value;
+  if(!eco){toast('Selecciona un vehículo','err');return;}
+  const user=window.auth?.currentUser;
+  if(!user){toast('No hay sesión activa','err');return;}
+  try{
+    const snap=await db.collection(C.USUARIOS).where('email','==',user.email).get();
+    const datos={email:user.email,nombre:user.displayName||user.email,ecoVinculado:eco,vinculadoEn:new Date().toISOString()};
+    if(snap.empty){await db.collection(C.USUARIOS).add(datos);}
+    else{await db.collection(C.USUARIOS).doc(snap.docs[0].id).update({ecoVinculado:eco});}
+    miPerfil={...miPerfil,...datos};
+    await cargarMiVeh();
+    await cargarMisSols();
+    toast(`ECO ${eco} vinculado correctamente`,'ok');
+    fmVista('vehiculo');
+  }catch(e){toast('Error al vincular: '+e.message,'err');}
+};
+
+// ══════════════════════════════════════════
+// VISTA 2 — NUEVA SOLICITUD
+// ══════════════════════════════════════════
+function renderNuevaSol(){
+  if(!miVeh){
+    setContent(`<div style="padding-top:20px"><div class="fm-vincular"><div class="fm-vincular-ico">🚗</div><h2>Sin vehículo vinculado</h2><p>Primero vincula tu vehículo asignado.</p><button class="fm-btn primary" onclick="fmVista('vehiculo')">Ir a Mi Vehículo</button></div></div>`);
+    return;
+  }
+  // Reset estado
+  solState={modo:'entrada',tipo:'',prior:'Normal',desc:'',km:'',taller:'',gasolina:50,chk:{},chkFotos:{},evFotos:[]};
+  setContent(`
+    <div class="fm-sec-hd">
+      <div>
+        <div class="fm-sec-t">Nueva solicitud</div>
+        <div class="fm-sec-s">ECO ${miVeh.eco} · ${miVeh.unidad}</div>
+      </div>
+    </div>
+
+    <!-- MODO ENTRADA/SALIDA -->
+    <div class="fm-modo">
+      <button class="fm-modo-btn entrada on" id="fm-modo-e" onclick="fmSetModo('entrada')">ENTRADA</button>
+      <button class="fm-modo-btn salida" id="fm-modo-s" onclick="fmSetModo('salida')">SALIDA</button>
+    </div>
+
+    <!-- TIPO DE SOLICITUD -->
+    <div class="fm-fld">
+      <label>Tipo de solicitud</label>
+      <div class="fm-select-wrap">
+        <select id="fm-tipo" onchange="if(this.value==='__c')document.getElementById('fm-tipo-c').style.display='block';else document.getElementById('fm-tipo-c').style.display='none'">
+          <option value="">— Selecciona —</option>
+          ${TIPOS_SOL.map(t=>`<option>${t}</option>`).join('')}
+          <option value="__c">Personalizado…</option>
+        </select>
+      </div>
+      <input type="text" id="fm-tipo-c" placeholder="Describe el tipo…" style="display:none;margin-top:8px;padding:12px 14px;border:1.5px solid #E2E8F0;border-radius:10px;font-family:inherit;font-size:14px;width:100%;outline:none">
+    </div>
+
+    <!-- PRIORIDAD -->
+    <div class="fm-fld">
+      <label>Prioridad</label>
+      <div style="display:flex;gap:8px">
+        ${['Normal','Alta','Urgente'].map(p=>`<button onclick="fmSetPrior(this,'${p}')" id="fm-prior-${p}" class="fm-btn ghost fm-btn-sm" style="flex:1;${p==='Normal'?'background:#1E3A5F;color:#fff':''}">${p}</button>`).join('')}
+      </div>
+    </div>
+
+    <!-- DESCRIPCIÓN -->
+    <div class="fm-fld">
+      <label>Descripción del problema</label>
+      <textarea id="fm-desc" placeholder="Describe el problema o servicio que se requiere…"></textarea>
+    </div>
+
+    <!-- KM + TALLER -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="fm-fld"><label>KM actual</label><input type="number" id="fm-km" placeholder="${miVeh.km||0}" inputmode="numeric"></div>
+      <div class="fm-fld"><label>Taller sugerido</label><input type="text" id="fm-taller" placeholder="Opcional"></div>
+    </div>
+
+    <!-- GASOLINA -->
+    <div class="fm-fld">
+      <label>Nivel de gasolina</label>
+      <div class="fm-gauge-wrap" id="fm-gauge-wrap">
+        ${renderGaugeSVG(50)}
+        <div class="fm-gauge-labels" style="width:200px"><span>VACÍO</span><span>2/4</span><span>MEDIO</span><span>3/4</span><span>LLENO</span></div>
+      </div>
+      <input type="range" min="0" max="100" value="50" id="fm-gas" oninput="fmGas(this.value)" style="width:100%;margin-top:6px;accent-color:#2563EB">
+    </div>
+
+    <!-- EVIDENCIAS — CÁMARA FORZADA -->
+    <div class="fm-fld">
+      <label>Evidencias fotográficas <span style="font-weight:500;text-transform:none;font-size:9px;color:#94A3B8">(cámara obligatoria)</span></label>
+      <button onclick="fmCapturar('general')" class="fm-btn primary" style="margin-bottom:8px">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        Tomar foto con cámara
+      </button>
+      <div id="fm-ev-wrap" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+    </div>
+
+    <!-- CHECKLIST RÁPIDO -->
+    <div class="fm-fld">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <label style="margin:0">Check list</label>
+        <span id="fm-chk-cnt" style="font-size:10px;color:#64748B">0 de ${Object.values(CHK_CATS).flat().length} revisados</span>
+      </div>
+      <div id="fm-chk-list">${renderChkMovil()}</div>
+    </div>
+
+    <!-- BOTÓN GUARDAR -->
+    <button class="fm-btn primary" onclick="fmGuardar()" id="fm-btn-guardar" style="margin-top:8px">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+      Crear solicitud
+    </button>
+    <div style="height:20px"></div>
+  `);
+}
+
+function renderGaugeSVG(pct100){
+  const pct=pct100/100;
+  const toRad=a=>(a-90)*Math.PI/180;
+  const cx=100,cy=85,R=70;
+  const angS=-120,angE=angS+pct*240;
+  const sx=cx+R*Math.cos(toRad(angS)),sy=cy+R*Math.sin(toRad(angS));
+  const ex=cx+R*Math.cos(toRad(angE)),ey=cy+R*Math.sin(toRad(angE));
+  const lg=pct*240>180?1:0;
+  const col=pct<.25?'#EF4444':pct<.6?'#F59E0B':'#22C55E';
+  return`<svg width="200" height="120" viewBox="0 0 200 120">
+    <defs><linearGradient id="gg" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#EF4444"/><stop offset="40%" stop-color="#F59E0B"/><stop offset="100%" stop-color="#22C55E"/></linearGradient></defs>
+    <path d="M${(cx+R*Math.cos(toRad(-120))).toFixed(1)},${(cy+R*Math.sin(toRad(-120))).toFixed(1)} A${R},${R} 0 1,1 ${(cx+R*Math.cos(toRad(120))).toFixed(1)},${(cy+R*Math.sin(toRad(120))).toFixed(1)}" fill="none" stroke="#E8EDF5" stroke-width="12" stroke-linecap="round"/>
+    ${pct>0?`<path d="M${sx.toFixed(1)},${sy.toFixed(1)} A${R},${R} 0 ${lg},1 ${ex.toFixed(1)},${ey.toFixed(1)}" fill="none" stroke="url(#gg)" stroke-width="12" stroke-linecap="round"/>`:''}
+    <line x1="${cx}" y1="${cy}" x2="${(cx+58*Math.cos(toRad(angE))).toFixed(1)}" y2="${(cy+58*Math.sin(toRad(angE))).toFixed(1)}" stroke="#0A1628" stroke-width="2.5" stroke-linecap="round"/>
+    <circle cx="${cx}" cy="${cy}" r="6" fill="#0A1628" stroke="#fff" stroke-width="2"/>
+    <text x="${cx}" y="${cy+28}" text-anchor="middle" font-size="13" font-weight="800" fill="${col}" font-family="'JetBrains Mono',monospace">${Math.round(pct*100)}%</text>
+  </svg>`;
+}
+
+window.fmGas=function(v){
+  solState.gasolina=Number(v);
+  const w=document.getElementById('fm-gauge-wrap');
+  if(w)w.innerHTML=renderGaugeSVG(Number(v))+'<div class="fm-gauge-labels" style="width:200px"><span>VACÍO</span><span>2/4</span><span>MEDIO</span><span>3/4</span><span>LLENO</span></div>';
+};
+
+window.fmSetModo=function(m){
+  solState.modo=m;
+  const be=document.getElementById('fm-modo-e');
+  const bs=document.getElementById('fm-modo-s');
+  if(be){be.classList.toggle('on',m==='entrada');}
+  if(bs){bs.classList.toggle('on',m==='salida');}
+};
+
+window.fmSetPrior=function(btn,p){
+  solState.prior=p;
+  document.querySelectorAll('[id^="fm-prior-"]').forEach(b=>{b.style.background='';b.style.color='';b.className='fm-btn ghost fm-btn-sm';b.style.flex='1';});
+  btn.style.background='#1E3A5F';btn.style.color='#fff';
+};
+
+function renderChkMovil(){
+  let h='';
+  for(const [cat,items] of Object.entries(CHK_CATS)){
+    h+=`<div class="fm-chk-cat">${cat}</div>`;
+    items.forEach((item,i)=>{
+      const key=`${cat}__${i}`;
+      const val=solState.chk[key]||'';
+      const hasFoto=!!solState.chkFotos[key];
+      h+=`<div class="fm-chk-row" id="fm-cr-${key}">
+        <span class="fm-chk-name">${item}</span>
+        <button class="fm-chk-si ${val==='si'?'on':''}" onclick="fmChk('${key}','si')">SI</button>
+        <button class="fm-chk-no ${val==='no'?'on':''}" onclick="fmChk('${key}','no')">NO</button>
+        <div class="fm-chk-cam ${hasFoto?'has':''}" onclick="${hasFoto?`fmVerFoto(solState.chkFotos['${key}'])`:`fmCapturar('chk','${key}')`}" id="fm-cam-${key}">
+          ${hasFoto?`<img src="${typeof solState.chkFotos[key]==='object'?solState.chkFotos[key].src:solState.chkFotos[key]}" style="width:26px;height:26px;object-fit:cover;border-radius:5px">`:
+          `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>`}
+        </div>
+      </div>`;
+    });
+  }
+  return h;
+}
+
+window.fmChk=function(key,val){
+  solState.chk[key]=solState.chk[key]===val?'':val;
+  const si=document.querySelector(`#fm-cr-${key} .fm-chk-si`);
+  const no=document.querySelector(`#fm-cr-${key} .fm-chk-no`);
+  if(si)si.classList.toggle('on',solState.chk[key]==='si');
+  if(no)no.classList.toggle('on',solState.chk[key]==='no');
+  // Actualizar contador
+  const total=Object.values(CHK_CATS).flat().length;
+  const rev=Object.values(solState.chk).filter(v=>v==='si'||v==='no').length;
+  const cnt=document.getElementById('fm-chk-cnt');
+  if(cnt)cnt.textContent=`${rev} de ${total} revisados`;
+};
+
+// ── CAPTURAR EVIDENCIA MÓVIL ──
+window.fmCapturar=async function(tipo,key){
+  toast('Obteniendo GPS…','info');
+  const gps=await getGPS();
+  if(!gps){const ok=confirm('Sin GPS disponible.\n¿Continuar sin coordenadas?');if(!ok)return;}
+
+  const inp=document.createElement('input');
+  inp.type='file';inp.accept='image/*';
+  inp.capture='environment'; // BLOQUEA GALERÍA en móvil
+  inp.style.display='none';
+  document.body.appendChild(inp);
+
+  inp.onchange=async function(){
+    const file=this.files[0];if(!file){document.body.removeChild(inp);return;}
+    toast('Procesando evidencia…','info');
+    const reader=new FileReader();
+    reader.onload=async function(e){
+      const now=new Date();
+      const meta={
+        codigo:genCod(),
+        fecha:now.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}),
+        hora:now.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',second:'2-digit'}),
+        timestamp:now.toISOString(),
+        gps,eco:miVeh?.eco||'—',unidad:miVeh?.unidad||'—',
+        usuario:window.auth?.currentUser?.displayName||window.auth?.currentUser?.email||'—',
+        modo:solState.modo,tipo,key:key||null,
+      };
+      const sellada=await sellarImg(e.target.result,meta);
+      if(tipo==='chk'&&key){
+        solState.chkFotos[key]={src:sellada,meta};
+        const cam=document.getElementById(`fm-cam-${key}`);
+        if(cam){cam.classList.add('has');cam.innerHTML=`<img src="${sellada}" style="width:26px;height:26px;object-fit:cover;border-radius:5px">`;cam.onclick=()=>fmVerFoto({src:sellada,meta});}
+      } else {
+        solState.evFotos.push({src:sellada,meta});
+        const wrap=document.getElementById('fm-ev-wrap');
+        if(wrap){
+          const pill=document.createElement('div');
+          pill.className='fm-ev-pill';
+          pill.onclick=()=>fmVerFoto({src:sellada,meta});
+          pill.innerHTML=`<img src="${sellada}"><span>${meta.codigo}</span>`;
+          wrap.appendChild(pill);
+        }
+      }
+      toast(`✓ ${meta.codigo}`,'ok');
+      document.body.removeChild(inp);
+    };
+    reader.readAsDataURL(file);
+  };
+  inp.click();
+};
+
+window.fmVerFoto=function(ev){
+  const src=typeof ev==='string'?ev:ev.src;
+  const meta=typeof ev==='object'?ev.meta:null;
+  const ov=document.createElement('div');ov.className='fm-ov';
+  ov.innerHTML=`<div class="fm-sheet">
+    <div class="fm-sheet-hd"><h3>Evidencia</h3><button class="fm-sheet-x" onclick="this.closest('.fm-ov').remove()">✕</button></div>
+    <div class="fm-sheet-body">
+      <img src="${src}" style="width:100%;border-radius:12px;margin-bottom:14px;display:block">
+      ${meta?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        ${[['Código',meta.codigo||'—'],['Fecha',meta.fecha||'—'],['Hora',meta.hora||'—'],['GPS',meta.gps?`${meta.gps.lat}, ${meta.gps.lng}`:'Sin GPS'],['Vehículo',`ECO ${meta.eco}`],['Usuario',meta.usuario||'—'],['Modo',(meta.modo||'—').toUpperCase()],['Precisión',meta.gps?`±${meta.gps.acc}m`:'—']].map(([l,v])=>`
+        <div style="background:#F8FAFD;border-radius:9px;padding:9px 11px">
+          <div style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">${l}</div>
+          <div style="font-size:12px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#0A0F1E;word-break:break-all">${v}</div>
+        </div>`).join('')}
+      </div>
+      ${meta.gps?`<button onclick="window.open('https://maps.google.com/?q=${meta.gps.lat},${meta.gps.lng}','_blank')" class="fm-btn primary" style="margin-top:12px">Ver en Google Maps</button>`:''}
+      `:''}
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+};
+
+// ── GUARDAR SOLICITUD ──
+window.fmGuardar=async function(){
+  const tipoR=document.getElementById('fm-tipo')?.value;
+  const tipoC=document.getElementById('fm-tipo-c')?.value?.trim();
+  const tipo=tipoR==='__c'?(tipoC||'Personalizado'):tipoR;
+  const desc=document.getElementById('fm-desc')?.value?.trim();
+  const km=document.getElementById('fm-km')?.value;
+  const taller=document.getElementById('fm-taller')?.value?.trim();
+  if(!tipo){toast('Selecciona el tipo de solicitud','err');return;}
+  if(!desc){toast('Describe el problema','err');return;}
+  const btn=document.getElementById('fm-btn-guardar');
+  if(btn){btn.disabled=true;btn.textContent='Guardando…';}
+  const docObj={
+    vehiculoId:miVeh?.id||'',vehiculoEco:miVeh?.eco||'',
+    vehiculo:`${miVeh?.eco} · ${miVeh?.unidad||''}`,
+    tipo,prioridad:solState.prior,descripcion:desc,
+    kilometrajeReportado:km||'',taller:taller||'',
+    gasolina:solState.gasolina,modo:solState.modo,
+    tipoUnidad:['camioneta','camion'].includes(miVeh?.tipo)?'troca':'auto',
+    estatus:'Solicitud',
+    solicitante:window.auth?.currentUser?.displayName||window.auth?.currentUser?.email||'—',
+    creadoPor:window.auth?.currentUser?.email||'',
+    creadoEn:new Date().toISOString(),
+    evidencias:solState.evFotos.map(e=>typeof e==='string'?e:e.src),
+    evidenciasMeta:solState.evFotos.map(e=>typeof e==='object'?e.meta:null).filter(Boolean),
+    checklist:{...solState.chk},
+    chkFotos:Object.fromEntries(Object.entries(solState.chkFotos).map(([k,v])=>[k,typeof v==='object'?v.src:v])),
+    origenApp:'movil',
+  };
+  if(!onlineStatus){
+    offlineGuardar(docObj);
+    if(btn){btn.disabled=false;btn.textContent='Crear solicitud';}
+    return;
+  }
+  try{
+    await db.collection(C.SOLS).add(docObj);
+    if(km&&miVeh&&!miVeh.id.startsWith('eco-')){
+      await db.collection(C.VEHS).doc(miVeh.id).update({km:Number(km)}).catch(()=>{});
+    }
+    await cargarMisSols();
+    toast('Solicitud creada correctamente','ok');
+    setTimeout(()=>fmVista('vehiculo'),1200);
+  }catch(e){
+    console.error('[MOVIL]',e);
+    offlineGuardar(docObj);
+    if(btn){btn.disabled=false;btn.textContent='Crear solicitud';}
+  }
+};
+
+// ══════════════════════════════════════════
+// VISTA 3 — MIS TAREAS
+// ══════════════════════════════════════════
+function renderTareas(){
+  const pend=misTareas.filter(t=>t.estatus!=='Completada');
+  setContent(`
+    <div class="fm-sec-hd">
+      <div>
+        <div class="fm-sec-t">Mis tareas</div>
+        <div class="fm-sec-s">${pend.length} pendiente(s)</div>
+      </div>
+    </div>
+    ${!pend.length?`<div class="fm-empty"><div class="fm-empty-ico">✅</div><h3>Sin tareas pendientes</h3><p>No tienes tareas asignadas por el momento.</p></div>`:
+    pend.map(t=>`
+      <div class="fm-tarea-card">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:6px">
+          <div class="fm-tarea-title">${t.titulo||t.nombre||'Tarea sin título'}</div>
+          ${badge(t.estatus||'Pendiente')}
+        </div>
+        <div class="fm-tarea-meta">${t.descripcion||'Sin descripción'}</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+          ${t.prioridad?`<span class="fm-tarea-prior" style="background:${t.prioridad==='Alta'||t.prioridad==='Urgente'?'#FEE2E2':'#F1F5F9'};color:${t.prioridad==='Alta'||t.prioridad==='Urgente'?'#B91C1C':'#475569'}">${t.prioridad}</span>`:''}
+          ${t.fechaVencimiento?`<span style="font-size:11px;color:#64748B">Vence: ${hF(t.fechaVencimiento)}</span>`:''}
+        </div>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button onclick="fmMarcarTarea('${t.id}','En proceso')" class="fm-btn ghost fm-btn-sm" style="flex:1;font-size:12px">En proceso</button>
+          <button onclick="fmMarcarTarea('${t.id}','Completada')" class="fm-btn green fm-btn-sm" style="flex:1;font-size:12px">Completar</button>
+        </div>
+      </div>`).join('')}
+    <div style="height:20px"></div>
+  `);
+}
+
+window.fmMarcarTarea=async function(id,est){
+  try{
+    await db.collection(C.TAREAS).doc(id).update({estatus:est,actualizadoEn:new Date().toISOString()});
+    await cargarMisTareas();
+    actualizarBadges();
+    renderTareas();
+    toast(est==='Completada'?'Tarea completada ✓':'Tarea en proceso','ok');
+  }catch(e){toast('Error: '+e.message,'err');}
+};
+
+// ══════════════════════════════════════════
+// VISTA 4 — NOTIFICACIONES / AVISOS
+// ══════════════════════════════════════════
+function renderNotif(){
+  const items=[
+    ...misNotif.map(s=>({
+      ico:s.estatus==='Aprobada'?'✅':s.estatus==='Rechazada'?'❌':'💬',
+      bg:s.estatus==='Aprobada'?'#DCFCE7':s.estatus==='Rechazada'?'#FEE2E2':'#EDE9FE',
+      t:`Solicitud ${s.estatus.toLowerCase()}`,
+      s:`${s.tipo||'—'} · ECO ${s.vehiculoEco||'—'}`,
+      time:hF(s.actualizadoEn||s.creadoEn),
+      unread:true,
+    })),
+  ];
+  const dv=hD(miVeh?.pv);
+  if(dv!==null&&dv<90)items.unshift({ico:'⚠️',bg:'#FEF3C7',t:'Póliza de seguro',s:dv<0?'Póliza VENCIDA — renovar urgente':`Vence en ${dv} días`,time:'Hoy',unread:dv<0});
+
+  setContent(`
+    <div class="fm-sec-hd">
+      <div>
+        <div class="fm-sec-t">Avisos</div>
+        <div class="fm-sec-s">${items.length} notificacion(es)</div>
+      </div>
+    </div>
+    ${!items.length?`<div class="fm-empty"><div class="fm-empty-ico">🔔</div><h3>Sin avisos</h3><p>No hay notificaciones nuevas.</p></div>`:
+    items.map(n=>`<div class="fm-notif ${n.unread?'unread':''}">
+      <div class="fm-notif-ico" style="background:${n.bg}">${n.ico}</div>
+      <div class="fm-notif-body">
+        <div class="fm-notif-t">${n.t}</div>
+        <div class="fm-notif-s">${n.s}</div>
+        <div class="fm-notif-time">${n.time}</div>
+      </div>
+    </div>`).join('')}
+    <div style="height:20px"></div>
+  `);
+}
+
+// ── VER SOLICITUD EXISTENTE ──
+window.fmVerSol=function(id){
+  const s=misSols.find(x=>x.id===id);if(!s)return;
+  const ov=document.createElement('div');ov.className='fm-ov';
+  ov.innerHTML=`<div class="fm-sheet">
+    <div class="fm-sheet-hd">
+      <h3>${s.tipo||'Solicitud'}</h3>
+      <button class="fm-sheet-x" onclick="this.closest('.fm-ov').remove()">✕</button>
+    </div>
+    <div class="fm-sheet-body">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">${badge(s.estatus)}<span style="font-size:12px;color:#64748B">${hF(s.creadoEn)}</span></div>
+      ${[['Vehículo',s.vehiculo||'—'],['Modo',(s.modo||'—').toUpperCase()],['Prioridad',s.prioridad||'Normal'],['KM',s.kilometrajeReportado||'—'],['Gasolina',s.gasolina!=null?s.gasolina+'%':'—'],['Taller',s.taller||'Sin especificar']].map(([l,v])=>`
+      <div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #F1F5F9">
+        <span style="font-size:12.5px;color:#64748B;font-weight:600">${l}</span>
+        <span style="font-size:12.5px;font-weight:700;color:#0A0F1E">${v}</span>
+      </div>`).join('')}
+      <div style="padding:10px 0;border-bottom:1px solid #F1F5F9">
+        <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:5px">Descripción</div>
+        <div style="font-size:13.5px;color:#0A0F1E;line-height:1.5">${s.descripcion||'—'}</div>
+      </div>
+      ${s.comentarioRechazo?`<div style="background:#FEF2F2;border-radius:10px;padding:11px 13px;margin-top:12px"><div style="font-size:12px;font-weight:700;color:#B91C1C;margin-bottom:3px">Motivo de rechazo</div><div style="font-size:13px;color:#991B1B">${s.comentarioRechazo}</div></div>`:''}
+      ${s.evidencias?.length?`<div style="margin-top:14px"><div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:8px">Evidencias (${s.evidencias.length})</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">${s.evidencias.map((src,i)=>{const m=(s.evidenciasMeta||[])[i];return`<div onclick="fmVerFoto({src:'${src}',meta:${m?JSON.stringify(m):'null'}})" class="fm-ev-pill"><img src="${src}"><span>${m?.codigo||'Foto '+(i+1)}</span></div>`;}).join('')}</div></div>`:''}
+      <button onclick="this.closest('.fm-ov').remove()" class="fm-btn ghost" style="margin-top:16px">Cerrar</button>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+};
+
+// ── PERFIL ──
+window.abrirPerfil=function(){
+  const user=window.auth?.currentUser;
+  const ov=document.createElement('div');ov.className='fm-ov';
+  ov.innerHTML=`<div class="fm-sheet">
+    <div class="fm-sheet-hd"><h3>Mi perfil</h3><button class="fm-sheet-x" onclick="this.closest('.fm-ov').remove()">✕</button></div>
+    <div class="fm-sheet-body">
+      <div style="text-align:center;padding:16px 0 20px">
+        <div style="width:64px;height:64px;border-radius:50%;background:#1E3A5F;color:#fff;font-size:24px;font-weight:800;display:flex;align-items:center;justify-content:center;margin:0 auto 12px">${(user?.displayName||user?.email||'?').charAt(0).toUpperCase()}</div>
+        <div style="font-size:17px;font-weight:800">${user?.displayName||'—'}</div>
+        <div style="font-size:13px;color:#64748B;margin-top:3px">${user?.email||'—'}</div>
+        ${miPerfil?.ecoVinculado?`<div style="margin-top:10px;display:inline-flex;align-items:center;gap:6px;background:#EFF6FF;border-radius:100px;padding:5px 14px;font-size:12px;font-weight:700;color:#1D4ED8">ECO ${miPerfil.ecoVinculado} vinculado</div>`:''}
+      </div>
+      ${!miPerfil?.ecoVinculado?`<button class="fm-btn primary" onclick="this.closest('.fm-ov').remove();fmVista('vehiculo')" style="margin-bottom:10px">Vincular mi vehículo</button>`:''}
+      <button class="fm-btn danger" onclick="if(confirm('¿Cerrar sesión?')){window.auth.signOut().then(()=>location.reload());}">Cerrar sesión</button>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+};
+
+console.log('[FLOTILLA MÓVIL] Tecnocontrol · App técnicos · Offline ready');
+})();
 const TIPOS_SOL=[
   'Mantenimiento preventivo','Mantenimiento correctivo',
   'Reposición de llanta','Falla eléctrica',
