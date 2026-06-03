@@ -286,6 +286,53 @@ function injectCSS(){
 .fl-rp-hist-t{font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin-bottom:8px;}
 .fl-rp-h-item{padding:6px 0;border-bottom:1px solid #F8FAFD;font-size:11px;}
 
+// ═══════════════════════════════════════
+// RESPONSABLES
+// ═══════════════════════════════════════
+function rResponsables(){
+
+  setContent(padded(`
+    <div style="padding:20px">
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+        <div>
+          <h2 style="margin:0">Control de Responsables</h2>
+          <div style="font-size:12px;color:#64748B">
+            Vehículos asignados por colaborador
+          </div>
+        </div>
+      </div>
+
+      <table style="width:100%;border-collapse:collapse;background:#fff">
+        <thead>
+          <tr>
+            <th style="padding:10px;text-align:left">Responsable</th>
+            <th style="padding:10px;text-align:left">ECO</th>
+            <th style="padding:10px;text-align:left">Unidad</th>
+            <th style="padding:10px;text-align:left">Placas</th>
+            <th style="padding:10px;text-align:left">KM</th>
+            <th style="padding:10px;text-align:left">Estatus</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${flV.map(v=>`
+            <tr>
+              <td style="padding:10px">${v.responsable || 'Sin asignar'}</td>
+              <td style="padding:10px">${v.eco || ''}</td>
+              <td style="padding:10px">${v.unidad || ''}</td>
+              <td style="padding:10px">${v.placas || ''}</td>
+              <td style="padding:10px">${v.km || 0}</td>
+              <td style="padding:10px">${v.status || 'activo'}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+
+    </div>
+  `));
+
+}
+
 /* ── PANEL GENERAL ── */
 .fl-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;}
 .fl-kpi{background:#fff;border-radius:12px;padding:14px 16px;border:1px solid #E8EDF5;}
@@ -535,7 +582,7 @@ let admEditId=null; // ID del vehículo en edición
 let admFiltro=''; let admFiltroPlaza=''; let admFiltroStatus='';
 
 function rAdmin(){
-  if(!hAdm()){setContent(pad('<div class="fl-empty"><div class="fl-empty-ico">🔒</div><h3>Acceso restringido</h3><p>Solo administradores pueden acceder a este panel.</p></div>'));return;}
+  if(!Adm()){setContent(pad('<div class="fl-empty"><div class="fl-empty-ico">🔒</div><h3>Acceso restringido</h3><p>Solo administradores pueden acceder a este panel.</p></div>'));return;}
 
   const act=flV.filter(v=>v.status==='activo'||!v.status).length;
   const tall=flV.filter(v=>v.status==='taller').length;
