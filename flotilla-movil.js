@@ -621,7 +621,10 @@ window.fmCargarVehs=async function(){
   dbg('auth.currentUser: '+(window.auth?.currentUser?.email||'NO HAY SESIÓN'),'info');
   try{
     dbg('Intentando db.collection(flotilla_vehiculos).get()…','info');
-    const snap=await db.collection('flotilla_vehiculos').get();
+    // Timeout de 8 segundos
+    const timeout=new Promise((_,rej)=>setTimeout(()=>rej(new Error('TIMEOUT 8s — Firestore no responde')),8000));
+    const query=db.collection('flotilla_vehiculos').get();
+    const snap=await Promise.race([query,timeout]);
     dbg('Snap recibido. Docs: '+snap.size,'ok');
     if(!snap.empty){
       window._fmAllVehs=snap.docs.map(d=>({id:d.id,...d.data()}));
