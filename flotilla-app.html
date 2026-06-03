@@ -85,10 +85,12 @@ const firebaseConfig = {
 
 firebase.initializeApp(firebaseConfig);
 
-// Sin persistencia — más compatible con iOS Safari
+// Configuración optimizada para móvil
 const _db = firebase.firestore();
-// Configurar settings para mejor compatibilidad móvil
-_db.settings({experimentalForceLongPolling: true, merge: true});
+_db.settings({
+  experimentalAutoDetectLongPolling: true, // detecta automáticamente el mejor método
+  merge: true
+});
 
 // NOTA: Asegúrate de que las reglas de Firestore permitan lectura.
 // En Firebase Console → Firestore → Reglas, usa temporalmente:
