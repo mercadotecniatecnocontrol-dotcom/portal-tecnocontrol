@@ -431,7 +431,7 @@ function buildHTML(){
     </div>
     <div style="position:relative;margin-left:6px">
       <button class="fl-tab-btn" id="fl-tb-bajas" onclick="flVista('bajas')" title="Vehículos de baja">${I.archive}</button>
-      ${Adm() ? `
+      ${hAdm() ? `
 
 <div class="fl-tb-sep" style="width:1px;height:28px;background:rgba(255,255,255,.12);margin:0 4px"></div>
 
