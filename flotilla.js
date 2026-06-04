@@ -108,29 +108,8 @@ const I={
 };
 
 // ESTADO
-let db, fs;
-(async () => {
-  const _fsm = await import('https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js');
-  fs = _fsm;
-  const { getFirestore } = _fsm;
-  const { getApps } = await import('https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js');
-  const apps = getApps();
-  if (apps.length) {
-    db = getFirestore(apps[0]);
-  } else if (window.db) {
-    db = window.db;
-  }
-})();  
-const db = window.db;
-let fs;
-(async()=>{fs=await import('https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js');})();
-const db=window.db;
-import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js').then(m=>{window._flFs=m;});
-const db=window.db;
-const fs=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js').catch(()=>null);  
-const db=window.db;
-let fs=null;
-let flV=[], flS=[], flCom=[];let flV=[], flS=[], flCom=[];
+let db=window.db, fs=null;
+let flV=[], flS=[], flCom=[];
 let vistaAct='panel';
 let ST={
   vehId:null, tipoVeh:'auto', vistaImg:'frente', modo:'entrada',
