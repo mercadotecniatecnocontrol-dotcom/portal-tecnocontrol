@@ -1354,7 +1354,7 @@ function renderUtilPaso3(){
     <div class="fm-card">
       <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:6px">Firma aquí abajo</div>
       <div style="border:2px solid #E2E8F0;border-radius:10px;overflow:hidden;background:#F8FAFD;touch-action:none">
-        <canvas id="firma-canvas" width="320" height="160" style="display:block;width:100%;touch-action:none;cursor:crosshair"></canvas>
+        <canvas id="firma-canvas" width="320" height="200" style="display:block;width:100%;height:200px;touch-action:none;cursor:crosshair;border-radius:8px"></canvas>
       </div>
       <div style="display:flex;gap:8px;margin-top:8px">
         <button class="fm-btn ghost fm-btn-sm" onclick="limpiarFirma()" style="flex:1">Limpiar</button>
@@ -1375,12 +1375,14 @@ function renderUtilPaso3(){
       ].map(([l,v])=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #F1F5F9;font-size:12.5px"><span style="color:#64748B">${l}</span><span style="font-weight:700;color:#0A0F1E">${v}</span></div>`).join('')}
     </div>
 
-    <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:12px;margin-bottom:12px;font-size:12px;color:#92400E">
-      ${IC.alert} Al firmar aceptas la responsabilidad sobre el estado del vehículo en este momento.
+    <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:#92400E;display:flex;align-items:flex-start;gap:8px">
+      <span style="flex-shrink:0;width:16px;height:16px;display:inline-flex">${IC.alert.replace('<svg','<svg width=\"16\" height=\"16\"')}</span>
+      <span>Al firmar aceptas la responsabilidad sobre el estado del vehículo en este momento.</span>
     </div>
 
-    <button class="fm-btn primary" onclick="utilConfirmarFirma()" id="util-btn-firmar">
-      ${IC.sign} Firmar y confirmar
+    <button class="fm-btn primary" onclick="utilConfirmarFirma()" id="util-btn-firmar" style="display:flex;align-items:center;justify-content:center;gap:8px">
+      <span style="width:16px;height:16px;display:inline-flex;flex-shrink:0">${IC.sign.replace('<svg','<svg width=\"16\" height=\"16\"')}</span>
+      Firmar y confirmar
     </button>
     <div style="height:20px"></div>
   `;
