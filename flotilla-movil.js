@@ -920,18 +920,16 @@ window.fmChk=function(key,val){
 
 // ── CAPTURAR EVIDENCIA MÓVIL ──
 window.fmCapturar=async function(tipo,key){
-  toast('Obteniendo GPS…','info');
-  const gps=await getGPS();
-  if(!gps){const ok=confirm('Sin GPS disponible.\n¿Continuar sin coordenadas?');if(!ok)return;}
-
   const inp=document.createElement('input');
   inp.type='file';inp.accept='image/*';
-  inp.capture='environment'; // BLOQUEA GALERÍA en móvil
+  inp.capture='environment';
   inp.style.display='none';
   document.body.appendChild(inp);
 
   inp.onchange=async function(){
     const file=this.files[0];if(!file){document.body.removeChild(inp);return;}
+    toast('Obteniendo GPS…','info');
+    const gps=await getGPS();
     toast('Procesando evidencia…','info');
     const reader=new FileReader();
     reader.onload=async function(e){
