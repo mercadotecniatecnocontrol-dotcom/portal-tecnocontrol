@@ -421,13 +421,16 @@ function rpVacio(){return`<div class="fl-empty" style="min-height:300px"><div cl
 // INIT
 window.cargarFlotilla=async function(){
   injectCSS();buildHTML();
-  if(!db){console.error('[FLOTILLA] window.db no disponible — Firebase no inicializado');return;}
+  // Esperar hasta 5s a que window.db esté disponible
+  for(let i=0;i<50&&!window.db;i++) await new Promise(r=>setTimeout(r,100));
+  db=window.db;
+  if(!db){console.error('[FLOTILLA] window.db no disponible después de 5s');return;}
   fs=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
   await Promise.all([ldVehs(),ldSols(),ldComs()]);
   renderSB();
   flVista('panel');
 };
-async function ldVehs(){try{const s=await fs.getDocs(fs.collection(db,C.VEHS));const fsEcos=new Set(s.docs.map(d=>String(d.data().eco)));const fsVehs=s.docs.map(d=>({id:d.id,...d.data()}));const catFill=CAT.filter(v=>!fsEcos.has(String(v.eco))).map(v=>({id:'eco-'+v.eco,...v}));flV=[...fsVehs,...catFill];}catch{flV=CAT.map(v=>({id:'eco-'+v.eco,...v}));}}
+async function ldVehs(){try{const s=await fs.getDocs(fs.collection(db,C.VEHS));const fsEcos=new Set(s.docs.map(d=>String(d.data().eco)));const fsVehs=s.docs.map(d=>({id:d.id,...d.data()}));const catFill=CAT.filter(v=>!fsEcos.has(String(v.eco))).map(v=>({id:'eco-'+v.eco,...v}));flV=[...fsVehs,...catFill];if(!flV.length)flV=CAT.map(v=>({id:'eco-'+v.eco,...v}));}catch{flV=CAT.map(v=>({id:'eco-'+v.eco,...v}));}}
 async function ldSols(){try{const s=await fs.getDocs(fs.collection(db,C.SOLS));flS=s.docs.map(d=>({id:d.id,...d.data()}));flS.sort((a,b)=>(b.creadoEn||'').localeCompare(a.creadoEn||''));}catch{flS=[];}
   const p=flS.filter(s=>['Solicitud','Validada'].includes(s.estatus)).length;
   const c=document.getElementById('fl-cnt-s');if(c){c.textContent=p;c.style.display=p?'flex':'none';}
