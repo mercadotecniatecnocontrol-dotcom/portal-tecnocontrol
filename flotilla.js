@@ -121,6 +121,9 @@ let db, fs;
     db = window.db;
   }
 })();  
+const db = window.db;
+let fs;
+(async()=>{fs=await import('https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js');})();
 let flV=[], flS=[], flCom=[];
 let vistaAct='panel';
 let ST={
