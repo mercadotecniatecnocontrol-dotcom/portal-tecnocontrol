@@ -1170,9 +1170,8 @@ window.abrirPerfil=function(){
 };
 
 console.log('[FLOTILLA MÓVIL] Tecnocontrol · App técnicos · Offline ready');
-})();
 
-// ══════════════════════════════════════════════════════
+
 // VISTA 5 — UTILITARIOS / TRANSFERENCIA DE VEHÍCULO
 // ══════════════════════════════════════════════════════
 let utilState={
@@ -1571,3 +1570,5 @@ window.utilConfirmarFirma=async function(){
     if(btn){btn.disabled=false;btn.textContent='Firmar y confirmar';}
   }
 };
+
+})();
