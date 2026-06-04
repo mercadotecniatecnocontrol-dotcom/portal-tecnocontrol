@@ -359,6 +359,9 @@ body{margin:0;padding:0;background:#F0F2F7;font-family:'Plus Jakarta Sans',-appl
 .fm-ev-pill{display:inline-flex;align-items:center;gap:6px;background:#F1F5F9;border-radius:8px;padding:5px 8px;margin:3px;cursor:pointer;border:1px solid #E2E8F0;}
 .fm-ev-pill img{width:24px;height:24px;object-fit:cover;border-radius:4px;}
 .fm-ev-pill span{font-size:10px;font-weight:600;font-family:'JetBrains Mono',monospace;color:#374151;}
+.fm-ev-pill-lg{display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;background:#fff;border:1.5px solid #E2E8F0;border-radius:10px;padding:6px;transition:border-color .12s;}
+.fm-ev-pill-lg:active{border-color:#2563EB;}
+.fm-ev-pill-lg img{width:60px;height:60px;object-fit:cover;border-radius:7px;display:block;}
 
 /* MODAL */
 .fm-ov{position:fixed;inset:0;background:rgba(10,15,30,.75);z-index:3000;display:flex;align-items:flex-end;justify-content:center;padding:0;backdrop-filter:blur(6px);}
@@ -1206,7 +1209,9 @@ function renderUtil(){
 function renderUtilPaso1(){
   return`
     <div class="fm-card" style="text-align:center;padding:24px">
-      <div style="color:#1E3A5F;margin-bottom:12px">${IC.swap}</div>
+      <div style="color:#1E3A5F;margin-bottom:12px;display:flex;justify-content:center">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>
+      </div>
       <h2 style="font-size:17px;font-weight:800;margin-bottom:8px">¿Qué deseas hacer?</h2>
       <p style="font-size:13px;color:#64748B;margin-bottom:20px;line-height:1.5">Selecciona si vas a entregar o recibir un vehículo</p>
       <div style="display:flex;flex-direction:column;gap:10px">
@@ -1265,7 +1270,10 @@ function renderUtilPaso2(){
   const esEntrega=utilState.modo==='entregar';
   return`
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
-      <button onclick="utilState.paso=1;renderUtil()" style="background:none;border:none;cursor:pointer;color:#1E3A5F;padding:0">${IC.tasks}</button>
+      <button onclick="utilState.paso=1;utilState.modo=null;renderUtil()" style="background:#F1F5F9;border:none;cursor:pointer;color:#1E3A5F;padding:8px 12px;border-radius:8px;font-family:inherit;font-size:12px;font-weight:700;display:flex;align-items:center;gap:5px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+        Regresar
+      </button>
       <div>
         <div style="font-size:15px;font-weight:800">${esEntrega?'Entrega de vehículo':'Recepción de vehículo'}</div>
         <div style="font-size:11px;color:#64748B">${esEntrega?'Paso 1 de 3':'Paso 1 de 2'}</div>
@@ -1294,8 +1302,12 @@ function renderUtilPaso2(){
 
     <div class="fm-fld">
       <label>Fotos del vehículo al entregar <span style="font-size:9px;font-weight:500;text-transform:none;color:#94A3B8">(cámara obligatoria)</span></label>
-      <button onclick="utilCapturar()" class="fm-btn primary" style="margin-bottom:8px">${IC.camera} Tomar fotos del vehículo</button>
-      <div id="util-fotos-wrap" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+      <button onclick="utilCapturar()" class="fm-btn primary" style="margin-bottom:10px;gap:8px">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        Tomar foto con cámara
+      </button>
+      <div style="font-size:10px;color:#94A3B8;text-align:center;margin-bottom:8px">Cámara obligatoria · Galería bloqueada · Sello GPS automático</div>
+      <div id="util-fotos-wrap" style="display:flex;flex-wrap:wrap;gap:8px;padding:4px 0"></div>
     </div>
 
     <!-- CHECKLIST RÁPIDO ENTREGA -->
@@ -1331,7 +1343,10 @@ function renderUtilPaso3(){
   const esEntrega=utilState.modo==='entregar';
   return`
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
-      <button onclick="utilState.paso=2;renderUtil()" style="background:none;border:none;cursor:pointer;color:#1E3A5F;padding:0">${IC.tasks}</button>
+      <button onclick="utilState.paso=2;renderUtil()" style="background:#F1F5F9;border:none;cursor:pointer;color:#1E3A5F;padding:8px 12px;border-radius:8px;font-family:inherit;font-size:12px;font-weight:700;display:flex;align-items:center;gap:5px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+        Regresar
+      </button>
       <div>
         <div style="font-size:15px;font-weight:800">Firma digital</div>
         <div style="font-size:11px;color:#64748B">${esEntrega?'Paso 2 de 3':'Paso 2 de 2'} · Responsiva de ${esEntrega?'entrega':'recepción'}</div>
@@ -1430,25 +1445,59 @@ window.utilChk=function(key,val){
 };
 
 window.utilCapturar=async function(){
-  toast('Obteniendo GPS…','info');
-  const gps=await getGPS();
-  const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.capture='environment';inp.style.display='none';
+  // Crear input PRIMERO antes de async (evita bloqueo en iOS)
+  const inp=document.createElement('input');
+  inp.type='file';
+  inp.accept='image/*';
+  inp.capture='environment'; // FUERZA cámara trasera — bloquea galería en iOS/Android
+  inp.style.cssText='position:fixed;top:-9999px;left:-9999px;opacity:0;width:1px;height:1px';
   document.body.appendChild(inp);
+
   inp.onchange=async function(){
-    const file=this.files[0];if(!file){document.body.removeChild(inp);return;}
-    toast('Procesando foto…','info');
-    const reader=new FileReader();
-    reader.onload=async function(e){
-      const now=new Date();
-      const meta={codigo:genCod(),fecha:now.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}),hora:now.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',second:'2-digit'}),timestamp:now.toISOString(),gps,eco:miVeh?.eco||'—',unidad:miVeh?.unidad||'—',usuario:window.auth?.currentUser?.email||'—',modo:'utilitario'};
-      const sellada=await sellarImg(e.target.result,meta);
-      utilState.evFotos.push({src:sellada,meta});
-      const wrap=document.getElementById('util-fotos-wrap');
-      if(wrap){const pill=document.createElement('div');pill.className='fm-ev-pill';pill.onclick=()=>fmVerFoto({src:sellada,meta});pill.innerHTML=`<img src="${sellada}"><span style="font-size:9px">${meta.codigo}</span>`;wrap.appendChild(pill);}
-      toast(`Foto registrada · ${meta.codigo}`,'ok');
-      document.body.removeChild(inp);
-    };reader.readAsDataURL(file);
-  };inp.click();
+    const file=this.files[0];
+    if(!file){document.body.removeChild(inp);return;}
+    toast('Obteniendo ubicación y procesando…','info');
+
+    // GPS y procesamiento en paralelo
+    const [gps, imgData] = await Promise.all([
+      getGPS(),
+      new Promise(res=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.readAsDataURL(file);})
+    ]);
+
+    const now=new Date();
+    const meta={
+      codigo:genCod(),
+      fecha:now.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}),
+      hora:now.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',second:'2-digit'}),
+      timestamp:now.toISOString(),
+      gps,
+      eco:miVeh?.eco||'—',
+      unidad:miVeh?.unidad||'—',
+      usuario:window.auth?.currentUser?.displayName||window.auth?.currentUser?.email||'—',
+      modo:'utilitario-entrega',
+    };
+
+    const sellada=await sellarImg(imgData,meta);
+    utilState.evFotos.push({src:sellada,meta});
+
+    const wrap=document.getElementById('util-fotos-wrap');
+    if(wrap){
+      const pill=document.createElement('div');
+      pill.className='fm-ev-pill';
+      pill.onclick=()=>fmVerFoto({src:sellada,meta});
+      pill.innerHTML=`<img src="${sellada}" style="width:56px;height:56px;object-fit:cover;border-radius:6px"><div style="font-size:9px;font-family:'JetBrains Mono',monospace;color:#374151;margin-top:2px">${meta.codigo}</div>`;
+      pill.style.cssText='display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;';
+      wrap.appendChild(pill);
+    }
+
+    // Actualizar contador en botón
+    const cnt=document.querySelector('#util-fotos-wrap')?.children?.length||0;
+    toast(`Foto ${cnt} registrada · ${meta.codigo}`,'ok');
+    document.body.removeChild(inp);
+  };
+
+  // Activar cámara
+  inp.click();
 };
 
 window.utilSiguiente=function(){
