@@ -124,6 +124,10 @@ let db, fs;
 const db = window.db;
 let fs;
 (async()=>{fs=await import('https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js');})();
+const db=window.db;
+import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js').then(m=>{window._flFs=m;});
+const db=window.db;
+const fs=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js').catch(()=>null);  
 let flV=[], flS=[], flCom=[];
 let vistaAct='panel';
 let ST={
@@ -436,7 +440,8 @@ function rpVacio(){return`<div class="fl-empty" style="min-height:300px"><div cl
 // INIT
 window.cargarFlotilla=async function(){
   injectCSS();buildHTML();
-  await Promise.all([ldVehs(),ldSols(),ldComs()]);
+  if(!db||!fs){console.error('[FLOTILLA] db o fs no disponibles');return;}
+  await Promise.all([ldVehs(),ldSols(),ldComs()]);;
   renderSB();
   flVista('panel');
 };
