@@ -108,6 +108,19 @@ const I={
 };
 
 // ESTADO
+let db, fs;
+(async () => {
+  const _fsm = await import('https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js');
+  fs = _fsm;
+  const { getFirestore } = _fsm;
+  const { getApps } = await import('https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js');
+  const apps = getApps();
+  if (apps.length) {
+    db = getFirestore(apps[0]);
+  } else if (window.db) {
+    db = window.db;
+  }
+})();  
 let flV=[], flS=[], flCom=[];
 let vistaAct='panel';
 let ST={
