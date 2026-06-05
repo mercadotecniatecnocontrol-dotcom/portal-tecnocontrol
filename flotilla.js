@@ -273,9 +273,9 @@ function injectCSS(){
 .fl-rp-num{font-size:24px;font-weight:900;font-family:'JetBrains Mono',monospace;padding:0 12px 8px;line-height:1;border-bottom:1px solid #F1F5F9;}
 .fl-rp-row{padding:8px 14px;border-bottom:1px solid #F1F5F9;}
 .fl-rp-row dt{font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin-bottom:3px;}
-.fl-rp-row dd{font-size:13.5px;font-weight:700;color:#0A0F1E;line-height:1.2;}
-.fl-rp-row dd.big{font-size:15px;font-weight:900;letter-spacing:-.2px;}
-.fl-rp-row dd.mono{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.3px;}
+.fl-rp-row dd{font-size:13.5px;font-weight:700;color:#0A0F1E;line-height:1.2;word-break:break-word;overflow-wrap:break-word;}
+.fl-rp-row dd.big{font-size:13px;font-weight:800;letter-spacing:-.1px;word-break:break-word;overflow-wrap:break-word;}
+.fl-rp-row dd.mono{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.2px;word-break:break-all;overflow-wrap:break-word;}
 .fl-rp-row dd.green{color:#15803D;font-weight:800;}
 .fl-rp-row dd.red{color:#B91C1C;font-weight:800;}
 .fl-rp-docs{padding:10px 12px;border-bottom:1px solid #F1F5F9;}
@@ -385,6 +385,11 @@ function buildHTML(){
     </div>
     <div style="position:relative;margin-left:6px">
       <button class="fl-tab-btn" id="fl-tb-comis" onclick="flVista('comis')" title="Utilitarios">${I.truck}</button>
+    </div>
+    <div style="position:relative;margin-left:6px">
+      <button class="fl-tab-btn" id="fl-tb-compar" onclick="flVista('compar')" title="Comparativa semanal">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      </button>
     </div>
     <div style="position:relative;margin-left:6px">
       <button class="fl-tab-btn" id="fl-tb-bajas" onclick="flVista('bajas')" title="Vehículos de baja">${I.archive}</button>
@@ -507,6 +512,7 @@ window.flVista=function(v){
   if(v==='panel')rPanel();
   else if(v==='sols')rSols();
   else if(v==='comis')rComis();
+  else if(v==='compar')rCompar();
   else if(v==='bajas')rBajas();
   else if(v==='admin')rAdmin();
 };
@@ -1431,20 +1437,28 @@ window.flRPCarTo=function(i){
 
 window.flRPFoto=function(inp,vehId){
   const f=inp.files[0];if(!f)return;
+  if(f.size>800000){alert('La imagen es demasiado grande. Usa una imagen menor a 800KB.');inp.value='';return;}
   const r=new FileReader();
   r.onload=async e=>{
     const b64=e.target.result;
-    ST.evFotos.push(b64);
-    // Intentar guardar en Firestore
+    const v=flV.find(x=>x.id===vehId);
+    if(!v)return;
+    // Actualizar objeto local siempre
+    if(!v.fotos)v.fotos=[];
+    v.fotos.push(b64);
+    // Guardar en Firestore
     try{
       if(!vehId.startsWith('eco-')){
-        const v=flV.find(x=>x.id===vehId);
-        const fotos=[...(v?.fotos||[]),b64];
-        await fs.updateDoc(fs.doc(db,C.VEHS,vehId),{fotos}).catch(()=>{});
-        if(v)v.fotos=fotos;
+        // Vehículo ya en Firestore → update
+        await fs.updateDoc(fs.doc(db,C.VEHS,vehId),{fotos:v.fotos}).catch(()=>{});
+      } else {
+        // Vehículo solo en catálogo → crear documento en Firestore
+        const {id:newId,...vData}=v;
+        const docRef=await fs.addDoc(fs.collection(db,C.VEHS),{...vData,fotos:v.fotos,creadoEn:new Date().toISOString()}).catch(()=>null);
+        if(docRef){v.id=docRef.id;flMsgOk('Vehículo registrado en la base de datos con la foto.');}
       }
-    }catch{}
-    renderRP(vehId);
+    }catch(err){console.warn('[FL foto]',err);}
+    renderRP(v.id);
   };r.readAsDataURL(f);
 };
 
@@ -1615,6 +1629,16 @@ function rComis(){
       <select style="padding:7px 11px;border:1.5px solid #E2E8F0;border-radius:7px;font-family:inherit;font-size:12px;background:#fff;outline:none" id="fl-ce" onchange="flFCom()"><option value="">Todos los estados</option><option>En préstamo</option><option>Devuelto</option></select>
     </div>
     <div id="fl-com-r">${rComList(flCom)}</div>
+    ${flTrans.length ? `
+    <div style="margin-top:20px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <div style="flex:1">
+          <div style="font-size:14px;font-weight:900;letter-spacing:-.3px">Transferencias entre técnicos</div>
+          <div style="font-size:11px;color:#64748B;margin-top:1px">Registradas desde la app móvil · ${flTrans.length} registro(s)</div>
+        </div>
+      </div>
+      <div>${rTransList(flTrans)}</div>
+    </div>` : '<div style="margin-top:16px;padding:12px;background:#F8FAFD;border-radius:8px;border:1px dashed #CBD5E1;font-size:12px;color:#94A3B8;text-align:center">Sin transferencias registradas desde la app</div>'}
   `));
 }
 window.flFCom=function(){const t=document.getElementById('fl-ct')?.value||'';const e=document.getElementById('fl-ce')?.value||'';let r=flCom;if(t)r=r.filter(c=>c.tipo===t);if(e)r=r.filter(c=>c.estatus===e);document.getElementById('fl-com-r').innerHTML=rComList(r);};
@@ -1624,6 +1648,41 @@ function rComList(list){
     <div class="fl-comcard-h"><div style="display:flex;align-items:center;gap:10px"><span style="display:flex;align-items:center">${hEmo(flV.find(v=>v.eco===c.vehiculoEco)?.tipo||'auto')}</span><div><div style="font-size:13px;font-weight:800">ECO ${c.vehiculoEco||'—'} · ${c.vehiculo?.split('·')[1]?.trim()||''}</div><div style="font-size:11px;color:#64748B;margin-top:1px">${c.tipo||'—'} · ${c.responsable||'—'}</div></div></div>${hBadge(c.estatus||'En préstamo')}</div>
     <div class="fl-comcard-b">${[['Fecha entrega',hF(c.fechaEntrega)],['Fecha regreso',c.fechaRegreso?hF(c.fechaRegreso):'—'],['KM entrega',c.kmEntrega||'—']].map(([l,v])=>`<dl><dt style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">${l}</dt><dd style="font-size:12px;font-weight:600">${v}</dd></dl>`).join('')}</div>
   </div>`).join('');
+}
+function rTransList(list){
+  if(!list.length)return'';
+  return list.map(t=>{
+    const vTipo=flV.find(v=>String(v.eco)===String(t.vehiculoEco))?.tipo||'camioneta';
+    const icoSvg=hEmo(vTipo).split('stroke="currentColor"').join('stroke="#1E3A5F"');
+    const firmaEnt=t.firmaEntrega?`<img src="${t.firmaEntrega}" style="height:40px;border:1px solid #E2E8F0;border-radius:5px;background:#F8FAFD" title="Firma entrega">`:'<span style="font-size:11px;color:#94A3B8">Sin firma</span>';
+    const firmaRec=t.firmaRecepcion?`<img src="${t.firmaRecepcion}" style="height:40px;border:1px solid #E2E8F0;border-radius:5px;background:#F8FAFD" title="Firma recepción">`:'<span style="font-size:11px;color:#94A3B8">Pendiente</span>';
+    const fotos=(t.fotos||[]).slice(0,3).map(f=>`<img src="${f}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;border:1px solid #E8EDF5;cursor:pointer" onclick="window.open('${f}','_blank')">`).join('');
+    const fecha=t.creadoEn?t.creadoEn.substring(0,10):'—';
+    return`<div class="fl-comcard" style="margin-bottom:10px">
+      <div class="fl-comcard-h" style="margin-bottom:8px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="display:flex;align-items:center">${icoSvg}</span>
+          <div>
+            <div style="font-size:13px;font-weight:800">ECO ${t.vehiculoEco||'—'} · ${t.vehiculoUnidad||'—'}</div>
+            <div style="font-size:10.5px;color:#64748B;font-family:'JetBrains Mono',monospace;margin-top:1px">${t.codigo||'—'}</div>
+          </div>
+        </div>
+        ${hBadge(t.estatus||'Completada')}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;background:#F8FAFD;border-radius:8px;padding:8px;margin-bottom:8px;border:1px solid #E8EDF5">
+        <dl><dt style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">Entrega</dt><dd style="font-size:11.5px;font-weight:600;word-break:break-word">${t.entregaNombre||t.entregaEmail||'—'}</dd></dl>
+        <dl><dt style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">Recibe</dt><dd style="font-size:11.5px;font-weight:600;word-break:break-word">${t.recibioNombre||t.recibioEmail||'Pendiente'}</dd></dl>
+        <dl><dt style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">KM</dt><dd style="font-size:11.5px;font-weight:600">${t.km||'—'}</dd></dl>
+        <dl><dt style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">Gasolina</dt><dd style="font-size:11.5px;font-weight:600">${t.gasolina!=null?t.gasolina+'%':'—'}</dd></dl>
+        <dl style="grid-column:1/-1"><dt style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">Fecha</dt><dd style="font-size:11.5px;font-weight:600">${fecha}</dd></dl>
+      </div>
+      ${fotos?`<div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">${fotos}</div>`:''}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div><div style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:4px">Firma entrega</div>${firmaEnt}</div>
+        <div><div style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:4px">Firma recepción</div>${firmaRec}</div>
+      </div>
+    </div>`;
+  }).join('');
 }
 window.flAbrirCom=function(){
   const vehs=flV.filter(v=>!v.status||v.status==='activo');
@@ -1636,8 +1695,8 @@ window.flAbrirCom=function(){
       <div class="fl-fld"><label>Motivo / Destino</label><textarea id="fl-cmo" style="min-height:55px"></textarea></div>
       <div class="fl-fr"><div class="fl-fld"><label>Fecha entrega</label><input type="date" id="fl-cfe" value="${new Date().toISOString().slice(0,10)}"></div><div class="fl-fld"><label>Fecha regreso</label><input type="date" id="fl-cfr"></div></div>
       <div class="fl-fr"><div class="fl-fld"><label>KM al entregar</label><input type="number" id="fl-ckm"></div><div class="fl-fld"><label>Gasolina</label><select id="fl-cga"><option>Lleno</option><option>3/4</option><option>1/2</option><option>1/4</option><option>Vacío</option></select></div></div>
-      <div class="fl-fld"><label>${I.camera} Evidencias entrega</label><label class="fl-up" onclick="document.getElementById('fl-cevi').click()">${I.upload} Subir fotos</label><input type="file" id="fl-cevi" accept="image/*" multiple style="display:none" onchange="Array.from(this.files).forEach(f=>{const r=new FileReader();r.onload=e=>{comEv.push(e.target.result);};r.readAsDataURL(f);})"><div class="fl-pills" id="fl-cep"></div></div>
-      <div class="fl-fa"><button class="fb gho" onclick="this.closest('.fl-ov').remove()">Cancelar</button><button class="fb acc" onclick="flGCom(comEv)">${I.check} Registrar</button></div>
+      <div class="fl-fld"><label>${I.camera} Evidencias entrega</label><label class="fl-up" onclick="document.getElementById('fl-cevi').click()">${I.upload} Subir fotos</label><input type="file" id="fl-cevi" accept="image/*" multiple style="display:none" onchange="Array.from(this.files).forEach(f=>{const r=new FileReader();r.onload=e=>{window.flComEv.push(e.target.result);};r.readAsDataURL(f);})"><div class="fl-pills" id="fl-cep"></div></div>
+      <div class="fl-fa"><button class="fb gho" onclick="this.closest('.fl-ov').remove()">Cancelar</button><button class="fb acc" onclick="flGCom(window.flComEv)">${I.check} Registrar</button></div>
     </div></div></div>`;
   document.body.appendChild(ov);ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
 };
@@ -1673,6 +1732,76 @@ window.flCCom=async function(id,rEv){
     const c=flCom.find(x=>x.id===id);if(c){const v=flV.find(x=>x.id===c.vehiculoId);if(v&&!v.id.startsWith('eco-'))await fs.updateDoc(fs.doc(db,C.VEHS,v.id),{status:'activo',km:Number(km)||v.km}).catch(()=>{});}
     document.querySelector('.fl-ov')?.remove();await ldComs();rComis();}catch(e){console.error('[FL]',e);alert('Error: '+e.message);}
 };
+
+// ── COMPARATIVA SEMANAL ──
+function rCompar(){
+  const hoy=new Date();
+  const inicioAct=new Date(hoy);inicioAct.setDate(hoy.getDate()-hoy.getDay());inicioAct.setHours(0,0,0,0);
+  const inicioAnt=new Date(inicioAct);inicioAnt.setDate(inicioAct.getDate()-7);
+  const finAnt=new Date(inicioAct);finAnt.setSeconds(-1);
+  const fmt=d=>d?d.toLocaleDateString('es-MX',{day:'2-digit',month:'short'}):'—';
+  const label='Sem. actual: '+fmt(inicioAct)+' — '+fmt(hoy)+' · Sem. anterior: '+fmt(inicioAnt)+' — '+fmt(finAnt);
+  const enSem=(s,ini,fin)=>{const f=new Date(s.creadoEn||0);return f>=ini&&f<=fin;};
+  const solAct=flS.filter(s=>enSem(s,inicioAct,hoy));
+  const solAnt=flS.filter(s=>enSem(s,inicioAnt,finAnt));
+  const pvDias=v=>hD(v.pv);
+  const pvStyle=v=>{const d=pvDias(v);return d===null?'#15803D':d<0?'#B91C1C':d<30?'#D97706':'#15803D';};
+  const pvText=v=>{const d=pvDias(v);return d===null?'OK':d<0?'VENCIDA':d+'d';};
+  const flecha=(a,b)=>{
+    if(a>b)return '<span style="color:#15803D;font-size:10px">▲'+(a-b)+'</span>';
+    if(a<b)return '<span style="color:#B91C1C;font-size:10px">▼'+(b-a)+'</span>';
+    return '<span style="color:#94A3B8;font-size:10px">—</span>';
+  };
+  const vehs=flV.filter(v=>v.status!=='baja');
+  const rows=vehs.map(v=>{
+    const sA=solAct.filter(s=>s.vehiculoEco===v.eco);
+    const sB=solAnt.filter(s=>s.vehiculoEco===v.eco);
+    const kmA=sA.reduce((a,s)=>a+(Number(s.kilometrajeReportado)||0),0);
+    const kmB=sB.reduce((a,s)=>a+(Number(s.kilometrajeReportado)||0),0);
+    const tr=flTrans.filter(t=>String(t.vehiculoEco)===String(v.eco));
+    const hasData=sA.length>0||sB.length>0||tr.length>0;
+    return{v,sA,sB,kmA,kmB,tr,hasData};
+  }).filter(r=>r.hasData);
+  const thStyle='text-align:center;padding:8px 6px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#64748B;border-bottom:2px solid #E2E8F0;white-space:nowrap';
+  const tdC='text-align:center;padding:8px 6px;';
+  let body='';
+  if(rows.length===0){
+    body='<div class="fl-empty" style="min-height:200px"><div class="fl-empty-ico"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="1.5"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div><h3>Sin datos esta semana</h3><p>No hay solicitudes ni transferencias en las últimas dos semanas.</p></div>';
+  } else {
+    let trs='';
+    rows.forEach((r,i)=>{
+      const bg=i%2===0?'background:#fff':'background:#FAFBFD';
+      trs+='<tr style="border-bottom:1px solid #F1F5F9;'+bg+'">'+
+        '<td style="padding:8px 10px"><div style="font-weight:700;font-size:12px">'+r.v.unidad+'</div>'+
+        '<div style="font-size:10px;color:#64748B;font-family:\'JetBrains Mono\',monospace">ECO '+r.v.eco+' · '+(r.v.plaza||'—')+'</div></td>'+
+        '<td style="'+tdC+'font-weight:700">'+r.sA.length+' '+flecha(r.sA.length,r.sB.length)+'</td>'+
+        '<td style="'+tdC+'color:#64748B">'+r.sB.length+'</td>'+
+        '<td style="'+tdC+'font-size:11px"><div style="font-weight:700">'+(r.kmA?r.kmA.toLocaleString():'—')+'</div>'+
+        (r.kmB?'<div style="font-size:9.5px;color:#94A3B8">ant. '+r.kmB.toLocaleString()+'</div>':'')+'</td>'+
+        '<td style="'+tdC+'"><span style="font-size:10px;font-weight:800;color:'+pvStyle(r.v)+'">'+pvText(r.v)+'</span></td>'+
+        '<td style="'+tdC+'font-size:11px;font-weight:700">'+(r.tr.length||'—')+'</td>'+
+        '</tr>';
+    });
+    body='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">'+
+      '<thead><tr style="background:#F1F5F9">'+
+      '<th style="text-align:left;padding:8px 10px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#64748B;border-bottom:2px solid #E2E8F0">Vehículo</th>'+
+      '<th style="'+thStyle+'">Sol. act.</th>'+
+      '<th style="'+thStyle+'">Sol. ant.</th>'+
+      '<th style="'+thStyle+'">KM act.</th>'+
+      '<th style="'+thStyle+'">Póliza</th>'+
+      '<th style="'+thStyle+'">Transf.</th>'+
+      '</tr></thead><tbody>'+trs+'</tbody></table></div>';
+  }
+  setContent(padded(
+    '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4px">'+
+    '<div style="font-size:17px;font-weight:900;letter-spacing:-.4px">Comparativa semanal</div>'+
+    '<button class="fb gho" onclick="rCompar()" style="font-size:11px;display:inline-flex;align-items:center;gap:4px">'+
+    '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4"/></svg>Actualizar</button></div>'+
+    '<div style="font-size:11px;color:#64748B;margin-bottom:14px">'+label+'</div>'+
+    body
+  ));
+}
+window.rCompar=rCompar;
 
 // ── BAJAS ──
 function rBajas(){
