@@ -127,6 +127,17 @@ const SVG_CMT=`<svg width="28" height="28" viewBox="0 0 24 24" fill="none" strok
 const SVG_AUTO=`<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17H3a2 2 0 01-2-2V9a2 2 0 012-2h11a2 2 0 012 2v6h-2"/><path d="M7 9l2-4h6l2 4"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>`;
 const hEmo=t=>t==='camion'?SVG_CAM:t==='camioneta'?SVG_CMT:SVG_AUTO;
 
+window.flLightbox=function(src){
+  const ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:99999;display:flex;align-items:center;justify-content:center;cursor:zoom-out;padding:20px';
+  const img=document.createElement('img');
+  img.src=src;
+  img.style.cssText='max-width:90vw;max-height:90vh;object-fit:contain;border-radius:8px;box-shadow:0 20px 60px rgba(0,0,0,.5)';
+  ov.appendChild(img);
+  ov.onclick=()=>ov.remove();
+  document.body.appendChild(ov);
+};
+
 function hBadge(e){
   const m={Solicitud:['#EDE9FE','#6D28D9'],Validada:['#DBEAFE','#1D4ED8'],Cotización:['#FEF3C7','#B45309'],Aprobada:['#DCFCE7','#15803D'],Rechazada:['#FEE2E2','#B91C1C'],Cierre:['#F3E8FF','#7C3AED'],Cerrada:['#F1F5F9','#475569'],'En préstamo':['#EDE9FE','#6D28D9'],Devuelto:['#DCFCE7','#15803D']};
   const[bg,cl]=m[e]||['#F1F5F9','#475569'];
@@ -1271,6 +1282,8 @@ window.flVerEvidencia=function(ev){
   ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
 };
 
+
+
 // Actualizar pills de evidencias generales
 function actualizarPillsEv(){
   const p=document.getElementById('fl-ev-pills');
@@ -1562,6 +1575,8 @@ window.flCompararEvidencias=function(eco){
   ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
 };
 
+
+
 // VER SOLICITUD EXISTENTE
 window.flVerSol=function(id){
   const s=flS.find(x=>x.id===id);if(!s)return;
@@ -1656,7 +1671,7 @@ function rTransList(list){
     const icoSvg=hEmo(vTipo).split('stroke="currentColor"').join('stroke="#1E3A5F"');
     const firmaEnt=t.firmaEntrega?`<img src="${t.firmaEntrega}" style="height:40px;border:1px solid #E2E8F0;border-radius:5px;background:#F8FAFD" title="Firma entrega">`:'<span style="font-size:11px;color:#94A3B8">Sin firma</span>';
     const firmaRec=t.firmaRecepcion?`<img src="${t.firmaRecepcion}" style="height:40px;border:1px solid #E2E8F0;border-radius:5px;background:#F8FAFD" title="Firma recepción">`:'<span style="font-size:11px;color:#94A3B8">Pendiente</span>';
-    const fotos=(t.fotos||[]).slice(0,3).map(f=>`<img src="${f}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;border:1px solid #E8EDF5;cursor:pointer" onclick="window.open('${f}','_blank')">`).join('');
+    const fotos=(t.fotos||[]).slice(0,3).map(f=>`<img src="${f}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;border:1px solid #E8EDF5;cursor:pointer" onclick="flLightbox('${f}')">`).join('');
     const fecha=t.creadoEn?t.creadoEn.substring(0,10):'—';
     return`<div class="fl-comcard" style="margin-bottom:10px">
       <div class="fl-comcard-h" style="margin-bottom:8px">
@@ -1859,7 +1874,7 @@ window.flVerComparVeh=function(eco){
     const modo=sol.modo||'—';
     // Fotos generales
     const fotosHtml=evFotos.length
-      ? '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">'+evFotos.slice(0,6).map(f=>'<img src="'+f+'" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid #E2E8F0;cursor:pointer" onclick="window.open(\''+f+'\',\'_blank\')" title="Ver foto completa">').join('')+'</div>'
+      ? '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">'+evFotos.slice(0,6).map(f=>'<img src="'+f+'" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid #E2E8F0;cursor:pointer" onclick="flLightbox(this.src)" title="Ver foto completa">').join('')+'</div>'
       : '<div style="font-size:11px;color:#94A3B8;margin-bottom:12px">Sin fotos</div>';
     // Checklist por categoría
     let chkHtml='';
@@ -1873,9 +1888,9 @@ window.flVerComparVeh=function(eco){
         const isNo=val==='no';
         if(isNo)catAlerta=true;
         const dot=val==='si'?'<span style="color:#15803D;font-weight:900;font-size:13px">✓</span>':val==='no'?'<span style="color:#B91C1C;font-weight:900;font-size:13px">✗</span>':'<span style="color:#CBD5E1;font-size:13px">○</span>';
-        const fotoEl=foto?'<img src="'+foto+'" style="width:28px;height:28px;object-fit:cover;border-radius:5px;cursor:pointer;border:1px solid '+(isNo?'#FCA5A5':'#E2E8F0')+'" onclick="window.open(\''+foto+'\',\'_blank\')" title="'+item+'">':'';
+        const fotoEl=foto?'<img src="'+foto+'" style="width:28px;height:28px;object-fit:cover;border-radius:5px;cursor:pointer;border:1px solid '+(isNo?'#FCA5A5':'#E2E8F0')+'" onclick="flLightbox(this.src)" title="'+item+'">':'';
         catItems+='<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;border-bottom:1px solid #F8FAFD;gap:6px">'+
-          '<span style="font-size:11px;color:'+(isNo?'#B91C1C':'#334155');+(val===''?';opacity:.6':'')+'">'+item+'</span>'+
+          '<span style="font-size:11px;color:'+(isNo?'#B91C1C':'#334155')+(val===''?';opacity:.6':'')+'">'+item+'</span>'+
           '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0">'+fotoEl+dot+'</div>'+
           '</div>';
       });
@@ -1932,6 +1947,8 @@ window.flVerComparVeh=function(eco){
   document.body.appendChild(ov);
   ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
 };
+
+
 
 // ── BAJAS ──
 function rBajas(){
