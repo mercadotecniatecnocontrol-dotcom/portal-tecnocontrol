@@ -1006,72 +1006,184 @@ async function rh360CargarEmpleados(){
         const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
         const snap = await fs.getDocs(fs.collection(db,'rh_empleados'));
         if(!snap.empty){
-            rh360Empleados = snap.docs.map(d=>({id:d.id,...d.data()}));
-            console.log('[RH360] Empleados cargados desde Firestore:', rh360Empleados.length);
+            const todos = snap.docs.map(d=>({id:d.id,...d.data()}));
+            // Deduplicar en memoria por nombre+puesto
+            const vistos = new Set();
+            rh360Empleados = todos.filter(e=>{
+                const key = (e.nombre||'').trim().toUpperCase()+'__'+(e.puesto||e.cargo||'').trim().toUpperCase();
+                if(!e.nombre||e.nombre.trim().length<2) return false;
+                if(vistos.has(key)) return false;
+                vistos.add(key);
+                return true;
+            });
+            console.log('[RH360] Firestore: '+todos.length+' docs → '+rh360Empleados.length+' únicos');
+            // Si hay muchos duplicados (más del doble), limpiar Firestore automáticamente
+            if(todos.length > rh360Empleados.length * 1.5){
+                console.warn('[RH360] Detectados '+todos.length+' duplicados — limpiando...');
+                rh360LimpiarDuplicados(todos, fs);
+            }
             return;
         }
     } catch(e){ console.warn('[RH360] Firestore no disponible:', e.message); }
 
-    // Fallback: leer Sheet CSV
+    // Firestore vacío → leer Sheet CSV
     try {
         const r = await fetch(RH360_SHEET_CSV);
         const csv = await r.text();
-        rh360Empleados = rh360ParseCSV(csv);
-        console.log('[RH360] Empleados cargados desde Sheet:', rh360Empleados.length);
-        // Guardar en Firestore para próximas veces
-        rh360SincronizarSheet(rh360Empleados);
+        const parsed = rh360ParseCSV(csv);
+        console.log('[RH360] Sheet: '+parsed.length+' colaboradores');
+        rh360Empleados = parsed;
+        if(parsed.length > 0) rh360SincronizarSheet(parsed);
     } catch(e){
         console.error('[RH360] Error cargando Sheet:', e.message);
         rh360Empleados = [];
     }
 }
 
-// ── Parsear CSV del Sheet ──
-function rh360ParseCSV(csv){
-    const lines = csv.split('\n').filter(l=>l.trim());
-    if(lines.length < 2) return [];
-    const headers = lines[0].split(',').map(h=>h.replace(/\r/g,'').trim().toLowerCase()
-        .replace(/\s+/g,'_').replace(/[áàä]/g,'a').replace(/[éèë]/g,'e')
-        .replace(/[íìï]/g,'i').replace(/[óòö]/g,'o').replace(/[úùü]/g,'u')
-        .replace(/[^a-z0-9_]/g,''));
-    return lines.slice(1).map((line,i)=>{
-        // Parseo simple respetando comas dentro de comillas
-        const vals = [];
-        let cur='', inQ=false;
-        for(const ch of line){
-            if(ch==='"'){inQ=!inQ;}
-            else if(ch===','&&!inQ){vals.push(cur.trim());cur='';}
-            else cur+=ch;
+// ── Limpiar duplicados en Firestore: conservar uno por nombre+puesto ──
+async function rh360LimpiarDuplicados(todos, fs){
+    try {
+        const vistos = new Set();
+        const borrar = [];
+        // Ordenar por creadoEn para conservar el más reciente
+        const ord = [...todos].sort((a,b)=>(b.creadoEn||'').localeCompare(a.creadoEn||''));
+        ord.forEach(e=>{
+            const key = (e.nombre||'').trim().toUpperCase()+'__'+(e.puesto||'').trim().toUpperCase();
+            if(!e.nombre||e.nombre.trim().length<2){borrar.push(e.id);return;}
+            if(vistos.has(key)){borrar.push(e.id);}
+            else vistos.add(key);
+        });
+        console.log('[RH360] Borrando '+borrar.length+' duplicados de Firestore...');
+        // Borrar en lotes de 20 para no saturar
+        for(let i=0;i<borrar.length;i+=20){
+            const lote=borrar.slice(i,i+20);
+            await Promise.all(lote.map(id=>fs.deleteDoc(fs.doc(db,'rh_empleados',id)).catch(()=>{})));
         }
-        vals.push(cur.trim());
-        const obj={id:'sheet_'+i};
-        headers.forEach((h,j)=>{ obj[h]=vals[j]?.replace(/\r/g,'').trim()||''; });
-        // Normalizar campos clave
-        if(!obj.nombre&&obj.nombre_completo) obj.nombre=obj.nombre_completo;
-        if(!obj.nombre&&obj.colaborador) obj.nombre=obj.colaborador;
-        if(!obj.departamento&&obj.depto) obj.departamento=obj.depto;
-        if(!obj.departamento&&obj.area) obj.departamento=obj.area;
-        if(!obj.plaza&&obj.sucursal) obj.plaza=obj.sucursal;
-        if(!obj.fecha_ingreso&&obj.ingreso) obj.fecha_ingreso=obj.ingreso;
-        if(!obj.estatus) obj.estatus='activo';
-        return obj;
-    }).filter(e=>e.nombre&&e.nombre.length>1);
+        console.log('[RH360] Limpieza completada');
+    } catch(e){ console.warn('[RH360] Error limpiando duplicados:', e.message); }
 }
 
-// ── Sincronizar Sheet → Firestore (no duplicar) ──
+// ── Parsear CSV del Sheet ──
+// Detecta automáticamente las columnas reales del Sheet
+function rh360ParseCSV(csv){
+    const rawLines = csv.split('\n');
+    // Encontrar la primera fila que parezca un header real (tiene varias celdas no vacías)
+    let headerIdx = 0;
+    for(let i=0;i<Math.min(5,rawLines.length);i++){
+        const cells = rawLines[i].split(',').filter(c=>c.trim().length>0);
+        if(cells.length >= 3){headerIdx=i;break;}
+    }
+    const lines = rawLines.slice(headerIdx).filter(l=>l.trim());
+    if(lines.length < 2) return [];
+
+    // Parsear una línea CSV respetando comillas
+    function parseLine(line){
+        const vals=[];let cur='',inQ=false;
+        for(const ch of line){
+            if(ch==='"'){inQ=!inQ;}
+            else if(ch===','&&!inQ){vals.push(cur.replace(/\r/g,'').trim());cur='';}
+            else cur+=ch;
+        }
+        vals.push(cur.replace(/\r/g,'').trim());
+        return vals;
+    }
+
+    // Normalizar nombre de columna
+    function normCol(h){
+        return h.toLowerCase()
+            .replace(/\s+/g,'_')
+            .replace(/[áàäâ]/g,'a').replace(/[éèëê]/g,'e')
+            .replace(/[íìïî]/g,'i').replace(/[óòöô]/g,'o').replace(/[úùüû]/g,'u')
+            .replace(/[ñ]/g,'n').replace(/[^a-z0-9_]/g,'').replace(/_+/g,'_').replace(/^_|_$/g,'');
+    }
+
+    const rawHeaders = parseLine(lines[0]);
+    const headers = rawHeaders.map(normCol);
+    console.log('[RH360] Columnas detectadas:', headers.join(' | '));
+
+    // Mapa de columnas conocidas a campos internos
+    const MAPA = {
+        // Nombre
+        nombre:['nombre','nombre_completo','colaborador','empleado','trabajador','nombre_trabajador'],
+        puesto:['puesto','cargo','posicion','puesto_cargo','descripcion_puesto'],
+        departamento:['departamento','depto','area','departamento_area','unidad'],
+        plaza:['plaza','sucursal','ubicacion','sede','ciudad'],
+        fecha_ingreso:['fecha_ingreso','fecha_alta','ingreso','fecha_de_ingreso','alta','f_ingreso'],
+        estatus:['estatus','status','situacion','estado'],
+        num_empleado:['num_empleado','numero_empleado','no_empleado','id_empleado','clave','folio'],
+        curp:['curp'],
+        rfc:['rfc'],
+        nss:['nss','imss','seguro_social'],
+        email:['email','correo','correo_electronico','correo_corporativo','mail'],
+        telefono:['telefono','tel','celular','phone'],
+        jefe:['jefe','jefe_directo','responsable','supervisor','gerente'],
+        tipo_contrato:['tipo_contrato','contrato','tipo_de_contrato'],
+        fecha_nacimiento:['fecha_nacimiento','nacimiento','f_nacimiento'],
+    };
+
+    // Construir mapa de índice real por campo interno
+    const colIdx = {};
+    Object.entries(MAPA).forEach(([campo,alternativas])=>{
+        const idx = headers.findIndex(h=>alternativas.includes(h));
+        if(idx>=0) colIdx[campo]=idx;
+    });
+    console.log('[RH360] Campos mapeados:', Object.keys(colIdx).join(', '));
+
+    const result = [];
+    const nombresSeen = new Set();
+
+    lines.slice(1).forEach((line,i)=>{
+        const vals = parseLine(line);
+        if(vals.every(v=>!v)) return; // fila vacía
+
+        const obj={id:'sheet_'+i};
+        // Asignar por mapa de campos
+        Object.entries(colIdx).forEach(([campo,idx])=>{
+            obj[campo] = vals[idx]||'';
+        });
+        // Fallback: asignar todas las columnas también (por si alguna coincide)
+        headers.forEach((h,j)=>{ if(h&&!obj[h]) obj[h]=vals[j]||''; });
+
+        if(!obj.estatus) obj.estatus='activo';
+
+        // Filtrar filas sin nombre o con nombre muy corto
+        const nombre=(obj.nombre||'').trim();
+        if(nombre.length<2) return;
+
+        // Deduplicar por nombre
+        const key=nombre.toUpperCase();
+        if(nombresSeen.has(key)) return;
+        nombresSeen.add(key);
+
+        result.push(obj);
+    });
+
+    return result;
+}
+
+// ── Sincronizar Sheet → Firestore (solo si Firestore está vacío) ──
 async function rh360SincronizarSheet(empleados){
     try {
         const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-        const batch = fs.writeBatch(db);
-        for(const emp of empleados){
-            if(emp.id.startsWith('sheet_')){
-                const ref = fs.doc(fs.collection(db,'rh_empleados'));
-                const {id,...data} = emp;
-                batch.set(ref,{...data,importadoSheet:true,creadoEn:new Date().toISOString()});
-            }
+        // Verificar de nuevo que Firestore esté vacío antes de escribir
+        const check = await fs.getDocs(fs.query(fs.collection(db,'rh_empleados'),fs.limit(1)));
+        if(!check.empty){
+            console.log('[RH360] Firestore ya tiene datos — no sincronizar');
+            return;
         }
-        await batch.commit();
-        console.log('[RH360] Sheet sincronizado a Firestore');
+        // Escribir en lotes de 400 (límite Firestore es 500)
+        const BATCH_SIZE=400;
+        for(let i=0;i<empleados.length;i+=BATCH_SIZE){
+            const lote=empleados.slice(i,i+BATCH_SIZE);
+            const batch=fs.writeBatch(db);
+            lote.forEach(emp=>{
+                const ref=fs.doc(fs.collection(db,'rh_empleados'));
+                const {id,...data}=emp;
+                batch.set(ref,{...data,importadoSheet:true,creadoEn:new Date().toISOString()});
+            });
+            await batch.commit();
+        }
+        console.log('[RH360] '+empleados.length+' colaboradores sincronizados a Firestore');
     } catch(e){ console.warn('[RH360] No se pudo sincronizar Sheet:', e.message); }
 }
 
