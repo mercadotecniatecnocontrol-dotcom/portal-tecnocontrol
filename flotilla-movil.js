@@ -196,6 +196,69 @@ async function offlineSync(){
     if(vistaAct==='vehiculo')renderVehiculo();
   }
 }
+window.fmSyncOffline=async function(){
+  const q=JSON.parse(localStorage.getItem(C.OFFLINE_KEY)||'[]');
+  if(!q.length){toast('No hay solicitudes pendientes','info');return;}
+  if(!onlineStatus){toast('Sin conexión — intenta más tarde','err');return;}
+  toast('Sincronizando…','info');
+  let ok=0,fail=0;
+  for(const doc of q){
+    try{
+      const {_offlineId,_pendiente,...clean}=doc;
+      await db.collection(C.SOLS).add({...clean,sincronizadoOffline:true});
+      ok++;
+    }catch{fail++;}
+  }
+  if(ok>0)localStorage.setItem(C.OFFLINE_KEY,'[]');
+  toast(ok+' sincronizada(s)'+(fail?' · '+fail+' error(es)':''),'ok');
+  await cargarMisSols();
+  if(vistaAct==='vehiculo')renderVehiculo();
+};
+
+window.fmVerOffline=function(){
+  const q=JSON.parse(localStorage.getItem(C.OFFLINE_KEY)||'[]');
+  const ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:flex-end;justify-content:center;padding:0';
+  const panel=document.createElement('div');
+  panel.style.cssText='background:#fff;width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:20px;max-height:80vh;overflow-y:auto';
+  const cerrar=()=>ov.remove();
+  const hdr=document.createElement('div');
+  hdr.style.cssText='display:flex;align-items:center;justify-content:space-between;margin-bottom:14px';
+  const tit=document.createElement('div');tit.style.cssText='font-size:15px;font-weight:900';tit.textContent='Solicitudes pendientes';
+  const bX=document.createElement('button');bX.style.cssText='background:none;border:none;font-size:18px;cursor:pointer;color:#64748B';bX.textContent='x';bX.onclick=cerrar;
+  hdr.appendChild(tit);hdr.appendChild(bX);panel.appendChild(hdr);
+  if(q.length===0){
+    const v=document.createElement('div');v.style.cssText='text-align:center;padding:20px;color:#94A3B8;font-size:13px';v.textContent='No hay solicitudes pendientes';panel.appendChild(v);
+  } else {
+    q.forEach(function(doc,i){
+      const card=document.createElement('div');card.style.cssText='border:1px solid #E2E8F0;border-radius:10px;padding:12px;margin-bottom:8px';
+      const row=document.createElement('div');row.style.cssText='display:flex;align-items:flex-start;justify-content:space-between;gap:8px';
+      const info=document.createElement('div');
+      info.innerHTML='<div style="font-size:12px;font-weight:700">'+(doc.tipo||'—')+'</div><div style="font-size:10.5px;color:#64748B;margin-top:2px">ECO '+(doc.vehiculoEco||'—')+' · '+(doc.creadoEn?doc.creadoEn.substring(0,10):'—')+'</div><div style="font-size:10.5px;color:#94A3B8;margin-top:1px">'+(doc.descripcion||'')+'</div>';
+      const bD=document.createElement('button');bD.style.cssText='padding:4px 10px;background:#FEE2E2;color:#B91C1C;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;flex-shrink:0';bD.textContent='Borrar';
+      bD.dataset.idx=i;bD.onclick=function(){fmBorrarOffline(Number(this.dataset.idx),this);};
+      row.appendChild(info);row.appendChild(bD);card.appendChild(row);panel.appendChild(card);
+    });
+  }
+  const footer=document.createElement('div');footer.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px';
+  const bS=document.createElement('button');bS.style.cssText='padding:10px;background:#0A1628;color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer';bS.textContent='Sincronizar todo';bS.onclick=function(){fmSyncOffline();cerrar();};
+  const bB=document.createElement('button');bB.style.cssText='padding:10px;background:#FEE2E2;color:#B91C1C;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer';bB.textContent='Borrar todas';bB.onclick=function(){if(confirm('Borrar todas las solicitudes pendientes?')){localStorage.setItem(C.OFFLINE_KEY,'[]');cerrar();renderVehiculo();}};
+  footer.appendChild(bS);footer.appendChild(bB);panel.appendChild(footer);
+  ov.appendChild(panel);ov.addEventListener('click',function(e){if(e.target===ov)cerrar();});
+  document.body.appendChild(ov);
+};
+
+window.fmBorrarOffline=function(idx,btn){
+  if(!confirm('Borrar esta solicitud pendiente?'))return;
+  const q=JSON.parse(localStorage.getItem(C.OFFLINE_KEY)||'[]');
+  q.splice(idx,1);
+  localStorage.setItem(C.OFFLINE_KEY,JSON.stringify(q));
+  btn.closest('div').parentElement.remove();
+  toast('Solicitud eliminada','ok');
+  if(vistaAct==='vehiculo')renderVehiculo();
+};
+
+
 
 // ── CSS MÓVIL ──
 function injectCSS(){
@@ -587,8 +650,14 @@ function renderVehiculo(){
       </button>
     </div>
 
-    ${offline.length?`<div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px;margin-bottom:12px;display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:#B45309">
-      ${IC.wifi} ${offline.length} solicitud(es) pendiente(s) de sincronizar
+    ${offline.length?`<div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:#B45309">${IC.wifi} ${offline.length} solicitud(es) sin sincronizar</div>
+        <div style="display:flex;gap:6px">
+          <button onclick="fmSyncOffline()" style="padding:5px 10px;background:#B45309;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">Sincronizar</button>
+          <button onclick="fmVerOffline()" style="padding:5px 10px;background:rgba(180,83,9,.15);color:#B45309;border:1px solid #FDE68A;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">Ver / Borrar</button>
+        </div>
+      </div>
     </div>`:''}
 
     <!-- CARD VEHÍCULO -->
@@ -899,6 +968,24 @@ window.fmChk=function(key,val){
   if(cnt)cnt.textContent=`${rev} de ${total} revisados`;
 };
 
+// ── COMPRESIÓN DE IMAGEN ──
+function comprimirBase64(src,maxW,calidad){
+  maxW=maxW||900;calidad=calidad||0.72;
+  return new Promise(function(res){
+    var img=new Image();
+    img.onload=function(){
+      var ratio=Math.min(1,maxW/Math.max(img.width,img.height));
+      var w=Math.round(img.width*ratio);
+      var h=Math.round(img.height*ratio);
+      var c=document.createElement('canvas');c.width=w;c.height=h;
+      c.getContext('2d').drawImage(img,0,0,w,h);
+      res(c.toDataURL('image/jpeg',calidad));
+    };
+    img.onerror=function(){res(src);}; // fallback: usar original
+    img.src=src;
+  });
+}
+
 // ── CAPTURAR EVIDENCIA MÓVIL ──
 window.fmCapturar=async function(tipo,key){
   const inp=document.createElement('input');
@@ -914,6 +1001,8 @@ window.fmCapturar=async function(tipo,key){
     toast('Procesando evidencia…','info');
     const reader=new FileReader();
     reader.onload=async function(e){
+      // Comprimir ANTES de sellar para reducir el tamaño del documento Firestore
+      const raw=await comprimirBase64(e.target.result,900,0.72);
       const now=new Date();
       const meta={
         codigo:genCod(),
@@ -924,7 +1013,7 @@ window.fmCapturar=async function(tipo,key){
         usuario:window.auth?.currentUser?.displayName||window.auth?.currentUser?.email||'—',
         modo:solState.modo,tipo,key:key||null,
       };
-      const sellada=await sellarImg(e.target.result,meta);
+      const sellada=await sellarImg(raw,meta);
       if(tipo==='chk'&&key){
         solState.chkFotos[key]={src:sellada,meta};
         const cam=document.getElementById(`fm-cam-${key}`);
