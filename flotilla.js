@@ -18,7 +18,7 @@ const SVG_TROCA={
 };
 
 
-const C={VEHS:'flotilla_vehiculos',SOLS:'flotilla_solicitudes',COMIS:'flotilla_comisiones'};
+const C={VEHS:'flotilla_vehiculos',SOLS:'flotilla_solicitudes',COMIS:'flotilla_comisiones',TRANS:'flotilla_transferencias'};
 
 const CAT=[
   {eco:'15',unidad:'NISSAN NP300',     año:2017,plaza:'JUAREZ',    responsable:'JORGE GUERRERO',   placas:'DU6478A',serie:'3N6AD33A3HK869708',rend:'7 KM/L',   pv:'2026-09-24',pol:'794B05035M-17',tipo:'camioneta',color:'Blanco',nip:'OXXO GAS',km:0,status:'activo'},
@@ -109,7 +109,7 @@ const I={
 
 // ESTADO
 let db=window.db, fs=null;
-let flV=[], flS=[], flCom=[];
+let flV=[], flS=[], flCom=[], flTrans=[];
 let vistaAct='panel';
 let ST={
   vehId:null, tipoVeh:'auto', vistaImg:'frente', modo:'entrada',
@@ -122,7 +122,10 @@ const hD=f=>(!f||f==='—')?null:Math.round((new Date(f)-new Date())/864e5);
 const hF=iso=>iso&&iso!=='—'?String(iso).substring(0,10):'—';
 const hAdm=()=>['Administrador','Contraloría','Flotilla'].includes(window.flGetRolActual?window.flGetRolActual():'');
 const hP=a=>window.flTienePermiso?window.flTienePermiso(a):hAdm();
-const hEmo=t=>t==='camion'?'🚛':t==='camioneta'?'🛻':'🚗';
+const SVG_CAMION=`<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13" rx="1"/><path d="M16 8h4l3 5v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>`;
+const SVG_CAMIONETA=`<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17H3a2 2 0 01-2-2V5a2 2 0 012-2h11a2 2 0 012 2v3"/><rect x="9" y="11" width="14" height="10" rx="1"/><circle cx="12" cy="21" r="1"/><circle cx="20" cy="21" r="1"/></svg>`;
+const SVG_AUTO=`<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17H3a2 2 0 01-2-2V9a2 2 0 012-2h11a2 2 0 012 2v6h-2"/><path d="M7 9l2-4h6l2 4"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>`;
+const hEmo=t=>t==='camion'?SVG_CAMION:t==='camioneta'?SVG_CAMIONETA:SVG_AUTO;
 
 function hBadge(e){
   const m={Solicitud:['#EDE9FE','#6D28D9'],Validada:['#DBEAFE','#1D4ED8'],Cotización:['#FEF3C7','#B45309'],Aprobada:['#DCFCE7','#15803D'],Rechazada:['#FEE2E2','#B91C1C'],Cierre:['#F3E8FF','#7C3AED'],Cerrada:['#F1F5F9','#475569'],'En préstamo':['#EDE9FE','#6D28D9'],Devuelto:['#DCFCE7','#15803D']};
@@ -410,13 +413,13 @@ function buildHTML(){
       <div class="fl-sb-footer" id="fl-sb-footer"></div>
     </div>
     <div class="fl-content" id="fl-content">
-      <div class="fl-empty" style="min-height:60vh"><div class="fl-empty-ico">🚗</div><h3>Cargando flotilla…</h3></div>
+      <div class="fl-empty" style="min-height:60vh"><div class="fl-empty-ico">${SVG_AUTO}</div><h3>Cargando flotilla…</h3></div>
     </div>
     <div class="fl-rp" id="fl-rp">${rpVacio()}</div>
   </div>`;
 }
 
-function rpVacio(){return`<div class="fl-empty" style="min-height:300px"><div class="fl-empty-ico" style="font-size:32px">🚗</div><p style="font-size:11px">Selecciona un vehículo<br>para ver su información</p></div>`;}
+function rpVacio(){return`<div class="fl-empty" style="min-height:300px"><div class="fl-empty-ico">${SVG_AUTO}</div><p style="font-size:11px">Selecciona un vehículo<br>para ver su información</p></div>`;}
 
 // INIT
 window.cargarFlotilla=async function(){
@@ -426,7 +429,7 @@ window.cargarFlotilla=async function(){
   db=window.db;
   if(!db){console.error('[FLOTILLA] window.db no disponible después de 5s');return;}
   fs=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-  await Promise.all([ldVehs(),ldSols(),ldComs()]);
+  await Promise.all([ldVehs(),ldSols(),ldComs(),ldTrans()]);
   renderSB();
   flVista('panel');
 };
@@ -436,6 +439,7 @@ async function ldSols(){try{const s=await fs.getDocs(fs.collection(db,C.SOLS));f
   const c=document.getElementById('fl-cnt-s');if(c){c.textContent=p;c.style.display=p?'flex':'none';}
 }
 async function ldComs(){try{const s=await fs.getDocs(fs.collection(db,C.COMIS));flCom=s.docs.map(d=>({id:d.id,...d.data()}));}catch{flCom=[];}}
+async function ldTrans(){try{const s=await fs.getDocs(fs.collection(db,C.TRANS));flTrans=s.docs.map(d=>({id:d.id,...d.data()}));flTrans.sort((a,b)=>(b.creadoEn||'').localeCompare(a.creadoEn||''));}catch{flTrans=[];}}
 
 // SIDEBAR
 let sbTipoFilt='all';
@@ -517,7 +521,7 @@ let admEditId=null; // ID del vehículo en edición
 let admFiltro=''; let admFiltroPlaza=''; let admFiltroStatus='';
 
 function rAdmin(){
-  if(!hAdm()){setContent(pad('<div class="fl-empty"><div class="fl-empty-ico">🔒</div><h3>Acceso restringido</h3><p>Solo administradores pueden acceder a este panel.</p></div>'));return;}
+  if(!hAdm()){setContent(pad('<div class="fl-empty"><div class="fl-empty-ico"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></div><h3>Acceso restringido</h3><p>Solo administradores pueden acceder a este panel.</p></div>'));return;}
 
   const act=flV.filter(v=>v.status==='activo'||!v.status).length;
   const tall=flV.filter(v=>v.status==='taller').length;
@@ -1481,7 +1485,7 @@ window.flDocLoad=async function(inp,tipo,vehId){
 
 // ── TABLA SOLICITUDES ──
 function tSols(list,pA){
-  if(!list.length)return`<div class="fl-empty"><div class="fl-empty-ico">📋</div><h3>Sin solicitudes</h3><p>No hay registros que mostrar.</p></div>`;
+  if(!list.length)return`<div class="fl-empty"><div class="fl-empty-ico"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="1.8" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></div><h3>Sin solicitudes</h3><p>No hay registros que mostrar.</p></div>`;
   return`<div class="fl-tw"><table class="fl-t"><thead><tr>
     <th>Tipo</th><th>Unidad</th><th>Prioridad</th><th>Solicitante</th><th>Estado</th><th>Fecha</th>${pA?'<th></th>':''}
   </tr></thead><tbody>${list.map(s=>`<tr onclick="flVerSol('${s.id}')">
@@ -1554,7 +1558,7 @@ window.flVerSol=function(id){
   ov.innerHTML=`<div class="fl-modal" style="max-width:600px">
     <div class="fl-mh"><h3>${I.doc} ${id.slice(0,8).toUpperCase()}</h3><button class="fl-mx" onclick="this.closest('.fl-ov').remove()">✕</button></div>
     <div class="fl-mb">
-      ${v?`<div style="background:#0A1628;color:#fff;border-radius:9px;padding:11px 14px;margin-bottom:12px;display:flex;align-items:center;gap:12px"><span style="font-size:32px">${hEmo(v.tipo)}</span><div><div style="font-size:13px;font-weight:800">${v.unidad||'—'} ${v.año||''}</div><div style="font-size:10px;color:rgba(255,255,255,.4);font-family:'JetBrains Mono',monospace;margin-top:2px">ECO ${v.eco} · ${v.placas||'—'} · ${v.responsable||'—'}</div></div></div>`:''}
+      ${v?`<div style="background:#0A1628;color:#fff;border-radius:9px;padding:11px 14px;margin-bottom:12px;display:flex;align-items:center;gap:12px"><span style="color:#fff;display:flex;align-items:center">${hEmo(v.tipo).replace(/stroke="currentColor"/g,'stroke="#fff"')}</span><div><div style="font-size:13px;font-weight:800">${v.unidad||'—'} ${v.año||''}</div><div style="font-size:10px;color:rgba(255,255,255,.4);font-family:'JetBrains Mono',monospace;margin-top:2px">ECO ${v.eco} · ${v.placas||'—'} · ${v.responsable||'—'}</div></div></div>`:''}
       <div style="display:grid;grid-template-columns:1fr 1fr;background:#F8FAFD;border-radius:9px;overflow:hidden;border:1px solid #E8EDF5;margin-bottom:10px">
         ${[['Tipo',s.tipo||'—'],['Estado',hBadge(s.estatus)],['Prioridad',s.prioridad||'Normal'],['Gasolina',s.gasolina!=null?s.gasolina+'%':'—'],['Taller',s.taller||'—'],['KM',s.kilometrajeReportado||'—'],['Solicitante',s.solicitante||'—'],['Fecha',hF(s.creadoEn)]].map(([l,val])=>`<dl style="padding:7px 11px;border-right:1px solid #E8EDF5;border-bottom:1px solid #E8EDF5"><dt style="font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">${l}</dt><dd style="font-size:11.5px;font-weight:600">${val}</dd></dl>`).join('')}
         <dl style="grid-column:1/-1;padding:7px 11px"><dt style="font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">Descripción</dt><dd style="font-size:11.5px;font-weight:500">${s.descripcion||'—'}</dd></dl>
@@ -1611,15 +1615,56 @@ function rComis(){
       <select style="padding:7px 11px;border:1.5px solid #E2E8F0;border-radius:7px;font-family:inherit;font-size:12px;background:#fff;outline:none" id="fl-ce" onchange="flFCom()"><option value="">Todos los estados</option><option>En préstamo</option><option>Devuelto</option></select>
     </div>
     <div id="fl-com-r">${rComList(flCom)}</div>
+
+    ${flTrans.length?`
+    <div style="margin-top:20px">
+      <div style="font-size:13px;font-weight:900;letter-spacing:-.2px;margin-bottom:4px">Transferencias entre técnicos</div>
+      <div style="font-size:11px;color:#64748B;margin-bottom:12px">Registradas desde la app móvil</div>
+      <div>${rTransList(flTrans)}</div>
+    </div>`:''}
   `));
 }
 window.flFCom=function(){const t=document.getElementById('fl-ct')?.value||'';const e=document.getElementById('fl-ce')?.value||'';let r=flCom;if(t)r=r.filter(c=>c.tipo===t);if(e)r=r.filter(c=>c.estatus===e);document.getElementById('fl-com-r').innerHTML=rComList(r);};
 function rComList(list){
-  if(!list.length)return`<div class="fl-empty"><div class="fl-empty-ico">🚗</div><h3>Sin comisiones</h3></div>`;
-  return list.map(c=>`<div class="fl-comcard" onclick="flVerCom('${c.id}')">
-    <div class="fl-comcard-h"><div style="display:flex;align-items:center;gap:10px"><span style="font-size:28px">${hEmo(flV.find(v=>v.eco===c.vehiculoEco)?.tipo||'auto')}</span><div><div style="font-size:13px;font-weight:800">ECO ${c.vehiculoEco||'—'} · ${c.vehiculo?.split('·')[1]?.trim()||''}</div><div style="font-size:11px;color:#64748B;margin-top:1px">${c.tipo||'—'} · ${c.responsable||'—'}</div></div></div>${hBadge(c.estatus||'En préstamo')}</div>
+  if(!list.length)return`<div class="fl-empty"><div class="fl-empty-ico">${SVG_AUTO}</div><h3>Sin comisiones</h3></div>`;
+  return list.map(c=>{const vTipo=flV.find(v=>v.eco===c.vehiculoEco)?.tipo||'auto';const ico=hEmo(vTipo).replace(/stroke="currentColor"/g,'stroke="#1E3A5F"');return`<div class="fl-comcard" onclick="flVerCom('${c.id}')">
+    <div class="fl-comcard-h"><div style="display:flex;align-items:center;gap:10px"><span style="display:flex;align-items:center">${ico}</span><div><div style="font-size:13px;font-weight:800">ECO ${c.vehiculoEco||'—'} · ${c.vehiculo?.split('·')[1]?.trim()||''}</div><div style="font-size:11px;color:#64748B;margin-top:1px">${c.tipo||'—'} · ${c.responsable||'—'}</div></div></div>${hBadge(c.estatus||'En préstamo')}</div>
     <div class="fl-comcard-b">${[['Fecha entrega',hF(c.fechaEntrega)],['Fecha regreso',c.fechaRegreso?hF(c.fechaRegreso):'—'],['KM entrega',c.kmEntrega||'—']].map(([l,v])=>`<dl><dt style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">${l}</dt><dd style="font-size:12px;font-weight:600">${v}</dd></dl>`).join('')}</div>
-  </div>`).join('');
+  </div>`;}).join('');
+}
+function rTransList(list){
+  if(!list.length)return'';
+  return list.map(t=>{
+    const vTipo=flV.find(v=>String(v.eco)===String(t.vehiculoEco))?.tipo||'camioneta';
+    const ico=hEmo(vTipo).replace(/stroke="currentColor"/g,'stroke="#1E3A5F"');
+    const firmaEnt=t.firmaEntrega?`<img src="${t.firmaEntrega}" style="height:36px;border:1px solid #E2E8F0;border-radius:5px;background:#F8FAFD" title="Firma entrega">`:'—';
+    const firmaRec=t.firmaRecepcion?`<img src="${t.firmaRecepcion}" style="height:36px;border:1px solid #E2E8F0;border-radius:5px;background:#F8FAFD" title="Firma recepción">`:'Pendiente';
+    const fotos=(t.fotos||[]).slice(0,3).map(f=>`<img src="${f}" style="width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid #E8EDF5;cursor:pointer" onclick="window.open('${f}','_blank')">`).join('');
+    return`<div class="fl-comcard" style="margin-bottom:10px">
+      <div class="fl-comcard-h" style="margin-bottom:8px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="display:flex;align-items:center">${ico}</span>
+          <div>
+            <div style="font-size:13px;font-weight:800">ECO ${t.vehiculoEco||'—'} · ${t.vehiculoUnidad||'—'}</div>
+            <div style="font-size:10.5px;color:#64748B;font-family:'JetBrains Mono',monospace;margin-top:1px">${t.codigo||'—'}</div>
+          </div>
+        </div>
+        ${hBadge(t.estatus||'Completada')}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;background:#F8FAFD;border-radius:8px;padding:8px;margin-bottom:8px;border:1px solid #E8EDF5">
+        <dl><dt style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">Entrega</dt><dd style="font-size:11.5px;font-weight:600">${t.entregaNombre||t.entregaEmail||'—'}</dd></dl>
+        <dl><dt style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">Recibe</dt><dd style="font-size:11.5px;font-weight:600">${t.recibioNombre||t.recibioEmail||'Pendiente'}</dd></dl>
+        <dl><dt style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">KM</dt><dd style="font-size:11.5px;font-weight:600">${t.km||'—'}</dd></dl>
+        <dl><dt style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">Gasolina</dt><dd style="font-size:11.5px;font-weight:600">${t.gasolina!=null?t.gasolina+'%':'—'}</dd></dl>
+        <dl style="grid-column:1/-1"><dt style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">Fecha</dt><dd style="font-size:11.5px;font-weight:600">${t.creadoEn?t.creadoEn.substring(0,10):'—'}</dd></dl>
+      </div>
+      ${fotos?`<div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">${fotos}</div>`:''}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px">
+        <div><div style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:4px">Firma entrega</div>${firmaEnt}</div>
+        <div><div style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:4px">Firma recepción</div>${firmaRec}</div>
+      </div>
+    </div>`;
+  }).join('');
 }
 window.flAbrirCom=function(){
   const vehs=flV.filter(v=>!v.status||v.status==='activo');
