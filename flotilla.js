@@ -138,6 +138,41 @@ window.flLightbox=function(src){
   document.body.appendChild(ov);
 };
 
+window.flLightboxCompar=function(key,sA,sB){
+  const fotoA=sA&&sA.chkFotos?sA.chkFotos[key]:null;
+  const fotoB=sB&&sB.chkFotos?sB.chkFotos[key]:null;
+  if(!fotoA&&!fotoB){return;}
+  // Si solo hay una, usar lightbox simple
+  if(!fotoB){window.flLightbox(fotoA);return;}
+  if(!fotoA){window.flLightbox(fotoB);return;}
+  // Ambas — mostrar lado a lado
+  const ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.95);z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;gap:12px';
+  const imgs=document.createElement('div');
+  imgs.style.cssText='display:flex;gap:12px;align-items:flex-start;max-width:95vw;max-height:85vh;overflow:hidden';
+  const mkCol=(src,label,color)=>{
+    const col=document.createElement('div');
+    col.style.cssText='display:flex;flex-direction:column;align-items:center;gap:6px;flex:1;min-width:0';
+    const lbl=document.createElement('div');
+    lbl.style.cssText='background:'+color+';color:#fff;font-size:11px;font-weight:800;padding:4px 12px;border-radius:99px;white-space:nowrap';
+    lbl.textContent=label;
+    const img=document.createElement('img');
+    img.src=src;
+    img.style.cssText='max-width:100%;max-height:75vh;object-fit:contain;border-radius:8px;cursor:zoom-in';
+    img.onclick=(e)=>{e.stopPropagation();window.flLightbox(src);};
+    col.appendChild(lbl);col.appendChild(img);
+    return col;
+  };
+  imgs.appendChild(mkCol(fotoA,'Semana actual','#1E3A5F'));
+  imgs.appendChild(mkCol(fotoB,'Semana anterior','#64748B'));
+  const hint=document.createElement('div');
+  hint.style.cssText='color:rgba(255,255,255,.4);font-size:11px;text-align:center';
+  hint.textContent='Clic en una foto para ampliarla · Clic fuera para cerrar';
+  ov.appendChild(imgs);ov.appendChild(hint);
+  ov.onclick=(e)=>{if(e.target===ov)ov.remove();};
+  document.body.appendChild(ov);
+};
+
 function hBadge(e){
   const m={Solicitud:['#EDE9FE','#6D28D9'],Validada:['#DBEAFE','#1D4ED8'],Cotización:['#FEF3C7','#B45309'],Aprobada:['#DCFCE7','#15803D'],Rechazada:['#FEE2E2','#B91C1C'],Cierre:['#F3E8FF','#7C3AED'],Cerrada:['#F1F5F9','#475569'],'En préstamo':['#EDE9FE','#6D28D9'],Devuelto:['#DCFCE7','#15803D']};
   const[bg,cl]=m[e]||['#F1F5F9','#475569'];
@@ -1760,15 +1795,22 @@ const CHK_CATS_P={
   Legal:      ['Sin multas vigentes','Verificación vigente','Tenencia al corriente','Tarjeta circulación'],
 };
 
-function rCompar(){
+function rCompar(offsetSem){
+  offsetSem=offsetSem||0; // 0=semana actual, -1=sem anterior, -2=antepenúltima...
   const hoy=new Date();
-  const inicioAct=new Date(hoy);inicioAct.setDate(hoy.getDate()-hoy.getDay());inicioAct.setHours(0,0,0,0);
+  // Calcular inicio de la semana seleccionada
+  const inicioAct=new Date(hoy);
+  inicioAct.setDate(hoy.getDate()-hoy.getDay()+(offsetSem*7));
+  inicioAct.setHours(0,0,0,0);
+  const finAct=new Date(inicioAct);finAct.setDate(inicioAct.getDate()+6);finAct.setHours(23,59,59,999);
+  // Semana anterior a la seleccionada
   const inicioAnt=new Date(inicioAct);inicioAnt.setDate(inicioAct.getDate()-7);
   const finAnt=new Date(inicioAct);finAnt.setSeconds(-1);
   const fmt=d=>d?d.toLocaleDateString('es-MX',{day:'2-digit',month:'short'}):'—';
-  const label='Sem. actual: '+fmt(inicioAct)+' — '+fmt(hoy)+' · Sem. anterior: '+fmt(inicioAnt)+' — '+fmt(finAnt);
+  const esActual=offsetSem===0;
+  const label=(esActual?'Semana actual':'Semana: ')+fmt(inicioAct)+' — '+fmt(esActual?hoy:finAct)+' · vs '+fmt(inicioAnt)+' — '+fmt(finAnt);
   const enSem=(s,ini,fin)=>{const f=new Date(s.creadoEn||0);return f>=ini&&f<=fin;};
-  const solAct=flS.filter(s=>enSem(s,inicioAct,hoy));
+  const solAct=flS.filter(s=>enSem(s,inicioAct,esActual?hoy:finAct));
   const solAnt=flS.filter(s=>enSem(s,inicioAnt,finAnt));
   const pvDias=v=>hD(v.pv);
   const pvStyle=v=>{const d=pvDias(v);return d===null?'#15803D':d<0?'#B91C1C':d<30?'#D97706':'#15803D';};
@@ -1805,7 +1847,7 @@ function rCompar(){
       const alertCell=r.alertas>0
         ?'<span style="background:#FEF2F2;color:#B91C1C;font-size:10px;font-weight:800;padding:2px 7px;border-radius:99px">'+r.alertas+' nuevos</span>'
         :'<span style="color:#94A3B8;font-size:10px">—</span>';
-      trs+='<tr style="border-bottom:1px solid #F1F5F9;'+bg+';cursor:pointer" onclick="flVerComparVeh(\''+r.v.eco+'\')">'+
+      trs+='<tr style="border-bottom:1px solid #F1F5F9;'+bg+';cursor:pointer" onclick="flVerComparVeh(\''+r.v.eco+'\','+offsetSem+')">'+
         '<td style="padding:8px 10px">'+
           '<div style="font-weight:700;font-size:12px">'+r.v.unidad+'</div>'+
           '<div style="font-size:10px;color:#64748B;font-family:\'JetBrains Mono\',monospace">ECO '+r.v.eco+' · '+(r.v.plaza||'—')+'</div>'+
@@ -1830,30 +1872,43 @@ function rCompar(){
       '</tr></thead><tbody>'+trs+'</tbody></table></div>'+
       '<div style="font-size:10px;color:#94A3B8;margin-top:8px;text-align:right">Clic en un vehículo para ver la comparativa detallada</div>';
   }
+  // Selector de semana
+  const navSem=
+    '<div style="display:flex;gap:8px;margin-bottom:14px;align-items:center">'+
+      '<button onclick="rCompar('+(offsetSem-1)+')" style="padding:6px 12px;border:1.5px solid #E2E8F0;border-radius:8px;background:#fff;cursor:pointer;font-size:12px;font-weight:700">← Sem. anterior</button>'+
+      (offsetSem<0?'<button onclick="rCompar('+(offsetSem+1)+')" style="padding:6px 12px;border:1.5px solid #E2E8F0;border-radius:8px;background:#fff;cursor:pointer;font-size:12px;font-weight:700">Sem. siguiente →</button>':'<span style="padding:6px 12px;border-radius:8px;background:#0A1628;color:#fff;font-size:12px;font-weight:700">Semana actual</span>')+
+    '</div>';
+
   setContent(padded(
     '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4px">'+
     '<div style="font-size:17px;font-weight:900;letter-spacing:-.4px">Comparativa semanal</div>'+
-    '<button class="fb gho" onclick="rCompar()" style="font-size:11px;display:inline-flex;align-items:center;gap:4px">'+
+    '<button class="fb gho" onclick="rCompar('+offsetSem+')" style="font-size:11px;display:inline-flex;align-items:center;gap:4px">'+
     '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4"/></svg>Actualizar</button></div>'+
-    '<div style="font-size:11px;color:#64748B;margin-bottom:14px">'+label+'</div>'+
+    '<div style="font-size:11px;color:#64748B;margin-bottom:10px">'+label+'</div>'+
+    navSem+
     body
   ));
 }
 window.rCompar=rCompar;
 
 // ── DETALLE COMPARATIVA POR VEHÍCULO — 2 columnas ──
-window.flVerComparVeh=function(eco){
+window.flVerComparVeh=function(eco,offsetSem){
+  offsetSem=offsetSem||0;
   const hoy=new Date();
-  const inicioAct=new Date(hoy);inicioAct.setDate(hoy.getDate()-hoy.getDay());inicioAct.setHours(0,0,0,0);
+  const inicioAct=new Date(hoy);
+  inicioAct.setDate(hoy.getDate()-hoy.getDay()+(offsetSem*7));
+  inicioAct.setHours(0,0,0,0);
+  const finAct=new Date(inicioAct);finAct.setDate(inicioAct.getDate()+6);finAct.setHours(23,59,59,999);
   const inicioAnt=new Date(inicioAct);inicioAnt.setDate(inicioAct.getDate()-7);
   const finAnt=new Date(inicioAct);finAnt.setSeconds(-1);
+  const esActual=offsetSem===0;
   const enSem=(s,ini,fin)=>{const f=new Date(s.creadoEn||0);return f>=ini&&f<=fin;};
   const v=flV.find(x=>String(x.eco)===String(eco));
-  const solAct=flS.filter(s=>s.vehiculoEco===eco&&enSem(s,inicioAct,hoy));
+  const solAct=flS.filter(s=>s.vehiculoEco===eco&&enSem(s,inicioAct,esActual?hoy:finAct));
   const solAnt=flS.filter(s=>s.vehiculoEco===eco&&enSem(s,inicioAnt,finAnt));
   // Tomar el más reciente de cada semana
-  const sA=solAct.sort((a,b)=>b.creadoEn?.localeCompare(a.creadoEn||'')||0)[0]||null;
-  const sB=solAnt.sort((a,b)=>b.creadoEn?.localeCompare(a.creadoEn||'')||0)[0]||null;
+  const sA=solAct.sort((a,b)=>(b.creadoEn||'').localeCompare(a.creadoEn||''))[0]||null;
+  const sB=solAnt.sort((a,b)=>(b.creadoEn||'').localeCompare(a.creadoEn||''))[0]||null;
 
   const fmtFull=d=>{if(!d)return'Sin registro';const dt=new Date(d);return dt.toLocaleDateString('es-MX',{weekday:'short',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});};
 
@@ -1888,7 +1943,12 @@ window.flVerComparVeh=function(eco){
         const isNo=val==='no';
         if(isNo)catAlerta=true;
         const dot=val==='si'?'<span style="color:#15803D;font-weight:900;font-size:13px">✓</span>':val==='no'?'<span style="color:#B91C1C;font-weight:900;font-size:13px">✗</span>':'<span style="color:#CBD5E1;font-size:13px">○</span>';
-        const fotoEl=foto?'<img src="'+foto+'" style="width:28px;height:28px;object-fit:cover;border-radius:5px;cursor:pointer;border:1px solid '+(isNo?'#FCA5A5':'#E2E8F0')+'" onclick="flLightbox(this.src)" title="'+item+'">':'';
+        // Foto de la semana anterior para el mismo ítem
+        const fotoAnt=sB&&sB.chkFotos?sB.chkFotos[key]:null;
+        const fotoEl=foto
+          ?'<img src="'+foto+'" style="width:28px;height:28px;object-fit:cover;border-radius:5px;cursor:pointer;border:1px solid '+(isNo?'#FCA5A5':'#E2E8F0')+';position:relative" onclick="flLightboxCompar(\''+key+'\',sA,sB)" title="Clic para comparar semana actual vs anterior">'+
+           (fotoAnt?'<div style="width:6px;height:6px;background:#F59E0B;border-radius:50%;position:absolute;top:-2px;right:-2px" title="También hay foto semana anterior"></div>':'')
+          :(fotoAnt?'<span style="font-size:9px;color:#F59E0B;cursor:pointer" onclick="flLightboxCompar(\''+key+'\',sA,sB)" title="Solo hay foto semana anterior">ant.</span>':'');
         catItems+='<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;border-bottom:1px solid #F8FAFD;gap:6px">'+
           '<span style="font-size:11px;color:'+(isNo?'#B91C1C':'#334155')+(val===''?';opacity:.6':'')+'">'+item+'</span>'+
           '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0">'+fotoEl+dot+'</div>'+
