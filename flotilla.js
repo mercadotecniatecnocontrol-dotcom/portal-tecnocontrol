@@ -1734,6 +1734,17 @@ window.flCCom=async function(id,rEv){
 };
 
 // ── COMPARATIVA SEMANAL ──
+// ── HELPERS COMPARTIDOS COMPARATIVA ──
+const CHK_CATS_P={
+  Cristales:  ['Medallón delantero','Vidrio trasero','Lat. der. delantero','Lat. der. trasero','Lat. izq. delantero','Lat. izq. trasero'],
+  Espejos:    ['Retrovisor izquierdo','Retrovisor derecho','Espejo central'],
+  Neumáticos: ['Llanta del. der.','Llanta del. izq.','Llanta tra. der.','Llanta tra. izq.','Refacción'],
+  Interiores: ['Póliza / Manual','Radio','Pantallas','Asientos','Tablero','Tapetes'],
+  Motor:      ['Batería','Tapón agua','Tapón radiador','Tapón dirección'],
+  Cajuela:    ['Herramienta','Cables arranque','Extintor','Llave L','Llave cruz'],
+  Legal:      ['Sin multas vigentes','Verificación vigente','Tenencia al corriente','Tarjeta circulación'],
+};
+
 function rCompar(){
   const hoy=new Date();
   const inicioAct=new Date(hoy);inicioAct.setDate(hoy.getDate()-hoy.getDay());inicioAct.setHours(0,0,0,0);
@@ -1759,27 +1770,37 @@ function rCompar(){
     const kmA=sA.reduce((a,s)=>a+(Number(s.kilometrajeReportado)||0),0);
     const kmB=sB.reduce((a,s)=>a+(Number(s.kilometrajeReportado)||0),0);
     const tr=flTrans.filter(t=>String(t.vehiculoEco)===String(v.eco));
+    // Detectar discrepancias en checklist entre semanas
+    const chkA=Object.assign({},...sA.map(s=>s.checklist||{}));
+    const chkB=Object.assign({},...sB.map(s=>s.checklist||{}));
+    let alertas=0;
+    Object.keys(chkA).forEach(k=>{if(chkA[k]==='no'&&chkB[k]==='si')alertas++;});
     const hasData=sA.length>0||sB.length>0||tr.length>0;
-    return{v,sA,sB,kmA,kmB,tr,hasData};
+    return{v,sA,sB,kmA,kmB,tr,alertas,hasData};
   }).filter(r=>r.hasData);
   const thStyle='text-align:center;padding:8px 6px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#64748B;border-bottom:2px solid #E2E8F0;white-space:nowrap';
   const tdC='text-align:center;padding:8px 6px;';
   let body='';
   if(rows.length===0){
-    body='<div class="fl-empty" style="min-height:200px"><div class="fl-empty-ico"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="1.5"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div><h3>Sin datos esta semana</h3><p>No hay solicitudes ni transferencias en las últimas dos semanas.</p></div>';
+    body='<div class="fl-empty" style="min-height:200px"><div class="fl-empty-ico"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="1.5"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div><h3>Sin datos esta semana</h3><p>No hay checklists registrados en las últimas dos semanas.</p></div>';
   } else {
     let trs='';
     rows.forEach((r,i)=>{
       const bg=i%2===0?'background:#fff':'background:#FAFBFD';
-      trs+='<tr style="border-bottom:1px solid #F1F5F9;'+bg+'">'+
-        '<td style="padding:8px 10px"><div style="font-weight:700;font-size:12px">'+r.v.unidad+'</div>'+
-        '<div style="font-size:10px;color:#64748B;font-family:\'JetBrains Mono\',monospace">ECO '+r.v.eco+' · '+(r.v.plaza||'—')+'</div></td>'+
+      const alertCell=r.alertas>0
+        ?'<span style="background:#FEF2F2;color:#B91C1C;font-size:10px;font-weight:800;padding:2px 7px;border-radius:99px">'+r.alertas+' nuevos</span>'
+        :'<span style="color:#94A3B8;font-size:10px">—</span>';
+      trs+='<tr style="border-bottom:1px solid #F1F5F9;'+bg+';cursor:pointer" onclick="flVerComparVeh(\''+r.v.eco+'\')">'+
+        '<td style="padding:8px 10px">'+
+          '<div style="font-weight:700;font-size:12px">'+r.v.unidad+'</div>'+
+          '<div style="font-size:10px;color:#64748B;font-family:\'JetBrains Mono\',monospace">ECO '+r.v.eco+' · '+(r.v.plaza||'—')+'</div>'+
+        '</td>'+
         '<td style="'+tdC+'font-weight:700">'+r.sA.length+' '+flecha(r.sA.length,r.sB.length)+'</td>'+
         '<td style="'+tdC+'color:#64748B">'+r.sB.length+'</td>'+
-        '<td style="'+tdC+'font-size:11px"><div style="font-weight:700">'+(r.kmA?r.kmA.toLocaleString():'—')+'</div>'+
-        (r.kmB?'<div style="font-size:9.5px;color:#94A3B8">ant. '+r.kmB.toLocaleString()+'</div>':'')+'</td>'+
+        '<td style="'+tdC+'font-size:11px"><div style="font-weight:700">'+(r.kmA?r.kmA.toLocaleString():'—')+'</div>'+(r.kmB?'<div style="font-size:9.5px;color:#94A3B8">ant. '+r.kmB.toLocaleString()+'</div>':'')+'</td>'+
         '<td style="'+tdC+'"><span style="font-size:10px;font-weight:800;color:'+pvStyle(r.v)+'">'+pvText(r.v)+'</span></td>'+
-        '<td style="'+tdC+'font-size:11px;font-weight:700">'+(r.tr.length||'—')+'</td>'+
+        '<td style="'+tdC+'">'+alertCell+'</td>'+
+        '<td style="'+tdC+'font-size:18px;color:#94A3B8">›</td>'+
         '</tr>';
     });
     body='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">'+
@@ -1789,8 +1810,10 @@ function rCompar(){
       '<th style="'+thStyle+'">Sol. ant.</th>'+
       '<th style="'+thStyle+'">KM act.</th>'+
       '<th style="'+thStyle+'">Póliza</th>'+
-      '<th style="'+thStyle+'">Transf.</th>'+
-      '</tr></thead><tbody>'+trs+'</tbody></table></div>';
+      '<th style="'+thStyle+'">Problemas</th>'+
+      '<th style="'+thStyle+'"></th>'+
+      '</tr></thead><tbody>'+trs+'</tbody></table></div>'+
+      '<div style="font-size:10px;color:#94A3B8;margin-top:8px;text-align:right">Clic en un vehículo para ver la comparativa detallada</div>';
   }
   setContent(padded(
     '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4px">'+
@@ -1802,6 +1825,113 @@ function rCompar(){
   ));
 }
 window.rCompar=rCompar;
+
+// ── DETALLE COMPARATIVA POR VEHÍCULO — 2 columnas ──
+window.flVerComparVeh=function(eco){
+  const hoy=new Date();
+  const inicioAct=new Date(hoy);inicioAct.setDate(hoy.getDate()-hoy.getDay());inicioAct.setHours(0,0,0,0);
+  const inicioAnt=new Date(inicioAct);inicioAnt.setDate(inicioAct.getDate()-7);
+  const finAnt=new Date(inicioAct);finAnt.setSeconds(-1);
+  const enSem=(s,ini,fin)=>{const f=new Date(s.creadoEn||0);return f>=ini&&f<=fin;};
+  const v=flV.find(x=>String(x.eco)===String(eco));
+  const solAct=flS.filter(s=>s.vehiculoEco===eco&&enSem(s,inicioAct,hoy));
+  const solAnt=flS.filter(s=>s.vehiculoEco===eco&&enSem(s,inicioAnt,finAnt));
+  // Tomar el más reciente de cada semana
+  const sA=solAct.sort((a,b)=>b.creadoEn?.localeCompare(a.creadoEn||'')||0)[0]||null;
+  const sB=solAnt.sort((a,b)=>b.creadoEn?.localeCompare(a.creadoEn||'')||0)[0]||null;
+
+  const fmtFull=d=>{if(!d)return'Sin registro';const dt=new Date(d);return dt.toLocaleDateString('es-MX',{weekday:'short',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});};
+
+  // Renderizar columna de una semana
+  function rCol(sol,label,color){
+    if(!sol){
+      return '<div style="flex:1;background:#F8FAFD;border-radius:12px;padding:16px;border:1.5px dashed #CBD5E1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:300px">'+
+        '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#CBD5E1" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>'+
+        '<div style="font-size:12px;font-weight:700;color:#94A3B8">Sin checklist</div>'+
+        '<div style="font-size:10px;color:#CBD5E1">'+label+'</div>'+
+      '</div>';
+    }
+    const chk=sol.checklist||{};
+    const chkFotos=sol.chkFotos||{};
+    const evFotos=sol.evidencias||[];
+    const km=sol.kilometrajeReportado||'—';
+    const gas=sol.gasolina!=null?sol.gasolina+'%':'—';
+    const modo=sol.modo||'—';
+    // Fotos generales
+    const fotosHtml=evFotos.length
+      ? '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">'+evFotos.slice(0,6).map(f=>'<img src="'+f+'" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid #E2E8F0;cursor:pointer" onclick="window.open(\''+f+'\',\'_blank\')" title="Ver foto completa">').join('')+'</div>'
+      : '<div style="font-size:11px;color:#94A3B8;margin-bottom:12px">Sin fotos</div>';
+    // Checklist por categoría
+    let chkHtml='';
+    for(const [cat,items] of Object.entries(CHK_CATS_P)){
+      let catItems='';
+      let catAlerta=false;
+      items.forEach((item,i)=>{
+        const key=cat+'__'+i;
+        const val=chk[key]||'';
+        const foto=chkFotos[key];
+        const isNo=val==='no';
+        if(isNo)catAlerta=true;
+        const dot=val==='si'?'<span style="color:#15803D;font-weight:900;font-size:13px">✓</span>':val==='no'?'<span style="color:#B91C1C;font-weight:900;font-size:13px">✗</span>':'<span style="color:#CBD5E1;font-size:13px">○</span>';
+        const fotoEl=foto?'<img src="'+foto+'" style="width:28px;height:28px;object-fit:cover;border-radius:5px;cursor:pointer;border:1px solid '+(isNo?'#FCA5A5':'#E2E8F0')+'" onclick="window.open(\''+foto+'\',\'_blank\')" title="'+item+'">':'';
+        catItems+='<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;border-bottom:1px solid #F8FAFD;gap:6px">'+
+          '<span style="font-size:11px;color:'+(isNo?'#B91C1C':'#334155');+(val===''?';opacity:.6':'')+'">'+item+'</span>'+
+          '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0">'+fotoEl+dot+'</div>'+
+          '</div>';
+      });
+      chkHtml+='<div style="margin-bottom:10px">'+
+        '<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:'+(catAlerta?'#B91C1C':'#64748B')+';margin-bottom:4px">'+(catAlerta?'⚠ ':'')+cat+'</div>'+
+        catItems+
+        '</div>';
+    }
+    return '<div style="flex:1;background:#fff;border-radius:12px;border:2px solid '+color+';overflow:hidden;min-width:0">'+
+      '<div style="background:'+color+';padding:10px 14px;display:flex;align-items:center;justify-content:space-between">'+
+        '<div style="font-size:12px;font-weight:900;color:#fff">'+label+'</div>'+
+        '<div style="font-size:10px;color:rgba(255,255,255,.7)">'+fmtFull(sol.creadoEn)+'</div>'+
+      '</div>'+
+      '<div style="padding:14px">'+
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">'+
+          '<div style="background:#F8FAFD;border-radius:8px;padding:8px 10px;text-align:center">'+
+            '<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">KM</div>'+
+            '<div style="font-size:14px;font-weight:900;color:#0A0F1E">'+km+'</div>'+
+          '</div>'+
+          '<div style="background:#F8FAFD;border-radius:8px;padding:8px 10px;text-align:center">'+
+            '<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">Gasolina</div>'+
+            '<div style="font-size:14px;font-weight:900;color:#0A0F1E">'+gas+'</div>'+
+          '</div>'+
+          '<div style="background:#F8FAFD;border-radius:8px;padding:8px 10px;text-align:center">'+
+            '<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">Modo</div>'+
+            '<div style="font-size:13px;font-weight:900;color:#0A0F1E;text-transform:capitalize">'+modo+'</div>'+
+          '</div>'+
+        '</div>'+
+        '<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#64748B;margin-bottom:8px">Fotos del vehículo</div>'+
+        fotosHtml+
+        '<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#64748B;margin-bottom:8px;margin-top:4px">Checklist</div>'+
+        '<div style="max-height:400px;overflow-y:auto;padding-right:2px">'+chkHtml+'</div>'+
+      '</div>'+
+    '</div>';
+  }
+
+  const ov=document.createElement('div');ov.className='fl-ov';
+  ov.innerHTML=
+    '<div class="fl-modal" style="max-width:960px;width:95vw">'+
+      '<div class="fl-mh">'+
+        '<div>'+
+          '<h3>'+(v?v.unidad:'ECO '+eco)+' — Comparativa semanal</h3>'+
+          '<div style="font-size:11px;color:#64748B;margin-top:2px">ECO '+eco+' · Clic en cualquier foto para verla en tamaño completo</div>'+
+        '</div>'+
+        '<button class="fl-mx" onclick="this.closest(\'.fl-ov\').remove()">✕</button>'+
+      '</div>'+
+      '<div class="fl-mb" style="padding:16px">'+
+        '<div style="display:flex;gap:14px;align-items:stretch">'+
+          rCol(sA,'Semana actual','#1E3A5F')+
+          rCol(sB,'Semana anterior','#64748B')+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  document.body.appendChild(ov);
+  ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+};
 
 // ── BAJAS ──
 function rBajas(){
