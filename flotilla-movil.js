@@ -156,27 +156,8 @@ function sellarImg(src,meta){
   });
 }
 
-// ── DEBUG PANEL (visible en pantalla) ──
+// ── DEBUG (solo consola) ──
 function dbg(msg, tipo='info'){
-  const col={info:'#1E3A5F',ok:'#15803D',err:'#B91C1C',warn:'#B45309'}[tipo]||'#1E3A5F';
-  let panel=document.getElementById('fl-dbg');
-  if(!panel){
-    panel=document.createElement('div');
-    panel.id='fl-dbg';
-    panel.style.cssText='position:fixed;top:80px;left:10px;right:10px;background:rgba(0,0,0,.85);border-radius:10px;padding:10px;z-index:9998;max-height:40vh;overflow-y:auto;font-family:monospace;font-size:11px;';
-    const closeBtn=document.createElement('button');
-    closeBtn.textContent='✕ Cerrar debug';
-    closeBtn.style.cssText='display:block;width:100%;padding:5px;background:#333;color:#fff;border:none;border-radius:5px;cursor:pointer;margin-bottom:6px;font-family:monospace;font-size:11px;';
-    closeBtn.onclick=()=>panel.remove();
-    panel.appendChild(closeBtn);
-    document.body.appendChild(panel);
-  }
-  const line=document.createElement('div');
-  const ts=new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
-  line.style.cssText=`color:${col};padding:2px 0;border-bottom:1px solid rgba(255,255,255,.1);`;
-  line.textContent=`[${ts}] ${msg}`;
-  panel.appendChild(line);
-  panel.scrollTop=panel.scrollHeight;
   console.log('[FL-MOVIL]',msg);
 }
 
@@ -1183,7 +1164,6 @@ let utilState={
   firma:null, // base64 del canvas de firma
   paso:1, // 1=selección modo, 2=datos, 3=firma, 4=confirmado
 };
-// Exponer a window para que funcionen los onclick inline del DOM
 window.utilState=utilState;
 
 function renderUtil(){
