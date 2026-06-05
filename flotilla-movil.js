@@ -619,7 +619,7 @@ function renderVehiculo(){
           <div class="fm-veh-sub" style="color:rgba(255,255,255,.55)">${v.placas||'—'} · ${v.año||'—'}</div>
         </div>
         <div style="background:rgba(255,255,255,.1);border-radius:10px;padding:8px 12px;text-align:center">
-          <div style="font-size:24px">🛻</div>
+          <div style="display:flex;justify-content:center;align-items:center;height:32px">${IC.car}</div>
           <div style="font-size:9px;font-weight:700;color:rgba(255,255,255,.5);margin-top:2px;text-transform:uppercase">${v.tipo||'—'}</div>
         </div>
       </div>
@@ -665,7 +665,7 @@ function renderVehiculo(){
         </div>
         <div class="fm-sol-meta">${hF(s.creadoEn)} · ${s.modo?s.modo.toUpperCase():'—'} · ${s.prioridad||'Normal'}</div>
       </div>`).join('')
-    :`<div class="fm-empty" style="padding:20px"><div class="fm-empty-ico" style="font-size:32px">📋</div><p style="font-size:13px;color:#94A3B8">Sin solicitudes registradas</p></div>`}
+    :`<div class="fm-empty" style="padding:20px"><div class="fm-empty-ico">${IC.doc}</div><p style="font-size:13px;color:#94A3B8">Sin solicitudes registradas</p></div>`}
     <div style="height:20px"></div>
   `);
 }
@@ -1183,6 +1183,8 @@ let utilState={
   firma:null, // base64 del canvas de firma
   paso:1, // 1=selección modo, 2=datos, 3=firma, 4=confirmado
 };
+// Exponer a window para que funcionen los onclick inline del DOM
+window.utilState=utilState;
 
 function renderUtil(){
   setContent(`
@@ -1202,6 +1204,7 @@ function renderUtil(){
   // Inicializar canvas de firma si estamos en paso 3
   if(utilState.paso===3)setTimeout(initFirmaCanvas,100);
 }
+window.renderUtil=renderUtil;
 
 // PASO 1: Elegir modo
 function renderUtilPaso1(){
