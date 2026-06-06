@@ -1644,23 +1644,69 @@ window.flVerSol=function(id){
             </div>`;
           }).join('')}
         </div>`:''}
-      ${s.evidencias?.length?`<div class="fl-sep"></div>
-        <div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin-bottom:8px">Evidencias (${s.evidencias.length})</div>
-        <div class="fl-pills">${s.evidencias.map((src,i)=>{
+      ${(()=>{
+        // EVIDENCIAS GENERALES — array global evita base64 inline en onclick
+        if(!s.evidencias?.length)return'';
+        const baseIdx=window._flEvCache.length;
+        s.evidencias.forEach((src,i)=>{const meta=(s.evidenciasMeta||[])[i];window._flEvCache.push({src,meta:meta||null});});
+        const pills=s.evidencias.map((src,i)=>{
           const meta=(s.evidenciasMeta||[])[i];
           const cod=meta?.codigo||('Foto '+(i+1));
-          return`<span class="fl-pill" onclick="flVerEvidencia({src:'${src}',meta:${meta?JSON.stringify(meta):'null'}})" style="cursor:pointer">
-            <img src="${src}" style="width:22px;height:22px;object-fit:cover;border-radius:3px;margin-right:4px">
+          return`<span class="fl-pill" onclick="flVerEvIdx(${baseIdx+i})" style="cursor:pointer;">
+            <img src="${src}" style="width:28px;height:28px;object-fit:cover;border-radius:4px;margin-right:4px">
             <span style="font-size:10px;font-family:'JetBrains Mono',monospace">${cod}</span>
           </span>`;
-        }).join('')}</div>`:''}
+        }).join('');
+        return`<div class="fl-sep"></div>
+          <div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin-bottom:8px">Evidencias generales (${s.evidencias.length})</div>
+          <div class="fl-pills" style="display:flex;flex-wrap:wrap;gap:6px">${pills}</div>`;
+      })()}
+      ${(()=>{
+        const chkF=s.chkFotos||{};
+        const chkEntries=Object.entries(chkF).filter(([k,v])=>v);
+        if(!chkEntries.length)return'';
+        const baseIdx=window._flEvCache.length;
+        chkEntries.forEach(([k,src])=>window._flEvCache.push({src,meta:{codigo:k,tipo:'checklist'}}));
+        const pills=chkEntries.map(([k,src],i)=>{
+          let label=k;
+          for(const items of Object.values(CHK_CATS)){const f=items.find(it=>it.toLowerCase().replace(/[^a-z0-9]/g,'')===k.toLowerCase().replace(/[^a-z0-9]/g,''));if(f){label=f;break;}}
+          return`<span class="fl-pill" onclick="flVerEvIdx(${baseIdx+i})" style="cursor:pointer;background:#EFF6FF;border:1px solid #BFDBFE">
+            <img src="${src}" style="width:28px;height:28px;object-fit:cover;border-radius:4px;margin-right:4px">
+            <span style="font-size:9px;font-family:'JetBrains Mono',monospace;color:#1D4ED8;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${label}</span>
+          </span>`;
+        }).join('');
+        return`<div style="margin-top:8px">
+          <div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#2563EB;margin-bottom:8px">Fotos de checklist (${chkEntries.length})</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">${pills}</div>
+        </div>`;
+      })()}
+      ${(()=>{
+        const chk=s.checklist||{};
+        const noItems=Object.entries(chk).filter(([k,v])=>v==='no');
+        const siItems=Object.entries(chk).filter(([k,v])=>v==='si');
+        if(!noItems.length&&!siItems.length)return'';
+        const getLabel=k=>{for(const items of Object.values(CHK_CATS)){const f=items.find(it=>it.toLowerCase().replace(/[^a-z0-9]/g,'')===k.toLowerCase().replace(/[^a-z0-9]/g,''));if(f)return f;}return k;};
+        if(!noItems.length)return`<div style="margin-top:8px;padding:8px 12px;background:#F0FDF4;border-radius:8px;border:1px solid #BBF7D0;font-size:11.5px;font-weight:700;color:#15803D">${I.check} Checklist: todos los ${siItems.length} puntos revisados en buen estado</div>`;
+        return`<div style="margin-top:8px;padding:8px 12px;background:#FEF2F2;border-radius:8px;border:1px solid #FECACA">
+          <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#B91C1C;margin-bottom:6px">Puntos con observaciones (${noItems.length})</div>
+          ${noItems.map(([k])=>`<div style="font-size:11px;font-weight:600;color:#991B1B;padding:2px 0">• ${getLabel(k)}</div>`).join('')}
+        </div>`;
+      })()}
       <div class="fl-sep"></div>
       <div style="display:flex;flex-wrap:wrap;gap:7px">
         ${pV&&s.estatus==='Solicitud'?`<button class="fb acc" onclick="flEst('${s.id}','Validada');this.closest('.fl-ov').remove()">${I.check} Validar</button>`:''}
-        ${pA&&(s.estatus==='Validada'||s.estatus==='Cotización')?`<button class="fb acc" onclick="flAprobar('${s.id}');this.closest('.fl-ov').remove()">${I.check} Aprobar</button><button class="fb dan" onclick="flRechazar('${s.id}');this.closest('.fl-ov').remove()">${I.x} Rechazar</button>`:''}
+        ${pA&&(s.estatus==='Validada'||s.estatus==='Cotización')?`<button class="fb acc" onclick="flAprobar('${s.id}');this.closest('.fl-ov').remove()">${I.check} Aprobar</button><button class="fb dan" onclick="flRechazarM('${s.id}');this.closest('.fl-ov').remove()">${I.x} Rechazar</button>`:''}
         ${pV&&s.estatus==='Aprobada'?`<button class="fb gho" onclick="flEst('${s.id}','Cierre');this.closest('.fl-ov').remove()">Enviar a cierre</button>`:''}
         ${pV&&s.estatus==='Cierre'?`<button class="fb gho" onclick="flEst('${s.id}','Cerrada');this.closest('.fl-ov').remove()">Cerrar</button>`:''}
         ${pE?`<button class="fb dan" style="margin-left:auto" onclick="flElim('${s.id}');this.closest('.fl-ov').remove()">${I.trash}</button>`:''}
+        <button class="fb gho" style="display:inline-flex;align-items:center;gap:5px" onclick="flGenerarPDF('${s.id}')">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          PDF
+        </button>
+        <button style="padding:7px 12px;background:#25D366;border:none;border-radius:8px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;color:#fff;display:inline-flex;align-items:center;gap:5px" onclick="flCompartirWA('${s.id}')">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.127.558 4.126 1.528 5.855L0 24l6.335-1.652A11.954 11.954 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.891 0-3.659-.52-5.17-1.426l-.371-.22-3.763.981.999-3.668-.242-.379A9.956 9.956 0 012 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>
+          WhatsApp
+        </button>
       </div>
     </div>
   </div>`;
@@ -2030,6 +2076,20 @@ function rBajas(){
 window.flEst=async(id,est)=>{try{await fs.updateDoc(fs.doc(db,C.SOLS,id),{estatus:est,actualizadoEn:new Date().toISOString()});await ldSols();if(vistaAct==='sols')rSols();else rPanel();}catch(e){console.error('[FL]',e);}};
 window.flAprobar=id=>flEst(id,'Aprobada');
 window.flRechazar=async id=>{const m=prompt('Motivo del rechazo:');if(!m?.trim())return;try{await fs.updateDoc(fs.doc(db,C.SOLS,id),{estatus:'Rechazada',comentarioRechazo:m,actualizadoEn:new Date().toISOString()});await ldSols();if(vistaAct==='sols')rSols();else rPanel();}catch(e){console.error('[FL]',e);}};
+// Rechazar con modal estilizado (usado desde flVerSol)
+window.flRechazarM=function(id){
+  const ov=document.createElement('div');ov.className='fl-ov';
+  ov.innerHTML=`<div style="max-width:380px;width:100%;background:#fff;border-radius:14px;padding:20px;box-shadow:0 24px 60px rgba(0,0,0,.4)">
+    <div style="font-size:15px;font-weight:800;margin-bottom:4px;color:#0A0F1E">Rechazar solicitud</div>
+    <div style="font-size:12px;color:#64748B;margin-bottom:14px">Escribe el motivo — el técnico recibirá este comentario.</div>
+    <textarea id="fl-rej-txt" placeholder="Motivo del rechazo…" style="width:100%;min-height:90px;border:1.5px solid #E2E8F0;border-radius:9px;padding:10px 12px;font-family:inherit;font-size:13px;resize:vertical;outline:none;box-sizing:border-box" oninput="this.style.borderColor=this.value.trim()?'#EF4444':'#E2E8F0'"></textarea>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button onclick="this.closest('.fl-ov').remove()" style="flex:1;padding:10px;background:#F1F5F9;border:none;border-radius:9px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;color:#374151">Cancelar</button>
+      <button onclick="(async()=>{const m=document.getElementById('fl-rej-txt').value.trim();if(!m){document.getElementById('fl-rej-txt').style.borderColor='#EF4444';return;}this.textContent='Guardando…';this.disabled=true;try{await fs.updateDoc(fs.doc(db,C.SOLS,'${id}'),{estatus:'Rechazada',comentarioRechazo:m,actualizadoEn:new Date().toISOString()});await ldSols();if(vistaAct==='sols')rSols();else rPanel();}catch(e){console.error('[FL]',e);}this.closest('.fl-ov').remove();})()" style="flex:1;padding:10px;background:#B91C1C;border:none;border-radius:9px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;color:#fff">Confirmar rechazo</button>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+};
 window.flElim=async id=>{if(!confirm('¿Eliminar solicitud permanentemente?'))return;try{await fs.deleteDoc(fs.doc(db,C.SOLS,id));await ldSols();if(vistaAct==='sols')rSols();else rPanel();}catch(e){console.error('[FL]',e);}};
 window.flVerVeh=function(id){const v=flV.find(x=>x.id===id);if(!v)return;const ov=document.createElement('div');ov.className='fl-ov';ov.innerHTML=`<div class="fl-modal"><div class="fl-mh"><h3><span style="vertical-align:middle;display:inline-flex">${hEmo(v.tipo)}</span> ECO ${v.eco}</h3><button class="fl-mx" onclick="this.closest('.fl-ov').remove()">✕</button></div><div class="fl-mb"><div style="display:grid;grid-template-columns:1fr 1fr;background:#F8FAFD;border-radius:9px;overflow:hidden;border:1px solid #E8EDF5">${[['Placas',v.placas||'—'],['Año',v.año||'—'],['Serie',v.serie||'—'],['Color',v.color||'—'],['Plaza',v.plaza||'—'],['Responsable',v.responsable||'—'],['Km',v.km||'—'],['Baja',hF(v.fechaBaja)||'—']].map(([l,val])=>`<dl style="padding:7px 11px;border-right:1px solid #E8EDF5;border-bottom:1px solid #E8EDF5"><dt style="font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">${l}</dt><dd style="font-size:11.5px;font-weight:600">${val}</dd></dl>`).join('')}<dl style="grid-column:1/-1;padding:7px 11px"><dt style="font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">Motivo</dt><dd style="font-size:11.5px">${v.motivoBaja||'—'}</dd></dl></div><div class="fl-fa"><button class="fb gho" onclick="this.closest('.fl-ov').remove()">Cerrar</button>${hAdm()?`<button class="fb acc" onclick="flReact('${v.id}');this.closest('.fl-ov').remove()">Reactivar</button>`:''}</div></div></div>`;
   document.body.appendChild(ov);ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});};
@@ -2038,6 +2098,143 @@ window.flImg=src=>{const ov=document.createElement('div');ov.className='fl-ov';o
 
 // SVG shield polyfill
 I.shield=I.doc;
+
+// ── GENERADOR PDF DE SOLICITUD ──
+window.flGenerarPDF=function(id){
+  const s=flS.find(x=>x.id===id);if(!s){flMsgError('Solicitud no encontrada');return;}
+  const v=flV.find(x=>x.eco===s.vehiculoEco||x.id===s.vehiculoId);
+  const chkF=s.chkFotos||{};
+  const chkEntries=Object.entries(chkF).filter(([k,v])=>v);
+  const noItems=Object.entries(s.checklist||{}).filter(([k,v])=>v==='no');
+  const getLabel=k=>{for(const items of Object.values(CHK_CATS)){const f=items.find(it=>it.toLowerCase().replace(/[^a-z0-9]/g,'')===k.toLowerCase().replace(/[^a-z0-9]/g,''));if(f)return f;}return k;};
+  // Medidor gasolina SVG
+  const gasPct=s.gasolina||0;
+  const gasAngle=(-120)+(gasPct/100)*240;
+  const gasRad=gasAngle*Math.PI/180;
+  const gasX=50+35*Math.cos(gasRad);const gasY=50+35*Math.sin(gasRad);
+  const gasColor=gasPct>50?'#16A34A':gasPct>25?'#D97706':'#DC2626';
+  const gasPath=`M ${50+35*Math.cos(-120*Math.PI/180)} ${50+35*Math.sin(-120*Math.PI/180)} A 35 35 0 ${(gasPct>50?1:0)} 1 ${gasX} ${gasY}`;
+  const gasSVG=`<svg width="90" height="55" viewBox="0 0 100 60" style="display:block">
+    <path d="M ${50+35*Math.cos(-120*Math.PI/180)} ${50+35*Math.sin(-120*Math.PI/180)} A 35 35 0 1 1 ${50+35*Math.cos(60*Math.PI/180)} ${50+35*Math.sin(60*Math.PI/180)}" fill="none" stroke="#E2E8F0" stroke-width="8" stroke-linecap="round"/>
+    ${gasPct>0?`<path d="${gasPath}" fill="none" stroke="${gasColor}" stroke-width="8" stroke-linecap="round"/>`:''}
+    <text x="50" y="48" text-anchor="middle" font-size="14" font-weight="800" fill="${gasColor}" font-family="system-ui">${gasPct}%</text>
+  </svg>`;
+  // Thumbnail fotos (max 4 evidencias generales)
+  const evThumbs=(s.evidencias||[]).slice(0,6).map((src,i)=>{
+    const meta=(s.evidenciasMeta||[])[i];
+    return`<div style="display:inline-block;margin:4px;text-align:center">
+      <img src="${src}" style="width:100px;height:75px;object-fit:cover;border-radius:6px;border:1px solid #E2E8F0;display:block">
+      <div style="font-size:8px;color:#64748B;margin-top:2px;font-family:monospace">${meta?.codigo||'Foto '+(i+1)}</div>
+    </div>`;
+  }).join('');
+  // Fotos checklist (max 6)
+  const chkThumbs=chkEntries.slice(0,6).map(([k,src])=>
+    `<div style="display:inline-block;margin:4px;text-align:center">
+      <img src="${src}" style="width:80px;height:60px;object-fit:cover;border-radius:5px;border:1px solid #BFDBFE;display:block">
+      <div style="font-size:7px;color:#1D4ED8;margin-top:2px;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${getLabel(k)}</div>
+    </div>`
+  ).join('');
+  const fecha=s.creadoEn?s.creadoEn.substring(0,10):'—';
+  const html=`<!DOCTYPE html><html><head><meta charset="utf-8">
+  <title>TCN-SOL-${id.slice(0,8).toUpperCase()}</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:system-ui,Arial,sans-serif;font-size:11px;color:#0A0F1E;padding:24px;background:#fff}
+    h1{font-size:22px;font-weight:900;letter-spacing:-1px;color:#0A1628}
+    .sub{font-size:11px;color:#64748B;margin-top:2px}
+    .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #0A1628;padding-bottom:12px;margin-bottom:16px}
+    .logo{font-size:18px;font-weight:900;letter-spacing:-1px}
+    .logo em{color:#2563EB;font-style:normal}
+    .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:800;background:#0A1628;color:#fff}
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+    .field{background:#F8FAFD;border-radius:6px;padding:7px 10px;border:1px solid #E8EDF5}
+    .field label{font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:2px}
+    .field span{font-size:12px;font-weight:700}
+    .sec{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin:12px 0 6px;border-top:1px solid #E8EDF5;padding-top:8px}
+    .obs{background:#FEF2F2;border:1px solid #FECACA;border-radius:6px;padding:8px 10px}
+    .obs li{font-size:11px;font-weight:600;color:#991B1B;padding:1px 0}
+    .ok{background:#F0FDF4;border:1px solid #BBF7D0;border-radius:6px;padding:8px 10px;font-size:11px;font-weight:700;color:#15803D}
+    .gas{display:flex;align-items:center;gap:10px;background:#F8FAFD;border-radius:8px;padding:10px 14px;border:1px solid #E8EDF5;margin-bottom:8px}
+    .photos{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+    .footer{margin-top:20px;padding-top:10px;border-top:1px solid #E8EDF5;font-size:9px;color:#94A3B8;text-align:center}
+    @media print{body{padding:12px}button{display:none}}
+  </style></head><body>
+  <div class="hdr">
+    <div>
+      <div class="logo">TECNO<em>CONTROL</em></div>
+      <div class="sub">Reporte de solicitud vehicular</div>
+    </div>
+    <div style="text-align:right">
+      <div style="font-size:16px;font-weight:900;font-family:monospace">${id.slice(0,8).toUpperCase()}</div>
+      <div style="margin-top:4px"><span class="badge">${s.estatus||'Solicitud'}</span></div>
+      <div style="font-size:10px;color:#64748B;margin-top:4px">${fecha}</div>
+    </div>
+  </div>
+  ${v?`<div style="background:#0A1628;color:#fff;border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between">
+    <div>
+      <div style="font-size:14px;font-weight:800">${v.unidad||'—'} ${v.año||''}</div>
+      <div style="font-size:10px;color:rgba(255,255,255,.5);margin-top:2px;font-family:monospace">ECO ${v.eco} · ${v.placas||'—'} · ${v.responsable||'—'}</div>
+    </div>
+    <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,.7)">${(s.modo||'').toUpperCase()}</div>
+  </div>`:''}
+  <div class="grid2">
+    ${[['Tipo',s.tipo||'—'],['Prioridad',s.prioridad||'Normal'],['Solicitante',s.solicitante||'—'],['Taller',s.taller||'Sin especificar'],['Kilómetros',s.kilometrajeReportado||'—'],['Fecha',fecha]].map(([l,val])=>`<div class="field"><label>${l}</label><span>${val}</span></div>`).join('')}
+  </div>
+  <div class="field" style="margin-bottom:12px;grid-column:1/-1"><label>Descripción</label><span style="font-size:12px;font-weight:500;line-height:1.5">${s.descripcion||'—'}</span></div>
+  <div class="gas">
+    <div>${gasSVG}</div>
+    <div>
+      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8">Nivel de gasolina</div>
+      <div style="font-size:20px;font-weight:900;color:${gasColor}">${gasPct}%</div>
+    </div>
+  </div>
+  ${noItems.length?`<div class="sec">Observaciones del checklist</div><div class="obs"><ul style="padding-left:14px">${noItems.map(([k])=>`<li>${getLabel(k)}</li>`).join('')}</ul></div>`
+    :Object.keys(s.checklist||{}).length?`<div class="ok">Checklist: todos los puntos revisados en buen estado</div>`:''}
+  ${s.comentarioRechazo?`<div class="sec">Motivo de rechazo</div><div class="obs" style="background:#FEF2F2"><span>${s.comentarioRechazo}</span></div>`:''}
+  ${evThumbs?`<div class="sec">Evidencias generales (${(s.evidencias||[]).length})</div><div class="photos">${evThumbs}</div>`:''}
+  ${chkThumbs?`<div class="sec">Fotos de checklist (${chkEntries.length})</div><div class="photos">${chkThumbs}</div>`:''}
+  <div class="footer">Generado por Portal Flotilla Tecnocontrol · ${new Date().toLocaleString('es-MX')} · ID: ${id}</div>
+  <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
+    <button onclick="window.print()" style="padding:10px 20px;background:#0A1628;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">Imprimir / Guardar PDF</button>
+  </div>
+  </body></html>`;
+  const win=window.open('','_blank','width=800,height=900');
+  win.document.write(html);win.document.close();
+};
+
+// ── COMPARTIR POR WHATSAPP ──
+window.flCompartirWA=function(id){
+  const s=flS.find(x=>x.id===id);if(!s)return;
+  const v=flV.find(x=>x.eco===s.vehiculoEco||x.id===s.vehiculoId);
+  const noItems=Object.entries(s.checklist||{}).filter(([k,v])=>v==='no');
+  const getLabel=k=>{for(const items of Object.values(CHK_CATS)){const f=items.find(it=>it.toLowerCase().replace(/[^a-z0-9]/g,'')===k.toLowerCase().replace(/[^a-z0-9]/g,''));if(f)return f;}return k;};
+  const txt=[
+    `*TECNOCONTROL — Solicitud Vehicular*`,
+    `ID: ${id.slice(0,8).toUpperCase()} | ${s.estatus||'Solicitud'}`,
+    `Fecha: ${s.creadoEn?s.creadoEn.substring(0,10):'—'}`,
+    ``,
+    `*Vehículo:* ${v?v.unidad+' '+v.año:'—'} (ECO ${s.vehiculoEco||'—'})`,
+    `*Modo:* ${(s.modo||'—').toUpperCase()}`,
+    `*Tipo:* ${s.tipo||'—'}`,
+    `*Prioridad:* ${s.prioridad||'Normal'}`,
+    `*KM:* ${s.kilometrajeReportado||'—'}`,
+    `*Gasolina:* ${s.gasolina!=null?s.gasolina+'%':'—'}`,
+    `*Taller:* ${s.taller||'Sin especificar'}`,
+    `*Solicitante:* ${s.solicitante||'—'}`,
+    ``,
+    `*Descripción:*`,
+    s.descripcion||'—',
+    noItems.length?`
+*Observaciones checklist:*
+${noItems.map(([k])=>'• '+getLabel(k)).join('
+')}`:'',
+    s.comentarioRechazo?`
+*Rechazo:* ${s.comentarioRechazo}`:'',
+  ].filter(x=>x!==undefined).join('
+');
+  const url='https://wa.me/?text='+encodeURIComponent(txt);
+  window.open(url,'_blank');
+};
 
 console.log('[FLOTILLA v12] Imágenes reales Tecnocontrol · '+CAT.length+' unidades');
 })();
