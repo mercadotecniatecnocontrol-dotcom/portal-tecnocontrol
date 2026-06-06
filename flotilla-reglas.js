@@ -7,14 +7,22 @@ const FL_ROLES = {
     'p.pinedo@tecnocontrol.com.mx'
   ],
   flotilla: [
-    // Agregar correo de Fátima cuando se asigne
-    // 'f.sauzameda@tecnocontrol.com.mx'
+    'fatima@tecnocontrol.com.mx',
+    'almacen@tecnocontrol.com.mx',
+    'rh@tecnocontrol.com.mx',
+    'c.acosta@tecnocontrol.com.mx',
+    'mercadotecnia@tecnocontrol.com.mx',
+    'mercadotecniatecnocontrol@gmail.com'
   ],
   administradores: [
-    'g.acosta@tecnocontrol.com.mx',    // Glen
-    'c.acosta@tecnocontrol.com.mx',    // Cristina
-    'm.delao@tecnocontrol.com.mx',     // Martín
-    'p.pinedo@tecnocontrol.com.mx'     // Paloma
+    'mercadotecnia@tecnocontrol.com.mx',
+    'mercadotecniatecnocontrol@gmail.com',
+    'c.acosta@tecnocontrol.com.mx',
+    'rh@tecnocontrol.com.mx',
+    'm.delao@tecnocontrol.com.mx',
+    'p.pinedo@tecnocontrol.com.mx',
+    'fatima@tecnocontrol.com.mx',
+    'almacen@tecnocontrol.com.mx'
   ]
 };
 
