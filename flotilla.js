@@ -2224,17 +2224,13 @@ window.flCompartirWA=function(id){
     ``,
     `*Descripción:*`,
     s.descripcion||'—',
-    noItems.length?`
-*Observaciones checklist:*
-${noItems.map(([k])=>'• '+getLabel(k)).join('
-')}`:'',
-    s.comentarioRechazo?`
-*Rechazo:* ${s.comentarioRechazo}`:'',
-  ].filter(x=>x!==undefined).join('
-');
+    noItems.length?'*Observaciones checklist:*\n'+noItems.map(([k])=>'\u2022 '+getLabel(k)).join('\n'):'',
+    s.comentarioRechazo?'*Rechazo:* '+s.comentarioRechazo:'',
+  ].filter(x=>x!==undefined&&x!=='').join('\n');
   const url='https://wa.me/?text='+encodeURIComponent(txt);
   window.open(url,'_blank');
 };
 
 console.log('[FLOTILLA v12] Imágenes reales Tecnocontrol · '+CAT.length+' unidades');
 })();
+  
