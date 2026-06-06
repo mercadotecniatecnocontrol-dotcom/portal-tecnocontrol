@@ -1525,14 +1525,9 @@ window.fmCompartirWA=function(id){
     '',
     '*Descripción:*',
     s.descripcion||'—',
-    noItems.length?'
-*Observaciones checklist:*
-'+noItems.map(([k])=>'• '+getL(k)).join('
-'):'',
-    s.comentarioRechazo?'
-*Motivo rechazo:* '+s.comentarioRechazo:'',
-  ].filter(x=>x!==undefined).join('
-');
+    noItems.length?'*Observaciones checklist:*\n'+noItems.map(([k])=>'\u2022 '+getL(k)).join('\n'):'',
+    s.comentarioRechazo?'*Motivo rechazo:* '+s.comentarioRechazo:'',
+  ].filter(x=>x!==undefined&&x!=='').join('\n');
   window.open('https://wa.me/?text='+encodeURIComponent(txt),'_blank');
 };
 
