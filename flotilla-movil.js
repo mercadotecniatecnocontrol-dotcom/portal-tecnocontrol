@@ -1161,6 +1161,10 @@ window.fmCapturar=async function(tipo,key){
   inp.click();
 };
 
+// Array global para evidencias — evita base64 inline en onclick
+window._fmEvCache=[];
+window.fmVerEvIdx=function(idx){const ev=window._fmEvCache[idx];if(ev)window.fmVerFoto(ev);};
+
 window.fmVerFoto=function(ev){
   const src=typeof ev==='string'?ev:ev.src;
   const meta=typeof ev==='object'?ev.meta:null;
@@ -1357,9 +1361,52 @@ window.fmVerSol=function(id){
         <div style="font-size:13.5px;color:#0A0F1E;line-height:1.5">${s.descripcion||'—'}</div>
       </div>
       ${s.comentarioRechazo?`<div style="background:#FEF2F2;border-radius:10px;padding:11px 13px;margin-top:12px"><div style="font-size:12px;font-weight:700;color:#B91C1C;margin-bottom:3px">Motivo de rechazo</div><div style="font-size:13px;color:#991B1B">${s.comentarioRechazo}</div></div>`:''}
-      ${s.evidencias?.length?`<div style="margin-top:14px"><div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:8px">Evidencias (${s.evidencias.length})</div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px">${s.evidencias.map((src,i)=>{const m=(s.evidenciasMeta||[])[i];return`<div onclick="fmVerFoto({src:'${src}',meta:${m?JSON.stringify(m):'null'}})" class="fm-ev-pill"><img src="${src}"><span>${m?.codigo||'Foto '+(i+1)}</span></div>`;}).join('')}</div></div>`:''}
-      <button onclick="this.closest('.fm-ov').remove()" class="fm-btn ghost" style="margin-top:16px">Cerrar</button>
+      ${(()=>{
+        // EVIDENCIAS GENERALES — índice global evita base64 en onclick
+        if(!s.evidencias?.length)return'';
+        const baseIdx=window._fmEvCache.length;
+        s.evidencias.forEach((src,i)=>{const m=(s.evidenciasMeta||[])[i];window._fmEvCache.push({src,meta:m||null});});
+        return`<div style="margin-top:14px">
+          <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:8px">Evidencias generales (${s.evidencias.length})</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">${s.evidencias.map((src,i)=>{const m=(s.evidenciasMeta||[])[i];return`<div onclick="fmVerEvIdx(${baseIdx+i})" class="fm-ev-pill" style="flex-direction:column;width:70px;height:80px;justify-content:flex-start;padding:4px"><img src="${src}" style="width:60px;height:55px;object-fit:cover;border-radius:6px;display:block"><span style="font-size:8px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:64px">${m?.codigo||'Foto '+(i+1)}</span></div>`;}).join('')}</div>
+        </div>`;
+      })()}
+      ${(()=>{
+        const chkF=s.chkFotos||{};
+        const chkEntries=Object.entries(chkF).filter(([k,v])=>v);
+        if(!chkEntries.length)return'';
+        const CHK=window.CHK_CATS_M={Cristales:['Medallón delantero','Vidrio trasero','Lat. der. delantero','Lat. der. trasero','Lat. izq. delantero','Lat. izq. trasero'],Espejos:['Retrovisor izquierdo','Retrovisor derecho','Espejo central'],Neumáticos:['Llanta del. der.','Llanta del. izq.','Llanta tra. der.','Llanta tra. izq.','Refacción'],Interiores:['Póliza / Manual','Radio','Pantallas','Asientos','Tablero','Tapetes'],Motor:['Batería','Tapón agua','Tapón radiador','Tapón dirección'],Cajuela:['Herramienta','Cables arranque','Extintor','Llave L','Llave cruz'],Legal:['Sin multas vigentes','Verificación vigente','Tenencia al corriente','Tarjeta circulación']};
+        const getL=k=>{for(const items of Object.values(CHK)){const f=items.find(it=>it.toLowerCase().replace(/[^a-z0-9]/g,'')===k.toLowerCase().replace(/[^a-z0-9]/g,''));if(f)return f;}return k;};
+        const baseIdx=window._fmEvCache.length;
+        chkEntries.forEach(([k,src])=>window._fmEvCache.push({src,meta:{codigo:k,tipo:'checklist'}}));
+        return`<div style="margin-top:10px">
+          <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#2563EB;margin-bottom:8px">Fotos checklist (${chkEntries.length})</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">${chkEntries.map(([k,src],i)=>`<div onclick="fmVerEvIdx(${baseIdx+i})" class="fm-ev-pill" style="flex-direction:column;width:70px;height:80px;justify-content:flex-start;padding:4px;background:#EFF6FF;border-color:#BFDBFE"><img src="${src}" style="width:60px;height:55px;object-fit:cover;border-radius:6px;display:block"><span style="font-size:8px;margin-top:2px;color:#1D4ED8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:64px">${getL(k)}</span></div>`).join('')}</div>
+        </div>`;
+      })()}
+      ${(()=>{
+        const CHK=window.CHK_CATS_M={Cristales:['Medallón delantero','Vidrio trasero','Lat. der. delantero','Lat. der. trasero','Lat. izq. delantero','Lat. izq. trasero'],Espejos:['Retrovisor izquierdo','Retrovisor derecho','Espejo central'],Neumáticos:['Llanta del. der.','Llanta del. izq.','Llanta tra. der.','Llanta tra. izq.','Refacción'],Interiores:['Póliza / Manual','Radio','Pantallas','Asientos','Tablero','Tapetes'],Motor:['Batería','Tapón agua','Tapón radiador','Tapón dirección'],Cajuela:['Herramienta','Cables arranque','Extintor','Llave L','Llave cruz'],Legal:['Sin multas vigentes','Verificación vigente','Tenencia al corriente','Tarjeta circulación']};
+        const getL=k=>{for(const items of Object.values(CHK)){const f=items.find(it=>it.toLowerCase().replace(/[^a-z0-9]/g,'')===k.toLowerCase().replace(/[^a-z0-9]/g,''));if(f)return f;}return k;};
+        const noItems=Object.entries(s.checklist||{}).filter(([k,v])=>v==='no');
+        const siItems=Object.entries(s.checklist||{}).filter(([k,v])=>v==='si');
+        if(!noItems.length&&!siItems.length)return'';
+        if(!noItems.length)return`<div style="margin-top:10px;padding:8px 11px;background:#F0FDF4;border-radius:8px;border:1px solid #BBF7D0;font-size:11.5px;font-weight:700;color:#15803D">Checklist: ${siItems.length} puntos sin novedad</div>`;
+        return`<div style="margin-top:10px;padding:8px 11px;background:#FEF2F2;border-radius:8px;border:1px solid #FECACA">
+          <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#B91C1C;margin-bottom:5px">Puntos con observación</div>
+          ${noItems.map(([k])=>`<div style="font-size:11px;font-weight:600;color:#991B1B;padding:2px 0">• ${getL(k)}</div>`).join('')}
+        </div>`;
+      })()}
+      <div style="display:flex;gap:8px;margin-top:16px">
+        <button onclick="fmGenerarPDF('${s.id}')" style="flex:1;padding:10px;background:#0A1628;border:none;border-radius:9px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;color:#fff;display:flex;align-items:center;justify-content:center;gap:6px">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          PDF
+        </button>
+        <button onclick="fmCompartirWA('${s.id}')" style="flex:1;padding:10px;background:#25D366;border:none;border-radius:9px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;color:#fff;display:flex;align-items:center;justify-content:center;gap:6px">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.127.558 4.126 1.528 5.855L0 24l6.335-1.652A11.954 11.954 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.891 0-3.659-.52-5.17-1.426l-.371-.22-3.763.981.999-3.668-.242-.379A9.956 9.956 0 012 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>
+          WhatsApp
+        </button>
+      </div>
+      <button onclick="this.closest('.fm-ov').remove()" class="fm-btn ghost" style="margin-top:10px">Cerrar</button>
     </div>
   </div>`;
   document.body.appendChild(ov);
@@ -1380,11 +1427,113 @@ window.abrirPerfil=function(){
         ${miPerfil?.ecoVinculado?`<div style="margin-top:10px;display:inline-flex;align-items:center;gap:6px;background:#EFF6FF;border-radius:100px;padding:5px 14px;font-size:12px;font-weight:700;color:#1D4ED8">ECO ${miPerfil.ecoVinculado} vinculado</div>`:''}
       </div>
       ${!miPerfil?.ecoVinculado?`<button class="fm-btn primary" onclick="this.closest('.fm-ov').remove();fmVista('vehiculo')" style="margin-bottom:10px">Vincular mi vehículo</button>`:''}
+      ${(()=>{
+        if(!esRolLibre()||!miPerfil?.ecoVinculado)return'';
+        return`<button class="fm-btn" style="margin-bottom:10px;background:#FEF2F2;color:#B91C1C;border:1.5px solid #FECACA;font-size:12px" onclick="window._desvinc()">
+          Desvincular ECO ${miPerfil.ecoVinculado}
+        </button>`;
+      })()}
       <button class="fm-btn danger" onclick="if(confirm('¿Cerrar sesión?')){window.auth.signOut().then(()=>location.reload());}">Cerrar sesión</button>
     </div>
   </div>`;
   document.body.appendChild(ov);
   ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+};
+
+// ── DESVINCULAR VEHÍCULO (SOLO ADMINS) ──
+window._desvinc=async function(){
+  if(!confirm('¿Desvincular el vehículo ECO '+(miPerfil?.ecoVinculado||'')+'? Podrás seleccionar cualquier otro.'))return;
+  try{
+    const snap=await db.collection(C.USUARIOS).where('email','==',miPerfil.email).get();
+    if(!snap.empty)await snap.docs[0].ref.update({ecoVinculado:null,desvinculadoEn:new Date().toISOString()});
+    miPerfil.ecoVinculado=null;
+    miVeh=null;
+    document.querySelector('.fm-ov')?.remove();
+    toast('Vehículo desvinculado — selecciona uno nuevo','ok');
+    setTimeout(()=>renderSelectorFlota(),400);
+  }catch(e){
+    console.error('[MOVIL desvinc]',e);
+    toast('Error al desvincular: '+e.message,'err');
+  }
+};
+
+// ── PDF SOLICITUD (MÓVIL) ──
+window.fmGenerarPDF=function(id){
+  const s=misSols.find(x=>x.id===id);if(!s){toast('No encontrada','err');return;}
+  const CHK={Cristales:['Medallón delantero','Vidrio trasero','Lat. der. delantero','Lat. der. trasero','Lat. izq. delantero','Lat. izq. trasero'],Espejos:['Retrovisor izquierdo','Retrovisor derecho','Espejo central'],Neumáticos:['Llanta del. der.','Llanta del. izq.','Llanta tra. der.','Llanta tra. izq.','Refacción'],Interiores:['Póliza / Manual','Radio','Pantallas','Asientos','Tablero','Tapetes'],Motor:['Batería','Tapón agua','Tapón radiador','Tapón dirección'],Cajuela:['Herramienta','Cables arranque','Extintor','Llave L','Llave cruz'],Legal:['Sin multas vigentes','Verificación vigente','Tenencia al corriente','Tarjeta circulación']};
+  const getL=k=>{for(const items of Object.values(CHK)){const f=items.find(it=>it.toLowerCase().replace(/[^a-z0-9]/g,'')===k.toLowerCase().replace(/[^a-z0-9]/g,''));if(f)return f;}return k;};
+  const noItems=Object.entries(s.checklist||{}).filter(([k,v])=>v==='no');
+  const chkF=Object.entries(s.chkFotos||{}).filter(([k,v])=>v);
+  const gasPct=s.gasolina||0;
+  const gasColor=gasPct>50?'#16A34A':gasPct>25?'#D97706':'#DC2626';
+  const gasAngle=(-120)+(gasPct/100)*240;
+  const gasRad=gasAngle*Math.PI/180;
+  const gasX=50+35*Math.cos(gasRad);const gasY=50+35*Math.sin(gasRad);
+  const gasSVG=`<svg width="90" height="55" viewBox="0 0 100 60"><path d="M ${50+35*Math.cos(-120*Math.PI/180)} ${50+35*Math.sin(-120*Math.PI/180)} A 35 35 0 1 1 ${50+35*Math.cos(60*Math.PI/180)} ${50+35*Math.sin(60*Math.PI/180)}" fill="none" stroke="#E2E8F0" stroke-width="8" stroke-linecap="round"/>${gasPct>0?`<path d="M ${50+35*Math.cos(-120*Math.PI/180)} ${50+35*Math.sin(-120*Math.PI/180)} A 35 35 0 ${gasPct>50?1:0} 1 ${gasX} ${gasY}" fill="none" stroke="${gasColor}" stroke-width="8" stroke-linecap="round"/>`:''}
+  <text x="50" y="48" text-anchor="middle" font-size="14" font-weight="800" fill="${gasColor}" font-family="system-ui">${gasPct}%</text></svg>`;
+  const evThumbs=(s.evidencias||[]).slice(0,6).map((src,i)=>`<div style="display:inline-block;margin:3px;text-align:center"><img src="${src}" style="width:80px;height:60px;object-fit:cover;border-radius:5px;display:block;border:1px solid #E2E8F0"><div style="font-size:8px;color:#64748B;margin-top:1px">${(s.evidenciasMeta||[])[i]?.codigo||'Foto '+(i+1)}</div></div>`).join('');
+  const chkThumbs=chkF.slice(0,6).map(([k,src])=>`<div style="display:inline-block;margin:3px;text-align:center"><img src="${src}" style="width:70px;height:52px;object-fit:cover;border-radius:5px;display:block;border:1px solid #BFDBFE"><div style="font-size:7px;color:#1D4ED8;margin-top:1px;max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${getL(k)}</div></div>`).join('');
+  const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>TCN-${id.slice(0,8).toUpperCase()}</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui,Arial,sans-serif;font-size:11px;color:#0A0F1E;padding:16px;background:#fff}.logo{font-size:18px;font-weight:900;letter-spacing:-1px}.logo em{color:#2563EB;font-style:normal}.field{background:#F8FAFD;border-radius:6px;padding:7px 10px;border:1px solid #E8EDF5;margin-bottom:6px}.field label{font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:1px}.field span{font-size:12px;font-weight:700}.sec{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin:12px 0 5px;border-top:1px solid #E8EDF5;padding-top:7px}.gas{display:flex;align-items:center;gap:10px;background:#F8FAFD;border-radius:8px;padding:8px 12px;border:1px solid #E8EDF5;margin:6px 0}.obs{background:#FEF2F2;border:1px solid #FECACA;border-radius:6px;padding:8px 10px}.obs li{font-size:11px;font-weight:600;color:#991B1B;padding:1px 0}.ok{background:#F0FDF4;border:1px solid #BBF7D0;border-radius:6px;padding:8px 10px;font-size:11px;font-weight:700;color:#15803D}.photos{display:flex;flex-wrap:wrap;gap:3px;margin-top:3px}.footer{margin-top:16px;padding-top:8px;border-top:1px solid #E8EDF5;font-size:9px;color:#94A3B8;text-align:center}@media print{button{display:none}}</style></head>
+  <body>
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #0A1628;padding-bottom:10px;margin-bottom:12px">
+    <div><div class="logo">TECNO<em>CONTROL</em></div><div style="font-size:10px;color:#64748B;margin-top:2px">Solicitud vehicular</div></div>
+    <div style="text-align:right"><div style="font-size:15px;font-weight:900;font-family:monospace">${id.slice(0,8).toUpperCase()}</div><div style="font-size:10px;color:#64748B">${s.creadoEn?s.creadoEn.substring(0,10):'—'} · ${s.estatus||'Solicitud'}</div></div>
+  </div>
+  <div style="background:#0A1628;color:#fff;border-radius:7px;padding:9px 12px;margin-bottom:10px">
+    <div style="font-size:13px;font-weight:800">${s.vehiculo||'—'}</div>
+    <div style="font-size:10px;color:rgba(255,255,255,.5);margin-top:1px">${(s.modo||'').toUpperCase()} · ${s.tipo||'—'} · ${s.prioridad||'Normal'}</div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">
+    ${[['KM',s.kilometrajeReportado||'—'],['Taller',s.taller||'Sin especificar'],['Solicitante',s.solicitante||'—'],['Fecha',s.creadoEn?s.creadoEn.substring(0,10):'—']].map(([l,v])=>`<div class="field"><label>${l}</label><span>${v}</span></div>`).join('')}
+  </div>
+  <div class="field" style="margin-top:5px"><label>Descripción</label><span style="font-size:11px;font-weight:500;line-height:1.5">${s.descripcion||'—'}</span></div>
+  <div class="gas"><div>${gasSVG}</div><div><div style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8">Gasolina</div><div style="font-size:20px;font-weight:900;color:${gasColor}">${gasPct}%</div></div></div>
+  ${noItems.length?`<div class="obs" style="margin-top:5px"><div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#B91C1C;margin-bottom:5px">Observaciones checklist</div><ul style="padding-left:14px">${noItems.map(([k])=>`<li>${getL(k)}</li>`).join('')}</ul></div>`
+    :Object.keys(s.checklist||{}).length?`<div class="ok" style="margin-top:5px">Checklist: todos los puntos sin novedad</div>`:''}
+  ${evThumbs?`<div class="sec">Evidencias generales (${(s.evidencias||[]).length})</div><div class="photos">${evThumbs}</div>`:''}
+  ${chkThumbs?`<div class="sec">Fotos de checklist (${chkF.length})</div><div class="photos">${chkThumbs}</div>`:''}
+  ${s.comentarioRechazo?`<div class="obs" style="margin-top:8px"><div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#B91C1C;margin-bottom:3px">Motivo de rechazo</div>${s.comentarioRechazo}</div>`:''}
+  <div class="footer">Portal Flotilla Tecnocontrol · ${new Date().toLocaleString('es-MX')} · ${id}</div>
+  <div style="margin-top:12px;text-align:center"><button onclick="window.print()" style="padding:10px 24px;background:#0A1628;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">Imprimir / Guardar PDF</button></div>
+  </body></html>`;
+  const win=window.open('','_blank');
+  if(win){win.document.write(html);win.document.close();}
+  else toast('Activa ventanas emergentes para PDF','warn');
+};
+
+// ── COMPARTIR WHATSAPP (MÓVIL) ──
+window.fmCompartirWA=function(id){
+  const s=misSols.find(x=>x.id===id);if(!s)return;
+  const CHK={Cristales:['Medallón delantero','Vidrio trasero','Lat. der. delantero','Lat. der. trasero','Lat. izq. delantero','Lat. izq. trasero'],Espejos:['Retrovisor izquierdo','Retrovisor derecho','Espejo central'],Neumáticos:['Llanta del. der.','Llanta del. izq.','Llanta tra. der.','Llanta tra. izq.','Refacción'],Interiores:['Póliza / Manual','Radio','Pantallas','Asientos','Tablero','Tapetes'],Motor:['Batería','Tapón agua','Tapón radiador','Tapón dirección'],Cajuela:['Herramienta','Cables arranque','Extintor','Llave L','Llave cruz'],Legal:['Sin multas vigentes','Verificación vigente','Tenencia al corriente','Tarjeta circulación']};
+  const getL=k=>{for(const items of Object.values(CHK)){const f=items.find(it=>it.toLowerCase().replace(/[^a-z0-9]/g,'')===k.toLowerCase().replace(/[^a-z0-9]/g,''));if(f)return f;}return k;};
+  const noItems=Object.entries(s.checklist||{}).filter(([k,v])=>v==='no');
+  const txt=[
+    '*TECNOCONTROL — Solicitud Vehicular*',
+    `ID: ${id.slice(0,8).toUpperCase()} | ${s.estatus||'Solicitud'}`,
+    `Fecha: ${s.creadoEn?s.creadoEn.substring(0,10):'—'}`,
+    '',
+    `*Vehículo:* ${s.vehiculo||'—'}`,
+    `*Modo:* ${(s.modo||'—').toUpperCase()}`,
+    `*Tipo:* ${s.tipo||'—'}`,
+    `*Prioridad:* ${s.prioridad||'Normal'}`,
+    `*KM:* ${s.kilometrajeReportado||'—'}`,
+    `*Gasolina:* ${s.gasolina!=null?s.gasolina+'%':'—'}`,
+    `*Taller:* ${s.taller||'Sin especificar'}`,
+    `*Solicitante:* ${s.solicitante||'—'}`,
+    '',
+    '*Descripción:*',
+    s.descripcion||'—',
+    noItems.length?'
+*Observaciones checklist:*
+'+noItems.map(([k])=>'• '+getL(k)).join('
+'):'',
+    s.comentarioRechazo?'
+*Motivo rechazo:* '+s.comentarioRechazo:'',
+  ].filter(x=>x!==undefined).join('
+');
+  window.open('https://wa.me/?text='+encodeURIComponent(txt),'_blank');
 };
 
 console.log('[FLOTILLA MÓVIL] Tecnocontrol · App técnicos · Offline ready');
