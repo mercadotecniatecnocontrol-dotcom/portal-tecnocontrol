@@ -86,10 +86,16 @@ const CHK_CATS={
 
 // ── ESTADO ──
 let miVeh=null, misSols=[], misTareas=[], misNotif=[];
+let miPerfil=null; // {email, nombre, ecoVinculado, rol}
 let vistaAct='vehiculo';
 let solState={modo:'entrada',tipo:'',prior:'Normal',desc:'',km:'',taller:'',gasolina:50,chk:{},chkFotos:{},evFotos:[],dmg:{}};
-let miPerfil=null; // {email, nombre, ecoVinculado}
 let onlineStatus=navigator.onLine;
+
+// ── Helper: el usuario tiene rol admin o flotilla ──
+function esRolLibre(){
+  const rol=(miPerfil?.rol||'').toLowerCase();
+  return rol==='admin'||rol==='flotilla'||rol==='encargado';
+}
 
 // ── HELPERS ──
 const hF=iso=>iso&&iso!=='—'?String(iso).substring(0,10):'—';
@@ -559,18 +565,24 @@ async function cargarPerfil(user){
 }
 
 async function cargarMiVeh(){
+  // Rol libre (admin/flotilla): puede elegir cualquier vehículo
+  if(esRolLibre()){
+    // Si ya eligió uno en esta sesión, mantenerlo
+    if(!miVeh){
+      // Por defecto sin vehículo seleccionado — renderVehiculo mostrará el selector
+    }
+    return;
+  }
   if(!miPerfil?.ecoVinculado){miVeh=null;return;}
   try{
     const snap=await db.collection(C.VEHS).where('eco','==',String(miPerfil.ecoVinculado)).get();
     if(!snap.empty){
       miVeh={id:snap.docs[0].id,...snap.docs[0].data()};
     } else {
-      // Buscar en catálogo local
       miVeh=window.CAT_FL?.find(v=>String(v.eco)===String(miPerfil.ecoVinculado))||null;
       if(miVeh)miVeh={id:'eco-'+miVeh.eco,...miVeh};
     }
   }catch(e){
-    // Fallback catálogo local
     const found=window.CAT_FL?.find(v=>String(v.eco)===String(miPerfil.ecoVinculado));
     miVeh=found?{id:'eco-'+found.eco,...found}:null;
   }
@@ -626,11 +638,105 @@ window.fmVista=function(v){
   else if(v==='util')renderUtil();
 };
 
+// ══════════════════════════════════════════════════════════
+// SELECTOR DE FLOTA — solo para admin / encargado de flotilla
+// ══════════════════════════════════════════════════════════
+function renderSelectorFlota(){
+  const todos=window.CAT_FL||[];
+  // Agrupar por tipo
+  const autos=todos.filter(v=>v.tipo==='auto');
+  const camionetas=todos.filter(v=>v.tipo==='camioneta');
+  const camiones=todos.filter(v=>v.tipo==='camion');
+
+  const grp=(label,lista)=>lista.length?
+    `<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;padding:8px 0 4px">${label}</div>`+
+    lista.map(v=>`
+    <div onclick="fmSeleccionarVeh('${v.eco}')" style="display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:11px;border:1.5px solid #E8EDF5;background:#fff;cursor:pointer;transition:.12s;margin-bottom:6px" onmouseover="this.style.borderColor='#2563EB';this.style.background='#EFF6FF'" onmouseout="this.style.borderColor='#E8EDF5';this.style.background='#fff'">
+      <div style="width:36px;height:36px;border-radius:9px;background:linear-gradient(135deg,#0A1628,#1E3A5F);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.9)" stroke-width="1.8" stroke-linecap="round"><path d="M5 17H3a2 2 0 01-2-2V9a2 2 0 012-2h11a2 2 0 012 2v6h-2"/><path d="M7 9l2-4h6l2 4"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:800;color:#0A0F1E">${v.unidad||'—'}</div>
+        <div style="font-size:10.5px;color:#64748B;margin-top:1px">ECO ${v.eco} · ${v.placas||'—'} · ${v.plaza||'—'}</div>
+      </div>
+      <div style="font-size:10px;font-weight:700;color:#94A3B8">${v.responsable||'Sin asignar'}</div>
+    </div>`).join('')
+  :'';
+
+  setContent(`
+    <div class="fm-sec-hd">
+      <div>
+        <div class="fm-sec-t">Seleccionar vehículo</div>
+        <div class="fm-sec-s">${miPerfil?.rol==='flotilla'||miPerfil?.rol==='encargado'?'Encargado de Flotilla':'Administrador'} · ${todos.length} unidades</div>
+      </div>
+    </div>
+    <div style="margin-bottom:12px">
+      <input id="fm-selector-q" type="search" placeholder="Buscar ECO, unidad, placas, responsable..." style="width:100%;padding:11px 14px;border:1.5px solid #E2E8F0;border-radius:11px;font-size:13px;background:#fff;outline:none;box-sizing:border-box" oninput="fmFiltrarSelector(this.value)">
+    </div>
+    <div id="fm-selector-lista">
+      ${grp('Autos',autos)}
+      ${grp('Camionetas',camionetas)}
+      ${grp('Camiones / Grúas',camiones)}
+      ${(!autos.length&&!camionetas.length&&!camiones.length)?'<div style="text-align:center;padding:40px;color:#94A3B8;font-size:13px">Sin vehículos en catálogo</div>':''}
+    </div>
+  `);
+}
+
+window.fmFiltrarSelector = function(q){
+  const todos=window.CAT_FL||[];
+  const qn=q.toLowerCase();
+  const filtrados=q?todos.filter(v=>
+    String(v.eco).includes(qn)||
+    (v.unidad||'').toLowerCase().includes(qn)||
+    (v.placas||'').toLowerCase().includes(qn)||
+    (v.responsable||'').toLowerCase().includes(qn)||
+    (v.plaza||'').toLowerCase().includes(qn)
+  ):todos;
+  const lista=document.getElementById('fm-selector-lista');
+  if(!lista)return;
+  if(!filtrados.length){lista.innerHTML='<div style="text-align:center;padding:30px;color:#94A3B8;font-size:13px">Sin resultados</div>';return;}
+  lista.innerHTML=filtrados.map(v=>`
+    <div onclick="fmSeleccionarVeh('${v.eco}')" style="display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:11px;border:1.5px solid #E8EDF5;background:#fff;cursor:pointer;margin-bottom:6px" onmouseover="this.style.borderColor='#2563EB';this.style.background='#EFF6FF'" onmouseout="this.style.borderColor='#E8EDF5';this.style.background='#fff'">
+      <div style="width:36px;height:36px;border-radius:9px;background:linear-gradient(135deg,#0A1628,#1E3A5F);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.9)" stroke-width="1.8" stroke-linecap="round"><path d="M5 17H3a2 2 0 01-2-2V9a2 2 0 012-2h11a2 2 0 012 2v6h-2"/><path d="M7 9l2-4h6l2 4"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:800;color:#0A0F1E">${v.unidad||'—'}</div>
+        <div style="font-size:10.5px;color:#64748B;margin-top:1px">ECO ${v.eco} · ${v.placas||'—'} · ${v.plaza||'—'}</div>
+      </div>
+      <div style="font-size:10px;font-weight:700;color:#94A3B8">${v.responsable||'Sin asignar'}</div>
+    </div>`).join('');
+};
+
+window.fmSeleccionarVeh = async function(eco){
+  // Buscar en Firestore primero, luego catálogo local
+  try{
+    const snap=await db.collection(C.VEHS).where('eco','==',String(eco)).get();
+    if(!snap.empty){miVeh={id:snap.docs[0].id,...snap.docs[0].data()};}
+    else{
+      const found=window.CAT_FL?.find(v=>String(v.eco)===String(eco));
+      miVeh=found?{id:'eco-'+found.eco,...found}:null;
+    }
+  }catch{
+    const found=window.CAT_FL?.find(v=>String(v.eco)===String(eco));
+    miVeh=found?{id:'eco-'+found.eco,...found}:null;
+  }
+  if(!miVeh){toast('Vehículo no encontrado','err');return;}
+  // Cargar solicitudes de ese vehículo
+  await cargarMisSols();
+  renderVehiculo();
+};
+
 // ══════════════════════════════════════════
 // VISTA 1 — MI VEHÍCULO
 // ══════════════════════════════════════════
 function renderVehiculo(){
-  if(!miPerfil?.ecoVinculado||!miVeh){
+  // Rol libre sin vehículo seleccionado → mostrar selector
+  if(esRolLibre()&&!miVeh){
+    renderSelectorFlota();return;
+  }
+  // Técnico normal sin vehículo vinculado → mostrar vinculación
+  if(!esRolLibre()&&(!miPerfil?.ecoVinculado||!miVeh)){
     renderVincular();return;
   }
   const v=miVeh;
@@ -641,13 +747,16 @@ function renderVehiculo(){
   setContent(`
     <div class="fm-sec-hd">
       <div>
-        <div class="fm-sec-t">Mi vehículo</div>
+        <div class="fm-sec-t">${esRolLibre()?'Vehículo seleccionado':'Mi vehículo'}</div>
         <div class="fm-sec-s">ECO ${v.eco} · ${new Date().toLocaleDateString('es-MX',{weekday:'short',day:'numeric',month:'short'})}</div>
       </div>
-      <button onclick="fmVista('solicitud')" class="fm-btn primary fm-btn-sm" style="gap:5px">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        Solicitud
-      </button>
+      <div style="display:flex;gap:6px;align-items:center">
+        ${esRolLibre()?`<button onclick="miVeh=null;renderSelectorFlota()" style="padding:7px 11px;border:1.5px solid rgba(255,255,255,.2);border-radius:9px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.8);font-size:11px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>Cambiar</button>`:''}
+        <button onclick="fmVista('solicitud')" class="fm-btn primary fm-btn-sm" style="gap:5px">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Solicitud
+        </button>
+      </div>
     </div>
 
     ${offline.length?`<div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px;margin-bottom:12px">
