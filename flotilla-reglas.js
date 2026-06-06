@@ -59,7 +59,7 @@ window.flTienePermiso = function(accion) {
 window.flGetRolActual = function() {
   const email = window.auth?.currentUser?.email || '';
   if (FL_ROLES.contraloria.includes(email)) return 'Contraloría';
-  if (FL_ROLES.flotilla.includes(email)) return 'Flotilla';
-  if (FL_ROLES.administradores.includes(email)) return 'Administrador';
-  return 'Usuario';
+  if (FL_ROLES.flotilla.includes(email) || FL_ROLES.administradores.includes(email)) return 'Flotilla';
+if (FL_ROLES.contraloria.includes(email)) return 'Contraloría';
+return 'Usuario';
 };
