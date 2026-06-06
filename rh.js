@@ -121,7 +121,11 @@
         #rh360-modal.show{display:flex;}
         .rh360-modal-box{background:#F8FAFD;border-radius:20px;width:100%;max-width:780px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.2);margin:auto;}
         .rh360-modal-hero{background:linear-gradient(135deg,#0A1628,#1E3A5F);padding:24px;display:flex;align-items:center;gap:18px;color:#fff;}
-        .rh360-modal-avatar{width:72px;height:72px;border-radius:50%;border:3px solid rgba(255,255,255,.3);object-fit:cover;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:900;flex-shrink:0;}
+        .rh360-modal-avatar{width:72px;height:72px;border-radius:50%;border:3px solid rgba(255,255,255,.3);object-fit:cover;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:900;flex-shrink:0;cursor:pointer;position:relative;overflow:hidden;}
+        .rh360-modal-avatar:hover .rh360-avatar-overlay{opacity:1;}
+        .rh360-avatar-overlay{position:absolute;inset:0;background:rgba(0,0,0,.5);display:flex;flex-direction:column;align-items:center;justify-content:center;opacity:0;transition:.2s;border-radius:50%;}
+        .rh360-avatar-overlay svg{color:#fff;}
+        .rh360-avatar-overlay span{font-size:8px;font-weight:800;color:#fff;margin-top:2px;letter-spacing:.3px;}
         .rh360-modal-name{font-size:20px;font-weight:900;letter-spacing:-.3px;}
         .rh360-modal-sub{font-size:12px;color:rgba(255,255,255,.6);margin-top:3px;}
         .rh360-modal-tabs{display:flex;background:#fff;border-bottom:2px solid #F1F5F9;overflow-x:auto;}
@@ -1220,38 +1224,89 @@ window.rh360SetVista = function(v){
 };
 
 // ── DIRECTORIO ──
+function rh360PuedeEliminar(){
+    const yo = window.auth?.currentUser?.email||'';
+    return yo===RH_EMAIL||(typeof esAdminTotal==='function'&&esAdminTotal(yo))||(typeof window.esAdminTotal==='function'&&window.esAdminTotal(yo));
+}
+
 function rh360HTMLDirectorio(){
-    const deptos = [...new Set(rh360Empleados.map(e=>e.departamento||e.area||'—').filter(Boolean))].sort();
-    const plazas = [...new Set(rh360Empleados.map(e=>e.plaza||e.sucursal||'—').filter(Boolean))].sort();
-    return '<div class="rh360-search-bar">'+
-        '<input class="rh360-search" id="rh360-buscar" placeholder="Buscar colaborador, puesto..." oninput="rh360Filtrar()">'+
-        '<select class="rh360-filter" id="rh360-f-depto" onchange="rh360Filtrar()">'+
-            '<option value="">Todos los departamentos</option>'+
-            deptos.map(d=>'<option>'+d+'</option>').join('')+
-        '</select>'+
-        '<select class="rh360-filter" id="rh360-f-plaza" onchange="rh360Filtrar()">'+
-            '<option value="">Todas las plazas</option>'+
-            plazas.map(p=>'<option>'+p+'</option>').join('')+
-        '</select>'+
-        '<select class="rh360-filter" id="rh360-f-estatus" onchange="rh360Filtrar()">'+
-            '<option value="">Todos los estatus</option>'+
-            '<option value="activo">Activos</option>'+
-            '<option value="baja">Bajas</option>'+
-        '</select>'+
+    const deptos = [...new Set(rh360Empleados.map(e=>e.departamento||e.area||'').filter(x=>x&&x!=='—'))].sort();
+    const plazas = [...new Set(rh360Empleados.map(e=>e.plaza||e.sucursal||'').filter(x=>x&&x!=='—'))].sort();
+    const puedeElim = rh360PuedeEliminar();
+
+    return ''+
+    // ── Barra de búsqueda + botón filtros ──
+    '<div style="display:flex;gap:8px;margin-bottom:10px;align-items:center">'+
+        '<input class="rh360-search" id="rh360-buscar" placeholder="Buscar por nombre, puesto, departamento..." oninput="rh360Filtrar()" style="flex:1">'+
+        '<button onclick="rh360ToggleFiltros()" id="rh360-btn-filtros" style="padding:9px 14px;border:1.5px solid #E2E8F0;border-radius:10px;background:#fff;font-size:12px;font-weight:700;cursor:pointer;color:#475569;white-space:nowrap;display:inline-flex;align-items:center;gap:6px">'+
+            '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="11" y1="18" x2="13" y2="18"/></svg>'+
+            'Filtros <span id="rh360-filtros-badge" style="display:none;background:#2563EB;color:#fff;border-radius:99px;font-size:9px;padding:1px 6px">0</span>'+
+        '</button>'+
         '<div style="font-size:11px;color:#94A3B8;white-space:nowrap" id="rh360-total">'+rh360Empleados.length+' colaboradores</div>'+
     '</div>'+
-    '<div class="rh360-grid" id="rh360-cards">'+rh360CardsHTML(rh360Empleados)+'</div>';
+    // ── Panel de filtros colapsable ──
+    '<div id="rh360-filtros-panel" style="display:none;background:#F8FAFD;border:1.5px solid #E2E8F0;border-radius:12px;padding:14px;margin-bottom:12px">'+
+        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">'+
+            '<div>'+
+                '<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:5px">Departamento</div>'+
+                '<select class="rh360-filter" id="rh360-f-depto" onchange="rh360Filtrar()" style="width:100%">'+
+                    '<option value="">Todos</option>'+deptos.map(d=>'<option>'+d+'</option>').join('')+
+                '</select>'+
+            '</div>'+
+            '<div>'+
+                '<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:5px">Plaza / Sucursal</div>'+
+                '<select class="rh360-filter" id="rh360-f-plaza" onchange="rh360Filtrar()" style="width:100%">'+
+                    '<option value="">Todas</option>'+plazas.map(p=>'<option>'+p+'</option>').join('')+
+                '</select>'+
+            '</div>'+
+            '<div>'+
+                '<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:5px">Estatus</div>'+
+                '<select class="rh360-filter" id="rh360-f-estatus" onchange="rh360Filtrar()" style="width:100%">'+
+                    '<option value="">Todos</option>'+
+                    '<option value="activo">Activos</option>'+
+                    '<option value="baja">Bajas</option>'+
+                '</select>'+
+            '</div>'+
+        '</div>'+
+        '<button onclick="rh360LimpiarFiltros()" style="margin-top:10px;font-size:11px;font-weight:700;color:#64748B;background:none;border:none;cursor:pointer;padding:0">Limpiar filtros</button>'+
+    '</div>'+
+    // ── Grid de tarjetas ──
+    '<div class="rh360-grid" id="rh360-cards">'+rh360CardsHTML(rh360Empleados, puedeElim)+'</div>';
 }
+
+window.rh360ToggleFiltros = function(){
+    const panel = document.getElementById('rh360-filtros-panel');
+    const btn = document.getElementById('rh360-btn-filtros');
+    if(!panel) return;
+    const abierto = panel.style.display !== 'none';
+    panel.style.display = abierto ? 'none' : 'block';
+    if(btn) btn.style.background = abierto ? '#fff' : '#EFF6FF';
+};
+
+window.rh360LimpiarFiltros = function(){
+    ['rh360-f-depto','rh360-f-plaza','rh360-f-estatus'].forEach(id=>{
+        const el = document.getElementById(id);
+        if(el) el.value = '';
+    });
+    const badge = document.getElementById('rh360-filtros-badge');
+    if(badge) badge.style.display = 'none';
+    rh360Filtrar();
+};
 
 window.rh360Filtrar = function(){
     const q = (document.getElementById('rh360-buscar')?.value||'').toLowerCase();
     const depto = document.getElementById('rh360-f-depto')?.value||'';
     const plaza = document.getElementById('rh360-f-plaza')?.value||'';
     const estatus = document.getElementById('rh360-f-estatus')?.value||'';
+    // Actualizar badge de filtros activos
+    const activos = [depto,plaza,estatus].filter(Boolean).length;
+    const badge = document.getElementById('rh360-filtros-badge');
+    if(badge){badge.style.display=activos?'inline':'none';badge.textContent=activos;}
     const filtrados = rh360Empleados.filter(e=>{
         const nombre = (e.nombre||'').toLowerCase();
         const puesto = (e.puesto||'').toLowerCase();
-        const matchQ = !q || nombre.includes(q) || puesto.includes(q);
+        const depto_ = (e.departamento||e.area||'').toLowerCase();
+        const matchQ = !q || nombre.includes(q) || puesto.includes(q) || depto_.includes(q);
         const matchD = !depto || (e.departamento||e.area||'').includes(depto);
         const matchP = !plaza || (e.plaza||e.sucursal||'').includes(plaza);
         const matchE = !estatus || (e.estatus||'activo').toLowerCase()===estatus;
@@ -1259,11 +1314,11 @@ window.rh360Filtrar = function(){
     });
     const cards = document.getElementById('rh360-cards');
     const total = document.getElementById('rh360-total');
-    if(cards) cards.innerHTML = rh360CardsHTML(filtrados);
+    if(cards) cards.innerHTML = rh360CardsHTML(filtrados, rh360PuedeEliminar());
     if(total) total.textContent = filtrados.length+' colaborador(es)';
 };
 
-function rh360CardsHTML(lista){
+function rh360CardsHTML(lista, puedeElim){
     if(!lista.length) return '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#94A3B8">No se encontraron colaboradores</div>';
     return lista.map(e=>{
         const ini = e.fecha_ingreso||e.ingreso||'';
@@ -1275,19 +1330,22 @@ function rh360CardsHTML(lista){
             const color = rh360ColorDoc(val);
             return '<div class="rh360-doc-dot '+color+'" title="'+d.label+': '+(val||'Sin info')+'"></div>';
         }).join('');
-        // Vehículo asignado desde flotilla
         const veh = (typeof flV !== 'undefined') ? flV.find(v=>(v.responsable||'').toUpperCase().includes((e.nombre||'').split(' ')[0].toUpperCase())) : null;
-        return '<div class="rh360-card" onclick="rh360AbrirPerfil(\''+e.id+'\')">'+
+        const btnElim = puedeElim
+            ? '<button onclick="event.stopPropagation();rh360Eliminar(\''+e.id+'\')" title="Eliminar colaborador" style="position:absolute;top:10px;right:10px;background:#FEE2E2;border:none;border-radius:6px;width:24px;height:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#B91C1C;font-size:13px;font-weight:900;opacity:0;transition:.15s" class="rh360-del-btn">✕</button>'
+            : '';
+        return '<div class="rh360-card" onclick="rh360AbrirPerfil(\''+e.id+'\')" style="position:relative" onmouseenter="this.querySelector(\'.rh360-del-btn\')&&(this.querySelector(\'.rh360-del-btn\').style.opacity=\'1\')" onmouseleave="this.querySelector(\'.rh360-del-btn\')&&(this.querySelector(\'.rh360-del-btn\').style.opacity=\'0\')">'+
+            btnElim+
             '<div class="rh360-card-head">'+
                 '<div class="rh360-avatar">'+(e.foto?'<img src="'+e.foto+'" alt="'+e.nombre+'">':iniciales)+'</div>'+
-                '<div>'+
+                '<div style="min-width:0">'+
                     '<div class="rh360-name">'+rh360Escape(e.nombre||'Sin nombre')+'</div>'+
                     '<div class="rh360-puesto">'+rh360Escape(e.puesto||e.cargo||'—')+'</div>'+
                 '</div>'+
             '</div>'+
             '<div class="rh360-card-pills">'+
-                '<span class="rh360-pill depto">'+rh360Escape(e.departamento||e.area||'—')+'</span>'+
-                '<span class="rh360-pill plaza">'+rh360Escape(e.plaza||e.sucursal||'—')+'</span>'+
+                (e.departamento||e.area?'<span class="rh360-pill depto">'+rh360Escape(e.departamento||e.area)+'</span>':'')+
+                (e.plaza||e.sucursal?'<span class="rh360-pill plaza">'+rh360Escape(e.plaza||e.sucursal)+'</span>':'')+
                 (baja?'<span class="rh360-pill baja">BAJA</span>':'')+
                 (veh?'<span class="rh360-pill" style="background:#FEF3C7;color:#B45309">ECO '+veh.eco+'</span>':'')+
             '</div>'+
@@ -1300,6 +1358,78 @@ function rh360CardsHTML(lista){
         '</div>';
     }).join('');
 }
+
+// ── Subir foto de perfil ──
+window.rh360SubirFoto = function(empId){
+    const inp = document.createElement('input');
+    inp.type='file'; inp.accept='image/*'; inp.style.display='none';
+    document.body.appendChild(inp);
+    inp.onchange = async function(){
+        const file = this.files[0];
+        if(!file){document.body.removeChild(inp);return;}
+        if(file.size > 5*1024*1024){alert('La imagen es demasiado grande. Usa una menor a 5MB.');document.body.removeChild(inp);return;}
+        // Comprimir a 400px, suficiente para avatar
+        const b64 = await new Promise(res=>{
+            const reader = new FileReader();
+            reader.onload = e=>{
+                const img = new Image();
+                img.onload = ()=>{
+                    const size = 400;
+                    const ratio = Math.min(1, size/Math.max(img.width,img.height));
+                    const w = Math.round(img.width*ratio), h = Math.round(img.height*ratio);
+                    const c = document.createElement('canvas'); c.width=w; c.height=h;
+                    c.getContext('2d').drawImage(img,0,0,w,h);
+                    res(c.toDataURL('image/jpeg',0.82));
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+        document.body.removeChild(inp);
+        // Guardar en Firestore
+        try {
+            const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+            if(!empId.startsWith('sheet_')&&!empId.startsWith('new_')){
+                await fs.updateDoc(fs.doc(db,'rh_empleados',empId),{foto:b64,actualizadoEn:new Date().toISOString()});
+            }
+            // Actualizar en memoria
+            const e = rh360Empleados.find(x=>x.id===empId);
+            if(e) e.foto = b64;
+            if(rh360EmpleadoAct&&rh360EmpleadoAct.id===empId) rh360EmpleadoAct.foto = b64;
+            // Refrescar el avatar en el modal sin cerrar ni cambiar de tab
+            const avEl = document.querySelector('.rh360-modal-avatar');
+            if(avEl){
+                const iniciales = (rh360EmpleadoAct?.nombre||'?').split(' ').slice(0,2).map(p=>p[0]||'').join('').toUpperCase();
+                avEl.innerHTML = '<img src="'+b64+'" style="width:72px;height:72px;border-radius:50%;object-fit:cover">'+
+                    '<div class="rh360-avatar-overlay">'+
+                        '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>'+
+                        '<span>CAMBIAR</span>'+
+                    '</div>';
+            }
+            if(typeof window.mostrarPush==='function') window.mostrarPush('Foto actualizada','La foto de perfil se guardó correctamente','👤');
+        } catch(err){
+            alert('Error al guardar la foto: '+err.message);
+        }
+    };
+    inp.click();
+};
+
+window.rh360Eliminar = async function(id){
+    const e = rh360Empleados.find(x=>x.id===id);
+    if(!e) return;
+    if(!confirm('¿Eliminar a '+e.nombre+' del directorio?\n\nEsta acción no se puede deshacer.')) return;
+    try {
+        if(!id.startsWith('sheet_')){
+            const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+            await fs.deleteDoc(fs.doc(db,'rh_empleados',id));
+        }
+        rh360Empleados = rh360Empleados.filter(x=>x.id!==id);
+        rh360SetVista('directorio');
+        if(typeof window.mostrarPush==='function') window.mostrarPush('Eliminado',e.nombre+' eliminado del directorio','👤');
+    } catch(err){
+        alert('Error al eliminar: '+err.message);
+    }
+};
 
 // ── PERFIL 360° ──
 window.rh360AbrirPerfil = function(id){
@@ -1333,7 +1463,13 @@ function rh360RenderModal(e){
     ];
     box.innerHTML =
         '<div class="rh360-modal-hero">'+
-            '<div class="rh360-modal-avatar">'+(e.foto?'<img src="'+e.foto+'" style="width:72px;height:72px;border-radius:50%;object-fit:cover">':iniciales)+'</div>'+
+            '<div class="rh360-modal-avatar" onclick="rh360SubirFoto(\''+e.id+'\')" title="Clic para cambiar foto">'+
+                (e.foto?'<img src="'+e.foto+'" style="width:72px;height:72px;border-radius:50%;object-fit:cover">':iniciales)+
+                '<div class="rh360-avatar-overlay">'+
+                    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>'+
+                    '<span>CAMBIAR</span>'+
+                '</div>'+
+            '</div>'+
             '<div style="flex:1;min-width:0">'+
                 '<div class="rh360-modal-name">'+rh360Escape(e.nombre||'—')+'</div>'+
                 '<div class="rh360-modal-sub">'+rh360Escape(e.puesto||e.cargo||'—')+' · '+rh360Escape(e.departamento||e.area||'—')+'</div>'+
