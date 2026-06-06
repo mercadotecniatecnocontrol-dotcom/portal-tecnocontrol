@@ -91,10 +91,22 @@ let vistaAct='vehiculo';
 let solState={modo:'entrada',tipo:'',prior:'Normal',desc:'',km:'',taller:'',gasolina:50,chk:{},chkFotos:{},evFotos:[],dmg:{}};
 let onlineStatus=navigator.onLine;
 
-// ── Helper: el usuario tiene rol admin o flotilla ──
+// ── Emails con acceso de administrador/flotilla ──
+const ADMINS_FLOTILLA=[
+  'rh@tecnocontrol.com.mx',
+  'c.acosta@tecnocontrol.com.mx',
+  'mercadotecniatecnocontrol@tecnocontrol.com.mx',
+  'mercadotecniatecnocontrol.com.mx',
+  'p.pinedo@tecnocontrol.com.mx',
+  'm.delao@tecnocontrol.com.mx',
+  'fatima@tecnocontrol.com.mx',
+];
+
+// ── Helper: el usuario tiene acceso libre a toda la flota ──
 function esRolLibre(){
+  const email=(window.auth?.currentUser?.email||'').toLowerCase();
   const rol=(miPerfil?.rol||'').toLowerCase();
-  return rol==='admin'||rol==='flotilla'||rol==='encargado';
+  return ADMINS_FLOTILLA.includes(email)||rol==='admin'||rol==='flotilla'||rol==='encargado';
 }
 
 // ── HELPERS ──
@@ -1111,7 +1123,10 @@ window.fmCapturar=async function(tipo,key){
     const reader=new FileReader();
     reader.onload=async function(e){
       // Comprimir ANTES de sellar para reducir el tamaño del documento Firestore
-      const raw=await comprimirBase64(e.target.result,900,0.72);
+      // Para fotos de checklist usar 400px (menor peso para Firestore)
+      // Para fotos generales usar 700px
+      const maxW=tipo==='chk'?400:700;
+      const raw=await comprimirBase64(e.target.result,maxW,0.65);
       const now=new Date();
       const meta={
         codigo:genCod(),
@@ -1203,8 +1218,29 @@ window.fmGuardar=async function(){
     if(btn){btn.disabled=false;btn.textContent='Crear solicitud';}
     return;
   }
+  // Estimar tamaño del documento — Firestore limite 1MB
+  const docSize=JSON.stringify(docObj).length;
+  if(docSize>900000){
+    // Demasiado grande: reducir fotos de checklist
+    const chkKeys=Object.keys(docObj.chkFotos);
+    if(chkKeys.length>0){
+      // Comprimir más agresivo las fotos del checklist
+      for(const k of chkKeys){
+        const src=docObj.chkFotos[k];
+        if(src&&src.startsWith('data:image')){
+          docObj.chkFotos[k]=await comprimirBase64(src,250,0.55);
+        }
+      }
+    }
+    // Si sigue grande, quitar fotos del checklist y solo guardar el estado si/no
+    if(JSON.stringify(docObj).length>900000){
+      toast('Fotos de checklist muy pesadas — guardando solo respuestas','warn');
+      docObj.chkFotos={};
+    }
+  }
   try{
-    await db.collection(C.SOLS).add(docObj);
+    const timeout=new Promise((_,rej)=>setTimeout(()=>rej(new Error('Timeout: conexión lenta. Intenta de nuevo.')),20000));
+    await Promise.race([db.collection(C.SOLS).add(docObj), timeout]);
     if(km&&miVeh&&!miVeh.id.startsWith('eco-')){
       await db.collection(C.VEHS).doc(miVeh.id).update({km:Number(km)}).catch(()=>{});
     }
@@ -1212,9 +1248,11 @@ window.fmGuardar=async function(){
     toast('Solicitud creada correctamente','ok');
     setTimeout(()=>fmVista('vehiculo'),1200);
   }catch(e){
-    console.error('[MOVIL]',e);
+    console.error('[MOVIL guardar]',e.message);
     offlineGuardar(docObj);
+    toast('Sin conexión — guardado localmente para sincronizar después','warn');
     if(btn){btn.disabled=false;btn.textContent='Crear solicitud';}
+    setTimeout(()=>fmVista('vehiculo'),1500);
   }
 };
 
@@ -1591,7 +1629,7 @@ function renderUtilPaso4(){
         </button>
       </div>`:''}
 
-      <button class="fm-btn ghost" onclick="utilState={modo:null,codigo:'',chk:{},chkFotos:{},evFotos:[],km:'',gasolina:50,firma:null,paso:1};renderUtil()">
+      <button class="fm-btn ghost" onclick="utilReset()">
         Listo
       </button>
     </div>
@@ -1599,6 +1637,13 @@ function renderUtilPaso4(){
 }
 
 // HELPERS UTILITARIOS
+// ── Reset utilitario — función global para que el onclick la encuentre ──
+window.utilReset=function(){
+  Object.assign(utilState,{modo:null,codigo:'',chk:{},chkFotos:{},evFotos:[],km:'',gasolina:50,firma:null,paso:1,transferenciaId:null,datosEntrega:null,codigoGenerado:null});
+  window.utilState=utilState; // mantener referencia global sincronizada
+  renderUtil();
+};
+
 window.utilSetModo=function(m){utilState.modo=m;utilState.paso=2;renderUtil();};
 window.utilGas=function(v){utilState.gasolina=Number(v);const w=document.getElementById('util-gauge-wrap');if(w)w.innerHTML=renderGaugeSVG(Number(v))+'<div class="fm-gauge-labels" style="width:200px"><span>VACÍO</span><span>2/4</span><span>MEDIO</span><span>3/4</span><span>LLENO</span></div>';};
 
@@ -1763,15 +1808,24 @@ window.utilConfirmarFirma=async function(){
         creadoEn:now.toISOString(),
       };
       await db.collection('flotilla_transferencias').add(docObj);
-      // Notificar administradores
+      // DESVINCULAR al que entrega — ya no tiene ese vehículo
+      const snapEntregador=await db.collection('fl_usuarios').where('email','==',userEmail).get();
+      if(!snapEntregador.empty){
+        await snapEntregador.docs[0].ref.update({ecoVinculado:null,desvinculadoEn:now.toISOString()});
+      }
+      // Actualizar en memoria: el que entrega ya no tiene vehículo
+      if(miPerfil) miPerfil.ecoVinculado=null;
+      miVeh=null;
+      // Notificar
       await db.collection('flotilla_notificaciones').add({
-        tipo:'transferencia_iniciada',codigo,vehiculoEco:miVeh?.eco||'',
-        mensaje:`${userName} inició transferencia del ECO ${miVeh?.eco||'—'} a ${utilState.datosEntrega?.receptor||'—'}`,
+        tipo:'transferencia_iniciada',codigo,vehiculoEco:docObj.vehiculoEco,
+        mensaje:`${userName} inició transferencia del ECO ${docObj.vehiculoEco||'—'} a ${utilState.datosEntrega?.receptor||'—'}`,
         leido:false,creadoEn:now.toISOString(),
       });
     } else {
-      // Completar transferencia existente
+      // RECIBIR: completar transferencia
       if(utilState.transferenciaId){
+        const ecoRecibido=utilState.datosEntrega?.eco||'';
         await db.collection('flotilla_transferencias').doc(utilState.transferenciaId).update({
           recibioEmail:userEmail,recibioNombre:userName,recibioFirma:utilState.firma,
           recibioKm:utilState.datosEntrega?.km||'',
@@ -1779,15 +1833,29 @@ window.utilConfirmarFirma=async function(){
           estatus:'Completada',completadoEn:now.toISOString(),
           emails:[...(utilState.emails||[]),userEmail],
         });
-        // Reasignar vehículo
-        await db.collection('fl_usuarios').where('email','==',userEmail).get().then(snap=>{
-          if(!snap.empty)return snap.docs[0].ref.update({ecoVinculado:utilState.datosEntrega?.eco||''});
-          return db.collection('fl_usuarios').add({email:userEmail,nombre:userName,ecoVinculado:utilState.datosEntrega?.eco||'',vinculadoEn:now.toISOString()});
-        });
+        // VINCULAR al que recibe — ahora es responsable del vehículo
+        const snapRecibe=await db.collection('fl_usuarios').where('email','==',userEmail).get();
+        if(!snapRecibe.empty){
+          await snapRecibe.docs[0].ref.update({ecoVinculado:ecoRecibido,vinculadoEn:now.toISOString()});
+        } else {
+          await db.collection('fl_usuarios').add({email:userEmail,nombre:userName,ecoVinculado:ecoRecibido,vinculadoEn:now.toISOString()});
+        }
+        // Actualizar en memoria: el que recibe ahora tiene el vehículo
+        if(miPerfil) miPerfil.ecoVinculado=ecoRecibido;
+        // Recargar vehículo en memoria
+        try{
+          const snapVeh=await db.collection('fl_usuarios').where('eco','==',ecoRecibido).get();
+          if(!snapVeh.empty) miVeh={id:snapVeh.docs[0].id,...snapVeh.docs[0].data()};
+          else{
+            const found=window.CAT_FL?.find(v=>String(v.eco)===ecoRecibido);
+            if(found) miVeh={id:'eco-'+found.eco,...found};
+          }
+        }catch{ const found=window.CAT_FL?.find(v=>String(v.eco)===ecoRecibido); if(found) miVeh={id:'eco-'+found.eco,...found}; }
         // Notificar
         await db.collection('flotilla_notificaciones').add({
-          tipo:'transferencia_completada',codigo:utilState.codigo,vehiculoEco:utilState.datosEntrega?.eco||'',
-          mensaje:`Transferencia completada. ${userName} recibió el ECO ${utilState.datosEntrega?.eco||'—'}`,
+          tipo:'transferencia_completada',codigo:utilState.codigoGenerado||utilState.codigo||'',
+          vehiculoEco:ecoRecibido,
+          mensaje:`Transferencia completada. ${userName} recibió el ECO ${ecoRecibido||'—'}`,
           leido:false,creadoEn:now.toISOString(),
         });
       }
