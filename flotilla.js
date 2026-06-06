@@ -127,6 +127,10 @@ const SVG_CMT=`<svg width="28" height="28" viewBox="0 0 24 24" fill="none" strok
 const SVG_AUTO=`<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17H3a2 2 0 01-2-2V9a2 2 0 012-2h11a2 2 0 012 2v6h-2"/><path d="M7 9l2-4h6l2 4"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>`;
 const hEmo=t=>t==='camion'?SVG_CAM:t==='camioneta'?SVG_CMT:SVG_AUTO;
 
+// Inicializar cache de evidencias
+if(!window._flEvCache)window._flEvCache=[];
+window.flVerEvIdx=function(idx){const ev=(window._flEvCache||[])[idx];if(ev)window.flVerEvidencia(ev);};
+
 window.flLightbox=function(src){
   const ov=document.createElement('div');
   ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:99999;display:flex;align-items:center;justify-content:center;cursor:zoom-out;padding:20px';
@@ -1647,6 +1651,8 @@ window.flVerSol=function(id){
       ${(()=>{
         // EVIDENCIAS GENERALES — array global evita base64 inline en onclick
         if(!s.evidencias?.length)return'';
+        if(!window._flEvCache)window._flEvCache=[];
+        if(!window._flEvCache)window._flEvCache=[];
         const baseIdx=window._flEvCache.length;
         s.evidencias.forEach((src,i)=>{const meta=(s.evidenciasMeta||[])[i];window._flEvCache.push({src,meta:meta||null});});
         const pills=s.evidencias.map((src,i)=>{
@@ -1665,6 +1671,8 @@ window.flVerSol=function(id){
         const chkF=s.chkFotos||{};
         const chkEntries=Object.entries(chkF).filter(([k,v])=>v);
         if(!chkEntries.length)return'';
+        if(!window._flEvCache)window._flEvCache=[];
+        if(!window._flEvCache)window._flEvCache=[];
         const baseIdx=window._flEvCache.length;
         chkEntries.forEach(([k,src])=>window._flEvCache.push({src,meta:{codigo:k,tipo:'checklist'}}));
         const pills=chkEntries.map(([k,src],i)=>{
@@ -2099,107 +2107,196 @@ window.flImg=src=>{const ov=document.createElement('div');ov.className='fl-ov';o
 // SVG shield polyfill
 I.shield=I.doc;
 
-// ── GENERADOR PDF DE SOLICITUD ──
+// ── GENERADOR PDF DE SOLICITUD COMPLETO ──
 window.flGenerarPDF=function(id){
   const s=flS.find(x=>x.id===id);if(!s){flMsgError('Solicitud no encontrada');return;}
   const v=flV.find(x=>x.eco===s.vehiculoEco||x.id===s.vehiculoId);
   const chkF=s.chkFotos||{};
-  const chkEntries=Object.entries(chkF).filter(([k,v])=>v);
-  const noItems=Object.entries(s.checklist||{}).filter(([k,v])=>v==='no');
+  const chkFEntries=Object.entries(chkF).filter(([k,v])=>v);
+  const chkResp=s.checklist||{};
   const getLabel=k=>{for(const items of Object.values(CHK_CATS)){const f=items.find(it=>it.toLowerCase().replace(/[^a-z0-9]/g,'')===k.toLowerCase().replace(/[^a-z0-9]/g,''));if(f)return f;}return k;};
-  // Medidor gasolina SVG
-  const gasPct=s.gasolina||0;
-  const gasAngle=(-120)+(gasPct/100)*240;
-  const gasRad=gasAngle*Math.PI/180;
-  const gasX=50+35*Math.cos(gasRad);const gasY=50+35*Math.sin(gasRad);
+
+  // ── Medidor gasolina SVG ──
+  const gasPct=Number(s.gasolina)||0;
   const gasColor=gasPct>50?'#16A34A':gasPct>25?'#D97706':'#DC2626';
-  const gasPath=`M ${50+35*Math.cos(-120*Math.PI/180)} ${50+35*Math.sin(-120*Math.PI/180)} A 35 35 0 ${(gasPct>50?1:0)} 1 ${gasX} ${gasY}`;
-  const gasSVG=`<svg width="90" height="55" viewBox="0 0 100 60" style="display:block">
-    <path d="M ${50+35*Math.cos(-120*Math.PI/180)} ${50+35*Math.sin(-120*Math.PI/180)} A 35 35 0 1 1 ${50+35*Math.cos(60*Math.PI/180)} ${50+35*Math.sin(60*Math.PI/180)}" fill="none" stroke="#E2E8F0" stroke-width="8" stroke-linecap="round"/>
-    ${gasPct>0?`<path d="${gasPath}" fill="none" stroke="${gasColor}" stroke-width="8" stroke-linecap="round"/>`:''}
-    <text x="50" y="48" text-anchor="middle" font-size="14" font-weight="800" fill="${gasColor}" font-family="system-ui">${gasPct}%</text>
+  const toRad=deg=>deg*Math.PI/180;
+  const arcX=(r,deg)=>50+r*Math.cos(toRad(deg));
+  const arcY=(r,deg)=>50+r*Math.sin(toRad(deg));
+  const startDeg=-210; const endDeg=30;
+  const fillDeg=startDeg+(gasPct/100)*(endDeg-startDeg);
+  const largeArc=gasPct>50?1:0;
+  const trackPath=`M ${arcX(35,startDeg)} ${arcY(35,startDeg)} A 35 35 0 1 1 ${arcX(35,endDeg)} ${arcY(35,endDeg)}`;
+  const fillPath=gasPct>0?`M ${arcX(35,startDeg)} ${arcY(35,startDeg)} A 35 35 0 ${largeArc} 1 ${arcX(35,fillDeg)} ${arcY(35,fillDeg)}`:'';
+  const gasSVG=`<svg width="100" height="65" viewBox="0 0 100 65" style="display:block;margin:0 auto">
+    <path d="${trackPath}" fill="none" stroke="#E2E8F0" stroke-width="9" stroke-linecap="round"/>
+    ${fillPath?`<path d="${fillPath}" fill="none" stroke="${gasColor}" stroke-width="9" stroke-linecap="round"/>`:''}
+    <text x="50" y="50" text-anchor="middle" font-size="16" font-weight="900" fill="${gasColor}" font-family="system-ui,Arial">${gasPct}%</text>
+    <text x="50" y="62" text-anchor="middle" font-size="8" fill="#94A3B8" font-family="system-ui">GASOLINA</text>
   </svg>`;
-  // Thumbnail fotos (max 4 evidencias generales)
-  const evThumbs=(s.evidencias||[]).slice(0,6).map((src,i)=>{
-    const meta=(s.evidenciasMeta||[])[i];
-    return`<div style="display:inline-block;margin:4px;text-align:center">
-      <img src="${src}" style="width:100px;height:75px;object-fit:cover;border-radius:6px;border:1px solid #E2E8F0;display:block">
-      <div style="font-size:8px;color:#64748B;margin-top:2px;font-family:monospace">${meta?.codigo||'Foto '+(i+1)}</div>
+
+  // ── Thumbnails evidencias generales ──
+  const evGen=s.evidencias||[];
+  const evMeta=s.evidenciasMeta||[];
+  const evThumbsHTML=evGen.length
+    ? evGen.map((src,i)=>`<div style="display:inline-block;margin:4px;text-align:center;vertical-align:top">
+        <img src="${src}" style="width:110px;height:82px;object-fit:cover;border-radius:6px;border:1px solid #E2E8F0;display:block">
+        <div style="font-size:8px;color:#64748B;margin-top:2px;font-family:monospace;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${evMeta[i]?.codigo||'Foto '+(i+1)}</div>
+      </div>`).join('')
+    : '<div style="font-size:11px;color:#94A3B8;padding:8px">Sin evidencias</div>';
+
+  // ── Checklist COMPLETO por categoría ──
+  let chkFullHTML='';
+  for(const [cat,items] of Object.entries(CHK_CATS)){
+    let catRows='';
+    let catHasContent=false;
+    items.forEach((item,idx)=>{
+      const key=cat+'__'+idx;
+      const val=chkResp[key]||'';
+      const foto=chkF[key]||null;
+      if(!val&&!foto)return; // omitir si no se revisó
+      catHasContent=true;
+      const isNo=val==='no';
+      const badge=val==='si'
+        ?'<span style="display:inline-block;padding:2px 8px;background:#DCFCE7;color:#15803D;border-radius:10px;font-size:9px;font-weight:800">SI</span>'
+        :val==='no'
+        ?'<span style="display:inline-block;padding:2px 8px;background:#FEE2E2;color:#B91C1C;border-radius:10px;font-size:9px;font-weight:800">NO</span>'
+        :'<span style="display:inline-block;padding:2px 8px;background:#F1F5F9;color:#94A3B8;border-radius:10px;font-size:9px;font-weight:700">—</span>';
+      const fotoEl=foto
+        ?`<img src="${foto}" style="width:56px;height:42px;object-fit:cover;border-radius:4px;border:1px solid ${isNo?'#FCA5A5':'#E2E8F0'};float:right;margin-left:6px">`
+        :'';
+      catRows+=`<tr style="border-bottom:1px solid #F8FAFD;${isNo?'background:#FFF5F5':''}">
+        <td style="padding:5px 8px;font-size:10.5px;color:${isNo?'#991B1B':'#374151'};font-weight:${isNo?'700':'400'}">${item}</td>
+        <td style="padding:5px 8px;text-align:center;white-space:nowrap">${badge}</td>
+        <td style="padding:5px 8px;text-align:right">${fotoEl}</td>
+      </tr>`;
+    });
+    if(!catHasContent)continue;
+    chkFullHTML+=`<div style="margin-bottom:14px;break-inside:avoid">
+      <div style="background:#1E3A5F;color:#fff;padding:5px 10px;border-radius:5px 5px 0 0;font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.6px">${cat}</div>
+      <table style="width:100%;border-collapse:collapse;border:1px solid #E2E8F0;border-top:none;border-radius:0 0 5px 5px;overflow:hidden">
+        <thead><tr style="background:#F8FAFD"><th style="padding:4px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#94A3B8;text-align:left">Ítem</th><th style="padding:4px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#94A3B8;width:60px">Estado</th><th style="padding:4px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#94A3B8;width:70px;text-align:right">Foto</th></tr></thead>
+        <tbody>${catRows}</tbody>
+      </table>
     </div>`;
-  }).join('');
-  // Fotos checklist (max 6)
-  const chkThumbs=chkEntries.slice(0,6).map(([k,src])=>
-    `<div style="display:inline-block;margin:4px;text-align:center">
-      <img src="${src}" style="width:80px;height:60px;object-fit:cover;border-radius:5px;border:1px solid #BFDBFE;display:block">
-      <div style="font-size:7px;color:#1D4ED8;margin-top:2px;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${getLabel(k)}</div>
-    </div>`
-  ).join('');
+  }
+  if(!chkFullHTML){
+    const allSi=Object.values(chkResp).filter(v=>v==='si').length;
+    if(allSi>0){
+      chkFullHTML=`<div style="padding:10px 14px;background:#F0FDF4;border-radius:8px;border:1px solid #BBF7D0;font-size:11.5px;font-weight:700;color:#15803D">Todos los ${allSi} puntos revisados en buen estado</div>`;
+    } else {
+      chkFullHTML='<div style="font-size:11px;color:#94A3B8;padding:8px">Sin checklist registrado</div>';
+    }
+  }
+
+  // ── Fotos de checklist thumbnail grid ──
+  const chkPhotosHTML=chkFEntries.length
+    ? chkFEntries.map(([k,src])=>`<div style="display:inline-block;margin:4px;text-align:center;vertical-align:top">
+        <img src="${src}" style="width:90px;height:68px;object-fit:cover;border-radius:5px;border:1px solid #BFDBFE;display:block">
+        <div style="font-size:7.5px;color:#1D4ED8;margin-top:2px;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${getLabel(k)}</div>
+      </div>`).join('')
+    : '';
+
   const fecha=s.creadoEn?s.creadoEn.substring(0,10):'—';
-  const html=`<!DOCTYPE html><html><head><meta charset="utf-8">
-  <title>TCN-SOL-${id.slice(0,8).toUpperCase()}</title>
+
+  const html=`<!DOCTYPE html><html lang="es"><head>
+  <meta charset="utf-8">
+  <title>Solicitud ${id.slice(0,8).toUpperCase()} — Tecnocontrol</title>
   <style>
     *{margin:0;padding:0;box-sizing:border-box}
-    body{font-family:system-ui,Arial,sans-serif;font-size:11px;color:#0A0F1E;padding:24px;background:#fff}
+    body{font-family:system-ui,Arial,sans-serif;font-size:11px;color:#0A0F1E;background:#fff;padding:28px 32px}
     h1{font-size:22px;font-weight:900;letter-spacing:-1px;color:#0A1628}
-    .sub{font-size:11px;color:#64748B;margin-top:2px}
-    .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #0A1628;padding-bottom:12px;margin-bottom:16px}
-    .logo{font-size:18px;font-weight:900;letter-spacing:-1px}
+    .logo{font-size:20px;font-weight:900;letter-spacing:-1px}
     .logo em{color:#2563EB;font-style:normal}
-    .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:800;background:#0A1628;color:#fff}
-    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
-    .field{background:#F8FAFD;border-radius:6px;padding:7px 10px;border:1px solid #E8EDF5}
+    .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #0A1628;padding-bottom:14px;margin-bottom:18px}
+    .veh-bar{background:#0A1628;color:#fff;border-radius:9px;padding:11px 16px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between}
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+    .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px}
+    .field{background:#F8FAFD;border-radius:7px;padding:8px 11px;border:1px solid #E8EDF5}
     .field label{font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:2px}
-    .field span{font-size:12px;font-weight:700}
-    .sec{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin:12px 0 6px;border-top:1px solid #E8EDF5;padding-top:8px}
-    .obs{background:#FEF2F2;border:1px solid #FECACA;border-radius:6px;padding:8px 10px}
-    .obs li{font-size:11px;font-weight:600;color:#991B1B;padding:1px 0}
-    .ok{background:#F0FDF4;border:1px solid #BBF7D0;border-radius:6px;padding:8px 10px;font-size:11px;font-weight:700;color:#15803D}
-    .gas{display:flex;align-items:center;gap:10px;background:#F8FAFD;border-radius:8px;padding:10px 14px;border:1px solid #E8EDF5;margin-bottom:8px}
-    .photos{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
-    .footer{margin-top:20px;padding-top:10px;border-top:1px solid #E8EDF5;font-size:9px;color:#94A3B8;text-align:center}
-    @media print{body{padding:12px}button{display:none}}
+    .field span{font-size:12px;font-weight:700;line-height:1.4}
+    .sec{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:#64748B;margin:16px 0 8px;padding-top:12px;border-top:1px solid #E8EDF5}
+    .gas-box{display:flex;align-items:center;gap:16px;background:#F8FAFD;border-radius:9px;padding:12px 16px;border:1px solid #E8EDF5;margin-bottom:12px}
+    .obs{background:#FEF2F2;border:1px solid #FECACA;border-radius:7px;padding:10px 12px;margin-bottom:10px}
+    .ok{background:#F0FDF4;border:1px solid #BBF7D0;border-radius:7px;padding:10px 12px;margin-bottom:10px;font-size:11.5px;font-weight:700;color:#15803D}
+    .footer{margin-top:24px;padding-top:10px;border-top:1px solid #E8EDF5;font-size:9px;color:#94A3B8;text-align:center}
+    @media print{
+      body{padding:14px 16px;font-size:10.5px}
+      button{display:none!important}
+      .sec{margin-top:12px}
+      div[style*="break-inside:avoid"]{break-inside:avoid;page-break-inside:avoid}
+    }
   </style></head><body>
+  <!-- HEADER -->
   <div class="hdr">
     <div>
       <div class="logo">TECNO<em>CONTROL</em></div>
-      <div class="sub">Reporte de solicitud vehicular</div>
+      <div style="font-size:10.5px;color:#64748B;margin-top:3px">Reporte de solicitud vehicular</div>
     </div>
     <div style="text-align:right">
-      <div style="font-size:16px;font-weight:900;font-family:monospace">${id.slice(0,8).toUpperCase()}</div>
-      <div style="margin-top:4px"><span class="badge">${s.estatus||'Solicitud'}</span></div>
+      <div style="font-size:18px;font-weight:900;font-family:monospace;letter-spacing:1px">${id.slice(0,8).toUpperCase()}</div>
+      <div style="margin-top:5px;display:flex;align-items:center;justify-content:flex-end;gap:6px">
+        <span style="padding:3px 12px;border-radius:20px;font-size:10px;font-weight:800;background:#0A1628;color:#fff">${s.estatus||'Solicitud'}</span>
+      </div>
       <div style="font-size:10px;color:#64748B;margin-top:4px">${fecha}</div>
     </div>
   </div>
-  ${v?`<div style="background:#0A1628;color:#fff;border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between">
+
+  <!-- VEHÍCULO -->
+  ${v?`<div class="veh-bar">
     <div>
       <div style="font-size:14px;font-weight:800">${v.unidad||'—'} ${v.año||''}</div>
       <div style="font-size:10px;color:rgba(255,255,255,.5);margin-top:2px;font-family:monospace">ECO ${v.eco} · ${v.placas||'—'} · ${v.responsable||'—'}</div>
     </div>
-    <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,.7)">${(s.modo||'').toUpperCase()}</div>
+    <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,.6)">${(s.modo||'').toUpperCase()}</div>
   </div>`:''}
-  <div class="grid2">
-    ${[['Tipo',s.tipo||'—'],['Prioridad',s.prioridad||'Normal'],['Solicitante',s.solicitante||'—'],['Taller',s.taller||'Sin especificar'],['Kilómetros',s.kilometrajeReportado||'—'],['Fecha',fecha]].map(([l,val])=>`<div class="field"><label>${l}</label><span>${val}</span></div>`).join('')}
+
+  <!-- DATOS PRINCIPALES -->
+  <div class="grid3">
+    <div class="field"><label>Tipo</label><span>${s.tipo||'—'}</span></div>
+    <div class="field"><label>Prioridad</label><span>${s.prioridad||'Normal'}</span></div>
+    <div class="field"><label>KM</label><span>${s.kilometrajeReportado||'—'}</span></div>
   </div>
-  <div class="field" style="margin-bottom:12px;grid-column:1/-1"><label>Descripción</label><span style="font-size:12px;font-weight:500;line-height:1.5">${s.descripcion||'—'}</span></div>
-  <div class="gas">
+  <div class="grid2">
+    <div class="field"><label>Solicitante</label><span>${s.solicitante||'—'}</span></div>
+    <div class="field"><label>Taller</label><span>${s.taller||'Sin especificar'}</span></div>
+  </div>
+  <div class="field" style="margin-bottom:12px"><label>Descripción</label><span style="font-size:12px;font-weight:500;line-height:1.6">${s.descripcion||'—'}</span></div>
+
+  <!-- GASOLINA -->
+  <div class="gas-box">
     <div>${gasSVG}</div>
     <div>
-      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8">Nivel de gasolina</div>
-      <div style="font-size:20px;font-weight:900;color:${gasColor}">${gasPct}%</div>
+      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:4px">Nivel de combustible</div>
+      <div style="font-size:28px;font-weight:900;color:${gasColor};line-height:1">${gasPct}%</div>
+      <div style="font-size:9px;color:${gasPct>50?'#15803D':gasPct>25?'#D97706':'#B91C1C'};margin-top:2px;font-weight:700">${gasPct>50?'Nivel correcto':gasPct>25?'Nivel bajo':'Nivel crítico'}</div>
     </div>
   </div>
-  ${noItems.length?`<div class="sec">Observaciones del checklist</div><div class="obs"><ul style="padding-left:14px">${noItems.map(([k])=>`<li>${getLabel(k)}</li>`).join('')}</ul></div>`
-    :Object.keys(s.checklist||{}).length?`<div class="ok">Checklist: todos los puntos revisados en buen estado</div>`:''}
-  ${s.comentarioRechazo?`<div class="sec">Motivo de rechazo</div><div class="obs" style="background:#FEF2F2"><span>${s.comentarioRechazo}</span></div>`:''}
-  ${evThumbs?`<div class="sec">Evidencias generales (${(s.evidencias||[]).length})</div><div class="photos">${evThumbs}</div>`:''}
-  ${chkThumbs?`<div class="sec">Fotos de checklist (${chkEntries.length})</div><div class="photos">${chkThumbs}</div>`:''}
-  <div class="footer">Generado por Portal Flotilla Tecnocontrol · ${new Date().toLocaleString('es-MX')} · ID: ${id}</div>
-  <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
-    <button onclick="window.print()" style="padding:10px 20px;background:#0A1628;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">Imprimir / Guardar PDF</button>
+
+  <!-- RECHAZO si existe -->
+  ${s.comentarioRechazo?`<div class="obs"><div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#B91C1C;margin-bottom:4px">Motivo de rechazo</div><div style="font-size:12px;color:#991B1B">${s.comentarioRechazo}</div></div>`:''}
+
+  <!-- EVIDENCIAS GENERALES -->
+  <div class="sec">Evidencias fotográficas (${evGen.length})</div>
+  <div style="margin-bottom:12px">${evThumbsHTML}</div>
+
+  <!-- CHECKLIST COMPLETO -->
+  <div class="sec">Checklist de revisión</div>
+  ${chkFullHTML}
+
+  <!-- FOTOS DE CHECKLIST -->
+  ${chkPhotosHTML?`<div class="sec">Galería de fotos del checklist (${chkFEntries.length})</div><div style="margin-bottom:12px">${chkPhotosHTML}</div>`:''}
+
+  <div class="footer">
+    Generado por Portal Flotilla Tecnocontrol &nbsp;·&nbsp; ${new Date().toLocaleString('es-MX')} &nbsp;·&nbsp; ID completo: ${id}
+  </div>
+  <div style="margin-top:16px;display:flex;gap:10px;justify-content:flex-end">
+    <button onclick="window.print()" style="padding:11px 28px;background:#0A1628;color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;letter-spacing:.3px">Imprimir / Guardar PDF</button>
   </div>
   </body></html>`;
-  const win=window.open('','_blank','width=800,height=900');
-  win.document.write(html);win.document.close();
+
+  const win=window.open('','_blank','width=860,height=960');
+  if(win){win.document.write(html);win.document.close();}
+  else flMsgError('Activa ventanas emergentes para generar el PDF');
 };
 
 // ── COMPARTIR POR WHATSAPP ──
