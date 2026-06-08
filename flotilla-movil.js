@@ -749,7 +749,14 @@ function renderVehiculo(){
   }
   // Técnico normal sin vehículo vinculado → mostrar vinculación
   if(!esRolLibre()&&(!miPerfil?.ecoVinculado||!miVeh)){
-    renderVincular();return;
+    // Cargar vehículos automáticamente si aún no están en memoria
+    if(!window._fmAllVehs||window._fmAllVehs.length===0){
+      renderVincular(); // muestra pantalla de espera
+      fmCargarVehs();  // carga en background y vuelve a renderizar
+    } else {
+      renderVincular();
+    }
+    return;
   }
   const v=miVeh;
   const d=hD(v.pv);
@@ -844,6 +851,18 @@ function renderVehiculo(){
 // PANTALLA DE VINCULACIÓN
 function renderVincular(){
   const allVehs=window._fmAllVehs||[];
+  // Intentar pre-seleccionar vehículo por nombre del responsable
+  const nombreUsuario=(miPerfil?.nombre||'').toUpperCase().trim();
+  const emailUsuario=(miPerfil?.email||'').toLowerCase().trim();
+  const sugerido=allVehs.find(v=>{
+    const resp=(v.responsable||'').toUpperCase().trim();
+    if(!resp||resp==='—')return false;
+    // Comparar por nombre completo o parcial
+    const partes=nombreUsuario.split(' ');
+    return resp===nombreUsuario||
+           partes.some(p=>p.length>3&&resp.includes(p))||
+           resp.includes(emailUsuario.split('@')[0].toUpperCase());
+  });
   setContent(`
     <div style="padding-top:20px">
       <div class="fm-vincular">
@@ -853,15 +872,20 @@ function renderVincular(){
         ${allVehs.length?`
         <div class="fm-fld">
           <label>Selecciona tu vehículo</label>
+          ${sugerido?`<div style="background:#EFF6FF;border:1.5px solid #3B82F6;border-radius:10px;padding:10px 12px;margin-bottom:10px;display:flex;align-items:center;gap:10px">
+            <div style="flex:1"><div style="font-size:12px;color:#1E40AF;font-weight:700">Vehículo sugerido por asignación</div><div style="font-size:14px;font-weight:800;color:#1E3A5F">ECO ${sugerido.eco} · ${sugerido.unidad}</div><div style="font-size:11px;color:#64748B">${sugerido.placas} · ${sugerido.plaza}</div></div></div>`:''}
           <div class="fm-select-wrap">
             <select id="fm-sel-veh">
               <option value="">— Selecciona —</option>
-              ${allVehs.filter(v=>v.status!=='baja').map(v=>`<option value="${v.eco}">ECO ${v.eco} · ${v.unidad} · ${v.placas}</option>`).join('')}
+              ${allVehs.filter(v=>v.status!=='baja').map(v=>`<option value="${v.eco}" ${sugerido&&v.eco===sugerido.eco?'selected':''}>ECO ${v.eco} · ${v.unidad} · ${v.placas}</option>`).join('')}
             </select>
           </div>
         </div>
         <button class="fm-btn primary" onclick="fmVincular()">Vincular este vehículo</button>`:`
-        <button class="fm-btn primary" onclick="fmCargarVehs()">Cargar lista de vehículos</button>`}
+        <div style="text-align:center;padding:20px 0">
+          <div style="font-size:13px;color:#64748B;margin-bottom:16px">Cargando lista de vehículos...</div>
+          <div style="width:36px;height:36px;border:3px solid #E2E8F0;border-top-color:#3B82F6;border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto"></div>
+        </div>`}
       </div>
     </div>
   `);
