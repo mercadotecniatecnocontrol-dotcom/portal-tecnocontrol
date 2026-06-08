@@ -603,8 +603,8 @@ async function cargarMiVeh(){
 async function cargarMisSols(){
   if(!miVeh&&!miPerfil?.email){misSols=[];return;}
   try{
-    let q=miVeh
-      ? db.collection(C.SOLS).where('vehiculoEco','==',miVeh.eco).orderBy('creadoEn','desc').limit(20)
+    let q=miVeh?.eco
+      ? db.collection(C.SOLS).where('vehiculoEco','==',String(miVeh.eco)).orderBy('creadoEn','desc').limit(20)
       : db.collection(C.SOLS).where('creadoPor','==',miPerfil?.email||'').orderBy('creadoEn','desc').limit(20);
     const snap=await q.get();
     misSols=snap.docs.map(d=>({id:d.id,...d.data()}));
@@ -748,6 +748,7 @@ function renderVehiculo(){
     renderSelectorFlota();return;
   }
   // Técnico normal sin vehículo vinculado → mostrar vinculación
+  // (puede llegar aquí después de completar una transferencia de entrega)
   if(!esRolLibre()&&(!miPerfil?.ecoVinculado||!miVeh)){
     // Cargar vehículos automáticamente si aún no están en memoria
     if(!window._fmAllVehs||window._fmAllVehs.length===0){
@@ -1242,7 +1243,7 @@ window.fmGuardar=async function(){
     origenApp:'movil',
   };
   if(!onlineStatus){
-    offlineGuardar(docObj);
+    if(typeof offlineGuardar==='function')offlineGuardar(docObj);
     if(btn){btn.disabled=false;btn.textContent='Crear solicitud';}
     return;
   }
@@ -1366,6 +1367,7 @@ function renderNotif(){
 
 // ── VER SOLICITUD EXISTENTE ──
 window.fmVerSol=function(id){
+  window._fmEvCache=[];
   const s=misSols.find(x=>x.id===id);if(!s)return;
   const ov=document.createElement('div');ov.className='fm-ov';
   ov.innerHTML=`<div class="fm-sheet">
@@ -1812,7 +1814,12 @@ window.utilReset=function(){
   renderUtil();
 };
 
-window.utilSetModo=function(m){utilState.modo=m;utilState.paso=2;renderUtil();};
+window.utilSetModo=function(m){
+  if(m==='entregar'&&!miVeh){
+    toast('No tienes vehículo vinculado para entregar','err');return;
+  }
+  utilState.modo=m;utilState.paso=2;renderUtil();
+};
 window.utilGas=function(v){utilState.gasolina=Number(v);const w=document.getElementById('util-gauge-wrap');if(w)w.innerHTML=renderGaugeSVG(Number(v))+'<div class="fm-gauge-labels" style="width:200px"><span>VACÍO</span><span>2/4</span><span>MEDIO</span><span>3/4</span><span>LLENO</span></div>';};
 
 function renderChkUtil(){
@@ -1979,7 +1986,19 @@ window.utilConfirmarFirma=async function(){
       // DESVINCULAR al que entrega — ya no tiene ese vehículo
       const snapEntregador=await db.collection('fl_usuarios').where('email','==',userEmail).get();
       if(!snapEntregador.empty){
-        await snapEntregador.docs[0].ref.update({ecoVinculado:null,desvinculadoEn:now.toISOString()});
+        await snapEntregador.docs[0].ref.update({
+          ecoVinculado:null,
+          desvinculadoEn:now.toISOString(),
+          ecoEntregado:docObj.vehiculoEco, // trazabilidad
+        });
+      } else {
+        // No tenía doc — crear uno desvinculado para trazabilidad
+        await db.collection('fl_usuarios').add({
+          email:userEmail,nombre:userName,
+          ecoVinculado:null,desvinculadoEn:now.toISOString(),
+          ecoEntregado:docObj.vehiculoEco,
+          rol:'tecnico',
+        });
       }
       // Actualizar en memoria: el que entrega ya no tiene vehículo
       if(miPerfil) miPerfil.ecoVinculado=null;
@@ -2004,21 +2023,41 @@ window.utilConfirmarFirma=async function(){
         // VINCULAR al que recibe — ahora es responsable del vehículo
         const snapRecibe=await db.collection('fl_usuarios').where('email','==',userEmail).get();
         if(!snapRecibe.empty){
-          await snapRecibe.docs[0].ref.update({ecoVinculado:ecoRecibido,vinculadoEn:now.toISOString()});
+          // Desvincular vehículo anterior si tenía uno distinto
+          const docAnterior=snapRecibe.docs[0].data();
+          if(docAnterior.ecoVinculado&&String(docAnterior.ecoVinculado)!==String(ecoRecibido)){
+            // Log para trazabilidad
+            await db.collection('fl_usuarios').doc(snapRecibe.docs[0].id).update({
+              ecoVinculado:ecoRecibido,
+              vinculadoEn:now.toISOString(),
+              ecoAnterior:docAnterior.ecoVinculado,
+              rol:docAnterior.rol||'tecnico',
+            });
+          } else {
+            await snapRecibe.docs[0].ref.update({ecoVinculado:ecoRecibido,vinculadoEn:now.toISOString()});
+          }
         } else {
-          await db.collection('fl_usuarios').add({email:userEmail,nombre:userName,ecoVinculado:ecoRecibido,vinculadoEn:now.toISOString()});
+          // Crear doc con rol tecnico por defecto
+          await db.collection('fl_usuarios').add({
+            email:userEmail,nombre:userName,
+            ecoVinculado:ecoRecibido,vinculadoEn:now.toISOString(),
+            rol:'tecnico',
+          });
         }
         // Actualizar en memoria: el que recibe ahora tiene el vehículo
-        if(miPerfil) miPerfil.ecoVinculado=ecoRecibido;
-        // Recargar vehículo en memoria
+        if(miPerfil){miPerfil.ecoVinculado=ecoRecibido;}
+        // Recargar vehículo desde flotilla_vehiculos (colección correcta)
         try{
-          const snapVeh=await db.collection('fl_usuarios').where('eco','==',ecoRecibido).get();
+          const snapVeh=await db.collection('flotilla_vehiculos').where('eco','==',String(ecoRecibido)).get();
           if(!snapVeh.empty) miVeh={id:snapVeh.docs[0].id,...snapVeh.docs[0].data()};
           else{
-            const found=window.CAT_FL?.find(v=>String(v.eco)===ecoRecibido);
+            const found=window.CAT_FL?.find(v=>String(v.eco)===String(ecoRecibido));
             if(found) miVeh={id:'eco-'+found.eco,...found};
           }
-        }catch{ const found=window.CAT_FL?.find(v=>String(v.eco)===ecoRecibido); if(found) miVeh={id:'eco-'+found.eco,...found}; }
+        }catch(eVeh){
+          const found=window.CAT_FL?.find(v=>String(v.eco)===String(ecoRecibido));
+          if(found) miVeh={id:'eco-'+found.eco,...found};
+        }
         // Notificar
         await db.collection('flotilla_notificaciones').add({
           tipo:'transferencia_completada',codigo:utilState.codigoGenerado||utilState.codigo||'',
