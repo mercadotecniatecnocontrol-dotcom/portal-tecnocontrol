@@ -1419,7 +1419,7 @@ window.rh360Eliminar = async function(id){
     if(!e) return;
     if(!confirm('¿Eliminar a '+e.nombre+' del directorio?\n\nEsta acción no se puede deshacer.')) return;
     try {
-        if(!id.startsWith('sheet_')){
+        if(!id.startsWith('sheet_') && !id.startsWith('new_')){
             const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
             await fs.deleteDoc(fs.doc(db,'rh_empleados',id));
         }
@@ -1661,7 +1661,7 @@ window.rh360Guardar = async function(id){
     data.actualizadoEn = new Date().toISOString();
     try {
         const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-        if(id.startsWith('sheet_')){
+        if(id.startsWith('sheet_') || id.startsWith('new_')){
             // Crear nuevo doc en Firestore
             const ref = await fs.addDoc(fs.collection(db,'rh_empleados'),{...data});
             // Actualizar en memoria
@@ -1712,7 +1712,7 @@ window.rh360EditarDoc = function(empId, docKey){
         const upd={['doc_'+docKey]:status,['venc_'+docKey]:venc,actualizadoEn:new Date().toISOString()};
         try{
             const fs=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-            if(!empId.startsWith('sheet_')) await fs.updateDoc(fs.doc(db,'rh_empleados',empId),upd);
+            if(!empId.startsWith('sheet_') && !empId.startsWith('new_')) await fs.updateDoc(fs.doc(db,'rh_empleados',empId),upd);
             Object.assign(e,upd);
             ov.remove();
             rh360TabSwitch('docs');
@@ -1745,7 +1745,7 @@ window.rh360AgregarHistorial = function(empId){
         const hist=[...(e.historial||[]),{fecha,texto}];
         try{
             const fs=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-            if(!empId.startsWith('sheet_')) await fs.updateDoc(fs.doc(db,'rh_empleados',empId),{historial:hist});
+            if(!empId.startsWith('sheet_') && !empId.startsWith('new_')) await fs.updateDoc(fs.doc(db,'rh_empleados',empId),{historial:hist});
             e.historial=hist;
             ov.remove();
             rh360TabSwitch('hist');
