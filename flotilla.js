@@ -576,36 +576,31 @@ function padded(h){return`<div style="padding:16px">${h}</div>`;}
 
 
 // ══════════════════════════════════════════════════════
-// VISTA ADMIN — Gestión de vehículos y responsables
+// VISTA ADMIN — Gestión de vehículos, solicitudes y usuarios
 // ══════════════════════════════════════════════════════
-let admEditId=null; // ID del vehículo en edición
+let admEditId=null;
 let admFiltro=''; let admFiltroPlaza=''; let admFiltroStatus='';
+let admTab='vehs';
 
 function rAdmin(){
   if(!hAdm()){setContent(pad('<div class="fl-empty"><div class="fl-empty-ico"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></div><h3>Acceso restringido</h3><p>Solo administradores pueden acceder a este panel.</p></div>'));return;}
-
   const act=flV.filter(v=>v.status==='activo'||!v.status).length;
   const tall=flV.filter(v=>v.status==='taller').length;
   const com=flV.filter(v=>v.status==='comision').length;
-  const baj=flV.filter(v=>v.status==='baja').length;
   const sinResp=flV.filter(v=>!v.responsable||v.responsable==='—').length;
-
-  // Obtener plazas únicas
   const plazas=[...new Set(flV.map(v=>v.plaza).filter(Boolean))].sort();
-
+  const tabs=[{k:'vehs',label:'Vehículos'},{k:'nuevo',label:'Agregar vehículo'},{k:'sols',label:'Solicitudes'},{k:'usuarios',label:'Usuarios / ECOs'}];
   setContent(pad(`
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
       <div>
         <div style="font-size:20px;font-weight:900;letter-spacing:-.5px">Administración de Flotilla</div>
-        <div style="font-size:11.5px;color:#64748B;margin-top:3px">Gestión de vehículos, responsables y asignaciones</div>
+        <div style="font-size:11.5px;color:#64748B;margin-top:3px">Gestión de vehículos, solicitudes y usuarios</div>
       </div>
-      <div style="display:flex;gap:8px">
-        <button class="fb gho" onclick="admExportar()" style="gap:5px">${I.doc} Exportar</button>
+      <div id="adm-hdr-btns" style="display:flex;gap:8px">
+        <button class="fb gho" onclick="admExportar()" style="gap:5px">${I.doc} Exportar CSV</button>
         <button class="fb acc" onclick="admGuardarTodo()" id="adm-btn-save" style="display:none;gap:5px">${I.save} Guardar cambios</button>
       </div>
     </div>
-
-    <!-- KPIs rápidos -->
     <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:20px">
       <div class="fl-adm-kpi"><div class="fl-adm-kpi-v">${flV.length}</div><div class="fl-adm-kpi-l">Total flotilla</div></div>
       <div class="fl-adm-kpi"><div class="fl-adm-kpi-v" style="color:#16A34A">${act}</div><div class="fl-adm-kpi-l">Activos</div></div>
@@ -613,13 +608,38 @@ function rAdmin(){
       <div class="fl-adm-kpi"><div class="fl-adm-kpi-v" style="color:#7C3AED">${com}</div><div class="fl-adm-kpi-l">Comisión</div></div>
       <div class="fl-adm-kpi"><div class="fl-adm-kpi-v" style="color:#EF4444">${sinResp}</div><div class="fl-adm-kpi-l">Sin responsable</div></div>
     </div>
+    <div style="display:flex;gap:6px;margin-bottom:16px;border-bottom:2px solid #F1F5F9;padding-bottom:0">
+      ${tabs.map(t=>`<button onclick="admTabSwitch('${t.k}')" id="adm-tab-${t.k}" style="padding:8px 16px;border:none;border-bottom:2px solid ${admTab===t.k?'#2563EB':'transparent'};margin-bottom:-2px;background:none;font-family:inherit;font-size:12px;font-weight:700;color:${admTab===t.k?'#2563EB':'#64748B'};cursor:pointer;transition:.15s">${t.label}</button>`).join('')}
+    </div>
+    <div id="adm-tab-content">
+      ${admTab==='vehs'?rAdmTabVehs(plazas):admTab==='nuevo'?rAdmTabNuevo():admTab==='sols'?rAdmTabSols():rAdmTabUsuarios()}
+    </div>
+  `));
+}
 
-    <!-- FILTROS -->
+window.admTabSwitch=function(tab){
+  admTab=tab; admEditId=null;
+  ['vehs','nuevo','sols','usuarios'].forEach(k=>{
+    const b=document.getElementById('adm-tab-'+k);if(!b)return;
+    b.style.color=k===tab?'#2563EB':'#64748B';
+    b.style.borderBottomColor=k===tab?'#2563EB':'transparent';
+  });
+  const hb=document.getElementById('adm-hdr-btns');if(hb)hb.style.display=tab==='vehs'?'flex':'none';
+  const content=document.getElementById('adm-tab-content');if(!content)return;
+  const plazas=[...new Set(flV.map(v=>v.plaza).filter(Boolean))].sort();
+  if(tab==='vehs')content.innerHTML=rAdmTabVehs(plazas);
+  else if(tab==='nuevo')content.innerHTML=rAdmTabNuevo();
+  else if(tab==='sols')content.innerHTML=rAdmTabSols();
+  else content.innerHTML=rAdmTabUsuarios();
+};
+
+function rAdmTabVehs(plazas){
+  return`
     <div class="fl-adm-filters">
       <div class="fl-adm-search">${I.search}<input type="text" id="adm-q" placeholder="ECO, unidad, responsable, placas…" oninput="admFiltrar()" value="${admFiltro}"></div>
       <select class="fl-adm-fsel" id="adm-plaza" onchange="admFiltrar()">
         <option value="">Todas las plazas</option>
-        ${plazas.map(p=>`<option ${admFiltroPlaza===p?'selected':''}>${p}</option>`).join('')}
+        ${plazas.map(p=>`<option ${admFiltroPlaza===p?'selected':''} value="${p}">${p}</option>`).join('')}
       </select>
       <select class="fl-adm-fsel" id="adm-status" onchange="admFiltrar()">
         <option value="">Todos los estatus</option>
@@ -628,36 +648,165 @@ function rAdmin(){
         <option ${admFiltroStatus==='comision'?'selected':''}>comision</option>
         <option ${admFiltroStatus==='baja'?'selected':''}>baja</option>
       </select>
-      <button class="fb gho sm" onclick="admLimpiarFiltros()">✕ Limpiar</button>
+      <button class="fb gho sm" onclick="admLimpiarFiltros()">&#x2715; Limpiar</button>
       <span style="font-size:11px;color:#94A3B8;margin-left:auto" id="adm-count">${flV.length} vehículos</span>
     </div>
-
-    <!-- TABLA -->
-    <div class="fl-tw" style="overflow:auto;max-height:calc(100vh - 320px)">
+    <div class="fl-tw" style="overflow:auto;max-height:calc(100vh - 400px)">
       <table class="fl-adm-table" id="adm-tabla">
-        <thead><tr>
-          <th>ECO</th>
-          <th>Unidad</th>
-          <th>Placas</th>
-          <th>Responsable</th>
-          <th>Plaza</th>
-          <th>Estatus</th>
-          <th>KM actual</th>
-          <th>NIP</th>
-          <th>Póliza seguro</th>
-          <th>Vto. póliza</th>
-          <th>Color</th>
-          <th>Tipo</th>
-          <th style="text-align:center">Editar</th>
-        </tr></thead>
-        <tbody id="adm-tbody">
-          ${renderAdmRows(flV)}
+        <thead><tr><th>ECO</th><th>Unidad</th><th>Placas</th><th>Responsable</th><th>Plaza</th><th>Estatus</th><th>KM actual</th><th>NIP</th><th>Póliza seguro</th><th>Vto. póliza</th><th>Color</th><th>Tipo</th><th style="text-align:center">Editar</th></tr></thead>
+        <tbody id="adm-tbody">${renderAdmRows(flV)}</tbody>
+      </table>
+    </div>`;
+}
+
+function rAdmTabNuevo(){
+  const campos=[
+    ['adm-nv-eco','ECO / Número económico','text',''],
+    ['adm-nv-unidad','Unidad (marca y modelo)','text','Ej: RAM 700 SLT'],
+    ['adm-nv-año','Año','number','2025'],
+    ['adm-nv-placas','Placas','text',''],
+    ['adm-nv-serie','Número de serie (VIN)','text',''],
+    ['adm-nv-resp','Responsable','text',''],
+    ['adm-nv-plaza','Plaza / Sucursal','text','CHIHUAHUA'],
+    ['adm-nv-color','Color','text','Blanco'],
+    ['adm-nv-nip','NIP gasolinera','text',''],
+    ['adm-nv-pol','Número de póliza seguro','text',''],
+    ['adm-nv-pv','Vencimiento póliza','date',''],
+    ['adm-nv-rend','Rendimiento (Ej: 12 KM/L)','text',''],
+  ];
+  return`
+    <div style="max-width:680px">
+      <div style="font-size:14px;font-weight:800;color:#0A1628;margin-bottom:16px">Registrar nuevo vehículo en la flotilla</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        ${campos.map(([id,label,type,ph])=>`
+          <div>
+            <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">${label}</label>
+            <input id="${id}" type="${type}" placeholder="${ph}" style="width:100%;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:9px;font-family:inherit;font-size:13px;outline:none;box-sizing:border-box" onfocus="this.style.borderColor='#2563EB'" onblur="this.style.borderColor='#E2E8F0'">
+          </div>`).join('')}
+        <div>
+          <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">Tipo</label>
+          <select id="adm-nv-tipo" style="width:100%;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:9px;font-family:inherit;font-size:13px;outline:none">
+            <option value="camioneta">Camioneta</option><option value="auto">Auto</option><option value="camion">Camión</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">Estatus inicial</label>
+          <select id="adm-nv-status" style="width:100%;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:9px;font-family:inherit;font-size:13px;outline:none">
+            <option value="activo">Activo</option><option value="taller">En taller</option><option value="comision">Comisión</option>
+          </select>
+        </div>
+      </div>
+      <div style="margin-top:20px;display:flex;gap:10px">
+        <button onclick="admNuevoGuardar()" class="fb acc" style="padding:10px 24px;font-size:13px">${I.save} Registrar vehículo</button>
+        <button onclick="admNuevoLimpiar()" class="fb gho" style="padding:10px 24px;font-size:13px">Limpiar</button>
+      </div>
+      <div id="adm-nv-msg" style="margin-top:12px;font-size:12px;display:none"></div>
+    </div>`;
+}
+
+function rAdmTabSols(){
+  const solFiltro=window._admSolFiltro||'';
+  const solQ=window._admSolQ||'';
+  let lista=flS;
+  if(solFiltro)lista=lista.filter(s=>s.estatus===solFiltro);
+  if(solQ){const q=solQ.toLowerCase();lista=lista.filter(s=>(s.vehiculoEco+s.solicitante+s.tipoSol+s.id+'').toLowerCase().includes(q));}
+  const filtros=['Solicitud','Validada','Cotización','Aprobada','Rechazada','Cerrada'];
+  return`
+    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
+      <div class="fl-adm-search" style="flex:1;min-width:200px">${I.search}<input type="text" id="adms-q" placeholder="ECO, solicitante, tipo…" value="${solQ}" oninput="admSolFiltrar()"></div>
+      <select id="adms-est" onchange="admSolFiltrar()" class="fl-adm-fsel">
+        <option value="">Todos los estatus</option>
+        ${filtros.map(f=>`<option ${solFiltro===f?'selected':''} value="${f}">${f}</option>`).join('')}
+      </select>
+      <button class="fb gho sm" onclick="admSolLimpiar()">&#x2715; Limpiar</button>
+      <span style="font-size:11px;color:#94A3B8;margin-left:auto">${lista.length} solicitudes</span>
+    </div>
+    <div class="fl-tw" style="overflow:auto;max-height:calc(100vh - 420px)">
+      <table class="fl-adm-table">
+        <thead><tr><th>ID</th><th>Fecha</th><th>ECO</th><th>Tipo</th><th>Solicitante</th><th>Estatus</th><th>KM</th><th style="text-align:center">Acciones</th></tr></thead>
+        <tbody>
+          ${lista.length?lista.map(s=>{
+            const statCls={Solicitud:'fl-adm-stat-taller',Validada:'fl-adm-stat-activo',Cotización:'fl-adm-stat-comision',Aprobada:'fl-adm-stat-activo',Rechazada:'fl-adm-stat-baja',Cerrada:'fl-adm-stat-baja'}[s.estatus]||'fl-adm-stat-activo';
+            const fecha=s.creadoEn?s.creadoEn.slice(0,10):'—';
+            return`<tr>
+              <td style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#64748B">${(s.id||'').slice(-6)}</td>
+              <td style="font-size:11px">${fecha}</td>
+              <td style="font-weight:700;font-family:'JetBrains Mono',monospace">${s.vehiculoEco||'—'}</td>
+              <td style="font-size:11px">${s.tipoSol||s.tipo||'—'}</td>
+              <td style="font-size:11px">${s.solicitante||s.creadoPor||'—'}</td>
+              <td><span class="fl-adm-badge ${statCls}">${s.estatus||'—'}</span></td>
+              <td style="font-size:11px">${s.km||'—'}</td>
+              <td style="text-align:center">
+                <div style="display:flex;gap:4px;justify-content:center">
+                  <button class="fb gho sm" onclick="flVerSol('${s.id}')" title="Ver detalle">${I.eye||'Ver'}</button>
+                  <button class="fb gho sm" onclick="admElimSol('${s.id}')" title="Eliminar" style="color:#EF4444;border-color:#FCA5A5">${I.trash||'Elim'}</button>
+                </div>
+              </td>
+            </tr>`;
+          }).join(''):`<tr><td colspan="8" style="text-align:center;padding:24px;color:#94A3B8">Sin solicitudes</td></tr>`}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function rAdmTabUsuarios(){
+  const userMap={};
+  flV.forEach(v=>{
+    if(v.responsable&&v.responsable!=='—'){
+      const k=v.responsable.toLowerCase();
+      if(!userMap[k])userMap[k]={nombre:v.responsable,ecos:[],email:''};
+      userMap[k].ecos.push(v.eco);
+    }
+  });
+  flS.forEach(s=>{
+    if(s.creadoPor){
+      const k=s.creadoPor.toLowerCase();
+      if(!userMap[k])userMap[k]={nombre:s.solicitante||s.creadoPor,ecos:[],email:s.creadoPor};
+      else if(!userMap[k].email)userMap[k].email=s.creadoPor;
+    }
+  });
+  const usuarios=Object.values(userMap).sort((a,b)=>a.nombre.localeCompare(b.nombre));
+  return`
+    <div style="font-size:12px;color:#64748B;margin-bottom:12px;background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px;padding:10px 14px">
+      <strong style="color:#C2410C">Nota:</strong> Muestra responsables de vehículos y usuarios que han creado solicitudes. Para cambiar el responsable de un ECO usa el formulario de abajo o edita directamente en la pestaña Vehículos.
+    </div>
+    <div class="fl-tw" style="overflow:auto;max-height:180px;margin-bottom:20px">
+      <table class="fl-adm-table">
+        <thead><tr><th>Nombre / Responsable</th><th>Email detectado</th><th>ECOs asignados</th><th style="text-align:center">Acción</th></tr></thead>
+        <tbody>
+          ${usuarios.length?usuarios.map(u=>`
+            <tr>
+              <td style="font-weight:700">${u.nombre}</td>
+              <td style="font-size:11px;font-family:'JetBrains Mono',monospace;color:#64748B">${u.email||'—'}</td>
+              <td style="font-size:11px">${u.ecos.length?u.ecos.map(e=>`<span style="background:#EFF6FF;color:#2563EB;padding:2px 6px;border-radius:6px;font-size:10px;font-weight:700;margin-right:3px">ECO ${e}</span>`).join(''):'Sin ECO'}</td>
+              <td style="text-align:center">
+                <button class="fb gho sm" onclick="admPreReasignar('${u.nombre.replace(/'/g,"\'")}','${u.email}')" style="font-size:10px">${I.edit} Reasignar</button>
+              </td>
+            </tr>`).join(''):`<tr><td colspan="4" style="text-align:center;padding:24px;color:#94A3B8">No hay datos</td></tr>`}
         </tbody>
       </table>
     </div>
-  `));
+    <div style="font-size:14px;font-weight:800;color:#0A1628;margin-bottom:12px">Reasignar ECO a responsable</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;align-items:end;max-width:780px">
+      <div>
+        <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">Nombre responsable</label>
+        <input id="adm-ur-nombre" placeholder="Nombre completo" style="width:100%;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:9px;font-family:inherit;font-size:13px;outline:none;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">ECO a asignar</label>
+        <select id="adm-ur-eco" style="width:100%;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:9px;font-family:inherit;font-size:13px;outline:none">
+          <option value="">— Seleccionar ECO —</option>
+          ${flV.map(v=>`<option value="${v.eco}">ECO ${v.eco} — ${v.unidad||''} ${v.responsable&&v.responsable!=='—'?'('+v.responsable+')':'' }</option>`).join('')}
+        </select>
+      </div>
+      <div>
+        <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">Plaza</label>
+        <input id="adm-ur-plaza" placeholder="Ej: CHIHUAHUA" style="width:100%;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:9px;font-family:inherit;font-size:13px;outline:none;box-sizing:border-box">
+      </div>
+      <button onclick="admReasignarEco()" class="fb acc" style="padding:10px 16px;white-space:nowrap">Asignar</button>
+    </div>
+    <div id="adm-ur-msg" style="margin-top:10px;font-size:12px;display:none"></div>`;
 }
-
 function renderAdmRows(lista){
   if(!lista.length)return`<tr><td colspan="13" style="text-align:center;padding:24px;color:#94A3B8">Sin vehículos que mostrar</td></tr>`;
   return lista.map(v=>{
@@ -826,6 +975,120 @@ window.admExportar=function(){
   const a=document.createElement('a');a.href=url;a.download=`flotilla_tecnocontrol_${new Date().toISOString().slice(0,10)}.csv`;
   document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
   if(window.mostrarPush)window.mostrarPush('CSV exportado','flotilla_tecnocontrol_'+new Date().toISOString().slice(0,10)+'.csv','✓');
+};
+
+// ── ACCIONES NUEVAS DEL PANEL ADMIN ──
+
+// Filtros de solicitudes (tab Solicitudes)
+window.admSolFiltrar=function(){
+  window._admSolFiltro=document.getElementById('adms-est')?.value||'';
+  window._admSolQ=document.getElementById('adms-q')?.value||'';
+  const content=document.getElementById('adm-tab-content');
+  if(content)content.innerHTML=rAdmTabSols();
+};
+window.admSolLimpiar=function(){
+  window._admSolFiltro='';window._admSolQ='';
+  const content=document.getElementById('adm-tab-content');
+  if(content)content.innerHTML=rAdmTabSols();
+};
+
+// Eliminar solicitud con confirmación
+window.admElimSol=async function(id){
+  if(!confirm('¿Eliminar esta solicitud permanentemente? Esta acción no se puede deshacer.'))return;
+  try{
+    if(!fs){const m=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');fs=m;}
+    await fs.deleteDoc(fs.doc(db,C.SOLS,id));
+    const idx=flS.findIndex(s=>s.id===id);
+    if(idx>=0)flS.splice(idx,1);
+    if(window.mostrarPush)window.mostrarPush('Solicitud eliminada','Registro eliminado correctamente','✓');
+    const content=document.getElementById('adm-tab-content');
+    if(content)content.innerHTML=rAdmTabSols();
+  }catch(e){
+    console.error('[ADMIN]',e);
+    if(window.mostrarPush)window.mostrarPush('Error',e.message,'✗');
+  }
+};
+
+// Guardar nuevo vehículo
+window.admNuevoGuardar=async function(){
+  const g=id=>document.getElementById(id)?.value?.trim()||'';
+  const eco=g('adm-nv-eco');
+  if(!eco){document.getElementById('adm-nv-eco').style.borderColor='#EF4444';return;}
+  if(!g('adm-nv-unidad')){document.getElementById('adm-nv-unidad').style.borderColor='#EF4444';return;}
+  const msg=document.getElementById('adm-nv-msg');
+  if(msg){msg.style.display='';msg.style.color='#2563EB';msg.textContent='Guardando...';}
+  const doc={
+    eco,unidad:g('adm-nv-unidad'),año:Number(g('adm-nv-año'))||0,
+    placas:g('adm-nv-placas'),serie:g('adm-nv-serie'),
+    responsable:g('adm-nv-resp')||'—',plaza:g('adm-nv-plaza'),
+    color:g('adm-nv-color'),nip:g('adm-nv-nip'),pol:g('adm-nv-pol'),
+    pv:g('adm-nv-pv')||'—',rend:g('adm-nv-rend')||'—',
+    tipo:document.getElementById('adm-nv-tipo')?.value||'camioneta',
+    status:document.getElementById('adm-nv-status')?.value||'activo',
+    km:0,creadoEn:new Date().toISOString(),
+    creadoPor:window.auth?.currentUser?.email||'',
+  };
+  try{
+    if(!fs){const m=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');fs=m;}
+    const ref=await fs.addDoc(fs.collection(db,C.VEHS),doc);
+    flV.push({id:ref.id,...doc});
+    renderSB();
+    if(msg){msg.style.color='#16A34A';msg.textContent='Vehículo registrado correctamente. ECO '+eco+' agregado a la flotilla.';}
+    if(window.mostrarPush)window.mostrarPush('Vehículo agregado','ECO '+eco+' registrado en flotilla','✓');
+    admNuevoLimpiar();
+  }catch(e){
+    console.error('[ADMIN]',e);
+    if(msg){msg.style.color='#EF4444';msg.textContent='Error: '+e.message;}
+  }
+};
+window.admNuevoLimpiar=function(){
+  ['adm-nv-eco','adm-nv-unidad','adm-nv-año','adm-nv-placas','adm-nv-serie','adm-nv-resp','adm-nv-plaza','adm-nv-color','adm-nv-nip','adm-nv-pol','adm-nv-pv','adm-nv-rend'].forEach(id=>{
+    const el=document.getElementById(id);if(el){el.value='';el.style.borderColor='#E2E8F0';}
+  });
+};
+
+// Pre-llenar formulario de reasignación al hacer clic en "Reasignar"
+window.admPreReasignar=function(nombre,email){
+  const n=document.getElementById('adm-ur-nombre');
+  if(n){n.value=nombre;n.scrollIntoView({behavior:'smooth',block:'center'});}
+};
+
+// Reasignar ECO a responsable
+window.admReasignarEco=async function(){
+  const nombre=(document.getElementById('adm-ur-nombre')?.value||'').trim();
+  const eco=(document.getElementById('adm-ur-eco')?.value||'').trim();
+  const plaza=(document.getElementById('adm-ur-plaza')?.value||'').trim();
+  const msg=document.getElementById('adm-ur-msg');
+  if(!nombre||!eco){
+    if(msg){msg.style.display='';msg.style.color='#EF4444';msg.textContent='Completa el nombre y selecciona un ECO.';}
+    return;
+  }
+  if(msg){msg.style.display='';msg.style.color='#2563EB';msg.textContent='Guardando...';}
+  const v=flV.find(x=>String(x.eco)===String(eco));
+  if(!v){if(msg){msg.style.color='#EF4444';msg.textContent='ECO no encontrado.';}return;}
+  const upd={responsable:nombre};
+  if(plaza)upd.plaza=plaza;
+  Object.assign(v,upd);
+  try{
+    if(!fs){const m=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');fs=m;}
+    if(!v.id.startsWith('eco-')){
+      await fs.updateDoc(fs.doc(db,C.VEHS,v.id),{...upd,actualizadoEn:new Date().toISOString()});
+    } else {
+      const ref=await fs.addDoc(fs.collection(db,C.VEHS),{...v,...upd,creadoEn:new Date().toISOString()});
+      v.id=ref.id;
+    }
+    renderSB();
+    if(msg){msg.style.color='#16A34A';msg.textContent='ECO '+eco+' asignado a '+nombre+' correctamente.';}
+    if(window.mostrarPush)window.mostrarPush('ECO reasignado','ECO '+eco+' → '+nombre,'✓');
+    ['adm-ur-nombre','adm-ur-plaza'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+    const sel=document.getElementById('adm-ur-eco');if(sel)sel.value='';
+    // Refrescar tabla de usuarios
+    const content=document.getElementById('adm-tab-content');
+    if(content&&admTab==='usuarios')content.innerHTML=rAdmTabUsuarios();
+  }catch(e){
+    console.error('[ADMIN]',e);
+    if(msg){msg.style.color='#EF4444';msg.textContent='Error: '+e.message;}
+  }
 };
 
 // ── PANEL GENERAL ──
