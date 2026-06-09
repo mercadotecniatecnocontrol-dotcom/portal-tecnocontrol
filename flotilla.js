@@ -1121,7 +1121,7 @@ function rPanel(){
         <div style="padding:12px 14px">${top.length?top.map(([t,n])=>`<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:11px;font-weight:600;margin-bottom:3px"><span>${t}</span><span style="color:#64748B">${n}</span></div><div style="height:4px;background:#F1F5F9;border-radius:100px;overflow:hidden"><div style="height:100%;width:${Math.round(n/mx*100)}%;background:linear-gradient(90deg,#2563EB,#7C3AED);border-radius:100px"></div></div></div>`).join(''):'<div style="color:#94A3B8;font-size:11px;text-align:center;padding:18px 0">Sin solicitudes aún</div>'}</div>
       </div>
       <div class="fl-tw"><div style="padding:10px 14px;border-bottom:1px solid #F1F5F9;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8">Flujo de solicitudes <span style="font-size:9px;color:#2563EB;font-weight:600;text-transform:none;letter-spacing:0">· clic para ver detalle</span></div>
-        <div style="padding:12px 14px;display:flex;flex-direction:column;gap:7px">${Object.entries(porEst).map(([e,n])=>`<div onclick="flPipelineModal('${e}')" style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 6px;border-radius:7px;transition:.15s;${n>0?'':'opacity:.45'}" onmouseover="this.style.background='#F8FAFF'" onmouseout="this.style.background=''">${hBadge(e)}<div style="flex:1;height:4px;background:#F1F5F9;border-radius:100px;overflow:hidden"><div style="height:100%;width:${flS.length?Math.round(n/flS.length*100):0}%;background:#2563EB;border-radius:100px;transition:.4s"></div></div><span style="font-size:11px;font-weight:700;min-width:14px;text-align:right">${n}</span>${n>0?`<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>`:''}</div>`).join('')}</div>
+        <div style="padding:12px 14px;display:flex;flex-direction:column;gap:5px">${Object.entries(porEst).map(([e,n])=>`<div onclick="flPipelineModal('${e}')" style="display:flex;align-items:center;gap:8px;cursor:${n>0?'pointer':'default'};padding:4px 6px;border-radius:7px;transition:.15s" onmouseover="if(${n}>0)this.style.background='#F0F7FF'" onmouseout="this.style.background=''">${hBadge(e)}<div style="flex:1;height:4px;background:#F1F5F9;border-radius:100px;overflow:hidden"><div style="height:100%;width:${flS.length?Math.round(n/flS.length*100):0}%;background:#2563EB;border-radius:100px;transition:.4s"></div></div><span style="font-size:11px;font-weight:700;min-width:16px;text-align:right">${n}</span>${n>0?'<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>':''}</div>`).join('')}</div>
       </div>
     </div>
     <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:#94A3B8;margin-bottom:8px">Solicitudes recientes</div>
@@ -2471,85 +2471,155 @@ function rBajas(){
 }
 
 // ACCIONES COMUNES
-// ── PIPELINE MODAL ──
+// ══════════════════════════════════════════════════════
+// PIPELINE MODAL — Reglas finales aprobadas
+// Validar/Cotizar/Cierre/Cerrar: Admins + fatima
+// Aprobar/Rechazar: p.pinedo + c.acosta
+// Eliminar: Administradores
+// ══════════════════════════════════════════════════════
+const FL_APROBADORES=['p.pinedo@tecnocontrol.com.mx','c.acosta@tecnocontrol.com.mx'];
+const FL_FLOTILLA=['fatima@tecnocontrol.com.mx','mercadotecniatecnocontrol@gmail.com','mercadotecnia@tecnocontrol.com.mx','rh@tecnocontrol.com.mx','c.acosta@tecnocontrol.com.mx','m.delao@tecnocontrol.com.mx','p.pinedo@tecnocontrol.com.mx'];
+
+function pEmail(){return(window.auth?.currentUser?.email||'').toLowerCase();}
+function puedeValidar(){return FL_FLOTILLA.includes(pEmail());}
+function puedeAprobar(){return FL_APROBADORES.includes(pEmail());}
+function puedeEliminar(){return hAdm();}
+
 window.flPipelineModal=function(estatus){
   const lista=flS.filter(s=>s.estatus===estatus);
-  const pV=hP('validar');
-  const pA=hP('aprobar');
   const colores={Solicitud:'#6D28D9',Validada:'#1D4ED8',Cotización:'#B45309',Aprobada:'#15803D',Rechazada:'#B91C1C',Cerrada:'#475569',Cierre:'#7C3AED'};
   const color=colores[estatus]||'#2563EB';
-  const accionesDisp=(s)=>{
-    const btns=[];
-    if(pV&&s.estatus==='Solicitud')btns.push(`<button class="fb acc sm" onclick="flPipelineAccion('${s.id}','Validada')" style="font-size:11px">${I.check} Validar</button>`);
-    if(pV&&s.estatus==='Validada')btns.push(`<button class="fb gho sm" onclick="flPipelineAccion('${s.id}','Cotización')" style="font-size:11px">Cotizar</button>`);
-    if(pA&&(s.estatus==='Validada'||s.estatus==='Cotización')){btns.push(`<button class="fb acc sm" onclick="flPipelineAccion('${s.id}','Aprobada')" style="font-size:11px">${I.check} Aprobar</button>`);btns.push(`<button class="fb dan sm" onclick="flPipelineRechazar('${s.id}')" style="font-size:11px">${I.x} Rechazar</button>`);}
-    if(pV&&s.estatus==='Aprobada')btns.push(`<button class="fb gho sm" onclick="flPipelineAccion('${s.id}','Cierre')" style="font-size:11px">Cierre</button>`);
-    if(pV&&s.estatus==='Cierre')btns.push(`<button class="fb acc sm" onclick="flPipelineAccion('${s.id}','Cerrada')" style="font-size:11px">${I.check} Cerrar</button>`);
-    if(hAdm())btns.push(`<button class="fb gho sm" onclick="flVerSol('${s.id}')" style="font-size:11px">Ver</button>`);
-    return btns.length?`<div style="display:flex;gap:4px;flex-wrap:wrap">${btns.join('')}</div>`:'<span style="font-size:10px;color:#94A3B8">—</span>';
-  };
   const pasos=['Solicitud','Validada','Cotización','Aprobada','Cierre','Cerrada'];
+
+  const btnAccion=(s)=>{
+    const btns=[];
+    if(puedeValidar()&&s.estatus==='Solicitud')
+      btns.push(`<button class="fb acc sm" onclick="flPAct('${s.id}','Validada')" style="font-size:11px;padding:5px 10px">${I.check} Validar</button>`);
+    if(puedeValidar()&&s.estatus==='Validada')
+      btns.push(`<button class="fb gho sm" onclick="flPAct('${s.id}','Cotización')" style="font-size:11px;padding:5px 10px">Cotizar</button>`);
+    if(puedeAprobar()&&(s.estatus==='Validada'||s.estatus==='Cotización')){
+      btns.push(`<button class="fb acc sm" onclick="flPAct('${s.id}','Aprobada')" style="font-size:11px;padding:5px 10px;background:#16A34A">${I.check} Aprobar</button>`);
+      btns.push(`<button class="fb dan sm" onclick="flPRej('${s.id}')" style="font-size:11px;padding:5px 10px">${I.x} Rechazar</button>`);
+    }
+    if(puedeValidar()&&s.estatus==='Aprobada')
+      btns.push(`<button class="fb gho sm" onclick="flPAct('${s.id}','Cierre')" style="font-size:11px;padding:5px 10px">→ Cierre</button>`);
+    if(puedeValidar()&&s.estatus==='Cierre')
+      btns.push(`<button class="fb acc sm" onclick="flPAct('${s.id}','Cerrada')" style="font-size:11px;padding:5px 10px">${I.check} Cerrar</button>`);
+    if(puedeEliminar())
+      btns.push(`<button onclick="flPElim('${s.id}')" style="padding:5px 8px;background:none;border:none;cursor:pointer;color:#EF4444;font-size:12px" title="Eliminar">${I.trash||'🗑'}</button>`);
+    if(!btns.length) return '<span style="font-size:10px;color:#CBD5E1">Sin acciones</span>';
+    return `<div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:center">${btns.join('')}</div>`;
+  };
+
+  const rows=lista.length===0
+    ?`<tr><td colspan="6" style="text-align:center;padding:48px;color:#94A3B8;font-size:13px">No hay solicitudes en estado <strong>${estatus}</strong></td></tr>`
+    :lista.map(s=>{
+      const pc={Urgente:'#EF4444',Alta:'#F97316',Normal:'#64748B'}[s.prioridad]||'#64748B';
+      return`<tr style="border-bottom:1px solid #F1F5F9" onmouseover="this.style.background='#F8FAFF'" onmouseout="this.style.background=''">
+        <td style="padding:11px 16px;font-weight:800;font-family:'JetBrains Mono',monospace;font-size:13px;color:#0A0F1E">ECO ${s.vehiculoEco||'—'}</td>
+        <td style="padding:11px 16px;font-size:12px;font-weight:600;max-width:160px">${s.tipo||s.tipoSol||'—'}</td>
+        <td style="padding:11px 16px"><span style="font-size:10px;font-weight:800;color:${pc}">${s.prioridad||'Normal'}</span></td>
+        <td style="padding:11px 16px;font-size:11px;color:#475569">${s.solicitante||s.creadoPor||'—'}</td>
+        <td style="padding:11px 16px;font-size:11px;color:#94A3B8;white-space:nowrap">${s.creadoEn?s.creadoEn.slice(0,10):'—'}</td>
+        <td style="padding:11px 16px;text-align:center">${btnAccion(s)}</td>
+      </tr>`;
+    }).join('');
+
   const ov=document.createElement('div');
-  ov.style.cssText='position:fixed;inset:0;background:rgba(10,15,30,.65);backdrop-filter:blur(6px);z-index:3000;display:flex;align-items:center;justify-content:center;padding:20px';
-  ov.innerHTML=`<div style="background:#fff;border-radius:18px;width:100%;max-width:860px;max-height:88vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 80px rgba(0,0,0,.2)">
-    <div style="padding:16px 22px;border-bottom:1px solid #F1F5F9;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
-      <div style="display:flex;align-items:center;gap:10px">
-        <div style="width:10px;height:10px;border-radius:50%;background:${color}"></div>
-        <div style="font-size:16px;font-weight:900;color:#0A0F1E">${estatus}</div>
-        <div style="background:#F1F5F9;color:#64748B;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px">${lista.length} solicitud${lista.length!==1?'es':''}</div>
+  ov.className='fl-pipeline-ov';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(10,15,30,.7);backdrop-filter:blur(8px);z-index:3000;display:flex;align-items:center;justify-content:center;padding:20px';
+  ov.innerHTML=`
+    <div style="background:#fff;border-radius:20px;width:100%;max-width:880px;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 32px 100px rgba(0,0,0,.25)">
+      <!-- HEADER -->
+      <div style="padding:18px 24px;border-bottom:1px solid #F1F5F9;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:12px;height:12px;border-radius:50%;background:${color}"></div>
+          <span style="font-size:17px;font-weight:900;color:#0A0F1E">${estatus}</span>
+          <span style="background:#F1F5F9;color:#64748B;font-size:11px;font-weight:700;padding:3px 12px;border-radius:20px">${lista.length} solicitud${lista.length!==1?'es':''}</span>
+        </div>
+        <button onclick="this.closest('.fl-pipeline-ov').remove()" style="padding:7px 14px;background:#F1F5F9;border:none;border-radius:9px;cursor:pointer;font-size:13px;font-weight:700;color:#475569;transition:.15s" onmouseover="this.style.background='#E2E8F0'" onmouseout="this.style.background='#F1F5F9'">✕ Cerrar</button>
       </div>
-      <button onclick="this.closest('div[style*=fixed]').remove()" style="padding:6px 12px;background:#F1F5F9;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;color:#475569">✕</button>
-    </div>
-    <div style="padding:12px 22px;border-bottom:1px solid #F1F5F9;display:flex;align-items:center;gap:4px;overflow-x:auto;flex-shrink:0">
-      ${pasos.map((e,i)=>`<div style="display:flex;align-items:center;gap:4px">
-        <div onclick="flPipelineModal('${e}')" style="padding:5px 12px;border-radius:20px;font-size:10px;font-weight:800;cursor:pointer;white-space:nowrap;transition:.15s;background:${e===estatus?color:'#F1F5F9'};color:${e===estatus?'#fff':'#64748B'}">${e}</div>
-        ${i<pasos.length-1?'<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#CBD5E1" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>':''}
-      </div>`).join('')}
-    </div>
-    <div style="overflow-y:auto;flex:1">
-      ${lista.length===0?`<div style="text-align:center;padding:48px;color:#94A3B8">No hay solicitudes en estado <strong>${estatus}</strong></div>`:`
-      <table style="width:100%;border-collapse:collapse">
-        <thead><tr style="background:#F8FAFF">
-          <th style="padding:9px 14px;text-align:left;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8">ECO</th>
-          <th style="padding:9px 14px;text-align:left;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8">Tipo</th>
-          <th style="padding:9px 14px;text-align:left;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8">Prioridad</th>
-          <th style="padding:9px 14px;text-align:left;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8">Solicitante</th>
-          <th style="padding:9px 14px;text-align:left;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8">Fecha</th>
-          <th style="padding:9px 14px;text-align:center;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8">Acciones</th>
-        </tr></thead>
-        <tbody>
-          ${lista.map(s=>{const pc={Urgente:'#EF4444',Alta:'#F97316',Normal:'#64748B'}[s.prioridad]||'#64748B';return`<tr style="border-bottom:1px solid #F1F5F9" onmouseover="this.style.background='#F8FAFF'" onmouseout="this.style.background=''">
-            <td style="padding:10px 14px;font-weight:800;font-family:'JetBrains Mono',monospace;font-size:13px">ECO ${s.vehiculoEco||'—'}</td>
-            <td style="padding:10px 14px;font-size:12px;font-weight:600">${s.tipo||s.tipoSol||'—'}</td>
-            <td style="padding:10px 14px"><span style="font-size:10px;font-weight:800;color:${pc}">${s.prioridad||'Normal'}</span></td>
-            <td style="padding:10px 14px;font-size:11px;color:#475569">${s.solicitante||s.creadoPor||'—'}</td>
-            <td style="padding:10px 14px;font-size:11px;color:#64748B">${s.creadoEn?s.creadoEn.slice(0,10):'—'}</td>
-            <td style="padding:10px 14px;text-align:center">${accionesDisp(s)}</td>
-          </tr>`;}).join('')}
-        </tbody>
-      </table>`}
-    </div>
-  </div>`;
+
+      <!-- PASOS PIPELINE -->
+      <div style="padding:14px 24px;border-bottom:1px solid #F1F5F9;display:flex;align-items:center;gap:6px;overflow-x:auto;flex-shrink:0;background:#FAFBFF">
+        ${pasos.map((e,i)=>`
+          <div style="display:flex;align-items:center;gap:6px">
+            <button onclick="flPipelineModal('${e}')" style="padding:6px 14px;border-radius:20px;border:none;font-size:10px;font-weight:800;cursor:pointer;white-space:nowrap;transition:.2s;background:${e===estatus?color:'#F1F5F9'};color:${e===estatus?'#fff':'#64748B'}" onmouseover="if('${e}'!=='${estatus}')this.style.background='#E2E8F0'" onmouseout="if('${e}'!=='${estatus}')this.style.background='#F1F5F9'">${e}</button>
+            ${i<pasos.length-1?`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#CBD5E1" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>`:''}
+          </div>`).join('')}
+        <span style="margin-left:auto;font-size:10px;color:#94A3B8;white-space:nowrap">Tu rol: <strong style="color:#2563EB">${window.flGetRolActual?window.flGetRolActual():'—'}</strong></span>
+      </div>
+
+      <!-- TABLA -->
+      <div style="overflow-y:auto;flex:1">
+        <table style="width:100%;border-collapse:collapse">
+          <thead>
+            <tr style="background:#F8FAFF;position:sticky;top:0;z-index:1">
+              <th style="padding:10px 16px;text-align:left;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;border-bottom:1px solid #F1F5F9">ECO</th>
+              <th style="padding:10px 16px;text-align:left;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;border-bottom:1px solid #F1F5F9">Tipo de solicitud</th>
+              <th style="padding:10px 16px;text-align:left;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;border-bottom:1px solid #F1F5F9">Prioridad</th>
+              <th style="padding:10px 16px;text-align:left;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;border-bottom:1px solid #F1F5F9">Solicitante</th>
+              <th style="padding:10px 16px;text-align:left;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;border-bottom:1px solid #F1F5F9">Fecha</th>
+              <th style="padding:10px 16px;text-align:center;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;border-bottom:1px solid #F1F5F9">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
   ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
   document.body.appendChild(ov);
 };
 
-window.flPipelineAccion=async function(id,nuevoEst){
+// Cambiar estatus desde pipeline
+window.flPAct=async function(id,nuevoEst){
   try{
     await flEst(id,nuevoEst);
-    const ov=document.querySelector('div[style*="fixed"][style*="3000"]');
-    if(ov){const estEl=ov.querySelector('[style*="font-size:16px"]');if(estEl)flPipelineModal(estEl.textContent.trim());}
+    const ov=document.querySelector('.fl-pipeline-ov');
+    if(ov){const titulo=ov.querySelector('[style*="font-size:17px"]');if(titulo)flPipelineModal(titulo.textContent.trim());}
   }catch(e){console.error('[PIPELINE]',e);}
 };
 
-window.flPipelineRechazar=function(id){
-  const m=prompt('Motivo del rechazo:');
-  if(!m?.trim())return;
-  fs.updateDoc(fs.doc(db,C.SOLS,id),{estatus:'Rechazada',comentarioRechazo:m,actualizadoEn:new Date().toISOString()})
-    .then(()=>ldSols()).then(()=>{rPanel();
-      const ov=document.querySelector('div[style*="fixed"][style*="3000"]');
-      if(ov)flPipelineModal('Rechazada');
-    }).catch(e=>console.error('[PIPELINE]',e));
+// Rechazar desde pipeline (con modal de motivo)
+window.flPRej=function(id){
+  const rej=document.createElement('div');
+  rej.style.cssText='position:fixed;inset:0;background:rgba(10,15,30,.8);z-index:4000;display:flex;align-items:center;justify-content:center;padding:20px';
+  rej.innerHTML=`
+    <div style="background:#fff;border-radius:16px;width:100%;max-width:440px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+      <div style="font-size:16px;font-weight:900;margin-bottom:6px;color:#0A0F1E">Rechazar solicitud</div>
+      <div style="font-size:12px;color:#64748B;margin-bottom:16px">Indica el motivo del rechazo. Esto quedará registrado en la solicitud.</div>
+      <textarea id="fl-rej-motivo" placeholder="Motivo del rechazo…" style="width:100%;height:100px;padding:12px;border:1.5px solid #E2E8F0;border-radius:10px;font-family:inherit;font-size:13px;resize:none;outline:none;box-sizing:border-box" onfocus="this.style.borderColor='#EF4444'" onblur="this.style.borderColor='#E2E8F0'"></textarea>
+      <div style="display:flex;gap:8px;margin-top:14px">
+        <button onclick="this.closest('div[style*=fixed]').remove()" style="flex:1;padding:11px;background:#F1F5F9;border:none;border-radius:10px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;color:#475569">Cancelar</button>
+        <button onclick="(async()=>{
+          const m=document.getElementById('fl-rej-motivo').value.trim();
+          if(!m){document.getElementById('fl-rej-motivo').style.borderColor='#EF4444';return;}
+          this.textContent='Guardando…';this.disabled=true;
+          try{
+            await fs.updateDoc(fs.doc(db,C.SOLS,'${id}'),{estatus:'Rechazada',comentarioRechazo:m,actualizadoEn:new Date().toISOString()});
+            await ldSols();rPanel();
+            this.closest('div[style*=fixed]').remove();
+            const ov=document.querySelector('.fl-pipeline-ov');
+            if(ov)flPipelineModal('Rechazada');
+          }catch(e){console.error('[REJ]',e);this.textContent='Confirmar rechazo';this.disabled=false;}
+        })()" style="flex:1;padding:11px;background:#B91C1C;border:none;border-radius:10px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;color:#fff">Confirmar rechazo</button>
+      </div>
+    </div>`;
+  rej.addEventListener('click',e=>{if(e.target===rej)rej.remove();});
+  document.body.appendChild(rej);
+};
+
+// Eliminar desde pipeline
+window.flPElim=async function(id){
+  if(!confirm('¿Eliminar esta solicitud permanentemente?'))return;
+  try{
+    await fs.deleteDoc(fs.doc(db,C.SOLS,id));
+    const idx=flS.findIndex(s=>s.id===id);if(idx>=0)flS.splice(idx,1);
+    rPanel();
+    const ov=document.querySelector('.fl-pipeline-ov');
+    if(ov){const titulo=ov.querySelector('[style*="font-size:17px"]');if(titulo)flPipelineModal(titulo.textContent.trim());}
+    if(window.mostrarPush)window.mostrarPush('Solicitud eliminada','Registro eliminado','✓');
+  }catch(e){console.error('[ELIM]',e);}
 };
 
 window.flEst=async(id,est)=>{try{await fs.updateDoc(fs.doc(db,C.SOLS,id),{estatus:est,actualizadoEn:new Date().toISOString()});await ldSols();if(vistaAct==='sols')rSols();else rPanel();}catch(e){console.error('[FL]',e);}};
