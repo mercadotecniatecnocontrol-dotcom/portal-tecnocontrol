@@ -1,65 +1,64 @@
 // flotilla-reglas.js — Reglas de permisos por rol para Flotilla Vehicular
-// Este archivo centraliza quién puede hacer qué en cada etapa
 
-// ── CORREOS AUTORIZADOS POR ROL ──
 const FL_ROLES = {
-  contraloria: [
-    'p.pinedo@tecnocontrol.com.mx'
+  // Solo pueden Aprobar y Rechazar
+  aprobadores: [
+    'p.pinedo@tecnocontrol.com.mx',
+    'c.acosta@tecnocontrol.com.mx',
   ],
+  // Pueden Validar, Cotizar, Enviar a Cierre, Cerrar
   flotilla: [
     'fatima@tecnocontrol.com.mx',
-    'almacen@tecnocontrol.com.mx',
+    'mercadotecniatecnocontrol@gmail.com',
+    'mercadotecnia@tecnocontrol.com.mx',
     'rh@tecnocontrol.com.mx',
     'c.acosta@tecnocontrol.com.mx',
-    'mercadotecnia@tecnocontrol.com.mx',
-    'mercadotecniatecnocontrol@gmail.com'
+    'm.delao@tecnocontrol.com.mx',
+    'p.pinedo@tecnocontrol.com.mx',
   ],
+  // Pueden todo lo anterior + Eliminar
   administradores: [
-    'mercadotecnia@tecnocontrol.com.mx',
     'mercadotecniatecnocontrol@gmail.com',
+    'mercadotecnia@tecnocontrol.com.mx',
     'c.acosta@tecnocontrol.com.mx',
     'rh@tecnocontrol.com.mx',
     'm.delao@tecnocontrol.com.mx',
     'p.pinedo@tecnocontrol.com.mx',
     'fatima@tecnocontrol.com.mx',
-    'almacen@tecnocontrol.com.mx'
   ]
 };
 
-// ── FUNCIÓN CENTRAL DE PERMISOS ──
 window.flTienePermiso = function(accion) {
-  const email = window.auth?.currentUser?.email || '';
+  const email = (window.auth?.currentUser?.email || '').toLowerCase();
 
   switch(accion) {
     case 'aprobar':
     case 'rechazar':
-      return FL_ROLES.contraloria.includes(email);
+      return FL_ROLES.aprobadores.map(e=>e.toLowerCase()).includes(email);
 
     case 'validar':
+    case 'cotizar':
     case 'subir_cotizacion':
     case 'asignar_taller':
     case 'enviar_cierre':
-      return FL_ROLES.flotilla.includes(email) || FL_ROLES.administradores.includes(email);
-
-    case 'subir_comprobante':
-      return true; // Pagos — cualquier admin por ahora
+    case 'cerrar':
+      return FL_ROLES.flotilla.map(e=>e.toLowerCase()).includes(email);
 
     case 'crear_solicitud':
-      return true; // Cualquier usuario autenticado
+      return true;
 
     case 'eliminar':
-      return FL_ROLES.administradores.includes(email);
+      return FL_ROLES.administradores.map(e=>e.toLowerCase()).includes(email);
 
     default:
-      return FL_ROLES.administradores.includes(email);
+      return FL_ROLES.administradores.map(e=>e.toLowerCase()).includes(email);
   }
 };
 
-// ── ETIQUETA DE ROL DEL USUARIO ACTUAL ──
 window.flGetRolActual = function() {
-  const email = window.auth?.currentUser?.email || '';
-  if (FL_ROLES.contraloria.includes(email)) return 'Contraloría';
-  if (FL_ROLES.flotilla.includes(email) || FL_ROLES.administradores.includes(email)) return 'Flotilla';
-if (FL_ROLES.contraloria.includes(email)) return 'Contraloría';
-return 'Usuario';
+  const email = (window.auth?.currentUser?.email || '').toLowerCase();
+  if (FL_ROLES.aprobadores.map(e=>e.toLowerCase()).includes(email)) return 'Contraloría';
+  if (FL_ROLES.administradores.map(e=>e.toLowerCase()).includes(email)) return 'Administrador';
+  if (FL_ROLES.flotilla.map(e=>e.toLowerCase()).includes(email)) return 'Flotilla';
+  return 'Usuario';
 };
