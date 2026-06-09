@@ -1120,8 +1120,8 @@ function rPanel(){
       <div class="fl-tw"><div style="padding:10px 14px;border-bottom:1px solid #F1F5F9;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8">Solicitudes por tipo</div>
         <div style="padding:12px 14px">${top.length?top.map(([t,n])=>`<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:11px;font-weight:600;margin-bottom:3px"><span>${t}</span><span style="color:#64748B">${n}</span></div><div style="height:4px;background:#F1F5F9;border-radius:100px;overflow:hidden"><div style="height:100%;width:${Math.round(n/mx*100)}%;background:linear-gradient(90deg,#2563EB,#7C3AED);border-radius:100px"></div></div></div>`).join(''):'<div style="color:#94A3B8;font-size:11px;text-align:center;padding:18px 0">Sin solicitudes aún</div>'}</div>
       </div>
-      <div class="fl-tw"><div style="padding:10px 14px;border-bottom:1px solid #F1F5F9;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8">Flujo de solicitudes</div>
-        <div style="padding:12px 14px;display:flex;flex-direction:column;gap:7px">${Object.entries(porEst).map(([e,n])=>`<div style="display:flex;align-items:center;gap:8px">${hBadge(e)}<div style="flex:1;height:4px;background:#F1F5F9;border-radius:100px;overflow:hidden"><div style="height:100%;width:${flS.length?Math.round(n/flS.length*100):0}%;background:#2563EB;border-radius:100px"></div></div><span style="font-size:11px;font-weight:700;min-width:14px;text-align:right">${n}</span></div>`).join('')}</div>
+      <div class="fl-tw"><div style="padding:10px 14px;border-bottom:1px solid #F1F5F9;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8">Flujo de solicitudes <span style="font-size:9px;color:#2563EB;font-weight:600;text-transform:none;letter-spacing:0">· clic para ver detalle</span></div>
+        <div style="padding:12px 14px;display:flex;flex-direction:column;gap:7px">${Object.entries(porEst).map(([e,n])=>`<div onclick="flPipelineModal('${e}')" style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 6px;border-radius:7px;transition:.15s;${n>0?'':'opacity:.45'}" onmouseover="this.style.background='#F8FAFF'" onmouseout="this.style.background=''">${hBadge(e)}<div style="flex:1;height:4px;background:#F1F5F9;border-radius:100px;overflow:hidden"><div style="height:100%;width:${flS.length?Math.round(n/flS.length*100):0}%;background:#2563EB;border-radius:100px;transition:.4s"></div></div><span style="font-size:11px;font-weight:700;min-width:14px;text-align:right">${n}</span>${n>0?`<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>`:''}</div>`).join('')}</div>
       </div>
     </div>
     <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:#94A3B8;margin-bottom:8px">Solicitudes recientes</div>
@@ -2471,6 +2471,87 @@ function rBajas(){
 }
 
 // ACCIONES COMUNES
+// ── PIPELINE MODAL ──
+window.flPipelineModal=function(estatus){
+  const lista=flS.filter(s=>s.estatus===estatus);
+  const pV=hP('validar');
+  const pA=hP('aprobar');
+  const colores={Solicitud:'#6D28D9',Validada:'#1D4ED8',Cotización:'#B45309',Aprobada:'#15803D',Rechazada:'#B91C1C',Cerrada:'#475569',Cierre:'#7C3AED'};
+  const color=colores[estatus]||'#2563EB';
+  const accionesDisp=(s)=>{
+    const btns=[];
+    if(pV&&s.estatus==='Solicitud')btns.push(`<button class="fb acc sm" onclick="flPipelineAccion('${s.id}','Validada')" style="font-size:11px">${I.check} Validar</button>`);
+    if(pV&&s.estatus==='Validada')btns.push(`<button class="fb gho sm" onclick="flPipelineAccion('${s.id}','Cotización')" style="font-size:11px">Cotizar</button>`);
+    if(pA&&(s.estatus==='Validada'||s.estatus==='Cotización')){btns.push(`<button class="fb acc sm" onclick="flPipelineAccion('${s.id}','Aprobada')" style="font-size:11px">${I.check} Aprobar</button>`);btns.push(`<button class="fb dan sm" onclick="flPipelineRechazar('${s.id}')" style="font-size:11px">${I.x} Rechazar</button>`);}
+    if(pV&&s.estatus==='Aprobada')btns.push(`<button class="fb gho sm" onclick="flPipelineAccion('${s.id}','Cierre')" style="font-size:11px">Cierre</button>`);
+    if(pV&&s.estatus==='Cierre')btns.push(`<button class="fb acc sm" onclick="flPipelineAccion('${s.id}','Cerrada')" style="font-size:11px">${I.check} Cerrar</button>`);
+    if(hAdm())btns.push(`<button class="fb gho sm" onclick="flVerSol('${s.id}')" style="font-size:11px">Ver</button>`);
+    return btns.length?`<div style="display:flex;gap:4px;flex-wrap:wrap">${btns.join('')}</div>`:'<span style="font-size:10px;color:#94A3B8">—</span>';
+  };
+  const pasos=['Solicitud','Validada','Cotización','Aprobada','Cierre','Cerrada'];
+  const ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(10,15,30,.65);backdrop-filter:blur(6px);z-index:3000;display:flex;align-items:center;justify-content:center;padding:20px';
+  ov.innerHTML=`<div style="background:#fff;border-radius:18px;width:100%;max-width:860px;max-height:88vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 80px rgba(0,0,0,.2)">
+    <div style="padding:16px 22px;border-bottom:1px solid #F1F5F9;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="width:10px;height:10px;border-radius:50%;background:${color}"></div>
+        <div style="font-size:16px;font-weight:900;color:#0A0F1E">${estatus}</div>
+        <div style="background:#F1F5F9;color:#64748B;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px">${lista.length} solicitud${lista.length!==1?'es':''}</div>
+      </div>
+      <button onclick="this.closest('div[style*=fixed]').remove()" style="padding:6px 12px;background:#F1F5F9;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;color:#475569">✕</button>
+    </div>
+    <div style="padding:12px 22px;border-bottom:1px solid #F1F5F9;display:flex;align-items:center;gap:4px;overflow-x:auto;flex-shrink:0">
+      ${pasos.map((e,i)=>`<div style="display:flex;align-items:center;gap:4px">
+        <div onclick="flPipelineModal('${e}')" style="padding:5px 12px;border-radius:20px;font-size:10px;font-weight:800;cursor:pointer;white-space:nowrap;transition:.15s;background:${e===estatus?color:'#F1F5F9'};color:${e===estatus?'#fff':'#64748B'}">${e}</div>
+        ${i<pasos.length-1?'<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#CBD5E1" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>':''}
+      </div>`).join('')}
+    </div>
+    <div style="overflow-y:auto;flex:1">
+      ${lista.length===0?`<div style="text-align:center;padding:48px;color:#94A3B8">No hay solicitudes en estado <strong>${estatus}</strong></div>`:`
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr style="background:#F8FAFF">
+          <th style="padding:9px 14px;text-align:left;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8">ECO</th>
+          <th style="padding:9px 14px;text-align:left;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8">Tipo</th>
+          <th style="padding:9px 14px;text-align:left;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8">Prioridad</th>
+          <th style="padding:9px 14px;text-align:left;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8">Solicitante</th>
+          <th style="padding:9px 14px;text-align:left;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8">Fecha</th>
+          <th style="padding:9px 14px;text-align:center;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8">Acciones</th>
+        </tr></thead>
+        <tbody>
+          ${lista.map(s=>{const pc={Urgente:'#EF4444',Alta:'#F97316',Normal:'#64748B'}[s.prioridad]||'#64748B';return`<tr style="border-bottom:1px solid #F1F5F9" onmouseover="this.style.background='#F8FAFF'" onmouseout="this.style.background=''">
+            <td style="padding:10px 14px;font-weight:800;font-family:'JetBrains Mono',monospace;font-size:13px">ECO ${s.vehiculoEco||'—'}</td>
+            <td style="padding:10px 14px;font-size:12px;font-weight:600">${s.tipo||s.tipoSol||'—'}</td>
+            <td style="padding:10px 14px"><span style="font-size:10px;font-weight:800;color:${pc}">${s.prioridad||'Normal'}</span></td>
+            <td style="padding:10px 14px;font-size:11px;color:#475569">${s.solicitante||s.creadoPor||'—'}</td>
+            <td style="padding:10px 14px;font-size:11px;color:#64748B">${s.creadoEn?s.creadoEn.slice(0,10):'—'}</td>
+            <td style="padding:10px 14px;text-align:center">${accionesDisp(s)}</td>
+          </tr>`;}).join('')}
+        </tbody>
+      </table>`}
+    </div>
+  </div>`;
+  ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+  document.body.appendChild(ov);
+};
+
+window.flPipelineAccion=async function(id,nuevoEst){
+  try{
+    await flEst(id,nuevoEst);
+    const ov=document.querySelector('div[style*="fixed"][style*="3000"]');
+    if(ov){const estEl=ov.querySelector('[style*="font-size:16px"]');if(estEl)flPipelineModal(estEl.textContent.trim());}
+  }catch(e){console.error('[PIPELINE]',e);}
+};
+
+window.flPipelineRechazar=function(id){
+  const m=prompt('Motivo del rechazo:');
+  if(!m?.trim())return;
+  fs.updateDoc(fs.doc(db,C.SOLS,id),{estatus:'Rechazada',comentarioRechazo:m,actualizadoEn:new Date().toISOString()})
+    .then(()=>ldSols()).then(()=>{rPanel();
+      const ov=document.querySelector('div[style*="fixed"][style*="3000"]');
+      if(ov)flPipelineModal('Rechazada');
+    }).catch(e=>console.error('[PIPELINE]',e));
+};
+
 window.flEst=async(id,est)=>{try{await fs.updateDoc(fs.doc(db,C.SOLS,id),{estatus:est,actualizadoEn:new Date().toISOString()});await ldSols();if(vistaAct==='sols')rSols();else rPanel();}catch(e){console.error('[FL]',e);}};
 window.flAprobar=id=>flEst(id,'Aprobada');
 window.flRechazar=async id=>{const m=prompt('Motivo del rechazo:');if(!m?.trim())return;try{await fs.updateDoc(fs.doc(db,C.SOLS,id),{estatus:'Rechazada',comentarioRechazo:m,actualizadoEn:new Date().toISOString()});await ldSols();if(vistaAct==='sols')rSols();else rPanel();}catch(e){console.error('[FL]',e);}};
