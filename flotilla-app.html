@@ -301,5 +301,375 @@ if ('serviceWorker' in navigator) {
 }
 </script>
 
+<!-- ══════════════════════════════════════════════════
+     SISTEMA DE NOTIFICACIONES EN TIEMPO REAL
+     Lee fl_notificaciones de Firestore via onSnapshot
+     ══════════════════════════════════════════════════ -->
+<style>
+/* Badge de notificaciones */
+#fl-notif-btn {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #1E3A5F;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 800;
+  box-shadow: 0 2px 12px rgba(0,0,0,.3);
+  transition: transform .15s;
+}
+#fl-notif-btn:active { transform: scale(.92); }
+#fl-notif-badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  background: #EF4444;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 900;
+  font-family: -apple-system, sans-serif;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 100px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  border: 2px solid #0A1628;
+}
+#fl-notif-badge.show { display: flex; }
+
+/* Panel de notificaciones */
+#fl-notif-panel {
+  position: fixed;
+  top: 0;
+  right: -100%;
+  width: min(360px, 100vw);
+  height: 100dvh;
+  background: #fff;
+  z-index: 1200;
+  display: flex;
+  flex-direction: column;
+  box-shadow: -4px 0 30px rgba(0,0,0,.2);
+  transition: right .28s cubic-bezier(.4,0,.2,1);
+  font-family: -apple-system, 'Plus Jakarta Sans', sans-serif;
+}
+#fl-notif-panel.open { right: 0; }
+
+#fl-notif-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.4);
+  z-index: 1190;
+  display: none;
+  opacity: 0;
+  transition: opacity .28s;
+}
+#fl-notif-overlay.show { display: block; opacity: 1; }
+
+.fl-notif-item {
+  padding: 14px 16px;
+  border-bottom: 1px solid #F1F5F9;
+  cursor: pointer;
+  transition: background .12s;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.fl-notif-item:active { background: #F8FAFC; }
+.fl-notif-item.unread { background: #EFF6FF; border-left: 3px solid #2563EB; }
+.fl-notif-item.unread:active { background: #DBEAFE; }
+</style>
+
+<!-- Botón campana -->
+<button id="fl-notif-btn" onclick="flNotifAbrir()" aria-label="Notificaciones">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round">
+    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+    <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+  </svg>
+  <span id="fl-notif-badge"></span>
+</button>
+
+<!-- Overlay -->
+<div id="fl-notif-overlay" onclick="flNotifCerrar()"></div>
+
+<!-- Panel -->
+<div id="fl-notif-panel">
+  <!-- Header -->
+  <div style="padding:16px 16px 12px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #F1F5F9;flex-shrink:0;background:#fff">
+    <div>
+      <div style="font-size:16px;font-weight:900;color:#0A1628;letter-spacing:-.3px">Notificaciones</div>
+      <div id="fl-notif-sub" style="font-size:11px;color:#94A3B8;margin-top:1px">Cargando…</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button id="fl-notif-leer-btn" onclick="flNotifMarcarTodas()" style="font-size:11px;font-weight:700;padding:5px 10px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;cursor:pointer;color:#2563EB;display:none">
+        Marcar todas
+      </button>
+      <button onclick="flNotifCerrar()" style="width:32px;height:32px;border:none;background:#F1F5F9;border-radius:50%;cursor:pointer;font-size:17px;color:#64748B;display:flex;align-items:center;justify-content:center">✕</button>
+    </div>
+  </div>
+  <!-- Lista -->
+  <div id="fl-notif-lista" style="overflow-y:auto;flex:1;-webkit-overflow-scrolling:touch">
+    <div style="padding:40px 20px;text-align:center;color:#94A3B8">
+      <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#CBD5E1" stroke-width="1.5" stroke-linecap="round" style="margin-bottom:10px;display:block;margin-left:auto;margin-right:auto">
+        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+        <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+      </svg>
+      <div style="font-size:13px;font-weight:600">Sin notificaciones</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── NOTIFICACIONES EN TIEMPO REAL ──
+(function(){
+  let _unsub = null;
+  let _notifs = [];
+
+  const colores = {
+    validada:     { bg:'#EFF6FF', cl:'#2563EB', icon:'🔵' },
+    rechazada_val:{ bg:'#FEE2E2', cl:'#B91C1C', icon:'🔴' },
+    rechazada_apr:{ bg:'#FEF3C7', cl:'#B45309', icon:'🟡' },
+    aprobada:     { bg:'#DCFCE7', cl:'#15803D', icon:'🟢' },
+    pagos:        { bg:'#FEF3C7', cl:'#B45309', icon:'💳' },
+    pagado:       { bg:'#DCFCE7', cl:'#15803D', icon:'✅' },
+    cerrada:      { bg:'#F0FDF4', cl:'#15803D', icon:'✅' },
+  };
+
+  function fmtFecha(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    const ahora = new Date();
+    const diff = Math.floor((ahora - d) / 60000); // minutos
+    if (diff < 1) return 'Ahora mismo';
+    if (diff < 60) return `Hace ${diff} min`;
+    if (diff < 1440) return `Hace ${Math.floor(diff/60)}h`;
+    const dias = Math.floor(diff/1440);
+    if (dias === 1) return 'Ayer';
+    if (dias < 7) return `Hace ${dias} días`;
+    return d.toLocaleDateString('es-MX', { day:'numeric', month:'short' });
+  }
+
+  function renderLista() {
+    const lista = document.getElementById('fl-notif-lista');
+    const sub   = document.getElementById('fl-notif-sub');
+    const leerBtn = document.getElementById('fl-notif-leer-btn');
+    if (!lista) return;
+
+    const noLeidas = _notifs.filter(n => !n.leida).length;
+    if (sub) sub.textContent = noLeidas > 0 ? `${noLeidas} sin leer` : 'Todo al día';
+    if (leerBtn) leerBtn.style.display = noLeidas > 0 ? 'block' : 'none';
+
+    // Actualizar badge
+    const badge = document.getElementById('fl-notif-badge');
+    if (badge) {
+      badge.textContent = noLeidas > 9 ? '9+' : noLeidas || '';
+      badge.classList.toggle('show', noLeidas > 0);
+    }
+
+    if (_notifs.length === 0) {
+      lista.innerHTML = `<div style="padding:40px 20px;text-align:center;color:#94A3B8">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#CBD5E1" stroke-width="1.5" stroke-linecap="round" style="margin-bottom:10px;display:block;margin-left:auto;margin-right:auto">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+        </svg>
+        <div style="font-size:13px;font-weight:600">Sin notificaciones</div>
+      </div>`;
+      return;
+    }
+
+    lista.innerHTML = _notifs.map(n => {
+      const c = colores[n.tipo] || { bg:'#F8FAFC', cl:'#64748B', icon:'🔔' };
+      return `<div class="fl-notif-item ${n.leida?'':'unread'}" onclick="flNotifTap('${n.id}')">
+        <div style="width:36px;height:36px;border-radius:10px;background:${c.bg};display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:16px">${c.icon}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:${n.leida?'600':'800'};color:#0A1628;line-height:1.4;margin-bottom:3px">${n.mensaje||'Nueva notificación'}</div>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:2px">
+            <span style="font-size:10px;color:#94A3B8">${fmtFecha(n.creadaEn)}</span>
+            ${!n.leida ? '<span style="width:6px;height:6px;border-radius:50%;background:#2563EB;display:inline-block"></span>' : ''}
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function iniciarListener() {
+    const user = window.auth?.currentUser;
+    if (!user || !window.db) return;
+
+    // Desuscribir listener previo
+    if (_unsub) { _unsub(); _unsub = null; }
+
+    // onSnapshot en tiempo real — últimas 30 notificaciones del usuario
+    const q = window.db.collection('fl_notificaciones')
+      .where('para', '==', user.email)
+      .orderBy('creadaEn', 'desc')
+      .limit(30);
+
+    let _idsVistos = new Set(); // IDs ya mostrados en esta sesión
+
+    _unsub = q.onSnapshot(snap => {
+      _notifs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      renderLista();
+
+      // Solo disparar push para notificaciones NUEVAS no leídas
+      const nuevas = _notifs.filter(n => !n.leida && !_idsVistos.has(n.id));
+      nuevas.forEach(n => _idsVistos.add(n.id));
+
+      if (nuevas.length > 0 && Notification.permission === 'granted') {
+        const ultima = nuevas[0]; // La más reciente
+        const sw = navigator.serviceWorker?.controller;
+        if (sw) {
+          // SW activo → notificación nativa real (funciona con app minimizada)
+          sw.postMessage({
+            type: 'SHOW_NOTIF',
+            title: 'Tecnocontrol · Flotilla',
+            body: ultima.mensaje,
+            tag: 'fl-notif-' + ultima.id,
+            notifTipo: ultima.tipo,
+          });
+        } else {
+          // Fallback: Notification API directa (solo si la app está abierta)
+          try {
+            new Notification('Tecnocontrol · Flotilla', {
+              body: ultima.mensaje,
+              tag: 'fl-notif-' + ultima.id,
+              icon: './icons/icon-192.png',
+              vibrate: [200, 100, 200],
+              silent: false,
+            });
+          } catch(e) { /* iOS Safari, falla silenciosamente */ }
+        }
+        // Vibrar el dispositivo si la app está en primer plano
+        if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+      }
+    }, err => {
+      console.warn('[NOTIF]', err.message);
+    });
+  }
+
+  // Abrir panel
+  window.flNotifAbrir = function() {
+    document.getElementById('fl-notif-panel')?.classList.add('open');
+    document.getElementById('fl-notif-overlay')?.classList.add('show');
+    // Marcar como leídas las que se muestran (después de 1.5s de ver)
+    setTimeout(() => flNotifMarcarVistas(), 1500);
+  };
+
+  // Cerrar panel
+  window.flNotifCerrar = function() {
+    document.getElementById('fl-notif-panel')?.classList.remove('open');
+    const ov = document.getElementById('fl-notif-overlay');
+    if (ov) { ov.style.opacity='0'; setTimeout(() => ov.classList.remove('show'), 280); }
+  };
+
+  // Tap en una notificación → marcar leída
+  window.flNotifTap = async function(id) {
+    try {
+      await window.db.collection('fl_notificaciones').doc(id).update({ leida: true });
+    } catch(e) { /* silent */ }
+  };
+
+  // Marcar como vistas las que están en pantalla
+  window.flNotifMarcarVistas = async function() {
+    const noLeidas = _notifs.filter(n => !n.leida);
+    if (!noLeidas.length) return;
+    const batch = window.db.batch();
+    noLeidas.forEach(n => {
+      batch.update(window.db.collection('fl_notificaciones').doc(n.id), { leida: true });
+    });
+    try { await batch.commit(); } catch(e) { /* silent */ }
+  };
+
+  // Marcar todas leídas
+  window.flNotifMarcarTodas = async function() {
+    await flNotifMarcarVistas();
+  };
+
+  // Arrancar cuando Firebase esté listo
+  window.auth?.onAuthStateChanged(user => {
+    if (user) {
+      // Pedir permiso de notificaciones al iniciar sesión
+      setTimeout(() => flNotifPedirPermiso(), 2000);
+      setTimeout(iniciarListener, 800);
+    } else {
+      if (_unsub) { _unsub(); _unsub = null; }
+      _notifs = [];
+      renderLista();
+    }
+  });
+
+  // Pedir permiso con UI amigable
+  window.flNotifPedirPermiso = async function() {
+    if (!('Notification' in window)) return;
+    if (Notification.permission === 'granted') return; // ya tiene permiso
+    if (Notification.permission === 'denied') return;  // ya rechazó, no insistir
+
+    // Mostrar banner amigable antes de pedir el permiso del sistema
+    const banner = document.createElement('div');
+    banner.id = 'fl-push-banner';
+    banner.style.cssText = `
+      position:fixed;bottom:0;left:0;right:0;z-index:2000;
+      background:#0A1628;padding:16px;
+      display:flex;align-items:center;gap:12px;
+      border-top:1px solid rgba(255,255,255,.1);
+      font-family:-apple-system,'Plus Jakarta Sans',sans-serif;
+      animation:slideUp .3s ease
+    `;
+    banner.innerHTML = `
+      <style>@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}</style>
+      <div style="width:40px;height:40px;border-radius:12px;background:rgba(59,130,246,.2);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" stroke-width="2" stroke-linecap="round">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+        </svg>
+      </div>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:700;color:#fff">Activar notificaciones</div>
+        <div style="font-size:11px;color:rgba(255,255,255,.5);margin-top:2px">Recibe avisos cuando tu solicitud cambie de estatus</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button onclick="document.getElementById('fl-push-banner').remove()" style="padding:8px 12px;background:rgba(255,255,255,.1);border:none;border-radius:8px;color:rgba(255,255,255,.6);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Ahora no</button>
+        <button onclick="flNotifActivar()" style="padding:8px 16px;background:#3B82F6;border:none;border-radius:8px;color:#fff;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit">Activar</button>
+      </div>
+    `;
+    document.body.appendChild(banner);
+  };
+
+  window.flNotifActivar = async function() {
+    document.getElementById('fl-push-banner')?.remove();
+    if (!('Notification' in window)) return;
+    const perm = await Notification.requestPermission();
+    if (perm === 'granted') {
+      // Confirmar con una notificación de prueba
+      const sw = navigator.serviceWorker?.controller;
+      if (sw) {
+        sw.postMessage({
+          type: 'SHOW_NOTIF',
+          title: '✅ Tecnocontrol · Flotilla',
+          body: 'Notificaciones activadas. Te avisaremos cuando tu solicitud cambie de estatus.',
+          tag: 'fl-notif-test',
+          notifTipo: 'cerrada',
+        });
+      } else {
+        try {
+          new Notification('✅ Tecnocontrol · Flotilla', {
+            body: 'Notificaciones activadas.',
+            icon: './icons/icon-192.png',
+          });
+        } catch(e) {}
+      }
+    }
+  };
+
+})();
+</script>
+
 </body>
 </html>
