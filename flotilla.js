@@ -583,14 +583,14 @@ let admFiltro=''; let admFiltroPlaza=''; let admFiltroStatus='';
 let admTab='vehs';
 
 function rAdmin(){
-  if(!hAdm()){setContent(pad('<div class="fl-empty"><div class="fl-empty-ico"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></div><h3>Acceso restringido</h3><p>Solo administradores pueden acceder a este panel.</p></div>'));return;}
+  if(!hAdm()){setContent(padded('<div class="fl-empty"><div class="fl-empty-ico"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></div><h3>Acceso restringido</h3><p>Solo administradores pueden acceder a este panel.</p></div>'));return;}
   const act=flV.filter(v=>v.status==='activo'||!v.status).length;
   const tall=flV.filter(v=>v.status==='taller').length;
   const com=flV.filter(v=>v.status==='comision').length;
   const sinResp=flV.filter(v=>!v.responsable||v.responsable==='—').length;
   const plazas=[...new Set(flV.map(v=>v.plaza).filter(Boolean))].sort();
   const tabs=[{k:'vehs',label:'Vehículos'},{k:'nuevo',label:'Agregar vehículo'},{k:'sols',label:'Solicitudes'},{k:'usuarios',label:'Usuarios / ECOs'}];
-  setContent(pad(`
+  setContent(padded(`
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
       <div>
         <div style="font-size:20px;font-weight:900;letter-spacing:-.5px">Administración de Flotilla</div>
@@ -1099,7 +1099,7 @@ function rPanel(){
   const baj=flV.filter(v=>v.status==='baja').length;
   const pend=flS.filter(s=>['Solicitud','Validada','Cotización'].includes(s.estatus)).length;
   const alts=[];flV.forEach(v=>{const d=hD(v.pv);if(d!==null&&d<90)alts.push({e:d<0,t:`ECO ${v.eco} — Póliza ${d<0?'VENCIDA':'vence en '+d+' días'}`});});
-  const porEst={Solicitud:0,Validada:0,Pagos:0,Aprobada:0,Rechazada:0,Cerrada:0};
+  const porEst={Solicitud:0,Validada:0,Aprobada:0,Pagos:0,Rechazada:0,Cerrada:0};
   flS.forEach(s=>{if(s.estatus in porEst)porEst[s.estatus]++;});
   const porTipo={};flS.forEach(s=>{const t=s.tipo||'Otro';porTipo[t]=(porTipo[t]||0)+1;});
   const top=Object.entries(porTipo).sort((a,b)=>b[1]-a[1]).slice(0,5);
@@ -1692,8 +1692,9 @@ function renderRP(id){
     </div>
 
     <!-- Nombre modelo grande arriba -->
-    <div style="padding:10px 12px 6px;border-bottom:1px solid #F1F5F9;background:linear-gradient(180deg,#F8FAFF,#fff)">
+    <div style="padding:10px 12px 6px;border-bottom:1px solid #F1F5F9;background:linear-gradient(180deg,#F8FAFF,#fff);display:flex;align-items:center;justify-content:space-between">
       <div style="font-size:11px;font-weight:700;color:#64748B;letter-spacing:.3px;margin-bottom:2px">${v.unidad||'—'}</div>
+      ${hAdm()?`<button onclick="flEditarVeh('${id}')" style="font-size:10px;font-weight:800;padding:4px 10px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:7px;cursor:pointer;color:#2563EB">✏ Editar</button>`:``}
     </div>
     <div class="fl-rp-head">NÚMERO ECONÓMICO</div>
     <div class="fl-rp-num">${v.eco}</div>
@@ -1716,10 +1717,11 @@ function renderRP(id){
     <!-- EXPEDIENTE / DOCUMENTOS -->
     <div class="fl-rp-docs">
       <div class="fl-rp-docs-t">Expediente del vehículo</div>
-      <button class="fl-rp-doc-btn" onclick="flRPDoc('tarjeta','${id}')">${I.doc} Tarjeta de circulación</button>
-      <button class="fl-rp-doc-btn" onclick="flRPDoc('poliza','${id}')">${I.shield||I.doc} Póliza de seguro</button>
-      <button class="fl-rp-doc-btn" onclick="flRPDoc('verificacion','${id}')">${I.doc} Verificación ambiental</button>
-      <button class="fl-rp-doc-btn" onclick="flRPDoc('factura','${id}')">${I.doc} Factura del vehículo</button>
+      ${[['tarjeta','Tarjeta de circulación'],['poliza','Póliza de seguro'],['verificacion','Verificación ambiental'],['factura','Factura del vehículo']].map(([t,label])=>`
+        <button class="fl-rp-doc-btn" onclick="flRPDoc('${t}','${id}')" style="display:flex;align-items:center;justify-content:space-between">
+          <span style="display:flex;align-items:center;gap:6px">${I.doc} ${label}</span>
+          ${v[`doc_${t}`]?`<span style="font-size:9px;font-weight:800;padding:2px 7px;border-radius:100px;background:#DCFCE7;color:#15803D">✓ Guardado</span>`:`<span style="font-size:9px;color:#94A3B8">Subir</span>`}
+        </button>`).join('')}
     </div>
 
     <!-- BOTÓN COMPARAR EVIDENCIAS -->
@@ -1785,13 +1787,35 @@ window.flRPFoto=function(inp,vehId){
 
 window.flRPDoc=function(tipo,vehId){
   const labels={tarjeta:'Tarjeta de circulación',poliza:'Póliza de seguro',verificacion:'Verificación ambiental',factura:'Factura del vehículo'};
-  const ov=document.createElement('div');ov.className='fl-ov';
-  ov.innerHTML=`<div class="fl-modal" style="max-width:420px">
+  const v=flV.find(x=>x.id===vehId);
+  const docExistente=v?.[`doc_${tipo}`]||null;
+  const ov=document.createElement('div');ov.className='fl-ov';ov.style.zIndex='3300';
+  ov.innerHTML=`<div class="fl-modal" style="max-width:500px">
     <div class="fl-mh"><h3>${I.doc} ${labels[tipo]||tipo}</h3><button class="fl-mx" onclick="this.closest('.fl-ov').remove()">✕</button></div>
-    <div class="fl-mb">
-      <div class="fl-fld" style="margin-bottom:12px"><label>Archivo (imagen o PDF)</label>
-        <label class="fl-up" onclick="document.getElementById('fl-doc-f').click()">${I.upload} Seleccionar archivo</label>
-        <input type="file" id="fl-doc-f" accept="image/*,application/pdf" style="display:none" onchange="flDocLoad(this,'${tipo}','${vehId}')">
+    <div class="fl-mb" style="display:flex;flex-direction:column;gap:12px">
+      ${docExistente ? `
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#F0FDF4;border:1px solid #86EFAC;border-radius:9px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#15803D" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+            <span style="font-size:12px;font-weight:700;color:#15803D">Documento guardado</span>
+          </div>
+          <button onclick="flDocPreview('${tipo}','${vehId}')" style="font-size:11px;font-weight:700;padding:5px 12px;background:#fff;border:1px solid #86EFAC;border-radius:7px;cursor:pointer;color:#15803D">
+            Ver documento
+          </button>
+        </div>` : `
+        <div style="padding:10px 12px;background:#FFF7ED;border:1px solid #FED7AA;border-radius:9px;font-size:11px;color:#C2410C">
+          Sin documento guardado
+        </div>`}
+      <div>
+        <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:8px">${docExistente ? 'Actualizar documento' : 'Subir documento'} (PDF o imagen)</label>
+        <div onclick="document.getElementById('fl-doc-f-${tipo}').click()"
+          style="border:2px dashed #CBD5E1;border-radius:10px;padding:16px;text-align:center;cursor:pointer;transition:.12s;background:#FAFBFC"
+          onmouseover="this.style.borderColor='#2563EB';this.style.background='#EFF6FF'"
+          onmouseout="this.style.borderColor='#CBD5E1';this.style.background='#FAFBFC'">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="1.8" stroke-linecap="round" style="margin-bottom:5px"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <div style="font-size:12px;font-weight:700;color:#374151">Clic para seleccionar</div>
+        </div>
+        <input type="file" id="fl-doc-f-${tipo}" accept="image/*,application/pdf" style="display:none" onchange="flDocLoad(this,'${tipo}','${vehId}')">
         <div id="fl-doc-prev" style="margin-top:8px"></div>
       </div>
       <div class="fl-fa"><button class="fb gho" onclick="this.closest('.fl-ov').remove()">Cerrar</button></div>
@@ -1799,26 +1823,153 @@ window.flRPDoc=function(tipo,vehId){
   </div>`;
   document.body.appendChild(ov);ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
 };
+window.flDocPreview=function(tipo,vehId){
+  const v=flV.find(x=>x.id===vehId);
+  const b64=v?.[`doc_${tipo}`];
+  if(!b64){alert('Documento no encontrado.');return;}
+  const labels={tarjeta:'Tarjeta de circulación',poliza:'Póliza de seguro',verificacion:'Verificación ambiental',factura:'Factura del vehículo'};
+  const esPDF=b64.startsWith('data:application/pdf');
+  const ov=document.createElement('div');ov.className='fl-ov';ov.style.zIndex='3400';
+  ov.innerHTML=`<div class="fl-modal" style="max-width:${esPDF?'820':'640'}px;width:100%;${esPDF?'height:90vh;':''}display:flex;flex-direction:column;overflow:hidden">
+    <div class="fl-mh" style="flex-shrink:0">
+      <span style="font-size:13px;font-weight:700">${labels[tipo]||tipo}</span>
+      <div style="display:flex;gap:8px">
+        <a href="${b64}" download="${tipo}-veh-${vehId}.${esPDF?'pdf':'jpg'}" style="font-size:11px;font-weight:700;padding:5px 12px;background:#EFF6FF;color:#2563EB;border-radius:7px;text-decoration:none">Descargar</a>
+        <button onclick="this.closest('.fl-ov').remove()" style="width:28px;height:28px;border:none;background:#F1F5F9;border-radius:50%;cursor:pointer;font-size:14px">✕</button>
+      </div>
+    </div>
+    ${esPDF
+      ? `<iframe src="${b64}" style="flex:1;border:none;border-radius:0 0 12px 12px"></iframe>`
+      : `<div style="padding:16px;text-align:center;overflow-y:auto"><img src="${b64}" style="max-width:100%;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.15)"></div>`}
+  </div>`;
+  document.body.appendChild(ov);ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+};
+
 window.flDocLoad=async function(inp,tipo,vehId){
   const f=inp.files[0];if(!f)return;
+  if(f.size>3*1024*1024){alert('El archivo supera 3 MB. Comprime el PDF o imagen antes de subirlo.');inp.value='';return;}
   const r=new FileReader();
   r.onload=async e=>{
     const b64=e.target.result;
     const prev=document.getElementById('fl-doc-prev');
     if(prev){
-      if(f.type.startsWith('image'))prev.innerHTML=`<img src="${b64}" style="max-width:100%;border-radius:6px">`;
-      else prev.innerHTML=`<div class="fl-pill">${I.doc} ${f.name}</div>`;
+      if(f.type.startsWith('image'))prev.innerHTML=`<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px">
+        <img src="${b64}" style="width:48px;height:48px;object-fit:cover;border-radius:5px">
+        <div><div style="font-size:11px;font-weight:700">${f.name}</div><div style="font-size:10px;color:#B45309">Listo para guardar</div></div>
+      </div>`;
+      else prev.innerHTML=`<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#B45309" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <div><div style="font-size:11px;font-weight:700">${f.name}</div><div style="font-size:10px;color:#B45309">Listo para guardar</div></div>
+      </div>`;
     }
     // Guardar en Firestore
     try{
+      const v=flV.find(x=>x.id===vehId);
+      if(v) v[`doc_${tipo}`]=b64; // Actualizar objeto local
       if(!vehId.startsWith('eco-')){
         await fs.updateDoc(fs.doc(db,C.VEHS,vehId),{[`doc_${tipo}`]:b64}).catch(()=>{});
       }
-    }catch{}
+      if(prev) prev.innerHTML=`<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#F0FDF4;border:1px solid #86EFAC;border-radius:8px">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#15803D" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+        <div><div style="font-size:11px;font-weight:700;color:#15803D">Documento guardado correctamente</div>
+        <button onclick="flDocPreview('${tipo}','${vehId}')" style="font-size:10px;margin-top:3px;background:none;border:none;color:#15803D;font-weight:700;cursor:pointer;padding:0;text-decoration:underline">Ver documento →</button>
+        </div>
+      </div>`;
+      // Actualizar botón en panel derecho
+      if(v) renderRP(vehId);
+    }catch(err){
+      if(prev) prev.innerHTML=`<div style="color:#EF4444;font-size:11px;padding:8px">Error al guardar: ${err.message||'intenta de nuevo'}</div>`;
+    }
   };r.readAsDataURL(f);
 };
 
-// ── TABLA SOLICITUDES ──
+// Modal de edición de datos del vehículo
+window.flEditarVeh=function(id){
+  const v=flV.find(x=>x.id===id);if(!v)return;
+  const ov=document.createElement('div');ov.className='fl-ov';ov.style.zIndex='3300';
+  const campos=[
+    ['unidad','Unidad (marca y modelo)','text',v.unidad||''],
+    ['placas','Placas','text',v.placas||''],
+    ['responsable','Responsable asignado','text',v.responsable||''],
+    ['plaza','Plaza / Sucursal','text',v.plaza||''],
+    ['año','Año modelo','number',v.año||''],
+    ['km','KM actual','number',v.km||0],
+    ['color','Color','text',v.color||''],
+    ['serie','Número de serie (VIN)','text',v.serie||''],
+    ['nip','NIP gasolinera','text',v.nip||''],
+    ['pol','Número de póliza','text',v.pol||''],
+    ['pv','Vencimiento póliza','date',v.pv||''],
+    ['rend','Rendimiento (ej: 12 KM/L)','text',v.rend||''],
+  ];
+  ov.innerHTML=`<div class="fl-modal" style="max-width:600px;width:100%">
+    <div class="fl-mh">
+      <div>
+        <div style="font-size:15px;font-weight:900">Editar vehículo · ECO ${v.eco}</div>
+        <div style="font-size:11px;color:#64748B;margin-top:2px">${v.unidad||'—'}</div>
+      </div>
+      <button onclick="this.closest('.fl-ov').remove()" style="width:30px;height:30px;border:none;border-radius:50%;background:#F1F5F9;cursor:pointer;font-size:16px;color:#64748B">✕</button>
+    </div>
+    <div class="fl-mb" style="display:flex;flex-direction:column;gap:10px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        ${campos.map(([campo,label,type,val])=>`<div>
+          <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">${label}</label>
+          <input id="ve-${campo}" type="${type}" value="${val}" style="width:100%;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;outline:none;box-sizing:border-box"
+            onfocus="this.style.borderColor='#2563EB'" onblur="this.style.borderColor='#E2E8F0'">
+        </div>`).join('')}
+        <div>
+          <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">Estatus</label>
+          <select id="ve-status" style="width:100%;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;outline:none">
+            <option value="activo" ${(v.status||'activo')==='activo'?'selected':''}>Activo</option>
+            <option value="taller" ${v.status==='taller'?'selected':''}>En taller</option>
+            <option value="comision" ${v.status==='comision'?'selected':''}>Comisión</option>
+            <option value="baja" ${v.status==='baja'?'selected':''}>Baja</option>
+          </select>
+        </div>
+      </div>
+      <div class="fl-fa" style="margin-top:4px">
+        <button onclick="this.closest('.fl-ov').remove()" class="fb gho" style="padding:9px 20px">Cancelar</button>
+        <button onclick="flGuardarEditVeh('${id}')" class="fb acc" id="ve-btn-guardar" style="padding:9px 24px">Guardar cambios</button>
+      </div>
+      <div id="ve-msg" style="display:none;padding:8px 12px;border-radius:8px;font-size:12px;text-align:center"></div>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+};
+
+window.flGuardarEditVeh=async function(id){
+  const btn=document.getElementById('ve-btn-guardar');
+  const msg=document.getElementById('ve-msg');
+  const get=f=>document.getElementById('ve-'+f)?.value.trim()||'';
+  const data={
+    unidad: get('unidad'), placas: get('placas'), responsable: get('responsable'),
+    plaza: get('plaza'), año: get('año')||null, km: Number(get('km'))||0,
+    color: get('color'), serie: get('serie'), nip: get('nip'),
+    pol: get('pol'), pv: get('pv')||null, rend: get('rend'),
+    status: document.getElementById('ve-status')?.value||'activo',
+  };
+  btn.textContent='Guardando…';btn.disabled=true;
+  try{
+    if(!id.startsWith('eco-')){
+      await fs.updateDoc(fs.doc(db,C.VEHS,id),data);
+    }
+    // Actualizar objeto local
+    const v=flV.find(x=>x.id===id);
+    if(v) Object.assign(v,data);
+    msg.style.cssText='display:block;background:#DCFCE7;color:#15803D';
+    msg.textContent='Cambios guardados correctamente';
+    setTimeout(()=>{
+      document.querySelector('.fl-ov[style*="3300"]')?.remove();
+      renderRP(id);
+    },900);
+  }catch(e){
+    console.error('[FL]',e);
+    msg.style.cssText='display:block;background:#FEE2E2;color:#B91C1C';
+    msg.textContent='Error al guardar: '+e.message;
+    btn.textContent='Guardar cambios';btn.disabled=false;
+  }
+};
+
+
 function tSols(list,pA){
   if(!list.length)return`<div class="fl-empty"><div class="fl-empty-ico"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="1.8" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></div><h3>Sin solicitudes</h3><p>No hay registros que mostrar.</p></div>`;
   return`<div class="fl-tw"><table class="fl-t"><thead><tr>
@@ -1891,7 +2042,7 @@ window.flVerSol=function(id){
   const v=flV.find(x=>x.eco===s.vehiculoEco||x.id===s.vehiculoId);
   const pV=hP('validar'),pA=hP('aprobar'),pE=hP('eliminar');
   const dan=s.danos||{};const hasDan=Object.values(dan).some(a=>a?.length>0);
-  const ov=document.createElement('div');ov.className='fl-ov';
+  const ov=document.createElement('div');ov.className='fl-ov';ov.style.zIndex='3300';
   ov.innerHTML=`<div class="fl-modal" style="max-width:600px">
     <div class="fl-mh"><h3>${I.doc} ${id.slice(0,8).toUpperCase()}</h3><button class="fl-mx" onclick="this.closest('.fl-ov').remove()">✕</button></div>
     <div class="fl-mb">
@@ -2885,7 +3036,7 @@ window.flCalDia = function(fecha) {
 // PIPELINE MODAL — Flujo de Solicitudes completo
 // ════════════════════════════════════════════════
 window.flPipelineModal = function(estInicial) {
-  const PASOS = ['Solicitud','Validada','Pagos','Aprobada','Rechazada','Cerrada'];
+  const PASOS = ['Solicitud','Validada','Aprobada','Pagos','Rechazada','Cerrada'];
   let estActivo = estInicial || 'Solicitud';
 
   const colPaso = {
@@ -3179,7 +3330,7 @@ window.vcProcesarArchivos = async function(files, id) {
     const kb = (file.size/1024).toFixed(0);
     // Guardar en memoria temporal para el botón de enviar
     window._vcArchivosTemp = window._vcArchivosTemp || [];
-    window._vcArchivosTemp.push({ nombre: file.name, base64, tipo, tamaño: kb+'KB' });
+    window._vcArchivosTemp.push({ nombre: file.name, b64: base64, tipo, kb });
 
     // Agregar a la lista visual
     const div = document.createElement('div');
@@ -3383,7 +3534,7 @@ window.pgProcesarComprobante = async function(files, id) {
   });
   const tipo = file.type.includes('pdf') ? 'pdf' : 'img';
   const kb = (file.size/1024).toFixed(0);
-  window._pgComprobanteTemp = { nombre: file.name, base64, tipo, tamaño: kb+'KB' };
+  window._pgComprobanteTemp = { nombre: file.name, b64: base64, tipo, kb: kb };
 
   // Mostrar preview en el modal
   const prev = document.getElementById('pg-comp-preview');
@@ -3465,7 +3616,7 @@ window.flProgramarPagoCalendar = function(id) {
 window.flVerArchivo = function(id, idx, tipo) {
   const s = flS.find(x=>x.id===id);
   if(!s) return;
-  const archivo = tipo==='pago' ? s.comprobantePago : (s.cotizacionArchivos||[])[idx];
+  const ar0 = tipo==='pago' ? s.comprobantePago : (s.cotizacionArchivos||[])[idx]; const archivo = ar0 ? {...ar0, base64: ar0.base64||ar0.b64||''} : null;
   if(!archivo?.base64) return;
 
   const ov = document.createElement('div');
