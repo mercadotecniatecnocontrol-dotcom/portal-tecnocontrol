@@ -183,7 +183,17 @@ window.flLightboxCompar=function(key,sA,sB){
 };
 
 function hBadge(e){
-  const m={Solicitud:['#EDE9FE','#6D28D9'],Validada:['#DBEAFE','#1D4ED8'],Cotización:['#FEF3C7','#B45309'],Aprobada:['#DCFCE7','#15803D'],Rechazada:['#FEE2E2','#B91C1C'],Cierre:['#F3E8FF','#7C3AED'],Cerrada:['#F1F5F9','#475569'],'En préstamo':['#EDE9FE','#6D28D9'],Devuelto:['#DCFCE7','#15803D']};
+  const m={
+    Solicitud:['#EDE9FE','#6D28D9'],
+    Validada:['#DBEAFE','#1D4ED8'],'Validación':['#DBEAFE','#1D4ED8'],
+    Cotización:['#FEF3C7','#B45309'],
+    'Aprobación':['#FEF9C3','#CA8A04'],Aprobada:['#DCFCE7','#15803D'],
+    Pagos:['#FEF3C7','#B45309'],
+    Cierre:['#E0F2FE','#0369A1'],
+    Rechazada:['#FEE2E2','#B91C1C'],
+    Cerrada:['#DCFCE7','#15803D'],
+    'En préstamo':['#EDE9FE','#6D28D9'],Devuelto:['#DCFCE7','#15803D']
+  };
   const[bg,cl]=m[e]||['#F1F5F9','#475569'];
   return`<span style="display:inline-flex;font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:100px;background:${bg};color:${cl}">${e||'—'}</span>`;
 }
@@ -1099,7 +1109,7 @@ function rPanel(){
   const baj=flV.filter(v=>v.status==='baja').length;
   const pend=flS.filter(s=>['Solicitud','Validada','Cotización'].includes(s.estatus)).length;
   const alts=[];flV.forEach(v=>{const d=hD(v.pv);if(d!==null&&d<90)alts.push({e:d<0,t:`ECO ${v.eco} — Póliza ${d<0?'VENCIDA':'vence en '+d+' días'}`});});
-  const porEst={Solicitud:0,Validada:0,Aprobada:0,Pagos:0,Rechazada:0,Cerrada:0};
+  const porEst={Solicitud:0,'Validación':0,'Aprobación':0,Pagos:0,Cierre:0,Rechazada:0,Cerrada:0};
   flS.forEach(s=>{if(s.estatus in porEst)porEst[s.estatus]++;});
   const porTipo={};flS.forEach(s=>{const t=s.tipo||'Otro';porTipo[t]=(porTipo[t]||0)+1;});
   const top=Object.entries(porTipo).sort((a,b)=>b[1]-a[1]).slice(0,5);
@@ -1562,6 +1572,7 @@ window.flVerEvidencia=function(ev){
   const meta=typeof ev==='object'?ev.meta:null;
   const ov=document.createElement('div');
   ov.className='fl-ov';
+  ov.style.zIndex='4500'; // siempre encima de cualquier modal
   ov.innerHTML=`<div style="max-width:400px;width:100%;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.4)">
     <img src="${src}" style="width:100%;display:block;max-height:300px;object-fit:contain;background:#0A1628">
     ${meta?`<div style="padding:14px 16px">
@@ -2622,352 +2633,143 @@ function rBajas(){
   `));
 }
 
-// ACCIONES COMUNES
-window.flEst=async(id,est)=>{try{await fs.updateDoc(fs.doc(db,C.SOLS,id),{estatus:est,actualizadoEn:new Date().toISOString()});await ldSols();if(vistaAct==='sols')rSols();else rPanel();}catch(e){console.error('[FL]',e);}};
-window.flAprobar=id=>flEst(id,'Aprobada');
-window.flRechazar=async id=>{const m=prompt('Motivo del rechazo:');if(!m?.trim())return;try{await fs.updateDoc(fs.doc(db,C.SOLS,id),{estatus:'Rechazada',comentarioRechazo:m,actualizadoEn:new Date().toISOString()});await ldSols();if(vistaAct==='sols')rSols();else rPanel();}catch(e){console.error('[FL]',e);}};
-// Rechazar con modal estilizado (usado desde flVerSol)
-window.flRechazarM=function(id){
-  const ov=document.createElement('div');ov.className='fl-ov';
-  ov.innerHTML=`<div style="max-width:400px;width:100%;background:#fff;border-radius:14px;padding:22px;box-shadow:0 24px 60px rgba(0,0,0,.4)">
-    <div style="font-size:15px;font-weight:900;margin-bottom:4px;color:#0A0F1E">Rechazar solicitud</div>
-    <div style="font-size:12px;color:#64748B;margin-bottom:14px">Escribe el motivo — se enviará una notificación al técnico en la app.</div>
-    <textarea id="fl-rej-txt" placeholder="Motivo del rechazo obligatorio…" style="width:100%;min-height:90px;border:1.5px solid #E2E8F0;border-radius:9px;padding:10px 12px;font-family:inherit;font-size:13px;resize:vertical;outline:none;box-sizing:border-box" oninput="this.style.borderColor=this.value.trim()?'#EF4444':'#E2E8F0'"></textarea>
-    <div style="display:flex;gap:8px;margin-top:12px">
-      <button onclick="this.closest('.fl-ov').remove()" style="flex:1;padding:10px;background:#F1F5F9;border:none;border-radius:9px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;color:#374151">Cancelar</button>
-      <button onclick="(async()=>{const m=document.getElementById('fl-rej-txt').value.trim();if(!m){document.getElementById('fl-rej-txt').style.borderColor='#EF4444';return;}this.textContent='Guardando…';this.disabled=true;try{await fs.updateDoc(fs.doc(db,C.SOLS,'${id}'),{estatus:'Rechazada',comentarioRechazo:m,actualizadoEn:new Date().toISOString()});await ldSols();flEnviarNotif('${id}','rechazada');if(vistaAct==='sols')rSols();else rPanel();window.flPipelineModal?._render?.('Rechazada');}catch(e){console.error('[FL]',e);}this.closest('.fl-ov').remove();document.getElementById('flpm-ov')?.remove();})()" style="flex:1;padding:10px;background:#B91C1C;border:none;border-radius:9px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;color:#fff">Confirmar rechazo</button>
-    </div>
-  </div>`;
-  document.body.appendChild(ov);ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
-};
-window.flElim=async id=>{if(!confirm('¿Eliminar solicitud permanentemente?'))return;try{await fs.deleteDoc(fs.doc(db,C.SOLS,id));await ldSols();if(vistaAct==='sols')rSols();else rPanel();}catch(e){console.error('[FL]',e);}};
-window.flVerVeh=function(id){const v=flV.find(x=>x.id===id);if(!v)return;const ov=document.createElement('div');ov.className='fl-ov';ov.innerHTML=`<div class="fl-modal"><div class="fl-mh"><h3><span style="vertical-align:middle;display:inline-flex">${hEmo(v.tipo)}</span> ECO ${v.eco}</h3><button class="fl-mx" onclick="this.closest('.fl-ov').remove()">✕</button></div><div class="fl-mb"><div style="display:grid;grid-template-columns:1fr 1fr;background:#F8FAFD;border-radius:9px;overflow:hidden;border:1px solid #E8EDF5">${[['Placas',v.placas||'—'],['Año',v.año||'—'],['Serie',v.serie||'—'],['Color',v.color||'—'],['Plaza',v.plaza||'—'],['Responsable',v.responsable||'—'],['Km',v.km||'—'],['Baja',hF(v.fechaBaja)||'—']].map(([l,val])=>`<dl style="padding:7px 11px;border-right:1px solid #E8EDF5;border-bottom:1px solid #E8EDF5"><dt style="font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">${l}</dt><dd style="font-size:11.5px;font-weight:600">${val}</dd></dl>`).join('')}<dl style="grid-column:1/-1;padding:7px 11px"><dt style="font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">Motivo</dt><dd style="font-size:11.5px">${v.motivoBaja||'—'}</dd></dl></div><div class="fl-fa"><button class="fb gho" onclick="this.closest('.fl-ov').remove()">Cerrar</button>${hAdm()?`<button class="fb acc" onclick="flReact('${v.id}');this.closest('.fl-ov').remove()">Reactivar</button>`:''}</div></div></div>`;
-  document.body.appendChild(ov);ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});};
-window.flReact=async function(id){if(!confirm('¿Reactivar?'))return;try{await fs.updateDoc(fs.doc(db,C.VEHS,id),{status:'activo',fechaBaja:'',motivoBaja:''});const v=flV.find(x=>x.id===id);if(v)v.status='activo';rBajas();}catch(e){console.error('[FL]',e);}};
-window.flImg=src=>{const ov=document.createElement('div');ov.className='fl-ov';ov.style.cursor='zoom-out';ov.innerHTML=`<img src="${src}" style="max-width:92%;max-height:92%;border-radius:12px;box-shadow:0 24px 60px rgba(0,0,0,.5)">`;ov.onclick=()=>ov.remove();document.body.appendChild(ov);};
 
-// SVG shield polyfill
-I.shield=I.doc;
-
-// ── GENERADOR PDF DE SOLICITUD COMPLETO ──
-window.flGenerarPDF=function(id){
-  const s=flS.find(x=>x.id===id);if(!s){flMsgError('Solicitud no encontrada');return;}
-  const v=flV.find(x=>x.eco===s.vehiculoEco||x.id===s.vehiculoId);
-  const chkF=s.chkFotos||{};
-  const chkFEntries=Object.entries(chkF).filter(([k,v])=>v);
-  const chkResp=s.checklist||{};
-  const getLabel=k=>{for(const items of Object.values(CHK_CATS)){const f=items.find(it=>it.toLowerCase().replace(/[^a-z0-9]/g,'')===k.toLowerCase().replace(/[^a-z0-9]/g,''));if(f)return f;}return k;};
-
-  // ── Medidor gasolina SVG ──
-  const gasPct=Number(s.gasolina)||0;
-  const gasColor=gasPct>50?'#16A34A':gasPct>25?'#D97706':'#DC2626';
-  const toRad=deg=>deg*Math.PI/180;
-  const arcX=(r,deg)=>50+r*Math.cos(toRad(deg));
-  const arcY=(r,deg)=>50+r*Math.sin(toRad(deg));
-  const startDeg=-210; const endDeg=30;
-  const fillDeg=startDeg+(gasPct/100)*(endDeg-startDeg);
-  const largeArc=gasPct>50?1:0;
-  const trackPath=`M ${arcX(35,startDeg)} ${arcY(35,startDeg)} A 35 35 0 1 1 ${arcX(35,endDeg)} ${arcY(35,endDeg)}`;
-  const fillPath=gasPct>0?`M ${arcX(35,startDeg)} ${arcY(35,startDeg)} A 35 35 0 ${largeArc} 1 ${arcX(35,fillDeg)} ${arcY(35,fillDeg)}`:'';
-  const gasSVG=`<svg width="100" height="65" viewBox="0 0 100 65" style="display:block;margin:0 auto">
-    <path d="${trackPath}" fill="none" stroke="#E2E8F0" stroke-width="9" stroke-linecap="round"/>
-    ${fillPath?`<path d="${fillPath}" fill="none" stroke="${gasColor}" stroke-width="9" stroke-linecap="round"/>`:''}
-    <text x="50" y="50" text-anchor="middle" font-size="16" font-weight="900" fill="${gasColor}" font-family="system-ui,Arial">${gasPct}%</text>
-    <text x="50" y="62" text-anchor="middle" font-size="8" fill="#94A3B8" font-family="system-ui">GASOLINA</text>
-  </svg>`;
-
-  // ── Thumbnails evidencias generales ──
-  const evGen=s.evidencias||[];
-  const evMeta=s.evidenciasMeta||[];
-  const evThumbsHTML=evGen.length
-    ? evGen.map((src,i)=>`<div style="display:inline-block;margin:4px;text-align:center;vertical-align:top">
-        <img src="${src}" style="width:110px;height:82px;object-fit:cover;border-radius:6px;border:1px solid #E2E8F0;display:block">
-        <div style="font-size:8px;color:#64748B;margin-top:2px;font-family:monospace;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${evMeta[i]?.codigo||'Foto '+(i+1)}</div>
-      </div>`).join('')
-    : '<div style="font-size:11px;color:#94A3B8;padding:8px">Sin evidencias</div>';
-
-  // ── Checklist COMPLETO por categoría ──
-  let chkFullHTML='';
-  for(const [cat,items] of Object.entries(CHK_CATS)){
-    let catRows='';
-    let catHasContent=false;
-    items.forEach((item,idx)=>{
-      const key=cat+'__'+idx;
-      const val=chkResp[key]||'';
-      const foto=chkF[key]||null;
-      if(!val&&!foto)return; // omitir si no se revisó
-      catHasContent=true;
-      const isNo=val==='no';
-      const badge=val==='si'
-        ?'<span style="display:inline-block;padding:2px 8px;background:#DCFCE7;color:#15803D;border-radius:10px;font-size:9px;font-weight:800">SI</span>'
-        :val==='no'
-        ?'<span style="display:inline-block;padding:2px 8px;background:#FEE2E2;color:#B91C1C;border-radius:10px;font-size:9px;font-weight:800">NO</span>'
-        :'<span style="display:inline-block;padding:2px 8px;background:#F1F5F9;color:#94A3B8;border-radius:10px;font-size:9px;font-weight:700">—</span>';
-      const fotoEl=foto
-        ?`<img src="${foto}" style="width:56px;height:42px;object-fit:cover;border-radius:4px;border:1px solid ${isNo?'#FCA5A5':'#E2E8F0'};float:right;margin-left:6px">`
-        :'';
-      catRows+=`<tr style="border-bottom:1px solid #F8FAFD;${isNo?'background:#FFF5F5':''}">
-        <td style="padding:5px 8px;font-size:10.5px;color:${isNo?'#991B1B':'#374151'};font-weight:${isNo?'700':'400'}">${item}</td>
-        <td style="padding:5px 8px;text-align:center;white-space:nowrap">${badge}</td>
-        <td style="padding:5px 8px;text-align:right">${fotoEl}</td>
-      </tr>`;
+// ═══════════════════════════════════════════════════════
+// ACCIONES COMUNES — actualiza Firestore y refresca vista
+// ═══════════════════════════════════════════════════════
+window.flEst = async (id, est, extra) => {
+  try {
+    await fs.updateDoc(fs.doc(db, C.SOLS, id), {
+      estatus: est,
+      actualizadoEn: new Date().toISOString(),
+      ...(extra || {}),
     });
-    if(!catHasContent)continue;
-    chkFullHTML+=`<div style="margin-bottom:14px;break-inside:avoid">
-      <div style="background:#1E3A5F;color:#fff;padding:5px 10px;border-radius:5px 5px 0 0;font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.6px">${cat}</div>
-      <table style="width:100%;border-collapse:collapse;border:1px solid #E2E8F0;border-top:none;border-radius:0 0 5px 5px;overflow:hidden">
-        <thead><tr style="background:#F8FAFD"><th style="padding:4px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#94A3B8;text-align:left">Ítem</th><th style="padding:4px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#94A3B8;width:60px">Estado</th><th style="padding:4px 8px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#94A3B8;width:70px;text-align:right">Foto</th></tr></thead>
-        <tbody>${catRows}</tbody>
-      </table>
-    </div>`;
-  }
-  if(!chkFullHTML){
-    const allSi=Object.values(chkResp).filter(v=>v==='si').length;
-    if(allSi>0){
-      chkFullHTML=`<div style="padding:10px 14px;background:#F0FDF4;border-radius:8px;border:1px solid #BBF7D0;font-size:11.5px;font-weight:700;color:#15803D">Todos los ${allSi} puntos revisados en buen estado</div>`;
-    } else {
-      chkFullHTML='<div style="font-size:11px;color:#94A3B8;padding:8px">Sin checklist registrado</div>';
-    }
-  }
-
-  // ── Fotos de checklist thumbnail grid ──
-  const chkPhotosHTML=chkFEntries.length
-    ? chkFEntries.map(([k,src])=>`<div style="display:inline-block;margin:4px;text-align:center;vertical-align:top">
-        <img src="${src}" style="width:90px;height:68px;object-fit:cover;border-radius:5px;border:1px solid #BFDBFE;display:block">
-        <div style="font-size:7.5px;color:#1D4ED8;margin-top:2px;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${getLabel(k)}</div>
-      </div>`).join('')
-    : '';
-
-  const fecha=s.creadoEn?s.creadoEn.substring(0,10):'—';
-
-  const html=`<!DOCTYPE html><html lang="es"><head>
-  <meta charset="utf-8">
-  <title>Solicitud ${id.slice(0,8).toUpperCase()} — Tecnocontrol</title>
-  <style>
-    *{margin:0;padding:0;box-sizing:border-box}
-    body{font-family:system-ui,Arial,sans-serif;font-size:11px;color:#0A0F1E;background:#fff;padding:28px 32px}
-    h1{font-size:22px;font-weight:900;letter-spacing:-1px;color:#0A1628}
-    .logo{font-size:20px;font-weight:900;letter-spacing:-1px}
-    .logo em{color:#2563EB;font-style:normal}
-    .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #0A1628;padding-bottom:14px;margin-bottom:18px}
-    .veh-bar{background:#0A1628;color:#fff;border-radius:9px;padding:11px 16px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between}
-    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
-    .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px}
-    .field{background:#F8FAFD;border-radius:7px;padding:8px 11px;border:1px solid #E8EDF5}
-    .field label{font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:2px}
-    .field span{font-size:12px;font-weight:700;line-height:1.4}
-    .sec{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:#64748B;margin:16px 0 8px;padding-top:12px;border-top:1px solid #E8EDF5}
-    .gas-box{display:flex;align-items:center;gap:16px;background:#F8FAFD;border-radius:9px;padding:12px 16px;border:1px solid #E8EDF5;margin-bottom:12px}
-    .obs{background:#FEF2F2;border:1px solid #FECACA;border-radius:7px;padding:10px 12px;margin-bottom:10px}
-    .ok{background:#F0FDF4;border:1px solid #BBF7D0;border-radius:7px;padding:10px 12px;margin-bottom:10px;font-size:11.5px;font-weight:700;color:#15803D}
-    .footer{margin-top:24px;padding-top:10px;border-top:1px solid #E8EDF5;font-size:9px;color:#94A3B8;text-align:center}
-    @media print{
-      body{padding:14px 16px;font-size:10.5px}
-      button{display:none!important}
-      .sec{margin-top:12px}
-      div[style*="break-inside:avoid"]{break-inside:avoid;page-break-inside:avoid}
-    }
-  </style></head><body>
-  <!-- HEADER -->
-  <div class="hdr">
-    <div>
-      <div class="logo">TECNO<em>CONTROL</em></div>
-      <div style="font-size:10.5px;color:#64748B;margin-top:3px">Reporte de solicitud vehicular</div>
-    </div>
-    <div style="text-align:right">
-      <div style="font-size:18px;font-weight:900;font-family:monospace;letter-spacing:1px">${id.slice(0,8).toUpperCase()}</div>
-      <div style="margin-top:5px;display:flex;align-items:center;justify-content:flex-end;gap:6px">
-        <span style="padding:3px 12px;border-radius:20px;font-size:10px;font-weight:800;background:#0A1628;color:#fff">${s.estatus||'Solicitud'}</span>
-      </div>
-      <div style="font-size:10px;color:#64748B;margin-top:4px">${fecha}</div>
-    </div>
-  </div>
-
-  <!-- VEHÍCULO -->
-  ${v?`<div class="veh-bar">
-    <div>
-      <div style="font-size:14px;font-weight:800">${v.unidad||'—'} ${v.año||''}</div>
-      <div style="font-size:10px;color:rgba(255,255,255,.5);margin-top:2px;font-family:monospace">ECO ${v.eco} · ${v.placas||'—'} · ${v.responsable||'—'}</div>
-    </div>
-    <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,.6)">${(s.modo||'').toUpperCase()}</div>
-  </div>`:''}
-
-  <!-- DATOS PRINCIPALES -->
-  <div class="grid3">
-    <div class="field"><label>Tipo</label><span>${s.tipo||'—'}</span></div>
-    <div class="field"><label>Prioridad</label><span>${s.prioridad||'Normal'}</span></div>
-    <div class="field"><label>KM</label><span>${s.kilometrajeReportado||'—'}</span></div>
-  </div>
-  <div class="grid2">
-    <div class="field"><label>Solicitante</label><span>${s.solicitante||'—'}</span></div>
-    <div class="field"><label>Taller</label><span>${s.taller||'Sin especificar'}</span></div>
-  </div>
-  <div class="field" style="margin-bottom:12px"><label>Descripción</label><span style="font-size:12px;font-weight:500;line-height:1.6">${s.descripcion||'—'}</span></div>
-
-  <!-- GASOLINA -->
-  <div class="gas-box">
-    <div>${gasSVG}</div>
-    <div>
-      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:4px">Nivel de combustible</div>
-      <div style="font-size:28px;font-weight:900;color:${gasColor};line-height:1">${gasPct}%</div>
-      <div style="font-size:9px;color:${gasPct>50?'#15803D':gasPct>25?'#D97706':'#B91C1C'};margin-top:2px;font-weight:700">${gasPct>50?'Nivel correcto':gasPct>25?'Nivel bajo':'Nivel crítico'}</div>
-    </div>
-  </div>
-
-  <!-- RECHAZO si existe -->
-  ${s.comentarioRechazo?`<div class="obs"><div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#B91C1C;margin-bottom:4px">Motivo de rechazo</div><div style="font-size:12px;color:#991B1B">${s.comentarioRechazo}</div></div>`:''}
-
-  <!-- EVIDENCIAS GENERALES -->
-  <div class="sec">Evidencias fotográficas (${evGen.length})</div>
-  <div style="margin-bottom:12px">${evThumbsHTML}</div>
-
-  <!-- CHECKLIST COMPLETO -->
-  <div class="sec">Checklist de revisión</div>
-  ${chkFullHTML}
-
-  <!-- FOTOS DE CHECKLIST -->
-  ${chkPhotosHTML?`<div class="sec">Galería de fotos del checklist (${chkFEntries.length})</div><div style="margin-bottom:12px">${chkPhotosHTML}</div>`:''}
-
-  <div class="footer">
-    Generado por Portal Flotilla Tecnocontrol &nbsp;·&nbsp; ${new Date().toLocaleString('es-MX')} &nbsp;·&nbsp; ID completo: ${id}
-  </div>
-  <div style="margin-top:16px;display:flex;gap:10px;justify-content:flex-end">
-    <button onclick="window.print()" style="padding:11px 28px;background:#0A1628;color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;letter-spacing:.3px">Imprimir / Guardar PDF</button>
-  </div>
-  </body></html>`;
-
-  const win=window.open('','_blank','width=860,height=960');
-  if(win){win.document.write(html);win.document.close();}
-  else flMsgError('Activa ventanas emergentes para generar el PDF');
+    await ldSols();
+    if (vistaAct === 'sols') rSols(); else rPanel();
+  } catch(e) { console.error('[FL]', e); }
+};
+window.flAprobar = id => flEst(id, 'Aprobada');
+window.flRechazar = async id => {
+  const m = prompt('Motivo del rechazo:');
+  if (!m?.trim()) return;
+  try {
+    await fs.updateDoc(fs.doc(db, C.SOLS, id), {
+      estatus: 'Rechazada', comentarioRechazo: m,
+      actualizadoEn: new Date().toISOString(),
+    });
+    await ldSols();
+    if (vistaAct === 'sols') rSols(); else rPanel();
+  } catch(e) { console.error('[FL]', e); }
+};
+window.flElim = async id => {
+  if (!confirm('¿Eliminar solicitud permanentemente?')) return;
+  try {
+    await fs.deleteDoc(fs.doc(db, C.SOLS, id));
+    await ldSols();
+    if (vistaAct === 'sols') rSols(); else rPanel();
+  } catch(e) { console.error('[FL]', e); }
 };
 
-// ── COMPARTIR POR WHATSAPP ──
-window.flCompartirWA=function(id){
-  const s=flS.find(x=>x.id===id);if(!s)return;
-  const v=flV.find(x=>x.eco===s.vehiculoEco||x.id===s.vehiculoId);
-  const noItems=Object.entries(s.checklist||{}).filter(([k,v])=>v==='no');
-  const getLabel=k=>{for(const items of Object.values(CHK_CATS)){const f=items.find(it=>it.toLowerCase().replace(/[^a-z0-9]/g,'')===k.toLowerCase().replace(/[^a-z0-9]/g,''));if(f)return f;}return k;};
-  const txt=[
-    `*TECNOCONTROL — Solicitud Vehicular*`,
-    `ID: ${id.slice(0,8).toUpperCase()} | ${s.estatus||'Solicitud'}`,
-    `Fecha: ${s.creadoEn?s.creadoEn.substring(0,10):'—'}`,
-    ``,
-    `*Vehículo:* ${v?v.unidad+' '+v.año:'—'} (ECO ${s.vehiculoEco||'—'})`,
-    `*Modo:* ${(s.modo||'—').toUpperCase()}`,
-    `*Tipo:* ${s.tipo||'—'}`,
-    `*Prioridad:* ${s.prioridad||'Normal'}`,
-    `*KM:* ${s.kilometrajeReportado||'—'}`,
-    `*Gasolina:* ${s.gasolina!=null?s.gasolina+'%':'—'}`,
-    `*Taller:* ${s.taller||'Sin especificar'}`,
-    `*Solicitante:* ${s.solicitante||'—'}`,
-    ``,
-    `*Descripción:*`,
-    s.descripcion||'—',
-    noItems.length?'*Observaciones checklist:*\n'+noItems.map(([k])=>'\u2022 '+getLabel(k)).join('\n'):'',
-    s.comentarioRechazo?'*Rechazo:* '+s.comentarioRechazo:'',
-  ].filter(x=>x!==undefined&&x!=='').join('\n');
-  const url='https://wa.me/?text='+encodeURIComponent(txt);
-  window.open(url,'_blank');
+// ═══════════════════════════════════════════════════════
+// NOTIFICACIONES → fl_notificaciones (app móvil las lee)
+// ═══════════════════════════════════════════════════════
+window.flEnviarNotif = async function(id, tipo, comentario) {
+  try {
+    const s = flS.find(x => x.id === id);
+    if (!s) return;
+    const msgs = {
+      validada:     `Tu solicitud fue aceptada y está en proceso de cotización. (ECO ${s.vehiculoEco||'—'})`,
+      rechazada_val:`Tu solicitud fue rechazada por Flotilla. Motivo: ${comentario||s.comentarioRechazo||'Sin especificar'}. (ECO ${s.vehiculoEco||'—'})`,
+      aprobada:     `¡Solicitud aprobada! (ECO ${s.vehiculoEco||'—'}) · Taller: ${s.tallerNombre||'—'} · $${s.montoCotizacion?Number(s.montoCotizacion).toLocaleString('es-MX'):'—'}`,
+      rechazada_apr:`Tu solicitud regresó a revisión. Contraloría indica: ${comentario||'Sin comentario'}. (ECO ${s.vehiculoEco||'—'})`,
+      pagos:        `Pago programado para tu servicio. (ECO ${s.vehiculoEco||'—'})`,
+      pagado:       `El pago de tu servicio fue procesado. (ECO ${s.vehiculoEco||'—'})`,
+      cerrada:      `Servicio finalizado. (ECO ${s.vehiculoEco||'—'}) · Tu expediente ya está disponible.`,
+    };
+    const msg = msgs[tipo];
+    if (!msg) return;
+    await db.collection('fl_notificaciones').add({
+      solicitudId: id,
+      para: s.creadoPor || null,
+      vehiculoEco: s.vehiculoEco || null,
+      tipo,
+      mensaje: msg,
+      leida: false,
+      creadaEn: new Date().toISOString(),
+    });
+  } catch(e) { console.warn('[FL notif]', e); }
 };
 
-// ════════════════════════════════════════════════
-// CALENDARIO FLOTILLA — mini-cal en Panel General
-// ════════════════════════════════════════════════
-function rFlCalendario() {
-  const ahora = new Date();
-  const mes = ahora.getMonth();
-  const anio = ahora.getFullYear();
-  const hoy = ahora.getDate();
-
-  // Colores por estatus
-  const dotCol = {
-    Solicitud: '#6D28D9', Validada: '#1D4ED8', Pagos: '#B45309',
-    Aprobada: '#15803D', Rechazada: '#B91C1C', Cerrada: '#475569',
-  };
-
-  // Mapear eventos por día del mes actual
-  const eventMap = {}; // { "2026-06-10": [sol1, sol2] }
-  const agrega = (fechaStr, sol) => {
-    if (!fechaStr || typeof fechaStr !== 'string') return;
-    const d = fechaStr.slice(0,10);
-    if (!eventMap[d]) eventMap[d] = [];
-    eventMap[d].push(sol);
-  };
-
-  flS.forEach(s => {
-    agrega(s.creadoEn, s);
-    if (s.fechaPagoProgramada) agrega(s.fechaPagoProgramada, { ...s, _tipoCal: 'pago' });
-    if (s.fechaIngresoTaller)  agrega(s.fechaIngresoTaller,  { ...s, _tipoCal: 'taller' });
-    if (s.validadoEn)          agrega(s.validadoEn, { ...s, _tipoCal: 'validacion' });
-    if (s.pagadoEn)            agrega(s.pagadoEn,  { ...s, _tipoCal: 'pagado' });
+// ═══════════════════════════════════════════════════════
+// HELPER — subir archivo → base64 con validación tamaño
+// ═══════════════════════════════════════════════════════
+async function flLeerArchivo(file, maxMB = 4) {
+  if (file.size > maxMB * 1024 * 1024) throw new Error(`"${file.name}" supera ${maxMB} MB`);
+  return new Promise((res, rej) => {
+    const fr = new FileReader();
+    fr.onload = e => res(e.target.result);
+    fr.onerror = () => rej(new Error('Error al leer el archivo'));
+    fr.readAsDataURL(file);
   });
+}
 
-  // Primer día y total de días del mes
-  const primerDia = new Date(anio, mes, 1).getDay(); // 0=Dom
-  const totalDias = new Date(anio, mes + 1, 0).getDate();
-  const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-  const dias  = ['D','L','M','M','J','V','S'];
+// HELPER — renderizar lista de archivos adjuntos
+function flHtmlArchivos(archivos, onElim) {
+  if (!archivos?.length) return '';
+  return archivos.map((a, i) => `
+    <div style="display:flex;align-items:center;gap:8px;padding:7px 11px;background:#F8FAFC;border-radius:8px;border:1px solid #E2E8F0">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="${a.tipo==='pdf'?'#B91C1C':'#1D4ED8'}" stroke-width="2" stroke-linecap="round">
+        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>
+      </svg>
+      <span style="font-size:11px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.nombre||'Archivo '+(i+1)}</span>
+      <span style="font-size:10px;color:#94A3B8">${a.kb||''}KB</span>
+      ${onElim ? `<button onclick="${onElim}(${i})" style="border:none;background:none;cursor:pointer;color:#EF4444;font-size:14px;padding:0 2px;line-height:1">✕</button>` : ''}
+    </div>`).join('');
+}
 
-  // Construir celdas
-  let celdas = '';
-  // Celdas vacías
-  for (let i = 0; i < primerDia; i++) {
-    celdas += `<div></div>`;
-  }
-  // Días del mes
-  for (let d = 1; d <= totalDias; d++) {
-    const key = `${anio}-${String(mes+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    const evs = eventMap[key] || [];
-    const esHoy = d === hoy;
-    const tieneEvs = evs.length > 0;
-
-    // Dots de color
-    const dots = [...new Set(evs.map(e => dotCol[e.estatus]||'#94A3B8'))].slice(0,3)
-      .map(c => `<span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:${c};margin:0 1px"></span>`).join('');
-
-    celdas += `<div onclick="${tieneEvs ? `flCalDia('${key}')` : ''}"
-      style="min-height:38px;border-radius:7px;padding:4px 3px 3px;text-align:center;cursor:${tieneEvs?'pointer':'default'};
-      background:${esHoy?'#EFF6FF':tieneEvs?'#F8FAFC':'transparent'};
-      border:1.5px solid ${esHoy?'#2563EB':tieneEvs?'#E2E8F0':'transparent'};
-      transition:.12s"
-      ${tieneEvs?'onmouseover="this.style.background=\'#EFF6FF\'"  onmouseout="this.style.background=\''+(esHoy?'#EFF6FF':'#F8FAFC')+'\';"':''}>
-      <div style="font-size:11px;font-weight:${esHoy?'900':'600'};color:${esHoy?'#2563EB':tieneEvs?'#0A1628':'#CBD5E1'}">${d}</div>
-      ${tieneEvs ? `<div style="display:flex;justify-content:center;gap:1px;margin-top:2px">${dots}</div>` : ''}
-      ${tieneEvs && evs.length > 1 ? `<div style="font-size:8px;color:#94A3B8;font-weight:700">${evs.length}</div>` : ''}
-    </div>`;
-  }
-
+// HELPER — zona de drop para subir archivos
+function flZonaDrop(inputId, label = 'PDF o imágenes') {
   return `
-    <div style="margin-top:20px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:#94A3B8">
-          Calendario de actividades
-        </div>
-        <span style="font-size:11px;font-weight:700;color:#374151">${meses[mes]} ${anio}</span>
-      </div>
-      <div class="fl-tw" style="padding:12px">
-        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:6px">
-          ${dias.map(d=>`<div style="text-align:center;font-size:9px;font-weight:800;color:#94A3B8;padding:2px 0">${d}</div>`).join('')}
-        </div>
-        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px">
-          ${celdas}
-        </div>
-        <div style="margin-top:10px;display:flex;gap:12px;flex-wrap:wrap">
-          ${Object.entries(dotCol).filter(([,c])=>c).map(([est,c])=>`
-            <div style="display:flex;align-items:center;gap:4px;font-size:9px;font-weight:700;color:#64748B">
-              <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${c}"></span>${est}
-            </div>`).join('')}
-          <div style="display:flex;align-items:center;gap:4px;font-size:9px;font-weight:700;color:#B45309">
-            <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#FDE68A;border:1.5px solid #B45309"></span>Pago prog.
-          </div>
-        </div>
-      </div>
+    <div onclick="document.getElementById('${inputId}').click()"
+      style="border:2px dashed #CBD5E1;border-radius:10px;padding:16px;text-align:center;cursor:pointer;background:#FAFBFC;transition:.12s"
+      onmouseover="this.style.borderColor='#2563EB';this.style.background='#EFF6FF'"
+      onmouseout="this.style.borderColor='#CBD5E1';this.style.background='#FAFBFC'">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="1.8" stroke-linecap="round" style="margin-bottom:5px">
+        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+      </svg>
+      <div style="font-size:12px;font-weight:700;color:#374151">Clic para seleccionar</div>
+      <div style="font-size:10px;color:#94A3B8;margin-top:2px">${label} — máx. 4 MB c/u</div>
     </div>`;
 }
 
-// Modal con detalle de un día del calendario
+// ═══════════════════════════════════════════════════════
+// VISOR DE ARCHIVOS (PDF o imagen) — z-index máximo
+// ═══════════════════════════════════════════════════════
+window.flVerArchivo = function(b64, nombre) {
+  if (!b64) return;
+  const esPDF = b64.startsWith('data:application/pdf');
+  const ov = document.createElement('div');
+  ov.className = 'fl-ov'; ov.style.zIndex = '4000';
+  ov.innerHTML = `<div class="fl-modal" style="max-width:${esPDF?'860':'660'}px;width:100%;${esPDF?'height:90vh;':''}display:flex;flex-direction:column;overflow:hidden">
+    <div class="fl-mh" style="flex-shrink:0">
+      <span style="font-size:13px;font-weight:700">${nombre||'Documento'}</span>
+      <div style="display:flex;gap:8px">
+        <a href="${b64}" download="${nombre||'archivo'}" style="font-size:11px;font-weight:700;padding:5px 12px;background:#EFF6FF;color:#2563EB;border-radius:7px;text-decoration:none">Descargar</a>
+        <button onclick="this.closest('.fl-ov').remove()" style="width:28px;height:28px;border:none;background:#F1F5F9;border-radius:50%;cursor:pointer;font-size:15px;color:#64748B">✕</button>
+      </div>
+    </div>
+    ${esPDF
+      ? `<iframe src="${b64}" style="flex:1;border:none"></iframe>`
+      : `<div style="padding:16px;text-align:center;overflow-y:auto"><img src="${b64}" style="max-width:100%;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.15)"></div>`}
+  </div>`;
+  document.body.appendChild(ov);
+  ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+};
+
+// ═══════════════════════════════════════════════════════
+// CALENDARIO — flCalDia
+// ═══════════════════════════════════════════════════════
 window.flCalDia = function(fecha) {
-  // Reconstruir el eventMap para este día
   const evs = [];
   const agrega = (fechaStr, sol, tipo) => {
     if (!fechaStr || typeof fechaStr !== 'string') return;
@@ -2980,101 +2782,108 @@ window.flCalDia = function(fecha) {
     if (s.validadoEn)          agrega(s.validadoEn, s, 'validación');
     if (s.pagadoEn)            agrega(s.pagadoEn, s, 'pago realizado');
   });
-
   const meses = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
   const [y,m,d] = fecha.split('-');
   const fechaLeg = `${parseInt(d)} de ${meses[parseInt(m)-1]} de ${y}`;
-
   const tipoIcon = {
     solicitud:       `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6D28D9" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`,
     pago:            `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#B45309" stroke-width="2" stroke-linecap="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>`,
-    taller:          `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#1D4ED8" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41M4.93 4.93l1.41 1.41M12 2v2M12 20v2M2 12h2M20 12h2M4.93 19.07l1.41-1.41M19.07 19.07l-1.41-1.41"/></svg>`,
+    taller:          `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#1D4ED8" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41M4.93 4.93l1.41 1.41M12 2v2M12 20v2M2 12h2M20 12h2"/></svg>`,
     'validación':    `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#15803D" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>`,
     'pago realizado':`<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#15803D" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>`,
   };
-
   const filas = evs.map(e => {
-    const v = flV.find(x => x.eco === e.vehiculoEco || x.id === e.vehiculoId);
-    const label = { solicitud:'Solicitud creada', pago:'Pago programado', taller:'Ingreso a taller', 'validación':'Validación', 'pago realizado':'Pago realizado' }[e._tipoCal] || e._tipoCal;
+    const label = {solicitud:'Solicitud creada',pago:'Pago programado',taller:'Ingreso a taller','validación':'Validación','pago realizado':'Pago realizado'}[e._tipoCal]||e._tipoCal;
     return `<div onclick="flVerSol('${e.id}')" style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:#F8FAFC;border-radius:9px;border:1px solid #E2E8F0;cursor:pointer;transition:.12s" onmouseover="this.style.background='#EFF6FF'" onmouseout="this.style.background='#F8FAFC'">
-      <div style="width:32px;height:32px;border-radius:8px;background:#fff;border:1px solid #E2E8F0;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-        ${tipoIcon[e._tipoCal]||tipoIcon.solicitud}
-      </div>
+      <div style="width:30px;height:30px;border-radius:8px;background:#fff;border:1px solid #E2E8F0;display:flex;align-items:center;justify-content:center;flex-shrink:0">${tipoIcon[e._tipoCal]||tipoIcon.solicitud}</div>
       <div style="flex:1;min-width:0">
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
-          <span style="font-size:11px;font-weight:800;color:#0A1628">${label}</span>
-          ${hBadge(e.estatus)}
-        </div>
-        <div style="font-size:11px;color:#374151;font-weight:600">ECO ${e.vehiculoEco||'—'} · ${e.tipo||e.tipoSol||'—'}</div>
-        <div style="font-size:10px;color:#94A3B8;margin-top:2px">${e.solicitante||e.creadoPor||'—'}${e.montoCotizacion?` · $${Number(e.montoCotizacion).toLocaleString('es-MX')}`:''}</div>
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px"><span style="font-size:11px;font-weight:800">${label}</span>${hBadge(e.estatus)}</div>
+        <div style="font-size:11px;color:#374151;font-weight:600">ECO ${e.vehiculoEco||'—'} · ${e.tipo||'—'}</div>
+        <div style="font-size:10px;color:#94A3B8;margin-top:1px">${e.solicitante||e.creadoPor||'—'}${e.montoCotizacion?` · $${Number(e.montoCotizacion).toLocaleString('es-MX')}`:''}</div>
       </div>
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#CBD5E1" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
     </div>`;
   }).join('');
-
   const html = `
     <div class="fl-ov" id="flcal-ov" onclick="if(event.target===this)this.remove()" style="z-index:3200">
       <div class="fl-modal" style="max-width:480px;width:100%">
         <div class="fl-mh">
-          <div>
-            <div style="font-size:15px;font-weight:900;letter-spacing:-.3px">${fechaLeg}</div>
-            <div style="font-size:11px;color:#64748B;margin-top:2px">${evs.length} actividad${evs.length!==1?'es':''} registrada${evs.length!==1?'s':''}</div>
-          </div>
+          <div><div style="font-size:15px;font-weight:900">${fechaLeg}</div><div style="font-size:11px;color:#64748B;margin-top:2px">${evs.length} actividad${evs.length!==1?'es':''}</div></div>
           <button onclick="document.getElementById('flcal-ov').remove()" style="width:30px;height:30px;border:none;border-radius:50%;background:#F1F5F9;cursor:pointer;font-size:16px;color:#64748B">✕</button>
         </div>
         <div class="fl-mb" style="display:flex;flex-direction:column;gap:8px;max-height:60vh;overflow-y:auto">
-          ${filas || '<div style="text-align:center;padding:24px;color:#94A3B8;font-size:12px">Sin actividades este día</div>'}
+          ${filas || '<div style="text-align:center;padding:24px;color:#94A3B8;font-size:12px">Sin actividades</div>'}
         </div>
       </div>
     </div>`;
-
   document.getElementById('flcal-ov')?.remove();
   document.body.insertAdjacentHTML('beforeend', html);
 };
 
-// ════════════════════════════════════════════════
-// PIPELINE MODAL — Flujo de Solicitudes completo
-// ════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
+// PIPELINE MODAL — Flujo completo 6 etapas
+// Solicitud → Validación → Aprobación → Pagos → Cierre → Cerrada
+// ═══════════════════════════════════════════════════════
 window.flPipelineModal = function(estInicial) {
-  const PASOS = ['Solicitud','Validada','Aprobada','Pagos','Rechazada','Cerrada'];
+  const PASOS = ['Solicitud','Validación','Aprobación','Pagos','Cierre','Rechazada','Cerrada'];
+  const PASOS_BARRA = ['Solicitud','Validación','Aprobación','Pagos','Cierre','Cerrada']; // sin Rechazada
   let estActivo = estInicial || 'Solicitud';
 
   const colPaso = {
     Solicitud:  ['#EDE9FE','#6D28D9'],
-    Validada:   ['#DBEAFE','#1D4ED8'],
+    Validación: ['#DBEAFE','#1D4ED8'],
+    Aprobación: ['#FEF9C3','#CA8A04'],
     Pagos:      ['#FEF3C7','#B45309'],
-    Aprobada:   ['#DCFCE7','#15803D'],
+    Cierre:     ['#E0F2FE','#0369A1'],
     Rechazada:  ['#FEE2E2','#B91C1C'],
-    Cerrada:    ['#F1F5F9','#475569'],
+    Cerrada:    ['#DCFCE7','#15803D'],
   };
 
-  function hPerm(a){ return typeof window.flTienePermiso==='function' ? window.flTienePermiso(a) : hAdm(); }
-  const email = ()=>(window.auth?.currentUser?.email||'').toLowerCase();
-  const esPagos = ()=> email()==='pagos@tecnocontrol.com.mx';
+  const eml = () => (window.auth?.currentUser?.email || '').toLowerCase();
+  const hPerm = a => typeof window.flTienePermiso === 'function' ? window.flTienePermiso(a) : hAdm();
+  const esFatima = () => eml() === 'fatima@tecnocontrol.com.mx' || hAdm();
+  const esContraloria = () => ['p.pinedo@tecnocontrol.com.mx','c.acosta@tecnocontrol.com.mx'].includes(eml());
+  const esPagos = () => eml() === 'pagos@tecnocontrol.com.mx' || hAdm();
 
   function accionesSol(s) {
     const btns = [];
-    // Solicitud → Validar+Cotizar (un solo botón)
-    if (s.estatus === 'Solicitud' && hPerm('validar'))
-      btns.push(`<button class="fb acc sm" onclick="flAbrirValidarCotizar('${s.id}')" style="font-size:10px;white-space:nowrap">Validar / Cotizar</button>`);
-    // Aprobada → solo p.pinedo y c.acosta
-    if (s.estatus === 'Validada' && hPerm('aprobar'))
-      btns.push(`<button class="fb acc sm" onclick="flEst('${s.id}','Aprobada').then(()=>{flEnviarNotif('${s.id}','aprobada');window.flPipelineModal._render('Aprobada')})" style="font-size:10px;background:#16A34A">Aprobar</button>`);
-    if (s.estatus === 'Validada' && hPerm('rechazar'))
-      btns.push(`<button onclick="flRechazarM('${s.id}')" style="font-size:10px;background:#EF4444;color:#fff;border:none;border-radius:7px;padding:5px 10px;cursor:pointer;font-family:inherit;font-weight:700">Rechazar</button>`);
-    // Aprobada → Pagos (rol pagos)
-    if (s.estatus === 'Aprobada' && (esPagos()||hAdm()))
-      btns.push(`<button class="fb acc sm" onclick="flAbrirPagos('${s.id}')" style="font-size:10px;background:#D97706">Gestionar Pago</button>`);
+    // — SOLICITUD → Validación: Fátima o admin puede Aceptar o Rechazar
+    if (s.estatus === 'Solicitud' && esFatima()) {
+      btns.push(`<button class="fb acc sm" onclick="flModalValidar('${s.id}')" style="font-size:10px;background:#2563EB">Validar</button>`);
+      btns.push(`<button onclick="flModalRechazar('${s.id}','validacion')" style="font-size:10px;background:#EF4444;color:#fff;border:none;border-radius:7px;padding:5px 10px;cursor:pointer;font-family:inherit;font-weight:700">Rechazar</button>`);
+    }
+    // — VALIDACIÓN → Aprobación: Contraloría aprueba o devuelve a Validación
+    if (s.estatus === 'Validación' && esContraloria()) {
+      btns.push(`<button onclick="flModalAprobar('${s.id}')" style="font-size:10px;background:#CA8A04;color:#fff;border:none;border-radius:7px;padding:5px 10px;cursor:pointer;font-family:inherit;font-weight:700">Aprobar</button>`);
+      btns.push(`<button onclick="flModalRechazar('${s.id}','aprobacion')" style="font-size:10px;background:#EF4444;color:#fff;border:none;border-radius:7px;padding:5px 10px;cursor:pointer;font-family:inherit;font-weight:700">Devolver</button>`);
+    }
+    // — APROBACIÓN → Pagos: Pagos gestiona
+    if (s.estatus === 'Aprobación' && esPagos()) {
+      btns.push(`<button onclick="flModalPagos('${s.id}')" style="font-size:10px;background:#B45309;color:#fff;border:none;border-radius:7px;padding:5px 10px;cursor:pointer;font-family:inherit;font-weight:700">Gestionar pago</button>`);
+    }
+    // — PAGOS → Cierre: Fátima/admin cierra
+    if (s.estatus === 'Pagos' && esFatima()) {
+      btns.push(`<button onclick="flModalCierre('${s.id}')" style="font-size:10px;background:#0369A1;color:#fff;border:none;border-radius:7px;padding:5px 10px;cursor:pointer;font-family:inherit;font-weight:700">Cerrar servicio</button>`);
+    }
     // Ver siempre
     btns.push(`<button class="fb gho sm" onclick="flVerSol('${s.id}')" style="font-size:10px">Ver</button>`);
     if (hPerm('eliminar'))
-      btns.push(`<button class="fb gho sm" onclick="flElim('${s.id}').then(()=>window.flPipelineModal._render('${estActivo}'))" style="font-size:10px;color:#EF4444;border-color:#FCA5A5">Elim.</button>`);
+      btns.push(`<button class="fb gho sm" onclick="flElim('${s.id}').then(()=>window.flPipelineModal._render?.('${estActivo}'))" style="font-size:10px;color:#EF4444;border-color:#FCA5A5">Elim.</button>`);
     return btns.join('');
   }
 
   function renderModal() {
     const lista = flS.filter(s => s.estatus === estActivo);
     const total = flS.length || 1;
+    const notaPaso = {
+      Solicitud:  'Cualquier usuario puede crear solicitudes desde el portal o la app móvil.',
+      Validación: 'Fátima (Flotilla) revisa, cotiza y envía a aprobación. Puede rechazar con comentario.',
+      Aprobación: 'Contraloría (Paloma / Cristina) aprueba o devuelve a Validación con comentario.',
+      Pagos:      'Pagos programa o registra el comprobante de pago.',
+      Cierre:     'Flotilla sube la factura del servicio y finaliza el expediente.',
+      Rechazada:  'Solicitudes rechazadas definitivamente.',
+      Cerrada:    'Servicios completados con expediente cerrado.',
+    }[estActivo] || '';
 
     // Step bar
     const stepBar = PASOS.map(p => {
@@ -3082,106 +2891,83 @@ window.flPipelineModal = function(estInicial) {
       const act = p === estActivo;
       const [bg, cl] = colPaso[p] || ['#F1F5F9','#475569'];
       return `<button onclick="window.flPipelineModal._render('${p}')"
-        style="flex:1;padding:9px 4px 7px;border:none;border-bottom:3px solid ${act?cl:'transparent'};
-        background:${act?bg+'44':'transparent'};font-family:inherit;font-size:11px;font-weight:800;
+        style="flex:1;padding:9px 3px 7px;border:none;border-bottom:3px solid ${act?cl:'transparent'};
+        background:${act?bg+'55':'transparent'};font-family:inherit;font-size:10px;font-weight:800;
         color:${act?cl:'#94A3B8'};cursor:pointer;transition:.12s;text-align:center;line-height:1.4;
-        border-radius:${act?'8px 8px 0 0':'0'}">
-        ${p}<br><span style="font-size:18px;font-weight:900;color:${act?cl:'#CBD5E1'}">${n}</span>
+        border-radius:${act?'7px 7px 0 0':'0'}">
+        ${p}<br><span style="font-size:16px;font-weight:900;color:${act?cl:'#CBD5E1'}">${n}</span>
       </button>`;
     }).join('');
 
-    // Barra de progreso visual
-    const barProg = PASOS.filter(p=>p!=='Rechazada').map((p,i,arr)=>{
-      const n = flS.filter(s=>s.estatus===p).length;
-      const [,cl] = colPaso[p]||['#F1F5F9','#475569'];
-      const pct = Math.round(n/total*100);
-      const isLast = i===arr.length-1;
+    // Barra de progreso
+    const barProg = PASOS_BARRA.map((p, i, arr) => {
+      const n = flS.filter(s => s.estatus === p).length;
+      const [,cl] = colPaso[p] || ['#F1F5F9','#475569'];
+      const pct = Math.round(n / total * 100);
       return `<div style="flex:1;text-align:center">
-        <div style="font-size:9px;font-weight:800;color:${cl};margin-bottom:4px">${pct}%</div>
-        <div style="height:6px;background:#F1F5F9;border-radius:100px;overflow:hidden">
+        <div style="font-size:9px;font-weight:800;color:${cl};margin-bottom:3px">${pct}%</div>
+        <div style="height:5px;background:#F1F5F9;border-radius:100px;overflow:hidden">
           <div style="height:100%;width:${pct}%;background:${cl};border-radius:100px;transition:width .4s"></div>
         </div>
-        <div style="font-size:9px;color:#94A3B8;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p}</div>
-      </div>${!isLast?'<div style="flex-shrink:0;width:12px;color:#E2E8F0;font-size:16px;text-align:center;margin-top:-2px">›</div>':''}`;
+        <div style="font-size:8px;color:#94A3B8;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p}</div>
+      </div>${i < arr.length-1 ? '<div style="flex-shrink:0;width:10px;color:#E2E8F0;font-size:14px;text-align:center;margin-top:-3px">›</div>' : ''}`;
     }).join('');
 
-    // Tabla solicitudes
+    // Tabla
     const filas = lista.length
       ? lista.map(s => {
           const fecha = s.creadoEn ? s.creadoEn.slice(0,10) : '—';
-          const tieneCot = s.cotizacionArchivos?.length > 0;
-          const tienePago = !!s.comprobantePago;
           return `<tr>
             <td style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#64748B">${(s.id||'').slice(-6).toUpperCase()}</td>
             <td style="font-size:11px">${fecha}</td>
             <td style="font-weight:700;font-family:'JetBrains Mono',monospace">ECO ${s.vehiculoEco||'—'}</td>
             <td style="font-size:11px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.tipo||'—'}</td>
             <td style="font-size:11px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.solicitante||s.creadoPor||'—'}</td>
-            <td style="font-size:11px">${s.taller||s.tallerRecomendado||'—'}</td>
+            <td style="font-size:11px">${s.tallerNombre||'—'}</td>
             <td style="font-size:11px;font-weight:700;color:#15803D">${s.montoCotizacion?'$'+Number(s.montoCotizacion).toLocaleString('es-MX'):'—'}</td>
-            <td style="font-size:11px">${s.fechaPagoProgramada||'—'}</td>
-            <td>
-              <div style="display:flex;gap:3px;align-items:center">
-                ${tieneCot?`<span title="Cotización adjunta" style="color:#1D4ED8;font-size:10px">📎</span>`:''}
-                ${tienePago?`<span title="Comprobante adjunto" style="color:#15803D;font-size:10px">✓</span>`:''}
-                ${accionesSol(s)}
-              </div>
-            </td>
+            <td><div style="display:flex;gap:3px;align-items:center;flex-wrap:wrap">${accionesSol(s)}</div></td>
           </tr>`;
         }).join('')
-      : `<tr><td colspan="9" style="text-align:center;padding:32px;color:#94A3B8;font-size:12px">Sin solicitudes en este estatus</td></tr>`;
-
-    // Nota de permisos del paso actual
-    const notaPaso = {
-      Solicitud: 'Los técnicos crean solicitudes desde la app móvil.',
-      Validada:  'Flotilla valida y cotiza. Contraloría (Paloma / Cristina) aprueba o rechaza.',
-      Pagos:     'Responsable de Pagos programa y registra el comprobante de pago.',
-      Aprobada:  'Solicitud aprobada por Contraloría — pendiente de pago.',
-      Rechazada: 'Solicitudes rechazadas con comentario de motivo.',
-      Cerrada:   'Solicitudes completadas y cerradas.',
-    }[estActivo]||'';
+      : `<tr><td colspan="8" style="text-align:center;padding:28px;color:#94A3B8;font-size:12px">Sin solicitudes en este estatus</td></tr>`;
 
     const html = `
       <div class="fl-ov" id="flpm-ov" onclick="if(event.target===this)this.remove()" style="z-index:3000">
-        <div class="fl-modal" style="max-width:min(94vw,960px);width:100%;max-height:88vh;display:flex;flex-direction:column;overflow:hidden">
+        <div class="fl-modal" style="max-width:min(94vw,1000px);width:100%;max-height:88vh;display:flex;flex-direction:column;overflow:hidden">
           <!-- HEADER -->
           <div class="fl-mh" style="flex-shrink:0">
             <div>
               <div style="font-size:16px;font-weight:900;letter-spacing:-.4px;display:flex;align-items:center;gap:8px">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                 Flujo de Solicitudes
               </div>
-              <div style="font-size:11px;color:#64748B;margin-top:2px">${flS.length} solicitudes en total · ${lista.length} en "${estActivo}"</div>
+              <div style="font-size:11px;color:#64748B;margin-top:1px">${flS.length} total · ${lista.length} en "${estActivo}"</div>
             </div>
-            <div style="display:flex;align-items:center;gap:10px">
-              <span style="font-size:10px;font-weight:800;padding:4px 10px;background:#EFF6FF;color:#1D4ED8;border-radius:100px">
-                Tu rol: ${window.flGetRolActual?window.flGetRolActual():'—'}
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:10px;font-weight:800;padding:3px 9px;background:#EFF6FF;color:#1D4ED8;border-radius:100px">
+                ${window.flGetRolActual?window.flGetRolActual():'—'}
               </span>
-              <button onclick="document.getElementById('flpm-ov').remove()" style="width:32px;height:32px;border:none;border-radius:50%;background:#F1F5F9;cursor:pointer;font-size:18px;color:#64748B;line-height:1">✕</button>
+              <button onclick="document.getElementById('flpm-ov').remove()" style="width:30px;height:30px;border:none;border-radius:50%;background:#F1F5F9;cursor:pointer;font-size:17px;color:#64748B">✕</button>
             </div>
           </div>
           <!-- BARRA PROGRESO -->
-          <div style="padding:12px 20px 10px;border-bottom:1px solid #F1F5F9;display:flex;align-items:flex-start;flex-shrink:0;background:#FAFBFC">
+          <div style="padding:10px 20px 8px;border-bottom:1px solid #F1F5F9;display:flex;align-items:flex-start;flex-shrink:0;background:#FAFBFC">
             ${barProg}
           </div>
           <!-- STEP BAR -->
-          <div style="display:flex;padding:0 16px;border-bottom:2px solid #F1F5F9;flex-shrink:0;gap:2px;background:#fff">
+          <div style="display:flex;padding:0 14px;border-bottom:2px solid #F1F5F9;flex-shrink:0;gap:1px;background:#fff;overflow-x:auto">
             ${stepBar}
           </div>
           <!-- NOTA DEL PASO -->
-          ${notaPaso?`<div style="padding:8px 20px;background:#F8FAFC;border-bottom:1px solid #F1F5F9;font-size:11px;color:#64748B;flex-shrink:0">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2" stroke-linecap="round" style="vertical-align:middle;margin-right:4px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-            ${notaPaso}
-          </div>`:''}
+          ${notaPaso ? `<div style="padding:7px 20px;background:#F8FAFC;border-bottom:1px solid #F1F5F9;font-size:10px;color:#64748B;flex-shrink:0">
+            ℹ ${notaPaso}
+          </div>` : ''}
           <!-- TABLA -->
           <div style="overflow-y:auto;flex:1;padding:0">
             <table class="fl-adm-table" style="width:100%">
-              <thead>
-                <tr>
-                  <th>ID</th><th>Fecha</th><th>ECO</th><th>Tipo</th><th>Solicitante</th>
-                  <th>Taller</th><th>Monto</th><th>Fecha Pago</th><th style="text-align:center">Acciones</th>
-                </tr>
-              </thead>
+              <thead><tr>
+                <th>ID</th><th>Fecha</th><th>ECO</th><th>Tipo</th><th>Solicitante</th>
+                <th>Taller</th><th>Monto</th><th style="text-align:center">Acciones</th>
+              </tr></thead>
               <tbody>${filas}</tbody>
             </table>
           </div>
@@ -3196,489 +2982,846 @@ window.flPipelineModal = function(estInicial) {
     estActivo = est;
     renderModal();
   };
-
   renderModal();
 };
 
-// ════════════════════════════════════════════════
-// MODAL VALIDAR + COTIZAR (un solo paso)
-// ════════════════════════════════════════════════
-window.flAbrirValidarCotizar = function(id) {
-  const s = flS.find(x=>x.id===id);
-  if(!s) return;
-  const v = flV.find(x=>x.eco===s.vehiculoEco||x.id===s.vehiculoId);
+// ═══════════════════════════════════════════════════════
+// MODAL RECHAZAR — genérico para validación y aprobación
+// tipo: 'validacion' → Rechazada definitiva + notif solicitante
+//       'aprobacion' → vuelve a Validación + notif Fátima
+// ═══════════════════════════════════════════════════════
+window.flModalRechazar = function(id, tipo) {
+  const s = flS.find(x => x.id === id);
+  if (!s) return;
+  const esDevol = tipo === 'aprobacion';
+  const titulo = esDevol ? 'Devolver a Validación' : 'Rechazar solicitud';
+  const desc = esDevol
+    ? 'La solicitud regresará a Fátima (Flotilla) con tu comentario para que la corrija o la descarte.'
+    : 'La solicitud quedará rechazada y se notificará al solicitante con el motivo.';
+  const colorBtn = esDevol ? '#B45309' : '#B91C1C';
+  const textoBtn = esDevol ? 'Devolver a Validación' : 'Confirmar rechazo';
 
-  // Cerrar modal pipeline si está abierto
+  const ov = document.createElement('div');
+  ov.className = 'fl-ov'; ov.style.zIndex = '3200';
+  ov.innerHTML = `<div class="fl-modal" style="max-width:420px">
+    <div class="fl-mh">
+      <div><div style="font-size:15px;font-weight:900">${titulo}</div>
+      <div style="font-size:11px;color:#64748B;margin-top:2px">ECO ${s.vehiculoEco||'—'} · ${s.tipo||'—'}</div></div>
+      <button onclick="this.closest('.fl-ov').remove()" style="width:28px;height:28px;border:none;border-radius:50%;background:#F1F5F9;cursor:pointer;font-size:15px;color:#64748B">✕</button>
+    </div>
+    <div class="fl-mb" style="display:flex;flex-direction:column;gap:12px">
+      <div style="padding:10px 12px;background:#FFF7ED;border:1px solid #FED7AA;border-radius:9px;font-size:11px;color:#92400E">${desc}</div>
+      <div>
+        <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:5px">Comentario (obligatorio)</label>
+        <textarea id="fl-rej-txt" rows="4" placeholder="Describe el motivo detalladamente…"
+          style="width:100%;border:1.5px solid #E2E8F0;border-radius:9px;padding:9px 12px;font-family:inherit;font-size:13px;resize:vertical;outline:none;box-sizing:border-box"
+          oninput="this.style.borderColor=this.value.trim()?'#${esDevol?'B45309':'EF4444'}':'#E2E8F0'"></textarea>
+      </div>
+      <div class="fl-fa" style="margin-top:0">
+        <button onclick="this.closest('.fl-ov').remove()" class="fb gho" style="padding:9px 18px">Cancelar</button>
+        <button id="fl-rej-btn" onclick="(async()=>{
+          const m=document.getElementById('fl-rej-txt').value.trim();
+          if(!m){document.getElementById('fl-rej-txt').style.borderColor='#EF4444';return;}
+          this.textContent='Guardando…';this.disabled=true;
+          const nuevoEst='${esDevol ? 'Validación' : 'Rechazada'}';
+          const campo='${esDevol ? 'comentarioDevolucion' : 'comentarioRechazo'}';
+          try{
+            await fs.updateDoc(fs.doc(db,C.SOLS,'${id}'),{
+              estatus:nuevoEst,[campo]:m,
+              ${esDevol ? 'devueltoEn' : 'rechazadoEn'}:new Date().toISOString(),
+              actualizadoEn:new Date().toISOString()
+            });
+            await ldSols();
+            flEnviarNotif('${id}','${esDevol ? 'rechazada_apr' : 'rechazada_val'}',m);
+            if(vistaAct==='sols')rSols();else rPanel();
+            window.flPipelineModal?._render?.(nuevoEst);
+            this.closest('.fl-ov').remove();
+            document.getElementById('flpm-ov')?.remove();
+          }catch(e){console.error('[FL]',e);this.textContent='${textoBtn}';this.disabled=false;}
+        })()"
+        style="padding:9px 18px;background:${colorBtn};color:#fff;border:none;border-radius:9px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer">
+          ${textoBtn}
+        </button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+};
+
+// ═══════════════════════════════════════════════════════
+// MODAL VALIDAR — Fátima revisa, cotiza y envía a Aprobación
+// ═══════════════════════════════════════════════════════
+window.flModalValidar = function(id) {
+  const s = flS.find(x => x.id === id);
+  if (!s) return;
+  const v = flV.find(x => x.eco === s.vehiculoEco || x.id === s.vehiculoId);
   document.getElementById('flpm-ov')?.remove();
 
+  window._flValArch = s.cotizacionArchivos ? [...s.cotizacionArchivos] : [];
+
   const html = `
-    <div class="fl-ov" id="flvc-ov" onclick="if(event.target===this)this.remove()" style="z-index:3100">
-      <div class="fl-modal" style="max-width:620px;width:100%">
-        <div class="fl-mh">
+    <div class="fl-ov" id="flval-ov" onclick="if(event.target===this)this.remove()" style="z-index:3100">
+      <div class="fl-modal" style="max-width:680px;width:100%;max-height:90vh;overflow-y:auto">
+        <div class="fl-mh" style="position:sticky;top:0;background:#fff;z-index:2">
           <div>
-            <div style="font-size:15px;font-weight:900;letter-spacing:-.3px">Validar y Cotizar Solicitud</div>
+            <div style="font-size:15px;font-weight:900;letter-spacing:-.3px">Validar solicitud</div>
             <div style="font-size:11px;color:#64748B;margin-top:2px">ECO ${s.vehiculoEco||'—'} · ${s.tipo||'—'} · ${s.solicitante||'—'}</div>
           </div>
-          <button onclick="document.getElementById('flvc-ov').remove()" style="width:30px;height:30px;border:none;border-radius:50%;background:#F1F5F9;cursor:pointer;font-size:16px;color:#64748B">✕</button>
+          <button onclick="document.getElementById('flval-ov').remove()" style="width:30px;height:30px;border:none;border-radius:50%;background:#F1F5F9;cursor:pointer;font-size:16px;color:#64748B">✕</button>
         </div>
-        <div class="fl-mb" style="display:flex;flex-direction:column;gap:14px">
+        <div class="fl-mb" style="display:flex;flex-direction:column;gap:16px">
 
-          <!-- Info solicitud -->
-          <div style="background:#F8FAFC;border-radius:9px;padding:12px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
-            <div><div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8">Vehículo</div><div style="font-size:12px;font-weight:700">${v?v.unidad:s.vehiculoEco||'—'}</div></div>
-            <div><div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8">Tipo solicitud</div><div style="font-size:12px;font-weight:700">${s.tipo||'—'}</div></div>
-            <div><div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8">Prioridad</div><div style="font-size:12px;font-weight:700">${s.prioridad||'Normal'}</div></div>
+          <!-- Resumen solicitud -->
+          <div style="background:#F8FAFC;border-radius:10px;padding:14px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+            ${[['Vehículo',v?v.unidad+' '+v.año:s.vehiculoEco||'—'],['Tipo',s.tipo||'—'],['Prioridad',s.prioridad||'Normal'],['KM',s.kilometrajeReportado||'—'],['Gasolina',s.gasolina!=null?s.gasolina+'%':'—'],['Solicitante',s.solicitante||'—']].map(([l,val])=>`
+              <div><div style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">${l}</div>
+              <div style="font-size:12px;font-weight:700">${val}</div></div>`).join('')}
+            ${s.descripcion ? `<div style="grid-column:1/-1"><div style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">Descripción del problema</div>
+              <div style="font-size:12px;color:#374151">${s.descripcion}</div></div>` : ''}
           </div>
 
-          <!-- Taller -->
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-            <div>
-              <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:5px">Taller / Proveedor recomendado *</label>
-              <input id="vc-taller" type="text" placeholder="Nombre del taller o proveedor" value="${s.tallerRecomendado||s.taller||''}"
-                style="width:100%;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:9px;font-family:inherit;font-size:13px;outline:none;box-sizing:border-box"
-                onfocus="this.style.borderColor='#2563EB'" onblur="this.style.borderColor='#E2E8F0'">
-            </div>
-            <div>
-              <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:5px">Monto cotización (MXN) *</label>
-              <input id="vc-monto" type="number" placeholder="0.00" value="${s.montoCotizacion||''}" min="0" step="0.01"
-                style="width:100%;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:9px;font-family:inherit;font-size:13px;outline:none;box-sizing:border-box"
-                onfocus="this.style.borderColor='#2563EB'" onblur="this.style.borderColor='#E2E8F0'">
-            </div>
-          </div>
-
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-            <div>
-              <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:5px">Fecha estimada ingreso taller</label>
-              <input id="vc-fecha-taller" type="date" value="${s.fechaIngresoTaller||''}"
-                style="width:100%;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:9px;font-family:inherit;font-size:13px;outline:none;box-sizing:border-box"
-                onfocus="this.style.borderColor='#2563EB'" onblur="this.style.borderColor='#E2E8F0'">
-            </div>
-            <div>
-              <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:5px">Fecha programada de pago *</label>
-              <input id="vc-fecha-pago" type="date" value="${s.fechaPagoProgramada||''}"
-                style="width:100%;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:9px;font-family:inherit;font-size:13px;outline:none;box-sizing:border-box"
-                onfocus="this.style.borderColor='#2563EB'" onblur="this.style.borderColor='#E2E8F0'">
-            </div>
-          </div>
-
-          <!-- Comentarios -->
+          <!-- DATOS DEL TALLER -->
           <div>
-            <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:5px">Comentarios / Notas adicionales</label>
-            <textarea id="vc-notas" rows="3" placeholder="Observaciones, detalles de la cotización, acuerdos con el taller…"
-              style="width:100%;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:9px;font-family:inherit;font-size:13px;outline:none;resize:vertical;box-sizing:border-box"
+            <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#374151;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #F1F5F9">
+              🔧 Datos del taller / proveedor
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              ${[
+                ['val-taller-nombre','Nombre del taller *','text',s.tallerNombre||''],
+                ['val-taller-encargado','Encargado / contacto','text',s.tallerEncargado||''],
+                ['val-taller-tel','Teléfono','tel',s.tallerTel||''],
+                ['val-taller-direccion','Dirección','text',s.tallerDireccion||''],
+                ['val-taller-rfc','RFC del taller','text',s.tallerRFC||''],
+                ['val-taller-razon','Razón social','text',s.tallerRazon||''],
+                ['val-fecha-ingreso','Fecha ingreso taller','date',s.fechaIngresoTaller||''],
+                ['val-fecha-salida','Fecha estimada entrega','date',s.fechaEntregaEstimada||''],
+              ].map(([fid,label,type,val])=>`<div>
+                <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">${label}</label>
+                <input id="${fid}" type="${type}" value="${val}" style="width:100%;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;outline:none;box-sizing:border-box" onfocus="this.style.borderColor='#2563EB'" onblur="this.style.borderColor='#E2E8F0'">
+              </div>`).join('')}
+            </div>
+            <!-- Ubicación Google Maps -->
+            <div style="margin-top:10px">
+              <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">Link Google Maps del taller</label>
+              <div style="display:flex;gap:8px">
+                <input id="val-taller-maps" type="url" placeholder="https://maps.google.com/..." value="${s.tallerMaps||''}"
+                  style="flex:1;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;outline:none;box-sizing:border-box"
+                  onfocus="this.style.borderColor='#2563EB'" onblur="this.style.borderColor='#E2E8F0'">
+                <button onclick="const u=document.getElementById('val-taller-maps').value;if(u)window.open(u,'_blank')"
+                  style="padding:8px 12px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;cursor:pointer;font-size:11px;font-weight:700;color:#2563EB;white-space:nowrap">
+                  Ver mapa
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- COTIZACIONES -->
+          <div>
+            <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#374151;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #F1F5F9">
+              💰 Cotización
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+              <div>
+                <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">Monto cotización (MXN) *</label>
+                <input id="val-monto" type="number" min="0" step="0.01" value="${s.montoCotizacion||''}" placeholder="0.00"
+                  style="width:100%;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;outline:none;box-sizing:border-box"
+                  onfocus="this.style.borderColor='#2563EB'" onblur="this.style.borderColor='#E2E8F0'">
+              </div>
+              <div>
+                <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">Fecha pago programada *</label>
+                <input id="val-fecha-pago" type="date" value="${s.fechaPagoProgramada||''}"
+                  style="width:100%;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;outline:none;box-sizing:border-box"
+                  onfocus="this.style.borderColor='#2563EB'" onblur="this.style.borderColor='#E2E8F0'">
+              </div>
+            </div>
+            <!-- Mejor opción / Sugerencia -->
+            <div style="margin-bottom:12px">
+              <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">✨ Sugerencia / mejor opción de cotización</label>
+              <textarea id="val-sugerencia" rows="3" placeholder="Describe por qué este taller es la mejor opción, comparativa de precios, garantías, experiencia previa…"
+                style="width:100%;border:1.5px solid #E2E8F0;border-radius:9px;padding:9px 12px;font-family:inherit;font-size:12px;resize:vertical;outline:none;box-sizing:border-box"
+                onfocus="this.style.borderColor='#2563EB'" onblur="this.style.borderColor='#E2E8F0'">${s.sugerenciaCotizacion||''}</textarea>
+            </div>
+            <!-- Upload cotizaciones -->
+            <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:6px">Documentos de cotización (PDF o imágenes)</label>
+            <div id="flval-arch-lista" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px">
+              ${flHtmlArchivos(window._flValArch, 'flValElimArch')}
+            </div>
+            ${flZonaDrop('flval-file-input','PDF, JPG, PNG')}
+            <input id="flval-file-input" type="file" multiple accept=".pdf,.jpg,.jpeg,.png" style="display:none"
+              onchange="flValAgregarArchivos(this.files)">
+          </div>
+
+          <!-- NOTAS -->
+          <div>
+            <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:5px">Notas / comentarios adicionales para Contraloría</label>
+            <textarea id="val-notas" rows="3" placeholder="Observaciones, acuerdos con el taller, información adicional relevante…"
+              style="width:100%;border:1.5px solid #E2E8F0;border-radius:9px;padding:9px 12px;font-family:inherit;font-size:12px;resize:vertical;outline:none;box-sizing:border-box"
               onfocus="this.style.borderColor='#2563EB'" onblur="this.style.borderColor='#E2E8F0'">${s.notasValidacion||''}</textarea>
           </div>
 
-          <!-- Upload documentos cotización -->
-          <div>
-            <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:5px">
-              Documentos de cotización (PDF o imágenes)
-            </label>
-            <div id="vc-drop-zone" onclick="document.getElementById('vc-file-input').click()"
-              style="border:2px dashed #CBD5E1;border-radius:10px;padding:18px;text-align:center;cursor:pointer;transition:.12s;background:#FAFBFC"
-              onmouseover="this.style.borderColor='#2563EB';this.style.background='#EFF6FF'"
-              onmouseout="this.style.borderColor='#CBD5E1';this.style.background='#FAFBFC'">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="1.8" stroke-linecap="round" style="margin-bottom:6px">
-                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-              </svg>
-              <div style="font-size:12px;font-weight:700;color:#374151">Arrastra aquí o haz clic para subir</div>
-              <div style="font-size:11px;color:#94A3B8;margin-top:3px">PDF, JPG, PNG — máx. 5 MB por archivo</div>
-            </div>
-            <input id="vc-file-input" type="file" multiple accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="vcProcesarArchivos(this.files,'${id}')">
-            <div id="vc-archivos-lista" style="margin-top:10px;display:flex;flex-direction:column;gap:6px">
-              ${(s.cotizacionArchivos||[]).map((a,i)=>`
-                <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#F8FAFC;border-radius:8px;border:1px solid #E2E8F0">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${a.tipo==='pdf'?'#B91C1C':'#1D4ED8'}" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                  <span style="font-size:11px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.nombre||'Archivo '+(i+1)}</span>
-                  <span style="font-size:10px;color:#94A3B8">${a.tamaño||''}</span>
-                  <button onclick="vcEliminarArchivo('${id}',${i})" style="border:none;background:none;cursor:pointer;color:#EF4444;font-size:14px;padding:0 2px">✕</button>
-                </div>`).join('')}
-            </div>
-          </div>
-
           <!-- Acciones -->
-          <div class="fl-fa" style="margin-top:4px">
-            <button onclick="document.getElementById('flvc-ov').remove()" class="fb gho" style="padding:10px 20px">Cancelar</button>
-            <button onclick="flGuardarValidacion('${id}')" class="fb acc" style="padding:10px 24px" id="vc-btn-guardar">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="vertical-align:middle;margin-right:5px"><polyline points="20 6 9 17 4 12"/></svg>
-              Enviar a Aprobación
+          <div class="fl-fa" style="margin-top:0">
+            <button onclick="document.getElementById('flval-ov').remove()" class="fb gho" style="padding:9px 18px">Cancelar</button>
+            <button onclick="flGuardarValidacion('${id}')" class="fb acc" id="val-btn" style="padding:9px 22px">
+              Enviar a Aprobación →
             </button>
           </div>
-          <div id="vc-err" style="display:none;padding:8px 12px;background:#FEE2E2;border-radius:8px;font-size:12px;color:#B91C1C;text-align:center"></div>
+          <div id="val-err" style="display:none;padding:8px 12px;background:#FEE2E2;border-radius:8px;font-size:12px;color:#B91C1C;text-align:center"></div>
         </div>
       </div>
     </div>`;
-
   document.body.insertAdjacentHTML('beforeend', html);
 };
 
-// Procesar archivos de cotización (base64 en Firestore)
-window.vcProcesarArchivos = async function(files, id) {
-  const s = flS.find(x=>x.id===id);
-  if(!s) return;
-  const lista = document.getElementById('vc-archivos-lista');
-  if(!lista) return;
-
+// Agregar archivos al estado temporal de validación
+window.flValAgregarArchivos = async function(files) {
   for (const file of Array.from(files)) {
-    if (file.size > 5*1024*1024) { alert(`"${file.name}" supera 5 MB`); continue; }
-    const base64 = await new Promise(r => {
-      const fr = new FileReader();
-      fr.onload = e => r(e.target.result);
-      fr.readAsDataURL(file);
-    });
-    const tipo = file.type.includes('pdf') ? 'pdf' : 'img';
-    const kb = (file.size/1024).toFixed(0);
-    // Guardar en memoria temporal para el botón de enviar
-    window._vcArchivosTemp = window._vcArchivosTemp || [];
-    window._vcArchivosTemp.push({ nombre: file.name, b64: base64, tipo, kb });
-
-    // Agregar a la lista visual
-    const div = document.createElement('div');
-    div.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 12px;background:#F8FAFC;border-radius:8px;border:1px solid #E2E8F0';
-    div.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${tipo==='pdf'?'#B91C1C':'#1D4ED8'}" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-      <span style="font-size:11px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${file.name}</span>
-      <span style="font-size:10px;color:#94A3B8">${kb}KB</span>`;
-    lista.appendChild(div);
+    try {
+      const b64 = await flLeerArchivo(file);
+      const tipo = file.type.includes('pdf') ? 'pdf' : 'img';
+      window._flValArch.push({ nombre: file.name, b64, tipo, kb: Math.round(file.size/1024) });
+    } catch(e) { alert(e.message); }
   }
+  const lista = document.getElementById('flval-arch-lista');
+  if (lista) lista.innerHTML = flHtmlArchivos(window._flValArch, 'flValElimArch');
+};
+window.flValElimArch = function(idx) {
+  window._flValArch.splice(idx, 1);
+  const lista = document.getElementById('flval-arch-lista');
+  if (lista) lista.innerHTML = flHtmlArchivos(window._flValArch, 'flValElimArch');
 };
 
-window.vcEliminarArchivo = async function(id, idx) {
-  const s = flS.find(x=>x.id===id);
-  if(!s) return;
-  const arr = [...(s.cotizacionArchivos||[])];
-  arr.splice(idx,1);
-  try {
-    await fs.updateDoc(fs.doc(db, C.SOLS, id), { cotizacionArchivos: arr });
-    await ldSols();
-    window.flPipelineModal._render?.('Validada');
-  } catch(e) { console.error('[FL]',e); }
-};
-
-// Guardar validación y enviar a aprobación
+// Guardar validación y enviar a Aprobación
 window.flGuardarValidacion = async function(id) {
-  const taller  = document.getElementById('vc-taller')?.value.trim();
-  const monto   = document.getElementById('vc-monto')?.value.trim();
-  const fechaT  = document.getElementById('vc-fecha-taller')?.value;
-  const fechaP  = document.getElementById('vc-fecha-pago')?.value;
-  const notas   = document.getElementById('vc-notas')?.value.trim();
-  const err     = document.getElementById('vc-err');
-  const btn     = document.getElementById('vc-btn-guardar');
+  const g = fid => document.getElementById(fid)?.value?.trim() || '';
+  const err = document.getElementById('val-err');
+  const btn = document.getElementById('val-btn');
 
-  if (!taller) { err.textContent='El taller es obligatorio'; err.style.display='block'; return; }
-  if (!monto || isNaN(monto) || Number(monto)<=0) { err.textContent='Ingresa un monto válido'; err.style.display='block'; return; }
-  if (!fechaP) { err.textContent='La fecha de pago programada es obligatoria'; err.style.display='block'; return; }
+  const tallerNombre = g('val-taller-nombre');
+  const monto = g('val-monto');
+  const fechaPago = g('val-fecha-pago');
 
-  err.style.display='none';
-  btn.textContent='Guardando…'; btn.disabled=true;
+  if (!tallerNombre) { err.textContent = 'El nombre del taller es obligatorio.'; err.style.display='block'; return; }
+  if (!monto || isNaN(monto) || Number(monto) <= 0) { err.textContent = 'Ingresa un monto válido.'; err.style.display='block'; return; }
+  if (!fechaPago) { err.textContent = 'La fecha de pago programada es obligatoria.'; err.style.display='block'; return; }
+
+  err.style.display = 'none';
+  btn.textContent = 'Guardando…'; btn.disabled = true;
 
   try {
-    // Combinar archivos existentes con los nuevos temporales
-    const s = flS.find(x=>x.id===id)||{};
-    const archivosExistentes = s.cotizacionArchivos||[];
-    const archivosNuevos = window._vcArchivosTemp||[];
-    const todosArchivos = [...archivosExistentes, ...archivosNuevos];
-    window._vcArchivosTemp = [];
-
     await fs.updateDoc(fs.doc(db, C.SOLS, id), {
-      estatus: 'Validada',
-      tallerRecomendado: taller,
-      montoCotizacion: Number(monto),
-      fechaIngresoTaller: fechaT||null,
-      fechaPagoProgramada: fechaP,
-      notasValidacion: notas||null,
-      cotizacionArchivos: todosArchivos,
-      validadoEn: new Date().toISOString(),
-      validadoPor: window.auth?.currentUser?.email||'—',
+      estatus: 'Validación',
+      tallerNombre,
+      tallerEncargado:     g('val-taller-encargado'),
+      tallerTel:           g('val-taller-tel'),
+      tallerDireccion:     g('val-taller-direccion'),
+      tallerRFC:           g('val-taller-rfc'),
+      tallerRazon:         g('val-taller-razon'),
+      tallerMaps:          g('val-taller-maps'),
+      fechaIngresoTaller:  g('val-fecha-ingreso') || null,
+      fechaEntregaEstimada:g('val-fecha-salida') || null,
+      montoCotizacion:     Number(monto),
+      fechaPagoProgramada: fechaPago,
+      sugerenciaCotizacion:g('val-sugerencia'),
+      notasValidacion:     g('val-notas'),
+      cotizacionArchivos:  window._flValArch || [],
+      validadoEn:          new Date().toISOString(),
+      validadoPor:         window.auth?.currentUser?.email || '—',
+      actualizadoEn:       new Date().toISOString(),
     });
-
+    window._flValArch = [];
     await ldSols();
-    flEnviarNotif(id,'validada');
-    document.getElementById('flvc-ov')?.remove();
-    // Reabrir el pipeline en el paso Validada
-    window.flPipelineModal('Validada');
+    flEnviarNotif(id, 'validada');
+    document.getElementById('flval-ov')?.remove();
+    window.flPipelineModal('Validación');
   } catch(e) {
-    console.error('[FL]',e);
-    err.textContent='Error al guardar. Intenta de nuevo.'; err.style.display='block';
-    btn.textContent='Enviar a Aprobación'; btn.disabled=false;
+    console.error('[FL]', e);
+    err.textContent = 'Error al guardar: ' + e.message;
+    err.style.display = 'block';
+    btn.textContent = 'Enviar a Aprobación →'; btn.disabled = false;
   }
 };
 
-// ════════════════════════════════════════════════
-// MODAL PAGOS — comprobante + programar pago
-// ════════════════════════════════════════════════
-window.flAbrirPagos = function(id) {
-  const s = flS.find(x=>x.id===id);
-  if(!s) return;
-  const v = flV.find(x=>x.eco===s.vehiculoEco||x.id===s.vehiculoId);
-
+// ═══════════════════════════════════════════════════════
+// MODAL APROBAR — Contraloría aprueba (pasa a Pagos)
+// ═══════════════════════════════════════════════════════
+window.flModalAprobar = function(id) {
+  const s = flS.find(x => x.id === id);
+  if (!s) return;
+  const v = flV.find(x => x.eco === s.vehiculoEco);
   document.getElementById('flpm-ov')?.remove();
+
+  const arch = s.cotizacionArchivos || [];
+  const html = `
+    <div class="fl-ov" id="flapr-ov" onclick="if(event.target===this)this.remove()" style="z-index:3100">
+      <div class="fl-modal" style="max-width:620px;width:100%;max-height:90vh;overflow-y:auto">
+        <div class="fl-mh" style="position:sticky;top:0;background:#fff;z-index:2">
+          <div>
+            <div style="font-size:15px;font-weight:900">Aprobar solicitud</div>
+            <div style="font-size:11px;color:#64748B;margin-top:2px">ECO ${s.vehiculoEco||'—'} · ${s.tipo||'—'}</div>
+          </div>
+          <button onclick="document.getElementById('flapr-ov').remove()" style="width:30px;height:30px;border:none;border-radius:50%;background:#F1F5F9;cursor:pointer;font-size:16px;color:#64748B">✕</button>
+        </div>
+        <div class="fl-mb" style="display:flex;flex-direction:column;gap:14px">
+
+          <!-- Resumen de la cotización -->
+          <div style="background:linear-gradient(135deg,#FEF9C3,#FEF3C7);border:1px solid #FDE68A;border-radius:10px;padding:14px">
+            <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#92400E;margin-bottom:10px">Resumen de cotización enviada por Flotilla</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px">
+              <div><div style="font-size:9px;color:#78350F;font-weight:700">Taller</div><div style="font-size:12px;font-weight:800">${s.tallerNombre||'—'}</div></div>
+              <div><div style="font-size:9px;color:#78350F;font-weight:700">Monto</div><div style="font-size:18px;font-weight:900;color:#92400E">${s.montoCotizacion?'$'+Number(s.montoCotizacion).toLocaleString('es-MX'):'—'}</div></div>
+              <div><div style="font-size:9px;color:#78350F;font-weight:700">Fecha pago</div><div style="font-size:12px;font-weight:800">${s.fechaPagoProgramada||'—'}</div></div>
+            </div>
+            ${s.tallerDireccion ? `<div style="font-size:11px;color:#78350F;margin-bottom:6px">📍 ${s.tallerDireccion}${s.tallerMaps?` · <a href="${s.tallerMaps}" target="_blank" style="color:#2563EB">Ver en mapa</a>`:''}</div>` : ''}
+            ${s.tallerRFC ? `<div style="font-size:11px;color:#78350F;margin-bottom:6px">RFC: ${s.tallerRFC} · ${s.tallerRazon||''}</div>` : ''}
+            ${s.sugerenciaCotizacion ? `<div style="background:rgba(255,255,255,.6);border-radius:8px;padding:9px 11px;font-size:11px;color:#78350F;margin-top:4px">
+              <strong>Sugerencia Flotilla:</strong> ${s.sugerenciaCotizacion}</div>` : ''}
+          </div>
+
+          <!-- Documentos de cotización -->
+          ${arch.length ? `<div>
+            <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:8px">Documentos adjuntos (${arch.length})</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              ${arch.map((a,i) => `<button onclick="flVerArchivo('${a.b64||a.base64||''}','${a.nombre||'Doc '+(i+1)}')"
+                style="font-size:10px;font-weight:700;padding:5px 10px;background:#fff;border:1px solid #E2E8F0;border-radius:7px;cursor:pointer;color:#374151;display:flex;align-items:center;gap:4px">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="${a.tipo==='pdf'?'#B91C1C':'#1D4ED8'}" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                ${a.nombre||'Doc '+(i+1)}
+              </button>`).join('')}
+            </div>
+          </div>` : ''}
+
+          <!-- Notas de validación -->
+          ${s.notasValidacion ? `<div style="background:#F8FAFC;border-radius:9px;padding:11px;font-size:11px;color:#374151">
+            <strong style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">Notas de Flotilla</strong>
+            ${s.notasValidacion}
+          </div>` : ''}
+
+          <!-- Comentario de aprobación (opcional) -->
+          <div>
+            <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:5px">Comentario para Pagos (opcional)</label>
+            <textarea id="apr-comentario" rows="3" placeholder="Instrucciones especiales, forma de pago, prioridad…"
+              style="width:100%;border:1.5px solid #E2E8F0;border-radius:9px;padding:9px 12px;font-family:inherit;font-size:12px;resize:vertical;outline:none;box-sizing:border-box"
+              onfocus="this.style.borderColor='#CA8A04'" onblur="this.style.borderColor='#E2E8F0'"></textarea>
+          </div>
+
+          <div class="fl-fa" style="margin-top:0">
+            <button onclick="document.getElementById('flapr-ov').remove()" class="fb gho" style="padding:9px 18px">Cancelar</button>
+            <button onclick="flConfirmarAprobacion('${id}')" id="apr-btn"
+              style="padding:9px 22px;background:#CA8A04;color:#fff;border:none;border-radius:9px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer">
+              ✓ Aprobar → Pagos
+            </button>
+          </div>
+          <div id="apr-err" style="display:none;padding:8px 12px;background:#FEE2E2;border-radius:8px;font-size:12px;color:#B91C1C;text-align:center"></div>
+        </div>
+      </div>
+    </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+};
+
+window.flConfirmarAprobacion = async function(id) {
+  const btn = document.getElementById('apr-btn');
+  const err = document.getElementById('apr-err');
+  const comentario = document.getElementById('apr-comentario')?.value?.trim() || '';
+  btn.textContent = 'Guardando…'; btn.disabled = true; err.style.display = 'none';
+  try {
+    await fs.updateDoc(fs.doc(db, C.SOLS, id), {
+      estatus: 'Pagos',
+      comentarioAprobacion: comentario || null,
+      aprobadoEn: new Date().toISOString(),
+      aprobadoPor: window.auth?.currentUser?.email || '—',
+      actualizadoEn: new Date().toISOString(),
+    });
+    await ldSols();
+    flEnviarNotif(id, 'aprobada');
+    document.getElementById('flapr-ov')?.remove();
+    window.flPipelineModal('Pagos');
+  } catch(e) {
+    err.textContent = 'Error: ' + e.message; err.style.display = 'block';
+    btn.textContent = '✓ Aprobar → Pagos'; btn.disabled = false;
+  }
+};
+
+// ═══════════════════════════════════════════════════════
+// MODAL PAGOS — subir comprobante o programar fecha
+// ═══════════════════════════════════════════════════════
+window.flModalPagos = function(id) {
+  const s = flS.find(x => x.id === id);
+  if (!s) return;
+  document.getElementById('flpm-ov')?.remove();
+  window._pgComp = null;
 
   const html = `
     <div class="fl-ov" id="flpg-ov" onclick="if(event.target===this)this.remove()" style="z-index:3100">
-      <div class="fl-modal" style="max-width:600px;width:100%">
-        <div class="fl-mh">
+      <div class="fl-modal" style="max-width:580px;width:100%;max-height:90vh;overflow-y:auto">
+        <div class="fl-mh" style="position:sticky;top:0;background:#fff;z-index:2">
           <div>
-            <div style="font-size:15px;font-weight:900;letter-spacing:-.3px">Gestión de Pago</div>
+            <div style="font-size:15px;font-weight:900">Gestión de Pago</div>
             <div style="font-size:11px;color:#64748B;margin-top:2px">ECO ${s.vehiculoEco||'—'} · ${s.tipo||'—'}</div>
           </div>
           <button onclick="document.getElementById('flpg-ov').remove()" style="width:30px;height:30px;border:none;border-radius:50%;background:#F1F5F9;cursor:pointer;font-size:16px;color:#64748B">✕</button>
         </div>
         <div class="fl-mb" style="display:flex;flex-direction:column;gap:14px">
 
-          <!-- Resumen de la solicitud -->
-          <div style="background:linear-gradient(135deg,#F0FDF4,#DCFCE7);border:1px solid #BBF7D0;border-radius:10px;padding:14px">
-            <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#15803D;margin-bottom:8px">Resumen de cotización aprobada</div>
+          <!-- Resumen aprobado -->
+          <div style="background:linear-gradient(135deg,#F0FDF4,#DCFCE7);border:1px solid #86EFAC;border-radius:10px;padding:14px">
+            <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#15803D;margin-bottom:10px">Aprobado por Contraloría</div>
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
-              <div>
-                <div style="font-size:9px;color:#166534;font-weight:700">Taller</div>
-                <div style="font-size:12px;font-weight:800;color:#14532D">${s.tallerRecomendado||'—'}</div>
-              </div>
-              <div>
-                <div style="font-size:9px;color:#166534;font-weight:700">Monto</div>
-                <div style="font-size:16px;font-weight:900;color:#14532D">${s.montoCotizacion?'$'+Number(s.montoCotizacion).toLocaleString('es-MX'):'—'}</div>
-              </div>
-              <div>
-                <div style="font-size:9px;color:#166534;font-weight:700">Fecha programada</div>
-                <div style="font-size:12px;font-weight:800;color:#14532D">${s.fechaPagoProgramada||'—'}</div>
-              </div>
+              <div><div style="font-size:9px;color:#166534;font-weight:700">Taller</div><div style="font-size:12px;font-weight:800">${s.tallerNombre||'—'}</div></div>
+              <div><div style="font-size:9px;color:#166534;font-weight:700">Monto</div><div style="font-size:18px;font-weight:900;color:#14532D">${s.montoCotizacion?'$'+Number(s.montoCotizacion).toLocaleString('es-MX'):'—'}</div></div>
+              <div><div style="font-size:9px;color:#166534;font-weight:700">Fecha prog.</div><div style="font-size:12px;font-weight:800">${s.fechaPagoProgramada||'—'}</div></div>
             </div>
-            ${s.cotizacionArchivos?.length?`<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
-              ${s.cotizacionArchivos.map((a,i)=>`<button onclick="flVerArchivo('${id}',${i},'cot')"
-                style="font-size:10px;font-weight:700;padding:4px 10px;background:#fff;border:1px solid #86EFAC;border-radius:6px;cursor:pointer;color:#15803D;display:flex;align-items:center;gap:4px">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                ${a.nombre||'Doc '+(i+1)}
-              </button>`).join('')}
-            </div>`:''}
+            ${s.comentarioAprobacion ? `<div style="margin-top:8px;padding:8px 10px;background:rgba(255,255,255,.7);border-radius:7px;font-size:11px;color:#166534"><strong>Nota Contraloría:</strong> ${s.comentarioAprobacion}</div>` : ''}
           </div>
 
-          <!-- Programar pago en Google Calendar -->
-          <div style="border:1.5px solid #E0E7FF;border-radius:10px;padding:14px;background:#F8FAFF">
-            <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#4338CA;margin-bottom:10px;display:flex;align-items:center;gap:6px">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4338CA" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-              Programar en Google Calendar
+          <!-- Documentos cotización para revisión -->
+          ${(s.cotizacionArchivos||[]).length ? `<div>
+            <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:7px">Documentos de cotización</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              ${(s.cotizacionArchivos||[]).map((a,i)=>`<button onclick="flVerArchivo('${a.b64||a.base64||''}','${a.nombre||'Doc '+(i+1)}')"
+                style="font-size:10px;font-weight:700;padding:5px 10px;background:#fff;border:1px solid #E2E8F0;border-radius:7px;cursor:pointer;color:#374151">
+                📎 ${a.nombre||'Doc '+(i+1)}</button>`).join('')}
             </div>
+          </div>` : ''}
+
+          <!-- Programar en Google Calendar -->
+          <div style="border:1.5px solid #E0E7FF;border-radius:10px;padding:14px;background:#F8FAFF">
+            <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#4338CA;margin-bottom:10px">📅 Programar en Google Calendar</div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
               <div>
-                <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:5px">Fecha de pago</label>
+                <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">Fecha de pago</label>
                 <input id="pg-fecha" type="date" value="${s.fechaPagoProgramada||''}"
-                  style="width:100%;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:9px;font-family:inherit;font-size:13px;outline:none;box-sizing:border-box"
+                  style="width:100%;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;outline:none;box-sizing:border-box"
                   onfocus="this.style.borderColor='#4338CA'" onblur="this.style.borderColor='#E2E8F0'">
               </div>
               <div>
-                <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:5px">Hora</label>
+                <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">Hora</label>
                 <input id="pg-hora" type="time" value="10:00"
-                  style="width:100%;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:9px;font-family:inherit;font-size:13px;outline:none;box-sizing:border-box"
+                  style="width:100%;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;outline:none;box-sizing:border-box"
                   onfocus="this.style.borderColor='#4338CA'" onblur="this.style.borderColor='#E2E8F0'">
               </div>
             </div>
-            <button onclick="flProgramarPagoCalendar('${id}')"
-              style="width:100%;padding:10px;background:#4338CA;color:#fff;border:none;border-radius:9px;font-family:inherit;font-size:12px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;transition:.15s"
-              onmouseover="this.style.background='#3730A3'" onmouseout="this.style.background='#4338CA'">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-              Agregar a Google Calendar
+            <button onclick="flProgramarCalendar('${id}')"
+              style="width:100%;padding:9px;background:#4338CA;color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:12px;font-weight:800;cursor:pointer">
+              📅 Agregar a Google Calendar
             </button>
-            <div id="pg-cal-ok" style="display:none;margin-top:8px;text-align:center;font-size:11px;color:#4338CA;font-weight:700">
-              ✓ Evento creado en tu Google Calendar
-            </div>
+            <div id="pg-cal-ok" style="display:none;margin-top:7px;text-align:center;font-size:11px;color:#4338CA;font-weight:700">✓ Evento creado en Google Calendar</div>
           </div>
 
-          <!-- Subir comprobante de pago -->
+          <!-- Subir comprobante -->
           <div>
-            <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:5px">Comprobante de pago (PDF o imagen)</label>
-            ${s.comprobantePago ? `
-              <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#F0FDF4;border:1px solid #86EFAC;border-radius:9px">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#15803D" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-                <span style="font-size:12px;font-weight:700;color:#15803D;flex:1">${s.comprobantePago.nombre||'Comprobante adjunto'}</span>
-                <button onclick="flVerArchivo('${id}',0,'pago')" style="font-size:11px;font-weight:700;padding:5px 10px;background:#fff;border:1px solid #86EFAC;border-radius:6px;cursor:pointer;color:#15803D">Ver</button>
-                <button onclick="flElimComprobanteTemp('${id}')" style="font-size:11px;padding:5px 8px;background:none;border:none;cursor:pointer;color:#EF4444">✕</button>
-              </div>` :
-              `<div onclick="document.getElementById('pg-file-input').click()"
-                style="border:2px dashed #CBD5E1;border-radius:10px;padding:18px;text-align:center;cursor:pointer;transition:.12s;background:#FAFBFC"
-                onmouseover="this.style.borderColor='#D97706';this.style.background='#FFFBEB'"
-                onmouseout="this.style.borderColor='#CBD5E1';this.style.background='#FAFBFC'">
-                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="1.8" stroke-linecap="round" style="margin-bottom:6px"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                <div style="font-size:12px;font-weight:700;color:#374151">Subir comprobante</div>
-                <div style="font-size:11px;color:#94A3B8;margin-top:3px">PDF, JPG, PNG</div>
-              </div>`}
-            <input id="pg-file-input" type="file" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="pgProcesarComprobante(this.files,'${id}')">
-            <div id="pg-comp-preview" style="margin-top:8px"></div>
+            <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:6px">Comprobante de pago (PDF o imagen) *</label>
+            <div id="pg-comp-preview" style="margin-bottom:8px">
+              ${s.comprobantePago ? `<div style="display:flex;align-items:center;gap:8px;padding:9px 12px;background:#F0FDF4;border:1px solid #86EFAC;border-radius:9px">
+                <span style="font-size:12px;font-weight:700;color:#15803D;flex:1">✓ Comprobante ya guardado</span>
+                <button onclick="flVerArchivo('${s.comprobantePago.b64||s.comprobantePago.base64||''}','Comprobante')" style="font-size:10px;font-weight:700;padding:4px 10px;background:#fff;border:1px solid #86EFAC;border-radius:6px;cursor:pointer;color:#15803D">Ver</button>
+                <button onclick="window._pgComp=null;document.getElementById('pg-comp-preview').innerHTML=''" style="border:none;background:none;cursor:pointer;color:#EF4444;font-size:14px;padding:0 2px">✕</button>
+              </div>` : ''}
+            </div>
+            ${flZonaDrop('pg-file-input','PDF, JPG, PNG')}
+            <input id="pg-file-input" type="file" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="flPgCargarComp(this.files,'${id}')">
           </div>
 
-          <!-- Acciones finales -->
           <div class="fl-fa" style="margin-top:0">
-            <button onclick="document.getElementById('flpg-ov').remove()" class="fb gho" style="padding:10px 18px">Cerrar</button>
-            <button onclick="flMarcarPagado('${id}')" class="fb acc" id="pg-btn-pagado"
-              style="padding:10px 24px;background:#15803D;display:flex;align-items:center;gap:7px"
-              ${!s.comprobantePago?'disabled style="padding:10px 24px;background:#6B7280;cursor:not-allowed;opacity:.6"':''}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-              Marcar como Pagado → Cerrar
+            <button onclick="document.getElementById('flpg-ov').remove()" class="fb gho" style="padding:9px 18px">Cerrar</button>
+            <button onclick="flMarcarPagado('${id}')" id="pg-btn-pagado"
+              style="padding:9px 22px;background:#15803D;color:#fff;border:none;border-radius:9px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer">
+              ✓ Pagado → Cierre
             </button>
           </div>
           <div id="pg-err" style="display:none;padding:8px 12px;background:#FEE2E2;border-radius:8px;font-size:12px;color:#B91C1C;text-align:center"></div>
         </div>
       </div>
     </div>`;
-
   document.body.insertAdjacentHTML('beforeend', html);
 };
 
-// Procesar comprobante de pago subido
-window.pgProcesarComprobante = async function(files, id) {
-  const file = files[0];
-  if(!file) return;
-  if(file.size > 5*1024*1024) { alert('El archivo supera 5 MB'); return; }
-  const base64 = await new Promise(r => {
-    const fr = new FileReader();
-    fr.onload = e => r(e.target.result);
-    fr.readAsDataURL(file);
-  });
-  const tipo = file.type.includes('pdf') ? 'pdf' : 'img';
-  const kb = (file.size/1024).toFixed(0);
-  window._pgComprobanteTemp = { nombre: file.name, b64: base64, tipo, kb: kb };
-
-  // Mostrar preview en el modal
-  const prev = document.getElementById('pg-comp-preview');
-  if(prev) {
-    prev.innerHTML = `<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#B45309" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-      <span style="font-size:11px;font-weight:600;flex:1">${file.name}</span>
-      <span style="font-size:10px;color:#94A3B8">${kb}KB</span>
+window.flPgCargarComp = async function(files, id) {
+  const file = files[0]; if (!file) return;
+  try {
+    const b64 = await flLeerArchivo(file);
+    const kb = Math.round(file.size / 1024);
+    const tipo = file.type.includes('pdf') ? 'pdf' : 'img';
+    window._pgComp = { nombre: file.name, b64, tipo, kb };
+    const prev = document.getElementById('pg-comp-preview');
+    if (prev) prev.innerHTML = `<div style="display:flex;align-items:center;gap:8px;padding:9px 12px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:9px">
+      <span style="font-size:12px;font-weight:700;flex:1">${file.name} (${kb}KB)</span>
       <span style="font-size:10px;color:#B45309;font-weight:700">Listo para guardar</span>
     </div>`;
-  }
-  // Habilitar botón Pagado
-  const btn = document.getElementById('pg-btn-pagado');
-  if(btn) { btn.disabled=false; btn.style.background='#15803D'; btn.style.opacity='1'; btn.style.cursor='pointer'; }
+  } catch(e) { alert(e.message); }
 };
 
-// Marcar como Pagado → Cerrada
-window.flMarcarPagado = async function(id) {
-  const btn = document.getElementById('pg-btn-pagado');
-  const err = document.getElementById('pg-err');
-  const comprobante = window._pgComprobanteTemp || null;
-  const s = flS.find(x=>x.id===id);
-
-  if(!comprobante && !s?.comprobantePago) {
-    err.textContent='Sube el comprobante de pago antes de cerrar.'; err.style.display='block'; return;
-  }
-
-  btn.textContent='Guardando…'; btn.disabled=true; err.style.display='none';
-  try {
-    const update = {
-      estatus: 'Cerrada',
-      pagadoEn: new Date().toISOString(),
-      pagadoPor: window.auth?.currentUser?.email||'—',
-    };
-    if(comprobante) { update.comprobantePago = comprobante; window._pgComprobanteTemp=null; }
-    await fs.updateDoc(fs.doc(db, C.SOLS, id), update);
-    await ldSols();
-    flEnviarNotif(id,'cerrada');
-    document.getElementById('flpg-ov')?.remove();
-    window.flPipelineModal('Cerrada');
-  } catch(e) {
-    console.error('[FL]',e);
-    err.textContent='Error al guardar. Intenta de nuevo.'; err.style.display='block';
-    btn.textContent='Marcar como Pagado → Cerrar'; btn.disabled=false;
-  }
-};
-
-// Programar pago en Google Calendar
-window.flProgramarPagoCalendar = function(id) {
-  const s = flS.find(x=>x.id===id);
-  if(!s) return;
+window.flProgramarCalendar = function(id) {
+  const s = flS.find(x => x.id === id); if (!s) return;
   const fecha = document.getElementById('pg-fecha')?.value || s.fechaPagoProgramada || '';
-  const hora  = document.getElementById('pg-hora')?.value  || '10:00';
-  if(!fecha) { alert('Selecciona una fecha de pago'); return; }
-
+  const hora  = document.getElementById('pg-hora')?.value || '10:00';
+  if (!fecha) { alert('Selecciona una fecha de pago'); return; }
   const [y,m,d] = fecha.split('-');
   const [hh,mm] = hora.split(':');
   const startDt = `${y}${m}${d}T${hh}${mm}00`;
-  // Fin = 1 hora después
   const endH = String(Number(hh)+1).padStart(2,'0');
   const endDt = `${y}${m}${d}T${endH}${mm}00`;
-
-  const v = flV.find(x=>x.eco===s.vehiculoEco||x.id===s.vehiculoId);
-  const titulo = encodeURIComponent(`PAGO FLOTILLA — ECO ${s.vehiculoEco||'?'} · ${s.tipo||'Mantenimiento'}`);
-  const detalle = encodeURIComponent(
-    `Taller: ${s.tallerRecomendado||'—'}\nMonto: $${s.montoCotizacion?Number(s.montoCotizacion).toLocaleString('es-MX'):'—'}\nVehículo: ${v?v.unidad+' '+v.año:s.vehiculoEco||'—'}\nSolicitante: ${s.solicitante||'—'}\nID Solicitud: ${(s.id||'').slice(-8).toUpperCase()}`
-  );
-
-  const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${titulo}&dates=${startDt}/${endDt}&details=${detalle}`;
-  window.open(url, '_blank');
-
-  // Guardar fecha en Firestore
-  fs.updateDoc(fs.doc(db, C.SOLS, id), { fechaPagoProgramada: fecha }).catch(e=>console.error('[FL]',e));
+  const titulo = encodeURIComponent(`PAGO FLOTILLA — ECO ${s.vehiculoEco||'?'} · ${s.tipo||'Servicio'}`);
+  const detalle = encodeURIComponent(`Taller: ${s.tallerNombre||'—'}\nMonto: $${s.montoCotizacion?Number(s.montoCotizacion).toLocaleString('es-MX'):'—'}\nID: ${(s.id||'').slice(-8).toUpperCase()}`);
+  window.open(`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${titulo}&dates=${startDt}/${endDt}&details=${detalle}`, '_blank');
+  fs.updateDoc(fs.doc(db, C.SOLS, id), { fechaPagoProgramada: fecha }).catch(() => {});
   const ok = document.getElementById('pg-cal-ok');
-  if(ok) { ok.style.display='block'; setTimeout(()=>{ if(ok) ok.style.display='none'; },4000); }
+  if (ok) { ok.style.display = 'block'; setTimeout(() => { if(ok) ok.style.display='none'; }, 4000); }
 };
 
-// Ver archivo adjunto (cotización o comprobante)
-window.flVerArchivo = function(id, idx, tipo) {
-  const s = flS.find(x=>x.id===id);
-  if(!s) return;
-  const ar0 = tipo==='pago' ? s.comprobantePago : (s.cotizacionArchivos||[])[idx]; const archivo = ar0 ? {...ar0, base64: ar0.base64||ar0.b64||''} : null;
-  if(!archivo?.base64) return;
+window.flMarcarPagado = async function(id) {
+  const btn = document.getElementById('pg-btn-pagado');
+  const err = document.getElementById('pg-err');
+  const s = flS.find(x => x.id === id);
+  const comp = window._pgComp || s?.comprobantePago || null;
+  if (!comp) { err.textContent = 'Sube el comprobante de pago primero.'; err.style.display = 'block'; return; }
+  btn.textContent = 'Guardando…'; btn.disabled = true; err.style.display = 'none';
+  try {
+    await fs.updateDoc(fs.doc(db, C.SOLS, id), {
+      estatus: 'Cierre',
+      comprobantePago: window._pgComp || s.comprobantePago,
+      pagadoEn: new Date().toISOString(),
+      pagadoPor: window.auth?.currentUser?.email || '—',
+      actualizadoEn: new Date().toISOString(),
+    });
+    window._pgComp = null;
+    await ldSols();
+    flEnviarNotif(id, 'pagado');
+    document.getElementById('flpg-ov')?.remove();
+    window.flPipelineModal('Cierre');
+  } catch(e) {
+    err.textContent = 'Error: ' + e.message; err.style.display = 'block';
+    btn.textContent = '✓ Pagado → Cierre'; btn.disabled = false;
+  }
+};
 
-  const ov = document.createElement('div');
-  ov.className = 'fl-ov';
-  ov.style.zIndex = '4000';
-  ov.onclick = e => { if(e.target===ov) ov.remove(); };
+// ═══════════════════════════════════════════════════════
+// MODAL CIERRE — Fátima sube factura y finaliza
+// ═══════════════════════════════════════════════════════
+window.flModalCierre = function(id) {
+  const s = flS.find(x => x.id === id); if (!s) return;
+  document.getElementById('flpm-ov')?.remove();
+  window._flFactura = null;
 
-  if(archivo.tipo==='pdf') {
-    ov.innerHTML = `<div class="fl-modal" style="max-width:800px;width:100%;height:90vh;display:flex;flex-direction:column">
-      <div class="fl-mh" style="flex-shrink:0">
-        <span style="font-size:13px;font-weight:700">${archivo.nombre||'Documento'}</span>
-        <div style="display:flex;gap:8px">
-          <a href="${archivo.base64}" download="${archivo.nombre||'documento.pdf'}" style="font-size:11px;font-weight:700;padding:5px 12px;background:#EFF6FF;color:#2563EB;border-radius:7px;text-decoration:none">Descargar</a>
-          <button onclick="this.closest('.fl-ov').remove()" style="width:28px;height:28px;border:none;background:#F1F5F9;border-radius:50%;cursor:pointer;font-size:14px">✕</button>
+  const html = `
+    <div class="fl-ov" id="flcierr-ov" onclick="if(event.target===this)this.remove()" style="z-index:3100">
+      <div class="fl-modal" style="max-width:580px;width:100%;max-height:90vh;overflow-y:auto">
+        <div class="fl-mh" style="position:sticky;top:0;background:#fff;z-index:2">
+          <div>
+            <div style="font-size:15px;font-weight:900">Cierre de servicio</div>
+            <div style="font-size:11px;color:#64748B;margin-top:2px">ECO ${s.vehiculoEco||'—'} · ${s.tipo||'—'}</div>
+          </div>
+          <button onclick="document.getElementById('flcierr-ov').remove()" style="width:30px;height:30px;border:none;border-radius:50%;background:#F1F5F9;cursor:pointer;font-size:16px;color:#64748B">✕</button>
+        </div>
+        <div class="fl-mb" style="display:flex;flex-direction:column;gap:14px">
+
+          <!-- Resumen del proceso -->
+          <div style="background:linear-gradient(135deg,#EFF6FF,#DBEAFE);border:1px solid #BFDBFE;border-radius:10px;padding:14px">
+            <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#1D4ED8;margin-bottom:10px">Resumen del servicio</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              ${[['Taller',s.tallerNombre||'—'],['Monto',s.montoCotizacion?'$'+Number(s.montoCotizacion).toLocaleString('es-MX'):'—'],['Ingreso taller',s.fechaIngresoTaller||'—'],['Entrega estimada',s.fechaEntregaEstimada||'—'],['Aprobado por',s.aprobadoPor||'—'],['Pago registrado',s.pagadoEn?s.pagadoEn.slice(0,10):'—']].map(([l,val])=>`
+                <div><div style="font-size:9px;color:#1E40AF;font-weight:700">${l}</div><div style="font-size:11px;font-weight:700">${val}</div></div>`).join('')}
+            </div>
+          </div>
+
+          <!-- Factura del servicio -->
+          <div>
+            <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:6px">Factura del servicio (PDF o imagen) *</label>
+            <div id="cierr-fact-preview" style="margin-bottom:8px">
+              ${s.facturaServicio ? `<div style="display:flex;align-items:center;gap:8px;padding:9px 12px;background:#F0FDF4;border:1px solid #86EFAC;border-radius:9px">
+                <span style="font-size:12px;font-weight:700;color:#15803D;flex:1">✓ Factura ya guardada</span>
+                <button onclick="flVerArchivo('${s.facturaServicio.b64||s.facturaServicio.base64||''}','Factura')" style="font-size:10px;font-weight:700;padding:4px 10px;background:#fff;border:1px solid #86EFAC;border-radius:6px;cursor:pointer;color:#15803D">Ver</button>
+              </div>` : ''}
+            </div>
+            ${flZonaDrop('cierr-file-input','PDF, JPG, PNG')}
+            <input id="cierr-file-input" type="file" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="flCierrCargarFactura(this.files)">
+          </div>
+
+          <!-- Notas de cierre -->
+          <div>
+            <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:5px">Observaciones finales (opcional)</label>
+            <textarea id="cierr-notas" rows="3" placeholder="Estado en que se entregó el vehículo, observaciones del taller, garantías…"
+              style="width:100%;border:1.5px solid #E2E8F0;border-radius:9px;padding:9px 12px;font-family:inherit;font-size:12px;resize:vertical;outline:none;box-sizing:border-box"
+              onfocus="this.style.borderColor='#0369A1'" onblur="this.style.borderColor='#E2E8F0'">${s.notasCierre||''}</textarea>
+          </div>
+
+          <div class="fl-fa" style="margin-top:0">
+            <button onclick="document.getElementById('flcierr-ov').remove()" class="fb gho" style="padding:9px 18px">Cancelar</button>
+            <button onclick="flFinalizarServicio('${id}')" id="cierr-btn"
+              style="padding:9px 22px;background:#0369A1;color:#fff;border:none;border-radius:9px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer">
+              ✓ Finalizar servicio
+            </button>
+          </div>
+          <div id="cierr-err" style="display:none;padding:8px 12px;background:#FEE2E2;border-radius:8px;font-size:12px;color:#B91C1C;text-align:center"></div>
         </div>
       </div>
-      <iframe src="${archivo.base64}" style="flex:1;border:none;border-radius:0 0 12px 12px"></iframe>
     </div>`;
-  } else {
-    ov.innerHTML = `<div class="fl-modal" style="max-width:700px;width:100%;max-height:90vh;overflow:hidden">
-      <div class="fl-mh">
-        <span style="font-size:13px;font-weight:700">${archivo.nombre||'Imagen'}</span>
-        <div style="display:flex;gap:8px">
-          <a href="${archivo.base64}" download="${archivo.nombre||'imagen.jpg'}" style="font-size:11px;font-weight:700;padding:5px 12px;background:#EFF6FF;color:#2563EB;border-radius:7px;text-decoration:none">Descargar</a>
-          <button onclick="this.closest('.fl-ov').remove()" style="width:28px;height:28px;border:none;background:#F1F5F9;border-radius:50%;cursor:pointer;font-size:14px">✕</button>
+  document.body.insertAdjacentHTML('beforeend', html);
+};
+
+window.flCierrCargarFactura = async function(files) {
+  const file = files[0]; if (!file) return;
+  try {
+    const b64 = await flLeerArchivo(file);
+    const kb = Math.round(file.size / 1024);
+    window._flFactura = { nombre: file.name, b64, tipo: file.type.includes('pdf')?'pdf':'img', kb };
+    const prev = document.getElementById('cierr-fact-preview');
+    if (prev) prev.innerHTML = `<div style="display:flex;align-items:center;gap:8px;padding:9px 12px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:9px">
+      <span style="font-size:12px;font-weight:700;flex:1">${file.name} (${kb}KB)</span>
+      <span style="font-size:10px;color:#B45309;font-weight:700">Listo para guardar</span>
+    </div>`;
+  } catch(e) { alert(e.message); }
+};
+
+window.flFinalizarServicio = async function(id) {
+  const btn = document.getElementById('cierr-btn');
+  const err = document.getElementById('cierr-err');
+  const s = flS.find(x => x.id === id);
+  const factura = window._flFactura || s?.facturaServicio || null;
+  if (!factura) { err.textContent = 'Sube la factura del servicio para finalizar.'; err.style.display='block'; return; }
+  btn.textContent = 'Guardando…'; btn.disabled = true; err.style.display = 'none';
+  try {
+    await fs.updateDoc(fs.doc(db, C.SOLS, id), {
+      estatus: 'Cerrada',
+      facturaServicio: window._flFactura || s.facturaServicio,
+      notasCierre: document.getElementById('cierr-notas')?.value?.trim() || null,
+      cerradoEn: new Date().toISOString(),
+      cerradoPor: window.auth?.currentUser?.email || '—',
+      actualizadoEn: new Date().toISOString(),
+    });
+    window._flFactura = null;
+    await ldSols();
+    flEnviarNotif(id, 'cerrada');
+    document.getElementById('flcierr-ov')?.remove();
+    // Abrir resumen final
+    flResumenFinal(id);
+  } catch(e) {
+    err.textContent = 'Error: ' + e.message; err.style.display = 'block';
+    btn.textContent = '✓ Finalizar servicio'; btn.disabled = false;
+  }
+};
+
+// ═══════════════════════════════════════════════════════
+// RESUMEN FINAL — expediente completo para compartir/PDF
+// ═══════════════════════════════════════════════════════
+window.flResumenFinal = function(id) {
+  // Refrescar s desde flS actualizado
+  const s = flS.find(x => x.id === id); if (!s) return;
+  const v = flV.find(x => x.eco === s.vehiculoEco || x.id === s.vehiculoId);
+
+  const seccion = (titulo, contenido) => `
+    <div style="margin-bottom:16px">
+      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid #F1F5F9">${titulo}</div>
+      ${contenido}
+    </div>`;
+
+  const campo = (label, val, mono) => val && val !== '—' ? `
+    <div style="display:flex;justify-content:space-between;align-items:baseline;padding:4px 0;border-bottom:1px solid #F8FAFC">
+      <span style="font-size:10px;color:#94A3B8;font-weight:600">${label}</span>
+      <span style="font-size:11px;font-weight:700;color:#0A0F1E;${mono?'font-family:JetBrains Mono,monospace':''}">${val}</span>
+    </div>` : '';
+
+  const fmt = iso => iso ? iso.slice(0,10) : '—';
+  const fmtM = n => n ? '$'+Number(n).toLocaleString('es-MX') : '—';
+
+  const archBtn = (a, i) => a ? `<button onclick="flVerArchivo('${a.b64||a.base64||''}','${a.nombre||'Archivo '+(i+1)}')"
+    style="font-size:10px;font-weight:700;padding:5px 10px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:7px;cursor:pointer;color:#374151;display:flex;align-items:center;gap:4px">
+    📎 ${a.nombre||'Archivo '+(i+1)}</button>` : '';
+
+  const html = `
+    <div class="fl-ov" id="flres-ov" onclick="if(event.target===this)this.remove()" style="z-index:3100">
+      <div class="fl-modal" style="max-width:640px;width:100%;max-height:92vh;display:flex;flex-direction:column;overflow:hidden">
+        <!-- HEADER -->
+        <div style="background:linear-gradient(135deg,#0A1628,#1E3A5F);padding:20px 24px;flex-shrink:0">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <div>
+              <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:rgba(255,255,255,.5);margin-bottom:4px">Expediente de Servicio — ${(s.id||'').slice(-8).toUpperCase()}</div>
+              <div style="font-size:20px;font-weight:900;color:#fff;letter-spacing:-.4px">ECO ${s.vehiculoEco||'—'} · ${s.tipo||'—'}</div>
+              <div style="font-size:12px;color:rgba(255,255,255,.6);margin-top:3px">${v?v.unidad+' '+v.año:''} · ${s.solicitante||s.creadoPor||'—'}</div>
+            </div>
+            <div style="text-align:right">
+              <div style="display:inline-flex;align-items:center;gap:5px;background:rgba(255,255,255,.1);border-radius:100px;padding:5px 12px">
+                <div style="width:7px;height:7px;border-radius:50%;background:#4ADE80"></div>
+                <span style="font-size:11px;font-weight:800;color:#4ADE80">CERRADA</span>
+              </div>
+              <div style="font-size:10px;color:rgba(255,255,255,.4);margin-top:5px">${fmt(s.cerradoEn)}</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- CONTENIDO -->
+        <div style="overflow-y:auto;flex:1;padding:20px 24px">
+
+          ${seccion('📋 Solicitud original', `
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0">
+              ${campo('Tipo de servicio', s.tipo)}
+              ${campo('Prioridad', s.prioridad||'Normal')}
+              ${campo('Solicitante', s.solicitante||s.creadoPor)}
+              ${campo('Fecha solicitud', fmt(s.creadoEn))}
+              ${campo('KM reportado', s.kilometrajeReportado)}
+              ${campo('Gasolina', s.gasolina!=null?s.gasolina+'%':null)}
+            </div>
+            ${s.descripcion ? `<div style="margin-top:8px;padding:9px 11px;background:#F8FAFC;border-radius:8px;font-size:11px;color:#374151">${s.descripcion}</div>` : ''}
+          `)}
+
+          ${seccion('🔧 Taller / Proveedor', `
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0">
+              ${campo('Taller', s.tallerNombre)}
+              ${campo('Encargado', s.tallerEncargado)}
+              ${campo('Teléfono', s.tallerTel)}
+              ${campo('RFC', s.tallerRFC)}
+              ${campo('Razón social', s.tallerRazon)}
+              ${campo('Dirección', s.tallerDireccion)}
+              ${campo('Ingreso', fmt(s.fechaIngresoTaller))}
+              ${campo('Entrega estimada', fmt(s.fechaEntregaEstimada))}
+            </div>
+            ${s.tallerMaps ? `<div style="margin-top:8px"><a href="${s.tallerMaps}" target="_blank" style="font-size:11px;font-weight:700;color:#2563EB;text-decoration:none">📍 Ver taller en Google Maps →</a></div>` : ''}
+            ${s.sugerenciaCotizacion ? `<div style="margin-top:8px;padding:9px 11px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;font-size:11px;color:#92400E"><strong>Sugerencia Flotilla:</strong> ${s.sugerenciaCotizacion}</div>` : ''}
+          `)}
+
+          ${seccion('💰 Cotización y Pago', `
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0">
+              ${campo('Monto cotizado', fmtM(s.montoCotizacion))}
+              ${campo('Fecha pago programada', fmt(s.fechaPagoProgramada))}
+              ${campo('Validado por', s.validadoPor)}
+              ${campo('Validado el', fmt(s.validadoEn))}
+              ${campo('Aprobado por', s.aprobadoPor)}
+              ${campo('Aprobado el', fmt(s.aprobadoEn))}
+              ${campo('Pago registrado por', s.pagadoPor)}
+              ${campo('Fecha pago real', fmt(s.pagadoEn))}
+            </div>
+            ${s.comentarioAprobacion ? `<div style="margin-top:8px;padding:9px 11px;background:#FEF9C3;border-radius:8px;font-size:11px;color:#92400E"><strong>Nota Contraloría:</strong> ${s.comentarioAprobacion}</div>` : ''}
+          `)}
+
+          ${seccion('📎 Documentos adjuntos', `
+            <div style="display:flex;flex-direction:column;gap:6px">
+              ${(s.cotizacionArchivos||[]).length ? `<div style="font-size:10px;font-weight:700;color:#64748B;margin-bottom:3px">Cotización (${s.cotizacionArchivos.length} archivos)</div>
+                <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px">${(s.cotizacionArchivos||[]).map((a,i)=>archBtn(a,i)).join('')}</div>` : ''}
+              ${s.comprobantePago ? `<div style="font-size:10px;font-weight:700;color:#64748B;margin-bottom:3px">Comprobante de pago</div>
+                <div style="display:flex;gap:5px;margin-bottom:8px">${archBtn(s.comprobantePago,0)}</div>` : ''}
+              ${s.facturaServicio ? `<div style="font-size:10px;font-weight:700;color:#64748B;margin-bottom:3px">Factura del servicio</div>
+                <div style="display:flex;gap:5px;">${archBtn(s.facturaServicio,0)}</div>` : ''}
+              ${!s.cotizacionArchivos?.length && !s.comprobantePago && !s.facturaServicio ? '<div style="font-size:11px;color:#94A3B8">Sin documentos adjuntos</div>' : ''}
+            </div>
+          `)}
+
+          ${s.notasCierre ? seccion('📝 Observaciones finales', `<div style="padding:9px 11px;background:#F8FAFC;border-radius:8px;font-size:11px;color:#374151">${s.notasCierre}</div>`) : ''}
+
+          ${seccion('⏱ Línea de tiempo', `
+            <div style="display:flex;flex-direction:column;gap:6px">
+              ${[
+                ['Solicitud creada', fmt(s.creadoEn), s.solicitante||s.creadoPor, '#6D28D9'],
+                ['Validado por Flotilla', fmt(s.validadoEn), s.validadoPor, '#1D4ED8'],
+                ['Aprobado por Contraloría', fmt(s.aprobadoEn), s.aprobadoPor, '#CA8A04'],
+                ['Pago registrado', fmt(s.pagadoEn), s.pagadoPor, '#15803D'],
+                ['Servicio cerrado', fmt(s.cerradoEn), s.cerradoPor, '#0369A1'],
+              ].filter(([,fecha])=>fecha&&fecha!=='—').map(([label,fecha,quien,color])=>`
+                <div style="display:flex;align-items:center;gap:10px">
+                  <div style="width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0"></div>
+                  <div style="flex:1;font-size:11px;font-weight:700">${label}</div>
+                  <div style="font-size:10px;color:#94A3B8">${fecha}</div>
+                  ${quien?`<div style="font-size:10px;color:#64748B;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${quien}</div>`:''}
+                </div>`).join('')}
+            </div>
+          `)}
+        </div>
+
+        <!-- FOOTER ACCIONES -->
+        <div style="padding:14px 24px;border-top:1px solid #F1F5F9;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;background:#FAFBFC">
+          <button onclick="document.getElementById('flres-ov').remove()" class="fb gho" style="padding:9px 18px">Cerrar</button>
+          <div style="display:flex;gap:8px">
+            <button onclick="flGenerarPDF('${id}')" class="fb gho" style="padding:9px 16px;display:flex;align-items:center;gap:6px">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              PDF
+            </button>
+            <button onclick="flCompartirWA('${id}')" style="padding:9px 16px;background:#25D366;color:#fff;border:none;border-radius:9px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+              WhatsApp
+            </button>
+          </div>
         </div>
       </div>
-      <div style="padding:16px;text-align:center;overflow-y:auto;max-height:calc(90vh - 60px)">
-        <img src="${archivo.base64}" style="max-width:100%;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.15)">
-      </div>
+    </div>`;
+  document.getElementById('flres-ov')?.remove();
+  document.body.insertAdjacentHTML('beforeend', html);
+};
+
+// Acceso al resumen desde flVerSol
+window.flAbrirResumen = function(id) {
+  const s = flS.find(x => x.id === id);
+  if (s?.estatus === 'Cerrada') {
+    flResumenFinal(id);
+  } else {
+    flVerSol(id);
+  }
+};
+
+// Porcentaje porEst con nuevos estatus para rPanel
+function rFlCalendario() {
+  const ahora = new Date();
+  const mes = ahora.getMonth();
+  const anio = ahora.getFullYear();
+  const hoy = ahora.getDate();
+  const dotCol = {
+    Solicitud: '#6D28D9', Validación: '#1D4ED8', Aprobación: '#CA8A04',
+    Pagos: '#B45309', Cierre: '#0369A1', Rechazada: '#B91C1C', Cerrada: '#15803D',
+  };
+  const eventMap = {};
+  const agrega = (fechaStr, sol) => {
+    if (!fechaStr || typeof fechaStr !== 'string') return;
+    const dk = fechaStr.slice(0,10);
+    if (!eventMap[dk]) eventMap[dk] = [];
+    eventMap[dk].push(sol);
+  };
+  flS.forEach(s => {
+    agrega(s.creadoEn, s);
+    if (s.fechaPagoProgramada) agrega(s.fechaPagoProgramada, { ...s, _tipoCal: 'pago' });
+    if (s.fechaIngresoTaller)  agrega(s.fechaIngresoTaller,  { ...s, _tipoCal: 'taller' });
+    if (s.validadoEn)          agrega(s.validadoEn, { ...s, _tipoCal: 'validación' });
+    if (s.pagadoEn)            agrega(s.pagadoEn,  { ...s, _tipoCal: 'pagado' });
+  });
+  const primerDia = new Date(anio, mes, 1).getDay();
+  const totalDias = new Date(anio, mes + 1, 0).getDate();
+  const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const dias  = ['D','L','M','M','J','V','S'];
+  let celdas = '';
+  for (let i = 0; i < primerDia; i++) celdas += `<div></div>`;
+  for (let d = 1; d <= totalDias; d++) {
+    const key = `${anio}-${String(mes+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const evs = eventMap[key] || [];
+    const esHoy = d === hoy;
+    const tieneEvs = evs.length > 0;
+    const dots = [...new Set(evs.map(e => dotCol[e.estatus]||'#94A3B8'))].slice(0,3)
+      .map(c => `<span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:${c};margin:0 1px"></span>`).join('');
+    celdas += `<div onclick="${tieneEvs ? `flCalDia('${key}')` : ''}"
+      style="min-height:38px;border-radius:7px;padding:4px 3px 3px;text-align:center;cursor:${tieneEvs?'pointer':'default'};
+      background:${esHoy?'#EFF6FF':tieneEvs?'#F8FAFC':'transparent'};
+      border:1.5px solid ${esHoy?'#2563EB':tieneEvs?'#E2E8F0':'transparent'};transition:.12s"
+      ${tieneEvs?'onmouseover="this.style.background=\'#EFF6FF\'" onmouseout="this.style.background=\''+(esHoy?'#EFF6FF':'#F8FAFC')+'\';"':''}>
+      <div style="font-size:11px;font-weight:${esHoy?'900':'600'};color:${esHoy?'#2563EB':tieneEvs?'#0A1628':'#CBD5E1'}">${d}</div>
+      ${tieneEvs ? `<div style="display:flex;justify-content:center;gap:1px;margin-top:2px">${dots}</div>` : ''}
+      ${tieneEvs && evs.length > 1 ? `<div style="font-size:8px;color:#94A3B8;font-weight:700">${evs.length}</div>` : ''}
     </div>`;
   }
-  document.body.appendChild(ov);
-};
+  return `
+    <div style="margin-top:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:#94A3B8">Calendario de actividades</div>
+        <span style="font-size:11px;font-weight:700;color:#374151">${meses[mes]} ${anio}</span>
+      </div>
+      <div class="fl-tw" style="padding:12px">
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:6px">
+          ${dias.map(d=>`<div style="text-align:center;font-size:9px;font-weight:800;color:#94A3B8;padding:2px 0">${d}</div>`).join('')}
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px">${celdas}</div>
+        <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap">
+          ${Object.entries(dotCol).map(([est,c])=>`<div style="display:flex;align-items:center;gap:4px;font-size:9px;font-weight:700;color:#64748B">
+            <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${c}"></span>${est}
+          </div>`).join('')}
+        </div>
+      </div>
+    </div>`;
+}
 
-// Notificaciones a la app móvil (Avisos en Firestore)
-window.flEnviarNotif = async function(id, tipo) {
-  try {
-    const s = flS.find(x=>x.id===id);
-    if(!s) return;
-    const msgs = {
-      validada:  `Tu solicitud (ECO ${s.vehiculoEco||'—'}) está siendo procesada. Se envió a aprobación.`,
-      aprobada:  `¡Solicitud aprobada! (ECO ${s.vehiculoEco||'—'}) · Taller: ${s.tallerRecomendado||'—'} · Monto: $${s.montoCotizacion?Number(s.montoCotizacion).toLocaleString('es-MX'):'—'}`,
-      rechazada: `Tu solicitud (ECO ${s.vehiculoEco||'—'}) fue rechazada. Motivo: ${s.comentarioRechazo||'Sin especificar'}`,
-      cerrada:   `Solicitud cerrada (ECO ${s.vehiculoEco||'—'}). El pago fue procesado.`,
-    };
-    const msg = msgs[tipo];
-    if(!msg) return;
-    // Guardar en colección fl_notificaciones para que la app móvil la muestre
-    await db.collection('fl_notificaciones').add({
-      solicitudId: id,
-      para: s.creadoPor||null,
-      tipo,
-      mensaje: msg,
-      leida: false,
-      creadaEn: new Date().toISOString(),
-    });
-  } catch(e) { console.warn('[FL notif]',e); }
-};
-
-// Hacer clickeables las filas del Flujo de solicitudes en rPanel
-// (actualizar la referencia inline — la función ya está inyectada arriba)
-
-console.log('[FLOTILLA v12] Imágenes reales Tecnocontrol · '+CAT.length+' unidades');
+console.log('[FLOTILLA v13] Pipeline 6 etapas · Tecnocontrol · '+CAT.length+' unidades');
 })();
