@@ -102,6 +102,7 @@ const ADMINS_FLOTILLA=[
   'nicolas@tecnocontrol.com.mx',
   'proyectos@tecnocontrol.com.mx',
   'r.moriel@tecnocontrol.com.mx',
+  'tomas@tecnocontrol.com.mx',
   'plazajrz@tecnocontrol.com.mx',
   'fatima@tecnocontrol.com.mx',
 ];
