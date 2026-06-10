@@ -1,22 +1,22 @@
 // ══════════════════════════════════════════════════
-// sw.js — Service Worker Tecnocontrol PWA Móvil
-// Cache first + offline queue para solicitudes
+// sw-flotilla.js — Service Worker Tecnocontrol PWA Móvil
+// v5 — Cache first + notificaciones push nativas
 // ══════════════════════════════════════════════════
-const CACHE = 'tcn-movil-v4';
+const CACHE = 'tcn-movil-v5';
 const PRECACHE = [
-  './app.html',
+  './flotilla-app.html',
   './flotilla-movil.js',
   'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap',
 ];
 
-// Instalar — precachear archivos core
+// ── Instalar — precachear archivos core ──
 self.addEventListener('install', e => {
   e.waitUntil(
     caches.open(CACHE).then(c => c.addAll(PRECACHE)).then(() => self.skipWaiting())
   );
 });
 
-// Activar — limpiar caches viejos
+// ── Activar — limpiar caches viejos ──
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys().then(keys =>
@@ -25,15 +25,21 @@ self.addEventListener('activate', e => {
   );
 });
 
-// Fetch — cache first para assets, network first para Firestore
+// ── Fetch — cache first para assets, network para Firestore ──
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
-  // Firestore / Firebase → siempre network
-  if (url.hostname.includes('firestore') || url.hostname.includes('firebase') || url.hostname.includes('googleapis.com/identitytoolkit')) {
-    e.respondWith(fetch(e.request).catch(() => new Response('{"offline":true}', {headers:{'Content-Type':'application/json'}})));
+  if (
+    url.hostname.includes('firestore') ||
+    url.hostname.includes('firebase') ||
+    url.hostname.includes('googleapis.com/identitytoolkit')
+  ) {
+    e.respondWith(
+      fetch(e.request).catch(() =>
+        new Response('{"offline":true}', { headers: { 'Content-Type': 'application/json' } })
+      )
+    );
     return;
   }
-  // Assets estáticos → cache first
   e.respondWith(
     caches.match(e.request).then(cached => {
       if (cached) return cached;
@@ -43,12 +49,61 @@ self.addEventListener('fetch', e => {
           caches.open(CACHE).then(c => c.put(e.request, clone));
         }
         return resp;
-      }).catch(() => caches.match('./app.html'));
+      }).catch(() => caches.match('./flotilla-app.html'));
     })
   );
 });
 
-// Mensaje desde la app — forzar actualización
+// ── Mensajes desde la app ──
 self.addEventListener('message', e => {
-  if (e.data === 'SKIP_WAITING') self.skipWaiting();
+  if (!e.data) return;
+
+  // Forzar actualización de caché
+  if (e.data === 'SKIP_WAITING') {
+    self.skipWaiting();
+    return;
+  }
+
+  // Mostrar notificación push nativa
+  if (e.data.type === 'SHOW_NOTIF') {
+    const iconos = {
+      validada:      '🔵',
+      rechazada_val: '🔴',
+      rechazada_apr: '🟡',
+      aprobada:      '🟢',
+      pagos:         '💳',
+      pagado:        '✅',
+      cerrada:       '✅',
+    };
+    const emoji = iconos[e.data.notifTipo] || '🔔';
+
+    e.waitUntil(
+      self.registration.showNotification(e.data.title || 'Tecnocontrol · Flotilla', {
+        body:    e.data.body || 'Tienes una actualización en tu solicitud',
+        tag:     e.data.tag  || 'fl-notif',
+        icon:    './icons/icon-192.png',
+        badge:   './icons/icon-192.png',
+        vibrate: [200, 100, 200, 100, 200],
+        requireInteraction: false,
+        silent:  false,
+        data:    { url: self.location.origin + '/flotilla-app.html' },
+      })
+    );
+  }
+});
+
+// ── Clic en notificación — abrir o enfocar la app ──
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  const targetUrl = e.notification.data?.url || self.location.origin + '/flotilla-app.html';
+  e.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+      // Si ya hay una ventana abierta, enfocarla
+      for (const c of list) {
+        if (c.url.includes('flotilla-app') && 'focus' in c) return c.focus();
+      }
+      // Si no, abrir la app
+      return clients.openWindow(targetUrl);
+    })
+  );
 });
