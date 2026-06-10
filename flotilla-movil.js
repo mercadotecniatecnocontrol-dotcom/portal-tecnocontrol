@@ -95,8 +95,8 @@ let onlineStatus=navigator.onLine;
 const ADMINS_FLOTILLA=[
   'rh@tecnocontrol.com.mx',
   'c.acosta@tecnocontrol.com.mx',
-  'mercadotecniatecnocontrol@tecnocontrol.com.mx',
-  'mercadotecniatecnocontrol.com.mx',
+  'mercadotecniatecnocontrol@gmail.com.mx',
+  'mercadotecnia@tecnocontrol.com.mx',
   'p.pinedo@tecnocontrol.com.mx',
   'm.delao@tecnocontrol.com.mx',
   'nicolas@tecnocontrol.com.mx',
