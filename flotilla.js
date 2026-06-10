@@ -1802,29 +1802,44 @@ window.flRPDoc=function(tipo,vehId){
   const docExistente=v?.[`doc_${tipo}`]||null;
   const ov=document.createElement('div');ov.className='fl-ov';ov.style.zIndex='3300';
   ov.innerHTML=`<div class="fl-modal" style="max-width:500px">
-    <div class="fl-mh"><h3>${I.doc} ${labels[tipo]||tipo}</h3><button class="fl-mx" onclick="this.closest('.fl-ov').remove()">✕</button></div>
-    <div class="fl-mb" style="display:flex;flex-direction:column;gap:12px">
-      ${docExistente ? `
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#F0FDF4;border:1px solid #86EFAC;border-radius:9px">
-          <div style="display:flex;align-items:center;gap:8px">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#15803D" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-            <span style="font-size:12px;font-weight:700;color:#15803D">Documento guardado</span>
-          </div>
-          <button onclick="flDocPreview('${tipo}','${vehId}')" style="font-size:11px;font-weight:700;padding:5px 12px;background:#fff;border:1px solid #86EFAC;border-radius:7px;cursor:pointer;color:#15803D">
-            Ver documento
-          </button>
-        </div>` : `
-        <div style="padding:10px 12px;background:#FFF7ED;border:1px solid #FED7AA;border-radius:9px;font-size:11px;color:#C2410C">
-          Sin documento guardado
-        </div>`}
+    <div class="fl-mh">
       <div>
-        <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:8px">${docExistente ? 'Actualizar documento' : 'Subir documento'} (PDF o imagen)</label>
+        <h3>${I.doc} ${labels[tipo]||tipo}</h3>
+        ${docExistente?`<div style="font-size:10px;color:#15803D;margin-top:2px;font-weight:700">✓ Documento guardado</div>`:`<div style="font-size:10px;color:#C2410C;margin-top:2px">Sin documento</div>`}
+      </div>
+      <button class="fl-mx" onclick="this.closest('.fl-ov').remove()">✕</button>
+    </div>
+    <div class="fl-mb" style="display:flex;flex-direction:column;gap:12px">
+
+      ${docExistente ? `
+      <!-- Acciones sobre doc existente -->
+      <div style="display:flex;gap:8px">
+        <button onclick="flDocPreview('${tipo}','${vehId}')"
+          style="flex:1;padding:9px;background:#F0FDF4;border:1px solid #86EFAC;border-radius:9px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;color:#15803D;display:flex;align-items:center;justify-content:center;gap:5px">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          Ver documento
+        </button>
+        <button onclick="flDocBorrar('${tipo}','${vehId}',this.closest('.fl-ov'))"
+          style="padding:9px 14px;background:#FEE2E2;border:1px solid #FCA5A5;border-radius:9px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;color:#B91C1C;display:flex;align-items:center;gap:5px">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+          Borrar
+        </button>
+      </div>` : ''}
+
+      <!-- Subir / Reemplazar -->
+      <div>
+        <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:8px">
+          ${docExistente ? '🔄 Reemplazar documento' : '⬆ Subir documento'} (PDF o imagen, máx. 3 MB)
+        </label>
         <div onclick="document.getElementById('fl-doc-f-${tipo}').click()"
           style="border:2px dashed #CBD5E1;border-radius:10px;padding:16px;text-align:center;cursor:pointer;transition:.12s;background:#FAFBFC"
           onmouseover="this.style.borderColor='#2563EB';this.style.background='#EFF6FF'"
           onmouseout="this.style.borderColor='#CBD5E1';this.style.background='#FAFBFC'">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="1.8" stroke-linecap="round" style="margin-bottom:5px"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="1.8" stroke-linecap="round" style="margin-bottom:5px">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
           <div style="font-size:12px;font-weight:700;color:#374151">Clic para seleccionar</div>
+          <div style="font-size:10px;color:#94A3B8;margin-top:2px">PDF, JPG, PNG</div>
         </div>
         <input type="file" id="fl-doc-f-${tipo}" accept="image/*,application/pdf" style="display:none" onchange="flDocLoad(this,'${tipo}','${vehId}')">
         <div id="fl-doc-prev" style="margin-top:8px"></div>
@@ -1854,6 +1869,19 @@ window.flDocPreview=function(tipo,vehId){
       : `<div style="padding:16px;text-align:center;overflow-y:auto"><img src="${b64}" style="max-width:100%;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.15)"></div>`}
   </div>`;
   document.body.appendChild(ov);ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+};
+
+window.flDocBorrar=async function(tipo,vehId,ovRef){
+  if(!confirm(`¿Borrar el documento "${({tarjeta:'Tarjeta de circulación',poliza:'Póliza de seguro',verificacion:'Verificación ambiental',factura:'Factura del vehículo'})[tipo]||tipo}"? Esta acción no se puede deshacer.`))return;
+  try{
+    const v=flV.find(x=>x.id===vehId);
+    if(v) delete v[`doc_${tipo}`];
+    if(!vehId.startsWith('eco-')){
+      await fs.updateDoc(fs.doc(db,C.VEHS,vehId),{[`doc_${tipo}`]:null});
+    }
+    ovRef?.remove();
+    renderRP(vehId);
+  }catch(e){console.error('[FL]',e);alert('Error al borrar: '+e.message);}
 };
 
 window.flDocLoad=async function(inp,tipo,vehId){
@@ -3822,6 +3850,78 @@ function rFlCalendario() {
       </div>
     </div>`;
 }
+
+// ── GENERAR PDF de solicitud ──
+window.flGenerarPDF=function(id){
+  const s=flS.find(x=>x.id===id);if(!s){return;}
+  const v=flV.find(x=>x.eco===s.vehiculoEco||x.id===s.vehiculoId);
+  const chkF=s.chkFotos||{};
+  const chkFEntries=Object.entries(chkF).filter(([k,v])=>v);
+  const chkResp=s.checklist||{};
+  const getLabel=k=>{for(const items of Object.values(CHK_CATS)){const f=items.find(it=>it.toLowerCase().replace(/[^a-z0-9]/g,'')===k.toLowerCase().replace(/[^a-z0-9]/g,''));if(f)return f;}return k;};
+  const gasPct=Number(s.gasolina)||0;
+  const gasColor=gasPct>50?'#16A34A':gasPct>25?'#D97706':'#DC2626';
+  const toRad=deg=>deg*Math.PI/180;
+  const arcX=(r,deg)=>50+r*Math.cos(toRad(deg));
+  const arcY=(r,deg)=>50+r*Math.sin(toRad(deg));
+  const startDeg=-210;const endDeg=30;
+  const fillDeg=startDeg+(gasPct/100)*(endDeg-startDeg);
+  const largeArc=gasPct>50?1:0;
+  const trackPath=`M ${arcX(35,startDeg)} ${arcY(35,startDeg)} A 35 35 0 1 1 ${arcX(35,endDeg)} ${arcY(35,endDeg)}`;
+  const fillPath=gasPct>0?`M ${arcX(35,startDeg)} ${arcY(35,startDeg)} A 35 35 0 ${largeArc} 1 ${arcX(35,fillDeg)} ${arcY(35,fillDeg)}`:'';
+  const gasSVG=`<svg width="100" height="65" viewBox="0 0 100 65"><path d="${trackPath}" fill="none" stroke="#E2E8F0" stroke-width="9" stroke-linecap="round"/>${fillPath?`<path d="${fillPath}" fill="none" stroke="${gasColor}" stroke-width="9" stroke-linecap="round"/>`:''}<text x="50" y="50" text-anchor="middle" font-size="16" font-weight="900" fill="${gasColor}" font-family="system-ui">${gasPct}%</text><text x="50" y="62" text-anchor="middle" font-size="8" fill="#94A3B8" font-family="system-ui">GASOLINA</text></svg>`;
+  const evGen=s.evidencias||[];
+  const evMeta=s.evidenciasMeta||[];
+  const evThumbsHTML=evGen.length?evGen.map((src,i)=>`<div style="display:inline-block;margin:4px;text-align:center;vertical-align:top"><img src="${src}" style="width:110px;height:82px;object-fit:cover;border-radius:6px;border:1px solid #E2E8F0;display:block"><div style="font-size:8px;color:#64748B;margin-top:2px;font-family:monospace;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${evMeta[i]?.codigo||'Foto '+(i+1)}</div></div>`).join(''):'<div style="font-size:11px;color:#94A3B8;padding:8px">Sin evidencias</div>';
+  let chkFullHTML='';
+  for(const [cat,items] of Object.entries(CHK_CATS)){let catRows='';let catHasContent=false;items.forEach((item,idx)=>{const key=cat+'__'+idx;const val=chkResp[key]||'';const foto=chkF[key]||null;if(!val&&!foto)return;catHasContent=true;const isNo=val==='no';const badge=val==='si'?'<span style="display:inline-block;padding:2px 8px;background:#DCFCE7;color:#15803D;border-radius:10px;font-size:9px;font-weight:800">SI</span>':val==='no'?'<span style="display:inline-block;padding:2px 8px;background:#FEE2E2;color:#B91C1C;border-radius:10px;font-size:9px;font-weight:800">NO</span>':'<span style="display:inline-block;padding:2px 8px;background:#F1F5F9;color:#94A3B8;border-radius:10px;font-size:9px;font-weight:700">—</span>';const fotoEl=foto?`<img src="${foto}" style="width:56px;height:42px;object-fit:cover;border-radius:4px;border:1px solid ${isNo?'#FCA5A5':'#E2E8F0'};float:right;margin-left:6px">`:'';catRows+=`<tr style="border-bottom:1px solid #F8FAFD;${isNo?'background:#FFF5F5':''}"><td style="padding:5px 8px;font-size:10.5px;color:${isNo?'#991B1B':'#374151'};font-weight:${isNo?'700':'400'}">${item}</td><td style="padding:5px 8px;text-align:center;white-space:nowrap">${badge}</td><td style="padding:5px 8px;text-align:right">${fotoEl}</td></tr>`;});if(!catHasContent)continue;chkFullHTML+=`<div style="margin-bottom:14px;break-inside:avoid"><div style="background:#1E3A5F;color:#fff;padding:5px 10px;border-radius:5px 5px 0 0;font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.6px">${cat}</div><table style="width:100%;border-collapse:collapse;border:1px solid #E2E8F0;border-top:none"><thead><tr style="background:#F8FAFD"><th style="padding:4px 8px;font-size:8px;font-weight:800;text-transform:uppercase;color:#94A3B8;text-align:left">Ítem</th><th style="padding:4px 8px;font-size:8px;font-weight:800;text-transform:uppercase;color:#94A3B8;width:60px">Estado</th><th style="padding:4px 8px;font-size:8px;font-weight:800;text-transform:uppercase;color:#94A3B8;width:70px;text-align:right">Foto</th></tr></thead><tbody>${catRows}</tbody></table></div>`;}
+  if(!chkFullHTML){const allSi=Object.values(chkResp).filter(v=>v==='si').length;chkFullHTML=allSi>0?`<div style="padding:10px 14px;background:#F0FDF4;border-radius:8px;border:1px solid #BBF7D0;font-size:11.5px;font-weight:700;color:#15803D">Todos los ${allSi} puntos revisados en buen estado</div>`:'<div style="font-size:11px;color:#94A3B8;padding:8px">Sin checklist registrado</div>';}
+  const chkPhotosHTML=chkFEntries.length?chkFEntries.map(([k,src])=>`<div style="display:inline-block;margin:4px;text-align:center;vertical-align:top"><img src="${src}" style="width:90px;height:68px;object-fit:cover;border-radius:5px;border:1px solid #BFDBFE;display:block"><div style="font-size:7.5px;color:#1D4ED8;margin-top:2px;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${getLabel(k)}</div></div>`).join(''):'';
+  const fecha=s.creadoEn?s.creadoEn.substring(0,10):'—';
+  const html=`<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Solicitud ${id.slice(0,8).toUpperCase()} — Tecnocontrol</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui,Arial,sans-serif;font-size:11px;color:#0A0F1E;background:#fff;padding:28px 32px}.logo{font-size:20px;font-weight:900;letter-spacing:-1px}.logo em{color:#2563EB;font-style:normal}.hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #0A1628;padding-bottom:14px;margin-bottom:18px}.veh-bar{background:#0A1628;color:#fff;border-radius:9px;padding:11px 16px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px}.field{background:#F8FAFD;border-radius:7px;padding:8px 11px;border:1px solid #E8EDF5}.field label{font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:2px}.field span{font-size:12px;font-weight:700;line-height:1.4}.sec{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:#64748B;margin:16px 0 8px;padding-top:12px;border-top:1px solid #E8EDF5}.gas-box{display:flex;align-items:center;gap:16px;background:#F8FAFD;border-radius:9px;padding:12px 16px;border:1px solid #E8EDF5;margin-bottom:12px}.footer{margin-top:24px;padding-top:10px;border-top:1px solid #E8EDF5;font-size:9px;color:#94A3B8;text-align:center}@media print{body{padding:14px 16px;font-size:10.5px}button{display:none!important}}</style></head><body><div class="hdr"><div><div class="logo">TECNO<em>CONTROL</em></div><div style="font-size:10.5px;color:#64748B;margin-top:3px">Reporte de solicitud vehicular</div></div><div style="text-align:right"><div style="font-size:18px;font-weight:900;font-family:monospace;letter-spacing:1px">${id.slice(0,8).toUpperCase()}</div><div style="margin-top:5px"><span style="padding:3px 12px;border-radius:20px;font-size:10px;font-weight:800;background:#0A1628;color:#fff">${s.estatus||'Solicitud'}</span></div><div style="font-size:10px;color:#64748B;margin-top:4px">${fecha}</div></div></div>${v?`<div class="veh-bar"><div><div style="font-size:14px;font-weight:800">${v.unidad||'—'} ${v.año||''}</div><div style="font-size:10px;color:rgba(255,255,255,.5);margin-top:2px;font-family:monospace">ECO ${v.eco} · ${v.placas||'—'} · ${v.responsable||'—'}</div></div></div>`:''}<div class="grid3"><div class="field"><label>Tipo</label><span>${s.tipo||'—'}</span></div><div class="field"><label>Prioridad</label><span>${s.prioridad||'Normal'}</span></div><div class="field"><label>KM</label><span>${s.kilometrajeReportado||'—'}</span></div></div><div class="grid2"><div class="field"><label>Solicitante</label><span>${s.solicitante||'—'}</span></div><div class="field"><label>Taller</label><span>${s.tallerNombre||s.taller||'Sin especificar'}</span></div></div><div class="field" style="margin-bottom:12px"><label>Descripción</label><span style="font-size:12px;font-weight:500;line-height:1.6">${s.descripcion||'—'}</span></div><div class="gas-box"><div>${gasSVG}</div><div><div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:4px">Nivel de combustible</div><div style="font-size:28px;font-weight:900;color:${gasColor};line-height:1">${gasPct}%</div></div></div>${s.comentarioRechazo?`<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:7px;padding:10px 12px;margin-bottom:10px"><div style="font-size:8.5px;font-weight:800;text-transform:uppercase;color:#B91C1C;margin-bottom:4px">Motivo de rechazo</div><div style="font-size:12px;color:#991B1B">${s.comentarioRechazo}</div></div>`:''}<div class="sec">Evidencias fotográficas (${evGen.length})</div><div style="margin-bottom:12px">${evThumbsHTML}</div><div class="sec">Checklist de revisión</div>${chkFullHTML}${chkPhotosHTML?`<div class="sec">Galería de fotos del checklist (${chkFEntries.length})</div><div style="margin-bottom:12px">${chkPhotosHTML}</div>`:''}<div class="footer">Generado por Portal Flotilla Tecnocontrol · ${new Date().toLocaleString('es-MX')} · ID: ${id}</div><div style="margin-top:16px;display:flex;gap:10px;justify-content:flex-end"><button onclick="window.print()" style="padding:11px 28px;background:#0A1628;color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer">Imprimir / Guardar PDF</button></div></body></html>`;
+  const win=window.open('','_blank','width=860,height=960');
+  if(win){win.document.write(html);win.document.close();}
+};
+
+// ── COMPARTIR POR WHATSAPP ──
+window.flCompartirWA=function(id){
+  const s=flS.find(x=>x.id===id);if(!s)return;
+  const v=flV.find(x=>x.eco===s.vehiculoEco||x.id===s.vehiculoId);
+  const noItems=Object.entries(s.checklist||{}).filter(([k,v])=>v==='no');
+  const getLabel=k=>{for(const items of Object.values(CHK_CATS)){const f=items.find(it=>it.toLowerCase().replace(/[^a-z0-9]/g,'')===k.toLowerCase().replace(/[^a-z0-9]/g,''));if(f)return f;}return k;};
+  const txt=[
+    `*TECNOCONTROL — Solicitud Vehicular*`,
+    `ID: ${id.slice(0,8).toUpperCase()} | ${s.estatus||'Solicitud'}`,
+    `Fecha: ${s.creadoEn?s.creadoEn.substring(0,10):'—'}`,
+    ``,
+    `*Vehículo:* ${v?v.unidad+' '+v.año:'—'} (ECO ${s.vehiculoEco||'—'})`,
+    `*Tipo:* ${s.tipo||'—'}`,
+    `*Prioridad:* ${s.prioridad||'Normal'}`,
+    `*KM:* ${s.kilometrajeReportado||'—'}`,
+    `*Gasolina:* ${s.gasolina!=null?s.gasolina+'%':'—'}`,
+    `*Taller:* ${s.tallerNombre||s.taller||'Sin especificar'}`,
+    `*Solicitante:* ${s.solicitante||'—'}`,
+    ``,
+    `*Descripción:*`,
+    s.descripcion||'—',
+    noItems.length?`*Observaciones checklist:*\n`+noItems.map(([k])=>'• '+getLabel(k)).join('\n'):'',
+    s.comentarioRechazo?`*Rechazo:* `+s.comentarioRechazo:'',
+    s.tallerNombre?`\n*Taller cotizado:* ${s.tallerNombre}${s.montoCotizacion?' · $'+Number(s.montoCotizacion).toLocaleString('es-MX'):''}`:''
+  ].filter(x=>x!==undefined&&x!=='').join('\n');
+  window.open('https://wa.me/?text='+encodeURIComponent(txt),'_blank');
+};
+
+
+window.flReact=async function(id){if(!confirm('¿Reactivar este vehículo?'))return;try{await fs.updateDoc(fs.doc(db,C.VEHS,id),{status:'activo',fechaBaja:'',motivoBaja:''});const v=flV.find(x=>x.id===id);if(v)v.status='activo';rBajas();}catch(e){console.error('[FL]',e);}};
+
+// ── Alias retrocompatibilidad ──
+window.flRechazarM = function(id){ window.flModalRechazar(id,'validacion'); };
+
+// ── Ver vehículo de baja ──
+window.flVerVeh=function(id){const v=flV.find(x=>x.id===id);if(!v)return;const ov=document.createElement('div');ov.className='fl-ov';ov.style.zIndex='3300';ov.innerHTML=`<div class="fl-modal"><div class="fl-mh"><h3>ECO ${v.eco} · ${v.unidad||'—'}</h3><button class="fl-mx" onclick="this.closest('.fl-ov').remove()">✕</button></div><div class="fl-mb"><div style="display:grid;grid-template-columns:1fr 1fr;background:#F8FAFD;border-radius:9px;overflow:hidden;border:1px solid #E8EDF5">${[['Placas',v.placas||'—'],['Año',v.año||'—'],['Serie',v.serie||'—'],['Color',v.color||'—'],['Plaza',v.plaza||'—'],['Responsable',v.responsable||'—'],['KM',v.km||'—'],['Baja',v.fechaBaja?v.fechaBaja.slice(0,10):'—']].map(([l,val])=>`<dl style="padding:7px 11px;border-right:1px solid #E8EDF5;border-bottom:1px solid #E8EDF5"><dt style="font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">${l}</dt><dd style="font-size:11.5px;font-weight:600">${val}</dd></dl>`).join('')}<dl style="grid-column:1/-1;padding:7px 11px"><dt style="font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">Motivo baja</dt><dd style="font-size:11.5px">${v.motivoBaja||'—'}</dd></dl></div><div class="fl-fa"><button class="fb gho" onclick="this.closest('.fl-ov').remove()">Cerrar</button>${hAdm()?`<button class="fb acc" onclick="flReact('${v.id}');this.closest('.fl-ov').remove()">Reactivar</button>`:''}</div></div></div>`;document.body.appendChild(ov);ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});};
+
+// ── Visor imagen rápido (comisiones) ──
+window.flImg=function(src){const ov=document.createElement('div');ov.className='fl-ov';ov.style.zIndex='4500';ov.style.cursor='zoom-out';ov.innerHTML=`<img src="${src}" style="max-width:92%;max-height:92%;border-radius:12px;box-shadow:0 24px 60px rgba(0,0,0,.5)">`;ov.onclick=()=>ov.remove();document.body.appendChild(ov);};
 
 console.log('[FLOTILLA v13] Pipeline 6 etapas · Tecnocontrol · '+CAT.length+' unidades');
 })();
