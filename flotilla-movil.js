@@ -109,6 +109,7 @@ const ADMINS_FLOTILLA=[
   'v.garcia@tecnocontrol.com.mx',
   'i.saucedo@tecnocontrol.com.mx',
   'plazajrz@tecnocontrol.com.mx',
+  'i.ruiz@jomarverifica.com.mx',
   'fatima@tecnocontrol.com.mx',
 ];
 
@@ -781,7 +782,7 @@ function renderVehiculo(){
         <div class="fm-sec-s">ECO ${v.eco} · ${new Date().toLocaleDateString('es-MX',{weekday:'short',day:'numeric',month:'short'})}</div>
       </div>
       <div style="display:flex;gap:6px;align-items:center">
-        ${esRolLibre()?`<button onclick="miVeh=null;renderSelectorFlota()" style="padding:7px 11px;border:1.5px solid rgba(255,255,255,.2);border-radius:9px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.8);font-size:11px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>Cambiar</button>`:''}
+        ${esRolLibre()?`<button onclick="adminCambiarVehiculo()" style="padding:7px 11px;border:1.5px solid rgba(255,255,255,.2);border-radius:9px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.8);font-size:11px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>Cambiar</button>`:''}
         <button onclick="fmVista('solicitud')" class="fm-btn primary fm-btn-sm" style="gap:5px">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           Solicitud
@@ -858,6 +859,109 @@ function renderVehiculo(){
     <div style="height:20px"></div>
   `);
 }
+
+// MODAL CAMBIO DE VEHÍCULO (solo admins)
+window.adminCambiarVehiculo=function(){
+  if(!esRolLibre())return;
+  const todos=window.CAT_FL||[];
+  const opciones=todos
+    .filter(v=>v.status==='activo')
+    .sort((a,b)=>Number(a.eco)-Number(b.eco))
+    .map(v=>`<option value="${v.eco}" ${String(v.eco)===String(miVeh?.eco)?'selected':''}>${v.eco} · ${v.unidad} (${v.plaza})</option>`)
+    .join('');
+
+  // Overlay
+  const ov=document.createElement('div');
+  ov.className='fm-ov';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:flex-end;justify-content:center';
+  ov.innerHTML=`
+    <div style="background:#fff;border-radius:20px 20px 0 0;width:100%;max-width:520px;padding:24px 20px 32px;box-shadow:0 -4px 30px rgba(0,0,0,.15)">
+      <div style="width:40px;height:4px;background:#E2E8F0;border-radius:4px;margin:0 auto 20px"></div>
+      <div style="font-size:16px;font-weight:800;color:#0A1628;margin-bottom:4px">Cambiar vehículo</div>
+      <div style="font-size:12px;color:#64748B;margin-bottom:18px">Solo afecta tu sesión actual o tu vínculo permanente</div>
+
+      <label style="font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:6px">Vehículo</label>
+      <select id="adm-veh-sel" style="width:100%;padding:11px 14px;border:1.5px solid #CBD5E1;border-radius:10px;font-size:13px;font-weight:600;color:#0A1628;background:#F8FAFC;margin-bottom:18px;-webkit-appearance:none;appearance:none">
+        <option value="">-- Selecciona un vehículo --</option>
+        ${opciones}
+      </select>
+
+      <label style="font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:10px">Tipo de cambio</label>
+      <div style="display:flex;gap:10px;margin-bottom:22px">
+        <label id="adm-opt-temp" style="flex:1;border:2px solid #3B82F6;border-radius:12px;padding:12px 14px;cursor:pointer;background:#EFF6FF;display:flex;align-items:flex-start;gap:10px">
+          <input type="radio" name="adm-tipo" value="temporal" checked style="margin-top:2px;accent-color:#3B82F6">
+          <div>
+            <div style="font-size:13px;font-weight:700;color:#1E40AF">Temporal</div>
+            <div style="font-size:11px;color:#3B82F6;margin-top:2px">Solo esta sesión · Tu ECO vinculado no cambia</div>
+          </div>
+        </label>
+        <label id="adm-opt-perm" style="flex:1;border:2px solid #E2E8F0;border-radius:12px;padding:12px 14px;cursor:pointer;background:#F8FAFC;display:flex;align-items:flex-start;gap:10px">
+          <input type="radio" name="adm-tipo" value="permanente" style="margin-top:2px;accent-color:#0A1628">
+          <div>
+            <div style="font-size:13px;font-weight:700;color:#0A1628">Permanente</div>
+            <div style="font-size:11px;color:#64748B;margin-top:2px">Actualiza tu ecoVinculado en Firestore</div>
+          </div>
+        </label>
+      </div>
+
+      <div style="display:flex;gap:10px">
+        <button onclick="this.closest('.fm-ov').remove()" style="flex:1;padding:13px;border:1.5px solid #E2E8F0;border-radius:12px;background:#fff;font-size:13px;font-weight:700;color:#64748B;cursor:pointer">Cancelar</button>
+        <button id="adm-btn-confirmar" onclick="adminConfirmarCambioVeh(this)" style="flex:2;padding:13px;border:none;border-radius:12px;background:#0A1628;color:#fff;font-size:13px;font-weight:800;cursor:pointer">Confirmar cambio</button>
+      </div>
+    </div>`;
+
+  // Estilo visual de los radio buttons al hacer click
+  ov.querySelectorAll('input[name="adm-tipo"]').forEach(r=>{
+    r.addEventListener('change',()=>{
+      ov.querySelector('#adm-opt-temp').style.cssText=ov.querySelector('#adm-opt-temp').style.cssText.replace(/border:[^;]+/,'border:2px solid #E2E8F0').replace(/background:[^;]+/,'background:#F8FAFC');
+      ov.querySelector('#adm-opt-perm').style.cssText=ov.querySelector('#adm-opt-perm').style.cssText.replace(/border:[^;]+/,'border:2px solid #E2E8F0').replace(/background:[^;]+/,'background:#F8FAFC');
+      const activo=ov.querySelector('input[name="adm-tipo"]:checked').value==='temporal'?'#adm-opt-temp':'#adm-opt-perm';
+      const el=ov.querySelector(activo);
+      el.style.border='2px solid #3B82F6';el.style.background='#EFF6FF';
+    });
+  });
+
+  document.body.appendChild(ov);
+};
+
+window.adminConfirmarCambioVeh=async function(btn){
+  const sel=document.getElementById('adm-veh-sel');
+  const eco=sel?.value;
+  if(!eco){toast('Selecciona un vehículo','err');return;}
+  const tipo=document.querySelector('input[name="adm-tipo"]:checked')?.value||'temporal';
+  btn.disabled=true;btn.textContent='Cambiando…';
+  try{
+    // Buscar el vehículo en Firestore o catálogo
+    let veh=null;
+    try{
+      const snap=await db.collection(C.VEHS).where('eco','==',String(eco)).get();
+      if(!snap.empty)veh={id:snap.docs[0].id,...snap.docs[0].data()};
+    }catch(_){}
+    if(!veh){
+      const found=window.CAT_FL?.find(v=>String(v.eco)===String(eco));
+      if(found)veh={id:'eco-'+found.eco,...found};
+    }
+    if(!veh){toast('Vehículo no encontrado','err');btn.disabled=false;btn.textContent='Confirmar cambio';return;}
+
+    // Aplicar cambio
+    miVeh=veh;
+    if(tipo==='permanente'){
+      const snap=await db.collection(C.USUARIOS).where('email','==',miPerfil.email).get();
+      if(!snap.empty){
+        await snap.docs[0].ref.update({ecoVinculado:String(eco),vinculadoEn:new Date().toISOString()});
+      }
+      if(miPerfil)miPerfil.ecoVinculado=String(eco);
+      toast(`ECO ${eco} vinculado permanentemente`,'ok');
+    } else {
+      toast(`ECO ${eco} seleccionado (sesión actual)`,'ok');
+    }
+    document.querySelector('.fm-ov')?.remove();
+    renderVehiculo();
+  }catch(e){
+    toast('Error: '+e.message,'err');
+    btn.disabled=false;btn.textContent='Confirmar cambio';
+  }
+};
 
 // PANTALLA DE VINCULACIÓN
 function renderVincular(){
