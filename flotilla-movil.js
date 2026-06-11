@@ -1885,7 +1885,8 @@ window.utilCapturar=async function(){
       modo:'utilitario-entrega',
     };
 
-    const sellada=await sellarImg(imgData,meta);
+    const comprimida=await comprimirBase64(imgData,800,0.60);
+    const sellada=await sellarImg(comprimida,meta);
     utilState.evFotos.push({src:sellada,meta});
 
     const wrap=document.getElementById('util-fotos-wrap');
@@ -1962,7 +1963,7 @@ window.utilConfirmarFirma=async function(){
   const data=ctx.getImageData(0,0,canvas.width,canvas.height).data;
   const tieneFirma=data.some((_,i)=>i%4===3&&data[i]>0);
   if(!tieneFirma){toast('Dibuja tu firma primero','err');return;}
-  utilState.firma=canvas.toDataURL('image/png');
+  utilState.firma=canvas.toDataURL('image/jpeg',0.80);
   const btn=document.getElementById('util-btn-firmar');
   if(btn){btn.disabled=true;btn.textContent='Guardando…';}
   const esEntrega=utilState.modo==='entregar';
@@ -1976,13 +1977,17 @@ window.utilConfirmarFirma=async function(){
   const userName=window.auth?.currentUser?.displayName||userEmail;
   try{
     if(esEntrega){
+      // Comprimir fotos antes de guardar (límite Firestore ~1MB por doc)
+      const fotosComprimidas=await Promise.all(
+        utilState.evFotos.map(e=>comprimirBase64(e.src,600,0.55))
+      );
       // Crear documento de transferencia
       const docObj={
         codigo,tipo:'transferencia',
         vehiculoEco:miVeh?.eco||'',vehiculoId:miVeh?.id||'',vehiculoUnidad:miVeh?.unidad||'',
         entregaEmail:userEmail,entregaNombre:userName,entregaFirma:utilState.firma,
         entregaKm:utilState.datosEntrega?.km||'',entregaGasolina:utilState.gasolina,
-        entregaChk:{...utilState.chk},entregaFotos:utilState.evFotos.map(e=>e.src),
+        entregaChk:{...utilState.chk},entregaFotos:fotosComprimidas,
         entregaFotosMeta:utilState.evFotos.map(e=>e.meta),
         receptorNombre:utilState.datosEntrega?.receptor||'',
         estatus:'Pendiente recepción',
@@ -2020,8 +2025,10 @@ window.utilConfirmarFirma=async function(){
       // RECIBIR: completar transferencia
       if(utilState.transferenciaId){
         const ecoRecibido=utilState.datosEntrega?.eco||'';
+        // Comprimir firma del receptor antes de guardar
+        const recibioFirmaComprimida=await comprimirBase64(utilState.firma,400,0.75);
         await db.collection('flotilla_transferencias').doc(utilState.transferenciaId).update({
-          recibioEmail:userEmail,recibioNombre:userName,recibioFirma:utilState.firma,
+          recibioEmail:userEmail,recibioNombre:userName,recibioFirma:recibioFirmaComprimida,
           recibioKm:utilState.datosEntrega?.km||'',
           recibioChk:{...utilState.chk},
           estatus:'Completada',completadoEn:now.toISOString(),
