@@ -71,11 +71,11 @@ const C={
 const TIPOS_SOL=[
   'Mantenimiento preventivo','Mantenimiento correctivo',
   'Reposición de llanta','Falla eléctrica',
-  'Siniestro / Accidente','Revisión de documentos','Otro',
+  'Siniestro / Accidente','Revisión de documentos','recebí de vehiculo','entregue de vehiculo',
 ];
 
 const CHK_CATS={
-  Cristales:  ['Medallón delantero','Vidrio trasero','Lat. der. delantero','Lat. der. trasero','Lat. izq. delantero','Lat. izq. trasero'],
+  Cristales:  ['vidrio delantero','Vidrio trasero','Lat. der. delantero','Lat. der. trasero','Lat. izq. delantero','Lat. izq. trasero'],
   Espejos:    ['Retrovisor izquierdo','Retrovisor derecho','Espejo central'],
   Neumáticos: ['Llanta del. der.','Llanta del. izq.','Llanta tra. der.','Llanta tra. izq.','Refacción'],
   Interiores: ['Póliza / Manual','Radio','Pantallas','Asientos','Tablero','Tapetes'],
@@ -106,6 +106,7 @@ const ADMINS_FLOTILLA=[
   's.carmona@tecnocontrol.com.mx',
   'tomas@tecnocontrol.com.mx',
   'fernando@tecnocontrol.com.mx',
+  'i.saucedo@tecnocontrol.com.mx',
   'plazajrz@tecnocontrol.com.mx',
   'fatima@tecnocontrol.com.mx',
 ];
