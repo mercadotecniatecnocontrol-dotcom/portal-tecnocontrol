@@ -71,7 +71,7 @@ const C={
 const TIPOS_SOL=[
   'Mantenimiento preventivo','Mantenimiento correctivo',
   'Reposición de llanta','Falla eléctrica',
-  'Siniestro / Accidente','Revisión de documentos','recebí de vehiculo','entregue de vehiculo',
+  'Siniestro / Accidente','Revisión de documentos','Recibí vehiculo','Entregue de vehiculo',
 ];
 
 const CHK_CATS={
