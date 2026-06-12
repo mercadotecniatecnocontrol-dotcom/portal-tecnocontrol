@@ -2353,8 +2353,18 @@ window.flTransPDF=function(id){
     '.badge-ok{background:#DCFCE7;color:#15803D;padding:2px 8px;border-radius:100px;font-size:9px;font-weight:800}'+
     '.badge-pend{background:#FEF9C3;color:#854D0E;padding:2px 8px;border-radius:100px;font-size:9px;font-weight:800}'+
     '.footer{margin-top:24px;padding-top:12px;border-top:1px solid #E8EDF5;font-size:9px;color:#94A3B8;text-align:center;line-height:1.6}'+
-    '@media print{button{display:none!important}.no-print{display:none!important}}';
+    '@media print{button{display:none!important}.no-print{display:none!important}}'+
+    '.carta{margin-top:40px;padding-top:32px;border-top:3px solid #0A1628}'+
+    '.carta-titulo{font-size:16px;font-weight:900;text-align:center;color:#0A1628;letter-spacing:-.3px;margin-bottom:6px}'+
+    '.carta-subtitulo{font-size:11px;text-align:center;color:#64748B;margin-bottom:24px}'+
+    '.carta-p{font-size:11px;color:#1E293B;line-height:1.8;margin-bottom:12px;text-align:justify}'+
+    '@page{margin:15mm}'+
+    '.carta{page-break-before:always}';
   var hasChk=Object.keys(chkEnt).length>0||Object.keys(chkRec).length>0;
+  // Variables para carta de asignación
+  var fechaCarta=t.creadoEn?new Date(t.creadoEn).toLocaleDateString('es-MX',{day:'numeric',month:'long',year:'numeric'}):'____________';
+  var vehMarca=t.vehiculoUnidad?t.vehiculoUnidad.split(' ')[0]:'_____________';
+  var vehModelo=t.vehiculoUnidad?t.vehiculoUnidad.split(' ').slice(1).join(' ')||'_____________':'_____________';
   var html='<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">'+
     '<title>Transferencia '+(t.codigo||id.slice(0,8)).toUpperCase()+'</title>'+
     '<style>'+css+'</style></head><body>'+
@@ -2417,6 +2427,61 @@ window.flTransPDF=function(id){
     '</div>'+
     '<div style="margin-top:20px;text-align:right" class="no-print">'+
       '<button onclick="window.print()" style="padding:11px 28px;background:#0A1628;color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:800;cursor:pointer">Imprimir / Guardar PDF</button>'+
+    '</div>'+
+    // ══ CARTA DE ASIGNACIÓN VEHICULAR ══
+    '<div class="carta">'+
+      '<div class="carta-titulo">CARTA DE ASIGNACI\u00d3N VEHICULAR</div>'+
+      '<div class="carta-subtitulo">HEDMA TECNOCONTROL SA DE CV</div>'+
+      '<p class="carta-p">Chihuahua, Chih., a '+fechaCarta+'</p>'+
+      '<p class="carta-p">Por medio de la presente, se hace constar que la empresa <strong>HEDMA TECNOCONTROL SA DE CV</strong> asigna el veh\u00edculo descrito a continuaci\u00f3n al colaborador:</p>'+
+      '<div style="background:#F8FAFD;border-radius:9px;padding:14px 18px;border:1px solid #E8EDF5;margin-bottom:16px">'+
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">'+
+          '<div><div style="font-size:8px;font-weight:800;text-transform:uppercase;color:#94A3B8;margin-bottom:4px">Nombre del colaborador</div><div style="font-size:12px;font-weight:700;border-bottom:1px solid #CBD5E1;padding-bottom:4px">'+(t.recibioNombre||t.recibioEmail||'_______________________')+'</div></div>'+
+          '<div><div style="font-size:8px;font-weight:800;text-transform:uppercase;color:#94A3B8;margin-bottom:4px">Puesto</div><div style="font-size:12px;border-bottom:1px solid #CBD5E1;padding-bottom:4px">_______________________</div></div>'+
+          '<div><div style="font-size:8px;font-weight:800;text-transform:uppercase;color:#94A3B8;margin-bottom:4px">\u00c1rea / Departamento</div><div style="font-size:12px;border-bottom:1px solid #CBD5E1;padding-bottom:4px">_______________________</div></div>'+
+        '</div>'+
+      '</div>'+
+      '<p class="carta-p"><strong>Datos del veh\u00edculo:</strong></p>'+
+      '<div style="background:#F8FAFD;border-radius:9px;padding:14px 18px;border:1px solid #E8EDF5;margin-bottom:16px">'+
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">'+
+          '<div><div style="font-size:8px;font-weight:800;text-transform:uppercase;color:#94A3B8;margin-bottom:4px">Marca</div><div style="font-size:12px;font-weight:700">'+vehMarca+'</div></div>'+
+          '<div><div style="font-size:8px;font-weight:800;text-transform:uppercase;color:#94A3B8;margin-bottom:4px">Modelo</div><div style="font-size:12px;font-weight:700">'+vehModelo+'</div></div>'+
+          '<div><div style="font-size:8px;font-weight:800;text-transform:uppercase;color:#94A3B8;margin-bottom:4px">Color</div><div style="font-size:12px;font-weight:700">___________</div></div>'+
+          '<div><div style="font-size:8px;font-weight:800;text-transform:uppercase;color:#94A3B8;margin-bottom:4px">Placas</div><div style="font-size:12px;font-weight:700">'+(t.vehiculoPlacas||'___________')+'</div></div>'+
+          '<div><div style="font-size:8px;font-weight:800;text-transform:uppercase;color:#94A3B8;margin-bottom:4px">N\u00famero econ\u00f3mico</div><div style="font-size:12px;font-weight:700">ECO '+(t.vehiculoEco||'___________')+'</div></div>'+
+          '<div><div style="font-size:8px;font-weight:800;text-transform:uppercase;color:#94A3B8;margin-bottom:4px">N\u00famero de serie</div><div style="font-size:12px;font-weight:700">___________</div></div>'+
+        '</div>'+
+      '</div>'+
+      '<p class="carta-p">El veh\u00edculo antes mencionado queda bajo resguardo y responsabilidad del colaborador, quien se compromete a:</p>'+
+      '<ul style="font-size:11px;color:#1E293B;line-height:2;margin-left:22px;margin-bottom:14px">'+
+        '<li>Utilizarlo \u00fanicamente para actividades relacionadas con la empresa.</li>'+
+        '<li>Mantener el veh\u00edculo en buenas condiciones de uso y limpieza.</li>'+
+        '<li>Respetar el reglamento de tr\u00e1nsito vigente.</li>'+
+        '<li>Reportar inmediatamente cualquier falla, accidente o incidente.</li>'+
+        '<li>Hacer entrega del veh\u00edculo cuando la empresa lo solicite.</li>'+
+        '<li>Colaborar con cualquier tipo de auditor\u00eda al veh\u00edculo, programada o no programada.</li>'+
+        '<li>Estar al tanto del mantenimiento, reportes de combustible y kilometraje.</li>'+
+      '</ul>'+
+      '<p class="carta-p">Asimismo, el colaborador reconoce haber recibido el veh\u00edculo en buenas condiciones, junto con los accesorios y documentaci\u00f3n correspondiente.</p>'+
+      '<p class="carta-p">Sin m\u00e1s por el momento, se firma la presente para los fines que correspondan.</p>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:60px">'+
+        '<div style="text-align:center">'+
+          '<div style="min-height:70px;display:flex;align-items:flex-end;justify-content:center;margin-bottom:8px">'+
+            (t.recibioFirma?'<img src="'+t.recibioFirma+'" style="height:65px;max-width:200px;object-fit:contain">':'<div style="height:65px"></div>')+
+          '</div>'+
+          '<div style="border-top:1px solid #0A1628;margin-bottom:6px"></div>'+
+          '<div style="font-size:11px;font-weight:700;color:#0A1628">'+(t.recibioNombre||'Nombre del colaborador')+'</div>'+
+          '<div style="font-size:10px;color:#64748B;margin-top:2px">Firma del colaborador</div>'+
+        '</div>'+
+        '<div style="text-align:center">'+
+          '<div style="min-height:70px;display:flex;align-items:flex-end;justify-content:center;margin-bottom:8px">'+
+            (t.entregaFirma?'<img src="'+t.entregaFirma+'" style="height:65px;max-width:200px;object-fit:contain">':'<div style="height:65px"></div>')+
+          '</div>'+
+          '<div style="border-top:1px solid #0A1628;margin-bottom:6px"></div>'+
+          '<div style="font-size:11px;font-weight:700;color:#0A1628">'+(t.entregaNombre||'Representante empresa')+'</div>'+
+          '<div style="font-size:10px;color:#64748B;margin-top:2px">Firma de la empresa</div>'+
+        '</div>'+
+      '</div>'+
     '</div>'+
     '</body></html>';
   var win=window.open('','_blank','width=860,height=960');
