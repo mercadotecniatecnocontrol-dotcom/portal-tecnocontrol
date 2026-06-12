@@ -58,6 +58,7 @@ window.CAT_FL=[
   {eco:'90',unidad:'CHANGAN STAR',año:2026,plaza:'CHIHUAHUA',responsable:'—',placas:'DZ9853B',serie:'LSCAB12E7TG800860',rend:'—',pv:'2026-11-01',pol:'1950290311',tipo:'camion',color:'Blanco',nip:'',km:0,status:'activo'},
   {eco:'91',unidad:'CHANGAN STAR DC',año:2026,plaza:'CHIHUAHUA',responsable:'—',placas:'DZ9855B',serie:'LSCAB22E6TG800256',rend:'—',pv:'2026-11-01',pol:'1950290357',tipo:'camion',color:'Blanco',nip:'',km:0,status:'activo'},
   {eco:'92',unidad:'CHANGAN STAR DC',año:2026,plaza:'CHIHUAHUA',responsable:'—',placas:'DZ9854B',serie:'LSCAB22E5TG800295',rend:'—',pv:'2026-11-01',pol:'1950290361',tipo:'camion',color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'96',unidad:'CHANGAN STAR DC',año:2026,plaza:'CHIHUAHUA',responsable:'—',placas:'DZ9854B',serie:'LSCAB22E5TG800295',rend:'—',pv:'2026-11-01',pol:'1950290361',tipo:'camion',color:'Blanco',nip:'',km:0,status:'activo'},
 ];
 
 
