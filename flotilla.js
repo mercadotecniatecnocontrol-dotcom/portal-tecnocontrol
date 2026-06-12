@@ -68,9 +68,11 @@ const CAT=[
   {eco:'83',unidad:'CHASIS DONGFENG',  año:2025,plaza:'CHIHUAHUA', responsable:'—',                placas:'DZ9767B',serie:'LGDND41EXSA202059',  rend:'—',        pv:'2029-03-17',pol:'4056530481',    tipo:'camion',   color:'Blanco',nip:'',km:0,status:'activo'},
   {eco:'84',unidad:'CHASIS DONGFENG',  año:2025,plaza:'CHIHUAHUA', responsable:'—',                placas:'DZ9766B',serie:'LGDND41E6SA202057',  rend:'—',        pv:'2029-03-17',pol:'4056530495',    tipo:'camion',   color:'Blanco',nip:'',km:0,status:'activo'},
   {eco:'85',unidad:'PICKUP DONGFENG',  año:2025,plaza:'CHIHUAHUA', responsable:'—',                placas:'DZ9768B',serie:'LGDCMA1L5SA204421',  rend:'—',        pv:'2029-03-20',pol:'3200970801',    tipo:'camioneta',color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'86',unidad:'CAMION VOLVO',  año:2025,plaza:'CHIHUAHUA', responsable:'—',                placas:'DZ9768B',serie:'LGDCMA1L5SA204421',  rend:'—',        pv:'2029-03-20',pol:'3200970801',    tipo:'camioneta',color:'Blanco',nip:'',km:0,status:'activo'},
   {eco:'90',unidad:'CHANGAN STAR',     año:2026,plaza:'CHIHUAHUA', responsable:'—',                placas:'DZ9853B',serie:'LSCAB12E7TG800860',  rend:'—',        pv:'2026-11-01',pol:'1950290311',    tipo:'camion',   color:'Blanco',nip:'',km:0,status:'activo'},
   {eco:'91',unidad:'CHANGAN STAR DC',  año:2026,plaza:'CHIHUAHUA', responsable:'—',                placas:'DZ9855B',serie:'LSCAB22E6TG800256',  rend:'—',        pv:'2026-11-01',pol:'1950290357',    tipo:'camion',   color:'Blanco',nip:'',km:0,status:'activo'},
   {eco:'92',unidad:'CHANGAN STAR DC',  año:2026,plaza:'CHIHUAHUA', responsable:'—',                placas:'DZ9854B',serie:'LSCAB22E5TG800295',  rend:'—',        pv:'2026-11-01',pol:'1950290361',    tipo:'camion',   color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'96',unidad:'MORTOCONFORMADORA',  año:2026,plaza:'CHIHUAHUA', responsable:'—',                placas:'DZ9854B',serie:'LSCAB22E5TG800295',  rend:'—',        pv:'2026-11-01',pol:'1950290361',    tipo:'camion',   color:'Blanco',nip:'',km:0,status:'activo'},
 ];
 
 const CHK_CATS={
@@ -2231,9 +2233,9 @@ function rTransList(list){
   return list.map(t=>{
     const vTipo=flV.find(v=>String(v.eco)===String(t.vehiculoEco))?.tipo||'camioneta';
     const icoSvg=hEmo(vTipo).split('stroke="currentColor"').join('stroke="#1E3A5F"');
-    const firmaEnt=t.firmaEntrega?`<img src="${t.firmaEntrega}" style="height:40px;border:1px solid #E2E8F0;border-radius:5px;background:#F8FAFD" title="Firma entrega">`:'<span style="font-size:11px;color:#94A3B8">Sin firma</span>';
-    const firmaRec=t.firmaRecepcion?`<img src="${t.firmaRecepcion}" style="height:40px;border:1px solid #E2E8F0;border-radius:5px;background:#F8FAFD" title="Firma recepción">`:'<span style="font-size:11px;color:#94A3B8">Pendiente</span>';
-    const fotos=(t.fotos||[]).slice(0,3).map(f=>`<img src="${f}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;border:1px solid #E8EDF5;cursor:pointer" onclick="flLightbox('${f}')">`).join('');
+    const firmaEnt=t.entregaFirma?`<img src="${t.entregaFirma}" style="height:40px;border:1px solid #E2E8F0;border-radius:5px;background:#F8FAFD" title="Firma entrega">`:'<span style="font-size:11px;color:#94A3B8">Sin firma</span>';
+    const firmaRec=t.recibioFirma?`<img src="${t.recibioFirma}" style="height:40px;border:1px solid #E2E8F0;border-radius:5px;background:#F8FAFD" title="Firma recepción">`:'<span style="font-size:11px;color:#94A3B8">Pendiente</span>';
+    const fotos=(t.entregaFotos||t.fotos||[]).slice(0,3).map(f=>`<img src="${f}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;border:1px solid #E8EDF5;cursor:pointer" onclick="flLightbox('${f}')">`).join('');
     const fecha=t.creadoEn?t.creadoEn.substring(0,10):'—';
     return`<div class="fl-comcard" style="margin-bottom:10px">
       <div class="fl-comcard-h" style="margin-bottom:8px">
@@ -2250,7 +2252,7 @@ function rTransList(list){
         <dl><dt style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">Entrega</dt><dd style="font-size:11.5px;font-weight:600;word-break:break-word">${t.entregaNombre||t.entregaEmail||'—'}</dd></dl>
         <dl><dt style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">Recibe</dt><dd style="font-size:11.5px;font-weight:600;word-break:break-word">${t.recibioNombre||t.recibioEmail||'Pendiente'}</dd></dl>
         <dl><dt style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">KM</dt><dd style="font-size:11.5px;font-weight:600">${t.km||'—'}</dd></dl>
-        <dl><dt style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">Gasolina</dt><dd style="font-size:11.5px;font-weight:600">${t.gasolina!=null?t.gasolina+'%':'—'}</dd></dl>
+        <dl><dt style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">Gasolina</dt><dd style="font-size:11.5px;font-weight:600">${t.entregaGasolina!=null?t.entregaGasolina+'%':(t.gasolina!=null?t.gasolina+'%':'—')}</dd></dl>
         <dl style="grid-column:1/-1"><dt style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">Fecha</dt><dd style="font-size:11.5px;font-weight:600">${fecha}</dd></dl>
       </div>
       ${fotos?`<div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">${fotos}</div>`:''}
@@ -2270,7 +2272,7 @@ function rTransList(list){
 window.flVerTrans=function(id){
   const t=flTrans.find(x=>x.id===id);if(!t)return;
   const ov=document.createElement('div');ov.className='fl-ov';
-  const evFotos=(t.fotos||[]);
+  const evFotos=(t.entregaFotos||t.fotos||[]);
   const baseIdx=window._flEvCache?window._flEvCache.length:0;
   if(!window._flEvCache)window._flEvCache=[];
   evFotos.forEach(src=>window._flEvCache.push({src,meta:{codigo:'Foto transferencia',tipo:'transferencia',eco:t.vehiculoEco||'—',unidad:t.vehiculoUnidad||'—'}}));
@@ -2285,17 +2287,17 @@ window.flVerTrans=function(id){
         <div style="font-size:10px;color:rgba(255,255,255,.5);margin-top:2px;font-family:'JetBrains Mono',monospace">${t.codigo||'—'} · ${t.creadoEn?t.creadoEn.substring(0,10):'—'}</div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;background:#F8FAFD;border-radius:9px;overflow:hidden;border:1px solid #E8EDF5;margin-bottom:12px">
-        ${[['Entregante',t.entregaNombre||t.entregaEmail||'—'],['Receptor',t.recibioNombre||t.recibioEmail||'Pendiente'],['KM',t.km||'—'],['Gasolina',t.gasolina!=null?t.gasolina+'%':'—'],['Fecha',t.creadoEn?t.creadoEn.substring(0,10):'—'],['Estado',hBadge(t.estatus||'Completada')]].map(([l,val])=>`<dl style="padding:7px 11px;border-right:1px solid #E8EDF5;border-bottom:1px solid #E8EDF5"><dt style="font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">${l}</dt><dd style="font-size:11.5px;font-weight:600">${val}</dd></dl>`).join('')}
+        ${[['Entregante',t.entregaNombre||t.entregaEmail||'—'],['Receptor',t.recibioNombre||t.recibioEmail||'Pendiente'],['KM',t.entregaKm||t.km||'—'],['Gasolina',t.entregaGasolina!=null?t.entregaGasolina+'%':(t.gasolina!=null?t.gasolina+'%':'—')],['Fecha',t.creadoEn?t.creadoEn.substring(0,10):'—'],['Estado',hBadge(t.estatus||'Completada')]].map(([l,val])=>`<dl style="padding:7px 11px;border-right:1px solid #E8EDF5;border-bottom:1px solid #E8EDF5"><dt style="font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">${l}</dt><dd style="font-size:11.5px;font-weight:600">${val}</dd></dl>`).join('')}
       </div>
       ${fotoPills?`<div style="margin-bottom:12px"><div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:6px">Evidencias fotográficas (${evFotos.length})</div><div class="fl-pills">${fotoPills}</div></div>`:''}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
         <div>
           <div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:6px">Firma de entrega</div>
-          ${t.firmaEntrega?`<img src="${t.firmaEntrega}" style="width:100%;border:1.5px solid #E2E8F0;border-radius:8px;background:#F8FAFD">`:'<div style="height:60px;border:1.5px dashed #CBD5E1;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#94A3B8">Sin firma</div>'}
+          ${t.entregaFirma?`<img src="${t.entregaFirma}" style="width:100%;border:1.5px solid #E2E8F0;border-radius:8px;background:#F8FAFD">`:'<div style="height:60px;border:1.5px dashed #CBD5E1;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#94A3B8">Sin firma</div>'}
         </div>
         <div>
           <div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:6px">Firma de recepción</div>
-          ${t.firmaRecepcion?`<img src="${t.firmaRecepcion}" style="width:100%;border:1.5px solid #E2E8F0;border-radius:8px;background:#F8FAFD">`:'<div style="height:60px;border:1.5px dashed #CBD5E1;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#94A3B8">Pendiente</div>'}
+          ${t.recibioFirma?`<img src="${t.recibioFirma}" style="width:100%;border:1.5px solid #E2E8F0;border-radius:8px;background:#F8FAFD">`:'<div style="height:60px;border:1.5px dashed #CBD5E1;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#94A3B8">Pendiente</div>'}
         </div>
       </div>
       <div style="display:flex;gap:8px">
@@ -2310,43 +2312,117 @@ window.flVerTrans=function(id){
 
 window.flTransPDF=function(id){
   const t=flTrans.find(x=>x.id===id);if(!t)return;
-  const gasPct=Number(t.gasolina)||0;
+  const gasPct=Number(t.entregaGasolina!=null?t.entregaGasolina:(t.gasolina!=null?t.gasolina:0));
   const gasColor=gasPct>50?'#16A34A':gasPct>25?'#D97706':'#DC2626';
-  const evFotos=(t.fotos||[]);
-  const fotosHTML=evFotos.map(function(src,i){
-    return '<div style="display:inline-block;margin:4px;text-align:center"><img src="'+src+'" style="width:110px;height:82px;object-fit:cover;border-radius:6px;border:1px solid #E2E8F0;display:block"><div style="font-size:8px;color:#64748B;margin-top:2px">Foto '+(i+1)+'</div></div>';
+  const gasLabel=gasPct>50?'Nivel correcto':gasPct>25?'Nivel bajo':'Nivel cr\u00edtico';
+  const evFotos=(t.entregaFotos||t.fotos||[]);
+  const kmVal=t.entregaKm||t.km||'\u2014';
+  const fechaStr=t.creadoEn?new Date(t.creadoEn).toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long',year:'numeric'}):'—';
+  const horaStr=t.creadoEn?new Date(t.creadoEn).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'}):'—';
+  const completadoStr=t.completadoEn?new Date(t.completadoEn).toLocaleDateString('es-MX',{day:'numeric',month:'long',year:'numeric'})+' '+new Date(t.completadoEn).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'}):'Pendiente';
+  const chkEnt=t.entregaChk||{};
+  const chkRec=t.recibioChk||{};
+  const chkLabels={luces:'Luces',frenos:'Frenos',llantas:'Llantas',limpieza:'Limpieza interior',documentos:'Documentos',herramientas:'Herramientas',extintor:'Extintor',gato:'Gato/refacciones'};
+  function chkHTML(chk,label){
+    var items=Object.entries(chkLabels).map(function(e){
+      var v=chk[e[0]];
+      var ok=v===true||v==='ok'||v==='\u00ed'||v==='si';
+      var no=v===false||v==='no'||v==='mal';
+      return '<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid #F1F5F9">'+
+        '<span style="font-size:13px">'+(ok?'\u2705':no?'\u274c':'\u2b1c')+'</span>'+
+        '<span style="font-size:10px;color:#374151">'+e[1]+'</span></div>';
+    }).join('');
+    return '<div style="flex:1"><div style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:6px;padding-bottom:4px;border-bottom:2px solid #E8EDF5">'+label+'</div>'+items+'</div>';
+  }
+  var fotosHTML=evFotos.map(function(src,i){
+    return '<div style="display:inline-block;margin:4px;text-align:center;vertical-align:top">'+
+      '<img src="'+src+'" style="width:130px;height:97px;object-fit:cover;border-radius:7px;border:1.5px solid #E2E8F0;display:block">'+
+      '<div style="font-size:8px;color:#64748B;margin-top:3px;font-weight:600">Foto '+(i+1)+'</div></div>';
   }).join('');
-  const html='<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">'+
-  '<title>Transferencia '+(t.codigo||id.slice(0,8)).toUpperCase()+'</title>'+
-  '<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui,Arial,sans-serif;font-size:11px;color:#0A0F1E;background:#fff;padding:28px 32px}.logo{font-size:20px;font-weight:900;letter-spacing:-1px}.logo em{color:#2563EB;font-style:normal}.hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #0A1628;padding-bottom:14px;margin-bottom:18px}.veh-bar{background:#0A1628;color:#fff;border-radius:9px;padding:11px 16px;margin-bottom:14px}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}.field{background:#F8FAFD;border-radius:7px;padding:8px 11px;border:1px solid #E8EDF5}.field label{font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:2px}.field span{font-size:12px;font-weight:700}.sec{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:#64748B;margin:14px 0 7px;padding-top:10px;border-top:1px solid #E8EDF5}.gas-box{display:flex;align-items:center;gap:16px;background:#F8FAFD;border-radius:9px;padding:12px 16px;border:1px solid #E8EDF5;margin-bottom:12px}.firma-box{border:1.5px solid #E2E8F0;border-radius:8px;overflow:hidden;background:#F8FAFD;min-height:70px;display:flex;align-items:center;justify-content:center}.footer{margin-top:20px;padding-top:10px;border-top:1px solid #E8EDF5;font-size:9px;color:#94A3B8;text-align:center}@media print{button{display:none!important}}</style></head>'+
-  '<body>'+
-  '<div class="hdr"><div><div class="logo">TECNO<em>CONTROL</em></div><div style="font-size:10.5px;color:#64748B;margin-top:3px">Registro de transferencia vehicular</div></div>'+
-  '<div style="text-align:right"><div style="font-size:18px;font-weight:900;font-family:monospace">'+(t.codigo||id.slice(0,8)).toUpperCase()+'</div><div style="font-size:10px;color:#64748B;margin-top:3px">'+(t.creadoEn?t.creadoEn.substring(0,10):'—')+'</div></div></div>'+
-  '<div class="veh-bar"><div style="font-size:14px;font-weight:800">ECO '+(t.vehiculoEco||'—')+' · '+(t.vehiculoUnidad||'—')+'</div><div style="font-size:10px;color:rgba(255,255,255,.5);margin-top:2px">Transferencia entre técnicos</div></div>'+
-  '<div class="grid2">'+
-  '<div class="field"><label>Entregante</label><span>'+(t.entregaNombre||t.entregaEmail||'—')+'</span></div>'+
-  '<div class="field"><label>Receptor</label><span>'+(t.recibioNombre||t.recibioEmail||'Pendiente')+'</span></div>'+
-  '<div class="field"><label>KM al transferir</label><span>'+(t.km||'—')+'</span></div>'+
-  '<div class="field"><label>Estado</label><span>'+(t.estatus||'Completada')+'</span></div>'+
-  '</div>'+
-  '<div class="gas-box"><div style="font-size:36px;font-weight:900;color:'+gasColor+'">'+gasPct+'%</div><div><div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8">Nivel gasolina</div><div style="font-size:11px;color:'+gasColor+';font-weight:700;margin-top:2px">'+(gasPct>50?'Nivel correcto':gasPct>25?'Nivel bajo':'Nivel crítico')+'</div></div></div>'+
-  (fotosHTML?'<div class="sec">Evidencias fotográficas ('+evFotos.length+')</div><div style="margin-bottom:12px">'+fotosHTML+'</div>':'')+
-  '<div class="sec">Firmas digitales</div>'+
-  '<div class="grid2">'+
-  '<div><div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:6px">Firma de entrega</div>'+
-  '<div class="firma-box">'+(t.firmaEntrega?'<img src="'+t.firmaEntrega+'" style="width:100%;display:block">':'<span style="font-size:11px;color:#94A3B8">Sin firma registrada</span>')+'</div>'+
-  '<div style="font-size:10px;font-weight:600;color:#374151;margin-top:4px;text-align:center">'+(t.entregaNombre||t.entregaEmail||'—')+'</div></div>'+
-  '<div><div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:6px">Firma de recepción</div>'+
-  '<div class="firma-box">'+(t.firmaRecepcion?'<img src="'+t.firmaRecepcion+'" style="width:100%;display:block">':'<span style="font-size:11px;color:#94A3B8">Pendiente</span>')+'</div>'+
-  '<div style="font-size:10px;font-weight:600;color:#374151;margin-top:4px;text-align:center">'+(t.recibioNombre||t.recibioEmail||'—')+'</div></div>'+
-  '</div>'+
-  '<div class="footer">Portal Flotilla Tecnocontrol &nbsp;·&nbsp; '+new Date().toLocaleString('es-MX')+' &nbsp;·&nbsp; '+id+'</div>'+
-  '<div style="margin-top:16px;text-align:right"><button onclick="window.print()" style="padding:10px 24px;background:#0A1628;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">Imprimir / Guardar PDF</button></div>'+
-  '</body></html>';
-  const win=window.open('','_blank','width=820,height=920');
+  var css='*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui,Arial,sans-serif;font-size:11px;color:#0A0F1E;background:#fff;padding:28px 32px;max-width:800px;margin:0 auto}'+
+    '.logo{font-size:22px;font-weight:900;letter-spacing:-1px}.logo em{color:#2563EB;font-style:normal}'+
+    '.hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #0A1628;padding-bottom:16px;margin-bottom:20px}'+
+    '.veh-bar{background:#0A1628;color:#fff;border-radius:10px;padding:13px 18px;margin-bottom:16px}'+
+    '.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}'+
+    '.field{background:#F8FAFD;border-radius:8px;padding:9px 12px;border:1px solid #E8EDF5}'+
+    '.field label{font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:3px}'+
+    '.field span{font-size:12.5px;font-weight:700;color:#0A1628}'+
+    '.sec{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:#64748B;margin:16px 0 8px;padding-top:12px;border-top:1.5px solid #E8EDF5}'+
+    '.gas-box{display:flex;align-items:center;gap:20px;background:#F8FAFD;border-radius:10px;padding:14px 18px;border:1px solid #E8EDF5;margin-bottom:14px}'+
+    '.firma-box{border:1.5px solid #E2E8F0;border-radius:9px;overflow:hidden;background:#F8FAFD;min-height:80px;display:flex;align-items:center;justify-content:center}'+
+    '.badge-ok{background:#DCFCE7;color:#15803D;padding:2px 8px;border-radius:100px;font-size:9px;font-weight:800}'+
+    '.badge-pend{background:#FEF9C3;color:#854D0E;padding:2px 8px;border-radius:100px;font-size:9px;font-weight:800}'+
+    '.footer{margin-top:24px;padding-top:12px;border-top:1px solid #E8EDF5;font-size:9px;color:#94A3B8;text-align:center;line-height:1.6}'+
+    '@media print{button{display:none!important}.no-print{display:none!important}}';
+  var hasChk=Object.keys(chkEnt).length>0||Object.keys(chkRec).length>0;
+  var html='<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">'+
+    '<title>Transferencia '+(t.codigo||id.slice(0,8)).toUpperCase()+'</title>'+
+    '<style>'+css+'</style></head><body>'+
+    '<div class="hdr">'+
+      '<div><div class="logo">TECNO<em>CONTROL</em></div>'+
+      '<div style="font-size:10px;color:#64748B;margin-top:4px">Registro de transferencia vehicular</div>'+
+      '<div style="font-size:9px;color:#94A3B8;margin-top:2px">HEDMA TECNOCONTROL SA DE CV</div></div>'+
+      '<div style="text-align:right">'+
+        '<div style="font-size:17px;font-weight:900;font-family:monospace;color:#0A1628">'+(t.codigo||id.slice(0,8)).toUpperCase()+'</div>'+
+        '<div style="font-size:10px;color:#64748B;margin-top:3px">'+fechaStr+'</div>'+
+        '<div style="font-size:9px;color:#94A3B8;margin-top:1px">'+horaStr+' hrs</div>'+
+        '<span class="'+(t.estatus==='Completada'?'badge-ok':'badge-pend')+'" style="display:inline-block;margin-top:4px">'+(t.estatus||'Pendiente')+'</span>'+
+      '</div>'+
+    '</div>'+
+    '<div class="veh-bar">'+
+      '<div style="font-size:15px;font-weight:900">ECO '+(t.vehiculoEco||'\u2014')+' \u00b7 '+(t.vehiculoUnidad||'\u2014')+'</div>'+
+      '<div style="font-size:10px;color:rgba(255,255,255,.5);margin-top:3px">Transferencia entre personal \u00b7 '+(t.vehiculoId||id)+'</div>'+
+    '</div>'+
+    '<div class="grid2">'+
+      '<div class="field"><label>Entregante</label><span>'+(t.entregaNombre||t.entregaEmail||'\u2014')+'</span>'+
+        '<div style="font-size:9px;color:#94A3B8;margin-top:2px">'+(t.entregaEmail||'')+'</div></div>'+
+      '<div class="field"><label>Receptor</label><span>'+(t.recibioNombre||t.recibioEmail||'Pendiente')+'</span>'+
+        '<div style="font-size:9px;color:#94A3B8;margin-top:2px">'+(t.recibioEmail||'')+'</div></div>'+
+      '<div class="field"><label>KM al transferir</label><span>'+kmVal+'</span></div>'+
+      '<div class="field"><label>Fecha de recepci\u00f3n</label><span>'+completadoStr+'</span></div>'+
+    '</div>'+
+    '<div class="gas-box">'+
+      '<div style="font-size:40px;font-weight:900;color:'+gasColor+'">'+gasPct+'%</div>'+
+      '<div><div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8">Nivel de gasolina al entregar</div>'+
+      '<div style="font-size:13px;color:'+gasColor+';font-weight:800;margin-top:3px">'+gasLabel+'</div></div>'+
+    '</div>'+
+    (hasChk?
+      '<div class="sec">Lista de verificaci\u00f3n del veh\u00edculo</div>'+
+      '<div style="display:flex;gap:20px;margin-bottom:14px;background:#F8FAFD;border-radius:9px;padding:12px 14px;border:1px solid #E8EDF5">'+
+        chkHTML(chkEnt,'Entrega \u2014 '+(t.entregaNombre||t.entregaEmail||'\u2014'))+
+        '<div style="width:1px;background:#E8EDF5;margin:0 4px"></div>'+
+        chkHTML(chkRec,'Recepci\u00f3n \u2014 '+(t.recibioNombre||t.recibioEmail||'Pendiente'))+
+      '</div>':'')+
+    (evFotos.length?
+      '<div class="sec">Evidencias fotogr\u00e1ficas ('+evFotos.length+')</div>'+
+      '<div style="margin-bottom:14px;background:#F8FAFD;border-radius:9px;padding:10px;border:1px solid #E8EDF5">'+fotosHTML+'</div>':'')+
+    '<div class="sec">Firmas digitales</div>'+
+    '<div class="grid2">'+
+      '<div>'+
+        '<div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:6px">Firma de entrega</div>'+
+        '<div class="firma-box">'+(t.entregaFirma?'<img src="'+t.entregaFirma+'" style="width:100%;display:block">':'<span style="font-size:11px;color:#94A3B8">Sin firma registrada</span>')+'</div>'+
+        '<div style="font-size:10px;font-weight:700;color:#0A1628;margin-top:6px;text-align:center">'+(t.entregaNombre||t.entregaEmail||'\u2014')+'</div>'+
+        '<div style="font-size:9px;color:#94A3B8;text-align:center">'+(t.entregaEmail||'')+'</div>'+
+      '</div>'+
+      '<div>'+
+        '<div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:6px">Firma de recepci\u00f3n</div>'+
+        '<div class="firma-box">'+(t.recibioFirma?'<img src="'+t.recibioFirma+'" style="width:100%;display:block">':'<span style="font-size:11px;color:#94A3B8">Pendiente</span>')+'</div>'+
+        '<div style="font-size:10px;font-weight:700;color:#0A1628;margin-top:6px;text-align:center">'+(t.recibioNombre||t.recibioEmail||'Pendiente')+'</div>'+
+        '<div style="font-size:9px;color:#94A3B8;text-align:center">'+(t.recibioEmail||'')+'</div>'+
+      '</div>'+
+    '</div>'+
+    '<div class="footer">'+
+      'Portal Flotilla Tecnocontrol \u00b7 Generado el '+new Date().toLocaleString('es-MX')+'<br>'+
+      'Folio: '+id+' \u00b7 Documento de registro interno de transferencia vehicular'+
+    '</div>'+
+    '<div style="margin-top:20px;text-align:right" class="no-print">'+
+      '<button onclick="window.print()" style="padding:11px 28px;background:#0A1628;color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:800;cursor:pointer">Imprimir / Guardar PDF</button>'+
+    '</div>'+
+    '</body></html>';
+  var win=window.open('','_blank','width=860,height=960');
   if(win){win.document.write(html);win.document.close();}
-  else flMsgError('Activa ventanas emergentes');
-};
+  else flMsgError('Activa ventanas emergentes para generar el PDF');
+}
 
 window.flTransWA=function(id){
   const t=flTrans.find(x=>x.id===id);if(!t)return;
@@ -2359,11 +2435,11 @@ window.flTransWA=function(id){
     '*Entregante:* '+(t.entregaNombre||t.entregaEmail||'—'),
     '*Receptor:* '+(t.recibioNombre||t.recibioEmail||'Pendiente'),
     '*KM:* '+(t.km||'—'),
-    '*Gasolina:* '+(t.gasolina!=null?t.gasolina+'%':'—'),
+    '*Gasolina:* '+(t.entregaGasolina!=null?t.entregaGasolina+'%':(t.gasolina!=null?t.gasolina+'%':'—')),
     '*Estado:* '+(t.estatus||'Completada'),
-    '*Fotos:* '+(t.fotos||[]).length+' evidencia(s)',
-    '*Firma entrega:* '+(t.firmaEntrega?'Registrada':'Pendiente'),
-    '*Firma recepción:* '+(t.firmaRecepcion?'Registrada':'Pendiente'),
+    '*Fotos:* '+(t.entregaFotos||t.fotos||[]).length+' evidencia(s)',
+    '*Firma entrega:* '+(t.entregaFirma?'Registrada':'Pendiente'),
+    '*Firma recepción:* '+(t.recibioFirma?'Registrada':'Pendiente'),
   ].filter(function(x){return x!==undefined&&x!=='';}).join('\n');
   window.open('https://wa.me/?text='+encodeURIComponent(txt),'_blank');
 };
