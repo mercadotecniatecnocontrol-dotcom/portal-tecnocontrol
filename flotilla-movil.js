@@ -1306,7 +1306,7 @@ function renderChkSemanalList(){
   for(const [cat,items] of Object.entries(CHK_CATS)){
     h+=`<div class="fm-chk-cat">${cat}</div>`;
     items.forEach((item,i)=>{
-      const key=`sem__${cat}__${i}`;
+      const key=`sem-${cat}-${i}`;
       const val=semState.chk[key]||'';
       const hasFoto=!!semState.chkFotos[key];
       h+=`<div class="fm-chk-row" id="fm-cr-${key}">
