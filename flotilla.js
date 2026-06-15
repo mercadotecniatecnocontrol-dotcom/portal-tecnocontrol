@@ -2945,7 +2945,7 @@ window.flVerChkSem=function(id){
   Object.entries(CHK_CATS).forEach(([cat,items])=>{
     chkHtml+=`<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin:10px 0 5px;border-bottom:1px solid #E2E8F0;padding-bottom:3px">${cat}</div>`;
     items.forEach((item,i)=>{
-      const key=`sem__${cat}__${i}`;
+      const key=`sem-${cat}-${i}`;
       const val=chk[key]||'';
       const foto=chkFotos[key];
       const fotoSrc=foto?(typeof foto==='object'?foto.src:foto):null;
