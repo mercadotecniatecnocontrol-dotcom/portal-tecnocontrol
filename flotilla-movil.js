@@ -8,63 +8,79 @@
 
 // ── CATÁLOGO LOCAL (49 vehículos) ──
 window.CAT_FL=[
-  {eco:'15',unidad:'NISSAN NP300',año:2017,plaza:'JUAREZ',responsable:'JORGE GUERRERO',placas:'DU6478A',serie:'3N6AD33A3HK869708',rend:'7 KM/L',pv:'2026-09-24',pol:'794B05035M-17',tipo:'camioneta',color:'Blanco',nip:'OXXO GAS',km:0,status:'activo'},
-  {eco:'16',unidad:'GRUA F-350',año:2010,plaza:'CHIHUAHUA',responsable:'CHIHUAHUA',placas:'DU6497A',serie:'1FDEF3G59AEB23674',rend:'5 KM/L',pv:'2026-09-24',pol:'794B05035M-10',tipo:'camion',color:'Blanco',nip:'',km:0,status:'activo'},
-  {eco:'17',unidad:'MARCH ACTIVE',año:2017,plaza:'CHIHUAHUA',responsable:'GUILLERMO',placas:'EMB313A',serie:'3N1CK3CD5HL248558',rend:'14.5 KM/L',pv:'2026-09-24',pol:'794B05035M-23',tipo:'auto',color:'Blanco',nip:'1713',km:0,status:'activo'},
-  {eco:'19',unidad:'RAM 700',año:2017,plaza:'CHIHUAHUA',responsable:'ROBERTO MUÑOZ',placas:'DU6471A',serie:'9BD578458HY162606',rend:'—',pv:'2026-09-24',pol:'794B05035M-20',tipo:'camioneta',color:'Blanco',nip:'',km:0,status:'activo'},
-  {eco:'21',unidad:'RAM 700',año:2018,plaza:'JUAREZ',responsable:'BENITO SOTO',placas:'DU6470A',serie:'9BD578452JY210560',rend:'—',pv:'2026-09-24',pol:'794B05035M-12',tipo:'camioneta',color:'Blanco',nip:'',km:0,status:'activo'},
-  {eco:'22',unidad:'RAM 700',año:2018,plaza:'CHIHUAHUA',responsable:'CHIHUAHUA',placas:'DU6751A',serie:'9BD578456JY208715',rend:'9 KM/L',pv:'2026-09-24',pol:'794B05035M-13',tipo:'camioneta',color:'Blanco',nip:'',km:0,status:'activo'},
-  {eco:'23',unidad:'RAM 700',año:2018,plaza:'CHIHUAHUA',responsable:'SERGIO CARMONA',placas:'DU6752A',serie:'9BD578454JY209023',rend:'—',pv:'2026-09-24',pol:'794B05035M-14',tipo:'camioneta',color:'Blanco',nip:'',km:0,status:'activo'},
-  {eco:'26',unidad:'SEAT IBIZA',año:2018,plaza:'CHIHUAHUA',responsable:'MARTIN DE LA O',placas:'EMB314A',serie:'VSBB2KJ1JR017261',rend:'13 KM/L',pv:'2026-09-24',pol:'794B05035M-19',tipo:'auto',color:'Blanco',nip:'',km:0,status:'activo'},
-  {eco:'31',unidad:'NP300 KANGOO',año:2012,plaza:'CHIHUAHUA',responsable:'DESARROLLOS',placas:'DU6754A',serie:'3N6DD25T5CK018279',rend:'8 KM/L',pv:'2026-09-24',pol:'794B05035M-6',tipo:'camioneta',color:'Blanco',nip:'',km:0,status:'activo'},
-  {eco:'35',unidad:'ISUZU',año:2019,plaza:'CHIHUAHUA',responsable:'ALMACEN',placas:'DU6495A',serie:'JAANPR755K7000178',rend:'3.5 KM/L',pv:'2026-09-24',pol:'794B05035M-9',tipo:'camion',color:'Blanco',nip:'',km:0,status:'activo'},
-  {eco:'36',unidad:'CAMION NISSAN CS',año:2014,plaza:'CHIHUAHUA',responsable:'LUIS LOPEZ',placas:'DU6494A',serie:'3N6DD25T9EK019471',rend:'8 KM/L',pv:'2026-09-24',pol:'794B05035M-18',tipo:'camion',color:'Blanco',nip:'',km:0,status:'activo'},
-  {eco:'37',unidad:'RAM 700',año:2019,plaza:'JUAREZ',responsable:'JUAREZ',placas:'DU6493A',serie:'9BD578458KY323611',rend:'—',pv:'2026-09-24',pol:'794B05035M-21',tipo:'camioneta',color:'Blanco',nip:'',km:0,status:'activo'},
-  {eco:'38',unidad:'RAM 700',año:2019,plaza:'CHIHUAHUA',responsable:'DIONICIO',placas:'DU6492A',serie:'9BD578455KY324652',rend:'—',pv:'2026-09-24',pol:'794B05035M-22',tipo:'camioneta',color:'Blanco',nip:'',km:0,status:'activo'},
-  {eco:'39',unidad:'L200',año:2019,plaza:'CHIHUAHUA',responsable:'SERGIO MENDOZA',placas:'DU6491A',serie:'MMBL45G1KH043444',rend:'10 KM/L',pv:'2026-09-24',pol:'794B05035M-30',tipo:'camioneta',color:'Blanco',nip:'1339',km:0,status:'activo'},
-  {eco:'40',unidad:'MARCH ACTIVE',año:2019,plaza:'MONTERREY',responsable:'IVAN SEPULVEDA',placas:'DU6490A',serie:'3N6CK34N2KL230477',rend:'10.5 KM/L',pv:'2026-09-24',pol:'794B05035M-2',tipo:'auto',color:'Blanco',nip:'',km:0,status:'activo'},
-  {eco:'43',unidad:'F-150 PICK-UP',año:2012,plaza:'CHIHUAHUA',responsable:'—',placas:'DU6488A',serie:'1FTMF1CM1CKD41243',rend:'5.6 KM/L',pv:'2026-09-24',pol:'794B05035M-5',tipo:'camioneta',color:'Blanco',nip:'',km:0,status:'activo'},
-  {eco:'47',unidad:'MARCH ACTIVE L4',año:2019,plaza:'CHIHUAHUA',responsable:'IDALY RUIZ',placas:'EMB308A',serie:'3N1CK3CD5KL232108',rend:'—',pv:'2026-09-24',pol:'794B05035M-24',tipo:'auto',color:'Blanco',nip:'',km:0,status:'activo'},
-  {eco:'48',unidad:'MARCH ACTIVE L4',año:2019,plaza:'CHIHUAHUA',responsable:'IVAN ARGENIS',placas:'EMB309A',serie:'3N1CK3CD4KL232066',rend:'—',pv:'2026-09-24',pol:'794B05035M-8',tipo:'auto',color:'Blanco',nip:'',km:0,status:'activo'},
-  {eco:'50',unidad:'FIESTA',año:2018,plaza:'MONTERREY',responsable:'IRVING SAUCEDO',placas:'EMB310A',serie:'3FADP4BJ1JM128469',rend:'11.3 KM/L',pv:'2026-09-24',pol:'794B05035M-11',tipo:'auto',color:'Plata',nip:'',km:0,status:'activo'},
-  {eco:'52',unidad:'MARCH',año:2020,plaza:'MONTERREY',responsable:'MONTERREY',placas:'DU6486A',serie:'3N6CK34N3LL243692',rend:'—',pv:'2026-09-24',pol:'794B05035M-26',tipo:'auto',color:'Blanco',nip:'',km:0,status:'activo'},
-  {eco:'54',unidad:'RAM 700 SLT',año:2020,plaza:'CHIHUAHUA',responsable:'RICARDO GONZALEZ',placas:'DU6485A',serie:'9BD578452LY411572',rend:'17.5 KM/L',pv:'2026-09-24',pol:'794B05035M-33',tipo:'camioneta',color:'Blanco',nip:'',km:0,status:'activo'},
-  {eco:'55',unidad:'MARCH',año:2020,plaza:'MONTERREY',responsable:'ROQUE LEAL',placas:'DU6484A',serie:'3N6CK34N3LL248469',rend:'11.7 KM/L',pv:'2026-09-24',pol:'794B05035M-27',tipo:'auto',color:'Blanco',nip:'',km:0,status:'activo'},
-  {eco:'56',unidad:'RAM 700 SLT',año:2020,plaza:'PARRAL',responsable:'PLAZA PARRAL',placas:'DU6483A',serie:'9BD578451LY423955',rend:'14.5 KM/L',pv:'2026-09-24',pol:'794B05035M-34',tipo:'camioneta',color:'Blanco',nip:'',km:0,status:'activo'},
-  {eco:'58',unidad:'RAM 700',año:2021,plaza:'CHIHUAHUA',responsable:'ISMAEL BARRAZA',placas:'DU6482A',serie:'9BD281G50MYV59661',rend:'12.7 KM/L',pv:'2026-09-24',pol:'794B05035M-35',tipo:'camioneta',color:'Blanco',nip:'',km:0,status:'activo'},
-  {eco:'59',unidad:'RAM 700',año:2021,plaza:'CHIHUAHUA',responsable:'ALAN ESTRADA',placas:'DU6481A',serie:'9BD281G56MYV59423',rend:'13.5 KM/L',pv:'2026-09-24',pol:'794B05035M-36',tipo:'camioneta',color:'Blanco',nip:'',km:0,status:'activo'},
-  {eco:'60',unidad:'MARCH',año:2020,plaza:'CAMARGO',responsable:'RAMON HERNANDEZ',placas:'DU6480A',serie:'3N6CK34N9LL254065',rend:'11.6 KM/L',pv:'2026-09-24',pol:'794B05035M-28',tipo:'auto',color:'Blanco',nip:'',km:0,status:'activo'},
-  {eco:'61',unidad:'MARCH',año:2020,plaza:'PARRAL',responsable:'RICARDO MORIEL',placas:'DU6479A',serie:'3N6CK34N2LL254229',rend:'13.9 KM/L',pv:'2026-09-24',pol:'794B05035M-29',tipo:'auto',color:'Blanco',nip:'',km:0,status:'activo'},
-  {eco:'62',unidad:'NP300',año:2019,plaza:'MONTERREY',responsable:'JULIO DE LA CRUZ',placas:'DU6472A',serie:'3N6AD33A1KK838707',rend:'7.5 KM/L',pv:'2026-09-24',pol:'794B05035M-31',tipo:'camioneta',color:'Blanco',nip:'',km:0,status:'activo'},
-  {eco:'63',unidad:'SILVERADO 1500',año:2013,plaza:'CHIHUAHUA',responsable:'BODEGA',placas:'DU6473A',serie:'3GCNC9CX6DG343777',rend:'5.5 KM/L',pv:'2026-09-24',pol:'794B05035M-25',tipo:'camioneta',color:'Plata',nip:'',km:0,status:'activo'},
-  {eco:'64',unidad:'MARCH ACTIVE',año:2017,plaza:'CHIHUAHUA',responsable:'VERONICA GARCIA',placas:'DU6474A',serie:'3N6CK34N4HL242297',rend:'10.6 KM/L',pv:'2026-09-24',pol:'794B05035M-32',tipo:'auto',color:'Blanco',nip:'',km:0,status:'activo'},
-  {eco:'66',unidad:'AVEO',año:2018,plaza:'CHIHUAHUA',responsable:'SANDRA LOPEZ',placas:'EMB311A',serie:'LSGHD52H6JD239610',rend:'11.3 KM/L',pv:'2026-09-24',pol:'794B05035M-37',tipo:'auto',color:'Gris',nip:'',km:0,status:'activo'},
-  {eco:'69',unidad:'NISSAN NP300',año:2017,plaza:'CHIHUAHUA',responsable:'LUIS LOPEZ',placas:'DU6499A',serie:'3N6AD33A6HK837318',rend:'—',pv:'2026-09-24',pol:'794B05035M-38',tipo:'camioneta',color:'Blanco',nip:'',km:0,status:'activo'},
-  {eco:'71',unidad:'YUKON',año:2023,plaza:'CHIHUAHUA',responsable:'PALOMA PINEDO',placas:'DYY416B',serie:'1GKS28KL1PR236241',rend:'—',pv:'—',pol:'—',tipo:'camioneta',color:'Negro',nip:'',km:0,status:'activo'},
-  {eco:'72',unidad:'RAM RAPID',año:2023,plaza:'CHIHUAHUA',responsable:'JORGE URIBE',placas:'DG7445B',serie:'9BD2657RIP9233026',rend:'14 KM/L',pv:'—',pol:'—',tipo:'camioneta',color:'Blanco',nip:'',km:0,status:'activo'},
-  {eco:'73',unidad:'DODGE ATTITUDE',año:2023,plaza:'CHIHUAHUA',responsable:'DENISSE GUTIERREZ',placas:'MKL325A',serie:'ML3ABT6J4PH004521',rend:'—',pv:'—',pol:'—',tipo:'auto',color:'Blanco',nip:'',km:0,status:'activo'},
-  {eco:'74',unidad:'DODGE ATTITUDE',año:2023,plaza:'CHIHUAHUA',responsable:'FATIMA SAUZAMEDA',placas:'MKL317A',serie:'ML3ABT6J4PH004552',rend:'15.8 KM/L',pv:'—',pol:'—',tipo:'auto',color:'Blanco',nip:'',km:0,status:'activo'},
-  {eco:'75',unidad:'AVEO',año:2019,plaza:'CHIHUAHUA',responsable:'PALOMA PINEDO',placas:'DUJ454B',serie:'LSGHD52H8KD130423',rend:'—',pv:'2027-02-14',pol:'29113016152002',tipo:'auto',color:'Blanco',nip:'',km:0,status:'activo'},
-  {eco:'76',unidad:'NISSAN VERSA',año:2024,plaza:'MONTERREY',responsable:'LUIS GARZA',placas:'ESU908B',serie:'3N1CN7AE7RK398169',rend:'16 KM/L',pv:'—',pol:'—',tipo:'auto',color:'Blanco',nip:'',km:0,status:'activo'},
-  {eco:'77',unidad:'BMW X6',año:2025,plaza:'CHIHUAHUA',responsable:'MARTIN DE LA O',placas:'EKM897B',serie:'WBA41EX06S9W75509',rend:'—',pv:'—',pol:'—',tipo:'auto',color:'Negro',nip:'',km:0,status:'activo'},
-  {eco:'79',unidad:'CHANGAN HUNTER',año:2025,plaza:'CHIHUAHUA',responsable:'SERGIO MENDOZA',placas:'337217',serie:'LSCBBZ2A1SG803364',rend:'—',pv:'2029-02-27',pol:'4056350008',tipo:'camioneta',color:'Blanco',nip:'7925',km:0,status:'activo'},
-  {eco:'80',unidad:'CHANGAN HUNTER',año:2025,plaza:'CHIHUAHUA',responsable:'ULISES NUÑEZ',placas:'337218',serie:'LSCBBZ2A3SG803365',rend:'—',pv:'2029-02-27',pol:'4056347985',tipo:'camioneta',color:'Blanco',nip:'8025',km:0,status:'activo'},
-  {eco:'81',unidad:'CHANGAN HUNTER',año:2025,plaza:'DESARROLLOS',responsable:'LUIS LOPEZ',placas:'337219',serie:'LSCBB72A8SG803376',rend:'—',pv:'2029-02-27',pol:'4056350016',tipo:'camioneta',color:'Blanco',nip:'8125',km:0,status:'activo'},
-  {eco:'82',unidad:'VAN DONGFENG',año:2026,plaza:'CHIHUAHUA',responsable:'TOMAS',placas:'DZ9769B',serie:'LGFP541E6TA603994',rend:'—',pv:'2029-03-17',pol:'4056530506',tipo:'camion',color:'Blanco',nip:'',km:0,status:'activo'},
-  {eco:'83',unidad:'CHASIS DONGFENG',año:2025,plaza:'CHIHUAHUA',responsable:'—',placas:'DZ9767B',serie:'LGDND41EXSA202059',rend:'—',pv:'2029-03-17',pol:'4056530481',tipo:'camion',color:'Blanco',nip:'',km:0,status:'activo'},
-  {eco:'84',unidad:'CHASIS DONGFENG',año:2025,plaza:'CHIHUAHUA',responsable:'—',placas:'DZ9766B',serie:'LGDND41E6SA202057',rend:'—',pv:'2029-03-17',pol:'4056530495',tipo:'camion',color:'Blanco',nip:'',km:0,status:'activo'},
-  {eco:'85',unidad:'PICKUP DONGFENG',año:2025,plaza:'CHIHUAHUA',responsable:'—',placas:'DZ9768B',serie:'LGDCMA1L5SA204421',rend:'—',pv:'2029-03-20',pol:'3200970801',tipo:'camioneta',color:'Blanco',nip:'',km:0,status:'activo'},
-  {eco:'90',unidad:'CHANGAN STAR',año:2026,plaza:'CHIHUAHUA',responsable:'—',placas:'DZ9853B',serie:'LSCAB12E7TG800860',rend:'—',pv:'2026-11-01',pol:'1950290311',tipo:'camion',color:'Blanco',nip:'',km:0,status:'activo'},
-  {eco:'91',unidad:'CHANGAN STAR DC',año:2026,plaza:'CHIHUAHUA',responsable:'—',placas:'DZ9855B',serie:'LSCAB22E6TG800256',rend:'—',pv:'2026-11-01',pol:'1950290357',tipo:'camion',color:'Blanco',nip:'',km:0,status:'activo'},
-  {eco:'92',unidad:'CHANGAN STAR DC',año:2026,plaza:'CHIHUAHUA',responsable:'—',placas:'DZ9854B',serie:'LSCAB22E5TG800295',rend:'—',pv:'2026-11-01',pol:'1950290361',tipo:'camion',color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'01',unidad:'NISSAN NP100',     año:2000,plaza:'CHIHUAHUA',    responsable:'GLEN PRECIADO',   placas:'DU0101A',serie:'3N6AD33A3H46544',rend:'7 KM/L',   pv:'2026-09-24',pol:'794B05035M-17',tipo:'auto',color:'Blanco',nip:'OXXO GAS',km:0,status:'activo'},
+  {eco:'15',unidad:'NISSAN NP300',     año:2017,plaza:'JUAREZ',    responsable:'JORGE GUERRERO',   placas:'DU6478A',serie:'3N6AD33A3HK869708',rend:'7 KM/L',   pv:'2026-09-24',pol:'794B05035M-17',tipo:'camioneta',color:'Blanco',nip:'OXXO GAS',km:0,status:'activo'},
+  {eco:'16',unidad:'GRUA F-350',       año:2010,plaza:'CHIHUAHUA', responsable:'CHIHUAHUA',        placas:'DU6497A',serie:'1FDEF3G59AEB23674', rend:'5 KM/L',   pv:'2026-09-24',pol:'794B05035M-10',tipo:'camion',   color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'17',unidad:'MARCH ACTIVE',     año:2017,plaza:'CHIHUAHUA', responsable:'GUILLERMO',        placas:'EMB313A',serie:'3N1CK3CD5HL248558', rend:'14.5 KM/L',pv:'2026-09-24',pol:'794B05035M-23',tipo:'auto',     color:'Blanco',nip:'1713',km:0,status:'activo'},
+  {eco:'19',unidad:'RAM 700',          año:2017,plaza:'CHIHUAHUA', responsable:'ROBERTO MUÑOZ',    placas:'DU6471A',serie:'9BD578458HY162606', rend:'—',        pv:'2026-09-24',pol:'794B05035M-20',tipo:'camioneta',color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'21',unidad:'RAM 700',          año:2018,plaza:'JUAREZ',    responsable:'BENITO SOTO',      placas:'DU6470A',serie:'9BD578452JY210560', rend:'—',        pv:'2026-09-24',pol:'794B05035M-12',tipo:'camioneta',color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'22',unidad:'RAM 700',          año:2018,plaza:'CHIHUAHUA', responsable:'CHIHUAHUA',        placas:'DU6751A',serie:'9BD578456JY208715', rend:'9 KM/L',   pv:'2026-09-24',pol:'794B05035M-13',tipo:'camioneta',color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'23',unidad:'RAM 700',          año:2018,plaza:'CHIHUAHUA', responsable:'SERGIO CARMONA',   placas:'DU6752A',serie:'9BD578454JY209023', rend:'—',        pv:'2026-09-24',pol:'794B05035M-14',tipo:'camioneta',color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'26',unidad:'SEAT IBIZA',       año:2018,plaza:'CHIHUAHUA', responsable:'MARTIN DE LA O',   placas:'EMB314A',serie:'VSBB2KJ1JR017261',  rend:'13 KM/L',  pv:'2026-09-24',pol:'794B05035M-19',tipo:'auto',     color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'31',unidad:'NP300 KANGOO',     año:2012,plaza:'CHIHUAHUA', responsable:'DESARROLLOS',      placas:'DU6754A',serie:'3N6DD25T5CK018279', rend:'8 KM/L',   pv:'2026-09-24',pol:'794B05035M-6', tipo:'camioneta',color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'35',unidad:'ISUZU',            año:2019,plaza:'CHIHUAHUA', responsable:'ALMACEN',          placas:'DU6495A',serie:'JAANPR755K7000178', rend:'3.5 KM/L', pv:'2026-09-24',pol:'794B05035M-9', tipo:'camion',   color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'36',unidad:'CAMION NISSAN CS', año:2014,plaza:'CHIHUAHUA', responsable:'LUIS LOPEZ',       placas:'DU6494A',serie:'3N6DD25T9EK019471', rend:'8 KM/L',   pv:'2026-09-24',pol:'794B05035M-18',tipo:'camion',   color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'37',unidad:'RAM 700',          año:2019,plaza:'JUAREZ',    responsable:'JUAREZ',           placas:'DU6493A',serie:'9BD578458KY323611', rend:'—',        pv:'2026-09-24',pol:'794B05035M-21',tipo:'camioneta',color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'38',unidad:'RAM 700',          año:2019,plaza:'CHIHUAHUA', responsable:'DIONICIO',         placas:'DU6492A',serie:'9BD578455KY324652', rend:'—',        pv:'2026-09-24',pol:'794B05035M-22',tipo:'camioneta',color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'39',unidad:'L200',             año:2019,plaza:'CHIHUAHUA', responsable:'SERGIO MENDOZA',   placas:'DU6491A',serie:'MMBL45G1KH043444',  rend:'10 KM/L',  pv:'2026-09-24',pol:'794B05035M-30',tipo:'camioneta',color:'Blanco',nip:'1339',km:0,status:'activo'},
+  {eco:'40',unidad:'MARCH ACTIVE',     año:2019,plaza:'MONTERREY', responsable:'IVAN SEPULVEDA',   placas:'DU6490A',serie:'3N6CK34N2KL230477', rend:'10.5 KM/L',pv:'2026-09-24',pol:'794B05035M-2', tipo:'auto',     color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'43',unidad:'F-150 PICK-UP',    año:2012,plaza:'CHIHUAHUA', responsable:'—',                placas:'DU6488A',serie:'1FTMF1CM1CKD41243', rend:'5.6 KM/L', pv:'2026-09-24',pol:'794B05035M-5', tipo:'camioneta',color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'47',unidad:'MARCH ACTIVE L4',  año:2019,plaza:'CHIHUAHUA', responsable:'IDALY RUIZ',       placas:'EMB308A',serie:'3N1CK3CD5KL232108', rend:'—',        pv:'2026-09-24',pol:'794B05035M-24',tipo:'auto',     color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'48',unidad:'MARCH ACTIVE L4',  año:2019,plaza:'CHIHUAHUA', responsable:'IVAN ARGENIS',     placas:'EMB309A',serie:'3N1CK3CD4KL232066', rend:'—',        pv:'2026-09-24',pol:'794B05035M-8', tipo:'auto',     color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'50',unidad:'FIESTA',           año:2018,plaza:'MONTERREY', responsable:'IRVING SAUCEDO',   placas:'EMB310A',serie:'3FADP4BJ1JM128469', rend:'11.3 KM/L',pv:'2026-09-24',pol:'794B05035M-11',tipo:'auto',     color:'Plata', nip:'',km:0,status:'activo'},
+  {eco:'52',unidad:'MARCH',            año:2020,plaza:'MONTERREY', responsable:'MONTERREY',        placas:'DU6486A',serie:'3N6CK34N3LL243692', rend:'—',        pv:'2026-09-24',pol:'794B05035M-26',tipo:'auto',     color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'54',unidad:'RAM 700 SLT',      año:2020,plaza:'CHIHUAHUA', responsable:'RICARDO GONZALEZ', placas:'DU6485A',serie:'9BD578452LY411572', rend:'17.5 KM/L',pv:'2026-09-24',pol:'794B05035M-33',tipo:'camioneta',color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'55',unidad:'MARCH',            año:2020,plaza:'MONTERREY', responsable:'ROQUE LEAL',       placas:'DU6484A',serie:'3N6CK34N3LL248469', rend:'11.7 KM/L',pv:'2026-09-24',pol:'794B05035M-27',tipo:'auto',     color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'56',unidad:'RAM 700 SLT',      año:2020,plaza:'PARRAL',    responsable:'PLAZA PARRAL',     placas:'DU6483A',serie:'9BD578451LY423955', rend:'14.5 KM/L',pv:'2026-09-24',pol:'794B05035M-34',tipo:'camioneta',color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'58',unidad:'RAM 700',          año:2021,plaza:'CHIHUAHUA', responsable:'ISMAEL BARRAZA',   placas:'DU6482A',serie:'9BD281G50MYV59661', rend:'12.7 KM/L',pv:'2026-09-24',pol:'794B05035M-35',tipo:'camioneta',color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'59',unidad:'RAM 700',          año:2021,plaza:'CHIHUAHUA', responsable:'ALAN ESTRADA',     placas:'DU6481A',serie:'9BD281G56MYV59423', rend:'13.5 KM/L',pv:'2026-09-24',pol:'794B05035M-36',tipo:'camioneta',color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'60',unidad:'MARCH',            año:2020,plaza:'CAMARGO',   responsable:'RAMON HERNANDEZ',  placas:'DU6480A',serie:'3N6CK34N9LL254065', rend:'11.6 KM/L',pv:'2026-09-24',pol:'794B05035M-28',tipo:'auto',     color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'61',unidad:'MARCH',            año:2020,plaza:'PARRAL',    responsable:'RICARDO MORIEL',   placas:'DU6479A',serie:'3N6CK34N2LL254229', rend:'13.9 KM/L',pv:'2026-09-24',pol:'794B05035M-29',tipo:'auto',     color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'62',unidad:'NP300',            año:2019,plaza:'MONTERREY', responsable:'JULIO DE LA CRUZ', placas:'DU6472A',serie:'3N6AD33A1KK838707', rend:'7.5 KM/L', pv:'2026-09-24',pol:'794B05035M-31',tipo:'camioneta',color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'63',unidad:'SILVERADO 1500',   año:2013,plaza:'CHIHUAHUA', responsable:'BODEGA',           placas:'DU6473A',serie:'3GCNC9CX6DG343777', rend:'5.5 KM/L', pv:'2026-09-24',pol:'794B05035M-25',tipo:'camioneta',color:'Plata', nip:'',km:0,status:'activo'},
+  {eco:'64',unidad:'MARCH ACTIVE',     año:2017,plaza:'CHIHUAHUA', responsable:'VERONICA GARCIA',  placas:'DU6474A',serie:'3N6CK34N4HL242297', rend:'10.6 KM/L',pv:'2026-09-24',pol:'794B05035M-32',tipo:'auto',     color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'66',unidad:'AVEO',             año:2018,plaza:'CHIHUAHUA', responsable:'CARMEN HERNANDEZ', placas:'EMB311A',serie:'LSGHD52H6JD239610', rend:'11.3 KM/L',pv:'2026-09-24',pol:'794B05035M-37',tipo:'auto',     color:'Gris',  nip:'',km:0,status:'activo'},
+  {eco:'69',unidad:'NISSAN NP300',     año:2017,plaza:'CHIHUAHUA', responsable:'LUIS LOPEZ',       placas:'DU6499A',serie:'3N6AD33A6HK837318', rend:'—',        pv:'2026-09-24',pol:'794B05035M-38',tipo:'camioneta',color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'71',unidad:'YUKON',            año:2023,plaza:'CHIHUAHUA', responsable:'PALOMA PINEDO',    placas:'DYY416B',serie:'1GKS28KL1PR236241', rend:'—',        pv:'—',         pol:'—',            tipo:'camioneta',color:'Negro', nip:'',km:0,status:'activo'},
+  {eco:'72',unidad:'RAM RAPID',        año:2023,plaza:'CHIHUAHUA', responsable:'JORGE URIBE',      placas:'DG7445B',serie:'9BD2657RIP9233026',  rend:'14 KM/L',  pv:'—',         pol:'—',            tipo:'camioneta',color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'73',unidad:'DODGE ATTITUDE',   año:2023,plaza:'CHIHUAHUA', responsable:'DENISSE GUTIERREZ',placas:'MKL325A',serie:'ML3ABT6J4PH004521', rend:'—',        pv:'—',         pol:'—',            tipo:'auto',     color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'74',unidad:'DODGE ATTITUDE',   año:2023,plaza:'CHIHUAHUA', responsable:'FATIMA SAUZAMEDA', placas:'MKL317A',serie:'ML3ABT6J4PH004552', rend:'15.8 KM/L',pv:'—',         pol:'—',            tipo:'auto',     color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'75',unidad:'AVEO',             año:2019,plaza:'CHIHUAHUA', responsable:'PALOMA PINEDO',    placas:'DUJ454B',serie:'LSGHD52H8KD130423', rend:'—',        pv:'2027-02-14',pol:'29113016152002',tipo:'auto',     color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'76',unidad:'NISSAN VERSA',     año:2024,plaza:'MONTERREY', responsable:'LUIS GARZA',       placas:'ESU908B',serie:'3N1CN7AE7RK398169', rend:'16 KM/L',  pv:'—',         pol:'—',            tipo:'auto',     color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'77',unidad:'BMW X6',           año:2025,plaza:'CHIHUAHUA', responsable:'MARTIN DE LA O',   placas:'EKM897B',serie:'WBA41EX06S9W75509', rend:'—',        pv:'—',         pol:'—',            tipo:'auto',     color:'Negro', nip:'',km:0,status:'activo'},
+  {eco:'79',unidad:'CHANGAN HUNTER',   año:2025,plaza:'CHIHUAHUA', responsable:'SERGIO MENDOZA',   placas:'337217', serie:'LSCBBZ2A1SG803364', rend:'—',        pv:'2029-02-27',pol:'4056350008',    tipo:'camioneta',color:'Blanco',nip:'7925',km:0,status:'activo'},
+  {eco:'80',unidad:'CHANGAN HUNTER',   año:2025,plaza:'CHIHUAHUA', responsable:'ULISES NUÑEZ',     placas:'337218', serie:'LSCBBZ2A3SG803365', rend:'—',        pv:'2029-02-27',pol:'4056347985',    tipo:'camioneta',color:'Blanco',nip:'8025',km:0,status:'activo'},
+  {eco:'81',unidad:'CHANGAN HUNTER',   año:2025,plaza:'DESARROLLOS',responsable:'LUIS LOPEZ',      placas:'337219', serie:'LSCBB72A8SG803376', rend:'—',        pv:'2029-02-27',pol:'4056350016',    tipo:'camioneta',color:'Blanco',nip:'8125',km:0,status:'activo'},
+  {eco:'82',unidad:'VAN DONGFENG',     año:2026,plaza:'CHIHUAHUA', responsable:'TOMAS',            placas:'DZ9769B',serie:'LGFP541E6TA603994',  rend:'—',        pv:'2029-03-17',pol:'4056530506',    tipo:'camion',   color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'83',unidad:'CHASIS DONGFENG',  año:2025,plaza:'CHIHUAHUA', responsable:'—',                placas:'DZ9767B',serie:'LGDND41EXSA202059',  rend:'—',        pv:'2029-03-17',pol:'4056530481',    tipo:'camion',   color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'84',unidad:'CHASIS DONGFENG',  año:2025,plaza:'CHIHUAHUA', responsable:'—',                placas:'DZ9766B',serie:'LGDND41E6SA202057',  rend:'—',        pv:'2029-03-17',pol:'4056530495',    tipo:'camion',   color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'85',unidad:'PICKUP DONGFENG',  año:2025,plaza:'CHIHUAHUA', responsable:'—',                placas:'DZ9768B',serie:'LGDCMA1L5SA204421',  rend:'—',        pv:'2029-03-20',pol:'3200970801',    tipo:'camioneta',color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'86',unidad:'CAMION VOLVO VNM', año:2006,plaza:'CHIHUAHUA', responsable:'—',               placas:'FV8403D',serie:'4V4MC9GF36N405891',  rend:'—',        pv:'—',         pol:'—',            tipo:'camion',   color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'87',unidad:'CASCADIA FREIGHTLINER',año:2010,plaza:'CHIHUAHUA',responsable:'—',             placas:'FV8404D',serie:'1FUJGEDR3ASAV2763',  rend:'—',        pv:'—',         pol:'—',            tipo:'camion',   color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'88',unidad:'REMOLQUE GR TRAILERS',año:2025,plaza:'CHIHUAHUA',responsable:'—',              placas:'7CF406A',serie:'3BZFP2026SC007714',  rend:'—',        pv:'—',         pol:'—',            tipo:'camion',   color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'89',unidad:'REMOLQUE GR TRAILERS',año:2026,plaza:'CHIHUAHUA',responsable:'—',              placas:'7CF407A',serie:'3BZBN1427TC001477',  rend:'—',        pv:'—',         pol:'—',            tipo:'camion',   color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'90',unidad:'CHANGAN STAR',     año:2026,plaza:'CHIHUAHUA', responsable:'—',                placas:'DZ9853B',serie:'LSCAB12E7TG800860',  rend:'—',        pv:'2026-11-01',pol:'1950290311',    tipo:'camion',   color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'91',unidad:'CHANGAN STAR DC',  año:2026,plaza:'CHIHUAHUA', responsable:'—',                placas:'DZ9855B',serie:'LSCAB22E6TG800256',  rend:'—',        pv:'2026-11-01',pol:'1950290357',    tipo:'camion',   color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'92',unidad:'CHANGAN STAR DC',  año:2026,plaza:'CHIHUAHUA', responsable:'—',                placas:'DZ9854B',serie:'LSCAB22E5TG800295',  rend:'—',        pv:'2026-11-01',pol:'1950290361',    tipo:'camion',   color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'32',unidad:'REMOLQUE CAMA BAJA',año:2013,plaza:'CHIHUAHUA',responsable:'—',               placas:'5CA683A',serie:'3BZBN1621DC000632',  rend:'—',        pv:'—',         pol:'—',            tipo:'camion',   color:'Rojo',  nip:'',km:0,status:'activo'},
+  {eco:'45',unidad:'REMOLQUE CAJA SECA',año:2018,plaza:'MONTERREY',responsable:'—',               placas:'5CA686A',serie:'3BZES1014JC010105',  rend:'—',        pv:'—',         pol:'—',            tipo:'camion',   color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'46',unidad:'COMPRESOR DE AIRE REMOLCABLE',año:2011,plaza:'CHIHUAHUA',responsable:'—',     placas:'5CA685A',serie:'4500A1012BR037356',  rend:'—',        pv:'—',         pol:'—',            tipo:'camion',   color:'Negro', nip:'',km:0,status:'activo'},
+  {eco:'53',unidad:'REMOLQUE CAJA SECA',año:2020,plaza:'CHIHUAHUA',responsable:'—',               placas:'5CA684A',serie:'3BZES1015LC003795',  rend:'—',        pv:'—',         pol:'—',            tipo:'camion',   color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'67',unidad:'REMOLQUE DOLLY',  año:2021,plaza:'CHIHUAHUA', responsable:'—',                placas:'5CA681A',serie:'REM21V0976467',     rend:'—',        pv:'—',         pol:'—',            tipo:'camion',   color:'Azul',  nip:'',km:0,status:'activo'},
+  {eco:'70',unidad:'REMOLQUE CAJA SECA',año:2019,plaza:'MONTERREY',responsable:'—',               placas:'5CD149A',serie:'3BZES1623KC001025',  rend:'—',        pv:'—',         pol:'—',            tipo:'camion',   color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'78',unidad:'REMOLQUE PLANTA DE LUZ',año:0,plaza:'CHIHUAHUA',responsable:'MARTIN DE LA O', placas:'SIN PLACAS',serie:'',                 rend:'—',        pv:'—',         pol:'—',            tipo:'camion',   color:'—',     nip:'',km:0,status:'activo'},
+  {eco:'93',unidad:'VIBROCOMPACTADOR DYNAPAC CA250D',año:0,plaza:'CHIHUAHUA',responsable:'—',     placas:'6582US5266',serie:'',                 rend:'—',        pv:'—',         pol:'—',            tipo:'camion',   color:'—',     nip:'',km:0,status:'activo'},
+  {eco:'94',unidad:'SEMIRREMOLQUE PLATAFORMA INTERSTATE',año:2019,plaza:'CHIHUAHUA',responsable:'—',placas:'—',serie:'1JK0DT200KM016992',       rend:'—',        pv:'—',         pol:'—',            tipo:'camion',   color:'—',     nip:'',km:0,status:'activo'},
+  {eco:'95',unidad:'COROLLA TOYOTA',  año:2026,plaza:'CHIHUAHUA', responsable:'PALOMA PINEDO',    placas:'DXS674C',serie:'JTDBCRFE1T3149317',  rend:'—',        pv:'2029-05-14',pol:'TFSM0003120678',tipo:'auto',     color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'96',unidad:'NIVELADORA AUTOPROPULSADA JOHN DEERE 772B',año:0,plaza:'CHIHUAHUA',responsable:'—',placas:'—',serie:'DW772BX511428',       rend:'—',        pv:'—',         pol:'—',            tipo:'camion',   color:'—',     nip:'',km:0,status:'activo'},
 ];
-
 
 const C={
   VEHS:'flotilla_vehiculos',
   SOLS:'flotilla_solicitudes',
   TAREAS:'actividades',
   USUARIOS:'fl_usuarios',
+  CHKSEM:'flotilla_checklist_semanal',
   OFFLINE_KEY:'tcn_offline_queue',
 };
 
@@ -89,6 +105,7 @@ let miVeh=null, misSols=[], misTareas=[], misNotif=[];
 let miPerfil=null; // {email, nombre, ecoVinculado, rol}
 let vistaAct='vehiculo';
 let solState={modo:'entrada',tipo:'',prior:'Normal',desc:'',km:'',taller:'',gasolina:50,chk:{},chkFotos:{},evFotos:[],dmg:{}};
+let semState={km:'',gasolina:50,chk:{},chkFotos:{},evFotos:[],observaciones:'',firma:null,yaExiste:false};
 let onlineStatus=navigator.onLine;
 
 // ── Emails con acceso de administrador/flotilla ──
@@ -139,7 +156,58 @@ function genCod(){
   return`TCN-EV-${dd}-${r}`;
 }
 
-// ── GPS ──
+// ── SEMANA ISO (ej. "2026-W25") ──
+function getSemanaISO(d){
+  d=d||new Date();
+  const dt=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));
+  const dayNum=(dt.getUTCDay()+6)%7;
+  dt.setUTCDate(dt.getUTCDate()-dayNum+3);
+  const firstThursday=new Date(Date.UTC(dt.getUTCFullYear(),0,4));
+  const week=1+Math.round(((dt-firstThursday)/86400000-3+((firstThursday.getUTCDay()+6)%7))/7);
+  return`${dt.getUTCFullYear()}-W${String(week).padStart(2,'0')}`;
+}
+function esLunes(){return new Date().getDay()===1;}
+
+// ── CHECK LIST SEMANAL — BANNER ──
+window._semChkCache={};
+function semChkBanner(){
+  const eco=miVeh?.eco;if(!eco)return'';
+  const semana=getSemanaISO();
+  const lunes=esLunes();
+  const cacheKey=`${eco}_${semana}`;
+  const yaExiste=window._semChkCache[cacheKey];
+  if(yaExiste===undefined){
+    db.collection(C.CHKSEM).where('vehiculoEco','==',String(eco)).where('semana','==',semana).limit(1).get()
+      .then(snap=>{window._semChkCache[cacheKey]=!snap.empty;if(vistaAct==='vehiculo')renderVehiculo();})
+      .catch(()=>{window._semChkCache[cacheKey]=false;});
+    return`<div class="fm-card" style="background:#F8FAFD;display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <div style="width:20px;height:20px;border:2px solid #CBD5E1;border-top-color:#2563EB;border-radius:50%;animation:fmspin .7s linear infinite"></div>
+      <div style="font-size:12px;color:#64748B">Verificando check list semanal…</div>
+    </div>`;
+  }
+  if(yaExiste){
+    return`<div class="fm-card" style="background:#DCFCE7;border:1px solid #BBF7D0;display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <span style="color:#15803D;flex-shrink:0">${IC.check}</span>
+      <div><div style="font-size:13px;font-weight:800;color:#15803D">Check list semanal completado</div>
+      <div style="font-size:11px;color:#166534;margin-top:2px">Semana ${semana} · Ya se registró la inspección de esta semana</div></div>
+    </div>`;
+  }
+  if(lunes){
+    return`<div class="fm-card" style="background:#EFF6FF;border:1.5px solid #BFDBFE;margin-bottom:12px;cursor:pointer" onclick="fmVista('chksemanal')">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="color:#1D4ED8;flex-shrink:0">${IC.tasks}</span>
+        <div style="flex:1"><div style="font-size:13px;font-weight:800;color:#1D4ED8">Check list semanal pendiente</div>
+        <div style="font-size:11px;color:#1E40AF;margin-top:2px">Hoy es lunes · Semana ${semana} · Toca para llenarlo</div></div>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1D4ED8" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+      </div>
+    </div>`;
+  }
+  return`<div class="fm-card" style="background:#F8FAFD;display:flex;align-items:center;gap:10px;margin-bottom:12px;opacity:.7">
+    <span style="color:#94A3B8;flex-shrink:0">${IC.tasks}</span>
+    <div><div style="font-size:12.5px;font-weight:700;color:#64748B">Check list semanal</div>
+    <div style="font-size:11px;color:#94A3B8;margin-top:2px">Disponible los lunes · Semana ${semana}</div></div>
+  </div>`;
+}
 function getGPS(){
   return new Promise(res=>{
     if(!navigator.geolocation){res(null);return;}
@@ -415,6 +483,7 @@ body{margin:0;padding:0;background:#F0F2F7;font-family:'Plus Jakarta Sans',-appl
 /* OFFLINE BANNER */
 .fm-offline-bar{background:#B45309;color:#fff;text-align:center;padding:6px 14px;font-size:11.5px;font-weight:700;display:none;}
 .fm-offline-bar.show{display:block;}
+@keyframes fmspin{to{transform:rotate(360deg);}}
 
 /* EMPTY */
 .fm-empty{text-align:center;padding:32px 20px;color:#64748B;}
@@ -659,6 +728,7 @@ window.fmVista=function(v){
   else if(v==='tareas')renderTareas();
   else if(v==='notif')renderNotif();
   else if(v==='util')renderUtil();
+  else if(v==='chksemanal')renderChkSemanal();
 };
 
 // ══════════════════════════════════════════════════════════
@@ -789,6 +859,8 @@ function renderVehiculo(){
         </button>
       </div>
     </div>
+
+    ${semChkBanner()}
 
     ${offline.length?`<div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px;margin-bottom:12px">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
@@ -1228,6 +1300,201 @@ window.fmChk=function(key,val){
   if(cnt)cnt.textContent=`${rev} de ${total} revisados`;
 };
 
+// ── CHECK LIST SEMANAL ──
+function renderChkSemanalList(){
+  let h='';
+  for(const [cat,items] of Object.entries(CHK_CATS)){
+    h+=`<div class="fm-chk-cat">${cat}</div>`;
+    items.forEach((item,i)=>{
+      const key=`sem__${cat}__${i}`;
+      const val=semState.chk[key]||'';
+      const hasFoto=!!semState.chkFotos[key];
+      h+=`<div class="fm-chk-row" id="fm-cr-${key}">
+        <span class="fm-chk-name">${item}</span>
+        <button class="fm-chk-si ${val==='si'?'on':''}" onclick="fmChkSem('${key}','si')">SI</button>
+        <button class="fm-chk-no ${val==='no'?'on':''}" onclick="fmChkSem('${key}','no')">NO</button>
+        <div class="fm-chk-cam ${hasFoto?'has':''}" onclick="${hasFoto?`fmVerFoto(semState.chkFotos['${key}'])`:`fmCapturar('chk','${key}',semState)`}" id="fm-cam-${key}">
+          ${hasFoto?`<img src="${typeof semState.chkFotos[key]==='object'?semState.chkFotos[key].src:semState.chkFotos[key]}" style="width:26px;height:26px;object-fit:cover;border-radius:5px">`:
+          `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>`}
+        </div>
+      </div>`;
+    });
+  }
+  return h;
+}
+
+window.fmChkSem=function(key,val){
+  semState.chk[key]=semState.chk[key]===val?'':val;
+  const si=document.querySelector(`#fm-cr-${key} .fm-chk-si`);
+  const no=document.querySelector(`#fm-cr-${key} .fm-chk-no`);
+  if(si)si.classList.toggle('on',semState.chk[key]==='si');
+  if(no)no.classList.toggle('on',semState.chk[key]==='no');
+  const total=Object.values(CHK_CATS).flat().length;
+  const rev=Object.values(semState.chk).filter(v=>v==='si'||v==='no').length;
+  const cnt=document.getElementById('fm-sem-chk-cnt');
+  if(cnt)cnt.textContent=`${rev} de ${total} revisados`;
+};
+
+window.fmGasSem=function(v){
+  semState.gasolina=Number(v);
+  const w=document.getElementById('fm-sem-gauge-wrap');
+  if(w)w.innerHTML=renderGaugeSVG(Number(v))+'<div class="fm-gauge-labels" style="width:200px"><span>VACÍO</span><span>2/4</span><span>MEDIO</span><span>3/4</span><span>LLENO</span></div>';
+};
+
+// ── VISTA: CHECK LIST SEMANAL ──
+function renderChkSemanal(){
+  if(!miVeh){fmVista('vehiculo');return;}
+  const semana=getSemanaISO();
+  const lunes=esLunes();
+  const cacheKey=`${miVeh.eco}_${semana}`;
+  const yaExiste=window._semChkCache[cacheKey];
+
+  if(!lunes){
+    setContent(`
+      <div class="fm-sec-hd"><div><div class="fm-sec-t">Check list semanal</div><div class="fm-sec-s">ECO ${miVeh.eco} · Semana ${semana}</div></div></div>
+      <div class="fm-empty">
+        <div class="fm-empty-ico" style="color:#94A3B8">${IC.tasks}</div>
+        <h3>Disponible solo los lunes</h3>
+        <p>El check list semanal de revisión se llena cada lunes. Hoy es ${new Date().toLocaleDateString('es-MX',{weekday:'long'})}.</p>
+      </div>
+      <button class="fm-btn ghost" onclick="fmVista('vehiculo')">Volver</button>
+      <div style="height:20px"></div>
+    `);
+    return;
+  }
+  if(yaExiste){
+    setContent(`
+      <div class="fm-sec-hd"><div><div class="fm-sec-t">Check list semanal</div><div class="fm-sec-s">ECO ${miVeh.eco} · Semana ${semana}</div></div></div>
+      <div class="fm-empty">
+        <div class="fm-empty-ico" style="color:#15803D">${IC.check}</div>
+        <h3>Ya completado esta semana</h3>
+        <p>El check list semanal de esta semana ya fue registrado para este vehículo.</p>
+      </div>
+      <button class="fm-btn ghost" onclick="fmVista('vehiculo')">Volver</button>
+      <div style="height:20px"></div>
+    `);
+    return;
+  }
+
+  // Reset del estado al entrar
+  semState={km:'',gasolina:50,chk:{},chkFotos:{},evFotos:[],observaciones:'',firma:null,yaExiste:false};
+
+  setContent(`
+    <div class="fm-sec-hd">
+      <div>
+        <div class="fm-sec-t">Check list semanal</div>
+        <div class="fm-sec-s">ECO ${miVeh.eco} · ${miVeh.unidad||'—'} · Semana ${semana}</div>
+      </div>
+    </div>
+
+    <!-- KM + GASOLINA -->
+    <div class="fm-fld"><label>Kilometraje actual</label><input type="number" id="fm-sem-km" placeholder="${miVeh.km||0}" inputmode="numeric"></div>
+
+    <div class="fm-fld">
+      <label>Nivel de gasolina</label>
+      <div class="fm-gauge-wrap" id="fm-sem-gauge-wrap">
+        ${renderGaugeSVG(50)}
+        <div class="fm-gauge-labels" style="width:200px"><span>VACÍO</span><span>2/4</span><span>MEDIO</span><span>3/4</span><span>LLENO</span></div>
+      </div>
+      <input type="range" min="0" max="100" value="50" id="fm-sem-gas" oninput="fmGasSem(this.value)" style="width:100%;margin-top:6px;accent-color:#2563EB">
+    </div>
+
+    <!-- EVIDENCIAS GENERALES -->
+    <div class="fm-fld">
+      <label>Evidencias fotográficas <span style="font-weight:500;text-transform:none;font-size:9px;color:#94A3B8">(generales del vehículo)</span></label>
+      <button onclick="fmCapturar('general',null,semState)" class="fm-btn primary" style="margin-bottom:8px">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        Tomar foto con cámara
+      </button>
+      <div id="fm-sem-ev-wrap" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+    </div>
+
+    <!-- CHECKLIST -->
+    <div class="fm-fld">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <label style="margin:0">Check list de inspección</label>
+        <span id="fm-sem-chk-cnt" style="font-size:10px;color:#64748B">0 de ${Object.values(CHK_CATS).flat().length} revisados</span>
+      </div>
+      <div id="fm-sem-chk-list">${renderChkSemanalList()}</div>
+    </div>
+
+    <!-- OBSERVACIONES -->
+    <div class="fm-fld">
+      <label>Observaciones</label>
+      <textarea id="fm-sem-obs" placeholder="Comentarios generales del vehículo esta semana…"></textarea>
+    </div>
+
+    <!-- FIRMA -->
+    <div class="fm-card">
+      <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:6px">Firma del técnico <span style="color:#DC2626">*</span></div>
+      <div style="border:2px solid #E2E8F0;border-radius:10px;overflow:hidden;background:#F8FAFD;touch-action:none">
+        <canvas id="fm-sem-firma" width="320" height="200" style="display:block;width:100%;height:200px;touch-action:none;cursor:crosshair;border-radius:8px"></canvas>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="fm-btn ghost fm-btn-sm" onclick="limpiarFirma('fm-sem-firma')" style="flex:1">Limpiar</button>
+      </div>
+      <div style="font-size:11px;color:#94A3B8;margin-top:6px">La firma es obligatoria para guardar el check list semanal.</div>
+    </div>
+
+    <button class="fm-btn primary" onclick="fmGuardarChkSemanal()" id="fm-sem-btn-guardar" style="margin-top:8px">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+      Guardar check list semanal
+    </button>
+    <div style="height:20px"></div>
+  `);
+  setTimeout(()=>initFirmaCanvas('fm-sem-firma'),100);
+}
+
+window.fmGuardarChkSemanal=async function(){
+  if(!miVeh){toast('No hay vehículo vinculado','err');return;}
+  if(!firmaTieneTrazo('fm-sem-firma')){toast('La firma es obligatoria. Dibújala antes de guardar.','err');return;}
+
+  const semana=getSemanaISO();
+  const km=document.getElementById('fm-sem-km')?.value?.trim()||'';
+  const observaciones=document.getElementById('fm-sem-obs')?.value?.trim()||'';
+  const firma=firmaExportar('fm-sem-firma');
+
+  const btn=document.getElementById('fm-sem-btn-guardar');
+  if(btn){btn.disabled=true;btn.textContent='Guardando…';}
+
+  try{
+    // Verificación final de duplicado (evita doble registro por carrera)
+    const cacheKey=`${miVeh.eco}_${semana}`;
+    const dup=await db.collection(C.CHKSEM).where('vehiculoEco','==',String(miVeh.eco)).where('semana','==',semana).limit(1).get();
+    if(!dup.empty){
+      window._semChkCache[cacheKey]=true;
+      toast('Este check list ya fue registrado esta semana','err');
+      if(btn){btn.disabled=false;btn.textContent='Guardar check list semanal';}
+      fmVista('chksemanal');
+      return;
+    }
+
+    const doc={
+      vehiculoId:miVeh.id||'',vehiculoEco:String(miVeh.eco),vehiculo:`${miVeh.eco} · ${miVeh.unidad||''}`,
+      semana,fecha:new Date().toISOString().slice(0,10),
+      km:km||String(miVeh.km||0),gasolina:semState.gasolina,
+      checklist:semState.chk,chkFotos:semState.chkFotos,
+      evidencias:semState.evFotos,
+      observaciones,
+      firma,
+      tecnico:window.auth?.currentUser?.displayName||window.auth?.currentUser?.email||'—',
+      creadoEn:new Date().toISOString(),
+    };
+    await db.collection(C.CHKSEM).add(doc);
+    if(km&&miVeh&&!String(miVeh.id).startsWith('eco-')){
+      await db.collection(C.VEHS).doc(miVeh.id).update({km:Number(km)}).catch(()=>{});
+    }
+    window._semChkCache[cacheKey]=true;
+    toast('Check list semanal guardado','ok');
+    semState={km:'',gasolina:50,chk:{},chkFotos:{},evFotos:[],observaciones:'',firma:null,yaExiste:false};
+    fmVista('vehiculo');
+  }catch(e){
+    console.error('[FM]',e);
+    toast('Error al guardar: '+e.message,'err');
+    if(btn){btn.disabled=false;btn.textContent='Guardar check list semanal';}
+  }
+};
+
 // ── COMPRESIÓN DE IMAGEN ──
 function comprimirBase64(src,maxW,calidad){
   maxW=maxW||900;calidad=calidad||0.72;
@@ -1247,7 +1514,8 @@ function comprimirBase64(src,maxW,calidad){
 }
 
 // ── CAPTURAR EVIDENCIA MÓVIL ──
-window.fmCapturar=async function(tipo,key){
+window.fmCapturar=async function(tipo,key,target){
+  target=target||solState;
   const inp=document.createElement('input');
   inp.type='file';inp.accept='image/*';
   inp.capture='environment';
@@ -1274,16 +1542,16 @@ window.fmCapturar=async function(tipo,key){
         timestamp:now.toISOString(),
         gps,eco:miVeh?.eco||'—',unidad:miVeh?.unidad||'—',
         usuario:window.auth?.currentUser?.displayName||window.auth?.currentUser?.email||'—',
-        modo:solState.modo,tipo,key:key||null,
+        modo:target===semState?'semanal':solState.modo,tipo,key:key||null,
       };
       const sellada=await sellarImg(raw,meta);
       if(tipo==='chk'&&key){
-        solState.chkFotos[key]={src:sellada,meta};
+        target.chkFotos[key]={src:sellada,meta};
         const cam=document.getElementById(`fm-cam-${key}`);
         if(cam){cam.classList.add('has');cam.innerHTML=`<img src="${sellada}" style="width:26px;height:26px;object-fit:cover;border-radius:5px">`;cam.onclick=()=>fmVerFoto({src:sellada,meta});}
       } else {
-        solState.evFotos.push({src:sellada,meta});
-        const wrap=document.getElementById('fm-ev-wrap');
+        target.evFotos.push({src:sellada,meta});
+        const wrap=document.getElementById(target===semState?'fm-sem-ev-wrap':'fm-ev-wrap');
         if(wrap){
           const pill=document.createElement('div');
           pill.className='fm-ev-pill';
@@ -2046,8 +2314,9 @@ window.utilVerificarCodigo=async function(){
 };
 
 // CANVAS DE FIRMA
-function initFirmaCanvas(){
-  const canvas=document.getElementById('firma-canvas');if(!canvas)return;
+function initFirmaCanvas(canvasId){
+  canvasId=canvasId||'firma-canvas';
+  const canvas=document.getElementById(canvasId);if(!canvas)return;
   const ctx=canvas.getContext('2d');
   ctx.strokeStyle='#1E3A5F';ctx.lineWidth=2.5;ctx.lineCap='round';ctx.lineJoin='round';
   let drawing=false,lastX=0,lastY=0;
@@ -2060,7 +2329,24 @@ function initFirmaCanvas(){
   canvas.addEventListener('touchend',()=>drawing=false);
 }
 
-window.limpiarFirma=function(){const c=document.getElementById('firma-canvas');if(c){const ctx=c.getContext('2d');ctx.clearRect(0,0,c.width,c.height);}};
+window.limpiarFirma=function(canvasId){const c=document.getElementById(canvasId||'firma-canvas');if(c){const ctx=c.getContext('2d');ctx.clearRect(0,0,c.width,c.height);}};
+
+window.firmaTieneTrazo=function(canvasId){
+  const c=document.getElementById(canvasId||'firma-canvas');if(!c)return false;
+  const ctx=c.getContext('2d');
+  const data=ctx.getImageData(0,0,c.width,c.height).data;
+  return data.some((_,i)=>i%4===3&&data[i]>0);
+};
+
+window.firmaExportar=function(canvasId){
+  const canvas=document.getElementById(canvasId||'firma-canvas');if(!canvas)return null;
+  const firmaCvs=document.createElement('canvas');
+  firmaCvs.width=canvas.width;firmaCvs.height=canvas.height;
+  const firmaCx=firmaCvs.getContext('2d');
+  firmaCx.fillStyle='#ffffff';firmaCx.fillRect(0,0,firmaCvs.width,firmaCvs.height);
+  firmaCx.drawImage(canvas,0,0);
+  return firmaCvs.toDataURL('image/jpeg',0.85);
+};
 
 window.utilConfirmarFirma=async function(){
   const canvas=document.getElementById('firma-canvas');
