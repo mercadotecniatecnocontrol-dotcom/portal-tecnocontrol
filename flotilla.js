@@ -18,7 +18,7 @@ const SVG_TROCA={
 };
 
 
-const C={VEHS:'flotilla_vehiculos',SOLS:'flotilla_solicitudes',COMIS:'flotilla_comisiones',TRANS:'flotilla_transferencias'};
+const C={VEHS:'flotilla_vehiculos',SOLS:'flotilla_solicitudes',COMIS:'flotilla_comisiones',TRANS:'flotilla_transferencias',CHKSEM:'flotilla_checklist_semanal'};
 
 const CAT=[
   {eco:'01',unidad:'NISSAN NP100',     año:2000,plaza:'CHIHUAHUA',    responsable:'GLEN PRECIADO',   placas:'DU0101A',serie:'3N6AD33A3H46544',rend:'7 KM/L',   pv:'2026-09-24',pol:'794B05035M-17',tipo:'auto',color:'Blanco',nip:'OXXO GAS',km:0,status:'activo'},
@@ -68,11 +68,24 @@ const CAT=[
   {eco:'83',unidad:'CHASIS DONGFENG',  año:2025,plaza:'CHIHUAHUA', responsable:'—',                placas:'DZ9767B',serie:'LGDND41EXSA202059',  rend:'—',        pv:'2029-03-17',pol:'4056530481',    tipo:'camion',   color:'Blanco',nip:'',km:0,status:'activo'},
   {eco:'84',unidad:'CHASIS DONGFENG',  año:2025,plaza:'CHIHUAHUA', responsable:'—',                placas:'DZ9766B',serie:'LGDND41E6SA202057',  rend:'—',        pv:'2029-03-17',pol:'4056530495',    tipo:'camion',   color:'Blanco',nip:'',km:0,status:'activo'},
   {eco:'85',unidad:'PICKUP DONGFENG',  año:2025,plaza:'CHIHUAHUA', responsable:'—',                placas:'DZ9768B',serie:'LGDCMA1L5SA204421',  rend:'—',        pv:'2029-03-20',pol:'3200970801',    tipo:'camioneta',color:'Blanco',nip:'',km:0,status:'activo'},
-  {eco:'86',unidad:'CAMION VOLVO',  año:2025,plaza:'CHIHUAHUA', responsable:'—',                placas:'DZ9768B',serie:'LGDCMA1L5SA204421',  rend:'—',        pv:'2029-03-20',pol:'3200970801',    tipo:'camioneta',color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'86',unidad:'CAMION VOLVO VNM', año:2006,plaza:'CHIHUAHUA', responsable:'—',               placas:'FV8403D',serie:'4V4MC9GF36N405891',  rend:'—',        pv:'—',         pol:'—',            tipo:'camion',   color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'87',unidad:'CASCADIA FREIGHTLINER',año:2010,plaza:'CHIHUAHUA',responsable:'—',             placas:'FV8404D',serie:'1FUJGEDR3ASAV2763',  rend:'—',        pv:'—',         pol:'—',            tipo:'camion',   color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'88',unidad:'REMOLQUE GR TRAILERS',año:2025,plaza:'CHIHUAHUA',responsable:'—',              placas:'7CF406A',serie:'3BZFP2026SC007714',  rend:'—',        pv:'—',         pol:'—',            tipo:'camion',   color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'89',unidad:'REMOLQUE GR TRAILERS',año:2026,plaza:'CHIHUAHUA',responsable:'—',              placas:'7CF407A',serie:'3BZBN1427TC001477',  rend:'—',        pv:'—',         pol:'—',            tipo:'camion',   color:'Blanco',nip:'',km:0,status:'activo'},
   {eco:'90',unidad:'CHANGAN STAR',     año:2026,plaza:'CHIHUAHUA', responsable:'—',                placas:'DZ9853B',serie:'LSCAB12E7TG800860',  rend:'—',        pv:'2026-11-01',pol:'1950290311',    tipo:'camion',   color:'Blanco',nip:'',km:0,status:'activo'},
   {eco:'91',unidad:'CHANGAN STAR DC',  año:2026,plaza:'CHIHUAHUA', responsable:'—',                placas:'DZ9855B',serie:'LSCAB22E6TG800256',  rend:'—',        pv:'2026-11-01',pol:'1950290357',    tipo:'camion',   color:'Blanco',nip:'',km:0,status:'activo'},
   {eco:'92',unidad:'CHANGAN STAR DC',  año:2026,plaza:'CHIHUAHUA', responsable:'—',                placas:'DZ9854B',serie:'LSCAB22E5TG800295',  rend:'—',        pv:'2026-11-01',pol:'1950290361',    tipo:'camion',   color:'Blanco',nip:'',km:0,status:'activo'},
-  {eco:'96',unidad:'MORTOCONFORMADORA',  año:2026,plaza:'CHIHUAHUA', responsable:'—',                placas:'DZ9854B',serie:'LSCAB22E5TG800295',  rend:'—',        pv:'2026-11-01',pol:'1950290361',    tipo:'camion',   color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'32',unidad:'REMOLQUE CAMA BAJA',año:2013,plaza:'CHIHUAHUA',responsable:'—',               placas:'5CA683A',serie:'3BZBN1621DC000632',  rend:'—',        pv:'—',         pol:'—',            tipo:'camion',   color:'Rojo',  nip:'',km:0,status:'activo'},
+  {eco:'45',unidad:'REMOLQUE CAJA SECA',año:2018,plaza:'MONTERREY',responsable:'—',               placas:'5CA686A',serie:'3BZES1014JC010105',  rend:'—',        pv:'—',         pol:'—',            tipo:'camion',   color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'46',unidad:'COMPRESOR DE AIRE REMOLCABLE',año:2011,plaza:'CHIHUAHUA',responsable:'—',     placas:'5CA685A',serie:'4500A1012BR037356',  rend:'—',        pv:'—',         pol:'—',            tipo:'camion',   color:'Negro', nip:'',km:0,status:'activo'},
+  {eco:'53',unidad:'REMOLQUE CAJA SECA',año:2020,plaza:'CHIHUAHUA',responsable:'—',               placas:'5CA684A',serie:'3BZES1015LC003795',  rend:'—',        pv:'—',         pol:'—',            tipo:'camion',   color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'67',unidad:'REMOLQUE DOLLY',  año:2021,plaza:'CHIHUAHUA', responsable:'—',                placas:'5CA681A',serie:'REM21V0976467',     rend:'—',        pv:'—',         pol:'—',            tipo:'camion',   color:'Azul',  nip:'',km:0,status:'activo'},
+  {eco:'70',unidad:'REMOLQUE CAJA SECA',año:2019,plaza:'MONTERREY',responsable:'—',               placas:'5CD149A',serie:'3BZES1623KC001025',  rend:'—',        pv:'—',         pol:'—',            tipo:'camion',   color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'78',unidad:'REMOLQUE PLANTA DE LUZ',año:0,plaza:'CHIHUAHUA',responsable:'MARTIN DE LA O', placas:'SIN PLACAS',serie:'',                 rend:'—',        pv:'—',         pol:'—',            tipo:'camion',   color:'—',     nip:'',km:0,status:'activo'},
+  {eco:'93',unidad:'VIBROCOMPACTADOR DYNAPAC CA250D',año:0,plaza:'CHIHUAHUA',responsable:'—',     placas:'6582US5266',serie:'',                 rend:'—',        pv:'—',         pol:'—',            tipo:'camion',   color:'—',     nip:'',km:0,status:'activo'},
+  {eco:'94',unidad:'SEMIRREMOLQUE PLATAFORMA INTERSTATE',año:2019,plaza:'CHIHUAHUA',responsable:'—',placas:'—',serie:'1JK0DT200KM016992',       rend:'—',        pv:'—',         pol:'—',            tipo:'camion',   color:'—',     nip:'',km:0,status:'activo'},
+  {eco:'95',unidad:'COROLLA TOYOTA',  año:2026,plaza:'CHIHUAHUA', responsable:'PALOMA PINEDO',    placas:'DXS674C',serie:'JTDBCRFE1T3149317',  rend:'—',        pv:'2029-05-14',pol:'TFSM0003120678',tipo:'auto',     color:'Blanco',nip:'',km:0,status:'activo'},
+  {eco:'96',unidad:'NIVELADORA AUTOPROPULSADA JOHN DEERE 772B',año:0,plaza:'CHIHUAHUA',responsable:'—',placas:'—',serie:'DW772BX511428',       rend:'—',        pv:'—',         pol:'—',            tipo:'camion',   color:'—',     nip:'',km:0,status:'activo'},
 ];
 
 const CHK_CATS={
@@ -112,7 +125,7 @@ const I={
 
 // ESTADO
 let db=window.db, fs=null;
-let flV=[], flS=[], flCom=[], flTrans=[];
+let flV=[], flS=[], flCom=[], flTrans=[], flChkSem=[];
 let vistaAct='panel';
 let ST={
   vehId:null, tipoVeh:'auto', vistaImg:'frente', modo:'entrada',
@@ -264,6 +277,9 @@ function injectCSS(){
 .fl-sb-eco{font-size:11px;font-weight:800;font-family:'JetBrains Mono',monospace;color:#374151;min-width:22px;}
 .fl-sb-name{font-size:11px;font-weight:500;color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;}
 .fl-sb-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.fl-sb-item.fl-sb-bloq{border:1px solid #EF4444;border-left:3px solid #EF4444;background:#FEF2F2;}
+.fl-sb-item.fl-sb-bloq:hover{background:#FEE2E2;}
+.fl-sb-bloq-info{display:flex;align-items:center;gap:3px;font-size:9px;font-weight:700;color:#DC2626;flex-shrink:0;max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .fl-sb-footer{padding:8px 10px;border-top:1px solid #E8EDF5;display:grid;grid-template-columns:1fr 1fr;gap:6px;}
 .fl-sb-stat dt{font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;}
 .fl-sb-stat dd{font-size:18px;font-weight:900;font-family:'JetBrains Mono',monospace;line-height:1.1;}
@@ -460,6 +476,11 @@ function buildHTML(){
       </button>
     </div>
     <div style="position:relative;margin-left:6px">
+      <button class="fl-tab-btn" id="fl-tb-chksemanal" onclick="flVista('chksemanal')" title="Check list semanal">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+      </button>
+    </div>
+    <div style="position:relative;margin-left:6px">
       <button class="fl-tab-btn" id="fl-tb-bajas" onclick="flVista('bajas')" title="Vehículos de baja">${I.archive}</button>
       ${hAdm()?`
       <div class="fl-tb-sep" style="width:1px;height:28px;background:rgba(255,255,255,.12);margin:0 4px"></div>
@@ -502,7 +523,7 @@ window.cargarFlotilla=async function(){
   db=window.db;
   if(!db){console.error('[FLOTILLA] window.db no disponible después de 5s');return;}
   fs=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-  await Promise.all([ldVehs(),ldSols(),ldComs(),ldTrans()]);
+  await Promise.all([ldVehs(),ldSols(),ldComs(),ldTrans(),ldChkSem()]);
   renderSB();
   flVista('panel');
 };
@@ -513,6 +534,7 @@ async function ldSols(){try{const s=await fs.getDocs(fs.collection(db,C.SOLS));f
 }
 async function ldComs(){try{const s=await fs.getDocs(fs.collection(db,C.COMIS));flCom=s.docs.map(d=>({id:d.id,...d.data()}));}catch{flCom=[];}}
 async function ldTrans(){try{const s=await fs.getDocs(fs.collection(db,C.TRANS));flTrans=s.docs.map(d=>({id:d.id,...d.data()}));flTrans.sort((a,b)=>(b.creadoEn||"").localeCompare(a.creadoEn||""));}catch{flTrans=[];}}
+async function ldChkSem(){try{const s=await fs.getDocs(fs.collection(db,C.CHKSEM));flChkSem=s.docs.map(d=>({id:d.id,...d.data()}));flChkSem.sort((a,b)=>(b.creadoEn||"").localeCompare(a.creadoEn||""));}catch{flChkSem=[];}}
 
 // SIDEBAR
 let sbTipoFilt='all';
@@ -529,9 +551,13 @@ function renderSB(){
   if(q)filtrado=filtrado.filter(v=>(v.eco+v.unidad+v.placas+v.responsable).toLowerCase().includes(q));
   lista.innerHTML=filtrado.map(v=>{
     const dot=v.status==='taller'?'#F59E0B':v.status==='comision'?'#8B5CF6':'#22C55E';
-    return`<div class="fl-sb-item" id="fl-sbi-${v.id}" onclick="flSbSel('${v.id}')">
+    const comAct=v.status==='comision'?flCom.find(c=>c.estatus==='En préstamo'&&(c.vehiculoId===v.id||String(c.vehiculoEco)===String(v.eco))):null;
+    const bloqueado=!!comAct;
+    const tip=bloqueado?`En uso · ${comAct.responsable||'—'}${comAct.motivo?' · '+comAct.motivo:''}`:'';
+    return`<div class="fl-sb-item${bloqueado?' fl-sb-bloq':''}" id="fl-sbi-${v.id}" onclick="flSbSel('${v.id}')" ${bloqueado?`title="${tip.replace(/"/g,'&quot;')}"`:''}>
       <div class="fl-sb-eco">${v.eco}</div>
       <div class="fl-sb-name">${v.unidad||'—'}</div>
+      ${bloqueado?`<div class="fl-sb-bloq-info"><span class="fl-sb-bloq-resp">${comAct.responsable||'—'}</span></div>`:''}
       <div class="fl-sb-dot" style="background:${dot}"></div>
     </div>`;
   }).join('');
@@ -547,6 +573,14 @@ window.flSbTipo=function(t){
   renderSB();
 };
 window.flSbSel=function(id){
+  const vChk=flV.find(x=>x.id===id);
+  if(vChk&&vChk.status==='comision'){
+    const comAct=flCom.find(c=>c.estatus==='En préstamo'&&(c.vehiculoId===vChk.id||String(c.vehiculoEco)===String(vChk.eco)));
+    if(comAct){
+      const msg=`⚠ Este vehículo está EN USO\n\nResponsable: ${comAct.responsable||'—'}\nMotivo: ${comAct.motivo||'—'}\n\n¿Deseas continuar de todos modos?`;
+      if(!confirm(msg))return;
+    }
+  }
   document.querySelectorAll('.fl-sb-item').forEach(e=>e.classList.remove('on'));
   document.getElementById('fl-sbi-'+id)?.classList.add('on');
   // Reset TOTAL del estado al cambiar vehículo
@@ -581,6 +615,7 @@ window.flVista=function(v){
   else if(v==='sols')rSols();
   else if(v==='comis')rComis();
   else if(v==='compar')rCompar();
+  else if(v==='chksemanal')rChkSemanal();
   else if(v==='bajas')rBajas();
   else if(v==='admin')rAdmin();
 };
@@ -1682,7 +1717,16 @@ function renderRP(id){
   const alts=[];
   if(d!==null&&d<0)alts.push({e:true,t:'Póliza VENCIDA'});
   else if(d!==null&&d<90)alts.push({e:false,t:`Póliza vence en ${d} días`});
+  const comAct=v.status==='comision'?flCom.find(c=>c.estatus==='En préstamo'&&(c.vehiculoId===v.id||String(c.vehiculoEco)===String(v.eco))):null;
   rp.innerHTML=`
+    ${comAct?`<div style="background:#FEF2F2;border:1px solid #FCA5A5;border-radius:9px;padding:9px 12px;margin:10px 12px 0;display:flex;align-items:flex-start;gap:8px">
+      <span style="font-size:16px;line-height:1">🔒</span>
+      <div style="flex:1">
+        <div style="font-size:11px;font-weight:800;color:#DC2626">Vehículo en uso</div>
+        <div style="font-size:10.5px;color:#7F1D1D;margin-top:2px"><strong>Responsable:</strong> ${comAct.responsable||'—'}</div>
+        ${comAct.motivo?`<div style="font-size:10.5px;color:#7F1D1D;margin-top:1px"><strong>Motivo:</strong> ${comAct.motivo}</div>`:''}
+      </div>
+    </div>`:''}
     <!-- FOTO / CARRUSEL — específica por vehículo -->
     <div class="fl-rp-img" id="fl-rp-car">
       ${fotos.length?`
@@ -2785,6 +2829,156 @@ window.flVerComparVeh=function(eco,offsetSem){
   ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
 };
 
+
+
+// ══════════════════════════════════════════════════════
+// CHECK LIST SEMANAL — comparativo + detalle
+// ══════════════════════════════════════════════════════
+let chkSemFiltroVeh='';
+function rChkSemanal(){
+  const semanas=[...new Set(flChkSem.map(r=>r.semana))].sort().reverse();
+  const semSel=semanas[0]||null;
+  if(!semanas.length){
+    setContent(padded(`
+      <div style="font-size:17px;font-weight:900;letter-spacing:-.4px;margin-bottom:4px">Check list semanal</div>
+      <div style="font-size:11px;color:#64748B;margin-bottom:14px">Inspección semanal de vehículos (lunes)</div>
+      <div class="fl-empty" style="min-height:200px"><div class="fl-empty-ico"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="1.5"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></div><h3>Sin registros</h3><p>Aún no se han registrado check lists semanales desde la app móvil.</p></div>
+    `));
+    return;
+  }
+  rChkSemanalTabla(semSel);
+}
+
+function rChkSemanalTabla(semSel){
+  const semanas=[...new Set(flChkSem.map(r=>r.semana))].sort().reverse();
+  const idx=semanas.indexOf(semSel);
+  const total=Object.values(CHK_CATS).flat().length;
+  let regs=flChkSem.filter(r=>r.semana===semSel);
+  if(chkSemFiltroVeh)regs=regs.filter(r=>String(r.vehiculoEco)===String(chkSemFiltroVeh));
+  // un registro por vehículo (el más reciente si hubiera duplicados)
+  const porVeh={};
+  regs.forEach(r=>{if(!porVeh[r.vehiculoEco]||(r.creadoEn||'')>(porVeh[r.vehiculoEco].creadoEn||''))porVeh[r.vehiculoEco]=r;});
+  const ecos=Object.keys(porVeh).sort((a,b)=>Number(a)-Number(b));
+  const vehsSinRegistro=flV.filter(v=>v.status!=='baja'&&!ecos.includes(String(v.eco))&&(!chkSemFiltroVeh||String(v.eco)===String(chkSemFiltroVeh)));
+
+  const okCount=r=>Object.values(r.checklist||{}).filter(v=>v==='si').length;
+  const noCount=r=>Object.values(r.checklist||{}).filter(v=>v==='no').length;
+  const pctColor=r=>{const no=noCount(r);return no===0?'#15803D':no<=2?'#D97706':'#B91C1C';};
+  const pctBg=r=>{const no=noCount(r);return no===0?'#DCFCE7':no<=2?'#FEF3C7':'#FEE2E2';};
+
+  const thStyle='text-align:center;padding:8px 6px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#64748B;border-bottom:2px solid #E2E8F0;white-space:nowrap';
+  const tdC='text-align:center;padding:8px 6px;';
+
+  let trs='';
+  ecos.forEach((eco,i)=>{
+    const r=porVeh[eco];
+    const v=flV.find(x=>String(x.eco)===String(eco))||{};
+    const bg=i%2===0?'background:#fff':'background:#FAFBFD';
+    const ok=okCount(r),no=noCount(r);
+    trs+=`<tr style="border-bottom:1px solid #F1F5F9;${bg};cursor:pointer" onclick="flVerChkSem('${r.id}')">
+      <td style="padding:8px 10px">
+        <div style="font-weight:700;font-size:12px">${v.unidad||r.vehiculo||'—'}</div>
+        <div style="font-size:10px;color:#64748B;font-family:'JetBrains Mono',monospace">ECO ${eco}</div>
+      </td>
+      <td style="${tdC}font-weight:700;font-family:'JetBrains Mono',monospace">${r.km?Number(r.km).toLocaleString():'—'}</td>
+      <td style="${tdC}font-weight:700">${r.gasolina!=null?r.gasolina+'%':'—'}</td>
+      <td style="${tdC}"><span style="background:${pctBg(r)};color:${pctColor(r)};font-size:10px;font-weight:800;padding:2px 8px;border-radius:99px">${ok}/${total} OK${no?' · '+no+' falla'+(no>1?'s':''):''}</span></td>
+      <td style="${tdC}">${r.observaciones?`<span title="${r.observaciones.replace(/"/g,'&quot;')}" style="color:#2563EB">${I.alert||'💬'}</span>`:'<span style="color:#94A3B8;font-size:10px">—</span>'}</td>
+      <td style="${tdC}">${r.firma?'<span style="color:#15803D;font-weight:800">✓</span>':'<span style="color:#B91C1C;font-weight:800">✗</span>'}</td>
+      <td style="${tdC}font-size:10px;color:#64748B">${r.tecnico||'—'}</td>
+      <td style="${tdC}font-size:18px;color:#94A3B8">›</td>
+    </tr>`;
+  });
+  vehsSinRegistro.forEach((v,i)=>{
+    const bg=(ecos.length+i)%2===0?'background:#fff':'background:#FAFBFD';
+    trs+=`<tr style="border-bottom:1px solid #F1F5F9;${bg};opacity:.55">
+      <td style="padding:8px 10px">
+        <div style="font-weight:700;font-size:12px">${v.unidad||'—'}</div>
+        <div style="font-size:10px;color:#64748B;font-family:'JetBrains Mono',monospace">ECO ${v.eco}</div>
+      </td>
+      <td colspan="6" style="${tdC}color:#94A3B8;font-size:11px">Sin check list registrado esta semana</td>
+      <td></td>
+    </tr>`;
+  });
+
+  const body=trs?`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
+    <thead><tr style="background:#F1F5F9">
+      <th style="text-align:left;padding:8px 10px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#64748B;border-bottom:2px solid #E2E8F0">Vehículo</th>
+      <th style="${thStyle}">KM</th>
+      <th style="${thStyle}">Gasolina</th>
+      <th style="${thStyle}">Check list</th>
+      <th style="${thStyle}">Obs.</th>
+      <th style="${thStyle}">Firma</th>
+      <th style="${thStyle}">Técnico</th>
+      <th style="${thStyle}"></th>
+    </tr></thead><tbody>${trs}</tbody></table></div>
+    <div style="font-size:10px;color:#94A3B8;margin-top:8px;text-align:right">Clic en un vehículo para ver el detalle completo</div>`
+    :`<div class="fl-empty" style="min-height:160px"><div class="fl-empty-ico"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="1.5"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></div><h3>Sin registros</h3><p>No hay check lists para este vehículo en la semana seleccionada.</p></div>`;
+
+  const navSem=`<div style="display:flex;gap:8px;margin-bottom:14px;align-items:center;flex-wrap:wrap">
+    <button ${idx>=semanas.length-1?'disabled':''} onclick="rChkSemanalTabla('${semanas[idx+1]}')" style="padding:6px 12px;border:1.5px solid #E2E8F0;border-radius:8px;background:#fff;cursor:pointer;font-size:12px;font-weight:700;${idx>=semanas.length-1?'opacity:.4;cursor:default':''}">← Semana anterior</button>
+    <span style="padding:6px 12px;border-radius:8px;background:#0A1628;color:#fff;font-size:12px;font-weight:700;font-family:'JetBrains Mono',monospace">${semSel}</span>
+    ${idx>0?`<button onclick="rChkSemanalTabla('${semanas[idx-1]}')" style="padding:6px 12px;border:1.5px solid #E2E8F0;border-radius:8px;background:#fff;cursor:pointer;font-size:12px;font-weight:700">Semana siguiente →</button>`:''}
+    <select onchange="chkSemFiltroVeh=this.value;rChkSemanalTabla('${semSel}')" style="margin-left:auto;padding:6px 10px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px">
+      <option value="">Todos los vehículos</option>
+      ${flV.filter(v=>v.status!=='baja').map(v=>`<option value="${v.eco}" ${String(v.eco)===String(chkSemFiltroVeh)?'selected':''}>ECO ${v.eco} · ${v.unidad||''}</option>`).join('')}
+    </select>
+  </div>`;
+
+  setContent(padded(`
+    <div style="font-size:17px;font-weight:900;letter-spacing:-.4px;margin-bottom:4px">Check list semanal</div>
+    <div style="font-size:11px;color:#64748B;margin-bottom:10px">Inspección semanal de vehículos (lunes) · ${ecos.length} registrado${ecos.length===1?'':'s'} de ${ecos.length+vehsSinRegistro.length} vehículos</div>
+    ${navSem}
+    ${body}
+  `));
+}
+window.rChkSemanal=rChkSemanal;
+window.rChkSemanalTabla=rChkSemanalTabla;
+
+// ── DETALLE CHECK LIST SEMANAL ──
+window.flVerChkSem=function(id){
+  const r=flChkSem.find(x=>x.id===id);if(!r)return;
+  const v=flV.find(x=>String(x.eco)===String(r.vehiculoEco))||{};
+  const chk=r.checklist||{};
+  const chkFotos=r.chkFotos||{};
+  let chkHtml='';
+  Object.entries(CHK_CATS).forEach(([cat,items])=>{
+    chkHtml+=`<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin:10px 0 5px;border-bottom:1px solid #E2E8F0;padding-bottom:3px">${cat}</div>`;
+    items.forEach((item,i)=>{
+      const key=`sem__${cat}__${i}`;
+      const val=chk[key]||'';
+      const foto=chkFotos[key];
+      const fotoSrc=foto?(typeof foto==='object'?foto.src:foto):null;
+      chkHtml+=`<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #F8FAFD">
+        <span style="flex:1;font-size:12px">${item}</span>
+        <span style="font-size:10px;font-weight:800;padding:2px 9px;border-radius:99px;${val==='si'?'background:#DCFCE7;color:#15803D':val==='no'?'background:#FEE2E2;color:#B91C1C':'background:#F1F5F9;color:#94A3B8'}">${val==='si'?'OK':val==='no'?'FALLA':'—'}</span>
+        ${fotoSrc?`<img src="${fotoSrc}" onclick="flImg('${fotoSrc}')" style="width:32px;height:32px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid #E2E8F0">`:'<div style="width:32px"></div>'}
+      </div>`;
+    });
+  });
+  const ov=document.createElement('div');ov.className='fl-ov';
+  ov.innerHTML=`<div class="fl-modal" style="max-width:520px">
+    <div class="fl-mh"><h3>${I.truck||''} Check list semanal · ${r.semana}</h3><button class="fl-mx" onclick="this.closest('.fl-ov').remove()">✕</button></div>
+    <div class="fl-mb">
+      <div style="display:grid;grid-template-columns:1fr 1fr;background:#F8FAFD;border-radius:9px;overflow:hidden;border:1px solid #E8EDF5;margin-bottom:10px">
+        ${[['Vehículo',`ECO ${r.vehiculoEco} · ${v.unidad||r.vehiculo||'—'}`],['Fecha',hF(r.fecha)],['Kilometraje',r.km?Number(r.km).toLocaleString()+' km':'—'],['Gasolina',r.gasolina!=null?r.gasolina+'%':'—'],['Técnico',r.tecnico||'—'],['Semana',r.semana||'—']].map(([l,val])=>`<dl style="padding:7px 11px;border-right:1px solid #E8EDF5;border-bottom:1px solid #E8EDF5"><dt style="font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">${l}</dt><dd style="font-size:11.5px;font-weight:600">${val}</dd></dl>`).join('')}
+      </div>
+
+      ${r.evidencias?.length?`<div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:5px">Evidencias generales</div><div class="fl-pills" style="margin-bottom:10px">${r.evidencias.map((e,i)=>{const src=typeof e==='object'?e.src:e;return`<span class="fl-pill" onclick="flImg('${src}')">${I.camera||'📷'} Foto ${i+1}</span>`;}).join('')}</div>`:''}
+
+      <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#374151;margin:6px 0 2px">Check list de inspección</div>
+      ${chkHtml}
+
+      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin:12px 0 4px">Observaciones</div>
+      <div style="font-size:12px;background:#F8FAFD;border-radius:8px;padding:9px 11px;border:1px solid #E8EDF5;min-height:20px">${r.observaciones||'<span style="color:#94A3B8">Sin observaciones</span>'}</div>
+
+      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin:12px 0 4px">Firma del técnico</div>
+      ${r.firma?`<img src="${r.firma}" onclick="flImg('${r.firma}')" style="max-width:240px;width:100%;border:1px solid #E8EDF5;border-radius:8px;cursor:pointer;background:#fff">`:'<div style="font-size:12px;color:#B91C1C;font-weight:700">⚠ Sin firma registrada</div>'}
+
+      <div class="fl-fa" style="margin-top:14px"><button class="fb gho" onclick="this.closest('.fl-ov').remove()">Cerrar</button></div>
+    </div></div>`;
+  document.body.appendChild(ov);ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+};
 
 
 // ── BAJAS ──
