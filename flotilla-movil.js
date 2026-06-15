@@ -1539,10 +1539,10 @@ window.fmGuardarChkSemanal=async function(){
   const semana=getSemanaISO();
   const km=document.getElementById('fm-sem-km')?.value?.trim()||'';
   const observaciones=document.getElementById('fm-sem-obs')?.value?.trim()||'';
-  const firma=firmaExportar('fm-sem-firma');
+  const firmaRaw=firmaExportar('fm-sem-firma');
 
   const btn=document.getElementById('fm-sem-btn-guardar');
-  if(btn){btn.disabled=true;btn.textContent='Guardando…';}
+  if(btn){btn.disabled=true;btn.textContent='Comprimiendo fotos…';}
 
   try{
     // Verificación final de duplicado (evita doble registro por carrera)
@@ -1556,20 +1556,50 @@ window.fmGuardarChkSemanal=async function(){
       return;
     }
 
+    // Comprimir TODAS las imágenes antes de guardar (límite de Firestore: 1MB por documento)
+    const firma=await comprimirBase64(firmaRaw,400,0.7);
+
+    const chkFotosComprimidas={};
+    for(const [key,foto] of Object.entries(semState.chkFotos||{})){
+      const src=typeof foto==='object'?foto.src:foto;
+      const meta=typeof foto==='object'?foto.meta:null;
+      const srcComp=await comprimirBase64(src,420,0.5);
+      chkFotosComprimidas[key]=meta?{src:srcComp,meta}:srcComp;
+    }
+
+    const evidenciasComprimidas=[];
+    for(const ev of (semState.evFotos||[])){
+      const src=typeof ev==='object'?ev.src:ev;
+      const meta=typeof ev==='object'?ev.meta:null;
+      const srcComp=await comprimirBase64(src,600,0.6);
+      evidenciasComprimidas.push(meta?{src:srcComp,meta}:srcComp);
+    }
+
+    if(btn)btn.textContent='Guardando…';
+
     const doc={
       vehiculoId:miVeh.id||'',vehiculoEco:String(miVeh.eco),vehiculo:`${miVeh.eco} · ${miVeh.unidad||''}`,
       semana,fecha:new Date().toISOString().slice(0,10),
       km:km||String(miVeh.km||0),gasolina:semState.gasolina,
-      checklist:semState.chk,chkFotos:semState.chkFotos,
-      evidencias:semState.evFotos,
+      checklist:semState.chk,chkFotos:chkFotosComprimidas,
+      evidencias:evidenciasComprimidas,
       observaciones,
       firma,
       tecnico:window.auth?.currentUser?.displayName||window.auth?.currentUser?.email||'—',
       creadoEn:new Date().toISOString(),
     };
+
+    // Verificación de tamaño (límite Firestore: 1,048,576 bytes por documento)
+    const tamañoAprox=new Blob([JSON.stringify(doc)]).size;
+    if(tamañoAprox>950000){
+      toast('Demasiadas evidencias — quita algunas fotos e intenta de nuevo','err');
+      if(btn){btn.disabled=false;btn.textContent='Guardar check list semanal';}
+      return;
+    }
+
     await db.collection(C.CHKSEM).add(doc);
-    if(km&&miVeh&&!String(miVeh.id).startsWith('eco-')){
-      await db.collection(C.VEHS).doc(miVeh.id).update({km:Number(km)}).catch(()=>{});
+    if(km&&miVeh&&miVeh.id&&!String(miVeh.id).startsWith('eco-')){
+      try{await db.collection(C.VEHS).doc(miVeh.id).update({km:Number(km)});}catch{}
     }
     window._semChkCache[cacheKey]=true;
     toast('Check list semanal guardado','ok');
