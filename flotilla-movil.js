@@ -1277,7 +1277,7 @@ function renderChkMovil(){
         <span class="fm-chk-name">${item}</span>
         <button class="fm-chk-si ${val==='si'?'on':''}" onclick="fmChk('${key}','si')">SI</button>
         <button class="fm-chk-no ${val==='no'?'on':''}" onclick="fmChk('${key}','no')">NO</button>
-        <div class="fm-chk-cam ${hasFoto?'has':''}" onclick="${hasFoto?`fmVerFoto(solState.chkFotos['${key}'])`:`fmCapturar('chk','${key}')`}" id="fm-cam-${key}">
+        <div class="fm-chk-cam ${hasFoto?'has':''}" onclick="${hasFoto?`fmVerFotoChk('${key}')`:`fmCapturar('chk','${key}')`}" id="fm-cam-${key}">
           ${hasFoto?`<img src="${typeof solState.chkFotos[key]==='object'?solState.chkFotos[key].src:solState.chkFotos[key]}" style="width:26px;height:26px;object-fit:cover;border-radius:5px">`:
           `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>`}
         </div>
@@ -1313,7 +1313,7 @@ function renderChkSemanalList(){
         <span class="fm-chk-name">${item}</span>
         <button class="fm-chk-si ${val==='si'?'on':''}" onclick="fmChkSem('${key}','si')">SI</button>
         <button class="fm-chk-no ${val==='no'?'on':''}" onclick="fmChkSem('${key}','no')">NO</button>
-        <div class="fm-chk-cam ${hasFoto?'has':''}" onclick="${hasFoto?`fmVerFoto(semState.chkFotos['${key}'])`:`fmCapturar('chk','${key}',semState)`}" id="fm-cam-${key}">
+        <div class="fm-chk-cam ${hasFoto?'has':''}" onclick="${hasFoto?`fmVerFotoChkSem('${key}')`:`fmCapturar('chk','${key}','sem')`}" id="fm-cam-${key}">
           ${hasFoto?`<img src="${typeof semState.chkFotos[key]==='object'?semState.chkFotos[key].src:semState.chkFotos[key]}" style="width:26px;height:26px;object-fit:cover;border-radius:5px">`:
           `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>`}
         </div>
@@ -1402,7 +1402,7 @@ function renderChkSemanal(){
     <!-- EVIDENCIAS GENERALES -->
     <div class="fm-fld">
       <label>Evidencias fotográficas <span style="font-weight:500;text-transform:none;font-size:9px;color:#94A3B8">(generales del vehículo)</span></label>
-      <button onclick="fmCapturar('general',null,semState)" class="fm-btn primary" style="margin-bottom:8px">
+      <button onclick="fmCapturar('general',null,'sem')" class="fm-btn primary" style="margin-bottom:8px">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
         Tomar foto con cámara
       </button>
@@ -1514,8 +1514,8 @@ function comprimirBase64(src,maxW,calidad){
 }
 
 // ── CAPTURAR EVIDENCIA MÓVIL ──
-window.fmCapturar=async function(tipo,key,target){
-  target=target||solState;
+window.fmCapturar=async function(tipo,key,targetTag){
+  const target=targetTag==='sem'?semState:solState;
   const inp=document.createElement('input');
   inp.type='file';inp.accept='image/*';
   inp.capture='environment';
@@ -1542,7 +1542,7 @@ window.fmCapturar=async function(tipo,key,target){
         timestamp:now.toISOString(),
         gps,eco:miVeh?.eco||'—',unidad:miVeh?.unidad||'—',
         usuario:window.auth?.currentUser?.displayName||window.auth?.currentUser?.email||'—',
-        modo:target===semState?'semanal':solState.modo,tipo,key:key||null,
+        modo:targetTag==='sem'?'semanal':solState.modo,tipo,key:key||null,
       };
       const sellada=await sellarImg(raw,meta);
       if(tipo==='chk'&&key){
@@ -1551,7 +1551,7 @@ window.fmCapturar=async function(tipo,key,target){
         if(cam){cam.classList.add('has');cam.innerHTML=`<img src="${sellada}" style="width:26px;height:26px;object-fit:cover;border-radius:5px">`;cam.onclick=()=>fmVerFoto({src:sellada,meta});}
       } else {
         target.evFotos.push({src:sellada,meta});
-        const wrap=document.getElementById(target===semState?'fm-sem-ev-wrap':'fm-ev-wrap');
+        const wrap=document.getElementById(targetTag==='sem'?'fm-sem-ev-wrap':'fm-ev-wrap');
         if(wrap){
           const pill=document.createElement('div');
           pill.className='fm-ev-pill';
@@ -1571,6 +1571,16 @@ window.fmCapturar=async function(tipo,key,target){
 // Array global para evidencias — evita base64 inline en onclick
 window._fmEvCache=[];
 window.fmVerEvIdx=function(idx){const ev=window._fmEvCache[idx];if(ev)window.fmVerFoto(ev);};
+
+window.fmVerFotoChk=function(key){
+  const ev=solState.chkFotos[key];
+  if(ev)fmVerFoto(ev);
+};
+
+window.fmVerFotoChkSem=function(key){
+  const ev=semState.chkFotos[key];
+  if(ev)fmVerFoto(ev);
+};
 
 window.fmVerFoto=function(ev){
   const src=typeof ev==='string'?ev:ev.src;
