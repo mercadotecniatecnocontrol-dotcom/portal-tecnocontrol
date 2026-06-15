@@ -137,6 +137,32 @@ function esRolLibre(){
   return ADMINS_FLOTILLA.includes(email)||rol==='admin'||rol==='flotilla'||rol==='encargado';
 }
 
+// ── ECOS VINCULADOS (1 o varios vehículos/maquinaria por usuario) ──
+// Compatibilidad: si solo existe ecoVinculado (string), se trata como array de 1.
+function getEcosVinculados(){
+  if(!miPerfil)return[];
+  if(Array.isArray(miPerfil.ecosVinculados))return miPerfil.ecosVinculados.map(String).filter(Boolean);
+  if(miPerfil.ecoVinculado)return[String(miPerfil.ecoVinculado)];
+  return[];
+}
+
+// ── PERSISTENCIA LOCAL: última unidad usada (sobrevive a refresh) ──
+const LS_ULTIMO_ECO='fl_ultimo_eco';
+function guardarUltimoEco(eco){
+  try{
+    const email=window.auth?.currentUser?.email||'';
+    localStorage.setItem(LS_ULTIMO_ECO,JSON.stringify({email,eco:String(eco),ts:Date.now()}));
+  }catch{}
+}
+function leerUltimoEco(){
+  try{
+    const data=JSON.parse(localStorage.getItem(LS_ULTIMO_ECO)||'null');
+    const email=window.auth?.currentUser?.email||'';
+    if(data&&data.email===email&&data.eco)return String(data.eco);
+  }catch{}
+  return null;
+}
+
 // ── HELPERS ──
 const hF=iso=>iso&&iso!=='—'?String(iso).substring(0,10):'—';
 const hD=f=>(!f||f==='—')?null:Math.round((new Date(f)-new Date())/864e5);
@@ -656,28 +682,36 @@ async function cargarPerfil(user){
   }
 }
 
+async function cargarVehiculoPorEco(eco){
+  try{
+    const snap=await db.collection(C.VEHS).where('eco','==',String(eco)).get();
+    if(!snap.empty)return{id:snap.docs[0].id,...snap.docs[0].data()};
+  }catch{}
+  const found=window.CAT_FL?.find(v=>String(v.eco)===String(eco));
+  return found?{id:'eco-'+found.eco,...found}:null;
+}
+
 async function cargarMiVeh(){
   // Rol libre (admin/flotilla): puede elegir cualquier vehículo
   if(esRolLibre()){
-    // Si ya eligió uno en esta sesión, mantenerlo
     if(!miVeh){
-      // Por defecto sin vehículo seleccionado — renderVehiculo mostrará el selector
+      // Restaurar la última unidad usada en este dispositivo (sobrevive a refresh)
+      const ultimo=leerUltimoEco();
+      if(ultimo)miVeh=await cargarVehiculoPorEco(ultimo);
     }
     return;
   }
-  if(!miPerfil?.ecoVinculado){miVeh=null;return;}
-  try{
-    const snap=await db.collection(C.VEHS).where('eco','==',String(miPerfil.ecoVinculado)).get();
-    if(!snap.empty){
-      miVeh={id:snap.docs[0].id,...snap.docs[0].data()};
-    } else {
-      miVeh=window.CAT_FL?.find(v=>String(v.eco)===String(miPerfil.ecoVinculado))||null;
-      if(miVeh)miVeh={id:'eco-'+miVeh.eco,...miVeh};
-    }
-  }catch(e){
-    const found=window.CAT_FL?.find(v=>String(v.eco)===String(miPerfil.ecoVinculado));
-    miVeh=found?{id:'eco-'+found.eco,...found}:null;
+  const ecos=getEcosVinculados();
+  if(!ecos.length){miVeh=null;return;}
+  if(ecos.length===1){
+    miVeh=await cargarVehiculoPorEco(ecos[0]);
+    return;
   }
+  // Varios vehículos/maquinaria asignados: restaurar la última unidad elegida
+  // (debe seguir estando en su lista asignada; si no, usar la primera)
+  let eco=leerUltimoEco();
+  if(!eco||!ecos.includes(eco))eco=ecos[0];
+  miVeh=await cargarVehiculoPorEco(eco);
 }
 
 async function cargarMisSols(){
@@ -815,6 +849,7 @@ window.fmSeleccionarVeh = async function(eco){
     miVeh=found?{id:'eco-'+found.eco,...found}:null;
   }
   if(!miVeh){toast('Vehículo no encontrado','err');return;}
+  guardarUltimoEco(miVeh.eco);
   // Cargar solicitudes de ese vehículo
   await cargarMisSols();
   renderVehiculo();
@@ -828,9 +863,9 @@ function renderVehiculo(){
   if(esRolLibre()&&!miVeh){
     renderSelectorFlota();return;
   }
-  // Técnico normal sin vehículo vinculado → mostrar vinculación
+  // Técnico normal sin vehículo(s) vinculado(s) → mostrar vinculación
   // (puede llegar aquí después de completar una transferencia de entrega)
-  if(!esRolLibre()&&(!miPerfil?.ecoVinculado||!miVeh)){
+  if(!esRolLibre()&&(!getEcosVinculados().length||!miVeh)){
     // Cargar vehículos automáticamente si aún no están en memoria
     if(!window._fmAllVehs||window._fmAllVehs.length===0){
       renderVincular(); // muestra pantalla de espera
@@ -852,7 +887,8 @@ function renderVehiculo(){
         <div class="fm-sec-s">ECO ${v.eco} · ${new Date().toLocaleDateString('es-MX',{weekday:'short',day:'numeric',month:'short'})}</div>
       </div>
       <div style="display:flex;gap:6px;align-items:center">
-        ${esRolLibre()?`<button onclick="adminCambiarVehiculo()" style="padding:7px 11px;border:1.5px solid rgba(255,255,255,.2);border-radius:9px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.8);font-size:11px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>Cambiar</button>`:''}
+        ${esRolLibre()?`<button onclick="adminCambiarVehiculo()" style="padding:7px 11px;border:1.5px solid #CBD5E1;border-radius:9px;background:#F1F5F9;color:#475569;font-size:11px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>Cambiar</button>`:''}
+        ${!esRolLibre()&&getEcosVinculados().length>1?`<button onclick="fmCambiarUnidad()" style="padding:7px 11px;border:1.5px solid #CBD5E1;border-radius:9px;background:#F1F5F9;color:#475569;font-size:11px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>Mis unidades</button>`:''}
         <button onclick="fmVista('solicitud')" class="fm-btn primary fm-btn-sm" style="gap:5px">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           Solicitud
@@ -931,6 +967,55 @@ function renderVehiculo(){
     <div style="height:20px"></div>
   `);
 }
+
+// MODAL — CAMBIAR UNIDAD (técnicos con varios vehículos/maquinaria asignados)
+window.fmCambiarUnidad=async function(){
+  const ecos=getEcosVinculados();
+  if(ecos.length<2)return;
+  const ov=document.createElement('div');
+  ov.className='fm-ov';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:flex-end;justify-content:center';
+  ov.innerHTML=`
+    <div style="background:#fff;border-radius:20px 20px 0 0;width:100%;max-width:520px;padding:24px 20px 32px;box-shadow:0 -4px 30px rgba(0,0,0,.15)">
+      <div style="width:40px;height:4px;background:#E2E8F0;border-radius:4px;margin:0 auto 20px"></div>
+      <div style="font-size:16px;font-weight:800;color:#0A1628;margin-bottom:4px">Mis unidades</div>
+      <div style="font-size:12px;color:#64748B;margin-bottom:18px">Selecciona el vehículo o maquinaria que usarás ahora</div>
+      <div id="fm-cu-lista" style="display:flex;flex-direction:column;gap:8px">
+        <div style="text-align:center;padding:20px;color:#94A3B8;font-size:12px">Cargando…</div>
+      </div>
+      <button class="fm-btn ghost" style="margin-top:14px" onclick="this.closest('.fm-ov').remove()">Cancelar</button>
+    </div>`;
+  document.body.appendChild(ov);
+  ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+
+  const lista=document.getElementById('fm-cu-lista');
+  const vehs=await Promise.all(ecos.map(eco=>cargarVehiculoPorEco(eco)));
+  lista.innerHTML=vehs.map((v,i)=>{
+    if(!v)return'';
+    const activo=String(v.eco)===String(miVeh?.eco);
+    return`<div onclick="fmUsarUnidad('${v.eco}')" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:11px;border:1.5px solid ${activo?'#2563EB':'#E8EDF5'};background:${activo?'#EFF6FF':'#fff'};cursor:pointer">
+      <div style="width:36px;height:36px;border-radius:9px;background:linear-gradient(135deg,#0A1628,#1E3A5F);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.9)" stroke-width="1.8" stroke-linecap="round"><path d="M5 17H3a2 2 0 01-2-2V9a2 2 0 012-2h11a2 2 0 012 2v6h-2"/><path d="M7 9l2-4h6l2 4"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:800;color:#0A0F1E">${v.unidad||'—'}</div>
+        <div style="font-size:10.5px;color:#64748B;margin-top:1px">ECO ${v.eco} · ${v.placas||'—'} · ${v.plaza||'—'}</div>
+      </div>
+      ${activo?`<span style="font-size:10px;font-weight:800;color:#2563EB">En uso</span>`:''}
+    </div>`;
+  }).join('')||'<div style="text-align:center;padding:20px;color:#94A3B8;font-size:12px">No se encontraron tus unidades asignadas</div>';
+};
+
+window.fmUsarUnidad=async function(eco){
+  const v=await cargarVehiculoPorEco(eco);
+  if(!v){toast('Vehículo no encontrado','err');return;}
+  miVeh=v;
+  guardarUltimoEco(eco);
+  await cargarMisSols();
+  document.querySelector('.fm-ov')?.remove();
+  toast(`Usando ECO ${eco} · ${v.unidad||''}`,'ok');
+  renderVehiculo();
+};
 
 // MODAL CAMBIO DE VEHÍCULO (solo admins)
 window.adminCambiarVehiculo=function(){
@@ -1017,6 +1102,7 @@ window.adminConfirmarCambioVeh=async function(btn){
 
     // Aplicar cambio
     miVeh=veh;
+    guardarUltimoEco(eco);
     if(tipo==='permanente'){
       const snap=await db.collection(C.USUARIOS).where('email','==',miPerfil.email).get();
       if(!snap.empty){
@@ -1123,6 +1209,7 @@ window.fmVincular=async function(){
     if(snap.empty){await db.collection(C.USUARIOS).add(datos);}
     else{await db.collection(C.USUARIOS).doc(snap.docs[0].id).update({ecoVinculado:eco});}
     miPerfil={...miPerfil,...datos};
+    guardarUltimoEco(eco);
     await cargarMiVeh();
     await cargarMisSols();
     toast(`ECO ${eco} vinculado correctamente`,'ok');
@@ -1842,13 +1929,13 @@ window.abrirPerfil=function(){
         <div style="width:64px;height:64px;border-radius:50%;background:#1E3A5F;color:#fff;font-size:24px;font-weight:800;display:flex;align-items:center;justify-content:center;margin:0 auto 12px">${(user?.displayName||user?.email||'?').charAt(0).toUpperCase()}</div>
         <div style="font-size:17px;font-weight:800">${user?.displayName||'—'}</div>
         <div style="font-size:13px;color:#64748B;margin-top:3px">${user?.email||'—'}</div>
-        ${miPerfil?.ecoVinculado?`<div style="margin-top:10px;display:inline-flex;align-items:center;gap:6px;background:#EFF6FF;border-radius:100px;padding:5px 14px;font-size:12px;font-weight:700;color:#1D4ED8">ECO ${miPerfil.ecoVinculado} vinculado</div>`:''}
+        ${getEcosVinculados().length?`<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;justify-content:center">${getEcosVinculados().map(eco=>`<span style="display:inline-flex;align-items:center;gap:6px;background:#EFF6FF;border-radius:100px;padding:5px 14px;font-size:12px;font-weight:700;color:#1D4ED8">ECO ${eco}${getEcosVinculados().length>1&&String(eco)===String(miVeh?.eco)?' · actual':''}</span>`).join('')}</div>`:''}
       </div>
-      ${!miPerfil?.ecoVinculado?`<button class="fm-btn primary" onclick="this.closest('.fm-ov').remove();fmVista('vehiculo')" style="margin-bottom:10px">Vincular mi vehículo</button>`:''}
+      ${!getEcosVinculados().length?`<button class="fm-btn primary" onclick="this.closest('.fm-ov').remove();fmVista('vehiculo')" style="margin-bottom:10px">Vincular mi vehículo</button>`:''}
       ${(()=>{
-        if(!esRolLibre()||!miPerfil?.ecoVinculado)return'';
+        if(!esRolLibre()||!getEcosVinculados().length)return'';
         return`<button class="fm-btn" style="margin-bottom:10px;background:#FEF2F2;color:#B91C1C;border:1.5px solid #FECACA;font-size:12px" onclick="window._desvinc()">
-          Desvincular ECO ${miPerfil.ecoVinculado}
+          Desvincular todas mis unidades
         </button>`;
       })()}
       <button class="fm-btn danger" onclick="if(confirm('¿Cerrar sesión?')){window.auth.signOut().then(()=>location.reload());}">Cerrar sesión</button>
@@ -1860,14 +1947,16 @@ window.abrirPerfil=function(){
 
 // ── DESVINCULAR VEHÍCULO (SOLO ADMINS) ──
 window._desvinc=async function(){
-  if(!confirm('¿Desvincular el vehículo ECO '+(miPerfil?.ecoVinculado||'')+'? Podrás seleccionar cualquier otro.'))return;
+  if(!confirm('¿Desvincular tus unidades asignadas? Podrás seleccionar cualquier otra.'))return;
   try{
     const snap=await db.collection(C.USUARIOS).where('email','==',miPerfil.email).get();
-    if(!snap.empty)await snap.docs[0].ref.update({ecoVinculado:null,desvinculadoEn:new Date().toISOString()});
+    if(!snap.empty)await snap.docs[0].ref.update({ecoVinculado:null,ecosVinculados:[],desvinculadoEn:new Date().toISOString()});
     miPerfil.ecoVinculado=null;
+    miPerfil.ecosVinculados=[];
     miVeh=null;
+    try{localStorage.removeItem(LS_ULTIMO_ECO);}catch{}
     document.querySelector('.fm-ov')?.remove();
-    toast('Vehículo desvinculado — selecciona uno nuevo','ok');
+    toast('Unidades desvinculadas — selecciona una nueva','ok');
     setTimeout(()=>renderSelectorFlota(),400);
   }catch(e){
     console.error('[MOVIL desvinc]',e);
@@ -2404,11 +2493,15 @@ window.utilConfirmarFirma=async function(){
         creadoEn:now.toISOString(),
       };
       await db.collection('flotilla_transferencias').add(docObj);
-      // DESVINCULAR al que entrega — ya no tiene ese vehículo
+      // DESVINCULAR al que entrega — ya no tiene ESTE vehículo (puede conservar otros)
       const snapEntregador=await db.collection('fl_usuarios').where('email','==',userEmail).get();
       if(!snapEntregador.empty){
+        const docAct=snapEntregador.docs[0].data();
+        const ecosAct=Array.isArray(docAct.ecosVinculados)?docAct.ecosVinculados.map(String):(docAct.ecoVinculado?[String(docAct.ecoVinculado)]:[]);
+        const ecosNuevos=ecosAct.filter(e=>e!==String(docObj.vehiculoEco));
         await snapEntregador.docs[0].ref.update({
-          ecoVinculado:null,
+          ecoVinculado:ecosNuevos[0]||null,
+          ecosVinculados:ecosNuevos,
           desvinculadoEn:now.toISOString(),
           ecoEntregado:docObj.vehiculoEco, // trazabilidad
         });
@@ -2416,13 +2509,21 @@ window.utilConfirmarFirma=async function(){
         // No tenía doc — crear uno desvinculado para trazabilidad
         await db.collection('fl_usuarios').add({
           email:userEmail,nombre:userName,
-          ecoVinculado:null,desvinculadoEn:now.toISOString(),
+          ecoVinculado:null,ecosVinculados:[],desvinculadoEn:now.toISOString(),
           ecoEntregado:docObj.vehiculoEco,
           rol:'tecnico',
         });
       }
-      // Actualizar en memoria: el que entrega ya no tiene vehículo
-      if(miPerfil) miPerfil.ecoVinculado=null;
+      // Actualizar en memoria: el que entrega ya no tiene ESTE vehículo
+      if(miPerfil){
+        const ecosAct=getEcosVinculados().filter(e=>e!==String(docObj.vehiculoEco));
+        miPerfil.ecosVinculados=ecosAct;
+        miPerfil.ecoVinculado=ecosAct[0]||null;
+      }
+      try{
+        const ultimo=leerUltimoEco();
+        if(ultimo===String(docObj.vehiculoEco))localStorage.removeItem(LS_ULTIMO_ECO);
+      }catch{}
       miVeh=null;
       // Notificar
       await db.collection('flotilla_notificaciones').add({
@@ -2443,32 +2544,32 @@ window.utilConfirmarFirma=async function(){
           estatus:'Completada',completadoEn:now.toISOString(),
           emails:[...(utilState.emails||[]),userEmail],
         });
-        // VINCULAR al que recibe — ahora es responsable del vehículo
+        // VINCULAR al que recibe — ahora también es responsable de este vehículo
         const snapRecibe=await db.collection('fl_usuarios').where('email','==',userEmail).get();
         if(!snapRecibe.empty){
-          // Desvincular vehículo anterior si tenía uno distinto
           const docAnterior=snapRecibe.docs[0].data();
-          if(docAnterior.ecoVinculado&&String(docAnterior.ecoVinculado)!==String(ecoRecibido)){
-            // Log para trazabilidad
-            await db.collection('fl_usuarios').doc(snapRecibe.docs[0].id).update({
-              ecoVinculado:ecoRecibido,
-              vinculadoEn:now.toISOString(),
-              ecoAnterior:docAnterior.ecoVinculado,
-              rol:docAnterior.rol||'tecnico',
-            });
-          } else {
-            await snapRecibe.docs[0].ref.update({ecoVinculado:ecoRecibido,vinculadoEn:now.toISOString()});
-          }
+          const ecosAnt=Array.isArray(docAnterior.ecosVinculados)?docAnterior.ecosVinculados.map(String):(docAnterior.ecoVinculado?[String(docAnterior.ecoVinculado)]:[]);
+          const ecosNuevos=ecosAnt.includes(String(ecoRecibido))?ecosAnt:[...ecosAnt,String(ecoRecibido)];
+          await db.collection('fl_usuarios').doc(snapRecibe.docs[0].id).update({
+            ecoVinculado:ecosNuevos[0],
+            ecosVinculados:ecosNuevos,
+            vinculadoEn:now.toISOString(),
+            ecoAnterior:docAnterior.ecoVinculado||null,
+            rol:docAnterior.rol||'tecnico',
+          });
+          if(miPerfil)miPerfil.ecosVinculados=ecosNuevos;
         } else {
           // Crear doc con rol tecnico por defecto
           await db.collection('fl_usuarios').add({
             email:userEmail,nombre:userName,
-            ecoVinculado:ecoRecibido,vinculadoEn:now.toISOString(),
+            ecoVinculado:ecoRecibido,ecosVinculados:[String(ecoRecibido)],vinculadoEn:now.toISOString(),
             rol:'tecnico',
           });
+          if(miPerfil)miPerfil.ecosVinculados=[String(ecoRecibido)];
         }
-        // Actualizar en memoria: el que recibe ahora tiene el vehículo
+        // Actualizar en memoria: el que recibe ahora usa este vehículo
         if(miPerfil){miPerfil.ecoVinculado=ecoRecibido;}
+        guardarUltimoEco(ecoRecibido);
         // Recargar vehículo desde flotilla_vehiculos (colección correcta)
         try{
           const snapVeh=await db.collection('flotilla_vehiculos').where('eco','==',String(ecoRecibido)).get();
