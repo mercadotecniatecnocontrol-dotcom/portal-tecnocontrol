@@ -3080,11 +3080,25 @@ window.rChkSemanal=rChkSemanal;
 window.rChkSemanalTabla=rChkSemanalTabla;
 
 // ── DETALLE CHECK LIST SEMANAL ──
-window.flVerChkSem=function(id){
+window.flVerChkSem=async function(id){
   const r=flChkSem.find(x=>x.id===id);if(!r)return;
   const v=flV.find(x=>String(x.eco)===String(r.vehiculoEco))||{};
   const chk=r.checklist||{};
-  const chkFotos=r.chkFotos||{};
+
+  // Cargar fotos de la subcolección (nuevo modelo) o del doc principal (legacy)
+  let chkFotos=r.chkFotos||{};
+  let evidencias=r.evidencias||[];
+  const tieneSubcol=r.chkFotosKeys&&r.chkFotosKeys.length>0;
+  if(tieneSubcol){
+    try{
+      const fotosSnap=await fs.getDocs(fs.collection(db,C.CHKSEM,id,'fotos'));
+      fotosSnap.docs.forEach(d=>{
+        const f=d.data();
+        if(f.tipo==='chk'&&f.key)chkFotos[f.key]={src:f.src,meta:f.meta||{}};
+        if(f.tipo==='evidencia')evidencias.push({src:f.src,meta:f.meta||{}});
+      });
+    }catch(e){console.warn('[FL] fotos subcol:',e);}
+  }
   let chkHtml='';
   Object.entries(CHK_CATS).forEach(([cat,items])=>{
     chkHtml+=`<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin:10px 0 5px;border-bottom:1px solid #E2E8F0;padding-bottom:3px">${cat}</div>`;
@@ -3108,7 +3122,7 @@ window.flVerChkSem=function(id){
         ${[['Vehículo',`ECO ${r.vehiculoEco} · ${v.unidad||r.vehiculo||'—'}`],['Fecha',hF(r.fecha)],['Kilometraje',r.km?Number(r.km).toLocaleString()+' km':'—'],['Gasolina',r.gasolina!=null?r.gasolina+'%':'—'],['Técnico',r.tecnico||'—'],['Semana',r.semana||'—']].map(([l,val])=>`<dl style="padding:7px 11px;border-right:1px solid #E8EDF5;border-bottom:1px solid #E8EDF5"><dt style="font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">${l}</dt><dd style="font-size:11.5px;font-weight:600">${val}</dd></dl>`).join('')}
       </div>
 
-      ${r.evidencias?.length?`<div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:5px">Evidencias generales</div><div class="fl-pills" style="margin-bottom:10px">${r.evidencias.map((e,i)=>{const src=typeof e==='object'?e.src:e;return`<span class="fl-pill" onclick="flImg('${src}')">${I.camera||'📷'} Foto ${i+1}</span>`;}).join('')}</div>`:''}
+      ${evidencias?.length?`<div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:5px">Evidencias generales</div><div class="fl-pills" style="margin-bottom:10px">${evidencias.map((e,i)=>{const src=typeof e==='object'?e.src:e;return`<span class="fl-pill" onclick="flImg('${src}')">${I.camera||'📷'} Foto ${i+1}</span>`;}).join('')}</div>`:''}
 
       <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#374151;margin:6px 0 2px">Check list de inspección</div>
       ${chkHtml}
