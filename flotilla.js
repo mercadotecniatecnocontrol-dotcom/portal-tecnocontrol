@@ -482,11 +482,14 @@ function buildHTML(){
     </div>
     <div style="position:relative;margin-left:6px">
       <button class="fl-tab-btn" id="fl-tb-bajas" onclick="flVista('bajas')" title="Vehículos de baja">${I.archive}</button>
-      ${hAdm()?`
-      <div class="fl-tb-sep" style="width:1px;height:28px;background:rgba(255,255,255,.12);margin:0 4px"></div>
+    </div>
+    ${hAdm()?`
+    <div class="fl-tb-sep" style="width:1px;height:28px;background:rgba(255,255,255,.12);margin:0 6px"></div>
+    <div style="position:relative">
       <button class="fl-tab-btn" id="fl-tb-admin" onclick="flVista('admin')" title="Administrar flotilla" style="background:rgba(234,179,8,.12);color:#FCD34D">
         ${I.users}
-      </button>`:''}
+      </button>
+    </div>`:''}
     </div>
     <div class="fl-tb-profile">
       <span class="fl-tb-pname">${nombre.toUpperCase()}</span>
@@ -2901,6 +2904,42 @@ window.flToggleCfgSem=async function(activar){
   }
 };
 
+// ── MÉTRICAS CHECK LIST SEMANAL ──
+function hChkSemMetrics(semSel, porVeh, vehsSinRegistro, total){
+  const regs=Object.values(porVeh);
+  const totalVehs=regs.length+vehsSinRegistro.length;
+  const registrados=regs.length;
+  const pctCobertura=totalVehs?Math.round(registrados/totalVehs*100):0;
+
+  let totalDetalles=0,totalOks=0,sinFirma=0,conObs=0,totalItems=0;
+  regs.forEach(r=>{
+    const chk=r.checklist||{};
+    const nos=Object.values(chk).filter(v=>v==='no').length;
+    const oks=Object.values(chk).filter(v=>v==='si').length;
+    totalDetalles+=nos;
+    totalOks+=oks;
+    totalItems+=total;
+    if(!r.firma)sinFirma++;
+    if(r.observaciones&&r.observaciones.trim())conObs++;
+  });
+  const pctOk=totalItems?Math.round(totalOks/totalItems*100):0;
+
+  const kpi=(label,val,sub,color,bg)=>`
+    <div style="background:${bg||'#fff'};border:1px solid #E8EDF5;border-radius:12px;padding:14px 16px;flex:1;min-width:120px">
+      <div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin-bottom:5px">${label}</div>
+      <div style="font-size:26px;font-weight:900;letter-spacing:-1px;font-family:'JetBrains Mono',monospace;color:${color||'#0A1628'};line-height:1">${val}</div>
+      <div style="font-size:10px;color:#94A3B8;margin-top:3px">${sub}</div>
+    </div>`;
+
+  return`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+    ${kpi('Cobertura',`${registrados}<span style="font-size:14px;font-weight:600;color:#94A3B8">/${totalVehs}</span>`,`${pctCobertura}% de vehículos registrados`,pctCobertura===100?'#15803D':pctCobertura>=70?'#D97706':'#B91C1C')}
+    ${kpi('Ítems OK',`${pctOk}<span style="font-size:14px;font-weight:600;color:#94A3B8">%</span>`,`${totalOks} de ${totalItems} ítems revisados`,pctOk>=95?'#15803D':pctOk>=80?'#D97706':'#B91C1C')}
+    ${kpi('Detalles detectados',totalDetalles,totalDetalles===0?'Sin detalles esta semana':`En ${regs.filter(r=>Object.values(r.checklist||{}).some(v=>v==='no')).length} vehículos`,totalDetalles===0?'#15803D':totalDetalles<=5?'#D97706':'#B91C1C','#fff')}
+    ${kpi('Con observaciones',conObs,conObs===0?'Sin comentarios adicionales':`${conObs} técnico${conObs>1?'s':''} dejaron nota`,conObs>0?'#2563EB':'#94A3B8')}
+    ${kpi('Sin firma',sinFirma,sinFirma===0?'Todos firmados ✓':`${sinFirma} pendiente${sinFirma>1?'s':''}`,sinFirma===0?'#15803D':'#B91C1C')}
+  </div>`;
+}
+
 function rChkSemanal(){
   const semanas=[...new Set(flChkSem.map(r=>r.semana))].sort().reverse();
   const semSel=semanas[0]||getSemanaISOPortal();
@@ -2949,7 +2988,7 @@ function rChkSemanalTabla(semSel){
       </td>
       <td style="${tdC}font-weight:700;font-family:'JetBrains Mono',monospace">${r.km?Number(r.km).toLocaleString():'—'}</td>
       <td style="${tdC}font-weight:700">${r.gasolina!=null?r.gasolina+'%':'—'}</td>
-      <td style="${tdC}"><span style="background:${pctBg(r)};color:${pctColor(r)};font-size:10px;font-weight:800;padding:2px 8px;border-radius:99px">${ok}/${total} OK${no?' · '+no+' falla'+(no>1?'s':''):''}</span></td>
+      <td style="${tdC}"><span style="background:${pctBg(r)};color:${pctColor(r)};font-size:10px;font-weight:800;padding:2px 8px;border-radius:99px">${ok}/${total} OK${no?' · '+no+' detalle'+(no>1?'s':''):''}</span></td>
       <td style="${tdC}">${r.observaciones?`<span title="${r.observaciones.replace(/"/g,'&quot;')}" style="color:#2563EB">${I.alert||'💬'}</span>`:'<span style="color:#94A3B8;font-size:10px">—</span>'}</td>
       <td style="${tdC}">${r.firma?'<span style="color:#15803D;font-weight:800">✓</span>':'<span style="color:#B91C1C;font-weight:800">✗</span>'}</td>
       <td style="${tdC}font-size:10px;color:#64748B">${r.tecnico||'—'}</td>
@@ -2994,8 +3033,9 @@ function rChkSemanalTabla(semSel){
 
   setContent(padded(`
     <div style="font-size:17px;font-weight:900;letter-spacing:-.4px;margin-bottom:4px">Check list semanal</div>
-    <div style="font-size:11px;color:#64748B;margin-bottom:10px">Inspección semanal de vehículos (lunes) · ${ecos.length} registrado${ecos.length===1?'':'s'} de ${ecos.length+vehsSinRegistro.length} vehículos</div>
+    <div style="font-size:11px;color:#64748B;margin-bottom:10px">Semana ${semSel} · ${ecos.length} de ${ecos.length+vehsSinRegistro.length} vehículos registrados · ${Object.values(porVeh).reduce((a,r)=>a+Object.values(r.checklist||{}).filter(v=>v==='no').length,0)} detalles detectados</div>
     ${hCfgSemPanel()}
+    ${!chkSemFiltroVeh?hChkSemMetrics(semSel,porVeh,vehsSinRegistro,total):''}
     ${navSem}
     ${body}
   `));
@@ -3019,7 +3059,7 @@ window.flVerChkSem=function(id){
       const fotoSrc=foto?(typeof foto==='object'?foto.src:foto):null;
       chkHtml+=`<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #F8FAFD">
         <span style="flex:1;font-size:12px">${item}</span>
-        <span style="font-size:10px;font-weight:800;padding:2px 9px;border-radius:99px;${val==='si'?'background:#DCFCE7;color:#15803D':val==='no'?'background:#FEE2E2;color:#B91C1C':'background:#F1F5F9;color:#94A3B8'}">${val==='si'?'OK':val==='no'?'FALLA':'—'}</span>
+        <span style="font-size:10px;font-weight:800;padding:2px 9px;border-radius:99px;${val==='si'?'background:#DCFCE7;color:#15803D':val==='no'?'background:#FEE2E2;color:#B91C1C':'background:#F1F5F9;color:#94A3B8'}">${val==='si'?'OK':val==='no'?'Detalle':'—'}</span>
         ${fotoSrc?`<img src="${fotoSrc}" onclick="flImg('${fotoSrc}')" style="width:32px;height:32px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid #E2E8F0">`:'<div style="width:32px"></div>'}
       </div>`;
     });
