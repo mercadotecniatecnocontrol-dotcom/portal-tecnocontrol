@@ -81,6 +81,7 @@ const C={
   TAREAS:'actividades',
   USUARIOS:'fl_usuarios',
   CHKSEM:'flotilla_checklist_semanal',
+  CFG:'flotilla_config',
   OFFLINE_KEY:'tcn_offline_queue',
 };
 
@@ -193,15 +194,41 @@ function getSemanaISO(d){
   return`${dt.getUTCFullYear()}-W${String(week).padStart(2,'0')}`;
 }
 function esLunes(){return new Date().getDay()===1;}
+function esLunesAViernes(){const d=new Date().getDay();return d>=1&&d<=5;}
+
+// ── CONFIG CHECK LIST SEMANAL ──
+window._cfgSem=null; // cache: {activo, semana, ...} o null si no cargado
+function cargarCfgSem(){
+  if(window._cfgSem!==null)return Promise.resolve();
+  return db.collection(C.CFG).doc('checklist_semanal').get()
+    .then(d=>{window._cfgSem=d.exists?d.data():{activo:false};})
+    .catch(()=>{window._cfgSem={activo:false};});
+}
+function chkSemPermitido(semana){
+  // Si es lunes → siempre permitido (comportamiento original)
+  if(esLunes())return true;
+  // Si no es lunes pero hay config activa para esta semana → permitir lunes-viernes
+  const cfg=window._cfgSem||{};
+  return !!(cfg.activo&&cfg.semana===semana&&esLunesAViernes());
+}
 
 // ── CHECK LIST SEMANAL — BANNER ──
 window._semChkCache={};
 function semChkBanner(){
   const eco=miVeh?.eco;if(!eco)return'';
   const semana=getSemanaISO();
-  const lunes=esLunes();
   const cacheKey=`${eco}_${semana}`;
   const yaExiste=window._semChkCache[cacheKey];
+
+  // Cargar config si no está en cache
+  if(window._cfgSem===null){
+    cargarCfgSem().then(()=>{if(vistaAct==='vehiculo')renderVehiculo();});
+    return`<div class="fm-card" style="background:#F8FAFD;display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <div style="width:20px;height:20px;border:2px solid #CBD5E1;border-top-color:#2563EB;border-radius:50%;animation:fmspin .7s linear infinite"></div>
+      <div style="font-size:12px;color:#64748B">Verificando check list semanal…</div>
+    </div>`;
+  }
+
   if(yaExiste===undefined){
     db.collection(C.CHKSEM).where('vehiculoEco','==',String(eco)).where('semana','==',semana).limit(1).get()
       .then(snap=>{window._semChkCache[cacheKey]=!snap.empty;if(vistaAct==='vehiculo')renderVehiculo();})
@@ -218,12 +245,14 @@ function semChkBanner(){
       <div style="font-size:11px;color:#166534;margin-top:2px">Semana ${semana} · Ya se registró la inspección de esta semana</div></div>
     </div>`;
   }
-  if(lunes){
+  if(chkSemPermitido(semana)){
+    const cfg=window._cfgSem||{};
+    const extendido=cfg.activo&&cfg.semana===semana&&!esLunes();
     return`<div class="fm-card" style="background:#EFF6FF;border:1.5px solid #BFDBFE;margin-bottom:12px;cursor:pointer" onclick="fmVista('chksemanal')">
       <div style="display:flex;align-items:center;gap:10px">
         <span style="color:#1D4ED8;flex-shrink:0">${IC.tasks}</span>
         <div style="flex:1"><div style="font-size:13px;font-weight:800;color:#1D4ED8">Check list semanal pendiente</div>
-        <div style="font-size:11px;color:#1E40AF;margin-top:2px">Hoy es lunes · Semana ${semana} · Toca para llenarlo</div></div>
+        <div style="font-size:11px;color:#1E40AF;margin-top:2px">${extendido?'Habilitado por admin':'Hoy es lunes'} · Semana ${semana} · Toca para llenarlo</div></div>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1D4ED8" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
       </div>
     </div>`;
@@ -1432,17 +1461,20 @@ window.fmGasSem=function(v){
 function renderChkSemanal(){
   if(!miVeh){fmVista('vehiculo');return;}
   const semana=getSemanaISO();
-  const lunes=esLunes();
   const cacheKey=`${miVeh.eco}_${semana}`;
   const yaExiste=window._semChkCache[cacheKey];
 
-  if(!lunes){
+  if(!chkSemPermitido(semana)){
+    const cfg=window._cfgSem||{};
+    const msg=cfg.activo&&cfg.semana!==semana
+      ?`El check list activo es para la semana ${cfg.semana}, no la actual.`
+      :'El check list solo está disponible los lunes, o cuando sea habilitado por el administrador.';
     setContent(`
       <div class="fm-sec-hd"><div><div class="fm-sec-t">Check list semanal</div><div class="fm-sec-s">ECO ${miVeh.eco} · Semana ${semana}</div></div></div>
       <div class="fm-empty">
         <div class="fm-empty-ico" style="color:#94A3B8">${IC.tasks}</div>
-        <h3>Disponible solo los lunes</h3>
-        <p>El check list semanal de revisión se llena cada lunes. Hoy es ${new Date().toLocaleDateString('es-MX',{weekday:'long'})}.</p>
+        <h3>No disponible hoy</h3>
+        <p>${msg}</p>
       </div>
       <button class="fm-btn ghost" onclick="fmVista('vehiculo')">Volver</button>
       <div style="height:20px"></div>
