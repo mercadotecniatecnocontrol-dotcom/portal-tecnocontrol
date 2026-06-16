@@ -18,7 +18,7 @@ const SVG_TROCA={
 };
 
 
-const C={VEHS:'flotilla_vehiculos',SOLS:'flotilla_solicitudes',COMIS:'flotilla_comisiones',TRANS:'flotilla_transferencias',CHKSEM:'flotilla_checklist_semanal'};
+const C={VEHS:'flotilla_vehiculos',SOLS:'flotilla_solicitudes',COMIS:'flotilla_comisiones',TRANS:'flotilla_transferencias',CHKSEM:'flotilla_checklist_semanal',CFG:'flotilla_config'};
 
 const CAT=[
   {eco:'01',unidad:'NISSAN NP100',     año:2000,plaza:'CHIHUAHUA',    responsable:'GLEN PRECIADO',   placas:'DU0101A',serie:'3N6AD33A3H46544',rend:'7 KM/L',   pv:'2026-09-24',pol:'794B05035M-17',tipo:'auto',color:'Blanco',nip:'OXXO GAS',km:0,status:'activo'},
@@ -125,7 +125,7 @@ const I={
 
 // ESTADO
 let db=window.db, fs=null;
-let flV=[], flS=[], flCom=[], flTrans=[], flChkSem=[];
+let flV=[], flS=[], flCom=[], flTrans=[], flChkSem=[], flCfgSem={};
 let vistaAct='panel';
 let ST={
   vehId:null, tipoVeh:'auto', vistaImg:'frente', modo:'entrada',
@@ -523,7 +523,7 @@ window.cargarFlotilla=async function(){
   db=window.db;
   if(!db){console.error('[FLOTILLA] window.db no disponible después de 5s');return;}
   fs=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-  await Promise.all([ldVehs(),ldSols(),ldComs(),ldTrans(),ldChkSem()]);
+  await Promise.all([ldVehs(),ldSols(),ldComs(),ldTrans(),ldChkSem(),ldCfgSem()]);
   renderSB();
   flVista('panel');
 };
@@ -535,6 +535,7 @@ async function ldSols(){try{const s=await fs.getDocs(fs.collection(db,C.SOLS));f
 async function ldComs(){try{const s=await fs.getDocs(fs.collection(db,C.COMIS));flCom=s.docs.map(d=>({id:d.id,...d.data()}));}catch{flCom=[];}}
 async function ldTrans(){try{const s=await fs.getDocs(fs.collection(db,C.TRANS));flTrans=s.docs.map(d=>({id:d.id,...d.data()}));flTrans.sort((a,b)=>(b.creadoEn||"").localeCompare(a.creadoEn||""));}catch{flTrans=[];}}
 async function ldChkSem(){try{const s=await fs.getDocs(fs.collection(db,C.CHKSEM));flChkSem=s.docs.map(d=>({id:d.id,...d.data()}));flChkSem.sort((a,b)=>(b.creadoEn||"").localeCompare(a.creadoEn||""));}catch{flChkSem=[];}}
+async function ldCfgSem(){try{const d=await fs.getDoc(fs.doc(db,C.CFG,'checklist_semanal'));flCfgSem=d.exists()?d.data():{};}catch{flCfgSem={};}}
 
 // SIDEBAR
 let sbTipoFilt='all';
@@ -2835,13 +2836,79 @@ window.flVerComparVeh=function(eco,offsetSem){
 // CHECK LIST SEMANAL — comparativo + detalle
 // ══════════════════════════════════════════════════════
 let chkSemFiltroVeh='';
+// ── SEMANA ISO (portal) ──
+function getSemanaISOPortal(d){
+  d=d||new Date();
+  const dt=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));
+  const dayNum=(dt.getUTCDay()+6)%7;
+  dt.setUTCDate(dt.getUTCDate()-dayNum+3);
+  const firstThursday=new Date(Date.UTC(dt.getUTCFullYear(),0,4));
+  const week=1+Math.round(((dt-firstThursday)/86400000-3+((firstThursday.getUTCDay()+6)%7))/7);
+  return`${dt.getUTCFullYear()}-W${String(week).padStart(2,'0')}`;
+}
+
+// ── PANEL DE CONTROL: ACTIVAR / DESACTIVAR CHECK LIST SEMANAL (solo admins) ──
+function hCfgSemPanel(){
+  if(!hAdm())return'';
+  const activo=!!flCfgSem.activo;
+  const semCfg=flCfgSem.semana||'';
+  const semActual=getSemanaISOPortal();
+  const esEstaSemana=semCfg===semActual;
+  const activadoPor=flCfgSem.activadoPor||'';
+  const activadoEn=flCfgSem.activadoEn?new Date(flCfgSem.activadoEn).toLocaleString('es-MX',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'';
+
+  return`<div style="background:${activo&&esEstaSemana?'#F0FDF4':'#F8FAFD'};border:1.5px solid ${activo&&esEstaSemana?'#86EFAC':'#E2E8F0'};border-radius:12px;padding:14px 16px;margin-bottom:16px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <div>
+        <div style="font-size:13px;font-weight:800;color:${activo&&esEstaSemana?'#15803D':'#374151'}">
+          ${activo&&esEstaSemana
+            ?`✅ Check list activo — ${semCfg}`
+            :activo&&!esEstaSemana
+              ?`⚠️ Activo para ${semCfg} (semana pasada) — desactiva y reactiva`
+              :`🔒 Check list desactivado`}
+        </div>
+        <div style="font-size:11px;color:#64748B;margin-top:3px">
+          ${activo&&activadoPor?`Activado por ${activadoPor}${activadoEn?' · '+activadoEn:''}`:'Semana actual: '+semActual}
+          ${activo&&esEstaSemana?' · Técnicos pueden llenarlo lunes-viernes':''}
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-shrink:0">
+        ${activo
+          ?`<button onclick="flToggleCfgSem(false)" style="padding:8px 16px;border-radius:9px;border:1.5px solid #FCA5A5;background:#FEF2F2;color:#B91C1C;font-size:12px;font-weight:700;cursor:pointer">
+              Desactivar
+            </button>`
+          :`<button onclick="flToggleCfgSem(true)" style="padding:8px 16px;border-radius:9px;border:none;background:#15803D;color:#fff;font-size:12px;font-weight:700;cursor:pointer">
+              Activar semana ${semActual}
+            </button>`}
+      </div>
+    </div>
+  </div>`;
+}
+
+window.flToggleCfgSem=async function(activar){
+  const semActual=getSemanaISOPortal();
+  const email=window.auth?.currentUser?.email||'—';
+  const datos=activar
+    ?{activo:true,semana:semActual,activadoPor:email,activadoEn:new Date().toISOString()}
+    :{activo:false,semana:semActual,desactivadoPor:email,desactivadoEn:new Date().toISOString()};
+  try{
+    await fs.setDoc(fs.doc(db,C.CFG,'checklist_semanal'),datos,{merge:true});
+    flCfgSem={...flCfgSem,...datos};
+    flMsgOk(activar?`✅ Check list activado para ${semActual}`:'🔒 Check list desactivado');
+    rChkSemanal();
+  }catch(e){
+    flMsgError('Error: '+e.message);
+  }
+};
+
 function rChkSemanal(){
   const semanas=[...new Set(flChkSem.map(r=>r.semana))].sort().reverse();
-  const semSel=semanas[0]||null;
+  const semSel=semanas[0]||getSemanaISOPortal();
   if(!semanas.length){
     setContent(padded(`
       <div style="font-size:17px;font-weight:900;letter-spacing:-.4px;margin-bottom:4px">Check list semanal</div>
       <div style="font-size:11px;color:#64748B;margin-bottom:14px">Inspección semanal de vehículos (lunes)</div>
+      ${hCfgSemPanel()}
       <div class="fl-empty" style="min-height:200px"><div class="fl-empty-ico"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="1.5"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></div><h3>Sin registros</h3><p>Aún no se han registrado check lists semanales desde la app móvil.</p></div>
     `));
     return;
@@ -2928,6 +2995,7 @@ function rChkSemanalTabla(semSel){
   setContent(padded(`
     <div style="font-size:17px;font-weight:900;letter-spacing:-.4px;margin-bottom:4px">Check list semanal</div>
     <div style="font-size:11px;color:#64748B;margin-bottom:10px">Inspección semanal de vehículos (lunes) · ${ecos.length} registrado${ecos.length===1?'':'s'} de ${ecos.length+vehsSinRegistro.length} vehículos</div>
+    ${hCfgSemPanel()}
     ${navSem}
     ${body}
   `));
