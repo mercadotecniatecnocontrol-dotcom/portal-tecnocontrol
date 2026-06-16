@@ -444,9 +444,9 @@ function injectCSS(){
 // HTML BASE
 function buildHTML(){
   const el=document.getElementById('flotilla-dashboard');if(!el)return;
-  const user=window.auth?.currentUser;
-  const nombre=user?.displayName||user?.email?.split('@')[0]||'USUARIO';
-  const inicial=nombre.charAt(0).toUpperCase();
+  // Placeholder seguro — se sobreescribe por actualizarHeaderUsuario() una vez que auth resuelva
+  const nombre='···';
+  const inicial='·';
   el.innerHTML=`
   <div class="fl-tb">
     <div class="fl-tb-logo">
@@ -490,9 +490,8 @@ function buildHTML(){
         ${I.users}
       </button>
     </div>`:''}
-    </div>
-    <div class="fl-tb-profile">
-      <span class="fl-tb-pname">${nombre.toUpperCase()}</span>
+    <div class="fl-tb-profile" id="fl-tb-profile">
+      <span class="fl-tb-pname">${nombre}</span>
       <div class="fl-tb-avatar">${inicial}</div>
     </div>
   </div>
@@ -525,11 +524,36 @@ window.cargarFlotilla=async function(){
   for(let i=0;i<50&&!window.db;i++) await new Promise(r=>setTimeout(r,100));
   db=window.db;
   if(!db){console.error('[FLOTILLA] window.db no disponible después de 5s');return;}
+  // Actualizar header con el usuario real tan pronto como esté disponible
+  actualizarHeaderUsuario();
   fs=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
   await Promise.all([ldVehs(),ldSols(),ldComs(),ldTrans(),ldChkSem(),ldCfgSem()]);
   renderSB();
   flVista('panel');
 };
+
+function actualizarHeaderUsuario(){
+  const user=window.auth?.currentUser;
+  if(!user){
+    // Reintentar hasta que auth resuelva
+    setTimeout(actualizarHeaderUsuario,200);
+    return;
+  }
+  const nombre=(user.displayName||user.email?.split('@')[0]||'USUARIO').toUpperCase();
+  const inicial=nombre.charAt(0);
+  const pname=document.querySelector('#fl-tb-profile .fl-tb-pname');
+  const avatar=document.querySelector('#fl-tb-profile .fl-tb-avatar');
+  if(pname)pname.textContent=nombre;
+  if(avatar)avatar.textContent=inicial;
+  // Hacer clic en el perfil → ir al admin si es admin, o mostrar info
+  const profile=document.getElementById('fl-tb-profile');
+  if(profile&&!profile._hasClick){
+    profile._hasClick=true;
+    profile.style.cursor='pointer';
+    profile.title=user.email||'';
+    profile.onclick=()=>hAdm()?flVista('admin'):flMsgInfo(user.email||nombre);
+  }
+}
 async function ldVehs(){try{const s=await fs.getDocs(fs.collection(db,C.VEHS));const fsEcos=new Set(s.docs.map(d=>String(d.data().eco)));const fsVehs=s.docs.map(d=>({id:d.id,...d.data()}));const catFill=CAT.filter(v=>!fsEcos.has(String(v.eco))).map(v=>({id:'eco-'+v.eco,...v}));flV=[...fsVehs,...catFill];if(!flV.length)flV=CAT.map(v=>({id:'eco-'+v.eco,...v}));}catch{flV=CAT.map(v=>({id:'eco-'+v.eco,...v}));}}
 async function ldSols(){try{const s=await fs.getDocs(fs.collection(db,C.SOLS));flS=s.docs.map(d=>({id:d.id,...d.data()}));flS.sort((a,b)=>(b.creadoEn||'').localeCompare(a.creadoEn||''));}catch{flS=[];}
   const p=flS.filter(s=>['Solicitud','Validada'].includes(s.estatus)).length;
