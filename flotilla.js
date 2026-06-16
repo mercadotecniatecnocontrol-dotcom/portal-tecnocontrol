@@ -580,6 +580,7 @@ function renderSB(){
   else if(sbTipoFilt==='cam')filtrado=act.filter(v=>v.tipo!=='auto');
   const q=(document.getElementById('fl-sb-q')?.value||'').toLowerCase();
   if(q)filtrado=filtrado.filter(v=>(v.eco+v.unidad+v.placas+v.responsable).toLowerCase().includes(q));
+  filtrado=filtrado.slice().sort((a,b)=>Number(a.eco)-Number(b.eco));
   lista.innerHTML=filtrado.map(v=>{
     const dot=v.status==='taller'?'#F59E0B':v.status==='comision'?'#8B5CF6':'#22C55E';
     const comAct=v.status==='comision'?flCom.find(c=>c.estatus==='En préstamo'&&(c.vehiculoId===v.id||String(c.vehiculoEco)===String(v.eco))):null;
@@ -1204,6 +1205,42 @@ function rPanel(){
       <div class="fl-kpi"><div class="fl-kpi-l">En taller/comisión</div><div class="fl-kpi-v" style="color:#D97706">${tall+com}</div><div class="fl-kpi-s">${tall} taller · ${com} comisión</div></div>
       <div class="fl-kpi"><div class="fl-kpi-l">Solicitudes activas</div><div class="fl-kpi-v" style="color:#7C3AED">${pend}</div><div class="fl-kpi-s">en proceso</div></div>
     </div>
+
+    <!-- MINI DASHBOARDS DE ESTADO DE VEHÍCULOS -->
+    ${(()=>{
+      const activos=flV.filter(v=>v.status==='activo').length;
+      const enTaller=flV.filter(v=>v.status==='taller').length;
+      const enComision=flV.filter(v=>v.status==='comision').length;
+      const sinResponsable=flV.filter(v=>v.status!=='baja'&&(!v.responsable||v.responsable==='—')).length;
+      const polVencidas=flV.filter(v=>{const d=hD(v.pv);return d!==null&&d<0;}).length;
+      const polPorVencer=flV.filter(v=>{const d=hD(v.pv);return d!==null&&d>=0&&d<30;}).length;
+      const solPorEst=(e)=>flS.filter(s=>s.estatus===e||(e==='Evaluación'&&['Validación','Validada','Cotización','Aprobación','Aprobada'].includes(s.estatus))||(e==='Servicio'&&['Pagos','Cierre'].includes(s.estatus))).length;
+      const miniKpi=(label,val,sub,color,bg,onclick)=>`
+        <div onclick="${onclick||''}" style="background:${bg||'#fff'};border:1px solid #E8EDF5;border-radius:11px;padding:13px 15px;flex:1;min-width:130px;${onclick?'cursor:pointer;':''}transition:box-shadow .15s" ${onclick?'onmouseover="this.style.boxShadow=\'0 4px 14px rgba(0,0,0,.08)\'"  onmouseout="this.style.boxShadow=\'none\'"':''}>
+          <div style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin-bottom:5px">${label}</div>
+          <div style="font-size:24px;font-weight:900;letter-spacing:-1px;color:${color||'#0A1628'};line-height:1">${val}</div>
+          <div style="font-size:10px;color:#94A3B8;margin-top:3px">${sub}</div>
+        </div>`;
+      return`<div style="margin-bottom:16px">
+        <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin-bottom:8px">Estado de la flotilla</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+          ${miniKpi('Disponibles',activos,'En campo / operando','#15803D','#F0FDF4',"flSbTipo('all');document.querySelectorAll('.fl-sb-item').forEach(e=>e.scrollIntoView())")}
+          ${miniKpi('En taller',enTaller,enTaller?'Requieren atención':'Sin vehículos en taller',enTaller>0?'#D97706':'#94A3B8',enTaller>0?'#FFFBEB':'#F8FAFD')}
+          ${miniKpi('En comisión',enComision,enComision?'Préstamo activo':'Sin comisiones activas',enComision>0?'#7C3AED':'#94A3B8',enComision>0?'#F5F3FF':'#F8FAFD')}
+          ${miniKpi('Sin responsable',sinResponsable,sinResponsable?'Asignar responsable':'Todos asignados ✓',sinResponsable>0?'#B91C1C':'#15803D',sinResponsable>0?'#FEF2F2':'#F0FDF4')}
+          ${miniKpi('Pólizas vencidas',polVencidas,polVencidas?'Renovar urgente':'Todas vigentes ✓',polVencidas>0?'#B91C1C':'#15803D',polVencidas>0?'#FEF2F2':'#F0FDF4')}
+          ${miniKpi('Pólizas por vencer',polPorVencer,polPorVencer?'En menos de 30 días':'Sin vencimientos próximos',polPorVencer>0?'#D97706':'#94A3B8',polPorVencer>0?'#FFFBEB':'#F8FAFD')}
+        </div>
+        <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin-bottom:8px;margin-top:4px">Pipeline de solicitudes</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          ${miniKpi('Solicitud',solPorEst('Solicitud'),'Por revisar','#6D28D9','#F5F3FF',"flPipelineModal('Solicitud')")}
+          ${miniKpi('Evaluación',solPorEst('Evaluación'),'Cotizando / autorizando','#1D4ED8','#EFF6FF',"flPipelineModal('Evaluación')")}
+          ${miniKpi('Servicio',solPorEst('Servicio'),'En taller / pagando','#B45309','#FFFBEB',"flPipelineModal('Servicio')")}
+          ${miniKpi('Rechazadas',solPorEst('Rechazada'),'Esta semana','#B91C1C','#FEF2F2',"flPipelineModal('Rechazada')")}
+          ${miniKpi('Cerradas',solPorEst('Cerrada'),'Expedientes completos','#15803D','#F0FDF4',"flPipelineModal('Cerrada')")}
+        </div>
+      </div>`;
+    })()}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
       <div class="fl-tw"><div style="padding:10px 14px;border-bottom:1px solid #F1F5F9;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8">Solicitudes por tipo</div>
         <div style="padding:12px 14px">${top.length?top.map(([t,n])=>`<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:11px;font-weight:600;margin-bottom:3px"><span>${t}</span><span style="color:#64748B">${n}</span></div><div style="height:4px;background:#F1F5F9;border-radius:100px;overflow:hidden"><div style="height:100%;width:${Math.round(n/mx*100)}%;background:linear-gradient(90deg,#2563EB,#7C3AED);border-radius:100px"></div></div></div>`).join(''):'<div style="color:#94A3B8;font-size:11px;text-align:center;padding:18px 0">Sin solicitudes aún</div>'}</div>
@@ -3133,11 +3170,202 @@ window.flVerChkSem=async function(id){
       <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin:12px 0 4px">Firma del técnico</div>
       ${r.firma?`<img src="${r.firma}" onclick="flImg('${r.firma}')" style="max-width:240px;width:100%;border:1px solid #E8EDF5;border-radius:8px;cursor:pointer;background:#fff">`:'<div style="font-size:12px;color:#B91C1C;font-weight:700">⚠ Sin firma registrada</div>'}
 
-      <div class="fl-fa" style="margin-top:14px"><button class="fb gho" onclick="this.closest('.fl-ov').remove()">Cerrar</button></div>
+      <div class="fl-fa" style="margin-top:14px">
+        <button class="fb gho" onclick="this.closest('.fl-ov').remove()">Cerrar</button>
+        <button class="fb gho" onclick="flGenerarPDFChkSem('${id}')" style="display:inline-flex;align-items:center;gap:5px">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          PDF
+        </button>
+      </div>
     </div></div>`;
   document.body.appendChild(ov);ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
 };
 
+
+// ── EXPORTAR CHECK LIST SEMANAL A PDF ──
+window.flGenerarPDFChkSem = async function(id) {
+  const r = flChkSem.find(x => x.id === id); if (!r) return;
+  const v = flV.find(x => String(x.eco) === String(r.vehiculoEco)) || {};
+
+  // Cargar fotos de subcol si aplica
+  let chkFotos = r.chkFotos || {};
+  let evidencias = r.evidencias || [];
+  const tieneSubcol = r.chkFotosKeys && r.chkFotosKeys.length > 0;
+  if (tieneSubcol) {
+    try {
+      const fotosSnap = await fs.getDocs(fs.collection(db, C.CHKSEM, id, 'fotos'));
+      fotosSnap.docs.forEach(d => {
+        const f = d.data();
+        if (f.tipo === 'chk' && f.key) chkFotos[f.key] = { src: f.src, meta: f.meta || {} };
+        if (f.tipo === 'evidencia') evidencias.push({ src: f.src, meta: f.meta || {} });
+      });
+    } catch(e) { console.warn('[PDF chksem]', e); }
+  }
+
+  const chk = r.checklist || {};
+  const gasPct = Number(r.gasolina) || 0;
+  const gasColor = gasPct > 50 ? '#16A34A' : gasPct > 25 ? '#D97706' : '#DC2626';
+
+  // Gauge SVG de gasolina
+  const toRad = deg => deg * Math.PI / 180;
+  const arcX = (rad, deg) => 50 + rad * Math.cos(toRad(deg));
+  const arcY = (rad, deg) => 50 + rad * Math.sin(toRad(deg));
+  const startDeg = -210, endDeg = 30;
+  const fillDeg = startDeg + (gasPct / 100) * (endDeg - startDeg);
+  const largeArc = gasPct > 50 ? 1 : 0;
+  const trackPath = `M ${arcX(35,startDeg)} ${arcY(35,startDeg)} A 35 35 0 1 1 ${arcX(35,endDeg)} ${arcY(35,endDeg)}`;
+  const fillPath = gasPct > 0 ? `M ${arcX(35,startDeg)} ${arcY(35,startDeg)} A 35 35 0 ${largeArc} 1 ${arcX(35,fillDeg)} ${arcY(35,fillDeg)}` : '';
+  const gasSVG = `<svg width="100" height="65" viewBox="0 0 100 65">
+    <path d="${trackPath}" fill="none" stroke="#E2E8F0" stroke-width="9" stroke-linecap="round"/>
+    ${fillPath ? `<path d="${fillPath}" fill="none" stroke="${gasColor}" stroke-width="9" stroke-linecap="round"/>` : ''}
+    <text x="50" y="50" text-anchor="middle" font-size="16" font-weight="900" fill="${gasColor}" font-family="system-ui">${gasPct}%</text>
+    <text x="50" y="62" text-anchor="middle" font-size="8" fill="#94A3B8" font-family="system-ui">GASOLINA</text>
+  </svg>`;
+
+  // Construir filas del checklist por categoría
+  let chkFullHTML = '';
+  for (const [cat, items] of Object.entries(CHK_CATS)) {
+    let catRows = '';
+    items.forEach((item, idx) => {
+      const key = `sem-${cat}-${idx}`;
+      const val = chk[key] || '';
+      const foto = chkFotos[key];
+      const fotoSrc = foto ? (typeof foto === 'object' ? foto.src : foto) : null;
+      const isDetalle = val === 'no';
+      const badge = val === 'si'
+        ? `<span style="display:inline-block;padding:2px 8px;background:#DCFCE7;color:#15803D;border-radius:10px;font-size:9px;font-weight:800">OK</span>`
+        : val === 'no'
+          ? `<span style="display:inline-block;padding:2px 8px;background:#FEE2E2;color:#B91C1C;border-radius:10px;font-size:9px;font-weight:800">Detalle</span>`
+          : `<span style="display:inline-block;padding:2px 8px;background:#F1F5F9;color:#94A3B8;border-radius:10px;font-size:9px;font-weight:700">—</span>`;
+      const fotoEl = fotoSrc
+        ? `<img src="${fotoSrc}" style="width:56px;height:42px;object-fit:cover;border-radius:4px;border:1px solid ${isDetalle?'#FCA5A5':'#E2E8F0'};float:right;margin-left:6px">`
+        : '';
+      catRows += `<tr style="border-bottom:1px solid #F8FAFD;${isDetalle?'background:#FFF5F5':''}">
+        <td style="padding:5px 8px;font-size:10.5px;color:${isDetalle?'#991B1B':'#374151'};font-weight:${isDetalle?'700':'400'}">${item}</td>
+        <td style="padding:5px 8px;text-align:center;white-space:nowrap">${badge}</td>
+        <td style="padding:5px 8px;text-align:right">${fotoEl}</td>
+      </tr>`;
+    });
+    chkFullHTML += `<div style="margin-bottom:14px;break-inside:avoid">
+      <div style="background:#1E3A5F;color:#fff;padding:5px 10px;border-radius:5px 5px 0 0;font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.6px">${cat}</div>
+      <table style="width:100%;border-collapse:collapse;border:1px solid #E2E8F0;border-top:none">
+        <thead><tr style="background:#F8FAFD">
+          <th style="padding:4px 8px;font-size:8px;font-weight:800;text-transform:uppercase;color:#94A3B8;text-align:left">Ítem</th>
+          <th style="padding:4px 8px;font-size:8px;font-weight:800;text-transform:uppercase;color:#94A3B8;width:70px">Estado</th>
+          <th style="padding:4px 8px;font-size:8px;font-weight:800;text-transform:uppercase;color:#94A3B8;width:70px;text-align:right">Foto</th>
+        </tr></thead>
+        <tbody>${catRows}</tbody>
+      </table>
+    </div>`;
+  }
+
+  // Evidencias generales
+  const evThumbsHTML = evidencias.length
+    ? evidencias.map((e, i) => {
+        const src = typeof e === 'object' ? e.src : e;
+        const meta = typeof e === 'object' ? e.meta : {};
+        return `<div style="display:inline-block;margin:4px;text-align:center;vertical-align:top">
+          <img src="${src}" style="width:110px;height:82px;object-fit:cover;border-radius:6px;border:1px solid #E2E8F0;display:block">
+          <div style="font-size:8px;color:#64748B;margin-top:2px;font-family:monospace;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${meta.codigo||'Foto '+(i+1)}</div>
+        </div>`;
+      }).join('')
+    : '<div style="font-size:11px;color:#94A3B8;padding:8px">Sin evidencias generales</div>';
+
+  // Resumen del checklist
+  const totalItems = Object.values(CHK_CATS).flat().length;
+  const okItems = Object.values(chk).filter(v => v === 'si').length;
+  const detalleItems = Object.values(chk).filter(v => v === 'no').length;
+  const sinResp = totalItems - okItems - detalleItems;
+
+  const html = `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">
+  <title>Check List Semanal — ECO ${r.vehiculoEco} — ${r.semana}</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:system-ui,Arial,sans-serif;font-size:11px;color:#0A0F1E;background:#fff;padding:28px 32px}
+    .logo{font-size:20px;font-weight:900;letter-spacing:-1px}
+    .logo em{color:#2563EB;font-style:normal}
+    .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #0A1628;padding-bottom:14px;margin-bottom:18px}
+    .veh-bar{background:#0A1628;color:#fff;border-radius:9px;padding:11px 16px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between}
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+    .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px}
+    .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
+    .field{background:#F8FAFD;border-radius:7px;padding:8px 11px;border:1px solid #E8EDF5}
+    .field label{font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:2px}
+    .field span{font-size:12px;font-weight:700;line-height:1.4}
+    .sec{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:#64748B;margin:16px 0 8px;padding-top:12px;border-top:1px solid #E8EDF5}
+    .kpi-bar{display:flex;gap:8px;margin-bottom:14px}
+    .kpi{flex:1;background:#F8FAFD;border:1px solid #E8EDF5;border-radius:8px;padding:8px 10px;text-align:center}
+    .kpi-v{font-size:22px;font-weight:900;line-height:1}
+    .kpi-l{font-size:8px;font-weight:700;text-transform:uppercase;color:#94A3B8;margin-top:2px}
+    .gas-box{display:flex;align-items:center;gap:16px;background:#F8FAFD;border-radius:9px;padding:12px 16px;border:1px solid #E8EDF5;margin-bottom:12px}
+    .footer{margin-top:24px;padding-top:10px;border-top:1px solid #E8EDF5;font-size:9px;color:#94A3B8;text-align:center}
+    @media print{body{padding:14px 16px;font-size:10.5px}button{display:none!important}}
+  </style></head><body>
+  <div class="hdr">
+    <div>
+      <div class="logo">TECNO<em>CONTROL</em></div>
+      <div style="font-size:10.5px;color:#64748B;margin-top:3px">Check List de Inspección Semanal</div>
+    </div>
+    <div style="text-align:right">
+      <div style="font-size:22px;font-weight:900;font-family:monospace;letter-spacing:1px;color:#1E3A5F">${r.semana}</div>
+      <div style="font-size:10px;color:#64748B;margin-top:4px">${r.fecha||'—'}</div>
+    </div>
+  </div>
+
+  <div class="veh-bar">
+    <div>
+      <div style="font-size:14px;font-weight:800">${v.unidad||r.vehiculo||'—'} ${v.año||''}</div>
+      <div style="font-size:10px;color:rgba(255,255,255,.5);margin-top:2px;font-family:monospace">ECO ${r.vehiculoEco} · ${v.placas||'—'} · ${v.plaza||'—'}</div>
+    </div>
+    <div style="text-align:right;font-size:10px;color:rgba(255,255,255,.6)">Técnico: ${r.tecnico||'—'}</div>
+  </div>
+
+  <div class="grid3">
+    <div class="field"><label>Kilometraje</label><span>${r.km?Number(r.km).toLocaleString('es-MX')+' km':'—'}</span></div>
+    <div class="field"><label>Responsable</label><span>${v.responsable||'—'}</span></div>
+    <div class="field"><label>Plaza</label><span>${v.plaza||'—'}</span></div>
+  </div>
+
+  <div class="gas-box">
+    <div>${gasSVG}</div>
+    <div>
+      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:4px">Nivel de combustible</div>
+      <div style="font-size:28px;font-weight:900;color:${gasColor};line-height:1">${gasPct}%</div>
+    </div>
+    <div style="flex:1;margin-left:24px">
+      <div class="kpi-bar">
+        <div class="kpi"><div class="kpi-v" style="color:#15803D">${okItems}</div><div class="kpi-l">OK</div></div>
+        <div class="kpi"><div class="kpi-v" style="color:#B91C1C">${detalleItems}</div><div class="kpi-l">Detalles</div></div>
+        <div class="kpi"><div class="kpi-v" style="color:#94A3B8">${sinResp}</div><div class="kpi-l">Sin resp.</div></div>
+        <div class="kpi"><div class="kpi-v" style="color:#0A1628">${totalItems}</div><div class="kpi-l">Total ítems</div></div>
+      </div>
+    </div>
+  </div>
+
+  ${evidencias.length ? `<div class="sec">Evidencias generales (${evidencias.length})</div><div style="margin-bottom:12px">${evThumbsHTML}</div>` : ''}
+
+  <div class="sec">Check list de inspección</div>
+  ${chkFullHTML}
+
+  ${r.observaciones ? `<div class="sec">Observaciones</div>
+  <div style="background:#F8FAFC;border-radius:8px;padding:10px 12px;border:1px solid #E2E8F0;font-size:12px;margin-bottom:14px">${r.observaciones}</div>` : ''}
+
+  <div class="sec">Firma del técnico</div>
+  ${r.firma
+    ? `<img src="${r.firma}" style="max-width:220px;border:1px solid #E8EDF5;border-radius:8px;background:#fff;display:block;margin-bottom:14px">`
+    : '<div style="font-size:12px;color:#B91C1C;font-weight:700;margin-bottom:14px">⚠ Sin firma registrada</div>'}
+
+  <div class="footer">Generado por Portal Flotilla Tecnocontrol · ${new Date().toLocaleString('es-MX')} · ID: ${id}</div>
+  <div style="margin-top:16px;display:flex;gap:10px;justify-content:flex-end">
+    <button onclick="window.print()" style="padding:11px 28px;background:#0A1628;color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer">
+      Imprimir / Guardar PDF
+    </button>
+  </div>
+  </body></html>`;
+
+  const win = window.open('', '_blank', 'width=860,height=960');
+  if (win) { win.document.write(html); win.document.close(); }
+};
 
 // ── BAJAS ──
 function rBajas(){
@@ -4572,9 +4800,13 @@ function rFlCalendario() {
   const anio = ahora.getFullYear();
   const hoy = ahora.getDate();
   const dotCol = {
-    Solicitud: '#6D28D9', Validación: '#1D4ED8', Aprobación: '#CA8A04',
-    Pagos: '#B45309', Cierre: '#0369A1', Rechazada: '#B91C1C', Cerrada: '#15803D',
+    Solicitud:   '#6D28D9',
+    'Evaluación':'#1D4ED8',
+    Servicio:    '#B45309',
+    Rechazada:   '#B91C1C',
+    Cerrada:     '#15803D',
   };
+  const normCalEst = e => ({'Validación':'Evaluación','Validada':'Evaluación','Cotización':'Evaluación','Aprobación':'Evaluación','Aprobada':'Evaluación','Pagos':'Servicio','Cierre':'Servicio'}[e]||e);
   const eventMap = {};
   const agrega = (fechaStr, sol) => {
     if (!fechaStr || typeof fechaStr !== 'string') return;
@@ -4600,7 +4832,7 @@ function rFlCalendario() {
     const evs = eventMap[key] || [];
     const esHoy = d === hoy;
     const tieneEvs = evs.length > 0;
-    const dots = [...new Set(evs.map(e => dotCol[e.estatus]||'#94A3B8'))].slice(0,3)
+    const dots = [...new Set(evs.map(e => dotCol[normCalEst(e.estatus)]||'#94A3B8'))].slice(0,3)
       .map(c => `<span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:${c};margin:0 1px"></span>`).join('');
     celdas += `<div onclick="${tieneEvs ? `flCalDia('${key}')` : ''}"
       style="min-height:38px;border-radius:7px;padding:4px 3px 3px;text-align:center;cursor:${tieneEvs?'pointer':'default'};
