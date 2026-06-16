@@ -119,6 +119,14 @@ const ADMINS_FLOTILLA=[
   'm.delao@tecnocontrol.com.mx',
   'nicolas@tecnocontrol.com.mx',
   'proyectos@tecnocontrol.com.mx',
+  'r.moriel@tecnocontrol.com.mx',
+  'clientes@tecnocontrol.com.mx',
+  's.carmona@tecnocontrol.com.mx',
+  'tomas@tecnocontrol.com.mx',
+  'fernando@tecnocontrol.com.mx',
+  'v.garcia@tecnocontrol.com.mx',
+  'i.saucedo@tecnocontrol.com.mx',
+  'j.uribe@tecnocontrol.com.mx',
   'plazajrz@tecnocontrol.com.mx',
   'fatima@tecnocontrol.com.mx',
 ];
@@ -1566,10 +1574,10 @@ window.fmGuardarChkSemanal=async function(){
   const firmaRaw=firmaExportar('fm-sem-firma');
 
   const btn=document.getElementById('fm-sem-btn-guardar');
-  if(btn){btn.disabled=true;btn.textContent='Comprimiendo fotos…';}
+  if(btn){btn.disabled=true;btn.textContent='Verificando…';}
 
   try{
-    // Verificación final de duplicado (evita doble registro por carrera)
+    // Anti-duplicado
     const cacheKey=`${miVeh.eco}_${semana}`;
     const dup=await db.collection(C.CHKSEM).where('vehiculoEco','==',String(miVeh.eco)).where('semana','==',semana).limit(1).get();
     if(!dup.empty){
@@ -1580,57 +1588,74 @@ window.fmGuardarChkSemanal=async function(){
       return;
     }
 
-    // Comprimir TODAS las imágenes antes de guardar (límite de Firestore: 1MB por documento)
+    if(btn)btn.textContent='Comprimiendo firma…';
     const firma=await comprimirBase64(firmaRaw,400,0.7);
 
-    const chkFotosComprimidas={};
-    for(const [key,foto] of Object.entries(semState.chkFotos||{})){
-      const src=typeof foto==='object'?foto.src:foto;
-      const meta=typeof foto==='object'?foto.meta:null;
-      const srcComp=await comprimirBase64(src,420,0.5);
-      chkFotosComprimidas[key]=meta?{src:srcComp,meta}:srcComp;
-    }
-
-    const evidenciasComprimidas=[];
-    for(const ev of (semState.evFotos||[])){
-      const src=typeof ev==='object'?ev.src:ev;
-      const meta=typeof ev==='object'?ev.meta:null;
-      const srcComp=await comprimirBase64(src,600,0.6);
-      evidenciasComprimidas.push(meta?{src:srcComp,meta}:srcComp);
-    }
-
-    if(btn)btn.textContent='Guardando…';
-
+    // ── Documento principal (sin fotos — siempre < 100KB) ──
     const doc={
-      vehiculoId:miVeh.id||'',vehiculoEco:String(miVeh.eco),vehiculo:`${miVeh.eco} · ${miVeh.unidad||''}`,
-      semana,fecha:new Date().toISOString().slice(0,10),
-      km:km||String(miVeh.km||0),gasolina:semState.gasolina,
-      checklist:semState.chk,chkFotos:chkFotosComprimidas,
-      evidencias:evidenciasComprimidas,
+      vehiculoId:miVeh.id||'',
+      vehiculoEco:String(miVeh.eco),
+      vehiculo:`${miVeh.eco} · ${miVeh.unidad||''}`,
+      semana,
+      fecha:new Date().toISOString().slice(0,10),
+      km:km||String(miVeh.km||0),
+      gasolina:semState.gasolina,
+      checklist:semState.chk,          // solo SI/NO por ítem — muy ligero
+      chkFotosKeys:Object.keys(semState.chkFotos||{}), // solo lista de claves con foto
+      numEvidencias:(semState.evFotos||[]).length,
       observaciones,
-      firma,
+      firma,                            // firma sola: ~10-20KB
       tecnico:window.auth?.currentUser?.displayName||window.auth?.currentUser?.email||'—',
       creadoEn:new Date().toISOString(),
     };
 
-    // Verificación de tamaño (límite Firestore: 1,048,576 bytes por documento)
-    const tamañoAprox=new Blob([JSON.stringify(doc)]).size;
-    if(tamañoAprox>950000){
-      toast('Demasiadas evidencias — quita algunas fotos e intenta de nuevo','err');
-      if(btn){btn.disabled=false;btn.textContent='Guardar check list semanal';}
-      return;
+    if(btn)btn.textContent='Guardando…';
+    const ref=await db.collection(C.CHKSEM).add(doc);
+
+    // ── Subcolección de fotos (un doc por foto, sin límite de 1MB) ──
+    const fotosCount=Object.keys(semState.chkFotos||{}).length+(semState.evFotos||[]).length;
+    if(fotosCount>0){
+      if(btn)btn.textContent=`Subiendo ${fotosCount} fotos…`;
+      const fotosRef=db.collection(C.CHKSEM).doc(ref.id).collection('fotos');
+      const uploads=[];
+
+      // Fotos de ítems del checklist
+      for(const [key,foto] of Object.entries(semState.chkFotos||{})){
+        const src=typeof foto==='object'?foto.src:foto;
+        const meta=typeof foto==='object'?foto.meta:{};
+        uploads.push(
+          comprimirBase64(src,480,0.55).then(comp=>
+            fotosRef.add({tipo:'chk',key,src:comp,meta:meta||{},creadoEn:new Date().toISOString()})
+          )
+        );
+      }
+
+      // Fotos de evidencias generales
+      for(const [i,ev] of (semState.evFotos||[]).entries()){
+        const src=typeof ev==='object'?ev.src:ev;
+        const meta=typeof ev==='object'?ev.meta:{};
+        uploads.push(
+          comprimirBase64(src,600,0.6).then(comp=>
+            fotosRef.add({tipo:'evidencia',idx:i,src:comp,meta:meta||{},creadoEn:new Date().toISOString()})
+          )
+        );
+      }
+
+      // Subir todas en paralelo
+      await Promise.allSettled(uploads);
     }
 
-    await db.collection(C.CHKSEM).add(doc);
+    // Actualizar KM del vehículo
     if(km&&miVeh&&miVeh.id&&!String(miVeh.id).startsWith('eco-')){
       try{await db.collection(C.VEHS).doc(miVeh.id).update({km:Number(km)});}catch{}
     }
+
     window._semChkCache[cacheKey]=true;
-    toast('Check list semanal guardado','ok');
+    toast('Check list semanal guardado ✓','ok');
     semState={km:'',gasolina:50,chk:{},chkFotos:{},evFotos:[],observaciones:'',firma:null,yaExiste:false};
     fmVista('vehiculo');
   }catch(e){
-    console.error('[FM]',e);
+    console.error('[FM chksem]',e);
     toast('Error al guardar: '+e.message,'err');
     if(btn){btn.disabled=false;btn.textContent='Guardar check list semanal';}
   }
