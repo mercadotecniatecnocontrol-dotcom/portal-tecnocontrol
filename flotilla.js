@@ -120,6 +120,7 @@ const I={
   trash:`<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>`,
   user:`<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>`,
   chevL:`<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>`,
+  gear:`<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>`,
   chevR:`<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>`,
 };
 
@@ -201,13 +202,15 @@ window.flLightboxCompar=function(key,sA,sB){
 function hBadge(e){
   const m={
     Solicitud:['#EDE9FE','#6D28D9'],
-    Validada:['#DBEAFE','#1D4ED8'],'Validación':['#DBEAFE','#1D4ED8'],
-    Cotización:['#FEF3C7','#B45309'],
-    'Aprobación':['#FEF9C3','#CA8A04'],Aprobada:['#DCFCE7','#15803D'],
-    Pagos:['#FEF3C7','#B45309'],
-    Cierre:['#E0F2FE','#0369A1'],
+    'Evaluación':['#DBEAFE','#1D4ED8'],Evaluación:['#DBEAFE','#1D4ED8'],
+    Servicio:['#FEF3C7','#B45309'],
     Rechazada:['#FEE2E2','#B91C1C'],
     Cerrada:['#DCFCE7','#15803D'],
+    // legacy estados anteriores → mismos colores
+    Validada:['#DBEAFE','#1D4ED8'],'Validación':['#DBEAFE','#1D4ED8'],
+    Cotización:['#DBEAFE','#1D4ED8'],
+    'Aprobación':['#FEF3C7','#B45309'],Aprobada:['#FEF3C7','#B45309'],
+    Pagos:['#FEF3C7','#B45309'],Cierre:['#FEF3C7','#B45309'],
     'En préstamo':['#EDE9FE','#6D28D9'],Devuelto:['#DCFCE7','#15803D']
   };
   const[bg,cl]=m[e]||['#F1F5F9','#475569'];
@@ -487,7 +490,7 @@ function buildHTML(){
     <div class="fl-tb-sep" style="width:1px;height:28px;background:rgba(255,255,255,.12);margin:0 6px"></div>
     <div style="position:relative">
       <button class="fl-tab-btn" id="fl-tb-admin" onclick="flVista('admin')" title="Administrar flotilla" style="background:rgba(234,179,8,.12);color:#FCD34D">
-        ${I.users}
+        ${I.gear}
       </button>
     </div>`:''}
     <div class="fl-tb-profile" id="fl-tb-profile">
@@ -556,7 +559,7 @@ function actualizarHeaderUsuario(){
 }
 async function ldVehs(){try{const s=await fs.getDocs(fs.collection(db,C.VEHS));const fsEcos=new Set(s.docs.map(d=>String(d.data().eco)));const fsVehs=s.docs.map(d=>({id:d.id,...d.data()}));const catFill=CAT.filter(v=>!fsEcos.has(String(v.eco))).map(v=>({id:'eco-'+v.eco,...v}));flV=[...fsVehs,...catFill];if(!flV.length)flV=CAT.map(v=>({id:'eco-'+v.eco,...v}));}catch{flV=CAT.map(v=>({id:'eco-'+v.eco,...v}));}}
 async function ldSols(){try{const s=await fs.getDocs(fs.collection(db,C.SOLS));flS=s.docs.map(d=>({id:d.id,...d.data()}));flS.sort((a,b)=>(b.creadoEn||'').localeCompare(a.creadoEn||''));}catch{flS=[];}
-  const p=flS.filter(s=>['Solicitud','Validada'].includes(s.estatus)).length;
+  const p=flS.filter(s=>['Solicitud','Evaluación','Validación','Validada','Cotización','Aprobación','Aprobada','Servicio','Pagos','Cierre'].includes(s.estatus)).length;
   const c=document.getElementById('fl-cnt-s');if(c){c.textContent=p;c.style.display=p?'flex':'none';}
 }
 async function ldComs(){try{const s=await fs.getDocs(fs.collection(db,C.COMIS));flCom=s.docs.map(d=>({id:d.id,...d.data()}));}catch{flCom=[];}}
@@ -784,9 +787,13 @@ function rAdmTabSols(){
   const solFiltro=window._admSolFiltro||'';
   const solQ=window._admSolQ||'';
   let lista=flS;
-  if(solFiltro)lista=lista.filter(s=>s.estatus===solFiltro);
+  const normSolEst={'Validación':'Evaluación','Validada':'Evaluación','Cotización':'Evaluación','Aprobación':'Evaluación','Aprobada':'Evaluación','Pagos':'Servicio','Cierre':'Servicio'};
+  if(solFiltro){
+    const grupo={'Evaluación':['Evaluación','Validación','Validada','Cotización','Aprobación','Aprobada'],'Servicio':['Servicio','Pagos','Cierre']}[solFiltro];
+    lista=lista.filter(s=>grupo?grupo.includes(s.estatus):s.estatus===solFiltro);
+  }
   if(solQ){const q=solQ.toLowerCase();lista=lista.filter(s=>(s.vehiculoEco+s.solicitante+s.tipoSol+s.id+'').toLowerCase().includes(q));}
-  const filtros=['Solicitud','Validada','Cotización','Aprobada','Rechazada','Cerrada'];
+  const filtros=['Solicitud','Evaluación','Servicio','Rechazada','Cerrada'];
   return`
     <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
       <div class="fl-adm-search" style="flex:1;min-width:200px">${I.search}<input type="text" id="adms-q" placeholder="ECO, solicitante, tipo…" value="${solQ}" oninput="admSolFiltrar()"></div>
@@ -802,7 +809,8 @@ function rAdmTabSols(){
         <thead><tr><th>ID</th><th>Fecha</th><th>ECO</th><th>Tipo</th><th>Solicitante</th><th>Estatus</th><th>KM</th><th style="text-align:center">Acciones</th></tr></thead>
         <tbody>
           ${lista.length?lista.map(s=>{
-            const statCls={Solicitud:'fl-adm-stat-taller',Validada:'fl-adm-stat-activo',Cotización:'fl-adm-stat-comision',Aprobada:'fl-adm-stat-activo',Rechazada:'fl-adm-stat-baja',Cerrada:'fl-adm-stat-baja'}[s.estatus]||'fl-adm-stat-activo';
+            const normEst2={'Validación':'Evaluación','Validada':'Evaluación','Cotización':'Evaluación','Aprobación':'Evaluación','Aprobada':'Evaluación','Pagos':'Servicio','Cierre':'Servicio'};
+            const statCls={Solicitud:'fl-adm-stat-taller',Evaluación:'fl-adm-stat-activo',Servicio:'fl-adm-stat-comision',Rechazada:'fl-adm-stat-baja',Cerrada:'fl-adm-stat-baja'}[normEst2[s.estatus]||s.estatus]||'fl-adm-stat-activo';
             const fecha=s.creadoEn?s.creadoEn.slice(0,10):'—';
             return`<tr>
               <td style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#64748B">${(s.id||'').slice(-6)}</td>
@@ -1173,10 +1181,14 @@ function rPanel(){
   const tall=flV.filter(v=>v.status==='taller').length;
   const com=flV.filter(v=>v.status==='comision').length;
   const baj=flV.filter(v=>v.status==='baja').length;
-  const pend=flS.filter(s=>['Solicitud','Validada','Cotización'].includes(s.estatus)).length;
+  const pend=flS.filter(s=>!['Cerrada','Rechazada'].includes(s.estatus)).length;
   const alts=[];flV.forEach(v=>{const d=hD(v.pv);if(d!==null&&d<90)alts.push({e:d<0,t:`ECO ${v.eco} — Póliza ${d<0?'VENCIDA':'vence en '+d+' días'}`});});
-  const porEst={Solicitud:0,'Validación':0,'Aprobación':0,Pagos:0,Cierre:0,Rechazada:0,Cerrada:0};
-  flS.forEach(s=>{if(s.estatus in porEst)porEst[s.estatus]++;});
+  const porEst={Solicitud:0,'Evaluación':0,Servicio:0,Rechazada:0,Cerrada:0};
+  const normPorEst={
+    'Validación':'Evaluación','Validada':'Evaluación','Cotización':'Evaluación','Aprobación':'Evaluación','Aprobada':'Evaluación',
+    'Pagos':'Servicio','Cierre':'Servicio'
+  };
+  flS.forEach(s=>{const k=normPorEst[s.estatus]||s.estatus;if(k in porEst)porEst[k]++;});
   const porTipo={};flS.forEach(s=>{const t=s.tipo||'Otro';porTipo[t]=(porTipo[t]||0)+1;});
   const top=Object.entries(porTipo).sort((a,b)=>b[1]-a[1]).slice(0,5);
   const mx=top[0]?.[1]||1;
@@ -2249,10 +2261,10 @@ window.flVerSol=function(id){
       })()}
       <div class="fl-sep"></div>
       <div style="display:flex;flex-wrap:wrap;gap:7px">
-        ${pV&&s.estatus==='Solicitud'?`<button class="fb acc" onclick="flEst('${s.id}','Validada');this.closest('.fl-ov').remove()">${I.check} Validar</button>`:''}
-        ${pA&&(s.estatus==='Validada'||s.estatus==='Cotización')?`<button class="fb acc" onclick="flAprobar('${s.id}');this.closest('.fl-ov').remove()">${I.check} Aprobar</button><button class="fb dan" onclick="flRechazarM('${s.id}');this.closest('.fl-ov').remove()">${I.x} Rechazar</button>`:''}
-        ${pV&&s.estatus==='Aprobada'?`<button class="fb gho" onclick="flEst('${s.id}','Cierre');this.closest('.fl-ov').remove()">Enviar a cierre</button>`:''}
-        ${pV&&s.estatus==='Cierre'?`<button class="fb gho" onclick="flEst('${s.id}','Cerrada');this.closest('.fl-ov').remove()">Cerrar</button>`:''}
+        ${pV&&s.estatus==='Solicitud'?`<button class="fb acc" onclick="this.closest('.fl-ov').remove();flModalEvaluacion('${s.id}')">${I.check} Evaluar →</button>`:''}
+        ${pV&&['Evaluación','Validación','Validada','Cotización','Aprobación','Aprobada'].includes(s.estatus)?`<button class="fb acc" onclick="this.closest('.fl-ov').remove();flModalServicio('${s.id}')">→ Servicio</button>`:''}
+        ${pV&&['Servicio','Pagos','Cierre'].includes(s.estatus)?`<button class="fb acc" onclick="this.closest('.fl-ov').remove();flModalServicio('${s.id}')">→ Cerrar expediente</button>`:''}
+        ${pV&&s.estatus==='Solicitud'?`<button class="fb dan" onclick="this.closest('.fl-ov').remove();flModalRechazar('${s.id}','validacion')">${I.x} Rechazar</button>`:''}
         ${pE?`<button class="fb dan" style="margin-left:auto" onclick="flElim('${s.id}');this.closest('.fl-ov').remove()">${I.trash}</button>`:''}
         <button class="fb gho" style="display:inline-flex;align-items:center;gap:5px" onclick="flGenerarPDF('${s.id}')">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
@@ -3321,18 +3333,23 @@ window.flCalDia = function(fecha) {
 // Solicitud → Validación → Aprobación → Pagos → Cierre → Cerrada
 // ═══════════════════════════════════════════════════════
 window.flPipelineModal = function(estInicial) {
-  const PASOS = ['Solicitud','Validación','Aprobación','Pagos','Cierre','Rechazada','Cerrada'];
-  const PASOS_BARRA = ['Solicitud','Validación','Aprobación','Pagos','Cierre','Cerrada']; // sin Rechazada
-  let estActivo = estInicial || 'Solicitud';
+  // ── 4 etapas ──
+  const PASOS = ['Solicitud','Evaluación','Servicio','Rechazada','Cerrada'];
+  const PASOS_BARRA = ['Solicitud','Evaluación','Servicio','Cerrada'];
+  // Normalizar estado legacy → nuevo para la barra activa
+  const normEst = e => ({
+    'Validación':'Evaluación','Validada':'Evaluación','Cotización':'Evaluación','Aprobación':'Evaluación','Aprobada':'Evaluación',
+    'Pagos':'Servicio','Cierre':'Servicio'
+  }[e]||e);
+  let estActivo = normEst(estInicial || 'Solicitud');
 
   const colPaso = {
-    Solicitud:  ['#EDE9FE','#6D28D9'],
-    Validación: ['#DBEAFE','#1D4ED8'],
-    Aprobación: ['#FEF9C3','#CA8A04'],
-    Pagos:      ['#FEF3C7','#B45309'],
-    Cierre:     ['#E0F2FE','#0369A1'],
-    Rechazada:  ['#FEE2E2','#B91C1C'],
-    Cerrada:    ['#DCFCE7','#15803D'],
+    Solicitud:   ['#EDE9FE','#6D28D9'],
+    'Evaluación':['#DBEAFE','#1D4ED8'],
+    Evaluación:  ['#DBEAFE','#1D4ED8'],
+    Servicio:    ['#FEF3C7','#B45309'],
+    Rechazada:   ['#FEE2E2','#B91C1C'],
+    Cerrada:     ['#DCFCE7','#15803D'],
   };
 
   const eml = () => (window.auth?.currentUser?.email || '').toLowerCase();
@@ -3343,23 +3360,27 @@ window.flPipelineModal = function(estInicial) {
 
   function accionesSol(s) {
     const btns = [];
-    // — SOLICITUD → Validación: Fátima o admin puede Aceptar o Rechazar
-    if (s.estatus === 'Solicitud' && esFatima()) {
-      btns.push(`<button class="fb acc sm" onclick="flModalValidar('${s.id}')" style="font-size:10px;background:#2563EB">Validar</button>`);
+    const est=s.estatus;
+    // ── ETAPA 1: SOLICITUD ──
+    // Fátima/admin: avanzar a Evaluación o Rechazar
+    if (est==='Solicitud' && esFatima()) {
+      btns.push(`<button class="fb acc sm" onclick="flModalEvaluacion('${s.id}')" style="font-size:10px;background:#1D4ED8">Evaluar →</button>`);
       btns.push(`<button onclick="flModalRechazar('${s.id}','validacion')" style="font-size:10px;background:#EF4444;color:#fff;border:none;border-radius:7px;padding:5px 10px;cursor:pointer;font-family:inherit;font-weight:700">Rechazar</button>`);
     }
-    // — VALIDACIÓN → Aprobación: Contraloría aprueba o devuelve a Validación
-    if (s.estatus === 'Validación' && esContraloria()) {
-      btns.push(`<button onclick="flModalAprobar('${s.id}')" style="font-size:10px;background:#CA8A04;color:#fff;border:none;border-radius:7px;padding:5px 10px;cursor:pointer;font-family:inherit;font-weight:700">Aprobar</button>`);
-      btns.push(`<button onclick="flModalRechazar('${s.id}','aprobacion')" style="font-size:10px;background:#EF4444;color:#fff;border:none;border-radius:7px;padding:5px 10px;cursor:pointer;font-family:inherit;font-weight:700">Devolver</button>`);
+    // ── ETAPA 2: EVALUACIÓN Y AUTORIZACIÓN ──
+    // Fátima: completa evaluación/cotización → Servicio
+    // Contraloría: autoriza → Servicio, o rechaza
+    if ((est==='Evaluación'||est==='Validación'||est==='Aprobación') && esFatima()) {
+      btns.push(`<button onclick="flModalServicio('${s.id}')" style="font-size:10px;background:#B45309;color:#fff;border:none;border-radius:7px;padding:5px 10px;cursor:pointer;font-family:inherit;font-weight:700">→ Servicio</button>`);
     }
-    // — APROBACIÓN → Pagos: Pagos gestiona
-    if (s.estatus === 'Aprobación' && esPagos()) {
-      btns.push(`<button onclick="flModalPagos('${s.id}')" style="font-size:10px;background:#B45309;color:#fff;border:none;border-radius:7px;padding:5px 10px;cursor:pointer;font-family:inherit;font-weight:700">Gestionar pago</button>`);
+    if ((est==='Evaluación'||est==='Validación'||est==='Aprobación') && esContraloria()) {
+      btns.push(`<button onclick="flModalServicio('${s.id}')" style="font-size:10px;background:#B45309;color:#fff;border:none;border-radius:7px;padding:5px 10px;cursor:pointer;font-family:inherit;font-weight:700">Autorizar →</button>`);
+      btns.push(`<button onclick="flModalRechazar('${s.id}','aprobacion')" style="font-size:10px;background:#EF4444;color:#fff;border:none;border-radius:7px;padding:5px 10px;cursor:pointer;font-family:inherit;font-weight:700">Rechazar</button>`);
     }
-    // — PAGOS → Cierre: Fátima/admin cierra
-    if (s.estatus === 'Pagos' && esFatima()) {
-      btns.push(`<button onclick="flModalCierre('${s.id}')" style="font-size:10px;background:#0369A1;color:#fff;border:none;border-radius:7px;padding:5px 10px;cursor:pointer;font-family:inherit;font-weight:700">Cerrar servicio</button>`);
+    // ── ETAPA 3: SERVICIO EN PROCESO ──
+    // Fátima/admin: cerrar expediente
+    if ((est==='Servicio'||est==='Pagos'||est==='Cierre') && esFatima()) {
+      btns.push(`<button onclick="flModalCierre4('${s.id}')" style="font-size:10px;background:#15803D;color:#fff;border:none;border-radius:7px;padding:5px 10px;cursor:pointer;font-family:inherit;font-weight:700">→ Cerrar</button>`);
     }
     // Ver siempre
     btns.push(`<button class="fb gho sm" onclick="flVerSol('${s.id}')" style="font-size:10px">Ver</button>`);
@@ -3369,16 +3390,22 @@ window.flPipelineModal = function(estInicial) {
   }
 
   function renderModal() {
-    const lista = flS.filter(s => s.estatus === estActivo);
+    // Agrupar estados legacy bajo los 4 nuevos
+    const estGroup = {
+      Evaluación: ['Evaluación','Validación','Validada','Cotización','Aprobación','Aprobada'],
+      Servicio:   ['Servicio','Pagos','Cierre'],
+    };
+    const lista = flS.filter(s => {
+      const group = estGroup[estActivo];
+      return group ? group.includes(s.estatus) : s.estatus === estActivo;
+    });
     const total = flS.length || 1;
     const notaPaso = {
-      Solicitud:  'Cualquier usuario puede crear solicitudes desde el portal o la app móvil.',
-      Validación: 'Fátima (Flotilla) revisa, cotiza y envía a aprobación. Puede rechazar con comentario.',
-      Aprobación: 'Contraloría (Paloma / Cristina) aprueba o devuelve a Validación con comentario.',
-      Pagos:      'Pagos programa o registra el comprobante de pago.',
-      Cierre:     'Flotilla sube la factura del servicio y finaliza el expediente.',
-      Rechazada:  'Solicitudes rechazadas definitivamente.',
-      Cerrada:    'Servicios completados con expediente cerrado.',
+      Solicitud:   '📋 El técnico registra la falla desde la app o portal. Fátima valida y avanza a evaluación.',
+      Evaluación:  '🔍 Flotilla y Contraloría revisan, cotizan proveedores y autorizan el presupuesto.',
+      Servicio:    '🔧 El vehículo ingresa a taller. Se ejecuta el trabajo, se documentan evidencias y se gestiona el pago.',
+      Rechazada:   'Solicitudes rechazadas con motivo registrado.',
+      Cerrada:     '✅ Expediente completo — factura, comprobante de pago y cierre administrativo.',
     }[estActivo] || '';
 
     // Step bar
@@ -3413,15 +3440,19 @@ window.flPipelineModal = function(estInicial) {
     const filas = lista.length
       ? lista.map(s => {
           const fecha = s.creadoEn ? s.creadoEn.slice(0,10) : '—';
-          return `<tr>
+          const veh = flV.find(x=>x.eco===s.vehiculoEco||x.id===s.vehiculoId)||{};
+          const plaza = veh.plaza||s.plaza||'—';
+          const subEst = !['Solicitud','Evaluación','Servicio','Rechazada','Cerrada'].includes(s.estatus)?` <span style="font-size:9px;color:#94A3B8">(${s.estatus})</span>`:'';
+          return `<tr onclick="flVerSol('${s.id}')" style="cursor:pointer" onmouseover="this.style.background='#F8FAFD'" onmouseout="this.style.background=''">
             <td style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#64748B">${(s.id||'').slice(-6).toUpperCase()}</td>
             <td style="font-size:11px">${fecha}</td>
             <td style="font-weight:700;font-family:'JetBrains Mono',monospace">ECO ${s.vehiculoEco||'—'}</td>
+            <td style="font-size:10px;color:#64748B">${plaza}</td>
             <td style="font-size:11px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.tipo||'—'}</td>
             <td style="font-size:11px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.solicitante||s.creadoPor||'—'}</td>
             <td style="font-size:11px">${s.tallerNombre||'—'}</td>
             <td style="font-size:11px;font-weight:700;color:#15803D">${s.montoCotizacion?'$'+Number(s.montoCotizacion).toLocaleString('es-MX'):'—'}</td>
-            <td><div style="display:flex;gap:3px;align-items:center;flex-wrap:wrap">${accionesSol(s)}</div></td>
+            <td onclick="event.stopPropagation()"><div style="display:flex;gap:3px;align-items:center;flex-wrap:wrap">${accionesSol(s)}</div></td>
           </tr>`;
         }).join('')
       : `<tr><td colspan="8" style="text-align:center;padding:28px;color:#94A3B8;font-size:12px">Sin solicitudes en este estatus</td></tr>`;
@@ -3461,7 +3492,7 @@ window.flPipelineModal = function(estInicial) {
           <div style="overflow-y:auto;flex:1;padding:0">
             <table class="fl-adm-table" style="width:100%">
               <thead><tr>
-                <th>ID</th><th>Fecha</th><th>ECO</th><th>Tipo</th><th>Solicitante</th>
+                <th>ID</th><th>Fecha</th><th>ECO</th><th>Plaza</th><th>Tipo</th><th>Solicitante</th>
                 <th>Taller</th><th>Monto</th><th style="text-align:center">Acciones</th>
               </tr></thead>
               <tbody>${filas}</tbody>
@@ -3486,6 +3517,274 @@ window.flPipelineModal = function(estInicial) {
 // tipo: 'validacion' → Rechazada definitiva + notif solicitante
 //       'aprobacion' → vuelve a Validación + notif Fátima
 // ═══════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+// NUEVA ETAPA 2 — EVALUACIÓN Y AUTORIZACIÓN
+// Agrupa: cotización, comparación de proveedores, aprobación
+// ═══════════════════════════════════════════════════════════════
+window.flModalEvaluacion = function(id) {
+  const s = flS.find(x => x.id === id); if (!s) return;
+  const v = flV.find(x => x.eco === s.vehiculoEco || x.id === s.vehiculoId) || {};
+  document.getElementById('flpm-ov')?.remove();
+  window._flEvalArchivos = s.archivosEvaluacion ? [...s.archivosEvaluacion] : [];
+  window._flEvalComents  = s.comentariosEvaluacion ? [...s.comentariosEvaluacion] : [];
+
+  function renderArchivosEval() {
+    return window._flEvalArchivos.map((a,i)=>`
+      <div style="display:flex;align-items:center;gap:8px;padding:7px 11px;background:#F8FAFC;border-radius:8px;border:1px solid #E2E8F0">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${a.tipo==='pdf'?'#B91C1C':'#1D4ED8'}" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <span style="font-size:11px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis">${a.nombre}</span>
+        <button onclick="window._flEvalArchivos.splice(${i},1);document.getElementById('eval-arch-list').innerHTML=renderArchivosEvalHTML()" style="border:none;background:none;color:#EF4444;cursor:pointer;font-size:13px">✕</button>
+      </div>`).join('');
+  }
+  window.renderArchivosEvalHTML = renderArchivosEval;
+  window.evalSubirArch = async function() {
+    const inp = document.createElement('input'); inp.type='file'; inp.multiple=true; inp.accept='image/*,.pdf';
+    inp.onchange = async () => {
+      for(const file of [...inp.files]) {
+        try {
+          const b64 = await flLeerArchivo(file,4);
+          window._flEvalArchivos.push({nombre:file.name,datos:b64,tipo:file.type.includes('pdf')?'pdf':'img',kb:Math.round(file.size/1024)});
+        } catch(e){alert(e.message);}
+      }
+      document.getElementById('eval-arch-list').innerHTML=renderArchivosEval();
+    };
+    inp.click();
+  };
+  window.evalAgregarComentario = function(){
+    const inp=document.getElementById('eval-comment-inp'); if(!inp||!inp.value.trim())return;
+    const email=window.auth?.currentUser?.email||'—';
+    window._flEvalComents.push({texto:inp.value.trim(),por:email,en:new Date().toISOString()});
+    inp.value='';
+    document.getElementById('eval-comments-list').innerHTML=renderComents(window._flEvalComents);
+  };
+
+  const html=`
+    <div class="fl-ov" id="fleval-ov" onclick="if(event.target===this)this.remove()" style="z-index:3100">
+      <div class="fl-modal" style="max-width:640px;width:100%;max-height:90vh;overflow-y:auto">
+        <div class="fl-mh" style="position:sticky;top:0;background:#fff;z-index:2">
+          <div>
+            <div style="font-size:15px;font-weight:900">🔍 Evaluación y Autorización</div>
+            <div style="font-size:11px;color:#64748B">ECO ${s.vehiculoEco||'—'} · ${v.unidad||''} · ${v.plaza||'—'}</div>
+          </div>
+          <button onclick="document.getElementById('fleval-ov').remove()" style="width:30px;height:30px;border:none;border-radius:50%;background:#F1F5F9;cursor:pointer;font-size:16px">✕</button>
+        </div>
+        <div class="fl-mb" style="display:flex;flex-direction:column;gap:14px">
+          <!-- Info solicitud -->
+          <div style="background:#F8FAFC;border-radius:10px;padding:12px 14px;font-size:11px">
+            <strong>${s.tipo||'—'}</strong> · ${s.desc||'Sin descripción'}<br>
+            <span style="color:#94A3B8">Prioridad: ${s.prior||'Normal'} · Solicitante: ${s.solicitante||s.creadoPor||'—'}</span>
+          </div>
+          <!-- Datos taller/cotización -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div><label style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8;display:block;margin-bottom:4px">Taller / Proveedor</label>
+              <input id="ev-taller" value="${s.tallerNombre||''}" placeholder="Nombre del taller" style="width:100%"></div>
+            <div><label style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8;display:block;margin-bottom:4px">Monto cotizado</label>
+              <input id="ev-monto" type="number" value="${s.montoCotizacion||''}" placeholder="0.00" style="width:100%"></div>
+            <div><label style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8;display:block;margin-bottom:4px">Fecha ingreso taller</label>
+              <input id="ev-fecha-ingreso" type="date" value="${s.fechaIngresoTaller||''}" style="width:100%"></div>
+            <div><label style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8;display:block;margin-bottom:4px">Fecha entrega estimada</label>
+              <input id="ev-fecha-salida" type="date" value="${s.fechaEntregaEstimada||''}" style="width:100%"></div>
+          </div>
+          <!-- Documentos: cotizaciones, fotos, PDFs -->
+          <div>
+            <div style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8;margin-bottom:6px">📎 Documentos (cotizaciones, órdenes, evidencias)</div>
+            <div id="eval-arch-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px">${renderArchivosEval()}</div>
+            <button onclick="evalSubirArch()" style="width:100%;padding:10px;border:2px dashed #CBD5E1;border-radius:10px;background:#FAFBFC;font-size:12px;font-weight:700;color:#64748B;cursor:pointer">
+              + Subir cotización / PDF / imagen
+            </button>
+          </div>
+          <!-- Comentarios -->
+          <div>
+            <div style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8;margin-bottom:6px">💬 Comentarios de evaluación</div>
+            <div id="eval-comments-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px">${renderComents(window._flEvalComents)}</div>
+            <div style="display:flex;gap:8px">
+              <input id="eval-comment-inp" placeholder="Agregar comentario de revisión o VoBo…" style="flex:1">
+              <button onclick="evalAgregarComentario()" style="padding:7px 14px;background:#1E3A5F;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Agregar</button>
+            </div>
+          </div>
+          <div id="eval-err" style="color:#B91C1C;font-size:11px;display:none"></div>
+          <div class="fl-fa">
+            <button class="fb gho" onclick="document.getElementById('fleval-ov').remove()">Cancelar</button>
+            <button id="eval-btn" onclick="flGuardarEvaluacion('${s.id}')" style="background:#1D4ED8;color:#fff;border:none;border-radius:9px;padding:9px 20px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit">
+              Guardar y enviar a Servicio →
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  document.getElementById('fleval-ov')?.remove();
+  document.body.insertAdjacentHTML('beforeend',html);
+};
+
+window.flGuardarEvaluacion = async function(id) {
+  const btn=document.getElementById('eval-btn');
+  const err=document.getElementById('eval-err');
+  const taller=document.getElementById('ev-taller')?.value?.trim();
+  const monto=document.getElementById('ev-monto')?.value;
+  if(!taller){err.textContent='El taller es obligatorio.';err.style.display='block';return;}
+  btn.textContent='Guardando…';btn.disabled=true;err.style.display='none';
+  try{
+    await fs.updateDoc(fs.doc(db,C.SOLS,id),{
+      estatus:'Evaluación',
+      tallerNombre:taller,
+      montoCotizacion:monto?Number(monto):null,
+      fechaIngresoTaller:document.getElementById('ev-fecha-ingreso')?.value||null,
+      fechaEntregaEstimada:document.getElementById('ev-fecha-salida')?.value||null,
+      archivosEvaluacion:window._flEvalArchivos||[],
+      comentariosEvaluacion:window._flEvalComents||[],
+      evaluadoEn:new Date().toISOString(),
+      evaluadoPor:window.auth?.currentUser?.email||'—',
+      actualizadoEn:new Date().toISOString(),
+    });
+    await ldSols();
+    flEnviarNotif(id,'validada');
+    document.getElementById('fleval-ov')?.remove();
+    window.flPipelineModal('Evaluación');
+  }catch(e){err.textContent='Error: '+e.message;err.style.display='block';btn.textContent='Guardar y enviar a Servicio →';btn.disabled=false;}
+};
+
+// ═══════════════════════════════════════════════════════════════
+// NUEVA ETAPA 3 — SERVICIO EN PROCESO
+// Agrupa: ingreso a taller, trabajo, pago, factura
+// ═══════════════════════════════════════════════════════════════
+window.flModalServicio = function(id) {
+  const s = flS.find(x => x.id === id); if (!s) return;
+  const v = flV.find(x => x.eco === s.vehiculoEco || x.id === s.vehiculoId) || {};
+  document.getElementById('fleval-ov')?.remove();
+  document.getElementById('flpm-ov')?.remove();
+  window._flServArchivos = s.archivosServicio ? [...s.archivosServicio] : [];
+  window._flServComents  = s.comentariosServicio ? [...s.comentariosServicio] : [];
+
+  function renderArchivosServ() {
+    return window._flServArchivos.map((a,i)=>`
+      <div style="display:flex;align-items:center;gap:8px;padding:7px 11px;background:#F8FAFC;border-radius:8px;border:1px solid #E2E8F0">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${a.tipo==='pdf'?'#B91C1C':'#1D4ED8'}" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <span style="font-size:11px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis">${a.nombre}</span>
+        <button onclick="window._flServArchivos.splice(${i},1);document.getElementById('serv-arch-list').innerHTML=renderArchivosServHTML()" style="border:none;background:none;color:#EF4444;cursor:pointer;font-size:13px">✕</button>
+      </div>`).join('');
+  }
+  window.renderArchivosServHTML = renderArchivosServ;
+  window.servSubirArch = async function() {
+    const inp=document.createElement('input');inp.type='file';inp.multiple=true;inp.accept='image/*,.pdf';
+    inp.onchange=async()=>{
+      for(const file of [...inp.files]){
+        try{const b64=await flLeerArchivo(file,4);window._flServArchivos.push({nombre:file.name,datos:b64,tipo:file.type.includes('pdf')?'pdf':'img',kb:Math.round(file.size/1024)});}
+        catch(e){alert(e.message);}
+      }
+      document.getElementById('serv-arch-list').innerHTML=renderArchivosServ();
+    };
+    inp.click();
+  };
+  window.servAgregarComentario=function(){
+    const inp=document.getElementById('serv-comment-inp');if(!inp||!inp.value.trim())return;
+    window._flServComents.push({texto:inp.value.trim(),por:window.auth?.currentUser?.email||'—',en:new Date().toISOString()});
+    inp.value='';
+    document.getElementById('serv-comments-list').innerHTML=renderComents(window._flServComents);
+  };
+
+  const html=`
+    <div class="fl-ov" id="flserv-ov" onclick="if(event.target===this)this.remove()" style="z-index:3100">
+      <div class="fl-modal" style="max-width:640px;width:100%;max-height:90vh;overflow-y:auto">
+        <div class="fl-mh" style="position:sticky;top:0;background:#fff;z-index:2">
+          <div>
+            <div style="font-size:15px;font-weight:900">🔧 Servicio en Proceso</div>
+            <div style="font-size:11px;color:#64748B">ECO ${s.vehiculoEco||'—'} · ${v.unidad||''} · ${v.plaza||'—'} · Taller: ${s.tallerNombre||'—'}</div>
+          </div>
+          <button onclick="document.getElementById('flserv-ov').remove()" style="width:30px;height:30px;border:none;border-radius:50%;background:#F1F5F9;cursor:pointer;font-size:16px">✕</button>
+        </div>
+        <div class="fl-mb" style="display:flex;flex-direction:column;gap:14px">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div><label style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8;display:block;margin-bottom:4px">Comprobante de pago / Factura</label>
+              <input id="serv-factura-num" value="${s.facturaNum||''}" placeholder="Número de factura" style="width:100%"></div>
+            <div><label style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8;display:block;margin-bottom:4px">Monto pagado</label>
+              <input id="serv-monto-pago" type="number" value="${s.montoPagado||s.montoCotizacion||''}" placeholder="0.00" style="width:100%"></div>
+            <div><label style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8;display:block;margin-bottom:4px">Fecha de pago</label>
+              <input id="serv-fecha-pago" type="date" value="${s.fechaPago||''}" style="width:100%"></div>
+            <div><label style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8;display:block;margin-bottom:4px">Fecha entrega real</label>
+              <input id="serv-fecha-entrega" type="date" value="${s.fechaEntregaReal||''}" style="width:100%"></div>
+          </div>
+          <div>
+            <div style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8;margin-bottom:6px">📎 Evidencias y documentos del servicio</div>
+            <div style="font-size:10px;color:#64748B;margin-bottom:8px">Sube: orden de trabajo, evidencias antes/después, facturas, garantías, comprobante de pago</div>
+            <div id="serv-arch-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px">${renderArchivosServ()}</div>
+            <button onclick="servSubirArch()" style="width:100%;padding:10px;border:2px dashed #CBD5E1;border-radius:10px;background:#FAFBFC;font-size:12px;font-weight:700;color:#64748B;cursor:pointer">
+              + Subir factura / comprobante / evidencia / garantía
+            </button>
+          </div>
+          <div>
+            <div style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8;margin-bottom:6px">💬 Comentarios del servicio</div>
+            <div id="serv-comments-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px">${renderComents(window._flServComents)}</div>
+            <div style="display:flex;gap:8px">
+              <input id="serv-comment-inp" placeholder="Notas del taller, validación de trabajos, garantías…" style="flex:1">
+              <button onclick="servAgregarComentario()" style="padding:7px 14px;background:#1E3A5F;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Agregar</button>
+            </div>
+          </div>
+          <div id="serv-err" style="color:#B91C1C;font-size:11px;display:none"></div>
+          <div class="fl-fa">
+            <button class="fb gho" onclick="document.getElementById('flserv-ov').remove()">Cancelar</button>
+            <button id="serv-btn-save" onclick="flGuardarServicio('${s.id}',false)" style="background:#B45309;color:#fff;border:none;border-radius:9px;padding:9px 20px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;margin-right:6px">
+              Guardar avance
+            </button>
+            <button id="serv-btn-cerrar" onclick="flGuardarServicio('${s.id}',true)" style="background:#15803D;color:#fff;border:none;border-radius:9px;padding:9px 20px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit">
+              ✅ Cerrar expediente
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  document.getElementById('flserv-ov')?.remove();
+  document.body.insertAdjacentHTML('beforeend',html);
+};
+
+window.flGuardarServicio = async function(id, cerrar) {
+  const err=document.getElementById('serv-err');
+  const btnS=document.getElementById('serv-btn-save');
+  const btnC=document.getElementById('serv-btn-cerrar');
+  if(btnS)btnS.disabled=true;if(btnC)btnC.disabled=true;
+  err.style.display='none';
+  try{
+    const data={
+      archivosServicio:window._flServArchivos||[],
+      comentariosServicio:window._flServComents||[],
+      facturaNum:document.getElementById('serv-factura-num')?.value?.trim()||null,
+      montoPagado:document.getElementById('serv-monto-pago')?.value?Number(document.getElementById('serv-monto-pago').value):null,
+      fechaPago:document.getElementById('serv-fecha-pago')?.value||null,
+      fechaEntregaReal:document.getElementById('serv-fecha-entrega')?.value||null,
+      actualizadoEn:new Date().toISOString(),
+    };
+    if(cerrar){
+      data.estatus='Cerrada';
+      data.cerradoEn=new Date().toISOString();
+      data.cerradoPor=window.auth?.currentUser?.email||'—';
+    } else {
+      data.estatus='Servicio';
+    }
+    await fs.updateDoc(fs.doc(db,C.SOLS,id),data);
+    await ldSols();
+    if(cerrar)flEnviarNotif(id,'cerrada');
+    document.getElementById('flserv-ov')?.remove();
+    window.flPipelineModal(cerrar?'Cerrada':'Servicio');
+  }catch(e){
+    err.textContent='Error: '+e.message;err.style.display='block';
+    if(btnS)btnS.disabled=false;if(btnC)btnC.disabled=false;
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════
+// Alias: flModalCierre4 → flModalServicio (acceso directo a cierre)
+// ═══════════════════════════════════════════════════════════════
+window.flModalCierre4 = function(id){ window.flModalServicio(id); };
+
+// Helper: renderizar comentarios
+function renderComents(coments){
+  if(!coments?.length) return '<div style="font-size:11px;color:#94A3B8;text-align:center;padding:8px">Sin comentarios aún</div>';
+  return coments.map(c=>`
+    <div style="background:#F8FAFC;border-radius:8px;padding:9px 12px;border-left:3px solid #2563EB">
+      <div style="font-size:10.5px;color:#374151">${c.texto}</div>
+      <div style="font-size:9px;color:#94A3B8;margin-top:3px">${c.por||'—'} · ${c.en?new Date(c.en).toLocaleString('es-MX',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'—'}</div>
+    </div>`).join('');
+}
+
 window.flModalRechazar = function(id, tipo) {
   const s = flS.find(x => x.id === id);
   if (!s) return;
