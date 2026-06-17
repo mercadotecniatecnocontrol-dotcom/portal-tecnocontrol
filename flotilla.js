@@ -2237,8 +2237,15 @@ window.flCompararEvidencias=function(eco){
 
 
 // VER SOLICITUD EXISTENTE
-window.flVerSol=function(id){
+window.flVerSol=async function(id){
   const s=flS.find(x=>x.id===id);if(!s)return;
+  // Cargar archivos de subcolecciones en paralelo
+  const [archEval, archServ] = await Promise.all([
+    flCargarArchivosSubcol(id,'archivos_evaluacion'),
+    flCargarArchivosSubcol(id,'archivos_servicio'),
+  ]);
+  s._archivosEvaluacion = archEval;
+  s._archivosServicio   = archServ;
   const v=flV.find(x=>x.eco===s.vehiculoEco||x.id===s.vehiculoId);
   const pV=hP('validar'),pA=hP('aprobar'),pE=hP('eliminar');
   const dan=s.danos||{};const hasDan=Object.values(dan).some(a=>a?.length>0);
@@ -2252,6 +2259,28 @@ window.flVerSol=function(id){
         <dl style="grid-column:1/-1;padding:7px 11px"><dt style="font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">Descripción</dt><dd style="font-size:11.5px;font-weight:500">${s.descripcion||'—'}</dd></dl>
       </div>
       ${s.comentarioRechazo?`<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:7px;padding:8px 11px;font-size:11px;color:#991B1B;margin-bottom:9px"><strong>Rechazo:</strong> ${s.comentarioRechazo}</div>`:''}
+      ${s._archivosEvaluacion?.length?`
+        <div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin:10px 0 6px">Documentos de evaluación (${s._archivosEvaluacion.length})</div>
+        <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:10px">
+          ${s._archivosEvaluacion.map(a=>`
+            <div style="display:flex;align-items:center;gap:8px;padding:7px 11px;background:#F8FAFC;border-radius:8px;border:1px solid #E2E8F0">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${a.tipo==='pdf'?'#B91C1C':'#1D4ED8'}" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              <span style="font-size:11px;font-weight:600;flex:1">${a.nombre||'Archivo'}</span>
+              <span style="font-size:10px;color:#94A3B8">${a.kb||''}KB</span>
+              ${a.datos?`<a href="${a.datos}" download="${a.nombre||'archivo'}" style="font-size:10px;color:#2563EB;font-weight:700;text-decoration:none">Descargar</a>`:''}
+            </div>`).join('')}
+        </div>`:''}
+      ${s._archivosServicio?.length?`
+        <div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin:10px 0 6px">Documentos de servicio (${s._archivosServicio.length})</div>
+        <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:10px">
+          ${s._archivosServicio.map(a=>`
+            <div style="display:flex;align-items:center;gap:8px;padding:7px 11px;background:#F8FAFC;border-radius:8px;border:1px solid #E2E8F0">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${a.tipo==='pdf'?'#B91C1C':'#1D4ED8'}" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              <span style="font-size:11px;font-weight:600;flex:1">${a.nombre||'Archivo'}</span>
+              <span style="font-size:10px;color:#94A3B8">${a.kb||''}KB</span>
+              ${a.datos?`<a href="${a.datos}" download="${a.nombre||'archivo'}" style="font-size:10px;color:#2563EB;font-weight:700;text-decoration:none">Descargar</a>`:''}
+            </div>`).join('')}
+        </div>`:''}
       ${hasDan?`<div class="fl-sep"></div>
         <div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin-bottom:7px">Diagrama de daños</div>
         <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;pointer-events:none">
@@ -3545,6 +3574,38 @@ window.flEnviarNotif = async function(id, tipo, comentario) {
 // ═══════════════════════════════════════════════════════
 // HELPER — subir archivo → base64 con validación tamaño
 // ═══════════════════════════════════════════════════════
+// ── ARCHIVOS EN SUBCOLECCIÓN (sin límite 1MB) ───────────────────
+async function flGuardarArchivosSubcol(solId, subcol, archivos) {
+  // Borrar los anteriores
+  const ref = fs.collection(fs.doc(db, C.SOLS, solId), subcol);
+  const viejos = await fs.getDocs(ref);
+  const batch = db.batch ? db.batch() : null;
+  if(batch){
+    viejos.docs.forEach(d => batch.delete(d.ref));
+    await batch.commit();
+  } else {
+    for(const d of viejos.docs) await fs.deleteDoc(d.ref);
+  }
+  // Guardar nuevos uno por uno (cada doc puede tener hasta 1MB)
+  for(const a of archivos){
+    await fs.addDoc(ref, {
+      nombre: a.nombre||'Archivo',
+      datos: a.datos,
+      tipo: a.tipo||'img',
+      kb: a.kb||0,
+      creadoEn: new Date().toISOString(),
+    });
+  }
+}
+
+async function flCargarArchivosSubcol(solId, subcol) {
+  try {
+    const ref = fs.collection(fs.doc(db, C.SOLS, solId), subcol);
+    const snap = await fs.getDocs(ref);
+    return snap.docs.map(d => ({id:d.id, ...d.data()}));
+  } catch { return []; }
+}
+
 async function flLeerArchivo(file, maxMB = 4) {
   if (file.size > maxMB * 1024 * 1024) throw new Error(`"${file.name}" supera ${maxMB} MB`);
   return new Promise((res, rej) => {
@@ -3859,7 +3920,11 @@ window.flModalEvaluacion = function(id) {
   const s = flS.find(x => x.id === id); if (!s) return;
   const v = flV.find(x => x.eco === s.vehiculoEco || x.id === s.vehiculoId) || {};
   document.getElementById('flpm-ov')?.remove();
-  window._flEvalArchivos = s.archivosEvaluacion ? [...s.archivosEvaluacion] : [];
+  window._flEvalArchivos = (s.archivosEvaluacion||[]).filter(a=>a.datos); // metadatos sin datos
+  // Cargar archivos completos de subcolección en background
+  flCargarArchivosSubcol(s.id,'archivos_evaluacion').then(docs=>{
+    if(docs.length){ window._flEvalArchivos=[...docs]; document.getElementById('eval-arch-list') && (document.getElementById('eval-arch-list').innerHTML=renderArchivosEval()); }
+  });
   window._flEvalComents  = s.comentariosEvaluacion ? [...s.comentariosEvaluacion] : [];
 
   function renderArchivosEval() {
@@ -3964,12 +4029,16 @@ window.flGuardarEvaluacion = async function(id) {
       montoCotizacion:monto?Number(monto):null,
       fechaIngresoTaller:document.getElementById('ev-fecha-ingreso')?.value||null,
       fechaEntregaEstimada:document.getElementById('ev-fecha-salida')?.value||null,
-      archivosEvaluacion:window._flEvalArchivos||[],
+      archivosEvaluacion: (window._flEvalArchivos||[]).map(a=>({nombre:a.nombre,tipo:a.tipo,kb:a.kb})), // solo metadatos
       comentariosEvaluacion:window._flEvalComents||[],
       evaluadoEn:new Date().toISOString(),
       evaluadoPor:window.auth?.currentUser?.email||'—',
       actualizadoEn:new Date().toISOString(),
     });
+    // Guardar archivos completos en subcolección
+    if((window._flEvalArchivos||[]).length){
+      await flGuardarArchivosSubcol(id,'archivos_evaluacion',window._flEvalArchivos);
+    }
     await ldSols();
     const ultComt2=(window._flEvalComents||[]).slice(-1)[0]?.texto||null;
     flEnviarNotif(id,'validada',ultComt2);
@@ -3987,7 +4056,11 @@ window.flModalServicio = function(id) {
   const v = flV.find(x => x.eco === s.vehiculoEco || x.id === s.vehiculoId) || {};
   document.getElementById('fleval-ov')?.remove();
   document.getElementById('flpm-ov')?.remove();
-  window._flServArchivos = s.archivosServicio ? [...s.archivosServicio] : [];
+  window._flServArchivos = (s.archivosServicio||[]).filter(a=>a.datos);
+  // Cargar archivos completos de subcolección en background
+  flCargarArchivosSubcol(s.id,'archivos_servicio').then(docs=>{
+    if(docs.length){ window._flServArchivos=[...docs]; document.getElementById('serv-arch-list') && (document.getElementById('serv-arch-list').innerHTML=renderArchivosServ()); }
+  });
   window._flServComents  = s.comentariosServicio ? [...s.comentariosServicio] : [];
 
   function renderArchivosServ() {
@@ -4079,7 +4152,7 @@ window.flGuardarServicio = async function(id, cerrar) {
   err.style.display='none';
   try{
     const data={
-      archivosServicio:window._flServArchivos||[],
+      archivosServicio: (window._flServArchivos||[]).map(a=>({nombre:a.nombre,tipo:a.tipo,kb:a.kb})), // solo metadatos
       comentariosServicio:window._flServComents||[],
       facturaNum:document.getElementById('serv-factura-num')?.value?.trim()||null,
       montoPagado:document.getElementById('serv-monto-pago')?.value?Number(document.getElementById('serv-monto-pago').value):null,
@@ -4097,6 +4170,10 @@ window.flGuardarServicio = async function(id, cerrar) {
     await fs.updateDoc(fs.doc(db,C.SOLS,id),data);
     await ldSols();
     const ultComt3=(window._flServComents||[]).slice(-1)[0]?.texto||null;
+    // Guardar archivos de servicio en subcolección
+    if((window._flServArchivos||[]).length){
+      await flGuardarArchivosSubcol(id,'archivos_servicio',window._flServArchivos);
+    }
     if(cerrar)flEnviarNotif(id,'cerrada',ultComt3);
     else flEnviarNotif(id,'servicio',ultComt3);
     document.getElementById('flserv-ov')?.remove();
