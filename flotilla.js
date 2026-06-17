@@ -710,6 +710,7 @@ window.admTabSwitch=function(tab){
   if(tab==='vehs')content.innerHTML=rAdmTabVehs(plazas);
   else if(tab==='nuevo')content.innerHTML=rAdmTabNuevo();
   else if(tab==='sols')content.innerHTML=rAdmTabSols();
+  else if(tab==='colab'){content.innerHTML='<div id="adm-colab-wrap" style="padding:4px">Cargando colaboradores…</div>';setTimeout(rAdmTabColab,50);}
   else content.innerHTML=rAdmTabUsuarios();
 };
 
@@ -738,6 +739,42 @@ function rAdmTabVehs(plazas){
       </table>
     </div>`;
 }
+
+async function rAdmTabColab(){
+  const wrap=document.getElementById('adm-colab-wrap');
+  if(!wrap)return;
+  const lista=await cargarColaboradores();
+  wrap.innerHTML=`
+    <div style="max-width:720px">
+      <div style="font-size:14px;font-weight:800;color:#0A1628;margin-bottom:4px">Colaboradores Tecnocontrol</div>
+      <div style="font-size:11px;color:#64748B;margin-bottom:16px">${lista.length} colaboradores registrados</div>
+      <div style="display:flex;gap:10px;margin-bottom:16px;align-items:flex-end">
+        <div style="flex:1">
+          <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">Agregar nuevo colaborador</label>
+          <input id="colab-nuevo-nombre" type="text" placeholder="Nombre completo (apellido primero recomendado)" style="width:100%;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:9px;font-family:inherit;font-size:13px;outline:none;box-sizing:border-box" onfocus="this.style.borderColor='#2563EB'" onblur="this.style.borderColor='#E2E8F0'">
+        </div>
+        <button onclick="admAgregarColab()" style="padding:10px 18px;background:#1E3A5F;color:#fff;border:none;border-radius:9px;font-family:inherit;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap">+ Agregar</button>
+      </div>
+      <div id="colab-msg" style="margin-top:-8px;margin-bottom:10px;font-size:12px;display:none"></div>
+      <div style="background:#F8FAFD;border-radius:10px;border:1px solid #E8EDF5;overflow:hidden">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr">
+          ${lista.map((n,i)=>`<div style="padding:8px 12px;font-size:12px;font-weight:600;border-bottom:1px solid #F1F5F9;${(i+1)%3!==0?'border-right:1px solid #F1F5F9':''}">${n}</div>`).join('')}
+        </div>
+      </div>
+    </div>`;
+}
+window.admAgregarColab=async function(){
+  const inp=document.getElementById('colab-nuevo-nombre');
+  const nombre=inp?.value?.trim();
+  const msg=document.getElementById('colab-msg');
+  if(!nombre){if(msg){msg.textContent='⚠ Ingresa el nombre del colaborador';msg.style.color='#B45309';msg.style.display='block';}return;}
+  try{
+    await agregarColaborador(nombre);
+    inp.value='';
+    if(msg){msg.textContent='✅ '+nombre+' agregado';msg.style.color='#15803D';msg.style.display='block';setTimeout(()=>{msg.style.display='none';},3000);}
+    rAdmTabColab();
+  }catch(e){if(msg){msg.textContent='Error: '+e.message;msg.style.color='#B91C1C';msg.style.display='block';}}
+};
 
 function rAdmTabNuevo(){
   const campos=[
@@ -2377,6 +2414,8 @@ function rTransList(list){
         <dl style="grid-column:1/-1"><dt style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">Fecha</dt><dd style="font-size:11.5px;font-weight:600">${fecha}</dd></dl>
       </div>
       ${fotos?`<div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">${fotos}</div>`:''}
+      ${t.comentarioEntrega?`<div style="background:#F0FDF4;border-radius:7px;padding:7px 10px;margin-bottom:6px;font-size:11px;color:#166534"><span style="font-weight:800">Comentario entrega:</span> ${t.comentarioEntrega}</div>`:''}
+      ${t.comentarioRecepcion||t.comentarioRecepcionPortal?`<div style="background:#EFF6FF;border-radius:7px;padding:7px 10px;margin-bottom:6px;font-size:11px;color:#1E40AF"><span style="font-weight:800">Comentario recepción:</span> ${t.comentarioRecepcion||t.comentarioRecepcionPortal}</div>`:''}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <div><div style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:4px">Firma entrega</div>${firmaEnt}</div>
         <div><div style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:4px">Firma recepción</div>${firmaRec}</div>
@@ -2481,8 +2520,8 @@ window.flTransPDF=function(id){
   function chkHTML(chk,label){
     var items=Object.entries(chkLabels).map(function(e){
       var v=chk[e[0]];
-      var ok=v===true||v==='ok'||v==='\u00ed'||v==='si';
-      var no=v===false||v==='no'||v==='mal';
+      var ok=v===true||v==='ok'||v==='í'||v==='si'||v==='yes'||v===1;
+      var no=v===false||v==='no'||v==='mal'||v===0;
       return '<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid #F1F5F9">'+
         '<span style="font-size:13px">'+(ok?'\u2705':no?'\u274c':'\u2b1c')+'</span>'+
         '<span style="font-size:10px;color:#374151">'+e[1]+'</span></div>';
@@ -2561,6 +2600,11 @@ window.flTransPDF=function(id){
     (evFotos.length?
       '<div class="sec">Evidencias fotogr\u00e1ficas ('+evFotos.length+')</div>'+
       '<div style="margin-bottom:14px;background:#F8FAFD;border-radius:9px;padding:10px;border:1px solid #E8EDF5">'+fotosHTML+'</div>':'')+
+    (t.comentarioEntrega?'<div class="sec">Comentarios</div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">'+
+        '<div class="field"><label>Comentario de entrega</label><span style="font-size:11px;font-weight:600;color:#166534">'+t.comentarioEntrega+'</span></div>'+
+        ((t.comentarioRecepcion||t.comentarioRecepcionPortal)?'<div class="field"><label>Comentario de recepción</label><span style="font-size:11px;font-weight:600;color:#1E40AF">'+(t.comentarioRecepcion||t.comentarioRecepcionPortal)+'</span></div>':'<div class="field"><label>Comentario de recepción</label><span style="color:#94A3B8">Sin comentario</span></div>')+
+      '</div>':'')+
     '<div class="sec">Firmas digitales</div>'+
     '<div class="grid2">'+
       '<div>'+
@@ -2634,7 +2678,7 @@ window.flTransPDF=function(id){
           '</div>'+
           '<div style="border-top:1px solid #0A1628;margin-bottom:6px"></div>'+
           '<div style="font-size:11px;font-weight:700;color:#0A1628">'+(t.entregaNombre||'Representante empresa')+'</div>'+
-          '<div style="font-size:10px;color:#64748B;margin-top:2px">Firma de la empresa</div>'+
+          '<div style="font-size:10px;color:#64748B;margin-top:2px">Firma de quien entrega</div>'+
         '</div>'+
       '</div>'+
     '</div>'+
