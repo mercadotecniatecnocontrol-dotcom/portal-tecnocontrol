@@ -117,17 +117,6 @@ const ADMINS_FLOTILLA=[
   'mercadotecnia@tecnocontrol.com.mx',
   'p.pinedo@tecnocontrol.com.mx',
   'm.delao@tecnocontrol.com.mx',
-  'nicolas@tecnocontrol.com.mx',
-  'proyectos@tecnocontrol.com.mx',
-  'r.moriel@tecnocontrol.com.mx',
-  'clientes@tecnocontrol.com.mx',
-  's.carmona@tecnocontrol.com.mx',
-  'tomas@tecnocontrol.com.mx',
-  'fernando@tecnocontrol.com.mx',
-  'v.garcia@tecnocontrol.com.mx',
-  'i.saucedo@tecnocontrol.com.mx',
-  'j.uribe@tecnocontrol.com.mx',
-  'plazajrz@tecnocontrol.com.mx',
   'fatima@tecnocontrol.com.mx',
 ];
 
@@ -2443,8 +2432,8 @@ function renderUtilPaso2(){
       <h3 style="font-size:15px;font-weight:800;margin-bottom:6px">Ingresa el código de transferencia</h3>
       <p style="font-size:12.5px;color:#64748B;margin-bottom:16px;line-height:1.5">El técnico que entrega te proporcionó un código único</p>
       <div class="fm-fld">
-        <label>Código TCN-TR-XXXX</label>
-        <input type="text" id="util-codigo" placeholder="TCN-TR-XXXX" style="text-align:center;font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:700;letter-spacing:2px;text-transform:uppercase" oninput="this.value=this.value.toUpperCase()">
+        <label>Código de 6 dígitos</label>
+        <input type="number" id="util-codigo" placeholder="000000" inputmode="numeric" maxlength="6" style="text-align:center;font-family:'JetBrains Mono',monospace;font-size:24px;font-weight:800;letter-spacing:6px">
       </div>
       <button class="fm-btn primary" onclick="utilVerificarCodigo()" style="width:100%;margin-top:8px">Verificar código</button>
       <div id="util-codigo-msg" style="margin-top:10px;font-size:12px"></div>
@@ -2660,7 +2649,7 @@ window.utilSiguiente=function(){
 
 window.utilVerificarCodigo=async function(){
   const cod=document.getElementById('util-codigo')?.value?.trim().toUpperCase();
-  if(!cod||!cod.startsWith('TCN-TR-')){toast('Código inválido','err');return;}
+  if(!cod||cod.length<4||cod.length>6||isNaN(Number(cod))){toast('Ingresa el código de 6 dígitos','err');return;}
   toast('Verificando…','info');
   const msg=document.getElementById('util-codigo-msg');
   try{
@@ -2729,9 +2718,7 @@ window.utilConfirmarFirma=async function(){
   const esEntrega=utilState.modo==='entregar';
   // Generar código único de transferencia
   const now=new Date();
-  const dd=String(now.getFullYear())+String(now.getMonth()+1).padStart(2,'0')+String(now.getDate()).padStart(2,'0');
-  const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let rand='';for(let i=0;i<4;i++)rand+=chars[Math.floor(Math.random()*chars.length)];
-  const codigo=`TCN-TR-${dd}-${rand}`;
+  const codigo=String(Math.floor(100000+Math.random()*900000)); // 6 dígitos numéricos
   utilState.codigoGenerado=codigo;
   const userEmail=window.auth?.currentUser?.email||'';
   const userName=window.auth?.currentUser?.displayName||userEmail;
