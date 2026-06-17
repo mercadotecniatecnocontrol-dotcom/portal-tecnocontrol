@@ -2333,11 +2333,11 @@ function rComis(){
     <div style="margin-top:20px">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
         <div style="flex:1">
-          <div style="font-size:14px;font-weight:900;letter-spacing:-.3px">Transferencias entre técnicos</div>
+          <div style="font-size:14px;font-weight:900;letter-spacing:-.3px">Transferencias entre técnicos ${flTrans.filter(t=>t.estatus==='Pendiente recepción').length?`<span style="background:#F59E0B;color:#fff;font-size:10px;font-weight:800;border-radius:12px;padding:2px 8px;margin-left:6px">${flTrans.filter(t=>t.estatus==='Pendiente recepción').length} pendiente(s)</span>`:''}</div>
           <div style="font-size:11px;color:#64748B;margin-top:1px">Registradas desde la app móvil · ${flTrans.length} registro(s)</div>
         </div>
       </div>
-      <div>${rTransList(flTrans)}</div>
+      <div>${rTransList([...flTrans].sort((a,b)=>(a.estatus==='Pendiente recepción'?-1:1)))}</div>
     </div>` : '<div style="margin-top:16px;padding:12px;background:#F8FAFD;border-radius:8px;border:1px dashed #CBD5E1;font-size:12px;color:#94A3B8;text-align:center">Sin transferencias registradas desde la app</div>'}
   `));
 }
@@ -2383,12 +2383,46 @@ function rTransList(list){
       </div>
       <div style="display:flex;gap:7px;margin-top:10px;border-top:1px solid #F1F5F9;padding-top:10px">
         <button onclick="event.stopPropagation();flVerTrans('${t.id}')" style="flex:1;padding:8px;background:#1E3A5F;color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:11.5px;font-weight:700;cursor:pointer">Ver detalle</button>
+        ${t.estatus==='Pendiente recepción'?`
+          <button onclick="event.stopPropagation();flRecibirTransferencia('${t.id}')" style="padding:8px 14px;background:#15803D;color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:11.5px;font-weight:800;cursor:pointer">✓ Recibir</button>
+          ${t.codigo?`<button onclick="event.stopPropagation();navigator.clipboard.writeText('${t.codigo}').then(()=>flToast('Código copiado: ${t.codigo}','ok'))" style="padding:8px 12px;background:#F59E0B;color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:11.5px;font-weight:700;cursor:pointer">${t.codigo}</button>`:''}
+        `:''}
         <button onclick="event.stopPropagation();flTransPDF('${t.id}')" style="padding:8px 12px;background:#F1F5F9;color:#374151;border:none;border-radius:8px;font-family:inherit;font-size:11.5px;font-weight:700;cursor:pointer">PDF</button>
         <button onclick="event.stopPropagation();flTransWA('${t.id}')" style="padding:8px 12px;background:#25D366;color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:11.5px;font-weight:700;cursor:pointer">WA</button>
       </div>
     </div>`;
   }).join('');
 }
+// ── RECIBIR TRANSFERENCIA DESDE PORTAL (almacén/encargado) ──
+window.flRecibirTransferencia = async function(id) {
+  const t = flTrans.find(x => x.id === id); if (!t) return;
+  const quien = window.auth?.currentUser?.displayName || window.auth?.currentUser?.email || 'Portal';
+  const comentario = prompt(`Recibiendo ECO ${t.vehiculoEco} · ${t.vehiculoUnidad||''}\n\nComentario de recepción (opcional):`);
+  if (comentario === null) return; // canceló
+  try {
+    await fs.updateDoc(fs.doc(db, C.TRANS, id), {
+      estatus: 'Completada',
+      recibioNombre: quien,
+      recibioEmail: window.auth?.currentUser?.email || '',
+      recibioEn: new Date().toISOString(),
+      comentarioRecepcionPortal: comentario || '',
+      recibidoPorPortal: true,
+    });
+    // Actualizar vehículo en Firestore — nuevo responsable = quien recibe en almacén
+    const vSnap = await fs.getDocs(fs.query(fs.collection(db, C.VEHS), fs.where('eco', '==', String(t.vehiculoEco))));
+    if (!vSnap.empty) {
+      await fs.updateDoc(vSnap.docs[0].ref, {
+        status: 'activo',
+        responsable: quien,
+        actualizadoEn: new Date().toISOString(),
+      });
+    }
+    flToast('Transferencia recibida correctamente', 'ok');
+    await ldTrans(); await ldVehs();
+    rComis();
+  } catch(e) { alert('Error al recibir: ' + e.message); }
+};
+
 // ── MODAL DETALLE TRANSFERENCIA ──
 window.flVerTrans=function(id){
   const t=flTrans.find(x=>x.id===id);if(!t)return;
