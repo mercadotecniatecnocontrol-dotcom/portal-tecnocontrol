@@ -1847,19 +1847,19 @@ window.fmVerFoto=function(ev){
 // ── GUARDAR SOLICITUD ──
 // ── ACTUALIZACIÓN SILENCIOSA ─────────────────────────────────────
 function recargarSiSeguro(){
-  // Pantallas con formulario activo — no recargar a mitad
+  // Guardia anti-loop: solo recargar una vez por sesión
+  if(sessionStorage.getItem('sw_recargado')) return;
+  sessionStorage.setItem('sw_recargado','1');
   const vistaActual = vistaAct || '';
   const formsAbiertos = ['solicitud','chksemanal','util'].includes(vistaActual);
   if(formsAbiertos){
-    // Esperar a que el usuario navegue a una vista segura
     const unsub = setInterval(() => {
       const v = vistaAct || '';
-      if(!['solicitud','checklist','utilitario'].includes(v)){
+      if(!['solicitud','chksemanal','util'].includes(v)){
         clearInterval(unsub);
         window.location.reload();
       }
     }, 3000);
-    // Límite: máximo 10 min esperando
     setTimeout(() => clearInterval(unsub), 600000);
   } else {
     window.location.reload();
