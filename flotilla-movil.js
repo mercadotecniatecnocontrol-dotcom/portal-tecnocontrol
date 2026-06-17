@@ -681,13 +681,14 @@ window.initFlotillaMovil=async function(){
   // Registrar Service Worker
   if('serviceWorker' in navigator){
     navigator.serviceWorker.register('./sw.js').then(reg => {
-      // Detectar cuando hay un nuevo SW esperando (updatefound)
+      // Detectar nuevo SW instalado
       reg.addEventListener('updatefound', () => {
         const newSW = reg.installing;
         if(!newSW) return;
         newSW.addEventListener('statechange', () => {
           if(newSW.state === 'installed' && navigator.serviceWorker.controller){
-            mostrarBannerActualizacion();
+            // Recargar silenciosamente solo si no hay formulario activo
+            recargarSiSeguro();
           }
         });
       });
@@ -697,9 +698,9 @@ window.initFlotillaMovil=async function(){
       });
     }).catch(()=>{});
 
-    // Recibir mensaje del SW cuando activó una nueva versión
+    // Recibir mensaje del SW cuando activó nueva versión
     navigator.serviceWorker.addEventListener('message', e => {
-      if(e.data?.type === 'SW_UPDATED') mostrarBannerActualizacion();
+      if(e.data?.type === 'SW_UPDATED') recargarSiSeguro();
     });
   }
 };
@@ -1844,33 +1845,25 @@ window.fmVerFoto=function(ev){
 };
 
 // ── GUARDAR SOLICITUD ──
-// ── BANNER DE ACTUALIZACIÓN DISPONIBLE ──────────────────────────
-function mostrarBannerActualizacion(){
-  if(document.getElementById('fm-update-banner')) return; // ya existe
-  const banner = document.createElement('div');
-  banner.id = 'fm-update-banner';
-  banner.style.cssText = `
-    position:fixed;bottom:80px;left:50%;transform:translateX(-50%);
-    background:#1E3A5F;color:#fff;border-radius:14px;padding:12px 18px;
-    display:flex;align-items:center;gap:12px;z-index:9999;
-    box-shadow:0 4px 20px rgba(0,0,0,0.35);font-family:inherit;
-    max-width:320px;width:90%;animation:fmSlideUp .3s ease;
-  `;
-  banner.innerHTML = `
-    <div style="font-size:20px">🔄</div>
-    <div style="flex:1">
-      <div style="font-size:13px;font-weight:800">Nueva versión disponible</div>
-      <div style="font-size:11px;opacity:.8;margin-top:2px">Actualiza para usar la versión más reciente</div>
-    </div>
-    <button onclick="window.location.reload(true)" style="
-      background:#3B82F6;color:#fff;border:none;border-radius:9px;
-      padding:8px 14px;font-size:12px;font-weight:800;cursor:pointer;
-      font-family:inherit;white-space:nowrap
-    ">Actualizar</button>
-  `;
-  document.body.appendChild(banner);
-  // Auto-desaparecer después de 30s si no actúa
-  setTimeout(() => banner.remove(), 30000);
+// ── ACTUALIZACIÓN SILENCIOSA ─────────────────────────────────────
+function recargarSiSeguro(){
+  // Pantallas con formulario activo — no recargar a mitad
+  const vistaActual = vistaAct || '';
+  const formsAbiertos = ['solicitud','chksemanal','util'].includes(vistaActual);
+  if(formsAbiertos){
+    // Esperar a que el usuario navegue a una vista segura
+    const unsub = setInterval(() => {
+      const v = vistaAct || '';
+      if(!['solicitud','checklist','utilitario'].includes(v)){
+        clearInterval(unsub);
+        window.location.reload();
+      }
+    }, 3000);
+    // Límite: máximo 10 min esperando
+    setTimeout(() => clearInterval(unsub), 600000);
+  } else {
+    window.location.reload();
+  }
 }
 
 window.fmGuardar=async function(){
