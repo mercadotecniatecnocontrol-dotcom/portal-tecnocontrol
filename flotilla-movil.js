@@ -117,6 +117,17 @@ const ADMINS_FLOTILLA=[
   'mercadotecnia@tecnocontrol.com.mx',
   'p.pinedo@tecnocontrol.com.mx',
   'm.delao@tecnocontrol.com.mx',
+  'nicolas@tecnocontrol.com.mx',
+  'proyectos@tecnocontrol.com.mx',
+  'r.moriel@tecnocontrol.com.mx',
+  'clientes@tecnocontrol.com.mx',
+  's.carmona@tecnocontrol.com.mx',
+  'tomas@tecnocontrol.com.mx',
+  'fernando@tecnocontrol.com.mx',
+  'v.garcia@tecnocontrol.com.mx',
+  'i.saucedo@tecnocontrol.com.mx',
+  'j.uribe@tecnocontrol.com.mx',
+  'plazajrz@tecnocontrol.com.mx',
   'fatima@tecnocontrol.com.mx',
 ];
 
@@ -441,7 +452,7 @@ body{margin:0;padding:0;background:#F0F2F7;font-family:'Plus Jakarta Sans',-appl
 .fm-card-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
 .fm-card-t{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;}
 .fm-veh-eco{font-size:42px;font-weight:900;font-family:'JetBrains Mono',monospace;color:#fff;line-height:1;opacity:.9;}
-.fm-veh-name{font-size:18px;font-weight:800;color:#0A1628;margin-top:2px;letter-spacing:-.3px;}
+.fm-veh-name{font-size:18px;font-weight:800;color:#fff;margin-top:2px;letter-spacing:-.3px;}
 .fm-veh-sub{font-size:12px;color:#64748B;margin-top:3px;}
 .fm-data-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;}
 .fm-data-item{background:#F8FAFD;border-radius:10px;padding:10px 12px;}
@@ -602,7 +613,10 @@ function buildHTML(){
         </div>
         <div class="fm-status">
           <div class="fm-online-dot" id="fm-dot"></div>
-          <button class="fm-user-btn" id="fm-user-btn" onclick="abrirPerfil()">?</button>
+          <div style="position:relative;display:inline-flex">
+            <button class="fm-user-btn" id="fm-user-btn" onclick="abrirPerfil()">?</button>
+            <span id="fm-header-badge-notif" style="display:none;position:absolute;top:-4px;right:-4px;background:#EF4444;color:#fff;font-size:9px;font-weight:800;border-radius:50%;width:16px;height:16px;align-items:center;justify-content:center;pointer-events:none"></span>
+          </div>
         </div>
       </div>
     </div>
@@ -681,24 +695,19 @@ window.initFlotillaMovil=async function(){
   // Registrar Service Worker
   if('serviceWorker' in navigator){
     navigator.serviceWorker.register('./sw.js').then(reg => {
-      // Detectar nuevo SW instalado
       reg.addEventListener('updatefound', () => {
         const newSW = reg.installing;
         if(!newSW) return;
         newSW.addEventListener('statechange', () => {
           if(newSW.state === 'installed' && navigator.serviceWorker.controller){
-            // Recargar silenciosamente solo si no hay formulario activo
             recargarSiSeguro();
           }
         });
       });
-      // Verificar actualizaciones cada vez que la app vuelve al foco
       document.addEventListener('visibilitychange', () => {
         if(document.visibilityState === 'visible') reg.update().catch(()=>{});
       });
     }).catch(()=>{});
-
-    // Recibir mensaje del SW cuando activó nueva versión
     navigator.serviceWorker.addEventListener('message', e => {
       if(e.data?.type === 'SW_UPDATED') recargarSiSeguro();
     });
@@ -778,9 +787,9 @@ async function cargarMisTareas(){
       .get();
     misTareas=snap.docs.map(d=>({id:d.id,...d.data()}))
       .filter(t=>t.estatus!=='Completada');
-    misNotif=[]; // unificado: avisos vienen solo de flotilla_notificaciones
+    misNotif=misSols.filter(s=>['Aprobada','Rechazada','Cotización'].includes(s.estatus)).slice(0,10);
   }catch(e){console.error('[MOVIL tareas]',e);misTareas=[];}
-  // Cargar notificaciones de pipeline del portal
+  misNotif=[]; // unificado: avisos vienen solo de flotilla_notificaciones
   try {
     if(miPerfil?.email){
       const snapN=await db.collection('flotilla_notificaciones')
@@ -800,6 +809,8 @@ function actualizarBadges(){
   const notif=misPipelineNotif.filter(n=>!n.leido).length;
   if(bt){bt.textContent=pend;bt.style.display=pend?'flex':'none';}
   if(bn){bn.textContent=notif;bn.style.display=notif?'flex':'none';}
+  const bh=document.getElementById('fm-header-badge-notif');
+  if(bh){bh.textContent=notif;bh.style.display=notif?'flex':'none';}
 }
 
 // ── NAVEGACIÓN ──
@@ -818,28 +829,44 @@ window.fmVista=function(v){
 // ══════════════════════════════════════════════════════════
 // SELECTOR DE FLOTA — solo para admin / encargado de flotilla
 // ══════════════════════════════════════════════════════════
-function renderSelectorFlota(){
-  const todos=window.CAT_FL||[];
-  // Agrupar por tipo
+function _tarjetaVeh(v){
+  const oc=(window._fmEcosOcupados||{})[String(v.eco)];
+  if(oc){
+    return `<div style="display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:11px;border:1.5px solid #FECACA;background:#FEF2F2;margin-bottom:6px;opacity:.85">
+      <div style="width:36px;height:36px;border-radius:9px;background:#FCA5A5;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B91C1C" stroke-width="2" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:800;color:#B91C1C">${v.unidad||'—'} — Ocupado</div>
+        <div style="font-size:10.5px;color:#DC2626;margin-top:1px">ECO ${v.eco} · En uso por: ${oc.nombre}</div>
+      </div>
+      <div style="font-size:9px;font-weight:700;color:#EF4444;background:#FEE2E2;border-radius:6px;padding:3px 7px">En uso</div>
+    </div>`;
+  }
+  return `<div onclick="fmSeleccionarVeh('${v.eco}')" style="display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:11px;border:1.5px solid #E8EDF5;background:#fff;cursor:pointer;transition:.12s;margin-bottom:6px" onmouseover="this.style.borderColor='#2563EB';this.style.background='#EFF6FF'" onmouseout="this.style.borderColor='#E8EDF5';this.style.background='#fff'">
+    <div style="width:36px;height:36px;border-radius:9px;background:linear-gradient(135deg,#0A1628,#1E3A5F);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.9)" stroke-width="1.8" stroke-linecap="round"><path d="M5 17H3a2 2 0 01-2-2V9a2 2 0 012-2h11a2 2 0 012 2v6h-2"/><path d="M7 9l2-4h6l2 4"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>
+    </div>
+    <div style="flex:1;min-width:0">
+      <div style="font-size:13px;font-weight:800;color:#0A0F1E">${v.unidad||'—'}</div>
+      <div style="font-size:10.5px;color:#64748B;margin-top:1px">ECO ${v.eco} · ${v.placas||'—'} · ${v.plaza||'—'}</div>
+    </div>
+    <div style="font-size:10px;font-weight:700;color:#94A3B8">${v.responsable||'Sin asignar'}</div>
+  </div>`;
+}
+
+function _renderSelectorLista(todos){
+  const lista=document.getElementById('fm-selector-lista');
+  if(!lista)return;
   const autos=todos.filter(v=>v.tipo==='auto');
   const camionetas=todos.filter(v=>v.tipo==='camioneta');
   const camiones=todos.filter(v=>v.tipo==='camion');
+  const grp=(label,lst)=>lst.length?`<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;padding:8px 0 4px">${label}</div>`+lst.map(_tarjetaVeh).join(''):'';
+  lista.innerHTML=(grp('Autos',autos)+grp('Camionetas',camionetas)+grp('Camiones / Grúas',camiones))||'<div style="text-align:center;padding:40px;color:#94A3B8;font-size:13px">Sin vehículos en catálogo</div>';
+}
 
-  const grp=(label,lista)=>lista.length?
-    `<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;padding:8px 0 4px">${label}</div>`+
-    lista.map(v=>`
-    <div onclick="fmSeleccionarVeh('${v.eco}')" style="display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:11px;border:1.5px solid #E8EDF5;background:#fff;cursor:pointer;transition:.12s;margin-bottom:6px" onmouseover="this.style.borderColor='#2563EB';this.style.background='#EFF6FF'" onmouseout="this.style.borderColor='#E8EDF5';this.style.background='#fff'">
-      <div style="width:36px;height:36px;border-radius:9px;background:linear-gradient(135deg,#0A1628,#1E3A5F);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.9)" stroke-width="1.8" stroke-linecap="round"><path d="M5 17H3a2 2 0 01-2-2V9a2 2 0 012-2h11a2 2 0 012 2v6h-2"/><path d="M7 9l2-4h6l2 4"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>
-      </div>
-      <div style="flex:1;min-width:0">
-        <div style="font-size:13px;font-weight:800;color:#0A0F1E">${v.unidad||'—'}</div>
-        <div style="font-size:10.5px;color:#64748B;margin-top:1px">ECO ${v.eco} · ${v.placas||'—'} · ${v.plaza||'—'}</div>
-      </div>
-      <div style="font-size:10px;font-weight:700;color:#94A3B8">${v.responsable||'Sin asignar'}</div>
-    </div>`).join('')
-  :'';
-
+function renderSelectorFlota(){
+  const todos=window.CAT_FL||[];
   setContent(`
     <div class="fm-sec-hd">
       <div>
@@ -850,13 +877,18 @@ function renderSelectorFlota(){
     <div style="margin-bottom:12px">
       <input id="fm-selector-q" type="search" placeholder="Buscar ECO, unidad, placas, responsable..." style="width:100%;padding:11px 14px;border:1.5px solid #E2E8F0;border-radius:11px;font-size:13px;background:#fff;outline:none;box-sizing:border-box" oninput="fmFiltrarSelector(this.value)">
     </div>
-    <div id="fm-selector-lista">
-      ${grp('Autos',autos)}
-      ${grp('Camionetas',camionetas)}
-      ${grp('Camiones / Grúas',camiones)}
-      ${(!autos.length&&!camionetas.length&&!camiones.length)?'<div style="text-align:center;padding:40px;color:#94A3B8;font-size:13px">Sin vehículos en catálogo</div>':''}
-    </div>
+    <div id="fm-selector-lista"><div style="text-align:center;padding:30px;color:#94A3B8;font-size:13px">Verificando disponibilidad…</div></div>
   `);
+  db.collection(C.USUARIOS).get().then(snapU=>{
+    const ocupados={};
+    snapU.docs.forEach(d=>{
+      const u=d.data();
+      const ecos=Array.isArray(u.ecosVinculados)?u.ecosVinculados.map(String):(u.ecoVinculado?[String(u.ecoVinculado)]:[]);
+      ecos.forEach(e=>{ if(e&&u.email!==miPerfil?.email) ocupados[e]={nombre:u.nombre||u.displayName||u.email||'Otro usuario'}; });
+    });
+    window._fmEcosOcupados=ocupados;
+    _renderSelectorLista(todos);
+  }).catch(()=>{ window._fmEcosOcupados={}; _renderSelectorLista(todos); });
 }
 
 window.fmFiltrarSelector = function(q){
@@ -872,17 +904,7 @@ window.fmFiltrarSelector = function(q){
   const lista=document.getElementById('fm-selector-lista');
   if(!lista)return;
   if(!filtrados.length){lista.innerHTML='<div style="text-align:center;padding:30px;color:#94A3B8;font-size:13px">Sin resultados</div>';return;}
-  lista.innerHTML=filtrados.map(v=>`
-    <div onclick="fmSeleccionarVeh('${v.eco}')" style="display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:11px;border:1.5px solid #E8EDF5;background:#fff;cursor:pointer;margin-bottom:6px" onmouseover="this.style.borderColor='#2563EB';this.style.background='#EFF6FF'" onmouseout="this.style.borderColor='#E8EDF5';this.style.background='#fff'">
-      <div style="width:36px;height:36px;border-radius:9px;background:linear-gradient(135deg,#0A1628,#1E3A5F);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.9)" stroke-width="1.8" stroke-linecap="round"><path d="M5 17H3a2 2 0 01-2-2V9a2 2 0 012-2h11a2 2 0 012 2v6h-2"/><path d="M7 9l2-4h6l2 4"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>
-      </div>
-      <div style="flex:1;min-width:0">
-        <div style="font-size:13px;font-weight:800;color:#0A0F1E">${v.unidad||'—'}</div>
-        <div style="font-size:10.5px;color:#64748B;margin-top:1px">ECO ${v.eco} · ${v.placas||'—'} · ${v.plaza||'—'}</div>
-      </div>
-      <div style="font-size:10px;font-weight:700;color:#94A3B8">${v.responsable||'Sin asignar'}</div>
-    </div>`).join('');
+  lista.innerHTML=filtrados.map(_tarjetaVeh).join('');
 };
 
 window.fmSeleccionarVeh = async function(eco){
@@ -963,7 +985,7 @@ function renderVehiculo(){
       <div style="display:flex;align-items:flex-start;justify-content:space-between">
         <div>
           <div class="fm-veh-eco">${v.eco}</div>
-          <div class="fm-veh-name">${v.unidad||'—'}</div>
+          <div class="fm-veh-name" style="color:#fff">${v.unidad||'—'}</div>
           <div class="fm-veh-sub" style="color:rgba(255,255,255,.55)">${v.placas||'—'} · ${v.año||'—'}</div>
         </div>
         <div style="background:rgba(255,255,255,.1);border-radius:10px;padding:8px 12px;text-align:center">
@@ -1847,7 +1869,6 @@ window.fmVerFoto=function(ev){
 // ── GUARDAR SOLICITUD ──
 // ── ACTUALIZACIÓN SILENCIOSA ─────────────────────────────────────
 function recargarSiSeguro(){
-  // Guardia anti-loop: solo recargar una vez por sesión
   if(sessionStorage.getItem('sw_recargado')) return;
   sessionStorage.setItem('sw_recargado','1');
   const vistaActual = vistaAct || '';
@@ -2013,7 +2034,7 @@ window.fmMarcarTarea=async function(id,est){
 // ══════════════════════════════════════════
 function renderNotif(){
   const pipelineItems=(misPipelineNotif||[]).map(n=>{
-    const tipoIco={validada:'ok',aprobada:'ok',cerrada:'ok',rechazada_val:'err',rechazada_apr:'err',pagos:'msg',pagado:'ok'}[n.tipo]||'msg';
+    const tipoIco={validada:'ok',aprobada:'ok',cerrada:'ok',servicio:'ok',rechazada_val:'err',rechazada_apr:'err',pagos:'msg',pagado:'ok'}[n.tipo]||'msg';
     const tipoBg={ok:'#DCFCE7',err:'#FEE2E2',msg:'#EDE9FE'}[tipoIco];
     const tipoIcoSvg={ok:IC.check,err:IC.x,msg:IC.bell}[tipoIco];
     return {
@@ -2275,8 +2296,24 @@ function renderUtil(){
 
   // Inicializar canvas de firma si estamos en paso 3
   if(utilState.paso===3)setTimeout(initFirmaCanvas,100);
+  // Cargar personal si estamos en paso 2 entrega
+  if(utilState.paso===2&&utilState.modo==='entregar')setTimeout(cargarPersonalEnSelect,50);
 }
 window.renderUtil=renderUtil;
+
+// Cargar lista de personal en select de receptor (utilitario entrega)
+async function cargarPersonalEnSelect(){
+  const sel=document.getElementById('util-receptor');
+  if(!sel)return;
+  try{
+    const snap=await db.collection(C.USUARIOS).get();
+    const personas=snap.docs.map(d=>{const u=d.data();return u.nombre||u.displayName||u.email||'';}).filter(Boolean).sort();
+    sel.innerHTML='<option value="">— Selecciona al receptor —</option>'+personas.map(n=>`<option value="${n}">${n}</option>`).join('');
+  }catch{
+    const fallback=['ALAN ESTRADA','CRISTINA ACOSTA','FATIMA SAUZAMEDA','GLEN PRECIADO','ISMAEL BARRAZA','JORGE GUERRERO','LUCERO','MARTIN DE LA O','PALOMA PINEDO','SERGIO CARMONA'];
+    sel.innerHTML='<option value="">— Selecciona al receptor —</option>'+fallback.map(n=>`<option value="${n}">${n}</option>`).join('');
+  }
+}
 
 // PASO 1: Elegir modo
 function renderUtilPaso1(){
@@ -2362,7 +2399,13 @@ function renderUtilPaso2(){
     </div>
 
     <div class="fm-fld"><label>¿A quién se entrega?</label>
-      <input type="text" id="util-receptor" placeholder="Nombre del técnico que recibe"></div>
+      <select id="util-receptor" style="width:100%;padding:11px 14px;border:1.5px solid #E2E8F0;border-radius:11px;font-size:13px;background:#fff;outline:none;box-sizing:border-box;color:#0A0F1E">
+        <option value="">— Cargando personal… —</option>
+      </select>
+    </div>
+    <div class="fm-fld"><label>Comentarios de entrega <span style="font-size:9px;font-weight:500;text-transform:none;color:#94A3B8">(opcional)</span></label>
+      <textarea id="util-comentario-entrega" placeholder="Estado del vehículo, observaciones, acuerdos…" rows="2" style="width:100%;padding:10px 14px;border:1.5px solid #E2E8F0;border-radius:11px;font-size:13px;background:#fff;outline:none;box-sizing:border-box;resize:none;font-family:inherit"></textarea>
+    </div>
 
     <div class="fm-fld"><label>KM al entregar</label>
       <input type="number" id="util-km" placeholder="${v?.km||0}" inputmode="numeric"></div>
@@ -2406,7 +2449,19 @@ function renderUtilPaso2(){
       <button class="fm-btn primary" onclick="utilVerificarCodigo()" style="width:100%;margin-top:8px">Verificar código</button>
       <div id="util-codigo-msg" style="margin-top:10px;font-size:12px"></div>
     </div>
-    `}
+    ${utilState.transferenciaData?`
+    <div class="fm-fld" style="margin-top:12px">
+      <label>Fotos de entrega (tomadas por quien entrega)</label>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;padding:4px 0">
+        ${(utilState.transferenciaData.fotos||[]).length?
+          (utilState.transferenciaData.fotos||[]).map(f=>`<img src="${f}" style="width:80px;height:80px;border-radius:8px;object-fit:cover;border:1.5px solid #E2E8F0">`).join('')
+          :'<div style="font-size:11px;color:#94A3B8">Sin fotos registradas</div>'}
+      </div>
+    </div>
+    <div class="fm-fld">
+      <label>Tu comentario de recepción <span style="font-size:9px;font-weight:500;text-transform:none;color:#94A3B8">(opcional)</span></label>
+      <textarea id="util-comentario-recepcion" placeholder="Confirmo recepción en buen estado / observaciones…" rows="2" style="width:100%;padding:10px 14px;border:1.5px solid #E2E8F0;border-radius:11px;font-size:13px;background:#fff;outline:none;box-sizing:border-box;resize:none;font-family:inherit"></textarea>
+    </div>`:''}`}
     <div style="height:20px"></div>
   `;
 }
@@ -2593,10 +2648,12 @@ window.utilSiguiente=function(){
   const km=document.getElementById('util-km')?.value;
   if(!receptor){toast('Ingresa el nombre de quien recibe','err');return;}
   if(utilState.evFotos.length===0){toast('Toma al menos una foto del vehículo','err');return;}
+  const comentarioEnt=document.getElementById('util-comentario-entrega')?.value?.trim()||'';
   utilState.datosEntrega={
     vehiculo:miVeh?.unidad||'—',eco:miVeh?.eco||'—',
     km:km||miVeh?.km||'0',receptor,
     nombre:window.auth?.currentUser?.displayName||window.auth?.currentUser?.email||'—',
+    comentarioEntrega:comentarioEnt,
   };
   utilState.paso=3;renderUtil();
 };
@@ -2693,6 +2750,8 @@ window.utilConfirmarFirma=async function(){
         entregaChk:{...utilState.chk},entregaFotos:fotosComprimidas,
         entregaFotosMeta:utilState.evFotos.map(e=>e.meta),
         receptorNombre:utilState.datosEntrega?.receptor||'',
+        comentarioEntrega:utilState.datosEntrega?.comentarioEntrega||'',
+        comentarioRecepcion:document.getElementById('util-comentario-recepcion')?.value?.trim()||'',
         estatus:'Pendiente recepción',
         emails:[userEmail],
         creadoEn:now.toISOString(),
