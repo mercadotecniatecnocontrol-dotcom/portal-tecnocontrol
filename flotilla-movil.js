@@ -778,7 +778,7 @@ async function cargarMisTareas(){
       .get();
     misTareas=snap.docs.map(d=>({id:d.id,...d.data()}))
       .filter(t=>t.estatus!=='Completada');
-    misNotif=misSols.filter(s=>['Aprobada','Rechazada','Cotización'].includes(s.estatus)).slice(0,10);
+    misNotif=[]; // unificado: avisos vienen solo de flotilla_notificaciones
   }catch(e){console.error('[MOVIL tareas]',e);misTareas=[];}
   // Cargar notificaciones de pipeline del portal
   try {
@@ -797,7 +797,7 @@ function actualizarBadges(){
   const bt=document.getElementById('fm-badge-tareas');
   const bn=document.getElementById('fm-badge-notif');
   const pend=misTareas.filter(t=>t.estatus==='Pendiente'||t.estatus==='En proceso').length;
-  const notif=misNotif.length + misPipelineNotif.filter(n=>!n.leido).length;
+  const notif=misPipelineNotif.filter(n=>!n.leido).length;
   if(bt){bt.textContent=pend;bt.style.display=pend?'flex':'none';}
   if(bn){bn.textContent=notif;bn.style.display=notif?'flex':'none';}
 }
@@ -2025,17 +2025,7 @@ function renderNotif(){
       id:n.id,
     };
   });
-  const items=[
-    ...pipelineItems,
-    ...misNotif.map(s=>({
-      ico:s.estatus==='Aprobada'?'ok':s.estatus==='Rechazada'?'err':'msg',
-      bg:s.estatus==='Aprobada'?'#DCFCE7':s.estatus==='Rechazada'?'#FEE2E2':'#EDE9FE',icoSvg:s.estatus==='Aprobada'?IC.check:s.estatus==='Rechazada'?IC.x:IC.bell,
-      t:`Solicitud ${s.estatus.toLowerCase()}`,
-      s:`${s.tipo||'—'} · ECO ${s.vehiculoEco||'—'}`,
-      time:hF(s.actualizadoEn||s.creadoEn),
-      unread:true,
-    })),
-  ];
+  const items=[...pipelineItems];
   const dv=hD(miVeh?.pv);
   if(dv!==null&&dv<90)items.unshift({ico:'warn',bg:'#FEF3C7',icoSvg:IC.alert,t:'Póliza de seguro',s:dv<0?'Póliza VENCIDA — renovar urgente':`Vence en ${dv} días`,time:'Hoy',unread:dv<0});
 
