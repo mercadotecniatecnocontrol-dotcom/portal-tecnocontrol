@@ -116,8 +116,8 @@ const ADMINS_FLOTILLA=[
   'mercadotecniatecnocontrol@gmail.com.mx',
   'mercadotecnia@tecnocontrol.com.mx',
   'p.pinedo@tecnocontrol.com.mx',
-  'nicolas@tecnocontrol.com.mx',
   'm.delao@tecnocontrol.com.mx',
+  'nicolas@tecnocontrol.com.mx',
   'fatima@tecnocontrol.com.mx',
 ];
 
@@ -165,6 +165,23 @@ function badge(e){
 }
 
 // ── GENERAR CÓDIGO EVIDENCIA ──
+// ── LISTA DE COLABORADORES (fallback si Firestore no disponible) ──
+const FL_COLABORADORES = ["Aceves Ivan Argenis","Acosta Bustillos Francisca","Acosta Chavira Carlos","Acosta Contreras Cristina Judith","Barraza Luya Saúl Ismael","Calixto Sánchez Rafael","Carmona Lagunas Sergio","Castro Muñoz Saúl","Chacón Terrazas Lucero","Chávez Alvarez Ruth Yadira","Chávez Barraza Oscar Iván","Chávez Chávez Iván","Contreras Morales Elva Nidia","Coronado Valenzuela Socorro Annet","De La Cruz Emilio Julio César","De La O Maese Martín","Durstewitz Maese Guillermo","Enríquez Gallardo Jorge Alberto","Escalante Jaramillo Ana Karen","Estrada Gómez Alan Alberto","García Ledezma Jesús Alvaro","García Montemayor Veronica Janeth","Garza González Luis Enrique","González Babonoyaba Ricardo Antonio","González Delgado Ericka Idaly","Guerrero Gómez Jorge","Gutiérrez Alvarado Nayra Didi","Gutiérrez Villarreal Denisse","Guzmán Morales Flor Idalia","Guzmán Neave Kenia Yadira","Hernández Pérez Rubén Alberto","Hernández Prieto Josué","Hernández Ríos Jesús Ramón","Leal Martínez Roque Manuel","López Ávila Sandra Lucero","Lopez Chavez Guillermo","López Delgado Luis Humberto","Luna Espinoza Jaime Roel","Medina Contreras Giovanni Israel","Mendoza Becerra Sergio","Minjarez Ochoa Alberto Alan","Montellano Pasillas Miguel Ángel","Morales Cruz Gabriel Gael","Morales Mendoza Tomás","Moreno Molina Reyes","Moriel Sáenz Ricardo Salvador","Muñoz Avila Roberto","Muñoz Blanco Lizeth Cristina","Nuñez Alatorre Ulises","Orozco Miranda Ana Cristina","Parra Blanco Zaira Sibel","Pérez Espíndola Rita Isabel","Perez Garcia Martha Aracely","Pinedo Paloma","Portillo Portillo José Luis","Preciado Grijalva Glen Iván","Reyes González Pedro","Ríos Salcido Joon Omaira","Ruiz Olmedo Norma Idaly","Salcedo Gardea Filiberto Isai","Salmon Rivas Fabricio Abundio","Saucedo Martínez Irving Abraham","Sauzameda Ochoa Fátima Anahí","Sepúlveda Mendoza Iván Roberto","Soto González Benito","Terrazas Serrano Fernando","Uribe Maese Jorge Alberto","Valencia Barraza Jesus Bersain","Valencia Meza Luis Miguel","Valenzuela López José Luis","Nicolas","Luis Lopez","Cano Corral Adrian"];
+
+// Cargar colaboradores: Firestore primero, fallback a lista hardcodeada
+async function cargarColaboradores(){
+  if(window._flColab&&window._flColab.length>0) return window._flColab;
+  try{
+    const snap=await db.collection('fl_colaboradores').orderBy('nombre').get();
+    if(!snap.empty){
+      window._flColab=snap.docs.map(d=>d.data().nombre).filter(Boolean);
+      return window._flColab;
+    }
+  }catch{}
+  window._flColab=[...FL_COLABORADORES];
+  return window._flColab;
+}
+
 function genCod(){
   const d=new Date();
   const dd=String(d.getFullYear())+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0');
@@ -2143,27 +2160,54 @@ window.fmVerSol=function(id){
 window.abrirPerfil=function(){
   const user=window.auth?.currentUser;
   const ov=document.createElement('div');ov.className='fm-ov';
-  ov.innerHTML=`<div class="fm-sheet">
-    <div class="fm-sheet-hd"><h3>Mi perfil</h3><button class="fm-sheet-x" onclick="this.closest('.fm-ov').remove()">✕</button></div>
-    <div class="fm-sheet-body">
+  // Renderizar perfil con datos actualizados de Firestore
+  function _renderPerfilContenido(ecosActuales){
+    const ecosPills=ecosActuales.length
+      ?`<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;justify-content:center">${ecosActuales.map(eco=>`<span style="display:inline-flex;align-items:center;gap:6px;background:#EFF6FF;border-radius:100px;padding:5px 14px;font-size:12px;font-weight:700;color:#1D4ED8">ECO ${eco}${ecosActuales.length>1&&String(eco)===String(miVeh?.eco)?' · actual':''}</span>`).join('')}</div>`
+      :'<div style="margin-top:8px;font-size:11px;color:#EF4444;font-weight:700">Sin vehículo asignado</div>';
+    const body=document.getElementById('fm-perfil-body');
+    if(!body)return;
+    body.innerHTML=`
       <div style="text-align:center;padding:16px 0 20px">
         <div style="width:64px;height:64px;border-radius:50%;background:#1E3A5F;color:#fff;font-size:24px;font-weight:800;display:flex;align-items:center;justify-content:center;margin:0 auto 12px">${(user?.displayName||user?.email||'?').charAt(0).toUpperCase()}</div>
         <div style="font-size:17px;font-weight:800">${user?.displayName||'—'}</div>
         <div style="font-size:13px;color:#64748B;margin-top:3px">${user?.email||'—'}</div>
-        ${getEcosVinculados().length?`<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;justify-content:center">${getEcosVinculados().map(eco=>`<span style="display:inline-flex;align-items:center;gap:6px;background:#EFF6FF;border-radius:100px;padding:5px 14px;font-size:12px;font-weight:700;color:#1D4ED8">ECO ${eco}${getEcosVinculados().length>1&&String(eco)===String(miVeh?.eco)?' · actual':''}</span>`).join('')}</div>`:''}
+        ${ecosPills}
       </div>
-      ${!getEcosVinculados().length?`<button class="fm-btn primary" onclick="this.closest('.fm-ov').remove();fmVista('vehiculo')" style="margin-bottom:10px">Vincular mi vehículo</button>`:''}
-      ${(()=>{
-        if(!esRolLibre()||!getEcosVinculados().length)return'';
-        return`<button class="fm-btn" style="margin-bottom:10px;background:#FEF2F2;color:#B91C1C;border:1.5px solid #FECACA;font-size:12px" onclick="window._desvinc()">
-          Desvincular todas mis unidades
-        </button>`;
-      })()}
-      <button class="fm-btn danger" onclick="if(confirm('¿Cerrar sesión?')){window.auth.signOut().then(()=>location.reload());}">Cerrar sesión</button>
+      ${!ecosActuales.length?`<button class="fm-btn primary" onclick="this.closest('.fm-ov').remove();fmVista('vehiculo')" style="margin-bottom:10px">Vincular mi vehículo</button>`:''}
+      ${(esRolLibre()&&ecosActuales.length)?`<button class="fm-btn" style="margin-bottom:10px;background:#FEF2F2;color:#B91C1C;border:1.5px solid #FECACA;font-size:12px" onclick="window._desvinc()">Desvincular todas mis unidades</button>`:''}
+      <button class="fm-btn danger" onclick="if(confirm('¿Cerrar sesión?')){window.auth.signOut().then(()=>location.reload());}">Cerrar sesión</button>`;
+  }
+  ov.innerHTML=`<div class="fm-sheet">
+    <div class="fm-sheet-hd"><h3>Mi perfil</h3><button class="fm-sheet-x" onclick="this.closest('.fm-ov').remove()">✕</button></div>
+    <div class="fm-sheet-body" id="fm-perfil-body">
+      <div style="text-align:center;padding:30px;color:#94A3B8;font-size:12px">Cargando…</div>
     </div>
   </div>`;
   document.body.appendChild(ov);
   ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+  // Leer Firestore en tiempo real para mostrar ECO actualizado
+  if(miPerfil?.email){
+    db.collection(C.USUARIOS).where('email','==',miPerfil.email).get()
+      .then(snap=>{
+        if(!snap.empty){
+          const u=snap.docs[0].data();
+          const ecos=[
+            ...(Array.isArray(u.ecosVinculados)?u.ecosVinculados.map(String):[]),
+            ...(u.ecoVinculado?[String(u.ecoVinculado)]:[]),
+          ].filter((e,i,a)=>e&&a.indexOf(e)===i);
+          // Actualizar miPerfil en memoria también
+          miPerfil.ecosVinculados=ecos;
+          miPerfil.ecoVinculado=ecos[0]||null;
+          _renderPerfilContenido(ecos);
+        } else {
+          _renderPerfilContenido(getEcosVinculados());
+        }
+      })
+      .catch(()=>_renderPerfilContenido(getEcosVinculados()));
+  } else {
+    _renderPerfilContenido(getEcosVinculados());
+  }
 };
 
 // ── DESVINCULAR VEHÍCULO (SOLO ADMINS) ──
@@ -2300,14 +2344,8 @@ window.renderUtil=renderUtil;
 async function cargarPersonalEnSelect(){
   const sel=document.getElementById('util-receptor');
   if(!sel)return;
-  try{
-    const snap=await db.collection(C.USUARIOS).get();
-    const personas=snap.docs.map(d=>{const u=d.data();return u.nombre||u.displayName||u.email||'';}).filter(Boolean).sort();
-    sel.innerHTML='<option value="">— Selecciona al receptor —</option>'+personas.map(n=>`<option value="${n}">${n}</option>`).join('');
-  }catch{
-    const fallback=['ALAN ESTRADA','CRISTINA ACOSTA','FATIMA SAUZAMEDA','GLEN PRECIADO','ISMAEL BARRAZA','JORGE GUERRERO','LUCERO','MARTIN DE LA O','PALOMA PINEDO','SERGIO CARMONA'];
-    sel.innerHTML='<option value="">— Selecciona al receptor —</option>'+fallback.map(n=>`<option value="${n}">${n}</option>`).join('');
-  }
+  const personas=await cargarColaboradores();
+  sel.innerHTML='<option value="">— Selecciona al receptor —</option>'+personas.map(n=>`<option value="${n}">${n}</option>`).join('');
 }
 
 // PASO 1: Elegir modo
