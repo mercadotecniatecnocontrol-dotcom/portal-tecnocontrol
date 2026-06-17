@@ -3425,7 +3425,12 @@ window.flElim = async id => {
 // ═══════════════════════════════════════════════════════
 window.flEnviarNotif = async function(id, tipo, comentario) {
   try {
-    const s = flS.find(x => x.id === id);
+    let s = flS.find(x => x.id === id);
+    // Si no está en memoria o le falta creadoPor, leer de Firestore
+    if (!s || !s.creadoPor) {
+      const snap = await fs.getDoc(fs.doc(db, C.SOLS, id));
+      if (snap.exists()) s = { id: snap.id, ...snap.data(), ...(s||{}) };
+    }
     if (!s) return;
     const eco = s.vehiculoEco || '—';
     const por = window.auth?.currentUser?.displayName || window.auth?.currentUser?.email || '—';
@@ -4098,131 +4103,6 @@ window.flModalRechazar = function(id, tipo) {
   ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
 };
 
-// ═══════════════════════════════════════════════════════
-// MODAL VALIDAR — Fátima revisa, cotiza y envía a Aprobación
-// ═══════════════════════════════════════════════════════
-window.flModalValidar = function(id) {
-  const s = flS.find(x => x.id === id);
-  if (!s) return;
-  const v = flV.find(x => x.eco === s.vehiculoEco || x.id === s.vehiculoId);
-  document.getElementById('flpm-ov')?.remove();
-
-  window._flValArch = s.cotizacionArchivos ? [...s.cotizacionArchivos] : [];
-
-  const html = `
-    <div class="fl-ov" id="flval-ov" onclick="if(event.target===this)this.remove()" style="z-index:3100">
-      <div class="fl-modal" style="max-width:680px;width:100%;max-height:90vh;overflow-y:auto">
-        <div class="fl-mh" style="position:sticky;top:0;background:#fff;z-index:2">
-          <div>
-            <div style="font-size:15px;font-weight:900;letter-spacing:-.3px">Validar solicitud</div>
-            <div style="font-size:11px;color:#64748B;margin-top:2px">ECO ${s.vehiculoEco||'—'} · ${s.tipo||'—'} · ${s.solicitante||'—'}</div>
-          </div>
-          <button onclick="document.getElementById('flval-ov').remove()" style="width:30px;height:30px;border:none;border-radius:50%;background:#F1F5F9;cursor:pointer;font-size:16px;color:#64748B">✕</button>
-        </div>
-        <div class="fl-mb" style="display:flex;flex-direction:column;gap:16px">
-
-          <!-- Resumen solicitud -->
-          <div style="background:#F8FAFC;border-radius:10px;padding:14px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
-            ${[['Vehículo',v?v.unidad+' '+v.año:s.vehiculoEco||'—'],['Tipo',s.tipo||'—'],['Prioridad',s.prioridad||'Normal'],['KM',s.kilometrajeReportado||'—'],['Gasolina',s.gasolina!=null?s.gasolina+'%':'—'],['Solicitante',s.solicitante||'—']].map(([l,val])=>`
-              <div><div style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">${l}</div>
-              <div style="font-size:12px;font-weight:700">${val}</div></div>`).join('')}
-            ${s.descripcion ? `<div style="grid-column:1/-1"><div style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">Descripción del problema</div>
-              <div style="font-size:12px;color:#374151">${s.descripcion}</div></div>` : ''}
-          </div>
-
-          <!-- DATOS DEL TALLER -->
-          <div>
-            <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#374151;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #F1F5F9">
-              🔧 Datos del taller / proveedor
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-              ${[
-                ['val-taller-nombre','Nombre del taller *','text',s.tallerNombre||''],
-                ['val-taller-encargado','Encargado / contacto','text',s.tallerEncargado||''],
-                ['val-taller-tel','Teléfono','tel',s.tallerTel||''],
-                ['val-taller-direccion','Dirección','text',s.tallerDireccion||''],
-                ['val-taller-rfc','RFC del taller','text',s.tallerRFC||''],
-                ['val-taller-razon','Razón social','text',s.tallerRazon||''],
-                ['val-fecha-ingreso','Fecha ingreso taller','date',s.fechaIngresoTaller||''],
-                ['val-fecha-salida','Fecha estimada entrega','date',s.fechaEntregaEstimada||''],
-              ].map(([fid,label,type,val])=>`<div>
-                <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">${label}</label>
-                <input id="${fid}" type="${type}" value="${val}" style="width:100%;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;outline:none;box-sizing:border-box" onfocus="this.style.borderColor='#2563EB'" onblur="this.style.borderColor='#E2E8F0'">
-              </div>`).join('')}
-            </div>
-            <!-- Ubicación Google Maps -->
-            <div style="margin-top:10px">
-              <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">Link Google Maps del taller</label>
-              <div style="display:flex;gap:8px">
-                <input id="val-taller-maps" type="url" placeholder="https://maps.google.com/..." value="${s.tallerMaps||''}"
-                  style="flex:1;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;outline:none;box-sizing:border-box"
-                  onfocus="this.style.borderColor='#2563EB'" onblur="this.style.borderColor='#E2E8F0'">
-                <button onclick="const u=document.getElementById('val-taller-maps').value;if(u)window.open(u,'_blank')"
-                  style="padding:8px 12px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;cursor:pointer;font-size:11px;font-weight:700;color:#2563EB;white-space:nowrap">
-                  Ver mapa
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <!-- COTIZACIONES -->
-          <div>
-            <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#374151;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #F1F5F9">
-              💰 Cotización
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
-              <div>
-                <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">Monto cotización (MXN) *</label>
-                <input id="val-monto" type="number" min="0" step="0.01" value="${s.montoCotizacion||''}" placeholder="0.00"
-                  style="width:100%;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;outline:none;box-sizing:border-box"
-                  onfocus="this.style.borderColor='#2563EB'" onblur="this.style.borderColor='#E2E8F0'">
-              </div>
-              <div>
-                <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">Fecha pago programada *</label>
-                <input id="val-fecha-pago" type="date" value="${s.fechaPagoProgramada||''}"
-                  style="width:100%;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;outline:none;box-sizing:border-box"
-                  onfocus="this.style.borderColor='#2563EB'" onblur="this.style.borderColor='#E2E8F0'">
-              </div>
-            </div>
-            <!-- Mejor opción / Sugerencia -->
-            <div style="margin-bottom:12px">
-              <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">✨ Sugerencia / mejor opción de cotización</label>
-              <textarea id="val-sugerencia" rows="3" placeholder="Describe por qué este taller es la mejor opción, comparativa de precios, garantías, experiencia previa…"
-                style="width:100%;border:1.5px solid #E2E8F0;border-radius:9px;padding:9px 12px;font-family:inherit;font-size:12px;resize:vertical;outline:none;box-sizing:border-box"
-                onfocus="this.style.borderColor='#2563EB'" onblur="this.style.borderColor='#E2E8F0'">${s.sugerenciaCotizacion||''}</textarea>
-            </div>
-            <!-- Upload cotizaciones -->
-            <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:6px">Documentos de cotización (PDF o imágenes)</label>
-            <div id="flval-arch-lista" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px">
-              ${flHtmlArchivos(window._flValArch, 'flValElimArch')}
-            </div>
-            ${flZonaDrop('flval-file-input','PDF, JPG, PNG')}
-            <input id="flval-file-input" type="file" multiple accept=".pdf,.jpg,.jpeg,.png" style="display:none"
-              onchange="flValAgregarArchivos(this.files)">
-          </div>
-
-          <!-- NOTAS -->
-          <div>
-            <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:5px">Notas / comentarios adicionales para Contraloría</label>
-            <textarea id="val-notas" rows="3" placeholder="Observaciones, acuerdos con el taller, información adicional relevante…"
-              style="width:100%;border:1.5px solid #E2E8F0;border-radius:9px;padding:9px 12px;font-family:inherit;font-size:12px;resize:vertical;outline:none;box-sizing:border-box"
-              onfocus="this.style.borderColor='#2563EB'" onblur="this.style.borderColor='#E2E8F0'">${s.notasValidacion||''}</textarea>
-          </div>
-
-          <!-- Acciones -->
-          <div class="fl-fa" style="margin-top:0">
-            <button onclick="document.getElementById('flval-ov').remove()" class="fb gho" style="padding:9px 18px">Cancelar</button>
-            <button onclick="flGuardarValidacion('${id}')" class="fb acc" id="val-btn" style="padding:9px 22px">
-              Enviar a Aprobación →
-            </button>
-          </div>
-          <div id="val-err" style="display:none;padding:8px 12px;background:#FEE2E2;border-radius:8px;font-size:12px;color:#B91C1C;text-align:center"></div>
-        </div>
-      </div>
-    </div>`;
-  document.body.insertAdjacentHTML('beforeend', html);
-};
-
 // Agregar archivos al estado temporal de validación
 window.flValAgregarArchivos = async function(files) {
   for (const file of Array.from(files)) {
@@ -4293,82 +4173,6 @@ window.flGuardarValidacion = async function(id) {
   }
 };
 
-// ═══════════════════════════════════════════════════════
-// MODAL APROBAR — Contraloría aprueba (pasa a Pagos)
-// ═══════════════════════════════════════════════════════
-window.flModalAprobar = function(id) {
-  const s = flS.find(x => x.id === id);
-  if (!s) return;
-  const v = flV.find(x => x.eco === s.vehiculoEco);
-  document.getElementById('flpm-ov')?.remove();
-
-  const arch = s.cotizacionArchivos || [];
-  const html = `
-    <div class="fl-ov" id="flapr-ov" onclick="if(event.target===this)this.remove()" style="z-index:3100">
-      <div class="fl-modal" style="max-width:620px;width:100%;max-height:90vh;overflow-y:auto">
-        <div class="fl-mh" style="position:sticky;top:0;background:#fff;z-index:2">
-          <div>
-            <div style="font-size:15px;font-weight:900">Aprobar solicitud</div>
-            <div style="font-size:11px;color:#64748B;margin-top:2px">ECO ${s.vehiculoEco||'—'} · ${s.tipo||'—'}</div>
-          </div>
-          <button onclick="document.getElementById('flapr-ov').remove()" style="width:30px;height:30px;border:none;border-radius:50%;background:#F1F5F9;cursor:pointer;font-size:16px;color:#64748B">✕</button>
-        </div>
-        <div class="fl-mb" style="display:flex;flex-direction:column;gap:14px">
-
-          <!-- Resumen de la cotización -->
-          <div style="background:linear-gradient(135deg,#FEF9C3,#FEF3C7);border:1px solid #FDE68A;border-radius:10px;padding:14px">
-            <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#92400E;margin-bottom:10px">Resumen de cotización enviada por Flotilla</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px">
-              <div><div style="font-size:9px;color:#78350F;font-weight:700">Taller</div><div style="font-size:12px;font-weight:800">${s.tallerNombre||'—'}</div></div>
-              <div><div style="font-size:9px;color:#78350F;font-weight:700">Monto</div><div style="font-size:18px;font-weight:900;color:#92400E">${s.montoCotizacion?'$'+Number(s.montoCotizacion).toLocaleString('es-MX'):'—'}</div></div>
-              <div><div style="font-size:9px;color:#78350F;font-weight:700">Fecha pago</div><div style="font-size:12px;font-weight:800">${s.fechaPagoProgramada||'—'}</div></div>
-            </div>
-            ${s.tallerDireccion ? `<div style="font-size:11px;color:#78350F;margin-bottom:6px">📍 ${s.tallerDireccion}${s.tallerMaps?` · <a href="${s.tallerMaps}" target="_blank" style="color:#2563EB">Ver en mapa</a>`:''}</div>` : ''}
-            ${s.tallerRFC ? `<div style="font-size:11px;color:#78350F;margin-bottom:6px">RFC: ${s.tallerRFC} · ${s.tallerRazon||''}</div>` : ''}
-            ${s.sugerenciaCotizacion ? `<div style="background:rgba(255,255,255,.6);border-radius:8px;padding:9px 11px;font-size:11px;color:#78350F;margin-top:4px">
-              <strong>Sugerencia Flotilla:</strong> ${s.sugerenciaCotizacion}</div>` : ''}
-          </div>
-
-          <!-- Documentos de cotización -->
-          ${arch.length ? `<div>
-            <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:8px">Documentos adjuntos (${arch.length})</div>
-            <div style="display:flex;gap:6px;flex-wrap:wrap">
-              ${arch.map((a,i) => `<button onclick="flVerArchivo('${a.b64||a.base64||''}','${a.nombre||'Doc '+(i+1)}')"
-                style="font-size:10px;font-weight:700;padding:5px 10px;background:#fff;border:1px solid #E2E8F0;border-radius:7px;cursor:pointer;color:#374151;display:flex;align-items:center;gap:4px">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="${a.tipo==='pdf'?'#B91C1C':'#1D4ED8'}" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                ${a.nombre||'Doc '+(i+1)}
-              </button>`).join('')}
-            </div>
-          </div>` : ''}
-
-          <!-- Notas de validación -->
-          ${s.notasValidacion ? `<div style="background:#F8FAFC;border-radius:9px;padding:11px;font-size:11px;color:#374151">
-            <strong style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">Notas de Flotilla</strong>
-            ${s.notasValidacion}
-          </div>` : ''}
-
-          <!-- Comentario de aprobación (opcional) -->
-          <div>
-            <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:5px">Comentario para Pagos (opcional)</label>
-            <textarea id="apr-comentario" rows="3" placeholder="Instrucciones especiales, forma de pago, prioridad…"
-              style="width:100%;border:1.5px solid #E2E8F0;border-radius:9px;padding:9px 12px;font-family:inherit;font-size:12px;resize:vertical;outline:none;box-sizing:border-box"
-              onfocus="this.style.borderColor='#CA8A04'" onblur="this.style.borderColor='#E2E8F0'"></textarea>
-          </div>
-
-          <div class="fl-fa" style="margin-top:0">
-            <button onclick="document.getElementById('flapr-ov').remove()" class="fb gho" style="padding:9px 18px">Cancelar</button>
-            <button onclick="flConfirmarAprobacion('${id}')" id="apr-btn"
-              style="padding:9px 22px;background:#CA8A04;color:#fff;border:none;border-radius:9px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer">
-              ✓ Aprobar → Pagos
-            </button>
-          </div>
-          <div id="apr-err" style="display:none;padding:8px 12px;background:#FEE2E2;border-radius:8px;font-size:12px;color:#B91C1C;text-align:center"></div>
-        </div>
-      </div>
-    </div>`;
-  document.body.insertAdjacentHTML('beforeend', html);
-};
-
 window.flConfirmarAprobacion = async function(id) {
   const btn = document.getElementById('apr-btn');
   const err = document.getElementById('apr-err');
@@ -4390,100 +4194,6 @@ window.flConfirmarAprobacion = async function(id) {
     err.textContent = 'Error: ' + e.message; err.style.display = 'block';
     btn.textContent = '✓ Aprobar → Pagos'; btn.disabled = false;
   }
-};
-
-// ═══════════════════════════════════════════════════════
-// MODAL PAGOS — subir comprobante o programar fecha
-// ═══════════════════════════════════════════════════════
-window.flModalPagos = function(id) {
-  const s = flS.find(x => x.id === id);
-  if (!s) return;
-  document.getElementById('flpm-ov')?.remove();
-  window._pgComp = null;
-
-  const html = `
-    <div class="fl-ov" id="flpg-ov" onclick="if(event.target===this)this.remove()" style="z-index:3100">
-      <div class="fl-modal" style="max-width:580px;width:100%;max-height:90vh;overflow-y:auto">
-        <div class="fl-mh" style="position:sticky;top:0;background:#fff;z-index:2">
-          <div>
-            <div style="font-size:15px;font-weight:900">Gestión de Pago</div>
-            <div style="font-size:11px;color:#64748B;margin-top:2px">ECO ${s.vehiculoEco||'—'} · ${s.tipo||'—'}</div>
-          </div>
-          <button onclick="document.getElementById('flpg-ov').remove()" style="width:30px;height:30px;border:none;border-radius:50%;background:#F1F5F9;cursor:pointer;font-size:16px;color:#64748B">✕</button>
-        </div>
-        <div class="fl-mb" style="display:flex;flex-direction:column;gap:14px">
-
-          <!-- Resumen aprobado -->
-          <div style="background:linear-gradient(135deg,#F0FDF4,#DCFCE7);border:1px solid #86EFAC;border-radius:10px;padding:14px">
-            <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#15803D;margin-bottom:10px">Aprobado por Contraloría</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
-              <div><div style="font-size:9px;color:#166534;font-weight:700">Taller</div><div style="font-size:12px;font-weight:800">${s.tallerNombre||'—'}</div></div>
-              <div><div style="font-size:9px;color:#166534;font-weight:700">Monto</div><div style="font-size:18px;font-weight:900;color:#14532D">${s.montoCotizacion?'$'+Number(s.montoCotizacion).toLocaleString('es-MX'):'—'}</div></div>
-              <div><div style="font-size:9px;color:#166534;font-weight:700">Fecha prog.</div><div style="font-size:12px;font-weight:800">${s.fechaPagoProgramada||'—'}</div></div>
-            </div>
-            ${s.comentarioAprobacion ? `<div style="margin-top:8px;padding:8px 10px;background:rgba(255,255,255,.7);border-radius:7px;font-size:11px;color:#166534"><strong>Nota Contraloría:</strong> ${s.comentarioAprobacion}</div>` : ''}
-          </div>
-
-          <!-- Documentos cotización para revisión -->
-          ${(s.cotizacionArchivos||[]).length ? `<div>
-            <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:7px">Documentos de cotización</div>
-            <div style="display:flex;gap:6px;flex-wrap:wrap">
-              ${(s.cotizacionArchivos||[]).map((a,i)=>`<button onclick="flVerArchivo('${a.b64||a.base64||''}','${a.nombre||'Doc '+(i+1)}')"
-                style="font-size:10px;font-weight:700;padding:5px 10px;background:#fff;border:1px solid #E2E8F0;border-radius:7px;cursor:pointer;color:#374151">
-                📎 ${a.nombre||'Doc '+(i+1)}</button>`).join('')}
-            </div>
-          </div>` : ''}
-
-          <!-- Programar en Google Calendar -->
-          <div style="border:1.5px solid #E0E7FF;border-radius:10px;padding:14px;background:#F8FAFF">
-            <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#4338CA;margin-bottom:10px">📅 Programar en Google Calendar</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-              <div>
-                <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">Fecha de pago</label>
-                <input id="pg-fecha" type="date" value="${s.fechaPagoProgramada||''}"
-                  style="width:100%;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;outline:none;box-sizing:border-box"
-                  onfocus="this.style.borderColor='#4338CA'" onblur="this.style.borderColor='#E2E8F0'">
-              </div>
-              <div>
-                <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">Hora</label>
-                <input id="pg-hora" type="time" value="10:00"
-                  style="width:100%;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;outline:none;box-sizing:border-box"
-                  onfocus="this.style.borderColor='#4338CA'" onblur="this.style.borderColor='#E2E8F0'">
-              </div>
-            </div>
-            <button onclick="flProgramarCalendar('${id}')"
-              style="width:100%;padding:9px;background:#4338CA;color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:12px;font-weight:800;cursor:pointer">
-              📅 Agregar a Google Calendar
-            </button>
-            <div id="pg-cal-ok" style="display:none;margin-top:7px;text-align:center;font-size:11px;color:#4338CA;font-weight:700">✓ Evento creado en Google Calendar</div>
-          </div>
-
-          <!-- Subir comprobante -->
-          <div>
-            <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:6px">Comprobante de pago (PDF o imagen) *</label>
-            <div id="pg-comp-preview" style="margin-bottom:8px">
-              ${s.comprobantePago ? `<div style="display:flex;align-items:center;gap:8px;padding:9px 12px;background:#F0FDF4;border:1px solid #86EFAC;border-radius:9px">
-                <span style="font-size:12px;font-weight:700;color:#15803D;flex:1">✓ Comprobante ya guardado</span>
-                <button onclick="flVerArchivo('${s.comprobantePago.b64||s.comprobantePago.base64||''}','Comprobante')" style="font-size:10px;font-weight:700;padding:4px 10px;background:#fff;border:1px solid #86EFAC;border-radius:6px;cursor:pointer;color:#15803D">Ver</button>
-                <button onclick="window._pgComp=null;document.getElementById('pg-comp-preview').innerHTML=''" style="border:none;background:none;cursor:pointer;color:#EF4444;font-size:14px;padding:0 2px">✕</button>
-              </div>` : ''}
-            </div>
-            ${flZonaDrop('pg-file-input','PDF, JPG, PNG')}
-            <input id="pg-file-input" type="file" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="flPgCargarComp(this.files,'${id}')">
-          </div>
-
-          <div class="fl-fa" style="margin-top:0">
-            <button onclick="document.getElementById('flpg-ov').remove()" class="fb gho" style="padding:9px 18px">Cerrar</button>
-            <button onclick="flMarcarPagado('${id}')" id="pg-btn-pagado"
-              style="padding:9px 22px;background:#15803D;color:#fff;border:none;border-radius:9px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer">
-              ✓ Pagado → Cierre
-            </button>
-          </div>
-          <div id="pg-err" style="display:none;padding:8px 12px;background:#FEE2E2;border-radius:8px;font-size:12px;color:#B91C1C;text-align:center"></div>
-        </div>
-      </div>
-    </div>`;
-  document.body.insertAdjacentHTML('beforeend', html);
 };
 
 window.flPgCargarComp = async function(files, id) {
@@ -4544,70 +4254,6 @@ window.flMarcarPagado = async function(id) {
     err.textContent = 'Error: ' + e.message; err.style.display = 'block';
     btn.textContent = '✓ Pagado → Cierre'; btn.disabled = false;
   }
-};
-
-// ═══════════════════════════════════════════════════════
-// MODAL CIERRE — Fátima sube factura y finaliza
-// ═══════════════════════════════════════════════════════
-window.flModalCierre = function(id) {
-  const s = flS.find(x => x.id === id); if (!s) return;
-  document.getElementById('flpm-ov')?.remove();
-  window._flFactura = null;
-
-  const html = `
-    <div class="fl-ov" id="flcierr-ov" onclick="if(event.target===this)this.remove()" style="z-index:3100">
-      <div class="fl-modal" style="max-width:580px;width:100%;max-height:90vh;overflow-y:auto">
-        <div class="fl-mh" style="position:sticky;top:0;background:#fff;z-index:2">
-          <div>
-            <div style="font-size:15px;font-weight:900">Cierre de servicio</div>
-            <div style="font-size:11px;color:#64748B;margin-top:2px">ECO ${s.vehiculoEco||'—'} · ${s.tipo||'—'}</div>
-          </div>
-          <button onclick="document.getElementById('flcierr-ov').remove()" style="width:30px;height:30px;border:none;border-radius:50%;background:#F1F5F9;cursor:pointer;font-size:16px;color:#64748B">✕</button>
-        </div>
-        <div class="fl-mb" style="display:flex;flex-direction:column;gap:14px">
-
-          <!-- Resumen del proceso -->
-          <div style="background:linear-gradient(135deg,#EFF6FF,#DBEAFE);border:1px solid #BFDBFE;border-radius:10px;padding:14px">
-            <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#1D4ED8;margin-bottom:10px">Resumen del servicio</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-              ${[['Taller',s.tallerNombre||'—'],['Monto',s.montoCotizacion?'$'+Number(s.montoCotizacion).toLocaleString('es-MX'):'—'],['Ingreso taller',s.fechaIngresoTaller||'—'],['Entrega estimada',s.fechaEntregaEstimada||'—'],['Aprobado por',s.aprobadoPor||'—'],['Pago registrado',s.pagadoEn?s.pagadoEn.slice(0,10):'—']].map(([l,val])=>`
-                <div><div style="font-size:9px;color:#1E40AF;font-weight:700">${l}</div><div style="font-size:11px;font-weight:700">${val}</div></div>`).join('')}
-            </div>
-          </div>
-
-          <!-- Factura del servicio -->
-          <div>
-            <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:6px">Factura del servicio (PDF o imagen) *</label>
-            <div id="cierr-fact-preview" style="margin-bottom:8px">
-              ${s.facturaServicio ? `<div style="display:flex;align-items:center;gap:8px;padding:9px 12px;background:#F0FDF4;border:1px solid #86EFAC;border-radius:9px">
-                <span style="font-size:12px;font-weight:700;color:#15803D;flex:1">✓ Factura ya guardada</span>
-                <button onclick="flVerArchivo('${s.facturaServicio.b64||s.facturaServicio.base64||''}','Factura')" style="font-size:10px;font-weight:700;padding:4px 10px;background:#fff;border:1px solid #86EFAC;border-radius:6px;cursor:pointer;color:#15803D">Ver</button>
-              </div>` : ''}
-            </div>
-            ${flZonaDrop('cierr-file-input','PDF, JPG, PNG')}
-            <input id="cierr-file-input" type="file" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="flCierrCargarFactura(this.files)">
-          </div>
-
-          <!-- Notas de cierre -->
-          <div>
-            <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:5px">Observaciones finales (opcional)</label>
-            <textarea id="cierr-notas" rows="3" placeholder="Estado en que se entregó el vehículo, observaciones del taller, garantías…"
-              style="width:100%;border:1.5px solid #E2E8F0;border-radius:9px;padding:9px 12px;font-family:inherit;font-size:12px;resize:vertical;outline:none;box-sizing:border-box"
-              onfocus="this.style.borderColor='#0369A1'" onblur="this.style.borderColor='#E2E8F0'">${s.notasCierre||''}</textarea>
-          </div>
-
-          <div class="fl-fa" style="margin-top:0">
-            <button onclick="document.getElementById('flcierr-ov').remove()" class="fb gho" style="padding:9px 18px">Cancelar</button>
-            <button onclick="flFinalizarServicio('${id}')" id="cierr-btn"
-              style="padding:9px 22px;background:#0369A1;color:#fff;border:none;border-radius:9px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer">
-              ✓ Finalizar servicio
-            </button>
-          </div>
-          <div id="cierr-err" style="display:none;padding:8px 12px;background:#FEE2E2;border-radius:8px;font-size:12px;color:#B91C1C;text-align:center"></div>
-        </div>
-      </div>
-    </div>`;
-  document.body.insertAdjacentHTML('beforeend', html);
 };
 
 window.flCierrCargarFactura = async function(files) {
