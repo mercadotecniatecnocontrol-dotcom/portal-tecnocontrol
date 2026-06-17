@@ -117,6 +117,17 @@ const ADMINS_FLOTILLA=[
   'mercadotecnia@tecnocontrol.com.mx',
   'p.pinedo@tecnocontrol.com.mx',
   'm.delao@tecnocontrol.com.mx',
+  'nicolas@tecnocontrol.com.mx',
+  'proyectos@tecnocontrol.com.mx',
+  'r.moriel@tecnocontrol.com.mx',
+  'clientes@tecnocontrol.com.mx',
+  's.carmona@tecnocontrol.com.mx',
+  'tomas@tecnocontrol.com.mx',
+  'fernando@tecnocontrol.com.mx',
+  'v.garcia@tecnocontrol.com.mx',
+  'i.saucedo@tecnocontrol.com.mx',
+  'j.uribe@tecnocontrol.com.mx',
+  'plazajrz@tecnocontrol.com.mx',
   'fatima@tecnocontrol.com.mx',
 ];
 
@@ -602,10 +613,7 @@ function buildHTML(){
         </div>
         <div class="fm-status">
           <div class="fm-online-dot" id="fm-dot"></div>
-          <div style="position:relative;display:inline-flex">
-            <button class="fm-user-btn" id="fm-user-btn" onclick="abrirPerfil()">?</button>
-            <span id="fm-header-badge-notif" style="display:none;position:absolute;top:-4px;right:-4px;background:#EF4444;color:#fff;font-size:9px;font-weight:800;border-radius:50%;width:16px;height:16px;align-items:center;justify-content:center;pointer-events:none"></span>
-          </div>
+          <button class="fm-user-btn" id="fm-user-btn" onclick="abrirPerfil()">?</button>
         </div>
       </div>
     </div>
@@ -798,8 +806,6 @@ function actualizarBadges(){
   const notif=misPipelineNotif.filter(n=>!n.leido).length;
   if(bt){bt.textContent=pend;bt.style.display=pend?'flex':'none';}
   if(bn){bn.textContent=notif;bn.style.display=notif?'flex':'none';}
-  const bh=document.getElementById('fm-header-badge-notif');
-  if(bh){bh.textContent=notif;bh.style.display=notif?'flex':'none';}
 }
 
 // ── NAVEGACIÓN ──
@@ -855,7 +861,7 @@ function _renderSelectorLista(todos){
 }
 
 function renderSelectorFlota(){
-  const todos=window.CAT_FL||[];
+  const todos=(window._fmAllVehs?.length?window._fmAllVehs:window.CAT_FL)||[];
   setContent(`
     <div class="fm-sec-hd">
       <div>
@@ -872,16 +878,23 @@ function renderSelectorFlota(){
     const ocupados={};
     snapU.docs.forEach(d=>{
       const u=d.data();
-      const ecos=Array.isArray(u.ecosVinculados)?u.ecosVinculados.map(String):(u.ecoVinculado?[String(u.ecoVinculado)]:[]);
+      // Leer ecosVinculados (array) Y ecoVinculado (campo simple) — ambos formatos
+      const ecos=[
+        ...(Array.isArray(u.ecosVinculados)?u.ecosVinculados.map(String):[]),
+        ...(u.ecoVinculado?[String(u.ecoVinculado)]:[]),
+        ...(u.ecoActual?[String(u.ecoActual)]:[]),
+      ].filter((e,i,a)=>e&&a.indexOf(e)===i); // únicos
       ecos.forEach(e=>{ if(e&&u.email!==miPerfil?.email) ocupados[e]={nombre:u.nombre||u.displayName||u.email||'Otro usuario'}; });
     });
+    // También marcar el ECO actual del usuario logueado en otros dispositivos
+    // si miVeh está activo en sesión actual de otro rol, ya está en fl_usuarios
     window._fmEcosOcupados=ocupados;
     _renderSelectorLista(todos);
   }).catch(()=>{ window._fmEcosOcupados={}; _renderSelectorLista(todos); });
 }
 
 window.fmFiltrarSelector = function(q){
-  const todos=window.CAT_FL||[];
+  const todos=(window._fmAllVehs?.length?window._fmAllVehs:window.CAT_FL)||[];
   const qn=q.toLowerCase();
   const filtrados=q?todos.filter(v=>
     String(v.eco).includes(qn)||
@@ -897,6 +910,9 @@ window.fmFiltrarSelector = function(q){
 };
 
 window.fmSeleccionarVeh = async function(eco){
+  // Verificar si está ocupado por otro usuario
+  const oc=(window._fmEcosOcupados||{})[String(eco)];
+  if(oc){toast(`ECO ${eco} está en uso por ${oc.nombre}`,'err');return;}
   // Buscar en Firestore primero, luego catálogo local
   try{
     const snap=await db.collection(C.VEHS).where('eco','==',String(eco)).get();
@@ -1081,7 +1097,7 @@ window.fmUsarUnidad=async function(eco){
 // MODAL CAMBIO DE VEHÍCULO (solo admins)
 window.adminCambiarVehiculo=function(){
   if(!esRolLibre())return;
-  const todos=window.CAT_FL||[];
+  const todos=(window._fmAllVehs?.length?window._fmAllVehs:window.CAT_FL)||[];
   const opciones=todos
     .filter(v=>v.status==='activo')
     .sort((a,b)=>Number(a.eco)-Number(b.eco))
