@@ -3421,27 +3421,36 @@ window.flElim = async id => {
 };
 
 // ═══════════════════════════════════════════════════════
-// NOTIFICACIONES → fl_notificaciones (app móvil las lee)
+// NOTIFICACIONES → flotilla_notificaciones (app móvil las lee)
 // ═══════════════════════════════════════════════════════
 window.flEnviarNotif = async function(id, tipo, comentario) {
   try {
     const s = flS.find(x => x.id === id);
     if (!s) return;
+    const eco = s.vehiculoEco || '—';
+    const por = window.auth?.currentUser?.displayName || window.auth?.currentUser?.email || '—';
+    // Comentario explícito > último comentario guardado en la solicitud > vacío
+    const comt = comentario
+      || (s.comentariosServicio?.length  ? s.comentariosServicio[s.comentariosServicio.length-1]?.texto : null)
+      || (s.comentariosEvaluacion?.length? s.comentariosEvaluacion[s.comentariosEvaluacion.length-1]?.texto : null)
+      || null;
+    const sufComt = comt ? ` · Comentario: "${comt}"` : '';
     const msgs = {
-      validada:     `Tu solicitud fue aceptada y está en proceso de cotización. (ECO ${s.vehiculoEco||'—'})`,
-      rechazada_val:`Tu solicitud fue rechazada por Flotilla. Motivo: ${comentario||s.comentarioRechazo||'Sin especificar'}. (ECO ${s.vehiculoEco||'—'})`,
-      aprobada:     `¡Solicitud aprobada! (ECO ${s.vehiculoEco||'—'}) · Taller: ${s.tallerNombre||'—'} · $${s.montoCotizacion?Number(s.montoCotizacion).toLocaleString('es-MX'):'—'}`,
-      rechazada_apr:`Tu solicitud regresó a revisión. Contraloría indica: ${comentario||'Sin comentario'}. (ECO ${s.vehiculoEco||'—'})`,
-      pagos:        `Pago programado para tu servicio. (ECO ${s.vehiculoEco||'—'})`,
-      pagado:       `El pago de tu servicio fue procesado. (ECO ${s.vehiculoEco||'—'})`,
-      cerrada:      `Servicio finalizado. (ECO ${s.vehiculoEco||'—'}) · Tu expediente ya está disponible.`,
+      validada:     `Tu solicitud pasó a Evaluación. (ECO ${eco}) · Taller: ${s.tallerNombre||'Por definir'}${s.montoCotizacion?' · $'+Number(s.montoCotizacion).toLocaleString('es-MX'):''}${sufComt}`,
+      rechazada_val:`Tu solicitud fue rechazada. Motivo: ${comentario||s.comentarioRechazo||'Sin especificar'}. (ECO ${eco})`,
+      aprobada:     `¡Solicitud autorizada y en servicio! (ECO ${eco}) · Taller: ${s.tallerNombre||'—'}${s.montoCotizacion?' · $'+Number(s.montoCotizacion).toLocaleString('es-MX'):''}${sufComt}`,
+      rechazada_apr:`Tu solicitud fue devuelta a revisión. Contraloría indica: ${comentario||'Sin comentario'}. (ECO ${eco})`,
+      pagos:        `Pago programado para tu servicio. (ECO ${eco})${sufComt}`,
+      pagado:       `El pago de tu servicio fue procesado. (ECO ${eco})${sufComt}`,
+      cerrada:      `Servicio finalizado. Expediente cerrado. (ECO ${eco})${sufComt}`,
+      servicio:     `Tu solicitud entró a Servicio en proceso. (ECO ${eco})${sufComt}`,
     };
     const msg = msgs[tipo];
     if (!msg) return;
-    await db.collection('fl_notificaciones').add({
+    await db.collection('flotilla_notificaciones').add({
       solicitudId: id,
       para: s.creadoPor || null,
-      vehiculoEco: s.vehiculoEco || null,
+      vehiculoEco: eco,
       tipo,
       mensaje: msg,
       leida: false,
@@ -3879,7 +3888,8 @@ window.flGuardarEvaluacion = async function(id) {
       actualizadoEn:new Date().toISOString(),
     });
     await ldSols();
-    flEnviarNotif(id,'validada');
+    const ultComt2=(window._flEvalComents||[]).slice(-1)[0]?.texto||null;
+    flEnviarNotif(id,'validada',ultComt2);
     document.getElementById('fleval-ov')?.remove();
     window.flPipelineModal('Evaluación');
   }catch(e){err.textContent='Error: '+e.message;err.style.display='block';btn.textContent='Guardar y enviar a Servicio →';btn.disabled=false;}
@@ -4003,7 +4013,9 @@ window.flGuardarServicio = async function(id, cerrar) {
     }
     await fs.updateDoc(fs.doc(db,C.SOLS,id),data);
     await ldSols();
-    if(cerrar)flEnviarNotif(id,'cerrada');
+    const ultComt3=(window._flServComents||[]).slice(-1)[0]?.texto||null;
+    if(cerrar)flEnviarNotif(id,'cerrada',ultComt3);
+    else flEnviarNotif(id,'servicio',ultComt3);
     document.getElementById('flserv-ov')?.remove();
     window.flPipelineModal(cerrar?'Cerrada':'Servicio');
   }catch(e){
@@ -4269,7 +4281,8 @@ window.flGuardarValidacion = async function(id) {
     });
     window._flValArch = [];
     await ldSols();
-    flEnviarNotif(id, 'validada');
+    const ultComt4=g('val-notas')||null;
+    flEnviarNotif(id, 'validada', ultComt4);
     document.getElementById('flval-ov')?.remove();
     window.flPipelineModal('Validación');
   } catch(e) {
@@ -4370,7 +4383,7 @@ window.flConfirmarAprobacion = async function(id) {
       actualizadoEn: new Date().toISOString(),
     });
     await ldSols();
-    flEnviarNotif(id, 'aprobada');
+    flEnviarNotif(id, 'aprobada', comentario||null);
     document.getElementById('flapr-ov')?.remove();
     window.flPipelineModal('Pagos');
   } catch(e) {
@@ -4523,7 +4536,8 @@ window.flMarcarPagado = async function(id) {
     });
     window._pgComp = null;
     await ldSols();
-    flEnviarNotif(id, 'pagado');
+    const notasPago=document.getElementById('pg-notas')?.value?.trim()||null;
+    flEnviarNotif(id, 'pagado', notasPago);
     document.getElementById('flpg-ov')?.remove();
     window.flPipelineModal('Cierre');
   } catch(e) {
@@ -4628,7 +4642,8 @@ window.flFinalizarServicio = async function(id) {
     });
     window._flFactura = null;
     await ldSols();
-    flEnviarNotif(id, 'cerrada');
+    const notasCierreFinal=document.getElementById('cierr-notas')?.value?.trim()||null;
+    flEnviarNotif(id, 'cerrada', notasCierreFinal);
     document.getElementById('flcierr-ov')?.remove();
     // Abrir resumen final
     flResumenFinal(id);
@@ -4936,5 +4951,5 @@ window.flVerVeh=function(id){const v=flV.find(x=>x.id===id);if(!v)return;const o
 // ── Visor imagen rápido (comisiones) ──
 window.flImg=function(src){const ov=document.createElement('div');ov.className='fl-ov';ov.style.zIndex='4500';ov.style.cursor='zoom-out';ov.innerHTML=`<img src="${src}" style="max-width:92%;max-height:92%;border-radius:12px;box-shadow:0 24px 60px rgba(0,0,0,.5)">`;ov.onclick=()=>ov.remove();document.body.appendChild(ov);};
 
-console.log('[FLOTILLA v13] Pipeline 6 etapas · Tecnocontrol · '+CAT.length+' unidades');
+console.log('[FLOTILLA v14] Pipeline 4 etapas · Tecnocontrol · '+CAT.length+' unidades');
 })();
