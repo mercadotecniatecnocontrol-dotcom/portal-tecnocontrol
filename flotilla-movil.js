@@ -102,7 +102,7 @@ const CHK_CATS={
 };
 
 // ── ESTADO ──
-let miVeh=null, misSols=[], misTareas=[], misNotif=[];
+let miVeh=null, misSols=[], misTareas=[], misNotif=[], misPipelineNotif=[];
 let miPerfil=null; // {email, nombre, ecoVinculado, rol}
 let vistaAct='vehiculo';
 let solState={modo:'entrada',tipo:'',prior:'Normal',desc:'',km:'',taller:'',gasolina:50,chk:{},chkFotos:{},evFotos:[],dmg:{}};
@@ -117,7 +117,6 @@ const ADMINS_FLOTILLA=[
   'mercadotecnia@tecnocontrol.com.mx',
   'p.pinedo@tecnocontrol.com.mx',
   'm.delao@tecnocontrol.com.mx',
-  'plazajrz@tecnocontrol.com.mx',
   'fatima@tecnocontrol.com.mx',
 ];
 
@@ -681,7 +680,27 @@ window.initFlotillaMovil=async function(){
 
   // Registrar Service Worker
   if('serviceWorker' in navigator){
-    navigator.serviceWorker.register('./sw.js').catch(()=>{});
+    navigator.serviceWorker.register('./sw.js').then(reg => {
+      // Detectar cuando hay un nuevo SW esperando (updatefound)
+      reg.addEventListener('updatefound', () => {
+        const newSW = reg.installing;
+        if(!newSW) return;
+        newSW.addEventListener('statechange', () => {
+          if(newSW.state === 'installed' && navigator.serviceWorker.controller){
+            mostrarBannerActualizacion();
+          }
+        });
+      });
+      // Verificar actualizaciones cada vez que la app vuelve al foco
+      document.addEventListener('visibilitychange', () => {
+        if(document.visibilityState === 'visible') reg.update().catch(()=>{});
+      });
+    }).catch(()=>{});
+
+    // Recibir mensaje del SW cuando activó una nueva versión
+    navigator.serviceWorker.addEventListener('message', e => {
+      if(e.data?.type === 'SW_UPDATED') mostrarBannerActualizacion();
+    });
   }
 };
 
@@ -760,13 +779,24 @@ async function cargarMisTareas(){
       .filter(t=>t.estatus!=='Completada');
     misNotif=misSols.filter(s=>['Aprobada','Rechazada','Cotización'].includes(s.estatus)).slice(0,10);
   }catch(e){console.error('[MOVIL tareas]',e);misTareas=[];}
+  // Cargar notificaciones de pipeline del portal
+  try {
+    if(miPerfil?.email){
+      const snapN=await db.collection('flotilla_notificaciones')
+        .where('para','==',miPerfil.email)
+        .orderBy('creadaEn','desc')
+        .limit(20)
+        .get();
+      misPipelineNotif=snapN.docs.map(d=>({id:d.id,...d.data()}));
+    }
+  } catch(e){ misPipelineNotif=[]; }
 }
 
 function actualizarBadges(){
   const bt=document.getElementById('fm-badge-tareas');
   const bn=document.getElementById('fm-badge-notif');
   const pend=misTareas.filter(t=>t.estatus==='Pendiente'||t.estatus==='En proceso').length;
-  const notif=misNotif.length;
+  const notif=misNotif.length + misPipelineNotif.filter(n=>!n.leido).length;
   if(bt){bt.textContent=pend;bt.style.display=pend?'flex':'none';}
   if(bn){bn.textContent=notif;bn.style.display=notif?'flex':'none';}
 }
@@ -1328,8 +1358,33 @@ function renderNuevaSol(){
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
       Crear solicitud
     </button>
+    <div id="fm-val-hint" style="font-size:11px;color:#94A3B8;text-align:center;margin-top:6px;min-height:16px"></div>
     <div style="height:20px"></div>
   `);
+  // Live validation hint — update as user fills fields
+  function fmActualizarHint(){
+    const faltantes=[];
+    if(!document.getElementById('fm-tipo')?.value) faltantes.push('tipo');
+    if(!document.getElementById('fm-desc')?.value?.trim()) faltantes.push('descripción');
+    if(!document.getElementById('fm-km')?.value?.trim()) faltantes.push('kilometraje');
+    if(!solState.evFotos?.length) faltantes.push('foto');
+    const resp=Object.values(solState.chk).filter(v=>v==='si'||v==='no').length;
+    const tot=Object.values(CHK_CATS).flat().length;
+    if(resp<tot) faltantes.push(`checklist (${resp}/${tot})`);
+    const hint=document.getElementById('fm-val-hint');
+    if(hint) hint.textContent=faltantes.length?`Pendiente: ${faltantes.join(' · ')}`:'✓ Formulario completo';
+    if(hint) hint.style.color=faltantes.length?'#94A3B8':'#15803D';
+  }
+  // Attach listeners
+  setTimeout(()=>{
+    ['fm-tipo','fm-desc','fm-km'].forEach(id=>{
+      document.getElementById(id)?.addEventListener('input',fmActualizarHint);
+      document.getElementById(id)?.addEventListener('change',fmActualizarHint);
+    });
+    // Expose so chk/photo updates can trigger it
+    window._fmActualizarHint=fmActualizarHint;
+    fmActualizarHint();
+  },100);
 }
 
 function renderGaugeSVG(pct100){
@@ -1404,6 +1459,7 @@ window.fmChk=function(key,val){
   const rev=Object.values(solState.chk).filter(v=>v==='si'||v==='no').length;
   const cnt=document.getElementById('fm-chk-cnt');
   if(cnt)cnt.textContent=`${rev} de ${total} revisados`;
+  window._fmActualizarHint?.();
 };
 
 // ── CHECK LIST SEMANAL ──
@@ -1439,6 +1495,16 @@ window.fmChkSem=function(key,val){
   const rev=Object.values(semState.chk).filter(v=>v==='si'||v==='no').length;
   const cnt=document.getElementById('fm-sem-chk-cnt');
   if(cnt)cnt.textContent=`${rev} de ${total} revisados`;
+  // Update validation hint
+  const hint=document.getElementById('fm-sem-val-hint');
+  if(hint){
+    const faltantes=[];
+    if(!document.getElementById('fm-sem-km')?.value?.trim()) faltantes.push('kilometraje');
+    if(rev<total) faltantes.push(`checklist (${rev}/${total})`);
+    if(!firmaTieneTrazo('fm-sem-firma')) faltantes.push('firma');
+    hint.textContent=faltantes.length?`Pendiente: ${faltantes.join(' · ')}`:'✓ Listo para guardar';
+    hint.style.color=faltantes.length?'#94A3B8':'#15803D';
+  }
 };
 
 window.fmGasSem=function(v){
@@ -1549,6 +1615,7 @@ function renderChkSemanal(){
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
       Guardar check list semanal
     </button>
+    <div id="fm-sem-val-hint" style="font-size:11px;color:#94A3B8;text-align:center;margin-top:6px;min-height:16px">Completa todos los ítems del check list antes de guardar</div>
     <div style="height:20px"></div>
   `);
   setTimeout(()=>initFirmaCanvas('fm-sem-firma'),100);
@@ -1556,12 +1623,26 @@ function renderChkSemanal(){
 
 window.fmGuardarChkSemanal=async function(){
   if(!miVeh){toast('No hay vehículo vinculado','err');return;}
-  if(!firmaTieneTrazo('fm-sem-firma')){toast('La firma es obligatoria. Dibújala antes de guardar.','err');return;}
+  if(!firmaTieneTrazo('fm-sem-firma')){toast('⚠ La firma es obligatoria','err');return;}
 
   const semana=getSemanaISO();
-  const km=document.getElementById('fm-sem-km')?.value?.trim()||'';
+  const km=document.getElementById('fm-sem-km')?.value?.trim();
   const observaciones=document.getElementById('fm-sem-obs')?.value?.trim()||'';
   const firmaRaw=firmaExportar('fm-sem-firma');
+
+  // ── VALIDACIONES ──
+  if(!km||isNaN(Number(km))||Number(km)<0){
+    toast('⚠ El kilometraje actual es obligatorio','err');
+    document.getElementById('fm-sem-km')?.focus();
+    return;
+  }
+  const totalChk=Object.values(CHK_CATS).flat().length;
+  const respondidos=Object.values(semState.chk).filter(v=>v==='si'||v==='no').length;
+  if(respondidos<totalChk){
+    toast(`⚠ Completa el check list — faltan ${totalChk-respondidos} ítems por revisar`,'err');
+    document.getElementById('fm-sem-chk-list')?.scrollIntoView({behavior:'smooth',block:'center'});
+    return;
+  }
 
   const btn=document.getElementById('fm-sem-btn-guardar');
   if(btn){btn.disabled=true;btn.textContent='Verificando…';}
@@ -1718,6 +1799,7 @@ window.fmCapturar=async function(tipo,key,targetTag){
       }
       toast(`✓ ${meta.codigo}`,'ok');
       document.body.removeChild(inp);
+      window._fmActualizarHint?.();
     };
     reader.readAsDataURL(file);
   };
@@ -1762,15 +1844,72 @@ window.fmVerFoto=function(ev){
 };
 
 // ── GUARDAR SOLICITUD ──
+// ── BANNER DE ACTUALIZACIÓN DISPONIBLE ──────────────────────────
+function mostrarBannerActualizacion(){
+  if(document.getElementById('fm-update-banner')) return; // ya existe
+  const banner = document.createElement('div');
+  banner.id = 'fm-update-banner';
+  banner.style.cssText = `
+    position:fixed;bottom:80px;left:50%;transform:translateX(-50%);
+    background:#1E3A5F;color:#fff;border-radius:14px;padding:12px 18px;
+    display:flex;align-items:center;gap:12px;z-index:9999;
+    box-shadow:0 4px 20px rgba(0,0,0,0.35);font-family:inherit;
+    max-width:320px;width:90%;animation:fmSlideUp .3s ease;
+  `;
+  banner.innerHTML = `
+    <div style="font-size:20px">🔄</div>
+    <div style="flex:1">
+      <div style="font-size:13px;font-weight:800">Nueva versión disponible</div>
+      <div style="font-size:11px;opacity:.8;margin-top:2px">Actualiza para usar la versión más reciente</div>
+    </div>
+    <button onclick="window.location.reload(true)" style="
+      background:#3B82F6;color:#fff;border:none;border-radius:9px;
+      padding:8px 14px;font-size:12px;font-weight:800;cursor:pointer;
+      font-family:inherit;white-space:nowrap
+    ">Actualizar</button>
+  `;
+  document.body.appendChild(banner);
+  // Auto-desaparecer después de 30s si no actúa
+  setTimeout(() => banner.remove(), 30000);
+}
+
 window.fmGuardar=async function(){
   const tipoR=document.getElementById('fm-tipo')?.value;
   const tipoC=document.getElementById('fm-tipo-c')?.value?.trim();
   const tipo=tipoR==='__c'?(tipoC||'Personalizado'):tipoR;
   const desc=document.getElementById('fm-desc')?.value?.trim();
-  const km=document.getElementById('fm-km')?.value;
+  const km=document.getElementById('fm-km')?.value?.trim();
   const taller=document.getElementById('fm-taller')?.value?.trim();
-  if(!tipo){toast('Selecciona el tipo de solicitud','err');return;}
-  if(!desc){toast('Describe el problema','err');return;}
+
+  // ── VALIDACIONES OBLIGATORIAS ──
+  const totalChk=Object.values(CHK_CATS).flat().length;
+  const respondidos=Object.values(solState.chk).filter(v=>v==='si'||v==='no').length;
+
+  if(!tipo){
+    toast('⚠ Selecciona el tipo de solicitud','err');
+    document.getElementById('fm-tipo')?.focus();
+    return;
+  }
+  if(!desc){
+    toast('⚠ Describe el problema o servicio','err');
+    document.getElementById('fm-desc')?.focus();
+    return;
+  }
+  if(!km||isNaN(Number(km))||Number(km)<0){
+    toast('⚠ El kilometraje actual es obligatorio','err');
+    document.getElementById('fm-km')?.focus();
+    return;
+  }
+  if(!solState.evFotos||solState.evFotos.length===0){
+    toast('⚠ Sube al menos 1 foto de evidencia','err');
+    return;
+  }
+  if(respondidos<totalChk){
+    toast(`⚠ Completa el check list — faltan ${totalChk-respondidos} ítems por revisar`,'err');
+    document.getElementById('fm-chk-list')?.scrollIntoView({behavior:'smooth',block:'center'});
+    return;
+  }
+
   const btn=document.getElementById('fm-btn-guardar');
   if(btn){btn.disabled=true;btn.textContent='Guardando…';}
   const docObj={
@@ -1880,7 +2019,21 @@ window.fmMarcarTarea=async function(id,est){
 // VISTA 4 — NOTIFICACIONES / AVISOS
 // ══════════════════════════════════════════
 function renderNotif(){
+  const pipelineItems=(misPipelineNotif||[]).map(n=>{
+    const tipoIco={validada:'ok',aprobada:'ok',cerrada:'ok',rechazada_val:'err',rechazada_apr:'err',pagos:'msg',pagado:'ok'}[n.tipo]||'msg';
+    const tipoBg={ok:'#DCFCE7',err:'#FEE2E2',msg:'#EDE9FE'}[tipoIco];
+    const tipoIcoSvg={ok:IC.check,err:IC.x,msg:IC.bell}[tipoIco];
+    return {
+      ico:tipoIco, bg:tipoBg, icoSvg:tipoIcoSvg,
+      t:n.mensaje||'Aviso de solicitud',
+      s:`ECO ${n.vehiculoEco||'—'} · ${n.tipo||'—'}`,
+      time:hF(n.creadaEn),
+      unread:!n.leido,
+      id:n.id,
+    };
+  });
   const items=[
+    ...pipelineItems,
     ...misNotif.map(s=>({
       ico:s.estatus==='Aprobada'?'ok':s.estatus==='Rechazada'?'err':'msg',
       bg:s.estatus==='Aprobada'?'#DCFCE7':s.estatus==='Rechazada'?'#FEE2E2':'#EDE9FE',icoSvg:s.estatus==='Aprobada'?IC.check:s.estatus==='Rechazada'?IC.x:IC.bell,
