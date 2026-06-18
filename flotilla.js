@@ -2410,7 +2410,10 @@ window.flVerSol=async function(id){
       <div style="display:flex;flex-wrap:wrap;gap:7px">
         ${pV&&s.estatus==='Solicitud'?`<button class="fb acc" onclick="this.closest('.fl-ov').remove();flModalEvaluacion('${s.id}')">${I.check} Evaluar →</button>`:''}
         ${pV&&['Evaluación','Validación','Validada','Cotización','Aprobación','Aprobada'].includes(s.estatus)?`<button class="fb acc" onclick="this.closest('.fl-ov').remove();flModalServicio('${s.id}')">→ Servicio</button>`:''}
-        ${pV&&['Servicio','Pagos','Cierre'].includes(s.estatus)?`<button class="fb acc" onclick="this.closest('.fl-ov').remove();flModalServicio('${s.id}')">→ Cerrar expediente</button>`:''}
+        ${pV&&['Servicio','Pagos','Cierre'].includes(s.estatus)?`
+          <button class="fb" onclick="this.closest('.fl-ov').remove();flModalServicio('${s.id}')" style="background:#B45309;color:#fff;border:none">+ Agregar docs / avance</button>
+          <button class="fb acc" onclick="this.closest('.fl-ov').remove();flModalServicio('${s.id}')" id="btn-cerrar-exp">→ Cerrar expediente</button>
+        `:''}
         ${pV&&s.estatus==='Solicitud'?`<button class="fb dan" onclick="this.closest('.fl-ov').remove();flModalRechazar('${s.id}','validacion')">${I.x} Rechazar</button>`:''}
         ${pE?`<button class="fb dan" style="margin-left:auto" onclick="flElim('${s.id}');this.closest('.fl-ov').remove()">${I.trash}</button>`:''}
         <button class="fb gho" style="display:inline-flex;align-items:center;gap:5px" onclick="flGenerarPDF('${s.id}')">
@@ -3834,7 +3837,7 @@ window.flPipelineModal = function(estInicial) {
     // Fátima: completa evaluación/cotización → Servicio
     // Contraloría: autoriza → Servicio, o rechaza
     if ((est==='Evaluación'||est==='Validación'||est==='Aprobación') && esFatima()) {
-      btns.push(`<button onclick="flModalServicio('${s.id}')" style="font-size:10px;background:#B45309;color:#fff;border:none;border-radius:7px;padding:5px 10px;cursor:pointer;font-family:inherit;font-weight:700">→ Servicio</button>`);
+      btns.push(`<button onclick="flModalServicio('${s.id}')" style="font-size:10px;background:#B45309;color:#fff;border:none;border-radius:7px;padding:5px 10px;cursor:pointer;font-family:inherit;font-weight:700">→ Servicio / Docs</button>`);
     }
     if ((est==='Evaluación'||est==='Validación'||est==='Aprobación') && esContraloria()) {
       btns.push(`<button onclick="flModalServicio('${s.id}')" style="font-size:10px;background:#B45309;color:#fff;border:none;border-radius:7px;padding:5px 10px;cursor:pointer;font-family:inherit;font-weight:700">Autorizar →</button>`);
