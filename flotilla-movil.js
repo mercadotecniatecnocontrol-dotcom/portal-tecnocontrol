@@ -1472,7 +1472,8 @@ function renderChkMovil(){
       h+=`<div class="fm-chk-row" id="fm-cr-${key}">
         <span class="fm-chk-name">${item}</span>
         <button class="fm-chk-si ${val==='si'?'on':''}" onclick="fmChk('${key}','si')">SI</button>
-        <button class="fm-chk-no ${val==='no'?'on':''}" onclick="fmChk('${key}','no')">Detalle</button>
+        <button class="fm-chk-no ${val==='no'?'on':''}" onclick="fmChk('${key}','no')">NO</button>
+        ${val==='no'?`<input type="text" placeholder="Describe el detalle..." value="${solState.chkComt?.[key]||''}" onchange="fmChkComt('${key}',this.value)" style="width:100%;margin-top:5px;padding:6px 10px;border:1.5px solid #FECACA;border-radius:8px;font-size:11px;font-family:inherit;outline:none;background:#FFF5F5;box-sizing:border-box">`:''}
         <div class="fm-chk-cam ${hasFoto?'has':''}" onclick="${hasFoto?`fmVerFotoChk('${key}')`:`fmCapturar('chk','${key}')`}" id="fm-cam-${key}">
           ${hasFoto?`<img src="${typeof solState.chkFotos[key]==='object'?solState.chkFotos[key].src:solState.chkFotos[key]}" style="width:26px;height:26px;object-fit:cover;border-radius:5px">`:
           `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>`}
@@ -1483,12 +1484,22 @@ function renderChkMovil(){
   return h;
 }
 
+window.fmChkComt=function(key,val){
+  if(!solState.chkComt) solState.chkComt={};
+  solState.chkComt[key]=val;
+};
+
 window.fmChk=function(key,val){
   solState.chk[key]=solState.chk[key]===val?'':val;
-  const si=document.querySelector(`#fm-cr-${key} .fm-chk-si`);
-  const no=document.querySelector(`#fm-cr-${key} .fm-chk-no`);
-  if(si)si.classList.toggle('on',solState.chk[key]==='si');
-  if(no)no.classList.toggle('on',solState.chk[key]==='no');
+  // Re-renderizar lista para mostrar/ocultar campo comentario
+  const lista=document.getElementById('fm-sol-chk-list');
+  if(lista)lista.innerHTML=renderSolChkList();
+  else{
+    const si=document.querySelector(`#fm-cr-${key} .fm-chk-si`);
+    const no=document.querySelector(`#fm-cr-${key} .fm-chk-no`);
+    if(si)si.classList.toggle('on',solState.chk[key]==='si');
+    if(no)no.classList.toggle('on',solState.chk[key]==='no');
+  }
   // Actualizar contador
   const total=Object.values(CHK_CATS).flat().length;
   const rev=Object.values(solState.chk).filter(v=>v==='si'||v==='no').length;
@@ -1509,7 +1520,8 @@ function renderChkSemanalList(){
       h+=`<div class="fm-chk-row" id="fm-cr-${key}">
         <span class="fm-chk-name">${item}</span>
         <button class="fm-chk-si ${val==='si'?'on':''}" onclick="fmChkSem('${key}','si')">SI</button>
-        <button class="fm-chk-no ${val==='no'?'on':''}" onclick="fmChkSem('${key}','no')">Detalle</button>
+        <button class="fm-chk-no ${val==='no'?'on':''}" onclick="fmChkSem('${key}','no')">NO</button>
+        ${val==='no'?`<input type="text" placeholder="Describe el problema..." value="${semState.chkComt?.[key]||''}" onchange="fmChkSemComt('${key}',this.value)" style="width:100%;margin-top:5px;padding:6px 10px;border:1.5px solid #FECACA;border-radius:8px;font-size:11px;font-family:inherit;outline:none;background:#FFF5F5;box-sizing:border-box">`:''}
         <div class="fm-chk-cam ${hasFoto?'has':''}" onclick="${hasFoto?`fmVerFotoChkSem('${key}')`:`fmCapturar('chk','${key}','sem')`}" id="fm-cam-${key}">
           ${hasFoto?`<img src="${typeof semState.chkFotos[key]==='object'?semState.chkFotos[key].src:semState.chkFotos[key]}" style="width:26px;height:26px;object-fit:cover;border-radius:5px">`:
           `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>`}
