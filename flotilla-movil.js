@@ -1402,7 +1402,7 @@ function renderNuevaSol(){
     if(!document.getElementById('fm-tipo')?.value) faltantes.push('tipo');
     if(!document.getElementById('fm-desc')?.value?.trim()) faltantes.push('descripción');
     if(!document.getElementById('fm-km')?.value?.trim()) faltantes.push('kilometraje');
-    if(!solState.evFotos?.length) faltantes.push('foto');
+    if(!solState.evFotos?.length) faltantes.push('al menos 1 foto de evidencia');
     const resp=Object.values(solState.chk).filter(v=>v==='si'||v==='no').length;
     const tot=Object.values(CHK_CATS).flat().length;
     if(resp<tot) faltantes.push(`checklist (${resp}/${tot})`);
@@ -1677,6 +1677,19 @@ window.fmGuardarChkSemanal=async function(){
     document.getElementById('fm-sem-chk-list')?.scrollIntoView({behavior:'smooth',block:'center'});
     return;
   }
+  // Foto obligatoria en ítems marcados SI
+  const itemsSI=Object.entries(semState.chk).filter(([k,v])=>v==='si');
+  const faltanFotos=itemsSI.filter(([k])=>!semState.chkFotos[k]);
+  if(faltanFotos.length>0){
+    const nombres=faltanFotos.map(([k])=>{
+      // Obtener nombre del ítem por clave sem-CAT-i
+      const parts=k.split('-');const cat=parts[1];const idx=parseInt(parts[2]);
+      return CHK_CATS[cat]?.[idx]||k;
+    }).slice(0,3).join(', ');
+    toast(`⚠ Foto obligatoria en ítems marcados SI: ${nombres}${faltanFotos.length>3?'…':''}`, 'err');
+    document.getElementById('fm-sem-chk-list')?.scrollIntoView({behavior:'smooth',block:'center'});
+    return;
+  }
 
   const btn=document.getElementById('fm-sem-btn-guardar');
   if(btn){btn.disabled=true;btn.textContent='Verificando…';}
@@ -1928,7 +1941,14 @@ window.fmGuardar=async function(){
     return;
   }
   if(!solState.evFotos||solState.evFotos.length===0){
-    toast('⚠ Sube al menos 1 foto de evidencia','err');
+    toast('⚠ Sube al menos 1 foto de evidencia del problema','err');
+    return;
+  }
+  // Checklist de solicitud — foto obligatoria en ítems marcados SI
+  const chkSolItems=Object.entries(solState.chk||{});
+  const siSinFoto=chkSolItems.filter(([k,v])=>v==='si'&&!(solState.chkFotos||{})[k]);
+  if(siSinFoto.length>0){
+    toast(`⚠ Agrega foto en ${siSinFoto.length} ítem(s) del checklist marcados SI`,'err');
     return;
   }
   if(respondidos<totalChk){
@@ -2705,6 +2725,16 @@ window.utilSiguiente=function(){
   if(marcados<totalItems){
     toast(`⚠ Completa el checklist (${marcados}/${totalItems} items marcados)`, 'err');
     return;
+  }
+  // Foto obligatoria en ítems marcados SI
+  const utilSiKeys=Object.entries(utilState.chk).filter(([k,v])=>k.startsWith('util_')&&v==='si').map(([k])=>k);
+  const utilFaltanFoto=utilSiKeys.filter(k=>!utilState.evFotos?.some(f=>f?.meta?.chkKey===k));
+  if(utilFaltanFoto.length>0){
+    // Menos estricto en utilitario: solo pedir al menos 1 foto general si hay ítems SI
+    if(!utilState.evFotos?.length){
+      toast(`⚠ Toma al menos 1 foto del vehículo (hay ${utilSiKeys.length} ítems marcados SI)`,'err');
+      return;
+    }
   }
 
   // ─────────────────────────────────────────────────────────────
