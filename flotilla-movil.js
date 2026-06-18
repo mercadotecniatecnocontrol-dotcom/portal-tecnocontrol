@@ -798,10 +798,10 @@ async function cargarMisTareas(){
     if(miPerfil?.email){
       const snapN=await db.collection('flotilla_notificaciones')
         .where('para','==',miPerfil.email)
-        .orderBy('creadaEn','desc')
-        .limit(20)
+        .limit(30)
         .get();
-      misPipelineNotif=snapN.docs.map(d=>({id:d.id,...d.data()}));
+      misPipelineNotif=snapN.docs.map(d=>({id:d.id,...d.data()}))
+        .sort((a,b)=>(b.creadaEn||'').localeCompare(a.creadaEn||''));
     }
   } catch(e){ misPipelineNotif=[]; }
 }
@@ -1881,8 +1881,10 @@ window.fmVerFoto=function(ev){
 // ── GUARDAR SOLICITUD ──
 // ── ACTUALIZACIÓN SILENCIOSA ─────────────────────────────────────
 function recargarSiSeguro(){
-  if(sessionStorage.getItem('sw_recargado')) return;
-  sessionStorage.setItem('sw_recargado','1');
+  const key='sw_recargado_'+(navigator.serviceWorker?.controller?.scriptURL||'').slice(-10);
+  if(localStorage.getItem(key)) return;
+  localStorage.setItem(key,'1');
+  setTimeout(()=>localStorage.removeItem(key), 10000);
   const vistaActual = vistaAct || '';
   const formsAbiertos = ['solicitud','chksemanal','util'].includes(vistaActual);
   if(formsAbiertos){
@@ -2046,7 +2048,7 @@ window.fmMarcarTarea=async function(id,est){
 // ══════════════════════════════════════════
 function renderNotif(){
   const pipelineItems=(misPipelineNotif||[]).map(n=>{
-    const tipoIco={validada:'ok',aprobada:'ok',cerrada:'ok',servicio:'ok',rechazada_val:'err',rechazada_apr:'err',pagos:'msg',pagado:'ok'}[n.tipo]||'msg';
+    const tipoIco={validada:'ok',aprobada:'ok',cerrada:'ok',servicio:'ok',rechazada_val:'err',rechazada_apr:'err',pagos:'msg',pagado:'ok',comentario:'msg'}[n.tipo]||'msg';
     const tipoBg={ok:'#DCFCE7',err:'#FEE2E2',msg:'#EDE9FE'}[tipoIco];
     const tipoIcoSvg={ok:IC.check,err:IC.x,msg:IC.bell}[tipoIco];
     return {
