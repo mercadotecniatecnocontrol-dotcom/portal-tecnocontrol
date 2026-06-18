@@ -549,7 +549,7 @@ window.cargarFlotilla=async function(){
   fs=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
   await Promise.all([ldVehs(),ldSols(),ldComs(),ldTrans(),ldChkSem(),ldCfgSem()]);
   try{
-    const snapU=await fs.getDocs(fs.collection(db,'flotilla_usuarios'));
+    const snapU=await fs.getDocs(fs.collection(db,'fl_usuarios'));
     const map={};
     snapU.docs.forEach(d=>{
       const u=d.data();
@@ -1265,12 +1265,7 @@ function rPanel(){
       <div style="font-size:11px;color:#64748B;margin-top:2px">${flV.filter(v=>v.status!=='baja').length} unidades · ${new Date().toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</div></div>
     </div>
     ${alts.length?`<div style="margin-bottom:12px">${alts.slice(0,4).map(a=>`<div style="display:flex;align-items:center;gap:7px;padding:7px 11px;border-radius:7px;font-size:11px;font-weight:600;background:${a.e?'#FEF2F2':'#FFFBEB'};color:${a.e?'#991B1B':'#92400E'};border:1px solid ${a.e?'#FECACA':'#FDE68A'};margin-bottom:5px">${I.alert} ${a.t}</div>`).join('')}</div>`:''}
-    <div class="fl-kpis">
-      <div class="fl-kpi"><div class="fl-kpi-l">Total flotilla</div><div class="fl-kpi-v">${flV.length}</div><div class="fl-kpi-s">${baj} de baja</div></div>
-      <div class="fl-kpi"><div class="fl-kpi-l">En operación</div><div class="fl-kpi-v" style="color:#16A34A">${act}</div><div class="fl-kpi-s">activas hoy</div></div>
-      <div class="fl-kpi"><div class="fl-kpi-l">En taller/comisión</div><div class="fl-kpi-v" style="color:#D97706">${tall+com}</div><div class="fl-kpi-s">${tall} taller · ${com} comisión</div></div>
-      <div class="fl-kpi"><div class="fl-kpi-l">Solicitudes activas</div><div class="fl-kpi-v" style="color:#7C3AED">${pend}</div><div class="fl-kpi-s">en proceso</div></div>
-    </div>
+    <!-- métricas KPI superiores ocultadas -->
 
     <!-- MINI DASHBOARDS DE ESTADO DE VEHÍCULOS -->
     ${(()=>{
