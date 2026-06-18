@@ -4183,6 +4183,17 @@ function puedeVerVentas(email){
 // Mostrar sección mapa al hacer clic en Ventas en el sidebar
 const _navOriginal = window.navegar;
 window.navegar = (id, b) => {
+    // Limpiar TODOS los overlays/modales de cualquier módulo antes de navegar
+    document.querySelectorAll(
+      '.fl-ov, [id$="-ov"], .modal-overlay, .ov-backdrop, ' +
+      '[style*="position: fixed"][style*="z-index"], ' +
+      '.rh-modal-overlay, .mkt-overlay, .ops-overlay'
+    ).forEach(el => {
+      // Solo eliminar si es un overlay flotante (no el portal principal)
+      if(el.id === 'app-portal' || el.id === 'push-banner') return;
+      const z = parseInt(window.getComputedStyle(el).zIndex) || 0;
+      if(z >= 1000) el.remove();
+    });
     _navOriginal(id, b);
     // Si navega a área Ventas, mostrar el mapa
 };
