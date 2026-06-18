@@ -118,7 +118,6 @@ const ADMINS_FLOTILLA=[
   'p.pinedo@tecnocontrol.com.mx',
   'm.delao@tecnocontrol.com.mx',
   'nicolas@tecnocontrol.com.mx',
-  'tomas@tecnocontrol.com.mx',
   'fatima@tecnocontrol.com.mx',
 ];
 
@@ -1523,10 +1522,9 @@ function renderChkSemanalList(){
 
 window.fmChkSem=function(key,val){
   semState.chk[key]=semState.chk[key]===val?'':val;
-  const si=document.querySelector(`#fm-cr-${key} .fm-chk-si`);
-  const no=document.querySelector(`#fm-cr-${key} .fm-chk-no`);
-  if(si)si.classList.toggle('on',semState.chk[key]==='si');
-  if(no)no.classList.toggle('on',semState.chk[key]==='no');
+  // Re-renderizar fila para mostrar/ocultar campo comentario
+  const wrap=document.getElementById('fm-sem-chk-list');
+  if(wrap)wrap.innerHTML=renderChkSemanalList();
   const total=Object.values(CHK_CATS).flat().length;
   const rev=Object.values(semState.chk).filter(v=>v==='si'||v==='no').length;
   const cnt=document.getElementById('fm-sem-chk-cnt');
@@ -2604,20 +2602,24 @@ function renderChkUtil(){
   return items.map((item,i)=>{
     const key='util_'+i;
     const val=utilState.chk[key]||'';
-    return`<div class="fm-chk-row" id="util-cr-${key}">
+    return`<div class="fm-chk-row" id="util-cr-${key}" style="flex-wrap:wrap">
       <span class="fm-chk-name">${item}</span>
       <button class="fm-chk-si ${val==='si'?'on':''}" onclick="utilChk('${key}','si')">SI</button>
-      <button class="fm-chk-no ${val==='no'?'on':''}" onclick="utilChk('${key}','no')">Detalle</button>
+      <button class="fm-chk-no ${val==='no'?'on':''}" onclick="utilChk('${key}','no')">NO</button>
+      ${val==='no'?`<input type="text" placeholder="Describe el detalle..." value="${utilState.chkComt?.[key]||''}" onchange="utilChkComt('${key}',this.value)" style="width:100%;margin-top:5px;padding:6px 10px;border:1.5px solid #FECACA;border-radius:8px;font-size:11px;font-family:inherit;outline:none;background:#FFF5F5;box-sizing:border-box">`:''}
     </div>`;
   }).join('');
 }
 
+window.utilChkComt=function(key,val){
+  if(!utilState.chkComt)utilState.chkComt={};
+  utilState.chkComt[key]=val;
+};
 window.utilChk=function(key,val){
   utilState.chk[key]=utilState.chk[key]===val?'':val;
-  const si=document.querySelector(`#util-cr-${key} .fm-chk-si`);
-  const no=document.querySelector(`#util-cr-${key} .fm-chk-no`);
-  if(si)si.classList.toggle('on',utilState.chk[key]==='si');
-  if(no)no.classList.toggle('on',utilState.chk[key]==='no');
+  // Re-renderizar para mostrar/ocultar campo de comentario
+  const wrap=document.getElementById('util-chk');
+  if(wrap)wrap.innerHTML=renderChkUtil();
   const rev=Object.values(utilState.chk).filter(v=>v).length;
   const cnt=document.getElementById('util-chk-cnt');if(cnt)cnt.textContent=rev+' revisados';
 };
@@ -2681,13 +2683,37 @@ window.utilCapturar=async function(){
 
 window.utilSiguiente=function(){
   const receptor=document.getElementById('util-receptor')?.value?.trim();
-  const km=document.getElementById('util-km')?.value;
-  if(!receptor){toast('Ingresa el nombre de quien recibe','err');return;}
-  if(utilState.evFotos.length===0){toast('Toma al menos una foto del vehículo','err');return;}
+  const km=document.getElementById('util-km')?.value?.trim();
+
+  // ── VALIDACIONES OBLIGATORIAS ──────────────────────────────────
+  if(!receptor){toast('⚠ Selecciona a quién se entrega el vehículo','err');return;}
+
+  if(!km||isNaN(Number(km))||Number(km)<=0){
+    toast('⚠ El kilometraje actual es obligatorio','err');
+    document.getElementById('util-km')?.focus();
+    return;
+  }
+
+  if(utilState.evFotos.length===0){
+    toast('⚠ Toma al menos 1 foto del vehículo antes de continuar','err');
+    return;
+  }
+
+  // Checklist — todos los 6 items deben estar marcados (si o no)
+  const totalItems=6;
+  const marcados=Object.keys(utilState.chk).filter(k=>k.startsWith('util_')&&utilState.chk[k]).length;
+  if(marcados<totalItems){
+    toast(`⚠ Completa el checklist (${marcados}/${totalItems} items marcados)`, 'err');
+    return;
+  }
+
+  // ─────────────────────────────────────────────────────────────
   const comentarioEnt=document.getElementById('util-comentario-entrega')?.value?.trim()||'';
+  utilState.chkComt=utilState.chkComt||{};
   utilState.datosEntrega={
     vehiculo:miVeh?.unidad||'—',eco:miVeh?.eco||'—',
-    km:km||miVeh?.km||'0',receptor,
+    km:km,receptor,
+    chkComt:utilState.chkComt,
     nombre:window.auth?.currentUser?.displayName||window.auth?.currentUser?.email||'—',
     comentarioEntrega:comentarioEnt,
   };
