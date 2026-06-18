@@ -609,14 +609,16 @@ function renderSB(){
   if(q)filtrado=filtrado.filter(v=>(v.eco+v.unidad+v.placas+v.responsable).toLowerCase().includes(q));
   filtrado=filtrado.slice().sort((a,b)=>Number(a.eco)-Number(b.eco));
   lista.innerHTML=filtrado.map(v=>{
-    const dot=v.status==='taller'?'#F59E0B':v.status==='comision'?'#8B5CF6':'#22C55E';
+    const usuarioApp=(window._flUsuariosMap||{})[String(v.eco)];
+    const dot=v.status==='taller'?'#F59E0B':v.status==='comision'?'#8B5CF6':usuarioApp?'#EF4444':'#22C55E';
     const comAct=v.status==='comision'?flCom.find(c=>c.estatus==='En préstamo'&&(c.vehiculoId===v.id||String(c.vehiculoEco)===String(v.eco))):null;
-    const bloqueado=!!comAct;
-    const tip=bloqueado?`En uso · ${comAct.responsable||'—'}${comAct.motivo?' · '+comAct.motivo:''}`:'';
+    const bloqueado=!!comAct||!!usuarioApp;
+    const tipResp=comAct?.responsable||usuarioApp||'—';
+    const tip=bloqueado?`En uso · ${tipResp}`:'';
     return`<div class="fl-sb-item${bloqueado?' fl-sb-bloq':''}" id="fl-sbi-${v.id}" onclick="flSbSel('${v.id}')" ${bloqueado?`title="${tip.replace(/"/g,'&quot;')}"`:''}>
       <div class="fl-sb-eco">${v.eco}</div>
       <div class="fl-sb-name">${v.unidad||'—'}</div>
-      ${bloqueado?`<div class="fl-sb-bloq-info"><span class="fl-sb-bloq-resp">${comAct.responsable||'—'}</span></div>`:''}
+      ${bloqueado?`<div class="fl-sb-bloq-info"><span class="fl-sb-bloq-resp" style="${usuarioApp?'color:#B91C1C':''}">${tipResp}</span></div>`:''}
       <div class="fl-sb-dot" style="background:${dot}"></div>
     </div>`;
   }).join('');
