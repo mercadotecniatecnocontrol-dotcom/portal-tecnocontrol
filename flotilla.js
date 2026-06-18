@@ -18,6 +18,23 @@ const SVG_TROCA={
 };
 
 
+const FL_COLABORADORES = ["Aceves Ivan Argenis","Acosta Bustillos Francisca","Acosta Chavira Carlos","Acosta Contreras Cristina Judith","Barraza Luya Saúl Ismael","Calixto Sánchez Rafael","Carmona Lagunas Sergio","Castro Muñoz Saúl","Chacón Terrazas Lucero","Chávez Alvarez Ruth Yadira","Chávez Barraza Oscar Iván","Chávez Chávez Iván","Contreras Morales Elva Nidia","Coronado Valenzuela Socorro Annet","De La Cruz Emilio Julio César","De La O Maese Martín","Durstewitz Maese Guillermo","Enríquez Gallardo Jorge Alberto","Escalante Jaramillo Ana Karen","Estrada Gómez Alan Alberto","García Ledezma Jesús Alvaro","García Montemayor Veronica Janeth","Garza González Luis Enrique","González Babonoyaba Ricardo Antonio","González Delgado Ericka Idaly","Guerrero Gómez Jorge","Gutiérrez Alvarado Nayra Didi","Gutiérrez Villarreal Denisse","Guzmán Morales Flor Idalia","Guzmán Neave Kenia Yadira","Hernández Pérez Rubén Alberto","Hernández Prieto Josué","Hernández Ríos Jesús Ramón","Leal Martínez Roque Manuel","López Ávila Sandra Lucero","Lopez Chavez Guillermo","López Delgado Luis Humberto","Luna Espinoza Jaime Roel","Medina Contreras Giovanni Israel","Mendoza Becerra Sergio","Minjarez Ochoa Alberto Alan","Montellano Pasillas Miguel Ángel","Morales Cruz Gabriel Gael","Morales Mendoza Tomás","Moreno Molina Reyes","Moriel Sáenz Ricardo Salvador","Muñoz Avila Roberto","Muñoz Blanco Lizeth Cristina","Nuñez Alatorre Ulises","Orozco Miranda Ana Cristina","Parra Blanco Zaira Sibel","Pérez Espíndola Rita Isabel","Perez Garcia Martha Aracely","Pinedo Paloma","Portillo Portillo José Luis","Preciado Grijalva Glen Iván","Reyes González Pedro","Ríos Salcido Joon Omaira","Ruiz Olmedo Norma Idaly","Salcedo Gardea Filiberto Isai","Salmon Rivas Fabricio Abundio","Saucedo Martínez Irving Abraham","Sauzameda Ochoa Fátima Anahí","Sepúlveda Mendoza Iván Roberto","Soto González Benito","Terrazas Serrano Fernando","Uribe Maese Jorge Alberto","Valencia Barraza Jesus Bersain","Valencia Meza Luis Miguel","Valenzuela López José Luis","Nicolas","Luis Lopez","Cano Corral Adrian"];
+let _flColabCache = null;
+async function cargarColaboradores(){
+  if(_flColabCache) return _flColabCache;
+  try{
+    const snap=await fs.getDocs(fs.query(fs.collection(db,'fl_colaboradores'),fs.orderBy('nombre')));
+    if(!snap.empty){_flColabCache=snap.docs.map(d=>d.data().nombre).filter(Boolean);return _flColabCache;}
+  }catch{}
+  _flColabCache=[...FL_COLABORADORES];
+  return _flColabCache;
+}
+async function agregarColaborador(nombre){
+  if(!nombre?.trim())return;
+  await fs.addDoc(fs.collection(db,'fl_colaboradores'),{nombre:nombre.trim(),activo:true,creadoEn:new Date().toISOString()});
+  _flColabCache=null;
+}
+
 const C={VEHS:'flotilla_vehiculos',SOLS:'flotilla_solicitudes',COMIS:'flotilla_comisiones',TRANS:'flotilla_transferencias',CHKSEM:'flotilla_checklist_semanal',CFG:'flotilla_config'};
 
 const CAT=[
@@ -531,6 +548,16 @@ window.cargarFlotilla=async function(){
   actualizarHeaderUsuario();
   fs=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
   await Promise.all([ldVehs(),ldSols(),ldComs(),ldTrans(),ldChkSem(),ldCfgSem()]);
+  try{
+    const snapU=await fs.getDocs(fs.collection(db,'flotilla_usuarios'));
+    const map={};
+    snapU.docs.forEach(d=>{
+      const u=d.data();
+      const ecos=[...(Array.isArray(u.ecosVinculados)?u.ecosVinculados.map(String):[]),...(u.ecoVinculado?[String(u.ecoVinculado)]:[])].filter(Boolean);
+      ecos.forEach(e=>{map[e]=u.nombre||u.displayName||u.email||'—';});
+    });
+    window._flUsuariosMap=map;
+  }catch(e){window._flUsuariosMap={};}
   renderSB();
   flVista('panel');
 };
@@ -1063,7 +1090,9 @@ function admGetFiltrado(){
     res=res.filter(v=>(v.eco+v.unidad+v.responsable+v.placas+v.serie+'').toLowerCase().includes(q));
   }
   if(admFiltroPlaza)res=res.filter(v=>v.plaza===admFiltroPlaza);
-  if(admFiltroStatus)res=res.filter(v=>(v.status||'activo')===admFiltroStatus);
+  if(admFiltroStatus==='ocupado') res=res.filter(v=>!!(window._flUsuariosMap||{})[String(v.eco)]);
+  else if(admFiltroStatus==='libre') res=res.filter(v=>!(window._flUsuariosMap||{})[String(v.eco)]);
+  else if(admFiltroStatus) res=res.filter(v=>(v.status||'activo')===admFiltroStatus);
   return res;
 }
 
@@ -1286,8 +1315,11 @@ function rPanel(){
         <div style="padding:12px 14px;display:flex;flex-direction:column;gap:7px">${Object.entries(porEst).map(([e,n])=>`<div onclick="flPipelineModal('${e}')" style="display:flex;align-items:center;gap:8px;cursor:pointer;border-radius:8px;padding:3px 5px;margin:-3px -5px;transition:background .12s" onmouseover="this.style.background='#F8FAFC'" onmouseout="this.style.background=''">${hBadge(e)}<div style="flex:1;height:4px;background:#F1F5F9;border-radius:100px;overflow:hidden"><div style="height:100%;width:${flS.length?Math.round(n/flS.length*100):0}%;background:#2563EB;border-radius:100px"></div></div><span style="font-size:11px;font-weight:700;min-width:14px;text-align:right">${n}</span>${n>0?`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>`:''}</div>`).join('')}</div>
       </div>
     </div>
-    <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:#94A3B8;margin-bottom:8px">Solicitudes recientes</div>
-    ${tSols(flS.slice(0,8))}
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:#94A3B8">Solicitudes activas</div>
+      <button onclick="flPipelineModal('Cerrada')" style="font-size:9px;font-weight:700;color:#64748B;background:none;border:none;cursor:pointer;text-decoration:underline">Ver cerradas →</button>
+    </div>
+    ${tSols(flS.filter(s=>!['Cerrada','Rechazada'].includes(s.estatus)).slice(0,8))}
     ${rFlCalendario()}
   `));
 }
@@ -2259,6 +2291,18 @@ window.flVerSol=async function(id){
         <dl style="grid-column:1/-1;padding:7px 11px"><dt style="font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">Descripción</dt><dd style="font-size:11.5px;font-weight:500">${s.descripcion||'—'}</dd></dl>
       </div>
       ${s.comentarioRechazo?`<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:7px;padding:8px 11px;font-size:11px;color:#991B1B;margin-bottom:9px"><strong>Rechazo:</strong> ${s.comentarioRechazo}</div>`:''}
+      ${(()=>{
+        const userEmail=(window.auth?.currentUser?.email||'').toLowerCase();
+        const esFatima=userEmail==='fatima@tecnocontrol.com.mx';
+        const esAdmin=hP('validar')||hP('aprobar');
+        const puedeAgregarDocs=esAdmin&&!esFatima&&['Cerrada','Rechazada'].includes(s.estatus);
+        if(!puedeAgregarDocs)return'';
+        return'<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:10px 12px;margin-bottom:10px">'+
+          '<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#92400E;margin-bottom:8px">Agregar documentos (admin)</div>'+
+          '<div id="fl-doc-list-'+s.id+'" style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px"></div>'+
+          '<button onclick="flAgregarDocCerrada(\''+s.id+'\')" style="padding:7px 14px;background:#D97706;color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:11px;font-weight:800;cursor:pointer">+ Subir factura / documento</button>'+
+        '</div>';
+      })()}
       ${s._archivosEvaluacion?.length?`
         <div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin:10px 0 6px">Documentos de evaluación (${s._archivosEvaluacion.length})</div>
         <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:10px">
@@ -2489,6 +2533,30 @@ window.flRecibirTransferencia = async function(id) {
     await ldTrans(); await ldVehs();
     rComis();
   } catch(e) { alert('Error al recibir: ' + e.message); }
+};
+
+// ── AGREGAR DOCUMENTO A SOLICITUD CERRADA (admin, no Fátima) ──
+window.flAgregarDocCerrada = function(solId) {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'image/*,application/pdf'; inp.multiple = true;
+  inp.onchange = async () => {
+    for (const file of Array.from(inp.files)) {
+      try {
+        const b64 = await flLeerArchivo(file, 10);
+        await flGuardarArchivosSubcol(solId, 'archivos_servicio', [{
+          nombre: file.name,
+          datos: b64,
+          tipo: file.type.includes('pdf') ? 'pdf' : 'img',
+          kb: Math.round(file.size / 1024),
+        }]);
+        flToast('Documento agregado: ' + file.name, 'ok');
+        // Reabrir modal para reflejar cambios
+        document.querySelector('.fl-ov[style*="3300"]')?.remove();
+        window.flVerSol(solId);
+      } catch(e) { flToast('Error: ' + e.message, 'err'); }
+    }
+  };
+  inp.click();
 };
 
 // ── MODAL DETALLE TRANSFERENCIA ──
@@ -3925,6 +3993,7 @@ window.flModalEvaluacion = function(id) {
   flCargarArchivosSubcol(s.id,'archivos_evaluacion').then(docs=>{
     if(docs.length){ window._flEvalArchivos=[...docs]; document.getElementById('eval-arch-list') && (document.getElementById('eval-arch-list').innerHTML=renderArchivosEval()); }
   });
+  window._flEvalSolId    = s.id;
   window._flEvalComents  = s.comentariosEvaluacion ? [...s.comentariosEvaluacion] : [];
 
   function renderArchivosEval() {
@@ -3949,12 +4018,33 @@ window.flModalEvaluacion = function(id) {
     };
     inp.click();
   };
-  window.evalAgregarComentario = function(){
+  window.evalAgregarComentario = async function(){
     const inp=document.getElementById('eval-comment-inp'); if(!inp||!inp.value.trim())return;
     const email=window.auth?.currentUser?.email||'—';
-    window._flEvalComents.push({texto:inp.value.trim(),por:email,en:new Date().toISOString()});
+    const nuevoComt={texto:inp.value.trim(),por:email,en:new Date().toISOString()};
+    window._flEvalComents.push(nuevoComt);
     inp.value='';
     document.getElementById('eval-comments-list').innerHTML=renderComents(window._flEvalComents);
+    // Guardar en Firestore inmediatamente
+    try{
+      await fs.updateDoc(fs.doc(db,C.SOLS,s.id),{
+        comentariosEvaluacion:window._flEvalComents,
+        actualizadoEn:new Date().toISOString()
+      });
+      // Notificar al solicitante
+      if(s.creadoPor){
+        await db.collection('flotilla_notificaciones').add({
+          solicitudId:s.id,
+          para:s.creadoPor,
+          vehiculoEco:s.vehiculoEco||'—',
+          tipo:'comentario',
+          mensaje:`Nuevo comentario en tu solicitud ECO ${s.vehiculoEco||'—'}: "${nuevoComt.texto}"`,
+          leido:false,
+          creadaEn:new Date().toISOString(),
+        });
+      }
+      flToast('Comentario guardado','ok');
+    }catch(e){flToast('Error al guardar comentario','err');}
   };
 
   const html=`
