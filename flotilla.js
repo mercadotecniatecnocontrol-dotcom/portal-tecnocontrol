@@ -2295,7 +2295,7 @@ window.flVerSol=async function(id){
         const userEmail=(window.auth?.currentUser?.email||'').toLowerCase();
         const esFatima=userEmail==='fatima@tecnocontrol.com.mx';
         const esAdmin=hP('validar')||hP('aprobar');
-        const puedeAgregarDocs=esAdmin&&!esFatima&&['Cerrada','Rechazada'].includes(s.estatus);
+        const puedeAgregarDocs=esAdmin&&['Cerrada','Rechazada'].includes(s.estatus);
         if(!puedeAgregarDocs)return'';
         return'<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:10px 12px;margin-bottom:10px">'+
           '<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#92400E;margin-bottom:8px">Agregar documentos (admin)</div>'+
