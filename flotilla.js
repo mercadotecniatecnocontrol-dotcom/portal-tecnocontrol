@@ -35,7 +35,7 @@ async function agregarColaborador(nombre){
   _flColabCache=null;
 }
 
-const C={VEHS:'flotilla_vehiculos',SOLS:'flotilla_solicitudes',COMIS:'flotilla_comisiones',TRANS:'flotilla_transferencias',CHKSEM:'flotilla_checklist_semanal',CFG:'flotilla_config'};
+const C={VEHS:'flotilla_vehiculos',SOLS:'flotilla_solicitudes',COMIS:'flotilla_comisiones',TRANS:'flotilla_transferencias',CHKSEM:'flotilla_checklist_semanal',CFG:'flotilla_config',TAREAS:'flotilla_tareas'};
 
 const CAT=[
   {eco:'01',unidad:'NISSAN NP100',     año:2000,plaza:'CHIHUAHUA',    responsable:'GLEN PRECIADO',   placas:'DU0101A',serie:'3N6AD33A3H46544',rend:'7 KM/L',   pv:'2026-09-24',pol:'794B05035M-17',tipo:'auto',color:'Blanco',nip:'OXXO GAS',km:0,status:'activo'},
@@ -2413,6 +2413,10 @@ window.flVerSol=async function(id){
         `:''}
         ${pV&&s.estatus==='Solicitud'?`<button class="fb dan" onclick="this.closest('.fl-ov').remove();flModalRechazar('${s.id}','validacion')">${I.x} Rechazar</button>`:''}
         ${pE?`<button class="fb dan" style="margin-left:auto" onclick="flElim('${s.id}');this.closest('.fl-ov').remove()">${I.trash}</button>`:''}
+        <button class="fb" onclick="this.closest('.fl-ov').remove();flModalTareas('${s.id}')" style="background:#7C3AED;color:#fff;border:none;display:inline-flex;align-items:center;gap:5px">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+          Tareas
+        </button>
         <button class="fb gho" style="display:inline-flex;align-items:center;gap:5px" onclick="flGenerarPDF('${s.id}')">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
           PDF
@@ -3633,7 +3637,7 @@ window.flEnviarNotif = async function(id, tipo, comentario) {
       vehiculoEco: eco,
       tipo,
       mensaje: msg,
-      leida: false,
+      leido: false,
       creadaEn: new Date().toISOString(),
     });
   } catch(e) { console.warn('[FL notif]', e); }
@@ -4841,6 +4845,413 @@ window.flVerVeh=function(id){const v=flV.find(x=>x.id===id);if(!v)return;const o
 
 // ── Visor imagen rápido (comisiones) ──
 window.flImg=function(src){const ov=document.createElement('div');ov.className='fl-ov';ov.style.zIndex='4500';ov.style.cursor='zoom-out';ov.innerHTML=`<img src="${src}" style="max-width:92%;max-height:92%;border-radius:12px;box-shadow:0 24px 60px rgba(0,0,0,.5)">`;ov.onclick=()=>ov.remove();document.body.appendChild(ov);};
+
+// ═══════════════════════════════════════════════════════════════
+// MÓDULO TAREAS DE SOLICITUD
+// Colección: flotilla_tareas
+// Estructura: {solicitudId, titulo, descripcion, asignadoA (email),
+//              asignadoNombre, estatus, prioridad, fechaLimite,
+//              fechaCompromiso (técnico), evidencias[], comentarios[],
+//              creadoPor, creadoEn, actualizadoEn}
+// ═══════════════════════════════════════════════════════════════
+
+// Cargar técnicos (fl_usuarios) para el selector de asignación
+async function flCargarTecnicosSelector(selectId){
+  try{
+    const snap=await fs.getDocs(fs.collection(db,'fl_usuarios'));
+    const users=snap.docs.map(d=>({id:d.id,...d.data()}));
+    const sel=document.getElementById(selectId);
+    if(!sel)return;
+    sel.innerHTML='<option value="">— Seleccionar técnico —</option>';
+    users.forEach(u=>{
+      const op=document.createElement('option');
+      op.value=u.email||u.id;
+      op.textContent=(u.nombre||u.email||u.id)+' ('+(u.rol||'técnico')+')';
+      sel.appendChild(op);
+    });
+  }catch(e){console.warn('[FL tareas técnicos]',e);}
+}
+
+// Helper — badge de estatus de tarea
+function hTareaBadge(est){
+  const m={
+    'Pendiente':    ['#FEF3C7','#92400E'],
+    'En proceso':   ['#DBEAFE','#1E40AF'],
+    'En revisión':  ['#EDE9FE','#5B21B6'],
+    'Completada':   ['#D1FAE5','#065F46'],
+    'Cancelada':    ['#F1F5F9','#64748B'],
+  };
+  const [bg,col]=m[est]||['#F1F5F9','#64748B'];
+  return`<span style="background:${bg};color:${col};font-size:9.5px;font-weight:800;padding:2px 8px;border-radius:10px;letter-spacing:.3px">${est}</span>`;
+}
+
+// Modal principal — lista de tareas de una solicitud
+window.flModalTareas=async function(solId){
+  if(!fs){const m=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');fs=m;}
+  const s=flS.find(x=>x.id===solId);
+  if(!s)return;
+  const v=flV.find(x=>x.eco===s.vehiculoEco||x.id===s.vehiculoId);
+  const ov=document.createElement('div');ov.className='fl-ov';ov.style.zIndex='3400';
+  document.body.appendChild(ov);ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+
+  async function render(){
+    let tareas=[];
+    try{
+      const snap=await fs.getDocs(
+        fs.query(fs.collection(db,C.TAREAS),fs.where('solicitudId','==',solId))
+      );
+      tareas=snap.docs.map(d=>({id:d.id,...d.data()}))
+        .sort((a,b)=>(a.creadoEn||'').localeCompare(b.creadoEn||''));
+    }catch(e){console.warn('[FL tareas]',e);}
+
+    const pend=tareas.filter(t=>t.estatus!=='Completada'&&t.estatus!=='Cancelada').length;
+    const comp=tareas.filter(t=>t.estatus==='Completada').length;
+
+    ov.innerHTML=`<div class="fl-modal" style="max-width:620px">
+      <div class="fl-mh">
+        <div>
+          <h3 style="display:flex;align-items:center;gap:7px">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" stroke-width="2.2" stroke-linecap="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+            Tareas de solicitud
+          </h3>
+          <div style="font-size:10px;color:#64748B;margin-top:2px">ECO ${s.vehiculoEco||'—'} · ${v?.unidad||s.vehiculo||'—'} · ${s.tipo||'—'}</div>
+        </div>
+        <button class="fl-mx" onclick="this.closest('.fl-ov').remove()">✕</button>
+      </div>
+      <div class="fl-mb">
+        ${tareas.length?`<div style="display:flex;gap:10px;margin-bottom:12px">
+          <div style="flex:1;background:#FEF3C7;border-radius:9px;padding:10px;text-align:center">
+            <div style="font-size:20px;font-weight:900;color:#92400E">${pend}</div>
+            <div style="font-size:9.5px;font-weight:700;color:#B45309">Pendientes</div>
+          </div>
+          <div style="flex:1;background:#D1FAE5;border-radius:9px;padding:10px;text-align:center">
+            <div style="font-size:20px;font-weight:900;color:#065F46">${comp}</div>
+            <div style="font-size:9.5px;font-weight:700;color:#059669">Completadas</div>
+          </div>
+          <div style="flex:1;background:#F8FAFD;border-radius:9px;padding:10px;text-align:center">
+            <div style="font-size:20px;font-weight:900;color:#0A1628">${tareas.length}</div>
+            <div style="font-size:9.5px;font-weight:700;color:#64748B">Total</div>
+          </div>
+        </div>`:''}
+
+        ${tareas.length?tareas.map(t=>`
+          <div style="border:1.5px solid ${t.estatus==='Completada'?'#BBF7D0':t.estatus==='En proceso'?'#BFDBFE':'#E2E8F0'};border-radius:10px;padding:12px;margin-bottom:8px;background:${t.estatus==='Completada'?'#F0FDF4':'#fff'}">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:6px">
+              <div style="font-size:13px;font-weight:800;color:#0A1628;flex:1">${t.titulo||'Sin título'}</div>
+              ${hTareaBadge(t.estatus||'Pendiente')}
+            </div>
+            ${t.descripcion?`<div style="font-size:12px;color:#475569;margin-bottom:7px">${t.descripcion}</div>`:''}
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+              ${t.asignadoNombre?`<span style="font-size:10.5px;font-weight:700;color:#1D4ED8;background:#EFF6FF;padding:2px 8px;border-radius:6px">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="margin-right:3px"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 10-16 0"/></svg>${t.asignadoNombre}</span>`:''}
+              ${t.prioridad?`<span style="font-size:10.5px;font-weight:700;color:${t.prioridad==='Alta'||t.prioridad==='Urgente'?'#B91C1C':'#64748B'};background:${t.prioridad==='Alta'||t.prioridad==='Urgente'?'#FEE2E2':'#F1F5F9'};padding:2px 8px;border-radius:6px">${t.prioridad}</span>`:''}
+              ${t.fechaLimite?`<span style="font-size:10.5px;color:#64748B">Límite: ${t.fechaLimite}</span>`:''}
+              ${t.fechaCompromiso?`<span style="font-size:10.5px;font-weight:700;color:#7C3AED;background:#EDE9FE;padding:2px 8px;border-radius:6px">Compromiso técnico: ${t.fechaCompromiso}</span>`:''}
+            </div>
+            ${t.comentarios?.length?`<div style="background:#F8FAFD;border-radius:7px;padding:7px 10px;margin-bottom:8px;border:1px solid #E8EDF5">
+              <div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:5px">Comentarios (${t.comentarios.length})</div>
+              ${t.comentarios.slice(-3).map(c=>`<div style="margin-bottom:4px"><span style="font-size:10px;font-weight:700;color:#1D4ED8">${c.autor||'—'}:</span> <span style="font-size:10px;color:#475569">${c.texto}</span> <span style="font-size:9px;color:#CBD5E1">${c.fecha?c.fecha.slice(0,10):''}</span></div>`).join('')}
+            </div>`:''}
+            ${t.evidencias?.length?`<div style="margin-bottom:8px;display:flex;flex-wrap:wrap;gap:5px">
+              ${t.evidencias.map((src,i)=>`<img src="${src}" onclick="flImg('${src}')" style="width:50px;height:50px;object-fit:cover;border-radius:7px;cursor:zoom-in;border:1.5px solid #E2E8F0">`).join('')}
+            </div>`:''}
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              ${t.estatus!=='Completada'&&t.estatus!=='Cancelada'?`<button onclick="flTareaDetalle('${t.id}','${solId}')" style="padding:5px 10px;background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:7px;font-family:inherit;font-size:11px;font-weight:700;color:#1D4ED8;cursor:pointer">Ver / editar</button>`:''}
+              ${t.estatus!=='Completada'&&t.estatus!=='Cancelada'?`<button onclick="flTareaCambiarEstatus('${t.id}','${solId}')" style="padding:5px 10px;background:#F0FDF4;border:1.5px solid #BBF7D0;border-radius:7px;font-family:inherit;font-size:11px;font-weight:700;color:#15803D;cursor:pointer">Cambiar estatus</button>`:''}
+            </div>
+          </div>`).join('')
+        :`<div style="text-align:center;padding:30px 20px;color:#94A3B8">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="margin-bottom:10px;opacity:.4"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+          <div style="font-size:13px;font-weight:700">Sin tareas asignadas</div>
+          <div style="font-size:11px;margin-top:4px">Crea la primera tarea para esta solicitud</div>
+        </div>`}
+
+        <div class="fl-sep" style="margin:12px 0"></div>
+        <button onclick="flNuevaTarea('${solId}')" style="width:100%;padding:10px;background:linear-gradient(135deg,#7C3AED,#5B21B6);color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:13px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Nueva tarea
+        </button>
+      </div>
+    </div>`;
+  }
+
+  window._flTareasRender=render;
+  await render();
+};
+
+// Modal — crear nueva tarea
+window.flNuevaTarea=async function(solId){
+  const s=flS.find(x=>x.id===solId);if(!s)return;
+  const ov2=document.createElement('div');ov2.className='fl-ov';ov2.style.zIndex='3500';
+  ov2.innerHTML=`<div class="fl-modal" style="max-width:500px">
+    <div class="fl-mh">
+      <h3>Nueva tarea — ECO ${s.vehiculoEco||'—'}</h3>
+      <button class="fl-mx" onclick="this.closest('.fl-ov').remove()">✕</button>
+    </div>
+    <div class="fl-mb" style="display:flex;flex-direction:column;gap:10px">
+      <div class="fl-fld"><label>Título de la tarea *</label><input id="nt-titulo" placeholder="Ej: Cambio de aceite, Diagnóstico frenos…"></div>
+      <div class="fl-fld"><label>Descripción</label><textarea id="nt-desc" rows="3" style="resize:vertical;padding:8px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;width:100%;box-sizing:border-box" placeholder="Instrucciones o detalles para el técnico…"></textarea></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="fl-fld"><label>Prioridad</label><select id="nt-prior"><option>Normal</option><option>Alta</option><option>Urgente</option><option>Baja</option></select></div>
+        <div class="fl-fld"><label>Fecha límite</label><input type="date" id="nt-fecha"></div>
+      </div>
+      <div class="fl-fld"><label>Asignar a técnico *</label><select id="nt-tecnico"><option value="">Cargando…</option></select></div>
+      <div class="fl-fa">
+        <button class="fb gho" onclick="this.closest('.fl-ov').remove()">Cancelar</button>
+        <button class="fb acc" onclick="flGuardarTarea('${solId}',this)">Crear tarea</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(ov2);
+  ov2.addEventListener('click',e=>{if(e.target===ov2)ov2.remove();});
+  await flCargarTecnicosSelector('nt-tecnico');
+};
+
+// Guardar nueva tarea en Firestore + notificar al técnico
+window.flGuardarTarea=async function(solId,btn){
+  if(!fs){const m=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');fs=m;}
+  const titulo=document.getElementById('nt-titulo')?.value?.trim();
+  const desc=document.getElementById('nt-desc')?.value?.trim();
+  const prior=document.getElementById('nt-prior')?.value||'Normal';
+  const fecha=document.getElementById('nt-fecha')?.value||'';
+  const tecnicoEmail=document.getElementById('nt-tecnico')?.value;
+  const tecnicoNombre=document.getElementById('nt-tecnico')?.selectedOptions?.[0]?.textContent?.split(' (')[0]||'';
+  if(!titulo){flToast('El título es obligatorio','err');return;}
+  if(!tecnicoEmail){flToast('Selecciona un técnico','err');return;}
+  btn.disabled=true;btn.textContent='Guardando…';
+  const s=flS.find(x=>x.id===solId);
+  const yo=window.auth?.currentUser;
+  try{
+    await fs.addDoc(fs.collection(db,C.TAREAS),{
+      solicitudId:  solId,
+      vehiculoEco:  s?.vehiculoEco||'—',
+      titulo,
+      descripcion:  desc||'',
+      prioridad:    prior,
+      fechaLimite:  fecha,
+      fechaCompromiso: '',
+      asignadoA:    tecnicoEmail,
+      asignadoNombre: tecnicoNombre,
+      estatus:      'Pendiente',
+      evidencias:   [],
+      comentarios:  [],
+      creadoPor:    yo?.email||'—',
+      creadoNombre: yo?.displayName||yo?.email||'—',
+      creadoEn:     new Date().toISOString(),
+      actualizadoEn:new Date().toISOString(),
+    });
+    // Notificación push al técnico asignado
+    await db.collection('flotilla_notificaciones').add({
+      solicitudId: solId,
+      para:        tecnicoEmail,
+      vehiculoEco: s?.vehiculoEco||'—',
+      tipo:        'tarea_nueva',
+      mensaje:     'Nueva tarea asignada: "'+titulo+'" — ECO '+(s?.vehiculoEco||'—')+(fecha?' · Límite: '+fecha:''),
+      leido:       false,
+      creadaEn:    new Date().toISOString(),
+    });
+    flToast('Tarea creada y técnico notificado','ok');
+    document.querySelector('.fl-ov[style*="3500"]')?.remove();
+    // Refrescar lista de tareas del modal padre
+    if(window._flTareasRender) await window._flTareasRender();
+  }catch(e){
+    flToast('Error: '+e.message,'err');
+    btn.disabled=false;btn.textContent='Crear tarea';
+  }
+};
+
+// Modal — ver detalle y editar tarea (comentarios, evidencias, fecha compromiso)
+window.flTareaDetalle=async function(tareaId,solId){
+  if(!fs){const m=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');fs=m;}
+  let t;
+  try{const snap=await fs.getDoc(fs.doc(db,C.TAREAS,tareaId));t={id:snap.id,...snap.data()};}
+  catch(e){flToast('Error al cargar tarea','err');return;}
+  const yo=window.auth?.currentUser;
+
+  const ov3=document.createElement('div');ov3.className='fl-ov';ov3.style.zIndex='3600';
+  ov3.innerHTML=`<div class="fl-modal" style="max-width:500px">
+    <div class="fl-mh">
+      <div>
+        <h3>${t.titulo||'Tarea'}</h3>
+        <div style="font-size:10px;color:#64748B;margin-top:2px">ECO ${t.vehiculoEco||'—'} · Asignado: ${t.asignadoNombre||t.asignadoA||'—'}</div>
+      </div>
+      <button class="fl-mx" onclick="this.closest('.fl-ov').remove()">✕</button>
+    </div>
+    <div class="fl-mb" style="display:flex;flex-direction:column;gap:10px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${hTareaBadge(t.estatus||'Pendiente')}
+        ${t.prioridad?`<span style="font-size:9.5px;font-weight:700;padding:2px 8px;border-radius:10px;background:${t.prioridad==='Alta'||t.prioridad==='Urgente'?'#FEE2E2':'#F1F5F9'};color:${t.prioridad==='Alta'||t.prioridad==='Urgente'?'#B91C1C':'#64748B'}">${t.prioridad}</span>`:''}
+        ${t.fechaLimite?`<span style="font-size:9.5px;color:#64748B;padding:2px 8px;background:#F1F5F9;border-radius:10px">Límite: ${t.fechaLimite}</span>`:''}
+      </div>
+      ${t.descripcion?`<div style="background:#F8FAFD;border-radius:8px;padding:10px;font-size:12px;color:#475569;border:1px solid #E8EDF5">${t.descripcion}</div>`:''}
+      <div class="fl-sep"></div>
+
+      <!-- Historial de comentarios -->
+      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8">Comentarios</div>
+      <div id="td-comentarios" style="display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto">
+        ${(t.comentarios||[]).length?t.comentarios.map(c=>`
+          <div style="background:${c.autorEmail===yo?.email?'#EFF6FF':'#F8FAFD'};border-radius:8px;padding:8px 10px;border:1px solid ${c.autorEmail===yo?.email?'#BFDBFE':'#E8EDF5'}">
+            <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+              <span style="font-size:10px;font-weight:700;color:#1D4ED8">${c.autor||'—'}</span>
+              <span style="font-size:9px;color:#94A3B8">${c.fecha?c.fecha.slice(0,10):''}</span>
+            </div>
+            <div style="font-size:12px;color:#0A1628">${c.texto}</div>
+          </div>`).join('')
+        :`<div style="font-size:11px;color:#94A3B8;text-align:center;padding:10px">Sin comentarios aún</div>`}
+      </div>
+      <div style="display:flex;gap:7px">
+        <input id="td-comt-inp" placeholder="Agregar comentario…" style="flex:1;padding:8px 10px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px">
+        <button onclick="flTareaAgregarComt('${tareaId}','${solId}')" style="padding:8px 12px;background:#1D4ED8;color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer">Enviar</button>
+      </div>
+
+      <!-- Evidencias -->
+      <div class="fl-sep"></div>
+      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8">Evidencias</div>
+      <div id="td-evs" style="display:flex;flex-wrap:wrap;gap:5px">
+        ${(t.evidencias||[]).map((src,i)=>`<img src="${src}" onclick="flImg('${src}')" style="width:56px;height:56px;object-fit:cover;border-radius:8px;cursor:zoom-in;border:1.5px solid #E2E8F0">`).join('')}
+      </div>
+      <label style="display:inline-flex;align-items:center;gap:6px;padding:7px 12px;background:#F8FAFD;border:1.5px dashed #CBD5E1;border-radius:8px;cursor:pointer;font-size:11px;font-weight:700;color:#475569">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        Subir evidencia
+        <input type="file" accept="image/*" multiple style="display:none" onchange="flTareaSubirEv(this,'${tareaId}','${solId}')">
+      </label>
+
+      <div class="fl-fa">
+        <button class="fb gho" onclick="this.closest('.fl-ov').remove()">Cerrar</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(ov3);
+  ov3.addEventListener('click',e=>{if(e.target===ov3)ov3.remove();});
+};
+
+// Agregar comentario a una tarea
+window.flTareaAgregarComt=async function(tareaId,solId){
+  const inp=document.getElementById('td-comt-inp');
+  const texto=inp?.value?.trim();
+  if(!texto)return;
+  const yo=window.auth?.currentUser;
+  try{
+    const snap=await fs.getDoc(fs.doc(db,C.TAREAS,tareaId));
+    if(!snap.exists())return;
+    const t=snap.data();
+    const comentarios=[...(t.comentarios||[]),{
+      texto,
+      autor:   yo?.displayName||yo?.email||'Admin',
+      autorEmail: yo?.email||'',
+      fecha:   new Date().toISOString(),
+    }];
+    await fs.updateDoc(fs.doc(db,C.TAREAS,tareaId),{comentarios,actualizadoEn:new Date().toISOString()});
+    // Notificar al técnico asignado (si no es el mismo que comenta)
+    if(t.asignadoA && t.asignadoA!==yo?.email){
+      await db.collection('flotilla_notificaciones').add({
+        solicitudId: solId,
+        para:        t.asignadoA,
+        vehiculoEco: t.vehiculoEco||'—',
+        tipo:        'tarea_comentario',
+        mensaje:     'Nuevo comentario en tu tarea "'+t.titulo+'": "'+texto+'"',
+        leido:       false,
+        creadaEn:    new Date().toISOString(),
+      });
+    }
+    inp.value='';
+    // Refrescar comentarios en el modal
+    const cont=document.getElementById('td-comentarios');
+    if(cont){
+      const snp2=await fs.getDoc(fs.doc(db,C.TAREAS,tareaId));
+      const t2=snp2.data();
+      cont.innerHTML=(t2.comentarios||[]).map(c=>`
+        <div style="background:${c.autorEmail===yo?.email?'#EFF6FF':'#F8FAFD'};border-radius:8px;padding:8px 10px;border:1px solid ${c.autorEmail===yo?.email?'#BFDBFE':'#E8EDF5'}">
+          <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+            <span style="font-size:10px;font-weight:700;color:#1D4ED8">${c.autor||'—'}</span>
+            <span style="font-size:9px;color:#94A3B8">${c.fecha?c.fecha.slice(0,10):''}</span>
+          </div>
+          <div style="font-size:12px;color:#0A1628">${c.texto}</div>
+        </div>`).join('');
+    }
+    flToast('Comentario guardado','ok');
+    if(window._flTareasRender) await window._flTareasRender();
+  }catch(e){flToast('Error: '+e.message,'err');}
+};
+
+// Subir evidencia a una tarea (comprimida)
+window.flTareaSubirEv=async function(input,tareaId,solId){
+  const files=Array.from(input.files);if(!files.length)return;
+  flToast('Comprimiendo y subiendo…','ok');
+  const nuevasEv=[];
+  for(const f of files){
+    try{
+      const b64=await new Promise((res,rej)=>{
+        const img=new Image();
+        img.onload=()=>{
+          const c=document.createElement('canvas');
+          const MAX=900;const sc=Math.min(1,MAX/Math.max(img.width,img.height));
+          c.width=Math.round(img.width*sc);c.height=Math.round(img.height*sc);
+          c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+          res(c.toDataURL('image/jpeg',0.72));
+        };
+        img.onerror=rej;
+        img.src=URL.createObjectURL(f);
+      });
+      nuevasEv.push(b64);
+    }catch(e){console.warn(e);}
+  }
+  if(!nuevasEv.length)return;
+  try{
+    const snap=await fs.getDoc(fs.doc(db,C.TAREAS,tareaId));
+    const evs=[...(snap.data()?.evidencias||[]),...nuevasEv];
+    await fs.updateDoc(fs.doc(db,C.TAREAS,tareaId),{evidencias:evs,actualizadoEn:new Date().toISOString()});
+    const cont=document.getElementById('td-evs');
+    if(cont) cont.innerHTML=evs.map(src=>`<img src="${src}" onclick="flImg('${src}')" style="width:56px;height:56px;object-fit:cover;border-radius:8px;cursor:zoom-in;border:1.5px solid #E2E8F0">`).join('');
+    flToast(nuevasEv.length+' evidencia(s) guardada(s)','ok');
+    if(window._flTareasRender) await window._flTareasRender();
+  }catch(e){flToast('Error: '+e.message,'err');}
+};
+
+// Modal — cambiar estatus de tarea
+window.flTareaCambiarEstatus=async function(tareaId,solId){
+  const snap=await fs.getDoc(fs.doc(db,C.TAREAS,tareaId));
+  const t={id:snap.id,...snap.data()};
+  const ov4=document.createElement('div');ov4.className='fl-ov';ov4.style.zIndex='3700';
+  ov4.innerHTML=`<div class="fl-modal" style="max-width:380px">
+    <div class="fl-mh"><h3>Cambiar estatus</h3><button class="fl-mx" onclick="this.closest('.fl-ov').remove()">✕</button></div>
+    <div class="fl-mb" style="display:flex;flex-direction:column;gap:8px">
+      <div style="font-size:13px;font-weight:700;color:#0A1628;margin-bottom:4px">${t.titulo||'Tarea'}</div>
+      ${['Pendiente','En proceso','En revisión','Completada','Cancelada'].map(est=>`
+        <button onclick="flTareaSetEstatus('${tareaId}','${solId}','${est}',this)" style="padding:10px 14px;border-radius:9px;border:1.5px solid ${t.estatus===est?'#7C3AED':'#E2E8F0'};background:${t.estatus===est?'#EDE9FE':'#fff'};font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;text-align:left;color:${t.estatus===est?'#5B21B6':'#374151'}">
+          ${t.estatus===est?'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" style="margin-right:5px"><polyline points="20 6 9 17 4 12"/></svg>':''} ${est}
+        </button>`).join('')}
+    </div>
+  </div>`;
+  document.body.appendChild(ov4);
+  ov4.addEventListener('click',e=>{if(e.target===ov4)ov4.remove();});
+};
+
+window.flTareaSetEstatus=async function(tareaId,solId,nuevoEst,btn){
+  try{
+    await fs.updateDoc(fs.doc(db,C.TAREAS,tareaId),{estatus:nuevoEst,actualizadoEn:new Date().toISOString()});
+    // Notificar si se completó
+    if(nuevoEst==='Completada'||nuevoEst==='En revisión'){
+      const snap=await fs.getDoc(fs.doc(db,C.TAREAS,tareaId));
+      const t=snap.data();
+      const s=flS.find(x=>x.id===solId);
+      if(s?.creadoPor){
+        await db.collection('flotilla_notificaciones').add({
+          solicitudId: solId,
+          para:        s.creadoPor,
+          vehiculoEco: t.vehiculoEco||'—',
+          tipo:        nuevoEst==='Completada'?'tarea_completada':'tarea_revision',
+          mensaje:     'Tarea "'+(t.titulo||'—')+'" marcada como '+nuevoEst+' — ECO '+(t.vehiculoEco||'—'),
+          leido:       false,
+          creadaEn:    new Date().toISOString(),
+        });
+      }
+    }
+    flToast('Estatus actualizado','ok');
+    document.querySelector('.fl-ov[style*="3700"]')?.remove();
+    if(window._flTareasRender) await window._flTareasRender();
+  }catch(e){flToast('Error: '+e.message,'err');}
+};
 
 console.log('[FLOTILLA v14] Pipeline 4 etapas · Tecnocontrol · '+CAT.length+' unidades');
 })();
