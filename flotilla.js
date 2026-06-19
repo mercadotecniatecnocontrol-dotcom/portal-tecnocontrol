@@ -5041,7 +5041,7 @@ window.flGuardarTarea=async function(solId,btn){
       actualizadoEn:new Date().toISOString(),
     });
     // Notificación push al técnico asignado
-    await db.collection('flotilla_notificaciones').add({
+    await fs.addDoc(fs.collection(db,'flotilla_notificaciones'),{
       solicitudId: solId,
       para:        tecnicoEmail,
       vehiculoEco: s?.vehiculoEco||'—',
@@ -5144,7 +5144,7 @@ window.flTareaAgregarComt=async function(tareaId,solId){
     await fs.updateDoc(fs.doc(db,C.TAREAS,tareaId),{comentarios,actualizadoEn:new Date().toISOString()});
     // Notificar al técnico asignado (si no es el mismo que comenta)
     if(t.asignadoA && t.asignadoA!==yo?.email){
-      await db.collection('flotilla_notificaciones').add({
+      await fs.addDoc(fs.collection(db,'flotilla_notificaciones'),{
         solicitudId: solId,
         para:        t.asignadoA,
         vehiculoEco: t.vehiculoEco||'—',
@@ -5236,7 +5236,7 @@ window.flTareaSetEstatus=async function(tareaId,solId,nuevoEst,btn){
       const t=snap.data();
       const s=flS.find(x=>x.id===solId);
       if(s?.creadoPor){
-        await db.collection('flotilla_notificaciones').add({
+        await fs.addDoc(fs.collection(db,'flotilla_notificaciones'),{
           solicitudId: solId,
           para:        s.creadoPor,
           vehiculoEco: t.vehiculoEco||'—',
