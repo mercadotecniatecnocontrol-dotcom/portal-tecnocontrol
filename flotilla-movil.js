@@ -78,7 +78,7 @@ window.CAT_FL=[
 const C={
   VEHS:'flotilla_vehiculos',
   SOLS:'flotilla_solicitudes',
-  TAREAS:'actividades',
+  TAREAS:'flotilla_tareas',
   USUARIOS:'fl_usuarios',
   CHKSEM:'flotilla_checklist_semanal',
   CFG:'flotilla_config',
@@ -104,6 +104,7 @@ const CHK_CATS={
 // ── ESTADO ──
 let miVeh=null, misSols=[], misTareas=[], misNotif=[], misPipelineNotif=[];
 let miPerfil=null; // {email, nombre, ecoVinculado, rol}
+let _unsubNotif=null; // listener en tiempo real de flotilla_notificaciones
 let vistaAct='vehiculo';
 let solState={modo:'entrada',tipo:'',prior:'Normal',desc:'',km:'',taller:'',gasolina:50,chk:{},chkFotos:{},evFotos:[],dmg:{}};
 let semState={km:'',gasolina:50,chk:{},chkFotos:{},evFotos:[],observaciones:'',firma:null,yaExiste:false};
@@ -783,27 +784,76 @@ async function cargarMisSols(){
   }
 }
 
+let _unsubTareas=null; // listener en tiempo real de flotilla_tareas
+
 async function cargarMisTareas(){
   if(!miPerfil?.email){misTareas=[];return;}
-  try{
-    const snap=await db.collection(C.TAREAS)
-      .where('asignadoA','==',miPerfil.email)
-      .get();
-    misTareas=snap.docs.map(d=>({id:d.id,...d.data()}))
-      .filter(t=>t.estatus!=='Completada');
-    misNotif=misSols.filter(s=>['Aprobada','Rechazada','Cotización'].includes(s.estatus)).slice(0,10);
-  }catch(e){console.error('[MOVIL tareas]',e);misTareas=[];}
+
+  // ── Listener en tiempo real para TAREAS ──
+  if(!_unsubTareas){
+    try{
+      _unsubTareas = db.collection(C.TAREAS)
+        .where('asignadoA','==',miPerfil.email)
+        .onSnapshot(snap=>{
+          misTareas=snap.docs.map(d=>({id:d.id,...d.data()}))
+            .filter(t=>t.estatus!=='Completada'&&t.estatus!=='Cancelada')
+            .sort((a,b)=>(a.creadoEn||'').localeCompare(b.creadoEn||''));
+          actualizarBadges();
+          if(vistaAct==='tareas') renderTareas();
+        }, err=>{console.warn('[MOVIL tareas onSnapshot]',err);misTareas=[];});
+    }catch(e){console.error('[MOVIL tareas]',e);misTareas=[];}
+  }
+
   misNotif=[]; // unificado: avisos vienen solo de flotilla_notificaciones
-  try {
-    if(miPerfil?.email){
-      const snapN=await db.collection('flotilla_notificaciones')
+
+  // ── Listener en tiempo real para notificaciones (onSnapshot) ──
+  // Se llama una vez al iniciar sesión; si ya existe se reutiliza
+  if(miPerfil?.email && !_unsubNotif){
+    try {
+      const qNotif = db.collection('flotilla_notificaciones')
         .where('para','==',miPerfil.email)
-        .limit(30)
-        .get();
-      misPipelineNotif=snapN.docs.map(d=>({id:d.id,...d.data()}))
-        .sort((a,b)=>(b.creadaEn||'').localeCompare(a.creadaEn||''));
-    }
-  } catch(e){ misPipelineNotif=[]; }
+        .orderBy('creadaEn','desc')
+        .limit(30);
+
+      _unsubNotif = qNotif.onSnapshot(snap => {
+        const anterior = misPipelineNotif.length;
+        misPipelineNotif = snap.docs.map(d=>({id:d.id,...d.data()}));
+
+        // Detectar notificaciones nuevas (no leídas) vs las que ya había
+        const nuevas = snap.docChanges().filter(ch=>ch.type==='added' && !ch.doc.data().leido);
+        if(nuevas.length > 0 && anterior > 0){
+          // Solo mostrar push si ya habíamos cargado antes (no en la carga inicial)
+          nuevas.forEach(ch => {
+            const n = ch.doc.data();
+            const titulo = 'Tecnocontrol · Flotilla';
+            const cuerpo = n.mensaje || 'Tu solicitud cambió de estatus';
+            // 1) Notificación nativa via Service Worker
+            if(navigator.serviceWorker?.controller){
+              navigator.serviceWorker.controller.postMessage({
+                type:'SHOW_NOTIF',
+                title: titulo,
+                body:  cuerpo,
+                tag:   'fl-notif-'+ch.doc.id,
+                notifTipo: n.tipo||'msg',
+              });
+            }
+            // 2) Toast visual dentro de la app
+            toast(cuerpo, n.tipo?.includes('rechazada')?'err':'ok');
+          });
+        }
+        actualizarBadges();
+        // Si el técnico está viendo la vista de notificaciones, refrescarla
+        if(vistaAct==='notif') renderNotif();
+      }, err => {
+        console.warn('[MOVIL notif onSnapshot]', err);
+        misPipelineNotif = [];
+      });
+    } catch(e){ misPipelineNotif=[]; }
+  } else if(!miPerfil?.email){
+    // Sin sesión — limpiar listener si existía
+    if(_unsubNotif){ _unsubNotif(); _unsubNotif=null; }
+    misPipelineNotif=[];
+  }
 }
 
 function actualizarBadges(){
@@ -2043,53 +2093,221 @@ window.fmGuardar=async function(){
 // VISTA 3 — MIS TAREAS
 // ══════════════════════════════════════════
 function renderTareas(){
-  const pend=misTareas.filter(t=>t.estatus!=='Completada');
-  setContent(`
-    <div class="fm-sec-hd">
-      <div>
-        <div class="fm-sec-t">Mis tareas</div>
-        <div class="fm-sec-s">${pend.length} pendiente(s)</div>
-      </div>
-    </div>
-    ${!pend.length?`<div class="fm-empty"><div class="fm-empty-ico" style="color:#15803D">${IC.check}</div><h3>Sin tareas pendientes</h3><p>No tienes tareas asignadas por el momento.</p></div>`:
-    pend.map(t=>`
-      <div class="fm-tarea-card">
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:6px">
-          <div class="fm-tarea-title">${t.titulo||t.nombre||'Tarea sin título'}</div>
-          ${badge(t.estatus||'Pendiente')}
-        </div>
-        <div class="fm-tarea-meta">${t.descripcion||'Sin descripción'}</div>
-        <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
-          ${t.prioridad?`<span class="fm-tarea-prior" style="background:${t.prioridad==='Alta'||t.prioridad==='Urgente'?'#FEE2E2':'#F1F5F9'};color:${t.prioridad==='Alta'||t.prioridad==='Urgente'?'#B91C1C':'#475569'}">${t.prioridad}</span>`:''}
-          ${t.fechaVencimiento?`<span style="font-size:11px;color:#64748B">Vence: ${hF(t.fechaVencimiento)}</span>`:''}
-        </div>
-        <div style="display:flex;gap:8px;margin-top:10px">
-          <button onclick="fmMarcarTarea('${t.id}','En proceso')" class="fm-btn ghost fm-btn-sm" style="flex:1;font-size:12px">En proceso</button>
-          <button onclick="fmMarcarTarea('${t.id}','Completada')" class="fm-btn green fm-btn-sm" style="flex:1;font-size:12px">Completar</button>
-        </div>
-      </div>`).join('')}
-    <div style="height:20px"></div>
-  `);
+  const pend=misTareas.filter(t=>t.estatus!=='Completada'&&t.estatus!=='Cancelada');
+  const urg=pend.filter(t=>t.prioridad==='Urgente'||t.prioridad==='Alta');
+  setContent(
+    '<div class="fm-sec-hd"><div><div class="fm-sec-t">Mis tareas</div><div class="fm-sec-s">'+pend.length+' pendiente(s)'+(urg.length?' · '+urg.length+' urgente(s)':'')+'</div></div></div>'+
+    (!pend.length?
+      '<div class="fm-empty"><div class="fm-empty-ico" style="color:#15803D">'+IC.check+'</div><h3>Sin tareas pendientes</h3><p>No tienes tareas asignadas.</p></div>'
+    :
+      '<div style="display:flex;gap:8px;margin-bottom:14px;overflow-x:auto;padding-bottom:2px">'+
+        '<div style="flex-shrink:0;background:#FEF3C7;border-radius:10px;padding:10px 14px;text-align:center;min-width:70px"><div style="font-size:20px;font-weight:900;color:#92400E">'+pend.filter(t=>t.estatus==='Pendiente').length+'</div><div style="font-size:9px;font-weight:700;color:#B45309">Pendientes</div></div>'+
+        '<div style="flex-shrink:0;background:#DBEAFE;border-radius:10px;padding:10px 14px;text-align:center;min-width:70px"><div style="font-size:20px;font-weight:900;color:#1E40AF">'+pend.filter(t=>t.estatus==='En proceso').length+'</div><div style="font-size:9px;font-weight:700;color:#1D4ED8">En proceso</div></div>'+
+        '<div style="flex-shrink:0;background:#EDE9FE;border-radius:10px;padding:10px 14px;text-align:center;min-width:70px"><div style="font-size:20px;font-weight:900;color:#5B21B6">'+pend.filter(t=>t.estatus==='En revisión').length+'</div><div style="font-size:9px;font-weight:700;color:#7C3AED">En revisión</div></div>'+
+      '</div>'+
+      pend.map(function(t){
+        var esUrg=t.prioridad==='Urgente'||t.prioridad==='Alta';
+        var borde=esUrg?'#FCA5A5':t.estatus==='En proceso'?'#BFDBFE':t.estatus==='En revisión'?'#C4B5FD':'#E2E8F0';
+        var fondo=esUrg?'#FFF7F7':t.estatus==='En proceso'?'#F8FBFF':'#fff';
+        var estColor=t.estatus==='En proceso'?'#1E40AF':t.estatus==='En revisión'?'#5B21B6':'#92400E';
+        var estBg=t.estatus==='En proceso'?'#DBEAFE':t.estatus==='En revisión'?'#EDE9FE':'#FEF3C7';
+        var ultComt=(t.comentarios||[]).slice(-1)[0];
+        return '<div style="border:1.5px solid '+borde+';border-radius:12px;padding:13px;margin-bottom:10px;background:'+fondo+'">'+
+          '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:6px">'+
+            '<div style="font-size:13px;font-weight:800;color:#0A1628;flex:1;line-height:1.3">'+(t.titulo||'Tarea sin título')+'</div>'+
+            '<span style="background:'+estBg+';color:'+estColor+';font-size:9px;font-weight:800;padding:2px 7px;border-radius:8px;flex-shrink:0;white-space:nowrap">'+(t.estatus||'Pendiente')+'</span>'+
+          '</div>'+
+          (t.descripcion?'<div style="font-size:12px;color:#475569;margin-bottom:8px;line-height:1.4">'+t.descripcion+'</div>':'')+
+          '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">'+
+            (t.prioridad&&t.prioridad!=='Normal'?'<span style="font-size:10px;font-weight:700;background:'+(esUrg?'#FEE2E2':'#F1F5F9')+';color:'+(esUrg?'#B91C1C':'#64748B')+';padding:2px 7px;border-radius:6px">'+t.prioridad+'</span>':'')+
+            (t.vehiculoEco?'<span style="font-size:10px;color:#1D4ED8;background:#EFF6FF;padding:2px 7px;border-radius:6px;font-weight:700">ECO '+t.vehiculoEco+'</span>':'')+
+            (t.fechaLimite?'<span style="font-size:10px;color:#64748B;background:#F8FAFD;padding:2px 7px;border-radius:6px">Límite: '+t.fechaLimite+'</span>':'')+
+            (t.fechaCompromiso?'<span style="font-size:10px;color:#7C3AED;background:#EDE9FE;padding:2px 7px;border-radius:6px;font-weight:700">Compromiso: '+t.fechaCompromiso+'</span>':'')+
+          '</div>'+
+          (t.solicitudId?'<div style="background:#F8FAFD;border-radius:8px;padding:7px 10px;margin-bottom:10px;border:1px solid #E8EDF5;font-size:11px;cursor:pointer" onclick="fmVerTareaSol(\''+t.solicitudId+'\')"><span style="font-weight:700;color:#1D4ED8">Ver solicitud vinculada \u2192</span> <span style="color:#64748B">'+t.solicitudId.slice(0,8).toUpperCase()+'</span></div>':'')+
+          (ultComt?'<div style="font-size:10px;color:#94A3B8;margin-bottom:8px">\u00daltimo comentario: "'+ultComt.texto.slice(0,50)+'\u2026"</div>':'')+
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:'+(t.fechaCompromiso?'0':'8px')+'">'+
+            '<button onclick="fmTareaVerDetalle(\''+t.id+'\')" style="padding:8px;background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:8px;font-family:inherit;font-size:11px;font-weight:700;color:#1D4ED8;cursor:pointer">Ver detalle</button>'+
+            '<button onclick="fmTareaEstatus(\''+t.id+'\')" style="padding:8px;background:#F0FDF4;border:1.5px solid #BBF7D0;border-radius:8px;font-family:inherit;font-size:11px;font-weight:700;color:#15803D;cursor:pointer">Cambiar estatus</button>'+
+          '</div>'+
+          (!t.fechaCompromiso?'<button onclick="fmTareaFechaCompromiso(\''+t.id+'\')" style="width:100%;padding:7px;background:#F5F3FF;border:1.5px solid #DDD6FE;border-radius:8px;font-family:inherit;font-size:11px;font-weight:700;color:#7C3AED;cursor:pointer;margin-top:8px">+ Establecer fecha compromiso</button>':'')+
+        '</div>';
+      }).join('')+
+      '<div style="height:20px"></div>'
+    )
+  );
 }
 
-window.fmMarcarTarea=async function(id,est){
+window.fmVerTareaSol=function(solId){fmVerSol(solId);};
+
+window.fmTareaVerDetalle=async function(tareaId){
+  var snap,t;
+  try{snap=await db.collection(C.TAREAS).doc(tareaId).get();t={id:snap.id,...snap.data()};}
+  catch(e){toast('Error al cargar tarea','err');return;}
+  var ov=document.createElement('div');ov.className='fm-ov';
+  var comtsHtml=(t.comentarios||[]).length?
+    (t.comentarios||[]).map(function(c){return '<div style="background:#F8FAFD;border-radius:8px;padding:8px 10px;border:1px solid #E8EDF5;margin-bottom:5px"><div style="font-size:10px;font-weight:700;color:#1D4ED8;margin-bottom:2px">'+(c.autor||'—')+' <span style="color:#CBD5E1;font-weight:400">'+(c.fecha?c.fecha.slice(0,10):'')+'</span></div><div style="font-size:12.5px;color:#0A1628">'+c.texto+'</div></div>';}).join('')
+    :'<div style="font-size:11px;color:#94A3B8;text-align:center;padding:8px">Sin comentarios</div>';
+  var evsHtml=(t.evidencias||[]).length?
+    (t.evidencias||[]).map(function(src){return '<img src="'+src+'" onclick="fmVerImg(\''+src+'\')" style="width:60px;height:60px;object-fit:cover;border-radius:9px;cursor:zoom-in;border:1.5px solid #E2E8F0">';}).join('')
+    :'<div style="font-size:11px;color:#94A3B8">Sin evidencias</div>';
+  ov.innerHTML='<div class="fm-sheet" style="max-height:90vh;overflow-y:auto">'+
+    '<div class="fm-sheet-hd"><h3 style="font-size:14px">'+(t.titulo||'Tarea')+'</h3><button class="fm-sheet-x" onclick="this.closest(\'.fm-ov\').remove()">✕</button></div>'+
+    '<div class="fm-sheet-body">'+
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">'+
+        '<span style="background:#EDE9FE;color:#5B21B6;font-size:9.5px;font-weight:800;padding:2px 8px;border-radius:8px">'+(t.estatus||'Pendiente')+'</span>'+
+        (t.prioridad?'<span style="font-size:9.5px;font-weight:700;padding:2px 8px;border-radius:8px;background:'+(t.prioridad==='Alta'||t.prioridad==='Urgente'?'#FEE2E2':'#F1F5F9')+';color:'+(t.prioridad==='Alta'||t.prioridad==='Urgente'?'#B91C1C':'#64748B')+'">'+t.prioridad+'</span>':'')+
+      '</div>'+
+      (t.descripcion?'<div style="background:#F8FAFD;border-radius:9px;padding:10px;font-size:13px;color:#475569;margin-bottom:12px;border:1px solid #E8EDF5">'+t.descripcion+'</div>':'')+
+      (t.fechaLimite?'<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #F1F5F9"><span style="font-size:12px;color:#64748B;font-weight:600">Fecha límite</span><span style="font-size:12px;font-weight:700">'+t.fechaLimite+'</span></div>':'')+
+      (t.fechaCompromiso?'<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #F1F5F9"><span style="font-size:12px;color:#7C3AED;font-weight:600">Compromiso</span><span style="font-size:12px;font-weight:700;color:#7C3AED">'+t.fechaCompromiso+'</span></div>':'')+
+      '<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin:14px 0 8px">Comentarios</div>'+
+      '<div id="fm-td-comts" style="display:flex;flex-direction:column;gap:5px;max-height:160px;overflow-y:auto;margin-bottom:10px">'+comtsHtml+'</div>'+
+      '<div style="display:flex;gap:7px;margin-bottom:14px">'+
+        '<input id="fm-td-inp" placeholder="Agregar comentario…" style="flex:1;padding:9px 11px;border:1.5px solid #E2E8F0;border-radius:9px;font-family:inherit;font-size:12px">'+
+        '<button onclick="fmTareaEnviarComt(\''+tareaId+'\')" style="padding:9px 14px;background:#1D4ED8;color:#fff;border:none;border-radius:9px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer">Enviar</button>'+
+      '</div>'+
+      '<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:8px">Evidencias</div>'+
+      '<div id="fm-td-evs" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">'+evsHtml+'</div>'+
+      '<label style="display:inline-flex;align-items:center;gap:6px;padding:8px 13px;background:#F8FAFD;border:1.5px dashed #CBD5E1;border-radius:9px;cursor:pointer;font-size:11px;font-weight:700;color:#475569;margin-bottom:14px">'+
+        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>'+
+        ' Subir foto de evidencia'+
+        '<input type="file" accept="image/*" multiple style="display:none" onchange="fmTareaSubirEv(this,\''+tareaId+'\')">'+
+      '</label>'+
+      (!t.fechaCompromiso?
+        '<div style="background:#F5F3FF;border-radius:10px;padding:11px;border:1.5px solid #DDD6FE;margin-bottom:14px">'+
+          '<div style="font-size:10px;font-weight:800;color:#7C3AED;margin-bottom:7px">Establecer fecha compromiso</div>'+
+          '<div style="display:flex;gap:8px;align-items:center">'+
+            '<input type="date" id="fm-td-fcomp" style="flex:1;padding:8px;border:1.5px solid #DDD6FE;border-radius:8px;font-family:inherit;font-size:12px">'+
+            '<button onclick="fmTareaSetFcomp(\''+tareaId+'\')" style="padding:8px 12px;background:#7C3AED;color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer">Guardar</button>'+
+          '</div>'+
+        '</div>'
+      :'')+
+    '</div></div>';
+  document.body.appendChild(ov);
+  ov.addEventListener('click',function(e){if(e.target===ov)ov.remove();});
+};
+
+window.fmTareaEnviarComt=async function(tareaId){
+  var inp=document.getElementById('fm-td-inp');
+  var texto=inp&&inp.value?inp.value.trim():'';
+  if(!texto)return;
+  var yo=miPerfil;
   try{
-    await db.collection(C.TAREAS).doc(id).update({estatus:est,actualizadoEn:new Date().toISOString()});
-    await cargarMisTareas();
-    actualizarBadges();
-    renderTareas();
-    toast(est==='Completada'?'Tarea completada ✓':'Tarea en proceso','ok');
+    var snap=await db.collection(C.TAREAS).doc(tareaId).get();
+    var t=snap.data();
+    var comentarios=(t.comentarios||[]).concat([{texto:texto,autor:(yo&&yo.nombre)||yo.email||'Técnico',autorEmail:(yo&&yo.email)||'',fecha:new Date().toISOString()}]);
+    await db.collection(C.TAREAS).doc(tareaId).update({comentarios:comentarios,actualizadoEn:new Date().toISOString()});
+    if(t.creadoPor&&t.creadoPor!==yo.email){
+      await db.collection('flotilla_notificaciones').add({solicitudId:t.solicitudId||'',para:t.creadoPor,vehiculoEco:t.vehiculoEco||'—',tipo:'tarea_comentario',mensaje:'Comentario del técnico en "'+t.titulo+'": "'+texto+'"',leido:false,creadaEn:new Date().toISOString()});
+    }
+    inp.value='';
+    var cont=document.getElementById('fm-td-comts');
+    if(cont){var snp2=await db.collection(C.TAREAS).doc(tareaId).get();var t2=snp2.data();cont.innerHTML=(t2.comentarios||[]).map(function(c){return '<div style="background:#F8FAFD;border-radius:8px;padding:8px 10px;border:1px solid #E8EDF5;margin-bottom:5px"><div style="font-size:10px;font-weight:700;color:#1D4ED8;margin-bottom:2px">'+(c.autor||'—')+' <span style="color:#CBD5E1;font-weight:400">'+(c.fecha?c.fecha.slice(0,10):'')+'</span></div><div style="font-size:12.5px;color:#0A1628">'+c.texto+'</div></div>';}).join('');}
+    toast('Comentario enviado','ok');
   }catch(e){toast('Error: '+e.message,'err');}
 };
+
+window.fmTareaSubirEv=async function(input,tareaId){
+  var files=Array.from(input.files);if(!files.length)return;
+  toast('Subiendo evidencia…','ok');
+  var nuevas=[];
+  for(var i=0;i<files.length;i++){
+    try{
+      var b64=await (function(f){return new Promise(function(res,rej){var img=new Image();img.onload=function(){var c=document.createElement('canvas');var MAX=900;var sc=Math.min(1,MAX/Math.max(img.width,img.height));c.width=Math.round(img.width*sc);c.height=Math.round(img.height*sc);c.getContext('2d').drawImage(img,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',0.72));};img.onerror=rej;img.src=URL.createObjectURL(f);});})(files[i]);
+      nuevas.push(b64);
+    }catch(e){console.warn(e);}
+  }
+  if(!nuevas.length)return;
+  try{
+    var snap=await db.collection(C.TAREAS).doc(tareaId).get();
+    var evs=(snap.data()&&snap.data().evidencias||[]).concat(nuevas);
+    await db.collection(C.TAREAS).doc(tareaId).update({evidencias:evs,actualizadoEn:new Date().toISOString()});
+    var cont=document.getElementById('fm-td-evs');
+    if(cont)cont.innerHTML=evs.map(function(src){return '<img src="'+src+'" onclick="fmVerImg(\''+src+'\')" style="width:60px;height:60px;object-fit:cover;border-radius:9px;cursor:zoom-in;border:1.5px solid #E2E8F0">';}).join('');
+    toast(nuevas.length+' foto(s) guardada(s)','ok');
+  }catch(e){toast('Error: '+e.message,'err');}
+};
+
+window.fmVerImg=function(src){var ov=document.createElement('div');ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:9000;display:flex;align-items:center;justify-content:center;cursor:zoom-out';ov.innerHTML='<img src="'+src+'" style="max-width:95%;max-height:92vh;border-radius:10px">';ov.onclick=function(){ov.remove();};document.body.appendChild(ov);};
+
+window.fmTareaEstatus=async function(tareaId){
+  var snap=await db.collection(C.TAREAS).doc(tareaId).get();
+  var t={id:snap.id,...snap.data()};
+  var ov=document.createElement('div');ov.className='fm-ov';
+  ov.innerHTML='<div class="fm-sheet"><div class="fm-sheet-hd"><h3>Cambiar estatus</h3><button class="fm-sheet-x" onclick="this.closest(\'.fm-ov\').remove()">✕</button></div><div class="fm-sheet-body"><div style="font-size:13px;font-weight:700;color:#0A1628;margin-bottom:12px">'+(t.titulo||'Tarea')+'</div>'+
+    ['Pendiente','En proceso','En revisión','Completada','Cancelada'].map(function(est){return '<button onclick="fmTareaSetEst(\''+tareaId+'\',\''+est+'\',this)" style="display:block;width:100%;padding:12px 14px;border-radius:10px;border:1.5px solid '+(t.estatus===est?'#7C3AED':'#E2E8F0')+';background:'+(t.estatus===est?'#EDE9FE':'#fff')+';font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;text-align:left;color:'+(t.estatus===est?'#5B21B6':'#374151')+';margin-bottom:6px">'+(t.estatus===est?'\u2713 ':'')+est+'</button>';}).join('')+
+  '</div></div>';
+  document.body.appendChild(ov);
+  ov.addEventListener('click',function(e){if(e.target===ov)ov.remove();});
+};
+
+window.fmTareaSetEst=async function(tareaId,nuevoEst,btn){
+  btn.disabled=true;
+  try{
+    await db.collection(C.TAREAS).doc(tareaId).update({estatus:nuevoEst,actualizadoEn:new Date().toISOString()});
+    if(nuevoEst==='Completada'||nuevoEst==='En revisión'){
+      var snap=await db.collection(C.TAREAS).doc(tareaId).get();
+      var t=snap.data();
+      if(t.creadoPor&&t.creadoPor!==miPerfil.email){
+        await db.collection('flotilla_notificaciones').add({solicitudId:t.solicitudId||'',para:t.creadoPor,vehiculoEco:t.vehiculoEco||'—',tipo:nuevoEst==='Completada'?'tarea_completada':'tarea_revision',mensaje:'Tarea "'+(t.titulo||'—')+'" marcada como '+nuevoEst+' por '+(miPerfil&&miPerfil.nombre||'el técnico'),leido:false,creadaEn:new Date().toISOString()});
+      }
+    }
+    toast('Estatus: '+nuevoEst,'ok');
+    document.querySelector('.fm-ov:last-child')&&document.querySelector('.fm-ov:last-child').remove();
+  }catch(e){toast('Error: '+e.message,'err');btn.disabled=false;}
+};
+
+window.fmTareaFechaCompromiso=function(tareaId){
+  var ov=document.createElement('div');ov.className='fm-ov';
+  ov.innerHTML='<div class="fm-sheet"><div class="fm-sheet-hd"><h3>Fecha compromiso</h3><button class="fm-sheet-x" onclick="this.closest(\'.fm-ov\').remove()">✕</button></div><div class="fm-sheet-body"><div style="font-size:12px;color:#475569;margin-bottom:12px">Establece la fecha en que te comprometes a finalizar esta tarea.</div><input type="date" id="fmfc-inp" style="width:100%;padding:10px;border:1.5px solid #DDD6FE;border-radius:9px;font-family:inherit;font-size:13px;box-sizing:border-box"><div style="display:flex;gap:8px;margin-top:12px"><button class="fm-btn ghost" onclick="this.closest(\'.fm-ov\').remove()">Cancelar</button><button onclick="fmTareaSetFcomp(\''+tareaId+'\')" style="flex:1;padding:10px;background:#7C3AED;color:#fff;border:none;border-radius:9px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer">Guardar</button></div></div></div>';
+  document.body.appendChild(ov);
+  ov.addEventListener('click',function(e){if(e.target===ov)ov.remove();});
+};
+
+window.fmTareaSetFcomp=async function(tareaId){
+  var fecha=(document.getElementById('fm-td-fcomp')||document.getElementById('fmfc-inp'))&&(document.getElementById('fm-td-fcomp')||document.getElementById('fmfc-inp')).value;
+  if(!fecha){toast('Selecciona una fecha','err');return;}
+  try{
+    await db.collection(C.TAREAS).doc(tareaId).update({fechaCompromiso:fecha,actualizadoEn:new Date().toISOString()});
+    var snap=await db.collection(C.TAREAS).doc(tareaId).get();var t=snap.data();
+    if(t.creadoPor&&t.creadoPor!==miPerfil.email){
+      await db.collection('flotilla_notificaciones').add({solicitudId:t.solicitudId||'',para:t.creadoPor,vehiculoEco:t.vehiculoEco||'—',tipo:'tarea_comentario',mensaje:((miPerfil&&miPerfil.nombre)||'El técnico')+' se compromete a finalizar "'+t.titulo+'" el '+fecha,leido:false,creadaEn:new Date().toISOString()});
+    }
+    toast('Fecha compromiso guardada','ok');
+    document.querySelector('.fm-ov:last-child')&&document.querySelector('.fm-ov:last-child').remove();
+  }catch(e){toast('Error: '+e.message,'err');}
+};
+
+window.fmMarcarTarea=async function(id,est){
+  var btn=document.createElement('button');
+  await fmTareaSetEst(id,est,btn);
+};
+
 
 // ══════════════════════════════════════════
 // VISTA 4 — NOTIFICACIONES / AVISOS
 // ══════════════════════════════════════════
+
+// Marcar todas las notificaciones como leídas en Firestore
+window.fmMarcarNotifLeidas = async function(){
+  const sinLeer = (misPipelineNotif||[]).filter(n=>!n.leido);
+  if(!sinLeer.length) return;
+  try {
+    const batch = [];
+    for(const n of sinLeer){
+      batch.push(db.collection('flotilla_notificaciones').doc(n.id).update({leido:true}));
+    }
+    await Promise.all(batch);
+    // onSnapshot actualizará misPipelineNotif automáticamente
+  } catch(e){ console.warn('[notif marcar leída]',e); }
+};
+
 function renderNotif(){
   const pipelineItems=(misPipelineNotif||[]).map(n=>{
-    const tipoIco={validada:'ok',aprobada:'ok',cerrada:'ok',servicio:'ok',rechazada_val:'err',rechazada_apr:'err',pagos:'msg',pagado:'ok',comentario:'msg'}[n.tipo]||'msg';
-    const tipoBg={ok:'#DCFCE7',err:'#FEE2E2',msg:'#EDE9FE'}[tipoIco];
-    const tipoIcoSvg={ok:IC.check,err:IC.x,msg:IC.bell}[tipoIco];
+    const tipoIco={validada:'ok',aprobada:'ok',cerrada:'ok',servicio:'ok',rechazada_val:'err',rechazada_apr:'err',pagos:'msg',pagado:'ok',comentario:'msg',tarea_nueva:'task',tarea_comentario:'msg',tarea_completada:'ok',tarea_revision:'msg'}[n.tipo]||'msg';
+    const tipoBg={ok:'#DCFCE7',err:'#FEE2E2',msg:'#EDE9FE',task:'#FEF3C7'}[tipoIco]||'#F1F5F9';
+    const tipoIcoSvg={ok:IC.check,err:IC.x,msg:IC.bell,task:`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#92400E" stroke-width="2.2" stroke-linecap="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>`}[tipoIco]||IC.bell;
     return {
       ico:tipoIco, bg:tipoBg, icoSvg:tipoIcoSvg,
       t:n.mensaje||'Aviso de solicitud',
@@ -2109,6 +2327,7 @@ function renderNotif(){
         <div class="fm-sec-t">Avisos</div>
         <div class="fm-sec-s">${items.length} notificacion(es)</div>
       </div>
+      ${(misPipelineNotif||[]).some(n=>!n.leido)?`<button onclick="fmMarcarNotifLeidas()" style="padding:6px 12px;background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:8px;font-size:11px;font-weight:700;color:#1D4ED8;cursor:pointer">Marcar leídas</button>`:''}
     </div>
     ${!items.length?`<div class="fm-empty"><div class="fm-empty-ico" style="color:var(--color-text-secondary,#94A3B8)">${IC.bell}</div><h3>Sin avisos</h3><p>No hay notificaciones nuevas.</p></div>`:
     items.map(n=>`<div class="fm-notif ${n.unread?'unread':''}">
