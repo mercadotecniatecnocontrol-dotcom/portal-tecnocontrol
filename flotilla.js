@@ -488,6 +488,12 @@ function buildHTML(){
       <span id="fl-cnt-s" class="fl-tab-cnt" style="display:none">0</span>
     </div>
     <div style="position:relative;margin-left:6px">
+      <button class="fl-tab-btn" id="fl-tb-tareas" onclick="flVista('tareas')" title="Tareas">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+      </button>
+      <span id="fl-cnt-tar" class="fl-tab-cnt" style="display:none">0</span>
+    </div>
+    <div style="position:relative;margin-left:6px">
       <button class="fl-tab-btn" id="fl-tb-comis" onclick="flVista('comis')" title="Utilitarios">${I.truck}</button>
     </div>
     <div style="position:relative;margin-left:6px">
@@ -674,6 +680,7 @@ window.flVista=function(v){
   document.getElementById('fl-tb-'+v)?.classList.add('on');
   if(v==='panel')rPanel();
   else if(v==='sols')rSols();
+  else if(v==='tareas')rTareasPanel();
   else if(v==='comis')rComis();
   else if(v==='compar')rCompar();
   else if(v==='chksemanal')rChkSemanal();
@@ -5251,6 +5258,233 @@ window.flTareaSetEstatus=async function(tareaId,solId,nuevoEst,btn){
     document.querySelector('.fl-ov[style*="3700"]')?.remove();
     if(window._flTareasRender) await window._flTareasRender();
   }catch(e){flToast('Error: '+e.message,'err');}
+};
+
+// ═══════════════════════════════════════════════════════════════
+// VISTA TAREAS — Panel global de gestión de tareas
+// ═══════════════════════════════════════════════════════════════
+let _flTareasAll = [];           // cache de tareas cargadas
+let _flTareasFiltro = {          // filtros activos
+  estatus: '',
+  tecnico: '',
+  eco: '',
+  prioridad: '',
+  busqueda: '',
+};
+
+async function _flCargarTareasAll() {
+  if(!fs){const m=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');fs=m;}
+  try {
+    const snap = await fs.getDocs(fs.collection(db, C.TAREAS));
+    _flTareasAll = snap.docs.map(d=>({id:d.id,...d.data()}))
+      .sort((a,b)=>(b.creadoEn||'').localeCompare(a.creadoEn||''));
+    // Actualizar badge del tab
+    const pend = _flTareasAll.filter(t=>t.estatus==='Pendiente'||t.estatus==='En proceso'||t.estatus==='En revisión').length;
+    const badge = document.getElementById('fl-cnt-tar');
+    if(badge){ badge.textContent=pend; badge.style.display=pend?'flex':'none'; }
+  } catch(e){ console.warn('[FL tareas panel]',e); _flTareasAll=[]; }
+}
+
+// Llamar al cargar la app para tener el badge actualizado
+(async()=>{ await _flCargarTareasAll(); })();
+
+async function rTareasPanel() {
+  await _flCargarTareasAll();
+  _renderTareasPanel();
+}
+
+function _renderTareasPanel() {
+  const f = _flTareasFiltro;
+
+  // Aplicar filtros
+  let lista = _flTareasAll.filter(t => {
+    if(f.estatus   && t.estatus !== f.estatus) return false;
+    if(f.tecnico   && t.asignadoA !== f.tecnico) return false;
+    if(f.eco       && String(t.vehiculoEco) !== String(f.eco)) return false;
+    if(f.prioridad && t.prioridad !== f.prioridad) return false;
+    if(f.busqueda) {
+      const q = f.busqueda.toLowerCase();
+      if(!(t.titulo||'').toLowerCase().includes(q) &&
+         !(t.descripcion||'').toLowerCase().includes(q) &&
+         !(t.asignadoNombre||'').toLowerCase().includes(q)) return false;
+    }
+    return true;
+  });
+
+  // Opciones únicas para filtros
+  const tecnicos = [...new Map(_flTareasAll.map(t=>[t.asignadoA,{email:t.asignadoA,nombre:t.asignadoNombre||t.asignadoA}])).values()];
+  const ecos     = [...new Set(_flTareasAll.map(t=>t.vehiculoEco).filter(Boolean))].sort();
+
+  // KPIs globales
+  const kPend = _flTareasAll.filter(t=>t.estatus==='Pendiente').length;
+  const kProc = _flTareasAll.filter(t=>t.estatus==='En proceso').length;
+  const kRev  = _flTareasAll.filter(t=>t.estatus==='En revisión').length;
+  const kComp = _flTareasAll.filter(t=>t.estatus==='Completada').length;
+  const kUrg  = _flTareasAll.filter(t=>t.prioridad==='Urgente'||t.prioridad==='Alta').filter(t=>t.estatus!=='Completada'&&t.estatus!=='Cancelada').length;
+
+  const badgeTarea = est => {
+    const m = {'Pendiente':['#FEF3C7','#92400E'],'En proceso':['#DBEAFE','#1E40AF'],'En revisión':['#EDE9FE','#5B21B6'],'Completada':['#D1FAE5','#065F46'],'Cancelada':['#F1F5F9','#64748B']};
+    const [bg,col] = m[est]||['#F1F5F9','#64748B'];
+    return `<span style="background:${bg};color:${col};font-size:9px;font-weight:800;padding:2px 8px;border-radius:10px;white-space:nowrap">${est}</span>`;
+  };
+
+  const priorColor = p => p==='Urgente'?'#B91C1C':p==='Alta'?'#D97706':'#64748B';
+  const priorBg    = p => p==='Urgente'?'#FEE2E2':p==='Alta'?'#FEF3C7':'#F1F5F9';
+
+  setContent(padded(`
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+      <div>
+        <div style="font-size:18px;font-weight:900;letter-spacing:-.5px">Gestión de Tareas</div>
+        <div style="font-size:11px;color:#64748B;margin-top:2px">${_flTareasAll.length} tareas totales · ${lista.length} mostrando</div>
+      </div>
+      <button onclick="rTareasPanel()" style="padding:7px 14px;background:#F1F5F9;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+        Actualizar
+      </button>
+    </div>
+
+    <!-- KPIs -->
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:16px">
+      ${[
+        ['Pendientes', kPend, '#FEF3C7', '#92400E', 'Pendiente'],
+        ['En proceso', kProc, '#DBEAFE', '#1E40AF', 'En proceso'],
+        ['En revisión',kRev,  '#EDE9FE', '#5B21B6', 'En revisión'],
+        ['Completadas',kComp, '#D1FAE5', '#065F46', 'Completada'],
+        ['Alta/Urgente',kUrg, '#FEE2E2', '#B91C1C', ''],
+      ].map(([lbl,n,bg,col,est])=>`
+        <div onclick="${est?`window._flFiltrarTareas('estatus','${est}')`:''}" style="background:${bg};border-radius:10px;padding:11px 10px;text-align:center;cursor:${est?'pointer':'default'};transition:.12s" onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">
+          <div style="font-size:22px;font-weight:900;color:${col}">${n}</div>
+          <div style="font-size:9px;font-weight:700;color:${col};opacity:.8;white-space:nowrap">${lbl}</div>
+        </div>`).join('')}
+    </div>
+
+    <!-- Filtros -->
+    <div style="background:#F8FAFD;border:1.5px solid #E8EDF5;border-radius:10px;padding:12px 14px;margin-bottom:14px">
+      <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:8px;align-items:end">
+        <div>
+          <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">Buscar</label>
+          <input id="fl-tar-busq" placeholder="Título, descripción, técnico…" value="${f.busqueda||''}"
+            oninput="window._flFiltrarTareas('busqueda',this.value)"
+            style="width:100%;padding:7px 10px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;box-sizing:border-box">
+        </div>
+        <div>
+          <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">Estatus</label>
+          <select onchange="window._flFiltrarTareas('estatus',this.value)" style="width:100%;padding:7px 8px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px">
+            <option value="" ${!f.estatus?'selected':''}>Todos</option>
+            ${['Pendiente','En proceso','En revisión','Completada','Cancelada'].map(e=>`<option value="${e}" ${f.estatus===e?'selected':''}>${e}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">Técnico</label>
+          <select onchange="window._flFiltrarTareas('tecnico',this.value)" style="width:100%;padding:7px 8px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px">
+            <option value="" ${!f.tecnico?'selected':''}>Todos</option>
+            ${tecnicos.map(u=>`<option value="${u.email}" ${f.tecnico===u.email?'selected':''}>${u.nombre||u.email}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">Prioridad</label>
+          <select onchange="window._flFiltrarTareas('prioridad',this.value)" style="width:100%;padding:7px 8px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px">
+            <option value="" ${!f.prioridad?'selected':''}>Todas</option>
+            ${['Urgente','Alta','Normal','Baja'].map(p=>`<option value="${p}" ${f.prioridad===p?'selected':''}>${p}</option>`).join('')}
+          </select>
+        </div>
+        <button onclick="window._flLimpiarFiltrosTareas()" title="Limpiar filtros" style="padding:7px 10px;background:#fff;border:1.5px solid #E2E8F0;border-radius:8px;cursor:pointer;font-size:16px">✕</button>
+      </div>
+    </div>
+
+    <!-- Tabla de tareas -->
+    ${!lista.length?`
+      <div class="fl-empty">
+        <div class="fl-empty-ico"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="1.5" stroke-linecap="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></div>
+        <h3>Sin tareas</h3><p>No hay tareas con los filtros seleccionados.</p>
+      </div>
+    `:`
+    <div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead>
+        <tr style="background:#F8FAFD;border-bottom:2px solid #E8EDF5">
+          <th style="padding:9px 12px;text-align:left;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#64748B;white-space:nowrap">Tarea</th>
+          <th style="padding:9px 12px;text-align:left;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#64748B">Técnico</th>
+          <th style="padding:9px 12px;text-align:center;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#64748B">ECO</th>
+          <th style="padding:9px 12px;text-align:center;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#64748B">Estatus</th>
+          <th style="padding:9px 12px;text-align:center;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#64748B">Prioridad</th>
+          <th style="padding:9px 12px;text-align:center;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#64748B">Límite</th>
+          <th style="padding:9px 12px;text-align:center;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#64748B">Compromiso</th>
+          <th style="padding:9px 12px;text-align:center;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#64748B">Comt.</th>
+          <th style="padding:9px 12px;text-align:center;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#64748B">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${lista.map((t,idx)=>{
+          const sol = flS.find(s=>s.id===t.solicitudId);
+          const venc = t.fechaLimite && new Date(t.fechaLimite) < new Date() && t.estatus!=='Completada' && t.estatus!=='Cancelada';
+          return `<tr style="border-bottom:1px solid #F1F5F9;background:${idx%2===0?'#fff':'#FAFBFD'};${venc?'border-left:3px solid #EF4444':''}" onmouseover="this.style.background='#F0F4FF'" onmouseout="this.style.background='${idx%2===0?'#fff':'#FAFBFD'}'">
+            <td style="padding:10px 12px;max-width:240px">
+              <div style="font-weight:700;color:#0A1628;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.titulo||'Sin título'}${venc?'<span style="margin-left:5px;font-size:9px;background:#FEE2E2;color:#B91C1C;padding:1px 5px;border-radius:4px;font-weight:800">VENCIDA</span>':''}</div>
+              <div style="font-size:10px;color:#94A3B8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.descripcion||'—'}</div>
+              ${sol?`<div style="font-size:10px;color:#2563EB;cursor:pointer;font-weight:700;margin-top:2px" onclick="flVerSol('${sol.id}')">↗ ${sol.tipo||'Solicitud'}</div>`:''}
+            </td>
+            <td style="padding:10px 12px;white-space:nowrap">
+              <div style="font-weight:600">${t.asignadoNombre||'—'}</div>
+              <div style="font-size:10px;color:#94A3B8">${t.asignadoA||''}</div>
+            </td>
+            <td style="padding:10px 12px;text-align:center">
+              <span style="font-size:11px;font-weight:800;color:#1D4ED8;background:#EFF6FF;padding:2px 8px;border-radius:6px">${t.vehiculoEco||'—'}</span>
+            </td>
+            <td style="padding:10px 12px;text-align:center">${badgeTarea(t.estatus||'Pendiente')}</td>
+            <td style="padding:10px 12px;text-align:center">
+              <span style="font-size:10px;font-weight:700;background:${priorBg(t.prioridad)};color:${priorColor(t.prioridad)};padding:2px 7px;border-radius:6px">${t.prioridad||'Normal'}</span>
+            </td>
+            <td style="padding:10px 12px;text-align:center;font-size:11px;color:${venc?'#B91C1C':'#64748B'};font-weight:${venc?'700':'400'}">${t.fechaLimite||'—'}</td>
+            <td style="padding:10px 12px;text-align:center;font-size:11px;color:${t.fechaCompromiso?'#7C3AED':'#CBD5E1'};font-weight:${t.fechaCompromiso?'700':'400'}">${t.fechaCompromiso||'—'}</td>
+            <td style="padding:10px 12px;text-align:center">
+              <span style="font-size:11px;font-weight:700;color:${(t.comentarios||[]).length?'#1D4ED8':'#CBD5E1'}">${(t.comentarios||[]).length}</span>
+            </td>
+            <td style="padding:10px 12px;text-align:center;white-space:nowrap">
+              <div style="display:flex;gap:4px;justify-content:center">
+                <button onclick="flTareaDetalle('${t.id}','${t.solicitudId||''}')" title="Ver detalle" style="padding:5px 8px;background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:6px;cursor:pointer;font-size:10px;font-weight:700;color:#1D4ED8">Ver</button>
+                <button onclick="flTareaCambiarEstatus('${t.id}','${t.solicitudId||''}')" title="Cambiar estatus" style="padding:5px 8px;background:#F0FDF4;border:1.5px solid #BBF7D0;border-radius:6px;cursor:pointer;font-size:10px;font-weight:700;color:#15803D">Estatus</button>
+                ${t.solicitudId?`<button onclick="flVerSol('${t.solicitudId}')" title="Ver solicitud" style="padding:5px 8px;background:#F5F3FF;border:1.5px solid #DDD6FE;border-radius:6px;cursor:pointer;font-size:10px;font-weight:700;color:#7C3AED">Sol.</button>`:''}
+                <button onclick="flEliminarTarea('${t.id}')" title="Eliminar tarea" style="padding:5px 8px;background:#FEF2F2;border:1.5px solid #FECACA;border-radius:6px;cursor:pointer;font-size:10px;font-weight:700;color:#B91C1C">✕</button>
+              </div>
+            </td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+    </div>
+    `}
+  `));
+}
+
+// Filtrar tareas (debounce en busqueda)
+let _flTareasBusqTimer = null;
+window._flFiltrarTareas = function(campo, valor) {
+  if(campo === 'busqueda'){
+    _flTareasFiltro[campo] = valor;
+    clearTimeout(_flTareasBusqTimer);
+    _flTareasBusqTimer = setTimeout(_renderTareasPanel, 250);
+  } else {
+    _flTareasFiltro[campo] = valor;
+    _renderTareasPanel();
+  }
+};
+
+window._flLimpiarFiltrosTareas = function() {
+  _flTareasFiltro = {estatus:'',tecnico:'',eco:'',prioridad:'',busqueda:''};
+  _renderTareasPanel();
+};
+
+// Eliminar tarea con confirmación
+window.flEliminarTarea = async function(tareaId) {
+  if(!confirm('¿Eliminar esta tarea permanentemente? No se puede deshacer.')) return;
+  if(!fs){const m=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');fs=m;}
+  try {
+    await fs.deleteDoc(fs.doc(db, C.TAREAS, tareaId));
+    _flTareasAll = _flTareasAll.filter(t=>t.id!==tareaId);
+    flToast('Tarea eliminada','ok');
+    _renderTareasPanel();
+  } catch(e){ flToast('Error: '+e.message,'err'); }
 };
 
 console.log('[FLOTILLA v14] Pipeline 4 etapas · Tecnocontrol · '+CAT.length+' unidades');
