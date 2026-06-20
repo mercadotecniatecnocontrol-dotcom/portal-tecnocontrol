@@ -342,15 +342,20 @@ async function offlineSync(){
   const q=JSON.parse(localStorage.getItem(C.OFFLINE_KEY)||'[]');
   if(!q.length)return;
   let synced=0;
+  const pendientes=[];
   for(const doc of q){
     try{
       const {_offlineId,_pendiente,...clean}=doc;
+      await reducirTamanoSolicitud(clean);
       await db.collection(C.SOLS).add({...clean,creadoEn:clean.creadoEn||new Date().toISOString(),sincronizadoOffline:true});
       synced++;
-    }catch(e){console.warn('[MOVIL offline]',e);}
+    }catch(e){
+      console.warn('[MOVIL offline]',doc.tipo,e.message||e);
+      pendientes.push(doc); // se conserva en la cola para reintentar — nunca se borra sola
+    }
   }
+  localStorage.setItem(C.OFFLINE_KEY,JSON.stringify(pendientes));
   if(synced>0){
-    localStorage.setItem(C.OFFLINE_KEY,'[]');
     toast(`${synced} solicitud(es) sincronizada(s)`, 'ok');
     await cargarMisSols();
     if(vistaAct==='vehiculo')renderVehiculo();
@@ -362,15 +367,21 @@ window.fmSyncOffline=async function(){
   if(!onlineStatus){toast('Sin conexión — intenta más tarde','err');return;}
   toast('Sincronizando…','info');
   let ok=0,fail=0;
+  const pendientes=[];
   for(const doc of q){
     try{
       const {_offlineId,_pendiente,...clean}=doc;
+      await reducirTamanoSolicitud(clean);
       await db.collection(C.SOLS).add({...clean,sincronizadoOffline:true});
       ok++;
-    }catch{fail++;}
+    }catch(e){
+      console.warn('[MOVIL syncOffline]',doc.tipo,e.message||e);
+      fail++;
+      pendientes.push(doc); // se conserva en la cola — nunca se borra sola
+    }
   }
-  if(ok>0)localStorage.setItem(C.OFFLINE_KEY,'[]');
-  toast(ok+' sincronizada(s)'+(fail?' · '+fail+' error(es)':''),'ok');
+  localStorage.setItem(C.OFFLINE_KEY,JSON.stringify(pendientes));
+  toast(ok+' sincronizada(s)'+(fail?' · '+fail+' sin poder sincronizar — revisa "Ver / Borrar"':''),ok>0?'ok':'err');
   await cargarMisSols();
   if(vistaAct==='vehiculo')renderVehiculo();
 };
@@ -1908,6 +1919,46 @@ function comprimirBase64(src,maxW,calidad){
   });
 }
 
+// ── REDUCIR TAMAÑO DE UNA SOLICITUD QUE EXCEDE EL LÍMITE DE FIRESTORE (1MB) ──
+// Se usa tanto al guardar online como al sincronizar lo que quedó en cola offline,
+// para que una solicitud nunca quede atorada sin poder sincronizar.
+async function reducirTamanoSolicitud(docObj){
+  let size=JSON.stringify(docObj).length;
+  if(size<=900000)return docObj;
+  // 1) Comprimir más las fotos del checklist
+  const chkKeys=Object.keys(docObj.chkFotos||{});
+  for(const k of chkKeys){
+    const src=docObj.chkFotos[k];
+    if(src&&typeof src==='string'&&src.startsWith('data:image')){
+      docObj.chkFotos[k]=await comprimirBase64(src,250,0.5);
+    }
+  }
+  size=JSON.stringify(docObj).length;
+  if(size<=900000)return docObj;
+  // 2) Comprimir más las fotos de evidencia principales
+  if(Array.isArray(docObj.evidencias)){
+    for(let i=0;i<docObj.evidencias.length;i++){
+      const src=docObj.evidencias[i];
+      if(src&&typeof src==='string'&&src.startsWith('data:image')){
+        docObj.evidencias[i]=await comprimirBase64(src,450,0.5);
+      }
+    }
+  }
+  size=JSON.stringify(docObj).length;
+  if(size<=900000)return docObj;
+  // 3) Último recurso: quitar fotos del checklist (se conservan las respuestas SI/NO)
+  if(chkKeys.length)docObj.chkFotos={};
+  size=JSON.stringify(docObj).length;
+  if(size<=900000)return docObj;
+  // 4) Si aún excede el límite, conservar solo la primera evidencia
+  if(Array.isArray(docObj.evidencias)&&docObj.evidencias.length>1){
+    docObj._evidenciasRecortadas=docObj.evidencias.length;
+    docObj.evidencias=docObj.evidencias.slice(0,1);
+    docObj.evidenciasMeta=(docObj.evidenciasMeta||[]).slice(0,1);
+  }
+  return docObj;
+}
+
 // ── CAPTURAR EVIDENCIA MÓVIL ──
 window.fmCapturar=async function(tipo,key,targetTag){
   const target=targetTag==='sem'?semState:solState;
@@ -2088,30 +2139,15 @@ window.fmGuardar=async function(){
     origenApp:'movil',
   };
   if(!onlineStatus){
+    await reducirTamanoSolicitud(docObj);
+    if(docObj._evidenciasRecortadas)toast('Fotos muy pesadas sin conexión — se guardaron comprimidas','warn');
     if(typeof offlineGuardar==='function')offlineGuardar(docObj);
     if(btn){btn.disabled=false;btn.textContent='Crear solicitud';}
     return;
   }
   // Estimar tamaño del documento — Firestore limite 1MB
-  const docSize=JSON.stringify(docObj).length;
-  if(docSize>900000){
-    // Demasiado grande: reducir fotos de checklist
-    const chkKeys=Object.keys(docObj.chkFotos);
-    if(chkKeys.length>0){
-      // Comprimir más agresivo las fotos del checklist
-      for(const k of chkKeys){
-        const src=docObj.chkFotos[k];
-        if(src&&src.startsWith('data:image')){
-          docObj.chkFotos[k]=await comprimirBase64(src,250,0.55);
-        }
-      }
-    }
-    // Si sigue grande, quitar fotos del checklist y solo guardar el estado si/no
-    if(JSON.stringify(docObj).length>900000){
-      toast('Fotos de checklist muy pesadas — guardando solo respuestas','warn');
-      docObj.chkFotos={};
-    }
-  }
+  await reducirTamanoSolicitud(docObj);
+  if(docObj._evidenciasRecortadas)toast('Fotos muy pesadas — se guardaron comprimidas para poder sincronizar','warn');
   try{
     const timeout=new Promise((_,rej)=>setTimeout(()=>rej(new Error('Timeout: conexión lenta. Intenta de nuevo.')),20000));
     await Promise.race([db.collection(C.SOLS).add(docObj), timeout]);
@@ -2123,6 +2159,7 @@ window.fmGuardar=async function(){
     setTimeout(()=>fmVista('vehiculo'),1200);
   }catch(e){
     console.error('[MOVIL guardar]',e.message);
+    await reducirTamanoSolicitud(docObj);
     offlineGuardar(docObj);
     toast('Sin conexión — guardado localmente para sincronizar después','warn');
     if(btn){btn.disabled=false;btn.textContent='Crear solicitud';}
