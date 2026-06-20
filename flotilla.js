@@ -566,6 +566,7 @@ window.cargarFlotilla=async function(){
   }catch(e){window._flUsuariosMap={};}
   renderSB();
   flVista('panel');
+  window._flInitDone=true;
 };
 
 function actualizarHeaderUsuario(){
@@ -590,7 +591,37 @@ function actualizarHeaderUsuario(){
     profile.onclick=()=>hAdm()?flVista('admin'):flMsgInfo(user.email||nombre);
   }
 }
-async function ldVehs(){try{const s=await fs.getDocs(fs.collection(db,C.VEHS));const fsEcos=new Set(s.docs.map(d=>String(d.data().eco)));const fsVehs=s.docs.map(d=>({id:d.id,...d.data()}));const catFill=CAT.filter(v=>!fsEcos.has(String(v.eco))).map(v=>({id:'eco-'+v.eco,...v}));flV=[...fsVehs,...catFill];if(!flV.length)flV=CAT.map(v=>({id:'eco-'+v.eco,...v}));}catch{flV=CAT.map(v=>({id:'eco-'+v.eco,...v}));}}
+// Listener en tiempo real de flotilla_vehiculos — única fuente de verdad.
+// CAT solo se usa como respaldo de emergencia si Firestore devuelve vacío o falla.
+let _unsubVehs=null;
+function ldVehs(){
+  return new Promise((resolve)=>{
+    // Si el módulo se vuelve a inicializar (p.ej. cambiar de pestaña y regresar
+    // a Flotilla dentro del portal), no duplicar el listener — ya hay uno activo.
+    if(_unsubVehs){resolve();return;}
+    try{
+      _unsubVehs=fs.onSnapshot(fs.collection(db,C.VEHS),(s)=>{
+        const docs=s.docs.map(d=>({id:d.id,...d.data()}));
+        flV=docs.length?docs:CAT.map(v=>({id:'eco-'+v.eco,...v}));
+        resolve();
+        // Tras la carga inicial, cada cambio en vivo refresca lo que esté visible
+        if(window._flInitDone){
+          renderSB();
+          if(vistaAct==='panel')rPanel();
+          else if(vistaAct==='admin')rAdmin();
+        }
+      },(err)=>{
+        console.error('[FL] onSnapshot vehiculos',err);
+        if(!flV.length)flV=CAT.map(v=>({id:'eco-'+v.eco,...v}));
+        resolve();
+      });
+    }catch(e){
+      console.error('[FL] ldVehs',e);
+      flV=CAT.map(v=>({id:'eco-'+v.eco,...v}));
+      resolve();
+    }
+  });
+}
 async function ldSols(){try{const s=await fs.getDocs(fs.collection(db,C.SOLS));flS=s.docs.map(d=>({id:d.id,...d.data()}));flS.sort((a,b)=>(b.creadoEn||'').localeCompare(a.creadoEn||''));}catch{flS=[];}
   const p=flS.filter(s=>['Solicitud','Evaluación','Validación','Validada','Cotización','Aprobación','Aprobada','Servicio','Pagos','Cierre'].includes(s.estatus)).length;
   const c=document.getElementById('fl-cnt-s');if(c){c.textContent=p;c.style.display=p?'flex':'none';}
@@ -1049,6 +1080,7 @@ window.admCancelar=function(){
 // GUARDAR UN VEHÍCULO
 window.admGuardar=async function(id){
   const v=flV.find(x=>x.id===id);if(!v)return;
+  const respAnterior=v.responsable;
   const nuevos={
     unidad:document.getElementById('adm-unidad-'+id)?.value?.trim()||v.unidad,
     placas:document.getElementById('adm-placas-'+id)?.value?.trim()||v.placas,
@@ -1072,6 +1104,9 @@ window.admGuardar=async function(id){
       // Vehículo del catálogo — crear documento en Firestore
       const docRef=await fs.addDoc(fs.collection(db,C.VEHS),{...v,...nuevos,eco:v.eco,año:v.año,serie:v.serie,rend:v.rend,creadoEn:new Date().toISOString()});
       v.id=docRef.id;
+    }
+    if(nuevos.responsable&&nuevos.responsable!==respAnterior){
+      flDesvincularEcoApp(v.eco,nuevos.responsable);
     }
     admEditId=null;
     renderSB();
@@ -1169,6 +1204,61 @@ window.admElimSol=async function(id){
   }
 };
 
+// Libera en la app móvil a cualquier técnico vinculado a este ECO.
+// Se llama cada vez que el portal cambia el "responsable" de un vehículo,
+// para que el ECO quede libre de inmediato en la app del técnico anterior.
+async function flDesvincularEcoApp(eco,nuevoResponsable){
+  if(!eco)return;
+  try{
+    if(!fs){const m=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');fs=m;}
+    const ecoStr=String(eco);
+    const snapU=await fs.getDocs(fs.collection(db,'fl_usuarios'));
+    const ahora=new Date().toISOString();
+    const porEmail=window.auth?.currentUser?.email||'';
+    const ops=[];
+    snapU.docs.forEach(d=>{
+      const u=d.data();
+      const ecosArr=Array.isArray(u.ecosVinculados)?u.ecosVinculados.map(String):[];
+      const ligadoSimple=String(u.ecoVinculado||'')===ecoStr;
+      const ligadoArr=ecosArr.includes(ecoStr);
+      if(!ligadoSimple&&!ligadoArr)return;
+      ops.push(fs.updateDoc(d.ref,{
+        ecoVinculado:ligadoSimple?null:(u.ecoVinculado||null),
+        ecosVinculados:ecosArr.filter(e=>e!==ecoStr),
+        desvinculadoEn:ahora,
+        desvinculadoPor:porEmail,
+        motivoDesvinculacion:'Reasignado a '+(nuevoResponsable||'otro responsable')+' desde administración de flotilla',
+      }));
+      if(u.email){
+        ops.push(fs.addDoc(fs.collection(db,'flotilla_notificaciones'),{
+          para:u.email,
+          vehiculoEco:ecoStr,
+          tipo:'eco_desvinculado',
+          mensaje:'El ECO '+ecoStr+' fue reasignado por el administrador. Selecciona tu vehículo nuevamente en la app.',
+          leido:false,
+          creadaEn:ahora,
+        }));
+      }
+    });
+    if(ops.length)await Promise.all(ops);
+  }catch(e){console.error('[FL] flDesvincularEcoApp',e);}
+}
+
+// Sincroniza el status del vehículo (taller/activo) cuando una solicitud
+// entra o sale de la etapa "Servicio en Proceso". No reactiva vehículos dados de baja.
+async function flSyncVehiculoServicio(eco,nuevoStatus){
+  if(!eco)return;
+  try{
+    if(!fs){const m=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');fs=m;}
+    const snap=await fs.getDocs(fs.query(fs.collection(db,C.VEHS),fs.where('eco','==',String(eco))));
+    if(snap.empty)return;
+    const d=snap.docs[0];
+    const actual=d.data().status;
+    if(actual==='baja'||actual===nuevoStatus)return;
+    await fs.updateDoc(d.ref,{status:nuevoStatus,actualizadoEn:new Date().toISOString()});
+  }catch(e){console.error('[FL] flSyncVehiculoServicio',e);}
+}
+
 // Guardar nuevo vehículo
 window.admNuevoGuardar=async function(){
   const g=id=>document.getElementById(id)?.value?.trim()||'';
@@ -1226,6 +1316,7 @@ window.admReasignarEco=async function(){
   if(msg){msg.style.display='';msg.style.color='#2563EB';msg.textContent='Guardando...';}
   const v=flV.find(x=>String(x.eco)===String(eco));
   if(!v){if(msg){msg.style.color='#EF4444';msg.textContent='ECO no encontrado.';}return;}
+  const respAnterior=v.responsable;
   const upd={responsable:nombre};
   if(plaza)upd.plaza=plaza;
   Object.assign(v,upd);
@@ -1236,6 +1327,9 @@ window.admReasignarEco=async function(){
     } else {
       const ref=await fs.addDoc(fs.collection(db,C.VEHS),{...v,...upd,creadoEn:new Date().toISOString()});
       v.id=ref.id;
+    }
+    if(nombre!==respAnterior){
+      flDesvincularEcoApp(eco,nombre);
     }
     renderSB();
     if(msg){msg.style.color='#16A34A';msg.textContent='ECO '+eco+' asignado a '+nombre+' correctamente.';}
@@ -1282,6 +1376,8 @@ function rPanel(){
       const enTaller=flV.filter(v=>v.status==='taller').length;
       const enComision=flV.filter(v=>v.status==='comision').length;
       const sinResponsable=flV.filter(v=>v.status!=='baja'&&(!v.responsable||v.responsable==='—')).length;
+      const ocupadosApp=window._flUsuariosMap||{};
+      const libresAhora=flV.filter(v=>v.status==='activo'&&!ocupadosApp[String(v.eco)]).length;
       const polVencidas=flV.filter(v=>{const d=hD(v.pv);return d!==null&&d<0;}).length;
       const polPorVencer=flV.filter(v=>{const d=hD(v.pv);return d!==null&&d>=0&&d<30;}).length;
       const solPorEst=(e)=>flS.filter(s=>s.estatus===e||(e==='Evaluación'&&['Validación','Validada','Cotización','Aprobación','Aprobada'].includes(s.estatus))||(e==='Servicio'&&['Pagos','Cierre'].includes(s.estatus))).length;
@@ -1294,7 +1390,8 @@ function rPanel(){
       return`<div style="margin-bottom:16px">
         <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin-bottom:8px">Estado de la flotilla</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-          ${miniKpi('Disponibles',activos,'En campo / operando','#15803D','#F0FDF4',"flSbTipo('all');document.querySelectorAll('.fl-sb-item').forEach(e=>e.scrollIntoView())")}
+          ${miniKpi('Activos (flotilla)',activos,'Status operativo normal','#15803D','#F0FDF4',"flSbTipo('all');document.querySelectorAll('.fl-sb-item').forEach(e=>e.scrollIntoView())")}
+          ${miniKpi('Libres ahora',libresAhora,libresAhora?'Sin nadie vinculado en la app':'Todos en uso','#0369A1','#EFF8FF')}
           ${miniKpi('En taller',enTaller,enTaller?'Requieren atención':'Sin vehículos en taller',enTaller>0?'#D97706':'#94A3B8',enTaller>0?'#FFFBEB':'#F8FAFD')}
           ${miniKpi('En comisión',enComision,enComision?'Préstamo activo':'Sin comisiones activas',enComision>0?'#7C3AED':'#94A3B8',enComision>0?'#F5F3FF':'#F8FAFD')}
           ${miniKpi('Sin responsable',sinResponsable,sinResponsable?'Asignar responsable':'Todos asignados ✓',sinResponsable>0?'#B91C1C':'#15803D',sinResponsable>0?'#FEF2F2':'#F0FDF4')}
@@ -2185,12 +2282,18 @@ window.flGuardarEditVeh=async function(id){
   };
   btn.textContent='Guardando…';btn.disabled=true;
   try{
+    const vPrev=flV.find(x=>x.id===id);
+    const respAnterior=vPrev?.responsable;
+    const ecoVeh=vPrev?.eco;
     if(!id.startsWith('eco-')){
       await fs.updateDoc(fs.doc(db,C.VEHS,id),data);
     }
     // Actualizar objeto local
     const v=flV.find(x=>x.id===id);
     if(v) Object.assign(v,data);
+    if(ecoVeh&&!id.startsWith('eco-')&&data.responsable&&data.responsable!==respAnterior){
+      flDesvincularEcoApp(ecoVeh,data.responsable);
+    }
     msg.style.cssText='display:block;background:#DCFCE7;color:#15803D';
     msg.textContent='Cambios guardados correctamente';
     setTimeout(()=>{
@@ -2534,14 +2637,20 @@ window.flRecibirTransferencia = async function(id) {
     // Actualizar vehículo en Firestore — nuevo responsable = quien recibe en almacén
     const vSnap = await fs.getDocs(fs.query(fs.collection(db, C.VEHS), fs.where('eco', '==', String(t.vehiculoEco))));
     if (!vSnap.empty) {
-      await fs.updateDoc(vSnap.docs[0].ref, {
+      const vDoc = vSnap.docs[0];
+      const respAnterior = vDoc.data().responsable;
+      await fs.updateDoc(vDoc.ref, {
         status: 'activo',
         responsable: quien,
         actualizadoEn: new Date().toISOString(),
       });
+      // Mantener la copia local al día de inmediato (el listener en vivo también la sincroniza)
+      const vLocal = flV.find(x => String(x.eco) === String(t.vehiculoEco));
+      if (vLocal) { vLocal.status = 'activo'; vLocal.responsable = quien; }
+      if (quien !== respAnterior) flDesvincularEcoApp(t.vehiculoEco, quien);
     }
     flToast('Transferencia recibida correctamente', 'ok');
-    await ldTrans(); await ldVehs();
+    await ldTrans();
     rComis();
   } catch(e) { alert('Error al recibir: ' + e.message); }
 };
@@ -3589,10 +3698,12 @@ window.flRechazar = async id => {
   const m = prompt('Motivo del rechazo:');
   if (!m?.trim()) return;
   try {
+    const s = flS.find(x => x.id === id);
     await fs.updateDoc(fs.doc(db, C.SOLS, id), {
       estatus: 'Rechazada', comentarioRechazo: m,
       actualizadoEn: new Date().toISOString(),
     });
+    if (s?.vehiculoEco) flSyncVehiculoServicio(s.vehiculoEco, 'activo');
     await ldSols();
     if (vistaAct === 'sols') rSols(); else rPanel();
   } catch(e) { console.error('[FL]', e); }
@@ -4269,6 +4380,8 @@ window.flGuardarServicio = async function(id, cerrar) {
       data.estatus='Servicio';
     }
     await fs.updateDoc(fs.doc(db,C.SOLS,id),data);
+    const solActual=flS.find(x=>x.id===id);
+    if(solActual?.vehiculoEco)flSyncVehiculoServicio(solActual.vehiculoEco,cerrar?'activo':'taller');
     await ldSols();
     const ultComt3=(window._flServComents||[]).slice(-1)[0]?.texto||null;
     // Guardar archivos de servicio en subcolección
@@ -4542,6 +4655,7 @@ window.flFinalizarServicio = async function(id) {
       cerradoPor: window.auth?.currentUser?.email || '—',
       actualizadoEn: new Date().toISOString(),
     });
+    if(s?.vehiculoEco)flSyncVehiculoServicio(s.vehiculoEco,'activo');
     window._flFactura = null;
     await ldSols();
     const notasCierreFinal=document.getElementById('cierr-notas')?.value?.trim()||null;
