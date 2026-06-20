@@ -785,6 +785,8 @@ async function cargarMisSols(){
 }
 
 let _unsubTareas=null; // listener en tiempo real de flotilla_tareas
+let _unsubVehs=null; // listener en tiempo real de flotilla_vehiculos (lista completa)
+let _unsubMiUsuario=null; // listener en tiempo real del propio doc en fl_usuarios (detecta desvinculación forzada)
 
 async function cargarMisTareas(){
   if(!miPerfil?.email){misTareas=[];return;}
@@ -805,6 +807,45 @@ async function cargarMisTareas(){
   }
 
   misNotif=[]; // unificado: avisos vienen solo de flotilla_notificaciones
+
+  // ── Listener en tiempo real para la lista completa de VEHÍCULOS ──
+  if(!_unsubVehs){
+    try{
+      _unsubVehs = db.collection(C.VEHS).onSnapshot(snap=>{
+        window._fmAllVehs = snap.docs.map(d=>({id:d.id,...d.data()}));
+        if(esRolLibre()&&!miVeh&&vistaAct==='vehiculo'){
+          renderSelectorFlota();
+        } else if(miVeh){
+          const actualizado=window._fmAllVehs.find(v=>String(v.eco)===String(miVeh.eco));
+          if(actualizado){ miVeh={...miVeh,...actualizado}; if(vistaAct==='vehiculo')renderVehiculo(); }
+        }
+      }, err=>{console.warn('[MOVIL vehs onSnapshot]',err);});
+    }catch(e){console.error('[MOVIL vehs]',e);}
+  }
+
+  // ── Listener en tiempo real del propio doc en fl_usuarios ──
+  // Si el administrador reasigna el ECO desde el portal, aquí se detecta
+  // de inmediato y se libera al técnico sin esperar a que recargue la app.
+  if(miPerfil?.email && !_unsubMiUsuario){
+    try{
+      _unsubMiUsuario = db.collection(C.USUARIOS)
+        .where('email','==',miPerfil.email)
+        .onSnapshot(snap=>{
+          if(snap.empty)return;
+          const u={...snap.docs[0].data(),uid:snap.docs[0].id};
+          const ecosAntes=getEcosVinculados();
+          const teniaEsteEco=miVeh && ecosAntes.includes(String(miVeh.eco));
+          miPerfil=u;
+          const ecosDespues=getEcosVinculados();
+          if(teniaEsteEco && miVeh && !ecosDespues.includes(String(miVeh.eco))){
+            toast('Tu ECO '+miVeh.eco+' fue reasignado por el administrador','err');
+            miVeh=null;
+            try{localStorage.removeItem(LS_ULTIMO_ECO);}catch{}
+            if(vistaAct==='vehiculo')renderVehiculo();
+          }
+        }, err=>{console.warn('[MOVIL miUsuario onSnapshot]',err);});
+    }catch(e){console.error('[MOVIL miUsuario]',e);}
+  }
 
   // ── Listener en tiempo real para notificaciones (onSnapshot) ──
   // Se llama una vez al iniciar sesión; si ya existe se reutiliza
