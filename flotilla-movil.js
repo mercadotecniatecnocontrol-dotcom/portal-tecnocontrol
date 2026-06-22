@@ -347,10 +347,7 @@ async function offlineSync(){
     try{
       const {_offlineId,_pendiente,...clean}=doc;
       await reducirTamanoSolicitud(clean);
-      const fotosExtra=clean._fotosExtra||[];
-      delete clean._fotosExtra;
-      const ref=await db.collection(C.SOLS).add({...clean,creadoEn:clean.creadoEn||new Date().toISOString(),sincronizadoOffline:true});
-      if(fotosExtra.length)await fmGuardarFotosExtra(ref.id,fotosExtra);
+      await db.collection(C.SOLS).add({...clean,creadoEn:clean.creadoEn||new Date().toISOString(),sincronizadoOffline:true});
       synced++;
     }catch(e){
       console.warn('[MOVIL offline]',doc.tipo,e.message||e);
@@ -375,10 +372,7 @@ window.fmSyncOffline=async function(){
     try{
       const {_offlineId,_pendiente,...clean}=doc;
       await reducirTamanoSolicitud(clean);
-      const fotosExtra=clean._fotosExtra||[];
-      delete clean._fotosExtra;
-      const ref=await db.collection(C.SOLS).add({...clean,sincronizadoOffline:true});
-      if(fotosExtra.length)await fmGuardarFotosExtra(ref.id,fotosExtra);
+      await db.collection(C.SOLS).add({...clean,sincronizadoOffline:true});
       ok++;
     }catch(e){
       console.warn('[MOVIL syncOffline]',doc.tipo,e.message||e);
@@ -1952,41 +1946,17 @@ async function reducirTamanoSolicitud(docObj){
   }
   size=JSON.stringify(docObj).length;
   if(size<=900000)return docObj;
-  // 3) Sigue pesando demasiado: en vez de BORRAR fotos, se MUEVEN a una
-  // subcolección aparte (flotilla_solicitudes/{id}/fotos_extra) para nunca
-  // perderlas. Se van moviendo primero las del checklist, luego evidencias,
-  // hasta que el documento principal quepa en el límite de Firestore.
-  docObj._fotosExtra=docObj._fotosExtra||[];
-  for(const k of Object.keys(docObj.chkFotos||{})){
-    if(JSON.stringify(docObj).length<=900000)break;
-    const src=docObj.chkFotos[k];
-    if(src){
-      docObj._fotosExtra.push({tipo:'chk',key:k,src});
-      delete docObj.chkFotos[k];
-    }
-  }
-  while(JSON.stringify(docObj).length>900000&&Array.isArray(docObj.evidencias)&&docObj.evidencias.length>0){
-    const idx=docObj.evidencias.length-1;
-    const src=docObj.evidencias[idx];
-    const meta=(docObj.evidenciasMeta||[])[idx]||null;
-    docObj._fotosExtra.push({tipo:'evidencia',key:'ev-'+idx,src,meta});
-    docObj.evidencias.splice(idx,1);
-    if(Array.isArray(docObj.evidenciasMeta))docObj.evidenciasMeta.splice(idx,1);
+  // 3) Último recurso: quitar fotos del checklist (se conservan las respuestas SI/NO)
+  if(chkKeys.length)docObj.chkFotos={};
+  size=JSON.stringify(docObj).length;
+  if(size<=900000)return docObj;
+  // 4) Si aún excede el límite, conservar solo la primera evidencia
+  if(Array.isArray(docObj.evidencias)&&docObj.evidencias.length>1){
+    docObj._evidenciasRecortadas=docObj.evidencias.length;
+    docObj.evidencias=docObj.evidencias.slice(0,1);
+    docObj.evidenciasMeta=(docObj.evidenciasMeta||[]).slice(0,1);
   }
   return docObj;
-}
-
-// Guarda en subcolección las fotos que no cupieron en el documento principal.
-// Nunca se pierden — solo se guardan aparte y el portal las vuelve a juntar al ver el detalle.
-async function fmGuardarFotosExtra(solId,fotosExtra){
-  if(!fotosExtra?.length)return;
-  try{
-    const ref=db.collection(C.SOLS).doc(solId).collection('fotos_extra');
-    for(const f of fotosExtra){
-      await ref.add({...f,creadoEn:new Date().toISOString()});
-    }
-    await db.collection(C.SOLS).doc(solId).update({fotosExtraCount:fotosExtra.length}).catch(()=>{});
-  }catch(e){console.warn('[MOVIL fotosExtra]',e);}
 }
 
 // ── CAPTURAR EVIDENCIA MÓVIL ──
@@ -2170,20 +2140,17 @@ window.fmGuardar=async function(){
   };
   if(!onlineStatus){
     await reducirTamanoSolicitud(docObj);
-    if(docObj._fotosExtra?.length)toast('Algunas fotos pesan mucho — se guardarán aparte al sincronizar, sin perderse','warn');
+    if(docObj._evidenciasRecortadas)toast('Fotos muy pesadas sin conexión — se guardaron comprimidas','warn');
     if(typeof offlineGuardar==='function')offlineGuardar(docObj);
     if(btn){btn.disabled=false;btn.textContent='Crear solicitud';}
     return;
   }
   // Estimar tamaño del documento — Firestore limite 1MB
   await reducirTamanoSolicitud(docObj);
-  const fotosExtra=docObj._fotosExtra||[];
-  delete docObj._fotosExtra;
-  if(fotosExtra.length)toast('Algunas fotos pesan mucho — se están guardando aparte, sin perderse','warn');
+  if(docObj._evidenciasRecortadas)toast('Fotos muy pesadas — se guardaron comprimidas para poder sincronizar','warn');
   try{
     const timeout=new Promise((_,rej)=>setTimeout(()=>rej(new Error('Timeout: conexión lenta. Intenta de nuevo.')),20000));
-    const ref=await Promise.race([db.collection(C.SOLS).add(docObj), timeout]);
-    if(fotosExtra.length)await fmGuardarFotosExtra(ref.id,fotosExtra);
+    await Promise.race([db.collection(C.SOLS).add(docObj), timeout]);
     if(km&&miVeh&&!miVeh.id.startsWith('eco-')){
       await db.collection(C.VEHS).doc(miVeh.id).update({km:Number(km)}).catch(()=>{});
     }
@@ -2192,7 +2159,7 @@ window.fmGuardar=async function(){
     setTimeout(()=>fmVista('vehiculo'),1200);
   }catch(e){
     console.error('[MOVIL guardar]',e.message);
-    docObj._fotosExtra=fotosExtra;
+    await reducirTamanoSolicitud(docObj);
     offlineGuardar(docObj);
     toast('Sin conexión — guardado localmente para sincronizar después','warn');
     if(btn){btn.disabled=false;btn.textContent='Crear solicitud';}
@@ -2689,26 +2656,6 @@ let utilState={
 };
 window.utilState=utilState;
 
-// Ángulos obligatorios al entregar un vehículo — evidencia completa del estado físico
-const UTIL_ANGULOS=[
-  {key:'frente',label:'Frente'},
-  {key:'atras',label:'Atrás'},
-  {key:'lateral_der',label:'Lado derecho'},
-  {key:'lateral_izq',label:'Lado izquierdo'},
-  {key:'interior',label:'Interior'},
-];
-function renderUtilFotosAngulos(){
-  return UTIL_ANGULOS.map(a=>{
-    const foto=(utilState.evFotos||[]).find(f=>f?.meta?.angulo===a.key);
-    return `<div style="display:flex;flex-direction:column;align-items:center;gap:4px;width:64px">
-      <div onclick="utilCapturar('${a.key}')" style="width:64px;height:64px;border-radius:10px;cursor:pointer;overflow:hidden;border:1.5px solid ${foto?'#15803D':'#CBD5E1'};background:${foto?'transparent':'#F8FAFC'};display:flex;align-items:center;justify-content:center">
-        ${foto?`<img src="${foto.src}" style="width:100%;height:100%;object-fit:cover">`:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2" stroke-linecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>`}
-      </div>
-      <span style="font-size:9px;font-weight:700;color:${foto?'#15803D':'#64748B'};text-align:center">${foto?'✓ ':''}${a.label}</span>
-    </div>`;
-  }).join('');
-}
-
 function renderUtil(){
   setContent(`
     <div class="fm-sec-hd">
@@ -2841,11 +2788,10 @@ function renderUtilPaso2(){
     </div>
 
     <div class="fm-fld">
-      <label>Fotos obligatorias del vehículo <span style="font-size:9px;font-weight:500;text-transform:none;color:#94A3B8">(cámara obligatoria)</span></label>
-      <div id="util-fotos-angulos" style="display:flex;flex-wrap:wrap;gap:10px;padding:6px 0;justify-content:space-between">${renderUtilFotosAngulos()}</div>
-      <button onclick="utilCapturar()" class="fm-btn" style="margin-top:10px;margin-bottom:6px;gap:8px;background:#F1F5F9;color:#1E3A5F;border:1.5px solid #E2E8F0">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
-        + Foto adicional (daños, detalles…)
+      <label>Fotos del vehículo al entregar <span style="font-size:9px;font-weight:500;text-transform:none;color:#94A3B8">(cámara obligatoria)</span></label>
+      <button onclick="utilCapturar()" class="fm-btn primary" style="margin-bottom:10px;gap:8px">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        Tomar foto con cámara
       </button>
       <div style="font-size:10px;color:#94A3B8;text-align:center;margin-bottom:8px">Cámara obligatoria · Galería bloqueada · Sello GPS automático</div>
       <div id="util-fotos-wrap" style="display:flex;flex-wrap:wrap;gap:8px;padding:4px 0"></div>
@@ -2874,37 +2820,19 @@ function renderUtilPaso2(){
       <button class="fm-btn primary" onclick="utilVerificarCodigo()" style="width:100%;margin-top:8px">Verificar código</button>
       <div id="util-codigo-msg" style="margin-top:10px;font-size:12px"></div>
     </div>
-    ${utilState.transferenciaId?`
-    <div class="fm-card" style="margin-top:12px;border:1.5px solid #BFDBFE;background:#EFF6FF">
-      <div style="font-size:11.5px;font-weight:800;color:#1D4ED8;margin-bottom:8px">Revisa cómo entregó el vehículo quien lo trae, antes de firmar</div>
-      ${utilState.datosEntrega?.comentarioEntrega?`<div style="font-size:12px;background:#fff;border:1px solid #E2E8F0;border-radius:8px;padding:8px 10px;margin-bottom:10px"><strong>Comentario de quien entrega:</strong> ${utilState.datosEntrega.comentarioEntrega}</div>`:''}
-      ${(()=>{
-        const fotosEnt=utilState.datosEntrega?.fotos||[];
-        if(!window._fmEvCache)window._fmEvCache=[];
-        const baseIdx=window._fmEvCache.length;
-        fotosEnt.forEach((f,i)=>{const m=(utilState.datosEntrega.fotosMeta||[])[i];window._fmEvCache.push({src:f,meta:m||null});});
-        return `<div class="fm-fld" style="margin-bottom:0">
-        <label>Fotos tomadas por quien entrega</label>
-        <div style="display:flex;flex-wrap:wrap;gap:8px;padding:4px 0">
-          ${fotosEnt.length?fotosEnt.map((f,i)=>{
-              const meta=(utilState.datosEntrega.fotosMeta||[])[i];
-              const lbl=UTIL_ANGULOS.find(a=>a.key===meta?.angulo)?.label||'Foto '+(i+1);
-              return`<div style="display:flex;flex-direction:column;align-items:center;gap:2px">
-                <img src="${f}" onclick="fmVerEvIdx(${baseIdx+i})" style="width:78px;height:78px;border-radius:8px;object-fit:cover;border:1.5px solid #E2E8F0;cursor:pointer">
-                <span style="font-size:9px;font-weight:700;color:#374151">${lbl}</span>
-              </div>`;
-            }).join('')
-            :'<div style="font-size:11px;color:#94A3B8">Sin fotos registradas</div>'}
-        </div>
-      </div>`;
-      })()}
+    ${utilState.transferenciaData?`
+    <div class="fm-fld" style="margin-top:12px">
+      <label>Fotos de entrega (tomadas por quien entrega)</label>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;padding:4px 0">
+        ${(utilState.transferenciaData.fotos||[]).length?
+          (utilState.transferenciaData.fotos||[]).map(f=>`<img src="${f}" style="width:80px;height:80px;border-radius:8px;object-fit:cover;border:1.5px solid #E2E8F0">`).join('')
+          :'<div style="font-size:11px;color:#94A3B8">Sin fotos registradas</div>'}
+      </div>
     </div>
     <div class="fm-fld">
       <label>Tu comentario de recepción <span style="font-size:9px;font-weight:500;text-transform:none;color:#94A3B8">(opcional)</span></label>
       <textarea id="util-comentario-recepcion" placeholder="Confirmo recepción en buen estado / observaciones…" rows="2" style="width:100%;padding:10px 14px;border:1.5px solid #E2E8F0;border-radius:11px;font-size:13px;background:#fff;outline:none;box-sizing:border-box;resize:none;font-family:inherit"></textarea>
-    </div>
-    <button class="fm-btn primary" onclick="utilState.paso=3;renderUtil()" style="margin-top:4px">Ya revisé las fotos — Continuar a firma</button>
-    `:''}`}
+    </div>`:''}`}
     <div style="height:20px"></div>
   `;
 }
@@ -3033,7 +2961,7 @@ window.utilChk=function(key,val){
   const cnt=document.getElementById('util-chk-cnt');if(cnt)cnt.textContent=rev+' revisados';
 };
 
-window.utilCapturar=async function(angulo){
+window.utilCapturar=async function(){
   // Crear input PRIMERO antes de async (evita bloqueo en iOS)
   const inp=document.createElement('input');
   inp.type='file';
@@ -3064,33 +2992,25 @@ window.utilCapturar=async function(angulo){
       unidad:miVeh?.unidad||'—',
       usuario:window.auth?.currentUser?.displayName||window.auth?.currentUser?.email||'—',
       modo:'utilitario-entrega',
-      angulo:angulo||null,
     };
 
     const comprimida=await comprimirBase64(imgData,800,0.60);
     const sellada=await sellarImg(comprimida,meta);
-    if(angulo){
-      // Retoma: si ya había foto de este ángulo, se reemplaza (no se duplica)
-      utilState.evFotos=(utilState.evFotos||[]).filter(f=>f?.meta?.angulo!==angulo);
-    }
     utilState.evFotos.push({src:sellada,meta});
 
-    if(angulo){
-      const slots=document.getElementById('util-fotos-angulos');
-      if(slots)slots.innerHTML=renderUtilFotosAngulos();
-      toast(`Foto de ${UTIL_ANGULOS.find(a=>a.key===angulo)?.label||angulo} registrada`,'ok');
-    } else {
-      const wrap=document.getElementById('util-fotos-wrap');
-      if(wrap){
-        const pill=document.createElement('div');
-        pill.className='fm-ev-pill';
-        pill.onclick=()=>fmVerFoto({src:sellada,meta});
-        pill.innerHTML=`<img src="${sellada}" style="width:56px;height:56px;object-fit:cover;border-radius:6px"><div style="font-size:9px;font-family:'JetBrains Mono',monospace;color:#374151;margin-top:2px">${meta.codigo}</div>`;
-        pill.style.cssText='display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;';
-        wrap.appendChild(pill);
-      }
-      toast(`Foto adicional registrada · ${meta.codigo}`,'ok');
+    const wrap=document.getElementById('util-fotos-wrap');
+    if(wrap){
+      const pill=document.createElement('div');
+      pill.className='fm-ev-pill';
+      pill.onclick=()=>fmVerFoto({src:sellada,meta});
+      pill.innerHTML=`<img src="${sellada}" style="width:56px;height:56px;object-fit:cover;border-radius:6px"><div style="font-size:9px;font-family:'JetBrains Mono',monospace;color:#374151;margin-top:2px">${meta.codigo}</div>`;
+      pill.style.cssText='display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;';
+      wrap.appendChild(pill);
     }
+
+    // Actualizar contador en botón
+    const cnt=document.querySelector('#util-fotos-wrap')?.children?.length||0;
+    toast(`Foto ${cnt} registrada · ${meta.codigo}`,'ok');
     document.body.removeChild(inp);
   };
 
@@ -3111,9 +3031,8 @@ window.utilSiguiente=function(){
     return;
   }
 
-  const angulosFaltantes=UTIL_ANGULOS.filter(a=>!utilState.evFotos?.some(f=>f?.meta?.angulo===a.key));
-  if(angulosFaltantes.length>0){
-    toast(`⚠ Faltan fotos obligatorias: ${angulosFaltantes.map(a=>a.label).join(', ')}`,'err');
+  if(utilState.evFotos.length===0){
+    toast('⚠ Toma al menos 1 foto del vehículo antes de continuar','err');
     return;
   }
 
@@ -3158,16 +3077,9 @@ window.utilVerificarCodigo=async function(){
     if(snap.empty){if(msg)msg.innerHTML=`<span style="color:#B91C1C">Código no encontrado o ya fue utilizado</span>`;return;}
     const t={id:snap.docs[0].id,...snap.docs[0].data()};
     utilState.transferenciaId=t.id;
-    utilState.datosEntrega={
-      vehiculo:t.vehiculoUnidad,eco:t.vehiculoEco,km:t.entregaKm,
-      receptor:window.auth?.currentUser?.displayName||window.auth?.currentUser?.email||'—',
-      nombre:t.entregaNombre,
-      fotos:t.entregaFotos||[],
-      fotosMeta:t.entregaFotosMeta||[],
-      comentarioEntrega:t.comentarioEntrega||'',
-    };
+    utilState.datosEntrega={vehiculo:t.vehiculoUnidad,eco:t.vehiculoEco,km:t.kmEntrega,receptor:window.auth?.currentUser?.displayName||window.auth?.currentUser?.email||'—',nombre:t.entregaNombre};
     toast('Código válido — ECO '+t.vehiculoEco,'ok');
-    renderUtil(); // se queda en el paso 2 para que se revisen las fotos antes de firmar
+    setTimeout(()=>{utilState.paso=3;renderUtil();},800);
   }catch(e){if(msg)msg.innerHTML=`<span style="color:#B91C1C">Error: ${e.message}</span>`;}
 };
 
