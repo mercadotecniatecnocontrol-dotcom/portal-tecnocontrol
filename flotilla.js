@@ -1049,10 +1049,7 @@ function renderAdmRows(lista){
       <td style="font-size:11px">${v.color||'—'}</td>
       <td style="font-size:11px">${v.tipo||'—'}</td>
       <td style="text-align:center">
-        <div style="display:flex;gap:4px;justify-content:center">
-          <button class="fb gho sm" onclick="admEditar('${v.id}')" title="Editar">${I.edit}</button>
-          <button class="fb dan sm" onclick="flEliminarVeh('${v.id}')" title="Eliminar vehículo">${I.trash}</button>
-        </div>
+        <button class="fb gho sm" onclick="admEditar('${v.id}')" title="Editar">${I.edit}</button>
       </td>
     </tr>`;
   }).join('');
@@ -1084,7 +1081,6 @@ window.admCancelar=function(){
 window.admGuardar=async function(id){
   const v=flV.find(x=>x.id===id);if(!v)return;
   const respAnterior=v.responsable;
-  const statusAnterior=v.status||'activo';
   const nuevos={
     unidad:document.getElementById('adm-unidad-'+id)?.value?.trim()||v.unidad,
     placas:document.getElementById('adm-placas-'+id)?.value?.trim()||v.placas,
@@ -1098,15 +1094,6 @@ window.admGuardar=async function(id){
     color:document.getElementById('adm-color-'+id)?.value?.trim()||v.color||'',
     tipo:document.getElementById('adm-tipo-'+id)?.value||v.tipo||'auto',
   };
-  // Si se está dando de baja en esta misma edición, pedir motivo y registrar fecha
-  if(nuevos.status==='baja'&&statusAnterior!=='baja'){
-    const motivo=prompt('Motivo de la baja (opcional):')||'';
-    nuevos.fechaBaja=new Date().toISOString();
-    nuevos.motivoBaja=motivo;
-  } else if(nuevos.status!=='baja'&&statusAnterior==='baja'){
-    nuevos.fechaBaja='';
-    nuevos.motivoBaja='';
-  }
   // Actualizar local
   Object.assign(v,nuevos);
   // Guardar en Firestore
@@ -1132,31 +1119,6 @@ window.admGuardar=async function(id){
   const tbody=document.getElementById('adm-tbody');
   if(tbody)tbody.innerHTML=renderAdmRows(lista);
   const btn=document.getElementById('adm-btn-save');if(btn)btn.style.display='none';
-};
-
-// Eliminar vehículo permanentemente — para altas hechas por error.
-// Si el vehículo ya tiene historial real, lo correcto es "Dar de baja" (status=baja), no eliminar.
-window.flEliminarVeh=async function(id){
-  const v=flV.find(x=>x.id===id);if(!v)return;
-  if(!confirm('¿Eliminar el vehículo ECO '+v.eco+' ('+(v.unidad||'—')+') permanentemente?\n\nEsto no se puede deshacer. Si el vehículo ya tiene historial de solicitudes o transferencias, mejor usa "Dar de baja" (cambiar su estatus a "baja" en Editar) en vez de eliminarlo.'))return;
-  try{
-    if(!fs){const m=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');fs=m;}
-    if(!id.startsWith('eco-')){
-      await fs.deleteDoc(fs.doc(db,C.VEHS,id));
-      flDesvincularEcoApp(v.eco,'eliminado');
-    }
-    const idx=flV.findIndex(x=>x.id===id);
-    if(idx>=0)flV.splice(idx,1);
-    renderSB();
-    if(window.mostrarPush)window.mostrarPush('Vehículo eliminado','ECO '+v.eco+' eliminado de la flotilla','✓');
-  }catch(e){
-    console.error('[ADMIN]',e);
-    if(window.mostrarPush)window.mostrarPush('Error al eliminar',e.message,'✗');
-  }
-  const lista2=admGetFiltrado();
-  const tbody2=document.getElementById('adm-tbody');
-  if(tbody2)tbody2.innerHTML=renderAdmRows(lista2);
-  const cnt=document.getElementById('adm-count');if(cnt)cnt.textContent=lista2.length+' vehículos';
 };
 
 // GUARDAR TODOS LOS PENDIENTES
@@ -2414,77 +2376,15 @@ window.flCompararEvidencias=function(eco){
 
 
 // VER SOLICITUD EXISTENTE
-// Construye un historial cronológico de la solicitud: creación, comentarios,
-// evaluación, pago, cierre y rechazo — a partir de los campos que ya se guardan.
-function hHistorialSol(s){
-  const eventos=[];
-  if(s.creadoEn)eventos.push({en:s.creadoEn,quien:s.solicitante||s.creadoPor||'—',texto:'Solicitud creada',color:'#2563EB'});
-  (s.comentariosEvaluacion||[]).forEach(c=>{if(c?.en)eventos.push({en:c.en,quien:c.por||'—',texto:'Comentario (evaluación): '+(c.texto||''),color:'#64748B'});});
-  if(s.evaluadoEn){
-    let txt='Evaluación registrada';
-    if(s.tallerNombre)txt+=' — Taller: '+s.tallerNombre;
-    if(s.montoCotizacion)txt+=' · Cotización: $'+Number(s.montoCotizacion).toLocaleString('es-MX');
-    eventos.push({en:s.evaluadoEn,quien:s.evaluadoPor||'—',texto:txt,color:'#1D4ED8'});
-  }
-  (s.comentariosServicio||[]).forEach(c=>{if(c?.en)eventos.push({en:c.en,quien:c.por||'—',texto:'Comentario (servicio): '+(c.texto||''),color:'#64748B'});});
-  if(s.pagadoEn)eventos.push({en:s.pagadoEn,quien:s.pagadoPor||'—',texto:'Pago registrado',color:'#B45309'});
-  if(s.cerradoEn){
-    let txt='Solicitud cerrada';
-    if(s.notasCierre)txt+=' — '+s.notasCierre;
-    eventos.push({en:s.cerradoEn,quien:s.cerradoPor||'—',texto:txt,color:'#15803D'});
-  }
-  if(s.estatus==='Rechazada'){
-    let txt='Solicitud rechazada';
-    if(s.comentarioRechazo)txt+=' — '+s.comentarioRechazo;
-    eventos.push({en:s.actualizadoEn||s.creadoEn,quien:'—',texto:txt,color:'#B91C1C'});
-  }
-  eventos.sort((a,b)=>(a.en||'').localeCompare(b.en||''));
-  if(!eventos.length)return'';
-  return`<div style="margin-top:10px">
-    <div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin-bottom:8px">Historial de la solicitud</div>
-    <div style="display:flex;flex-direction:column">
-      ${eventos.map((e,i)=>`<div style="display:flex;gap:9px">
-        <div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0">
-          <div style="width:8px;height:8px;border-radius:50%;background:${e.color};margin-top:3px;flex-shrink:0"></div>
-          ${i<eventos.length-1?`<div style="width:1.5px;flex:1;background:#E2E8F0;margin-top:2px;min-height:18px"></div>`:''}
-        </div>
-        <div style="flex:1;min-width:0;padding-bottom:10px">
-          <div style="font-size:11.5px;font-weight:600;color:#1E293B;word-break:break-word">${e.texto}</div>
-          <div style="font-size:9.5px;color:#94A3B8;margin-top:1px">${e.quien} · ${hF(e.en)}</div>
-        </div>
-      </div>`).join('')}
-    </div>
-  </div>`;
-}
-
 window.flVerSol=async function(id){
   const s=flS.find(x=>x.id===id);if(!s)return;
   // Cargar archivos de subcolecciones en paralelo
-  const [archEval, archServ, fotosExtra] = await Promise.all([
+  const [archEval, archServ] = await Promise.all([
     flCargarArchivosSubcol(id,'archivos_evaluacion'),
     flCargarArchivosSubcol(id,'archivos_servicio'),
-    s.fotosExtraCount?flCargarArchivosSubcol(id,'fotos_extra'):Promise.resolve([]),
   ]);
   s._archivosEvaluacion = archEval;
   s._archivosServicio   = archServ;
-  // Fotos que no cupieron en el documento principal (la app las guardó aparte) —
-  // se reincorporan aquí para que se vean igual que las demás, sin distinción.
-  // Guardado con bandera para no duplicarlas si se vuelve a abrir esta misma
-  // solicitud en la misma sesión sin recargar datos.
-  if(fotosExtra.length&&!s._fotosExtraMerged){
-    s.evidencias=[...(s.evidencias||[])];
-    s.evidenciasMeta=[...(s.evidenciasMeta||[])];
-    s.chkFotos={...(s.chkFotos||{})};
-    fotosExtra.forEach(f=>{
-      if(f.tipo==='chk'&&f.key){
-        s.chkFotos[f.key]=f.src;
-      } else if(f.tipo==='evidencia'&&f.src){
-        s.evidencias.push(f.src);
-        s.evidenciasMeta.push(f.meta||null);
-      }
-    });
-    s._fotosExtraMerged=true;
-  }
   const v=flV.find(x=>x.eco===s.vehiculoEco||x.id===s.vehiculoId);
   const pV=hP('validar'),pA=hP('aprobar'),pE=hP('eliminar');
   const dan=s.danos||{};const hasDan=Object.values(dan).some(a=>a?.length>0);
@@ -2613,7 +2513,6 @@ window.flVerSol=async function(id){
           ${noItems.map(([k])=>`<div style="font-size:11px;font-weight:600;color:#991B1B;padding:2px 0">• ${getLabel(k)}</div>`).join('')}
         </div>`;
       })()}
-      ${hHistorialSol(s)}
       <div class="fl-sep"></div>
       <div style="display:flex;flex-wrap:wrap;gap:7px">
         ${pV&&s.estatus==='Solicitud'?`<button class="fb acc" onclick="this.closest('.fl-ov').remove();flModalEvaluacion('${s.id}')">${I.check} Evaluar →</button>`:''}
