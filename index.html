@@ -2628,6 +2628,16 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
             <textarea id="c-input" rows="1" placeholder="Escribe un comentario... usa @ para mencionar un área"></textarea>
             <button class="btn-send-chat" onclick="enviarComentario()">Enviar</button>
         </div>
+        <!-- Adjuntar documento -->
+        <div style="display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap;">
+            <label id="chat-adj-label" style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;cursor:pointer;font-size:11px;font-weight:700;color:#16a34a;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                Adjuntar documento
+                <input type="file" id="chat-adj-input" accept="image/*,.pdf" style="display:none;" onchange="chatAdjuntarArchivo(this)">
+            </label>
+            <div id="chat-adj-preview" style="display:none;font-size:10px;color:#16a34a;font-weight:700;background:#dcfce7;padding:3px 8px;border-radius:6px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
+            <button id="chat-adj-quitar" style="display:none;background:none;border:none;color:#94a3b8;font-size:14px;cursor:pointer;" onclick="chatQuitarAdjunto()">×</button>
+        </div>
         <div class="chat-hint">💡 Escribe @nombre para mencionar un área. Recibirán notificación.</div>
         <button class="btn-close-modal" onclick="cerrarModal()">✕ Cerrar ventana</button>
     </div>
@@ -4125,34 +4135,121 @@ window.abrirChat=(id, t, area)=>{
         const esMio = c.u === yo;
         const menciones = extraerMenciones(c.m || '');
         const menBadges = menciones.length ? `<div class="chat-menciones">${menciones.map(m=>`<span class="chat-men-badge">@${m}</span>`).join('')}</div>` : '';
+        // Adjunto: imagen o PDF
+        let adjHtml = '';
+        if(c.adjUrl){
+            const esPDF = c.adjUrl.startsWith('data:application/pdf');
+            adjHtml = esPDF
+                ? `<div style="margin-top:6px;"><a href="${c.adjUrl}" download="${c.adjNombre||'documento.pdf'}" target="_blank" style="display:inline-flex;align-items:center;gap:5px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:7px;padding:5px 10px;font-size:11px;font-weight:700;color:#16a34a;text-decoration:none;">📄 ${c.adjNombre||'Documento PDF'}</a></div>`
+                : `<div style="margin-top:6px;cursor:pointer;" onclick="window.open('${c.adjUrl}','_blank')"><img src="${c.adjUrl}" style="max-width:100%;max-height:160px;border-radius:8px;border:1px solid #e2e8f0;object-fit:contain;" title="Ver en tamaño completo"></div>`;
+        }
         return `<div class="chat-msg ${esMio?'chat-mine':''}">
             <div class="chat-msg-header">
                 <span class="chat-msg-user">${c.u.split('@')[0].toUpperCase()}${esMio?' (tú)':''}</span>
                 <span class="chat-msg-time">${f.toLocaleDateString()} ${f.getHours()}:${String(f.getMinutes()).padStart(2,'0')}</span>
             </div>
             <div class="chat-msg-body">${parsearMenciones(c.m||'')}</div>
+            ${adjHtml}
             ${menBadges}
         </div>`;
     }).join('')||'<div style="text-align:center;color:#64748b;font-size:13px;padding:20px;">Sin comentarios aún. Sé el primero en escribir.</div>';
     setTimeout(()=>{ const b=document.getElementById('chat-box'); b.scrollTop=b.scrollHeight; },100);
 };
 
+// ── Variable para adjunto en comentario de tarea ──
+window._chatAdjDataUrl = null;
+window._chatAdjNombre  = null;
+
+window.chatAdjuntarArchivo = (input) => {
+    const file = input.files[0]; if(!file) return;
+    if(file.size > 10*1024*1024){ alert('Máximo 10MB'); input.value=''; return; }
+    const reader = new FileReader();
+    reader.onload = e => {
+        window._chatAdjDataUrl = e.target.result;
+        window._chatAdjNombre  = file.name;
+        const prev = document.getElementById('chat-adj-preview');
+        const quitar = document.getElementById('chat-adj-quitar');
+        const label = document.getElementById('chat-adj-label');
+        if(prev){ prev.textContent = '📎 ' + file.name; prev.style.display='block'; }
+        if(quitar) quitar.style.display='inline';
+        if(label) label.style.borderColor='#16a34a';
+    };
+    reader.readAsDataURL(file);
+};
+
+window.chatQuitarAdjunto = () => {
+    window._chatAdjDataUrl = null;
+    window._chatAdjNombre  = null;
+    const input = document.getElementById('chat-adj-input');
+    if(input) input.value = '';
+    const prev   = document.getElementById('chat-adj-preview');
+    const quitar = document.getElementById('chat-adj-quitar');
+    if(prev){ prev.textContent=''; prev.style.display='none'; }
+    if(quitar) quitar.style.display='none';
+};
+
 window.enviarComentario=async()=>{
-    const m=cinput.value.trim(); if(!m) return;
+    const m=cinput.value.trim();
+    const tieneAdj = !!window._chatAdjDataUrl;
+    if(!m && !tieneAdj) return;
+
     const menciones=extraerMenciones(m);
+    const comentData = {
+        u: auth.currentUser.email,
+        m: m || (tieneAdj ? '📎 Documento adjunto' : ''),
+        f: new Date().toISOString(),
+        menciones
+    };
+    // Adjuntar imagen/doc al comentario si hay uno
+    if(tieneAdj){
+        comentData.adjUrl  = window._chatAdjDataUrl;
+        comentData.adjNombre = window._chatAdjNombre;
+    }
+
     await updateDoc(doc(db,'actividades',tareaIdActiva),{
-        comentarios:arrayUnion({
-            u:auth.currentUser.email,
-            m:m,
-            f:new Date().toISOString(),
-            menciones:menciones
-        })
+        comentarios:arrayUnion(comentData)
     });
+
+    // Si hay adjunto, buscar si esta tarea tiene un doc vinculado en la parrilla
+    // y actualizarlo como imgUrl2 (documento actualizado/completado)
+    if(tieneAdj && window._chatAdjDataUrl){
+        try {
+            const {db: dbAP, fs} = await window.getFirebaseAP();
+            // Buscar docs de parrilla que coincidan con el nombre de la tarea
+            const tarActiva = localDB.find(t => t.id === tareaIdActiva);
+            if(tarActiva){
+                const snap = await fs.getDocs(fs.query(
+                    fs.collection(dbAP, 'area_parrilla'),
+                    fs.where('area', '==', tarActiva.area || '')
+                ));
+                // Buscar el doc más reciente sin imgUrl2 que coincida con el área
+                const docs = snap.docs.map(d=>({id:d.id,...d.data()}));
+                // Vincular por desc que contenga el título de la tarea, o el más reciente sin imgUrl2
+                const vinculado = docs.find(d =>
+                    !d.imgUrl2 && (
+                        (d.desc||'').toLowerCase().includes((tarActiva.actividad||'').slice(0,20).toLowerCase()) ||
+                        (tarActiva.actividad||'').toLowerCase().includes((d.desc||'').slice(0,20).toLowerCase())
+                    )
+                ) || docs.filter(d => !d.imgUrl2).sort((a,b) => (b.fecha||'').localeCompare(a.fecha||''))[0];
+
+                if(vinculado){
+                    await fs.updateDoc(fs.doc(dbAP,'area_parrilla',vinculado.id), { imgUrl2: window._chatAdjDataUrl });
+                    if(window.mostrarToast) window.mostrarToast('📄 Documento vinculado a la parrilla', vinculado.desc||'', '✅');
+                }
+            }
+        } catch(e){ console.warn('[CHAT-ADJ] No se pudo vincular a parrilla:', e.message); }
+    }
+
     cinput.value='';
+    window.chatQuitarAdjunto();
     cerrarModal();
 };
 
-window.cerrarModal=()=>{ document.getElementById('modal-c').style.display='none'; cerrarDropdown(); };
+window.cerrarModal=()=>{ 
+    document.getElementById('modal-c').style.display='none'; 
+    cerrarDropdown(); 
+    window.chatQuitarAdjunto && window.chatQuitarAdjunto();
+};
 
 // ══════════════════════════════════════════════════════════════
 // ACCIONES GENERALES
