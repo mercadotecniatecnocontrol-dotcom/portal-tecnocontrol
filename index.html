@@ -1138,15 +1138,37 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
         <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px 14px;margin-top:6px;font-size:11px;color:#1e40af;line-height:1.5;">
             <b>Tip:</b> En Google Drive, clic derecho → "Obtener vínculo" → pégalo aquí. Acceso: "Cualquier persona con el vínculo".
         </div>
-        <div style="margin-top:12px;">
-            <div style="font-size:12px;font-weight:700;color:#475569;margin-bottom:6px;">O subir imagen/documento directo</div>
-            <div id="ap-img-zone" onclick="document.getElementById('ap-img-input').click()" style="border:2px dashed #cbd5e1;border-radius:10px;padding:14px;text-align:center;cursor:pointer;background:#f8fafc;transition:0.2s;">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin:0 auto 6px;display:block;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                <div style="font-size:11px;color:#94a3b8;">Clic para subir imagen, PDF o documento</div>
-                <div id="ap-img-nombre" style="font-size:10px;color:#10b981;margin-top:4px;display:none;"></div>
+
+        <!-- Dos zonas de subida separadas -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px;">
+            <!-- Zona izquierda: documento original -->
+            <div>
+                <div style="font-size:11px;font-weight:700;color:#2563eb;margin-bottom:6px;display:flex;align-items:center;gap:5px;">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    Documento original
+                </div>
+                <div id="ap-img-zone" onclick="document.getElementById('ap-img-input').click()" style="border:2px dashed #bfdbfe;border-radius:10px;padding:12px;text-align:center;cursor:pointer;background:#f8fafc;transition:0.2s;min-height:70px;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#93c5fd" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:4px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    <div style="font-size:10px;color:#93c5fd;">Imagen, PDF o archivo</div>
+                    <div id="ap-img-nombre" style="font-size:10px;color:#2563eb;margin-top:4px;display:none;"></div>
+                </div>
+                <input type="file" id="ap-img-input" accept="image/*,.pdf" style="display:none;" onchange="apPrevImg(this)">
+                <input type="hidden" id="ap-img-data">
             </div>
-            <input type="file" id="ap-img-input" accept="image/*,.pdf" style="display:none;" onchange="apPrevImg(this)">
-            <input type="hidden" id="ap-img-data">
+            <!-- Zona derecha: documento actualizado -->
+            <div>
+                <div style="font-size:11px;font-weight:700;color:#16a34a;margin-bottom:6px;display:flex;align-items:center;gap:5px;">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    Documento actualizado
+                </div>
+                <div id="ap-img2-zone" onclick="document.getElementById('ap-img2-input').click()" style="border:2px dashed #bbf7d0;border-radius:10px;padding:12px;text-align:center;cursor:pointer;background:#f0fdf4;transition:0.2s;min-height:70px;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#86efac" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:4px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    <div style="font-size:10px;color:#86efac;">Imagen, PDF o archivo</div>
+                    <div id="ap-img2-nombre" style="font-size:10px;color:#16a34a;margin-top:4px;display:none;"></div>
+                </div>
+                <input type="file" id="ap-img2-input" accept="image/*,.pdf" style="display:none;" onchange="apPrevImg2(this)">
+                <input type="hidden" id="ap-img2-data">
+            </div>
         </div>
 
         <!-- PREVIEW DUAL: izquierda=Drive, derecha=imagen subida -->
@@ -1164,6 +1186,7 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
                     </div>
                     <div style="flex:1;position:relative;min-height:190px;">
                         <iframe id="ap-dual-iframe" src="about:blank" style="width:100%;height:100%;min-height:190px;border:none;display:none;"></iframe>
+                        <img id="ap-dual-left-img" src="" style="width:100%;max-height:230px;object-fit:contain;padding:8px;display:none;" />
                         <div id="ap-dual-left-ph" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;min-height:190px;gap:8px;padding:20px;">
                             <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="1.5"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
                             <span style="font-size:11px;color:#94a3b8;text-align:center;">Pega un link de Drive<br>para previsualizar</span>
@@ -4503,6 +4526,14 @@ cargarModuloMarketing();
         const apEmpresa=document.getElementById('ap-empresa'); if(apEmpresa) apEmpresa.value='';
         // Reset preview dual
         window._apImgDataUrl = null;
+        window._apImgDataUrl2 = null;
+        window._apImgFile2 = null;
+        const apImg2Nm = document.getElementById('ap-img2-nombre');
+        if(apImg2Nm){ apImg2Nm.style.display='none'; apImg2Nm.innerHTML=''; }
+        const apZone2 = document.getElementById('ap-img2-zone');
+        if(apZone2){ apZone2.style.borderColor='#bbf7d0'; apZone2.style.background='#f0fdf4'; }
+        const apImg2Input = document.getElementById('ap-img2-input');
+        if(apImg2Input) apImg2Input.value='';
         const dual = document.getElementById('ap-preview-dual');
         if(dual) dual.style.display='none';
         const dualIframe = document.getElementById('ap-dual-iframe');
@@ -4538,6 +4569,22 @@ cargarModuloMarketing();
                 });
             } catch(e){ console.warn('Error convirtiendo imagen:', e); imgUrl = ''; }
             window._apImgFile = null;
+        } else if(window._apImgDataUrl) {
+            imgUrl = window._apImgDataUrl;
+        }
+        let imgUrl2 = '';
+        if(window._apImgFile2) {
+            try {
+                imgUrl2 = await new Promise((res, rej) => {
+                    const reader = new FileReader();
+                    reader.onload = e => res(e.target.result);
+                    reader.onerror = () => rej(new Error('Error leyendo archivo'));
+                    reader.readAsDataURL(window._apImgFile2);
+                });
+            } catch(e){ console.warn('Error convirtiendo imagen2:', e); imgUrl2 = ''; }
+            window._apImgFile2 = null;
+        } else if(window._apImgDataUrl2) {
+            imgUrl2 = window._apImgDataUrl2;
         }
         const apFechaFinEl = document.getElementById('ap-fecha-fin');
         const apEstatusEl = document.getElementById('ap-estatus');
@@ -4553,6 +4600,7 @@ cargarModuloMarketing();
             desc: descRaw,
             link: document.getElementById('ap-link').value.trim(),
             imgUrl,
+            imgUrl2,
             responsable: document.getElementById('ap-responsable').value.trim(),
             notas: document.getElementById('ap-notas').value.trim(),
             creadoEn: new Date().toISOString()
@@ -4623,9 +4671,15 @@ cargarModuloMarketing();
             if(leftPh) leftPh.style.display='flex';
         }
 
-        // — DERECHA: imagen subida (doc actualizado), solo si también hay link —
+        // — DERECHA: imgUrl2 = documento actualizado; o imgUrl si no hay link —
         if(imgUpdated){
-            if(p.imgUrl && p.link){
+            const docActualizado = p.imgUrl2 || (p.imgUrl && !p.link ? null : null);
+            if(p.imgUrl2){
+                imgUpdated.src = p.imgUrl2;
+                imgUpdated.style.display='block';
+                if(rightPh) rightPh.style.display='none';
+            } else if(p.imgUrl && p.link){
+                // Retrocompatibilidad: imgUrl con link = va a la derecha
                 imgUpdated.src = p.imgUrl;
                 imgUpdated.style.display='block';
                 if(rightPh) rightPh.style.display='none';
@@ -4680,17 +4734,27 @@ cargarModuloMarketing();
         const apFechaFinEl=document.getElementById('ap-fecha-fin'); if(apFechaFinEl) apFechaFinEl.value=p.fechaFin||'';
         const apEstatusEl=document.getElementById('ap-estatus'); if(apEstatusEl) apEstatusEl.value=p.estatus||'Sin Iniciar';
         const apEmpresaEl=document.getElementById('ap-empresa'); if(apEmpresaEl) apEmpresaEl.value=p.empresa||'';
-        // Show preview if doc has image
+        // Cargar imgUrl (original) al editar
         const nombre=document.getElementById('ap-img-nombre');
         if(nombre && p.imgUrl){
-            nombre.innerHTML='<img src="'+p.imgUrl+'" style="max-height:60px;border-radius:6px;margin-top:4px;">';
+            nombre.innerHTML='<img src="'+p.imgUrl+'" style="max-height:50px;border-radius:6px;margin-top:4px;">';
             nombre.style.display='block';
             window._apImgDataUrl = p.imgUrl;
         } else {
             window._apImgDataUrl = null;
         }
+        // Cargar imgUrl2 (actualizado) al editar
+        const nombre2=document.getElementById('ap-img2-nombre');
+        if(nombre2 && p.imgUrl2){
+            nombre2.innerHTML='<img src="'+p.imgUrl2+'" style="max-height:50px;border-radius:6px;margin-top:4px;">';
+            nombre2.style.display='block';
+            window._apImgDataUrl2 = p.imgUrl2;
+            const zone2 = document.getElementById('ap-img2-zone');
+            if(zone2){ zone2.style.borderColor='#16a34a'; zone2.style.background='#f0fdf4'; }
+        } else {
+            window._apImgDataUrl2 = null;
+        }
         document.getElementById('modal-ap').style.display='flex';
-        // Activar preview dual con datos existentes
         setTimeout(apActualizarPreviewDual, 100);
     }
 
@@ -4742,54 +4806,54 @@ cargarModuloMarketing();
 window.apActualizarPreviewDual = () => {
     const link = (document.getElementById('ap-link')?.value || '').trim();
     const tieneLink = !!link;
-    const tieneImg = !!window._apImgFile || !!window._apImgDataUrl;
+    const tieneImg  = !!window._apImgFile  || !!window._apImgDataUrl;
+    const tieneImg2 = !!window._apImgFile2 || !!window._apImgDataUrl2;
     const dual = document.getElementById('ap-preview-dual');
     if(!dual) return;
 
-    // Mostrar el panel si hay al menos uno
-    dual.style.display = (tieneLink || tieneImg) ? 'block' : 'none';
+    dual.style.display = (tieneLink || tieneImg || tieneImg2) ? 'block' : 'none';
 
-    // — Lado izquierdo: iframe Drive —
+    // — Izquierda: Drive/link o imagen original —
     const iframe = document.getElementById('ap-dual-iframe');
     const leftPh = document.getElementById('ap-dual-left-ph');
-    if(iframe && leftPh){
-        if(tieneLink){
-            const previewUrl = typeof drivePreviewUrl === 'function' ? drivePreviewUrl(link) : link;
-            iframe.src = previewUrl || 'about:blank';
-            iframe.style.display = 'block';
-            leftPh.style.display = 'none';
-        } else {
-            iframe.src = 'about:blank';
-            iframe.style.display = 'none';
-            leftPh.style.display = 'flex';
-        }
+    const leftImg = document.getElementById('ap-dual-left-img');
+    if(tieneLink){
+        const previewUrl = typeof drivePreviewUrl === 'function' ? drivePreviewUrl(link) : link;
+        if(iframe){ iframe.src = previewUrl||'about:blank'; iframe.style.display='block'; }
+        if(leftImg) leftImg.style.display='none';
+        if(leftPh)  leftPh.style.display='none';
+    } else if(window._apImgDataUrl){
+        if(iframe){ iframe.src='about:blank'; iframe.style.display='none'; }
+        if(leftImg){ leftImg.src=window._apImgDataUrl; leftImg.style.display='block'; }
+        if(leftPh)  leftPh.style.display='none';
+    } else {
+        if(iframe){ iframe.src='about:blank'; iframe.style.display='none'; }
+        if(leftImg) leftImg.style.display='none';
+        if(leftPh)  leftPh.style.display='flex';
     }
 
-    // — Lado derecho: imagen/PDF —
+    // — Derecha: documento actualizado —
     apRefrescarDualDerecha();
 };
 
 function apRefrescarDualDerecha(){
-    const imgEl = document.getElementById('ap-dual-img');
-    const pdfPh = document.getElementById('ap-dual-pdf-ph');
+    const imgEl   = document.getElementById('ap-dual-img');
+    const pdfPh   = document.getElementById('ap-dual-pdf-ph');
     const rightPh = document.getElementById('ap-dual-right-ph');
     if(!imgEl || !pdfPh || !rightPh) return;
 
-    if(window._apImgDataUrl){
-        // Es imagen
-        imgEl.src = window._apImgDataUrl;
+    if(window._apImgDataUrl2){
+        imgEl.src = window._apImgDataUrl2;
         imgEl.style.display = 'block';
         pdfPh.style.display = 'none';
         rightPh.style.display = 'none';
-    } else if(window._apImgFile && window._apImgFile.type === 'application/pdf'){
-        // Es PDF
+    } else if(window._apImgFile2 && window._apImgFile2.type === 'application/pdf'){
         imgEl.style.display = 'none';
         pdfPh.style.display = 'flex';
         const nameEl = document.getElementById('ap-dual-pdf-name');
-        if(nameEl) nameEl.textContent = window._apImgFile.name;
+        if(nameEl) nameEl.textContent = window._apImgFile2.name;
         rightPh.style.display = 'none';
     } else {
-        // Sin archivo
         imgEl.style.display = 'none';
         pdfPh.style.display = 'none';
         rightPh.style.display = 'flex';
@@ -4797,33 +4861,58 @@ function apRefrescarDualDerecha(){
 }
 
 // ══════════════════════════════════════════════════
-// AP-PREVIEW-IMG — Subir imagen/PDF en Nuevo Documento
+// AP-PREVIEW-IMG — Documento original
 // ══════════════════════════════════════════════════
 window.apPrevImg = (input) => {
     const file = input.files[0]; if(!file) return;
     if(file.size > 10*1024*1024){ alert('Archivo muy grande. Máximo 10MB.'); return; }
-window._apImgFile = file;
-window._apImgDataUrl = null; // se llenará abajo si es imagen
+    window._apImgFile = file;
+    window._apImgDataUrl = null;
 
     const zone = document.getElementById('ap-img-zone');
-    const hint = zone ? zone.querySelector('div[style*="color:#94a3b8"]') : null;
-    if(hint) hint.textContent = '✅ ' + file.name;
-    if(zone){ zone.style.borderColor='#10b981'; zone.style.background='#f0fdf4'; }
-
+    if(zone){ zone.style.borderColor='#2563eb'; zone.style.background='#eff6ff'; }
     const nombre = document.getElementById('ap-img-nombre');
     if(nombre){
         if(file.type==='application/pdf'){
-            nombre.innerHTML = '<span style="font-size:11px;color:#10b981;">📄 '+file.name+'</span>';
+            nombre.innerHTML = '<span style="font-size:11px;color:#2563eb;">📄 '+file.name+'</span>';
             nombre.style.display='block';
-            // PDF: actualizar preview dual directamente
             apActualizarPreviewDual();
         } else {
             const reader = new FileReader();
             reader.onload = e => {
-            window._apImgDataUrl = e.target.result;
-                nombre.innerHTML = '<img src="'+e.target.result+'" style="max-height:60px;border-radius:6px;margin-top:4px;">';
+                window._apImgDataUrl = e.target.result;
+                nombre.innerHTML = '<img src="'+e.target.result+'" style="max-height:50px;border-radius:6px;margin-top:4px;">';
                 nombre.style.display='block';
-                // Imagen: actualizar preview dual con la dataUrl ya lista
+                apActualizarPreviewDual();
+            };
+            reader.readAsDataURL(file);
+        }
+    }
+};
+
+// ══════════════════════════════════════════════════
+// AP-PREVIEW-IMG2 — Documento actualizado/completado
+// ══════════════════════════════════════════════════
+window.apPrevImg2 = (input) => {
+    const file = input.files[0]; if(!file) return;
+    if(file.size > 10*1024*1024){ alert('Archivo muy grande. Máximo 10MB.'); return; }
+    window._apImgFile2 = file;
+    window._apImgDataUrl2 = null;
+
+    const zone = document.getElementById('ap-img2-zone');
+    if(zone){ zone.style.borderColor='#16a34a'; zone.style.background='#f0fdf4'; }
+    const nombre = document.getElementById('ap-img2-nombre');
+    if(nombre){
+        if(file.type==='application/pdf'){
+            nombre.innerHTML = '<span style="font-size:11px;color:#16a34a;">📄 '+file.name+'</span>';
+            nombre.style.display='block';
+            apActualizarPreviewDual();
+        } else {
+            const reader = new FileReader();
+            reader.onload = e => {
+                window._apImgDataUrl2 = e.target.result;
+                nombre.innerHTML = '<img src="'+e.target.result+'" style="max-height:50px;border-radius:6px;margin-top:4px;">';
+                nombre.style.display='block';
                 apActualizarPreviewDual();
             };
             reader.readAsDataURL(file);
