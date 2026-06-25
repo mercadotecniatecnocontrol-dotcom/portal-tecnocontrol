@@ -772,21 +772,51 @@
         /* ── TABLA con columna extra (prioridad) ── */
         .trow{display:grid;grid-template-columns:2fr 0.8fr 0.7fr 0.9fr 1.6fr auto;padding:14px 16px;align-items:center;font-size:13px;margin-bottom:8px;border-radius:12px;transition:0.2s;border:1px solid rgba(59,130,246,0.10);background:#ffffff;position:relative;overflow:hidden;box-shadow:0 1px 4px rgba(37,99,235,0.05);}
 
-        /* ── NOTIFICACIONES IN-APP estilo WhatsApp ── */
-        #push-container{position:fixed;bottom:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:10px;pointer-events:none;}
-        .push-notification{pointer-events:auto;width:320px;background:#1e3a8a;backdrop-filter:blur(12px);border-left:4px solid #60a5fa;border-radius:12px;padding:16px;box-shadow:0 10px 30px rgba(37,99,235,0.35);color:white;display:flex;align-items:flex-start;gap:12px;animation:slideIn 0.4s cubic-bezier(0.175,0.885,0.32,1.275) forwards;cursor:pointer;transition:transform 0.2s,opacity 0.3s;}
-        .push-notification:hover{transform:translateX(-5px);}
-        .push-notification.push-mention{border-left-color:var(--cyan);}
-        .push-notification.push-rh{border-left-color:var(--fuchsia);}
-        .push-notification.push-rh .push-title{color:var(--fuchsia);}
-        .push-icon{font-size:20px;background:rgba(255,255,255,0.15);width:40px;height:40px;display:flex;align-items:center;justify-content:center;border-radius:50%;flex-shrink:0;}
+        /* ── NOTIFICACIONES IN-APP — Modal central ── */
+        #notif-overlay{display:none;position:fixed;inset:0;z-index:99990;pointer-events:none;}
+        #notif-modal{
+            position:fixed;top:50%;left:50%;transform:translate(-50%,-60%) scale(0.92);
+            z-index:99991;width:460px;max-width:95vw;
+            background:linear-gradient(135deg,#0f172a 0%,#1e3a8a 100%);
+            border:1px solid rgba(96,165,250,0.35);border-radius:20px;
+            box-shadow:0 30px 80px rgba(0,0,0,0.6),0 0 0 1px rgba(255,255,255,0.05);
+            color:white;pointer-events:auto;
+            transition:transform 0.35s cubic-bezier(0.175,0.885,0.32,1.275),opacity 0.35s;
+            opacity:0;
+        }
+        #notif-modal.notif-visible{transform:translate(-50%,-50%) scale(1);opacity:1;}
+        #notif-modal.notif-mention{border-color:rgba(34,211,238,0.5);}
+        #notif-modal.notif-rh{border-color:rgba(217,70,239,0.5);}
+        .notif-header{padding:18px 20px 14px;border-bottom:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;gap:12px;}
+        .notif-icono-wrap{width:48px;height:48px;border-radius:14px;background:rgba(255,255,255,0.12);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;}
+        .notif-titulo{font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;color:#93c5fd;line-height:1.3;}
+        #notif-modal.notif-mention .notif-titulo{color:#22d3ee;}
+        #notif-modal.notif-rh .notif-titulo{color:#e879f9;}
+        .notif-hora{font-size:10px;color:rgba(255,255,255,0.45);margin-top:2px;}
+        .notif-body{padding:14px 20px;}
+        .notif-area-badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;background:rgba(96,165,250,0.2);color:#93c5fd;margin-bottom:8px;letter-spacing:.5px;text-transform:uppercase;}
+        .notif-mensaje{font-size:13px;color:rgba(255,255,255,0.88);line-height:1.55;word-break:break-word;}
+        .notif-tarea-nombre{font-size:12px;font-weight:700;color:#60a5fa;margin-top:6px;padding:8px 10px;background:rgba(96,165,250,0.1);border-radius:8px;border-left:3px solid #3b82f6;}
+        .notif-footer{padding:12px 20px 16px;display:flex;gap:8px;}
+        .notif-btn-ir{flex:1;padding:10px;background:linear-gradient(135deg,#2563eb,#1d4ed8);border:none;border-radius:10px;color:white;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:12px;cursor:pointer;transition:0.2s;letter-spacing:.3px;}
+        .notif-btn-ir:hover{background:linear-gradient(135deg,#1d4ed8,#1e40af);}
+        .notif-btn-cerrar{padding:10px 18px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:10px;color:rgba(255,255,255,0.7);font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:12px;cursor:pointer;transition:0.2s;}
+        .notif-btn-cerrar:hover{background:rgba(255,255,255,0.15);}
+        /* Cola de notificaciones pendientes */
+        #notif-badge{display:none;position:fixed;top:18px;right:18px;z-index:99992;background:#ef4444;color:white;border-radius:50%;width:26px;height:26px;font-size:12px;font-weight:700;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 8px rgba(239,68,68,0.5);font-family:'Space Grotesk',sans-serif;}
+        /* Mini toast para notificaciones secundarias (no urgentes) */
+        #push-container{position:fixed;bottom:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px;pointer-events:none;}
+        .push-notification{pointer-events:auto;width:300px;background:#1e3a8a;border-left:3px solid #60a5fa;border-radius:10px;padding:12px 14px;box-shadow:0 6px 20px rgba(37,99,235,0.3);color:white;display:flex;align-items:flex-start;gap:10px;animation:slideIn 0.35s cubic-bezier(0.175,0.885,0.32,1.275) forwards;cursor:pointer;transition:opacity 0.3s;}
+        .push-icon{font-size:16px;flex-shrink:0;margin-top:1px;}
         .push-content{flex:1;min-width:0;}
-        .push-title{font-weight:700;font-size:13px;margin-bottom:3px;color:#93c5fd;}
-        .push-notification.push-mention .push-title{color:var(--cyan);}
-        .push-msg{font-size:12px;color:rgba(255,255,255,0.85);line-height:1.4;word-break:break-word;}
-        .push-time{font-size:10px;color:rgba(255,255,255,0.55);margin-top:4px;}
-        .push-fade-out{opacity:0;transform:scale(0.85) translateX(20px);transition:0.3s;}
-        @keyframes slideIn{from{opacity:0;transform:translateX(110%) scale(0.9);}to{opacity:1;transform:translateX(0) scale(1);}}
+        .push-title{font-weight:700;font-size:12px;margin-bottom:2px;color:#93c5fd;}
+        .push-msg{font-size:11px;color:rgba(255,255,255,0.8);line-height:1.3;word-break:break-word;}
+        .push-time{font-size:10px;color:rgba(255,255,255,0.45);margin-top:2px;}
+        .push-fade-out{opacity:0;transition:0.25s;}
+        @keyframes slideIn{from{opacity:0;transform:translateX(110%);}to{opacity:1;transform:translateX(0);}}
+        /* Sonido visual — pulso en el modal */
+        @keyframes notifPulse{0%,100%{box-shadow:0 30px 80px rgba(0,0,0,0.6),0 0 0 1px rgba(255,255,255,0.05);}50%{box-shadow:0 30px 80px rgba(0,0,0,0.6),0 0 0 4px rgba(96,165,250,0.4),0 0 40px rgba(96,165,250,0.2);}}
+        #notif-modal.notif-visible{animation:notifPulse 1.5s ease 0.35s 2;}
 
         /* ═══════ CALENDARIO 360 ═══════ */
         .cal360-filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:24px;}
@@ -2665,6 +2695,29 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
 <div id="cal360-tooltip"></div>
 <div id="push-container"></div>
 
+<!-- MODAL CENTRAL DE NOTIFICACIONES -->
+<div id="notif-overlay"></div>
+<div id="notif-modal">
+    <div class="notif-header">
+        <div class="notif-icono-wrap" id="notif-icono">💬</div>
+        <div style="flex:1;min-width:0;">
+            <div class="notif-titulo" id="notif-titulo">Nueva notificación</div>
+            <div class="notif-hora" id="notif-hora"></div>
+        </div>
+    </div>
+    <div class="notif-body">
+        <div class="notif-area-badge" id="notif-area" style="display:none;"></div>
+        <div class="notif-mensaje" id="notif-mensaje"></div>
+        <div class="notif-tarea-nombre" id="notif-tarea" style="display:none;"></div>
+    </div>
+    <div class="notif-footer">
+        <button class="notif-btn-ir" id="notif-btn-ir" onclick="notifIrATarea()">Ver tarea →</button>
+        <button class="notif-btn-cerrar" onclick="cerrarNotifModal()">✕ Cerrar</button>
+    </div>
+</div>
+<!-- Badge cola de notificaciones -->
+<div id="notif-badge" onclick="notifMostrarSiguiente()"></div>
+
     <!-- BARRA NAV INFERIOR — solo móvil -->
     <nav id="mobile-bottom-nav" style="display:none;">
         <!-- Nav normal (no Ventas) -->
@@ -2772,31 +2825,174 @@ function mostrarNotif(titulo, cuerpo, tag) {
 // ── Notificación visual in-app estilo WhatsApp ──────────────
 // Funciona para TODOS sin permisos del sistema operativo.
 // Se apilan en la esquina inferior derecha y se auto-cierran en 5s.
-window.mostrarPush = (titulo, mensaje, icono = '💬', esMencion = false) => {
+// ══════════════════════════════════════════════════════
+// NOTIFICACIONES — Modal central con cola y sonido
+// ══════════════════════════════════════════════════════
+window._notifQueue = [];       // cola de notificaciones pendientes
+window._notifActiva = false;   // ¿hay modal visible ahora?
+window._notifTareaId = null;   // id de la tarea de la notif actual
+
+// Sonido sintético con Web Audio API (no necesita archivo externo)
+function notifSonido(tipo) {
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const notas = tipo === 'mencion'
+            ? [880, 1100, 1320]   // acento agudo — mención directa
+            : [523, 659, 784];    // acorde suave — comentario normal
+        notas.forEach((freq, i) => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain); gain.connect(ctx.destination);
+            osc.frequency.value = freq;
+            osc.type = 'sine';
+            gain.gain.setValueAtTime(0, ctx.currentTime + i * 0.12);
+            gain.gain.linearRampToValueAtTime(0.18, ctx.currentTime + i * 0.12 + 0.04);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.12 + 0.28);
+            osc.start(ctx.currentTime + i * 0.12);
+            osc.stop(ctx.currentTime + i * 0.12 + 0.3);
+        });
+    } catch(e) {}
+}
+
+// Mostrar el modal central con la notificación
+function notifMostrar(notif) {
+    window._notifActiva = true;
+    window._notifTareaId = notif.tareaId || null;
+
+    const modal   = document.getElementById('notif-modal');
+    const titulo  = document.getElementById('notif-titulo');
+    const icono   = document.getElementById('notif-icono');
+    const hora    = document.getElementById('notif-hora');
+    const area    = document.getElementById('notif-area');
+    const mensaje = document.getElementById('notif-mensaje');
+    const tarea   = document.getElementById('notif-tarea');
+    const btnIr   = document.getElementById('notif-btn-ir');
+    if(!modal) return;
+
+    // Limpiar clases anteriores
+    modal.className = '';
+
+    // Datos
+    titulo.textContent  = notif.titulo  || 'Nueva notificación';
+    icono.textContent   = notif.icono   || '💬';
+    mensaje.textContent = notif.mensaje || '';
+    hora.textContent    = new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
+
+    if(notif.area){
+        area.textContent = notif.area;
+        area.style.display = 'inline-block';
+    } else { area.style.display = 'none'; }
+
+    if(notif.tareaNombre){
+        tarea.textContent = '📋 ' + notif.tareaNombre;
+        tarea.style.display = 'block';
+    } else { tarea.style.display = 'none'; }
+
+    // Clase de color según tipo
+    if(notif.esMencion) modal.classList.add('notif-mention');
+    if(notif.esRH)      modal.classList.add('notif-rh');
+
+    // Mostrar/ocultar botón "Ver tarea"
+    btnIr.style.display = notif.tareaId ? 'block' : 'none';
+
+    // Animar entrada
+    modal.style.display = 'block';
+    requestAnimationFrame(() => modal.classList.add('notif-visible'));
+
+    // Sonido
+    notifSonido(notif.esMencion ? 'mencion' : 'normal');
+
+    // Actualizar badge de cola
+    notifActualizarBadge();
+}
+
+// Cerrar el modal actual y mostrar el siguiente si hay en cola
+window.cerrarNotifModal = () => {
+    const modal = document.getElementById('notif-modal');
+    if(!modal) return;
+    modal.classList.remove('notif-visible');
+    setTimeout(() => {
+        modal.style.display = 'none';
+        modal.className = '';
+        window._notifActiva = false;
+        window._notifTareaId = null;
+        // Mostrar siguiente en cola si hay
+        if(window._notifQueue.length > 0) {
+            const siguiente = window._notifQueue.shift();
+            notifActualizarBadge();
+            setTimeout(() => notifMostrar(siguiente), 200);
+        } else {
+            notifActualizarBadge();
+        }
+    }, 300);
+};
+
+// Ir a la tarea desde la notificación
+window.notifIrATarea = () => {
+    const id = window._notifTareaId;
+    cerrarNotifModal();
+    if(!id) return;
+    // Abrir el chat/detalle de esa tarea
+    setTimeout(() => {
+        if(typeof window.abrirChat === 'function') {
+            const tarea = localDB.find(t => t.id === id);
+            if(tarea) window.abrirChat(id, tarea.actividad || 'Tarea', tarea.area || '');
+        }
+    }, 350);
+};
+
+// Mostrar siguiente de la cola manualmente (click en badge)
+window.notifMostrarSiguiente = () => {
+    if(!window._notifActiva && window._notifQueue.length > 0) {
+        const next = window._notifQueue.shift();
+        notifActualizarBadge();
+        notifMostrar(next);
+    }
+};
+
+// Actualizar el badge rojo con cantidad en cola
+function notifActualizarBadge() {
+    const badge = document.getElementById('notif-badge');
+    if(!badge) return;
+    const total = window._notifQueue.length;
+    if(total > 0 && !window._notifActiva) {
+        badge.textContent = total;
+        badge.style.display = 'flex';
+    } else {
+        badge.style.display = 'none';
+    }
+}
+
+// Función principal — encola o muestra directo
+window.mostrarPush = (titulo, mensaje, icono = '💬', esMencion = false, extra = {}) => {
+    const notif = { titulo, mensaje, icono, esMencion, ...extra };
+    if(window._notifActiva) {
+        // Ya hay una visible — encolar
+        window._notifQueue.push(notif);
+        notifActualizarBadge();
+    } else {
+        notifMostrar(notif);
+    }
+};
+
+// Mini toast para notificaciones internas no urgentes (guardados, confirmaciones)
+window.mostrarToast = (titulo, mensaje, icono = '✅') => {
     const container = document.getElementById('push-container');
     if(!container) return;
     const n = document.createElement('div');
-    n.className = 'push-notification' + (esMencion ? ' push-mention' : '');
+    n.className = 'push-notification';
     const hora = new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
-    n.innerHTML = `
-        <div class="push-icon">${icono}</div>
-        <div class="push-content">
-            <div class="push-title">${titulo}</div>
-            <div class="push-msg">${mensaje}</div>
-            <div class="push-time">${hora}</div>
-        </div>`;
+    n.innerHTML = `<div class="push-icon">${icono}</div><div class="push-content"><div class="push-title">${titulo}</div><div class="push-msg">${mensaje}</div><div class="push-time">${hora}</div></div>`;
     container.appendChild(n);
-    // Limitar a 5 notificaciones apiladas
     const all = container.querySelectorAll('.push-notification');
-    if(all.length > 5) all[0].remove();
-    // Auto-cerrar en 5 segundos
-    const timer = setTimeout(() => cerrarPush(n), 5000);
-    n.onclick = () => { clearTimeout(timer); cerrarPush(n); };
+    if(all.length > 3) all[0].remove();
+    const timer = setTimeout(() => { n.classList.add('push-fade-out'); setTimeout(()=>n.remove(),250); }, 4000);
+    n.onclick = () => { clearTimeout(timer); n.classList.add('push-fade-out'); setTimeout(()=>n.remove(),250); };
 };
 
 function cerrarPush(el) {
     el.classList.add('push-fade-out');
-    setTimeout(() => el.remove(), 300);
+    setTimeout(() => el.remove(), 250);
 }
 </script>
 
@@ -3345,25 +3541,32 @@ function escuchar(){
                     if(esAdmin || esMiTarea || esMiArea || meMencionan) {
                         const quien = ultimo.u.split('@')[0];
                         const tarea = data.actividad || 'una tarea';
-                        // ── Notificación visual in-app (funciona para TODOS) ──
+                        const areaName = data.area || '';
+
                         if(meMencionan) {
-                            window.mostrarPush('📣 Te mencionaron',
-                                `${quien} te mencionó en "${tarea}"`, '📣', true);
+                            window.mostrarPush(
+                                '📣 Te mencionaron',
+                                `${quien} te mencionó en un comentario`,
+                                '📣', true,
+                                { tareaId: id, tareaNombre: tarea, area: areaName, esMencion: true }
+                            );
                         } else if(esMiTarea) {
-                            window.mostrarPush('💬 Nuevo comentario en tu tarea',
-                                `${quien}: "${(ultimo.m||'').slice(0,80)}"`, '💬');
+                            window.mostrarPush(
+                                '💬 Nuevo comentario en tu tarea',
+                                `${quien}: "${(ultimo.m||'').slice(0,100)}"`,
+                                '💬', false,
+                                { tareaId: id, tareaNombre: tarea, area: areaName }
+                            );
                         } else {
-                            const isRH = (data.area||'') === 'Recursos Humanos';
-                            const container = document.getElementById('push-container');
-                            window.mostrarPush(`💬 ${data.area||'Portal'}`,
-                                `${quien} comentó en "${tarea}"`,
-                                ICONS[DEPTOS.indexOf(data.area||'')] || '💬');
-                            // Agregar clase fuchsia si es RH
-                            if(isRH && container?.lastElementChild) {
-                                container.lastElementChild.classList.add('push-rh');
-                            }
+                            window.mostrarPush(
+                                `${ICONS[DEPTOS.indexOf(areaName)]||'💬'} ${areaName||'Portal'}`,
+                                `${quien} comentó en una tarea`,
+                                ICONS[DEPTOS.indexOf(areaName)] || '💬', false,
+                                { tareaId: id, tareaNombre: tarea, area: areaName,
+                                  esRH: areaName === 'Recursos Humanos' }
+                            );
                         }
-                        // ── Notificación del SO si el navegador lo permite ──
+                        // Notificación del SO si está permitida
                         const msgSys = meMencionan
                             ? `📣 ${quien} te mencionó en "${tarea}"`
                             : `💬 ${quien} comentó en "${tarea}"`;
@@ -3535,7 +3738,7 @@ window.verArea=(a,b)=>{
     if(!esAdmin2 && miDepto2 !== 'Administración'){
         const misAreas2 = GRUPOS_VISIBILIDAD[miDepto2] || [miDepto2];
         if(!misAreas2.includes(a)){
-            if(window.mostrarPush) window.mostrarPush('🔒 Acceso restringido', 'No tienes permisos para ver ' + a, '⚠️');
+            if(window.mostrarPush) window.mostrarToast('🔒 Acceso restringido', 'No tienes permisos para ver ' + a, '⚠️');
             return;
         }
     }
@@ -3800,8 +4003,8 @@ window.guardarEdicion=async()=>{
         estatus:nuevoEstatus,
         fechaFinalizacion:fueCompletada?new Date().toISOString():(nuevoEstatus!=='Completada'?null:tareaAnterior?.fechaFinalizacion||null)
     });
-    if(fueCompletada) window.mostrarPush('✅ Tarea completada', `"${desc}" marcada como completada`, '✅');
-    else if(nuevoEstatus==='En Proceso') window.mostrarPush('⚡ En proceso', `"${desc}" — ${prioridad}`, '⚡');
+    if(fueCompletada) window.mostrarToast('✅ Tarea completada', `"${desc}" marcada como completada`, '✅');
+    else if(nuevoEstatus==='En Proceso') window.mostrarToast('⚡ En proceso', `"${desc}" — ${prioridad}`, '⚡');
     cerrarEdit();
 };
 window.cerrarEdit=()=>{ document.getElementById('modal-edit').style.display='none'; };
@@ -3907,7 +4110,7 @@ window.guardarTarea=async()=>{
     ['n-desc','n-inicio','n-date','n-origen','n-descripcion'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
     if(typeof _formSubtareas !== 'undefined') _formSubtareas = [];
     if(typeof renderFormSubtareas === 'function') renderFormSubtareas();
-    window.mostrarPush('Actividad publicada', `"${d}" — ${area} · ${tipo}`, '');
+    window.mostrarToast('Actividad publicada', `"${d}" — ${area} · ${tipo}`, '');
     navegar('dashboard');
 };
 
@@ -4618,7 +4821,7 @@ cargarModuloMarketing();
                 await fs.addDoc(fs.collection(db,'area_parrilla'), docData);
             }
             document.getElementById('modal-ap').style.display='none';
-            if(window.mostrarPush) window.mostrarPush('📄 Documento guardado', desc, '📋');
+            if(window.mostrarPush) window.mostrarToast('📄 Documento guardado', desc, '📋');
             
             // ── Auto-crear tarea en el kanban (solo documentos nuevos) ──
             if(!editId){
@@ -4763,7 +4966,7 @@ cargarModuloMarketing();
         try {
             const { db, fs } = await getFirebaseAP();
             await fs.deleteDoc(fs.doc(db,'area_parrilla',id));
-            if(window.mostrarPush) window.mostrarPush('🗑 Eliminado','','📋');
+            if(window.mostrarPush) window.mostrarToast('🗑 Eliminado','','📋');
             cargarDocsAP();
         } catch(e){ alert('Error: '+e.message); }
     }
