@@ -1280,7 +1280,7 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
 
 <!-- MODAL PREVIEW DOCUMENTO — vista comparativa: Original (izq) vs Actualizado (der) -->
 <div id="modal-ap-preview" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);backdrop-filter:blur(10px);z-index:3600;align-items:center;justify-content:center;">
-    <div style="background:#ffffff;border-radius:20px;width:1300px;max-width:98vw;max-height:95vh;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,0.3);display:flex;flex-direction:column;">
+    <div style="background:#ffffff;border-radius:20px;width:1480px;max-width:99vw;height:92vh;max-height:92vh;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,0.3);display:flex;flex-direction:column;">
         <!-- Header -->
         <div style="padding:14px 20px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
             <div style="flex:1;min-width:0;">
@@ -1302,11 +1302,14 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
                 </div>
                 <div style="flex:1;position:relative;overflow:hidden;">
                     <iframe id="ap-prev-iframe" src="about:blank" style="width:100%;height:100%;min-height:380px;border:none;display:none;"></iframe>
-                    <img id="ap-prev-img-direct" src="" style="width:100%;height:100%;max-height:420px;object-fit:contain;padding:10px;display:none;" />
+                    <img id="ap-prev-img-direct" src="" style="width:100%;height:100%;max-height:100%;object-fit:contain;padding:8px;display:none;" />
+                    <iframe id="ap-prev-pdf-direct" src="about:blank" style="width:100%;height:100%;min-height:380px;border:none;display:none;"></iframe>
                     <div id="ap-prev-left-ph" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;min-height:340px;gap:8px;color:#94a3b8;padding:24px;">
                         <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#e2e8f0" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                         <span style="font-size:11px;text-align:center;">Sin documento original</span>
                     </div>
+                    <!-- Botón zoom izquierda -->
+                    <button id="ap-prev-zoom-left" onclick="apZoomDoc('left')" style="display:none;position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.5);color:white;border:none;border-radius:7px;padding:5px 9px;font-size:11px;cursor:pointer;z-index:10;">⤢ Ampliar</button>
                 </div>
             </div>
             <!-- Col 2: Documento actualizado -->
@@ -1323,11 +1326,14 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
                     </label>
                 </div>
                 <div style="flex:1;position:relative;overflow:hidden;">
-                    <img id="ap-prev-img-updated" src="" style="width:100%;height:100%;max-height:420px;object-fit:contain;padding:10px;display:none;" />
+                    <img id="ap-prev-img-updated" src="" style="width:100%;height:100%;max-height:100%;object-fit:contain;padding:8px;display:none;" />
+                    <iframe id="ap-prev-pdf-updated" src="about:blank" style="width:100%;height:100%;min-height:380px;border:none;display:none;"></iframe>
                     <div id="ap-prev-right-ph" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;min-height:340px;gap:8px;color:#94a3b8;padding:24px;">
                         <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#e2e8f0" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                         <span style="font-size:11px;text-align:center;">Sube el documento completado<br>para verlo aquí</span>
                     </div>
+                    <!-- Botón zoom derecha -->
+                    <button id="ap-prev-zoom-right" onclick="apZoomDoc('right')" style="display:none;position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.5);color:white;border:none;border-radius:7px;padding:5px 9px;font-size:11px;cursor:pointer;z-index:10;">⤢ Ampliar</button>
                 </div>
             </div>
             <!-- Col 3: Panel de colaboración -->
@@ -4945,44 +4951,103 @@ cargarModuloMarketing();
 
 
     function _apMostrarPreview(p, iframe, imgDirect) {
-        const imgUpdated = document.getElementById('ap-prev-img-updated');
-        const leftPh    = document.getElementById('ap-prev-left-ph');
-        const rightPh   = document.getElementById('ap-prev-right-ph');
+        const imgUpdated    = document.getElementById('ap-prev-img-updated');
+        const pdfUpdated    = document.getElementById('ap-prev-pdf-updated');
+        const pdfDirect     = document.getElementById('ap-prev-pdf-direct');
+        const leftPh        = document.getElementById('ap-prev-left-ph');
+        const rightPh       = document.getElementById('ap-prev-right-ph');
+        const zoomLeft      = document.getElementById('ap-prev-zoom-left');
+        const zoomRight     = document.getElementById('ap-prev-zoom-right');
 
-        // — IZQUIERDA: link Drive tiene prioridad; si no hay link pero sí imagen, va aquí —
+        // Helper: detectar si un dataUrl es PDF
+        const esPDF = url => url && url.startsWith('data:application/pdf');
+
+        // — IZQUIERDA —
+        const mostrarEnIzq = (url, esDriveUrl) => {
+            if(esDriveUrl){
+                if(iframe){ iframe.src=url; iframe.style.display='block'; }
+                if(imgDirect) imgDirect.style.display='none';
+                if(pdfDirect) pdfDirect.style.display='none';
+                if(leftPh) leftPh.style.display='none';
+                if(zoomLeft){ zoomLeft.style.display='block'; zoomLeft.dataset.url=url; zoomLeft.dataset.tipo='drive'; }
+            } else if(esPDF(url)){
+                if(iframe){ iframe.src='about:blank'; iframe.style.display='none'; }
+                if(imgDirect) imgDirect.style.display='none';
+                if(pdfDirect){ pdfDirect.src=url; pdfDirect.style.display='block'; }
+                if(leftPh) leftPh.style.display='none';
+                if(zoomLeft){ zoomLeft.style.display='block'; zoomLeft.dataset.url=url; zoomLeft.dataset.tipo='pdf'; }
+            } else if(url){
+                if(iframe){ iframe.src='about:blank'; iframe.style.display='none'; }
+                if(pdfDirect){ pdfDirect.src='about:blank'; pdfDirect.style.display='none'; }
+                if(imgDirect){ imgDirect.src=url; imgDirect.style.display='block'; }
+                if(leftPh) leftPh.style.display='none';
+                if(zoomLeft){ zoomLeft.style.display='block'; zoomLeft.dataset.url=url; zoomLeft.dataset.tipo='img'; }
+            } else {
+                if(iframe){ iframe.src='about:blank'; iframe.style.display='none'; }
+                if(pdfDirect){ pdfDirect.src='about:blank'; pdfDirect.style.display='none'; }
+                if(imgDirect) imgDirect.style.display='none';
+                if(leftPh) leftPh.style.display='flex';
+                if(zoomLeft) zoomLeft.style.display='none';
+            }
+        };
+
         if(p.link){
             const previewUrl = typeof drivePreviewUrl==='function' ? drivePreviewUrl(p.link) : p.link;
-            if(iframe){ iframe.src = previewUrl||'about:blank'; iframe.style.display='block'; }
-            if(imgDirect) imgDirect.style.display='none';
-            if(leftPh) leftPh.style.display='none';
+            mostrarEnIzq(previewUrl, true);
         } else if(p.imgUrl){
-            if(iframe){ iframe.src='about:blank'; iframe.style.display='none'; }
-            if(imgDirect){ imgDirect.src=p.imgUrl; imgDirect.style.display='block'; }
-            if(leftPh) leftPh.style.display='none';
+            mostrarEnIzq(p.imgUrl, false);
         } else {
-            if(iframe){ iframe.src='about:blank'; iframe.style.display='none'; }
-            if(imgDirect) imgDirect.style.display='none';
-            if(leftPh) leftPh.style.display='flex';
+            mostrarEnIzq(null, false);
         }
 
-        // — DERECHA: imgUrl2 = documento actualizado; o imgUrl si no hay link —
-        if(imgUpdated){
-            const docActualizado = p.imgUrl2 || (p.imgUrl && !p.link ? null : null);
-            if(p.imgUrl2){
-                imgUpdated.src = p.imgUrl2;
-                imgUpdated.style.display='block';
+        // — DERECHA —
+        const mostrarEnDer = (url) => {
+            if(esPDF(url)){
+                if(imgUpdated) imgUpdated.style.display='none';
+                if(pdfUpdated){ pdfUpdated.src=url; pdfUpdated.style.display='block'; }
                 if(rightPh) rightPh.style.display='none';
-            } else if(p.imgUrl && p.link){
-                // Retrocompatibilidad: imgUrl con link = va a la derecha
-                imgUpdated.src = p.imgUrl;
-                imgUpdated.style.display='block';
+                if(zoomRight){ zoomRight.style.display='block'; zoomRight.dataset.url=url; zoomRight.dataset.tipo='pdf'; }
+            } else if(url){
+                if(pdfUpdated){ pdfUpdated.src='about:blank'; pdfUpdated.style.display='none'; }
+                if(imgUpdated){ imgUpdated.src=url; imgUpdated.style.display='block'; }
                 if(rightPh) rightPh.style.display='none';
+                if(zoomRight){ zoomRight.style.display='block'; zoomRight.dataset.url=url; zoomRight.dataset.tipo='img'; }
             } else {
-                imgUpdated.style.display='none';
+                if(imgUpdated) imgUpdated.style.display='none';
+                if(pdfUpdated){ pdfUpdated.src='about:blank'; pdfUpdated.style.display='none'; }
                 if(rightPh) rightPh.style.display='flex';
+                if(zoomRight) zoomRight.style.display='none';
             }
+        };
+
+        if(p.imgUrl2){
+            mostrarEnDer(p.imgUrl2);
+        } else if(p.imgUrl && p.link){
+            mostrarEnDer(p.imgUrl);
+        } else {
+            mostrarEnDer(null);
         }
     }
+
+    // Zoom — abrir en nueva ventana grande
+    window.apZoomDoc = (lado) => {
+        const btn = document.getElementById(`ap-prev-zoom-${lado}`);
+        if(!btn) return;
+        const url  = btn.dataset.url;
+        const tipo = btn.dataset.tipo;
+        if(!url) return;
+        if(tipo === 'drive' || tipo === 'pdf'){
+            window.open(url, '_blank');
+        } else {
+            // Imagen — abrir en ventana con fondo negro
+            const w = window.open('', '_blank', 'width=1100,height=820');
+            w.document.write(`<!DOCTYPE html><html><head><title>Vista previa</title>
+                <style>body{margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh;}
+                img{max-width:100%;max-height:100vh;object-fit:contain;}</style></head>
+                <body><img src="${url}"></body></html>`);
+            w.document.close();
+        }
+    };
 
     window.previewDocAP = (id) => {
         const p = apDocs.find(x=>x.id===id);
@@ -5246,10 +5311,21 @@ cargarModuloMarketing();
             });
             const {db,fs} = await getFirebaseAP();
             await fs.updateDoc(fs.doc(db,'area_parrilla',_apDocActualId),{imgUrl2:dataUrl});
+            // Mostrar en el modal — detectar PDF vs imagen
+            const esPDF = dataUrl.startsWith('data:application/pdf');
             const imgEl = document.getElementById('ap-prev-img-updated');
-            const ph = document.getElementById('ap-prev-right-ph');
-            if(imgEl){imgEl.src=dataUrl; imgEl.style.display='block';}
+            const pdfEl = document.getElementById('ap-prev-pdf-updated');
+            const ph    = document.getElementById('ap-prev-right-ph');
+            const zoomR = document.getElementById('ap-prev-zoom-right');
+            if(esPDF){
+                if(imgEl) imgEl.style.display='none';
+                if(pdfEl){ pdfEl.src=dataUrl; pdfEl.style.display='block'; }
+            } else {
+                if(pdfEl){ pdfEl.src='about:blank'; pdfEl.style.display='none'; }
+                if(imgEl){ imgEl.src=dataUrl; imgEl.style.display='block'; }
+            }
             if(ph) ph.style.display='none';
+            if(zoomR){ zoomR.style.display='block'; zoomR.dataset.url=dataUrl; zoomR.dataset.tipo=esPDF?'pdf':'img'; }
             if(window.mostrarToast) window.mostrarToast('✅ Documento actualizado',file.name,'📄');
         } catch(e){console.error(e); alert('Error al subir');}
     };
