@@ -4750,7 +4750,12 @@ cargarModuloMarketing();
         if(editBtn) editBtn.onclick = () => { document.getElementById('modal-ap-preview').style.display='none'; editarDocAP(p.id); };
         const delBtn = document.getElementById('ap-prev-del');
         if(delBtn) delBtn.onclick = () => eliminarDocAP(p.id);
-        document.getElementById('modal-ap-preview').style.display='flex';
+        // Guardar ID del doc en el modal y en global
+        const modalPrev2 = document.getElementById('modal-ap-preview');
+        if(modalPrev2) modalPrev2.dataset.docid = p.id;
+        window._apDocActualId = p.id;
+        if(typeof window._apCargarPanel === 'function') window._apCargarPanel(p.id, p);
+        modalPrev2.style.display='flex';
     }
 
     function docCardHTML(p){
@@ -4785,28 +4790,6 @@ cargarModuloMarketing();
     window.filtrarDocsAPEmpresa = () => {
         const empresa = document.getElementById('ap-filtro-empresa')?.value || '';
         renderCalAP(empresa);
-    };
-
-    // Agregar botón compartir en el preview de documento
-    const _origPreviewDoc = window.previewDocAP;
-    window.previewDocAP = function(id){
-        _origPreviewDoc(id);
-        const p = apDocs.find(x=>x.id===id);
-        if(!p) return;
-        setTimeout(()=>{
-            const editBtn = document.getElementById('ap-prev-edit');
-            if(editBtn && !document.getElementById('ap-prev-compartir')){
-                const shareBtn = document.createElement('button');
-                shareBtn.id = 'ap-prev-compartir';
-                shareBtn.style.cssText = 'padding:11px 20px;background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;border-radius:10px;font-weight:700;font-size:12px;cursor:pointer;';
-                shareBtn.innerText = '📤 Compartir';
-                shareBtn.onclick = () => {
-                    document.getElementById('modal-ap-preview').style.display='none';
-                    abrirCompartir('documento', p.id, p.desc||'Documento', (p.tipo||'')+' · '+(p.responsable||''));
-                };
-                editBtn.parentElement.insertBefore(shareBtn, editBtn);
-            }
-        }, 100);
     };
 
     window.abrirModalAP = (fechaPreset) => {
@@ -5080,9 +5063,17 @@ cargarModuloMarketing();
             document.getElementById('modal-ap-preview').style.display='none';
             eliminarDocAP(id);
         };
-        // Cargar panel de colaboración
-        if(typeof window._apCargarPanel === 'function') window._apCargarPanel(id, p);
-        document.getElementById('modal-ap-preview').style.display='flex';
+        // Guardar el ID del doc en el modal como atributo data para tenerlo siempre
+        const modalPreview = document.getElementById('modal-ap-preview');
+        if(modalPreview) modalPreview.dataset.docid = id;
+        window._apDocActualId = id; // asignar directamente también
+        // Cargar panel de colaboración — con fallback si el IIFE aún no terminó
+        if(typeof window._apCargarPanel === 'function') {
+            window._apCargarPanel(id, p);
+        } else {
+            setTimeout(() => { if(typeof window._apCargarPanel === 'function') window._apCargarPanel(id, p); }, 200);
+        }
+        modalPreview.style.display='flex';
     };
 
     function editarDocAP(id){
@@ -5170,6 +5161,13 @@ cargarModuloMarketing();
 
     // Usar window para que _apDocActualId sea accesible y persistente
     window._apDocActualId = null;
+
+    // Helper robusto: obtiene el ID del doc activo desde la variable global o del modal
+    function _getDocId() {
+        return window._apDocActualId ||
+               document.getElementById('modal-ap-preview')?.dataset?.docid ||
+               null;
+    }
 
     window.cerrarModalApPreview = () => {
         document.getElementById('modal-ap-preview').style.display = 'none';
@@ -5299,7 +5297,7 @@ cargarModuloMarketing();
     };
 
     window.apAgregarInvolucrado = async () => {
-        const docId = window._apDocActualId;
+        const docId = _getDocId();
         if(!docId){ console.warn('[COLAB] Sin doc activo'); return; }
         const inp = document.getElementById('ap-prev-involucrado-input');
         const val = (inp?.value||'').trim();
@@ -5327,7 +5325,7 @@ cargarModuloMarketing();
     };
 
     window.apQuitarInvolucrado = async (idx) => {
-        const docId = window._apDocActualId;
+        const docId = _getDocId();
         if(!docId) return;
         const p = (window.apDocs||[]).find(x=>x.id===docId);
         if(!p) return;
@@ -5342,7 +5340,7 @@ cargarModuloMarketing();
     };
 
     window.apGuardarFechaComp = async () => {
-        const docId = window._apDocActualId;
+        const docId = _getDocId();
         if(!docId) return;
         const val = document.getElementById('ap-prev-fecha-comp')?.value||'';
         try {
@@ -5357,7 +5355,7 @@ cargarModuloMarketing();
     };
 
     window.apEnviarComentarioPrev = async () => {
-        const docId = window._apDocActualId;
+        const docId = _getDocId();
         if(!docId){ alert('Error: no hay documento activo'); return; }
 
         const inp = document.getElementById('ap-prev-comentario-input');
@@ -5393,7 +5391,7 @@ cargarModuloMarketing();
     };
 
     window.apPrevSubirActualizado = async (input) => {
-        const docId = window._apDocActualId;
+        const docId = _getDocId();
         const file  = input.files[0];
         if(!file||!docId) return;
         if(file.size>10*1024*1024){ alert('Máximo 10MB'); return; }
