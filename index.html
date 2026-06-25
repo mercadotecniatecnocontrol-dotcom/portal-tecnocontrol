@@ -1280,54 +1280,102 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
 
 <!-- MODAL PREVIEW DOCUMENTO — vista comparativa: Original (izq) vs Actualizado (der) -->
 <div id="modal-ap-preview" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);backdrop-filter:blur(10px);z-index:3600;align-items:center;justify-content:center;">
-    <div style="background:#ffffff;border-radius:20px;width:1100px;max-width:97vw;max-height:93vh;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,0.3);display:flex;flex-direction:column;">
+    <div style="background:#ffffff;border-radius:20px;width:1300px;max-width:98vw;max-height:95vh;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,0.3);display:flex;flex-direction:column;">
         <!-- Header -->
-        <div style="padding:16px 24px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-            <div>
-                <div id="ap-prev-titulo" style="font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;color:#1e293b;"></div>
-                <div id="ap-prev-meta" style="font-size:11px;color:#64748b;margin-top:3px;"></div>
+        <div style="padding:14px 20px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+            <div style="flex:1;min-width:0;">
+                <div id="ap-prev-titulo" style="font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
+                <div id="ap-prev-meta" style="font-size:11px;color:#64748b;margin-top:2px;"></div>
             </div>
-            <button onclick="document.getElementById('modal-ap-preview').style.display='none';document.getElementById('ap-prev-iframe').src='about:blank';" style="background:#f1f5f9;border:none;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:14px;flex-shrink:0;">✕</button>
+            <button onclick="cerrarModalApPreview()" style="background:#f1f5f9;border:none;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:14px;flex-shrink:0;margin-left:12px;">✕</button>
         </div>
-        <!-- Cuerpo comparativo -->
-        <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;min-height:440px;overflow:hidden;">
-            <!-- Izquierda: documento original (Drive/link) -->
+        <!-- Cuerpo: documentos izquierda + panel colaboración derecha -->
+        <div style="flex:1;display:grid;grid-template-columns:1fr 1fr 340px;overflow:hidden;min-height:0;">
+            <!-- Col 1: Documento original -->
             <div style="display:flex;flex-direction:column;border-right:1px solid #e2e8f0;">
-                <div style="padding:7px 16px;background:#eff6ff;border-bottom:1px solid #dbeafe;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-                    <div style="display:flex;align-items:center;gap:6px;">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.5"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                <div style="padding:6px 14px;background:#eff6ff;border-bottom:1px solid #dbeafe;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+                    <div style="display:flex;align-items:center;gap:5px;">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.5"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
                         <span style="font-size:10px;font-weight:700;color:#2563eb;letter-spacing:.5px;">DOCUMENTO ORIGINAL</span>
                     </div>
-                    <a id="ap-prev-link" href="#" target="_blank" style="font-size:10px;font-weight:700;color:#2563eb;text-decoration:none;background:#dbeafe;padding:3px 8px;border-radius:6px;">↗ Abrir</a>
+                    <a id="ap-prev-link" href="#" target="_blank" style="font-size:10px;font-weight:700;color:#2563eb;text-decoration:none;background:#dbeafe;padding:2px 7px;border-radius:5px;">↗ Abrir</a>
                 </div>
                 <div style="flex:1;position:relative;overflow:hidden;">
-                    <iframe id="ap-prev-iframe" src="about:blank" style="width:100%;height:100%;min-height:420px;border:none;display:none;"></iframe>
-                    <img id="ap-prev-img-direct" src="" style="width:100%;height:100%;max-height:460px;object-fit:contain;padding:12px;display:none;" />
-                    <div id="ap-prev-left-ph" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;min-height:380px;gap:10px;color:#94a3b8;padding:30px;">
-                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#e2e8f0" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                        <span style="font-size:12px;text-align:center;">Sin documento original</span>
+                    <iframe id="ap-prev-iframe" src="about:blank" style="width:100%;height:100%;min-height:380px;border:none;display:none;"></iframe>
+                    <img id="ap-prev-img-direct" src="" style="width:100%;height:100%;max-height:420px;object-fit:contain;padding:10px;display:none;" />
+                    <div id="ap-prev-left-ph" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;min-height:340px;gap:8px;color:#94a3b8;padding:24px;">
+                        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#e2e8f0" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                        <span style="font-size:11px;text-align:center;">Sin documento original</span>
                     </div>
                 </div>
             </div>
-            <!-- Derecha: documento actualizado/completado (imagen subida) -->
-            <div style="display:flex;flex-direction:column;">
-                <div style="padding:7px 16px;background:#f0fdf4;border-bottom:1px solid #dcfce7;display:flex;align-items:center;gap:6px;flex-shrink:0;">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                    <span style="font-size:10px;font-weight:700;color:#16a34a;letter-spacing:.5px;">DOCUMENTO ACTUALIZADO</span>
+            <!-- Col 2: Documento actualizado -->
+            <div style="display:flex;flex-direction:column;border-right:1px solid #e2e8f0;">
+                <div style="padding:6px 14px;background:#f0fdf4;border-bottom:1px solid #dcfce7;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+                    <div style="display:flex;align-items:center;gap:5px;">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                        <span style="font-size:10px;font-weight:700;color:#16a34a;letter-spacing:.5px;">DOCUMENTO ACTUALIZADO</span>
+                    </div>
+                    <!-- Subir doc actualizado desde el modal de vista -->
+                    <label style="font-size:10px;font-weight:700;color:#16a34a;background:#dcfce7;padding:2px 7px;border-radius:5px;cursor:pointer;">
+                        ↑ Subir
+                        <input type="file" id="ap-prev-upload-updated" accept="image/*,.pdf" style="display:none;" onchange="apPrevSubirActualizado(this)">
+                    </label>
                 </div>
                 <div style="flex:1;position:relative;overflow:hidden;">
-                    <img id="ap-prev-img-updated" src="" style="width:100%;height:100%;max-height:460px;object-fit:contain;padding:12px;display:none;" />
-                    <div id="ap-prev-right-ph" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;min-height:380px;gap:10px;color:#94a3b8;padding:30px;">
-                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#e2e8f0" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                        <span style="font-size:12px;text-align:center;">Sube el documento completado<br>para verlo aquí</span>
+                    <img id="ap-prev-img-updated" src="" style="width:100%;height:100%;max-height:420px;object-fit:contain;padding:10px;display:none;" />
+                    <div id="ap-prev-right-ph" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;min-height:340px;gap:8px;color:#94a3b8;padding:24px;">
+                        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#e2e8f0" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                        <span style="font-size:11px;text-align:center;">Sube el documento completado<br>para verlo aquí</span>
                     </div>
                 </div>
             </div>
-        </div>
-        <!-- Footer -->
-        <div style="padding:14px 24px;border-top:1px solid #e2e8f0;display:flex;gap:8px;flex-shrink:0;">
-            <button id="ap-prev-edit" style="flex:1;padding:10px;background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;border-radius:10px;font-weight:700;font-size:12px;cursor:pointer;">✏️ Editar</button>
-            <button id="ap-prev-del" style="padding:10px 20px;background:#fee2e2;color:#dc2626;border:none;border-radius:10px;font-weight:700;font-size:12px;cursor:pointer;">🗑</button>
+            <!-- Col 3: Panel de colaboración -->
+            <div style="display:flex;flex-direction:column;background:#f8fafc;overflow-y:auto;">
+                <!-- Fecha compromiso -->
+                <div style="padding:12px 14px;border-bottom:1px solid #e2e8f0;">
+                    <div style="font-size:10px;font-weight:700;color:#475569;letter-spacing:.5px;margin-bottom:6px;display:flex;align-items:center;gap:5px;">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                        FECHA COMPROMISO
+                    </div>
+                    <div style="display:flex;gap:6px;align-items:center;">
+                        <input type="date" id="ap-prev-fecha-comp" style="flex:1;border:1px solid #e2e8f0;border-radius:8px;padding:6px 8px;font-size:11px;color:#1e293b;background:white;" onchange="apGuardarFechaComp()">
+                        <div id="ap-prev-fecha-badge" style="display:none;font-size:10px;font-weight:700;padding:3px 7px;border-radius:6px;white-space:nowrap;"></div>
+                    </div>
+                </div>
+                <!-- Involucrados / etiquetas -->
+                <div style="padding:12px 14px;border-bottom:1px solid #e2e8f0;">
+                    <div style="font-size:10px;font-weight:700;color:#475569;letter-spacing:.5px;margin-bottom:6px;display:flex;align-items:center;gap:5px;">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                        INVOLUCRADOS
+                    </div>
+                    <div id="ap-prev-involucrados-list" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;min-height:20px;"></div>
+                    <div style="display:flex;gap:5px;">
+                        <input type="text" id="ap-prev-involucrado-input" placeholder="Email o nombre..." style="flex:1;border:1px solid #e2e8f0;border-radius:7px;padding:5px 8px;font-size:11px;" onkeydown="if(event.key==='Enter')apAgregarInvolucrado()">
+                        <button onclick="apAgregarInvolucrado()" style="padding:5px 10px;background:#8b5cf6;color:white;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">+</button>
+                    </div>
+                </div>
+                <!-- Comentarios -->
+                <div style="flex:1;display:flex;flex-direction:column;padding:12px 14px;min-height:0;">
+                    <div style="font-size:10px;font-weight:700;color:#475569;letter-spacing:.5px;margin-bottom:8px;display:flex;align-items:center;gap:5px;">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                        VERIFICACIÓN / COMENTARIOS
+                    </div>
+                    <div id="ap-prev-comentarios" style="flex:1;overflow-y:auto;max-height:220px;display:flex;flex-direction:column;gap:6px;margin-bottom:8px;"></div>
+                    <!-- Input comentario -->
+                    <div style="border:1px solid #e2e8f0;border-radius:10px;background:white;overflow:hidden;">
+                        <textarea id="ap-prev-comentario-input" placeholder="Escribe un comentario de verificación, corrección o nota..." rows="3" style="width:100%;border:none;padding:8px 10px;font-size:11px;resize:none;outline:none;font-family:inherit;color:#1e293b;"></textarea>
+                        <div style="padding:6px 8px;border-top:1px solid #f1f5f9;display:flex;justify-content:flex-end;">
+                            <button onclick="apEnviarComentarioPrev()" style="padding:5px 14px;background:#2563eb;color:white;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">Enviar</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Acciones footer -->
+                <div style="padding:10px 14px;border-top:1px solid #e2e8f0;display:flex;gap:6px;flex-shrink:0;">
+                    <button id="ap-prev-edit" style="flex:1;padding:8px;background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;border-radius:9px;font-weight:700;font-size:11px;cursor:pointer;">✏️ Editar</button>
+                    <button id="ap-prev-del" style="padding:8px 14px;background:#fee2e2;color:#dc2626;border:none;border-radius:9px;font-weight:700;font-size:11px;cursor:pointer;">🗑</button>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -4577,7 +4625,10 @@ cargarModuloMarketing();
                 fs.where('mesKey','==',mesKey)
             ));
             apDocs = snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>((a.fecha||'')+(a.hora||'')).localeCompare((b.fecha||'')+(b.hora||'')));
+            window.apDocs = apDocs; // exponer globalmente para el panel de colaboración
             renderCalAP();
+            // Verificar fechas compromiso y notificar si procede
+            if(typeof window._apVerificarFechas==='function') window._apVerificarFechas(apDocs);
         } catch(e){
             console.warn('[AP]', e.message);
             apDocs = [];
@@ -4960,6 +5011,8 @@ cargarModuloMarketing();
             document.getElementById('modal-ap-preview').style.display='none';
             eliminarDocAP(id);
         };
+        // Cargar panel de colaboración
+        if(typeof window._apCargarPanel === 'function') window._apCargarPanel(id, p);
         document.getElementById('modal-ap-preview').style.display='flex';
     };
 
@@ -5039,6 +5092,191 @@ cargarModuloMarketing();
 
     console.log('[PARRILLA UNIVERSAL] ✅ Módulo cargado');
 })();
+
+// ══════════════════════════════════════════════════════════════
+// PANEL COLABORACIÓN — Comentarios, fecha compromiso, involucrados
+// ══════════════════════════════════════════════════════════════
+(function(){
+    'use strict';
+    let _apDocActualId = null;
+
+    window.cerrarModalApPreview = () => {
+        document.getElementById('modal-ap-preview').style.display = 'none';
+        const iframe = document.getElementById('ap-prev-iframe');
+        if(iframe) iframe.src = 'about:blank';
+        _apDocActualId = null;
+    };
+
+    window._apCargarPanel = function(docId, p) {
+        _apDocActualId = docId;
+        const fechaInput = document.getElementById('ap-prev-fecha-comp');
+        if(fechaInput) fechaInput.value = p.fechaCompromiso || '';
+        _apActualizarBadgeFecha(p.fechaCompromiso);
+        _apRenderInvolucrados(p.involucrados || []);
+        _apRenderComentariosPrev(p.comentariosPrev || []);
+        const inp = document.getElementById('ap-prev-comentario-input');
+        if(inp) inp.value = '';
+        const inv = document.getElementById('ap-prev-involucrado-input');
+        if(inv) inv.value = '';
+    };
+
+    function _apActualizarBadgeFecha(fechaStr) {
+        const badge = document.getElementById('ap-prev-fecha-badge');
+        if(!badge) return;
+        if(!fechaStr) { badge.style.display='none'; return; }
+        const hoy = new Date(); hoy.setHours(0,0,0,0);
+        const fecha = new Date(fechaStr + 'T00:00:00');
+        const diff = Math.ceil((fecha - hoy) / (1000*60*60*24));
+        badge.style.display = 'block';
+        if(diff < 0){
+            badge.textContent = `Venció hace ${Math.abs(diff)}d`;
+            badge.style.background='#fee2e2'; badge.style.color='#dc2626';
+        } else if(diff === 0){
+            badge.textContent = 'Vence hoy';
+            badge.style.background='#fef3c7'; badge.style.color='#d97706';
+        } else if(diff <= 3){
+            badge.textContent = `${diff}d restantes`;
+            badge.style.background='#fef3c7'; badge.style.color='#d97706';
+        } else {
+            badge.textContent = `${diff}d restantes`;
+            badge.style.background='#f0fdf4'; badge.style.color='#16a34a';
+        }
+    }
+
+    function _apRenderInvolucrados(lista) {
+        const cont = document.getElementById('ap-prev-involucrados-list');
+        if(!cont) return;
+        cont.innerHTML = lista.map((inv, i) =>
+            `<span style="display:inline-flex;align-items:center;gap:4px;background:#ede9fe;color:#7c3aed;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:700;">
+                @${inv}
+                <span onclick="apQuitarInvolucrado(${i})" style="cursor:pointer;opacity:0.6;font-size:12px;line-height:1;">×</span>
+            </span>`
+        ).join('');
+    }
+
+    function _apRenderComentariosPrev(lista) {
+        const cont = document.getElementById('ap-prev-comentarios');
+        if(!cont) return;
+        if(!lista.length) {
+            cont.innerHTML = '<div style="font-size:11px;color:#94a3b8;text-align:center;padding:20px 0;">Sin comentarios aún</div>';
+            return;
+        }
+        const yo = window.auth?.currentUser?.email || '';
+        cont.innerHTML = lista.map(c => {
+            const esMio = c.u === yo;
+            const hora = new Date(c.f).toLocaleString('es-MX',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
+            return `<div style="background:${esMio?'#eff6ff':'#f8fafc'};border:1px solid ${esMio?'#bfdbfe':'#e2e8f0'};border-radius:10px;padding:8px 10px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                    <span style="font-size:10px;font-weight:700;color:${esMio?'#2563eb':'#475569'};">${c.u.split('@')[0].toUpperCase()}${esMio?' (tú)':''}</span>
+                    <span style="font-size:9px;color:#94a3b8;">${hora}</span>
+                </div>
+                <div style="font-size:11px;color:#1e293b;line-height:1.45;">${c.m}</div>
+            </div>`;
+        }).join('');
+        cont.scrollTop = cont.scrollHeight;
+    }
+
+    window.apAgregarInvolucrado = async () => {
+        if(!_apDocActualId || !window.apDocs) return;
+        const inp = document.getElementById('ap-prev-involucrado-input');
+        const val = (inp?.value||'').trim(); if(!val) return;
+        const p = window.apDocs.find(x=>x.id===_apDocActualId); if(!p) return;
+        const lista = [...(p.involucrados||[])];
+        if(!lista.includes(val)) lista.push(val);
+        try {
+            const {db,fs} = await getFirebaseAP();
+            await fs.updateDoc(fs.doc(db,'area_parrilla',_apDocActualId),{involucrados:lista});
+            inp.value='';
+        } catch(e){console.error(e);}
+    };
+
+    window.apQuitarInvolucrado = async (idx) => {
+        if(!_apDocActualId || !window.apDocs) return;
+        const p = window.apDocs.find(x=>x.id===_apDocActualId); if(!p) return;
+        const lista = [...(p.involucrados||[])]; lista.splice(idx,1);
+        try {
+            const {db,fs} = await getFirebaseAP();
+            await fs.updateDoc(fs.doc(db,'area_parrilla',_apDocActualId),{involucrados:lista});
+        } catch(e){console.error(e);}
+    };
+
+    window.apGuardarFechaComp = async () => {
+        if(!_apDocActualId) return;
+        const val = document.getElementById('ap-prev-fecha-comp')?.value||'';
+        try {
+            const {db,fs} = await getFirebaseAP();
+            await fs.updateDoc(fs.doc(db,'area_parrilla',_apDocActualId),{fechaCompromiso:val});
+            _apActualizarBadgeFecha(val);
+            if(window.mostrarToast) window.mostrarToast('📅 Fecha guardada',val,'📅');
+        } catch(e){console.error(e);}
+    };
+
+    window.apEnviarComentarioPrev = async () => {
+        if(!_apDocActualId || !window.apDocs) return;
+        const inp = document.getElementById('ap-prev-comentario-input');
+        const msg = (inp?.value||'').trim(); if(!msg) return;
+        const yo = window.auth?.currentUser?.email||'';
+        const nuevo = {u:yo, m:msg, f:new Date().toISOString()};
+        try {
+            const {db,fs} = await getFirebaseAP();
+            const p = window.apDocs.find(x=>x.id===_apDocActualId);
+            const lista = [...(p?.comentariosPrev||[]), nuevo];
+            await fs.updateDoc(fs.doc(db,'area_parrilla',_apDocActualId),{comentariosPrev:lista});
+            inp.value='';
+            _apRenderComentariosPrev(lista);
+            // Notificar
+            const desc = p?.desc||'un documento';
+            const area = p?.area||'';
+            if(window.mostrarPush) window.mostrarPush(
+                '💬 Comentario en documento',
+                `${yo.split('@')[0]}: "${msg.slice(0,80)}"`,
+                '💬', false,
+                {tareaNombre:desc, area}
+            );
+            if(window.mostrarNotif) window.mostrarNotif('Tecnocontrol · Parrilla',`${yo.split('@')[0]} comentó en "${desc}"`,_apDocActualId);
+        } catch(e){console.error(e);}
+    };
+
+    window.apPrevSubirActualizado = async (input) => {
+        const file = input.files[0]; if(!file||!_apDocActualId) return;
+        if(file.size>10*1024*1024){alert('Máximo 10MB');return;}
+        try {
+            const dataUrl = await new Promise((res,rej)=>{
+                const r=new FileReader(); r.onload=e=>res(e.target.result); r.onerror=rej; r.readAsDataURL(file);
+            });
+            const {db,fs} = await getFirebaseAP();
+            await fs.updateDoc(fs.doc(db,'area_parrilla',_apDocActualId),{imgUrl2:dataUrl});
+            const imgEl = document.getElementById('ap-prev-img-updated');
+            const ph = document.getElementById('ap-prev-right-ph');
+            if(imgEl){imgEl.src=dataUrl; imgEl.style.display='block';}
+            if(ph) ph.style.display='none';
+            if(window.mostrarToast) window.mostrarToast('✅ Documento actualizado',file.name,'📄');
+        } catch(e){console.error(e); alert('Error al subir');}
+    };
+
+    // Verificar fechas compromiso al cargar docs (llamada desde cargarDocsAP)
+    window._apVerificarFechas = function(docs) {
+        if(!window._escucharIniciado) return;
+        const hoy = new Date(); hoy.setHours(0,0,0,0);
+        const yo = window.auth?.currentUser?.email||'';
+        docs.forEach(p=>{
+            if(!p.fechaCompromiso) return;
+            const fecha = new Date(p.fechaCompromiso+'T00:00:00');
+            const diff = Math.ceil((fecha-hoy)/(1000*60*60*24));
+            const involucrado=(p.involucrados||[]).includes(yo)||p.responsable===yo||(typeof esAdminTotal==='function'&&esAdminTotal(yo));
+            if(involucrado&&(diff===0||diff===1)){
+                const txt=diff===0?'vence HOY':'vence mañana';
+                if(window.mostrarPush) window.mostrarPush(
+                    `📅 Fecha compromiso ${txt}`,
+                    `"${(p.desc||'').slice(0,60)}" — ${p.area||''}`,
+                    '📅',false,{tareaNombre:p.desc||'',area:p.area||''}
+                );
+            }
+        });
+    };
+
+    console.log('[COLABORACIÓN AP] ✅ Panel cargado');
+}());
 
 
 // ══════════════════════════════════════════════════════════════
