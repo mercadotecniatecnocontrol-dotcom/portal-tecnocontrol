@@ -1361,7 +1361,7 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
                         <button onclick="apAgregarInvolucrado()" style="padding:5px 10px;background:#8b5cf6;color:white;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;flex-shrink:0;">+</button>
                     </div>
                 </div>
-                <!-- Comentarios -->
+                <!-- Comentarios de verificación -->
                 <div style="flex:1;display:flex;flex-direction:column;padding:12px 14px;min-height:0;">
                     <div style="font-size:10px;font-weight:700;color:#475569;letter-spacing:.5px;margin-bottom:8px;display:flex;align-items:center;gap:5px;">
                         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
@@ -1375,6 +1375,19 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
                             <button onclick="apEnviarComentarioPrev()" style="padding:5px 14px;background:#2563eb;color:white;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">Enviar</button>
                         </div>
                     </div>
+                </div>
+                <!-- Tarea vinculada y sus comentarios -->
+                <div style="padding:12px 14px;border-top:1px solid #e2e8f0;flex-shrink:0;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                        <div style="font-size:10px;font-weight:700;color:#475569;letter-spacing:.5px;display:flex;align-items:center;gap:5px;">
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2.5"><rect x="3" y="3" width="18" height="18" rx="2"/><polyline points="9 11 12 14 22 4"/></svg>
+                            TAREA VINCULADA
+                        </div>
+                        <button id="ap-prev-ir-tarea" style="display:none;padding:3px 9px;background:#fef3c7;color:#d97706;border:1px solid #fde68a;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;align-items:center;gap:4px;">
+                            Ver tarea →
+                        </button>
+                    </div>
+                    <div id="ap-prev-tarea-comentarios" style="max-height:160px;overflow-y:auto;"></div>
                 </div>
                 <!-- Acciones footer -->
                 <div style="padding:10px 14px;border-top:1px solid #e2e8f0;display:flex;gap:6px;flex-shrink:0;">
@@ -4141,7 +4154,7 @@ window.abrirChat=(id, t, area)=>{
             const esPDF = c.adjUrl.startsWith('data:application/pdf');
             adjHtml = esPDF
                 ? `<div style="margin-top:6px;"><a href="${c.adjUrl}" download="${c.adjNombre||'documento.pdf'}" target="_blank" style="display:inline-flex;align-items:center;gap:5px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:7px;padding:5px 10px;font-size:11px;font-weight:700;color:#16a34a;text-decoration:none;">📄 ${c.adjNombre||'Documento PDF'}</a></div>`
-                : `<div style="margin-top:6px;cursor:pointer;" onclick="window.open('${c.adjUrl}','_blank')"><img src="${c.adjUrl}" style="max-width:100%;max-height:160px;border-radius:8px;border:1px solid #e2e8f0;object-fit:contain;" title="Ver en tamaño completo"></div>`;
+                : `<div style="margin-top:6px;cursor:pointer;" onclick="window.apVerAdjunto && apVerAdjunto('${c.adjUrl}')"><img src="${c.adjUrl}" style="max-width:100%;max-height:160px;border-radius:8px;border:1px solid #e2e8f0;object-fit:contain;" title="Ver en tamaño completo"></div>`;
         }
         return `<div class="chat-msg ${esMio?'chat-mine':''}">
             <div class="chat-msg-header">
@@ -4996,13 +5009,15 @@ cargarModuloMarketing();
             const { db, fs, auth } = await getFirebaseAP();
             docData.creadoPor = auth.currentUser?.email || '';
             const editId = document.getElementById('ap-edit-id').value;
+            let docIdReal = editId;
             if(editId){
                 await fs.updateDoc(fs.doc(db,'area_parrilla',editId), docData);
             } else {
-                await fs.addDoc(fs.collection(db,'area_parrilla'), docData);
+                const docRef = await fs.addDoc(fs.collection(db,'area_parrilla'), docData);
+                docIdReal = docRef.id;
             }
             document.getElementById('modal-ap').style.display='none';
-            if(window.mostrarPush) window.mostrarToast('📄 Documento guardado', desc, '📋');
+            if(window.mostrarToast) window.mostrarToast('📄 Documento guardado', desc, '📋');
             
             // ── Auto-crear tarea en el kanban (solo documentos nuevos) ──
             if(!editId){
@@ -5019,12 +5034,14 @@ cargarModuloMarketing();
                         responsable: auth.currentUser?.email || '',
                         encargado: docData.responsable || auth.currentUser?.email || '',
                         origen: 'Parrilla de documentos',
-                        docId: editId || '',
+                        docId: docIdReal,
                         comentarios: []
                     };
                     const { db: db2, fs: fs2 } = await getFirebaseAP();
-                    await fs2.addDoc(fs2.collection(db2, 'actividades'), tareaData);
-                    console.log('[AP] ✅ Tarea auto-creada:', desc);
+                    const tareaRef = await fs2.addDoc(fs2.collection(db2, 'actividades'), tareaData);
+                    // Vínculo bidireccional: guardar tareaId en el doc de parrilla
+                    await fs.updateDoc(fs.doc(db,'area_parrilla',docIdReal), { tareaId: tareaRef.id });
+                    console.log('[AP] ✅ Tarea auto-creada:', desc, '— tareaId:', tareaRef.id);
                 } catch(e2){ console.warn('[AP] Error al crear tarea:', e2.message); }
             }
             
@@ -5288,6 +5305,8 @@ cargarModuloMarketing();
         if(inp) inp.value = '';
         const inv = document.getElementById('ap-prev-involucrado-input');
         if(inv){ inv.value=''; _apOcultarSugerencias(); }
+        // Cargar comentarios de la tarea vinculada
+        _apCargarComentariosTarea(p);
     };
 
     function _apActualizarBadgeFecha(fechaStr) {
@@ -5544,6 +5563,73 @@ cargarModuloMarketing();
                 );
             }
         });
+    };
+
+    // ── Comentarios de tarea vinculada ──
+    async function _apCargarComentariosTarea(p) {
+        const cont = document.getElementById('ap-prev-tarea-comentarios');
+        const btn  = document.getElementById('ap-prev-ir-tarea');
+        if(!cont) return;
+
+        const tareaId = p.tareaId || null;
+        if(!tareaId){
+            cont.innerHTML = '<div style="font-size:10px;color:#94a3b8;text-align:center;padding:10px 0;">Sin tarea vinculada</div>';
+            if(btn) btn.style.display='none';
+            return;
+        }
+
+        // Buscar la tarea en localDB
+        const tarea = (window.localDB||[]).find(t => t.id === tareaId);
+        if(!tarea){
+            cont.innerHTML = '<div style="font-size:10px;color:#94a3b8;text-align:center;padding:10px 0;">Tarea no encontrada</div>';
+            if(btn) btn.style.display='none';
+            return;
+        }
+
+        // Botón ir a tarea
+        if(btn){
+            btn.style.display='flex';
+            btn.onclick = () => {
+                document.getElementById('modal-ap-preview').style.display='none';
+                if(typeof window.abrirChat==='function') window.abrirChat(tareaId, tarea.actividad||'Tarea', tarea.area||'');
+            };
+        }
+
+        const comentarios = tarea.comentarios || [];
+        if(!comentarios.length){
+            cont.innerHTML = '<div style="font-size:10px;color:#94a3b8;text-align:center;padding:8px 0;">Sin comentarios en la tarea</div>';
+            return;
+        }
+
+        cont.innerHTML = comentarios.slice(-5).map(c => { // últimos 5
+            const hora = (() => { try { return new Date(c.f).toLocaleString('es-MX',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}); } catch(e){ return ''; } })();
+            const esPDF = c.adjUrl && c.adjUrl.startsWith('data:application/pdf');
+            const adjHtml = c.adjUrl
+                ? (esPDF
+                    ? `<a href="${c.adjUrl}" download="${c.adjNombre||'doc.pdf'}" target="_blank" style="display:inline-flex;align-items:center;gap:4px;margin-top:4px;font-size:10px;font-weight:700;color:#16a34a;background:#f0fdf4;padding:3px 7px;border-radius:6px;text-decoration:none;">📄 ${c.adjNombre||'PDF'}</a>`
+                    : `<img src="${c.adjUrl}" style="max-width:100%;max-height:80px;border-radius:6px;margin-top:4px;cursor:pointer;object-fit:contain;border:1px solid #e2e8f0;" onclick="apVerAdjunto('${c.adjUrl}')" title="Ver en grande">`)
+                : '';
+            return `<div style="padding:6px 8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:4px;">
+                <div style="display:flex;justify-content:space-between;margin-bottom:2px;">
+                    <span style="font-size:9px;font-weight:700;color:#475569;">${(c.u||'').split('@')[0].toUpperCase()}</span>
+                    <span style="font-size:9px;color:#94a3b8;">${hora}</span>
+                </div>
+                <div style="font-size:10px;color:#1e293b;line-height:1.4;word-break:break-word;">${c.m||''}</div>
+                ${adjHtml}
+            </div>`;
+        }).join('');
+    }
+
+    // Preview de adjunto en modal lightbox
+    window.apVerAdjunto = (url) => {
+        const overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:999999;display:flex;align-items:center;justify-content:center;cursor:zoom-out;';
+        overlay.onclick = () => document.body.removeChild(overlay);
+        const img = document.createElement('img');
+        img.src = url;
+        img.style.cssText = 'max-width:92vw;max-height:90vh;object-fit:contain;border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,0.5);';
+        overlay.appendChild(img);
+        document.body.appendChild(overlay);
     };
 
     console.log('[COLABORACIÓN AP] ✅ Panel cargado');
