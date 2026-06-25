@@ -2874,7 +2874,13 @@ function notifMostrar(notif) {
 
     // Datos
     titulo.textContent  = notif.titulo  || 'Nueva notificación';
-    icono.textContent   = notif.icono   || '💬';
+    // SVG o emoji — usar innerHTML para que SVGs se rendericen
+    const iconoVal = notif.icono || '💬';
+    if(iconoVal.startsWith('<svg')) {
+        icono.innerHTML = iconoVal;
+    } else {
+        icono.textContent = iconoVal;
+    }
     mensaje.textContent = notif.mensaje || '';
     hora.textContent    = new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
 
@@ -2934,11 +2940,22 @@ window.notifIrATarea = () => {
     if(!id) return;
     // Abrir el chat/detalle de esa tarea
     setTimeout(() => {
-        if(typeof window.abrirChat === 'function') {
-            const tarea = localDB.find(t => t.id === id);
-            if(tarea) window.abrirChat(id, tarea.actividad || 'Tarea', tarea.area || '');
+        // navegar al área correspondiente primero
+        const db2 = window.localDB || [];
+        const tarea = db2.find(t => t.id === id);
+        const area = tarea?.area || '';
+        // Si hay área, navegar a ella para que la tarea sea visible
+        if(area) {
+            const areaEl = document.querySelector(`.sitem[onclick*="'${area}'"]`);
+            if(areaEl && typeof window.verArea === 'function') {
+                window.verArea(area, areaEl);
+            }
         }
-    }, 350);
+        // Luego abrir el chat
+        if(typeof window.abrirChat === 'function') {
+            window.abrirChat(id, tarea?.actividad || 'Tarea', area);
+        }
+    }, 400);
 };
 
 // Mostrar siguiente de la cola manualmente (click en badge)
@@ -3525,6 +3542,25 @@ function escuchar(){
                 : -1;
             const newLen = (data.comentarios||[]).length;
 
+            // — Detectar TAREA NUEVA (primera vez que la vemos) —
+            if(prevLen === -1 && data.responsable && data.responsable !== yo) {
+                // Solo notificar si la tarea me fue asignada a mí o a mi área
+                const miDepto2 = obtenerDeptoUsuario(yo);
+                const esAdmin2 = esAdminTotal(yo);
+                const esMiTarea2 = data.responsable === yo;
+                const esMiArea2 = miDepto2 !== '' &&
+                    miDepto2.toLowerCase() === (data.area||'').toLowerCase();
+                if(esAdmin2 || esMiTarea2 || esMiArea2) {
+                    const asignador = (data.creadoPor || data.responsable || '').split('@')[0];
+                    window.mostrarPush(
+                        '📋 Nueva tarea asignada',
+                        `${asignador} asignó: "${(data.actividad||'').slice(0,80)}"`,
+                        '📋', false,
+                        { tareaId: id, tareaNombre: data.actividad||'', area: data.area||'' }
+                    );
+                }
+            }
+
             if(prevLen >= 0 && newLen > prevLen) {
                 const ultimo = data.comentarios[newLen-1];
                 if(ultimo.u !== yo) {
@@ -3559,9 +3595,9 @@ function escuchar(){
                             );
                         } else {
                             window.mostrarPush(
-                                `${ICONS[DEPTOS.indexOf(areaName)]||'💬'} ${areaName||'Portal'}`,
+                                `${areaName||'Portal'}`,
                                 `${quien} comentó en una tarea`,
-                                ICONS[DEPTOS.indexOf(areaName)] || '💬', false,
+                                '💬', false,
                                 { tareaId: id, tareaNombre: tarea, area: areaName,
                                   esRH: areaName === 'Recursos Humanos' }
                             );
@@ -4250,8 +4286,10 @@ window.navegar=(id,b)=>{
     document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
     document.getElementById('sec-'+id)?.classList.add('active');
     if(b){document.querySelectorAll('.sitem').forEach(i=>i.classList.remove('active'));b.classList.add('active');}
+    if(id==='dashboard') { renderDashboard(); renderNotificaciones(); }
     if(id==='cal360') renderCal360();
     if(id==='ejecutivo') renderEjecutivo();
+    if(id==='asignar') { /* renderizar tabla de asignar si existe */ }
     // Si salimos de ventas, invalidar el mapa para que no se arrastre
     if(id !== 'ventas-mapa' && typeof mapaLeaflet !== 'undefined' && mapaLeaflet){
         try { setTimeout(()=>{ if(mapaLeaflet) mapaLeaflet.invalidateSize(); }, 200); } catch(e){}
