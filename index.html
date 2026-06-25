@@ -4342,6 +4342,8 @@ window.navegar=(id,b)=>{
     document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
     document.getElementById('sec-'+id)?.classList.add('active');
     if(b){document.querySelectorAll('.sitem').forEach(i=>i.classList.remove('active'));b.classList.add('active');}
+    // Si salimos de un área, limpiar areaActual para que onSnapshot no reactive el área
+    if(id !== 'area') areaActual = '';
     if(id==='dashboard') { renderDashboard(); renderNotificaciones(); }
     if(id==='cal360') renderCal360();
     if(id==='ejecutivo') renderEjecutivo();
@@ -5165,21 +5167,23 @@ cargarModuloMarketing();
 // ══════════════════════════════════════════════════════════════
 (function(){
     'use strict';
-    let _apDocActualId = null;
+
+    // Usar window para que _apDocActualId sea accesible y persistente
+    window._apDocActualId = null;
 
     window.cerrarModalApPreview = () => {
         document.getElementById('modal-ap-preview').style.display = 'none';
         const iframe = document.getElementById('ap-prev-iframe');
         if(iframe) iframe.src = 'about:blank';
-        const pdfL = document.getElementById('ap-prev-pdf-direct');
-        if(pdfL) pdfL.src = 'about:blank';
-        const pdfR = document.getElementById('ap-prev-pdf-updated');
-        if(pdfR) pdfR.src = 'about:blank';
-        _apDocActualId = null;
+        ['ap-prev-pdf-direct','ap-prev-pdf-updated'].forEach(id => {
+            const el = document.getElementById(id);
+            if(el) el.src = 'about:blank';
+        });
+        window._apDocActualId = null;
     };
 
     window._apCargarPanel = function(docId, p) {
-        _apDocActualId = docId;
+        window._apDocActualId = docId;
         const fechaInput = document.getElementById('ap-prev-fecha-comp');
         if(fechaInput) fechaInput.value = p.fechaCompromiso || '';
         _apActualizarBadgeFecha(p.fechaCompromiso);
@@ -5199,19 +5203,23 @@ cargarModuloMarketing();
         const fecha = new Date(fechaStr+'T00:00:00');
         const diff = Math.ceil((fecha-hoy)/(1000*60*60*24));
         badge.style.display='block';
-        if(diff<0){ badge.textContent=`Venció hace ${Math.abs(diff)}d`; badge.style.background='#fee2e2'; badge.style.color='#dc2626'; }
+        if(diff<0)      { badge.textContent=`Venció hace ${Math.abs(diff)}d`; badge.style.background='#fee2e2'; badge.style.color='#dc2626'; }
         else if(diff===0){ badge.textContent='Vence hoy'; badge.style.background='#fef3c7'; badge.style.color='#d97706'; }
-        else if(diff<=3){ badge.textContent=`${diff}d restantes`; badge.style.background='#fef3c7'; badge.style.color='#d97706'; }
-        else { badge.textContent=`${diff}d restantes`; badge.style.background='#f0fdf4'; badge.style.color='#16a34a'; }
+        else if(diff<=3) { badge.textContent=`${diff}d restantes`; badge.style.background='#fef3c7'; badge.style.color='#d97706'; }
+        else             { badge.textContent=`${diff}d restantes`; badge.style.background='#f0fdf4'; badge.style.color='#16a34a'; }
     }
 
     function _apRenderInvolucrados(lista) {
         const cont = document.getElementById('ap-prev-involucrados-list');
         if(!cont) return;
+        if(!lista.length){
+            cont.innerHTML='<span style="font-size:10px;color:#94a3b8;">Ninguno aún</span>';
+            return;
+        }
         cont.innerHTML = lista.map((inv,i)=>
-            `<span style="display:inline-flex;align-items:center;gap:4px;background:#ede9fe;color:#7c3aed;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:700;">
-                <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:130px;">${inv}</span>
-                <span onclick="apQuitarInvolucrado(${i})" style="cursor:pointer;opacity:0.6;font-size:13px;flex-shrink:0;">×</span>
+            `<span style="display:inline-flex;align-items:center;gap:3px;background:#ede9fe;color:#7c3aed;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:700;">
+                <span style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${inv.split('@')[0]}</span>
+                <span onclick="window.apQuitarInvolucrado(${i})" style="cursor:pointer;opacity:0.5;font-size:14px;line-height:1;flex-shrink:0;" title="Quitar">×</span>
             </span>`
         ).join('');
     }
@@ -5220,19 +5228,20 @@ cargarModuloMarketing();
         const cont = document.getElementById('ap-prev-comentarios');
         if(!cont) return;
         if(!lista.length){
-            cont.innerHTML='<div style="font-size:11px;color:#94a3b8;text-align:center;padding:20px 0;">Sin comentarios aún</div>';
+            cont.innerHTML='<div style="font-size:11px;color:#94a3b8;text-align:center;padding:16px 0;">Sin comentarios aún</div>';
             return;
         }
-        const yo = window.auth?.currentUser?.email||'';
+        const yo = window.auth?.currentUser?.email || '';
         cont.innerHTML = lista.map(c=>{
             const esMio = c.u===yo;
-            const hora = new Date(c.f).toLocaleString('es-MX',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
-            return `<div style="background:${esMio?'#eff6ff':'#f8fafc'};border:1px solid ${esMio?'#bfdbfe':'#e2e8f0'};border-radius:10px;padding:8px 10px;margin-bottom:4px;">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                    <span style="font-size:10px;font-weight:700;color:${esMio?'#2563eb':'#475569'};">${c.u.split('@')[0].toUpperCase()}${esMio?' (tú)':''}</span>
+            let hora = '';
+            try{ hora = new Date(c.f).toLocaleString('es-MX',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}); }catch(e){}
+            return `<div style="background:${esMio?'#eff6ff':'#f8fafc'};border:1px solid ${esMio?'#bfdbfe':'#e2e8f0'};border-radius:10px;padding:8px 10px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
+                    <span style="font-size:10px;font-weight:700;color:${esMio?'#2563eb':'#475569'};">${(c.u||'').split('@')[0].toUpperCase()}${esMio?' (tú)':''}</span>
                     <span style="font-size:9px;color:#94a3b8;">${hora}</span>
                 </div>
-                <div style="font-size:11px;color:#1e293b;line-height:1.45;word-break:break-word;">${c.m}</div>
+                <div style="font-size:11px;color:#1e293b;line-height:1.45;word-break:break-word;">${c.m||''}</div>
             </div>`;
         }).join('');
         cont.scrollTop = cont.scrollHeight;
@@ -5240,163 +5249,211 @@ cargarModuloMarketing();
 
     // ── Autocomplete de involucrados ──
     function _apOcultarSugerencias(){
-        const s=document.getElementById('ap-inv-sugerencias');
+        const s = document.getElementById('ap-inv-sugerencias');
         if(s) s.style.display='none';
     }
 
     window.apFiltrarInvolucrados = () => {
-        const inp = document.getElementById('ap-prev-involucrado-input');
+        const inp   = document.getElementById('ap-prev-involucrado-input');
         const query = (inp?.value||'').toLowerCase().trim();
+
+        // Crear o reutilizar el dropdown
         let cont = document.getElementById('ap-inv-sugerencias');
         if(!cont){
             cont = document.createElement('div');
             cont.id = 'ap-inv-sugerencias';
-            cont.style.cssText = 'position:absolute;z-index:9999;background:white;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.12);max-height:220px;overflow-y:auto;width:100%;top:100%;left:0;';
-            inp?.parentElement?.style && (inp.parentElement.style.position='relative');
-            inp?.parentElement?.appendChild(cont);
+            cont.style.cssText = 'display:none;position:absolute;z-index:99999;background:white;border:1px solid #ddd6fe;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.15);max-height:200px;overflow-y:auto;width:100%;top:calc(100% + 4px);left:0;';
+            const wrapper = inp?.parentElement;
+            if(wrapper){ wrapper.style.position='relative'; wrapper.appendChild(cont); }
         }
+
         if(!query){ cont.style.display='none'; return; }
+
         const map = typeof EMAIL_AREA_MAP!=='undefined' ? EMAIL_AREA_MAP : {};
-        const usuarios = Object.keys(map).map(email=>({email,area:map[email]}));
+        const usuarios = Object.keys(map).map(email=>({email, area:map[email], nombre:email.split('@')[0].replace(/[._]/g,' ')}));
         const match = usuarios.filter(u=>
-            u.email.toLowerCase().includes(query)||
-            u.area.toLowerCase().includes(query)||
-            u.email.split('@')[0].replace(/[._]/g,' ').toLowerCase().includes(query)
+            u.email.includes(query) ||
+            u.nombre.toLowerCase().includes(query) ||
+            u.area.toLowerCase().includes(query)
         ).slice(0,8);
+
         if(!match.length){ cont.style.display='none'; return; }
+
         cont.innerHTML = match.map(u=>
-            `<div onclick="apSeleccionarInvolucrado('${u.email}')"
-                style="padding:7px 12px;cursor:pointer;border-bottom:1px solid #f1f5f9;"
-                onmouseover="this.style.background='#f5f3ff'" onmouseout="this.style.background=''">
+            `<div onclick="window.apSeleccionarInvolucrado('${u.email}')"
+                style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #f5f3ff;transition:background 0.1s;"
+                onmouseover="this.style.background='#f5f3ff'" onmouseout="this.style.background='white'">
                 <div style="font-size:11px;font-weight:700;color:#1e293b;">${u.email}</div>
                 <div style="font-size:10px;color:#8b5cf6;">${u.area}</div>
             </div>`
         ).join('');
-        cont.style.display='block';
+        cont.style.display = 'block';
     };
 
     window.apSeleccionarInvolucrado = (email) => {
         const inp = document.getElementById('ap-prev-involucrado-input');
         if(inp) inp.value = email;
         _apOcultarSugerencias();
-        apAgregarInvolucrado();
+        // Llamar con window. para asegurar scope correcto
+        window.apAgregarInvolucrado();
     };
 
     window.apAgregarInvolucrado = async () => {
-        if(!_apDocActualId) return;
+        const docId = window._apDocActualId;
+        if(!docId){ console.warn('[COLAB] Sin doc activo'); return; }
         const inp = document.getElementById('ap-prev-involucrado-input');
         const val = (inp?.value||'').trim();
-        if(!val) return;
-        const p = (window.apDocs||[]).find(x=>x.id===_apDocActualId);
-        if(!p) return;
+        if(!val){ console.warn('[COLAB] Sin valor'); return; }
+
+        const docs = window.apDocs || [];
+        const p    = docs.find(x=>x.id===docId);
+        if(!p){ console.warn('[COLAB] Doc no encontrado:', docId); return; }
+
         const lista = [...(p.involucrados||[])];
         if(lista.includes(val)){ inp.value=''; _apOcultarSugerencias(); return; }
         lista.push(val);
+
         try {
             const {db,fs} = await window.getFirebaseAP();
-            await fs.updateDoc(fs.doc(db,'area_parrilla',_apDocActualId),{involucrados:lista});
+            await fs.updateDoc(fs.doc(db,'area_parrilla',docId), {involucrados:lista});
             p.involucrados = lista;
             _apRenderInvolucrados(lista);
-            inp.value='';
+            inp.value = '';
             _apOcultarSugerencias();
-        } catch(e){ console.error('[COLAB] agregar involucrado:',e); alert('Error: '+e.message); }
+        } catch(e){
+            console.error('[COLAB] agregar involucrado:', e);
+            alert('Error al agregar: ' + e.message);
+        }
     };
 
     window.apQuitarInvolucrado = async (idx) => {
-        if(!_apDocActualId) return;
-        const p = (window.apDocs||[]).find(x=>x.id===_apDocActualId);
+        const docId = window._apDocActualId;
+        if(!docId) return;
+        const p = (window.apDocs||[]).find(x=>x.id===docId);
         if(!p) return;
         const lista = [...(p.involucrados||[])];
         lista.splice(idx,1);
         try {
             const {db,fs} = await window.getFirebaseAP();
-            await fs.updateDoc(fs.doc(db,'area_parrilla',_apDocActualId),{involucrados:lista});
+            await fs.updateDoc(fs.doc(db,'area_parrilla',docId), {involucrados:lista});
             p.involucrados = lista;
             _apRenderInvolucrados(lista);
-        } catch(e){ console.error('[COLAB] quitar:',e); }
+        } catch(e){ console.error('[COLAB] quitar:', e); }
     };
 
     window.apGuardarFechaComp = async () => {
-        if(!_apDocActualId) return;
+        const docId = window._apDocActualId;
+        if(!docId) return;
         const val = document.getElementById('ap-prev-fecha-comp')?.value||'';
         try {
             const {db,fs} = await window.getFirebaseAP();
-            await fs.updateDoc(fs.doc(db,'area_parrilla',_apDocActualId),{fechaCompromiso:val});
+            await fs.updateDoc(fs.doc(db,'area_parrilla',docId), {fechaCompromiso:val});
             _apActualizarBadgeFecha(val);
-            if(window.mostrarToast) window.mostrarToast('📅 Fecha guardada',val,'📅');
-        } catch(e){ console.error('[COLAB] fecha:',e); alert('Error: '+e.message); }
+            if(window.mostrarToast) window.mostrarToast('📅 Fecha guardada', val, '📅');
+        } catch(e){
+            console.error('[COLAB] fecha:', e);
+            alert('Error al guardar fecha: ' + e.message);
+        }
     };
 
     window.apEnviarComentarioPrev = async () => {
-        if(!_apDocActualId) return;
+        const docId = window._apDocActualId;
+        if(!docId){ alert('Error: no hay documento activo'); return; }
+
         const inp = document.getElementById('ap-prev-comentario-input');
         const msg = (inp?.value||'').trim();
-        if(!msg) return;
+        if(!msg){ alert('Escribe un comentario primero'); return; }
+
         const yo = window.auth?.currentUser?.email||'';
         if(!yo){ alert('Debes iniciar sesión'); return; }
-        const nuevo = {u:yo, m:msg, f:new Date().toISOString()};
+
+        const nuevo = { u:yo, m:msg, f:new Date().toISOString() };
+
         try {
             const {db,fs} = await window.getFirebaseAP();
-            const p = (window.apDocs||[]).find(x=>x.id===_apDocActualId);
+            const p = (window.apDocs||[]).find(x=>x.id===docId);
             const lista = [...(p?.comentariosPrev||[]), nuevo];
-            await fs.updateDoc(fs.doc(db,'area_parrilla',_apDocActualId),{comentariosPrev:lista});
+            await fs.updateDoc(fs.doc(db,'area_parrilla',docId), {comentariosPrev:lista});
             if(p) p.comentariosPrev = lista;
             inp.value = '';
             _apRenderComentariosPrev(lista);
             if(window.mostrarToast) window.mostrarToast('✅ Comentario enviado','','💬');
+            // Notificar
             const desc = p?.desc||'un documento';
             const area = p?.area||'';
-            if(window.mostrarPush) window.mostrarPush('💬 Comentario en documento',
-                `${yo.split('@')[0]}: "${msg.slice(0,80)}"`, '💬', false,
-                {tareaNombre:desc, area});
-        } catch(e){ console.error('[COLAB] comentario:',e); alert('Error al guardar: '+e.message); }
+            if(window.mostrarPush) window.mostrarPush(
+                '💬 Comentario en documento',
+                `${yo.split('@')[0]}: "${msg.slice(0,80)}"`,
+                '💬', false, {tareaNombre:desc, area}
+            );
+        } catch(e){
+            console.error('[COLAB] comentario:', e);
+            alert('Error al guardar comentario: ' + e.message);
+        }
     };
 
     window.apPrevSubirActualizado = async (input) => {
-        const file = input.files[0];
-        if(!file||!_apDocActualId) return;
+        const docId = window._apDocActualId;
+        const file  = input.files[0];
+        if(!file||!docId) return;
         if(file.size>10*1024*1024){ alert('Máximo 10MB'); return; }
         try {
             const dataUrl = await new Promise((res,rej)=>{
-                const r=new FileReader(); r.onload=e=>res(e.target.result); r.onerror=rej; r.readAsDataURL(file);
+                const r = new FileReader();
+                r.onload = e=>res(e.target.result);
+                r.onerror = rej;
+                r.readAsDataURL(file);
             });
             const {db,fs} = await window.getFirebaseAP();
-            await fs.updateDoc(fs.doc(db,'area_parrilla',_apDocActualId),{imgUrl2:dataUrl});
-            const p = (window.apDocs||[]).find(x=>x.id===_apDocActualId);
+            await fs.updateDoc(fs.doc(db,'area_parrilla',docId), {imgUrl2:dataUrl});
+            const p = (window.apDocs||[]).find(x=>x.id===docId);
             if(p) p.imgUrl2 = dataUrl;
             const esPDF = dataUrl.startsWith('data:application/pdf');
             const imgEl = document.getElementById('ap-prev-img-updated');
             const pdfEl = document.getElementById('ap-prev-pdf-updated');
             const ph    = document.getElementById('ap-prev-right-ph');
             const zoomR = document.getElementById('ap-prev-zoom-right');
-            if(esPDF){ if(imgEl) imgEl.style.display='none'; if(pdfEl){ pdfEl.src=dataUrl; pdfEl.style.display='block'; } }
-            else { if(pdfEl){ pdfEl.src='about:blank'; pdfEl.style.display='none'; } if(imgEl){ imgEl.src=dataUrl; imgEl.style.display='block'; } }
+            if(esPDF){
+                if(imgEl) imgEl.style.display='none';
+                if(pdfEl){ pdfEl.src=dataUrl; pdfEl.style.display='block'; }
+            } else {
+                if(pdfEl){ pdfEl.src='about:blank'; pdfEl.style.display='none'; }
+                if(imgEl){ imgEl.src=dataUrl; imgEl.style.display='block'; }
+            }
             if(ph) ph.style.display='none';
             if(zoomR){ zoomR.style.display='block'; zoomR.dataset.url=dataUrl; zoomR.dataset.tipo=esPDF?'pdf':'img'; }
-            if(window.mostrarToast) window.mostrarToast('✅ Documento actualizado subido',file.name,'📄');
-        } catch(e){ console.error('[COLAB] subir:',e); alert('Error: '+e.message); }
+            if(window.mostrarToast) window.mostrarToast('✅ Documento subido', file.name, '📄');
+        } catch(e){
+            console.error('[COLAB] subir:', e);
+            alert('Error al subir: ' + e.message);
+        }
     };
 
     window._apVerificarFechas = function(docs) {
         if(!window._escucharIniciado) return;
         const hoy = new Date(); hoy.setHours(0,0,0,0);
-        const yo = window.auth?.currentUser?.email||'';
+        const yo  = window.auth?.currentUser?.email||'';
         docs.forEach(p=>{
             if(!p.fechaCompromiso) return;
             const fecha = new Date(p.fechaCompromiso+'T00:00:00');
-            const diff = Math.ceil((fecha-hoy)/(1000*60*60*24));
-            const inv = (p.involucrados||[]).includes(yo)||p.responsable===yo||(typeof esAdminTotal==='function'&&esAdminTotal(yo));
-            if(inv&&(diff===0||diff===1)){
-                const txt = diff===0?'vence HOY':'vence mañana';
-                if(window.mostrarPush) window.mostrarPush(`📅 Fecha compromiso ${txt}`,
+            const diff  = Math.ceil((fecha-hoy)/(1000*60*60*24));
+            const inv   = (p.involucrados||[]).includes(yo) ||
+                          p.responsable===yo ||
+                          (typeof esAdminTotal==='function' && esAdminTotal(yo));
+            if(inv && (diff===0||diff===1)){
+                const txt = diff===0 ? 'vence HOY' : 'vence mañana';
+                if(window.mostrarPush) window.mostrarPush(
+                    `📅 Fecha compromiso ${txt}`,
                     `"${(p.desc||'').slice(0,60)}" — ${p.area||''}`,
-                    '📅',false,{tareaNombre:p.desc||'',area:p.area||''});
+                    '📅', false, {tareaNombre:p.desc||'', area:p.area||''}
+                );
             }
         });
     };
 
     console.log('[COLABORACIÓN AP] ✅ Panel cargado');
 }());
+
 
 
 // ══════════════════════════════════════════════════════════════
