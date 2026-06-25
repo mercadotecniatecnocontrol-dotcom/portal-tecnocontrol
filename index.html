@@ -3542,8 +3542,8 @@ function escuchar(){
                 : -1;
             const newLen = (data.comentarios||[]).length;
 
-            // — Detectar TAREA NUEVA (primera vez que la vemos) —
-            if(prevLen === -1 && data.responsable && data.responsable !== yo) {
+            // — Detectar TAREA NUEVA (solo después de la carga inicial) —
+            if(prevLen === -1 && data.responsable && data.responsable !== yo && window._escucharIniciado) {
                 // Solo notificar si la tarea me fue asignada a mí o a mi área
                 const miDepto2 = obtenerDeptoUsuario(yo);
                 const esAdmin2 = esAdminTotal(yo);
@@ -3617,6 +3617,8 @@ function escuchar(){
         renderDashboard(); renderNotificaciones(); renderReporteMensual();
         if(areaActual) renderTabla();
         // Actualizar drawer móvil con badges
+        // Marcar carga inicial completa — a partir de aquí sí notificar tareas nuevas
+        window._escucharIniciado = true;
         const yo2 = auth.currentUser?.email||'';
         renderDrawerAreas(localDB, yo2);
     });
