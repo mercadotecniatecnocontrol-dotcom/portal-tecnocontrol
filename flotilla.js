@@ -1294,7 +1294,14 @@ window.admNuevoGuardar=async function(){
   if(!eco){document.getElementById('adm-nv-eco').style.borderColor='#EF4444';return;}
   if(!g('adm-nv-unidad')){document.getElementById('adm-nv-unidad').style.borderColor='#EF4444';return;}
   const msg=document.getElementById('adm-nv-msg');
-  if(msg){msg.style.display='';msg.style.color='#2563EB';msg.textContent='Guardando...';}
+  if(msg){msg.style.display='';msg.style.color='#2563EB';msg.textContent='Verificando...';}
+  // GUARD: evitar duplicados — si ya existe un doc con este ECO, actualizar en vez de crear
+  const existente=flV.find(x=>String(x.eco)===String(eco)&&!x.id.startsWith('eco-'));
+  if(existente){
+    if(msg){msg.style.color='#EF4444';msg.textContent='Ya existe un vehículo con ECO '+eco+' (ID: '+existente.id+'). Usa la tabla para editarlo.';}
+    document.getElementById('adm-nv-eco').style.borderColor='#EF4444';
+    return;
+  }
   const doc={
     eco,unidad:g('adm-nv-unidad'),año:Number(g('adm-nv-año'))||0,
     placas:g('adm-nv-placas'),serie:g('adm-nv-serie'),
@@ -1307,11 +1314,11 @@ window.admNuevoGuardar=async function(){
     creadoPor:window.auth?.currentUser?.email||'',
   };
   try{
-    if(!fs){const m=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');fs=m;}
+    if(msg)msg.textContent='Guardando...';
     const ref=await fs.addDoc(fs.collection(db,C.VEHS),doc);
     flV.push({id:ref.id,...doc});
     renderSB();
-    if(msg){msg.style.color='#16A34A';msg.textContent='Vehículo registrado correctamente. ECO '+eco+' agregado a la flotilla.';}
+    if(msg){msg.style.color='#16A34A';msg.textContent='Vehículo registrado. ECO '+eco+' agregado a la flotilla.';}
     if(window.mostrarPush)window.mostrarPush('Vehículo agregado','ECO '+eco+' registrado en flotilla','✓');
     admNuevoLimpiar();
   }catch(e){
@@ -2712,10 +2719,11 @@ window.flVerTrans=function(id){
   const t=flTrans.find(x=>x.id===id);if(!t)return;
   const ov=document.createElement('div');ov.className='fl-ov';
   const evFotos=(t.entregaFotos||t.fotos||[]);
-  const baseIdx=window._flEvCache?window._flEvCache.length:0;
-  if(!window._flEvCache)window._flEvCache=[];
-  evFotos.forEach(src=>window._flEvCache.push({src,meta:{codigo:'Foto transferencia',tipo:'transferencia',eco:t.vehiculoEco||'—',unidad:t.vehiculoUnidad||'—'}}));
-  const fotoPills=evFotos.map((src,i)=>`<span class="fl-pill" onclick="flVerEvIdx(${baseIdx+i})" style="cursor:pointer">
+  // Reset cache local para este modal — evita índices acumulativos incorrectos
+  const cacheLocal=[];
+  evFotos.forEach(src=>cacheLocal.push({src,meta:{codigo:'Foto transferencia',tipo:'transferencia',eco:t.vehiculoEco||'—',unidad:t.vehiculoUnidad||'—'}}));
+  window._flEvCache=cacheLocal;
+  const fotoPills=evFotos.map((src,i)=>`<span class="fl-pill" onclick="flVerEvIdx(${i})" style="cursor:pointer">
     <img src="${src}" style="width:36px;height:36px;object-fit:cover;border-radius:5px;margin-right:4px"><span style="font-size:10px">Foto ${i+1}</span>
   </span>`).join('');
   ov.innerHTML=`<div class="fl-modal" style="max-width:560px">
@@ -4165,6 +4173,7 @@ window.flEnviarNotif = async function(id, tipo, comentario) {
       pagado:       `El pago de tu servicio fue procesado. (ECO ${eco})${sufComt}`,
       cerrada:      `Servicio finalizado. Expediente cerrado. (ECO ${eco})${sufComt}`,
       servicio:     `Tu solicitud entró a Servicio en proceso. (ECO ${eco})${sufComt}`,
+      regreso_etapa:`Tu solicitud fue regresada a etapa anterior para revisión. (ECO ${eco})`,
     };
     const msg = msgs[tipo];
     if (!msg) return;
@@ -4336,6 +4345,111 @@ window.flCalDia = function(fecha) {
 // PIPELINE MODAL — Flujo completo 6 etapas
 // Solicitud → Validación → Aprobación → Pagos → Cierre → Cerrada
 // ═══════════════════════════════════════════════════════
+// ── REGRESAR ETAPA en pipeline ──────────────────────────────────
+window.flRegresarEtapa=async function(id,etapaDestino){
+  const s=flS.find(x=>x.id===id);if(!s)return;
+  const etapaActual=s.estatus;
+  if(!confirm(`¿Regresar esta solicitud de "${etapaActual}" a "${etapaDestino}"?\n\nEsta acción quedará registrada.`))return;
+  try{
+    const motivo=prompt(`Motivo del retroceso (obligatorio):`)?.trim();
+    if(!motivo)return;
+    const upd={
+      estatus:etapaDestino,
+      actualizadoEn:new Date().toISOString(),
+      actualizadoPor:window.auth?.currentUser?.email||'',
+      [`historial_${Date.now()}`]:{de:etapaActual,a:etapaDestino,motivo,fecha:new Date().toISOString(),por:window.auth?.currentUser?.email||''},
+    };
+    await fs.updateDoc(fs.doc(db,C.SOLS,id),upd);
+    Object.assign(s,{estatus:etapaDestino});
+    flToast(`Solicitud regresada a ${etapaDestino}`,'ok');
+    // Notificar al solicitante
+    await flEnviarNotif(id,'regreso_etapa',s).catch(()=>{});
+    window.flPipelineModal._render?.(etapaDestino);
+  }catch(e){flToast('Error: '+e.message,'err');}
+};
+
+// ── SUBIR FACTURA en etapa Servicio ─────────────────────────────
+window.flModalSubirFactura=function(id){
+  const s=flS.find(x=>x.id===id);if(!s)return;
+  const ov=document.createElement('div');ov.className='fl-ov';
+  const facturas=s.facturas||[];
+  ov.innerHTML=`<div class="fl-modal" style="max-width:460px">
+    <div class="fl-mh">
+      <h3>Subir factura — ECO ${s.vehiculoEco||'—'}</h3>
+      <button class="fl-mx" onclick="this.closest('.fl-ov').remove()">✕</button>
+    </div>
+    <div class="fl-mb">
+      ${facturas.length?`<div style="margin-bottom:12px">
+        <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#64748B;margin-bottom:8px">Facturas anteriores (${facturas.length})</div>
+        ${facturas.map((f,i)=>`<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:#F8FAFD;border-radius:8px;margin-bottom:5px;border:1px solid #E8EDF5">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0369A1" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          <span style="flex:1;font-size:11.5px;font-weight:600">${f.nombre||'Factura '+(i+1)}</span>
+          <span style="font-size:10px;color:#94A3B8">${f.fecha?f.fecha.substring(0,10):''}</span>
+          <button onclick="flLightbox('${f.base64}')" style="padding:3px 8px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:6px;font-size:10px;font-weight:700;color:#1D4ED8;cursor:pointer">Ver</button>
+        </div>`).join('')}
+      </div>`:''}
+      <div style="background:#F0F9FF;border:1.5px dashed #7DD3FC;border-radius:10px;padding:14px;text-align:center;margin-bottom:12px">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0369A1" stroke-width="2" stroke-linecap="round" style="margin:0 auto 6px;display:block"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        <div style="font-size:11.5px;font-weight:700;color:#0369A1;margin-bottom:4px">Seleccionar factura</div>
+        <div style="font-size:10px;color:#64748B;margin-bottom:8px">PDF, imagen o XML · Máx 3 MB</div>
+        <input type="file" id="fl-fact-file" accept=".pdf,.jpg,.jpeg,.png,.xml" style="display:none" onchange="flFacturaPreview(this)">
+        <button onclick="document.getElementById('fl-fact-file').click()" style="padding:7px 18px;background:#0369A1;color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:11.5px;font-weight:700;cursor:pointer">Elegir archivo</button>
+      </div>
+      <div id="fl-fact-preview" style="display:none;margin-bottom:12px;padding:10px;background:#F8FAFD;border-radius:8px;border:1px solid #E8EDF5">
+        <div style="font-size:10px;font-weight:700;color:#64748B;margin-bottom:4px">Vista previa</div>
+        <div id="fl-fact-nombre" style="font-size:12px;font-weight:600;color:#0A1628"></div>
+        <div id="fl-fact-peso" style="font-size:10px;color:#94A3B8;margin-top:2px"></div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button onclick="this.closest('.fl-ov').remove()" class="fb gho">Cancelar</button>
+        <button id="fl-fact-btn-save" onclick="flGuardarFactura('${id}')" style="flex:1;padding:9px;background:#0369A1;color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;opacity:.5;pointer-events:none">Guardar factura</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+};
+window._facturaBase64=null;
+window._facturaNombre=null;
+window.flFacturaPreview=function(input){
+  const file=input.files[0];if(!file)return;
+  if(file.size>3*1024*1024){flToast('Archivo muy grande (máx 3 MB)','err');return;}
+  const reader=new FileReader();
+  reader.onload=e=>{
+    window._facturaBase64=e.target.result;
+    window._facturaNombre=file.name;
+    const prev=document.getElementById('fl-fact-preview');
+    const nom=document.getElementById('fl-fact-nombre');
+    const peso=document.getElementById('fl-fact-peso');
+    const btn=document.getElementById('fl-fact-btn-save');
+    if(prev)prev.style.display='';
+    if(nom)nom.textContent=file.name;
+    if(peso)peso.textContent=(file.size/1024).toFixed(0)+' KB · '+file.type;
+    if(btn){btn.style.opacity='1';btn.style.pointerEvents='';}
+  };
+  reader.readAsDataURL(file);
+};
+window.flGuardarFactura=async function(id){
+  if(!window._facturaBase64){flToast('Selecciona un archivo primero','err');return;}
+  const btn=document.getElementById('fl-fact-btn-save');
+  if(btn){btn.textContent='Guardando...';btn.style.opacity='.6';btn.style.pointerEvents='none';}
+  try{
+    const s=flS.find(x=>x.id===id);if(!s)return;
+    const nuevaFactura={base64:window._facturaBase64,nombre:window._facturaNombre,fecha:new Date().toISOString(),subidaPor:window.auth?.currentUser?.email||''};
+    const facturasActuales=s.facturas||[];
+    const actualizadas=[...facturasActuales,nuevaFactura];
+    await fs.updateDoc(fs.doc(db,C.SOLS,id),{facturas:actualizadas,actualizadoEn:new Date().toISOString()});
+    s.facturas=actualizadas;
+    window._facturaBase64=null;window._facturaNombre=null;
+    document.querySelector('.fl-ov')?.remove();
+    flToast('Factura guardada correctamente','ok');
+    window.flPipelineModal._render?.('Servicio');
+  }catch(e){
+    flToast('Error: '+e.message,'err');
+    if(btn){btn.textContent='Guardar factura';btn.style.opacity='1';btn.style.pointerEvents='';}
+  }
+};
+
 window.flPipelineModal = function(estInicial) {
   // ── 4 etapas ──
   const PASOS = ['Solicitud','Evaluación','Servicio','Rechazada','Cerrada'];
@@ -4366,14 +4480,11 @@ window.flPipelineModal = function(estInicial) {
     const btns = [];
     const est=s.estatus;
     // ── ETAPA 1: SOLICITUD ──
-    // Fátima/admin: avanzar a Evaluación o Rechazar
     if (est==='Solicitud' && esFatima()) {
       btns.push(`<button class="fb acc sm" onclick="flModalEvaluacion('${s.id}')" style="font-size:10px;background:#1D4ED8">Evaluar →</button>`);
       btns.push(`<button onclick="flModalRechazar('${s.id}','validacion')" style="font-size:10px;background:#EF4444;color:#fff;border:none;border-radius:7px;padding:5px 10px;cursor:pointer;font-family:inherit;font-weight:700">Rechazar</button>`);
     }
     // ── ETAPA 2: EVALUACIÓN Y AUTORIZACIÓN ──
-    // Fátima: completa evaluación/cotización → Servicio
-    // Contraloría: autoriza → Servicio, o rechaza
     if ((est==='Evaluación'||est==='Validación'||est==='Aprobación') && esFatima()) {
       btns.push(`<button onclick="flModalServicio('${s.id}')" style="font-size:10px;background:#B45309;color:#fff;border:none;border-radius:7px;padding:5px 10px;cursor:pointer;font-family:inherit;font-weight:700">→ Servicio / Docs</button>`);
     }
@@ -4381,9 +4492,18 @@ window.flPipelineModal = function(estInicial) {
       btns.push(`<button onclick="flModalServicio('${s.id}')" style="font-size:10px;background:#B45309;color:#fff;border:none;border-radius:7px;padding:5px 10px;cursor:pointer;font-family:inherit;font-weight:700">Autorizar →</button>`);
       btns.push(`<button onclick="flModalRechazar('${s.id}','aprobacion')" style="font-size:10px;background:#EF4444;color:#fff;border:none;border-radius:7px;padding:5px 10px;cursor:pointer;font-family:inherit;font-weight:700">Rechazar</button>`);
     }
+    // ── REGRESAR ETAPA (solo Fátima/admin) ──
+    if (hAdm()&&esFatima()) {
+      if (est==='Evaluación'||est==='Validación'||est==='Aprobación') {
+        btns.push(`<button onclick="flRegresarEtapa('${s.id}','Solicitud')" style="font-size:9px;background:#F1F5F9;color:#475569;border:1px solid #CBD5E1;border-radius:7px;padding:4px 9px;cursor:pointer;font-family:inherit;font-weight:700">← Solicitud</button>`);
+      }
+      if (est==='Servicio'||est==='Pagos'||est==='Cierre') {
+        btns.push(`<button onclick="flRegresarEtapa('${s.id}','Evaluación')" style="font-size:9px;background:#F1F5F9;color:#475569;border:1px solid #CBD5E1;border-radius:7px;padding:4px 9px;cursor:pointer;font-family:inherit;font-weight:700">← Evaluación</button>`);
+      }
+    }
     // ── ETAPA 3: SERVICIO EN PROCESO ──
-    // Fátima/admin: cerrar expediente
     if ((est==='Servicio'||est==='Pagos'||est==='Cierre') && esFatima()) {
+      btns.push(`<button onclick="flModalSubirFactura('${s.id}')" style="font-size:10px;background:#0369A1;color:#fff;border:none;border-radius:7px;padding:5px 10px;cursor:pointer;font-family:inherit;font-weight:700;display:inline-flex;align-items:center;gap:4px"><svg width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.5' stroke-linecap='round'><path d='M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4'/><polyline points='17 8 12 3 7 8'/><line x1='12' y1='3' x2='12' y2='15'/></svg>Factura</button>`);
       btns.push(`<button onclick="flModalCierre4('${s.id}')" style="font-size:10px;background:#15803D;color:#fff;border:none;border-radius:7px;padding:5px 10px;cursor:pointer;font-family:inherit;font-weight:700">→ Cerrar</button>`);
     }
     // Ver siempre
@@ -6011,7 +6131,6 @@ window._flLimpiarFiltrosTareas = function() {
 // Eliminar tarea con confirmación
 window.flEliminarTarea = async function(tareaId) {
   if(!confirm('¿Eliminar esta tarea permanentemente? No se puede deshacer.')) return;
-  if(!fs){const m=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');fs=m;}
   try {
     await fs.deleteDoc(fs.doc(db, C.TAREAS, tareaId));
     _flTareasAll = _flTareasAll.filter(t=>t.id!==tareaId);
@@ -6020,5 +6139,42 @@ window.flEliminarTarea = async function(tareaId) {
   } catch(e){ flToast('Error: '+e.message,'err'); }
 };
 
-console.log('[FLOTILLA v14] Pipeline 4 etapas · Tecnocontrol · '+CAT.length+' unidades');
+// ── UTILIDAD: Limpiar duplicados de flotilla_vehiculos ──────────
+// Ejecutar desde consola del portal (Admin): await window.flLimpiarDuplicados()
+window.flLimpiarDuplicados=async function(){
+  const snap=await fs.getDocs(fs.collection(db,C.VEHS));
+  const docs=snap.docs.map(d=>({id:d.id,...d.data()}));
+  // Agrupar por ECO
+  const porEco={};
+  docs.forEach(d=>{
+    const k=String(d.eco||'sin-eco');
+    if(!porEco[k])porEco[k]=[];
+    porEco[k].push(d);
+  });
+  let eliminados=0;
+  const resumen=[];
+  for(const [eco,grupo] of Object.entries(porEco)){
+    if(grupo.length<=1)continue;
+    // Mantener el más reciente (mayor creadoEn o último en la lista)
+    const ordenados=grupo.slice().sort((a,b)=>(b.creadoEn||'').localeCompare(a.creadoEn||''));
+    const mantener=ordenados[0];
+    const borrar=ordenados.slice(1);
+    for(const d of borrar){
+      await fs.deleteDoc(fs.doc(db,C.VEHS,d.id));
+      eliminados++;
+      resumen.push(`ECO ${eco}: eliminado doc ${d.id} (creado ${d.creadoEn||'?'}), conservado ${mantener.id}`);
+    }
+  }
+  console.log('[flLimpiarDuplicados] Eliminados:',eliminados);
+  resumen.forEach(r=>console.log(r));
+  if(eliminados>0){
+    await ldVehs();renderSB();
+    alert('Limpieza completada: '+eliminados+' documento(s) duplicado(s) eliminado(s).\nRevisa la consola para el detalle.');
+  } else {
+    alert('Sin duplicados encontrados en flotilla_vehiculos.');
+  }
+  return {eliminados,resumen};
+};
+
+console.log('[FLOTILLA v15] Pipeline 4 etapas · Tecnocontrol · '+CAT.length+' unidades');
 })();
