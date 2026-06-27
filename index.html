@@ -787,11 +787,13 @@
         #notif-modal.notif-visible{transform:translate(-50%,-50%) scale(1);opacity:1;}
         #notif-modal.notif-mention{border-color:rgba(34,211,238,0.5);}
         #notif-modal.notif-rh{border-color:rgba(217,70,239,0.5);}
+        #notif-modal.notif-flotilla{border-color:rgba(245,158,11,0.6);}
         .notif-header{padding:18px 20px 14px;border-bottom:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;gap:12px;}
         .notif-icono-wrap{width:48px;height:48px;border-radius:14px;background:rgba(255,255,255,0.12);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;}
         .notif-titulo{font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;color:#93c5fd;line-height:1.3;}
         #notif-modal.notif-mention .notif-titulo{color:#22d3ee;}
         #notif-modal.notif-rh .notif-titulo{color:#e879f9;}
+        #notif-modal.notif-flotilla .notif-titulo{color:#F59E0B;}
         .notif-hora{font-size:10px;color:rgba(255,255,255,0.45);margin-top:2px;}
         .notif-body{padding:14px 20px;}
         .notif-area-badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;background:rgba(96,165,250,0.2);color:#93c5fd;margin-bottom:8px;letter-spacing:.5px;text-transform:uppercase;}
@@ -1011,6 +1013,12 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
         <div class="nav-label">Áreas</div>
         <div id="nav-dept"></div>
         <div id="push-status-bar"></div>
+        <div style="display:flex;flex-direction:column;gap:4px;padding:8px 12px 4px">
+            <button onclick="abrirPanelSuscripciones()" style="width:100%;display:flex;align-items:center;gap:8px;padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:rgba(255,255,255,.75);font-family:inherit;font-size:11.5px;font-weight:600;cursor:pointer;text-align:left">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                Mis notificaciones
+            </button>
+        </div>
         <div class="sidebar-footer" onclick="cerrarSesion()">↩ Cerrar Sesión</div>
     </nav>
 
@@ -2972,8 +2980,9 @@ function notifMostrar(notif) {
     } else { tarea.style.display = 'none'; }
 
     // Clase de color según tipo
-    if(notif.esMencion) modal.classList.add('notif-mention');
-    if(notif.esRH)      modal.classList.add('notif-rh');
+    if(notif.esMencion)  modal.classList.add('notif-mention');
+    if(notif.esRH)       modal.classList.add('notif-rh');
+    if(notif.claseExtra) modal.classList.add(notif.claseExtra);
 
     // Mostrar/ocultar botón "Ver tarea"
     btnIr.style.display = notif.tareaId ? 'block' : 'none';
@@ -3549,6 +3558,7 @@ onAuthStateChanged(auth, user=>{
         document.getElementById('auth-screen').style.display='none';
         document.getElementById('app-portal').style.display='block';
         escuchar();
+        escucharFlotillaNotifs();
         escucharEventosCal();
         renderCal360();
         // Mostrar Vista Ejecutiva solo al admin y Cristina
@@ -3648,7 +3658,9 @@ function escuchar(){
                         miDepto.toLowerCase() === (data.area||'').toLowerCase();
                     const menciones = extraerMenciones(ultimo.m || '');
                     const meMencionan = menciones.some(m =>
-                        miDepto && m.toLowerCase().includes(miDepto.toLowerCase())
+                        (miDepto && m.toLowerCase().includes(miDepto.toLowerCase())) ||
+                        m.toLowerCase().includes(yo.split('@')[0].toLowerCase()) ||
+                        m.toLowerCase() === yo.toLowerCase()
                     );
 
                     if(esAdmin || esMiTarea || esMiArea || meMencionan) {
@@ -3701,7 +3713,214 @@ function escuchar(){
     });
 }
 
-// ── Mapa exacto email → área ──────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+// NOTIFICACIONES FLOTILLA — onSnapshot sobre flotilla_notificaciones
+// Filtra por: email directo (para:), departamento suscrito, o admin
+// ══════════════════════════════════════════════════════════════
+
+// Departamentos que cada email puede suscribir (además del suyo)
+// Se guarda en localStorage: flNotifSubs_{email} = JSON array de deptos
+function flGetSubs(email) {
+    try {
+        const raw = localStorage.getItem('flNotifSubs_' + btoa(email||'').replace(/[=+/]/g,''));
+        return raw ? JSON.parse(raw) : [];
+    } catch(e) { return []; }
+}
+function flSetSubs(email, deptos) {
+    try {
+        localStorage.setItem('flNotifSubs_' + btoa(email||'').replace(/[=+/]/g,''), JSON.stringify(deptos));
+    } catch(e) {}
+}
+
+// Íconos por tipo de notificación de Flotilla
+const FL_NOTIF_ICONOS = {
+    validada:      '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1D4ED8" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>',
+    aprobada:      '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#15803D" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>',
+    rechazada_val: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B91C1C" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+    rechazada_apr: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B91C1C" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+    servicio:      '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B45309" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>',
+    cerrada:       '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#15803D" stroke-width="2.5" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
+    pagos:         '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" stroke-width="2.5" stroke-linecap="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>',
+    pagado:        '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#15803D" stroke-width="2.5" stroke-linecap="round"><rect x="2" y="5" width="20" height="14" rx="2"/><polyline points="12 10 12 16 15 16"/></svg>',
+    regreso_etapa: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="2.5" stroke-linecap="round"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>',
+    mencion:       '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#06B6D4" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-3.92 7.94"/></svg>',
+};
+
+// Colores del modal por tipo
+const FL_NOTIF_CLASE = {
+    rechazada_val: 'notif-rh', rechazada_apr: 'notif-rh',
+    mencion: 'notif-mention',
+    validada: 'notif-flotilla', aprobada: 'notif-flotilla',
+    servicio: 'notif-flotilla', cerrada: 'notif-flotilla',
+    pagos: 'notif-flotilla', pagado: 'notif-flotilla',
+    regreso_etapa: 'notif-flotilla',
+};
+
+let _flNotifUltimo = null; // último creadaEn procesado para no repetir
+let _flNotifIniciado = false;
+
+function escucharFlotillaNotifs() {
+    const yo = (auth.currentUser?.email || '').toLowerCase().trim();
+    if(!yo) return;
+
+    const miDepto = obtenerDeptoUsuario(yo);
+    const soy_admin = esAdminTotal(yo);
+    const soy_flotilla = miDepto === 'Flotilla';
+    const soy_contraloria = miDepto === 'Contraloría' || yo.includes('contralo');
+    const soy_pagos = miDepto === 'Pagos' || yo.includes('pagos');
+    const misDeptosSuscritos = flGetSubs(yo); // deptos adicionales que el admin suscribió
+
+    // Escuchar solo las últimas 50 notificaciones, ordenadas por fecha
+    const q = query(
+        collection(db, 'flotilla_notificaciones'),
+        orderBy('creadaEn', 'desc'),
+        limit(50)
+    );
+
+    onSnapshot(q, snap => {
+        if(!_flNotifIniciado) {
+            // Primera carga: solo guardar el timestamp más reciente, no notificar
+            const docs = snap.docs;
+            if(docs.length > 0) _flNotifUltimo = docs[0].data().creadaEn || '';
+            _flNotifIniciado = true;
+            return;
+        }
+
+        snap.docChanges().forEach(change => {
+            if(change.type !== 'added') return;
+            const d = change.doc.data();
+            const creadaEn = d.creadaEn || '';
+
+            // No procesar notificaciones anteriores a esta sesión
+            if(_flNotifUltimo && creadaEn <= _flNotifUltimo) return;
+            _flNotifUltimo = creadaEn;
+
+            const para = (d.para || '').toLowerCase().trim();
+            const tipo = d.tipo || '';
+            const eco = d.vehiculoEco || '—';
+
+            // ── Determinar si esta notificación me corresponde ──
+            let meCorresponde = false;
+            let razon = '';
+
+            // 1. Va dirigida a mí directamente
+            if(para === yo) { meCorresponde = true; razon = 'directa'; }
+
+            // 2. Soy admin — veo todo
+            if(soy_admin) { meCorresponde = true; razon = 'admin'; }
+
+            // 3. Soy Fátima/Flotilla — me llegan cambios de todas las solicitudes
+            if(soy_flotilla) { meCorresponde = true; razon = 'flotilla'; }
+
+            // 4. Soy Contraloría — me llegan aprobaciones y rechazos
+            if(soy_contraloria && ['validada','aprobada','rechazada_val','rechazada_apr'].includes(tipo)) {
+                meCorresponde = true; razon = 'contraloria';
+            }
+
+            // 5. Soy Pagos — me llegan cuando llega a etapa pagos/servicio
+            if(soy_pagos && ['servicio','pagos','pagado','cerrada'].includes(tipo)) {
+                meCorresponde = true; razon = 'pagos';
+            }
+
+            // 6. Suscripciones adicionales configuradas por admin
+            if(misDeptosSuscritos.length > 0) {
+                // Si suscribí 'Flotilla', recibo todo. Si suscribí 'Pagos', solo pagos. etc.
+                if(misDeptosSuscritos.includes('Flotilla')) { meCorresponde = true; razon = 'suscripcion'; }
+                if(misDeptosSuscritos.includes('Pagos') && ['pagos','pagado','cerrada'].includes(tipo)) { meCorresponde = true; razon = 'suscripcion'; }
+                if(misDeptosSuscritos.includes('Contraloría') && ['validada','aprobada','rechazada_val','rechazada_apr'].includes(tipo)) { meCorresponde = true; razon = 'suscripcion'; }
+            }
+
+            // 7. Detectar @mención de mi email en el mensaje
+            const msg = d.mensaje || '';
+            const miNombre = yo.split('@')[0].toLowerCase();
+            if(msg.toLowerCase().includes('@'+miNombre) || msg.toLowerCase().includes(yo)) {
+                meCorresponde = true; razon = 'mencion';
+            }
+
+            if(!meCorresponde) return;
+
+            // ── Construir la notificación visual ──
+            const icono = FL_NOTIF_ICONOS[razon === 'mencion' ? 'mencion' : tipo] || '🔔';
+            const claseExtra = FL_NOTIF_CLASE[razon === 'mencion' ? 'mencion' : tipo] || '';
+            const esMencion = razon === 'mencion';
+
+            // Título según tipo
+            const titulos = {
+                validada:      'Flotilla — Solicitud evaluada',
+                aprobada:      'Flotilla — Solicitud autorizada',
+                rechazada_val: 'Flotilla — Solicitud rechazada',
+                rechazada_apr: 'Flotilla — Devuelta a revisión',
+                servicio:      'Flotilla — Entra a servicio',
+                cerrada:       'Flotilla — Expediente cerrado',
+                pagos:         'Flotilla — Pago programado',
+                pagado:        'Flotilla — Pago procesado',
+                regreso_etapa: 'Flotilla — Regresa a etapa anterior',
+                mencion:       'Te mencionaron en Flotilla',
+            };
+            const titulo = esMencion ? titulos.mencion : (titulos[tipo] || 'Flotilla — Notificación');
+            const mensajeCorto = (msg || '').slice(0, 120);
+
+            window.mostrarPush(
+                titulo,
+                mensajeCorto,
+                icono,
+                esMencion,
+                { area: 'Flotilla', esMencion, claseExtra }
+            );
+        });
+    }, err => {
+        console.warn('[FL portal notif]', err);
+    });
+}
+window.escucharFlotillaNotifs = escucharFlotillaNotifs;
+
+// ── Panel de suscripciones de notificación (para admins) ────────────────────
+window.abrirPanelSuscripciones = function() {
+    const yo = (auth.currentUser?.email || '').toLowerCase();
+    const soy_admin = esAdminTotal(yo);
+    const subs = flGetSubs(yo);
+
+    const deptos = ['Flotilla','Contraloría','Pagos','Ventas','Marketing','Recursos Humanos','Operaciones'];
+
+    const ov = document.createElement('div');
+    ov.id = 'fl-subs-ov';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:99999;display:flex;align-items:center;justify-content:center;';
+    ov.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:24px 28px;min-width:340px;max-width:440px;width:90%;font-family:inherit;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+            <div>
+                <div style="font-size:15px;font-weight:800;color:#0A1628">Suscripciones de notificación</div>
+                <div style="font-size:11px;color:#64748B;margin-top:2px">Elige de qué departamentos recibes alertas</div>
+            </div>
+            <button onclick="document.getElementById('fl-subs-ov').remove()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#94A3B8;padding:4px">✕</button>
+        </div>
+        <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin-bottom:10px">Departamentos adicionales</div>
+        ${deptos.map(d => `
+        <label style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;cursor:pointer;margin-bottom:4px;background:${subs.includes(d)?'#EFF6FF':'#F8FAFD'};border:1px solid ${subs.includes(d)?'#BFDBFE':'#E8EDF5'}">
+            <input type="checkbox" value="${d}" ${subs.includes(d)?'checked':''} style="width:15px;height:15px;cursor:pointer"
+                onchange="flToggleSub('${yo}','${d}',this.checked,this.closest('label'))">
+            <span style="font-size:12.5px;font-weight:600;color:#0A1628">${d}</span>
+        </label>`).join('')}
+        <div style="margin-top:16px;padding:10px 12px;background:#FFFBEB;border-radius:8px;border:1px solid #FDE68A">
+            <div style="font-size:10.5px;color:#92400E">Siempre recibirás notificaciones de tu departamento y cuando te mencionen directamente.</div>
+        </div>
+        <button onclick="document.getElementById('fl-subs-ov').remove()" style="margin-top:16px;width:100%;padding:10px;background:#0A1628;color:#fff;border:none;border-radius:9px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer">Listo</button>
+    </div>`;
+    document.body.appendChild(ov);
+    ov.addEventListener('click', e => { if(e.target===ov) ov.remove(); });
+};
+
+window.flToggleSub = function(yo, depto, activo, labelEl) {
+    const subs = flGetSubs(yo);
+    const idx = subs.indexOf(depto);
+    if(activo && idx === -1) subs.push(depto);
+    if(!activo && idx !== -1) subs.splice(idx,1);
+    flSetSubs(yo, subs);
+    if(labelEl) {
+        labelEl.style.background = activo ? '#EFF6FF' : '#F8FAFD';
+        labelEl.style.borderColor = activo ? '#BFDBFE' : '#E8EDF5';
+    }
+};
 // Agrega aquí los emails reales de cada usuario cuando los tengas.
 // La clave es el email en minúsculas, el valor es el área exacta como
 // aparece en la base de datos (mayúsculas/acentos incluidos).
