@@ -2681,12 +2681,80 @@ function renderUtil(){
 window.renderUtil=renderUtil;
 
 // Cargar lista de personal en select de receptor (utilitario entrega)
+// Cache de personas para autocomplete
+let _flPersonasCache=[];
+
 async function cargarPersonalEnSelect(){
-  const sel=document.getElementById('util-receptor');
-  if(!sel)return;
-  const personas=await cargarColaboradores();
-  sel.innerHTML='<option value="">— Selecciona al receptor —</option>'+personas.map(n=>`<option value="${n}">${n}</option>`).join('');
+  // Cargar desde fl_usuarios (datos más completos: nombre, email, eco vinculado)
+  try{
+    const snap=await db.collection('fl_usuarios').orderBy('nombre').get();
+    _flPersonasCache=snap.docs.map(d=>{
+      const dat=d.data();
+      return{
+        nombre:dat.nombre||dat.email||'—',
+        email:dat.email||'',
+        eco:dat.ecoVinculado||dat.ecosVinculados?.[0]||null,
+        rol:dat.rol||'tecnico',
+      };
+    }).filter(p=>p.nombre&&p.nombre!=='—'&&p.email!==window.auth?.currentUser?.email);
+  }catch{
+    // Fallback a fl_colaboradores
+    const colab=await cargarColaboradores();
+    _flPersonasCache=colab.map(n=>({nombre:n,email:'',eco:null,rol:'tecnico'}));
+  }
+  // Mostrar todos al inicio
+  utilFiltrarReceptor('');
 }
+
+window.utilFiltrarReceptor=function(q){
+  const lista=document.getElementById('util-receptor-list');
+  if(!lista)return;
+  const term=(q||'').toLowerCase().trim();
+  const filtrados=term
+    ?_flPersonasCache.filter(p=>p.nombre.toLowerCase().includes(term)||p.email.toLowerCase().includes(term))
+    :_flPersonasCache;
+  if(filtrados.length===0){
+    lista.innerHTML=`<div style="padding:12px 14px;font-size:12px;color:#94A3B8">Sin resultados para "${q}"</div>`;
+    lista.style.display='block';
+    return;
+  }
+  lista.innerHTML=filtrados.slice(0,12).map(p=>`
+    <div onclick="utilSelReceptor('${p.nombre.replace(/'/g,"\\'")}','${p.email}')"
+      style="padding:10px 14px;cursor:pointer;border-bottom:1px solid #F1F5F9;display:flex;align-items:center;gap:10px"
+      onmouseenter="this.style.background='#F8FAFD'" onmouseleave="this.style.background=''">
+      <div style="width:32px;height:32px;border-radius:50%;background:#EFF6FF;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;font-weight:800;color:#2563EB">
+        ${p.nombre.charAt(0).toUpperCase()}
+      </div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:700;color:#0A0F1E;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.nombre}</div>
+        <div style="font-size:10px;color:#94A3B8;margin-top:1px">${p.email||p.rol||'—'}${p.eco?' · ECO '+p.eco:''}</div>
+      </div>
+      ${p.eco?`<div style="font-size:9px;font-weight:800;color:#B45309;background:#FEF3C7;padding:2px 7px;border-radius:100px">ECO ${p.eco}</div>`:''}
+    </div>`).join('');
+  lista.style.display='block';
+  // Cerrar al hacer click fuera
+  setTimeout(()=>{
+    const cerrar=(e)=>{
+      if(!document.getElementById('util-receptor-wrap')?.contains(e.target)){
+        lista.style.display='none';
+        document.removeEventListener('click',cerrar);
+      }
+    };
+    document.addEventListener('click',cerrar);
+  },100);
+};
+
+window.utilSelReceptor=function(nombre,email){
+  const inp=document.getElementById('util-receptor-inp');
+  const hidden=document.getElementById('util-receptor');
+  const lista=document.getElementById('util-receptor-list');
+  if(inp)inp.value=nombre;
+  if(hidden)hidden.value=nombre+(email?' ('+email+')':'');
+  if(lista)lista.style.display='none';
+  // Cambiar borde a verde para confirmar selección
+  const wrap=document.getElementById('util-receptor-inp');
+  if(wrap){wrap.style.borderColor='#22C55E';wrap.style.background='#F0FDF4';}
+};
 
 // PASO 1: Elegir modo
 function renderUtilPaso1(){
@@ -2772,9 +2840,14 @@ function renderUtilPaso2(){
     </div>
 
     <div class="fm-fld"><label>¿A quién se entrega?</label>
-      <select id="util-receptor" style="width:100%;padding:11px 14px;border:1.5px solid #E2E8F0;border-radius:11px;font-size:13px;background:#fff;outline:none;box-sizing:border-box;color:#0A0F1E">
-        <option value="">— Cargando personal… —</option>
-      </select>
+      <div style="position:relative" id="util-receptor-wrap">
+        <input id="util-receptor-inp" placeholder="Buscar por nombre o email…" autocomplete="off"
+          style="width:100%;padding:11px 14px;border:1.5px solid #E2E8F0;border-radius:11px;font-size:13px;background:#fff;outline:none;box-sizing:border-box;color:#0A0F1E"
+          oninput="utilFiltrarReceptor(this.value)"
+          onfocus="utilFiltrarReceptor(this.value)">
+        <input type="hidden" id="util-receptor" value="">
+        <div id="util-receptor-list" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1.5px solid #E2E8F0;border-radius:11px;margin-top:4px;max-height:220px;overflow-y:auto;z-index:999;box-shadow:0 8px 24px rgba(0,0,0,.12)"></div>
+      </div>
     </div>
     <div class="fm-fld"><label>Comentarios de entrega <span style="font-size:9px;font-weight:500;text-transform:none;color:#94A3B8">(opcional)</span></label>
       <textarea id="util-comentario-entrega" placeholder="Estado del vehículo, observaciones, acuerdos…" rows="2" style="width:100%;padding:10px 14px;border:1.5px solid #E2E8F0;border-radius:11px;font-size:13px;background:#fff;outline:none;box-sizing:border-box;resize:none;font-family:inherit"></textarea>
