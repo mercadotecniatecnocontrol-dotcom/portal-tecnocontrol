@@ -2594,16 +2594,56 @@ function rComis(){
       <select style="padding:7px 11px;border:1.5px solid #E2E8F0;border-radius:7px;font-family:inherit;font-size:12px;background:#fff;outline:none" id="fl-ce" onchange="flFCom()"><option value="">Todos los estados</option><option>En préstamo</option><option>Devuelto</option></select>
     </div>
     <div id="fl-com-r">${rComList(flCom)}</div>
-    ${flTrans.length ? `
-    <div style="margin-top:20px">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
-        <div style="flex:1">
-          <div style="font-size:14px;font-weight:900;letter-spacing:-.3px">Transferencias entre técnicos ${flTrans.filter(t=>t.estatus==='Pendiente recepción').length?`<span style="background:#F59E0B;color:#fff;font-size:10px;font-weight:800;border-radius:12px;padding:2px 8px;margin-left:6px">${flTrans.filter(t=>t.estatus==='Pendiente recepción').length} pendiente(s)</span>`:''}</div>
-          <div style="font-size:11px;color:#64748B;margin-top:1px">Registradas desde la app móvil · ${flTrans.length} registro(s)</div>
+
+    <!-- ── HISTORIAL DE TRANSFERENCIAS ── -->
+    <div style="margin-top:24px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <div>
+          <div style="font-size:15px;font-weight:900;letter-spacing:-.3px">
+            Transferencias entre técnicos
+            ${flTrans.filter(t=>t.estatus==='Pendiente recepción').length?`<span style="background:#F59E0B;color:#fff;font-size:10px;font-weight:800;border-radius:12px;padding:2px 9px;margin-left:8px">${flTrans.filter(t=>t.estatus==='Pendiente recepción').length} pendiente(s)</span>`:''}
+          </div>
+          <div style="font-size:11px;color:#64748B;margin-top:2px">${flTrans.length} registro(s) · desde la app móvil</div>
+        </div>
+        <button onclick="flExportarTransCSV()" style="display:flex;align-items:center;gap:6px;padding:7px 14px;background:#F8FAFD;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:11.5px;font-weight:700;color:#475569;cursor:pointer">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Exportar CSV
+        </button>
+      </div>
+
+      <!-- FILTROS -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;margin-bottom:12px;align-items:end">
+        <div>
+          <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:4px">ECO / Vehículo</div>
+          <input id="fl-tf-eco" placeholder="Ej: 39, RAM 700…" oninput="flFTrans()"
+            style="width:100%;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;outline:none;box-sizing:border-box">
+        </div>
+        <div>
+          <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:4px">Persona</div>
+          <input id="fl-tf-persona" placeholder="Nombre o email…" oninput="flFTrans()"
+            style="width:100%;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;outline:none;box-sizing:border-box">
+        </div>
+        <div>
+          <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:4px">Fecha</div>
+          <input id="fl-tf-fecha" type="date" oninput="flFTrans()"
+            style="width:100%;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;outline:none;box-sizing:border-box">
+        </div>
+        <div>
+          <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:4px">Estado</div>
+          <select id="fl-tf-est" onchange="flFTrans()"
+            style="padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;background:#fff;outline:none;height:36px">
+            <option value="">Todos</option>
+            <option value="Pendiente recepción">Pendiente</option>
+            <option value="Completada">Completada</option>
+          </select>
         </div>
       </div>
-      <div>${rTransList([...flTrans].sort((a,b)=>(a.estatus==='Pendiente recepción'?-1:1)))}</div>
-    </div>` : '<div style="margin-top:16px;padding:12px;background:#F8FAFD;border-radius:8px;border:1px dashed #CBD5E1;font-size:12px;color:#94A3B8;text-align:center">Sin transferencias registradas desde la app</div>'}
+      <div style="display:flex;gap:6px;margin-bottom:12px">
+        <button onclick="flFTransReset()" style="padding:5px 12px;background:#F1F5F9;border:none;border-radius:7px;font-family:inherit;font-size:11px;font-weight:700;color:#64748B;cursor:pointer">Limpiar filtros</button>
+        <span id="fl-trans-count" style="font-size:11px;color:#94A3B8;align-self:center"></span>
+      </div>
+      <div id="fl-trans-r">${rTransListFiltrada(flTrans)}</div>
+    </div>
   `));
 }
 window.flFCom=function(){const t=document.getElementById('fl-ct')?.value||'';const e=document.getElementById('fl-ce')?.value||'';let r=flCom;if(t)r=r.filter(c=>c.tipo===t);if(e)r=r.filter(c=>c.estatus===e);document.getElementById('fl-com-r').innerHTML=rComList(r);};
@@ -2718,6 +2758,98 @@ window.flAgregarDocCerrada = function(solId) {
     }
   };
   inp.click();
+};
+
+// ── HISTORIAL DE TRANSFERENCIAS — filtros y exportación ─────────
+function rTransListFiltrada(lista){
+  if(!lista||!lista.length)return`<div style="padding:20px;text-align:center;color:#94A3B8;font-size:12px">Sin transferencias registradas</div>`;
+  // Pendientes primero, luego por fecha desc
+  const ord=[...lista].sort((a,b)=>{
+    if(a.estatus==='Pendiente recepción'&&b.estatus!=='Pendiente recepción')return -1;
+    if(b.estatus==='Pendiente recepción'&&a.estatus!=='Pendiente recepción')return 1;
+    return(b.creadoEn||'').localeCompare(a.creadoEn||'');
+  });
+  return`<div style="display:flex;flex-direction:column;gap:8px">${ord.map(t=>{
+    const isPend=t.estatus==='Pendiente recepción';
+    const borde=isPend?'2px solid #F59E0B':'1px solid #E8EDF5';
+    const bg=isPend?'#FFFBEB':'#fff';
+    const fecha=(t.creadoEn||'').substring(0,10)||'—';
+    const fotos=(t.entregaFotos||t.fotos||[]).slice(0,4);
+    return`<div style="background:${bg};border:${borde};border-radius:12px;padding:14px 16px;cursor:pointer" onclick="flVerTrans('${t.id}')">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:36px;height:36px;border-radius:9px;background:${isPend?'#FEF3C7':'#EFF6FF'};display:flex;align-items:center;justify-content:center">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="${isPend?'#B45309':'#2563EB'}" stroke-width="2" stroke-linecap="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>
+          </div>
+          <div>
+            <div style="font-size:13px;font-weight:800;color:#0A1628">ECO ${t.vehiculoEco||'—'} · ${t.vehiculoUnidad||'—'}</div>
+            <div style="font-size:10px;font-family:'JetBrains Mono',monospace;color:#94A3B8;margin-top:1px">${t.codigo||'—'}</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:10px;color:#94A3B8">${fecha}</span>
+          <span style="padding:3px 10px;border-radius:100px;font-size:10px;font-weight:800;background:${isPend?'#FEF3C7':'#DCFCE7'};color:${isPend?'#B45309':'#15803D'}">${t.estatus||'—'}</span>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;background:#F8FAFD;border-radius:8px;padding:8px">
+        <div><div style="font-size:8px;font-weight:800;text-transform:uppercase;color:#94A3B8;margin-bottom:2px">Entrega</div>
+          <div style="font-size:11.5px;font-weight:600;color:#0A1628;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.entregaNombre||t.entregaEmail||'—'}</div></div>
+        <div><div style="font-size:8px;font-weight:800;text-transform:uppercase;color:#94A3B8;margin-bottom:2px">Recibe</div>
+          <div style="font-size:11.5px;font-weight:600;color:${isPend?'#B45309':'#0A1628'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.recibioNombre||t.recibioEmail||(isPend?'Pendiente':'—')}</div></div>
+        <div><div style="font-size:8px;font-weight:800;text-transform:uppercase;color:#94A3B8;margin-bottom:2px">KM · Gas</div>
+          <div style="font-size:11.5px;font-weight:600;color:#0A1628">${t.entregaKm||t.km||'—'} · ${t.entregaGasolina!=null?t.entregaGasolina+'%':'—'}</div></div>
+      </div>
+      ${fotos.length?`<div style="display:flex;gap:5px;margin-top:8px">${fotos.map(f=>`<img src="${f}" style="width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid #E8EDF5">`).join('')}${(t.entregaFotos||t.fotos||[]).length>4?`<div style="width:44px;height:44px;border-radius:6px;background:#F1F5F9;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#64748B">+${(t.entregaFotos||t.fotos||[]).length-4}</div>`:''}
+      </div>`:''}
+      ${isPend?`<div style="margin-top:8px;padding:6px 10px;background:#FEF3C7;border-radius:7px;font-size:11px;font-weight:700;color:#B45309">Esperando que el receptor confirme con el código ${t.codigo||'—'}</div>`:''}
+    </div>`;
+  }).join('')}</div>`;
+}
+
+window.flFTrans=function(){
+  const eco=(document.getElementById('fl-tf-eco')?.value||'').toLowerCase().trim();
+  const persona=(document.getElementById('fl-tf-persona')?.value||'').toLowerCase().trim();
+  const fecha=(document.getElementById('fl-tf-fecha')?.value||'').trim();
+  const est=(document.getElementById('fl-tf-est')?.value||'').trim();
+  let filtradas=flTrans;
+  if(eco)filtradas=filtradas.filter(t=>String(t.vehiculoEco||'').toLowerCase().includes(eco)||(t.vehiculoUnidad||'').toLowerCase().includes(eco));
+  if(persona)filtradas=filtradas.filter(t=>
+    (t.entregaNombre||'').toLowerCase().includes(persona)||
+    (t.entregaEmail||'').toLowerCase().includes(persona)||
+    (t.recibioNombre||'').toLowerCase().includes(persona)||
+    (t.recibioEmail||'').toLowerCase().includes(persona)||
+    (t.receptorNombre||'').toLowerCase().includes(persona)
+  );
+  if(fecha)filtradas=filtradas.filter(t=>(t.creadoEn||'').startsWith(fecha));
+  if(est)filtradas=filtradas.filter(t=>t.estatus===est);
+  const cnt=document.getElementById('fl-trans-count');
+  if(cnt)cnt.textContent=`${filtradas.length} de ${flTrans.length} registros`;
+  const wrap=document.getElementById('fl-trans-r');
+  if(wrap)wrap.innerHTML=rTransListFiltrada(filtradas);
+};
+window.flFTransReset=function(){
+  ['fl-tf-eco','fl-tf-persona','fl-tf-fecha'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  const est=document.getElementById('fl-tf-est');if(est)est.value='';
+  const cnt=document.getElementById('fl-trans-count');if(cnt)cnt.textContent='';
+  const wrap=document.getElementById('fl-trans-r');
+  if(wrap)wrap.innerHTML=rTransListFiltrada(flTrans);
+};
+
+window.flExportarTransCSV=function(){
+  const cols=['Código','ECO','Vehículo','Entrega (nombre)','Entrega (email)','Recibe (nombre)','Recibe (email)','KM','Gasolina %','Estado','Fecha'];
+  const rows=flTrans.map(t=>[
+    t.codigo||'',String(t.vehiculoEco||''),t.vehiculoUnidad||'',
+    t.entregaNombre||'',t.entregaEmail||'',
+    t.recibioNombre||'',t.recibioEmail||'',
+    t.entregaKm||t.km||'',
+    t.entregaGasolina!=null?t.entregaGasolina:t.gasolina!=null?t.gasolina:'',
+    t.estatus||'',(t.creadoEn||'').substring(0,10),
+  ].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(','));
+  const csv=[cols.join(','),...rows].join('\n');
+  const a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv);
+  a.download=`transferencias_flotilla_${new Date().toISOString().substring(0,10)}.csv`;
+  a.click();
 };
 
 // ── MODAL DETALLE TRANSFERENCIA ──
