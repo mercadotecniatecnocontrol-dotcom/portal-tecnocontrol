@@ -4806,6 +4806,7 @@ window.flPipelineModal = function(estInicial) {
     // ── ETAPA 3: SERVICIO EN PROCESO ──
     if ((est==='Servicio'||est==='Pagos'||est==='Cierre') && esFatima()) {
       btns.push(`<button onclick="flModalSubirFactura('${s.id}')" style="font-size:10px;background:#0369A1;color:#fff;border:none;border-radius:7px;padding:5px 10px;cursor:pointer;font-family:inherit;font-weight:700;display:inline-flex;align-items:center;gap:4px"><svg width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.5' stroke-linecap='round'><path d='M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4'/><polyline points='17 8 12 3 7 8'/><line x1='12' y1='3' x2='12' y2='15'/></svg>Factura</button>`);
+      btns.push(`<button onclick="flModalProgramarPago('${s.id}')" style="font-size:10px;background:#7C3AED;color:#fff;border:none;border-radius:7px;padding:5px 10px;cursor:pointer;font-family:inherit;font-weight:700;display:inline-flex;align-items:center;gap:4px"><svg width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.5' stroke-linecap='round'><rect x='2' y='5' width='20' height='14' rx='2'/><line x1='2' y1='10' x2='22' y2='10'/></svg>${s.pagoProgramado?'Ver pago':'Pago'}</button>`);
       btns.push(`<button onclick="flModalCierre4('${s.id}')" style="font-size:10px;background:#15803D;color:#fff;border:none;border-radius:7px;padding:5px 10px;cursor:pointer;font-family:inherit;font-weight:700">→ Cerrar</button>`);
     }
     // Ver siempre
@@ -5145,6 +5146,28 @@ window.flModalServicio = function(id) {
     document.getElementById('serv-comments-list').innerHTML=renderComents(window._flServComents);
   };
 
+  const pagoProgr=s.pagoProgramado||null;
+  const pagoHtml=pagoProgr?`
+    <div style="background:#F0FDF4;border:1.5px solid #86EFAC;border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:10px">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#15803D" stroke-width="2.5" stroke-linecap="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+      <div style="flex:1">
+        <div style="font-size:11px;font-weight:800;color:#15803D">Pago programado</div>
+        <div style="font-size:11px;color:#166534">${pagoProgr.proveedor||'—'} · $${Number(pagoProgr.monto||0).toLocaleString('es-MX')} · ${pagoProgr.fechaEsperada||'—'}</div>
+        <div style="font-size:10px;color:#4ADE80;margin-top:1px">Ref: ${pagoProgr.referencia||'—'} · Notificado a Pagos el ${(pagoProgr.notificadoEn||'').substring(0,10)||'—'}</div>
+      </div>
+      <button onclick="flModalProgramarPago('${s.id}')" style="padding:5px 10px;background:#15803D;color:#fff;border:none;border-radius:7px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit">Editar</button>
+    </div>`:`
+    <div style="background:#F8FAFD;border:1.5px dashed #CBD5E1;border-radius:10px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <div style="font-size:11.5px;font-weight:700;color:#475569">Sin pago programado</div>
+        <div style="font-size:10px;color:#94A3B8;margin-top:2px">Programa el pago para notificar al departamento de Pagos automáticamente</div>
+      </div>
+      <button onclick="flModalProgramarPago('${s.id}')" style="display:flex;align-items:center;gap:6px;padding:8px 14px;background:#7C3AED;color:#fff;border:none;border-radius:9px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+        Programar pago
+      </button>
+    </div>`;
+
   const html=`
     <div class="fl-ov" id="flserv-ov" onclick="if(event.target===this)this.remove()" style="z-index:3100">
       <div class="fl-modal" style="max-width:640px;width:100%;max-height:90vh;overflow-y:auto">
@@ -5156,6 +5179,13 @@ window.flModalServicio = function(id) {
           <button onclick="document.getElementById('flserv-ov').remove()" style="width:30px;height:30px;border:none;border-radius:50%;background:#F1F5F9;cursor:pointer;font-size:16px">✕</button>
         </div>
         <div class="fl-mb" style="display:flex;flex-direction:column;gap:14px">
+
+          <!-- PAGO PROGRAMADO -->
+          <div>
+            <div style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8;margin-bottom:8px">Pago al proveedor</div>
+            ${pagoHtml}
+          </div>
+
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
             <div><label style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8;display:block;margin-bottom:4px">Comprobante de pago / Factura</label>
               <input id="serv-factura-num" value="${s.facturaNum||''}" placeholder="Número de factura" style="width:100%"></div>
@@ -5167,7 +5197,7 @@ window.flModalServicio = function(id) {
               <input id="serv-fecha-entrega" type="date" value="${s.fechaEntregaReal||''}" style="width:100%"></div>
           </div>
           <div>
-            <div style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8;margin-bottom:6px">📎 Evidencias y documentos del servicio</div>
+            <div style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8;margin-bottom:6px">Evidencias y documentos del servicio</div>
             <div style="font-size:10px;color:#64748B;margin-bottom:8px">Sube: orden de trabajo, evidencias antes/después, facturas, garantías, comprobante de pago</div>
             <div id="serv-arch-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px">${renderArchivosServ()}</div>
             <button onclick="servSubirArch()" style="width:100%;padding:10px;border:2px dashed #CBD5E1;border-radius:10px;background:#FAFBFC;font-size:12px;font-weight:700;color:#64748B;cursor:pointer">
@@ -5175,7 +5205,7 @@ window.flModalServicio = function(id) {
             </button>
           </div>
           <div>
-            <div style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8;margin-bottom:6px">💬 Comentarios del servicio</div>
+            <div style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8;margin-bottom:6px">Comentarios del servicio</div>
             <div id="serv-comments-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px">${renderComents(window._flServComents)}</div>
             <div style="display:flex;gap:8px">
               <input id="serv-comment-inp" placeholder="Notas del taller, validación de trabajos, garantías…" style="flex:1">
@@ -5189,7 +5219,7 @@ window.flModalServicio = function(id) {
               Guardar avance
             </button>
             <button id="serv-btn-cerrar" onclick="flGuardarServicio('${s.id}',true)" style="background:#15803D;color:#fff;border:none;border-radius:9px;padding:9px 20px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit">
-              ✅ Cerrar expediente
+              Cerrar expediente
             </button>
           </div>
         </div>
@@ -5197,6 +5227,108 @@ window.flModalServicio = function(id) {
     </div>`;
   document.getElementById('flserv-ov')?.remove();
   document.body.insertAdjacentHTML('beforeend',html);
+};
+
+// ── MODAL PROGRAMAR PAGO ────────────────────────────────────────
+window.flModalProgramarPago=function(id){
+  const s=flS.find(x=>x.id===id);if(!s)return;
+  const p=s.pagoProgramado||{};
+  const ov=document.createElement('div');ov.className='fl-ov';ov.style.zIndex='3200';
+  ov.innerHTML=`<div class="fl-modal" style="max-width:440px">
+    <div class="fl-mh">
+      <div>
+        <div style="font-size:15px;font-weight:900">Programar pago</div>
+        <div style="font-size:11px;color:#64748B">ECO ${s.vehiculoEco||'—'} · ${s.tipo||'—'}</div>
+      </div>
+      <button class="fl-mx" onclick="this.closest('.fl-ov').remove()">✕</button>
+    </div>
+    <div class="fl-mb" style="display:flex;flex-direction:column;gap:12px">
+      <div style="background:#F5F3FF;border-radius:9px;padding:10px 13px;font-size:11px;color:#5B21B6">
+        Al programar el pago, se notificará automáticamente al departamento de Pagos con todos los detalles de la solicitud.
+      </div>
+      <div><label style="font-size:10px;font-weight:800;text-transform:uppercase;color:#64748B;display:block;margin-bottom:4px">Proveedor / Taller</label>
+        <input id="pago-proveedor" value="${p.proveedor||s.tallerNombre||''}" placeholder="Nombre del taller o proveedor" style="width:100%"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div><label style="font-size:10px;font-weight:800;text-transform:uppercase;color:#64748B;display:block;margin-bottom:4px">Monto a pagar</label>
+          <input id="pago-monto" type="number" value="${p.monto||s.montoCotizacion||''}" placeholder="0.00" style="width:100%"></div>
+        <div><label style="font-size:10px;font-weight:800;text-transform:uppercase;color:#64748B;display:block;margin-bottom:4px">Fecha esperada</label>
+          <input id="pago-fecha" type="date" value="${p.fechaEsperada||''}" style="width:100%"></div>
+      </div>
+      <div><label style="font-size:10px;font-weight:800;text-transform:uppercase;color:#64748B;display:block;margin-bottom:4px">Forma de pago</label>
+        <select id="pago-forma" style="width:100%;padding:8px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12.5px;background:#fff;outline:none">
+          <option value="transferencia" ${p.forma==='transferencia'?'selected':''}>Transferencia bancaria</option>
+          <option value="cheque" ${p.forma==='cheque'?'selected':''}>Cheque</option>
+          <option value="efectivo" ${p.forma==='efectivo'?'selected':''}>Efectivo</option>
+          <option value="tarjeta" ${p.forma==='tarjeta'?'selected':''}>Tarjeta</option>
+        </select>
+      </div>
+      <div><label style="font-size:10px;font-weight:800;text-transform:uppercase;color:#64748B;display:block;margin-bottom:4px">Notas para Pagos</label>
+        <textarea id="pago-notas" placeholder="Instrucciones especiales, datos bancarios, referencia interna…" rows="2" style="width:100%;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12.5px;outline:none;resize:none;box-sizing:border-box">${p.notas||''}</textarea>
+      </div>
+      <div id="pago-msg" style="display:none;font-size:11px;padding:8px 12px;border-radius:8px"></div>
+      <div style="display:flex;gap:8px">
+        <button onclick="this.closest('.fl-ov').remove()" class="fb gho">Cancelar</button>
+        <button onclick="flGuardarPago('${id}')" style="flex:1;padding:10px;background:#7C3AED;color:#fff;border:none;border-radius:9px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+          Programar y notificar a Pagos
+        </button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+};
+
+window.flGuardarPago=async function(id){
+  const s=flS.find(x=>x.id===id);if(!s)return;
+  const proveedor=document.getElementById('pago-proveedor')?.value?.trim();
+  const monto=Number(document.getElementById('pago-monto')?.value)||0;
+  const fechaEsperada=document.getElementById('pago-fecha')?.value||'';
+  const forma=document.getElementById('pago-forma')?.value||'transferencia';
+  const notas=document.getElementById('pago-notas')?.value?.trim()||'';
+  const msg=document.getElementById('pago-msg');
+  if(!proveedor){flToast('El proveedor es obligatorio','err');return;}
+  if(!monto){flToast('El monto es obligatorio','err');return;}
+  if(!fechaEsperada){flToast('La fecha esperada es obligatoria','err');return;}
+  if(msg){msg.style.display='';msg.style.background='#EFF6FF';msg.style.color='#1D4ED8';msg.textContent='Guardando y notificando…';}
+  const referencia='FL-'+s.vehiculoEco+'-'+Date.now().toString().slice(-6);
+  const fmt=n=>n.toLocaleString('es-MX',{style:'currency',currency:'MXN',minimumFractionDigits:0});
+  const pagoProgramado={
+    proveedor,monto,fechaEsperada,forma,notas,referencia,
+    solicitudId:id,vehiculoEco:s.vehiculoEco,tipo:s.tipo||'—',
+    notificadoEn:new Date().toISOString(),
+    programadoPor:window.auth?.currentUser?.email||'',
+  };
+  try{
+    // Guardar en la solicitud
+    await fs.updateDoc(fs.doc(db,C.SOLS,id),{
+      pagoProgramado,estatus:'Servicio',actualizadoEn:new Date().toISOString(),
+    });
+    const solAct=flS.find(x=>x.id===id);
+    if(solAct)solAct.pagoProgramado=pagoProgramado;
+    // Notificación a Pagos
+    await fs.addDoc(fs.collection(db,'flotilla_notificaciones'),{
+      tipo:'pago_programado',solicitudId:id,
+      para:'pagos@tecnocontrol.com.mx',
+      vehiculoEco:s.vehiculoEco,
+      referencia,
+      mensaje:`PAGO FLOTILLA — Ref: ${referencia}\nVehículo: ECO ${s.vehiculoEco||'—'} · ${s.vehiculo||s.tipo||'—'}\nProveedor: ${proveedor}\nMonto: ${fmt(monto)}\nFecha esperada: ${fechaEsperada}\nForma: ${forma}\n${notas?'Notas: '+notas:''}`,
+      monto,proveedor,fechaEsperada,forma,notas,
+      leido:false,creadaEn:new Date().toISOString(),
+      prioridad:'normal',
+    });
+    // Notificación al solicitante
+    await flEnviarNotif(id,'pagos',notas);
+    if(msg){msg.style.background='#F0FDF4';msg.style.color='#15803D';msg.textContent=`Pago programado · Ref: ${referencia} · Pagos notificado`;}
+    setTimeout(()=>{
+      document.querySelector('.fl-ov[style*="3200"]')?.remove();
+      document.getElementById('flserv-ov')?.remove();
+      window.flPipelineModal('Servicio');
+    },1000);
+    flToast(`Pagos notificado · ${referencia}`,'ok');
+  }catch(e){
+    if(msg){msg.style.background='#FEF2F2';msg.style.color='#B91C1C';msg.textContent='Error: '+e.message;}
+  }
 };
 
 window.flGuardarServicio = async function(id, cerrar) {
