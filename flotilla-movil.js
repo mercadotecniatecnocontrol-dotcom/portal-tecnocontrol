@@ -2653,6 +2653,7 @@ let utilState={
   codigo:'',
   chk:{}, chkFotos:{}, evFotos:[],
   km:'', gasolina:50,
+  fotoKm:null, // foto obligatoria del odómetro
   firma:null, // base64 del canvas de firma
   paso:1, // 1=selección modo, 2=datos, 3=firma, 4=confirmado
 };
@@ -3003,8 +3004,9 @@ function renderUtilPaso4(){
 // HELPERS UTILITARIOS
 // ── Reset utilitario — función global para que el onclick la encuentre ──
 window.utilReset=function(){
-  Object.assign(utilState,{modo:null,codigo:'',chk:{},chkFotos:{},evFotos:[],km:'',gasolina:50,firma:null,paso:1,transferenciaId:null,datosEntrega:null,codigoGenerado:null});
-  window.utilState=utilState; // mantener referencia global sincronizada
+  Object.assign(utilState,{modo:null,codigo:'',chk:{},chkFotos:{},evFotos:[],km:'',gasolina:50,fotoKm:null,firma:null,paso:1,transferenciaId:null,datosEntrega:null,codigoGenerado:null});
+  window.utilState=utilState;
+  _flPersonasCache=[];
   renderUtil();
 };
 
