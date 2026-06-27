@@ -2676,7 +2676,7 @@ function renderUtil(){
   // Inicializar canvas de firma si estamos en paso 3
   if(utilState.paso===3)setTimeout(initFirmaCanvas,100);
   // Cargar personal si estamos en paso 2 entrega
-  if(utilState.paso===2&&utilState.modo==='entregar')setTimeout(cargarPersonalEnSelect,50);
+  if(utilState.paso===2&&utilState.modo==='entregar'){setTimeout(cargarPersonalEnSelect,50);setTimeout(renderAngulosGrid,80);}
 }
 window.renderUtil=renderUtil;
 
@@ -2784,19 +2784,26 @@ function renderUtilPaso2(){
       <input type="number" id="util-km" placeholder="${v?.km||0}" inputmode="numeric"></div>
 
     <div class="fm-fld">
+      <label>Foto del odómetro <span style="font-size:9px;font-weight:500;text-transform:none;color:#EF4444">obligatoria</span></label>
+      <div id="util-km-foto-wrap" style="display:flex;align-items:center;gap:10px">
+        <button onclick="utilCapturarKm()" style="display:flex;align-items:center;gap:6px;padding:9px 16px;background:#F8FAFD;border:1.5px dashed #CBD5E1;border-radius:10px;font-family:inherit;font-size:12px;font-weight:700;color:#475569;cursor:pointer">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          Foto odómetro
+        </button>
+        <span id="util-km-foto-ok" style="font-size:11px;color:#94A3B8">Sin foto</span>
+      </div>
+    </div>
+
+    <div class="fm-fld">
       <label>Nivel de gasolina</label>
       <div id="util-gauge-wrap">${renderGaugeSVG(utilState.gasolina)}<div class="fm-gauge-labels" style="width:200px"><span>VACÍO</span><span>2/4</span><span>MEDIO</span><span>3/4</span><span>LLENO</span></div></div>
       <input type="range" min="0" max="100" value="${utilState.gasolina}" oninput="utilGas(this.value)" style="width:100%;margin-top:6px;accent-color:#2563EB">
     </div>
 
     <div class="fm-fld">
-      <label>Fotos del vehículo al entregar <span style="font-size:9px;font-weight:500;text-transform:none;color:#94A3B8">(cámara obligatoria)</span></label>
-      <button onclick="utilCapturar()" class="fm-btn primary" style="margin-bottom:10px;gap:8px">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
-        Tomar foto con cámara
-      </button>
-      <div style="font-size:10px;color:#94A3B8;text-align:center;margin-bottom:8px">Cámara obligatoria · Galería bloqueada · Sello GPS automático</div>
-      <div id="util-fotos-wrap" style="display:flex;flex-wrap:wrap;gap:8px;padding:4px 0"></div>
+      <label>Fotos obligatorias del vehículo <span style="font-size:9px;font-weight:500;text-transform:none;color:#94A3B8">(7 requeridas · cámara obligatoria)</span></label>
+      <div style="font-size:10px;color:#64748B;margin-bottom:10px;line-height:1.5">Toma cada ángulo requerido. Las 7 fotos son obligatorias para continuar.</div>
+      <div id="util-angulos-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:8px"></div>
     </div>
 
     <!-- CHECKLIST RÁPIDO ENTREGA -->
@@ -2963,60 +2970,102 @@ window.utilChk=function(key,val){
   const cnt=document.getElementById('util-chk-cnt');if(cnt)cnt.textContent=rev+' revisados';
 };
 
-window.utilCapturar=async function(){
-  // Crear input PRIMERO antes de async (evita bloqueo en iOS)
+// ── ÁNGULOS OBLIGATORIOS DE TRANSFERENCIA (7 fotos) ───────────
+const UTIL_ANGULOS=[
+  {key:'frente',    label:'Frente'},
+  {key:'atras',     label:'Atrás'},
+  {key:'derecha',   label:'Lado derecho'},
+  {key:'izquierda', label:'Lado izquierdo'},
+  {key:'motor',     label:'Motor'},
+  {key:'interior',  label:'Interiores'},
+  {key:'libre',     label:'Foto libre'},
+];
+
+function renderAngulosGrid(){
+  const wrap=document.getElementById('util-angulos-grid');
+  if(!wrap)return;
+  wrap.innerHTML=UTIL_ANGULOS.map(a=>{
+    const tomada=utilState.evFotos?.find(f=>f?.meta?.angulo===a.key);
+    const bg=tomada?'#F0FDF4':'#F8FAFD';
+    const border=tomada?'2px solid #22C55E':'1.5px dashed #CBD5E1';
+    const color=tomada?'#15803D':'#64748B';
+    return`<button onclick="utilCapturar('${a.key}')" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;padding:12px 6px;background:${bg};border:${border};border-radius:10px;font-family:inherit;cursor:pointer;min-height:78px;position:relative;overflow:hidden">
+      ${tomada?`<img src="${tomada.src}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.3">`:''}
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="${tomada?'#15803D':'#94A3B8'}" stroke-width="2" stroke-linecap="round" style="position:relative;z-index:1"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      <span style="font-size:10px;font-weight:700;color:${color};position:relative;z-index:1">${tomada?'✓ ':''}<b>${a.label}</b></span>
+    </button>`;
+  }).join('');
+}
+window.renderAngulosGrid=renderAngulosGrid;
+
+window.utilCapturar=async function(angulo){
   const inp=document.createElement('input');
-  inp.type='file';
-  inp.accept='image/*';
-  inp.capture='environment'; // FUERZA cámara trasera — bloquea galería en iOS/Android
+  inp.type='file';inp.accept='image/*';inp.capture='environment';
   inp.style.cssText='position:fixed;top:-9999px;left:-9999px;opacity:0;width:1px;height:1px';
   document.body.appendChild(inp);
-
   inp.onchange=async function(){
     const file=this.files[0];
     if(!file){document.body.removeChild(inp);return;}
-    toast('Obteniendo ubicación y procesando…','info');
-
-    // GPS y procesamiento en paralelo
-    const [gps, imgData] = await Promise.all([
+    toast('Procesando foto…','info');
+    const [gps,imgData]=await Promise.all([
       getGPS(),
-      new Promise(res=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.readAsDataURL(file);})
+      new Promise(res=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.readAsDataURL(file);}),
     ]);
-
     const now=new Date();
     const meta={
-      codigo:genCod(),
+      codigo:genCod(),angulo:angulo||'libre',
       fecha:now.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}),
       hora:now.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',second:'2-digit'}),
-      timestamp:now.toISOString(),
-      gps,
-      eco:miVeh?.eco||'—',
-      unidad:miVeh?.unidad||'—',
+      timestamp:now.toISOString(),gps,
+      eco:miVeh?.eco||'—',unidad:miVeh?.unidad||'—',
       usuario:window.auth?.currentUser?.displayName||window.auth?.currentUser?.email||'—',
       modo:'utilitario-entrega',
     };
-
     const comprimida=await comprimirBase64(imgData,800,0.60);
     const sellada=await sellarImg(comprimida,meta);
-    utilState.evFotos.push({src:sellada,meta});
-
-    const wrap=document.getElementById('util-fotos-wrap');
-    if(wrap){
-      const pill=document.createElement('div');
-      pill.className='fm-ev-pill';
-      pill.onclick=()=>fmVerFoto({src:sellada,meta});
-      pill.innerHTML=`<img src="${sellada}" style="width:56px;height:56px;object-fit:cover;border-radius:6px"><div style="font-size:9px;font-family:'JetBrains Mono',monospace;color:#374151;margin-top:2px">${meta.codigo}</div>`;
-      pill.style.cssText='display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;';
-      wrap.appendChild(pill);
+    // Reemplazar si ya existe foto de este ángulo
+    if(angulo){
+      const idx=utilState.evFotos.findIndex(f=>f?.meta?.angulo===angulo);
+      if(idx>=0)utilState.evFotos.splice(idx,1,{src:sellada,meta});
+      else utilState.evFotos.push({src:sellada,meta});
+    } else {
+      utilState.evFotos.push({src:sellada,meta});
     }
-
-    // Actualizar contador en botón
-    const cnt=document.querySelector('#util-fotos-wrap')?.children?.length||0;
-    toast(`Foto ${cnt} registrada · ${meta.codigo}`,'ok');
+    const tomadas=UTIL_ANGULOS.filter(a=>utilState.evFotos.some(f=>f?.meta?.angulo===a.key)).length;
+    toast(`"${UTIL_ANGULOS.find(a=>a.key===angulo)?.label||angulo}" · ${tomadas}/7 fotos`,'ok');
+    renderAngulosGrid();
     document.body.removeChild(inp);
   };
+  inp.click();
+};
 
-  // Activar cámara
+// ── FOTO ODÓMETRO ──────────────────────────────────────────────
+window.utilCapturarKm=async function(){
+  const inp=document.createElement('input');
+  inp.type='file';inp.accept='image/*';inp.capture='environment';
+  inp.style.cssText='position:fixed;top:-9999px;left:-9999px;opacity:0;width:1px;height:1px';
+  document.body.appendChild(inp);
+  inp.onchange=async function(){
+    const file=this.files[0];
+    if(!file){document.body.removeChild(inp);return;}
+    toast('Procesando foto de odómetro…','info');
+    const imgData=await new Promise(res=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.readAsDataURL(file);});
+    const comprimida=await comprimirBase64(imgData,800,0.65);
+    utilState.fotoKm=comprimida;
+    const wrap=document.getElementById('util-km-foto-wrap');
+    const ok=document.getElementById('util-km-foto-ok');
+    if(wrap){
+      const existing=wrap.querySelector('img');if(existing)existing.remove();
+      const img=document.createElement('img');
+      img.src=comprimida;
+      img.style.cssText='width:60px;height:45px;object-fit:cover;border-radius:7px;border:2px solid #22C55E;cursor:pointer';
+      img.onclick=()=>fmVerImg(comprimida);
+      wrap.appendChild(img);
+    }
+    if(ok){ok.textContent='Foto OK ✓';ok.style.color='#15803D';}
+    toast('Foto de odómetro guardada','ok');
+    document.body.removeChild(inp);
+  };
   inp.click();
 };
 
@@ -3024,7 +3073,6 @@ window.utilSiguiente=function(){
   const receptor=document.getElementById('util-receptor')?.value?.trim();
   const km=document.getElementById('util-km')?.value?.trim();
 
-  // ── VALIDACIONES OBLIGATORIAS ──────────────────────────────────
   if(!receptor){toast('⚠ Selecciona a quién se entrega el vehículo','err');return;}
 
   if(!km||isNaN(Number(km))||Number(km)<=0){
@@ -3033,35 +3081,33 @@ window.utilSiguiente=function(){
     return;
   }
 
-  if(utilState.evFotos.length===0){
-    toast('⚠ Toma al menos 1 foto del vehículo antes de continuar','err');
+  // Foto de odómetro obligatoria
+  if(!utilState.fotoKm){
+    toast('⚠ La foto del odómetro es obligatoria','err');
     return;
   }
 
-  // Checklist — todos los 6 items deben estar marcados (si o no)
+  // Validar 7 ángulos obligatorios
+  const faltantes=UTIL_ANGULOS.filter(a=>!utilState.evFotos.some(f=>f?.meta?.angulo===a.key));
+  if(faltantes.length>0){
+    const nombres=faltantes.map(a=>a.label).join(', ');
+    toast(`⚠ Faltan ${faltantes.length} fotos: ${nombres}`,'err');
+    return;
+  }
+
+  // Checklist — todos los 6 items deben estar marcados
   const totalItems=6;
   const marcados=Object.keys(utilState.chk).filter(k=>k.startsWith('util_')&&utilState.chk[k]).length;
   if(marcados<totalItems){
-    toast(`⚠ Completa el checklist (${marcados}/${totalItems} items marcados)`, 'err');
+    toast(`⚠ Completa el checklist (${marcados}/${totalItems} items marcados)`,'err');
     return;
   }
-  // Foto obligatoria en ítems marcados SI
-  const utilSiKeys=Object.entries(utilState.chk).filter(([k,v])=>k.startsWith('util_')&&v==='si').map(([k])=>k);
-  const utilFaltanFoto=utilSiKeys.filter(k=>!utilState.evFotos?.some(f=>f?.meta?.chkKey===k));
-  if(utilFaltanFoto.length>0){
-    // Menos estricto en utilitario: solo pedir al menos 1 foto general si hay ítems SI
-    if(!utilState.evFotos?.length){
-      toast(`⚠ Toma al menos 1 foto del vehículo (hay ${utilSiKeys.length} ítems marcados SI)`,'err');
-      return;
-    }
-  }
 
-  // ─────────────────────────────────────────────────────────────
   const comentarioEnt=document.getElementById('util-comentario-entrega')?.value?.trim()||'';
   utilState.chkComt=utilState.chkComt||{};
   utilState.datosEntrega={
     vehiculo:miVeh?.unidad||'—',eco:miVeh?.eco||'—',
-    km:km,receptor,
+    km,receptor,
     chkComt:utilState.chkComt,
     nombre:window.auth?.currentUser?.displayName||window.auth?.currentUser?.email||'—',
     comentarioEntrega:comentarioEnt,
@@ -3146,10 +3192,11 @@ window.utilConfirmarFirma=async function(){
   const userName=window.auth?.currentUser?.displayName||userEmail;
   try{
     if(esEntrega){
-      // Comprimir fotos antes de guardar (límite Firestore ~1MB por doc)
       const fotosComprimidas=await Promise.all(
         utilState.evFotos.map(e=>comprimirBase64(e.src,600,0.55))
       );
+      // Foto odómetro separada
+      const fotoKmComp=utilState.fotoKm?await comprimirBase64(utilState.fotoKm,800,0.65):null;
       // Crear documento de transferencia
       const docObj={
         codigo,tipo:'transferencia',
@@ -3158,6 +3205,7 @@ window.utilConfirmarFirma=async function(){
         entregaKm:utilState.datosEntrega?.km||'',entregaGasolina:utilState.gasolina,
         entregaChk:{...utilState.chk},entregaFotos:fotosComprimidas,
         entregaFotosMeta:utilState.evFotos.map(e=>e.meta),
+        fotoKm:fotoKmComp||null,
         receptorNombre:utilState.datosEntrega?.receptor||'',
         comentarioEntrega:utilState.datosEntrega?.comentarioEntrega||'',
         comentarioRecepcion:document.getElementById('util-comentario-recepcion')?.value?.trim()||'',
@@ -3166,48 +3214,32 @@ window.utilConfirmarFirma=async function(){
         creadoEn:now.toISOString(),
       };
       await db.collection('flotilla_transferencias').add(docObj);
-      // DESVINCULAR al que entrega — ya no tiene ESTE vehículo (puede conservar otros)
+      // BLOQUEO: NO desvincular al entregador hasta que el receptor confirme
+      // Solo marcar en su perfil que hay una transferencia pendiente
       const snapEntregador=await db.collection('fl_usuarios').where('email','==',userEmail).get();
       if(!snapEntregador.empty){
-        const docAct=snapEntregador.docs[0].data();
-        const ecosAct=Array.isArray(docAct.ecosVinculados)?docAct.ecosVinculados.map(String):(docAct.ecoVinculado?[String(docAct.ecoVinculado)]:[]);
-        const ecosNuevos=ecosAct.filter(e=>e!==String(docObj.vehiculoEco));
         await snapEntregador.docs[0].ref.update({
-          ecoVinculado:ecosNuevos[0]||null,
-          ecosVinculados:ecosNuevos,
-          desvinculadoEn:now.toISOString(),
-          ecoEntregado:docObj.vehiculoEco, // trazabilidad
-        });
-      } else {
-        // No tenía doc — crear uno desvinculado para trazabilidad
-        await db.collection('fl_usuarios').add({
-          email:userEmail,nombre:userName,
-          ecoVinculado:null,ecosVinculados:[],desvinculadoEn:now.toISOString(),
-          ecoEntregado:docObj.vehiculoEco,
-          rol:'tecnico',
+          transferenciaPendiente:codigo,
+          transferenciaPendienteEco:docObj.vehiculoEco,
+          transferenciaPendienteEn:now.toISOString(),
         });
       }
-      // Actualizar en memoria: el que entrega ya no tiene ESTE vehículo
+      // Actualizar en memoria — vehículo sigue vinculado pero marcado como "pendiente"
       if(miPerfil){
-        const ecosAct=getEcosVinculados().filter(e=>e!==String(docObj.vehiculoEco));
-        miPerfil.ecosVinculados=ecosAct;
-        miPerfil.ecoVinculado=ecosAct[0]||null;
+        miPerfil.transferenciaPendiente=codigo;
+        miPerfil.transferenciaPendienteEco=docObj.vehiculoEco;
       }
-      try{
-        const ultimo=leerUltimoEco();
-        if(ultimo===String(docObj.vehiculoEco))localStorage.removeItem(LS_ULTIMO_ECO);
-      }catch{}
-      miVeh=null;
       // Notificar
       await db.collection('flotilla_notificaciones').add({
         tipo:'transferencia_iniciada',codigo,vehiculoEco:docObj.vehiculoEco,
-        mensaje:`${userName} inició transferencia del ECO ${docObj.vehiculoEco||'—'} a ${utilState.datosEntrega?.receptor||'—'}`,
+        mensaje:`${userName} inició transferencia del ECO ${docObj.vehiculoEco||'—'} a ${utilState.datosEntrega?.receptor||'—'}. Pendiente de recepción.`,
         leido:false,creadoEn:now.toISOString(),
       });
     } else {
       // RECIBIR: completar transferencia
       if(utilState.transferenciaId){
         const ecoRecibido=utilState.datosEntrega?.eco||'';
+        const entregaEmail=(utilState.datosEntrega?.entregaEmail||utilState.transferenciaData?.entregaEmail||'').toLowerCase();
         // Comprimir firma del receptor antes de guardar
         const recibioFirmaComprimida=await comprimirBase64(utilState.firma,400,0.75);
         await db.collection('flotilla_transferencias').doc(utilState.transferenciaId).update({
@@ -3217,7 +3249,24 @@ window.utilConfirmarFirma=async function(){
           estatus:'Completada',completadoEn:now.toISOString(),
           emails:[...(utilState.emails||[]),userEmail],
         });
-        // VINCULAR al que recibe — ahora también es responsable de este vehículo
+        // AHORA SÍ: desvincular al entregador (confirmó recepción)
+        if(entregaEmail){
+          const snapEnt=await db.collection('fl_usuarios').where('email','==',entregaEmail).get();
+          if(!snapEnt.empty){
+            const dEnt=snapEnt.docs[0].data();
+            const ecosAnt=Array.isArray(dEnt.ecosVinculados)?dEnt.ecosVinculados.map(String):(dEnt.ecoVinculado?[String(dEnt.ecoVinculado)]:[]);
+            const ecosNuevos=ecosAnt.filter(e=>e!==String(ecoRecibido));
+            await snapEnt.docs[0].ref.update({
+              ecoVinculado:ecosNuevos[0]||null,
+              ecosVinculados:ecosNuevos,
+              desvinculadoEn:now.toISOString(),
+              ecoEntregado:ecoRecibido,
+              transferenciaPendiente:null,
+              transferenciaPendienteEco:null,
+            });
+          }
+        }
+        // VINCULAR al que recibe
         const snapRecibe=await db.collection('fl_usuarios').where('email','==',userEmail).get();
         if(!snapRecibe.empty){
           const docAnterior=snapRecibe.docs[0].data();
@@ -3232,7 +3281,6 @@ window.utilConfirmarFirma=async function(){
           });
           if(miPerfil)miPerfil.ecosVinculados=ecosNuevos;
         } else {
-          // Crear doc con rol tecnico por defecto
           await db.collection('fl_usuarios').add({
             email:userEmail,nombre:userName,
             ecoVinculado:ecoRecibido,ecosVinculados:[String(ecoRecibido)],vinculadoEn:now.toISOString(),
@@ -3240,10 +3288,8 @@ window.utilConfirmarFirma=async function(){
           });
           if(miPerfil)miPerfil.ecosVinculados=[String(ecoRecibido)];
         }
-        // Actualizar en memoria: el que recibe ahora usa este vehículo
         if(miPerfil){miPerfil.ecoVinculado=ecoRecibido;}
         guardarUltimoEco(ecoRecibido);
-        // Recargar vehículo desde flotilla_vehiculos (colección correcta)
         try{
           const snapVeh=await db.collection('flotilla_vehiculos').where('eco','==',String(ecoRecibido)).get();
           if(!snapVeh.empty) miVeh={id:snapVeh.docs[0].id,...snapVeh.docs[0].data()};
@@ -3255,11 +3301,10 @@ window.utilConfirmarFirma=async function(){
           const found=window.CAT_FL?.find(v=>String(v.eco)===String(ecoRecibido));
           if(found) miVeh={id:'eco-'+found.eco,...found};
         }
-        // Notificar
         await db.collection('flotilla_notificaciones').add({
           tipo:'transferencia_completada',codigo:utilState.codigoGenerado||utilState.codigo||'',
           vehiculoEco:ecoRecibido,
-          mensaje:`Transferencia completada. ${userName} recibió el ECO ${ecoRecibido||'—'}`,
+          mensaje:`Transferencia completada. ${userName} recibió el ECO ${ecoRecibido||'—'}. Vehículo liberado del perfil anterior.`,
           leido:false,creadoEn:now.toISOString(),
         });
       }
