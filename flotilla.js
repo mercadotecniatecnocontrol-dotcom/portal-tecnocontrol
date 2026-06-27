@@ -102,7 +102,7 @@ const CAT=[
   {eco:'93',unidad:'VIBROCOMPACTADOR DYNAPAC CA250D',año:0,plaza:'CHIHUAHUA',responsable:'—',     placas:'6582US5266',serie:'',                 rend:'—',        pv:'—',         pol:'—',            tipo:'camion',   color:'—',     nip:'',km:0,status:'activo'},
   {eco:'94',unidad:'SEMIRREMOLQUE PLATAFORMA INTERSTATE',año:2019,plaza:'CHIHUAHUA',responsable:'—',placas:'—',serie:'1JK0DT200KM016992',       rend:'—',        pv:'—',         pol:'—',            tipo:'camion',   color:'—',     nip:'',km:0,status:'activo'},
   {eco:'95',unidad:'COROLLA TOYOTA',  año:2026,plaza:'CHIHUAHUA', responsable:'PALOMA PINEDO',    placas:'DXS674C',serie:'JTDBCRFE1T3149317',  rend:'—',        pv:'2029-05-14',pol:'TFSM0003120678',tipo:'auto',     color:'Blanco',nip:'',km:0,status:'activo'},
-  {eco:'96',unidad:'NIVELADORA AUTOPROPULSADA JOHN DEERE 772B',año:0,plaza:'CHIHUAHUA',responsable:'—',placas:'—',serie:'DW772BX511428',       rend:'—',        pv:'—',         pol:'—',            tipo:'camion',   color:'—',     nip:'',km:0,status:'activo'},
+  {eco:'96',unidad:'MORTOCONFORMADORA',año:0,plaza:'CHIHUAHUA',responsable:'—',placas:'DZ9854B',serie:'—',rend:'—',pv:'—',pol:'—',tipo:'camion',color:'—',nip:'',km:0,status:'activo'},
 ];
 
 const CHK_CATS={
@@ -512,6 +512,11 @@ function buildHTML(){
       </button>
     </div>
     <div style="position:relative;margin-left:6px">
+      <button class="fl-tab-btn" id="fl-tb-presupuesto" onclick="flVista('presupuesto')" title="Presupuesto vs Gastos">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+      </button>
+    </div>
+    <div style="position:relative;margin-left:6px">
       <button class="fl-tab-btn" id="fl-tb-bajas" onclick="flVista('bajas')" title="Vehículos de baja">${I.archive}</button>
     </div>
     ${hAdm()?`
@@ -741,6 +746,7 @@ window.flVista=function(v){
   else if(v==='tareas')rTareasPanel();
   else if(v==='comis')rComis();
   else if(v==='resumen')rResumen();
+  else if(v==='presupuesto')rPresupuesto();
   else if(v==='compar')rCompar();
   else if(v==='chksemanal')rChkSemanal();
   else if(v==='bajas')rBajas();
@@ -3701,6 +3707,302 @@ window.flGenerarPDFChkSem = async function(id) {
 // ══════════════════════════════════════════════════════
 // VISTA RESUMEN DE MOVIMIENTOS — Mini-dashboards + PDF Dirección
 // ══════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+// VISTA PRESUPUESTO VS GASTOS — Dashboard ejecutivo de Flotilla
+// Editable por: P.Pinedo, M.DelaO, C.Acosta, mercadotecnia@, Glen
+// ══════════════════════════════════════════════════════════════
+const PRESUPUESTO_ADMINS=[
+  'p.pinedo@tecnocontrol.com.mx',
+  'm.delao@tecnocontrol.com.mx',
+  'c.acosta@tecnocontrol.com.mx',
+  'mercadotecniatecnocontrol@gmail.com',
+  'mercadotecnia@tecnocontrol.com.mx',
+  'glen@tecnocontrol.com.mx',
+  'fatima@tecnocontrol.com.mx',
+];
+const puedeEditarPresupuesto=()=>PRESUPUESTO_ADMINS.includes((window.auth?.currentUser?.email||'').toLowerCase());
+
+// Cache del presupuesto cargado desde Firestore
+let _presupuestoData=null;
+
+async function cargarPresupuesto(){
+  try{
+    const snap=await fs.getDoc(fs.doc(db,'flotilla_config','presupuesto'));
+    _presupuestoData=snap.exists()?snap.data():{};
+  }catch(e){_presupuestoData={};}
+}
+
+async function rPresupuesto(){
+  setContent(`<div style="padding:20px 24px;max-width:1100px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <div>
+        <div style="font-size:18px;font-weight:900;letter-spacing:-.3px">Presupuesto vs Gastos</div>
+        <div style="font-size:12px;color:#64748B;margin-top:2px">Cargando datos…</div>
+      </div>
+    </div>
+    <div id="fl-pres-body" style="color:#64748B;font-size:13px">Cargando…</div>
+  </div>`);
+  await cargarPresupuesto();
+  _renderPresupuesto();
+}
+
+function _renderPresupuesto(){
+  const hoy=new Date();
+  const mes=hoy.getMonth();
+  const anio=hoy.getFullYear();
+  const mesNom=new Intl.DateTimeFormat('es-MX',{month:'long',year:'numeric'}).format(hoy);
+  const puedeEditar=puedeEditarPresupuesto();
+  const d=_presupuestoData||{};
+
+  // Presupuesto mensual aprobado
+  const presTotal=Number(d.presupuestoMensual)||0;
+
+  // Calcular gastos reales desde solicitudes cerradas este mes con monto
+  const solsMes=flS.filter(s=>{
+    if(!s.montoCotizacion)return false;
+    const f=new Date(s.actualizadoEn||s.creadoEn||'');
+    return s.estatus==='Cerrada'&&f.getMonth()===mes&&f.getFullYear()===anio;
+  });
+  const gastadoTotal=solsMes.reduce((a,s)=>a+Number(s.montoCotizacion||0),0);
+
+  // Solicitudes en proceso (comprometido)
+  const solsEnProceso=flS.filter(s=>['Servicio','Pagos','Cierre'].includes(s.estatus)&&s.montoCotizacion);
+  const comprometido=solsEnProceso.reduce((a,s)=>a+Number(s.montoCotizacion||0),0);
+
+  const disponible=Math.max(0,presTotal-gastadoTotal-comprometido);
+  const pctGastado=presTotal?Math.round(gastadoTotal/presTotal*100):0;
+  const pctComprometido=presTotal?Math.round(comprometido/presTotal*100):0;
+  const pctDisp=presTotal?Math.round(disponible/presTotal*100):0;
+  const alerta=presTotal&&(gastadoTotal+comprometido)>presTotal*0.85;
+
+  // Gastos por tipo de servicio
+  const porTipo={};
+  solsMes.forEach(s=>{const t=s.tipo||'Otro';porTipo[t]=(porTipo[t]||0)+Number(s.montoCotizacion||0);});
+  const topTipos=Object.entries(porTipo).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  const maxTipo=topTipos[0]?.[1]||1;
+
+  // Límite por solicitud (alerta automática)
+  const limiteSol=Number(d.limitePorSolicitud)||0;
+
+  const fmt=n=>n.toLocaleString('es-MX',{style:'currency',currency:'MXN',minimumFractionDigits:0});
+
+  const kpi=(val,label,sub,cl,bg)=>`
+    <div style="background:${bg};border-radius:12px;padding:16px 20px">
+      <div style="font-size:26px;font-weight:900;color:${cl};line-height:1">${val}</div>
+      <div style="font-size:11px;font-weight:800;margin-top:4px;color:#0A1628">${label}</div>
+      <div style="font-size:10px;color:#64748B;margin-top:2px">${sub}</div>
+    </div>`;
+
+  const hBar=(label,val,max,cl)=>`
+    <div style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;font-size:11.5px;font-weight:600;margin-bottom:4px">
+        <span style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${label}</span>
+        <span style="font-weight:800;color:${cl}">${fmt(val)}</span>
+      </div>
+      <div style="height:6px;background:#F1F5F9;border-radius:100px;overflow:hidden">
+        <div style="height:100%;width:${Math.min(100,Math.round(val/max*100))}%;background:${cl};border-radius:100px"></div>
+      </div>
+    </div>`;
+
+  // Barra de progreso presupuesto
+  const barraPresupuesto=presTotal?`
+    <div style="margin:16px 0">
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:#64748B;margin-bottom:6px">
+        <span>Uso del presupuesto</span>
+        <span style="font-weight:700;color:${alerta?'#B91C1C':'#0A1628'}">${pctGastado+pctComprometido}%</span>
+      </div>
+      <div style="height:12px;background:#F1F5F9;border-radius:100px;overflow:hidden;display:flex">
+        <div style="height:100%;width:${pctGastado}%;background:#15803D;border-radius:100px 0 0 100px;transition:width .5s"></div>
+        <div style="height:100%;width:${pctComprometido}%;background:#F59E0B"></div>
+      </div>
+      <div style="display:flex;gap:16px;margin-top:6px;font-size:10px">
+        <span style="display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;background:#15803D;border-radius:50%;display:inline-block"></span>Gastado ${pctGastado}%</span>
+        <span style="display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;background:#F59E0B;border-radius:50%;display:inline-block"></span>Comprometido ${pctComprometido}%</span>
+        <span style="display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;background:#E2E8F0;border-radius:50%;display:inline-block"></span>Disponible ${pctDisp}%</span>
+      </div>
+    </div>`:'';
+
+  document.getElementById('fl-pres-body').innerHTML=`
+
+    <!-- ALERTA si se supera 85% -->
+    ${alerta?`<div style="background:#FEF2F2;border:1.5px solid #FECACA;border-radius:12px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B91C1C" stroke-width="2.5" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <div><div style="font-size:12.5px;font-weight:800;color:#B91C1C">Alerta de presupuesto</div>
+      <div style="font-size:11px;color:#991B1B">Se ha utilizado el ${pctGastado+pctComprometido}% del presupuesto mensual. Quedan ${fmt(disponible)} disponibles.</div></div>
+    </div>`:''}
+
+    <!-- HEADER con fecha y botón editar -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div style="font-size:12px;color:#64748B">${mesNom} · ${flS.length} solicitudes totales</div>
+      ${puedeEditar?`<button onclick="flModalEditarPresupuesto()" style="display:flex;align-items:center;gap:6px;padding:8px 16px;background:#0A1628;color:#fff;border:none;border-radius:9px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        Editar presupuesto
+      </button>`:`<span style="font-size:11px;color:#94A3B8">Solo P.Pinedo, M.DelaO, C.Acosta o Glen pueden editar</span>`}
+    </div>
+
+    <!-- KPIs -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px">
+      ${kpi(presTotal?fmt(presTotal):'Sin definir','Presupuesto mensual','Aprobado para '+mesNom,'#2563EB','#EFF6FF')}
+      ${kpi(fmt(gastadoTotal),'Gastado (mes)','Solicitudes cerradas','#15803D','#F0FDF4')}
+      ${kpi(fmt(comprometido),'Comprometido','En servicio/proceso','#B45309','#FFFBEB')}
+      ${kpi(fmt(disponible),'Disponible',disponible<=0?'Presupuesto agotado':'Saldo restante',disponible<=0?'#B91C1C':disponible<presTotal*0.2?'#B45309':'#15803D',disponible<=0?'#FEF2F2':disponible<presTotal*0.2?'#FFFBEB':'#F0FDF4')}
+      ${kpi(solsMes.length,'Servicios cerrados','Este mes','#7C3AED','#F5F3FF')}
+      ${kpi(limiteSol?fmt(limiteSol):'Sin límite','Límite por solicitud',limiteSol?'Alerta a Contraloría si se supera':'No configurado','#0369A1','#EFF8FF')}
+    </div>
+
+    <!-- BARRA DE PROGRESO -->
+    ${presTotal?`<div style="background:#fff;border-radius:14px;padding:16px 20px;border:1px solid #E8EDF5;margin-bottom:16px">${barraPresupuesto}</div>`:''}
+
+    <!-- FILA: Por tipo + Solicitudes con monto -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+
+      <div style="background:#fff;border-radius:14px;padding:18px 20px;border:1px solid #E8EDF5">
+        <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#64748B;margin-bottom:14px">Gasto por tipo de servicio</div>
+        ${topTipos.length?topTipos.map(([t,n])=>hBar(t,n,maxTipo,'#2563EB')).join(''):`<div style="font-size:11px;color:#94A3B8">Sin servicios cerrados con monto este mes</div>`}
+      </div>
+
+      <div style="background:#fff;border-radius:14px;padding:18px 20px;border:1px solid #E8EDF5">
+        <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#64748B;margin-bottom:14px">Servicios en proceso (comprometido)</div>
+        ${solsEnProceso.length?solsEnProceso.slice(0,8).map(s=>`
+          <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #F8FAFD">
+            <div style="font-size:10px;font-weight:700;color:#B45309;font-family:monospace">ECO ${s.vehiculoEco||'—'}</div>
+            <div style="flex:1;font-size:11.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.tipo||'—'}</div>
+            <div style="font-size:12px;font-weight:800;color:#B45309">${fmt(Number(s.montoCotizacion||0))}</div>
+          </div>`).join(''):`<div style="font-size:11px;color:#94A3B8">Sin servicios en proceso con monto</div>`}
+        ${solsEnProceso.length>8?`<div style="font-size:10px;color:#94A3B8;margin-top:6px">+${solsEnProceso.length-8} más</div>`:''}
+      </div>
+    </div>
+
+    <!-- HISTORIAL SERVICIOS CERRADOS ESTE MES -->
+    <div style="background:#fff;border-radius:14px;padding:18px 20px;border:1px solid #E8EDF5">
+      <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#64748B;margin-bottom:14px">Servicios cerrados este mes (${solsMes.length})</div>
+      ${solsMes.length?`
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:11.5px">
+          <thead><tr style="border-bottom:2px solid #F1F5F9">
+            <th style="text-align:left;padding:6px 8px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8">ECO</th>
+            <th style="text-align:left;padding:6px 8px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8">Tipo</th>
+            <th style="text-align:left;padding:6px 8px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8">Taller</th>
+            <th style="text-align:left;padding:6px 8px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8">Fecha</th>
+            <th style="text-align:right;padding:6px 8px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8">Monto</th>
+          </tr></thead>
+          <tbody>
+            ${solsMes.map(s=>`<tr style="border-bottom:1px solid #F8FAFD">
+              <td style="padding:7px 8px;font-weight:700;color:#0A1628;font-family:monospace">ECO ${s.vehiculoEco||'—'}</td>
+              <td style="padding:7px 8px;color:#475569">${s.tipo||'—'}</td>
+              <td style="padding:7px 8px;color:#475569">${s.tallerNombre||'—'}</td>
+              <td style="padding:7px 8px;color:#94A3B8">${(s.actualizadoEn||s.creadoEn||'').substring(0,10)}</td>
+              <td style="padding:7px 8px;font-weight:800;color:#15803D;text-align:right">${fmt(Number(s.montoCotizacion||0))}</td>
+            </tr>`).join('')}
+            <tr style="border-top:2px solid #E2E8F0">
+              <td colspan="4" style="padding:8px;font-weight:800;color:#0A1628;font-size:12px">Total gastado</td>
+              <td style="padding:8px;font-weight:900;color:#15803D;text-align:right;font-size:13px">${fmt(gastadoTotal)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>`:`<div style="font-size:11px;color:#94A3B8">Sin servicios cerrados con monto registrado este mes</div>`}
+    </div>`;
+}
+window._renderPresupuesto=_renderPresupuesto;
+
+// ── MODAL EDITAR PRESUPUESTO ────────────────────────────────────
+window.flModalEditarPresupuesto=function(){
+  if(!puedeEditarPresupuesto()){flToast('Sin permiso para editar presupuesto','err');return;}
+  const d=_presupuestoData||{};
+  const ov=document.createElement('div');ov.className='fl-ov';
+  ov.innerHTML=`<div class="fl-modal" style="max-width:420px">
+    <div class="fl-mh">
+      <h3>Editar presupuesto mensual</h3>
+      <button class="fl-mx" onclick="this.closest('.fl-ov').remove()">✕</button>
+    </div>
+    <div class="fl-mb" style="display:flex;flex-direction:column;gap:14px">
+      <div>
+        <label style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#64748B;display:block;margin-bottom:6px">Presupuesto mensual aprobado</label>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:15px;font-weight:700;color:#64748B">$</span>
+          <input type="number" id="pres-mensual" value="${d.presupuestoMensual||''}" placeholder="0.00" inputmode="decimal" style="flex:1;padding:10px 14px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:15px;font-weight:700;font-family:inherit;outline:none">
+          <span style="font-size:12px;color:#64748B">MXN</span>
+        </div>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#64748B;display:block;margin-bottom:6px">Límite por solicitud individual</label>
+        <div style="font-size:10px;color:#94A3B8;margin-bottom:6px">Si una cotización supera este monto, se notifica automáticamente a Contraloría y Administración</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:15px;font-weight:700;color:#64748B">$</span>
+          <input type="number" id="pres-limite-sol" value="${d.limitePorSolicitud||''}" placeholder="Sin límite" inputmode="decimal" style="flex:1;padding:10px 14px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:15px;font-weight:700;font-family:inherit;outline:none">
+          <span style="font-size:12px;color:#64748B">MXN</span>
+        </div>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#64748B;display:block;margin-bottom:6px">Notas del presupuesto</label>
+        <textarea id="pres-notas" placeholder="Observaciones, restricciones, notas…" rows="2" style="width:100%;padding:10px 14px;border:1.5px solid #E2E8F0;border-radius:10px;font-family:inherit;font-size:12.5px;outline:none;resize:none;box-sizing:border-box">${d.notas||''}</textarea>
+      </div>
+      <div id="pres-msg" style="display:none;font-size:11px;padding:8px 12px;border-radius:8px"></div>
+      <div style="display:flex;gap:8px">
+        <button onclick="this.closest('.fl-ov').remove()" class="fb gho">Cancelar</button>
+        <button onclick="flGuardarPresupuesto()" style="flex:1;padding:10px;background:#0A1628;color:#fff;border:none;border-radius:9px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer">Guardar presupuesto</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+};
+
+window.flGuardarPresupuesto=async function(){
+  if(!puedeEditarPresupuesto()){flToast('Sin permiso','err');return;}
+  const mensual=Number(document.getElementById('pres-mensual')?.value)||0;
+  const limiteSol=Number(document.getElementById('pres-limite-sol')?.value)||0;
+  const notas=(document.getElementById('pres-notas')?.value||'').trim();
+  const msg=document.getElementById('pres-msg');
+  if(msg){msg.style.display='';msg.style.background='#EFF6FF';msg.style.color='#1D4ED8';msg.textContent='Guardando…';}
+  try{
+    const upd={
+      presupuestoMensual:mensual,limitePorSolicitud:limiteSol,notas,
+      actualizadoEn:new Date().toISOString(),
+      actualizadoPor:window.auth?.currentUser?.email||'',
+    };
+    await fs.setDoc(fs.doc(db,'flotilla_config','presupuesto'),upd,{merge:true});
+    _presupuestoData={..._presupuestoData,...upd};
+    if(msg){msg.style.background='#F0FDF4';msg.style.color='#15803D';msg.textContent='Presupuesto guardado correctamente';}
+    setTimeout(()=>{document.querySelector('.fl-ov')?.remove();_renderPresupuesto();},800);
+    flToast('Presupuesto actualizado','ok');
+  }catch(e){
+    if(msg){msg.style.background='#FEF2F2';msg.style.color='#B91C1C';msg.textContent='Error: '+e.message;}
+  }
+};
+
+// ── ALERTA AUTOMÁTICA si cotización supera límite ───────────────
+// Llamada desde flModalEvaluacion/Servicio cuando se guarda montoCotizacion
+window.flAlertaCotizacion=async function(solicitudId,monto){
+  try{
+    await cargarPresupuesto();
+    const limite=Number(_presupuestoData?.limitePorSolicitud)||0;
+    if(!limite||monto<=limite)return;
+    // Enviar notificación a Contraloría y Administración
+    const s=flS.find(x=>x.id===solicitudId);
+    const eco=s?.vehiculoEco||'—';
+    const tipo=s?.tipo||'—';
+    const fmt=n=>n.toLocaleString('es-MX',{style:'currency',currency:'MXN',minimumFractionDigits:0});
+    const msg=`ALERTA: Cotización de ${fmt(monto)} para ECO ${eco} (${tipo}) supera el límite autorizado de ${fmt(limite)}. Solicitud ID: ${solicitudId}. Se requiere autorización especial.`;
+    // Notificación en Firestore
+    await fs.addDoc(fs.collection(db,'flotilla_notificaciones'),{
+      tipo:'alerta_presupuesto',solicitudId,vehiculoEco:eco,
+      para:'contraloria',
+      mensaje:msg,
+      monto,limiteConfigurado:limite,
+      leido:false,creadaEn:new Date().toISOString(),
+      prioridad:'alta',
+    });
+    flToast(`Alerta enviada a Contraloría: cotización supera el límite de ${fmt(limite)}`,'err');
+  }catch(e){console.warn('[flAlertaCotizacion]',e);}
+};
+
+// ── Enganchar alerta en flModalEvaluacion al guardar monto ──────
+// Se llama después de guardar montoCotizacion en cualquier modal de evaluación
+window.flCheckLimitePresupuesto=function(solicitudId,monto){
+  if(monto&&Number(monto)>0)flAlertaCotizacion(solicitudId,Number(monto));
+};
+
 function rResumen(){
   const hoy=new Date();
   const mesActual=hoy.getMonth();
@@ -4793,6 +5095,8 @@ window.flGuardarEvaluacion = async function(id) {
     await ldSols();
     const ultComt2=(window._flEvalComents||[]).slice(-1)[0]?.texto||null;
     flEnviarNotif(id,'validada',ultComt2);
+    // Verificar límite de presupuesto si hay monto capturado
+    if(monto&&Number(monto)>0)flCheckLimitePresupuesto(id,Number(monto));
     document.getElementById('fleval-ov')?.remove();
     window.flPipelineModal('Evaluación');
   }catch(e){err.textContent='Error: '+e.message;err.style.display='block';btn.textContent='Guardar y enviar a Servicio →';btn.disabled=false;}
