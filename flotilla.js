@@ -4997,7 +4997,7 @@ window.flModalEvaluacion = function(id) {
       });
       // Notificar al solicitante
       if(s.creadoPor){
-        await db.collection('flotilla_notificaciones').add({
+        await fs.addDoc(fs.collection(db,'flotilla_notificaciones'),{
           solicitudId:s.id,
           para:s.creadoPor,
           vehiculoEco:s.vehiculoEco||'—',
