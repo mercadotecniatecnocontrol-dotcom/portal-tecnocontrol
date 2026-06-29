@@ -108,6 +108,45 @@ let _unsubNotif=null; // listener en tiempo real de flotilla_notificaciones
 let vistaAct='vehiculo';
 let solState={modo:'entrada',tipo:'',prior:'Normal',desc:'',km:'',taller:'',gasolina:50,chk:{},chkFotos:{},evFotos:[],dmg:{}};
 let semState={km:'',gasolina:50,chk:{},chkFotos:{},evFotos:[],observaciones:'',firma:null,yaExiste:false};
+
+// ── AUTOGUARDADO EN localStorage — persiste aunque se cierre la app ──
+const _DRAFT={
+  SOL:'fl_draft_sol',
+  SEM:'fl_draft_sem',
+  UTIL:'fl_draft_util',
+};
+function _draftSave(key,state){
+  try{
+    // No guardar fotos en base64 de evidencia general (muy pesadas) — solo checklist y datos
+    const s=Object.assign({},state);
+    if(key===_DRAFT.SOL||key===_DRAFT.SEM){
+      // Fotos de checklist sí (pequeñas, comprimidas); evFotos no (pesadas)
+      s.evFotos=[];
+    }
+    if(key===_DRAFT.UTIL){
+      // Para utilitario: no guardar fotos de ángulos ni odómetro (pesadas)
+      s.evFotos=[];s.fotoKm=null;s.chkFotos={};s.firma=null;
+    }
+    localStorage.setItem(key,JSON.stringify(s));
+  }catch(e){/* storage lleno — ignorar */}
+}
+function _draftLoad(key){
+  try{const r=localStorage.getItem(key);return r?JSON.parse(r):null;}catch{return null;}
+}
+function _draftClear(key){
+  try{localStorage.removeItem(key);}catch{}
+}
+function _draftBanner(tipo,onRestaurar,onDescartar){
+  const id='fl-draft-banner-'+tipo;
+  if(document.getElementById(id))return;
+  const b=document.createElement('div');
+  b.id=id;
+  b.style.cssText='position:fixed;bottom:76px;left:0;right:0;margin:0 12px;background:#1E3A5F;color:#fff;border-radius:12px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,.35);font-size:13px;gap:8px';
+  b.innerHTML=`<span style="flex:1">Tienes un borrador guardado.<br><span style="font-size:11px;opacity:.8">¿Deseas continuar donde lo dejaste?</span></span>
+    <button onclick="document.getElementById('${id}').remove();(${onDescartar.toString()})()" style="background:rgba(255,255,255,.15);border:none;color:#fff;padding:6px 10px;border-radius:8px;font-size:12px;cursor:pointer">Descartar</button>
+    <button onclick="document.getElementById('${id}').remove();(${onRestaurar.toString()})()" style="background:#2563EB;border:none;color:#fff;padding:6px 12px;border-radius:8px;font-size:12px;cursor:pointer;font-weight:700">Continuar</button>`;
+  document.body.appendChild(b);
+}
 let onlineStatus=navigator.onLine;
 
 // ── Emails con acceso de administrador/flotilla ──
@@ -1416,6 +1455,13 @@ function renderNuevaSol(){
   }
   // Reset estado
   solState={modo:'entrada',tipo:'',prior:'Normal',desc:'',km:'',taller:'',gasolina:50,chk:{},chkFotos:{},evFotos:[]};
+  const _solDraft=_draftLoad(_DRAFT.SOL);
+  if(_solDraft&&Object.keys(_solDraft.chk||{}).length>0){
+    setTimeout(()=>_draftBanner('sol',
+      ()=>{ Object.assign(solState,_solDraft); },
+      ()=>{ _draftClear(_DRAFT.SOL); }
+    ),400);
+  }
   setContent(`
     <div class="fm-sec-hd">
       <div>
@@ -1547,6 +1593,7 @@ function renderGaugeSVG(pct100){
 
 window.fmGas=function(v){
   solState.gasolina=Number(v);
+  _draftSave(_DRAFT.SOL,solState);
   const w=document.getElementById('fm-gauge-wrap');
   if(w)w.innerHTML=renderGaugeSVG(Number(v))+'<div class="fm-gauge-labels" style="width:200px"><span>VACÍO</span><span>2/4</span><span>MEDIO</span><span>3/4</span><span>LLENO</span></div>';
 };
@@ -1595,10 +1642,12 @@ function renderChkMovil(){
 window.fmChkComt=function(key,val){
   if(!solState.chkComt) solState.chkComt={};
   solState.chkComt[key]=val;
+  _draftSave(_DRAFT.SOL,solState);
 };
 
 window.fmChk=function(key,val){
   solState.chk[key]=solState.chk[key]===val?'':val;
+  _draftSave(_DRAFT.SOL,solState);
   // Re-renderizar lista para mostrar/ocultar campo comentario
   const lista=document.getElementById('fm-sol-chk-list');
   if(lista)lista.innerHTML=renderSolChkList();
@@ -1646,6 +1695,7 @@ function renderChkSemanalList(){
 
 window.fmChkSem=function(key,val){
   semState.chk[key]=semState.chk[key]===val?'':val;
+  _draftSave(_DRAFT.SEM,semState);
   // Re-renderizar fila para mostrar/ocultar campo comentario
   const wrap=document.getElementById('fm-sem-chk-list');
   if(wrap)wrap.innerHTML=renderChkSemanalList();
@@ -1667,6 +1717,7 @@ window.fmChkSem=function(key,val){
 
 window.fmGasSem=function(v){
   semState.gasolina=Number(v);
+  _draftSave(_DRAFT.SEM,semState);
   const w=document.getElementById('fm-sem-gauge-wrap');
   if(w)w.innerHTML=renderGaugeSVG(Number(v))+'<div class="fm-gauge-labels" style="width:200px"><span>VACÍO</span><span>2/4</span><span>MEDIO</span><span>3/4</span><span>LLENO</span></div>';
 };
@@ -1709,8 +1760,15 @@ function renderChkSemanal(){
     return;
   }
 
-  // Reset del estado al entrar
+  // Reset del estado al entrar — pero restaurar borrador si existe
   semState={km:'',gasolina:50,chk:{},chkFotos:{},evFotos:[],observaciones:'',firma:null,yaExiste:false};
+  const _semDraft=_draftLoad(_DRAFT.SEM);
+  if(_semDraft&&Object.keys(_semDraft.chk||{}).length>0){
+    setTimeout(()=>_draftBanner('sem',
+      ()=>{ Object.assign(semState,_semDraft); renderChkSemanal(); },
+      ()=>{ _draftClear(_DRAFT.SEM); }
+    ),400);
+  }
 
   setContent(`
     <div class="fm-sec-hd">
@@ -1894,6 +1952,7 @@ window.fmGuardarChkSemanal=async function(){
 
     window._semChkCache[cacheKey]=true;
     toast('Check list semanal guardado ✓','ok');
+    _draftClear(_DRAFT.SEM);
     semState={km:'',gasolina:50,chk:{},chkFotos:{},evFotos:[],observaciones:'',firma:null,yaExiste:false};
     fmVista('vehiculo');
   }catch(e){
@@ -2157,6 +2216,7 @@ window.fmGuardar=async function(){
       await db.collection(C.VEHS).doc(miVeh.id).update({km:Number(km)}).catch(()=>{});
     }
     await cargarMisSols();
+    _draftClear(_DRAFT.SOL);
     toast('Solicitud creada correctamente','ok');
     setTimeout(()=>fmVista('vehiculo'),1200);
   }catch(e){
@@ -3029,6 +3089,7 @@ window.utilReset=function(){
   Object.assign(utilState,{modo:null,codigo:'',chk:{},chkFotos:{},evFotos:[],km:'',gasolina:50,fotoKm:null,firma:null,paso:1,transferenciaId:null,datosEntrega:null,codigoGenerado:null});
   window.utilState=utilState;
   _flPersonasCache=[];
+  _draftClear(_DRAFT.UTIL);
   renderUtil();
 };
 
@@ -3060,6 +3121,7 @@ window.utilChkComt=function(key,val){
 };
 window.utilChk=function(key,val){
   utilState.chk[key]=utilState.chk[key]===val?'':val;
+  _draftSave(_DRAFT.UTIL,utilState);
   // Re-renderizar para mostrar/ocultar campo de comentario
   const wrap=document.getElementById('util-chk');
   if(wrap)wrap.innerHTML=renderChkUtil();
@@ -3169,6 +3231,9 @@ window.utilCapturarKm=async function(){
 window.utilSiguiente=function(){
   const receptor=document.getElementById('util-receptor')?.value?.trim();
   const km=document.getElementById('util-km')?.value?.trim();
+  // Autoguardar km y receptor antes de validar
+  if(km) utilState.km=km;
+  _draftSave(_DRAFT.UTIL,{...utilState, receptor:receptor||'', km:km||''});
 
   if(!receptor){toast('⚠ Selecciona a quién se entrega el vehículo','err');return;}
 
@@ -3406,6 +3471,7 @@ window.utilConfirmarFirma=async function(){
         });
       }
     }
+    _draftClear(_DRAFT.UTIL);
     utilState.paso=4;renderUtil();
     toast('Responsiva guardada correctamente','ok');
   }catch(e){
