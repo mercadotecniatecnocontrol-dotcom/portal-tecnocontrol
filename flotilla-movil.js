@@ -2717,13 +2717,15 @@ window.utilFiltrarReceptor=async function(q){
   if(!_flPersonasCache.length&&q){
     await cargarPersonalEnSelect();
   }
-  const term=(q||'').toLowerCase().trim();
+  // Normalizar: quitar acentos para que "Gonzalez" encuentre "González"
+  const norm=s=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  const term=norm(q||'').trim();
   // Búsqueda tokenizada: cada palabra del term debe aparecer en nombre o email
   // Permite "Sergio Carmona" → match "Carmona Lagunas Sergio"
   const tokens=term?term.split(/\s+/).filter(Boolean):[];
   const filtrados=tokens.length
     ?_flPersonasCache.filter(p=>{
-        const haystack=(p.nombre+' '+p.email).toLowerCase();
+        const haystack=norm(p.nombre+' '+p.email);
         return tokens.every(t=>haystack.includes(t));
       })
     :_flPersonasCache;
