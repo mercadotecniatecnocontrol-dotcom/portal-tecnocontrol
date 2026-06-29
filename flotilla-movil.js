@@ -110,10 +110,20 @@ let solState={modo:'entrada',tipo:'',prior:'Normal',desc:'',km:'',taller:'',gaso
 let semState={km:'',gasolina:50,chk:{},chkFotos:{},evFotos:[],observaciones:'',firma:null,yaExiste:false};
 
 // ── AUTOGUARDADO EN localStorage — persiste aunque se cierre la app ──
+// Keys de draft incluyen email del usuario — cada usuario tiene su propio borrador
+function _draftKeys(){
+  const email=(window.auth?.currentUser?.email||'anonimo').replace(/[^a-z0-9]/gi,'_');
+  return {
+    SOL:'fl_draft_sol_'+email,
+    SEM:'fl_draft_sem_'+email,
+    UTIL:'fl_draft_util_'+email,
+  };
+}
+// _DRAFT se resuelve dinámicamente en cada llamada
 const _DRAFT={
-  SOL:'fl_draft_sol',
-  SEM:'fl_draft_sem',
-  UTIL:'fl_draft_util',
+  get SOL(){return _draftKeys().SOL;},
+  get SEM(){return _draftKeys().SEM;},
+  get UTIL(){return _draftKeys().UTIL;},
 };
 function _draftSave(key,state){
   try{
