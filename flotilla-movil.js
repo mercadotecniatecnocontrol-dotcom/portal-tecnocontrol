@@ -2699,7 +2699,10 @@ async function cargarPersonalEnSelect(){
       };
     }).filter(p=>p.nombre&&p.nombre!=='—'&&p.email!==window.auth?.currentUser?.email);
   }catch{
-    // Fallback a fl_colaboradores
+    _flPersonasCache=[];
+  }
+  // Si fl_usuarios está vacía o falló, usar lista hardcodeada como fallback
+  if(!_flPersonasCache.length){
     const colab=await cargarColaboradores();
     _flPersonasCache=colab.map(n=>({nombre:n,email:'',eco:null,rol:'tecnico'}));
   }
@@ -2707,12 +2710,22 @@ async function cargarPersonalEnSelect(){
   utilFiltrarReceptor('');
 }
 
-window.utilFiltrarReceptor=function(q){
+window.utilFiltrarReceptor=async function(q){
   const lista=document.getElementById('util-receptor-list');
   if(!lista)return;
+  // Si el cache está vacío (aún cargando o falló), reintentar
+  if(!_flPersonasCache.length&&q){
+    await cargarPersonalEnSelect();
+  }
   const term=(q||'').toLowerCase().trim();
-  const filtrados=term
-    ?_flPersonasCache.filter(p=>p.nombre.toLowerCase().includes(term)||p.email.toLowerCase().includes(term))
+  // Búsqueda tokenizada: cada palabra del term debe aparecer en nombre o email
+  // Permite "Sergio Carmona" → match "Carmona Lagunas Sergio"
+  const tokens=term?term.split(/\s+/).filter(Boolean):[];
+  const filtrados=tokens.length
+    ?_flPersonasCache.filter(p=>{
+        const haystack=(p.nombre+' '+p.email).toLowerCase();
+        return tokens.every(t=>haystack.includes(t));
+      })
     :_flPersonasCache;
   if(filtrados.length===0){
     lista.innerHTML=`<div style="padding:12px 14px;font-size:12px;color:#94A3B8">Sin resultados para "${q}"</div>`;
