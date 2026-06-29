@@ -2686,26 +2686,33 @@ window.renderUtil=renderUtil;
 let _flPersonasCache=[];
 
 async function cargarPersonalEnSelect(){
-  // Cargar desde fl_usuarios (datos más completos: nombre, email, eco vinculado)
+  const miEmail=(window.auth?.currentUser?.email||'').toLowerCase();
+  let desdeFirestore=[];
   try{
     const snap=await db.collection('fl_usuarios').orderBy('nombre').get();
-    _flPersonasCache=snap.docs.map(d=>{
+    desdeFirestore=snap.docs.map(d=>{
       const dat=d.data();
       return{
         nombre:dat.nombre||dat.email||'—',
-        email:dat.email||'',
+        email:(dat.email||'').toLowerCase(),
         eco:dat.ecoVinculado||dat.ecosVinculados?.[0]||null,
         rol:dat.rol||'tecnico',
       };
-    }).filter(p=>p.nombre&&p.nombre!=='—'&&p.email!==window.auth?.currentUser?.email);
-  }catch{
-    _flPersonasCache=[];
-  }
-  // Si fl_usuarios está vacía o falló, usar lista hardcodeada como fallback
-  if(!_flPersonasCache.length){
-    const colab=await cargarColaboradores();
-    _flPersonasCache=colab.map(n=>({nombre:n,email:'',eco:null,rol:'tecnico'}));
-  }
+    }).filter(p=>p.nombre&&p.nombre!=='—'&&p.email!==miEmail);
+  }catch{ desdeFirestore=[]; }
+
+  // Siempre cargar lista hardcodeada y fusionar — Firestore puede tener datos incompletos
+  const colab=await cargarColaboradores();
+  const emailsFirestore=new Set(desdeFirestore.map(p=>p.email).filter(Boolean));
+  // Nombres ya cubiertos por Firestore (normalizado para comparar)
+  const norm=s=>s.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().trim();
+  const nombresFirestore=new Set(desdeFirestore.map(p=>norm(p.nombre)));
+  // Agregar de la lista hardcodeada los que NO estén ya en Firestore
+  const desdeHardcoded=colab
+    .filter(n=>!nombresFirestore.has(norm(n)))
+    .map(n=>({nombre:n,email:'',eco:null,rol:'tecnico'}));
+
+  _flPersonasCache=[...desdeFirestore,...desdeHardcoded];
   // Mostrar todos al inicio
   utilFiltrarReceptor('');
 }
