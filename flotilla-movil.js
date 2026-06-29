@@ -144,12 +144,24 @@ function _draftClear(key){
 function _draftBanner(tipo,onRestaurar,onDescartar){
   const id='fl-draft-banner-'+tipo;
   if(document.getElementById(id))return;
+  // Guardar callbacks en window para evitar que toString() se renderice como HTML
+  const cbKey='_draftCb_'+tipo;
+  window[cbKey+'_ok']=function(){
+    const el=document.getElementById(id);if(el)el.remove();
+    delete window[cbKey+'_ok'];delete window[cbKey+'_no'];
+    onRestaurar();
+  };
+  window[cbKey+'_no']=function(){
+    const el=document.getElementById(id);if(el)el.remove();
+    delete window[cbKey+'_ok'];delete window[cbKey+'_no'];
+    onDescartar();
+  };
   const b=document.createElement('div');
   b.id=id;
   b.style.cssText='position:fixed;bottom:76px;left:0;right:0;margin:0 12px;background:#1E3A5F;color:#fff;border-radius:12px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,.35);font-size:13px;gap:8px';
   b.innerHTML=`<span style="flex:1">Tienes un borrador guardado.<br><span style="font-size:11px;opacity:.8">¿Deseas continuar donde lo dejaste?</span></span>
-    <button onclick="document.getElementById('${id}').remove();(${onDescartar.toString()})()" style="background:rgba(255,255,255,.15);border:none;color:#fff;padding:6px 10px;border-radius:8px;font-size:12px;cursor:pointer">Descartar</button>
-    <button onclick="document.getElementById('${id}').remove();(${onRestaurar.toString()})()" style="background:#2563EB;border:none;color:#fff;padding:6px 12px;border-radius:8px;font-size:12px;cursor:pointer;font-weight:700">Continuar</button>`;
+    <button onclick="window['${cbKey}_no']()" style="background:rgba(255,255,255,.15);border:none;color:#fff;padding:6px 10px;border-radius:8px;font-size:12px;cursor:pointer">Descartar</button>
+    <button onclick="window['${cbKey}_ok']()" style="background:#2563EB;border:none;color:#fff;padding:6px 12px;border-radius:8px;font-size:12px;cursor:pointer;font-weight:700">Continuar</button>`;
   document.body.appendChild(b);
 }
 let onlineStatus=navigator.onLine;
