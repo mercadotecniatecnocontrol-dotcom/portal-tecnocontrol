@@ -1691,6 +1691,12 @@ window.fmChkComt=function(key,val){
   _draftSave(_DRAFT.SOL,solState);
 };
 
+window.fmChkSemComt=function(key,val){
+  if(!semState.chkComt) semState.chkComt={};
+  semState.chkComt[key]=val;
+  _draftSave(_DRAFT.SEM,semState);
+};
+
 window.fmChk=function(key,val){
   solState.chk[key]=solState.chk[key]===val?'':val;
   _draftSave(_DRAFT.SOL,solState);
@@ -2125,6 +2131,9 @@ window.fmCapturar=async function(tipo,key,targetTag){
         target.chkFotos[key]={src:sellada,meta};
         const cam=document.getElementById(`fm-cam-${key}`);
         if(cam){cam.classList.add('has');cam.innerHTML=`<img src="${sellada}" style="width:26px;height:26px;object-fit:cover;border-radius:5px">`;cam.onclick=()=>fmVerFoto({src:sellada,meta});}
+        // Autoguardar borrador incluyendo la foto recién tomada
+        if(targetTag==='sem') _draftSave(_DRAFT.SEM,semState);
+        else _draftSave(_DRAFT.SOL,solState);
       } else {
         target.evFotos.push({src:sellada,meta});
         const wrap=document.getElementById(targetTag==='sem'?'fm-sem-ev-wrap':'fm-ev-wrap');
