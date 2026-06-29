@@ -117,18 +117,23 @@ const _DRAFT={
 };
 function _draftSave(key,state){
   try{
-    // No guardar fotos en base64 de evidencia general (muy pesadas) — solo checklist y datos
     const s=Object.assign({},state);
-    if(key===_DRAFT.SOL||key===_DRAFT.SEM){
-      // Fotos de checklist sí (pequeñas, comprimidas); evFotos no (pesadas)
-      s.evFotos=[];
-    }
+    // evFotos nunca se guardan (evidencia general — muy pesadas)
+    s.evFotos=[];
     if(key===_DRAFT.UTIL){
-      // Para utilitario: no guardar fotos de ángulos ni odómetro (pesadas)
-      s.evFotos=[];s.fotoKm=null;s.chkFotos={};s.firma=null;
+      s.fotoKm=null;s.chkFotos={};s.firma=null;
+      localStorage.setItem(key,JSON.stringify(s));
+      return;
     }
-    localStorage.setItem(key,JSON.stringify(s));
-  }catch(e){/* storage lleno — ignorar */}
+    // SOL y SEM: guardar fotos de checklist tal cual (ya vienen comprimidas a 400px)
+    try{
+      localStorage.setItem(key,JSON.stringify(s));
+    }catch(e){
+      // Si no caben con fotos, guardar sin fotos pero avisar
+      s.chkFotos={};
+      try{localStorage.setItem(key,JSON.stringify(s));}catch{}
+    }
+  }catch(e){/* error inesperado — ignorar */}
 }
 function _draftLoad(key){
   try{const r=localStorage.getItem(key);return r?JSON.parse(r):null;}catch{return null;}
@@ -1458,7 +1463,36 @@ function renderNuevaSol(){
   const _solDraft=_draftLoad(_DRAFT.SOL);
   if(_solDraft&&Object.keys(_solDraft.chk||{}).length>0){
     setTimeout(()=>_draftBanner('sol',
-      ()=>{ Object.assign(solState,_solDraft); },
+      ()=>{
+        // Restaurar estado y re-renderizar el formulario completo
+        Object.assign(solState,_solDraft);
+        // Re-pintar checklist con valores guardados
+        const chkList=document.getElementById('fm-chk-list');
+        if(chkList)chkList.innerHTML=renderChkMovil();
+        // Re-pintar gasolina
+        const gasWrap=document.getElementById('fm-gauge-wrap');
+        if(gasWrap)gasWrap.innerHTML=renderGaugeSVG(solState.gasolina)+'<div class="fm-gauge-labels" style="width:200px"><span>VACÍO</span><span>2/4</span><span>MEDIO</span><span>3/4</span><span>LLENO</span></div>';
+        const gasRange=document.getElementById('fm-gas');
+        if(gasRange)gasRange.value=solState.gasolina;
+        // Re-pintar km si existe
+        const kmInput=document.getElementById('fm-km');
+        if(kmInput&&solState.km)kmInput.value=solState.km;
+        // Re-pintar descripción
+        const descInput=document.getElementById('fm-desc');
+        if(descInput&&solState.desc)descInput.value=solState.desc;
+        // Re-pintar contador checklist
+        const total=Object.values(CHK_CATS).flat().length;
+        const rev=Object.values(solState.chk).filter(v=>v==='si'||v==='no').length;
+        const cnt=document.getElementById('fm-chk-cnt');
+        if(cnt)cnt.textContent=`${rev} de ${total} revisados`;
+        // Re-pintar miniaturas de fotos guardadas en borrador
+        Object.entries(solState.chkFotos||{}).forEach(([k,foto])=>{
+          const src=typeof foto==='object'?foto.src:foto;
+          const cam=document.getElementById('fm-cam-'+k);
+          if(cam&&src)cam.innerHTML=`<img src="${src}" style="width:26px;height:26px;object-fit:cover;border-radius:5px">`;
+        });
+        toast('Borrador restaurado ✓','ok');
+      },
       ()=>{ _draftClear(_DRAFT.SOL); }
     ),400);
   }
@@ -1765,7 +1799,30 @@ function renderChkSemanal(){
   const _semDraft=_draftLoad(_DRAFT.SEM);
   if(_semDraft&&Object.keys(_semDraft.chk||{}).length>0){
     setTimeout(()=>_draftBanner('sem',
-      ()=>{ Object.assign(semState,_semDraft); renderChkSemanal(); },
+      ()=>{
+        Object.assign(semState,_semDraft);
+        // Re-pintar checklist con valores guardados
+        const semChkList=document.getElementById('fm-sem-chk-list');
+        if(semChkList)semChkList.innerHTML=renderChkSemanalList();
+        // Re-pintar gasolina
+        const semGasWrap=document.getElementById('fm-sem-gauge-wrap');
+        if(semGasWrap)semGasWrap.innerHTML=renderGaugeSVG(semState.gasolina)+'<div class="fm-gauge-labels" style="width:200px"><span>VACÍO</span><span>2/4</span><span>MEDIO</span><span>3/4</span><span>LLENO</span></div>';
+        // Re-pintar km
+        const semKmInput=document.getElementById('fm-sem-km');
+        if(semKmInput&&semState.km)semKmInput.value=semState.km;
+        // Re-pintar contador
+        const semTotal=Object.values(CHK_CATS).flat().length;
+        const semRev=Object.values(semState.chk).filter(v=>v==='si'||v==='no').length;
+        const semCnt=document.getElementById('fm-sem-chk-cnt');
+        if(semCnt)semCnt.textContent=`${semRev} de ${semTotal} revisados`;
+        // Re-pintar miniaturas de fotos guardadas en borrador
+        Object.entries(semState.chkFotos||{}).forEach(([k,foto])=>{
+          const src=typeof foto==='object'?foto.src:foto;
+          const cam=document.getElementById('fm-cam-'+k);
+          if(cam&&src)cam.innerHTML=`<img src="${src}" style="width:26px;height:26px;object-fit:cover;border-radius:5px">`;
+        });
+        toast('Borrador restaurado ✓','ok');
+      },
       ()=>{ _draftClear(_DRAFT.SEM); }
     ),400);
   }
