@@ -1003,6 +1003,20 @@ window.fmVista=function(v){
 // ══════════════════════════════════════════════════════════
 function _tarjetaVeh(v){
   const oc=(window._fmEcosOcupados||{})[String(v.eco)];
+  const transf=(window._fmEcosEnTransferencia||{})[String(v.eco)];
+  if(transf&&!oc){
+    // Vehículo en proceso de transferencia — pendiente de recepción
+    return `<div style="display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:11px;border:1.5px solid #FED7AA;background:#FFF7ED;margin-bottom:6px;opacity:.85">
+      <div style="width:36px;height:36px;border-radius:9px;background:#FB923C;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:800;color:#9A3412">${v.unidad||'—'} — En transferencia</div>
+        <div style="font-size:10.5px;color:#C2410C;margin-top:1px">ECO ${v.eco} · Pendiente de recepción por ${transf.nombre}</div>
+      </div>
+      <div style="font-size:9px;font-weight:700;color:#EA580C;background:#FFEDD5;border-radius:6px;padding:3px 7px">Pendiente</div>
+    </div>`;
+  }
   if(oc){
     return `<div style="display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:11px;border:1.5px solid #FECACA;background:#FEF2F2;margin-bottom:6px;opacity:.85">
       <div style="width:36px;height:36px;border-radius:9px;background:#FCA5A5;display:flex;align-items:center;justify-content:center;flex-shrink:0">
@@ -1053,8 +1067,13 @@ function renderSelectorFlota(){
   `);
   db.collection(C.USUARIOS).get().then(snapU=>{
     const ocupados={};
+    // Marcar ECOs que están en proceso de transferencia pendiente
+    const enTransferencia={};
     snapU.docs.forEach(d=>{
       const u=d.data();
+      if(u.transferenciaPendienteEco){
+        enTransferencia[String(u.transferenciaPendienteEco)]={nombre:u.nombre||u.email||'otro técnico'};
+      }
       // Leer ecosVinculados (array) Y ecoVinculado (campo simple) — ambos formatos
       const ecos=[
         ...(Array.isArray(u.ecosVinculados)?u.ecosVinculados.map(String):[]),
@@ -1063,11 +1082,10 @@ function renderSelectorFlota(){
       ].filter((e,i,a)=>e&&a.indexOf(e)===i); // únicos
       ecos.forEach(e=>{ if(e&&u.email!==miPerfil?.email) ocupados[e]={nombre:u.nombre||u.displayName||u.email||'Otro usuario'}; });
     });
-    // También marcar el ECO actual del usuario logueado en otros dispositivos
-    // si miVeh está activo en sesión actual de otro rol, ya está en fl_usuarios
     window._fmEcosOcupados=ocupados;
+    window._fmEcosEnTransferencia=enTransferencia;
     _renderSelectorLista(todos);
-  }).catch(()=>{ window._fmEcosOcupados={}; _renderSelectorLista(todos); });
+  }).catch(()=>{ window._fmEcosOcupados={}; window._fmEcosEnTransferencia={}; _renderSelectorLista(todos); });
 }
 
 window.fmFiltrarSelector = function(q){
@@ -1087,6 +1105,9 @@ window.fmFiltrarSelector = function(q){
 };
 
 window.fmSeleccionarVeh = async function(eco){
+  // Verificar si está en proceso de transferencia pendiente
+  const transf=(window._fmEcosEnTransferencia||{})[String(eco)];
+  if(transf){toast(`ECO ${eco} tiene una transferencia pendiente de recepción`,'err');return;}
   // Verificar si está ocupado por otro usuario
   const oc=(window._fmEcosOcupados||{})[String(eco)];
   if(oc){toast(`ECO ${eco} está en uso por ${oc.nombre}`,'err');return;}
@@ -1244,9 +1265,24 @@ window.fmCambiarUnidad=async function(){
 
   const lista=document.getElementById('fm-cu-lista');
   const vehs=await Promise.all(ecos.map(eco=>cargarVehiculoPorEco(eco)));
+  // ECOs con transferencia pendiente — no se pueden reusar hasta que el receptor confirme
+  const ecoPendiente=String(miPerfil?.transferenciaPendienteEco||'');
   lista.innerHTML=vehs.map((v,i)=>{
     if(!v)return'';
     const activo=String(v.eco)===String(miVeh?.eco);
+    const pendiente=ecoPendiente&&String(v.eco)===ecoPendiente;
+    if(pendiente){
+      return`<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:11px;border:1.5px solid #FED7AA;background:#FFF7ED;opacity:.8">
+        <div style="width:36px;height:36px;border-radius:9px;background:#FB923C;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:800;color:#9A3412">${v.unidad||'—'} — En transferencia</div>
+          <div style="font-size:10.5px;color:#C2410C;margin-top:1px">ECO ${v.eco} · Pendiente de recepción por el destinatario</div>
+        </div>
+        <span style="font-size:9px;font-weight:700;color:#EA580C;background:#FFEDD5;border-radius:6px;padding:3px 7px;white-space:nowrap">Pendiente</span>
+      </div>`;
+    }
     return`<div onclick="fmUsarUnidad('${v.eco}')" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:11px;border:1.5px solid ${activo?'#2563EB':'#E8EDF5'};background:${activo?'#EFF6FF':'#fff'};cursor:pointer">
       <div style="width:36px;height:36px;border-radius:9px;background:linear-gradient(135deg,#0A1628,#1E3A5F);display:flex;align-items:center;justify-content:center;flex-shrink:0">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.9)" stroke-width="1.8" stroke-linecap="round"><path d="M5 17H3a2 2 0 01-2-2V9a2 2 0 012-2h11a2 2 0 012 2v6h-2"/><path d="M7 9l2-4h6l2 4"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>
@@ -1261,6 +1297,11 @@ window.fmCambiarUnidad=async function(){
 };
 
 window.fmUsarUnidad=async function(eco){
+  // Bloquear si el ECO tiene una transferencia pendiente de confirmación
+  if(miPerfil?.transferenciaPendienteEco&&String(eco)===String(miPerfil.transferenciaPendienteEco)){
+    toast(`ECO ${eco} tiene una transferencia pendiente — espera a que el receptor confirme con su firma`,'err');
+    return;
+  }
   const v=await cargarVehiculoPorEco(eco);
   if(!v){toast('Vehículo no encontrado','err');return;}
   miVeh=v;
@@ -3375,7 +3416,14 @@ window.utilVerificarCodigo=async function(){
     if(snap.empty){if(msg)msg.innerHTML=`<span style="color:#B91C1C">Código no encontrado o ya fue utilizado</span>`;return;}
     const t={id:snap.docs[0].id,...snap.docs[0].data()};
     utilState.transferenciaId=t.id;
-    utilState.datosEntrega={vehiculo:t.vehiculoUnidad,eco:t.vehiculoEco,km:t.kmEntrega,receptor:window.auth?.currentUser?.displayName||window.auth?.currentUser?.email||'—',nombre:t.entregaNombre};
+    utilState.transferenciaData=t; // doc completo — necesario para limpiar entregador al cerrar
+    utilState.datosEntrega={
+      vehiculo:t.vehiculoUnidad,eco:t.vehiculoEco,
+      km:t.entregaKm||'',
+      receptor:window.auth?.currentUser?.displayName||window.auth?.currentUser?.email||'—',
+      nombre:t.entregaNombre,
+      entregaEmail:t.entregaEmail||'', // ← FIX CRÍTICO: sin esto el entregador nunca se desvincula
+    };
     toast('Código válido — ECO '+t.vehiculoEco,'ok');
     setTimeout(()=>{utilState.paso=3;renderUtil();},800);
   }catch(e){if(msg)msg.innerHTML=`<span style="color:#B91C1C">Error: ${e.message}</span>`;}
