@@ -1,8 +1,8 @@
 // ══════════════════════════════════════════════════
 // sw-flotilla.js — Service Worker Tecnocontrol PWA Móvil
-// v5 — Cache first + notificaciones push nativas
+// v6 — Network-first (con fallback a cache) + notificaciones push nativas
 // ══════════════════════════════════════════════════
-const CACHE = 'tcn-movil-v5';
+const CACHE = 'tcn-movil-v6'; // ⬅️ Subida de v5 a v6: fuerza borrado del cache viejo en todos los usuarios
 const PRECACHE = [
   './flotilla-app.html',
   './flotilla-movil.js',
@@ -25,9 +25,11 @@ self.addEventListener('activate', e => {
   );
 });
 
-// ── Fetch — cache first para assets, network para Firestore ──
+// ── Fetch — network-first para HTML/JS (siempre lo más nuevo), cache-first solo para fuentes/estáticos ──
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
+
+  // Firestore / Firebase / Auth → siempre red, nunca cache
   if (
     url.hostname.includes('firestore') ||
     url.hostname.includes('firebase') ||
@@ -40,6 +42,28 @@ self.addEventListener('fetch', e => {
     );
     return;
   }
+
+  // Solo interceptamos peticiones dentro del scope de flotilla (HTML/JS propios).
+  // Si este SW se registró con scope raíz, esto evita que "secuestre" al Portal.
+  const esArchivoPropio = /flotilla-app\.html$|flotilla-movil\.js$/.test(url.pathname);
+
+  if (esArchivoPropio) {
+    // NETWORK-FIRST: intenta red primero, si falla usa cache. Así siempre tienes lo último.
+    e.respondWith(
+      fetch(e.request)
+        .then(resp => {
+          if (resp.ok) {
+            const clone = resp.clone();
+            caches.open(CACHE).then(c => c.put(e.request, clone));
+          }
+          return resp;
+        })
+        .catch(() => caches.match(e.request).then(cached => cached || caches.match('./flotilla-app.html')))
+    );
+    return;
+  }
+
+  // Todo lo demás (fuentes, íconos, assets estáticos) → cache-first normal
   e.respondWith(
     caches.match(e.request).then(cached => {
       if (cached) return cached;
