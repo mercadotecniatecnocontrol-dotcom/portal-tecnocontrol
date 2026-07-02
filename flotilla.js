@@ -1,4 +1,4 @@
-// flotilla.js v12 — Diseño imagen referencia Tecnocontrol
+// flotilla.js v16 — fix taller único + presupuesto (comprometido mes) + auto-sync + flReconciliarTaller
 // Layout: topbar 4 botones · lista lateral · grid 2x2 fotos reales · checklist · panel derecho
 (function(){
 'use strict';
@@ -6793,5 +6793,5 @@ window.flLimpiarDuplicados=async function(){
   return {eliminados,resumen};
 };
 
-console.log('[FLOTILLA v15] Pipeline 4 etapas · Tecnocontrol · '+CAT.length+' unidades');
+console.log('[FLOTILLA v16] Taller único + presupuesto mes + flReconciliarTaller · '+CAT.length+' unidades');
 })();
