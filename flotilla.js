@@ -37,6 +37,16 @@ async function agregarColaborador(nombre){
 
 const C={VEHS:'flotilla_vehiculos',SOLS:'flotilla_solicitudes',COMIS:'flotilla_comisiones',TRANS:'flotilla_transferencias',CHKSEM:'flotilla_checklist_semanal',CFG:'flotilla_config',TAREAS:'flotilla_tareas'};
 
+// ══════════════════════════════════════════════════════════════
+// FUENTE ÚNICA DE VERDAD — "EN TALLER"
+// Un vehículo está en taller SOLO si su campo status === 'taller'.
+// El status se sincroniza automáticamente cuando una solicitud entra
+// a Servicio y cuando se cierra (ver flSyncVehiculoServicio).
+// Todos los conteos (sidebar, KPIs, Resumen) leen de aquí.
+// ══════════════════════════════════════════════════════════════
+const flEnTaller=v=>v&&v.status==='taller';
+const flContarTaller=(arr)=>((arr||(typeof flV!=='undefined'?flV:[]))).filter(flEnTaller).length;
+
 const CAT=[
   {eco:'01',unidad:'NISSAN NP100',     año:2000,plaza:'CHIHUAHUA',    responsable:'GLEN PRECIADO',   placas:'DU0101A',serie:'3N6AD33A3H46544',rend:'7 KM/L',   pv:'2026-09-24',pol:'794B05035M-17',tipo:'auto',color:'Blanco',nip:'OXXO GAS',km:0,status:'activo'},
   {eco:'15',unidad:'NISSAN NP300',     año:2017,plaza:'JUAREZ',    responsable:'JORGE GUERRERO',   placas:'DU6478A',serie:'3N6AD33A3HK869708',rend:'7 KM/L',   pv:'2026-09-24',pol:'794B05035M-17',tipo:'camioneta',color:'Blanco',nip:'OXXO GAS',km:0,status:'activo'},
@@ -648,24 +658,22 @@ async function ldCfgSem(){try{const d=await fs.getDoc(fs.doc(db,C.CFG,'checklist
 let sbTipoFilt='all';
 function renderSB(){
   const act=flV.filter(v=>v.status!=='baja');
-  const tall=act.filter(v=>v.status==='taller').length;
-  // ECOs con solicitud activa en Servicio (aunque no tengan status=taller en Firestore)
-  const ecosEnTaller=new Set(flS.filter(s=>['Servicio','Pagos','Cierre'].includes(s.estatus)).map(s=>String(s.vehiculoEco)));
+  const tall=act.filter(flEnTaller).length;
   const lista=document.getElementById('fl-sb-list');
   const footer=document.getElementById('fl-sb-footer');
   if(!lista)return;
   let filtrado=act;
   if(sbTipoFilt==='auto')filtrado=act.filter(v=>v.tipo==='auto');
   else if(sbTipoFilt==='cam')filtrado=act.filter(v=>v.tipo!=='auto');
-  else if(sbTipoFilt==='taller')filtrado=act.filter(v=>v.status==='taller'||ecosEnTaller.has(String(v.eco)));
+  else if(sbTipoFilt==='taller')filtrado=act.filter(flEnTaller);
   const q=(document.getElementById('fl-sb-q')?.value||'').toLowerCase();
   if(q)filtrado=filtrado.filter(v=>(v.eco+v.unidad+v.placas+v.responsable).toLowerCase().includes(q));
   filtrado=filtrado.slice().sort((a,b)=>Number(a.eco)-Number(b.eco));
   // Actualizar counter en botón taller
   const btnTall=document.getElementById('fl-sbt-taller');
-  if(btnTall){const nt=act.filter(v=>v.status==='taller'||ecosEnTaller.has(String(v.eco))).length;btnTall.textContent=nt?`Taller (${nt})`:'Taller';}
+  if(btnTall){const nt=act.filter(flEnTaller).length;btnTall.textContent=nt?`Taller (${nt})`:'Taller';}
   lista.innerHTML=filtrado.map(v=>{
-    const enTallerSol=ecosEnTaller.has(String(v.eco));
+    const enTallerSol=flEnTaller(v);
     const usuarioApp=(window._flUsuariosMap||{})[String(v.eco)];
     const dot=v.status==='taller'||enTallerSol?'#F59E0B':v.status==='comision'?'#8B5CF6':usuarioApp?'#EF4444':'#22C55E';
     const bgTaller=v.status==='taller'||enTallerSol?'background:rgba(245,158,11,.08);border-left:3px solid #F59E0B;':'';
@@ -1278,20 +1286,57 @@ async function flDesvincularEcoApp(eco,nuevoResponsable){
   }catch(e){console.error('[FL] flDesvincularEcoApp',e);}
 }
 
-// Sincroniza el status del vehículo (taller/activo) cuando una solicitud
-// entra o sale de la etapa "Servicio en Proceso". No reactiva vehículos dados de baja.
-async function flSyncVehiculoServicio(eco,nuevoStatus){
+// Sincroniza el status del vehículo con el estado de sus solicitudes.
+//  nuevoStatus==='taller'  -> entra a taller, guarda statusPrevio (respeta comisión/activo)
+//  nuevoStatus==='activo'  -> cierre/rechazo: revierte SOLO si no queda otra solicitud
+//                             abierta en Servicio/Pagos/Cierre para ese ECO; restaura statusPrevio
+//  solicitudIdExcluir      -> id de la solicitud que se está cerrando (para no contarse a sí misma)
+//  Nunca toca vehículos en 'baja'.
+async function flSyncVehiculoServicio(eco,nuevoStatus,solicitudIdExcluir){
   if(!eco)return;
   try{
     if(!fs){const m=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');fs=m;}
     const snap=await fs.getDocs(fs.query(fs.collection(db,C.VEHS),fs.where('eco','==',String(eco))));
     if(snap.empty)return;
     const d=snap.docs[0];
-    const actual=d.data().status;
-    if(actual==='baja'||actual===nuevoStatus)return;
-    await fs.updateDoc(d.ref,{status:nuevoStatus,actualizadoEn:new Date().toISOString()});
+    const dv=d.data();
+    const actual=dv.status;
+    if(actual==='baja')return; // nunca tocar bajas
+
+    if(nuevoStatus==='taller'){
+      if(actual==='taller')return;
+      await fs.updateDoc(d.ref,{status:'taller',statusPrevio:actual||'activo',actualizadoEn:new Date().toISOString()});
+    }else{
+      // Revertir: verificar que no quede OTRA solicitud abierta en taller para este ECO
+      const abiertas=(typeof flS!=='undefined'?flS:[]).filter(x=>
+        String(x.vehiculoEco)===String(eco)&&
+        x.id!==solicitudIdExcluir&&
+        ['Servicio','Pagos','Cierre'].includes(x.estatus)
+      );
+      if(abiertas.length)return; // sigue en taller por otro servicio
+      const destino=(dv.statusPrevio&&dv.statusPrevio!=='taller')?dv.statusPrevio:'activo';
+      await fs.updateDoc(d.ref,{status:destino,statusPrevio:'',actualizadoEn:new Date().toISOString()});
+    }
   }catch(e){console.error('[FL] flSyncVehiculoServicio',e);}
 }
+
+// Utilidad de consola: reconcilia TODA la flota de una vez con el estado real
+// de las solicitudes (para arreglar datos legacy sin esperar nuevas transiciones).
+// Uso: flReconciliarTaller()
+window.flReconciliarTaller=async function(){
+  if(!fs){const m=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');fs=m;}
+  const ecosConServicio=new Set(flS.filter(s=>['Servicio','Pagos','Cierre'].includes(s.estatus)).map(s=>String(s.vehiculoEco)));
+  let aTaller=0,aActivo=0;
+  for(const v of flV){
+    if(v.status==='baja')continue;
+    const debeTaller=ecosConServicio.has(String(v.eco));
+    if(debeTaller&&v.status!=='taller'){await flSyncVehiculoServicio(v.eco,'taller');aTaller++;}
+    else if(!debeTaller&&v.status==='taller'){await flSyncVehiculoServicio(v.eco,'activo');aActivo++;}
+  }
+  console.log(`[FL] Reconciliación taller: ${aTaller} → taller, ${aActivo} → activo/previo`);
+  if(typeof ldSols==='function')await ldSols();
+  if(typeof flToast==='function')flToast(`Taller reconciliado: +${aTaller} taller, ${aActivo} liberados`,'ok');
+};
 
 // Guardar nuevo vehículo
 window.admNuevoGuardar=async function(){
@@ -3897,8 +3942,14 @@ function _renderPresupuesto(){
   });
   const gastadoTotal=solsMes.reduce((a,s)=>a+Number(s.montoCotizacion||0),0);
 
-  // Solicitudes en proceso (comprometido)
-  const solsEnProceso=flS.filter(s=>['Servicio','Pagos','Cierre'].includes(s.estatus)&&s.montoCotizacion);
+  // Solicitudes en proceso (comprometido) — SOLO las generadas en el mes actual.
+  // Las que se arrastran de meses anteriores no cuentan contra el presupuesto de este mes.
+  const solsEnProceso=flS.filter(s=>{
+    if(!s.montoCotizacion)return false;
+    if(!['Servicio','Pagos','Cierre'].includes(s.estatus))return false;
+    const f=new Date(s.creadoEn||s.actualizadoEn||'');
+    return f.getMonth()===mes&&f.getFullYear()===anio;
+  });
   const comprometido=solsEnProceso.reduce((a,s)=>a+Number(s.montoCotizacion||0),0);
 
   const disponible=Math.max(0,presTotal-gastadoTotal-comprometido);
@@ -3960,7 +4011,7 @@ function _renderPresupuesto(){
     ${alerta?`<div style="background:#FEF2F2;border:1.5px solid #FECACA;border-radius:12px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B91C1C" stroke-width="2.5" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
       <div><div style="font-size:12.5px;font-weight:800;color:#B91C1C">Alerta de presupuesto</div>
-      <div style="font-size:11px;color:#991B1B">Se ha utilizado el ${pctGastado+pctComprometido}% del presupuesto mensual. Quedan ${fmt(disponible)} disponibles.</div></div>
+      <div style="font-size:11px;color:#991B1B">Comprometido: ${fmt(comprometido)} · Gastado: ${fmt(gastadoTotal)} de ${fmt(presTotal)} en ${mesNom}. ${disponible>0?`Quedan ${fmt(disponible)} disponibles.`:'Presupuesto rebasado.'}</div></div>
     </div>`:''}
 
     <!-- HEADER con fecha y botón editar -->
@@ -3976,7 +4027,7 @@ function _renderPresupuesto(){
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px">
       ${kpi(presTotal?fmt(presTotal):'Sin definir','Presupuesto mensual','Aprobado para '+mesNom,'#2563EB','#EFF6FF')}
       ${kpi(fmt(gastadoTotal),'Gastado (mes)','Solicitudes cerradas','#15803D','#F0FDF4')}
-      ${kpi(fmt(comprometido),'Comprometido','En servicio/proceso','#B45309','#FFFBEB')}
+      ${kpi(fmt(comprometido),'Comprometido','En proceso · '+mesNom,'#B45309','#FFFBEB')}
       ${kpi(fmt(disponible),'Disponible',disponible<=0?'Presupuesto agotado':'Saldo restante',disponible<=0?'#B91C1C':disponible<presTotal*0.2?'#B45309':'#15803D',disponible<=0?'#FEF2F2':disponible<presTotal*0.2?'#FFFBEB':'#F0FDF4')}
       ${kpi(solsMes.length,'Servicios cerrados','Este mes','#7C3AED','#F5F3FF')}
       ${kpi(limiteSol?fmt(limiteSol):'Sin límite','Límite por solicitud',limiteSol?'Alerta a Contraloría si se supera':'No configurado','#0369A1','#EFF8FF')}
@@ -4185,9 +4236,8 @@ function rResumen(){
 
   // ── Estado flota ──
   const activos=flV.filter(v=>v.status!=='baja');
-  const enTallerV=activos.filter(v=>v.status==='taller').length;
-  const ecosTaller=new Set(flS.filter(s=>['Servicio','Pagos','Cierre'].includes(s.estatus)).map(s=>String(s.vehiculoEco)));
-  const enTallerSol=activos.filter(v=>!enTallerV&&ecosTaller.has(String(v.eco))).length;
+  const enTallerV=flContarTaller(activos);
+  const enTallerSol=0; // (deprecado) fuente única = status==='taller'
   const sinResp=activos.filter(v=>!v.responsable||v.responsable==='—').length;
   const polVencidas=activos.filter(v=>{const d=new Date(v.pv||'');return v.pv&&d<hoy;}).length;
   const polPorVencer=activos.filter(v=>{const d=new Date(v.pv||'');const dias=Math.round((d-hoy)/864e5);return v.pv&&dias>=0&&dias<=90;}).length;
@@ -4244,7 +4294,7 @@ function rResumen(){
       ${kpi(solsTotal,'Solicitudes totales','Histórico acumulado','#2563EB','#EFF6FF')}
       ${kpi(solsMes.length,'Este mes','Solicitudes de '+mesNom,'#7C3AED','#F5F3FF')}
       ${kpi(cerradasMes,'Cerradas (mes)','Expedientes completos','#15803D','#F0FDF4')}
-      ${kpi(enServicio,'En servicio','Vehículos en taller ahora','#B45309','#FFFBEB')}
+      ${kpi(enTallerV,'En taller','Vehículos en taller ahora','#B45309','#FFFBEB')}
       ${kpi(rechazadasMes,'Rechazadas (mes)','Esta quincena','#B91C1C','#FEF2F2')}
       ${kpi(activos.length,'Flota activa','Unidades operativas','#0369A1','#EFF8FF')}
       ${kpi(sinResp,'Sin responsable','Requieren asignación',sinResp?'#B91C1C':'#15803D',sinResp?'#FEF2F2':'#F0FDF4')}
@@ -4298,9 +4348,8 @@ function rResumen(){
         <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#64748B;margin-bottom:14px">Estado de la flota</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
           ${[
-            ['Activos operativos', activos.length-enTallerV-enTallerSol, '#22C55E','#F0FDF4'],
-            ['En taller (estatus)', enTallerV, '#F59E0B','#FFFBEB'],
-            ['En taller (solicitud)', enTallerSol, '#F59E0B','#FEF3C7'],
+            ['Activos operativos', activos.length-enTallerV, '#22C55E','#F0FDF4'],
+            ['En taller', enTallerV, '#F59E0B','#FFFBEB'],
             ['Sin responsable', sinResp, sinResp?'#EF4444':'#22C55E', sinResp?'#FEF2F2':'#F0FDF4'],
             ['Pólizas vencidas', polVencidas, polVencidas?'#EF4444':'#22C55E', polVencidas?'#FEF2F2':'#F0FDF4'],
             ['Pólizas por vencer', polPorVencer, polPorVencer?'#F59E0B':'#22C55E', polPorVencer?'#FFFBEB':'#F0FDF4'],
@@ -4354,9 +4403,8 @@ window.flExportarResumenPDF=function(){
   const rechazadasMes=solsMes.filter(s=>s.estatus==='Rechazada').length;
   const enServicio=flS.filter(s=>['Servicio','Pagos','Cierre'].includes(s.estatus)).length;
   const activos=flV.filter(v=>v.status!=='baja');
-  const enTallerV=activos.filter(v=>v.status==='taller').length;
-  const ecosTaller=new Set(flS.filter(s=>['Servicio','Pagos','Cierre'].includes(s.estatus)).map(s=>String(s.vehiculoEco)));
-  const enTallerSol=activos.filter(v=>!enTallerV&&ecosTaller.has(String(v.eco))).length;
+  const enTallerV=flContarTaller(activos);
+  const enTallerSol=0; // (deprecado) fuente única = status==='taller'
   const sinResp=activos.filter(v=>!v.responsable||v.responsable==='—').length;
   const polVencidas=activos.filter(v=>{const d=new Date(v.pv||'');return v.pv&&d<hoy;}).length;
   const polPorVencer=activos.filter(v=>{const d=new Date(v.pv||'');const dias=Math.round((d-hoy)/864e5);return v.pv&&dias>=0&&dias<=90;}).length;
@@ -4442,7 +4490,7 @@ window.flExportarResumenPDF=function(){
     <div class="kpi" style="background:#EFF6FF"><div class="kpi-val" style="color:#2563EB">${flS.length}</div><div class="kpi-label">Total solicitudes</div><div class="kpi-sub">Histórico acumulado</div></div>
     <div class="kpi" style="background:#F5F3FF"><div class="kpi-val" style="color:#7C3AED">${solsMes.length}</div><div class="kpi-label">Este mes</div><div class="kpi-sub">${mesNom}</div></div>
     <div class="kpi" style="background:#F0FDF4"><div class="kpi-val" style="color:#15803D">${cerradasMes}</div><div class="kpi-label">Cerradas (mes)</div><div class="kpi-sub">Expedientes completos</div></div>
-    <div class="kpi" style="background:#FFFBEB"><div class="kpi-val" style="color:#B45309">${enServicio}</div><div class="kpi-label">En servicio</div><div class="kpi-sub">En taller ahora</div></div>
+    <div class="kpi" style="background:#FFFBEB"><div class="kpi-val" style="color:#B45309">${enTallerV}</div><div class="kpi-label">En taller</div><div class="kpi-sub">Vehículos en taller ahora</div></div>
     <div class="kpi" style="background:#FEF2F2"><div class="kpi-val" style="color:#B91C1C">${rechazadasMes}</div><div class="kpi-label">Rechazadas (mes)</div><div class="kpi-sub">Con motivo registrado</div></div>
     <div class="kpi" style="background:#EFF8FF"><div class="kpi-val" style="color:#0369A1">${activos.length}</div><div class="kpi-label">Flota activa</div><div class="kpi-sub">Unidades operativas</div></div>
     <div class="kpi" style="background:${sinResp?'#FEF2F2':'#F0FDF4'}"><div class="kpi-val" style="color:${sinResp?'#B91C1C':'#15803D'}">${sinResp}</div><div class="kpi-label">Sin responsable</div><div class="kpi-sub">Requieren asignación</div></div>
@@ -4479,8 +4527,8 @@ window.flExportarResumenPDF=function(){
       <div class="card-t">Estado de la flota</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">
         ${[
-          ['Operativos',activos.length-enTallerV-enTallerSol,'#22C55E','#F0FDF4'],
-          ['En taller',enTallerV+enTallerSol,'#F59E0B','#FFFBEB'],
+          ['Operativos',activos.length-enTallerV,'#22C55E','#F0FDF4'],
+          ['En taller',enTallerV,'#F59E0B','#FFFBEB'],
           ['Sin responsable',sinResp,sinResp?'#EF4444':'#22C55E',sinResp?'#FEF2F2':'#F0FDF4'],
           ['Pól. vencidas',polVencidas,polVencidas?'#EF4444':'#22C55E',polVencidas?'#FEF2F2':'#F0FDF4'],
         ].map(([l,v,cl,bg])=>`<div style="background:${bg};border-radius:7px;padding:9px 11px"><div style="font-size:18px;font-weight:900;color:${cl}">${v}</div><div style="font-size:8.5px;font-weight:700;color:#475569;margin-top:1px">${l}</div></div>`).join('')}
@@ -4564,7 +4612,7 @@ window.flRechazar = async id => {
       estatus: 'Rechazada', comentarioRechazo: m,
       actualizadoEn: new Date().toISOString(),
     });
-    if (s?.vehiculoEco) flSyncVehiculoServicio(s.vehiculoEco, 'activo');
+    if (s?.vehiculoEco) flSyncVehiculoServicio(s.vehiculoEco, 'activo', id);
     await ldSols();
     if (vistaAct === 'sols') rSols(); else rPanel();
   } catch(e) { console.error('[FL]', e); }
@@ -5438,6 +5486,7 @@ window.flGuardarPago=async function(id){
     });
     const solAct=flS.find(x=>x.id===id);
     if(solAct)solAct.pagoProgramado=pagoProgramado;
+    if(s?.vehiculoEco)flSyncVehiculoServicio(s.vehiculoEco,'taller',id);
     // Notificación a Pagos
     await fs.addDoc(fs.collection(db,'flotilla_notificaciones'),{
       tipo:'pago_programado',solicitudId:id,
@@ -5488,7 +5537,7 @@ window.flGuardarServicio = async function(id, cerrar) {
     }
     await fs.updateDoc(fs.doc(db,C.SOLS,id),data);
     const solActual=flS.find(x=>x.id===id);
-    if(solActual?.vehiculoEco)flSyncVehiculoServicio(solActual.vehiculoEco,cerrar?'activo':'taller');
+    if(solActual?.vehiculoEco)flSyncVehiculoServicio(solActual.vehiculoEco,cerrar?'activo':'taller',id);
     await ldSols();
     const ultComt3=(window._flServComents||[]).slice(-1)[0]?.texto||null;
     // Guardar archivos de servicio en subcolección
@@ -5762,7 +5811,7 @@ window.flFinalizarServicio = async function(id) {
       cerradoPor: window.auth?.currentUser?.email || '—',
       actualizadoEn: new Date().toISOString(),
     });
-    if(s?.vehiculoEco)flSyncVehiculoServicio(s.vehiculoEco,'activo');
+    if(s?.vehiculoEco)flSyncVehiculoServicio(s.vehiculoEco,'activo',id);
     window._flFactura = null;
     await ldSols();
     const notasCierreFinal=document.getElementById('cierr-notas')?.value?.trim()||null;
