@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Centro de Surtido · Tecnocontrol</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#EFF4FA; --surface:#FFFFFF; --line:#DBE6F2;
+    --ink:#0C2740; --mute:#5C7089; --brand:#E23B2E;
+    --azul:#1473E6; --verde:#12A150; --amarillo:#D99000;
+    --naranja:#F26B21; --rojo:#E23B3B; --morado:#8B4FD6; --gris:#7C8CA1;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:"Inter",system-ui,sans-serif; overflow:hidden; -webkit-font-smoothing:antialiased;
+  }
+  .num{font-family:"Barlow Condensed",sans-serif; font-variant-numeric:tabular-nums; letter-spacing:.5px}
+  .mono{font-variant-numeric:tabular-nums}
+  .app{display:flex; flex-direction:column; height:100vh}
+
+  /* Header */
+  header{
+    display:flex; align-items:center; gap:20px; background:var(--surface);
+    padding:14px 26px; border-bottom:1px solid var(--line);
+  }
+  .brand{display:flex; align-items:center; gap:12px}
+  .brand .mark{
+    width:34px;height:34px;border-radius:8px;
+    background:conic-gradient(from 220deg,var(--brand),#8f1710);
+    display:grid;place-items:center;color:#fff;font-weight:800;font-size:17px;
+  }
+  .brand h1{font-size:15px;font-weight:700;letter-spacing:.5px;color:var(--ink)}
+  .brand h1 span{color:var(--brand)}
+  .brand .sub{font-size:12px;color:var(--mute);margin-top:1px}
+  .spacer{flex:1}
+  .chips{display:flex;gap:10px}
+  .chip{
+    display:flex;align-items:center;gap:8px;padding:7px 13px;border-radius:999px;
+    background:var(--bg);border:1px solid var(--line);font-size:13px;font-weight:600;color:var(--ink);
+  }
+  .chip .dot{width:9px;height:9px;border-radius:50%}
+  .chip .n{font-size:15px;font-weight:700}
+  .clock{font-size:26px;font-weight:600;color:var(--ink);min-width:118px;text-align:right}
+  .clock small{display:block;font-size:11px;color:var(--mute);font-weight:600;letter-spacing:2px;margin-top:-2px}
+
+  /* Body grid */
+  .board{display:grid;grid-template-columns:1.15fr 1fr;gap:18px;padding:18px 22px;flex:1;min-height:0}
+
+  /* Hero (SIGUIENTE) — bloque azul degradado estilo BBVA */
+  .hero{
+    position:relative;border-radius:18px;overflow:hidden;color:#fff;
+    padding:28px 32px;display:flex;flex-direction:column;
+    background:linear-gradient(115deg,#0B57C7,#3B93FF);
+    box-shadow:0 18px 40px rgba(12,58,110,.22); transition:background .6s;
+  }
+  .hero .eyebrow{font-size:13px;letter-spacing:4px;color:rgba(255,255,255,.8);font-weight:700}
+  .hero .folio{font-size:196px;line-height:.82;font-weight:700;margin:4px 0 2px;text-shadow:0 3px 18px rgba(0,0,0,.18)}
+  .hero .client{font-size:34px;font-weight:600;letter-spacing:.2px}
+  .hero .metaRow{display:flex;gap:26px;margin-top:auto;padding-top:24px;flex-wrap:wrap;align-items:flex-end}
+  .meta{display:flex;flex-direction:column;gap:3px}
+  .meta .k{font-size:12px;letter-spacing:2px;color:rgba(255,255,255,.78);font-weight:700;display:flex;align-items:center;gap:6px}
+  .meta .v{font-size:22px;font-weight:600}
+  .hero .timer{font-size:58px;font-weight:700}
+  .badge{
+    align-self:flex-start;display:inline-flex;align-items:center;gap:8px;
+    padding:9px 17px;border-radius:999px;font-size:15px;font-weight:800;letter-spacing:1px;
+    background:rgba(255,255,255,.18);color:#fff;border:1px solid rgba(255,255,255,.35);
+  }
+  .prio{padding:5px 12px;border-radius:7px;font-size:15px;font-weight:800;letter-spacing:1px;
+    background:rgba(255,255,255,.18);color:#fff}
+
+  /* Queue */
+  .queue{display:flex;flex-direction:column;min-height:0}
+  .queue .qh{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+  .queue .qh h2{font-size:15px;letter-spacing:3px;color:var(--mute);font-weight:800}
+  .queue .qh .count{font-size:13px;color:var(--mute)}
+  .qlist{display:flex;flex-direction:column;gap:11px;overflow:hidden;flex:1}
+  .card{
+    position:relative;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:18px;
+    padding:15px 18px 15px 22px;border-radius:14px;background:var(--surface);
+    border:1px solid var(--line);overflow:hidden;box-shadow:0 4px 14px rgba(12,58,110,.06);
+    animation:slideIn .4s cubic-bezier(.2,.8,.2,1);
+  }
+  .card .bar{position:absolute;left:0;top:0;bottom:0;width:7px}
+  .card .cfolio{font-size:46px;font-weight:700;min-width:120px}
+  .card .cmid .cclient{font-size:20px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:34ch}
+  .card .cmid .cstate{font-size:13px;color:var(--mute);font-weight:600;margin-top:2px;display:flex;align-items:center;gap:8px}
+  .card .cmid .cstate .sdot{width:8px;height:8px;border-radius:50%}
+  .card .cright{text-align:right}
+  .card .ctimer{font-size:30px;font-weight:700}
+  .card .cpieces{font-size:12px;color:var(--mute);margin-top:1px;font-weight:600}
+  .card.flash{animation:slideIn .4s cubic-bezier(.2,.8,.2,1), pulse 1.3s ease-out 1}
+
+  /* Banner de pedido nuevo (un solo aviso, sin parpadeo) */
+  .banner{
+    position:fixed;top:0;left:0;right:0;z-index:50;
+    display:flex;align-items:center;gap:18px;justify-content:center;
+    padding:16px;background:linear-gradient(90deg,#0B57C7,#2E9BFF);
+    color:#fff;font-weight:700;transform:translateY(-120%);transition:transform .5s cubic-bezier(.2,.9,.2,1);
+    box-shadow:0 12px 40px rgba(12,58,110,.35);
+  }
+  .banner.show{transform:translateY(0)}
+  .banner .bfolio{font-size:40px}
+  .banner .btxt{font-size:19px;font-weight:600}
+  .banner .btxt b{font-weight:800}
+  .banner svg{width:28px;height:28px}
+
+  /* Legend */
+  footer{
+    display:flex;gap:20px;justify-content:center;flex-wrap:wrap;background:var(--surface);
+    padding:12px;border-top:1px solid var(--line);font-size:12px;color:var(--mute);font-weight:600;
+  }
+  footer .l{display:flex;align-items:center;gap:7px}
+  footer .l .d{width:11px;height:11px;border-radius:3px}
+
+  svg.i{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vertical-align:-2px}
+
+  @keyframes slideIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(20,115,230,.5)}100%{box-shadow:0 0 0 16px rgba(20,115,230,0)}}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand">
+      <div class="mark">T</div>
+      <div>
+        <h1>TECNO<span>CONTROL</span> · CENTRO DE SURTIDO</h1>
+        <div class="sub">Almacén Fuerza Aérea · Chihuahua</div>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <div class="chips">
+      <div class="chip"><span class="dot" style="background:var(--azul)"></span><span class="n" id="cActivos">0</span> activos</div>
+      <div class="chip"><span class="dot" style="background:var(--amarillo)"></span><span class="n" id="cPorVencer">0</span> por vencer</div>
+      <div class="chip"><span class="dot" style="background:var(--rojo)"></span><span class="n" id="cRetraso">0</span> retrasados</div>
+    </div>
+    <div class="clock"><span id="clk" class="mono">--:--:--</span><small>EN VIVO</small></div>
+  </header>
+
+  <div class="board">
+    <section class="hero" id="hero">
+      <div class="eyebrow">SIGUIENTE A SURTIR</div>
+      <div class="folio num" id="hFolio">----</div>
+      <div class="client" id="hClient">—</div>
+      <div class="metaRow">
+        <div class="meta">
+          <span class="k"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>ESPERANDO</span>
+          <span class="v timer num mono" id="hTimer">00:00</span>
+        </div>
+        <div class="meta">
+          <span class="k"><svg class="i" viewBox="0 0 24 24"><path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="7" r="4"/></svg>VENDEDOR</span>
+          <span class="v" id="hVend">—</span>
+        </div>
+        <div class="meta">
+          <span class="k"><svg class="i" viewBox="0 0 24 24"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/></svg>PIEZAS</span>
+          <span class="v" id="hPieces">—</span>
+        </div>
+        <div class="meta"><span class="k">PRIORIDAD</span><span class="prio" id="hPrio">—</span></div>
+        <div class="meta" style="margin-left:auto;align-items:flex-end"><span class="badge" id="hState">—</span></div>
+      </div>
+    </section>
+
+    <section class="queue">
+      <div class="qh"><h2>COLA DE SURTIDO</h2><span class="count" id="qCount">—</span></div>
+      <div class="qlist" id="qlist"></div>
+    </section>
+  </div>
+
+  <footer id="legend"></footer>
+</div>
+
+<div class="banner" id="banner">
+  <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21a2 2 0 0 0 4 0"/></svg>
+  <span class="bfolio num" id="bFolio">----</span>
+  <span class="btxt">NUEVO PEDIDO · <b id="bClient">—</b> · Vendedor <b id="bVend">—</b></span>
+</div>
+
+<script>
+/* ===== CONFIGURACIÓN (igual que config/surtido en Firestore) ===== */
+const SLA = { urgente:15, muy_alta:20, alta:30, normal:60, baja:120 };
+const SEMAFORO = { amarillo:20, naranja:30 };
+const COLORS = { azul:'#1473E6', verde:'#12A150', amarillo:'#D99000',
+                 naranja:'#F26B21', rojo:'#E23B3B', morado:'#8B4FD6', gris:'#7C8CA1' };
+const GRAD   = { azul:['#0B57C7','#3B93FF'], verde:['#0E8A45','#2ED47E'], amarillo:['#B8790A','#F0B429'],
+                 naranja:['#D9531A','#FF8A4C'], rojo:['#C62B2B','#FF6B6B'], morado:['#6E33C0','#B07BEA'],
+                 gris:['#5C6B7E','#93A3B5'] };
+const PRIO_COLOR = { urgente:COLORS.rojo, muy_alta:COLORS.naranja, alta:COLORS.amarillo, normal:COLORS.azul, baja:COLORS.gris };
+const PRIO_RANK  = { urgente:5, muy_alta:4, alta:3, normal:2, baja:1 };
+const now = () => Date.now();
+const minsAgo = m => now() - m*60000;
+
+/* ===== DATOS SEMILLA (incluye el pedido real del PDF: 7599 Los Cachorros) ===== */
+let pedidos = [
+  { folio:'7599', cliente:'COMBUSTIBLES LOS CACHORROS', vendedor:'Juan Pérez', prioridad:'alta', estado:'pendiente', piezas:14, lineas:2, createdAt:minsAgo(4.6) },
+  { folio:'7600', cliente:'ESTACIÓN NORTE', vendedor:'M. De la O', prioridad:'normal', estado:'en_preparacion', piezas:6, lineas:3, createdAt:minsAgo(8.7) },
+  { folio:'7595', cliente:'SERVICIO EXPRESS', vendedor:'F. Coordinadora', prioridad:'alta', estado:'en_preparacion', piezas:9, lineas:4, createdAt:minsAgo(18.8) },
+  { folio:'7588', cliente:'GASOLINERA XYZ', vendedor:'C. Acosta', prioridad:'urgente', estado:'en_preparacion', piezas:22, lineas:7, createdAt:minsAgo(35.2) },
+  { folio:'7602', cliente:'PARADOR LA SIERRA', vendedor:'P. Pinedo', prioridad:'muy_alta', estado:'esperando_autorizacion', piezas:3, lineas:1, createdAt:minsAgo(12.0) },
+];
+
+/* ===== LÓGICA DE COLOR: estado + semáforo de tiempo ===== */
+function effColor(p){
+  if(p.estado==='esperando_autorizacion') return {k:'morado', label:'ESPERANDO AUT.'};
+  const mins=(now()-p.createdAt)/60000, sla=SLA[p.prioridad]||30;
+  if(mins>sla)               return {k:'rojo',    label:'RETRASADO'};
+  if(mins>SEMAFORO.naranja)  return {k:'naranja', label:'CERCA DEL LÍMITE'};
+  if(mins>SEMAFORO.amarillo) return {k:'amarillo',label:'POR VENCER SLA'};
+  if(p.estado==='en_preparacion') return {k:'verde', label:'EN PREPARACIÓN'};
+  return {k:'azul', label:'NUEVO · PENDIENTE'};
+}
+const fmt = ms => { const s=Math.max(0,Math.floor(ms/1000)); return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0'); };
+
+function ordered(){
+  return [...pedidos].sort((a,b)=>(PRIO_RANK[b.prioridad]-PRIO_RANK[a.prioridad])||(a.createdAt-b.createdAt));
+}
+
+function render(){
+  const list=ordered(), hero=list[0];
+  if(hero){
+    const ec=effColor(hero), c=COLORS[ec.k], g=GRAD[ec.k];
+    hFolio.textContent=hero.folio; hClient.textContent=hero.cliente; hVend.textContent=hero.vendedor;
+    hPieces.textContent=hero.piezas+' pzas · '+hero.lineas+' líneas';
+    hTimer.textContent=fmt(now()-hero.createdAt);
+    hPrio.textContent=hero.prioridad.replace('_',' ').toUpperCase();
+    hState.textContent=ec.label;
+    document.getElementById('hero').style.background='linear-gradient(115deg,'+g[0]+','+g[1]+')';
+  }
+  const rest=list.slice(1);
+  qCount.textContent=rest.length+' en cola';
+  qlist.innerHTML=rest.map(p=>{
+    const ec=effColor(p), c=COLORS[ec.k];
+    return `<div class="card">
+      <div class="bar" style="background:${c}"></div>
+      <div class="cfolio num" style="color:${c}">${p.folio}</div>
+      <div class="cmid">
+        <div class="cclient">${p.cliente}</div>
+        <div class="cstate"><span class="sdot" style="background:${c}"></span>${ec.label} · ${p.vendedor}</div>
+      </div>
+      <div class="cright">
+        <div class="ctimer mono" style="color:${c}">${fmt(now()-p.createdAt)}</div>
+        <div class="cpieces">${p.piezas} pzas</div>
+      </div>
+    </div>`;
+  }).join('');
+  const active=pedidos.filter(p=>p.estado!=='finalizado');
+  cActivos.textContent=active.length;
+  cPorVencer.textContent=active.filter(p=>['amarillo','naranja'].includes(effColor(p).k)).length;
+  cRetraso.textContent=active.filter(p=>effColor(p).k==='rojo').length;
+}
+
+function tick(){ clk.textContent=new Date().toLocaleTimeString('es-MX',{hour12:false}); render(); }
+
+/* Sonido de alerta (Web Audio) — suena una vez al llegar pedido */
+function beep(){
+  try{
+    const ac=new (window.AudioContext||window.webkitAudioContext)();
+    [880,1320].forEach((f,i)=>{const o=ac.createOscillator(),g=ac.createGain();o.type='sine';o.frequency.value=f;
+      o.connect(g);g.connect(ac.destination);const t=ac.currentTime+i*0.16;
+      g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(0.2,t+0.02);g.gain.exponentialRampToValueAtTime(0.001,t+0.15);
+      o.start(t);o.stop(t+0.16);});
+  }catch(e){}
+}
+
+/* Llegada de pedido nuevo (esto lo hará onSnapshot en producción) */
+function nuevoPedido(p){
+  pedidos.push(p); render();
+  bFolio.textContent=p.folio; bClient.textContent=p.cliente; bVend.textContent=p.vendedor;
+  banner.classList.add('show'); beep();
+  const first=qlist.querySelector('.card'); if(first) first.classList.add('flash');
+  setTimeout(()=>banner.classList.remove('show'),4200);
+}
+
+legend.innerHTML=[['Nuevo','azul'],['En preparación','verde'],['Por vencer SLA','amarillo'],['Cerca del límite','naranja'],['Retrasado','rojo'],['Esperando aut.','morado']]
+  .map(([t,k])=>`<span class="l"><span class="d" style="background:${COLORS[k]}"></span>${t}</span>`).join('');
+
+tick(); setInterval(tick,1000);
+setTimeout(()=>nuevoPedido({folio:'7603',cliente:'ESTACIÓN LA PILA',vendedor:'Juan Pérez',prioridad:'urgente',estado:'pendiente',piezas:8,lineas:3,createdAt:now()}),6000);
+</script>
+</body>
+</html>
