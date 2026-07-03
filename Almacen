@@ -1,0 +1,504 @@
+/* ============================================================================
+   almacen.js — Módulo de Almacén (Portal Operativo Tecnocontrol)
+   ----------------------------------------------------------------------------
+   · Crea solicitudes de surtido desde una cotización existente.
+   · Panel de control con ROLES: Almacén mueve los estados del pedido.
+   · Escribe en la colección "surtidos" (la misma que lee la TV pedidos-almacen.html).
+   · Tiempo real con onSnapshot. Bitácora (historial) en cada cambio de estado.
+   · Reutiliza: window.db, window.auth, window.esAdmin(), window.nombreUsuario().
+   ----------------------------------------------------------------------------
+   INTEGRACIÓN (3 pasos, ver notas al final del chat):
+   1) <script src="almacen.js"></script>  al final de index.html
+   2) Un contenedor:  <div id="vista-almacen"></div>
+   3) Un botón de nav que llame:  window.abrirAlmacen()
+   ============================================================================ */
+
+(function () {
+  'use strict';
+
+  /* ======================= CONFIGURACIÓN ======================= */
+
+  // Almacenistas: quienes PUEDEN mover el estado de los pedidos.
+  // Agrega aquí los correos del personal de almacén (varias personas).
+  const ALMACEN_EMAILS = [
+    // 'almacen1@tecnocontrol.com.mx',
+    // 'almacen2@tecnocontrol.com.mx',
+  ];
+
+  // SLA objetivo por prioridad (minutos). Se guarda en el pedido para la TV.
+  const SLA_MIN = { urgente: 15, muy_alta: 20, alta: 30, normal: 60, baja: 120 };
+
+  // Estados del flujo y sus etiquetas.
+  const ESTADOS = {
+    pendiente:              { label: 'Pendiente',            color: '#2563eb' },
+    en_preparacion:         { label: 'En preparación',       color: '#059669' },
+    esperando_producto:     { label: 'Esperando producto',   color: '#d97706' },
+    listo:                  { label: 'Listo',                color: '#0891b2' },
+    entregado:              { label: 'Entregado',            color: '#7c3aed' },
+    finalizado:             { label: 'Finalizado',           color: '#64748b' },
+    cancelado:              { label: 'Cancelado',            color: '#dc2626' }
+  };
+
+  // Transiciones permitidas (de -> [a...]) para el personal de almacén.
+  const TRANSICIONES = {
+    pendiente:          ['en_preparacion', 'cancelado'],
+    en_preparacion:     ['esperando_producto', 'listo', 'cancelado'],
+    esperando_producto: ['en_preparacion', 'cancelado'],
+    listo:              ['entregado'],
+    entregado:          ['finalizado'],
+    finalizado:         [],
+    cancelado:          []
+  };
+
+  const COL = 'surtidos';
+
+  /* ======================= FIREBASE (import perezoso) ======================= */
+
+  let FS = null;
+  async function fs() {
+    if (FS) return FS;
+    FS = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+    return FS;
+  }
+  function db() { return window.db; }
+
+  /* ======================= ROLES ======================= */
+
+  function emailActual() {
+    const u = window.auth && window.auth.currentUser;
+    return ((u && u.email) || '').toLowerCase().trim();
+  }
+  function nombreActual() {
+    const e = emailActual();
+    return (window.nombreUsuario ? window.nombreUsuario(e) : e.split('@')[0]) || e;
+  }
+  function esAdmin() {
+    const e = emailActual();
+    if (window.esAdmin) return window.esAdmin(e);
+    return Array.isArray(window.ADMIN_EMAILS) && window.ADMIN_EMAILS.includes(e);
+  }
+  // Puede mover estados: admin/director o almacenista.
+  function puedeControlar() {
+    return esAdmin() || ALMACEN_EMAILS.includes(emailActual());
+  }
+
+  /* ======================= ICONOS SVG ======================= */
+
+  const I = {
+    box:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/></svg>',
+    clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="14" height="14"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+    user:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="14" height="14"><path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="7" r="4"/></svg>',
+    plus:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="16" height="16"><path d="M12 5v14M5 12h14"/></svg>',
+    check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M20 6L9 17l-5-5"/></svg>',
+    hist:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="14" height="14"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>',
+    lock:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="13" height="13"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>'
+  };
+
+  /* ======================= ESTADO EN MEMORIA ======================= */
+
+  let surtidos = [];
+  let unsub = null;
+  let vistaActual = 'panel'; // 'panel' | 'crear'
+  let cotizacionesCache = null;
+
+  /* ======================= UTILIDADES ======================= */
+
+  function pedidoCorto(folio) {
+    const s = String(folio || '').replace(/\D/g, '').replace(/^0+/, '');
+    return s || String(folio || '—');
+  }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  }
+  function ms(ts) {
+    if (!ts) return Date.now();
+    if (typeof ts.toMillis === 'function') return ts.toMillis();
+    if (ts.seconds) return ts.seconds * 1000;
+    return new Date(ts).getTime() || Date.now();
+  }
+  function fmtTiempo(desde) {
+    const s = Math.max(0, Math.floor((Date.now() - desde) / 1000));
+    const m = Math.floor(s / 60);
+    return String(m).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+  }
+  function itemsDe(c) {
+    return c.items || c.carrito || c.productos || c.lineas || c.detalle || [];
+  }
+
+  /* ======================= CARGA / TIEMPO REAL ======================= */
+
+  async function suscribir() {
+    const F = await fs();
+    if (unsub) { unsub(); unsub = null; }
+    const q = F.query(F.collection(db(), COL), F.orderBy('createdAt', 'desc'));
+    unsub = F.onSnapshot(q, snap => {
+      surtidos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      if (vistaActual === 'panel') renderPanel();
+    }, err => {
+      console.error('[almacen] onSnapshot', err);
+      const cont = document.getElementById('alm-lista');
+      if (cont) cont.innerHTML = msgVacio('No se pudo conectar a la base. Revisa tu conexión.');
+    });
+  }
+
+  /* ======================= CREAR SOLICITUD (desde cotización) ======================= */
+
+  async function cargarCotizaciones() {
+    if (cotizacionesCache) return cotizacionesCache;
+    const F = await fs();
+    const snap = await F.getDocs(F.query(F.collection(db(), 'cotizaciones'), F.orderBy('creadoEn', 'desc')));
+    cotizacionesCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    return cotizacionesCache;
+  }
+
+  async function renderCrear() {
+    const cont = document.getElementById('alm-lista');
+    cont.innerHTML = '<div style="text-align:center;padding:40px;color:#94a3b8;font-size:13px;">Cargando cotizaciones…</div>';
+    let cots = [];
+    try { cots = await cargarCotizaciones(); }
+    catch (e) { cont.innerHTML = msgVacio('No se pudieron cargar las cotizaciones.'); return; }
+
+    cont.innerHTML = `
+      <div style="max-width:760px;margin:0 auto;">
+        <input id="alm-buscar-cot" placeholder="Buscar cotización por folio o cliente…"
+          style="width:100%;padding:12px 14px;border:1px solid #e2e8f0;border-radius:12px;font-size:14px;margin-bottom:14px;box-sizing:border-box;">
+        <div id="alm-cot-lista"></div>
+      </div>`;
+
+    const pintar = (filtro) => {
+      const q = (filtro || '').toLowerCase();
+      const lista = document.getElementById('alm-cot-lista');
+      const f = cots.filter(c =>
+        !q || (c.folio || '').toLowerCase().includes(q) || (c.cliente || '').toLowerCase().includes(q)
+      ).slice(0, 40);
+      if (!f.length) { lista.innerHTML = msgVacio('Sin resultados.'); return; }
+      lista.innerHTML = f.map(c => {
+        const its = itemsDe(c);
+        const piezas = its.reduce((s, it) => s + Number(it.cantidad || 1), 0);
+        return `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:14px 16px;margin-bottom:10px;display:flex;align-items:center;gap:14px;">
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:800;color:#2563eb;font-size:13px;">${esc(c.folio || 'S/F')}</div>
+            <div style="font-weight:700;color:#1e293b;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(c.cliente || 'Sin cliente')}</div>
+            <div style="color:#64748b;font-size:12px;margin-top:2px;">${its.length} productos · ${piezas} piezas</div>
+          </div>
+          <button data-cot="${esc(c.id)}" class="alm-crear-btn"
+            style="display:flex;align-items:center;gap:6px;padding:9px 16px;background:#2563eb;color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">
+            ${I.plus} Enviar a surtir</button>
+        </div>`;
+      }).join('');
+      lista.querySelectorAll('.alm-crear-btn').forEach(b => {
+        b.onclick = () => confirmarCrear(cots.find(x => x.id === b.dataset.cot));
+      });
+    };
+
+    document.getElementById('alm-buscar-cot').addEventListener('input', e => pintar(e.target.value));
+    pintar('');
+  }
+
+  function confirmarCrear(c) {
+    if (!c) return;
+    const its = itemsDe(c);
+    const productos = its.map(it => ({
+      clave: it.clave || it.codigo || it.sku || '',
+      descripcion: it.nombre || it.descripcion || it.sku || 'Producto',
+      cantidad: Number(it.cantidad || 1),
+      surtido: false
+    }));
+    const totalPiezas = productos.reduce((s, p) => s + p.cantidad, 0);
+
+    const filas = productos.map(p =>
+      `<tr><td style="padding:6px 8px;text-align:right;font-weight:700;">${p.cantidad}</td>
+       <td style="padding:6px 8px;color:#64748b;">${esc(p.clave)}</td>
+       <td style="padding:6px 8px;">${esc(p.descripcion)}</td></tr>`).join('');
+
+    const html = `
+      <div style="max-width:640px;margin:0 auto;">
+        <button id="alm-volver" style="background:none;border:none;color:#2563eb;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:12px;">‹ Volver</button>
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:20px;">
+          <div style="font-size:12px;letter-spacing:1px;color:#94a3b8;font-weight:700;">REVISAR Y CONFIRMAR</div>
+          <div style="font-size:22px;font-weight:800;color:#1e293b;margin:4px 0 2px;">${esc(c.cliente || 'Sin cliente')}</div>
+          <div style="color:#2563eb;font-weight:700;font-size:13px;">Cotización ${esc(c.folio || 'S/F')}</div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0;">
+            <label style="font-size:12px;color:#64748b;font-weight:700;">Prioridad
+              <select id="alm-prioridad" style="width:100%;margin-top:4px;padding:9px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;">
+                <option value="normal">Normal</option><option value="alta">Alta</option>
+                <option value="muy_alta">Muy alta</option><option value="urgente">Urgente</option>
+                <option value="baja">Baja</option>
+              </select></label>
+            <label style="font-size:12px;color:#64748b;font-weight:700;">Almacén
+              <input id="alm-almacen" value="FUERZA AEREA" style="width:100%;margin-top:4px;padding:9px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;box-sizing:border-box;"></label>
+          </div>
+          <label style="font-size:12px;color:#64748b;font-weight:700;">Observaciones / lugar de entrega
+            <textarea id="alm-obs" rows="2" style="width:100%;margin-top:4px;padding:9px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;box-sizing:border-box;resize:vertical;"></textarea></label>
+
+          <table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:14px;">
+            <thead><tr style="background:#f8fafc;color:#64748b;font-size:11px;">
+              <th style="padding:6px 8px;text-align:right;">CANT</th><th style="padding:6px 8px;text-align:left;">CLAVE</th><th style="padding:6px 8px;text-align:left;">DESCRIPCIÓN</th></tr></thead>
+            <tbody>${filas}</tbody>
+          </table>
+          <div style="color:#64748b;font-size:12px;margin-top:8px;font-weight:600;">${productos.length} líneas · ${totalPiezas} piezas</div>
+
+          <div style="display:flex;gap:10px;margin-top:18px;">
+            <button id="alm-cancelar" style="flex:1;padding:11px;background:#f1f5f9;color:#475569;border:none;border-radius:10px;font-weight:700;cursor:pointer;">Cancelar</button>
+            <button id="alm-confirmar" style="flex:2;padding:11px;background:#2563eb;color:#fff;border:none;border-radius:10px;font-weight:800;cursor:pointer;">Confirmar y enviar a surtir</button>
+          </div>
+        </div>
+      </div>`;
+
+    document.getElementById('alm-lista').innerHTML = html;
+    document.getElementById('alm-volver').onclick = renderCrear;
+    document.getElementById('alm-cancelar').onclick = renderCrear;
+    document.getElementById('alm-confirmar').onclick = async (ev) => {
+      ev.target.disabled = true; ev.target.textContent = 'Guardando…';
+      const prioridad = document.getElementById('alm-prioridad').value;
+      const F = await fs();
+      const doc = {
+        folio: c.folio || '',
+        pedidoCorto: pedidoCorto(c.folio),
+        cotizacionId: c.id,
+        cotizacionFolio: c.folio || '',
+        cliente: { nombre: c.cliente || 'Sin cliente' },
+        vendedor: { email: c.vendedor || '', nombre: c.vendedor ? (window.nombreUsuario ? window.nombreUsuario(c.vendedor) : c.vendedor.split('@')[0]) : '—' },
+        sucursal: 'Chihuahua',
+        almacen: (document.getElementById('alm-almacen').value || 'FUERZA AEREA').trim(),
+        prioridad: prioridad,
+        estado: 'pendiente',
+        productos: productos,
+        totalLineas: productos.length,
+        totalPiezas: totalPiezas,
+        observaciones: (document.getElementById('alm-obs').value || '').trim(),
+        origen: 'cotizacion',
+        slaMinutos: SLA_MIN[prioridad] || 30,
+        createdAt: F.serverTimestamp(),
+        startedAt: null, readyAt: null, deliveredAt: null, closedAt: null,
+        creadoPor: { email: emailActual(), nombre: nombreActual() }
+      };
+      try {
+        const ref = await F.addDoc(F.collection(db(), COL), doc);
+        await F.addDoc(F.collection(db(), COL, ref.id, 'historial'), {
+          estadoNuevo: 'pendiente', usuario: { email: emailActual(), nombre: nombreActual() },
+          ts: F.serverTimestamp(), observacion: 'Solicitud creada'
+        });
+        if (window.mostrarNotif) window.mostrarNotif('Pedido enviado a surtir', `${doc.cliente.nombre} · ${totalPiezas} piezas`, 'tc-confirm');
+        cambiarVista('panel');
+      } catch (e) {
+        console.error('[almacen] crear', e);
+        ev.target.disabled = false; ev.target.textContent = 'Confirmar y enviar a surtir';
+        alert('No se pudo guardar. Revisa la conexión e inténtalo de nuevo.');
+      }
+    };
+  }
+
+  /* ======================= PANEL DE CONTROL (Almacén) ======================= */
+
+  function renderPanel() {
+    const cont = document.getElementById('alm-lista');
+    if (!cont) return;
+    const activos = surtidos.filter(s => s.estado !== 'finalizado' && s.estado !== 'cancelado');
+    const puede = puedeControlar();
+
+    if (!activos.length) {
+      cont.innerHTML = msgVacio(puede
+        ? 'No hay pedidos activos. Crea uno desde “Nueva solicitud”.'
+        : 'No hay pedidos activos en este momento.');
+      return;
+    }
+
+    // Orden: por prioridad y antigüedad.
+    const rank = { urgente: 5, muy_alta: 4, alta: 3, normal: 2, baja: 1 };
+    activos.sort((a, b) => (rank[b.prioridad] || 2) - (rank[a.prioridad] || 2) || ms(a.createdAt) - ms(b.createdAt));
+
+    cont.innerHTML = activos.map(s => tarjeta(s, puede)).join('');
+    // Enlazar acciones
+    cont.querySelectorAll('[data-accion]').forEach(btn => {
+      btn.onclick = () => accion(btn.dataset.accion, btn.dataset.id, btn.dataset.destino);
+    });
+    cont.querySelectorAll('[data-check]').forEach(chk => {
+      chk.onchange = () => toggleProducto(chk.dataset.id, Number(chk.dataset.idx), chk.checked);
+    });
+    cont.querySelectorAll('[data-hist]').forEach(b => { b.onclick = () => verHistorial(b.dataset.hist); });
+  }
+
+  function tarjeta(s, puede) {
+    const est = ESTADOS[s.estado] || ESTADOS.pendiente;
+    const t0 = ms(s.createdAt);
+    const productos = s.productos || [];
+    const filas = productos.map((p, i) =>
+      `<label style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:13px;cursor:${puede ? 'pointer' : 'default'};${p.surtido ? 'color:#94a3b8;text-decoration:line-through;' : 'color:#334155;'}">
+        <input type="checkbox" data-check data-id="${esc(s.id)}" data-idx="${i}" ${p.surtido ? 'checked' : ''} ${puede ? '' : 'disabled'} style="width:16px;height:16px;">
+        <b style="min-width:34px;text-align:right;">${p.cantidad}</b>
+        <span style="color:#94a3b8;font-size:11px;min-width:56px;">${esc(p.clave)}</span>
+        <span style="flex:1;">${esc(p.descripcion)}</span>
+      </label>`).join('');
+
+    // Botones de transición según rol
+    let acciones = '';
+    if (puede) {
+      const destinos = TRANSICIONES[s.estado] || [];
+      acciones = destinos.map(d => {
+        const ed = ESTADOS[d];
+        const cancel = d === 'cancelado';
+        return `<button data-accion="mover" data-id="${esc(s.id)}" data-destino="${d}"
+          style="padding:9px 14px;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;color:#fff;background:${ed.color};${cancel ? 'background:#fff;color:#dc2626;border:1px solid #fecaca;' : ''}">
+          ${esc(cancel ? 'Cancelar' : '→ ' + ed.label)}</button>`;
+      }).join('');
+    } else {
+      acciones = `<span style="display:inline-flex;align-items:center;gap:6px;color:#94a3b8;font-size:12px;font-weight:600;">${I.lock} Solo Almacén cambia el estado</span>`;
+    }
+
+    return `<div style="background:#fff;border:1px solid #e2e8f0;border-left:5px solid ${est.color};border-radius:16px;padding:16px 18px;margin-bottom:14px;">
+      <div style="display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap;">
+        <div style="font-size:34px;font-weight:800;color:${est.color};line-height:1;min-width:80px;">${esc(s.pedidoCorto || pedidoCorto(s.folio))}</div>
+        <div style="flex:1;min-width:200px;">
+          <div style="font-size:17px;font-weight:800;color:#1e293b;">${esc(s.cliente && s.cliente.nombre || 'Sin cliente')}</div>
+          <div style="display:flex;gap:14px;flex-wrap:wrap;color:#64748b;font-size:12px;font-weight:600;margin-top:3px;">
+            <span style="display:inline-flex;align-items:center;gap:4px;color:${est.color};">${I.box} ${esc(est.label)}</span>
+            <span style="display:inline-flex;align-items:center;gap:4px;">${I.clock} ${fmtTiempo(t0)}</span>
+            <span style="display:inline-flex;align-items:center;gap:4px;">${I.user} ${esc(s.vendedor && s.vendedor.nombre || '—')}</span>
+            <span>${(s.totalLineas || productos.length)} líneas · ${(s.totalPiezas || 0)} pzas</span>
+          </div>
+        </div>
+        <span style="padding:4px 10px;border-radius:7px;font-size:11px;font-weight:800;letter-spacing:.5px;background:${est.color}18;color:${est.color};">${esc((s.prioridad || 'normal').replace('_', ' ').toUpperCase())}</span>
+      </div>
+
+      <div style="margin:12px 0;border-top:1px solid #f1f5f9;border-bottom:1px solid #f1f5f9;padding:6px 0;">${filas || '<div style="color:#94a3b8;font-size:12px;padding:6px 0;">Sin productos.</div>'}</div>
+
+      ${s.observaciones ? `<div style="font-size:12px;color:#64748b;margin-bottom:10px;"><b>Obs:</b> ${esc(s.observaciones)}</div>` : ''}
+
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        ${acciones}
+        <button data-hist="${esc(s.id)}" style="margin-left:auto;background:none;border:none;color:#94a3b8;font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px;">${I.hist} Historial</button>
+      </div>
+    </div>`;
+  }
+
+  /* ======================= ACCIONES ======================= */
+
+  async function accion(tipo, id, destino) {
+    if (tipo !== 'mover') return;
+    if (!puedeControlar()) { alert('No tienes permiso para cambiar el estado.'); return; }
+    const s = surtidos.find(x => x.id === id);
+    if (!s) return;
+
+    let motivo = '';
+    if (destino === 'cancelado') {
+      motivo = prompt('Motivo de la cancelación:');
+      if (motivo == null) return; // canceló el prompt
+    }
+
+    const F = await fs();
+    const patch = { estado: destino };
+    const now = F.serverTimestamp();
+    if (destino === 'en_preparacion' && !s.startedAt) { patch.startedAt = now; patch.surtidoPor = { email: emailActual(), nombre: nombreActual() }; }
+    if (destino === 'listo')      patch.readyAt = now;
+    if (destino === 'entregado')  { patch.deliveredAt = now; patch.entregadoPor = { email: emailActual(), nombre: nombreActual() }; }
+    if (destino === 'finalizado') { patch.closedAt = now; patch.cerradoPor = { email: emailActual(), nombre: nombreActual() }; }
+
+    try {
+      await F.updateDoc(F.doc(db(), COL, id), patch);
+      await F.addDoc(F.collection(db(), COL, id, 'historial'), {
+        estadoAnterior: s.estado, estadoNuevo: destino,
+        usuario: { email: emailActual(), nombre: nombreActual() },
+        ts: now, observacion: motivo || ''
+      });
+    } catch (e) {
+      console.error('[almacen] mover', e);
+      alert('No se pudo actualizar el estado. Revisa la conexión.');
+    }
+  }
+
+  async function toggleProducto(id, idx, checked) {
+    if (!puedeControlar()) return;
+    const s = surtidos.find(x => x.id === id);
+    if (!s || !s.productos) return;
+    const productos = s.productos.map((p, i) => i === idx ? { ...p, surtido: checked } : p);
+    const F = await fs();
+    try { await F.updateDoc(F.doc(db(), COL, id), { productos: productos }); }
+    catch (e) { console.error('[almacen] toggleProducto', e); }
+  }
+
+  async function verHistorial(id) {
+    const F = await fs();
+    let eventos = [];
+    try {
+      const snap = await F.getDocs(F.query(F.collection(db(), COL, id, 'historial'), F.orderBy('ts', 'asc')));
+      eventos = snap.docs.map(d => d.data());
+    } catch (e) { console.error('[almacen] historial', e); }
+
+    const filas = eventos.map(ev => {
+      const ed = ESTADOS[ev.estadoNuevo] || {};
+      const f = ev.ts ? new Date(ms(ev.ts)).toLocaleString('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+      return `<div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid #f1f5f9;">
+        <span style="width:9px;height:9px;border-radius:50%;background:${ed.color || '#94a3b8'};margin-top:5px;flex-shrink:0;"></span>
+        <div style="flex:1;">
+          <div style="font-weight:700;color:#1e293b;font-size:13px;">${esc((ed.label || ev.estadoNuevo))}</div>
+          <div style="color:#64748b;font-size:12px;">${esc(ev.usuario && ev.usuario.nombre || '—')} · ${f}${ev.observacion ? ' · ' + esc(ev.observacion) : ''}</div>
+        </div>
+      </div>`;
+    }).join('') || '<div style="color:#94a3b8;font-size:13px;padding:10px 0;">Sin eventos.</div>';
+
+    modal(`<div style="font-size:16px;font-weight:800;color:#1e293b;margin-bottom:10px;">Historial del pedido</div>${filas}`);
+  }
+
+  /* ======================= UI BASE ======================= */
+
+  function msgVacio(txt) {
+    return `<div style="text-align:center;padding:50px 20px;color:#94a3b8;font-size:14px;">${esc(txt)}</div>`;
+  }
+
+  function modal(html) {
+    const bg = document.createElement('div');
+    bg.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+    bg.innerHTML = `<div style="background:#fff;border-radius:16px;max-width:520px;width:100%;max-height:80vh;overflow:auto;padding:22px;">
+      ${html}
+      <button style="margin-top:16px;width:100%;padding:11px;background:#f1f5f9;border:none;border-radius:10px;font-weight:700;color:#475569;cursor:pointer;">Cerrar</button></div>`;
+    bg.querySelector('button').onclick = () => bg.remove();
+    bg.onclick = e => { if (e.target === bg) bg.remove(); };
+    document.body.appendChild(bg);
+  }
+
+  function cambiarVista(v) {
+    vistaActual = v;
+    document.querySelectorAll('.alm-tab').forEach(t => {
+      const on = t.dataset.vista === v;
+      t.style.background = on ? '#2563eb' : '#f1f5f9';
+      t.style.color = on ? '#fff' : '#475569';
+    });
+    if (v === 'panel') renderPanel(); else renderCrear();
+  }
+
+  /* ======================= ENTRADA PRINCIPAL ======================= */
+
+  window.abrirAlmacen = async function (containerId) {
+    const cont = document.getElementById(containerId || 'vista-almacen');
+    if (!cont) { console.error('[almacen] no existe el contenedor #vista-almacen'); return; }
+
+    const puede = puedeControlar();
+    cont.innerHTML = `
+      <div style="max-width:900px;margin:0 auto;padding:16px;">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+          <div>
+            <div style="font-size:20px;font-weight:800;color:#1e293b;">Almacén · Pedidos</div>
+            <div style="font-size:12px;color:#94a3b8;">${puede ? 'Tienes permiso para mover el estado de los pedidos.' : 'Vista de solo lectura — Almacén controla el proceso.'}</div>
+          </div>
+          <div style="margin-left:auto;display:flex;gap:8px;">
+            <button class="alm-tab" data-vista="panel" style="padding:9px 16px;border:none;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;">Panel de control</button>
+            <button class="alm-tab" data-vista="crear" style="padding:9px 16px;border:none;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;">Nueva solicitud</button>
+          </div>
+        </div>
+        <div id="alm-lista"></div>
+      </div>`;
+
+    cont.querySelectorAll('.alm-tab').forEach(t => { t.onclick = () => cambiarVista(t.dataset.vista); });
+    cambiarVista('panel');
+    await suscribir();
+
+    // Cronómetros vivos en el panel
+    if (!window.__almTimer) {
+      window.__almTimer = setInterval(() => { if (vistaActual === 'panel') renderPanel(); }, 1000);
+    }
+  };
+
+  console.log('[almacen] módulo cargado. Llama window.abrirAlmacen("vista-almacen")');
+})();
