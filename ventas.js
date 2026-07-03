@@ -2744,15 +2744,9 @@ window.guardarDatoRHInline = async () => {
                     // Vacantes y actas se muestran por MES (no por semana)
                     const esMensual = tipo === 'vacante' || tipo === 'acta';
                     if(esMensual){
-                        if(matchMes || matchFecha) semData[arrayKey].push({id: d.id, ...data});
+                        if(matchMes || matchFecha){ semData[arrayKey].push({id: d.id, ...data}); matched++; }
                     } else {
-                        const esMensual2 = tipo === 'vacante' || tipo === 'acta';
-                    if(esMensual2){
-                        if(matchMes || matchFecha) semData[tipo] ? semData[tipo].push({id:d.id,...data}) : null;
-                    } else {
-                        if(matchKey || matchFecha || matchCreado || matchMes) semData[tipo] ? semData[tipo].push({id:d.id,...data}) : null;
-                    }
-                        matched++;
+                        if(matchKey || matchFecha || matchCreado || matchMes){ semData[arrayKey].push({id: d.id, ...data}); matched++; }
                     }
                 });
 
