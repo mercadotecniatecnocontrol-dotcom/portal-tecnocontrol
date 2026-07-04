@@ -24,6 +24,7 @@ const FL_ROLES = {
     'm.delao@tecnocontrol.com.mx',
     'p.pinedo@tecnocontrol.com.mx',
     'fatima@tecnocontrol.com.mx',
+    'nicolas@tecnocontrol.com.mx',
   ]
 };
 
