@@ -1010,6 +1010,7 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
         <button class="sitem" onclick="navegar('cal360',this)"><div class="sitem-left"><span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span> Calendario 360</div></button>
         <button class="sitem" onclick="navegar('nueva',this)"><div class="sitem-left"><span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg></span> Asignar Tarea</div></button>
         <button class="sitem" id="btn-ejecutivo" style="display:none;" onclick="navegar('ejecutivo',this)"><div class="sitem-left"><span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span> Vista Ejecutiva</div></button>
+        <button class="sitem" id="btn-almacen" onclick="irAlmacen(this)"><div class="sitem-left"><span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 8.35V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8.35"/><path d="M2 8.35 12 2l10 6.35"/><path d="M6 22V12h12v10"/></svg></span> Almacén · Surtido</div></button>
         <div class="nav-label">Áreas</div>
         <div id="nav-dept"></div>
         <div id="push-status-bar"></div>
@@ -1035,6 +1036,18 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
                 <div id="dash-cards" style="display:contents;"></div>
                 <div class="dept-list-card"><div class="dept-list-title">Ranking de Áreas</div><div id="dept-list-items"></div></div>
             </div>
+        </div>
+
+        <!-- ALMACÉN · SURTIDO -->
+        <div class="section" id="sec-almacen">
+            <div class="page-header">
+                <div><div class="page-title">Almacén · Surtido de Pedidos</div><div class="page-date">Solicitudes de surtido en vivo · colección <b>surtidos</b></div></div>
+                <button class="mkt-add-btn" onclick="if(window.abrirSurtidoPDF){abrirSurtidoPDF();}else{(window.mostrarPush?mostrarPush('📄 PDF','Módulo cargando, intenta en un momento','⏳'):alert('Módulo PDF cargando, intenta de nuevo en un momento'));}" style="background:linear-gradient(135deg,#0891b2,#0e7490);display:inline-flex;align-items:center;gap:7px;">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    Subir pedido (PDF · formato CHH)
+                </button>
+            </div>
+            <div id="vista-almacen"></div>
         </div>
 
         <!-- REPORTES -->
@@ -3148,6 +3161,11 @@ function nombreUsuario(email){
     if(!email) return '—';
     return NOMBRE_MAP[email.toLowerCase().trim()] || email.split('@')[0];
 }
+// ── Globals para módulos externos (almacen.js, almacen-pdf.js) ──
+window.nombreUsuario = nombreUsuario;
+window.ADMIN_EMAILS  = ADMIN_EMAILS;
+window.NOMBRE_MAP    = NOMBRE_MAP;
+if(!window.esAdmin) window.esAdmin = esAdminTotal; // alias de compatibilidad
 
 // ── Usuarios disponibles para asignar tareas (por área) ──────
 const EMPLEADOS_TECNOCONTROL = ['ACEVES MOLINA IVAN ARGENIS', 'ACOSTA CHAVIRA CARLOS', 'ACOSTA CONTRERAS CRISTINA JUDITH', 'BARRAZA LUYA SAUL ISMAEL', 'CALIXTO SANCHEZ RAFAEL', 'CAMPOS GOMEZ ADA JAQUELINE', 'CARMONA LAGUNAS SERGIO', 'CASTRO MUÑOZ SAUL', 'CHACON TERRAZAS LUCERO', 'CHAVEZ ALVAREZ RUTH YADIRA', 'CHAVEZ BARRAZA OSCAR IVAN', 'CHAVEZ CHAVEZ IVAN', 'CONTRERAS MORALES ELVA NIDIA', 'CORONADO VALENZUELA SOCORRO ANNET', 'DE LA CRUZ EMILIO JULIO CESAR', 'DE LA O MAESE MARTIN', 'DURSTEWITZ MAESE GUILLERMO', 'ENRIQUEZ GALLARDO JORGE ALBERTO', 'ESCALANTE JARAMILLO ANA KAREN', 'ESTRADA GOMEZ ALAN ALBERTO', 'GARCIA LEDEZMA JESUS ALVARO', 'GARCIA MONTEMAYOR VERONICA JANETH', 'GONZALEZ BABONOYABA RICARDO ANTONIO', 'GONZALEZ DELGADO ERICKA IDALY', 'GUERRERO GOMEZ JORGE', 'GUTIERREZ ALVARADO NAYRA DIDI', 'GUTIERREZ VILLARREAL DENISSE', 'GUZMAN MORALES FLOR IDALIA', 'GUZMAN NEAVE KENIA YADIRA', 'HERNANDEZ PEREZ RUBEN ALBERTO', 'HERNANDEZ PRIETO JOSUE', 'HERNANDEZ RIOS JESUS RAMON', 'LEAL MARTINEZ ROQUE MANUEL', 'LOPEZ AVILA SANDRA LUCERO', 'LOPEZ DELGADO LUIS HUMBERTO', 'LUNA ESPINOZA JAIME ROEL', 'MEDINA CONTRERAS GIOVANNI ISRAEL', 'MENDOZA BECERRA SERGIO', 'MINJAREZ OCHOA ALBERTO ALAN', 'MONTELLANO PASILLAS MIGUEL ANGEL', 'MORALES CRUZ GABRIEL GAEL', 'MORALES MENDOZA TOMAS', 'MORENO MOLINA REYES', 'MORIEL SAENZ RICARDO SALVADOR', 'MUÑOZ AVILA ROBERTO', 'MUÑOZ BLANCO LIZETH CRISTINA', 'NUÑEZ ALATORRE ULISES', 'OROZCO MIRANDA ANA CRISTINA', 'PARRA BLANCO ZAIRA SIBEL', 'PEREZ GARCIA MARTHA ARACELY', 'PINEDO PALOMA', 'PORTILLO PORTILLO JOSE LUIS', 'PRECIADO GRIJALVA GLEN IVAN', 'REYES GONZALEZ PEDRO', 'RIOS SALCIDO JOON OMAIRA', 'RUIZ OLMEDO NORMA IDALY', 'SALCEDO GARDEA FILIBERTO ISAI', 'SALMON RIVAS FABRICIO ABUNDIO', 'SAUCEDO MARTINEZ IRVING ABRAHAM', 'SAUZAMEDA OCHOA FATIMA ANAHI', 'SEPULVEDA MENDOZA IVAN ROBERTO', 'SOTO GONZALEZ BENITO', 'TERRAZAS SERRANO FERNANDO', 'URIBE MAESE JORGE ALBERTO', 'VALENCIA BARRAZA JESUS BERSAIN', 'VALENCIA MEZA LUIS MIGUEL', 'VALENZUELA LOPEZ JOSE LUIS'];
@@ -6139,10 +6157,26 @@ window.apPrevImg2 = (input) => {
 </div>
 
 
+<script>
+// ── Bootstrap del módulo Almacén · Surtido ──
+// Muestra la sección #sec-almacen y deja que almacen.js pinte en #vista-almacen.
+window.irAlmacen = function(btn){
+    if(typeof navegar === 'function') navegar('almacen', btn);
+    if(window.abrirAlmacen){
+        try { window.abrirAlmacen('vista-almacen'); }
+        catch(e){ console.error('[almacen] abrirAlmacen falló:', e); }
+    } else {
+        const cont = document.getElementById('vista-almacen');
+        if(cont) cont.innerHTML = '<div style="padding:40px;text-align:center;color:#64748b;">Cargando módulo de Almacén…</div>';
+    }
+};
+</script>
 <script src="pagos.js"></script>
 <script src="ventas.js"></script>
 <script src="flotilla.js"></script>
 <script src="vehiculos.js"></script>
 <script src="rh.js"></script>
+<script src="almacen.js"></script>
+<script src="almacen-pdf.js"></script>
 </body>
 </html>
