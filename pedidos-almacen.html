@@ -145,19 +145,8 @@ const PRIO_RANK={urgente:5,muy_alta:4,alta:3,normal:2,baja:1};
 const NEXT={esperando_autorizacion:'pendiente',pendiente:'en_preparacion',en_preparacion:'listo',listo:'entregado',entregado:'finalizado'};
 const now=()=>Date.now(), minsAgo=m=>now()-m*60000;
 
-/* ===== DATOS SEMILLA (7599 con productos reales del PDF) ===== */
-let pedidos=[
-  {folio:'7599',cliente:'COMBUSTIBLES LOS CACHORROS',vendedor:'Juan Pérez',prioridad:'alta',estado:'pendiente',createdAt:minsAgo(4.6),
-   productos:[{clave:'70016',cant:12,desc:'FILTRO P/DISP. GILBARCO 30 MICRONES'},{clave:'06023',cant:2,desc:'INFLADOR CON CALIBRADOR DIAMOND'}]},
-  {folio:'7600',cliente:'ESTACIÓN NORTE',vendedor:'M. De la O',prioridad:'normal',estado:'en_preparacion',createdAt:minsAgo(8.7),
-   productos:[{clave:'50120',cant:2,desc:'MANGUERA DE DESPACHO 3/4'},{clave:'50210',cant:2,desc:'BOQUILLA AUTOMÁTICA'},{clave:'20033',cant:2,desc:'ABRAZADERA INOX'}]},
-  {folio:'7595',cliente:'SERVICIO EXPRESS',vendedor:'F. Coordinadora',prioridad:'alta',estado:'en_preparacion',createdAt:minsAgo(18.8),
-   productos:[{clave:'70016',cant:4,desc:'FILTRO P/DISP. GILBARCO 30 MICRONES'},{clave:'30044',cant:3,desc:'KIT O-RINGS DISPENSER'},{clave:'11220',cant:2,desc:'VÁLVULA CHECK'}]},
-  {folio:'7588',cliente:'GASOLINERA XYZ',vendedor:'C. Acosta',prioridad:'urgente',estado:'en_preparacion',createdAt:minsAgo(35.2),
-   productos:[{clave:'50210',cant:6,desc:'BOQUILLA AUTOMÁTICA'},{clave:'50120',cant:4,desc:'MANGUERA DE DESPACHO 3/4'},{clave:'70016',cant:8,desc:'FILTRO GILBARCO 30 MICRONES'},{clave:'20033',cant:4,desc:'ABRAZADERA INOX'}]},
-  {folio:'7602',cliente:'PARADOR LA SIERRA',vendedor:'P. Pinedo',prioridad:'muy_alta',estado:'esperando_autorizacion',createdAt:minsAgo(12.0),
-   productos:[{clave:'90011',cant:3,desc:'DISPLAY DIGITAL DISPENSER'}]},
-];
+/* ===== DATOS EN VIVO (poblado por onSnapshot de la colección `surtidos`) ===== */
+let pedidos=[];
 
 /* ===== COLOR: estado + semáforo de tiempo ===== */
 function effColor(p){
@@ -172,7 +161,7 @@ function effColor(p){
   return {k:'azul',label:'NUEVO · PENDIENTE'};
 }
 const fmt=ms=>{const s=Math.max(0,Math.floor(ms/1000));return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')};
-const piezas=p=>p.productos.reduce((a,x)=>a+x.cant,0);
+const piezas=p=>(Array.isArray(p.productos)?p.productos:[]).reduce((a,x)=>a+(Number(x.cant)||0),0);
 const ordered=()=>[...pedidos].sort((a,b)=>(PRIO_RANK[b.prioridad]-PRIO_RANK[a.prioridad])||(a.createdAt-b.createdAt));
 
 /* ===== RENDER: separa estructura (solo si cambia) de cronómetros (cada seg) ===== */
@@ -191,13 +180,13 @@ function buildDOM(list){
   if(hero){
     const ec=effColor(hero), g=GRAD[ec.k];
     document.getElementById('hero').style.background='linear-gradient(115deg,'+g[0]+','+g[1]+')';
-    document.getElementById('hero').setAttribute('onclick',"advance('"+hero.folio+"')");
-    const items=hero.productos.map(it=>`<div class="pitem"><div class="box"></div><div class="qty">${it.cant}</div><div><div class="desc">${it.desc}</div><div class="clave">Clave ${it.clave}</div></div></div>`).join('');
+    const hprods=Array.isArray(hero.productos)?hero.productos:[];
+    const items=hprods.map(it=>`<div class="pitem"><div class="box"></div><div class="qty">${it.cant}</div><div><div class="desc">${it.desc||''}</div><div class="clave">${it.clave?('Clave '+it.clave):''}</div></div></div>`).join('');
     document.getElementById('hero').innerHTML=`
       <div class="eyebrow">SIGUIENTE A SURTIR</div>
       <div class="htop">
         <div class="hid"><div class="folio num">${hero.folio}</div><div class="client">${hero.cliente}</div></div>
-        <div class="hpick"><div class="ph">POR SURTIR · ${hero.productos.length} PRODUCTOS · ${piezas(hero)} PIEZAS</div>${items}</div>
+        <div class="hpick"><div class="ph">POR SURTIR · ${hprods.length} PRODUCTOS · ${piezas(hero)} PIEZAS</div>${items}</div>
       </div>
       <div class="metaRow">
         <div class="meta"><span class="k"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>ESPERANDO</span><span class="v timer num mono" id="hTimer">${fmt(now()-hero.createdAt)}</span></div>
@@ -210,9 +199,10 @@ function buildDOM(list){
   qCount.textContent=rest.length+' en cola';
   qlist.innerHTML=rest.map(p=>{
     const ec=effColor(p), c=COLORS[ec.k], isNew=!prevFolios.has(p.folio);
-    const first=p.productos[0], extra=p.productos.length-1;
-    const items=`${first.cant}× ${first.desc}${extra>0?'  +'+extra+' más':''}`;
-    return `<div class="card ${isNew?'is-new':''}" data-folio="${p.folio}" onclick="advance('${p.folio}')">
+    const prods=Array.isArray(p.productos)?p.productos:[];
+    const first=prods[0]||{cant:'',desc:'—'}, extra=prods.length-1;
+    const items=`${first.cant}× ${first.desc||''}${extra>0?'  +'+extra+' más':''}`;
+    return `<div class="card ${isNew?'is-new':''}" data-folio="${p.folio}">
       <div class="bar" style="background:${c}"></div>
       <div class="cfolio num" style="color:${c}">${p.folio}</div>
       <div class="cmid">
@@ -239,43 +229,95 @@ function updateChips(){
   cRetraso.textContent=a.filter(p=>effColor(p).k==='rojo').length;
 }
 
-/* ===== VALIDACIÓN (demo): avanza estado; al entregar, sale del tablero ===== */
-function advance(folio){
-  const p=pedidos.find(x=>x.folio===folio); if(!p) return;
-  const nx=NEXT[p.estado]; if(!nx) return;
-  if(nx==='finalizado'){ leave(p); return; }
-  p.estado=nx;
-  const nombres={pendiente:'pendiente',en_preparacion:'en preparación',listo:'LISTO',entregado:'entregado'};
-  render(true);
-  toast('Pedido '+p.folio+' → '+(nombres[nx]||nx)+(nx==='entregado'?' · toca otra vez para cerrar':''));
-}
-function leave(p){
-  const el=qlist.querySelector('[data-folio="'+p.folio+'"]');
-  toast('Pedido '+p.folio+' finalizado · sale del tablero');
-  const done=()=>{pedidos=pedidos.filter(x=>x.folio!==p.folio);render(true)};
-  if(el){el.classList.add('leaving');setTimeout(done,420)} else done();
-}
+/* ===== SOLO LECTURA: la validación/avance se hace desde el portal ===== */
 let toastT;
 function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),2600)}
 
 /* ===== Sonido (Web Audio) ===== */
 function beep(){try{const ac=new(window.AudioContext||window.webkitAudioContext)();[880,1320].forEach((f,i)=>{const o=ac.createOscillator(),g=ac.createGain();o.type='sine';o.frequency.value=f;o.connect(g);g.connect(ac.destination);const t=ac.currentTime+i*0.16;g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(0.2,t+0.02);g.gain.exponentialRampToValueAtTime(0.001,t+0.15);o.start(t);o.stop(t+0.16)})}catch(e){}}
 
-/* ===== Pedido nuevo (en producción lo dispara onSnapshot) ===== */
-function nuevoPedido(p){
-  pedidos.push(p); render(true);
-  bFolio.textContent=p.folio;bClient.textContent=p.cliente;bVend.textContent=p.vendedor;
+/* ===== Aviso visual de pedido nuevo (banner + beep). No muta datos. ===== */
+function flashNuevo(p){
+  bFolio.textContent=p.folio; bClient.textContent=p.cliente; bVend.textContent=p.vendedor||'—';
   banner.classList.add('show'); beep();
   setTimeout(()=>banner.classList.remove('show'),4200);
 }
+window.__flashNuevo = flashNuevo;
 
 legend.innerHTML=[['Nuevo','azul'],['En preparación','verde'],['Listo','teal'],['Por vencer SLA','amarillo'],['Cerca del límite','naranja'],['Retrasado','rojo'],['Esperando aut.','morado']]
   .map(([t,k])=>`<span class="l"><span class="d" style="background:${COLORS[k]}"></span>${t}</span>`).join('')
-  +'<span class="hint">· toca un pedido para avanzar su estado (demo)</span>';
+  +'<span class="hint">· tablero de solo lectura · actualización en vivo</span>';
+
+// ── Hooks para el módulo de datos en vivo (script type=module) ──
+window.__setPedidos = function(arr){ pedidos = Array.isArray(arr)?arr:[]; render(true); };
+window.__almRender  = function(){ render(true); };
+
+// ── Reloj EN VIVO ──
+function tickReloj(){ const d=new Date(); document.getElementById('clk').textContent = d.toLocaleTimeString('es-MX',{hour12:false}); }
+tickReloj(); setInterval(tickReloj,1000);
 
 render(true); setInterval(()=>render(false),1000);
-setTimeout(()=>nuevoPedido({folio:'7603',cliente:'ESTACIÓN LA PILA',vendedor:'Juan Pérez',prioridad:'urgente',estado:'pendiente',createdAt:now(),
-  productos:[{clave:'50210',cant:4,desc:'BOQUILLA AUTOMÁTICA'},{clave:'20033',cant:2,desc:'ABRAZADERA INOX'},{clave:'11220',cant:2,desc:'VÁLVULA CHECK'}]}),6000);
+</script>
+
+<!-- ===== DATOS EN VIVO · Firestore (colección `surtidos`) · SOLO LECTURA ===== -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const config = { apiKey:"AIzaSyBXh-P0oMtMiDjyz9PObuJ8DNfROlXvhLE", authDomain:"tecnocontrol-1c42f.firebaseapp.com", projectId:"tecnocontrol-1c42f", storageBucket:"tecnocontrol-1c42f.firebasestorage.app", appId:"1:27642771956:web:54225af9e386afded8a1a1" };
+const app = initializeApp(config);
+const db  = getFirestore(app);
+
+// Normaliza createdAt: Timestamp | número(ms) | ISO | {seconds} → ms
+function toMs(v){
+  if(v==null) return Date.now();
+  if(typeof v==='number') return v;
+  if(typeof v==='string'){ const t=Date.parse(v); return isNaN(t)?Date.now():t; }
+  if(typeof v.toMillis==='function') return v.toMillis();
+  if(v.seconds!=null) return v.seconds*1000;
+  return Date.now();
+}
+
+let primeraCarga = true;
+let vistos = new Set();
+
+onSnapshot(collection(db,'surtidos'), (snap)=>{
+  const lista = [];
+  const nuevos = [];
+  snap.forEach(docu=>{
+    const d = docu.data() || {};
+    const estado = d.estado || 'pendiente';
+    if(estado === 'finalizado') return;            // fuera del tablero
+    const p = {
+      id: docu.id,
+      folio: String(d.folio!=null ? d.folio : docu.id),
+      cliente: d.cliente || '—',
+      vendedor: d.vendedor || '—',
+      prioridad: d.prioridad || 'normal',
+      estado,
+      createdAt: toMs(d.createdAt),
+      productos: Array.isArray(d.productos) ? d.productos.map(it=>({
+        clave: it.clave || '',
+        cant: Number(it.cant)||0,
+        desc: it.desc || it.descripcion || ''
+      })) : []
+    };
+    lista.push(p);
+    if(!primeraCarga && !vistos.has(p.id)) nuevos.push(p);
+    vistos.add(p.id);
+  });
+
+  // Entrega los datos al render existente (solo lectura)
+  if(window.__setPedidos) window.__setPedidos(lista);
+
+  // Banner + beep para pedidos que llegan durante la sesión
+  if(!primeraCarga && nuevos.length && window.__flashNuevo){
+    window.__flashNuevo(nuevos.sort((a,b)=>b.createdAt-a.createdAt)[0]);
+  }
+  primeraCarga = false;
+}, (err)=>{
+  console.error('[TV surtidos] onSnapshot error:', err);
+});
 </script>
 </body>
 </html>
