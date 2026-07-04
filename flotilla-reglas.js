@@ -1,6 +1,3 @@
-// flotilla-reglas.js v2 — Reglas de permisos por rol para Flotilla Vehicular
-// Flujo: Solicitud → Validación → Aprobación → Pagos → Cierre → Cerrada
-
 const FL_ROLES = {
   // Solo pueden Aprobar/Devolver desde Aprobación
   aprobadores: [
