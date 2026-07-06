@@ -4476,16 +4476,19 @@ window.enviarComentario=async()=>{
                 ));
                 // Buscar el doc más reciente sin imgUrl2 que coincida con el área
                 const docs = snap.docs.map(d=>({id:d.id,...d.data()}));
-                // Vincular por desc que contenga el título de la tarea, o el más reciente sin imgUrl2
+                const sinCompletado = d => !d.imgUrl2 && !d.tieneImg2;
+                // Vincular por desc que contenga el título de la tarea, o el más reciente sin completado
                 const vinculado = docs.find(d =>
-                    !d.imgUrl2 && (
+                    sinCompletado(d) && (
                         (d.desc||'').toLowerCase().includes((tarActiva.actividad||'').slice(0,20).toLowerCase()) ||
                         (tarActiva.actividad||'').toLowerCase().includes((d.desc||'').slice(0,20).toLowerCase())
                     )
-                ) || docs.filter(d => !d.imgUrl2).sort((a,b) => (b.fecha||'').localeCompare(a.fecha||''))[0];
+                ) || docs.filter(sinCompletado).sort((a,b) => (b.fecha||'').localeCompare(a.fecha||''))[0];
 
                 if(vinculado){
-                    await fs.updateDoc(fs.doc(dbAP,'area_parrilla',vinculado.id), { imgUrl2: window._chatAdjDataUrl });
+                    // Guardar en subcolección para no reventar el límite de 1 MB del doc
+                    const tipoAdj = await window.apGuardarAdjunto(vinculado.id, 'completado', window._chatAdjDataUrl);
+                    await fs.updateDoc(fs.doc(dbAP,'area_parrilla',vinculado.id), { tieneImg2:true, imgTipo2:tipoAdj, imgUrl2: fs.deleteField() });
                     if(window.mostrarToast) window.mostrarToast('📄 Documento vinculado a la parrilla', vinculado.desc||'', '✅');
                 }
             }
@@ -4939,6 +4942,48 @@ cargarModuloMarketing();
     // Exponer globalmente para el panel de colaboración
     window.getFirebaseAP = getFirebaseAP;
 
+    // ===== ADJUNTOS EN SUBCOLECCIÓN (evita el límite de 1 MB por documento de Firestore) =====
+    // El base64 grande NO se guarda en el doc padre, sino en:
+    //   area_parrilla/{docId}/adjuntos/{slot}   con campo { data }
+    //   slot: 'original' (imgUrl)  |  'completado' (imgUrl2)
+    // En el doc padre solo quedan marcadores ligeros: tieneImg/imgTipo y tieneImg2/imgTipo2.
+    function apTipoAdjunto(dataUrl){
+        return (dataUrl||'').startsWith('data:application/pdf') ? 'pdf' : 'img';
+    }
+    async function apGuardarAdjunto(docId, slot, dataUrl){
+        const {db,fs} = await getFirebaseAP();
+        const tipo = apTipoAdjunto(dataUrl);
+        await fs.setDoc(fs.doc(db,'area_parrilla',docId,'adjuntos',slot), {
+            data: dataUrl, tipo, actualizadoEn: new Date().toISOString()
+        });
+        return tipo;
+    }
+    async function apLeerAdjunto(docId, slot){
+        try {
+            const {db,fs} = await getFirebaseAP();
+            const snap = await fs.getDoc(fs.doc(db,'area_parrilla',docId,'adjuntos',slot));
+            return snap.exists() ? (snap.data().data || '') : '';
+        } catch(e){ console.warn('[AP] leer adjunto', slot, e.message); return ''; }
+    }
+    async function apBorrarAdjunto(docId, slot){
+        try {
+            const {db,fs} = await getFirebaseAP();
+            await fs.deleteDoc(fs.doc(db,'area_parrilla',docId,'adjuntos',slot));
+        } catch(e){ /* silencioso: puede no existir */ }
+    }
+    // Hidrata p.imgUrl / p.imgUrl2 desde la subcolección solo cuando se necesita mostrar.
+    // Compatible hacia atrás: si el doc ya trae base64 inline, no toca nada.
+    async function apHidratar(p){
+        if(!p || !p.id || p._hidratado) return p;
+        if(!p.imgUrl  && p.tieneImg)  p.imgUrl  = await apLeerAdjunto(p.id,'original');
+        if(!p.imgUrl2 && p.tieneImg2) p.imgUrl2 = await apLeerAdjunto(p.id,'completado');
+        p._hidratado = true;
+        return p;
+    }
+    window.apGuardarAdjunto = apGuardarAdjunto;
+    window.apLeerAdjunto    = apLeerAdjunto;
+    window.apHidratar       = apHidratar;
+
     function drivePreviewUrl(url){
         if(!url) return '';
         let fileId = '';
@@ -5055,10 +5100,11 @@ cargarModuloMarketing();
         mostrarCarruselDoc(dDocs, 0);
     };
 
-    window.mostrarCarruselDoc = function(dDocs, idx) {
+    window.mostrarCarruselDoc = async function(dDocs, idx) {
         _carruselIdx = idx;
         const p = dDocs[idx];
         if(!p) return;
+        await apHidratar(p);
         // Reuse the preview modal for the carrusel
         const titulo = document.getElementById('ap-prev-titulo');
         const meta = document.getElementById('ap-prev-meta');
@@ -5119,7 +5165,7 @@ cargarModuloMarketing();
             'Activo Fijo':'#6366f1','Estado de Cuenta':'#0369a1','Programación de Pago':'#db2777'
         };
         const color = tipoColor[p.tipo] || '#475569';
-        const hasFile = p.imgUrl || p.link;
+        const hasFile = p.imgUrl || p.imgUrl2 || p.tieneImg || p.tieneImg2 || p.link;
         const estatus = p.estatus || 'Sin Iniciar';
         const estatusColor = estatus==='Completado' ? '#10b981' : estatus==='En Proceso' ? '#f59e0b' : '#94a3b8';
         const estatusDot = `<div style="width:6px;height:6px;border-radius:50%;background:${estatusColor};flex-shrink:0;" title="${estatus}"></div>`;
@@ -5235,8 +5281,11 @@ cargarModuloMarketing();
             tipo,
             desc: descRaw,
             link: document.getElementById('ap-link').value.trim(),
-            imgUrl,
-            imgUrl2,
+            // El base64 se guarda en la subcolección adjuntos/; aquí solo marcadores ligeros.
+            tieneImg:  !!imgUrl,
+            imgTipo:   imgUrl  ? apTipoAdjunto(imgUrl)  : '',
+            tieneImg2: !!imgUrl2,
+            imgTipo2:  imgUrl2 ? apTipoAdjunto(imgUrl2) : '',
             responsable: document.getElementById('ap-responsable').value.trim(),
             notas: document.getElementById('ap-notas').value.trim(),
             creadoEn: new Date().toISOString()
@@ -5255,6 +5304,13 @@ cargarModuloMarketing();
                 const docRef = await fs.addDoc(fs.collection(db,'area_parrilla'), docData);
                 docIdReal = docRef.id;
             }
+            // Guardar el base64 grande en la subcolección (cada slot con su propio presupuesto de 1 MB)
+            if(imgUrl)  { await apGuardarAdjunto(docIdReal, 'original',   imgUrl);  }
+            else if(editId){ await apBorrarAdjunto(docIdReal, 'original'); }
+            if(imgUrl2) { await apGuardarAdjunto(docIdReal, 'completado', imgUrl2); }
+            else if(editId){ await apBorrarAdjunto(docIdReal, 'completado'); }
+            // Limpiar cualquier base64 inline heredado del doc padre (migración a subcolección)
+            try { await fs.updateDoc(fs.doc(db,'area_parrilla',docIdReal), { imgUrl: fs.deleteField(), imgUrl2: fs.deleteField() }); } catch(_e){}
             document.getElementById('modal-ap').style.display='none';
             if(window.mostrarToast) window.mostrarToast('📄 Documento guardado', desc, '📋');
             
@@ -5389,7 +5445,7 @@ cargarModuloMarketing();
         }
     };
 
-    window.previewDocAP = (id) => {
+    window.previewDocAP = async (id) => {
         const p = apDocs.find(x=>x.id===id);
         if(!p) return;
         const docsDia = p.fecha ? apDocs.filter(x => x.fecha === p.fecha) : [p];
@@ -5399,6 +5455,7 @@ cargarModuloMarketing();
             mostrarCarruselDoc(docsDia, idxEnDia >= 0 ? idxEnDia : 0);
             return;
         }
+        await apHidratar(p);
         document.getElementById('ap-prev-titulo').innerText = p.desc || 'Documento';
         const estatusBadge = p.estatus ? `<span style="margin-left:6px;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;background:${p.estatus==='Completado'?'#dcfce7':p.estatus==='En Proceso'?'#fef9c3':'#f1f5f9'};color:${p.estatus==='Completado'?'#16a34a':p.estatus==='En Proceso'?'#854d0e':'#475569'};">${p.estatus}</span>` : '';
         const empresaBadge = p.empresa ? `<span style="margin-left:6px;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;background:#eff6ff;color:#2563eb;">${p.empresa}</span>` : '';
@@ -5429,9 +5486,10 @@ cargarModuloMarketing();
         modalPreview.style.display='flex';
     };
 
-    function editarDocAP(id){
+    async function editarDocAP(id){
         const p = apDocs.find(x=>x.id===id);
         if(!p) return;
+        await apHidratar(p);
         document.getElementById('ap-edit-id').value = id;
         document.getElementById('ap-modal-title').innerText = '✏️ Editar documento';
         document.getElementById('ap-fecha').value = p.fecha||'';
@@ -5471,6 +5529,9 @@ cargarModuloMarketing();
         if(!confirm('¿Eliminar este documento?')) return;
         try {
             const { db, fs } = await getFirebaseAP();
+            // Borrar primero los adjuntos de la subcolección (Firestore no lo hace en cascada)
+            await apBorrarAdjunto(id, 'original');
+            await apBorrarAdjunto(id, 'completado');
             await fs.deleteDoc(fs.doc(db,'area_parrilla',id));
             if(window.mostrarPush) window.mostrarToast('🗑 Eliminado','','📋');
             cargarDocsAP();
@@ -5758,9 +5819,11 @@ cargarModuloMarketing();
                 r.readAsDataURL(file);
             });
             const {db,fs} = await window.getFirebaseAP();
-            await fs.updateDoc(fs.doc(db,'area_parrilla',docId), {imgUrl2:dataUrl});
+            // Guardar el base64 en la subcolección adjuntos/completado (su propio presupuesto de 1 MB)
+            const tipoAdj = await apGuardarAdjunto(docId, 'completado', dataUrl);
+            await fs.updateDoc(fs.doc(db,'area_parrilla',docId), { tieneImg2:true, imgTipo2:tipoAdj, imgUrl2: fs.deleteField() });
             const p = (window.apDocs||[]).find(x=>x.id===docId);
-            if(p) p.imgUrl2 = dataUrl;
+            if(p){ p.imgUrl2 = dataUrl; p.tieneImg2 = true; p.imgTipo2 = tipoAdj; p._hidratado = true; }
             const esPDF = dataUrl.startsWith('data:application/pdf');
             const imgEl = document.getElementById('ap-prev-img-updated');
             const pdfEl = document.getElementById('ap-prev-pdf-updated');
