@@ -1,18 +1,3 @@
-/* ============================================================================
- * almacen-pdf.js · Módulo de Surtido — Camino de PDF (formato CHH)
- * ----------------------------------------------------------------------------
- * Responsabilidad ÚNICA: subir un PDF de pedido (formato CHH), leerlo con
- * pdf.js, extraer cliente / folio / productos / cantidades, dejar que el
- * usuario REVISE y CONFIRME, y crear un documento en la colección `surtidos`
- * de Firestore con el mismo esquema que consume el portal y la TV.
- *
- * Depende de globals del portal: window.db, window.auth, window.nombreUsuario.
- * Expone: window.abrirSurtidoPDF()
- *
- * Esquema `surtidos` (igual que pedidos-almacen.html):
- *   { folio, cliente, vendedor, prioridad, estado:'pendiente',
- *     productos:[{clave,cant,desc}], origen:'pdf', createdAt, creadoPor }
- * ==========================================================================*/
 (function () {
   'use strict';
 
