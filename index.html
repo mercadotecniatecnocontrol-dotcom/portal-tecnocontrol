@@ -1173,9 +1173,9 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
                     <option>Cotización</option><option>Contrato</option>
                     <option>Reporte</option><option>Memo</option>
                     <option>Nómina</option><option>Póliza</option>
-                    <option>Recibo</option><option>Deudores Diversos</option>
-                    <option>Acreedores Diversos</option>
-                    <option>Balanza de Comprobación</option><option>Estado de Resultados</option><option>Balance General</option>
+                    <option>Recibo</option><option>Acreedores y Deudores Diversos</option>
+                    <option>IMSS e INFONAVIT</option>
+                    <option>Balanza de Comprobación</option><option>Estados Financieros</option>
                     <option>Conciliación</option><option>Proveedores</option><option>Clientes</option>
                     <option>Caja Chica</option><option>Activo Fijo</option><option>Estado de Cuenta</option>
                     <option>Programación de Pago</option><option>Otro</option>
@@ -4984,6 +4984,39 @@ cargarModuloMarketing();
     window.apLeerAdjunto    = apLeerAdjunto;
     window.apHidratar       = apHidratar;
 
+    // Comprime una imagen (data URL) por debajo de maxBytes redimensionando + bajando calidad JPEG.
+    // Los PDFs se devuelven tal cual (no se pueden comprimir por canvas).
+    async function apComprimirImagen(dataUrl, maxBytes = 800000){
+        if(!dataUrl || dataUrl.startsWith('data:application/pdf')) return dataUrl;
+        if(dataUrl.length <= maxBytes) return dataUrl; // ya cabe, no lo tocamos
+        const img = await new Promise((res, rej) => {
+            const i = new Image();
+            i.onload = () => res(i);
+            i.onerror = () => rej(new Error('No se pudo leer la imagen'));
+            i.src = dataUrl;
+        });
+        const render = (maxLado, calidad) => {
+            let { width, height } = img;
+            if(width > height && width > maxLado){ height = Math.round(height*maxLado/width); width = maxLado; }
+            else if(height > maxLado){ width = Math.round(width*maxLado/height); height = maxLado; }
+            const c = document.createElement('canvas');
+            c.width = width; c.height = height;
+            const ctx = c.getContext('2d');
+            ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0,0,width,height); // fondo blanco para PNG transparentes
+            ctx.drawImage(img, 0, 0, width, height);
+            return c.toDataURL('image/jpeg', calidad);
+        };
+        let maxLado = 1800, calidad = 0.82;
+        let out = render(maxLado, calidad);
+        while(out.length > maxBytes && (calidad > 0.4 || maxLado > 900)){
+            if(calidad > 0.45) calidad -= 0.1;
+            else { maxLado = Math.round(maxLado*0.85); calidad = 0.7; }
+            out = render(maxLado, calidad);
+        }
+        return out;
+    }
+    window.apComprimirImagen = apComprimirImagen;
+
     function drivePreviewUrl(url){
         if(!url) return '';
         let fileId = '';
@@ -5158,11 +5191,12 @@ cargarModuloMarketing();
             'Factura':'#2563eb','Orden de compra':'#059669','Cotización':'#f59e0b',
             'Contrato':'#7c3aed','Reporte':'#0891b2','Nómina':'#db2777',
             'Póliza':'#64748b','Recibo':'#ea580c','Memo':'#6366f1',
-            'Deudores Diversos':'#dc2626','Acreedores Diversos':'#9333ea',
-            'Balanza de Comprobación':'#0369a1','Estado de Resultados':'#047857',
-            'Balance General':'#b45309','Conciliación':'#0891b2',
+            'Acreedores y Deudores Diversos':'#dc2626','IMSS e INFONAVIT':'#16a34a',
+            'Balanza de Comprobación':'#0369a1','Estados Financieros':'#047857',
+            'Conciliación':'#0891b2',
             'Proveedores':'#7c3aed','Clientes':'#059669','Caja Chica':'#ea580c',
-            'Activo Fijo':'#6366f1','Estado de Cuenta':'#0369a1','Programación de Pago':'#db2777'
+            'Activo Fijo':'#6366f1','Estado de Cuenta':'#0369a1','Programación de Pago':'#db2777',
+            'Deudores Diversos':'#dc2626','Acreedores Diversos':'#9333ea','Estado de Resultados':'#047857','Balance General':'#b45309'
         };
         const color = tipoColor[p.tipo] || '#475569';
         const hasFile = p.imgUrl || p.imgUrl2 || p.tieneImg || p.tieneImg2 || p.link;
@@ -5268,6 +5302,9 @@ cargarModuloMarketing();
         } else if(window._apImgDataUrl2) {
             imgUrl2 = window._apImgDataUrl2;
         }
+        // Comprimir imágenes pesadas para que quepan en Firestore
+        if(imgUrl)  imgUrl  = await apComprimirImagen(imgUrl);
+        if(imgUrl2) imgUrl2 = await apComprimirImagen(imgUrl2);
         const apFechaFinEl = document.getElementById('ap-fecha-fin');
         const apEstatusEl = document.getElementById('ap-estatus');
         const apEmpresaEl = document.getElementById('ap-empresa');
@@ -5812,12 +5849,22 @@ cargarModuloMarketing();
         if(!file||!docId) return;
         if(file.size>10*1024*1024){ alert('Máximo 10MB'); return; }
         try {
-            const dataUrl = await new Promise((res,rej)=>{
+            let dataUrl = await new Promise((res,rej)=>{
                 const r = new FileReader();
                 r.onload = e=>res(e.target.result);
                 r.onerror = rej;
                 r.readAsDataURL(file);
             });
+            // Comprimir imágenes pesadas para que quepan en Firestore (y carguen más rápido)
+            dataUrl = await apComprimirImagen(dataUrl);
+            if(!dataUrl.startsWith('data:application/pdf') && dataUrl.length > 1040000){
+                alert('La imagen sigue siendo muy grande incluso comprimida. Reduce la resolución del escaneo.');
+                return;
+            }
+            if(dataUrl.startsWith('data:application/pdf') && dataUrl.length > 1040000){
+                alert('El PDF pesa más de 1 MB y no se puede comprimir aquí. Redúcelo (ej. ilovepdf.com) y vuelve a subirlo.');
+                return;
+            }
             const {db,fs} = await window.getFirebaseAP();
             // Guardar el base64 en la subcolección adjuntos/completado (su propio presupuesto de 1 MB)
             const tipoAdj = await apGuardarAdjunto(docId, 'completado', dataUrl);
