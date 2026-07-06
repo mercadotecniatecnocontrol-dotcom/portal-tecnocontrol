@@ -205,9 +205,9 @@ function esRolLibre(){
 // Compatibilidad: si solo existe ecoVinculado (string), se trata como array de 1.
 function getEcosVinculados(){
   if(!miPerfil)return[];
-  if(Array.isArray(miPerfil.ecosVinculados))return miPerfil.ecosVinculados.map(String).filter(Boolean);
-  if(miPerfil.ecoVinculado)return[String(miPerfil.ecoVinculado)];
-  return[];
+  const arr=Array.isArray(miPerfil.ecosVinculados)?miPerfil.ecosVinculados.map(String):[];
+  const simple=(miPerfil.ecoVinculado!=null&&miPerfil.ecoVinculado!=='')?[String(miPerfil.ecoVinculado)]:[];
+  return [...arr,...simple].filter((e,i,a)=>e&&e!=='null'&&e!=='undefined'&&a.indexOf(e)===i);
 }
 
 // ── PERSISTENCIA LOCAL: última unidad usada (sobrevive a refresh) ──
@@ -1405,9 +1405,9 @@ window.adminConfirmarCambioVeh=async function(btn){
     if(tipo==='permanente'){
       const snap=await db.collection(C.USUARIOS).where('email','==',miPerfil.email).get();
       if(!snap.empty){
-        await snap.docs[0].ref.update({ecoVinculado:String(eco),vinculadoEn:new Date().toISOString()});
+        await snap.docs[0].ref.update({ecoVinculado:String(eco),ecosVinculados:[String(eco)],vinculadoEn:new Date().toISOString()});
       }
-      if(miPerfil)miPerfil.ecoVinculado=String(eco);
+      if(miPerfil){miPerfil.ecoVinculado=String(eco);miPerfil.ecosVinculados=[String(eco)];}
       toast(`ECO ${eco} vinculado permanentemente`,'ok');
     } else {
       toast(`ECO ${eco} seleccionado (sesión actual)`,'ok');
@@ -1504,9 +1504,9 @@ window.fmVincular=async function(){
   if(!user){toast('No hay sesión activa','err');return;}
   try{
     const snap=await db.collection(C.USUARIOS).where('email','==',user.email).get();
-    const datos={email:user.email,nombre:user.displayName||user.email,ecoVinculado:eco,vinculadoEn:new Date().toISOString()};
+    const datos={email:user.email,nombre:user.displayName||user.email,ecoVinculado:String(eco),ecosVinculados:[String(eco)],vinculadoEn:new Date().toISOString()};
     if(snap.empty){await db.collection(C.USUARIOS).add(datos);}
-    else{await db.collection(C.USUARIOS).doc(snap.docs[0].id).update({ecoVinculado:eco});}
+    else{await db.collection(C.USUARIOS).doc(snap.docs[0].id).update({ecoVinculado:String(eco),ecosVinculados:[String(eco)],vinculadoEn:new Date().toISOString()});}
     miPerfil={...miPerfil,...datos};
     guardarUltimoEco(eco);
     await cargarMiVeh();
