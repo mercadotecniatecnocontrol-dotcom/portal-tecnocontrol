@@ -5627,26 +5627,7 @@ window.flModalRechazar = function(id, tipo) {
       </div>
       <div class="fl-fa" style="margin-top:0">
         <button onclick="this.closest('.fl-ov').remove()" class="fb gho" style="padding:9px 18px">Cancelar</button>
-        <button id="fl-rej-btn" onclick="(async()=>{
-          const m=document.getElementById('fl-rej-txt').value.trim();
-          if(!m){document.getElementById('fl-rej-txt').style.borderColor='#EF4444';return;}
-          this.textContent='Guardando…';this.disabled=true;
-          const nuevoEst='${esDevol ? 'Validación' : 'Rechazada'}';
-          const campo='${esDevol ? 'comentarioDevolucion' : 'comentarioRechazo'}';
-          try{
-            await fs.updateDoc(fs.doc(db,C.SOLS,'${id}'),{
-              estatus:nuevoEst,[campo]:m,
-              ${esDevol ? 'devueltoEn' : 'rechazadoEn'}:new Date().toISOString(),
-              actualizadoEn:new Date().toISOString()
-            });
-            await ldSols();
-            flEnviarNotif('${id}','${esDevol ? 'rechazada_apr' : 'rechazada_val'}',m);
-            if(vistaAct==='sols')rSols();else rPanel();
-            window.flPipelineModal?._render?.(nuevoEst);
-            this.closest('.fl-ov').remove();
-            document.getElementById('flpm-ov')?.remove();
-          }catch(e){console.error('[FL]',e);this.textContent='${textoBtn}';this.disabled=false;}
-        })()"
+        <button id="fl-rej-btn" onclick="window.flConfirmarRechazo('${id}',${esDevol},this)"
         style="padding:9px 18px;background:${colorBtn};color:#fff;border:none;border-radius:9px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer">
           ${textoBtn}
         </button>
@@ -5655,6 +5636,35 @@ window.flModalRechazar = function(id, tipo) {
   </div>`;
   document.body.appendChild(ov);
   ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+};
+
+// Confirmar rechazo / devolución — corre en scope del IIFE (acceso a fs, db, C, ldSols, vistaAct, rSols, rPanel)
+window.flConfirmarRechazo = async function(id, esDevol, btn) {
+  const txt = document.getElementById('fl-rej-txt');
+  const m = txt ? txt.value.trim() : '';
+  if (!m) { if (txt) txt.style.borderColor = '#EF4444'; return; }
+  const textoBtn = esDevol ? 'Devolver a Validación' : 'Confirmar rechazo';
+  btn.textContent = 'Guardando…'; btn.disabled = true;
+  const nuevoEst = esDevol ? 'Validación' : 'Rechazada';
+  const campo    = esDevol ? 'comentarioDevolucion' : 'comentarioRechazo';
+  try {
+    await fs.updateDoc(fs.doc(db, C.SOLS, id), {
+      estatus: nuevoEst,
+      [campo]: m,
+      [esDevol ? 'devueltoEn' : 'rechazadoEn']: new Date().toISOString(),
+      actualizadoEn: new Date().toISOString()
+    });
+    await ldSols();
+    await flEnviarNotif(id, esDevol ? 'rechazada_apr' : 'rechazada_val', m);
+    if (vistaAct === 'sols') rSols(); else rPanel();
+    window.flPipelineModal?._render?.(nuevoEst);
+    btn.closest('.fl-ov')?.remove();
+    document.getElementById('flpm-ov')?.remove();
+  } catch(e) {
+    console.error('[FL]', e);
+    btn.textContent = textoBtn; btn.disabled = false;
+    alert('No se pudo guardar el rechazo: ' + (e.message || e));
+  }
 };
 
 // Agregar archivos al estado temporal de validación
