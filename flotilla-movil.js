@@ -101,6 +101,10 @@ const CHK_CATS={
   Legal:      ['Sin multas vigentes','Verificación vigente','Tenencia al corriente','Tarjeta circulación'],
 };
 
+// ── MAQUINARIA: 4 fotos obligatorias en lugar del checklist ──
+const MAQ_FOTOS=['Vista general','Placa / N° de serie','Horómetro o tablero','Estado / detalle'];
+const esMaquinaria=v=>!!v&&v.tipo==='maquinaria';
+
 // ── ESTADO ──
 let miVeh=null, misSols=[], misTareas=[], misNotif=[], misPipelineNotif=[];
 let miPerfil=null; // {email, nombre, ecoVinculado, rol}
@@ -1629,10 +1633,10 @@ function renderNuevaSol(){
     <!-- CHECKLIST RÁPIDO -->
     <div class="fm-fld">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-        <label style="margin:0">Check list</label>
-        <span id="fm-chk-cnt" style="font-size:10px;color:#64748B">0 de ${Object.values(CHK_CATS).flat().length} revisados</span>
+        <label style="margin:0">${esMaquinaria(miVeh)?'Fotos de la unidad':'Check list'}</label>
+        <span id="fm-chk-cnt" style="font-size:10px;color:#64748B">${esMaquinaria(miVeh)?'4 fotos requeridas':`0 de ${Object.values(CHK_CATS).flat().length} revisados`}</span>
       </div>
-      <div id="fm-chk-list">${renderChkMovil()}</div>
+      <div id="fm-chk-list">${esMaquinaria(miVeh)?renderMaqFotos('sol'):renderChkMovil()}</div>
     </div>
 
     <!-- BOTÓN GUARDAR -->
@@ -1650,9 +1654,14 @@ function renderNuevaSol(){
     if(!document.getElementById('fm-desc')?.value?.trim()) faltantes.push('descripción');
     if(!document.getElementById('fm-km')?.value?.trim()) faltantes.push('kilometraje');
     if(!solState.evFotos?.length) faltantes.push('al menos 1 foto de evidencia');
-    const resp=Object.values(solState.chk).filter(v=>v==='si'||v==='no').length;
-    const tot=Object.values(CHK_CATS).flat().length;
-    if(resp<tot) faltantes.push(`checklist (${resp}/${tot})`);
+    if(esMaquinaria(miVeh)){
+      const nMaq=MAQ_FOTOS.filter((_,i)=>solState.chkFotos[`maq__${i}`]).length;
+      if(nMaq<4) faltantes.push(`fotos de la unidad (${nMaq}/4)`);
+    } else {
+      const resp=Object.values(solState.chk).filter(v=>v==='si'||v==='no').length;
+      const tot=Object.values(CHK_CATS).flat().length;
+      if(resp<tot) faltantes.push(`checklist (${resp}/${tot})`);
+    }
     const hint=document.getElementById('fm-val-hint');
     if(hint) hint.textContent=faltantes.length?`Pendiente: ${faltantes.join(' · ')}`:'✓ Formulario completo';
     if(hint) hint.style.color=faltantes.length?'#94A3B8':'#15803D';
@@ -1708,6 +1717,29 @@ window.fmSetPrior=function(btn,p){
   document.querySelectorAll('[id^="fm-prior-"]').forEach(b=>{b.style.background='';b.style.color='';b.className='fm-btn ghost fm-btn-sm';b.style.flex='1';});
   btn.style.background='#1E3A5F';btn.style.color='#fff';
 };
+
+// Bloque de 4 fotos obligatorias para maquinaria (reemplaza el checklist).
+// tgt='sol' → solState.chkFotos['maq__i'] · tgt='sem' → semState.chkFotos['sem-maq-i']
+function renderMaqFotos(tgt){
+  const st=tgt==='sem'?semState:solState;
+  const keyOf=i=>tgt==='sem'?`sem-maq-${i}`:`maq__${i}`;
+  const capTag=tgt==='sem'?",'sem'":"";
+  const verFn=tgt==='sem'?'fmVerFotoChkSem':'fmVerFotoChk';
+  let h='<div style="font-size:11px;color:#64748B;margin-bottom:8px">Sube las 4 fotos requeridas de la unidad.</div>';
+  MAQ_FOTOS.forEach((lbl,i)=>{
+    const key=keyOf(i);
+    const fo=st.chkFotos[key];
+    const src=fo?(typeof fo==='object'?fo.src:fo):'';
+    h+=`<div class="fm-chk-row" id="fm-cr-${key}" style="align-items:center">
+      <span class="fm-chk-name" style="flex:1">${i+1}. ${lbl}</span>
+      <div class="fm-chk-cam ${src?'has':''}" onclick="${src?`${verFn}('${key}')`:`fmCapturar('chk','${key}'${capTag})`}" id="fm-cam-${key}">
+        ${src?`<img src="${src}" style="width:26px;height:26px;object-fit:cover;border-radius:5px">`:
+        `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>`}
+      </div>
+    </div>`;
+  });
+  return h;
+}
 
 function renderChkMovil(){
   let h='';
@@ -1929,10 +1961,10 @@ function renderChkSemanal(){
     <!-- CHECKLIST -->
     <div class="fm-fld">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-        <label style="margin:0">Check list de inspección</label>
-        <span id="fm-sem-chk-cnt" style="font-size:10px;color:#64748B">0 de ${Object.values(CHK_CATS).flat().length} revisados</span>
+        <label style="margin:0">${esMaquinaria(miVeh)?'Fotos de la unidad':'Check list de inspección'}</label>
+        <span id="fm-sem-chk-cnt" style="font-size:10px;color:#64748B">${esMaquinaria(miVeh)?'4 fotos requeridas':`0 de ${Object.values(CHK_CATS).flat().length} revisados`}</span>
       </div>
-      <div id="fm-sem-chk-list">${renderChkSemanalList()}</div>
+      <div id="fm-sem-chk-list">${esMaquinaria(miVeh)?renderMaqFotos('sem'):renderChkSemanalList()}</div>
     </div>
 
     <!-- OBSERVACIONES -->
@@ -1980,6 +2012,15 @@ window.fmGuardarChkSemanal=async function(){
   }
   const totalChk=Object.values(CHK_CATS).flat().length;
   const respondidos=Object.values(semState.chk).filter(v=>v==='si'||v==='no').length;
+  if(esMaquinaria(miVeh)){
+    // Maquinaria: exigir las 4 fotos en lugar del checklist semanal
+    const faltanMaq=MAQ_FOTOS.map((_,i)=>`sem-maq-${i}`).filter(k=>!semState.chkFotos[k]);
+    if(faltanMaq.length>0){
+      toast(`⚠ Faltan ${faltanMaq.length} de 4 fotos requeridas de la unidad`,'err');
+      document.getElementById('fm-sem-chk-list')?.scrollIntoView({behavior:'smooth',block:'center'});
+      return;
+    }
+  } else {
   if(respondidos<totalChk){
     toast(`⚠ Completa el check list — faltan ${totalChk-respondidos} ítems por revisar`,'err');
     document.getElementById('fm-sem-chk-list')?.scrollIntoView({behavior:'smooth',block:'center'});
@@ -1997,6 +2038,7 @@ window.fmGuardarChkSemanal=async function(){
     toast(`⚠ Foto obligatoria en ítems marcados SI: ${nombres}${faltanFotos.length>3?'…':''}`, 'err');
     document.getElementById('fm-sem-chk-list')?.scrollIntoView({behavior:'smooth',block:'center'});
     return;
+  }
   }
 
   const btn=document.getElementById('fm-sem-btn-guardar');
@@ -2296,17 +2338,27 @@ window.fmGuardar=async function(){
     toast('⚠ Sube al menos 1 foto de evidencia del problema','err');
     return;
   }
-  // Checklist de solicitud — foto obligatoria en ítems marcados SI
-  const chkSolItems=Object.entries(solState.chk||{});
-  const siSinFoto=chkSolItems.filter(([k,v])=>v==='si'&&!(solState.chkFotos||{})[k]);
-  if(siSinFoto.length>0){
-    toast(`⚠ Agrega foto en ${siSinFoto.length} ítem(s) del checklist marcados SI`,'err');
-    return;
-  }
-  if(respondidos<totalChk){
-    toast(`⚠ Completa el check list — faltan ${totalChk-respondidos} ítems por revisar`,'err');
-    document.getElementById('fm-chk-list')?.scrollIntoView({behavior:'smooth',block:'center'});
-    return;
+  if(esMaquinaria(miVeh)){
+    // Maquinaria: exigir las 4 fotos en lugar del checklist
+    const faltanMaq=MAQ_FOTOS.map((_,i)=>`maq__${i}`).filter(k=>!(solState.chkFotos||{})[k]);
+    if(faltanMaq.length>0){
+      toast(`⚠ Faltan ${faltanMaq.length} de 4 fotos requeridas de la unidad`,'err');
+      document.getElementById('fm-chk-list')?.scrollIntoView({behavior:'smooth',block:'center'});
+      return;
+    }
+  } else {
+    // Checklist de solicitud — foto obligatoria en ítems marcados SI
+    const chkSolItems=Object.entries(solState.chk||{});
+    const siSinFoto=chkSolItems.filter(([k,v])=>v==='si'&&!(solState.chkFotos||{})[k]);
+    if(siSinFoto.length>0){
+      toast(`⚠ Agrega foto en ${siSinFoto.length} ítem(s) del checklist marcados SI`,'err');
+      return;
+    }
+    if(respondidos<totalChk){
+      toast(`⚠ Completa el check list — faltan ${totalChk-respondidos} ítems por revisar`,'err');
+      document.getElementById('fm-chk-list')?.scrollIntoView({behavior:'smooth',block:'center'});
+      return;
+    }
   }
 
   const btn=document.getElementById('fm-btn-guardar');
@@ -2317,7 +2369,7 @@ window.fmGuardar=async function(){
     tipo,prioridad:solState.prior,descripcion:desc,
     kilometrajeReportado:km||'',taller:taller||'',
     gasolina:solState.gasolina,modo:solState.modo,
-    tipoUnidad:['camioneta','camion'].includes(miVeh?.tipo)?'troca':'auto',
+    tipoUnidad:miVeh?.tipo==='maquinaria'?'maquinaria':(['camioneta','camion'].includes(miVeh?.tipo)?'troca':'auto'),
     estatus:'Solicitud',
     solicitante:window.auth?.currentUser?.displayName||window.auth?.currentUser?.email||'—',
     creadoPor:window.auth?.currentUser?.email||'',
