@@ -164,7 +164,7 @@ let ST={
 
 const hD=f=>(!f||f==='—')?null:Math.round((new Date(f)-new Date())/864e5);
 const hF=iso=>iso&&iso!=='—'?String(iso).substring(0,10):'—';
-const FLOTILLA_ADMINS=['fatima@tecnocontrol.com.mx','c.acosta@tecnocontrol.com.mx','rh@tecnocontrol.com.mx','glen@tecnocontrol.com.mx','gerencia@tecnocontrol.com.mx'];
+const FLOTILLA_ADMINS=['fatima@tecnocontrol.com.mx','c.acosta@tecnocontrol.com.mx','rh@tecnocontrol.com.mx','glen@tecnocontrol.com.mx','gerencia@tecnocontrol.com.mx','nicolas@tecnocontrol.com.mx'];
 const hAdm=()=>{
   const rol=window.flGetRolActual?window.flGetRolActual():'';
   const email=(window.auth?.currentUser?.email||'').toLowerCase();
@@ -174,7 +174,8 @@ const hP=a=>window.flTienePermiso?window.flTienePermiso(a):hAdm();
 const SVG_CAM=`<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13" rx="1"/><path d="M16 8h4l3 5v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>`;
 const SVG_CMT=`<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17H3a2 2 0 01-2-2V5a2 2 0 012-2h11a2 2 0 012 2v3"/><rect x="9" y="11" width="14" height="10" rx="1"/><circle cx="12" cy="21" r="1"/><circle cx="20" cy="21" r="1"/></svg>`;
 const SVG_AUTO=`<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17H3a2 2 0 01-2-2V9a2 2 0 012-2h11a2 2 0 012 2v6h-2"/><path d="M7 9l2-4h6l2 4"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>`;
-const hEmo=t=>t==='camion'?SVG_CAM:t==='camioneta'?SVG_CMT:SVG_AUTO;
+const SVG_MAQ=`<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20h20"/><path d="M4 20v-5h5l3-4h4l2 3v6"/><path d="M9 11V7h4l2 4"/><circle cx="7" cy="20" r="1.6"/><circle cx="17" cy="20" r="1.6"/></svg>`;
+const hEmo=t=>t==='maquinaria'?SVG_MAQ:t==='camion'?SVG_CAM:t==='camioneta'?SVG_CMT:SVG_AUTO;
 
 // Inicializar cache de evidencias
 if(!window._flEvCache)window._flEvCache=[];
@@ -261,8 +262,12 @@ function getTipoVehActivo(){
   if(!ST.vehId) return ST.tipoVeh;
   const v=flV.find(x=>x.id===ST.vehId);
   if(!v) return ST.tipoVeh;
+  if(v.tipo==='maquinaria') return 'maquinaria';
   return v.tipo==='camioneta'||v.tipo==='camion'?'troca':'auto';
 }
+// ── MAQUINARIA: 4 fotos obligatorias en lugar del checklist ──
+const MAQ_FOTOS=['Vista general','Placa / N° de serie','Horómetro o tablero','Estado / detalle'];
+const flEsMaqActiva=()=>{const v=flV.find(x=>x.id===ST.vehId);return !!v&&v.tipo==='maquinaria';};
 
 // CSS
 function injectCSS(){
@@ -549,6 +554,7 @@ function buildHTML(){
           <button class="fl-sb-tipo on" id="fl-sbt-all"    onclick="flSbTipo('all')">Todo</button>
           <button class="fl-sb-tipo"    id="fl-sbt-auto"   onclick="flSbTipo('auto')">Auto</button>
           <button class="fl-sb-tipo"    id="fl-sbt-cam"    onclick="flSbTipo('cam')">Troca</button>
+          <button class="fl-sb-tipo"    id="fl-sbt-maq"    onclick="flSbTipo('maq')">Maquinaria</button>
           <button class="fl-sb-tipo"    id="fl-sbt-taller" onclick="flSbTipo('taller')" style="border-color:#F59E0B;color:#B45309">Taller</button>
         </div>
       </div>
@@ -664,7 +670,8 @@ function renderSB(){
   if(!lista)return;
   let filtrado=act;
   if(sbTipoFilt==='auto')filtrado=act.filter(v=>v.tipo==='auto');
-  else if(sbTipoFilt==='cam')filtrado=act.filter(v=>v.tipo!=='auto');
+  else if(sbTipoFilt==='cam')filtrado=act.filter(v=>v.tipo!=='auto'&&v.tipo!=='maquinaria');
+  else if(sbTipoFilt==='maq')filtrado=act.filter(v=>v.tipo==='maquinaria');
   else if(sbTipoFilt==='taller')filtrado=act.filter(flEnTaller);
   const q=(document.getElementById('fl-sb-q')?.value||'').toLowerCase();
   if(q)filtrado=filtrado.filter(v=>(v.eco+v.unidad+v.placas+v.responsable).toLowerCase().includes(q));
@@ -702,7 +709,7 @@ window.flSbTipo=function(t){
     b.classList.remove('on');
     b.style.background='';b.style.borderColor='';b.style.color='';
   });
-  const ids={all:'fl-sbt-all',auto:'fl-sbt-auto',cam:'fl-sbt-cam',taller:'fl-sbt-taller'};
+  const ids={all:'fl-sbt-all',auto:'fl-sbt-auto',cam:'fl-sbt-cam',maq:'fl-sbt-maq',taller:'fl-sbt-taller'};
   const btn=document.getElementById(ids[t]||'fl-sbt-all');
   if(btn){
     btn.classList.add('on');
@@ -912,7 +919,7 @@ function rAdmTabNuevo(){
         <div>
           <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">Tipo</label>
           <select id="adm-nv-tipo" style="width:100%;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:9px;font-family:inherit;font-size:13px;outline:none">
-            <option value="camioneta">Camioneta</option><option value="auto">Auto</option><option value="camion">Camión</option>
+            <option value="camioneta">Camioneta</option><option value="auto">Auto</option><option value="camion">Camión</option><option value="maquinaria">Maquinaria</option>
           </select>
         </div>
         <div>
@@ -1068,6 +1075,7 @@ function renderAdmRows(lista){
           <option ${v.tipo==='auto'?'selected':''}>auto</option>
           <option ${v.tipo==='camioneta'?'selected':''}>camioneta</option>
           <option ${v.tipo==='camion'?'selected':''}>camion</option>
+          <option ${v.tipo==='maquinaria'?'selected':''}>maquinaria</option>
         </select></td>
         <td style="text-align:center">
           <div style="display:flex;gap:4px;justify-content:center">
@@ -1696,6 +1704,22 @@ function renderDmgList(){
 }
 
 function renderChkFull(){
+  // Maquinaria: en vez del checklist, 4 fotos obligatorias (reusa ST.chkFotos + flCapturarEvidencia)
+  if(flEsMaqActiva()){
+    let mh='<div style="padding:10px 12px;font-size:10.5px;color:#64748B;line-height:1.5">Sube las <b>4 fotos requeridas</b> de la unidad.</div>';
+    MAQ_FOTOS.forEach((lbl,i)=>{
+      const key=`maq__${i}`;
+      const fo=ST.chkFotos[key]||null;
+      const src=fo?(typeof fo==='string'?fo:fo.src):'';
+      mh+=`<div class="fl-ck-row" id="fl-ckrow-${key}" style="align-items:center">
+        <span class="fl-ck-name" style="flex:1">${i+1}. ${lbl}</span>
+        <button class="fl-ck-foto-btn ${src?'has':''}" onclick="${src?`flVerEvidencia(ST.chkFotos['${key}'])`:`flCapturarEvidencia('checklist','${key}')`}" title="${src?'Ver foto':'Tomar foto'}">
+          ${src?`<img src="${src}" style="width:20px;height:20px;object-fit:cover;border-radius:3px">`:I.camera}
+        </button>
+      </div>`;
+    });
+    return mh;
+  }
   let html='';
   for(const [cat,items] of Object.entries(CHK_CATS)){
     html+=`<div class="fl-ck-grp">${cat}</div>`;
@@ -2016,6 +2040,11 @@ window.flSolGuardar=async function(){
   if(!tipo){alert('Selecciona el tipo de solicitud.');return;}
   if(!desc){alert('Describe el problema.');return;}
   const v=flV.find(x=>x.id===ST.vehId);
+  // Maquinaria: exigir las 4 fotos en lugar del checklist
+  if(v&&v.tipo==='maquinaria'){
+    const faltan=MAQ_FOTOS.map((_,i)=>`maq__${i}`).filter(k=>!ST.chkFotos[k]);
+    if(faltan.length){alert(`Faltan ${faltan.length} de 4 fotos requeridas de la maquinaria.`);return;}
+  }
   // Leer notas checklist
   const chkFinal={...ST.chk};
   const docObj={
