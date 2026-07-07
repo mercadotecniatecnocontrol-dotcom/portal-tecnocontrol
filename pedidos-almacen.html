@@ -263,10 +263,12 @@ render(true); setInterval(()=>render(false),1000);
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getFirestore, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 const config = { apiKey:"AIzaSyBXh-P0oMtMiDjyz9PObuJ8DNfROlXvhLE", authDomain:"tecnocontrol-1c42f.firebaseapp.com", projectId:"tecnocontrol-1c42f", storageBucket:"tecnocontrol-1c42f.firebasestorage.app", appId:"1:27642771956:web:54225af9e386afded8a1a1" };
 const app = initializeApp(config);
 const db  = getFirestore(app);
+const auth = getAuth(app);
 
 // Normaliza createdAt: Timestamp | número(ms) | ISO | {seconds} → ms
 function toMs(v){
@@ -280,43 +282,72 @@ function toMs(v){
 
 let primeraCarga = true;
 let vistos = new Set();
+let escuchando = false;
 
-onSnapshot(collection(db,'surtidos'), (snap)=>{
-  const lista = [];
-  const nuevos = [];
-  snap.forEach(docu=>{
-    const d = docu.data() || {};
-    const estado = d.estado || 'pendiente';
-    if(estado === 'finalizado') return;            // fuera del tablero
-    const p = {
-      id: docu.id,
-      folio: String(d.folio!=null ? d.folio : docu.id),
-      cliente: d.cliente || '—',
-      vendedor: d.vendedor || '—',
-      prioridad: d.prioridad || 'normal',
-      estado,
-      createdAt: toMs(d.createdAt),
-      productos: Array.isArray(d.productos) ? d.productos.map(it=>({
-        clave: it.clave || '',
-        cant: Number(it.cant)||0,
-        desc: it.desc || it.descripcion || ''
-      })) : []
-    };
-    lista.push(p);
-    if(!primeraCarga && !vistos.has(p.id)) nuevos.push(p);
-    vistos.add(p.id);
-  });
-
-  // Entrega los datos al render existente (solo lectura)
-  if(window.__setPedidos) window.__setPedidos(lista);
-
-  // Banner + beep para pedidos que llegan durante la sesión
-  if(!primeraCarga && nuevos.length && window.__flashNuevo){
-    window.__flashNuevo(nuevos.sort((a,b)=>b.createdAt-a.createdAt)[0]);
+// Aviso grande y visible dentro del panel principal (nunca fallar en silencio)
+function avisoTV(titulo, detalle){
+  const hero = document.getElementById('hero');
+  if(hero){
+    hero.innerHTML = '<div style="height:100%;min-height:300px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:30px;color:#fff;">'
+      + '<div style="font-size:24px;font-weight:800;margin-bottom:12px;">'+titulo+'</div>'
+      + '<div style="font-size:15px;opacity:.92;max-width:560px;line-height:1.6;">'+detalle+'</div></div>';
   }
-  primeraCarga = false;
-}, (err)=>{
-  console.error('[TV surtidos] onSnapshot error:', err);
+  console.warn('[TV]', titulo, String(detalle).replace(/<[^>]+>/g,''));
+}
+
+function iniciarEscucha(){
+  if(escuchando) return; escuchando = true;
+  onSnapshot(collection(db,'surtidos'), (snap)=>{
+    const lista = [];
+    const nuevos = [];
+    snap.forEach(docu=>{
+      const d = docu.data() || {};
+      const estado = d.estado || 'pendiente';
+      if(estado === 'finalizado') return;            // fuera del tablero
+      const p = {
+        id: docu.id,
+        folio: String(d.folio!=null ? d.folio : docu.id),
+        cliente: d.cliente || '\u2014',
+        vendedor: d.vendedor || '\u2014',
+        prioridad: d.prioridad || 'normal',
+        estado,
+        createdAt: toMs(d.createdAt),
+        productos: Array.isArray(d.productos) ? d.productos.map(it=>({
+          clave: it.clave || '',
+          cant: Number(it.cant)||0,
+          desc: it.desc || it.descripcion || ''
+        })) : []
+      };
+      lista.push(p);
+      if(!primeraCarga && !vistos.has(p.id)) nuevos.push(p);
+      vistos.add(p.id);
+    });
+    if(window.__setPedidos) window.__setPedidos(lista);
+    if(!primeraCarga && nuevos.length && window.__flashNuevo){
+      window.__flashNuevo(nuevos.sort((a,b)=>b.createdAt-a.createdAt)[0]);
+    }
+    primeraCarga = false;
+  }, (err)=>{
+    console.error('[TV surtidos] onSnapshot error:', err);
+    if(err && (err.code === 'permission-denied' || /permission/i.test(err.message||''))){
+      avisoTV('Sin permisos para leer los pedidos',
+        'Firestore rechaz\u00f3 la lectura de <b>surtidos</b>. Permite lectura p\u00fablica de esa colecci\u00f3n en las Reglas, o activa el proveedor <b>An\u00f3nimo</b> en Authentication.');
+    } else {
+      avisoTV('Error de conexi\u00f3n con Firestore', (err && (err.message||err.code)) || 'Error desconocido');
+    }
+  });
+}
+
+// Sesi\u00f3n an\u00f3nima para poder leer aun sin usuario logueado.
+onAuthStateChanged(auth, (user)=>{ if(user) iniciarEscucha(); });
+signInAnonymously(auth).catch((err)=>{
+  console.error('[TV auth] signInAnonymously:', err);
+  if(err && err.code === 'auth/operation-not-allowed'){
+    avisoTV('Falta activar el acceso an\u00f3nimo',
+      'En Firebase \u2192 Authentication \u2192 Sign-in method, activa el proveedor <b>An\u00f3nimo</b>. (Alternativa: permitir lectura p\u00fablica de <b>surtidos</b> en las Reglas.)');
+  }
+  // Aun as\u00ed intenta leer, por si las Reglas permiten lectura p\u00fablica:
+  iniciarEscucha();
 });
 </script>
 </body>
