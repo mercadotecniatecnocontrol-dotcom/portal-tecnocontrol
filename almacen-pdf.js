@@ -73,28 +73,28 @@
 
   // Agrupa items de texto por su coordenada Y y los ordena por X → líneas legibles
   function lineasDePagina(textContent) {
-    var filas = {};
+    // 1) Recolecta items con su posición real (y vertical, x horizontal)
+    var items = [];
     textContent.items.forEach(function (it) {
       if (!it.str || !it.transform) return;
-      var y = Math.round(it.transform[5]); // posición vertical
-      var x = it.transform[4];             // posición horizontal
-      // Redondeo tolerante: agrupa líneas con ligeras variaciones de Y
-      var key = Math.round(y / 2) * 2;
-      (filas[key] || (filas[key] = [])).push({ x: x, s: it.str });
+      items.push({ y: it.transform[5], x: it.transform[4], s: it.str });
     });
-    return Object.keys(filas)
-      .map(Number)
-      .sort(function (a, b) { return b - a; }) // de arriba hacia abajo
-      .map(function (k) {
-        return filas[k]
-          .sort(function (a, b) { return a.x - b.x; })
-          .map(function (o) { return o.s; })
-          .join(' ')
-          .replace(/\s+/g, ' ')
-          .trim();
-      })
-      .filter(function (l) { return l.length > 0; })
-      .join('\n');
+    // 2) De arriba hacia abajo (en pdf.js, y mayor = más arriba) y por x
+    items.sort(function (a, b) { return (b.y - a.y) || (a.x - b.x); });
+    // 3) Agrupa por cercanía en Y (tolerancia 5px). Esto UNE filas que el PDF
+    //    parte en dos —p.ej. la clave en una línea y el resto en otra— sin
+    //    fusionar renglones distintos (que van más separados).
+    var TOL = 5, lineas = [], cur = null, refY = null;
+    items.forEach(function (it) {
+      if (cur && Math.abs(it.y - refY) <= TOL) { cur.push(it); }
+      else { cur = [it]; lineas.push(cur); refY = it.y; }
+    });
+    // 4) Cada línea: ordena por X y concatena
+    return lineas.map(function (ln) {
+      return ln.sort(function (a, b) { return a.x - b.x; })
+        .map(function (o) { return o.s; }).join(' ')
+        .replace(/\s+/g, ' ').trim();
+    }).filter(function (l) { return l.length > 0; }).join('\n');
   }
 
   // =====================================================================
@@ -102,59 +102,69 @@
   // =====================================================================
   function parsearCHH(texto) {
     var lineas = texto.split('\n').map(function (l) { return l.trim(); }).filter(Boolean);
-    var out = { folio: '', cliente: '', vendedor: '', productos: [] };
+    var out = { folio: '', cliente: '', vendedor: '', almacen: '', entrega: '', total: '', productos: [] };
+    var i, m, j;
 
-    // ── Folio ──
-    var reFolio = /(?:folio|pedido|cotizaci[oó]n|orden|remisi[oó]n|no\.?|n[uú]m\.?)\s*[:#-]?\s*([A-Z]{0,3}\d{3,7})/i;
-    for (var i = 0; i < lineas.length; i++) {
-      var mF = lineas[i].match(reFolio);
-      if (mF) { out.folio = mF[1].toUpperCase(); break; }
+    // ── Folio (anclado a "Folio:", NO a "Cotización") ──
+    for (i = 0; i < lineas.length; i++) {
+      m = lineas[i].match(/Folio\s*:?\s*([A-Z]{2,4}\d{4,})/i);
+      if (m) { out.folio = m[1].toUpperCase(); break; }
     }
 
-    // ── Cliente ──
-    var reCliente = /(?:cliente|raz[oó]n\s*social|nombre(?:\s*del\s*cliente)?|estaci[oó]n)\s*[:#-]?\s*(.+)$/i;
-    for (var c = 0; c < lineas.length; c++) {
-      var mC = lineas[c].match(reCliente);
-      if (mC && mC[1] && mC[1].replace(/[^A-Za-zÁÉÍÓÚÑ]/gi, '').length >= 3) {
-        out.cliente = mC[1].replace(/\s{2,}/g, ' ').trim();
+    // ── Cliente (quita el "( NN )" y corta la columna de Datos Bancarios) ──
+    for (i = 0; i < lineas.length; i++) {
+      m = lineas[i].match(/Cliente\s*:?\s*(.+)$/i);
+      if (m) {
+        var c = m[1].replace(/^\(\s*\d+\s*\)\s*/, '');
+        c = c.split(/\b(?:BBVA|CUENTA|CLABE|DATOS\s+BANC)/i)[0];
+        c = c.replace(/\s{2,}/g, ' ').trim();
+        if (c.replace(/[^A-Za-zÁÉÍÓÚÑ]/gi, '').length >= 3) { out.cliente = c; break; }
+      }
+    }
+
+    // ── Vendedor (corta si sigue "Vigencia" o "Almacen" en la misma línea) ──
+    for (i = 0; i < lineas.length; i++) {
+      m = lineas[i].match(/Vendedor\s*:?\s*([^\s].*?)(?:\s+Vigencia|\s+Almacen|$)/i);
+      if (m && m[1].trim()) { out.vendedor = m[1].replace(/\s{2,}/g, ' ').trim(); break; }
+    }
+
+    // ── Almacén ──
+    for (i = 0; i < lineas.length; i++) {
+      m = lineas[i].match(/Almacen\s*:?\s*(.+)$/i);
+      if (m) { out.almacen = m[1].replace(/\s{2,}/g, ' ').trim(); break; }
+    }
+
+    // ── Entrega / Observaciones (línea siguiente a "OBSERVACIONES GENERALES") ──
+    for (i = 0; i < lineas.length; i++) {
+      if (/OBSERVACIONES\s+GENERALES/i.test(lineas[i])) {
+        for (j = i + 1; j < Math.min(i + 4, lineas.length); j++) {
+          if (lineas[j] && !/GRACIAS/i.test(lineas[j])) { out.entrega = lineas[j].trim(); break; }
+        }
         break;
       }
     }
 
-    // ── Vendedor ──
-    var reVend = /(?:vendedor|asesor|ejecutivo|atendi[oó]|elabor[oó])\s*[:#-]?\s*(.+)$/i;
-    for (var v = 0; v < lineas.length; v++) {
-      var mV = lineas[v].match(reVend);
-      if (mV && mV[1] && mV[1].trim().length >= 3) { out.vendedor = mV[1].replace(/\s{2,}/g, ' ').trim(); break; }
+    // ── Total ──
+    for (i = 0; i < lineas.length; i++) {
+      m = lineas[i].match(/^Total\s+([\d,]+\.\d{2})$/i);
+      if (m) { out.total = m[1]; }
     }
 
-    // ── Productos ──
-    // Patrones probados en orden. La "clave" en TCN suele ser de 4-6 dígitos.
-    var pat = [
-      // clave  cant  descripción
-      { re: /^([A-Z]?\d{4,6})\s+(\d{1,4})\s+(.{3,})$/i, clave: 1, cant: 2, desc: 3 },
-      // cant  descripción  clave (clave al final)
-      { re: /^(\d{1,4})\s+(.{3,}?)\s+([A-Z]?\d{4,6})$/i, cant: 1, desc: 2, clave: 3 },
-      // partida  clave  cant  descripción   (col. de partida inicial)
-      { re: /^\d{1,3}\s+([A-Z]?\d{4,6})\s+(\d{1,4})\s+(.{3,})$/i, clave: 1, cant: 2, desc: 3 },
-      // cant  descripción     (sin clave)
-      { re: /^(\d{1,4})\s+([A-ZÁÉÍÓÚÑ].{4,})$/i, cant: 1, desc: 2, clave: null }
-    ];
-
+    // ── Productos (tabla: Cantidad · Clave · Descripción · P/U · Importe) ──
+    // La clave se conserva como TEXTO para no perder ceros a la izquierda (p.ej. "06023").
+    var reProd = /^(\d+(?:\.\d+)?)\s+(\d{3,6})\s+(.+?)\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})$/;
+    var enTabla = false;
     lineas.forEach(function (ln) {
-      // Descartar líneas de encabezado/pie evidentes
-      if (/^(folio|cliente|vendedor|cantidad|clave|descripci|partida|subtotal|total|iva|importe|precio|fecha|p[aá]gina)\b/i.test(ln)) return;
-      for (var k = 0; k < pat.length; k++) {
-        var m = ln.match(pat[k].re);
-        if (m) {
-          var cant = parseInt(m[pat[k].cant], 10);
-          var desc = (m[pat[k].desc] || '').replace(/\s{2,}/g, ' ').trim();
-          var clave = pat[k].clave ? (m[pat[k].clave] || '').toUpperCase() : '';
-          // Filtros de cordura: cantidad razonable y descripción con letras
-          if (cant > 0 && cant < 100000 && /[A-Za-zÁÉÍÓÚÑ]{2,}/.test(desc)) {
-            out.productos.push({ clave: clave, cant: cant, desc: desc });
-          }
-          break;
+      if (/Cantidad.*Clave.*Descrip/i.test(ln)) { enTabla = true; return; }
+      if (/^(Subtotal|I\.?V\.?A|Total)\b/i.test(ln)) { enTabla = false; }
+      if (!enTabla) return;
+      var mp = ln.match(reProd);
+      if (mp) {
+        var cant = parseFloat(mp[1]);
+        if (cant === Math.floor(cant)) cant = Math.floor(cant);
+        var desc = mp[3].replace(/\s{2,}/g, ' ').trim();
+        if (cant > 0 && /[A-Za-zÁÉÍÓÚÑ]{2,}/.test(desc)) {
+          out.productos.push({ clave: mp[2], cant: cant, desc: desc, pu: mp[4], importe: mp[5] });
         }
       }
     });
@@ -233,6 +243,8 @@
       + '<div class="alm-fld"><label>Prioridad</label><select id="alm-prio"></select></div>'
       + '<div class="alm-fld" style="grid-column:1/3;"><label>Cliente</label><input id="alm-cliente" placeholder="Nombre del cliente / estación"></div>'
       + '<div class="alm-fld" style="grid-column:1/3;"><label>Vendedor</label><input id="alm-vendedor" placeholder="Vendedor"></div>'
+      + '<div class="alm-fld" style="grid-column:1/3;"><label>Almacén</label><input id="alm-almacen" placeholder="Almacén de salida"></div>'
+      + '<div class="alm-fld" style="grid-column:1/3;"><label>Entrega / Observaciones</label><input id="alm-entrega" placeholder="Instrucciones de entrega"></div>'
       + '</div>'
       + '<div style="font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#64748b;margin:6px 0 2px;">Productos</div>'
       + '<table class="alm-tbl"><thead><tr><th class="cclave">Clave</th><th class="ccant">Cant.</th><th>Descripción</th><th class="cdel"></th></tr></thead><tbody id="alm-rows"></tbody></table>'
@@ -291,6 +303,7 @@
           estado.rawText = texto;
           var parsed = parsearCHH(texto);
           estado.productos = parsed.productos.slice();
+          estado.total = parsed.total || '';
           pintarRevision(parsed);
           msg(parsed.productos.length
             ? ('Se detectaron ' + parsed.productos.length + ' productos. Revisa y corrige antes de confirmar.')
@@ -316,6 +329,8 @@
     var yo = (window.auth && window.auth.currentUser && window.auth.currentUser.email) || '';
     document.getElementById('alm-vendedor').value = parsed.vendedor
       || (window.nombreUsuario ? window.nombreUsuario(yo) : '') || '';
+    document.getElementById('alm-almacen').value = parsed.almacen || '';
+    document.getElementById('alm-entrega').value = parsed.entrega || '';
     document.getElementById('alm-raw').textContent = estado.rawText || '(sin texto)';
     renderRows();
   }
@@ -356,9 +371,11 @@
     var folio = (document.getElementById('alm-folio').value || '').trim();
     var cliente = (document.getElementById('alm-cliente').value || '').trim();
     var vendedor = (document.getElementById('alm-vendedor').value || '').trim() || '—';
+    var almacen = (document.getElementById('alm-almacen').value || '').trim();
+    var entrega = (document.getElementById('alm-entrega').value || '').trim();
     var prioridad = document.getElementById('alm-prio').value || 'normal';
     var productos = estado.productos
-      .map(function (p) { return { clave: (p.clave || '').trim(), cant: parseInt(p.cant, 10) || 0, desc: (p.desc || '').trim() }; })
+      .map(function (p) { return { clave: (p.clave || '').trim(), cant: parseInt(p.cant, 10) || 0, desc: (p.desc || '').trim(), pu: p.pu || '', importe: p.importe || '' }; })
       .filter(function (p) { return p.cant > 0 && p.desc.length > 0; });
 
     if (!folio)   { msg('Falta el folio.', '#dc2626'); return; }
@@ -396,6 +413,9 @@
           folio: folio,
           cliente: cliente,
           vendedor: vendedor,
+          almacen: almacen,
+          entrega: entrega,
+          total: estado.total || '',
           prioridad: prioridad,
           estado: 'pendiente',
           productos: productos,
