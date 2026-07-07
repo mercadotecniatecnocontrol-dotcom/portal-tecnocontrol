@@ -59,6 +59,19 @@
   .hero .timer{font-size:52px;font-weight:700}
   .badge{align-self:flex-start;display:inline-flex;align-items:center;gap:8px;padding:9px 17px;border-radius:999px;font-size:15px;font-weight:800;letter-spacing:1px;background:rgba(255,255,255,.18);color:#fff;border:1px solid rgba(255,255,255,.35)}
   .prio{padding:5px 12px;border-radius:7px;font-size:15px;font-weight:800;letter-spacing:1px;background:rgba(255,255,255,.2);color:#fff}
+  .hero .hpick{display:flex;flex-direction:column}
+  .hpick-view{position:relative;flex:1;min-height:190px;overflow:hidden;margin-top:2px}
+  .hpick-page{position:absolute;left:0;right:0;top:0;opacity:0;transition:opacity .5s;pointer-events:none}
+  .hpick-page.on{opacity:1;pointer-events:auto}
+  .hpick-dots{display:flex;gap:7px;justify-content:center;margin-top:10px}
+  .hpick-dots .hd{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.35);transition:background .3s}
+  .hpick-dots .hd.on{background:#fff}
+  .tipo-tag{display:inline-block;margin-top:10px;padding:5px 13px;border-radius:8px;font-size:15px;font-weight:800;letter-spacing:1px}
+  .tipo-tag.mat{background:rgba(139,79,214,.92);color:#fff}
+  .tipo-tag.ven{background:rgba(255,255,255,.2);color:#fff}
+  .venc-badge{display:inline-flex;align-items:center;padding:6px 13px;border-radius:8px;font-size:16px;font-weight:800;color:#fff}
+  .card .ctag{font-size:11px;font-weight:800;padding:2px 8px;border-radius:6px;letter-spacing:.5px;vertical-align:middle}
+  .card .cvenc{font-size:12px;font-weight:800;padding:2px 9px;border-radius:6px;color:#fff;margin-left:6px}
 
   /* QUEUE */
   .queue{display:flex;flex-direction:column;min-height:0}
@@ -162,11 +175,46 @@ function effColor(p){
 }
 const fmt=ms=>{const s=Math.max(0,Math.floor(ms/1000));return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')};
 const piezas=p=>(Array.isArray(p.productos)?p.productos:[]).reduce((a,x)=>a+(Number(x.cant)||0),0);
+// ── Vencimiento por fecha tentativa de entrega ──
+function diasA(fechaStr){
+  if(!fechaStr) return null;
+  const hoy=new Date(); hoy.setHours(0,0,0,0);
+  const f=new Date(String(fechaStr).length<=10 ? fechaStr+'T00:00:00' : fechaStr);
+  if(isNaN(f)) return null; f.setHours(0,0,0,0);
+  return Math.round((f-hoy)/86400000);
+}
+function venc(p){
+  const dd=diasA(p.fechaEntrega); if(dd===null) return null;
+  let txt,k;
+  if(dd<0){ txt='VENCIÓ hace '+Math.abs(dd)+'d'; k='rojo'; }
+  else if(dd===0){ txt='ENTREGA HOY'; k='naranja'; }
+  else if(dd<=2){ txt=dd+'d p/ entrega'; k='amarillo'; }
+  else { txt=dd+'d p/ entrega'; k='verde'; }
+  return { txt, color:COLORS[k] };
+}
+// ── Estado del carrusel del hero ──
+let heroPages=[], heroPageIdx=0, heroCarT=null;
+const HERO_PER_PAGE=4;
+function startHeroCarousel(){
+  clearInterval(heroCarT); heroCarT=null;
+  if(heroPages.length<=1) return;
+  heroCarT=setInterval(()=>{
+    const view=document.querySelector('.hpick-view');
+    if(!view){ clearInterval(heroCarT); heroCarT=null; return; }
+    const pages=view.querySelectorAll('.hpick-page'); if(pages.length<2) return;
+    if(pages[heroPageIdx]) pages[heroPageIdx].classList.remove('on');
+    heroPageIdx=(heroPageIdx+1)%pages.length;
+    if(pages[heroPageIdx]) pages[heroPageIdx].classList.add('on');
+    document.querySelectorAll('.hpick-dots .hd').forEach((d,i)=>d.classList.toggle('on', i===heroPageIdx));
+    const ph=document.getElementById('phTxt');
+    if(ph) ph.textContent=(ph.dataset.base||'')+' · pág '+(heroPageIdx+1)+'/'+pages.length;
+  }, 4000);
+}
 const ordered=()=>[...pedidos].sort((a,b)=>(PRIO_RANK[b.prioridad]-PRIO_RANK[a.prioridad])||(a.createdAt-b.createdAt));
 
 /* ===== RENDER: separa estructura (solo si cambia) de cronómetros (cada seg) ===== */
 let prevSig=null, prevFolios=new Set();
-function signature(list){return list.map(p=>p.folio+':'+effColor(p).k+':'+p.estado).join('|')}
+function signature(list){return list.map(p=>p.folio+':'+effColor(p).k+':'+p.estado+':'+(p.tipo||'')+':'+(p.fechaEntrega||'')).join('|')}
 
 function render(force){
   const list=ordered(), sig=signature(list);
@@ -179,36 +227,57 @@ function buildDOM(list){
   const hero=list[0];
   if(hero){
     const ec=effColor(hero), g=GRAD[ec.k];
+    const esMat = hero.tipo==='material';
+    const persona = hero.solicitante || hero.vendedor || '\u2014';
+    const v = venc(hero);
     document.getElementById('hero').style.background='linear-gradient(115deg,'+g[0]+','+g[1]+')';
     const hprods=Array.isArray(hero.productos)?hero.productos:[];
-    const items=hprods.map(it=>`<div class="pitem"><div class="box"></div><div class="qty">${it.cant}</div><div><div class="desc">${it.desc||''}</div><div class="clave">${it.clave?('Clave '+it.clave):''}</div></div></div>`).join('');
+    // Carrusel: parte los productos en páginas de tamaño fijo (sin empalmar)
+    heroPages=[]; for(let i=0;i<hprods.length;i+=HERO_PER_PAGE) heroPages.push(hprods.slice(i,i+HERO_PER_PAGE));
+    if(!heroPages.length) heroPages=[[]];
+    heroPageIdx=0;
+    const rowsOf = pg => pg.map(it=>`<div class="pitem"><div class="box"></div><div class="qty">${it.cant}</div><div><div class="desc">${it.desc||''}</div><div class="clave">${it.clave?('Clave '+it.clave):''}</div></div></div>`).join('') || '<div class="pitem" style="opacity:.6">Sin productos</div>';
+    const pagesHtml = heroPages.map((pg,pi)=>`<div class="hpick-page${pi===0?' on':''}">${rowsOf(pg)}</div>`).join('');
+    const dots = heroPages.length>1 ? `<div class="hpick-dots">${heroPages.map((_,pi)=>`<span class="hd${pi===0?' on':''}"></span>`).join('')}</div>` : '';
+    const baseTxt = `POR SURTIR · ${hprods.length} PRODUCTOS · ${piezas(hero)} PIEZAS`;
+    const phTxt = baseTxt + (heroPages.length>1?` · pág 1/${heroPages.length}`:'');
+    const vencMeta = v ? `<div class="meta"><span class="k">ENTREGA${hero.fechaEntrega?(' · '+hero.fechaEntrega):''}</span><span class="venc-badge" style="background:${v.color}">${v.txt}</span></div>` : '';
+    const usoMeta = hero.uso ? `<div class="meta"><span class="k">USO / DESTINO</span><span class="v" style="font-size:18px">${hero.uso}</span></div>` : '';
     document.getElementById('hero').innerHTML=`
-      <div class="eyebrow">SIGUIENTE A SURTIR</div>
+      <div class="eyebrow">${esMat?'SOLICITUD DE MATERIAL · OPERACIONES':'PEDIDO DE VENTAS'} · SIGUIENTE A SURTIR</div>
       <div class="htop">
-        <div class="hid"><div class="folio num">${hero.folio}</div><div class="client">${hero.cliente}</div></div>
-        <div class="hpick"><div class="ph">POR SURTIR · ${hprods.length} PRODUCTOS · ${piezas(hero)} PIEZAS</div>${items}</div>
+        <div class="hid"><div class="folio num">${hero.folio}</div><div class="client">${hero.cliente}</div><span class="tipo-tag ${esMat?'mat':'ven'}">${esMat?'MATERIAL':'VENTA'}</span></div>
+        <div class="hpick"><div class="ph"><span id="phTxt" data-base="${baseTxt}">${phTxt}</span></div><div class="hpick-view">${pagesHtml}</div>${dots}</div>
       </div>
       <div class="metaRow">
         <div class="meta"><span class="k"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>ESPERANDO</span><span class="v timer num mono" id="hTimer">${fmt(now()-hero.createdAt)}</span></div>
-        <div class="meta"><span class="k"><svg class="i" viewBox="0 0 24 24"><path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="7" r="4"/></svg>VENDEDOR</span><span class="v">${hero.vendedor}</span></div>
+        <div class="meta"><span class="k"><svg class="i" viewBox="0 0 24 24"><path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="7" r="4"/></svg>${esMat?'SOLICITANTE':'VENDEDOR'}</span><span class="v">${persona}</span></div>
+        ${vencMeta}
+        ${usoMeta}
         <div class="meta"><span class="k">PRIORIDAD</span><span class="prio">${hero.prioridad.replace('_',' ').toUpperCase()}</span></div>
-        <div class="meta" style="margin-left:auto;align-items:flex-end"><span class="badge">${effColor(hero).label}</span></div>
+        <div class="meta" style="margin-left:auto;align-items:flex-end"><span class="badge">${ec.label}</span></div>
       </div>`;
+    startHeroCarousel();
+  } else {
+    clearInterval(heroCarT); heroCarT=null;
   }
   const rest=list.slice(1);
   qCount.textContent=rest.length+' en cola';
   qlist.innerHTML=rest.map(p=>{
     const ec=effColor(p), c=COLORS[ec.k], isNew=!prevFolios.has(p.folio);
+    const esMat=p.tipo==='material', v=venc(p), persona=p.solicitante||p.vendedor||'';
     const prods=Array.isArray(p.productos)?p.productos:[];
     const first=prods[0]||{cant:'',desc:'—'}, extra=prods.length-1;
     const items=`${first.cant}× ${first.desc||''}${extra>0?'  +'+extra+' más':''}`;
+    const tag=`<span class="ctag" style="background:${esMat?'rgba(139,79,214,.15)':'rgba(20,115,230,.12)'};color:${esMat?'#8B4FD6':'#1473E6'}">${esMat?'MATERIAL':'VENTA'}</span>`;
+    const vb = v ? `<span class="cvenc" style="background:${v.color}">${v.txt}</span>` : '';
     return `<div class="card ${isNew?'is-new':''}" data-folio="${p.folio}">
       <div class="bar" style="background:${c}"></div>
       <div class="cfolio num" style="color:${c}">${p.folio}</div>
       <div class="cmid">
-        <div class="cclient">${p.cliente}</div>
+        <div class="cclient">${p.cliente} ${tag}</div>
         <div class="citems">${items}</div>
-        <div class="cstate" style="color:${c}"><span class="sdot" style="background:${c}"></span>${ec.label} · ${p.vendedor}</div>
+        <div class="cstate" style="color:${c}"><span class="sdot" style="background:${c}"></span>${ec.label} · ${persona} ${vb}</div>
       </div>
       <div class="cright"><div class="ctimer mono" style="color:${c}">${fmt(now()-p.createdAt)}</div><div class="cpieces">${piezas(p)} pzas</div></div>
     </div>`;
@@ -312,6 +381,10 @@ function iniciarEscucha(){
         prioridad: d.prioridad || 'normal',
         estado,
         createdAt: toMs(d.createdAt),
+        tipo: d.tipo || 'venta',
+        fechaEntrega: d.fechaEntrega || '',
+        solicitante: d.solicitante || '',
+        uso: d.uso || d.destino || '',
         productos: Array.isArray(d.productos) ? d.productos.map(it=>({
           clave: it.clave || '',
           cant: Number(it.cant)||0,
