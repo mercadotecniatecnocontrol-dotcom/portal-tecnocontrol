@@ -1010,7 +1010,6 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
         <button class="sitem" onclick="navegar('cal360',this)"><div class="sitem-left"><span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span> Calendario 360</div></button>
         <button class="sitem" onclick="navegar('nueva',this)"><div class="sitem-left"><span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg></span> Asignar Tarea</div></button>
         <button class="sitem" id="btn-ejecutivo" style="display:none;" onclick="navegar('ejecutivo',this)"><div class="sitem-left"><span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span> Vista Ejecutiva</div></button>
-        <button class="sitem" id="btn-almacen" onclick="irAlmacen(this)"><div class="sitem-left"><span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 8.35V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8.35"/><path d="M2 8.35 12 2l10 6.35"/><path d="M6 22V12h12v10"/></svg></span> Almacén · Surtido</div></button>
         <div class="nav-label">Áreas</div>
         <div id="nav-dept"></div>
         <div id="push-status-bar"></div>
@@ -1122,6 +1121,8 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
             <div class="page-header">
                 <div><div class="page-title" id="area-title">-</div><div class="page-date" id="area-stats-mini" style="color:#64748b;"></div></div>
             </div>
+            <!-- ═══ CENTRO DE SURTIDO (solo departamento Almacén) ═══ -->
+            <div id="vista-almacen-area" style="display:none;margin-bottom:24px;"></div>
             <!-- ═══ PARRILLA UNIVERSAL POR ÁREA ═══ -->
 <div id="area-parrilla-wrap" style="display:none;margin-bottom:20px;">
     <div class="parrilla-wrap">
@@ -5585,6 +5586,14 @@ cargarModuloMarketing();
         const _origVerArea2 = window.verArea;
         window.verArea = function(area, btn){
             _origVerArea2(area, btn);
+            // ── Centro de Surtido embebido en el departamento de Almacén ──
+            const almBox = document.getElementById('vista-almacen-area');
+            if(almBox){
+                if(area === 'Almacén'){
+                    almBox.style.display = 'block';
+                    if(window.abrirAlmacen){ try{ window.abrirAlmacen('vista-almacen-area'); }catch(e){ console.error('[almacen] abrirAlmacen:', e); } }
+                } else { almBox.style.display = 'none'; }
+            }
             const wrap = document.getElementById('area-parrilla-wrap');
             if(!wrap) return;
             if(AREAS_CON_PARRILLA_PROPIA.includes(area)){
