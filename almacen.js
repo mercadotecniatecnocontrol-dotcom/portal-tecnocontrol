@@ -374,6 +374,7 @@
     if(idContenedor) contId=idContenedor;
     inyectarCSS();
     suscribir();
+    if(_unsub) render();   // reentrada al área: repinta de inmediato desde la caché
     if(!_tick) _tick=setInterval(tickTimers,1000);
   };
 
