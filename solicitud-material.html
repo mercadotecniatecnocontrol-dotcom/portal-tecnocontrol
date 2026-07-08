@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Solicitud de Material · Almacén Tecnocontrol</title>
+<style>
+  :root{
+    --azul:#1473E6; --teal:#0e7490; --teal2:#0891b2; --morado:#8B4FD6;
+    --ink:#0f172a; --mute:#64748b; --line:#e6ebf2; --bg:#eef2f7; --ok:#12A150; --rojo:#E23B3B;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;background:var(--bg);color:var(--ink);font-family:'Segoe UI',system-ui,-apple-system,sans-serif}
+  .wrap{max-width:920px;margin:0 auto;padding:22px 18px 60px}
+  header{display:flex;align-items:center;gap:16px;margin-bottom:18px}
+  .logo{width:52px;height:52px;border-radius:14px;background:linear-gradient(135deg,var(--teal),var(--teal2));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:22px;flex:0 0 auto}
+  header h1{font-size:22px;margin:0;font-weight:800;letter-spacing:.2px}
+  header p{margin:2px 0 0;font-size:13px;color:var(--mute);font-weight:600;letter-spacing:1px;text-transform:uppercase}
+  .card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:22px;box-shadow:0 4px 18px rgba(16,24,40,.05);margin-bottom:18px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:640px){.grid{grid-template-columns:1fr}}
+  label{display:block;font-size:12px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:var(--mute);margin-bottom:7px}
+  input,select,textarea{width:100%;font-size:17px;padding:14px 15px;border:2px solid var(--line);border-radius:12px;background:#fff;color:var(--ink);font-family:inherit;outline:none;transition:border-color .15s}
+  input:focus,select:focus,textarea:focus{border-color:var(--teal2)}
+  textarea{resize:vertical;min-height:70px}
+  .full{grid-column:1/-1}
+  .sec-title{font-size:14px;font-weight:800;color:var(--ink);margin:4px 0 14px;display:flex;align-items:center;gap:9px}
+  .sec-title .n{width:24px;height:24px;border-radius:8px;background:var(--teal);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:13px}
+
+  /* Productos */
+  .prow{display:grid;grid-template-columns:1fr 130px 90px 44px;gap:10px;align-items:end;margin-bottom:12px;position:relative}
+  @media(max-width:640px){.prow{grid-template-columns:1fr 90px 40px;grid-template-areas:'d d d' 'c q x';gap:8px}
+    .prow .fd{grid-area:d}.prow .fc{grid-area:c}.prow .fq{grid-area:q}.prow .fx{grid-area:x}}
+  .prow label{margin-bottom:5px}
+  .btn-x{height:52px;border:2px solid var(--line);background:#fff;border-radius:12px;color:#94a3b8;font-size:20px;cursor:pointer}
+  .btn-x:active{background:#fef2f2;border-color:#fecaca;color:var(--rojo)}
+  .add-btn{margin-top:4px;background:#f0f9ff;border:1.5px dashed var(--teal2);color:var(--teal);font-weight:800;font-size:15px;padding:13px;border-radius:12px;width:100%;cursor:pointer}
+  .add-btn:active{background:#e0f2fe}
+  /* Autocomplete dropdown */
+  .ac{position:absolute;top:100%;left:0;right:0;z-index:30;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 30px rgba(16,24,40,.14);max-height:260px;overflow:auto;margin-top:4px;display:none}
+  .ac.on{display:block}
+  .ac-item{padding:12px 14px;cursor:pointer;border-bottom:1px solid #f1f5f9}
+  .ac-item:last-child{border-bottom:none}
+  .ac-item:active,.ac-item.hl{background:#f0f9ff}
+  .ac-item .d{font-size:15px;font-weight:700;color:var(--ink)}
+  .ac-item .m{font-size:12px;color:var(--mute);margin-top:2px}
+
+  /* Firma */
+  .sign-box{border:2px dashed var(--line);border-radius:14px;background:#fafcff;position:relative;overflow:hidden}
+  canvas{display:block;width:100%;height:190px;touch-action:none;cursor:crosshair}
+  .sign-hint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#cbd5e1;font-size:15px;font-weight:700;pointer-events:none}
+  .sign-actions{display:flex;justify-content:space-between;align-items:center;margin-top:10px}
+  .link-btn{background:none;border:none;color:var(--mute);font-weight:800;font-size:14px;cursor:pointer;padding:8px 4px}
+
+  .submit{width:100%;padding:19px;border:none;border-radius:14px;background:linear-gradient(135deg,var(--teal),var(--teal2));color:#fff;font-size:19px;font-weight:800;letter-spacing:.4px;cursor:pointer;box-shadow:0 8px 20px rgba(14,116,144,.28)}
+  .submit:active{filter:brightness(.96)}
+  .submit:disabled{opacity:.55;cursor:not-allowed}
+  .msg{text-align:center;font-size:14px;font-weight:700;margin-top:12px;min-height:20px}
+  .tag-mat{display:inline-block;background:rgba(139,79,214,.12);color:var(--morado);font-size:12px;font-weight:800;padding:5px 12px;border-radius:8px;letter-spacing:.5px}
+
+  /* Éxito */
+  .done{position:fixed;inset:0;background:rgba(15,23,42,.55);backdrop-filter:blur(6px);display:none;align-items:center;justify-content:center;z-index:100;padding:24px}
+  .done.on{display:flex}
+  .done-card{background:#fff;border-radius:22px;padding:38px 30px;text-align:center;max-width:420px;width:100%;box-shadow:0 24px 60px rgba(0,0,0,.3)}
+  .done-ic{width:82px;height:82px;border-radius:50%;background:var(--ok);display:flex;align-items:center;justify-content:center;margin:0 auto 18px}
+  .done h2{margin:0 0 6px;font-size:24px}
+  .done .folio{font-size:15px;color:var(--mute);font-weight:700;margin-bottom:22px}
+  .done .folio b{color:var(--teal);font-size:22px}
+  .done button{width:100%;padding:16px;border:none;border-radius:13px;background:var(--teal);color:#fff;font-size:17px;font-weight:800;cursor:pointer}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">TC</div>
+    <div>
+      <h1>Solicitud de Material</h1>
+      <p>Almacén · Operaciones</p>
+    </div>
+    <span class="tag-mat" style="margin-left:auto">MATERIAL</span>
+  </header>
+
+  <!-- Datos de la solicitud -->
+  <div class="card">
+    <div class="sec-title"><span class="n">1</span> Datos de la solicitud</div>
+    <div class="grid">
+      <div class="full">
+        <label>Nombre del solicitante *</label>
+        <input id="f-solicitante" type="text" placeholder="¿Quién solicita el material?" autocomplete="off">
+      </div>
+      <div>
+        <label>Área / Operación destino</label>
+        <input id="f-area" type="text" placeholder="Ej. Instalación gasolinera X" autocomplete="off">
+      </div>
+      <div>
+        <label>Fecha tentativa de entrega</label>
+        <input id="f-fecha" type="date">
+      </div>
+      <div>
+        <label>Prioridad</label>
+        <select id="f-prio">
+          <option value="normal">Normal</option>
+          <option value="alta">Alta</option>
+          <option value="urgente">Urgente</option>
+        </select>
+      </div>
+      <div class="full">
+        <label>¿Para qué se usará el material?</label>
+        <textarea id="f-uso" placeholder="Describe brevemente el uso o destino"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- Artículos -->
+  <div class="card">
+    <div class="sec-title"><span class="n">2</span> Artículos solicitados</div>
+    <div id="rows"></div>
+    <button class="add-btn" id="add-row" type="button">+ Agregar artículo</button>
+  </div>
+
+  <!-- Firma -->
+  <div class="card">
+    <div class="sec-title"><span class="n">3</span> Firma del solicitante</div>
+    <div class="sign-box">
+      <canvas id="sign"></canvas>
+      <div class="sign-hint" id="sign-hint">Firma aquí con el dedo o el mouse</div>
+    </div>
+    <div class="sign-actions">
+      <span style="font-size:12px;color:var(--mute);font-weight:700">Requerida para confirmar la solicitud</span>
+      <button class="link-btn" id="sign-clear" type="button">Limpiar firma</button>
+    </div>
+  </div>
+
+  <button class="submit" id="submit" type="button">Enviar solicitud de material</button>
+  <div class="msg" id="msg"></div>
+</div>
+
+<!-- Éxito -->
+<div class="done" id="done">
+  <div class="done-card">
+    <div class="done-ic"><svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+    <h2>¡Solicitud enviada!</h2>
+    <div class="folio">Folio <b id="done-folio">—</b></div>
+    <button id="done-new" type="button">Nueva solicitud</button>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, collection, addDoc, doc, getDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const config = { apiKey:"AIzaSyBXh-P0oMtMiDjyz9PObuJ8DNfROlXvhLE", authDomain:"tecnocontrol-1c42f.firebaseapp.com", projectId:"tecnocontrol-1c42f", storageBucket:"tecnocontrol-1c42f.firebasestorage.app", appId:"1:27642771956:web:54225af9e386afded8a1a1" };
+const app = initializeApp(config);
+const db  = getFirestore(app);
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+/* ============ Catálogo (derivado de cotizaciones, lectura pública) ============ */
+let CATALOGO = [];
+getDoc(doc(db,'catalogo','productos')).then(snap=>{
+  if(snap.exists()){
+    const d = snap.data() || {};
+    CATALOGO = Array.isArray(d.items) ? d.items : [];
+    console.log('[kiosco] catálogo cargado:', CATALOGO.length, 'productos');
+  } else {
+    console.warn('[kiosco] no existe catalogo/productos — captura manual disponible');
+  }
+}).catch(e=>console.warn('[kiosco] catálogo no disponible:', e.message));
+
+/* ============ Filas de productos con autocompletado ============ */
+const rowsEl = $('rows');
+let rowSeq = 0;
+
+function nuevaFila(){
+  const id = 'r'+(rowSeq++);
+  const div = document.createElement('div');
+  div.className = 'prow';
+  div.dataset.id = id;
+  div.innerHTML =
+    '<div class="fd" style="position:relative">'
+    + '<label>Descripción del artículo</label>'
+    + '<input class="ac-input" type="text" placeholder="Escribe para buscar…" autocomplete="off">'
+    + '<div class="ac"></div>'
+    + '</div>'
+    + '<div class="fc"><label>Clave</label><input class="cl-input" type="text" placeholder="—" autocomplete="off"></div>'
+    + '<div class="fq"><label>Cant.</label><input class="q-input" type="number" min="1" value="1" inputmode="numeric"></div>'
+    + '<button class="btn-x fx" type="button" title="Quitar">×</button>';
+  rowsEl.appendChild(div);
+
+  const acInput = div.querySelector('.ac-input');
+  const clInput = div.querySelector('.cl-input');
+  const acBox   = div.querySelector('.ac');
+  div.querySelector('.btn-x').onclick = ()=>{ div.remove(); if(!rowsEl.children.length) nuevaFila(); };
+
+  let hlIdx = -1, matches = [];
+  function pintar(list){
+    matches = list;
+    if(!list.length){ acBox.classList.remove('on'); acBox.innerHTML=''; return; }
+    acBox.innerHTML = list.map((it,i)=>
+      '<div class="ac-item'+(i===hlIdx?' hl':'')+'" data-i="'+i+'">'
+      + '<div class="d">'+esc(it.desc)+'</div>'
+      + '<div class="m">'+(it.clave?('Clave '+esc(it.clave)):'Sin clave')+(it.precio?(' · $'+Number(it.precio).toLocaleString('es-MX',{minimumFractionDigits:2})):'')+'</div>'
+      + '</div>').join('');
+    acBox.classList.add('on');
+    acBox.querySelectorAll('.ac-item').forEach(el=>{
+      el.onclick = ()=> elegir(matches[+el.dataset.i]);
+    });
+  }
+  function elegir(it){
+    acInput.value = it.desc || '';
+    clInput.value = it.clave || '';
+    acBox.classList.remove('on'); hlIdx=-1;
+  }
+  acInput.addEventListener('input', ()=>{
+    const q = acInput.value.trim().toLowerCase();
+    if(q.length < 2 || !CATALOGO.length){ acBox.classList.remove('on'); return; }
+    hlIdx = -1;
+    const res = CATALOGO.filter(it =>
+      (it.desc||'').toLowerCase().includes(q) || (it.clave||'').toLowerCase().includes(q)
+    ).slice(0,12);
+    pintar(res);
+  });
+  acInput.addEventListener('keydown', e=>{
+    if(!acBox.classList.contains('on')) return;
+    if(e.key==='ArrowDown'){ e.preventDefault(); hlIdx=Math.min(hlIdx+1,matches.length-1); pintar(matches); }
+    else if(e.key==='ArrowUp'){ e.preventDefault(); hlIdx=Math.max(hlIdx-1,0); pintar(matches); }
+    else if(e.key==='Enter'){ e.preventDefault(); if(hlIdx>=0&&matches[hlIdx]) elegir(matches[hlIdx]); }
+    else if(e.key==='Escape'){ acBox.classList.remove('on'); }
+  });
+  acInput.addEventListener('blur', ()=> setTimeout(()=>acBox.classList.remove('on'), 180));
+}
+$('add-row').onclick = nuevaFila;
+nuevaFila();
+
+/* ============ Firma autógrafa ============ */
+const cv = $('sign'), ctx = cv.getContext('2d');
+let dibujando=false, hayFirma=false, lastX=0, lastY=0;
+function ajustarCanvas(){
+  const r = cv.getBoundingClientRect();
+  const data = hayFirma ? ctx.getImageData(0,0,cv.width||1,cv.height||1) : null;
+  cv.width = r.width; cv.height = r.height;
+  ctx.lineWidth=2.6; ctx.lineCap='round'; ctx.lineJoin='round'; ctx.strokeStyle='#0f172a';
+  if(data){ try{ ctx.putImageData(data,0,0); }catch(e){} }
+}
+function pos(e){
+  const r = cv.getBoundingClientRect();
+  const p = e.touches ? e.touches[0] : e;
+  return { x:p.clientX-r.left, y:p.clientY-r.top };
+}
+function start(e){ e.preventDefault(); dibujando=true; const p=pos(e); lastX=p.x; lastY=p.y; }
+function move(e){
+  if(!dibujando) return; e.preventDefault();
+  const p=pos(e);
+  ctx.beginPath(); ctx.moveTo(lastX,lastY); ctx.lineTo(p.x,p.y); ctx.stroke();
+  lastX=p.x; lastY=p.y;
+  if(!hayFirma){ hayFirma=true; $('sign-hint').style.display='none'; }
+}
+function end(){ dibujando=false; }
+cv.addEventListener('mousedown',start); cv.addEventListener('mousemove',move);
+window.addEventListener('mouseup',end);
+cv.addEventListener('touchstart',start,{passive:false}); cv.addEventListener('touchmove',move,{passive:false});
+cv.addEventListener('touchend',end);
+$('sign-clear').onclick = ()=>{ ctx.clearRect(0,0,cv.width,cv.height); hayFirma=false; $('sign-hint').style.display='flex'; };
+setTimeout(ajustarCanvas, 60);
+window.addEventListener('resize', ()=>setTimeout(ajustarCanvas,80));
+
+/* Comprime la firma a PNG pequeño (base64) */
+function firmaBase64(){
+  const tmp = document.createElement('canvas');
+  const W = 600, H = Math.round(W * (cv.height/cv.width));
+  tmp.width=W; tmp.height=H;
+  const t = tmp.getContext('2d');
+  t.fillStyle='#ffffff'; t.fillRect(0,0,W,H);
+  t.drawImage(cv,0,0,W,H);
+  return tmp.toDataURL('image/png');
+}
+
+/* ============ Envío ============ */
+const msg = $('msg');
+function setMsg(t,c){ msg.textContent=t||''; msg.style.color=c||'var(--rojo)'; }
+
+$('submit').onclick = async ()=>{
+  const solicitante = $('f-solicitante').value.trim();
+  const area = $('f-area').value.trim();
+  const uso = $('f-uso').value.trim();
+  const fecha = $('f-fecha').value || '';
+  const prioridad = $('f-prio').value || 'normal';
+
+  const productos = [];
+  rowsEl.querySelectorAll('.prow').forEach(r=>{
+    const desc = r.querySelector('.ac-input').value.trim();
+    const clave = r.querySelector('.cl-input').value.trim();
+    const cant = parseInt(r.querySelector('.q-input').value,10) || 0;
+    if(desc && cant>0) productos.push({ clave, cant, desc });
+  });
+
+  if(!solicitante){ setMsg('Escribe el nombre del solicitante.'); return; }
+  if(!productos.length){ setMsg('Agrega al menos un artículo con descripción y cantidad.'); return; }
+  if(!hayFirma){ setMsg('Falta la firma del solicitante.'); return; }
+
+  const btn = $('submit'); btn.disabled=true; setMsg('Enviando…','var(--teal)');
+  const folio = 'SM-' + String(Date.now()).slice(-6);
+  try{
+    await addDoc(collection(db,'surtidos'), {
+      tipo: 'material',
+      folio,
+      cliente: area || 'Almacén · Operaciones',
+      solicitante,
+      vendedor: solicitante,
+      area,
+      uso,
+      fechaEntrega: fecha,
+      prioridad,
+      estado: 'pendiente',
+      productos,
+      firma: firmaBase64(),
+      origen: 'kiosco',
+      createdAt: serverTimestamp()
+    });
+    $('done-folio').textContent = folio;
+    $('done').classList.add('on');
+    setMsg('');
+  }catch(e){
+    console.error('[kiosco] error al enviar:', e);
+    setMsg('No se pudo enviar (' + (e.code||e.message||'error') + '). Revisa tu conexión.');
+  }finally{ btn.disabled=false; }
+};
+
+/* Reiniciar para el siguiente */
+$('done-new').onclick = ()=>{
+  $('done').classList.remove('on');
+  $('f-solicitante').value=''; $('f-area').value=''; $('f-uso').value=''; $('f-fecha').value=''; $('f-prio').value='normal';
+  rowsEl.innerHTML=''; nuevaFila();
+  ctx.clearRect(0,0,cv.width,cv.height); hayFirma=false; $('sign-hint').style.display='flex';
+  setMsg(''); window.scrollTo({top:0,behavior:'smooth'});
+};
+</script>
+</body>
+</html>
