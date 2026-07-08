@@ -245,6 +245,7 @@
       + '<div class="alm-fld" style="grid-column:1/3;"><label>Vendedor</label><input id="alm-vendedor" placeholder="Vendedor"></div>'
       + '<div class="alm-fld" style="grid-column:1/3;"><label>Almacén</label><input id="alm-almacen" placeholder="Almacén de salida"></div>'
       + '<div class="alm-fld" style="grid-column:1/3;"><label>Entrega / Observaciones</label><input id="alm-entrega" placeholder="Instrucciones de entrega"></div>'
+      + '<div class="alm-fld"><label>Fecha de entrega</label><input id="alm-fecha-entrega" type="date"></div>'
       + '</div>'
       + '<div style="font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#64748b;margin:6px 0 2px;">Productos</div>'
       + '<table class="alm-tbl"><thead><tr><th class="cclave">Clave</th><th class="ccant">Cant.</th><th>Descripción</th><th class="cdel"></th></tr></thead><tbody id="alm-rows"></tbody></table>'
@@ -373,6 +374,7 @@
     var vendedor = (document.getElementById('alm-vendedor').value || '').trim() || '—';
     var almacen = (document.getElementById('alm-almacen').value || '').trim();
     var entrega = (document.getElementById('alm-entrega').value || '').trim();
+    var fechaEntrega = (document.getElementById('alm-fecha-entrega').value || '').trim();
     var prioridad = document.getElementById('alm-prio').value || 'normal';
     var productos = estado.productos
       .map(function (p) { return { clave: (p.clave || '').trim(), cant: parseInt(p.cant, 10) || 0, desc: (p.desc || '').trim(), pu: p.pu || '', importe: p.importe || '' }; })
@@ -415,10 +417,12 @@
           vendedor: vendedor,
           almacen: almacen,
           entrega: entrega,
+          fechaEntrega: fechaEntrega,
           total: estado.total || '',
           prioridad: prioridad,
           estado: 'pendiente',
           productos: productos,
+          tipo: 'venta',
           origen: 'pdf',
           creadoPor: yo,
           createdAt: fs.serverTimestamp()
@@ -457,6 +461,8 @@
     if (cf) cf.style.display = 'none';
     var fi = document.getElementById('alm-file');
     if (fi) fi.value = '';
+    var fe = document.getElementById('alm-fecha-entrega');
+    if (fe) fe.value = '';
     msg('', '#64748b');
     document.getElementById('alm-pdf-modal').classList.add('show');
   };
