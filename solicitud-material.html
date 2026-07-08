@@ -148,17 +148,25 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getFirestore, collection, addDoc, doc, getDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 const config = { apiKey:"AIzaSyBXh-P0oMtMiDjyz9PObuJ8DNfROlXvhLE", authDomain:"tecnocontrol-1c42f.firebaseapp.com", projectId:"tecnocontrol-1c42f", storageBucket:"tecnocontrol-1c42f.firebasestorage.app", appId:"1:27642771956:web:54225af9e386afded8a1a1" };
 const app = initializeApp(config);
 const db  = getFirestore(app);
+const auth = getAuth(app);
+
+/* ============ Auth anónima (requerida por las reglas de Firestore) ============ */
+let authReadyResolve;
+const authReady = new Promise(res => { authReadyResolve = res; });
+onAuthStateChanged(auth, user => { if (user) authReadyResolve(); });
+signInAnonymously(auth).catch(err => console.error('[kiosco auth] signInAnonymously:', err));
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 /* ============ Catálogo (derivado de cotizaciones, lectura pública) ============ */
 let CATALOGO = [];
-getDoc(doc(db,'catalogo','productos')).then(snap=>{
+authReady.then(() => getDoc(doc(db,'catalogo','productos')).then(snap=>{
   if(snap.exists()){
     const d = snap.data() || {};
     CATALOGO = Array.isArray(d.items) ? d.items : [];
@@ -166,7 +174,7 @@ getDoc(doc(db,'catalogo','productos')).then(snap=>{
   } else {
     console.warn('[kiosco] no existe catalogo/productos — captura manual disponible');
   }
-}).catch(e=>console.warn('[kiosco] catálogo no disponible:', e.message));
+}).catch(e=>console.warn('[kiosco] catálogo no disponible:', e.message)));
 
 /* ============ Filas de productos con autocompletado ============ */
 const rowsEl = $('rows');
@@ -302,6 +310,7 @@ $('submit').onclick = async ()=>{
   const btn = $('submit'); btn.disabled=true; setMsg('Enviando…','var(--teal)');
   const folio = 'SM-' + String(Date.now()).slice(-6);
   try{
+    await authReady;
     await addDoc(collection(db,'surtidos'), {
       tipo: 'material',
       folio,
