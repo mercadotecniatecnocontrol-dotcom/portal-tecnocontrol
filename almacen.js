@@ -1,28 +1,3 @@
-/* ============================================================================
- * almacen.js · Módulo de Almacén — Centro de Surtido (flujo de pedidos)
- * ----------------------------------------------------------------------------
- * Responsabilidad ÚNICA: mostrar EN VIVO el flujo de pedidos de la colección
- * `surtidos` de Firestore dentro del departamento de Almacén y permitir al
- * personal AVANZAR cada pedido por sus etapas de surtido, con checklist de
- * picking línea por línea y trazabilidad en `surtidos/{id}/historial`.
- *
- * Ideas tomadas de un WMS profesional (Netlogistik/WEP), adaptadas a la escala
- * de Tecnocontrol: etapas claras (Recibo→Surtido→Verificación→Embarque),
- * surtido por pieza (checklist), priorización de urgentes, visibilidad SLA.
- *
- * NO sube PDFs — eso lo hace almacen-pdf.js (window.abrirSurtidoPDF), que vive
- * en Ventas. Aquí sólo se OPERA el surtido.
- *
- * Depende de globals del portal: window.db, window.auth, window.nombreUsuario.
- * Expone: window.abrirAlmacen(idContenedor)   ← contrato con irAlmacen()
- *
- * Esquema `surtidos` (compatible con almacen-pdf.js y pedidos-almacen.html):
- *   { folio, cliente, vendedor, prioridad, estado, productos:[{clave,cant,desc}],
- *     origen, creadoPor, createdAt,  check:{ "<idx>": true } }   ← check es NUEVO y opcional
- *
- * Máquina de estados (igual que la TV):
- *   esperando_autorizacion → pendiente → en_preparacion → listo → entregado → finalizado
- * ==========================================================================*/
 (function () {
   'use strict';
 
@@ -55,7 +30,7 @@
   var contId    = 'vista-almacen';
   var pedidos   = [];
   var expandido = {};                 // {id:true}
-  var filtro    = { q:'', prio:'' };   // búsqueda y filtro de prioridad
+  var filtro    = { q:'', prio:'', tipo:'' };   // búsqueda, prioridad y tipo
   var _unsub  = null, _tick = null, _fs = null, _cssOk = false;
 
   function cargarFirestore(){
@@ -97,6 +72,7 @@
   }
   function pasaFiltro(p){
     if (filtro.prio && p.prioridad !== filtro.prio) return false;
+    if (filtro.tipo && p.tipo !== filtro.tipo) return false;
     if (filtro.q){
       var q=filtro.q.toLowerCase();
       var blob=((p.folio||'')+' '+(p.cliente||'')+' '+(p.vendedor||'')).toLowerCase();
@@ -170,6 +146,22 @@
     + '.alm-btn-back{flex:0 0 auto;background:#fff;border:1px solid #e6ebf2;color:#94a3b8;}'
     + '.alm-empty{padding:14px 6px;text-align:center;color:#94a3b8;font-size:12px;}'
     + '.alm-loading{padding:50px;text-align:center;color:#94a3b8;font-size:13px;}'
+    + '.alm-tipo-tag{display:inline-block;margin-left:6px;font-size:10px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:#fff;border-radius:6px;padding:2px 7px;vertical-align:middle;}'
+    + '.alm-tipo-tag.ven{background:'+COLORS.azul+';}'
+    + '.alm-tipo-tag.mat{background:'+COLORS.morado+';}'
+    + '.alm-firma-mini{margin-top:10px;border-top:1px dashed #e6ebf2;padding-top:8px;}'
+    + '.alm-firma-mini .lbl{display:block;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#94a3b8;margin-bottom:6px;}'
+    + '.alm-firma-mini img{max-width:100%;max-height:70px;border:1px solid #e6ebf2;border-radius:8px;background:#fff;cursor:zoom-in;display:block;}'
+    + '.alm-modal-ov{display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;align-items:center;justify-content:center;padding:20px;}'
+    + '.alm-modal-ov.show{display:flex;}'
+    + '.alm-modal-box{background:#fff;border-radius:14px;max-width:480px;width:100%;max-height:82vh;overflow:auto;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.25);}'
+    + '.alm-modal-box h4{margin:0 0 14px;font-size:15px;font-weight:800;color:#0f172a;display:flex;align-items:center;justify-content:space-between;}'
+    + '.alm-modal-box h4 button{border:none;background:#f1f5f9;color:#475569;width:26px;height:26px;border-radius:8px;cursor:pointer;font-size:15px;line-height:1;}'
+    + '.alm-hist-row{display:flex;flex-direction:column;gap:2px;padding:9px 0;border-bottom:1px solid #f1f5f9;font-size:12.5px;}'
+    + '.alm-hist-row:last-child{border-bottom:none;}'
+    + '.alm-hist-row .cambio{font-weight:800;color:#0f172a;}'
+    + '.alm-hist-row .meta{color:#94a3b8;font-size:11px;}'
+    + '.alm-modal-box img.alm-firma-full{max-width:100%;border:1px solid #e6ebf2;border-radius:10px;background:#fff;margin-bottom:14px;}'
     + '@keyframes almPulse{0%{box-shadow:0 0 0 0 rgba(18,161,80,.5);}70%{box-shadow:0 0 0 8px rgba(18,161,80,0);}100%{box-shadow:0 0 0 0 rgba(18,161,80,0);}}'
     + '@keyframes almBlink{0%,100%{opacity:1;}50%{opacity:.55;}}';
     var st=document.createElement('style'); st.id='alm-css'; st.textContent=css; document.head.appendChild(st);
@@ -180,16 +172,30 @@
   // =====================================================================
   function contenedor(){ return document.getElementById(contId); }
 
+  function construirModalHistorial(){
+    if (document.getElementById('alm-modal-hist')) return;
+    var ov=document.createElement('div');
+    ov.id='alm-modal-hist';
+    ov.className='alm-modal-ov';
+    ov.innerHTML='<div class="alm-modal-box" id="alm-modal-hist-box"></div>';
+    ov.addEventListener('click', function(e){ if(e.target===ov) window.__almCerrarModal(); });
+    document.body.appendChild(ov);
+  }
+
   function construirShell(){
     var cont=contenedor(); if(!cont) return;
     if (cont.querySelector('#alm-toolbar')) return; // ya construido → no perder foco del buscador
-    var chips = '<span class="alm-fchip" data-prio="" onclick="window.__almPrio(\'\')">Todas</span>'
-      + '<span class="alm-fchip" data-prio="urgente" onclick="window.__almPrio(\'urgente\')">Urgentes</span>';
+    var chips = '<span class="alm-fchip alm-fchip-prio on" data-prio="" onclick="window.__almPrio(\'\')">Todas</span>'
+      + '<span class="alm-fchip alm-fchip-prio" data-prio="urgente" onclick="window.__almPrio(\'urgente\')">Urgentes</span>';
+    var chipsTipo = '<span class="alm-fchip alm-fchip-tipo on" data-tipo="" onclick="window.__almTipo(\'\')">Todos</span>'
+      + '<span class="alm-fchip alm-fchip-tipo" data-tipo="venta" onclick="window.__almTipo(\'venta\')">Venta</span>'
+      + '<span class="alm-fchip alm-fchip-tipo" data-tipo="material" onclick="window.__almTipo(\'material\')">Material</span>';
     cont.innerHTML = '<div class="alm-wrap">'
       + '<div class="alm-bar" id="alm-toolbar">'
       +   '<span class="alm-live"><span class="p"></span>En vivo</span>'
       +   '<div class="alm-search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>'
       +     '<input id="alm-q" type="text" placeholder="Buscar folio, cliente o vendedor…" oninput="window.__almBuscar(this.value)"></div>'
+      +   '<div class="alm-fchips">'+chipsTipo+'</div>'
       +   '<div class="alm-fchips">'+chips+'</div>'
       + '</div>'
       + '<div class="alm-kpis" id="alm-kpis"></div>'
@@ -269,13 +275,18 @@
               + '<span class="q">'+(Number(it.cant)||0)+'</span></div>';
           }).join('') : '<div class="alm-empty">Sin productos</div>')
         + '</div>';
+      if (p.firma){
+        prodHtml += '<div class="alm-firma-mini"><span class="lbl">Firma del solicitante</span>'
+          + '<img src="'+esc(p.firma)+'" alt="Firma" onclick="window.__almVerFirma(\''+p.id+'\')"></div>';
+      }
     }
 
     var goCls='alm-btn alm-btn-go'+((p.estado==='en_preparacion'&&!completo)?' wait':'');
+    var tipoTag='<span class="alm-tipo-tag '+(p.tipo==='material'?'mat':'ven')+'">'+(p.tipo==='material'?'Material':'Venta')+'</span>';
     return '<div class="alm-card'+(urg?' urg':'')+'" data-id="'+p.id+'" style="border-left-color:'+ac+'">'
       + '<div class="top"><span class="folio">'+esc(p.folio||'—')+'</span>'
       +   '<span class="alm-chip'+(urg?' urg':'')+'" style="background:'+pc+'">'+esc(PRIO_LABEL[p.prioridad]||p.prioridad||'Normal')+'</span></div>'
-      + '<div class="cli">'+esc(p.cliente||'Sin cliente')+'</div>'
+      + '<div class="cli">'+esc(p.cliente||'Sin cliente')+' '+tipoTag+'</div>'
       + '<div class="vend">Vendedor: '+esc(p.vendedor||'—')+'</div>'
       + '<div class="alm-meta"><span>⏱ <span class="alm-timer" data-id="'+p.id+'" style="color:'+ac+'">'+fmt(now()-p.createdAt)+'</span></span>'
       +   '<span><b>'+piezas(p)+'</b> pzas</span>'+(total?'<span><b>'+hechas+'</b>/'+total+' líneas</span>':'')+'</div>'
@@ -283,6 +294,8 @@
       + '<div class="alm-actions">'
       +   (PREV[p.estado]?'<button class="alm-btn alm-btn-back" title="Regresar etapa" onclick="window.__almBack(\''+p.id+'\')">‹</button>':'')
       +   '<button class="alm-btn alm-btn-ghost" onclick="window.__almToggle(\''+p.id+'\')">'+(abierta?'Ocultar':'Ver')+'</button>'
+      +   '<button class="alm-btn alm-btn-ghost" title="Ver historial" onclick="window.__almVerHistorial(\''+p.id+'\')">'
+      +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg></button>'
       +   (sig?'<button class="'+goCls+'" onclick="window.__almGo(\''+p.id+'\')">'+esc(ACCION[p.estado]||'Avanzar')+' ›</button>':'')
       + '</div></div>';
   }
@@ -336,8 +349,58 @@
   window.__almBuscar = function(v){ filtro.q=v||''; render(); var i=document.getElementById('alm-q'); if(i){ i.focus(); i.value=filtro.q; } };
   window.__almPrio   = function(v){
     filtro.prio=v||'';
-    var cont=contenedor(); if(cont){ cont.querySelectorAll('.alm-fchip').forEach(function(el){ el.classList.toggle('on', (el.getAttribute('data-prio')||'')===filtro.prio); }); }
+    var cont=contenedor(); if(cont){ cont.querySelectorAll('.alm-fchip-prio').forEach(function(el){ el.classList.toggle('on', (el.getAttribute('data-prio')||'')===filtro.prio); }); }
     render();
+  };
+  window.__almTipo   = function(v){
+    filtro.tipo=v||'';
+    var cont=contenedor(); if(cont){ cont.querySelectorAll('.alm-fchip-tipo').forEach(function(el){ el.classList.toggle('on', (el.getAttribute('data-tipo')||'')===filtro.tipo); }); }
+    render();
+  };
+
+  window.__almCerrarModal = function(){
+    var m=document.getElementById('alm-modal-hist');
+    if(m) m.classList.remove('show');
+  };
+
+  window.__almVerFirma = function(id){
+    var p=buscarP(id); if(!p||!p.firma) return;
+    construirModalHistorial();
+    var box=document.getElementById('alm-modal-hist-box');
+    box.innerHTML='<h4>Firma · '+esc(p.folio||'')+'<button onclick="window.__almCerrarModal()">&times;</button></h4>'
+      + '<img class="alm-firma-full" src="'+esc(p.firma)+'" alt="Firma">';
+    document.getElementById('alm-modal-hist').classList.add('show');
+  };
+
+  window.__almVerHistorial = function(id){
+    var p=buscarP(id); if(!p) return;
+    construirModalHistorial();
+    var box=document.getElementById('alm-modal-hist-box');
+    box.innerHTML='<h4>Historial · '+esc(p.folio||'')+'<button onclick="window.__almCerrarModal()">&times;</button></h4>'
+      + (p.firma?'<img class="alm-firma-full" src="'+esc(p.firma)+'" alt="Firma">':'')
+      + '<div id="alm-hist-list" class="alm-empty">Cargando…</div>';
+    document.getElementById('alm-modal-hist').classList.add('show');
+
+    cargarFirestore().then(function(fs){
+      if(!window.db) throw new Error('sin db');
+      var col=fs.collection(window.db,'surtidos',id,'historial');
+      var q; try{ q=fs.query(col, fs.orderBy('ts','asc')); }catch(e){ q=col; }
+      return fs.getDocs(q);
+    }).then(function(snap){
+      var list=document.getElementById('alm-hist-list'); if(!list) return;
+      if (snap.empty){ list.innerHTML='<div class="alm-empty">Sin cambios registrados todavía.</div>'; return; }
+      var rows=[];
+      snap.forEach(function(d){
+        var h=d.data()||{};
+        var fecha=toMs(h.ts); var fechaTxt=fecha?new Date(fecha).toLocaleString('es-MX'):'—';
+        rows.push('<div class="alm-hist-row"><span class="cambio">'+esc((h.de||'—').replace(/_/g,' '))+' → '+esc((h.a||'—').replace(/_/g,' '))+'</span>'
+          + '<span class="meta">'+esc(h.por||h.porEmail||'—')+' · '+esc(fechaTxt)+'</span></div>');
+      });
+      list.outerHTML='<div id="alm-hist-list">'+rows.join('')+'</div>';
+    }).catch(function(err){
+      console.error('[almacen] historial:',err);
+      var list=document.getElementById('alm-hist-list'); if(list) list.innerHTML='<div class="alm-empty">No se pudo cargar el historial.</div>';
+    });
   };
 
   // =====================================================================
@@ -359,6 +422,7 @@
             prioridad:d.prioridad||'normal', estado:d.estado||'pendiente',
             productos:Array.isArray(d.productos)?d.productos:[],
             check:d.check||{},
+            tipo:d.tipo||'venta', firma:d.firma||'', fechaEntrega:d.fechaEntrega||'',
             createdAt:toMs(d.createdAt)
           });
         });
