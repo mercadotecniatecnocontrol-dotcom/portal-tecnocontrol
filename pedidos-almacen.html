@@ -335,7 +335,7 @@ import { getFirestore, collection, onSnapshot } from "https://www.gstatic.com/fi
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 const config = { apiKey:"AIzaSyBXh-P0oMtMiDjyz9PObuJ8DNfROlXvhLE", authDomain:"tecnocontrol-1c42f.firebaseapp.com", projectId:"tecnocontrol-1c42f", storageBucket:"tecnocontrol-1c42f.firebasestorage.app", appId:"1:27642771956:web:54225af9e386afded8a1a1" };
-const app = initializeApp(config);
+const app = initializeApp(config, 'tv-almacen');
 const db  = getFirestore(app);
 const auth = getAuth(app);
 
