@@ -122,10 +122,16 @@ const CHK_CATS={
   Interiores: ['Póliza / Manual','Radio / Carátula','Pantallas','Encendedor','Asientos y vestiduras','Tablero','Tapetes'],
   Motor:      ['Batería','Bobinas','Tapón agua limpiabrisas','Tapón radiador','Tapón dirección hidráulica'],
   Cajuela:    ['Herramienta','Cables de arranque','Extintor','Llave L','Llave de cruz'],
-  Legal:      ['Sin multas vigentes','Verificación ambiental vigente','Tenencia al corriente','Tarjeta de circulación'],
+  Legal:      ['Tarjeta de circulación'],
 };
 
-const TIPOS_SOL=['Mantenimiento preventivo','Mantenimiento correctivo','Reposición de llanta','Falla eléctrica','Siniestro / Accidente','Revisión de documentos','Otro'];
+const TIPOS_SOL=[
+  'Mantenimiento preventivo','Mantenimiento correctivo','Siniestro / Accidente',
+  'Batería','Motor','Llantas','Frenos','Suspensión','Dirección','Transmisión',
+  'Aceite y lubricación','Sistema de enfriamiento','Alternador y sistema de carga',
+  'Iluminación','Limpiaparabrisas','Aire acondicionado','Sistema de combustible',
+  'Sensores y diagnóstico electrónico',
+];
 const VISTAS=['frente','atras','derecha','izquierda'];
 const VISTA_NOM={frente:'Frente',atras:'Atrás',derecha:'Lateral Der.',izquierda:'Lateral Izq.'};
 
@@ -156,10 +162,10 @@ let db=window.db, fs=null;
 let flV=[], flS=[], flCom=[], flTrans=[], flChkSem=[], flCfgSem={};
 let vistaAct='panel';
 let ST={
-  vehId:null, tipoVeh:'auto', vistaImg:'frente', modo:'entrada',
+  vehId:null, tipoVeh:'auto', vistaImg:'frente',
   dmg:{frente:[],atras:[],derecha:[],izquierda:[]},
   chk:{}, chkFotos:{}, evFotos:[],
-  tipo:'', prior:'Normal', desc:'', km:'', taller:'', gasolina:50,
+  tipo:'', prior:'Normal', desc:'', km:'', gasolina:50,
 };
 
 const hD=f=>(!f||f==='—')?null:Math.round((new Date(f)-new Date())/864e5);
@@ -735,7 +741,6 @@ window.flSbSel=function(id){
     vehId:id,
     tipoVeh:esGrande?'troca':'auto',
     vistaImg:'frente',
-    modo:'entrada',
     dmg:{frente:[],atras:[],derecha:[],izquierda:[]},
     chk:{},
     chkFotos:{},
@@ -744,7 +749,6 @@ window.flSbSel=function(id){
     prior:'Normal',
     desc:'',
     km:'',
-    taller:'',
     gasolina:50,
   };
   renderRP(id);
@@ -1560,10 +1564,6 @@ function rSols(){
         <button id="fl-pill-troca" onclick="flSetTipoVeh('troca')" style="padding:8px 18px;border:none;border-left:2px solid #E2E8F0;font-family:inherit;font-size:12px;font-weight:800;cursor:pointer;transition:all .15s;background:${ST.tipoVeh==='troca'?'#1E3A5F':'#fff'};color:${ST.tipoVeh==='troca'?'#fff':'#374151'}">TROCA</button>
       </div>
       <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
-        <div style="display:flex;border:2px solid #E2E8F0;border-radius:9px;overflow:hidden">
-          <button id="fl-modo-entrada" onclick="flSetModo('entrada')" style="padding:8px 18px;background:${ST.modo==='entrada'?'#2563EB':'#fff'};color:${ST.modo==='entrada'?'#fff':'#2563EB'};border:none;font-family:inherit;font-size:12px;font-weight:800;cursor:pointer;transition:all .15s;letter-spacing:.3px">ENTRADA</button>
-          <button id="fl-modo-salida"  onclick="flSetModo('salida')"  style="padding:8px 18px;background:${ST.modo==='salida'?'#16A34A':'#fff'};color:${ST.modo==='salida'?'#fff':'#16A34A'};border:none;border-left:2px solid #E2E8F0;font-family:inherit;font-size:12px;font-weight:800;cursor:pointer;transition:all .15s;letter-spacing:.3px">SALIDA</button>
-        </div>
         <button style="padding:8px 20px;background:#1E3A5F;color:#fff;border:none;border-radius:9px;font-family:inherit;font-size:12px;font-weight:800;cursor:pointer;letter-spacing:.3px;display:inline-flex;align-items:center;gap:6px" onclick="flSolGuardar()">${I.check} Crear solicitud</button>
       </div>
     </div>
@@ -1594,8 +1594,6 @@ function rSols(){
           <div style="display:flex;flex-direction:column;gap:8px">
             <div><label style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:3px">KM actual</label>
               <input type="number" id="fl-sol-km" placeholder="85000" style="padding:8px 10px;border:1.5px solid #E2E8F0;border-radius:7px;font-family:inherit;font-size:12.5px;width:110px;outline:none;background:#F8FAFD"></div>
-            <div><label style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:3px">Taller</label>
-              <input type="text" id="fl-sol-taller" placeholder="Nombre" style="padding:8px 10px;border:1.5px solid #E2E8F0;border-radius:7px;font-family:inherit;font-size:12.5px;width:110px;outline:none;background:#F8FAFD"></div>
           </div>
         </div>
         <!-- EVIDENCIAS -->
@@ -1617,12 +1615,12 @@ function rSols(){
         <!-- GAUGE GASOLINA -->
         <div class="fl-gauge-wrap">${buildGaugeHTML()}</div>
         <!-- CHECK LIST -->
-        <div class="fl-ck-head" style="background:${ST.modo==='entrada'?'#1E3A5F':'#15803D'};display:flex;align-items:center;justify-content:space-between;padding:9px 12px">
-          <span style="font-size:11px;font-weight:900;letter-spacing:.5px;color:#fff">CHECKLIST · ${ST.modo==='entrada'?'ENTRADA':'SALIDA'}</span>
-          <span style="font-size:9px;color:rgba(255,255,255,.7);font-weight:700">SI &nbsp;·&nbsp; NO &nbsp;·&nbsp; FOTO</span>
+        <div class="fl-ck-head" style="background:#1E3A5F;display:flex;align-items:center;justify-content:space-between;padding:9px 12px">
+          <span style="font-size:11px;font-weight:900;letter-spacing:.5px;color:#fff">CHECK LIST</span>
+          ${flUsarConfirmSemanal(v)?'':'<span style="font-size:9px;color:rgba(255,255,255,.7);font-weight:700">SI &nbsp;·&nbsp; NO &nbsp;·&nbsp; FOTO</span>'}
         </div>
-        <div class="fl-ck-body" style="flex:1;overflow-y:auto">
-          ${renderChkFull()}
+        <div class="fl-ck-body" style="flex:1;overflow-y:auto" id="fl-ck-body">
+          ${renderChkFullOConfirm(v)}
         </div>
       </div>
     </div>
@@ -1633,6 +1631,7 @@ function rSols(){
       ${tSols(v?flS.filter(s=>s.vehiculoEco===v.eco):flS.slice(0,6),hP('aprobar'))}
     </div>
   `);
+  if(flUsarConfirmSemanal(v)) setTimeout(()=>flInitFirmaCanvas('fl-sol-confirm-firma'),80);
 }
 
 function renderGauge(){
@@ -1701,6 +1700,73 @@ function renderDmgList(){
     <span style="color:#64748B;font-size:10.5px">— Punto ${i+1}</span>
     <button onclick="flDmgRemove('${v}',${i})" style="margin-left:auto;background:none;border:none;cursor:pointer;color:#EF4444;font-size:10px;font-weight:700">✕</button>
   </div>`).join('');
+}
+
+// ── REGLA: checklist interno vs. confirmación por checklist semanal ──
+// Lunes/Martes/Miércoles + checklist semanal de esta semana ya completado → confirmación + firma
+// Jueves..Domingo, o checklist semanal no completado → checklist interno normal
+function flDiaEnRangoConfirm(){
+  const d=new Date().getDay(); // 0=domingo ... 6=sábado
+  return d>=1&&d<=3; // lunes, martes, miércoles
+}
+function flChkSemCompletado(eco,semana){
+  if(!eco)return false;
+  return flChkSem.some(r=>String(r.vehiculoEco)===String(eco)&&r.semana===semana);
+}
+function flUsarConfirmSemanal(v){
+  if(!v)return false;
+  if(v.tipo==='maquinaria')return false; // maquinaria sigue con sus 4 fotos obligatorias
+  if(!flDiaEnRangoConfirm())return false;
+  return flChkSemCompletado(v.eco,getSemanaISOPortal());
+}
+function renderChkFullOConfirm(v){
+  if(flUsarConfirmSemanal(v)){
+    const semana=getSemanaISOPortal();
+    return`<div style="padding:12px">
+      <div style="background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:10px;padding:14px">
+        <div style="font-size:12.5px;font-weight:800;color:#1D4ED8;margin-bottom:4px">Check list semanal ya completado</div>
+        <div style="font-size:11.5px;color:#1E40AF;line-height:1.4;margin-bottom:10px">Confirmo que mi vehículo está en las mismas condiciones que mi checklist de esta semana (semana ${semana}).</div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:11.5px;color:#1E3A5F;cursor:pointer;margin-bottom:10px">
+          <input type="checkbox" id="fl-sol-confirm-chk" style="width:15px;height:15px">
+          Confirmo la declaración anterior
+        </label>
+        <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:6px">Firma <span style="color:#DC2626">*</span></div>
+        <div style="border:1.5px solid #E2E8F0;border-radius:9px;overflow:hidden;background:#fff">
+          <canvas id="fl-sol-confirm-firma" width="320" height="180" style="display:block;width:100%;height:150px;touch-action:none;cursor:crosshair"></canvas>
+        </div>
+        <button type="button" onclick="flLimpiarFirma('fl-sol-confirm-firma')" style="margin-top:8px;padding:6px 12px;border:1.5px solid #E2E8F0;background:#fff;border-radius:7px;font-family:inherit;font-size:11px;font-weight:700;color:#374151;cursor:pointer">Limpiar firma</button>
+      </div>
+    </div>`;
+  }
+  return renderChkFull();
+}
+
+// ── FIRMA AUTÓGRAFA (canvas genérico, reutilizable en portal) ──
+function flInitFirmaCanvas(canvasId){
+  const canvas=document.getElementById(canvasId);if(!canvas)return;
+  const ctx=canvas.getContext('2d');
+  ctx.strokeStyle='#1E3A5F';ctx.lineWidth=2.5;ctx.lineCap='round';ctx.lineJoin='round';
+  let drawing=false,lastX=0,lastY=0;
+  function getPos(e){const r=canvas.getBoundingClientRect();const scaleX=canvas.width/r.width;const scaleY=canvas.height/r.height;const src=e.touches?e.touches[0]:e;return{x:(src.clientX-r.left)*scaleX,y:(src.clientY-r.top)*scaleY};}
+  canvas.addEventListener('mousedown',e=>{drawing=true;const p=getPos(e);lastX=p.x;lastY=p.y;});
+  canvas.addEventListener('mousemove',e=>{if(!drawing)return;const p=getPos(e);ctx.beginPath();ctx.moveTo(lastX,lastY);ctx.lineTo(p.x,p.y);ctx.stroke();lastX=p.x;lastY=p.y;});
+  window.addEventListener('mouseup',()=>drawing=false);
+  canvas.addEventListener('touchstart',e=>{e.preventDefault();drawing=true;const p=getPos(e);lastX=p.x;lastY=p.y;},{passive:false});
+  canvas.addEventListener('touchmove',e=>{e.preventDefault();if(!drawing)return;const p=getPos(e);ctx.beginPath();ctx.moveTo(lastX,lastY);ctx.lineTo(p.x,p.y);ctx.stroke();lastX=p.x;lastY=p.y;},{passive:false});
+  canvas.addEventListener('touchend',()=>drawing=false);
+}
+window.flLimpiarFirma=function(canvasId){const c=document.getElementById(canvasId);if(c){const ctx=c.getContext('2d');ctx.clearRect(0,0,c.width,c.height);}};
+function flFirmaTieneTrazo(canvasId){
+  const c=document.getElementById(canvasId);if(!c)return false;
+  const ctx=c.getContext('2d');
+  const data=ctx.getImageData(0,0,c.width,c.height).data;
+  return data.some((_,i)=>i%4===3&&data[i]>0);
+}
+function flFirmaExportar(canvasId){
+  const canvas=document.getElementById(canvasId);if(!canvas)return null;
+  const cvs=document.createElement('canvas');cvs.width=canvas.width;cvs.height=canvas.height;
+  const cx=cvs.getContext('2d');cx.fillStyle='#ffffff';cx.fillRect(0,0,cvs.width,cvs.height);cx.drawImage(canvas,0,0);
+  return cvs.toDataURL('image/jpeg',0.85);
 }
 
 function renderChkFull(){
@@ -1780,20 +1846,6 @@ window.flSetTipoVeh=function(t){
     }
   });
 };
-window.flSetModo=function(m){
-  ST.modo=m;
-  const be=document.getElementById('fl-modo-entrada');
-  const bs=document.getElementById('fl-modo-salida');
-  if(be){be.style.background=m==='entrada'?'#2563EB':'#fff';be.style.color=m==='entrada'?'#fff':'#2563EB';}
-  if(bs){bs.style.background=m==='salida'?'#16A34A':'#fff';bs.style.color=m==='salida'?'#fff':'#16A34A';}
-  // Actualizar header del checklist
-  const ckh=document.querySelector('.fl-ck-head');
-  if(ckh){
-    ckh.style.background=m==='entrada'?'#1E3A5F':'#15803D';
-    const span=ckh.querySelector('span');
-    if(span)span.textContent=`CHECKLIST · ${m==='entrada'?'ENTRADA':'SALIDA'}`;
-  }
-};
 
 // CHECKLIST
 window.flChk=function(key,val){
@@ -1848,8 +1900,7 @@ function sellarImagen(imgSrc, meta){
       ctx.fillStyle='rgba(0,0,0,0.72)';
       ctx.fillRect(0,img.height-sh,img.width,sh);
       // Línea acento color
-      const modeColor=meta.modo==='salida'?'#22C55E':'#3B82F6';
-      ctx.fillStyle=modeColor;
+      ctx.fillStyle='#3B82F6';
       ctx.fillRect(0,img.height-sh,img.width,4);
       // Textos
       const fs=Math.round(img.width*0.038);
@@ -1869,8 +1920,6 @@ function sellarImagen(imgSrc, meta){
       ctx.fillStyle='rgba(255,255,255,0.6)';
       ctx.fillText(`ECO ${meta.eco} · ${meta.unidad}`, img.width-10, img.height-sh+rsz+6);
       ctx.fillText(meta.usuario, img.width-10, img.height-sh+rsz*2+10);
-      ctx.fillStyle=modeColor;
-      ctx.fillText(meta.modo.toUpperCase(), img.width-10, img.height-sh+rsz*3+14);
       ctx.textAlign='left';
       res(c.toDataURL('image/jpeg',0.88));
     };
@@ -1925,7 +1974,6 @@ window.flCapturarEvidencia=async function(tipo, key){
         eco: v?.eco||'—',
         unidad: v?.unidad||'—',
         usuario: window.auth?.currentUser?.displayName||window.auth?.currentUser?.email||'—',
-        modo: ST.modo,
         vehId: ST.vehId,
         tipo,
         key: key||null,
@@ -2035,35 +2083,42 @@ window.flSolGuardar=async function(){
   const tipo=document.getElementById('fl-sol-tipo')?.value;
   const desc=document.getElementById('fl-sol-desc')?.value?.trim();
   const km=document.getElementById('fl-sol-km')?.value;
-  const taller=document.getElementById('fl-sol-taller')?.value?.trim();
   const prior=document.getElementById('fl-sol-prior')?.value||'Normal';
   if(!tipo){alert('Selecciona el tipo de solicitud.');return;}
   if(!desc){alert('Describe el problema.');return;}
   const v=flV.find(x=>x.id===ST.vehId);
-  // Maquinaria: exigir las 4 fotos en lugar del checklist
-  if(v&&v.tipo==='maquinaria'){
+  const usarConfirm=flUsarConfirmSemanal(v);
+  let chkFirmaConfirmacion=null;
+  if(usarConfirm){
+    if(!document.getElementById('fl-sol-confirm-chk')?.checked){alert('Confirma que el vehículo está en las mismas condiciones que su checklist semanal.');return;}
+    if(!flFirmaTieneTrazo('fl-sol-confirm-firma')){alert('Falta la firma de confirmación.');return;}
+    chkFirmaConfirmacion=flFirmaExportar('fl-sol-confirm-firma');
+  } else if(v&&v.tipo==='maquinaria'){
+    // Maquinaria: exigir las 4 fotos en lugar del checklist
     const faltan=MAQ_FOTOS.map((_,i)=>`maq__${i}`).filter(k=>!ST.chkFotos[k]);
     if(faltan.length){alert(`Faltan ${faltan.length} de 4 fotos requeridas de la maquinaria.`);return;}
   }
   // Leer notas checklist
-  const chkFinal={...ST.chk};
+  const chkFinal=usarConfirm?{}:{...ST.chk};
   const docObj={
     vehiculoId:ST.vehId,vehiculoEco:v?.eco||'',vehiculo:`${v?.eco} · ${v?.unidad||''}`,
     tipo,prioridad:prior,descripcion:desc,kilometrajeReportado:km||'',
-    taller:taller||'',gasolina:ST.gasolina,tipoUnidad:ST.tipoVeh,
+    gasolina:ST.gasolina,tipoUnidad:ST.tipoVeh,
     estatus:'Solicitud',solicitante:window.auth?.currentUser?.displayName||window.auth?.currentUser?.email||'—',
     creadoPor:window.auth?.currentUser?.email||'',creadoEn:new Date().toISOString(),
     evidencias:ST.evFotos.map(e=>typeof e==='string'?e:e.src),
     evidenciasMeta:ST.evFotos.map(e=>typeof e==='object'?e.meta:null).filter(Boolean),
     danos:JSON.parse(JSON.stringify(ST.dmg)),
-    checklist:chkFinal,chkFotos:ST.chkFotos,
+    checklist:chkFinal,chkFotos:usarConfirm?{}:ST.chkFotos,
+    confirmacionChecklistSemanal:!!usarConfirm,
+    chkFirmaConfirmacion:chkFirmaConfirmacion,
   };
   const btn=document.getElementById('fl-btn-guardar');if(btn){btn.disabled=true;btn.textContent='Guardando…';}
   try{
     await fs.addDoc(fs.collection(db,C.SOLS),docObj);
     if(km&&v&&!v.id.startsWith('eco-'))await fs.updateDoc(fs.doc(db,C.VEHS,v.id),{km:Number(km)}).catch(()=>{});
     // Reset
-    ST={...ST,dmg:{frente:[],atras:[],derecha:[],izquierda:[]},chk:{},chkFotos:{},evFotos:[],gasolina:50,modo:'entrada'};
+    ST={...ST,dmg:{frente:[],atras:[],derecha:[],izquierda:[]},chk:{},chkFotos:{},evFotos:[],gasolina:50};
     await ldSols();rSols();
     if(window.mostrarPush)window.mostrarPush('Solicitud creada','En proceso de validación.','✓');
   }catch(e){console.error('[FL]',e);alert('Error: '+e.message);if(btn){btn.disabled=false;btn.textContent=`${I.check} Crear solicitud`;}}
@@ -2463,8 +2518,6 @@ window.flCompararEvidencias=function(eco){
         <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8">${s.tipo||'—'}</div>
         <div style="font-size:10px;color:#94A3B8">·</div>
         <div style="font-size:10px;color:#94A3B8">${s.creadoEn?s.creadoEn.substring(0,10):'—'}</div>
-        <div style="font-size:10px;color:#94A3B8">·</div>
-        <div style="display:inline-flex;font-size:10px;font-weight:700;padding:2px 8px;border-radius:100px;background:${s.modo==='salida'?'#DCFCE7':'#DBEAFE'};color:${s.modo==='salida'?'#15803D':'#1D4ED8'}">${(s.modo||'entrada').toUpperCase()}</div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px">
         ${(s.evidencias||[]).map((src,i)=>{
@@ -3231,7 +3284,7 @@ const CHK_CATS_P={
   Interiores: ['Póliza / Manual','Radio','Pantallas','Asientos','Tablero','Tapetes'],
   Motor:      ['Batería','Tapón agua','Tapón radiador','Tapón dirección'],
   Cajuela:    ['Herramienta','Cables arranque','Extintor','Llave L','Llave cruz'],
-  Legal:      ['Sin multas vigentes','Verificación vigente','Tenencia al corriente','Tarjeta circulación'],
+  Legal:      ['Tarjeta circulación'],
 };
 
 function rCompar(offsetSem){
@@ -3367,7 +3420,6 @@ window.flVerComparVeh=function(eco,offsetSem){
     const evFotos=sol.evidencias||[];
     const km=sol.kilometrajeReportado||'—';
     const gas=sol.gasolina!=null?sol.gasolina+'%':'—';
-    const modo=sol.modo||'—';
     // Fotos generales
     const fotosHtml=evFotos.length
       ? '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">'+evFotos.slice(0,6).map(f=>'<img src="'+f+'" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid #E2E8F0;cursor:pointer" onclick="flLightbox(this.src)" title="Ver foto completa">').join('')+'</div>'
@@ -3406,7 +3458,7 @@ window.flVerComparVeh=function(eco,offsetSem){
         '<div style="font-size:10px;color:rgba(255,255,255,.7)">'+fmtFull(sol.creadoEn)+'</div>'+
       '</div>'+
       '<div style="padding:14px">'+
-        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">'+
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">'+
           '<div style="background:#F8FAFD;border-radius:8px;padding:8px 10px;text-align:center">'+
             '<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">KM</div>'+
             '<div style="font-size:14px;font-weight:900;color:#0A0F1E">'+km+'</div>'+
@@ -3414,10 +3466,6 @@ window.flVerComparVeh=function(eco,offsetSem){
           '<div style="background:#F8FAFD;border-radius:8px;padding:8px 10px;text-align:center">'+
             '<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">Gasolina</div>'+
             '<div style="font-size:14px;font-weight:900;color:#0A0F1E">'+gas+'</div>'+
-          '</div>'+
-          '<div style="background:#F8FAFD;border-radius:8px;padding:8px 10px;text-align:center">'+
-            '<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">Modo</div>'+
-            '<div style="font-size:13px;font-weight:900;color:#0A0F1E;text-transform:capitalize">'+modo+'</div>'+
           '</div>'+
         '</div>'+
         '<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#64748B;margin-bottom:8px">Fotos del vehículo</div>'+
