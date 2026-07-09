@@ -324,6 +324,7 @@
       +   '<button id="alm-notif-btn" class="alm-notif-btn" title="Notificación sonora de pedidos nuevos" onclick="window.__almNotifToggle()">'+iconoCampana()+'</button>'
       +   (esAdminActual()?'<button class="alm-notif-btn" title="Fotos de catálogo (solo admin)" onclick="window.__almAbrirFotos()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>':'')
       +   '<button class="alm-notif-btn" title="Historial de entregas" onclick="window.__almAbrirHistorialEntregas()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11H3v10h6"/><path d="M9 21h12V8l-5-5H9v6"/><line x1="13" y1="12" x2="17" y2="12"/><line x1="13" y1="16" x2="17" y2="16"/></svg></button>'
+      +   '<button class="alm-notif-btn" title="KPIs de tiempos de surtido" onclick="window.__almAbrirKPIs()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></button>'
       + '</div>'
       + '<div class="alm-kpis" id="alm-kpis"></div>'
       + '<div class="alm-board" id="alm-board"></div>'
@@ -336,7 +337,7 @@
     var kpisEl=cont.querySelector('#alm-kpis'), boardEl=cont.querySelector('#alm-board');
     if(!kpisEl||!boardEl) return;
 
-    var activos = pedidos.filter(function(p){ return p.estado!=='finalizado'; });
+    var activos = pedidos.filter(function(p){ return p.estado!=='finalizado' && p.estado!=='cancelado'; });
     var visibles = activos.filter(pasaFiltro);
 
     var kPend=activos.filter(function(p){return p.estado==='pendiente';}).length;
@@ -431,6 +432,10 @@
       +   '<button class="alm-btn alm-btn-ghost" onclick="window.__almToggle(\''+p.id+'\')">'+(abierta?'Ocultar':'Ver')+'</button>'
       +   '<button class="alm-btn alm-btn-ghost" title="Ver historial" onclick="window.__almVerHistorial(\''+p.id+'\')">'
       +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg></button>'
+      +   (!esperandoFirma&&p.estado!=='entregado'?'<button class="alm-btn alm-btn-ghost" title="Cancelar pedido" onclick="window.__almAbrirCancelar(\''+p.id+'\')" style="color:#dc2626;">'
+      +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></button>':'')
+      +   '<button class="alm-btn alm-btn-ghost" title="Imprimir etiqueta" onclick="window.__almImprimirEtiqueta(\''+p.id+'\')">'
+      +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg></button>'
       +   accionHtml
       + '</div></div>';
   }
@@ -499,6 +504,51 @@
       if(!window.db) return;
       return fs.updateDoc(fs.doc(window.db,'surtidos',id), { entregaPendienteFirma:false });
     }).catch(function(err){ console.error('[almacen] cancelarFirmaEntrega:',err); });
+  };
+
+  window.__almAbrirCancelar = function(id){
+    var p=buscarP(id); if(!p) return;
+    construirModalHistorial();
+    var box=document.getElementById('alm-modal-hist-box');
+    box.classList.remove('wide');
+    box.innerHTML='<h4>Cancelar pedido · '+esc(p.folio||'')+'<button onclick="window.__almCerrarModal()">&times;</button></h4>'
+      + '<div style="font-size:12.5px;color:#64748b;font-weight:700;margin-bottom:12px">'+esc(p.cliente||'')+' · '+piezas(p)+' piezas</div>'
+      + '<label style="display:block;font-size:11px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#64748b;margin-bottom:6px">Motivo de cancelación *</label>'
+      + '<textarea id="alm-cancel-motivo" placeholder="Ej. Cliente ya no lo requiere, pedido duplicado, error de captura…" style="width:100%;min-height:80px;padding:11px 13px;border:2px solid #e6ebf2;border-radius:10px;font-size:14px;font-family:inherit;outline:none;resize:vertical;box-sizing:border-box;"></textarea>'
+      + '<div style="font-size:12.5px;font-weight:700;color:#dc2626;margin-top:8px" id="alm-cancel-msg"></div>'
+      + '<div style="display:flex;gap:10px;margin-top:16px">'
+      +   '<button type="button" onclick="window.__almCerrarModal()" style="flex:1;padding:12px;border:none;border-radius:11px;background:#f1f5f9;color:#475569;font-weight:800;font-size:13.5px;cursor:pointer">Volver</button>'
+      +   '<button type="button" id="alm-cancel-ok" onclick="window.__almConfirmarCancelar(\''+id+'\')" style="flex:1;padding:12px;border:none;border-radius:11px;background:#dc2626;color:#fff;font-weight:800;font-size:13.5px;cursor:pointer">Cancelar pedido</button>'
+      + '</div>';
+    document.getElementById('alm-modal-hist').classList.add('show');
+  };
+
+  window.__almConfirmarCancelar = function(id){
+    var p=buscarP(id); if(!p) return;
+    var motivoEl=document.getElementById('alm-cancel-motivo');
+    var motivo=(motivoEl&&motivoEl.value||'').trim();
+    var msgEl=document.getElementById('alm-cancel-msg');
+    if(!motivo){ if(msgEl) msgEl.textContent='Escribe el motivo de la cancelación.'; return; }
+    var btn=document.getElementById('alm-cancel-ok'); if(btn){ btn.disabled=true; btn.textContent='Cancelando…'; }
+    var origen=p.estado;
+    cargarFirestore().then(function(fs){
+      if(!window.db) throw new Error('Firestore no disponible');
+      return fs.updateDoc(fs.doc(window.db,'surtidos',id), {
+        estado:'cancelado', motivoCancelacion:motivo, canceladoPor:yoNombre(), canceladoEn:fs.serverTimestamp()
+      }).then(function(){
+        try{
+          fs.addDoc(fs.collection(window.db,'surtidos',id,'historial'),
+            { de:origen, a:'cancelado', por:yoNombre(), porEmail:yoEmail(), motivo:motivo, ts:fs.serverTimestamp() });
+        }catch(e){}
+      });
+    }).then(function(){
+      if(window.mostrarPush) window.mostrarPush('✕ Pedido cancelado', (p.folio||''), '⚠️');
+      window.__almCerrarModal();
+    }).catch(function(err){
+      console.error('[almacen] confirmarCancelar:',err);
+      if(msgEl) msgEl.textContent='No se pudo cancelar. Intenta de nuevo.';
+      if(btn){ btn.disabled=false; btn.textContent='Cancelar pedido'; }
+    });
   };
 
   // Handlers globales
@@ -735,6 +785,7 @@
             tipo:d.tipo||'venta', firma:d.firma||'', fechaEntrega:d.fechaEntrega||'',
             recibioNombre:d.recibioNombre||'', firmaEntrega:d.firmaEntrega||'',
             entregaPendienteFirma:!!d.entregaPendienteFirma,
+            cotizacionOrigen:d.cotizacionOrigen||'', motivoCancelacion:d.motivoCancelacion||'',
             createdAt:toMs(d.createdAt)
           });
         });
@@ -768,7 +819,7 @@
   function cargarEntregas(){
     return cargarFirestore().then(function(fs){
       if(!window.db) throw new Error('Firestore no disponible');
-      var q = fs.query(fs.collection(window.db,'surtidos'), fs.where('estado','in',['entregado','finalizado']));
+      var q = fs.query(fs.collection(window.db,'surtidos'), fs.where('estado','in',['entregado','finalizado','cancelado']));
       return fs.getDocs(q);
     }).then(function(snap){
       var arr=[];
@@ -777,16 +828,19 @@
         arr.push({
           id: docu.id,
           folio: d.folio||'—', cliente: d.cliente||'', tipo: d.tipo||'venta',
+          estado: d.estado||'',
           solicito: d.tipo==='material' ? (d.solicitante||'—') : (d.vendedor||'—'),
           recibio: d.recibioNombre||'',
+          motivoCancelacion: d.motivoCancelacion||'',
           firma: d.firma||'', firmaEntrega: d.firmaEntrega||'',
           creadoMs: toMs(d.createdAt),
           entregadoMs: d.entregadoEn ? toMs(d.entregadoEn) : null,
+          canceladoMs: d.canceladoEn ? toMs(d.canceladoEn) : null,
           piezas: (Array.isArray(d.productos)?d.productos:[]).reduce(function(a,x){return a+(Number(x.cant)||0);},0),
           productos: Array.isArray(d.productos)?d.productos:[]
         });
       });
-      arr.sort(function(a,b){ return (b.entregadoMs||b.creadoMs)-(a.entregadoMs||a.creadoMs); });
+      arr.sort(function(a,b){ return (b.entregadoMs||b.canceladoMs||b.creadoMs)-(a.entregadoMs||a.canceladoMs||a.creadoMs); });
       _repEntregas = arr;
       return arr;
     });
@@ -794,10 +848,11 @@
 
   function filtrarEntregas(lista, filtros){
     return lista.filter(function(e){
-      if(filtros.desde && (e.entregadoMs||e.creadoMs) < filtros.desde) return false;
-      if(filtros.hasta && (e.entregadoMs||e.creadoMs) > filtros.hasta) return false;
+      var fechaRef = e.entregadoMs||e.canceladoMs||e.creadoMs;
+      if(filtros.desde && fechaRef < filtros.desde) return false;
+      if(filtros.hasta && fechaRef > filtros.hasta) return false;
       if(filtros.q){
-        var blob=(e.folio+' '+e.cliente+' '+e.solicito+' '+e.recibio).toLowerCase();
+        var blob=(e.folio+' '+e.cliente+' '+e.solicito+' '+e.recibio+' '+e.motivoCancelacion).toLowerCase();
         if(blob.indexOf(filtros.q)===-1) return false;
       }
       return true;
@@ -827,19 +882,24 @@
       var tag = e.tipo==='material'
         ? '<span class="alm-rep-tag" style="background:rgba(139,79,214,.12);color:#8B4FD6">MATERIAL</span>'
         : '<span class="alm-rep-tag" style="background:rgba(20,115,230,.1);color:#1473E6">VENTA</span>';
+      var esCancelado = e.estado==='cancelado';
       var firmasHtml = ''
         + (e.firma ? '<span class="alm-rep-firma" onclick="window.__almVerFirmaId(\''+e.id+'\',\'sol\')">solicitud</span>' : '')
         + (e.firma && e.firmaEntrega ? ' · ' : '')
         + (e.firmaEntrega ? '<span class="alm-rep-firma" onclick="window.__almVerFirmaId(\''+e.id+'\',\'entrega\')">entrega</span>' : '')
         || '<span style="color:#cbd5e1">—</span>';
+      var colRecibio = esCancelado
+        ? '<span class="alm-rep-tag" style="background:rgba(220,38,38,.1);color:#dc2626">CANCELADO</span><br><span style="font-size:11px;color:#64748b">'+esc(e.motivoCancelacion||'—')+'</span>'
+        : esc(e.recibio||'—');
+      var colFechaFin = esCancelado ? fmtFecha(e.canceladoMs) : fmtFecha(e.entregadoMs);
       return '<tr>'
         + '<td><b>'+esc(e.folio)+'</b><br>'+tag+'</td>'
         + '<td>'+esc(e.cliente||'—')+'</td>'
         + '<td>'+esc(e.solicito||'—')+'</td>'
-        + '<td>'+esc(e.recibio||'—')+'</td>'
+        + '<td>'+colRecibio+'</td>'
         + '<td>'+fmtFecha(e.creadoMs)+'</td>'
-        + '<td>'+fmtFecha(e.entregadoMs)+'</td>'
-        + '<td>'+e.piezas+' pzas<br>'+firmasHtml+'</td>'
+        + '<td>'+colFechaFin+'</td>'
+        + '<td>'+e.piezas+' pzas'+(esCancelado?'':('<br>'+firmasHtml))+'</td>'
         + '</tr>';
     }).join('');
   }
@@ -872,7 +932,7 @@
       + '</div>'
       + '<div class="alm-rep-summary" id="alm-rep-resumen">Cargando…</div>'
       + '<div class="alm-rep-wrap"><table class="alm-rep-tbl">'
-      +   '<thead><tr><th>Folio</th><th>Cliente</th><th>Solicitó</th><th>Recibió</th><th>Fecha solicitud</th><th>Fecha entrega</th><th>Piezas / firmas</th></tr></thead>'
+      +   '<thead><tr><th>Folio</th><th>Cliente</th><th>Solicitó</th><th>Recibió / Motivo</th><th>Fecha solicitud</th><th>Fecha entrega / cancelación</th><th>Piezas / firmas</th></tr></thead>'
       +   '<tbody id="alm-rep-tbody"><tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:20px;">Cargando…</td></tr></tbody>'
       + '</table></div>';
     document.getElementById('alm-modal-hist').classList.add('show');
@@ -893,6 +953,159 @@
       console.error('[almacen] cargarEntregas:',err);
       if(tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#dc2626;padding:20px;">No se pudo cargar el historial.</td></tr>';
     });
+  };
+
+  // ── KPIs de tiempos de surtido: % en SLA, promedio, desglose por persona y por día ──
+  var SLA_MIN = { urgente:15, muy_alta:20, alta:30, normal:60, baja:120 };
+
+  window.__almAbrirKPIs = function(){
+    construirModalHistorial();
+    var box = document.getElementById('alm-modal-hist-box');
+    box.classList.add('wide');
+    box.innerHTML = '<h4>KPIs de tiempos de surtido<button onclick="window.__almCerrarModal()">&times;</button></h4>'
+      + '<div class="alm-rep-filtros">'
+      +   '<div class="alm-rep-fld"><label>Desde</label><input type="date" id="alm-kpi-desde"></div>'
+      +   '<div class="alm-rep-fld"><label>Hasta</label><input type="date" id="alm-kpi-hasta"></div>'
+      +   '<button class="alm-rep-btn sec" type="button" onclick="window.__almRecargarKPIs()">↻ Recargar</button>'
+      + '</div>'
+      + '<div id="alm-kpi-body"><div class="alm-empty">Cargando…</div></div>';
+    document.getElementById('alm-modal-hist').classList.add('show');
+    ['alm-kpi-desde','alm-kpi-hasta'].forEach(function(fid){
+      document.getElementById(fid).addEventListener('input', renderKPIs);
+    });
+    window.__almRecargarKPIs();
+  };
+
+  window.__almRecargarKPIs = function(){
+    var body=document.getElementById('alm-kpi-body');
+    if(body) body.innerHTML='<div class="alm-empty">Cargando…</div>';
+    cargarEntregas().then(renderKPIs).catch(function(err){
+      console.error('[almacen] KPIs:',err);
+      if(body) body.innerHTML='<div class="alm-empty">No se pudo cargar la información.</div>';
+    });
+  };
+
+  function renderKPIs(){
+    if(!_repEntregas) return;
+    var dEl=document.getElementById('alm-kpi-desde'), hEl=document.getElementById('alm-kpi-hasta');
+    var desde = dEl && dEl.value ? new Date(dEl.value+'T00:00:00').getTime() : null;
+    var hasta = hEl && hEl.value ? new Date(hEl.value+'T23:59:59').getTime() : null;
+
+    var entregados = _repEntregas.filter(function(e){
+      if(e.estado!=='entregado' && e.estado!=='finalizado') return false;
+      if(!e.entregadoMs) return false;
+      var f = e.entregadoMs;
+      if(desde && f<desde) return false;
+      if(hasta && f>hasta) return false;
+      return true;
+    });
+
+    var body=document.getElementById('alm-kpi-body'); if(!body) return;
+    if(!entregados.length){ body.innerHTML='<div class="alm-empty">Sin entregas con datos de tiempo en este rango.</div>'; return; }
+
+    var minutosArr = entregados.map(function(e){ return Math.max(0,(e.entregadoMs-e.creadoMs)/60000); });
+    var promedioMin = minutosArr.reduce(function(a,b){return a+b;},0)/minutosArr.length;
+    var enSLA = entregados.filter(function(e,i){ return minutosArr[i] <= (SLA_MIN[_repEntregasPrio(e)]||60); }).length;
+    var pctSLA = Math.round((enSLA/entregados.length)*100);
+
+    // Desglose por persona (solicitó)
+    var porPersona = {};
+    entregados.forEach(function(e,i){
+      var k=e.solicito||'—';
+      if(!porPersona[k]) porPersona[k]={n:0,sum:0};
+      porPersona[k].n++; porPersona[k].sum+=minutosArr[i];
+    });
+    var filasPersona = Object.keys(porPersona).sort(function(a,b){ return porPersona[b].n-porPersona[a].n; }).map(function(k){
+      var p=porPersona[k];
+      return '<tr><td>'+esc(k)+'</td><td>'+p.n+'</td><td>'+Math.round(p.sum/p.n)+' min prom.</td></tr>';
+    }).join('');
+
+    // Pedidos por día
+    var porDia = {};
+    entregados.forEach(function(e){
+      var k = new Date(e.entregadoMs).toLocaleDateString('es-MX',{day:'2-digit',month:'short'});
+      porDia[k] = (porDia[k]||0)+1;
+    });
+    var diasOrdenados = Object.keys(porDia);
+    var filasDia = diasOrdenados.map(function(k){ return '<tr><td>'+k+'</td><td>'+porDia[k]+' pedido'+(porDia[k]===1?'':'s')+'</td></tr>'; }).join('');
+
+    body.innerHTML =
+      '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px;">'
+      +   '<div class="alm-kpi"><div class="bar" style="background:'+COLORS.verde+'"></div><div class="n">'+pctSLA+'%</div><div class="l">Entregado dentro del SLA</div></div>'
+      +   '<div class="alm-kpi"><div class="bar" style="background:'+COLORS.rojo+'"></div><div class="n">'+(100-pctSLA)+'%</div><div class="l">Fuera de SLA / retrasado</div></div>'
+      +   '<div class="alm-kpi"><div class="bar" style="background:'+COLORS.azul+'"></div><div class="n">'+Math.round(promedioMin)+' min</div><div class="l">Tiempo promedio de surtido</div></div>'
+      + '</div>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">'
+      +   '<div><div class="pq-sub" style="margin-bottom:8px;">POR SOLICITANTE / VENDEDOR</div>'
+      +     '<div class="alm-rep-wrap" style="max-height:260px;"><table class="alm-rep-tbl"><thead><tr><th>Persona</th><th>Pedidos</th><th>Tiempo prom.</th></tr></thead><tbody>'+filasPersona+'</tbody></table></div></div>'
+      +   '<div><div class="pq-sub" style="margin-bottom:8px;">PEDIDOS POR DÍA</div>'
+      +     '<div class="alm-rep-wrap" style="max-height:260px;"><table class="alm-rep-tbl"><thead><tr><th>Día</th><th>Entregados</th></tr></thead><tbody>'+filasDia+'</tbody></table></div></div>'
+      + '</div>';
+  }
+
+  function _repEntregasPrio(e){
+    // La prioridad no se guarda en el objeto de reporte; se recupera del pedido en caché si aún existe
+    var p = buscarP(e.id);
+    return (p && p.prioridad) || 'normal';
+  }
+
+  // ── Impresión de etiqueta / orden de surtido (media carta, para pegar en la caja) ──
+  window.__almImprimirEtiqueta = function(id){
+    var p = buscarP(id); if(!p) return;
+    if(!window.jspdf){ if(window.mostrarPush) window.mostrarPush('Almacén','Librería PDF no cargada','⚠️'); return; }
+    var jsPDF = window.jspdf.jsPDF;
+    var docu = new jsPDF({ orientation:'portrait', unit:'mm', format:[139.7,215.9] }); // media carta
+    var PW=139.7, PH=215.9, ML=10, MR=10;
+
+    docu.setFillColor(10,15,30); docu.rect(0,0,PW,22,'F');
+    docu.setTextColor(255,255,255); docu.setFont('helvetica','bold'); docu.setFontSize(13);
+    docu.text('TECNOCONTROL', ML, 10);
+    docu.setFont('helvetica','normal'); docu.setFontSize(8);
+    docu.text('Orden de surtido', ML, 16);
+
+    docu.setFillColor(p.tipo==='material'?139:20, p.tipo==='material'?79:115, p.tipo==='material'?214:230);
+    docu.roundedRect(ML, 28, PW-ML-MR, 16, 3, 3, 'F');
+    docu.setTextColor(255,255,255); docu.setFont('helvetica','bold'); docu.setFontSize(16);
+    docu.text(String(p.folio||'—'), ML+5, 38);
+    docu.setFontSize(9);
+    docu.text(p.tipo==='material'?'MATERIAL':'VENTA', PW-MR-5, 38, {align:'right'});
+
+    var y = 54;
+    docu.setTextColor(30,41,59);
+    function campo(label, valor){
+      docu.setFont('helvetica','bold'); docu.setFontSize(7.5); docu.setTextColor(100,116,139);
+      docu.text(label.toUpperCase(), ML, y);
+      docu.setFont('helvetica','normal'); docu.setFontSize(11); docu.setTextColor(15,23,42);
+      var lineas = docu.splitTextToSize(String(valor||'—'), PW-ML-MR);
+      docu.text(lineas, ML, y+5.5);
+      y += 6 + lineas.length*5.5;
+    }
+    campo('Cliente / destino', p.cliente);
+    campo(p.tipo==='material'?'Solicitante':'Vendedor', p.vendedor);
+    campo('Prioridad', (PRIO_LABEL[p.prioridad]||p.prioridad||'Normal'));
+    if(p.fechaEntrega) campo('Fecha de entrega', p.fechaEntrega);
+    if(p.cotizacionOrigen) campo('Cotización de origen', p.cotizacionOrigen);
+
+    y += 2;
+    docu.setDrawColor(226,232,240); docu.line(ML,y,PW-MR,y); y+=7;
+    docu.setFont('helvetica','bold'); docu.setFontSize(8); docu.setTextColor(100,116,139);
+    docu.text('ARTÍCULOS', ML, y); y+=6;
+    var prods = Array.isArray(p.productos)?p.productos:[];
+    docu.setFont('helvetica','normal'); docu.setFontSize(9); docu.setTextColor(15,23,42);
+    prods.forEach(function(it){
+      if(y > PH-18){ docu.addPage(); y=16; }
+      var linea = (it.cant||0)+'x  '+(it.desc||'')+(it.clave?(' ('+it.clave+')'):'');
+      var lns = docu.splitTextToSize(linea, PW-ML-MR);
+      docu.text(lns, ML, y); y += lns.length*5.2+1.5;
+    });
+    if(!prods.length){ docu.text('Sin productos capturados.', ML, y); y+=6; }
+
+    docu.setFillColor(10,15,30); docu.rect(0,PH-10,PW,10,'F');
+    docu.setTextColor(180,180,180); docu.setFontSize(6.5);
+    docu.text('Generado '+new Date().toLocaleString('es-MX'), PW/2, PH-4, {align:'center'});
+
+    try{ window.open(docu.output('bloburl'), '_blank'); }
+    catch(e){ docu.save('etiqueta-'+(p.folio||'surtido')+'.pdf'); }
   };
 
   window.__almExportarReportePDF = function(){
@@ -932,13 +1145,14 @@
 
     lista.forEach(function(e){
       if(y > PH-16){ piePagina(pageNum); docu.addPage(); pageNum++; y=30; encabezado(); xs=encabezadoTabla(y); y+=7; docu.setFont('helvetica','normal'); docu.setFontSize(7.8); docu.setTextColor(30,41,59); }
+      var esCancelado = e.estado==='cancelado';
       docu.text(String(e.folio||'—').slice(0,16), xs[0], y);
       docu.text(e.tipo==='material'?'Material':'Venta', xs[1], y);
       docu.text(String(e.cliente||'—').slice(0,22), xs[2], y);
       docu.text(String(e.solicito||'—').slice(0,18), xs[3], y);
-      docu.text(String(e.recibio||'—').slice(0,18), xs[4], y);
+      docu.text(esCancelado ? ('CANCELADO: '+String(e.motivoCancelacion||'—').slice(0,22)) : String(e.recibio||'—').slice(0,18), xs[4], y);
       docu.text(fmtFecha(e.creadoMs), xs[5], y);
-      docu.text(fmtFecha(e.entregadoMs), xs[6], y);
+      docu.text(esCancelado ? fmtFecha(e.canceladoMs) : fmtFecha(e.entregadoMs), xs[6], y);
       docu.text(String(e.piezas), xs[7], y);
       y += 6;
     });
