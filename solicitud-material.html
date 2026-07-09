@@ -36,7 +36,8 @@
   .prod-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;margin:14px 0}
   .prod-card{border:2px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px;background:#fff;transition:border-color .15s}
   .prod-card.in-cart{border-color:var(--rey3);background:#f5f8ff}
-  .prod-card .icn{width:34px;height:34px;border-radius:9px;background:#eef2f7;display:flex;align-items:center;justify-content:center;color:var(--rey2)}
+  .prod-card .icn{width:34px;height:34px;border-radius:9px;background:#eef2f7;display:flex;align-items:center;justify-content:center;color:var(--rey2);overflow:hidden;flex:0 0 auto}
+  .prod-card .icn img{width:100%;height:100%;object-fit:cover}
   .prod-card .d{font-size:14px;font-weight:700;color:var(--ink);line-height:1.3;min-height:36px}
   .prod-card .k{font-size:11.5px;color:var(--mute);font-weight:700}
   .prod-add{margin-top:auto;background:var(--rey3);border:none;color:#fff;font-weight:800;font-size:14px;padding:10px;border-radius:10px;cursor:pointer;width:100%}
@@ -49,7 +50,8 @@
   .cart-title{font-size:13px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:var(--mute);margin-bottom:10px}
   .cart-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #f1f5f9}
   .cart-row:last-child{border-bottom:none}
-  .cart-row .icn{width:28px;height:28px;border-radius:8px;background:#eef2f7;display:flex;align-items:center;justify-content:center;color:var(--rey2);flex:0 0 auto}
+  .cart-row .icn{width:28px;height:28px;border-radius:8px;background:#eef2f7;display:flex;align-items:center;justify-content:center;color:var(--rey2);flex:0 0 auto;overflow:hidden}
+  .cart-row .icn img{width:100%;height:100%;object-fit:cover}
   .cart-row .info{flex:1;min-width:0}
   .cart-row .d{font-size:14px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .cart-row .k{font-size:11.5px;color:var(--mute);font-weight:700}
@@ -100,9 +102,13 @@
         <label>Nombre del solicitante *</label>
         <input id="f-solicitante" type="text" placeholder="¿Quién solicita el material?" autocomplete="off" required>
       </div>
-      <div class="full">
-        <label>Área / Operación destino *</label>
-        <input id="f-area" type="text" placeholder="Ej. Instalación gasolinera X" autocomplete="off" required>
+      <div>
+        <label>Área *</label>
+        <input id="f-area" type="text" placeholder="Ej. Ventas, Servicio, Flotilla…" autocomplete="off" required>
+      </div>
+      <div>
+        <label>Operación destino *</label>
+        <input id="f-destino" type="text" placeholder="Ej. Instalación gasolinera X" autocomplete="off" required>
       </div>
       <div class="full">
         <label>¿Para qué se usará el material? *</label>
@@ -198,6 +204,7 @@ const cartList   = $('cart-list');
 const cartCount  = $('cart-count');
 
 let carrito = {};   // key -> { clave, desc, cant }
+let _imgCache = {};  // key -> dataURL | null (null = ya se buscó, no hay foto)
 function keyDe(it){ return ((it.clave||'')+'|'+(it.desc||'')).toLowerCase(); }
 
 function renderGrid(){
@@ -221,8 +228,9 @@ function renderGrid(){
   prodGrid.innerHTML = res.map(it=>{
     const k = keyDe(it);
     const enCarrito = carrito[k];
+    const foto = _imgCache[k];
     return '<div class="prod-card'+(enCarrito?' in-cart':'')+'" data-k="'+esc(k)+'">'
-      + '<div class="icn">'+ICONO_PROD+'</div>'
+      + '<div class="icn">'+(foto ? '<img src="'+esc(foto)+'">' : ICONO_PROD)+'</div>'
       + '<div class="d">'+esc(it.desc||'Sin descripción')+'</div>'
       + '<div class="k">'+(it.clave?('Clave '+esc(it.clave)):'Sin clave')+'</div>'
       + (enCarrito
@@ -238,7 +246,19 @@ function renderGrid(){
     if(addBtn) addBtn.onclick = ()=>{ agregarAlCarrito(item); };
     const inc = card.querySelector('.inc'); if(inc) inc.onclick = ()=>{ cambiarCant(k, +1); };
     const dec = card.querySelector('.dec'); if(dec) dec.onclick = ()=>{ cambiarCant(k, -1); };
+    if(!(k in _imgCache)) buscarFotoProducto(k, card);
   });
+}
+
+/* Busca en Firestore si el producto ya tiene foto subida por un admin (lectura pública) */
+function buscarFotoProducto(k, card){
+  getDoc(doc(db,'catalogo','productos','imagenes',k)).then(snap=>{
+    const url = snap.exists() ? (snap.data()||{}).imagen : null;
+    _imgCache[k] = url || null;
+    if(url && card && card.isConnected){
+      const icn = card.querySelector('.icn'); if(icn) icn.innerHTML = '<img src="'+esc(url)+'">';
+    }
+  }).catch(()=>{ /* silencioso: sin foto, se queda el ícono genérico */ });
 }
 
 function agregarAlCarrito(it){
@@ -262,7 +282,7 @@ function renderCarrito(){
   cartPanel.style.display = 'block';
   cartList.innerHTML = items.map(([k,v])=>
     '<div class="cart-row">'
-    + '<div class="icn">'+ICONO_PROD+'</div>'
+    + '<div class="icn">'+(_imgCache[k] ? '<img src="'+esc(_imgCache[k])+'">' : ICONO_PROD)+'</div>'
     + '<div class="info"><div class="d">'+esc(v.desc)+'</div><div class="k">'+(v.clave?('Clave '+esc(v.clave)):'Sin clave')+'</div></div>'
     + '<div class="qty"><button class="dec" type="button">−</button><span class="qn">'+v.cant+'</span><button class="inc" type="button">+</button></div>'
     + '<button class="rm" type="button" title="Quitar">×</button>'
@@ -333,11 +353,13 @@ function setMsg(t,c){ msg.textContent=t||''; msg.style.color=c||'var(--rojo)'; }
 $('submit').onclick = async ()=>{
   const solicitante = $('f-solicitante').value.trim();
   const area = $('f-area').value.trim();
+  const destino = $('f-destino').value.trim();
   const uso = $('f-uso').value.trim();
   const productos = Object.values(carrito).map(v=>({ clave: v.clave, cant: v.cant, desc: v.desc }));
 
   if(!solicitante){ setMsg('Escribe el nombre del solicitante.'); return; }
-  if(!area){ setMsg('Escribe el área u operación destino.'); return; }
+  if(!area){ setMsg('Escribe el área.'); return; }
+  if(!destino){ setMsg('Escribe la operación destino.'); return; }
   if(!uso){ setMsg('Describe para qué se usará el material.'); return; }
   if(!productos.length){ setMsg('Agrega al menos un artículo con descripción y cantidad.'); return; }
   if(!hayFirma){ setMsg('Falta la firma del solicitante.'); return; }
@@ -349,10 +371,11 @@ $('submit').onclick = async ()=>{
     await addDoc(collection(db,'surtidos'), {
       tipo: 'material',
       folio,
-      cliente: area || 'Almacén · Operaciones',
+      cliente: destino || 'Almacén · Operaciones',
       solicitante,
       vendedor: solicitante,
       area,
+      destino,
       uso,
       prioridad: 'urgente',           // material siempre es "ahora", sin fecha tentativa
       estado: 'pendiente',
@@ -373,7 +396,7 @@ $('submit').onclick = async ()=>{
 /* Reiniciar para el siguiente */
 $('done-new').onclick = ()=>{
   $('done').classList.remove('on');
-  $('f-solicitante').value=''; $('f-area').value=''; $('f-uso').value='';
+  $('f-solicitante').value=''; $('f-area').value=''; $('f-destino').value=''; $('f-uso').value='';
   carrito = {}; prodSearch.value=''; renderGrid(); renderCarrito();
   ctx.clearRect(0,0,cv.width,cv.height); hayFirma=false; $('sign-hint').style.display='flex';
   setMsg(''); window.scrollTo({top:0,behavior:'smooth'});
