@@ -250,6 +250,8 @@ const cartCount  = $('cart-count');
 let carrito = {};   // key -> { clave, desc, cant }
 let _imgCache = {};  // key -> dataURL | null (null = ya se buscó, no hay foto)
 function keyDe(it){ return ((it.clave||'')+'|'+(it.desc||'')).toLowerCase(); }
+/* Firestore no permite "/" dentro de un solo segmento de ruta (lo interpreta como sub-ruta) */
+function keyFirestore(k){ return k.replace(/\//g,'_'); }
 
 function renderGrid(){
   const q = prodSearch.value.trim().toLowerCase();
@@ -296,7 +298,7 @@ function renderGrid(){
 
 /* Busca en Firestore si el producto ya tiene foto subida por un admin (lectura pública) */
 function buscarFotoProducto(k, card){
-  getDoc(doc(db,'catalogo','productos','imagenes',k)).then(snap=>{
+  getDoc(doc(db,'catalogo','productos','imagenes',keyFirestore(k))).then(snap=>{
     const url = snap.exists() ? (snap.data()||{}).imagen : null;
     _imgCache[k] = url || null;
     if(url && card && card.isConnected){
