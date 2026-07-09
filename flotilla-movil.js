@@ -86,9 +86,11 @@ const C={
 };
 
 const TIPOS_SOL=[
-  'Mantenimiento preventivo','Mantenimiento correctivo',
-  'Reposición de llanta','Falla eléctrica',
-  'Siniestro / Accidente','Revisión de documentos','recebí de vehiculo','entregue de vehiculo',
+  'Mantenimiento preventivo','Mantenimiento correctivo','Siniestro / Accidente',
+  'Batería','Motor','Llantas','Frenos','Suspensión','Dirección','Transmisión',
+  'Aceite y lubricación','Sistema de enfriamiento','Alternador y sistema de carga',
+  'Iluminación','Limpiaparabrisas','Aire acondicionado','Sistema de combustible',
+  'Sensores y diagnóstico electrónico',
 ];
 
 const CHK_CATS={
@@ -98,7 +100,7 @@ const CHK_CATS={
   Interiores: ['Póliza / Manual','Radio','Pantallas','Asientos','Tablero','Tapetes'],
   Motor:      ['Batería','Tapón agua','Tapón radiador','Tapón dirección'],
   Cajuela:    ['Herramienta','Cables arranque','Extintor','Llave L','Llave cruz'],
-  Legal:      ['Sin multas vigentes','Verificación vigente','Tenencia al corriente','Tarjeta circulación'],
+  Legal:      ['Tarjeta circulación'],
 };
 
 // ── MAQUINARIA: 4 fotos obligatorias en lugar del checklist ──
@@ -275,6 +277,8 @@ function getSemanaISO(d){
 }
 function esLunes(){return new Date().getDay()===1;}
 function esLunesAViernes(){const d=new Date().getDay();return d>=1&&d<=5;}
+// Lunes(1)/Martes(2)/Miércoles(3) → si el checklist semanal ya está hecho, se confirma en vez de repetirlo
+function esLunesAMiercoles(){const d=new Date().getDay();return d>=1&&d<=3;}
 
 // ── CONFIG CHECK LIST SEMANAL ──
 window._cfgSem=null; // cache: {activo, semana, ...} o null si no cargado
@@ -343,6 +347,22 @@ function semChkBanner(){
     <div style="font-size:11px;color:#94A3B8;margin-top:2px">Disponible los lunes · Semana ${semana}</div></div>
   </div>`;
 }
+
+// ── ¿Ya se completó el check list semanal de esta semana para mi vehículo? ──
+// true / false = respuesta conocida · null = aún consultando (se re-renderiza al resolver)
+function chkSemCompletadoActual(onListo){
+  const eco=miVeh?.eco;if(!eco)return false;
+  const semana=getSemanaISO();
+  const cacheKey=`${eco}_${semana}`;
+  const yaExiste=window._semChkCache[cacheKey];
+  if(yaExiste===undefined){
+    db.collection(C.CHKSEM).where('vehiculoEco','==',String(eco)).where('semana','==',semana).limit(1).get()
+      .then(snap=>{window._semChkCache[cacheKey]=!snap.empty;if(typeof onListo==='function')onListo();})
+      .catch(()=>{window._semChkCache[cacheKey]=false;if(typeof onListo==='function')onListo();});
+    return null;
+  }
+  return yaExiste;
+}
 function getGPS(){
   return new Promise(res=>{
     if(!navigator.geolocation){res(null);return;}
@@ -369,8 +389,7 @@ function sellarImg(src,meta){
       const sh=Math.round(c.height*0.20);
       ctx.fillStyle='rgba(0,0,0,0.75)';
       ctx.fillRect(0,c.height-sh,c.width,sh);
-      const mc=meta.modo==='salida'?'#22C55E':'#3B82F6';
-      ctx.fillStyle=mc;ctx.fillRect(0,c.height-sh,c.width,4);
+      ctx.fillStyle='#3B82F6';ctx.fillRect(0,c.height-sh,c.width,4);
       const fs=Math.max(12,Math.round(c.width*0.035));
       ctx.fillStyle='#FCD34D';ctx.font=`bold ${fs}px monospace`;
       ctx.fillText(meta.codigo,10,c.height-sh+fs+4);
@@ -380,7 +399,6 @@ function sellarImg(src,meta){
       ctx.fillText(meta.gps?`${meta.gps.lat}, ${meta.gps.lng}`:'Sin GPS',10,c.height-sh+fs*3+10);
       ctx.textAlign='right';ctx.fillStyle='rgba(255,255,255,.6)';
       ctx.fillText(meta.eco?`ECO ${meta.eco}`:'',c.width-8,c.height-sh+fs+4);
-      ctx.fillText(meta.modo.toUpperCase(),c.width-8,c.height-sh+fs*2+8);
       ctx.textAlign='left';
       res(c.toDataURL('image/jpeg',0.75));
     };
@@ -575,12 +593,6 @@ body{margin:0;padding:0;background:#F0F2F7;font-family:'Plus Jakarta Sans',-appl
 .fm-select-wrap::after{content:'▼';position:absolute;right:14px;top:50%;transform:translateY(-50%);font-size:10px;color:#94A3B8;pointer-events:none;}
 
 /* MODO TOGGLE */
-.fm-modo{display:flex;border:2px solid #E2E8F0;border-radius:10px;overflow:hidden;margin-bottom:14px;}
-.fm-modo-btn{flex:1;padding:11px;border:none;font-family:inherit;font-size:13px;font-weight:800;cursor:pointer;transition:all .15s;}
-.fm-modo-btn.entrada{background:#EFF6FF;color:#1D4ED8;}
-.fm-modo-btn.entrada.on{background:#2563EB;color:#fff;}
-.fm-modo-btn.salida{background:#F0FDF4;color:#15803D;}
-.fm-modo-btn.salida.on{background:#15803D;color:#fff;}
 
 /* CHECKLIST */
 .fm-chk-cat{font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.6px;color:#1E3A5F;padding:12px 0 6px;border-bottom:2px solid #E2E8F0;margin-bottom:4px;}
@@ -1240,7 +1252,7 @@ function renderVehiculo(){
           <div class="fm-sol-tipo">${s.tipo||'—'}</div>
           ${badge(s.estatus)}
         </div>
-        <div class="fm-sol-meta">${hF(s.creadoEn)} · ${s.modo?s.modo.toUpperCase():'—'} · ${s.prioridad||'Normal'}</div>
+        <div class="fm-sol-meta">${hF(s.creadoEn)} · ${s.prioridad||'Normal'}</div>
       </div>`).join('')
     :`<div class="fm-empty" style="padding:20px"><div class="fm-empty-ico">${IC.doc}</div><p style="font-size:13px;color:#94A3B8">Sin solicitudes registradas</p></div>`}
     <div style="height:20px"></div>
@@ -1526,13 +1538,20 @@ function renderNuevaSol(){
     return;
   }
   // Reset estado
-  solState={modo:'entrada',tipo:'',prior:'Normal',desc:'',km:'',taller:'',gasolina:50,chk:{},chkFotos:{},evFotos:[]};
+  solState={tipo:'',prior:'Normal',desc:'',km:'',gasolina:50,chk:{},chkFotos:{},evFotos:[]};
+  // ── Regla de checklist según el día ──
+  // Lunes/Martes/Miércoles + checklist semanal de esta semana ya hecho → confirmación + firma
+  // Jueves..Domingo, o checklist semanal no hecho → checklist interno normal
+  const semCompletado=chkSemCompletadoActual(()=>{if(vistaAct==='solicitud')renderNuevaSol();});
+  const modoConfirmacion=!esMaquinaria(miVeh)&&esLunesAMiercoles()&&semCompletado===true;
+  solState.modoConfirmacion=modoConfirmacion;
   const _solDraft=_draftLoad(_DRAFT.SOL);
   if(_solDraft&&Object.keys(_solDraft.chk||{}).length>0){
     setTimeout(()=>_draftBanner('sol',
       ()=>{
         // Restaurar estado y re-renderizar el formulario completo
         Object.assign(solState,_solDraft);
+        solState.modoConfirmacion=modoConfirmacion; // no confiar en el borrador para esta regla — depende del día/semana actual
         // Re-pintar checklist con valores guardados
         const chkList=document.getElementById('fm-chk-list');
         if(chkList)chkList.innerHTML=renderChkMovil();
@@ -1571,12 +1590,6 @@ function renderNuevaSol(){
       </div>
     </div>
 
-    <!-- MODO ENTRADA/SALIDA -->
-    <div class="fm-modo">
-      <button class="fm-modo-btn entrada on" id="fm-modo-e" onclick="fmSetModo('entrada')">ENTRADA</button>
-      <button class="fm-modo-btn salida" id="fm-modo-s" onclick="fmSetModo('salida')">SALIDA</button>
-    </div>
-
     <!-- TIPO DE SOLICITUD -->
     <div class="fm-fld">
       <label>Tipo de solicitud</label>
@@ -1604,11 +1617,8 @@ function renderNuevaSol(){
       <textarea id="fm-desc" placeholder="Describe el problema o servicio que se requiere…"></textarea>
     </div>
 
-    <!-- KM + TALLER -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-      <div class="fm-fld"><label>KM actual</label><input type="number" id="fm-km" placeholder="${miVeh.km||0}" inputmode="numeric"></div>
-      <div class="fm-fld"><label>Taller sugerido</label><input type="text" id="fm-taller" placeholder="Opcional"></div>
-    </div>
+    <!-- KM -->
+    <div class="fm-fld"><label>KM actual</label><input type="number" id="fm-km" placeholder="${miVeh.km||0}" inputmode="numeric"></div>
 
     <!-- GASOLINA -->
     <div class="fm-fld">
@@ -1630,13 +1640,29 @@ function renderNuevaSol(){
       <div id="fm-ev-wrap" style="display:flex;flex-wrap:wrap;gap:6px"></div>
     </div>
 
-    <!-- CHECKLIST RÁPIDO -->
+    <!-- CHECKLIST RÁPIDO / CONFIRMACIÓN SEMANAL -->
     <div class="fm-fld">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-        <label style="margin:0">${esMaquinaria(miVeh)?'Fotos de la unidad':'Check list'}</label>
-        <span id="fm-chk-cnt" style="font-size:10px;color:#64748B">${esMaquinaria(miVeh)?'4 fotos requeridas':`0 de ${Object.values(CHK_CATS).flat().length} revisados`}</span>
-      </div>
-      <div id="fm-chk-list">${esMaquinaria(miVeh)?renderMaqFotos('sol'):renderChkMovil()}</div>
+      ${modoConfirmacion?`
+        <div class="fm-card" style="background:#EFF6FF;border:1.5px solid #BFDBFE;padding:14px;border-radius:10px">
+          <div style="font-size:13px;font-weight:800;color:#1D4ED8;margin-bottom:4px">Check list semanal ya completado</div>
+          <div style="font-size:12px;color:#1E40AF;line-height:1.4;margin-bottom:10px">Confirmo que mi vehículo está en las mismas condiciones que mi checklist de esta semana.</div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#1E3A5F;cursor:pointer;margin-bottom:10px">
+            <input type="checkbox" id="fm-confirm-chk" onchange="window._fmActualizarHint?.()" style="width:16px;height:16px">
+            Confirmo la declaración anterior
+          </label>
+          <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:6px">Firma <span style="color:#DC2626">*</span></div>
+          <div style="border:1.5px solid #E2E8F0;border-radius:10px;overflow:hidden;background:#fff">
+            <canvas id="fm-sol-confirm-firma" width="320" height="180" style="display:block;width:100%;height:150px;touch-action:none;cursor:crosshair"></canvas>
+          </div>
+          <button type="button" class="fm-btn ghost fm-btn-sm" onclick="limpiarFirma('fm-sol-confirm-firma')" style="margin-top:8px">Limpiar firma</button>
+        </div>
+      `:`
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <label style="margin:0">${esMaquinaria(miVeh)?'Fotos de la unidad':'Check list'}</label>
+          <span id="fm-chk-cnt" style="font-size:10px;color:#64748B">${esMaquinaria(miVeh)?'4 fotos requeridas':`0 de ${Object.values(CHK_CATS).flat().length} revisados`}</span>
+        </div>
+        <div id="fm-chk-list">${esMaquinaria(miVeh)?renderMaqFotos('sol'):renderChkMovil()}</div>
+      `}
     </div>
 
     <!-- BOTÓN GUARDAR -->
@@ -1654,7 +1680,10 @@ function renderNuevaSol(){
     if(!document.getElementById('fm-desc')?.value?.trim()) faltantes.push('descripción');
     if(!document.getElementById('fm-km')?.value?.trim()) faltantes.push('kilometraje');
     if(!solState.evFotos?.length) faltantes.push('al menos 1 foto de evidencia');
-    if(esMaquinaria(miVeh)){
+    if(modoConfirmacion){
+      if(!document.getElementById('fm-confirm-chk')?.checked) faltantes.push('confirmación de condiciones');
+      if(!firmaTieneTrazo('fm-sol-confirm-firma')) faltantes.push('firma');
+    } else if(esMaquinaria(miVeh)){
       const nMaq=MAQ_FOTOS.filter((_,i)=>solState.chkFotos[`maq__${i}`]).length;
       if(nMaq<4) faltantes.push(`fotos de la unidad (${nMaq}/4)`);
     } else {
@@ -1672,6 +1701,7 @@ function renderNuevaSol(){
       document.getElementById(id)?.addEventListener('input',fmActualizarHint);
       document.getElementById(id)?.addEventListener('change',fmActualizarHint);
     });
+    if(modoConfirmacion) initFirmaCanvas('fm-sol-confirm-firma');
     // Expose so chk/photo updates can trigger it
     window._fmActualizarHint=fmActualizarHint;
     fmActualizarHint();
@@ -1704,13 +1734,6 @@ window.fmGas=function(v){
   if(w)w.innerHTML=renderGaugeSVG(Number(v))+'<div class="fm-gauge-labels" style="width:200px"><span>VACÍO</span><span>2/4</span><span>MEDIO</span><span>3/4</span><span>LLENO</span></div>';
 };
 
-window.fmSetModo=function(m){
-  solState.modo=m;
-  const be=document.getElementById('fm-modo-e');
-  const bs=document.getElementById('fm-modo-s');
-  if(be){be.classList.toggle('on',m==='entrada');}
-  if(bs){bs.classList.toggle('on',m==='salida');}
-};
 
 window.fmSetPrior=function(btn,p){
   solState.prior=p;
@@ -2217,7 +2240,7 @@ window.fmCapturar=async function(tipo,key,targetTag){
         timestamp:now.toISOString(),
         gps,eco:miVeh?.eco||'—',unidad:miVeh?.unidad||'—',
         usuario:window.auth?.currentUser?.displayName||window.auth?.currentUser?.email||'—',
-        modo:targetTag==='sem'?'semanal':solState.modo,tipo,key:key||null,
+        tipo,key:key||null,
       };
       const sellada=await sellarImg(raw,meta);
       if(tipo==='chk'&&key){
@@ -2313,7 +2336,6 @@ window.fmGuardar=async function(){
   const tipo=tipoR==='__c'?(tipoC||'Personalizado'):tipoR;
   const desc=document.getElementById('fm-desc')?.value?.trim();
   const km=document.getElementById('fm-km')?.value?.trim();
-  const taller=document.getElementById('fm-taller')?.value?.trim();
 
   // ── VALIDACIONES OBLIGATORIAS ──
   const totalChk=Object.values(CHK_CATS).flat().length;
@@ -2338,7 +2360,18 @@ window.fmGuardar=async function(){
     toast('⚠ Sube al menos 1 foto de evidencia del problema','err');
     return;
   }
-  if(esMaquinaria(miVeh)){
+  let chkFirmaConfirmacion=null;
+  if(solState.modoConfirmacion){
+    if(!document.getElementById('fm-confirm-chk')?.checked){
+      toast('⚠ Confirma que tu vehículo está en las mismas condiciones','err');
+      return;
+    }
+    if(!firmaTieneTrazo('fm-sol-confirm-firma')){
+      toast('⚠ Falta la firma de confirmación','err');
+      return;
+    }
+    chkFirmaConfirmacion=firmaExportar('fm-sol-confirm-firma');
+  } else if(esMaquinaria(miVeh)){
     // Maquinaria: exigir las 4 fotos en lugar del checklist
     const faltanMaq=MAQ_FOTOS.map((_,i)=>`maq__${i}`).filter(k=>!(solState.chkFotos||{})[k]);
     if(faltanMaq.length>0){
@@ -2367,8 +2400,8 @@ window.fmGuardar=async function(){
     vehiculoId:miVeh?.id||'',vehiculoEco:miVeh?.eco||'',
     vehiculo:`${miVeh?.eco} · ${miVeh?.unidad||''}`,
     tipo,prioridad:solState.prior,descripcion:desc,
-    kilometrajeReportado:km||'',taller:taller||'',
-    gasolina:solState.gasolina,modo:solState.modo,
+    kilometrajeReportado:km||'',
+    gasolina:solState.gasolina,
     tipoUnidad:miVeh?.tipo==='maquinaria'?'maquinaria':(['camioneta','camion'].includes(miVeh?.tipo)?'troca':'auto'),
     estatus:'Solicitud',
     solicitante:window.auth?.currentUser?.displayName||window.auth?.currentUser?.email||'—',
@@ -2376,8 +2409,10 @@ window.fmGuardar=async function(){
     creadoEn:new Date().toISOString(),
     evidencias:solState.evFotos.map(e=>typeof e==='string'?e:e.src),
     evidenciasMeta:solState.evFotos.map(e=>typeof e==='object'?e.meta:null).filter(Boolean),
-    checklist:{...solState.chk},
-    chkFotos:Object.fromEntries(Object.entries(solState.chkFotos).map(([k,v])=>[k,typeof v==='object'?v.src:v])),
+    checklist:solState.modoConfirmacion?{}:{...solState.chk},
+    chkFotos:solState.modoConfirmacion?{}:Object.fromEntries(Object.entries(solState.chkFotos).map(([k,v])=>[k,typeof v==='object'?v.src:v])),
+    confirmacionChecklistSemanal:!!solState.modoConfirmacion,
+    chkFirmaConfirmacion:chkFirmaConfirmacion,
     origenApp:'movil',
   };
   if(!onlineStatus){
@@ -2675,7 +2710,7 @@ window.fmVerSol=function(id){
     </div>
     <div class="fm-sheet-body">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">${badge(s.estatus)}<span style="font-size:12px;color:#64748B">${hF(s.creadoEn)}</span></div>
-      ${[['Vehículo',s.vehiculo||'—'],['Modo',(s.modo||'—').toUpperCase()],['Prioridad',s.prioridad||'Normal'],['KM',s.kilometrajeReportado||'—'],['Gasolina',s.gasolina!=null?s.gasolina+'%':'—'],['Taller',s.taller||'Sin especificar']].map(([l,v])=>`
+      ${[['Vehículo',s.vehiculo||'—'],['Prioridad',s.prioridad||'Normal'],['KM',s.kilometrajeReportado||'—'],['Gasolina',s.gasolina!=null?s.gasolina+'%':'—'],['Taller',s.taller||'Sin especificar']].map(([l,v])=>`
       <div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #F1F5F9">
         <span style="font-size:12.5px;color:#64748B;font-weight:600">${l}</span>
         <span style="font-size:12.5px;font-weight:700;color:#0A0F1E">${v}</span>
@@ -2699,7 +2734,7 @@ window.fmVerSol=function(id){
         const chkF=s.chkFotos||{};
         const chkEntries=Object.entries(chkF).filter(([k,v])=>v);
         if(!chkEntries.length)return'';
-        const CHK=window.CHK_CATS_M={Cristales:['Medallón delantero','Vidrio trasero','Lat. der. delantero','Lat. der. trasero','Lat. izq. delantero','Lat. izq. trasero'],Espejos:['Retrovisor izquierdo','Retrovisor derecho','Espejo central'],Neumáticos:['Llanta del. der.','Llanta del. izq.','Llanta tra. der.','Llanta tra. izq.','Refacción'],Interiores:['Póliza / Manual','Radio','Pantallas','Asientos','Tablero','Tapetes'],Motor:['Batería','Tapón agua','Tapón radiador','Tapón dirección'],Cajuela:['Herramienta','Cables arranque','Extintor','Llave L','Llave cruz'],Legal:['Sin multas vigentes','Verificación vigente','Tenencia al corriente','Tarjeta circulación']};
+        const CHK=window.CHK_CATS_M={Cristales:['Medallón delantero','Vidrio trasero','Lat. der. delantero','Lat. der. trasero','Lat. izq. delantero','Lat. izq. trasero'],Espejos:['Retrovisor izquierdo','Retrovisor derecho','Espejo central'],Neumáticos:['Llanta del. der.','Llanta del. izq.','Llanta tra. der.','Llanta tra. izq.','Refacción'],Interiores:['Póliza / Manual','Radio','Pantallas','Asientos','Tablero','Tapetes'],Motor:['Batería','Tapón agua','Tapón radiador','Tapón dirección'],Cajuela:['Herramienta','Cables arranque','Extintor','Llave L','Llave cruz'],Legal:['Tarjeta circulación']};
         const getL=k=>{for(const items of Object.values(CHK)){const f=items.find(it=>it.toLowerCase().replace(/[^a-z0-9]/g,'')===k.toLowerCase().replace(/[^a-z0-9]/g,''));if(f)return f;}return k;};
         const baseIdx=window._fmEvCache.length;
         chkEntries.forEach(([k,src])=>window._fmEvCache.push({src,meta:{codigo:k,tipo:'checklist'}}));
@@ -2709,7 +2744,7 @@ window.fmVerSol=function(id){
         </div>`;
       })()}
       ${(()=>{
-        const CHK=window.CHK_CATS_M={Cristales:['Medallón delantero','Vidrio trasero','Lat. der. delantero','Lat. der. trasero','Lat. izq. delantero','Lat. izq. trasero'],Espejos:['Retrovisor izquierdo','Retrovisor derecho','Espejo central'],Neumáticos:['Llanta del. der.','Llanta del. izq.','Llanta tra. der.','Llanta tra. izq.','Refacción'],Interiores:['Póliza / Manual','Radio','Pantallas','Asientos','Tablero','Tapetes'],Motor:['Batería','Tapón agua','Tapón radiador','Tapón dirección'],Cajuela:['Herramienta','Cables arranque','Extintor','Llave L','Llave cruz'],Legal:['Sin multas vigentes','Verificación vigente','Tenencia al corriente','Tarjeta circulación']};
+        const CHK=window.CHK_CATS_M={Cristales:['Medallón delantero','Vidrio trasero','Lat. der. delantero','Lat. der. trasero','Lat. izq. delantero','Lat. izq. trasero'],Espejos:['Retrovisor izquierdo','Retrovisor derecho','Espejo central'],Neumáticos:['Llanta del. der.','Llanta del. izq.','Llanta tra. der.','Llanta tra. izq.','Refacción'],Interiores:['Póliza / Manual','Radio','Pantallas','Asientos','Tablero','Tapetes'],Motor:['Batería','Tapón agua','Tapón radiador','Tapón dirección'],Cajuela:['Herramienta','Cables arranque','Extintor','Llave L','Llave cruz'],Legal:['Tarjeta circulación']};
         const getL=k=>{for(const items of Object.values(CHK)){const f=items.find(it=>it.toLowerCase().replace(/[^a-z0-9]/g,'')===k.toLowerCase().replace(/[^a-z0-9]/g,''));if(f)return f;}return k;};
         const noItems=Object.entries(s.checklist||{}).filter(([k,v])=>v==='no');
         const siItems=Object.entries(s.checklist||{}).filter(([k,v])=>v==='si');
@@ -2813,7 +2848,7 @@ window._desvinc=async function(){
 // ── PDF SOLICITUD (MÓVIL) ──
 window.fmGenerarPDF=function(id){
   const s=misSols.find(x=>x.id===id);if(!s){toast('No encontrada','err');return;}
-  const CHK={Cristales:['Medallón delantero','Vidrio trasero','Lat. der. delantero','Lat. der. trasero','Lat. izq. delantero','Lat. izq. trasero'],Espejos:['Retrovisor izquierdo','Retrovisor derecho','Espejo central'],Neumáticos:['Llanta del. der.','Llanta del. izq.','Llanta tra. der.','Llanta tra. izq.','Refacción'],Interiores:['Póliza / Manual','Radio','Pantallas','Asientos','Tablero','Tapetes'],Motor:['Batería','Tapón agua','Tapón radiador','Tapón dirección'],Cajuela:['Herramienta','Cables arranque','Extintor','Llave L','Llave cruz'],Legal:['Sin multas vigentes','Verificación vigente','Tenencia al corriente','Tarjeta circulación']};
+  const CHK={Cristales:['Medallón delantero','Vidrio trasero','Lat. der. delantero','Lat. der. trasero','Lat. izq. delantero','Lat. izq. trasero'],Espejos:['Retrovisor izquierdo','Retrovisor derecho','Espejo central'],Neumáticos:['Llanta del. der.','Llanta del. izq.','Llanta tra. der.','Llanta tra. izq.','Refacción'],Interiores:['Póliza / Manual','Radio','Pantallas','Asientos','Tablero','Tapetes'],Motor:['Batería','Tapón agua','Tapón radiador','Tapón dirección'],Cajuela:['Herramienta','Cables arranque','Extintor','Llave L','Llave cruz'],Legal:['Tarjeta circulación']};
   const getL=k=>{for(const items of Object.values(CHK)){const f=items.find(it=>it.toLowerCase().replace(/[^a-z0-9]/g,'')===k.toLowerCase().replace(/[^a-z0-9]/g,''));if(f)return f;}return k;};
   const noItems=Object.entries(s.checklist||{}).filter(([k,v])=>v==='no');
   const chkF=Object.entries(s.chkFotos||{}).filter(([k,v])=>v);
@@ -2836,7 +2871,7 @@ window.fmGenerarPDF=function(id){
   </div>
   <div style="background:#0A1628;color:#fff;border-radius:7px;padding:9px 12px;margin-bottom:10px">
     <div style="font-size:13px;font-weight:800">${s.vehiculo||'—'}</div>
-    <div style="font-size:10px;color:rgba(255,255,255,.5);margin-top:1px">${(s.modo||'').toUpperCase()} · ${s.tipo||'—'} · ${s.prioridad||'Normal'}</div>
+    <div style="font-size:10px;color:rgba(255,255,255,.5);margin-top:1px">${s.tipo||'—'} · ${s.prioridad||'Normal'}</div>
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">
     ${[['KM',s.kilometrajeReportado||'—'],['Taller',s.taller||'Sin especificar'],['Solicitante',s.solicitante||'—'],['Fecha',s.creadoEn?s.creadoEn.substring(0,10):'—']].map(([l,v])=>`<div class="field"><label>${l}</label><span>${v}</span></div>`).join('')}
@@ -2859,7 +2894,7 @@ window.fmGenerarPDF=function(id){
 // ── COMPARTIR WHATSAPP (MÓVIL) ──
 window.fmCompartirWA=function(id){
   const s=misSols.find(x=>x.id===id);if(!s)return;
-  const CHK={Cristales:['Medallón delantero','Vidrio trasero','Lat. der. delantero','Lat. der. trasero','Lat. izq. delantero','Lat. izq. trasero'],Espejos:['Retrovisor izquierdo','Retrovisor derecho','Espejo central'],Neumáticos:['Llanta del. der.','Llanta del. izq.','Llanta tra. der.','Llanta tra. izq.','Refacción'],Interiores:['Póliza / Manual','Radio','Pantallas','Asientos','Tablero','Tapetes'],Motor:['Batería','Tapón agua','Tapón radiador','Tapón dirección'],Cajuela:['Herramienta','Cables arranque','Extintor','Llave L','Llave cruz'],Legal:['Sin multas vigentes','Verificación vigente','Tenencia al corriente','Tarjeta circulación']};
+  const CHK={Cristales:['Medallón delantero','Vidrio trasero','Lat. der. delantero','Lat. der. trasero','Lat. izq. delantero','Lat. izq. trasero'],Espejos:['Retrovisor izquierdo','Retrovisor derecho','Espejo central'],Neumáticos:['Llanta del. der.','Llanta del. izq.','Llanta tra. der.','Llanta tra. izq.','Refacción'],Interiores:['Póliza / Manual','Radio','Pantallas','Asientos','Tablero','Tapetes'],Motor:['Batería','Tapón agua','Tapón radiador','Tapón dirección'],Cajuela:['Herramienta','Cables arranque','Extintor','Llave L','Llave cruz'],Legal:['Tarjeta circulación']};
   const getL=k=>{for(const items of Object.values(CHK)){const f=items.find(it=>it.toLowerCase().replace(/[^a-z0-9]/g,'')===k.toLowerCase().replace(/[^a-z0-9]/g,''));if(f)return f;}return k;};
   const noItems=Object.entries(s.checklist||{}).filter(([k,v])=>v==='no');
   const txt=[
@@ -2868,7 +2903,6 @@ window.fmCompartirWA=function(id){
     `Fecha: ${s.creadoEn?s.creadoEn.substring(0,10):'—'}`,
     '',
     `*Vehículo:* ${s.vehiculo||'—'}`,
-    `*Modo:* ${(s.modo||'—').toUpperCase()}`,
     `*Tipo:* ${s.tipo||'—'}`,
     `*Prioridad:* ${s.prioridad||'Normal'}`,
     `*KM:* ${s.kilometrajeReportado||'—'}`,
