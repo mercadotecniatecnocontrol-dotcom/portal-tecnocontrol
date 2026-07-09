@@ -626,6 +626,8 @@
   var _imgCache = {};         // key -> dataURL | null (null = ya se buscó, no hay)
 
   function keyProducto(it){ return ((it.clave||'')+'|'+(it.desc||'')).toLowerCase(); }
+  /* Firestore no permite "/" dentro de un solo segmento de ruta (lo interpreta como sub-ruta) */
+  function keyFirestore(k){ return k.replace(/\//g,'_'); }
 
   function cargarCatalogo(){
     if (_catalogo) return Promise.resolve(_catalogo);
@@ -700,7 +702,7 @@
 
   function buscarFotoExistente(k, card){
     cargarFirestore().then(function(fs){
-      return fs.getDoc(fs.doc(window.db,'catalogo','productos','imagenes',k));
+      return fs.getDoc(fs.doc(window.db,'catalogo','productos','imagenes',keyFirestore(k)));
     }).then(function(snap){
       var url = snap.exists() ? (snap.data()||{}).imagen : null;
       _imgCache[k] = url || null;
@@ -720,7 +722,7 @@
       if (btn){ btn.disabled = true; btn.textContent = 'Subiendo…'; }
       comprimirImagen(file).then(function(dataUrl){
         return cargarFirestore().then(function(fs){
-          return fs.setDoc(fs.doc(window.db,'catalogo','productos','imagenes',k), {
+          return fs.setDoc(fs.doc(window.db,'catalogo','productos','imagenes',keyFirestore(k)), {
             imagen: dataUrl,
             actualizadoPor: (window.auth&&window.auth.currentUser?window.auth.currentUser.email:''),
             actualizado: fs.serverTimestamp()
