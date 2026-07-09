@@ -75,6 +75,13 @@
     if (typeof v.seconds === 'number') return v.seconds*1000 + Math.floor((v.nanoseconds||0)/1e6);
     return now();
   }
+  function esAdminActual(){
+    try{
+      var email = window.auth && window.auth.currentUser ? window.auth.currentUser.email : '';
+      return !!(window.esAdminTotal && window.esAdminTotal(email));
+    }catch(e){ return false; }
+  }
+
   function piezas(p){ return (Array.isArray(p.productos)?p.productos:[]).reduce(function(a,x){ return a+(Number(x.cant)||0); },0); }
   function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function fmt(ms){ var s=Math.max(0,Math.floor(ms/1000)); return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0'); }
@@ -245,6 +252,18 @@
     + '.alm-modal-ov{display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;align-items:center;justify-content:center;padding:20px;}'
     + '.alm-modal-ov.show{display:flex;}'
     + '.alm-modal-box{background:#fff;border-radius:14px;max-width:480px;width:100%;max-height:82vh;overflow:auto;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.25);}'
+    + '.alm-modal-box.wide{max-width:860px;}'
+    + '.alm-fotos-search{position:relative;margin-bottom:14px;}'
+    + '.alm-fotos-search svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);pointer-events:none;}'
+    + '.alm-fotos-search input{width:100%;padding:11px 14px 11px 38px;border:2px solid #e6ebf2;border-radius:10px;font-size:14px;font-family:inherit;outline:none;}'
+    + '.alm-fotos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;}'
+    + '.alm-fcard{border:1px solid #e6ebf2;border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:8px;background:#fafcff;}'
+    + '.alm-fcard .thumb{width:100%;aspect-ratio:1/1;border-radius:9px;background:#eef2f7;display:flex;align-items:center;justify-content:center;overflow:hidden;color:#94a3b8;}'
+    + '.alm-fcard .thumb img{width:100%;height:100%;object-fit:cover;}'
+    + '.alm-fcard .d{font-size:12px;font-weight:700;color:#0f172a;line-height:1.3;min-height:30px;}'
+    + '.alm-fcard .k{font-size:10.5px;color:#94a3b8;font-weight:700;}'
+    + '.alm-fcard button{border:none;border-radius:8px;background:#eaf0ff;color:#1d4ed8;font-weight:800;font-size:11.5px;padding:7px;cursor:pointer;}'
+    + '.alm-fcard button:disabled{opacity:.55;cursor:default;}'
     + '.alm-modal-box h4{margin:0 0 14px;font-size:15px;font-weight:800;color:#0f172a;display:flex;align-items:center;justify-content:space-between;}'
     + '.alm-modal-box h4 button{border:none;background:#f1f5f9;color:#475569;width:26px;height:26px;border-radius:8px;cursor:pointer;font-size:15px;line-height:1;}'
     + '.alm-hist-row{display:flex;flex-direction:column;gap:2px;padding:9px 0;border-bottom:1px solid #f1f5f9;font-size:12.5px;}'
@@ -288,6 +307,7 @@
       +   '<div class="alm-fchips">'+chipsTipo+'</div>'
       +   '<div class="alm-fchips">'+chips+'</div>'
       +   '<button id="alm-notif-btn" class="alm-notif-btn" title="Notificación sonora de pedidos nuevos" onclick="window.__almNotifToggle()">'+iconoCampana()+'</button>'
+      +   (esAdminActual()?'<button class="alm-notif-btn" title="Fotos de catálogo (solo admin)" onclick="window.__almAbrirFotos()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>':'')
       + '</div>'
       + '<div class="alm-kpis" id="alm-kpis"></div>'
       + '<div class="alm-board" id="alm-board"></div>'
@@ -493,6 +513,146 @@
       var list=document.getElementById('alm-hist-list'); if(list) list.innerHTML='<div class="alm-empty">No se pudo cargar el historial.</div>';
     });
   };
+
+  // ── Panel de fotos de catálogo (solo admin) ──
+  var _catalogo = null;       // [{clave,desc,precio}] — se carga una sola vez
+  var _imgCache = {};         // key -> dataURL | null (null = ya se buscó, no hay)
+
+  function keyProducto(it){ return ((it.clave||'')+'|'+(it.desc||'')).toLowerCase(); }
+
+  function cargarCatalogo(){
+    if (_catalogo) return Promise.resolve(_catalogo);
+    return cargarFirestore().then(function(fs){
+      return fs.getDoc(fs.doc(window.db,'catalogo','productos')).then(function(snap){
+        var d = snap.exists() ? (snap.data()||{}) : {};
+        _catalogo = Array.isArray(d.items) ? d.items : [];
+        return _catalogo;
+      });
+    });
+  }
+
+  window.__almAbrirFotos = function(){
+    if (!esAdminActual()) return;
+    construirModalHistorial();
+    var box = document.getElementById('alm-modal-hist-box');
+    box.classList.add('wide');
+    box.innerHTML = '<h4>Fotos de catálogo<button onclick="window.__almCerrarModal()">&times;</button></h4>'
+      + '<div class="alm-fotos-search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>'
+      + '<input id="alm-fotos-q" type="text" placeholder="Busca un producto por nombre o clave…"></div>'
+      + '<div id="alm-fotos-grid" class="alm-fotos-grid"><div class="alm-empty">Cargando catálogo…</div></div>'
+      + '<input type="file" id="alm-fotos-file" accept="image/*" style="display:none">';
+    document.getElementById('alm-modal-hist').classList.add('show');
+
+    cargarCatalogo().then(function(){
+      document.getElementById('alm-fotos-grid').innerHTML = '<div class="alm-empty">Escribe al menos 2 letras para buscar.</div>';
+      document.getElementById('alm-fotos-q').addEventListener('input', function(){
+        clearTimeout(window.__almFotosDeb);
+        window.__almFotosDeb = setTimeout(function(){ renderGridFotos(this.value); }.bind(this), 120);
+      });
+    }).catch(function(err){
+      document.getElementById('alm-fotos-grid').innerHTML = '<div class="alm-empty">No se pudo cargar el catálogo.</div>';
+      console.error('[almacen] catálogo:',err);
+    });
+  };
+
+  // Sobrescribe el cierre de modal para quitar la clase 'wide' al salir de este panel
+  var _cerrarModalOrig = window.__almCerrarModal;
+  window.__almCerrarModal = function(){
+    var box=document.getElementById('alm-modal-hist-box'); if(box) box.classList.remove('wide');
+    if (_cerrarModalOrig) _cerrarModalOrig();
+  };
+
+  function renderGridFotos(q){
+    q = (q||'').trim().toLowerCase();
+    var grid = document.getElementById('alm-fotos-grid'); if (!grid) return;
+    if (q.length < 2){ grid.innerHTML = '<div class="alm-empty">Escribe al menos 2 letras para buscar.</div>'; return; }
+    var res = (_catalogo||[]).filter(function(it){
+      return (it.desc||'').toLowerCase().indexOf(q)!==-1 || (it.clave||'').toLowerCase().indexOf(q)!==-1;
+    }).slice(0,24);
+    if (!res.length){ grid.innerHTML = '<div class="alm-empty">Sin resultados.</div>'; return; }
+
+    grid.innerHTML = res.map(function(it){
+      var k = keyProducto(it);
+      var cached = _imgCache[k];
+      var thumb = cached ? '<img src="'+esc(cached)+'">' : '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>';
+      return '<div class="alm-fcard" data-k="'+esc(k)+'">'
+        + '<div class="thumb">'+thumb+'</div>'
+        + '<div class="d">'+esc(it.desc||'Sin descripción')+'</div>'
+        + '<div class="k">'+(it.clave?('Clave '+esc(it.clave)):'Sin clave')+'</div>'
+        + '<button type="button">'+(cached?'Cambiar foto':'Subir foto')+'</button>'
+        + '</div>';
+    }).join('');
+
+    grid.querySelectorAll('.alm-fcard').forEach(function(card){
+      var k = card.dataset.k;
+      var it = res.find(function(r){ return keyProducto(r)===k; });
+      card.querySelector('button').onclick = function(){ elegirFoto(k, card); };
+      if (!(k in _imgCache)) buscarFotoExistente(k, card);
+    });
+  }
+
+  function buscarFotoExistente(k, card){
+    cargarFirestore().then(function(fs){
+      return fs.getDoc(fs.doc(window.db,'catalogo','productos','imagenes',k));
+    }).then(function(snap){
+      var url = snap.exists() ? (snap.data()||{}).imagen : null;
+      _imgCache[k] = url || null;
+      if (url && card && card.isConnected){
+        var thumb = card.querySelector('.thumb'); if (thumb) thumb.innerHTML = '<img src="'+esc(url)+'">';
+        var btn = card.querySelector('button'); if (btn) btn.textContent = 'Cambiar foto';
+      }
+    }).catch(function(err){ console.warn('[almacen] foto existente:',err); });
+  }
+
+  function elegirFoto(k, card){
+    var input = document.getElementById('alm-fotos-file'); if (!input) return;
+    input.onchange = function(){
+      var file = input.files && input.files[0]; input.value='';
+      if (!file) return;
+      var btn = card.querySelector('button');
+      if (btn){ btn.disabled = true; btn.textContent = 'Subiendo…'; }
+      comprimirImagen(file).then(function(dataUrl){
+        return cargarFirestore().then(function(fs){
+          return fs.setDoc(fs.doc(window.db,'catalogo','productos','imagenes',k), {
+            imagen: dataUrl,
+            actualizadoPor: (window.auth&&window.auth.currentUser?window.auth.currentUser.email:''),
+            actualizado: fs.serverTimestamp()
+          });
+        }).then(function(){ return dataUrl; });
+      }).then(function(dataUrl){
+        _imgCache[k] = dataUrl;
+        var thumb = card.querySelector('.thumb'); if (thumb) thumb.innerHTML = '<img src="'+esc(dataUrl)+'">';
+        if (btn){ btn.disabled = false; btn.textContent = 'Cambiar foto'; }
+      }).catch(function(err){
+        console.error('[almacen] subir foto:',err);
+        if (btn){ btn.disabled = false; btn.textContent = 'Reintentar'; }
+      });
+    };
+    input.click();
+  }
+
+  function comprimirImagen(file){
+    return new Promise(function(resolve,reject){
+      var reader = new FileReader();
+      reader.onload = function(e){
+        var img = new Image();
+        img.onload = function(){
+          var maxW = 480;
+          var scale = Math.min(1, maxW/img.width);
+          var w = Math.max(1,Math.round(img.width*scale)), h = Math.max(1,Math.round(img.height*scale));
+          var c = document.createElement('canvas'); c.width=w; c.height=h;
+          var cx = c.getContext('2d');
+          cx.fillStyle = '#ffffff'; cx.fillRect(0,0,w,h);
+          cx.drawImage(img,0,0,w,h);
+          resolve(c.toDataURL('image/jpeg',0.72));
+        };
+        img.onerror = reject;
+        img.src = e.target.result;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
 
   // =====================================================================
   //  CONEXIÓN EN VIVO
