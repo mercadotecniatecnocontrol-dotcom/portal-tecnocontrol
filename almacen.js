@@ -146,8 +146,17 @@
     if (p.estado==='en_preparacion') return COLORS.verde;
     return COLORS.azul;
   }
+  function fechaEntregaMs(p){
+    if(!p.fechaEntrega) return Infinity;         // sin fecha → al final dentro de su prioridad
+    var d = new Date(p.fechaEntrega+'T00:00:00');
+    return isNaN(d.getTime()) ? Infinity : d.getTime();
+  }
   function ordenar(list){
-    return list.slice().sort(function(a,b){ return (PRIO_RANK[b.prioridad]-PRIO_RANK[a.prioridad])||(a.createdAt-b.createdAt); });
+    return list.slice().sort(function(a,b){
+      return (PRIO_RANK[b.prioridad]-PRIO_RANK[a.prioridad])
+        || (fechaEntregaMs(a)-fechaEntregaMs(b))
+        || (a.createdAt-b.createdAt);
+    });
   }
   function pasaFiltro(p){
     if (filtro.prio && p.prioridad !== filtro.prio) return false;
