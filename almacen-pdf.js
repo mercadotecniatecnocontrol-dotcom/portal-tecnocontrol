@@ -124,13 +124,13 @@
 
     // ── Vendedor (corta si sigue "Vigencia" o "Almacen" en la misma línea) ──
     for (i = 0; i < lineas.length; i++) {
-      m = lineas[i].match(/Vendedor\s*:?\s*([^\s].*?)(?:\s+Vigencia|\s+Almacen|$)/i);
+      m = lineas[i].match(/Vendedor\s*:?\s*([^\s].*?)(?:\s+Vigencia|\s+Alm\s*acen|$)/i);
       if (m && m[1].trim()) { out.vendedor = m[1].replace(/\s{2,}/g, ' ').trim(); break; }
     }
 
-    // ── Almacén ──
+    // ── Almacén (tolera "Alm acen" con espacio, artefacto de reconstrucción del PDF) ──
     for (i = 0; i < lineas.length; i++) {
-      m = lineas[i].match(/Almacen\s*:?\s*(.+)$/i);
+      m = lineas[i].match(/Alm\s*acen\s*:?\s*(.+)$/i);
       if (m) { out.almacen = m[1].replace(/\s{2,}/g, ' ').trim(); break; }
     }
 
@@ -152,7 +152,7 @@
 
     // ── Productos (tabla: Cantidad · Clave · Descripción · P/U · Importe) ──
     // La clave se conserva como TEXTO para no perder ceros a la izquierda (p.ej. "06023").
-    var reProd = /^(\d+(?:\.\d+)?)\s+(\d{3,6})\s+(.+?)\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})$/;
+    var reProd = /^(\d+(?:\.\d+)?)\s+([A-Za-z0-9]{2,10})\s+(.+?)\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})$/;
     var enTabla = false;
     lineas.forEach(function (ln) {
       if (/Cantidad.*Clave.*Descrip/i.test(ln)) { enTabla = true; return; }
