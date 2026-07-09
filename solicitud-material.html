@@ -82,6 +82,21 @@
   .done h2{margin:0 0 6px;font-size:24px}
   .done .folio{font-size:15px;color:var(--mute);font-weight:700;margin-bottom:22px}
   .done .folio b{color:var(--teal);font-size:22px}
+
+  /* Toma de pantalla completa: firma de entrega */
+  .entrega-ov{position:fixed;inset:0;background:linear-gradient(135deg,var(--rey1) 0%,var(--rey2) 55%,var(--rey3) 100%);display:none;align-items:center;justify-content:center;z-index:200;padding:24px;overflow-y:auto}
+  .entrega-ov.on{display:flex}
+  .entrega-card{background:#fff;border-radius:22px;padding:30px 26px;max-width:440px;width:100%;box-shadow:0 24px 60px rgba(0,0,0,.35)}
+  .entrega-badge{display:inline-block;background:#fef3c7;color:#92400e;font-size:12px;font-weight:800;padding:5px 12px;border-radius:99px;margin-bottom:10px;letter-spacing:.3px}
+  .entrega-eyebrow{font-size:11.5px;letter-spacing:2px;font-weight:800;color:var(--rey3);text-transform:uppercase}
+  .entrega-folio{font-size:34px;font-weight:800;color:var(--ink);line-height:1.1;margin-top:4px}
+  .entrega-cliente{font-size:16px;font-weight:700;color:var(--mute);margin-top:2px}
+  .entrega-piezas{font-size:13px;color:var(--mute);font-weight:600;margin-top:6px;margin-bottom:18px}
+  .entrega-card label{display:block;font-size:12px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:var(--mute);margin-bottom:7px;margin-top:14px}
+  .entrega-card input{width:100%;font-size:17px;padding:14px 15px;border:2px solid var(--line);border-radius:12px;background:#fff;color:var(--ink);font-family:inherit;outline:none}
+  .entrega-card input:focus{border-color:var(--teal2)}
+  #entrega-cv{display:block;width:100%;height:150px;touch-action:none;cursor:crosshair}
+  .entrega-card .submit{margin-top:18px}
   .done button{width:100%;padding:16px;border:none;border-radius:13px;background:var(--teal);color:#fff;font-size:17px;font-weight:800;cursor:pointer}
 </style>
 </head>
@@ -160,9 +175,36 @@
   </div>
 </div>
 
+<!-- Toma de pantalla completa: Almacén pide firma de quien recibe -->
+<div class="entrega-ov" id="entrega-ov">
+  <div class="entrega-card">
+    <div class="entrega-badge" id="entrega-cola" style="display:none"></div>
+    <div class="entrega-eyebrow">PEDIDO LISTO PARA ENTREGAR</div>
+    <div class="entrega-folio" id="entrega-folio">—</div>
+    <div class="entrega-cliente" id="entrega-cliente">—</div>
+    <div class="entrega-piezas" id="entrega-piezas"></div>
+
+    <label>Nombre de quien recibe *</label>
+    <input id="entrega-nombre" type="text" placeholder="¿Quién recibe el pedido?" autocomplete="off">
+
+    <label>Firma de quien recibe *</label>
+    <div class="sign-box">
+      <canvas id="entrega-cv"></canvas>
+      <div class="sign-hint" id="entrega-hint">Firma aquí con el dedo o el mouse</div>
+    </div>
+    <div class="sign-actions">
+      <span style="font-size:12px;color:var(--mute);font-weight:700">Confirma que recibiste el pedido completo</span>
+      <button class="link-btn" id="entrega-clear" type="button">Limpiar firma</button>
+    </div>
+
+    <button class="submit" id="entrega-confirmar" type="button">Confirmar recepción</button>
+    <div class="msg" id="entrega-msg"></div>
+  </div>
+</div>
+
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, collection, addDoc, doc, getDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, collection, addDoc, doc, getDoc, updateDoc, onSnapshot, query, where, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 const config = { apiKey:"AIzaSyBXh-P0oMtMiDjyz9PObuJ8DNfROlXvhLE", authDomain:"tecnocontrol-1c42f.firebaseapp.com", projectId:"tecnocontrol-1c42f", storageBucket:"tecnocontrol-1c42f.firebasestorage.app", appId:"1:27642771956:web:54225af9e386afded8a1a1" };
@@ -401,6 +443,131 @@ $('done-new').onclick = ()=>{
   ctx.clearRect(0,0,cv.width,cv.height); hayFirma=false; $('sign-hint').style.display='flex';
   setMsg(''); window.scrollTo({top:0,behavior:'smooth'});
 };
+
+/* ============================================================================
+ * Firma de entrega: Almacén marca "esperando firma" en un pedido y esta
+ * pantalla toma el control completo del kiosko para que quien recibe firme.
+ * Si llegan varias solicitudes casi al mismo tiempo, se atienden en cola
+ * (una a la vez, ordenadas por cuándo se solicitó la firma).
+ * ==========================================================================*/
+let colaEntregas = [];       // [{id, folio, cliente, productos, entregaSolicitadaEn}]
+let entregaActualId = null;
+
+const entregaOv = $('entrega-ov');
+const entregaCv = $('entrega-cv'), entregaCtx = entregaCv.getContext('2d');
+let entregaDibujando=false, entregaHayFirma=false, eLastX=0, eLastY=0;
+
+function ajustarCanvasEntrega(){
+  const r = entregaCv.getBoundingClientRect();
+  entregaCv.width = r.width; entregaCv.height = r.height;
+  entregaCtx.lineWidth=2.6; entregaCtx.lineCap='round'; entregaCtx.lineJoin='round'; entregaCtx.strokeStyle='#0f172a';
+}
+function entregaPos(e){
+  const r = entregaCv.getBoundingClientRect();
+  const p = e.touches ? e.touches[0] : e;
+  return { x:p.clientX-r.left, y:p.clientY-r.top };
+}
+function entregaStart(e){ e.preventDefault(); entregaDibujando=true; const p=entregaPos(e); eLastX=p.x; eLastY=p.y; }
+function entregaMove(e){
+  if(!entregaDibujando) return; e.preventDefault();
+  const p=entregaPos(e);
+  entregaCtx.beginPath(); entregaCtx.moveTo(eLastX,eLastY); entregaCtx.lineTo(p.x,p.y); entregaCtx.stroke();
+  eLastX=p.x; eLastY=p.y;
+  if(!entregaHayFirma){ entregaHayFirma=true; $('entrega-hint').style.display='none'; }
+}
+function entregaEnd(){ entregaDibujando=false; }
+entregaCv.addEventListener('mousedown',entregaStart); entregaCv.addEventListener('mousemove',entregaMove);
+window.addEventListener('mouseup',entregaEnd);
+entregaCv.addEventListener('touchstart',entregaStart,{passive:false}); entregaCv.addEventListener('touchmove',entregaMove,{passive:false});
+entregaCv.addEventListener('touchend',entregaEnd);
+$('entrega-clear').onclick = ()=>{ entregaCtx.clearRect(0,0,entregaCv.width,entregaCv.height); entregaHayFirma=false; $('entrega-hint').style.display='flex'; };
+
+function firmaEntregaBase64(){
+  const tmp = document.createElement('canvas');
+  const W = 600, H = Math.round(W * (entregaCv.height/entregaCv.width));
+  tmp.width=W; tmp.height=H;
+  const t = tmp.getContext('2d');
+  t.fillStyle='#ffffff'; t.fillRect(0,0,W,H);
+  t.drawImage(entregaCv,0,0,W,H);
+  return tmp.toDataURL('image/png');
+}
+
+function mostrarSiguienteEntrega(){
+  if(!colaEntregas.length){ entregaOv.classList.remove('on'); entregaActualId=null; return; }
+  const p = colaEntregas[0];
+  entregaActualId = p.id;
+  $('entrega-folio').textContent = p.folio || '—';
+  $('entrega-cliente').textContent = p.cliente || 'Sin cliente';
+  const piezas = (Array.isArray(p.productos)?p.productos:[]).reduce((a,x)=>a+(Number(x.cant)||0),0);
+  $('entrega-piezas').textContent = piezas + ' piezas · ' + (Array.isArray(p.productos)?p.productos.length:0) + ' artículos';
+  const colaEl = $('entrega-cola');
+  if(colaEntregas.length > 1){ colaEl.style.display='inline-block'; colaEl.textContent = 'Hay ' + (colaEntregas.length-1) + ' más en espera'; }
+  else colaEl.style.display = 'none';
+  $('entrega-nombre').value = '';
+  entregaCtx.clearRect(0,0,entregaCv.width,entregaCv.height);
+  entregaHayFirma = false;
+  $('entrega-hint').style.display = 'flex';
+  $('entrega-msg').textContent = '';
+  entregaOv.classList.add('on');
+  setTimeout(ajustarCanvasEntrega, 60);
+}
+
+$('entrega-confirmar').onclick = async ()=>{
+  const id = entregaActualId; if(!id) return;
+  const nombre = $('entrega-nombre').value.trim();
+  const msgEl = $('entrega-msg');
+  if(!nombre){ msgEl.textContent = 'Falta el nombre de quien recibe.'; return; }
+  if(!entregaHayFirma){ msgEl.textContent = 'Falta la firma.'; return; }
+  msgEl.textContent = '';
+  const btn = $('entrega-confirmar'); btn.disabled = true; btn.textContent = 'Guardando…';
+  try{
+    await authReady;
+    await updateDoc(doc(db,'surtidos',id), {
+      estado: 'entregado',
+      recibioNombre: nombre,
+      firmaEntrega: firmaEntregaBase64(),
+      entregadoEn: serverTimestamp(),
+      entregaPendienteFirma: false
+    });
+    try{
+      await addDoc(collection(db,'surtidos',id,'historial'), {
+        de: 'listo', a: 'entregado', por: nombre, porEmail: 'kiosco', recibio: nombre, ts: serverTimestamp()
+      });
+    }catch(eh){ console.warn('[kiosco] historial entrega:', eh); }
+    colaEntregas.shift();
+    btn.disabled = false; btn.textContent = 'Confirmar recepción';
+    mostrarSiguienteEntrega();
+  }catch(e){
+    console.error('[kiosco] confirmar entrega:', e);
+    msgEl.textContent = 'No se pudo guardar (' + (e.code||e.message||'error') + '). Intenta de nuevo.';
+    btn.disabled = false; btn.textContent = 'Confirmar recepción';
+  }
+};
+
+/* Escucha en vivo: pedidos con entregaPendienteFirma === true, uno o varios */
+authReady.then(()=>{
+  onSnapshot(query(collection(db,'surtidos'), where('entregaPendienteFirma','==',true)), snap=>{
+    const lista = [];
+    snap.forEach(docu=>{
+      const d = docu.data()||{};
+      lista.push({
+        id: docu.id, folio: d.folio||docu.id, cliente: d.cliente||'',
+        productos: Array.isArray(d.productos)?d.productos:[],
+        entregaSolicitadaEn: d.entregaSolicitadaEn && d.entregaSolicitadaEn.toMillis ? d.entregaSolicitadaEn.toMillis() : 0
+      });
+    });
+    lista.sort((a,b)=>a.entregaSolicitadaEn-b.entregaSolicitadaEn);
+    colaEntregas = lista;
+    if(!lista.length){ entregaOv.classList.remove('on'); entregaActualId=null; }
+    else if(!entregaActualId || !lista.some(p=>p.id===entregaActualId)) mostrarSiguienteEntrega();
+    else {
+      // Actualiza el contador de "más en espera" sin interrumpir al que ya está firmando
+      const colaEl = $('entrega-cola');
+      if(lista.length > 1){ colaEl.style.display='inline-block'; colaEl.textContent = 'Hay ' + (lista.length-1) + ' más en espera'; }
+      else colaEl.style.display = 'none';
+    }
+  }, err=>console.error('[kiosco] escucha entregaPendienteFirma:', err));
+});
 </script>
 </body>
 </html>
