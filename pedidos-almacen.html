@@ -14,6 +14,17 @@
     --azul:#1473E6; --verde:#12A150; --teal:#0FB5A6; --amarillo:#D99000;
     --naranja:#F26B21; --rojo:#E23B3B; --morado:#8B4FD6; --gris:#7C8CA1;
   }
+  body.dark{
+    --bg:#0B1220; --surface:#141B2B; --line:#232E45;
+    --ink:#E7EEF9; --mute:#8896B3;
+  }
+  body.dark .card{box-shadow:0 4px 14px rgba(0,0,0,.35)}
+  body.dark .phero.empty{background:linear-gradient(115deg,#2b3550,#3b4666)!important}
+  .nightbtn{display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:10px;background:var(--bg);border:1px solid var(--line);color:var(--ink);cursor:pointer;flex:0 0 auto}
+  .nightbtn svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .pg-dots{display:flex;gap:5px;justify-content:center;margin-top:8px}
+  .pg-dots .pd{width:7px;height:7px;border-radius:50%;background:var(--line);transition:background .3s}
+  .pg-dots .pd.on{background:var(--azul)}
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
   body{background:var(--bg);color:var(--ink);font-family:"Inter",system-ui,sans-serif;overflow:hidden;-webkit-font-smoothing:antialiased}
@@ -142,6 +153,7 @@
       <div class="chip"><span class="dot" style="background:var(--amarillo)"></span><span class="n" id="cPorVencer">0</span> por vencer</div>
       <div class="chip"><span class="dot" style="background:var(--rojo)"></span><span class="n" id="cRetraso">0</span> retrasados</div>
     </div>
+    <button class="nightbtn" id="btnNight" title="Modo nocturno"><svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>
     <div class="clock"><span id="clk" class="mono">--:--:--</span><small>EN VIVO</small></div>
   </header>
 
@@ -305,14 +317,23 @@ function buildPanel(tk, list){
     heroEl.innerHTML = '<div style="font-size:14px;font-weight:800;letter-spacing:1.5px;opacity:.92;">SIN PEDIDOS EN COLA</div>';
   }
   const rest=list.slice(1);
-  queueEl.innerHTML=rest.map(p=>{
-    const ec=effColor(p), c=COLORS[ec.k], isNew=!prevFolios[tk].has(p.folio);
-    const v=venc(p), persona=p.solicitante||p.vendedor||'';
-    const prods=Array.isArray(p.productos)?p.productos:[];
-    const first=prods[0]||{cant:'',desc:'\u2014'}, extra=prods.length-1;
-    const items=`${first.cant}\u00d7 ${first.desc||''}${extra>0?'  +'+extra+' m\u00e1s':''}`;
-    const vb = v ? `<span class="cvenc" style="background:${v.color}">${v.txt}</span>` : '';
-    return `<div class="card ${isNew?'is-new':''}" data-folio="${p.folio}">
+  prevFolios[tk]=new Set(list.map(p=>p.folio));
+  queueState[tk].list = rest;
+  queueState[tk].page = 0;
+  renderQueuePage(tk);
+}
+
+const QUEUE_PAGE_SIZE = 5;
+const queueState = { v:{list:[],page:0,timer:null}, m:{list:[],page:0,timer:null} };
+
+function cardHtml(p, isNew){
+  const ec=effColor(p), c=COLORS[ec.k];
+  const v=venc(p), persona=p.solicitante||p.vendedor||'';
+  const prods=Array.isArray(p.productos)?p.productos:[];
+  const first=prods[0]||{cant:'',desc:'\u2014'}, extra=prods.length-1;
+  const items=`${first.cant}\u00d7 ${first.desc||''}${extra>0?'  +'+extra+' m\u00e1s':''}`;
+  const vb = v ? `<span class="cvenc" style="background:${v.color}">${v.txt}</span>` : '';
+  return `<div class="card ${isNew?'is-new':''}" data-folio="${p.folio}">
       <div class="bar" style="background:${c}"></div>
       <div class="cfolio num" style="color:${c}">${p.folio}</div>
       <div class="cmid">
@@ -322,15 +343,37 @@ function buildPanel(tk, list){
       </div>
       <div class="cright"><div class="ctimer mono" style="color:${c}">${fmt(now()-p.createdAt)}</div><div class="cpieces">${piezas(p)} pzas</div></div>
     </div>`;
-  }).join('');
-  prevFolios[tk]=new Set(list.map(p=>p.folio));
+}
+
+function renderQueuePage(tk){
+  const st = queueState[tk];
+  const queueEl = document.getElementById(tk+'Queue');
+  if(!queueEl) return;
+  const totalPages = Math.max(1, Math.ceil(st.list.length / QUEUE_PAGE_SIZE));
+  if(st.page >= totalPages) st.page = 0;
+  const pageItems = st.list.slice(st.page*QUEUE_PAGE_SIZE, st.page*QUEUE_PAGE_SIZE+QUEUE_PAGE_SIZE);
+  queueEl.innerHTML = pageItems.map(p=>cardHtml(p, !prevFolios[tk].has(p.folio))).join('');
+  const wrap = queueEl.parentElement;
+  let dotsEl = wrap.querySelector('.pg-dots');
+  if(totalPages>1){
+    if(!dotsEl){ dotsEl=document.createElement('div'); dotsEl.className='pg-dots'; wrap.appendChild(dotsEl); }
+    dotsEl.innerHTML = Array.from({length:totalPages}).map((_,i)=>`<span class="pd${i===st.page?' on':''}"></span>`).join('');
+  } else if(dotsEl){ dotsEl.remove(); }
+
+  clearInterval(st.timer); st.timer=null;
+  if(totalPages>1){
+    st.timer = setInterval(()=>{
+      st.page = (st.page+1) % Math.max(1, Math.ceil(st.list.length/QUEUE_PAGE_SIZE));
+      renderQueuePage(tk);
+    }, 6000);
+  }
 }
 
 function tickPanel(tk, list){
   const hero=list[0], ht=document.getElementById(tk+'HTimer');
   if(hero&&ht) ht.textContent=fmt(now()-hero.createdAt);
   const queueEl=document.getElementById(tk+'Queue');
-  list.slice(1).forEach(p=>{const el=queueEl.querySelector('[data-folio="'+p.folio+'"] .ctimer');if(el)el.textContent=fmt(now()-p.createdAt)});
+  queueState[tk].list.forEach(p=>{const el=queueEl.querySelector('[data-folio="'+p.folio+'"] .ctimer');if(el)el.textContent=fmt(now()-p.createdAt)});
 }
 
 function updateChips(){
@@ -364,6 +407,17 @@ window.__setPedidos = function(arr){ pedidos = Array.isArray(arr)?arr:[]; render
 window.__almRender  = function(){ render(true); };
 
 // ── Reloj EN VIVO ──
+// ── Modo nocturno (persiste en este dispositivo) ──
+(function(){
+  try{
+    if(localStorage.getItem('tv_night')==='1') document.body.classList.add('dark');
+  }catch(e){}
+  document.getElementById('btnNight').onclick = function(){
+    document.body.classList.toggle('dark');
+    try{ localStorage.setItem('tv_night', document.body.classList.contains('dark')?'1':'0'); }catch(e){}
+  };
+})();
+
 function tickReloj(){ const d=new Date(); document.getElementById('clk').textContent = d.toLocaleTimeString('es-MX',{hour12:false}); }
 tickReloj(); setInterval(tickReloj,1000);
 
@@ -414,7 +468,7 @@ function iniciarEscucha(){
     snap.forEach(docu=>{
       const d = docu.data() || {};
       const estado = d.estado || 'pendiente';
-      if(estado === 'finalizado') return;            // fuera del tablero
+      if(estado === 'finalizado' || estado === 'cancelado') return;    // fuera del tablero
       const p = {
         id: docu.id,
         folio: String(d.folio!=null ? d.folio : docu.id),
