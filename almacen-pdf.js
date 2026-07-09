@@ -245,7 +245,7 @@
       + '<div class="alm-fld" style="grid-column:1/3;"><label>Vendedor</label><input id="alm-vendedor" placeholder="Vendedor"></div>'
       + '<div class="alm-fld" style="grid-column:1/3;"><label>Almacén</label><input id="alm-almacen" placeholder="Almacén de salida"></div>'
       + '<div class="alm-fld" style="grid-column:1/3;"><label>Entrega / Observaciones</label><input id="alm-entrega" placeholder="Instrucciones de entrega"></div>'
-      + '<div class="alm-fld"><label>Fecha de entrega</label><input id="alm-fecha-entrega" type="date"></div>'
+      + '<div class="alm-fld"><label>Fecha de entrega *</label><input id="alm-fecha-entrega" type="date" required></div>'
       + '</div>'
       + '<div style="font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#64748b;margin:6px 0 2px;">Productos</div>'
       + '<table class="alm-tbl"><thead><tr><th class="cclave">Clave</th><th class="ccant">Cant.</th><th>Descripción</th><th class="cdel"></th></tr></thead><tbody id="alm-rows"></tbody></table>'
@@ -382,6 +382,7 @@
 
     if (!folio)   { msg('Falta el folio.', '#dc2626'); return; }
     if (!cliente) { msg('Falta el cliente.', '#dc2626'); return; }
+    if (!fechaEntrega) { msg('Falta la fecha de entrega.', '#dc2626'); return; }
     if (!productos.length) { msg('Agrega al menos un producto con cantidad y descripción.', '#dc2626'); return; }
 
     if (!window.db) { msg('Firestore no está disponible (window.db).', '#dc2626'); return; }
