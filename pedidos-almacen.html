@@ -210,7 +210,8 @@ function startHeroCarousel(){
     if(ph) ph.textContent=(ph.dataset.base||'')+' · pág '+(heroPageIdx+1)+'/'+pages.length;
   }, 4000);
 }
-const ordered=()=>[...pedidos].sort((a,b)=>(PRIO_RANK[b.prioridad]-PRIO_RANK[a.prioridad])||(a.createdAt-b.createdAt));
+const fechaEntregaMs=p=>{ if(!p.fechaEntrega) return Infinity; const d=new Date(p.fechaEntrega+'T00:00:00'); return isNaN(d.getTime())?Infinity:d.getTime(); };
+const ordered=()=>[...pedidos].sort((a,b)=>(PRIO_RANK[b.prioridad]-PRIO_RANK[a.prioridad])||(fechaEntregaMs(a)-fechaEntregaMs(b))||(a.createdAt-b.createdAt));
 
 /* ===== RENDER: separa estructura (solo si cambia) de cronómetros (cada seg) ===== */
 let prevSig=null, prevFolios=new Set();
