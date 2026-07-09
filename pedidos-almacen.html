@@ -34,33 +34,54 @@
   .clock{font-size:26px;font-weight:600;color:var(--ink);min-width:118px;text-align:right}
   .clock small{display:block;font-size:11px;color:var(--mute);font-weight:600;letter-spacing:2px;margin-top:-2px}
 
-  .board{display:grid;grid-template-columns:1.15fr 1fr;gap:18px;padding:18px 22px;flex:1;min-height:0}
+  .board-split{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:16px 20px;flex:1;min-height:0}
+  .panel{display:flex;flex-direction:column;min-height:0}
+  .panel-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+  .ptitle{display:flex;align-items:center;gap:9px;font-size:14px;font-weight:800;letter-spacing:1.6px;color:var(--ink)}
+  .ptitle .pdot{width:11px;height:11px;border-radius:50%;flex:0 0 auto}
+  .pcount{font-size:12.5px;color:var(--mute);font-weight:800;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:3px 12px}
 
-  /* HERO */
-  .hero{position:relative;border-radius:18px;overflow:hidden;color:#fff;padding:26px 30px;display:flex;flex-direction:column;
-    background:linear-gradient(115deg,#0B57C7,#3B93FF);box-shadow:0 18px 40px rgba(12,58,110,.22);transition:background .5s;cursor:pointer}
-  .hero .eyebrow{font-size:13px;letter-spacing:4px;color:rgba(255,255,255,.82);font-weight:700}
-  .hero .htop{display:flex;gap:26px;align-items:flex-start;margin-top:2px}
-  .hero .hid{flex:0 0 auto}
-  .hero .folio{font-size:150px;line-height:.82;font-weight:700;text-shadow:0 3px 18px rgba(0,0,0,.18)}
-  .hero .client{font-size:29px;font-weight:700;margin-top:8px;max-width:15ch;line-height:1.05}
-  .hero .hpick{flex:1;min-width:0;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);border-radius:14px;padding:14px 16px;align-self:stretch}
-  .hero .hpick .ph{font-size:12px;letter-spacing:3px;font-weight:800;color:rgba(255,255,255,.85);margin-bottom:10px}
+  /* HERO (compacto, uno por panel) */
+  .phero{position:relative;border-radius:16px;overflow:hidden;color:#fff;padding:18px 20px;display:flex;flex-direction:column;
+    background:linear-gradient(115deg,#0B57C7,#3B93FF);box-shadow:0 12px 28px rgba(12,58,110,.18);transition:background .5s;margin-bottom:12px;min-height:0}
+  .phero.empty{align-items:center;justify-content:center;min-height:120px;background:linear-gradient(115deg,#8a94a3,#aab4c2);}
+  .phero .eyebrow{font-size:11px;letter-spacing:2.5px;color:rgba(255,255,255,.82);font-weight:700}
+  .phero .htop{display:flex;gap:16px;align-items:flex-start;margin-top:2px}
+  .phero .hid{flex:0 0 auto}
+  .phero .folio{font-size:64px;line-height:.9;font-weight:700;text-shadow:0 3px 14px rgba(0,0,0,.18)}
+  .phero .client{font-size:17px;font-weight:700;margin-top:6px;max-width:16ch;line-height:1.15}
+  .phero .hpick{flex:1;min-width:0;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);border-radius:12px;padding:10px 12px;align-self:stretch;display:flex;flex-direction:column}
+  .phero .hpick .ph{font-size:10.5px;letter-spacing:1.6px;font-weight:800;color:rgba(255,255,255,.85);margin-bottom:6px}
+  .phero .metaRow{display:flex;gap:14px;margin-top:12px;flex-wrap:wrap;align-items:flex-end}
+  .phero .meta .k{font-size:10.5px;letter-spacing:1.4px;color:rgba(255,255,255,.78);font-weight:700;display:flex;align-items:center;gap:5px}
+  .phero .meta .v{font-size:15px;font-weight:600}
+  .phero .badge{padding:6px 12px;font-size:12px}
+  .phero .prio{padding:4px 9px;font-size:12px}
+  .phero .tipo-tag{font-size:12px;padding:4px 10px;margin-top:8px}
+  .phero .venc-badge{font-size:13px;padding:5px 10px}
+
+  /* QUEUE (por panel) */
+  .pqueue-wrap{display:flex;flex-direction:column;min-height:0;flex:1}
+  .pq-sub{font-size:11.5px;letter-spacing:2px;color:var(--mute);font-weight:800;margin-bottom:8px}
+  .pqueue{display:flex;flex-direction:column;gap:8px;overflow:hidden;flex:1}
+  .pqueue .card{padding:10px 14px 10px 16px;gap:12px}
+  .pqueue .card .cfolio{font-size:26px;min-width:76px}
+  .pqueue .card .cclient{font-size:15px}
+  .pqueue .card .citems{font-size:12px}
+  .pqueue .card .ctimer{font-size:21px}
+  .pqueue .card .cright{min-width:60px}
   .pitem{display:flex;align-items:center;gap:11px;padding:7px 0;border-top:1px solid rgba(255,255,255,.14)}
   .pitem:first-of-type{border-top:none}
   .pitem .box{width:20px;height:20px;border-radius:5px;border:2px solid rgba(255,255,255,.6);flex:0 0 auto}
   .pitem .qty{font-family:"Barlow Condensed",sans-serif;font-size:26px;font-weight:700;min-width:42px;text-align:right}
   .pitem .desc{font-size:16px;font-weight:600;line-height:1.15}
   .pitem .clave{font-size:12px;color:rgba(255,255,255,.7);font-weight:600}
-  .hero .metaRow{display:flex;gap:26px;margin-top:auto;padding-top:20px;flex-wrap:wrap;align-items:flex-end}
   .meta{display:flex;flex-direction:column;gap:3px}
   .meta .k{font-size:12px;letter-spacing:2px;color:rgba(255,255,255,.78);font-weight:700;display:flex;align-items:center;gap:6px}
   .meta .v{font-size:22px;font-weight:600}
-  .hero .timer{font-size:52px;font-weight:700}
   .badge{align-self:flex-start;display:inline-flex;align-items:center;gap:8px;padding:9px 17px;border-radius:999px;font-size:15px;font-weight:800;letter-spacing:1px;background:rgba(255,255,255,.18);color:#fff;border:1px solid rgba(255,255,255,.35)}
   .prio{padding:5px 12px;border-radius:7px;font-size:15px;font-weight:800;letter-spacing:1px;background:rgba(255,255,255,.2);color:#fff}
-  .hero .hpick{display:flex;flex-direction:column}
-  .hpick-view{position:relative;flex:1;min-height:190px;overflow:hidden;margin-top:2px}
+  .hpick-view{position:relative;flex:1;min-height:96px;overflow:hidden;margin-top:2px}
   .hpick-page{position:absolute;left:0;right:0;top:0;opacity:0;transition:opacity .5s;pointer-events:none}
   .hpick-page.on{opacity:1;pointer-events:auto}
   .hpick-dots{display:flex;gap:7px;justify-content:center;margin-top:10px}
@@ -74,11 +95,6 @@
   .card .cvenc{font-size:12px;font-weight:800;padding:2px 9px;border-radius:6px;color:#fff;margin-left:6px}
 
   /* QUEUE */
-  .queue{display:flex;flex-direction:column;min-height:0}
-  .queue .qh{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
-  .queue .qh h2{font-size:15px;letter-spacing:3px;color:var(--mute);font-weight:800}
-  .queue .qh .count{font-size:13px;color:var(--mute)}
-  .qlist{display:flex;flex-direction:column;gap:11px;overflow:hidden;flex:1}
   .card{position:relative;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:18px;padding:14px 18px 14px 22px;border-radius:14px;background:var(--surface);border:1px solid var(--line);overflow:hidden;box-shadow:0 4px 14px rgba(12,58,110,.06);cursor:pointer;transition:opacity .4s,transform .4s}
   .card.is-new{animation:slideIn .4s cubic-bezier(.2,.8,.2,1), pulse 1.3s ease-out 1}
   .card.leaving{opacity:0;transform:translateX(40px)}
@@ -129,11 +145,22 @@
     <div class="clock"><span id="clk" class="mono">--:--:--</span><small>EN VIVO</small></div>
   </header>
 
-  <div class="board">
-    <section class="hero" id="hero"></section>
-    <section class="queue">
-      <div class="qh"><h2>COLA DE SURTIDO</h2><span class="count" id="qCount">—</span></div>
-      <div class="qlist" id="qlist"></div>
+  <div class="board-split">
+    <section class="panel panel-ventas">
+      <div class="panel-h"><span class="ptitle"><span class="pdot" style="background:var(--azul)"></span>PEDIDOS DE VENTA</span><span class="pcount" id="vCount">0</span></div>
+      <section class="phero" id="vHero"></section>
+      <section class="pqueue-wrap">
+        <div class="pq-sub">EN COLA</div>
+        <div class="pqueue" id="vQueue"></div>
+      </section>
+    </section>
+    <section class="panel panel-material">
+      <div class="panel-h"><span class="ptitle"><span class="pdot" style="background:var(--morado)"></span>SOLICITUDES DE MATERIAL</span><span class="pcount" id="mCount">0</span></div>
+      <section class="phero" id="mHero"></section>
+      <section class="pqueue-wrap">
+        <div class="pq-sub">EN COLA</div>
+        <div class="pqueue" id="mQueue"></div>
+      </section>
     </section>
   </div>
 
@@ -192,104 +219,118 @@ function venc(p){
   else { txt=dd+'d p/ entrega'; k='verde'; }
   return { txt, color:COLORS[k] };
 }
-// ── Estado del carrusel del hero ──
-let heroPages=[], heroPageIdx=0, heroCarT=null;
+// ── Estado del carrusel del hero (independiente por panel) ──
 const HERO_PER_PAGE=4;
-function startHeroCarousel(){
-  clearInterval(heroCarT); heroCarT=null;
-  if(heroPages.length<=1) return;
-  heroCarT=setInterval(()=>{
-    const view=document.querySelector('.hpick-view');
-    if(!view){ clearInterval(heroCarT); heroCarT=null; return; }
+const heroState={ v:{pages:[[]],idx:0,timer:null}, m:{pages:[[]],idx:0,timer:null} };
+function startHeroCarousel(tk){
+  const st=heroState[tk];
+  clearInterval(st.timer); st.timer=null;
+  if(st.pages.length<=1) return;
+  st.timer=setInterval(()=>{
+    const view=document.querySelector('#'+tk+'Hero .hpick-view');
+    if(!view){ clearInterval(st.timer); st.timer=null; return; }
     const pages=view.querySelectorAll('.hpick-page'); if(pages.length<2) return;
-    if(pages[heroPageIdx]) pages[heroPageIdx].classList.remove('on');
-    heroPageIdx=(heroPageIdx+1)%pages.length;
-    if(pages[heroPageIdx]) pages[heroPageIdx].classList.add('on');
-    document.querySelectorAll('.hpick-dots .hd').forEach((d,i)=>d.classList.toggle('on', i===heroPageIdx));
-    const ph=document.getElementById('phTxt');
-    if(ph) ph.textContent=(ph.dataset.base||'')+' · pág '+(heroPageIdx+1)+'/'+pages.length;
+    if(pages[st.idx]) pages[st.idx].classList.remove('on');
+    st.idx=(st.idx+1)%pages.length;
+    if(pages[st.idx]) pages[st.idx].classList.add('on');
+    document.querySelectorAll('#'+tk+'Hero .hpick-dots .hd').forEach((d,i)=>d.classList.toggle('on', i===st.idx));
+    const ph=document.getElementById(tk+'PhTxt');
+    if(ph) ph.textContent=(ph.dataset.base||'')+' · pág '+(st.idx+1)+'/'+pages.length;
   }, 4000);
 }
 const fechaEntregaMs=p=>{ if(!p.fechaEntrega) return Infinity; const d=new Date(p.fechaEntrega+'T00:00:00'); return isNaN(d.getTime())?Infinity:d.getTime(); };
-const ordered=()=>[...pedidos].sort((a,b)=>(PRIO_RANK[b.prioridad]-PRIO_RANK[a.prioridad])||(fechaEntregaMs(a)-fechaEntregaMs(b))||(a.createdAt-b.createdAt));
+function ordenar(list){ return [...list].sort((a,b)=>(PRIO_RANK[b.prioridad]-PRIO_RANK[a.prioridad])||(fechaEntregaMs(a)-fechaEntregaMs(b))||(a.createdAt-b.createdAt)); }
 
-/* ===== RENDER: separa estructura (solo si cambia) de cronómetros (cada seg) ===== */
-let prevSig=null, prevFolios=new Set();
+/* ===== RENDER: separa estructura (solo si cambia) de cronómetros (cada seg) — un panel por tipo ===== */
+let prevSig={v:null,m:null}, prevFolios={v:new Set(),m:new Set()};
 function signature(list){return list.map(p=>p.folio+':'+effColor(p).k+':'+p.estado+':'+(p.tipo||'')+':'+(p.fechaEntrega||'')).join('|')}
 
 function render(force){
-  const list=ordered(), sig=signature(list);
-  if(force||sig!==prevSig){ buildDOM(list); prevSig=sig; }
-  else { tickTimers(list); }
+  const ventas   = ordenar(pedidos.filter(p=>p.tipo!=='material'));
+  const material = ordenar(pedidos.filter(p=>p.tipo==='material'));
+  renderPanel('v', ventas, force);
+  renderPanel('m', material, force);
   updateChips();
 }
 
-function buildDOM(list){
+function renderPanel(tk, list, force){
+  const sig=signature(list);
+  if(force||sig!==prevSig[tk]){ buildPanel(tk,list); prevSig[tk]=sig; }
+  else { tickPanel(tk,list); }
+}
+
+function buildPanel(tk, list){
+  const heroEl=document.getElementById(tk+'Hero');
+  const countEl=document.getElementById(tk+'Count');
+  const queueEl=document.getElementById(tk+'Queue');
+  const esMatPanel = (tk==='m');
   const hero=list[0];
+  countEl.textContent=list.length;
   if(hero){
     const ec=effColor(hero), g=GRAD[ec.k];
-    const esMat = hero.tipo==='material';
     const persona = hero.solicitante || hero.vendedor || '\u2014';
     const v = venc(hero);
-    document.getElementById('hero').style.background='linear-gradient(115deg,'+g[0]+','+g[1]+')';
+    heroEl.classList.remove('empty');
+    heroEl.style.background='linear-gradient(115deg,'+g[0]+','+g[1]+')';
     const hprods=Array.isArray(hero.productos)?hero.productos:[];
-    // Carrusel: parte los productos en páginas de tamaño fijo (sin empalmar)
-    heroPages=[]; for(let i=0;i<hprods.length;i+=HERO_PER_PAGE) heroPages.push(hprods.slice(i,i+HERO_PER_PAGE));
-    if(!heroPages.length) heroPages=[[]];
-    heroPageIdx=0;
+    const pages=[]; for(let i=0;i<hprods.length;i+=HERO_PER_PAGE) pages.push(hprods.slice(i,i+HERO_PER_PAGE));
+    if(!pages.length) pages.push([]);
+    heroState[tk].pages=pages; heroState[tk].idx=0;
     const rowsOf = pg => pg.map(it=>`<div class="pitem"><div class="box"></div><div class="qty">${it.cant}</div><div><div class="desc">${it.desc||''}</div><div class="clave">${it.clave?('Clave '+it.clave):''}</div></div></div>`).join('') || '<div class="pitem" style="opacity:.6">Sin productos</div>';
-    const pagesHtml = heroPages.map((pg,pi)=>`<div class="hpick-page${pi===0?' on':''}">${rowsOf(pg)}</div>`).join('');
-    const dots = heroPages.length>1 ? `<div class="hpick-dots">${heroPages.map((_,pi)=>`<span class="hd${pi===0?' on':''}"></span>`).join('')}</div>` : '';
+    const pagesHtml = pages.map((pg,pi)=>`<div class="hpick-page${pi===0?' on':''}">${rowsOf(pg)}</div>`).join('');
+    const dots = pages.length>1 ? `<div class="hpick-dots">${pages.map((_,pi)=>`<span class="hd${pi===0?' on':''}"></span>`).join('')}</div>` : '';
     const baseTxt = `POR SURTIR · ${hprods.length} PRODUCTOS · ${piezas(hero)} PIEZAS`;
-    const phTxt = baseTxt + (heroPages.length>1?` · pág 1/${heroPages.length}`:'');
+    const phTxt = baseTxt + (pages.length>1?` · pág 1/${pages.length}`:'');
     const vencMeta = v ? `<div class="meta"><span class="k">ENTREGA${hero.fechaEntrega?(' · '+hero.fechaEntrega):''}</span><span class="venc-badge" style="background:${v.color}">${v.txt}</span></div>` : '';
-    const usoMeta = hero.uso ? `<div class="meta"><span class="k">USO / DESTINO</span><span class="v" style="font-size:18px">${hero.uso}</span></div>` : '';
-    document.getElementById('hero').innerHTML=`
-      <div class="eyebrow">${esMat?'SOLICITUD DE MATERIAL · OPERACIONES':'PEDIDO DE VENTAS'} · SIGUIENTE A SURTIR</div>
+    const destinoTxt = [hero.area, (hero.destino||hero.uso)].filter(Boolean).join(' — ');
+    const destinoMeta = (esMatPanel && destinoTxt) ? `<div class="meta"><span class="k">ÁREA / DESTINO</span><span class="v" style="font-size:15px">${destinoTxt}</span></div>` : '';
+    heroEl.innerHTML=`
+      <div class="eyebrow">${esMatPanel?'SOLICITUD DE MATERIAL · OPERACIONES':'PEDIDO DE VENTAS'} · SIGUIENTE A SURTIR</div>
       <div class="htop">
-        <div class="hid"><div class="folio num">${hero.folio}</div><div class="client">${hero.cliente}</div><span class="tipo-tag ${esMat?'mat':'ven'}">${esMat?'MATERIAL':'VENTA'}</span></div>
-        <div class="hpick"><div class="ph"><span id="phTxt" data-base="${baseTxt}">${phTxt}</span></div><div class="hpick-view">${pagesHtml}</div>${dots}</div>
+        <div class="hid"><div class="folio num">${hero.folio}</div><div class="client">${hero.cliente}</div></div>
+        <div class="hpick"><div class="ph"><span id="${tk}PhTxt" data-base="${baseTxt}">${phTxt}</span></div><div class="hpick-view">${pagesHtml}</div>${dots}</div>
       </div>
       <div class="metaRow">
-        <div class="meta"><span class="k"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>ESPERANDO</span><span class="v timer num mono" id="hTimer">${fmt(now()-hero.createdAt)}</span></div>
-        <div class="meta"><span class="k"><svg class="i" viewBox="0 0 24 24"><path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="7" r="4"/></svg>${esMat?'SOLICITANTE':'VENDEDOR'}</span><span class="v">${persona}</span></div>
+        <div class="meta"><span class="k"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>ESPERANDO</span><span class="v timer num mono" id="${tk}HTimer">${fmt(now()-hero.createdAt)}</span></div>
+        <div class="meta"><span class="k"><svg class="i" viewBox="0 0 24 24"><path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="7" r="4"/></svg>${esMatPanel?'SOLICITANTE':'VENDEDOR'}</span><span class="v">${persona}</span></div>
         ${vencMeta}
-        ${usoMeta}
+        ${destinoMeta}
         <div class="meta"><span class="k">PRIORIDAD</span><span class="prio">${hero.prioridad.replace('_',' ').toUpperCase()}</span></div>
         <div class="meta" style="margin-left:auto;align-items:flex-end"><span class="badge">${ec.label}</span></div>
       </div>`;
-    startHeroCarousel();
+    startHeroCarousel(tk);
   } else {
-    clearInterval(heroCarT); heroCarT=null;
+    clearInterval(heroState[tk].timer); heroState[tk].timer=null;
+    heroEl.classList.add('empty');
+    heroEl.innerHTML = '<div style="font-size:14px;font-weight:800;letter-spacing:1.5px;opacity:.92;">SIN PEDIDOS EN COLA</div>';
   }
   const rest=list.slice(1);
-  qCount.textContent=rest.length+' en cola';
-  qlist.innerHTML=rest.map(p=>{
-    const ec=effColor(p), c=COLORS[ec.k], isNew=!prevFolios.has(p.folio);
-    const esMat=p.tipo==='material', v=venc(p), persona=p.solicitante||p.vendedor||'';
+  queueEl.innerHTML=rest.map(p=>{
+    const ec=effColor(p), c=COLORS[ec.k], isNew=!prevFolios[tk].has(p.folio);
+    const v=venc(p), persona=p.solicitante||p.vendedor||'';
     const prods=Array.isArray(p.productos)?p.productos:[];
-    const first=prods[0]||{cant:'',desc:'—'}, extra=prods.length-1;
-    const items=`${first.cant}× ${first.desc||''}${extra>0?'  +'+extra+' más':''}`;
-    const tag=`<span class="ctag" style="background:${esMat?'rgba(139,79,214,.15)':'rgba(20,115,230,.12)'};color:${esMat?'#8B4FD6':'#1473E6'}">${esMat?'MATERIAL':'VENTA'}</span>`;
+    const first=prods[0]||{cant:'',desc:'\u2014'}, extra=prods.length-1;
+    const items=`${first.cant}\u00d7 ${first.desc||''}${extra>0?'  +'+extra+' m\u00e1s':''}`;
     const vb = v ? `<span class="cvenc" style="background:${v.color}">${v.txt}</span>` : '';
     return `<div class="card ${isNew?'is-new':''}" data-folio="${p.folio}">
       <div class="bar" style="background:${c}"></div>
       <div class="cfolio num" style="color:${c}">${p.folio}</div>
       <div class="cmid">
-        <div class="cclient">${p.cliente} ${tag}</div>
+        <div class="cclient">${p.cliente}</div>
         <div class="citems">${items}</div>
         <div class="cstate" style="color:${c}"><span class="sdot" style="background:${c}"></span>${ec.label} · ${persona} ${vb}</div>
       </div>
       <div class="cright"><div class="ctimer mono" style="color:${c}">${fmt(now()-p.createdAt)}</div><div class="cpieces">${piezas(p)} pzas</div></div>
     </div>`;
   }).join('');
-  prevFolios=new Set(list.map(p=>p.folio));
+  prevFolios[tk]=new Set(list.map(p=>p.folio));
 }
 
-function tickTimers(list){
-  const hero=list[0], ht=document.getElementById('hTimer');
+function tickPanel(tk, list){
+  const hero=list[0], ht=document.getElementById(tk+'HTimer');
   if(hero&&ht) ht.textContent=fmt(now()-hero.createdAt);
-  list.slice(1).forEach(p=>{const el=qlist.querySelector('[data-folio="'+p.folio+'"] .ctimer');if(el)el.textContent=fmt(now()-p.createdAt)});
+  const queueEl=document.getElementById(tk+'Queue');
+  list.slice(1).forEach(p=>{const el=queueEl.querySelector('[data-folio="'+p.folio+'"] .ctimer');if(el)el.textContent=fmt(now()-p.createdAt)});
 }
 
 function updateChips(){
@@ -356,11 +397,11 @@ let escuchando = false;
 
 // Aviso grande y visible dentro del panel principal (nunca fallar en silencio)
 function avisoTV(titulo, detalle){
-  const hero = document.getElementById('hero');
-  if(hero){
-    hero.innerHTML = '<div style="height:100%;min-height:300px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:30px;color:#fff;">'
-      + '<div style="font-size:24px;font-weight:800;margin-bottom:12px;">'+titulo+'</div>'
-      + '<div style="font-size:15px;opacity:.92;max-width:560px;line-height:1.6;">'+detalle+'</div></div>';
+  const board = document.querySelector('.board-split');
+  if(board){
+    board.innerHTML = '<div style="grid-column:1/-1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:60px 30px;color:#0C2740;">'
+      + '<div style="font-size:26px;font-weight:800;margin-bottom:14px;">'+titulo+'</div>'
+      + '<div style="font-size:16px;opacity:.85;max-width:640px;line-height:1.6;">'+detalle+'</div></div>';
   }
   console.warn('[TV]', titulo, String(detalle).replace(/<[^>]+>/g,''));
 }
@@ -385,6 +426,8 @@ function iniciarEscucha(){
         tipo: d.tipo || 'venta',
         fechaEntrega: d.fechaEntrega || '',
         solicitante: d.solicitante || '',
+        area: d.area || '',
+        destino: d.destino || '',
         uso: d.uso || d.destino || '',
         productos: Array.isArray(d.productos) ? d.productos.map(it=>({
           clave: it.clave || '',
