@@ -1,3 +1,28 @@
+/* ============================================================================
+ * almacen.js · Módulo de Almacén — Centro de Surtido (flujo de pedidos)
+ * ----------------------------------------------------------------------------
+ * Responsabilidad ÚNICA: mostrar EN VIVO el flujo de pedidos de la colección
+ * `surtidos` de Firestore dentro del departamento de Almacén y permitir al
+ * personal AVANZAR cada pedido por sus etapas de surtido, con checklist de
+ * picking línea por línea y trazabilidad en `surtidos/{id}/historial`.
+ *
+ * Ideas tomadas de un WMS profesional (Netlogistik/WEP), adaptadas a la escala
+ * de Tecnocontrol: etapas claras (Recibo→Surtido→Verificación→Embarque),
+ * surtido por pieza (checklist), priorización de urgentes, visibilidad SLA.
+ *
+ * NO sube PDFs — eso lo hace almacen-pdf.js (window.abrirSurtidoPDF), que vive
+ * en Ventas. Aquí sólo se OPERA el surtido.
+ *
+ * Depende de globals del portal: window.db, window.auth, window.nombreUsuario.
+ * Expone: window.abrirAlmacen(idContenedor)   ← contrato con irAlmacen()
+ *
+ * Esquema `surtidos` (compatible con almacen-pdf.js y pedidos-almacen.html):
+ *   { folio, cliente, vendedor, prioridad, estado, productos:[{clave,cant,desc}],
+ *     origen, creadoPor, createdAt,  check:{ "<idx>": true } }   ← check es NUEVO y opcional
+ *
+ * Máquina de estados (igual que la TV):
+ *   esperando_autorizacion → pendiente → en_preparacion → listo → entregado → finalizado
+ * ==========================================================================*/
 (function () {
   'use strict';
 
@@ -32,6 +57,8 @@
   var expandido = {};                 // {id:true}
   var filtro    = { q:'', prio:'', tipo:'' };   // búsqueda, prioridad y tipo
   var _unsub  = null, _tick = null, _fs = null, _cssOk = false;
+  var _conocidos = null;             // Set de ids ya vistos (null = aún no hubo primera carga)
+  var _notifOn = (function(){ try{ return localStorage.getItem('alm_notif_on')!=='0'; }catch(e){ return true; } })();
 
   function cargarFirestore(){
     if (_fs) return Promise.resolve(_fs);
@@ -51,6 +78,58 @@
   function piezas(p){ return (Array.isArray(p.productos)?p.productos:[]).reduce(function(a,x){ return a+(Number(x.cant)||0); },0); }
   function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function fmt(ms){ var s=Math.max(0,Math.floor(ms/1000)); return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0'); }
+
+  // ── Notificación sonora + push al llegar pedido nuevo ──
+  function reproducirBeep(){
+    try{
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      if(!Ctx) return;
+      var ctx = new Ctx();
+      [0,0.16].forEach(function(delay,i){
+        var osc = ctx.createOscillator(), gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = i===0 ? 880 : 1180;
+        osc.connect(gain); gain.connect(ctx.destination);
+        var t0 = ctx.currentTime + delay;
+        gain.gain.setValueAtTime(0.0001, t0);
+        gain.gain.exponentialRampToValueAtTime(0.22, t0+0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0+0.14);
+        osc.start(t0); osc.stop(t0+0.15);
+      });
+      setTimeout(function(){ try{ ctx.close(); }catch(e){} }, 500);
+    }catch(e){ console.warn('[almacen] beep:',e); }
+  }
+
+  function notificarPedidoNuevo(p){
+    if(!_notifOn) return;
+    reproducirBeep();
+    try{
+      if('Notification' in window && Notification.permission==='granted'){
+        var n = new Notification('📦 Nuevo pedido — '+(p.folio||'—'), {
+          body: (p.cliente||'Sin cliente')+' · '+(p.tipo==='material'?'Material':'Venta')+' · '+piezas(p)+' pzas',
+          tag: 'alm-'+p.id,
+          icon: undefined
+        });
+        n.onclick = function(){ window.focus(); try{ n.close(); }catch(e){} };
+      }
+    }catch(e){ console.warn('[almacen] Notification:',e); }
+  }
+
+  window.__almNotifToggle = function(){
+    _notifOn = !_notifOn;
+    try{ localStorage.setItem('alm_notif_on', _notifOn?'1':'0'); }catch(e){}
+    if(_notifOn && 'Notification' in window && Notification.permission==='default'){
+      Notification.requestPermission();
+    }
+    var btn = document.getElementById('alm-notif-btn');
+    if(btn) btn.innerHTML = iconoCampana();
+  };
+
+  function iconoCampana(){
+    return _notifOn
+      ? '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>'
+      : '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/><line x1="3" y1="3" x2="21" y2="21"/></svg>';
+  }
   function yoEmail(){ return (window.auth && window.auth.currentUser && window.auth.currentUser.email) || ''; }
   function yoNombre(){ var e=yoEmail(); return (window.nombreUsuario?window.nombreUsuario(e):'')||e||'Usuario'; }
   function inicioDeHoy(){ var d=new Date(); d.setHours(0,0,0,0); return d.getTime(); }
@@ -95,6 +174,8 @@
     + '.alm-search{flex:1;min-width:180px;display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #e6ebf2;border-radius:10px;padding:8px 12px;}'
     + '.alm-search input{border:none;outline:none;width:100%;font-size:13px;color:#0f172a;background:transparent;}'
     + '.alm-fchips{display:flex;gap:6px;flex-wrap:wrap;}'
+    + '.alm-notif-btn{margin-left:auto;display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:9px;border:1px solid #e6ebf2;background:#fff;color:#475569;cursor:pointer;flex-shrink:0;}'
+    + '.alm-notif-btn:hover{background:#f1f5f9;}'
     + '.alm-fchip{cursor:pointer;border:1px solid #e6ebf2;background:#fff;color:#475569;border-radius:99px;font-size:11.5px;font-weight:800;padding:6px 12px;}'
     + '.alm-fchip.on{background:#0f172a;color:#fff;border-color:#0f172a;}'
     + '.alm-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px;margin:0 0 22px;}'
@@ -197,6 +278,7 @@
       +     '<input id="alm-q" type="text" placeholder="Buscar folio, cliente o vendedor…" oninput="window.__almBuscar(this.value)"></div>'
       +   '<div class="alm-fchips">'+chipsTipo+'</div>'
       +   '<div class="alm-fchips">'+chips+'</div>'
+      +   '<button id="alm-notif-btn" class="alm-notif-btn" title="Notificación sonora de pedidos nuevos" onclick="window.__almNotifToggle()">'+iconoCampana()+'</button>'
       + '</div>'
       + '<div class="alm-kpis" id="alm-kpis"></div>'
       + '<div class="alm-board" id="alm-board"></div>'
@@ -414,8 +496,10 @@
       if(!window.db){ if(cont) cont.innerHTML='<div class="alm-loading">Firestore no está inicializado (window.db).</div>'; return; }
       _unsub=fs.onSnapshot(fs.collection(window.db,'surtidos'),function(snap){
         var arr=[];
+        var idsActuales={};
         snap.forEach(function(docu){
           var d=docu.data()||{};
+          idsActuales[docu.id]=true;
           arr.push({
             id:docu.id,
             folio:d.folio||'—', cliente:d.cliente||'', vendedor:d.vendedor||'',
@@ -426,6 +510,14 @@
             createdAt:toMs(d.createdAt)
           });
         });
+        if(_conocidos===null){
+          _conocidos = idsActuales;              // primera carga: no notificar nada retroactivo
+        } else {
+          arr.forEach(function(p){
+            if(!_conocidos[p.id]) notificarPedidoNuevo(p);
+          });
+          _conocidos = idsActuales;
+        }
         pedidos=arr; render();
       },function(err){ console.error('[almacen] onSnapshot:',err); if(cont) cont.innerHTML='<div class="alm-loading">Error al leer <b>surtidos</b>: '+esc(err.message||err)+'</div>'; });
     }).catch(function(err){ console.error('[almacen] Firestore load:',err); if(cont) cont.innerHTML='<div class="alm-loading">No se pudo cargar Firestore.</div>'; });
