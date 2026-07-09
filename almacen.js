@@ -264,6 +264,21 @@
     + '.alm-fcard .k{font-size:10.5px;color:#94a3b8;font-weight:700;}'
     + '.alm-fcard button{border:none;border-radius:8px;background:#eaf0ff;color:#1d4ed8;font-weight:800;font-size:11.5px;padding:7px;cursor:pointer;}'
     + '.alm-fcard button:disabled{opacity:.55;cursor:default;}'
+    + '.alm-rep-filtros{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:flex-end;}'
+    + '.alm-rep-fld{display:flex;flex-direction:column;gap:4px;}'
+    + '.alm-rep-fld label{font-size:10.5px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#94a3b8;}'
+    + '.alm-rep-fld input{border:2px solid #e6ebf2;border-radius:9px;padding:8px 10px;font-size:13px;font-family:inherit;outline:none;}'
+    + '.alm-rep-fld.grow{flex:1;min-width:160px;}'
+    + '.alm-rep-btn{border:none;border-radius:9px;background:linear-gradient(135deg,#0891b2,#0e7490);color:#fff;font-weight:800;font-size:12.5px;padding:9px 16px;cursor:pointer;white-space:nowrap;}'
+    + '.alm-rep-btn.sec{background:#f1f5f9;color:#475569;}'
+    + '.alm-rep-summary{font-size:12px;color:#64748b;font-weight:700;margin-bottom:10px;}'
+    + '.alm-rep-tbl{width:100%;border-collapse:collapse;font-size:12.5px;}'
+    + '.alm-rep-tbl th{text-align:left;font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:#94a3b8;padding:7px 8px;border-bottom:2px solid #e6ebf2;position:sticky;top:0;background:#fff;}'
+    + '.alm-rep-tbl td{padding:7px 8px;border-bottom:1px solid #f1f5f9;vertical-align:top;}'
+    + '.alm-rep-tbl tr:hover td{background:#fafcff;}'
+    + '.alm-rep-wrap{max-height:360px;overflow:auto;border:1px solid #e6ebf2;border-radius:10px;}'
+    + '.alm-rep-firma{color:#0891b2;cursor:pointer;font-weight:700;text-decoration:underline;}'
+    + '.alm-rep-tag{font-size:10px;font-weight:800;padding:2px 7px;border-radius:6px;letter-spacing:.3px;}'
     + '.alm-modal-box h4{margin:0 0 14px;font-size:15px;font-weight:800;color:#0f172a;display:flex;align-items:center;justify-content:space-between;}'
     + '.alm-modal-box h4 button{border:none;background:#f1f5f9;color:#475569;width:26px;height:26px;border-radius:8px;cursor:pointer;font-size:15px;line-height:1;}'
     + '.alm-hist-row{display:flex;flex-direction:column;gap:2px;padding:9px 0;border-bottom:1px solid #f1f5f9;font-size:12.5px;}'
@@ -308,6 +323,7 @@
       +   '<div class="alm-fchips">'+chips+'</div>'
       +   '<button id="alm-notif-btn" class="alm-notif-btn" title="Notificación sonora de pedidos nuevos" onclick="window.__almNotifToggle()">'+iconoCampana()+'</button>'
       +   (esAdminActual()?'<button class="alm-notif-btn" title="Fotos de catálogo (solo admin)" onclick="window.__almAbrirFotos()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>':'')
+      +   '<button class="alm-notif-btn" title="Historial de entregas" onclick="window.__almAbrirHistorialEntregas()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11H3v10h6"/><path d="M9 21h12V8l-5-5H9v6"/><line x1="13" y1="12" x2="17" y2="12"/><line x1="13" y1="16" x2="17" y2="16"/></svg></button>'
       + '</div>'
       + '<div class="alm-kpis" id="alm-kpis"></div>'
       + '<div class="alm-board" id="alm-board"></div>'
@@ -390,10 +406,18 @@
         prodHtml += '<div class="alm-firma-mini"><span class="lbl">Firma del solicitante</span>'
           + '<img src="'+esc(p.firma)+'" alt="Firma" onclick="window.__almVerFirma(\''+p.id+'\')"></div>';
       }
+      if (p.firmaEntrega){
+        prodHtml += '<div class="alm-firma-mini"><span class="lbl">Firma de entrega'+(p.recibioNombre?(' · recibió '+esc(p.recibioNombre)):'')+'</span>'
+          + '<img src="'+esc(p.firmaEntrega)+'" alt="Firma de entrega" onclick="window.__almVerFirma(\''+p.id+'\',\'entrega\')"></div>';
+      }
     }
 
     var goCls='alm-btn alm-btn-go'+((p.estado==='en_preparacion'&&!completo)?' wait':'');
     var tipoTag='<span class="alm-tipo-tag '+(p.tipo==='material'?'mat':'ven')+'">'+(p.tipo==='material'?'Material':'Venta')+'</span>';
+    var esperandoFirma = !!p.entregaPendienteFirma;
+    var accionHtml = esperandoFirma
+      ? '<button class="alm-btn alm-btn-ghost" title="Cancelar solicitud de firma" onclick="window.__almCancelarFirmaEntrega(\''+p.id+'\')" style="color:#dc2626;">✍️ Esperando firma… ✕</button>'
+      : (sig?'<button class="'+goCls+'" onclick="window.__almGo(\''+p.id+'\')">'+esc(ACCION[p.estado]||'Avanzar')+' ›</button>':'');
     return '<div class="alm-card'+(urg?' urg':'')+'" data-id="'+p.id+'" style="border-left-color:'+ac+'">'
       + '<div class="top"><span class="folio">'+esc(p.folio||'—')+'</span>'
       +   '<span class="alm-chip'+(urg?' urg':'')+'" style="background:'+pc+'">'+esc(PRIO_LABEL[p.prioridad]||p.prioridad||'Normal')+'</span></div>'
@@ -407,7 +431,7 @@
       +   '<button class="alm-btn alm-btn-ghost" onclick="window.__almToggle(\''+p.id+'\')">'+(abierta?'Ocultar':'Ver')+'</button>'
       +   '<button class="alm-btn alm-btn-ghost" title="Ver historial" onclick="window.__almVerHistorial(\''+p.id+'\')">'
       +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg></button>'
-      +   (sig?'<button class="'+goCls+'" onclick="window.__almGo(\''+p.id+'\')">'+esc(ACCION[p.estado]||'Avanzar')+' ›</button>':'')
+      +   accionHtml
       + '</div></div>';
   }
 
@@ -452,8 +476,38 @@
     }).catch(function(err){ console.error('[almacen] check:',err); });
   }
 
+  // ── Confirmación de entrega: Almacén SOLICITA la firma, quien recibe firma en el kiosko ──
+  window.__almPedirFirmaEntrega = function(id){
+    var p=buscarP(id); if(!p) return;
+    cargarFirestore().then(function(fs){
+      if(!window.db) throw new Error('Firestore no disponible');
+      return fs.updateDoc(fs.doc(window.db,'surtidos',id), {
+        entregaPendienteFirma: true,
+        entregaSolicitadaPor: yoNombre(),
+        entregaSolicitadaEn: fs.serverTimestamp()
+      });
+    }).then(function(){
+      if(window.mostrarPush) window.mostrarPush('📦 Esperando firma', (p.folio||'')+' · pídele a quien recibe que firme en el kiosko', '✍️');
+    }).catch(function(err){
+      console.error('[almacen] pedirFirmaEntrega:',err);
+      if(window.mostrarPush) window.mostrarPush('Almacén','No se pudo enviar la solicitud de firma','⚠️');
+    });
+  };
+
+  window.__almCancelarFirmaEntrega = function(id){
+    cargarFirestore().then(function(fs){
+      if(!window.db) return;
+      return fs.updateDoc(fs.doc(window.db,'surtidos',id), { entregaPendienteFirma:false });
+    }).catch(function(err){ console.error('[almacen] cancelarFirmaEntrega:',err); });
+  };
+
   // Handlers globales
-  window.__almGo     = function(id){ var p=buscarP(id); if(p) moverEstado(id,NEXT[p.estado]); };
+  window.__almGo     = function(id){
+    var p=buscarP(id); if(!p) return;
+    var destino = NEXT[p.estado];
+    if(destino === 'entregado'){ window.__almPedirFirmaEntrega(id); return; }  // requiere firma de quien recibe, en el kiosko
+    moverEstado(id,destino);
+  };
   window.__almBack   = function(id){ var p=buscarP(id); if(p&&PREV[p.estado]) moverEstado(id,PREV[p.estado]); };
   window.__almToggle = function(id){ expandido[id]=!expandido[id]; render(); };
   window.__almCheck  = function(id,idx){ toggleCheck(id,idx); };
@@ -474,12 +528,15 @@
     if(m) m.classList.remove('show');
   };
 
-  window.__almVerFirma = function(id){
-    var p=buscarP(id); if(!p||!p.firma) return;
+  window.__almVerFirma = function(id, cual){
+    var p=buscarP(id); if(!p) return;
+    var src = (cual==='entrega') ? p.firmaEntrega : p.firma;
+    if(!src) return;
     construirModalHistorial();
     var box=document.getElementById('alm-modal-hist-box');
-    box.innerHTML='<h4>Firma · '+esc(p.folio||'')+'<button onclick="window.__almCerrarModal()">&times;</button></h4>'
-      + '<img class="alm-firma-full" src="'+esc(p.firma)+'" alt="Firma">';
+    var titulo = (cual==='entrega') ? ('Firma de entrega · '+esc(p.folio||'')+(p.recibioNombre?(' · recibió '+esc(p.recibioNombre)):'')) : ('Firma · '+esc(p.folio||''));
+    box.innerHTML='<h4>'+titulo+'<button onclick="window.__almCerrarModal()">&times;</button></h4>'
+      + '<img class="alm-firma-full" src="'+esc(src)+'" alt="Firma">';
     document.getElementById('alm-modal-hist').classList.add('show');
   };
 
@@ -676,6 +733,8 @@
             productos:Array.isArray(d.productos)?d.productos:[],
             check:d.check||{},
             tipo:d.tipo||'venta', firma:d.firma||'', fechaEntrega:d.fechaEntrega||'',
+            recibioNombre:d.recibioNombre||'', firmaEntrega:d.firmaEntrega||'',
+            entregaPendienteFirma:!!d.entregaPendienteFirma,
             createdAt:toMs(d.createdAt)
           });
         });
@@ -701,6 +760,190 @@
     suscribir();
     if(_unsub) render();   // reentrada al área: repinta de inmediato desde la caché
     if(!_tick) _tick=setInterval(tickTimers,1000);
+  };
+
+  // ── Historial de entregas: buscador por folio/cliente/solicitante/recibió + rango de fechas + exportar PDF ──
+  var _repEntregas = null;   // caché de la última carga [{...}]
+
+  function cargarEntregas(){
+    return cargarFirestore().then(function(fs){
+      if(!window.db) throw new Error('Firestore no disponible');
+      var q = fs.query(fs.collection(window.db,'surtidos'), fs.where('estado','in',['entregado','finalizado']));
+      return fs.getDocs(q);
+    }).then(function(snap){
+      var arr=[];
+      snap.forEach(function(docu){
+        var d=docu.data()||{};
+        arr.push({
+          id: docu.id,
+          folio: d.folio||'—', cliente: d.cliente||'', tipo: d.tipo||'venta',
+          solicito: d.tipo==='material' ? (d.solicitante||'—') : (d.vendedor||'—'),
+          recibio: d.recibioNombre||'',
+          firma: d.firma||'', firmaEntrega: d.firmaEntrega||'',
+          creadoMs: toMs(d.createdAt),
+          entregadoMs: d.entregadoEn ? toMs(d.entregadoEn) : null,
+          piezas: (Array.isArray(d.productos)?d.productos:[]).reduce(function(a,x){return a+(Number(x.cant)||0);},0),
+          productos: Array.isArray(d.productos)?d.productos:[]
+        });
+      });
+      arr.sort(function(a,b){ return (b.entregadoMs||b.creadoMs)-(a.entregadoMs||a.creadoMs); });
+      _repEntregas = arr;
+      return arr;
+    });
+  }
+
+  function filtrarEntregas(lista, filtros){
+    return lista.filter(function(e){
+      if(filtros.desde && (e.entregadoMs||e.creadoMs) < filtros.desde) return false;
+      if(filtros.hasta && (e.entregadoMs||e.creadoMs) > filtros.hasta) return false;
+      if(filtros.q){
+        var blob=(e.folio+' '+e.cliente+' '+e.solicito+' '+e.recibio).toLowerCase();
+        if(blob.indexOf(filtros.q)===-1) return false;
+      }
+      return true;
+    });
+  }
+
+  function leerFiltrosReporte(){
+    var dEl=document.getElementById('alm-rep-desde'), hEl=document.getElementById('alm-rep-hasta'), qEl=document.getElementById('alm-rep-q');
+    var desde = dEl && dEl.value ? new Date(dEl.value+'T00:00:00').getTime() : null;
+    var hasta = hEl && hEl.value ? new Date(hEl.value+'T23:59:59').getTime() : null;
+    var q = qEl && qEl.value ? qEl.value.trim().toLowerCase() : '';
+    return { desde:desde, hasta:hasta, q:q };
+  }
+
+  function fmtFecha(ms){ return ms ? new Date(ms).toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}) : '—'; }
+
+  function renderTablaReporte(){
+    if(!_repEntregas) return;
+    var filtros = leerFiltrosReporte();
+    var lista = filtrarEntregas(_repEntregas, filtros);
+    var resumen = document.getElementById('alm-rep-resumen');
+    if(resumen) resumen.textContent = lista.length + ' entrega'+(lista.length===1?'':'s')+' encontrada'+(lista.length===1?'':'s');
+    var tbody = document.getElementById('alm-rep-tbody');
+    if(!tbody) return;
+    if(!lista.length){ tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:20px;">Sin resultados para este filtro.</td></tr>'; return; }
+    tbody.innerHTML = lista.map(function(e){
+      var tag = e.tipo==='material'
+        ? '<span class="alm-rep-tag" style="background:rgba(139,79,214,.12);color:#8B4FD6">MATERIAL</span>'
+        : '<span class="alm-rep-tag" style="background:rgba(20,115,230,.1);color:#1473E6">VENTA</span>';
+      var firmasHtml = ''
+        + (e.firma ? '<span class="alm-rep-firma" onclick="window.__almVerFirmaId(\''+e.id+'\',\'sol\')">solicitud</span>' : '')
+        + (e.firma && e.firmaEntrega ? ' · ' : '')
+        + (e.firmaEntrega ? '<span class="alm-rep-firma" onclick="window.__almVerFirmaId(\''+e.id+'\',\'entrega\')">entrega</span>' : '')
+        || '<span style="color:#cbd5e1">—</span>';
+      return '<tr>'
+        + '<td><b>'+esc(e.folio)+'</b><br>'+tag+'</td>'
+        + '<td>'+esc(e.cliente||'—')+'</td>'
+        + '<td>'+esc(e.solicito||'—')+'</td>'
+        + '<td>'+esc(e.recibio||'—')+'</td>'
+        + '<td>'+fmtFecha(e.creadoMs)+'</td>'
+        + '<td>'+fmtFecha(e.entregadoMs)+'</td>'
+        + '<td>'+e.piezas+' pzas<br>'+firmasHtml+'</td>'
+        + '</tr>';
+    }).join('');
+  }
+
+  window.__almVerFirmaId = function(id, cual){
+    var e = (_repEntregas||[]).find(function(x){ return x.id===id; });
+    if(!e) return;
+    var src = cual==='entrega' ? e.firmaEntrega : e.firma;
+    if(!src) return;
+    construirModalHistorial();
+    var box=document.getElementById('alm-modal-hist-box');
+    box.classList.add('wide');
+    var titulo = cual==='entrega' ? ('Firma de entrega · '+esc(e.folio)+(e.recibio?(' · recibió '+esc(e.recibio)):'')) : ('Firma de solicitud · '+esc(e.folio));
+    box.innerHTML = '<h4>'+titulo+'<button onclick="window.__almCerrarModal()">&times;</button></h4>'
+      + '<img class="alm-firma-full" src="'+esc(src)+'" alt="Firma">';
+    document.getElementById('alm-modal-hist').classList.add('show');
+  };
+
+  window.__almAbrirHistorialEntregas = function(){
+    construirModalHistorial();
+    var box = document.getElementById('alm-modal-hist-box');
+    box.classList.add('wide');
+    box.innerHTML = '<h4>Historial de entregas<button onclick="window.__almCerrarModal()">&times;</button></h4>'
+      + '<div class="alm-rep-filtros">'
+      +   '<div class="alm-rep-fld"><label>Desde</label><input type="date" id="alm-rep-desde"></div>'
+      +   '<div class="alm-rep-fld"><label>Hasta</label><input type="date" id="alm-rep-hasta"></div>'
+      +   '<div class="alm-rep-fld grow"><label>Buscar (folio, cliente, solicitó, recibió)</label><input type="text" id="alm-rep-q" placeholder="Ej. CHH0007635, Victor, Los Cachorros…"></div>'
+      +   '<button class="alm-rep-btn sec" type="button" onclick="window.__almRecargarReporte()">↻ Recargar</button>'
+      +   '<button class="alm-rep-btn" type="button" onclick="window.__almExportarReportePDF()">⬇ Exportar PDF</button>'
+      + '</div>'
+      + '<div class="alm-rep-summary" id="alm-rep-resumen">Cargando…</div>'
+      + '<div class="alm-rep-wrap"><table class="alm-rep-tbl">'
+      +   '<thead><tr><th>Folio</th><th>Cliente</th><th>Solicitó</th><th>Recibió</th><th>Fecha solicitud</th><th>Fecha entrega</th><th>Piezas / firmas</th></tr></thead>'
+      +   '<tbody id="alm-rep-tbody"><tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:20px;">Cargando…</td></tr></tbody>'
+      + '</table></div>';
+    document.getElementById('alm-modal-hist').classList.add('show');
+
+    ['alm-rep-desde','alm-rep-hasta','alm-rep-q'].forEach(function(fid){
+      document.getElementById(fid).addEventListener('input', function(){
+        clearTimeout(window.__almRepDeb);
+        window.__almRepDeb = setTimeout(renderTablaReporte, 150);
+      });
+    });
+    window.__almRecargarReporte();
+  };
+
+  window.__almRecargarReporte = function(){
+    var tbody = document.getElementById('alm-rep-tbody');
+    if(tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:20px;">Cargando…</td></tr>';
+    cargarEntregas().then(renderTablaReporte).catch(function(err){
+      console.error('[almacen] cargarEntregas:',err);
+      if(tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#dc2626;padding:20px;">No se pudo cargar el historial.</td></tr>';
+    });
+  };
+
+  window.__almExportarReportePDF = function(){
+    if(!window.jspdf){ if(window.mostrarPush) window.mostrarPush('Almacén','Librería PDF no cargada','⚠️'); return; }
+    var filtros = leerFiltrosReporte();
+    var lista = filtrarEntregas(_repEntregas||[], filtros);
+    var jsPDF = window.jspdf.jsPDF;
+    var docu = new jsPDF({ orientation:'landscape', unit:'mm', format:'letter' });
+    var PW=279.4, PH=215.9, ML=12, MR=12;
+
+    function encabezado(){
+      docu.setFillColor(10,15,30); docu.rect(0,0,PW,20,'F');
+      docu.setTextColor(255,255,255); docu.setFont('helvetica','bold'); docu.setFontSize(13);
+      docu.text('TECNOCONTROL · Historial de Entregas', ML, 12);
+      docu.setFont('helvetica','normal'); docu.setFontSize(8);
+      var rango = (document.getElementById('alm-rep-desde').value||'—')+' a '+(document.getElementById('alm-rep-hasta').value||'—');
+      docu.text('Rango: '+rango+'  ·  Generado: '+new Date().toLocaleString('es-MX'), PW-MR, 12, {align:'right'});
+      docu.setTextColor(30,41,59);
+    }
+    function piePagina(n){
+      docu.setFillColor(10,15,30); docu.rect(0,PH-9,PW,9,'F');
+      docu.setTextColor(180,180,180); docu.setFontSize(7);
+      docu.text('Página '+n+'  ·  '+lista.length+' registro(s)', PW/2, PH-4, {align:'center'});
+    }
+    function encabezadoTabla(y){
+      docu.setFillColor(248,250,252); docu.rect(ML, y-4.5, PW-ML-MR, 7, 'F');
+      docu.setFont('helvetica','bold'); docu.setFontSize(7.5); docu.setTextColor(71,85,105);
+      var cols=['FOLIO','TIPO','CLIENTE','SOLICITÓ','RECIBIÓ','F. SOLICITUD','F. ENTREGA','PZAS'];
+      var xs=[ML+1, 40, 62, 108, 148, 188, 216, 248];
+      cols.forEach(function(c,i){ docu.text(c, xs[i], y); });
+      return xs;
+    }
+
+    var pageNum=1, y=30;
+    encabezado(); var xs=encabezadoTabla(y); y+=7;
+    docu.setFont('helvetica','normal'); docu.setFontSize(7.8); docu.setTextColor(30,41,59);
+
+    lista.forEach(function(e){
+      if(y > PH-16){ piePagina(pageNum); docu.addPage(); pageNum++; y=30; encabezado(); xs=encabezadoTabla(y); y+=7; docu.setFont('helvetica','normal'); docu.setFontSize(7.8); docu.setTextColor(30,41,59); }
+      docu.text(String(e.folio||'—').slice(0,16), xs[0], y);
+      docu.text(e.tipo==='material'?'Material':'Venta', xs[1], y);
+      docu.text(String(e.cliente||'—').slice(0,22), xs[2], y);
+      docu.text(String(e.solicito||'—').slice(0,18), xs[3], y);
+      docu.text(String(e.recibio||'—').slice(0,18), xs[4], y);
+      docu.text(fmtFecha(e.creadoMs), xs[5], y);
+      docu.text(fmtFecha(e.entregadoMs), xs[6], y);
+      docu.text(String(e.piezas), xs[7], y);
+      y += 6;
+    });
+    piePagina(pageNum);
+    docu.save('historial-entregas-tecnocontrol.pdf');
   };
 
   console.log('[almacen.js] ✅ Centro de Surtido cargado (flujo + picking + SLA)');
