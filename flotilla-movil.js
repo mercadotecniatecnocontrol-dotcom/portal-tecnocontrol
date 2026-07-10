@@ -82,6 +82,7 @@ const C={
   USUARIOS:'fl_usuarios',
   CHKSEM:'flotilla_checklist_semanal',
   CFG:'flotilla_config',
+  USOS:'flotilla_usos',
   OFFLINE_KEY:'tcn_offline_queue',
 };
 
@@ -1419,6 +1420,7 @@ window.adminConfirmarCambioVeh=async function(btn){
       if(!snap.empty){
         await snap.docs[0].ref.update({ecoVinculado:String(eco),ecosVinculados:[String(eco)],vinculadoEn:new Date().toISOString()});
       }
+      flRegistrarVinculacion(eco,miPerfil.email,miPerfil.nombre||miPerfil.email);
       if(miPerfil){miPerfil.ecoVinculado=String(eco);miPerfil.ecosVinculados=[String(eco)];}
       toast(`ECO ${eco} vinculado permanentemente`,'ok');
     } else {
@@ -1509,6 +1511,27 @@ window.fmCargarVehs=async function(){
   renderVincular();
 };
 
+// ── HISTORIAL DE USO: registra quién vinculó/desvinculó cada ECO y cuándo ──
+// (colección flotilla_usos — no confundir con ecoVinculado, que solo guarda el estado actual)
+async function flRegistrarVinculacion(eco,email,nombre){
+  try{
+    // Por seguridad, cierra cualquier registro abierto previo de este mismo usuario
+    const abiertas=await db.collection(C.USOS).where('email','==',email).where('activo','==',true).get();
+    const ahora=new Date().toISOString();
+    const ops=[];
+    abiertas.forEach(d=>ops.push(d.ref.update({desvinculadoEn:ahora,activo:false,motivo:'Nueva vinculación'})));
+    ops.push(db.collection(C.USOS).add({eco:String(eco),email,nombre:nombre||email,vinculadoEn:ahora,desvinculadoEn:null,activo:true}));
+    await Promise.all(ops);
+  }catch(e){console.error('[FL uso] registrar vinculación',e);}
+}
+async function flRegistrarDesvinculacion(email,motivo){
+  try{
+    const abiertas=await db.collection(C.USOS).where('email','==',email).where('activo','==',true).get();
+    const ahora=new Date().toISOString();
+    await Promise.all(abiertas.docs.map(d=>d.ref.update({desvinculadoEn:ahora,activo:false,motivo:motivo||'Desvinculado'})));
+  }catch(e){console.error('[FL uso] registrar desvinculación',e);}
+}
+
 window.fmVincular=async function(){
   const eco=document.getElementById('fm-sel-veh')?.value;
   if(!eco){toast('Selecciona un vehículo','err');return;}
@@ -1519,6 +1542,7 @@ window.fmVincular=async function(){
     const datos={email:user.email,nombre:user.displayName||user.email,ecoVinculado:String(eco),ecosVinculados:[String(eco)],vinculadoEn:new Date().toISOString()};
     if(snap.empty){await db.collection(C.USUARIOS).add(datos);}
     else{await db.collection(C.USUARIOS).doc(snap.docs[0].id).update({ecoVinculado:String(eco),ecosVinculados:[String(eco)],vinculadoEn:new Date().toISOString()});}
+    flRegistrarVinculacion(eco,user.email,user.displayName||user.email);
     miPerfil={...miPerfil,...datos};
     guardarUltimoEco(eco);
     await cargarMiVeh();
@@ -2832,6 +2856,7 @@ window._desvinc=async function(){
   try{
     const snap=await db.collection(C.USUARIOS).where('email','==',miPerfil.email).get();
     if(!snap.empty)await snap.docs[0].ref.update({ecoVinculado:null,ecosVinculados:[],desvinculadoEn:new Date().toISOString()});
+    flRegistrarDesvinculacion(miPerfil.email,'Autodesvinculación desde la app');
     miPerfil.ecoVinculado=null;
     miPerfil.ecosVinculados=[];
     miVeh=null;
