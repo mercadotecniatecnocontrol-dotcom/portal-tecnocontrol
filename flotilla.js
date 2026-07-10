@@ -155,6 +155,7 @@ const I={
   chevL:`<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>`,
   gear:`<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>`,
   chevR:`<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>`,
+  eye:`<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>`,
 };
 
 // ESTADO
@@ -170,6 +171,24 @@ let ST={
 
 const hD=f=>(!f||f==='—')?null:Math.round((new Date(f)-new Date())/864e5);
 const hF=iso=>iso&&iso!=='—'?String(iso).substring(0,10):'—';
+
+// Devuelve las solicitudes que pertenecen al vehículo FÍSICO actual (v).
+// Los números de ECO a veces se reasignan a una unidad distinta cuando la
+// anterior se da de baja/reemplaza — si solo filtráramos por vehiculoEco,
+// el historial de la unidad vieja se mezclaría con el de la nueva. Por eso
+// se usa vehiculoId (el documento real) como llave principal, y vehiculoEco
+// solo como respaldo para registros antiguos que se guardaron sin ese campo.
+// Predicado central: ¿esta solicitud pertenece al vehículo FÍSICO v?
+// Ver nota en flSolsDeVehiculo — se usa vehiculoId como llave principal
+// para no mezclar historial cuando un ECO se reasigna a otra unidad.
+function flEsDelVehiculo(s,v){
+  if(!v)return false;
+  return s.vehiculoId?s.vehiculoId===v.id:s.vehiculoEco===v.eco;
+}
+function flSolsDeVehiculo(v){
+  if(!v)return[];
+  return flS.filter(s=>flEsDelVehiculo(s,v));
+}
 const FLOTILLA_ADMINS=['fatima@tecnocontrol.com.mx','c.acosta@tecnocontrol.com.mx','rh@tecnocontrol.com.mx','glen@tecnocontrol.com.mx','gerencia@tecnocontrol.com.mx','nicolas@tecnocontrol.com.mx'];
 const hAdm=()=>{
   const rol=window.flGetRolActual?window.flGetRolActual():'';
@@ -1646,7 +1665,7 @@ function rSols(){
     <!-- TABLA HISTORIAL -->
     <div style="padding:12px 14px;background:#EEF2F7">
       <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:#94A3B8;margin-bottom:8px">Historial de solicitudes${v?` — ECO ${v.eco}`:''}</div>
-      ${tSols(v?flS.filter(s=>s.vehiculoEco===v.eco):flS.slice(0,6),hP('aprobar'))}
+      ${tSols(v?flSolsDeVehiculo(v):flS.slice(0,6),hP('aprobar'))}
     </div>
   `);
   if(flUsarConfirmSemanal(v)) setTimeout(()=>flInitFirmaCanvas('fl-sol-confirm-firma'),80);
@@ -2148,7 +2167,7 @@ function renderRP(id){
   const v=flV.find(x=>x.id===id);if(!v){rp.innerHTML=rpVacio();return;}
   const d=hD(v.pv);const pvOk=d===null||d>=90;
   const fotos=[...(v.fotos||[]),...ST.evFotos.map(e=>typeof e==='string'?e:e.src)];
-  const histFull=flS.filter(s=>s.vehiculoEco===v.eco);
+  const histFull=flSolsDeVehiculo(v);
   const hist=histFull.slice(0,30);
   const usosVeh=flUsos.filter(u=>String(u.eco)===String(v.eco));
   const alts=[];
@@ -2220,9 +2239,9 @@ function renderRP(id){
     </div>
 
     <!-- BOTÓN COMPARAR EVIDENCIAS -->
-    ${flS.filter(s=>(s.vehiculoEco===v.eco)&&s.evidencias?.length).length>=2?`
+    ${histFull.filter(s=>s.evidencias?.length).length>=2?`
     <div style="padding:10px 12px;border-bottom:1px solid #F1F5F9">
-      <button onclick="flCompararEvidencias('${v.eco}')" style="width:100%;padding:9px;background:#1E3A5F;color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:12px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">
+      <button onclick="flCompararEvidencias('${v.id}')" style="width:100%;padding:9px;background:#1E3A5F;color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:12px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">
         ${I.eye} Comparar evidencias del vehículo
       </button>
     </div>`:''}
@@ -2589,15 +2608,15 @@ function tSols(list,pA){
 
 
 // COMPARAR EVIDENCIAS POR VEHÍCULO
-window.flCompararEvidencias=function(eco){
-  const sols=flS.filter(s=>s.vehiculoEco===eco&&s.evidencias?.length);
+window.flCompararEvidencias=function(vehId){
+  const v=flV.find(x=>x.id===vehId);
+  const sols=flSolsDeVehiculo(v).filter(s=>s.evidencias?.length);
   if(!sols.length){flMsgInfo('Sin evidencias para comparar.');return;}
   const ov=document.createElement('div');ov.className='fl-ov';
-  const v=flV.find(x=>x.eco===eco);
   let html=`<div style="background:#fff;border-radius:16px;width:100%;max-width:680px;max-height:92vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,.3)">
     <div style="padding:16px 20px 12px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #F1F5F9;position:sticky;top:0;background:#fff;z-index:2">
       <div>
-        <div style="font-size:15px;font-weight:800">Comparar evidencias · ECO ${eco}</div>
+        <div style="font-size:15px;font-weight:800">Comparar evidencias · ECO ${v?.eco||'—'}</div>
         <div style="font-size:11px;color:#64748B;margin-top:2px">${v?.unidad||''} · ${sols.reduce((a,s)=>a+(s.evidencias?.length||0),0)} fotos en ${sols.length} solicitudes</div>
       </div>
       <button onclick="this.closest('.fl-ov').remove()" style="width:26px;height:26px;border:none;background:#F1F5F9;border-radius:6px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center">✕</button>
@@ -3407,8 +3426,8 @@ function rCompar(offsetSem){
   };
   const vehs=flV.filter(v=>v.status!=='baja');
   const rows=vehs.map(v=>{
-    const sA=solAct.filter(s=>s.vehiculoEco===v.eco);
-    const sB=solAnt.filter(s=>s.vehiculoEco===v.eco);
+    const sA=solAct.filter(s=>flEsDelVehiculo(s,v));
+    const sB=solAnt.filter(s=>flEsDelVehiculo(s,v));
     const kmA=sA.reduce((a,s)=>a+(Number(s.kilometrajeReportado)||0),0);
     const kmB=sB.reduce((a,s)=>a+(Number(s.kilometrajeReportado)||0),0);
     const tr=flTrans.filter(t=>String(t.vehiculoEco)===String(v.eco));
@@ -3432,7 +3451,7 @@ function rCompar(offsetSem){
       const alertCell=r.alertas>0
         ?'<span style="background:#FEF2F2;color:#B91C1C;font-size:10px;font-weight:800;padding:2px 7px;border-radius:99px">'+r.alertas+' nuevos</span>'
         :'<span style="color:#94A3B8;font-size:10px">—</span>';
-      trs+='<tr style="border-bottom:1px solid #F1F5F9;'+bg+';cursor:pointer" onclick="flVerComparVeh(\''+r.v.eco+'\','+offsetSem+')">'+
+      trs+='<tr style="border-bottom:1px solid #F1F5F9;'+bg+';cursor:pointer" onclick="flVerComparVeh(\''+r.v.id+'\','+offsetSem+')">'+
         '<td style="padding:8px 10px">'+
           '<div style="font-weight:700;font-size:12px">'+r.v.unidad+'</div>'+
           '<div style="font-size:10px;color:#64748B;font-family:\'JetBrains Mono\',monospace">ECO '+r.v.eco+' · '+(r.v.plaza||'—')+'</div>'+
@@ -3477,7 +3496,7 @@ function rCompar(offsetSem){
 window.rCompar=rCompar;
 
 // ── DETALLE COMPARATIVA POR VEHÍCULO — 2 columnas ──
-window.flVerComparVeh=function(eco,offsetSem){
+window.flVerComparVeh=function(vehId,offsetSem){
   offsetSem=offsetSem||0;
   const hoy=new Date();
   const inicioAct=new Date(hoy);
@@ -3488,9 +3507,10 @@ window.flVerComparVeh=function(eco,offsetSem){
   const finAnt=new Date(inicioAct);finAnt.setSeconds(-1);
   const esActual=offsetSem===0;
   const enSem=(s,ini,fin)=>{const f=new Date(s.creadoEn||0);return f>=ini&&f<=fin;};
-  const v=flV.find(x=>String(x.eco)===String(eco));
-  const solAct=flS.filter(s=>s.vehiculoEco===eco&&enSem(s,inicioAct,esActual?hoy:finAct));
-  const solAnt=flS.filter(s=>s.vehiculoEco===eco&&enSem(s,inicioAnt,finAnt));
+  const v=flV.find(x=>x.id===vehId);
+  const eco=v?.eco;
+  const solAct=flSolsDeVehiculo(v).filter(s=>enSem(s,inicioAct,esActual?hoy:finAct));
+  const solAnt=flSolsDeVehiculo(v).filter(s=>enSem(s,inicioAnt,finAnt));
   // Tomar el más reciente de cada semana
   const sA=solAct.sort((a,b)=>(b.creadoEn||'').localeCompare(a.creadoEn||''))[0]||null;
   const sB=solAnt.sort((a,b)=>(b.creadoEn||'').localeCompare(a.creadoEn||''))[0]||null;
