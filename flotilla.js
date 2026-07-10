@@ -304,24 +304,24 @@ function injectCSS(){
 #flotilla-dashboard *{box-sizing:border-box;margin:0;padding:0;}
 
 /* ── TOPBAR ── */
-.fl-tb{background:#0A1628;height:54px;display:flex;align-items:center;padding:0 16px;gap:0;position:sticky;top:0;z-index:200;box-shadow:0 2px 12px rgba(0,0,0,.4);}
-.fl-tb-logo{display:flex;align-items:center;gap:8px;margin-right:16px;}
+.fl-shell{display:flex;height:100vh;}
+.fl-tb{background:#0A1628;width:64px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:6px;position:sticky;top:0;height:100vh;z-index:200;box-shadow:2px 0 12px rgba(0,0,0,.4);overflow-y:auto;overflow-x:hidden;}
+.fl-tb-logo{display:flex;align-items:center;justify-content:center;margin-bottom:2px;}
 .fl-tb-logo img{height:30px;}
-.fl-tb-sep{width:1px;height:28px;background:rgba(255,255,255,.12);margin:0 8px;}
-.fl-tab-btn{width:40px;height:40px;border-radius:10px;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;color:rgba(255,255,255,.5);background:rgba(255,255,255,.06);}
-.fl-tab-btn+.fl-tab-btn{margin-left:6px;}
+.fl-tb-sep{width:30px;height:1px;background:rgba(255,255,255,.12);margin:4px 0;flex-shrink:0;}
+.fl-tab-btn{width:40px;height:40px;border-radius:10px;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;color:rgba(255,255,255,.5);background:rgba(255,255,255,.06);flex-shrink:0;}
 .fl-tab-btn:hover{background:rgba(255,255,255,.12);color:rgba(255,255,255,.9);}
 .fl-tab-btn.on{background:#2563EB;color:#fff;box-shadow:0 4px 14px rgba(37,99,235,.5);}
 .fl-tab-cnt{position:absolute;top:-4px;right:-4px;background:#EF4444;color:#fff;font-size:8px;font-weight:800;padding:1px 4px;border-radius:100px;line-height:1.2;}
-.fl-tb-profile{margin-left:auto;display:flex;align-items:center;gap:10px;color:#fff;}
-.fl-tb-pname{font-size:12px;font-weight:700;white-space:nowrap;}
+.fl-tb-profile{margin-left:0;margin-top:auto;display:flex;flex-direction:column;align-items:center;gap:2px;color:#fff;padding-top:8px;flex-shrink:0;}
+.fl-tb-pname{display:none;}
 .fl-tb-avatar{width:34px;height:34px;border-radius:50%;background:#2563EB;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:#fff;flex-shrink:0;}
 
 /* ── LAYOUT PRINCIPAL ── */
-.fl-wrap{display:flex;min-height:calc(100vh - 54px);}
+.fl-wrap{display:flex;min-height:100vh;flex:1;min-width:0;}
 
 /* ── SIDEBAR IZQUIERDO VEHÍCULOS ── */
-.fl-sb{width:210px;flex-shrink:0;background:#fff;border-right:1px solid #E8EDF5;display:flex;flex-direction:column;height:calc(100vh - 54px);position:sticky;top:54px;}
+.fl-sb{width:210px;flex-shrink:0;background:#fff;border-right:1px solid #E8EDF5;display:flex;flex-direction:column;height:100vh;position:sticky;top:0;}
 .fl-sb-top{padding:10px;border-bottom:1px solid #E8EDF5;}
 .fl-sb-search{position:relative;}
 .fl-sb-search input{width:100%;padding:7px 10px 7px 28px;border:1.5px solid #E2E8F0;border-radius:7px;font-family:inherit;font-size:12px;outline:none;background:#F8FAFD;}
@@ -407,7 +407,7 @@ function injectCSS(){
 .fl-dmg-num{width:20px;height:20px;border-radius:50%;background:#EF4444;color:#fff;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
 
 /* ── PANEL DERECHO INFO VEHÍCULO ── */
-.fl-rp{width:300px;flex-shrink:0;background:#fff;border-left:1.5px solid #E8EDF5;height:calc(100vh - 54px);position:sticky;top:54px;overflow-y:auto;}
+.fl-rp{width:300px;flex-shrink:0;background:#fff;border-left:1.5px solid #E8EDF5;height:100vh;position:sticky;top:0;overflow-y:auto;}
 .fl-rp-img{position:relative;overflow:hidden;background:#EEF2F7;}
 .fl-rp-img img{width:100%;height:160px;object-fit:contain;display:block;background:#E8EEFA;}
 .fl-rp-img-empty{height:130px;background:linear-gradient(135deg,#EEF2F7,#E2E8F0);display:flex;align-items:center;justify-content:center;color:#94A3B8;font-size:11px;flex-direction:column;gap:6px;}
@@ -509,65 +509,63 @@ function buildHTML(){
   const nombre='···';
   const inicial='·';
   el.innerHTML=`
+  <div class="fl-shell">
   <div class="fl-tb">
-    <div class="fl-tb-logo">
-      <svg width="90" height="28" viewBox="0 0 120 28" fill="none">
+    <div class="fl-tb-logo" title="TECNOCONTROL">
+      <svg width="32" height="32" viewBox="0 0 28 28" fill="none">
         <circle cx="14" cy="14" r="12" stroke="#fff" stroke-width="2"/>
         <circle cx="14" cy="14" r="7" stroke="#2563EB" stroke-width="2"/>
         <circle cx="14" cy="14" r="3" fill="#2563EB"/>
-        <text x="32" y="11" fill="#fff" font-family="Plus Jakarta Sans,sans-serif" font-size="9" font-weight="900">TECNO</text>
-        <text x="32" y="22" fill="#fff" font-family="Plus Jakarta Sans,sans-serif" font-size="9" font-weight="900">CONTROL</text>
-        <text x="75" y="22" fill="#2563EB" font-family="Plus Jakarta Sans,sans-serif" font-size="7" font-weight="800">®</text>
       </svg>
     </div>
     <div class="fl-tb-sep"></div>
     <div style="position:relative">
       <button class="fl-tab-btn on" id="fl-tb-panel" onclick="flVista('panel')" title="Dashboards">${I.grid}</button>
     </div>
-    <div style="position:relative;margin-left:6px">
+    <div style="position:relative">
       <button class="fl-tab-btn" id="fl-tb-sols" onclick="flVista('sols')" title="Solicitudes">${I.car}</button>
       <span id="fl-cnt-s" class="fl-tab-cnt" style="display:none">0</span>
     </div>
-    <div style="position:relative;margin-left:6px">
+    <div style="position:relative">
       <button class="fl-tab-btn" id="fl-tb-tareas" onclick="flVista('tareas')" title="Tareas">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
       </button>
       <span id="fl-cnt-tar" class="fl-tab-cnt" style="display:none">0</span>
     </div>
-    <div style="position:relative;margin-left:6px">
+    <div style="position:relative">
       <button class="fl-tab-btn" id="fl-tb-comis" onclick="flVista('comis')" title="Utilitarios">${I.truck}</button>
     </div>
-    <div style="position:relative;margin-left:6px">
+    <div style="position:relative">
       <button class="fl-tab-btn" id="fl-tb-compar" onclick="flVista('compar')" title="Comparativa semanal">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
       </button>
     </div>
-    <div style="position:relative;margin-left:6px">
+    <div style="position:relative">
       <button class="fl-tab-btn" id="fl-tb-chksemanal" onclick="flVista('chksemanal')" title="Check list semanal">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
       </button>
     </div>
-    <div style="position:relative;margin-left:6px">
+    <div style="position:relative">
       <button class="fl-tab-btn" id="fl-tb-resumen" onclick="flVista('resumen')" title="Resumen de movimientos">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 17h7M17 14v7"/></svg>
       </button>
     </div>
-    <div style="position:relative;margin-left:6px">
+    <div style="position:relative">
       <button class="fl-tab-btn" id="fl-tb-presupuesto" onclick="flVista('presupuesto')" title="Presupuesto vs Gastos">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
       </button>
     </div>
-    <div style="position:relative;margin-left:6px">
+    <div style="position:relative">
       <button class="fl-tab-btn" id="fl-tb-bajas" onclick="flVista('bajas')" title="Vehículos de baja">${I.archive}</button>
     </div>
     ${hAdm()?`
-    <div class="fl-tb-sep" style="width:1px;height:28px;background:rgba(255,255,255,.12);margin:0 6px"></div>
+    <div class="fl-tb-sep"></div>
     <div style="position:relative">
       <button class="fl-tab-btn" id="fl-tb-admin" onclick="flVista('admin')" title="Administrar flotilla" style="background:rgba(234,179,8,.12);color:#FCD34D">
         ${I.gear}
       </button>
     </div>`:''}
-    <div class="fl-tb-profile" id="fl-tb-profile">
+    <div class="fl-tb-profile" id="fl-tb-profile" title="${nombre}">
       <span class="fl-tb-pname">${nombre}</span>
       <div class="fl-tb-avatar">${inicial}</div>
     </div>
@@ -591,6 +589,7 @@ function buildHTML(){
       <div class="fl-empty" style="min-height:60vh"><div class="fl-empty-ico">${SVG_AUTO}</div><h3>Cargando flotilla…</h3></div>
     </div>
     <div class="fl-rp" id="fl-rp">${rpVacio()}</div>
+  </div>
   </div>`;
 }
 
