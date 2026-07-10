@@ -35,7 +35,7 @@ async function agregarColaborador(nombre){
   _flColabCache=null;
 }
 
-const C={VEHS:'flotilla_vehiculos',SOLS:'flotilla_solicitudes',COMIS:'flotilla_comisiones',TRANS:'flotilla_transferencias',CHKSEM:'flotilla_checklist_semanal',CFG:'flotilla_config',TAREAS:'flotilla_tareas'};
+const C={VEHS:'flotilla_vehiculos',SOLS:'flotilla_solicitudes',COMIS:'flotilla_comisiones',TRANS:'flotilla_transferencias',CHKSEM:'flotilla_checklist_semanal',CFG:'flotilla_config',TAREAS:'flotilla_tareas',USOS:'flotilla_usos'};
 
 // ══════════════════════════════════════════════════════════════
 // FUENTE ÚNICA DE VERDAD — "EN TALLER"
@@ -159,7 +159,7 @@ const I={
 
 // ESTADO
 let db=window.db, fs=null;
-let flV=[], flS=[], flCom=[], flTrans=[], flChkSem=[], flCfgSem={};
+let flV=[], flS=[], flCom=[], flTrans=[], flChkSem=[], flCfgSem={}, flUsos=[];
 let vistaAct='panel';
 let ST={
   vehId:null, tipoVeh:'auto', vistaImg:'frente',
@@ -587,7 +587,7 @@ window.cargarFlotilla=async function(){
   // Actualizar header con el usuario real tan pronto como esté disponible
   actualizarHeaderUsuario();
   fs=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-  await Promise.all([ldVehs(),ldSols(),ldComs(),ldTrans(),ldChkSem(),ldCfgSem()]);
+  await Promise.all([ldVehs(),ldSols(),ldComs(),ldTrans(),ldChkSem(),ldCfgSem(),ldUsos()]);
   try{
     const snapU=await fs.getDocs(fs.collection(db,'fl_usuarios'));
     const map={};
@@ -666,6 +666,7 @@ async function ldComs(){try{const s=await fs.getDocs(fs.collection(db,C.COMIS));
 async function ldTrans(){try{const s=await fs.getDocs(fs.collection(db,C.TRANS));flTrans=s.docs.map(d=>({id:d.id,...d.data()}));flTrans.sort((a,b)=>(b.creadoEn||"").localeCompare(a.creadoEn||""));}catch{flTrans=[];}}
 async function ldChkSem(){try{const s=await fs.getDocs(fs.collection(db,C.CHKSEM));flChkSem=s.docs.map(d=>({id:d.id,...d.data()}));flChkSem.sort((a,b)=>(b.creadoEn||"").localeCompare(a.creadoEn||""));}catch{flChkSem=[];}}
 async function ldCfgSem(){try{const d=await fs.getDoc(fs.doc(db,C.CFG,'checklist_semanal'));flCfgSem=d.exists()?d.data():{};}catch{flCfgSem={};}}
+async function ldUsos(){try{const s=await fs.getDocs(fs.collection(db,C.USOS));flUsos=s.docs.map(d=>({id:d.id,...d.data()}));flUsos.sort((a,b)=>(b.vinculadoEn||'').localeCompare(a.vinculadoEn||''));}catch{flUsos=[];}}
 
 // SIDEBAR
 let sbTipoFilt='all';
@@ -1267,9 +1268,11 @@ async function flDesvincularEcoApp(eco,nuevoResponsable){
   try{
     if(!fs){const m=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');fs=m;}
     const ecoStr=String(eco);
-    const snapU=await fs.getDocs(fs.collection(db,'fl_usuarios'));
     const ahora=new Date().toISOString();
     const porEmail=window.auth?.currentUser?.email||'';
+    // Cierra el registro de historial de uso (vinculación/desvinculación) abierto para este ECO
+    flCerrarUsoAbierto(ecoStr,'Reasignado a '+(nuevoResponsable||'otro responsable')+' desde administración de flotilla',porEmail);
+    const snapU=await fs.getDocs(fs.collection(db,'fl_usuarios'));
     const ops=[];
     snapU.docs.forEach(d=>{
       const u=d.data();
@@ -1297,6 +1300,20 @@ async function flDesvincularEcoApp(eco,nuevoResponsable){
     });
     if(ops.length)await Promise.all(ops);
   }catch(e){console.error('[FL] flDesvincularEcoApp',e);}
+}
+
+// Cierra en flotilla_usos el/los registro(s) de vinculación abiertos (activo:true) para un ECO.
+// Se usa cuando el admin reasigna el responsable desde el portal.
+async function flCerrarUsoAbierto(eco,motivo,porEmail){
+  try{
+    if(!fs){const m=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');fs=m;}
+    const q=fs.query(fs.collection(db,C.USOS),fs.where('eco','==',String(eco)),fs.where('activo','==',true));
+    const snap=await fs.getDocs(q);
+    if(snap.empty)return;
+    const ahora=new Date().toISOString();
+    await Promise.all(snap.docs.map(d=>fs.updateDoc(d.ref,{desvinculadoEn:ahora,activo:false,motivo:motivo||'Desvinculado',desvinculadoPor:porEmail||''})));
+    await ldUsos();
+  }catch(e){console.error('[FL] flCerrarUsoAbierto',e);}
 }
 
 // Sincroniza el status del vehículo con el estado de sus solicitudes.
@@ -2133,6 +2150,7 @@ function renderRP(id){
   const fotos=[...(v.fotos||[]),...ST.evFotos.map(e=>typeof e==='string'?e:e.src)];
   const histFull=flS.filter(s=>s.vehiculoEco===v.eco);
   const hist=histFull.slice(0,30);
+  const usosVeh=flUsos.filter(u=>String(u.eco)===String(v.eco));
   const alts=[];
   if(d!==null&&d<0)alts.push({e:true,t:'Póliza VENCIDA'});
   else if(d!==null&&d<90)alts.push({e:false,t:`Póliza vence en ${d} días`});
@@ -2209,6 +2227,12 @@ function renderRP(id){
       </button>
     </div>`:''}
 
+    <!-- HISTORIAL DE USO (vinculación / desvinculación) -->
+    <div class="fl-rp-hist">
+      <div class="fl-rp-hist-t">Historial de uso (${usosVeh.length} registro${usosVeh.length===1?'':'s'})</div>
+      ${usosVeh.length?usosVeh.map(u=>flRPUsoItem(u)).join(''):`<div style="font-size:11px;color:#94A3B8;text-align:center;padding:8px 0">Sin registros de vinculación</div>`}
+    </div>
+
     <!-- HISTORIAL DESPLEGABLE -->
     <div class="fl-rp-hist">
       <div class="fl-rp-hist-t">Historial (${histFull.length} solicitud${histFull.length===1?'':'es'})</div>
@@ -2216,6 +2240,20 @@ function renderRP(id){
       ${histFull.length>hist.length?`<div style="font-size:9.5px;color:#94A3B8;text-align:center;padding:6px 0 2px">Mostrando los ${hist.length} más recientes de ${histFull.length}</div>`:''}
     </div>
   `;
+}
+
+// ── HISTORIAL DE USO: quién vinculó/desvinculó el vehículo y cuándo ──
+function flRPUsoItem(u){
+  const dt=iso=>iso?new Date(iso).toLocaleString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
+  return`<div class="fl-rp-h-item">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:4px">
+      <span style="font-weight:700;font-size:11px">${u.nombre||u.email||'—'}</span>
+      ${u.activo?'<span style="font-size:9px;font-weight:800;padding:2px 7px;border-radius:100px;background:#DCFCE7;color:#15803D">EN USO</span>':'<span style="font-size:9px;font-weight:800;padding:2px 7px;border-radius:100px;background:#F1F5F9;color:#64748B">CERRADO</span>'}
+    </div>
+    <div style="font-size:10px;color:#374151;margin-top:3px"><strong style="color:#94A3B8;font-weight:800;text-transform:uppercase;font-size:8.5px;letter-spacing:.5px">Vinculado</strong> ${dt(u.vinculadoEn)}</div>
+    <div style="font-size:10px;color:#374151;margin-top:1px"><strong style="color:#94A3B8;font-weight:800;text-transform:uppercase;font-size:8.5px;letter-spacing:.5px">Desvinculado</strong> ${u.activo?'<span style="color:#94A3B8">— sigue vinculado —</span>':dt(u.desvinculadoEn)}</div>
+    ${!u.activo&&u.motivo?`<div style="font-size:9.5px;color:#94A3B8;margin-top:2px;font-style:italic">${u.motivo}</div>`:''}
+  </div>`;
 }
 
 // ── HISTORIAL DESPLEGABLE POR VEHÍCULO (perfil) ──
