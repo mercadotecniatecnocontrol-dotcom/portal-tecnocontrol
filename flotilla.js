@@ -414,6 +414,7 @@ function injectCSS(){
 .fl-rp-hist{padding:8px 12px;}
 .fl-rp-hist-t{font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin-bottom:8px;}
 .fl-rp-h-item{padding:6px 0;border-bottom:1px solid #F8FAFD;font-size:11px;}
+.fl-rp-h-item:hover{background:#FAFBFD;}
 
 /* ── PANEL GENERAL ── */
 .fl-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;}
@@ -2130,7 +2131,8 @@ function renderRP(id){
   const v=flV.find(x=>x.id===id);if(!v){rp.innerHTML=rpVacio();return;}
   const d=hD(v.pv);const pvOk=d===null||d>=90;
   const fotos=[...(v.fotos||[]),...ST.evFotos.map(e=>typeof e==='string'?e:e.src)];
-  const hist=flS.filter(s=>s.vehiculoEco===v.eco).slice(0,4);
+  const histFull=flS.filter(s=>s.vehiculoEco===v.eco);
+  const hist=histFull.slice(0,30);
   const alts=[];
   if(d!==null&&d<0)alts.push({e:true,t:'Póliza VENCIDA'});
   else if(d!==null&&d<90)alts.push({e:false,t:`Póliza vence en ${d} días`});
@@ -2207,16 +2209,69 @@ function renderRP(id){
       </button>
     </div>`:''}
 
-    <!-- HISTORIAL -->
+    <!-- HISTORIAL DESPLEGABLE -->
     <div class="fl-rp-hist">
-      <div class="fl-rp-hist-t">Historial (${hist.length} solicitudes)</div>
-      ${hist.length?hist.map(s=>`<div class="fl-rp-h-item">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:4px">
-          <span style="font-weight:600;font-size:11px;flex:1">${s.tipo||'—'}</span>${hBadge(s.estatus)}
-        </div>
-        <div style="font-size:9.5px;color:#94A3B8;margin-top:1px">${hF(s.creadoEn)}</div>
-      </div>`).join(''):`<div style="font-size:11px;color:#94A3B8;text-align:center;padding:8px 0">Sin historial</div>`}
+      <div class="fl-rp-hist-t">Historial (${histFull.length} solicitud${histFull.length===1?'':'es'})</div>
+      ${hist.length?hist.map(s=>flRPHistItem(s)).join(''):`<div style="font-size:11px;color:#94A3B8;text-align:center;padding:8px 0">Sin historial</div>`}
+      ${histFull.length>hist.length?`<div style="font-size:9.5px;color:#94A3B8;text-align:center;padding:6px 0 2px">Mostrando los ${hist.length} más recientes de ${histFull.length}</div>`:''}
     </div>
+  `;
+}
+
+// ── HISTORIAL DESPLEGABLE POR VEHÍCULO (perfil) ──
+// Cada solicitud aparece colapsada (quién · tipo · fecha) y se expande para
+// mostrar detalle reportado, evidencia fotográfica y firma (si aplica).
+function flRPHistItem(s){
+  const quien=s.solicitante||s.creadoPor||'—';
+  return`<div class="fl-rp-h-item">
+    <div onclick="flRPHistToggle('${s.id}')" style="cursor:pointer;display:flex;align-items:flex-start;gap:6px">
+      <span id="fl-rph-chev-${s.id}" style="display:flex;margin-top:2px;color:#94A3B8;transition:transform .15s;flex-shrink:0">${I.chevDown||'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>'}</span>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:4px">
+          <span style="font-weight:700;font-size:11px">${s.tipo||'—'}</span>${hBadge(s.estatus)}
+        </div>
+        <div style="font-size:9.5px;color:#94A3B8;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${quien} · ${hF(s.creadoEn)}</div>
+      </div>
+    </div>
+    <div id="fl-rph-body-${s.id}" style="display:none;margin:8px 0 2px 18px;padding:9px 11px;background:#F8FAFD;border:1px solid #EEF2F7;border-radius:8px">
+      ${flRPHistBody(s)}
+    </div>
+  </div>`;
+}
+
+window.flRPHistToggle=function(id){
+  const body=document.getElementById('fl-rph-body-'+id);
+  const chev=document.getElementById('fl-rph-chev-'+id);
+  if(!body)return;
+  const abierto=body.style.display==='block';
+  body.style.display=abierto?'none':'block';
+  if(chev)chev.style.transform=abierto?'rotate(0deg)':'rotate(180deg)';
+};
+
+function flRPHistBody(s){
+  const fotosEv=(s.evidencias||[]).filter(Boolean);
+  const fotosChk=Object.values(s.chkFotos||{}).filter(Boolean);
+  const todasFotos=[...fotosEv,...fotosChk];
+  return`
+    <div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:3px">Solicitante</div>
+    <div style="font-size:11.5px;font-weight:600;color:#0A1628;margin-bottom:8px">${s.solicitante||s.creadoPor||'—'}</div>
+    <div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:3px">Detalle reportado</div>
+    <div style="font-size:11.5px;color:#374151;line-height:1.5;margin-bottom:8px">${s.descripcion||'—'}</div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:${todasFotos.length||s.chkFirmaConfirmacion?'8px':'0'}">
+      <div style="font-size:10.5px;color:#64748B"><strong style="color:#374151">KM:</strong> ${s.kilometrajeReportado||'—'}</div>
+      <div style="font-size:10.5px;color:#64748B"><strong style="color:#374151">Prioridad:</strong> ${s.prioridad||'Normal'}</div>
+      ${s.gasolina!=null?`<div style="font-size:10.5px;color:#64748B"><strong style="color:#374151">Gasolina:</strong> ${s.gasolina}%</div>`:''}
+    </div>
+    ${todasFotos.length?`
+    <div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:5px">Evidencia fotográfica (${todasFotos.length})</div>
+    <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:${s.chkFirmaConfirmacion?'8px':'0'}">
+      ${todasFotos.map(f=>`<img src="${f}" onclick="event.stopPropagation();flImg('${f}')" style="width:46px;height:46px;object-fit:cover;border-radius:6px;border:1px solid #E2E8F0;cursor:pointer">`).join('')}
+    </div>`:''}
+    ${s.chkFirmaConfirmacion?`
+    <div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:5px">Firma de confirmación</div>
+    <img src="${s.chkFirmaConfirmacion}" onclick="event.stopPropagation();flImg('${s.chkFirmaConfirmacion}')" style="max-width:170px;width:100%;border:1px solid #E2E8F0;border-radius:6px;background:#fff;cursor:pointer;display:block">
+    `:''}
+    ${!todasFotos.length&&!s.chkFirmaConfirmacion?`<div style="font-size:10.5px;color:#94A3B8;font-style:italic">Sin evidencia fotográfica ni firma registrada para esta solicitud.</div>`:''}
   `;
 }
 
