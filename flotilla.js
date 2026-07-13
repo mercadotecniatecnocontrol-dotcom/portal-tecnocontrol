@@ -156,6 +156,7 @@ const I={
   gear:`<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>`,
   chevR:`<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>`,
   eye:`<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>`,
+  fleet:`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8.2 15H3a1 1 0 01-1-1v-2.6a1 1 0 011-1h5.6l1.6-2.6h3.4" opacity=".55"/><circle cx="5" cy="15" r="1.5" opacity=".55"/><circle cx="11.5" cy="15" r="1.5" opacity=".55"/><path d="M15.8 18H10a1 1 0 01-1-1v-2.6a1 1 0 011-1h6.1l1.9-2.9h3.6a1 1 0 011 1V17a1 1 0 01-1 1h-1"/><circle cx="12.4" cy="18" r="1.6"/><circle cx="19.3" cy="18" r="1.6"/></svg>`,
 };
 
 // ESTADO
@@ -496,6 +497,35 @@ function injectCSS(){
 .fl-ev-sello-info{background:rgba(10,22,40,.8);padding:4px 7px;}
 .fl-ev-sello-cod{font-size:9px;font-weight:700;color:#FCD34D;font-family:'JetBrains Mono',monospace;}
 .fl-ev-sello-fecha{font-size:8.5px;color:rgba(255,255,255,.7);font-family:'JetBrains Mono',monospace;}
+/* ── PANORAMA DE VEHÍCULOS ── */
+.fl-panor-modal{background:#fff;border-radius:16px;width:100%;max-width:960px;max-height:92vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 60px rgba(0,0,0,.3);animation:flSl .2s cubic-bezier(.4,0,.2,1);}
+.fl-panor-body{overflow-y:auto;flex:1;padding:14px 18px;}
+.fl-panor-tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:0 18px 12px;border-bottom:1px solid #F1F5F9;}
+.fl-panor-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px;margin-top:12px;}
+.fl-panor-card{position:relative;border:1.5px solid #E8EDF5;border-radius:14px;overflow:hidden;cursor:pointer;transition:all .15s;background:#fff;box-shadow:0 1px 3px rgba(10,22,40,.05);}
+.fl-panor-card:hover{border-color:#93C5FD;box-shadow:0 6px 16px rgba(37,99,235,.1);transform:translateY(-1px);}
+.fl-panor-card.sel{border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,.14);}
+.fl-panor-card .fl-panor-fig{position:relative;height:128px;background:linear-gradient(135deg,#EAF1FC,#DCE8F8);display:flex;align-items:center;justify-content:center;overflow:hidden;}
+.fl-panor-card .fl-panor-fig img{width:100%;height:100%;object-fit:cover;display:block;}
+.fl-panor-card .fl-panor-chk{position:absolute;top:9px;right:9px;width:26px;height:26px;border-radius:50%;border:none;background:rgba(255,255,255,.92);box-shadow:0 1px 4px rgba(10,22,40,.25);display:flex;align-items:center;justify-content:center;color:#CBD5E1;transition:all .12s;}
+.fl-panor-card.sel .fl-panor-chk{background:#2563EB;color:#fff;}
+.fl-panor-card .fl-panor-badge{position:absolute;bottom:8px;left:8px;font-size:8.5px;font-weight:800;letter-spacing:.3px;padding:3px 8px;border-radius:100px;background:rgba(10,22,40,.72);color:#fff;text-transform:uppercase;}
+.fl-panor-card .fl-panor-ico{display:flex;align-items:center;justify-content:center;color:#4A6FA5;}
+.fl-panor-card.sel .fl-panor-ico{color:#1D4ED8;}
+.fl-panor-card .fl-panor-info{padding:10px 12px 11px;}
+.fl-panor-card .fl-panor-eco{font-size:12px;font-weight:900;color:#2563EB;font-family:'JetBrains Mono',monospace;letter-spacing:.2px;}
+.fl-panor-card .fl-panor-un{font-size:12.5px;font-weight:800;color:#0A1628;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.fl-panor-card .fl-panor-resp{font-size:10.5px;color:#64748B;margin-top:3px;display:flex;align-items:center;gap:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.fl-panor-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 18px;border-top:1px solid #F1F5F9;background:#F8FAFD;flex-wrap:wrap;}
+.fl-panor-sum-card{border:1px solid #E2E8F0;border-radius:12px;margin-bottom:14px;overflow:hidden;}
+.fl-panor-sum-h{display:flex;align-items:center;gap:10px;padding:12px 14px;background:linear-gradient(180deg,#F8FAFF,#fff);border-bottom:1px solid #F1F5F9;}
+.fl-panor-sum-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:#F1F5F9;}
+.fl-panor-sum-kpi{background:#fff;padding:9px 8px;text-align:center;}
+.fl-panor-sum-kpi b{display:block;font-size:16px;font-weight:900;color:#0A1628;}
+.fl-panor-sum-kpi span{font-size:8.5px;color:#94A3B8;font-weight:700;text-transform:uppercase;letter-spacing:.3px;}
+.fl-panor-sum-sec{padding:10px 14px;}
+.fl-panor-sum-sec-t{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#64748B;margin-bottom:6px;}
+@media(max-width:640px){.fl-panor-grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr));}.fl-panor-sum-kpis{grid-template-columns:repeat(2,1fr);}}
 @media(max-width:1200px){.fl-rp{display:none;}.fl-kpis{grid-template-columns:1fr 1fr;}}
 @media(max-width:900px){#flotilla-dashboard{margin-left:0;}.fl-sb{display:none;}}
 `;
@@ -549,6 +579,9 @@ function buildHTML(){
       <button class="fl-tab-btn" id="fl-tb-resumen" onclick="flVista('resumen')" title="Resumen de movimientos">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 17h7M17 14v7"/></svg>
       </button>
+    </div>
+    <div style="position:relative">
+      <button class="fl-tab-btn" id="fl-tb-panorama" onclick="flAbrirPanorama()" title="Panorama de vehículos — resumen por unidad">${I.fleet}</button>
     </div>
     <div style="position:relative">
       <button class="fl-tab-btn" id="fl-tb-presupuesto" onclick="flVista('presupuesto')" title="Presupuesto vs Gastos">
@@ -2343,6 +2376,183 @@ window.flRPCarTo=function(i){
   const t=document.getElementById('fl-rpc-track');if(t)t.style.transform=`translateX(-${i*100}%)`;
   document.querySelectorAll('[id^="fl-rpd-"]').forEach((d,j)=>d.style.background=j===i?'#fff':'rgba(255,255,255,.4)');
 };
+
+// ══════════════════════════════════════════════════════
+// PANORAMA DE VEHÍCULOS — selector visual + resumen por unidad
+// Botón exclusivo del módulo Flotilla. Muestra todos los vehículos como
+// tarjetas con icono por tipo, permite seleccionar uno o varios, y genera
+// un resumen específico por vehículo: historial de solicitudes, uso
+// (vinculación/desvinculación) y quién/cuándo/qué se reportó.
+// ══════════════════════════════════════════════════════
+let flPanorSel=new Set();
+let flPanorTipo='all';
+let flPanorQ='';
+let flPanorIncBaja=false;
+
+window.flAbrirPanorama=function(){
+  flPanorSel=new Set();flPanorTipo='all';flPanorQ='';flPanorIncBaja=false;
+  const ov=document.createElement('div');
+  ov.className='fl-ov';ov.id='fl-panor-ov';
+  ov.innerHTML=`
+    <div class="fl-panor-modal">
+      <div class="fl-mh">
+        <h3>${I.fleet} Panorama de vehículos</h3>
+        <button class="fl-mx" onclick="flCerrarPanorama()">✕</button>
+      </div>
+      <div class="fl-panor-tools">
+        <div class="fl-sb-search" style="flex:1;min-width:180px;margin:10px 0">${I.search}<input type="text" id="fl-panor-q" placeholder="ECO, unidad, placas, responsable…" oninput="flPanorFiltrar()"></div>
+        <button class="fl-sb-tipo on" id="fl-panort-all" onclick="flPanorSetTipo('all')">Todo</button>
+        <button class="fl-sb-tipo" id="fl-panort-auto" onclick="flPanorSetTipo('auto')">Auto</button>
+        <button class="fl-sb-tipo" id="fl-panort-cam" onclick="flPanorSetTipo('cam')">Troca</button>
+        <button class="fl-sb-tipo" id="fl-panort-maq" onclick="flPanorSetTipo('maq')">Maquinaria</button>
+        <label style="display:flex;align-items:center;gap:5px;font-size:10.5px;color:#64748B;cursor:pointer;user-select:none">
+          <input type="checkbox" id="fl-panor-baja" onchange="flPanorToggleBaja(this.checked)" style="cursor:pointer">Incluir bajas
+        </label>
+      </div>
+      <div class="fl-panor-body" id="fl-panor-body"></div>
+      <div class="fl-panor-bar">
+        <span id="fl-panor-cnt" style="font-size:11.5px;font-weight:700;color:#374151">0 vehículos seleccionados</span>
+        <div style="display:flex;gap:7px;flex-wrap:wrap">
+          <button class="fb gho sm" onclick="flPanorSelTodos()">Seleccionar visibles</button>
+          <button class="fb gho sm" onclick="flPanorLimpiar()">Limpiar</button>
+          <button class="fb acc" id="fl-panor-ver" onclick="flPanorVerResumen()" disabled>${I.eye} Ver resumen</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+  ov.onclick=(e)=>{if(e.target===ov)flCerrarPanorama();};
+  flPanorRenderGrid();
+};
+
+window.flCerrarPanorama=function(){document.getElementById('fl-panor-ov')?.remove();};
+
+window.flPanorSetTipo=function(t){
+  flPanorTipo=t;
+  document.querySelectorAll('#fl-panor-ov .fl-sb-tipo').forEach(b=>b.classList.remove('on'));
+  document.getElementById('fl-panort-'+t)?.classList.add('on');
+  flPanorRenderGrid();
+};
+window.flPanorFiltrar=function(){flPanorQ=(document.getElementById('fl-panor-q')?.value||'').toLowerCase();flPanorRenderGrid();};
+window.flPanorToggleBaja=function(v){flPanorIncBaja=v;flPanorRenderGrid();};
+
+function flPanorLista(){
+  let l=flPanorIncBaja?flV.slice():flV.filter(v=>v.status!=='baja');
+  if(flPanorTipo==='auto')l=l.filter(v=>v.tipo==='auto'||!v.tipo);
+  else if(flPanorTipo==='cam')l=l.filter(v=>v.tipo==='camion'||v.tipo==='camioneta');
+  else if(flPanorTipo==='maq')l=l.filter(v=>v.tipo==='maquinaria');
+  if(flPanorQ){
+    l=l.filter(v=>[v.eco,v.unidad,v.placas,v.responsable,v.plaza].filter(Boolean).join(' ').toLowerCase().includes(flPanorQ));
+  }
+  return l.sort((a,b)=>String(a.eco||'').localeCompare(String(b.eco||''),undefined,{numeric:true}));
+}
+
+function flPanorRenderGrid(){
+  const body=document.getElementById('fl-panor-body');if(!body)return;
+  const lista=flPanorLista();
+  if(!lista.length){body.innerHTML=`<div class="fl-empty" style="min-height:160px"><div class="fl-empty-ico">${SVG_AUTO}</div><h3>Sin vehículos que coincidan</h3></div>`;flPanorActualizarBarra();return;}
+  body.innerHTML=`<div class="fl-panor-grid">${lista.map(v=>flPanorCardHTML(v)).join('')}</div>`;
+  flPanorActualizarBarra();
+}
+
+function flPanorTipoLabel(t){return t==='maquinaria'?'Maquinaria':t==='camion'?'Camión':t==='camioneta'?'Camioneta':'Auto';}
+
+function flPanorCardHTML(v){
+  const sel=flPanorSel.has(v.id);
+  const foto=(v.fotos||[])[0];
+  return`<div class="fl-panor-card ${sel?'sel':''}" onclick="flPanorToggle('${v.id}')" title="ECO ${v.eco} · ${v.unidad||''}">
+    <div class="fl-panor-fig">
+      ${foto?`<img src="${foto}" loading="lazy">`:`<span class="fl-panor-ico">${hEmo(v.tipo)}</span>`}
+      <span class="fl-panor-badge">${flPanorTipoLabel(v.tipo)}</span>
+      <button class="fl-panor-chk">${sel?I.check:''}</button>
+    </div>
+    <div class="fl-panor-info">
+      <div class="fl-panor-eco">ECO ${v.eco}</div>
+      <div class="fl-panor-un">${v.unidad||'—'}</div>
+      <div class="fl-panor-resp">${I.user} ${v.responsable||'Sin responsable'}</div>
+    </div>
+  </div>`;
+}
+
+window.flPanorToggle=function(id){
+  if(flPanorSel.has(id))flPanorSel.delete(id);else flPanorSel.add(id);
+  const card=document.querySelector(`#fl-panor-ov .fl-panor-card[onclick="flPanorToggle('${id}')"]`);
+  if(card){
+    card.classList.toggle('sel',flPanorSel.has(id));
+    const chk=card.querySelector('.fl-panor-chk');if(chk)chk.innerHTML=flPanorSel.has(id)?I.check:'';
+  }
+  flPanorActualizarBarra();
+};
+window.flPanorSelTodos=function(){flPanorLista().forEach(v=>flPanorSel.add(v.id));flPanorRenderGrid();};
+window.flPanorLimpiar=function(){flPanorSel.clear();flPanorRenderGrid();};
+
+function flPanorActualizarBarra(){
+  const n=flPanorSel.size;
+  const cnt=document.getElementById('fl-panor-cnt');
+  if(cnt)cnt.textContent=`${n} vehículo${n===1?'':'s'} seleccionado${n===1?'':'s'}`;
+  const btn=document.getElementById('fl-panor-ver');if(btn)btn.disabled=n===0;
+}
+
+// ── RESUMEN POR VEHÍCULO (usa historial de solicitudes + flotilla_usos) ──
+window.flPanorVerResumen=function(){
+  const ids=[...flPanorSel];if(!ids.length)return;
+  const vs=ids.map(id=>flV.find(x=>x.id===id)).filter(Boolean)
+    .sort((a,b)=>String(a.eco||'').localeCompare(String(b.eco||''),undefined,{numeric:true}));
+  const body=document.getElementById('fl-panor-body');if(!body)return;
+  const tools=document.querySelector('#fl-panor-ov .fl-panor-tools');if(tools)tools.style.display='none';
+  const bar=document.querySelector('#fl-panor-ov .fl-panor-bar');if(bar)bar.style.display='none';
+  body.innerHTML=`
+    <button class="fb gho sm" style="margin-bottom:12px" onclick="flPanorVolver()">${I.chevL} Volver a selección</button>
+    ${vs.map(v=>flPanorResumenVeh(v)).join('')}
+  `;
+};
+
+window.flPanorVolver=function(){
+  const tools=document.querySelector('#fl-panor-ov .fl-panor-tools');if(tools)tools.style.display='flex';
+  const bar=document.querySelector('#fl-panor-ov .fl-panor-bar');if(bar)bar.style.display='flex';
+  flPanorRenderGrid();
+};
+
+function flPanorResumenVeh(v){
+  const hist=flSolsDeVehiculo(v).slice().sort((a,b)=>(b.creadoEn||'').localeCompare(a.creadoEn||''));
+  const usos=flUsos.filter(u=>String(u.eco)===String(v.eco)).slice().sort((a,b)=>(b.vinculadoEn||'').localeCompare(a.vinculadoEn||''));
+  const abiertas=hist.filter(s=>!['Cerrada','Rechazada'].includes(s.estatus)).length;
+  const cerradas=hist.filter(s=>s.estatus==='Cerrada').length;
+  const usoAct=usos.find(u=>u.activo);
+  const ultReporte=hist[0];
+  const dt=iso=>iso?new Date(iso).toLocaleString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
+  return`<div class="fl-panor-sum-card">
+    <div class="fl-panor-sum-h">
+      <span style="display:flex;align-items:center;color:#1E3A5F">${hEmo(v.tipo)}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:900;color:#0A1628">ECO ${v.eco} · ${v.unidad||'—'}</div>
+        <div style="font-size:10.5px;color:#64748B;margin-top:1px">${v.responsable||'Sin responsable'} · ${v.plaza||'—'} · ${v.placas||'—'}</div>
+      </div>
+      ${usoAct?`<span style="font-size:9px;font-weight:800;padding:3px 9px;border-radius:100px;background:#DCFCE7;color:#15803D;white-space:nowrap">EN USO · ${usoAct.nombre||usoAct.email||'—'}</span>`
+        :`<span style="font-size:9px;font-weight:800;padding:3px 9px;border-radius:100px;background:#F1F5F9;color:#64748B;white-space:nowrap">DISPONIBLE</span>`}
+    </div>
+    <div class="fl-panor-sum-kpis">
+      <div class="fl-panor-sum-kpi"><b>${hist.length}</b><span>Solicitudes</span></div>
+      <div class="fl-panor-sum-kpi"><b style="color:#B45309">${abiertas}</b><span>En proceso</span></div>
+      <div class="fl-panor-sum-kpi"><b style="color:#15803D">${cerradas}</b><span>Cerradas</span></div>
+      <div class="fl-panor-sum-kpi"><b>${usos.length}</b><span>Usos</span></div>
+    </div>
+    <div class="fl-panor-sum-sec">
+      <div class="fl-panor-sum-sec-t">Último reporte</div>
+      ${ultReporte?`<div style="font-size:11.5px;color:#374151"><strong>${ultReporte.tipo||'—'}</strong> · ${ultReporte.solicitante||ultReporte.creadoPor||'—'} · ${dt(ultReporte.creadoEn)} ${hBadge(ultReporte.estatus)}</div>`
+        :`<div style="font-size:11px;color:#94A3B8">Sin reportes registrados</div>`}
+    </div>
+    <div class="fl-panor-sum-sec">
+      <div class="fl-panor-sum-sec-t">Resumen de solicitudes (${hist.length})</div>
+      ${hist.length?hist.slice(0,10).map(s=>flRPHistItem(s)).join(''):`<div style="font-size:11px;color:#94A3B8">Sin solicitudes</div>`}
+      ${hist.length>10?`<div style="font-size:9.5px;color:#94A3B8;text-align:center;padding:6px 0 0">Mostrando las 10 más recientes de ${hist.length}</div>`:''}
+    </div>
+    <div class="fl-panor-sum-sec">
+      <div class="fl-panor-sum-sec-t">Resumen de uso — quién, cuándo y hasta cuándo (${usos.length})</div>
+      ${usos.length?usos.slice(0,10).map(u=>flRPUsoItem(u)).join(''):`<div style="font-size:11px;color:#94A3B8">Sin registros de vinculación</div>`}
+      ${usos.length>10?`<div style="font-size:9.5px;color:#94A3B8;text-align:center;padding:6px 0 0">Mostrando los 10 más recientes de ${usos.length}</div>`:''}
+    </div>
+  </div>`;
+}
 
 window.flRPFoto=function(inp,vehId){
   const f=inp.files[0];if(!f)return;
