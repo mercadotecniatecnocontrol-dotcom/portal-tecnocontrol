@@ -639,16 +639,6 @@ window.cargarFlotilla=async function(){
   actualizarHeaderUsuario();
   fs=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
   await Promise.all([ldVehs(),ldSols(),ldComs(),ldTrans(),ldChkSem(),ldCfgSem(),ldUsos(),ldFlUsuarios()]);
-  try{
-    const snapU=await fs.getDocs(fs.collection(db,'fl_usuarios'));
-    const map={};
-    snapU.docs.forEach(d=>{
-      const u=d.data();
-      const ecos=[...(Array.isArray(u.ecosVinculados)?u.ecosVinculados.map(String):[]),...(u.ecoVinculado?[String(u.ecoVinculado)]:[])].filter(Boolean);
-      ecos.forEach(e=>{map[e]=u.nombre||u.displayName||u.email||'—';});
-    });
-    window._flUsuariosMap=map;
-  }catch(e){window._flUsuariosMap={};}
   renderSB();
   flVista('panel');
   window._flInitDone=true;
@@ -778,7 +768,30 @@ function ldUsos(){
     }catch(e){console.error('[FL] ldUsos',e);flUsos=[];resolve();}
   });
 }
-async function ldFlUsuarios(){try{const s=await fs.getDocs(fs.collection(db,C.USUARIOS));flFlUsuarios=s.docs.map(d=>({id:d.id,...d.data()}));}catch{flFlUsuarios=[];}}
+let _unsubFlUsuarios=null;
+function ldFlUsuarios(){
+  return new Promise((resolve)=>{
+    if(_unsubFlUsuarios){resolve();return;}
+    try{
+      _unsubFlUsuarios=fs.onSnapshot(fs.collection(db,C.USUARIOS),(s)=>{
+        flFlUsuarios=s.docs.map(d=>({id:d.id,...d.data()}));
+        const map={};
+        flFlUsuarios.forEach(u=>{
+          const ecos=[...(Array.isArray(u.ecosVinculados)?u.ecosVinculados.map(String):[]),...(u.ecoVinculado?[String(u.ecoVinculado)]:[])].filter(Boolean);
+          ecos.forEach(e=>{map[e]=u.nombre||u.displayName||u.email||'—';});
+        });
+        window._flUsuariosMap=map;
+        resolve();
+        if(window._flInitDone){
+          renderSB();
+          if(vistaAct==='panel')rPanel();
+          else if(vistaAct==='admin'&&admTab==='usuarios'){const c=document.getElementById('adm-tab-content');if(c)c.innerHTML=rAdmTabUsuarios();}
+          else if(vistaAct==='admin'&&admTab==='vehs'){const c2=document.getElementById('adm-tab-content');if(c2)c2.innerHTML=rAdmTabVehs([...new Set(flV.map(v=>v.plaza).filter(Boolean))].sort());}
+        }
+      },(err)=>{console.error('[FL] onSnapshot fl_usuarios',err);if(!flFlUsuarios)flFlUsuarios=[];window._flUsuariosMap=window._flUsuariosMap||{};resolve();});
+    }catch(e){console.error('[FL] ldFlUsuarios',e);flFlUsuarios=[];window._flUsuariosMap={};resolve();}
+  });
+}
 
 // SIDEBAR
 let sbTipoFilt='all';
@@ -1557,17 +1570,31 @@ window.admNuevoLimpiar=function(){
 
 // Pre-llenar formulario de reasignación al hacer clic en "Reasignar"
 // ── DETECCIÓN Y CORRECCIÓN MASIVA: 'Responsable Asignado' desincronizado ──
-// Solo marca vehículos que SÍ tienen historial en flotilla_usos (o sea, que
-// alguna vez pasaron por la app móvil). Los que nunca se han vinculado desde
-// el celular se dejan intactos — para ellos 'responsable' sigue siendo la
-// única fuente de verdad y no hay nada que corregir.
+// Quién tiene vinculado un ECO AHORA MISMO, según fl_usuarios — la misma
+// fuente que ya usa el propio sidebar para el punto verde / tooltip "En uso".
+// Es más confiable que flotilla_usos porque existen vinculaciones vivas que
+// nunca generaron un registro de bitácora (vínculos de antes de que existiera
+// esa colección, o hechos por rutas que no la escriben).
+function flQuienUsaEcoAhora(eco){
+  const u=flFlUsuarios.find(u=>String(u.ecoVinculado)===String(eco)||(Array.isArray(u.ecosVinculados)&&u.ecosVinculados.map(String).includes(String(eco))));
+  return u?(u.nombre||u.displayName||u.email||'—'):null;
+}
+
+// Detecta vehículos donde 'responsable' no coincide con la realidad, usando
+// dos fuentes en orden de confianza: 1) vinculación viva en fl_usuarios,
+// 2) si no hay nadie vinculado ahora, el historial de flotilla_usos confirma
+// que debería estar libre. Los que nunca han tocado ninguna de las dos cosas
+// se dejan intactos — para ellos 'responsable' sigue siendo la única fuente
+// de verdad y no hay nada que corregir.
 function flDetectarDesincronizados(){
   const out=[];
   flV.forEach(v=>{
+    const vivo=flQuienUsaEcoAhora(v.eco);
     const usosVeh=flUsos.filter(u=>String(u.eco)===String(v.eco));
-    if(!usosVeh.length)return; // nunca pasó por la app — no se toca
-    const activo=usosVeh.find(u=>u.activo);
-    const esperado=activo?(activo.nombre||activo.email||'—'):'—';
+    let esperado;
+    if(vivo!==null)esperado=vivo;
+    else if(usosVeh.length)esperado='—';
+    else return; // nunca pasó por la app ni está vinculado — no se toca
     const actual=(v.responsable||'—').trim();
     if(actual.toLowerCase()!==String(esperado).trim().toLowerCase()){
       out.push({vehId:v.id,eco:v.eco,unidad:v.unidad||'—',actual,esperado});
@@ -2729,6 +2756,7 @@ function flPanorResumenVeh(v){
   const abiertas=hist.filter(s=>!['Cerrada','Rechazada'].includes(s.estatus)).length;
   const cerradas=hist.filter(s=>s.estatus==='Cerrada').length;
   const usoAct=usos.find(u=>u.activo);
+  const vivo=flQuienUsaEcoAhora(v.eco);
   const ultReporte=hist[0];
   const dt=iso=>iso?new Date(iso).toLocaleString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
   return`<div class="fl-panor-sum-card">
@@ -2738,7 +2766,7 @@ function flPanorResumenVeh(v){
         <div style="font-size:13px;font-weight:900;color:#0A1628">ECO ${v.eco} · ${v.unidad||'—'}</div>
         <div style="font-size:10.5px;color:#64748B;margin-top:1px">${v.responsable||'Sin responsable'} · ${v.plaza||'—'} · ${v.placas||'—'}</div>
       </div>
-      ${usoAct?`<span style="font-size:9px;font-weight:800;padding:3px 9px;border-radius:100px;background:#DCFCE7;color:#15803D;white-space:nowrap">EN USO · ${usoAct.nombre||usoAct.email||'—'}</span>`
+      ${vivo!==null?`<span style="font-size:9px;font-weight:800;padding:3px 9px;border-radius:100px;background:#DCFCE7;color:#15803D;white-space:nowrap">EN USO · ${vivo}</span>`
         :`<span style="font-size:9px;font-weight:800;padding:3px 9px;border-radius:100px;background:#F1F5F9;color:#64748B;white-space:nowrap">DISPONIBLE</span>`}
     </div>
     <div class="fl-panor-sum-kpis">
@@ -2759,6 +2787,7 @@ function flPanorResumenVeh(v){
     </div>
     <div class="fl-panor-sum-sec">
       <div class="fl-panor-sum-sec-t">Resumen de uso — quién, cuándo y hasta cuándo (${usos.length})</div>
+      ${vivo!==null&&!usos.length?`<div style="font-size:10.5px;color:#B45309;background:#FFFBEB;border:1px solid #FDE68A;border-radius:7px;padding:7px 10px;margin-bottom:6px">Actualmente vinculado a <strong>${vivo}</strong>, pero sin bitácora — probablemente esta vinculación se hizo antes de que existiera este registro.</div>`:''}
       ${usos.length?usos.slice(0,10).map(u=>flRPUsoItem(u)).join(''):`<div style="font-size:11px;color:#94A3B8">Sin registros de vinculación</div>`}
       ${usos.length>10?`<div style="font-size:9.5px;color:#94A3B8;text-align:center;padding:6px 0 0">Mostrando los 10 más recientes de ${usos.length}</div>`:''}
     </div>
