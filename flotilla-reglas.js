@@ -15,6 +15,13 @@ const FL_ROLES = {
   flotilla: [
     'fatima@tecnocontrol.com.mx',
   ],
+  // Solo lectura: puede ENTRAR y VER todo (vehículos, historial, uso,
+  // solicitudes) pero no puede crear, validar, aprobar, pagar ni cerrar nada.
+  // El acceso a la pestaña Flotilla en sí lo controla EMAIL_ACCESO_EXTRA en
+  // index.html — esta lista solo bloquea acciones dentro del módulo.
+  lectores: [
+    'miguel@tecnocontrol.com.mx',
+  ],
   // Administradores: todo lo anterior + eliminar + acceso a todas las vistas
   administradores: [
     'mercadotecniatecnocontrol@gmail.com',
@@ -34,9 +41,13 @@ window.flTienePermiso = function(accion) {
   const isFlotilla = FL_ROLES.flotilla.map(e=>e.toLowerCase()).includes(email);
   const isAprobador = FL_ROLES.aprobadores.map(e=>e.toLowerCase()).includes(email);
   const isPagos = FL_ROLES.pagos.map(e=>e.toLowerCase()).includes(email);
+  const isLector = FL_ROLES.lectores.map(e=>e.toLowerCase()).includes(email);
+
+  // Un lector nunca puede modificar nada, sin importar la acción — solo ver.
+  if(isLector && !isAdmin) return false;
 
   switch(accion) {
-    // Cualquier usuario autenticado puede crear solicitudes
+    // Cualquier usuario autenticado puede crear solicitudes (excepto lectores)
     case 'crear_solicitud':
       return true;
 
@@ -77,5 +88,6 @@ window.flGetRolActual = function() {
   if (FL_ROLES.pagos.map(e=>e.toLowerCase()).includes(email)) return 'Pagos';
   if (FL_ROLES.flotilla.map(e=>e.toLowerCase()).includes(email)) return 'Flotilla';
   if (FL_ROLES.administradores.map(e=>e.toLowerCase()).includes(email)) return 'Administrador';
+  if (FL_ROLES.lectores.map(e=>e.toLowerCase()).includes(email)) return 'Lector (solo lectura)';
   return 'Técnico';
 };
