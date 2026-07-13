@@ -1648,16 +1648,20 @@ window.admAplicarSync=async function(mismatches){
   const seleccionados=mismatches.filter((_,i)=>document.getElementById('fl-sync-chk-'+i)?.checked);
   if(!seleccionados.length){alert('No hay ninguno seleccionado.');return;}
   if(btn){btn.disabled=true;btn.textContent='Aplicando…';}
-  try{
-    await Promise.all(seleccionados.map(m=>fs.updateDoc(fs.doc(db,C.VEHS,m.vehId),{responsable:m.esperado})));
-    await ldVehs();
-    document.getElementById('fl-sync-ov')?.remove();
-    if(typeof rAdmin==='function')rAdmin();
-    alert(`${seleccionados.length} vehículo${seleccionados.length===1?'':'s'} corregido${seleccionados.length===1?'':'s'}.`);
-  }catch(e){
-    console.error('[FL] aplicar sync',e);
-    alert('Error al aplicar correcciones: '+e.message);
-    if(btn){btn.disabled=false;btn.textContent='Aplicar correcciones';}
+  const resultados=await Promise.allSettled(seleccionados.map(m=>fs.updateDoc(fs.doc(db,C.VEHS,m.vehId),{responsable:m.esperado})));
+  const ok=[],fallidos=[];
+  resultados.forEach((r,i)=>{
+    if(r.status==='fulfilled')ok.push(seleccionados[i]);
+    else fallidos.push({...seleccionados[i],error:r.reason?.message||'Error desconocido'});
+  });
+  await ldVehs();
+  document.getElementById('fl-sync-ov')?.remove();
+  if(typeof rAdmin==='function')rAdmin();
+  if(!fallidos.length){
+    alert(`${ok.length} vehículo${ok.length===1?'':'s'} corregido${ok.length===1?'':'s'}.`);
+  }else{
+    const detalle=fallidos.map(f=>`• ECO ${f.eco} (${f.unidad}) — el documento ya no existe en Firestore`).join('\n');
+    alert(`${ok.length} corregido${ok.length===1?'':'s'} correctamente.\n\n${fallidos.length} NO se pudieron corregir (documento eliminado o inexistente):\n${detalle}\n\nEstos probablemente son vehículos de prueba borrados manualmente, y ya no aparecerán en la lista de vehículos activos.`);
   }
 };
 
