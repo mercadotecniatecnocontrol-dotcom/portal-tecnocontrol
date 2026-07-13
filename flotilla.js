@@ -2495,6 +2495,20 @@ function flPanorActualizarBarra(){
 }
 
 // ── RESUMEN POR VEHÍCULO (usa historial de solicitudes + flotilla_usos) ──
+let flPanorMes='all'; // 'all' o 'YYYY-MM'
+
+function flPanorMesesDisponibles(){
+  const set=new Set();
+  flS.forEach(s=>{if(s.creadoEn)set.add(String(s.creadoEn).slice(0,7));});
+  flUsos.forEach(u=>{if(u.vinculadoEn)set.add(String(u.vinculadoEn).slice(0,7));});
+  return[...set].sort().reverse();
+}
+function flPanorMesLabel(ym){
+  const[a,m]=ym.split('-');
+  const NOMBRES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  return`${NOMBRES[Number(m)-1]||m} ${a}`;
+}
+
 window.flPanorVerResumen=function(){
   const ids=[...flPanorSel];if(!ids.length)return;
   const vs=ids.map(id=>flV.find(x=>x.id===id)).filter(Boolean)
@@ -2502,21 +2516,32 @@ window.flPanorVerResumen=function(){
   const body=document.getElementById('fl-panor-body');if(!body)return;
   const tools=document.querySelector('#fl-panor-ov .fl-panor-tools');if(tools)tools.style.display='none';
   const bar=document.querySelector('#fl-panor-ov .fl-panor-bar');if(bar)bar.style.display='none';
+  const meses=flPanorMesesDisponibles();
   body.innerHTML=`
     <button class="fb gho sm" style="margin-bottom:12px" onclick="flPanorVolver()">${I.chevL} Volver a selección</button>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+      <span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#94A3B8">Periodo</span>
+      <select id="fl-panor-mes" onchange="flPanorMes=this.value;flPanorVerResumen()" style="padding:7px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;font-weight:700;color:#0A1628;background:#fff;cursor:pointer">
+        <option value="all" ${flPanorMes==='all'?'selected':''}>Todo el historial</option>
+        ${meses.map(ym=>`<option value="${ym}" ${flPanorMes===ym?'selected':''}>${flPanorMesLabel(ym)}</option>`).join('')}
+      </select>
+      ${flPanorMes!=='all'?`<span style="font-size:10.5px;color:#94A3B8">Mostrando solo movimientos de ${flPanorMesLabel(flPanorMes)}</span>`:''}
+    </div>
     ${vs.map(v=>flPanorResumenVeh(v)).join('')}
   `;
 };
 
 window.flPanorVolver=function(){
+  flPanorMes='all';
   const tools=document.querySelector('#fl-panor-ov .fl-panor-tools');if(tools)tools.style.display='flex';
   const bar=document.querySelector('#fl-panor-ov .fl-panor-bar');if(bar)bar.style.display='flex';
   flPanorRenderGrid();
 };
 
 function flPanorResumenVeh(v){
-  const hist=flSolsDeVehiculo(v).slice().sort((a,b)=>(b.creadoEn||'').localeCompare(a.creadoEn||''));
-  const usos=flUsos.filter(u=>String(u.eco)===String(v.eco)).slice().sort((a,b)=>(b.vinculadoEn||'').localeCompare(a.vinculadoEn||''));
+  const enPeriodo=iso=>flPanorMes==='all'||(iso&&String(iso).slice(0,7)===flPanorMes);
+  const hist=flSolsDeVehiculo(v).filter(s=>enPeriodo(s.creadoEn)).sort((a,b)=>(b.creadoEn||'').localeCompare(a.creadoEn||''));
+  const usos=flUsos.filter(u=>String(u.eco)===String(v.eco)&&enPeriodo(u.vinculadoEn)).sort((a,b)=>(b.vinculadoEn||'').localeCompare(a.vinculadoEn||''));
   const abiertas=hist.filter(s=>!['Cerrada','Rechazada'].includes(s.estatus)).length;
   const cerradas=hist.filter(s=>s.estatus==='Cerrada').length;
   const usoAct=usos.find(u=>u.activo);
