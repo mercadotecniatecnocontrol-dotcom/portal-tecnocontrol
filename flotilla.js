@@ -35,7 +35,7 @@ async function agregarColaborador(nombre){
   _flColabCache=null;
 }
 
-const C={VEHS:'flotilla_vehiculos',SOLS:'flotilla_solicitudes',COMIS:'flotilla_comisiones',TRANS:'flotilla_transferencias',CHKSEM:'flotilla_checklist_semanal',CFG:'flotilla_config',TAREAS:'flotilla_tareas',USOS:'flotilla_usos'};
+const C={VEHS:'flotilla_vehiculos',SOLS:'flotilla_solicitudes',COMIS:'flotilla_comisiones',TRANS:'flotilla_transferencias',CHKSEM:'flotilla_checklist_semanal',CFG:'flotilla_config',TAREAS:'flotilla_tareas',USOS:'flotilla_usos',USUARIOS:'fl_usuarios'};
 
 // ══════════════════════════════════════════════════════════════
 // FUENTE ÚNICA DE VERDAD — "EN TALLER"
@@ -161,7 +161,7 @@ const I={
 
 // ESTADO
 let db=window.db, fs=null;
-let flV=[], flS=[], flCom=[], flTrans=[], flChkSem=[], flCfgSem={}, flUsos=[];
+let flV=[], flS=[], flCom=[], flTrans=[], flChkSem=[], flCfgSem={}, flUsos=[], flFlUsuarios=[];
 let vistaAct='panel';
 let ST={
   vehId:null, tipoVeh:'auto', vistaImg:'frente',
@@ -638,7 +638,7 @@ window.cargarFlotilla=async function(){
   // Actualizar header con el usuario real tan pronto como esté disponible
   actualizarHeaderUsuario();
   fs=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-  await Promise.all([ldVehs(),ldSols(),ldComs(),ldTrans(),ldChkSem(),ldCfgSem(),ldUsos()]);
+  await Promise.all([ldVehs(),ldSols(),ldComs(),ldTrans(),ldChkSem(),ldCfgSem(),ldUsos(),ldFlUsuarios()]);
   try{
     const snapU=await fs.getDocs(fs.collection(db,'fl_usuarios'));
     const map={};
@@ -707,17 +707,78 @@ function ldVehs(){
     }
   });
 }
-async function ldSols(){try{const s=await fs.getDocs(fs.collection(db,C.SOLS));flS=s.docs.map(d=>({id:d.id,...d.data()}));flS.sort((a,b)=>(b.creadoEn||'').localeCompare(a.creadoEn||''));}catch{flS=[];}
-  // Refrescar sidebar para actualizar badge "En taller" basado en solicitudes
-  if(document.getElementById('fl-sb-list'))renderSB();
-  const p=flS.filter(s=>['Solicitud','Evaluación','Validación','Validada','Cotización','Aprobación','Aprobada','Servicio','Pagos','Cierre'].includes(s.estatus)).length;
-  const c=document.getElementById('fl-cnt-s');if(c){c.textContent=p;c.style.display=p?'flex':'none';}
+let _unsubSols=null;
+function ldSols(){
+  return new Promise((resolve)=>{
+    if(_unsubSols){resolve();return;}
+    try{
+      _unsubSols=fs.onSnapshot(fs.collection(db,C.SOLS),(s)=>{
+        flS=s.docs.map(d=>({id:d.id,...d.data()}));
+        flS.sort((a,b)=>(b.creadoEn||'').localeCompare(a.creadoEn||''));
+        // Refrescar sidebar para actualizar badge "En taller" basado en solicitudes
+        if(document.getElementById('fl-sb-list'))renderSB();
+        const p=flS.filter(s=>['Solicitud','Evaluación','Validación','Validada','Cotización','Aprobación','Aprobada','Servicio','Pagos','Cierre'].includes(s.estatus)).length;
+        const c=document.getElementById('fl-cnt-s');if(c){c.textContent=p;c.style.display=p?'flex':'none';}
+        resolve();
+        if(window._flInitDone){
+          // Ojo: si hay un vehículo seleccionado en 'sols' probablemente hay un
+          // formulario de solicitud a medio llenar — no lo pisamos con un re-render.
+          if(vistaAct==='sols'&&!ST?.vehId)rSols();
+          else if(vistaAct==='resumen')rResumen();
+          else if(vistaAct==='admin'&&admTab==='sols'){const c2=document.getElementById('adm-tab-content');if(c2)c2.innerHTML=rAdmTabSols();}
+          else if(vistaAct==='admin'&&admTab==='usuarios'){const c3=document.getElementById('adm-tab-content');if(c3)c3.innerHTML=rAdmTabUsuarios();}
+        }
+      },(err)=>{console.error('[FL] onSnapshot solicitudes',err);if(!flS)flS=[];resolve();});
+    }catch(e){console.error('[FL] ldSols',e);flS=[];resolve();}
+  });
 }
-async function ldComs(){try{const s=await fs.getDocs(fs.collection(db,C.COMIS));flCom=s.docs.map(d=>({id:d.id,...d.data()}));}catch{flCom=[];}}
-async function ldTrans(){try{const s=await fs.getDocs(fs.collection(db,C.TRANS));flTrans=s.docs.map(d=>({id:d.id,...d.data()}));flTrans.sort((a,b)=>(b.creadoEn||"").localeCompare(a.creadoEn||""));}catch{flTrans=[];}}
+let _unsubComs=null;
+function ldComs(){
+  return new Promise((resolve)=>{
+    if(_unsubComs){resolve();return;}
+    try{
+      _unsubComs=fs.onSnapshot(fs.collection(db,C.COMIS),(s)=>{
+        flCom=s.docs.map(d=>({id:d.id,...d.data()}));
+        resolve();
+        if(window._flInitDone&&vistaAct==='comis')rComis();
+      },(err)=>{console.error('[FL] onSnapshot comisiones',err);if(!flCom)flCom=[];resolve();});
+    }catch(e){console.error('[FL] ldComs',e);flCom=[];resolve();}
+  });
+}
+let _unsubTrans=null;
+function ldTrans(){
+  return new Promise((resolve)=>{
+    if(_unsubTrans){resolve();return;}
+    try{
+      _unsubTrans=fs.onSnapshot(fs.collection(db,C.TRANS),(s)=>{
+        flTrans=s.docs.map(d=>({id:d.id,...d.data()}));
+        flTrans.sort((a,b)=>(b.creadoEn||"").localeCompare(a.creadoEn||""));
+        resolve();
+      },(err)=>{console.error('[FL] onSnapshot transferencias',err);if(!flTrans)flTrans=[];resolve();});
+    }catch(e){console.error('[FL] ldTrans',e);flTrans=[];resolve();}
+  });
+}
 async function ldChkSem(){try{const s=await fs.getDocs(fs.collection(db,C.CHKSEM));flChkSem=s.docs.map(d=>({id:d.id,...d.data()}));flChkSem.sort((a,b)=>(b.creadoEn||"").localeCompare(a.creadoEn||""));}catch{flChkSem=[];}}
 async function ldCfgSem(){try{const d=await fs.getDoc(fs.doc(db,C.CFG,'checklist_semanal'));flCfgSem=d.exists()?d.data():{};}catch{flCfgSem={};}}
-async function ldUsos(){try{const s=await fs.getDocs(fs.collection(db,C.USOS));flUsos=s.docs.map(d=>({id:d.id,...d.data()}));flUsos.sort((a,b)=>(b.vinculadoEn||'').localeCompare(a.vinculadoEn||''));}catch{flUsos=[];}}
+let _unsubUsos=null;
+function ldUsos(){
+  return new Promise((resolve)=>{
+    if(_unsubUsos){resolve();return;}
+    try{
+      _unsubUsos=fs.onSnapshot(fs.collection(db,C.USOS),(s)=>{
+        flUsos=s.docs.map(d=>({id:d.id,...d.data()}));
+        flUsos.sort((a,b)=>(b.vinculadoEn||'').localeCompare(a.vinculadoEn||''));
+        resolve();
+        if(window._flInitDone){
+          if(vistaAct==='admin'&&admTab==='usuarios'){const c=document.getElementById('adm-tab-content');if(c)c.innerHTML=rAdmTabUsuarios();}
+          // El Panorama de vehículos (si está abierto) toma flUsos fresco la próxima
+          // vez que se renderice; no forzamos un refresh a mitad de una selección.
+        }
+      },(err)=>{console.error('[FL] onSnapshot usos',err);if(!flUsos)flUsos=[];resolve();});
+    }catch(e){console.error('[FL] ldUsos',e);flUsos=[];resolve();}
+  });
+}
+async function ldFlUsuarios(){try{const s=await fs.getDocs(fs.collection(db,C.USUARIOS));flFlUsuarios=s.docs.map(d=>({id:d.id,...d.data()}));}catch{flFlUsuarios=[];}}
 
 // SIDEBAR
 let sbTipoFilt='all';
@@ -1046,38 +1107,68 @@ function rAdmTabSols(){
 
 function rAdmTabUsuarios(){
   const userMap={};
+  const touch=(k,patch,fuente)=>{
+    if(!k)return;
+    if(!userMap[k])userMap[k]={nombre:'',email:'',ecos:[],fuentes:new Set()};
+    if(patch.nombre&&!userMap[k].nombre)userMap[k].nombre=patch.nombre;
+    if(patch.email&&!userMap[k].email)userMap[k].email=patch.email;
+    if(patch.eco)userMap[k].ecos.push(patch.eco);
+    if(fuente)userMap[k].fuentes.add(fuente);
+  };
+  // 1. Directorio de la app móvil (fl_usuarios) — fuente más confiable, ya trae email real
+  flFlUsuarios.forEach(u=>{
+    const email=(u.email||'').toLowerCase().trim();
+    if(!email)return;
+    touch(email,{nombre:u.nombre||email,email},'App móvil');
+  });
+  // 2. Uso de vehículos (flotilla_usos) — vinculación/desvinculación desde el celular
+  flUsos.forEach(u=>{
+    const email=(u.email||'').toLowerCase().trim();
+    if(!email)return;
+    touch(email,{nombre:u.nombre||email,email},'Uso de vehículo');
+  });
+  // 3. Responsables asignados a vehículos — casi siempre solo nombre, sin correo
   flV.forEach(v=>{
     if(v.responsable&&v.responsable!=='—'){
       const k=v.responsable.toLowerCase();
-      if(!userMap[k])userMap[k]={nombre:v.responsable,ecos:[],email:''};
-      userMap[k].ecos.push(v.eco);
+      touch(k,{nombre:v.responsable,eco:v.eco},'Responsable de ECO');
     }
   });
+  // 4. Quien ha creado solicitudes desde el portal — sí trae correo (creadoPor)
   flS.forEach(s=>{
     if(s.creadoPor){
       const k=s.creadoPor.toLowerCase();
-      if(!userMap[k])userMap[k]={nombre:s.solicitante||s.creadoPor,ecos:[],email:s.creadoPor};
-      else if(!userMap[k].email)userMap[k].email=s.creadoPor;
+      touch(k,{nombre:s.solicitante||s.creadoPor,email:s.creadoPor},'Creó solicitud');
     }
   });
   const usuarios=Object.values(userMap).sort((a,b)=>a.nombre.localeCompare(b.nombre));
+  const conEmail=usuarios.filter(u=>u.email);
+  window._flUsuariosDirectorio=usuarios;
   return`
     <div style="font-size:12px;color:#64748B;margin-bottom:12px;background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px;padding:10px 14px">
-      <strong style="color:#C2410C">Nota:</strong> Muestra responsables de vehículos y usuarios que han creado solicitudes. Para cambiar el responsable de un ECO usa el formulario de abajo o edita directamente en la pestaña Vehículos.
+      <strong style="color:#C2410C">Nota:</strong> Combina el directorio de la app móvil (<code>fl_usuarios</code>), el registro de uso de vehículos, responsables asignados a ECOs y quienes han creado solicitudes desde el portal. Los que solo aparecen como "Responsable de ECO" casi nunca tienen correo detectado porque ese campo solo guarda el nombre.
     </div>
-    <div class="fl-tw" style="overflow:auto;max-height:180px;margin-bottom:20px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <span style="font-size:11.5px;font-weight:700;color:#374151">${usuarios.length} personas detectadas · ${conEmail.length} con correo</span>
+      <div style="display:flex;gap:8px">
+        <button class="fb gho sm" onclick="admRevisarSync()">${I.check} Revisar sincronización</button>
+        <button class="fb gho sm" onclick="admCopiarCorreosFlotilla()">Copiar correos</button>
+      </div>
+    </div>
+    <div class="fl-tw" style="overflow:auto;max-height:220px;margin-bottom:20px">
       <table class="fl-adm-table">
-        <thead><tr><th>Nombre / Responsable</th><th>Email detectado</th><th>ECOs asignados</th><th style="text-align:center">Acción</th></tr></thead>
+        <thead><tr><th>Nombre</th><th>Email detectado</th><th>Fuente</th><th>ECOs asignados</th><th style="text-align:center">Acción</th></tr></thead>
         <tbody>
           ${usuarios.length?usuarios.map(u=>`
             <tr>
               <td style="font-weight:700">${u.nombre}</td>
-              <td style="font-size:11px;font-family:'JetBrains Mono',monospace;color:#64748B">${u.email||'—'}</td>
+              <td style="font-size:11px;font-family:'JetBrains Mono',monospace;color:${u.email?'#0A1628':'#CBD5E1'}">${u.email||'sin correo'}</td>
+              <td style="font-size:10px;color:#64748B">${[...u.fuentes].join(' · ')}</td>
               <td style="font-size:11px">${u.ecos.length?u.ecos.map(e=>`<span style="background:#EFF6FF;color:#2563EB;padding:2px 6px;border-radius:6px;font-size:10px;font-weight:700;margin-right:3px">ECO ${e}</span>`).join(''):'Sin ECO'}</td>
               <td style="text-align:center">
                 <button class="fb gho sm" onclick="admPreReasignar('${u.nombre.replace(/'/g,"\'")}','${u.email}')" style="font-size:10px">${I.edit} Reasignar</button>
               </td>
-            </tr>`).join(''):`<tr><td colspan="4" style="text-align:center;padding:24px;color:#94A3B8">No hay datos</td></tr>`}
+            </tr>`).join(''):`<tr><td colspan="5" style="text-align:center;padding:24px;color:#94A3B8">No hay datos</td></tr>`}
         </tbody>
       </table>
     </div>
@@ -1465,6 +1556,99 @@ window.admNuevoLimpiar=function(){
 };
 
 // Pre-llenar formulario de reasignación al hacer clic en "Reasignar"
+// ── DETECCIÓN Y CORRECCIÓN MASIVA: 'Responsable Asignado' desincronizado ──
+// Solo marca vehículos que SÍ tienen historial en flotilla_usos (o sea, que
+// alguna vez pasaron por la app móvil). Los que nunca se han vinculado desde
+// el celular se dejan intactos — para ellos 'responsable' sigue siendo la
+// única fuente de verdad y no hay nada que corregir.
+function flDetectarDesincronizados(){
+  const out=[];
+  flV.forEach(v=>{
+    const usosVeh=flUsos.filter(u=>String(u.eco)===String(v.eco));
+    if(!usosVeh.length)return; // nunca pasó por la app — no se toca
+    const activo=usosVeh.find(u=>u.activo);
+    const esperado=activo?(activo.nombre||activo.email||'—'):'—';
+    const actual=(v.responsable||'—').trim();
+    if(actual.toLowerCase()!==String(esperado).trim().toLowerCase()){
+      out.push({vehId:v.id,eco:v.eco,unidad:v.unidad||'—',actual,esperado});
+    }
+  });
+  return out;
+}
+
+window.admRevisarSync=function(){
+  const mismatches=flDetectarDesincronizados();
+  const ov=document.createElement('div');
+  ov.className='fl-ov';ov.id='fl-sync-ov';
+  ov.innerHTML=`
+    <div class="fl-modal" style="max-width:640px">
+      <div class="fl-mh">
+        <h3>Revisar sincronización de responsables</h3>
+        <button class="fl-mx" onclick="document.getElementById('fl-sync-ov').remove()">✕</button>
+      </div>
+      <div style="padding:16px 20px">
+        ${mismatches.length?`
+        <div style="font-size:12px;color:#64748B;margin-bottom:12px;background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px;padding:10px 14px">
+          Se encontraron <strong style="color:#C2410C">${mismatches.length}</strong> vehículo${mismatches.length===1?'':'s'} donde el responsable asignado no coincide con quién está realmente vinculado hoy. Desmarca los que NO quieras corregir.
+        </div>
+        <div class="fl-tw" style="overflow:auto;max-height:340px;margin-bottom:16px">
+          <table class="fl-adm-table">
+            <thead><tr><th style="width:26px"></th><th>ECO / Unidad</th><th>Actual</th><th>Debería ser</th></tr></thead>
+            <tbody>
+              ${mismatches.map((m,i)=>`
+                <tr>
+                  <td><input type="checkbox" checked id="fl-sync-chk-${i}" data-idx="${i}" style="cursor:pointer"></td>
+                  <td style="font-size:11.5px"><strong>ECO ${m.eco}</strong><br><span style="color:#94A3B8;font-size:10px">${m.unidad}</span></td>
+                  <td style="font-size:11px;color:#B91C1C;text-decoration:line-through">${m.actual}</td>
+                  <td style="font-size:11px;color:#15803D;font-weight:700">${m.esperado}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px">
+          <button class="fb gho sm" onclick="document.getElementById('fl-sync-ov').remove()">Cancelar</button>
+          <button class="fb acc" id="fl-sync-apply" onclick="admAplicarSync(${JSON.stringify(mismatches).replace(/"/g,'&quot;')})">Aplicar correcciones</button>
+        </div>`
+        :`<div class="fl-empty" style="min-height:120px"><h3>Todo sincronizado</h3><p style="font-size:12px;color:#94A3B8">No se encontró ningún vehículo con historial de uso cuyo responsable esté desactualizado.</p></div>`}
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+  ov.onclick=(e)=>{if(e.target===ov)ov.remove();};
+};
+
+window.admAplicarSync=async function(mismatches){
+  const btn=document.getElementById('fl-sync-apply');
+  const seleccionados=mismatches.filter((_,i)=>document.getElementById('fl-sync-chk-'+i)?.checked);
+  if(!seleccionados.length){alert('No hay ninguno seleccionado.');return;}
+  if(btn){btn.disabled=true;btn.textContent='Aplicando…';}
+  try{
+    await Promise.all(seleccionados.map(m=>fs.updateDoc(fs.doc(db,C.VEHS,m.vehId),{responsable:m.esperado})));
+    await ldVehs();
+    document.getElementById('fl-sync-ov')?.remove();
+    if(typeof rAdmin==='function')rAdmin();
+    alert(`${seleccionados.length} vehículo${seleccionados.length===1?'':'s'} corregido${seleccionados.length===1?'':'s'}.`);
+  }catch(e){
+    console.error('[FL] aplicar sync',e);
+    alert('Error al aplicar correcciones: '+e.message);
+    if(btn){btn.disabled=false;btn.textContent='Aplicar correcciones';}
+  }
+};
+
+window.admCopiarCorreosFlotilla=function(){
+  const dir=window._flUsuariosDirectorio||[];
+  const correos=[...new Set(dir.map(u=>u.email).filter(Boolean))];
+  if(!correos.length){alert('No hay correos detectados todavía.');return;}
+  const texto=correos.join(', ');
+  const hecho=()=>{const b=event?.target;if(b){const t=b.textContent;b.textContent='Copiado ✓';setTimeout(()=>b.textContent=t,1600);}};
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(texto).then(hecho).catch(()=>alert(texto));
+  }else{
+    const ta=document.createElement('textarea');ta.value=texto;document.body.appendChild(ta);ta.select();
+    try{document.execCommand('copy');hecho();}catch{alert(texto);}
+    ta.remove();
+  }
+};
+
 window.admPreReasignar=function(nombre,email){
   const n=document.getElementById('adm-ur-nombre');
   if(n){n.value=nombre;n.scrollIntoView({behavior:'smooth',block:'center'});}
