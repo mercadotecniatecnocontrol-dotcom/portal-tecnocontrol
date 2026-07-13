@@ -1633,7 +1633,8 @@ function rSols(){
         <button id="fl-pill-troca" onclick="flSetTipoVeh('troca')" style="padding:8px 18px;border:none;border-left:2px solid #E2E8F0;font-family:inherit;font-size:12px;font-weight:800;cursor:pointer;transition:all .15s;background:${ST.tipoVeh==='troca'?'#1E3A5F':'#fff'};color:${ST.tipoVeh==='troca'?'#fff':'#374151'}">TROCA</button>
       </div>
       <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
-        <button style="padding:8px 20px;background:#1E3A5F;color:#fff;border:none;border-radius:9px;font-family:inherit;font-size:12px;font-weight:800;cursor:pointer;letter-spacing:.3px;display:inline-flex;align-items:center;gap:6px" onclick="flSolGuardar()">${I.check} Crear solicitud</button>
+        ${hP('crear_solicitud')?`<button style="padding:8px 20px;background:#1E3A5F;color:#fff;border:none;border-radius:9px;font-family:inherit;font-size:12px;font-weight:800;cursor:pointer;letter-spacing:.3px;display:inline-flex;align-items:center;gap:6px" onclick="flSolGuardar()">${I.check} Crear solicitud</button>`
+          :`<span style="font-size:10px;font-weight:800;padding:6px 12px;border-radius:100px;background:#F1F5F9;color:#64748B;letter-spacing:.3px;display:inline-flex;align-items:center;gap:5px">${I.eye} Solo lectura — no puedes crear solicitudes</span>`}
       </div>
     </div>
 
@@ -1674,7 +1675,7 @@ function rSols(){
           <div style="font-size:10px;color:#94A3B8;text-align:center;margin-top:5px">Genera código único · Sella GPS + fecha + usuario</div>
           <div class="fl-pills" id="fl-ev-pills" style="margin-top:8px">${ST.evFotos.map((ev,i)=>{const src=typeof ev==='string'?ev:ev.src;const cod=ev.meta?.codigo||('Foto '+(i+1));return`<span class="fl-pill" onclick="flVerEvidencia(ST.evFotos[${i}])" style="cursor:pointer"><img src="${src}" style="width:20px;height:20px;object-fit:cover;border-radius:3px;margin-right:3px"><span style="font-size:10px;font-family:'JetBrains Mono',monospace">${cod}</span></span>`;}).join('')}</div>
           <div style="display:flex;justify-content:flex-end;margin-top:10px">
-            <button class="fb acc" onclick="flSolGuardar()" id="fl-btn-guardar">${I.check} Crear solicitud</button>
+            ${hP('crear_solicitud')?`<button class="fb acc" onclick="flSolGuardar()" id="fl-btn-guardar">${I.check} Crear solicitud</button>`:''}
           </div>
         </div>
       </div>
@@ -2148,6 +2149,7 @@ function flToast(txt,bg,color){
 
 // GUARDAR SOLICITUD
 window.flSolGuardar=async function(){
+  if(!hP('crear_solicitud')){alert('Tu perfil tiene acceso de solo lectura a Flotilla. No puedes crear solicitudes.');return;}
   if(!ST.vehId){alert('Selecciona un vehículo del panel izquierdo.');return;}
   const tipo=document.getElementById('fl-sol-tipo')?.value;
   const desc=document.getElementById('fl-sol-desc')?.value?.trim();
