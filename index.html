@@ -5699,6 +5699,8 @@ cargarModuloMarketing();
             if(!wrap) return;
             if(AREAS_CON_PARRILLA_PROPIA.includes(area)){
                 wrap.style.display = 'none';
+            } else if(area === 'Flotilla' && !window._flExtrasAbiertos){
+                wrap.style.display = 'none';
             } else {
                 wrap.style.display = 'block';
                 apAreaActual = area;
