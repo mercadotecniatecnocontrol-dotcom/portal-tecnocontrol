@@ -1145,6 +1145,12 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
                     <option value="VH">VH</option>
                     <option value="AKURIS">AKURIS</option>
                     <option value="TECNOLAB">TECNOLAB</option>
+                    <option value="TECNO2.0">TECNO2.0</option>
+                    <option value="WIL TECH">WIL TECH</option>
+                    <option value="NOKA">NOKA</option>
+                    <option value="MARTIN DE LA O">MARTIN DE LA O</option>
+                    <option value="PALOMA PINEDO">PALOMA PINEDO</option>
+                    <option value="OXXO GAS">OXXO GAS</option>
                 </select>
                 <button class="mkt-add-btn" onclick="abrirModalAP()">➕ Nuevo documento</button>
             </div>
@@ -1175,7 +1181,7 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
                     <option>Balanza de Comprobación</option><option>Estados Financieros</option>
                     <option>Conciliación</option><option>Proveedores</option><option>Clientes</option>
                     <option>Caja Chica</option><option>Activo Fijo</option><option>Estado de Cuenta</option>
-                    <option>Programación de Pago</option><option>Otro</option>
+                    <option>Programación de Pago</option><option>OP</option><option>CSF</option><option>Otro</option>
                 </select>
             </div>
         </div>
@@ -1284,6 +1290,12 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
             <option value="VH">VH</option>
             <option value="AKURIS">AKURIS</option>
             <option value="TECNOLAB">TECNOLAB</option>
+            <option value="TECNO2.0">TECNO2.0</option>
+            <option value="WIL TECH">WIL TECH</option>
+            <option value="NOKA">NOKA</option>
+            <option value="MARTIN DE LA O">MARTIN DE LA O</option>
+            <option value="PALOMA PINEDO">PALOMA PINEDO</option>
+            <option value="OXXO GAS">OXXO GAS</option>
         </select>
         <label class="mkt-form-label" style="margin-top:14px;">Responsable</label>
         <input class="mkt-form-input" id="ap-responsable" type="text" placeholder="Nombre del responsable">
@@ -5002,33 +5014,62 @@ cargarModuloMarketing();
     // Exponer globalmente para el panel de colaboración
     window.getFirebaseAP = getFirebaseAP;
 
-    // ===== ADJUNTOS EN SUBCOLECCIÓN (evita el límite de 1 MB por documento de Firestore) =====
-    // El base64 grande NO se guarda en el doc padre, sino en:
-    //   area_parrilla/{docId}/adjuntos/{slot}   con campo { data }
+    // ===== ADJUNTOS EN SUBCOLECCIÓN, FRAGMENTADOS (evita el límite de 1 MB por documento de Firestore) =====
+    // El base64 grande NO se guarda en un solo doc, sino partido en trozos <1MB dentro de:
+    //   area_parrilla/{docId}/adjuntos/{slot}                  ← doc "meta": { tipo, chunks, actualizadoEn }
+    //   area_parrilla/{docId}/adjuntos/{slot}/partes/{0..N-1}   ← cada uno: { data: <trozo del base64> }
     //   slot: 'original' (imgUrl)  |  'completado' (imgUrl2)
     // En el doc padre solo quedan marcadores ligeros: tieneImg/imgTipo y tieneImg2/imgTipo2.
+    // Compatibilidad: si el doc "meta" trae el campo `data` directo (formato viejo, un solo doc),
+    // se sigue leyendo igual — no hace falta migrar los adjuntos ya guardados.
+    const AP_CHUNK_SIZE = 900000; // caracteres por trozo (deja margen bajo el límite de 1 MiB de Firestore)
     function apTipoAdjunto(dataUrl){
         return (dataUrl||'').startsWith('data:application/pdf') ? 'pdf' : 'img';
     }
     async function apGuardarAdjunto(docId, slot, dataUrl){
         const {db,fs} = await getFirebaseAP();
         const tipo = apTipoAdjunto(dataUrl);
-        await fs.setDoc(fs.doc(db,'area_parrilla',docId,'adjuntos',slot), {
-            data: dataUrl, tipo, actualizadoEn: new Date().toISOString()
+        // Limpia trozos previos de este slot (si se está reemplazando un archivo por otro más chico)
+        await apBorrarAdjunto(docId, slot);
+        const total = Math.max(1, Math.ceil(dataUrl.length / AP_CHUNK_SIZE));
+        const batch = fs.writeBatch(db);
+        batch.set(fs.doc(db,'area_parrilla',docId,'adjuntos',slot), {
+            tipo, chunks: total, actualizadoEn: new Date().toISOString()
         });
+        for(let i=0;i<total;i++){
+            const trozo = dataUrl.slice(i*AP_CHUNK_SIZE, (i+1)*AP_CHUNK_SIZE);
+            batch.set(fs.doc(db,'area_parrilla',docId,'adjuntos',slot,'partes',String(i)), { data: trozo });
+        }
+        await batch.commit();
         return tipo;
     }
     async function apLeerAdjunto(docId, slot){
         try {
             const {db,fs} = await getFirebaseAP();
-            const snap = await fs.getDoc(fs.doc(db,'area_parrilla',docId,'adjuntos',slot));
-            return snap.exists() ? (snap.data().data || '') : '';
+            const metaSnap = await fs.getDoc(fs.doc(db,'area_parrilla',docId,'adjuntos',slot));
+            if(!metaSnap.exists()) return '';
+            const meta = metaSnap.data();
+            if(meta.data) return meta.data; // formato viejo: base64 completo en el doc meta
+            const n = meta.chunks || 0;
+            if(!n) return '';
+            const partes = await Promise.all(
+                Array.from({length:n}, (_,i)=>fs.getDoc(fs.doc(db,'area_parrilla',docId,'adjuntos',slot,'partes',String(i))))
+            );
+            return partes.map(s=>s.exists() ? (s.data().data||'') : '').join('');
         } catch(e){ console.warn('[AP] leer adjunto', slot, e.message); return ''; }
     }
     async function apBorrarAdjunto(docId, slot){
         try {
             const {db,fs} = await getFirebaseAP();
-            await fs.deleteDoc(fs.doc(db,'area_parrilla',docId,'adjuntos',slot));
+            const metaRef = fs.doc(db,'area_parrilla',docId,'adjuntos',slot);
+            const metaSnap = await fs.getDoc(metaRef).catch(()=>null);
+            const n = (metaSnap && metaSnap.exists()) ? (metaSnap.data().chunks||0) : 0;
+            const batch = fs.writeBatch(db);
+            batch.delete(metaRef);
+            for(let i=0;i<n;i++){
+                batch.delete(fs.doc(db,'area_parrilla',docId,'adjuntos',slot,'partes',String(i)));
+            }
+            await batch.commit();
         } catch(e){ /* silencioso: puede no existir */ }
     }
     // Hidrata p.imgUrl / p.imgUrl2 desde la subcolección solo cuando se necesita mostrar.
@@ -5923,18 +5964,12 @@ cargarModuloMarketing();
                 r.onerror = rej;
                 r.readAsDataURL(file);
             });
-            // Comprimir imágenes pesadas para que quepan en Firestore (y carguen más rápido)
+            // Comprimir imágenes pesadas (mejora tiempos de carga). Los PDFs se guardan tal cual:
+            // apGuardarAdjunto los fragmenta en trozos <1MB dentro de la subcolección adjuntos/,
+            // así que ya no hay límite de 1 MB aquí.
             dataUrl = await apComprimirImagen(dataUrl);
-            if(!dataUrl.startsWith('data:application/pdf') && dataUrl.length > 1040000){
-                alert('La imagen sigue siendo muy grande incluso comprimida. Reduce la resolución del escaneo.');
-                return;
-            }
-            if(dataUrl.startsWith('data:application/pdf') && dataUrl.length > 1040000){
-                alert('El PDF pesa más de 1 MB y no se puede comprimir aquí. Redúcelo (ej. ilovepdf.com) y vuelve a subirlo.');
-                return;
-            }
             const {db,fs} = await window.getFirebaseAP();
-            // Guardar el base64 en la subcolección adjuntos/completado (su propio presupuesto de 1 MB)
+            // Guardar el base64 fragmentado en la subcolección adjuntos/completado
             const tipoAdj = await apGuardarAdjunto(docId, 'completado', dataUrl);
             await fs.updateDoc(fs.doc(db,'area_parrilla',docId), { tieneImg2:true, imgTipo2:tipoAdj, imgUrl2: fs.deleteField() });
             const p = (window.apDocs||[]).find(x=>x.id===docId);
