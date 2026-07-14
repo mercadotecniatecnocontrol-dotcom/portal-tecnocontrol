@@ -1738,8 +1738,8 @@ function renderNuevaSol(){
         <div class="fm-card" style="background:#EFF6FF;border:1.5px solid #BFDBFE;padding:14px;border-radius:10px">
           <div style="font-size:13px;font-weight:800;color:#1D4ED8;margin-bottom:4px">Check list semanal ya completado</div>
           <div style="font-size:12px;color:#1E40AF;line-height:1.4;margin-bottom:10px">Confirmo que mi vehículo está en las mismas condiciones que mi checklist de esta semana.</div>
-          <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#1E3A5F;cursor:pointer;margin-bottom:10px">
-            <input type="checkbox" id="fm-confirm-chk" onchange="window._fmActualizarHint?.()" style="width:16px;height:16px">
+          <label id="fm-confirm-lbl" style="display:flex;align-items:center;gap:8px;font-size:12px;color:#1E3A5F;cursor:pointer;margin-bottom:10px;padding:8px 10px;border-radius:8px;border:1.5px solid #BFDBFE;background:#fff;transition:all .12s">
+            <input type="checkbox" id="fm-confirm-chk" onchange="window._fmActualizarHint?.();document.getElementById('fm-confirm-lbl').style.background=this.checked?'#DCFCE7':'#fff';document.getElementById('fm-confirm-lbl').style.borderColor=this.checked?'#86EFAC':'#BFDBFE';" style="width:20px;height:20px;accent-color:#15803D;flex-shrink:0">
             Confirmo la declaración anterior
           </label>
           <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:6px">Firma <span style="color:#DC2626">*</span></div>
