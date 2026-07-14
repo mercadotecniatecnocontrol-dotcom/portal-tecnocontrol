@@ -1958,7 +1958,7 @@ function rPanel(){
       ${kpiCard(kIco.comision,'En comisión',enComision,enComision?'Préstamo activo':'Sin comisiones activas',enComision>0?'purple':'neutral')}
       ${kpiCard(kIco.sinResp,'Sin responsable',sinResponsable,sinResponsable?'Asignar responsable':'Todos asignados',sinResponsable>0?'bad':'good')}
       ${kpiCard(kIco.polVenc,'Pólizas vencidas',polVencidas,polVencidas?'Renovar urgente':'Todas vigentes',polVencidas>0?'bad':'good')}
-      ${kpiCard(kIco.polProx,'Pólizas por vencer','${polPorVencer}',polPorVencer?'En menos de 30 días':'Sin vencimientos próximos',polPorVencer>0?'warn':'neutral')}
+      ${kpiCard(kIco.polProx,'Pólizas por vencer',polPorVencer,polPorVencer?'En menos de 30 días':'Sin vencimientos próximos',polPorVencer>0?'warn':'neutral')}
     </div>
 
     <div style="border-top:1px solid #F1F5F9;padding-top:22px">
