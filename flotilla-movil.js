@@ -1421,6 +1421,7 @@ window.adminConfirmarCambioVeh=async function(btn){
         await snap.docs[0].ref.update({ecoVinculado:String(eco),ecosVinculados:[String(eco)],vinculadoEn:new Date().toISOString()});
       }
       flRegistrarVinculacion(eco,miPerfil.email,miPerfil.nombre||miPerfil.email);
+      flSincronizarResponsable(eco,miPerfil.nombre||miPerfil.email);
       if(miPerfil){miPerfil.ecoVinculado=String(eco);miPerfil.ecosVinculados=[String(eco)];}
       toast(`ECO ${eco} vinculado permanentemente`,'ok');
     } else {
@@ -1532,6 +1533,18 @@ async function flRegistrarDesvinculacion(email,motivo){
   }catch(e){console.error('[FL uso] registrar desvinculación',e);}
 }
 
+// ── Mantiene 'Responsable Asignado' del vehículo sincronizado con quién está vinculado de verdad ──
+// Al vincularse: responsable = nombre de quien se vinculó.
+// Al desvincularse: responsable queda vacío ('—') hasta que alguien lo reasigne a mano.
+async function flSincronizarResponsable(eco,nombreOVacio){
+  if(!eco)return;
+  try{
+    const snap=await db.collection(C.VEHS).where('eco','==',String(eco)).get();
+    if(snap.empty)return;
+    await Promise.all(snap.docs.map(d=>d.ref.update({responsable:nombreOVacio||'—'})));
+  }catch(e){console.error('[FL] sincronizar responsable',e);}
+}
+
 window.fmVincular=async function(){
   const eco=document.getElementById('fm-sel-veh')?.value;
   if(!eco){toast('Selecciona un vehículo','err');return;}
@@ -1543,6 +1556,7 @@ window.fmVincular=async function(){
     if(snap.empty){await db.collection(C.USUARIOS).add(datos);}
     else{await db.collection(C.USUARIOS).doc(snap.docs[0].id).update({ecoVinculado:String(eco),ecosVinculados:[String(eco)],vinculadoEn:new Date().toISOString()});}
     flRegistrarVinculacion(eco,user.email,user.displayName||user.email);
+    flSincronizarResponsable(eco,user.displayName||user.email);
     miPerfil={...miPerfil,...datos};
     guardarUltimoEco(eco);
     await cargarMiVeh();
@@ -2758,7 +2772,7 @@ window.fmVerSol=function(id){
         const chkF=s.chkFotos||{};
         const chkEntries=Object.entries(chkF).filter(([k,v])=>v);
         if(!chkEntries.length)return'';
-        const CHK=window.CHK_CATS_M={Cristales:['Medallón delantero','Vidrio trasero','Lat. der. delantero','Lat. der. trasero','Lat. izq. delantero','Lat. izq. trasero'],Espejos:['Retrovisor izquierdo','Retrovisor derecho','Espejo central'],Neumáticos:['Llanta del. der.','Llanta del. izq.','Llanta tra. der.','Llanta tra. izq.','Refacción'],Interiores:['Póliza / Manual','Radio','Pantallas','Asientos','Tablero','Tapetes'],Motor:['Batería','Tapón agua','Tapón radiador','Tapón dirección'],Cajuela:['Herramienta','Cables arranque','Extintor','Llave L','Llave cruz'],Legal:['Tarjeta circulación']};
+        const CHK=window.CHK_CATS_M={Cristales:['Medallón delantero','Vidrio trasero','Lat. der. delantero','Lat. der. trasero','Lat. izq. delantero','Lat. izq. trasero'],Espejos:['Retrovisor izquierdo','Retrovisor derecho','Espejo central'],Neumáticos:['Llanta del. der.','Llanta del. izq.','Llanta tra. der.','Llanta tra. izq.','Refacción'],Interiores:['Póliza / Manual','Radio','Pantallas','Asientos','Tablero','Tapetes'],Motor:['Batería','Tapón agua','Tapón radiador','Tapón dirección','Limpiaparabrisas en buen estado'],Cajuela:['Herramienta','Cables arranque','Extintor','Llave L','Llave cruz'],Legal:['Tarjeta circulación']};
         const getL=k=>{for(const items of Object.values(CHK)){const f=items.find(it=>it.toLowerCase().replace(/[^a-z0-9]/g,'')===k.toLowerCase().replace(/[^a-z0-9]/g,''));if(f)return f;}return k;};
         const baseIdx=window._fmEvCache.length;
         chkEntries.forEach(([k,src])=>window._fmEvCache.push({src,meta:{codigo:k,tipo:'checklist'}}));
@@ -2768,7 +2782,7 @@ window.fmVerSol=function(id){
         </div>`;
       })()}
       ${(()=>{
-        const CHK=window.CHK_CATS_M={Cristales:['Medallón delantero','Vidrio trasero','Lat. der. delantero','Lat. der. trasero','Lat. izq. delantero','Lat. izq. trasero'],Espejos:['Retrovisor izquierdo','Retrovisor derecho','Espejo central'],Neumáticos:['Llanta del. der.','Llanta del. izq.','Llanta tra. der.','Llanta tra. izq.','Refacción'],Interiores:['Póliza / Manual','Radio','Pantallas','Asientos','Tablero','Tapetes'],Motor:['Batería','Tapón agua','Tapón radiador','Tapón dirección'],Cajuela:['Herramienta','Cables arranque','Extintor','Llave L','Llave cruz'],Legal:['Tarjeta circulación']};
+        const CHK=window.CHK_CATS_M={Cristales:['Medallón delantero','Vidrio trasero','Lat. der. delantero','Lat. der. trasero','Lat. izq. delantero','Lat. izq. trasero'],Espejos:['Retrovisor izquierdo','Retrovisor derecho','Espejo central'],Neumáticos:['Llanta del. der.','Llanta del. izq.','Llanta tra. der.','Llanta tra. izq.','Refacción'],Interiores:['Póliza / Manual','Radio','Pantallas','Asientos','Tablero','Tapetes'],Motor:['Batería','Tapón agua','Tapón radiador','Tapón dirección','Limpiaparabrisas en buen estado'],Cajuela:['Herramienta','Cables arranque','Extintor','Llave L','Llave cruz'],Legal:['Tarjeta circulación']};
         const getL=k=>{for(const items of Object.values(CHK)){const f=items.find(it=>it.toLowerCase().replace(/[^a-z0-9]/g,'')===k.toLowerCase().replace(/[^a-z0-9]/g,''));if(f)return f;}return k;};
         const noItems=Object.entries(s.checklist||{}).filter(([k,v])=>v==='no');
         const siItems=Object.entries(s.checklist||{}).filter(([k,v])=>v==='si');
@@ -2854,9 +2868,11 @@ window.abrirPerfil=function(){
 window._desvinc=async function(){
   if(!confirm('¿Desvincular tus unidades asignadas? Podrás seleccionar cualquier otra.'))return;
   try{
+    const ecosPrevios=(Array.isArray(miPerfil.ecosVinculados)?miPerfil.ecosVinculados:(miPerfil.ecoVinculado?[miPerfil.ecoVinculado]:[])).slice();
     const snap=await db.collection(C.USUARIOS).where('email','==',miPerfil.email).get();
     if(!snap.empty)await snap.docs[0].ref.update({ecoVinculado:null,ecosVinculados:[],desvinculadoEn:new Date().toISOString()});
     flRegistrarDesvinculacion(miPerfil.email,'Autodesvinculación desde la app');
+    ecosPrevios.forEach(eco=>flSincronizarResponsable(eco,''));
     miPerfil.ecoVinculado=null;
     miPerfil.ecosVinculados=[];
     miVeh=null;
@@ -2873,7 +2889,7 @@ window._desvinc=async function(){
 // ── PDF SOLICITUD (MÓVIL) ──
 window.fmGenerarPDF=function(id){
   const s=misSols.find(x=>x.id===id);if(!s){toast('No encontrada','err');return;}
-  const CHK={Cristales:['Medallón delantero','Vidrio trasero','Lat. der. delantero','Lat. der. trasero','Lat. izq. delantero','Lat. izq. trasero'],Espejos:['Retrovisor izquierdo','Retrovisor derecho','Espejo central'],Neumáticos:['Llanta del. der.','Llanta del. izq.','Llanta tra. der.','Llanta tra. izq.','Refacción'],Interiores:['Póliza / Manual','Radio','Pantallas','Asientos','Tablero','Tapetes'],Motor:['Batería','Tapón agua','Tapón radiador','Tapón dirección'],Cajuela:['Herramienta','Cables arranque','Extintor','Llave L','Llave cruz'],Legal:['Tarjeta circulación']};
+  const CHK={Cristales:['Medallón delantero','Vidrio trasero','Lat. der. delantero','Lat. der. trasero','Lat. izq. delantero','Lat. izq. trasero'],Espejos:['Retrovisor izquierdo','Retrovisor derecho','Espejo central'],Neumáticos:['Llanta del. der.','Llanta del. izq.','Llanta tra. der.','Llanta tra. izq.','Refacción'],Interiores:['Póliza / Manual','Radio','Pantallas','Asientos','Tablero','Tapetes'],Motor:['Batería','Tapón agua','Tapón radiador','Tapón dirección','Limpiaparabrisas en buen estado'],Cajuela:['Herramienta','Cables arranque','Extintor','Llave L','Llave cruz'],Legal:['Tarjeta circulación']};
   const getL=k=>{for(const items of Object.values(CHK)){const f=items.find(it=>it.toLowerCase().replace(/[^a-z0-9]/g,'')===k.toLowerCase().replace(/[^a-z0-9]/g,''));if(f)return f;}return k;};
   const noItems=Object.entries(s.checklist||{}).filter(([k,v])=>v==='no');
   const chkF=Object.entries(s.chkFotos||{}).filter(([k,v])=>v);
@@ -2919,7 +2935,7 @@ window.fmGenerarPDF=function(id){
 // ── COMPARTIR WHATSAPP (MÓVIL) ──
 window.fmCompartirWA=function(id){
   const s=misSols.find(x=>x.id===id);if(!s)return;
-  const CHK={Cristales:['Medallón delantero','Vidrio trasero','Lat. der. delantero','Lat. der. trasero','Lat. izq. delantero','Lat. izq. trasero'],Espejos:['Retrovisor izquierdo','Retrovisor derecho','Espejo central'],Neumáticos:['Llanta del. der.','Llanta del. izq.','Llanta tra. der.','Llanta tra. izq.','Refacción'],Interiores:['Póliza / Manual','Radio','Pantallas','Asientos','Tablero','Tapetes'],Motor:['Batería','Tapón agua','Tapón radiador','Tapón dirección'],Cajuela:['Herramienta','Cables arranque','Extintor','Llave L','Llave cruz'],Legal:['Tarjeta circulación']};
+  const CHK={Cristales:['Medallón delantero','Vidrio trasero','Lat. der. delantero','Lat. der. trasero','Lat. izq. delantero','Lat. izq. trasero'],Espejos:['Retrovisor izquierdo','Retrovisor derecho','Espejo central'],Neumáticos:['Llanta del. der.','Llanta del. izq.','Llanta tra. der.','Llanta tra. izq.','Refacción'],Interiores:['Póliza / Manual','Radio','Pantallas','Asientos','Tablero','Tapetes'],Motor:['Batería','Tapón agua','Tapón radiador','Tapón dirección','Limpiaparabrisas en buen estado'],Cajuela:['Herramienta','Cables arranque','Extintor','Llave L','Llave cruz'],Legal:['Tarjeta circulación']};
   const getL=k=>{for(const items of Object.values(CHK)){const f=items.find(it=>it.toLowerCase().replace(/[^a-z0-9]/g,'')===k.toLowerCase().replace(/[^a-z0-9]/g,''));if(f)return f;}return k;};
   const noItems=Object.entries(s.checklist||{}).filter(([k,v])=>v==='no');
   const txt=[
@@ -3697,6 +3713,10 @@ window.utilConfirmarFirma=async function(){
           });
           if(miPerfil)miPerfil.ecosVinculados=[String(ecoRecibido)];
         }
+        // Sincronizar responsable del vehículo + bitácora de uso con quien recibió
+        flRegistrarVinculacion(ecoRecibido,userEmail,userName);
+        flSincronizarResponsable(ecoRecibido,userName);
+        if(entregaEmail)flRegistrarDesvinculacion(entregaEmail,'Transferencia completada — entregó el vehículo');
         if(miPerfil){miPerfil.ecoVinculado=ecoRecibido;}
         guardarUltimoEco(ecoRecibido);
         try{
