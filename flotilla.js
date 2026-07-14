@@ -314,7 +314,8 @@ function injectCSS(){
 .fl-tb-logo img{height:30px;}
 .fl-tb-sep{width:30px;height:1px;background:rgba(255,255,255,.12);margin:4px 0;flex-shrink:0;}
 .fl-tab-btn{width:40px;height:40px;border-radius:10px;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;color:rgba(255,255,255,.5);background:rgba(255,255,255,.06);flex-shrink:0;}
-.fl-tb-siniestro{background:#DC2626!important;color:#fff!important;animation:flSinPulse 2.2s ease-in-out infinite;}
+.fl-tb-siniestro{background:#DC2626!important;color:#fff!important;animation:flSinPulse 3s ease-in-out infinite;}
+.fl-tb-siniestro:hover{animation-play-state:paused}
 .fl-tb-siniestro:hover{background:#B91C1C!important;}
 .fl-tb-siniestro.fl-sin-activo{animation:flSinPulseActivo .9s ease-in-out infinite;}
 @keyframes flSinPulse{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.45);}50%{box-shadow:0 0 0 6px rgba(220,38,38,0);}}
@@ -2082,27 +2083,14 @@ function rPanel(){
       </div>
     </div>
 
-    ${atencion.length?`
-    <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin-bottom:9px">Requieren atención (${atencionMap.size})</div>
-    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:28px">
-      ${atencion.map(({v,motivos})=>{
-        const peor=motivos.some(m=>m.tono==='bad')?'bad':'warn';
-        const tonos={bad:{bg:'#FEF2F2',ic:'#B91C1C'},warn:{bg:'#FFFBEB',ic:'#B45309'}};
-        const t=tonos[peor];
-        return`<div onclick="flSbSel('${v.id}')" style="display:flex;align-items:center;gap:14px;padding:14px 16px;border:1px solid #E8EDF5;border-radius:12px;cursor:pointer;transition:box-shadow .15s" onmouseover="this.style.boxShadow='0 2px 10px rgba(0,0,0,.06)'" onmouseout="this.style.boxShadow='none'">
-          <div style="width:44px;height:44px;border-radius:10px;background:${t.bg};display:flex;align-items:center;justify-content:center;flex:0 0 auto;color:${t.ic}">${hEmo(v.tipo)}</div>
-          <div style="flex:1;min-width:0">
-            <div style="font-size:14px;font-weight:800">ECO ${v.eco} · ${v.unidad||'—'}</div>
-            <div style="font-size:12px;color:#64748B;margin-top:2px">${v.responsable&&v.responsable!=='—'?v.responsable:'Sin responsable asignado'}</div>
-          </div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:220px">
-            ${motivos.slice(0,2).map(m=>`<span style="font-size:10.5px;font-weight:700;padding:4px 10px;border-radius:100px;background:${tonos[m.tono].bg};color:${tonos[m.tono].ic};white-space:nowrap">${m.texto}</span>`).join('')}
-          </div>
-        </div>`;
-      }).join('')}
-    </div>`:`<div style="font-size:12px;color:#94A3B8;margin-bottom:28px">Ningún vehículo requiere atención inmediata en este momento.</div>`}
+    <div onclick="flVista('mapa')" style="display:flex;align-items:center;gap:12px;padding:14px 18px;border:1px solid #E8EDF5;border-radius:12px;cursor:pointer;margin-bottom:22px;transition:box-shadow .15s" onmouseover="this.style.boxShadow='0 2px 10px rgba(0,0,0,.06)'" onmouseout="this.style.boxShadow='none'">
+      <div style="width:40px;height:40px;border-radius:10px;background:#EFF8FF;display:flex;align-items:center;justify-content:center;color:#0369A1;flex:0 0 auto">${I.mappin}</div>
+      <div style="flex:1"><div style="font-size:13.5px;font-weight:800">Mapa en tiempo real</div><div style="font-size:11.5px;color:#64748B;margin-top:1px">${flUbicaciones.filter(u=>u.lat&&u.lng).length} vehículos con ubicación reportada</div></div>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+    </div>
 
-    <div style="border-top:1px solid #F1F5F9;padding-top:22px">
+    ${atencion.length?`
+    <div style="border-top:1px solid #F1F5F9;padding-top:22px;margin-bottom:22px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
         <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8">Solicitudes y actividad</div>
         <button onclick="flVista('calendario')" style="font-size:10.5px;font-weight:700;color:#64748B;background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:4px">${I.calendar||''} Ver calendario</button>
@@ -2128,6 +2116,51 @@ function rPanel(){
       </div>
       ${tSols(flS.filter(s=>!['Cerrada','Rechazada'].includes(s.estatus)).slice(0,8))}
     </div>
+
+    <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin-bottom:9px">Requieren atención (${atencionMap.size})</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:28px">
+      ${atencion.map(({v,motivos})=>{
+        const peor=motivos.some(m=>m.tono==='bad')?'bad':'warn';
+        const tonos={bad:{bg:'#FEF2F2',ic:'#B91C1C'},warn:{bg:'#FFFBEB',ic:'#B45309'}};
+        const t=tonos[peor];
+        return`<div onclick="flSbSel('${v.id}')" style="display:flex;align-items:center;gap:14px;padding:14px 16px;border:1px solid #E8EDF5;border-radius:12px;cursor:pointer;transition:box-shadow .15s" onmouseover="this.style.boxShadow='0 2px 10px rgba(0,0,0,.06)'" onmouseout="this.style.boxShadow='none'">
+          <div style="width:44px;height:44px;border-radius:10px;background:${t.bg};display:flex;align-items:center;justify-content:center;flex:0 0 auto;color:${t.ic}">${hEmo(v.tipo)}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:14px;font-weight:800">ECO ${v.eco} · ${v.unidad||'—'}</div>
+            <div style="font-size:12px;color:#64748B;margin-top:2px">${v.responsable&&v.responsable!=='—'?v.responsable:'Sin responsable asignado'}</div>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:220px">
+            ${motivos.slice(0,2).map(m=>`<span style="font-size:10.5px;font-weight:700;padding:4px 10px;border-radius:100px;background:${tonos[m.tono].bg};color:${tonos[m.tono].ic};white-space:nowrap">${m.texto}</span>`).join('')}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`:`<div style="border-top:1px solid #F1F5F9;padding-top:22px;margin-bottom:22px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8">Solicitudes y actividad</div>
+        <button onclick="flVista('calendario')" style="font-size:10.5px;font-weight:700;color:#64748B;background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:4px">${I.calendar||''} Ver calendario</button>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:16px">
+        <div onclick="flPipelineModal('Solicitud')" style="background:#F5F3FF;border-radius:12px;padding:12px 14px;cursor:pointer"><div style="font-size:20px;font-weight:900;color:#6D28D9">${solPorEst('Solicitud')}</div><div style="font-size:11px;color:#6D28D9;margin-top:2px">Solicitud</div></div>
+        <div onclick="flPipelineModal('Evaluación')" style="background:#EFF8FF;border-radius:12px;padding:12px 14px;cursor:pointer"><div style="font-size:20px;font-weight:900;color:#0369A1">${solPorEst('Evaluación')}</div><div style="font-size:11px;color:#0369A1;margin-top:2px">Evaluación</div></div>
+        <div onclick="flPipelineModal('Servicio')" style="background:#FFFBEB;border-radius:12px;padding:12px 14px;cursor:pointer"><div style="font-size:20px;font-weight:900;color:#B45309">${solPorEst('Servicio')}</div><div style="font-size:11px;color:#B45309;margin-top:2px">Servicio</div></div>
+        <div onclick="flPipelineModal('Rechazada')" style="background:#FEF2F2;border-radius:12px;padding:12px 14px;cursor:pointer"><div style="font-size:20px;font-weight:900;color:#B91C1C">${solPorEst('Rechazada')}</div><div style="font-size:11px;color:#B91C1C;margin-top:2px">Rechazadas</div></div>
+        <div onclick="flPipelineModal('Cerrada')" style="background:#F0FDF4;border-radius:12px;padding:12px 14px;cursor:pointer"><div style="font-size:20px;font-weight:900;color:#15803D">${solPorEst('Cerrada')}</div><div style="font-size:11px;color:#15803D;margin-top:2px">Cerradas</div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+        <div class="fl-tw"><div style="padding:10px 14px;border-bottom:1px solid #F1F5F9;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8">Solicitudes por tipo</div>
+          <div style="padding:12px 14px">${top.length?top.map(([t,n])=>`<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:11px;font-weight:600;margin-bottom:3px"><span>${t}</span><span style="color:#64748B">${n}</span></div><div style="height:4px;background:#F1F5F9;border-radius:100px;overflow:hidden"><div style="height:100%;width:${Math.round(n/mx*100)}%;background:linear-gradient(90deg,#2563EB,#7C3AED);border-radius:100px"></div></div></div>`).join(''):'<div style="color:#94A3B8;font-size:11px;text-align:center;padding:18px 0">Sin solicitudes aún</div>'}</div>
+        </div>
+        <div class="fl-tw"><div style="padding:10px 14px;border-bottom:1px solid #F1F5F9;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8">Flujo de solicitudes</div>
+          <div style="padding:12px 14px;display:flex;flex-direction:column;gap:7px">${Object.entries(porEst).map(([e,n])=>`<div onclick="flPipelineModal('${e}')" style="display:flex;align-items:center;gap:8px;cursor:pointer;border-radius:8px;padding:3px 5px;margin:-3px -5px;transition:background .12s" onmouseover="this.style.background='#F8FAFC'" onmouseout="this.style.background=''">${hBadge(e)}<div style="flex:1;height:4px;background:#F1F5F9;border-radius:100px;overflow:hidden"><div style="height:100%;width:${flS.length?Math.round(n/flS.length*100):0}%;background:#2563EB;border-radius:100px"></div></div><span style="font-size:11px;font-weight:700;min-width:14px;text-align:right">${n}</span>${n>0?`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>`:''}</div>`).join('')}</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:#94A3B8">Solicitudes activas</div>
+        <button onclick="flPipelineModal('Cerrada')" style="font-size:9px;font-weight:700;color:#64748B;background:none;border:none;cursor:pointer;text-decoration:underline">Ver cerradas →</button>
+      </div>
+      ${tSols(flS.filter(s=>!['Cerrada','Rechazada'].includes(s.estatus)).slice(0,8))}
+    </div>
+    <div style="font-size:12px;color:#94A3B8">Ningún vehículo requiere atención inmediata en este momento.</div>`}
   `));
 }
 
