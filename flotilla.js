@@ -606,7 +606,7 @@ function buildHTML(){
       </button>
     </div>
     <div style="position:relative;margin-left:auto">
-      <button class="fl-tab-btn fl-tb-siniestro" id="fl-tb-siniestro" onclick="flAbrirSiniestro()" title="Reportar siniestro">
+      <button class="fl-tab-btn fl-tb-siniestro" id="fl-tb-siniestro" onclick="flVista('siniestros')" title="Siniestros — historial y reportar">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
       </button>
     </div>
@@ -836,6 +836,7 @@ function ldSiniestros(){
         resolve();
         const btn=document.getElementById('fl-tb-siniestro');
         if(btn)btn.classList.toggle('fl-sin-activo',flSiniestros.some(x=>x.estatus==='activo'));
+        if(window._flInitDone&&vistaAct==='siniestros')rSiniestrosVista();
       },(err)=>{console.error('[FL] onSnapshot siniestros',err);if(!flSiniestros)flSiniestros=[];resolve();});
     }catch(e){console.error('[FL] ldSiniestros',e);flSiniestros=[];resolve();}
   });
@@ -984,6 +985,7 @@ window.flVista=function(v){
   else if(v==='admin')rAdmin();
   else if(v==='calendario')rCalendarioVista();
   else if(v==='mapa')rMapaVista();
+  else if(v==='siniestros')rSiniestrosVista();
 };
 function setContent(h){const c=document.getElementById('fl-content');if(c)c.innerHTML=h;}
 function padded(h){return`<div style="padding:16px">${h}</div>`;}
@@ -2018,7 +2020,6 @@ function rPanel(){
   const com=flV.filter(v=>v.status==='comision').length;
   const baj=flV.filter(v=>v.status==='baja').length;
   const pend=flS.filter(s=>!['Cerrada','Rechazada'].includes(s.estatus)).length;
-  const alts=[];flV.forEach(v=>{const d=hD(v.pv);if(d!==null&&d<90)alts.push({e:d<0,t:`ECO ${v.eco}`,sub:d<0?'Póliza vencida':`Póliza vence en ${d} días`});});
   const porEst={Solicitud:0,'Evaluación':0,Servicio:0,Rechazada:0,Cerrada:0};
   const normPorEst={
     'Validación':'Evaluación','Validada':'Evaluación','Cotización':'Evaluación','Aprobación':'Evaluación','Aprobada':'Evaluación',
@@ -2029,70 +2030,77 @@ function rPanel(){
   const top=Object.entries(porTipo).sort((a,b)=>b[1]-a[1]).slice(0,5);
   const mx=top[0]?.[1]||1;
 
-  // Iconos compactos para las tarjetas KPI (mismo estilo de trazo que el resto del módulo)
-  const kIco={
-    activos:`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17h14M5 17a2 2 0 100 4 2 2 0 000-4zm14 0a2 2 0 100 4 2 2 0 000-4zM5 17l1.5-6h11L19 17M6.5 11l1.2-3.6a2 2 0 011.9-1.4h4.8a2 2 0 011.9 1.4L17.5 11"/></svg>`,
-    libres:`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>`,
-    taller:`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 015.4 5.4L13 19l-4 1 1-4 7.7-7.7a4 4 0 00-5.4-5.4L9 6.3l-4-1-1 4 3 3"/></svg>`,
-    comision:`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8h10M7 8l3-3M7 8l3 3M17 16H7M17 16l-3-3M17 16l-3 3"/></svg>`,
-    sinResp:`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="17" y1="8" x2="22" y2="13"/><line x1="22" y1="8" x2="17" y2="13"/></svg>`,
-    polVenc:`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M9.5 12.5l5 5M14.5 12.5l-5 5"/></svg>`,
-    polProx:`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><circle cx="12" cy="15" r="3.2"/><path d="M12 13.8V15l1 .7"/></svg>`,
-  };
-
-  const kpiCard=(ico,label,val,sub,tone,onclick)=>{
-    const tones={
-      neutral:{bg:'#F8FAFD',fg:'#0A1628',ic:'#475569'},
-      good:{bg:'#F0FDF4',fg:'#15803D',ic:'#15803D'},
-      info:{bg:'#EFF8FF',fg:'#0369A1',ic:'#0369A1'},
-      warn:{bg:'#FFFBEB',fg:'#B45309',ic:'#B45309'},
-      bad:{bg:'#FEF2F2',fg:'#B91C1C',ic:'#B91C1C'},
-      purple:{bg:'#F5F3FF',fg:'#6D28D9',ic:'#6D28D9'},
-    };
-    const t=tones[tone]||tones.neutral;
-    return`<div ${onclick?`onclick="${onclick}"`:''} style="background:${t.bg};border-radius:14px;padding:16px 18px;${onclick?'cursor:pointer;':''}transition:transform .15s" ${onclick?`onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform=''"`:''}>
-      <div style="width:30px;height:30px;border-radius:9px;background:rgba(255,255,255,.65);display:flex;align-items:center;justify-content:center;color:${t.ic};margin-bottom:10px">${ico}</div>
-      <div style="font-size:26px;font-weight:900;letter-spacing:-1px;color:${t.fg};line-height:1">${val}</div>
-      <div style="font-size:11.5px;font-weight:700;color:${t.fg};margin-top:4px">${label}</div>
-      <div style="font-size:10px;color:#94A3B8;margin-top:2px">${sub}</div>
-    </div>`;
-  };
-
   const activos=flV.filter(v=>v.status==='activo').length;
   const enTaller=flV.filter(v=>v.status==='taller').length;
   const enComision=flV.filter(v=>v.status==='comision').length;
-  const sinResponsable=flV.filter(v=>v.status!=='baja'&&(!v.responsable||v.responsable==='—')).length;
+  const sinResponsable=flV.filter(v=>v.status!=='baja'&&(!v.responsable||v.responsable==='—'));
   const ocupadosApp=window._flUsuariosMap||{};
   const libresAhora=flV.filter(v=>v.status==='activo'&&!ocupadosApp[String(v.eco)]).length;
-  const polVencidas=flV.filter(v=>{const d=hD(v.pv);return d!==null&&d<0;}).length;
-  const polPorVencer=flV.filter(v=>{const d=hD(v.pv);return d!==null&&d>=0&&d<30;}).length;
+  const vencidas=flV.filter(v=>{const d=hD(v.pv);return d!==null&&d<0;});
+  const porVencer=flV.filter(v=>{const d=hD(v.pv);return d!==null&&d>=0&&d<30;});
   const solPorEst=(e)=>flS.filter(s=>s.estatus===e||(e==='Evaluación'&&['Validación','Validada','Cotización','Aprobación','Aprobada'].includes(s.estatus))||(e==='Servicio'&&['Pagos','Cierre'].includes(s.estatus))).length;
 
+  // Vehículos que realmente necesitan atención hoy (taller, sin responsable, póliza vencida/por vencer)
+  const atencionMap=new Map();
+  const marcar=(v,texto,tono)=>{
+    if(!atencionMap.has(v.id))atencionMap.set(v.id,{v,motivos:[]});
+    atencionMap.get(v.id).motivos.push({texto,tono});
+  };
+  flV.filter(v=>v.status==='taller').forEach(v=>marcar(v,'En taller','warn'));
+  sinResponsable.forEach(v=>marcar(v,'Sin responsable','bad'));
+  vencidas.forEach(v=>marcar(v,'Póliza vencida','bad'));
+  porVencer.forEach(v=>marcar(v,`Póliza vence en ${hD(v.pv)} días`,'warn'));
+  const atencion=[...atencionMap.values()].slice(0,6);
+
+  const heroKpi=(ico,val,label,tono)=>{
+    const colores={good:'#5DCAA5',warn:'#FAC775',bad:'#F09595',neutral:'#7C93B8'};
+    return`<div style="background:rgba(255,255,255,.06);border-radius:12px;padding:12px 14px">
+      <div style="color:${colores[tono]||colores.neutral}">${ico}</div>
+      <div style="font-size:22px;font-weight:900;color:#fff;margin-top:8px">${val}</div>
+      <div style="font-size:11px;color:#7C93B8;margin-top:2px">${label}</div>
+    </div>`;
+  };
+  const icoActivos=`<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17h14M5 17a2 2 0 100 4 2 2 0 000-4zm14 0a2 2 0 100 4 2 2 0 000-4zM5 17l1.5-6h11L19 17"/></svg>`;
+  const icoLibres=`<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>`;
+  const icoTaller=`<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 015.4 5.4L13 19l-4 1 1-4 7.7-7.7a4 4 0 00-5.4-5.4L9 6.3l-4-1-1 4 3 3"/></svg>`;
+  const icoSinResp=`<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="17" y1="8" x2="22" y2="13"/><line x1="22" y1="8" x2="17" y2="13"/></svg>`;
+  const icoPoliza=`<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>`;
+
   setContent(padded(`
-    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:18px">
-      <div><div style="font-size:19px;font-weight:900;letter-spacing:-.5px">Panel General · Flotilla Vehicular</div>
-      <div style="font-size:11.5px;color:#64748B;margin-top:3px">${flV.filter(v=>v.status!=='baja').length} unidades · ${new Date().toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</div></div>
+    <div style="background:#0A1628;border-radius:16px;padding:22px 24px;margin-bottom:20px">
+      <div style="margin-bottom:16px">
+        <div style="font-size:11px;color:#7C93B8;text-transform:uppercase;letter-spacing:.6px">Flotilla vehicular</div>
+        <div style="font-size:19px;font-weight:900;color:#fff;margin-top:4px">${flV.filter(v=>v.status!=='baja').length} unidades · ${new Date().toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px">
+        ${heroKpi(icoActivos,activos,'Activos','good')}
+        ${heroKpi(icoLibres,libresAhora,'Libres ahora','neutral')}
+        ${heroKpi(icoTaller,enTaller,'En taller',enTaller>0?'warn':'good')}
+        ${heroKpi(icoSinResp,sinResponsable.length,'Sin responsable',sinResponsable.length>0?'bad':'good')}
+        ${heroKpi(icoPoliza,vencidas.length,'Pólizas vencidas',vencidas.length>0?'bad':'good')}
+        ${heroKpi(icoPoliza,porVencer.length,'Pólizas por vencer',porVencer.length>0?'warn':'good')}
+      </div>
     </div>
 
-    <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin-bottom:9px">Centro de alertas</div>
-    ${alts.length?`<div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:6px;margin-bottom:26px">
-      ${alts.slice(0,8).map(a=>`<div style="flex:0 0 168px;background:${a.e?'#FEF2F2':'#FFFBEB'};border-radius:13px;padding:13px 15px">
-        <div style="color:${a.e?'#B91C1C':'#B45309'}">${I.alert}</div>
-        <div style="font-size:20px;font-weight:900;color:${a.e?'#B91C1C':'#B45309'};margin-top:6px">${a.t}</div>
-        <div style="font-size:10.5px;color:${a.e?'#B91C1C':'#B45309'};margin-top:2px">${a.sub}</div>
-      </div>`).join('')}
-    </div>`:`<div style="font-size:11.5px;color:#94A3B8;margin-bottom:26px">Sin alertas críticas por el momento.</div>`}
-
-    <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin-bottom:9px">Estado de la flotilla</div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:12px;margin-bottom:30px">
-      ${kpiCard(kIco.activos,'Activos',activos,'Status operativo normal','good',"flSbTipo('all')")}
-      ${kpiCard(kIco.libres,'Libres ahora',libresAhora,libresAhora?'Sin nadie vinculado en la app':'Todos en uso','info')}
-      ${kpiCard(kIco.taller,'En taller',enTaller,enTaller?'Requieren atención':'Sin vehículos en taller',enTaller>0?'warn':'neutral')}
-      ${kpiCard(kIco.comision,'En comisión',enComision,enComision?'Préstamo activo':'Sin comisiones activas',enComision>0?'purple':'neutral')}
-      ${kpiCard(kIco.sinResp,'Sin responsable',sinResponsable,sinResponsable?'Asignar responsable':'Todos asignados',sinResponsable>0?'bad':'good')}
-      ${kpiCard(kIco.polVenc,'Pólizas vencidas',polVencidas,polVencidas?'Renovar urgente':'Todas vigentes',polVencidas>0?'bad':'good')}
-      ${kpiCard(kIco.polProx,'Pólizas por vencer',polPorVencer,polPorVencer?'En menos de 30 días':'Sin vencimientos próximos',polPorVencer>0?'warn':'neutral')}
-    </div>
+    ${atencion.length?`
+    <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin-bottom:9px">Requieren atención (${atencionMap.size})</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:28px">
+      ${atencion.map(({v,motivos})=>{
+        const peor=motivos.some(m=>m.tono==='bad')?'bad':'warn';
+        const tonos={bad:{bg:'#FEF2F2',ic:'#B91C1C'},warn:{bg:'#FFFBEB',ic:'#B45309'}};
+        const t=tonos[peor];
+        return`<div onclick="flSbSel('${v.id}')" style="display:flex;align-items:center;gap:14px;padding:14px 16px;border:1px solid #E8EDF5;border-radius:12px;cursor:pointer;transition:box-shadow .15s" onmouseover="this.style.boxShadow='0 2px 10px rgba(0,0,0,.06)'" onmouseout="this.style.boxShadow='none'">
+          <div style="width:44px;height:44px;border-radius:10px;background:${t.bg};display:flex;align-items:center;justify-content:center;flex:0 0 auto;color:${t.ic}">${hEmo(v.tipo)}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:14px;font-weight:800">ECO ${v.eco} · ${v.unidad||'—'}</div>
+            <div style="font-size:12px;color:#64748B;margin-top:2px">${v.responsable&&v.responsable!=='—'?v.responsable:'Sin responsable asignado'}</div>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:220px">
+            ${motivos.slice(0,2).map(m=>`<span style="font-size:10.5px;font-weight:700;padding:4px 10px;border-radius:100px;background:${tonos[m.tono].bg};color:${tonos[m.tono].ic};white-space:nowrap">${m.texto}</span>`).join('')}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`:`<div style="font-size:12px;color:#94A3B8;margin-bottom:28px">Ningún vehículo requiere atención inmediata en este momento.</div>`}
 
     <div style="border-top:1px solid #F1F5F9;padding-top:22px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
@@ -2100,11 +2108,11 @@ function rPanel(){
         <button onclick="flVista('calendario')" style="font-size:10.5px;font-weight:700;color:#64748B;background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:4px">${I.calendar||''} Ver calendario</button>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:16px">
-        ${kpiCard('','Solicitud',String(solPorEst('Solicitud')),'Por revisar','purple',"flPipelineModal('Solicitud')")}
-        ${kpiCard('','Evaluación',String(solPorEst('Evaluación')),'Cotizando / autorizando','info',"flPipelineModal('Evaluación')")}
-        ${kpiCard('','Servicio',String(solPorEst('Servicio')),'En taller / pagando','warn',"flPipelineModal('Servicio')")}
-        ${kpiCard('','Rechazadas',String(solPorEst('Rechazada')),'Esta semana','bad',"flPipelineModal('Rechazada')")}
-        ${kpiCard('','Cerradas',String(solPorEst('Cerrada')),'Expedientes completos','good',"flPipelineModal('Cerrada')")}
+        <div onclick="flPipelineModal('Solicitud')" style="background:#F5F3FF;border-radius:12px;padding:12px 14px;cursor:pointer"><div style="font-size:20px;font-weight:900;color:#6D28D9">${solPorEst('Solicitud')}</div><div style="font-size:11px;color:#6D28D9;margin-top:2px">Solicitud</div></div>
+        <div onclick="flPipelineModal('Evaluación')" style="background:#EFF8FF;border-radius:12px;padding:12px 14px;cursor:pointer"><div style="font-size:20px;font-weight:900;color:#0369A1">${solPorEst('Evaluación')}</div><div style="font-size:11px;color:#0369A1;margin-top:2px">Evaluación</div></div>
+        <div onclick="flPipelineModal('Servicio')" style="background:#FFFBEB;border-radius:12px;padding:12px 14px;cursor:pointer"><div style="font-size:20px;font-weight:900;color:#B45309">${solPorEst('Servicio')}</div><div style="font-size:11px;color:#B45309;margin-top:2px">Servicio</div></div>
+        <div onclick="flPipelineModal('Rechazada')" style="background:#FEF2F2;border-radius:12px;padding:12px 14px;cursor:pointer"><div style="font-size:20px;font-weight:900;color:#B91C1C">${solPorEst('Rechazada')}</div><div style="font-size:11px;color:#B91C1C;margin-top:2px">Rechazadas</div></div>
+        <div onclick="flPipelineModal('Cerrada')" style="background:#F0FDF4;border-radius:12px;padding:12px 14px;cursor:pointer"><div style="font-size:20px;font-weight:900;color:#15803D">${solPorEst('Cerrada')}</div><div style="font-size:11px;color:#15803D;margin-top:2px">Cerradas</div></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
         <div class="fl-tw"><div style="padding:10px 14px;border-bottom:1px solid #F1F5F9;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8">Solicitudes por tipo</div>
@@ -2184,6 +2192,64 @@ function flActualizarMarcadoresMapa(){
   });
   if(puntos.length)flMapaLeaflet.fitBounds(puntos,{padding:[30,30],maxZoom:14});
 }
+
+// ══════════════════════════════════════════════════════════════
+// SINIESTROS — vista completa (historial + reportar), no solo un modal
+// ══════════════════════════════════════════════════════════════
+let flSinFiltro='todos';
+
+function rSiniestrosVista(){
+  const activos=flSiniestros.filter(x=>x.estatus==='activo');
+  const resueltos=flSiniestros.filter(x=>x.estatus==='resuelto');
+  const lista=flSinFiltro==='activos'?activos:flSinFiltro==='resueltos'?resueltos:flSiniestros;
+  const listaOrd=lista.slice().sort((a,b)=>(b.creadoEn||'').localeCompare(a.creadoEn||''));
+
+  const tab=(k,label,n)=>`<button onclick="flSinFiltro='${k}';rSiniestrosVista()" style="padding:8px 16px;border-radius:9px;border:none;font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer;background:${flSinFiltro===k?'#0A1628':'#F1F5F9'};color:${flSinFiltro===k?'#fff':'#475569'}">${label} · ${n}</button>`;
+
+  setContent(padded(`
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+      <div>
+        <div style="font-size:18px;font-weight:900;letter-spacing:-.5px">Siniestros</div>
+        <div style="font-size:11.5px;color:#64748B;margin-top:3px">Historial completo de siniestros reportados</div>
+      </div>
+      <button onclick="flAbrirSiniestro()" style="background:#DC2626;color:#fff;border:none;border-radius:10px;padding:10px 18px;font-size:13px;font-weight:700;display:inline-flex;align-items:center;gap:7px;cursor:pointer">${I.check} Reportar siniestro</button>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:18px">
+      ${tab('todos','Todos',flSiniestros.length)}
+      ${tab('activos','Activos',activos.length)}
+      ${tab('resueltos','Resueltos',resueltos.length)}
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      ${listaOrd.length?listaOrd.map(x=>{
+        const v=flV.find(vv=>String(vv.eco)===String(x.eco));
+        const esActivo=x.estatus==='activo';
+        const dt=iso=>iso?new Date(iso).toLocaleString('es-MX',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
+        return`<div style="display:flex;gap:14px;padding:16px 18px;border-radius:14px;${esActivo?'background:#FEF2F2;border:1px solid #FECACA':'border:1px solid #E8EDF5'}">
+          <div style="width:44px;height:44px;border-radius:10px;background:${esActivo?'rgba(255,255,255,.6)':'#F8FAFD'};display:flex;align-items:center;justify-content:center;flex:0 0 auto;color:${esActivo?'#B91C1C':'#15803D'}">
+            ${esActivo?I.alert:I.check}
+          </div>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;flex-wrap:wrap">
+              <strong style="font-size:14px;${esActivo?'color:#B91C1C':''}">ECO ${x.eco}${v?` · ${v.unidad||''}`:''}</strong>
+              <span style="font-size:10px;font-weight:800;padding:2px 9px;border-radius:100px;background:${esActivo?'rgba(255,255,255,.6)':'#DCFCE7'};color:${esActivo?'#B91C1C':'#15803D'}">${esActivo?'Activo':'Resuelto'}</span>
+            </div>
+            <div style="font-size:13px;${esActivo?'color:#991B1B':'color:#374151'}">${(x.descripcion||'—').replace(/</g,'&lt;')}</div>
+            <div style="font-size:11px;${esActivo?'color:#B91C1C':'color:#94A3B8'};margin-top:6px">Reportado por ${x.reportadoPor||'—'} · ${dt(x.creadoEn)}${x.resueltoEn?` · Resuelto ${dt(x.resueltoEn)}`:''}</div>
+          </div>
+          ${esActivo?`<button onclick="flResolverSiniestroInline('${x.id}')" style="font-size:12px;padding:8px 14px;border-radius:9px;border:1px solid #FECACA;background:#fff;color:#B91C1C;font-weight:700;cursor:pointer;align-self:center;flex:0 0 auto">Marcar resuelto</button>`:''}
+        </div>`;
+      }).join(''):`<div class="fl-empty" style="min-height:140px"><h3>Sin siniestros en esta categoría</h3></div>`}
+    </div>
+  `));
+}
+
+window.flResolverSiniestroInline=async function(id){
+  if(!confirm('¿Marcar este siniestro como resuelto?'))return;
+  try{
+    await fs.updateDoc(fs.doc(db,C.SINIESTROS,id),{estatus:'resuelto',resueltoEn:new Date().toISOString()});
+    rSiniestrosVista();
+  }catch(e){alert('Error: '+e.message);}
+};
 
 // ── SOLICITUDES — layout imagen referencia ──
 
