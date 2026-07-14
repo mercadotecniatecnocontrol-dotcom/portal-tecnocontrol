@@ -4787,6 +4787,13 @@ window.navegar=(id,b)=>{
     if(id!=='area'){
         const secMapa = document.getElementById('sec-ventas-mapa');
         if(secMapa) secMapa.style.display='none';
+        // Si salimos del área a una vista general (Dashboard, Asignar Tarea, etc.),
+        // este código NUNCA pasa por verArea() — hay que apagar Flotilla aquí también
+        // o se queda pegada visible con el hueco de altura colapsada sin restaurar.
+        const _flPanel2 = document.getElementById('flotilla-dashboard');
+        if(_flPanel2) _flPanel2.style.display='none';
+        const _mainEl2 = document.querySelector('main.main');
+        if(_mainEl2) _mainEl2.style.minHeight='';
         // Restaurar elementos de sec-area ocultados en vista Ventas móvil
         const secArea = document.getElementById('sec-area');
         if(secArea && isMobile()){
