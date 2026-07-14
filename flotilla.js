@@ -341,13 +341,13 @@ function injectCSS(){
 .fl-sb-tipo{flex:1;padding:4px 0;border:1.5px solid #E2E8F0;border-radius:6px;background:#fff;font-family:inherit;font-size:9.5px;font-weight:700;cursor:pointer;text-align:center;color:#64748B;transition:all .12s;}
 .fl-sb-tipo.on{border-color:#2563EB;background:#EFF6FF;color:#2563EB;}
 .fl-sb-list{flex:1;overflow-y:auto;padding:4px;}
-.fl-sb-item{display:flex;align-items:center;gap:7px;padding:8px 10px;border-radius:7px;cursor:pointer;transition:all .1s;border-left:3px solid transparent;}
+.fl-sb-item{display:flex;align-items:center;gap:8px;padding:10px 11px;border-radius:8px;cursor:pointer;transition:all .1s;border-left:3px solid transparent;margin-bottom:4px;}
 .fl-sb-item:hover{background:#F1F5F9;}
 .fl-sb-item.on{background:#EFF6FF;border-left-color:#2563EB;font-weight:700;}
 .fl-sb-eco{font-size:11px;font-weight:800;font-family:'JetBrains Mono',monospace;color:#374151;min-width:22px;}
-.fl-sb-name{font-size:11px;font-weight:500;color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;}
+.fl-sb-name{font-size:11.5px;font-weight:600;color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;}
 .fl-sb-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
-.fl-sb-item.fl-sb-bloq{border:1px solid #EF4444;border-left:3px solid #EF4444;background:#FEF2F2;}
+.fl-sb-item.fl-sb-bloq{border:1px solid #FECACA;border-left:3px solid #EF4444;background:#FEF2F2;}
 .fl-sb-item.fl-sb-bloq:hover{background:#FEE2E2;}
 .fl-sb-bloq-info{display:flex;align-items:center;gap:3px;font-size:9px;font-weight:700;color:#DC2626;flex-shrink:0;max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .fl-sb-footer{padding:8px 10px;border-top:1px solid #E8EDF5;display:grid;grid-template-columns:1fr 1fr;gap:6px;}
@@ -606,9 +606,9 @@ function buildHTML(){
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
       </button>
     </div>
-    <div style="position:relative;margin-left:auto">
+    <div style="position:relative">
       <button class="fl-tab-btn fl-tb-siniestro" id="fl-tb-siniestro" onclick="flVista('siniestros')" title="Siniestros — historial y reportar">
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
       </button>
     </div>
     <div style="position:relative">
@@ -2902,16 +2902,25 @@ function renderRP(id){
   if(d!==null&&d<0)alts.push({e:true,t:'Póliza VENCIDA'});
   else if(d!==null&&d<90)alts.push({e:false,t:`Póliza vence en ${d} días`});
   const comAct=v.status==='comision'?flCom.find(c=>c.estatus==='En préstamo'&&(c.vehiculoId===v.id||String(c.vehiculoEco)===String(v.eco))):null;
+  const vivo=typeof flQuienUsaEcoAhora==='function'?flQuienUsaEcoAhora(v.eco):null;
+  const ultChk=flChkSem.filter(c=>String(c.vehiculoEco)===String(v.eco)).sort((a,b)=>(b.creadoEn||'').localeCompare(a.creadoEn||''))[0];
+
+  const card=(titulo,contenido,extra)=>`<div style="border:1px solid #E8EDF5;border-radius:14px;padding:14px 16px;margin:0 12px 12px">
+    <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between">${titulo}${extra||''}</div>
+    ${contenido}
+  </div>`;
+  const fila=(label,val,mono)=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;font-size:12.5px"><span style="color:#94A3B8">${label}</span><span style="font-weight:700;${mono?"font-family:'JetBrains Mono',monospace;":''}text-align:right;max-width:60%">${val}</span></div>`;
+
   rp.innerHTML=`
     ${comAct?`<div style="background:#FEF2F2;border:1px solid #FCA5A5;border-radius:9px;padding:9px 12px;margin:10px 12px 0;display:flex;align-items:flex-start;gap:8px">
-      <span style="font-size:16px;line-height:1">🔒</span>
+      <span style="color:#DC2626">${I.alert}</span>
       <div style="flex:1">
         <div style="font-size:11px;font-weight:800;color:#DC2626">Vehículo en uso</div>
         <div style="font-size:10.5px;color:#7F1D1D;margin-top:2px"><strong>Responsable:</strong> ${comAct.responsable||'—'}</div>
         ${comAct.motivo?`<div style="font-size:10.5px;color:#7F1D1D;margin-top:1px"><strong>Motivo:</strong> ${comAct.motivo}</div>`:''}
       </div>
     </div>`:''}
-    <!-- FOTO / CARRUSEL — específica por vehículo -->
+
     <div class="fl-rp-img" id="fl-rp-car">
       ${fotos.length?`
       <div style="position:relative;overflow:hidden">
@@ -2933,59 +2942,57 @@ function renderRP(id){
       </div>
     </div>
 
-    <!-- Nombre modelo grande arriba -->
-    <div style="padding:10px 12px 6px;border-bottom:1px solid #F1F5F9;background:linear-gradient(180deg,#F8FAFF,#fff);display:flex;align-items:center;justify-content:space-between">
-      <div style="font-size:11px;font-weight:700;color:#64748B;letter-spacing:.3px;margin-bottom:2px">${v.unidad||'—'}</div>
-      ${hAdm()?`<button onclick="flEditarVeh('${id}')" style="font-size:10px;font-weight:800;padding:4px 10px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:7px;cursor:pointer;color:#2563EB">✏ Editar</button>`:``}
-    </div>
-    <div class="fl-rp-head">NÚMERO ECONÓMICO</div>
-    <div class="fl-rp-num">${v.eco}</div>
-    <div class="fl-rp-row"><dt>UNIDAD / DESCRIPCIÓN</dt><dd class="big">${v.unidad||'—'}</dd></div>
-    <div class="fl-rp-row"><dt>NUMERO DE SERIE / VIN</dt><dd class="mono">${v.serie||'—'}</dd></div>
-    <div class="fl-rp-row"><dt>PLAZA / REGIÓN</dt><dd class="big">${v.plaza||'—'}</dd></div>
-    <div class="fl-rp-row"><dt>RESPONSABLE ASIGNADO</dt><dd class="big">${v.responsable||'—'}</dd></div>
-    ${v.nip?`<div class="fl-rp-row"><dt>NIP ${v.nip.includes('GAS')||v.nip.includes('gas')?v.nip:''}</dt><dd>${v.nip.includes('GAS')||v.nip.includes('gas')?'':v.nip}</dd></div>`:''}
-    <div class="fl-rp-row"><dt>PÓLIZA DE SEGURO</dt><dd class="mono">${v.pol||'—'}</dd></div>
-    <div class="fl-rp-row"><dt>PLACAS</dt><dd class="big">${v.placas||'—'}</dd></div>
-    <div class="fl-rp-row"><dt>AÑO MODELO</dt><dd class="big">${v.año||'—'}</dd></div>
-    <div class="fl-rp-row"><dt>COLOR</dt><dd>${v.color||'—'}</dd></div>
-    <div class="fl-rp-row"><dt>TIPO DE UNIDAD</dt><dd>${(v.tipo||'—').charAt(0).toUpperCase()+(v.tipo||'').slice(1)}</dd></div>
-    <div class="fl-rp-row"><dt>KILOMETRAJE ACTUAL</dt><dd class="mono">${v.km||0} km</dd></div>
-    <div class="fl-rp-row"><dt>ESTATUS</dt><dd class="${pvOk?'green':'red'}">${v.status||'activo'}</dd></div>
-    <div class="fl-rp-row"><dt>RENDIMIENTO</dt><dd>${v.rend||'—'}</dd></div>
-
-    ${alts.length?`<div class="fl-rp-alts">${alts.map(a=>`<div class="fl-rp-alt ${a.e?'e':'w'}">${I.alert} ${a.t}</div>`).join('')}</div>`:''}
-
-    <!-- EXPEDIENTE / DOCUMENTOS -->
-    <div class="fl-rp-docs">
-      <div class="fl-rp-docs-t">Expediente del vehículo</div>
-      ${[['tarjeta','Tarjeta de circulación'],['poliza','Póliza de seguro'],['verificacion','Verificación ambiental'],['factura','Factura del vehículo']].map(([t,label])=>`
-        <button class="fl-rp-doc-btn" onclick="flRPDoc('${t}','${id}')" style="display:flex;align-items:center;justify-content:space-between">
-          <span style="display:flex;align-items:center;gap:6px">${I.doc} ${label}</span>
-          ${v[`doc_${t}`]?`<span style="font-size:9px;font-weight:800;padding:2px 7px;border-radius:100px;background:#DCFCE7;color:#15803D">✓ Guardado</span>`:`<span style="font-size:9px;color:#94A3B8">Subir</span>`}
-        </button>`).join('')}
+    <div style="padding:14px 16px 4px;display:flex;align-items:flex-start;justify-content:space-between">
+      <div>
+        <div style="font-size:16px;font-weight:900;letter-spacing:-.3px">ECO ${v.eco} · ${v.unidad||'—'}</div>
+        <div style="font-size:12px;color:#64748B;margin-top:2px">${(v.tipo||'—').charAt(0).toUpperCase()+(v.tipo||'').slice(1)} · ${v.plaza||'—'} · ${v.placas||'—'}</div>
+      </div>
+      ${hAdm()?`<button onclick="flEditarVeh('${id}')" style="font-size:10px;font-weight:800;padding:6px 12px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:7px;cursor:pointer;color:#2563EB;flex:0 0 auto">${I.edit} Editar</button>`:``}
     </div>
 
-    <!-- BOTÓN COMPARAR EVIDENCIAS -->
+    ${vivo!==null?`<div style="margin:8px 16px 0"><span style="font-size:10px;font-weight:800;padding:4px 10px;border-radius:100px;background:#DCFCE7;color:#15803D">EN USO · ${vivo}</span></div>`
+      :`<div style="margin:8px 16px 0"><span style="font-size:10px;font-weight:800;padding:4px 10px;border-radius:100px;background:#F1F5F9;color:#64748B">DISPONIBLE</span></div>`}
+
+    ${alts.length?`<div style="margin:10px 12px 0">${alts.map(a=>`<div style="display:flex;align-items:center;gap:7px;padding:9px 12px;border-radius:9px;font-size:11.5px;font-weight:700;background:${a.e?'#FEF2F2':'#FFFBEB'};color:${a.e?'#B91C1C':'#B45309'};margin-bottom:6px">${I.alert} ${a.t}</div>`).join('')}</div>`:''}
+
+    ${card('Información general',`
+      ${fila('Responsable',v.responsable&&v.responsable!=='—'?v.responsable:'<span style="color:#B91C1C">Sin asignar</span>')}
+      ${fila('Número de serie / VIN',v.serie||'—',true)}
+      ${fila('Año modelo',v.año||'—')}
+      ${fila('Color',v.color||'—')}
+      ${fila('Kilometraje',v.km?`${v.km} km`:'—',true)}
+      ${fila('Estatus',`<span style="color:${pvOk?'#15803D':'#B91C1C'}">${v.status||'activo'}</span>`)}
+      ${fila('Rendimiento',v.rend||'—')}
+      ${v.nip&&!/gas/i.test(v.nip)?fila('NIP',v.nip,true):''}
+    `)}
+
+    ${card('Estado documental',`
+      <div style="display:flex;flex-direction:column;gap:2px">
+        ${[['tarjeta','Tarjeta de circulación'],['poliza','Póliza de seguro'],['verificacion','Verificación ambiental'],['factura','Factura del vehículo']].map(([t,label])=>`
+          <button onclick="flRPDoc('${t}','${id}')" style="display:flex;align-items:center;justify-content:space-between;width:100%;background:none;border:none;padding:7px 0;cursor:pointer;font-family:inherit;border-bottom:1px solid #F8FAFD">
+            <span style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:#374151">${I.doc} ${label}</span>
+            ${v[`doc_${t}`]?`<span style="font-size:9px;font-weight:800;padding:3px 8px;border-radius:100px;background:#DCFCE7;color:#15803D">Guardado</span>`:`<span style="font-size:9px;font-weight:800;padding:3px 8px;border-radius:100px;background:#FEF2F2;color:#B91C1C">Subir</span>`}
+          </button>`).join('')}
+      </div>
+    `)}
+
+    ${card('Último checklist semanal',ultChk?`
+      ${fila('Fecha',hF(ultChk.creadoEn))}
+      ${fila('Técnico',ultChk.tecnico||'—')}
+      ${fila('Kilometraje reportado',ultChk.km?`${ultChk.km} km`:'—',true)}
+      ${fila('Combustible',ultChk.gasolina!=null?`${ultChk.gasolina}%`:'—')}
+    `:`<div style="font-size:12px;color:#94A3B8;text-align:center;padding:6px 0">Sin checklist registrado</div>`)}
+
     ${histFull.filter(s=>s.evidencias?.length).length>=2?`
-    <div style="padding:10px 12px;border-bottom:1px solid #F1F5F9">
-      <button onclick="flCompararEvidencias('${v.id}')" style="width:100%;padding:9px;background:#1E3A5F;color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:12px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">
+    <div style="padding:0 12px 12px">
+      <button onclick="flCompararEvidencias('${v.id}')" style="width:100%;padding:10px;background:#1E3A5F;color:#fff;border:none;border-radius:9px;font-family:inherit;font-size:12.5px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">
         ${I.eye} Comparar evidencias del vehículo
       </button>
     </div>`:''}
 
-    <!-- HISTORIAL DE USO (vinculación / desvinculación) -->
-    <div class="fl-rp-hist">
-      <div class="fl-rp-hist-t">Historial de uso (${usosVeh.length} registro${usosVeh.length===1?'':'s'})</div>
-      ${usosVeh.length?usosVeh.map(u=>flRPUsoItem(u)).join(''):`<div style="font-size:11px;color:#94A3B8;text-align:center;padding:8px 0">Sin registros de vinculación</div>`}
-    </div>
+    ${card(`Historial de uso (${usosVeh.length})`,usosVeh.length?usosVeh.map(u=>flRPUsoItem(u)).join(''):`<div style="font-size:11px;color:#94A3B8;text-align:center;padding:8px 0">Sin registros de vinculación</div>`)}
 
-    <!-- HISTORIAL DESPLEGABLE -->
-    <div class="fl-rp-hist">
-      <div class="fl-rp-hist-t">Historial (${histFull.length} solicitud${histFull.length===1?'':'es'})</div>
-      ${hist.length?hist.map(s=>flRPHistItem(s)).join(''):`<div style="font-size:11px;color:#94A3B8;text-align:center;padding:8px 0">Sin historial</div>`}
-      ${histFull.length>hist.length?`<div style="font-size:9.5px;color:#94A3B8;text-align:center;padding:6px 0 2px">Mostrando los ${hist.length} más recientes de ${histFull.length}</div>`:''}
-    </div>
+    ${card(`Historial de solicitudes (${histFull.length})`,hist.length?hist.map(s=>flRPHistItem(s)).join('')+(histFull.length>hist.length?`<div style="font-size:9.5px;color:#94A3B8;text-align:center;padding:6px 0 0">Mostrando los ${hist.length} más recientes de ${histFull.length}</div>`:''):`<div style="font-size:11px;color:#94A3B8;text-align:center;padding:8px 0">Sin historial</div>`)}
   `;
 }
 
