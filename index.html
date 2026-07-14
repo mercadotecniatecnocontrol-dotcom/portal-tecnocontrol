@@ -4180,6 +4180,12 @@ window.verArea=(a,b)=>{
                 // (título, parrilla, actividades) para que Flotilla sea lo único visible
                 // y aparezca arriba de forma natural, sin trucos de posicionamiento.
                 if(pageHeader)pageHeader.style.display='none';
+                // .main tiene min-height:100vh fijo — con el área genérica oculta, eso
+                // deja una pantalla completa de espacio vacío antes de que aparezca
+                // flotilla-dashboard (que vive fuera de #app-portal). Se colapsa mientras
+                // estemos en Flotilla.
+                const _mainEl=document.querySelector('main.main');
+                if(_mainEl)_mainEl.style.minHeight='0';
                 if(!window._flExtrasAbiertos){
                     const _pw=document.getElementById('area-parrilla-wrap'); if(_pw)_pw.style.display='none';
                     if(_actWrap)_actWrap.style.display='none';
@@ -4188,6 +4194,8 @@ window.verArea=(a,b)=>{
             } else {
                 _flPanel.style.display = 'none';
                 if(pageHeader)pageHeader.style.display='';
+                const _mainEl=document.querySelector('main.main');
+                if(_mainEl)_mainEl.style.minHeight='';
                 if(_actWrap)_actWrap.style.display=''; // siempre visible fuera de Flotilla
             }
         }
