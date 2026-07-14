@@ -35,7 +35,7 @@ async function agregarColaborador(nombre){
   _flColabCache=null;
 }
 
-const C={VEHS:'flotilla_vehiculos',SOLS:'flotilla_solicitudes',COMIS:'flotilla_comisiones',TRANS:'flotilla_transferencias',CHKSEM:'flotilla_checklist_semanal',CFG:'flotilla_config',TAREAS:'flotilla_tareas',USOS:'flotilla_usos',USUARIOS:'fl_usuarios'};
+const C={VEHS:'flotilla_vehiculos',SOLS:'flotilla_solicitudes',COMIS:'flotilla_comisiones',TRANS:'flotilla_transferencias',CHKSEM:'flotilla_checklist_semanal',CFG:'flotilla_config',TAREAS:'flotilla_tareas',USOS:'flotilla_usos',USUARIOS:'fl_usuarios',SINIESTROS:'flotilla_siniestros'};
 
 // ══════════════════════════════════════════════════════════════
 // FUENTE ÚNICA DE VERDAD — "EN TALLER"
@@ -157,11 +157,12 @@ const I={
   chevR:`<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>`,
   eye:`<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>`,
   fleet:`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8.2 15H3a1 1 0 01-1-1v-2.6a1 1 0 011-1h5.6l1.6-2.6h3.4" opacity=".55"/><circle cx="5" cy="15" r="1.5" opacity=".55"/><circle cx="11.5" cy="15" r="1.5" opacity=".55"/><path d="M15.8 18H10a1 1 0 01-1-1v-2.6a1 1 0 011-1h6.1l1.9-2.9h3.6a1 1 0 011 1V17a1 1 0 01-1 1h-1"/><circle cx="12.4" cy="18" r="1.6"/><circle cx="19.3" cy="18" r="1.6"/></svg>`,
+  folder:`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a1 1 0 011-1h4.4l1.6 2H20a1 1 0 011 1v9a1 1 0 01-1 1H4a1 1 0 01-1-1V7z"/></svg>`,
 };
 
 // ESTADO
 let db=window.db, fs=null;
-let flV=[], flS=[], flCom=[], flTrans=[], flChkSem=[], flCfgSem={}, flUsos=[], flFlUsuarios=[];
+let flV=[], flS=[], flCom=[], flTrans=[], flChkSem=[], flCfgSem={}, flUsos=[], flFlUsuarios=[], flSiniestros=[];
 let vistaAct='panel';
 let ST={
   vehId:null, tipoVeh:'auto', vistaImg:'frente',
@@ -311,6 +312,11 @@ function injectCSS(){
 .fl-tb-logo img{height:30px;}
 .fl-tb-sep{width:30px;height:1px;background:rgba(255,255,255,.12);margin:4px 0;flex-shrink:0;}
 .fl-tab-btn{width:40px;height:40px;border-radius:10px;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;color:rgba(255,255,255,.5);background:rgba(255,255,255,.06);flex-shrink:0;}
+.fl-tb-siniestro{background:#DC2626!important;color:#fff!important;animation:flSinPulse 2.2s ease-in-out infinite;}
+.fl-tb-siniestro:hover{background:#B91C1C!important;}
+.fl-tb-siniestro.fl-sin-activo{animation:flSinPulseActivo .9s ease-in-out infinite;}
+@keyframes flSinPulse{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.45);}50%{box-shadow:0 0 0 6px rgba(220,38,38,0);}}
+@keyframes flSinPulseActivo{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.65);transform:scale(1);}50%{box-shadow:0 0 0 9px rgba(220,38,38,0);transform:scale(1.06);}}
 .fl-tab-btn:hover{background:rgba(255,255,255,.12);color:rgba(255,255,255,.9);}
 .fl-tab-btn.on{background:#2563EB;color:#fff;box-shadow:0 4px 14px rgba(37,99,235,.5);}
 .fl-tab-cnt{position:absolute;top:-4px;right:-4px;background:#EF4444;color:#fff;font-size:8px;font-weight:800;padding:1px 4px;border-radius:100px;line-height:1.2;}
@@ -584,8 +590,16 @@ function buildHTML(){
       <button class="fl-tab-btn" id="fl-tb-panorama" onclick="flAbrirPanorama()" title="Panorama de vehículos — resumen por unidad">${I.fleet}</button>
     </div>
     <div style="position:relative">
+      <button class="fl-tab-btn" id="fl-tb-extras" onclick="flToggleExtrasClick()" title="Mostrar/ocultar documentos y actividades del área">${I.folder}</button>
+    </div>
+    <div style="position:relative">
       <button class="fl-tab-btn" id="fl-tb-presupuesto" onclick="flVista('presupuesto')" title="Presupuesto vs Gastos">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+      </button>
+    </div>
+    <div style="position:relative;margin-left:auto">
+      <button class="fl-tab-btn fl-tb-siniestro" id="fl-tb-siniestro" onclick="flAbrirSiniestro()" title="Reportar siniestro">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
       </button>
     </div>
     <div style="position:relative">
@@ -631,6 +645,8 @@ function rpVacio(){return`<div class="fl-empty" style="min-height:300px"><div cl
 // INIT
 window.cargarFlotilla=async function(){
   injectCSS();buildHTML();
+  if(typeof window.flActualizarBotonExtras==='function')window.flActualizarBotonExtras();
+  { const _btnSin=document.getElementById('fl-tb-siniestro'); if(_btnSin)_btnSin.classList.toggle('fl-sin-activo',(flSiniestros||[]).some(x=>x.estatus==='activo')); }
   // Esperar hasta 5s a que window.db esté disponible
   for(let i=0;i<50&&!window.db;i++) await new Promise(r=>setTimeout(r,100));
   db=window.db;
@@ -638,7 +654,7 @@ window.cargarFlotilla=async function(){
   // Actualizar header con el usuario real tan pronto como esté disponible
   actualizarHeaderUsuario();
   fs=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-  await Promise.all([ldVehs(),ldSols(),ldComs(),ldTrans(),ldChkSem(),ldCfgSem(),ldUsos(),ldFlUsuarios()]);
+  await Promise.all([ldVehs(),ldSols(),ldComs(),ldTrans(),ldChkSem(),ldCfgSem(),ldUsos(),ldFlUsuarios(),ldSiniestros()]);
   renderSB();
   flVista('panel');
   window._flInitDone=true;
@@ -768,7 +784,21 @@ function ldUsos(){
     }catch(e){console.error('[FL] ldUsos',e);flUsos=[];resolve();}
   });
 }
-let _unsubFlUsuarios=null;
+let _unsubSiniestros=null;
+function ldSiniestros(){
+  return new Promise((resolve)=>{
+    if(_unsubSiniestros){resolve();return;}
+    try{
+      _unsubSiniestros=fs.onSnapshot(fs.collection(db,C.SINIESTROS),(s)=>{
+        flSiniestros=s.docs.map(d=>({id:d.id,...d.data()}));
+        flSiniestros.sort((a,b)=>(b.creadoEn||'').localeCompare(a.creadoEn||''));
+        resolve();
+        const btn=document.getElementById('fl-tb-siniestro');
+        if(btn)btn.classList.toggle('fl-sin-activo',flSiniestros.some(x=>x.estatus==='activo'));
+      },(err)=>{console.error('[FL] onSnapshot siniestros',err);if(!flSiniestros)flSiniestros=[];resolve();});
+    }catch(e){console.error('[FL] ldSiniestros',e);flSiniestros=[];resolve();}
+  });
+}
 function ldFlUsuarios(){
   return new Promise((resolve)=>{
     if(_unsubFlUsuarios){resolve();return;}
@@ -2605,6 +2635,91 @@ let flPanorSel=new Set();
 let flPanorTipo='all';
 let flPanorQ='';
 let flPanorIncBaja=false;
+
+// Puente entre el botón de la barra de Flotilla y el toggle de nivel-portal
+// (window.flToggleExtras vive en index.html porque controla elementos del
+// área que están fuera del módulo Flotilla: la parrilla y las actividades).
+window.flToggleExtrasClick=function(){
+  if(typeof window.flToggleExtras==='function')window.flToggleExtras();
+};
+window.flActualizarBotonExtras=function(){
+  const btn=document.getElementById('fl-tb-extras');
+  if(!btn)return;
+  const abierto=!!window._flExtrasAbiertos;
+  btn.style.background=abierto?'rgba(255,255,255,.16)':'';
+  btn.title=abierto?'Ocultar documentos y actividades':'Mostrar documentos y actividades del área';
+};
+
+// ══════════════════════════════════════════════════════════════
+// SINIESTROS — MVP: reportar y marcar como resuelto.
+// Pendiente para una siguiente iteración (no incluido aquí todavía):
+// sonido de alarma configurable y notificación push a administradores.
+// ══════════════════════════════════════════════════════════════
+window.flAbrirSiniestro=function(){
+  const activos=flSiniestros.filter(x=>x.estatus==='activo');
+  const ov=document.createElement('div');
+  ov.className='fl-ov';ov.id='fl-sin-ov';
+  ov.innerHTML=`
+    <div class="fl-modal" style="max-width:520px">
+      <div class="fl-mh" style="background:#DC2626;color:#fff">
+        <h3 style="color:#fff">Reportar siniestro</h3>
+        <button class="fl-mx" style="color:#fff" onclick="document.getElementById('fl-sin-ov').remove()">✕</button>
+      </div>
+      <div style="padding:18px 20px">
+        ${activos.length?`<div style="font-size:12px;background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;border-radius:8px;padding:10px 14px;margin-bottom:14px">Hay ${activos.length} siniestro${activos.length===1?'':'s'} activo${activos.length===1?'':'s'} sin resolver.</div>`:''}
+        <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">Vehículo</label>
+        <select id="fl-sin-eco" style="width:100%;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:9px;font-family:inherit;font-size:13px;margin-bottom:12px;box-sizing:border-box">
+          <option value="">Selecciona un vehículo…</option>
+          ${flV.slice().sort((a,b)=>String(a.eco).localeCompare(String(b.eco),undefined,{numeric:true})).map(v=>`<option value="${v.eco}">ECO ${v.eco} · ${v.unidad||'—'}</option>`).join('')}
+        </select>
+        <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">¿Qué pasó?</label>
+        <textarea id="fl-sin-desc" rows="4" placeholder="Describe el siniestro: qué pasó, dónde, si hay lesionados, daños visibles…" style="width:100%;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:9px;font-family:inherit;font-size:13px;margin-bottom:14px;box-sizing:border-box;resize:vertical"></textarea>
+        <div style="display:flex;justify-content:flex-end;gap:8px">
+          <button class="fb gho sm" onclick="document.getElementById('fl-sin-ov').remove()">Cancelar</button>
+          <button class="fb" style="background:#DC2626;color:#fff;border:none" id="fl-sin-guardar" onclick="flGuardarSiniestro()">Reportar ahora</button>
+        </div>
+        ${activos.length?`<div style="margin-top:18px;border-top:1px solid #F1F5F9;padding-top:12px">
+          <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#94A3B8;margin-bottom:8px">Activos sin resolver</div>
+          ${activos.map(x=>`<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid #F8FAFD">
+            <div style="min-width:0"><strong style="font-size:12px">ECO ${x.eco}</strong><div style="font-size:11px;color:#64748B;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${x.descripcion||'—'}</div></div>
+            <button class="fb gho sm" onclick="flResolverSiniestro('${x.id}')">Marcar resuelto</button>
+          </div>`).join('')}
+        </div>`:''}
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+  ov.onclick=(e)=>{if(e.target===ov)ov.remove();};
+};
+
+window.flGuardarSiniestro=async function(){
+  const eco=(document.getElementById('fl-sin-eco')?.value||'').trim();
+  const desc=(document.getElementById('fl-sin-desc')?.value||'').trim();
+  if(!eco){alert('Selecciona el vehículo involucrado.');return;}
+  if(!desc){alert('Describe brevemente qué pasó.');return;}
+  const btn=document.getElementById('fl-sin-guardar');
+  if(btn){btn.disabled=true;btn.textContent='Guardando…';}
+  try{
+    await fs.addDoc(fs.collection(db,C.SINIESTROS),{
+      eco,descripcion:desc,estatus:'activo',
+      reportadoPor:window.auth?.currentUser?.email||'',
+      creadoEn:new Date().toISOString(),
+    });
+    document.getElementById('fl-sin-ov')?.remove();
+    alert('Siniestro reportado. El botón de siniestro seguirá parpadeando hasta que se marque como resuelto.');
+  }catch(e){
+    console.error('[FL] guardar siniestro',e);
+    alert('Error al reportar: '+e.message);
+    if(btn){btn.disabled=false;btn.textContent='Reportar ahora';}
+  }
+};
+
+window.flResolverSiniestro=async function(id){
+  if(!confirm('¿Marcar este siniestro como resuelto?'))return;
+  try{
+    await fs.updateDoc(fs.doc(db,C.SINIESTROS,id),{estatus:'resuelto',resueltoEn:new Date().toISOString()});
+    document.getElementById('fl-sin-ov')?.remove();
+  }catch(e){alert('Error: '+e.message);}
+};
 
 window.flAbrirPanorama=function(){
   flPanorSel=new Set();flPanorTipo='all';flPanorQ='';flPanorIncBaja=false;
