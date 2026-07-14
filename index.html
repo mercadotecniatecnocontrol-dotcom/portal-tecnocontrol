@@ -4186,6 +4186,8 @@ window.verArea=(a,b)=>{
                 // estemos en Flotilla.
                 const _mainEl=document.querySelector('main.main');
                 if(_mainEl)_mainEl.style.minHeight='0';
+                const _appPortal=document.getElementById('app-portal');
+                if(_appPortal)_appPortal.style.minHeight='0';
                 if(!window._flExtrasAbiertos){
                     const _pw=document.getElementById('area-parrilla-wrap'); if(_pw)_pw.style.display='none';
                     if(_actWrap)_actWrap.style.display='none';
@@ -4196,6 +4198,8 @@ window.verArea=(a,b)=>{
                 if(pageHeader)pageHeader.style.display='';
                 const _mainEl=document.querySelector('main.main');
                 if(_mainEl)_mainEl.style.minHeight='';
+                const _appPortal2=document.getElementById('app-portal');
+                if(_appPortal2)_appPortal2.style.minHeight='';
                 if(_actWrap)_actWrap.style.display=''; // siempre visible fuera de Flotilla
             }
         }
@@ -4794,6 +4798,8 @@ window.navegar=(id,b)=>{
         if(_flPanel2) _flPanel2.style.display='none';
         const _mainEl2 = document.querySelector('main.main');
         if(_mainEl2) _mainEl2.style.minHeight='';
+        const _appPortal3=document.getElementById('app-portal');
+        if(_appPortal3)_appPortal3.style.minHeight='';
         // Restaurar elementos de sec-area ocultados en vista Ventas móvil
         const secArea = document.getElementById('sec-area');
         if(secArea && isMobile()){
