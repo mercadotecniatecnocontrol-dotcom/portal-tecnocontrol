@@ -35,7 +35,7 @@ async function agregarColaborador(nombre){
   _flColabCache=null;
 }
 
-const C={VEHS:'flotilla_vehiculos',SOLS:'flotilla_solicitudes',COMIS:'flotilla_comisiones',TRANS:'flotilla_transferencias',CHKSEM:'flotilla_checklist_semanal',CFG:'flotilla_config',TAREAS:'flotilla_tareas',USOS:'flotilla_usos',USUARIOS:'fl_usuarios',SINIESTROS:'flotilla_siniestros',UBICACIONES:'flotilla_ubicaciones',EVENTOS:'flotilla_eventos'};
+const C={VEHS:'flotilla_vehiculos',SOLS:'flotilla_solicitudes',COMIS:'flotilla_comisiones',TRANS:'flotilla_transferencias',CHKSEM:'flotilla_checklist_semanal',CFG:'flotilla_config',TAREAS:'flotilla_tareas',USOS:'flotilla_usos',USUARIOS:'fl_usuarios',SINIESTROS:'flotilla_siniestros',UBICACIONES:'flotilla_ubicaciones',EVENTOS:'flotilla_eventos',LLANTAS:'flotilla_llantas'};
 
 // ══════════════════════════════════════════════════════════════
 // FUENTE ÚNICA DE VERDAD — "EN TALLER"
@@ -164,7 +164,7 @@ const I={
 
 // ESTADO
 let db=window.db, fs=null;
-let flV=[], flS=[], flCom=[], flTrans=[], flChkSem=[], flCfgSem={}, flUsos=[], flFlUsuarios=[], flSiniestros=[], flUbicaciones=[];
+let flV=[], flS=[], flCom=[], flTrans=[], flChkSem=[], flCfgSem={}, flUsos=[], flFlUsuarios=[], flSiniestros=[], flUbicaciones=[], flLlantas=[];
 let vistaAct='panel';
 let ST={
   vehId:null, tipoVeh:'auto', vistaImg:'frente',
@@ -175,6 +175,137 @@ let ST={
 
 const hD=f=>(!f||f==='—')?null:Math.round((new Date(f)-new Date())/864e5);
 const hF=iso=>iso&&iso!=='—'?String(iso).substring(0,10):'—';
+
+// Servicio preventivo por kilometraje. Retorna null si el vehículo no tiene
+// intervalo configurado (aún no aplica). 'faltan' puede ser negativo (vencido).
+function flServicioEstado(v){
+  const intervalo=Number(v.servicioIntervaloKm)||0;
+  if(!intervalo)return null;
+  const kmActual=Number(v.km)||0;
+  const kmBase=v.kmUltimoServicio!=null?Number(v.kmUltimoServicio):Math.floor(kmActual/intervalo)*intervalo;
+  const proximo=kmBase+intervalo;
+  const faltan=proximo-kmActual;
+  const estado=faltan<=0?'vencido':faltan<=500?'proximo':'ok';
+  return{intervalo,kmBase,proximo,faltan,estado};
+}
+
+// ══════════════════════════════════════════════════════════════
+// CONTROL DE LLANTAS — por unidad individual (marca, DOT, posición, vida útil)
+// ══════════════════════════════════════════════════════════════
+const LL_POSICIONES=['Delantera izquierda','Delantera derecha','Trasera izquierda','Trasera derecha','Refacción','Otra'];
+function flLlantaAlertas(ll,kmActual){
+  const alts=[];
+  if(ll.fechaFabricacionDOT){
+    const anios=(Date.now()-new Date(ll.fechaFabricacionDOT))/(365.25*864e5);
+    if(anios>=6)alts.push({t:`Caducidad: ${anios.toFixed(1)} años desde fabricación (DOT)`,tono:'bad'});
+    else if(anios>=5)alts.push({t:`Antigüedad: ${anios.toFixed(1)} años (cerca de caducar)`,tono:'warn'});
+  }
+  if(ll.kmInstalacion!=null&&ll.vidaUtilKm&&kmActual!=null){
+    const recorridos=kmActual-Number(ll.kmInstalacion);
+    if(recorridos>=Number(ll.vidaUtilKm))alts.push({t:`Excede vida útil: ${recorridos} km recorridos`,tono:'bad'});
+    else if(recorridos>=Number(ll.vidaUtilKm)*0.85)alts.push({t:`Cerca del límite: ${recorridos}/${ll.vidaUtilKm} km`,tono:'warn'});
+  }
+  if(ll.estado==='cambiar')alts.push({t:'Marcada para cambio',tono:'bad'});
+  else if(ll.estado==='revisar')alts.push({t:'Marcada para revisión',tono:'warn'});
+  return alts;
+}
+
+function flRenderLlantasCard(vehId){
+  const wrap=document.getElementById('fl-llantas-wrap');
+  const id=vehId||wrap?.dataset?.vehId;
+  if(!wrap||!id)return;
+  const v=flV.find(x=>x.id===id);if(!v)return;
+  wrap.dataset.vehId=id;
+  const llantas=flLlantas.filter(l=>l.vehiculoId===id);
+  wrap.innerHTML=`
+    <div style="display:flex;flex-direction:column;gap:8px">
+      ${llantas.length?llantas.map(ll=>{
+        const alts=flLlantaAlertas(ll,v.km);
+        const peor=alts.some(a=>a.tono==='bad')?'bad':alts.length?'warn':'ok';
+        const tonos={bad:{bg:'#FEF2F2',fg:'#B91C1C'},warn:{bg:'#FFFBEB',fg:'#B45309'},ok:{bg:'#F8FAFD',fg:'#374151'}};
+        const t=tonos[peor];
+        return`<div style="background:${t.bg};border-radius:10px;padding:10px 12px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+            <strong style="font-size:12px;color:${t.fg}">${ll.posicion||'—'}</strong>
+            <div style="display:flex;gap:5px">
+              <button onclick="flAbrirLlanta('${id}','${ll.id}')" style="background:none;border:none;cursor:pointer;color:#64748B;padding:2px">${I.edit}</button>
+              <button onclick="flEliminarLlanta('${ll.id}')" style="background:none;border:none;cursor:pointer;color:#B91C1C;padding:2px">${I.trash||'✕'}</button>
+            </div>
+          </div>
+          <div style="font-size:11px;color:#64748B">${ll.marca||'—'} ${ll.modelo||''} · ${ll.medida||'—'}</div>
+          ${alts.length?alts.map(a=>`<div style="font-size:10.5px;font-weight:700;color:${tonos[a.tono].fg};margin-top:4px">${I.alert} ${a.t}</div>`).join(''):`<div style="font-size:10.5px;color:#15803D;margin-top:4px">${I.check} Sin alertas</div>`}
+        </div>`;
+      }).join(''):`<div style="font-size:12px;color:#94A3B8;text-align:center;padding:10px 0">Sin llantas registradas</div>`}
+      <button onclick="flAbrirLlanta('${id}')" style="width:100%;padding:9px;border:1.5px dashed #CBD5E1;border-radius:9px;background:none;color:#64748B;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer">${I.check} Agregar llanta</button>
+    </div>`;
+}
+
+window.flAbrirLlanta=function(vehId,llantaId){
+  const ll=llantaId?flLlantas.find(x=>x.id===llantaId):null;
+  const ov=document.createElement('div');ov.className='fl-ov';ov.id='fl-ll-ov';
+  ov.innerHTML=`<div class="fl-modal" style="max-width:480px">
+    <div class="fl-mh"><h3>${ll?'Editar':'Agregar'} llanta</h3><button class="fl-mx" onclick="document.getElementById('fl-ll-ov').remove()">✕</button></div>
+    <div style="padding:16px 20px;display:flex;flex-direction:column;gap:10px">
+      <div>
+        <label style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8;display:block;margin-bottom:4px">Posición</label>
+        <select id="ll-posicion" style="width:100%;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12.5px">
+          ${LL_POSICIONES.map(p=>`<option ${ll?.posicion===p?'selected':''}>${p}</option>`).join('')}
+        </select>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div><label style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8;display:block;margin-bottom:4px">Marca</label><input id="ll-marca" value="${ll?.marca||''}" style="width:100%;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12.5px;box-sizing:border-box"></div>
+        <div><label style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8;display:block;margin-bottom:4px">Modelo</label><input id="ll-modelo" value="${ll?.modelo||''}" style="width:100%;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12.5px;box-sizing:border-box"></div>
+      </div>
+      <div><label style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8;display:block;margin-bottom:4px">Medida (ej: 265/65 R17)</label><input id="ll-medida" value="${ll?.medida||''}" style="width:100%;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12.5px;box-sizing:border-box"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div><label style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8;display:block;margin-bottom:4px">Fecha instalación</label><input type="date" id="ll-fechaInstalacion" value="${ll?.fechaInstalacion||''}" style="width:100%;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12.5px;box-sizing:border-box"></div>
+        <div><label style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8;display:block;margin-bottom:4px">Fabricación (DOT)</label><input type="date" id="ll-fechaFabricacionDOT" value="${ll?.fechaFabricacionDOT||''}" style="width:100%;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12.5px;box-sizing:border-box"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div><label style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8;display:block;margin-bottom:4px">KM al instalar</label><input type="number" id="ll-kmInstalacion" value="${ll?.kmInstalacion??''}" style="width:100%;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12.5px;box-sizing:border-box"></div>
+        <div><label style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8;display:block;margin-bottom:4px">Vida útil (km)</label><input type="number" id="ll-vidaUtilKm" value="${ll?.vidaUtilKm??''}" style="width:100%;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12.5px;box-sizing:border-box"></div>
+      </div>
+      <div>
+        <label style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8;display:block;margin-bottom:4px">Estado</label>
+        <select id="ll-estado" style="width:100%;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12.5px">
+          <option value="bien" ${ll?.estado==='bien'?'selected':''}>Bien</option>
+          <option value="revisar" ${ll?.estado==='revisar'?'selected':''}>Revisar</option>
+          <option value="cambiar" ${ll?.estado==='cambiar'?'selected':''}>Cambiar</option>
+        </select>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:4px">
+        <button class="fb gho sm" onclick="document.getElementById('fl-ll-ov').remove()">Cancelar</button>
+        <button class="fb acc" id="ll-btn-guardar" onclick="flGuardarLlanta('${vehId}','${v?.eco||''}','${llantaId||''}')">Guardar</button>
+      </div>
+    </div>
+  </div>`;
+  const v=flV.find(x=>x.id===vehId);
+  document.body.appendChild(ov);
+  ov.onclick=(e)=>{if(e.target===ov)ov.remove();};
+};
+
+window.flGuardarLlanta=async function(vehId,eco,llantaId){
+  const get=f=>document.getElementById('ll-'+f)?.value||'';
+  const data={
+    vehiculoId:vehId,eco,
+    posicion:get('posicion'),marca:get('marca'),modelo:get('modelo'),medida:get('medida'),
+    fechaInstalacion:get('fechaInstalacion')||null,fechaFabricacionDOT:get('fechaFabricacionDOT')||null,
+    kmInstalacion:get('kmInstalacion')?Number(get('kmInstalacion')):null,
+    vidaUtilKm:get('vidaUtilKm')?Number(get('vidaUtilKm')):null,
+    estado:get('estado'),
+  };
+  const btn=document.getElementById('ll-btn-guardar');if(btn){btn.disabled=true;btn.textContent='Guardando…';}
+  try{
+    if(llantaId)await fs.updateDoc(fs.doc(db,C.LLANTAS,llantaId),data);
+    else await fs.addDoc(fs.collection(db,C.LLANTAS),{...data,creadoEn:new Date().toISOString()});
+    document.getElementById('fl-ll-ov')?.remove();
+  }catch(e){alert('Error al guardar: '+e.message);if(btn){btn.disabled=false;btn.textContent='Guardar';}}
+};
+
+window.flEliminarLlanta=async function(llantaId){
+  if(!confirm('¿Eliminar este registro de llanta?'))return;
+  try{await fs.deleteDoc(fs.doc(db,C.LLANTAS,llantaId));}catch(e){alert('Error: '+e.message);}
+};
 
 // Devuelve las solicitudes que pertenecen al vehículo FÍSICO actual (v).
 // Los números de ECO a veces se reasignan a una unidad distinta cuando la
@@ -695,7 +826,7 @@ window.cargarFlotilla=async function(){
       flRegistrarEvento('error',{mensaje:('Promise rechazada: '+(r?.message||r||'')).slice(0,300),stack:String(r?.stack||'').slice(0,600)});
     });
   }
-  await Promise.all([ldVehs(),ldSols(),ldComs(),ldTrans(),ldChkSem(),ldCfgSem(),ldUsos(),ldFlUsuarios(),ldSiniestros(),ldUbicaciones()]);
+  await Promise.all([ldVehs(),ldSols(),ldComs(),ldTrans(),ldChkSem(),ldCfgSem(),ldUsos(),ldFlUsuarios(),ldSiniestros(),ldUbicaciones(),ldLlantas()]);
   renderSB();
   flVista('panel');
   window._flInitDone=true;
@@ -853,6 +984,19 @@ function ldUbicaciones(){
         if(window._flInitDone&&vistaAct==='mapa')flActualizarMarcadoresMapa();
       },(err)=>{console.error('[FL] onSnapshot ubicaciones',err);if(!flUbicaciones)flUbicaciones=[];resolve();});
     }catch(e){console.error('[FL] ldUbicaciones',e);flUbicaciones=[];resolve();}
+  });
+}
+let _unsubLlantas=null;
+function ldLlantas(){
+  return new Promise((resolve)=>{
+    if(_unsubLlantas){resolve();return;}
+    try{
+      _unsubLlantas=fs.onSnapshot(fs.collection(db,C.LLANTAS),(s)=>{
+        flLlantas=s.docs.map(d=>({id:d.id,...d.data()}));
+        resolve();
+        if(window._flInitDone&&document.getElementById('fl-llantas-wrap'))flRenderLlantasCard();
+      },(err)=>{console.error('[FL] onSnapshot llantas',err);if(!flLlantas)flLlantas=[];resolve();});
+    }catch(e){console.error('[FL] ldLlantas',e);flLlantas=[];resolve();}
   });
 }
 let _unsubFlUsuarios=null;
@@ -2051,6 +2195,19 @@ function rPanel(){
   sinResponsable.forEach(v=>marcar(v,'Sin responsable','bad'));
   vencidas.forEach(v=>marcar(v,'Póliza vencida','bad'));
   porVencer.forEach(v=>marcar(v,`Póliza vence en ${hD(v.pv)} días`,'warn'));
+  flV.forEach(v=>{
+    const s=flServicioEstado(v);
+    if(!s)return;
+    if(s.estado==='vencido')marcar(v,`Servicio vencido (${Math.abs(s.faltan)} km)`,'bad');
+    else if(s.estado==='proximo')marcar(v,`Servicio en ${s.faltan} km`,'warn');
+  });
+  flV.forEach(v=>{
+    const llantasVeh=flLlantas.filter(l=>l.vehiculoId===v.id);
+    llantasVeh.forEach(ll=>{
+      const alts=flLlantaAlertas(ll,v.km);
+      if(alts.some(a=>a.tono==='bad'))marcar(v,`Llanta ${ll.posicion||''}: ${alts.find(a=>a.tono==='bad').t}`,'bad');
+    });
+  });
   const atencion=[...atencionMap.values()].slice(0,6);
 
   const heroKpi=(ico,val,label,tono)=>{
@@ -2963,6 +3120,7 @@ function renderRP(id){
       ${fila('Kilometraje',v.km?`${v.km} km`:'—',true)}
       ${fila('Estatus',`<span style="color:${pvOk?'#15803D':'#B91C1C'}">${v.status||'activo'}</span>`)}
       ${fila('Rendimiento',v.rend||'—')}
+      ${(()=>{const s=flServicioEstado(v);return s?fila('Próximo servicio',`<span style="color:${s.estado==='vencido'?'#B91C1C':s.estado==='proximo'?'#B45309':'#15803D'}">${s.estado==='vencido'?`Vencido (${Math.abs(s.faltan)} km)`:`${s.faltan} km`}</span>`):'';})()}
       ${v.nip&&!/gas/i.test(v.nip)?fila('NIP',v.nip,true):''}
     `)}
 
@@ -2983,6 +3141,8 @@ function renderRP(id){
       ${fila('Combustible',ultChk.gasolina!=null?`${ultChk.gasolina}%`:'—')}
     `:`<div style="font-size:12px;color:#94A3B8;text-align:center;padding:6px 0">Sin checklist registrado</div>`)}
 
+    ${card('Llantas',`<div id="fl-llantas-wrap"></div>`)}
+
     ${histFull.filter(s=>s.evidencias?.length).length>=2?`
     <div style="padding:0 12px 12px">
       <button onclick="flCompararEvidencias('${v.id}')" style="width:100%;padding:10px;background:#1E3A5F;color:#fff;border:none;border-radius:9px;font-family:inherit;font-size:12.5px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">
@@ -2994,6 +3154,7 @@ function renderRP(id){
 
     ${card(`Historial de solicitudes (${histFull.length})`,hist.length?hist.map(s=>flRPHistItem(s)).join('')+(histFull.length>hist.length?`<div style="font-size:9.5px;color:#94A3B8;text-align:center;padding:6px 0 0">Mostrando los ${hist.length} más recientes de ${histFull.length}</div>`:''):`<div style="font-size:11px;color:#94A3B8;text-align:center;padding:8px 0">Sin historial</div>`)}
   `;
+  flRenderLlantasCard(id);
 }
 
 // ── HISTORIAL DE USO: quién vinculó/desvinculó el vehículo y cuándo ──
@@ -3539,6 +3700,8 @@ window.flEditarVeh=function(id){
     ['pol','Número de póliza','text',v.pol||''],
     ['pv','Vencimiento póliza','date',v.pv||''],
     ['rend','Rendimiento (ej: 12 KM/L)','text',v.rend||''],
+    ['servicioIntervaloKm','Intervalo servicio (km)','number',v.servicioIntervaloKm||''],
+    ['kmUltimoServicio','KM del último servicio','number',v.kmUltimoServicio||''],
   ];
   ov.innerHTML=`<div class="fl-modal" style="max-width:600px;width:100%">
     <div class="fl-mh">
@@ -3584,6 +3747,8 @@ window.flGuardarEditVeh=async function(id){
     plaza: get('plaza'), año: get('año')||null, km: Number(get('km'))||0,
     color: get('color'), serie: get('serie'), nip: get('nip'),
     pol: get('pol'), pv: get('pv')||null, rend: get('rend'),
+    servicioIntervaloKm: Number(get('servicioIntervaloKm'))||null,
+    kmUltimoServicio: get('kmUltimoServicio')===''?null:Number(get('kmUltimoServicio')),
     status: document.getElementById('ve-status')?.value||'activo',
   };
   btn.textContent='Guardando…';btn.disabled=true;
