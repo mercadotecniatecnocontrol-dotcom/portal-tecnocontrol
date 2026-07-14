@@ -120,7 +120,7 @@ const CHK_CATS={
   Espejos:    ['Retrovisor izquierdo','Retrovisor derecho','Espejo central'],
   Neumáticos: ['Llanta delantera der.','Llanta delantera izq.','Llanta trasera der.','Llanta trasera izq.','Llanta de refacción'],
   Interiores: ['Póliza / Manual','Radio / Carátula','Pantallas','Encendedor','Asientos y vestiduras','Tablero','Tapetes'],
-  Motor:      ['Batería','Bobinas','Tapón agua limpiabrisas','Tapón radiador','Tapón dirección hidráulica'],
+  Motor:      ['Batería','Bobinas','Tapón agua limpiabrisas','Tapón radiador','Tapón dirección hidráulica','Limpiaparabrisas en buen estado'],
   Cajuela:    ['Herramienta','Cables de arranque','Extintor','Llave L','Llave de cruz'],
   Legal:      ['Tarjeta de circulación'],
 };
@@ -158,6 +158,7 @@ const I={
   eye:`<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>`,
   fleet:`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8.2 15H3a1 1 0 01-1-1v-2.6a1 1 0 011-1h5.6l1.6-2.6h3.4" opacity=".55"/><circle cx="5" cy="15" r="1.5" opacity=".55"/><circle cx="11.5" cy="15" r="1.5" opacity=".55"/><path d="M15.8 18H10a1 1 0 01-1-1v-2.6a1 1 0 011-1h6.1l1.9-2.9h3.6a1 1 0 011 1V17a1 1 0 01-1 1h-1"/><circle cx="12.4" cy="18" r="1.6"/><circle cx="19.3" cy="18" r="1.6"/></svg>`,
   folder:`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a1 1 0 011-1h4.4l1.6 2H20a1 1 0 011 1v9a1 1 0 01-1 1H4a1 1 0 01-1-1V7z"/></svg>`,
+  calendar:`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`,
 };
 
 // ESTADO
@@ -593,6 +594,9 @@ function buildHTML(){
       <button class="fl-tab-btn" id="fl-tb-extras" onclick="flToggleExtrasClick()" title="Mostrar/ocultar documentos y actividades del área">${I.folder}</button>
     </div>
     <div style="position:relative">
+      <button class="fl-tab-btn" id="fl-tb-calendario" onclick="flVista('calendario')" title="Calendario de actividades">${I.calendar}</button>
+    </div>
+    <div style="position:relative">
       <button class="fl-tab-btn" id="fl-tb-presupuesto" onclick="flVista('presupuesto')" title="Presupuesto vs Gastos">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
       </button>
@@ -799,6 +803,7 @@ function ldSiniestros(){
     }catch(e){console.error('[FL] ldSiniestros',e);flSiniestros=[];resolve();}
   });
 }
+let _unsubFlUsuarios=null;
 function ldFlUsuarios(){
   return new Promise((resolve)=>{
     if(_unsubFlUsuarios){resolve();return;}
@@ -927,6 +932,7 @@ window.flVista=function(v){
   else if(v==='chksemanal')rChkSemanal();
   else if(v==='bajas')rBajas();
   else if(v==='admin')rAdmin();
+  else if(v==='calendario')rCalendarioVista();
 };
 function setContent(h){const c=document.getElementById('fl-content');if(c)c.innerHTML=h;}
 function padded(h){return`<div style="padding:16px">${h}</div>`;}
@@ -938,6 +944,7 @@ function padded(h){return`<div style="padding:16px">${h}</div>`;}
 let admEditId=null;
 let admFiltro=''; let admFiltroPlaza=''; let admFiltroStatus='';
 let admTab='vehs';
+let admCumplMes=null;
 
 function rAdmin(){
   if(!hAdm()){setContent(padded('<div class="fl-empty"><div class="fl-empty-ico"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></div><h3>Acceso restringido</h3><p>Solo administradores pueden acceder a este panel.</p></div>'));return;}
@@ -946,7 +953,7 @@ function rAdmin(){
   const com=flV.filter(v=>v.status==='comision').length;
   const sinResp=flV.filter(v=>!v.responsable||v.responsable==='—').length;
   const plazas=[...new Set(flV.map(v=>v.plaza).filter(Boolean))].sort();
-  const tabs=[{k:'vehs',label:'Vehículos'},{k:'nuevo',label:'Agregar vehículo'},{k:'sols',label:'Solicitudes'},{k:'usuarios',label:'Usuarios / ECOs'}];
+  const tabs=[{k:'vehs',label:'Vehículos'},{k:'nuevo',label:'Agregar vehículo'},{k:'sols',label:'Solicitudes'},{k:'usuarios',label:'Usuarios / ECOs'},{k:'cumplimiento',label:'Cumplimiento'}];
   setContent(padded(`
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
       <div>
@@ -969,14 +976,14 @@ function rAdmin(){
       ${tabs.map(t=>`<button onclick="admTabSwitch('${t.k}')" id="adm-tab-${t.k}" style="padding:8px 16px;border:none;border-bottom:2px solid ${admTab===t.k?'#2563EB':'transparent'};margin-bottom:-2px;background:none;font-family:inherit;font-size:12px;font-weight:700;color:${admTab===t.k?'#2563EB':'#64748B'};cursor:pointer;transition:.15s">${t.label}</button>`).join('')}
     </div>
     <div id="adm-tab-content">
-      ${admTab==='vehs'?rAdmTabVehs(plazas):admTab==='nuevo'?rAdmTabNuevo():admTab==='sols'?rAdmTabSols():rAdmTabUsuarios()}
+      ${admTab==='vehs'?rAdmTabVehs(plazas):admTab==='nuevo'?rAdmTabNuevo():admTab==='sols'?rAdmTabSols():admTab==='cumplimiento'?rAdmTabCumplimiento():rAdmTabUsuarios()}
     </div>
   `));
 }
 
 window.admTabSwitch=function(tab){
   admTab=tab; admEditId=null;
-  ['vehs','nuevo','sols','usuarios'].forEach(k=>{
+  ['vehs','nuevo','sols','usuarios','cumplimiento'].forEach(k=>{
     const b=document.getElementById('adm-tab-'+k);if(!b)return;
     b.style.color=k===tab?'#2563EB':'#64748B';
     b.style.borderBottomColor=k===tab?'#2563EB':'transparent';
@@ -988,6 +995,7 @@ window.admTabSwitch=function(tab){
   else if(tab==='nuevo')content.innerHTML=rAdmTabNuevo();
   else if(tab==='sols')content.innerHTML=rAdmTabSols();
   else if(tab==='colab'){content.innerHTML='<div id="adm-colab-wrap" style="padding:4px">Cargando colaboradores…</div>';setTimeout(rAdmTabColab,50);}
+  else if(tab==='cumplimiento'){content.innerHTML='<div style="padding:20px;text-align:center;color:#94A3B8;font-size:12px">Calculando cumplimiento…</div>';setTimeout(()=>{content.innerHTML=rAdmTabCumplimiento();},30);}
   else content.innerHTML=rAdmTabUsuarios();
 };
 
@@ -1147,6 +1155,119 @@ function rAdmTabSols(){
       </table>
     </div>`;
 }
+
+// ══════════════════════════════════════════════════════════════
+// CUMPLIMIENTO MENSUAL POR TÉCNICO
+// Checklist: compara semanas del mes en que el técnico tuvo un vehículo
+// vinculado (flotilla_usos, considera préstamos/cambios de unidad) contra
+// semanas en que sí se registró checklist semanal para ese vehículo.
+// Tareas: usa el sistema "Asignar Tarea" del portal (colección 'actividades'),
+// filtrado a area==='Flotilla' y encargado===técnico.
+// ══════════════════════════════════════════════════════════════
+let _flActCache={};
+async function flFetchActividadesMes(mes){
+  if(_flActCache[mes])return _flActCache[mes];
+  try{
+    const snap=await fs.getDocs(fs.query(fs.collection(db,'actividades'),fs.where('area','==','Flotilla')));
+    const arr=snap.docs.map(d=>({id:d.id,...d.data()})).filter(a=>(a.fechaLimite||a.fechaCreacion||'').slice(0,7)===mes);
+    _flActCache[mes]=arr;
+    return arr;
+  }catch(e){console.error('[FL] fetch actividades',e);return[];}
+}
+
+function flMesesCumplimientoDisponibles(){
+  const out=[];const d=new Date();
+  for(let i=0;i<6;i++){out.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);d.setMonth(d.getMonth()-1);}
+  return out;
+}
+
+function rAdmTabCumplimiento(){
+  if(!admCumplMes){const d=new Date();admCumplMes=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;}
+  const meses=flMesesCumplimientoDisponibles();
+  setTimeout(()=>flRenderCumplimientoBody(admCumplMes),30);
+  return`
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#94A3B8">Mes</span>
+      <select id="adm-cumpl-mes" onchange="admCumplMes=this.value;flRenderCumplimientoBody(admCumplMes)" style="padding:7px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;font-weight:700;color:#0A1628;background:#fff;cursor:pointer">
+        ${meses.map(m=>`<option value="${m}" ${m===admCumplMes?'selected':''}>${flPanorMesLabel(m)}</option>`).join('')}
+      </select>
+    </div>
+    <div style="font-size:12px;color:#64748B;margin-bottom:14px;background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px;padding:10px 14px">
+      <strong style="color:#C2410C">Cómo se calcula:</strong> el cumplimiento de checklist compara las semanas del mes en que el técnico tuvo un vehículo vinculado (según el registro de uso, considerando préstamos y cambios de unidad) contra las semanas en que sí se registró un checklist semanal para ese vehículo. Las tareas vienen de "Asignar Tarea" del portal, filtradas a Flotilla y a quien aparece como encargado.
+    </div>
+    <div id="adm-cumpl-body"><div style="text-align:center;padding:30px;color:#94A3B8;font-size:12px">Calculando…</div></div>
+  `;
+}
+
+window.flRenderCumplimientoBody=async function(mes){
+  const body=document.getElementById('adm-cumpl-body');
+  if(!body)return;
+  body.innerHTML='<div style="text-align:center;padding:30px;color:#94A3B8;font-size:12px">Calculando…</div>';
+  const actividades=await flFetchActividadesMes(mes);
+
+  const dirMap={};
+  const touch=(email,nombre)=>{email=(email||'').toLowerCase().trim();if(!email)return;if(!dirMap[email])dirMap[email]={email,nombre:nombre||email};else if(nombre&&dirMap[email].nombre===dirMap[email].email)dirMap[email].nombre=nombre;};
+  flFlUsuarios.forEach(u=>touch(u.email,u.nombre));
+  flUsos.forEach(u=>touch(u.email,u.nombre));
+  const tecnicos=Object.values(dirMap).sort((a,b)=>a.nombre.localeCompare(b.nombre));
+
+  const[anio,mesNum]=mes.split('-').map(Number);
+  const monthStart=new Date(anio,mesNum-1,1);
+  const monthEnd=new Date(anio,mesNum,0);
+  const semanasDelMes=new Set();
+  for(let d=new Date(monthStart);d<=monthEnd;d.setDate(d.getDate()+1))semanasDelMes.add(getSemanaISOPortal(new Date(d)));
+
+  const filas=tecnicos.map(t=>{
+    const usosDelTec=flUsos.filter(u=>String(u.email||'').toLowerCase()===t.email);
+    const ecosDelMes=new Set();
+    const semanasConVehiculo=new Set();
+    usosDelTec.forEach(u=>{
+      const ini=u.vinculadoEn?new Date(u.vinculadoEn):null;
+      const fin=u.desvinculadoEn?new Date(u.desvinculadoEn):monthEnd;
+      if(!ini||ini>monthEnd||fin<monthStart)return;
+      ecosDelMes.add(String(u.eco));
+      const desde=ini<monthStart?monthStart:ini, hasta=fin>monthEnd?monthEnd:fin;
+      for(let d=new Date(desde);d<=hasta;d.setDate(d.getDate()+1))semanasConVehiculo.add(getSemanaISOPortal(new Date(d)));
+    });
+    const semanasEsperadas=[...semanasConVehiculo].filter(s=>semanasDelMes.has(s));
+    const semanasConChecklist=semanasEsperadas.filter(s=>flChkSem.some(c=>ecosDelMes.has(String(c.vehiculoEco))&&c.semana===s));
+    const pctChecklist=semanasEsperadas.length?Math.round(semanasConChecklist.length/semanasEsperadas.length*100):null;
+
+    const tareasTec=actividades.filter(a=>String(a.encargado||'').toLowerCase()===t.email);
+    const tareasCompletadas=tareasTec.filter(a=>a.estatus==='Completada').length;
+    const pctTareas=tareasTec.length?Math.round(tareasCompletadas/tareasTec.length*100):null;
+
+    return{...t,ecos:[...ecosDelMes],semanasEsperadas:semanasEsperadas.length,semanasCumplidas:semanasConChecklist.length,pctChecklist,tareasTotal:tareasTec.length,tareasCompletadas,pctTareas};
+  }).filter(f=>f.ecos.length>0||f.tareasTotal>0);
+
+  if(!filas.length){
+    body.innerHTML='<div class="fl-empty" style="min-height:120px"><h3>Sin datos para este mes</h3></div>';
+    return;
+  }
+
+  const barra=(pct,colorOk,colorMal)=>pct===null?'<span style="font-size:11px;color:#94A3B8">Sin vehículo este mes</span>':`
+    <div style="display:flex;align-items:center;gap:8px">
+      <div style="flex:1;height:6px;background:#F1F5F9;border-radius:100px;overflow:hidden;max-width:80px"><div style="height:100%;width:${pct}%;background:${pct>=80?colorOk:pct>=50?'#D97706':colorMal};border-radius:100px"></div></div>
+      <span style="font-size:11.5px;font-weight:800;color:${pct>=80?colorOk:pct>=50?'#D97706':colorMal}">${pct}%</span>
+    </div>`;
+
+  body.innerHTML=`
+    <div class="fl-tw" style="overflow:auto">
+      <table class="fl-adm-table">
+        <thead><tr><th>Técnico</th><th>Vehículo(s) del mes</th><th>Checklist semanal</th><th>Tareas asignadas</th><th>% Tareas</th></tr></thead>
+        <tbody>
+          ${filas.map(f=>`
+            <tr>
+              <td style="font-weight:700">${f.nombre}<div style="font-size:10px;color:#94A3B8;font-weight:400">${f.email}</div></td>
+              <td style="font-size:11px">${f.ecos.length?f.ecos.map(e=>`<span style="background:#EFF6FF;color:#2563EB;padding:2px 6px;border-radius:6px;font-size:10px;font-weight:700;margin-right:3px">ECO ${e}</span>`).join(''):'Sin vehículo'}</td>
+              <td>${barra(f.pctChecklist,'#15803D','#B91C1C')}${f.pctChecklist!==null?`<div style="font-size:9.5px;color:#94A3B8;margin-top:2px">${f.semanasCumplidas}/${f.semanasEsperadas} semanas</div>`:''}</td>
+              <td style="font-size:12px">${f.tareasCompletadas}/${f.tareasTotal}</td>
+              <td>${barra(f.pctTareas,'#15803D','#B91C1C')}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+};
 
 function rAdmTabUsuarios(){
   const userMap={};
@@ -1764,7 +1885,7 @@ function rPanel(){
   const com=flV.filter(v=>v.status==='comision').length;
   const baj=flV.filter(v=>v.status==='baja').length;
   const pend=flS.filter(s=>!['Cerrada','Rechazada'].includes(s.estatus)).length;
-  const alts=[];flV.forEach(v=>{const d=hD(v.pv);if(d!==null&&d<90)alts.push({e:d<0,t:`ECO ${v.eco} — Póliza ${d<0?'VENCIDA':'vence en '+d+' días'}`});});
+  const alts=[];flV.forEach(v=>{const d=hD(v.pv);if(d!==null&&d<90)alts.push({e:d<0,t:`ECO ${v.eco}`,sub:d<0?'Póliza vencida':`Póliza vence en ${d} días`});});
   const porEst={Solicitud:0,'Evaluación':0,Servicio:0,Rechazada:0,Cerrada:0};
   const normPorEst={
     'Validación':'Evaluación','Validada':'Evaluación','Cotización':'Evaluación','Aprobación':'Evaluación','Aprobada':'Evaluación',
@@ -1774,68 +1895,111 @@ function rPanel(){
   const porTipo={};flS.forEach(s=>{const t=s.tipo||'Otro';porTipo[t]=(porTipo[t]||0)+1;});
   const top=Object.entries(porTipo).sort((a,b)=>b[1]-a[1]).slice(0,5);
   const mx=top[0]?.[1]||1;
-  setContent(padded(`
-    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px">
-      <div><div style="font-size:18px;font-weight:900;letter-spacing:-.5px">Panel General · Flotilla Vehicular</div>
-      <div style="font-size:11px;color:#64748B;margin-top:2px">${flV.filter(v=>v.status!=='baja').length} unidades · ${new Date().toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</div></div>
-    </div>
-    ${alts.length?`<div style="margin-bottom:12px">${alts.slice(0,4).map(a=>`<div style="display:flex;align-items:center;gap:7px;padding:7px 11px;border-radius:7px;font-size:11px;font-weight:600;background:${a.e?'#FEF2F2':'#FFFBEB'};color:${a.e?'#991B1B':'#92400E'};border:1px solid ${a.e?'#FECACA':'#FDE68A'};margin-bottom:5px">${I.alert} ${a.t}</div>`).join('')}</div>`:''}
-    <!-- métricas KPI superiores ocultadas -->
 
-    <!-- MINI DASHBOARDS DE ESTADO DE VEHÍCULOS -->
-    ${(()=>{
-      const activos=flV.filter(v=>v.status==='activo').length;
-      const enTaller=flV.filter(v=>v.status==='taller').length;
-      const enComision=flV.filter(v=>v.status==='comision').length;
-      const sinResponsable=flV.filter(v=>v.status!=='baja'&&(!v.responsable||v.responsable==='—')).length;
-      const ocupadosApp=window._flUsuariosMap||{};
-      const libresAhora=flV.filter(v=>v.status==='activo'&&!ocupadosApp[String(v.eco)]).length;
-      const polVencidas=flV.filter(v=>{const d=hD(v.pv);return d!==null&&d<0;}).length;
-      const polPorVencer=flV.filter(v=>{const d=hD(v.pv);return d!==null&&d>=0&&d<30;}).length;
-      const solPorEst=(e)=>flS.filter(s=>s.estatus===e||(e==='Evaluación'&&['Validación','Validada','Cotización','Aprobación','Aprobada'].includes(s.estatus))||(e==='Servicio'&&['Pagos','Cierre'].includes(s.estatus))).length;
-      const miniKpi=(label,val,sub,color,bg,onclick)=>`
-        <div onclick="${onclick||''}" style="background:${bg||'#fff'};border:1px solid #E8EDF5;border-radius:11px;padding:13px 15px;flex:1;min-width:130px;${onclick?'cursor:pointer;':''}transition:box-shadow .15s" ${onclick?'onmouseover="this.style.boxShadow=\'0 4px 14px rgba(0,0,0,.08)\'"  onmouseout="this.style.boxShadow=\'none\'"':''}>
-          <div style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin-bottom:5px">${label}</div>
-          <div style="font-size:24px;font-weight:900;letter-spacing:-1px;color:${color||'#0A1628'};line-height:1">${val}</div>
-          <div style="font-size:10px;color:#94A3B8;margin-top:3px">${sub}</div>
-        </div>`;
-      return`<div style="margin-bottom:16px">
-        <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin-bottom:8px">Estado de la flotilla</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-          ${miniKpi('Activos (flotilla)',activos,'Status operativo normal','#15803D','#F0FDF4',"flSbTipo('all');document.querySelectorAll('.fl-sb-item').forEach(e=>e.scrollIntoView())")}
-          ${miniKpi('Libres ahora',libresAhora,libresAhora?'Sin nadie vinculado en la app':'Todos en uso','#0369A1','#EFF8FF')}
-          ${miniKpi('En taller',enTaller,enTaller?'Requieren atención':'Sin vehículos en taller',enTaller>0?'#D97706':'#94A3B8',enTaller>0?'#FFFBEB':'#F8FAFD')}
-          ${miniKpi('En comisión',enComision,enComision?'Préstamo activo':'Sin comisiones activas',enComision>0?'#7C3AED':'#94A3B8',enComision>0?'#F5F3FF':'#F8FAFD')}
-          ${miniKpi('Sin responsable',sinResponsable,sinResponsable?'Asignar responsable':'Todos asignados ✓',sinResponsable>0?'#B91C1C':'#15803D',sinResponsable>0?'#FEF2F2':'#F0FDF4')}
-          ${miniKpi('Pólizas vencidas',polVencidas,polVencidas?'Renovar urgente':'Todas vigentes ✓',polVencidas>0?'#B91C1C':'#15803D',polVencidas>0?'#FEF2F2':'#F0FDF4')}
-          ${miniKpi('Pólizas por vencer',polPorVencer,polPorVencer?'En menos de 30 días':'Sin vencimientos próximos',polPorVencer>0?'#D97706':'#94A3B8',polPorVencer>0?'#FFFBEB':'#F8FAFD')}
-        </div>
-        <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin-bottom:8px;margin-top:4px">Pipeline de solicitudes</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          ${miniKpi('Solicitud',solPorEst('Solicitud'),'Por revisar','#6D28D9','#F5F3FF',"flPipelineModal('Solicitud')")}
-          ${miniKpi('Evaluación',solPorEst('Evaluación'),'Cotizando / autorizando','#1D4ED8','#EFF6FF',"flPipelineModal('Evaluación')")}
-          ${miniKpi('Servicio',solPorEst('Servicio'),'En taller / pagando','#B45309','#FFFBEB',"flPipelineModal('Servicio')")}
-          ${miniKpi('Rechazadas',solPorEst('Rechazada'),'Esta semana','#B91C1C','#FEF2F2',"flPipelineModal('Rechazada')")}
-          ${miniKpi('Cerradas',solPorEst('Cerrada'),'Expedientes completos','#15803D','#F0FDF4',"flPipelineModal('Cerrada')")}
-        </div>
-      </div>`;
-    })()}
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
-      <div class="fl-tw"><div style="padding:10px 14px;border-bottom:1px solid #F1F5F9;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8">Solicitudes por tipo</div>
-        <div style="padding:12px 14px">${top.length?top.map(([t,n])=>`<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:11px;font-weight:600;margin-bottom:3px"><span>${t}</span><span style="color:#64748B">${n}</span></div><div style="height:4px;background:#F1F5F9;border-radius:100px;overflow:hidden"><div style="height:100%;width:${Math.round(n/mx*100)}%;background:linear-gradient(90deg,#2563EB,#7C3AED);border-radius:100px"></div></div></div>`).join(''):'<div style="color:#94A3B8;font-size:11px;text-align:center;padding:18px 0">Sin solicitudes aún</div>'}</div>
-      </div>
-      <div class="fl-tw"><div style="padding:10px 14px;border-bottom:1px solid #F1F5F9;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8">Flujo de solicitudes</div>
-        <div style="padding:12px 14px;display:flex;flex-direction:column;gap:7px">${Object.entries(porEst).map(([e,n])=>`<div onclick="flPipelineModal('${e}')" style="display:flex;align-items:center;gap:8px;cursor:pointer;border-radius:8px;padding:3px 5px;margin:-3px -5px;transition:background .12s" onmouseover="this.style.background='#F8FAFC'" onmouseout="this.style.background=''">${hBadge(e)}<div style="flex:1;height:4px;background:#F1F5F9;border-radius:100px;overflow:hidden"><div style="height:100%;width:${flS.length?Math.round(n/flS.length*100):0}%;background:#2563EB;border-radius:100px"></div></div><span style="font-size:11px;font-weight:700;min-width:14px;text-align:right">${n}</span>${n>0?`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>`:''}</div>`).join('')}</div>
-      </div>
+  // Iconos compactos para las tarjetas KPI (mismo estilo de trazo que el resto del módulo)
+  const kIco={
+    activos:`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17h14M5 17a2 2 0 100 4 2 2 0 000-4zm14 0a2 2 0 100 4 2 2 0 000-4zM5 17l1.5-6h11L19 17M6.5 11l1.2-3.6a2 2 0 011.9-1.4h4.8a2 2 0 011.9 1.4L17.5 11"/></svg>`,
+    libres:`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>`,
+    taller:`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 015.4 5.4L13 19l-4 1 1-4 7.7-7.7a4 4 0 00-5.4-5.4L9 6.3l-4-1-1 4 3 3"/></svg>`,
+    comision:`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8h10M7 8l3-3M7 8l3 3M17 16H7M17 16l-3-3M17 16l-3 3"/></svg>`,
+    sinResp:`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="17" y1="8" x2="22" y2="13"/><line x1="22" y1="8" x2="17" y2="13"/></svg>`,
+    polVenc:`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M9.5 12.5l5 5M14.5 12.5l-5 5"/></svg>`,
+    polProx:`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><circle cx="12" cy="15" r="3.2"/><path d="M12 13.8V15l1 .7"/></svg>`,
+  };
+
+  const kpiCard=(ico,label,val,sub,tone,onclick)=>{
+    const tones={
+      neutral:{bg:'#F8FAFD',fg:'#0A1628',ic:'#475569'},
+      good:{bg:'#F0FDF4',fg:'#15803D',ic:'#15803D'},
+      info:{bg:'#EFF8FF',fg:'#0369A1',ic:'#0369A1'},
+      warn:{bg:'#FFFBEB',fg:'#B45309',ic:'#B45309'},
+      bad:{bg:'#FEF2F2',fg:'#B91C1C',ic:'#B91C1C'},
+      purple:{bg:'#F5F3FF',fg:'#6D28D9',ic:'#6D28D9'},
+    };
+    const t=tones[tone]||tones.neutral;
+    return`<div ${onclick?`onclick="${onclick}"`:''} style="background:${t.bg};border-radius:14px;padding:16px 18px;${onclick?'cursor:pointer;':''}transition:transform .15s" ${onclick?`onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform=''"`:''}>
+      <div style="width:30px;height:30px;border-radius:9px;background:rgba(255,255,255,.65);display:flex;align-items:center;justify-content:center;color:${t.ic};margin-bottom:10px">${ico}</div>
+      <div style="font-size:26px;font-weight:900;letter-spacing:-1px;color:${t.fg};line-height:1">${val}</div>
+      <div style="font-size:11.5px;font-weight:700;color:${t.fg};margin-top:4px">${label}</div>
+      <div style="font-size:10px;color:#94A3B8;margin-top:2px">${sub}</div>
+    </div>`;
+  };
+
+  const activos=flV.filter(v=>v.status==='activo').length;
+  const enTaller=flV.filter(v=>v.status==='taller').length;
+  const enComision=flV.filter(v=>v.status==='comision').length;
+  const sinResponsable=flV.filter(v=>v.status!=='baja'&&(!v.responsable||v.responsable==='—')).length;
+  const ocupadosApp=window._flUsuariosMap||{};
+  const libresAhora=flV.filter(v=>v.status==='activo'&&!ocupadosApp[String(v.eco)]).length;
+  const polVencidas=flV.filter(v=>{const d=hD(v.pv);return d!==null&&d<0;}).length;
+  const polPorVencer=flV.filter(v=>{const d=hD(v.pv);return d!==null&&d>=0&&d<30;}).length;
+  const solPorEst=(e)=>flS.filter(s=>s.estatus===e||(e==='Evaluación'&&['Validación','Validada','Cotización','Aprobación','Aprobada'].includes(s.estatus))||(e==='Servicio'&&['Pagos','Cierre'].includes(s.estatus))).length;
+
+  setContent(padded(`
+    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:18px">
+      <div><div style="font-size:19px;font-weight:900;letter-spacing:-.5px">Panel General · Flotilla Vehicular</div>
+      <div style="font-size:11.5px;color:#64748B;margin-top:3px">${flV.filter(v=>v.status!=='baja').length} unidades · ${new Date().toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</div></div>
     </div>
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:#94A3B8">Solicitudes activas</div>
-      <button onclick="flPipelineModal('Cerrada')" style="font-size:9px;font-weight:700;color:#64748B;background:none;border:none;cursor:pointer;text-decoration:underline">Ver cerradas →</button>
+
+    <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin-bottom:9px">Centro de alertas</div>
+    ${alts.length?`<div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:6px;margin-bottom:26px">
+      ${alts.slice(0,8).map(a=>`<div style="flex:0 0 168px;background:${a.e?'#FEF2F2':'#FFFBEB'};border-radius:13px;padding:13px 15px">
+        <div style="color:${a.e?'#B91C1C':'#B45309'}">${I.alert}</div>
+        <div style="font-size:20px;font-weight:900;color:${a.e?'#B91C1C':'#B45309'};margin-top:6px">${a.t}</div>
+        <div style="font-size:10.5px;color:${a.e?'#B91C1C':'#B45309'};margin-top:2px">${a.sub}</div>
+      </div>`).join('')}
+    </div>`:`<div style="font-size:11.5px;color:#94A3B8;margin-bottom:26px">Sin alertas críticas por el momento.</div>`}
+
+    <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin-bottom:9px">Estado de la flotilla</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:12px;margin-bottom:30px">
+      ${kpiCard(kIco.activos,'Activos',activos,'Status operativo normal','good',"flSbTipo('all')")}
+      ${kpiCard(kIco.libres,'Libres ahora',libresAhora,libresAhora?'Sin nadie vinculado en la app':'Todos en uso','info')}
+      ${kpiCard(kIco.taller,'En taller',enTaller,enTaller?'Requieren atención':'Sin vehículos en taller',enTaller>0?'warn':'neutral')}
+      ${kpiCard(kIco.comision,'En comisión',enComision,enComision?'Préstamo activo':'Sin comisiones activas',enComision>0?'purple':'neutral')}
+      ${kpiCard(kIco.sinResp,'Sin responsable',sinResponsable,sinResponsable?'Asignar responsable':'Todos asignados',sinResponsable>0?'bad':'good')}
+      ${kpiCard(kIco.polVenc,'Pólizas vencidas',polVencidas,polVencidas?'Renovar urgente':'Todas vigentes',polVencidas>0?'bad':'good')}
+      ${kpiCard(kIco.polProx,'Pólizas por vencer','${polPorVencer}',polPorVencer?'En menos de 30 días':'Sin vencimientos próximos',polPorVencer>0?'warn':'neutral')}
     </div>
-    ${tSols(flS.filter(s=>!['Cerrada','Rechazada'].includes(s.estatus)).slice(0,8))}
+
+    <div style="border-top:1px solid #F1F5F9;padding-top:22px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8">Solicitudes y actividad</div>
+        <button onclick="flVista('calendario')" style="font-size:10.5px;font-weight:700;color:#64748B;background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:4px">${I.calendar||''} Ver calendario</button>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:16px">
+        ${kpiCard('','Solicitud',String(solPorEst('Solicitud')),'Por revisar','purple',"flPipelineModal('Solicitud')")}
+        ${kpiCard('','Evaluación',String(solPorEst('Evaluación')),'Cotizando / autorizando','info',"flPipelineModal('Evaluación')")}
+        ${kpiCard('','Servicio',String(solPorEst('Servicio')),'En taller / pagando','warn',"flPipelineModal('Servicio')")}
+        ${kpiCard('','Rechazadas',String(solPorEst('Rechazada')),'Esta semana','bad',"flPipelineModal('Rechazada')")}
+        ${kpiCard('','Cerradas',String(solPorEst('Cerrada')),'Expedientes completos','good',"flPipelineModal('Cerrada')")}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+        <div class="fl-tw"><div style="padding:10px 14px;border-bottom:1px solid #F1F5F9;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8">Solicitudes por tipo</div>
+          <div style="padding:12px 14px">${top.length?top.map(([t,n])=>`<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:11px;font-weight:600;margin-bottom:3px"><span>${t}</span><span style="color:#64748B">${n}</span></div><div style="height:4px;background:#F1F5F9;border-radius:100px;overflow:hidden"><div style="height:100%;width:${Math.round(n/mx*100)}%;background:linear-gradient(90deg,#2563EB,#7C3AED);border-radius:100px"></div></div></div>`).join(''):'<div style="color:#94A3B8;font-size:11px;text-align:center;padding:18px 0">Sin solicitudes aún</div>'}</div>
+        </div>
+        <div class="fl-tw"><div style="padding:10px 14px;border-bottom:1px solid #F1F5F9;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8">Flujo de solicitudes</div>
+          <div style="padding:12px 14px;display:flex;flex-direction:column;gap:7px">${Object.entries(porEst).map(([e,n])=>`<div onclick="flPipelineModal('${e}')" style="display:flex;align-items:center;gap:8px;cursor:pointer;border-radius:8px;padding:3px 5px;margin:-3px -5px;transition:background .12s" onmouseover="this.style.background='#F8FAFC'" onmouseout="this.style.background=''">${hBadge(e)}<div style="flex:1;height:4px;background:#F1F5F9;border-radius:100px;overflow:hidden"><div style="height:100%;width:${flS.length?Math.round(n/flS.length*100):0}%;background:#2563EB;border-radius:100px"></div></div><span style="font-size:11px;font-weight:700;min-width:14px;text-align:right">${n}</span>${n>0?`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>`:''}</div>`).join('')}</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:#94A3B8">Solicitudes activas</div>
+        <button onclick="flPipelineModal('Cerrada')" style="font-size:9px;font-weight:700;color:#64748B;background:none;border:none;cursor:pointer;text-decoration:underline">Ver cerradas →</button>
+      </div>
+      ${tSols(flS.filter(s=>!['Cerrada','Rechazada'].includes(s.estatus)).slice(0,8))}
+    </div>
+  `));
+}
+
+// ── CALENDARIO — pestaña propia (antes vivía al fondo del Panel General) ──
+function rCalendarioVista(){
+  setContent(padded(`
+    <div style="font-size:18px;font-weight:900;letter-spacing:-.5px;margin-bottom:4px">Calendario de actividades</div>
+    <div style="font-size:11.5px;color:#64748B;margin-bottom:18px">Solicitudes, pagos y visitas a taller por fecha</div>
     ${rFlCalendario()}
   `));
 }
+
+// ── SOLICITUDES — layout imagen referencia ──
 
 // ── SOLICITUDES — layout imagen referencia ──
 function rSols(){
@@ -3962,7 +4126,7 @@ const CHK_CATS_P={
   Espejos:    ['Retrovisor izquierdo','Retrovisor derecho','Espejo central'],
   Neumáticos: ['Llanta del. der.','Llanta del. izq.','Llanta tra. der.','Llanta tra. izq.','Refacción'],
   Interiores: ['Póliza / Manual','Radio','Pantallas','Asientos','Tablero','Tapetes'],
-  Motor:      ['Batería','Tapón agua','Tapón radiador','Tapón dirección'],
+  Motor:      ['Batería','Tapón agua','Tapón radiador','Tapón dirección','Limpiaparabrisas en buen estado'],
   Cajuela:    ['Herramienta','Cables arranque','Extintor','Llave L','Llave cruz'],
   Legal:      ['Tarjeta circulación'],
 };
