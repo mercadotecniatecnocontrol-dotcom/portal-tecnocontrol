@@ -787,6 +787,7 @@ window.initFlotillaMovil=async function(){
   dbg('Online: '+navigator.onLine,'info');
   await Promise.all([cargarMiVeh(),cargarMisSols(),cargarMisTareas()]);
   dbg('Datos cargados. Vehículo: '+(miVeh?'ECO '+miVeh.eco:'ninguno'),'ok');
+  if(miVeh)flReportarUbicacion(miVeh.eco);
   actualizarBadges();
   fmVista('vehiculo');
 
@@ -814,6 +815,30 @@ window.initFlotillaMovil=async function(){
     });
   }
 };
+
+// ── Ubicación en tiempo real ──
+// Solo se captura al abrir la app o al vincularse a un vehículo (no hay
+// rastreo continuo en segundo plano — limitación real de las PWA en el
+// navegador). Si el técnico niega el permiso, falla en silencio.
+function flReportarUbicacion(eco){
+  if(!eco||!navigator.geolocation)return;
+  try{
+    navigator.geolocation.getCurrentPosition(async(pos)=>{
+      try{
+        const user=window.auth?.currentUser;
+        await db.collection('flotilla_ubicaciones').doc(String(eco)).set({
+          eco:String(eco),
+          lat:pos.coords.latitude,
+          lng:pos.coords.longitude,
+          precision:pos.coords.accuracy||null,
+          email:user?.email||'',
+          nombre:user?.displayName||user?.email||'',
+          capturadoEn:new Date().toISOString(),
+        });
+      }catch(e){console.warn('[FL] guardar ubicación',e);}
+    },(err)=>{console.warn('[FL] geolocalización no disponible',err.message);},{enableHighAccuracy:false,timeout:8000,maximumAge:60000});
+  }catch(e){console.warn('[FL] flReportarUbicacion',e);}
+}
 
 // ── CARGAR DATOS ──
 async function cargarPerfil(user){
@@ -1557,6 +1582,7 @@ window.fmVincular=async function(){
     else{await db.collection(C.USUARIOS).doc(snap.docs[0].id).update({ecoVinculado:String(eco),ecosVinculados:[String(eco)],vinculadoEn:new Date().toISOString()});}
     flRegistrarVinculacion(eco,user.email,user.displayName||user.email);
     flSincronizarResponsable(eco,user.displayName||user.email);
+    flReportarUbicacion(eco);
     miPerfil={...miPerfil,...datos};
     guardarUltimoEco(eco);
     await cargarMiVeh();
