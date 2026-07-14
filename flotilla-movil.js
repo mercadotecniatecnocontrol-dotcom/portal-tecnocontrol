@@ -83,6 +83,7 @@ const C={
   CHKSEM:'flotilla_checklist_semanal',
   CFG:'flotilla_config',
   USOS:'flotilla_usos',
+  EVENTOS:'flotilla_eventos',
   OFFLINE_KEY:'tcn_offline_queue',
 };
 
@@ -754,6 +755,32 @@ function buildHTML(){
 function setContent(h){const c=document.getElementById('fm-content');if(c)c.innerHTML=h;}
 
 // ── INIT ──
+// ── Registro de actividad y errores (diagnóstico) ──
+// Nunca debe romper la app: si falla el propio guardado, se ignora en silencio.
+function flRegistrarEvento(tipo,extra){
+  try{
+    const user=window.auth?.currentUser;
+    db.collection(C.EVENTOS).add({
+      tipo,
+      email:user?.email||'',
+      nombre:user?.displayName||user?.email||'',
+      vista:(typeof vistaAct!=='undefined'?vistaAct:'')||'',
+      dispositivo:navigator.userAgent||'',
+      online:navigator.onLine,
+      creadoEn:new Date().toISOString(),
+      ...extra,
+    }).catch(()=>{});
+  }catch(e){}
+}
+
+window.addEventListener('error',(e)=>{
+  flRegistrarEvento('error',{mensaje:String(e.message||'').slice(0,300),stack:String(e.error?.stack||'').slice(0,600)});
+});
+window.addEventListener('unhandledrejection',(e)=>{
+  const r=e.reason;
+  flRegistrarEvento('error',{mensaje:('Promise rechazada: '+(r?.message||r||'')).slice(0,300),stack:String(r?.stack||'').slice(0,600)});
+});
+
 window.initFlotillaMovil=async function(){
   injectCSS();buildHTML();
   // Detectar online/offline
@@ -780,6 +807,7 @@ window.initFlotillaMovil=async function(){
     const btn=document.getElementById('fm-user-btn');
     if(btn)btn.textContent=inicial;
     await cargarPerfil(user);
+    flRegistrarEvento('sesion_abierta');
   }
 
   dbg('Iniciando app móvil…','info');
