@@ -1209,8 +1209,64 @@ window.admTabSwitch=function(tab){
   else content.innerHTML=rAdmTabUsuarios();
 };
 
+// ── DETECTOR DE ECO DUPLICADO — dos vehículos activos con el mismo número ──
+function flDetectarEcoDuplicados(){
+  const grupos={};
+  flV.filter(v=>v.status!=='baja').forEach(v=>{
+    const eco=String(v.eco||'').trim();
+    if(!eco)return;
+    (grupos[eco]=grupos[eco]||[]).push(v);
+  });
+  return Object.entries(grupos).filter(([eco,vs])=>vs.length>1).map(([eco,vehiculos])=>({eco,vehiculos}));
+}
+window.admVerificarDuplicados=function(){
+  const dups=flDetectarEcoDuplicados();
+  if(!dups.length){alert('No se encontraron ECOs duplicados entre vehículos activos. Todo en orden.');return;}
+  if(typeof rAdmin==='function')rAdmin();
+};
+
+// ── Migrar solicitudes viejas (evidencias inline) a la subcolección nueva ──
+window.admMigrarEvidencias=async function(){
+  const viejas=flS.filter(s=>s.evidencias!==undefined);
+  if(!viejas.length){alert('No hay solicitudes con fotos en formato antiguo. Nada que migrar.');return;}
+  if(!confirm(`Se encontraron ${viejas.length} solicitudes con fotos guardadas en el documento principal (formato viejo).\n\nEsto las moverá a una subcolección y aligerará el documento principal — no se pierde ninguna foto. Puede tardar unos minutos.\n\n¿Continuar?`))return;
+  const btn=document.getElementById('adm-migrar-btn');
+  let ok=0,fallo=0;
+  for(let i=0;i<viejas.length;i++){
+    const s=viejas[i];
+    if(btn)btn.textContent=`Migrando ${i+1}/${viejas.length}…`;
+    try{
+      const adjuntos={
+        evidencias:s.evidencias||[],
+        evidenciasMeta:s.evidenciasMeta||[],
+        danos:s.danos||{},
+        checklist:s.checklist||{},
+        chkFotos:s.chkFotos||{},
+        chkFirmaConfirmacion:s.chkFirmaConfirmacion||null,
+      };
+      await fs.setDoc(fs.doc(db,C.SOLS,s.id,'adjuntos','fotos'),adjuntos);
+      await fs.updateDoc(fs.doc(db,C.SOLS,s.id),{
+        evidencias:fs.deleteField(),evidenciasMeta:fs.deleteField(),danos:fs.deleteField(),
+        checklist:fs.deleteField(),chkFotos:fs.deleteField(),chkFirmaConfirmacion:fs.deleteField(),
+      });
+      ok++;
+    }catch(e){console.error('[FL] migrar',s.id,e);fallo++;}
+  }
+  if(btn){btn.disabled=false;btn.textContent='Migrar evidencias antiguas';}
+  alert(`Migración terminada: ${ok} solicitudes migradas correctamente${fallo?`, ${fallo} con error (revisa la consola)`:''}.`);
+};
+
 function rAdmTabVehs(plazas){
+  const dups=flDetectarEcoDuplicados();
   return`
+    ${dups.length?`<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:9px;padding:11px 14px;margin-bottom:14px">
+      <div style="font-size:11.5px;font-weight:800;color:#B91C1C;margin-bottom:6px">${I.alert} ${dups.length} número${dups.length===1?'':'s'} de ECO duplicado${dups.length===1?'':'s'} — dos vehículos activos comparten el mismo ECO</div>
+      ${dups.map(d=>`<div style="font-size:11px;color:#7F1D1D;margin-bottom:3px">ECO <strong>${d.eco}</strong>: ${d.vehiculos.map(v=>`${v.unidad||'—'} (${v.responsable||'sin responsable'})`).join('  ·  ')}</div>`).join('')}
+      <div style="font-size:10px;color:#991B1B;margin-top:6px">Corrígelo cambiando el ECO de uno de los dos directamente en "Editar vehículo" — no hay forma automática de saber cuál es el correcto.</div>
+    </div>`:''}
+    <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+      <button class="fb gho sm" onclick="admVerificarDuplicados()">${I.check} Verificar ECO duplicados</button>
+    </div>
     <div class="fl-adm-filters">
       <div class="fl-adm-search">${I.search}<input type="text" id="adm-q" placeholder="ECO, unidad, responsable, placas…" oninput="admFiltrar()" value="${admFiltro}"></div>
       <select class="fl-adm-fsel" id="adm-plaza" onchange="admFiltrar()">
@@ -1327,7 +1383,12 @@ function rAdmTabSols(){
   }
   if(solQ){const q=solQ.toLowerCase();lista=lista.filter(s=>(s.vehiculoEco+s.solicitante+s.tipoSol+s.id+'').toLowerCase().includes(q));}
   const filtros=['Solicitud','Evaluación','Servicio','Rechazada','Cerrada'];
+  const viejas=flS.filter(s=>s.evidencias!==undefined).length;
   return`
+    ${viejas?`<div style="display:flex;align-items:center;gap:10px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:9px;padding:10px 14px;margin-bottom:12px">
+      <span style="font-size:11.5px;color:#92400E;flex:1"><strong>${viejas}</strong> solicitud${viejas===1?'':'es'} con fotos en formato antiguo (afectan el rendimiento de carga).</span>
+      <button class="fb" id="adm-migrar-btn" style="background:#D97706;color:#fff;border:none" onclick="admMigrarEvidencias()">Migrar evidencias antiguas</button>
+    </div>`:''}
     <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
       <div class="fl-adm-search" style="flex:1;min-width:200px">${I.search}<input type="text" id="adms-q" placeholder="ECO, solicitante, tipo…" value="${solQ}" oninput="admSolFiltrar()"></div>
       <select id="adms-est" onchange="admSolFiltrar()" class="fl-adm-fsel">
@@ -2325,6 +2386,9 @@ function rPanel(){
       if(alts.some(a=>a.tono==='bad'))marcar(v,`Llanta ${ll.posicion||''}: ${alts.find(a=>a.tono==='bad').t}`,'bad');
     });
   });
+  flDetectarEcoDuplicados().forEach(({eco,vehiculos})=>{
+    vehiculos.forEach(v=>marcar(v,`ECO ${eco} duplicado`,'bad'));
+  });
   const atencion=[...atencionMap.values()].slice(0,6);
 
   const heroKpi=(ico,val,label,tono)=>{
@@ -3145,16 +3209,21 @@ window.flSolGuardar=async function(){
     gasolina:ST.gasolina,tipoUnidad:ST.tipoVeh,
     estatus:'Solicitud',solicitante:window.auth?.currentUser?.displayName||window.auth?.currentUser?.email||'—',
     creadoPor:window.auth?.currentUser?.email||'',creadoEn:new Date().toISOString(),
+    confirmacionChecklistSemanal:!!usarConfirm,
+  };
+  const adjuntosObj={
     evidencias:ST.evFotos.map(e=>typeof e==='string'?e:e.src),
     evidenciasMeta:ST.evFotos.map(e=>typeof e==='object'?e.meta:null).filter(Boolean),
     danos:JSON.parse(JSON.stringify(ST.dmg)),
     checklist:chkFinal,chkFotos:usarConfirm?{}:ST.chkFotos,
-    confirmacionChecklistSemanal:!!usarConfirm,
     chkFirmaConfirmacion:chkFirmaConfirmacion,
   };
   const btn=document.getElementById('fl-btn-guardar');if(btn){btn.disabled=true;btn.textContent='Guardando…';}
   try{
-    await fs.addDoc(fs.collection(db,C.SOLS),docObj);
+    const ref=await fs.addDoc(fs.collection(db,C.SOLS),docObj);
+    // Fotos/firma/daños van aparte — así el documento principal (el que se
+    // descarga siempre en la lista) se queda liviano.
+    await fs.setDoc(fs.doc(db,C.SOLS,ref.id,'adjuntos','fotos'),adjuntosObj);
     if(km&&v&&!v.id.startsWith('eco-'))await fs.updateDoc(fs.doc(db,C.VEHS,v.id),{km:Number(km)}).catch(()=>{});
     // Reset
     ST={...ST,dmg:{frente:[],atras:[],derecha:[],izquierda:[]},chk:{},chkFotos:{},evFotos:[],gasolina:50};
@@ -3269,7 +3338,7 @@ function renderRP(id){
 
     ${card(`Historial de uso (${usosVeh.length})`,usosVeh.length?usosVeh.map(u=>flRPUsoItem(u)).join(''):`<div style="font-size:11px;color:#94A3B8;text-align:center;padding:8px 0">Sin registros de vinculación</div>`)}
 
-    ${card(`Historial de solicitudes (${histFull.length})`,hist.length?hist.map(s=>flRPHistItem(s)).join('')+(histFull.length>hist.length?`<div style="font-size:9.5px;color:#94A3B8;text-align:center;padding:6px 0 0">Mostrando los ${hist.length} más recientes de ${histFull.length}</div>`:''):`<div style="font-size:11px;color:#94A3B8;text-align:center;padding:8px 0">Sin historial</div>`)}
+    ${card(`Historial de solicitudes (${histFull.length})`,hist.length?hist.map(s=>flRPHistItem(s,v)).join('')+(histFull.length>hist.length?`<div style="font-size:9.5px;color:#94A3B8;text-align:center;padding:6px 0 0">Mostrando los ${hist.length} más recientes de ${histFull.length}</div>`:''):`<div style="font-size:11px;color:#94A3B8;text-align:center;padding:8px 0">Sin historial</div>`)}
   `;
   flRenderLlantasCard(id);
 }
@@ -3303,19 +3372,25 @@ function flRPHistItem(s){
         <div style="font-size:9.5px;color:#94A3B8;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${quien} · ${hF(s.creadoEn)}</div>
       </div>
     </div>
-    <div id="fl-rph-body-${s.id}" style="display:none;margin:8px 0 2px 18px;padding:9px 11px;background:#F8FAFD;border:1px solid #EEF2F7;border-radius:8px">
-      ${flRPHistBody(s)}
-    </div>
+    <div id="fl-rph-body-${s.id}" style="display:none;margin:8px 0 2px 18px;padding:9px 11px;background:#F8FAFD;border:1px solid #EEF2F7;border-radius:8px"></div>
   </div>`;
 }
 
-window.flRPHistToggle=function(id){
+window.flRPHistToggle=async function(id){
   const body=document.getElementById('fl-rph-body-'+id);
   const chev=document.getElementById('fl-rph-chev-'+id);
   if(!body)return;
   const abierto=body.style.display==='block';
-  body.style.display=abierto?'none':'block';
-  if(chev)chev.style.transform=abierto?'rotate(0deg)':'rotate(180deg)';
+  if(abierto){body.style.display='none';if(chev)chev.style.transform='rotate(0deg)';return;}
+  if(!body.dataset.cargado){
+    body.innerHTML='<div style="font-size:11px;color:#94A3B8;padding:4px 0">Cargando…</div>';
+    body.style.display='block';
+    const s=flS.find(x=>x.id===id);
+    if(s){await flCargarEvidenciasSol(s);body.innerHTML=flRPHistBody(s);}
+    body.dataset.cargado='1';
+  }
+  body.style.display='block';
+  if(chev)chev.style.transform='rotate(180deg)';
 };
 
 function flRPHistBody(s){
@@ -3635,7 +3710,7 @@ function flPanorResumenVeh(v){
     </div>
     <div class="fl-panor-sum-sec">
       <div class="fl-panor-sum-sec-t">Resumen de solicitudes (${hist.length})</div>
-      ${hist.length?hist.slice(0,10).map(s=>flRPHistItem(s)).join(''):`<div style="font-size:11px;color:#94A3B8">Sin solicitudes</div>`}
+      ${hist.length?hist.slice(0,10).map(s=>flRPHistItem(s,v)).join(''):`<div style="font-size:11px;color:#94A3B8">Sin solicitudes</div>`}
       ${hist.length>10?`<div style="font-size:9.5px;color:#94A3B8;text-align:center;padding:6px 0 0">Mostrando las 10 más recientes de ${hist.length}</div>`:''}
     </div>
     <div class="fl-panor-sum-sec">
@@ -3914,9 +3989,11 @@ function tSols(list,pA){
 
 
 // COMPARAR EVIDENCIAS POR VEHÍCULO
-window.flCompararEvidencias=function(vehId){
+window.flCompararEvidencias=async function(vehId){
   const v=flV.find(x=>x.id===vehId);
-  const sols=flSolsDeVehiculo(v).filter(s=>s.evidencias?.length);
+  const candidatas=flSolsDeVehiculo(v);
+  await Promise.all(candidatas.map(s=>flCargarEvidenciasSol(s)));
+  const sols=candidatas.filter(s=>s.evidencias?.length);
   if(!sols.length){flMsgInfo('Sin evidencias para comparar.');return;}
   const ov=document.createElement('div');ov.className='fl-ov';
   let html=`<div style="background:#fff;border-radius:16px;width:100%;max-width:680px;max-height:92vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,.3)">
@@ -3969,6 +4046,7 @@ window.flVerSol=async function(id){
     flCargarArchivosSubcol(id,'archivos_evaluacion'),
     flCargarArchivosSubcol(id,'archivos_servicio'),
   ]);
+  await flCargarEvidenciasSol(s); // fotos/daños/checklist (formato nuevo, si aplica)
   s._archivosEvaluacion = archEval;
   s._archivosServicio   = archServ;
   const v=flV.find(x=>x.eco===s.vehiculoEco||x.id===s.vehiculoId);
@@ -6155,6 +6233,28 @@ async function flCargarArchivosSubcol(solId, subcol) {
     const snap = await fs.getDocs(ref);
     return snap.docs.map(d => ({id:d.id, ...d.data()}));
   } catch { return []; }
+}
+
+// ── Migración de evidencias a subcolección (performance) ──
+// Los registros NUEVOS ya no guardan evidencias/chkFotos/danos en el
+// documento principal — viven en flotilla_solicitudes/{id}/adjuntos/fotos.
+// Esta función los trae bajo demanda y los mezcla en el objeto `s`. Los
+// registros VIEJOS (que ya traen todo inline) se quedan exactamente igual,
+// no se tocan ni se re-descargan de más.
+const _flEvidCache={};
+async function flCargarEvidenciasSol(s){
+  if(s.evidencias!==undefined||s._sinAdjuntos)return s; // formato viejo, o ya resuelto
+  if(_flEvidCache[s.id]){Object.assign(s,_flEvidCache[s.id]);return s;}
+  try{
+    const snap=await fs.getDoc(fs.doc(db,C.SOLS,s.id,'adjuntos','fotos'));
+    if(snap.exists()){
+      _flEvidCache[s.id]=snap.data();
+      Object.assign(s,snap.data());
+      return s;
+    }
+  }catch(e){console.warn('[FL] flCargarEvidenciasSol',e);}
+  s._sinAdjuntos=true; // no había nada que traer — no reintentar cada vez
+  return s;
 }
 
 async function flLeerArchivo(file, maxMB = 4) {
