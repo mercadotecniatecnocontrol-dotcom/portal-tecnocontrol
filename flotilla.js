@@ -35,7 +35,7 @@ async function agregarColaborador(nombre){
   _flColabCache=null;
 }
 
-const C={VEHS:'flotilla_vehiculos',SOLS:'flotilla_solicitudes',COMIS:'flotilla_comisiones',TRANS:'flotilla_transferencias',CHKSEM:'flotilla_checklist_semanal',CFG:'flotilla_config',TAREAS:'flotilla_tareas',USOS:'flotilla_usos',USUARIOS:'fl_usuarios',SINIESTROS:'flotilla_siniestros',UBICACIONES:'flotilla_ubicaciones'};
+const C={VEHS:'flotilla_vehiculos',SOLS:'flotilla_solicitudes',COMIS:'flotilla_comisiones',TRANS:'flotilla_transferencias',CHKSEM:'flotilla_checklist_semanal',CFG:'flotilla_config',TAREAS:'flotilla_tareas',USOS:'flotilla_usos',USUARIOS:'fl_usuarios',SINIESTROS:'flotilla_siniestros',UBICACIONES:'flotilla_ubicaciones',EVENTOS:'flotilla_eventos'};
 
 // ══════════════════════════════════════════════════════════════
 // FUENTE ÚNICA DE VERDAD — "EN TALLER"
@@ -651,6 +651,26 @@ function buildHTML(){
 function rpVacio(){return`<div class="fl-empty" style="min-height:300px"><div class="fl-empty-ico">${SVG_AUTO}</div><p style="font-size:11px">Selecciona un vehículo<br>para ver su información</p></div>`;}
 
 // INIT
+// ── Registro de actividad y errores (diagnóstico) ──
+// Nunca debe romper el portal: si falla el propio guardado, se ignora en silencio.
+// Solo registra si hay una vista de Flotilla activa (vistaAct), para no
+// atribuirle a Flotilla errores de otros módulos del portal.
+function flRegistrarEvento(tipo,extra){
+  try{
+    const user=window.auth?.currentUser;
+    fs.addDoc(fs.collection(db,C.EVENTOS),{
+      tipo,
+      email:user?.email||'',
+      nombre:user?.displayName||user?.email||'',
+      vista:'desktop:'+(typeof vistaAct!=='undefined'?vistaAct:''),
+      dispositivo:navigator.userAgent||'',
+      online:navigator.onLine,
+      creadoEn:new Date().toISOString(),
+      ...extra,
+    }).catch(()=>{});
+  }catch(e){}
+}
+
 window.cargarFlotilla=async function(){
   injectCSS();buildHTML();
   if(typeof window.flActualizarBotonExtras==='function')window.flActualizarBotonExtras();
@@ -662,10 +682,23 @@ window.cargarFlotilla=async function(){
   // Actualizar header con el usuario real tan pronto como esté disponible
   actualizarHeaderUsuario();
   fs=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+  if(!window._flErrHandlersInstalados){
+    window._flErrHandlersInstalados=true;
+    window.addEventListener('error',(e)=>{
+      if(!vistaAct)return; // solo si estamos dentro de una vista de Flotilla
+      flRegistrarEvento('error',{mensaje:String(e.message||'').slice(0,300),stack:String(e.error?.stack||'').slice(0,600)});
+    });
+    window.addEventListener('unhandledrejection',(e)=>{
+      if(!vistaAct)return;
+      const r=e.reason;
+      flRegistrarEvento('error',{mensaje:('Promise rechazada: '+(r?.message||r||'')).slice(0,300),stack:String(r?.stack||'').slice(0,600)});
+    });
+  }
   await Promise.all([ldVehs(),ldSols(),ldComs(),ldTrans(),ldChkSem(),ldCfgSem(),ldUsos(),ldFlUsuarios(),ldSiniestros(),ldUbicaciones()]);
   renderSB();
   flVista('panel');
   window._flInitDone=true;
+  flRegistrarEvento('sesion_abierta');
 };
 
 function actualizarHeaderUsuario(){
@@ -971,7 +1004,7 @@ function rAdmin(){
   const com=flV.filter(v=>v.status==='comision').length;
   const sinResp=flV.filter(v=>!v.responsable||v.responsable==='—').length;
   const plazas=[...new Set(flV.map(v=>v.plaza).filter(Boolean))].sort();
-  const tabs=[{k:'vehs',label:'Vehículos'},{k:'nuevo',label:'Agregar vehículo'},{k:'sols',label:'Solicitudes'},{k:'usuarios',label:'Usuarios / ECOs'},{k:'cumplimiento',label:'Cumplimiento'}];
+  const tabs=[{k:'vehs',label:'Vehículos'},{k:'nuevo',label:'Agregar vehículo'},{k:'sols',label:'Solicitudes'},{k:'usuarios',label:'Usuarios / ECOs'},{k:'cumplimiento',label:'Cumplimiento'},{k:'actividad',label:'Actividad y errores'}];
   setContent(padded(`
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
       <div>
@@ -994,14 +1027,14 @@ function rAdmin(){
       ${tabs.map(t=>`<button onclick="admTabSwitch('${t.k}')" id="adm-tab-${t.k}" style="padding:8px 16px;border:none;border-bottom:2px solid ${admTab===t.k?'#2563EB':'transparent'};margin-bottom:-2px;background:none;font-family:inherit;font-size:12px;font-weight:700;color:${admTab===t.k?'#2563EB':'#64748B'};cursor:pointer;transition:.15s">${t.label}</button>`).join('')}
     </div>
     <div id="adm-tab-content">
-      ${admTab==='vehs'?rAdmTabVehs(plazas):admTab==='nuevo'?rAdmTabNuevo():admTab==='sols'?rAdmTabSols():admTab==='cumplimiento'?rAdmTabCumplimiento():rAdmTabUsuarios()}
+      ${admTab==='vehs'?rAdmTabVehs(plazas):admTab==='nuevo'?rAdmTabNuevo():admTab==='sols'?rAdmTabSols():admTab==='cumplimiento'?rAdmTabCumplimiento():admTab==='actividad'?rAdmTabActividad():rAdmTabUsuarios()}
     </div>
   `));
 }
 
 window.admTabSwitch=function(tab){
   admTab=tab; admEditId=null;
-  ['vehs','nuevo','sols','usuarios','cumplimiento'].forEach(k=>{
+  ['vehs','nuevo','sols','usuarios','cumplimiento','actividad'].forEach(k=>{
     const b=document.getElementById('adm-tab-'+k);if(!b)return;
     b.style.color=k===tab?'#2563EB':'#64748B';
     b.style.borderBottomColor=k===tab?'#2563EB':'transparent';
@@ -1014,6 +1047,7 @@ window.admTabSwitch=function(tab){
   else if(tab==='sols')content.innerHTML=rAdmTabSols();
   else if(tab==='colab'){content.innerHTML='<div id="adm-colab-wrap" style="padding:4px">Cargando colaboradores…</div>';setTimeout(rAdmTabColab,50);}
   else if(tab==='cumplimiento'){content.innerHTML='<div style="padding:20px;text-align:center;color:#94A3B8;font-size:12px">Calculando cumplimiento…</div>';setTimeout(()=>{content.innerHTML=rAdmTabCumplimiento();},30);}
+  else if(tab==='actividad'){content.innerHTML='<div style="padding:20px;text-align:center;color:#94A3B8;font-size:12px">Cargando actividad…</div>';setTimeout(()=>{content.innerHTML=rAdmTabActividad();},30);}
   else content.innerHTML=rAdmTabUsuarios();
 };
 
@@ -1285,6 +1319,87 @@ window.flRenderCumplimientoBody=async function(mes){
         </tbody>
       </table>
     </div>`;
+};
+
+// ══════════════════════════════════════════════════════════════
+// ACTIVIDAD Y ERRORES — diagnóstico de sesiones e incidencias reales
+// ══════════════════════════════════════════════════════════════
+let _flEventosCache={};
+async function flFetchEventosMes(mes){
+  if(_flEventosCache[mes])return _flEventosCache[mes];
+  try{
+    const snap=await fs.getDocs(fs.collection(db,C.EVENTOS));
+    const arr=snap.docs.map(d=>({id:d.id,...d.data()})).filter(e=>(e.creadoEn||'').slice(0,7)===mes);
+    arr.sort((a,b)=>(b.creadoEn||'').localeCompare(a.creadoEn||''));
+    _flEventosCache[mes]=arr;
+    return arr;
+  }catch(e){console.error('[FL] fetch eventos',e);return[];}
+}
+
+let admActividadMes=null;
+
+function rAdmTabActividad(){
+  if(!admActividadMes){const d=new Date();admActividadMes=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;}
+  const meses=flMesesCumplimientoDisponibles();
+  setTimeout(()=>flRenderActividadBody(admActividadMes),30);
+  return`
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#94A3B8">Mes</span>
+      <select id="adm-act-mes" onchange="admActividadMes=this.value;flRenderActividadBody(admActividadMes)" style="padding:7px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;font-weight:700;color:#0A1628;background:#fff;cursor:pointer">
+        ${meses.map(m=>`<option value="${m}" ${m===admActividadMes?'selected':''}>${flPanorMesLabel(m)}</option>`).join('')}
+      </select>
+    </div>
+    <div style="font-size:12px;color:#64748B;margin-bottom:14px;background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px;padding:10px 14px">
+      <strong style="color:#C2410C">Qué es esto:</strong> "Sesiones" cuenta cada vez que alguien abrió Flotilla (móvil o escritorio) en el mes. "Errores" son fallos reales de JavaScript capturados automáticamente — si un técnico dice que "se le cierra la app", aquí debería aparecer el error exacto, con su correo, la pantalla y la hora. Si no hay ningún error registrado pero sí hubo sesiones ese día, lo más probable es que no sea un bug de la app.
+    </div>
+    <div id="adm-act-body"><div style="text-align:center;padding:30px;color:#94A3B8;font-size:12px">Cargando…</div></div>
+  `;
+}
+
+window.flRenderActividadBody=async function(mes){
+  const body=document.getElementById('adm-act-body');
+  if(!body)return;
+  body.innerHTML='<div style="text-align:center;padding:30px;color:#94A3B8;font-size:12px">Cargando…</div>';
+  const eventos=await flFetchEventosMes(mes);
+  const sesiones=eventos.filter(e=>e.tipo==='sesion_abierta');
+  const errores=eventos.filter(e=>e.tipo==='error');
+
+  const porTec={};
+  const touch=(email,nombre)=>{email=(email||'—').toLowerCase();if(!porTec[email])porTec[email]={email,nombre:nombre||email,sesiones:0,errores:0};};
+  sesiones.forEach(s=>{touch(s.email,s.nombre);porTec[(s.email||'—').toLowerCase()].sesiones++;});
+  errores.forEach(e=>{touch(e.email,e.nombre);porTec[(e.email||'—').toLowerCase()].errores++;});
+  const filas=Object.values(porTec).sort((a,b)=>b.errores-a.errores||b.sesiones-a.sesiones);
+
+  body.innerHTML=`
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px">
+      <div style="background:#F8FAFD;border-radius:12px;padding:14px 16px"><div style="font-size:22px;font-weight:900">${sesiones.length}</div><div style="font-size:11px;color:#64748B;margin-top:2px">Sesiones totales</div></div>
+      <div style="background:${errores.length?'#FEF2F2':'#F0FDF4'};border-radius:12px;padding:14px 16px"><div style="font-size:22px;font-weight:900;color:${errores.length?'#B91C1C':'#15803D'}">${errores.length}</div><div style="font-size:11px;color:${errores.length?'#B91C1C':'#15803D'};margin-top:2px">Errores capturados</div></div>
+      <div style="background:#F8FAFD;border-radius:12px;padding:14px 16px"><div style="font-size:22px;font-weight:900">${filas.length}</div><div style="font-size:11px;color:#64748B;margin-top:2px">Técnicos activos</div></div>
+    </div>
+    <div class="fl-tw" style="overflow:auto;margin-bottom:20px">
+      <table class="fl-adm-table">
+        <thead><tr><th>Técnico</th><th>Sesiones</th><th>Errores</th></tr></thead>
+        <tbody>
+          ${filas.length?filas.map(f=>`
+            <tr>
+              <td style="font-weight:700">${f.nombre}<div style="font-size:10px;color:#94A3B8;font-weight:400">${f.email}</div></td>
+              <td style="font-size:13px">${f.sesiones}</td>
+              <td style="font-size:13px;font-weight:700;color:${f.errores?'#B91C1C':'#94A3B8'}">${f.errores}</td>
+            </tr>`).join(''):`<tr><td colspan="3" style="text-align:center;padding:20px;color:#94A3B8">Sin sesiones registradas este mes</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+    <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin-bottom:10px">Errores registrados (${errores.length})</div>
+    ${errores.length?errores.slice(0,30).map(e=>`
+      <div style="border:1px solid #FECACA;background:#FEF2F2;border-radius:10px;padding:10px 14px;margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:4px">
+          <strong style="font-size:12px;color:#991B1B">${e.nombre||e.email||'—'}</strong>
+          <span style="font-size:10.5px;color:#B91C1C">${e.creadoEn?new Date(e.creadoEn).toLocaleString('es-MX',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—'}</span>
+        </div>
+        <div style="font-size:12px;color:#7F1D1D;font-family:'JetBrains Mono',monospace;margin-bottom:3px">${(e.mensaje||'—').replace(/</g,'&lt;')}</div>
+        <div style="font-size:10.5px;color:#B91C1C">Pantalla: ${e.vista||'—'} · ${e.online===false?'Sin conexión':'Con conexión'}</div>
+      </div>`).join(''):`<div style="font-size:12px;color:#94A3B8;padding:14px 0">Sin errores capturados este mes.</div>`}
+  `;
 };
 
 function rAdmTabUsuarios(){
