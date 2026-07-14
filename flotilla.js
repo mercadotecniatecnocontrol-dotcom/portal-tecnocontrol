@@ -35,7 +35,7 @@ async function agregarColaborador(nombre){
   _flColabCache=null;
 }
 
-const C={VEHS:'flotilla_vehiculos',SOLS:'flotilla_solicitudes',COMIS:'flotilla_comisiones',TRANS:'flotilla_transferencias',CHKSEM:'flotilla_checklist_semanal',CFG:'flotilla_config',TAREAS:'flotilla_tareas',USOS:'flotilla_usos',USUARIOS:'fl_usuarios',SINIESTROS:'flotilla_siniestros'};
+const C={VEHS:'flotilla_vehiculos',SOLS:'flotilla_solicitudes',COMIS:'flotilla_comisiones',TRANS:'flotilla_transferencias',CHKSEM:'flotilla_checklist_semanal',CFG:'flotilla_config',TAREAS:'flotilla_tareas',USOS:'flotilla_usos',USUARIOS:'fl_usuarios',SINIESTROS:'flotilla_siniestros',UBICACIONES:'flotilla_ubicaciones'};
 
 // ══════════════════════════════════════════════════════════════
 // FUENTE ÚNICA DE VERDAD — "EN TALLER"
@@ -159,11 +159,12 @@ const I={
   fleet:`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8.2 15H3a1 1 0 01-1-1v-2.6a1 1 0 011-1h5.6l1.6-2.6h3.4" opacity=".55"/><circle cx="5" cy="15" r="1.5" opacity=".55"/><circle cx="11.5" cy="15" r="1.5" opacity=".55"/><path d="M15.8 18H10a1 1 0 01-1-1v-2.6a1 1 0 011-1h6.1l1.9-2.9h3.6a1 1 0 011 1V17a1 1 0 01-1 1h-1"/><circle cx="12.4" cy="18" r="1.6"/><circle cx="19.3" cy="18" r="1.6"/></svg>`,
   folder:`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a1 1 0 011-1h4.4l1.6 2H20a1 1 0 011 1v9a1 1 0 01-1 1H4a1 1 0 01-1-1V7z"/></svg>`,
   calendar:`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`,
+  mappin:`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21c-4-4.5-6-8-6-11a6 6 0 0112 0c0 3-2 6.5-6 11z"/><circle cx="12" cy="10" r="2"/></svg>`,
 };
 
 // ESTADO
 let db=window.db, fs=null;
-let flV=[], flS=[], flCom=[], flTrans=[], flChkSem=[], flCfgSem={}, flUsos=[], flFlUsuarios=[], flSiniestros=[];
+let flV=[], flS=[], flCom=[], flTrans=[], flChkSem=[], flCfgSem={}, flUsos=[], flFlUsuarios=[], flSiniestros=[], flUbicaciones=[];
 let vistaAct='panel';
 let ST={
   vehId:null, tipoVeh:'auto', vistaImg:'frente',
@@ -597,6 +598,9 @@ function buildHTML(){
       <button class="fl-tab-btn" id="fl-tb-calendario" onclick="flVista('calendario')" title="Calendario de actividades">${I.calendar}</button>
     </div>
     <div style="position:relative">
+      <button class="fl-tab-btn" id="fl-tb-mapa" onclick="flVista('mapa')" title="Mapa en tiempo real">${I.mappin}</button>
+    </div>
+    <div style="position:relative">
       <button class="fl-tab-btn" id="fl-tb-presupuesto" onclick="flVista('presupuesto')" title="Presupuesto vs Gastos">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
       </button>
@@ -658,7 +662,7 @@ window.cargarFlotilla=async function(){
   // Actualizar header con el usuario real tan pronto como esté disponible
   actualizarHeaderUsuario();
   fs=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-  await Promise.all([ldVehs(),ldSols(),ldComs(),ldTrans(),ldChkSem(),ldCfgSem(),ldUsos(),ldFlUsuarios(),ldSiniestros()]);
+  await Promise.all([ldVehs(),ldSols(),ldComs(),ldTrans(),ldChkSem(),ldCfgSem(),ldUsos(),ldFlUsuarios(),ldSiniestros(),ldUbicaciones()]);
   renderSB();
   flVista('panel');
   window._flInitDone=true;
@@ -803,6 +807,19 @@ function ldSiniestros(){
     }catch(e){console.error('[FL] ldSiniestros',e);flSiniestros=[];resolve();}
   });
 }
+let _unsubUbicaciones=null;
+function ldUbicaciones(){
+  return new Promise((resolve)=>{
+    if(_unsubUbicaciones){resolve();return;}
+    try{
+      _unsubUbicaciones=fs.onSnapshot(fs.collection(db,C.UBICACIONES),(s)=>{
+        flUbicaciones=s.docs.map(d=>({id:d.id,...d.data()}));
+        resolve();
+        if(window._flInitDone&&vistaAct==='mapa')flActualizarMarcadoresMapa();
+      },(err)=>{console.error('[FL] onSnapshot ubicaciones',err);if(!flUbicaciones)flUbicaciones=[];resolve();});
+    }catch(e){console.error('[FL] ldUbicaciones',e);flUbicaciones=[];resolve();}
+  });
+}
 let _unsubFlUsuarios=null;
 function ldFlUsuarios(){
   return new Promise((resolve)=>{
@@ -933,6 +950,7 @@ window.flVista=function(v){
   else if(v==='bajas')rBajas();
   else if(v==='admin')rAdmin();
   else if(v==='calendario')rCalendarioVista();
+  else if(v==='mapa')rMapaVista();
 };
 function setContent(h){const c=document.getElementById('fl-content');if(c)c.innerHTML=h;}
 function padded(h){return`<div style="padding:16px">${h}</div>`;}
@@ -1997,6 +2015,59 @@ function rCalendarioVista(){
     <div style="font-size:11.5px;color:#64748B;margin-bottom:18px">Solicitudes, pagos y visitas a taller por fecha</div>
     ${rFlCalendario()}
   `));
+}
+
+// ══════════════════════════════════════════════════════════════
+// MAPA EN TIEMPO REAL — ubicación reportada por el teléfono de cada
+// técnico (solo mientras la app móvil está abierta / al vincularse).
+// Reutiliza Leaflet, que ya carga el portal para el módulo de Ventas.
+// ══════════════════════════════════════════════════════════════
+let flMapaLeaflet=null;
+let flMapaMarcadores={};
+
+function rMapaVista(){
+  const conUbicacion=flUbicaciones.filter(u=>u.lat&&u.lng).length;
+  setContent(padded(`
+    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px">
+      <div>
+        <div style="font-size:18px;font-weight:900;letter-spacing:-.5px">Mapa en tiempo real</div>
+        <div style="font-size:11.5px;color:#64748B;margin-top:3px">${conUbicacion} de ${flV.filter(v=>v.status!=='baja').length} vehículos con ubicación reportada</div>
+      </div>
+      <div style="font-size:10.5px;color:#94A3B8;background:#F8FAFD;border:1px solid #E8EDF5;border-radius:100px;padding:5px 12px">${I.mappin} Se actualiza al abrir la app o vincularse a un vehículo</div>
+    </div>
+    <div id="fl-mapa-wrap" style="border-radius:14px;overflow:hidden;border:1px solid #E8EDF5;height:520px"></div>
+  `));
+  setTimeout(flInicializarMapa,50);
+}
+
+function flInicializarMapa(){
+  const el=document.getElementById('fl-mapa-wrap');
+  if(!el||typeof L==='undefined')return;
+  if(flMapaLeaflet){flMapaLeaflet.remove();flMapaLeaflet=null;}
+  flMapaMarcadores={};
+  flMapaLeaflet=L.map(el).setView([28.6353,-106.0889],11); // Chihuahua por default
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap'}).addTo(flMapaLeaflet);
+  flActualizarMarcadoresMapa();
+}
+
+function flActualizarMarcadoresMapa(){
+  if(!flMapaLeaflet||typeof L==='undefined')return;
+  const puntos=[];
+  flUbicaciones.forEach(u=>{
+    if(!u.lat||!u.lng)return;
+    const v=flV.find(x=>String(x.eco)===String(u.eco));
+    const nombre=u.nombre||u.email||'—';
+    const eco=u.eco;
+    const cuando=u.capturadoEn?new Date(u.capturadoEn).toLocaleString('es-MX',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
+    const html=`<div style="font-size:12.5px;min-width:150px"><strong>ECO ${eco}${v?` · ${v.unidad||''}`:''}</strong><br>${nombre}<br><span style="color:#94A3B8;font-size:11px">Actualizado: ${cuando}</span></div>`;
+    if(flMapaMarcadores[eco]){
+      flMapaMarcadores[eco].setLatLng([u.lat,u.lng]).setPopupContent(html);
+    }else{
+      flMapaMarcadores[eco]=L.marker([u.lat,u.lng]).addTo(flMapaLeaflet).bindPopup(html);
+    }
+    puntos.push([u.lat,u.lng]);
+  });
+  if(puntos.length)flMapaLeaflet.fitBounds(puntos,{padding:[30,30],maxZoom:14});
 }
 
 // ── SOLICITUDES — layout imagen referencia ──
