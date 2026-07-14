@@ -2061,6 +2061,7 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
                 <div id="rh-registros-extra"></div>
             </div>
 
+            <div id="area-actividades-wrap">
             <div style="margin-bottom:16px;display:flex;gap:12px;align-items:center;">
                 <div id="filtro-compartidas" style="display:flex;gap:6px;margin-bottom:12px;">
                 <button onclick="setFiltroCompartidas('todas')" id="btn-filtro-todas" style="padding:6px 14px;border-radius:8px;border:2px solid #2563eb;background:#2563eb;color:white;font-weight:700;font-size:11px;cursor:pointer;">📋 Todas</button>
@@ -2075,6 +2076,7 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
                 <span id="area-search-count" style="font-size:12px;color:#64748b;white-space:nowrap;"></span>
             </div>
             <div id="area-table" style="overflow-x:auto;"></div>
+            </div>
         </div>
 
         <!-- VISTA EJECUTIVA — Solo para Cristina y Admin -->
@@ -4154,12 +4156,31 @@ window.verArea=(a,b)=>{
         toggleVentasMapa(a, yo);
         // Flotilla
         const _flPanel = document.getElementById('flotilla-dashboard');
+        const _actWrap = document.getElementById('area-actividades-wrap');
         if(_flPanel){
             if(a === 'Flotilla'){
                 _flPanel.style.display = 'block';
+                // Subir el panel de Flotilla (botones) hasta arriba de todo, por encima
+                // de la parrilla de documentos y las actividades.
+                const secArea = document.getElementById('sec-area');
+                const pageHeader = secArea ? secArea.querySelector('.page-header') : null;
+                if(pageHeader && pageHeader.nextElementSibling !== _flPanel){
+                    pageHeader.insertAdjacentElement('afterend', _flPanel);
+                }
+                // Documentos y actividades quedan colapsados por default; se despliegan
+                // con el botón "Documentos y actividades" en la barra de Flotilla.
+                if(!window._flExtrasAbiertos){
+                    const _pw=document.getElementById('area-parrilla-wrap'); if(_pw)_pw.style.display='none';
+                    if(_actWrap)_actWrap.style.display='none';
+                }
                 if(typeof window.cargarFlotilla === 'function') window.cargarFlotilla();
             } else {
                 _flPanel.style.display = 'none';
+                // Si se había movido, lo regresamos a su lugar original al final del body
+                if(_flPanel.parentElement && _flPanel.parentElement.id === 'sec-area'){
+                    document.body.appendChild(_flPanel);
+                }
+                if(_actWrap)_actWrap.style.display=''; // siempre visible fuera de Flotilla
             }
         }
         if(isMobile()) mostrarNavMobile(true, false);
@@ -4169,7 +4190,7 @@ window.verArea=(a,b)=>{
             const _areasConParrillaPropia = ['Marketing'];
             if(_areasConParrillaPropia.includes(a)){
                 _parrillaWrap.style.display = 'none';
-            } else {
+            } else if(a !== 'Flotilla' || window._flExtrasAbiertos){
                 _parrillaWrap.style.display = 'block';
                 window.apAreaActual = a; apAreaActual = a;
                 if(typeof window.actualizarLabelAP === 'function') window.actualizarLabelAP();
@@ -4178,6 +4199,24 @@ window.verArea=(a,b)=>{
         }
     };
     if(auth.currentUser) { _doRender(); } else { setTimeout(_doRender, 300); }
+};
+
+// Muestra/oculta la parrilla de documentos + actividades dentro del área Flotilla.
+// Expuesta para que el botón de la barra de Flotilla (flotilla_76.js) la controle.
+window.flToggleExtras = function(){
+    window._flExtrasAbiertos = !window._flExtrasAbiertos;
+    const _pw = document.getElementById('area-parrilla-wrap');
+    const _actWrap = document.getElementById('area-actividades-wrap');
+    if(window._flExtrasAbiertos){
+        if(_pw){_pw.style.display='block'; window.apAreaActual='Flotilla'; apAreaActual='Flotilla';
+            if(typeof window.actualizarLabelAP === 'function') window.actualizarLabelAP();
+            if(typeof window.cargarDocsAP === 'function') window.cargarDocsAP();}
+        if(_actWrap)_actWrap.style.display='';
+    } else {
+        if(_pw)_pw.style.display='none';
+        if(_actWrap)_actWrap.style.display='none';
+    }
+    if(typeof window.flActualizarBotonExtras==='function') window.flActualizarBotonExtras();
 };
 
 // Peso de ordenamiento: pendiente primero, completada al final
