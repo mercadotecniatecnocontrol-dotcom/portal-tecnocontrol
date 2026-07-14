@@ -1161,27 +1161,45 @@ function rAdmin(){
   const com=flV.filter(v=>v.status==='comision').length;
   const sinResp=flV.filter(v=>!v.responsable||v.responsable==='—').length;
   const plazas=[...new Set(flV.map(v=>v.plaza).filter(Boolean))].sort();
-  const tabs=[{k:'vehs',label:'Vehículos'},{k:'nuevo',label:'Agregar vehículo'},{k:'sols',label:'Solicitudes'},{k:'usuarios',label:'Usuarios / ECOs'},{k:'cumplimiento',label:'Cumplimiento'},{k:'actividad',label:'Actividad y errores'},{k:'chkadapt',label:'Checklist adaptativo'}];
+  const icoCar=`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17h14M5 17a2 2 0 100 4 2 2 0 000-4zm14 0a2 2 0 100 4 2 2 0 000-4zM5 17l1.5-6h11L19 17"/></svg>`;
+  const icoPlus=`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`;
+  const icoClip=`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M9 4H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-3"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="13" y2="15"/></svg>`;
+  const icoUsers=`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>`;
+  const icoChart=`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>`;
+  const icoAlertC=`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`;
+  const icoListCheck=`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>`;
+  const tabs=[
+    {k:'vehs',label:'Vehículos',ico:icoCar},
+    {k:'nuevo',label:'Agregar',ico:icoPlus},
+    {k:'sols',label:'Solicitudes',ico:icoClip},
+    {k:'usuarios',label:'Usuarios',ico:icoUsers},
+    {k:'cumplimiento',label:'Cumplimiento',ico:icoChart},
+    {k:'actividad',label:'Actividad',ico:icoAlertC},
+    {k:'chkadapt',label:'Checklist adaptativo',ico:icoListCheck},
+  ];
+  const heroKpiAdm=(val,label,color)=>`<div style="background:rgba(255,255,255,.06);border-radius:12px;padding:12px 14px"><div style="font-size:22px;font-weight:900;color:${color||'#fff'}">${val}</div><div style="font-size:11px;color:#7C93B8;margin-top:2px">${label}</div></div>`;
   setContent(padded(`
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-      <div>
-        <div style="font-size:20px;font-weight:900;letter-spacing:-.5px">Administración de Flotilla</div>
-        <div style="font-size:11.5px;color:#64748B;margin-top:3px">Gestión de vehículos, solicitudes y usuarios</div>
+    <div style="background:#0A1628;border-radius:16px;padding:20px 24px;margin-bottom:20px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+        <div>
+          <div style="font-size:11px;color:#7C93B8;text-transform:uppercase;letter-spacing:.6px">Administración</div>
+          <div style="font-size:19px;font-weight:900;color:#fff;margin-top:4px">Flotilla vehicular</div>
+        </div>
+        <div id="adm-hdr-btns" style="display:flex;gap:8px">
+          <button onclick="admExportar()" style="background:rgba(255,255,255,.1);color:#fff;border:none;border-radius:9px;padding:9px 14px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px">${I.doc} Exportar CSV</button>
+          <button class="fb acc" onclick="admGuardarTodo()" id="adm-btn-save" style="display:none;gap:5px">${I.save} Guardar cambios</button>
+        </div>
       </div>
-      <div id="adm-hdr-btns" style="display:flex;gap:8px">
-        <button class="fb gho" onclick="admExportar()" style="gap:5px">${I.doc} Exportar CSV</button>
-        <button class="fb acc" onclick="admGuardarTodo()" id="adm-btn-save" style="display:none;gap:5px">${I.save} Guardar cambios</button>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px">
+        ${heroKpiAdm(flV.length,'Total flotilla')}
+        ${heroKpiAdm(act,'Activos','#5DCAA5')}
+        ${heroKpiAdm(tall,'En taller','#FAC775')}
+        ${heroKpiAdm(com,'Comisión','#C4B5FD')}
+        ${heroKpiAdm(sinResp,'Sin responsable','#F09595')}
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:20px">
-      <div class="fl-adm-kpi"><div class="fl-adm-kpi-v">${flV.length}</div><div class="fl-adm-kpi-l">Total flotilla</div></div>
-      <div class="fl-adm-kpi"><div class="fl-adm-kpi-v" style="color:#16A34A">${act}</div><div class="fl-adm-kpi-l">Activos</div></div>
-      <div class="fl-adm-kpi"><div class="fl-adm-kpi-v" style="color:#D97706">${tall}</div><div class="fl-adm-kpi-l">En taller</div></div>
-      <div class="fl-adm-kpi"><div class="fl-adm-kpi-v" style="color:#7C3AED">${com}</div><div class="fl-adm-kpi-l">Comisión</div></div>
-      <div class="fl-adm-kpi"><div class="fl-adm-kpi-v" style="color:#EF4444">${sinResp}</div><div class="fl-adm-kpi-l">Sin responsable</div></div>
-    </div>
-    <div style="display:flex;gap:6px;margin-bottom:16px;border-bottom:2px solid #F1F5F9;padding-bottom:0">
-      ${tabs.map(t=>`<button onclick="admTabSwitch('${t.k}')" id="adm-tab-${t.k}" style="padding:8px 16px;border:none;border-bottom:2px solid ${admTab===t.k?'#2563EB':'transparent'};margin-bottom:-2px;background:none;font-family:inherit;font-size:12px;font-weight:700;color:${admTab===t.k?'#2563EB':'#64748B'};cursor:pointer;transition:.15s">${t.label}</button>`).join('')}
+    <div style="display:flex;gap:6px;margin-bottom:18px;flex-wrap:wrap">
+      ${tabs.map(t=>`<button onclick="admTabSwitch('${t.k}')" id="adm-tab-${t.k}" style="display:flex;align-items:center;gap:6px;padding:9px 15px;border:none;border-radius:9px;background:${admTab===t.k?'#0A1628':'#F1F5F9'};color:${admTab===t.k?'#fff':'#475569'};font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;transition:.15s">${t.ico}${t.label}</button>`).join('')}
     </div>
     <div id="adm-tab-content">
       ${admTab==='vehs'?rAdmTabVehs(plazas):admTab==='nuevo'?rAdmTabNuevo():admTab==='sols'?rAdmTabSols():admTab==='cumplimiento'?rAdmTabCumplimiento():admTab==='actividad'?rAdmTabActividad():admTab==='chkadapt'?rAdmTabChkAdapt():rAdmTabUsuarios()}
@@ -1193,8 +1211,8 @@ window.admTabSwitch=function(tab){
   admTab=tab; admEditId=null;
   ['vehs','nuevo','sols','usuarios','cumplimiento','actividad','chkadapt'].forEach(k=>{
     const b=document.getElementById('adm-tab-'+k);if(!b)return;
-    b.style.color=k===tab?'#2563EB':'#64748B';
-    b.style.borderBottomColor=k===tab?'#2563EB':'transparent';
+    b.style.background=k===tab?'#0A1628':'#F1F5F9';
+    b.style.color=k===tab?'#fff':'#475569';
   });
   const hb=document.getElementById('adm-hdr-btns');if(hb)hb.style.display=tab==='vehs'?'flex':'none';
   const content=document.getElementById('adm-tab-content');if(!content)return;
@@ -2337,19 +2355,22 @@ window.admReasignarEco=async function(){
 };
 
 // ── PANEL GENERAL ──
+let flPanelMes='all'; // filtro de periodo para "Solicitudes y actividad" del dashboard
+
 function rPanel(){
   const act=flV.filter(v=>v.status==='activo'||!v.status).length;
   const tall=flV.filter(v=>v.status==='taller').length;
   const com=flV.filter(v=>v.status==='comision').length;
   const baj=flV.filter(v=>v.status==='baja').length;
-  const pend=flS.filter(s=>!['Cerrada','Rechazada'].includes(s.estatus)).length;
+  const flSPeriodo=flPanelMes==='all'?flS:flS.filter(s=>(s.creadoEn||'').slice(0,7)===flPanelMes);
+  const pend=flSPeriodo.filter(s=>!['Cerrada','Rechazada'].includes(s.estatus)).length;
   const porEst={Solicitud:0,'Evaluación':0,Servicio:0,Rechazada:0,Cerrada:0};
   const normPorEst={
     'Validación':'Evaluación','Validada':'Evaluación','Cotización':'Evaluación','Aprobación':'Evaluación','Aprobada':'Evaluación',
     'Pagos':'Servicio','Cierre':'Servicio'
   };
-  flS.forEach(s=>{const k=normPorEst[s.estatus]||s.estatus;if(k in porEst)porEst[k]++;});
-  const porTipo={};flS.forEach(s=>{const t=s.tipo||'Otro';porTipo[t]=(porTipo[t]||0)+1;});
+  flSPeriodo.forEach(s=>{const k=normPorEst[s.estatus]||s.estatus;if(k in porEst)porEst[k]++;});
+  const porTipo={};flSPeriodo.forEach(s=>{const t=s.tipo||'Otro';porTipo[t]=(porTipo[t]||0)+1;});
   const top=Object.entries(porTipo).sort((a,b)=>b[1]-a[1]).slice(0,5);
   const mx=top[0]?.[1]||1;
 
@@ -2361,7 +2382,7 @@ function rPanel(){
   const libresAhora=flV.filter(v=>v.status==='activo'&&!ocupadosApp[String(v.eco)]).length;
   const vencidas=flV.filter(v=>{const d=hD(v.pv);return d!==null&&d<0;});
   const porVencer=flV.filter(v=>{const d=hD(v.pv);return d!==null&&d>=0&&d<30;});
-  const solPorEst=(e)=>flS.filter(s=>s.estatus===e||(e==='Evaluación'&&['Validación','Validada','Cotización','Aprobación','Aprobada'].includes(s.estatus))||(e==='Servicio'&&['Pagos','Cierre'].includes(s.estatus))).length;
+  const solPorEst=(e)=>flSPeriodo.filter(s=>s.estatus===e||(e==='Evaluación'&&['Validación','Validada','Cotización','Aprobación','Aprobada'].includes(s.estatus))||(e==='Servicio'&&['Pagos','Cierre'].includes(s.estatus))).length;
 
   // Vehículos que realmente necesitan atención hoy (taller, sin responsable, póliza vencida/por vencer)
   const atencionMap=new Map();
@@ -2429,8 +2450,14 @@ function rPanel(){
 
     ${atencion.length?`
     <div style="border-top:1px solid #F1F5F9;padding-top:22px;margin-bottom:22px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-        <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8">Solicitudes y actividad</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8">Solicitudes y actividad</div>
+          <select onchange="flPanelMes=this.value;rPanel()" style="padding:4px 8px;border:1.5px solid #E2E8F0;border-radius:7px;font-family:inherit;font-size:10.5px;font-weight:700;color:#374151;background:#fff;cursor:pointer">
+            <option value="all" ${flPanelMes==='all'?'selected':''}>Todo el historial</option>
+            ${flMesesCumplimientoDisponibles().map(m=>`<option value="${m}" ${flPanelMes===m?'selected':''}>${flPanorMesLabel(m)}</option>`).join('')}
+          </select>
+        </div>
         <button onclick="flVista('calendario')" style="font-size:10.5px;font-weight:700;color:#64748B;background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:4px">${I.calendar||''} Ver calendario</button>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:16px">
@@ -2452,7 +2479,7 @@ function rPanel(){
         <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:#94A3B8">Solicitudes activas</div>
         <button onclick="flPipelineModal('Cerrada')" style="font-size:9px;font-weight:700;color:#64748B;background:none;border:none;cursor:pointer;text-decoration:underline">Ver cerradas →</button>
       </div>
-      ${tSols(flS.filter(s=>!['Cerrada','Rechazada'].includes(s.estatus)).slice(0,8))}
+      ${tSols(flSPeriodo.filter(s=>!['Cerrada','Rechazada'].includes(s.estatus)).slice(0,8))}
     </div>
 
     <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin-bottom:9px">Requieren atención (${atencionMap.size})</div>
@@ -2473,8 +2500,14 @@ function rPanel(){
         </div>`;
       }).join('')}
     </div>`:`<div style="border-top:1px solid #F1F5F9;padding-top:22px;margin-bottom:22px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-        <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8">Solicitudes y actividad</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8">Solicitudes y actividad</div>
+          <select onchange="flPanelMes=this.value;rPanel()" style="padding:4px 8px;border:1.5px solid #E2E8F0;border-radius:7px;font-family:inherit;font-size:10.5px;font-weight:700;color:#374151;background:#fff;cursor:pointer">
+            <option value="all" ${flPanelMes==='all'?'selected':''}>Todo el historial</option>
+            ${flMesesCumplimientoDisponibles().map(m=>`<option value="${m}" ${flPanelMes===m?'selected':''}>${flPanorMesLabel(m)}</option>`).join('')}
+          </select>
+        </div>
         <button onclick="flVista('calendario')" style="font-size:10.5px;font-weight:700;color:#64748B;background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:4px">${I.calendar||''} Ver calendario</button>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:16px">
@@ -2496,7 +2529,7 @@ function rPanel(){
         <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:#94A3B8">Solicitudes activas</div>
         <button onclick="flPipelineModal('Cerrada')" style="font-size:9px;font-weight:700;color:#64748B;background:none;border:none;cursor:pointer;text-decoration:underline">Ver cerradas →</button>
       </div>
-      ${tSols(flS.filter(s=>!['Cerrada','Rechazada'].includes(s.estatus)).slice(0,8))}
+      ${tSols(flSPeriodo.filter(s=>!['Cerrada','Rechazada'].includes(s.estatus)).slice(0,8))}
     </div>
     <div style="font-size:12px;color:#94A3B8">Ningún vehículo requiere atención inmediata en este momento.</div>`}
   `));
