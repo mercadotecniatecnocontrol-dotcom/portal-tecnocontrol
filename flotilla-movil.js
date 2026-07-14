@@ -2727,12 +2727,6 @@ window.fmTareaSetFcomp=async function(tareaId){
   }catch(e){toast('Error: '+e.message,'err');}
 };
 
-window.fmMarcarTarea=async function(id,est){
-  var btn=document.createElement('button');
-  await fmTareaSetEst(id,est,btn);
-};
-
-
 // ══════════════════════════════════════════
 // VISTA 4 — NOTIFICACIONES / AVISOS
 // ══════════════════════════════════════════
