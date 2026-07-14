@@ -4157,18 +4157,17 @@ window.verArea=(a,b)=>{
         // Flotilla
         const _flPanel = document.getElementById('flotilla-dashboard');
         const _actWrap = document.getElementById('area-actividades-wrap');
+        const secArea = document.getElementById('sec-area');
+        const pageHeader = secArea ? secArea.querySelector('.page-header') : null;
         if(_flPanel){
             if(a === 'Flotilla'){
                 _flPanel.style.display = 'block';
-                // Subir el panel de Flotilla (botones) hasta arriba de todo, por encima
-                // de la parrilla de documentos y las actividades.
-                const secArea = document.getElementById('sec-area');
-                const pageHeader = secArea ? secArea.querySelector('.page-header') : null;
-                if(pageHeader && pageHeader.nextElementSibling !== _flPanel){
-                    pageHeader.insertAdjacentElement('afterend', _flPanel);
-                }
-                // Documentos y actividades quedan colapsados por default; se despliegan
-                // con el botón "Documentos y actividades" en la barra de Flotilla.
+                // #flotilla-dashboard es una página completa en sí misma (min-height:100vh,
+                // su propio layout de sidebar). Ya NO se mueve en el DOM — eso rompía el
+                // grid. En vez de moverlo, ocultamos el contenido genérico del área
+                // (título, parrilla, actividades) para que Flotilla sea lo único visible
+                // y aparezca arriba de forma natural, sin trucos de posicionamiento.
+                if(pageHeader)pageHeader.style.display='none';
                 if(!window._flExtrasAbiertos){
                     const _pw=document.getElementById('area-parrilla-wrap'); if(_pw)_pw.style.display='none';
                     if(_actWrap)_actWrap.style.display='none';
@@ -4176,10 +4175,7 @@ window.verArea=(a,b)=>{
                 if(typeof window.cargarFlotilla === 'function') window.cargarFlotilla();
             } else {
                 _flPanel.style.display = 'none';
-                // Si se había movido, lo regresamos a su lugar original al final del body
-                if(_flPanel.parentElement && _flPanel.parentElement.id === 'sec-area'){
-                    document.body.appendChild(_flPanel);
-                }
+                if(pageHeader)pageHeader.style.display='';
                 if(_actWrap)_actWrap.style.display=''; // siempre visible fuera de Flotilla
             }
         }
