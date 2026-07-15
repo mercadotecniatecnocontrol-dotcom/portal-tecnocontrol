@@ -3023,6 +3023,83 @@ let utilState={
 };
 window.utilState=utilState;
 
+function renderUtilRevisionEntrega(){
+  const t=utilState.transferenciaData||{};
+  const d=utilState.datosEntrega||{};
+  const fotos=t.entregaFotos||[];
+  const chk=t.entregaChk||{};
+  const totalChk=Object.keys(chk).length;
+  const okChk=Object.values(chk).filter(Boolean).length;
+  return`
+    <div style="padding:0 16px 90px">
+      <div style="background:#FFFBEB;border:1.5px solid #FDE68A;border-radius:12px;padding:14px;margin-bottom:16px">
+        <div style="font-size:13px;font-weight:800;color:#92400E;margin-bottom:4px">Revisa antes de aceptar</div>
+        <div style="font-size:12px;color:#92400E;line-height:1.4">Confirma que el vehículo y las evidencias de quien entrega coinciden con lo que ves físicamente antes de firmar.</div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:10px;background:#F8FAFC;border-radius:12px;padding:12px 14px;margin-bottom:14px">
+        <div style="flex:1">
+          <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8">Entrega</div>
+          <div style="font-size:14px;font-weight:700;color:#1E3A5F">${t.entregaNombre||'—'}</div>
+        </div>
+        <div style="color:#CBD5E1;font-size:18px">→</div>
+        <div style="flex:1;text-align:right">
+          <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8">Recibe (tú)</div>
+          <div style="font-size:14px;font-weight:700;color:#15803D">${d.receptor||'—'}</div>
+        </div>
+      </div>
+
+      <div style="font-size:13px;font-weight:800;margin-bottom:8px">ECO ${d.eco||'—'} · ${d.vehiculo||'—'}</div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">
+        <div style="background:#F8FAFC;border-radius:10px;padding:10px 12px"><div style="font-size:10px;color:#94A3B8;font-weight:700">Kilometraje entrega</div><div style="font-size:14px;font-weight:800">${t.entregaKm||'—'} km</div></div>
+        <div style="background:#F8FAFC;border-radius:10px;padding:10px 12px"><div style="font-size:10px;color:#94A3B8;font-weight:700">Combustible</div><div style="font-size:14px;font-weight:800">${t.entregaGasolina!=null?t.entregaGasolina+'%':'—'}</div></div>
+      </div>
+
+      ${totalChk?`<div style="background:${okChk===totalChk?'#F0FDF4':'#FEF2F2'};border:1px solid ${okChk===totalChk?'#BBF7D0':'#FECACA'};border-radius:10px;padding:10px 12px;margin-bottom:16px;font-size:12.5px;font-weight:700;color:${okChk===totalChk?'#15803D':'#B91C1C'}">
+        Checklist de entrega: ${okChk}/${totalChk} puntos en buen estado
+      </div>`:''}
+
+      ${fotos.length?`
+      <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:8px">Fotos tomadas por quien entrega (${fotos.length})</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px">
+        ${fotos.map(f=>`<img src="${f}" onclick="window.open(this.src)" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;border:1px solid #E2E8F0">`).join('')}
+      </div>`:`<div style="font-size:12px;color:#94A3B8;margin-bottom:16px">Sin fotos adjuntas por quien entrega.</div>`}
+
+      ${t.comentarioEntrega?`<div style="background:#EFF6FF;border-radius:10px;padding:10px 12px;margin-bottom:16px;font-size:12px;color:#1E40AF"><strong>Comentario de entrega:</strong> ${t.comentarioEntrega}</div>`:''}
+    </div>
+    <div style="position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #E2E8F0;padding:12px 16px;display:flex;gap:8px;z-index:50">
+      <button class="fm-btn ghost" style="flex:1" onclick="utilRechazarTransferencia()">Rechazar</button>
+      <button class="fm-btn primary" style="flex:2" onclick="utilConfirmarEvidencia()">Todo coincide, continuar →</button>
+    </div>
+  `;
+}
+window.utilConfirmarEvidencia=function(){
+  utilState.evidenciaConfirmada=true;
+  renderUtil();
+};
+window.utilRechazarTransferencia=async function(){
+  const motivo=prompt('¿Por qué la rechazas? (se le avisará a quien la envió)');
+  if(motivo===null)return;
+  try{
+    const t=utilState.transferenciaData||{};
+    await db.collection('flotilla_transferencias').doc(utilState.transferenciaId).update({
+      estatus:'Rechazada',rechazadoEn:new Date().toISOString(),
+      rechazadoPor:window.auth?.currentUser?.email||'',motivoRechazo:motivo||'',
+    });
+    if(t.entregaEmail){
+      await db.collection('flotilla_notificaciones').add({
+        tipo:'transferencia_rechazada',codigo:t.codigo||utilState.codigo,vehiculoEco:t.vehiculoEco||'—',
+        para:t.entregaEmail,
+        mensaje:`Tu transferencia del ECO ${t.vehiculoEco||'—'} fue rechazada. Motivo: "${motivo||'sin especificar'}"`,
+        leido:false,creadoEn:new Date().toISOString(),
+      });
+    }
+    toast('Transferencia rechazada','ok');
+    utilReset();
+  }catch(e){toast('Error: '+e.message,'err');}
+};
+
 function renderUtil(){
   setContent(`
     <div class="fm-sec-hd">
@@ -3034,12 +3111,13 @@ function renderUtil(){
 
     ${utilState.paso===1?renderUtilPaso1():
       utilState.paso===2?renderUtilPaso2():
+      (utilState.paso===3&&utilState.modo==='recibir'&&!utilState.evidenciaConfirmada)?renderUtilRevisionEntrega():
       utilState.paso===3?renderUtilPaso3():
       renderUtilPaso4()}
   `);
 
-  // Inicializar canvas de firma si estamos en paso 3
-  if(utilState.paso===3)setTimeout(initFirmaCanvas,100);
+  // Inicializar canvas de firma si estamos en paso 3 (ya confirmada la evidencia si es recepción)
+  if(utilState.paso===3&&(utilState.modo!=='recibir'||utilState.evidenciaConfirmada))setTimeout(initFirmaCanvas,100);
   // Cargar personal si estamos en paso 2 entrega
   if(utilState.paso===2&&utilState.modo==='entregar'){setTimeout(cargarPersonalEnSelect,50);setTimeout(renderAngulosGrid,80);}
 }
@@ -3291,14 +3369,6 @@ function renderUtilPaso2(){
     </div>
     ${utilState.transferenciaData?`
     <div class="fm-fld" style="margin-top:12px">
-      <label>Fotos de entrega (tomadas por quien entrega)</label>
-      <div style="display:flex;flex-wrap:wrap;gap:8px;padding:4px 0">
-        ${(utilState.transferenciaData.fotos||[]).length?
-          (utilState.transferenciaData.fotos||[]).map(f=>`<img src="${f}" style="width:80px;height:80px;border-radius:8px;object-fit:cover;border:1.5px solid #E2E8F0">`).join('')
-          :'<div style="font-size:11px;color:#94A3B8">Sin fotos registradas</div>'}
-      </div>
-    </div>
-    <div class="fm-fld">
       <label>Tu comentario de recepción <span style="font-size:9px;font-weight:500;text-transform:none;color:#94A3B8">(opcional)</span></label>
       <textarea id="util-comentario-recepcion" placeholder="Confirmo recepción en buen estado / observaciones…" rows="2" style="width:100%;padding:10px 14px;border:1.5px solid #E2E8F0;border-radius:11px;font-size:13px;background:#fff;outline:none;box-sizing:border-box;resize:none;font-family:inherit"></textarea>
     </div>`:''}`}
@@ -3390,7 +3460,7 @@ function renderUtilPaso4(){
 // HELPERS UTILITARIOS
 // ── Reset utilitario — función global para que el onclick la encuentre ──
 window.utilReset=function(){
-  Object.assign(utilState,{modo:null,codigo:'',chk:{},chkFotos:{},evFotos:[],km:'',gasolina:50,fotoKm:null,firma:null,paso:1,transferenciaId:null,datosEntrega:null,codigoGenerado:null});
+  Object.assign(utilState,{modo:null,codigo:'',chk:{},chkFotos:{},evFotos:[],km:'',gasolina:50,fotoKm:null,firma:null,paso:1,transferenciaId:null,datosEntrega:null,codigoGenerado:null,evidenciaConfirmada:false});
   window.utilState=utilState;
   _flPersonasCache=[];
   _draftClear(_DRAFT.UTIL);
