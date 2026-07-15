@@ -3031,21 +3031,22 @@ function renderUtilRevisionEntrega(){
   const totalChk=Object.keys(chk).length;
   const okChk=Object.values(chk).filter(Boolean).length;
   return`
-    <div style="padding:0 16px 90px">
+    <div style="padding:0 16px 150px">
       <div style="background:#FFFBEB;border:1.5px solid #FDE68A;border-radius:12px;padding:14px;margin-bottom:16px">
         <div style="font-size:13px;font-weight:800;color:#92400E;margin-bottom:4px">Revisa antes de aceptar</div>
         <div style="font-size:12px;color:#92400E;line-height:1.4">Confirma que el vehículo y las evidencias de quien entrega coinciden con lo que ves físicamente antes de firmar.</div>
       </div>
 
-      <div style="display:flex;align-items:center;gap:10px;background:#F8FAFC;border-radius:12px;padding:12px 14px;margin-bottom:14px">
-        <div style="flex:1">
-          <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8">Entrega</div>
-          <div style="font-size:14px;font-weight:700;color:#1E3A5F">${t.entregaNombre||'—'}</div>
+      <div style="background:#F8FAFC;border-radius:12px;padding:12px 14px;margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px">
+          <div style="min-width:0;flex:1">
+            <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8">Entrega</div>
+            <div style="font-size:13px;font-weight:700;color:#1E3A5F;word-break:break-word">${t.entregaNombre||'—'}</div>
+          </div>
         </div>
-        <div style="color:#CBD5E1;font-size:18px">→</div>
-        <div style="flex:1;text-align:right">
+        <div style="min-width:0">
           <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8">Recibe (tú)</div>
-          <div style="font-size:14px;font-weight:700;color:#15803D">${d.receptor||'—'}</div>
+          <div style="font-size:13px;font-weight:700;color:#15803D;word-break:break-word">${d.receptor||'—'}</div>
         </div>
       </div>
 
@@ -3063,12 +3064,12 @@ function renderUtilRevisionEntrega(){
       ${fotos.length?`
       <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:8px">Fotos tomadas por quien entrega (${fotos.length})</div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px">
-        ${fotos.map(f=>`<img src="${f}" onclick="window.open(this.src)" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;border:1px solid #E2E8F0">`).join('')}
+        ${fotos.map(f=>`<img src="${f}" onclick="window.open(this.src)" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;border:1px solid #E2E8F0;background:#F1F5F9">`).join('')}
       </div>`:`<div style="font-size:12px;color:#94A3B8;margin-bottom:16px">Sin fotos adjuntas por quien entrega.</div>`}
 
       ${t.comentarioEntrega?`<div style="background:#EFF6FF;border-radius:10px;padding:10px 12px;margin-bottom:16px;font-size:12px;color:#1E40AF"><strong>Comentario de entrega:</strong> ${t.comentarioEntrega}</div>`:''}
     </div>
-    <div style="position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #E2E8F0;padding:12px 16px;display:flex;gap:8px;z-index:50">
+    <div style="position:fixed;bottom:64px;left:0;right:0;background:#fff;border-top:1px solid #E2E8F0;padding:12px 16px;display:flex;gap:8px;z-index:500;box-shadow:0 -4px 12px rgba(0,0,0,.06)">
       <button class="fm-btn ghost" style="flex:1" onclick="utilRechazarTransferencia()">Rechazar</button>
       <button class="fm-btn primary" style="flex:2" onclick="utilConfirmarEvidencia()">Todo coincide, continuar →</button>
     </div>
