@@ -5243,7 +5243,7 @@ function rChkSemanalTabla(semSel){
       <td style="${tdC}"><span style="background:${pctBg(r)};color:${pctColor(r)};font-size:10px;font-weight:800;padding:2px 8px;border-radius:99px">${ok}/${total} OK${no?' · '+no+' detalle'+(no>1?'s':''):''}</span></td>
       <td style="${tdC}">${r.observaciones?`<span title="${r.observaciones.replace(/"/g,'&quot;')}" style="color:#2563EB">${I.alert||'💬'}</span>`:'<span style="color:#94A3B8;font-size:10px">—</span>'}</td>
       <td style="${tdC}">${r.firma?'<span style="color:#15803D;font-weight:800">✓</span>':'<span style="color:#B91C1C;font-weight:800">✗</span>'}</td>
-      <td style="${tdC}font-size:10px;color:#64748B">${r.tecnico||'—'}</td>
+      <td style="${tdC}font-size:10px;color:#64748B">${flNombrePorCorreo(r.tecnico)||'—'}</td>
       <td style="${tdC}font-size:18px;color:#94A3B8">›</td>
     </tr>`;
   });
@@ -5335,7 +5335,7 @@ window.flVerChkSem=async function(id){
     <div class="fl-mh"><h3>${I.truck||''} Check list semanal · ${r.semana}</h3><button class="fl-mx" onclick="this.closest('.fl-ov').remove()">✕</button></div>
     <div class="fl-mb">
       <div style="display:grid;grid-template-columns:1fr 1fr;background:#F8FAFD;border-radius:9px;overflow:hidden;border:1px solid #E8EDF5;margin-bottom:10px">
-        ${[['Vehículo',`ECO ${r.vehiculoEco} · ${v.unidad||r.vehiculo||'—'}`],['Fecha',hF(r.fecha)],['Kilometraje',r.km?Number(r.km).toLocaleString()+' km':'—'],['Gasolina',r.gasolina!=null?r.gasolina+'%':'—'],['Técnico',r.tecnico||'—'],['Semana',r.semana||'—']].map(([l,val])=>`<dl style="padding:7px 11px;border-right:1px solid #E8EDF5;border-bottom:1px solid #E8EDF5"><dt style="font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">${l}</dt><dd style="font-size:11.5px;font-weight:600">${val}</dd></dl>`).join('')}
+        ${[['Vehículo',`ECO ${r.vehiculoEco} · ${v.unidad||r.vehiculo||'—'}`],['Fecha',hF(r.fecha)],['Kilometraje',r.km?Number(r.km).toLocaleString()+' km':'—'],['Gasolina',r.gasolina!=null?r.gasolina+'%':'—'],['Técnico',flNombrePorCorreo(r.tecnico)||'—'],['Semana',r.semana||'—']].map(([l,val])=>`<dl style="padding:7px 11px;border-right:1px solid #E8EDF5;border-bottom:1px solid #E8EDF5"><dt style="font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">${l}</dt><dd style="font-size:11.5px;font-weight:600">${val}</dd></dl>`).join('')}
       </div>
 
       ${evidencias?.length?`<div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:5px">Evidencias generales</div><div class="fl-pills" style="margin-bottom:10px">${evidencias.map((e,i)=>{const src=typeof e==='object'?e.src:e;return`<span class="fl-pill" onclick="flImg('${src}')">${I.camera||'📷'} Foto ${i+1}</span>`;}).join('')}</div>`:''}
@@ -5496,7 +5496,7 @@ window.flGenerarPDFChkSem = async function(id) {
       <div style="font-size:14px;font-weight:800">${v.unidad||r.vehiculo||'—'} ${v.año||''}</div>
       <div style="font-size:10px;color:rgba(255,255,255,.5);margin-top:2px;font-family:monospace">ECO ${r.vehiculoEco} · ${v.placas||'—'} · ${v.plaza||'—'}</div>
     </div>
-    <div style="text-align:right;font-size:10px;color:rgba(255,255,255,.6)">Técnico: ${r.tecnico||'—'}</div>
+    <div style="text-align:right;font-size:10px;color:rgba(255,255,255,.6)">Técnico: ${flNombrePorCorreo(r.tecnico)||'—'}</div>
   </div>
 
   <div class="grid3">
