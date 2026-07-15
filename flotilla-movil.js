@@ -3069,7 +3069,7 @@ function renderUtilRevisionEntrega(){
 
       ${t.comentarioEntrega?`<div style="background:#EFF6FF;border-radius:10px;padding:10px 12px;margin-bottom:16px;font-size:12px;color:#1E40AF"><strong>Comentario de entrega:</strong> ${t.comentarioEntrega}</div>`:''}
     </div>
-    <div style="position:fixed;bottom:64px;left:0;right:0;background:#fff;border-top:1px solid #E2E8F0;padding:12px 16px;display:flex;gap:8px;z-index:500;box-shadow:0 -4px 12px rgba(0,0,0,.06)">
+    <div style="position:fixed;bottom:calc(58px + env(safe-area-inset-bottom,0px));left:0;right:0;background:#fff;border-top:1px solid #E2E8F0;padding:14px 16px;display:flex;gap:8px;z-index:500;box-shadow:0 -4px 12px rgba(0,0,0,.1)">
       <button class="fm-btn ghost" style="flex:1" onclick="utilRechazarTransferencia()">Rechazar</button>
       <button class="fm-btn primary" style="flex:2" onclick="utilConfirmarEvidencia()">Todo coincide, continuar →</button>
     </div>
