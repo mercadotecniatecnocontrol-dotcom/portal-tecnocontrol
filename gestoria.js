@@ -322,22 +322,35 @@
         return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
     }
 
+    function inyectarEstilosGestoria() {
+        if (document.getElementById('gestoria-estilos')) return;
+        const style = document.createElement('style');
+        style.id = 'gestoria-estilos';
+        style.textContent = `
+            #gestoria-dashboard{margin-left:240px;padding:32px;min-height:100vh;background:#dde3ee;}
+            @media(max-width:900px){ #gestoria-dashboard{margin-left:200px;} }
+            @media(max-width:768px){ #gestoria-dashboard{margin-left:0;padding:16px;} .ss-grid-campos{grid-template-columns:1fr !important;} }
+        `;
+        document.head.appendChild(style);
+    }
+
     async function cargarGestoria() {
+        inyectarEstilosGestoria();
         const cont = document.getElementById('gestoria-dashboard');
         if (!cont) return;
         if (_seccionActual === 'sgm') {
-            cont.innerHTML = renderTabsGestoria() + `<div style="padding:24px;color:#94a3b8;">SGM aún no está implementado.</div>`;
+            cont.innerHTML = renderTabsGestoria() + `<div style="padding-top:24px;color:#94a3b8;">SGM aún no está implementado.</div>`;
             bindTabsGestoria(cont);
             return;
         }
-        cont.innerHTML = renderTabsGestoria() + `<div style="padding:24px;color:#94a3b8;">Cargando clientes...</div>`;
+        cont.innerHTML = renderTabsGestoria() + `<div style="padding-top:24px;color:#94a3b8;">Cargando clientes...</div>`;
         bindTabsGestoria(cont);
         const clientes = await listarClientes();
         renderListaClientes(cont, clientes);
     }
 
     function renderTabsGestoria() {
-        return `<div style="display:flex;gap:6px;padding:16px 24px 0;border-bottom:1px solid #e2e8f0;">
+        return `<div style="display:flex;gap:6px;margin:-32px -32px 0;padding:16px 32px 0;border-bottom:1px solid #e2e8f0;background:#dde3ee;">
             ${SECCIONES_GESTORIA.map(s => `
                 <button data-seccion="${s.id}" style="padding:10px 16px;border:none;background:none;cursor:pointer;
                     font-weight:600;font-size:13px;color:${_seccionActual === s.id ? '#1d4ed8' : '#94a3b8'};
@@ -358,7 +371,7 @@
 
     function renderListaClientes(cont, clientes) {
         cont.innerHTML = renderTabsGestoria() + `
-        <div style="padding:24px;max-width:1000px;">
+        <div style="padding-top:24px;max-width:1000px;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
                 <h2 style="margin:0;font-size:20px;">SASISOPA</h2>
                 <button id="ss-btn-nuevo" style="background:#1d4ed8;color:#fff;border:none;padding:10px 18px;border-radius:8px;cursor:pointer;font-weight:600;">+ Nuevo cliente</button>
@@ -392,7 +405,7 @@
         const seccionesHtml = SECCIONES_FORM.map(sec => `
             <div style="margin-bottom:18px;">
                 <div style="font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:#475569;margin-bottom:8px;">${sec.titulo}</div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div class="ss-grid-campos" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
                     ${sec.campos.map(([clave, etiqueta, ejemplo]) => `
                         <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;">
                             <span style="color:#334155;font-weight:600;">${etiqueta}</span>
@@ -404,7 +417,7 @@
             </div>`).join('');
 
         cont.innerHTML = renderTabsGestoria() + `
-        <div style="padding:24px;max-width:1000px;">
+        <div style="padding-top:24px;max-width:1000px;">
             <button id="ss-btn-volver" style="background:none;border:none;color:#1d4ed8;cursor:pointer;font-size:13px;margin-bottom:14px;">&larr; Volver a clientes</button>
             <h2 style="margin:0 0 16px;font-size:20px;">${clienteId ? 'Editar cliente' : 'Nuevo cliente'}</h2>
             <div id="ss-form">${seccionesHtml}</div>
