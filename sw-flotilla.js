@@ -2,7 +2,7 @@
 // sw-flotilla.js — Service Worker Tecnocontrol PWA Móvil
 // v6 — Network-first (con fallback a cache) + notificaciones push nativas
 // ══════════════════════════════════════════════════
-const CACHE = 'tcn-movil-v6'; // ⬅️ Subida de v5 a v6: fuerza borrado del cache viejo en todos los usuarios
+const CACHE = 'tcn-movil-v7'; // ⬅️ v6→v7: corrige el bug de cache.put() en peticiones no-GET (auth)
 const PRECACHE = [
   './flotilla-app.html',
   './flotilla-movil.js',
@@ -33,13 +33,22 @@ self.addEventListener('fetch', e => {
   if (
     url.hostname.includes('firestore') ||
     url.hostname.includes('firebase') ||
-    url.hostname.includes('googleapis.com/identitytoolkit')
+    url.hostname.includes('identitytoolkit') ||
+    url.hostname.includes('googleapis')
   ) {
     e.respondWith(
       fetch(e.request).catch(() =>
         new Response('{"offline":true}', { headers: { 'Content-Type': 'application/json' } })
       )
     );
+    return;
+  }
+
+  // La API de caché del navegador SOLO admite peticiones GET — intentar
+  // guardar un POST/PUT/etc. lanza un TypeError. Nunca debemos cachear nada
+  // que no sea GET, sin importar qué tan "propio" sea el archivo.
+  if (e.request.method !== 'GET') {
+    e.respondWith(fetch(e.request));
     return;
   }
 
@@ -54,7 +63,7 @@ self.addEventListener('fetch', e => {
         .then(resp => {
           if (resp.ok) {
             const clone = resp.clone();
-            caches.open(CACHE).then(c => c.put(e.request, clone));
+            caches.open(CACHE).then(c => c.put(e.request, clone)).catch(()=>{});
           }
           return resp;
         })
@@ -70,7 +79,7 @@ self.addEventListener('fetch', e => {
       return fetch(e.request).then(resp => {
         if (resp.ok) {
           const clone = resp.clone();
-          caches.open(CACHE).then(c => c.put(e.request, clone));
+          caches.open(CACHE).then(c => c.put(e.request, clone)).catch(()=>{});
         }
         return resp;
       }).catch(() => caches.match('./flotilla-app.html'));
