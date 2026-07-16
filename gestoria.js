@@ -5,9 +5,6 @@
 // ventas.js, flotilla.js) porque Gestoría alojará más de un sistema:
 //   - SASISOPA (implementado abajo)
 //   - SGM — Sistema de Gestión de Medición (pendiente, sección propia)
-// Cada sistema vive en su propia sub-sección dentro de este archivo,
-// con su propia colección de Firestore y su propia carpeta de machotes,
-// pero comparten el mismo punto de entrada window.cargarGestoria().
 //
 // Corre 100% en el navegador: no requiere backend ni Cloud Functions
 // (compatible con GitHub Pages + Firestore plan Spark).
@@ -15,6 +12,7 @@
 // Requiere que index.html haya cargado:
 //   - window.db, window.auth (ya expuestos por el módulo principal)
 //   - JSZip (https://cdnjs.cloudflare.com/ajax/libs/jszip/...)
+//   - Variables CSS globales del portal (--teal, --teal2, --text, etc.)
 //
 // Los 91 machotes de SASISOPA viven en /sasisopa-machotes/ junto con
 // un manifest.json que los lista (mismo patrón que manifest.json /
@@ -22,28 +20,51 @@
 
 (function () {
 
-    // ── Secciones disponibles dentro de "Gestoría" ──────────────
     const SECCIONES_GESTORIA = [
         { id: 'sasisopa', titulo: 'SASISOPA', activa: true },
-        { id: 'sgm', titulo: 'SGM (próximamente)', activa: false },
+        { id: 'sgm', titulo: 'SGM', activa: false },
     ];
     let _seccionActual = 'sasisopa';
 
     const RUTA_MACHOTES = 'sasisopa-machotes/';
     const COLECCION = 'sasisopa_clientes';
 
-    let _fsFns = null; // funciones de Firestore, cargadas por import() dinámico
+    let _fsFns = null;
     let _clienteActualId = null;
     let _clientesCache = [];
+    let _logoDataUrlActual = null;
+    let _filtroTexto = '';
 
     async function fsFns() {
         if (_fsFns) return _fsFns;
-        const mod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-        _fsFns = mod;
-        return mod;
+        _fsFns = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        return _fsFns;
     }
 
-    // ── Catálogo de reemplazo (mismo que mapeo_valores.py) ──────
+    // ══════════════════════════════════════════════════════════
+    // ÍCONOS (SVG inline, mismo estilo que el resto del portal)
+    // ══════════════════════════════════════════════════════════
+    const ICONO = {
+        mas:        '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+        buscar:     '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
+        edificio:   '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><line x1="10" y1="6" x2="14" y2="6"/><line x1="10" y1="10" x2="14" y2="10"/><line x1="10" y1="14" x2="14" y2="14"/><line x1="10" y1="18" x2="14" y2="18"/></svg>',
+        usuarios:   '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+        graduacion: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10L12 5 2 10l10 5 10-5z"/><path d="M6 12.5V17c0 1.5 3 3 6 3s6-1.5 6-3v-4.5"/></svg>',
+        imagen:     '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>',
+        descarga:   '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
+        editar:     '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>',
+        flecha:     '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>',
+        check:      '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+        alerta:     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/><path d="M12 17h.01"/><circle cx="12" cy="12" r="10"/></svg>',
+        papelera:   '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>',
+        candado:    '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
+        carpeta:    '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>',
+        reloj:      '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+    };
+
+    // ══════════════════════════════════════════════════════════
+    // CATÁLOGO DE REEMPLAZO (idéntico a mapeo_valores.py)
+    // ══════════════════════════════════════════════════════════
     const MAPEO = {
         "Superservicio Cuatro Caminos S.A. de C.V.": "RAZON_SOCIAL",
         "Superservicio Cuatro Caminos S.A de C.V.": "RAZON_SOCIAL",
@@ -98,12 +119,10 @@
     const RE_RAZON_SOCIAL = /super\s*servici?c?o?\s+cuatro\s+caminos[.,]?\s*,?\s*s\.?\s*a\.?\s*(?:de)\s*c\.?\s*v\.?/gi;
     const RE_DOMICILIO = /km\.?\s*13\.?5\.?\s*,?\s*(?:carretera|carr\.?)\s*panamericana\s*s\/n\s*puente\s*alto(?:,\s*32675)?\s*,\s*juarez,\s*chihuahua/gi;
     const RE_NOMBRE_PLACEHOLDER = /^(nombre\s*){2,}$/i;
-
     const MESES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
 
-    // ── Esquema del formulario (mismas 24 claves que el Excel) ──
     const SECCIONES_FORM = [
-        { titulo: "Identidad del cliente", campos: [
+        { titulo: "Identidad del cliente", icono: ICONO.edificio, campos: [
             ["RAZON_SOCIAL", "Razón Social completa", "Superservicio Cuatro Caminos S.A. de C.V."],
             ["RFC", "RFC de la empresa", "SCC940928636"],
             ["DOMICILIO_ESTACION", "Domicilio completo de la estación", "KM. 13.5 CARRETERA PANAMERICANA S/N..."],
@@ -111,7 +130,7 @@
             ["NUMERO_PERMISO", "Número de permiso CRE/ASEA (PL)", "PL/6125/EXP/ES/2015"],
             ["FECHA_ELABORACION", "Fecha de elaboración (dd/mm/aaaa)", "28/04/2025"],
         ]},
-        { titulo: "Organigrama / nomenclatura de puestos", campos: [
+        { titulo: "Organigrama y nomenclatura de puestos", icono: ICONO.usuarios, campos: [
             ["ROL_ALTA_DIRECCION", "Alta Dirección", "Alta Dirección"],
             ["ROL_REPRESENTANTE_TECNICO", "Representante Técnico", "Representante Técnico"],
             ["ROL_SUPERVISOR_ESTACION", "Supervisor de Estación", "Supervisor de Estación"],
@@ -121,7 +140,7 @@
             ["ROL_MANTENIMIENTO", "Mantenimiento", "Mantenimiento"],
             ["ROL_INTENDENCIA", "Intendencia", "Intendencia"],
         ]},
-        { titulo: "Escolaridad mínima por puesto (F-06-02)", campos: [
+        { titulo: "Escolaridad mínima por puesto (F-06-02)", icono: ICONO.graduacion, campos: [
             ["ESCOLARIDAD_ALTA_DIRECCION", "Escolaridad — Alta Dirección", "Preparatoria"],
             ["ESCOLARIDAD_REPRESENTANTE_TECNICO", "Escolaridad — Representante Técnico", "Licenciatura o Ingeniería."],
             ["ESCOLARIDAD_SUPERVISOR", "Escolaridad — Supervisor de Estación", "Licenciatura."],
@@ -132,6 +151,8 @@
             ["ESCOLARIDAD_DESPACHADOR", "Escolaridad — Despachador", "Primaria."],
         ]},
     ];
+
+    const CAMPOS_OBLIGATORIOS = ["RAZON_SOCIAL", "RFC", "DOMICILIO_ESTACION", "CIUDAD_ESTADO", "NUMERO_PERMISO", "FECHA_ELABORACION"];
 
     // ── Derivación de variantes (mayúsculas, coma, fechas) ──────
     function derivarValor(clave, datos) {
@@ -170,25 +191,18 @@
 
     function intentarCoincidenciaFlexible(texto, datos) {
         if (RE_NOMBRE_PLACEHOLDER.test(texto.trim())) return '__SKIP__';
-        let nuevo = texto;
-        let cambiado = false;
-        if (datos.RAZON_SOCIAL && RE_RAZON_SOCIAL.test(nuevo)) {
-            nuevo = nuevo.replace(RE_RAZON_SOCIAL, datos.RAZON_SOCIAL);
-            cambiado = true;
-        }
-        if (datos.DOMICILIO_ESTACION && RE_DOMICILIO.test(nuevo)) {
-            nuevo = nuevo.replace(RE_DOMICILIO, datos.DOMICILIO_ESTACION);
-            cambiado = true;
-        }
+        let nuevo = texto, cambiado = false;
+        if (datos.RAZON_SOCIAL && RE_RAZON_SOCIAL.test(nuevo)) { nuevo = nuevo.replace(RE_RAZON_SOCIAL, datos.RAZON_SOCIAL); cambiado = true; }
+        if (datos.DOMICILIO_ESTACION && RE_DOMICILIO.test(nuevo)) { nuevo = nuevo.replace(RE_DOMICILIO, datos.DOMICILIO_ESTACION); cambiado = true; }
         return cambiado ? nuevo : null;
     }
 
-    // ── Manipulación XML de un documento.xml/header*.xml/footer*.xml ──
+    // ══════════════════════════════════════════════════════════
+    // MANIPULACIÓN XML DEL .DOCX
+    // ══════════════════════════════════════════════════════════
     const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 
-    function textoDeRun(run) {
-        return Array.from(run.getElementsByTagNameNS(NS_W, 't')).map(t => t.textContent).join('');
-    }
+    function textoDeRun(run) { return Array.from(run.getElementsByTagNameNS(NS_W, 't')).map(t => t.textContent).join(''); }
 
     function esResaltadoAmarillo(run) {
         const rPr = run.getElementsByTagNameNS(NS_W, 'rPr')[0];
@@ -212,7 +226,101 @@
         for (let i = 1; i < ts.length; i++) ts[i].textContent = '';
     }
 
-    function procesarParrafo(p, datos, stats) {
+    // ── Inserción real de imagen (logo) en el .docx ─────────────
+    function dataUrlABytes(dataUrl) {
+        const [header, b64] = dataUrl.split(',');
+        const mime = header.match(/data:([^;]+);/)[1];
+        const bin = atob(b64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        const ext = mime === 'image/jpeg' ? 'jpeg' : 'png';
+        return { bytes, mime, ext };
+    }
+
+    function medirImagenDataUrl(dataUrl) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+            img.onerror = reject;
+            img.src = dataUrl;
+        });
+    }
+
+    async function asegurarContentType(zip, ext, mime) {
+        const path = '[Content_Types].xml';
+        let xml = await zip.file(path).async('string');
+        if (xml.includes(`Extension="${ext}"`)) return;
+        xml = xml.replace('</Types>', `<Default Extension="${ext}" ContentType="${mime}"/></Types>`);
+        zip.file(path, xml);
+    }
+
+    function rutaRelsPara(rutaXml) {
+        const partes = rutaXml.split('/');
+        const nombre = partes.pop();
+        return partes.join('/') + '/_rels/' + nombre + '.rels';
+    }
+
+    async function agregarRelacionImagen(zip, rutaXml, mediaFilename) {
+        const rutaRels = rutaRelsPara(rutaXml);
+        let xml;
+        try { xml = await zip.file(rutaRels).async('string'); }
+        catch (e) { xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>'; }
+        const ids = Array.from(xml.matchAll(/Id="rId(\d+)"/g)).map(m => parseInt(m[1], 10));
+        const nuevoId = 'rId' + ((ids.length ? Math.max(...ids) : 0) + 1);
+        const nuevaRel = `<Relationship Id="${nuevoId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${mediaFilename}"/>`;
+        xml = xml.includes('</Relationships>') ? xml.replace('</Relationships>', nuevaRel + '</Relationships>') : xml;
+        zip.file(rutaRels, xml);
+        return nuevoId;
+    }
+
+    function nodosDesdeXml(xmlDoc, xmlString) {
+        const NS_DECL = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ' +
+            'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" ' +
+            'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" ' +
+            'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" ' +
+            'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
+        const wrapper = new DOMParser().parseFromString(`<wrapper ${NS_DECL}>${xmlString}</wrapper>`, 'application/xml');
+        return xmlDoc.importNode(wrapper.documentElement.firstChild, true);
+    }
+
+    function construirDrawingXml(rId, cx, cy, id) {
+        return `<w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0">
+            <wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/>
+            <wp:docPr id="${id}" name="LogoCliente"/>
+            <a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+                <pic:pic><pic:nvPicPr><pic:cNvPr id="${id}" name="LogoCliente"/><pic:cNvPicPr/></pic:nvPicPr>
+                <pic:blipFill><a:blip r:embed="${rId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>
+                <pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>
+                <a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>
+            </a:graphicData></a:graphic>
+        </wp:inline></w:drawing>`;
+    }
+
+    async function insertarLogoEnGrupo(zip, xmlDoc, rutaXml, grupoRuns, dataUrl, ctxImg) {
+        const { bytes, mime, ext } = dataUrlABytes(dataUrl);
+        await asegurarContentType(zip, ext, mime);
+        ctxImg.contador++;
+        const mediaFilename = `logoGen${ctxImg.contador}.${ext}`;
+        zip.file('word/media/' + mediaFilename, bytes);
+        const rId = await agregarRelacionImagen(zip, rutaXml, mediaFilename);
+
+        const { width, height } = await medirImagenDataUrl(dataUrl);
+        const altoObjetivoPx = 46;
+        let anchoPx = width * (altoObjetivoPx / height);
+        let altoPx = altoObjetivoPx;
+        if (anchoPx > 150) { altoPx = altoPx * (150 / anchoPx); anchoPx = 150; }
+        const cx = Math.round(anchoPx * 9525);
+        const cy = Math.round(altoPx * 9525);
+
+        const nodoDrawing = nodosDesdeXml(xmlDoc, construirDrawingXml(rId, cx, cy, 1000 + ctxImg.contador));
+        const primerRun = grupoRuns[0];
+        Array.from(primerRun.getElementsByTagNameNS(NS_W, 't')).forEach(t => t.remove());
+        quitarResaltado(primerRun);
+        primerRun.appendChild(nodoDrawing);
+        for (let k = 1; k < grupoRuns.length; k++) { setTextoRun(grupoRuns[k], ''); quitarResaltado(grupoRuns[k]); }
+    }
+
+    async function procesarParrafo(p, datos, stats, ctx) {
         const runs = Array.from(p.getElementsByTagNameNS(NS_W, 'r'));
         let i = 0;
         while (i < runs.length) {
@@ -222,10 +330,16 @@
                 while (j < runs.length && esResaltadoAmarillo(runs[j])) { grupo.push(runs[j]); j++; }
                 const textoOriginal = grupo.map(textoDeRun).join('');
                 const nuevo = valorNuevoPara(textoOriginal.trim(), datos);
+
                 if (nuevo === '__SKIP__') {
                     stats.placeholdersOmitidos++;
                 } else if (nuevo === '__LOGO__') {
-                    stats.logosPendientes++;
+                    if (datos.LOGO_BASE64) {
+                        await insertarLogoEnGrupo(ctx.zip, p.ownerDocument, ctx.ruta, grupo, datos.LOGO_BASE64, ctx.imagen);
+                        stats.logosInsertados++;
+                    } else {
+                        stats.logosPendientes++;
+                    }
                 } else if (nuevo === null || nuevo === undefined) {
                     stats.pendientes.push(textoOriginal.trim());
                 } else {
@@ -241,23 +355,18 @@
         }
     }
 
-    // F-06-02: asocia cada tabla "Perfil de Puesto" con el encabezado en
-    // MAYÚSCULAS que la precede, para fijar la escolaridad por puesto
-    // (el mismo texto de escolaridad se repite entre puestos distintos).
     function procesarEscolaridadF0602(xmlDoc, datos, stats) {
         const body = xmlDoc.getElementsByTagNameNS(NS_W, 'body')[0];
         if (!body) return;
         let lastHeading = null;
         for (const child of Array.from(body.children)) {
-            const local = child.localName;
-            if (local === 'p') {
+            if (child.localName === 'p') {
                 const texto = Array.from(child.getElementsByTagNameNS(NS_W, 't')).map(t => t.textContent).join('').trim();
                 if (texto) lastHeading = texto.toUpperCase();
-            } else if (local === 'tbl') {
+            } else if (child.localName === 'tbl') {
                 const claveEsc = ROL_A_CLAVE_ESCOLARIDAD[lastHeading];
                 if (!claveEsc) continue;
-                const filas = Array.from(child.getElementsByTagNameNS(NS_W, 'tr'));
-                for (const fila of filas) {
+                for (const fila of Array.from(child.getElementsByTagNameNS(NS_W, 'tr'))) {
                     const celdas = Array.from(fila.getElementsByTagNameNS(NS_W, 'tc'));
                     if (celdas.length < 2) continue;
                     const conceptoTxt = Array.from(celdas[0].getElementsByTagNameNS(NS_W, 't')).map(t => t.textContent).join('').trim();
@@ -278,31 +387,31 @@
         }
     }
 
-    async function procesarDocx(arrayBuffer, nombreArchivo, datos, stats) {
-        const zip = await JSZip.loadAsync(arrayBuffer);
+    async function procesarDocx(arrayBuffer, nombreArchivo, datos, stats, zip) {
         const parser = new DOMParser();
         const serializer = new XMLSerializer();
+        const ctxImagen = { contador: 0 };
 
         const rutasXml = Object.keys(zip.files).filter(p => /^word\/(document|header\d*|footer\d*)\.xml$/i.test(p));
-
         for (const ruta of rutasXml) {
             const xmlTexto = await zip.file(ruta).async('string');
             const xmlDoc = parser.parseFromString(xmlTexto, 'application/xml');
+            const ctx = { zip, ruta, imagen: ctxImagen };
 
-            const parrafos = Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'));
-            parrafos.forEach(p => procesarParrafo(p, datos, stats));
-
+            for (const p of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'))) {
+                await procesarParrafo(p, datos, stats, ctx);
+            }
             if (ruta === 'word/document.xml' && nombreArchivo.startsWith('F-06-02')) {
                 procesarEscolaridadF0602(xmlDoc, datos, stats);
             }
-
             zip.file(ruta, serializer.serializeToString(xmlDoc));
         }
-
         return await zip.generateAsync({ type: 'blob' });
     }
 
-    // ── Firestore: clientes ─────────────────────────────────────
+    // ══════════════════════════════════════════════════════════
+    // FIRESTORE
+    // ══════════════════════════════════════════════════════════
     async function listarClientes() {
         const { collection, getDocs, query, orderBy } = await fsFns();
         const snap = await getDocs(query(collection(window.db, COLECCION), orderBy('RAZON_SOCIAL')));
@@ -317,173 +426,405 @@
         return ref.id;
     }
 
-    // ── UI ───────────────────────────────────────────────────────
-    function svgIcon(path) {
-        return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
-    }
-
+    // ══════════════════════════════════════════════════════════
+    // ESTILOS (tokens tomados de las variables CSS del portal)
+    // ══════════════════════════════════════════════════════════
     function inyectarEstilosGestoria() {
         if (document.getElementById('gestoria-estilos')) return;
         const style = document.createElement('style');
         style.id = 'gestoria-estilos';
         style.textContent = `
-            #gestoria-dashboard{margin-left:240px;padding:32px;min-height:100vh;background:#dde3ee;}
-            @media(max-width:900px){ #gestoria-dashboard{margin-left:200px;} }
-            @media(max-width:768px){ #gestoria-dashboard{margin-left:0;padding:16px;} .ss-grid-campos{grid-template-columns:1fr !important;} }
+        #gestoria-dashboard{margin-left:240px;min-height:100vh;background:#f6f8fc;font-family:'DM Sans',sans-serif;}
+        @media(max-width:900px){ #gestoria-dashboard{margin-left:200px;} }
+        @media(max-width:768px){ #gestoria-dashboard{margin-left:0;} .gs-grid{grid-template-columns:1fr !important;} .gs-form-grid{grid-template-columns:1fr !important;} }
+
+        #gestoria-dashboard .gs-topbar{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:16px;padding:32px 40px 24px;border-bottom:1px solid rgba(59,130,246,0.10);background:#ffffff;}
+        #gestoria-dashboard .gs-eyebrow{font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--teal2);margin-bottom:6px;}
+        #gestoria-dashboard .gs-title{font-family:'Space Grotesk',sans-serif;font-size:26px;font-weight:700;color:var(--text);line-height:1.2;}
+        #gestoria-dashboard .gs-subtitle{font-size:13px;color:var(--text2);margin-top:4px;}
+
+        #gestoria-dashboard .gs-tabs{display:flex;gap:4px;background:#eef2f9;border-radius:10px;padding:4px;}
+        #gestoria-dashboard .gs-tab{border:none;background:none;padding:8px 16px;border-radius:8px;font-size:12.5px;font-weight:700;color:var(--text3);cursor:pointer;transition:0.18s;font-family:'DM Sans',sans-serif;}
+        #gestoria-dashboard .gs-tab.activo{background:#ffffff;color:var(--teal2);box-shadow:0 1px 3px rgba(15,23,42,0.08);}
+        #gestoria-dashboard .gs-tab:disabled{cursor:not-allowed;opacity:0.5;}
+
+        #gestoria-dashboard .gs-body{padding:28px 40px 60px;max-width:1280px;}
+
+        #gestoria-dashboard .gs-btn{display:inline-flex;align-items:center;gap:8px;border:none;border-radius:10px;font-family:'DM Sans',sans-serif;font-weight:700;font-size:13px;cursor:pointer;transition:all 0.18s ease;white-space:nowrap;}
+        #gestoria-dashboard .gs-btn-primary{background:linear-gradient(135deg,var(--teal),var(--teal2));color:#fff;padding:11px 20px;box-shadow:0 2px 10px rgba(37,99,235,0.28);}
+        #gestoria-dashboard .gs-btn-primary:hover{box-shadow:0 4px 16px rgba(37,99,235,0.38);transform:translateY(-1px);}
+        #gestoria-dashboard .gs-btn-primary:active{transform:translateY(0);box-shadow:0 1px 4px rgba(37,99,235,0.3);}
+        #gestoria-dashboard .gs-btn-primary:disabled{background:#cbd5e1;box-shadow:none;cursor:not-allowed;transform:none;}
+        #gestoria-dashboard .gs-btn-secondary{background:#fff;color:var(--text2);border:1px solid rgba(59,130,246,0.18);padding:10px 18px;}
+        #gestoria-dashboard .gs-btn-secondary:hover{background:#f4f8ff;border-color:var(--teal);color:var(--teal2);}
+        #gestoria-dashboard .gs-btn-ghost{background:none;color:var(--teal2);padding:8px 10px;}
+        #gestoria-dashboard .gs-btn-ghost:hover{background:rgba(37,99,235,0.08);}
+
+        #gestoria-dashboard .gs-searchbar{position:relative;max-width:340px;}
+        #gestoria-dashboard .gs-searchbar svg{position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--text3);}
+        #gestoria-dashboard .gs-searchbar input{width:100%;padding:10px 14px 10px 36px;border:1px solid rgba(59,130,246,0.15);border-radius:10px;font-size:13px;font-family:'DM Sans',sans-serif;background:#fff;transition:0.18s;}
+        #gestoria-dashboard .gs-searchbar input:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 3px rgba(37,99,235,0.12);}
+
+        #gestoria-dashboard .gs-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px;}
+        #gestoria-dashboard .gs-kpi-card{background:#fff;border:1px solid rgba(59,130,246,0.12);border-radius:16px;padding:18px 20px;box-shadow:0 2px 8px rgba(37,99,235,0.05);}
+        #gestoria-dashboard .gs-kpi-label{font-size:11.5px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;}
+        #gestoria-dashboard .gs-kpi-value{font-family:'Space Grotesk',sans-serif;font-size:26px;font-weight:700;color:var(--text);}
+
+        #gestoria-dashboard .gs-card{background:#fff;border:1px solid rgba(59,130,246,0.12);border-radius:16px;box-shadow:0 2px 8px rgba(37,99,235,0.05);overflow:hidden;}
+        #gestoria-dashboard .gs-card + .gs-card{margin-top:20px;}
+        #gestoria-dashboard .gs-card-header{display:flex;align-items:center;gap:10px;padding:18px 22px;border-bottom:1px solid rgba(59,130,246,0.08);}
+        #gestoria-dashboard .gs-card-header .gs-card-icon{width:32px;height:32px;border-radius:9px;background:rgba(37,99,235,0.10);color:var(--teal2);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+        #gestoria-dashboard .gs-card-title{font-family:'Space Grotesk',sans-serif;font-size:14.5px;font-weight:700;color:var(--text);}
+        #gestoria-dashboard .gs-card-body{padding:22px;}
+
+        #gestoria-dashboard table.gs-table{width:100%;border-collapse:collapse;}
+        #gestoria-dashboard table.gs-table thead th{text-align:left;font-size:11px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;color:var(--text3);padding:13px 22px;border-bottom:1px solid rgba(59,130,246,0.10);background:#fafbfd;}
+        #gestoria-dashboard table.gs-table tbody td{padding:15px 22px;font-size:13.5px;color:var(--text);border-bottom:1px solid rgba(59,130,246,0.06);}
+        #gestoria-dashboard table.gs-table tbody tr{transition:background 0.15s;cursor:pointer;}
+        #gestoria-dashboard table.gs-table tbody tr:hover{background:#f5f8ff;}
+        #gestoria-dashboard table.gs-table tbody tr:last-child td{border-bottom:none;}
+        #gestoria-dashboard .gs-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;}
+        #gestoria-dashboard .gs-badge-ok{background:rgba(34,197,94,0.12);color:#16803d;}
+        #gestoria-dashboard .gs-badge-warn{background:rgba(245,158,11,0.14);color:#b45309;}
+
+        #gestoria-dashboard .gs-empty{text-align:center;padding:64px 24px;color:var(--text3);}
+        #gestoria-dashboard .gs-empty svg{margin-bottom:14px;opacity:0.6;}
+        #gestoria-dashboard .gs-empty p{font-size:13.5px;margin-bottom:18px;}
+
+        #gestoria-dashboard .gs-form-grid{display:grid;grid-template-columns:1.6fr 1fr;gap:20px;align-items:start;}
+        #gestoria-dashboard .gs-field{display:flex;flex-direction:column;gap:6px;}
+        #gestoria-dashboard .gs-field label{font-size:11.5px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:0.4px;}
+        #gestoria-dashboard .gs-field label .gs-req{color:#ef4444;margin-left:2px;}
+        #gestoria-dashboard .gs-field input{padding:10px 13px;border:1px solid rgba(59,130,246,0.16);border-radius:10px;font-size:13.5px;font-family:'DM Sans',sans-serif;color:var(--text);transition:0.15s;background:#fbfcfe;}
+        #gestoria-dashboard .gs-field input:focus{outline:none;border-color:var(--teal);background:#fff;box-shadow:0 0 0 3px rgba(37,99,235,0.12);}
+        #gestoria-dashboard .gs-field input.gs-input-error{border-color:#ef4444;}
+        #gestoria-dashboard .gs-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+
+        #gestoria-dashboard .gs-dropzone{border:2px dashed rgba(59,130,246,0.25);border-radius:14px;padding:26px 18px;text-align:center;cursor:pointer;transition:0.18s;background:#fafbff;}
+        #gestoria-dashboard .gs-dropzone:hover, #gestoria-dashboard .gs-dropzone.gs-dragover{border-color:var(--teal);background:#f0f6ff;}
+        #gestoria-dashboard .gs-dropzone svg{color:var(--teal2);margin-bottom:8px;}
+        #gestoria-dashboard .gs-dropzone .gs-dz-titulo{font-size:13px;font-weight:700;color:var(--text);margin-bottom:2px;}
+        #gestoria-dashboard .gs-dropzone .gs-dz-sub{font-size:11.5px;color:var(--text3);}
+        #gestoria-dashboard .gs-logo-preview{display:flex;flex-direction:column;align-items:center;gap:10px;}
+        #gestoria-dashboard .gs-logo-preview img{max-width:160px;max-height:80px;object-fit:contain;}
+
+        #gestoria-dashboard .gs-summary-row{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid rgba(59,130,246,0.07);font-size:12.5px;}
+        #gestoria-dashboard .gs-summary-row:last-child{border-bottom:none;}
+        #gestoria-dashboard .gs-summary-label{color:var(--text3);}
+        #gestoria-dashboard .gs-summary-value{color:var(--text);font-weight:600;text-align:right;max-width:60%;}
+
+        #gestoria-dashboard .gs-actions-bar{display:flex;align-items:center;gap:12px;margin-top:24px;padding-top:20px;border-top:1px solid rgba(59,130,246,0.10);}
+        #gestoria-dashboard .gs-progreso{font-size:12.5px;color:var(--text2);display:flex;align-items:center;gap:8px;}
+        #gestoria-dashboard .gs-progreso.gs-progreso-ok{color:#16803d;}
+        #gestoria-dashboard .gs-progreso.gs-progreso-error{color:#b91c1c;}
         `;
         document.head.appendChild(style);
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // UI
+    // ══════════════════════════════════════════════════════════
+    function renderTopbar() {
+        return `
+        <div class="gs-topbar">
+            <div>
+                <div class="gs-eyebrow">Gestoría</div>
+                <div class="gs-title">Documentación normativa</div>
+                <div class="gs-subtitle">Personalización automática de machotes por cliente</div>
+            </div>
+            <div class="gs-tabs">
+                ${SECCIONES_GESTORIA.map(s => `
+                    <button class="gs-tab${_seccionActual === s.id ? ' activo' : ''}" data-seccion="${s.id}" ${s.activa ? '' : 'disabled title="Próximamente"'}>
+                        ${s.titulo}
+                    </button>`).join('')}
+            </div>
+        </div>`;
+    }
+
+    function bindTopbar(cont) {
+        cont.querySelectorAll('[data-seccion]').forEach(btn => {
+            if (btn.disabled) return;
+            btn.addEventListener('click', () => { _seccionActual = btn.dataset.seccion; cargarGestoria(); });
+        });
     }
 
     async function cargarGestoria() {
         inyectarEstilosGestoria();
         const cont = document.getElementById('gestoria-dashboard');
         if (!cont) return;
+
         if (_seccionActual === 'sgm') {
-            cont.innerHTML = renderTabsGestoria() + `<div style="padding-top:24px;color:#94a3b8;">SGM aún no está implementado.</div>`;
-            bindTabsGestoria(cont);
+            cont.innerHTML = renderTopbar() + `
+                <div class="gs-body">
+                    <div class="gs-empty" style="background:#fff;border-radius:16px;border:1px solid rgba(59,130,246,0.1);">
+                        ${ICONO.carpeta}
+                        <p><strong>SGM</strong> — Sistema de Gestión de Medición<br>Este módulo se construirá siguiendo el mismo patrón que SASISOPA.</p>
+                    </div>
+                </div>`;
+            bindTopbar(cont);
             return;
         }
-        cont.innerHTML = renderTabsGestoria() + `<div style="padding-top:24px;color:#94a3b8;">Cargando clientes...</div>`;
-        bindTabsGestoria(cont);
+
+        cont.innerHTML = renderTopbar() + `<div class="gs-body"><div class="gs-empty">Cargando clientes…</div></div>`;
+        bindTopbar(cont);
         const clientes = await listarClientes();
         renderListaClientes(cont, clientes);
     }
 
-    function renderTabsGestoria() {
-        return `<div style="display:flex;gap:6px;margin:-32px -32px 0;padding:16px 32px 0;border-bottom:1px solid #e2e8f0;background:#dde3ee;">
-            ${SECCIONES_GESTORIA.map(s => `
-                <button data-seccion="${s.id}" style="padding:10px 16px;border:none;background:none;cursor:pointer;
-                    font-weight:600;font-size:13px;color:${_seccionActual === s.id ? '#1d4ed8' : '#94a3b8'};
-                    border-bottom:2px solid ${_seccionActual === s.id ? '#1d4ed8' : 'transparent'};">
-                    ${s.titulo}
-                </button>`).join('')}
-        </div>`;
-    }
-
-    function bindTabsGestoria(cont) {
-        cont.querySelectorAll('[data-seccion]').forEach(btn => {
-            btn.addEventListener('click', () => {
-                _seccionActual = btn.dataset.seccion;
-                cargarGestoria();
-            });
-        });
+    function clienteCompleto(c) {
+        return CAMPOS_OBLIGATORIOS.every(k => (c[k] || '').trim());
     }
 
     function renderListaClientes(cont, clientes) {
-        cont.innerHTML = renderTabsGestoria() + `
-        <div style="padding-top:24px;max-width:1000px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
-                <h2 style="margin:0;font-size:20px;">SASISOPA</h2>
-                <button id="ss-btn-nuevo" style="background:#1d4ed8;color:#fff;border:none;padding:10px 18px;border-radius:8px;cursor:pointer;font-weight:600;">+ Nuevo cliente</button>
+        const filtrados = _filtroTexto
+            ? clientes.filter(c => (c.RAZON_SOCIAL || '').toLowerCase().includes(_filtroTexto.toLowerCase()))
+            : clientes;
+        const completos = clientes.filter(clienteCompleto).length;
+
+        cont.innerHTML = renderTopbar() + `
+        <div class="gs-body">
+            <div class="gs-kpis">
+                <div class="gs-kpi-card"><div class="gs-kpi-label">Total de clientes</div><div class="gs-kpi-value">${clientes.length}</div></div>
+                <div class="gs-kpi-card"><div class="gs-kpi-label">Listos para generar</div><div class="gs-kpi-value">${completos}</div></div>
+                <div class="gs-kpi-card"><div class="gs-kpi-label">Datos incompletos</div><div class="gs-kpi-value">${clientes.length - completos}</div></div>
             </div>
-            <div id="ss-lista-clientes" style="display:flex;flex-direction:column;gap:10px;"></div>
+
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:16px;flex-wrap:wrap;">
+                <div class="gs-searchbar">${ICONO.buscar}<input id="gs-buscador" type="text" placeholder="Buscar cliente por razón social..." value="${_filtroTexto.replace(/"/g,'&quot;')}"></div>
+                <button id="gs-btn-nuevo" class="gs-btn gs-btn-primary">${ICONO.mas} Nuevo cliente</button>
+            </div>
+
+            <div class="gs-card">
+                <div id="gs-tabla-wrap"></div>
+            </div>
         </div>`;
-        bindTabsGestoria(cont);
-        const lista = cont.querySelector('#ss-lista-clientes');
-        if (clientes.length === 0) {
-            lista.innerHTML = `<div style="color:#94a3b8;padding:16px;">Aún no hay clientes capturados.</div>`;
+        bindTopbar(cont);
+
+        const wrap = cont.querySelector('#gs-tabla-wrap');
+        if (filtrados.length === 0) {
+            wrap.innerHTML = `<div class="gs-empty">
+                ${ICONO.carpeta}
+                <p>${clientes.length === 0 ? 'Aún no hay clientes capturados.' : 'Ningún cliente coincide con tu búsqueda.'}</p>
+                ${clientes.length === 0 ? `<button class="gs-btn gs-btn-primary" id="gs-btn-nuevo-vacio">${ICONO.mas} Crear el primero</button>` : ''}
+            </div>`;
+            const btnVacio = wrap.querySelector('#gs-btn-nuevo-vacio');
+            if (btnVacio) btnVacio.addEventListener('click', () => renderFormularioCliente(cont, null));
         } else {
-            lista.innerHTML = clientes.map(c => `
-                <div class="ss-cliente-card" data-id="${c.id}" style="border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
-                    <div>
-                        <div style="font-weight:700;">${c.RAZON_SOCIAL || '(sin razón social)'}</div>
-                        <div style="font-size:12px;color:#64748b;">${c.CIUDAD_ESTADO || ''} · RFC ${c.RFC || '—'}</div>
-                    </div>
-                    <span style="color:#1d4ed8;font-size:13px;font-weight:600;">Editar / Generar →</span>
-                </div>`).join('');
-            lista.querySelectorAll('.ss-cliente-card').forEach(el => {
-                el.addEventListener('click', () => renderFormularioCliente(cont, el.dataset.id));
+            wrap.innerHTML = `
+            <table class="gs-table">
+                <thead><tr><th>Cliente</th><th>RFC</th><th>Ubicación</th><th>Estado</th><th></th></tr></thead>
+                <tbody>
+                    ${filtrados.map(c => `
+                        <tr data-id="${c.id}">
+                            <td style="display:flex;align-items:center;gap:10px;">
+                                ${c.LOGO_BASE64 ? `<img src="${c.LOGO_BASE64}" style="width:28px;height:28px;object-fit:contain;border-radius:6px;background:#f1f5f9;">` : `<div style="width:28px;height:28px;border-radius:6px;background:#eef2f9;display:flex;align-items:center;justify-content:center;color:var(--text3);">${ICONO.edificio}</div>`}
+                                <strong>${c.RAZON_SOCIAL || '(sin razón social)'}</strong>
+                            </td>
+                            <td>${c.RFC || '—'}</td>
+                            <td>${c.CIUDAD_ESTADO || '—'}</td>
+                            <td>${clienteCompleto(c)
+                                ? `<span class="gs-badge gs-badge-ok">${ICONO.check} Completo</span>`
+                                : `<span class="gs-badge gs-badge-warn">${ICONO.alerta} Incompleto</span>`}</td>
+                            <td><button class="gs-btn gs-btn-ghost" data-editar="${c.id}">${ICONO.editar} Editar</button></td>
+                        </tr>`).join('')}
+                </tbody>
+            </table>`;
+            wrap.querySelectorAll('tr[data-id]').forEach(tr => {
+                tr.addEventListener('click', () => renderFormularioCliente(cont, tr.dataset.id));
             });
         }
-        cont.querySelector('#ss-btn-nuevo').addEventListener('click', () => renderFormularioCliente(cont, null));
+
+        cont.querySelector('#gs-btn-nuevo').addEventListener('click', () => renderFormularioCliente(cont, null));
+        const buscador = cont.querySelector('#gs-buscador');
+        buscador.addEventListener('input', () => { _filtroTexto = buscador.value; renderListaClientes(cont, _clientesCache); });
+        buscador.focus();
+        buscador.setSelectionRange(buscador.value.length, buscador.value.length);
+    }
+
+    function redimensionarImagen(file, maxDim = 320) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    let { width, height } = img;
+                    const escala = Math.min(1, maxDim / Math.max(width, height));
+                    width = Math.round(width * escala);
+                    height = Math.round(height * escala);
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width; canvas.height = height;
+                    canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+                    resolve(canvas.toDataURL('image/png'));
+                };
+                img.onerror = reject;
+                img.src = e.target.result;
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+        });
     }
 
     function renderFormularioCliente(cont, clienteId) {
         _clienteActualId = clienteId;
         const cliente = clienteId ? (_clientesCache.find(c => c.id === clienteId) || {}) : {};
+        _logoDataUrlActual = cliente.LOGO_BASE64 || null;
 
         const seccionesHtml = SECCIONES_FORM.map(sec => `
-            <div style="margin-bottom:18px;">
-                <div style="font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:#475569;margin-bottom:8px;">${sec.titulo}</div>
-                <div class="ss-grid-campos" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-                    ${sec.campos.map(([clave, etiqueta, ejemplo]) => `
-                        <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;">
-                            <span style="color:#334155;font-weight:600;">${etiqueta}</span>
-                            <input type="text" data-clave="${clave}" placeholder="${ejemplo}"
-                                value="${(cliente[clave] || '').replace(/"/g,'&quot;')}"
-                                style="padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
-                        </label>`).join('')}
+            <div class="gs-card">
+                <div class="gs-card-header"><span class="gs-card-icon">${sec.icono}</span><span class="gs-card-title">${sec.titulo}</span></div>
+                <div class="gs-card-body">
+                    <div class="gs-grid">
+                        ${sec.campos.map(([clave, etiqueta, ejemplo]) => `
+                            <div class="gs-field">
+                                <label>${etiqueta}${CAMPOS_OBLIGATORIOS.includes(clave) ? '<span class="gs-req">*</span>' : ''}</label>
+                                <input type="text" data-clave="${clave}" placeholder="${ejemplo}"
+                                    value="${(cliente[clave] || '').replace(/"/g,'&quot;')}">
+                            </div>`).join('')}
+                    </div>
                 </div>
             </div>`).join('');
 
-        cont.innerHTML = renderTabsGestoria() + `
-        <div style="padding-top:24px;max-width:1000px;">
-            <button id="ss-btn-volver" style="background:none;border:none;color:#1d4ed8;cursor:pointer;font-size:13px;margin-bottom:14px;">&larr; Volver a clientes</button>
-            <h2 style="margin:0 0 16px;font-size:20px;">${clienteId ? 'Editar cliente' : 'Nuevo cliente'}</h2>
-            <div id="ss-form">${seccionesHtml}</div>
-            <div style="display:flex;gap:10px;margin-top:10px;">
-                <button id="ss-btn-guardar" style="background:#1d4ed8;color:#fff;border:none;padding:10px 18px;border-radius:8px;cursor:pointer;font-weight:600;">Guardar</button>
-                <button id="ss-btn-generar" style="background:#059669;color:#fff;border:none;padding:10px 18px;border-radius:8px;cursor:pointer;font-weight:600;">Generar y descargar documentos</button>
-            </div>
-            <div id="ss-progreso" style="margin-top:16px;font-size:13px;color:#475569;white-space:pre-line;"></div>
-        </div>`;
-        bindTabsGestoria(cont);
+        cont.innerHTML = renderTopbar() + `
+        <div class="gs-body">
+            <button id="gs-btn-volver" class="gs-btn gs-btn-ghost" style="margin-bottom:14px;padding-left:0;">${ICONO.flecha} Volver a clientes</button>
+            <div class="gs-form-grid">
+                <div id="gs-columna-form">${seccionesHtml}</div>
 
-        cont.querySelector('#ss-btn-volver').addEventListener('click', cargarGestoria);
-        cont.querySelector('#ss-btn-guardar').addEventListener('click', async () => {
+                <div id="gs-columna-lateral">
+                    <div class="gs-card">
+                        <div class="gs-card-header"><span class="gs-card-icon">${ICONO.imagen}</span><span class="gs-card-title">Logotipo del cliente</span></div>
+                        <div class="gs-card-body">
+                            <div id="gs-dropzone" class="gs-dropzone">
+                                <input type="file" id="gs-input-logo" accept="image/png,image/jpeg" style="display:none;">
+                                <div id="gs-dropzone-contenido"></div>
+                            </div>
+                            <div class="gs-subtitle" style="margin-top:10px;font-size:11px;">Se inserta automáticamente donde el machote dice "LOGO". PNG con fondo transparente recomendado.</div>
+                        </div>
+                    </div>
+
+                    <div class="gs-card">
+                        <div class="gs-card-header"><span class="gs-card-icon">${ICONO.edificio}</span><span class="gs-card-title">Vista previa</span></div>
+                        <div class="gs-card-body" id="gs-preview-body"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="gs-actions-bar">
+                <button id="gs-btn-guardar" class="gs-btn gs-btn-secondary">Guardar</button>
+                <button id="gs-btn-generar" class="gs-btn gs-btn-primary">${ICONO.descarga} Generar y descargar documentos</button>
+                <div id="gs-progreso" class="gs-progreso"></div>
+            </div>
+        </div>`;
+        bindTopbar(cont);
+
+        renderDropzone(cont);
+        actualizarPreview(cont);
+
+        cont.querySelector('#gs-btn-volver').addEventListener('click', cargarGestoria);
+        cont.querySelectorAll('#gs-columna-form input[data-clave]').forEach(inp => {
+            inp.addEventListener('input', () => actualizarPreview(cont));
+        });
+        cont.querySelector('#gs-btn-guardar').addEventListener('click', async () => {
             const datos = leerFormulario(cont);
             const id = await guardarCliente(_clienteActualId, datos);
             _clienteActualId = id;
-            cont.querySelector('#ss-progreso').textContent = 'Guardado correctamente.';
+            mostrarProgreso(cont, 'ok', ICONO.check + ' Guardado correctamente.');
         });
-        cont.querySelector('#ss-btn-generar').addEventListener('click', () => generarDocumentos(cont));
+        cont.querySelector('#gs-btn-generar').addEventListener('click', () => generarDocumentos(cont));
+    }
+
+    function renderDropzone(cont) {
+        const dz = cont.querySelector('#gs-dropzone');
+        const contenido = cont.querySelector('#gs-dropzone-contenido');
+        const input = cont.querySelector('#gs-input-logo');
+
+        function pintar() {
+            contenido.innerHTML = _logoDataUrlActual
+                ? `<div class="gs-logo-preview"><img src="${_logoDataUrlActual}"><span style="font-size:11.5px;color:var(--teal2);font-weight:700;">Cambiar logotipo</span></div>`
+                : `${ICONO.imagen}<div class="gs-dz-titulo">Arrastra el logo aquí</div><div class="gs-dz-sub">o haz clic para seleccionar — PNG o JPG</div>`;
+        }
+        pintar();
+
+        dz.addEventListener('click', () => input.click());
+        dz.addEventListener('dragover', (e) => { e.preventDefault(); dz.classList.add('gs-dragover'); });
+        dz.addEventListener('dragleave', () => dz.classList.remove('gs-dragover'));
+        dz.addEventListener('drop', async (e) => {
+            e.preventDefault(); dz.classList.remove('gs-dragover');
+            if (e.dataTransfer.files[0]) { _logoDataUrlActual = await redimensionarImagen(e.dataTransfer.files[0]); pintar(); }
+        });
+        input.addEventListener('change', async () => {
+            if (input.files[0]) { _logoDataUrlActual = await redimensionarImagen(input.files[0]); pintar(); }
+        });
+    }
+
+    function actualizarPreview(cont) {
+        const datos = leerFormulario(cont);
+        const body = cont.querySelector('#gs-preview-body');
+        if (!body) return;
+        const filas = [
+            ['Razón Social', datos.RAZON_SOCIAL],
+            ['RFC', datos.RFC],
+            ['Domicilio', datos.DOMICILIO_ESTACION],
+            ['Ciudad', datos.CIUDAD_ESTADO],
+            ['Permiso', datos.NUMERO_PERMISO],
+            ['Fecha', datos.FECHA_ELABORACION],
+        ];
+        body.innerHTML = filas.map(([l, v]) => `
+            <div class="gs-summary-row"><span class="gs-summary-label">${l}</span><span class="gs-summary-value">${v || '—'}</span></div>`).join('');
     }
 
     function leerFormulario(cont) {
         const datos = {};
-        cont.querySelectorAll('#ss-form input[data-clave]').forEach(input => {
+        cont.querySelectorAll('#gs-columna-form input[data-clave]').forEach(input => {
             if (input.value.trim()) datos[input.dataset.clave] = input.value.trim();
         });
+        if (_logoDataUrlActual) datos.LOGO_BASE64 = _logoDataUrlActual;
         return datos;
     }
 
-    async function generarDocumentos(cont) {
-        const progreso = cont.querySelector('#ss-progreso');
-        const datos = leerFormulario(cont);
+    function mostrarProgreso(cont, tipo, html) {
+        const el = cont.querySelector('#gs-progreso');
+        el.className = 'gs-progreso' + (tipo === 'ok' ? ' gs-progreso-ok' : tipo === 'error' ? ' gs-progreso-error' : '');
+        el.innerHTML = html;
+    }
 
-        if (!datos.RAZON_SOCIAL) {
-            progreso.textContent = 'Falta capturar al menos la Razón Social antes de generar.';
+    async function generarDocumentos(cont) {
+        const datos = leerFormulario(cont);
+        const faltantes = CAMPOS_OBLIGATORIOS.filter(k => !datos[k]);
+        if (faltantes.length) {
+            mostrarProgreso(cont, 'error', ICONO.alerta + ' Completa los campos obligatorios marcados con * antes de generar.');
+            cont.querySelectorAll('#gs-columna-form input[data-clave]').forEach(inp => {
+                inp.classList.toggle('gs-input-error', faltantes.includes(inp.dataset.clave));
+            });
             return;
         }
 
-        // Guarda automáticamente antes de generar
         const id = await guardarCliente(_clienteActualId, datos);
         _clienteActualId = id;
 
-        progreso.textContent = 'Descargando lista de machotes...';
+        mostrarProgreso(cont, '', ICONO.reloj + ' Descargando lista de machotes…');
         let manifest;
         try {
-            const resp = await fetch(RUTA_MACHOTES + 'manifest.json');
-            manifest = await resp.json();
+            manifest = await (await fetch(RUTA_MACHOTES + 'manifest.json')).json();
         } catch (e) {
-            progreso.textContent = 'No se pudo leer ' + RUTA_MACHOTES + 'manifest.json — verifica que exista en el repositorio.';
+            mostrarProgreso(cont, 'error', ICONO.alerta + ' No se pudo leer ' + RUTA_MACHOTES + 'manifest.json.');
             return;
         }
 
-        const stats = { reemplazos: 0, placeholdersOmitidos: 0, logosPendientes: 0, pendientes: [] };
+        const stats = { reemplazos: 0, placeholdersOmitidos: 0, logosInsertados: 0, logosPendientes: 0, pendientes: [] };
         const zipSalida = new JSZip();
         let procesados = 0, errores = [];
 
         for (const nombreArchivo of manifest.archivos) {
-            progreso.textContent = `Procesando ${nombreArchivo} (${procesados + 1}/${manifest.archivos.length})...`;
+            mostrarProgreso(cont, '', ICONO.reloj + ` Procesando ${nombreArchivo} (${procesados + 1}/${manifest.archivos.length})…`);
             try {
-                const resp = await fetch(RUTA_MACHOTES + nombreArchivo);
-                const buffer = await resp.arrayBuffer();
+                const buffer = await (await fetch(RUTA_MACHOTES + nombreArchivo)).arrayBuffer();
                 if (nombreArchivo.toLowerCase().endsWith('.docx')) {
-                    const blobSalida = await procesarDocx(buffer, nombreArchivo, datos, stats);
+                    const zipDoc = await JSZip.loadAsync(buffer);
+                    const blobSalida = await procesarDocx(buffer, nombreArchivo, datos, stats, zipDoc);
                     zipSalida.file(nombreArchivo, blobSalida);
                 } else {
-                    zipSalida.file(nombreArchivo, buffer); // xlsx/otros: se copian tal cual
+                    zipSalida.file(nombreArchivo, buffer);
                 }
                 procesados++;
             } catch (e) {
@@ -496,30 +837,28 @@
             '='.repeat(60),
             `Archivos procesados: ${procesados}`,
             `Reemplazos aplicados: ${stats.reemplazos}`,
+            `Logotipos insertados automáticamente: ${stats.logosInsertados}`,
+            `Logotipos pendientes (no se cargó imagen): ${stats.logosPendientes}`,
             `Placeholders operativos omitidos (NOMBRE/AÑO): ${stats.placeholdersOmitidos}`,
-            `Logotipos pendientes de insertar manualmente: ${stats.logosPendientes}`,
             `Pendientes de revisión manual: ${stats.pendientes.length}`,
             '',
             ...(errores.length ? ['ARCHIVOS CON ERROR:', ...errores.map(e => '  - ' + e), ''] : []),
             ...(stats.pendientes.length ? ['PENDIENTES:', ...stats.pendientes.map(p => '  - "' + p + '"'), ''] : []),
             'RECORDATORIO: el organigrama gráfico embebido en P-05 (dibujo de Word)',
-            'no es editado por este generador. Revisar manualmente si cambian los',
-            'nombres de los puestos en el organigrama.',
+            'no es editado por este generador.',
         ].join('\n');
         zipSalida.file('reporte_personalizacion.txt', reporte);
 
-        progreso.textContent = 'Generando paquete .zip final...';
+        mostrarProgreso(cont, '', ICONO.reloj + ' Generando paquete .zip final…');
         const blobFinal = await zipSalida.generateAsync({ type: 'blob' });
         const url = URL.createObjectURL(blobFinal);
         const a = document.createElement('a');
         a.href = url;
         a.download = `SASISOPA_${(datos.RAZON_SOCIAL || 'cliente').replace(/[^a-z0-9]+/gi, '_')}.zip`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
+        document.body.appendChild(a); a.click(); a.remove();
         URL.revokeObjectURL(url);
 
-        progreso.textContent = `Listo. ${stats.reemplazos} reemplazos aplicados, ${stats.pendientes.length} pendientes de revisión manual. Reporte incluido en el .zip descargado.`;
+        mostrarProgreso(cont, 'ok', `${ICONO.check} Listo: ${stats.reemplazos} reemplazos, ${stats.logosInsertados} logo(s) insertado(s), ${stats.pendientes.length} pendientes. Reporte incluido en el .zip.`);
     }
 
     window.cargarGestoria = cargarGestoria;
