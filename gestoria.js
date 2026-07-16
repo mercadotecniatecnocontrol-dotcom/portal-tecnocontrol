@@ -438,17 +438,24 @@
         @media(max-width:900px){ #gestoria-dashboard{margin-left:200px;} }
         @media(max-width:768px){ #gestoria-dashboard{margin-left:0;} .gs-grid{grid-template-columns:1fr !important;} .gs-form-grid{grid-template-columns:1fr !important;} }
 
-        #gestoria-dashboard .gs-topbar{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:16px;padding:32px 40px 24px;border-bottom:1px solid rgba(59,130,246,0.10);background:#ffffff;}
+        #gestoria-dashboard .gs-shell{display:flex;min-height:100vh;}
+        #gestoria-dashboard .gs-rail{width:64px;background:#0f172a;display:flex;flex-direction:column;align-items:center;padding:18px 0;gap:6px;flex-shrink:0;}
+        #gestoria-dashboard .gs-rail-logo{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,var(--teal),var(--teal2));display:flex;align-items:center;justify-content:center;color:#fff;margin-bottom:14px;flex-shrink:0;}
+        #gestoria-dashboard .gs-rail-btn{width:44px;height:44px;border:none;border-radius:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.5);background:transparent;transition:all 0.18s;position:relative;}
+        #gestoria-dashboard .gs-rail-btn.activo{background:var(--teal2);color:#fff;}
+        #gestoria-dashboard .gs-rail-btn:not(.activo):not(:disabled):hover{background:rgba(37,99,235,0.35);color:#fff;}
+        #gestoria-dashboard .gs-rail-btn:disabled{opacity:0.28;cursor:not-allowed;}
+        #gestoria-dashboard .gs-rail-tooltip{position:absolute;left:56px;top:50%;transform:translateY(-50%);background:#0f172a;color:#fff;font-size:11px;font-weight:600;padding:6px 10px;border-radius:7px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity 0.15s;z-index:20;box-shadow:0 4px 12px rgba(0,0,0,0.25);}
+        #gestoria-dashboard .gs-rail-btn:hover .gs-rail-tooltip{opacity:1;}
+        #gestoria-dashboard .gs-content{flex:1;min-width:0;}
+        @media(max-width:768px){ #gestoria-dashboard .gs-rail{width:56px;} #gestoria-dashboard .gs-rail-btn{width:38px;height:38px;} }
+
+        #gestoria-dashboard .gs-topbar{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:16px;padding:28px 32px 20px;border-bottom:1px solid rgba(59,130,246,0.10);background:#ffffff;}
         #gestoria-dashboard .gs-eyebrow{font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--teal2);margin-bottom:6px;}
-        #gestoria-dashboard .gs-title{font-family:'Space Grotesk',sans-serif;font-size:26px;font-weight:700;color:var(--text);line-height:1.2;}
+        #gestoria-dashboard .gs-title{font-family:'Space Grotesk',sans-serif;font-size:24px;font-weight:700;color:var(--text);line-height:1.2;}
         #gestoria-dashboard .gs-subtitle{font-size:13px;color:var(--text2);margin-top:4px;}
 
-        #gestoria-dashboard .gs-tabs{display:flex;gap:4px;background:#eef2f9;border-radius:10px;padding:4px;}
-        #gestoria-dashboard .gs-tab{border:none;background:none;padding:8px 16px;border-radius:8px;font-size:12.5px;font-weight:700;color:var(--text3);cursor:pointer;transition:0.18s;font-family:'DM Sans',sans-serif;}
-        #gestoria-dashboard .gs-tab.activo{background:#ffffff;color:var(--teal2);box-shadow:0 1px 3px rgba(15,23,42,0.08);}
-        #gestoria-dashboard .gs-tab:disabled{cursor:not-allowed;opacity:0.5;}
-
-        #gestoria-dashboard .gs-body{padding:28px 40px 60px;max-width:1280px;}
+        #gestoria-dashboard .gs-body{padding:28px 32px 60px;max-width:1240px;}
 
         #gestoria-dashboard .gs-btn{display:inline-flex;align-items:center;gap:8px;border:none;border-radius:10px;font-family:'DM Sans',sans-serif;font-weight:700;font-size:13px;cursor:pointer;transition:all 0.18s ease;white-space:nowrap;}
         #gestoria-dashboard .gs-btn-primary{background:linear-gradient(135deg,var(--teal),var(--teal2));color:#fff;padding:11px 20px;box-shadow:0 2px 10px rgba(37,99,235,0.28);}
@@ -524,24 +531,19 @@
     // ══════════════════════════════════════════════════════════
     // UI
     // ══════════════════════════════════════════════════════════
-    function renderTopbar() {
+    function renderRail() {
         return `
-        <div class="gs-topbar">
-            <div>
-                <div class="gs-eyebrow">Gestoría</div>
-                <div class="gs-title">Documentación normativa</div>
-                <div class="gs-subtitle">Personalización automática de machotes por cliente</div>
-            </div>
-            <div class="gs-tabs">
-                ${SECCIONES_GESTORIA.map(s => `
-                    <button class="gs-tab${_seccionActual === s.id ? ' activo' : ''}" data-seccion="${s.id}" ${s.activa ? '' : 'disabled title="Próximamente"'}>
-                        ${s.titulo}
-                    </button>`).join('')}
-            </div>
+        <div class="gs-rail">
+            <div class="gs-rail-logo">${ICONO.edificio}</div>
+            ${SECCIONES_GESTORIA.map(s => `
+                <button class="gs-rail-btn${_seccionActual === s.id ? ' activo' : ''}" data-seccion="${s.id}" ${s.activa ? '' : 'disabled'}>
+                    ${s.id === 'sasisopa' ? ICONO.carpeta : ICONO.graduacion}
+                    <span class="gs-rail-tooltip">${s.titulo}${s.activa ? '' : ' (próximamente)'}</span>
+                </button>`).join('')}
         </div>`;
     }
 
-    function bindTopbar(cont) {
+    function bindRail(cont) {
         cont.querySelectorAll('[data-seccion]').forEach(btn => {
             if (btn.disabled) return;
             btn.addEventListener('click', () => { _seccionActual = btn.dataset.seccion; cargarGestoria(); });
@@ -554,19 +556,21 @@
         if (!cont) return;
 
         if (_seccionActual === 'sgm') {
-            cont.innerHTML = renderTopbar() + `
+            cont.innerHTML = `<div class="gs-shell">${renderRail()}<div class="gs-content">
+                <div class="gs-topbar"><div><div class="gs-eyebrow">Gestoría</div><div class="gs-title">SGM</div><div class="gs-subtitle">Sistema de Gestión de Medición</div></div></div>
                 <div class="gs-body">
                     <div class="gs-empty" style="background:#fff;border-radius:16px;border:1px solid rgba(59,130,246,0.1);">
                         ${ICONO.carpeta}
-                        <p><strong>SGM</strong> — Sistema de Gestión de Medición<br>Este módulo se construirá siguiendo el mismo patrón que SASISOPA.</p>
+                        <p>Este módulo se construirá siguiendo el mismo patrón que SASISOPA.</p>
                     </div>
-                </div>`;
-            bindTopbar(cont);
+                </div>
+            </div></div>`;
+            bindRail(cont);
             return;
         }
 
-        cont.innerHTML = renderTopbar() + `<div class="gs-body"><div class="gs-empty">Cargando clientes…</div></div>`;
-        bindTopbar(cont);
+        cont.innerHTML = `<div class="gs-shell">${renderRail()}<div class="gs-content"><div class="gs-body"><div class="gs-empty">Cargando clientes…</div></div></div></div>`;
+        bindRail(cont);
         const clientes = await listarClientes();
         renderListaClientes(cont, clientes);
     }
@@ -581,24 +585,26 @@
             : clientes;
         const completos = clientes.filter(clienteCompleto).length;
 
-        cont.innerHTML = renderTopbar() + `
-        <div class="gs-body">
-            <div class="gs-kpis">
-                <div class="gs-kpi-card"><div class="gs-kpi-label">Total de clientes</div><div class="gs-kpi-value">${clientes.length}</div></div>
-                <div class="gs-kpi-card"><div class="gs-kpi-label">Listos para generar</div><div class="gs-kpi-value">${completos}</div></div>
-                <div class="gs-kpi-card"><div class="gs-kpi-label">Datos incompletos</div><div class="gs-kpi-value">${clientes.length - completos}</div></div>
-            </div>
+        cont.innerHTML = `<div class="gs-shell">${renderRail()}<div class="gs-content">
+            <div class="gs-topbar"><div><div class="gs-eyebrow">Gestoría</div><div class="gs-title">SASISOPA</div><div class="gs-subtitle">Personalización automática de machotes por cliente</div></div></div>
+            <div class="gs-body">
+                <div class="gs-kpis">
+                    <div class="gs-kpi-card"><div class="gs-kpi-label">Total de clientes</div><div class="gs-kpi-value">${clientes.length}</div></div>
+                    <div class="gs-kpi-card"><div class="gs-kpi-label">Listos para generar</div><div class="gs-kpi-value">${completos}</div></div>
+                    <div class="gs-kpi-card"><div class="gs-kpi-label">Datos incompletos</div><div class="gs-kpi-value">${clientes.length - completos}</div></div>
+                </div>
 
-            <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:16px;flex-wrap:wrap;">
-                <div class="gs-searchbar">${ICONO.buscar}<input id="gs-buscador" type="text" placeholder="Buscar cliente por razón social..." value="${_filtroTexto.replace(/"/g,'&quot;')}"></div>
-                <button id="gs-btn-nuevo" class="gs-btn gs-btn-primary">${ICONO.mas} Nuevo cliente</button>
-            </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:16px;flex-wrap:wrap;">
+                    <div class="gs-searchbar">${ICONO.buscar}<input id="gs-buscador" type="text" placeholder="Buscar cliente por razón social..." value="${_filtroTexto.replace(/"/g,'&quot;')}"></div>
+                    <button id="gs-btn-nuevo" class="gs-btn gs-btn-primary">${ICONO.mas} Nuevo cliente</button>
+                </div>
 
-            <div class="gs-card">
-                <div id="gs-tabla-wrap"></div>
+                <div class="gs-card">
+                    <div id="gs-tabla-wrap"></div>
+                </div>
             </div>
-        </div>`;
-        bindTopbar(cont);
+        </div></div>`;
+        bindRail(cont);
 
         const wrap = cont.querySelector('#gs-tabla-wrap');
         if (filtrados.length === 0) {
@@ -684,38 +690,40 @@
                 </div>
             </div>`).join('');
 
-        cont.innerHTML = renderTopbar() + `
-        <div class="gs-body">
-            <button id="gs-btn-volver" class="gs-btn gs-btn-ghost" style="margin-bottom:14px;padding-left:0;">${ICONO.flecha} Volver a clientes</button>
-            <div class="gs-form-grid">
-                <div id="gs-columna-form">${seccionesHtml}</div>
+        cont.innerHTML = `<div class="gs-shell">${renderRail()}<div class="gs-content">
+            <div class="gs-topbar"><div><div class="gs-eyebrow">Gestoría</div><div class="gs-title">${clienteId ? 'Editar cliente' : 'Nuevo cliente'}</div><div class="gs-subtitle">SASISOPA</div></div></div>
+            <div class="gs-body">
+                <button id="gs-btn-volver" class="gs-btn gs-btn-ghost" style="margin-bottom:14px;padding-left:0;">${ICONO.flecha} Volver a clientes</button>
+                <div class="gs-form-grid">
+                    <div id="gs-columna-form">${seccionesHtml}</div>
 
-                <div id="gs-columna-lateral">
-                    <div class="gs-card">
-                        <div class="gs-card-header"><span class="gs-card-icon">${ICONO.imagen}</span><span class="gs-card-title">Logotipo del cliente</span></div>
-                        <div class="gs-card-body">
-                            <div id="gs-dropzone" class="gs-dropzone">
-                                <input type="file" id="gs-input-logo" accept="image/png,image/jpeg" style="display:none;">
-                                <div id="gs-dropzone-contenido"></div>
+                    <div id="gs-columna-lateral">
+                        <div class="gs-card">
+                            <div class="gs-card-header"><span class="gs-card-icon">${ICONO.imagen}</span><span class="gs-card-title">Logotipo del cliente</span></div>
+                            <div class="gs-card-body">
+                                <div id="gs-dropzone" class="gs-dropzone">
+                                    <input type="file" id="gs-input-logo" accept="image/png,image/jpeg" style="display:none;">
+                                    <div id="gs-dropzone-contenido"></div>
+                                </div>
+                                <div class="gs-subtitle" style="margin-top:10px;font-size:11px;">Se inserta automáticamente donde el machote dice "LOGO". PNG con fondo transparente recomendado.</div>
                             </div>
-                            <div class="gs-subtitle" style="margin-top:10px;font-size:11px;">Se inserta automáticamente donde el machote dice "LOGO". PNG con fondo transparente recomendado.</div>
+                        </div>
+
+                        <div class="gs-card">
+                            <div class="gs-card-header"><span class="gs-card-icon">${ICONO.edificio}</span><span class="gs-card-title">Vista previa</span></div>
+                            <div class="gs-card-body" id="gs-preview-body"></div>
                         </div>
                     </div>
+                </div>
 
-                    <div class="gs-card">
-                        <div class="gs-card-header"><span class="gs-card-icon">${ICONO.edificio}</span><span class="gs-card-title">Vista previa</span></div>
-                        <div class="gs-card-body" id="gs-preview-body"></div>
-                    </div>
+                <div class="gs-actions-bar">
+                    <button id="gs-btn-guardar" class="gs-btn gs-btn-secondary">Guardar</button>
+                    <button id="gs-btn-generar" class="gs-btn gs-btn-primary">${ICONO.descarga} Generar y descargar documentos</button>
+                    <div id="gs-progreso" class="gs-progreso"></div>
                 </div>
             </div>
-
-            <div class="gs-actions-bar">
-                <button id="gs-btn-guardar" class="gs-btn gs-btn-secondary">Guardar</button>
-                <button id="gs-btn-generar" class="gs-btn gs-btn-primary">${ICONO.descarga} Generar y descargar documentos</button>
-                <div id="gs-progreso" class="gs-progreso"></div>
-            </div>
-        </div>`;
-        bindTopbar(cont);
+        </div></div>`;
+        bindRail(cont);
 
         renderDropzone(cont);
         actualizarPreview(cont);
