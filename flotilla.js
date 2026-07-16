@@ -1168,6 +1168,7 @@ window.flSbSel=function(id){
   };
   renderRP(id);
   if(vistaAct==='sols')rSols();
+  window.flAbrirPanoramaVehiculo(id);
 };
 
 // NAVEGACIÓN
@@ -3682,6 +3683,48 @@ window.flResolverSiniestro=async function(id){
   }catch(e){alert('Error: '+e.message);}
 };
 
+window.flAbrirPanoramaVehiculo=function(vehId){
+  const v=flV.find(x=>x.id===vehId); if(!v) return;
+  document.getElementById('fl-panor-ov')?.remove();
+  flPanorMes='all';
+  const ov=document.createElement('div');
+  ov.className='fl-ov'; ov.id='fl-panor-ov';
+  ov.innerHTML=`
+    <div class="fl-panor-modal">
+      <div class="fl-mh">
+        <h3>${I.fleet} Panorama de vehículos</h3>
+        <button class="fl-mx" onclick="flCerrarPanorama()">✕</button>
+      </div>
+      <div class="fl-panor-body" id="fl-panor-body">${flPanorResumenVeh(v)}</div>
+    </div>`;
+  document.body.appendChild(ov);
+  ov.onclick=(e)=>{if(e.target===ov)flCerrarPanorama();};
+};
+
+// ── Abrir Panorama de vehículos directo al resumen de UN vehículo ──
+// (se usa al hacer clic en un vehículo del panel izquierdo, para que
+// aparezca junto con el panel de info, sin pasar por la pantalla de
+// selección múltiple del botón de Panorama normal)
+window.flAbrirPanoramaVehiculo=function(id){
+  flPanorSel=new Set([id]);flPanorTipo='all';flPanorQ='';flPanorIncBaja=false;flPanorMes='all';
+  document.getElementById('fl-panor-ov')?.remove();
+  const ov=document.createElement('div');
+  ov.className='fl-ov';ov.id='fl-panor-ov';
+  ov.innerHTML=`
+    <div class="fl-panor-modal">
+      <div class="fl-mh">
+        <h3>${I.fleet} Panorama de vehículos</h3>
+        <button class="fl-mx" onclick="flCerrarPanorama()">✕</button>
+      </div>
+      <div class="fl-panor-tools" style="display:none"></div>
+      <div class="fl-panor-body" id="fl-panor-body"></div>
+      <div class="fl-panor-bar" style="display:none"></div>
+    </div>`;
+  document.body.appendChild(ov);
+  ov.onclick=(e)=>{if(e.target===ov)flCerrarPanorama();};
+  flPanorVerResumen();
+};
+
 window.flAbrirPanorama=function(){
   flPanorSel=new Set();flPanorTipo='all';flPanorQ='';flPanorIncBaja=false;
   const ov=document.createElement('div');
@@ -4232,13 +4275,20 @@ window.flVerSol=async function(id){
           ${(pV||pA)?`<button onclick="flActualizarEvidenciaEtapa('${s.id}','archivos_evaluacion','Evaluación')" style="font-size:9.5px;font-weight:700;color:#1D4ED8;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:7px;padding:4px 9px;cursor:pointer;font-family:inherit">+ Actualizar evidencia</button>`:''}
         </div>
         <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:10px">
-          ${(s._archivosEvaluacion||[]).map(a=>`
-            <div style="display:flex;align-items:center;gap:8px;padding:7px 11px;background:#F8FAFC;border-radius:8px;border:1px solid #E2E8F0">
+          ${(()=>{
+            if(!window._flArchCache)window._flArchCache=[];
+            return (s._archivosEvaluacion||[]).map(a=>{
+              const idx=window._flArchCache.length; window._flArchCache.push(a);
+              return`<div style="display:flex;align-items:center;gap:8px;padding:7px 11px;background:#F8FAFC;border-radius:8px;border:1px solid #E2E8F0">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${a.tipo==='pdf'?'#B91C1C':'#1D4ED8'}" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-              <span style="font-size:11px;font-weight:600;flex:1">${a.nombre||'Archivo'}</span>
+              <span style="font-size:11px;font-weight:600;flex:1;cursor:pointer" onclick="flVerArchivo(window._flArchCache[${idx}].datos,window._flArchCache[${idx}].nombre)">${a.nombre||'Archivo'}</span>
               <span style="font-size:10px;color:#94A3B8">${a.kb||''}KB</span>
+              <button onclick="flVerArchivo(window._flArchCache[${idx}].datos,window._flArchCache[${idx}].nombre)" style="font-size:10px;color:#374151;font-weight:700;background:#F1F5F9;border:none;border-radius:6px;padding:3px 8px;cursor:pointer;font-family:inherit">Ver</button>
               ${a.datos?`<a href="${a.datos}" download="${a.nombre||'archivo'}" style="font-size:10px;color:#2563EB;font-weight:700;text-decoration:none">Descargar</a>`:''}
-            </div>`).join('')}
+              ${(pV||pA)?`<button onclick="flBorrarArchivoEtapa('${s.id}','archivos_evaluacion','${a.id}','Evaluación')" style="font-size:10px;color:#B91C1C;font-weight:700;background:#FEF2F2;border:none;border-radius:6px;padding:3px 8px;cursor:pointer;font-family:inherit">Borrar</button>`:''}
+            </div>`;
+            }).join('');
+          })()}
         </div>`:''}
       ${s._archivosServicio?.length||pV||pA?`
         <div style="display:flex;align-items:center;justify-content:space-between;margin:10px 0 6px">
@@ -4246,13 +4296,20 @@ window.flVerSol=async function(id){
           ${(pV||pA)?`<button onclick="flActualizarEvidenciaEtapa('${s.id}','archivos_servicio','Servicio')" style="font-size:9.5px;font-weight:700;color:#B45309;background:#FFFBEB;border:1px solid #FDE68A;border-radius:7px;padding:4px 9px;cursor:pointer;font-family:inherit">+ Actualizar evidencia</button>`:''}
         </div>
         <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:10px">
-          ${(s._archivosServicio||[]).map(a=>`
-            <div style="display:flex;align-items:center;gap:8px;padding:7px 11px;background:#F8FAFC;border-radius:8px;border:1px solid #E2E8F0">
+          ${(()=>{
+            if(!window._flArchCache)window._flArchCache=[];
+            return (s._archivosServicio||[]).map(a=>{
+              const idx=window._flArchCache.length; window._flArchCache.push(a);
+              return`<div style="display:flex;align-items:center;gap:8px;padding:7px 11px;background:#F8FAFC;border-radius:8px;border:1px solid #E2E8F0">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${a.tipo==='pdf'?'#B91C1C':'#1D4ED8'}" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-              <span style="font-size:11px;font-weight:600;flex:1">${a.nombre||'Archivo'}</span>
+              <span style="font-size:11px;font-weight:600;flex:1;cursor:pointer" onclick="flVerArchivo(window._flArchCache[${idx}].datos,window._flArchCache[${idx}].nombre)">${a.nombre||'Archivo'}</span>
               <span style="font-size:10px;color:#94A3B8">${a.kb||''}KB</span>
+              <button onclick="flVerArchivo(window._flArchCache[${idx}].datos,window._flArchCache[${idx}].nombre)" style="font-size:10px;color:#374151;font-weight:700;background:#F1F5F9;border:none;border-radius:6px;padding:3px 8px;cursor:pointer;font-family:inherit">Ver</button>
               ${a.datos?`<a href="${a.datos}" download="${a.nombre||'archivo'}" style="font-size:10px;color:#2563EB;font-weight:700;text-decoration:none">Descargar</a>`:''}
-            </div>`).join('')}
+              ${(pV||pA)?`<button onclick="flBorrarArchivoEtapa('${s.id}','archivos_servicio','${a.id}','Servicio')" style="font-size:10px;color:#B91C1C;font-weight:700;background:#FEF2F2;border:none;border-radius:6px;padding:3px 8px;cursor:pointer;font-family:inherit">Borrar</button>`:''}
+            </div>`;
+            }).join('');
+          })()}
         </div>`:''}
       ${hasDan?`<div class="fl-sep"></div>
         <div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin-bottom:7px">Diagrama de daños</div>
@@ -4280,9 +4337,12 @@ window.flVerSol=async function(id){
         const pills=(s.evidencias||[]).map((src,i)=>{
           const meta=(s.evidenciasMeta||[])[i];
           const cod=meta?.codigo||('Foto '+(i+1));
-          return`<span class="fl-pill" onclick="flVerEvIdx(${baseIdx+i})" style="cursor:pointer;">
-            <img src="${src}" style="width:28px;height:28px;object-fit:cover;border-radius:4px;margin-right:4px">
-            <span style="font-size:10px;font-family:'JetBrains Mono',monospace">${cod}</span>
+          return`<span class="fl-pill" style="cursor:pointer;display:inline-flex;align-items:center;">
+            <span onclick="flVerEvIdx(${baseIdx+i})" style="display:inline-flex;align-items:center">
+              <img src="${src}" style="width:28px;height:28px;object-fit:cover;border-radius:4px;margin-right:4px">
+              <span style="font-size:10px;font-family:'JetBrains Mono',monospace">${cod}</span>
+            </span>
+            ${(pV||pA)?`<span onclick="event.stopPropagation();flBorrarEvidenciaSolicitud('${s.id}',${i})" style="margin-left:5px;color:#B91C1C;font-weight:800;cursor:pointer;padding:0 3px">✕</span>`:''}
           </span>`;
         }).join('');
         return`<div class="fl-sep"></div>
@@ -4512,6 +4572,38 @@ window.flRecibirTransferenciaConfirmada = async function(id) {
 };
 
 // ── AGREGAR DOCUMENTO A SOLICITUD CERRADA (admin, no Fátima) ──
+// (La previsualización usa window.flVerArchivo(b64, nombre), definida
+// más abajo en "VISOR DE ARCHIVOS" — no duplicar aquí.)
+
+// ── Borrar UN archivo de una subcolección (Evaluación/Servicio) sin
+// afectar a los demás — carga todos, quita el borrado, guarda el resto.
+window.flBorrarArchivoEtapa = async function(solId, subcol, archivoId, tituloEtapa){
+  if(!confirm('¿Borrar este documento de '+tituloEtapa+'? No se puede deshacer.')) return;
+  try{
+    const existentes = await flCargarArchivosSubcol(solId, subcol);
+    const restantes = existentes.filter(a=>a.id!==archivoId);
+    await flGuardarArchivosSubcol(solId, subcol, restantes);
+    flToast('Documento eliminado','ok');
+    document.querySelector('.fl-ov[style*="3300"]')?.remove();
+    window.flVerSol(solId);
+  }catch(e){ flToast('Error: '+e.message,'err'); }
+};
+
+// ── Borrar UNA evidencia general (etapa Solicitud) por índice ──
+window.flBorrarEvidenciaSolicitud = async function(solId, idx){
+  if(!confirm('¿Borrar esta evidencia? No se puede deshacer.')) return;
+  try{
+    const s=flS.find(x=>x.id===solId); if(!s) return;
+    const evidenciasActualizadas=(s.evidencias||[]).filter((_,i)=>i!==idx);
+    const metaActualizada=(s.evidenciasMeta||[]).filter((_,i)=>i!==idx);
+    await fs.updateDoc(fs.doc(db,C.SOLS,solId),{evidencias:evidenciasActualizadas,evidenciasMeta:metaActualizada});
+    s.evidencias=evidenciasActualizadas; s.evidenciasMeta=metaActualizada;
+    flToast('Evidencia eliminada','ok');
+    document.querySelector('.fl-ov[style*="3300"]')?.remove();
+    window.flVerSol(solId);
+  }catch(e){ flToast('Error: '+e.message,'err'); }
+};
+
 window.flAgregarDocCerrada = function(solId) {
   const inp = document.createElement('input');
   inp.type = 'file'; inp.accept = 'image/*,application/pdf'; inp.multiple = true;
