@@ -4262,9 +4262,14 @@ window.verArea=(a,b)=>{
             }
         }
         if(isMobile()) mostrarNavMobile(true, false);
-        // Rail interno universal — oculto en Gestoría/Flotilla (tienen su propio rail)
+        // Rail interno universal — solo en ÁREAS reales (DEPTOS), nunca en
+        // Gestoría/Flotilla (propio rail) ni en vistas de GENERAL
+        // (dashboard/cal360/nueva/ejecutivo, que llegan aquí con esos valores).
         const _railUniversal = document.getElementById('dept-rail-universal');
-        if(_railUniversal) _railUniversal.classList.toggle('oculto', a === 'Gestoría' || a === 'Flotilla');
+        if(_railUniversal){
+            const _mostrarRail = typeof DEPTOS !== 'undefined' && DEPTOS.includes(a) && a !== 'Gestoría' && a !== 'Flotilla';
+            _railUniversal.classList.toggle('oculto', !_mostrarRail);
+        }
         // Parrilla de documentos — YA NO se muestra embebida en ninguna área.
         // Ahora vive exclusivamente en el panel flotante universal
         // (ver window.abrirPanelParrilla más abajo), accesible desde el
@@ -4280,21 +4285,14 @@ window.verArea=(a,b)=>{
     if(auth.currentUser) { _doRender(); } else { setTimeout(_doRender, 300); }
 };
 
-// Muestra/oculta la parrilla de documentos + actividades dentro del área Flotilla.
-// Expuesta para que el botón de la barra de Flotilla (flotilla_76.js) la controle.
+// Muestra/oculta las actividades dentro del área Flotilla.
+// (La Parrilla de Documentos se separó de aquí — ahora tiene su propio
+// botón dedicado en el tab-bar de Flotilla que abre el panel universal,
+// window.abrirPanelParrilla, igual que en el resto del portal.)
 window.flToggleExtras = function(){
     window._flExtrasAbiertos = !window._flExtrasAbiertos;
-    const _pw = document.getElementById('area-parrilla-wrap');
     const _actWrap = document.getElementById('area-actividades-wrap');
-    if(window._flExtrasAbiertos){
-        if(_pw){_pw.style.display='block'; window.apAreaActual='Flotilla'; apAreaActual='Flotilla';
-            if(typeof window.actualizarLabelAP === 'function') window.actualizarLabelAP();
-            if(typeof window.cargarDocsAP === 'function') window.cargarDocsAP();}
-        if(_actWrap)_actWrap.style.display='';
-    } else {
-        if(_pw)_pw.style.display='none';
-        if(_actWrap)_actWrap.style.display='none';
-    }
+    if(_actWrap) _actWrap.style.display = window._flExtrasAbiertos ? '' : 'none';
     if(typeof window.flActualizarBotonExtras==='function') window.flActualizarBotonExtras();
 };
 
@@ -5777,19 +5775,23 @@ cargarModuloMarketing();
                     if(window.abrirAlmacen){ try{ window.abrirAlmacen('vista-almacen-area'); }catch(e){ console.error('[almacen] abrirAlmacen:', e); } }
                 } else { almBox.style.display = 'none'; }
             }
+            // La parrilla YA NO se muestra embebida en ningún área — solo vía
+            // el panel flotante universal (window.abrirPanelParrilla). Aquí solo
+            // se deja lista la variable de contexto para cuando se abra el panel.
             const wrap = document.getElementById('area-parrilla-wrap');
-            if(!wrap) return;
-            if(AREAS_CON_PARRILLA_PROPIA.includes(area)){
+            if(wrap){
                 wrap.style.display = 'none';
-            } else if(area === 'Flotilla' && !window._flExtrasAbiertos){
-                wrap.style.display = 'none';
-            } else {
-                wrap.style.display = 'block';
                 apAreaActual = area;
-                apMes = new Date().getMonth();
-                apAnio = new Date().getFullYear();
-                actualizarLabelAP();
-                cargarDocsAP();
+                window.apAreaActual = area;
+            }
+            // Rail interno universal — solo en las ÁREAS reales del catálogo
+            // (DEPTOS), nunca en Gestoría/Flotilla (tienen su propio rail) ni
+            // en las vistas de GENERAL (Dashboard/Calendario 360/Asignar
+            // Tarea/Vista Ejecutiva, que no llaman a verArea en absoluto).
+            const _railU = document.getElementById('dept-rail-universal');
+            if(_railU){
+                const _mostrar = typeof DEPTOS !== 'undefined' && DEPTOS.includes(area) && area !== 'Gestoría' && area !== 'Flotilla';
+                _railU.classList.toggle('oculto', !_mostrar);
             }
         };
     }, 200);
@@ -6315,7 +6317,7 @@ window.apPrevImg2 = (input) => {
      Se oculta en Gestoría porque ese módulo ya tiene su
      propio rail (gs-rail) con su propio botón de calendario.
 ══════════════════════════════════════════════ -->
-<div id="dept-rail-universal">
+<div id="dept-rail-universal" class="oculto">
     <button class="dr-btn" onclick="window.abrirPanelParrilla()">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
         <span class="dr-tooltip">Parrilla de documentos</span>
@@ -6524,7 +6526,8 @@ window.irAlmacen = function(btn){
         return overlay;
     }
 
-    window.abrirPanelParrilla = function () {
+    window.abrirPanelParrilla = function (areaForzada) {
+        if (areaForzada) { window.apAreaActual = areaForzada; if (typeof apAreaActual !== 'undefined') apAreaActual = areaForzada; }
         const nodo = document.getElementById('area-parrilla-wrap');
         const overlay = crearOverlay();
         const mount = overlay.querySelector('#gp-mount');
