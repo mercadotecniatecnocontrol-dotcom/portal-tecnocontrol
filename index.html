@@ -942,6 +942,27 @@
     .kcard{padding:10px;}
     #modal-detalle-act > div{border-radius:0;}
 }
+
+/* ══════════════════════════════════════════════════════════
+   RAIL INTERNO UNIVERSAL POR DEPARTAMENTO + PANEL DE PARRILLA
+   ══════════════════════════════════════════════════════════ */
+#dept-rail-universal{position:fixed;top:0;left:240px;height:100vh;width:64px;background:#0f172a;display:flex;flex-direction:column;align-items:center;padding:18px 0;gap:6px;z-index:95;}
+#dept-rail-universal.oculto{display:none;}
+.dr-btn{width:44px;height:44px;border:none;border-radius:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.5);background:transparent;transition:all 0.18s;position:relative;}
+.dr-btn:hover{background:rgba(37,99,235,0.35);color:#fff;}
+.dr-btn .dr-tooltip{position:absolute;left:56px;top:50%;transform:translateY(-50%);background:#0f172a;color:#fff;font-size:11px;font-weight:600;padding:6px 10px;border-radius:7px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity 0.15s;z-index:20;box-shadow:0 4px 12px rgba(0,0,0,0.25);}
+.dr-btn:hover .dr-tooltip{opacity:1;}
+@media(max-width:900px){ #dept-rail-universal{left:200px;} }
+@media(max-width:768px){ #dept-rail-universal{display:none !important;} }
+
+.gp-overlay{position:fixed;inset:0;z-index:999900;background:rgba(15,23,42,0);pointer-events:none;transition:background 0.28s ease;display:flex;justify-content:flex-end;}
+.gp-overlay.abierto{background:rgba(15,23,42,0.45);pointer-events:auto;}
+.gp-panel{width:50vw;max-width:94vw;min-width:360px;height:100%;background:#fff;box-shadow:-12px 0 40px rgba(0,0,0,0.18);display:flex;flex-direction:column;transform:translateX(100%);transition:transform 0.32s cubic-bezier(0.22,1,0.36,1);}
+.gp-overlay.abierto .gp-panel{transform:translateX(0);}
+.gp-panel-header{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid rgba(59,130,246,0.1);font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14.5px;color:#1e293b;flex-shrink:0;}
+.gp-panel-header span{display:flex;align-items:center;gap:8px;}
+.gp-panel-body{flex:1;overflow-y:auto;padding:20px;}
+@media(max-width:900px){ .gp-panel{width:100vw;} }
 </style>
 </head>
 <body>
@@ -3987,6 +4008,15 @@ const EMAIL_AREA_MAP = {
     'almacen@tecnocontrol.com.mx':          'Almacén',
     'almacen2@tecnocontrol.com.mx':         'Almacén',
     'ventas2@tecnocontrol.com.mx':          'Almacén',   // pese al nombre, es personal de Almacén
+    // ── Gestoría ──
+    'gestoria@tecnocontrol.com.mx':         'Gestoría',
+    'gestoria1@tecnocontrol.com.mx':        'Gestoría',
+    'gestoria2@tecnocontrol.com.mx':        'Gestoría',
+    'gestoria3@tecnocontrol.com.mx':        'Gestoría',
+    'gestoria4@tecnocontrol.com.mx':        'Gestoría',
+    'gestoria5@tecnocontrol.com.mx':        'Gestoría',
+    'calidad@tecnocontrol.com.mx':          'Gestoría',
+    'd.gutierrez@tecnocontrol.com.mx':      'Gestoría', // gerencia de Gestoría
 };
 
 // ── Accesos extra de SOLO LECTURA a áreas fuera del departamento propio ──
@@ -4232,18 +4262,19 @@ window.verArea=(a,b)=>{
             }
         }
         if(isMobile()) mostrarNavMobile(true, false);
-        // Parrilla de documentos — mostrar en todas las áreas excepto Marketing (tiene su propia)
+        // Rail interno universal — oculto en Gestoría/Flotilla (tienen su propio rail)
+        const _railUniversal = document.getElementById('dept-rail-universal');
+        if(_railUniversal) _railUniversal.classList.toggle('oculto', a === 'Gestoría' || a === 'Flotilla');
+        // Parrilla de documentos — YA NO se muestra embebida en ninguna área.
+        // Ahora vive exclusivamente en el panel flotante universal
+        // (ver window.abrirPanelParrilla más abajo), accesible desde el
+        // botón de calendario en la barra interna de cada departamento.
         const _parrillaWrap = document.getElementById('area-parrilla-wrap');
         if(_parrillaWrap){
-            const _areasConParrillaPropia = ['Marketing'];
-            if(_areasConParrillaPropia.includes(a)){
-                _parrillaWrap.style.display = 'none';
-            } else if(a !== 'Flotilla' || window._flExtrasAbiertos){
-                _parrillaWrap.style.display = 'block';
-                window.apAreaActual = a; apAreaActual = a;
-                if(typeof window.actualizarLabelAP === 'function') window.actualizarLabelAP();
-                if(typeof window.cargarDocsAP === 'function') window.cargarDocsAP();
-            }
+            _parrillaWrap.style.display = 'none';
+            window.apAreaActual = a; apAreaActual = a;
+            if(typeof window.actualizarLabelAP === 'function') window.actualizarLabelAP();
+            if(typeof window.cargarDocsAP === 'function') window.cargarDocsAP();
         }
     };
     if(auth.currentUser) { _doRender(); } else { setTimeout(_doRender, 300); }
@@ -6276,6 +6307,21 @@ window.apPrevImg2 = (input) => {
 <!-- ══════════════════════════════════════════════
      FLOTILLA VEHICULAR v4
 ══════════════════════════════════════════════ -->
+<!-- ══════════════════════════════════════════════
+     RAIL INTERNO UNIVERSAL POR DEPARTAMENTO
+     Por ahora solo el botón de calendario (Parrilla de
+     Documentos). Los botones específicos de cada área se
+     agregan aquí cuando se defina qué necesita cada una.
+     Se oculta en Gestoría porque ese módulo ya tiene su
+     propio rail (gs-rail) con su propio botón de calendario.
+══════════════════════════════════════════════ -->
+<div id="dept-rail-universal">
+    <button class="dr-btn" onclick="window.abrirPanelParrilla()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        <span class="dr-tooltip">Parrilla de documentos</span>
+    </button>
+</div>
+
 <div id="flotilla-dashboard"></div>
 <div id="gestoria-dashboard"></div>
 <div id="modal-compartir" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);z-index:999999 !important;align-items:center;justify-content:center;display:none;">
@@ -6447,5 +6493,64 @@ window.irAlmacen = function(btn){
 <script src="almacen.js"></script>
 <script src="almacen-pdf.js"></script>
 <script src="gestoria.js"></script>
+<script>
+// ══════════════════════════════════════════════════════════
+// PANEL FLOTANTE UNIVERSAL — Parrilla de Documentos
+// Reutiliza el nodo real #area-parrilla-wrap (con su lógica de
+// Firestore ya existente) en cualquier departamento del portal.
+// Expuesto en window para que gestoria.js / flotilla.js / etc.
+// lo llamen desde sus propios rails en vez de duplicar lógica.
+// ══════════════════════════════════════════════════════════
+(function () {
+    let _origPadre = null, _origSiguiente = null;
+
+    function crearOverlay() {
+        let overlay = document.getElementById('gp-overlay');
+        if (overlay) return overlay;
+        overlay = document.createElement('div');
+        overlay.id = 'gp-overlay';
+        overlay.className = 'gp-overlay';
+        overlay.innerHTML = `
+            <div class="gp-panel">
+                <div class="gp-panel-header">
+                    <span>📅 Parrilla de documentos</span>
+                    <button class="dr-btn" id="gp-cerrar" style="color:#1e293b;">✕</button>
+                </div>
+                <div class="gp-panel-body" id="gp-mount"></div>
+            </div>`;
+        document.body.appendChild(overlay);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) window.cerrarPanelParrilla(); });
+        overlay.querySelector('#gp-cerrar').addEventListener('click', window.cerrarPanelParrilla);
+        return overlay;
+    }
+
+    window.abrirPanelParrilla = function () {
+        const nodo = document.getElementById('area-parrilla-wrap');
+        const overlay = crearOverlay();
+        const mount = overlay.querySelector('#gp-mount');
+        if (nodo) {
+            if (!_origPadre) { _origPadre = nodo.parentNode; _origSiguiente = nodo.nextSibling; }
+            mount.appendChild(nodo);
+            nodo.style.display = 'block';
+            nodo.style.margin = '0';
+            if (typeof window.actualizarLabelAP === 'function') window.actualizarLabelAP();
+        }
+        requestAnimationFrame(() => overlay.classList.add('abierto'));
+    };
+
+    window.cerrarPanelParrilla = function () {
+        const overlay = document.getElementById('gp-overlay');
+        if (!overlay) return;
+        overlay.classList.remove('abierto');
+        setTimeout(() => {
+            const nodo = document.getElementById('area-parrilla-wrap');
+            if (nodo && _origPadre) {
+                nodo.style.display = 'none';
+                _origPadre.insertBefore(nodo, _origSiguiente);
+            }
+        }, 260);
+    };
+})();
+</script>
 </body>
 </html>
