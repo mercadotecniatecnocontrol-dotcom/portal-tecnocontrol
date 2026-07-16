@@ -558,10 +558,14 @@ function injectCSS(){
 .fl-dmg-num{width:20px;height:20px;border-radius:50%;background:#EF4444;color:#fff;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
 
 /* ── PANEL DERECHO INFO VEHÍCULO ── */
-.fl-rp{width:300px;flex-shrink:0;background:#fff;border-left:1.5px solid #E8EDF5;height:100vh;position:sticky;top:0;overflow-y:auto;}
-.fl-panor-col{width:360px;flex-shrink:0;background:#F8FAFD;border-left:1.5px solid #E8EDF5;height:100vh;position:sticky;top:0;overflow-y:auto;padding:16px;}
-@media(max-width:1400px){.fl-panor-col{width:300px;}}
-@media(max-width:1100px){.fl-panor-col{display:none !important;}}
+.fl-rp{width:300px;flex-shrink:0;background:#fff;height:100%;overflow-y:auto;border-radius:14px;}
+#fl-veh-backdrop{position:fixed;inset:0;background:rgba(10,15,30,0);pointer-events:none;transition:background .2s ease;z-index:2999;display:flex;align-items:center;justify-content:center;padding:24px;}
+#fl-veh-backdrop.abierto{background:rgba(10,15,30,.75);backdrop-filter:blur(8px);pointer-events:auto;}
+#fl-veh-modal-wrap{position:relative;display:flex;flex-direction:row;gap:0;max-width:1100px;width:100%;max-height:92vh;background:#fff;border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,.4);overflow:hidden;transform:scale(.96);opacity:0;transition:all .2s ease;}
+#fl-veh-backdrop.abierto #fl-veh-modal-wrap{transform:scale(1);opacity:1;}
+#fl-veh-modal-close{position:absolute;top:14px;right:14px;width:32px;height:32px;border:none;background:rgba(255,255,255,.9);border-radius:50%;cursor:pointer;font-size:16px;color:#374151;z-index:10;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+.fl-panor-col{width:360px;flex-shrink:0;background:#F8FAFD;border-left:1.5px solid #E8EDF5;height:100%;overflow-y:auto;padding:16px;}
+@media(max-width:900px){#fl-veh-modal-wrap{flex-direction:column;max-height:94vh;} .fl-rp,.fl-panor-col{width:100%;}}
 .fl-panor-col .fl-panor-sum-kpis{grid-template-columns:repeat(2,1fr);}
 .fl-rp-img{position:relative;overflow:hidden;background:#EEF2F7;}
 .fl-rp-img img{width:100%;height:160px;object-fit:contain;display:block;background:#E8EEFA;}
@@ -794,8 +798,13 @@ function buildHTML(){
     <div class="fl-content" id="fl-content">
       <div class="fl-empty" style="min-height:60vh"><div class="fl-empty-ico">${SVG_AUTO}</div><h3>Cargando flotilla…</h3></div>
     </div>
-    <div class="fl-rp" id="fl-rp">${rpVacio()}</div>
-    <div class="fl-panor-col" id="fl-panor-col" style="display:none"></div>
+  </div>
+  <div id="fl-veh-backdrop" onclick="if(event.target===this)flCerrarModalVehiculo()">
+    <div id="fl-veh-modal-wrap">
+      <button id="fl-veh-modal-close" onclick="flCerrarModalVehiculo()">✕</button>
+      <div class="fl-rp" id="fl-rp">${rpVacio()}</div>
+      <div class="fl-panor-col" id="fl-panor-col" style="display:none"></div>
+    </div>
   </div>
   </div>`;
 }
@@ -1174,6 +1183,15 @@ window.flSbSel=function(id){
   renderRP(id);
   if(vistaAct==='sols')rSols();
   window.flAbrirPanoramaVehiculo(id);
+  document.getElementById('fl-veh-backdrop')?.classList.add('abierto');
+};
+
+window.flCerrarModalVehiculo=function(){
+  document.getElementById('fl-veh-backdrop')?.classList.remove('abierto');
+  document.querySelectorAll('.fl-sb-item').forEach(e=>e.classList.remove('on'));
+  ST.vehId=null;
+  const rp=document.getElementById('fl-rp'); if(rp) rp.innerHTML=rpVacio();
+  const panorCol=document.getElementById('fl-panor-col'); if(panorCol){panorCol.style.display='none';panorCol.innerHTML='';}
 };
 
 // NAVEGACIÓN
@@ -1186,6 +1204,7 @@ window.flVista=function(v){
   document.querySelectorAll('.fl-sb-item').forEach(e=>e.classList.remove('on'));
   const rp=document.getElementById('fl-rp'); if(rp) rp.innerHTML=rpVacio();
   const panorCol=document.getElementById('fl-panor-col'); if(panorCol){panorCol.style.display='none';panorCol.innerHTML='';}
+  document.getElementById('fl-veh-backdrop')?.classList.remove('abierto');
   document.getElementById('fl-panor-ov')?.remove();
   vistaAct=v;
   document.querySelectorAll('.fl-tab-btn').forEach(b=>b.classList.remove('on'));
@@ -3697,27 +3716,9 @@ window.flResolverSiniestro=async function(id){
   }catch(e){alert('Error: '+e.message);}
 };
 
-window.flAbrirPanoramaVehiculo=function(vehId){
-  const v=flV.find(x=>x.id===vehId); if(!v) return;
-  document.getElementById('fl-panor-ov')?.remove();
-  flPanorMes='all';
-  const ov=document.createElement('div');
-  ov.className='fl-ov'; ov.id='fl-panor-ov';
-  ov.innerHTML=`
-    <div class="fl-panor-modal">
-      <div class="fl-mh">
-        <h3>${I.fleet} Panorama de vehículos</h3>
-        <button class="fl-mx" onclick="flCerrarPanorama()">✕</button>
-      </div>
-      <div class="fl-panor-body" id="fl-panor-body">${flPanorResumenVeh(v)}</div>
-    </div>`;
-  document.body.appendChild(ov);
-  ov.onclick=(e)=>{if(e.target===ov)flCerrarPanorama();};
-};
-
-// ── Panorama del vehículo como columna fija a la derecha del panel de
-// info (NO como modal de pantalla completa) — ambos visibles juntos al
-// hacer clic en un vehículo, tal como el panel de info.
+// ── Panorama del vehículo, dentro del modal conjunto con el panel de
+// info (ver #fl-veh-backdrop / #fl-veh-modal-wrap) — ambos visibles
+// juntos al hacer clic en un vehículo, como una sola ventana emergente.
 window.flAbrirPanoramaVehiculo=function(id){
   const v=flV.find(x=>x.id===id);
   const col=document.getElementById('fl-panor-col');
