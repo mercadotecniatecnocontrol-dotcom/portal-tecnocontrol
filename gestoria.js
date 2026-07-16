@@ -60,6 +60,8 @@
         candado:    '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
         carpeta:    '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>',
         reloj:      '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+        calendario: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
+        cerrar:     '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
     };
 
     // ══════════════════════════════════════════════════════════
@@ -121,6 +123,20 @@
     const RE_NOMBRE_PLACEHOLDER = /^(nombre\s*){2,}$/i;
     const MESES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
 
+    // Roles seleccionables — antes eran 8 campos de texto fijos;
+    // ahora es un checklist como en SGM: el cliente marca cuáles
+    // puestos existen realmente en su estación.
+    const SASISOPA_ROLES_DISPONIBLES = [
+        { clave: "ROL_ALTA_DIRECCION",        etiqueta: "Alta Dirección",          escolaridadClave: "ESCOLARIDAD_ALTA_DIRECCION",        obligatorio: false },
+        { clave: "ROL_REPRESENTANTE_TECNICO", etiqueta: "Representante Técnico",   escolaridadClave: "ESCOLARIDAD_REPRESENTANTE_TECNICO", obligatorio: false },
+        { clave: "ROL_SUPERVISOR_ESTACION",   etiqueta: "Supervisor de Estación",  escolaridadClave: "ESCOLARIDAD_SUPERVISOR",            obligatorio: false },
+        { clave: "ROL_DESPACHADOR",           etiqueta: "Despachador(es)",         escolaridadClave: "ESCOLARIDAD_DESPACHADOR",           obligatorio: false },
+        { clave: "ROL_ASISTENTE_ADMIN",       etiqueta: "Asistente Administrativo",escolaridadClave: "ESCOLARIDAD_ASISTENTE_ADMIN",       obligatorio: false },
+        { clave: "ROL_FACTURISTA",            etiqueta: "Facturista",              escolaridadClave: "ESCOLARIDAD_FACTURISTA",            obligatorio: false },
+        { clave: "ROL_MANTENIMIENTO",         etiqueta: "Mantenimiento",           escolaridadClave: "ESCOLARIDAD_MANTENIMIENTO",         obligatorio: false },
+        { clave: "ROL_INTENDENCIA",           etiqueta: "Intendencia",             escolaridadClave: "ESCOLARIDAD_INTENDENCIA",           obligatorio: false },
+    ];
+
     const SASISOPA_SECCIONES_FORM = [
         { titulo: "Identidad del cliente", icono: ICONO.edificio, campos: [
             ["RAZON_SOCIAL", "Razón Social completa", "Superservicio Cuatro Caminos S.A. de C.V."],
@@ -130,26 +146,13 @@
             ["NUMERO_PERMISO", "Número de permiso CRE/ASEA (PL)", "PL/6125/EXP/ES/2015"],
             ["FECHA_ELABORACION", "Fecha de elaboración (dd/mm/aaaa)", "28/04/2025"],
         ]},
-        { titulo: "Organigrama y nomenclatura de puestos", icono: ICONO.usuarios, campos: [
-            ["ROL_ALTA_DIRECCION", "Alta Dirección", "Alta Dirección"],
-            ["ROL_REPRESENTANTE_TECNICO", "Representante Técnico", "Representante Técnico"],
-            ["ROL_SUPERVISOR_ESTACION", "Supervisor de Estación", "Supervisor de Estación"],
-            ["ROL_DESPACHADOR", "Despachador(es)", "Despachador"],
-            ["ROL_ASISTENTE_ADMIN", "Asistente Administrativo", "Asistente Administrativo"],
-            ["ROL_FACTURISTA", "Facturista", "Facturista"],
-            ["ROL_MANTENIMIENTO", "Mantenimiento", "Mantenimiento"],
-            ["ROL_INTENDENCIA", "Intendencia", "Intendencia"],
-        ]},
-        { titulo: "Escolaridad mínima por puesto (F-06-02)", icono: ICONO.graduacion, campos: [
-            ["ESCOLARIDAD_ALTA_DIRECCION", "Escolaridad — Alta Dirección", "Preparatoria"],
-            ["ESCOLARIDAD_REPRESENTANTE_TECNICO", "Escolaridad — Representante Técnico", "Licenciatura o Ingeniería."],
-            ["ESCOLARIDAD_SUPERVISOR", "Escolaridad — Supervisor de Estación", "Licenciatura."],
-            ["ESCOLARIDAD_ASISTENTE_ADMIN", "Escolaridad — Asistente Administrativo", "Preparatoria."],
-            ["ESCOLARIDAD_MANTENIMIENTO", "Escolaridad — Mantenimiento", "Secundaria."],
-            ["ESCOLARIDAD_FACTURISTA", "Escolaridad — Facturación", "Secundaria."],
-            ["ESCOLARIDAD_INTENDENCIA", "Escolaridad — Intendencia", "Primaria."],
-            ["ESCOLARIDAD_DESPACHADOR", "Escolaridad — Despachador", "Primaria."],
-        ]},
+        { titulo: "Organigrama y nomenclatura de puestos", icono: ICONO.usuarios, tipo: "checklist_con_nombre", opciones: SASISOPA_ROLES_DISPONIBLES },
+        { titulo: "Escolaridad mínima por puesto (F-06-02)", icono: ICONO.graduacion, tipo: "escolaridad_dinamica", fuente: SASISOPA_ROLES_DISPONIBLES, ejemplos: {
+            ESCOLARIDAD_ALTA_DIRECCION: "Preparatoria", ESCOLARIDAD_REPRESENTANTE_TECNICO: "Licenciatura o Ingeniería.",
+            ESCOLARIDAD_SUPERVISOR: "Licenciatura.", ESCOLARIDAD_ASISTENTE_ADMIN: "Preparatoria.",
+            ESCOLARIDAD_MANTENIMIENTO: "Secundaria.", ESCOLARIDAD_FACTURISTA: "Secundaria.",
+            ESCOLARIDAD_INTENDENCIA: "Primaria.", ESCOLARIDAD_DESPACHADOR: "Primaria.",
+        }},
     ];
 
     const SASISOPA_CAMPOS_OBLIGATORIOS = ["RAZON_SOCIAL", "RFC", "DOMICILIO_ESTACION", "CIUDAD_ESTADO", "NUMERO_PERMISO", "FECHA_ELABORACION"];
@@ -601,7 +604,12 @@
         @media(max-width:900px){ #gestoria-dashboard{margin-left:200px;} }
         @media(max-width:768px){ #gestoria-dashboard{margin-left:0;} .gs-grid{grid-template-columns:1fr !important;} .gs-form-grid{grid-template-columns:1fr !important;} }
 
-        #gestoria-dashboard .gs-shell{display:flex;min-height:100vh;}
+        /* El riel queda ANCLADO al viewport (fixed), no al flujo de la página,
+           para que nunca se desplace con el scroll — igual que el sidebar azul principal. */
+        #gestoria-dashboard .gs-shell{display:block;min-height:100vh;}
+        #gestoria-dashboard .gs-rail{position:fixed;top:0;left:240px;height:100vh;z-index:90;}
+        @media(max-width:900px){ #gestoria-dashboard .gs-rail{left:200px;} }
+        @media(max-width:768px){ #gestoria-dashboard .gs-rail{left:0;} }
         #gestoria-dashboard .gs-rail{width:64px;background:#0f172a;display:flex;flex-direction:column;align-items:center;padding:18px 0;gap:6px;flex-shrink:0;}
         #gestoria-dashboard .gs-rail-logo{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,var(--teal),var(--teal2));display:flex;align-items:center;justify-content:center;color:#fff;margin-bottom:14px;flex-shrink:0;}
         #gestoria-dashboard .gs-rail-btn{width:44px;height:44px;border:none;border-radius:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.5);background:transparent;transition:all 0.18s;position:relative;}
@@ -610,8 +618,10 @@
         #gestoria-dashboard .gs-rail-btn:disabled{opacity:0.28;cursor:not-allowed;}
         #gestoria-dashboard .gs-rail-tooltip{position:absolute;left:56px;top:50%;transform:translateY(-50%);background:#0f172a;color:#fff;font-size:11px;font-weight:600;padding:6px 10px;border-radius:7px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity 0.15s;z-index:20;box-shadow:0 4px 12px rgba(0,0,0,0.25);}
         #gestoria-dashboard .gs-rail-btn:hover .gs-rail-tooltip{opacity:1;}
-        #gestoria-dashboard .gs-content{flex:1;min-width:0;}
-        @media(max-width:768px){ #gestoria-dashboard .gs-rail{width:56px;} #gestoria-dashboard .gs-rail-btn{width:38px;height:38px;} }
+        /* gs-content deja el hueco del riel fijo (64px) mediante margen, en vez de flex */
+        #gestoria-dashboard .gs-content{margin-left:64px;min-width:0;min-height:100vh;}
+        @media(max-width:768px){ #gestoria-dashboard .gs-rail{width:56px;} #gestoria-dashboard .gs-rail-btn{width:38px;height:38px;} #gestoria-dashboard .gs-content{margin-left:56px;} }
+
 
         #gestoria-dashboard .gs-topbar{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:16px;padding:28px 32px 20px;border-bottom:1px solid rgba(59,130,246,0.10);background:#ffffff;}
         #gestoria-dashboard .gs-eyebrow{font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--teal2);margin-bottom:6px;}
@@ -677,6 +687,17 @@
         #gestoria-dashboard .gs-rol-fila input[type="text"]:disabled{background:#f1f5f9;color:var(--text3);}
         #gestoria-dashboard .gs-equipo-fila{display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:10px;align-items:end;margin-bottom:10px;padding-bottom:10px;border-bottom:1px dashed rgba(59,130,246,0.15);}
         #gestoria-dashboard .gs-btn-quitar-equipo{padding:9px 12px;color:#ef4444;font-weight:700;}
+        #gestoria-dashboard .gs-rail-divisor{width:32px;height:1px;background:rgba(255,255,255,0.14);margin:8px 0;flex-shrink:0;}
+
+        /* ── Panel flotante de la Parrilla de Documentos ─────────── */
+        .gs-parrilla-overlay{position:fixed;inset:0;z-index:200000;background:rgba(15,23,42,0);pointer-events:none;transition:background 0.28s ease;display:flex;justify-content:flex-end;}
+        .gs-parrilla-overlay.abierto{background:rgba(15,23,42,0.45);pointer-events:auto;}
+        .gs-parrilla-panel{width:520px;max-width:92vw;height:100%;background:#fff;box-shadow:-12px 0 40px rgba(0,0,0,0.18);display:flex;flex-direction:column;transform:translateX(100%);transition:transform 0.32s cubic-bezier(0.22,1,0.36,1);}
+        .gs-parrilla-overlay.abierto .gs-parrilla-panel{transform:translateX(0);}
+        .gs-parrilla-panel-header{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid rgba(59,130,246,0.1);font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14.5px;color:#1e293b;flex-shrink:0;}
+        .gs-parrilla-panel-header span{display:flex;align-items:center;gap:8px;}
+        .gs-parrilla-panel-body{flex:1;overflow-y:auto;padding:20px;}
+        @media(max-width:640px){ .gs-parrilla-panel{width:100vw;} }
         @media(max-width:768px){ #gestoria-dashboard .gs-equipo-fila{grid-template-columns:1fr;} #gestoria-dashboard .gs-rol-fila{grid-template-columns:1fr;} }
 
         #gestoria-dashboard .gs-dropzone{border:2px dashed rgba(59,130,246,0.25);border-radius:14px;padding:26px 18px;text-align:center;cursor:pointer;transition:0.18s;background:#fafbff;}
@@ -712,6 +733,11 @@
                     ${s.id === 'sasisopa' ? ICONO.carpeta : ICONO.graduacion}
                     <span class="gs-rail-tooltip">${s.titulo}${s.activa ? '' : ' (próximamente)'}</span>
                 </button>`).join('')}
+            <div class="gs-rail-divisor"></div>
+            <button class="gs-rail-btn" data-accion="calendario">
+                ${ICONO.calendario}
+                <span class="gs-rail-tooltip">Parrilla de documentos</span>
+            </button>
         </div>`;
     }
 
@@ -720,6 +746,70 @@
             if (btn.disabled) return;
             btn.addEventListener('click', () => { _seccionActual = btn.dataset.seccion; cargarGestoria(); });
         });
+        const btnCal = cont.querySelector('[data-accion="calendario"]');
+        if (btnCal) btnCal.addEventListener('click', abrirPanelParrilla);
+    }
+
+    // ── Panel flotante de la Parrilla de Documentos ─────────────
+    // Reutiliza el nodo real #area-parrilla-wrap (y toda su lógica ya
+    // existente en index.html: listener de Firestore, renderCalAP,
+    // etc.) en vez de duplicarla. Solo lo saca temporalmente de su
+    // lugar mientras el panel está abierto, y lo regresa intacto al
+    // cerrar para no afectar el comportamiento normal del portal en
+    // otras áreas.
+    let _parrillaNodoOriginal = { padre: null, siguiente: null };
+
+    function crearOverlayParrilla() {
+        let overlay = document.getElementById('gs-parrilla-overlay');
+        if (overlay) return overlay;
+        overlay = document.createElement('div');
+        overlay.id = 'gs-parrilla-overlay';
+        overlay.className = 'gs-parrilla-overlay';
+        overlay.innerHTML = `
+            <div class="gs-parrilla-panel">
+                <div class="gs-parrilla-panel-header">
+                    <span>${ICONO.calendario} Parrilla de documentos — Gestoría</span>
+                    <button class="gs-btn gs-btn-ghost" id="gs-parrilla-cerrar">${ICONO.cerrar}</button>
+                </div>
+                <div class="gs-parrilla-panel-body" id="gs-parrilla-mount"></div>
+            </div>`;
+        document.body.appendChild(overlay);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) cerrarPanelParrilla(); });
+        overlay.querySelector('#gs-parrilla-cerrar').addEventListener('click', cerrarPanelParrilla);
+        return overlay;
+    }
+
+    function abrirPanelParrilla() {
+        const nodo = document.getElementById('area-parrilla-wrap');
+        const overlay = crearOverlayParrilla();
+        const mount = overlay.querySelector('#gs-parrilla-mount');
+        if (nodo) {
+            if (!_parrillaNodoOriginal.padre) {
+                _parrillaNodoOriginal.padre = nodo.parentNode;
+                _parrillaNodoOriginal.siguiente = nodo.nextSibling;
+            }
+            mount.appendChild(nodo);
+            nodo.style.display = 'block';
+            nodo.style.margin = '0';
+            if (window.apAreaActual !== undefined) window.apAreaActual = 'Gestoría';
+            if (typeof window.actualizarLabelAP === 'function') window.actualizarLabelAP();
+        } else {
+            mount.innerHTML = `<div class="gs-empty">${ICONO.carpeta}<p>La Parrilla de Documentos no está disponible en esta página.</p></div>`;
+        }
+        requestAnimationFrame(() => overlay.classList.add('abierto'));
+    }
+
+    function cerrarPanelParrilla() {
+        const overlay = document.getElementById('gs-parrilla-overlay');
+        if (!overlay) return;
+        overlay.classList.remove('abierto');
+        setTimeout(() => {
+            const nodo = document.getElementById('area-parrilla-wrap');
+            if (nodo && _parrillaNodoOriginal.padre) {
+                nodo.style.display = 'none';
+                _parrillaNodoOriginal.padre.insertBefore(nodo, _parrillaNodoOriginal.siguiente);
+            }
+        }, 260);
     }
 
     async function cargarGestoria() {
@@ -830,6 +920,26 @@
     }
 
     function renderSeccionForm(sec, cliente) {
+        if (sec.tipo === 'escolaridad_dinamica') {
+            return `
+            <div class="gs-card">
+                <div class="gs-card-header"><span class="gs-card-icon">${sec.icono}</span><span class="gs-card-title">${sec.titulo}</span></div>
+                <div class="gs-card-body">
+                    <div class="gs-subtitle" style="margin-bottom:10px;">Solo aparecen los roles marcados en el organigrama de arriba.</div>
+                    <div class="gs-grid">
+                        ${sec.fuente.map(rol => {
+                            const oculto = !cliente[rol.clave]; // se ajusta también al vuelo con bindSeccionesEspeciales
+                            return `
+                            <div class="gs-field" data-depende-de="${rol.clave}" style="${oculto ? 'display:none;' : ''}">
+                                <label>Escolaridad — ${rol.etiqueta}</label>
+                                <input type="text" data-clave="${rol.escolaridadClave}" placeholder="${sec.ejemplos[rol.escolaridadClave] || ''}"
+                                    value="${(cliente[rol.escolaridadClave] || '').replace(/"/g,'&quot;')}">
+                            </div>`;
+                        }).join('')}
+                    </div>
+                </div>
+            </div>`;
+        }
         if (sec.tipo === 'checklist_con_nombre') {
             return `
             <div class="gs-card">
@@ -901,6 +1011,10 @@
             check.addEventListener('change', () => {
                 texto.disabled = !check.checked;
                 if (!check.checked) texto.value = '';
+                cont.querySelectorAll(`[data-depende-de="${fila.dataset.rol}"]`).forEach(campo => {
+                    campo.style.display = check.checked ? '' : 'none';
+                    if (!check.checked) { const inp = campo.querySelector('input'); if (inp) inp.value = ''; }
+                });
                 actualizarPreview(cont);
             });
         });
