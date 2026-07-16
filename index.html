@@ -947,7 +947,13 @@
    RAIL INTERNO UNIVERSAL POR DEPARTAMENTO + PANEL DE PARRILLA
    ══════════════════════════════════════════════════════════ */
 #dept-rail-universal{position:fixed;top:0;left:240px;height:100vh;width:64px;background:#0f172a;display:flex;flex-direction:column;align-items:center;padding:18px 0;gap:6px;z-index:95;}
+body.rail-activo .main{margin-left:304px !important;}
+@media(max-width:900px){ body.rail-activo .main{margin-left:264px !important;} }
+@media(max-width:768px){ body.rail-activo .main{margin-left:0 !important;} }
 #dept-rail-universal.oculto{display:none;}
+main.main.con-rail-universal{margin-left:304px;}
+@media(max-width:900px){ main.main.con-rail-universal{margin-left:264px;} }
+@media(max-width:768px){ main.main.con-rail-universal{margin-left:0;} }
 .dr-btn{width:44px;height:44px;border:none;border-radius:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.5);background:transparent;transition:all 0.18s;position:relative;}
 .dr-btn:hover{background:rgba(37,99,235,0.35);color:#fff;}
 .dr-btn .dr-tooltip{position:absolute;left:56px;top:50%;transform:translateY(-50%);background:#0f172a;color:#fff;font-size:11px;font-weight:600;padding:6px 10px;border-radius:7px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity 0.15s;z-index:20;box-shadow:0 4px 12px rgba(0,0,0,0.25);}
@@ -4216,7 +4222,7 @@ window.verArea=(a,b)=>{
                 // flotilla-dashboard (que vive fuera de #app-portal). Se colapsa mientras
                 // estemos en Flotilla.
                 const _mainEl=document.querySelector('main.main');
-                if(_mainEl)_mainEl.style.minHeight='0';
+                if(_mainEl){_mainEl.style.minHeight='0'; _mainEl.style.padding='0';}
                 const _appPortal=document.getElementById('app-portal');
                 if(_appPortal)_appPortal.style.minHeight='0';
                 if(!window._flExtrasAbiertos){
@@ -4228,7 +4234,7 @@ window.verArea=(a,b)=>{
                 _flPanel.style.display = 'none';
                 if(pageHeader)pageHeader.style.display='';
                 const _mainEl=document.querySelector('main.main');
-                if(_mainEl)_mainEl.style.minHeight='';
+                if(_mainEl){_mainEl.style.minHeight=''; _mainEl.style.padding='';}
                 const _appPortal2=document.getElementById('app-portal');
                 if(_appPortal2)_appPortal2.style.minHeight='';
                 if(_actWrap)_actWrap.style.display=''; // siempre visible fuera de Flotilla
@@ -4246,7 +4252,7 @@ window.verArea=(a,b)=>{
                 // área genérica oculta, eso deja una pantalla de espacio vacío antes
                 // de que aparezca gestoria-dashboard (que vive fuera de #app-portal).
                 const _mainElGs=document.querySelector('main.main');
-                if(_mainElGs)_mainElGs.style.minHeight='0';
+                if(_mainElGs){_mainElGs.style.minHeight='0'; _mainElGs.style.padding='0';}
                 const _appPortalGs=document.getElementById('app-portal');
                 if(_appPortalGs)_appPortalGs.style.minHeight='0';
                 if(typeof window.cargarGestoria === 'function') window.cargarGestoria();
@@ -4255,7 +4261,7 @@ window.verArea=(a,b)=>{
                 // Restaurar min-height solo si Flotilla tampoco los necesita en 0
                 if(a !== 'Flotilla'){
                     const _mainElGs=document.querySelector('main.main');
-                    if(_mainElGs)_mainElGs.style.minHeight='';
+                    if(_mainElGs){_mainElGs.style.minHeight=''; _mainElGs.style.padding='';}
                     const _appPortalGs=document.getElementById('app-portal');
                     if(_appPortalGs)_appPortalGs.style.minHeight='';
                 }
@@ -4269,6 +4275,9 @@ window.verArea=(a,b)=>{
         if(_railUniversal){
             const _mostrarRail = typeof DEPTOS !== 'undefined' && DEPTOS.includes(a) && a !== 'Gestoría' && a !== 'Flotilla';
             _railUniversal.classList.toggle('oculto', !_mostrarRail);
+            document.body.classList.toggle('rail-activo', _mostrarRail);
+            const _mainRail = document.querySelector('main.main');
+            if(_mainRail) _mainRail.style.marginLeft = _mostrarRail ? '304px' : '';
         }
         // Parrilla de documentos — YA NO se muestra embebida en ninguna área.
         // Ahora vive exclusivamente en el panel flotante universal
@@ -4856,7 +4865,7 @@ window.navegar=(id,b)=>{
         const _ssPanel2 = document.getElementById('gestoria-dashboard');
         if(_ssPanel2) _ssPanel2.style.display='none';
         const _mainEl2 = document.querySelector('main.main');
-        if(_mainEl2) _mainEl2.style.minHeight='';
+        if(_mainEl2){_mainEl2.style.minHeight=''; _mainEl2.style.padding='';}
         const _appPortal3=document.getElementById('app-portal');
         if(_appPortal3)_appPortal3.style.minHeight='';
         // Restaurar elementos de sec-area ocultados en vista Ventas móvil
@@ -5792,6 +5801,9 @@ cargarModuloMarketing();
             if(_railU){
                 const _mostrar = typeof DEPTOS !== 'undefined' && DEPTOS.includes(area) && area !== 'Gestoría' && area !== 'Flotilla';
                 _railU.classList.toggle('oculto', !_mostrar);
+                document.body.classList.toggle('rail-activo', _mostrar);
+                const _mainRail2 = document.querySelector('main.main');
+                if(_mainRail2) _mainRail2.style.marginLeft = _mostrar ? '304px' : '';
             }
         };
     }, 200);
