@@ -558,20 +558,20 @@ function injectCSS(){
 .fl-dmg-num{width:20px;height:20px;border-radius:50%;background:#EF4444;color:#fff;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
 
 /* ── PANEL DERECHO INFO VEHÍCULO ── */
-.fl-rp{width:620px;flex-shrink:0;background:#fff;height:100%;overflow-y:auto;border-radius:14px;}
-.fl-rp-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:0 12px 12px;align-items:start;}
-.fl-rp-card{border:1px solid #E8EDF5;border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;max-height:280px;}
+.fl-rp{width:700px;flex-shrink:0;background:#fff;height:100%;overflow-y:auto;border-radius:14px;}
+.fl-rp-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;padding:4px 20px 20px;align-items:start;}
+.fl-rp-card{border:1px solid #E8EDF5;border-radius:14px;padding:20px 22px;display:flex;flex-direction:column;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.04);}
 @media(max-width:700px){.fl-rp-grid{grid-template-columns:1fr;}}
 #fl-veh-backdrop{position:fixed;inset:0;background:rgba(10,15,30,0);pointer-events:none;transition:background .2s ease;z-index:2999;display:flex;align-items:center;justify-content:center;padding:24px;}
 #fl-veh-backdrop.abierto{background:rgba(10,15,30,.75);backdrop-filter:blur(8px);pointer-events:auto;}
-#fl-veh-modal-wrap{position:relative;display:flex;flex-direction:row;gap:0;max-width:calc(100vw - 48px);width:1040px;max-height:92vh;background:#fff;border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,.4);overflow:hidden;transform:scale(.96);opacity:0;transition:all .2s ease;}
+#fl-veh-modal-wrap{position:relative;display:flex;flex-direction:row;gap:0;max-width:calc(100vw - 48px);width:1140px;max-height:94vh;background:#fff;border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,.4);overflow:hidden;transform:scale(.96);opacity:0;transition:all .2s ease;}
 #fl-veh-backdrop.abierto #fl-veh-modal-wrap{transform:scale(1);opacity:1;}
 #fl-veh-modal-close{position:absolute;top:14px;right:14px;width:32px;height:32px;border:none;background:rgba(255,255,255,.9);border-radius:50%;cursor:pointer;font-size:16px;color:#374151;z-index:10;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.15)}
-.fl-panor-col{width:420px;flex-shrink:0;background:#F8FAFD;border-left:1.5px solid #E8EDF5;height:100%;overflow-y:auto;padding:16px;}
+.fl-panor-col{width:440px;flex-shrink:0;background:#F8FAFD;border-left:1.5px solid #E8EDF5;height:100%;overflow-y:auto;padding:24px;}
 @media(max-width:900px){#fl-veh-modal-wrap{flex-direction:column;max-height:94vh;width:calc(100vw - 48px);} .fl-rp,.fl-panor-col{width:100%;}}
 .fl-panor-col .fl-panor-sum-kpis{grid-template-columns:repeat(2,1fr);}
 .fl-rp-img{position:relative;overflow:hidden;background:#EEF2F7;}
-.fl-rp-img img{width:100%;height:160px;object-fit:contain;display:block;background:#E8EEFA;}
+.fl-rp-img img{width:100%;height:220px;object-fit:cover;display:block;background:#E8EEFA;}
 .fl-rp-img-empty{height:130px;background:linear-gradient(135deg,#EEF2F7,#E2E8F0);display:flex;align-items:center;justify-content:center;color:#94A3B8;font-size:11px;flex-direction:column;gap:6px;}
 .fl-rp-upload{position:absolute;bottom:6px;right:6px;}
 .fl-rp-upload label{display:inline-flex;align-items:center;gap:4px;padding:4px 8px;background:rgba(10,22,40,.7);color:#fff;border-radius:6px;font-size:9.5px;font-weight:700;cursor:pointer;backdrop-filter:blur(4px);}
@@ -1187,11 +1187,11 @@ window.flSbSel=function(id){
   if(vistaAct==='sols')rSols();
   flPanorMes='all'; flPanorFechaExacta='';
   window.flAbrirPanoramaVehiculo(id);
-  document.getElementById('fl-veh-backdrop')?.classList.add('abierto');
+  document.getElementById('fl-veh-backdrop')?.classList.add('abierto'); document.body.style.overflow='hidden';
 };
 
 window.flCerrarModalVehiculo=function(){
-  document.getElementById('fl-veh-backdrop')?.classList.remove('abierto');
+  document.getElementById('fl-veh-backdrop')?.classList.remove('abierto'); document.body.style.overflow='';
   document.querySelectorAll('.fl-sb-item').forEach(e=>e.classList.remove('on'));
   ST.vehId=null;
   const rp=document.getElementById('fl-rp'); if(rp) rp.innerHTML=rpVacio();
@@ -1208,7 +1208,7 @@ window.flVista=function(v){
   document.querySelectorAll('.fl-sb-item').forEach(e=>e.classList.remove('on'));
   const rp=document.getElementById('fl-rp'); if(rp) rp.innerHTML=rpVacio();
   const panorCol=document.getElementById('fl-panor-col'); if(panorCol){panorCol.style.display='none';panorCol.innerHTML='';}
-  document.getElementById('fl-veh-backdrop')?.classList.remove('abierto');
+  document.getElementById('fl-veh-backdrop')?.classList.remove('abierto'); document.body.style.overflow='';
   document.getElementById('fl-panor-ov')?.remove();
   vistaAct=v;
   document.querySelectorAll('.fl-tab-btn').forEach(b=>b.classList.remove('on'));
@@ -3390,8 +3390,8 @@ function renderRP(id){
   const ultChk=flChkSem.filter(c=>String(c.vehiculoEco)===String(v.eco)).sort((a,b)=>(b.creadoEn||'').localeCompare(a.creadoEn||''))[0];
 
   const card=(titulo,contenido,extra)=>`<div class="fl-rp-card">
-    <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">${titulo}${extra||''}</div>
-    <div style="overflow-y:auto;flex:1;min-height:0">${contenido}</div>
+    <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">${titulo}${extra||''}</div>
+    <div>${contenido}</div>
   </div>`;
   const fila=(label,val,mono)=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;font-size:12.5px"><span style="color:#94A3B8">${label}</span><span style="font-weight:700;${mono?"font-family:'JetBrains Mono',monospace;":''}text-align:right;max-width:60%">${val}</span></div>`;
 
@@ -3409,7 +3409,7 @@ function renderRP(id){
       ${fotos.length?`
       <div style="position:relative;overflow:hidden">
         <div style="display:flex;transition:transform .3s" id="fl-rpc-track">
-          ${fotos.map(f=>`<img src="${f}" style="min-width:100%;height:160px;object-fit:contain;background:#E8EEFA">`).join('')}
+          ${fotos.map(f=>`<img src="${f}" style="min-width:100%;height:220px;object-fit:cover;background:#E8EEFA">`).join('')}
         </div>
         ${fotos.length>1?`
         <button onclick="flRPCar(-1)" style="position:absolute;left:6px;top:50%;transform:translateY(-50%);background:rgba(10,22,40,.6);border:none;color:#fff;width:24px;height:24px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center">${I.chevL}</button>
