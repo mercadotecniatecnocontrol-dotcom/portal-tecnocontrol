@@ -559,6 +559,10 @@ function injectCSS(){
 
 /* ── PANEL DERECHO INFO VEHÍCULO ── */
 .fl-rp{width:300px;flex-shrink:0;background:#fff;border-left:1.5px solid #E8EDF5;height:100vh;position:sticky;top:0;overflow-y:auto;}
+.fl-panor-col{width:360px;flex-shrink:0;background:#F8FAFD;border-left:1.5px solid #E8EDF5;height:100vh;position:sticky;top:0;overflow-y:auto;padding:16px;}
+@media(max-width:1400px){.fl-panor-col{width:300px;}}
+@media(max-width:1100px){.fl-panor-col{display:none !important;}}
+.fl-panor-col .fl-panor-sum-kpis{grid-template-columns:repeat(2,1fr);}
 .fl-rp-img{position:relative;overflow:hidden;background:#EEF2F7;}
 .fl-rp-img img{width:100%;height:160px;object-fit:contain;display:block;background:#E8EEFA;}
 .fl-rp-img-empty{height:130px;background:linear-gradient(135deg,#EEF2F7,#E2E8F0);display:flex;align-items:center;justify-content:center;color:#94A3B8;font-size:11px;flex-direction:column;gap:6px;}
@@ -791,6 +795,7 @@ function buildHTML(){
       <div class="fl-empty" style="min-height:60vh"><div class="fl-empty-ico">${SVG_AUTO}</div><h3>Cargando flotilla…</h3></div>
     </div>
     <div class="fl-rp" id="fl-rp">${rpVacio()}</div>
+    <div class="fl-panor-col" id="fl-panor-col" style="display:none"></div>
   </div>
   </div>`;
 }
@@ -1173,6 +1178,15 @@ window.flSbSel=function(id){
 
 // NAVEGACIÓN
 window.flVista=function(v){
+  // Cambiar de pestaña (Dashboard, Solicitudes, etc.) es una vista GENERAL,
+  // no de un vehículo específico. Sin este reset, el panel derecho y el
+  // Panorama se quedaban pegados con el último vehículo seleccionado aunque
+  // el usuario ya hubiera navegado a otra sección.
+  ST.vehId=null;
+  document.querySelectorAll('.fl-sb-item').forEach(e=>e.classList.remove('on'));
+  const rp=document.getElementById('fl-rp'); if(rp) rp.innerHTML=rpVacio();
+  const panorCol=document.getElementById('fl-panor-col'); if(panorCol){panorCol.style.display='none';panorCol.innerHTML='';}
+  document.getElementById('fl-panor-ov')?.remove();
   vistaAct=v;
   document.querySelectorAll('.fl-tab-btn').forEach(b=>b.classList.remove('on'));
   document.getElementById('fl-tb-'+v)?.classList.add('on');
@@ -3701,28 +3715,27 @@ window.flAbrirPanoramaVehiculo=function(vehId){
   ov.onclick=(e)=>{if(e.target===ov)flCerrarPanorama();};
 };
 
-// ── Abrir Panorama de vehículos directo al resumen de UN vehículo ──
-// (se usa al hacer clic en un vehículo del panel izquierdo, para que
-// aparezca junto con el panel de info, sin pasar por la pantalla de
-// selección múltiple del botón de Panorama normal)
+// ── Panorama del vehículo como columna fija a la derecha del panel de
+// info (NO como modal de pantalla completa) — ambos visibles juntos al
+// hacer clic en un vehículo, tal como el panel de info.
 window.flAbrirPanoramaVehiculo=function(id){
-  flPanorSel=new Set([id]);flPanorTipo='all';flPanorQ='';flPanorIncBaja=false;flPanorMes='all';
-  document.getElementById('fl-panor-ov')?.remove();
-  const ov=document.createElement('div');
-  ov.className='fl-ov';ov.id='fl-panor-ov';
-  ov.innerHTML=`
-    <div class="fl-panor-modal">
-      <div class="fl-mh">
-        <h3>${I.fleet} Panorama de vehículos</h3>
-        <button class="fl-mx" onclick="flCerrarPanorama()">✕</button>
-      </div>
-      <div class="fl-panor-tools" style="display:none"></div>
-      <div class="fl-panor-body" id="fl-panor-body"></div>
-      <div class="fl-panor-bar" style="display:none"></div>
-    </div>`;
-  document.body.appendChild(ov);
-  ov.onclick=(e)=>{if(e.target===ov)flCerrarPanorama();};
-  flPanorVerResumen();
+  const v=flV.find(x=>x.id===id);
+  const col=document.getElementById('fl-panor-col');
+  if(!v||!col)return;
+  flPanorMes='all';
+  col.style.display='block';
+  const meses=flPanorMesesDisponibles();
+  col.innerHTML=`
+    <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin-bottom:10px;display:flex;align-items:center;gap:6px">${I.fleet} Panorama del vehículo</div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+      <span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#94A3B8">Periodo</span>
+      <select id="fl-panorcol-mes" onchange="flPanorMes=this.value;flAbrirPanoramaVehiculo('${id}')" style="padding:6px 10px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:11.5px;font-weight:700;color:#0A1628;background:#fff;cursor:pointer">
+        <option value="all" ${flPanorMes==='all'?'selected':''}>Todo el historial</option>
+        ${meses.map(ym=>`<option value="${ym}" ${flPanorMes===ym?'selected':''}>${flPanorMesLabel(ym)}</option>`).join('')}
+      </select>
+    </div>
+    ${flPanorResumenVeh(v)}
+  `;
 };
 
 window.flAbrirPanorama=function(){
