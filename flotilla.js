@@ -558,13 +558,16 @@ function injectCSS(){
 .fl-dmg-num{width:20px;height:20px;border-radius:50%;background:#EF4444;color:#fff;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
 
 /* ── PANEL DERECHO INFO VEHÍCULO ── */
-.fl-rp{width:300px;flex-shrink:0;background:#fff;height:100%;overflow-y:auto;border-radius:14px;}
+.fl-rp{width:620px;flex-shrink:0;background:#fff;height:100%;overflow-y:auto;border-radius:14px;}
+.fl-rp-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:0 12px 12px;align-items:start;}
+.fl-rp-card{border:1px solid #E8EDF5;border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;max-height:280px;}
+@media(max-width:700px){.fl-rp-grid{grid-template-columns:1fr;}}
 #fl-veh-backdrop{position:fixed;inset:0;background:rgba(10,15,30,0);pointer-events:none;transition:background .2s ease;z-index:2999;display:flex;align-items:center;justify-content:center;padding:24px;}
 #fl-veh-backdrop.abierto{background:rgba(10,15,30,.75);backdrop-filter:blur(8px);pointer-events:auto;}
-#fl-veh-modal-wrap{position:relative;display:flex;flex-direction:row;gap:0;width:fit-content;max-width:calc(100vw - 48px);max-height:92vh;background:#fff;border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,.4);overflow:hidden;transform:scale(.96);opacity:0;transition:all .2s ease;}
+#fl-veh-modal-wrap{position:relative;display:flex;flex-direction:row;gap:0;max-width:calc(100vw - 48px);width:1040px;max-height:92vh;background:#fff;border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,.4);overflow:hidden;transform:scale(.96);opacity:0;transition:all .2s ease;}
 #fl-veh-backdrop.abierto #fl-veh-modal-wrap{transform:scale(1);opacity:1;}
 #fl-veh-modal-close{position:absolute;top:14px;right:14px;width:32px;height:32px;border:none;background:rgba(255,255,255,.9);border-radius:50%;cursor:pointer;font-size:16px;color:#374151;z-index:10;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.15)}
-.fl-panor-col{width:360px;flex-shrink:0;background:#F8FAFD;border-left:1.5px solid #E8EDF5;height:100%;overflow-y:auto;padding:16px;}
+.fl-panor-col{width:420px;flex-shrink:0;background:#F8FAFD;border-left:1.5px solid #E8EDF5;height:100%;overflow-y:auto;padding:16px;}
 @media(max-width:900px){#fl-veh-modal-wrap{flex-direction:column;max-height:94vh;width:calc(100vw - 48px);} .fl-rp,.fl-panor-col{width:100%;}}
 .fl-panor-col .fl-panor-sum-kpis{grid-template-columns:repeat(2,1fr);}
 .fl-rp-img{position:relative;overflow:hidden;background:#EEF2F7;}
@@ -3386,9 +3389,9 @@ function renderRP(id){
   const vivo=typeof flQuienUsaEcoAhora==='function'?flQuienUsaEcoAhora(v.eco):null;
   const ultChk=flChkSem.filter(c=>String(c.vehiculoEco)===String(v.eco)).sort((a,b)=>(b.creadoEn||'').localeCompare(a.creadoEn||''))[0];
 
-  const card=(titulo,contenido,extra)=>`<div style="border:1px solid #E8EDF5;border-radius:14px;padding:14px 16px;margin:0 12px 12px">
-    <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between">${titulo}${extra||''}</div>
-    ${contenido}
+  const card=(titulo,contenido,extra)=>`<div class="fl-rp-card">
+    <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">${titulo}${extra||''}</div>
+    <div style="overflow-y:auto;flex:1;min-height:0">${contenido}</div>
   </div>`;
   const fila=(label,val,mono)=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;font-size:12.5px"><span style="color:#94A3B8">${label}</span><span style="font-weight:700;${mono?"font-family:'JetBrains Mono',monospace;":''}text-align:right;max-width:60%">${val}</span></div>`;
 
@@ -3436,6 +3439,7 @@ function renderRP(id){
 
     ${alts.length?`<div style="margin:10px 12px 0">${alts.map(a=>`<div style="display:flex;align-items:center;gap:7px;padding:9px 12px;border-radius:9px;font-size:11.5px;font-weight:700;background:${a.e?'#FEF2F2':'#FFFBEB'};color:${a.e?'#B91C1C':'#B45309'};margin-bottom:6px">${I.alert} ${a.t}</div>`).join('')}</div>`:''}
 
+    <div class="fl-rp-grid">
     ${card('Información general',`
       ${fila('Responsable',v.responsable&&v.responsable!=='—'?v.responsable:'<span style="color:#B91C1C">Sin asignar</span>')}
       ${fila('Número de serie / VIN',v.serie||'—',true)}
@@ -3484,16 +3488,17 @@ function renderRP(id){
 
     ${card('Llantas',`<div id="fl-llantas-wrap"></div>`)}
 
+    ${card(`Historial de uso (${usosVeh.length})`,usosVeh.length?usosVeh.map(u=>flRPUsoItem(u)).join(''):`<div style="font-size:11px;color:#94A3B8;text-align:center;padding:8px 0">Sin registros de vinculación</div>`)}
+
+    ${card(`Historial de solicitudes (${histFull.length})`,hist.length?hist.map(s=>flRPHistItem(s,v)).join('')+(histFull.length>hist.length?`<div style="font-size:9.5px;color:#94A3B8;text-align:center;padding:6px 0 0">Mostrando los ${hist.length} más recientes de ${histFull.length}</div>`:''):`<div style="font-size:11px;color:#94A3B8;text-align:center;padding:8px 0">Sin historial</div>`)}
+    </div>
+
     ${histFull.filter(s=>s.evidencias?.length).length>=2?`
     <div style="padding:0 12px 12px">
       <button onclick="flCompararEvidencias('${v.id}')" style="width:100%;padding:10px;background:#1E3A5F;color:#fff;border:none;border-radius:9px;font-family:inherit;font-size:12.5px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">
         ${I.eye} Comparar evidencias del vehículo
       </button>
     </div>`:''}
-
-    ${card(`Historial de uso (${usosVeh.length})`,usosVeh.length?usosVeh.map(u=>flRPUsoItem(u)).join(''):`<div style="font-size:11px;color:#94A3B8;text-align:center;padding:8px 0">Sin registros de vinculación</div>`)}
-
-    ${card(`Historial de solicitudes (${histFull.length})`,hist.length?hist.map(s=>flRPHistItem(s,v)).join('')+(histFull.length>hist.length?`<div style="font-size:9.5px;color:#94A3B8;text-align:center;padding:6px 0 0">Mostrando los ${hist.length} más recientes de ${histFull.length}</div>`:''):`<div style="font-size:11px;color:#94A3B8;text-align:center;padding:8px 0">Sin historial</div>`)}
   `;
   flRenderLlantasCard(id);
 }
