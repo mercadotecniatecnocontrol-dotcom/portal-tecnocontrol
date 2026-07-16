@@ -561,11 +561,11 @@ function injectCSS(){
 .fl-rp{width:300px;flex-shrink:0;background:#fff;height:100%;overflow-y:auto;border-radius:14px;}
 #fl-veh-backdrop{position:fixed;inset:0;background:rgba(10,15,30,0);pointer-events:none;transition:background .2s ease;z-index:2999;display:flex;align-items:center;justify-content:center;padding:24px;}
 #fl-veh-backdrop.abierto{background:rgba(10,15,30,.75);backdrop-filter:blur(8px);pointer-events:auto;}
-#fl-veh-modal-wrap{position:relative;display:flex;flex-direction:row;gap:0;max-width:1100px;width:100%;max-height:92vh;background:#fff;border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,.4);overflow:hidden;transform:scale(.96);opacity:0;transition:all .2s ease;}
+#fl-veh-modal-wrap{position:relative;display:flex;flex-direction:row;gap:0;width:fit-content;max-width:calc(100vw - 48px);max-height:92vh;background:#fff;border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,.4);overflow:hidden;transform:scale(.96);opacity:0;transition:all .2s ease;}
 #fl-veh-backdrop.abierto #fl-veh-modal-wrap{transform:scale(1);opacity:1;}
 #fl-veh-modal-close{position:absolute;top:14px;right:14px;width:32px;height:32px;border:none;background:rgba(255,255,255,.9);border-radius:50%;cursor:pointer;font-size:16px;color:#374151;z-index:10;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.15)}
 .fl-panor-col{width:360px;flex-shrink:0;background:#F8FAFD;border-left:1.5px solid #E8EDF5;height:100%;overflow-y:auto;padding:16px;}
-@media(max-width:900px){#fl-veh-modal-wrap{flex-direction:column;max-height:94vh;} .fl-rp,.fl-panor-col{width:100%;}}
+@media(max-width:900px){#fl-veh-modal-wrap{flex-direction:column;max-height:94vh;width:calc(100vw - 48px);} .fl-rp,.fl-panor-col{width:100%;}}
 .fl-panor-col .fl-panor-sum-kpis{grid-template-columns:repeat(2,1fr);}
 .fl-rp-img{position:relative;overflow:hidden;background:#EEF2F7;}
 .fl-rp-img img{width:100%;height:160px;object-fit:contain;display:block;background:#E8EEFA;}
@@ -1182,6 +1182,7 @@ window.flSbSel=function(id){
   };
   renderRP(id);
   if(vistaAct==='sols')rSols();
+  flPanorMes='all'; flPanorFechaExacta='';
   window.flAbrirPanoramaVehiculo(id);
   document.getElementById('fl-veh-backdrop')?.classList.add('abierto');
 };
@@ -3723,17 +3724,23 @@ window.flAbrirPanoramaVehiculo=function(id){
   const v=flV.find(x=>x.id===id);
   const col=document.getElementById('fl-panor-col');
   if(!v||!col)return;
-  flPanorMes='all';
-  col.style.display='block';
   const meses=flPanorMesesDisponibles();
+  col.style.display='block';
   col.innerHTML=`
     <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin-bottom:10px;display:flex;align-items:center;gap:6px">${I.fleet} Panorama del vehículo</div>
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap">
-      <span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#94A3B8">Periodo</span>
-      <select id="fl-panorcol-mes" onchange="flPanorMes=this.value;flAbrirPanoramaVehiculo('${id}')" style="padding:6px 10px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:11.5px;font-weight:700;color:#0A1628;background:#fff;cursor:pointer">
-        <option value="all" ${flPanorMes==='all'?'selected':''}>Todo el historial</option>
-        ${meses.map(ym=>`<option value="${ym}" ${flPanorMes===ym?'selected':''}>${flPanorMesLabel(ym)}</option>`).join('')}
-      </select>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#94A3B8;width:100%">Periodo</span>
+        <select id="fl-panorcol-mes" onchange="flPanorFechaExacta='';flPanorMes=this.value;flAbrirPanoramaVehiculo('${id}')" style="flex:1;padding:6px 10px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:11.5px;font-weight:700;color:#0A1628;background:#fff;cursor:pointer">
+          <option value="all" ${(!flPanorFechaExacta&&flPanorMes==='all')?'selected':''}>Todo el historial</option>
+          ${meses.map(ym=>`<option value="${ym}" ${(!flPanorFechaExacta&&flPanorMes===ym)?'selected':''}>${flPanorMesLabel(ym)}</option>`).join('')}
+        </select>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#94A3B8;width:100%">O fecha exacta</span>
+        <input type="date" id="fl-panorcol-fecha" value="${flPanorFechaExacta}" onchange="flPanorFechaExacta=this.value;flAbrirPanoramaVehiculo('${id}')" style="flex:1;padding:6px 10px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:11.5px;font-weight:700;color:#0A1628;background:#fff;cursor:pointer">
+        ${flPanorFechaExacta?`<button onclick="flPanorFechaExacta='';flAbrirPanoramaVehiculo('${id}')" style="font-size:10px;font-weight:700;color:#B91C1C;background:#FEF2F2;border:none;border-radius:7px;padding:5px 9px;cursor:pointer;font-family:inherit">Quitar</button>`:''}
+      </div>
     </div>
     ${flPanorResumenVeh(v)}
   `;
@@ -3844,6 +3851,7 @@ function flPanorActualizarBarra(){
 
 // ── RESUMEN POR VEHÍCULO (usa historial de solicitudes + flotilla_usos) ──
 let flPanorMes='all'; // 'all' o 'YYYY-MM'
+let flPanorFechaExacta=''; // '' o 'YYYY-MM-DD' — tiene prioridad sobre flPanorMes si está definida
 
 function flPanorMesesDisponibles(){
   const set=new Set();
@@ -3887,7 +3895,10 @@ window.flPanorVolver=function(){
 };
 
 function flPanorResumenVeh(v){
-  const enPeriodo=iso=>flPanorMes==='all'||(iso&&String(iso).slice(0,7)===flPanorMes);
+  const enPeriodo=iso=>{
+    if(flPanorFechaExacta)return iso&&String(iso).slice(0,10)===flPanorFechaExacta;
+    return flPanorMes==='all'||(iso&&String(iso).slice(0,7)===flPanorMes);
+  };
   const hist=flSolsDeVehiculo(v).filter(s=>enPeriodo(s.creadoEn)).sort((a,b)=>(b.creadoEn||'').localeCompare(a.creadoEn||''));
   const usos=flUsos.filter(u=>String(u.eco)===String(v.eco)&&enPeriodo(u.vinculadoEn)).sort((a,b)=>(b.vinculadoEn||'').localeCompare(a.vinculadoEn||''));
   const abiertas=hist.filter(s=>!['Cerrada','Rechazada'].includes(s.estatus)).length;
