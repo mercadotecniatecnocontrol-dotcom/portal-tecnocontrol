@@ -819,6 +819,13 @@ function flRegistrarEvento(tipo,extra){
 }
 
 window.cargarFlotilla=async function(){
+  // Reset de estado al (re)entrar al módulo — sin esto, el listener de
+  // Firestore en tiempo real (línea ~3174) vuelve a pintar el panel derecho
+  // con el vehículo que quedó seleccionado de una visita anterior, aunque
+  // buildHTML() ya haya reconstruido el panel vacío.
+  ST={vehId:null,tipoVeh:'auto',vistaImg:'frente',dmg:{frente:[],atras:[],derecha:[],izquierda:[]},chk:{},chkFotos:{},evFotos:[],tipo:'',prior:'Normal',desc:'',km:'',gasolina:50};
+  document.getElementById('fl-panor-ov')?.remove();
+  document.querySelectorAll('.fl-ov').forEach(ov=>ov.remove());
   injectCSS();buildHTML();
   if(typeof window.flActualizarBotonExtras==='function')window.flActualizarBotonExtras();
   { const _btnSin=document.getElementById('fl-tb-siniestro'); if(_btnSin)_btnSin.classList.toggle('fl-sin-activo',(flSiniestros||[]).some(x=>x.estatus==='activo')); }
@@ -1096,7 +1103,7 @@ function renderSB(){
   lista.innerHTML=filtrado.map(v=>{
     const enTallerSol=flEnTaller(v);
     const usuarioApp=(window._flUsuariosMap||{})[String(v.eco)];
-    const dot=v.status==='taller'||enTallerSol?'#F59E0B':v.status==='comision'?'#8B5CF6':usuarioApp?'#EF4444':'#22C55E';
+    const dot=v.status==='taller'||enTallerSol?'#F59E0B':v.status==='comision'?'#8B5CF6':v.asignadoSinCambios?'#2563EB':usuarioApp?'#EF4444':'#22C55E';
     const bgTaller=v.status==='taller'||enTallerSol?'background:rgba(245,158,11,.08);border-left:3px solid #F59E0B;':'';
     const comAct=v.status==='comision'?flCom.find(c=>c.estatus==='En préstamo'&&(c.vehiculoId===v.id||String(c.vehiculoEco)===String(v.eco))):null;
     const bloqueado=!!comAct||!!usuarioApp;
@@ -3306,6 +3313,29 @@ window.flSolGuardar=async function(){
 };
 
 // PANEL DERECHO INFO VEHÍCULO
+// ── Cambio rápido de estatus / flag "asignado sin cambios" desde el
+// panel derecho (admin). Escribe directo en flotilla_vehiculos — como
+// todas las vistas (taller, técnico, lista, etc.) leen del mismo
+// documento vía flV, el cambio se sincroniza automáticamente en todo
+// el portal sin lógica adicional.
+window.flRPCambiarStatus = async function(id, nuevoStatus){
+  try{
+    await fs.updateDoc(fs.doc(db,C.VEHS,id),{status:nuevoStatus});
+    const v=flV.find(x=>x.id===id); if(v) v.status=nuevoStatus;
+    flToast('Estatus actualizado a "'+nuevoStatus+'"','ok');
+    renderSB(); if(ST.vehId===id) renderRP(id);
+  }catch(e){ flToast('Error: '+e.message,'err'); }
+};
+
+window.flRPToggleSinCambios = async function(id, marcado){
+  try{
+    await fs.updateDoc(fs.doc(db,C.VEHS,id),{asignadoSinCambios:marcado});
+    const v=flV.find(x=>x.id===id); if(v) v.asignadoSinCambios=marcado;
+    flToast(marcado?'Vehículo marcado como asignado sin cambios':'Marca quitada','ok');
+    renderSB();
+  }catch(e){ flToast('Error: '+e.message,'err'); }
+};
+
 function renderRP(id){
   const rp=document.getElementById('fl-rp');if(!rp)return;
   const v=flV.find(x=>x.id===id);if(!v){rp.innerHTML=rpVacio();return;}
@@ -3382,6 +3412,23 @@ function renderRP(id){
       ${(()=>{const s=flServicioEstado(v);return s?fila('Próximo servicio',`<span style="color:${s.estado==='vencido'?'#B91C1C':s.estado==='proximo'?'#B45309':'#15803D'}">${s.estado==='vencido'?`Vencido (${Math.abs(s.faltan)} km)`:`${s.faltan} km`}</span>`):'';})()}
       ${v.nip&&!/gas/i.test(v.nip)?fila('NIP',v.nip,true):''}
     `)}
+
+    ${hAdm()?card('Administrar estatus (admin)',`
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <label style="font-size:10px;font-weight:700;color:#64748B">Estatus del vehículo</label>
+        <select id="fl-rp-status-${id}" onchange="flRPCambiarStatus('${id}',this.value)" style="width:100%;padding:7px 9px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;background:#F8FAFD;cursor:pointer">
+          <option value="activo" ${(v.status||'activo')==='activo'?'selected':''}>Activo</option>
+          <option value="taller" ${v.status==='taller'?'selected':''}>En taller</option>
+          <option value="comision" ${v.status==='comision'?'selected':''}>En comisión/préstamo</option>
+          <option value="baja" ${v.status==='baja'?'selected':''}>Baja</option>
+        </select>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:10px;cursor:pointer;user-select:none">
+        <input type="checkbox" id="fl-rp-sincambios-${id}" ${v.asignadoSinCambios?'checked':''} onchange="flRPToggleSinCambios('${id}',this.checked)" style="width:15px;height:15px;accent-color:#2563EB;cursor:pointer">
+        <span style="font-size:11.5px;font-weight:600;color:#374151">Asignado sin cambios (mismo técnico, sin reasignaciones)</span>
+      </label>
+      <div style="font-size:10px;color:#94A3B8;margin-top:5px">Marca esto cuando el vehículo lleva mucho tiempo con el mismo responsable y no debe reasignarse. Se ve en azul en la lista de la izquierda y aplica en todo el portal (taller, técnico, etc.) de inmediato.</div>
+    `):''}
 
     ${card('Estado documental',`
       <div style="display:flex;flex-direction:column;gap:2px">
@@ -4179,10 +4226,13 @@ window.flVerSol=async function(id){
           '<button onclick="flAgregarDocCerrada(\''+s.id+'\')" style="padding:7px 14px;background:#D97706;color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:11px;font-weight:800;cursor:pointer">+ Subir factura / documento</button>'+
         '</div>';
       })()}
-      ${s._archivosEvaluacion?.length?`
-        <div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin:10px 0 6px">Documentos de evaluación (${s._archivosEvaluacion.length})</div>
+      ${s._archivosEvaluacion?.length||pV||pA?`
+        <div style="display:flex;align-items:center;justify-content:space-between;margin:10px 0 6px">
+          <div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8">Documentos de evaluación (${s._archivosEvaluacion?.length||0})</div>
+          ${(pV||pA)?`<button onclick="flActualizarEvidenciaEtapa('${s.id}','archivos_evaluacion','Evaluación')" style="font-size:9.5px;font-weight:700;color:#1D4ED8;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:7px;padding:4px 9px;cursor:pointer;font-family:inherit">+ Actualizar evidencia</button>`:''}
+        </div>
         <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:10px">
-          ${s._archivosEvaluacion.map(a=>`
+          ${(s._archivosEvaluacion||[]).map(a=>`
             <div style="display:flex;align-items:center;gap:8px;padding:7px 11px;background:#F8FAFC;border-radius:8px;border:1px solid #E2E8F0">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${a.tipo==='pdf'?'#B91C1C':'#1D4ED8'}" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
               <span style="font-size:11px;font-weight:600;flex:1">${a.nombre||'Archivo'}</span>
@@ -4190,10 +4240,13 @@ window.flVerSol=async function(id){
               ${a.datos?`<a href="${a.datos}" download="${a.nombre||'archivo'}" style="font-size:10px;color:#2563EB;font-weight:700;text-decoration:none">Descargar</a>`:''}
             </div>`).join('')}
         </div>`:''}
-      ${s._archivosServicio?.length?`
-        <div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin:10px 0 6px">Documentos de servicio (${s._archivosServicio.length})</div>
+      ${s._archivosServicio?.length||pV||pA?`
+        <div style="display:flex;align-items:center;justify-content:space-between;margin:10px 0 6px">
+          <div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8">Documentos de servicio (${s._archivosServicio?.length||0})</div>
+          ${(pV||pA)?`<button onclick="flActualizarEvidenciaEtapa('${s.id}','archivos_servicio','Servicio')" style="font-size:9.5px;font-weight:700;color:#B45309;background:#FFFBEB;border:1px solid #FDE68A;border-radius:7px;padding:4px 9px;cursor:pointer;font-family:inherit">+ Actualizar evidencia</button>`:''}
+        </div>
         <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:10px">
-          ${s._archivosServicio.map(a=>`
+          ${(s._archivosServicio||[]).map(a=>`
             <div style="display:flex;align-items:center;gap:8px;padding:7px 11px;background:#F8FAFC;border-radius:8px;border:1px solid #E2E8F0">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${a.tipo==='pdf'?'#B91C1C':'#1D4ED8'}" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
               <span style="font-size:11px;font-weight:600;flex:1">${a.nombre||'Archivo'}</span>
@@ -4219,12 +4272,12 @@ window.flVerSol=async function(id){
         </div>`:''}
       ${(()=>{
         // EVIDENCIAS GENERALES — array global evita base64 inline en onclick
-        if(!s.evidencias?.length)return'';
+        if(!s.evidencias?.length && !(pV||pA))return'';
         if(!window._flEvCache)window._flEvCache=[];
         if(!window._flEvCache)window._flEvCache=[];
         const baseIdx=window._flEvCache.length;
-        s.evidencias.forEach((src,i)=>{const meta=(s.evidenciasMeta||[])[i];window._flEvCache.push({src,meta:meta||null});});
-        const pills=s.evidencias.map((src,i)=>{
+        (s.evidencias||[]).forEach((src,i)=>{const meta=(s.evidenciasMeta||[])[i];window._flEvCache.push({src,meta:meta||null});});
+        const pills=(s.evidencias||[]).map((src,i)=>{
           const meta=(s.evidenciasMeta||[])[i];
           const cod=meta?.codigo||('Foto '+(i+1));
           return`<span class="fl-pill" onclick="flVerEvIdx(${baseIdx+i})" style="cursor:pointer;">
@@ -4233,7 +4286,10 @@ window.flVerSol=async function(id){
           </span>`;
         }).join('');
         return`<div class="fl-sep"></div>
-          <div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin-bottom:8px">Evidencias generales (${s.evidencias.length})</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8">Evidencias generales (${s.evidencias?.length||0})</div>
+            ${(pV||pA)?`<button onclick="flActualizarEvidenciaSolicitud('${s.id}')" style="font-size:9.5px;font-weight:700;color:#6D28D9;background:#EDE9FE;border:1px solid #DDD6FE;border-radius:7px;padding:4px 9px;cursor:pointer;font-family:inherit">+ Actualizar evidencia</button>`:''}
+          </div>
           <div class="fl-pills" style="display:flex;flex-wrap:wrap;gap:6px">${pills}</div>`;
       })()}
       ${(()=>{
@@ -4475,6 +4531,67 @@ window.flAgregarDocCerrada = function(solId) {
         window.flVerSol(solId);
       } catch(e) { flToast('Error: ' + e.message, 'err'); }
     }
+  };
+  inp.click();
+};
+
+// ── Actualizar evidencia por etapa (Solicitud/Evaluación/Servicio) ──
+// A diferencia de flAgregarDocCerrada, éstas cargan primero los archivos
+// existentes de la subcolección y los conservan (flGuardarArchivosSubcol
+// reemplaza TODO el contenido de la subcolección, así que hay que
+// combinarlos aquí antes de guardar, o se perdería lo ya subido).
+window.flActualizarEvidenciaEtapa = function(solId, subcol, tituloEtapa) {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'image/*,application/pdf'; inp.multiple = true;
+  inp.onchange = async () => {
+    if (!inp.files.length) return;
+    try {
+      flToast('Subiendo evidencia de ' + tituloEtapa + '…', 'info');
+      const existentes = await flCargarArchivosSubcol(solId, subcol);
+      const nuevos = [];
+      for (const file of Array.from(inp.files)) {
+        const b64 = await flLeerArchivo(file, 10);
+        nuevos.push({
+          nombre: file.name,
+          datos: b64,
+          tipo: file.type.includes('pdf') ? 'pdf' : 'img',
+          kb: Math.round(file.size / 1024),
+        });
+      }
+      await flGuardarArchivosSubcol(solId, subcol, [...existentes, ...nuevos]);
+      flToast('Evidencia de ' + tituloEtapa + ' actualizada', 'ok');
+      document.querySelector('.fl-ov[style*="3300"]')?.remove();
+      window.flVerSol(solId);
+    } catch(e) { flToast('Error: ' + e.message, 'err'); }
+  };
+  inp.click();
+};
+
+// Evidencia de la etapa "Solicitud" no vive en subcolección — son los
+// arrays evidencias/evidenciasMeta directamente en el documento.
+window.flActualizarEvidenciaSolicitud = function(solId) {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'image/*'; inp.multiple = true;
+  inp.onchange = async () => {
+    if (!inp.files.length) return;
+    try {
+      flToast('Subiendo evidencia de Solicitud…', 'info');
+      const s = flS.find(x => x.id === solId); if (!s) return;
+      const nuevasImgs = [], nuevasMeta = [];
+      const base = (s.evidencias || []).length;
+      for (const file of Array.from(inp.files)) {
+        const b64 = await flLeerArchivo(file, 10);
+        nuevasImgs.push(b64);
+        nuevasMeta.push({ codigo: 'Foto ' + (base + nuevasImgs.length), fecha: new Date().toISOString() });
+      }
+      const evidenciasActualizadas = [...(s.evidencias || []), ...nuevasImgs];
+      const metaActualizada = [...(s.evidenciasMeta || []), ...nuevasMeta];
+      await fs.updateDoc(fs.doc(db, C.SOLS, solId), { evidencias: evidenciasActualizadas, evidenciasMeta: metaActualizada });
+      s.evidencias = evidenciasActualizadas; s.evidenciasMeta = metaActualizada;
+      flToast('Evidencia de Solicitud actualizada', 'ok');
+      document.querySelector('.fl-ov[style*="3300"]')?.remove();
+      window.flVerSol(solId);
+    } catch(e) { flToast('Error: ' + e.message, 'err'); }
   };
   inp.click();
 };
