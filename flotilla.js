@@ -558,9 +558,9 @@ function injectCSS(){
 .fl-dmg-num{width:20px;height:20px;border-radius:50%;background:#EF4444;color:#fff;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
 
 /* ── PANEL DERECHO INFO VEHÍCULO ── */
-.fl-rp{width:700px;flex-shrink:0;background:#fff;height:100%;overflow-y:auto;border-radius:14px;}
+.fl-rp{width:700px;flex-shrink:0;background:#F4F6FA;height:100%;overflow-y:auto;border-radius:14px;}
 .fl-rp-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;padding:4px 20px 20px;align-items:start;}
-.fl-rp-card{border:1px solid #E8EDF5;border-radius:14px;padding:20px 22px;display:flex;flex-direction:column;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.04);}
+.fl-rp-card{border:1px solid #DCE3EE;border-radius:14px;padding:20px 22px;display:flex;flex-direction:column;background:#fff;box-shadow:0 2px 6px rgba(15,23,42,.06);}
 @media(max-width:700px){.fl-rp-grid{grid-template-columns:1fr;}}
 #fl-veh-backdrop{position:fixed;inset:0;background:rgba(10,15,30,0);pointer-events:none;transition:background .2s ease;z-index:2999;display:flex;align-items:center;justify-content:center;padding:24px;}
 #fl-veh-backdrop.abierto{background:rgba(10,15,30,.75);backdrop-filter:blur(8px);pointer-events:auto;}
@@ -1123,7 +1123,8 @@ function renderSB(){
     const enTallerSol=flEnTaller(v);
     const usuarioApp=(window._flUsuariosMap||{})[String(v.eco)];
     const dot=v.status==='taller'||enTallerSol?'#F59E0B':v.status==='comision'?'#8B5CF6':v.asignadoSinCambios?'#2563EB':usuarioApp?'#EF4444':'#22C55E';
-    const bgTaller=v.status==='taller'||enTallerSol?'background:rgba(245,158,11,.08);border-left:3px solid #F59E0B;':'';
+    const bgTaller=(v.status==='taller'||enTallerSol)?'background:rgba(245,158,11,.08);border-left:3px solid #F59E0B;'
+      :v.asignadoSinCambios?'background:rgba(37,99,235,.08);border-left:3px solid #2563EB;':'';
     const comAct=v.status==='comision'?flCom.find(c=>c.estatus==='En préstamo'&&(c.vehiculoId===v.id||String(c.vehiculoEco)===String(v.eco))):null;
     const bloqueado=!!comAct||!!usuarioApp;
     const tipResp=comAct?.responsable||usuarioApp||'—';
@@ -3411,7 +3412,10 @@ function renderRP(id){
       ${fotos.length?`
       <div style="position:relative;overflow:hidden">
         <div style="display:flex;transition:transform .3s" id="fl-rpc-track">
-          ${fotos.map(f=>`<img src="${f}" style="min-width:100%;height:240px;object-fit:cover;background:#E8EEFA">`).join('')}
+          ${fotos.map((f,fi)=>`<div style="position:relative;min-width:100%">
+            <img src="${f}" style="width:100%;height:240px;object-fit:cover;background:#E8EEFA;display:block">
+            ${hAdm()?`<button onclick="event.stopPropagation();flRPBorrarFoto('${id}',${fi})" title="Eliminar esta foto" style="position:absolute;top:8px;right:8px;width:24px;height:24px;border-radius:50%;border:none;background:rgba(10,15,30,.65);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:13px">✕</button>`:''}
+          </div>`).join('')}
         </div>
         ${fotos.length>1?`
         <button onclick="flRPCar(-1)" style="position:absolute;left:6px;top:50%;transform:translateY(-50%);background:rgba(10,22,40,.6);border:none;color:#fff;width:24px;height:24px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center">${I.chevL}</button>
@@ -3490,7 +3494,8 @@ function renderRP(id){
 
     ${card('Llantas',`<div id="fl-llantas-wrap"></div>`)}
 
-    ${card(`Historial de uso (${usosVeh.length})`,usosVeh.length?usosVeh.map(u=>flRPUsoItem(u)).join(''):`<div style="font-size:11px;color:#94A3B8;text-align:center;padding:8px 0">Sin registros de vinculación</div>`)}
+    <!-- Historial de uso se quitó de aquí — ya vive en el Panorama (columna derecha), evita duplicar la misma información. -->
+
 
     ${card(`Historial de solicitudes (${histFull.length})`,hist.length?hist.map(s=>flRPHistItem(s,v)).join('')+(histFull.length>hist.length?`<div style="font-size:9.5px;color:#94A3B8;text-align:center;padding:6px 0 0">Mostrando los ${hist.length} más recientes de ${histFull.length}</div>`:''):`<div style="font-size:11px;color:#94A3B8;text-align:center;padding:8px 0">Sin historial</div>`)}
     </div>
@@ -3948,6 +3953,16 @@ function flPanorResumenVeh(v){
     </div>
   </div>`;
 }
+
+window.flRPBorrarFoto=async function(vehId,idx){
+  if(!confirm('¿Eliminar esta foto? No se puede deshacer.'))return;
+  const v=flV.find(x=>x.id===vehId);if(!v||!v.fotos)return;
+  v.fotos.splice(idx,1);
+  try{
+    if(!vehId.startsWith('eco-')) await fs.updateDoc(fs.doc(db,C.VEHS,vehId),{fotos:v.fotos}).catch(()=>{});
+  }catch(err){console.warn('[FL foto borrar]',err);}
+  renderRP(vehId);
+};
 
 window.flRPFoto=function(inp,vehId){
   const f=inp.files[0];if(!f)return;
