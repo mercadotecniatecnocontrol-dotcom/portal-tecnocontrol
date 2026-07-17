@@ -95,7 +95,7 @@ const TIPOS_SOL=[
   'Sensores y diagnóstico electrónico',
 ];
 
-const CHK_CATS={
+const CHK_CATS_GENERICO={
   Cristales:  ['vidrio delantero','Vidrio trasero','Lat. der. delantero','Lat. der. trasero','Lat. izq. delantero','Lat. izq. trasero'],
   Espejos:    ['Retrovisor izquierdo','Retrovisor derecho','Espejo central'],
   Neumáticos: ['Llanta del. der.','Llanta del. izq.','Llanta tra. der.','Llanta tra. izq.','Refacción'],
@@ -104,6 +104,30 @@ const CHK_CATS={
   Cajuela:    ['Herramienta','Cables arranque','Extintor','Llave L','Llave cruz'],
   Legal:      ['Tarjeta circulación'],
 };
+// CHK_CATS ahora es mutable: se reasigna en renderChkSemanal() según la
+// categoría de checklist adaptativo asignada al vehículo en el portal
+// (Administración → Checklist adaptativo). Si el vehículo no tiene
+// categoría asignada, o la config no cargó, se usa el genérico de siempre.
+let CHK_CATS=CHK_CATS_GENERICO;
+
+// ── CHECKLIST ADAPTATIVO — leído desde la config del portal ──
+window._chkAdaptCfg=null; // cache: {categorias,asignaciones} o null si no cargado
+function cargarChkAdaptCfg(){
+  if(window._chkAdaptCfg!==null)return Promise.resolve();
+  return db.collection(C.CFG).doc('checklist_adaptativo').get()
+    .then(d=>{window._chkAdaptCfg=d.exists?d.data():{categorias:{},asignaciones:{}};})
+    .catch(()=>{window._chkAdaptCfg={categorias:{},asignaciones:{}};});
+}
+// Decide qué CHK_CATS usar para un vehículo dado, y lo deja asignado en la
+// variable global CHK_CATS antes de construir el formulario.
+function fijarChkCatsParaVehiculo(veh){
+  const cfg=window._chkAdaptCfg;
+  if(!cfg){CHK_CATS=CHK_CATS_GENERICO;return;}
+  const unidad=(veh?.unidad||'').toUpperCase().trim();
+  const catKey=cfg.asignaciones&&cfg.asignaciones[unidad];
+  const cat=catKey&&cfg.categorias&&cfg.categorias[catKey];
+  CHK_CATS=(cat&&cat.items&&cat.items.length)?{Checklist:cat.items}:CHK_CATS_GENERICO;
+}
 
 // ── MAQUINARIA: 4 fotos obligatorias en lugar del checklist ──
 const MAQ_FOTOS=['Vista general','Placa / N° de serie','Horómetro o tablero','Estado / detalle'];
@@ -1724,7 +1748,10 @@ function renderNuevaSol(){
 
     <!-- EVIDENCIAS — CÁMARA FORZADA -->
     <div class="fm-fld">
-      <label>Evidencias fotográficas <span style="font-weight:500;text-transform:none;font-size:9px;color:#94A3B8">(cámara obligatoria)</span></label>
+      <label>Fotos obligatorias del vehículo <span style="font-size:9px;font-weight:500;text-transform:none;color:#EF4444">(4 ángulos requeridos)</span></label>
+      <div style="font-size:10px;color:#64748B;margin-bottom:10px;line-height:1.5">Toma cada ángulo requerido antes de continuar.</div>
+      <div id="fm-angulos-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px">${renderAngulosBasicosGrid(solState.evFotos,'sol')}</div>
+      <label>Evidencias adicionales <span style="font-weight:500;text-transform:none;font-size:9px;color:#94A3B8">(opcional, cámara obligatoria)</span></label>
       <button onclick="fmCapturar('general')" class="fm-btn primary" style="margin-bottom:8px">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
         Tomar foto con cámara
@@ -1916,6 +1943,32 @@ window.fmChk=function(key,val){
 };
 
 // ── CHECK LIST SEMANAL ──
+// Los 4 ángulos principales — mismo concepto que los primeros 4 de
+// UTIL_ANGULOS (Utilitarios), ahora también obligatorios en las evidencias
+// generales de Solicitud y de Check list semanal.
+const ANGULOS_BASICOS=[
+  {key:'frente',    label:'Frente'},
+  {key:'atras',     label:'Atrás'},
+  {key:'derecha',   label:'Lado derecho'},
+  {key:'izquierda', label:'Lado izquierdo'},
+];
+function renderAngulosBasicosGrid(evFotosArr,targetTag){
+  return ANGULOS_BASICOS.map(a=>{
+    const tomada=(evFotosArr||[]).find(f=>f?.meta?.angulo===a.key);
+    const bg=tomada?'#F0FDF4':'#F8FAFD';
+    const border=tomada?'2px solid #22C55E':'1.5px dashed #CBD5E1';
+    const color=tomada?'#15803D':'#64748B';
+    return`<button onclick="fmCapturar('angulo','${a.key}','${targetTag}')" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;padding:12px 6px;background:${bg};border:${border};border-radius:10px;font-family:inherit;cursor:pointer;min-height:78px;position:relative;overflow:hidden">
+      ${tomada?`<img src="${tomada.src}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.3">`:''}
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="${tomada?'#15803D':'#94A3B8'}" stroke-width="2" stroke-linecap="round" style="position:relative;z-index:1"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      <span style="font-size:10px;font-weight:700;color:${color};position:relative;z-index:1">${tomada?'✓ ':''}<b>${a.label}</b></span>
+    </button>`;
+  }).join('');
+}
+function angulosBasicosFaltantes(evFotosArr){
+  return ANGULOS_BASICOS.filter(a=>!(evFotosArr||[]).some(f=>f?.meta?.angulo===a.key));
+}
+
 function renderChkSemanalList(){
   let h='';
   for(const [cat,items] of Object.entries(CHK_CATS)){
@@ -1978,6 +2031,21 @@ function renderChkSemanal(){
   const semana=getSemanaISO();
   const cacheKey=`${miVeh.eco}_${semana}`;
   const yaExiste=window._semChkCache[cacheKey];
+
+  // Checklist adaptativo — cargar config antes de construir el formulario
+  // (mismo patrón que _cfgSem: cache null → mostrar loader → re-pintar al terminar)
+  if(window._chkAdaptCfg===null){
+    cargarChkAdaptCfg().then(()=>{if(vistaAct==='chksemanal')renderChkSemanal();});
+    setContent(`
+      <div class="fm-sec-hd"><div><div class="fm-sec-t">Check list semanal</div><div class="fm-sec-s">ECO ${miVeh.eco} · Semana ${semana}</div></div></div>
+      <div class="fm-card" style="background:#F8FAFD;display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <div style="width:20px;height:20px;border:2px solid #CBD5E1;border-top-color:#2563EB;border-radius:50%;animation:fmspin .7s linear infinite"></div>
+        <div style="font-size:12px;color:#64748B">Cargando checklist para este vehículo…</div>
+      </div>
+    `);
+    return;
+  }
+  fijarChkCatsParaVehiculo(miVeh);
 
   if(!chkSemPermitido(semana)){
     const cfg=window._cfgSem||{};
@@ -2065,7 +2133,10 @@ function renderChkSemanal(){
 
     <!-- EVIDENCIAS GENERALES -->
     <div class="fm-fld">
-      <label>Evidencias fotográficas <span style="font-weight:500;text-transform:none;font-size:9px;color:#94A3B8">(generales del vehículo)</span></label>
+      <label>Fotos obligatorias del vehículo <span style="font-size:9px;font-weight:500;text-transform:none;color:#EF4444">(4 ángulos requeridos)</span></label>
+      <div style="font-size:10px;color:#64748B;margin-bottom:10px;line-height:1.5">Toma cada ángulo requerido antes de continuar.</div>
+      <div id="fm-sem-angulos-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px">${renderAngulosBasicosGrid(semState.evFotos,'sem')}</div>
+      <label>Evidencias adicionales <span style="font-weight:500;text-transform:none;font-size:9px;color:#94A3B8">(opcional, generales del vehículo)</span></label>
       <button onclick="fmCapturar('general',null,'sem')" class="fm-btn primary" style="margin-bottom:8px">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
         Tomar foto con cámara
@@ -2123,6 +2194,11 @@ window.fmGuardarChkSemanal=async function(){
   if(!km||isNaN(Number(km))||Number(km)<0){
     toast('⚠ El kilometraje actual es obligatorio','err');
     document.getElementById('fm-sem-km')?.focus();
+    return;
+  }
+  const faltanAngulosSem=angulosBasicosFaltantes(semState.evFotos);
+  if(faltanAngulosSem.length>0){
+    toast(`⚠ Faltan ${faltanAngulosSem.length} fotos obligatorias: ${faltanAngulosSem.map(a=>a.label).join(', ')}`,'err');
     return;
   }
   const totalChk=Object.values(CHK_CATS).flat().length;
@@ -2342,6 +2418,14 @@ window.fmCapturar=async function(tipo,key,targetTag){
         // Autoguardar borrador incluyendo la foto recién tomada
         if(targetTag==='sem') _draftSave(_DRAFT.SEM,semState);
         else _draftSave(_DRAFT.SOL,solState);
+      } else if(tipo==='angulo'&&key){
+        meta.angulo=key;
+        target.evFotos.push({src:sellada,meta});
+        const gridId=targetTag==='sem'?'fm-sem-angulos-grid':'fm-angulos-grid';
+        const grid=document.getElementById(gridId);
+        if(grid)grid.innerHTML=renderAngulosBasicosGrid(target.evFotos,targetTag);
+        if(targetTag==='sem') _draftSave(_DRAFT.SEM,semState);
+        else _draftSave(_DRAFT.SOL,solState);
       } else {
         target.evFotos.push({src:sellada,meta});
         const wrap=document.getElementById(targetTag==='sem'?'fm-sem-ev-wrap':'fm-ev-wrap');
@@ -2432,6 +2516,12 @@ window.fmGuardar=async function(){
   // ── VALIDACIONES OBLIGATORIAS ──
   const totalChk=Object.values(CHK_CATS).flat().length;
   const respondidos=Object.values(solState.chk).filter(v=>v==='si'||v==='no').length;
+
+  const faltanAngulosSol=angulosBasicosFaltantes(solState.evFotos);
+  if(faltanAngulosSol.length>0){
+    toast(`⚠ Faltan ${faltanAngulosSol.length} fotos obligatorias: ${faltanAngulosSol.map(a=>a.label).join(', ')}`,'err');
+    return;
+  }
 
   if(!tipo){
     toast('⚠ Selecciona el tipo de solicitud','err');
