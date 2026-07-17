@@ -744,6 +744,11 @@ function buildHTML(){
       </button>
     </div>
     <div style="position:relative">
+      <button class="fl-tab-btn" id="fl-tb-kmanalisis" onclick="flAbrirAnalisisKm()" title="Análisis de kilometraje">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 17 9 11 13 15 21 6"/><polyline points="15 6 21 6 21 12"/></svg>
+      </button>
+    </div>
+    <div style="position:relative">
       <button class="fl-tab-btn" id="fl-tb-panorama" onclick="flAbrirPanorama()" title="Panorama de vehículos — resumen por unidad">${I.fleet}</button>
     </div>
     <div style="position:relative">
@@ -3375,6 +3380,99 @@ window.flRPToggleSinCambios = async function(id, marcado){
     flToast(marcado?'Vehículo marcado como asignado sin cambios':'Marca quitada','ok');
     renderSB();
   }catch(e){ flToast('Error: '+e.message,'err'); }
+};
+
+// ══════════════════════════════════════════════════════════════
+// ANÁLISIS DE KILOMETRAJE — detección de anomalías por vehículo
+// Compara el último delta de km reportado (checklist semanal) contra el
+// promedio histórico de ESE mismo vehículo (no contra la flota general,
+// porque cada unidad tiene un patrón de uso distinto).
+// ══════════════════════════════════════════════════════════════
+function flCalcularAnalisisKm(){
+  const porVeh={};
+  flChkSem.forEach(c=>{
+    if(c.km==null||c.km==='' ||!c.vehiculoEco)return;
+    const km=Number(c.km);if(isNaN(km))return;
+    const eco=String(c.vehiculoEco);
+    if(!porVeh[eco])porVeh[eco]=[];
+    porVeh[eco].push({km,fecha:c.creadoEn||c.semana||''});
+  });
+  const resultados=[];
+  Object.keys(porVeh).forEach(eco=>{
+    const regs=porVeh[eco].sort((a,b)=>String(a.fecha).localeCompare(String(b.fecha)));
+    if(regs.length<2)return; // sin historial suficiente para comparar
+    const deltas=[];
+    for(let i=1;i<regs.length;i++)deltas.push({delta:regs[i].km-regs[i-1].km,fecha:regs[i].fecha,kmAntes:regs[i-1].km,kmAhora:regs[i].km});
+    const ultimo=deltas[deltas.length-1];
+    const anteriores=deltas.slice(0,-1);
+    const promedio=anteriores.length?anteriores.reduce((s,d)=>s+d.delta,0)/anteriores.length:null;
+    const v=flV.find(x=>String(x.eco)===eco);
+    let severidad=null,motivo='';
+    if(ultimo.delta<0){
+      severidad='alta';motivo=`El kilometraje bajó de ${ultimo.kmAntes} a ${ultimo.kmAhora} km. Revisar captura — un odómetro no puede retroceder.`;
+    }else if(promedio!=null&&promedio>0&&ultimo.delta>promedio*3&&ultimo.delta>200){
+      severidad='alta';motivo=`Reportó ${ultimo.delta} km esta semana; su promedio habitual es ~${Math.round(promedio)} km/semana (${Math.round(ultimo.delta/promedio*100)}% más de lo normal).`;
+    }else if(promedio!=null&&promedio>50&&ultimo.delta===0){
+      severidad='media';motivo=`No reportó avance de kilometraje esta semana, pero su promedio habitual es ~${Math.round(promedio)} km/semana. Verificar si circuló o si no se capturó.`;
+    }else if(promedio!=null&&promedio>0&&ultimo.delta>promedio*1.8&&ultimo.delta>100){
+      severidad='baja';motivo=`Avance ${Math.round(ultimo.delta/promedio*100)}% mayor a su promedio habitual (~${Math.round(promedio)} km/semana).`;
+    }
+    if(severidad)resultados.push({eco,unidad:v?.unidad||'—',plaza:v?.plaza||'—',delta:ultimo.delta,promedio,severidad,motivo,fecha:ultimo.fecha,kmActual:ultimo.kmAhora,vehId:v?.id});
+  });
+  const orden={alta:3,media:2,baja:1};
+  resultados.sort((a,b)=>orden[b.severidad]-orden[a.severidad]);
+  return {anomalias:resultados,vehiculosConHistorial:Object.keys(porVeh).length};
+}
+
+window.flAbrirAnalisisKm=function(){
+  const {anomalias,vehiculosConHistorial}=flCalcularAnalisisKm();
+  const porSev=s=>anomalias.filter(a=>a.severidad===s).length;
+  const colores={alta:{bg:'#FEF2F2',fg:'#B91C1C',label:'Alta'},media:{bg:'#FFFBEB',fg:'#B45309',label:'Media'},baja:{bg:'#EFF6FF',fg:'#1D4ED8',label:'Baja'}};
+  document.getElementById('fl-kmanalisis-ov')?.remove();
+  const ov=document.createElement('div');
+  ov.className='fl-ov';ov.id='fl-kmanalisis-ov';
+  ov.innerHTML=`
+    <div class="fl-modal" style="max-width:840px">
+      <div class="fl-mh">
+        <h3 style="display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 17 9 11 13 15 21 6"/><polyline points="15 6 21 6 21 12"/></svg>Análisis de kilometraje</h3>
+        <button class="fl-mx" onclick="this.closest('.fl-ov').remove()">✕</button>
+      </div>
+      <div style="padding:20px 22px;max-height:78vh;overflow-y:auto">
+        <div style="font-size:11.5px;color:#64748B;margin-bottom:16px">Compara el kilometraje reportado en el checklist semanal más reciente de cada vehículo contra su propio promedio histórico. No se compara contra la flota general — cada unidad tiene un patrón de uso distinto.</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:22px">
+          <div style="background:#F8FAFD;border:1px solid #E8EDF5;border-radius:12px;padding:14px;text-align:center">
+            <div style="font-size:22px;font-weight:900;color:#0A1628">${vehiculosConHistorial}</div>
+            <div style="font-size:10px;color:#64748B;font-weight:700;margin-top:2px">VEHÍCULOS ANALIZADOS</div>
+          </div>
+          <div style="background:${colores.alta.bg};border-radius:12px;padding:14px;text-align:center">
+            <div style="font-size:22px;font-weight:900;color:${colores.alta.fg}">${porSev('alta')}</div>
+            <div style="font-size:10px;color:${colores.alta.fg};font-weight:700;margin-top:2px">SEVERIDAD ALTA</div>
+          </div>
+          <div style="background:${colores.media.bg};border-radius:12px;padding:14px;text-align:center">
+            <div style="font-size:22px;font-weight:900;color:${colores.media.fg}">${porSev('media')}</div>
+            <div style="font-size:10px;color:${colores.media.fg};font-weight:700;margin-top:2px">SEVERIDAD MEDIA</div>
+          </div>
+          <div style="background:${colores.baja.bg};border-radius:12px;padding:14px;text-align:center">
+            <div style="font-size:22px;font-weight:900;color:${colores.baja.fg}">${porSev('baja')}</div>
+            <div style="font-size:10px;color:${colores.baja.fg};font-weight:700;margin-top:2px">SEVERIDAD BAJA</div>
+          </div>
+        </div>
+        ${!anomalias.length?`<div style="text-align:center;padding:40px 0;color:#94A3B8"><div style="font-size:13px;font-weight:700">Sin anomalías detectadas</div><div style="font-size:11.5px;margin-top:4px">El kilometraje reportado esta semana es consistente con el historial de cada vehículo.</div></div>`
+        :`<div style="display:flex;flex-direction:column;gap:10px">
+          ${anomalias.map(a=>`
+            <div style="border:1px solid #E8EDF5;border-radius:12px;padding:14px 16px;display:flex;align-items:flex-start;gap:12px;${a.vehId?'cursor:pointer':''}" ${a.vehId?`onclick="this.closest('.fl-ov').remove();flSbSel('${a.vehId}')"`:''}>
+              <span style="font-size:9px;font-weight:800;padding:4px 9px;border-radius:100px;background:${colores[a.severidad].bg};color:${colores[a.severidad].fg};white-space:nowrap;flex-shrink:0;margin-top:1px">${colores[a.severidad].label.toUpperCase()}</span>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:12.5px;font-weight:800">ECO ${a.eco} · ${a.unidad} <span style="color:#94A3B8;font-weight:600">· ${a.plaza}</span></div>
+                <div style="font-size:11.5px;color:#475569;margin-top:3px">${a.motivo}</div>
+                <div style="font-size:10px;color:#94A3B8;margin-top:4px">Último reporte: ${hF(a.fecha)} · km actual: ${a.kmActual}${a.promedio!=null?` · promedio del vehículo: ${Math.round(a.promedio)} km/semana`:''}</div>
+              </div>
+            </div>`).join('')}
+        </div>`}
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+  ov.onclick=(e)=>{if(e.target===ov)ov.remove();};
 };
 
 function renderRP(id){
