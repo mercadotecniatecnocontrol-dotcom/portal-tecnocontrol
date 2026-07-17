@@ -564,7 +564,7 @@ function injectCSS(){
 @media(max-width:700px){.fl-rp-grid{grid-template-columns:1fr;}}
 #fl-veh-backdrop{position:fixed;inset:0;background:rgba(10,15,30,0);pointer-events:none;transition:background .2s ease;z-index:2999;display:flex;align-items:center;justify-content:center;padding:24px;}
 #fl-veh-backdrop.abierto{background:rgba(10,15,30,.75);backdrop-filter:blur(8px);pointer-events:auto;}
-#fl-veh-modal-wrap{position:relative;display:flex;flex-direction:row;gap:0;max-width:calc(100vw - 48px);width:1140px;max-height:94vh;background:#fff;border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,.4);overflow:hidden;transform:scale(.96);opacity:0;transition:all .2s ease;}
+#fl-veh-modal-wrap{position:relative;display:flex;flex-direction:row;gap:0;max-width:calc(100vw - 48px);width:1140px;height:94vh;max-height:94vh;background:#fff;border-radius:18px;border:1px solid rgba(255,255,255,.4);box-shadow:0 24px 70px rgba(0,0,0,.45),0 0 0 1px rgba(255,255,255,.06);overflow:hidden;transform:scale(.96);opacity:0;transition:all .2s ease;}
 #fl-veh-backdrop.abierto #fl-veh-modal-wrap{transform:scale(1);opacity:1;}
 #fl-veh-modal-close{position:absolute;top:14px;right:14px;width:32px;height:32px;border:none;background:rgba(255,255,255,.9);border-radius:50%;cursor:pointer;font-size:16px;color:#374151;z-index:10;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.15)}
 .fl-panor-col{width:440px;flex-shrink:0;background:#F8FAFD;border-left:1.5px solid #E8EDF5;height:100%;overflow-y:auto;padding:24px;}
@@ -681,7 +681,9 @@ function injectCSS(){
 .fl-panor-sum-card{border:1px solid #E2E8F0;border-radius:12px;margin-bottom:14px;overflow:hidden;}
 .fl-panor-sum-h{display:flex;align-items:center;gap:10px;padding:12px 14px;background:linear-gradient(180deg,#F8FAFF,#fff);border-bottom:1px solid #F1F5F9;}
 .fl-panor-sum-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:#F1F5F9;}
-.fl-panor-sum-kpi{background:#fff;padding:9px 8px;text-align:center;}
+.fl-panor-sum-kpi{background:#fff;padding:12px 8px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:4px;}
+.fl-panor-kpi-dot{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin-bottom:2px;}
+.fl-panor-kpi-dot svg{width:13px;height:13px;}
 .fl-panor-sum-kpi b{display:block;font-size:16px;font-weight:900;color:#0A1628;}
 .fl-panor-sum-kpi span{font-size:8.5px;color:#94A3B8;font-weight:700;text-transform:uppercase;letter-spacing:.3px;}
 .fl-panor-sum-sec{padding:10px 14px;}
@@ -3393,10 +3395,10 @@ function renderRP(id){
     <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">${titulo}${extra||''}</div>
     <div>${contenido}</div>
   </div>`;
-  const fila=(label,val,mono)=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;font-size:12.5px"><span style="color:#94A3B8">${label}</span><span style="font-weight:700;${mono?"font-family:'JetBrains Mono',monospace;":''}text-align:right;max-width:60%">${val}</span></div>`;
+  const fila=(label,val,mono)=>`<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:6px 0;font-size:12.5px"><span style="color:#94A3B8;flex-shrink:0">${label}</span><span style="font-weight:700;${mono?"font-family:'JetBrains Mono',monospace;":''}text-align:right;overflow-wrap:anywhere;word-break:break-word;min-width:0">${val}</span></div>`;
 
   rp.innerHTML=`
-    ${comAct?`<div style="background:#FEF2F2;border:1px solid #FCA5A5;border-radius:9px;padding:9px 12px;margin:10px 12px 0;display:flex;align-items:flex-start;gap:8px">
+    ${comAct?`<div style="background:#FEF2F2;border:1px solid #FCA5A5;border-radius:9px;padding:9px 12px;margin:12px 20px 0;display:flex;align-items:flex-start;gap:8px">
       <span style="color:#DC2626">${I.alert}</span>
       <div style="flex:1">
         <div style="font-size:11px;font-weight:800;color:#DC2626">Vehículo en uso</div>
@@ -3405,20 +3407,20 @@ function renderRP(id){
       </div>
     </div>`:''}
 
-    <div class="fl-rp-img" id="fl-rp-car">
+    <div class="fl-rp-img" id="fl-rp-car" style="margin:16px 20px 0;border-radius:14px;overflow:hidden;box-shadow:0 4px 16px rgba(10,22,40,.12)">
       ${fotos.length?`
       <div style="position:relative;overflow:hidden">
         <div style="display:flex;transition:transform .3s" id="fl-rpc-track">
-          ${fotos.map(f=>`<img src="${f}" style="min-width:100%;height:220px;object-fit:cover;background:#E8EEFA">`).join('')}
+          ${fotos.map(f=>`<img src="${f}" style="min-width:100%;height:240px;object-fit:cover;background:#E8EEFA">`).join('')}
         </div>
         ${fotos.length>1?`
         <button onclick="flRPCar(-1)" style="position:absolute;left:6px;top:50%;transform:translateY(-50%);background:rgba(10,22,40,.6);border:none;color:#fff;width:24px;height:24px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center">${I.chevL}</button>
         <button onclick="flRPCar(1)"  style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:rgba(10,22,40,.6);border:none;color:#fff;width:24px;height:24px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center">${I.chevR}</button>
         <div style="position:absolute;bottom:6px;left:50%;transform:translateX(-50%);display:flex;gap:4px">${fotos.map((_,i)=>`<div onclick="flRPCarTo(${i})" style="width:5px;height:5px;border-radius:50%;background:${i===0?'#fff':'rgba(255,255,255,.4)'};cursor:pointer" id="fl-rpd-${i}"></div>`).join('')}</div>`:''}
       </div>`:`
-      <div style="height:140px;background:linear-gradient(135deg,#E8F0FA,#C7D7F0);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px;color:#4A6FA5">
-        <div style="font-size:42px">${hEmo(v.tipo)}</div>
-        <div style="font-size:10px;font-weight:700;color:#4A6FA5">ECO ${v.eco}</div>
+      <div style="height:200px;background:linear-gradient(135deg,#E8F0FA,#C7D7F0);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px;color:#4A6FA5">
+        <div style="font-size:48px">${hEmo(v.tipo)}</div>
+        <div style="font-size:11px;font-weight:700;color:#4A6FA5">ECO ${v.eco}</div>
       </div>`}
       <div class="fl-rp-upload">
         <label onclick="document.getElementById('fl-rp-f').click()">${I.upload} Subir imagen</label>
@@ -3426,7 +3428,7 @@ function renderRP(id){
       </div>
     </div>
 
-    <div style="padding:14px 16px 4px;display:flex;align-items:flex-start;justify-content:space-between">
+    <div style="padding:18px 20px 4px;display:flex;align-items:flex-start;justify-content:space-between">
       <div>
         <div style="font-size:16px;font-weight:900;letter-spacing:-.3px">ECO ${v.eco} · ${v.unidad||'—'}</div>
         <div style="font-size:12px;color:#64748B;margin-top:2px">${(v.tipo||'—').charAt(0).toUpperCase()+(v.tipo||'').slice(1)} · ${v.plaza||'—'} · ${v.placas||'—'}</div>
@@ -3434,10 +3436,10 @@ function renderRP(id){
       ${hAdm()?`<button onclick="flEditarVeh('${id}')" style="font-size:10px;font-weight:800;padding:6px 12px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:7px;cursor:pointer;color:#2563EB;flex:0 0 auto">${I.edit} Editar</button>`:``}
     </div>
 
-    ${vivo!==null?`<div style="margin:8px 16px 0"><span style="font-size:10px;font-weight:800;padding:4px 10px;border-radius:100px;background:#DCFCE7;color:#15803D">EN USO · ${vivo}</span></div>`
-      :`<div style="margin:8px 16px 0"><span style="font-size:10px;font-weight:800;padding:4px 10px;border-radius:100px;background:#F1F5F9;color:#64748B">DISPONIBLE</span></div>`}
+    ${vivo!==null?`<div style="margin:10px 20px 0"><span style="font-size:10px;font-weight:800;padding:4px 10px;border-radius:100px;background:#DCFCE7;color:#15803D">EN USO · ${vivo}</span></div>`
+      :`<div style="margin:10px 20px 0"><span style="font-size:10px;font-weight:800;padding:4px 10px;border-radius:100px;background:#F1F5F9;color:#64748B">DISPONIBLE</span></div>`}
 
-    ${alts.length?`<div style="margin:10px 12px 0">${alts.map(a=>`<div style="display:flex;align-items:center;gap:7px;padding:9px 12px;border-radius:9px;font-size:11.5px;font-weight:700;background:${a.e?'#FEF2F2':'#FFFBEB'};color:${a.e?'#B91C1C':'#B45309'};margin-bottom:6px">${I.alert} ${a.t}</div>`).join('')}</div>`:''}
+    ${alts.length?`<div style="margin:12px 20px 0">${alts.map(a=>`<div style="display:flex;align-items:center;gap:7px;padding:9px 12px;border-radius:9px;font-size:11.5px;font-weight:700;background:${a.e?'#FEF2F2':'#FFFBEB'};color:${a.e?'#B91C1C':'#B45309'};margin-bottom:6px">${I.alert} ${a.t}</div>`).join('')}</div>`:''}
 
     <div class="fl-rp-grid">
     ${card('Información general',`
@@ -3923,10 +3925,10 @@ function flPanorResumenVeh(v){
         :`<span style="font-size:9px;font-weight:800;padding:3px 9px;border-radius:100px;background:#F1F5F9;color:#64748B;white-space:nowrap">DISPONIBLE</span>`}
     </div>
     <div class="fl-panor-sum-kpis">
-      <div class="fl-panor-sum-kpi"><b>${hist.length}</b><span>Solicitudes</span></div>
-      <div class="fl-panor-sum-kpi"><b style="color:#B45309">${abiertas}</b><span>En proceso</span></div>
-      <div class="fl-panor-sum-kpi"><b style="color:#15803D">${cerradas}</b><span>Cerradas</span></div>
-      <div class="fl-panor-sum-kpi"><b>${usos.length}</b><span>Usos</span></div>
+      <div class="fl-panor-sum-kpi"><span class="fl-panor-kpi-dot" style="background:#DBEAFE;color:#2563EB">${I.doc}</span><b>${hist.length}</b><span>Solicitudes</span></div>
+      <div class="fl-panor-sum-kpi"><span class="fl-panor-kpi-dot" style="background:#FEF3C7;color:#B45309">${I.clock||I.alert}</span><b style="color:#B45309">${abiertas}</b><span>En proceso</span></div>
+      <div class="fl-panor-sum-kpi"><span class="fl-panor-kpi-dot" style="background:#DCFCE7;color:#15803D">${I.check||'✓'}</span><b style="color:#15803D">${cerradas}</b><span>Cerradas</span></div>
+      <div class="fl-panor-sum-kpi"><span class="fl-panor-kpi-dot" style="background:#FCE7F3;color:#DB2777">${I.fleet}</span><b>${usos.length}</b><span>Usos</span></div>
     </div>
     <div class="fl-panor-sum-sec">
       <div class="fl-panor-sum-sec-t">Último reporte</div>
