@@ -993,14 +993,17 @@ function ldTrans(){
   });
 }
 
-// ── Aviso de transferencia pendiente demasiado tiempo (>24h) ──
+// ── Aviso de transferencia pendiente demasiado tiempo (24h / 42h / 48h) ──
 // No hay backend con tareas programadas en este sistema, así que esto solo
 // se detecta cuando un administrador tiene el portal abierto — no es
 // instantáneo, pero evita que una transferencia se quede olvidada para
 // siempre sin que nadie se entere.
 async function flRevisarTransferenciasPendientes(){
   const ahora=Date.now();
-  const stale=flTrans.filter(t=>t.estatus==='Pendiente recepción'&&!t.avisadoPendiente&&(ahora-new Date(t.creadoEn).getTime())>24*60*60*1000);
+  const pendientes=flTrans.filter(t=>t.estatus==='Pendiente recepción');
+
+  // 24h — aviso temprano (ya existía)
+  const stale=pendientes.filter(t=>!t.avisadoPendiente&&(ahora-new Date(t.creadoEn).getTime())>24*60*60*1000);
   for(const t of stale){
     try{
       await fs.updateDoc(fs.doc(db,C.TRANS,t.id),{avisadoPendiente:true});
@@ -1010,7 +1013,46 @@ async function flRevisarTransferenciasPendientes(){
         mensaje:`Transferencia del ECO ${t.vehiculoEco||'—'} sigue "Pendiente recepción" desde hace más de 24h (código ${t.codigo}). Entregó: ${t.entregaNombre||'—'}.`,
         leido:false,creadoEn:new Date().toISOString(),
       }).catch(()=>{})));
-    }catch(e){console.warn('[FL] flRevisarTransferenciasPendientes',e);}
+    }catch(e){console.warn('[FL] flRevisarTransferenciasPendientes 24h',e);}
+  }
+
+  // 42h — aviso de "por vencer" (nuevo), va al entregador y al receptor designado
+  const porVencer=pendientes.filter(t=>!t.avisadoPorVencer&&(ahora-new Date(t.creadoEn).getTime())>42*60*60*1000);
+  for(const t of porVencer){
+    try{
+      await fs.updateDoc(fs.doc(db,C.TRANS,t.id),{avisadoPorVencer:true});
+      const destinatarios=new Set(FLOTILLA_ADMINS);
+      if(t.entregaEmail)destinatarios.add(t.entregaEmail);
+      await Promise.all([...destinatarios].map(email=>fs.addDoc(fs.collection(db,'flotilla_notificaciones'),{
+        tipo:'transferencia_por_vencer',codigo:t.codigo,vehiculoEco:t.vehiculoEco||'—',
+        para:email,
+        mensaje:`⚠ La transferencia del ECO ${t.vehiculoEco||'—'} (código ${t.codigo}) vence en menos de 6 horas si no se recibe. Entregó: ${t.entregaNombre||'—'}.`,
+        leido:false,creadoEn:new Date().toISOString(),
+      }).catch(()=>{})));
+    }catch(e){console.warn('[FL] flRevisarTransferenciasPendientes 42h',e);}
+  }
+
+  // 48h — vencimiento automático: la transferencia se marca "Vencida" y el
+  // vehículo se libera de vuelta a quien la inició (nunca llegó a completarse).
+  const vencidas=pendientes.filter(t=>(ahora-new Date(t.creadoEn).getTime())>48*60*60*1000);
+  for(const t of vencidas){
+    try{
+      await fs.updateDoc(fs.doc(db,C.TRANS,t.id),{estatus:'Vencida',venciadoEn:new Date().toISOString()});
+      if(t.entregaEmail){
+        try{
+          const snapEnt=await fs.getDocs(fs.query(fs.collection(db,'fl_usuarios'),fs.where('email','==',t.entregaEmail)));
+          if(!snapEnt.empty) await fs.updateDoc(snapEnt.docs[0].ref,{transferenciaPendiente:null,transferenciaPendienteEco:null});
+        }catch(e2){console.warn('[FL] limpiar transferenciaPendiente al vencer',e2);}
+      }
+      const destinatarios=new Set(FLOTILLA_ADMINS);
+      if(t.entregaEmail)destinatarios.add(t.entregaEmail);
+      await Promise.all([...destinatarios].map(email=>fs.addDoc(fs.collection(db,'flotilla_notificaciones'),{
+        tipo:'transferencia_vencida',codigo:t.codigo,vehiculoEco:t.vehiculoEco||'—',
+        para:email,
+        mensaje:`La transferencia del ECO ${t.vehiculoEco||'—'} (código ${t.codigo}) venció después de 48h sin ser recibida. El vehículo sigue asignado a ${t.entregaNombre||'—'}.`,
+        leido:false,creadoEn:new Date().toISOString(),
+      }).catch(()=>{})));
+    }catch(e){console.warn('[FL] flRevisarTransferenciasPendientes 48h',e);}
   }
 }
 async function ldChkSem(){try{const s=await fs.getDocs(fs.query(fs.collection(db,C.CHKSEM),fs.orderBy('creadoEn','desc'),fs.limit(400)));flChkSem=s.docs.map(d=>({id:d.id,...d.data()}));flChkSem.sort((a,b)=>(b.creadoEn||"").localeCompare(a.creadoEn||""));}catch(e){console.warn('[FL] ldChkSem con límite falló, reintentando sin orderBy',e);try{const s2=await fs.getDocs(fs.collection(db,C.CHKSEM));flChkSem=s2.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.creadoEn||"").localeCompare(a.creadoEn||"")).slice(0,400);}catch{flChkSem=[];}}}
@@ -1522,7 +1564,7 @@ function rAdmTabSols(){
               <td style="font-size:11px">${fecha}</td>
               <td style="font-weight:700;font-family:'JetBrains Mono',monospace">${s.vehiculoEco||'—'}</td>
               <td style="font-size:11px">${s.tipoSol||s.tipo||'—'}</td>
-              <td style="font-size:11px">${s.solicitante||s.creadoPor||'—'}</td>
+              <td style="font-size:11px">${flNombrePorCorreo(s.solicitante||s.creadoPor)||'—'}</td>
               <td><span class="fl-adm-badge ${statCls}">${s.estatus||'—'}</span></td>
               <td style="font-size:11px">${s.km||'—'}</td>
               <td style="text-align:center">
@@ -1970,7 +2012,7 @@ function renderAdmRows(lista){
       <td><strong style="font-family:'JetBrains Mono',monospace;font-size:13px">${v.eco}</strong></td>
       <td style="font-weight:600">${v.unidad||'—'}</td>
       <td style="font-family:'JetBrains Mono',monospace;font-size:11px">${v.placas||'—'}</td>
-      <td>${v.responsable&&v.responsable!=='—'?v.responsable:`<span style="color:#EF4444;font-size:11px;font-weight:700">Sin asignar</span>`}</td>
+      <td>${v.responsable&&v.responsable!=='—'?flNombrePorCorreo(v.responsable):`<span style="color:#EF4444;font-size:11px;font-weight:700">Sin asignar</span>`}</td>
       <td><span style="font-size:11px">${v.plaza||'—'}</span></td>
       <td><span class="fl-adm-badge ${statCls}">${v.status||'activo'}</span></td>
       <td style="font-family:'JetBrains Mono',monospace;font-size:11px">${v.km||0} km</td>
@@ -2585,7 +2627,7 @@ function rPanel(){
           <div style="width:44px;height:44px;border-radius:10px;background:${t.bg};display:flex;align-items:center;justify-content:center;flex:0 0 auto;color:${t.ic}">${hEmo(v.tipo)}</div>
           <div style="flex:1;min-width:0">
             <div style="font-size:14px;font-weight:800">ECO ${v.eco} · ${v.unidad||'—'}</div>
-            <div style="font-size:12px;color:#64748B;margin-top:2px">${v.responsable&&v.responsable!=='—'?v.responsable:'Sin responsable asignado'}</div>
+            <div style="font-size:12px;color:#64748B;margin-top:2px">${v.responsable&&v.responsable!=='—'?flNombrePorCorreo(v.responsable):'Sin responsable asignado'}</div>
           </div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:220px">
             ${motivos.slice(0,2).map(m=>`<span style="font-size:10.5px;font-weight:700;padding:4px 10px;border-radius:100px;background:${tonos[m.tono].bg};color:${tonos[m.tono].ic};white-space:nowrap">${m.texto}</span>`).join('')}
@@ -3545,7 +3587,7 @@ function renderRP(id){
 
     <div class="fl-rp-grid">
     ${card('Información general',`
-      ${fila('Responsable',v.responsable&&v.responsable!=='—'?v.responsable:'<span style="color:#B91C1C">Sin asignar</span>')}
+      ${fila('Responsable',v.responsable&&v.responsable!=='—'?flNombrePorCorreo(v.responsable):'<span style="color:#B91C1C">Sin asignar</span>')}
       ${fila('Número de serie / VIN',v.serie||'—',true)}
       ${fila('Año modelo',v.año||'—')}
       ${fila('Color',v.color||'—')}
@@ -3672,7 +3714,7 @@ function flRPHistBody(s){
   const todasFotos=[...fotosEv,...fotosChk];
   return`
     <div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:3px">Solicitante</div>
-    <div style="font-size:11.5px;font-weight:600;color:#0A1628;margin-bottom:8px">${s.solicitante||s.creadoPor||'—'}</div>
+    <div style="font-size:11.5px;font-weight:600;color:#0A1628;margin-bottom:8px">${flNombrePorCorreo(s.solicitante||s.creadoPor)||'—'}</div>
     <div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:3px">Detalle reportado</div>
     <div style="font-size:11.5px;color:#374151;line-height:1.5;margin-bottom:8px">${s.descripcion||'—'}</div>
     <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:${todasFotos.length||s.chkFirmaConfirmacion?'8px':'0'}">
@@ -3943,7 +3985,7 @@ function flPanorCardHTML(v){
     <div class="fl-panor-info">
       <div class="fl-panor-eco">ECO ${v.eco}</div>
       <div class="fl-panor-un">${v.unidad||'—'}</div>
-      <div class="fl-panor-resp">${I.user} ${v.responsable||'Sin responsable'}</div>
+      <div class="fl-panor-resp">${I.user} ${flNombrePorCorreo(v.responsable)||'Sin responsable'}</div>
     </div>
   </div>`;
 }
@@ -4030,7 +4072,7 @@ function flPanorResumenVeh(v){
       <span style="display:flex;align-items:center;color:#1E3A5F">${hEmo(v.tipo)}</span>
       <div style="flex:1;min-width:0">
         <div style="font-size:13px;font-weight:900;color:#0A1628">ECO ${v.eco} · ${v.unidad||'—'}</div>
-        <div style="font-size:10.5px;color:#64748B;margin-top:1px">${v.responsable||'Sin responsable'} · ${v.plaza||'—'} · ${v.placas||'—'}</div>
+        <div style="font-size:10.5px;color:#64748B;margin-top:1px">${flNombrePorCorreo(v.responsable)||'Sin responsable'} · ${v.plaza||'—'} · ${v.placas||'—'}</div>
       </div>
       ${vivo!==null?`<span style="font-size:9px;font-weight:800;padding:3px 9px;border-radius:100px;background:#DCFCE7;color:#15803D;white-space:nowrap">EN USO · ${vivo}</span>`
         :`<span style="font-size:9px;font-weight:800;padding:3px 9px;border-radius:100px;background:#F1F5F9;color:#64748B;white-space:nowrap">DISPONIBLE</span>`}
@@ -4328,7 +4370,7 @@ function tSols(list,pA){
     <td style="font-weight:700">${s.tipo||'—'}</td>
     <td class="fl-mono">${s.vehiculoEco||'—'}</td>
     <td>${s.prioridad?`<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:100px;background:${s.prioridad==='Urgente'?'#FEE2E2':s.prioridad==='Alta'?'#FEF3C7':'#F1F5F9'};color:${s.prioridad==='Urgente'?'#B91C1C':s.prioridad==='Alta'?'#B45309':'#475569'}">${s.prioridad}</span>`:'—'}</td>
-    <td style="font-size:11px">${s.solicitante||'—'}</td>
+    <td style="font-size:11px">${flNombrePorCorreo(s.solicitante)||'—'}</td>
     <td>${hBadge(s.estatus)}</td>
     <td style="font-size:10px;color:#94A3B8">${hF(s.creadoEn)}</td>
     ${pA?`<td onclick="event.stopPropagation()">${(s.estatus==='Validada'||s.estatus==='Cotización')?`<div style="display:flex;gap:3px"><button class="fb acc sm" onclick="flAprobar('${s.id}')">${I.check}</button><button class="fb dan sm" onclick="flRechazar('${s.id}')">${I.x}</button></div>`:'—'}</td>`:''}
@@ -4404,9 +4446,9 @@ window.flVerSol=async function(id){
   ov.innerHTML=`<div class="fl-modal" style="max-width:600px">
     <div class="fl-mh"><h3>${I.doc} ${id.slice(0,8).toUpperCase()}</h3><button class="fl-mx" onclick="this.closest('.fl-ov').remove()">✕</button></div>
     <div class="fl-mb">
-      ${v?`<div style="background:#0A1628;color:#fff;border-radius:9px;padding:11px 14px;margin-bottom:12px;display:flex;align-items:center;gap:12px"><span style="display:flex;align-items:center">${hEmo(v.tipo).split('stroke="currentColor"').join('stroke="#fff"')}</span><div><div style="font-size:13px;font-weight:800">${v.unidad||'—'} ${v.año||''}</div><div style="font-size:10px;color:rgba(255,255,255,.4);font-family:'JetBrains Mono',monospace;margin-top:2px">ECO ${v.eco} · ${v.placas||'—'} · ${v.responsable||'—'}</div></div></div>`:''}
+      ${v?`<div style="background:#0A1628;color:#fff;border-radius:9px;padding:11px 14px;margin-bottom:12px;display:flex;align-items:center;gap:12px"><span style="display:flex;align-items:center">${hEmo(v.tipo).split('stroke="currentColor"').join('stroke="#fff"')}</span><div><div style="font-size:13px;font-weight:800">${v.unidad||'—'} ${v.año||''}</div><div style="font-size:10px;color:rgba(255,255,255,.4);font-family:'JetBrains Mono',monospace;margin-top:2px">ECO ${v.eco} · ${v.placas||'—'} · ${flNombrePorCorreo(v.responsable)||'—'}</div></div></div>`:''}
       <div style="display:grid;grid-template-columns:1fr 1fr;background:#F8FAFD;border-radius:9px;overflow:hidden;border:1px solid #E8EDF5;margin-bottom:10px">
-        ${[['Tipo',s.tipo||'—'],['Estado',hBadge(s.estatus)],['Prioridad',s.prioridad||'Normal'],['Gasolina',s.gasolina!=null?s.gasolina+'%':'—'],['Taller',s.taller||'—'],['KM',s.kilometrajeReportado||'—'],['Solicitante',s.solicitante||'—'],['Fecha',hF(s.creadoEn)]].map(([l,val])=>`<dl style="padding:7px 11px;border-right:1px solid #E8EDF5;border-bottom:1px solid #E8EDF5"><dt style="font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">${l}</dt><dd style="font-size:11.5px;font-weight:600">${val}</dd></dl>`).join('')}
+        ${[['Tipo',s.tipo||'—'],['Estado',hBadge(s.estatus)],['Prioridad',s.prioridad||'Normal'],['Gasolina',s.gasolina!=null?s.gasolina+'%':'—'],['Taller',s.taller||'—'],['KM',s.kilometrajeReportado||'—'],['Solicitante',flNombrePorCorreo(s.solicitante)||'—'],['Fecha',hF(s.creadoEn)]].map(([l,val])=>`<dl style="padding:7px 11px;border-right:1px solid #E8EDF5;border-bottom:1px solid #E8EDF5"><dt style="font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">${l}</dt><dd style="font-size:11.5px;font-weight:600">${val}</dd></dl>`).join('')}
         <dl style="grid-column:1/-1;padding:7px 11px"><dt style="font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">Descripción</dt><dd style="font-size:11.5px;font-weight:500">${s.descripcion||'—'}</dd></dl>
       </div>
       ${s.comentarioRechazo?`<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:7px;padding:8px 11px;font-size:11px;color:#991B1B;margin-bottom:9px"><strong>Rechazo:</strong> ${s.comentarioRechazo}</div>`:''}
@@ -4665,7 +4707,7 @@ window.flRecibirTransferencia = function(id) {
     <div style="padding:16px 20px">
       <div style="font-size:13px;font-weight:800;margin-bottom:10px">ECO ${t.vehiculoEco||'—'} · ${t.vehiculoUnidad||''}</div>
       <div style="display:flex;align-items:center;gap:10px;background:#F8FAFC;border-radius:10px;padding:10px 12px;margin-bottom:12px">
-        <div style="flex:1"><div style="font-size:9.5px;color:#94A3B8;font-weight:800;text-transform:uppercase">Entrega</div><div style="font-size:13px;font-weight:700">${t.entregaNombre||'—'}</div></div>
+        <div style="flex:1"><div style="font-size:9.5px;color:#94A3B8;font-weight:800;text-transform:uppercase">Entrega</div><div style="font-size:13px;font-weight:700">${flNombrePorCorreo(t.entregaNombre)||'—'}</div></div>
         <div style="color:#CBD5E1">→</div>
         <div style="flex:1;text-align:right"><div style="font-size:9.5px;color:#94A3B8;font-weight:800;text-transform:uppercase">Recibe</div><div style="font-size:13px;font-weight:700;color:#15803D">${window.auth?.currentUser?.displayName||window.auth?.currentUser?.email||'—'}</div></div>
       </div>
@@ -4874,9 +4916,9 @@ function rTransListFiltrada(lista){
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;background:#F8FAFD;border-radius:8px;padding:8px">
         <div><div style="font-size:8px;font-weight:800;text-transform:uppercase;color:#94A3B8;margin-bottom:2px">Entrega</div>
-          <div style="font-size:11.5px;font-weight:600;color:#0A1628;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.entregaNombre||t.entregaEmail||'—'}</div></div>
+          <div style="font-size:11.5px;font-weight:600;color:#0A1628;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${flNombrePorCorreo(t.entregaNombre||t.entregaEmail)||'—'}</div></div>
         <div><div style="font-size:8px;font-weight:800;text-transform:uppercase;color:#94A3B8;margin-bottom:2px">Recibe</div>
-          <div style="font-size:11.5px;font-weight:600;color:${isPend?'#B45309':'#0A1628'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.recibioNombre||t.recibioEmail||(isPend?'Pendiente':'—')}</div></div>
+          <div style="font-size:11.5px;font-weight:600;color:${isPend?'#B45309':'#0A1628'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${flNombrePorCorreo(t.recibioNombre||t.recibioEmail)||(isPend?'Pendiente':'—')}</div></div>
         <div><div style="font-size:8px;font-weight:800;text-transform:uppercase;color:#94A3B8;margin-bottom:2px">KM · Gas</div>
           <div style="font-size:11.5px;font-weight:600;color:#0A1628">${t.entregaKm||t.km||'—'} · ${t.entregaGasolina!=null?t.entregaGasolina+'%':'—'}</div></div>
       </div>
@@ -4953,7 +4995,7 @@ window.flVerTrans=function(id){
         <div style="font-size:10px;color:rgba(255,255,255,.5);margin-top:2px;font-family:'JetBrains Mono',monospace">${t.codigo||'—'} · ${t.creadoEn?t.creadoEn.substring(0,10):'—'}</div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;background:#F8FAFD;border-radius:9px;overflow:hidden;border:1px solid #E8EDF5;margin-bottom:12px">
-        ${[['Entregante',t.entregaNombre||t.entregaEmail||'—'],['Receptor',t.recibioNombre||t.recibioEmail||'Pendiente'],['KM',t.entregaKm||t.km||'—'],['Gasolina',t.entregaGasolina!=null?t.entregaGasolina+'%':(t.gasolina!=null?t.gasolina+'%':'—')],['Fecha',t.creadoEn?t.creadoEn.substring(0,10):'—'],['Estado',hBadge(t.estatus||'Completada')]].map(([l,val])=>`<dl style="padding:7px 11px;border-right:1px solid #E8EDF5;border-bottom:1px solid #E8EDF5"><dt style="font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">${l}</dt><dd style="font-size:11.5px;font-weight:600">${val}</dd></dl>`).join('')}
+        ${[['Entregante',flNombrePorCorreo(t.entregaNombre||t.entregaEmail)||'—'],['Receptor',flNombrePorCorreo(t.recibioNombre||t.recibioEmail)||'Pendiente'],['KM',t.entregaKm||t.km||'—'],['Gasolina',t.entregaGasolina!=null?t.entregaGasolina+'%':(t.gasolina!=null?t.gasolina+'%':'—')],['Fecha',t.creadoEn?t.creadoEn.substring(0,10):'—'],['Estado',hBadge(t.estatus||'Completada')]].map(([l,val])=>`<dl style="padding:7px 11px;border-right:1px solid #E8EDF5;border-bottom:1px solid #E8EDF5"><dt style="font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">${l}</dt><dd style="font-size:11.5px;font-weight:600">${val}</dd></dl>`).join('')}
       </div>
       ${fotoPills?`<div style="margin-bottom:12px"><div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:6px">Evidencias fotográficas (${evFotos.length})</div><div class="fl-pills">${fotoPills}</div></div>`:''}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
@@ -5868,7 +5910,7 @@ window.flGenerarPDFChkSem = async function(id) {
 
   <div class="grid3">
     <div class="field"><label>Kilometraje</label><span>${r.km?Number(r.km).toLocaleString('es-MX')+' km':'—'}</span></div>
-    <div class="field"><label>Responsable</label><span>${v.responsable||'—'}</span></div>
+    <div class="field"><label>Responsable</label><span>${flNombrePorCorreo(v.responsable)||'—'}</span></div>
     <div class="field"><label>Plaza</label><span>${v.plaza||'—'}</span></div>
   </div>
 
@@ -6584,7 +6626,7 @@ window.flExportarResumenPDF=function(){
     <tbody>
       ${flS.filter(s=>!['Cerrada','Rechazada'].includes(s.estatus)).slice(0,20).map(s=>{
         const cl={'Solicitud':'#6D28D9','Evaluación':'#1D4ED8','Servicio':'#B45309','Pagos':'#B45309','Cierre':'#B45309'}[s.estatus]||'#475569';
-        return`<tr><td>${s.tipo||'—'}</td><td style="font-family:monospace;font-weight:700">ECO ${s.vehiculoEco||'—'}</td><td>${(s.vehiculo||'—').split('·')[1]?.trim()||s.vehiculo||'—'}</td><td>${(s.solicitante||s.creadoPor||'—').split('@')[0]}</td><td><span class="badge" style="background:${cl}22;color:${cl}">${s.estatus}</span></td><td>${s.creadoEn?s.creadoEn.substring(0,10):'—'}</td></tr>`;
+        return`<tr><td>${s.tipo||'—'}</td><td style="font-family:monospace;font-weight:700">ECO ${s.vehiculoEco||'—'}</td><td>${(s.vehiculo||'—').split('·')[1]?.trim()||s.vehiculo||'—'}</td><td>${flNombrePorCorreo(s.solicitante||s.creadoPor)||'—'}</td><td><span class="badge" style="background:${cl}22;color:${cl}">${s.estatus}</span></td><td>${s.creadoEn?s.creadoEn.substring(0,10):'—'}</td></tr>`;
       }).join('')}
     </tbody>
   </table>
@@ -6612,7 +6654,7 @@ function rBajas(){
     `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px">
       ${bajas.map(v=>`<div style="background:#fff;border:1px solid #E8EDF5;border-radius:11px;padding:12px 14px;display:flex;gap:10px;align-items:center;cursor:pointer;transition:border-color .15s" onmouseenter="this.style.borderColor='#FCA5A5'" onmouseleave="this.style.borderColor='#E8EDF5'" onclick="flVerVeh('${v.id}')">
         <div style="width:40px;height:40px;border-radius:9px;background:#FEE2E2;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">${hEmo(v.tipo)}</div>
-        <div style="flex:1;min-width:0"><div style="font-size:11.5px;font-weight:800;font-family:'JetBrains Mono',monospace">ECO ${v.eco}</div><div style="font-size:11.5px;font-weight:600;color:#374151">${v.unidad||'—'} ${v.año||''}</div><div style="font-size:10px;color:#94A3B8">${v.responsable||'—'}</div></div>
+        <div style="flex:1;min-width:0"><div style="font-size:11.5px;font-weight:800;font-family:'JetBrains Mono',monospace">ECO ${v.eco}</div><div style="font-size:11.5px;font-weight:600;color:#374151">${v.unidad||'—'} ${v.año||''}</div><div style="font-size:10px;color:#94A3B8">${flNombrePorCorreo(v.responsable)||'—'}</div></div>
         <div style="text-align:right"><div style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8">Baja</div><div style="font-size:10.5px;font-weight:600;color:#B91C1C;margin-top:1px">${hF(v.fechaBaja)||'—'}</div></div>
       </div>`).join('')}
     </div>`}
@@ -7095,7 +7137,7 @@ window.flPipelineModal = function(estInicial) {
             <td style="font-weight:700;font-family:'JetBrains Mono',monospace">ECO ${s.vehiculoEco||'—'}</td>
             <td style="font-size:10px;color:#64748B">${plaza}</td>
             <td style="font-size:11px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.tipo||'—'}</td>
-            <td style="font-size:11px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.solicitante||s.creadoPor||'—'}</td>
+            <td style="font-size:11px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${flNombrePorCorreo(s.solicitante||s.creadoPor)||'—'}</td>
             <td style="font-size:11px">${s.tallerNombre||'—'}</td>
             <td style="font-size:11px;font-weight:700;color:#15803D">${s.montoCotizacion?'$'+Number(s.montoCotizacion).toLocaleString('es-MX'):'—'}</td>
             <td onclick="event.stopPropagation()"><div style="display:flex;gap:3px;align-items:center;flex-wrap:wrap">${accionesSol(s)}</div></td>
@@ -7244,7 +7286,7 @@ window.flModalEvaluacion = function(id) {
           <!-- Info solicitud -->
           <div style="background:#F8FAFC;border-radius:10px;padding:12px 14px;font-size:11px">
             <strong>${s.tipo||'—'}</strong> · ${s.desc||'Sin descripción'}<br>
-            <span style="color:#94A3B8">Prioridad: ${s.prior||'Normal'} · Solicitante: ${s.solicitante||s.creadoPor||'—'}</span>
+            <span style="color:#94A3B8">Prioridad: ${s.prior||'Normal'} · Solicitante: ${flNombrePorCorreo(s.solicitante||s.creadoPor)||'—'}</span>
           </div>
           <!-- Datos taller/cotización -->
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
@@ -7713,7 +7755,7 @@ window.flResumenFinal = function(id) {
             <div>
               <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:rgba(255,255,255,.5);margin-bottom:4px">Expediente de Servicio — ${(s.id||'').slice(-8).toUpperCase()}</div>
               <div style="font-size:20px;font-weight:900;color:#fff;letter-spacing:-.4px">ECO ${s.vehiculoEco||'—'} · ${s.tipo||'—'}</div>
-              <div style="font-size:12px;color:rgba(255,255,255,.6);margin-top:3px">${v?v.unidad+' '+v.año:''} · ${s.solicitante||s.creadoPor||'—'}</div>
+              <div style="font-size:12px;color:rgba(255,255,255,.6);margin-top:3px">${v?v.unidad+' '+v.año:''} · ${flNombrePorCorreo(s.solicitante||s.creadoPor)||'—'}</div>
             </div>
             <div style="text-align:right">
               <div style="display:inline-flex;align-items:center;gap:5px;background:rgba(255,255,255,.1);border-radius:100px;padding:5px 12px">
@@ -7732,7 +7774,7 @@ window.flResumenFinal = function(id) {
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:0">
               ${campo('Tipo de servicio', s.tipo)}
               ${campo('Prioridad', s.prioridad||'Normal')}
-              ${campo('Solicitante', s.solicitante||s.creadoPor)}
+              ${campo('Solicitante', flNombrePorCorreo(s.solicitante||s.creadoPor))}
               ${campo('Fecha solicitud', fmt(s.creadoEn))}
               ${campo('KM reportado', s.kilometrajeReportado)}
               ${campo('Gasolina', s.gasolina!=null?s.gasolina+'%':null)}
@@ -7786,7 +7828,7 @@ window.flResumenFinal = function(id) {
           ${seccion('⏱ Línea de tiempo', `
             <div style="display:flex;flex-direction:column;gap:6px">
               ${[
-                ['Solicitud creada', fmt(s.creadoEn), s.solicitante||s.creadoPor, '#6D28D9'],
+                ['Solicitud creada', fmt(s.creadoEn), flNombrePorCorreo(s.solicitante||s.creadoPor), '#6D28D9'],
                 ['Validado por Flotilla', fmt(s.validadoEn), s.validadoPor, '#1D4ED8'],
                 ['Aprobado por Contraloría', fmt(s.aprobadoEn), s.aprobadoPor, '#CA8A04'],
                 ['Pago registrado', fmt(s.pagadoEn), s.pagadoPor, '#15803D'],
@@ -7920,7 +7962,7 @@ window.flGenerarPDF=function(id){
   if(!chkFullHTML){const allSi=Object.values(chkResp).filter(v=>v==='si').length;chkFullHTML=allSi>0?`<div style="padding:10px 14px;background:#F0FDF4;border-radius:8px;border:1px solid #BBF7D0;font-size:11.5px;font-weight:700;color:#15803D">Todos los ${allSi} puntos revisados en buen estado</div>`:'<div style="font-size:11px;color:#94A3B8;padding:8px">Sin checklist registrado</div>';}
   const chkPhotosHTML=chkFEntries.length?chkFEntries.map(([k,src])=>`<div style="display:inline-block;margin:4px;text-align:center;vertical-align:top"><img src="${src}" style="width:90px;height:68px;object-fit:cover;border-radius:5px;border:1px solid #BFDBFE;display:block"><div style="font-size:7.5px;color:#1D4ED8;margin-top:2px;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${getLabel(k)}</div></div>`).join(''):'';
   const fecha=s.creadoEn?s.creadoEn.substring(0,10):'—';
-  const html=`<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Solicitud ${id.slice(0,8).toUpperCase()} — Tecnocontrol</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui,Arial,sans-serif;font-size:11px;color:#0A0F1E;background:#fff;padding:28px 32px}.logo{font-size:20px;font-weight:900;letter-spacing:-1px}.logo em{color:#2563EB;font-style:normal}.hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #0A1628;padding-bottom:14px;margin-bottom:18px}.veh-bar{background:#0A1628;color:#fff;border-radius:9px;padding:11px 16px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px}.field{background:#F8FAFD;border-radius:7px;padding:8px 11px;border:1px solid #E8EDF5}.field label{font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:2px}.field span{font-size:12px;font-weight:700;line-height:1.4}.sec{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:#64748B;margin:16px 0 8px;padding-top:12px;border-top:1px solid #E8EDF5}.gas-box{display:flex;align-items:center;gap:16px;background:#F8FAFD;border-radius:9px;padding:12px 16px;border:1px solid #E8EDF5;margin-bottom:12px}.footer{margin-top:24px;padding-top:10px;border-top:1px solid #E8EDF5;font-size:9px;color:#94A3B8;text-align:center}@media print{body{padding:14px 16px;font-size:10.5px}button{display:none!important}}</style></head><body><div class="hdr"><div><div class="logo">TECNO<em>CONTROL</em></div><div style="font-size:10.5px;color:#64748B;margin-top:3px">Reporte de solicitud vehicular</div></div><div style="text-align:right"><div style="font-size:18px;font-weight:900;font-family:monospace;letter-spacing:1px">${id.slice(0,8).toUpperCase()}</div><div style="margin-top:5px"><span style="padding:3px 12px;border-radius:20px;font-size:10px;font-weight:800;background:#0A1628;color:#fff">${s.estatus||'Solicitud'}</span></div><div style="font-size:10px;color:#64748B;margin-top:4px">${fecha}</div></div></div>${v?`<div class="veh-bar"><div><div style="font-size:14px;font-weight:800">${v.unidad||'—'} ${v.año||''}</div><div style="font-size:10px;color:rgba(255,255,255,.5);margin-top:2px;font-family:monospace">ECO ${v.eco} · ${v.placas||'—'} · ${v.responsable||'—'}</div></div></div>`:''}<div class="grid3"><div class="field"><label>Tipo</label><span>${s.tipo||'—'}</span></div><div class="field"><label>Prioridad</label><span>${s.prioridad||'Normal'}</span></div><div class="field"><label>KM</label><span>${s.kilometrajeReportado||'—'}</span></div></div><div class="grid2"><div class="field"><label>Solicitante</label><span>${s.solicitante||'—'}</span></div><div class="field"><label>Taller</label><span>${s.tallerNombre||s.taller||'Sin especificar'}</span></div></div><div class="field" style="margin-bottom:12px"><label>Descripción</label><span style="font-size:12px;font-weight:500;line-height:1.6">${s.descripcion||'—'}</span></div><div class="gas-box"><div>${gasSVG}</div><div><div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:4px">Nivel de combustible</div><div style="font-size:28px;font-weight:900;color:${gasColor};line-height:1">${gasPct}%</div></div></div>${s.comentarioRechazo?`<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:7px;padding:10px 12px;margin-bottom:10px"><div style="font-size:8.5px;font-weight:800;text-transform:uppercase;color:#B91C1C;margin-bottom:4px">Motivo de rechazo</div><div style="font-size:12px;color:#991B1B">${s.comentarioRechazo}</div></div>`:''}<div class="sec">Evidencias fotográficas (${evGen.length})</div><div style="margin-bottom:12px">${evThumbsHTML}</div><div class="sec">Checklist de revisión</div>${chkFullHTML}${chkPhotosHTML?`<div class="sec">Galería de fotos del checklist (${chkFEntries.length})</div><div style="margin-bottom:12px">${chkPhotosHTML}</div>`:''}<div class="footer">Generado por Portal Flotilla Tecnocontrol · ${new Date().toLocaleString('es-MX')} · ID: ${id}</div><div style="margin-top:16px;display:flex;gap:10px;justify-content:flex-end"><button onclick="window.print()" style="padding:11px 28px;background:#0A1628;color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer">Imprimir / Guardar PDF</button></div></body></html>`;
+  const html=`<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Solicitud ${id.slice(0,8).toUpperCase()} — Tecnocontrol</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui,Arial,sans-serif;font-size:11px;color:#0A0F1E;background:#fff;padding:28px 32px}.logo{font-size:20px;font-weight:900;letter-spacing:-1px}.logo em{color:#2563EB;font-style:normal}.hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #0A1628;padding-bottom:14px;margin-bottom:18px}.veh-bar{background:#0A1628;color:#fff;border-radius:9px;padding:11px 16px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px}.field{background:#F8FAFD;border-radius:7px;padding:8px 11px;border:1px solid #E8EDF5}.field label{font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:2px}.field span{font-size:12px;font-weight:700;line-height:1.4}.sec{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:#64748B;margin:16px 0 8px;padding-top:12px;border-top:1px solid #E8EDF5}.gas-box{display:flex;align-items:center;gap:16px;background:#F8FAFD;border-radius:9px;padding:12px 16px;border:1px solid #E8EDF5;margin-bottom:12px}.footer{margin-top:24px;padding-top:10px;border-top:1px solid #E8EDF5;font-size:9px;color:#94A3B8;text-align:center}@media print{body{padding:14px 16px;font-size:10.5px}button{display:none!important}}</style></head><body><div class="hdr"><div><div class="logo">TECNO<em>CONTROL</em></div><div style="font-size:10.5px;color:#64748B;margin-top:3px">Reporte de solicitud vehicular</div></div><div style="text-align:right"><div style="font-size:18px;font-weight:900;font-family:monospace;letter-spacing:1px">${id.slice(0,8).toUpperCase()}</div><div style="margin-top:5px"><span style="padding:3px 12px;border-radius:20px;font-size:10px;font-weight:800;background:#0A1628;color:#fff">${s.estatus||'Solicitud'}</span></div><div style="font-size:10px;color:#64748B;margin-top:4px">${fecha}</div></div></div>${v?`<div class="veh-bar"><div><div style="font-size:14px;font-weight:800">${v.unidad||'—'} ${v.año||''}</div><div style="font-size:10px;color:rgba(255,255,255,.5);margin-top:2px;font-family:monospace">ECO ${v.eco} · ${v.placas||'—'} · ${flNombrePorCorreo(v.responsable)||'—'}</div></div></div>`:''}<div class="grid3"><div class="field"><label>Tipo</label><span>${s.tipo||'—'}</span></div><div class="field"><label>Prioridad</label><span>${s.prioridad||'Normal'}</span></div><div class="field"><label>KM</label><span>${s.kilometrajeReportado||'—'}</span></div></div><div class="grid2"><div class="field"><label>Solicitante</label><span>${s.solicitante||'—'}</span></div><div class="field"><label>Taller</label><span>${s.tallerNombre||s.taller||'Sin especificar'}</span></div></div><div class="field" style="margin-bottom:12px"><label>Descripción</label><span style="font-size:12px;font-weight:500;line-height:1.6">${s.descripcion||'—'}</span></div><div class="gas-box"><div>${gasSVG}</div><div><div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:4px">Nivel de combustible</div><div style="font-size:28px;font-weight:900;color:${gasColor};line-height:1">${gasPct}%</div></div></div>${s.comentarioRechazo?`<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:7px;padding:10px 12px;margin-bottom:10px"><div style="font-size:8.5px;font-weight:800;text-transform:uppercase;color:#B91C1C;margin-bottom:4px">Motivo de rechazo</div><div style="font-size:12px;color:#991B1B">${s.comentarioRechazo}</div></div>`:''}<div class="sec">Evidencias fotográficas (${evGen.length})</div><div style="margin-bottom:12px">${evThumbsHTML}</div><div class="sec">Checklist de revisión</div>${chkFullHTML}${chkPhotosHTML?`<div class="sec">Galería de fotos del checklist (${chkFEntries.length})</div><div style="margin-bottom:12px">${chkPhotosHTML}</div>`:''}<div class="footer">Generado por Portal Flotilla Tecnocontrol · ${new Date().toLocaleString('es-MX')} · ID: ${id}</div><div style="margin-top:16px;display:flex;gap:10px;justify-content:flex-end"><button onclick="window.print()" style="padding:11px 28px;background:#0A1628;color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer">Imprimir / Guardar PDF</button></div></body></html>`;
   const win=window.open('','_blank','width=860,height=960');
   if(win){win.document.write(html);win.document.close();}
 };
@@ -7957,7 +7999,7 @@ window.flCompartirWA=function(id){
 window.flReact=async function(id){if(!confirm('¿Reactivar este vehículo?'))return;try{await fs.updateDoc(fs.doc(db,C.VEHS,id),{status:'activo',fechaBaja:'',motivoBaja:''});const v=flV.find(x=>x.id===id);if(v)v.status='activo';rBajas();}catch(e){console.error('[FL]',e);}};
 
 // ── Ver vehículo de baja ──
-window.flVerVeh=function(id){const v=flV.find(x=>x.id===id);if(!v)return;const ov=document.createElement('div');ov.className='fl-ov';ov.style.zIndex='3300';ov.innerHTML=`<div class="fl-modal"><div class="fl-mh"><h3>ECO ${v.eco} · ${v.unidad||'—'}</h3><button class="fl-mx" onclick="this.closest('.fl-ov').remove()">✕</button></div><div class="fl-mb"><div style="display:grid;grid-template-columns:1fr 1fr;background:#F8FAFD;border-radius:9px;overflow:hidden;border:1px solid #E8EDF5">${[['Placas',v.placas||'—'],['Año',v.año||'—'],['Serie',v.serie||'—'],['Color',v.color||'—'],['Plaza',v.plaza||'—'],['Responsable',v.responsable||'—'],['KM',v.km||'—'],['Baja',v.fechaBaja?v.fechaBaja.slice(0,10):'—']].map(([l,val])=>`<dl style="padding:7px 11px;border-right:1px solid #E8EDF5;border-bottom:1px solid #E8EDF5"><dt style="font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">${l}</dt><dd style="font-size:11.5px;font-weight:600">${val}</dd></dl>`).join('')}<dl style="grid-column:1/-1;padding:7px 11px"><dt style="font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">Motivo baja</dt><dd style="font-size:11.5px">${v.motivoBaja||'—'}</dd></dl></div><div class="fl-fa"><button class="fb gho" onclick="this.closest('.fl-ov').remove()">Cerrar</button>${hAdm()?`<button class="fb acc" onclick="flReact('${v.id}');this.closest('.fl-ov').remove()">Reactivar</button>`:''}</div></div></div>`;document.body.appendChild(ov);ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});};
+window.flVerVeh=function(id){const v=flV.find(x=>x.id===id);if(!v)return;const ov=document.createElement('div');ov.className='fl-ov';ov.style.zIndex='3300';ov.innerHTML=`<div class="fl-modal"><div class="fl-mh"><h3>ECO ${v.eco} · ${v.unidad||'—'}</h3><button class="fl-mx" onclick="this.closest('.fl-ov').remove()">✕</button></div><div class="fl-mb"><div style="display:grid;grid-template-columns:1fr 1fr;background:#F8FAFD;border-radius:9px;overflow:hidden;border:1px solid #E8EDF5">${[['Placas',v.placas||'—'],['Año',v.año||'—'],['Serie',v.serie||'—'],['Color',v.color||'—'],['Plaza',v.plaza||'—'],['Responsable',flNombrePorCorreo(v.responsable)||'—'],['KM',v.km||'—'],['Baja',v.fechaBaja?v.fechaBaja.slice(0,10):'—']].map(([l,val])=>`<dl style="padding:7px 11px;border-right:1px solid #E8EDF5;border-bottom:1px solid #E8EDF5"><dt style="font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">${l}</dt><dd style="font-size:11.5px;font-weight:600">${val}</dd></dl>`).join('')}<dl style="grid-column:1/-1;padding:7px 11px"><dt style="font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">Motivo baja</dt><dd style="font-size:11.5px">${v.motivoBaja||'—'}</dd></dl></div><div class="fl-fa"><button class="fb gho" onclick="this.closest('.fl-ov').remove()">Cerrar</button>${hAdm()?`<button class="fb acc" onclick="flReact('${v.id}');this.closest('.fl-ov').remove()">Reactivar</button>`:''}</div></div></div>`;document.body.appendChild(ov);ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});};
 
 // ── Visor imagen rápido (comisiones) ──
 window.flImg=function(src){const ov=document.createElement('div');ov.className='fl-ov';ov.style.zIndex='4500';ov.style.cursor='zoom-out';ov.innerHTML=`<img src="${src}" style="max-width:92%;max-height:92%;border-radius:12px;box-shadow:0 24px 60px rgba(0,0,0,.5)">`;ov.onclick=()=>ov.remove();document.body.appendChild(ov);};
