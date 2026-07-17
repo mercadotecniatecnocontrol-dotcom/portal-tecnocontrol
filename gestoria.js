@@ -189,6 +189,7 @@
         "Representante Técnico.": "ROL_REPRESENTANTE_TECNICO",
         "5.6 Representante Técnico.": "ROL_REPRESENTANTE_TECNICO",
         "Intendencia": "ROL_INTENDENCIA",
+        "LOGO": "__LOGO__",
     };
 
     // Roles seleccionables por checklist — cada cliente marca cuáles
@@ -548,6 +549,43 @@
         });
     }
 
+    // ── SGM: neutralizar la tabla fija "DOCUMENTO CONTROLADO" ───
+    // Esta tabla (Nombre / Puesto o función / Firma / Fecha, filas
+    // Elaboró/Revisó/Aprobó) es idéntica en los 41 machotes y describe
+    // al personal de METRyCAL/HEDMA que armó la plantilla — NO al
+    // cliente. El texto resaltado en esa columna ("Administrativo.",
+    // "Alta Dirección.") choca por casualidad con las mismas claves
+    // que SGM_MAPEO usa para insertar los roles reales del cliente en
+    // otras partes del documento. Aquí solo quitamos el resaltado y
+    // dejamos el texto tal cual, para que el paso normal de reemplazo
+    // ya no lo toque (esResaltadoAmarillo dejará de detectarlo).
+    function neutralizarPuestoDocumentoControlado(xmlDoc) {
+        const norm = t => (t || '').trim().toLowerCase();
+        for (const tbl of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'tbl'))) {
+            const filas = Array.from(tbl.getElementsByTagNameNS(NS_W, 'tr'));
+            if (!filas.length) continue;
+            const encabezado = Array.from(filas[0].getElementsByTagNameNS(NS_W, 'tc')).map(textoDeCelda);
+            const esTablaDocumentoControlado = encabezado.some(t => norm(t) === 'nombre')
+                && encabezado.some(t => norm(t) === 'puesto o función');
+            if (!esTablaDocumentoControlado) continue;
+
+            const idxPuesto = encabezado.findIndex(t => norm(t) === 'puesto o función');
+            for (const fila of filas) {
+                const celdas = Array.from(fila.getElementsByTagNameNS(NS_W, 'tc'));
+                const primeraCelda = norm(textoDeCelda(celdas[0]));
+                if (!/^(elaboró|revisó|aprobó):?$/.test(primeraCelda)) continue;
+                const celdaPuesto = celdas[idxPuesto];
+                if (!celdaPuesto) continue;
+                Array.from(celdaPuesto.getElementsByTagNameNS(NS_W, 'r')).forEach(quitarResaltado);
+            }
+        }
+    }
+
+    function textoDeCelda(celda) {
+        if (!celda) return '';
+        return Array.from(celda.getElementsByTagNameNS(NS_W, 't')).map(t => t.textContent).join('');
+    }
+
     async function procesarDocx(arrayBuffer, nombreArchivo, datos, stats, zip) {
         const parser = new DOMParser();
         const serializer = new XMLSerializer();
@@ -558,6 +596,10 @@
             const xmlTexto = await zip.file(ruta).async('string');
             const xmlDoc = parser.parseFromString(xmlTexto, 'application/xml');
             const ctx = { zip, ruta, imagen: ctxImagen };
+
+            if (_seccionActual === 'sgm') {
+                neutralizarPuestoDocumentoControlado(xmlDoc);
+            }
 
             for (const p of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'))) {
                 await procesarParrafo(p, datos, stats, ctx);
