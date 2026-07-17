@@ -3550,6 +3550,14 @@ function renderRP(id){
       ${fila('Año modelo',v.año||'—')}
       ${fila('Color',v.color||'—')}
       ${fila('Kilometraje',v.km?`${v.km} km`:'—',true)}
+      ${(()=>{
+        const regsKm=flChkSem.filter(c=>String(c.vehiculoEco)===String(v.eco)&&c.km!=null&&c.km!=='').sort((a,b)=>String(a.creadoEn||a.semana||'').localeCompare(String(b.creadoEn||b.semana||'')));
+        if(regsKm.length<2)return'';
+        const anterior=Number(regsKm[regsKm.length-2].km),actual=Number(regsKm[regsKm.length-1].km);
+        const delta=actual-anterior;
+        const anom=flCalcularAnalisisKm().anomalias.find(a=>a.eco===String(v.eco));
+        return fila('Km. checklist (ant. → act.)',`${anterior} → ${actual}<span style="color:${delta<0?'#B91C1C':'#64748B'};font-weight:600"> (${delta>=0?'+':''}${delta} km)</span>${anom?` <span style="font-size:9px;font-weight:800;padding:2px 7px;border-radius:100px;background:${anom.severidad==='alta'?'#FEF2F2':anom.severidad==='media'?'#FFFBEB':'#EFF6FF'};color:${anom.severidad==='alta'?'#B91C1C':anom.severidad==='media'?'#B45309':'#1D4ED8'};margin-left:4px" title="${anom.motivo.replace(/"/g,'&quot;')}">⚠ ANOMALÍA</span>`:''}`,true);
+      })()}
       ${fila('Estatus',`<span style="color:${pvOk?'#15803D':'#B91C1C'}">${v.status||'activo'}</span>`)}
       ${fila('Rendimiento',v.rend||'—')}
       ${(()=>{const s=flServicioEstado(v);return s?fila('Próximo servicio',`<span style="color:${s.estado==='vencido'?'#B91C1C':s.estado==='proximo'?'#B45309':'#15803D'}">${s.estado==='vencido'?`Vencido (${Math.abs(s.faltan)} km)`:`${s.faltan} km`}</span>`):'';})()}
