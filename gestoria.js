@@ -189,8 +189,168 @@
         { clave: "ROL_ENCARGADO_ESTACION",    etiqueta: "Encargado de estación", obligatorio: false },
         { clave: "ROL_ENCARGADO_PROYECTO",    etiqueta: "Encargado de proyecto", obligatorio: false },
         { clave: "ROL_MANTENIMIENTO",         etiqueta: "Mantenimiento",         obligatorio: false },
+        { clave: "ROL_DESPACHADOR",           etiqueta: "Despachador",           obligatorio: false },
         { clave: "ROL_INTENDENCIA",           etiqueta: "Intendencia",           obligatorio: false },
     ];
+
+    // Jerarquía fija del organigrama (según el propio MGM: "Le reportan:
+    // Encargado de estación, Encargado de Proyecto, Representante
+    // Técnico, Despachadores, Mantenimiento e Intendencia" bajo
+    // Administrativo). Los puestos personalizados se agregan como un
+    // nivel adicional, reportando a Administrativo.
+    const SGM_JERARQUIA_ORGANIGRAMA = [
+        ["ROL_ALTA_DIRECCION"],
+        ["ROL_ADMINISTRATIVO"],
+        ["ROL_ENCARGADO_ESTACION", "ROL_ENCARGADO_PROYECTO", "ROL_REPRESENTANTE_TECNICO", "ROL_DESPACHADOR", "ROL_MANTENIMIENTO", "ROL_INTENDENCIA"],
+    ];
+
+    const SGM_CATALOGO_GENERICO = {
+        "ROL_ALTA_DIRECCION": {
+                "responsabilidades": [
+                        "Asegurar que la Organización sea una entidad con responsabilidad legal ante las autoridades competentes y la sociedad en general.",
+                        "Asegurar de que se dispone de los recursos humanos y materiales necesarios para establecer, mantener y mejorar la FM y el SGM.",
+                        "Es la máxima autoridad de la organización, es quien dispone los recursos necesarios para el correcto funcionamiento de la empresa, asigna responsabilidades y autoridad del RT."
+                ],
+                "funciones": [
+                        "Definir la estructura de la Organización, funciones y responsabilidades del personal del SGM.",
+                        "Proveer los recursos humanos y materiales requeridos por el SGM y la FM.",
+                        "Facilitar mecanismos para que el personal del SGM comprenda la relevancia de satisfacer los requisitos especificados por la norma ISO 10012:2003, los clientes (internos y/o externos) y las autoridades competentes.",
+                        "Aprobar políticas y objetivos del SGM.",
+                        "Realizar o coordinar que se realicen periódicamente revisiones por la alta dirección al SGM.",
+                        "Proveer mecanismos y recursos para asegurar la competencia de todo el personal del SGM.",
+                        "Proveer mecanismos y recursos para asegurar la confiabilidad de los procesos y equipos de medición del SGM."
+                ],
+                "autoridad": [
+                        "Máximo nivel de jerarquía en la Organización."
+                ],
+                "interrelaciones": [
+                        "Coordina de manera directa a las gerencias de la empresa y la dirección de la FM."
+                ]
+        },
+        "ROL_ADMINISTRATIVO": {
+                "responsabilidades": [
+                        "Establecer, documentar, mantener y dirigir el SGM y mejorar su eficacia de forma continua.",
+                        "Representar todas las actividades realizadas por la FM.",
+                        "Encargado de asistir en toda la organización y gestión de los recursos de la empresa, además de tratar, administrar o gestionar información importante directamente con clientes y/o proveedores.",
+                        "Definir, implementar y mejorar los procesos de selección, contratación, inducción, formación continua, seguridad y retiro del personal de la Organización."
+                ],
+                "funciones": [
+                        "Definir y establecer políticas y objetivos medibles del SGM.",
+                        "Asegurar la confiabilidad de los resultados generados por el SGM.",
+                        "Planificar, controlar y monitorear los procesos y equipos de medición del SGM.",
+                        "Gestionar los recursos humanos y materiales necesarios para la operación del SGM y cumplimiento de objetivos.",
+                        "Implementar acciones para asegurar y mantener la competencia del personal del SGM.",
+                        "Apoyar en las revisiones por la alta dirección de la Organización, en caso requerido.",
+                        "Realizar las contrataciones de personal requeridas por la Organización.",
+                        "Mantener registros actualizados de los perfiles de los puestos de trabajo del personal directivo, técnico y de apoyo del SGM."
+                ],
+                "autoridad": [
+                        "Reporta a la Alta Dirección.",
+                        "Le reportan: Encargado de estación, Encargado de Proyecto, Representante Técnico, Despachadores, Mantenimiento e Intendencia."
+                ],
+                "interrelaciones": [
+                        "Relación directa con el Alta Dirección y otras gerencias de la Organización."
+                ]
+        },
+        "ROL_ENCARGADO_ESTACION": {
+                "responsabilidades": [
+                        "Asegurar la calidad de los productos y/o servicios realizados por la Organización, conforme el SGM.",
+                        "Supervisar las operaciones diarias de la estación de servicio, garantizar que se satisfagan las necesidades de los clientes y mantener un alto nivel de eficiencia."
+                ],
+                "funciones": [
+                        "Asegurar el cumplimiento de los requisitos de calidad en el SGM.",
+                        "Programar y coordinar auditorías de calidad.",
+                        "Supervisar la calidad en otras áreas de la Organización.",
+                        "Apoyar en las revisiones por la Alta Dirección de la Organización, en caso requerido."
+                ],
+                "autoridad": [
+                        "Reporta al Administrativo y Alta Dirección."
+                ],
+                "interrelaciones": [
+                        "Mantiene una estrecha relación con el Administrativo, Alta Dirección y otras jefaturas."
+                ]
+        },
+        "ROL_ENCARGADO_PROYECTO": {
+                "responsabilidades": [
+                        "Supervisar las operaciones diarias de la estación de servicio, garantizar que se satisfagan las necesidades de los clientes y mantener un alto nivel de eficiencia.",
+                        "Dar seguimiento, dirigir y gestionar el proyecto; planifica y además coordina las tareas y fechas de ejecución de las actividades, asumiendo un rol de liderazgo."
+                ],
+                "funciones": [
+                        "Supervisar las operaciones diarias de la estación de servicio.",
+                        "Coordinar las actividades de inserción, conservación y retiro de instalaciones, maquinaria y equipo de medición del SGM.",
+                        "Llevar el control operativo de las instalaciones, maquinaria y equipos de medición del SGM."
+                ],
+                "autoridad": [
+                        "Reporta al Administrativo y Alta Dirección."
+                ],
+                "interrelaciones": [
+                        "Mantiene una estrecha relación con el Encargado de estación y otras jefaturas de la Administración y Alta Dirección."
+                ]
+        },
+        "ROL_REPRESENTANTE_TECNICO": {
+                "responsabilidades": [
+                        "Informar a la Alta Dirección de las necesidades de recursos, materiales y de personal, para el cumplimiento de lo establecido."
+                ],
+                "funciones": [
+                        "Coordinar las actividades de gestión y planeación logística de la Organización.",
+                        "Coordinar las actividades de transporte y distribución de materia prima y productos relacionados con el SGM, dentro y fuera de la Organización."
+                ],
+                "autoridad": [
+                        "Reporta a la Alta Dirección."
+                ],
+                "interrelaciones": [
+                        "Mantiene una estrecha relación con el Administrativo y otras jefaturas de la Alta Dirección."
+                ]
+        },
+        "ROL_DESPACHADOR": {
+                "responsabilidades": [
+                        "Realizar labores de suministro y cobros de la venta de combustibles, la atención y asesoramiento al cliente, así como limpieza y mantenimiento preventivo de la estación de servicio."
+                ],
+                "funciones": [
+                        "Realizar actividades de mantenimiento y conservación de instalaciones, maquinaria y equipo de medición del SGM a su cargo.",
+                        "Apoyar a Mantenimiento en otras actividades técnicas no consideradas dentro del SGM."
+                ],
+                "autoridad": [
+                        "Reporta a Mantenimiento."
+                ],
+                "interrelaciones": [
+                        "Mantiene una estrecha relación con Mantenimiento y personal de otras jefaturas de la Administración y Alta Dirección."
+                ]
+        },
+        "ROL_MANTENIMIENTO": {
+                "responsabilidades": [
+                        "Asegurar la apropiada instalación, operación, conservación y retiro de las instalaciones, maquinaria y equipo de medición del SGM a su cargo.",
+                        "Mantener los equipos de trabajo, maquinaria e instalaciones en óptimas condiciones de operación, y atender las fallas emergentes."
+                ],
+                "funciones": [
+                        "Realizar actividades de mantenimiento y conservación de las instalaciones, maquinaria y equipo de medición del SGM a su cargo.",
+                        "Apoyar a Despachadores y Administrativo en otras actividades técnicas no consideradas dentro del SGM."
+                ],
+                "autoridad": [
+                        "Reporta al Encargado De Estación, Administrativo y Alta Dirección."
+                ],
+                "interrelaciones": [
+                        "Mantiene una estrecha relación con el personal de otras jefaturas de la Administración y Alta Dirección."
+                ]
+        },
+        "ROL_INTENDENCIA": {
+                "responsabilidades": [
+                        "Respetar la programación de limpieza asignada.",
+                        "Garantizar la limpieza de todas las áreas asignadas de la estación de servicio, asegurando estándares de orden e higiene.",
+                        "Usar correctamente los productos y herramientas de limpieza, evitando desperdicios y daños."
+                ],
+                "funciones": [
+                        "Realizar labores de limpieza en las áreas designadas.",
+                        "Mantener una actitud de servicio y colaborar con otros departamentos en actividades que contribuyan al buen funcionamiento de la estación de servicio."
+                ],
+                "autoridad": [
+                        "Reporta al Encargado De Estación, Administrativo y Alta Dirección."
+                ],
+                "interrelaciones": [
+                        "Mantiene una estrecha relación con el personal de otras jefaturas de la Administración y Alta Dirección."
+                ]
+        }
+};
 
     // Equipo de medición: lista abierta (varía por estación), sin
     // catálogo fijo de tipos — el usuario agrega tantas filas como
@@ -481,6 +641,9 @@
                         await insertarLogoEnGrupo(ctx.zip, p.ownerDocument, ctx.ruta, grupo, datos.LOGO_BASE64, ctx.imagen);
                         stats.logosInsertados++;
                     } else {
+                        setTextoRun(grupo[0], '');
+                        for (let k = 1; k < grupo.length; k++) setTextoRun(grupo[k], '');
+                        grupo.forEach(quitarResaltado);
                         stats.logosPendientes++;
                     }
                 } else if (nuevo === null || nuevo === undefined) {
@@ -733,6 +896,236 @@
         return Array.from(celda.getElementsByTagNameNS(NS_W, 't')).map(t => t.textContent).join('');
     }
 
+    // ── SGM: reconstruir tarjetas de puesto (Responsabilidades/
+    // Funciones/Autoridad/Interrelaciones) con el catálogo capturado.
+    // Si el cliente no personalizó el catálogo de un puesto, esa
+    // tarjeta se deja exactamente como estaba (texto genérico, ya
+    // des-resaltado por neutralizarTablasDescriptivasSGM).
+    const CATS_CATALOGO = ['responsabilidades', 'funciones', 'autoridad', 'interrelaciones'];
+
+    function reconstruirTarjetasPuestosSGM(xmlDoc, datos) {
+        if (!datos.CATALOGO_PUESTOS) return;
+        const norm = t => (t || '').replace(/[.:]+\s*$/, '').trim().toLowerCase();
+        const rolPorEtiqueta = etiqueta => (SGM_ROLES_DISPONIBLES.find(r => norm(r.etiqueta) === norm(etiqueta)) || {}).clave;
+
+        for (const tbl of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'tbl'))) {
+            const celdas = Array.from(tbl.getElementsByTagNameNS(NS_W, 'tc'));
+            if (celdas.length !== 1) continue;
+            const celda = celdas[0];
+            const parrafos = Array.from(celda.children).filter(n => n.localName === 'p');
+            if (!parrafos.length) continue;
+            const totalChars = parrafos.reduce((acc, p) => acc + textoParrafo(p).length, 0);
+            if (totalChars < UMBRAL_CHARS_TABLA_GENERICA) continue; // no es la tabla de tarjetas
+
+            // localizar bloques rol -> categoria -> [indices de parrafos-item]
+            let rolActual = null, catActual = null;
+            const bloques = []; // {clave, cat, items:[idx,...]}
+            parrafos.forEach((p, i) => {
+                const texto = textoParrafo(p).trim();
+                if (!texto) return;
+                const claveRol = rolPorEtiqueta(texto);
+                if (claveRol) { rolActual = claveRol; catActual = null; return; }
+                const catMatch = CATS_CATALOGO.find(c => norm(c) === norm(texto));
+                if (catMatch) { catActual = catMatch; bloques.push({ clave: rolActual, cat: catActual, items: [] }); return; }
+                if (rolActual && catActual && bloques.length) bloques[bloques.length - 1].items.push(i);
+            });
+
+            for (const bloque of bloques) {
+                const catalogoRol = datos.CATALOGO_PUESTOS[bloque.clave];
+                if (!catalogoRol) continue; // el cliente no tocó este puesto: se deja igual
+                const itemsNuevos = (catalogoRol[bloque.cat] || []).filter(it => it.incluido !== false && (it.texto || '').trim());
+                if (!bloque.items.length) continue; // sin plantilla de párrafo que clonar, no se puede reconstruir con seguridad
+                const plantilla = parrafos[bloque.items[0]];
+                const nuevosNodos = itemsNuevos.map(it => {
+                    const clon = plantilla.cloneNode(true);
+                    const runs = Array.from(clon.getElementsByTagNameNS(NS_W, 'r'));
+                    runs.slice(1).forEach(r => r.parentNode.removeChild(r));
+                    if (runs[0]) {
+                        quitarResaltado(runs[0]);
+                        Array.from(runs[0].getElementsByTagNameNS(NS_W, 't')).forEach(t => t.parentNode.removeChild(t));
+                        const t = clon.ownerDocument.createElementNS(NS_W, 'w:t');
+                        t.setAttribute('xml:space', 'preserve');
+                        t.textContent = it.texto.trim();
+                        runs[0].appendChild(t);
+                    }
+                    const pPrClon = clon.getElementsByTagNameNS(NS_W, 'pPr')[0];
+                    if (pPrClon) {
+                        const rPrMarca = pPrClon.getElementsByTagNameNS(NS_W, 'rPr')[0];
+                        const hl = rPrMarca ? rPrMarca.getElementsByTagNameNS(NS_W, 'highlight')[0] : null;
+                        if (hl) rPrMarca.removeChild(hl);
+                    }
+                    return clon;
+                });
+                const ultimoOriginal = parrafos[bloque.items[bloque.items.length - 1]];
+                nuevosNodos.forEach(n => celda.insertBefore(n, ultimoOriginal));
+                bloque.items.forEach(i => { const p = parrafos[i]; if (p.parentNode) p.parentNode.removeChild(p); });
+            }
+        }
+    }
+
+    // ── SGM: organigrama gráfico (reemplaza la imagen pegada del MGM) ──
+    // Genera cajas con líneas de jerarquía usando solo los puestos que
+    // el cliente marcó como existentes (más los personalizados, que se
+    // colocan reportando a Administrativo). Es un lienzo de formas de
+    // Word (wordprocessingGroup/wordprocessingShape), no una imagen.
+    const NS_WPG = 'http://schemas.microsoft.com/office/word/2010/wordprocessingGroup';
+    const NS_WPS = 'http://schemas.microsoft.com/office/word/2010/wordprocessingShape';
+
+    function construirOrganigramaXml(datos) {
+        const EMU_PX = 9525;
+        const boxW = 1500000, boxH = 560000, gapH = 180000, gapV = 420000, margen = 60000;
+
+        const nombreDe = clave => (datos[clave] || '').trim();
+        const etiquetaDe = clave => (SGM_ROLES_DISPONIBLES.find(r => r.clave === clave) || {}).etiqueta || clave;
+
+        const niveles = SGM_JERARQUIA_ORGANIGRAMA
+            .map(nivel => nivel.filter(clave => !!nombreDe(clave)))
+            .filter(nivel => nivel.length);
+
+        const extras = Array.isArray(datos.ROLES_EXTRA) ? datos.ROLES_EXTRA.filter(r => r.etiqueta || r.nombre) : [];
+        if (extras.length) niveles.push(extras.map((_, i) => `EXTRA_${i}`));
+
+        if (!niveles.length) return null;
+
+        const anchoNivel = n => n.length * boxW + (n.length - 1) * gapH;
+        const anchoTotal = Math.max(...niveles.map(anchoNivel)) + margen * 2;
+
+        let cajas = [];
+        let lineas = [];
+        let y = margen;
+        let cajasPorClave = {};
+        niveles.forEach((nivel, iNivel) => {
+            const anchoEsteNivel = anchoNivel(nivel);
+            let x = (anchoTotal - anchoEsteNivel) / 2;
+            nivel.forEach(clave => {
+                const esExtra = clave.startsWith('EXTRA_');
+                const idx = esExtra ? parseInt(clave.split('_')[1], 10) : null;
+                const etiqueta = esExtra ? (extras[idx].etiqueta || 'Puesto') : etiquetaDe(clave);
+                const nombre = esExtra ? (extras[idx].nombre || '') : nombreDe(clave);
+                const caja = { x, y, w: boxW, h: boxH, etiqueta, nombre };
+                cajas.push(caja);
+                cajasPorClave[clave] = caja;
+                x += boxW + gapH;
+            });
+            // conectar con el nivel anterior (un solo padre: el nivel de arriba
+            // si tiene 1 caja; si el nivel de arriba tiene varias, no se conecta)
+            if (iNivel > 0) {
+                const nivelArriba = niveles[iNivel - 1];
+                if (nivelArriba.length === 1) {
+                    const padre = cajasPorClave[nivelArriba[0]];
+                    nivel.forEach(clave => {
+                        const hijo = cajasPorClave[clave];
+                        lineas.push({
+                            x1: padre.x + padre.w / 2, y1: padre.y + padre.h,
+                            x2: hijo.x + hijo.w / 2, y2: hijo.y,
+                        });
+                    });
+                }
+            }
+            y += boxH + gapV;
+        });
+        const altoTotal = y - gapV + boxH / 2 + margen;
+
+        let idc = 9100;
+        const shapesXml = cajas.map(c => `
+            <wps:wsp>
+                <wps:cNvPr id="${idc++}" name="Puesto"/>
+                <wps:cNvSpPr/>
+                <wps:spPr>
+                    <a:xfrm><a:off x="${Math.round(c.x)}" y="${Math.round(c.y)}"/><a:ext cx="${Math.round(c.w)}" cy="${Math.round(c.h)}"/></a:xfrm>
+                    <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+                    <a:solidFill><a:srgbClr val="1F5AA8"/></a:solidFill>
+                    <a:ln w="9525"><a:solidFill><a:srgbClr val="123863"/></a:solidFill></a:ln>
+                </wps:spPr>
+                <wps:txbx><w:txbxContent>
+                    <w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="0"/></w:pPr>
+                        <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:color w:val="FFFFFF"/><w:sz w:val="16"/></w:rPr><w:t xml:space="preserve">${escaparXml(c.etiqueta)}</w:t></w:r>
+                    </w:p>
+                    <w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="0"/></w:pPr>
+                        <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:color w:val="FFFFFF"/><w:sz w:val="14"/></w:rPr><w:t xml:space="preserve">${escaparXml(c.nombre)}</w:t></w:r>
+                    </w:p>
+                </w:txbxContent></wps:txbx>
+                <wps:bodyPr wrap="square" lIns="45720" tIns="27432" rIns="45720" bIns="27432" anchor="ctr"><a:noAutofit/></wps:bodyPr>
+            </wps:wsp>`).join('');
+
+        const lineasXml = lineas.map(l => {
+            const x = Math.min(l.x1, l.x2), y2 = Math.min(l.y1, l.y2);
+            const cx = Math.abs(l.x2 - l.x1) || 1, cy = Math.abs(l.y2 - l.y1) || 1;
+            const flipH = l.x2 < l.x1 ? ' flipH="1"' : '';
+            return `
+            <wps:cxnSp>
+                <wps:cNvPr id="${idc++}" name="Linea"/>
+                <wps:cNvCnPr/>
+                <wps:spPr>
+                    <a:xfrm${flipH}><a:off x="${Math.round(x)}" y="${Math.round(y2)}"/><a:ext cx="${Math.round(cx)}" cy="${Math.round(cy)}"/></a:xfrm>
+                    <a:prstGeom prst="line"><a:avLst/></a:prstGeom>
+                    <a:ln w="12700"><a:solidFill><a:srgbClr val="94A3B8"/></a:solidFill></a:ln>
+                </wps:spPr>
+            </wps:cxnSp>`;
+        }).join('');
+
+        const cx = Math.round(anchoTotal), cy = Math.round(altoTotal);
+        const xml = `<w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0">
+            <wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/>
+            <wp:docPr id="9099" name="Organigrama"/>
+            <a:graphic><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup">
+                <wpg:wgp>
+                    <wpg:cNvGrpSpPr/>
+                    <wpg:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/><a:chOff x="0" y="0"/><a:chExt cx="${cx}" cy="${cy}"/></a:xfrm></wpg:grpSpPr>
+                    ${lineasXml}
+                    ${shapesXml}
+                </wpg:wgp>
+            </a:graphicData></a:graphic>
+        </wp:inline></w:drawing>`;
+        return { xml, cx, cy };
+    }
+
+    function escaparXml(t) {
+        return (t || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function nodosDesdeXmlOrganigrama(xmlDoc, xmlString) {
+        const NS_DECL = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ' +
+            'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" ' +
+            'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" ' +
+            'xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup" ' +
+            'xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"';
+        const wrapper = new DOMParser().parseFromString(`<wrapper ${NS_DECL}>${xmlString}</wrapper>`, 'application/xml');
+        return xmlDoc.importNode(wrapper.documentElement.firstChild, true);
+    }
+
+    // Busca el párrafo con la imagen/tinta pegada del organigrama (tiene
+    // uno o más <w:drawing> sueltos, fuera de cualquier tabla) y lo
+    // sustituye por el organigrama generado. Si no encuentra ninguno,
+    // no hace nada (no inventa dónde insertarlo).
+    function reemplazarOrganigramaMGM(xmlDoc, datos) {
+        const parrafosConDrawing = Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'))
+            .filter(p => !estaDentroDeTabla(p) && p.getElementsByTagNameNS(NS_W, 'drawing').length > 0);
+        if (!parrafosConDrawing.length) return;
+
+        const generado = construirOrganigramaXml(datos);
+        const primero = parrafosConDrawing[0];
+        if (generado) {
+            const nuevoRun = xmlDoc.createElementNS(NS_W, 'w:r');
+            nuevoRun.appendChild(nodosDesdeXmlOrganigrama(xmlDoc, generado.xml));
+            const nuevoParrafo = xmlDoc.createElementNS(NS_W, 'w:p');
+            const pPr = xmlDoc.createElementNS(NS_W, 'w:pPr');
+            const jc = xmlDoc.createElementNS(NS_W, 'w:jc');
+            jc.setAttribute('w:val', 'center');
+            pPr.appendChild(jc);
+            nuevoParrafo.appendChild(pPr);
+            nuevoParrafo.appendChild(nuevoRun);
+            primero.parentNode.insertBefore(nuevoParrafo, primero);
+        }
+        parrafosConDrawing.forEach(p => p.parentNode && p.parentNode.removeChild(p));
+    }
+
+    function estaDentroDeTabla(p) {
+        let n = p.parentNode;
+        while (n) { if (n.nodeType === 1 && n.localName === 'tc') return true; n = n.parentNode; }
+        return false;
+    }
+
     // ══════════════════════════════════════════════════════════════
     // ── SGM: motor de personalización de Excel (SOFT-G / SOFT-T) ───
     // Los 4 machotes Excel comparten la misma hoja "Control" (siempre
@@ -948,6 +1341,10 @@
             stats.pendientes.push('Fecha de elaboración no asignada (hoja Excel)');
         }
 
+        const celdaLogo = celdaXlsx(sheetDoc, 'A1');
+        ponerTextoCeldaXlsx(celdaLogo, '');
+        asegurarEstiloSinRojoXlsx(stylesDoc, celdaLogo);
+
         const imagenes = [];
         if (datos.LOGO_BASE64) { imagenes.push({ dataUrl: datos.LOGO_BASE64, col: 0, fila: 0, maxAncho: 130, maxAlto: 75 }); stats.logosInsertados++; }
         else stats.logosPendientes++;
@@ -979,7 +1376,9 @@
             if (_seccionActual === 'sgm') {
                 procesarTablaDocumentoControlado(xmlDoc, datos, celdasFirmaPendientes);
                 neutralizarTablasDescriptivasSGM(xmlDoc);
+                reconstruirTarjetasPuestosSGM(xmlDoc, datos);
                 filtrarListasDeRolesSGM(xmlDoc, datos);
+                reemplazarOrganigramaMGM(xmlDoc, datos);
             }
 
             for (const p of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'))) {
@@ -1106,7 +1505,7 @@
         #gestoria-dashboard .gs-field input.gs-input-error{border-color:#ef4444;}
         #gestoria-dashboard .gs-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
         #gestoria-dashboard .gs-checklist-roles{display:flex;flex-direction:column;gap:10px;}
-        #gestoria-dashboard .gs-rol-fila{display:grid;grid-template-columns:220px 1fr;align-items:center;gap:12px;padding:8px 10px;border-radius:10px;background:#fbfcfe;border:1px solid rgba(59,130,246,0.1);}
+        #gestoria-dashboard .gs-rol-fila{display:grid;grid-template-columns:220px 1fr auto;align-items:center;gap:12px;padding:8px 10px;border-radius:10px;background:#fbfcfe;border:1px solid rgba(59,130,246,0.1);}
         #gestoria-dashboard .gs-rol-check{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--text);}
         #gestoria-dashboard .gs-rol-check input[type="checkbox"]{width:16px;height:16px;accent-color:var(--teal);}
         #gestoria-dashboard .gs-rol-fila input[type="text"]{padding:9px 12px;border:1px solid rgba(59,130,246,0.16);border-radius:9px;font-size:13px;font-family:'DM Sans',sans-serif;color:var(--text);background:#fff;}
@@ -1377,23 +1776,32 @@
                         ${sec.opciones.map(op => {
                             const valorActual = cliente[op.clave] || '';
                             const marcado = !!valorActual || op.obligatorio;
+                            const conCatalogo = _seccionActual === 'sgm';
                             return `
-                            <div class="gs-rol-fila" data-rol="${op.clave}">
-                                <label class="gs-rol-check">
-                                    <input type="checkbox" data-rol-check="${op.clave}" ${marcado ? 'checked' : ''} ${op.obligatorio ? 'disabled' : ''}>
-                                    <span>${op.etiqueta}${op.obligatorio ? '<span class="gs-req">*</span>' : ''}</span>
-                                </label>
-                                <input type="text" data-clave="${op.clave}" placeholder="Nombre de quien ocupa este rol"
-                                    value="${valorActual.replace(/"/g,'&quot;')}" ${marcado ? '' : 'disabled'}>
+                            <div>
+                                <div class="gs-rol-fila" data-rol="${op.clave}">
+                                    <label class="gs-rol-check">
+                                        <input type="checkbox" data-rol-check="${op.clave}" ${marcado ? 'checked' : ''} ${op.obligatorio ? 'disabled' : ''}>
+                                        <span>${op.etiqueta}${op.obligatorio ? '<span class="gs-req">*</span>' : ''}</span>
+                                    </label>
+                                    <input type="text" data-clave="${op.clave}" placeholder="Nombre de quien ocupa este rol"
+                                        value="${valorActual.replace(/"/g,'&quot;')}" ${marcado ? '' : 'disabled'}>
+                                    ${conCatalogo ? `<button type="button" class="gs-btn gs-btn-ghost gs-btn-toggle-catalogo" data-rol-toggle="${op.clave}" style="font-size:11px;padding:6px 10px;white-space:nowrap;" ${marcado ? '' : 'disabled'}>Responsabilidades ▾</button>` : ''}
+                                </div>
+                                ${conCatalogo ? renderPanelCatalogo(op.clave, obtenerCatalogoPuesto(cliente, op.clave)) : ''}
                             </div>`;
                         }).join('')}
                     </div>
                     <div id="gs-roles-extra" style="margin-top:10px;display:flex;flex-direction:column;gap:8px;">
                         ${extras.map((ex, idx) => `
-                        <div class="gs-rol-fila-extra" data-idx="${idx}" style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:center;">
-                            <input type="text" data-rol-extra-etiqueta placeholder="Nombre del puesto" value="${(ex.etiqueta||'').replace(/"/g,'&quot;')}">
-                            <input type="text" data-rol-extra-nombre placeholder="Nombre de quien lo ocupa" value="${(ex.nombre||'').replace(/"/g,'&quot;')}">
-                            <button type="button" class="gs-btn gs-btn-ghost gs-btn-quitar-rol-extra" title="Quitar este puesto">✕</button>
+                        <div data-idx="${idx}">
+                            <div class="gs-rol-fila-extra" style="display:grid;grid-template-columns:1fr 1fr auto auto;gap:10px;align-items:center;">
+                                <input type="text" data-rol-extra-etiqueta placeholder="Nombre del puesto" value="${(ex.etiqueta||'').replace(/"/g,'&quot;')}">
+                                <input type="text" data-rol-extra-nombre placeholder="Nombre de quien lo ocupa" value="${(ex.nombre||'').replace(/"/g,'&quot;')}">
+                                ${_seccionActual === 'sgm' ? `<button type="button" class="gs-btn gs-btn-ghost gs-btn-toggle-catalogo" data-rol-toggle="EXTRA_${idx}" style="font-size:11px;padding:6px 10px;white-space:nowrap;">Responsabilidades ▾</button>` : ''}
+                                <button type="button" class="gs-btn gs-btn-ghost gs-btn-quitar-rol-extra" title="Quitar este puesto">✕</button>
+                            </div>
+                            ${_seccionActual === 'sgm' ? renderPanelCatalogo(`EXTRA_${idx}`, obtenerCatalogoPuesto(cliente, `EXTRA_${idx}`)) : ''}
                         </div>`).join('')}
                     </div>
                     <button type="button" id="gs-btn-add-rol" class="gs-btn gs-btn-ghost" style="margin-top:10px;">${ICONO.mas} Agregar nuevo puesto</button>
@@ -1429,6 +1837,35 @@
             </div>`;
     }
 
+    const CATS_CATALOGO_UI = [['responsabilidades', 'Responsabilidades'], ['funciones', 'Funciones'], ['autoridad', 'Autoridad'], ['interrelaciones', 'Interrelaciones']];
+
+    function obtenerCatalogoPuesto(cliente, clave) {
+        const guardado = (cliente.CATALOGO_PUESTOS || {})[clave];
+        if (guardado) return guardado;
+        const generico = SGM_CATALOGO_GENERICO[clave];
+        const out = {};
+        CATS_CATALOGO_UI.forEach(([k]) => { out[k] = generico ? (generico[k] || []).map(texto => ({ texto, incluido: true })) : []; });
+        return out;
+    }
+
+    function renderPanelCatalogo(clave, catalogo) {
+        return `<div class="gs-catalogo-puesto" data-rol-catalogo="${clave}" style="display:none;margin:6px 0 12px 0;padding:12px 14px;background:#f8fafc;border-radius:10px;border:1px solid rgba(59,130,246,0.12);">
+            ${CATS_CATALOGO_UI.map(([key, label]) => `
+            <div style="margin-bottom:12px;">
+                <div style="font-size:11.5px;font-weight:700;color:var(--text2);margin-bottom:6px;">${label}</div>
+                <div class="gs-catalogo-items" data-cat="${key}">
+                    ${(catalogo[key] || []).map(item => `
+                    <div class="gs-catalogo-item" style="display:flex;gap:8px;align-items:flex-start;margin-bottom:5px;">
+                        <input type="checkbox" data-item-incluido ${item.incluido !== false ? 'checked' : ''} style="margin-top:5px;flex-shrink:0;">
+                        <textarea data-item-texto rows="1" style="flex:1;font-size:12px;padding:6px 8px;border:1px solid rgba(59,130,246,0.16);border-radius:6px;resize:vertical;font-family:'DM Sans',sans-serif;">${(item.texto || '').replace(/</g, '&lt;')}</textarea>
+                        <button type="button" class="gs-btn gs-btn-ghost gs-btn-quitar-item" style="padding:4px 9px;flex-shrink:0;">✕</button>
+                    </div>`).join('')}
+                </div>
+                <button type="button" class="gs-btn gs-btn-ghost gs-btn-add-item" data-cat="${key}" style="font-size:11px;padding:4px 10px;">+ agregar</button>
+            </div>`).join('')}
+        </div>`;
+    }
+
     function renderFilaEquipo(columnas, fila, idx) {
         return `<div class="gs-equipo-fila" data-idx="${idx}">
             ${columnas.map(col => `
@@ -1444,9 +1881,11 @@
         cont.querySelectorAll('.gs-rol-fila').forEach(fila => {
             const check = fila.querySelector('input[type="checkbox"]');
             const texto = fila.querySelector('input[type="text"]');
+            const btnCatalogo = fila.querySelector('.gs-btn-toggle-catalogo');
             check.addEventListener('change', () => {
                 texto.disabled = !check.checked;
                 if (!check.checked) texto.value = '';
+                if (btnCatalogo) btnCatalogo.disabled = !check.checked;
                 cont.querySelectorAll(`[data-depende-de="${fila.dataset.rol}"]`).forEach(campo => {
                     campo.style.display = check.checked ? '' : 'none';
                     if (!check.checked) { const inp = campo.querySelector('input'); if (inp) inp.value = ''; }
@@ -1454,6 +1893,37 @@
                 actualizarPreview(cont);
             });
         });
+        function bindToggleCatalogo(btn) {
+            btn.addEventListener('click', () => {
+                const panel = cont.querySelector(`.gs-catalogo-puesto[data-rol-catalogo="${btn.dataset.rolToggle}"]`);
+                if (!panel) return;
+                const visible = panel.style.display !== 'none';
+                panel.style.display = visible ? 'none' : '';
+                btn.textContent = visible ? 'Responsabilidades ▾' : 'Responsabilidades ▴';
+            });
+        }
+        function bindPanelCatalogo(panel) {
+            const nuevaFilaItem = () => `<div class="gs-catalogo-item" style="display:flex;gap:8px;align-items:flex-start;margin-bottom:5px;">
+                <input type="checkbox" data-item-incluido checked style="margin-top:5px;flex-shrink:0;">
+                <textarea data-item-texto rows="1" style="flex:1;font-size:12px;padding:6px 8px;border:1px solid rgba(59,130,246,0.16);border-radius:6px;resize:vertical;font-family:'DM Sans',sans-serif;"></textarea>
+                <button type="button" class="gs-btn gs-btn-ghost gs-btn-quitar-item" style="padding:4px 9px;flex-shrink:0;">✕</button>
+            </div>`;
+            const bindQuitar = () => {
+                panel.querySelectorAll('.gs-btn-quitar-item').forEach(b => {
+                    b.onclick = () => { b.closest('.gs-catalogo-item').remove(); };
+                });
+            };
+            panel.querySelectorAll('.gs-btn-add-item').forEach(btnAdd => {
+                btnAdd.onclick = () => {
+                    const lista = panel.querySelector(`.gs-catalogo-items[data-cat="${btnAdd.dataset.cat}"]`);
+                    lista.insertAdjacentHTML('beforeend', nuevaFilaItem());
+                    bindQuitar();
+                };
+            });
+            bindQuitar();
+        }
+        cont.querySelectorAll('.gs-btn-toggle-catalogo').forEach(bindToggleCatalogo);
+        cont.querySelectorAll('.gs-catalogo-puesto').forEach(bindPanelCatalogo);
         const contRolesExtra = cont.querySelector('#gs-roles-extra');
         const btnAddRol = cont.querySelector('#gs-btn-add-rol');
         if (contRolesExtra && btnAddRol) {
@@ -1465,13 +1935,22 @@
                 contRolesExtra.querySelectorAll('input').forEach(inp => { inp.oninput = () => actualizarPreview(cont); });
             };
             btnAddRol.addEventListener('click', () => {
+                const idx = contRolesExtra.children.length;
                 contRolesExtra.insertAdjacentHTML('beforeend', `
-                    <div class="gs-rol-fila-extra" data-idx="${contRolesExtra.children.length}" style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:center;">
-                        <input type="text" data-rol-extra-etiqueta placeholder="Nombre del puesto">
-                        <input type="text" data-rol-extra-nombre placeholder="Nombre de quien lo ocupa">
-                        <button type="button" class="gs-btn gs-btn-ghost gs-btn-quitar-rol-extra" title="Quitar este puesto">✕</button>
+                    <div data-idx="${idx}">
+                        <div class="gs-rol-fila-extra" style="display:grid;grid-template-columns:1fr 1fr auto auto;gap:10px;align-items:center;">
+                            <input type="text" data-rol-extra-etiqueta placeholder="Nombre del puesto">
+                            <input type="text" data-rol-extra-nombre placeholder="Nombre de quien lo ocupa">
+                            ${_seccionActual === 'sgm' ? `<button type="button" class="gs-btn gs-btn-ghost gs-btn-toggle-catalogo" data-rol-toggle="EXTRA_${idx}" style="font-size:11px;padding:6px 10px;white-space:nowrap;">Responsabilidades ▾</button>` : ''}
+                            <button type="button" class="gs-btn gs-btn-ghost gs-btn-quitar-rol-extra" title="Quitar este puesto">✕</button>
+                        </div>
+                        ${_seccionActual === 'sgm' ? renderPanelCatalogo(`EXTRA_${idx}`, { responsabilidades: [], funciones: [], autoridad: [], interrelaciones: [] }) : ''}
                     </div>`);
                 reindexarRoles();
+                const nuevoToggle = contRolesExtra.querySelector(`.gs-btn-toggle-catalogo[data-rol-toggle="EXTRA_${idx}"]`);
+                const nuevoPanel = contRolesExtra.querySelector(`.gs-catalogo-puesto[data-rol-catalogo="EXTRA_${idx}"]`);
+                if (nuevoToggle) bindToggleCatalogo(nuevoToggle);
+                if (nuevoPanel) bindPanelCatalogo(nuevoPanel);
             });
             reindexarRoles();
         }
@@ -1664,6 +2143,21 @@
             })).filter(r => r.etiqueta || r.nombre);
             if (roles.length) datos.ROLES_EXTRA = roles;
         }
+        const catalogos = {};
+        cont.querySelectorAll('.gs-catalogo-puesto').forEach(panel => {
+            const clave = panel.dataset.rolCatalogo;
+            const cats = {};
+            panel.querySelectorAll('.gs-catalogo-items').forEach(lista => {
+                const cat = lista.dataset.cat;
+                cats[cat] = Array.from(lista.querySelectorAll('.gs-catalogo-item')).map(fila => ({
+                    texto: (fila.querySelector('[data-item-texto]') || {}).value?.trim() || '',
+                    incluido: !!(fila.querySelector('[data-item-incluido]') || {}).checked,
+                })).filter(it => it.texto);
+            });
+            catalogos[clave] = cats;
+        });
+        if (Object.keys(catalogos).length) datos.CATALOGO_PUESTOS = catalogos;
+
         if (_logoDataUrlActual) datos.LOGO_BASE64 = _logoDataUrlActual;
         if (_firmasDataUrlActual.ELABORA) datos.FIRMA_ELABORA_BASE64 = _firmasDataUrlActual.ELABORA;
         if (_firmasDataUrlActual.REVISO) datos.FIRMA_REVISO_BASE64 = _firmasDataUrlActual.REVISO;
