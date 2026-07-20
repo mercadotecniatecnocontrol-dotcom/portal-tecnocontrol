@@ -6323,9 +6323,11 @@ window.apPrevImg2 = (input) => {
 ══════════════════════════════════════════════ -->
 <!-- ══════════════════════════════════════════════
      RAIL INTERNO UNIVERSAL POR DEPARTAMENTO
-     Por ahora solo el botón de calendario (Parrilla de
-     Documentos). Los botones específicos de cada área se
-     agregan aquí cuando se defina qué necesita cada una.
+     Botón de calendario (Parrilla de Documentos) y botón de
+     Solicitudes de Mercadotecnia (abre el modal de marketing.js,
+     visible en todos los departamentos porque cualquier área puede
+     levantar una solicitud a Mercadotecnia). Otros botones
+     específicos de cada área se agregan aquí cuando se definan.
      Se oculta en Gestoría porque ese módulo ya tiene su
      propio rail (gs-rail) con su propio botón de calendario.
 ══════════════════════════════════════════════ -->
@@ -6333,6 +6335,10 @@ window.apPrevImg2 = (input) => {
     <button class="dr-btn" onclick="window.abrirPanelParrilla()">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
         <span class="dr-tooltip">Parrilla de documentos</span>
+    </button>
+    <button class="dr-btn" onclick="window.abrirModalSolicitudMkt()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6a1 1 0 0 1 1 1v2H8V3a1 1 0 0 1 1-1z"/><path d="M8 3H6a2 2 0 0 0-2 2v15a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-2"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="16" y2="15"/><line x1="8" y1="19" x2="13" y2="19"/></svg>
+        <span class="dr-tooltip">Solicitudes de Mercadotecnia</span>
     </button>
 </div>
 
