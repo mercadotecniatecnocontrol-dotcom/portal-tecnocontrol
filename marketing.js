@@ -1587,7 +1587,7 @@ let msolEnviando = false;
                 <button class="msol-btn-ghost" onclick="msolCerrar()">Cancelar</button>
                 <div style="flex:1;"></div>
                 <button class="msol-btn-secondary" onclick="msolGuardarBorrador()">💾 Guardar borrador</button>
-                <button class="msol-btn-secondary msol-nav-btn-anterior" onclick="msolIrPaso(msolPaso-1)" style="display:none;" id="msol-btn-anterior">‹ Anterior</button>
+                <button class="msol-btn-secondary msol-nav-btn-anterior" onclick="msolAnterior()" style="display:none;" id="msol-btn-anterior">‹ Anterior</button>
                 <button class="msol-btn-primary" onclick="msolSiguiente()" id="msol-btn-siguiente">Siguiente ›</button>
             </div>
         </div>
@@ -1669,6 +1669,7 @@ function msolIrPaso(n){
     document.getElementById('msol-btn-siguiente').onclick = n===MSOL_TOTAL_PASOS ? msolEnviarSolicitud : msolSiguiente;
 }
 function msolSiguiente(){ msolIrPaso(msolPaso+1); }
+function msolAnterior(){ msolIrPaso(msolPaso-1); }
 
 // ── Recolectar datos del paso actual desde el DOM ────────────
 function msolGuardarPaso(n){
@@ -2169,6 +2170,25 @@ async function msolCargarSeguimiento(){
     dash.insertAdjacentHTML('beforeend', html);
     msolCargarSeguimiento();
 })();
+
+// ── Exponer a window: requerido porque este archivo se carga con
+//    import() dinámico (ES module) y los onclick="..." inline del HTML
+//    se resuelven en el scope global, no en el scope del módulo. ──
+window.abrirModalSolicitudMkt = abrirModalSolicitudMkt;
+window.msolCerrar = msolCerrar;
+window.msolIrPaso = msolIrPaso;
+window.msolSiguiente = msolSiguiente;
+window.msolAnterior = msolAnterior;
+window.msolSetPrioridad = msolSetPrioridad;
+window.msolSetTipo = msolSetTipo;
+window.msolToggleMedio = msolToggleMedio;
+window.msolActualizarSemaforo = msolActualizarSemaforo;
+window.msolToggleAlcance = msolToggleAlcance;
+window.msolSetPresupuesto = msolSetPresupuesto;
+window.msolEliminarArchivo = msolEliminarArchivo;
+window.msolGuardarBorrador = msolGuardarBorrador;
+window.msolEnviarSolicitud = msolEnviarSolicitud;
+window.msolCargarSeguimiento = msolCargarSeguimiento;
 
 console.log('[Marketing.js] ✅ Módulo de Solicitudes de Mercadotecnia (Fase 1) cargado');
 console.log('[Marketing.js] ✅ Módulo cargado correctamente');
