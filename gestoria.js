@@ -176,20 +176,6 @@
         "Lezlie Anahy Gutierrez Armendáriz.": "NOMBRE_ELABORA",
         "LAGA": "INICIALES_ELABORA",
         "16/12/2024": "FECHA_ELABORACION",
-        "Alta Dirección.": "ROL_ALTA_DIRECCION",
-        "Alta Dirección": "ROL_ALTA_DIRECCION",
-        "alta dirección": "ROL_ALTA_DIRECCION",
-        "Administrativo.": "ROL_ADMINISTRATIVO",
-        "Administrativo": "ROL_ADMINISTRATIVO",
-        "Encargado de estación.": "ROL_ENCARGADO_ESTACION",
-        "Encargado de estación": "ROL_ENCARGADO_ESTACION",
-        "Encargado de proyecto.": "ROL_ENCARGADO_PROYECTO",
-        "Encargado de proyecto": "ROL_ENCARGADO_PROYECTO",
-        "Mantenimiento.": "ROL_MANTENIMIENTO",
-        "Mantenimiento": "ROL_MANTENIMIENTO",
-        "Representante Técnico.": "ROL_REPRESENTANTE_TECNICO",
-        "5.6 Representante Técnico.": "ROL_REPRESENTANTE_TECNICO",
-        "Intendencia": "ROL_INTENDENCIA",
         "LOGO": "__LOGO__",
     };
 
@@ -198,7 +184,7 @@
     // Si un cliente combina roles, se marcan ambos con el mismo nombre.
     const SGM_ROLES_DISPONIBLES = [
         { clave: "ROL_ALTA_DIRECCION",        etiqueta: "Alta Dirección",        obligatorio: true  },
-        { clave: "ROL_REPRESENTANTE_TECNICO", etiqueta: "Representante Técnico", obligatorio: true  },
+        { clave: "ROL_REPRESENTANTE_TECNICO", etiqueta: "Representante Técnico", obligatorio: false },
         { clave: "ROL_ADMINISTRATIVO",        etiqueta: "Administrativo",        obligatorio: false },
         { clave: "ROL_ENCARGADO_ESTACION",    etiqueta: "Encargado de estación", obligatorio: false },
         { clave: "ROL_ENCARGADO_PROYECTO",    etiqueta: "Encargado de proyecto", obligatorio: false },
@@ -224,10 +210,10 @@
             ["NUMERO_PERMISO", "Número de permiso CRE/ASEA (PL)", "PL/9693/EXP/ES/2015"],
         ]},
         { titulo: "Control de documentos", icono: ICONO.usuarios, campos: [
-            ["NOMBRE_ELABORA", "Nombre de quien elabora", "Lezlie Anahy Gutierrez Armendáriz."],
             ["FECHA_ELABORACION", "Fecha de elaboración (dd/mm/aaaa)", "16/12/2024"],
         ]},
-        { titulo: "Firmas de control (hojas Excel SGM)", icono: ICONO.usuarios, campos: [
+        { titulo: "Firmas de control (hojas Excel y Word SGM)", icono: ICONO.usuarios, campos: [
+            ["NOMBRE_ELABORA", "Nombre de quien elabora", "Lezlie Anahy Gutierrez Armendáriz."],
             ["PUESTO_ELABORA", "Puesto de quien elabora", "Administrativo"],
             ["NOMBRE_REVISO", "Nombre de quien revisa", "Félix Ruiz González"],
             ["PUESTO_REVISO", "Puesto de quien revisa", "Alta Dirección"],
@@ -429,7 +415,7 @@
         </wp:inline></w:drawing>`;
     }
 
-    async function insertarLogoEnGrupo(zip, xmlDoc, rutaXml, grupoRuns, dataUrl, ctxImg) {
+    async function insertarImagenEnGrupo(zip, xmlDoc, rutaXml, grupoRuns, dataUrl, ctxImg, altoObjetivoPx, anchoMaximoPx) {
         const { bytes, mime, ext } = dataUrlABytes(dataUrl);
         await asegurarContentType(zip, ext, mime);
         ctxImg.contador++;
@@ -438,11 +424,6 @@
         const rId = await agregarRelacionImagen(zip, rutaXml, mediaFilename);
 
         const { width, height } = await medirImagenDataUrl(dataUrl);
-        // La celda "LOGO" del encabezado SGM mide 104px de ancho total
-        // (incluyendo bordes y márgenes internos de la celda); dejamos
-        // ~19px de margen para que no toque los bordes.
-        const altoObjetivoPx = 40;
-        const anchoMaximoPx = 85;
         let anchoPx = width * (altoObjetivoPx / height);
         let altoPx = altoObjetivoPx;
         if (anchoPx > anchoMaximoPx) { altoPx = altoPx * (anchoMaximoPx / anchoPx); anchoPx = anchoMaximoPx; }
@@ -455,6 +436,31 @@
         quitarResaltado(primerRun);
         primerRun.appendChild(nodoDrawing);
         for (let k = 1; k < grupoRuns.length; k++) { setTextoRun(grupoRuns[k], ''); quitarResaltado(grupoRuns[k]); }
+    }
+
+    async function insertarLogoEnGrupo(zip, xmlDoc, rutaXml, grupoRuns, dataUrl, ctxImg) {
+        // La celda "LOGO" del encabezado SGM mide 104px de ancho total
+        // (incluyendo bordes y márgenes internos de la celda); dejamos
+        // ~19px de margen para que no toque los bordes.
+        await insertarImagenEnGrupo(zip, xmlDoc, rutaXml, grupoRuns, dataUrl, ctxImg, 40, 85);
+    }
+
+    // Inserta una firma dentro de una celda de tabla (columna "Firma"
+    // de Elaboró/Revisó/Aprobó). Si la celda no tiene ningún run
+    // todavía (queda vacía en el machote), se crea uno primero.
+    async function insertarFirmaEnCelda(zip, xmlDoc, rutaXml, celda, dataUrl, ctxImg) {
+        let parrafo = celda.getElementsByTagNameNS(NS_W, 'p')[0];
+        if (!parrafo) {
+            parrafo = xmlDoc.createElementNS(NS_W, 'w:p');
+            celda.appendChild(parrafo);
+        }
+        let runs = Array.from(parrafo.getElementsByTagNameNS(NS_W, 'r'));
+        if (!runs.length) {
+            const run = xmlDoc.createElementNS(NS_W, 'w:r');
+            parrafo.appendChild(run);
+            runs = [run];
+        }
+        await insertarImagenEnGrupo(zip, xmlDoc, rutaXml, runs, dataUrl, ctxImg, 26, 90);
     }
 
     async function procesarParrafo(p, datos, stats, ctx) {
@@ -591,8 +597,19 @@
         }
     }
 
-    function neutralizarPuestoDocumentoControlado(xmlDoc) {
+    // Llena Nombre/Puesto/Firma de la tabla "DOCUMENTO CONTROLADO"
+    // (Elaboró/Revisó/Aprobó) con los MISMOS campos que ya usa el motor
+    // de Excel (NOMBRE_ELABORA/PUESTO_ELABORA/FIRMA_ELABORA_BASE64,
+    // etc.) — antes esta tabla se dejaba fija; ahora es consistente
+    // con lo capturado en la plataforma en ambos formatos.
+    function procesarTablaDocumentoControlado(xmlDoc, datos, celdasFirmaPendientes) {
         const norm = t => (t || '').trim().toLowerCase();
+        const val = (clave, porDefecto) => (datos[clave] && String(datos[clave]).trim()) ? String(datos[clave]).trim() : porDefecto;
+        const filasInfo = {
+            'elaboró': { nombre: val('NOMBRE_ELABORA', 'Lezlie Anahy Gutierrez Armendáriz.'), puesto: val('PUESTO_ELABORA', 'Administrativo'), firma: datos.FIRMA_ELABORA_BASE64 },
+            'revisó': { nombre: val('NOMBRE_REVISO', 'Félix Ruiz Gonzalez'), puesto: val('PUESTO_REVISO', 'Alta Dirección'), firma: datos.FIRMA_REVISO_BASE64 },
+            'aprobó': { nombre: val('NOMBRE_APRUEBA', 'Félix Ruiz Gonzalez'), puesto: val('PUESTO_APRUEBA', 'Alta Dirección'), firma: datos.FIRMA_APRUEBA_BASE64 },
+        };
         for (const tbl of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'tbl'))) {
             const filas = Array.from(tbl.getElementsByTagNameNS(NS_W, 'tr'));
             if (!filas.length) continue;
@@ -601,16 +618,114 @@
                 && encabezado.some(t => norm(t) === 'puesto o función');
             if (!esTablaDocumentoControlado) continue;
 
+            const idxNombre = encabezado.findIndex(t => norm(t) === 'nombre');
             const idxPuesto = encabezado.findIndex(t => norm(t) === 'puesto o función');
+            const idxFirma = encabezado.findIndex(t => norm(t) === 'firma');
             for (const fila of filas) {
                 const celdas = Array.from(fila.getElementsByTagNameNS(NS_W, 'tc'));
-                const primeraCelda = norm(textoDeCelda(celdas[0]));
-                if (!/^(elaboró|revisó|aprobó):?$/.test(primeraCelda)) continue;
-                const celdaPuesto = celdas[idxPuesto];
-                if (!celdaPuesto) continue;
-                Array.from(celdaPuesto.getElementsByTagNameNS(NS_W, 'r')).forEach(quitarResaltado);
+                const primeraCelda = norm(textoDeCelda(celdas[0])).replace(/:$/, '');
+                const info = filasInfo[primeraCelda];
+                if (!info) continue;
+                if (celdas[idxNombre]) reemplazarTextoCelda(celdas[idxNombre], info.nombre);
+                if (celdas[idxPuesto]) reemplazarTextoCelda(celdas[idxPuesto], info.puesto);
+                if (celdas[idxFirma]) {
+                    Array.from(celdas[idxFirma].getElementsByTagNameNS(NS_W, 'r')).forEach(quitarResaltado);
+                    if (info.firma && celdasFirmaPendientes) celdasFirmaPendientes.push({ celda: celdas[idxFirma], dataUrl: info.firma });
+                }
             }
         }
+    }
+
+    // Sustituye TODO el contenido de texto de una celda por un valor
+    // nuevo, dejando solo un run con el formato del primero (y sin
+    // resaltado), para no arrastrar fragmentos del texto original.
+    function reemplazarTextoCelda(celda, textoNuevo) {
+        const parrafo = celda.getElementsByTagNameNS(NS_W, 'p')[0];
+        if (!parrafo) return;
+        const runs = Array.from(parrafo.getElementsByTagNameNS(NS_W, 'r'));
+        const primero = runs[0];
+        runs.slice(1).forEach(r => r.parentNode && r.parentNode.removeChild(r));
+        if (primero) {
+            quitarResaltado(primero);
+            Array.from(primero.getElementsByTagNameNS(NS_W, 't')).forEach(t => t.parentNode.removeChild(t));
+            const t = primero.ownerDocument.createElementNS(NS_W, 'w:t');
+            t.setAttribute('xml:space', 'preserve');
+            t.textContent = textoNuevo;
+            primero.appendChild(t);
+        }
+    }
+
+    function textoParrafo(p) {
+        return Array.from(p.getElementsByTagNameNS(NS_W, 't')).map(t => t.textContent).join('');
+    }
+
+    // ── SGM: filtrar listas numeradas de roles ("5.1 Alta Dirección.",
+    // "5.2 Administrativo"...) para que solo aparezcan los puestos que
+    // el cliente marcó como existentes en su organigrama. Se aplica
+    // tanto a párrafos sueltos (secciones de Responsabilidades) como a
+    // filas de tabla (el Índice). No renumera — si se elimina un
+    // puesto intermedio puede quedar un salto en la numeración.
+    function filtrarListasDeRolesSGM(xmlDoc, datos) {
+        const etiquetas = SGM_ROLES_DISPONIBLES.map(r => r.etiqueta);
+        const estaCapturado = etiqueta => {
+            const rol = SGM_ROLES_DISPONIBLES.find(r => r.etiqueta.toLowerCase() === etiqueta.toLowerCase());
+            return rol ? !!datos[rol.clave] : true;
+        };
+        const esRolConocido = etiqueta => etiquetas.some(e => e.toLowerCase() === etiqueta.toLowerCase());
+
+        // 1) Filas de tabla (Índice): primera celda con patrón "N.M Rol."
+        for (const tbl of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'tbl'))) {
+            for (const fila of Array.from(tbl.getElementsByTagNameNS(NS_W, 'tr'))) {
+                const celdas = Array.from(fila.getElementsByTagNameNS(NS_W, 'tc'));
+                if (!celdas.length) continue;
+                const texto = textoDeCelda(celdas[0]).trim();
+                const m = /^\d+\.\d+\s+([^.]+?)\.?\s*$/.exec(texto);
+                if (!m || !esRolConocido(m[1].trim())) continue;
+                if (estaCapturado(m[1].trim())) {
+                    celdas.forEach(c => Array.from(c.getElementsByTagNameNS(NS_W, 'r')).forEach(quitarResaltado));
+                } else if (fila.parentNode) {
+                    fila.parentNode.removeChild(fila);
+                }
+            }
+        }
+
+        // 2) Párrafos sueltos (secciones de Responsabilidades/Funciones/Autoridad)
+        const parrafos = Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'));
+        const titulos = [];
+        parrafos.forEach((p, i) => {
+            const texto = textoParrafo(p).trim();
+            const m = /^(\d+)\.(\d+)\s+([^.]+?)\.?\s*$/.exec(texto);
+            if (m && esRolConocido(m[3].trim())) titulos.push({ idx: i, seccion: m[1], rol: m[3].trim() });
+        });
+        if (!titulos.length) return;
+
+        const finDeSeccion = (desde, seccion) => {
+            for (let j = desde + 1; j < parrafos.length; j++) {
+                const t = textoParrafo(parrafos[j]).trim();
+                if (/^\d+\.\d+\s+[^.]+\.?\s*$/.test(t)) continue; // otro sub-título del mismo tipo, sigue en la sección
+                if (/^\d+\.\s*[A-ZÁÉÍÓÚÑ]/.test(t)) return j; // nuevo título de sección de primer nivel
+            }
+            return parrafos.length;
+        };
+
+        const porSeccion = {};
+        titulos.forEach(t => { (porSeccion[t.seccion] = porSeccion[t.seccion] || []).push(t); });
+
+        const paraEliminar = new Set();
+        for (const grupo of Object.values(porSeccion)) {
+            for (let k = 0; k < grupo.length; k++) {
+                const item = grupo[k];
+                const idxFin = (k + 1 < grupo.length) ? grupo[k + 1].idx : finDeSeccion(item.idx, item.seccion);
+                if (estaCapturado(item.rol)) {
+                    for (let j = item.idx; j < idxFin; j++) {
+                        Array.from(parrafos[j].getElementsByTagNameNS(NS_W, 'r')).forEach(quitarResaltado);
+                    }
+                } else {
+                    for (let j = item.idx; j < idxFin; j++) paraEliminar.add(parrafos[j]);
+                }
+            }
+        }
+        paraEliminar.forEach(p => p.parentNode && p.parentNode.removeChild(p));
     }
 
     function textoDeCelda(celda) {
@@ -759,8 +874,14 @@
             const cx = Math.round(anchoPx * 9525);
             const cy = Math.round(altoPx * 9525);
 
+            // Centrar dentro de la celda: columna F (firmas) mide ~118px,
+            // columna A (LOGO, ya viene ancho por A1:B5) no necesita centrado.
+            const anchoColPx = img.anchoColPx || 0;
+            const colOffX = anchoColPx > anchoPx ? Math.round(((anchoColPx - anchoPx) / 2) * 9525) : 19050;
+            const rowOffY = img.altoFilaPx > altoPx ? Math.round(((img.altoFilaPx - altoPx) / 2) * 9525) : 19050;
+
             anchorsXml += `<xdr:oneCellAnchor>` +
-                `<xdr:from><xdr:col>${img.col}</xdr:col><xdr:colOff>19050</xdr:colOff><xdr:row>${img.fila}</xdr:row><xdr:rowOff>19050</xdr:rowOff></xdr:from>` +
+                `<xdr:from><xdr:col>${img.col}</xdr:col><xdr:colOff>${colOffX}</xdr:colOff><xdr:row>${img.fila}</xdr:row><xdr:rowOff>${rowOffY}</xdr:rowOff></xdr:from>` +
                 `<xdr:ext cx="${cx}" cy="${cy}"/>` +
                 `<xdr:pic><xdr:nvPicPr><xdr:cNvPr id="${2000 + ctxImg.contador}" name="Imagen${ctxImg.contador}"/><xdr:cNvPicPr/></xdr:nvPicPr>` +
                 `<xdr:blipFill><a:blip r:embed="${rIdImg}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill>` +
@@ -830,9 +951,9 @@
         const imagenes = [];
         if (datos.LOGO_BASE64) { imagenes.push({ dataUrl: datos.LOGO_BASE64, col: 0, fila: 0, maxAncho: 130, maxAlto: 75 }); stats.logosInsertados++; }
         else stats.logosPendientes++;
-        if (datos.FIRMA_ELABORA_BASE64) imagenes.push({ dataUrl: datos.FIRMA_ELABORA_BASE64, col: 5, fila: 17, maxAncho: 90, maxAlto: 26 });
-        if (datos.FIRMA_REVISO_BASE64) imagenes.push({ dataUrl: datos.FIRMA_REVISO_BASE64, col: 5, fila: 18, maxAncho: 90, maxAlto: 26 });
-        if (datos.FIRMA_APRUEBA_BASE64) imagenes.push({ dataUrl: datos.FIRMA_APRUEBA_BASE64, col: 5, fila: 19, maxAncho: 90, maxAlto: 26 });
+        if (datos.FIRMA_ELABORA_BASE64) imagenes.push({ dataUrl: datos.FIRMA_ELABORA_BASE64, col: 5, fila: 17, maxAncho: 90, maxAlto: 26, anchoColPx: 118, altoFilaPx: 37 });
+        if (datos.FIRMA_REVISO_BASE64) imagenes.push({ dataUrl: datos.FIRMA_REVISO_BASE64, col: 5, fila: 18, maxAncho: 90, maxAlto: 26, anchoColPx: 118, altoFilaPx: 50 });
+        if (datos.FIRMA_APRUEBA_BASE64) imagenes.push({ dataUrl: datos.FIRMA_APRUEBA_BASE64, col: 5, fila: 19, maxAncho: 90, maxAlto: 26, anchoColPx: 118, altoFilaPx: 52 });
         if (imagenes.length) await insertarImagenesXlsxSGM(zip, sheetDoc, rutaSheet, imagenes, ctxImg);
 
         const xmlSerializer = new XMLSerializer();
@@ -854,13 +975,18 @@
             const xmlDoc = parser.parseFromString(xmlTexto, 'application/xml');
             const ctx = { zip, ruta, imagen: ctxImagen };
 
+            const celdasFirmaPendientes = [];
             if (_seccionActual === 'sgm') {
-                neutralizarPuestoDocumentoControlado(xmlDoc);
+                procesarTablaDocumentoControlado(xmlDoc, datos, celdasFirmaPendientes);
                 neutralizarTablasDescriptivasSGM(xmlDoc);
+                filtrarListasDeRolesSGM(xmlDoc, datos);
             }
 
             for (const p of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'))) {
                 await procesarParrafo(p, datos, stats, ctx);
+            }
+            for (const { celda, dataUrl } of celdasFirmaPendientes) {
+                await insertarFirmaEnCelda(zip, xmlDoc, ruta, celda, dataUrl, ctxImagen);
             }
             if (ruta === 'word/document.xml' && nombreArchivo.startsWith('F-06-02')) {
                 procesarEscolaridadF0602(xmlDoc, datos, stats);
@@ -1241,12 +1367,13 @@
             </div>`;
         }
         if (sec.tipo === 'checklist_con_nombre') {
+            const extras = Array.isArray(cliente.ROLES_EXTRA) ? cliente.ROLES_EXTRA : [];
             return `
             <div class="gs-card">
                 <div class="gs-card-header"><span class="gs-card-icon">${sec.icono}</span><span class="gs-card-title">${sec.titulo}</span></div>
                 <div class="gs-card-body">
                     <div class="gs-subtitle" style="margin-bottom:10px;">Marca los roles que existen en esta estación y el nombre de quien los ocupa. Si una persona cubre dos roles, marca ambos y repite el nombre.</div>
-                    <div class="gs-checklist-roles">
+                    <div class="gs-checklist-roles" id="gs-roles-fijos">
                         ${sec.opciones.map(op => {
                             const valorActual = cliente[op.clave] || '';
                             const marcado = !!valorActual || op.obligatorio;
@@ -1261,6 +1388,15 @@
                             </div>`;
                         }).join('')}
                     </div>
+                    <div id="gs-roles-extra" style="margin-top:10px;display:flex;flex-direction:column;gap:8px;">
+                        ${extras.map((ex, idx) => `
+                        <div class="gs-rol-fila-extra" data-idx="${idx}" style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:center;">
+                            <input type="text" data-rol-extra-etiqueta placeholder="Nombre del puesto" value="${(ex.etiqueta||'').replace(/"/g,'&quot;')}">
+                            <input type="text" data-rol-extra-nombre placeholder="Nombre de quien lo ocupa" value="${(ex.nombre||'').replace(/"/g,'&quot;')}">
+                            <button type="button" class="gs-btn gs-btn-ghost gs-btn-quitar-rol-extra" title="Quitar este puesto">✕</button>
+                        </div>`).join('')}
+                    </div>
+                    <button type="button" id="gs-btn-add-rol" class="gs-btn gs-btn-ghost" style="margin-top:10px;">${ICONO.mas} Agregar nuevo puesto</button>
                 </div>
             </div>`;
         }
@@ -1318,6 +1454,27 @@
                 actualizarPreview(cont);
             });
         });
+        const contRolesExtra = cont.querySelector('#gs-roles-extra');
+        const btnAddRol = cont.querySelector('#gs-btn-add-rol');
+        if (contRolesExtra && btnAddRol) {
+            const reindexarRoles = () => {
+                contRolesExtra.querySelectorAll('.gs-rol-fila-extra').forEach((f, i) => f.dataset.idx = i);
+                contRolesExtra.querySelectorAll('.gs-btn-quitar-rol-extra').forEach(b => {
+                    b.onclick = () => { b.closest('.gs-rol-fila-extra').remove(); reindexarRoles(); actualizarPreview(cont); };
+                });
+                contRolesExtra.querySelectorAll('input').forEach(inp => { inp.oninput = () => actualizarPreview(cont); });
+            };
+            btnAddRol.addEventListener('click', () => {
+                contRolesExtra.insertAdjacentHTML('beforeend', `
+                    <div class="gs-rol-fila-extra" data-idx="${contRolesExtra.children.length}" style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:center;">
+                        <input type="text" data-rol-extra-etiqueta placeholder="Nombre del puesto">
+                        <input type="text" data-rol-extra-nombre placeholder="Nombre de quien lo ocupa">
+                        <button type="button" class="gs-btn gs-btn-ghost gs-btn-quitar-rol-extra" title="Quitar este puesto">✕</button>
+                    </div>`);
+                reindexarRoles();
+            });
+            reindexarRoles();
+        }
         const contEquipo = cont.querySelector('#gs-equipo-filas');
         if (contEquipo) {
             const columnas = sistemaActivo().seccionesForm.find(s => s.tipo === 'tabla_dinamica').columnas;
@@ -1498,6 +1655,14 @@
                 return obj;
             }).filter(e => Object.values(e).some(v => v));
             if (equipos.length) datos.EQUIPOS = equipos;
+        }
+        const contRolesExtra = cont.querySelector('#gs-roles-extra');
+        if (contRolesExtra) {
+            const roles = Array.from(contRolesExtra.querySelectorAll('.gs-rol-fila-extra')).map(fila => ({
+                etiqueta: (fila.querySelector('[data-rol-extra-etiqueta]') || {}).value?.trim() || '',
+                nombre: (fila.querySelector('[data-rol-extra-nombre]') || {}).value?.trim() || '',
+            })).filter(r => r.etiqueta || r.nombre);
+            if (roles.length) datos.ROLES_EXTRA = roles;
         }
         if (_logoDataUrlActual) datos.LOGO_BASE64 = _logoDataUrlActual;
         if (_firmasDataUrlActual.ELABORA) datos.FIRMA_ELABORA_BASE64 = _firmasDataUrlActual.ELABORA;
