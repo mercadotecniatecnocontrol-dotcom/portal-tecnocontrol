@@ -1076,12 +1076,14 @@
                 const nivelArriba = niveles[iNivel - 1];
                 if (nivelArriba.length === 1) {
                     const padre = cajasPorClave[nivelArriba[0]];
+                    const xPadre = padre.x + padre.w / 2, yPadre = padre.y + padre.h;
                     nivel.forEach(clave => {
                         const hijo = cajasPorClave[clave];
-                        lineas.push({
-                            x1: padre.x + padre.w / 2, y1: padre.y + padre.h,
-                            x2: hijo.x + hijo.w / 2, y2: hijo.y,
-                        });
+                        const xHijo = hijo.x + hijo.w / 2, yHijo = hijo.y;
+                        const yMedio = yPadre + (yHijo - yPadre) / 2;
+                        lineas.push({ x1: xPadre, y1: yPadre, x2: xPadre, y2: yMedio });
+                        lineas.push({ x1: xPadre, y1: yMedio, x2: xHijo, y2: yMedio });
+                        lineas.push({ x1: xHijo, y1: yMedio, x2: xHijo, y2: yHijo });
                     });
                 }
             }
@@ -1111,20 +1113,25 @@
                 <wps:bodyPr wrap="square" lIns="45720" tIns="27432" rIns="45720" bIns="27432" anchor="ctr"><a:noAutofit/></wps:bodyPr>
             </wps:wsp>`).join('');
 
+        const GROSOR_LINEA = 19050; // ~2px
         const lineasXml = lineas.map(l => {
-            const x = Math.min(l.x1, l.x2), y2 = Math.min(l.y1, l.y2);
-            const cx = Math.abs(l.x2 - l.x1) || 1, cy = Math.abs(l.y2 - l.y1) || 1;
-            const flipH = l.x2 < l.x1 ? ' flipH="1"' : '';
+            const esVertical = Math.abs(l.x2 - l.x1) < 1000;
+            const x = esVertical ? Math.round(l.x1 - GROSOR_LINEA / 2) : Math.round(Math.min(l.x1, l.x2));
+            const y = Math.round(Math.min(l.y1, l.y2));
+            const cx = esVertical ? GROSOR_LINEA : Math.round(Math.abs(l.x2 - l.x1));
+            const cy = esVertical ? Math.round(Math.abs(l.y2 - l.y1)) : GROSOR_LINEA;
             return `
-            <wps:cxnSp>
+            <wps:wsp>
                 <wps:cNvPr id="${idc++}" name="Linea"/>
-                <wps:cNvCnPr/>
+                <wps:cNvSpPr/>
                 <wps:spPr>
-                    <a:xfrm${flipH}><a:off x="${Math.round(x)}" y="${Math.round(y2)}"/><a:ext cx="${Math.round(cx)}" cy="${Math.round(cy)}"/></a:xfrm>
-                    <a:prstGeom prst="line"><a:avLst/></a:prstGeom>
-                    <a:ln w="12700"><a:solidFill><a:srgbClr val="94A3B8"/></a:solidFill></a:ln>
+                    <a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${Math.max(cx,1)}" cy="${Math.max(cy,1)}"/></a:xfrm>
+                    <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+                    <a:solidFill><a:srgbClr val="94A3B8"/></a:solidFill>
+                    <a:ln><a:noFill/></a:ln>
                 </wps:spPr>
-            </wps:cxnSp>`;
+                <wps:bodyPr/>
+            </wps:wsp>`;
         }).join('');
 
         const cx = Math.round(anchoTotal), cy = Math.round(altoTotal);
@@ -1456,6 +1463,24 @@
             }
             if (ruta === 'word/document.xml' && _seccionActual === 'sgm' && RE_ARCHIVOS_CON_TABLA_EQUIPO.test(nombreArchivo)) {
                 procesarTablaEquipoSGM(xmlDoc, datos, stats);
+            }
+            if (_seccionActual === 'sgm') {
+                // Blindaje final: cualquier amarillo que haya quedado sin
+                // cubrir por una regla específica se quita de todas
+                // formas (dejando el texto tal cual estaba). Así nunca
+                // sale amarillo en el documento final, sin excepción.
+                Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'r')).filter(esResaltadoAmarillo).forEach(r => {
+                    stats.pendientes.push(textoDeRun(r).trim());
+                    quitarResaltado(r);
+                });
+                // La marca de fin de párrafo también puede llevar su
+                // propio resaltado (pPr>rPr>highlight) sin texto visible
+                // — eso pinta un "espacio" amarillo aunque no haya letras.
+                Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'pPr')).forEach(pPr => {
+                    const rPr = pPr.getElementsByTagNameNS(NS_W, 'rPr')[0];
+                    const hl = rPr ? rPr.getElementsByTagNameNS(NS_W, 'highlight')[0] : null;
+                    if (hl && hl.getAttributeNS(NS_W, 'val') === 'yellow') rPr.removeChild(hl);
+                });
             }
             zip.file(ruta, serializer.serializeToString(xmlDoc));
         }
