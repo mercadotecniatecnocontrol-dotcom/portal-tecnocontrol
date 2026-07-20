@@ -157,45 +157,7 @@
                     </div>
                 </div>
 
-                <!-- 6 KPIs principales -->
-                <div class="mkt-kpis">
-                    <div class="mkt-kpi k-seguidores" onclick="abrirModalMkt('kpis')">
-                        <div class="mkt-kpi-icon">👥</div>
-                        <div class="mkt-kpi-val" id="mkt-val-seguidores">—</div>
-                        <div class="mkt-kpi-label">Seguidores totales</div>
-                        <div class="mkt-kpi-delta" id="mkt-delta-seguidores"></div>
-                    </div>
-                    <div class="mkt-kpi k-alcance" onclick="abrirModalMkt('kpis')">
-                        <div class="mkt-kpi-icon">📡</div>
-                        <div class="mkt-kpi-val" id="mkt-val-alcance">—</div>
-                        <div class="mkt-kpi-label">Alcance mensual</div>
-                        <div class="mkt-kpi-delta" id="mkt-delta-alcance"></div>
-                    </div>
-                    <div class="mkt-kpi k-engagement" onclick="abrirModalMkt('kpis')">
-                        <div class="mkt-kpi-icon">❤️</div>
-                        <div class="mkt-kpi-val" id="mkt-val-engagement">—</div>
-                        <div class="mkt-kpi-label">Engagement rate</div>
-                        <div class="mkt-kpi-delta" id="mkt-delta-engagement"></div>
-                    </div>
-                    <div class="mkt-kpi k-leads" onclick="abrirModalMkt('kpis')">
-                        <div class="mkt-kpi-icon">🎯</div>
-                        <div class="mkt-kpi-val" id="mkt-val-leads">—</div>
-                        <div class="mkt-kpi-label">Leads generados</div>
-                        <div class="mkt-kpi-delta" id="mkt-delta-leads"></div>
-                    </div>
-                    <div class="mkt-kpi k-presupuesto" onclick="abrirModalMkt('presupuesto')">
-                        <div class="mkt-kpi-icon">💰</div>
-                        <div class="mkt-kpi-val" id="mkt-val-presupuesto">—</div>
-                        <div class="mkt-kpi-label">Presupuesto usado</div>
-                        <div class="mkt-kpi-delta" id="mkt-delta-presupuesto"></div>
-                    </div>
-                    <div class="mkt-kpi k-conversiones" onclick="abrirModalMkt('kpis')">
-                        <div class="mkt-kpi-icon">🔥</div>
-                        <div class="mkt-kpi-val" id="mkt-val-conversiones">—</div>
-                        <div class="mkt-kpi-label">Conversiones</div>
-                        <div class="mkt-kpi-delta" id="mkt-delta-conversiones"></div>
-                    </div>
-                </div>
+                <!-- KPIs principales: QUITADOS TEMPORALMENTE 2026-07-20, retomar después -->
 
                 <!-- Gráficas principales -->
                 <div class="mkt-charts-row">
@@ -829,45 +791,7 @@ function _getMktDashHTML() {
                     </div>
                 </div>
 
-                <!-- 6 KPIs principales -->
-                <div class="mkt-kpis">
-                    <div class="mkt-kpi k-seguidores" onclick="abrirModalMkt('kpis')">
-                        <div class="mkt-kpi-icon">👥</div>
-                        <div class="mkt-kpi-val" id="mkt-val-seguidores">—</div>
-                        <div class="mkt-kpi-label">Seguidores totales</div>
-                        <div class="mkt-kpi-delta" id="mkt-delta-seguidores"></div>
-                    </div>
-                    <div class="mkt-kpi k-alcance" onclick="abrirModalMkt('kpis')">
-                        <div class="mkt-kpi-icon">📡</div>
-                        <div class="mkt-kpi-val" id="mkt-val-alcance">—</div>
-                        <div class="mkt-kpi-label">Alcance mensual</div>
-                        <div class="mkt-kpi-delta" id="mkt-delta-alcance"></div>
-                    </div>
-                    <div class="mkt-kpi k-engagement" onclick="abrirModalMkt('kpis')">
-                        <div class="mkt-kpi-icon">❤️</div>
-                        <div class="mkt-kpi-val" id="mkt-val-engagement">—</div>
-                        <div class="mkt-kpi-label">Engagement rate</div>
-                        <div class="mkt-kpi-delta" id="mkt-delta-engagement"></div>
-                    </div>
-                    <div class="mkt-kpi k-leads" onclick="abrirModalMkt('kpis')">
-                        <div class="mkt-kpi-icon">🎯</div>
-                        <div class="mkt-kpi-val" id="mkt-val-leads">—</div>
-                        <div class="mkt-kpi-label">Leads generados</div>
-                        <div class="mkt-kpi-delta" id="mkt-delta-leads"></div>
-                    </div>
-                    <div class="mkt-kpi k-presupuesto" onclick="abrirModalMkt('presupuesto')">
-                        <div class="mkt-kpi-icon">💰</div>
-                        <div class="mkt-kpi-val" id="mkt-val-presupuesto">—</div>
-                        <div class="mkt-kpi-label">Presupuesto usado</div>
-                        <div class="mkt-kpi-delta" id="mkt-delta-presupuesto"></div>
-                    </div>
-                    <div class="mkt-kpi k-conversiones" onclick="abrirModalMkt('kpis')">
-                        <div class="mkt-kpi-icon">🔥</div>
-                        <div class="mkt-kpi-val" id="mkt-val-conversiones">—</div>
-                        <div class="mkt-kpi-label">Conversiones</div>
-                        <div class="mkt-kpi-delta" id="mkt-delta-conversiones"></div>
-                    </div>
-                </div>
+                <!-- KPIs principales: QUITADOS TEMPORALMENTE 2026-07-20, retomar después -->
 
                 <!-- Gráficas principales -->
                 <div class="mkt-charts-row">
@@ -1075,31 +999,33 @@ function mktDelta(curr, prev, invertido=false){
 
 function renderMktDash(d, key){
     // Guard: si el dashboard no está en el DOM todavía, no hacer nada
-    if(!document.getElementById('mkt-val-seguidores')) return;
+    if(!document.getElementById('mkt-dashboard')) return;
     const prevKey = mktKey(mktMes-1<0?11:mktMes-1, mktMes-1<0?mktAnio-1:mktAnio);
     const prev = mktData[prevKey]||{};
     const kpis = d.kpis||{}; const prevKpis = prev.kpis||{};
     const canales = d.canales||{}; const budget = d.presupuesto||{};
 
     const segTotal = (Number(canales.igSeg||0)+Number(canales.fbSeg||0));
-    document.getElementById('mkt-val-seguidores').innerText = fmtNum(segTotal||kpis.seguidores||0);
-    document.getElementById('mkt-delta-seguidores').innerHTML = mktDelta(segTotal||kpis.seguidores, (prev.canales?.igSeg||0)+(prev.canales?.fbSeg||0)+(prevKpis.seguidores||0));
-    document.getElementById('mkt-val-alcance').innerText = fmtNum(kpis.alcance||0);
-    document.getElementById('mkt-delta-alcance').innerHTML = mktDelta(kpis.alcance, prevKpis.alcance);
-    document.getElementById('mkt-val-engagement').innerText = fmtPct(kpis.engagement);
-    document.getElementById('mkt-delta-engagement').innerHTML = mktDelta(kpis.engagement, prevKpis.engagement);
-    document.getElementById('mkt-val-leads').innerText = fmtNum(kpis.leads||0);
-    document.getElementById('mkt-delta-leads').innerHTML = mktDelta(kpis.leads, prevKpis.leads);
-    document.getElementById('mkt-val-conversiones').innerText = fmtNum(kpis.conversiones||0);
-    document.getElementById('mkt-delta-conversiones').innerHTML = mktDelta(kpis.conversiones, prevKpis.conversiones);
+    // KPIs principales QUITADOS TEMPORALMENTE 2026-07-20 (grid .mkt-kpis eliminado del HTML).
+    // Lógica conservada aquí comentada para retomar después:
+    // document.getElementById('mkt-val-seguidores').innerText = fmtNum(segTotal||kpis.seguidores||0);
+    // document.getElementById('mkt-delta-seguidores').innerHTML = mktDelta(segTotal||kpis.seguidores, (prev.canales?.igSeg||0)+(prev.canales?.fbSeg||0)+(prevKpis.seguidores||0));
+    // document.getElementById('mkt-val-alcance').innerText = fmtNum(kpis.alcance||0);
+    // document.getElementById('mkt-delta-alcance').innerHTML = mktDelta(kpis.alcance, prevKpis.alcance);
+    // document.getElementById('mkt-val-engagement').innerText = fmtPct(kpis.engagement);
+    // document.getElementById('mkt-delta-engagement').innerHTML = mktDelta(kpis.engagement, prevKpis.engagement);
+    // document.getElementById('mkt-val-leads').innerText = fmtNum(kpis.leads||0);
+    // document.getElementById('mkt-delta-leads').innerHTML = mktDelta(kpis.leads, prevKpis.leads);
+    // document.getElementById('mkt-val-conversiones').innerText = fmtNum(kpis.conversiones||0);
+    // document.getElementById('mkt-delta-conversiones').innerHTML = mktDelta(kpis.conversiones, prevKpis.conversiones);
 
     const budgetUsado = Number(budget.gastado||0);
     const budgetTotal = Number(budget.asignado||0);
     const budgetPct = budgetTotal>0 ? Math.round(budgetUsado/budgetTotal*100) : 0;
-    document.getElementById('mkt-val-presupuesto').innerText = fmtMXN(budgetUsado);
-    document.getElementById('mkt-delta-presupuesto').innerHTML = budgetTotal>0
-        ? `<span class="mkt-kpi-delta ${budgetPct>90?'up-bad':'neutral'}">${budgetPct}% de ${fmtMXN(budgetTotal)}</span>`
-        : `<span class="mkt-kpi-delta neutral">— Sin presupuesto registrado</span>`;
+    // document.getElementById('mkt-val-presupuesto').innerText = fmtMXN(budgetUsado);
+    // document.getElementById('mkt-delta-presupuesto').innerHTML = budgetTotal>0
+    //     ? `<span class="mkt-kpi-delta ${budgetPct>90?'up-bad':'neutral'}">${budgetPct}% de ${fmtMXN(budgetTotal)}</span>`
+    //     : `<span class="mkt-kpi-delta neutral">— Sin presupuesto registrado</span>`;
 
     // Dona presupuesto
     const elBudget = document.getElementById('mkt-chart-budget');
@@ -1488,4 +1414,761 @@ window.sincronizarStock = async () => {
     }
 };
 
+// ══════════════════════════════════════════════════════════════
+// MÓDULO SOLICITUDES DE MERCADOTECNIA — Fase 1
+// Modal XXL tipo wizard + folio automático + Firestore + panel de
+// seguimiento (visible para todos los empleados).
+// Colección: mkt_solicitudes  ·  Subcolección: mkt_solicitudes/{id}/adjuntos
+// Contador de folio: contadores/mkt_solicitudes  { anio, ultimo }
+// ══════════════════════════════════════════════════════════════
+
+const MSOL_TIPOS = [
+    {id:'diseno_grafico', icon:'🎨', label:'Diseño gráfico'},
+    {id:'redes_sociales', icon:'📱', label:'Diseño para redes sociales'},
+    {id:'desarrollo_web',  icon:'🌐', label:'Desarrollo Web'},
+    {id:'landing',         icon:'🖥',  label:'Landing Page'},
+    {id:'mod_web',         icon:'🔧', label:'Modificación de página web'},
+    {id:'fotografia',      icon:'📷', label:'Fotografía'},
+    {id:'video',           icon:'🎥', label:'Video'},
+    {id:'edicion_video',   icon:'✂️', label:'Edición de video'},
+    {id:'branding',        icon:'🏷', label:'Branding'},
+    {id:'manuales',        icon:'📘', label:'Manuales'},
+    {id:'presentaciones',  icon:'📊', label:'Presentaciones'},
+    {id:'flyers',          icon:'📄', label:'Flyers'},
+    {id:'banners',         icon:'🖼', label:'Banners'},
+    {id:'publicidad',      icon:'📢', label:'Publicidad'},
+    {id:'campanas',        icon:'🚀', label:'Campañas'},
+    {id:'mailing',         icon:'✉️', label:'Mailing'},
+    {id:'renderizados',    icon:'🧊', label:'Renderizados'},
+    {id:'logos',           icon:'⭐', label:'Logos'},
+    {id:'catalogos',       icon:'📚', label:'Catálogos'},
+    {id:'cotizaciones',    icon:'💵', label:'Cotizaciones'},
+    {id:'material_pop',    icon:'🛍', label:'Material POP'},
+    {id:'impresiones',     icon:'🖨', label:'Impresiones'},
+    {id:'lonas',           icon:'🏳️', label:'Lonas'},
+    {id:'rotulacion',      icon:'🚚', label:'Rotulación'},
+    {id:'senaletica',      icon:'🪧', label:'Señalética'},
+    {id:'credenciales',    icon:'🪪', label:'Credenciales'},
+    {id:'certificados',    icon:'📜', label:'Certificados'},
+    {id:'invitaciones',    icon:'💌', label:'Invitaciones'},
+    {id:'com_interna',     icon:'📣', label:'Comunicación interna'},
+    {id:'rh',              icon:'🧑‍💼', label:'Recursos Humanos'},
+    {id:'eventos',         icon:'🎪', label:'Eventos'},
+    {id:'otro',            icon:'📦', label:'Otro'}
+];
+const MSOL_PRIORIDADES = [
+    {id:'baja',    label:'Baja',    color:'#64748b'},
+    {id:'normal',  label:'Normal',  color:'#2563eb'},
+    {id:'alta',    label:'Alta',    color:'#f59e0b'},
+    {id:'urgente', label:'Urgente', color:'#ef4444'},
+    {id:'critica', label:'Crítica', color:'#7c3aed'}
+];
+const MSOL_MEDIOS = ['Digital','Impreso','Web','Pantalla','Redes Sociales','Correo','Otro'];
+const MSOL_ALCANCE = [
+    'Crear desde cero','Modificar diseño existente','Actualizar información','Adaptar diseño',
+    'Rediseñar','Optimizar','Corregir errores','Solo impresión','Solo publicación','Solo revisión'
+];
+const MSOL_ESTADOS = ['Nueva','En revisión','Pendiente de información','Asignada','En diseño','En desarrollo',
+    'En revisión interna','Correcciones','Aprobada','En producción','Finalizada','Entregada','Cancelada'];
+const MSOL_MAX_FILE_BYTES = 900 * 1024; // límite seguro por archivo (base64 en Firestore, doc ≤ 1MB, deja margen para metadata)
+
+let msolPaso = 1;
+const MSOL_TOTAL_PASOS = 6;
+let msolData = {};
+let msolArchivos = [];    // [{nombre,tipo,size,base64}]
+let msolReferencias = []; // [{nombre,tipo,size,base64}] (imágenes de inspiración)
+let msolEnviando = false;
+
+// ── CSS del módulo de solicitudes ────────────────────────────
+(function inyectarCSSMsol() {
+    if (document.getElementById('css-msol')) return;
+    const style = document.createElement('style');
+    style.id = 'css-msol';
+    style.textContent = `
+        #modal-msol{display:none;position:fixed;inset:0;background:rgba(15,23,42,0.55);backdrop-filter:blur(10px);z-index:4000;align-items:center;justify-content:center;}
+        .msol-box{background:#ffffff;border-radius:24px;width:960px;max-width:96vw;max-height:92vh;box-shadow:0 30px 80px rgba(0,0,0,0.25);display:flex;flex-direction:column;overflow:hidden;}
+        .msol-topbar{display:flex;align-items:center;justify-content:space-between;padding:22px 30px;border-bottom:1px solid #eef2f7;flex-shrink:0;}
+        .msol-topbar-title{font-family:'Space Grotesk',sans-serif;font-size:19px;font-weight:700;color:#1e293b;display:flex;align-items:center;gap:10px;}
+        .msol-topbar-sub{font-size:12px;color:#94a3b8;margin-top:2px;font-weight:500;}
+        .msol-folio-badge{background:#eff6ff;color:#2563eb;font-size:11px;font-weight:700;padding:5px 12px;border-radius:20px;letter-spacing:0.5px;}
+        .msol-close{width:34px;height:34px;border-radius:10px;border:none;background:#f1f5f9;color:#64748b;font-size:16px;cursor:pointer;transition:0.15s;}
+        .msol-close:hover{background:#e2e8f0;color:#1e293b;}
+        .msol-steps{display:flex;gap:6px;padding:16px 30px;border-bottom:1px solid #eef2f7;flex-shrink:0;overflow-x:auto;}
+        .msol-step-pill{display:flex;align-items:center;gap:7px;padding:8px 14px;border-radius:24px;background:#f8faff;color:#94a3b8;font-size:11px;font-weight:700;white-space:nowrap;transition:0.2s;}
+        .msol-step-pill .n{width:18px;height:18px;border-radius:50%;background:#e2e8f0;color:#ffffff;display:flex;align-items:center;justify-content:center;font-size:10px;}
+        .msol-step-pill.done{color:#16a34a;}
+        .msol-step-pill.done .n{background:#16a34a;}
+        .msol-step-pill.active{background:#eff6ff;color:#2563eb;}
+        .msol-step-pill.active .n{background:#2563eb;}
+        .msol-body{padding:28px 30px;overflow-y:auto;flex:1;background:#fbfcfe;}
+        .msol-section-title{font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;color:#1e293b;margin-bottom:4px;display:flex;align-items:center;gap:8px;}
+        .msol-section-sub{font-size:12px;color:#94a3b8;margin-bottom:18px;}
+        .msol-card{background:#ffffff;border-radius:16px;padding:20px 22px;border:1px solid rgba(59,130,246,0.10);box-shadow:0 2px 8px rgba(37,99,235,0.04);margin-bottom:16px;}
+        .msol-grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+        .msol-grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;}
+        .msol-label{font-size:10px;font-weight:700;color:#64748b;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:6px;display:block;}
+        .msol-input,.msol-select,.msol-textarea{width:100%;padding:11px 14px;border-radius:10px;border:1px solid rgba(59,130,246,0.18);background:#f8faff;color:#1e293b;font-size:13px;outline:none;font-family:'DM Sans',sans-serif;transition:0.15s;}
+        .msol-input:focus,.msol-select:focus,.msol-textarea:focus{border-color:#2563eb;background:#eff6ff;}
+        .msol-textarea{resize:vertical;min-height:70px;line-height:1.5;}
+        .msol-field{margin-bottom:14px;}
+        .msol-tipos-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+        .msol-tipo-card{border:1.5px solid #e2e8f0;border-radius:12px;padding:12px 8px;text-align:center;cursor:pointer;transition:0.15s;background:#ffffff;}
+        .msol-tipo-card:hover{border-color:#93c5fd;background:#f8faff;}
+        .msol-tipo-card.sel{border-color:#2563eb;background:#eff6ff;box-shadow:0 0 0 3px rgba(37,99,235,0.12);}
+        .msol-tipo-icon{font-size:20px;margin-bottom:4px;}
+        .msol-tipo-label{font-size:9.5px;font-weight:700;color:#475569;line-height:1.25;}
+        .msol-chip-group{display:flex;flex-wrap:wrap;gap:8px;}
+        .msol-chip{padding:7px 13px;border-radius:20px;border:1.5px solid #e2e8f0;background:#ffffff;color:#475569;font-size:11.5px;font-weight:700;cursor:pointer;transition:0.15s;}
+        .msol-chip.sel{background:#2563eb;color:#ffffff;border-color:#2563eb;}
+        .msol-prioridad-group{display:flex;gap:8px;}
+        .msol-prioridad-chip{flex:1;padding:10px;border-radius:12px;border:1.5px solid #e2e8f0;text-align:center;font-size:11px;font-weight:700;cursor:pointer;transition:0.15s;color:#64748b;}
+        .msol-prioridad-chip.sel{color:#ffffff;border-color:transparent;}
+        .msol-semaforo{display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:12px;font-size:12px;font-weight:700;margin-top:10px;}
+        .msol-semaforo.verde{background:#f0fdf4;color:#16a34a;}
+        .msol-semaforo.amarillo{background:#fefce8;color:#a16207;}
+        .msol-semaforo.rojo{background:#fef2f2;color:#dc2626;}
+        .msol-semaforo .dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+        .msol-semaforo.verde .dot{background:#16a34a;} .msol-semaforo.amarillo .dot{background:#eab308;} .msol-semaforo.rojo .dot{background:#ef4444;}
+        .msol-drop{border:2px dashed #cbd5e1;border-radius:16px;padding:32px 20px;text-align:center;color:#94a3b8;font-size:12.5px;cursor:pointer;transition:0.2s;background:#fafcff;}
+        .msol-drop:hover,.msol-drop.dragover{border-color:#2563eb;color:#2563eb;background:#eff6ff;}
+        .msol-drop .big{font-size:26px;margin-bottom:6px;}
+        .msol-files-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin-top:14px;}
+        .msol-file-item{border:1px solid #e2e8f0;border-radius:12px;padding:8px;background:#ffffff;position:relative;text-align:center;}
+        .msol-file-thumb{width:100%;height:64px;object-fit:cover;border-radius:8px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;font-size:22px;margin-bottom:6px;}
+        .msol-file-name{font-size:9.5px;color:#475569;word-break:break-all;line-height:1.3;max-height:24px;overflow:hidden;}
+        .msol-file-size{font-size:9px;color:#94a3b8;}
+        .msol-file-del{position:absolute;top:4px;right:4px;width:20px;height:20px;border-radius:50%;background:#fef2f2;color:#dc2626;border:none;font-size:11px;cursor:pointer;font-weight:700;}
+        .msol-checklist-item{display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:10px;margin-bottom:8px;font-size:12.5px;font-weight:600;}
+        .msol-checklist-item.ok{background:#f0fdf4;color:#16a34a;}
+        .msol-checklist-item.warn{background:#fffbeb;color:#b45309;}
+        .msol-footer{display:flex;gap:10px;padding:18px 30px;border-top:1px solid #eef2f7;flex-shrink:0;background:#ffffff;}
+        .msol-btn-primary{padding:12px 22px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#ffffff;border:none;border-radius:12px;font-size:12.5px;font-weight:700;cursor:pointer;transition:0.15s;}
+        .msol-btn-primary:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(37,99,235,0.35);}
+        .msol-btn-secondary{padding:12px 20px;background:#f1f5f9;color:#475569;border:none;border-radius:12px;font-size:12.5px;font-weight:700;cursor:pointer;}
+        .msol-btn-ghost{padding:12px 18px;background:transparent;color:#94a3b8;border:none;font-size:12px;font-weight:700;cursor:pointer;}
+        .msol-nav-btn{width:38px;height:38px;border-radius:50%;flex-shrink:0;}
+        #msol-toast{position:fixed;top:20px;right:20px;background:#1e293b;color:#ffffff;padding:14px 20px;border-radius:12px;font-size:12.5px;font-weight:600;z-index:5000;box-shadow:0 12px 30px rgba(0,0,0,0.25);display:none;}
+        /* Panel de seguimiento */
+        .msol-track-wrap{background:#ffffff;border-radius:16px;padding:18px;border:1px solid rgba(59,130,246,0.10);box-shadow:0 2px 8px rgba(37,99,235,0.05);margin-bottom:16px;}
+        .msol-track-row{display:grid;grid-template-columns:1.1fr 1.4fr 1fr 0.8fr 0.9fr 0.9fr;padding:11px 12px;border-radius:10px;font-size:12px;align-items:center;margin-bottom:6px;border:1px solid rgba(59,130,246,0.06);cursor:pointer;transition:0.15s;}
+        .msol-track-row.header{background:#f8faff;font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.8px;border:none;cursor:default;}
+        .msol-track-row:not(.header):hover{background:#f8faff;}
+        .msol-estado-badge{padding:3px 9px;border-radius:10px;font-size:10px;font-weight:700;display:inline-block;background:#eff6ff;color:#2563eb;}
+        @media(max-width:768px){
+            .msol-box{width:100vw;max-height:100vh;border-radius:0;}
+            .msol-grid2,.msol-grid3{grid-template-columns:1fr;}
+            .msol-tipos-grid{grid-template-columns:repeat(2,1fr);}
+            .msol-prioridad-group{flex-wrap:wrap;}
+            .msol-track-row{grid-template-columns:1fr 1fr;font-size:11px;}
+            .msol-track-row span:nth-child(n+3){display:none;}
+        }
+    `;
+    document.head.appendChild(style);
+})();
+
+// ── HTML del modal (shell fijo: topbar + steps + body + footer) ──
+(function inyectarModalMsol() {
+    if (document.getElementById('modal-msol')) return;
+    const html = `
+    <div id="modal-msol">
+        <div class="msol-box">
+            <div class="msol-topbar">
+                <div>
+                    <div class="msol-topbar-title">📋 Solicitudes de Mercadotecnia
+                        <span class="msol-folio-badge" id="msol-folio-badge" style="display:none;"></span>
+                    </div>
+                    <div class="msol-topbar-sub">Centro de gestión de requerimientos para el Departamento de Mercadotecnia</div>
+                </div>
+                <button class="msol-close" onclick="msolCerrar()">✕</button>
+            </div>
+            <div class="msol-steps" id="msol-steps"></div>
+            <div class="msol-body" id="msol-body"></div>
+            <div class="msol-footer" id="msol-footer">
+                <button class="msol-btn-ghost" onclick="msolCerrar()">Cancelar</button>
+                <div style="flex:1;"></div>
+                <button class="msol-btn-secondary" onclick="msolGuardarBorrador()">💾 Guardar borrador</button>
+                <button class="msol-btn-secondary msol-nav-btn-anterior" onclick="msolIrPaso(msolPaso-1)" style="display:none;" id="msol-btn-anterior">‹ Anterior</button>
+                <button class="msol-btn-primary" onclick="msolSiguiente()" id="msol-btn-siguiente">Siguiente ›</button>
+            </div>
+        </div>
+    </div>
+    <div id="msol-toast"></div>
+    `;
+    document.body.insertAdjacentHTML('beforeend', html);
+})();
+
+// ── Utilidades ────────────────────────────────────────────────
+function msolToast(msg){
+    const t = document.getElementById('msol-toast');
+    if(!t) return;
+    t.innerText = msg;
+    t.style.display = 'block';
+    clearTimeout(window._msolToastTimer);
+    window._msolToastTimer = setTimeout(()=>{ t.style.display='none'; }, 3200);
+}
+function msolFileToBase64(file){
+    return new Promise((resolve,reject)=>{
+        const r = new FileReader();
+        r.onload = ()=>resolve(r.result);
+        r.onerror = ()=>reject(new Error('No se pudo leer el archivo'));
+        r.readAsDataURL(file);
+    });
+}
+function msolIconoArchivo(tipo, nombre){
+    if(/image\//.test(tipo)) return null; // se muestra la miniatura real
+    if(/pdf/.test(tipo)||/\.pdf$/i.test(nombre)) return '📕';
+    if(/\.(ai|psd|indd)$/i.test(nombre)) return '🎨';
+    if(/\.(docx?|xlsx?|pptx?)$/i.test(nombre)) return '📄';
+    if(/\.(zip|rar)$/i.test(nombre)) return '🗜';
+    if(/\.(mp4|mov)$/i.test(nombre)||/video\//.test(tipo)) return '🎬';
+    return '📎';
+}
+
+// ── Abrir / cerrar modal ──────────────────────────────────────
+function abrirModalSolicitudMkt(){
+    msolPaso = 1;
+    msolData = {
+        general:{}, proyecto:{}, tecnico:{medios:[]}, fechas:{}, alcance:[], aprobacion:{}, presupuesto:{}, comentarios:''
+    };
+    msolArchivos = [];
+    msolReferencias = [];
+    msolEnviando = false;
+    document.getElementById('msol-folio-badge').style.display = 'none';
+    const modal = document.getElementById('modal-msol');
+    modal.style.display = 'flex';
+    msolIrPaso(1);
+}
+function msolCerrar(){
+    const modal = document.getElementById('modal-msol');
+    if(modal) modal.style.display = 'none';
+}
+
+// ── Navegación del wizard ─────────────────────────────────────
+const MSOL_PASOS_LABEL = ['Información general','Proyecto','Especificaciones y fechas','Archivos e inspiración','Alcance y aprobación','Revisión final'];
+
+function msolRenderSteps(){
+    const cont = document.getElementById('msol-steps');
+    cont.innerHTML = MSOL_PASOS_LABEL.map((label,i)=>{
+        const n = i+1;
+        const cls = n===msolPaso?'active':(n<msolPaso?'done':'');
+        return `<div class="msol-step-pill ${cls}"><span class="n">${n<msolPaso?'✓':n}</span>${label}</div>`;
+    }).join('');
+}
+
+function msolIrPaso(n){
+    if(n < 1 || n > MSOL_TOTAL_PASOS) return;
+    if(n > msolPaso && !msolValidarPaso(msolPaso)) return; // solo valida al avanzar
+    if(msolPaso >= 1 && msolPaso <= MSOL_TOTAL_PASOS) msolGuardarPaso(msolPaso);
+    msolPaso = n;
+    msolRenderSteps();
+    document.getElementById('msol-body').innerHTML = msolHTMLPaso(n);
+    document.getElementById('msol-body').scrollTop = 0;
+    msolBindPaso(n);
+    document.getElementById('msol-btn-anterior').style.display = n>1 ? 'inline-block' : 'none';
+    document.getElementById('msol-btn-siguiente').innerText = n===MSOL_TOTAL_PASOS ? '✅ Enviar solicitud' : 'Siguiente ›';
+    document.getElementById('msol-btn-siguiente').onclick = n===MSOL_TOTAL_PASOS ? msolEnviarSolicitud : msolSiguiente;
+}
+function msolSiguiente(){ msolIrPaso(msolPaso+1); }
+
+// ── Recolectar datos del paso actual desde el DOM ────────────
+function msolGuardarPaso(n){
+    const val = id => (document.getElementById(id)||{}).value || '';
+    if(n===1){
+        msolData.general = {
+            solicitante: val('msol-solicitante'), departamento: val('msol-departamento'),
+            empresa: val('msol-empresa'), sucursal: val('msol-sucursal'), responsable: val('msol-responsable'),
+            correo: val('msol-correo'), telefono: val('msol-telefono'), extension: val('msol-extension'),
+            prioridad: msolData.general?.prioridad || 'normal', tipo: msolData.general?.tipo || null
+        };
+    } else if(n===2){
+        msolData.proyecto = {
+            titulo: val('msol-titulo'), descripcion: val('msol-descripcion'), objetivo: val('msol-objetivo'),
+            problema: val('msol-problema'), uso: val('msol-uso'), publico: val('msol-publico'),
+            mensaje: val('msol-mensaje'), cta: val('msol-cta')
+        };
+    } else if(n===3){
+        msolData.tecnico = {
+            medidas: val('msol-medidas'), formato: val('msol-formato'), colores: val('msol-colores'),
+            tipografia: val('msol-tipografia'), idioma: val('msol-idioma'), resolucion: val('msol-resolucion'),
+            cantidad: val('msol-cantidad'), medios: msolData.tecnico?.medios || []
+        };
+        msolData.fechas = {
+            solicitada: val('msol-fecha-solicitada'), limite: val('msol-fecha-limite'),
+            evento: val('msol-fecha-evento'), publicacion: val('msol-fecha-publicacion')
+        };
+    } else if(n===5){
+        msolData.alcance = msolData.alcance || [];
+        msolData.aprobacion = { nombre: val('msol-aprueba-nombre'), puesto: val('msol-aprueba-puesto'), correo: val('msol-aprueba-correo') };
+        msolData.presupuesto = { tiene: msolData.presupuesto?.tiene || 'no', monto: val('msol-presupuesto-monto'), proveedor: val('msol-presupuesto-proveedor') };
+        msolData.comentarios = val('msol-comentarios');
+    }
+}
+
+// ── Validación mínima por paso (obligatorios) ─────────────────
+function msolValidarPaso(n){
+    msolGuardarPaso(n);
+    if(n===1){
+        const g = msolData.general;
+        if(!g.solicitante || !g.departamento || !g.correo || !g.tipo){
+            msolToast('⚠️ Completa solicitante, departamento, correo y tipo de solicitud'); return false;
+        }
+    }
+    if(n===2){
+        if(!msolData.proyecto.titulo || !msolData.proyecto.descripcion){
+            msolToast('⚠️ El título y la descripción del proyecto son obligatorios'); return false;
+        }
+    }
+    return true;
+}
+
+// ── HTML por paso ─────────────────────────────────────────────
+function msolHTMLPaso(n){
+    if(n===1) return msolHTMLPaso1();
+    if(n===2) return msolHTMLPaso2();
+    if(n===3) return msolHTMLPaso3();
+    if(n===4) return msolHTMLPaso4();
+    if(n===5) return msolHTMLPaso5();
+    if(n===6) return msolHTMLPaso6();
+    return '';
+}
+
+function msolHTMLPaso1(){
+    const g = msolData.general||{};
+    const hoy = new Date().toLocaleDateString('es-MX',{day:'2-digit',month:'long',year:'numeric'});
+    return `
+    <div class="msol-section-title">👤 Información general</div>
+    <div class="msol-section-sub">Fecha de solicitud: ${hoy}</div>
+    <div class="msol-card">
+        <div class="msol-grid2">
+            <div class="msol-field"><label class="msol-label">Solicitante *</label><input class="msol-input" id="msol-solicitante" value="${g.solicitante||''}" placeholder="Nombre completo"></div>
+            <div class="msol-field"><label class="msol-label">Departamento *</label><input class="msol-input" id="msol-departamento" value="${g.departamento||''}" placeholder="Ej. Ventas, RH, Operaciones"></div>
+            <div class="msol-field"><label class="msol-label">Empresa</label><input class="msol-input" id="msol-empresa" value="${g.empresa||''}" placeholder="Tecnocontrol / Akuris / Jomar"></div>
+            <div class="msol-field"><label class="msol-label">Sucursal</label><input class="msol-input" id="msol-sucursal" value="${g.sucursal||''}"></div>
+            <div class="msol-field"><label class="msol-label">Responsable directo</label><input class="msol-input" id="msol-responsable" value="${g.responsable||''}"></div>
+            <div class="msol-field"><label class="msol-label">Correo *</label><input class="msol-input" id="msol-correo" value="${g.correo||''}" placeholder="tucorreo@tecnocontrol.com.mx"></div>
+            <div class="msol-field"><label class="msol-label">Teléfono</label><input class="msol-input" id="msol-telefono" value="${g.telefono||''}"></div>
+            <div class="msol-field"><label class="msol-label">Extensión</label><input class="msol-input" id="msol-extension" value="${g.extension||''}"></div>
+        </div>
+        <div class="msol-field">
+            <label class="msol-label">Prioridad</label>
+            <div class="msol-prioridad-group" id="msol-prioridad-group">
+                ${MSOL_PRIORIDADES.map(p=>`<div class="msol-prioridad-chip ${g.prioridad===p.id?'sel':''}" style="${g.prioridad===p.id?`background:${p.color};`:''}" onclick="msolSetPrioridad('${p.id}')">${p.label}</div>`).join('')}
+            </div>
+        </div>
+    </div>
+    <div class="msol-card">
+        <div class="msol-label" style="margin-bottom:10px;">Tipo de solicitud *</div>
+        <div class="msol-tipos-grid" id="msol-tipos-grid">
+            ${MSOL_TIPOS.map(t=>`<div class="msol-tipo-card ${g.tipo===t.id?'sel':''}" onclick="msolSetTipo('${t.id}')"><div class="msol-tipo-icon">${t.icon}</div><div class="msol-tipo-label">${t.label}</div></div>`).join('')}
+        </div>
+    </div>`;
+}
+function msolSetPrioridad(id){
+    msolData.general = msolData.general || {};
+    msolData.general.prioridad = id;
+    document.getElementById('msol-prioridad-group').querySelectorAll('.msol-prioridad-chip').forEach((el,i)=>{
+        const p = MSOL_PRIORIDADES[i];
+        const sel = p.id===id;
+        el.classList.toggle('sel', sel);
+        el.style.background = sel ? p.color : '';
+    });
+}
+function msolSetTipo(id){
+    msolData.general = msolData.general || {};
+    msolData.general.tipo = id;
+    document.getElementById('msol-tipos-grid').querySelectorAll('.msol-tipo-card').forEach((el,i)=>{
+        el.classList.toggle('sel', MSOL_TIPOS[i].id===id);
+    });
+}
+
+function msolHTMLPaso2(){
+    const p = msolData.proyecto||{};
+    return `
+    <div class="msol-section-title">🗂 Información del proyecto</div>
+    <div class="msol-section-sub">Cuéntanos qué necesitas y para qué se usará</div>
+    <div class="msol-card">
+        <div class="msol-field"><label class="msol-label">Título del proyecto *</label><input class="msol-input" id="msol-titulo" value="${p.titulo||''}" placeholder="Ej. Flyer promoción de verano"></div>
+        <div class="msol-field"><label class="msol-label">Descripción completa *</label><textarea class="msol-textarea" id="msol-descripcion" placeholder="Describe con detalle qué necesitas">${p.descripcion||''}</textarea></div>
+        <div class="msol-grid2">
+            <div class="msol-field"><label class="msol-label">¿Qué problema busca resolver?</label><textarea class="msol-textarea" id="msol-problema">${p.problema||''}</textarea></div>
+            <div class="msol-field"><label class="msol-label">Objetivo</label><textarea class="msol-textarea" id="msol-objetivo">${p.objetivo||''}</textarea></div>
+        </div>
+        <div class="msol-grid2">
+            <div class="msol-field"><label class="msol-label">¿Para qué será utilizado?</label><input class="msol-input" id="msol-uso" value="${p.uso||''}"></div>
+            <div class="msol-field"><label class="msol-label">Público objetivo</label><input class="msol-input" id="msol-publico" value="${p.publico||''}"></div>
+        </div>
+        <div class="msol-grid2">
+            <div class="msol-field"><label class="msol-label">Mensaje principal</label><input class="msol-input" id="msol-mensaje" value="${p.mensaje||''}"></div>
+            <div class="msol-field"><label class="msol-label">Llamado a la acción</label><input class="msol-input" id="msol-cta" value="${p.cta||''}"></div>
+        </div>
+    </div>`;
+}
+
+function msolHTMLPaso3(){
+    const t = msolData.tecnico||{medios:[]};
+    const f = msolData.fechas||{};
+    return `
+    <div class="msol-section-title">⚙️ Especificaciones técnicas</div>
+    <div class="msol-section-sub">Medidas, formato y medio donde se publicará</div>
+    <div class="msol-card">
+        <div class="msol-grid3">
+            <div class="msol-field"><label class="msol-label">Medidas</label><input class="msol-input" id="msol-medidas" value="${t.medidas||''}" placeholder="Ej. 90x60cm"></div>
+            <div class="msol-field"><label class="msol-label">Formato requerido</label><input class="msol-input" id="msol-formato" value="${t.formato||''}" placeholder="PDF, JPG, MP4..."></div>
+            <div class="msol-field"><label class="msol-label">Cantidad</label><input class="msol-input" id="msol-cantidad" value="${t.cantidad||''}"></div>
+            <div class="msol-field"><label class="msol-label">Colores</label><input class="msol-input" id="msol-colores" value="${t.colores||''}"></div>
+            <div class="msol-field"><label class="msol-label">Tipografía</label><input class="msol-input" id="msol-tipografia" value="${t.tipografia||''}"></div>
+            <div class="msol-field"><label class="msol-label">Idioma</label><input class="msol-input" id="msol-idioma" value="${t.idioma||'Español'}"></div>
+            <div class="msol-field"><label class="msol-label">Resolución</label><input class="msol-input" id="msol-resolucion" value="${t.resolucion||''}"></div>
+        </div>
+        <div class="msol-field">
+            <label class="msol-label">Medio de publicación</label>
+            <div class="msol-chip-group" id="msol-medios-group">
+                ${MSOL_MEDIOS.map(m=>`<div class="msol-chip ${(t.medios||[]).includes(m)?'sel':''}" onclick="msolToggleMedio('${m}')">${m}</div>`).join('')}
+            </div>
+        </div>
+    </div>
+    <div class="msol-card">
+        <div class="msol-label" style="margin-bottom:10px;">Fechas</div>
+        <div class="msol-grid2">
+            <div class="msol-field"><label class="msol-label">Fecha solicitada</label><input type="date" class="msol-input" id="msol-fecha-solicitada" value="${f.solicitada||new Date().toISOString().slice(0,10)}"></div>
+            <div class="msol-field"><label class="msol-label">Fecha límite</label><input type="date" class="msol-input" id="msol-fecha-limite" value="${f.limite||''}" onchange="msolActualizarSemaforo()"></div>
+            <div class="msol-field"><label class="msol-label">Fecha del evento</label><input type="date" class="msol-input" id="msol-fecha-evento" value="${f.evento||''}"></div>
+            <div class="msol-field"><label class="msol-label">Fecha de publicación</label><input type="date" class="msol-input" id="msol-fecha-publicacion" value="${f.publicacion||''}"></div>
+        </div>
+        <div id="msol-semaforo-cont">${msolHTMLSemaforo(f.limite)}</div>
+    </div>`;
+}
+function msolToggleMedio(m){
+    msolData.tecnico = msolData.tecnico || {medios:[]};
+    msolData.tecnico.medios = msolData.tecnico.medios || [];
+    const i = msolData.tecnico.medios.indexOf(m);
+    if(i>-1) msolData.tecnico.medios.splice(i,1); else msolData.tecnico.medios.push(m);
+    document.querySelectorAll('#msol-medios-group .msol-chip').forEach(el=>{
+        if(el.innerText===m) el.classList.toggle('sel', msolData.tecnico.medios.includes(m));
+    });
+}
+function msolCalcularSemaforo(fechaLimite){
+    if(!fechaLimite) return {nivel:'sin-fecha', dias:null};
+    const hoy = new Date(); hoy.setHours(0,0,0,0);
+    const lim = new Date(fechaLimite+'T00:00:00');
+    const dias = Math.round((lim-hoy)/86400000);
+    let nivel = 'verde';
+    if(dias < 2) nivel = 'rojo'; else if(dias <= 7) nivel = 'amarillo';
+    return {nivel, dias};
+}
+function msolHTMLSemaforo(fechaLimite){
+    const r = msolCalcularSemaforo(fechaLimite);
+    if(r.nivel==='sin-fecha') return `<div class="msol-semaforo" style="background:#f8faff;color:#94a3b8;"><span class="dot" style="background:#cbd5e1;"></span>Indica la fecha límite para ver el semáforo de tiempos</div>`;
+    const msg = r.dias<0 ? `Fecha límite vencida hace ${Math.abs(r.dias)} día(s)` : (r.dias===0?'La fecha límite es hoy':`Quedan ${r.dias} día(s) para la fecha límite`);
+    return `<div class="msol-semaforo ${r.nivel}"><span class="dot"></span>${msg}</div>`;
+}
+function msolActualizarSemaforo(){
+    const v = document.getElementById('msol-fecha-limite').value;
+    document.getElementById('msol-semaforo-cont').innerHTML = msolHTMLSemaforo(v);
+}
+
+function msolHTMLPaso4(){
+    return `
+    <div class="msol-section-title">📎 Carga de archivos</div>
+    <div class="msol-section-sub">PNG, JPG, SVG, PDF, AI, PSD, INDD, DOCX, XLSX, PPTX, ZIP, RAR, MP4, MOV — máx. ~900KB por archivo</div>
+    <div class="msol-card">
+        <div class="msol-drop" id="msol-drop-archivos" onclick="document.getElementById('msol-input-archivos').click()">
+            <div class="big">☁️</div>Arrastra tus archivos aquí o haz clic para buscarlos
+            <input type="file" id="msol-input-archivos" multiple style="display:none;">
+        </div>
+        <div class="msol-files-list" id="msol-lista-archivos"></div>
+    </div>
+    <div class="msol-section-title" style="margin-top:6px;">✨ Inspiración / referencias</div>
+    <div class="msol-section-sub">Imágenes de referencia y enlaces (Pinterest, Behance, Dribbble, Instagram, Figma...)</div>
+    <div class="msol-card">
+        <div class="msol-drop" id="msol-drop-referencias" onclick="document.getElementById('msol-input-referencias').click()">
+            <div class="big">🖼</div>Sube imágenes de inspiración
+            <input type="file" id="msol-input-referencias" multiple accept="image/*" style="display:none;">
+        </div>
+        <div class="msol-files-list" id="msol-lista-referencias"></div>
+        <div class="msol-field" style="margin-top:14px;"><label class="msol-label">Enlaces de referencia</label><input class="msol-input" id="msol-referencia-links" value="${msolData.referenciaLinks||''}" placeholder="Pega uno o varios enlaces separados por coma"></div>
+        <div class="msol-field"><label class="msol-label">"Quiero algo parecido a..."</label><textarea class="msol-textarea" id="msol-referencia-texto">${msolData.referenciaTexto||''}</textarea></div>
+    </div>`;
+}
+function msolBindDropzone(dropId, inputId, arrRef, listId){
+    const drop = document.getElementById(dropId);
+    const input = document.getElementById(inputId);
+    if(!drop || !input) return;
+    input.onchange = e => msolProcesarArchivos(e.target.files, arrRef, listId);
+    drop.ondragover = e => { e.preventDefault(); drop.classList.add('dragover'); };
+    drop.ondragleave = () => drop.classList.remove('dragover');
+    drop.ondrop = e => { e.preventDefault(); drop.classList.remove('dragover'); msolProcesarArchivos(e.dataTransfer.files, arrRef, listId); };
+}
+async function msolProcesarArchivos(fileList, arrRef, listId){
+    for(const file of Array.from(fileList)){
+        if(file.size > MSOL_MAX_FILE_BYTES){
+            msolToast(`⚠️ "${file.name}" pesa más de 900KB. Comprímelo antes de subirlo.`);
+            continue;
+        }
+        try{
+            const base64 = await msolFileToBase64(file);
+            arrRef.push({nombre:file.name, tipo:file.type, size:file.size, base64});
+        }catch(e){ msolToast('❌ Error al leer '+file.name); }
+    }
+    msolRenderListaArchivos(arrRef, listId);
+}
+function msolRenderListaArchivos(arr, listId){
+    const cont = document.getElementById(listId);
+    if(!cont) return;
+    cont.innerHTML = arr.map((f,i)=>{
+        const icono = msolIconoArchivo(f.tipo, f.nombre);
+        const thumb = icono ? `<div class="msol-file-thumb">${icono}</div>` : `<img class="msol-file-thumb" src="${f.base64}" style="object-fit:cover;">`;
+        return `<div class="msol-file-item">
+            <button class="msol-file-del" onclick="msolEliminarArchivo('${listId}',${i})">✕</button>
+            ${thumb}
+            <div class="msol-file-name">${f.nombre}</div>
+            <div class="msol-file-size">${(f.size/1024).toFixed(0)} KB</div>
+        </div>`;
+    }).join('');
+}
+function msolEliminarArchivo(listId, idx){
+    const arr = listId==='msol-lista-archivos' ? msolArchivos : msolReferencias;
+    arr.splice(idx,1);
+    msolRenderListaArchivos(arr, listId);
+}
+
+function msolHTMLPaso5(){
+    const al = msolData.alcance||[];
+    const ap = msolData.aprobacion||{};
+    const pr = msolData.presupuesto||{};
+    return `
+    <div class="msol-section-title">🎯 Alcance del trabajo</div>
+    <div class="msol-card">
+        <div class="msol-chip-group" id="msol-alcance-group">
+            ${MSOL_ALCANCE.map(a=>`<div class="msol-chip ${al.includes(a)?'sel':''}" onclick="msolToggleAlcance('${a}')">${a}</div>`).join('')}
+        </div>
+    </div>
+    <div class="msol-section-title" style="margin-top:6px;">✅ Aprobaciones</div>
+    <div class="msol-card">
+        <div class="msol-grid3">
+            <div class="msol-field"><label class="msol-label">Nombre</label><input class="msol-input" id="msol-aprueba-nombre" value="${ap.nombre||''}"></div>
+            <div class="msol-field"><label class="msol-label">Puesto</label><input class="msol-input" id="msol-aprueba-puesto" value="${ap.puesto||''}"></div>
+            <div class="msol-field"><label class="msol-label">Correo</label><input class="msol-input" id="msol-aprueba-correo" value="${ap.correo||''}"></div>
+        </div>
+    </div>
+    <div class="msol-section-title" style="margin-top:6px;">💰 Presupuesto</div>
+    <div class="msol-card">
+        <div class="msol-field">
+            <label class="msol-label">¿Tiene presupuesto asignado?</label>
+            <div class="msol-chip-group">
+                <div class="msol-chip ${pr.tiene==='si'?'sel':''}" onclick="msolSetPresupuesto('si')">Sí</div>
+                <div class="msol-chip ${(!pr.tiene||pr.tiene==='no')?'sel':''}" onclick="msolSetPresupuesto('no')">No</div>
+            </div>
+        </div>
+        <div class="msol-grid2">
+            <div class="msol-field"><label class="msol-label">Monto</label><input class="msol-input" id="msol-presupuesto-monto" value="${pr.monto||''}" placeholder="$"></div>
+            <div class="msol-field"><label class="msol-label">Proveedor</label><input class="msol-input" id="msol-presupuesto-proveedor" value="${pr.proveedor||''}"></div>
+        </div>
+    </div>
+    <div class="msol-section-title" style="margin-top:6px;">💬 Comentarios</div>
+    <div class="msol-card"><textarea class="msol-textarea" id="msol-comentarios" style="min-height:90px;" placeholder="Observaciones adicionales">${msolData.comentarios||''}</textarea></div>`;
+}
+function msolToggleAlcance(a){
+    msolData.alcance = msolData.alcance || [];
+    const i = msolData.alcance.indexOf(a);
+    if(i>-1) msolData.alcance.splice(i,1); else msolData.alcance.push(a);
+    document.querySelectorAll('#msol-alcance-group .msol-chip').forEach(el=>{
+        if(el.innerText===a) el.classList.toggle('sel', msolData.alcance.includes(a));
+    });
+}
+function msolSetPresupuesto(v){
+    msolGuardarPaso(5); // conserva lo ya escrito (comentarios, aprobación, monto, etc.) antes de re-pintar
+    msolData.presupuesto = msolData.presupuesto || {};
+    msolData.presupuesto.tiene = v;
+    document.getElementById('msol-body').innerHTML = msolHTMLPaso5();
+}
+
+function msolHTMLPaso6(){
+    msolGuardarPaso(5);
+    const g = msolData.general||{}, p = msolData.proyecto||{}, f = msolData.fechas||{};
+    const check = (cond,label) => `<div class="msol-checklist-item ${cond?'ok':'warn'}">${cond?'✅':'⚠️'} ${label}</div>`;
+    const tieneLogo = msolArchivos.some(a=>/logo/i.test(a.nombre)) || msolReferencias.some(a=>/logo/i.test(a.nombre));
+    const tieneFotos = msolArchivos.some(a=>/image\//.test(a.tipo));
+    const tipoLabel = (MSOL_TIPOS.find(t=>t.id===g.tipo)||{}).label || '—';
+    return `
+    <div class="msol-section-title">🔎 Revisión final</div>
+    <div class="msol-section-sub">Verifica que no falte información antes de enviar</div>
+    <div class="msol-card">
+        <div class="msol-checklist-item ${p.objetivo||p.problema?'ok':'warn'}">${p.objetivo||p.problema?'✅':'⚠️'} Objetivo del proyecto indicado</div>
+        ${check(tieneFotos || msolArchivos.length>0, 'Archivos adjuntos')}
+        ${check(tieneLogo, 'Logotipo detectado entre los archivos (si aplica)')}
+        ${check(!!p.descripcion, 'Descripción del proyecto completa')}
+        ${check(!!(msolData.tecnico&&msolData.tecnico.medidas), 'Medidas indicadas (si aplica)')}
+        ${check(!!f.limite, 'Fecha límite indicada')}
+    </div>
+    <div class="msol-card">
+        <div class="msol-grid2" style="font-size:12.5px;color:#475569;">
+            <div><b>Solicitante:</b> ${g.solicitante||'—'}</div>
+            <div><b>Departamento:</b> ${g.departamento||'—'}</div>
+            <div><b>Tipo:</b> ${tipoLabel}</div>
+            <div><b>Prioridad:</b> ${g.prioridad||'normal'}</div>
+            <div><b>Proyecto:</b> ${p.titulo||'—'}</div>
+            <div><b>Fecha límite:</b> ${f.limite||'—'}</div>
+            <div><b>Archivos:</b> ${msolArchivos.length}</div>
+            <div><b>Referencias:</b> ${msolReferencias.length}</div>
+        </div>
+        ${msolHTMLSemaforo(f.limite)}
+    </div>
+    <div style="text-align:center;color:#94a3b8;font-size:11.5px;">Al hacer clic en "Enviar solicitud" se generará un folio y no podrás editar la información general.</div>`;
+}
+
+function msolBindPaso(n){
+    if(n===4){
+        msolRenderListaArchivos(msolArchivos, 'msol-lista-archivos');
+        msolRenderListaArchivos(msolReferencias, 'msol-lista-referencias');
+        msolBindDropzone('msol-drop-archivos','msol-input-archivos', msolArchivos, 'msol-lista-archivos');
+        msolBindDropzone('msol-drop-referencias','msol-input-referencias', msolReferencias, 'msol-lista-referencias');
+    }
+}
+
+// ── Folio automático (contador en Firestore) ──────────────────
+async function msolGenerarFolio(){
+    const anioActual = new Date().getFullYear();
+    const ref = doc(db, 'contadores', 'mkt_solicitudes');
+    const snap = await getDoc(ref);
+    let ultimo = 1;
+    if(snap.exists()){
+        const d = snap.data();
+        ultimo = (d.anio === anioActual) ? (Number(d.ultimo||0)+1) : 1;
+        await updateDoc(ref, {anio:anioActual, ultimo});
+    } else {
+        await setDoc(ref, {anio:anioActual, ultimo:1});
+    }
+    // Nota: esto no es una transacción atómica (setDoc/updateDoc simples según
+    // los helpers disponibles). En el caso extremo de dos envíos simultáneos
+    // al mismo segundo podría repetirse un folio; si eso llega a pasar en
+    // producción, conviene mover esto a runTransaction.
+    return `MKT-${anioActual}-${String(ultimo).padStart(6,'0')}`;
+}
+
+// ── Guardar borrador (sin folio, validación laxa) ─────────────
+async function msolGuardarBorrador(){
+    msolGuardarPaso(msolPaso);
+    try{
+        const email = (auth.currentUser && auth.currentUser.email) || msolData.general?.correo || '';
+        const docRef = await addDoc(collection(db,'mkt_solicitudes'), {
+            ...msolData, estado:'Borrador', folio:null,
+            creadoPor: email, fechaCreacion: new Date().toISOString(),
+            historial:[{fecha:new Date().toISOString(), usuario:email, comentario:'Borrador guardado'}]
+        });
+        await msolGuardarAdjuntos(docRef.id);
+        msolToast('💾 Borrador guardado');
+    }catch(e){
+        msolToast('❌ Error al guardar borrador: '+e.message);
+    }
+}
+
+// ── Guardar adjuntos en subcolección ──────────────────────────
+async function msolGuardarAdjuntos(solicitudId){
+    let orden = 0;
+    for(const a of msolArchivos){
+        await addDoc(collection(db,'mkt_solicitudes',solicitudId,'adjuntos'), {...a, categoria:'archivo', orden:orden++});
+    }
+    for(const a of msolReferencias){
+        await addDoc(collection(db,'mkt_solicitudes',solicitudId,'adjuntos'), {...a, categoria:'referencia', orden:orden++});
+    }
+}
+
+// ── Envío final de la solicitud ────────────────────────────────
+async function msolEnviarSolicitud(){
+    if(msolEnviando) return;
+    if(!msolValidarPaso(1) ) { msolIrPaso(1); return; }
+    if(!msolValidarPaso(2) ) { msolIrPaso(2); return; }
+    msolGuardarPaso(5);
+    msolEnviando = true;
+    const btn = document.getElementById('msol-btn-siguiente');
+    if(btn){ btn.disabled = true; btn.innerText = 'Enviando...'; }
+    try{
+        const folio = await msolGenerarFolio();
+        const email = (auth.currentUser && auth.currentUser.email) || msolData.general?.correo || '';
+        const linksRaw = (document.getElementById('msol-referencia-links')||{}).value || '';
+        const referenciaTexto = (document.getElementById('msol-referencia-texto')||{}).value || '';
+        const ahora = new Date();
+        const docRef = await addDoc(collection(db,'mkt_solicitudes'), {
+            folio,
+            general: msolData.general, proyecto: msolData.proyecto, tecnico: msolData.tecnico,
+            fechas: msolData.fechas, alcance: msolData.alcance||[], aprobacion: msolData.aprobacion,
+            presupuesto: msolData.presupuesto, comentarios: msolData.comentarios||'',
+            referenciaLinks: linksRaw.split(',').map(s=>s.trim()).filter(Boolean),
+            referenciaTexto,
+            archivosCount: msolArchivos.length, referenciasCount: msolReferencias.length,
+            estado: 'Nueva', creadoPor: email, fechaCreacion: ahora.toISOString(),
+            historial: [{fecha: ahora.toISOString(), usuario: email, comentario: 'Solicitud creada', estado:'Nueva'}]
+        });
+        await msolGuardarAdjuntos(docRef.id);
+        document.getElementById('msol-folio-badge').style.display = 'inline-block';
+        document.getElementById('msol-folio-badge').innerText = folio;
+        if(typeof mostrarPush === 'function') mostrarPush('Solicitud enviada', `Folio ${folio} creado correctamente`, '✅');
+        document.getElementById('msol-body').innerHTML = `
+            <div style="text-align:center;padding:50px 20px;">
+                <div style="font-size:44px;margin-bottom:12px;">🎉</div>
+                <div style="font-family:'Space Grotesk',sans-serif;font-size:19px;font-weight:700;color:#1e293b;margin-bottom:6px;">¡Solicitud enviada!</div>
+                <div style="font-size:13px;color:#64748b;margin-bottom:18px;">Tu folio es <b style="color:#2563eb;">${folio}</b>. El equipo de Mercadotecnia la revisará pronto.</div>
+                <button class="msol-btn-primary" onclick="msolCerrar()">Cerrar</button>
+            </div>`;
+        document.getElementById('msol-footer') && (document.getElementById('msol-footer').style.display='none');
+        if(typeof msolCargarSeguimiento === 'function') msolCargarSeguimiento();
+    }catch(e){
+        msolToast('❌ Error al enviar la solicitud: '+e.message);
+    }finally{
+        msolEnviando = false;
+        if(btn){ btn.disabled = false; btn.innerText = '✅ Enviar solicitud'; }
+    }
+}
+
+// ── Panel de seguimiento (todos los empleados ven todas) ──────
+async function msolCargarSeguimiento(){
+    const cont = document.getElementById('msol-track-lista');
+    if(!cont) return;
+    cont.innerHTML = `<div style="text-align:center;color:#94a3b8;padding:16px;font-size:12px;">Cargando...</div>`;
+    try{
+        const snap = await getDocs(collection(db,'mkt_solicitudes'));
+        const items = [];
+        snap.forEach(d=>{ if(d.data().folio) items.push({id:d.id, ...d.data()}); });
+        items.sort((a,b)=> new Date(b.fechaCreacion||0) - new Date(a.fechaCreacion||0));
+        if(items.length===0){ cont.innerHTML = `<div style="text-align:center;color:#94a3b8;padding:16px;font-size:12px;">Sin solicitudes registradas todavía</div>`; return; }
+        cont.innerHTML = items.map(it=>{
+            const g = it.general||{};
+            const sem = msolCalcularSemaforo(it.fechas?.limite);
+            const dot = sem.nivel==='verde'?'🟢':sem.nivel==='amarillo'?'🟡':sem.nivel==='rojo'?'🔴':'⚪';
+            const tipoLabel = (MSOL_TIPOS.find(t=>t.id===g.tipo)||{}).label || '—';
+            return `<div class="msol-track-row">
+                <span><b>${it.folio}</b></span>
+                <span>${it.proyecto?.titulo||'—'}</span>
+                <span>${tipoLabel}</span>
+                <span>${g.prioridad||'normal'}</span>
+                <span class="msol-estado-badge">${it.estado||'Nueva'}</span>
+                <span>${dot}</span>
+            </div>`;
+        }).join('');
+    }catch(e){
+        cont.innerHTML = `<div style="text-align:center;color:#ef4444;padding:16px;font-size:12px;">Error al cargar: ${e.message}</div>`;
+    }
+}
+
+// ── Inyectar panel de seguimiento dentro del dashboard de Marketing ──
+(function inyectarPanelSeguimientoMsol(){
+    const dash = document.getElementById('mkt-dashboard');
+    if(!dash || document.getElementById('msol-track-wrap')) return;
+    const html = `
+    <div class="msol-track-wrap" id="msol-track-wrap">
+        <div class="rh-vac-title">
+            <span>📋 Solicitudes de Mercadotecnia <span style="font-size:10px;color:#64748b;font-weight:400;">(todas las áreas)</span></span>
+            <button class="mkt-add-btn" onclick="abrirModalSolicitudMkt()">➕ Nueva solicitud</button>
+        </div>
+        <div class="msol-track-row header">
+            <span>Folio</span><span>Proyecto</span><span>Tipo</span><span>Prioridad</span><span>Estatus</span><span>Tiempo</span>
+        </div>
+        <div id="msol-track-lista"></div>
+    </div>`;
+    dash.insertAdjacentHTML('beforeend', html);
+    msolCargarSeguimiento();
+})();
+
+console.log('[Marketing.js] ✅ Módulo de Solicitudes de Mercadotecnia (Fase 1) cargado');
 console.log('[Marketing.js] ✅ Módulo cargado correctamente');
