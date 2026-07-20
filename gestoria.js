@@ -366,7 +366,7 @@
 
     const SGM_SECCIONES_FORM = [
         { titulo: "Identidad del cliente", icono: ICONO.edificio, campos: [
-            ["NOMBRE_REPRESENTANTE", "Nombre completo del representante técnico", "Félix Ruiz González"],
+            ["NOMBRE_REPRESENTANTE", "Razón Social", "A LA GAS, S.A. DE C.V."],
             ["NUMERO_PERMISO", "Número de permiso CRE/ASEA (PL)", "PL/9693/EXP/ES/2015"],
         ]},
         { titulo: "Control de documentos", icono: ICONO.usuarios, campos: [
@@ -896,7 +896,70 @@
         return Array.from(celda.getElementsByTagNameNS(NS_W, 't')).map(t => t.textContent).join('');
     }
 
-    // ── SGM: reconstruir tarjetas de puesto (Responsabilidades/
+    // ── SGM: aplicar el grado de estudios seleccionado a la tabla
+    // "COMPETENCIA TÉCNICA" del MGM. Si el puesto ya tenía una línea
+    // "Escolaridad..." se reemplaza; si no la tenía (Alta Dirección,
+    // Intendencia en el machote original), se inserta como primer punto.
+    function aplicarGradoEstudiosSGM(xmlDoc, datos) {
+        if (!datos.GRADO_ESTUDIOS) return;
+        const norm = t => (t || '').replace(/[.:]+\s*$/, '').trim().toLowerCase();
+        const rolPorEtiqueta = etiqueta => (SGM_ROLES_DISPONIBLES.find(r => norm(r.etiqueta) === norm(etiqueta)) || {}).clave;
+
+        for (const tbl of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'tbl'))) {
+            const celdas = Array.from(tbl.getElementsByTagNameNS(NS_W, 'tc'));
+            if (celdas.length !== 1) continue;
+            const celda = celdas[0];
+            const textoTabla = textoDeCelda(celda);
+            if (!textoTabla.includes('COMPETENCIA TÉCNICA') && !textoTabla.includes('COMPETENCIA TECNICA')) continue;
+
+            const parrafos = Array.from(celda.children).filter(n => n.localName === 'p');
+            // localizar el primer parrafo-item de cada rol (justo despues del encabezado de rol)
+            let rolActual = null;
+            let primerItemDeCadaRol = {}; // clave -> {idx, esEscolaridad}
+            parrafos.forEach((p, i) => {
+                const texto = textoParrafo(p).trim();
+                if (!texto) return;
+                const claveRol = rolPorEtiqueta(texto);
+                if (claveRol) { rolActual = claveRol; return; }
+                if (rolActual && !(rolActual in primerItemDeCadaRol)) {
+                    primerItemDeCadaRol[rolActual] = { idx: i, esEscolaridad: /^escolaridad\b/i.test(texto) };
+                }
+            });
+
+            for (const [clave, grado] of Object.entries(datos.GRADO_ESTUDIOS)) {
+                const info = primerItemDeCadaRol[clave];
+                if (!info) continue; // el puesto no aparece en esta tabla
+                const plantilla = parrafos[info.idx];
+                const textoNuevo = `Escolaridad: ${grado}.`;
+                if (info.esEscolaridad) {
+                    reemplazarTextoParrafo(plantilla, textoNuevo);
+                } else {
+                    const nuevo = plantilla.cloneNode(true);
+                    reemplazarTextoParrafo(nuevo, textoNuevo);
+                    plantilla.parentNode.insertBefore(nuevo, plantilla);
+                }
+            }
+        }
+    }
+
+    function reemplazarTextoParrafo(p, textoNuevo) {
+        const runs = Array.from(p.getElementsByTagNameNS(NS_W, 'r'));
+        runs.slice(1).forEach(r => r.parentNode.removeChild(r));
+        if (runs[0]) {
+            quitarResaltado(runs[0]);
+            Array.from(runs[0].getElementsByTagNameNS(NS_W, 't')).forEach(t => t.parentNode.removeChild(t));
+            const t = p.ownerDocument.createElementNS(NS_W, 'w:t');
+            t.setAttribute('xml:space', 'preserve');
+            t.textContent = textoNuevo;
+            runs[0].appendChild(t);
+        }
+        const pPr = p.getElementsByTagNameNS(NS_W, 'pPr')[0];
+        if (pPr) {
+            const rPrMarca = pPr.getElementsByTagNameNS(NS_W, 'rPr')[0];
+            const hl = rPrMarca ? rPrMarca.getElementsByTagNameNS(NS_W, 'highlight')[0] : null;
+            if (hl) rPrMarca.removeChild(hl);
+        }
+    }
     // Funciones/Autoridad/Interrelaciones) con el catálogo capturado.
     // Si el cliente no personalizó el catálogo de un puesto, esa
     // tarjeta se deja exactamente como estaba (texto genérico, ya
@@ -1377,6 +1440,7 @@
                 procesarTablaDocumentoControlado(xmlDoc, datos, celdasFirmaPendientes);
                 neutralizarTablasDescriptivasSGM(xmlDoc);
                 reconstruirTarjetasPuestosSGM(xmlDoc, datos);
+                aplicarGradoEstudiosSGM(xmlDoc, datos);
                 filtrarListasDeRolesSGM(xmlDoc, datos);
                 reemplazarOrganigramaMGM(xmlDoc, datos);
             }
@@ -1505,7 +1569,7 @@
         #gestoria-dashboard .gs-field input.gs-input-error{border-color:#ef4444;}
         #gestoria-dashboard .gs-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
         #gestoria-dashboard .gs-checklist-roles{display:flex;flex-direction:column;gap:10px;}
-        #gestoria-dashboard .gs-rol-fila{display:grid;grid-template-columns:220px 1fr auto;align-items:center;gap:12px;padding:8px 10px;border-radius:10px;background:#fbfcfe;border:1px solid rgba(59,130,246,0.1);}
+        #gestoria-dashboard .gs-rol-fila{display:grid;grid-template-columns:220px 1fr auto auto;align-items:center;gap:12px;padding:8px 10px;border-radius:10px;background:#fbfcfe;border:1px solid rgba(59,130,246,0.1);}
         #gestoria-dashboard .gs-rol-check{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--text);}
         #gestoria-dashboard .gs-rol-check input[type="checkbox"]{width:16px;height:16px;accent-color:var(--teal);}
         #gestoria-dashboard .gs-rol-fila input[type="text"]{padding:9px 12px;border:1px solid rgba(59,130,246,0.16);border-radius:9px;font-size:13px;font-family:'DM Sans',sans-serif;color:var(--text);background:#fff;}
@@ -1786,6 +1850,10 @@
                                     </label>
                                     <input type="text" data-clave="${op.clave}" placeholder="Nombre de quien ocupa este rol"
                                         value="${valorActual.replace(/"/g,'&quot;')}" ${marcado ? '' : 'disabled'}>
+                                    ${conCatalogo ? `<select data-grado-estudios="${op.clave}" ${marcado ? '' : 'disabled'} style="font-size:11.5px;padding:8px 8px;border-radius:8px;border:1px solid rgba(59,130,246,0.16);">
+                                        <option value="">Último grado de estudios</option>
+                                        ${SGM_GRADOS_ESTUDIO.map(g => `<option value="${g}" ${((cliente.GRADO_ESTUDIOS||{})[op.clave] === g) ? 'selected' : ''}>${g}</option>`).join('')}
+                                    </select>` : ''}
                                     ${conCatalogo ? `<button type="button" class="gs-btn gs-btn-ghost gs-btn-toggle-catalogo" data-rol-toggle="${op.clave}" style="font-size:11px;padding:6px 10px;white-space:nowrap;" ${marcado ? '' : 'disabled'}>Responsabilidades ▾</button>` : ''}
                                 </div>
                                 ${conCatalogo ? renderPanelCatalogo(op.clave, obtenerCatalogoPuesto(cliente, op.clave)) : ''}
@@ -1837,6 +1905,12 @@
             </div>`;
     }
 
+    const SGM_GRADOS_ESTUDIO = [
+        "Sin estudios formales", "Primaria", "Secundaria",
+        "Bachillerato/preparatoria trunca", "Bachillerato/preparatoria terminada",
+        "Técnico o carrera técnica", "Licenciatura", "Maestría", "Doctorado",
+    ];
+
     const CATS_CATALOGO_UI = [['responsabilidades', 'Responsabilidades'], ['funciones', 'Funciones'], ['autoridad', 'Autoridad'], ['interrelaciones', 'Interrelaciones']];
 
     function obtenerCatalogoPuesto(cliente, clave) {
@@ -1882,10 +1956,12 @@
             const check = fila.querySelector('input[type="checkbox"]');
             const texto = fila.querySelector('input[type="text"]');
             const btnCatalogo = fila.querySelector('.gs-btn-toggle-catalogo');
+            const selectGrado = fila.querySelector('[data-grado-estudios]');
             check.addEventListener('change', () => {
                 texto.disabled = !check.checked;
                 if (!check.checked) texto.value = '';
                 if (btnCatalogo) btnCatalogo.disabled = !check.checked;
+                if (selectGrado) selectGrado.disabled = !check.checked;
                 cont.querySelectorAll(`[data-depende-de="${fila.dataset.rol}"]`).forEach(campo => {
                     campo.style.display = check.checked ? '' : 'none';
                     if (!check.checked) { const inp = campo.querySelector('input'); if (inp) inp.value = ''; }
@@ -2099,7 +2175,7 @@
         let filas;
         if (_seccionActual === 'sgm') {
             filas = [
-                ['Representante', datos.NOMBRE_REPRESENTANTE],
+                ['Razón Social', datos.NOMBRE_REPRESENTANTE],
                 ['Permiso', datos.NUMERO_PERMISO],
                 ['Elabora', datos.NOMBRE_ELABORA],
                 ['Fecha', datos.FECHA_ELABORACION],
@@ -2143,6 +2219,12 @@
             })).filter(r => r.etiqueta || r.nombre);
             if (roles.length) datos.ROLES_EXTRA = roles;
         }
+        const grados = {};
+        cont.querySelectorAll('[data-grado-estudios]').forEach(sel => {
+            if (!sel.disabled && sel.value) grados[sel.dataset.gradoEstudios] = sel.value;
+        });
+        if (Object.keys(grados).length) datos.GRADO_ESTUDIOS = grados;
+
         const catalogos = {};
         cont.querySelectorAll('.gs-catalogo-puesto').forEach(panel => {
             const clave = panel.dataset.rolCatalogo;
