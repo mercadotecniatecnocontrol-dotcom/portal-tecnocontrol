@@ -1113,9 +1113,11 @@
                 <wps:bodyPr wrap="square" lIns="45720" tIns="27432" rIns="45720" bIns="27432" anchor="ctr"><a:noAutofit/></wps:bodyPr>
             </wps:wsp>`).join('');
 
-        const GROSOR_LINEA = 19050; // ~2px
+        const GROSOR_LINEA = 57150; // ~6px, más grueso para asegurar que se vea
         const lineasXml = lineas.map(l => {
             const esVertical = Math.abs(l.x2 - l.x1) < 1000;
+            const esPunto = Math.abs(l.x2 - l.x1) < 1000 && Math.abs(l.y2 - l.y1) < 1000;
+            if (esPunto) return '';
             const x = esVertical ? Math.round(l.x1 - GROSOR_LINEA / 2) : Math.round(Math.min(l.x1, l.x2));
             const y = Math.round(Math.min(l.y1, l.y2));
             const cx = esVertical ? GROSOR_LINEA : Math.round(Math.abs(l.x2 - l.x1));
@@ -1127,10 +1129,11 @@
                 <wps:spPr>
                     <a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${Math.max(cx,1)}" cy="${Math.max(cy,1)}"/></a:xfrm>
                     <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
-                    <a:solidFill><a:srgbClr val="94A3B8"/></a:solidFill>
+                    <a:solidFill><a:srgbClr val="64748B"/></a:solidFill>
                     <a:ln><a:noFill/></a:ln>
                 </wps:spPr>
-                <wps:bodyPr/>
+                <wps:txbx><w:txbxContent><w:p><w:pPr><w:spacing w:after="0"/></w:pPr></w:p></w:txbxContent></wps:txbx>
+                <wps:bodyPr wrap="square" lIns="0" tIns="0" rIns="0" bIns="0" anchor="ctr"><a:noAutofit/></wps:bodyPr>
             </wps:wsp>`;
         }).join('');
 
