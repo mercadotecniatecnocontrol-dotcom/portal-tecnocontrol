@@ -26,7 +26,7 @@
     ];
     let _seccionActual = 'sasisopa';
 
-    const SASISOPA_RUTA_MACHOTES = 'sasisopa-machotes/';
+    const SASISOPA_RUTA_MACHOTES = 'sasisopa-machotes/sasisopa-machotes/';
     const SASISOPA_COLECCION = 'sasisopa_clientes';
 
     let _fsFns = null;
