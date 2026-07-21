@@ -170,11 +170,9 @@
         "Félix Ruiz González": "NOMBRE_REPRESENTANTE",
         "Félix": "__SKIP__",
         "Ruiz González": "__SKIP__",
-        "FRG": "INICIALES_REPRESENTANTE",
         "FR": "__SKIP__",
         "PL/9693/EXP/ES/2015": "NUMERO_PERMISO",
         "Lezlie Anahy Gutierrez Armendáriz.": "NOMBRE_ELABORA",
-        "LAGA": "INICIALES_ELABORA",
         "16/12/2024": "FECHA_ELABORACION",
         "LOGO": "__LOGO__",
     };
@@ -765,13 +763,31 @@
     // de Excel (NOMBRE_ELABORA/PUESTO_ELABORA/FIRMA_ELABORA_BASE64,
     // etc.) — antes esta tabla se dejaba fija; ahora es consistente
     // con lo capturado en la plataforma en ambos formatos.
+    // Si "nombre" quedó vacío o es literalmente el mismo texto que el
+    // puesto (el caso típico: alguien escribió "Alta Dirección" tanto
+    // en Nombre como en Puesto por no saber el nombre de la persona),
+    // se resuelve el nombre real buscando quién ocupa ese puesto en el
+    // organigrama capturado. Si no hay coincidencia, se deja tal cual.
+    function resolverNombreFirma(puestoTexto, nombreTexto, datos) {
+        const norm = t => (t || '').trim().toLowerCase().replace(/[.:]+$/, '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const puestoNorm = norm(puestoTexto);
+        const nombreNorm = norm(nombreTexto);
+        if (nombreTexto && nombreTexto.trim() && nombreNorm !== puestoNorm) return nombreTexto.trim();
+        const rol = SGM_ROLES_DISPONIBLES.find(r => norm(r.etiqueta) === puestoNorm);
+        if (rol && datos[rol.clave]) return datos[rol.clave];
+        return (nombreTexto || '').trim();
+    }
+
     function procesarTablaDocumentoControlado(xmlDoc, datos, celdasFirmaPendientes) {
         const norm = t => (t || '').trim().toLowerCase();
         const val = (clave, porDefecto) => (datos[clave] && String(datos[clave]).trim()) ? String(datos[clave]).trim() : porDefecto;
+        const puestoElabora = val('PUESTO_ELABORA', 'Administrativo');
+        const puestoReviso = val('PUESTO_REVISO', 'Alta Dirección');
+        const puestoAprueba = val('PUESTO_APRUEBA', 'Alta Dirección');
         const filasInfo = {
-            'elaboró': { nombre: val('NOMBRE_ELABORA', 'Lezlie Anahy Gutierrez Armendáriz.'), puesto: val('PUESTO_ELABORA', 'Administrativo'), firma: datos.FIRMA_ELABORA_BASE64 },
-            'revisó': { nombre: val('NOMBRE_REVISO', 'Félix Ruiz Gonzalez'), puesto: val('PUESTO_REVISO', 'Alta Dirección'), firma: datos.FIRMA_REVISO_BASE64 },
-            'aprobó': { nombre: val('NOMBRE_APRUEBA', 'Félix Ruiz Gonzalez'), puesto: val('PUESTO_APRUEBA', 'Alta Dirección'), firma: datos.FIRMA_APRUEBA_BASE64 },
+            'elaboró': { nombre: resolverNombreFirma(puestoElabora, val('NOMBRE_ELABORA', 'Lezlie Anahy Gutierrez Armendáriz.'), datos), puesto: puestoElabora, firma: datos.FIRMA_ELABORA_BASE64 },
+            'revisó': { nombre: resolverNombreFirma(puestoReviso, val('NOMBRE_REVISO', 'Félix Ruiz Gonzalez'), datos), puesto: puestoReviso, firma: datos.FIRMA_REVISO_BASE64 },
+            'aprobó': { nombre: resolverNombreFirma(puestoAprueba, val('NOMBRE_APRUEBA', 'Félix Ruiz Gonzalez'), datos), puesto: puestoAprueba, firma: datos.FIRMA_APRUEBA_BASE64 },
         };
         for (const tbl of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'tbl'))) {
             const filas = Array.from(tbl.getElementsByTagNameNS(NS_W, 'tr'));
@@ -795,6 +811,46 @@
                     Array.from(celdas[idxFirma].getElementsByTagNameNS(NS_W, 'r')).forEach(quitarResaltado);
                     if (info.firma && celdasFirmaPendientes) celdasFirmaPendientes.push({ celda: celdas[idxFirma], dataUrl: info.firma });
                 }
+            }
+        }
+    }
+
+    // La tabla "Control de Cambios" trae "LAGA"/"FRG" como iniciales
+    // fijas de Elaboró/Revisó/Aprobó del machote original — como "FRG"
+    // aparece igual en las columnas Revisó Y Aprobó, el motor genérico
+    // no puede distinguirlas y las sustituía por el mismo valor
+    // incorrecto (las iniciales de la Razón Social). Aquí se ponen las
+    // iniciales correctas por columna, usando los mismos nombres ya
+    // resueltos que la tabla de firmas.
+    function procesarControlDeCambiosSGM(xmlDoc, datos) {
+        const norm = t => (t || '').trim().toLowerCase();
+        const val = (clave, porDefecto) => (datos[clave] && String(datos[clave]).trim()) ? String(datos[clave]).trim() : porDefecto;
+        const puestoElabora = val('PUESTO_ELABORA', 'Administrativo');
+        const puestoReviso = val('PUESTO_REVISO', 'Alta Dirección');
+        const puestoAprueba = val('PUESTO_APRUEBA', 'Alta Dirección');
+        const inicialesRealizo = iniciales(resolverNombreFirma(puestoElabora, val('NOMBRE_ELABORA', 'Lezlie Anahy Gutierrez Armendáriz.'), datos));
+        const inicialesRevisoCol = iniciales(resolverNombreFirma(puestoReviso, val('NOMBRE_REVISO', 'Félix Ruiz Gonzalez'), datos));
+        const inicialesApruebaCol = iniciales(resolverNombreFirma(puestoAprueba, val('NOMBRE_APRUEBA', 'Félix Ruiz Gonzalez'), datos));
+
+        for (const tbl of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'tbl'))) {
+            const filas = Array.from(tbl.getElementsByTagNameNS(NS_W, 'tr'));
+            if (!filas.length) continue;
+            const encabezado = Array.from(filas[0].getElementsByTagNameNS(NS_W, 'tc')).map(textoDeCelda);
+            const esControlCambios = encabezado.some(t => norm(t).replace(/:$/, '') === 'realizó')
+                && encabezado.some(t => norm(t).replace(/:$/, '') === 'revisó')
+                && encabezado.some(t => norm(t).replace(/:$/, '') === 'aprobó');
+            if (!esControlCambios) continue;
+
+            const idxRealizo = encabezado.findIndex(t => norm(t).replace(/:$/, '') === 'realizó');
+            const idxRevisoCol = encabezado.findIndex(t => norm(t).replace(/:$/, '') === 'revisó');
+            const idxApruebaCol = encabezado.findIndex(t => norm(t).replace(/:$/, '') === 'aprobó');
+            for (const fila of filas.slice(1)) {
+                const celdas = Array.from(fila.getElementsByTagNameNS(NS_W, 'tc'));
+                const tieneContenido = celdas[idxRealizo] && textoDeCelda(celdas[idxRealizo]).trim();
+                if (!tieneContenido) continue; // fila vacía reservada para futuros registros manuales
+                if (celdas[idxRealizo]) reemplazarTextoCelda(celdas[idxRealizo], inicialesRealizo);
+                if (celdas[idxRevisoCol]) reemplazarTextoCelda(celdas[idxRevisoCol], inicialesRevisoCol);
+                if (celdas[idxApruebaCol]) reemplazarTextoCelda(celdas[idxApruebaCol], inicialesApruebaCol);
             }
         }
     }
@@ -829,12 +885,13 @@
     // filas de tabla (el Índice). No renumera — si se elimina un
     // puesto intermedio puede quedar un salto en la numeración.
     function filtrarListasDeRolesSGM(xmlDoc, datos) {
+        const normAcentos = t => (t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         const etiquetas = SGM_ROLES_DISPONIBLES.map(r => r.etiqueta);
         const estaCapturado = etiqueta => {
-            const rol = SGM_ROLES_DISPONIBLES.find(r => r.etiqueta.toLowerCase() === etiqueta.toLowerCase());
+            const rol = SGM_ROLES_DISPONIBLES.find(r => normAcentos(r.etiqueta) === normAcentos(etiqueta));
             return rol ? !!datos[rol.clave] : true;
         };
-        const esRolConocido = etiqueta => etiquetas.some(e => e.toLowerCase() === etiqueta.toLowerCase());
+        const esRolConocido = etiqueta => etiquetas.some(e => normAcentos(e) === normAcentos(etiqueta));
 
         // 1) Filas de tabla (Índice): primera celda con patrón "N.M Rol."
         for (const tbl of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'tbl'))) {
@@ -902,7 +959,7 @@
     // Intendencia en el machote original), se inserta como primer punto.
     function aplicarGradoEstudiosSGM(xmlDoc, datos) {
         if (!datos.GRADO_ESTUDIOS) return;
-        const norm = t => (t || '').replace(/[.:]+\s*$/, '').trim().toLowerCase();
+        const norm = t => (t || '').replace(/[.:]+\s*$/, '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         const rolPorEtiqueta = etiqueta => (SGM_ROLES_DISPONIBLES.find(r => norm(r.etiqueta) === norm(etiqueta)) || {}).clave;
 
         for (const tbl of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'tbl'))) {
@@ -968,7 +1025,7 @@
 
     function reconstruirTarjetasPuestosSGM(xmlDoc, datos) {
         if (!datos.CATALOGO_PUESTOS) return;
-        const norm = t => (t || '').replace(/[.:]+\s*$/, '').trim().toLowerCase();
+        const norm = t => (t || '').replace(/[.:]+\s*$/, '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         const rolPorEtiqueta = etiqueta => (SGM_ROLES_DISPONIBLES.find(r => norm(r.etiqueta) === norm(etiqueta)) || {}).clave;
 
         for (const tbl of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'tbl'))) {
@@ -1172,6 +1229,17 @@
     // sustituye por el organigrama generado. Si no encuentra ninguno,
     // no hace nada (no inventa dónde insertarlo).
     function reemplazarOrganigramaMGM(xmlDoc, datos) {
+        // Limpiar también dibujos VML antiguos (w:pict) sueltos fuera de
+        // tablas — son remanentes ocultos ("visibility:hidden") del
+        // machote original que Word no muestra pero Google Docs sí.
+        Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'pict')).forEach(pict => {
+            let nodo = pict.parentNode;
+            while (nodo && nodo.localName !== 'p') nodo = nodo.parentNode;
+            if (nodo && !estaDentroDeTabla(nodo)) {
+                if (pict.parentNode) pict.parentNode.removeChild(pict);
+            }
+        });
+
         const parrafosConDrawing = Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'))
             .filter(p => !estaDentroDeTabla(p) && p.getElementsByTagNameNS(NS_W, 'drawing').length > 0);
         if (!parrafosConDrawing.length) return;
@@ -1184,7 +1252,7 @@
             const nuevoParrafo = xmlDoc.createElementNS(NS_W, 'w:p');
             const pPr = xmlDoc.createElementNS(NS_W, 'w:pPr');
             const jc = xmlDoc.createElementNS(NS_W, 'w:jc');
-            jc.setAttribute('w:val', 'center');
+            jc.setAttributeNS(NS_W, 'w:val', 'center');
             pPr.appendChild(jc);
             nuevoParrafo.appendChild(pPr);
             nuevoParrafo.appendChild(nuevoRun);
@@ -1384,12 +1452,12 @@
         quitarRellenoAmarilloXlsx(stylesDoc);
 
         const val = (clave, porDefecto) => (datos[clave] && String(datos[clave]).trim()) ? String(datos[clave]).trim() : porDefecto;
-        const nombreElabora = val('NOMBRE_ELABORA', 'Lezlie Anahy Gutierrez Armendáriz.');
         const puestoElabora = val('PUESTO_ELABORA', 'Administrativo');
-        const nombreReviso = val('NOMBRE_REVISO', 'Félix Ruiz Gonzalez');
         const puestoReviso = val('PUESTO_REVISO', 'Alta Dirección');
-        const nombreAprueba = val('NOMBRE_APRUEBA', 'Félix Ruiz Gonzalez');
         const puestoAprueba = val('PUESTO_APRUEBA', 'Alta Dirección');
+        const nombreElabora = resolverNombreFirma(puestoElabora, val('NOMBRE_ELABORA', 'Lezlie Anahy Gutierrez Armendáriz.'), datos);
+        const nombreReviso = resolverNombreFirma(puestoReviso, val('NOMBRE_REVISO', 'Félix Ruiz Gonzalez'), datos);
+        const nombreAprueba = resolverNombreFirma(puestoAprueba, val('NOMBRE_APRUEBA', 'Félix Ruiz Gonzalez'), datos);
         const nombreRepresentante = (val('NOMBRE_REPRESENTANTE', 'Felix Ruiz Gonzalez')).toUpperCase();
 
         const celdaC4 = celdaXlsx(sheetDoc, 'C4');
@@ -1448,6 +1516,7 @@
             const celdasFirmaPendientes = [];
             if (_seccionActual === 'sgm') {
                 procesarTablaDocumentoControlado(xmlDoc, datos, celdasFirmaPendientes);
+                procesarControlDeCambiosSGM(xmlDoc, datos);
                 neutralizarTablasDescriptivasSGM(xmlDoc);
                 reconstruirTarjetasPuestosSGM(xmlDoc, datos);
                 aplicarGradoEstudiosSGM(xmlDoc, datos);
