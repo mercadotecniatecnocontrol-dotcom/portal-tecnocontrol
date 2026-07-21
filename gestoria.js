@@ -36,6 +36,13 @@
     let _firmasDataUrlActual = { ELABORA: null, REVISO: null, APRUEBA: null };
     let _filtroTexto = '';
 
+    // ── Estado del editor visual de organigrama ──
+    let _organigramaCanvas = null; // { nodos:[{id,texto,nombre,x,y,w,padre,clave}], conectores:[{a,b}] }
+    let _orgaModoConector = false;
+    let _orgaConectorOrigen = null;
+    let _orgaArrastre = null;
+    let _orgaIdSeq = 1;
+
     async function fsFns() {
         if (_fsFns) return _fsFns;
         _fsFns = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
@@ -138,14 +145,22 @@
         { clave: "ROL_INTENDENCIA",           etiqueta: "Intendencia",             escolaridadClave: "ESCOLARIDAD_INTENDENCIA",           obligatorio: false },
     ];
 
-    // ── PARCHE #4: placeholder del catálogo genérico de SASISOPA ──
-    // Se llena con el contenido real de
-    // M-05_Funciones__responsabilidades_y_autoridad.docx en cuanto
-    // Glen comparta ese documento. Mientras esté vacío, el botón
-    // "Responsabilidades ▾" de SASISOPA se abre pero no muestra
-    // texto genérico prellenado (el cliente puede escribir el suyo
-    // desde cero, igual que si SGM no tuviera catálogo para ese rol).
+    // Placeholder del catálogo genérico de SASISOPA (Responsabilidades/
+    // Funciones/Autoridad/Interrelaciones por puesto). Se llena con el
+    // contenido real de M-05_Funciones__responsabilidades_y_autoridad.docx
+    // en cuanto Glen comparta ese documento. Mientras esté vacío, el botón
+    // "Responsabilidades ▾" de SASISOPA se abre pero no muestra texto
+    // genérico prellenado (el cliente puede escribir el suyo desde cero).
     const SASISOPA_CATALOGO_GENERICO = {};
+
+    // Jerarquía por defecto para el organigrama gráfico de SASISOPA
+    // (se usa como fallback automático si el cliente no ha guardado
+    // un layout propio en el editor visual).
+    const SASISOPA_JERARQUIA_ORGANIGRAMA = [
+        ["ROL_ALTA_DIRECCION"],
+        ["ROL_REPRESENTANTE_TECNICO", "ROL_SUPERVISOR_ESTACION"],
+        ["ROL_ASISTENTE_ADMIN", "ROL_FACTURISTA", "ROL_MANTENIMIENTO", "ROL_INTENDENCIA", "ROL_DESPACHADOR"],
+    ];
 
     const SASISOPA_SECCIONES_FORM = [
         { titulo: "Identidad del cliente", icono: ICONO.edificio, campos: [
@@ -156,7 +171,6 @@
             ["NUMERO_PERMISO", "Número de permiso CRE/ASEA (PL)", "PL/6125/EXP/ES/2015"],
             ["FECHA_ELABORACION", "Fecha de elaboración (dd/mm/aaaa)", "28/04/2025"],
         ]},
-        // ── PARCHE #1: tarjeta "Firmas de control" agregada a SASISOPA ──
         { titulo: "Firmas de control", icono: ICONO.usuarios, campos: [
             ["NOMBRE_ELABORA", "Nombre de quien elabora", ""],
             ["PUESTO_ELABORA", "Puesto de quien elabora", ""],
@@ -174,7 +188,6 @@
         }},
     ];
 
-    // ── PARCHE #2: NOMBRE_ELABORA agregado a obligatorios ──
     const SASISOPA_CAMPOS_OBLIGATORIOS = ["RAZON_SOCIAL", "RFC", "DOMICILIO_ESTACION", "CIUDAD_ESTADO", "NUMERO_PERMISO", "FECHA_ELABORACION", "NOMBRE_ELABORA"];
 
     // ══════════════════════════════════════════════════════════
@@ -410,7 +423,9 @@
                 camposObligatorios: SGM_CAMPOS_OBLIGATORIOS,
                 rutaMachotes: SGM_RUTA_MACHOTES, coleccion: SGM_COLECCION,
                 campoNombre: 'NOMBRE_REPRESENTANTE', campoOrden: 'NOMBRE_REPRESENTANTE',
-                catalogoGenerico: SGM_CATALOGO_GENERICO, // ← PARCHE #4
+                catalogoGenerico: SGM_CATALOGO_GENERICO,
+                jerarquiaOrganigrama: SGM_JERARQUIA_ORGANIGRAMA,
+                rolesOrganigrama: SGM_ROLES_DISPONIBLES,
                 columnasTabla: [
                     { titulo: 'Cliente', valor: c => c.NOMBRE_REPRESENTANTE || '(sin nombre)' },
                     { titulo: 'Permiso', valor: c => c.NUMERO_PERMISO || '—' },
@@ -423,7 +438,9 @@
             camposObligatorios: SASISOPA_CAMPOS_OBLIGATORIOS,
             rutaMachotes: SASISOPA_RUTA_MACHOTES, coleccion: SASISOPA_COLECCION,
             campoNombre: 'RAZON_SOCIAL', campoOrden: 'RAZON_SOCIAL',
-            catalogoGenerico: SASISOPA_CATALOGO_GENERICO, // ← PARCHE #4
+            catalogoGenerico: SASISOPA_CATALOGO_GENERICO,
+            jerarquiaOrganigrama: SASISOPA_JERARQUIA_ORGANIGRAMA,
+            rolesOrganigrama: SASISOPA_ROLES_DISPONIBLES,
             columnasTabla: [
                 { titulo: 'Cliente', valor: c => c.RAZON_SOCIAL || '(sin razón social)' },
                 { titulo: 'RFC', valor: c => c.RFC || '—' },
@@ -1104,22 +1121,30 @@
         }
     }
 
-    // ── SGM: organigrama gráfico (reemplaza la imagen pegada del MGM) ──
-    // Genera cajas con líneas de jerarquía usando solo los puestos que
-    // el cliente marcó como existentes (más los personalizados, que se
-    // colocan reportando a Administrativo). Es un lienzo de formas de
-    // Word (wordprocessingGroup/wordprocessingShape), no una imagen.
+    // ── Organigrama gráfico (imagen de cajas + conectores embebida en
+    // el .docx). Si el cliente guardó un layout en el editor visual
+    // (ORGANIGRAMA_CANVAS), se usa ese; si no, se calcula automático
+    // con la jerarquía por defecto del sistema activo (SGM/SASISOPA).
+    // Es un lienzo de formas de Word (wordprocessingGroup/Shape), no
+    // una imagen — así se puede editar el texto directamente en Word.
     const NS_WPG = 'http://schemas.microsoft.com/office/word/2010/wordprocessingGroup';
     const NS_WPS = 'http://schemas.microsoft.com/office/word/2010/wordprocessingShape';
 
     function construirOrganigramaXml(datos) {
+        if (datos.ORGANIGRAMA_CANVAS && Array.isArray(datos.ORGANIGRAMA_CANVAS.nodos) && datos.ORGANIGRAMA_CANVAS.nodos.length) {
+            return construirOrganigramaXmlDesdeCanvas(datos.ORGANIGRAMA_CANVAS);
+        }
+
         const EMU_PX = 9525;
         const boxW = 1500000, boxH = 560000, gapH = 180000, gapV = 420000, margen = 60000;
+        const sis = sistemaActivo();
+        const rolesDisponibles = sis.rolesOrganigrama || [];
+        const jerarquiaBase = sis.jerarquiaOrganigrama || [];
 
         const nombreDe = clave => (datos[clave] || '').trim();
-        const etiquetaDe = clave => (SGM_ROLES_DISPONIBLES.find(r => r.clave === clave) || {}).etiqueta || clave;
+        const etiquetaDe = clave => (rolesDisponibles.find(r => r.clave === clave) || {}).etiqueta || clave;
 
-        const niveles = SGM_JERARQUIA_ORGANIGRAMA
+        const niveles = jerarquiaBase
             .map(nivel => nivel.filter(clave => !!nombreDe(clave)))
             .filter(nivel => nivel.length);
 
@@ -1229,6 +1254,115 @@
             </a:graphicData></a:graphic>
         </wp:inline></w:drawing>`;
         return { xml, cx, cy };
+    }
+
+    // ── Constructor del organigrama desde el layout libre guardado en
+    // el editor visual (posiciones y conectores arrastrados a mano).
+    function construirOrganigramaXmlDesdeCanvas(canvas) {
+        const EMU_PX = 9525;
+        const ALTO_NODO_PX = 90;
+        const nodos = canvas.nodos;
+        if (!nodos.length) return null;
+
+        const minX = Math.min(...nodos.map(n => n.x));
+        const minY = Math.min(...nodos.map(n => n.y));
+        const maxX = Math.max(...nodos.map(n => n.x + n.w));
+        const maxY = Math.max(...nodos.map(n => n.y + ALTO_NODO_PX));
+        const margen = 20;
+        const porId = {};
+        nodos.forEach(n => porId[n.id] = n);
+
+        let idc = 9100;
+        const shapesXml = nodos.map(n => {
+            const x = Math.round((n.x - minX + margen) * EMU_PX);
+            const y = Math.round((n.y - minY + margen) * EMU_PX);
+            const w = Math.round(n.w * EMU_PX);
+            const h = Math.round(ALTO_NODO_PX * EMU_PX);
+            return `
+                <wps:wsp>
+                    <wps:cNvPr id="${idc++}" name="Puesto"/>
+                    <wps:cNvSpPr/>
+                    <wps:spPr>
+                        <a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${w}" cy="${h}"/></a:xfrm>
+                        <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+                        <a:solidFill><a:srgbClr val="1F5AA8"/></a:solidFill>
+                        <a:ln w="9525"><a:solidFill><a:srgbClr val="123863"/></a:solidFill></a:ln>
+                    </wps:spPr>
+                    <wps:txbx><w:txbxContent>
+                        <w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="0"/></w:pPr>
+                            <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:color w:val="FFFFFF"/><w:sz w:val="16"/></w:rPr><w:t xml:space="preserve">${escaparXml(n.texto || 'Puesto')}</w:t></w:r>
+                        </w:p>
+                        <w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="0"/></w:pPr>
+                            <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:color w:val="FFFFFF"/><w:sz w:val="14"/></w:rPr><w:t xml:space="preserve">${escaparXml(n.nombre || '')}</w:t></w:r>
+                        </w:p>
+                    </w:txbxContent></wps:txbx>
+                    <wps:bodyPr wrap="square" lIns="45720" tIns="27432" rIns="45720" bIns="27432" anchor="ctr"><a:noAutofit/></wps:bodyPr>
+                </wps:wsp>`;
+        }).join('');
+
+        const puntoAbajo = n => ({ x: n.x - minX + margen + n.w / 2, y: n.y - minY + margen + ALTO_NODO_PX });
+        const puntoArriba = n => ({ x: n.x - minX + margen + n.w / 2, y: n.y - minY + margen });
+        const puntoCentro = n => ({ x: n.x - minX + margen + n.w / 2, y: n.y - minY + margen + ALTO_NODO_PX / 2 });
+
+        let lineasCoords = [];
+        nodos.forEach(n => {
+            if (n.padre && porId[n.padre]) lineasCoords.push(...segmentosElbow(puntoAbajo(porId[n.padre]), puntoArriba(n)));
+        });
+        (canvas.conectores || []).forEach(c => {
+            const a = porId[c.a], b = porId[c.b];
+            if (a && b) lineasCoords.push(...segmentosElbow(puntoCentro(a), puntoCentro(b)));
+        });
+
+        const GROSOR_LINEA = 38100;
+        const lineasXml = lineasCoords.map(l => {
+            const esVertical = Math.abs(l.x2 - l.x1) < 0.5;
+            const x = esVertical ? Math.round((l.x1 * EMU_PX) - GROSOR_LINEA / 2) : Math.round(Math.min(l.x1, l.x2) * EMU_PX);
+            const y = Math.round(Math.min(l.y1, l.y2) * EMU_PX);
+            const cx = esVertical ? GROSOR_LINEA : Math.round(Math.abs(l.x2 - l.x1) * EMU_PX);
+            const cy = esVertical ? Math.round(Math.abs(l.y2 - l.y1) * EMU_PX) : GROSOR_LINEA;
+            return `
+                <wps:wsp>
+                    <wps:cNvPr id="${idc++}" name="Linea"/>
+                    <wps:cNvSpPr/>
+                    <wps:spPr>
+                        <a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${Math.max(cx,1)}" cy="${Math.max(cy,1)}"/></a:xfrm>
+                        <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+                        <a:solidFill><a:srgbClr val="64748B"/></a:solidFill>
+                        <a:ln><a:noFill/></a:ln>
+                    </wps:spPr>
+                    <wps:txbx><w:txbxContent><w:p><w:pPr><w:spacing w:after="0"/></w:pPr></w:p></w:txbxContent></wps:txbx>
+                    <wps:bodyPr wrap="square" lIns="0" tIns="0" rIns="0" bIns="0" anchor="ctr"><a:noAutofit/></wps:bodyPr>
+                </wps:wsp>`;
+        }).join('');
+
+        const cx = Math.round((maxX - minX + margen * 2) * EMU_PX);
+        const cy = Math.round((maxY - minY + margen * 2) * EMU_PX);
+        const xml = `<w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0">
+            <wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/>
+            <wp:docPr id="9099" name="Organigrama"/>
+            <a:graphic><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup">
+                <wpg:wgp>
+                    <wpg:cNvGrpSpPr/>
+                    <wpg:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/><a:chOff x="0" y="0"/><a:chExt cx="${cx}" cy="${cy}"/></a:xfrm></wpg:grpSpPr>
+                    ${lineasXml}
+                    ${shapesXml}
+                </wpg:wgp>
+            </a:graphicData></a:graphic>
+        </wp:inline></w:drawing>`;
+        return { xml, cx, cy };
+    }
+
+    // Traza en forma de "codo" (baja, cruza, baja) entre dos puntos,
+    // igual que hace el organigrama automático — usado tanto para las
+    // líneas de jerarquía (padre) como para los conectores libres.
+    function segmentosElbow(a, b) {
+        if (Math.abs(a.x - b.x) < 0.5) return [{ x1: a.x, y1: a.y, x2: b.x, y2: b.y }];
+        const yMedio = a.y + (b.y - a.y) / 2;
+        return [
+            { x1: a.x, y1: a.y, x2: a.x, y2: yMedio },
+            { x1: a.x, y1: yMedio, x2: b.x, y2: yMedio },
+            { x1: b.x, y1: yMedio, x2: b.x, y2: b.y },
+        ];
     }
 
     function escaparXml(t) {
@@ -1542,8 +1676,11 @@
                 reconstruirTarjetasPuestosSGM(xmlDoc, datos);
                 aplicarGradoEstudiosSGM(xmlDoc, datos);
                 filtrarListasDeRolesSGM(xmlDoc, datos);
-                reemplazarOrganigramaMGM(xmlDoc, datos);
             }
+            // El organigrama gráfico corre en AMBOS sistemas (SASISOPA y SGM):
+            // si el machote no trae ningún dibujo suelto que reemplazar, la
+            // función simplemente no hace nada.
+            reemplazarOrganigramaMGM(xmlDoc, datos);
 
             for (const p of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'))) {
                 await procesarParrafo(p, datos, stats, ctx);
@@ -1724,6 +1861,27 @@
         #gestoria-dashboard .gs-progreso{font-size:12.5px;color:var(--text2);display:flex;align-items:center;gap:8px;}
         #gestoria-dashboard .gs-progreso.gs-progreso-ok{color:#16803d;}
         #gestoria-dashboard .gs-progreso.gs-progreso-error{color:#b91c1c;}
+
+        /* ── Editor visual del organigrama (mapa conceptual arrastrable) ── */
+        .gs-orga-overlay{position:fixed;inset:0;z-index:200001;background:rgba(15,23,42,0);pointer-events:none;transition:background 0.22s ease;display:flex;align-items:center;justify-content:center;}
+        .gs-orga-overlay.abierto{background:rgba(15,23,42,0.55);pointer-events:auto;}
+        .gs-orga-panel{width:94vw;height:90vh;background:#fff;border-radius:18px;box-shadow:0 20px 60px rgba(0,0,0,0.3);display:flex;flex-direction:column;overflow:hidden;transform:scale(0.96);opacity:0;transition:all 0.22s ease;}
+        .gs-orga-overlay.abierto .gs-orga-panel{transform:scale(1);opacity:1;}
+        .gs-orga-toolbar{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid rgba(59,130,246,0.12);flex-wrap:wrap;gap:10px;}
+        .gs-orga-titulo{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14.5px;color:#1e293b;display:flex;align-items:center;gap:8px;}
+        .gs-orga-acciones{display:flex;gap:8px;flex-wrap:wrap;}
+        .gs-orga-hint{padding:8px 18px;font-size:11.5px;color:var(--text3);background:#f8fafc;border-bottom:1px solid rgba(59,130,246,0.08);}
+        .gs-orga-lienzo-wrap{flex:1;overflow:auto;position:relative;background-image:linear-gradient(90deg,rgba(59,130,246,0.06) 1px,transparent 1px),linear-gradient(rgba(59,130,246,0.06) 1px,transparent 1px);background-size:24px 24px;}
+        .gs-orga-svg{position:absolute;top:0;left:0;pointer-events:none;}
+        .gs-orga-lienzo{position:relative;min-width:100%;min-height:100%;}
+        .gs-orga-nodo{position:absolute;background:#0f172a;border-radius:12px;padding:8px 12px 12px;box-shadow:0 4px 14px rgba(0,0,0,0.18);display:flex;flex-direction:column;gap:6px;}
+        .gs-orga-nodo.gs-orga-nodo-origen{outline:2px solid #facc15;}
+        .gs-orga-nodo-drag{cursor:grab;color:rgba(255,255,255,0.5);font-size:13px;text-align:center;user-select:none;}
+        .gs-orga-nodo input,.gs-orga-nodo select{width:100%;padding:6px 8px;border-radius:7px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.08);color:#fff;font-size:12px;font-family:'DM Sans',sans-serif;}
+        .gs-orga-nodo input::placeholder{color:rgba(255,255,255,0.4);}
+        .gs-orga-nodo select option{color:#0f172a;}
+        .gs-orga-nodo-borrar{align-self:flex-end;background:none;border:none;color:rgba(255,255,255,0.5);cursor:pointer;font-size:12px;}
+        .gs-orga-nodo-borrar:hover{color:#f87171;}
         `;
         document.head.appendChild(style);
     }
@@ -1951,15 +2109,19 @@
             const extras = Array.isArray(cliente.ROLES_EXTRA) ? cliente.ROLES_EXTRA : [];
             return `
             <div class="gs-card">
-                <div class="gs-card-header"><span class="gs-card-icon">${sec.icono}</span><span class="gs-card-title">${sec.titulo}</span></div>
+                <div class="gs-card-header">
+                    <span class="gs-card-icon">${sec.icono}</span>
+                    <span class="gs-card-title">${sec.titulo}</span>
+                    <button type="button" class="gs-btn gs-btn-secondary" id="gs-btn-editor-organigrama" style="margin-left:auto;font-size:12px;padding:8px 14px;">${ICONO.carpeta} Editor visual del organigrama</button>
+                </div>
                 <div class="gs-card-body">
                     <div class="gs-subtitle" style="margin-bottom:10px;">Marca los roles que existen en esta estación y el nombre de quien los ocupa. Si una persona cubre dos roles, marca ambos y repite el nombre.</div>
                     <div class="gs-checklist-roles" id="gs-roles-fijos">
                         ${sec.opciones.map(op => {
                             const valorActual = cliente[op.clave] || '';
                             const marcado = !!valorActual || op.obligatorio;
-                            // ── PARCHE #3: antes era `_seccionActual === 'sgm'` ──
-                            const conCatalogo = true;
+                            const conCatalogo = true; // botón "Responsabilidades ▾" en ambos sistemas
+                            const conGradoDropdown = _seccionActual === 'sgm'; // dropdown de escolaridad: solo SGM (SASISOPA usa F-06-02)
                             return `
                             <div>
                                 <div class="gs-rol-fila" data-rol="${op.clave}">
@@ -1969,7 +2131,7 @@
                                     </label>
                                     <input type="text" data-clave="${op.clave}" placeholder="Nombre de quien ocupa este rol"
                                         value="${valorActual.replace(/"/g,'&quot;')}" ${marcado ? '' : 'disabled'}>
-                                    ${conCatalogo ? `<select data-grado-estudios="${op.clave}" ${marcado ? '' : 'disabled'} style="font-size:11.5px;padding:8px 8px;border-radius:8px;border:1px solid rgba(59,130,246,0.16);">
+                                    ${conGradoDropdown ? `<select data-grado-estudios="${op.clave}" ${marcado ? '' : 'disabled'} style="font-size:11.5px;padding:8px 8px;border-radius:8px;border:1px solid rgba(59,130,246,0.16);">
                                         <option value="">Último grado de estudios</option>
                                         ${SGM_GRADOS_ESTUDIO.map(g => `<option value="${g}" ${((cliente.GRADO_ESTUDIOS||{})[op.clave] === g) ? 'selected' : ''}>${g}</option>`).join('')}
                                     </select>` : ''}
@@ -1985,10 +2147,10 @@
                             <div class="gs-rol-fila-extra" style="display:grid;grid-template-columns:1fr 1fr auto auto;gap:10px;align-items:center;">
                                 <input type="text" data-rol-extra-etiqueta placeholder="Nombre del puesto" value="${(ex.etiqueta||'').replace(/"/g,'&quot;')}">
                                 <input type="text" data-rol-extra-nombre placeholder="Nombre de quien lo ocupa" value="${(ex.nombre||'').replace(/"/g,'&quot;')}">
-                                ${true ? `<button type="button" class="gs-btn gs-btn-ghost gs-btn-toggle-catalogo" data-rol-toggle="EXTRA_${idx}" style="font-size:11px;padding:6px 10px;white-space:nowrap;">Responsabilidades ▾</button>` : ''}
+                                <button type="button" class="gs-btn gs-btn-ghost gs-btn-toggle-catalogo" data-rol-toggle="EXTRA_${idx}" style="font-size:11px;padding:6px 10px;white-space:nowrap;">Responsabilidades ▾</button>
                                 <button type="button" class="gs-btn gs-btn-ghost gs-btn-quitar-rol-extra" title="Quitar este puesto">✕</button>
                             </div>
-                            ${true ? renderPanelCatalogo(`EXTRA_${idx}`, obtenerCatalogoPuesto(cliente, `EXTRA_${idx}`)) : ''}
+                            ${renderPanelCatalogo(`EXTRA_${idx}`, obtenerCatalogoPuesto(cliente, `EXTRA_${idx}`))}
                         </div>`).join('')}
                     </div>
                     <button type="button" id="gs-btn-add-rol" class="gs-btn gs-btn-ghost" style="margin-top:10px;">${ICONO.mas} Agregar nuevo puesto</button>
@@ -2032,7 +2194,6 @@
 
     const CATS_CATALOGO_UI = [['responsabilidades', 'Responsabilidades'], ['funciones', 'Funciones'], ['autoridad', 'Autoridad'], ['interrelaciones', 'Interrelaciones']];
 
-    // ── PARCHE #4: usa el catálogo genérico del sistema activo (SGM o SASISOPA) ──
     function obtenerCatalogoPuesto(cliente, clave) {
         const guardado = (cliente.CATALOGO_PUESTOS || {})[clave];
         if (guardado) return guardado;
@@ -2072,6 +2233,9 @@
     }
 
     function bindSeccionesEspeciales(cont) {
+        const btnEditorOrga = cont.querySelector('#gs-btn-editor-organigrama');
+        if (btnEditorOrga) btnEditorOrga.addEventListener('click', () => abrirEditorOrganigrama(cont));
+
         cont.querySelectorAll('.gs-rol-fila').forEach(fila => {
             const check = fila.querySelector('input[type="checkbox"]');
             const texto = fila.querySelector('input[type="text"]');
@@ -2137,10 +2301,10 @@
                         <div class="gs-rol-fila-extra" style="display:grid;grid-template-columns:1fr 1fr auto auto;gap:10px;align-items:center;">
                             <input type="text" data-rol-extra-etiqueta placeholder="Nombre del puesto">
                             <input type="text" data-rol-extra-nombre placeholder="Nombre de quien lo ocupa">
-                            ${true ? `<button type="button" class="gs-btn gs-btn-ghost gs-btn-toggle-catalogo" data-rol-toggle="EXTRA_${idx}" style="font-size:11px;padding:6px 10px;white-space:nowrap;">Responsabilidades ▾</button>` : ''}
+                            <button type="button" class="gs-btn gs-btn-ghost gs-btn-toggle-catalogo" data-rol-toggle="EXTRA_${idx}" style="font-size:11px;padding:6px 10px;white-space:nowrap;">Responsabilidades ▾</button>
                             <button type="button" class="gs-btn gs-btn-ghost gs-btn-quitar-rol-extra" title="Quitar este puesto">✕</button>
                         </div>
-                        ${true ? renderPanelCatalogo(`EXTRA_${idx}`, { responsabilidades: [], funciones: [], autoridad: [], interrelaciones: [] }) : ''}
+                        ${renderPanelCatalogo(`EXTRA_${idx}`, { responsabilidades: [], funciones: [], autoridad: [], interrelaciones: [] })}
                     </div>`);
                 reindexarRoles();
                 const nuevoToggle = contRolesExtra.querySelector(`.gs-btn-toggle-catalogo[data-rol-toggle="EXTRA_${idx}"]`);
@@ -2168,6 +2332,248 @@
         }
     }
 
+    // ══════════════════════════════════════════════════════════
+    // EDITOR VISUAL DEL ORGANIGRAMA (mapa conceptual arrastrable)
+    // ══════════════════════════════════════════════════════════
+    function nodosDesdeChecklist(cont) {
+        const sis = sistemaActivo();
+        const nodos = [];
+        let i = 0;
+        const porFila = 4;
+        cont.querySelectorAll('.gs-rol-fila').forEach(fila => {
+            const check = fila.querySelector('input[type="checkbox"]');
+            if (!check.checked) return;
+            const clave = fila.dataset.rol;
+            const spanEtiqueta = fila.querySelector('.gs-rol-check span');
+            const texto = (spanEtiqueta ? spanEtiqueta.textContent : clave).replace('*', '').trim();
+            const nombre = (fila.querySelector('input[type="text"]') || {}).value || '';
+            nodos.push({ id: 'rol_' + clave, texto, nombre, x: 60 + (i % porFila) * 260, y: 60 + Math.floor(i / porFila) * 160, w: 220, padre: '', clave });
+            i++;
+        });
+        const contRolesExtra = cont.querySelector('#gs-roles-extra');
+        if (contRolesExtra) {
+            Array.from(contRolesExtra.querySelectorAll('.gs-rol-fila-extra')).forEach((fila, idx) => {
+                const texto = (fila.querySelector('[data-rol-extra-etiqueta]') || {}).value || 'Puesto';
+                const nombre = (fila.querySelector('[data-rol-extra-nombre]') || {}).value || '';
+                if (!texto.trim() && !nombre.trim()) return;
+                nodos.push({ id: 'extra_' + idx, texto, nombre, x: 60 + (i % porFila) * 260, y: 60 + Math.floor(i / porFila) * 160, w: 220, padre: '' });
+                i++;
+            });
+        }
+        // aplica jerarquía por defecto y reacomoda en niveles
+        const jerarquia = sis.jerarquiaOrganigrama || [];
+        const nivelDeClave = {};
+        jerarquia.forEach((nivel, iNivel) => nivel.forEach(clave => { nivelDeClave[clave] = iNivel; }));
+        nodos.forEach(n => {
+            if (n.clave && nivelDeClave[n.clave] > 0) {
+                const clavePadre = (jerarquia[nivelDeClave[n.clave] - 1] || [])[0];
+                const nodoPadre = nodos.find(x => x.clave === clavePadre);
+                if (nodoPadre) n.padre = nodoPadre.id;
+            }
+        });
+        const porNivel = {};
+        nodos.forEach(n => {
+            const nivel = (n.clave && nivelDeClave[n.clave] !== undefined) ? nivelDeClave[n.clave] : jerarquia.length;
+            (porNivel[nivel] = porNivel[nivel] || []).push(n);
+        });
+        Object.keys(porNivel).sort((a, b) => a - b).forEach(nivel => {
+            porNivel[nivel].forEach((n, idx) => { n.x = 60 + idx * 260; n.y = 60 + Number(nivel) * 160; });
+        });
+        return nodos;
+    }
+
+    function abrirEditorOrganigrama(cont) {
+        const sis = sistemaActivo();
+        if (!_organigramaCanvas || !Array.isArray(_organigramaCanvas.nodos)) {
+            _organigramaCanvas = { nodos: [], conectores: [] };
+        }
+        if (!_organigramaCanvas.nodos.length) {
+            _organigramaCanvas.nodos = nodosDesdeChecklist(cont);
+        }
+        _orgaIdSeq = _organigramaCanvas.nodos.reduce((m, n) => {
+            const num = parseInt((n.id || '').replace(/\D/g, ''), 10);
+            return isNaN(num) ? m : Math.max(m, num + 1);
+        }, 1);
+        _orgaModoConector = false;
+        _orgaConectorOrigen = null;
+
+        let overlay = document.getElementById('gs-orga-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'gs-orga-overlay';
+            overlay.className = 'gs-orga-overlay';
+            document.body.appendChild(overlay);
+        }
+        overlay.innerHTML = `
+            <div class="gs-orga-panel">
+                <div class="gs-orga-toolbar">
+                    <span class="gs-orga-titulo">${ICONO.usuarios} Editor visual del organigrama — ${sis.nombre}</span>
+                    <div class="gs-orga-acciones">
+                        <button type="button" class="gs-btn gs-btn-secondary" id="gs-orga-cargar-checklist">${ICONO.mas} Cargar desde checklist</button>
+                        <button type="button" class="gs-btn gs-btn-secondary" id="gs-orga-add-recuadro">${ICONO.mas} Recuadro en blanco</button>
+                        <button type="button" class="gs-btn gs-btn-secondary" id="gs-orga-modo-conector">${ICONO.flecha} Conectar recuadros</button>
+                        <button type="button" class="gs-btn gs-btn-primary" id="gs-orga-guardar">${ICONO.check} Guardar organigrama</button>
+                        <button type="button" class="gs-btn gs-btn-ghost" id="gs-orga-cerrar">${ICONO.cerrar}</button>
+                    </div>
+                </div>
+                <div class="gs-orga-hint" id="gs-orga-hint">Arrastra los recuadros por el icono ⠿ para acomodarlos. Usa "Reporta a" dentro del recuadro para conectarlo automáticamente a su jefe, o el botón "Conectar recuadros" para dibujar una línea libre entre dos recuadros cualesquiera.</div>
+                <div class="gs-orga-lienzo-wrap" id="gs-orga-lienzo-wrap">
+                    <svg class="gs-orga-svg" id="gs-orga-svg"></svg>
+                    <div class="gs-orga-lienzo" id="gs-orga-lienzo"></div>
+                </div>
+            </div>`;
+        requestAnimationFrame(() => overlay.classList.add('abierto'));
+
+        overlay.querySelector('#gs-orga-cerrar').addEventListener('click', () => overlay.classList.remove('abierto'));
+        overlay.querySelector('#gs-orga-cargar-checklist').addEventListener('click', () => {
+            const existentes = new Set(_organigramaCanvas.nodos.map(n => n.id));
+            const nuevos = nodosDesdeChecklist(cont).filter(n => !existentes.has(n.id));
+            _organigramaCanvas.nodos.push(...nuevos);
+            renderLienzoOrganigrama();
+        });
+        overlay.querySelector('#gs-orga-add-recuadro').addEventListener('click', () => {
+            const id = 'manual_' + (_orgaIdSeq++);
+            _organigramaCanvas.nodos.push({ id, texto: 'Puesto', nombre: '', x: 80, y: 80, w: 220, padre: '' });
+            renderLienzoOrganigrama();
+        });
+        const btnConector = overlay.querySelector('#gs-orga-modo-conector');
+        btnConector.addEventListener('click', () => {
+            _orgaModoConector = !_orgaModoConector;
+            _orgaConectorOrigen = null;
+            const hint = overlay.querySelector('#gs-orga-hint');
+            hint.textContent = _orgaModoConector
+                ? 'Modo conectar: haz clic en el primer recuadro y luego en el segundo para unirlos con una línea libre. Vuelve a pulsar "Conectar recuadros" para salir del modo.'
+                : 'Arrastra los recuadros por el icono ⠿ para acomodarlos. Usa "Reporta a" dentro del recuadro para conectarlo automáticamente a su jefe, o el botón "Conectar recuadros" para dibujar una línea libre entre dos recuadros cualesquiera.';
+            renderLienzoOrganigrama();
+        });
+        overlay.querySelector('#gs-orga-guardar').addEventListener('click', () => {
+            actualizarPreview(cont);
+            overlay.classList.remove('abierto');
+        });
+
+        renderLienzoOrganigrama();
+    }
+
+    function renderLienzoOrganigrama() {
+        const lienzo = document.getElementById('gs-orga-lienzo');
+        if (!lienzo) return;
+        lienzo.innerHTML = _organigramaCanvas.nodos.map(nodo => `
+            <div class="gs-orga-nodo${_orgaConectorOrigen === nodo.id ? ' gs-orga-nodo-origen' : ''}" data-id="${nodo.id}" style="left:${nodo.x}px;top:${nodo.y}px;width:${nodo.w}px;">
+                <div class="gs-orga-nodo-drag" title="Arrastrar">⠿</div>
+                <input type="text" class="gs-orga-nodo-texto" data-campo="texto" value="${(nodo.texto || '').replace(/"/g, '&quot;')}" placeholder="Puesto">
+                <input type="text" class="gs-orga-nodo-nombre" data-campo="nombre" value="${(nodo.nombre || '').replace(/"/g, '&quot;')}" placeholder="Nombre de quien ocupa">
+                <select class="gs-orga-nodo-padre" data-campo="padre">
+                    <option value="">Sin jefe (raíz)</option>
+                    ${_organigramaCanvas.nodos.filter(n => n.id !== nodo.id).map(n => `<option value="${n.id}" ${nodo.padre === n.id ? 'selected' : ''}>${(n.texto || 'Puesto').slice(0, 28)}</option>`).join('')}
+                </select>
+                <button type="button" class="gs-orga-nodo-borrar" title="Quitar recuadro">✕</button>
+            </div>`).join('');
+        lienzo.querySelectorAll('.gs-orga-nodo').forEach(el => bindNodoOrganigrama(el));
+        dibujarConectoresOrganigrama();
+    }
+
+    function bindNodoOrganigrama(el) {
+        const id = el.dataset.id;
+        const nodo = _organigramaCanvas.nodos.find(n => n.id === id);
+        if (!nodo) return;
+
+        el.querySelector('[data-campo="texto"]').addEventListener('input', (e) => {
+            nodo.texto = e.target.value;
+            document.querySelectorAll('.gs-orga-nodo-padre').forEach(sel => {
+                const opt = sel.querySelector(`option[value="${id}"]`);
+                if (opt) opt.textContent = (nodo.texto || 'Puesto').slice(0, 28);
+            });
+        });
+        el.querySelector('[data-campo="nombre"]').addEventListener('input', (e) => { nodo.nombre = e.target.value; });
+        el.querySelector('[data-campo="padre"]').addEventListener('change', (e) => { nodo.padre = e.target.value; dibujarConectoresOrganigrama(); });
+        el.querySelector('.gs-orga-nodo-borrar').addEventListener('click', () => {
+            _organigramaCanvas.nodos = _organigramaCanvas.nodos.filter(n => n.id !== id);
+            _organigramaCanvas.nodos.forEach(n => { if (n.padre === id) n.padre = ''; });
+            _organigramaCanvas.conectores = (_organigramaCanvas.conectores || []).filter(c => c.a !== id && c.b !== id);
+            renderLienzoOrganigrama();
+        });
+
+        el.addEventListener('click', (e) => {
+            if (!_orgaModoConector || e.target.closest('input,select,button')) return;
+            if (!_orgaConectorOrigen) {
+                _orgaConectorOrigen = id;
+                renderLienzoOrganigrama();
+            } else if (_orgaConectorOrigen !== id) {
+                const existe = (_organigramaCanvas.conectores || []).some(c =>
+                    (c.a === _orgaConectorOrigen && c.b === id) || (c.a === id && c.b === _orgaConectorOrigen));
+                if (!existe) {
+                    _organigramaCanvas.conectores = _organigramaCanvas.conectores || [];
+                    _organigramaCanvas.conectores.push({ a: _orgaConectorOrigen, b: id });
+                }
+                _orgaConectorOrigen = null;
+                renderLienzoOrganigrama();
+            }
+        });
+
+        const asa = el.querySelector('.gs-orga-nodo-drag');
+        asa.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            const lienzo = document.getElementById('gs-orga-lienzo');
+            const rectLienzo = lienzo.getBoundingClientRect();
+            _orgaArrastre = { id, offsetX: e.clientX - rectLienzo.left - nodo.x, offsetY: e.clientY - rectLienzo.top - nodo.y };
+            const mover = (ev) => {
+                if (!_orgaArrastre) return;
+                nodo.x = Math.max(0, ev.clientX - rectLienzo.left - _orgaArrastre.offsetX);
+                nodo.y = Math.max(0, ev.clientY - rectLienzo.top - _orgaArrastre.offsetY);
+                el.style.left = nodo.x + 'px';
+                el.style.top = nodo.y + 'px';
+                dibujarConectoresOrganigrama();
+            };
+            const soltar = () => {
+                _orgaArrastre = null;
+                document.removeEventListener('pointermove', mover);
+                document.removeEventListener('pointerup', soltar);
+            };
+            document.addEventListener('pointermove', mover);
+            document.addEventListener('pointerup', soltar);
+        });
+    }
+
+    function dibujarConectoresOrganigrama() {
+        const svg = document.getElementById('gs-orga-svg');
+        const lienzo = document.getElementById('gs-orga-lienzo');
+        if (!svg || !lienzo) return;
+        const ALTO_NODO_PX = 90;
+        const porId = {};
+        _organigramaCanvas.nodos.forEach(n => porId[n.id] = n);
+        const centroAbajo = n => ({ x: n.x + n.w / 2, y: n.y + ALTO_NODO_PX });
+        const centroArriba = n => ({ x: n.x + n.w / 2, y: n.y });
+        const centro = n => ({ x: n.x + n.w / 2, y: n.y + ALTO_NODO_PX / 2 });
+
+        let lineasHtml = '';
+        _organigramaCanvas.nodos.forEach(n => {
+            if (n.padre && porId[n.padre]) lineasHtml += trazoElbowSvg(centroAbajo(porId[n.padre]), centroArriba(n), '#2563eb', false);
+        });
+        (_organigramaCanvas.conectores || []).forEach(c => {
+            const a = porId[c.a], b = porId[c.b];
+            if (a && b) lineasHtml += trazoElbowSvg(centro(a), centro(b), '#64748b', true);
+        });
+
+        const maxX = Math.max(600, ..._organigramaCanvas.nodos.map(n => n.x + n.w + 60));
+        const maxY = Math.max(400, ..._organigramaCanvas.nodos.map(n => n.y + ALTO_NODO_PX + 60));
+        svg.setAttribute('width', maxX);
+        svg.setAttribute('height', maxY);
+        lienzo.style.width = maxX + 'px';
+        lienzo.style.height = maxY + 'px';
+        svg.innerHTML = lineasHtml;
+    }
+
+    function trazoElbowSvg(a, b, color, punteado) {
+        const dash = punteado ? 'stroke-dasharray="5,4"' : '';
+        if (Math.abs(a.x - b.x) < 4) {
+            return `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="${color}" stroke-width="2" ${dash}/>`;
+        }
+        const yMedio = a.y + (b.y - a.y) / 2;
+        return `<line x1="${a.x}" y1="${a.y}" x2="${a.x}" y2="${yMedio}" stroke="${color}" stroke-width="2" ${dash}/>` +
+               `<line x1="${a.x}" y1="${yMedio}" x2="${b.x}" y2="${yMedio}" stroke="${color}" stroke-width="2" ${dash}/>` +
+               `<line x1="${b.x}" y1="${yMedio}" x2="${b.x}" y2="${b.y}" stroke="${color}" stroke-width="2" ${dash}/>`;
+    }
+
     function renderFormularioCliente(cont, clienteId) {
         _clienteActualId = clienteId;
         const sis = sistemaActivo();
@@ -2178,6 +2584,7 @@
             REVISO: cliente.FIRMA_REVISO_BASE64 || null,
             APRUEBA: cliente.FIRMA_APRUEBA_BASE64 || null,
         };
+        _organigramaCanvas = cliente.ORGANIGRAMA_CANVAS ? JSON.parse(JSON.stringify(cliente.ORGANIGRAMA_CANVAS)) : null;
 
         const seccionesHtml = sis.seccionesForm.map(sec => renderSeccionForm(sec, cliente)).join('');
 
@@ -2364,6 +2771,9 @@
         if (_firmasDataUrlActual.ELABORA) datos.FIRMA_ELABORA_BASE64 = _firmasDataUrlActual.ELABORA;
         if (_firmasDataUrlActual.REVISO) datos.FIRMA_REVISO_BASE64 = _firmasDataUrlActual.REVISO;
         if (_firmasDataUrlActual.APRUEBA) datos.FIRMA_APRUEBA_BASE64 = _firmasDataUrlActual.APRUEBA;
+        if (_organigramaCanvas && Array.isArray(_organigramaCanvas.nodos) && _organigramaCanvas.nodos.length) {
+            datos.ORGANIGRAMA_CANVAS = _organigramaCanvas;
+        }
         return datos;
     }
 
@@ -2437,7 +2847,8 @@
             ...(stats.pendientes.length ? ['PENDIENTES:', ...stats.pendientes.map(p => '  - "' + p + '"'), ''] : []),
             ...(sis.id === 'sasisopa' ? [
                 'RECORDATORIO: el organigrama gráfico embebido en P-05 (dibujo de Word)',
-                'no es editado por este generador.',
+                'se reemplaza automáticamente por el generado en el editor visual o,',
+                'si no se guardó ninguno, por la jerarquía calculada de forma automática.',
             ] : [
                 'RECORDATORIO: las hojas .xlsx (SOFT-) se copiaron sin personalizar la',
                 'hoja "Control" — pendiente de implementar.',
