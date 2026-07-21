@@ -2,17 +2,25 @@
 // sw-flotilla.js — Service Worker Tecnocontrol PWA Móvil
 // v6 — Network-first (con fallback a cache) + notificaciones push nativas
 // ══════════════════════════════════════════════════
-const CACHE = 'tcn-movil-v7'; // ⬅️ v6→v7: corrige el bug de cache.put() en peticiones no-GET (auth)
+const CACHE = 'tcn-movil-v8'; // ⬅️ v7→v8: app shell más completa para arranque offline (+manifest); precache resiliente a 404 individuales
 const PRECACHE = [
   './flotilla-app.html',
   './flotilla-movil.js',
+  './manifest-flotilla.json',
   'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap',
 ];
 
 // ── Instalar — precachear archivos core ──
+// NOTA: cache.addAll() falla TODO el precache si UN solo archivo da 404.
+// Por eso cacheamos uno por uno: si falta un archivo (ej. un ícono que
+// todavía no se sube), el resto del precache no se ve afectado.
 self.addEventListener('install', e => {
   e.waitUntil(
-    caches.open(CACHE).then(c => c.addAll(PRECACHE)).then(() => self.skipWaiting())
+    caches.open(CACHE).then(c =>
+      Promise.all(PRECACHE.map(url =>
+        c.add(url).catch(err => console.warn('[SW precache] no se pudo cachear', url, err.message))
+      ))
+    ).then(() => self.skipWaiting())
   );
 });
 
