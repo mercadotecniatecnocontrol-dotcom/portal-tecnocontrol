@@ -92,6 +92,14 @@ _db.settings({
   merge: true
 });
 
+// Persistencia offline: cachea en el dispositivo lo que el técnico ya vio
+// (su vehículo, sus solicitudes, notificaciones) para que la app funcione
+// sin conexión. Si falla (navegador no compatible, u otra pestaña ya la
+// activó), la app sigue funcionando normal — solo sin este beneficio extra.
+_db.enablePersistence({ synchronizeTabs: true }).catch(err => {
+  console.warn('[FLOTILLA-APP] Persistencia offline no disponible:', err.code || err.message);
+});
+
 // NOTA: Asegúrate de que las reglas de Firestore permitan lectura.
 // En Firebase Console → Firestore → Reglas, usa temporalmente:
 // rules_version = '2';
