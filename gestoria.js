@@ -138,6 +138,15 @@
         { clave: "ROL_INTENDENCIA",           etiqueta: "Intendencia",             escolaridadClave: "ESCOLARIDAD_INTENDENCIA",           obligatorio: false },
     ];
 
+    // ── PARCHE #4: placeholder del catálogo genérico de SASISOPA ──
+    // Se llena con el contenido real de
+    // M-05_Funciones__responsabilidades_y_autoridad.docx en cuanto
+    // Glen comparta ese documento. Mientras esté vacío, el botón
+    // "Responsabilidades ▾" de SASISOPA se abre pero no muestra
+    // texto genérico prellenado (el cliente puede escribir el suyo
+    // desde cero, igual que si SGM no tuviera catálogo para ese rol).
+    const SASISOPA_CATALOGO_GENERICO = {};
+
     const SASISOPA_SECCIONES_FORM = [
         { titulo: "Identidad del cliente", icono: ICONO.edificio, campos: [
             ["RAZON_SOCIAL", "Razón Social completa", "Superservicio Cuatro Caminos S.A. de C.V."],
@@ -146,6 +155,15 @@
             ["CIUDAD_ESTADO", "Ciudad y Estado", "Ciudad Juárez, Chihuahua"],
             ["NUMERO_PERMISO", "Número de permiso CRE/ASEA (PL)", "PL/6125/EXP/ES/2015"],
             ["FECHA_ELABORACION", "Fecha de elaboración (dd/mm/aaaa)", "28/04/2025"],
+        ]},
+        // ── PARCHE #1: tarjeta "Firmas de control" agregada a SASISOPA ──
+        { titulo: "Firmas de control", icono: ICONO.usuarios, campos: [
+            ["NOMBRE_ELABORA", "Nombre de quien elabora", ""],
+            ["PUESTO_ELABORA", "Puesto de quien elabora", ""],
+            ["NOMBRE_REVISO", "Nombre de quien revisa", ""],
+            ["PUESTO_REVISO", "Puesto de quien revisa", ""],
+            ["NOMBRE_APRUEBA", "Nombre de quien aprueba", ""],
+            ["PUESTO_APRUEBA", "Puesto de quien aprueba", ""],
         ]},
         { titulo: "Organigrama y nomenclatura de puestos", icono: ICONO.usuarios, tipo: "checklist_con_nombre", opciones: SASISOPA_ROLES_DISPONIBLES },
         { titulo: "Escolaridad mínima por puesto (F-06-02)", icono: ICONO.graduacion, tipo: "escolaridad_dinamica", fuente: SASISOPA_ROLES_DISPONIBLES, ejemplos: {
@@ -156,7 +174,8 @@
         }},
     ];
 
-    const SASISOPA_CAMPOS_OBLIGATORIOS = ["RAZON_SOCIAL", "RFC", "DOMICILIO_ESTACION", "CIUDAD_ESTADO", "NUMERO_PERMISO", "FECHA_ELABORACION"];
+    // ── PARCHE #2: NOMBRE_ELABORA agregado a obligatorios ──
+    const SASISOPA_CAMPOS_OBLIGATORIOS = ["RAZON_SOCIAL", "RFC", "DOMICILIO_ESTACION", "CIUDAD_ESTADO", "NUMERO_PERMISO", "FECHA_ELABORACION", "NOMBRE_ELABORA"];
 
     // ══════════════════════════════════════════════════════════
     // SGM — Sistema de Gestión de las Mediciones (ISO 10012:2003)
@@ -391,6 +410,7 @@
                 camposObligatorios: SGM_CAMPOS_OBLIGATORIOS,
                 rutaMachotes: SGM_RUTA_MACHOTES, coleccion: SGM_COLECCION,
                 campoNombre: 'NOMBRE_REPRESENTANTE', campoOrden: 'NOMBRE_REPRESENTANTE',
+                catalogoGenerico: SGM_CATALOGO_GENERICO, // ← PARCHE #4
                 columnasTabla: [
                     { titulo: 'Cliente', valor: c => c.NOMBRE_REPRESENTANTE || '(sin nombre)' },
                     { titulo: 'Permiso', valor: c => c.NUMERO_PERMISO || '—' },
@@ -403,6 +423,7 @@
             camposObligatorios: SASISOPA_CAMPOS_OBLIGATORIOS,
             rutaMachotes: SASISOPA_RUTA_MACHOTES, coleccion: SASISOPA_COLECCION,
             campoNombre: 'RAZON_SOCIAL', campoOrden: 'RAZON_SOCIAL',
+            catalogoGenerico: SASISOPA_CATALOGO_GENERICO, // ← PARCHE #4
             columnasTabla: [
                 { titulo: 'Cliente', valor: c => c.RAZON_SOCIAL || '(sin razón social)' },
                 { titulo: 'RFC', valor: c => c.RFC || '—' },
@@ -1937,7 +1958,8 @@
                         ${sec.opciones.map(op => {
                             const valorActual = cliente[op.clave] || '';
                             const marcado = !!valorActual || op.obligatorio;
-                            const conCatalogo = _seccionActual === 'sgm';
+                            // ── PARCHE #3: antes era `_seccionActual === 'sgm'` ──
+                            const conCatalogo = true;
                             return `
                             <div>
                                 <div class="gs-rol-fila" data-rol="${op.clave}">
@@ -1963,10 +1985,10 @@
                             <div class="gs-rol-fila-extra" style="display:grid;grid-template-columns:1fr 1fr auto auto;gap:10px;align-items:center;">
                                 <input type="text" data-rol-extra-etiqueta placeholder="Nombre del puesto" value="${(ex.etiqueta||'').replace(/"/g,'&quot;')}">
                                 <input type="text" data-rol-extra-nombre placeholder="Nombre de quien lo ocupa" value="${(ex.nombre||'').replace(/"/g,'&quot;')}">
-                                ${_seccionActual === 'sgm' ? `<button type="button" class="gs-btn gs-btn-ghost gs-btn-toggle-catalogo" data-rol-toggle="EXTRA_${idx}" style="font-size:11px;padding:6px 10px;white-space:nowrap;">Responsabilidades ▾</button>` : ''}
+                                ${true ? `<button type="button" class="gs-btn gs-btn-ghost gs-btn-toggle-catalogo" data-rol-toggle="EXTRA_${idx}" style="font-size:11px;padding:6px 10px;white-space:nowrap;">Responsabilidades ▾</button>` : ''}
                                 <button type="button" class="gs-btn gs-btn-ghost gs-btn-quitar-rol-extra" title="Quitar este puesto">✕</button>
                             </div>
-                            ${_seccionActual === 'sgm' ? renderPanelCatalogo(`EXTRA_${idx}`, obtenerCatalogoPuesto(cliente, `EXTRA_${idx}`)) : ''}
+                            ${true ? renderPanelCatalogo(`EXTRA_${idx}`, obtenerCatalogoPuesto(cliente, `EXTRA_${idx}`)) : ''}
                         </div>`).join('')}
                     </div>
                     <button type="button" id="gs-btn-add-rol" class="gs-btn gs-btn-ghost" style="margin-top:10px;">${ICONO.mas} Agregar nuevo puesto</button>
@@ -2010,10 +2032,11 @@
 
     const CATS_CATALOGO_UI = [['responsabilidades', 'Responsabilidades'], ['funciones', 'Funciones'], ['autoridad', 'Autoridad'], ['interrelaciones', 'Interrelaciones']];
 
+    // ── PARCHE #4: usa el catálogo genérico del sistema activo (SGM o SASISOPA) ──
     function obtenerCatalogoPuesto(cliente, clave) {
         const guardado = (cliente.CATALOGO_PUESTOS || {})[clave];
         if (guardado) return guardado;
-        const generico = SGM_CATALOGO_GENERICO[clave];
+        const generico = sistemaActivo().catalogoGenerico[clave];
         const out = {};
         CATS_CATALOGO_UI.forEach(([k]) => { out[k] = generico ? (generico[k] || []).map(texto => ({ texto, incluido: true })) : []; });
         return out;
@@ -2114,10 +2137,10 @@
                         <div class="gs-rol-fila-extra" style="display:grid;grid-template-columns:1fr 1fr auto auto;gap:10px;align-items:center;">
                             <input type="text" data-rol-extra-etiqueta placeholder="Nombre del puesto">
                             <input type="text" data-rol-extra-nombre placeholder="Nombre de quien lo ocupa">
-                            ${_seccionActual === 'sgm' ? `<button type="button" class="gs-btn gs-btn-ghost gs-btn-toggle-catalogo" data-rol-toggle="EXTRA_${idx}" style="font-size:11px;padding:6px 10px;white-space:nowrap;">Responsabilidades ▾</button>` : ''}
+                            ${true ? `<button type="button" class="gs-btn gs-btn-ghost gs-btn-toggle-catalogo" data-rol-toggle="EXTRA_${idx}" style="font-size:11px;padding:6px 10px;white-space:nowrap;">Responsabilidades ▾</button>` : ''}
                             <button type="button" class="gs-btn gs-btn-ghost gs-btn-quitar-rol-extra" title="Quitar este puesto">✕</button>
                         </div>
-                        ${_seccionActual === 'sgm' ? renderPanelCatalogo(`EXTRA_${idx}`, { responsabilidades: [], funciones: [], autoridad: [], interrelaciones: [] }) : ''}
+                        ${true ? renderPanelCatalogo(`EXTRA_${idx}`, { responsabilidades: [], funciones: [], autoridad: [], interrelaciones: [] }) : ''}
                     </div>`);
                 reindexarRoles();
                 const nuevoToggle = contRolesExtra.querySelector(`.gs-btn-toggle-catalogo[data-rol-toggle="EXTRA_${idx}"]`);
