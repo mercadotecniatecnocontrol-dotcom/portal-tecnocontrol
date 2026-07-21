@@ -848,7 +848,7 @@ window.initFlotillaMovil=async function(){
 
   // Registrar Service Worker
   if('serviceWorker' in navigator){
-    navigator.serviceWorker.register('./sw.js').then(reg => {
+    navigator.serviceWorker.register('./sw-flotilla.js').then(reg => {
       reg.addEventListener('updatefound', () => {
         const newSW = reg.installing;
         if(!newSW) return;
