@@ -546,13 +546,21 @@
     // sustituirlo por el nombre de la persona capturada en el checklist.
     const RE_CONTEXTO_ROL_INSTITUCIONAL = /(autorizad[oa]s?\s+por\s+la\s*$|autorizad[oa]s?\s+por\s+el\s*$|en\s+colaboraci[oó]n\s+con\s+el\s*$|en\s+colaboraci[oó]n\s+con\s+la\s*$|a\s+cargo\s+de\s+la\s*$|a\s+cargo\s+del\s*$|responsabilidad\s+de\s+la\s*$|responsabilidad\s+del\s*$)/i;
 
+    // Campos que dejaron de ser obligatorios (p.ej. NUMERO_PERMISO, que puede
+    // estar en trámite) pero que, si el cliente los deja vacíos, deben salir
+    // en blanco en el documento final — no como el dato del cliente de
+    // referencia que traía el machote original.
+    const CAMPOS_BLANCO_SI_VACIO = ['NUMERO_PERMISO'];
+
     function valorNuevoPara(valorOriginal, datos) {
         const mapeo = sistemaActivo().mapeo;
         const clave = mapeo[valorOriginal];
         if (clave === undefined) return intentarCoincidenciaFlexible(valorOriginal, datos);
         if (clave === '__SKIP__') return '__SKIP__';
         if (clave === '__LOGO__') return '__LOGO__';
-        return datos[clave] || derivarValor(clave, datos);
+        const valor = datos[clave] || derivarValor(clave, datos);
+        if (!valor && CAMPOS_BLANCO_SI_VACIO.includes(clave)) return '';
+        return valor;
     }
 
     function intentarCoincidenciaFlexible(texto, datos) {
@@ -1243,9 +1251,17 @@
     const CATS_CATALOGO = ['responsabilidades', 'funciones', 'autoridad', 'interrelaciones'];
 
     function reconstruirTarjetasPuestosSGM(xmlDoc, datos) {
-        if (!datos.CATALOGO_PUESTOS) return;
         const norm = t => (t || '').replace(/[.:]+\s*$/, '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         const rolPorEtiqueta = etiqueta => (SGM_ROLES_DISPONIBLES.find(r => norm(r.etiqueta) === norm(etiqueta)) || {}).clave;
+        // Encabezado de tarjeta de puesto dentro del catálogo, p.ej.
+        // "4.  Encargado de Proyecto:" — distinto del patrón "5.1 Alta
+        // Dirección." que usa filtrarListasDeRolesSGM en el índice.
+        const esEncabezadoRol = texto => {
+            const t = texto.trim();
+            const m = /^\d+\.\s*([^:]+):?\s*$/.exec(t);
+            if (m) return rolPorEtiqueta(m[1].trim());
+            return rolPorEtiqueta(t); // encabezado sin numeración ni dos puntos
+        };
 
         for (const tbl of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'tbl'))) {
             const celdas = Array.from(tbl.getElementsByTagNameNS(NS_W, 'tc'));
@@ -1256,12 +1272,39 @@
             const totalChars = parrafos.reduce((acc, p) => acc + textoParrafo(p).length, 0);
             if (totalChars < UMBRAL_CHARS_TABLA_GENERICA) continue;
 
-            let rolActual = null, catActual = null;
-            const bloques = [];
+            // 1) Ubicar el tramo [inicio, fin) de cada tarjeta de puesto.
+            const tramos = [];
             parrafos.forEach((p, i) => {
                 const texto = textoParrafo(p).trim();
                 if (!texto) return;
-                const claveRol = rolPorEtiqueta(texto);
+                const claveRol = esEncabezadoRol(texto);
+                if (claveRol) tramos.push({ clave: claveRol, inicio: i });
+            });
+            if (!tramos.length) continue;
+            tramos.forEach((t, k) => { t.fin = (k + 1 < tramos.length) ? tramos[k + 1].inicio : parrafos.length; });
+
+            // 2) Los puestos que el cliente NO marcó/capturó pierden la
+            // tarjeta completa (encabezado + Responsabilidades/Funciones/
+            // Autoridad/Interrelaciones); antes se quedaba con el texto
+            // genérico del machote aunque el puesto no existiera ahí.
+            const paraEliminar = new Set();
+            tramos.forEach(t => {
+                if (!datos[t.clave]) {
+                    for (let j = t.inicio; j < t.fin; j++) paraEliminar.add(parrafos[j]);
+                }
+            });
+            paraEliminar.forEach(p => p.parentNode && p.parentNode.removeChild(p));
+            if (!datos.CATALOGO_PUESTOS) continue;
+
+            // 3) Para los puestos que sí quedaron, aplicar el catálogo
+            // personalizado de responsabilidades/funciones/etc. si existe.
+            let rolActual = null, catActual = null;
+            const bloques = [];
+            parrafos.forEach((p, i) => {
+                if (paraEliminar.has(p)) return;
+                const texto = textoParrafo(p).trim();
+                if (!texto) return;
+                const claveRol = esEncabezadoRol(texto);
                 if (claveRol) { rolActual = claveRol; catActual = null; return; }
                 const catMatch = CATS_CATALOGO.find(c => norm(c) === norm(texto));
                 if (catMatch) { catActual = catMatch; bloques.push({ clave: rolActual, cat: catActual, items: [] }); return; }
@@ -1480,6 +1523,7 @@
         let lineasCoords = [];
         nodos.forEach(n => {
             if (n.padre && porId[n.padre]) lineasCoords.push(...segmentosElbow(puntoAbajo(porId[n.padre]), puntoArriba(n)));
+            if (n.padreSecundario && porId[n.padreSecundario]) lineasCoords.push(...segmentosElbow(puntoCentro(porId[n.padreSecundario]), puntoCentro(n)));
         });
         (canvas.conectores || []).forEach(c => {
             const a = porId[c.a], b = porId[c.b];
@@ -1802,10 +1846,46 @@
         return await zip.generateAsync({ type: 'blob' });
     }
 
+    // ── Metadatos internos del .docx (docProps/core.xml) ────────
+    // El cuerpo del documento (word/document.xml) ya se personaliza vía los
+    // resaltados amarillos, pero el título/asunto interno del archivo
+    // (los mismos que Google Drive, Windows o Word muestran en vistas
+    // previas y en la pestaña del navegador) viven en docProps/core.xml y
+    // NUNCA se tocaban — por eso seguía apareciendo el nombre y el permiso
+    // del cliente de referencia (p.ej. "FELIX RUIZ PL-9693") aunque el
+    // cuerpo del documento ya estuviera bien personalizado.
+    function personalizarTextoMetadatos(texto, datos) {
+        let out = texto;
+        const mapeo = sistemaActivo().mapeo;
+        for (const [literal, clave] of Object.entries(mapeo)) {
+            if (clave === '__SKIP__' || clave === '__LOGO__') continue;
+            if (!out.includes(literal)) continue;
+            let valor = datos[clave] || derivarValor(clave, datos) || '';
+            if (!valor && CAMPOS_BLANCO_SI_VACIO.includes(clave)) valor = '';
+            out = out.split(literal).join(valor);
+        }
+        if (_seccionActual !== 'sgm') {
+            if (datos.RAZON_SOCIAL) out = out.replace(RE_RAZON_SOCIAL, datos.RAZON_SOCIAL);
+            if (datos.DOMICILIO_ESTACION) out = out.replace(RE_DOMICILIO, datos.DOMICILIO_ESTACION);
+        }
+        return out;
+    }
+
+    async function procesarMetadatosDocx(zip, datos) {
+        const ruta = 'docProps/core.xml';
+        const archivo = zip.file(ruta);
+        if (!archivo) return;
+        let xml = await archivo.async('string');
+        xml = personalizarTextoMetadatos(xml, datos);
+        zip.file(ruta, xml);
+    }
+
     async function procesarDocx(arrayBuffer, nombreArchivo, datos, stats, zip) {
         const parser = new DOMParser();
         const serializer = new XMLSerializer();
         const ctxImagen = { contador: 0 };
+
+        await procesarMetadatosDocx(zip, datos);
 
         const rutasXml = Object.keys(zip.files).filter(p => /^word\/(document|header\d*|footer\d*)\.xml$/i.test(p));
         for (const ruta of rutasXml) {
@@ -2647,6 +2727,10 @@
                     <option value="">Sin jefe (raíz)</option>
                     ${_organigramaCanvas.nodos.filter(n => n.id !== nodo.id).map(n => `<option value="${n.id}" ${nodo.padre === n.id ? 'selected' : ''}>${(n.texto || 'Puesto').slice(0, 28)}</option>`).join('')}
                 </select>
+                <select class="gs-orga-nodo-padre-secundario" data-campo="padreSecundario">
+                    <option value="">Reporta también a... (opcional)</option>
+                    ${_organigramaCanvas.nodos.filter(n => n.id !== nodo.id && n.id !== nodo.padre).map(n => `<option value="${n.id}" ${nodo.padreSecundario === n.id ? 'selected' : ''}>${(n.texto || 'Puesto').slice(0, 28)}</option>`).join('')}
+                </select>
                 <button type="button" class="gs-orga-nodo-borrar" title="Quitar recuadro">✕</button>
             </div>`).join('');
         lienzo.querySelectorAll('.gs-orga-nodo').forEach(el => bindNodoOrganigrama(el));
@@ -2666,10 +2750,21 @@
             });
         });
         el.querySelector('[data-campo="nombre"]').addEventListener('input', (e) => { nodo.nombre = e.target.value; });
-        el.querySelector('[data-campo="padre"]').addEventListener('change', (e) => { nodo.padre = e.target.value; dibujarConectoresOrganigrama(); });
+        el.querySelector('[data-campo="padre"]').addEventListener('change', (e) => {
+            nodo.padre = e.target.value;
+            if (nodo.padreSecundario === nodo.padre) nodo.padreSecundario = '';
+            renderLienzoOrganigrama();
+        });
+        const selPadreSecundario = el.querySelector('[data-campo="padreSecundario"]');
+        if (selPadreSecundario) {
+            selPadreSecundario.addEventListener('change', (e) => { nodo.padreSecundario = e.target.value; dibujarConectoresOrganigrama(); });
+        }
         el.querySelector('.gs-orga-nodo-borrar').addEventListener('click', () => {
             _organigramaCanvas.nodos = _organigramaCanvas.nodos.filter(n => n.id !== id);
-            _organigramaCanvas.nodos.forEach(n => { if (n.padre === id) n.padre = ''; });
+            _organigramaCanvas.nodos.forEach(n => {
+                if (n.padre === id) n.padre = '';
+                if (n.padreSecundario === id) n.padreSecundario = '';
+            });
             _organigramaCanvas.conectores = (_organigramaCanvas.conectores || []).filter(c => c.a !== id && c.b !== id);
             renderLienzoOrganigrama();
         });
@@ -2729,6 +2824,7 @@
         let lineasHtml = '';
         _organigramaCanvas.nodos.forEach(n => {
             if (n.padre && porId[n.padre]) lineasHtml += trazoElbowSvg(centroAbajo(porId[n.padre]), centroArriba(n), '#2563eb', false);
+            if (n.padreSecundario && porId[n.padreSecundario]) lineasHtml += trazoElbowSvg(centro(porId[n.padreSecundario]), centro(n), '#0ea5e9', true);
         });
         (_organigramaCanvas.conectores || []).forEach(c => {
             const a = porId[c.a], b = porId[c.b];
