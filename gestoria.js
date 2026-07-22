@@ -189,7 +189,10 @@
         }},
     ];
 
-    const SASISOPA_CAMPOS_OBLIGATORIOS = ["RAZON_SOCIAL", "RFC", "DOMICILIO_ESTACION", "CIUDAD_ESTADO", "NUMERO_PERMISO", "FECHA_ELABORACION", "NOMBRE_ELABORA"];
+    // NUMERO_PERMISO ya no es obligatorio: puede decir "PERMISO EN PROCESO"
+    // cuando el trámite del cliente todavía está en curso, y eso no debe
+    // bloquear la generación de documentos.
+    const SASISOPA_CAMPOS_OBLIGATORIOS = ["RAZON_SOCIAL", "RFC", "DOMICILIO_ESTACION", "CIUDAD_ESTADO", "FECHA_ELABORACION", "NOMBRE_ELABORA"];
 
     // ══════════════════════════════════════════════════════════
     // SGM — Sistema de Gestión de las Mediciones (ISO 10012:2003)
@@ -234,6 +237,42 @@
         ["ROL_ADMINISTRATIVO"],
         ["ROL_ENCARGADO_ESTACION", "ROL_ENCARGADO_PROYECTO", "ROL_REPRESENTANTE_TECNICO", "ROL_DESPACHADOR", "ROL_MANTENIMIENTO", "ROL_INTENDENCIA"],
     ];
+
+    // ── Frases de "puesto(s) responsable(s)" que ahora admiten elegir
+    // dos o más puestos (retroalimentación SGM: PROC-G-003/004/005/008).
+    // Cada frase se ubica por un fragmento distintivo de su propio texto
+    // (no por nombre de archivo), porque el mismo patrón de redacción se
+    // repite en varios machotes. `match` se prueba contra el texto plano
+    // del párrafo completo; el reemplazo toca solo los runs resaltados
+    // en amarillo que haya dentro de ese párrafo.
+    const SGM_FRASES_MULTIPUESTO = [
+        { id: 'registros_gestion', etiqueta: 'Control de registros de gestión (PROC-G-003)',
+          match: /el\s+control\s+de\s+los\s+registros\s+de\s+gesti[oó]n\s+es\s+realizado\s+por/i },
+        { id: 'registros_tecnicos', etiqueta: 'Control de registros técnicos (PROC-G-003)',
+          match: /el\s+control\s+de\s+los\s+registros\s+t[eé]cnicos\s+es\s+realizado\s+por/i },
+        { id: 'proteccion_registros_impresos', etiqueta: 'Protección de registros impresos y contraseñas (PROC-G-003, 4.1 h)',
+          match: /registros\s+impresos\s+se\s+protegen\s+en\s+oficinas/i },
+        { id: 'resguardo_claves_acceso', etiqueta: 'Resguardo de claves de acceso electrónico (PROC-G-003, 4.2)',
+          match: /claves\s+de\s+acceso\s+son\s+resguardadas\s+por/i },
+        { id: 'entrega_solicitud_compra', etiqueta: 'Entrega de solicitud de compra (PROC-G-004)',
+          match: /llevar\s+la\s+solicitud\s+firmada\s+en\s+duplicado\s+al/i },
+        { id: 'asignacion_acciones_prevencion', etiqueta: 'Asignación de acciones preventivas (PROC-G-005, 4.1)',
+          match: /asigna\s+responsables\s+y\s+fechas\s+de\s+implantaci[oó]n\s+de\s+acciones\s+de\s+prevenci[oó]n/i },
+        { id: 'eficacia_acciones_mejora', etiqueta: 'Eficacia de acciones de mejora (PROC-G-005, 4.2)',
+          match: /coordinada\s+y\s+asegurada\s+su\s+eficacia\s+por/i },
+        { id: 'vigilancia_acciones_correctivas', etiqueta: 'Vigilancia de acciones correctivas (PROC-G-008, 4.2)',
+          match: /responsable\s+de\s+vigilar\s+la\s+aplicaci[oó]n\s+de\s+acciones\s+correctivas\s+efectivas/i },
+    ];
+
+    // Documentos donde el índice/tabla de contenido debe listar TODOS los
+    // puestos disponibles, sin filtrar por los que el cliente marcó en el
+    // organigrama (a diferencia del resto de SGM, donde sí se filtran).
+    const RE_INDICE_TODOS_LOS_PUESTOS_SGM = /^PROC-T-001/i;
+
+    // Documentos de procedimiento (PROC-G-*/PROC-T-*) que traen su propio
+    // diagrama de proceso (no un organigrama) y por lo tanto NO deben
+    // pasar por el reemplazo automático del organigrama gráfico.
+    const RE_SIN_ORGANIGRAMA_SGM = /^PROC-/i;
 
     const SGM_CATALOGO_GENERICO = {
         "ROL_ALTA_DIRECCION": {
@@ -393,7 +432,10 @@
         { clave: "numero_serie", etiqueta: "Número de serie", ejemplo: "G04180392705001" },
     ];
 
-    const SGM_CAMPOS_OBLIGATORIOS = ["NOMBRE_REPRESENTANTE", "NUMERO_PERMISO", "NOMBRE_ELABORA", "FECHA_ELABORACION"];
+    // NUMERO_PERMISO ya no es obligatorio (mismo criterio que SASISOPA):
+    // el permiso puede estar en trámite y eso no debe impedir generar
+    // los documentos del cliente.
+    const SGM_CAMPOS_OBLIGATORIOS = ["NOMBRE_REPRESENTANTE", "NOMBRE_ELABORA", "FECHA_ELABORACION"];
 
     const SGM_SECCIONES_FORM = [
         { titulo: "Identidad del cliente", icono: ICONO.edificio, campos: [
@@ -412,6 +454,7 @@
             ["PUESTO_APRUEBA", "Puesto de quien aprueba", "Alta Dirección"],
         ]},
         { titulo: "Organigrama y nomenclatura de puestos", icono: ICONO.usuarios, tipo: "checklist_con_nombre", opciones: SGM_ROLES_DISPONIBLES },
+        { titulo: "Puestos responsables de procesos específicos", icono: ICONO.usuarios, tipo: "multiselect_por_frase", fuente: SGM_FRASES_MULTIPUESTO },
         { titulo: "Equipo de medición por estación", icono: ICONO.graduacion, tipo: "tabla_dinamica", columnas: SGM_CAMPOS_EQUIPO },
     ];
 
@@ -495,6 +538,14 @@
         return _seccionActual === 'sgm' ? derivarValorSGM(clave, datos) : derivarValorSASISOPA(clave, datos);
     }
 
+    // Contextos donde un rol (p.ej. "Alta Dirección", "Supervisor de
+    // Estación") se está usando como referencia institucional al PUESTO
+    // en sí, dentro de una oración narrativa — no como un espacio para
+    // insertar el nombre de quien lo ocupa. En estos casos se conserva
+    // el título del puesto tal cual venía en el machote, en vez de
+    // sustituirlo por el nombre de la persona capturada en el checklist.
+    const RE_CONTEXTO_ROL_INSTITUCIONAL = /(autorizad[oa]s?\s+por\s+la\s*$|autorizad[oa]s?\s+por\s+el\s*$|en\s+colaboraci[oó]n\s+con\s+el\s*$|en\s+colaboraci[oó]n\s+con\s+la\s*$|a\s+cargo\s+de\s+la\s*$|a\s+cargo\s+del\s*$|responsabilidad\s+de\s+la\s*$|responsabilidad\s+del\s*$)/i;
+
     function valorNuevoPara(valorOriginal, datos) {
         const mapeo = sistemaActivo().mapeo;
         const clave = mapeo[valorOriginal];
@@ -510,7 +561,16 @@
         let nuevo = texto, cambiado = false;
         if (datos.RAZON_SOCIAL && RE_RAZON_SOCIAL.test(nuevo)) { nuevo = nuevo.replace(RE_RAZON_SOCIAL, datos.RAZON_SOCIAL); cambiado = true; }
         if (datos.DOMICILIO_ESTACION && RE_DOMICILIO.test(nuevo)) { nuevo = nuevo.replace(RE_DOMICILIO, datos.DOMICILIO_ESTACION); cambiado = true; }
-        return cambiado ? nuevo : null;
+        if (cambiado) return nuevo;
+
+        const textoTrim = texto.trim();
+        if (datos.FECHA_ELABORACION && /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(textoTrim)) {
+            return datos.FECHA_ELABORACION;
+        }
+        if (datos.FECHA_ELABORACION && /^\d{1,2}\s+del\s+mes\s+de\s+[a-záéíóúñ]+\s+del\s+año\s+\d{4}\.?$/i.test(textoTrim)) {
+            return derivarValorSASISOPA('FECHA_PROSA', datos);
+        }
+        return null;
     }
 
     // ══════════════════════════════════════════════════════════
@@ -519,6 +579,12 @@
     const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 
     function textoDeRun(run) { return Array.from(run.getElementsByTagNameNS(NS_W, 't')).map(t => t.textContent).join(''); }
+
+    function esNegrita(run) {
+        const rPr = run.getElementsByTagNameNS(NS_W, 'rPr')[0];
+        if (!rPr) return false;
+        return rPr.getElementsByTagNameNS(NS_W, 'b').length > 0;
+    }
 
     function esResaltadoAmarillo(run) {
         const rPr = run.getElementsByTagNameNS(NS_W, 'rPr')[0];
@@ -669,10 +735,29 @@
                 let j = i + 1;
                 while (j < runs.length && esResaltadoAmarillo(runs[j])) { grupo.push(runs[j]); j++; }
                 const textoOriginal = grupo.map(textoDeRun).join('');
-                const nuevo = valorNuevoPara(textoOriginal.trim(), datos);
+                const textoLimpio = textoOriginal.trim();
+                let nuevo = valorNuevoPara(textoLimpio, datos);
+
+                // Guarda de contexto (solo SASISOPA): si el placeholder resuelve
+                // al nombre de quien ocupa un rol (ROL_*, sin variante _MAYUS) pero
+                // la oración lo usa como referencia institucional al puesto (p.ej.
+                // "autorizada por la Alta Dirección", "en colaboración con el
+                // Supervisor de Estación"), se conserva el título del puesto tal
+                // cual venía en el machote en vez de sustituirlo por el nombre de
+                // la persona capturada en el checklist.
+                if (_seccionActual !== 'sgm' && nuevo && nuevo !== '__SKIP__' && nuevo !== '__LOGO__') {
+                    const claveMapeo = SASISOPA_MAPEO[textoLimpio];
+                    if (claveMapeo && claveMapeo.indexOf('ROL_') === 0 && claveMapeo.indexOf('_MAYUS') === -1) {
+                        const textoPrevio = runs.slice(0, i).map(textoDeRun).join('');
+                        if (RE_CONTEXTO_ROL_INSTITUCIONAL.test(textoPrevio)) {
+                            nuevo = null;
+                        }
+                    }
+                }
 
                 if (nuevo === '__SKIP__') {
                     stats.placeholdersOmitidos++;
+                    grupo.forEach(quitarResaltado);
                 } else if (nuevo === '__LOGO__') {
                     if (datos.LOGO_BASE64) {
                         await insertarLogoEnGrupo(ctx.zip, p.ownerDocument, ctx.ruta, grupo, datos.LOGO_BASE64, ctx.imagen);
@@ -684,7 +769,7 @@
                         stats.logosPendientes++;
                     }
                 } else if (nuevo === null || nuevo === undefined) {
-                    stats.pendientes.push(textoOriginal.trim());
+                    stats.pendientes.push(textoLimpio);
                 } else {
                     setTextoRun(grupo[0], nuevo);
                     for (let k = 1; k < grupo.length; k++) setTextoRun(grupo[k], '');
@@ -734,13 +819,31 @@
     const RE_ARCHIVOS_CON_TABLA_EQUIPO = /volumen|inventario_de_equipo|etiquetas_de_identificaci[oó]n/i;
 
     function procesarTablaEquipoSGM(xmlDoc, datos, stats) {
-        if (!datos.EQUIPOS || !datos.EQUIPOS.length) return;
         const tablas = Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'tbl'));
         if (!tablas.length) return;
         const tabla = tablas[tablas.length - 1];
         const filas = Array.from(tabla.getElementsByTagNameNS(NS_W, 'tr'));
-        const filaPlantilla = filas.find(f => f.getElementsByTagNameNS(NS_W, 'tc').length >= 2 && Array.from(f.getElementsByTagNameNS(NS_W, 'r')).some(esResaltadoAmarillo));
-        if (!filaPlantilla) return;
+        const filasPlantilla = filas.filter(f => f.getElementsByTagNameNS(NS_W, 'tc').length >= 2 && Array.from(f.getElementsByTagNameNS(NS_W, 'r')).some(esResaltadoAmarillo));
+        if (!filasPlantilla.length) return;
+        const filaPlantilla = filasPlantilla[0];
+
+        if (!datos.EQUIPOS || !datos.EQUIPOS.length) {
+            // Estación nueva sin equipos capturados: todas las filas de
+            // ejemplo (con los datos del cliente de referencia, p.ej.
+            // VEEDER-ROOT/PERMATANK) se dejan en blanco, en vez de salir
+            // con esos datos de ejemplo tal cual venían en el machote.
+            filasPlantilla.forEach(fila => {
+                Array.from(fila.getElementsByTagNameNS(NS_W, 'tc')).forEach(celda => {
+                    const runs = Array.from(celda.getElementsByTagNameNS(NS_W, 'r'));
+                    if (!runs.length) return;
+                    setTextoRun(runs[0], '');
+                    runs.forEach(quitarResaltado);
+                    for (let k = 1; k < runs.length; k++) setTextoRun(runs[k], '');
+                });
+            });
+            stats.pendientes.push('Tabla de equipo de medición sin capturar (se dejó en blanco para estación nueva)');
+            return;
+        }
 
         datos.EQUIPOS.forEach((equipo, idx) => {
             const filaNueva = idx === 0 ? filaPlantilla : filaPlantilla.cloneNode(true);
@@ -757,6 +860,10 @@
             if (idx > 0) filaPlantilla.parentNode.insertBefore(filaNueva, filaPlantilla.nextSibling);
             stats.reemplazos++;
         });
+        // Si había más filas de ejemplo que equipos capturados (el machote
+        // trae varias filas reales del cliente de referencia), se eliminan
+        // las filas de ejemplo sobrantes para no dejar datos ajenos.
+        filasPlantilla.slice(1).forEach(fila => { if (fila.parentNode) fila.parentNode.removeChild(fila); });
     }
 
     const UMBRAL_CHARS_TABLA_GENERICA = 300;
@@ -775,14 +882,26 @@
         const puestoNorm = norm(puestoTexto);
         const nombreNorm = norm(nombreTexto);
         if (nombreTexto && nombreTexto.trim() && nombreNorm !== puestoNorm) return nombreTexto.trim();
-        const rol = SGM_ROLES_DISPONIBLES.find(r => norm(r.etiqueta) === puestoNorm);
+        const roles = sistemaActivo().rolesOrganigrama || [];
+        const rol = roles.find(r => norm(r.etiqueta) === puestoNorm);
         if (rol && datos[rol.clave]) return datos[rol.clave];
         return (nombreTexto || '').trim();
     }
 
+    const ALIAS_COL_PUESTO = ['puesto o función', 'puesto o funcion', 'función', 'funcion', 'puesto'];
+    const ALIAS_FILA_FIRMA = {
+        elabora: 'elaboró', elaboro: 'elaboró', 'elaboró': 'elaboró',
+        revisa: 'revisó', reviso: 'revisó', 'revisó': 'revisó',
+        autoriza: 'aprobó', aprueba: 'aprobó', aprobo: 'aprobó', 'aprobó': 'aprobó', aprobado: 'aprobó',
+    };
+
     function procesarTablaDocumentoControlado(xmlDoc, datos, celdasFirmaPendientes) {
         const norm = t => (t || '').trim().toLowerCase();
-        const val = (clave, porDefecto) => (datos[clave] && String(datos[clave]).trim()) ? String(datos[clave]).trim() : porDefecto;
+        const esSgm = _seccionActual === 'sgm';
+        // En SASISOPA no aplicamos los nombres de respaldo pensados para SGM
+        // (Lezlie/Félix): si el cliente no capturó el dato, se deja en blanco
+        // en vez de filtrar un nombre que no le corresponde.
+        const val = (clave, porDefecto) => (datos[clave] && String(datos[clave]).trim()) ? String(datos[clave]).trim() : (esSgm ? porDefecto : '');
         const puestoElabora = val('PUESTO_ELABORA', 'Administrativo');
         const puestoReviso = val('PUESTO_REVISO', 'Alta Dirección');
         const puestoAprueba = val('PUESTO_APRUEBA', 'Alta Dirección');
@@ -796,15 +915,16 @@
             if (!filas.length) continue;
             const encabezado = Array.from(filas[0].getElementsByTagNameNS(NS_W, 'tc')).map(textoDeCelda);
             const esTablaDocumentoControlado = encabezado.some(t => norm(t) === 'nombre')
-                && encabezado.some(t => norm(t) === 'puesto o función');
+                && encabezado.some(t => ALIAS_COL_PUESTO.includes(norm(t)));
             if (!esTablaDocumentoControlado) continue;
 
             const idxNombre = encabezado.findIndex(t => norm(t) === 'nombre');
-            const idxPuesto = encabezado.findIndex(t => norm(t) === 'puesto o función');
+            const idxPuesto = encabezado.findIndex(t => ALIAS_COL_PUESTO.includes(norm(t)));
             const idxFirma = encabezado.findIndex(t => norm(t) === 'firma');
             for (const fila of filas) {
                 const celdas = Array.from(fila.getElementsByTagNameNS(NS_W, 'tc'));
-                const primeraCelda = norm(textoDeCelda(celdas[0])).replace(/:$/, '');
+                const claveCruda = norm(textoDeCelda(celdas[0])).replace(/:$/, '');
+                const primeraCelda = ALIAS_FILA_FIRMA[claveCruda] || claveCruda;
                 const info = filasInfo[primeraCelda];
                 if (!info) continue;
                 if (celdas[idxNombre]) reemplazarTextoCelda(celdas[idxNombre], info.nombre);
@@ -870,10 +990,133 @@
         return Array.from(p.getElementsByTagNameNS(NS_W, 't')).map(t => t.textContent).join('');
     }
 
-    function filtrarListasDeRolesSGM(xmlDoc, datos) {
+    // ── SASISOPA: resolución de bloques "NOMBRE" + etiqueta de puesto ──
+    // En varios machotes (p.ej. P-05, F-07-03) aparece un bloque de dos
+    // líneas: la primera dice literalmente "NOMBRE" (resaltada en amarillo)
+    // y la segunda es la etiqueta del puesto (p.ej. "Representante
+    // Técnico"). Ahí sí se debe sustituir "NOMBRE" por el nombre de quien
+    // ocupa ese puesto. En cualquier otro lugar donde aparezca "NOMBRE"
+    // suelto (encabezados de columna, etc.) se deja tal cual — solo se le
+    // quita el resaltado en la limpieza final.
+    function resolverNombresPorRolSASISOPA(xmlDoc, datos, stats) {
+        const sis = sistemaActivo();
+        const roles = sis.rolesOrganigrama || [];
+        const extras = Array.isArray(datos.ROLES_EXTRA) ? datos.ROLES_EXTRA : [];
+        const norm = t => (t || '').replace(/[.:]+\s*$/, '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const nombrePorEtiqueta = etiqueta => {
+            const rol = roles.find(r => norm(r.etiqueta) === norm(etiqueta));
+            if (rol) return datos[rol.clave] || '';
+            const extra = extras.find(e => norm(e.etiqueta) === norm(etiqueta));
+            return extra ? (extra.nombre || '') : null;
+        };
+        const parrafos = Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'));
+        parrafos.forEach((p, i) => {
+            const texto = textoParrafo(p).trim();
+            if (norm(texto) !== 'nombre') return;
+            const runs = Array.from(p.getElementsByTagNameNS(NS_W, 'r'));
+            if (!runs.some(esResaltadoAmarillo)) return;
+            const siguiente = parrafos[i + 1];
+            if (!siguiente) return;
+            const textoSig = textoParrafo(siguiente).trim();
+            const nombre = nombrePorEtiqueta(textoSig);
+            if (nombre === null) return; // no es un bloque de firma por puesto conocido; se deja tal cual
+            if (nombre) {
+                reemplazarTextoParrafo(p, nombre);
+                stats.reemplazos++;
+            } else {
+                runs.forEach(quitarResaltado);
+                stats.pendientes.push(`Nombre de ${textoSig} (sin dato capturado)`);
+            }
+        });
+    }
+
+    // ── SGM: puestos responsables de procesos específicos (multi-select) ──
+    function procesarFrasesMultiPuestoSGM(xmlDoc, datos, stats) {
+        if (!datos.MULTIPUESTO) return;
+        const roles = SGM_ROLES_DISPONIBLES;
+        for (const p of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'))) {
+            const texto = textoParrafo(p);
+            const frase = SGM_FRASES_MULTIPUESTO.find(f => f.match.test(texto));
+            if (!frase) continue;
+            const runs = Array.from(p.getElementsByTagNameNS(NS_W, 'r'));
+            const runsAmarillos = runs.filter(esResaltadoAmarillo);
+            if (!runsAmarillos.length) continue;
+            const clavesElegidas = datos.MULTIPUESTO[frase.id];
+            if (!clavesElegidas || !clavesElegidas.length) {
+                stats.pendientes.push(`Puesto(s) responsable(s) sin capturar: ${frase.etiqueta}`);
+                runsAmarillos.forEach(quitarResaltado);
+                continue;
+            }
+            const etiquetas = clavesElegidas.map(c => (roles.find(r => r.clave === c) || {}).etiqueta).filter(Boolean);
+            const textoNuevo = etiquetas.length > 1
+                ? etiquetas.slice(0, -1).join(', ') + ' y ' + etiquetas[etiquetas.length - 1]
+                : (etiquetas[0] || '');
+            setTextoRun(runsAmarillos[0], textoNuevo);
+            for (let k = 1; k < runsAmarillos.length; k++) setTextoRun(runsAmarillos[k], '');
+            runsAmarillos.forEach(quitarResaltado);
+            stats.reemplazos++;
+        }
+    }
+
+    // ── SGM: puesto inmediato después de Alta Dirección (PROC-G-007) ──
+    // En PROC-G-007 el cuerpo del texto hace referencia fija a
+    // "Administrativo" en negritas, pero en realidad debe ser el puesto
+    // que reporta inmediatamente después de Alta Dirección en el
+    // organigrama real del cliente (no siempre es literalmente
+    // "Administrativo" — depende de qué puestos haya marcado el cliente).
+    function rolInmediatoDespuesDeAltaDireccion(datos) {
+        const jerarquia = SGM_JERARQUIA_ORGANIGRAMA;
+        for (let i = 1; i < jerarquia.length; i++) {
+            for (const clave of jerarquia[i]) {
+                if (datos[clave]) {
+                    const rol = SGM_ROLES_DISPONIBLES.find(r => r.clave === clave);
+                    if (rol) return rol;
+                }
+            }
+        }
+        return SGM_ROLES_DISPONIBLES.find(r => r.clave === 'ROL_ADMINISTRATIVO') || null;
+    }
+
+    const RE_ARCHIVO_INMEDIATO_SIGUIENTE_SGM = /^PROC-G-007/i;
+
+    function procesarInmediatoSiguienteSGM(xmlDoc, datos, nombreArchivo, stats) {
+        if (!RE_ARCHIVO_INMEDIATO_SIGUIENTE_SGM.test(nombreArchivo || '')) return null;
+        const rolInmediato = rolInmediatoDespuesDeAltaDireccion(datos);
+        if (!rolInmediato) return null;
+        const norm = t => (t || '').trim().toLowerCase().replace(/\.$/, '');
+        for (const p of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'))) {
+            for (const r of Array.from(p.getElementsByTagNameNS(NS_W, 'r'))) {
+                if (!esNegrita(r)) continue;
+                const texto = textoDeRun(r);
+                if (norm(texto) !== 'administrativo') continue;
+                const conPunto = /\.\s*$/.test(texto.trim());
+                setTextoRun(r, rolInmediato.etiqueta + (conPunto ? '.' : ''));
+                stats.reemplazos++;
+            }
+        }
+        return rolInmediato;
+    }
+
+    function filtrarListasDeRolesSGM(xmlDoc, datos, nombreArchivo) {
+        // PROC-T-001: el índice debe listar TODOS los puestos siempre,
+        // sin filtrar por los que el cliente marcó en el organigrama.
+        if (RE_INDICE_TODOS_LOS_PUESTOS_SGM.test(nombreArchivo || '')) return;
+
         const normAcentos = t => (t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         const etiquetas = SGM_ROLES_DISPONIBLES.map(r => r.etiqueta);
+
+        // PROC-G-007: en el apartado de responsabilidades del índice,
+        // "Alta Dirección" y el puesto inmediato siguiente en el
+        // organigrama del cliente deben aparecer siempre, sin importar si
+        // ese puesto quedó marcado o no en el checklist general.
+        const siempreVisibles = new Set([normAcentos('Alta Dirección')]);
+        if (RE_ARCHIVO_INMEDIATO_SIGUIENTE_SGM.test(nombreArchivo || '')) {
+            const rolInmediato = rolInmediatoDespuesDeAltaDireccion(datos);
+            if (rolInmediato) siempreVisibles.add(normAcentos(rolInmediato.etiqueta));
+        }
+
         const estaCapturado = etiqueta => {
+            if (siempreVisibles.has(normAcentos(etiqueta))) return true;
             const rol = SGM_ROLES_DISPONIBLES.find(r => normAcentos(r.etiqueta) === normAcentos(etiqueta));
             return rol ? !!datos[rol.clave] : true;
         };
@@ -1571,15 +1814,28 @@
             const ctx = { zip, ruta, imagen: ctxImagen };
 
             const celdasFirmaPendientes = [];
+            // La tabla de control de documentos (Elaboró/Revisó/Aprobó·Autorizó,
+            // con columnas Nombre/Puesto o Función/Firma/Fecha) se procesa para
+            // ambos sistemas: SASISOPA y SGM comparten el mismo patrón de tabla.
+            procesarTablaDocumentoControlado(xmlDoc, datos, celdasFirmaPendientes);
             if (_seccionActual === 'sgm') {
-                procesarTablaDocumentoControlado(xmlDoc, datos, celdasFirmaPendientes);
                 procesarControlDeCambiosSGM(xmlDoc, datos);
                 neutralizarTablasDescriptivasSGM(xmlDoc);
                 reconstruirTarjetasPuestosSGM(xmlDoc, datos);
                 aplicarGradoEstudiosSGM(xmlDoc, datos);
-                filtrarListasDeRolesSGM(xmlDoc, datos);
+                filtrarListasDeRolesSGM(xmlDoc, datos, nombreArchivo);
+                procesarFrasesMultiPuestoSGM(xmlDoc, datos, stats);
+                procesarInmediatoSiguienteSGM(xmlDoc, datos, nombreArchivo, stats);
+            } else {
+                resolverNombresPorRolSASISOPA(xmlDoc, datos, stats);
             }
-            reemplazarOrganigramaMGM(xmlDoc, datos);
+            // PROC-G-*/PROC-T-* traen su propio diagrama de proceso (no un
+            // organigrama) y no deben pasar por el reemplazo automático del
+            // organigrama gráfico — solo aplica a manuales/formatos que sí
+            // llevan el organigrama real de la organización.
+            if (!(_seccionActual === 'sgm' && RE_SIN_ORGANIGRAMA_SGM.test(nombreArchivo))) {
+                reemplazarOrganigramaMGM(xmlDoc, datos);
+            }
 
             for (const p of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'))) {
                 await procesarParrafo(p, datos, stats, ctx);
@@ -1593,17 +1849,22 @@
             if (ruta === 'word/document.xml' && _seccionActual === 'sgm' && RE_ARCHIVOS_CON_TABLA_EQUIPO.test(nombreArchivo)) {
                 procesarTablaEquipoSGM(xmlDoc, datos, stats);
             }
-            if (_seccionActual === 'sgm') {
-                Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'r')).filter(esResaltadoAmarillo).forEach(r => {
-                    stats.pendientes.push(textoDeRun(r).trim());
-                    quitarResaltado(r);
-                });
-                Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'pPr')).forEach(pPr => {
-                    const rPr = pPr.getElementsByTagNameNS(NS_W, 'rPr')[0];
-                    const hl = rPr ? rPr.getElementsByTagNameNS(NS_W, 'highlight')[0] : null;
-                    if (hl && hl.getAttributeNS(NS_W, 'val') === 'yellow') rPr.removeChild(hl);
-                });
-            }
+            // Barrido final de seguridad: cualquier resaltado amarillo que
+            // haya sobrevivido a todo lo anterior (placeholder sin catalogar,
+            // celda que no encajó en ningún patrón, etc.) se elimina aquí y
+            // se reporta como pendiente. Antes solo corría para SGM; ahora
+            // corre siempre, para que a SASISOPA no le sigan quedando
+            // rastros de amarillo en el .docx final.
+            Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'r')).filter(esResaltadoAmarillo).forEach(r => {
+                const texto = textoDeRun(r).trim();
+                if (texto) stats.pendientes.push(texto);
+                quitarResaltado(r);
+            });
+            Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'pPr')).forEach(pPr => {
+                const rPr = pPr.getElementsByTagNameNS(NS_W, 'rPr')[0];
+                const hl = rPr ? rPr.getElementsByTagNameNS(NS_W, 'highlight')[0] : null;
+                if (hl && hl.getAttributeNS(NS_W, 'val') === 'yellow') rPr.removeChild(hl);
+            });
             zip.file(ruta, serializer.serializeToString(xmlDoc));
         }
         return await zip.generateAsync({ type: 'blob' });
@@ -1999,6 +2260,29 @@
                 </div>
             </div>`;
         }
+        if (sec.tipo === 'multiselect_por_frase') {
+            return `
+            <div class="gs-card">
+                <div class="gs-card-header"><span class="gs-card-icon">${sec.icono}</span><span class="gs-card-title">${sec.titulo}</span></div>
+                <div class="gs-card-body">
+                    <div class="gs-subtitle" style="margin-bottom:10px;">Marca uno o más puestos responsables para cada proceso. Aplica a documentos donde antes solo se podía asignar un puesto.</div>
+                    ${sec.fuente.map(frase => {
+                        const seleccion = (cliente.MULTIPUESTO || {})[frase.id] || [];
+                        return `
+                        <div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px dashed rgba(59,130,246,0.15);">
+                            <div style="font-size:12.5px;font-weight:600;color:var(--text);margin-bottom:8px;">${frase.etiqueta}</div>
+                            <div style="display:flex;flex-wrap:wrap;gap:12px;">
+                                ${SGM_ROLES_DISPONIBLES.map(rol => `
+                                    <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--text2);">
+                                        <input type="checkbox" data-multipuesto="${frase.id}" data-multipuesto-rol="${rol.clave}" ${seleccion.includes(rol.clave) ? 'checked' : ''}>
+                                        ${rol.etiqueta}
+                                    </label>`).join('')}
+                            </div>
+                        </div>`;
+                    }).join('')}
+                </div>
+            </div>`;
+        }
         if (sec.tipo === 'checklist_con_nombre') {
             const extras = Array.isArray(cliente.ROLES_EXTRA) ? cliente.ROLES_EXTRA : [];
             return `
@@ -2129,6 +2413,10 @@
     function bindSeccionesEspeciales(cont) {
         const btnEditorOrga = cont.querySelector('#gs-btn-editor-organigrama');
         if (btnEditorOrga) btnEditorOrga.addEventListener('click', () => abrirEditorOrganigrama(cont));
+
+        cont.querySelectorAll('[data-multipuesto]').forEach(chk => {
+            chk.addEventListener('change', () => actualizarPreview(cont));
+        });
 
         cont.querySelectorAll('.gs-rol-fila').forEach(fila => {
             const check = fila.querySelector('input[type="checkbox"]');
@@ -2500,21 +2788,20 @@
                             </div>
                         </div>
 
-                        ${_seccionActual === 'sgm' ? `
                         <div class="gs-card">
-                            <div class="gs-card-header"><span class="gs-card-icon">${ICONO.imagen}</span><span class="gs-card-title">Firmas de control (Excel)</span></div>
+                            <div class="gs-card-header"><span class="gs-card-icon">${ICONO.imagen}</span><span class="gs-card-title">Firmas de control</span></div>
                             <div class="gs-card-body">
                                 ${['ELABORA', 'REVISO', 'APRUEBA'].map(rol => `
                                 <div style="margin-bottom:12px;">
-                                    <label style="font-size:11.5px;font-weight:700;color:var(--text2);display:block;margin-bottom:4px;">${rol === 'ELABORA' ? 'Elaboró' : rol === 'REVISO' ? 'Revisó' : 'Aprobó'}</label>
+                                    <label style="font-size:11.5px;font-weight:700;color:var(--text2);display:block;margin-bottom:4px;">${rol === 'ELABORA' ? 'Elaboró' : rol === 'REVISO' ? 'Revisó' : 'Aprobó / Autorizó'}</label>
                                     <div id="gs-dropzone-firma-${rol}" class="gs-dropzone" style="min-height:56px;padding:8px;">
                                         <input type="file" id="gs-input-firma-${rol}" accept="image/png,image/jpeg" style="display:none;">
                                         <div id="gs-dropzone-firma-${rol}-contenido"></div>
                                     </div>
                                 </div>`).join('')}
-                                <div class="gs-subtitle" style="font-size:11px;">Se insertan en la tabla de firmas de las hojas Excel (SOFT-G/SOFT-T). PNG con fondo transparente recomendado.</div>
+                                <div class="gs-subtitle" style="font-size:11px;">${_seccionActual === 'sgm' ? 'Se insertan en la tabla de firmas de las hojas Excel (SOFT-G/SOFT-T) y en la tabla de control del documento Word.' : 'Se insertan en la tabla de control (Elabora/Revisa/Autoriza) de cada machote Word.'} PNG con fondo transparente recomendado.</div>
                             </div>
-                        </div>` : ''}
+                        </div>
 
                         <div class="gs-card">
                             <div class="gs-card-header"><span class="gs-card-icon">${ICONO.edificio}</span><span class="gs-card-title">Vista previa</span></div>
@@ -2553,13 +2840,14 @@
             () => _logoDataUrlActual, v => _logoDataUrlActual = v,
             'Arrastra el logo aquí', 'o haz clic para seleccionar — PNG o JPG', 'Cambiar logotipo', 'gs-logo-preview');
 
-        if (_seccionActual === 'sgm') {
-            ['ELABORA', 'REVISO', 'APRUEBA'].forEach(rol => {
-                renderDropzoneGenerico(cont, `#gs-dropzone-firma-${rol}`, `#gs-input-firma-${rol}`, `#gs-dropzone-firma-${rol}-contenido`,
-                    () => _firmasDataUrlActual[rol], v => _firmasDataUrlActual[rol] = v,
-                    'Arrastra la firma aquí', 'PNG o JPG', 'Cambiar firma', 'gs-firma-preview');
-            });
-        }
+        // Las firmas de control (Elabora/Revisa/Autoriza·Aprueba) aplican a
+        // ambos sistemas: SASISOPA y SGM comparten el mismo patrón de tabla
+        // de control de documentos dentro de los machotes .docx.
+        ['ELABORA', 'REVISO', 'APRUEBA'].forEach(rol => {
+            renderDropzoneGenerico(cont, `#gs-dropzone-firma-${rol}`, `#gs-input-firma-${rol}`, `#gs-dropzone-firma-${rol}-contenido`,
+                () => _firmasDataUrlActual[rol], v => _firmasDataUrlActual[rol] = v,
+                'Arrastra la firma aquí', 'PNG o JPG', 'Cambiar firma', 'gs-firma-preview');
+        });
     }
 
     function renderDropzoneGenerico(cont, selDz, selInput, selContenido, obtener, asignar, tituloVacio, subVacio, tituloConImagen, claseImg) {
@@ -2644,6 +2932,14 @@
             if (!sel.disabled && sel.value) grados[sel.dataset.gradoEstudios] = sel.value;
         });
         if (Object.keys(grados).length) datos.GRADO_ESTUDIOS = grados;
+
+        const multipuesto = {};
+        cont.querySelectorAll('[data-multipuesto]').forEach(chk => {
+            if (!chk.checked) return;
+            const fraseId = chk.dataset.multipuesto;
+            (multipuesto[fraseId] = multipuesto[fraseId] || []).push(chk.dataset.multipuestoRol);
+        });
+        if (Object.keys(multipuesto).length) datos.MULTIPUESTO = multipuesto;
 
         const catalogos = {};
         cont.querySelectorAll('.gs-catalogo-puesto').forEach(panel => {
@@ -2741,9 +3037,21 @@
                 'RECORDATORIO: el organigrama gráfico embebido en P-05 (dibujo de Word)',
                 'se reemplaza automáticamente por el generado en el editor visual o,',
                 'si no se guardó ninguno, por la jerarquía calculada de forma automática.',
+                '',
+                'RECORDATORIO: si algún "pendiente" de la lista de arriba es un título',
+                'de puesto usado como referencia institucional (p.ej. "Alta Dirección"',
+                'dentro de una oración narrativa), es correcto que se haya dejado tal',
+                'cual — no se sustituye por el nombre de la persona en esos casos.',
             ] : [
                 'RECORDATORIO: las hojas .xlsx (SOFT-) se copiaron sin personalizar la',
                 'hoja "Control" — pendiente de implementar.',
+                '',
+                'RECORDATORIO: PROC-G-003/004/005/008 ahora usan los puestos elegidos',
+                'en "Puestos responsables de procesos específicos"; PROC-T-003/004',
+                'conservan su diagrama original (no se les pone el organigrama);',
+                'PROC-T-001 siempre lista todos los puestos en su índice; y en',
+                'PROC-G-007 el puesto inmediato después de Alta Dirección se calcula',
+                'de forma dinámica según el organigrama real del cliente.',
             ]),
         ].join('\n');
         zipSalida.file('reporte_personalizacion.txt', reporte);
@@ -2770,7 +3078,7 @@
     // Certificado de Calibración de TECNOLAB y lo exporta en el acto.
     // Recargar la página pierde lo capturado — es intencional.
 
-    const TECNOLAB_LOGO_B64 = 'data:image/png;base64,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';
+    const TECNOLAB_LOGO_B64 = 'data:image/png;base64,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';
     const TECNOLAB_ACCENT = '#1e3a5f';
 
     const TECNOLAB_REFERENCIAS = [
