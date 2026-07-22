@@ -4,7 +4,8 @@
 // Archivo nombrado como el departamento (mismo patrón que rh.js,
 // ventas.js, flotilla.js) porque Gestoría alojará más de un sistema:
 //   - SASISOPA (implementado abajo)
-//   - SGM — Sistema de Gestión de Medición (pendiente, sección propia)
+//   - SGM — Sistema de Gestión de Medición
+//   - Certificado TECNOLAB — llenado y exportación (PDF/Word/XML)
 //
 // Corre 100% en el navegador: no requiere backend ni Cloud Functions
 // (compatible con GitHub Pages + Firestore plan Spark).
@@ -23,6 +24,7 @@
     const SECCIONES_GESTORIA = [
         { id: 'sasisopa', titulo: 'SASISOPA', activa: true },
         { id: 'sgm', titulo: 'SGM', activa: true },
+        { id: 'certificado', titulo: 'Certificado TECNOLAB', activa: true },
     ];
     let _seccionActual = 'sasisopa';
 
@@ -70,6 +72,7 @@
         reloj:      '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
         calendario: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
         cerrar:     '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+        certificado:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="6"/><path d="M8.5 13.5 6 22l6-3 6 3-2.5-8.5"/></svg>',
     };
 
     // ══════════════════════════════════════════════════════════
@@ -148,9 +151,7 @@
     // Placeholder del catálogo genérico de SASISOPA (Responsabilidades/
     // Funciones/Autoridad/Interrelaciones por puesto). Se llena con el
     // contenido real de M-05_Funciones__responsabilidades_y_autoridad.docx
-    // en cuanto Glen comparta ese documento. Mientras esté vacío, el botón
-    // "Responsabilidades ▾" de SASISOPA se abre pero no muestra texto
-    // genérico prellenado (el cliente puede escribir el suyo desde cero).
+    // en cuanto Glen comparta ese documento.
     const SASISOPA_CATALOGO_GENERICO = {};
 
     // Jerarquía por defecto para el organigrama gráfico de SASISOPA
@@ -730,14 +731,6 @@
     }
 
     // ── SGM: inserción de la tabla dinámica de equipo de medición ──
-    // Se activa solo en los machotes que sabemos contienen esta tabla
-    // (confirmado en el análisis de campos: PROC-T-006, FOR-T-007,
-    // FOR-T-008, y el pendiente de resolver "volumen del despacho").
-    // Heurística: toma la ÚLTIMA tabla del documento (las tablas de
-    // roles/organigrama van antes y ya se resuelven por MAPEO normal),
-    // y la clona/llena una vez por cada equipo capturado.
-    // ⚠️ Sin probar aún contra los machotes reales de sgm-machotes/ —
-    // revisar con el primer cliente de prueba antes de usarlo en producción.
     const RE_ARCHIVOS_CON_TABLA_EQUIPO = /volumen|inventario_de_equipo|etiquetas_de_identificaci[oó]n/i;
 
     function procesarTablaEquipoSGM(xmlDoc, datos, stats) {
@@ -766,25 +759,6 @@
         });
     }
 
-    // ── SGM: neutralizar la tabla fija "DOCUMENTO CONTROLADO" ───
-    // Esta tabla (Nombre / Puesto o función / Firma / Fecha, filas
-    // Elaboró/Revisó/Aprobó) es idéntica en los 41 machotes y describe
-    // al personal de METRyCAL/HEDMA que armó la plantilla — NO al
-    // cliente. El texto resaltado en esa columna ("Administrativo.",
-    // "Alta Dirección.") choca por casualidad con las mismas claves
-    // que SGM_MAPEO usa para insertar los roles reales del cliente en
-    // otras partes del documento. Aquí solo quitamos el resaltado y
-    // dejamos el texto tal cual, para que el paso normal de reemplazo
-    // ya no lo toque (esResaltadoAmarillo dejará de detectarlo).
-    // ── SGM: neutralizar tablas descriptivas genéricas (MGM) ────
-    // El MGM incluye tablas-tarjeta por puesto (Responsabilidades,
-    // Funciones, Autoridad, Interrelaciones, Competencia técnica) con
-    // texto genérico de la norma ISO 10012, idéntico para cualquier
-    // cliente — no hay dato del cliente que insertar ahí. Se
-    // identifican porque acumulan una cantidad de texto resaltado muy
-    // por encima de cualquier campo real (nombres, fechas, roles),
-    // que como mucho llegan a ~150 caracteres en total por tabla.
-    // Aquí solo se quita el amarillo; el texto se deja tal cual.
     const UMBRAL_CHARS_TABLA_GENERICA = 300;
     function neutralizarTablasDescriptivasSGM(xmlDoc) {
         for (const tbl of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'tbl'))) {
@@ -796,16 +770,6 @@
         }
     }
 
-    // Llena Nombre/Puesto/Firma de la tabla "DOCUMENTO CONTROLADO"
-    // (Elaboró/Revisó/Aprobó) con los MISMOS campos que ya usa el motor
-    // de Excel (NOMBRE_ELABORA/PUESTO_ELABORA/FIRMA_ELABORA_BASE64,
-    // etc.) — antes esta tabla se dejaba fija; ahora es consistente
-    // con lo capturado en la plataforma en ambos formatos.
-    // Si "nombre" quedó vacío o es literalmente el mismo texto que el
-    // puesto (el caso típico: alguien escribió "Alta Dirección" tanto
-    // en Nombre como en Puesto por no saber el nombre de la persona),
-    // se resuelve el nombre real buscando quién ocupa ese puesto en el
-    // organigrama capturado. Si no hay coincidencia, se deja tal cual.
     function resolverNombreFirma(puestoTexto, nombreTexto, datos) {
         const norm = t => (t || '').trim().toLowerCase().replace(/[.:]+$/, '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         const puestoNorm = norm(puestoTexto);
@@ -853,13 +817,6 @@
         }
     }
 
-    // La tabla "Control de Cambios" trae "LAGA"/"FRG" como iniciales
-    // fijas de Elaboró/Revisó/Aprobó del machote original — como "FRG"
-    // aparece igual en las columnas Revisó Y Aprobó, el motor genérico
-    // no puede distinguirlas y las sustituía por el mismo valor
-    // incorrecto (las iniciales de la Razón Social). Aquí se ponen las
-    // iniciales correctas por columna, usando los mismos nombres ya
-    // resueltos que la tabla de firmas.
     function procesarControlDeCambiosSGM(xmlDoc, datos) {
         const norm = t => (t || '').trim().toLowerCase();
         const val = (clave, porDefecto) => (datos[clave] && String(datos[clave]).trim()) ? String(datos[clave]).trim() : porDefecto;
@@ -885,7 +842,7 @@
             for (const fila of filas.slice(1)) {
                 const celdas = Array.from(fila.getElementsByTagNameNS(NS_W, 'tc'));
                 const tieneContenido = celdas[idxRealizo] && textoDeCelda(celdas[idxRealizo]).trim();
-                if (!tieneContenido) continue; // fila vacía reservada para futuros registros manuales
+                if (!tieneContenido) continue;
                 if (celdas[idxRealizo]) reemplazarTextoCelda(celdas[idxRealizo], inicialesRealizo);
                 if (celdas[idxRevisoCol]) reemplazarTextoCelda(celdas[idxRevisoCol], inicialesRevisoCol);
                 if (celdas[idxApruebaCol]) reemplazarTextoCelda(celdas[idxApruebaCol], inicialesApruebaCol);
@@ -893,9 +850,6 @@
         }
     }
 
-    // Sustituye TODO el contenido de texto de una celda por un valor
-    // nuevo, dejando solo un run con el formato del primero (y sin
-    // resaltado), para no arrastrar fragmentos del texto original.
     function reemplazarTextoCelda(celda, textoNuevo) {
         const parrafo = celda.getElementsByTagNameNS(NS_W, 'p')[0];
         if (!parrafo) return;
@@ -916,12 +870,6 @@
         return Array.from(p.getElementsByTagNameNS(NS_W, 't')).map(t => t.textContent).join('');
     }
 
-    // ── SGM: filtrar listas numeradas de roles ("5.1 Alta Dirección.",
-    // "5.2 Administrativo"...) para que solo aparezcan los puestos que
-    // el cliente marcó como existentes en su organigrama. Se aplica
-    // tanto a párrafos sueltos (secciones de Responsabilidades) como a
-    // filas de tabla (el Índice). No renumera — si se elimina un
-    // puesto intermedio puede quedar un salto en la numeración.
     function filtrarListasDeRolesSGM(xmlDoc, datos) {
         const normAcentos = t => (t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         const etiquetas = SGM_ROLES_DISPONIBLES.map(r => r.etiqueta);
@@ -931,7 +879,6 @@
         };
         const esRolConocido = etiqueta => etiquetas.some(e => normAcentos(e) === normAcentos(etiqueta));
 
-        // 1) Filas de tabla (Índice): primera celda con patrón "N.M Rol."
         for (const tbl of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'tbl'))) {
             for (const fila of Array.from(tbl.getElementsByTagNameNS(NS_W, 'tr'))) {
                 const celdas = Array.from(fila.getElementsByTagNameNS(NS_W, 'tc'));
@@ -947,7 +894,6 @@
             }
         }
 
-        // 2) Párrafos sueltos (secciones de Responsabilidades/Funciones/Autoridad)
         const parrafos = Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'));
         const titulos = [];
         parrafos.forEach((p, i) => {
@@ -960,8 +906,8 @@
         const finDeSeccion = (desde, seccion) => {
             for (let j = desde + 1; j < parrafos.length; j++) {
                 const t = textoParrafo(parrafos[j]).trim();
-                if (/^\d+\.\d+\s+[^.]+\.?\s*$/.test(t)) continue; // otro sub-título del mismo tipo, sigue en la sección
-                if (/^\d+\.\s*[A-ZÁÉÍÓÚÑ]/.test(t)) return j; // nuevo título de sección de primer nivel
+                if (/^\d+\.\d+\s+[^.]+\.?\s*$/.test(t)) continue;
+                if (/^\d+\.\s*[A-ZÁÉÍÓÚÑ]/.test(t)) return j;
             }
             return parrafos.length;
         };
@@ -991,10 +937,6 @@
         return Array.from(celda.getElementsByTagNameNS(NS_W, 't')).map(t => t.textContent).join('');
     }
 
-    // ── SGM: aplicar el grado de estudios seleccionado a la tabla
-    // "COMPETENCIA TÉCNICA" del MGM. Si el puesto ya tenía una línea
-    // "Escolaridad..." se reemplaza; si no la tenía (Alta Dirección,
-    // Intendencia en el machote original), se inserta como primer punto.
     function aplicarGradoEstudiosSGM(xmlDoc, datos) {
         if (!datos.GRADO_ESTUDIOS) return;
         const norm = t => (t || '').replace(/[.:]+\s*$/, '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -1008,9 +950,8 @@
             if (!textoTabla.includes('COMPETENCIA TÉCNICA') && !textoTabla.includes('COMPETENCIA TECNICA')) continue;
 
             const parrafos = Array.from(celda.children).filter(n => n.localName === 'p');
-            // localizar el primer parrafo-item de cada rol (justo despues del encabezado de rol)
             let rolActual = null;
-            let primerItemDeCadaRol = {}; // clave -> {idx, esEscolaridad}
+            let primerItemDeCadaRol = {};
             parrafos.forEach((p, i) => {
                 const texto = textoParrafo(p).trim();
                 if (!texto) return;
@@ -1023,7 +964,7 @@
 
             for (const [clave, grado] of Object.entries(datos.GRADO_ESTUDIOS)) {
                 const info = primerItemDeCadaRol[clave];
-                if (!info) continue; // el puesto no aparece en esta tabla
+                if (!info) continue;
                 const plantilla = parrafos[info.idx];
                 const textoNuevo = `Escolaridad: ${grado}.`;
                 if (info.esEscolaridad) {
@@ -1055,10 +996,7 @@
             if (hl) rPrMarca.removeChild(hl);
         }
     }
-    // Funciones/Autoridad/Interrelaciones) con el catálogo capturado.
-    // Si el cliente no personalizó el catálogo de un puesto, esa
-    // tarjeta se deja exactamente como estaba (texto genérico, ya
-    // des-resaltado por neutralizarTablasDescriptivasSGM).
+
     const CATS_CATALOGO = ['responsabilidades', 'funciones', 'autoridad', 'interrelaciones'];
 
     function reconstruirTarjetasPuestosSGM(xmlDoc, datos) {
@@ -1073,11 +1011,10 @@
             const parrafos = Array.from(celda.children).filter(n => n.localName === 'p');
             if (!parrafos.length) continue;
             const totalChars = parrafos.reduce((acc, p) => acc + textoParrafo(p).length, 0);
-            if (totalChars < UMBRAL_CHARS_TABLA_GENERICA) continue; // no es la tabla de tarjetas
+            if (totalChars < UMBRAL_CHARS_TABLA_GENERICA) continue;
 
-            // localizar bloques rol -> categoria -> [indices de parrafos-item]
             let rolActual = null, catActual = null;
-            const bloques = []; // {clave, cat, items:[idx,...]}
+            const bloques = [];
             parrafos.forEach((p, i) => {
                 const texto = textoParrafo(p).trim();
                 if (!texto) return;
@@ -1090,9 +1027,9 @@
 
             for (const bloque of bloques) {
                 const catalogoRol = datos.CATALOGO_PUESTOS[bloque.clave];
-                if (!catalogoRol) continue; // el cliente no tocó este puesto: se deja igual
+                if (!catalogoRol) continue;
                 const itemsNuevos = (catalogoRol[bloque.cat] || []).filter(it => it.incluido !== false && (it.texto || '').trim());
-                if (!bloque.items.length) continue; // sin plantilla de párrafo que clonar, no se puede reconstruir con seguridad
+                if (!bloque.items.length) continue;
                 const plantilla = parrafos[bloque.items[0]];
                 const nuevosNodos = itemsNuevos.map(it => {
                     const clon = plantilla.cloneNode(true);
@@ -1125,8 +1062,6 @@
     // el .docx). Si el cliente guardó un layout en el editor visual
     // (ORGANIGRAMA_CANVAS), se usa ese; si no, se calcula automático
     // con la jerarquía por defecto del sistema activo (SGM/SASISOPA).
-    // Es un lienzo de formas de Word (wordprocessingGroup/Shape), no
-    // una imagen — así se puede editar el texto directamente en Word.
     const NS_WPG = 'http://schemas.microsoft.com/office/word/2010/wordprocessingGroup';
     const NS_WPS = 'http://schemas.microsoft.com/office/word/2010/wordprocessingShape';
 
@@ -1134,7 +1069,6 @@
         if (datos.ORGANIGRAMA_CANVAS && Array.isArray(datos.ORGANIGRAMA_CANVAS.nodos) && datos.ORGANIGRAMA_CANVAS.nodos.length) {
             return construirOrganigramaXmlDesdeCanvas(datos.ORGANIGRAMA_CANVAS);
         }
-
         const EMU_PX = 9525;
         const boxW = 1500000, boxH = 560000, gapH = 180000, gapV = 420000, margen = 60000;
         const sis = sistemaActivo();
@@ -1173,8 +1107,6 @@
                 cajasPorClave[clave] = caja;
                 x += boxW + gapH;
             });
-            // conectar con el nivel anterior (un solo padre: el nivel de arriba
-            // si tiene 1 caja; si el nivel de arriba tiene varias, no se conecta)
             if (iNivel > 0) {
                 const nivelArriba = niveles[iNivel - 1];
                 if (nivelArriba.length === 1) {
@@ -1216,7 +1148,7 @@
                 <wps:bodyPr wrap="square" lIns="45720" tIns="27432" rIns="45720" bIns="27432" anchor="ctr"><a:noAutofit/></wps:bodyPr>
             </wps:wsp>`).join('');
 
-        const GROSOR_LINEA = 57150; // ~6px, más grueso para asegurar que se vea
+        const GROSOR_LINEA = 57150;
         const lineasXml = lineas.map(l => {
             const esVertical = Math.abs(l.x2 - l.x1) < 1000;
             const esPunto = Math.abs(l.x2 - l.x1) < 1000 && Math.abs(l.y2 - l.y1) < 1000;
@@ -1256,8 +1188,6 @@
         return { xml, cx, cy };
     }
 
-    // ── Constructor del organigrama desde el layout libre guardado en
-    // el editor visual (posiciones y conectores arrastrados a mano).
     function construirOrganigramaXmlDesdeCanvas(canvas) {
         const EMU_PX = 9525;
         const ALTO_NODO_PX = 90;
@@ -1335,8 +1265,7 @@
                 </wps:wsp>`;
         }).join('');
 
-        const cx = Math.round((maxX - minX + margen * 2) * EMU_PX);
-        const cy = Math.round((maxY - minY + margen * 2) * EMU_PX);
+        const cx = Math.round(maxX - minX + margen * 2), cy = Math.round(maxY - minY + margen * 2);
         const xml = `<w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0">
             <wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/>
             <wp:docPr id="9099" name="Organigrama"/>
@@ -1352,9 +1281,6 @@
         return { xml, cx, cy };
     }
 
-    // Traza en forma de "codo" (baja, cruza, baja) entre dos puntos,
-    // igual que hace el organigrama automático — usado tanto para las
-    // líneas de jerarquía (padre) como para los conectores libres.
     function segmentosElbow(a, b) {
         if (Math.abs(a.x - b.x) < 0.5) return [{ x1: a.x, y1: a.y, x2: b.x, y2: b.y }];
         const yMedio = a.y + (b.y - a.y) / 2;
@@ -1379,14 +1305,7 @@
         return xmlDoc.importNode(wrapper.documentElement.firstChild, true);
     }
 
-    // Busca el párrafo con la imagen/tinta pegada del organigrama (tiene
-    // uno o más <w:drawing> sueltos, fuera de cualquier tabla) y lo
-    // sustituye por el organigrama generado. Si no encuentra ninguno,
-    // no hace nada (no inventa dónde insertarlo).
     function reemplazarOrganigramaMGM(xmlDoc, datos) {
-        // Limpiar también dibujos VML antiguos (w:pict) sueltos fuera de
-        // tablas — son remanentes ocultos ("visibility:hidden") del
-        // machote original que Word no muestra pero Google Docs sí.
         Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'pict')).forEach(pict => {
             let nodo = pict.parentNode;
             while (nodo && nodo.localName !== 'p') nodo = nodo.parentNode;
@@ -1424,13 +1343,6 @@
 
     // ══════════════════════════════════════════════════════════════
     // ── SGM: motor de personalización de Excel (SOFT-G / SOFT-T) ───
-    // Los 4 machotes Excel comparten la misma hoja "Control" (siempre
-    // xl/worksheets/sheet1.xml) con las mismas celdas fijas: LOGO
-    // (A1:B5), nombre del representante (C4), fecha de vigencia (F5),
-    // tabla Elaboró/Revisó/Aprobó (B18:G20), e iniciales + fecha de
-    // control de cambios (fila 28). Al ser una estructura rígida y
-    // siempre igual, se procesa por referencia de celda en vez de por
-    // texto resaltado como en los .docx.
     // ══════════════════════════════════════════════════════════════
     const NS_S = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
     const NS_XDR = 'http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing';
@@ -1445,7 +1357,7 @@
         if (!m) return null;
         const dia = parseInt(m[1], 10), mes = parseInt(m[2], 10), anio = parseInt(m[3], 10);
         const fecha = Date.UTC(anio, mes - 1, dia);
-        const epoca = Date.UTC(1899, 11, 30); // corrige el bug del año bisiesto 1900 de Excel
+        const epoca = Date.UTC(1899, 11, 30);
         return Math.round((fecha - epoca) / 86400000);
     }
 
@@ -1474,10 +1386,6 @@
         v.textContent = String(serial);
     }
 
-    // Quita el amarillo de UNA sola vez: los 4 machotes usan una única
-    // definición de <fill> compartida por todas las celdas resaltadas,
-    // así que basta con neutralizar esa definición (no hay que tocar
-    // celda por celda).
     function quitarRellenoAmarilloXlsx(stylesDoc) {
         for (const fill of Array.from(stylesDoc.getElementsByTagNameNS(NS_S, 'fill'))) {
             const fg = fill.getElementsByTagNameNS(NS_S, 'fgColor')[0];
@@ -1492,10 +1400,6 @@
         }
     }
 
-    // Si la celda usa una fuente en rojo (convención de "pendiente de
-    // llenar" del machote original), la clona en negro y reasigna la
-    // celda a ese estilo nuevo — sin tocar el estilo original por si
-    // otra celda no relacionada lo comparte.
     function asegurarEstiloSinRojoXlsx(stylesDoc, c) {
         if (!c) return;
         const sOriginal = c.getAttribute('s');
@@ -1563,8 +1467,6 @@
             const cx = Math.round(anchoPx * 9525);
             const cy = Math.round(altoPx * 9525);
 
-            // Centrar dentro de la celda: columna F (firmas) mide ~118px,
-            // columna A (LOGO, ya viene ancho por A1:B5) no necesita centrado.
             const anchoColPx = img.anchoColPx || 0;
             const colOffX = anchoColPx > anchoPx ? Math.round(((anchoColPx - anchoPx) / 2) * 9525) : 19050;
             const rowOffY = img.altoFilaPx > altoPx ? Math.round(((img.altoFilaPx - altoPx) / 2) * 9525) : 19050;
@@ -1591,13 +1493,13 @@
 
     async function procesarXlsxSGM(buffer, datos, stats, ctxImg) {
         const zip = await JSZip.loadAsync(buffer);
-        const rutaSheet = 'xl/worksheets/sheet1.xml'; // "Control" es siempre la primera hoja en los 4 machotes SGM
+        const rutaSheet = 'xl/worksheets/sheet1.xml';
         let sheetXmlTexto, stylesXmlTexto;
         try {
             sheetXmlTexto = await zip.file(rutaSheet).async('string');
             stylesXmlTexto = await zip.file('xl/styles.xml').async('string');
         } catch (e) {
-            return await zip.generateAsync({ type: 'blob' }); // estructura inesperada: no se toca
+            return await zip.generateAsync({ type: 'blob' });
         }
 
         const parser = new DOMParser();
@@ -1677,9 +1579,6 @@
                 aplicarGradoEstudiosSGM(xmlDoc, datos);
                 filtrarListasDeRolesSGM(xmlDoc, datos);
             }
-            // El organigrama gráfico corre en AMBOS sistemas (SASISOPA y SGM):
-            // si el machote no trae ningún dibujo suelto que reemplazar, la
-            // función simplemente no hace nada.
             reemplazarOrganigramaMGM(xmlDoc, datos);
 
             for (const p of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'))) {
@@ -1695,17 +1594,10 @@
                 procesarTablaEquipoSGM(xmlDoc, datos, stats);
             }
             if (_seccionActual === 'sgm') {
-                // Blindaje final: cualquier amarillo que haya quedado sin
-                // cubrir por una regla específica se quita de todas
-                // formas (dejando el texto tal cual estaba). Así nunca
-                // sale amarillo en el documento final, sin excepción.
                 Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'r')).filter(esResaltadoAmarillo).forEach(r => {
                     stats.pendientes.push(textoDeRun(r).trim());
                     quitarResaltado(r);
                 });
-                // La marca de fin de párrafo también puede llevar su
-                // propio resaltado (pPr>rPr>highlight) sin texto visible
-                // — eso pinta un "espacio" amarillo aunque no haya letras.
                 Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'pPr')).forEach(pPr => {
                     const rPr = pPr.getElementsByTagNameNS(NS_W, 'rPr')[0];
                     const hl = rPr ? rPr.getElementsByTagNameNS(NS_W, 'highlight')[0] : null;
@@ -1748,8 +1640,6 @@
         @media(max-width:900px){ #gestoria-dashboard{margin-left:200px;} }
         @media(max-width:768px){ #gestoria-dashboard{margin-left:0;} .gs-grid{grid-template-columns:1fr !important;} .gs-form-grid{grid-template-columns:1fr !important;} }
 
-        /* El riel queda ANCLADO al viewport (fixed), no al flujo de la página,
-           para que nunca se desplace con el scroll — igual que el sidebar azul principal. */
         #gestoria-dashboard .gs-shell{display:block;min-height:100vh;}
         #gestoria-dashboard .gs-rail{position:fixed;top:0;left:240px;height:100vh;z-index:90;}
         @media(max-width:900px){ #gestoria-dashboard .gs-rail{left:200px;} }
@@ -1762,7 +1652,6 @@
         #gestoria-dashboard .gs-rail-btn:disabled{opacity:0.28;cursor:not-allowed;}
         #gestoria-dashboard .gs-rail-tooltip{position:absolute;left:56px;top:50%;transform:translateY(-50%);background:#0f172a;color:#fff;font-size:11px;font-weight:600;padding:6px 10px;border-radius:7px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity 0.15s;z-index:20;box-shadow:0 4px 12px rgba(0,0,0,0.25);}
         #gestoria-dashboard .gs-rail-btn:hover .gs-rail-tooltip{opacity:1;}
-        /* gs-content deja el hueco del riel fijo (64px) mediante margen, en vez de flex */
         #gestoria-dashboard .gs-content{margin-left:64px;min-width:0;min-height:100vh;}
         @media(max-width:768px){ #gestoria-dashboard .gs-rail{width:56px;} #gestoria-dashboard .gs-rail-btn{width:38px;height:38px;} #gestoria-dashboard .gs-content{margin-left:56px;} }
 
@@ -1833,7 +1722,6 @@
         #gestoria-dashboard .gs-btn-quitar-equipo{padding:9px 12px;color:#ef4444;font-weight:700;}
         #gestoria-dashboard .gs-rail-divisor{width:32px;height:1px;background:rgba(255,255,255,0.14);margin:8px 0;flex-shrink:0;}
 
-        /* ── Panel flotante de la Parrilla de Documentos ─────────── */
         .gs-parrilla-overlay{position:fixed;inset:0;z-index:200000;background:rgba(15,23,42,0);pointer-events:none;transition:background 0.28s ease;display:flex;justify-content:flex-end;}
         .gs-parrilla-overlay.abierto{background:rgba(15,23,42,0.45);pointer-events:auto;}
         .gs-parrilla-panel{width:520px;max-width:92vw;height:100%;background:#fff;box-shadow:-12px 0 40px rgba(0,0,0,0.18);display:flex;flex-direction:column;transform:translateX(100%);transition:transform 0.32s cubic-bezier(0.22,1,0.36,1);}
@@ -1882,6 +1770,13 @@
         .gs-orga-nodo select option{color:#0f172a;}
         .gs-orga-nodo-borrar{align-self:flex-end;background:none;border:none;color:rgba(255,255,255,0.5);cursor:pointer;font-size:12px;}
         .gs-orga-nodo-borrar:hover{color:#f87171;}
+
+        /* ── Certificado TECNOLAB ─────────────────────────────────── */
+        #gestoria-dashboard .gs-cert-seccion-titulo{font-size:11px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;color:var(--teal2);margin:18px 0 10px;}
+        #gestoria-dashboard .gs-cert-seccion-titulo:first-child{margin-top:0;}
+        #gestoria-dashboard .gs-cert-resultado-fila{display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:10px;align-items:end;margin-bottom:10px;padding-bottom:10px;border-bottom:1px dashed rgba(59,130,246,0.15);}
+        #gestoria-dashboard .gs-cert-preview-frame{border:1px solid rgba(59,130,246,0.12);background:#fff;}
+        @media(max-width:768px){ #gestoria-dashboard .gs-cert-resultado-fila{grid-template-columns:1fr 1fr;} }
         `;
         document.head.appendChild(style);
     }
@@ -1895,7 +1790,7 @@
             <div class="gs-rail-logo">${ICONO.edificio}</div>
             ${SECCIONES_GESTORIA.map(s => `
                 <button class="gs-rail-btn${_seccionActual === s.id ? ' activo' : ''}" data-seccion="${s.id}" ${s.activa ? '' : 'disabled'}>
-                    ${s.id === 'sasisopa' ? ICONO.carpeta : ICONO.graduacion}
+                    ${s.id === 'sasisopa' ? ICONO.carpeta : s.id === 'sgm' ? ICONO.graduacion : ICONO.certificado}
                     <span class="gs-rail-tooltip">${s.titulo}${s.activa ? '' : ' (próximamente)'}</span>
                 </button>`).join('')}
             <div class="gs-rail-divisor"></div>
@@ -1916,12 +1811,6 @@
     }
 
     // ── Panel flotante de la Parrilla de Documentos ─────────────
-    // Reutiliza el nodo real #area-parrilla-wrap (y toda su lógica ya
-    // existente en index.html: listener de Firestore, renderCalAP,
-    // etc.) en vez de duplicarla. Solo lo saca temporalmente de su
-    // lugar mientras el panel está abierto, y lo regresa intacto al
-    // cerrar para no afectar el comportamiento normal del portal en
-    // otras áreas.
     let _parrillaNodoOriginal = { padre: null, siguiente: null };
 
     function crearOverlayParrilla() {
@@ -1981,6 +1870,11 @@
         inyectarEstilosGestoria();
         const cont = document.getElementById('gestoria-dashboard');
         if (!cont) return;
+
+        if (_seccionActual === 'certificado') {
+            renderCertificadoTecnolab(cont);
+            return;
+        }
 
         cont.innerHTML = `<div class="gs-shell">${renderRail()}<div class="gs-content"><div class="gs-body"><div class="gs-empty">Cargando clientes…</div></div></div></div>`;
         bindRail(cont);
@@ -2093,7 +1987,7 @@
                     <div class="gs-subtitle" style="margin-bottom:10px;">Solo aparecen los roles marcados en el organigrama de arriba.</div>
                     <div class="gs-grid">
                         ${sec.fuente.map(rol => {
-                            const oculto = !cliente[rol.clave]; // se ajusta también al vuelo con bindSeccionesEspeciales
+                            const oculto = !cliente[rol.clave];
                             return `
                             <div class="gs-field" data-depende-de="${rol.clave}" style="${oculto ? 'display:none;' : ''}">
                                 <label>Escolaridad — ${rol.etiqueta}</label>
@@ -2120,8 +2014,8 @@
                         ${sec.opciones.map(op => {
                             const valorActual = cliente[op.clave] || '';
                             const marcado = !!valorActual || op.obligatorio;
-                            const conCatalogo = true; // botón "Responsabilidades ▾" en ambos sistemas
-                            const conGradoDropdown = _seccionActual === 'sgm'; // dropdown de escolaridad: solo SGM (SASISOPA usa F-06-02)
+                            const conCatalogo = true;
+                            const conGradoDropdown = _seccionActual === 'sgm';
                             return `
                             <div>
                                 <div class="gs-rol-fila" data-rol="${op.clave}">
@@ -2360,7 +2254,6 @@
                 i++;
             });
         }
-        // aplica jerarquía por defecto y reacomoda en niveles
         const jerarquia = sis.jerarquiaOrganigrama || [];
         const nivelDeClave = {};
         jerarquia.forEach((nivel, iNivel) => nivel.forEach(clave => { nivelDeClave[clave] = iNivel; }));
@@ -2824,7 +2717,6 @@
                     const blobSalida = await procesarXlsxSGM(buffer, datos, stats, ctxImg);
                     zipSalida.file(nombreArchivo, blobSalida);
                 } else {
-                    // Otros formatos (o .xlsx fuera de SGM) se copian sin personalizar.
                     zipSalida.file(nombreArchivo, buffer);
                 }
                 procesados++;
@@ -2866,6 +2758,707 @@
         URL.revokeObjectURL(url);
 
         mostrarProgreso(cont, 'ok', `${ICONO.check} Listo: ${stats.reemplazos} reemplazos, ${stats.logosInsertados} logo(s) insertado(s), ${stats.pendientes.length} pendientes. Reporte incluido en el .zip.`);
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // CERTIFICADO TECNOLAB — llenado y exportación (PDF / Word / XML)
+    // ══════════════════════════════════════════════════════════
+    // A diferencia de SASISOPA/SGM (que personalizan machotes .docx
+    // existentes por cliente y guardan un directorio en Firestore),
+    // este sistema NO gestiona una lista de clientes ni persiste nada:
+    // es una sola pantalla de llenado que reproduce el diseño fijo del
+    // Certificado de Calibración de TECNOLAB y lo exporta en el acto.
+    // Recargar la página pierde lo capturado — es intencional.
+
+    const TECNOLAB_LOGO_B64 = 'data:image/png;base64,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';
+    const TECNOLAB_ACCENT = '#1e3a5f';
+
+    const TECNOLAB_REFERENCIAS = [
+        'NMX-CH-140-IMNC-2002. Guía para Evaluación de la Incertidumbre en los Resultados de las Mediciones.',
+        'NMX-EC-17025-IMNC-2006 ISO/IEC 17025:2005. Requisitos generales para la competencia de laboratorios de ensayo y de calibración.',
+        'Guía Técnica de Metrología para laboratorios de Calibración del Área Temperatura. Termómetros Automáticos Fijos para Tanques.',
+        'API MPMS 7.3 — Manual of Petroleum Measurement Standards, Ch. 7.3 Temperature Determination — Fixed Automatic Tank Temperature System.',
+        'ISO 4266:2023 — Measurement of level and temperature in storage tanks by automatic methods, Part 4: Measurement of temperature in atmospheric tanks.',
+        'RES/811/2015 — Apartado 3. Sistemas de medición en tanques de almacenamiento.',
+        'ISO 4268 — Petroleum and liquid petroleum products — Temperature Measurements — Manual Methods.',
+        'OIML R 85 — Automatic level gauges for measuring the level of liquid in stationary tanks, Part 2: Metrological control and test.',
+        'ISO 4266 — Part 1: Measurement of level in atmospheric tanks.',
+        'API MPMS 3.1A — Práctica Estándar para la Medición Manual de Petróleo y Productos de Petróleo.',
+    ];
+
+    const TECNOLAB_CAMPOS_OBLIGATORIOS = ['folio', 'clienteRazonSocial', 'fechaCalibracion', 'fechaEmision'];
+
+    let _certDatos = null;
+    let _certQrDataUrl = null;
+    let _certFirmasDataUrl = { CALIBRO: null, APROBO: null };
+
+    function certificadoDatosDefault() {
+        return {
+            folio: '', fechaCalibracion: '', fechaEmision: '', vigencia: '',
+            clienteRazonSocial: '', clienteDireccion: '',
+            instSondaMarca: '', instSondaModelo: '', instSondaSerie: '', instSondaId: '',
+            instConsolaMarca: '', instConsolaModelo: '', instConsolaSerie: '', instConsolaId: '',
+            instResolucion: '', instTipoTanque: '', instTipoLiquido: '',
+            patTepMarca: '', patTepModelo: '', patTepSerie: '', patTepId: '', patTepTrazabilidad: '',
+            patCintaMarca: '', patCintaModelo: '', patCintaSerie: '', patCintaId: '', patCintaTrazabilidad: '',
+            lugarCalibracion: '', metodoCalibracion: '', tempAmbiente: '', humedad: '', presion: '',
+            resultados: [{ patron: '', ibc: '', error: '', incertidumbre: '' }],
+            observacionAdicional: '',
+            calibroNombre: '', aproboNombre: '', aproboPuesto: '',
+        };
+    }
+
+    function escHtmlCert(s) {
+        return (s === undefined || s === null ? '' : String(s))
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    function escAttrCert(s) {
+        return (s === undefined || s === null ? '' : String(s)).replace(/"/g, '&quot;');
+    }
+    function vCert(s) { const t = (s || '').trim(); return t ? escHtmlCert(t) : '<span style="color:#94a3b8;font-style:italic">—</span>'; }
+
+    let _qrLibPromesa = null;
+    function cargarLibQR() {
+        if (window.qrcode) return Promise.resolve();
+        if (_qrLibPromesa) return _qrLibPromesa;
+        _qrLibPromesa = new Promise((resolve) => {
+            const s = document.createElement('script');
+            s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js';
+            s.onload = () => resolve();
+            s.onerror = () => resolve();
+            document.head.appendChild(s);
+        });
+        return _qrLibPromesa;
+    }
+
+    function generarQrDataUrl(texto) {
+        if (!window.qrcode || !texto) return null;
+        try {
+            const qr = window.qrcode(0, 'M');
+            qr.addData(texto);
+            qr.make();
+            const count = qr.getModuleCount();
+            const cell = 6, quiet = 4;
+            const px = (count + quiet * 2) * cell;
+            const canvas = document.createElement('canvas');
+            canvas.width = px; canvas.height = px;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, px, px);
+            ctx.fillStyle = TECNOLAB_ACCENT;
+            for (let r = 0; r < count; r++) for (let c = 0; c < count; c++) {
+                if (qr.isDark(r, c)) ctx.fillRect((c + quiet) * cell, (r + quiet) * cell, cell, cell);
+            }
+            return canvas.toDataURL('image/png');
+        } catch (e) { return null; }
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // FORMULARIO
+    // ══════════════════════════════════════════════════════════
+    function renderCertificadoTecnolab(cont) {
+        if (!_certDatos) _certDatos = certificadoDatosDefault();
+
+        cont.innerHTML = `<div class="gs-shell">${renderRail()}<div class="gs-content">
+            <div class="gs-topbar"><div><div class="gs-eyebrow">Gestoría</div><div class="gs-title">Certificado TECNOLAB</div><div class="gs-subtitle">Llenado del Certificado de Calibración — se exporta al instante, no se guarda en el portal</div></div></div>
+            <div class="gs-body">
+                <div class="gs-form-grid" style="grid-template-columns:0.85fr 1.5fr;">
+                    <div id="gs-cert-form"></div>
+                    <div id="gs-cert-lateral">
+                        <div class="gs-card">
+                            <div class="gs-card-header"><span class="gs-card-icon">${ICONO.imagen}</span><span class="gs-card-title">Firmas</span></div>
+                            <div class="gs-card-body">
+                                ${['CALIBRO', 'APROBO'].map(rol => `
+                                <div style="margin-bottom:12px;">
+                                    <label style="font-size:11.5px;font-weight:700;color:var(--text2);display:block;margin-bottom:4px;">${rol === 'CALIBRO' ? 'Calibró (Metrólogo)' : 'Aprobó'}</label>
+                                    <div id="gs-cert-dropzone-firma-${rol}" class="gs-dropzone" style="min-height:56px;padding:8px;">
+                                        <input type="file" id="gs-cert-input-firma-${rol}" accept="image/png,image/jpeg" style="display:none;">
+                                        <div id="gs-cert-dropzone-firma-${rol}-contenido"></div>
+                                    </div>
+                                </div>`).join('')}
+                                <div class="gs-subtitle" style="font-size:11px;">PNG con fondo transparente recomendado.</div>
+                            </div>
+                        </div>
+                        <div class="gs-card">
+                            <div class="gs-card-header"><span class="gs-card-icon">${ICONO.certificado}</span><span class="gs-card-title">Vista previa</span></div>
+                            <div class="gs-card-body" style="background:#e7ebf3;padding:16px;display:flex;justify-content:center;">
+                                <div style="width:653px;height:1568px;overflow:hidden;position:relative;box-shadow:0 4px 18px rgba(0,0,0,.18);">
+                                    <iframe id="gs-cert-iframe" class="gs-cert-preview-frame" style="width:816px;height:1960px;border:0;transform:scale(0.8);transform-origin:top left;"></iframe>
+                                </div>
+                            </div>
+                            <div class="gs-card-body" style="border-top:1px solid rgba(59,130,246,.08);">
+                                <div class="gs-actions-bar" style="margin-top:0;padding-top:0;border-top:none;flex-wrap:wrap;">
+                                    <button class="gs-btn gs-btn-primary" id="gs-cert-pdf">${ICONO.descarga} Generar PDF</button>
+                                    <button class="gs-btn gs-btn-secondary" id="gs-cert-word">${ICONO.descarga} Exportar Word</button>
+                                    <button class="gs-btn gs-btn-secondary" id="gs-cert-xml">${ICONO.descarga} Exportar XML</button>
+                                </div>
+                                <div class="gs-progreso" id="gs-cert-progreso" style="margin-top:10px;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div></div>`;
+
+        bindRail(cont);
+        cont.querySelector('#gs-cert-form').innerHTML = renderFormularioCertificado(_certDatos);
+        bindFormularioCertificado(cont);
+        renderDropzoneGenerico(cont, '#gs-cert-dropzone-firma-CALIBRO', '#gs-cert-input-firma-CALIBRO', '#gs-cert-dropzone-firma-CALIBRO-contenido',
+            () => _certFirmasDataUrl.CALIBRO, v => { _certFirmasDataUrl.CALIBRO = v; actualizarPreviewCertificado(cont); },
+            'Arrastra la firma aquí', 'PNG o JPG', 'Cambiar firma', 'gs-firma-preview');
+        renderDropzoneGenerico(cont, '#gs-cert-dropzone-firma-APROBO', '#gs-cert-input-firma-APROBO', '#gs-cert-dropzone-firma-APROBO-contenido',
+            () => _certFirmasDataUrl.APROBO, v => { _certFirmasDataUrl.APROBO = v; actualizarPreviewCertificado(cont); },
+            'Arrastra la firma aquí', 'PNG o JPG', 'Cambiar firma', 'gs-firma-preview');
+        cargarLibQR().then(() => actualizarPreviewCertificado(cont));
+    }
+
+    function campoCert(id, label, valor, placeholder, obligatorio) {
+        return `<div class="gs-field">
+            <label>${label}${obligatorio ? '<span class="gs-req">*</span>' : ''}</label>
+            <input type="text" data-cert="${id}" placeholder="${placeholder ? escAttrCert(placeholder) : ''}" value="${escAttrCert(valor)}">
+        </div>`;
+    }
+
+    function renderFormularioCertificado(d) {
+        return `
+        <div class="gs-card">
+            <div class="gs-card-header"><span class="gs-card-icon">${ICONO.carpeta}</span><span class="gs-card-title">Identificación del certificado</span></div>
+            <div class="gs-card-body">
+                <div class="gs-grid">
+                    ${campoCert('folio', 'Certificado No.', d.folio, 'TL-CAL-2026-0001', true)}
+                    ${campoCert('fechaCalibracion', 'Fecha de calibración', d.fechaCalibracion, 'DD/MM/AAAA', true)}
+                    ${campoCert('fechaEmision', 'Fecha de emisión', d.fechaEmision, 'DD/MM/AAAA', true)}
+                    ${campoCert('vigencia', 'Vigencia / próxima calibración', d.vigencia, 'DD/MM/AAAA')}
+                </div>
+            </div>
+        </div>
+
+        <div class="gs-card">
+            <div class="gs-card-header"><span class="gs-card-icon">${ICONO.edificio}</span><span class="gs-card-title">Datos del cliente</span></div>
+            <div class="gs-card-body">
+                ${campoCert('clienteRazonSocial', 'Nombre o razón social', d.clienteRazonSocial, 'Razón social del cliente', true)}
+                <div style="margin-top:12px;">${campoCert('clienteDireccion', 'Dirección', d.clienteDireccion, 'Domicilio del cliente')}</div>
+            </div>
+        </div>
+
+        <div class="gs-card">
+            <div class="gs-card-header"><span class="gs-card-icon">${ICONO.graduacion}</span><span class="gs-card-title">Datos del instrumento calibrado</span></div>
+            <div class="gs-card-body">
+                <div class="gs-cert-seccion-titulo">Sonda de temperatura</div>
+                <div class="gs-grid">
+                    ${campoCert('instSondaMarca', 'Marca', d.instSondaMarca)}
+                    ${campoCert('instSondaModelo', 'Modelo', d.instSondaModelo)}
+                    ${campoCert('instSondaSerie', 'No. de serie', d.instSondaSerie)}
+                    ${campoCert('instSondaId', 'Identificación', d.instSondaId)}
+                </div>
+                <div class="gs-cert-seccion-titulo">Consola o lector</div>
+                <div class="gs-grid">
+                    ${campoCert('instConsolaMarca', 'Marca', d.instConsolaMarca)}
+                    ${campoCert('instConsolaModelo', 'Modelo', d.instConsolaModelo)}
+                    ${campoCert('instConsolaSerie', 'No. de serie', d.instConsolaSerie)}
+                    ${campoCert('instConsolaId', 'Identificación', d.instConsolaId)}
+                </div>
+                <div class="gs-cert-seccion-titulo">Comunes a ambos</div>
+                <div class="gs-grid">
+                    ${campoCert('instResolucion', 'Resolución', d.instResolucion)}
+                    ${campoCert('instTipoTanque', 'Tipo de tanque', d.instTipoTanque)}
+                </div>
+                <div style="margin-top:12px;">${campoCert('instTipoLiquido', 'Tipo de líquido', d.instTipoLiquido)}</div>
+            </div>
+        </div>
+
+        <div class="gs-card">
+            <div class="gs-card-header"><span class="gs-card-icon">${ICONO.graduacion}</span><span class="gs-card-title">Patrones y equipos de medida utilizados</span></div>
+            <div class="gs-card-body">
+                <div class="gs-cert-seccion-titulo">TEP</div>
+                <div class="gs-grid">
+                    ${campoCert('patTepMarca', 'Marca', d.patTepMarca)}
+                    ${campoCert('patTepModelo', 'Modelo', d.patTepModelo)}
+                    ${campoCert('patTepSerie', 'No. de serie', d.patTepSerie)}
+                    ${campoCert('patTepId', 'Identificación', d.patTepId)}
+                </div>
+                <div style="margin-top:12px;">${campoCert('patTepTrazabilidad', 'Trazabilidad metrológica', d.patTepTrazabilidad)}</div>
+                <div class="gs-cert-seccion-titulo">Cinta con plomada</div>
+                <div class="gs-grid">
+                    ${campoCert('patCintaMarca', 'Marca', d.patCintaMarca)}
+                    ${campoCert('patCintaModelo', 'Modelo', d.patCintaModelo)}
+                    ${campoCert('patCintaSerie', 'No. de serie', d.patCintaSerie)}
+                    ${campoCert('patCintaId', 'Identificación', d.patCintaId)}
+                </div>
+                <div style="margin-top:12px;">${campoCert('patCintaTrazabilidad', 'Trazabilidad metrológica', d.patCintaTrazabilidad)}</div>
+            </div>
+        </div>
+
+        <div class="gs-card">
+            <div class="gs-card-header"><span class="gs-card-icon">${ICONO.reloj}</span><span class="gs-card-title">Datos de la calibración</span></div>
+            <div class="gs-card-body">
+                ${campoCert('lugarCalibracion', 'Lugar de calibración', d.lugarCalibracion)}
+                <div style="margin-top:12px;">${campoCert('metodoCalibracion', 'Método de calibración', d.metodoCalibracion)}</div>
+                <div class="gs-grid" style="margin-top:12px;">
+                    ${campoCert('tempAmbiente', 'Temperatura ambiente (°C)', d.tempAmbiente)}
+                    ${campoCert('humedad', 'Humedad relativa (%HR)', d.humedad)}
+                </div>
+                <div style="margin-top:12px;max-width:calc(50% - 7px);">${campoCert('presion', 'Presión atmosférica (Pa)', d.presion)}</div>
+            </div>
+        </div>
+
+        <div class="gs-card">
+            <div class="gs-card-header"><span class="gs-card-icon">${ICONO.graduacion}</span><span class="gs-card-title">Resultados de calibración</span></div>
+            <div class="gs-card-body">
+                <div id="gs-cert-resultados">${d.resultados.map((r, i) => renderFilaResultado(r, i)).join('')}</div>
+                <button type="button" class="gs-btn gs-btn-secondary" id="gs-cert-add-resultado">${ICONO.mas} Agregar fila</button>
+            </div>
+        </div>
+
+        <div class="gs-card">
+            <div class="gs-card-header"><span class="gs-card-icon">${ICONO.alerta}</span><span class="gs-card-title">Observaciones</span></div>
+            <div class="gs-card-body">
+                <div class="gs-subtitle" style="margin-bottom:10px;">Las dos notas estándar del formato se incluyen siempre. Aquí solo se agrega texto adicional específico de este certificado, si aplica.</div>
+                ${campoCert('observacionAdicional', 'Observación adicional (opcional)', d.observacionAdicional)}
+            </div>
+        </div>
+
+        <div class="gs-card">
+            <div class="gs-card-header"><span class="gs-card-icon">${ICONO.usuarios}</span><span class="gs-card-title">Firmas — nombres</span></div>
+            <div class="gs-card-body">
+                <div class="gs-grid">
+                    ${campoCert('calibroNombre', 'Calibró — Nombre (Metrólogo)', d.calibroNombre)}
+                    ${campoCert('aproboNombre', 'Aprobó — Nombre', d.aproboNombre)}
+                </div>
+                <div style="margin-top:12px;max-width:calc(50% - 7px);">${campoCert('aproboPuesto', 'Aprobó — Puesto', d.aproboPuesto)}</div>
+            </div>
+        </div>
+        `;
+    }
+
+    function renderFilaResultado(r, idx) {
+        return `<div class="gs-cert-resultado-fila" data-idx="${idx}">
+            <div class="gs-field"><label>Temp. patrón (°C)</label><input type="text" data-resultado-campo="patron" value="${escAttrCert(r.patron)}"></div>
+            <div class="gs-field"><label>Temp. IBC (°C)</label><input type="text" data-resultado-campo="ibc" value="${escAttrCert(r.ibc)}"></div>
+            <div class="gs-field"><label>Error (°C)</label><input type="text" data-resultado-campo="error" value="${escAttrCert(r.error)}"></div>
+            <div class="gs-field"><label>Incertidumbre k=2 (°C)</label><input type="text" data-resultado-campo="incertidumbre" value="${escAttrCert(r.incertidumbre)}"></div>
+            <button type="button" class="gs-btn gs-btn-ghost gs-btn-quitar-equipo" title="Quitar esta fila">✕</button>
+        </div>`;
+    }
+
+    function leerCertificadoDeFormulario(cont) {
+        const d = {};
+        cont.querySelectorAll('#gs-cert-form input[data-cert]').forEach(inp => { d[inp.dataset.cert] = inp.value; });
+        const contRes = cont.querySelector('#gs-cert-resultados');
+        d.resultados = Array.from(contRes ? contRes.querySelectorAll('.gs-cert-resultado-fila') : []).map(fila => {
+            const obj = {};
+            fila.querySelectorAll('input[data-resultado-campo]').forEach(inp => { obj[inp.dataset.resultadoCampo] = inp.value; });
+            return obj;
+        });
+        if (!d.resultados.length) d.resultados = [{ patron: '', ibc: '', error: '', incertidumbre: '' }];
+        return d;
+    }
+
+    function bindFormularioCertificado(cont) {
+        const actualizar = () => {
+            _certDatos = leerCertificadoDeFormulario(cont);
+            actualizarPreviewCertificado(cont);
+        };
+        cont.querySelectorAll('#gs-cert-form input[data-cert]').forEach(inp => inp.addEventListener('input', actualizar));
+
+        const contRes = cont.querySelector('#gs-cert-resultados');
+        const reindexarResultados = () => {
+            contRes.querySelectorAll('.gs-cert-resultado-fila').forEach((f, i) => f.dataset.idx = i);
+            contRes.querySelectorAll('.gs-btn-quitar-equipo').forEach(b => {
+                b.onclick = () => {
+                    if (contRes.children.length > 1) { b.closest('.gs-cert-resultado-fila').remove(); reindexarResultados(); actualizar(); }
+                };
+            });
+            contRes.querySelectorAll('input[data-resultado-campo]').forEach(inp => {
+                inp.removeEventListener('input', actualizar);
+                inp.addEventListener('input', actualizar);
+            });
+        };
+        cont.querySelector('#gs-cert-add-resultado').addEventListener('click', () => {
+            contRes.insertAdjacentHTML('beforeend', renderFilaResultado({ patron: '', ibc: '', error: '', incertidumbre: '' }, contRes.children.length));
+            reindexarResultados();
+        });
+        reindexarResultados();
+
+        cont.querySelector('#gs-cert-pdf').addEventListener('click', () => exportarCertificadoPDF(cont));
+        cont.querySelector('#gs-cert-word').addEventListener('click', () => exportarCertificadoWord(cont));
+        cont.querySelector('#gs-cert-xml').addEventListener('click', () => exportarCertificadoXML(cont));
+    }
+
+    function mostrarProgresoCert(cont, tipo, html) {
+        const el = cont.querySelector('#gs-cert-progreso');
+        if (!el) return;
+        el.className = 'gs-progreso' + (tipo === 'ok' ? ' gs-progreso-ok' : tipo === 'error' ? ' gs-progreso-error' : '');
+        el.innerHTML = html;
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // CONSTRUCCIÓN DEL HTML DEL CERTIFICADO
+    // ══════════════════════════════════════════════════════════
+    function construirHTMLCertificado(d, qrDataUrl) {
+        const acc = TECNOLAB_ACCENT;
+        const qrImg = qrDataUrl
+            ? `<img src="${qrDataUrl}" alt="QR de verificación" style="width:92px;height:92px;display:block;">`
+            : `<div style="width:92px;height:92px;background:repeating-linear-gradient(45deg,#eef2f8,#eef2f8 4px,#dde5f0 4px,#dde5f0 8px)"></div>`;
+        const qrImgChica = qrDataUrl
+            ? `<img src="${qrDataUrl}" alt="QR" style="width:60px;height:60px;display:block;">`
+            : `<div style="width:60px;height:60px;background:repeating-linear-gradient(45deg,#eef2f8,#eef2f8 4px,#dde5f0 4px,#dde5f0 8px)"></div>`;
+
+        const filasResultados = (d.resultados && d.resultados.length ? d.resultados : [{}]).map(r => `
+            <tr>
+                <td style="padding:5px 6px;height:15px;border:1px solid #cbd5e1;font-size:10px;text-align:center;">${escHtmlCert(r.patron)}</td>
+                <td style="padding:5px 6px;border:1px solid #cbd5e1;font-size:10px;text-align:center;">${escHtmlCert(r.ibc)}</td>
+                <td style="padding:5px 6px;border:1px solid #cbd5e1;font-size:10px;text-align:center;">${escHtmlCert(r.error)}</td>
+                <td style="padding:5px 6px;border:1px solid #cbd5e1;font-size:10px;text-align:center;">${escHtmlCert(r.incertidumbre)}</td>
+            </tr>`).join('');
+
+        const refsHtml = TECNOLAB_REFERENCIAS.map(r => `<li style="margin-bottom:2px;">${escHtmlCert(r)}</li>`).join('');
+
+        const firmaImg = (dataUrl) => dataUrl ? `<img src="${dataUrl}" style="max-height:32px;max-width:150px;display:block;margin:0 auto 2px;">` : '';
+
+        const firmaCalibro = `
+            <div style="flex:1;text-align:center;">
+                ${firmaImg(d.firmaCalibroBase64)}
+                <div style="border-bottom:1px solid #64748b;height:${d.firmaCalibroBase64 ? '2px' : '34px'};margin:0 6px;"></div>
+                <div style="font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:${acc};margin-top:5px;">Calibró</div>
+                <div style="font-size:9px;color:#475569;margin-top:2px;">${vCert(d.calibroNombre)} · Metrólogo</div>
+            </div>`;
+        const firmaAprobo = `
+            <div style="flex:1;text-align:center;">
+                ${firmaImg(d.firmaAproboBase64)}
+                <div style="border-bottom:1px solid #64748b;height:${d.firmaAproboBase64 ? '2px' : '34px'};margin:0 6px;"></div>
+                <div style="font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:${acc};margin-top:5px;">Aprobó</div>
+                <div style="font-size:9px;color:#475569;margin-top:2px;">${vCert(d.aproboNombre)} · ${vCert(d.aproboPuesto)}</div>
+            </div>`;
+
+        return `<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:wght@700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;}
+  body{margin:0;background:#ccc;font-family:'IBM Plex Sans',system-ui,sans-serif;}
+  .hoja{width:816px;min-height:1056px;background:#fff;padding:48px;color:#1e293b;line-height:1.35;margin:0 auto 12px;}
+  table{border-collapse:collapse;width:100%;}
+  @media print{
+    body{background:#fff;}
+    .hoja{margin:0;box-shadow:none;break-after:page;}
+    .hoja:last-child{break-after:auto;}
+  }
+</style>
+</head><body>
+
+<div class="hoja">
+  <div style="display:flex;gap:14px;align-items:stretch;border-bottom:3px solid ${acc};padding-bottom:10px;">
+    <div style="width:238px;min-width:238px;height:99px;display:flex;align-items:center;justify-content:flex-start;"><img src="${TECNOLAB_LOGO_B64}" alt="TECNOLAB" style="max-width:100%;max-height:92px;object-fit:contain;display:block;"></div>
+    <div style="flex:1;display:flex;flex-direction:column;justify-content:center;">
+      <div style="font-family:'IBM Plex Serif',Georgia,serif;font-weight:700;font-size:15px;color:${acc};letter-spacing:.01em;">TECNOLAB ENSAYO Y CALIBRACIÓN S.A. DE C.V.</div>
+      <div style="font-size:9.5px;color:#475569;margin-top:3px;">Avenida Fuerza Aérea Mexicana No. 7030 Int. B2, colonia Tabalaopa · Tel. 614 176 1255</div>
+      <div style="font-size:9.5px;color:#475569;">calidad@tecnolab.com.mx</div>
+      <div style="font-size:8.5px;color:#64748b;margin-top:3px;">Número de Acreditación y Entidad de Acreditación: <span style="color:#94a3b8;font-style:italic;">ema — Clave D-000-000</span></div>
+    </div>
+    <div style="width:118px;min-width:118px;border:1px solid #cbd5e1;border-radius:4px;padding:6px;display:flex;flex-direction:column;align-items:center;gap:4px;">
+      <div style="width:92px;height:92px;display:flex;align-items:center;justify-content:center;background:#fff;">${qrImg}</div>
+      <div style="font-size:7px;text-transform:uppercase;letter-spacing:.06em;color:#64748b;text-align:center;line-height:1.3;">Verificación en línea</div>
+    </div>
+  </div>
+
+  <div style="background:${acc};color:#fff;text-align:center;padding:8px;margin-top:10px;border-radius:2px;">
+    <div style="font-family:'IBM Plex Serif',Georgia,serif;font-weight:700;font-size:18px;letter-spacing:.14em;">CERTIFICADO DE CALIBRACIÓN</div>
+  </div>
+
+  <table style="margin-top:8px;">
+    <tr>
+      <td style="padding:5px 8px;background:#eef2f8;font-weight:600;font-size:8.5px;letter-spacing:.03em;text-transform:uppercase;color:#475569;border:1px solid #cbd5e1;width:24%;">CERTIFICADO NO.</td>
+      <td style="padding:5px 8px;font-size:11px;color:#1e293b;border:1px solid #cbd5e1;width:26%;font-family:'IBM Plex Mono',monospace;font-weight:500;">${vCert(d.folio)}</td>
+      <td style="padding:5px 8px;background:#eef2f8;font-weight:600;font-size:8.5px;letter-spacing:.03em;text-transform:uppercase;color:#475569;border:1px solid #cbd5e1;width:24%;">Fecha de calibración</td>
+      <td style="padding:5px 8px;font-size:10.5px;color:#1e293b;border:1px solid #cbd5e1;">${vCert(d.fechaCalibracion)}</td>
+    </tr>
+    <tr>
+      <td style="padding:5px 8px;background:#eef2f8;font-weight:600;font-size:8.5px;letter-spacing:.03em;text-transform:uppercase;color:#475569;border:1px solid #cbd5e1;">FECHA DE EMISIÓN</td>
+      <td style="padding:5px 8px;font-size:10.5px;color:#1e293b;border:1px solid #cbd5e1;">${vCert(d.fechaEmision)}</td>
+      <td style="padding:5px 8px;background:#eef2f8;font-weight:600;font-size:8.5px;letter-spacing:.03em;text-transform:uppercase;color:#475569;border:1px solid #cbd5e1;">Vigencia / próxima calibración</td>
+      <td style="padding:5px 8px;font-size:10.5px;color:#1e293b;border:1px solid #cbd5e1;">${vCert(d.vigencia)}</td>
+    </tr>
+  </table>
+
+  <div style="background:${acc};color:#fff;font-size:9.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:5px 10px;margin-top:12px;">Datos del cliente</div>
+  <table>
+    <tr><td style="padding:5px 8px;background:#eef2f8;font-weight:600;font-size:8.5px;letter-spacing:.03em;text-transform:uppercase;color:#475569;border:1px solid #cbd5e1;width:24%;">Nombre o razón social</td><td style="padding:5px 8px;font-size:10.5px;color:#1e293b;border:1px solid #cbd5e1;">${vCert(d.clienteRazonSocial)}</td></tr>
+    <tr><td style="padding:5px 8px;background:#eef2f8;font-weight:600;font-size:8.5px;letter-spacing:.03em;text-transform:uppercase;color:#475569;border:1px solid #cbd5e1;">Dirección</td><td style="padding:5px 8px;font-size:10.5px;color:#1e293b;border:1px solid #cbd5e1;">${vCert(d.clienteDireccion)}</td></tr>
+  </table>
+
+  <div style="background:${acc};color:#fff;font-size:9.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:5px 10px;margin-top:12px;">Datos del instrumento calibrado</div>
+  <table style="table-layout:fixed;">
+    <tr>
+      <td style="border:1px solid #cbd5e1;background:#dce4f0;width:22%;"></td>
+      <th style="padding:5px 8px;background:#dce4f0;font-size:9px;font-weight:700;color:${acc};border:1px solid #cbd5e1;text-align:left;">Sonda de temperatura</th>
+      <th style="padding:5px 8px;background:#dce4f0;font-size:9px;font-weight:700;color:${acc};border:1px solid #cbd5e1;text-align:left;">Consola o lector</th>
+    </tr>
+    <tr><td style="padding:4px 8px;background:#eef2f8;font-weight:600;font-size:8.5px;text-transform:uppercase;color:#475569;border:1px solid #cbd5e1;">Marca</td><td style="padding:4px 8px;font-size:10.5px;border:1px solid #cbd5e1;">${vCert(d.instSondaMarca)}</td><td style="padding:4px 8px;font-size:10.5px;border:1px solid #cbd5e1;">${vCert(d.instConsolaMarca)}</td></tr>
+    <tr><td style="padding:4px 8px;background:#eef2f8;font-weight:600;font-size:8.5px;text-transform:uppercase;color:#475569;border:1px solid #cbd5e1;">Modelo</td><td style="padding:4px 8px;font-size:10.5px;border:1px solid #cbd5e1;">${vCert(d.instSondaModelo)}</td><td style="padding:4px 8px;font-size:10.5px;border:1px solid #cbd5e1;">${vCert(d.instConsolaModelo)}</td></tr>
+    <tr><td style="padding:4px 8px;background:#eef2f8;font-weight:600;font-size:8.5px;text-transform:uppercase;color:#475569;border:1px solid #cbd5e1;">No. de Serie</td><td style="padding:4px 8px;font-size:10.5px;border:1px solid #cbd5e1;">${vCert(d.instSondaSerie)}</td><td style="padding:4px 8px;font-size:10.5px;border:1px solid #cbd5e1;">${vCert(d.instConsolaSerie)}</td></tr>
+    <tr><td style="padding:4px 8px;background:#eef2f8;font-weight:600;font-size:8.5px;text-transform:uppercase;color:#475569;border:1px solid #cbd5e1;">Identificación</td><td style="padding:4px 8px;font-size:10.5px;border:1px solid #cbd5e1;">${vCert(d.instSondaId)}</td><td style="padding:4px 8px;font-size:10.5px;border:1px solid #cbd5e1;">${vCert(d.instConsolaId)}</td></tr>
+    <tr><td style="padding:4px 8px;background:#eef2f8;font-weight:600;font-size:8.5px;text-transform:uppercase;color:#475569;border:1px solid #cbd5e1;">Resolución</td><td colspan="2" style="padding:4px 8px;font-size:10.5px;border:1px solid #cbd5e1;">${vCert(d.instResolucion)}</td></tr>
+    <tr><td style="padding:4px 8px;background:#eef2f8;font-weight:600;font-size:8.5px;text-transform:uppercase;color:#475569;border:1px solid #cbd5e1;">Tipo de tanque</td><td colspan="2" style="padding:4px 8px;font-size:10.5px;border:1px solid #cbd5e1;">${vCert(d.instTipoTanque)}</td></tr>
+    <tr><td style="padding:4px 8px;background:#eef2f8;font-weight:600;font-size:8.5px;text-transform:uppercase;color:#475569;border:1px solid #cbd5e1;">Tipo de líquido</td><td colspan="2" style="padding:4px 8px;font-size:10.5px;border:1px solid #cbd5e1;">${vCert(d.instTipoLiquido)}</td></tr>
+  </table>
+
+  <div style="background:${acc};color:#fff;font-size:9.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:5px 10px;margin-top:12px;">Datos de los patrones y equipos de medida utilizados</div>
+  <table style="table-layout:fixed;">
+    <tr>
+      <td style="border:1px solid #cbd5e1;background:#dce4f0;width:22%;"></td>
+      <th style="padding:5px 8px;background:#dce4f0;font-size:9px;font-weight:700;color:${acc};border:1px solid #cbd5e1;text-align:left;">TEP</th>
+      <th style="padding:5px 8px;background:#dce4f0;font-size:9px;font-weight:700;color:${acc};border:1px solid #cbd5e1;text-align:left;">Cinta con plomada</th>
+    </tr>
+    <tr><td style="padding:4px 8px;background:#eef2f8;font-weight:600;font-size:8.5px;text-transform:uppercase;color:#475569;border:1px solid #cbd5e1;">Marca</td><td style="padding:4px 8px;font-size:10.5px;border:1px solid #cbd5e1;">${vCert(d.patTepMarca)}</td><td style="padding:4px 8px;font-size:10.5px;border:1px solid #cbd5e1;">${vCert(d.patCintaMarca)}</td></tr>
+    <tr><td style="padding:4px 8px;background:#eef2f8;font-weight:600;font-size:8.5px;text-transform:uppercase;color:#475569;border:1px solid #cbd5e1;">Modelo</td><td style="padding:4px 8px;font-size:10.5px;border:1px solid #cbd5e1;">${vCert(d.patTepModelo)}</td><td style="padding:4px 8px;font-size:10.5px;border:1px solid #cbd5e1;">${vCert(d.patCintaModelo)}</td></tr>
+    <tr><td style="padding:4px 8px;background:#eef2f8;font-weight:600;font-size:8.5px;text-transform:uppercase;color:#475569;border:1px solid #cbd5e1;">No. de Serie</td><td style="padding:4px 8px;font-size:10.5px;border:1px solid #cbd5e1;">${vCert(d.patTepSerie)}</td><td style="padding:4px 8px;font-size:10.5px;border:1px solid #cbd5e1;">${vCert(d.patCintaSerie)}</td></tr>
+    <tr><td style="padding:4px 8px;background:#eef2f8;font-weight:600;font-size:8.5px;text-transform:uppercase;color:#475569;border:1px solid #cbd5e1;">Identificación</td><td style="padding:4px 8px;font-size:10.5px;border:1px solid #cbd5e1;">${vCert(d.patTepId)}</td><td style="padding:4px 8px;font-size:10.5px;border:1px solid #cbd5e1;">${vCert(d.patCintaId)}</td></tr>
+    <tr><td style="padding:4px 8px;background:#eef2f8;font-weight:600;font-size:8.5px;text-transform:uppercase;color:#475569;border:1px solid #cbd5e1;">Trazabilidad metrológica</td><td style="padding:4px 8px;font-size:10.5px;border:1px solid #cbd5e1;">${vCert(d.patTepTrazabilidad)}</td><td style="padding:4px 8px;font-size:10.5px;border:1px solid #cbd5e1;">${vCert(d.patCintaTrazabilidad)}</td></tr>
+  </table>
+
+  <div style="background:${acc};color:#fff;font-size:9.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:5px 10px;margin-top:12px;">Datos de la calibración</div>
+  <table>
+    <tr><td style="padding:5px 8px;background:#eef2f8;font-weight:600;font-size:8.5px;text-transform:uppercase;color:#475569;border:1px solid #cbd5e1;width:24%;">Lugar de calibración</td><td style="padding:5px 8px;font-size:10.5px;border:1px solid #cbd5e1;">${vCert(d.lugarCalibracion)}</td></tr>
+    <tr><td style="padding:5px 8px;background:#eef2f8;font-weight:600;font-size:8.5px;text-transform:uppercase;color:#475569;border:1px solid #cbd5e1;">Método de calibración</td><td style="padding:5px 8px;font-size:10.5px;border:1px solid #cbd5e1;">${vCert(d.metodoCalibracion)}</td></tr>
+  </table>
+  <table style="table-layout:fixed;margin-top:-1px;">
+    <tr>
+      <th style="padding:5px 8px;background:#dce4f0;font-size:8.5px;font-weight:700;color:${acc};border:1px solid #cbd5e1;text-align:left;">Temperatura ambiente (°C)</th>
+      <th style="padding:5px 8px;background:#dce4f0;font-size:8.5px;font-weight:700;color:${acc};border:1px solid #cbd5e1;text-align:left;">Humedad Relativa (%HR)</th>
+      <th style="padding:5px 8px;background:#dce4f0;font-size:8.5px;font-weight:700;color:${acc};border:1px solid #cbd5e1;text-align:left;">Presión Atmosférica (Pa)</th>
+    </tr>
+    <tr>
+      <td style="padding:5px 8px;font-size:10.5px;border:1px solid #cbd5e1;">${vCert(d.tempAmbiente)}</td>
+      <td style="padding:5px 8px;font-size:10.5px;border:1px solid #cbd5e1;">${vCert(d.humedad)}</td>
+      <td style="padding:5px 8px;font-size:10.5px;border:1px solid #cbd5e1;">${vCert(d.presion)}</td>
+    </tr>
+  </table>
+
+  <div style="display:flex;gap:24px;margin-top:22px;">${firmaCalibro}${firmaAprobo}</div>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding-top:6px;border-top:1px solid #cbd5e1;font-family:'IBM Plex Mono',monospace;font-size:7.5px;color:#94a3b8;">
+    <span>FOR-023 rev0 / Ref: PROC-006</span><span>Página 1 de 2</span>
+  </div>
+</div>
+
+<div class="hoja">
+  <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid ${acc};padding-bottom:8px;">
+    <div>
+      <div style="font-family:'IBM Plex Serif',Georgia,serif;font-weight:700;font-size:13px;color:${acc};">TECNOLAB ENSAYO Y CALIBRACIÓN S.A. DE C.V.</div>
+      <div style="font-size:9px;color:#475569;">Certificado de Calibración · <span style="font-style:italic;color:#94a3b8;">${escHtmlCert(d.folio || '—')}</span></div>
+    </div>
+    <div style="width:60px;height:60px;display:flex;align-items:center;justify-content:center;">${qrImgChica}</div>
+  </div>
+
+  <div style="background:${acc};color:#fff;font-size:9.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:5px 10px;margin-top:12px;">Resultados de calibración</div>
+  <div style="font-size:10px;color:#475569;margin:7px 2px;">En la siguiente tabla se muestran los resultados de calibración:</div>
+  <table style="table-layout:fixed;">
+    <thead>
+      <tr>
+        <th style="padding:5px 6px;background:${acc};color:#fff;font-size:8.5px;font-weight:600;border:1px solid #94a8c2;line-height:1.25;">Temperatura del Patrón</th>
+        <th style="padding:5px 6px;background:${acc};color:#fff;font-size:8.5px;font-weight:600;border:1px solid #94a8c2;line-height:1.25;">Temperatura del IBC</th>
+        <th style="padding:5px 6px;background:${acc};color:#fff;font-size:8.5px;font-weight:600;border:1px solid #94a8c2;line-height:1.25;">Error</th>
+        <th style="padding:5px 6px;background:${acc};color:#fff;font-size:8.5px;font-weight:600;border:1px solid #94a8c2;line-height:1.25;">Incertidumbre k=2</th>
+      </tr>
+      <tr>
+        <th style="padding:2px;background:#dce4f0;color:#475569;font-size:8px;font-weight:600;border:1px solid #cbd5e1;">°C</th>
+        <th style="padding:2px;background:#dce4f0;color:#475569;font-size:8px;font-weight:600;border:1px solid #cbd5e1;">°C</th>
+        <th style="padding:2px;background:#dce4f0;color:#475569;font-size:8px;font-weight:600;border:1px solid #cbd5e1;">°C</th>
+        <th style="padding:2px;background:#dce4f0;color:#475569;font-size:8px;font-weight:600;border:1px solid #cbd5e1;">°C</th>
+      </tr>
+    </thead>
+    <tbody>${filasResultados}</tbody>
+  </table>
+
+  <div style="background:${acc};color:#fff;font-size:9.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:5px 10px;margin-top:14px;">(8) Observaciones</div>
+  <ul style="margin:8px 0 0;padding-left:18px;font-size:9.5px;color:#1e293b;line-height:1.5;">
+    <li>Los resultados mostrados se relacionan solamente con el ítem bajo calibración indicado en esta hoja.</li>
+    <li>El Laboratorio es responsable de la información emitida en el informe, a excepción de la información otorgada por el cliente.</li>
+    ${d.observacionAdicional && d.observacionAdicional.trim() ? `<li>${escHtmlCert(d.observacionAdicional.trim())}</li>` : ''}
+  </ul>
+
+  <div style="background:${acc};color:#fff;font-size:9.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:5px 10px;margin-top:14px;">(9) Referencias</div>
+  <ol style="margin:8px 0 0;padding-left:20px;font-size:8px;color:#475569;line-height:1.45;">${refsHtml}</ol>
+
+  <div style="display:flex;gap:24px;margin-top:20px;">${firmaCalibro}${firmaAprobo}</div>
+
+  <div style="margin-top:16px;padding:8px 10px;background:#eef2f8;border-left:3px solid ${acc};font-size:8.5px;color:#475569;font-style:italic;">El presente documento no debe de ser reproducido o alterado en forma parcial o total sin la autorización expresa y por escrito del Laboratorio.</div>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding-top:6px;border-top:1px solid #cbd5e1;font-family:'IBM Plex Mono',monospace;font-size:7.5px;color:#94a3b8;">
+    <span>FOR-023 rev0 / Ref: PROC-006</span><span>Página 2 de 2</span>
+  </div>
+</div>
+
+</body></html>`;
+    }
+
+    function actualizarPreviewCertificado(cont) {
+        const iframe = cont.querySelector('#gs-cert-iframe');
+        if (!iframe) return;
+        const d = { ..._certDatos || certificadoDatosDefault(), firmaCalibroBase64: _certFirmasDataUrl.CALIBRO, firmaAproboBase64: _certFirmasDataUrl.APROBO };
+        const url = 'https://tecnolab.com.mx/verificar?folio=' + encodeURIComponent(d.folio || '');
+        _certQrDataUrl = generarQrDataUrl(d.folio ? url : null);
+        iframe.srcdoc = construirHTMLCertificado(d, _certQrDataUrl);
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // EXPORTACIÓN — PDF (impresión del navegador, mismo HTML que la vista previa)
+    // ══════════════════════════════════════════════════════════
+    function exportarCertificadoPDF(cont) {
+        _certDatos = leerCertificadoDeFormulario(cont);
+        const faltantes = TECNOLAB_CAMPOS_OBLIGATORIOS.filter(k => !(_certDatos[k] || '').trim());
+        if (faltantes.length) {
+            mostrarProgresoCert(cont, 'error', ICONO.alerta + ' Completa Certificado No., Fecha de calibración y Fecha de emisión antes de generar.');
+            return;
+        }
+        const d = { ..._certDatos, firmaCalibroBase64: _certFirmasDataUrl.CALIBRO, firmaAproboBase64: _certFirmasDataUrl.APROBO };
+        const url = 'https://tecnolab.com.mx/verificar?folio=' + encodeURIComponent(d.folio || '');
+        const qr = generarQrDataUrl(url);
+        const html = construirHTMLCertificado(d, qr);
+
+        const ventana = window.open('', '_blank');
+        if (!ventana) {
+            mostrarProgresoCert(cont, 'error', ICONO.alerta + ' El navegador bloqueó la ventana de impresión. Permite pop-ups para este sitio e inténtalo de nuevo.');
+            return;
+        }
+        ventana.document.open();
+        ventana.document.write(html);
+        ventana.document.close();
+        ventana.document.title = 'Certificado ' + (d.folio || 'TECNOLAB');
+        const lanzarImpresion = () => { ventana.focus(); ventana.print(); };
+        if (ventana.document.readyState === 'complete') setTimeout(lanzarImpresion, 300);
+        else ventana.addEventListener('load', () => setTimeout(lanzarImpresion, 300));
+        mostrarProgresoCert(cont, 'ok', ICONO.check + ' Se abrió la vista de impresión — elige "Guardar como PDF" en el diálogo del navegador.');
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // EXPORTACIÓN — WORD (.doc editable vía HTML con espacio de nombres de Office)
+    // ══════════════════════════════════════════════════════════
+    function exportarCertificadoWord(cont) {
+        _certDatos = leerCertificadoDeFormulario(cont);
+        const faltantes = TECNOLAB_CAMPOS_OBLIGATORIOS.filter(k => !(_certDatos[k] || '').trim());
+        if (faltantes.length) {
+            mostrarProgresoCert(cont, 'error', ICONO.alerta + ' Completa Certificado No., Fecha de calibración y Fecha de emisión antes de exportar.');
+            return;
+        }
+        const d = { ..._certDatos, firmaCalibroBase64: _certFirmasDataUrl.CALIBRO, firmaAproboBase64: _certFirmasDataUrl.APROBO };
+        const url = 'https://tecnolab.com.mx/verificar?folio=' + encodeURIComponent(d.folio || '');
+        const qr = generarQrDataUrl(url);
+        const cuerpo = construirHTMLCertificado(d, qr).replace(/^[\s\S]*<body>/, '').replace(/<\/body>[\s\S]*$/, '');
+        const docHtml = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="utf-8"><title>Certificado ${escHtmlCert(d.folio || '')}</title>
+<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom><w:DoNotOptimizeForBrowser/></w:WordDocument></xml><![endif]-->
+<style>@page{size:8.5in 11in;margin:0.5in;} body{font-family:'IBM Plex Sans',Calibri,sans-serif;}</style>
+</head><body>${cuerpo}</body></html>`;
+        const blob = new Blob(['\ufeff', docHtml], { type: 'application/msword' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `Certificado_TECNOLAB_${(d.folio || 'sin_folio').replace(/[^a-z0-9]+/gi, '_')}.doc`;
+        document.body.appendChild(a); a.click(); a.remove();
+        URL.revokeObjectURL(a.href);
+        mostrarProgresoCert(cont, 'ok', ICONO.check + ' Word descargado. Word puede tardar unos segundos en abrirlo la primera vez.');
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // EXPORTACIÓN — XML (datos estructurados, no es CFDI/timbrado)
+    // ══════════════════════════════════════════════════════════
+    function escXmlCert(s) {
+        return (s === undefined || s === null ? '' : String(s))
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+    }
+
+    function exportarCertificadoXML(cont) {
+        _certDatos = leerCertificadoDeFormulario(cont);
+        const d = _certDatos;
+        const resultadosXml = (d.resultados || []).map(r => `
+        <resultado>
+            <temperaturaPatron>${escXmlCert(r.patron)}</temperaturaPatron>
+            <temperaturaIBC>${escXmlCert(r.ibc)}</temperaturaIBC>
+            <error>${escXmlCert(r.error)}</error>
+            <incertidumbreK2>${escXmlCert(r.incertidumbre)}</incertidumbreK2>
+        </resultado>`).join('');
+
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<certificadoCalibracion xmlns="urn:tecnocontrol:gestoria:certificado-tecnolab:v1">
+    <emisor>
+        <razonSocial>TECNOLAB ENSAYO Y CALIBRACIÓN S.A. DE C.V.</razonSocial>
+        <direccion>Avenida Fuerza Aérea Mexicana No. 7030 Int. B2, colonia Tabalaopa</direccion>
+        <telefono>614 176 1255</telefono>
+        <correo>calidad@tecnolab.com.mx</correo>
+    </emisor>
+    <identificacion>
+        <folio>${escXmlCert(d.folio)}</folio>
+        <fechaCalibracion>${escXmlCert(d.fechaCalibracion)}</fechaCalibracion>
+        <fechaEmision>${escXmlCert(d.fechaEmision)}</fechaEmision>
+        <vigencia>${escXmlCert(d.vigencia)}</vigencia>
+    </identificacion>
+    <cliente>
+        <razonSocial>${escXmlCert(d.clienteRazonSocial)}</razonSocial>
+        <direccion>${escXmlCert(d.clienteDireccion)}</direccion>
+    </cliente>
+    <instrumentoCalibrado>
+        <sondaTemperatura>
+            <marca>${escXmlCert(d.instSondaMarca)}</marca>
+            <modelo>${escXmlCert(d.instSondaModelo)}</modelo>
+            <numeroSerie>${escXmlCert(d.instSondaSerie)}</numeroSerie>
+            <identificacion>${escXmlCert(d.instSondaId)}</identificacion>
+        </sondaTemperatura>
+        <consolaLector>
+            <marca>${escXmlCert(d.instConsolaMarca)}</marca>
+            <modelo>${escXmlCert(d.instConsolaModelo)}</modelo>
+            <numeroSerie>${escXmlCert(d.instConsolaSerie)}</numeroSerie>
+            <identificacion>${escXmlCert(d.instConsolaId)}</identificacion>
+        </consolaLector>
+        <resolucion>${escXmlCert(d.instResolucion)}</resolucion>
+        <tipoTanque>${escXmlCert(d.instTipoTanque)}</tipoTanque>
+        <tipoLiquido>${escXmlCert(d.instTipoLiquido)}</tipoLiquido>
+    </instrumentoCalibrado>
+    <patronesUtilizados>
+        <tep>
+            <marca>${escXmlCert(d.patTepMarca)}</marca>
+            <modelo>${escXmlCert(d.patTepModelo)}</modelo>
+            <numeroSerie>${escXmlCert(d.patTepSerie)}</numeroSerie>
+            <identificacion>${escXmlCert(d.patTepId)}</identificacion>
+            <trazabilidadMetrologica>${escXmlCert(d.patTepTrazabilidad)}</trazabilidadMetrologica>
+        </tep>
+        <cintaConPlomada>
+            <marca>${escXmlCert(d.patCintaMarca)}</marca>
+            <modelo>${escXmlCert(d.patCintaModelo)}</modelo>
+            <numeroSerie>${escXmlCert(d.patCintaSerie)}</numeroSerie>
+            <identificacion>${escXmlCert(d.patCintaId)}</identificacion>
+            <trazabilidadMetrologica>${escXmlCert(d.patCintaTrazabilidad)}</trazabilidadMetrologica>
+        </cintaConPlomada>
+    </patronesUtilizados>
+    <datosCalibracion>
+        <lugarCalibracion>${escXmlCert(d.lugarCalibracion)}</lugarCalibracion>
+        <metodoCalibracion>${escXmlCert(d.metodoCalibracion)}</metodoCalibracion>
+        <temperaturaAmbiente>${escXmlCert(d.tempAmbiente)}</temperaturaAmbiente>
+        <humedadRelativa>${escXmlCert(d.humedad)}</humedadRelativa>
+        <presionAtmosferica>${escXmlCert(d.presion)}</presionAtmosferica>
+    </datosCalibracion>
+    <resultadosCalibracion>${resultadosXml}
+    </resultadosCalibracion>
+    <observaciones>
+        <nota>Los resultados mostrados se relacionan solamente con el ítem bajo calibración indicado en esta hoja.</nota>
+        <nota>El Laboratorio es responsable de la información emitida en el informe, a excepción de la información otorgada por el cliente.</nota>
+        ${d.observacionAdicional && d.observacionAdicional.trim() ? `<nota>${escXmlCert(d.observacionAdicional.trim())}</nota>` : ''}
+    </observaciones>
+    <firmas>
+        <calibro><nombre>${escXmlCert(d.calibroNombre)}</nombre><puesto>Metrólogo</puesto><firmaAdjunta>${_certFirmasDataUrl.CALIBRO ? 'true' : 'false'}</firmaAdjunta></calibro>
+        <aprobo><nombre>${escXmlCert(d.aproboNombre)}</nombre><puesto>${escXmlCert(d.aproboPuesto)}</puesto><firmaAdjunta>${_certFirmasDataUrl.APROBO ? 'true' : 'false'}</firmaAdjunta></aprobo>
+    </firmas>
+</certificadoCalibracion>`;
+
+        const blob = new Blob([xml], { type: 'application/xml' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `Certificado_TECNOLAB_${(d.folio || 'sin_folio').replace(/[^a-z0-9]+/gi, '_')}.xml`;
+        document.body.appendChild(a); a.click(); a.remove();
+        URL.revokeObjectURL(a.href);
+        mostrarProgresoCert(cont, 'ok', ICONO.check + ' XML de datos estructurados descargado.');
     }
 
     window.cargarGestoria = cargarGestoria;
