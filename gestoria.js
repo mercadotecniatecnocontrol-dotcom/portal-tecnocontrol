@@ -432,6 +432,15 @@
         { clave: "numero_serie", etiqueta: "Número de serie", ejemplo: "G04180392705001" },
     ];
 
+    // Patrones y equipos de medida (tabla distinta, propia de PROC-T-005/006):
+    // misma lógica de captura abierta, pero sin columna "tipo" — el machote
+    // ya trae una columna "No." con la numeración secuencial automática.
+    const SGM_CAMPOS_PATRONES = [
+        { clave: "marca", etiqueta: "Marca", ejemplo: "WAYNE" },
+        { clave: "modelo", etiqueta: "Modelo", ejemplo: "H(N/LU)11-11GR" },
+        { clave: "numero_serie", etiqueta: "No. de serie", ejemplo: "39351E E21" },
+    ];
+
     // NUMERO_PERMISO ya no es obligatorio (mismo criterio que SASISOPA):
     // el permiso puede estar en trámite y eso no debe impedir generar
     // los documentos del cliente.
@@ -455,7 +464,8 @@
         ]},
         { titulo: "Organigrama y nomenclatura de puestos", icono: ICONO.usuarios, tipo: "checklist_con_nombre", opciones: SGM_ROLES_DISPONIBLES },
         { titulo: "Puestos responsables de procesos específicos", icono: ICONO.usuarios, tipo: "multiselect_por_frase", fuente: SGM_FRASES_MULTIPUESTO },
-        { titulo: "Equipo de medición por estación", icono: ICONO.graduacion, tipo: "tabla_dinamica", columnas: SGM_CAMPOS_EQUIPO },
+        { titulo: "Equipo de medición por estación", icono: ICONO.graduacion, tipo: "tabla_dinamica", clave: "EQUIPOS", columnas: SGM_CAMPOS_EQUIPO },
+        { titulo: "Patrones y equipos de medida (PROC-T-005/006)", icono: ICONO.graduacion, tipo: "tabla_dinamica", clave: "PATRONES_EQUIPOS", columnas: SGM_CAMPOS_PATRONES },
     ];
 
     // ── Config activa según la sección elegida en el riel lateral ──
@@ -874,7 +884,76 @@
         filasPlantilla.slice(1).forEach(fila => { if (fila.parentNode) fila.parentNode.removeChild(fila); });
     }
 
+    // ── SGM: tabla de "Patrones y equipos de medida" (PROC-T-005/006) ──
+    // Es una tabla distinta a la de equipo de la estación: no tiene columna
+    // "Tipo de equipo", trae una columna "No." con numeración secuencial, y
+    // puede convivir en el mismo documento junto con la otra tabla — por
+    // eso se ubica por su propio encabezado, no por "la última tabla del
+    // archivo" (que es como se ubica la de equipo de estación).
+    function procesarTablaPatronesSGM(xmlDoc, datos, stats) {
+        const norm = t => (t || '').trim().toLowerCase();
+        for (const tbl of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'tbl'))) {
+            const filas = Array.from(tbl.getElementsByTagNameNS(NS_W, 'tr'));
+            if (filas.length < 2) continue;
+            const encabezado = Array.from(filas[0].getElementsByTagNameNS(NS_W, 'tc')).map(c => norm(textoDeCelda(c)));
+            const tieneNo = encabezado.some(t => t === 'no.' || t === 'no');
+            const tieneMarca = encabezado.some(t => t === 'marca');
+            const tieneModelo = encabezado.some(t => t === 'modelo');
+            const tieneSerie = encabezado.some(t => t.includes('serie'));
+            const tieneTipoEquipo = encabezado.some(t => t.includes('tipo de equipo'));
+            if (!(tieneNo && tieneMarca && tieneModelo && tieneSerie) || tieneTipoEquipo) continue;
+
+            const idxNo = encabezado.findIndex(t => t === 'no.' || t === 'no');
+            const idxMarca = encabezado.findIndex(t => t === 'marca');
+            const idxModelo = encabezado.findIndex(t => t === 'modelo');
+            const idxSerie = encabezado.findIndex(t => t.includes('serie'));
+            const filasDatos = filas.slice(1);
+            if (!filasDatos.length) continue;
+            const filaPlantilla = filasDatos[0];
+
+            const limpiarCelda = (celda) => {
+                const runs = Array.from(celda.getElementsByTagNameNS(NS_W, 'r'));
+                if (!runs.length) return;
+                setTextoRun(runs[0], '');
+                runs.forEach(quitarResaltado);
+                for (let k = 1; k < runs.length; k++) setTextoRun(runs[k], '');
+            };
+            const ponerValor = (celda, val) => {
+                const runs = Array.from(celda.getElementsByTagNameNS(NS_W, 'r'));
+                if (!runs.length) return;
+                setTextoRun(runs[0], val);
+                runs.forEach(quitarResaltado);
+                for (let k = 1; k < runs.length; k++) setTextoRun(runs[k], '');
+            };
+
+            if (!datos.PATRONES_EQUIPOS || !datos.PATRONES_EQUIPOS.length) {
+                filasDatos.forEach(fila => {
+                    Array.from(fila.getElementsByTagNameNS(NS_W, 'tc')).forEach((celda, i) => {
+                        if (i === idxNo) return; // conserva la numeración secuencial fija
+                        limpiarCelda(celda);
+                    });
+                });
+                stats.pendientes.push('Tabla de patrones y equipos de medida sin capturar (se dejó en blanco)');
+                continue;
+            }
+
+            datos.PATRONES_EQUIPOS.forEach((patron, idx) => {
+                const filaNueva = idx === 0 ? filaPlantilla : filaPlantilla.cloneNode(true);
+                const celdas = Array.from(filaNueva.getElementsByTagNameNS(NS_W, 'tc'));
+                if (idxNo !== -1 && celdas[idxNo]) ponerValor(celdas[idxNo], String(idx + 1));
+                if (idxMarca !== -1 && celdas[idxMarca]) ponerValor(celdas[idxMarca], patron.marca || '');
+                if (idxModelo !== -1 && celdas[idxModelo]) ponerValor(celdas[idxModelo], patron.modelo || '');
+                if (idxSerie !== -1 && celdas[idxSerie]) ponerValor(celdas[idxSerie], patron.numero_serie || '');
+                if (idx > 0) filaPlantilla.parentNode.insertBefore(filaNueva, filaPlantilla.nextSibling);
+                stats.reemplazos++;
+            });
+            filasDatos.slice(1).forEach(fila => { if (fila !== filaPlantilla && fila.parentNode) fila.parentNode.removeChild(fila); });
+        }
+    }
+
+
     const UMBRAL_CHARS_TABLA_GENERICA = 300;
+
     function neutralizarTablasDescriptivasSGM(xmlDoc) {
         for (const tbl of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'tbl'))) {
             const runsAmarillos = Array.from(tbl.getElementsByTagNameNS(NS_W, 'r')).filter(esResaltadoAmarillo);
@@ -1047,31 +1126,49 @@
             const frase = SGM_FRASES_MULTIPUESTO.find(f => f.match.test(texto));
             if (!frase) continue;
             const runs = Array.from(p.getElementsByTagNameNS(NS_W, 'r'));
-            const runsAmarillos = runs.filter(esResaltadoAmarillo);
-            if (!runsAmarillos.length) continue;
             const clavesElegidas = datos.MULTIPUESTO[frase.id];
-            if (!clavesElegidas || !clavesElegidas.length) {
-                stats.pendientes.push(`Puesto(s) responsable(s) sin capturar: ${frase.etiqueta}`);
-                runsAmarillos.forEach(quitarResaltado);
-                continue;
-            }
-            const etiquetas = clavesElegidas.map(c => (roles.find(r => r.clave === c) || {}).etiqueta).filter(Boolean);
+            const etiquetas = (clavesElegidas || []).map(c => (roles.find(r => r.clave === c) || {}).etiqueta).filter(Boolean);
             const textoNuevo = etiquetas.length > 1
                 ? etiquetas.slice(0, -1).join(', ') + ' y ' + etiquetas[etiquetas.length - 1]
                 : (etiquetas[0] || '');
-            setTextoRun(runsAmarillos[0], textoNuevo);
-            for (let k = 1; k < runsAmarillos.length; k++) setTextoRun(runsAmarillos[k], '');
-            runsAmarillos.forEach(quitarResaltado);
-            stats.reemplazos++;
+            // Algunas frases mencionan el puesto responsable DOS veces en el
+            // mismo párrafo (p.ej. "...vigilar la corrección... o en su
+            // defecto por quien el Administrativo designe."). Se agrupan
+            // solo los runs amarillos CONTIGUOS (no todos los del párrafo),
+            // para que cada mención se resuelva de forma independiente.
+            let huboResaltado = false;
+            let i = 0;
+            while (i < runs.length) {
+                if (!esResaltadoAmarillo(runs[i])) { i++; continue; }
+                huboResaltado = true;
+                let j = i + 1;
+                while (j < runs.length && esResaltadoAmarillo(runs[j])) j++;
+                const grupo = runs.slice(i, j);
+                if (etiquetas.length) {
+                    setTextoRun(grupo[0], textoNuevo);
+                    for (let k = 1; k < grupo.length; k++) setTextoRun(grupo[k], '');
+                    stats.reemplazos++;
+                }
+                grupo.forEach(quitarResaltado);
+                i = j;
+            }
+            if (huboResaltado && !etiquetas.length) {
+                stats.pendientes.push(`Puesto(s) responsable(s) sin capturar: ${frase.etiqueta}`);
+            }
         }
     }
 
-    // ── SGM: puesto inmediato después de Alta Dirección (PROC-G-007) ──
-    // En PROC-G-007 el cuerpo del texto hace referencia fija a
-    // "Administrativo" en negritas, pero en realidad debe ser el puesto
-    // que reporta inmediatamente después de Alta Dirección en el
-    // organigrama real del cliente (no siempre es literalmente
-    // "Administrativo" — depende de qué puestos haya marcado el cliente).
+    // ── SGM: puesto inmediato después de Alta Dirección ──
+    // En varios documentos SGM (PROC-G-007, PROC-G-008, PROC-T-002, etc.) el
+    // cuerpo del texto hace referencia fija a "Administrativo" en negritas,
+    // pero en realidad debe ser el puesto que reporta inmediatamente después
+    // de Alta Dirección en el organigrama real del cliente (no siempre es
+    // literalmente "Administrativo" — depende de qué puestos haya marcado el
+    // cliente). Este reemplazo corre en TODOS los documentos SGM como
+    // respaldo universal; las 8 frases de "Puestos responsables de procesos
+    // específicos" tienen prioridad cuando el cliente eligió algo puntual
+    // para esa oración en particular (procesarFrasesMultiPuestoSGM corre
+    // primero y ya deja resuelto lo que le corresponde).
     function rolInmediatoDespuesDeAltaDireccion(datos) {
         const jerarquia = SGM_JERARQUIA_ORGANIGRAMA;
         for (let i = 1; i < jerarquia.length; i++) {
@@ -1088,7 +1185,6 @@
     const RE_ARCHIVO_INMEDIATO_SIGUIENTE_SGM = /^PROC-G-007/i;
 
     function procesarInmediatoSiguienteSGM(xmlDoc, datos, nombreArchivo, stats) {
-        if (!RE_ARCHIVO_INMEDIATO_SIGUIENTE_SGM.test(nombreArchivo || '')) return null;
         const rolInmediato = rolInmediatoDespuesDeAltaDireccion(datos);
         if (!rolInmediato) return null;
         const norm = t => (t || '').trim().toLowerCase().replace(/\.$/, '');
@@ -1099,11 +1195,50 @@
                 if (norm(texto) !== 'administrativo') continue;
                 const conPunto = /\.\s*$/.test(texto.trim());
                 setTextoRun(r, rolInmediato.etiqueta + (conPunto ? '.' : ''));
+                quitarResaltado(r);
                 stats.reemplazos++;
             }
         }
         return rolInmediato;
     }
+
+    // ── SGM: cláusula "Organización: se refiere a la organización [nombre]"
+    // ── Esta oración de "2.2 Notaciones" está copiada de forma prácticamente
+    // idéntica en todos los documentos SGM (G-001 a G-008, T-002 a T-006).
+    // El nombre de referencia a veces no queda catalogado por coincidencia
+    // exacta en SGM_MAPEO (el resaltado del machote puede venir cortado en
+    // runs no contiguos), así que aquí se resuelve de forma robusta: se
+    // ubica el punto del párrafo donde termina la frase fija y se sustituye
+    // todo lo que sigue (el nombre) por la Razón Social capturada,
+    // respetando mayúsculas si el original estaba en mayúsculas.
+    const RE_FRASE_ORGANIZACION_SGM = /se\s+refiere\s+a\s+la\s+organizaci[oó]n\s*$/i;
+
+    function procesarNotacionOrganizacionSGM(xmlDoc, datos, stats) {
+        if (!datos.NOMBRE_REPRESENTANTE) return;
+        for (const p of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'))) {
+            const runs = Array.from(p.getElementsByTagNameNS(NS_W, 'r'));
+            if (!runs.length) continue;
+            let acumulado = '';
+            let idxInicio = -1;
+            for (let i = 0; i < runs.length; i++) {
+                acumulado += textoDeRun(runs[i]);
+                if (RE_FRASE_ORGANIZACION_SGM.test(acumulado)) { idxInicio = i + 1; break; }
+            }
+            if (idxInicio === -1 || idxInicio >= runs.length) continue;
+            const grupo = runs.slice(idxInicio);
+            const textoOriginal = grupo.map(textoDeRun).join('');
+            if (!textoOriginal.trim()) continue;
+            const esMayusculas = textoOriginal === textoOriginal.toUpperCase() && /[A-ZÁÉÍÓÚÑ]/.test(textoOriginal);
+            const terminaConPunto = /\.\s*$/.test(textoOriginal);
+            let nuevoNombre = esMayusculas ? datos.NOMBRE_REPRESENTANTE.toUpperCase() : datos.NOMBRE_REPRESENTANTE;
+            if (terminaConPunto && !/\.\s*$/.test(nuevoNombre)) nuevoNombre += '.';
+            setTextoRun(grupo[0], nuevoNombre);
+            for (let k = 1; k < grupo.length; k++) setTextoRun(grupo[k], '');
+            grupo.forEach(quitarResaltado);
+            stats.reemplazos++;
+        }
+    }
+
 
     function filtrarListasDeRolesSGM(xmlDoc, datos, nombreArchivo) {
         // PROC-T-001: el índice debe listar TODOS los puestos siempre,
@@ -1899,6 +2034,7 @@
             // ambos sistemas: SASISOPA y SGM comparten el mismo patrón de tabla.
             procesarTablaDocumentoControlado(xmlDoc, datos, celdasFirmaPendientes);
             if (_seccionActual === 'sgm') {
+                procesarNotacionOrganizacionSGM(xmlDoc, datos, stats);
                 procesarControlDeCambiosSGM(xmlDoc, datos);
                 neutralizarTablasDescriptivasSGM(xmlDoc);
                 reconstruirTarjetasPuestosSGM(xmlDoc, datos);
@@ -1928,6 +2064,9 @@
             }
             if (ruta === 'word/document.xml' && _seccionActual === 'sgm' && RE_ARCHIVOS_CON_TABLA_EQUIPO.test(nombreArchivo)) {
                 procesarTablaEquipoSGM(xmlDoc, datos, stats);
+            }
+            if (ruta === 'word/document.xml' && _seccionActual === 'sgm') {
+                procesarTablaPatronesSGM(xmlDoc, datos, stats);
             }
             // Barrido final de seguridad: cualquier resaltado amarillo que
             // haya sobrevivido a todo lo anterior (placeholder sin catalogar,
@@ -2416,15 +2555,15 @@
             </div>`;
         }
         if (sec.tipo === 'tabla_dinamica') {
-            const filas = Array.isArray(cliente.EQUIPOS) && cliente.EQUIPOS.length ? cliente.EQUIPOS : [{}];
+            const filas = Array.isArray(cliente[sec.clave]) && cliente[sec.clave].length ? cliente[sec.clave] : [{}];
             return `
             <div class="gs-card">
                 <div class="gs-card-header"><span class="gs-card-icon">${sec.icono}</span><span class="gs-card-title">${sec.titulo}</span></div>
                 <div class="gs-card-body">
-                    <div id="gs-equipo-filas">
+                    <div id="gs-equipo-filas-${sec.clave}" data-clave-tabla="${sec.clave}">
                         ${filas.map((fila, idx) => renderFilaEquipo(sec.columnas, fila, idx)).join('')}
                     </div>
-                    <button type="button" id="gs-btn-add-equipo" class="gs-btn gs-btn-ghost" style="margin-top:10px;">${ICONO.mas} Agregar equipo</button>
+                    <button type="button" data-btn-add-equipo="${sec.clave}" class="gs-btn gs-btn-ghost" style="margin-top:10px;">${ICONO.mas} Agregar fila</button>
                 </div>
             </div>`;
         }
@@ -2576,10 +2715,12 @@
             });
             reindexarRoles();
         }
-        const contEquipo = cont.querySelector('#gs-equipo-filas');
-        if (contEquipo) {
-            const columnas = sistemaActivo().seccionesForm.find(s => s.tipo === 'tabla_dinamica').columnas;
-            const btnAdd = cont.querySelector('#gs-btn-add-equipo');
+        const seccionesTabla = sistemaActivo().seccionesForm.filter(s => s.tipo === 'tabla_dinamica');
+        seccionesTabla.forEach(sec => {
+            const contEquipo = cont.querySelector(`#gs-equipo-filas-${sec.clave}`);
+            const btnAdd = cont.querySelector(`[data-btn-add-equipo="${sec.clave}"]`);
+            if (!contEquipo || !btnAdd) return;
+            const columnas = sec.columnas;
             const reindexar = () => {
                 contEquipo.querySelectorAll('.gs-equipo-fila').forEach((f, i) => f.dataset.idx = i);
                 contEquipo.querySelectorAll('.gs-btn-quitar-equipo').forEach(b => {
@@ -2591,7 +2732,7 @@
                 reindexar();
             });
             reindexar();
-        }
+        });
     }
 
     // ══════════════════════════════════════════════════════════
@@ -3006,15 +3147,15 @@
             if (input.disabled) return;
             if (input.type === 'text' && input.value.trim()) datos[input.dataset.clave] = input.value.trim();
         });
-        const contEquipo = cont.querySelector('#gs-equipo-filas');
-        if (contEquipo) {
-            const equipos = Array.from(contEquipo.querySelectorAll('.gs-equipo-fila')).map(fila => {
+        cont.querySelectorAll('[data-clave-tabla]').forEach(contTabla => {
+            const claveTabla = contTabla.dataset.claveTabla;
+            const filas = Array.from(contTabla.querySelectorAll('.gs-equipo-fila')).map(fila => {
                 const obj = {};
                 fila.querySelectorAll('input[data-equipo-campo]').forEach(inp => { obj[inp.dataset.equipoCampo] = inp.value.trim(); });
                 return obj;
             }).filter(e => Object.values(e).some(v => v));
-            if (equipos.length) datos.EQUIPOS = equipos;
-        }
+            if (filas.length) datos[claveTabla] = filas;
+        });
         const contRolesExtra = cont.querySelector('#gs-roles-extra');
         if (contRolesExtra) {
             const roles = Array.from(contRolesExtra.querySelectorAll('.gs-rol-fila-extra')).map(fila => ({
