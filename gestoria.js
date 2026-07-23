@@ -262,6 +262,8 @@
           match: /coordinada\s+y\s+asegurada\s+su\s+eficacia\s+por/i },
         { id: 'vigilancia_acciones_correctivas', etiqueta: 'Vigilancia de acciones correctivas (PROC-G-008, 4.2)',
           match: /responsable\s+de\s+vigilar\s+la\s+aplicaci[oó]n\s+de\s+acciones\s+correctivas\s+efectivas/i },
+        { id: 'notificacion_anomalia_equipo', etiqueta: 'Notificación de anomalías del equipo (PROC-T-005, 5.1)',
+          match: /se\s+le\s+notifica\s+inmediatamente\s+a/i },
     ];
 
     // Documentos donde el índice/tabla de contenido debe listar TODOS los
@@ -1155,6 +1157,23 @@
             if (huboResaltado && !etiquetas.length) {
                 stats.pendientes.push(`Puesto(s) responsable(s) sin capturar: ${frase.etiqueta}`);
             }
+            // Respaldo: si el párrafo coincidió con la frase pero no tenía
+            // ningún resaltado amarillo (el placeholder solo viene en
+            // negritas, como "Mantenimiento" en PROC-T-005), se busca el
+            // run en negritas cuyo texto sea exactamente el nombre de algún
+            // puesto conocido y se reemplaza igual.
+            if (!huboResaltado && etiquetas.length) {
+                const normRol = t => (t || '').trim().toLowerCase().replace(/\.$/, '');
+                for (const r of runs) {
+                    if (!esNegrita(r)) continue;
+                    const texto = textoDeRun(r);
+                    const esNombreDeAlgunPuesto = roles.some(rol => normRol(texto) === normRol(rol.etiqueta));
+                    if (!esNombreDeAlgunPuesto) continue;
+                    const conPunto = /\.\s*$/.test(texto.trim());
+                    setTextoRun(r, textoNuevo + (conPunto ? '.' : ''));
+                    stats.reemplazos++;
+                }
+            }
         }
     }
 
@@ -1228,10 +1247,16 @@
             const grupo = runs.slice(idxInicio);
             const textoOriginal = grupo.map(textoDeRun).join('');
             if (!textoOriginal.trim()) continue;
-            const esMayusculas = textoOriginal === textoOriginal.toUpperCase() && /[A-ZÁÉÍÓÚÑ]/.test(textoOriginal);
-            const terminaConPunto = /\.\s*$/.test(textoOriginal);
+            // El primer run del grupo puede traer un espacio pegado antes
+            // del nombre (p.ej. " A LA GAS..."); se conserva ese espacio en
+            // vez de perderlo, para no dejar "organizaciónA LA GAS" junto.
+            const espacioInicial = /^\s+/.exec(textoOriginal);
+            const textoSinEspacio = textoOriginal.replace(/^\s+/, '');
+            const esMayusculas = textoSinEspacio === textoSinEspacio.toUpperCase() && /[A-ZÁÉÍÓÚÑ]/.test(textoSinEspacio);
+            const terminaConPunto = /\.\s*$/.test(textoSinEspacio);
             let nuevoNombre = esMayusculas ? datos.NOMBRE_REPRESENTANTE.toUpperCase() : datos.NOMBRE_REPRESENTANTE;
             if (terminaConPunto && !/\.\s*$/.test(nuevoNombre)) nuevoNombre += '.';
+            if (espacioInicial) nuevoNombre = espacioInicial[0] + nuevoNombre;
             setTextoRun(grupo[0], nuevoNombre);
             for (let k = 1; k < grupo.length; k++) setTextoRun(grupo[k], '');
             grupo.forEach(quitarResaltado);
@@ -1258,10 +1283,21 @@
             if (rolInmediato) siempreVisibles.add(normAcentos(rolInmediato.etiqueta));
         }
 
+        // Un puesto cuenta como "capturado" si tiene nombre asignado en el
+        // organigrama principal, O si el cliente lo eligió en cualquiera de
+        // las frases de "Puestos responsables de procesos específicos" —
+        // antes solo se revisaba lo primero, así que un puesto elegido
+        // únicamente ahí (sin nombre en el organigrama) desaparecía del
+        // índice aunque sí estuviera "capturado" en ese sentido.
+        const rolFueElegidoEnAlgunaFrase = clave => {
+            if (!datos.MULTIPUESTO) return false;
+            return Object.values(datos.MULTIPUESTO).some(claves => Array.isArray(claves) && claves.includes(clave));
+        };
         const estaCapturado = etiqueta => {
             if (siempreVisibles.has(normAcentos(etiqueta))) return true;
             const rol = SGM_ROLES_DISPONIBLES.find(r => normAcentos(r.etiqueta) === normAcentos(etiqueta));
-            return rol ? !!datos[rol.clave] : true;
+            if (!rol) return true;
+            return !!datos[rol.clave] || rolFueElegidoEnAlgunaFrase(rol.clave);
         };
         const esRolConocido = etiqueta => etiquetas.some(e => normAcentos(e) === normAcentos(etiqueta));
 
@@ -1728,20 +1764,28 @@
     }
 
     function reemplazarOrganigramaMGM(xmlDoc, datos) {
-        Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'pict')).forEach(pict => {
-            let nodo = pict.parentNode;
-            while (nodo && nodo.localName !== 'p') nodo = nodo.parentNode;
-            if (nodo && !estaDentroDeTabla(nodo)) {
-                if (pict.parentNode) pict.parentNode.removeChild(pict);
-            }
-        });
+        // El organigrama original puede venir en formato moderno (w:drawing)
+        // o en el formato VML antiguo (w:pict) — algunos machotes usan uno,
+        // otros el otro. Antes los w:pict solo se borraban sin insertar
+        // nada en su lugar, dejando el espacio en blanco cuando ese era el
+        // único formato presente en el documento (p.ej. en la sección
+        // "5.1 Función metrológica" del Manual).
+        const parrafosConPict = Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'pict'))
+            .map(pict => {
+                let nodo = pict.parentNode;
+                while (nodo && nodo.localName !== 'p') nodo = nodo.parentNode;
+                return nodo;
+            })
+            .filter(p => p && !estaDentroDeTabla(p));
 
         const parrafosConDrawing = Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'))
             .filter(p => !estaDentroDeTabla(p) && p.getElementsByTagNameNS(NS_W, 'drawing').length > 0);
-        if (!parrafosConDrawing.length) return;
+
+        const parrafosAReemplazar = Array.from(new Set([...parrafosConPict, ...parrafosConDrawing]));
+        if (!parrafosAReemplazar.length) return;
 
         const generado = construirOrganigramaXml(datos);
-        const primero = parrafosConDrawing[0];
+        const primero = parrafosAReemplazar[0];
         if (generado) {
             const nuevoRun = xmlDoc.createElementNS(NS_W, 'w:r');
             nuevoRun.appendChild(nodosDesdeXmlOrganigrama(xmlDoc, generado.xml));
@@ -1754,7 +1798,7 @@
             nuevoParrafo.appendChild(nuevoRun);
             primero.parentNode.insertBefore(nuevoParrafo, primero);
         }
-        parrafosConDrawing.forEach(p => p.parentNode && p.parentNode.removeChild(p));
+        parrafosAReemplazar.forEach(p => p.parentNode && p.parentNode.removeChild(p));
     }
 
     function estaDentroDeTabla(p) {
