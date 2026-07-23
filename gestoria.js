@@ -721,11 +721,36 @@
         for (let k = 1; k < grupoRuns.length; k++) { setTextoRun(grupoRuns[k], ''); quitarResaltado(grupoRuns[k]); }
     }
 
+    // Quita cualquier imagen que YA existiera en la celda del logo antes de
+    // insertar el logo del cliente — el machote de referencia trae ahí la
+    // insignia "SUPERSERVICIO 4 CAMINOS" incrustada como mockup, y si no se
+    // quita, el logo del cliente queda encimado con esa insignia vieja
+    // (se ve como si "saliera el logo equivocado").
+    function limpiarImagenesPreviasEnCelda(elementoRun) {
+        let celda = elementoRun.parentNode;
+        while (celda && celda.localName !== 'tc') celda = celda.parentNode;
+        if (!celda) return;
+        Array.from(celda.getElementsByTagNameNS(NS_W, 'drawing')).forEach(d => {
+            if (d.parentNode !== elementoRun && d.parentNode) d.parentNode.removeChild(d);
+        });
+        Array.from(celda.getElementsByTagNameNS(NS_W, 'pict')).forEach(pict => {
+            if (pict.parentNode) pict.parentNode.removeChild(pict);
+        });
+    }
+
     async function insertarLogoEnGrupo(zip, xmlDoc, rutaXml, grupoRuns, dataUrl, ctxImg) {
         // La celda "LOGO" del encabezado SGM mide 104px de ancho total
         // (incluyendo bordes y márgenes internos de la celda); dejamos
         // ~19px de margen para que no toque los bordes.
-        await insertarImagenEnGrupo(zip, xmlDoc, rutaXml, grupoRuns, dataUrl, ctxImg, 40, 85);
+        // SASISOPA usa una celda de logo más grande y aproximadamente
+        // cuadrada (como el círculo "SUPERSERVICIO 4 CAMINOS" del
+        // machote de referencia) — con el tamaño de SGM se veía chico.
+        if (_seccionActual === 'sgm') {
+            await insertarImagenEnGrupo(zip, xmlDoc, rutaXml, grupoRuns, dataUrl, ctxImg, 40, 85);
+        } else {
+            await insertarImagenEnGrupo(zip, xmlDoc, rutaXml, grupoRuns, dataUrl, ctxImg, 105, 105);
+        }
+        limpiarImagenesPreviasEnCelda(grupoRuns[0]);
     }
 
     // Inserta una firma dentro de una celda de tabla (columna "Firma"
@@ -1099,22 +1124,43 @@
             return extra ? (extra.nombre || '') : null;
         };
         const parrafos = Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'));
+        // Ventana de búsqueda del puesto relacionado con "NOMBRE": antes se
+        // exigía que fuera el párrafo INMEDIATO siguiente, pero en los
+        // machotes de Manual y Procedimiento a veces hay un párrafo vacío
+        // de por medio, o el puesto viene ANTES en vez de después — se
+        // busca en ambas direcciones, saltando párrafos en blanco.
+        const VENTANA = 3;
+        const buscarEtiquetaCercana = i => {
+            for (let j = i + 1; j <= i + VENTANA && j < parrafos.length; j++) {
+                const t2 = textoParrafo(parrafos[j]).trim();
+                if (!t2) continue; // párrafo vacío, se sigue buscando
+                const nombre = nombrePorEtiqueta(t2);
+                return nombre !== null ? { texto: t2, nombre } : buscarHaciaAtras(i);
+            }
+            return buscarHaciaAtras(i);
+        };
+        const buscarHaciaAtras = i => {
+            for (let j = i - 1; j >= i - VENTANA && j >= 0; j--) {
+                const t2 = textoParrafo(parrafos[j]).trim();
+                if (!t2) continue;
+                const nombre = nombrePorEtiqueta(t2);
+                return nombre !== null ? { texto: t2, nombre } : null;
+            }
+            return null;
+        };
         parrafos.forEach((p, i) => {
             const texto = textoParrafo(p).trim();
             if (norm(texto) !== 'nombre') return;
             const runs = Array.from(p.getElementsByTagNameNS(NS_W, 'r'));
             if (!runs.some(esResaltadoAmarillo)) return;
-            const siguiente = parrafos[i + 1];
-            if (!siguiente) return;
-            const textoSig = textoParrafo(siguiente).trim();
-            const nombre = nombrePorEtiqueta(textoSig);
-            if (nombre === null) return; // no es un bloque de firma por puesto conocido; se deja tal cual
-            if (nombre) {
-                reemplazarTextoParrafo(p, nombre);
+            const encontrado = buscarEtiquetaCercana(i);
+            if (!encontrado) return; // no es un bloque de firma por puesto conocido; se deja tal cual
+            if (encontrado.nombre) {
+                reemplazarTextoParrafo(p, encontrado.nombre);
                 stats.reemplazos++;
             } else {
                 runs.forEach(quitarResaltado);
-                stats.pendientes.push(`Nombre de ${textoSig} (sin dato capturado)`);
+                stats.pendientes.push(`Nombre de ${encontrado.texto} (sin dato capturado)`);
             }
         });
     }
@@ -2025,6 +2071,179 @@
         return await zip.generateAsync({ type: 'blob' });
     }
 
+    // ══════════════════════════════════════════════════════════════
+    // ── SASISOPA: motor de personalización de Excel (F-04-01, etc.) ──
+    // ══════════════════════════════════════════════════════════════
+    // A diferencia de SGM (un puñado de plantillas .xlsx con layout fijo,
+    // por eso se usan celdas exactas como B18/D18), SASISOPA trae decenas
+    // de .xlsx con layouts distintos entre sí — aquí se ubica todo por el
+    // CONTENIDO de cada celda (coincidencia con SASISOPA_MAPEO, igual que
+    // en los .docx vía resaltado amarillo), no por referencia fija.
+
+    function leerSharedStringsXlsx(sharedStringsXmlTexto) {
+        if (!sharedStringsXmlTexto) return [];
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(sharedStringsXmlTexto, 'application/xml');
+        return Array.from(doc.getElementsByTagNameNS(NS_S, 'si')).map(si =>
+            Array.from(si.getElementsByTagNameNS(NS_S, 't')).map(t => t.textContent).join('')
+        );
+    }
+
+    function textoCeldaXlsxGenerico(celda, sharedStrings) {
+        if (!celda) return '';
+        const tipo = celda.getAttribute('t');
+        if (tipo === 'inlineStr') {
+            const is = celda.getElementsByTagNameNS(NS_S, 'is')[0];
+            return is ? Array.from(is.getElementsByTagNameNS(NS_S, 't')).map(t => t.textContent).join('') : '';
+        }
+        if (tipo === 's') {
+            const v = celda.getElementsByTagNameNS(NS_S, 'v')[0];
+            const idx = v ? parseInt(v.textContent, 10) : -1;
+            return (idx >= 0 && sharedStrings[idx] !== undefined) ? sharedStrings[idx] : '';
+        }
+        const v = celda.getElementsByTagNameNS(NS_S, 'v')[0];
+        return v ? v.textContent : '';
+    }
+
+    function colLetraDeRef(ref) { const m = /^([A-Z]+)(\d+)$/.exec(ref || ''); return m ? m[1] : ''; }
+    function filaNumDeRef(ref) { const m = /^([A-Z]+)(\d+)$/.exec(ref || ''); return m ? parseInt(m[2], 10) : -1; }
+    function colLetraANumero(col) {
+        let n = 0;
+        for (let i = 0; i < col.length; i++) n = n * 26 + (col.charCodeAt(i) - 64);
+        return n;
+    }
+    function colNumeroALetra(n) {
+        let s = '';
+        while (n > 0) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); }
+        return s;
+    }
+
+    async function procesarXlsxSASISOPA(buffer, datos, stats, ctxImg) {
+        const zip = await JSZip.loadAsync(buffer);
+        const rutaSheet = 'xl/worksheets/sheet1.xml';
+        let sheetXmlTexto, stylesXmlTexto, sharedXmlTexto;
+        try {
+            sheetXmlTexto = await zip.file(rutaSheet).async('string');
+            stylesXmlTexto = await zip.file('xl/styles.xml').async('string');
+        } catch (e) {
+            return await zip.generateAsync({ type: 'blob' });
+        }
+        try { sharedXmlTexto = await zip.file('xl/sharedStrings.xml').async('string'); } catch (e) { sharedXmlTexto = null; }
+
+        const parser = new DOMParser();
+        const sheetDoc = parser.parseFromString(sheetXmlTexto, 'application/xml');
+        const stylesDoc = parser.parseFromString(stylesXmlTexto, 'application/xml');
+        const sharedStrings = leerSharedStringsXlsx(sharedXmlTexto);
+
+        quitarRellenoAmarilloXlsx(stylesDoc);
+
+        const roles = SASISOPA_ROLES_DISPONIBLES;
+        const norm = t => (t || '').replace(/[.:]+\s*$/, '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const rolPorEtiqueta = etiqueta => roles.find(r => norm(r.etiqueta) === norm(etiqueta));
+
+        const celdas = Array.from(sheetDoc.getElementsByTagNameNS(NS_S, 'c'));
+        const celdasLogo = [];
+        const celdasNombre = [];
+
+        for (const celda of celdas) {
+            const texto = textoCeldaXlsxGenerico(celda, sharedStrings).trim();
+            if (!texto) continue;
+
+            // 1) Coincidencia literal directa contra el catálogo (razón
+            // social, RFC, domicilio, fecha, roles institucionales, etc.)
+            const clave = SASISOPA_MAPEO[texto];
+            if (clave !== undefined) {
+                if (clave === '__LOGO__') { celdasLogo.push(celda); continue; }
+                if (clave === '__SKIP__') continue;
+                const valor = datos[clave] || derivarValorSASISOPA(clave, datos);
+                if (valor) {
+                    ponerTextoCeldaXlsx(celda, valor);
+                    stats.reemplazos++;
+                } else if (CAMPOS_BLANCO_SI_VACIO.includes(clave)) {
+                    ponerTextoCeldaXlsx(celda, '');
+                    stats.reemplazos++;
+                } else {
+                    stats.pendientes.push(texto);
+                }
+                continue;
+            }
+
+            // 2) Fuzzy: razón social / domicilio con variaciones de formato.
+            if (datos.RAZON_SOCIAL && RE_RAZON_SOCIAL.test(texto)) {
+                ponerTextoCeldaXlsx(celda, texto.replace(RE_RAZON_SOCIAL, datos.RAZON_SOCIAL));
+                stats.reemplazos++;
+                continue;
+            }
+            if (datos.DOMICILIO_ESTACION && RE_DOMICILIO.test(texto)) {
+                ponerTextoCeldaXlsx(celda, texto.replace(RE_DOMICILIO, datos.DOMICILIO_ESTACION));
+                stats.reemplazos++;
+                continue;
+            }
+            // 3) Fecha suelta dd/mm/aaaa no catalogada explícitamente.
+            if (datos.FECHA_ELABORACION && /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(texto)) {
+                ponerTextoCeldaXlsx(celda, datos.FECHA_ELABORACION);
+                stats.reemplazos++;
+                continue;
+            }
+
+            // 4) Bloques "NOMBRE" — el puesto suele estar en la celda de
+            // abajo o a la derecha (se resuelve después, ya con todas las
+            // celdas mapeadas por referencia).
+            if (norm(texto) === 'nombre') { celdasNombre.push(celda); continue; }
+        }
+
+        // Resolver bloques NOMBRE usando la celda vecina (abajo o a la
+        // derecha) como etiqueta de puesto — igual patrón que en los .docx.
+        for (const celdaNombre of celdasNombre) {
+            const ref = celdaNombre.getAttribute('r');
+            const col = colLetraDeRef(ref), fila = filaNumDeRef(ref);
+            if (!col || fila < 0) continue;
+            const refsVecinos = [
+                colNumeroALetra(colLetraANumero(col)) + (fila + 1), // abajo
+                colNumeroALetra(colLetraANumero(col) + 1) + fila,   // derecha
+            ];
+            for (const refVecino of refsVecinos) {
+                const celdaVecina = celdas.find(c => c.getAttribute('r') === refVecino);
+                if (!celdaVecina) continue;
+                const textoVecino = textoCeldaXlsxGenerico(celdaVecina, sharedStrings).trim();
+                const rol = rolPorEtiqueta(textoVecino);
+                if (!rol) continue;
+                const nombre = datos[rol.clave];
+                if (nombre) {
+                    ponerTextoCeldaXlsx(celdaNombre, nombre);
+                    stats.reemplazos++;
+                } else {
+                    stats.pendientes.push(`Nombre de ${textoVecino} (sin dato capturado, hoja Excel)`);
+                }
+                break;
+            }
+        }
+
+        // Logo: se inserta en la primera celda "LOGO" encontrada.
+        if (celdasLogo.length) {
+            const celda = celdasLogo[0];
+            ponerTextoCeldaXlsx(celda, '');
+            asegurarEstiloSinRojoXlsx(stylesDoc, celda);
+            if (datos.LOGO_BASE64) {
+                const ref = celda.getAttribute('r');
+                const col = colLetraANumero(colLetraDeRef(ref)) - 1;
+                const fila = filaNumDeRef(ref) - 1;
+                await insertarImagenesXlsxSGM(zip, sheetDoc, rutaSheet, [
+                    { dataUrl: datos.LOGO_BASE64, col, fila, maxAncho: 130, maxAlto: 100 },
+                ], ctxImg);
+                stats.logosInsertados++;
+            } else {
+                stats.logosPendientes++;
+            }
+        }
+
+        const xmlSerializer = new XMLSerializer();
+        zip.file(rutaSheet, xmlSerializer.serializeToString(sheetDoc));
+        zip.file('xl/styles.xml', xmlSerializer.serializeToString(stylesDoc));
+
+        return await zip.generateAsync({ type: 'blob' });
+    }
+
     // ── Metadatos internos del .docx (docProps/core.xml) ────────
     // El cuerpo del documento (word/document.xml) ya se personaliza vía los
     // resaltados amarillos, pero el título/asunto interno del archivo
@@ -2095,6 +2314,32 @@
             // llevan el organigrama real de la organización.
             if (!(_seccionActual === 'sgm' && RE_SIN_ORGANIGRAMA_SGM.test(nombreArchivo))) {
                 reemplazarOrganigramaMGM(xmlDoc, datos);
+            }
+
+            // Respaldo de logo: algunos documentos (p.ej. F-05-01 Organigrama)
+            // no traen el texto "LOGO" resaltado — solo la insignia decorativa
+            // del machote de referencia como imagen fija en la primera celda
+            // del encabezado, sin ningún gancho de texto para sustituirla por
+            // el flujo normal. Se detecta ese caso puntual y se reemplaza ahí
+            // también.
+            if (_seccionActual !== 'sgm' && datos.LOGO_BASE64) {
+                const tablas = Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'tbl'));
+                const primeraTabla = tablas[0];
+                const primeraFila = primeraTabla ? Array.from(primeraTabla.getElementsByTagNameNS(NS_W, 'tr'))[0] : null;
+                const primeraCelda = primeraFila ? Array.from(primeraFila.getElementsByTagNameNS(NS_W, 'tc'))[0] : null;
+                if (primeraCelda) {
+                    const tieneImagenPrevia = primeraCelda.getElementsByTagNameNS(NS_W, 'drawing').length > 0
+                        || primeraCelda.getElementsByTagNameNS(NS_W, 'pict').length > 0;
+                    const tieneTextoLogo = /\blogo\b/i.test(textoDeCelda(primeraCelda));
+                    if (tieneImagenPrevia && !tieneTextoLogo) {
+                        let parrafo = primeraCelda.getElementsByTagNameNS(NS_W, 'p')[0];
+                        if (!parrafo) { parrafo = xmlDoc.createElementNS(NS_W, 'w:p'); primeraCelda.appendChild(parrafo); }
+                        let run = parrafo.getElementsByTagNameNS(NS_W, 'r')[0];
+                        if (!run) { run = xmlDoc.createElementNS(NS_W, 'w:r'); parrafo.appendChild(run); }
+                        await insertarLogoEnGrupo(zip, xmlDoc, ruta, [run], datos.LOGO_BASE64, ctxImagen);
+                        stats.logosInsertados++;
+                    }
+                }
             }
 
             for (const p of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'))) {
@@ -3292,6 +3537,10 @@
                 } else if (nombreArchivo.toLowerCase().endsWith('.xlsx') && _seccionActual === 'sgm') {
                     const ctxImg = { contador: 0 };
                     const blobSalida = await procesarXlsxSGM(buffer, datos, stats, ctxImg);
+                    zipSalida.file(nombreArchivo, blobSalida);
+                } else if (nombreArchivo.toLowerCase().endsWith('.xlsx')) {
+                    const ctxImg = { contador: 0 };
+                    const blobSalida = await procesarXlsxSASISOPA(buffer, datos, stats, ctxImg);
                     zipSalida.file(nombreArchivo, blobSalida);
                 } else {
                     zipSalida.file(nombreArchivo, buffer);
