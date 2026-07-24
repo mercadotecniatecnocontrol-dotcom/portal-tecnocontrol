@@ -1,14 +1,14 @@
 {
-  "name": "Tecnocontrol · Portal Operativo",
-  "short_name": "Tecnocontrol",
-  "description": "Portal operativo interno Tecnocontrol",
-  "start_url": "/portal-tecnocontrol/",
-  "display": "standalone",
-  "background_color": "#1e3a8a",
-  "theme_color": "#1e3a8a",
-  "orientation": "portrait-primary",
-  "icons": [
-    { "src": "https://ui-avatars.com/api/?name=TC&background=1e3a8a&color=fff&size=192", "sizes": "192x192", "type": "image/png" },
-    { "src": "https://ui-avatars.com/api/?name=TC&background=1e3a8a&color=fff&size=512", "sizes": "512x512", "type": "image/png" }
+  "archivos": [
+    "INDICE_Y_PORTADA_PRINCIPAL_PL2853.docx",
+    "1_BITACORA_DE_OPERACION_DE_DESVIACIONES_EN_EL_BALANCE_DEL_PRODUCTO_PL2853.docx",
+    "2_BITACORA_DE_MANTENIMIENTOS_A_ELEMENTOS_CONSTRUCTIVOS_PL2853.docx",
+    "3_MANTENIMIENTO_DE_EQUIPO_PL2853.docx",
+    "4_INCIDENTES_E_INSPECCIÓN_DE_OPERACIÓN_Y_MANTENIMIENTO_PL2853.docx",
+    "5_MANTENIMIENTO_DE_LIMPIEZAS_PROGRAMADAS_Y_NO_PROGRAMADAS_PL2853.docx",
+    "6_MANTENIMIENTO_PREVENTIVO_Y_CORRECTIVO_DE_EDIFICACIONES_PL2853.DOCX",
+    "7_OPERACION_RECEPCION_Y_DESCARGA_DE_PRODUCTO_PL2853.DOCX",
+    "8_MANTENIMIENTO_DE_SISTEMAS_E_INSTALACIONES_DE_ESTACIONES_DE_SERVICIO_PL2853.DOCX",
+    "9_MANTENIMIENTO_DE_PRUEBAS_DE_HERMETICIDAD_PL2853.DOCX"
   ]
 }
