@@ -785,6 +785,13 @@
         const nodoDrawing = nodosDesdeXml(xmlDoc, construirDrawingXml(rId, cx, cy, 1000 + ctxImg.contador));
         const primerRun = grupoRuns[0];
         Array.from(primerRun.getElementsByTagNameNS(NS_W, 't')).forEach(t => t.remove());
+        // Si el logo anterior vivía en este MISMO run (caso de Bitácoras,
+        // donde no hay texto "LOGO" resaltado y se reutiliza el run que ya
+        // traía la insignia de referencia embebida), limpiarImagenesPreviasEnCelda
+        // no lo detecta — compara contra otros runs de la celda, no contra
+        // este. Se quita aquí explícitamente antes de anexar el nuevo.
+        Array.from(primerRun.getElementsByTagNameNS(NS_W, 'drawing')).forEach(d => d.parentNode && d.parentNode.removeChild(d));
+        Array.from(primerRun.getElementsByTagNameNS(NS_W, 'pict')).forEach(d => d.parentNode && d.parentNode.removeChild(d));
         quitarResaltado(primerRun);
         primerRun.appendChild(nodoDrawing);
         for (let k = 1; k < grupoRuns.length; k++) { setTextoRun(grupoRuns[k], ''); quitarResaltado(grupoRuns[k]); }
@@ -814,8 +821,14 @@
         // SASISOPA usa una celda de logo más grande y aproximadamente
         // cuadrada (como el círculo "SUPERSERVICIO 4 CAMINOS" del
         // machote de referencia) — con el tamaño de SGM se veía chico.
+        // Bitácoras (PL2853) usa una celda rectangular y ancha (la
+        // insignia "Servicio Chavo" de referencia mide ~196x48px) —
+        // con las medidas de SASISOPA (cuadradas) el logo se veía
+        // diminuto dentro de ese espacio.
         if (_seccionActual === 'sgm') {
             await insertarImagenEnGrupo(zip, xmlDoc, rutaXml, grupoRuns, dataUrl, ctxImg, 40, 85);
+        } else if (_seccionActual === 'bitacoras') {
+            await insertarImagenEnGrupo(zip, xmlDoc, rutaXml, grupoRuns, dataUrl, ctxImg, 48, 196);
         } else {
             await insertarImagenEnGrupo(zip, xmlDoc, rutaXml, grupoRuns, dataUrl, ctxImg, 105, 105);
         }
@@ -2434,13 +2447,16 @@
                 reemplazarOrganigramaMGM(xmlDoc, datos);
             }
 
-            // Respaldo de logo: algunos documentos (p.ej. F-05-01 Organigrama)
-            // no traen el texto "LOGO" resaltado — solo la insignia decorativa
-            // del machote de referencia como imagen fija en la primera celda
-            // del encabezado, sin ningún gancho de texto para sustituirla por
-            // el flujo normal. Se detecta ese caso puntual y se reemplaza ahí
-            // también.
-            if (_seccionActual !== 'sgm' && datos.LOGO_BASE64) {
+            // Respaldo de logo: algunos documentos (p.ej. F-05-01 Organigrama,
+            // y los 9 machotes de Bitácoras) no traen el texto "LOGO"
+            // resaltado — solo la insignia decorativa del machote de
+            // referencia como imagen fija en la primera celda del
+            // encabezado, sin ningún gancho de texto para sustituirla por
+            // el flujo normal. Se detecta ese caso puntual: si el cliente
+            // subió logo, se sustituye ahí; si NO subió logo, se quita la
+            // insignia de referencia igualmente para no dejar el logo del
+            // cliente equivocado (ej. "Servicio Chavo") en el documento final.
+            if (_seccionActual !== 'sgm') {
                 const tablas = Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'tbl'));
                 const primeraTabla = tablas[0];
                 const primeraFila = primeraTabla ? Array.from(primeraTabla.getElementsByTagNameNS(NS_W, 'tr'))[0] : null;
@@ -2450,13 +2466,22 @@
                         || primeraCelda.getElementsByTagNameNS(NS_W, 'pict').length > 0;
                     const tieneTextoLogo = /\blogo\b/i.test(textoDeCelda(primeraCelda));
                     if (tieneImagenPrevia && !tieneTextoLogo) {
-                        let parrafo = primeraCelda.getElementsByTagNameNS(NS_W, 'p')[0];
-                        if (!parrafo) { parrafo = xmlDoc.createElementNS(NS_W, 'w:p'); primeraCelda.appendChild(parrafo); }
-                        let run = parrafo.getElementsByTagNameNS(NS_W, 'r')[0];
-                        if (!run) { run = xmlDoc.createElementNS(NS_W, 'w:r'); parrafo.appendChild(run); }
-                        await insertarLogoEnGrupo(zip, xmlDoc, ruta, [run], datos.LOGO_BASE64, ctxImagen);
-                        stats.logosInsertados++;
+                        if (datos.LOGO_BASE64) {
+                            let parrafo = primeraCelda.getElementsByTagNameNS(NS_W, 'p')[0];
+                            if (!parrafo) { parrafo = xmlDoc.createElementNS(NS_W, 'w:p'); primeraCelda.appendChild(parrafo); }
+                            let run = parrafo.getElementsByTagNameNS(NS_W, 'r')[0];
+                            if (!run) { run = xmlDoc.createElementNS(NS_W, 'w:r'); parrafo.appendChild(run); }
+                            await insertarLogoEnGrupo(zip, xmlDoc, ruta, [run], datos.LOGO_BASE64, ctxImagen);
+                            stats.logosInsertados++;
+                        } else {
+                            // Sin logo cargado: se quita la insignia de referencia
+                            // por completo y se deja el espacio en blanco.
+                            Array.from(primeraCelda.getElementsByTagNameNS(NS_W, 'drawing')).forEach(d => d.parentNode && d.parentNode.removeChild(d));
+                            Array.from(primeraCelda.getElementsByTagNameNS(NS_W, 'pict')).forEach(d => d.parentNode && d.parentNode.removeChild(d));
+                            stats.logosPendientes++;
+                        }
                     }
+
                 }
             }
 
