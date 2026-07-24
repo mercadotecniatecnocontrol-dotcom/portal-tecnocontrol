@@ -5,6 +5,10 @@
 // ventas.js, flotilla.js) porque Gestoría alojará más de un sistema:
 //   - SASISOPA (implementado abajo)
 //   - SGM — Sistema de Gestión de Medición
+//   - Bitácoras (PL2853) — bitácoras de operación, mantenimiento y
+//     limpieza; a diferencia de SASISOPA/SGM no usa resaltado amarillo,
+//     el encabezado (razón social/PL/domicilio) se ubica por etiqueta
+//     o por párrafo completo — ver BITACORAS_CAMPOS_POR_ETIQUETA.
 //   - Certificado TECNOLAB — llenado y exportación (PDF/Word/XML)
 //
 // Corre 100% en el navegador: no requiere backend ni Cloud Functions
@@ -24,6 +28,7 @@
     const SECCIONES_GESTORIA = [
         { id: 'sasisopa', titulo: 'SASISOPA', activa: true },
         { id: 'sgm', titulo: 'SGM', activa: true },
+        { id: 'bitacoras', titulo: 'Bitácoras', activa: true },
         { id: 'certificado', titulo: 'Certificado TECNOLAB', activa: true },
     ];
     let _seccionActual = 'sasisopa';
@@ -470,8 +475,72 @@
         { titulo: "Patrones y equipos de medida (PROC-T-005/006)", icono: ICONO.graduacion, tipo: "tabla_dinamica", clave: "PATRONES_EQUIPOS", columnas: SGM_CAMPOS_PATRONES },
     ];
 
+    // ══════════════════════════════════════════════════════════
+    // BITÁCORAS — bitácoras de operación, mantenimiento y limpieza
+    // (PL2853). A diferencia de SASISOPA/SGM, los 9 machotes + el
+    // índice NO usan resaltado amarillo: el encabezado repetido trae
+    // directamente los datos del cliente de referencia (Servicio
+    // Chavo, S.A. de C.V.) como texto plano. Por eso el reemplazo se
+    // ubica por la etiqueta que antecede al valor (Ciudad o
+    // población:, Domicilio:, etc.) o, para razón social y PL, por
+    // coincidencia del párrafo completo — ver procesarCamposBitacoras.
+    // ══════════════════════════════════════════════════════════
+    const BITACORAS_RUTA_MACHOTES = 'bitacoras-machotes/';
+    const BITACORAS_COLECCION = 'bitacoras_clientes';
+
+    const BITACORAS_SECCIONES_FORM = [
+        { titulo: "Identidad del cliente", icono: ICONO.edificio, campos: [
+            ["RAZON_SOCIAL", "Razón Social completa", "Servicio Chavo, S.A. de C.V."],
+            ["NUMERO_PERMISO", "Número de permiso ASEA (PL)", "PL/2853/EXP/ES/2015"],
+            ["CIUDAD", "Ciudad o población", "Cuauhtémoc"],
+            ["DOMICILIO_ESTACION", "Domicilio completo de la estación", "Carretera a Guerrero s/n Km. 107.800"],
+            ["NUMERO_EXTERIOR", "Número exterior", "N/A"],
+            ["NUMERO_INTERIOR", "Número interior", "N/A"],
+            ["CODIGO_POSTAL", "Código postal", "31500"],
+            ["ESTADO", "Estado", "Chihuahua"],
+        ]},
+    ];
+
+    // NUMERO_PERMISO no es obligatorio (puede estar en trámite, igual
+    // que en SASISOPA); número exterior/interior tampoco (suele ser N/A).
+    const BITACORAS_CAMPOS_OBLIGATORIOS = ["RAZON_SOCIAL", "CIUDAD", "DOMICILIO_ESTACION", "CODIGO_POSTAL", "ESTADO"];
+
+    // Valor de referencia de razón social tal como aparece en los
+    // machotes (párrafo completo, sin etiqueta) — se compara ignorando
+    // el punto final porque algunos machotes lo traen en un run aparte.
+    const BITACORAS_VALOR_RAZON_SOCIAL_REF = 'Servicio Chavo, S.A. de C.V.';
+    const BITACORAS_VALOR_PL_REF = /^PL\/2853\/EXP\/ES\/2015$/;
+
+    // Campos que sí llevan etiqueta dentro del mismo párrafo — el
+    // reemplazo toca solo los runs que vienen DESPUÉS de la etiqueta,
+    // dejando la etiqueta misma intacta.
+    const BITACORAS_CAMPOS_POR_ETIQUETA = [
+        { etiqueta: /ciudad\s+o\s+poblaci[oó]n\s*:/i, clave: 'CIUDAD' },
+        { etiqueta: /domicilio\s*:/i, clave: 'DOMICILIO_ESTACION' },
+        { etiqueta: /n[uú]mero\s+exterior\s*:/i, clave: 'NUMERO_EXTERIOR' },
+        { etiqueta: /n[uú]mero\s+interior\s*:/i, clave: 'NUMERO_INTERIOR' },
+        { etiqueta: /c[oó]digo\s+postal\s*:/i, clave: 'CODIGO_POSTAL' },
+        { etiqueta: /estado\s*:/i, clave: 'ESTADO' },
+    ];
+
     // ── Config activa según la sección elegida en el riel lateral ──
     function sistemaActivo() {
+        if (_seccionActual === 'bitacoras') {
+            return {
+                id: 'bitacoras', nombre: 'Bitácoras', subtitulo: 'Bitácoras de operación, mantenimiento y limpieza (PL2853)',
+                mapeo: {}, seccionesForm: BITACORAS_SECCIONES_FORM,
+                camposObligatorios: BITACORAS_CAMPOS_OBLIGATORIOS,
+                rutaMachotes: BITACORAS_RUTA_MACHOTES, coleccion: BITACORAS_COLECCION,
+                campoNombre: 'RAZON_SOCIAL', campoOrden: 'RAZON_SOCIAL',
+                catalogoGenerico: {},
+                jerarquiaOrganigrama: [], rolesOrganigrama: [],
+                columnasTabla: [
+                    { titulo: 'Cliente', valor: c => c.RAZON_SOCIAL || '(sin razón social)' },
+                    { titulo: 'Ciudad', valor: c => c.CIUDAD || '—' },
+                    { titulo: 'PL', valor: c => c.NUMERO_PERMISO || '—' },
+                ],
+            };
+        }
         if (_seccionActual === 'sgm') {
             return {
                 id: 'sgm', nombre: 'SGM', subtitulo: 'Sistema de Gestión de las Mediciones',
@@ -1465,6 +1534,52 @@
         }
     }
 
+    // ── BITÁCORAS: reemplazo del encabezado por etiqueta / párrafo completo ──
+    function reemplazarValorTrasEtiqueta(p, etiquetaRegex, valorNuevo) {
+        const runs = Array.from(p.getElementsByTagNameNS(NS_W, 'r'));
+        let acumulado = '';
+        let idxValorInicio = -1;
+        for (let i = 0; i < runs.length; i++) {
+            acumulado += textoDeRun(runs[i]);
+            if (idxValorInicio === -1 && etiquetaRegex.test(acumulado)) { idxValorInicio = i + 1; break; }
+        }
+        if (idxValorInicio === -1 || idxValorInicio >= runs.length) return false;
+        // El primer run después de la etiqueta absorbe el valor nuevo (aunque
+        // originalmente fuera solo un salto de línea); el resto se vacía —
+        // así no importa si el valor de referencia venía partido en varios
+        // runs (p.ej. "Cuauhtémo" + "c").
+        setTextoRun(runs[idxValorInicio], valorNuevo);
+        for (let k = idxValorInicio + 1; k < runs.length; k++) setTextoRun(runs[k], '');
+        return true;
+    }
+
+    function procesarCamposBitacoras(xmlDoc, datos, stats) {
+        for (const p of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'))) {
+            const texto = textoParrafo(p).trim();
+            if (!texto) continue;
+
+            // Razón social y PL: el párrafo completo ES el valor (sin
+            // etiqueta), viven en su propia celda del encabezado.
+            if (datos.RAZON_SOCIAL && texto.replace(/\.$/, '') === BITACORAS_VALOR_RAZON_SOCIAL_REF.replace(/\.$/, '')) {
+                reemplazarTextoParrafo(p, datos.RAZON_SOCIAL);
+                stats.reemplazos++;
+                continue;
+            }
+            if (datos.NUMERO_PERMISO && BITACORAS_VALOR_PL_REF.test(texto)) {
+                reemplazarTextoParrafo(p, datos.NUMERO_PERMISO);
+                stats.reemplazos++;
+                continue;
+            }
+
+            for (const campo of BITACORAS_CAMPOS_POR_ETIQUETA) {
+                if (campo.etiqueta.test(texto) && datos[campo.clave] !== undefined) {
+                    if (reemplazarValorTrasEtiqueta(p, campo.etiqueta, datos[campo.clave] || '')) stats.reemplazos++;
+                    break;
+                }
+            }
+        }
+    }
+
     const CATS_CATALOGO = ['responsabilidades', 'funciones', 'autoridad', 'interrelaciones'];
 
     function reconstruirTarjetasPuestosSGM(xmlDoc, datos) {
@@ -2305,14 +2420,17 @@
                 filtrarListasDeRolesSGM(xmlDoc, datos, nombreArchivo);
                 procesarFrasesMultiPuestoSGM(xmlDoc, datos, stats);
                 procesarInmediatoSiguienteSGM(xmlDoc, datos, nombreArchivo, stats);
-            } else {
+            } else if (_seccionActual === 'sasisopa') {
                 resolverNombresPorRolSASISOPA(xmlDoc, datos, stats);
+            } else if (_seccionActual === 'bitacoras') {
+                procesarCamposBitacoras(xmlDoc, datos, stats);
             }
             // PROC-G-*/PROC-T-* traen su propio diagrama de proceso (no un
             // organigrama) y no deben pasar por el reemplazo automático del
             // organigrama gráfico — solo aplica a manuales/formatos que sí
-            // llevan el organigrama real de la organización.
-            if (!(_seccionActual === 'sgm' && RE_SIN_ORGANIGRAMA_SGM.test(nombreArchivo))) {
+            // llevan el organigrama real de la organización. Bitácoras
+            // tampoco lleva organigrama.
+            if (_seccionActual !== 'bitacoras' && !(_seccionActual === 'sgm' && RE_SIN_ORGANIGRAMA_SGM.test(nombreArchivo))) {
                 reemplazarOrganigramaMGM(xmlDoc, datos);
             }
 
@@ -2559,7 +2677,7 @@
             <div class="gs-rail-logo">${ICONO.edificio}</div>
             ${SECCIONES_GESTORIA.map(s => `
                 <button class="gs-rail-btn${_seccionActual === s.id ? ' activo' : ''}" data-seccion="${s.id}" ${s.activa ? '' : 'disabled'}>
-                    ${s.id === 'sasisopa' ? ICONO.carpeta : s.id === 'sgm' ? ICONO.graduacion : ICONO.certificado}
+                    ${s.id === 'sasisopa' ? ICONO.carpeta : s.id === 'sgm' ? ICONO.graduacion : s.id === 'bitacoras' ? ICONO.reloj : ICONO.certificado}
                     <span class="gs-rail-tooltip">${s.titulo}${s.activa ? '' : ' (próximamente)'}</span>
                 </button>`).join('')}
             <div class="gs-rail-divisor"></div>
@@ -3314,7 +3432,7 @@
                             </div>
                         </div>
 
-                        <div class="gs-card">
+                        <div class="gs-card" style="${_seccionActual === 'bitacoras' ? 'display:none;' : ''}">
                             <div class="gs-card-header"><span class="gs-card-icon">${ICONO.imagen}</span><span class="gs-card-title">Firmas de control</span></div>
                             <div class="gs-card-body">
                                 ${['ELABORA', 'REVISO', 'APRUEBA'].map(rol => `
@@ -3572,6 +3690,14 @@
                 'de puesto usado como referencia institucional (p.ej. "Alta Dirección"',
                 'dentro de una oración narrativa), es correcto que se haya dejado tal',
                 'cual — no se sustituye por el nombre de la persona en esos casos.',
+            ] : sis.id === 'bitacoras' ? [
+                'RECORDATORIO: "Persona Responsable" y "Firma" se dejan en blanco a',
+                'propósito en los 9 machotes — los llena el operador al usar la',
+                'bitácora, no son datos de configuración del cliente.',
+                '',
+                'RECORDATORIO: el logo se inserta donde vivía la insignia de',
+                '"Servicio Chavo" en el encabezado de cada machote (no requiere',
+                'el texto "LOGO" resaltado, a diferencia de SASISOPA/SGM).',
             ] : [
                 'RECORDATORIO: las hojas .xlsx (SOFT-) se copiaron sin personalizar la',
                 'hoja "Control" — pendiente de implementar.',
