@@ -814,6 +814,32 @@
         });
     }
 
+    // Ubica el "contenedor" (celda de tabla o párrafo suelto) que trae la
+    // insignia de referencia sin gancho de texto "LOGO" resaltado:
+    //   - Encabezado de los 9 machotes de Bitácoras: primera celda de la
+    //     primera fila de la primera tabla (patrón original, también usado
+    //     por SASISOPA en F-05-01 Organigrama).
+    //   - ÍNDICE_Y_PORTADA_PRINCIPAL de Bitácoras: no tiene tabla — el
+    //     logo es un párrafo suelto en el cuerpo del documento. Este
+    //     barrido más amplio (buscar cualquier párrafo con imagen) se
+    //     activa SOLO para Bitácoras, para no atrapar imágenes ajenas en
+    //     manuales largos de SASISOPA que no tengan nada que ver con el logo.
+    function localizarContenedorLogo(xmlDoc) {
+        const tablas = Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'tbl'));
+        if (tablas.length) {
+            const primeraFila = Array.from(tablas[0].getElementsByTagNameNS(NS_W, 'tr'))[0];
+            const celda = primeraFila ? Array.from(primeraFila.getElementsByTagNameNS(NS_W, 'tc'))[0] : null;
+            const tieneImagen = celda && (celda.getElementsByTagNameNS(NS_W, 'drawing').length > 0 || celda.getElementsByTagNameNS(NS_W, 'pict').length > 0);
+            if (tieneImagen) return celda;
+        }
+        if (_seccionActual === 'bitacoras') {
+            for (const p of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'))) {
+                if (p.getElementsByTagNameNS(NS_W, 'drawing').length > 0 || p.getElementsByTagNameNS(NS_W, 'pict').length > 0) return p;
+            }
+        }
+        return null;
+    }
+
     async function insertarLogoEnGrupo(zip, xmlDoc, rutaXml, grupoRuns, dataUrl, ctxImg) {
         // La celda "LOGO" del encabezado SGM mide 104px de ancho total
         // (incluyendo bordes y márgenes internos de la celda); dejamos
@@ -2448,40 +2474,43 @@
             }
 
             // Respaldo de logo: algunos documentos (p.ej. F-05-01 Organigrama,
-            // y los 9 machotes de Bitácoras) no traen el texto "LOGO"
+            // los 9 machotes de Bitácoras, y el ÍNDICE_Y_PORTADA_PRINCIPAL
+            // de Bitácoras que no tiene tabla) no traen el texto "LOGO"
             // resaltado — solo la insignia decorativa del machote de
-            // referencia como imagen fija en la primera celda del
-            // encabezado, sin ningún gancho de texto para sustituirla por
-            // el flujo normal. Se detecta ese caso puntual: si el cliente
-            // subió logo, se sustituye ahí; si NO subió logo, se quita la
+            // referencia como imagen fija (en celda o en párrafo suelto),
+            // sin ningún gancho de texto para sustituirla por el flujo
+            // normal. Se detecta ese caso puntual: si el cliente subió
+            // logo, se sustituye ahí; si NO subió logo, se quita la
             // insignia de referencia igualmente para no dejar el logo del
             // cliente equivocado (ej. "Servicio Chavo") en el documento final.
             if (_seccionActual !== 'sgm') {
-                const tablas = Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'tbl'));
-                const primeraTabla = tablas[0];
-                const primeraFila = primeraTabla ? Array.from(primeraTabla.getElementsByTagNameNS(NS_W, 'tr'))[0] : null;
-                const primeraCelda = primeraFila ? Array.from(primeraFila.getElementsByTagNameNS(NS_W, 'tc'))[0] : null;
-                if (primeraCelda) {
-                    const tieneImagenPrevia = primeraCelda.getElementsByTagNameNS(NS_W, 'drawing').length > 0
-                        || primeraCelda.getElementsByTagNameNS(NS_W, 'pict').length > 0;
-                    const tieneTextoLogo = /\blogo\b/i.test(textoDeCelda(primeraCelda));
-                    if (tieneImagenPrevia && !tieneTextoLogo) {
+                const contenedorLogo = localizarContenedorLogo(xmlDoc);
+                if (contenedorLogo) {
+                    const tieneTextoLogo = /\blogo\b/i.test(textoDeCelda(contenedorLogo));
+                    if (!tieneTextoLogo) {
                         if (datos.LOGO_BASE64) {
-                            let parrafo = primeraCelda.getElementsByTagNameNS(NS_W, 'p')[0];
-                            if (!parrafo) { parrafo = xmlDoc.createElementNS(NS_W, 'w:p'); primeraCelda.appendChild(parrafo); }
+                            let parrafo = contenedorLogo.localName === 'p' ? contenedorLogo : contenedorLogo.getElementsByTagNameNS(NS_W, 'p')[0];
+                            if (!parrafo) { parrafo = xmlDoc.createElementNS(NS_W, 'w:p'); contenedorLogo.appendChild(parrafo); }
                             let run = parrafo.getElementsByTagNameNS(NS_W, 'r')[0];
                             if (!run) { run = xmlDoc.createElementNS(NS_W, 'w:r'); parrafo.appendChild(run); }
-                            await insertarLogoEnGrupo(zip, xmlDoc, ruta, [run], datos.LOGO_BASE64, ctxImagen);
+                            if (contenedorLogo.localName === 'p') {
+                                // Párrafo suelto (ÍNDICE_Y_PORTADA_PRINCIPAL): el
+                                // espacio original del logo ahí es más grande
+                                // (~357x87px) que en el encabezado de los 9
+                                // machotes (~196x48px) — se respeta ese tamaño.
+                                await insertarImagenEnGrupo(zip, xmlDoc, ruta, [run], datos.LOGO_BASE64, ctxImagen, 87, 357);
+                            } else {
+                                await insertarLogoEnGrupo(zip, xmlDoc, ruta, [run], datos.LOGO_BASE64, ctxImagen);
+                            }
                             stats.logosInsertados++;
                         } else {
                             // Sin logo cargado: se quita la insignia de referencia
                             // por completo y se deja el espacio en blanco.
-                            Array.from(primeraCelda.getElementsByTagNameNS(NS_W, 'drawing')).forEach(d => d.parentNode && d.parentNode.removeChild(d));
-                            Array.from(primeraCelda.getElementsByTagNameNS(NS_W, 'pict')).forEach(d => d.parentNode && d.parentNode.removeChild(d));
+                            Array.from(contenedorLogo.getElementsByTagNameNS(NS_W, 'drawing')).forEach(d => d.parentNode && d.parentNode.removeChild(d));
+                            Array.from(contenedorLogo.getElementsByTagNameNS(NS_W, 'pict')).forEach(d => d.parentNode && d.parentNode.removeChild(d));
                             stats.logosPendientes++;
                         }
                     }
-
                 }
             }
 
