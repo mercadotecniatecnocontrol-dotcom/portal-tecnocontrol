@@ -14,6 +14,7 @@ const FL_ROLES = {
   // Flotilla: validar, cotizar, cerrar servicio (Fátima)
   flotilla: [
     'fatima@tecnocontrol.com.mx',
+    'irvinjulian05@gmail.com',
   ],
   // Solo lectura: puede ENTRAR y VER todo (vehículos, historial, uso,
   // solicitudes) pero no puede crear, validar, aprobar, pagar ni cerrar nada.
