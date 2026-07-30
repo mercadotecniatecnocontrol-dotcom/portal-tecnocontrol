@@ -415,6 +415,18 @@ function hBadge(e){
   return`<span style="display:inline-flex;font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:100px;background:${bg};color:${cl}">${e||'—'}</span>`;
 }
 
+// Badge de estatus para equipos GPS / Dashcam instalados en cada unidad
+function hEstGD(e){
+  const m={
+    activo:['#DCFCE7','#15803D','Activo'],
+    inactivo:['#F1F5F9','#64748B','Inactivo'],
+    falla:['#FEF3C7','#B45309','Con falla'],
+    desinstalado:['#FEE2E2','#B91C1C','Desinstalado'],
+  };
+  const[bg,cl,label]=m[e]||['#F1F5F9','#64748B','—'];
+  return`<span style="display:inline-flex;font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:100px;background:${bg};color:${cl}">${label}</span>`;
+}
+
 function getImgSrc(tipo,vista){
   // tipo puede ser: 'auto','camioneta','camion','troca'
   const esGrande = tipo==='troca'||tipo==='camion'||tipo==='camioneta';
@@ -3606,6 +3618,21 @@ function renderRP(id){
       ${v.nip&&!/gas/i.test(v.nip)?fila('NIP',v.nip,true):''}
     `)}
 
+    ${card('GPS y Dashcam',`
+      ${fila('GPS instalado',v.gpsInstalado==='si'?'<span style="color:#15803D;font-weight:800">Sí</span>':'<span style="color:#94A3B8">No</span>')}
+      ${v.gpsInstalado==='si'?fila('Estatus',hEstGD(v.gpsEstatus)):''}
+      ${v.gpsInstalado==='si'?fila('Proveedor',v.gpsProveedor||'—'):''}
+      ${v.gpsInstalado==='si'?fila('IMEI / N.° de serie',v.gpsImei||'—',true):''}
+      ${v.gpsInstalado==='si'?fila('Fecha de instalación',v.gpsFecha?hF(v.gpsFecha):'—'):''}
+      <div style="height:1px;background:#F1F5F9;margin:8px 0"></div>
+      ${fila('Dashcam instalado',v.dashcamInstalado==='si'?'<span style="color:#15803D;font-weight:800">Sí</span>':'<span style="color:#94A3B8">No</span>')}
+      ${v.dashcamInstalado==='si'?fila('Estatus',hEstGD(v.dashcamEstatus)):''}
+      ${v.dashcamInstalado==='si'?fila('Modelo',v.dashcamModelo||'—'):''}
+      ${v.dashcamInstalado==='si'?fila('N.° de serie',v.dashcamSerie||'—',true):''}
+      ${v.dashcamInstalado==='si'?fila('Fecha de instalación',v.dashcamFecha?hF(v.dashcamFecha):'—'):''}
+      ${v.gpsDashcamNotas?`<div style="margin-top:8px;padding:8px 10px;background:#F8FAFD;border-radius:8px;font-size:11.5px;color:#374151;white-space:pre-wrap">${v.gpsDashcamNotas}</div>`:''}
+    `)}
+
     ${hAdm()?card('Administrar estatus (admin)',`
       <div style="display:flex;flex-direction:column;gap:4px">
         <label style="font-size:10px;font-weight:700;color:#64748B">Estatus del vehículo</label>
@@ -4310,6 +4337,84 @@ window.flEditarVeh=function(id){
           </select>
         </div>
       </div>
+
+      <div style="border-top:1px solid #F1F5F9;padding-top:12px;margin-top:2px">
+        <div style="font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#2563EB;margin-bottom:8px">GPS y Dashcam</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div>
+            <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">GPS instalado</label>
+            <select id="ve-gpsInstalado" style="width:100%;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;outline:none">
+              <option value="si" ${v.gpsInstalado==='si'?'selected':''}>Sí</option>
+              <option value="no" ${v.gpsInstalado!=='si'?'selected':''}>No</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">Estatus GPS</label>
+            <select id="ve-gpsEstatus" style="width:100%;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;outline:none">
+              <option value="activo" ${(v.gpsEstatus||'activo')==='activo'?'selected':''}>Activo</option>
+              <option value="inactivo" ${v.gpsEstatus==='inactivo'?'selected':''}>Inactivo</option>
+              <option value="falla" ${v.gpsEstatus==='falla'?'selected':''}>Con falla</option>
+              <option value="desinstalado" ${v.gpsEstatus==='desinstalado'?'selected':''}>Desinstalado</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">Proveedor GPS</label>
+            <input id="ve-gpsProveedor" type="text" value="${v.gpsProveedor||''}" style="width:100%;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;outline:none;box-sizing:border-box"
+              onfocus="this.style.borderColor='#2563EB'" onblur="this.style.borderColor='#E2E8F0'">
+          </div>
+          <div>
+            <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">IMEI / N.° de serie GPS</label>
+            <input id="ve-gpsImei" type="text" value="${v.gpsImei||''}" style="width:100%;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;outline:none;box-sizing:border-box"
+              onfocus="this.style.borderColor='#2563EB'" onblur="this.style.borderColor='#E2E8F0'">
+          </div>
+          <div>
+            <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">Fecha de instalación GPS</label>
+            <input id="ve-gpsFecha" type="date" value="${v.gpsFecha||''}" style="width:100%;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;outline:none;box-sizing:border-box"
+              onfocus="this.style.borderColor='#2563EB'" onblur="this.style.borderColor='#E2E8F0'">
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
+          <div>
+            <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">Dashcam instalado</label>
+            <select id="ve-dashcamInstalado" style="width:100%;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;outline:none">
+              <option value="si" ${v.dashcamInstalado==='si'?'selected':''}>Sí</option>
+              <option value="no" ${v.dashcamInstalado!=='si'?'selected':''}>No</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">Estatus dashcam</label>
+            <select id="ve-dashcamEstatus" style="width:100%;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;outline:none">
+              <option value="activo" ${(v.dashcamEstatus||'activo')==='activo'?'selected':''}>Activo</option>
+              <option value="inactivo" ${v.dashcamEstatus==='inactivo'?'selected':''}>Inactivo</option>
+              <option value="falla" ${v.dashcamEstatus==='falla'?'selected':''}>Con falla</option>
+              <option value="desinstalado" ${v.dashcamEstatus==='desinstalado'?'selected':''}>Desinstalado</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">Modelo dashcam</label>
+            <input id="ve-dashcamModelo" type="text" value="${v.dashcamModelo||''}" style="width:100%;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;outline:none;box-sizing:border-box"
+              onfocus="this.style.borderColor='#2563EB'" onblur="this.style.borderColor='#E2E8F0'">
+          </div>
+          <div>
+            <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">N.° de serie dashcam</label>
+            <input id="ve-dashcamSerie" type="text" value="${v.dashcamSerie||''}" style="width:100%;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;outline:none;box-sizing:border-box"
+              onfocus="this.style.borderColor='#2563EB'" onblur="this.style.borderColor='#E2E8F0'">
+          </div>
+          <div>
+            <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">Fecha de instalación dashcam</label>
+            <input id="ve-dashcamFecha" type="date" value="${v.dashcamFecha||''}" style="width:100%;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;outline:none;box-sizing:border-box"
+              onfocus="this.style.borderColor='#2563EB'" onblur="this.style.borderColor='#E2E8F0'">
+          </div>
+        </div>
+
+        <div style="margin-top:10px">
+          <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">Notas técnicas (GPS / Dashcam)</label>
+          <textarea id="ve-gpsDashcamNotas" rows="2" style="width:100%;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;outline:none;box-sizing:border-box;resize:vertical"
+            onfocus="this.style.borderColor='#2563EB'" onblur="this.style.borderColor='#E2E8F0'">${v.gpsDashcamNotas||''}</textarea>
+        </div>
+      </div>
+
       <div class="fl-fa" style="margin-top:4px">
         <button onclick="this.closest('.fl-ov').remove()" class="fb gho" style="padding:9px 20px">Cancelar</button>
         <button onclick="flGuardarEditVeh('${id}')" class="fb acc" id="ve-btn-guardar" style="padding:9px 24px">Guardar cambios</button>
@@ -4332,6 +4437,17 @@ window.flGuardarEditVeh=async function(id){
     servicioIntervaloKm: Number(get('servicioIntervaloKm'))||null,
     kmUltimoServicio: get('kmUltimoServicio')===''?null:Number(get('kmUltimoServicio')),
     status: document.getElementById('ve-status')?.value||'activo',
+    gpsInstalado: document.getElementById('ve-gpsInstalado')?.value||'no',
+    gpsEstatus: document.getElementById('ve-gpsEstatus')?.value||'activo',
+    gpsProveedor: get('gpsProveedor'),
+    gpsImei: get('gpsImei'),
+    gpsFecha: get('gpsFecha')||null,
+    dashcamInstalado: document.getElementById('ve-dashcamInstalado')?.value||'no',
+    dashcamEstatus: document.getElementById('ve-dashcamEstatus')?.value||'activo',
+    dashcamModelo: get('dashcamModelo'),
+    dashcamSerie: get('dashcamSerie'),
+    dashcamFecha: get('dashcamFecha')||null,
+    gpsDashcamNotas: get('gpsDashcamNotas'),
   };
   btn.textContent='Guardando…';btn.disabled=true;
   try{
