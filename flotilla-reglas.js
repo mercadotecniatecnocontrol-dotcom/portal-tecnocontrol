@@ -26,13 +26,13 @@ const FL_ROLES = {
   // Administradores: todo lo anterior + eliminar + acceso a todas las vistas
   administradores: [
     'mercadotecniatecnocontrol@gmail.com',
-    'irvinjulian05@gmail.com',
     'mercadotecnia@tecnocontrol.com.mx',
     'c.acosta@tecnocontrol.com.mx',
     'rh@tecnocontrol.com.mx',
     'm.delao@tecnocontrol.com.mx',
     'p.pinedo@tecnocontrol.com.mx',
     'fatima@tecnocontrol.com.mx',
+    'irvinjulian05@gmail.com',
     'nicolas@tecnocontrol.com.mx',
   ]
 };

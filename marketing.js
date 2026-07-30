@@ -1,4 +1,3 @@
-// ══════════════════════════════════════════════════════════════
 // MÓDULO MARKETING — Portal Tecnocontrol
 // Archivo: /modulos/marketing.js
 // Dependencias globales que provee index.html:
@@ -8,9 +7,9 @@
 //   - mostrarPush(titulo, msg, icono)
 //   - addDoc, collection, doc, getDoc, getDocs, setDoc,
 //     updateDoc, deleteDoc, query, where  (Firestore helpers)
-// ══════════════════════════════════════════════════════════════
 
-// ── Inyectar estilos CSS del módulo ──────────────────────────
+
+// Inyectar estilos CSS del módulo
 (function inyectarCSS() {
     if (document.getElementById('css-marketing')) return;
     const style = document.createElement('style');
@@ -136,7 +135,7 @@
 })();
 
 
-// ── Inyectar HTML del dashboard de Marketing ─────────────────
+// Inyectar HTML del dashboard de Marketing
 (function inyectarDashboardHTML() {
     if (document.getElementById('mkt-dashboard')) return;
     const container = document.getElementById('sec-area') || document.querySelector('[id*="sec-area"]');
@@ -294,7 +293,7 @@
     }
 })();
 
-// ── Inyectar HTML de modales ──────────────────────────────────
+// Inyectar HTML de modales
 (function inyectarModales() {
     if (document.getElementById('modal-mkt')) return;
 
@@ -438,9 +437,7 @@
     });
 })();
 
-// ══════════════════════════════════════════════════════════════
 // PARRILLA DE CONTENIDO
-// ══════════════════════════════════════════════════════════════
 let parrillaMes = new Date().getMonth();
 let parrillaAnio = new Date().getFullYear();
 let parrillaFiltroEmpresa = 'todos';
@@ -756,9 +753,7 @@ window.eliminarPost = async (id) => {
     } catch(e){ alert('Error: '+e.message); }
 };
 
-// ══════════════════════════════════════════════════════════════
 // MÓDULO MARKETING — KPIs, campañas, stock
-// ══════════════════════════════════════════════════════════════
 const MKT_EMAIL   = 'mercadotecniatecnocontrol@gmail.com';
 const MKT_MESES   = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 const MKT_SHEET_KEY = 'tc_mkt_sheet_url';
@@ -1414,13 +1409,9 @@ window.sincronizarStock = async () => {
     }
 };
 
-// ══════════════════════════════════════════════════════════════
 // MÓDULO SOLICITUDES DE MERCADOTECNIA — Fase 1
 // Modal XXL tipo wizard + folio automático + Firestore + panel de
 // seguimiento (visible para todos los empleados).
-// Colección: mkt_solicitudes  ·  Subcolección: mkt_solicitudes/{id}/adjuntos
-// Contador de folio: contadores/mkt_solicitudes  { anio, ultimo }
-// ══════════════════════════════════════════════════════════════
 
 const MSOL_TIPOS = [
     {id:'diseno_grafico', icon:'🎨', label:'Diseño gráfico'},
@@ -1479,7 +1470,7 @@ let msolArchivos = [];    // [{nombre,tipo,size,base64}]
 let msolReferencias = []; // [{nombre,tipo,size,base64}] (imágenes de inspiración)
 let msolEnviando = false;
 
-// ── CSS del módulo de solicitudes ────────────────────────────
+// CSS del módulo de solicitudes
 (function inyectarCSSMsol() {
     if (document.getElementById('css-msol')) return;
     const style = document.createElement('style');
@@ -1566,7 +1557,7 @@ let msolEnviando = false;
     document.head.appendChild(style);
 })();
 
-// ── HTML del modal (shell fijo: topbar + steps + body + footer) ──
+// HTML del modal (shell fijo: topbar + steps + body + footer)
 (function inyectarModalMsol() {
     if (document.getElementById('modal-msol')) return;
     const html = `
@@ -1597,7 +1588,7 @@ let msolEnviando = false;
     document.body.insertAdjacentHTML('beforeend', html);
 })();
 
-// ── Utilidades ────────────────────────────────────────────────
+// Utilidades
 function msolToast(msg){
     const t = document.getElementById('msol-toast');
     if(!t) return;
@@ -1624,7 +1615,7 @@ function msolIconoArchivo(tipo, nombre){
     return '📎';
 }
 
-// ── Abrir / cerrar modal ──────────────────────────────────────
+// Abrir / cerrar modal
 function abrirModalSolicitudMkt(){
     msolPaso = 1;
     msolData = {
@@ -1643,7 +1634,7 @@ function msolCerrar(){
     if(modal) modal.style.display = 'none';
 }
 
-// ── Navegación del wizard ─────────────────────────────────────
+// Navegación del wizard 
 const MSOL_PASOS_LABEL = ['Información general','Proyecto','Especificaciones y fechas','Archivos e inspiración','Alcance y aprobación','Revisión final'];
 
 function msolRenderSteps(){
@@ -1671,7 +1662,7 @@ function msolIrPaso(n){
 function msolSiguiente(){ msolIrPaso(msolPaso+1); }
 function msolAnterior(){ msolIrPaso(msolPaso-1); }
 
-// ── Recolectar datos del paso actual desde el DOM ────────────
+// Recolectar datos del paso actual desde el DOM 
 function msolGuardarPaso(n){
     const val = id => (document.getElementById(id)||{}).value || '';
     if(n===1){
@@ -1705,7 +1696,7 @@ function msolGuardarPaso(n){
     }
 }
 
-// ── Validación mínima por paso (obligatorios) ─────────────────
+// Validación mínima por paso (obligatorios)
 function msolValidarPaso(n){
     msolGuardarPaso(n);
     if(n===1){
@@ -1722,7 +1713,7 @@ function msolValidarPaso(n){
     return true;
 }
 
-// ── HTML por paso ─────────────────────────────────────────────
+// HTML por paso
 function msolHTMLPaso(n){
     if(n===1) return msolHTMLPaso1();
     if(n===2) return msolHTMLPaso2();
@@ -2027,7 +2018,7 @@ function msolBindPaso(n){
     }
 }
 
-// ── Folio automático (contador en Firestore) ──────────────────
+// Folio automático (contador en Firestore)
 async function msolGenerarFolio(){
     const anioActual = new Date().getFullYear();
     const ref = doc(db, 'contadores', 'mkt_solicitudes');
@@ -2047,7 +2038,7 @@ async function msolGenerarFolio(){
     return `MKT-${anioActual}-${String(ultimo).padStart(6,'0')}`;
 }
 
-// ── Guardar borrador (sin folio, validación laxa) ─────────────
+// Guardar borrador (sin folio, validación laxa)
 async function msolGuardarBorrador(){
     msolGuardarPaso(msolPaso);
     try{
@@ -2064,7 +2055,7 @@ async function msolGuardarBorrador(){
     }
 }
 
-// ── Guardar adjuntos en subcolección ──────────────────────────
+// Guardar adjuntos en subcolección
 async function msolGuardarAdjuntos(solicitudId){
     let orden = 0;
     for(const a of msolArchivos){
@@ -2075,7 +2066,7 @@ async function msolGuardarAdjuntos(solicitudId){
     }
 }
 
-// ── Envío final de la solicitud ────────────────────────────────
+// Envío final de la solicitud
 async function msolEnviarSolicitud(){
     if(msolEnviando) return;
     if(!msolValidarPaso(1) ) { msolIrPaso(1); return; }
@@ -2122,7 +2113,7 @@ async function msolEnviarSolicitud(){
     }
 }
 
-// ── Panel de seguimiento (todos los empleados ven todas) ──────
+// Panel de seguimiento (todos los empleados ven todas)
 async function msolCargarSeguimiento(){
     const cont = document.getElementById('msol-track-lista');
     if(!cont) return;
@@ -2152,7 +2143,7 @@ async function msolCargarSeguimiento(){
     }
 }
 
-// ── Inyectar panel de seguimiento dentro del dashboard de Marketing ──
+// Inyectar panel de seguimiento dentro del dashboard de Marketing
 (function inyectarPanelSeguimientoMsol(){
     const dash = document.getElementById('mkt-dashboard');
     if(!dash || document.getElementById('msol-track-wrap')) return;
@@ -2171,9 +2162,9 @@ async function msolCargarSeguimiento(){
     msolCargarSeguimiento();
 })();
 
-// ── Exponer a window: requerido porque este archivo se carga con
-//    import() dinámico (ES module) y los onclick="..." inline del HTML
-//    se resuelven en el scope global, no en el scope del módulo. ──
+// Exponer a window: requerido porque este archivo se carga con
+// import() dinámico (ES module) y los onclick="..." inline del HTML
+// se resuelven en el scope global, no en el scope del módulo. ──
 window.abrirModalSolicitudMkt = abrirModalSolicitudMkt;
 window.msolCerrar = msolCerrar;
 window.msolIrPaso = msolIrPaso;

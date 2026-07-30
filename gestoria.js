@@ -1,6 +1,4 @@
-// ══════════════════════════════════════════════════════════════
 // GESTORÍA — módulo de departamento (Portal Tecnocontrol)
-// ══════════════════════════════════════════════════════════════
 // Archivo nombrado como el departamento (mismo patrón que rh.js,
 // ventas.js, flotilla.js) porque Gestoría alojará más de un sistema:
 //   - SASISOPA (implementado abajo)
@@ -10,18 +8,6 @@
 //     el encabezado (razón social/PL/domicilio) se ubica por etiqueta
 //     o por párrafo completo — ver BITACORAS_CAMPOS_POR_ETIQUETA.
 //   - Certificado TECNOLAB — llenado y exportación (PDF/Word/XML)
-//
-// Corre 100% en el navegador: no requiere backend ni Cloud Functions
-// (compatible con GitHub Pages + Firestore plan Spark).
-//
-// Requiere que index.html haya cargado:
-//   - window.db, window.auth (ya expuestos por el módulo principal)
-//   - JSZip (https://cdnjs.cloudflare.com/ajax/libs/jszip/...)
-//   - Variables CSS globales del portal (--teal, --teal2, --text, etc.)
-//
-// Los 91 machotes de SASISOPA viven en /sasisopa-machotes/ junto con
-// un manifest.json que los lista (mismo patrón que manifest.json /
-// manifest-flotilla.json ya usados en el portal).
 
 (function () {
 
@@ -56,9 +42,7 @@
         return _fsFns;
     }
 
-    // ══════════════════════════════════════════════════════════
     // ÍCONOS (SVG inline, mismo estilo que el resto del portal)
-    // ══════════════════════════════════════════════════════════
     const ICONO = {
         mas:        '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
         buscar:     '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
@@ -80,9 +64,7 @@
         certificado:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="6"/><path d="M8.5 13.5 6 22l6-3 6 3-2.5-8.5"/></svg>',
     };
 
-    // ══════════════════════════════════════════════════════════
     // CATÁLOGO DE REEMPLAZO (idéntico a mapeo_valores.py)
-    // ══════════════════════════════════════════════════════════
     const SASISOPA_MAPEO = {
         "Superservicio Cuatro Caminos S.A. de C.V.": "RAZON_SOCIAL",
         "Superservicio Cuatro Caminos S.A de C.V.": "RAZON_SOCIAL",
@@ -139,9 +121,7 @@
     const RE_NOMBRE_PLACEHOLDER = /^(nombre\s*){2,}$/i;
     const MESES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
 
-    // Roles seleccionables — antes eran 8 campos de texto fijos;
-    // ahora es un checklist como en SGM: el cliente marca cuáles
-    // puestos existen realmente en su estación.
+    // Roles seleccionables
     const SASISOPA_ROLES_DISPONIBLES = [
         { clave: "ROL_ALTA_DIRECCION",        etiqueta: "Alta Dirección",          escolaridadClave: "ESCOLARIDAD_ALTA_DIRECCION",        obligatorio: false },
         { clave: "ROL_REPRESENTANTE_TECNICO", etiqueta: "Representante Técnico",   escolaridadClave: "ESCOLARIDAD_REPRESENTANTE_TECNICO", obligatorio: false },
@@ -154,14 +134,10 @@
     ];
 
     // Placeholder del catálogo genérico de SASISOPA (Responsabilidades/
-    // Funciones/Autoridad/Interrelaciones por puesto). Se llena con el
-    // contenido real de M-05_Funciones__responsabilidades_y_autoridad.docx
-    // en cuanto Glen comparta ese documento.
+    // Funciones/Autoridad/Interrelaciones por puesto).
     const SASISOPA_CATALOGO_GENERICO = {};
 
     // Jerarquía por defecto para el organigrama gráfico de SASISOPA
-    // (se usa como fallback automático si el cliente no ha guardado
-    // un layout propio en el editor visual).
     const SASISOPA_JERARQUIA_ORGANIGRAMA = [
         ["ROL_ALTA_DIRECCION"],
         ["ROL_REPRESENTANTE_TECNICO", "ROL_SUPERVISOR_ESTACION"],
@@ -199,9 +175,7 @@
     // bloquear la generación de documentos.
     const SASISOPA_CAMPOS_OBLIGATORIOS = ["RAZON_SOCIAL", "RFC", "DOMICILIO_ESTACION", "CIUDAD_ESTADO", "FECHA_ELABORACION", "NOMBRE_ELABORA"];
 
-    // ══════════════════════════════════════════════════════════
     // SGM — Sistema de Gestión de las Mediciones (ISO 10012:2003)
-    // ══════════════════════════════════════════════════════════
     const SGM_RUTA_MACHOTES = 'sgm-machotes/';
     const SGM_COLECCION = 'sgm_clientes';
 
@@ -215,6 +189,7 @@
         "PL/9693/EXP/ES/2015": "NUMERO_PERMISO",
         "Lezlie Anahy Gutierrez Armendáriz.": "NOMBRE_ELABORA",
         "16/12/2024": "FECHA_ELABORACION",
+        "El Tule, Chihuahua": "CIUDAD_ESTADO_NOMBRAMIENTO",
         "LOGO": "__LOGO__",
     };
 
@@ -267,6 +242,9 @@
           match: /coordinada\s+y\s+asegurada\s+su\s+eficacia\s+por/i },
         { id: 'vigilancia_acciones_correctivas', etiqueta: 'Vigilancia de acciones correctivas (PROC-G-008, 4.2)',
           match: /responsable\s+de\s+vigilar\s+la\s+aplicaci[oó]n\s+de\s+acciones\s+correctivas\s+efectivas/i },
+        { id: 'supervision_personal_tecnico', etiqueta: 'Supervisión del personal técnico de área operativa (PROC-T-001, 4.5)',
+          soloRol: true,
+          match: /a\s+cargo\s+del\s+[ÁA]rea\s+operativa,?\s*es\s+decir,?/i },
         { id: 'notificacion_anomalia_equipo', etiqueta: 'Notificación de anomalías del equipo (PROC-T-005, 5.1)',
           match: /se\s+le\s+notifica\s+inmediatamente\s+a/i },
     ];
@@ -461,6 +439,9 @@
         { titulo: "Control de documentos", icono: ICONO.usuarios, campos: [
             ["FECHA_ELABORACION", "Fecha de elaboración (dd/mm/aaaa)", "16/12/2024"],
         ]},
+        { titulo: "Nombramiento", icono: ICONO.usuarios, campos: [
+            ["CIUDAD_ESTADO_NOMBRAMIENTO", "Ciudad, Estado", "El Tule, Chihuahua"],
+        ]},
         { titulo: "Firmas de control (hojas Excel y Word SGM)", icono: ICONO.usuarios, campos: [
             ["NOMBRE_ELABORA", "Nombre de quien elabora", "Lezlie Anahy Gutierrez Armendáriz."],
             ["PUESTO_ELABORA", "Puesto de quien elabora", "Administrativo"],
@@ -475,7 +456,6 @@
         { titulo: "Patrones y equipos de medida (PROC-T-005/006)", icono: ICONO.graduacion, tipo: "tabla_dinamica", clave: "PATRONES_EQUIPOS", columnas: SGM_CAMPOS_PATRONES },
     ];
 
-    // ══════════════════════════════════════════════════════════
     // BITÁCORAS — bitácoras de operación, mantenimiento y limpieza
     // (PL2853). A diferencia de SASISOPA/SGM, los 9 machotes + el
     // índice NO usan resaltado amarillo: el encabezado repetido trae
@@ -484,7 +464,6 @@
     // ubica por la etiqueta que antecede al valor (Ciudad o
     // población:, Domicilio:, etc.) o, para razón social y PL, por
     // coincidencia del párrafo completo — ver procesarCamposBitacoras.
-    // ══════════════════════════════════════════════════════════
     const BITACORAS_RUTA_MACHOTES = 'bitacoras-machotes/';
     const BITACORAS_COLECCION = 'bitacoras_clientes';
 
@@ -574,7 +553,7 @@
         };
     }
 
-    // ── Derivación de variantes (mayúsculas, coma, fechas) ──────
+    // Derivación de variantes (mayúsculas, coma, fechas)
     function derivarValorSASISOPA(clave, datos) {
         if (clave.endsWith('_MAYUS')) {
             const base = datos[clave.slice(0, -'_MAYUS'.length)];
@@ -636,7 +615,22 @@
     function valorNuevoPara(valorOriginal, datos) {
         const mapeo = sistemaActivo().mapeo;
         const clave = mapeo[valorOriginal];
-        if (clave === undefined) return intentarCoincidenciaFlexible(valorOriginal, datos);
+        if (clave === undefined) {
+            // SGM: un placeholder resaltado que dice literalmente el
+            // nombre de un rol del organigrama (p.ej. "Mantenimiento",
+            // "Alta Dirección", o su variante en minúsculas "alta
+            // dirección" dentro de un párrafo narrativo), se sustituye
+            // por el nombre real de quien ocupa ese rol — aplica a
+            // cualquier mención de un rol reconocido, sin importar
+            // mayúsculas/acentos (ver PROC-G-001 1.1/1.2/4.2/4.3, y 5.1
+            // de PROC-T-006, p.ej.).
+            if (_seccionActual === 'sgm') {
+                const normAcentosRol = t => (t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+                const rolMencionado = SGM_ROLES_DISPONIBLES.find(r => normAcentosRol(r.etiqueta) === normAcentosRol(valorOriginal.trim()));
+                if (rolMencionado && datos[rolMencionado.clave]) return datos[rolMencionado.clave];
+            }
+            return intentarCoincidenciaFlexible(valorOriginal, datos);
+        }
         if (clave === '__SKIP__') return '__SKIP__';
         if (clave === '__LOGO__') return '__LOGO__';
         const valor = datos[clave] || derivarValor(clave, datos);
@@ -662,9 +656,7 @@
         return null;
     }
 
-    // ══════════════════════════════════════════════════════════
     // MANIPULACIÓN XML DEL .DOCX
-    // ══════════════════════════════════════════════════════════
     const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 
     function textoDeRun(run) { return Array.from(run.getElementsByTagNameNS(NS_W, 't')).map(t => t.textContent).join(''); }
@@ -697,7 +689,7 @@
         for (let i = 1; i < ts.length; i++) ts[i].textContent = '';
     }
 
-    // ── Inserción real de imagen (logo) en el .docx ─────────────
+    // Inserción real de imagen (logo) en el .docx
     function dataUrlABytes(dataUrl) {
         const [header, b64] = dataUrl.split(',');
         const mime = header.match(/data:([^;]+);/)[1];
@@ -785,11 +777,6 @@
         const nodoDrawing = nodosDesdeXml(xmlDoc, construirDrawingXml(rId, cx, cy, 1000 + ctxImg.contador));
         const primerRun = grupoRuns[0];
         Array.from(primerRun.getElementsByTagNameNS(NS_W, 't')).forEach(t => t.remove());
-        // Si el logo anterior vivía en este MISMO run (caso de Bitácoras,
-        // donde no hay texto "LOGO" resaltado y se reutiliza el run que ya
-        // traía la insignia de referencia embebida), limpiarImagenesPreviasEnCelda
-        // no lo detecta — compara contra otros runs de la celda, no contra
-        // este. Se quita aquí explícitamente antes de anexar el nuevo.
         Array.from(primerRun.getElementsByTagNameNS(NS_W, 'drawing')).forEach(d => d.parentNode && d.parentNode.removeChild(d));
         Array.from(primerRun.getElementsByTagNameNS(NS_W, 'pict')).forEach(d => d.parentNode && d.parentNode.removeChild(d));
         quitarResaltado(primerRun);
@@ -969,7 +956,11 @@
     }
 
     // ── SGM: inserción de la tabla dinámica de equipo de medición ──
-    const RE_ARCHIVOS_CON_TABLA_EQUIPO = /volumen|inventario_de_equipo|etiquetas_de_identificaci[oó]n/i;
+    // NOTA: "volumen" se quitó de este patrón — solo coincidía con
+    // PROC-T-005/006, que deben usar exclusivamente
+    // procesarTablaPatronesSGM (tabla "Patrones y equipos de medida"),
+    // nunca esta función de equipo general de estación.
+    const RE_ARCHIVOS_CON_TABLA_EQUIPO = /inventario_de_equipo|etiquetas_de_identificaci[oó]n/i;
 
     function procesarTablaEquipoSGM(xmlDoc, datos, stats) {
         const tablas = Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'tbl'));
@@ -1061,7 +1052,18 @@
                 for (let k = 1; k < runs.length; k++) setTextoRun(runs[k], '');
             };
 
-            if (!datos.PATRONES_EQUIPOS || !datos.PATRONES_EQUIPOS.length) {
+            // "Patrones y equipos de medida" tiene su propia sección en el
+            // formulario (PATRONES_EQUIPOS), pero en la práctica los
+            // operadores capturan el equipo en "Equipo de medición por
+            // estación" (EQUIPOS) — la sección dedicada casi nunca se usa.
+            // Si PATRONES_EQUIPOS está vacío, se usa EQUIPOS como respaldo;
+            // ambos comparten las mismas claves (marca/modelo/numero_serie),
+            // solo se ignora "tipo" porque esta tabla no tiene esa columna.
+            const patronesDatos = (datos.PATRONES_EQUIPOS && datos.PATRONES_EQUIPOS.length)
+                ? datos.PATRONES_EQUIPOS
+                : (datos.EQUIPOS || []);
+
+            if (!patronesDatos.length) {
                 filasDatos.forEach(fila => {
                     Array.from(fila.getElementsByTagNameNS(NS_W, 'tc')).forEach((celda, i) => {
                         if (i === idxNo) return; // conserva la numeración secuencial fija
@@ -1072,7 +1074,7 @@
                 continue;
             }
 
-            datos.PATRONES_EQUIPOS.forEach((patron, idx) => {
+            patronesDatos.forEach((patron, idx) => {
                 const filaNueva = idx === 0 ? filaPlantilla : filaPlantilla.cloneNode(true);
                 const celdas = Array.from(filaNueva.getElementsByTagNameNS(NS_W, 'tc'));
                 if (idxNo !== -1 && celdas[idxNo]) ponerValor(celdas[idxNo], String(idx + 1));
@@ -1092,8 +1094,17 @@
     function neutralizarTablasDescriptivasSGM(xmlDoc) {
         for (const tbl of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'tbl'))) {
             const runsAmarillos = Array.from(tbl.getElementsByTagNameNS(NS_W, 'r')).filter(esResaltadoAmarillo);
-            const totalChars = runsAmarillos.reduce((acc, r) => acc + textoDeRun(r).length, 0);
-            if (totalChars >= UMBRAL_CHARS_TABLA_GENERICA) {
+            // Antes se sumaban los caracteres de TODOS los runs amarillos
+            // de la tabla — una tabla con muchas tarjetas repetidas (p.ej.
+            // FOR-T-008, con 24 tarjetas de "FELIX RUIZ GONZALEZ") suma
+            // fácilmente cientos de caracteres aunque cada placeholder sea
+            // corto y legítimo, y terminaba neutralizando todos por error.
+            // Ahora se mide el run MÁS LARGO individual: un bloque de
+            // texto descriptivo mal resaltado por accidente normalmente
+            // es un párrafo largo en un solo run, no muchos placeholders
+            // cortos repetidos.
+            const maxChars = runsAmarillos.reduce((max, r) => Math.max(max, textoDeRun(r).length), 0);
+            if (maxChars >= UMBRAL_CHARS_TABLA_GENERICA) {
                 runsAmarillos.forEach(quitarResaltado);
             }
         }
@@ -1156,6 +1167,14 @@
                     if (info.firma && celdasFirmaPendientes) celdasFirmaPendientes.push({ celda: celdas[idxFirma], dataUrl: info.firma });
                 }
             }
+            // Solo se llena la PRIMERA tabla que coincida — es la tabla
+            // real de "Documento Controlado" al inicio del documento.
+            // Algunos machotes (p.ej. PROC-G-002, sección 4.3) incluyen
+            // una segunda tabla IDÉNTICA como ejemplo ilustrativo dentro
+            // del propio texto del procedimiento ("...lleva el siguiente
+            // recuadro, ej.:") — esa NO debe llenarse con los datos
+            // reales del cliente, debe quedar como muestra genérica.
+            break;
         }
     }
 
@@ -1275,57 +1294,118 @@
 
     // ── SGM: puestos responsables de procesos específicos (multi-select) ──
     function procesarFrasesMultiPuestoSGM(xmlDoc, datos, stats) {
-        if (!datos.MULTIPUESTO) return;
+        if (!datos.MULTIPUESTO && !datos.MULTIPUESTO_EXTRA) return;
+        datos.MULTIPUESTO = datos.MULTIPUESTO || {};
         const roles = SGM_ROLES_DISPONIBLES;
-        for (const p of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'))) {
-            const texto = textoParrafo(p);
-            const frase = SGM_FRASES_MULTIPUESTO.find(f => f.match.test(texto));
-            if (!frase) continue;
-            const runs = Array.from(p.getElementsByTagNameNS(NS_W, 'r'));
+
+        const construirTexto = (frase) => {
             const clavesElegidas = datos.MULTIPUESTO[frase.id];
-            const etiquetas = (clavesElegidas || []).map(c => (roles.find(r => r.clave === c) || {}).etiqueta).filter(Boolean);
+            // Cada puesto elegido se muestra como "Rol Nombre" (el título
+            // del puesto seguido del nombre real de quien lo ocupa según
+            // el organigrama) — aplica a cualquier rol que el cliente
+            // elija aquí, no solo Administrativo, y si no eligió ninguno
+            // se deja en blanco (mismo comportamiento de antes).
+            const etiquetas = (clavesElegidas || []).map(c => {
+                const rol = roles.find(r => r.clave === c);
+                if (!rol) return null;
+                if (frase.soloRol) return rol.etiqueta;
+                const nombre = datos[c];
+                return nombre ? `${rol.etiqueta} ${nombre}` : rol.etiqueta;
+            }).filter(Boolean);
+            // Puesto o rol adicional escrito a mano por el cliente (no
+            // forma parte del catálogo fijo de 8 roles) — se agrega al
+            // final de la lista, tal cual lo escribió.
+            const extra = (datos.MULTIPUESTO_EXTRA || {})[frase.id];
+            if (extra) etiquetas.push(extra);
             const textoNuevo = etiquetas.length > 1
                 ? etiquetas.slice(0, -1).join(', ') + ' y ' + etiquetas[etiquetas.length - 1]
                 : (etiquetas[0] || '');
-            // Algunas frases mencionan el puesto responsable DOS veces en el
-            // mismo párrafo (p.ej. "...vigilar la corrección... o en su
-            // defecto por quien el Administrativo designe."). Se agrupan
-            // solo los runs amarillos CONTIGUOS (no todos los del párrafo),
-            // para que cada mención se resuelva de forma independiente.
+            return { etiquetas, textoNuevo };
+        };
+
+        for (const p of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'))) {
+            const texto = textoParrafo(p);
+            const fraseGeneral = SGM_FRASES_MULTIPUESTO.find(f => f.match.test(texto));
+            if (!fraseGeneral) continue;
+            const runs = Array.from(p.getElementsByTagNameNS(NS_W, 'r'));
+
+            // Un mismo párrafo puede contener más de una frase multi-puesto
+            // (p.ej. PROC-G-003 junta "registros de gestión" y "registros
+            // técnicos" en una sola oración seguida) — antes se tomaba solo
+            // la PRIMERA frase que calzara con el texto COMPLETO del
+            // párrafo y esa misma selección se aplicaba a TODOS los
+            // placeholders del párrafo por igual, así que el segundo
+            // terminaba mostrando el puesto del primero. Ahora se
+            // determina la frase correcta para cada grupo de resaltado
+            // según el texto acumulado justo antes de ese grupo.
             let huboResaltado = false;
+            let acumulado = '';
             let i = 0;
             while (i < runs.length) {
-                if (!esResaltadoAmarillo(runs[i])) { i++; continue; }
+                if (!esResaltadoAmarillo(runs[i])) { acumulado += textoDeRun(runs[i]); i++; continue; }
                 huboResaltado = true;
                 let j = i + 1;
                 while (j < runs.length && esResaltadoAmarillo(runs[j])) j++;
                 const grupo = runs.slice(i, j);
+
+                // La frase debe coincidir justo AL FINAL del texto
+                // acumulado (inmediatamente antes de este placeholder), no
+                // en cualquier parte — si solo se revisara ".test(acumulado)"
+                // sin anclar al final, la PRIMERA frase de la lista que
+                // alguna vez apareciera en el texto (aunque fuera de una
+                // oración anterior ya resuelta) seguiría "ganando" para
+                // todos los placeholders siguientes del mismo párrafo.
+                const fraseLocal = SGM_FRASES_MULTIPUESTO.find(f => new RegExp(f.match.source + '\\s*$', f.match.flags).test(acumulado));
+                if (!fraseLocal) {
+                    // Ninguna frase conocida coincide justo antes de este
+                    // placeholder específico — puede ser una mención
+                    // totalmente distinta dentro del mismo párrafo (p.ej.
+                    // "vía Administrativo o quien éste designe" junto a
+                    // "...es decir, Mantenimiento y Despachadores" en
+                    // PROC-T-001). Antes se usaba fraseGeneral como
+                    // respaldo ciego, lo que aplicaba la frase equivocada a
+                    // placeholders no relacionados; ahora se deja intacto
+                    // para que el motor genérico (valorNuevoPara) lo
+                    // resuelva por su cuenta.
+                    acumulado += grupo.map(textoDeRun).join('');
+                    i = j;
+                    continue;
+                }
+                const { etiquetas, textoNuevo } = construirTexto(fraseLocal);
                 if (etiquetas.length) {
                     setTextoRun(grupo[0], textoNuevo);
                     for (let k = 1; k < grupo.length; k++) setTextoRun(grupo[k], '');
                     stats.reemplazos++;
+                    acumulado += textoNuevo;
+                } else {
+                    // Sin puesto seleccionado: se deja en blanco (no el
+                    // texto de referencia original del machote).
+                    setTextoRun(grupo[0], '');
+                    for (let k = 1; k < grupo.length; k++) setTextoRun(grupo[k], '');
+                    stats.pendientes.push(`Puesto(s) responsable(s) sin capturar: ${fraseLocal.etiqueta}`);
                 }
                 grupo.forEach(quitarResaltado);
                 i = j;
-            }
-            if (huboResaltado && !etiquetas.length) {
-                stats.pendientes.push(`Puesto(s) responsable(s) sin capturar: ${frase.etiqueta}`);
             }
             // Respaldo: si el párrafo coincidió con la frase pero no tenía
             // ningún resaltado amarillo (el placeholder solo viene en
             // negritas, como "Mantenimiento" en PROC-T-005), se busca el
             // run en negritas cuyo texto sea exactamente el nombre de algún
-            // puesto conocido y se reemplaza igual.
-            if (!huboResaltado && etiquetas.length) {
-                const normRol = t => (t || '').trim().toLowerCase().replace(/\.$/, '');
-                for (const r of runs) {
-                    if (!esNegrita(r)) continue;
-                    const texto = textoDeRun(r);
-                    const esNombreDeAlgunPuesto = roles.some(rol => normRol(texto) === normRol(rol.etiqueta));
-                    if (!esNombreDeAlgunPuesto) continue;
-                    const conPunto = /\.\s*$/.test(texto.trim());
-                    setTextoRun(r, textoNuevo + (conPunto ? '.' : ''));
-                    stats.reemplazos++;
+            // puesto conocido y se reemplaza igual. Este respaldo asume un
+            // solo puesto por párrafo (usa fraseGeneral), como ya era antes.
+            if (!huboResaltado) {
+                const { etiquetas, textoNuevo } = construirTexto(fraseGeneral);
+                if (etiquetas.length) {
+                    const normRol = t => (t || '').trim().toLowerCase().replace(/\.$/, '');
+                    for (const r of runs) {
+                        if (!esNegrita(r)) continue;
+                        const textoRun = textoDeRun(r);
+                        const esNombreDeAlgunPuesto = roles.some(rol => normRol(textoRun) === normRol(rol.etiqueta));
+                        if (!esNombreDeAlgunPuesto) continue;
+                        const conPunto = /\.\s*$/.test(textoRun.trim());
+                        setTextoRun(r, textoNuevo + (conPunto ? '.' : ''));
+                        stats.reemplazos++;
+                    }
                 }
             }
         }
@@ -1418,6 +1498,227 @@
         }
     }
 
+    // "Localización del documento: Estación de servicio." — en la mayoría
+    // de los machotes SGM esta frase vive en una tabla de 2 columnas
+    // (etiqueta | valor), y el valor de referencia ("Estación de
+    // servicio.") queda como texto plano SIN resaltado amarillo, partido
+    // en 2-3 runs por los acentos. El motor genérico de resaltado nunca
+    // lo toca, así que se ubica por estructura (celda siguiente en la
+    // misma fila de tabla) en vez de por color, igual que
+    // procesarNotacionOrganizacionSGM de arriba.
+    function procesarLocalizacionDocumentoSGM(xmlDoc, datos, stats) {
+        if (!datos.NOMBRE_REPRESENTANTE) return;
+        for (const p of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'))) {
+            const runs = Array.from(p.getElementsByTagNameNS(NS_W, 'r'));
+            if (!runs.length) continue;
+            const textoParrafo = runs.map(textoDeRun).join('');
+            if (!textoParrafo.includes('Localización del documento')) continue;
+
+            let celda = p.parentNode;
+            while (celda && celda.localName !== 'tc') celda = celda.parentNode;
+            if (!celda) continue;
+            let fila = celda.parentNode;
+            while (fila && fila.localName !== 'tr') fila = fila.parentNode;
+            if (!fila) continue;
+
+            const celdas = Array.from(fila.getElementsByTagNameNS(NS_W, 'tc'));
+            const idx = celdas.indexOf(celda);
+            const celdaValor = celdas[idx + 1];
+            if (!celdaValor) continue;
+
+            const runsValor = Array.from(celdaValor.getElementsByTagNameNS(NS_W, 'r'));
+            if (!runsValor.length) continue;
+            const textoOriginal = runsValor.map(textoDeRun).join('');
+            if (!textoOriginal.trim()) continue;
+
+            const terminaConPunto = /\.\s*$/.test(textoOriginal);
+            let nuevoValor = datos.NOMBRE_REPRESENTANTE;
+            if (terminaConPunto && !/\.\s*$/.test(nuevoValor)) nuevoValor += '.';
+
+            setTextoRun(runsValor[0], nuevoValor);
+            for (let k = 1; k < runsValor.length; k++) setTextoRun(runsValor[k], '');
+            runsValor.forEach(quitarResaltado);
+            stats.reemplazos++;
+            // Solo se llena la PRIMERA ocurrencia — es la tabla real de
+            // "Documento Controlado". Si el documento menciona
+            // "Localización del documento" de nuevo más adelante como
+            // ejemplo ilustrativo (ver PROC-G-002 4.3), no debe tocarse.
+            break;
+        }
+    }
+
+    // "Atentamente" — el nombre que sigue debajo (p.ej. en FOR-T-005
+    // "Nombramiento") viene con el mismo texto de referencia genérico
+    // ("Félix Ruiz González") que en el resto del sistema mapea a la
+    // Razón Social — pero aquí, en un nombramiento firmado, debe ser el
+    // nombre de quien ocupa Alta Dirección, no la razón social. Se
+    // ubica por estructura (párrafo siguiente a "Atentamente") en vez de
+    // por el texto genérico del mapeo, para no afectar el resto de usos
+    // de ese mismo texto de referencia en otros documentos.
+    function procesarFirmaAtentamenteSGM(xmlDoc, datos, stats) {
+        const nombreAltaDireccion = datos.ROL_ALTA_DIRECCION;
+        if (!nombreAltaDireccion) return;
+        const parrafos = Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'));
+        for (let i = 0; i < parrafos.length; i++) {
+            if (textoParrafo(parrafos[i]).trim() !== 'Atentamente') continue;
+            const siguiente = parrafos[i + 1];
+            if (!siguiente) continue;
+            const runs = Array.from(siguiente.getElementsByTagNameNS(NS_W, 'r'));
+            if (!runs.length) continue;
+            const textoOriginal = runs.map(textoDeRun).join('');
+            if (!textoOriginal.trim()) continue;
+            setTextoRun(runs[0], nombreAltaDireccion);
+            for (let k = 1; k < runs.length; k++) setTextoRun(runs[k], '');
+            runs.forEach(quitarResaltado);
+            stats.reemplazos++;
+        }
+    }
+
+    // "N. RESPONSABILIDADES" — los subtítulos "N.M Rol." se comportan
+    // igual que antes (se muestran solo si el rol tiene nombre asignado,
+    // se eliminan si no), PERO ahora además el título se reemplaza por
+    // el nombre real de la persona en vez del nombre del rol. A
+    // diferencia de una versión anterior de esta función, aquí NO se
+    // agregan subsecciones nuevas para roles que no tenían una plantilla
+    // propia en el documento (p.ej. "Alta Dirección" no aparece si el
+    // machote nunca trajo esa subsección) — se respeta el conjunto de
+    // roles original del documento, solo renombrado y filtrado.
+    //
+    // Se ejecuta ANTES de filtrarListasDeRolesSGM a propósito: una vez
+    // que los encabezados dicen el nombre de la persona (no el rol),
+    // filtrarListasDeRolesSGM ya no los reconoce como "N.M Rol." y los
+    // deja intactos, sin necesidad de excluir nada explícitamente.
+    function reconstruirResponsabilidadesSGM(xmlDoc, datos, stats) {
+        const RE_TITULO_RESPONSABILIDADES = /^(\d+)\.\s*RESPONSABILIDADES\.?\s*$/i;
+        const RE_SUBSECCION = /^(\d+)\.(\d+)\s+([^.]+?)\.?\s*$/;
+        const RE_SECCION_TOP = /^\d+\.\s*[A-ZÁÉÍÓÚÑ]/;
+        const normAcentos = t => (t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const rolPorEtiqueta = etiqueta => SGM_ROLES_DISPONIBLES.find(r => normAcentos(r.etiqueta) === normAcentos(etiqueta));
+
+        const renombrarEncabezado = (runs, numeroNuevo, nombre) => {
+            if (!runs.length) return;
+            setTextoRun(runs[0], `${numeroNuevo} ${nombre}.`);
+            for (let k = 1; k < runs.length; k++) setTextoRun(runs[k], '');
+            runs.forEach(quitarResaltado);
+        };
+
+        (function procesarCuerpo() {
+            const parrafos = Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'));
+            let idxHeading = -1, seccionNum = null;
+            for (let i = 0; i < parrafos.length; i++) {
+                // El mismo texto "N. RESPONSABILIDADES." también aparece
+                // como fila del índice (dentro de una tabla); ese caso lo
+                // procesa procesarIndice() más abajo. Aquí solo interesa
+                // el encabezado real del cuerpo, cuyo párrafo NO vive
+                // dentro de una celda de tabla.
+                if (parrafos[i].parentNode && parrafos[i].parentNode.localName === 'tc') continue;
+                const m = RE_TITULO_RESPONSABILIDADES.exec(textoParrafo(parrafos[i]).trim());
+                if (m) { idxHeading = i; seccionNum = m[1]; break; }
+            }
+            if (idxHeading === -1) return;
+
+            let idxFin = parrafos.length;
+            for (let j = idxHeading + 1; j < parrafos.length; j++) {
+                const t = textoParrafo(parrafos[j]).trim();
+                if (RE_SUBSECCION.test(t)) continue;
+                if (RE_SECCION_TOP.test(t)) { idxFin = j; break; }
+            }
+
+            const existentes = [];
+            for (let j = idxHeading + 1; j < idxFin; j++) {
+                const m = RE_SUBSECCION.exec(textoParrafo(parrafos[j]).trim());
+                if (!m) continue;
+                const rol = rolPorEtiqueta(m[3].trim());
+                if (!rol) continue;
+                existentes.push({ clave: rol.clave, idx: j });
+            }
+            if (!existentes.length) return;
+            existentes.forEach((e, k) => { e.fin = (k + 1 < existentes.length) ? existentes[k + 1].idx : idxFin; });
+
+            // Solo se conservan los roles que YA existían como subsección
+            // en el documento, en el mismo orden en que aparecen — no se
+            // inserta nada nuevo.
+            const conservados = existentes.filter(e => !!datos[e.clave]);
+            if (!conservados.length) return;
+
+            const bloques = conservados.map((e, i) => {
+                const numeroNuevo = `${seccionNum}.${i + 1}`;
+                const headingNodo = parrafos[e.idx];
+                const contenidoNodos = [];
+                for (let j = e.idx + 1; j < e.fin; j++) contenidoNodos.push(parrafos[j]);
+                renombrarEncabezado(Array.from(headingNodo.getElementsByTagNameNS(NS_W, 'r')), numeroNuevo, datos[e.clave]);
+                return { headingNodo, contenidoNodos };
+            });
+
+            const padre = parrafos[idxHeading].parentNode;
+            const referencia = idxFin < parrafos.length ? parrafos[idxFin] : null;
+            existentes.forEach(e => {
+                for (let j = e.idx; j < e.fin; j++) {
+                    const p = parrafos[j];
+                    if (p.parentNode) p.parentNode.removeChild(p);
+                }
+            });
+            bloques.forEach(b => {
+                padre.insertBefore(b.headingNodo, referencia);
+                b.contenidoNodos.forEach(c => padre.insertBefore(c, referencia));
+            });
+            stats.reemplazos += bloques.length;
+        })();
+
+        (function procesarIndice() {
+            for (const tbl of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'tbl'))) {
+                const filas = Array.from(tbl.getElementsByTagNameNS(NS_W, 'tr'));
+                let idxHeading = -1, seccionNum = null;
+                for (let i = 0; i < filas.length; i++) {
+                    const celdas = Array.from(filas[i].getElementsByTagNameNS(NS_W, 'tc'));
+                    if (!celdas.length) continue;
+                    const m = RE_TITULO_RESPONSABILIDADES.exec(textoDeCelda(celdas[0]).trim());
+                    if (m) { idxHeading = i; seccionNum = m[1]; break; }
+                }
+                if (idxHeading === -1) continue;
+
+                let idxFin = filas.length;
+                for (let j = idxHeading + 1; j < filas.length; j++) {
+                    const celdas = Array.from(filas[j].getElementsByTagNameNS(NS_W, 'tc'));
+                    const t = celdas.length ? textoDeCelda(celdas[0]).trim() : '';
+                    if (RE_SUBSECCION.test(t)) continue;
+                    if (RE_SECCION_TOP.test(t)) { idxFin = j; break; }
+                }
+
+                const existentes = [];
+                for (let j = idxHeading + 1; j < idxFin; j++) {
+                    const celdas = Array.from(filas[j].getElementsByTagNameNS(NS_W, 'tc'));
+                    if (!celdas.length) continue;
+                    const m = RE_SUBSECCION.exec(textoDeCelda(celdas[0]).trim());
+                    if (!m) continue;
+                    const rol = rolPorEtiqueta(m[3].trim());
+                    if (!rol) continue;
+                    existentes.push({ clave: rol.clave, idx: j });
+                }
+                if (!existentes.length) continue;
+
+                const conservados = existentes.filter(e => !!datos[e.clave]);
+                if (!conservados.length) continue;
+
+                const filasConservadas = conservados.map((e, i) => {
+                    const numeroNuevo = `${seccionNum}.${i + 1}`;
+                    const filaNodo = filas[e.idx];
+                    const celdas = Array.from(filaNodo.getElementsByTagNameNS(NS_W, 'tc'));
+                    if (celdas.length) renombrarEncabezado(Array.from(celdas[0].getElementsByTagNameNS(NS_W, 'r')), numeroNuevo, datos[e.clave]);
+                    return filaNodo;
+                });
+
+                const padre = filas[idxHeading].parentNode;
+                const referencia = idxFin < filas.length ? filas[idxFin] : null;
+                existentes.forEach(e => {
+                    const f = filas[e.idx];
+                    if (f.parentNode) f.parentNode.removeChild(f);
+                });
+                filasConservadas.forEach(f => padre.insertBefore(f, referencia));
+            }
+        })();
+    }
+
 
     function filtrarListasDeRolesSGM(xmlDoc, datos, nombreArchivo) {
         // PROC-T-001: el índice debe listar TODOS los puestos siempre,
@@ -1475,7 +1776,16 @@
         parrafos.forEach((p, i) => {
             const texto = textoParrafo(p).trim();
             const m = /^(\d+)\.(\d+)\s+([^.]+?)\.?\s*$/.exec(texto);
-            if (m && esRolConocido(m[3].trim())) titulos.push({ idx: i, seccion: m[1], rol: m[3].trim() });
+            // Distinguir si este "N.M Rol." es una fila del ÍNDICE (dentro
+            // de una celda de tabla) o del CUERPO (párrafo suelto). Antes
+            // se mezclaban en la misma lista/agrupación, y el rango
+            // calculado para un rol del índice podía terminar apuntando al
+            // siguiente rol encontrado en el CUERPO —a veces cientos de
+            // párrafos después—, arrastrando y despojando de resaltado
+            // todo lo que había en medio (ver bug en PROC-G-002, sección
+            // 4.2, corregido aquí).
+            const esIndice = p.parentNode && p.parentNode.localName === 'tc';
+            if (m && esRolConocido(m[3].trim())) titulos.push({ idx: i, seccion: m[1], rol: m[3].trim(), esIndice });
         });
         if (!titulos.length) return;
 
@@ -1489,7 +1799,7 @@
         };
 
         const porSeccion = {};
-        titulos.forEach(t => { (porSeccion[t.seccion] = porSeccion[t.seccion] || []).push(t); });
+        titulos.forEach(t => { const clave = t.seccion + (t.esIndice ? '-indice' : '-cuerpo'); (porSeccion[clave] = porSeccion[clave] || []).push(t); });
 
         const paraEliminar = new Set();
         for (const grupo of Object.values(porSeccion)) {
@@ -1506,6 +1816,178 @@
             }
         }
         paraEliminar.forEach(p => p.parentNode && p.parentNode.removeChild(p));
+    }
+
+    // Roles personalizados (ROLES_EXTRA) en la sección "N. RESPONSABILIDADES":
+    // los roles fijos del catálogo (Alta Dirección, Administrativo, etc.)
+    // se siguen mostrando/ocultando exactamente igual que hace
+    // filtrarListasDeRolesSGM de arriba — comportamiento sin cambios.
+    // Esta función SOLO agrega, al final de la sección, una subsección
+    // nueva por cada rol personalizado que el cliente haya creado en el
+    // organigrama (ej. "Alta administrativa"), usando la etiqueta del
+    // rol como título (igual que los roles fijos, sin poner el nombre de
+    // la persona) y el texto genérico de responsabilidad.
+    function agregarRolesExtraResponsabilidadesSGM(xmlDoc, datos, stats) {
+        const normAcentos = t => (t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const extras = Array.isArray(datos.ROLES_EXTRA) ? datos.ROLES_EXTRA.filter(e => e.etiqueta && e.nombre) : [];
+
+        const RE_TITULO_RESPONSABILIDADES = /^(\d+)\.\s*RESPONSABILIDADES\.?\s*$/i;
+        const RE_SUBSECCION = /^(\d+)\.(\d+)\s+([^.]+?)\.?\s*$/;
+        const RE_SECCION_TOP = /^\d+\.\s*[A-ZÁÉÍÓÚÑ]/;
+        const TEXTO_GENERICO = 'Aplicar el presente documento en su ámbito de responsabilidad.';
+
+        // Orden final: primero los roles fijos del catálogo que tengan
+        // nombre, respetando el orden JERÁRQUICO de SGM_ROLES_DISPONIBLES
+        // (Alta Dirección primero, etc.) — reutilizando su subsección si
+        // ya existía en la plantilla, o creándola si no (p.ej. "Alta
+        // Dirección" en documentos que nunca la tuvieron). Al final, los
+        // roles personalizados (ROLES_EXTRA) en el orden en que el
+        // cliente los agregó. Todo se renumera de corrido (8.1, 8.2...).
+        (function cuerpo() {
+            const parrafos = Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'));
+            let idxHeading = -1, seccionNum = null;
+            for (let i = 0; i < parrafos.length; i++) {
+                if (parrafos[i].parentNode && parrafos[i].parentNode.localName === 'tc') continue;
+                const m = RE_TITULO_RESPONSABILIDADES.exec(textoParrafo(parrafos[i]).trim());
+                if (m) { idxHeading = i; seccionNum = m[1]; break; }
+            }
+            if (idxHeading === -1) return;
+
+            let idxFin = parrafos.length;
+            const existentes = []; // { headingNodo, contenidoNodos, etiqueta }
+            for (let j = idxHeading + 1; j < parrafos.length; j++) {
+                const t = textoParrafo(parrafos[j]).trim();
+                const mSub = RE_SUBSECCION.exec(t);
+                if (mSub) {
+                    const contenidoNodos = [];
+                    for (let k = j + 1; k < parrafos.length; k++) {
+                        const tk = textoParrafo(parrafos[k]).trim();
+                        if (RE_SUBSECCION.test(tk) || RE_SECCION_TOP.test(tk)) break;
+                        contenidoNodos.push(parrafos[k]);
+                    }
+                    existentes.push({ headingNodo: parrafos[j], contenidoNodos, etiqueta: mSub[3].trim() });
+                    continue;
+                }
+                if (RE_SECCION_TOP.test(t)) { idxFin = j; break; }
+            }
+            if (!existentes.length) return;
+
+            const porEtiqueta = {};
+            existentes.forEach(e => { porEtiqueta[normAcentos(e.etiqueta)] = e; });
+            const plantillaHeading = existentes[0].headingNodo;
+            const plantillaContenido = existentes[0].contenidoNodos;
+
+            // Orden final jerárquico: roles fijos con nombre (en orden de
+            // SGM_ROLES_DISPONIBLES) + roles personalizados al final.
+            const ordenFinal = [];
+            SGM_ROLES_DISPONIBLES.forEach(rol => {
+                if (!datos[rol.clave]) return;
+                const existente = porEtiqueta[normAcentos(rol.etiqueta)];
+                ordenFinal.push({ etiqueta: rol.etiqueta, existente: existente || null });
+            });
+            extras.forEach(extra => { ordenFinal.push({ etiqueta: extra.etiqueta, existente: null }); });
+            if (!ordenFinal.length) return;
+
+            const padre = parrafos[idxHeading].parentNode;
+            const referencia = idxFin < parrafos.length ? parrafos[idxFin] : null;
+
+            // Sacar TODAS las subsecciones existentes de su posición actual
+            existentes.forEach(e => {
+                if (e.headingNodo.parentNode) e.headingNodo.parentNode.removeChild(e.headingNodo);
+                e.contenidoNodos.forEach(c => { if (c.parentNode) c.parentNode.removeChild(c); });
+            });
+
+            // Reinsertar en el orden final, renumerado de corrido
+            ordenFinal.forEach((item, i) => {
+                const numeroNuevo = `${seccionNum}.${i + 1}`;
+                let headingNodo, contenidoNodos;
+                if (item.existente) {
+                    headingNodo = item.existente.headingNodo;
+                    contenidoNodos = item.existente.contenidoNodos;
+                } else {
+                    headingNodo = plantillaHeading.cloneNode(true);
+                    contenidoNodos = plantillaContenido.map(p => {
+                        const clon = p.cloneNode(true);
+                        const runs = Array.from(clon.getElementsByTagNameNS(NS_W, 'r'));
+                        if (runs.length) {
+                            setTextoRun(runs[0], TEXTO_GENERICO);
+                            for (let k = 1; k < runs.length; k++) setTextoRun(runs[k], '');
+                        }
+                        return clon;
+                    });
+                    stats.reemplazos++;
+                }
+                const runsHeading = Array.from(headingNodo.getElementsByTagNameNS(NS_W, 'r'));
+                if (runsHeading.length) {
+                    setTextoRun(runsHeading[0], `${numeroNuevo} ${item.etiqueta}.`);
+                    for (let k = 1; k < runsHeading.length; k++) setTextoRun(runsHeading[k], '');
+                    runsHeading.forEach(quitarResaltado);
+                }
+                padre.insertBefore(headingNodo, referencia);
+                contenidoNodos.forEach(c => padre.insertBefore(c, referencia));
+            });
+        })();
+
+        (function indice() {
+            for (const tbl of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'tbl'))) {
+                const filas = Array.from(tbl.getElementsByTagNameNS(NS_W, 'tr'));
+                let idxHeading = -1, seccionNum = null;
+                for (let i = 0; i < filas.length; i++) {
+                    const celdas = Array.from(filas[i].getElementsByTagNameNS(NS_W, 'tc'));
+                    if (!celdas.length) continue;
+                    const m = RE_TITULO_RESPONSABILIDADES.exec(textoDeCelda(celdas[0]).trim());
+                    if (m) { idxHeading = i; seccionNum = m[1]; break; }
+                }
+                if (idxHeading === -1) continue;
+
+                let idxFin = filas.length;
+                const existentes = [];
+                for (let j = idxHeading + 1; j < filas.length; j++) {
+                    const celdas = Array.from(filas[j].getElementsByTagNameNS(NS_W, 'tc'));
+                    const t = celdas.length ? textoDeCelda(celdas[0]).trim() : '';
+                    const mSub = RE_SUBSECCION.exec(t);
+                    if (mSub) {
+                        existentes.push({ filaNodo: filas[j], celda0: celdas[0], etiqueta: mSub[3].trim() });
+                        continue;
+                    }
+                    if (RE_SECCION_TOP.test(t)) { idxFin = j; break; }
+                }
+                if (!existentes.length) continue;
+
+                const porEtiqueta = {};
+                existentes.forEach(e => { porEtiqueta[normAcentos(e.etiqueta)] = e; });
+                const filaPlantilla = existentes[0].filaNodo;
+
+                const ordenFinal = [];
+                SGM_ROLES_DISPONIBLES.forEach(rol => {
+                    if (!datos[rol.clave]) return;
+                    const existente = porEtiqueta[normAcentos(rol.etiqueta)];
+                    ordenFinal.push({ etiqueta: rol.etiqueta, existente: existente || null });
+                });
+                extras.forEach(extra => { ordenFinal.push({ etiqueta: extra.etiqueta, existente: null }); });
+                if (!ordenFinal.length) continue;
+
+                const padre = filas[idxHeading].parentNode;
+                const referencia = idxFin < filas.length ? filas[idxFin] : null;
+
+                existentes.forEach(e => { if (e.filaNodo.parentNode) e.filaNodo.parentNode.removeChild(e.filaNodo); });
+
+                ordenFinal.forEach((item, i) => {
+                    const numeroNuevo = `${seccionNum}.${i + 1}`;
+                    const filaNodo = item.existente ? item.existente.filaNodo : filaPlantilla.cloneNode(true);
+                    const celdas = Array.from(filaNodo.getElementsByTagNameNS(NS_W, 'tc'));
+                    if (celdas.length) {
+                        const runs = Array.from(celdas[0].getElementsByTagNameNS(NS_W, 'r'));
+                        if (runs.length) {
+                            setTextoRun(runs[0], `${numeroNuevo} ${item.etiqueta}.`);
+                            for (let k = 1; k < runs.length; k++) setTextoRun(runs[k], '');
+                            runs.forEach(quitarResaltado);
+                        }
+                    }
+                    padre.insertBefore(filaNodo, referencia);
+                });
+            }
+        })();
     }
 
     function textoDeCelda(celda) {
@@ -1859,12 +2341,23 @@
         const porId = {};
         nodos.forEach(n => porId[n.id] = n);
 
+        // Si el organigrama dibujado en el editor visual (en píxeles) es
+        // más ancho que el área útil de una página tamaño carta con
+        // márgenes normales (~6.1 pulgadas), Word no puede centrarlo — se
+        // queda pegado al margen izquierdo y se corta a la derecha. Se
+        // escala todo proporcionalmente para que siempre quepa, sin
+        // importar qué tan grande se haya dibujado en el editor.
+        const MAX_ANCHO_EMU = 5500000; // ~6.01 pulgadas, con margen de seguridad
+        const anchoTotalPxCrudo = (maxX - minX + margen * 2);
+        const escala = Math.min(1, MAX_ANCHO_EMU / (anchoTotalPxCrudo * EMU_PX));
+        const EMU_EFECTIVO = EMU_PX * escala;
+
         let idc = 9100;
         const shapesXml = nodos.map(n => {
-            const x = Math.round((n.x - minX + margen) * EMU_PX);
-            const y = Math.round((n.y - minY + margen) * EMU_PX);
-            const w = Math.round(n.w * EMU_PX);
-            const h = Math.round(ALTO_NODO_PX * EMU_PX);
+            const x = Math.round((n.x - minX + margen) * EMU_EFECTIVO);
+            const y = Math.round((n.y - minY + margen) * EMU_EFECTIVO);
+            const w = Math.round(n.w * EMU_EFECTIVO);
+            const h = Math.round(ALTO_NODO_PX * EMU_EFECTIVO);
             return `
                 <wps:wsp>
                     <wps:cNvPr id="${idc++}" name="Puesto"/>
@@ -1904,10 +2397,10 @@
         const GROSOR_LINEA = 38100;
         const lineasXml = lineasCoords.map(l => {
             const esVertical = Math.abs(l.x2 - l.x1) < 0.5;
-            const x = esVertical ? Math.round((l.x1 * EMU_PX) - GROSOR_LINEA / 2) : Math.round(Math.min(l.x1, l.x2) * EMU_PX);
-            const y = Math.round(Math.min(l.y1, l.y2) * EMU_PX);
-            const cx = esVertical ? GROSOR_LINEA : Math.round(Math.abs(l.x2 - l.x1) * EMU_PX);
-            const cy = esVertical ? Math.round(Math.abs(l.y2 - l.y1) * EMU_PX) : GROSOR_LINEA;
+            const x = esVertical ? Math.round((l.x1 * EMU_EFECTIVO) - GROSOR_LINEA / 2) : Math.round(Math.min(l.x1, l.x2) * EMU_EFECTIVO);
+            const y = Math.round(Math.min(l.y1, l.y2) * EMU_EFECTIVO);
+            const cx = esVertical ? GROSOR_LINEA : Math.round(Math.abs(l.x2 - l.x1) * EMU_EFECTIVO);
+            const cy = esVertical ? Math.round(Math.abs(l.y2 - l.y1) * EMU_EFECTIVO) : GROSOR_LINEA;
             return `
                 <wps:wsp>
                     <wps:cNvPr id="${idc++}" name="Linea"/>
@@ -1923,7 +2416,7 @@
                 </wps:wsp>`;
         }).join('');
 
-        const cx = Math.round(maxX - minX + margen * 2), cy = Math.round(maxY - minY + margen * 2);
+        const cx = Math.round((maxX - minX + margen * 2) * EMU_EFECTIVO), cy = Math.round((maxY - minY + margen * 2) * EMU_EFECTIVO);
         const xml = `<w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0">
             <wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/>
             <wp:docPr id="9099" name="Organigrama"/>
@@ -1970,7 +2463,17 @@
         // nada en su lugar, dejando el espacio en blanco cuando ese era el
         // único formato presente en el documento (p.ej. en la sección
         // "5.1 Función metrológica" del Manual).
+        const esFormaOcultaVacia = pict => {
+            const shape = pict.getElementsByTagName('v:shape')[0] || pict.getElementsByTagName('shape')[0];
+            if (!shape) return false;
+            const style = shape.getAttribute('style') || '';
+            // Word deja formas de conector ocultas y sin imagen real como
+            // plantilla invisible (v:shapetype "_x0000_t34", sin
+            // v:imagedata) — no son el organigrama, hay que ignorarlas.
+            return /visibility\s*:\s*hidden/i.test(style) && pict.getElementsByTagName('v:imagedata').length === 0 && pict.getElementsByTagName('imagedata').length === 0;
+        };
         const parrafosConPict = Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'pict'))
+            .filter(pict => !esFormaOcultaVacia(pict))
             .map(pict => {
                 let nodo = pict.parentNode;
                 while (nodo && nodo.localName !== 'p') nodo = nodo.parentNode;
@@ -2007,9 +2510,7 @@
         return false;
     }
 
-    // ══════════════════════════════════════════════════════════════
-    // ── SGM: motor de personalización de Excel (SOFT-G / SOFT-T) ───
-    // ══════════════════════════════════════════════════════════════
+    // SGM: motor de personalización de Excel (SOFT-G / SOFT-T)
     const NS_S = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
     const NS_XDR = 'http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing';
     const NS_A = 'http://schemas.openxmlformats.org/drawingml/2006/main';
@@ -2187,6 +2688,14 @@
         ponerTextoCeldaXlsx(celdaC4, nombreRepresentante);
         asegurarEstiloSinRojoXlsx(stylesDoc, celdaC4);
 
+        // "Localización del documento: Estación de servicio" (fila 21) — el
+        // machote de referencia trae ahí el texto genérico "Estación de
+        // servicio" sin ningún placeholder amarillo ni rojo que lo marcara,
+        // así que nunca se estaba reemplazando por la Razón Social real del
+        // cliente (mismo dato que NOMBRE_REPRESENTANTE, en su forma natural,
+        // no en mayúsculas como en C4).
+        ponerTextoCeldaXlsx(celdaXlsx(sheetDoc, 'D21'), val('NOMBRE_REPRESENTANTE', 'Estación de servicio'));
+
         ponerTextoCeldaXlsx(celdaXlsx(sheetDoc, 'B18'), nombreElabora);
         ponerTextoCeldaXlsx(celdaXlsx(sheetDoc, 'D18'), puestoElabora);
         ponerTextoCeldaXlsx(celdaXlsx(sheetDoc, 'B19'), nombreReviso);
@@ -2221,12 +2730,11 @@
         zip.file(rutaSheet, xmlSerializer.serializeToString(sheetDoc));
         zip.file('xl/styles.xml', xmlSerializer.serializeToString(stylesDoc));
 
-        stats.reemplazos += 10;
+        stats.reemplazos += 11;
         return await zip.generateAsync({ type: 'blob' });
     }
 
-    // ══════════════════════════════════════════════════════════════
-    // ── SASISOPA: motor de personalización de Excel (F-04-01, etc.) ──
+    // SASISOPA: motor de personalización de Excel (F-04-01, etc.)
     // ══════════════════════════════════════════════════════════════
     // A diferencia de SGM (un puñado de plantillas .xlsx con layout fijo,
     // por eso se usan celdas exactas como B18/D18), SASISOPA trae decenas
@@ -2398,7 +2906,7 @@
         return await zip.generateAsync({ type: 'blob' });
     }
 
-    // ── Metadatos internos del .docx (docProps/core.xml) ────────
+    // Metadatos internos del .docx (docProps/core.xml)
     // El cuerpo del documento (word/document.xml) ya se personaliza vía los
     // resaltados amarillos, pero el título/asunto interno del archivo
     // (los mismos que Google Drive, Windows o Word muestran en vistas
@@ -2452,11 +2960,15 @@
             procesarTablaDocumentoControlado(xmlDoc, datos, celdasFirmaPendientes);
             if (_seccionActual === 'sgm') {
                 procesarNotacionOrganizacionSGM(xmlDoc, datos, stats);
+                procesarLocalizacionDocumentoSGM(xmlDoc, datos, stats);
+                procesarFirmaAtentamenteSGM(xmlDoc, datos, stats);
                 procesarControlDeCambiosSGM(xmlDoc, datos);
                 neutralizarTablasDescriptivasSGM(xmlDoc);
                 reconstruirTarjetasPuestosSGM(xmlDoc, datos);
                 aplicarGradoEstudiosSGM(xmlDoc, datos);
+                // reconstruirResponsabilidadesSGM(xmlDoc, datos, stats); // DESACTIVADO a petición: sección 8 vuelve a mostrar puesto (no nombre), solo se muestran/ocultan roles fijos + se agregan roles extra al final (ver agregarRolesExtraResponsabilidadesSGM)
                 filtrarListasDeRolesSGM(xmlDoc, datos, nombreArchivo);
+                agregarRolesExtraResponsabilidadesSGM(xmlDoc, datos, stats);
                 procesarFrasesMultiPuestoSGM(xmlDoc, datos, stats);
                 procesarInmediatoSiguienteSGM(xmlDoc, datos, nombreArchivo, stats);
             } else if (_seccionActual === 'sasisopa') {
@@ -2550,9 +3062,7 @@
         return await zip.generateAsync({ type: 'blob' });
     }
 
-    // ══════════════════════════════════════════════════════════
     // FIRESTORE
-    // ══════════════════════════════════════════════════════════
     async function listarClientes() {
         const { collection, getDocs, query, orderBy } = await fsFns();
         const sis = sistemaActivo();
@@ -2569,9 +3079,7 @@
         return ref.id;
     }
 
-    // ══════════════════════════════════════════════════════════
     // ESTILOS (tokens tomados de las variables CSS del portal)
-    // ══════════════════════════════════════════════════════════
     function inyectarEstilosGestoria() {
         if (document.getElementById('gestoria-estilos')) return;
         const style = document.createElement('style');
@@ -2722,9 +3230,7 @@
         document.head.appendChild(style);
     }
 
-    // ══════════════════════════════════════════════════════════
     // UI
-    // ══════════════════════════════════════════════════════════
     function renderRail() {
         return `
         <div class="gs-rail">
@@ -2751,7 +3257,7 @@
         if (btnCal) btnCal.addEventListener('click', abrirPanelParrilla);
     }
 
-    // ── Panel flotante de la Parrilla de Documentos ─────────────
+    // Panel flotante de la Parrilla de Documentos 
     let _parrillaNodoOriginal = { padre: null, siguiente: null };
 
     function crearOverlayParrilla() {
@@ -2948,16 +3454,18 @@
                     <div class="gs-subtitle" style="margin-bottom:10px;">Marca uno o más puestos responsables para cada proceso. Aplica a documentos donde antes solo se podía asignar un puesto.</div>
                     ${sec.fuente.map(frase => {
                         const seleccion = (cliente.MULTIPUESTO || {})[frase.id] || [];
+                        const extra = (cliente.MULTIPUESTO_EXTRA || {})[frase.id] || '';
                         return `
                         <div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px dashed rgba(59,130,246,0.15);">
                             <div style="font-size:12.5px;font-weight:600;color:var(--text);margin-bottom:8px;">${frase.etiqueta}</div>
-                            <div style="display:flex;flex-wrap:wrap;gap:12px;">
+                            <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:8px;">
                                 ${SGM_ROLES_DISPONIBLES.map(rol => `
                                     <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--text2);">
                                         <input type="checkbox" data-multipuesto="${frase.id}" data-multipuesto-rol="${rol.clave}" ${seleccion.includes(rol.clave) ? 'checked' : ''}>
                                         ${rol.etiqueta}
                                     </label>`).join('')}
                             </div>
+                            <input type="text" data-multipuesto-extra="${frase.id}" value="${extra}" placeholder="Agregar otro puesto o rol (opcional)" style="font-size:12.5px;padding:6px 10px;border:1px solid rgba(59,130,246,0.25);border-radius:8px;width:260px;max-width:100%;">
                         </div>`;
                     }).join('')}
                 </div>
@@ -3098,6 +3606,10 @@
             chk.addEventListener('change', () => actualizarPreview(cont));
         });
 
+        cont.querySelectorAll('[data-multipuesto-extra]').forEach(inp => {
+            inp.addEventListener('input', () => actualizarPreview(cont));
+        });
+
         cont.querySelectorAll('.gs-rol-fila').forEach(fila => {
             const check = fila.querySelector('input[type="checkbox"]');
             const texto = fila.querySelector('input[type="text"]');
@@ -3196,9 +3708,7 @@
         });
     }
 
-    // ══════════════════════════════════════════════════════════
     // EDITOR VISUAL DEL ORGANIGRAMA (mapa conceptual arrastrable)
-    // ══════════════════════════════════════════════════════════
     function nodosDesdeChecklist(cont) {
         const sis = sistemaActivo();
         const nodos = [];
@@ -3639,6 +4149,13 @@
         });
         if (Object.keys(multipuesto).length) datos.MULTIPUESTO = multipuesto;
 
+        const multipuestoExtra = {};
+        cont.querySelectorAll('[data-multipuesto-extra]').forEach(inp => {
+            const valor = (inp.value || '').trim();
+            if (valor) multipuestoExtra[inp.dataset.multipuestoExtra] = valor;
+        });
+        if (Object.keys(multipuestoExtra).length) datos.MULTIPUESTO_EXTRA = multipuestoExtra;
+
         const catalogos = {};
         cont.querySelectorAll('.gs-catalogo-puesto').forEach(panel => {
             const clave = panel.dataset.rolCatalogo;
@@ -3653,7 +4170,6 @@
             catalogos[clave] = cats;
         });
         if (Object.keys(catalogos).length) datos.CATALOGO_PUESTOS = catalogos;
-
         if (_logoDataUrlActual) datos.LOGO_BASE64 = _logoDataUrlActual;
         if (_firmasDataUrlActual.ELABORA) datos.FIRMA_ELABORA_BASE64 = _firmasDataUrlActual.ELABORA;
         if (_firmasDataUrlActual.REVISO) datos.FIRMA_REVISO_BASE64 = _firmasDataUrlActual.REVISO;
@@ -3778,7 +4294,6 @@
         mostrarProgreso(cont, 'ok', `${ICONO.check} Listo: ${stats.reemplazos} reemplazos, ${stats.logosInsertados} logo(s) insertado(s), ${stats.pendientes.length} pendientes. Reporte incluido en el .zip.`);
     }
 
-    // ══════════════════════════════════════════════════════════
     // CERTIFICADO TECNOLAB — llenado y exportación (PDF / Word / XML)
     // ══════════════════════════════════════════════════════════
     // A diferencia de SASISOPA/SGM (que personalizan machotes .docx
@@ -3870,9 +4385,7 @@
         } catch (e) { return null; }
     }
 
-    // ══════════════════════════════════════════════════════════
     // FORMULARIO
-    // ══════════════════════════════════════════════════════════
     function renderCertificadoTecnolab(cont) {
         if (!_certDatos) _certDatos = certificadoDatosDefault();
 
@@ -4109,9 +4622,7 @@
         el.innerHTML = html;
     }
 
-    // ══════════════════════════════════════════════════════════
     // CONSTRUCCIÓN DEL HTML DEL CERTIFICADO
-    // ══════════════════════════════════════════════════════════
     function construirHTMLCertificado(d, qrDataUrl) {
         const acc = TECNOLAB_ACCENT;
         const qrImg = qrDataUrl
@@ -4321,9 +4832,7 @@
         iframe.srcdoc = construirHTMLCertificado(d, _certQrDataUrl);
     }
 
-    // ══════════════════════════════════════════════════════════
     // EXPORTACIÓN — PDF (impresión del navegador, mismo HTML que la vista previa)
-    // ══════════════════════════════════════════════════════════
     function exportarCertificadoPDF(cont) {
         _certDatos = leerCertificadoDeFormulario(cont);
         const faltantes = TECNOLAB_CAMPOS_OBLIGATORIOS.filter(k => !(_certDatos[k] || '').trim());
@@ -4351,9 +4860,7 @@
         mostrarProgresoCert(cont, 'ok', ICONO.check + ' Se abrió la vista de impresión — elige "Guardar como PDF" en el diálogo del navegador.');
     }
 
-    // ══════════════════════════════════════════════════════════
     // EXPORTACIÓN — WORD (.doc editable vía HTML con espacio de nombres de Office)
-    // ══════════════════════════════════════════════════════════
     function exportarCertificadoWord(cont) {
         _certDatos = leerCertificadoDeFormulario(cont);
         const faltantes = TECNOLAB_CAMPOS_OBLIGATORIOS.filter(k => !(_certDatos[k] || '').trim());
@@ -4379,9 +4886,7 @@
         mostrarProgresoCert(cont, 'ok', ICONO.check + ' Word descargado. Word puede tardar unos segundos en abrirlo la primera vez.');
     }
 
-    // ══════════════════════════════════════════════════════════
     // EXPORTACIÓN — XML (datos estructurados, no es CFDI/timbrado)
-    // ══════════════════════════════════════════════════════════
     function escXmlCert(s) {
         return (s === undefined || s === null ? '' : String(s))
             .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')

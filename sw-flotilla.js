@@ -1,7 +1,5 @@
-// ══════════════════════════════════════════════════
 // sw-flotilla.js — Service Worker Tecnocontrol PWA Móvil
 // v6 — Network-first (con fallback a cache) + notificaciones push nativas
-// ══════════════════════════════════════════════════
 const CACHE = 'tcn-movil-v8'; // ⬅️ v7→v8: app shell más completa para arranque offline (+manifest); precache resiliente a 404 individuales
 const PRECACHE = [
   './flotilla-app.html',
@@ -10,10 +8,7 @@ const PRECACHE = [
   'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap',
 ];
 
-// ── Instalar — precachear archivos core ──
-// NOTA: cache.addAll() falla TODO el precache si UN solo archivo da 404.
-// Por eso cacheamos uno por uno: si falta un archivo (ej. un ícono que
-// todavía no se sube), el resto del precache no se ve afectado.
+//  Instalar — precachear archivos core 
 self.addEventListener('install', e => {
   e.waitUntil(
     caches.open(CACHE).then(c =>
@@ -33,7 +28,7 @@ self.addEventListener('activate', e => {
   );
 });
 
-// ── Fetch — network-first para HTML/JS (siempre lo más nuevo), cache-first solo para fuentes/estáticos ──
+//  Fetch — network-first para HTML/JS (siempre lo más nuevo), cache-first solo para fuentes/estáticos 
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
 

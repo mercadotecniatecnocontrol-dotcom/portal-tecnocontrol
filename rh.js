@@ -1,12 +1,10 @@
-// ══════════════════════════════════════════════════════════════
 // MÓDULO RH — Portal Tecnocontrol
 // Archivo: /rh.js
 // Dependencias globales que provee index.html:
 //   - db, auth (Firebase)
 //   - esAdminTotal(email), mostrarPush()
-// ══════════════════════════════════════════════════════════════
 
-// ── Inyectar estilos CSS del módulo RH ──────────────────────
+//  Inyectar estilos CSS del módulo RH 
 (function inyectarCSSRH() {
     if (document.getElementById('css-rh')) return;
     const style = document.createElement('style');
@@ -376,7 +374,7 @@ function renderRHDash(data, key){
     if(incEl){ incEl.innerText = inc.length;
         document.getElementById('rh-delta-incapacidad').innerHTML = `<span class="rh-kpi-delta neutral">${inc.reduce((s,i)=>s+(Number(i.dias)||0),0)} días totales</span>`; }
 
-    // ── Helper para tabla de registros con editar/eliminar ──
+    // Helper para tabla de registros con editar/eliminar
     const tablaRegistros = (lista, cols, tipo) => {
         if(!lista.length) return `<div style="text-align:center;color:#94a3b8;padding:12px;font-size:12px;">Sin registros esta semana</div>`;
         return lista.map(r => {
@@ -392,7 +390,7 @@ function renderRHDash(data, key){
         }).join('');
     };
 
-    // ── Tabla auxiliar con columnas legibles ──
+    //  Tabla auxiliar con columnas legibles 
     const tablaRH = (lista, campos, tipo) => {
         if(!lista.length) return `<div style="text-align:center;color:#94a3b8;padding:12px;font-size:12px;">Sin registros esta semana</div>`;
         return lista.map(r => `
@@ -411,7 +409,7 @@ function renderRHDash(data, key){
             <span></span>
         </div>`;
 
-    // ── Gráfica dona ausentismo ──
+    // ráfica dona ausentismo
     const elAus = document.getElementById('rh-chart-ausentismo');
     if(elAus){
         if(rhChartAus) rhChartAus.destroy();
@@ -427,7 +425,7 @@ function renderRHDash(data, key){
         document.getElementById('rh-ausentismo-pct').innerText = totalFaltas+totalRetardos;
     }
 
-    // ── Dona vacantes ──
+    // Dona vacantes
     const elVac = document.getElementById('rh-chart-vacantes');
     if(elVac){
         if(rhChartVac) rhChartVac.destroy();
@@ -443,8 +441,7 @@ function renderRHDash(data, key){
         document.getElementById('rh-vacantes-total').innerHTML=`${ab+nu+co}<br><span style="font-size:9px;font-weight:400;color:#64748b;">total</span>`;
     }
 
-    // ── Renderizar listas en el HTML ─────────────────────────
-    // Vacantes → rh-vacantes-lista (existe en HTML)
+    //  Renderizar listas en el HTML
     const vacListEl = document.getElementById('rh-vacantes-lista');
     if(vacListEl) vacListEl.innerHTML = vac.length
         ? headerRH(['Puesto','Área','Apertura','Estatus']) +
@@ -496,7 +493,7 @@ function renderRHDash(data, key){
 }
 
 
-// ── Selector de áreas ──────────────────────────────────────
+// Selector de áreas
 // Áreas RH — lista base + campo para escribir una diferente
 const RH_AREAS_LIST = ['Ingresos','Egresos','Contabilidad','Recursos Humanos','Marketing','Administración','Ventas',
     'Operaciones','Logística','Almacén','Servicios Técnicos','Compras','TI / Sistemas','Dirección General'];
@@ -524,7 +521,7 @@ window.rhAreaSelChange = (sel) => {
 
 const TODAY = new Date().toISOString().slice(0,10);
 
-// ── Formularios por tipo ────────────────────────────────────
+// Formularios por tipo 
 const RH_FORMS = {
     retardo: () => `
         <p style="font-size:11px;color:#64748b;margin-bottom:12px;">Registra cada retardo individualmente con colaborador y hora exacta.</p>
@@ -955,26 +952,21 @@ document.getElementById('modal-rh').addEventListener('click', e => {
     if(e.target === document.getElementById('modal-rh')) document.getElementById('modal-rh').style.display = 'none';
 });
 
-// ══════════════════════════════════════════════════════════════
-
-
 // Exponer función principal globalmente
 window.toggleRHDash = function(area, email) {
     _toggleRHDash(area, email);
 };
 
-// ══════════════════════════════════════════════════════════════
 // MÓDULO RH 360° — Directorio, Perfiles, Organigrama
 // Colección Firestore: rh_empleados
-// ══════════════════════════════════════════════════════════════
 
-// ── Estado global del módulo ──
+// Estado global del módulo 
 let rh360Empleados = [];        // todos los colaboradores cargados
 let rh360Vista = 'directorio';  // vista activa: directorio | organigrama | alertas
 let rh360EmpleadoAct = null;    // colaborador abierto en modal
 let rh360TabModal = 'info';     // tab activo dentro del modal
 
-// ── Campos de documentos con alertas ──
+// Campos de documentos con alertas 
 const RH360_DOCS = [
     {key:'ine',        label:'INE'},
     {key:'licencia',   label:'Licencia'},
@@ -988,10 +980,10 @@ const RH360_DOCS = [
     {key:'verificacion',label:'Verificación'},
 ];
 
-// ── URL del Google Sheet publicado como CSV ──
+// URL del Google Sheet publicado como CSV
 const RH360_SHEET_CSV = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTSL761esTwMxJgMnSkV4AAxidLzLL6B-fIaeM9xkR02BeBrYifAvvVt8Dnk4mFpQ/pub?output=csv';
 
-// ── Inicializar módulo RH 360° ──
+// Inicializar módulo RH 360° 
 window.initRH360 = async function(){
     const root = document.getElementById('rh360-root');
     if(!root) return;
@@ -1004,7 +996,7 @@ window.initRH360 = async function(){
     });
 };
 
-// ── Cargar empleados: primero Firestore, luego Sheet como fallback ──
+//  Cargar empleados: primero Firestore, luego Sheet como fallback 
 async function rh360CargarEmpleados(){
     try {
         const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
@@ -1044,7 +1036,7 @@ async function rh360CargarEmpleados(){
     }
 }
 
-// ── Limpiar duplicados en Firestore: conservar uno por nombre+puesto ──
+//  Limpiar duplicados en Firestore: conservar uno por nombre+puesto
 async function rh360LimpiarDuplicados(todos, fs){
     try {
         const vistos = new Set();
@@ -1067,7 +1059,7 @@ async function rh360LimpiarDuplicados(todos, fs){
     } catch(e){ console.warn('[RH360] Error limpiando duplicados:', e.message); }
 }
 
-// ── Parsear CSV del Sheet ──
+//  Parsear CSV del Sheet 
 // Detecta automáticamente las columnas reales del Sheet
 function rh360ParseCSV(csv){
     const rawLines = csv.split('\n');
@@ -1191,7 +1183,7 @@ async function rh360SincronizarSheet(empleados){
     } catch(e){ console.warn('[RH360] No se pudo sincronizar Sheet:', e.message); }
 }
 
-// ── HTML de navegación ──
+//  HTML de navegación
 function rh360NavHTML(){
     return '<div class="rh360-nav" id="rh360-nav">'+
         '<button class="rh360-nav-btn on" id="rh360-btn-directorio" onclick="rh360SetVista(\'directorio\')">'+
@@ -1209,7 +1201,7 @@ function rh360NavHTML(){
     '</div>';
 }
 
-// ── Cambiar vista activa ──
+//  Cambiar vista activa 
 window.rh360SetVista = function(v){
     rh360Vista = v;
     ['directorio','organigrama','alertas'].forEach(k=>{
@@ -1223,7 +1215,7 @@ window.rh360SetVista = function(v){
     else if(v==='alertas') cont.innerHTML = rh360HTMLAlertas();
 };
 
-// ── DIRECTORIO ──
+// DIRECTORIO
 function rh360PuedeEliminar(){
     const yo = window.auth?.currentUser?.email||'';
     return yo===RH_EMAIL||(typeof esAdminTotal==='function'&&esAdminTotal(yo))||(typeof window.esAdminTotal==='function'&&window.esAdminTotal(yo));
@@ -1235,7 +1227,7 @@ function rh360HTMLDirectorio(){
     const puedeElim = rh360PuedeEliminar();
 
     return ''+
-    // ── Barra de búsqueda + botón filtros ──
+    // Barra de búsqueda + botón filtros
     '<div style="display:flex;gap:8px;margin-bottom:10px;align-items:center">'+
         '<input class="rh360-search" id="rh360-buscar" placeholder="Buscar por nombre, puesto, departamento..." oninput="rh360Filtrar()" style="flex:1">'+
         '<button onclick="rh360ToggleFiltros()" id="rh360-btn-filtros" style="padding:9px 14px;border:1.5px solid #E2E8F0;border-radius:10px;background:#fff;font-size:12px;font-weight:700;cursor:pointer;color:#475569;white-space:nowrap;display:inline-flex;align-items:center;gap:6px">'+
@@ -1270,7 +1262,7 @@ function rh360HTMLDirectorio(){
         '</div>'+
         '<button onclick="rh360LimpiarFiltros()" style="margin-top:10px;font-size:11px;font-weight:700;color:#64748B;background:none;border:none;cursor:pointer;padding:0">Limpiar filtros</button>'+
     '</div>'+
-    // ── Grid de tarjetas ──
+    //  Grid de tarjetas 
     '<div class="rh360-grid" id="rh360-cards">'+rh360CardsHTML(rh360Empleados, puedeElim)+'</div>';
 }
 
@@ -1359,7 +1351,7 @@ function rh360CardsHTML(lista, puedeElim){
     }).join('');
 }
 
-// ── Subir foto de perfil ──
+// Subir foto de perfil
 window.rh360SubirFoto = function(empId){
     const inp = document.createElement('input');
     inp.type='file'; inp.accept='image/*'; inp.style.display='none';
@@ -1431,7 +1423,7 @@ window.rh360Eliminar = async function(id){
     }
 };
 
-// ── PERFIL 360° ──
+// PERFIL 360°
 window.rh360AbrirPerfil = function(id){
     const e = rh360Empleados.find(x=>x.id===id);
     if(!e) return;
@@ -1509,7 +1501,7 @@ function rh360TabContent(e, tab){
     return '';
 }
 
-// ── Tab: Información general ──
+// Tab: Información general
 function rh360TabInfo(e){
     const campos = [
         ['Nombre completo', e.nombre],
@@ -1544,7 +1536,7 @@ function rh360TabInfo(e){
         '<div class="rh360-grid2">'+contacto.map(([l,v])=>rFld(l,v)).join('')+'</div></div>';
 }
 
-// ── Tab: Documentos con semáforo ──
+// Tab: Documentos con semáforo
 function rh360TabDocs(e){
     const semaforo = {verde:'Vigente',amarillo:'Próximo a vencer',rojo:'Vencido',gris:'Sin información'};
     const colores = {verde:'#15803D',amarillo:'#D97706',rojo:'#DC2626',gris:'#94A3B8'};
@@ -1567,7 +1559,7 @@ function rh360TabDocs(e){
     return '<div class="rh360-section"><div class="rh360-section-title">Estado documental</div>'+rows+'</div>';
 }
 
-// ── Tab: Vehículo asignado ──
+//  Tab: Vehículo asignado
 function rh360TabVeh(e){
     const veh = (typeof flV !== 'undefined')
         ? flV.find(v=>(v.responsable||'').toUpperCase().includes((e.nombre||'').split(' ')[0].toUpperCase()))||
@@ -1591,7 +1583,7 @@ function rh360TabVeh(e){
         ).join('')+'</div></div>';
 }
 
-// ── Tab: Historial / Timeline ──
+//  Tab: Historial / Timeline
 function rh360TabHist(e){
     const eventos = e.historial || [];
     // Si no hay historial manual, construir uno desde los datos básicos
@@ -1611,7 +1603,7 @@ function rh360TabHist(e){
     '</div>';
 }
 
-// ── Tab: Editar colaborador ──
+//  Tab: Editar colaborador 
 function rh360TabEdit(e){
     const campos = [
         {key:'nombre',label:'Nombre completo',type:'text'},
@@ -1650,7 +1642,7 @@ function rh360TabEdit(e){
     '</div>';
 }
 
-// ── Guardar edición de colaborador ──
+//  Guardar edición de colaborador
 window.rh360Guardar = async function(id){
     const campos = ['nombre','puesto','departamento','plaza','jefe','fecha_ingreso','estatus','email','telefono','curp','rfc','nss','num_empleado','tipo_contrato','tipo_sangre','estado_civil'];
     const data = {};
@@ -1681,7 +1673,7 @@ window.rh360Guardar = async function(id){
     }
 };
 
-// ── Actualizar estado de documento ──
+//  Actualizar estado de documento
 window.rh360EditarDoc = function(empId, docKey){
     const e = rh360Empleados.find(x=>x.id===empId);
     if(!e) return;
@@ -1720,7 +1712,7 @@ window.rh360EditarDoc = function(empId, docKey){
     };
 };
 
-// ── Agregar evento al historial ──
+//  Agregar evento al historial
 window.rh360AgregarHistorial = function(empId){
     const e = rh360Empleados.find(x=>x.id===empId);
     if(!e) return;
@@ -1753,7 +1745,7 @@ window.rh360AgregarHistorial = function(empId){
     };
 };
 
-// ── Agregar nuevo colaborador ──
+//  Agregar nuevo colaborador
 window.rh360AbrirAgregarEmp = function(){
     const nuevo={id:'new_'+Date.now(),nombre:'',puesto:'',departamento:'',plaza:'',estatus:'activo'};
     rh360EmpleadoAct=nuevo;
@@ -1762,7 +1754,7 @@ window.rh360AbrirAgregarEmp = function(){
     if(modal){modal.classList.add('show');rh360RenderModal(nuevo);}
 };
 
-// ── ORGANIGRAMA ──
+// ORGANIGRAMA
 function rh360HTMLOrganigrama(){
     // Agrupar por departamento y jefe
     const deptos = {};
@@ -1789,7 +1781,7 @@ function rh360HTMLOrganigrama(){
         '<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start">'+nodos+'</div>';
 }
 
-// ── ALERTAS ──
+// ALERTAS
 function rh360HTMLAlertas(){
     const alertas=[];
     rh360Empleados.forEach(e=>{
@@ -1821,12 +1813,12 @@ function rh360HTMLAlertas(){
     return html;
 }
 
-// ── HTML del modal ──
+//  HTML del modal 
 function rh360ModalHTML(){
     return '<div id="rh360-modal"><div class="rh360-modal-box" id="rh360-modal-box"></div></div>';
 }
 
-// ── Helpers ──
+//  Helpers 
 function rh360ColorDoc(val){
     if(!val||val==='') return 'gris';
     if(val==='vigente') return 'verde';
@@ -1859,7 +1851,7 @@ function rh360Escape(s){
     return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// ── Integración con toggleRHDash ──
+//  Integración con toggleRHDash 
 // Cuando se activa el área de RH, también inicializar el módulo 360°
 const _origToggleRHDash = window.toggleRHDash;
 window.toggleRHDash = function(area, email){

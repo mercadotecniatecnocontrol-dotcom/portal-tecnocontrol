@@ -1,10 +1,7 @@
-// ══════════════════════════════════════════════════════════════
 // pagos.js — Módulo Pagos v3 · Tecnocontrol Portal Operativo
 // Incluye: Dashboard KPIs + Registros individuales + Bandeja Flotilla
-// ══════════════════════════════════════════════════════════════
 
 // DASHBOARD PAGOS v2 — Registros individuales con auto-cálculo
-// ══════════════════════════════════════════════════════════════
 
     let pagMes = new Date().getMonth();
     let pagAnio = new Date().getFullYear();
@@ -31,9 +28,7 @@
     window.pagosMesPrev = () => { pagMes--; if(pagMes<0){pagMes=11;pagAnio--;} actualizarLabelPag(); cargarRegistrosPag(); };
     window.pagosMesNext = () => { pagMes++; if(pagMes>11){pagMes=0;pagAnio++;} actualizarLabelPag(); cargarRegistrosPag(); };
 
-    // ══════════════════════════════════════════════════
     // Cargar registros del mes desde Firestore
-    // ══════════════════════════════════════════════════
     async function cargarRegistrosPag(){
         const key = pagKey();
         try {
@@ -54,9 +49,7 @@
         }
     }
 
-    // ══════════════════════════════════════════════════
     // Calcular KPIs automáticamente de los registros
-    // ══════════════════════════════════════════════════
     function calcularKPIs(){
         const total = pagRegistros.length;
         const setKPI = (id, val) => { const el = document.getElementById(id); if(el) el.innerText = val; };
@@ -131,9 +124,7 @@
         }
     }
 
-    // ══════════════════════════════════════════════════
     // Render lista de registros
-    // ══════════════════════════════════════════════════
     function renderListaPag(filtro){
         const el = document.getElementById('pag-registros-lista');
         const countEl = document.getElementById('pag-registros-count');
@@ -199,9 +190,7 @@
         renderListaPag();
     };
 
-    // ══════════════════════════════════════════════════
     // Formulario de registro individual
-    // ══════════════════════════════════════════════════
     window.abrirPagosRegistro = (editId) => {
         pagEditId = editId || null;
         const form = document.getElementById('pagos-inline-form');
@@ -327,9 +316,7 @@
         } catch(e){ alert('Error: '+e.message); }
     };
 
-    // ══════════════════════════════════════════════════
     // Guardar registro individual
-    // ══════════════════════════════════════════════════
     window.guardarPagoRegistro = async () => {
         const getVal = id => { const el=document.getElementById(id); return el?el.value.trim():''; };
         const getNum = id => { const v=getVal(id); return v?Number(v):undefined; };
@@ -417,12 +404,10 @@
 
     console.log('[PAGOS v2] ✅ Módulo cargado');
 
-// ══════════════════════════════════════════════════════════════
 // SECCIÓN FLOTILLA — Bandeja de pagos pendientes de vehículos
 // Lee flotilla_solicitudes donde estatus = 'Pagos'
 // Escribe comprobante, monto, factura de vuelta al mismo doc
 // Visible para: pagos@, p.pinedo@, c.acosta@, admins
-// ══════════════════════════════════════════════════════════════
 (function(){
 'use strict';
 
@@ -450,12 +435,12 @@ function _esUsuarioPagos(email){
   return EMAILS_PAGOS.includes(email) || ADMINS.includes(email);
 }
 
-// ── Estado local ──
+// Estado local
 let _flSolsPago   = [];   // solicitudes con estatus Pagos
 let _flFiltroStat = '';   // '' | 'vencida' | 'hoy' | 'proxima'
 let _comentModal  = null; // id de sol abierta en modal comentarios
 
-// ── Render principal de la bandeja ──
+//  Render principal de la bandeja 
 async function renderBandejaFlotilla(){
   const cont = document.getElementById('pfl-bandeja');
   if(!cont) return;
@@ -790,7 +775,7 @@ window._pflGuardarPago = async function(solId){
   }
 };
 
-// ── Modal comentarios de ida y vuelta ──
+// Modal comentarios de ida y vuelta
 window._pflComentarios = async function(solId){
   const s = _flSolsPago.find(x=>x.id===solId);
   if(!s) return;
@@ -902,7 +887,7 @@ window._pflVerSol = function(solId){
   setTimeout(()=>{ if(window.flVerSol) window.flVerSol(solId); }, 600);
 };
 
-// ── Hook en verArea — inyectar bandeja al entrar a Pagos ──
+// Hook en verArea — inyectar bandeja al entrar a Pagos
 const _CHECK_PFL = setInterval(()=>{
   if(typeof window.verArea !== 'function') return;
   clearInterval(_CHECK_PFL);
