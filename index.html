@@ -85,6 +85,10 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
                 Mis notificaciones
             </button>
+            <button id="btn-agregar-usuario" onclick="abrirModalUsuario()" style="display:none;width:100%;align-items:center;gap:8px;padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:rgba(255,255,255,.75);font-family:inherit;font-size:11.5px;font-weight:600;cursor:pointer;text-align:left">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+                Agregar usuario
+            </button>
         </div>
         <div class="sidebar-footer" onclick="cerrarSesion()">↩ Cerrar Sesión</div>
     </nav>
@@ -1709,6 +1713,37 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
     </div>
 </div>
 
+<!-- MODAL AGREGAR USUARIO (solo ADMIN_EMAILS) -->
+<div id="modal-nuevo-usuario" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);z-index:3200;align-items:center;justify-content:center;">
+    <div style="background:#ffffff;border-radius:20px;padding:28px;width:420px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.25);">
+        <div style="font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;color:#1e293b;margin-bottom:6px;">👤 Agregar usuario</div>
+        <div style="font-size:11px;color:#64748b;margin-bottom:16px;">Crea el acceso al portal y asigna su área. Aparecerá de inmediato en todos los menús sin recargar la página.</div>
+        <label class="edit-label">Nombre completo</label>
+        <input type="text" id="nu-nombre" class="edit-field" placeholder="Ej: Juan Pérez López">
+        <label class="edit-label">Correo</label>
+        <input type="email" id="nu-correo" class="edit-field" placeholder="usuario@tecnocontrol.com.mx">
+        <label class="edit-label">Contraseña</label>
+        <input type="text" id="nu-pass" class="edit-field" placeholder="Mínimo 6 caracteres">
+        <div class="edit-row" style="margin-top:14px;">
+            <div>
+                <label class="edit-label">Departamento</label>
+                <select id="nu-depto" class="edit-field" style="margin-bottom:0;"></select>
+            </div>
+            <div>
+                <label class="edit-label">Rol</label>
+                <select id="nu-rol" class="edit-field" style="margin-bottom:0;">
+                    <option value="usuario">Usuario</option>
+                    <option value="admin">Admin (acceso total)</option>
+                </select>
+            </div>
+        </div>
+        <div style="margin-top:18px;">
+            <button id="nu-btn-guardar" class="btn-guardar-edit" onclick="guardarUsuarioNuevo()">CREAR USUARIO</button>
+            <button class="btn-cancel-edit" onclick="cerrarModalUsuario()">Cancelar</button>
+        </div>
+    </div>
+</div>
+
 <!-- MODAL RH -->
 <div id="modal-rh">
     <div class="rh-modal-box">
@@ -2046,9 +2081,9 @@ function cerrarPush(el) {
 </script>
 
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, limit, doc, updateDoc, deleteDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, limit, doc, updateDoc, deleteDoc, arrayUnion, getDocs, setDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const config = { apiKey:"AIzaSyBXh-P0oMtMiDjyz9PObuJ8DNfROlXvhLE", authDomain:"tecnocontrol-1c42f.firebaseapp.com", projectId:"tecnocontrol-1c42f", storageBucket:"tecnocontrol-1c42f.firebasestorage.app", appId:"1:27642771956:web:54225af9e386afded8a1a1" };
 const app = initializeApp(config);
@@ -2509,10 +2544,14 @@ document.getElementById('rep-mes').innerHTML = MESES.map((m,i)=>`<option value="
 // Cargar festivos API en segundo plano
 cargarFestivosAPI();
 
-onAuthStateChanged(auth, user=>{
+onAuthStateChanged(auth, async user=>{
     if(user){
         document.getElementById('auth-screen').style.display='none';
         document.getElementById('app-portal').style.display='block';
+        // Cargar usuarios de Firestore y fusionarlos ANTES de pintar sidebar/encargados,
+        // así los usuarios dados de alta desde el botón "Agregar usuario" ya aparecen
+        // con sus permisos sin necesidad de tocar código en ningún archivo.
+        await cargarUsuariosFirestore();
         escuchar();
         try { escucharFlotillaNotifs(); } catch(eFlNotif){ console.warn('[FlotillaNotif]', eFlNotif); }
         escucharEventosCal();
@@ -2524,6 +2563,9 @@ onAuthStateChanged(auth, user=>{
             const mobExec = document.getElementById('mob-ejecutivo');
             if(mobExec) mobExec.style.display = 'flex';
         }
+        // Botón "Agregar usuario" — solo ADMIN_EMAILS
+        const btnAgUsr = document.getElementById('btn-agregar-usuario');
+        if(btnAgUsr) btnAgUsr.style.display = esAdminTotal(user.email) ? 'flex' : 'none';
         // Notificaciones: admin total recibe todas las áreas
         // (ya está manejado con esAdminTotal en escuchar())
         // Inicializar encargados en el formulario de nueva tarea
@@ -2969,6 +3011,113 @@ function obtenerDeptoUsuario(email) {
     return '';
 }
 window.obtenerDeptoUsuario = obtenerDeptoUsuario;
+
+// ══════════════════════════════════════════════════════════════
+// GESTIÓN DE USUARIOS — colección Firestore 'usuarios'
+// Documento por UID: { correo, nombre, departamento, rol, activo }
+// Se fusiona en memoria con EMAIL_AREA_MAP / NOMBRE_MAP / ADMIN_EMAILS /
+// USUARIOS_AREA para que un usuario nuevo funcione en todo el portal
+// (sidebar, notificaciones, dropdown de encargados) sin tocar código.
+// NOTA: esto cubre los permisos de index.html. Módulos con sus propias
+// listas de admins hardcodeadas (ej. FLOTILLA_ADMINS en flotilla.js,
+// el arreglo de contraloría, o pagos.js) NO se actualizan automáticamente
+// — siguen requiriendo edición manual en su archivo hasta que se decida
+// migrarlos también a leer de 'usuarios'.
+// ══════════════════════════════════════════════════════════════
+function fusionarUsuarioEnMapas(u){
+    if(!u || !u.correo) return;
+    const correo = u.correo.toLowerCase().trim();
+    if(u.activo === false){
+        // Usuario desactivado: se retira de los mapas en memoria (el registro en Firestore no se borra)
+        delete EMAIL_AREA_MAP[correo];
+        delete NOMBRE_MAP[correo];
+        const idxAdmin = ADMIN_EMAILS.indexOf(correo);
+        if(idxAdmin !== -1) ADMIN_EMAILS.splice(idxAdmin,1);
+        Object.values(USUARIOS_AREA).forEach(lista=>{
+            const i = lista.indexOf(correo);
+            if(i !== -1) lista.splice(i,1);
+        });
+        return;
+    }
+    if(u.departamento) EMAIL_AREA_MAP[correo] = u.departamento;
+    if(u.nombre) NOMBRE_MAP[correo] = u.nombre;
+    if((u.rol||'').toLowerCase()==='admin' && !ADMIN_EMAILS.includes(correo)) ADMIN_EMAILS.push(correo);
+    if(u.departamento){
+        if(!USUARIOS_AREA[u.departamento]) USUARIOS_AREA[u.departamento] = [];
+        if(!USUARIOS_AREA[u.departamento].includes(correo)) USUARIOS_AREA[u.departamento].push(correo);
+    }
+}
+window.fusionarUsuarioEnMapas = fusionarUsuarioEnMapas;
+
+async function cargarUsuariosFirestore(){
+    try {
+        const snap = await getDocs(collection(db,'usuarios'));
+        snap.forEach(d => fusionarUsuarioEnMapas(d.data()));
+    } catch(e){ console.warn('[USUARIOS] No se pudo cargar la colección usuarios:', e.message); }
+}
+window.cargarUsuariosFirestore = cargarUsuariosFirestore;
+
+// ── Alta de usuarios nuevos (solo ADMIN_EMAILS) ──────────────
+window.abrirModalUsuario = () => {
+    if(!esAdminTotal(auth.currentUser?.email||'')){
+        if(window.mostrarToast) window.mostrarToast('🔒 Acceso restringido','Solo administradores pueden agregar usuarios','⚠️');
+        return;
+    }
+    const sel = document.getElementById('nu-depto');
+    if(sel) sel.innerHTML = DEPTOS.map(d=>`<option>${d}</option>`).join('');
+    document.getElementById('nu-nombre').value = '';
+    document.getElementById('nu-correo').value = '';
+    document.getElementById('nu-pass').value = '';
+    document.getElementById('nu-rol').value = 'usuario';
+    document.getElementById('modal-nuevo-usuario').style.display = 'flex';
+};
+window.cerrarModalUsuario = () => { document.getElementById('modal-nuevo-usuario').style.display = 'none'; };
+
+window.guardarUsuarioNuevo = async () => {
+    const nombre = document.getElementById('nu-nombre').value.trim();
+    const correo = document.getElementById('nu-correo').value.trim().toLowerCase();
+    const pass = document.getElementById('nu-pass').value;
+    const departamento = document.getElementById('nu-depto').value;
+    const rol = document.getElementById('nu-rol').value;
+    if(!nombre || !correo || !pass){ alert('Completa nombre, correo y contraseña'); return; }
+    if(pass.length < 6){ alert('La contraseña debe tener al menos 6 caracteres'); return; }
+
+    const btn = document.getElementById('nu-btn-guardar');
+    if(btn){ btn.textContent='Creando...'; btn.disabled=true; }
+
+    let secondaryApp = null;
+    try {
+        // App de Firebase secundaria — crea la cuenta de Auth SIN cerrar tu sesión de admin
+        secondaryApp = initializeApp(config, 'alta-usuario-' + Date.now());
+        const secondaryAuth = getAuth(secondaryApp);
+        const cred = await createUserWithEmailAndPassword(secondaryAuth, correo, pass);
+        const uid = cred.user.uid;
+        await signOut(secondaryAuth);
+
+        const datosUsuario = {
+            correo, nombre, departamento, rol, activo: true,
+            creadoPor: auth.currentUser?.email || '',
+            creadoEn: new Date().toISOString()
+        };
+        await setDoc(doc(db,'usuarios', uid), datosUsuario);
+
+        fusionarUsuarioEnMapas(datosUsuario);
+        if(window.actualizarEncargados) window.actualizarEncargados();
+        if(typeof renderSidebarAreas === 'function') renderSidebarAreas();
+        if(window.mostrarToast) window.mostrarToast('✅ Usuario creado', `${nombre} — ${departamento}`, '👤');
+        cerrarModalUsuario();
+    } catch(e){
+        const msgs = {
+            'auth/email-already-in-use': 'Ese correo ya tiene una cuenta',
+            'auth/invalid-email': 'Correo inválido',
+            'auth/weak-password': 'Contraseña muy débil (mínimo 6 caracteres)'
+        };
+        alert(msgs[e.code] || ('Error al crear usuario: ' + e.message));
+    } finally {
+        if(btn){ btn.textContent='CREAR USUARIO'; btn.disabled=false; }
+        if(secondaryApp){ try{ await deleteApp(secondaryApp); }catch(_e){} }
+    }
+};
 
 // ══════════════════════════════════════════════════════════════
 // DASHBOARD
