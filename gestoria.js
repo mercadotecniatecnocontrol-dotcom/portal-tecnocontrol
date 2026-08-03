@@ -227,25 +227,34 @@
     // en amarillo que haya dentro de ese párrafo.
     const SGM_FRASES_MULTIPUESTO = [
         { id: 'registros_gestion', etiqueta: 'Control de registros de gestión (PROC-G-003)',
+          soloRol: true,
           match: /el\s+control\s+de\s+los\s+registros\s+de\s+gesti[oó]n\s+es\s+realizado\s+por/i },
         { id: 'registros_tecnicos', etiqueta: 'Control de registros técnicos (PROC-G-003)',
+          soloRol: true,
           match: /el\s+control\s+de\s+los\s+registros\s+t[eé]cnicos\s+es\s+realizado\s+por/i },
         { id: 'proteccion_registros_impresos', etiqueta: 'Protección de registros impresos y contraseñas (PROC-G-003, 4.1 h)',
+          soloRol: true,
           match: /registros\s+impresos\s+se\s+protegen\s+en\s+oficinas/i },
         { id: 'resguardo_claves_acceso', etiqueta: 'Resguardo de claves de acceso electrónico (PROC-G-003, 4.2)',
+          soloRol: true,
           match: /claves\s+de\s+acceso\s+son\s+resguardadas\s+por/i },
         { id: 'entrega_solicitud_compra', etiqueta: 'Entrega de solicitud de compra (PROC-G-004)',
+          soloRol: true,
           match: /llevar\s+la\s+solicitud\s+firmada\s+en\s+duplicado\s+al/i },
         { id: 'asignacion_acciones_prevencion', etiqueta: 'Asignación de acciones preventivas (PROC-G-005, 4.1)',
+          soloRol: true,
           match: /asigna\s+responsables\s+y\s+fechas\s+de\s+implantaci[oó]n\s+de\s+acciones\s+de\s+prevenci[oó]n/i },
         { id: 'eficacia_acciones_mejora', etiqueta: 'Eficacia de acciones de mejora (PROC-G-005, 4.2)',
+          soloRol: true,
           match: /coordinada\s+y\s+asegurada\s+su\s+eficacia\s+por/i },
         { id: 'vigilancia_acciones_correctivas', etiqueta: 'Vigilancia de acciones correctivas (PROC-G-008, 4.2)',
+          soloRol: true,
           match: /responsable\s+de\s+vigilar\s+la\s+aplicaci[oó]n\s+de\s+acciones\s+correctivas\s+efectivas/i },
         { id: 'supervision_personal_tecnico', etiqueta: 'Supervisión del personal técnico de área operativa (PROC-T-001, 4.5)',
           soloRol: true,
           match: /a\s+cargo\s+del\s+[ÁA]rea\s+operativa,?\s*es\s+decir,?/i },
         { id: 'notificacion_anomalia_equipo', etiqueta: 'Notificación de anomalías del equipo (PROC-T-005, 5.1)',
+          soloRol: true,
           match: /se\s+le\s+notifica\s+inmediatamente\s+a/i },
     ];
 
@@ -1500,14 +1509,13 @@
 
     // "Localización del documento: Estación de servicio." — en la mayoría
     // de los machotes SGM esta frase vive en una tabla de 2 columnas
-    // (etiqueta | valor), y el valor de referencia ("Estación de
-    // servicio.") queda como texto plano SIN resaltado amarillo, partido
-    // en 2-3 runs por los acentos. El motor genérico de resaltado nunca
-    // lo toca, así que se ubica por estructura (celda siguiente en la
-    // misma fila de tabla) en vez de por color, igual que
-    // procesarNotacionOrganizacionSGM de arriba.
+    // (etiqueta | valor). A petición del cliente, este campo SIEMPRE debe
+    // decir el texto genérico "Estación de servicio", sin importar la
+    // razón social de cada cliente — es un descriptor de categoría, no
+    // un dato personalizable. Se ubica por estructura (celda siguiente en
+    // la misma fila de tabla) para asegurar el texto correcto incluso si
+    // algún machote llegó con una variante distinta ya escrita ahí.
     function procesarLocalizacionDocumentoSGM(xmlDoc, datos, stats) {
-        if (!datos.NOMBRE_REPRESENTANTE) return;
         for (const p of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'))) {
             const runs = Array.from(p.getElementsByTagNameNS(NS_W, 'r'));
             if (!runs.length) continue;
@@ -1532,8 +1540,8 @@
             if (!textoOriginal.trim()) continue;
 
             const terminaConPunto = /\.\s*$/.test(textoOriginal);
-            let nuevoValor = datos.NOMBRE_REPRESENTANTE;
-            if (terminaConPunto && !/\.\s*$/.test(nuevoValor)) nuevoValor += '.';
+            let nuevoValor = 'Estación de servicio';
+            if (terminaConPunto) nuevoValor += '.';
 
             setTextoRun(runsValor[0], nuevoValor);
             for (let k = 1; k < runsValor.length; k++) setTextoRun(runsValor[k], '');
@@ -1571,6 +1579,64 @@
             for (let k = 1; k < runs.length; k++) setTextoRun(runs[k], '');
             runs.forEach(quitarResaltado);
             stats.reemplazos++;
+        }
+    }
+
+    // PROC-G-001, 4.2 "Realización de la revisión por la dirección" — a
+    // diferencia de 1.1, 1.2 y 4.3 del mismo documento (donde "alta
+    // dirección" sí debe convertirse al nombre de la persona), aquí debe
+    // quedarse como el título del puesto. Se ubica este párrafo por su
+    // texto distintivo y se le quita el resaltado a sus menciones de rol
+    // para que el motor genérico no las convierta a nombre.
+    // PROC-G-001 — puntos donde "alta dirección" debe quedarse como el
+    // título del puesto (no convertirse al nombre de la persona), a
+    // diferencia de 1.1, 1.2 y otros puntos del mismo documento donde sí
+    // debe ser el nombre. Cada párrafo se ubica por su texto distintivo.
+    function procesarRevisionPorDireccionSGM(xmlDoc) {
+        const TEXTOS_DISTINTIVOS = [
+            'reunión en la que participa',      // 4.2 Realización de la revisión por la dirección
+            'tiene la responsabilidad de asegurarse', // 4.3 Registros de hallazgos de la revisión por la dirección
+        ];
+        const parrafos = Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'));
+        for (const p of parrafos) {
+            const texto = textoParrafo(p);
+            if (!TEXTOS_DISTINTIVOS.some(t => texto.includes(t))) continue;
+            Array.from(p.getElementsByTagNameNS(NS_W, 'r'))
+                .filter(esResaltadoAmarillo)
+                .forEach(quitarResaltado);
+        }
+    }
+
+    // Artículos sueltos antes de una mención de rol ("la alta dirección",
+    // "el representante técnico") — cuando el motor genérico convierta el
+    // rol resaltado al nombre real de la persona, ese artículo suelto
+    // (que casi siempre vive en el run ANTERIOR, sin resaltar, por eso el
+    // motor genérico nunca lo toca) se queda pegado y se lee mal ("La
+    // Yamile Corral Lozano tiene la responsabilidad..."). Se ubica el run
+    // resaltado que coincide con un rol conocido, se revisa si el run
+    // inmediatamente anterior en el MISMO párrafo termina en un artículo
+    // suelto ("la ", "el ", "los ", "las "), y si el rol sí tiene nombre
+    // asignado (o sea, si SÍ se va a convertir a nombre), se quita esa
+    // porción del artículo para que el resultado final se lea natural.
+    // Se ejecuta ANTES del motor genérico, y respeta los casos donde ya
+    // se decidió dejar el rol como puesto (esos runs ya perdieron su
+    // resaltado antes de llegar aquí, así que este ajuste no los toca).
+    function limpiarArticulosAntesDeRolSGM(xmlDoc, datos) {
+        const RE_ARTICULO_FINAL = /\b(la|el|los|las)\s+$/i;
+        for (const p of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'))) {
+            const runs = Array.from(p.getElementsByTagNameNS(NS_W, 'r'));
+            for (let i = 1; i < runs.length; i++) {
+                if (!esResaltadoAmarillo(runs[i])) continue;
+                const texto = textoDeRun(runs[i]).trim();
+                const rol = SGM_ROLES_DISPONIBLES.find(r => r.etiqueta.toLowerCase() === texto.toLowerCase());
+                if (!rol || !datos[rol.clave]) continue;
+                const anterior = runs[i - 1];
+                if (esResaltadoAmarillo(anterior)) continue; // es parte del mismo placeholder, no un artículo suelto
+                const textoAnterior = textoDeRun(anterior);
+                const m = RE_ARTICULO_FINAL.exec(textoAnterior);
+                if (!m) continue;
+                setTextoRun(anterior, textoAnterior.slice(0, m.index));
+            }
         }
     }
 
@@ -2014,7 +2080,18 @@
                 const texto = textoParrafo(p).trim();
                 if (!texto) return;
                 const claveRol = rolPorEtiqueta(texto);
-                if (claveRol) { rolActual = claveRol; return; }
+                if (claveRol) {
+                    rolActual = claveRol;
+                    // Estos encabezados de rol ("Alta Dirección",
+                    // "Administrativo", etc.) son títulos de una tabla de
+                    // requisitos POR PUESTO — deben quedarse como el
+                    // nombre del rol, no convertirse al nombre de la
+                    // persona. Se les quita el resaltado para que el
+                    // motor genérico (que sí convierte menciones sueltas
+                    // de roles a nombres en otros contextos) no los toque.
+                    Array.from(p.getElementsByTagNameNS(NS_W, 'r')).forEach(quitarResaltado);
+                    return;
+                }
                 if (rolActual && !(rolActual in primerItemDeCadaRol)) {
                     primerItemDeCadaRol[rolActual] = { idx: i, esEscolaridad: /^escolaridad\b/i.test(texto) };
                 }
@@ -2688,13 +2765,13 @@
         ponerTextoCeldaXlsx(celdaC4, nombreRepresentante);
         asegurarEstiloSinRojoXlsx(stylesDoc, celdaC4);
 
-        // "Localización del documento: Estación de servicio" (fila 21) — el
-        // machote de referencia trae ahí el texto genérico "Estación de
-        // servicio" sin ningún placeholder amarillo ni rojo que lo marcara,
-        // así que nunca se estaba reemplazando por la Razón Social real del
-        // cliente (mismo dato que NOMBRE_REPRESENTANTE, en su forma natural,
-        // no en mayúsculas como en C4).
-        ponerTextoCeldaXlsx(celdaXlsx(sheetDoc, 'D21'), val('NOMBRE_REPRESENTANTE', 'Estación de servicio'));
+        // "Localización del documento: Estación de servicio" (fila 21) —
+        // a petición del cliente, este campo SIEMPRE debe decir el texto
+        // genérico "Estación de servicio", no la Razón Social de cada
+        // cliente — es un descriptor de categoría, no un dato
+        // personalizable (mismo criterio que procesarLocalizacionDocumentoSGM
+        // para los .docx).
+        ponerTextoCeldaXlsx(celdaXlsx(sheetDoc, 'D21'), 'Estación de servicio');
 
         ponerTextoCeldaXlsx(celdaXlsx(sheetDoc, 'B18'), nombreElabora);
         ponerTextoCeldaXlsx(celdaXlsx(sheetDoc, 'D18'), puestoElabora);
@@ -2962,6 +3039,8 @@
                 procesarNotacionOrganizacionSGM(xmlDoc, datos, stats);
                 procesarLocalizacionDocumentoSGM(xmlDoc, datos, stats);
                 procesarFirmaAtentamenteSGM(xmlDoc, datos, stats);
+                procesarRevisionPorDireccionSGM(xmlDoc);
+                limpiarArticulosAntesDeRolSGM(xmlDoc, datos);
                 procesarControlDeCambiosSGM(xmlDoc, datos);
                 neutralizarTablasDescriptivasSGM(xmlDoc);
                 reconstruirTarjetasPuestosSGM(xmlDoc, datos);
