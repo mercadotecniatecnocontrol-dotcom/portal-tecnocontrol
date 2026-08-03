@@ -92,4 +92,4 @@ window.flGetRolActual = function() {
   if (FL_ROLES.administradores.map(e=>e.toLowerCase()).includes(email)) return 'Administrador';
   if (FL_ROLES.lectores.map(e=>e.toLowerCase()).includes(email)) return 'Lector (solo lectura)';
   return 'Técnico';
-};
+};s
