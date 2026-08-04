@@ -334,6 +334,7 @@ function flSolsDeVehiculo(v){
   if(!v)return[];
   return flS.filter(s=>flEsDelVehiculo(s,v));
 }
+
 // v3: ya no hay lista de correos aquí. El rol de administrador viene de
 // window.flEsAdmin(), que a su vez lee el campo `rolFlotilla` guardado en
 // la colección `usuarios` de Firestore (ver flotilla-reglas.js v3).
