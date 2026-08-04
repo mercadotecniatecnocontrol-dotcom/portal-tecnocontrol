@@ -3039,6 +3039,20 @@
                 stats.reemplazos++;
                 continue;
             }
+            // 3.6) Bloque "Revisión: 0 / Página X de Y / Efectivo:
+            // dd/mm/aaaa" — texto de referencia sin marcar. Solo se
+            // actualiza la fecha de "Efectivo:" (a la fecha de
+            // elaboración capturada, o a hoy si no se capturó); el
+            // número de revisión y la paginación se dejan igual.
+            if (/efectivo\s*:\s*\d{1,2}\/\d{1,2}\/\d{4}/i.test(texto)) {
+                const hoy = new Date();
+                const fechaHoy = `${String(hoy.getDate()).padStart(2, '0')}/${String(hoy.getMonth() + 1).padStart(2, '0')}/${hoy.getFullYear()}`;
+                const fechaNueva = datos.FECHA_ELABORACION || fechaHoy;
+                const textoNuevo = texto.replace(/(efectivo\s*:\s*)\d{1,2}\/\d{1,2}\/\d{4}/i, `$1${fechaNueva}`);
+                ponerTextoCeldaXlsx(celda, textoNuevo);
+                stats.reemplazos++;
+                continue;
+            }
 
             // 4) Bloques "NOMBRE" — el puesto suele estar en la celda de
             // abajo o a la derecha (se resuelve después, ya con todas las
@@ -3249,7 +3263,7 @@
                                 // espacio original del logo ahí es más grande
                                 // (~357x87px) que en el encabezado de los 9
                                 // machotes (~196x48px) — se respeta ese tamaño.
-                                await insertarImagenEnGrupo(zip, xmlDoc, ruta, [run], datos.LOGO_BASE64, ctxImagen, 87, 357);
+                                await insertarImagenEnGrupo(zip, xmlDoc, ruta, [run], datos.LOGO_BASE64, ctxImagen, 190, 750);
                             } else {
                                 await insertarLogoEnGrupo(zip, xmlDoc, ruta, [run], datos.LOGO_BASE64, ctxImagen);
                             }
