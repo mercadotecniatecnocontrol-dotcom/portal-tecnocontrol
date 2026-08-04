@@ -334,12 +334,10 @@ function flSolsDeVehiculo(v){
   if(!v)return[];
   return flS.filter(s=>flEsDelVehiculo(s,v));
 }
-const FLOTILLA_ADMINS=['fatima@tecnocontrol.com.mx','c.acosta@tecnocontrol.com.mx','rh@tecnocontrol.com.mx','glen@tecnocontrol.com.mx','gerencia@tecnocontrol.com.mx','nicolas@tecnocontrol.com.mx', 'irvinjulian05@gmail.com'];
-const hAdm=()=>{
-  const rol=window.flGetRolActual?window.flGetRolActual():'';
-  const email=(window.auth?.currentUser?.email||'').toLowerCase();
-  return ['Administrador','Contraloría','Flotilla'].includes(rol)||FLOTILLA_ADMINS.includes(email);
-};
+// v3: ya no hay lista de correos aquí. El rol de administrador viene de
+// window.flEsAdmin(), que a su vez lee el campo `rolFlotilla` guardado en
+// la colección `usuarios` de Firestore (ver flotilla-reglas.js v3).
+const hAdm=()=>window.flEsAdmin?window.flEsAdmin():false;
 const hP=a=>window.flTienePermiso?window.flTienePermiso(a):hAdm();
 const SVG_CAM=`<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13" rx="1"/><path d="M16 8h4l3 5v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>`;
 const SVG_CMT=`<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17H3a2 2 0 01-2-2V5a2 2 0 012-2h11a2 2 0 012 2v3"/><rect x="9" y="11" width="14" height="10" rx="1"/><circle cx="12" cy="21" r="1"/><circle cx="20" cy="21" r="1"/></svg>`;

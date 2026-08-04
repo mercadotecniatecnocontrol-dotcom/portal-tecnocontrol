@@ -227,25 +227,34 @@
     // en amarillo que haya dentro de ese párrafo.
     const SGM_FRASES_MULTIPUESTO = [
         { id: 'registros_gestion', etiqueta: 'Control de registros de gestión (PROC-G-003)',
+          soloRol: true,
           match: /el\s+control\s+de\s+los\s+registros\s+de\s+gesti[oó]n\s+es\s+realizado\s+por/i },
         { id: 'registros_tecnicos', etiqueta: 'Control de registros técnicos (PROC-G-003)',
+          soloRol: true,
           match: /el\s+control\s+de\s+los\s+registros\s+t[eé]cnicos\s+es\s+realizado\s+por/i },
         { id: 'proteccion_registros_impresos', etiqueta: 'Protección de registros impresos y contraseñas (PROC-G-003, 4.1 h)',
+          soloRol: true,
           match: /registros\s+impresos\s+se\s+protegen\s+en\s+oficinas/i },
         { id: 'resguardo_claves_acceso', etiqueta: 'Resguardo de claves de acceso electrónico (PROC-G-003, 4.2)',
+          soloRol: true,
           match: /claves\s+de\s+acceso\s+son\s+resguardadas\s+por/i },
         { id: 'entrega_solicitud_compra', etiqueta: 'Entrega de solicitud de compra (PROC-G-004)',
+          soloRol: true,
           match: /llevar\s+la\s+solicitud\s+firmada\s+en\s+duplicado\s+al/i },
         { id: 'asignacion_acciones_prevencion', etiqueta: 'Asignación de acciones preventivas (PROC-G-005, 4.1)',
+          soloRol: true,
           match: /asigna\s+responsables\s+y\s+fechas\s+de\s+implantaci[oó]n\s+de\s+acciones\s+de\s+prevenci[oó]n/i },
         { id: 'eficacia_acciones_mejora', etiqueta: 'Eficacia de acciones de mejora (PROC-G-005, 4.2)',
+          soloRol: true,
           match: /coordinada\s+y\s+asegurada\s+su\s+eficacia\s+por/i },
         { id: 'vigilancia_acciones_correctivas', etiqueta: 'Vigilancia de acciones correctivas (PROC-G-008, 4.2)',
+          soloRol: true,
           match: /responsable\s+de\s+vigilar\s+la\s+aplicaci[oó]n\s+de\s+acciones\s+correctivas\s+efectivas/i },
         { id: 'supervision_personal_tecnico', etiqueta: 'Supervisión del personal técnico de área operativa (PROC-T-001, 4.5)',
           soloRol: true,
           match: /a\s+cargo\s+del\s+[ÁA]rea\s+operativa,?\s*es\s+decir,?/i },
         { id: 'notificacion_anomalia_equipo', etiqueta: 'Notificación de anomalías del equipo (PROC-T-005, 5.1)',
+          soloRol: true,
           match: /se\s+le\s+notifica\s+inmediatamente\s+a/i },
     ];
 
@@ -714,7 +723,7 @@
         let xml = await zip.file(path).async('string');
         if (xml.includes(`Extension="${ext}"`)) return;
         xml = xml.replace('</Types>', `<Default Extension="${ext}" ContentType="${mime}"/></Types>`);
-        zip.file(path, xml);
+        zip.file(path, xml, { createFolders: false });
     }
 
     function rutaRelsPara(rutaXml) {
@@ -732,7 +741,7 @@
         const nuevoId = 'rId' + ((ids.length ? Math.max(...ids) : 0) + 1);
         const nuevaRel = `<Relationship Id="${nuevoId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${mediaFilename}"/>`;
         xml = xml.includes('</Relationships>') ? xml.replace('</Relationships>', nuevaRel + '</Relationships>') : xml;
-        zip.file(rutaRels, xml);
+        zip.file(rutaRels, xml, { createFolders: false });
         return nuevoId;
     }
 
@@ -764,7 +773,7 @@
         await asegurarContentType(zip, ext, mime);
         ctxImg.contador++;
         const mediaFilename = `logoGen${ctxImg.contador}.${ext}`;
-        zip.file('word/media/' + mediaFilename, bytes);
+        zip.file('word/media/' + mediaFilename, bytes, { createFolders: false });
         const rId = await agregarRelacionImagen(zip, rutaXml, mediaFilename);
 
         const { width, height } = await medirImagenDataUrl(dataUrl);
@@ -1212,8 +1221,12 @@
     }
 
     function reemplazarTextoCelda(celda, textoNuevo) {
-        const parrafo = celda.getElementsByTagNameNS(NS_W, 'p')[0];
-        if (!parrafo) return;
+        let parrafo = celda.getElementsByTagNameNS(NS_W, 'p')[0];
+        if (!parrafo) {
+            // La celda no tiene ni un párrafo (caso muy raro) — se crea uno.
+            parrafo = celda.ownerDocument.createElementNS(NS_W, 'w:p');
+            celda.appendChild(parrafo);
+        }
         const runs = Array.from(parrafo.getElementsByTagNameNS(NS_W, 'r'));
         const primero = runs[0];
         runs.slice(1).forEach(r => r.parentNode && r.parentNode.removeChild(r));
@@ -1224,6 +1237,22 @@
             t.setAttribute('xml:space', 'preserve');
             t.textContent = textoNuevo;
             primero.appendChild(t);
+        } else {
+            // Celda vacía: el párrafo no tiene ningún run (pasa en tablas
+            // de firmas de SASISOPA, p.ej. la columna "Nombre" de M-00,
+            // donde el machote nunca escribió nada ahí). Se crea un run
+            // nuevo, copiando la fuente/formato del párrafo si existe
+            // (w:pPr > w:rPr), para que el texto no salga con la fuente
+            // por default de Word.
+            const nuevoRun = parrafo.ownerDocument.createElementNS(NS_W, 'w:r');
+            const pPr = parrafo.getElementsByTagNameNS(NS_W, 'pPr')[0];
+            const rPrParrafo = pPr ? pPr.getElementsByTagNameNS(NS_W, 'rPr')[0] : null;
+            if (rPrParrafo) nuevoRun.appendChild(rPrParrafo.cloneNode(true));
+            const t = parrafo.ownerDocument.createElementNS(NS_W, 'w:t');
+            t.setAttribute('xml:space', 'preserve');
+            t.textContent = textoNuevo;
+            nuevoRun.appendChild(t);
+            parrafo.appendChild(nuevoRun);
         }
     }
 
@@ -1500,14 +1529,13 @@
 
     // "Localización del documento: Estación de servicio." — en la mayoría
     // de los machotes SGM esta frase vive en una tabla de 2 columnas
-    // (etiqueta | valor), y el valor de referencia ("Estación de
-    // servicio.") queda como texto plano SIN resaltado amarillo, partido
-    // en 2-3 runs por los acentos. El motor genérico de resaltado nunca
-    // lo toca, así que se ubica por estructura (celda siguiente en la
-    // misma fila de tabla) en vez de por color, igual que
-    // procesarNotacionOrganizacionSGM de arriba.
+    // (etiqueta | valor). A petición del cliente, este campo SIEMPRE debe
+    // decir el texto genérico "Estación de servicio", sin importar la
+    // razón social de cada cliente — es un descriptor de categoría, no
+    // un dato personalizable. Se ubica por estructura (celda siguiente en
+    // la misma fila de tabla) para asegurar el texto correcto incluso si
+    // algún machote llegó con una variante distinta ya escrita ahí.
     function procesarLocalizacionDocumentoSGM(xmlDoc, datos, stats) {
-        if (!datos.NOMBRE_REPRESENTANTE) return;
         for (const p of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'))) {
             const runs = Array.from(p.getElementsByTagNameNS(NS_W, 'r'));
             if (!runs.length) continue;
@@ -1532,8 +1560,8 @@
             if (!textoOriginal.trim()) continue;
 
             const terminaConPunto = /\.\s*$/.test(textoOriginal);
-            let nuevoValor = datos.NOMBRE_REPRESENTANTE;
-            if (terminaConPunto && !/\.\s*$/.test(nuevoValor)) nuevoValor += '.';
+            let nuevoValor = 'Estación de servicio';
+            if (terminaConPunto) nuevoValor += '.';
 
             setTextoRun(runsValor[0], nuevoValor);
             for (let k = 1; k < runsValor.length; k++) setTextoRun(runsValor[k], '');
@@ -1571,6 +1599,64 @@
             for (let k = 1; k < runs.length; k++) setTextoRun(runs[k], '');
             runs.forEach(quitarResaltado);
             stats.reemplazos++;
+        }
+    }
+
+    // PROC-G-001, 4.2 "Realización de la revisión por la dirección" — a
+    // diferencia de 1.1, 1.2 y 4.3 del mismo documento (donde "alta
+    // dirección" sí debe convertirse al nombre de la persona), aquí debe
+    // quedarse como el título del puesto. Se ubica este párrafo por su
+    // texto distintivo y se le quita el resaltado a sus menciones de rol
+    // para que el motor genérico no las convierta a nombre.
+    // PROC-G-001 — puntos donde "alta dirección" debe quedarse como el
+    // título del puesto (no convertirse al nombre de la persona), a
+    // diferencia de 1.1, 1.2 y otros puntos del mismo documento donde sí
+    // debe ser el nombre. Cada párrafo se ubica por su texto distintivo.
+    function procesarRevisionPorDireccionSGM(xmlDoc) {
+        const TEXTOS_DISTINTIVOS = [
+            'reunión en la que participa',      // 4.2 Realización de la revisión por la dirección
+            'tiene la responsabilidad de asegurarse', // 4.3 Registros de hallazgos de la revisión por la dirección
+        ];
+        const parrafos = Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'));
+        for (const p of parrafos) {
+            const texto = textoParrafo(p);
+            if (!TEXTOS_DISTINTIVOS.some(t => texto.includes(t))) continue;
+            Array.from(p.getElementsByTagNameNS(NS_W, 'r'))
+                .filter(esResaltadoAmarillo)
+                .forEach(quitarResaltado);
+        }
+    }
+
+    // Artículos sueltos antes de una mención de rol ("la alta dirección",
+    // "el representante técnico") — cuando el motor genérico convierta el
+    // rol resaltado al nombre real de la persona, ese artículo suelto
+    // (que casi siempre vive en el run ANTERIOR, sin resaltar, por eso el
+    // motor genérico nunca lo toca) se queda pegado y se lee mal ("La
+    // Yamile Corral Lozano tiene la responsabilidad..."). Se ubica el run
+    // resaltado que coincide con un rol conocido, se revisa si el run
+    // inmediatamente anterior en el MISMO párrafo termina en un artículo
+    // suelto ("la ", "el ", "los ", "las "), y si el rol sí tiene nombre
+    // asignado (o sea, si SÍ se va a convertir a nombre), se quita esa
+    // porción del artículo para que el resultado final se lea natural.
+    // Se ejecuta ANTES del motor genérico, y respeta los casos donde ya
+    // se decidió dejar el rol como puesto (esos runs ya perdieron su
+    // resaltado antes de llegar aquí, así que este ajuste no los toca).
+    function limpiarArticulosAntesDeRolSGM(xmlDoc, datos) {
+        const RE_ARTICULO_FINAL = /\b(la|el|los|las)\s+$/i;
+        for (const p of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'))) {
+            const runs = Array.from(p.getElementsByTagNameNS(NS_W, 'r'));
+            for (let i = 1; i < runs.length; i++) {
+                if (!esResaltadoAmarillo(runs[i])) continue;
+                const texto = textoDeRun(runs[i]).trim();
+                const rol = SGM_ROLES_DISPONIBLES.find(r => r.etiqueta.toLowerCase() === texto.toLowerCase());
+                if (!rol || !datos[rol.clave]) continue;
+                const anterior = runs[i - 1];
+                if (esResaltadoAmarillo(anterior)) continue; // es parte del mismo placeholder, no un artículo suelto
+                const textoAnterior = textoDeRun(anterior);
+                const m = RE_ARTICULO_FINAL.exec(textoAnterior);
+                if (!m) continue;
+                setTextoRun(anterior, textoAnterior.slice(0, m.index));
+            }
         }
     }
 
@@ -2014,7 +2100,18 @@
                 const texto = textoParrafo(p).trim();
                 if (!texto) return;
                 const claveRol = rolPorEtiqueta(texto);
-                if (claveRol) { rolActual = claveRol; return; }
+                if (claveRol) {
+                    rolActual = claveRol;
+                    // Estos encabezados de rol ("Alta Dirección",
+                    // "Administrativo", etc.) son títulos de una tabla de
+                    // requisitos POR PUESTO — deben quedarse como el
+                    // nombre del rol, no convertirse al nombre de la
+                    // persona. Se les quita el resaltado para que el
+                    // motor genérico (que sí convierte menciones sueltas
+                    // de roles a nombres en otros contextos) no los toque.
+                    Array.from(p.getElementsByTagNameNS(NS_W, 'r')).forEach(quitarResaltado);
+                    return;
+                }
                 if (rolActual && !(rolActual in primerItemDeCadaRol)) {
                     primerItemDeCadaRol[rolActual] = { idx: i, esEscolaridad: /^escolaridad\b/i.test(texto) };
                 }
@@ -2596,31 +2693,50 @@
     }
 
     async function insertarImagenesXlsxSGM(zip, sheetDoc, rutaSheet, imagenes, ctxImg) {
-        const rutaDrawing = 'xl/drawings/drawingSgm.xml';
-        const rutaRelsDrawing = 'xl/drawings/_rels/drawingSgm.xml.rels';
         const rutaRelsSheet = rutaRelsPara(rutaSheet);
 
-        let xmlRelsSheet;
-        try { xmlRelsSheet = await zip.file(rutaRelsSheet).async('string'); }
-        catch (e) { xmlRelsSheet = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>'; }
-        const idsSheet = Array.from(xmlRelsSheet.matchAll(/Id="rId(\d+)"/g)).map(m => parseInt(m[1], 10));
-        const rIdDrawing = 'rId' + ((idsSheet.length ? Math.max(...idsSheet) : 0) + 1);
-        xmlRelsSheet = xmlRelsSheet.replace('</Relationships>',
-            `<Relationship Id="${rIdDrawing}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawingSgm.xml"/></Relationships>`);
-        zip.file(rutaRelsSheet, xmlRelsSheet);
+        // Si la hoja YA tiene un <drawing> (p.ej. los cuadros de texto de
+        // ELABORÓ/REVISÓ de F-04-01 en SASISOPA), NO se puede agregar un
+        // segundo elemento <drawing> — Excel solo admite uno por hoja, y
+        // tener dos deja ambos sin mostrarse correctamente. En ese caso,
+        // la(s) imagen(es) se fusionan dentro del dibujo YA existente en
+        // vez de crear uno nuevo en conflicto.
+        const drawingExistente = sheetDoc.getElementsByTagNameNS(NS_S, 'drawing')[0];
+        let rutaDrawing, rutaRelsDrawing, esNuevo;
 
-        const drawingEl = sheetDoc.createElementNS(NS_S, 'drawing');
-        drawingEl.setAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'r:id', rIdDrawing);
-        sheetDoc.documentElement.appendChild(drawingEl);
+        if (drawingExistente) {
+            const rIdExistente = drawingExistente.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id');
+            let xmlRelsSheetLectura;
+            try { xmlRelsSheetLectura = await zip.file(rutaRelsSheet).async('string'); } catch (e) { xmlRelsSheetLectura = ''; }
+            const m = new RegExp(`Id="${rIdExistente}"[^>]*Target="([^"]+)"`).exec(xmlRelsSheetLectura);
+            if (!m) return; // no se pudo resolver el dibujo existente — no arriesgar romper nada
+            // Target viene relativo a xl/worksheets/ (p.ej. "../drawings/drawing1.xml")
+            const partesSheet = rutaSheet.split('/'); partesSheet.pop();
+            const segmentos = (partesSheet.join('/') + '/' + m[1]).split('/');
+            const resuelto = [];
+            for (const seg of segmentos) {
+                if (seg === '..') resuelto.pop(); else if (seg !== '.') resuelto.push(seg);
+            }
+            rutaDrawing = resuelto.join('/');
+            rutaRelsDrawing = rutaRelsPara(rutaDrawing);
+            esNuevo = false;
+        } else {
+            rutaDrawing = 'xl/drawings/drawingSgm.xml';
+            rutaRelsDrawing = 'xl/drawings/_rels/drawingSgm.xml.rels';
+            esNuevo = true;
+        }
 
-        let relsDrawingXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>';
+        let relsDrawingXml;
+        try { relsDrawingXml = await zip.file(rutaRelsDrawing).async('string'); }
+        catch (e) { relsDrawingXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>'; }
+
         let anchorsXml = '';
         for (const img of imagenes) {
             const { bytes, mime, ext } = dataUrlABytes(img.dataUrl);
             await asegurarContentType(zip, ext, mime);
             ctxImg.contador++;
             const mediaFilename = `logoGen${ctxImg.contador}.${ext}`;
-            zip.file('xl/media/' + mediaFilename, bytes);
+            zip.file('xl/media/' + mediaFilename, bytes, { createFolders: false });
 
             const idsDrawing = Array.from(relsDrawingXml.matchAll(/Id="rId(\d+)"/g)).map(m => parseInt(m[1], 10));
             const rIdImg = 'rId' + ((idsDrawing.length ? Math.max(...idsDrawing) : 0) + 1);
@@ -2647,14 +2763,51 @@
                 `<xdr:clientData/></xdr:oneCellAnchor>`;
         }
 
-        const drawingXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><xdr:wsDr xmlns:xdr="${NS_XDR}" xmlns:a="${NS_A}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">${anchorsXml}</xdr:wsDr>`;
-        zip.file(rutaDrawing, drawingXml);
-        zip.file(rutaRelsDrawing, relsDrawingXml);
+        if (esNuevo) {
+            let xmlRelsSheet;
+            try { xmlRelsSheet = await zip.file(rutaRelsSheet).async('string'); }
+            catch (e) { xmlRelsSheet = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>'; }
+            const idsSheet = Array.from(xmlRelsSheet.matchAll(/Id="rId(\d+)"/g)).map(m => parseInt(m[1], 10));
+            const rIdDrawing = 'rId' + ((idsSheet.length ? Math.max(...idsSheet) : 0) + 1);
+            xmlRelsSheet = xmlRelsSheet.replace('</Relationships>',
+                `<Relationship Id="${rIdDrawing}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawingSgm.xml"/></Relationships>`);
+            zip.file(rutaRelsSheet, xmlRelsSheet, { createFolders: false });
+
+            const drawingEl = sheetDoc.createElementNS(NS_S, 'drawing');
+            drawingEl.setAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'r:id', rIdDrawing);
+            sheetDoc.documentElement.appendChild(drawingEl);
+
+            const drawingXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><xdr:wsDr xmlns:xdr="${NS_XDR}" xmlns:a="${NS_A}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">${anchorsXml}</xdr:wsDr>`;
+            zip.file(rutaDrawing, drawingXml, { createFolders: false });
+        } else {
+            // Fusionar: insertar los anchors nuevos justo antes de </xdr:wsDr>
+            // del dibujo ya existente, sin tocar nada de lo que ya tenía
+            // (las figuras de ELABORÓ/REVISÓ, etc.) — reemplazo directo de
+            // texto, sin parsear/regenerar el XML completo del dibujo.
+            let drawingXmlActual = await zip.file(rutaDrawing).async('string');
+            // El dibujo existente puede no haber necesitado nunca el
+            // namespace "r:" (p.ej. si solo tenía cuadros de texto, sin
+            // imágenes) — el <a:blip r:embed="..."/> que se inserta abajo
+            // SÍ lo necesita. Si no está declarado en la raíz, Excel
+            // rechaza el archivo completo como corrupto (visto en
+            // pruebas reales). Se agrega solo si falta.
+            if (!/xmlns:r=/.test(drawingXmlActual)) {
+                drawingXmlActual = drawingXmlActual.replace(
+                    /<xdr:wsDr\b/,
+                    '<xdr:wsDr xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"'
+                );
+            }
+            drawingXmlActual = drawingXmlActual.replace('</xdr:wsDr>', anchorsXml + '</xdr:wsDr>');
+            zip.file(rutaDrawing, drawingXmlActual, { createFolders: false });
+        }
+
+        zip.file(rutaRelsDrawing, relsDrawingXml, { createFolders: false });
 
         let ct = await zip.file('[Content_Types].xml').async('string');
-        if (!ct.includes('/xl/drawings/drawingSgm.xml')) {
-            ct = ct.replace('</Types>', `<Override PartName="/xl/drawings/drawingSgm.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/></Types>`);
-            zip.file('[Content_Types].xml', ct);
+        const nombreDrawing = rutaDrawing.split('/').pop();
+        if (!ct.includes('/xl/drawings/' + nombreDrawing)) {
+            ct = ct.replace('</Types>', `<Override PartName="/xl/drawings/${nombreDrawing}" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/></Types>`);
+            zip.file('[Content_Types].xml', ct, { createFolders: false });
         }
     }
 
@@ -2688,13 +2841,13 @@
         ponerTextoCeldaXlsx(celdaC4, nombreRepresentante);
         asegurarEstiloSinRojoXlsx(stylesDoc, celdaC4);
 
-        // "Localización del documento: Estación de servicio" (fila 21) — el
-        // machote de referencia trae ahí el texto genérico "Estación de
-        // servicio" sin ningún placeholder amarillo ni rojo que lo marcara,
-        // así que nunca se estaba reemplazando por la Razón Social real del
-        // cliente (mismo dato que NOMBRE_REPRESENTANTE, en su forma natural,
-        // no en mayúsculas como en C4).
-        ponerTextoCeldaXlsx(celdaXlsx(sheetDoc, 'D21'), val('NOMBRE_REPRESENTANTE', 'Estación de servicio'));
+        // "Localización del documento: Estación de servicio" (fila 21) —
+        // a petición del cliente, este campo SIEMPRE debe decir el texto
+        // genérico "Estación de servicio", no la Razón Social de cada
+        // cliente — es un descriptor de categoría, no un dato
+        // personalizable (mismo criterio que procesarLocalizacionDocumentoSGM
+        // para los .docx).
+        ponerTextoCeldaXlsx(celdaXlsx(sheetDoc, 'D21'), 'Estación de servicio');
 
         ponerTextoCeldaXlsx(celdaXlsx(sheetDoc, 'B18'), nombreElabora);
         ponerTextoCeldaXlsx(celdaXlsx(sheetDoc, 'D18'), puestoElabora);
@@ -2727,8 +2880,8 @@
         if (imagenes.length) await insertarImagenesXlsxSGM(zip, sheetDoc, rutaSheet, imagenes, ctxImg);
 
         const xmlSerializer = new XMLSerializer();
-        zip.file(rutaSheet, xmlSerializer.serializeToString(sheetDoc));
-        zip.file('xl/styles.xml', xmlSerializer.serializeToString(stylesDoc));
+        zip.file(rutaSheet, xmlSerializer.serializeToString(sheetDoc), { createFolders: false });
+        zip.file('xl/styles.xml', xmlSerializer.serializeToString(stylesDoc), { createFolders: false });
 
         stats.reemplazos += 11;
         return await zip.generateAsync({ type: 'blob' });
@@ -2769,6 +2922,34 @@
 
     function colLetraDeRef(ref) { const m = /^([A-Z]+)(\d+)$/.exec(ref || ''); return m ? m[1] : ''; }
     function filaNumDeRef(ref) { const m = /^([A-Z]+)(\d+)$/.exec(ref || ''); return m ? parseInt(m[2], 10) : -1; }
+    // Ancho de columna / alto de fila reales en píxeles, a partir de las
+    // definiciones <col>/<row> de la hoja — necesario para poder CENTRAR
+    // una imagen dentro de su celda (sin esto, insertarImagenesXlsxSGM
+    // usa un desplazamiento fijo pequeño, no un centrado real).
+    function anchoColumnaPx(sheetDoc, colIndiceBase0) {
+        const colNum = colIndiceBase0 + 1;
+        const cols = Array.from(sheetDoc.getElementsByTagNameNS(NS_S, 'col'));
+        for (const c of cols) {
+            const min = parseInt(c.getAttribute('min'), 10);
+            const max = parseInt(c.getAttribute('max'), 10);
+            if (colNum >= min && colNum <= max) {
+                const w = parseFloat(c.getAttribute('width'));
+                if (!isNaN(w)) return Math.round(w * 7 + 5);
+            }
+        }
+        return 64; // ancho de columna por default (~8.43 caracteres)
+    }
+    function altoFilaPx(sheetDoc, filaIndiceBase0) {
+        const filaNum = filaIndiceBase0 + 1;
+        const filas = Array.from(sheetDoc.getElementsByTagNameNS(NS_S, 'row'));
+        for (const f of filas) {
+            if (parseInt(f.getAttribute('r'), 10) === filaNum) {
+                const h = parseFloat(f.getAttribute('ht'));
+                if (!isNaN(h)) return Math.round(h * 96 / 72);
+            }
+        }
+        return 20; // alto de fila por default (~15 puntos)
+    }
     function colLetraANumero(col) {
         let n = 0;
         for (let i = 0; i < col.length; i++) n = n * 26 + (col.charCodeAt(i) - 64);
@@ -2847,6 +3028,17 @@
                 stats.reemplazos++;
                 continue;
             }
+            // 3.5) "AÑO 2025" (encabezados de tablas de metas/programas
+            // anuales) — siempre debe reflejar el año real en que se
+            // genera el documento (hoy), no el año de referencia fijo
+            // del machote. Se recalcula cada vez, sin depender de ningún
+            // dato capturado en el formulario.
+            if (/^A[ÑN]O\s+\d{4}$/i.test(texto)) {
+                const anioActual = new Date().getFullYear();
+                ponerTextoCeldaXlsx(celda, texto.replace(/\d{4}/, String(anioActual)));
+                stats.reemplazos++;
+                continue;
+            }
 
             // 4) Bloques "NOMBRE" — el puesto suele estar en la celda de
             // abajo o a la derecha (se resuelve después, ya con todas las
@@ -2891,7 +3083,8 @@
                 const col = colLetraANumero(colLetraDeRef(ref)) - 1;
                 const fila = filaNumDeRef(ref) - 1;
                 await insertarImagenesXlsxSGM(zip, sheetDoc, rutaSheet, [
-                    { dataUrl: datos.LOGO_BASE64, col, fila, maxAncho: 130, maxAlto: 100 },
+                    { dataUrl: datos.LOGO_BASE64, col, fila, maxAncho: 130, maxAlto: 100,
+                      anchoColPx: anchoColumnaPx(sheetDoc, col), altoFilaPx: altoFilaPx(sheetDoc, fila) },
                 ], ctxImg);
                 stats.logosInsertados++;
             } else {
@@ -2899,9 +3092,53 @@
             }
         }
 
+        // Cuadros de texto flotantes (capa de dibujo) — algunos machotes
+        // SASISOPA (p.ej. F-04-01) usan un cuadro de texto flotante para
+        // la firma de "ELABORÓ/REVISÓ" en vez de una tabla de celdas. El
+        // texto literal "NOMBRE" ahí debe convertirse en el nombre real
+        // de quien ocupa el puesto indicado en el siguiente run de texto
+        // dentro del mismo cuadro. Se hace por reemplazo directo de texto
+        // (no parseando/regenerando el XML completo del dibujo) para no
+        // arriesgar romper el formato estricto que Excel espera ahí —
+        // el mismo criterio ya usado en otros arreglos delicados.
+        for (const rutaDrawing of Object.keys(zip.files).filter(p => /^xl\/drawings\/drawing\d*\.xml$/i.test(p))) {
+            let texto;
+            try { texto = await zip.file(rutaDrawing).async('string'); } catch (e) { continue; }
+            let resultado = texto;
+            let cambios = false;
+            const RE_NOMBRE = /<a:t>NOMBRE<\/a:t>/g;
+            let m;
+            while ((m = RE_NOMBRE.exec(texto)) !== null) {
+                const finNombre = m.index + m[0].length;
+                const siguiente = /<a:t>([^<]*)<\/a:t>/.exec(texto.slice(finNombre));
+                if (!siguiente) continue;
+                const rolTexto = siguiente[1].trim();
+                const rol = rolPorEtiqueta(rolTexto);
+                if (!rol) continue;
+                const nombre = datos[rol.clave];
+                cambios = true;
+                if (nombre) {
+                    resultado = resultado.replace('<a:t>NOMBRE</a:t>', '<a:t>' + escaparXml(nombre) + '</a:t>');
+                    stats.reemplazos++;
+                } else {
+                    stats.pendientes.push(`Nombre de ${rolTexto} (cuadro de texto, hoja Excel)`);
+                }
+            }
+            // Quitar el fondo amarillo de los cuadros de texto (p.ej.
+            // ELABORÓ/REVISÓ), para que se vean sin relleno — como el
+            // resto del documento — en vez de con el amarillo del
+            // machote de referencia.
+            if (/<a:srgbClr val="ffff00"\/>/i.test(resultado)) {
+                resultado = resultado.replace(/<a:solidFill><a:srgbClr val="ffff00"\/><\/a:solidFill>/gi, '<a:noFill/>');
+                cambios = true;
+            }
+            if (cambios) zip.file(rutaDrawing, resultado, { createFolders: false });
+        }
+
         const xmlSerializer = new XMLSerializer();
-        zip.file(rutaSheet, xmlSerializer.serializeToString(sheetDoc));
-        zip.file('xl/styles.xml', xmlSerializer.serializeToString(stylesDoc));
+
+        zip.file(rutaSheet, xmlSerializer.serializeToString(sheetDoc), { createFolders: false });
+        zip.file('xl/styles.xml', xmlSerializer.serializeToString(stylesDoc), { createFolders: false });
 
         return await zip.generateAsync({ type: 'blob' });
     }
@@ -2937,7 +3174,7 @@
         if (!archivo) return;
         let xml = await archivo.async('string');
         xml = personalizarTextoMetadatos(xml, datos);
-        zip.file(ruta, xml);
+        zip.file(ruta, xml, { createFolders: false });
     }
 
     async function procesarDocx(arrayBuffer, nombreArchivo, datos, stats, zip) {
@@ -2962,6 +3199,8 @@
                 procesarNotacionOrganizacionSGM(xmlDoc, datos, stats);
                 procesarLocalizacionDocumentoSGM(xmlDoc, datos, stats);
                 procesarFirmaAtentamenteSGM(xmlDoc, datos, stats);
+                procesarRevisionPorDireccionSGM(xmlDoc);
+                limpiarArticulosAntesDeRolSGM(xmlDoc, datos);
                 procesarControlDeCambiosSGM(xmlDoc, datos);
                 neutralizarTablasDescriptivasSGM(xmlDoc);
                 reconstruirTarjetasPuestosSGM(xmlDoc, datos);
@@ -3057,7 +3296,7 @@
                 const hl = rPr ? rPr.getElementsByTagNameNS(NS_W, 'highlight')[0] : null;
                 if (hl && hl.getAttributeNS(NS_W, 'val') === 'yellow') rPr.removeChild(hl);
             });
-            zip.file(ruta, serializer.serializeToString(xmlDoc));
+            zip.file(ruta, serializer.serializeToString(xmlDoc), { createFolders: false });
         }
         return await zip.generateAsync({ type: 'blob' });
     }

@@ -2552,6 +2552,7 @@ onAuthStateChanged(auth, async user=>{
         // así los usuarios dados de alta desde el botón "Agregar usuario" ya aparecen
         // con sus permisos sin necesidad de tocar código en ningún archivo.
         await cargarUsuariosFirestore();
+        if (window.flCargarRolActual) await window.flCargarRolActual();
         escuchar();
         try { escucharFlotillaNotifs(); } catch(eFlNotif){ console.warn('[FlotillaNotif]', eFlNotif); }
         escucharEventosCal();
@@ -2939,7 +2940,7 @@ const EMAIL_AREA_MAP = {
     'carreon@tecnocontrol.com.mx':              'Flotilla',
     // ── Vendedores ──
     'guillermo.d@tecnocontrol.com.mx':      'Ventas',
-    'antonio@tecnocontrol.com.mx':          'Ventas',
+    'antonio@tecnocontrol.com.mx':          'Ventas', 
     'jenriquez@tecnocontrol.com.mx':        'Ventas',
     'miguel@tecnocontrol.com.mx':           'Operaciones',
     // ── Directores (acceso admin, igual ven todo) ──
