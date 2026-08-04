@@ -334,7 +334,7 @@ function flSolsDeVehiculo(v){
   if(!v)return[];
   return flS.filter(s=>flEsDelVehiculo(s,v));
 }
-const FLOTILLA_ADMINS=['fatima@tecnocontrol.com.mx','c.acosta@tecnocontrol.com.mx','rh@tecnocontrol.com.mx','glen@tecnocontrol.com.mx','gerencia@tecnocontrol.com.mx','nicolas@tecnocontrol.com.mx', 'irvinjulian05@gmail.com'];
+const FLOTILLA_ADMINS=['mercadotecniatecnocontrol@gmail.com','mercadotecnia@tecnocontrol.com.mx','c.acosta@tecnocontrol.com.mx','rh@tecnocontrol.com.mx','m.delao@tecnocontrol.com.mx','p.pinedo@tecnocontrol.com.mx','fatima@tecnocontrol.com.mx','nicolas@tecnocontrol.com.mx', 'irvinjulian05@gmail.com'];
 const hAdm=()=>{
   const rol=window.flGetRolActual?window.flGetRolActual():'';
   const email=(window.auth?.currentUser?.email||'').toLowerCase();

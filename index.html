@@ -3027,6 +3027,19 @@ window.obtenerDeptoUsuario = obtenerDeptoUsuario;
 function fusionarUsuarioEnMapas(u){
     if(!u || !u.correo) return;
     const correo = u.correo.toLowerCase().trim();
+    // Los departamentos guardados en Firestore no siempre coinciden en
+    // mayúsculas/minúsculas con el nombre canónico usado en el resto del
+    // código (ej. "flotilla" en vez de "Flotilla") — como la comparación
+    // de departamento es sensible a mayúsculas en otras partes del
+    // portal, un valor mal capitalizado hacía que la persona perdiera
+    // acceso a su propia área sin ningún aviso. Se normaliza aquí antes
+    // de fusionarlo en los mapas.
+    const DEPARTAMENTOS_CANONICOS = ['Ingresos','Egresos','Contabilidad','Administración','Recursos Humanos','Marketing','Ventas','Pagos','Gestoría','Almacén','Compras','Operaciones','Flotilla','Contraloría'];
+    function normalizarDepartamento(d){
+        if(!d) return d;
+        const encontrado = DEPARTAMENTOS_CANONICOS.find(c => c.toLowerCase() === d.toLowerCase().trim());
+        return encontrado || d;
+    }
     if(u.activo === false){
         // Usuario desactivado: se retira de los mapas en memoria (el registro en Firestore no se borra)
         delete EMAIL_AREA_MAP[correo];
@@ -3039,12 +3052,21 @@ function fusionarUsuarioEnMapas(u){
         });
         return;
     }
-    if(u.departamento) EMAIL_AREA_MAP[correo] = u.departamento;
+    if(u.departamento) EMAIL_AREA_MAP[correo] = normalizarDepartamento(u.departamento);
     if(u.nombre) NOMBRE_MAP[correo] = u.nombre;
-    if((u.rol||'').toLowerCase()==='admin' && !ADMIN_EMAILS.includes(correo)) ADMIN_EMAILS.push(correo);
+    // NOTA: antes, cualquier usuario con rol==='admin' (un valor genérico,
+    // sin distinguir departamento) se agregaba automáticamente a
+    // ADMIN_EMAILS — la lista de los 4 Admin Total del portal completo.
+    // Esto causaba que un "admin de Flotilla" (con rol:"admin" pensado
+    // solo para su departamento) terminara con permisos de Admin Total
+    // en TODO el portal. ADMIN_EMAILS es exclusivamente para los 4
+    // Admin Total ya hardcodeados arriba; los admins de departamento se
+    // gestionan por su propio mecanismo (ej. flotilla-reglas.js para
+    // Flotilla), no por este campo genérico.
     if(u.departamento){
-        if(!USUARIOS_AREA[u.departamento]) USUARIOS_AREA[u.departamento] = [];
-        if(!USUARIOS_AREA[u.departamento].includes(correo)) USUARIOS_AREA[u.departamento].push(correo);
+        const depto = normalizarDepartamento(u.departamento);
+        if(!USUARIOS_AREA[depto]) USUARIOS_AREA[depto] = [];
+        if(!USUARIOS_AREA[depto].includes(correo)) USUARIOS_AREA[depto].push(correo);
     }
 }
 window.fusionarUsuarioEnMapas = fusionarUsuarioEnMapas;
@@ -5533,6 +5555,7 @@ window.irAlmacen = function(btn){
     }
 };
 </script>
+<script src="flotilla-reglas.js"></script>
 <script src="pagos.js"></script>
 <script src="ventas.js"></script>
 <script src="flotilla.js"></script>
