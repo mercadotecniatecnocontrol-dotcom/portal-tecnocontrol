@@ -1201,6 +1201,9 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
                     <button class="vsi-btn" id="vsi-surtido" onclick="if(window.abrirSurtidoPDF){abrirSurtidoPDF();}else{alert('El módulo de surtido está cargando, intenta de nuevo en un momento.');}" title="Subir pedido a surtir · PDF (formato CHH)" style="color:#5eead4;">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                     </button>
+                    <button class="vsi-btn" id="vsi-mispedidos" onclick="if(window.abrirMisPedidosVentas){abrirMisPedidosVentas();}else{alert('El módulo de Mis Pedidos está cargando, intenta de nuevo en un momento.');}" title="Mis pedidos · pedidos que tú subiste" style="color:#93c5fd;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                    </button>
                     <button class="vsi-btn" id="vsi-correos" onclick="abrirGmailInbox()" title="Correos">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
                     </button>
@@ -5564,6 +5567,7 @@ window.irAlmacen = function(btn){
 <script src="rh.js"></script>
 <script src="almacen.js"></script>
 <script src="almacen-pdf.js"></script>
+<script src="mis-pedidos.js"></script>
 <script src="gestoria.js"></script>
 <script>
 // ══════════════════════════════════════════════════════════
