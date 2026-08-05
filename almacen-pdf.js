@@ -25,6 +25,48 @@
     { v: 'baja',     t: 'Baja' }
   ];
 
+  // ── Destino de entrega (mismo esquema que lee Almac\u00e9n, en solo lectura, y la TV) ──
+  var DESTINO_TIPOS = {
+    recoger_oficinas:   'Recoger en oficinas Tecnocontrol',
+    cliente_recoge:     'Cliente viene por \u00e9l',
+    vendedor_recoge:    'Vendedor recoge en almac\u00e9n',
+    queda_almacen:      'Se queda en almac\u00e9n',
+    paqueteria:         'Enviar por paqueter\u00eda',
+    entrega_chihuahua:  'Entrega en Chihuahua (estaci\u00f3n)',
+    traslado_almacenes: 'Traslado entre almacenes'
+  };
+  var ALMACENES_FALLBACK = ['CHIHUAHUA','JU\u00c1REZ','PARRAL','MONTERREY','SONORA','JALISCO'];
+  // Datos del remitente para la car\u00e1tula de env\u00edo (precargados, editables).
+  var REMITENTE_DEFAULT = {
+    nombre: 'Hedma Tecnocontrol, Mart\u00edn de la O.',
+    rfc: 'HTE1107133B3',
+    direccion: 'Avenida Fuerza A\u00e9rea Mexicana N\u00fam. 7030',
+    colonia: 'Tabalaopa',
+    cp: '31376',
+    ciudadEstado: 'Chihuahua, Chihuahua, M\u00e9xico',
+    telefono: '614-417-0152'
+  };
+  // Si almacen.js ya se carg\u00f3 en la p\u00e1gina, se reusa su funci\u00f3n; si no, se lee directo.
+  function listaAlmacenes(){
+    if (window.__almListaAlmacenes) return window.__almListaAlmacenes();
+    return cargarFirestore().then(function(fs){
+      if (!window.db) return ALMACENES_FALLBACK.slice();
+      return fs.getDoc(fs.doc(window.db,'config','almacenes')).then(function(snap){
+        var nombres = snap.exists() ? (snap.data()||{}).nombres : null;
+        return (Array.isArray(nombres) && nombres.length) ? nombres : ALMACENES_FALLBACK.slice();
+      }).catch(function(){ return ALMACENES_FALLBACK.slice(); });
+    });
+  }
+  function agregarAlmacenNuevo(nombre){
+    if (window.__almAgregarAlmacenGlobal) return window.__almAgregarAlmacenGlobal(nombre);
+    return cargarFirestore().then(function(fs){
+      if (!window.db) return;
+      return fs.updateDoc(fs.doc(window.db,'config','almacenes'), { nombres: fs.arrayUnion(nombre) }).catch(function(){
+        return fs.setDoc(fs.doc(window.db,'config','almacenes'), { nombres:[nombre] }, {merge:true});
+      });
+    });
+  }
+
   // ── CDN de pdf.js (ESM). Se importa una sola vez. ──
   var PDFJS_VER = '4.5.136';
   var PDFJS_BASE = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@' + PDFJS_VER + '/build/';
@@ -51,7 +93,11 @@
   // ── Estado del modal actual ──
   var estado = {
     rawText: '',
-    productos: [] // [{clave,cant,desc}]
+    productos: [], // [{clave,cant,desc}]
+    pdfBuffer: null, pdfSize: 0,     // para adjuntar el PDF original al surtido
+    caratulaImg: null,               // foto de carátula comprimida (si el destino es "paquetería")
+    documentosPendientes: [],        // [File, ...] órdenes de compra u otros documentos, aún sin subir
+    ultimoGuardado: null             // {folio,cliente,...} del último surtido creado, para el botón de WhatsApp
   };
 
   // =====================================================================
@@ -191,8 +237,8 @@
       + '.alm-drop b{color:#0e7490;}'
       + '.alm-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;}'
       + '.alm-fld label{display:block;font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#64748b;margin-bottom:4px;}'
-      + '.alm-fld input,.alm-fld select{width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;color:#1e293b;outline:none;background:#fff;}'
-      + '.alm-fld input:focus,.alm-fld select:focus{border-color:#0891b2;}'
+      + '.alm-fld input,.alm-fld select,.alm-fld textarea{width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;color:#1e293b;outline:none;background:#fff;font-family:inherit;box-sizing:border-box;resize:vertical;}'
+      + '.alm-fld input:focus,.alm-fld select:focus,.alm-fld textarea:focus{border-color:#0891b2;}'
       + '.alm-tbl{width:100%;border-collapse:collapse;margin-top:6px;font-size:13px;}'
       + '.alm-tbl th{text-align:left;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#64748b;padding:6px 8px;border-bottom:2px solid #e2e8f0;}'
       + '.alm-tbl td{padding:4px 6px;border-bottom:1px solid #eef2f7;}'
@@ -211,7 +257,22 @@
       + '.alm-btn-ok{background:linear-gradient(135deg,#0891b2,#0e7490);color:#fff;}'
       + '.alm-btn-ok:disabled{opacity:.5;cursor:not-allowed;}'
       + '.alm-spin{display:inline-block;width:15px;height:15px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:almspin .7s linear infinite;vertical-align:-2px;margin-right:6px;}'
-      + '@keyframes almspin{to{transform:rotate(360deg)}}';
+      + '@keyframes almspin{to{transform:rotate(360deg)}}'
+      + '.alm-destino-box{border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;margin-bottom:14px;background:#f8fafc;}'
+      + '.alm-destino-sel{width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;color:#1e293b;outline:none;background:#fff;}'
+      + '.alm-destino-fld{margin-top:10px;}'
+      + '.alm-destino-fld label{display:block;font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#64748b;margin-bottom:4px;}'
+      + '.alm-destino-fld input,.alm-destino-fld select,.alm-destino-fld textarea{width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;color:#1e293b;outline:none;background:#fff;box-sizing:border-box;font-family:inherit;}'
+      + '.alm-destino-caratula-prev{max-width:100%;max-height:130px;border:1px solid #e2e8f0;border-radius:8px;display:block;margin-top:6px;}'
+      + '.alm-whatsapp-btn{background:#25D366;color:#fff;}'
+      + '.alm-docs-box{border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;margin-bottom:14px;background:#f8fafc;}'
+      + '.alm-doc-item{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:9px;margin-bottom:6px;font-size:12.5px;color:#334155;}'
+      + '.alm-doc-item .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}'
+      + '.alm-doc-item button{flex-shrink:0;border:none;background:#fee2e2;color:#dc2626;border-radius:7px;width:24px;height:24px;cursor:pointer;font-size:14px;line-height:1;}'
+      + '.alm-caratula-box{border:1px solid #cbd5e1;border-radius:12px;padding:14px 16px;margin-top:6px;background:#fff;}'
+      + '.alm-caratula-tit{font-size:13px;font-weight:800;color:#0f172a;margin-bottom:8px;}'
+      + '.alm-caratula-sub{font-size:10.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#0e7490;margin:12px 0 6px;border-top:1px dashed #e2e8f0;padding-top:10px;}'
+      + '.alm-caratula-box .alm-caratula-sub:first-of-type{border-top:none;padding-top:0;margin-top:0;}';
     var s = document.createElement('style');
     s.id = 'alm-pdf-styles';
     s.textContent = css;
@@ -244,8 +305,20 @@
       + '<div class="alm-fld" style="grid-column:1/3;"><label>Cliente</label><input id="alm-cliente" placeholder="Nombre del cliente / estación"></div>'
       + '<div class="alm-fld" style="grid-column:1/3;"><label>Vendedor</label><input id="alm-vendedor" placeholder="Vendedor"></div>'
       + '<div class="alm-fld" style="grid-column:1/3;"><label>Almacén</label><input id="alm-almacen" placeholder="Almacén de salida"></div>'
-      + '<div class="alm-fld" style="grid-column:1/3;"><label>Entrega / Observaciones</label><input id="alm-entrega" placeholder="Instrucciones de entrega"></div>'
+      + '<div class="alm-fld" style="grid-column:1/3;"><label>Entrega / Observaciones <span style="font-weight:600;color:#94a3b8;text-transform:none;">(del PDF, informativo)</span></label><input id="alm-entrega" placeholder="Instrucciones de entrega"></div>'
+      + '<div class="alm-fld" style="grid-column:1/3;"><label>Comentarios para Almac\u00e9n</label><textarea id="alm-comentarios" rows="2" placeholder="Ej. Entregar solo con firma del gerente, avisar antes de llegar, etc."></textarea></div>'
       + '<div class="alm-fld"><label>Fecha de entrega *</label><input id="alm-fecha-entrega" type="date" required></div>'
+      + '</div>'
+      + '<div class="alm-destino-box">'
+      + '<div style="font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#64748b;margin:6px 0 6px;">\u00bfA d\u00f3nde va este pedido?</div>'
+      + '<select id="alm-destino-tipo" class="alm-destino-sel" onchange="window.__almPdfDestinoChange(this.value)"></select>'
+      + '<div id="alm-destino-extra"></div>'
+      + '</div>'
+      + '<div class="alm-docs-box">'
+      + '<div style="font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#64748b;margin:6px 0 6px;">\u00d3rdenes de compra u otros documentos (opcional)</div>'
+      + '<div id="alm-docs-list"></div>'
+      + '<button type="button" class="alm-addrow" onclick="document.getElementById(\'alm-docs-file\').click()">+ Agregar documento(s) o foto(s)</button>'
+      + '<input type="file" id="alm-docs-file" accept="application/pdf,image/*" multiple style="display:none">'
       + '</div>'
       + '<div style="font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#64748b;margin:6px 0 2px;">Productos</div>'
       + '<table class="alm-tbl"><thead><tr><th class="cclave">Clave</th><th class="ccant">Cant.</th><th>Descripción</th><th class="cdel"></th></tr></thead><tbody id="alm-rows"></tbody></table>'
@@ -255,7 +328,8 @@
       + '</div>'
       + '<div class="alm-pdf-foot">'
       + '<span class="alm-msg" id="alm-msg"></span>'
-      + '<button class="alm-btn alm-btn-sec" onclick="window.__almPdfCerrar()">Cancelar</button>'
+      + '<button class="alm-btn alm-btn-sec" id="alm-pdf-cancelbtn" onclick="window.__almPdfCerrar()">Cancelar</button>'
+      + '<button class="alm-btn alm-whatsapp-btn" id="alm-whatsapp" style="display:none;" onclick="window.__almPdfWhatsApp()">Enviar por WhatsApp</button>'
       + '<button class="alm-btn alm-btn-ok" id="alm-confirm" style="display:none;" onclick="window.__almPdfConfirmar()">Confirmar y crear surtido</button>'
       + '</div>'
       + '</div>';
@@ -266,6 +340,19 @@
     sel.innerHTML = PRIORIDADES.map(function (p) {
       return '<option value="' + p.v + '"' + (p.v === 'normal' ? ' selected' : '') + '>' + p.t + '</option>';
     }).join('');
+
+    // Destino de entrega
+    var selDestino = wrap.querySelector('#alm-destino-tipo');
+    selDestino.innerHTML = '<option value="">\u2014 Selecciona \u2014</option>' + Object.keys(DESTINO_TIPOS).map(function (k) {
+      return '<option value="' + k + '">' + esc(DESTINO_TIPOS[k]) + '</option>';
+    }).join('');
+
+    // Documentos adicionales (órdenes de compra, etc.)
+    var docsFile = wrap.querySelector('#alm-docs-file');
+    docsFile.addEventListener('change', function (e) {
+      manejarDocumentosNuevos(e.target.files);
+      docsFile.value = '';
+    });
 
     // Eventos de subida
     var drop = wrap.querySelector('#alm-drop');
@@ -298,6 +385,9 @@
     var reader = new FileReader();
     reader.onload = function () {
       var buf = reader.result;
+      // Guarda una copia del PDF (para poder adjuntarlo luego); pdf.js puede "consumir"
+      // el ArrayBuffer original al leerlo, así que se clona antes de pasárselo.
+      try { estado.pdfBuffer = buf.slice(0); estado.pdfSize = f.size; } catch (e) { estado.pdfBuffer = null; estado.pdfSize = 0; }
       cargarPdfJs()
         .then(function (pdfjs) { return extraerTexto(pdfjs, buf); })
         .then(function (texto) {
@@ -354,6 +444,299 @@
   }
 
   // =====================================================================
+  //  DESTINO DE ENTREGA — campos condicionales según el tipo elegido
+  // =====================================================================
+  function opcionesAlmacenesHtml(lista, selected){
+    return (lista||ALMACENES_FALLBACK).map(function(a){
+      return '<option value="' + esc(a) + '"' + (selected===a?' selected':'') + '>' + esc(a) + '</option>';
+    }).join('');
+  }
+
+  window.__almPdfDestinoChange = function(tipo){
+    var extra = document.getElementById('alm-destino-extra');
+    if (!extra) return;
+    if (tipo === 'paqueteria'){
+      var prev = estado.caratulaImg
+        ? '<img class="alm-destino-caratula-prev" id="alm-destino-caratula-img" src="' + esc(estado.caratulaImg) + '">'
+        : '';
+      var folioAct = (document.getElementById('alm-folio')||{}).value || '';
+      var almacenAct = (document.getElementById('alm-almacen')||{}).value || '';
+      var vendedorAct = (document.getElementById('alm-vendedor')||{}).value || '';
+      var hoy = new Date().toLocaleDateString('es-MX');
+      var R = REMITENTE_DEFAULT;
+      extra.innerHTML =
+          '<div class="alm-caratula-box">'
+        +   '<div class="alm-caratula-tit">Car\u00e1tula de env\u00edo de mercanc\u00eda</div>'
+        +   '<div class="alm-caratula-sub">Solicitante</div>'
+        +   '<div class="alm-destino-fld"><input id="cx-solicitante" value="' + esc(vendedorAct) + '" placeholder="Nombre de qui\u00e9n solicita"></div>'
+        +   '<div class="alm-caratula-sub">Datos del remitente</div>'
+        +   '<div class="alm-destino-fld"><label>Nombre</label><input id="cx-rem-nombre" value="' + esc(R.nombre) + '"></div>'
+        +   '<div class="alm-destino-fld"><label>RFC</label><input id="cx-rem-rfc" value="' + esc(R.rfc) + '"></div>'
+        +   '<div class="alm-destino-fld"><label>Direcci\u00f3n</label><input id="cx-rem-dir" value="' + esc(R.direccion) + '"></div>'
+        +   '<div class="alm-destino-fld"><label>Colonia</label><input id="cx-rem-col" value="' + esc(R.colonia) + '"></div>'
+        +   '<div class="alm-destino-fld"><label>C.P.</label><input id="cx-rem-cp" value="' + esc(R.cp) + '"></div>'
+        +   '<div class="alm-destino-fld"><label>Ciudad, Estado</label><input id="cx-rem-ciu" value="' + esc(R.ciudadEstado) + '"></div>'
+        +   '<div class="alm-destino-fld"><label>Tel\u00e9fono</label><input id="cx-rem-tel" value="' + esc(R.telefono) + '"></div>'
+        +   '<div class="alm-caratula-sub">Datos del destinatario</div>'
+        +   '<div class="alm-destino-fld"><label>Nombre / Empresa</label><input id="cx-dest-nombre" placeholder="Nombre de la estaci\u00f3n o cliente"></div>'
+        +   '<div class="alm-destino-fld"><label>RFC</label><input id="cx-dest-rfc"></div>'
+        +   '<div class="alm-destino-fld"><label>R\u00e9gimen fiscal</label><input id="cx-dest-regimen"></div>'
+        +   '<div class="alm-destino-fld"><label>Direcci\u00f3n</label><input id="cx-dest-dir"></div>'
+        +   '<div class="alm-destino-fld"><label>Colonia</label><input id="cx-dest-col"></div>'
+        +   '<div class="alm-destino-fld"><label>C.P.</label><input id="cx-dest-cp"></div>'
+        +   '<div class="alm-destino-fld"><label>Ciudad, Estado</label><input id="cx-dest-ciu"></div>'
+        +   '<div class="alm-destino-fld"><label>Tel\u00e9fono</label><input id="cx-dest-tel"></div>'
+        +   '<div class="alm-destino-fld"><label>Correo</label><input id="cx-dest-correo"></div>'
+        +   '<div class="alm-caratula-sub">Datos del env\u00edo</div>'
+        +   '<div class="alm-destino-fld"><label>Paqueter\u00eda</label><input id="cx-paqueteria" placeholder="Ej. Mensajer\u00eda Express"></div>'
+        +   '<div class="alm-destino-fld"><label>Gu\u00eda (opcional)</label><input id="cx-guia"></div>'
+        +   '<div class="alm-destino-fld"><label>Tipo de env\u00edo</label><input id="cx-tipo-envio" placeholder="Ej. Terrestre, express"></div>'
+        +   '<div class="alm-destino-fld"><label>Atenci\u00f3n a</label><input id="cx-atencion"></div>'
+        +   '<div class="alm-destino-fld"><label>Recolecci\u00f3n</label><input id="cx-recoleccion" placeholder="D\u00f3nde y cu\u00e1ndo recoge la paqueter\u00eda"></div>'
+        +   '<div class="alm-destino-fld"><label>Referencias</label><input id="cx-referencias"></div>'
+        +   '<div class="alm-destino-fld"><label>Instrucciones especiales</label><textarea id="cx-instrucciones" rows="2"></textarea></div>'
+        +   '<div class="alm-destino-fld"><label>Flete</label><select id="cx-flete"><option value="pagado">Flete pagado</option><option value="por_cobrar">Flete por cobrar</option></select></div>'
+        +   '<div class="alm-destino-fld"><label>Entrega</label><select id="cx-entrega-tipo"><option value="oficina">Ocurre oficina</option><option value="domicilio">Domicilio</option></select></div>'
+        +   '<div class="alm-destino-fld"><label>Almac\u00e9n / N\u00famero de pedido / Fecha</label><input value="' + esc(almacenAct) + ' \u00b7 ' + esc(folioAct) + ' \u00b7 ' + esc(hoy) + '" disabled style="color:#94a3b8;background:#f1f5f9;"></div>'
+        +   '<button type="button" class="alm-addrow" style="margin-top:6px;" onclick="window.__almPdfVerCaratula()">\ud83d\udc41\ufe0f Vista previa de la car\u00e1tula</button>'
+        + '</div>'
+        + '<div class="alm-destino-fld" style="margin-top:12px;"><label>\u00bfYa tienes la car\u00e1tula en papel? (opcional)</label>' + prev
+        + '<button type="button" class="alm-addrow" style="margin-top:6px;" onclick="window.__almPdfElegirCaratula()">' + (estado.caratulaImg?'Cambiar foto':'Subir foto en su lugar') + '</button>'
+        + '<input type="file" id="alm-destino-caratula-file" accept="image/*" style="display:none"></div>';
+    } else if (tipo === 'entrega_chihuahua'){
+      extra.innerHTML =
+        '<div class="alm-destino-fld"><label>Dirección de la estación</label><textarea id="alm-destino-dir" rows="2" placeholder="Dirección completa de la estación de servicio"></textarea></div>';
+      var dirEl = document.getElementById('alm-destino-dir');
+      var entregaEl = document.getElementById('alm-entrega');
+      if (dirEl && !dirEl.value && entregaEl && entregaEl.value) dirEl.value = entregaEl.value;
+    } else if (tipo === 'traslado_almacenes'){
+      extra.innerHTML =
+          '<div class="alm-destino-fld"><label>Almacén origen</label><select id="alm-destino-origen"></select></div>'
+        + '<div class="alm-destino-fld"><label>Almacén destino</label><select id="alm-destino-destino"></select></div>'
+        + '<button type="button" class="alm-addrow" style="margin-top:6px;" onclick="window.__almPdfAgregarAlmacen()">+ Agregar almacén nuevo</button>';
+      listaAlmacenes().then(function(lista){
+        var selO = document.getElementById('alm-destino-origen'), selD = document.getElementById('alm-destino-destino');
+        if (selO) selO.innerHTML = opcionesAlmacenesHtml(lista);
+        if (selD) selD.innerHTML = opcionesAlmacenesHtml(lista);
+      });
+    } else {
+      extra.innerHTML = '';
+    }
+  };
+
+  window.__almPdfAgregarAlmacen = function(){
+    var nombre = prompt('Nombre del almacén nuevo (ej. TORREÓN):');
+    if (!nombre) return;
+    nombre = nombre.trim().toUpperCase();
+    if (!nombre) return;
+    agregarAlmacenNuevo(nombre).then(function(){
+      return listaAlmacenes();
+    }).then(function(lista){
+      var selO = document.getElementById('alm-destino-origen'), selD = document.getElementById('alm-destino-destino');
+      if (selO) selO.innerHTML = opcionesAlmacenesHtml(lista, nombre);
+      if (selD) selD.innerHTML = opcionesAlmacenesHtml(lista, selD.value);
+      if (window.mostrarPush) window.mostrarPush('Almacén', 'Almacén "' + nombre + '" agregado', '✅');
+    }).catch(function(err){
+      console.error('[almacen-pdf] agregar almacén:', err);
+      if (window.mostrarPush) window.mostrarPush('Almacén', 'No se pudo agregar el almacén', '⚠️');
+    });
+  };
+
+  window.__almPdfElegirCaratula = function(){
+    var input = document.getElementById('alm-destino-caratula-file');
+    if (!input) return;
+    input.onchange = function(){
+      var file = input.files && input.files[0]; input.value = '';
+      if (!file) return;
+      comprimirImagen(file).then(function(dataUrl){
+        estado.caratulaImg = dataUrl;
+        var img = document.getElementById('alm-destino-caratula-img');
+        var boton = document.querySelector('#alm-destino-extra .alm-addrow');
+        if (img) img.src = dataUrl;
+        else if (boton) boton.insertAdjacentHTML('beforebegin', '<img class="alm-destino-caratula-prev" id="alm-destino-caratula-img" src="' + esc(dataUrl) + '">');
+        if (boton) boton.textContent = 'Cambiar foto';
+      }).catch(function(err){ console.error('[almacen-pdf] carátula:', err); });
+    };
+    input.click();
+  };
+
+  function comprimirImagen(file){
+    return new Promise(function(resolve, reject){
+      var reader = new FileReader();
+      reader.onload = function(e){
+        var img = new Image();
+        img.onload = function(){
+          var maxW = 480;
+          var scale = Math.min(1, maxW / img.width);
+          var w = Math.max(1, Math.round(img.width * scale)), h = Math.max(1, Math.round(img.height * scale));
+          var c = document.createElement('canvas'); c.width = w; c.height = h;
+          var cx = c.getContext('2d');
+          cx.fillStyle = '#ffffff'; cx.fillRect(0, 0, w, h);
+          cx.drawImage(img, 0, 0, w, h);
+          resolve(c.toDataURL('image/jpeg', 0.72));
+        };
+        img.onerror = reject;
+        img.src = e.target.result;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // Convierte el PDF (ArrayBuffer) a un data URL en base64, para adjuntarlo al pedido.
+  function pdfABase64(buffer){
+    var bytes = new Uint8Array(buffer);
+    var binary = '', CHUNK = 0x8000;
+    for (var i = 0; i < bytes.length; i += CHUNK){
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+    }
+    return 'data:application/pdf;base64,' + btoa(binary);
+  }
+
+  // =====================================================================
+  //  CAR\u00c1TULA DE ENV\u00cdO — documento profesional (mismos datos, mejor dise\u00f1o)
+  // =====================================================================
+  function leerCaratulaDelFormulario(){
+    function v(id){ var el = document.getElementById(id); return el ? el.value.trim() : ''; }
+    return {
+      solicitante: v('cx-solicitante'),
+      remitente: { nombre: v('cx-rem-nombre'), rfc: v('cx-rem-rfc'), direccion: v('cx-rem-dir'), colonia: v('cx-rem-col'), cp: v('cx-rem-cp'), ciudadEstado: v('cx-rem-ciu'), telefono: v('cx-rem-tel') },
+      destinatario: { nombre: v('cx-dest-nombre'), rfc: v('cx-dest-rfc'), regimen: v('cx-dest-regimen'), direccion: v('cx-dest-dir'), colonia: v('cx-dest-col'), cp: v('cx-dest-cp'), ciudadEstado: v('cx-dest-ciu'), telefono: v('cx-dest-tel'), correo: v('cx-dest-correo') },
+      paqueteria: v('cx-paqueteria'), guia: v('cx-guia'), tipoEnvio: v('cx-tipo-envio'), atencion: v('cx-atencion'),
+      recoleccion: v('cx-recoleccion'), referencias: v('cx-referencias'), instrucciones: v('cx-instrucciones'),
+      flete: (document.getElementById('cx-flete')||{}).value || 'pagado',
+      entregaTipo: (document.getElementById('cx-entrega-tipo')||{}).value || 'oficina',
+      folio: (document.getElementById('alm-folio')||{}).value || '', almacen: (document.getElementById('alm-almacen')||{}).value || '',
+      fecha: new Date().toLocaleDateString('es-MX')
+    };
+  }
+
+  function construirCaratulaHTML(c){
+    function fila(label, valor){ return '<tr><td class="ce-k">' + esc(label) + '</td><td class="ce-v">' + esc(valor || '\u2014') + '</td></tr>'; }
+    var R = c.remitente || {}, D = c.destinatario || {};
+    return '<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Car\u00e1tula de env\u00edo ' + esc(c.folio) + '</title><style>'
+      + 'body{font-family:"Segoe UI",Arial,sans-serif;color:#1e293b;margin:0;padding:32px;background:#fff;}'
+      + '.ce-head{display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #0e7490;padding-bottom:14px;margin-bottom:18px;}'
+      + '.ce-brand{font-size:22px;font-weight:800;color:#0e7490;letter-spacing:.5px;}'
+      + '.ce-brand small{display:block;font-size:10px;font-weight:600;color:#64748b;letter-spacing:2px;}'
+      + '.ce-meta{text-align:right;font-size:11px;color:#475569;}'
+      + '.ce-meta b{color:#0f172a;}'
+      + '.ce-title{font-size:15px;font-weight:800;color:#fff;background:#0e7490;padding:9px 16px;border-radius:8px;margin-bottom:16px;}'
+      + '.ce-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:16px;}'
+      + '.ce-box{border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;}'
+      + '.ce-box-h{background:#f1f5f9;color:#0f172a;font-size:11px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;padding:8px 12px;border-bottom:1px solid #e2e8f0;}'
+      + 'table{width:100%;border-collapse:collapse;}'
+      + '.ce-k{width:36%;font-size:10.5px;font-weight:700;color:#64748b;padding:6px 12px;border-top:1px solid #f1f5f9;vertical-align:top;}'
+      + '.ce-v{font-size:11.5px;color:#1e293b;padding:6px 12px;border-top:1px solid #f1f5f9;}'
+      + '.ce-envio{border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:16px;}'
+      + '.ce-flags{display:flex;gap:14px;margin-top:14px;}'
+      + '.ce-flag{flex:1;border:1px solid #e2e8f0;border-radius:10px;padding:10px 14px;font-size:11px;}'
+      + '.ce-flag b{display:block;font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;}'
+      + '.ce-check{color:#0e7490;font-weight:800;}'
+      + '.ce-foot{margin-top:30px;font-size:9.5px;color:#94a3b8;text-align:center;}'
+      + '@media print{body{padding:14px;}}'
+      + '</style></head><body>'
+      + '<div class="ce-head"><div class="ce-brand">TECNOCONTROL<small>SISTEMA DE ENV\u00cdOS</small></div>'
+      +   '<div class="ce-meta"><div>Solicitante: <b>' + esc(c.solicitante) + '</b></div><div>N\u00fam. pedido: <b>' + esc(c.folio) + '</b></div>'
+      +   '<div>Almac\u00e9n: <b>' + esc(c.almacen) + '</b></div><div>Fecha: <b>' + esc(c.fecha) + '</b></div></div></div>'
+      + '<div class="ce-title">Car\u00e1tula de env\u00edo de mercanc\u00eda</div>'
+      + '<div class="ce-grid">'
+      +   '<div class="ce-box"><div class="ce-box-h">Datos del remitente</div><table>'
+      +     fila('Nombre', R.nombre) + fila('RFC', R.rfc) + fila('Direcci\u00f3n', R.direccion) + fila('Colonia', R.colonia)
+      +     fila('C.P.', R.cp) + fila('Ciudad, Estado', R.ciudadEstado) + fila('Tel\u00e9fono', R.telefono)
+      +   '</table></div>'
+      +   '<div class="ce-box"><div class="ce-box-h">Datos del destinatario</div><table>'
+      +     fila('Nombre', D.nombre) + fila('RFC', D.rfc) + fila('R\u00e9gimen fiscal', D.regimen) + fila('Direcci\u00f3n', D.direccion)
+      +     fila('Colonia', D.colonia) + fila('C.P.', D.cp) + fila('Ciudad, Estado', D.ciudadEstado) + fila('Tel\u00e9fono', D.telefono) + fila('Correo', D.correo)
+      +   '</table></div>'
+      + '</div>'
+      + '<div class="ce-envio"><div class="ce-box-h">Datos del env\u00edo</div><table>'
+      +   fila('Paqueter\u00eda', c.paqueteria) + fila('Gu\u00eda', c.guia) + fila('Tipo de env\u00edo', c.tipoEnvio) + fila('Atenci\u00f3n a', c.atencion)
+      +   fila('Recolecci\u00f3n', c.recoleccion) + fila('Referencias', c.referencias) + fila('Instrucciones especiales', c.instrucciones)
+      + '</table></div>'
+      + '<div class="ce-flags">'
+      +   '<div class="ce-flag"><b>Fletera</b>' + (c.flete==='pagado' ? '<span class="ce-check">\u2713</span> Flete pagado' : 'Flete pagado') + ' &nbsp;&nbsp; ' + (c.flete==='por_cobrar' ? '<span class="ce-check">\u2713</span> Flete por cobrar' : 'Flete por cobrar') + '</div>'
+      +   '<div class="ce-flag"><b>Entrega</b>' + (c.entregaTipo==='oficina' ? '<span class="ce-check">\u2713</span> Ocurre oficina' : 'Ocurre oficina') + ' &nbsp;&nbsp; ' + (c.entregaTipo==='domicilio' ? '<span class="ce-check">\u2713</span> Domicilio' : 'Domicilio') + '</div>'
+      + '</div>'
+      + '<div class="ce-foot">Generado autom\u00e1ticamente por el Portal Operativo de Tecnocontrol \u00b7 ' + esc(c.fecha) + '</div>'
+      + '<script>window.onload=function(){setTimeout(function(){window.print();},300);}<\/script>'
+      + '</body></html>';
+  }
+
+  window.__almPdfVerCaratula = function(){
+    var c = leerCaratulaDelFormulario();
+    var w = window.open();
+    if (w){ w.document.write(construirCaratulaHTML(c).replace('<script>window.onload=function(){setTimeout(function(){window.print();},300);}<\/script>','')); w.document.close(); }
+  };
+
+
+  var DOC_TAM_MAX = 700 * 1024; // ~700KB por archivo; deja margen para el tope de 1MB por documento en Firestore
+
+  // =====================================================================
+  //  DOCUMENTOS ADICIONALES (órdenes de compra, fotos, etc. — opcional)
+  // =====================================================================
+  function manejarDocumentosNuevos(fileList){
+    var agregados = 0, rechazados = 0;
+    Array.prototype.forEach.call(fileList || [], function (f) {
+      var esPdf = f.type.indexOf('pdf') !== -1 || /\.pdf$/i.test(f.name);
+      var esImagen = f.type.indexOf('image') === 0;
+      if (!esPdf && !esImagen) { rechazados++; return; }
+      if (esPdf && f.size > DOC_TAM_MAX) { rechazados++; return; } // las imágenes se comprimen, los PDF no
+      estado.documentosPendientes.push(f);
+      agregados++;
+    });
+    renderDocsList();
+    if (rechazados) msg(agregados ? (agregados + ' documento(s) agregado(s); ' + rechazados + ' no se pudieron agregar (formato o tamaño no válido).') : 'Ese archivo no es un PDF o imagen válido, o pesa más de 700 KB.', '#d97706');
+  }
+
+  function renderDocsList(){
+    var cont = document.getElementById('alm-docs-list');
+    if (!cont) return;
+    cont.innerHTML = estado.documentosPendientes.map(function (f, i) {
+      return '<div class="alm-doc-item"><span class="n">' + esc(f.name) + '</span><button type="button" onclick="window.__almPdfDocDel(' + i + ')" title="Quitar">&times;</button></div>';
+    }).join('');
+  }
+
+  window.__almPdfDocDel = function (i) {
+    estado.documentosPendientes.splice(i, 1);
+    renderDocsList();
+  };
+
+  function leerComoDataURL(file){
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function () { resolve(reader.result); };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function procesarDocumento(file){
+    var esImagen = file.type.indexOf('image') === 0;
+    if (esImagen) {
+      return comprimirImagen(file).then(function (dataUrl) { return { tipo: 'imagen', archivo: dataUrl, nombre: file.name }; });
+    }
+    return leerComoDataURL(file).then(function (dataUrl) { return { tipo: 'pdf', archivo: dataUrl, nombre: file.name }; });
+  }
+
+  // Sube todos los documentos pendientes a surtidos/{id}/documentos y devuelve cuántos se guardaron bien.
+  function subirDocumentosPendientes(fs, surtidoId, yo){
+    if (!estado.documentosPendientes.length) return Promise.resolve(0);
+    var col = fs.collection(window.db, 'surtidos', surtidoId, 'documentos');
+    var tareas = estado.documentosPendientes.map(function (file) {
+      return procesarDocumento(file).then(function (doc) {
+        return fs.addDoc(col, Object.assign(doc, { subidoPor: yo, subidoEn: fs.serverTimestamp() }));
+      }).catch(function (err) {
+        console.warn('[almacen-pdf] no se pudo subir un documento:', file.name, err);
+        return null;
+      });
+    });
+    return Promise.all(tareas).then(function (resultados) {
+      return resultados.filter(Boolean).length;
+    });
+  }
+
+  // =====================================================================
   //  Handlers globales (invocados desde el HTML del modal)
   // =====================================================================
   window.__almPdfEdit = function (i, campo, val) {
@@ -374,11 +757,30 @@
     var vendedor = (document.getElementById('alm-vendedor').value || '').trim() || '—';
     var almacen = (document.getElementById('alm-almacen').value || '').trim();
     var entrega = (document.getElementById('alm-entrega').value || '').trim();
+    var comentariosAlmacen = ((document.getElementById('alm-comentarios')||{}).value || '').trim();
     var fechaEntrega = (document.getElementById('alm-fecha-entrega').value || '').trim();
     var prioridad = document.getElementById('alm-prio').value || 'normal';
     var productos = estado.productos
       .map(function (p) { return { clave: (p.clave || '').trim(), cant: parseInt(p.cant, 10) || 0, desc: (p.desc || '').trim(), pu: p.pu || '', importe: p.importe || '' }; })
       .filter(function (p) { return p.cant > 0 && p.desc.length > 0; });
+
+    // Destino de entrega (opcional, pero si se elige un tipo se guardan sus datos)
+    var destinoTipo = (document.getElementById('alm-destino-tipo') || {}).value || '';
+    var datosDestino = {};
+    if (destinoTipo) {
+      datosDestino.destinoTipo = destinoTipo;
+      if (destinoTipo === 'paqueteria') {
+        datosDestino.destinoPaqueteria = ((document.getElementById('cx-paqueteria') || {}).value || '').trim();
+        datosDestino.destinoGuia = ((document.getElementById('cx-guia') || {}).value || '').trim();
+        if (estado.caratulaImg) datosDestino.destinoCaratulaImg = estado.caratulaImg;
+        if (document.getElementById('cx-dest-nombre')) datosDestino.caratulaEnvio = leerCaratulaDelFormulario();
+      } else if (destinoTipo === 'entrega_chihuahua') {
+        datosDestino.destinoDireccion = ((document.getElementById('alm-destino-dir') || {}).value || '').trim();
+      } else if (destinoTipo === 'traslado_almacenes') {
+        datosDestino.destinoAlmacenOrigen = (document.getElementById('alm-destino-origen') || {}).value || '';
+        datosDestino.destinoAlmacenDestino = (document.getElementById('alm-destino-destino') || {}).value || '';
+      }
+    }
 
     if (!folio)   { msg('Falta el folio.', '#dc2626'); return; }
     if (!cliente) { msg('Falta el cliente.', '#dc2626'); return; }
@@ -391,6 +793,10 @@
     btn.disabled = true;
     btn.innerHTML = '<span class="alm-spin"></span>Guardando…';
     msg('Verificando folio…', '#0e7490');
+
+    var nuevoId = null;
+    // El PDF solo se adjunta si cabe cómodo en un documento de Firestore (tope 1MB en base64).
+    var adjuntarPdf = !!(estado.pdfBuffer && estado.pdfSize && estado.pdfSize < 700 * 1024);
 
     cargarFirestore().then(function (fs) {
       var col = fs.collection(window.db, 'surtidos');
@@ -412,12 +818,13 @@
           throw new Error('cancelado');
         }
         var yo = (window.auth && window.auth.currentUser && window.auth.currentUser.email) || '';
-        return fs.addDoc(col, {
+        var doc = Object.assign({
           folio: folio,
           cliente: cliente,
           vendedor: vendedor,
           almacen: almacen,
           entrega: entrega,
+          comentariosAlmacen: comentariosAlmacen,
           fechaEntrega: fechaEntrega,
           total: estado.total || '',
           prioridad: prioridad,
@@ -426,14 +833,34 @@
           tipo: 'venta',
           origen: 'pdf',
           creadoPor: yo,
+          tienePdfOriginal: adjuntarPdf,
           createdAt: fs.serverTimestamp()
+        }, datosDestino);
+        return fs.addDoc(col, doc).then(function (ref) {
+          nuevoId = ref.id;
+          var tareas = [];
+          if (adjuntarPdf) {
+            // Adjunta el PDF original en una subcolección (no en el documento principal, para no saturarlo).
+            tareas.push(fs.setDoc(fs.doc(window.db, 'surtidos', ref.id, 'adjuntos', 'pdf_original'), {
+              archivo: pdfABase64(estado.pdfBuffer),
+              subidoPor: yo,
+              subidoEn: fs.serverTimestamp()
+            }).catch(function (err) { console.warn('[almacen-pdf] no se pudo adjuntar el PDF:', err); }));
+          }
+          tareas.push(subirDocumentosPendientes(fs, ref.id, yo).then(function (n) {
+            if (n > 0) return fs.updateDoc(ref, { numOrdenesCompra: n }).catch(function(){});
+          }));
+          return Promise.all(tareas);
         });
       });
     })
     .then(function () {
       msg('✔ Surtido ' + folio + ' creado.', '#059669');
       if (window.mostrarPush) window.mostrarPush('📦 Surtido creado', 'Folio ' + folio + ' · ' + cliente, '✅');
-      setTimeout(window.__almPdfCerrar, 700);
+      estado.ultimoGuardado = { folio: folio, cliente: cliente, prioridad: prioridad, fechaEntrega: fechaEntrega, destinoTipo: destinoTipo };
+      btn.style.display = 'none';
+      var wa = document.getElementById('alm-whatsapp'); if (wa) wa.style.display = 'inline-block';
+      var cancelBtn = document.getElementById('alm-pdf-cancelbtn'); if (cancelBtn) cancelBtn.textContent = 'Cerrar';
     })
     .catch(function (e) {
       if (e && e.message === 'cancelado') { msg('Operación cancelada.', '#64748b'); }
@@ -441,7 +868,7 @@
     })
     .finally(function () {
       btn.disabled = false;
-      btn.innerHTML = 'Confirmar y crear surtido';
+      if (!estado.ultimoGuardado) btn.innerHTML = 'Confirmar y crear surtido';
     });
   };
 
@@ -454,18 +881,46 @@
     // Reset del estado y vista
     estado.rawText = '';
     estado.productos = [];
+    estado.pdfBuffer = null; estado.pdfSize = 0;
+    estado.caratulaImg = null;
+    estado.documentosPendientes = [];
+    estado.ultimoGuardado = null;
     var up = document.getElementById('alm-step-upload');
     var rv = document.getElementById('alm-step-review');
     if (up) up.style.display = 'block';
     if (rv) rv.style.display = 'none';
     var cf = document.getElementById('alm-confirm');
-    if (cf) cf.style.display = 'none';
+    if (cf) { cf.style.display = 'none'; cf.innerHTML = 'Confirmar y crear surtido'; }
+    var wa = document.getElementById('alm-whatsapp'); if (wa) wa.style.display = 'none';
+    var cancelBtn = document.getElementById('alm-pdf-cancelbtn'); if (cancelBtn) cancelBtn.textContent = 'Cancelar';
     var fi = document.getElementById('alm-file');
     if (fi) fi.value = '';
     var fe = document.getElementById('alm-fecha-entrega');
     if (fe) fe.value = '';
+    var cmEl = document.getElementById('alm-comentarios'); if (cmEl) cmEl.value = '';
+    var destinoSel = document.getElementById('alm-destino-tipo'); if (destinoSel) destinoSel.value = '';
+    var destinoExtra = document.getElementById('alm-destino-extra'); if (destinoExtra) destinoExtra.innerHTML = '';
+    renderDocsList();
     msg('', '#64748b');
     document.getElementById('alm-pdf-modal').classList.add('show');
+  };
+
+  // =====================================================================
+  //  WhatsApp — notifica que se subió el pedido (el usuario elige a quién enviarlo)
+  // =====================================================================
+  window.__almPdfWhatsApp = function () {
+    var g = estado.ultimoGuardado;
+    if (!g) return;
+    var lineas = [
+      '\ud83d\udce6 Nuevo pedido subido a Almac\u00e9n',
+      'Folio: ' + g.folio,
+      'Cliente: ' + g.cliente,
+      'Prioridad: ' + g.prioridad,
+      'Fecha de entrega: ' + g.fechaEntrega
+    ];
+    if (g.destinoTipo) lineas.push('Destino: ' + (DESTINO_TIPOS[g.destinoTipo] || g.destinoTipo));
+    var texto = lineas.join('\n');
+    window.open('https://wa.me/?text=' + encodeURIComponent(texto), '_blank');
   };
 
 })();
