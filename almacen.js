@@ -311,18 +311,22 @@
 
   // ── Ver el PDF original adjunto por Ventas al subir el pedido (solo lectura, para validar) ──
   window.__almVerPDF = function(id){
+    // Abrir la pestaña YA, en el mismo clic (si se espera a la consulta de Firestore
+    // antes de abrirla, Safari y otros navegadores la bloquean por no verla "inmediata").
+    var w = window.open('', '_blank');
     cargarFirestore().then(function(fs){
       if (!window.db) throw new Error('Firestore no disponible');
       return fs.getDoc(fs.doc(window.db,'surtidos',id,'adjuntos','pdf_original'));
     }).then(function(snap){
       if (!snap.exists() || !(snap.data()||{}).archivo){
+        if (w) w.close();
         if (window.mostrarPush) window.mostrarPush('Almac\u00e9n','Este pedido no tiene PDF adjunto todav\u00eda','\u26a0\ufe0f');
         return;
       }
-      var w = window.open();
-      if (w) w.document.write('<iframe src="'+(snap.data().archivo)+'" style="border:none;width:100%;height:100%;"></iframe>');
+      if (w){ w.document.write('<iframe src="'+(snap.data().archivo)+'" style="border:none;width:100%;height:100%;"></iframe>'); w.document.close(); }
     }).catch(function(err){
       console.error('[almacen] verPDF:',err);
+      if (w) w.close();
       if (window.mostrarPush) window.mostrarPush('Almac\u00e9n','No se pudo abrir el PDF','\u26a0\ufe0f');
     });
   };
@@ -700,33 +704,13 @@
     var ac=acento(p), pc=PRIO_COLOR[p.prioridad]||COLORS.azul;
     var urg=(p.prioridad==='urgente');
     var abierta=!!expandido[p.id];
-    var sig=NEXT[p.estado];
     var prods=Array.isArray(p.productos)?p.productos:[];
-    var total=prods.length, hechas=nChecked(p);
-    var completo=(total>0 && hechas>=total);
+    var total=prods.length;
 
-    // Barra de progreso de surtido (sólo relevante en picking)
-    var progHtml='';
-    if (total>0 && (p.estado==='en_preparacion'||p.estado==='pendiente'||abierta)){
-      var pct=total?Math.round(hechas/total*100):0;
-      progHtml='<div class="alm-prog"><div class="lbl"><span>Surtido</span><span>'+hechas+'/'+total+' líneas</span></div>'
-        + '<div class="track"><div class="fill" style="width:'+pct+'%"></div></div></div>';
-    }
-
+    // El detalle de productos ya no se captura desde Ventas (se valida abriendo el PDF),
+    // así que aquí solo mostramos firma y evidencia al expandir — nada de checklist.
     var prodHtml='';
     if (abierta){
-      prodHtml='<div class="alm-prod">'
-        + (prods.length ? prods.map(function(it,idx){
-            var on=!!(p.check&&p.check[idx]);
-            return '<div class="alm-prow'+(on?' done':'')+'">'
-              + '<button class="alm-check'+(on?' on':'')+'" onclick="window.__almCheck(\''+p.id+'\','+idx+')" title="Marcar surtido">'
-              +   (on?'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>':'')
-              + '</button>'
-              + '<span class="k">'+esc(it.clave||'—')+'</span>'
-              + '<span class="d">'+esc(it.desc||'')+'</span>'
-              + '<span class="q">'+(Number(it.cant)||0)+'</span></div>';
-          }).join('') : '<div class="alm-empty">Sin productos</div>')
-        + '</div>';
       if (p.firma){
         prodHtml += '<div class="alm-firma-mini"><span class="lbl">Firma del solicitante</span>'
           + '<img src="'+esc(p.firma)+'" alt="Firma" onclick="window.__almVerFirma(\''+p.id+'\')"></div>';
@@ -768,8 +752,8 @@
       + (p.comentariosAlmacen ? ('<div class="alm-destino"><span class="alm-destino-chip" style="background:#8B4FD61c;color:#8B4FD6;border-color:#8B4FD655;">\ud83d\udcac '+esc(p.comentariosAlmacen)+'</span></div>') : '')
       + (p.entregaObservaciones ? ('<div class="alm-destino"><span class="alm-destino-chip" style="background:#F26B211c;color:#F26B21;border-color:#F26B2155;">⚠ '+esc(p.entregaObservaciones)+'</span></div>') : '')
       + '<div class="alm-meta"><span>⏱ <span class="alm-timer" data-id="'+p.id+'" style="color:'+ac+'">'+fmt(now()-p.createdAt)+'</span></span>'
-      +   '<span><b>'+piezas(p)+'</b> pzas</span>'+(total?'<span><b>'+hechas+'</b>/'+total+' líneas</span>':'')+'</div>'
-      + progHtml + prodHtml
+      +   (total?('<span><b>'+piezas(p)+'</b> pzas</span>'):'')+'</div>'
+      + prodHtml
       + '<div class="alm-actions">'
       +   (PREV[p.estado]?'<button class="alm-btn alm-btn-back" title="Regresar etapa" onclick="window.__almBack(\''+p.id+'\')">‹</button>':'')
       +   '<button class="alm-btn alm-btn-ghost" onclick="window.__almToggle(\''+p.id+'\')">'+(abierta?'Ocultar':'Ver')+'</button>'
@@ -777,8 +761,6 @@
       +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg></button>'
       +   (!esperandoFirma?'<button class="alm-btn alm-btn-ghost" title="Cancelar pedido" onclick="window.__almAbrirCancelar(\''+p.id+'\')" style="color:#dc2626;">'
       +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></button>':'')
-      +   '<button class="alm-btn alm-btn-ghost" title="Imprimir etiqueta" onclick="window.__almImprimirEtiqueta(\''+p.id+'\')">'
-      +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg></button>'
       +   (p.tienePdfOriginal?('<button class="alm-btn alm-btn-ghost" title="Ver PDF original" onclick="window.__almVerPDF(\''+p.id+'\')">'
       +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></button>'):'')
       +   (p.numOrdenesCompra?('<button class="alm-btn alm-btn-ghost" title="Documentos adjuntos ('+p.numOrdenesCompra+')" onclick="window.__almVerDocumentos(\''+p.id+'\')">'
