@@ -74,20 +74,20 @@ const COLORS={azul:'#1473E6',verde:'#12A150',teal:'#0FB5A6',amarillo:'#D99000',n
 const GRAD={azul:['#0B57C7','#3B93FF'],verde:['#0E8A45','#2ED47E'],teal:['#0C8C82','#22D3C4'],amarillo:['#B8790A','#F0B429'],naranja:['#D9531A','#FF8A4C'],rojo:['#C62B2B','#FF6B6B'],morado:['#6E33C0','#B07BEA'],gris:['#5C6B7E','#93A3B5']};
 const PRIO_COLOR={urgente:COLORS.rojo,muy_alta:COLORS.naranja,alta:COLORS.amarillo,normal:COLORS.azul,baja:COLORS.gris};
 const PRIO_RANK={urgente:5,muy_alta:4,alta:3,normal:2,baja:1};
-const DESTINO_LABEL={recoger_oficinas:'Recoge en oficinas',cliente_recoge:'Cliente recoge',vendedor_recoge:'Vendedor recoge en almacén',queda_almacen:'Se queda en almacén',paqueteria:'Por paquetería',entrega_chihuahua:'Entrega en Chihuahua',traslado_almacenes:'Traslado entre almacenes'};
+const DESTINO_LABEL={recoger_oficinas:'Recoge en oficinas',cliente_recoge:'Cliente recoge',vendedor_recoge:'Vendedor recoge en almac\u00e9n',queda_almacen:'Se queda en almac\u00e9n',paqueteria:'Por paqueter\u00eda',entrega_chihuahua:'Entrega en Chihuahua',traslado_almacenes:'Traslado entre almacenes'};
 const DESTINO_COLOR={recoger_oficinas:COLORS.azul,cliente_recoge:COLORS.verde,vendedor_recoge:COLORS.teal,queda_almacen:COLORS.gris,paqueteria:COLORS.naranja,entrega_chihuahua:COLORS.morado,traslado_almacenes:COLORS.amarillo};
 function destinoResumen(p){
-  if(p.destinoTipo==='paqueteria') return [p.destinoPaqueteria,(p.destinoGuia?('guía '+p.destinoGuia):'')].filter(Boolean).join(' · ');
+  if(p.destinoTipo==='paqueteria') return [p.destinoPaqueteria,(p.destinoGuia?('gu\u00eda '+p.destinoGuia):'')].filter(Boolean).join(' \u00b7 ');
   if(p.destinoTipo==='entrega_chihuahua') return p.destinoDireccion||'';
-  if(p.destinoTipo==='traslado_almacenes') return (p.destinoAlmacenOrigen||'—')+' → '+(p.destinoAlmacenDestino||'—');
+  if(p.destinoTipo==='traslado_almacenes') return (p.destinoAlmacenOrigen||'\u2014')+' \u2192 '+(p.destinoAlmacenDestino||'\u2014');
   return '';
 }
 function destinoBadgeHtml(p){
   if(!p.destinoTipo) return '';
   const c=DESTINO_COLOR[p.destinoTipo]||COLORS.gris, lbl=DESTINO_LABEL[p.destinoTipo]||p.destinoTipo, sub=destinoResumen(p);
-  return `<span class="cdest" style="background:${c}22;color:${c};border-color:${c}66">${lbl}${sub?(' · '+sub):''}</span>`;
+  return `<span class="cdest" style="background:${c}22;color:${c};border-color:${c}66">${lbl}${sub?(' \u00b7 '+sub):''}</span>`;
 }
-const NEXT={esperando_autorizacion:'pendiente',pendiente:'en_preparacion',en_preparacion:'listo',listo:'entregado',entregado:'finalizado'};
+const NEXT={esperando_autorizacion:'pendiente'};
 const now=()=>Date.now(), minsAgo=m=>now()-m*60000;
 
 /*  DATOS EN VIVO (poblado por onSnapshot de la colección `surtidos`)  */
@@ -97,7 +97,7 @@ let pedidos=[];
 function effColor(p){
   if(p.estado==='esperando_autorizacion') return {k:'morado',label:'ESPERANDO AUT.'};
   if(p.estado==='entregado') return {k:'gris',label:'ENTREGADO'};
-  if(p.estado==='listo') return {k:'teal',label:'LISTO'};
+  if(p.estado==='parcial') return {k:'naranja',label:'ENTREGA PARCIAL'};
   const mins=(now()-p.createdAt)/60000, sla=SLA[p.prioridad]||30;
   if(mins>sla) return {k:'rojo',label:'RETRASADO'};
   if(mins>SEMAFORO.naranja) return {k:'naranja',label:'CERCA DEL LÍMITE'};
@@ -189,7 +189,7 @@ function buildPanel(tk, list){
     const vencMeta = v ? `<div class="meta"><span class="k">ENTREGA${hero.fechaEntrega?(' · '+hero.fechaEntrega):''}</span><span class="venc-badge" style="background:${v.color}">${v.txt}</span></div>` : '';
     const destinoTxt = [hero.area, (hero.destino||hero.uso)].filter(Boolean).join(' — ');
     const destinoMeta = (esMatPanel && destinoTxt) ? `<div class="meta"><span class="k">ÁREA / DESTINO</span><span class="v" style="font-size:15px">${destinoTxt}</span></div>` : '';
-    const destinoTipoMeta = hero.destinoTipo ? `<div class="meta"><span class="k">¿A DÓNDE VA?</span><span class="v" style="font-size:15px">${DESTINO_LABEL[hero.destinoTipo]||hero.destinoTipo}${destinoResumen(hero)?(' · '+destinoResumen(hero)):''}</span></div>` : '';
+    const destinoTipoMeta = hero.destinoTipo ? `<div class="meta"><span class="k">\u00bfA D\u00d3NDE VA?</span><span class="v" style="font-size:15px">${DESTINO_LABEL[hero.destinoTipo]||hero.destinoTipo}${destinoResumen(hero)?(' \u00b7 '+destinoResumen(hero)):''}</span></div>` : '';
     heroEl.innerHTML=`
       <div class="eyebrow">${esMatPanel?'SOLICITUD DE MATERIAL · OPERACIONES':'PEDIDO DE VENTAS'} · SIGUIENTE A SURTIR</div>
       <div class="htop">
@@ -273,7 +273,7 @@ function tickPanel(tk, list){
 }
 
 function updateChips(){
-  const a=pedidos.filter(p=>p.estado!=='finalizado');
+  const a=pedidos.filter(p=>['finalizado','cancelado','entregado'].indexOf(p.estado)===-1);
   cActivos.textContent=a.length;
   cPorVencer.textContent=a.filter(p=>['amarillo','naranja'].includes(effColor(p).k)).length;
   cRetraso.textContent=a.filter(p=>effColor(p).k==='rojo').length;
@@ -317,13 +317,33 @@ window.__almRender  = function(){ render(true); };
 function tickReloj(){ const d=new Date(); document.getElementById('clk').textContent = d.toLocaleTimeString('es-MX',{hour12:false}); }
 tickReloj(); setInterval(tickReloj,1000);
 
-// ── Franja de cajas en movimiento: evita que la TV vea la pantalla "quieta" y se suspenda ──
+// ── Franja de cajas en movimiento: refuerzo visual + indicador de "en vivo" ──
 (function(){
   const track = document.getElementById('tvMarqueeTrack');
   if(!track) return;
   const boxSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>';
   const tanda = Array.from({length:14}).map(()=>`<span class="tvm-box">${boxSvg}</span>`).join('');
   track.innerHTML = tanda + tanda; // se duplica para que el recorrido sea continuo, sin salto
+})();
+
+// ── Wake Lock: le pide directamente al navegador que NO apague/duerma la pantalla. ──
+// Esto es lo que de verdad evita la suspensión (la franja de cajas es solo un apoyo visual).
+// Si el navegador de la TV no lo soporta, falla en silencio y no rompe nada.
+(function(){
+  let wakeLock = null;
+  async function pedirWakeLock(){
+    try{
+      if('wakeLock' in navigator){
+        wakeLock = await navigator.wakeLock.request('screen');
+        wakeLock.addEventListener('release', ()=>{ console.log('[TV] wakeLock liberado, se volverá a pedir si la pestaña vuelve a estar visible'); });
+        console.log('[TV] wakeLock activo: la pantalla no debería dormirse mientras esta pestaña esté visible.');
+      } else {
+        console.warn('[TV] Este navegador no soporta Wake Lock. Revisa la configuración de ahorro de energía de la TV.');
+      }
+    }catch(e){ console.warn('[TV] No se pudo activar wakeLock:', e); }
+  }
+  pedirWakeLock();
+  document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') pedirWakeLock(); });
 })();
 
 render(true); setInterval(()=>render(false),1000);
@@ -373,7 +393,7 @@ function iniciarEscucha(){
     snap.forEach(docu=>{
       const d = docu.data() || {};
       const estado = d.estado || 'pendiente';
-      if(estado === 'finalizado' || estado === 'cancelado') return;    // fuera del tablero
+      if(estado === 'finalizado' || estado === 'cancelado' || estado === 'entregado') return;    // fuera del tablero
       const p = {
         id: docu.id,
         folio: String(d.folio!=null ? d.folio : docu.id),
