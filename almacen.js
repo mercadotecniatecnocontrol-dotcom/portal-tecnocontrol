@@ -765,6 +765,7 @@
       + '<div class="cli">'+esc(p.cliente||'Sin cliente')+' '+tipoTag+badgePrep+'</div>'
       + '<div class="vend">Vendedor: '+esc(p.vendedor||'—')+'</div>'
       + destinoHtml(p)
+      + (p.comentariosAlmacen ? ('<div class="alm-destino"><span class="alm-destino-chip" style="background:#8B4FD61c;color:#8B4FD6;border-color:#8B4FD655;">\ud83d\udcac '+esc(p.comentariosAlmacen)+'</span></div>') : '')
       + (p.entregaObservaciones ? ('<div class="alm-destino"><span class="alm-destino-chip" style="background:#F26B211c;color:#F26B21;border-color:#F26B2155;">⚠ '+esc(p.entregaObservaciones)+'</span></div>') : '')
       + '<div class="alm-meta"><span>⏱ <span class="alm-timer" data-id="'+p.id+'" style="color:'+ac+'">'+fmt(now()-p.createdAt)+'</span></span>'
       +   '<span><b>'+piezas(p)+'</b> pzas</span>'+(total?'<span><b>'+hechas+'</b>/'+total+' líneas</span>':'')+'</div>'
@@ -1230,6 +1231,7 @@
             tienePdfOriginal:!!d.tienePdfOriginal, numOrdenesCompra:Number(d.numOrdenesCompra)||0,
             caratulaEnvio:d.caratulaEnvio||null,
             entregaObservaciones:d.entregaObservaciones||'', entregadoEn: d.entregadoEn ? toMs(d.entregadoEn) : 0,
+            comentariosAlmacen:d.comentariosAlmacen||'',
             createdAt:toMs(d.createdAt)
           });
         });
