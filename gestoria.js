@@ -133,6 +133,22 @@
         { clave: "ROL_INTENDENCIA",           etiqueta: "Intendencia",             escolaridadClave: "ESCOLARIDAD_INTENDENCIA",           obligatorio: false },
     ];
 
+    // Artículo gramaticalmente correcto para anteponer a cada puesto
+    // (p.ej. "La Alta Dirección", "El Representante Técnico") — se usa
+    // para armar frases donde el puesto se elige dinámicamente en vez de
+    // venir fijo en el machote (ver P-07, punto 4.1.5).
+    const SASISOPA_ARTICULO_ROL = {
+        ROL_ALTA_DIRECCION: "La",
+        ROL_REPRESENTANTE_TECNICO: "El",
+        ROL_SUPERVISOR_ESTACION: "El",
+        ROL_DESPACHADOR: "El",
+        ROL_ASISTENTE_ADMIN: "El",
+        ROL_FACTURISTA: "El",
+        ROL_MANTENIMIENTO: "El",
+        ROL_INTENDENCIA: "La",
+    };
+
+
     // Placeholder del catálogo genérico de SASISOPA (Responsabilidades/
     // Funciones/Autoridad/Interrelaciones por puesto).
     const SASISOPA_CATALOGO_GENERICO = {};
@@ -168,6 +184,28 @@
             ESCOLARIDAD_MANTENIMIENTO: "Secundaria.", ESCOLARIDAD_FACTURISTA: "Secundaria.",
             ESCOLARIDAD_INTENDENCIA: "Primaria.", ESCOLARIDAD_DESPACHADOR: "Primaria.",
         }},
+        { titulo: "Apartado nombre (Cliente) F-07-04 Atención a Quejas y Sugerencias", icono: ICONO.usuarios,
+          tipo: "selector_rol_documento", clave: "F0704_ROL_CLIENTE", opciones: SASISOPA_ROLES_DISPONIBLES },
+        { titulo: "Punto 4.1.5 (P-07 Comunicación, Participación y Consulta) — Puesto responsable", icono: ICONO.usuarios,
+          tipo: "selector_rol_documento", clave: "P07_ROL_4_1_5", opciones: SASISOPA_ROLES_DISPONIBLES },
+        { titulo: "Puntos 3.1 y 4.4.2 (P-08.2 Control de Documentos) — Quién revisa", icono: ICONO.usuarios,
+          tipo: "selector_rol_documento", clave: "P082_ROL_REVISA", opciones: SASISOPA_ROLES_DISPONIBLES },
+        { titulo: "Puntos 3.1 y 4.4.2 (P-08.2 Control de Documentos) — Quién aprueba/autoriza", icono: ICONO.usuarios,
+          tipo: "selector_rol_documento", clave: "P082_ROL_APRUEBA", opciones: SASISOPA_ROLES_DISPONIBLES },
+        { titulo: "Punto 1 Objetivo (P-18 Informes de Desempeño) — Puesto responsable", icono: ICONO.usuarios,
+          tipo: "selector_rol_documento", clave: "P18_ROL_1_1", opciones: SASISOPA_ROLES_DISPONIBLES },
+        { titulo: "Punto 3.1 (P-18 Informes de Desempeño) — Puesto de máxima autoridad", icono: ICONO.usuarios,
+          tipo: "selector_rol_documento", clave: "P18_ROL_3_1", opciones: SASISOPA_ROLES_DISPONIBLES },
+        { titulo: "P-11 Integridad Mecánica — Puesto en lugar de Alta Dirección", icono: ICONO.usuarios,
+          tipo: "selector_rol_documento", clave: "P11_ROL_ALTA_DIRECCION", opciones: SASISOPA_ROLES_DISPONIBLES },
+        { titulo: "Punto 3.1 (P-14.1 Monitoreo y Medición) — Puesto responsable", icono: ICONO.usuarios,
+          tipo: "selector_rol_documento", clave: "P141_ROL_3_1", opciones: SASISOPA_ROLES_DISPONIBLES },
+        { titulo: "Punto 3.1 (P-14.2 Evaluación del Cumplimiento de RL) — Puesto responsable", icono: ICONO.usuarios,
+          tipo: "selector_rol_documento", clave: "P142_ROL_3_1", opciones: SASISOPA_ROLES_DISPONIBLES },
+        { titulo: "Punto 4 (P-15 Auditoria Interna) — Quién firma el Plan de Auditoría", icono: ICONO.usuarios,
+          tipo: "selector_rol_documento", clave: "P15_ROL_4", opciones: SASISOPA_ROLES_DISPONIBLES },
+        { titulo: "Punto I (M-11 Integridad Mecánica) — Puesto en lugar de Alta Dirección", icono: ICONO.usuarios,
+          tipo: "selector_rol_documento", clave: "M11_ROL_ALTA_DIRECCION", opciones: SASISOPA_ROLES_DISPONIBLES },
     ];
 
     // NUMERO_PERMISO ya no es obligatorio: puede decir "PERMISO EN PROCESO"
@@ -267,6 +305,12 @@
     // diagrama de proceso (no un organigrama) y por lo tanto NO deben
     // pasar por el reemplazo automático del organigrama gráfico.
     const RE_SIN_ORGANIGRAMA_SGM = /^PROC-/i;
+    // SASISOPA: documentos que traen su propio pict/drawing incidental
+    // (no un organigrama real) y por lo tanto NO deben pasar por el
+    // reemplazo automático del organigrama gráfico. Se agrega cada
+    // archivo aquí conforme se detecta el problema — no hay un patrón
+    // general como en SGM (PROC-*), varía documento por documento.
+    const RE_SIN_ORGANIGRAMA_SASISOPA = /^F-07-01|^F-07-04|^F-10_1-02|^P-10_2|^P-10_3/i;
 
     const SGM_CATALOGO_GENERICO = {
         "ROL_ALTA_DIRECCION": {
@@ -850,7 +894,13 @@
         if (_seccionActual === 'sgm') {
             await insertarImagenEnGrupo(zip, xmlDoc, rutaXml, grupoRuns, dataUrl, ctxImg, 40, 85);
         } else if (_seccionActual === 'bitacoras') {
-            await insertarImagenEnGrupo(zip, xmlDoc, rutaXml, grupoRuns, dataUrl, ctxImg, 48, 196);
+            // La celda real del encabezado mide ~256px de ancho (3837 dxa)
+            // y la fila donde vive ~47px de alto (700 dxa) — el tamaño
+            // anterior (48x196) dejaba bastante espacio sin usar a los
+            // lados. Se agranda para ocupar casi todo el ancho disponible
+            // de la celda, sin acercarse al alto de la fila (para no
+            // forzarla a crecer y mover el resto del encabezado).
+            await insertarImagenEnGrupo(zip, xmlDoc, rutaXml, grupoRuns, dataUrl, ctxImg, 60, 245);
         } else {
             await insertarImagenEnGrupo(zip, xmlDoc, rutaXml, grupoRuns, dataUrl, ctxImg, 105, 105);
         }
@@ -1268,12 +1318,521 @@
     // ocupa ese puesto. En cualquier otro lugar donde aparezca "NOMBRE"
     // suelto (encabezados de columna, etc.) se deja tal cual — solo se le
     // quita el resaltado en la limpieza final.
-    function resolverNombresPorRolSASISOPA(xmlDoc, datos, stats) {
+    // Agrupa los runs de un párrafo en "etiquetas": tramos de runs
+    // consecutivos con texto no vacío, separados por runs que son
+    // puramente espacio en blanco (el patrón que usan los machotes para
+    // alinear varias etiquetas en la misma línea con tabulaciones).
+    function agruparEnEtiquetas(p) {
+        const runs = Array.from(p.getElementsByTagNameNS(NS_W, 'r'));
+        const grupos = [];
+        let actual = [];
+        for (const r of runs) {
+            if (textoDeRun(r).trim() === '') {
+                if (actual.length) { grupos.push(actual); actual = []; }
+            } else {
+                actual.push(r);
+            }
+        }
+        if (actual.length) grupos.push(actual);
+        return grupos.map(g => ({ runs: g, texto: g.map(textoDeRun).join('').trim() }));
+    }
+
+    // Fuerza el centrado real de un párrafo: asegura que exista
+    // jc="center" (algunos machotes, como F-07-04, nunca lo declararon —
+    // sin esto Word alinea a la izquierda por default sin importar la
+    // sangría) y normaliza sangría izquierda/derecha desiguales a 0
+    // (residuo de cómo se armó la línea de firma originalmente, que con
+    // jc="center" desplaza el punto real de centrado hacia un lado).
+    function normalizarCentradoParrafo(p) {
+        let pPr = p.getElementsByTagNameNS(NS_W, 'pPr')[0];
+        if (!pPr) {
+            pPr = p.ownerDocument.createElementNS(NS_W, 'w:pPr');
+            p.insertBefore(pPr, p.firstChild);
+        }
+        let jc = pPr.getElementsByTagNameNS(NS_W, 'jc')[0];
+        if (!jc) {
+            jc = p.ownerDocument.createElementNS(NS_W, 'w:jc');
+            pPr.appendChild(jc);
+        }
+        jc.setAttributeNS(NS_W, 'w:val', 'center');
+        const ind = pPr.getElementsByTagNameNS(NS_W, 'ind')[0];
+        if (ind && ind.getAttributeNS(NS_W, 'left') !== ind.getAttributeNS(NS_W, 'right')) {
+            ind.setAttributeNS(NS_W, 'w:left', '0');
+            ind.setAttributeNS(NS_W, 'w:right', '0');
+        }
+    }
+
+    // Cuadros de texto flotantes (w:pict/w:drawing) usados como línea de
+    // firma — p.ej. F-07-01, con dos cajas de texto lado a lado (CONVOCA/
+    // ELABORA), cada una con el nombre del puesto adentro. A diferencia
+    // de la mención en un párrafo narrativo (donde debe quedarse como
+    // título del puesto — ver RE_CONTEXTO_ROL_INSTITUCIONAL), aquí SÍ
+    // corresponde mostrar el nombre real de quien lo ocupa. Estas cajas
+    // no siempre traen el resaltado amarillo (a veces solo una de las
+    // dos lo tiene, como en F-07-01), así que se detectan por texto
+    // exacto dentro de la forma, sin depender del resaltado.
+    // P-07, punto 4.1.5: "La Alta Dirección empoderará al personal..." — el
+    // puesto venía fijo en el machote ("Alta Dirección"). Ahora es
+    // seleccionable (P07_ROL_4_1_5); si no se elige nada, se mantiene
+    // "Alta Dirección" por default, PERO como puesto (no como nombre de
+    // persona) — se le quita el resaltado para que el motor genérico no
+    // lo convierta a nombre, mismo criterio que en SGM para menciones de
+    // rol en párrafos narrativos.
+    function procesarPuestoDinamicoP07(xmlDoc, datos, nombreArchivo, stats) {
+        if (!/^P-07(?!\d)/i.test(nombreArchivo || '')) return;
+        const claveRol = datos.P07_ROL_4_1_5 || 'ROL_ALTA_DIRECCION';
+        const rol = SASISOPA_ROLES_DISPONIBLES.find(r => r.clave === claveRol);
+        if (!rol) return;
+        const articulo = SASISOPA_ARTICULO_ROL[rol.clave] || 'El';
+        const norm = t => (t || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+        for (const p of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'))) {
+            if (!textoParrafo(p).includes('empoderará al personal')) continue;
+            const runs = Array.from(p.getElementsByTagNameNS(NS_W, 'r'));
+            let i = 0;
+            while (i < runs.length) {
+                if (!esResaltadoAmarillo(runs[i])) { i++; continue; }
+                let j = i + 1;
+                while (j < runs.length && esResaltadoAmarillo(runs[j])) j++;
+                const grupo = runs.slice(i, j);
+                const textoGrupo = grupo.map(textoDeRun).join('').trim();
+
+                // El artículo puede venir DENTRO del mismo grupo resaltado
+                // ("La Alta Dirección" completo, como en el machote real)
+                // o AFUERA, en el run anterior sin resaltar ("La " +
+                // "Alta Dirección" resaltado por separado) — se manejan
+                // ambos casos. La comparación siempre es contra el texto
+                // FIJO de referencia del machote ("Alta Dirección"), sin
+                // importar qué puesto se haya elegido para sustituirlo.
+                if (norm(textoGrupo) === norm('La Alta Dirección') || norm(textoGrupo) === norm('El Alta Dirección')) {
+                    setTextoRun(grupo[0], articulo + ' ' + rol.etiqueta);
+                    for (let k = 1; k < grupo.length; k++) setTextoRun(grupo[k], '');
+                    grupo.forEach(quitarResaltado);
+                    stats.reemplazos++;
+                    i = j;
+                    continue;
+                }
+                if (norm(textoGrupo) !== norm('Alta Dirección')) { i = j; continue; }
+
+                setTextoRun(grupo[0], rol.etiqueta);
+                for (let k = 1; k < grupo.length; k++) setTextoRun(grupo[k], '');
+                grupo.forEach(quitarResaltado);
+
+                if (i > 0) {
+                    const anterior = runs[i - 1];
+                    const textoAnterior = textoDeRun(anterior);
+                    if (/\bla\b/i.test(textoAnterior)) {
+                        setTextoRun(anterior, textoAnterior.replace(/\bLa\b/i, articulo));
+                    }
+                }
+                stats.reemplazos++;
+                i = j;
+            }
+        }
+    }
+
+    // P-08.2, puntos 3.1 y 4.4.2: "El Representante Técnico... revisar...
+    // y de la Alta Dirección autorizarlos" / "...revisados por el
+    // Representante Técnico y aprobados por la Alta Dirección..." — dos
+    // puestos fijos (quién revisa, quién aprueba) que ahora son
+    // seleccionables. "Representante Técnico" nunca tuvo resaltado (se
+    // ubica por texto exacto); "Alta Dirección" sí lo tenía y por lo
+    // tanto se convertía al nombre de la persona sin querer (mismo bug
+    // que P-07) — aquí también se protege quitándole el resaltado.
+    function procesarRolesDinamicosP082(xmlDoc, datos, nombreArchivo, stats) {
+        if (!/^P-08_2/i.test(nombreArchivo || '')) return;
+        const rolRevisa = SASISOPA_ROLES_DISPONIBLES.find(r => r.clave === (datos.P082_ROL_REVISA || 'ROL_REPRESENTANTE_TECNICO'));
+        const rolAprueba = SASISOPA_ROLES_DISPONIBLES.find(r => r.clave === (datos.P082_ROL_APRUEBA || 'ROL_ALTA_DIRECCION'));
+        if (!rolRevisa || !rolAprueba) return;
+        const artRevisa = SASISOPA_ARTICULO_ROL[rolRevisa.clave] || 'El';
+        const artAprueba = SASISOPA_ARTICULO_ROL[rolAprueba.clave] || 'El';
+        const norm = t => (t || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const ajustarArticuloAnterior = (runs, idx, articuloMayus) => {
+            if (idx <= 0) return;
+            const anterior = runs[idx - 1];
+            const t = textoDeRun(anterior);
+            const m = /\b(el|la)(\s*)$/i.exec(t);
+            if (!m) return;
+            // Conservar mayúscula/minúscula según cómo estaba el
+            // artículo ORIGINAL (mayúscula solo si es inicio de oración).
+            const esMayus = m[1][0] === m[1][0].toUpperCase() && m[1][0] !== m[1][0].toLowerCase();
+            const articulo = esMayus ? articuloMayus : articuloMayus.toLowerCase();
+            // "de" + "el" contrae obligatoriamente a "del" en español
+            // ("de la Alta Dirección" está bien, pero "de el Representante"
+            // debe ser "del Representante").
+            const textoPrevioADeArticulo = t.slice(0, m.index);
+            if (articulo.toLowerCase() === 'el' && /\bde\s*$/i.test(textoPrevioADeArticulo)) {
+                const conDel = textoPrevioADeArticulo.replace(/\bde\s*$/i, esMayus ? 'Del ' : 'del ');
+                setTextoRun(anterior, conDel);
+                return;
+            }
+            setTextoRun(anterior, textoPrevioADeArticulo + articulo + m[2]);
+        };
+
+        for (const p of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'))) {
+            const texto = textoParrafo(p);
+            if (!texto.includes('revisar los documentos controlados') && !texto.includes('serán revisados por') && !texto.includes('Establecer claves de acceso')) continue;
+            const runs = Array.from(p.getElementsByTagNameNS(NS_W, 'r'));
+
+            for (let i = 0; i < runs.length; i++) {
+                const textoRun = textoDeRun(runs[i]);
+                // Antes se exigía que el run dijera EXACTAMENTE
+                // "Representante Técnico" — pero en el punto 8 de 4.2.2
+                // viene pegado en el mismo run junto con " y " ("...el
+                // Representante Técnico y ..."), así que se busca como
+                // subcadena y se reemplaza solo esa parte, respetando el
+                // resto del texto del run.
+                const idxMencion = textoRun.search(/Representante\s+T[eé]cnico/i);
+                if (idxMencion === -1) continue;
+                const mencion = /Representante\s+T[eé]cnico/i.exec(textoRun)[0];
+                setTextoRun(runs[i], textoRun.replace(mencion, rolRevisa.etiqueta));
+                quitarResaltado(runs[i]);
+                if (textoRun.trim() === mencion) ajustarArticuloAnterior(runs, i, artRevisa);
+                stats.reemplazos++;
+            }
+
+            let i = 0;
+            while (i < runs.length) {
+                if (!esResaltadoAmarillo(runs[i])) { i++; continue; }
+                let j = i + 1;
+                while (j < runs.length && esResaltadoAmarillo(runs[j])) j++;
+                const grupo = runs.slice(i, j);
+                const textoGrupo = grupo.map(textoDeRun).join('').trim();
+
+                // El artículo puede venir DENTRO del mismo grupo resaltado
+                // ("la Alta Dirección" completo) o AFUERA, en el run
+                // anterior sin resaltar — se manejan ambos casos, igual
+                // que en P-07.
+                if (norm(textoGrupo) === norm('la Alta Dirección') || norm(textoGrupo) === norm('el Alta Dirección')) {
+                    const primeraLetra = textoDeRun(grupo[0]).trim()[0];
+                    const esMayus = primeraLetra === primeraLetra.toUpperCase() && primeraLetra !== primeraLetra.toLowerCase();
+                    const art = esMayus ? artAprueba : artAprueba.toLowerCase();
+                    // Si el run anterior (sin resaltar) termina en "de " y
+                    // el nuevo artículo es masculino, contrae a "del".
+                    if (art.toLowerCase() === 'el' && i > 0 && /\bde\s*$/i.test(textoDeRun(runs[i - 1]))) {
+                        const anterior = runs[i - 1];
+                        const tAnterior = textoDeRun(anterior);
+                        const esMayusDe = /\bDe\s*$/.test(tAnterior);
+                        setTextoRun(anterior, tAnterior.replace(/\bde\s*$/i, esMayusDe ? 'Del ' : 'del '));
+                        setTextoRun(grupo[0], rolAprueba.etiqueta);
+                    } else {
+                        setTextoRun(grupo[0], art + ' ' + rolAprueba.etiqueta);
+                    }
+                    for (let k = 1; k < grupo.length; k++) setTextoRun(grupo[k], '');
+                    grupo.forEach(quitarResaltado);
+                    stats.reemplazos++;
+                    i = j;
+                    continue;
+                }
+                if (norm(textoGrupo) !== norm('Alta Dirección')) { i = j; continue; }
+                setTextoRun(grupo[0], rolAprueba.etiqueta);
+                for (let k = 1; k < grupo.length; k++) setTextoRun(grupo[k], '');
+                grupo.forEach(quitarResaltado);
+                ajustarArticuloAnterior(runs, i, artAprueba);
+                stats.reemplazos++;
+                i = j;
+            }
+        }
+    }
+
+    // P-18, punto 1 (Objetivo): "...por parte de la Alta Dirección, y
+    // definir..." — mismo patrón de artículo que P-07/P-08.2 (puede venir
+    // separado sin resaltar, o incluido dentro del mismo resaltado según
+    // el machote real). Punto 3.1 (Responsables): "Alta Dirección (máxima
+    // autoridad), Representante Técnico y todo el personal..." — sin
+    // ningún artículo (es una lista de roles), así que ahí se sustituye
+    // el rol tal cual, sin agregar artículo.
+    function procesarRolesDinamicosP18(xmlDoc, datos, nombreArchivo, stats) {
+        if (!/^P-18/i.test(nombreArchivo || '')) return;
+        const norm = t => (t || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+        // Punto 1 (Objetivo) — con artículo.
+        const rol11 = SASISOPA_ROLES_DISPONIBLES.find(r => r.clave === (datos.P18_ROL_1_1 || 'ROL_ALTA_DIRECCION'));
+        if (rol11) {
+            const art11 = SASISOPA_ARTICULO_ROL[rol11.clave] || 'El';
+            for (const p of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'))) {
+                if (!textoParrafo(p).includes('definir la vía de comunicarlo')) continue;
+                const runs = Array.from(p.getElementsByTagNameNS(NS_W, 'r'));
+                let i = 0;
+                while (i < runs.length) {
+                    if (!esResaltadoAmarillo(runs[i])) { i++; continue; }
+                    let j = i + 1;
+                    while (j < runs.length && esResaltadoAmarillo(runs[j])) j++;
+                    const grupo = runs.slice(i, j);
+                    const textoGrupo = grupo.map(textoDeRun).join('').trim();
+                    if (norm(textoGrupo) === norm('la Alta Dirección') || norm(textoGrupo) === norm('el Alta Dirección')) {
+                        const esMayus = /^[A-ZÁÉÍÓÚÑ]/.test(textoDeRun(grupo[0]).trim());
+                        const art = esMayus ? art11 : art11.toLowerCase();
+                        if (art.toLowerCase() === 'el' && i > 0 && /\bde\s*$/i.test(textoDeRun(runs[i - 1]))) {
+                            const anterior = runs[i - 1];
+                            const esMayusDe = /\bDe\s*$/.test(textoDeRun(anterior));
+                            setTextoRun(anterior, textoDeRun(anterior).replace(/\bde\s*$/i, esMayusDe ? 'Del ' : 'del '));
+                            setTextoRun(grupo[0], rol11.etiqueta);
+                        } else {
+                            setTextoRun(grupo[0], art + ' ' + rol11.etiqueta);
+                        }
+                        for (let k = 1; k < grupo.length; k++) setTextoRun(grupo[k], '');
+                        grupo.forEach(quitarResaltado);
+                        stats.reemplazos++;
+                        i = j;
+                        continue;
+                    }
+                    if (norm(textoGrupo) !== norm('Alta Dirección')) { i = j; continue; }
+                    setTextoRun(grupo[0], rol11.etiqueta);
+                    for (let k = 1; k < grupo.length; k++) setTextoRun(grupo[k], '');
+                    grupo.forEach(quitarResaltado);
+                    if (i > 0) {
+                        const anterior = runs[i - 1];
+                        const t = textoDeRun(anterior);
+                        const m = /\b(el|la)(\s*)$/i.exec(t);
+                        if (m) {
+                            const esMayus = m[1][0] === m[1][0].toUpperCase();
+                            const art = esMayus ? art11 : art11.toLowerCase();
+                            const previo = t.slice(0, m.index);
+                            if (art.toLowerCase() === 'el' && /\bde\s*$/i.test(previo)) {
+                                const esMayusDe = /\bDe\s*$/.test(previo);
+                                setTextoRun(anterior, previo.replace(/\bde\s*$/i, esMayusDe ? 'Del ' : 'del '));
+                            } else {
+                                setTextoRun(anterior, previo + art + m[2]);
+                            }
+                        }
+                    }
+                    stats.reemplazos++;
+                    i = j;
+                }
+            }
+        }
+
+        // Punto 3.1 (Responsables) — sin artículo, lista de roles.
+        const rol31 = SASISOPA_ROLES_DISPONIBLES.find(r => r.clave === (datos.P18_ROL_3_1 || 'ROL_ALTA_DIRECCION'));
+        if (rol31) {
+            for (const p of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'))) {
+                if (!textoParrafo(p).includes('máxima autoridad')) continue;
+                const runs = Array.from(p.getElementsByTagNameNS(NS_W, 'r'));
+                for (const r of runs) {
+                    if (norm(textoDeRun(r)) !== norm('Alta Dirección')) continue;
+                    setTextoRun(r, rol31.etiqueta);
+                    quitarResaltado(r);
+                    stats.reemplazos++;
+                }
+            }
+        }
+    }
+
+    // P-11, tres menciones narrativas: "...designado por la Alta
+    // Dirección...", "...que designe la Alta Dirección...", "...que la
+    // Alta Dirección designe...". Las tres comparten el mismo puesto
+    // (Alta Dirección, con artículo separado sin resaltar) y ahora usan
+    // un solo selector — la persona que ocupa el rol elegido puede
+    // sustituir a Alta Dirección en las tres a la vez.
+    function procesarRolAltaDireccionP11(xmlDoc, datos, nombreArchivo, stats) {
+        if (!/^P-11(?!\d)/i.test(nombreArchivo || '')) return;
+        const rol = SASISOPA_ROLES_DISPONIBLES.find(r => r.clave === (datos.P11_ROL_ALTA_DIRECCION || 'ROL_ALTA_DIRECCION'));
+        if (!rol) return;
+        const articulo = SASISOPA_ARTICULO_ROL[rol.clave] || 'El';
+        const norm = t => (t || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const ANCLAS = ['personal designado por', 'personal que designe', 'personal que la'];
+
+        for (const p of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'))) {
+            const texto = textoParrafo(p);
+            if (!ANCLAS.some(a => texto.includes(a))) continue;
+            const runs = Array.from(p.getElementsByTagNameNS(NS_W, 'r'));
+            let i = 0;
+            while (i < runs.length) {
+                if (!esResaltadoAmarillo(runs[i])) { i++; continue; }
+                let j = i + 1;
+                while (j < runs.length && esResaltadoAmarillo(runs[j])) j++;
+                const grupo = runs.slice(i, j);
+                const textoGrupo = grupo.map(textoDeRun).join('').trim();
+
+                if (norm(textoGrupo) === norm('la Alta Dirección') || norm(textoGrupo) === norm('el Alta Dirección')) {
+                    const esMayus = /^[A-ZÁÉÍÓÚÑ]/.test(textoDeRun(grupo[0]).trim());
+                    const art = esMayus ? articulo : articulo.toLowerCase();
+                    if (art.toLowerCase() === 'el' && i > 0 && /\bde\s*$/i.test(textoDeRun(runs[i - 1]))) {
+                        const anterior = runs[i - 1];
+                        const esMayusDe = /\bDe\s*$/.test(textoDeRun(anterior));
+                        setTextoRun(anterior, textoDeRun(anterior).replace(/\bde\s*$/i, esMayusDe ? 'Del ' : 'del '));
+                        setTextoRun(grupo[0], rol.etiqueta);
+                    } else {
+                        setTextoRun(grupo[0], art + ' ' + rol.etiqueta);
+                    }
+                    for (let k = 1; k < grupo.length; k++) setTextoRun(grupo[k], '');
+                    grupo.forEach(quitarResaltado);
+                    stats.reemplazos++;
+                    i = j;
+                    continue;
+                }
+                if (norm(textoGrupo) !== norm('Alta Dirección')) { i = j; continue; }
+
+                setTextoRun(grupo[0], rol.etiqueta);
+                for (let k = 1; k < grupo.length; k++) setTextoRun(grupo[k], '');
+                grupo.forEach(quitarResaltado);
+                if (i > 0) {
+                    const anterior = runs[i - 1];
+                    const t = textoDeRun(anterior);
+                    const m = /\b(el|la)(\s*)$/i.exec(t);
+                    if (m) {
+                        const esMayus = m[1][0] === m[1][0].toUpperCase();
+                        const art = esMayus ? articulo : articulo.toLowerCase();
+                        const previo = t.slice(0, m.index);
+                        if (art.toLowerCase() === 'el' && /\bde\s*$/i.test(previo)) {
+                            const esMayusDe = /\bDe\s*$/.test(previo);
+                            setTextoRun(anterior, previo.replace(/\bde\s*$/i, esMayusDe ? 'Del ' : 'del '));
+                        } else {
+                            setTextoRun(anterior, previo + art + m[2]);
+                        }
+                    }
+                }
+                stats.reemplazos++;
+                i = j;
+            }
+        }
+    }
+
+    // Protege una lista de roles mencionados en un párrafo narrativo
+    // (p.ej. P-10.8 3.1: "...la Alta Dirección, Representante Técnico,
+    // Supervisor de Estación.") para que se queden como título del
+    // puesto — algunos vienen resaltados (se convertirían al nombre de
+    // la persona sin esto) y otros no, sin ningún patrón consistente
+    // entre ellos. Uso genérico: solo se necesita el archivo y la frase
+    // ancla del párrafo.
+    function protegerListaDeRolesSASISOPA(xmlDoc, nombreArchivo, patronArchivo, ancla) {
+        if (!patronArchivo.test(nombreArchivo || '')) return;
+        for (const p of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'))) {
+            if (!textoParrafo(p).includes(ancla)) continue;
+            Array.from(p.getElementsByTagNameNS(NS_W, 'r'))
+                .filter(esResaltadoAmarillo)
+                .forEach(quitarResaltado);
+        }
+    }
+
+    // Versión GENÉRICA de las correcciones anteriores (P-07, P-08.2,
+    // P-18, P-11) — antes cada documento nuevo necesitaba su propia
+    // función de ~60 líneas; ahora solo se necesita indicar las frases
+    // ancla del párrafo, la clave del selector en el formulario, y si la
+    // mención lleva artículo o no (algunas son narrativas con "la Alta
+    // Dirección"; otras son listas de roles sin artículo, como "Alta
+    // Dirección, Representante Técnico y..."). Se encarga de detectar el
+    // artículo venga separado o incluido en el mismo resaltado, ajustar
+    // mayúscula/minúscula, y contraer "de"+"el"="del" cuando aplica.
+    function procesarMencionRolNarrativaSASISOPA(xmlDoc, datos, stats, opciones) {
+        const { nombreArchivo, patronArchivo, anclas, clave, rolPorDefecto, conArticulo, mencionOriginal } = opciones;
+        if (!patronArchivo.test(nombreArchivo || '')) return;
+        const rol = SASISOPA_ROLES_DISPONIBLES.find(r => r.clave === (datos[clave] || rolPorDefecto));
+        if (!rol) return;
+        const articulo = SASISOPA_ARTICULO_ROL[rol.clave] || 'El';
+        const norm = t => (t || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const mencion = mencionOriginal || 'Alta Dirección';
+
+        for (const p of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'))) {
+            const texto = textoParrafo(p);
+            if (!anclas.some(a => texto.includes(a))) continue;
+            const runs = Array.from(p.getElementsByTagNameNS(NS_W, 'r'));
+            let i = 0;
+            while (i < runs.length) {
+                if (!esResaltadoAmarillo(runs[i])) { i++; continue; }
+                let j = i + 1;
+                while (j < runs.length && esResaltadoAmarillo(runs[j])) j++;
+                const grupo = runs.slice(i, j);
+                const textoGrupo = grupo.map(textoDeRun).join('').trim();
+
+                if (conArticulo && (norm(textoGrupo) === norm('la ' + mencion) || norm(textoGrupo) === norm('el ' + mencion))) {
+                    const esMayus = /^[A-ZÁÉÍÓÚÑ]/.test(textoDeRun(grupo[0]).trim());
+                    const art = esMayus ? articulo : articulo.toLowerCase();
+                    if (art.toLowerCase() === 'el' && i > 0 && /\bde\s*$/i.test(textoDeRun(runs[i - 1]))) {
+                        const anterior = runs[i - 1];
+                        const esMayusDe = /\bDe\s*$/.test(textoDeRun(anterior));
+                        setTextoRun(anterior, textoDeRun(anterior).replace(/\bde\s*$/i, esMayusDe ? 'Del ' : 'del '));
+                        setTextoRun(grupo[0], rol.etiqueta);
+                    } else {
+                        setTextoRun(grupo[0], art + ' ' + rol.etiqueta);
+                    }
+                    for (let k = 1; k < grupo.length; k++) setTextoRun(grupo[k], '');
+                    grupo.forEach(quitarResaltado);
+                    stats.reemplazos++;
+                    i = j;
+                    continue;
+                }
+                if (norm(textoGrupo) !== norm(mencion)) { i = j; continue; }
+
+                setTextoRun(grupo[0], rol.etiqueta);
+                for (let k = 1; k < grupo.length; k++) setTextoRun(grupo[k], '');
+                grupo.forEach(quitarResaltado);
+                if (conArticulo && i > 0) {
+                    const anterior = runs[i - 1];
+                    const t = textoDeRun(anterior);
+                    const m = /\b(el|la)(\s*)$/i.exec(t);
+                    if (m) {
+                        const esMayus = m[1][0] === m[1][0].toUpperCase();
+                        const art = esMayus ? articulo : articulo.toLowerCase();
+                        const previo = t.slice(0, m.index);
+                        if (art.toLowerCase() === 'el' && /\bde\s*$/i.test(previo)) {
+                            const esMayusDe = /\bDe\s*$/.test(previo);
+                            setTextoRun(anterior, previo.replace(/\bde\s*$/i, esMayusDe ? 'Del ' : 'del '));
+                        } else {
+                            setTextoRun(anterior, previo + art + m[2]);
+                        }
+                    }
+                }
+                stats.reemplazos++;
+                i = j;
+            }
+        }
+    }
+
+    function resolverRolesEnFormasSASISOPA(xmlDoc, datos, stats) {
+        const sis = sistemaActivo();
+        const roles = sis.rolesOrganigrama || [];
+        const norm = t => (t || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const contenedores = [
+            ...Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'pict')),
+            ...Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'drawing')),
+        ];
+        for (const contenedor of contenedores) {
+            // La etiqueta del rol puede venir partida en varios runs
+            // (p.ej. "Representante" + " Técnico" en F-07-01, por cómo
+            // Word divide el texto internamente) — se agrupan los runs
+            // consecutivos con texto no vacío antes de comparar, igual
+            // que agruparEnEtiquetas de arriba.
+            const runs = Array.from(contenedor.getElementsByTagNameNS(NS_W, 'r'));
+            let grupo = [];
+            const procesarGrupo = () => {
+                if (!grupo.length) return;
+                const texto = grupo.map(textoDeRun).join('').trim();
+                const rol = roles.find(rr => norm(rr.etiqueta) === norm(texto));
+                if (rol) {
+                    const nombre = datos[rol.clave];
+                    if (nombre) {
+                        setTextoRun(grupo[0], nombre);
+                        for (let k = 1; k < grupo.length; k++) setTextoRun(grupo[k], '');
+                        grupo.forEach(quitarResaltado);
+                        stats.reemplazos++;
+                    }
+                }
+                grupo = [];
+            };
+            for (const r of runs) {
+                if (textoDeRun(r).trim() === '') procesarGrupo();
+                else grupo.push(r);
+            }
+            procesarGrupo();
+        }
+    }
+
+    function resolverNombresPorRolSASISOPA(xmlDoc, datos, stats, nombreArchivo) {
         const sis = sistemaActivo();
         const roles = sis.rolesOrganigrama || [];
         const extras = Array.isArray(datos.ROLES_EXTRA) ? datos.ROLES_EXTRA : [];
         const norm = t => (t || '').replace(/[.:]+\s*$/, '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         const nombrePorEtiqueta = etiqueta => {
+            // F-07-04: el "NOMBRE" junto a la etiqueta "Cliente" no
+            // corresponde a ningún rol interno fijo — el cliente decide
+            // qué puesto de su organización debe llenar esa firma, vía el
+            // apartado "Apartado nombre (Cliente) F-07-04" del formulario.
+            if (norm(etiqueta) === 'cliente' && /^F-07-04/i.test(nombreArchivo || '') && datos.F0704_ROL_CLIENTE) {
+                const rolElegido = roles.find(r => r.clave === datos.F0704_ROL_CLIENTE);
+                if (rolElegido) return datos[rolElegido.clave] || '';
+            }
             const rol = roles.find(r => norm(r.etiqueta) === norm(etiqueta));
             if (rol) return datos[rol.clave] || '';
             const extra = extras.find(e => norm(e.etiqueta) === norm(etiqueta));
@@ -1304,15 +1863,126 @@
             }
             return null;
         };
+        // Misma búsqueda de arriba, pero para el caso de VARIOS "NOMBRE"
+        // en la misma línea (p.ej. F-07-04: "NOMBRE" / "NOMBRE" con
+        // "Representante Técnico" / "Cliente" debajo, cada etiqueta bajo
+        // su propio NOMBRE) — busca un párrafo cercano cuyo número de
+        // grupos de etiquetas coincida con el número de "NOMBRE" pedidos.
+        const buscarEtiquetasMultiplesCercanas = (i, cantidad) => {
+            for (let j = i + 1; j <= i + VENTANA && j < parrafos.length; j++) {
+                const grupos = agruparEnEtiquetas(parrafos[j]);
+                if (!grupos.length) continue;
+                if (grupos.length === cantidad) return grupos;
+                return null;
+            }
+            for (let j = i - 1; j >= i - VENTANA && j >= 0; j--) {
+                const grupos = agruparEnEtiquetas(parrafos[j]);
+                if (!grupos.length) continue;
+                if (grupos.length === cantidad) return grupos;
+                return null;
+            }
+            return null;
+        };
         parrafos.forEach((p, i) => {
+            const runs = Array.from(p.getElementsByTagNameNS(NS_W, 'r'));
+            const runsNombre = runs.filter(r => esResaltadoAmarillo(r) && norm(textoDeRun(r)) === 'nombre');
+
+            // Caso: varios "NOMBRE" resaltados en el mismo párrafo (en
+            // vez de un párrafo dedicado solo a decir "NOMBRE"). Cada uno
+            // se resuelve por separado, según la etiqueta que le
+            // corresponda por posición.
+            if (runsNombre.length > 1) {
+                const etiquetas = buscarEtiquetasMultiplesCercanas(i, runsNombre.length);
+                if (!etiquetas) return;
+                // A diferencia del caso de un solo "NOMBRE" (que ocupa su
+                // propio párrafo dedicado y se beneficia de forzar el
+                // centrado), aquí varios "NOMBRE" comparten la misma
+                // línea, cada uno ya posicionado con espacios para caer
+                // justo arriba de su propio puesto — centrar el párrafo
+                // completo como un solo bloque los desalinea a todos de
+                // su renglón correspondiente. Se deja la alineación
+                // original del machote intacta.
+                runsNombre.forEach((run, k) => {
+                    const etiqueta = etiquetas[k];
+                    const nombre = nombrePorEtiqueta(etiqueta.texto);
+                    // El espaciado entre dos "NOMBRE" en la misma línea a
+                    // veces vive en un run separado (F-10_1-02), pero en
+                    // otros machotes (F-10_1-01) va pegado como espacios
+                    // finales DENTRO del mismo run que dice "NOMBRE" — si
+                    // se reemplaza todo el texto del run sin más, ese
+                    // espaciado se pierde y el nombre queda pegado al
+                    // siguiente. Se conserva cualquier texto que venga
+                    // después de "NOMBRE" en el mismo run (normalmente
+                    // solo espacios) al armar el reemplazo.
+                    const textoOriginalRun = textoDeRun(run);
+                    const sufijo = textoOriginalRun.replace(/^\s*NOMBRE/i, '');
+                    // El nombre real casi siempre es más largo que la
+                    // palabra "NOMBRE" (6 letras) que sustituye — si se
+                    // conserva el espaciado ORIGINAL completo, la línea
+                    // combinada crece y el siguiente nombre se recorre
+                    // más allá del margen de la página, envolviéndose a
+                    // la línea de abajo (se ve como si "se juntaran" o
+                    // "el nombre saliera en otro lado"). Se recorta el
+                    // espaciado por la diferencia de tamaño, para que el
+                    // siguiente nombre arranque aproximadamente en la
+                    // misma posición que tenía previsto el machote.
+                    // El exceso se calcula sobre TODOS los nombres de la
+                    // línea (no solo el actual), porque el ancho total
+                    // de la línea depende de la suma de todos — un solo
+                    // nombre largo en cualquier posición puede hacer que
+                    // toda la línea se desborde.
+                    const excesoTotal = runsNombre.reduce((acc, r, idx) => {
+                        const n = nombrePorEtiqueta(etiquetas[idx].texto);
+                        return acc + (n ? Math.max(0, n.length - 6) : 0);
+                    }, 0);
+                    const exceso = excesoTotal;
+                    const sufijoAjustado = exceso > 0 ? sufijo.replace(/ {1,}/, m => ' '.repeat(Math.max(1, m.length - exceso))) : sufijo;
+                    // Algunos machotes (F-10_1-02) además tienen runs de
+                    // espacio SEPARADOS entre los dos "NOMBRE" (no
+                    // pegados al primero) — también se recortan por la
+                    // misma diferencia de tamaño, repartiendo el recorte
+                    // entre todos los que haya antes del siguiente NOMBRE.
+                    if (exceso > 0) {
+                        const idxEnRuns = runs.indexOf(run);
+                        const idxSiguienteNombre = runsNombre[k + 1] ? runs.indexOf(runsNombre[k + 1]) : runs.length;
+                        let restante = exceso;
+                        for (let m = idxEnRuns + 1; m < idxSiguienteNombre && restante > 0; m++) {
+                            const rIntermedio = runs[m];
+                            const tIntermedio = textoDeRun(rIntermedio);
+                            if (tIntermedio.trim() !== '') continue; // no es un run puramente de espacios
+                            const recorte = Math.min(restante, Math.max(0, tIntermedio.length - 1));
+                            if (recorte > 0) {
+                                setTextoRun(rIntermedio, ' '.repeat(tIntermedio.length - recorte));
+                                restante -= recorte;
+                            }
+                        }
+                    }
+                    if (nombre) {
+                        setTextoRun(run, nombre + sufijoAjustado);
+                        quitarResaltado(run);
+                        stats.reemplazos++;
+                    } else if (nombre === null) {
+                        // Etiqueta no reconocida (p.ej. "Cliente", una
+                        // persona externa sin dato capturado) — se deja
+                        // en blanco, sin resaltado, para llenarse a mano.
+                        setTextoRun(run, sufijo);
+                        quitarResaltado(run);
+                    } else {
+                        quitarResaltado(run);
+                        stats.pendientes.push(`Nombre de ${etiqueta.texto} (sin dato capturado)`);
+                    }
+                });
+                return;
+            }
+
             const texto = textoParrafo(p).trim();
             if (norm(texto) !== 'nombre') return;
-            const runs = Array.from(p.getElementsByTagNameNS(NS_W, 'r'));
             if (!runs.some(esResaltadoAmarillo)) return;
             const encontrado = buscarEtiquetaCercana(i);
             if (!encontrado) return; // no es un bloque de firma por puesto conocido; se deja tal cual
             if (encontrado.nombre) {
                 reemplazarTextoParrafo(p, encontrado.nombre);
+                normalizarCentradoParrafo(p);
                 stats.reemplazos++;
             } else {
                 runs.forEach(quitarResaltado);
@@ -3225,7 +3895,50 @@
                 procesarFrasesMultiPuestoSGM(xmlDoc, datos, stats);
                 procesarInmediatoSiguienteSGM(xmlDoc, datos, nombreArchivo, stats);
             } else if (_seccionActual === 'sasisopa') {
-                resolverNombresPorRolSASISOPA(xmlDoc, datos, stats);
+                procesarPuestoDinamicoP07(xmlDoc, datos, nombreArchivo, stats);
+                procesarRolesDinamicosP082(xmlDoc, datos, nombreArchivo, stats);
+                procesarRolesDinamicosP18(xmlDoc, datos, nombreArchivo, stats);
+                procesarRolAltaDireccionP11(xmlDoc, datos, nombreArchivo, stats);
+                procesarMencionRolNarrativaSASISOPA(xmlDoc, datos, stats, {
+                    nombreArchivo, patronArchivo: /^P-14_1(?!\d)/i,
+                    anclas: ['en conjunto con el Representante'],
+                    clave: 'P141_ROL_3_1', rolPorDefecto: 'ROL_ALTA_DIRECCION', conArticulo: false,
+                });
+                procesarMencionRolNarrativaSASISOPA(xmlDoc, datos, stats, {
+                    nombreArchivo, patronArchivo: /^P-14_2/i,
+                    anclas: [', Representante Técnico.'],
+                    clave: 'P142_ROL_3_1', rolPorDefecto: 'ROL_ALTA_DIRECCION', conArticulo: false,
+                });
+                procesarMencionRolNarrativaSASISOPA(xmlDoc, datos, stats, {
+                    nombreArchivo, patronArchivo: /^P-15/i,
+                    anclas: ['firmado por la'],
+                    clave: 'P15_ROL_4', rolPorDefecto: 'ROL_ALTA_DIRECCION', conArticulo: true,
+                });
+                protegerListaDeRolesSASISOPA(xmlDoc, nombreArchivo, /^P-10[._]8/i, 'correcta aplicación de este procedimiento');
+                // M-11, punto I: "el Supervisor de Estación" viene
+                // resaltado en las 2 menciones junto con "Alta
+                // Dirección" — se queda como puesto (no se convierte a
+                // nombre), mientras que Alta Dirección sí es
+                // seleccionable más abajo.
+                if (/^M-11/i.test(nombreArchivo || '')) {
+                    for (const p of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'))) {
+                        const t = textoParrafo(p);
+                        if (!t.includes('designado por la') && !t.includes('que designe la')) continue;
+                        const norm2 = x => (x || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+                        for (const r of Array.from(p.getElementsByTagNameNS(NS_W, 'r'))) {
+                            if (esResaltadoAmarillo(r) && (norm2(textoDeRun(r)) === 'supervisor' || norm2(textoDeRun(r)) === 'de estación')) {
+                                quitarResaltado(r);
+                            }
+                        }
+                    }
+                }
+                procesarMencionRolNarrativaSASISOPA(xmlDoc, datos, stats, {
+                    nombreArchivo, patronArchivo: /^M-11/i,
+                    anclas: ['designado por la', 'que designe la'],
+                    clave: 'M11_ROL_ALTA_DIRECCION', rolPorDefecto: 'ROL_ALTA_DIRECCION', conArticulo: true,
+                });
+                resolverRolesEnFormasSASISOPA(xmlDoc, datos, stats);
+                resolverNombresPorRolSASISOPA(xmlDoc, datos, stats, nombreArchivo);
             } else if (_seccionActual === 'bitacoras') {
                 procesarCamposBitacoras(xmlDoc, datos, stats);
             }
@@ -3234,7 +3947,9 @@
             // organigrama gráfico — solo aplica a manuales/formatos que sí
             // llevan el organigrama real de la organización. Bitácoras
             // tampoco lleva organigrama.
-            if (_seccionActual !== 'bitacoras' && !(_seccionActual === 'sgm' && RE_SIN_ORGANIGRAMA_SGM.test(nombreArchivo))) {
+            if (_seccionActual !== 'bitacoras'
+                && !(_seccionActual === 'sgm' && RE_SIN_ORGANIGRAMA_SGM.test(nombreArchivo))
+                && !(_seccionActual === 'sasisopa' && RE_SIN_ORGANIGRAMA_SASISOPA.test(nombreArchivo))) {
                 reemplazarOrganigramaMGM(xmlDoc, datos);
             }
 
@@ -3679,6 +4394,23 @@
     }
 
     function renderSeccionForm(sec, cliente) {
+        if (sec.tipo === 'selector_rol_documento') {
+            const valorActual = cliente[sec.clave] || '';
+            return `
+            <div class="gs-card">
+                <div class="gs-card-header"><span class="gs-card-icon">${sec.icono}</span><span class="gs-card-title">${sec.titulo}</span></div>
+                <div class="gs-card-body">
+                    <div class="gs-subtitle" style="margin-bottom:10px;">Elige qué puesto de la organización del cliente debe aparecer ahí — se toma el nombre ya capturado en el organigrama de arriba.</div>
+                    <div class="gs-field">
+                        <label>Puesto</label>
+                        <select data-clave="${sec.clave}" style="padding:10px 13px;border:1px solid rgba(59,130,246,0.16);border-radius:10px;font-size:13.5px;font-family:'DM Sans',sans-serif;color:var(--text);background:#fbfcfe;">
+                            <option value="">Selecciona un puesto…</option>
+                            ${sec.opciones.map(op => `<option value="${op.clave}" ${valorActual === op.clave ? 'selected' : ''}>${op.etiqueta}</option>`).join('')}
+                        </select>
+                    </div>
+                </div>
+            </div>`;
+        }
         if (sec.tipo === 'escolaridad_dinamica') {
             return `
             <div class="gs-card">
@@ -4283,7 +5015,7 @@
         renderDropzone(cont);
         bindSeccionesEspeciales(cont);
         actualizarPreview(cont);
-        cont.querySelectorAll('#gs-columna-form input[data-clave], #gs-columna-form input[data-equipo-campo]').forEach(inp => {
+        cont.querySelectorAll('#gs-columna-form input[data-clave], #gs-columna-form input[data-equipo-campo], #gs-columna-form select[data-clave]').forEach(inp => {
             inp.addEventListener('input', () => actualizarPreview(cont));
         });
         cont.querySelector('#gs-btn-volver').addEventListener('click', cargarGestoria);
@@ -4370,6 +5102,10 @@
         cont.querySelectorAll('#gs-columna-form input[data-clave]').forEach(input => {
             if (input.disabled) return;
             if (input.type === 'text' && input.value.trim()) datos[input.dataset.clave] = input.value.trim();
+        });
+        cont.querySelectorAll('#gs-columna-form select[data-clave]').forEach(sel => {
+            if (sel.disabled || !sel.value) return;
+            datos[sel.dataset.clave] = sel.value;
         });
         cont.querySelectorAll('[data-clave-tabla]').forEach(contTabla => {
             const claveTabla = contTabla.dataset.claveTabla;
