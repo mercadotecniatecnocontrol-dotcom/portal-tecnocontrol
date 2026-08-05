@@ -9,17 +9,29 @@
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="CSS/pedidos-almacen.css">
 <style>
-  /* ── Franja de cajas en movimiento: mantiene la pantalla "viva" para que la TV no la trate como estática y no se suspenda ── */
-  .tv-marquee{width:100%;overflow:hidden;height:34px;display:flex;align-items:center;background:rgba(20,115,226,.05);border-top:1px solid rgba(148,163,184,.18);}
-  .tv-marquee-track{display:flex;align-items:center;gap:26px;white-space:nowrap;animation:tvMarqueeScroll 38s linear infinite;will-change:transform;}
-  .tvm-box{display:inline-flex;width:16px;height:16px;color:#94a3b8;opacity:.55;flex-shrink:0;}
+  /* ── Franja de cajas en movimiento: mantiene la pantalla "viva" para que la TV no la trate como estática y no se suspenda ──
+     Se decora automáticamente según la fecha (Halloween, Navidad, 16 de Sept.) y cumpleaños registrados, siempre discreta. */
+  .tv-marquee{width:100%;overflow:hidden;height:38px;display:flex;align-items:center;background:linear-gradient(90deg,rgba(20,115,226,.06),rgba(20,115,226,.02));border-top:1px solid rgba(148,163,184,.18);position:relative;}
+  .tv-marquee::before{content:'';position:absolute;inset:0;background:linear-gradient(90deg,var(--tv-theme,#1473E6) 0%,transparent 2.5%,transparent 97.5%,var(--tv-theme,#1473E6) 100%);opacity:.06;pointer-events:none;}
+  .tv-marquee-track{display:flex;align-items:center;gap:28px;white-space:nowrap;animation:tvMarqueeScroll 40s linear infinite;will-change:transform;}
+  .tvm-box{display:inline-flex;width:17px;height:17px;color:var(--tv-theme,#94a3b8);opacity:.6;flex-shrink:0;transition:opacity .4s;}
   .tvm-box svg{width:100%;height:100%;}
+  .tvm-box.bday{opacity:.85;}
   @keyframes tvMarqueeScroll{from{transform:translateX(0);}to{transform:translateX(-50%);}}
-  body.dark .tv-marquee{background:rgba(255,255,255,.04);border-top-color:rgba(255,255,255,.08);}
+  body.dark .tv-marquee{background:linear-gradient(90deg,rgba(255,255,255,.05),rgba(255,255,255,.02));border-top-color:rgba(255,255,255,.08);}
   /* ── Etiqueta de destino de entrega en las tarjetas de la TV ── */
   .cdest{display:inline-block;margin-top:4px;font-size:11px;font-weight:800;border:1px solid;border-radius:99px;padding:2px 9px;white-space:normal;}
+  /* ── Chips de alerta: visibles pero elegantes; laten muy suave solo cuando hay algo que atender ── */
+  .chip.alerta-viva .n{animation:chipLatido 1.8s ease-in-out infinite;}
+  @keyframes chipLatido{0%,100%{opacity:1;}50%{opacity:.55;}}
+  .chip.chip-critico{box-shadow:0 0 0 0 rgba(226,59,59,.35);animation:chipHalo 2.2s ease-in-out infinite;}
+  @keyframes chipHalo{0%{box-shadow:0 0 0 0 rgba(226,59,59,.28);}70%{box-shadow:0 0 0 6px rgba(226,59,59,0);}100%{box-shadow:0 0 0 0 rgba(226,59,59,0);}}
+  /* ── Temporada activa: pequeña etiqueta discreta junto al reloj, nunca invasiva ── */
+  .tv-temporada{display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:700;color:var(--tv-theme,#64748b);opacity:.85;letter-spacing:.3px;}
+  .tv-temporada svg{width:14px;height:14px;}
 </style>
 </head>
+
 <body>
 <div class="app">
   <header>
@@ -29,9 +41,11 @@
     <div class="spacer"></div>
     <div class="chips">
       <div class="chip"><span class="dot" style="background:var(--azul)"></span><span class="n" id="cActivos">0</span> activos</div>
+      <div class="chip"><span class="dot" style="background:var(--naranja,#F26B21)"></span><span class="n" id="cParciales">0</span> parciales</div>
       <div class="chip"><span class="dot" style="background:var(--amarillo)"></span><span class="n" id="cPorVencer">0</span> por vencer</div>
       <div class="chip"><span class="dot" style="background:var(--rojo)"></span><span class="n" id="cRetraso">0</span> retrasados</div>
     </div>
+    <div class="tv-temporada" id="tvTemporada" style="display:none;"></div>
     <button class="nightbtn" id="btnNight" title="Modo nocturno"><svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>
     <div class="clock"><span id="clk" class="mono">--:--:--</span><small>EN VIVO</small></div>
   </header>
@@ -275,8 +289,13 @@ function tickPanel(tk, list){
 function updateChips(){
   const a=pedidos.filter(p=>['finalizado','cancelado','entregado'].indexOf(p.estado)===-1);
   cActivos.textContent=a.length;
+  const nParciales=a.filter(p=>p.estado==='parcial').length;
+  cParciales.textContent=nParciales;
+  cParciales.closest('.chip').classList.toggle('alerta-viva', nParciales>0);
   cPorVencer.textContent=a.filter(p=>['amarillo','naranja'].includes(effColor(p).k)).length;
-  cRetraso.textContent=a.filter(p=>effColor(p).k==='rojo').length;
+  const nRetraso=a.filter(p=>effColor(p).k==='rojo').length;
+  cRetraso.textContent=nRetraso;
+  cRetraso.closest('.chip').classList.toggle('chip-critico', nRetraso>0);
 }
 
 /* ===== SOLO LECTURA: la validación/avance se hace desde el portal ===== */
@@ -318,13 +337,79 @@ function tickReloj(){ const d=new Date(); document.getElementById('clk').textCon
 tickReloj(); setInterval(tickReloj,1000);
 
 // ── Franja de cajas en movimiento: refuerzo visual + indicador de "en vivo" ──
+// Se decora sola según la fecha (minimalista, nunca infantil) y según cumpleaños
+// que el administrador haya registrado en Firestore (config/cumpleanos).
 (function(){
   const track = document.getElementById('tvMarqueeTrack');
   if(!track) return;
-  const boxSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>';
-  const tanda = Array.from({length:14}).map(()=>`<span class="tvm-box">${boxSvg}</span>`).join('');
-  track.innerHTML = tanda + tanda; // se duplica para que el recorrido sea continuo, sin salto
+
+  const ICONO_CAJA = '<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>';
+  const ICONO_CALABAZA = '<path d="M12 2v3"/><ellipse cx="12" cy="14" rx="8" ry="7"/><path d="M9 12s.8 1.5 3 1.5 3-1.5 3-1.5"/>';
+  const ICONO_FANTASMA = '<path d="M6 20V11a6 6 0 0 1 12 0v9l-2.5-2-2 2-1.5-1.5-1.5 1.5-2-2z"/><circle cx="9.5" cy="11" r=".6" fill="currentColor"/><circle cx="14.5" cy="11" r=".6" fill="currentColor"/>';
+  const ICONO_REGALO = '<rect x="4" y="9" width="16" height="11" rx="1"/><path d="M4 13h16"/><path d="M12 9v11"/><path d="M8 9c-1.7 0-3-1-3-2.5S6 4 7.5 4C9.5 4 12 6.5 12 9c0-2.5 2.5-5 4.5-5C18 4 19 5.5 19 6.5S17.7 9 16 9"/>';
+  const ICONO_ESFERA = '<circle cx="12" cy="14" r="7"/><path d="M12 7V3"/><path d="M9.5 3h5"/>';
+  const ICONO_ARBOL = '<path d="M12 2 7 10h3l-4 6h4l-3 6h10l-3-6h4l-4-6h3z"/>';
+  const ICONO_BANDERA = '<path d="M5 21V4"/><path d="M5 4h14l-3 4 3 4H5"/>';
+  const ICONO_SOMBRERO = '<path d="M4 16c0-4 3.5-8 8-8s8 4 8 8"/><ellipse cx="12" cy="16" rx="9" ry="2"/><path d="M9 8V5a3 3 0 0 1 6 0v3"/>';
+  const ICONO_FUEGO = '<path d="M12 2v5"/><path d="M12 2 9 6"/><path d="M12 2l3 4"/><circle cx="12" cy="14" r="6"/>';
+  const ICONO_PASTEL = '<rect x="4" y="12" width="16" height="8" rx="1"/><path d="M4 16h16"/><path d="M8 12V9a1 1 0 0 1 2 0v3"/><path d="M14 12V9a1 1 0 0 1 2 0v3"/><path d="M9 6c0-1 1-1 1-2s-1-1-1-2"/><path d="M15 6c0-1 1-1 1-2s-1-1-1-2"/>';
+
+  // Fecha de hoy en Chihuahua (usa hora local del navegador, suficiente para esto)
+  const hoy = new Date();
+  const mes = hoy.getMonth()+1, dia = hoy.getDate();
+  const enRango = (m1,d1,m2,d2)=>{
+    const marca=(m,d)=>m*100+d, t=marca(mes,dia);
+    const a=marca(m1,d1), b=marca(m2,d2);
+    return a<=b ? (t>=a && t<=b) : (t>=a || t<=b); // soporta rangos que cruzan fin de año (Navidad)
+  };
+
+  let tema = null; // {nombre, color, iconos}
+  if (enRango(10,25,11,1))       tema = {nombre:'Halloween', color:'#F26B21', iconos:[ICONO_CALABAZA,ICONO_FANTASMA,ICONO_CAJA]};
+  else if (enRango(12,1,1,6))    tema = {nombre:'Navidad', color:'#12A150', iconos:[ICONO_REGALO,ICONO_ESFERA,ICONO_ARBOL,ICONO_CAJA]};
+  else if (enRango(9,14,9,16))   tema = {nombre:'16 de Septiembre', color:'#12A150', iconos:[ICONO_BANDERA,ICONO_SOMBRERO,ICONO_FUEGO,ICONO_CAJA]};
+
+  function pintarFranja(iconos, colorTema){
+    if (colorTema) document.documentElement.style.setProperty('--tv-theme', colorTema);
+    const set = iconos.map((path,i)=>`<span class="tvm-box${i===0&&iconos.length<4?' bday':''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${path}</svg></span>`);
+    // Se arma una tanda mezclando los íconos del tema varias veces, más cajas de relleno para que no se sature.
+    let tanda = [];
+    for (let i=0;i<14;i++) tanda.push(set[i % set.length]);
+    const html = tanda.join('') ;
+    track.innerHTML = html + html; // se duplica para que el recorrido sea continuo, sin salto
+  }
+
+  function aplicarTemporada(iconoExtraCumple){
+    const iconos = tema ? tema.iconos.slice() : [ICONO_CAJA];
+    if (iconoExtraCumple) iconos.unshift(iconoExtraCumple);
+    pintarFranja(iconos, tema ? tema.color : null);
+    const etiqueta = document.getElementById('tvTemporada');
+    if (etiqueta){
+      const partes = [];
+      if (tema) partes.push(tema.nombre);
+      if (iconoExtraCumple) partes.push('🎂 Cumpleaños hoy');
+      if (partes.length){ etiqueta.style.display='flex'; etiqueta.textContent = partes.join(' · '); }
+      else etiqueta.style.display='none';
+    }
+  }
+
+  // Cumpleaños: opcional, se lee de Firestore si ya está disponible (config/cumpleanos → {lista:[{nombre,mes,dia}]}).
+  // El módulo de Firebase carga después que este script, así que se expone un gancho para que lo llame en cuanto esté listo.
+  aplicarTemporada(null); // pinta de inmediato con lo que ya sabemos, sin esperar red
+  window.__tvComprobarCumpleanos = function(){
+    try{
+      if (!window.db) return;
+      import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js').then(fs=>{
+        return fs.getDoc(fs.doc(window.db,'config','cumpleanos'));
+      }).then(snap=>{
+        const lista = (snap && snap.exists() && Array.isArray(snap.data().lista)) ? snap.data().lista : [];
+        const hayHoy = lista.some(c=>Number(c.mes)===mes && Number(c.dia)===dia);
+        if (hayHoy) aplicarTemporada(ICONO_PASTEL);
+      }).catch(()=>{});
+    }catch(e){}
+  };
 })();
+
+
 
 // ── Wake Lock: le pide directamente al navegador que NO apague/duerma la pantalla. ──
 // Esto es lo que de verdad evita la suspensión (la franja de cajas es solo un apoyo visual).
@@ -359,6 +444,8 @@ const config = { apiKey:"AIzaSyBXh-P0oMtMiDjyz9PObuJ8DNfROlXvhLE", authDomain:"t
 const app = initializeApp(config, 'tv-almacen');
 const db  = getFirestore(app);
 const auth = getAuth(app);
+window.db = db; // para que otras partes de la página (fuera de este módulo) puedan leer configuración
+if (window.__tvComprobarCumpleanos) window.__tvComprobarCumpleanos();
 
 // Normaliza createdAt: Timestamp | número(ms) | ISO | {seconds} → ms
 function toMs(v){
