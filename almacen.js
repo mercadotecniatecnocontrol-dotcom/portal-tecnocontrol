@@ -1,46 +1,46 @@
 /* ============================================================================
- * almacen.js Â· MÃ³dulo de AlmacÃ©n â€” Centro de Surtido (flujo de pedidos)
+ * almacen.js · Módulo de Almacén — Centro de Surtido (flujo de pedidos)
  * ----------------------------------------------------------------------------
- * Responsabilidad ÃšNICA: mostrar EN VIVO el flujo de pedidos de la colecciÃ³n
- * `surtidos` de Firestore dentro del departamento de AlmacÃ©n y permitir al
+ * Responsabilidad ÚNICA: mostrar EN VIVO el flujo de pedidos de la colección
+ * `surtidos` de Firestore dentro del departamento de Almacén y permitir al
  * personal AVANZAR cada pedido por sus etapas de surtido, con checklist de
- * picking lÃ­nea por lÃ­nea y trazabilidad en `surtidos/{id}/historial`.
+ * picking línea por línea y trazabilidad en `surtidos/{id}/historial`.
  *
  * Ideas tomadas de un WMS profesional (Netlogistik/WEP), adaptadas a la escala
- * de Tecnocontrol: etapas claras (Reciboâ†’Surtidoâ†’VerificaciÃ³nâ†’Embarque),
- * surtido por pieza (checklist), priorizaciÃ³n de urgentes, visibilidad SLA.
+ * de Tecnocontrol: etapas claras (Recibo→Surtido→Verificación→Embarque),
+ * surtido por pieza (checklist), priorización de urgentes, visibilidad SLA.
  *
- * NO sube PDFs â€” eso lo hace almacen-pdf.js (window.abrirSurtidoPDF), que vive
- * en Ventas. AquÃ­ sÃ³lo se OPERA el surtido.
+ * NO sube PDFs — eso lo hace almacen-pdf.js (window.abrirSurtidoPDF), que vive
+ * en Ventas. Aquí sólo se OPERA el surtido.
  *
  * Depende de globals del portal: window.db, window.auth, window.nombreUsuario.
- * Expone: window.abrirAlmacen(idContenedor)   â† contrato con irAlmacen()
+ * Expone: window.abrirAlmacen(idContenedor)   ← contrato con irAlmacen()
  *
  * Esquema `surtidos` (compatible con almacen-pdf.js y pedidos-almacen.html):
  *   { folio, cliente, vendedor, prioridad, estado, productos:[{clave,cant,desc}],
- *     origen, creadoPor, createdAt,  check:{ "<idx>": true } }   â† check es NUEVO y opcional
+ *     origen, creadoPor, createdAt,  check:{ "<idx>": true } }   ← check es NUEVO y opcional
  *
- * MÃ¡quina de estados (igual que la TV):
- *   esperando_autorizacion â†’ pendiente â†’ en_preparacion â†’ listo â†’ entregado â†’ finalizado
+ * Máquina de estados (igual que la TV):
+ *   esperando_autorizacion → pendiente → en_preparacion → listo → entregado → finalizado
  * ==========================================================================*/
 (function () {
   'use strict';
 
-  // â”€â”€ Config compartida con la TV (pedidos-almacen.html) â”€â”€
+  // ── Config compartida con la TV (pedidos-almacen.html) ──
   var SLA        = { urgente:15, muy_alta:20, alta:30, normal:60, baja:120 };
   var SEMAFORO   = { amarillo:20, naranja:30 };
   var COLORS     = { azul:'#1473E6', verde:'#12A150', teal:'#0FB5A6', amarillo:'#D99000', naranja:'#F26B21', rojo:'#E23B3B', morado:'#8B4FD6', gris:'#7C8CA1' };
   var PRIO_COLOR = { urgente:COLORS.rojo, muy_alta:COLORS.naranja, alta:COLORS.amarillo, normal:COLORS.azul, baja:COLORS.gris };
   var PRIO_RANK  = { urgente:5, muy_alta:4, alta:3, normal:2, baja:1 };
   var PRIO_LABEL = { urgente:'Urgente', muy_alta:'Muy alta', alta:'Alta', normal:'Normal', baja:'Baja' };
-  // â”€â”€ Destino de entrega del pedido â”€â”€
+  // ── Destino de entrega del pedido ──
   var DESTINO_TIPOS = {
     recoger_oficinas:   'Recoger en oficinas Tecnocontrol',
-    cliente_recoge:     'Cliente viene por Ã©l',
-    vendedor_recoge:    'Vendedor recoge en almacÃ©n',
-    queda_almacen:      'Se queda en almacÃ©n',
-    paqueteria:         'Enviar por paqueterÃ­a',
-    entrega_chihuahua:  'Entrega en Chihuahua (estaciÃ³n)',
+    cliente_recoge:     'Cliente viene por \u00e9l',
+    vendedor_recoge:    'Vendedor recoge en almac\u00e9n',
+    queda_almacen:      'Se queda en almac\u00e9n',
+    paqueteria:         'Enviar por paqueter\u00eda',
+    entrega_chihuahua:  'Entrega en Chihuahua (estaci\u00f3n)',
     traslado_almacenes: 'Traslado entre almacenes'
   };
   var DESTINO_COLOR = {
@@ -52,7 +52,7 @@
     entrega_chihuahua:  COLORS.morado,
     traslado_almacenes: COLORS.amarillo
   };
-  var ALMACENES_DEFAULT = ['CHIHUAHUA','JUÃREZ','PARRAL','MONTERREY','SONORA','JALISCO'];
+  var ALMACENES_DEFAULT = ['CHIHUAHUA','JU\u00c1REZ','PARRAL','MONTERREY','SONORA','JALISCO'];
   var NEXT       = { esperando_autorizacion:'pendiente', pendiente:'en_preparacion', en_preparacion:'listo', listo:'entregado', entregado:'finalizado' };
   var PREV       = { pendiente:'esperando_autorizacion', en_preparacion:'pendiente', listo:'en_preparacion', entregado:'listo' };
 
@@ -71,16 +71,16 @@
     entregado:'Finalizar'
   };
 
-  // â”€â”€ Estado interno â”€â”€
+  // ── Estado interno ──
   var contId    = 'vista-almacen';
   var pedidos   = [];
   var expandido = {};                 // {id:true}
-  var filtro    = { q:'', prio:'', tipo:'' };   // bÃºsqueda, prioridad y tipo
+  var filtro    = { q:'', prio:'', tipo:'' };   // búsqueda, prioridad y tipo
   var _unsub  = null, _tick = null, _fs = null, _cssOk = false;
-  var _conocidos = null;             // Set de ids ya vistos (null = aÃºn no hubo primera carga)
+  var _conocidos = null;             // Set de ids ya vistos (null = aún no hubo primera carga)
   var _almacenes = null;             // lista de almacenes para traslados (config/almacenes en Firestore)
   var _evidenciasCache = {};         // id -> [{id,imagen,subidoPor,subidoEn}]
-  var _destinoEditId = null;         // id del pedido que se estÃ¡ editando en el modal de destino
+  var _destinoEditId = null;         // id del pedido que se está editando en el modal de destino
   var _notifOn = (function(){ try{ return localStorage.getItem('alm_notif_on')!=='0'; }catch(e){ return true; } })();
 
   function cargarFirestore(){
@@ -88,7 +88,7 @@
     return import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js').then(function(m){ _fs=m; return m; });
   }
 
-  // â”€â”€ Helpers â”€â”€
+  // ── Helpers ──
   function now(){ return Date.now(); }
   function toMs(v){
     if (v == null) return now();
@@ -109,7 +109,7 @@
   function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function fmt(ms){ var s=Math.max(0,Math.floor(ms/1000)); return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0'); }
 
-  // â”€â”€ NotificaciÃ³n sonora + push al llegar pedido nuevo â”€â”€
+  // ── Notificación sonora + push al llegar pedido nuevo ──
   function reproducirBeep(){
     try{
       var Ctx = window.AudioContext || window.webkitAudioContext;
@@ -130,13 +130,61 @@
     }catch(e){ console.warn('[almacen] beep:',e); }
   }
 
+  // Sonido de alerta por tiempo (distinto al de "pedido nuevo"): un tono suave para "por vencer",
+  // tres tonos más agudos para "retrasado". Suena UNA VEZ al cruzar el umbral, no se repite en bucle.
+  function reproducirAlertaSLA(tipo){
+    try{
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      if(!Ctx) return;
+      var ctx = new Ctx();
+      var tonos = tipo==='retrasado' ? [700,700,700] : [520];
+      tonos.forEach(function(f,i){
+        var osc = ctx.createOscillator(), gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = f;
+        osc.connect(gain); gain.connect(ctx.destination);
+        var t0 = ctx.currentTime + i*0.22;
+        gain.gain.setValueAtTime(0.0001, t0);
+        gain.gain.exponentialRampToValueAtTime(0.2, t0+0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0+0.18);
+        osc.start(t0); osc.stop(t0+0.2);
+      });
+      setTimeout(function(){ try{ ctx.close(); }catch(e){} }, 900);
+    }catch(e){ console.warn('[almacen] alerta SLA:',e); }
+  }
+  var _alertPorVencer = {};  // id -> true, ya avisado (para no repetir el sonido cada segundo)
+  var _alertRetrasado = {};
+  function revisarAlertasSLA(){
+    pedidos.forEach(function(p){
+      var st = estadoSLA(p);
+      if (st==='porvencer'){
+        if (_notifOn && !_alertPorVencer[p.id]){
+          _alertPorVencer[p.id]=true;
+          reproducirAlertaSLA('porvencer');
+          if (window.mostrarPush) window.mostrarPush('\u23f3 Por vencer', (p.folio||'')+' \u00b7 '+(p.cliente||''), '\u23f3');
+        }
+      } else {
+        delete _alertPorVencer[p.id];
+      }
+      if (st==='retrasado'){
+        if (_notifOn && !_alertRetrasado[p.id]){
+          _alertRetrasado[p.id]=true;
+          reproducirAlertaSLA('retrasado');
+          if (window.mostrarPush) window.mostrarPush('\ud83d\udea8 Pedido retrasado', (p.folio||'')+' \u00b7 '+(p.cliente||''), '\ud83d\udea8');
+        }
+      } else {
+        delete _alertRetrasado[p.id];
+      }
+    });
+  }
+
   function notificarPedidoNuevo(p){
     if(!_notifOn) return;
     reproducirBeep();
     try{
       if('Notification' in window && Notification.permission==='granted'){
-        var n = new Notification('ðŸ“¦ Nuevo pedido â€” '+(p.folio||'â€”'), {
-          body: (p.cliente||'Sin cliente')+' Â· '+(p.tipo==='material'?'Material':'Venta')+' Â· '+piezas(p)+' pzas',
+        var n = new Notification('📦 Nuevo pedido — '+(p.folio||'—'), {
+          body: (p.cliente||'Sin cliente')+' · '+(p.tipo==='material'?'Material':'Venta')+' · '+piezas(p)+' pzas',
           tag: 'alm-'+p.id,
           icon: undefined
         });
@@ -176,8 +224,16 @@
     if (p.estado==='en_preparacion') return COLORS.verde;
     return COLORS.azul;
   }
+  // Clasificación de tiempo para las alertas: 'ok' | 'porvencer' | 'retrasado'
+  function estadoSLA(p){
+    if (['esperando_autorizacion','listo','entregado','finalizado','cancelado'].indexOf(p.estado)!==-1) return 'ok';
+    var mins=(now()-p.createdAt)/60000, sla=SLA[p.prioridad]||30;
+    if (mins>sla) return 'retrasado';
+    if (mins>SEMAFORO.amarillo) return 'porvencer';
+    return 'ok';
+  }
   function fechaEntregaMs(p){
-    if(!p.fechaEntrega) return Infinity;         // sin fecha â†’ al final dentro de su prioridad
+    if(!p.fechaEntrega) return Infinity;         // sin fecha → al final dentro de su prioridad
     var d = new Date(p.fechaEntrega+'T00:00:00');
     return isNaN(d.getTime()) ? Infinity : d.getTime();
   }
@@ -207,54 +263,24 @@
     return '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>';
   }
   function destinoResumen(p){
-    if (p.destinoTipo==='paqueteria') return [p.destinoPaqueteria, (p.destinoGuia?('guÃ­a '+p.destinoGuia):'')].filter(Boolean).join(' Â· ');
+    if (p.destinoTipo==='paqueteria') return [p.destinoPaqueteria, (p.destinoGuia?('gu\u00eda '+p.destinoGuia):'')].filter(Boolean).join(' \u00b7 ');
     if (p.destinoTipo==='entrega_chihuahua') return p.destinoDireccion||'';
-    if (p.destinoTipo==='traslado_almacenes') return (p.destinoAlmacenOrigen||'â€”')+' â†’ '+(p.destinoAlmacenDestino||'â€”');
+    if (p.destinoTipo==='traslado_almacenes') return (p.destinoAlmacenOrigen||'\u2014')+' \u2192 '+(p.destinoAlmacenDestino||'\u2014');
     return '';
   }
+  // Solo lectura: el destino se registra desde Ventas / Solicitud de Material, no aqu\u00ed.
   function destinoHtml(p){
     var tipo=p.destinoTipo;
-    var label = tipo ? (DESTINO_TIPOS[tipo]||tipo) : 'Elegir destinoâ€¦';
-    var color = tipo ? (DESTINO_COLOR[tipo]||COLORS.gris) : '';
-    var sub = tipo ? destinoResumen(p) : '';
-    return '<div class="alm-destino" onclick="window.__almAbrirDestino(\''+p.id+'\')">'
-      + '<span class="alm-destino-chip'+(tipo?'':' vacio')+'" style="'+(tipo?('background:'+color+'1c;color:'+color+';border-color:'+color+'55'):'')+'">'
+    if (!tipo) return '<div class="alm-destino"><span class="alm-destino-chip vacio">'+iconoCaja()+'Sin destino asignado</span></div>';
+    var label = DESTINO_TIPOS[tipo]||tipo;
+    var color = DESTINO_COLOR[tipo]||COLORS.gris;
+    var sub = destinoResumen(p);
+    return '<div class="alm-destino">'
+      + '<span class="alm-destino-chip" style="background:'+color+'1c;color:'+color+';border-color:'+color+'55">'
       +   iconoCaja()+esc(label)
       + '</span>'
       + (sub?'<span class="alm-destino-sub">'+esc(sub)+'</span>':'')
       + '</div>';
-  }
-  function opcionesAlmacenes(selected){
-    return (_almacenes||ALMACENES_DEFAULT).map(function(a){
-      return '<option value="'+esc(a)+'"'+(selected===a?' selected':'')+'>'+esc(a)+'</option>';
-    }).join('');
-  }
-  function renderDestinoExtra(tipo, p){
-    if (tipo==='paqueteria'){
-      var prev = p.destinoCaratulaImg
-        ? '<img class="alm-destino-caratula-prev" id="alm-destino-caratula-img" src="'+esc(p.destinoCaratulaImg)+'">'
-        : '<div class="alm-empty" id="alm-destino-caratula-img" style="padding:8px 0;">Sin carÃ¡tula subida</div>';
-      return '<label class="alm-destino-lbl">PaqueterÃ­a</label>'
-        + '<input id="alm-destino-paq" class="alm-destino-input" type="text" value="'+esc(p.destinoPaqueteria||'')+'" placeholder="Ej. MensajerÃ­a Express">'
-        + '<label class="alm-destino-lbl">GuÃ­a (opcional)</label>'
-        + '<input id="alm-destino-guia" class="alm-destino-input" type="text" value="'+esc(p.destinoGuia||'')+'" placeholder="NÃºmero de guÃ­a">'
-        + '<label class="alm-destino-lbl">CarÃ¡tula de envÃ­o</label>'
-        + prev
-        + '<button type="button" class="alm-rep-btn sec" style="margin-top:8px;" onclick="window.__almElegirCaratula()">'+(p.destinoCaratulaImg?'Cambiar foto de carÃ¡tula':'Subir foto de carÃ¡tula')+'</button>'
-        + '<input type="file" id="alm-destino-caratula-file" accept="image/*" style="display:none">';
-    }
-    if (tipo==='entrega_chihuahua'){
-      return '<label class="alm-destino-lbl">DirecciÃ³n de la estaciÃ³n</label>'
-        + '<textarea id="alm-destino-dir" class="alm-destino-input" style="min-height:70px;resize:vertical;" placeholder="DirecciÃ³n completa de la estaciÃ³n de servicio">'+esc(p.destinoDireccion||'')+'</textarea>';
-    }
-    if (tipo==='traslado_almacenes'){
-      return '<label class="alm-destino-lbl">AlmacÃ©n origen</label>'
-        + '<select id="alm-destino-origen" class="alm-destino-input">'+opcionesAlmacenes(p.destinoAlmacenOrigen)+'</select>'
-        + '<label class="alm-destino-lbl">AlmacÃ©n destino</label>'
-        + '<select id="alm-destino-destino" class="alm-destino-input">'+opcionesAlmacenes(p.destinoAlmacenDestino)+'</select>'
-        + '<button type="button" class="alm-rep-btn sec" style="margin-top:8px;" onclick="window.__almAgregarAlmacenNuevo()">+ Agregar almacÃ©n nuevo</button>';
-    }
-    return '';
   }
   function cargarAlmacenes(){
     if (_almacenes) return Promise.resolve(_almacenes);
@@ -282,116 +308,32 @@
       });
     });
   }
-  // Expuestas para que Ventas (almacen-pdf.js) pueda reusar la misma lista de almacenes
+  // Expuestas para que Ventas y Solicitud de Material (que a\u00fan no viven en este archivo)
+  // puedan registrar el destino usando la misma lista de almacenes y el mismo esquema de datos.
+  // Aqu\u00ed en Almac\u00e9n el destino es SOLO LECTURA \u2014 no se registra ni se edita desde este m\u00f3dulo.
   window.__almListaAlmacenes = function(){ return cargarAlmacenes(); };
   window.__almAgregarAlmacenGlobal = function(nombre){ return agregarAlmacen(String(nombre||'').trim().toUpperCase()); };
 
-  window.__almAbrirDestino = function(id){
-    var p=buscarP(id); if(!p) return;
-    _destinoEditId = id;
-    window.__almCaratulaTemp = null;
-    cargarAlmacenes().then(function(){
-      construirModalHistorial();
-      var box=document.getElementById('alm-modal-hist-box');
-      box.classList.remove('wide');
-      var opciones = '<option value="">â€” Selecciona â€”</option>' + Object.keys(DESTINO_TIPOS).map(function(k){
-        return '<option value="'+k+'"'+(p.destinoTipo===k?' selected':'')+'>'+esc(DESTINO_TIPOS[k])+'</option>';
-      }).join('');
-      box.innerHTML = '<h4>Destino del pedido Â· '+esc(p.folio||'')+'<button onclick="window.__almCerrarModal()">&times;</button></h4>'
-        + '<div class="alm-destino-form">'
-        +   '<label class="alm-destino-lbl" style="margin-top:0;">Â¿A dÃ³nde va este pedido?</label>'
-        +   '<select id="alm-destino-tipo" class="alm-destino-input" onchange="window.__almDestinoTipoChange(this.value)">'+opciones+'</select>'
-        +   '<div id="alm-destino-extra">'+renderDestinoExtra(p.destinoTipo||'', p)+'</div>'
-        +   '<div id="alm-destino-msg" style="font-size:12.5px;font-weight:700;color:#dc2626;margin-top:6px;"></div>'
-        +   '<div style="display:flex;gap:10px;margin-top:16px">'
-        +     '<button type="button" onclick="window.__almCerrarModal()" style="flex:1;padding:12px;border:none;border-radius:11px;background:#f1f5f9;color:#475569;font-weight:800;font-size:13.5px;cursor:pointer">Cerrar</button>'
-        +     '<button type="button" id="alm-destino-ok" onclick="window.__almGuardarDestino(\''+p.id+'\')" style="flex:1;padding:12px;border:none;border-radius:11px;background:#0e7490;color:#fff;font-weight:800;font-size:13.5px;cursor:pointer">Guardar destino</button>'
-        +   '</div>'
-        + '</div>';
-      document.getElementById('alm-modal-hist').classList.add('show');
-    });
-  };
-
-  window.__almDestinoTipoChange = function(tipo){
-    var p=buscarP(_destinoEditId); if(!p) return;
-    var extra=document.getElementById('alm-destino-extra');
-    if (extra) extra.innerHTML = renderDestinoExtra(tipo, p);
-  };
-
-  window.__almElegirCaratula = function(){
-    var input=document.getElementById('alm-destino-caratula-file'); if(!input) return;
-    input.onchange = function(){
-      var file=input.files&&input.files[0]; input.value='';
-      if (!file) return;
-      comprimirImagen(file).then(function(dataUrl){
-        window.__almCaratulaTemp = dataUrl;
-        var img=document.getElementById('alm-destino-caratula-img');
-        if (img) img.outerHTML = '<img class="alm-destino-caratula-prev" id="alm-destino-caratula-img" src="'+esc(dataUrl)+'">';
-      }).catch(function(err){ console.error('[almacen] carÃ¡tula:',err); });
-    };
-    input.click();
-  };
-
-  window.__almAgregarAlmacenNuevo = function(){
-    var nombre = prompt('Nombre del almacÃ©n nuevo (ej. TORREÃ“N):');
-    if (!nombre) return;
-    nombre = nombre.trim().toUpperCase();
-    if (!nombre) return;
-    agregarAlmacen(nombre).then(function(){
-      var selO=document.getElementById('alm-destino-origen'), selD=document.getElementById('alm-destino-destino');
-      if (selO) selO.innerHTML = opcionesAlmacenes(nombre);
-      if (selD) selD.innerHTML = opcionesAlmacenes(selD.value);
-      if (window.mostrarPush) window.mostrarPush('AlmacÃ©n','AlmacÃ©n "'+nombre+'" agregado','âœ…');
-    }).catch(function(err){
-      console.error('[almacen] agregar almacÃ©n:',err);
-      if (window.mostrarPush) window.mostrarPush('AlmacÃ©n','No se pudo agregar el almacÃ©n','âš ï¸');
-    });
-  };
-
-  window.__almGuardarDestino = function(id){
-    var p=buscarP(id); if(!p) return;
-    var tipoEl=document.getElementById('alm-destino-tipo');
-    var tipo=tipoEl?tipoEl.value:'';
-    var msgEl=document.getElementById('alm-destino-msg');
-    if (!tipo){ if(msgEl) msgEl.textContent='Selecciona a dÃ³nde va el pedido.'; return; }
-
-    var datos={ destinoTipo:tipo };
-    if (tipo==='paqueteria'){
-      var paqEl=document.getElementById('alm-destino-paq'), guiaEl=document.getElementById('alm-destino-guia');
-      datos.destinoPaqueteria = paqEl?paqEl.value.trim():'';
-      datos.destinoGuia = guiaEl?guiaEl.value.trim():'';
-      if (window.__almCaratulaTemp) datos.destinoCaratulaImg = window.__almCaratulaTemp;
-    } else if (tipo==='entrega_chihuahua'){
-      var dirEl=document.getElementById('alm-destino-dir');
-      datos.destinoDireccion = dirEl?dirEl.value.trim():'';
-    } else if (tipo==='traslado_almacenes'){
-      var oEl=document.getElementById('alm-destino-origen'), dEl=document.getElementById('alm-destino-destino');
-      datos.destinoAlmacenOrigen = oEl?oEl.value:'';
-      datos.destinoAlmacenDestino = dEl?dEl.value:'';
-    }
-
-    var btn=document.getElementById('alm-destino-ok'); if(btn){ btn.disabled=true; btn.textContent='Guardandoâ€¦'; }
+  // ── Ver el PDF original adjunto por Ventas al subir el pedido (solo lectura, para validar) ──
+  window.__almVerPDF = function(id){
     cargarFirestore().then(function(fs){
       if (!window.db) throw new Error('Firestore no disponible');
-      return fs.updateDoc(fs.doc(window.db,'surtidos',id), datos).then(function(){
-        try{
-          fs.addDoc(fs.collection(window.db,'surtidos',id,'historial'),
-            { de:'destino', a:(DESTINO_TIPOS[tipo]||tipo), por:yoNombre(), porEmail:yoEmail(), ts:fs.serverTimestamp() });
-        }catch(e){}
-      });
-    }).then(function(){
-      window.__almCaratulaTemp = null;
-      if (window.mostrarPush) window.mostrarPush('ðŸ“¦ Destino guardado', (p.folio||'')+' Â· '+(DESTINO_TIPOS[tipo]||tipo), 'âœ…');
-      window.__almCerrarModal();
+      return fs.getDoc(fs.doc(window.db,'surtidos',id,'adjuntos','pdf_original'));
+    }).then(function(snap){
+      if (!snap.exists() || !(snap.data()||{}).archivo){
+        if (window.mostrarPush) window.mostrarPush('Almac\u00e9n','Este pedido no tiene PDF adjunto todav\u00eda','\u26a0\ufe0f');
+        return;
+      }
+      var w = window.open();
+      if (w) w.document.write('<iframe src="'+(snap.data().archivo)+'" style="border:none;width:100%;height:100%;"></iframe>');
     }).catch(function(err){
-      console.error('[almacen] guardarDestino:',err);
-      if (msgEl) msgEl.textContent='No se pudo guardar. Intenta de nuevo.';
-      if (btn){ btn.disabled=false; btn.textContent='Guardar destino'; }
+      console.error('[almacen] verPDF:',err);
+      if (window.mostrarPush) window.mostrarPush('Almac\u00e9n','No se pudo abrir el PDF','\u26a0\ufe0f');
     });
   };
 
   // =====================================================================
-  //  EVIDENCIAS DE ENTREGA (fotos, ademÃ¡s de la firma)
+  //  EVIDENCIAS DE ENTREGA (fotos, además de la firma)
   // =====================================================================
   function cargarEvidencias(id){
     if (_evidenciasCache[id]) return Promise.resolve(_evidenciasCache[id]);
@@ -409,7 +351,7 @@
   }
   function renderEvidenciasThumbs(p){
     var list=_evidenciasCache[p.id]||[];
-    if (!list.length) return '<div class="alm-empty" style="padding:4px 0;">Sin evidencias aÃºn</div>';
+    if (!list.length) return '<div class="alm-empty" style="padding:4px 0;">Sin evidencias a\u00fan</div>';
     return list.map(function(ev,idx){
       return '<img class="alm-evid-thumb" src="'+esc(ev.imagen)+'" onclick="window.__almVerEvidencia(\''+p.id+'\','+idx+')">';
     }).join('');
@@ -431,10 +373,10 @@
         return cargarEvidencias(id);
       }).then(function(){
         render();
-        if (window.mostrarPush) window.mostrarPush('ðŸ“· Evidencia agregada','','âœ…');
+        if (window.mostrarPush) window.mostrarPush('📷 Evidencia agregada','','✅');
       }).catch(function(err){
         console.error('[almacen] subirEvidencia:',err);
-        if (window.mostrarPush) window.mostrarPush('AlmacÃ©n','No se pudo subir la evidencia','âš ï¸');
+        if (window.mostrarPush) window.mostrarPush('Almacén','No se pudo subir la evidencia','⚠️');
       });
     };
     input.click();
@@ -559,7 +501,7 @@
     + '.alm-hist-row .cambio{font-weight:800;color:#0f172a;}'
     + '.alm-hist-row .meta{color:#94a3b8;font-size:11px;}'
     + '.alm-modal-box img.alm-firma-full{max-width:100%;border:1px solid #e6ebf2;border-radius:10px;background:#fff;margin-bottom:14px;}'
-    + '.alm-destino{margin-top:6px;cursor:pointer;display:flex;flex-direction:column;gap:3px;}'
+    + '.alm-destino{margin-top:6px;display:flex;flex-direction:column;gap:3px;}'
     + '.alm-destino-chip{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:800;border:1px solid;border-radius:99px;padding:4px 10px 4px 8px;width:fit-content;}'
     + '.alm-destino-chip.vacio{background:#f1f5f9;color:#94a3b8;border-color:#e6ebf2;}'
     + '.alm-destino-chip svg{flex-shrink:0;}'
@@ -574,7 +516,11 @@
     + '.alm-evid-thumb{width:52px;height:52px;object-fit:cover;border-radius:8px;border:1px solid #e6ebf2;cursor:zoom-in;}'
     + '.alm-evid-add{border:1px dashed #cbd5e1;background:#fff;color:#475569;border-radius:8px;font-size:11.5px;font-weight:800;padding:6px 12px;cursor:pointer;}'
     + '@keyframes almPulse{0%{box-shadow:0 0 0 0 rgba(18,161,80,.5);}70%{box-shadow:0 0 0 8px rgba(18,161,80,0);}100%{box-shadow:0 0 0 0 rgba(18,161,80,0);}}'
-    + '@keyframes almBlink{0%,100%{opacity:1;}50%{opacity:.55;}}';
+    + '@keyframes almBlink{0%,100%{opacity:1;}50%{opacity:.55;}}'
+    + '.alm-card.porvencer{animation:almBlinkWarn 1.3s infinite;}'
+    + '.alm-card.vencido{animation:almBlinkDanger 1s infinite;}'
+    + '@keyframes almBlinkWarn{0%,100%{box-shadow:0 0 0 0 rgba(217,144,0,0);}50%{box-shadow:0 0 0 4px rgba(217,144,0,.4);}}'
+    + '@keyframes almBlinkDanger{0%,100%{box-shadow:0 0 0 0 rgba(226,59,59,0);}50%{box-shadow:0 0 0 5px rgba(226,59,59,.45);}}';
     var st=document.createElement('style'); st.id='alm-css'; st.textContent=css; document.head.appendChild(st);
   }
 
@@ -595,7 +541,7 @@
 
   function construirShell(){
     var cont=contenedor(); if(!cont) return;
-    if (cont.querySelector('#alm-toolbar')) return; // ya construido â†’ no perder foco del buscador
+    if (cont.querySelector('#alm-toolbar')) return; // ya construido → no perder foco del buscador
     var chips = '<span class="alm-fchip alm-fchip-prio on" data-prio="" onclick="window.__almPrio(\'\')">Todas</span>'
       + '<span class="alm-fchip alm-fchip-prio" data-prio="urgente" onclick="window.__almPrio(\'urgente\')">Urgentes</span>';
     var chipsTipo = '<span class="alm-fchip alm-fchip-tipo on" data-tipo="" onclick="window.__almTipo(\'\')">Todos</span>'
@@ -605,11 +551,11 @@
       + '<div class="alm-bar" id="alm-toolbar">'
       +   '<span class="alm-live"><span class="p"></span>En vivo</span>'
       +   '<div class="alm-search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>'
-      +     '<input id="alm-q" type="text" placeholder="Buscar folio, cliente o vendedorâ€¦" oninput="window.__almBuscar(this.value)"></div>'
+      +     '<input id="alm-q" type="text" placeholder="Buscar folio, cliente o vendedor…" oninput="window.__almBuscar(this.value)"></div>'
       +   '<div class="alm-fchips">'+chipsTipo+'</div>'
       +   '<div class="alm-fchips">'+chips+'</div>'
-      +   '<button id="alm-notif-btn" class="alm-notif-btn" title="NotificaciÃ³n sonora de pedidos nuevos" onclick="window.__almNotifToggle()">'+iconoCampana()+'</button>'
-      +   (esAdminActual()?'<button class="alm-notif-btn" title="Fotos de catÃ¡logo (solo admin)" onclick="window.__almAbrirFotos()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>':'')
+      +   '<button id="alm-notif-btn" class="alm-notif-btn" title="Notificación sonora de pedidos nuevos" onclick="window.__almNotifToggle()">'+iconoCampana()+'</button>'
+      +   (esAdminActual()?'<button class="alm-notif-btn" title="Fotos de catálogo (solo admin)" onclick="window.__almAbrirFotos()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>':'')
       +   '<button class="alm-notif-btn" title="Historial de entregas" onclick="window.__almAbrirHistorialEntregas()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11H3v10h6"/><path d="M9 21h12V8l-5-5H9v6"/><line x1="13" y1="12" x2="17" y2="12"/><line x1="13" y1="16" x2="17" y2="16"/></svg></button>'
       +   '<button class="alm-notif-btn" title="KPIs de tiempos de surtido" onclick="window.__almAbrirKPIs()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></button>'
       + '</div>'
@@ -668,11 +614,11 @@
     var total=prods.length, hechas=nChecked(p);
     var completo=(total>0 && hechas>=total);
 
-    // Barra de progreso de surtido (sÃ³lo relevante en picking)
+    // Barra de progreso de surtido (sólo relevante en picking)
     var progHtml='';
     if (total>0 && (p.estado==='en_preparacion'||p.estado==='pendiente'||abierta)){
       var pct=total?Math.round(hechas/total*100):0;
-      progHtml='<div class="alm-prog"><div class="lbl"><span>Surtido</span><span>'+hechas+'/'+total+' lÃ­neas</span></div>'
+      progHtml='<div class="alm-prog"><div class="lbl"><span>Surtido</span><span>'+hechas+'/'+total+' líneas</span></div>'
         + '<div class="track"><div class="fill" style="width:'+pct+'%"></div></div></div>';
     }
 
@@ -685,7 +631,7 @@
               + '<button class="alm-check'+(on?' on':'')+'" onclick="window.__almCheck(\''+p.id+'\','+idx+')" title="Marcar surtido">'
               +   (on?'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>':'')
               + '</button>'
-              + '<span class="k">'+esc(it.clave||'â€”')+'</span>'
+              + '<span class="k">'+esc(it.clave||'—')+'</span>'
               + '<span class="d">'+esc(it.desc||'')+'</span>'
               + '<span class="q">'+(Number(it.cant)||0)+'</span></div>';
           }).join('') : '<div class="alm-empty">Sin productos</div>')
@@ -695,7 +641,7 @@
           + '<img src="'+esc(p.firma)+'" alt="Firma" onclick="window.__almVerFirma(\''+p.id+'\')"></div>';
       }
       if (p.firmaEntrega){
-        prodHtml += '<div class="alm-firma-mini"><span class="lbl">Firma de entrega'+(p.recibioNombre?(' Â· recibiÃ³ '+esc(p.recibioNombre)):'')+'</span>'
+        prodHtml += '<div class="alm-firma-mini"><span class="lbl">Firma de entrega'+(p.recibioNombre?(' · recibió '+esc(p.recibioNombre)):'')+'</span>'
           + '<img src="'+esc(p.firmaEntrega)+'" alt="Firma de entrega" onclick="window.__almVerFirma(\''+p.id+'\',\'entrega\')"></div>';
       }
       prodHtml += '<div class="alm-evid-block"><span class="lbl">Evidencia de entrega</span>'
@@ -709,19 +655,20 @@
     var tipoTag='<span class="alm-tipo-tag '+(p.tipo==='material'?'mat':'ven')+'">'+(p.tipo==='material'?'Material':'Venta')+'</span>';
     var esperandoFirma = !!p.entregaPendienteFirma;
     var accionHtml = esperandoFirma
-      ? '<button class="alm-btn alm-btn-ghost" title="Cancelar solicitud de firma" onclick="window.__almCancelarFirmaEntrega(\''+p.id+'\')" style="color:#dc2626;">âœï¸ Esperando firmaâ€¦ âœ•</button>'
-      : (sig?'<button class="'+goCls+'" onclick="window.__almGo(\''+p.id+'\')">'+esc(ACCION[p.estado]||'Avanzar')+' â€º</button>':'');
-    return '<div class="alm-card'+(urg?' urg':'')+'" data-id="'+p.id+'" style="border-left-color:'+ac+'">'
-      + '<div class="top"><span class="folio">'+esc(p.folio||'â€”')+'</span>'
+      ? '<button class="alm-btn alm-btn-ghost" title="Cancelar solicitud de firma" onclick="window.__almCancelarFirmaEntrega(\''+p.id+'\')" style="color:#dc2626;">✍️ Esperando firma… ✕</button>'
+      : (sig?'<button class="'+goCls+'" onclick="window.__almGo(\''+p.id+'\')">'+esc(ACCION[p.estado]||'Avanzar')+' ›</button>':'');
+    var slaCls = estadoSLA(p)==='retrasado' ? ' vencido' : (estadoSLA(p)==='porvencer' ? ' porvencer' : '');
+    return '<div class="alm-card'+(urg?' urg':'')+slaCls+'" data-id="'+p.id+'" style="border-left-color:'+ac+'">'
+      + '<div class="top"><span class="folio">'+esc(p.folio||'—')+'</span>'
       +   '<span class="alm-chip'+(urg?' urg':'')+'" style="background:'+pc+'">'+esc(PRIO_LABEL[p.prioridad]||p.prioridad||'Normal')+'</span></div>'
       + '<div class="cli">'+esc(p.cliente||'Sin cliente')+' '+tipoTag+'</div>'
-      + '<div class="vend">Vendedor: '+esc(p.vendedor||'â€”')+'</div>'
+      + '<div class="vend">Vendedor: '+esc(p.vendedor||'—')+'</div>'
       + destinoHtml(p)
-      + '<div class="alm-meta"><span>â± <span class="alm-timer" data-id="'+p.id+'" style="color:'+ac+'">'+fmt(now()-p.createdAt)+'</span></span>'
-      +   '<span><b>'+piezas(p)+'</b> pzas</span>'+(total?'<span><b>'+hechas+'</b>/'+total+' lÃ­neas</span>':'')+'</div>'
+      + '<div class="alm-meta"><span>⏱ <span class="alm-timer" data-id="'+p.id+'" style="color:'+ac+'">'+fmt(now()-p.createdAt)+'</span></span>'
+      +   '<span><b>'+piezas(p)+'</b> pzas</span>'+(total?'<span><b>'+hechas+'</b>/'+total+' líneas</span>':'')+'</div>'
       + progHtml + prodHtml
       + '<div class="alm-actions">'
-      +   (PREV[p.estado]?'<button class="alm-btn alm-btn-back" title="Regresar etapa" onclick="window.__almBack(\''+p.id+'\')">â€¹</button>':'')
+      +   (PREV[p.estado]?'<button class="alm-btn alm-btn-back" title="Regresar etapa" onclick="window.__almBack(\''+p.id+'\')">‹</button>':'')
       +   '<button class="alm-btn alm-btn-ghost" onclick="window.__almToggle(\''+p.id+'\')">'+(abierta?'Ocultar':'Ver')+'</button>'
       +   '<button class="alm-btn alm-btn-ghost" title="Ver historial" onclick="window.__almVerHistorial(\''+p.id+'\')">'
       +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg></button>'
@@ -729,11 +676,14 @@
       +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></button>':'')
       +   '<button class="alm-btn alm-btn-ghost" title="Imprimir etiqueta" onclick="window.__almImprimirEtiqueta(\''+p.id+'\')">'
       +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg></button>'
+      +   (p.tienePdfOriginal?('<button class="alm-btn alm-btn-ghost" title="Ver PDF original" onclick="window.__almVerPDF(\''+p.id+'\')">'
+      +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></button>'):'')
       +   accionHtml
       + '</div></div>';
   }
 
   function tickTimers(){
+    revisarAlertasSLA();
     var cont=contenedor(); if(!cont) return;
     pedidos.forEach(function(p){
       if(p.estado==='finalizado') return;
@@ -743,7 +693,7 @@
   }
 
   // =====================================================================
-  //  ACCIONES â†’ Firestore
+  //  ACCIONES → Firestore
   // =====================================================================
   function buscarP(id){ for(var i=0;i<pedidos.length;i++){ if(pedidos[i].id===id) return pedidos[i]; } return null; }
 
@@ -751,16 +701,16 @@
     var p=buscarP(id); if(!p||!destino) return;
     var origen=p.estado;
     cargarFirestore().then(function(fs){
-      if(!window.db){ if(window.mostrarPush)window.mostrarPush('AlmacÃ©n','Firestore no disponible','âš ï¸'); return; }
+      if(!window.db){ if(window.mostrarPush)window.mostrarPush('Almacén','Firestore no disponible','⚠️'); return; }
       var ref=fs.doc(window.db,'surtidos',id);
       return fs.updateDoc(ref,{estado:destino}).then(function(){
         try{
           fs.addDoc(fs.collection(window.db,'surtidos',id,'historial'),
             { de:origen, a:destino, por:yoNombre(), porEmail:yoEmail(), ts:fs.serverTimestamp() });
         }catch(e){}
-        if(window.mostrarPush) window.mostrarPush('ðŸ“¦ Surtido', (p.folio||'')+' â†’ '+destino.replace(/_/g,' '), 'âœ…');
+        if(window.mostrarPush) window.mostrarPush('📦 Surtido', (p.folio||'')+' → '+destino.replace(/_/g,' '), '✅');
       });
-    }).catch(function(err){ console.error('[almacen] moverEstado:',err); if(window.mostrarPush)window.mostrarPush('AlmacÃ©n','No se pudo actualizar','âš ï¸'); });
+    }).catch(function(err){ console.error('[almacen] moverEstado:',err); if(window.mostrarPush)window.mostrarPush('Almacén','No se pudo actualizar','⚠️'); });
   }
 
   function toggleCheck(id,idx){
@@ -774,7 +724,7 @@
     }).catch(function(err){ console.error('[almacen] check:',err); });
   }
 
-  // â”€â”€ ConfirmaciÃ³n de entrega: AlmacÃ©n SOLICITA la firma, quien recibe firma en el kiosko â”€â”€
+  // ── Confirmación de entrega: Almacén SOLICITA la firma, quien recibe firma en el kiosko ──
   window.__almPedirFirmaEntrega = function(id){
     var p=buscarP(id); if(!p) return;
     cargarFirestore().then(function(fs){
@@ -785,10 +735,10 @@
         entregaSolicitadaEn: fs.serverTimestamp()
       });
     }).then(function(){
-      if(window.mostrarPush) window.mostrarPush('ðŸ“¦ Esperando firma', (p.folio||'')+' Â· pÃ­dele a quien recibe que firme en el kiosko', 'âœï¸');
+      if(window.mostrarPush) window.mostrarPush('📦 Esperando firma', (p.folio||'')+' · pídele a quien recibe que firme en el kiosko', '✍️');
     }).catch(function(err){
       console.error('[almacen] pedirFirmaEntrega:',err);
-      if(window.mostrarPush) window.mostrarPush('AlmacÃ©n','No se pudo enviar la solicitud de firma','âš ï¸');
+      if(window.mostrarPush) window.mostrarPush('Almacén','No se pudo enviar la solicitud de firma','⚠️');
     });
   };
 
@@ -804,10 +754,10 @@
     construirModalHistorial();
     var box=document.getElementById('alm-modal-hist-box');
     box.classList.remove('wide');
-    box.innerHTML='<h4>Cancelar pedido Â· '+esc(p.folio||'')+'<button onclick="window.__almCerrarModal()">&times;</button></h4>'
-      + '<div style="font-size:12.5px;color:#64748b;font-weight:700;margin-bottom:12px">'+esc(p.cliente||'')+' Â· '+piezas(p)+' piezas</div>'
-      + '<label style="display:block;font-size:11px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#64748b;margin-bottom:6px">Motivo de cancelaciÃ³n *</label>'
-      + '<textarea id="alm-cancel-motivo" placeholder="Ej. Cliente ya no lo requiere, pedido duplicado, error de capturaâ€¦" style="width:100%;min-height:80px;padding:11px 13px;border:2px solid #e6ebf2;border-radius:10px;font-size:14px;font-family:inherit;outline:none;resize:vertical;box-sizing:border-box;"></textarea>'
+    box.innerHTML='<h4>Cancelar pedido · '+esc(p.folio||'')+'<button onclick="window.__almCerrarModal()">&times;</button></h4>'
+      + '<div style="font-size:12.5px;color:#64748b;font-weight:700;margin-bottom:12px">'+esc(p.cliente||'')+' · '+piezas(p)+' piezas</div>'
+      + '<label style="display:block;font-size:11px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#64748b;margin-bottom:6px">Motivo de cancelación *</label>'
+      + '<textarea id="alm-cancel-motivo" placeholder="Ej. Cliente ya no lo requiere, pedido duplicado, error de captura…" style="width:100%;min-height:80px;padding:11px 13px;border:2px solid #e6ebf2;border-radius:10px;font-size:14px;font-family:inherit;outline:none;resize:vertical;box-sizing:border-box;"></textarea>'
       + '<div style="font-size:12.5px;font-weight:700;color:#dc2626;margin-top:8px" id="alm-cancel-msg"></div>'
       + '<div style="display:flex;gap:10px;margin-top:16px">'
       +   '<button type="button" onclick="window.__almCerrarModal()" style="flex:1;padding:12px;border:none;border-radius:11px;background:#f1f5f9;color:#475569;font-weight:800;font-size:13.5px;cursor:pointer">Volver</button>'
@@ -821,8 +771,8 @@
     var motivoEl=document.getElementById('alm-cancel-motivo');
     var motivo=(motivoEl&&motivoEl.value||'').trim();
     var msgEl=document.getElementById('alm-cancel-msg');
-    if(!motivo){ if(msgEl) msgEl.textContent='Escribe el motivo de la cancelaciÃ³n.'; return; }
-    var btn=document.getElementById('alm-cancel-ok'); if(btn){ btn.disabled=true; btn.textContent='Cancelandoâ€¦'; }
+    if(!motivo){ if(msgEl) msgEl.textContent='Escribe el motivo de la cancelación.'; return; }
+    var btn=document.getElementById('alm-cancel-ok'); if(btn){ btn.disabled=true; btn.textContent='Cancelando…'; }
     var origen=p.estado;
     cargarFirestore().then(function(fs){
       if(!window.db) throw new Error('Firestore no disponible');
@@ -835,7 +785,7 @@
         }catch(e){}
       });
     }).then(function(){
-      if(window.mostrarPush) window.mostrarPush('âœ• Pedido cancelado', (p.folio||''), 'âš ï¸');
+      if(window.mostrarPush) window.mostrarPush('✕ Pedido cancelado', (p.folio||''), '⚠️');
       window.__almCerrarModal();
     }).catch(function(err){
       console.error('[almacen] confirmarCancelar:',err);
@@ -881,7 +831,7 @@
     if(!src) return;
     construirModalHistorial();
     var box=document.getElementById('alm-modal-hist-box');
-    var titulo = (cual==='entrega') ? ('Firma de entrega Â· '+esc(p.folio||'')+(p.recibioNombre?(' Â· recibiÃ³ '+esc(p.recibioNombre)):'')) : ('Firma Â· '+esc(p.folio||''));
+    var titulo = (cual==='entrega') ? ('Firma de entrega · '+esc(p.folio||'')+(p.recibioNombre?(' · recibió '+esc(p.recibioNombre)):'')) : ('Firma · '+esc(p.folio||''));
     box.innerHTML='<h4>'+titulo+'<button onclick="window.__almCerrarModal()">&times;</button></h4>'
       + '<img class="alm-firma-full" src="'+esc(src)+'" alt="Firma">';
     document.getElementById('alm-modal-hist').classList.add('show');
@@ -891,9 +841,9 @@
     var p=buscarP(id); if(!p) return;
     construirModalHistorial();
     var box=document.getElementById('alm-modal-hist-box');
-    box.innerHTML='<h4>Historial Â· '+esc(p.folio||'')+'<button onclick="window.__almCerrarModal()">&times;</button></h4>'
+    box.innerHTML='<h4>Historial · '+esc(p.folio||'')+'<button onclick="window.__almCerrarModal()">&times;</button></h4>'
       + (p.firma?'<img class="alm-firma-full" src="'+esc(p.firma)+'" alt="Firma">':'')
-      + '<div id="alm-hist-list" class="alm-empty">Cargandoâ€¦</div>';
+      + '<div id="alm-hist-list" class="alm-empty">Cargando…</div>';
     document.getElementById('alm-modal-hist').classList.add('show');
 
     cargarFirestore().then(function(fs){
@@ -903,13 +853,13 @@
       return fs.getDocs(q);
     }).then(function(snap){
       var list=document.getElementById('alm-hist-list'); if(!list) return;
-      if (snap.empty){ list.innerHTML='<div class="alm-empty">Sin cambios registrados todavÃ­a.</div>'; return; }
+      if (snap.empty){ list.innerHTML='<div class="alm-empty">Sin cambios registrados todavía.</div>'; return; }
       var rows=[];
       snap.forEach(function(d){
         var h=d.data()||{};
-        var fecha=toMs(h.ts); var fechaTxt=fecha?new Date(fecha).toLocaleString('es-MX'):'â€”';
-        rows.push('<div class="alm-hist-row"><span class="cambio">'+esc((h.de||'â€”').replace(/_/g,' '))+' â†’ '+esc((h.a||'â€”').replace(/_/g,' '))+'</span>'
-          + '<span class="meta">'+esc(h.por||h.porEmail||'â€”')+' Â· '+esc(fechaTxt)+'</span></div>');
+        var fecha=toMs(h.ts); var fechaTxt=fecha?new Date(fecha).toLocaleString('es-MX'):'—';
+        rows.push('<div class="alm-hist-row"><span class="cambio">'+esc((h.de||'—').replace(/_/g,' '))+' → '+esc((h.a||'—').replace(/_/g,' '))+'</span>'
+          + '<span class="meta">'+esc(h.por||h.porEmail||'—')+' · '+esc(fechaTxt)+'</span></div>');
       });
       list.outerHTML='<div id="alm-hist-list">'+rows.join('')+'</div>';
     }).catch(function(err){
@@ -918,9 +868,9 @@
     });
   };
 
-  // â”€â”€ Panel de fotos de catÃ¡logo (solo admin) â”€â”€
-  var _catalogo = null;       // [{clave,desc,precio}] â€” se carga una sola vez
-  var _imgCache = {};         // key -> dataURL | null (null = ya se buscÃ³, no hay)
+  // ── Panel de fotos de catálogo (solo admin) ──
+  var _catalogo = null;       // [{clave,desc,precio}] — se carga una sola vez
+  var _imgCache = {};         // key -> dataURL | null (null = ya se buscó, no hay)
 
   function keyProducto(it){ return ((it.clave||'')+'|'+(it.desc||'')).toLowerCase(); }
   /* Firestore no permite "/" dentro de un solo segmento de ruta (lo interpreta como sub-ruta) */
@@ -942,10 +892,10 @@
     construirModalHistorial();
     var box = document.getElementById('alm-modal-hist-box');
     box.classList.add('wide');
-    box.innerHTML = '<h4>Fotos de catÃ¡logo<button onclick="window.__almCerrarModal()">&times;</button></h4>'
+    box.innerHTML = '<h4>Fotos de catálogo<button onclick="window.__almCerrarModal()">&times;</button></h4>'
       + '<div class="alm-fotos-search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>'
-      + '<input id="alm-fotos-q" type="text" placeholder="Busca un producto por nombre o claveâ€¦"></div>'
-      + '<div id="alm-fotos-grid" class="alm-fotos-grid"><div class="alm-empty">Cargando catÃ¡logoâ€¦</div></div>'
+      + '<input id="alm-fotos-q" type="text" placeholder="Busca un producto por nombre o clave…"></div>'
+      + '<div id="alm-fotos-grid" class="alm-fotos-grid"><div class="alm-empty">Cargando catálogo…</div></div>'
       + '<input type="file" id="alm-fotos-file" accept="image/*" style="display:none">';
     document.getElementById('alm-modal-hist').classList.add('show');
 
@@ -956,8 +906,8 @@
         window.__almFotosDeb = setTimeout(function(){ renderGridFotos(this.value); }.bind(this), 120);
       });
     }).catch(function(err){
-      document.getElementById('alm-fotos-grid').innerHTML = '<div class="alm-empty">No se pudo cargar el catÃ¡logo.</div>';
-      console.error('[almacen] catÃ¡logo:',err);
+      document.getElementById('alm-fotos-grid').innerHTML = '<div class="alm-empty">No se pudo cargar el catálogo.</div>';
+      console.error('[almacen] catálogo:',err);
     });
   };
 
@@ -983,7 +933,7 @@
       var thumb = cached ? '<img src="'+esc(cached)+'">' : '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>';
       return '<div class="alm-fcard" data-k="'+esc(k)+'">'
         + '<div class="thumb">'+thumb+'</div>'
-        + '<div class="d">'+esc(it.desc||'Sin descripciÃ³n')+'</div>'
+        + '<div class="d">'+esc(it.desc||'Sin descripción')+'</div>'
         + '<div class="k">'+(it.clave?('Clave '+esc(it.clave)):'Sin clave')+'</div>'
         + '<button type="button">'+(cached?'Cambiar foto':'Subir foto')+'</button>'
         + '</div>';
@@ -1016,7 +966,7 @@
       var file = input.files && input.files[0]; input.value='';
       if (!file) return;
       var btn = card.querySelector('button');
-      if (btn){ btn.disabled = true; btn.textContent = 'Subiendoâ€¦'; }
+      if (btn){ btn.disabled = true; btn.textContent = 'Subiendo…'; }
       comprimirImagen(file).then(function(dataUrl){
         return cargarFirestore().then(function(fs){
           return fs.setDoc(fs.doc(window.db,'catalogo','productos','imagenes',keyFirestore(k)), {
@@ -1061,14 +1011,14 @@
   }
 
   // =====================================================================
-  //  CONEXIÃ“N EN VIVO
+  //  CONEXIÓN EN VIVO
   // =====================================================================
   function suscribir(){
     if(_unsub) return;
     var cont=contenedor();
-    if(cont && !cont.querySelector('#alm-toolbar')) cont.innerHTML='<div class="alm-loading">Conectando con Firestoreâ€¦</div>';
+    if(cont && !cont.querySelector('#alm-toolbar')) cont.innerHTML='<div class="alm-loading">Conectando con Firestore…</div>';
     cargarFirestore().then(function(fs){
-      if(!window.db){ if(cont) cont.innerHTML='<div class="alm-loading">Firestore no estÃ¡ inicializado (window.db).</div>'; return; }
+      if(!window.db){ if(cont) cont.innerHTML='<div class="alm-loading">Firestore no está inicializado (window.db).</div>'; return; }
       _unsub=fs.onSnapshot(fs.collection(window.db,'surtidos'),function(snap){
         var arr=[];
         var idsActuales={};
@@ -1077,7 +1027,7 @@
           idsActuales[docu.id]=true;
           arr.push({
             id:docu.id,
-            folio:d.folio||'â€”', cliente:d.cliente||'', vendedor:d.vendedor||'',
+            folio:d.folio||'—', cliente:d.cliente||'', vendedor:d.vendedor||'',
             prioridad:d.prioridad||'normal', estado:d.estado||'pendiente',
             productos:Array.isArray(d.productos)?d.productos:[],
             check:d.check||{},
@@ -1085,6 +1035,9 @@
             recibioNombre:d.recibioNombre||'', firmaEntrega:d.firmaEntrega||'',
             entregaPendienteFirma:!!d.entregaPendienteFirma,
             cotizacionOrigen:d.cotizacionOrigen||'', motivoCancelacion:d.motivoCancelacion||'',
+            destinoTipo:d.destinoTipo||'', destinoPaqueteria:d.destinoPaqueteria||'', destinoGuia:d.destinoGuia||'',
+            destinoDireccion:d.destinoDireccion||'', destinoAlmacenOrigen:d.destinoAlmacenOrigen||'', destinoAlmacenDestino:d.destinoAlmacenDestino||'',
+            tienePdfOriginal:!!d.tienePdfOriginal,
             createdAt:toMs(d.createdAt)
           });
         });
@@ -1102,18 +1055,18 @@
   }
 
   // =====================================================================
-  //  ENTRADA PÃšBLICA
+  //  ENTRADA PÚBLICA
   // =====================================================================
   window.abrirAlmacen=function(idContenedor){
     if(idContenedor) contId=idContenedor;
     inyectarCSS();
     suscribir();
-    if(_unsub) render();   // reentrada al Ã¡rea: repinta de inmediato desde la cachÃ©
+    if(_unsub) render();   // reentrada al área: repinta de inmediato desde la caché
     if(!_tick) _tick=setInterval(tickTimers,1000);
   };
 
-  // â”€â”€ Historial de entregas: buscador por folio/cliente/solicitante/recibiÃ³ + rango de fechas + exportar PDF â”€â”€
-  var _repEntregas = null;   // cachÃ© de la Ãºltima carga [{...}]
+  // ── Historial de entregas: buscador por folio/cliente/solicitante/recibió + rango de fechas + exportar PDF ──
+  var _repEntregas = null;   // caché de la última carga [{...}]
 
   function cargarEntregas(){
     return cargarFirestore().then(function(fs){
@@ -1126,9 +1079,9 @@
         var d=docu.data()||{};
         arr.push({
           id: docu.id,
-          folio: d.folio||'â€”', cliente: d.cliente||'', tipo: d.tipo||'venta',
+          folio: d.folio||'—', cliente: d.cliente||'', tipo: d.tipo||'venta',
           estado: d.estado||'',
-          solicito: d.tipo==='material' ? (d.solicitante||'â€”') : (d.vendedor||'â€”'),
+          solicito: d.tipo==='material' ? (d.solicitante||'—') : (d.vendedor||'—'),
           recibio: d.recibioNombre||'',
           motivoCancelacion: d.motivoCancelacion||'',
           firma: d.firma||'', firmaEntrega: d.firmaEntrega||'',
@@ -1166,7 +1119,7 @@
     return { desde:desde, hasta:hasta, q:q };
   }
 
-  function fmtFecha(ms){ return ms ? new Date(ms).toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}) : 'â€”'; }
+  function fmtFecha(ms){ return ms ? new Date(ms).toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}) : '—'; }
 
   function renderTablaReporte(){
     if(!_repEntregas) return;
@@ -1184,17 +1137,17 @@
       var esCancelado = e.estado==='cancelado';
       var firmasHtml = ''
         + (e.firma ? '<span class="alm-rep-firma" onclick="window.__almVerFirmaId(\''+e.id+'\',\'sol\')">solicitud</span>' : '')
-        + (e.firma && e.firmaEntrega ? ' Â· ' : '')
+        + (e.firma && e.firmaEntrega ? ' · ' : '')
         + (e.firmaEntrega ? '<span class="alm-rep-firma" onclick="window.__almVerFirmaId(\''+e.id+'\',\'entrega\')">entrega</span>' : '')
-        || '<span style="color:#cbd5e1">â€”</span>';
+        || '<span style="color:#cbd5e1">—</span>';
       var colRecibio = esCancelado
-        ? '<span class="alm-rep-tag" style="background:rgba(220,38,38,.1);color:#dc2626">CANCELADO</span><br><span style="font-size:11px;color:#64748b">'+esc(e.motivoCancelacion||'â€”')+'</span>'
-        : esc(e.recibio||'â€”');
+        ? '<span class="alm-rep-tag" style="background:rgba(220,38,38,.1);color:#dc2626">CANCELADO</span><br><span style="font-size:11px;color:#64748b">'+esc(e.motivoCancelacion||'—')+'</span>'
+        : esc(e.recibio||'—');
       var colFechaFin = esCancelado ? fmtFecha(e.canceladoMs) : fmtFecha(e.entregadoMs);
       return '<tr>'
         + '<td><b>'+esc(e.folio)+'</b><br>'+tag+'</td>'
-        + '<td>'+esc(e.cliente||'â€”')+'</td>'
-        + '<td>'+esc(e.solicito||'â€”')+'</td>'
+        + '<td>'+esc(e.cliente||'—')+'</td>'
+        + '<td>'+esc(e.solicito||'—')+'</td>'
         + '<td>'+colRecibio+'</td>'
         + '<td>'+fmtFecha(e.creadoMs)+'</td>'
         + '<td>'+colFechaFin+'</td>'
@@ -1211,7 +1164,7 @@
     construirModalHistorial();
     var box=document.getElementById('alm-modal-hist-box');
     box.classList.add('wide');
-    var titulo = cual==='entrega' ? ('Firma de entrega Â· '+esc(e.folio)+(e.recibio?(' Â· recibiÃ³ '+esc(e.recibio)):'')) : ('Firma de solicitud Â· '+esc(e.folio));
+    var titulo = cual==='entrega' ? ('Firma de entrega · '+esc(e.folio)+(e.recibio?(' · recibió '+esc(e.recibio)):'')) : ('Firma de solicitud · '+esc(e.folio));
     box.innerHTML = '<h4>'+titulo+'<button onclick="window.__almCerrarModal()">&times;</button></h4>'
       + '<img class="alm-firma-full" src="'+esc(src)+'" alt="Firma">';
     document.getElementById('alm-modal-hist').classList.add('show');
@@ -1225,14 +1178,14 @@
       + '<div class="alm-rep-filtros">'
       +   '<div class="alm-rep-fld"><label>Desde</label><input type="date" id="alm-rep-desde"></div>'
       +   '<div class="alm-rep-fld"><label>Hasta</label><input type="date" id="alm-rep-hasta"></div>'
-      +   '<div class="alm-rep-fld grow"><label>Buscar (folio, cliente, solicitÃ³, recibiÃ³)</label><input type="text" id="alm-rep-q" placeholder="Ej. CHH0007635, Victor, Los Cachorrosâ€¦"></div>'
-      +   '<button class="alm-rep-btn sec" type="button" onclick="window.__almRecargarReporte()">â†» Recargar</button>'
-      +   '<button class="alm-rep-btn" type="button" onclick="window.__almExportarReportePDF()">â¬‡ Exportar PDF</button>'
+      +   '<div class="alm-rep-fld grow"><label>Buscar (folio, cliente, solicitó, recibió)</label><input type="text" id="alm-rep-q" placeholder="Ej. CHH0007635, Victor, Los Cachorros…"></div>'
+      +   '<button class="alm-rep-btn sec" type="button" onclick="window.__almRecargarReporte()">↻ Recargar</button>'
+      +   '<button class="alm-rep-btn" type="button" onclick="window.__almExportarReportePDF()">⬇ Exportar PDF</button>'
       + '</div>'
-      + '<div class="alm-rep-summary" id="alm-rep-resumen">Cargandoâ€¦</div>'
+      + '<div class="alm-rep-summary" id="alm-rep-resumen">Cargando…</div>'
       + '<div class="alm-rep-wrap"><table class="alm-rep-tbl">'
-      +   '<thead><tr><th>Folio</th><th>Cliente</th><th>SolicitÃ³</th><th>RecibiÃ³ / Motivo</th><th>Fecha solicitud</th><th>Fecha entrega / cancelaciÃ³n</th><th>Piezas / firmas</th></tr></thead>'
-      +   '<tbody id="alm-rep-tbody"><tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:20px;">Cargandoâ€¦</td></tr></tbody>'
+      +   '<thead><tr><th>Folio</th><th>Cliente</th><th>Solicitó</th><th>Recibió / Motivo</th><th>Fecha solicitud</th><th>Fecha entrega / cancelación</th><th>Piezas / firmas</th></tr></thead>'
+      +   '<tbody id="alm-rep-tbody"><tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:20px;">Cargando…</td></tr></tbody>'
       + '</table></div>';
     document.getElementById('alm-modal-hist').classList.add('show');
 
@@ -1247,14 +1200,14 @@
 
   window.__almRecargarReporte = function(){
     var tbody = document.getElementById('alm-rep-tbody');
-    if(tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:20px;">Cargandoâ€¦</td></tr>';
+    if(tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:20px;">Cargando…</td></tr>';
     cargarEntregas().then(renderTablaReporte).catch(function(err){
       console.error('[almacen] cargarEntregas:',err);
       if(tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#dc2626;padding:20px;">No se pudo cargar el historial.</td></tr>';
     });
   };
 
-  // â”€â”€ KPIs de tiempos de surtido: % en SLA, promedio, desglose por persona y por dÃ­a â”€â”€
+  // ── KPIs de tiempos de surtido: % en SLA, promedio, desglose por persona y por día ──
   var SLA_MIN = { urgente:15, muy_alta:20, alta:30, normal:60, baja:120 };
 
   window.__almAbrirKPIs = function(){
@@ -1265,9 +1218,9 @@
       + '<div class="alm-rep-filtros">'
       +   '<div class="alm-rep-fld"><label>Desde</label><input type="date" id="alm-kpi-desde"></div>'
       +   '<div class="alm-rep-fld"><label>Hasta</label><input type="date" id="alm-kpi-hasta"></div>'
-      +   '<button class="alm-rep-btn sec" type="button" onclick="window.__almRecargarKPIs()">â†» Recargar</button>'
+      +   '<button class="alm-rep-btn sec" type="button" onclick="window.__almRecargarKPIs()">↻ Recargar</button>'
       + '</div>'
-      + '<div id="alm-kpi-body"><div class="alm-empty">Cargandoâ€¦</div></div>';
+      + '<div id="alm-kpi-body"><div class="alm-empty">Cargando…</div></div>';
     document.getElementById('alm-modal-hist').classList.add('show');
     ['alm-kpi-desde','alm-kpi-hasta'].forEach(function(fid){
       document.getElementById(fid).addEventListener('input', renderKPIs);
@@ -1277,10 +1230,10 @@
 
   window.__almRecargarKPIs = function(){
     var body=document.getElementById('alm-kpi-body');
-    if(body) body.innerHTML='<div class="alm-empty">Cargandoâ€¦</div>';
+    if(body) body.innerHTML='<div class="alm-empty">Cargando…</div>';
     cargarEntregas().then(renderKPIs).catch(function(err){
       console.error('[almacen] KPIs:',err);
-      if(body) body.innerHTML='<div class="alm-empty">No se pudo cargar la informaciÃ³n.</div>';
+      if(body) body.innerHTML='<div class="alm-empty">No se pudo cargar la información.</div>';
     });
   };
 
@@ -1307,10 +1260,10 @@
     var enSLA = entregados.filter(function(e,i){ return minutosArr[i] <= (SLA_MIN[_repEntregasPrio(e)]||60); }).length;
     var pctSLA = Math.round((enSLA/entregados.length)*100);
 
-    // Desglose por persona (solicitÃ³)
+    // Desglose por persona (solicitó)
     var porPersona = {};
     entregados.forEach(function(e,i){
-      var k=e.solicito||'â€”';
+      var k=e.solicito||'—';
       if(!porPersona[k]) porPersona[k]={n:0,sum:0};
       porPersona[k].n++; porPersona[k].sum+=minutosArr[i];
     });
@@ -1319,7 +1272,7 @@
       return '<tr><td>'+esc(k)+'</td><td>'+p.n+'</td><td>'+Math.round(p.sum/p.n)+' min prom.</td></tr>';
     }).join('');
 
-    // Pedidos por dÃ­a
+    // Pedidos por día
     var porDia = {};
     entregados.forEach(function(e){
       var k = new Date(e.entregadoMs).toLocaleDateString('es-MX',{day:'2-digit',month:'short'});
@@ -1337,21 +1290,21 @@
       + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">'
       +   '<div><div class="pq-sub" style="margin-bottom:8px;">POR SOLICITANTE / VENDEDOR</div>'
       +     '<div class="alm-rep-wrap" style="max-height:260px;"><table class="alm-rep-tbl"><thead><tr><th>Persona</th><th>Pedidos</th><th>Tiempo prom.</th></tr></thead><tbody>'+filasPersona+'</tbody></table></div></div>'
-      +   '<div><div class="pq-sub" style="margin-bottom:8px;">PEDIDOS POR DÃA</div>'
-      +     '<div class="alm-rep-wrap" style="max-height:260px;"><table class="alm-rep-tbl"><thead><tr><th>DÃ­a</th><th>Entregados</th></tr></thead><tbody>'+filasDia+'</tbody></table></div></div>'
+      +   '<div><div class="pq-sub" style="margin-bottom:8px;">PEDIDOS POR DÍA</div>'
+      +     '<div class="alm-rep-wrap" style="max-height:260px;"><table class="alm-rep-tbl"><thead><tr><th>Día</th><th>Entregados</th></tr></thead><tbody>'+filasDia+'</tbody></table></div></div>'
       + '</div>';
   }
 
   function _repEntregasPrio(e){
-    // La prioridad no se guarda en el objeto de reporte; se recupera del pedido en cachÃ© si aÃºn existe
+    // La prioridad no se guarda en el objeto de reporte; se recupera del pedido en caché si aún existe
     var p = buscarP(e.id);
     return (p && p.prioridad) || 'normal';
   }
 
-  // â”€â”€ ImpresiÃ³n de etiqueta / orden de surtido (media carta, para pegar en la caja) â”€â”€
+  // ── Impresión de etiqueta / orden de surtido (media carta, para pegar en la caja) ──
   window.__almImprimirEtiqueta = function(id){
     var p = buscarP(id); if(!p) return;
-    if(!window.jspdf){ if(window.mostrarPush) window.mostrarPush('AlmacÃ©n','LibrerÃ­a PDF no cargada','âš ï¸'); return; }
+    if(!window.jspdf){ if(window.mostrarPush) window.mostrarPush('Almacén','Librería PDF no cargada','⚠️'); return; }
     var jsPDF = window.jspdf.jsPDF;
     var docu = new jsPDF({ orientation:'portrait', unit:'mm', format:[139.7,215.9] }); // media carta
     var PW=139.7, PH=215.9, ML=10, MR=10;
@@ -1365,7 +1318,7 @@
     docu.setFillColor(p.tipo==='material'?139:20, p.tipo==='material'?79:115, p.tipo==='material'?214:230);
     docu.roundedRect(ML, 28, PW-ML-MR, 16, 3, 3, 'F');
     docu.setTextColor(255,255,255); docu.setFont('helvetica','bold'); docu.setFontSize(16);
-    docu.text(String(p.folio||'â€”'), ML+5, 38);
+    docu.text(String(p.folio||'—'), ML+5, 38);
     docu.setFontSize(9);
     docu.text(p.tipo==='material'?'MATERIAL':'VENTA', PW-MR-5, 38, {align:'right'});
 
@@ -1375,7 +1328,7 @@
       docu.setFont('helvetica','bold'); docu.setFontSize(7.5); docu.setTextColor(100,116,139);
       docu.text(label.toUpperCase(), ML, y);
       docu.setFont('helvetica','normal'); docu.setFontSize(11); docu.setTextColor(15,23,42);
-      var lineas = docu.splitTextToSize(String(valor||'â€”'), PW-ML-MR);
+      var lineas = docu.splitTextToSize(String(valor||'—'), PW-ML-MR);
       docu.text(lineas, ML, y+5.5);
       y += 6 + lineas.length*5.5;
     }
@@ -1386,14 +1339,14 @@
     if(p.destinoTipo){
       var destTxt = (DESTINO_TIPOS[p.destinoTipo]||p.destinoTipo);
       var destSub = destinoResumen(p);
-      campo('Destino', destTxt + (destSub?(' â€” '+destSub):''));
+      campo('Destino', destTxt + (destSub?(' — '+destSub):''));
     }
-    if(p.cotizacionOrigen) campo('CotizaciÃ³n de origen', p.cotizacionOrigen);
+    if(p.cotizacionOrigen) campo('Cotización de origen', p.cotizacionOrigen);
 
     y += 2;
     docu.setDrawColor(226,232,240); docu.line(ML,y,PW-MR,y); y+=7;
     docu.setFont('helvetica','bold'); docu.setFontSize(8); docu.setTextColor(100,116,139);
-    docu.text('ARTÃCULOS', ML, y); y+=6;
+    docu.text('ARTÍCULOS', ML, y); y+=6;
     var prods = Array.isArray(p.productos)?p.productos:[];
     docu.setFont('helvetica','normal'); docu.setFontSize(9); docu.setTextColor(15,23,42);
     prods.forEach(function(it){
@@ -1413,7 +1366,7 @@
   };
 
   window.__almExportarReportePDF = function(){
-    if(!window.jspdf){ if(window.mostrarPush) window.mostrarPush('AlmacÃ©n','LibrerÃ­a PDF no cargada','âš ï¸'); return; }
+    if(!window.jspdf){ if(window.mostrarPush) window.mostrarPush('Almacén','Librería PDF no cargada','⚠️'); return; }
     var filtros = leerFiltrosReporte();
     var lista = filtrarEntregas(_repEntregas||[], filtros);
     var jsPDF = window.jspdf.jsPDF;
@@ -1423,21 +1376,21 @@
     function encabezado(){
       docu.setFillColor(10,15,30); docu.rect(0,0,PW,20,'F');
       docu.setTextColor(255,255,255); docu.setFont('helvetica','bold'); docu.setFontSize(13);
-      docu.text('TECNOCONTROL Â· Historial de Entregas', ML, 12);
+      docu.text('TECNOCONTROL · Historial de Entregas', ML, 12);
       docu.setFont('helvetica','normal'); docu.setFontSize(8);
-      var rango = (document.getElementById('alm-rep-desde').value||'â€”')+' a '+(document.getElementById('alm-rep-hasta').value||'â€”');
-      docu.text('Rango: '+rango+'  Â·  Generado: '+new Date().toLocaleString('es-MX'), PW-MR, 12, {align:'right'});
+      var rango = (document.getElementById('alm-rep-desde').value||'—')+' a '+(document.getElementById('alm-rep-hasta').value||'—');
+      docu.text('Rango: '+rango+'  ·  Generado: '+new Date().toLocaleString('es-MX'), PW-MR, 12, {align:'right'});
       docu.setTextColor(30,41,59);
     }
     function piePagina(n){
       docu.setFillColor(10,15,30); docu.rect(0,PH-9,PW,9,'F');
       docu.setTextColor(180,180,180); docu.setFontSize(7);
-      docu.text('PÃ¡gina '+n+'  Â·  '+lista.length+' registro(s)', PW/2, PH-4, {align:'center'});
+      docu.text('Página '+n+'  ·  '+lista.length+' registro(s)', PW/2, PH-4, {align:'center'});
     }
     function encabezadoTabla(y){
       docu.setFillColor(248,250,252); docu.rect(ML, y-4.5, PW-ML-MR, 7, 'F');
       docu.setFont('helvetica','bold'); docu.setFontSize(7.5); docu.setTextColor(71,85,105);
-      var cols=['FOLIO','TIPO','CLIENTE','SOLICITÃ“','RECIBIÃ“','F. SOLICITUD','F. ENTREGA','PZAS'];
+      var cols=['FOLIO','TIPO','CLIENTE','SOLICITÓ','RECIBIÓ','F. SOLICITUD','F. ENTREGA','PZAS'];
       var xs=[ML+1, 40, 62, 108, 148, 188, 216, 248];
       cols.forEach(function(c,i){ docu.text(c, xs[i], y); });
       return xs;
@@ -1450,11 +1403,11 @@
     lista.forEach(function(e){
       if(y > PH-16){ piePagina(pageNum); docu.addPage(); pageNum++; y=30; encabezado(); xs=encabezadoTabla(y); y+=7; docu.setFont('helvetica','normal'); docu.setFontSize(7.8); docu.setTextColor(30,41,59); }
       var esCancelado = e.estado==='cancelado';
-      docu.text(String(e.folio||'â€”').slice(0,16), xs[0], y);
+      docu.text(String(e.folio||'—').slice(0,16), xs[0], y);
       docu.text(e.tipo==='material'?'Material':'Venta', xs[1], y);
-      docu.text(String(e.cliente||'â€”').slice(0,22), xs[2], y);
-      docu.text(String(e.solicito||'â€”').slice(0,18), xs[3], y);
-      docu.text(esCancelado ? ('CANCELADO: '+String(e.motivoCancelacion||'â€”').slice(0,22)) : String(e.recibio||'â€”').slice(0,18), xs[4], y);
+      docu.text(String(e.cliente||'—').slice(0,22), xs[2], y);
+      docu.text(String(e.solicito||'—').slice(0,18), xs[3], y);
+      docu.text(esCancelado ? ('CANCELADO: '+String(e.motivoCancelacion||'—').slice(0,22)) : String(e.recibio||'—').slice(0,18), xs[4], y);
       docu.text(fmtFecha(e.creadoMs), xs[5], y);
       docu.text(esCancelado ? fmtFecha(e.canceladoMs) : fmtFecha(e.entregadoMs), xs[6], y);
       docu.text(String(e.piezas), xs[7], y);
@@ -1464,5 +1417,5 @@
     docu.save('historial-entregas-tecnocontrol.pdf');
   };
 
-  console.log('[almacen.js] âœ… Centro de Surtido cargado (flujo + picking + SLA)');
+  console.log('[almacen.js] ✅ Centro de Surtido cargado (flujo + picking + SLA)');
 })();
