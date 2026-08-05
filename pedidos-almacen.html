@@ -8,6 +8,17 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="CSS/pedidos-almacen.css">
+<style>
+  /* ── Franja de cajas en movimiento: mantiene la pantalla "viva" para que la TV no la trate como estática y no se suspenda ── */
+  .tv-marquee{width:100%;overflow:hidden;height:34px;display:flex;align-items:center;background:rgba(20,115,226,.05);border-top:1px solid rgba(148,163,184,.18);}
+  .tv-marquee-track{display:flex;align-items:center;gap:26px;white-space:nowrap;animation:tvMarqueeScroll 38s linear infinite;will-change:transform;}
+  .tvm-box{display:inline-flex;width:16px;height:16px;color:#94a3b8;opacity:.55;flex-shrink:0;}
+  .tvm-box svg{width:100%;height:100%;}
+  @keyframes tvMarqueeScroll{from{transform:translateX(0);}to{transform:translateX(-50%);}}
+  body.dark .tv-marquee{background:rgba(255,255,255,.04);border-top-color:rgba(255,255,255,.08);}
+  /* ── Etiqueta de destino de entrega en las tarjetas de la TV ── */
+  .cdest{display:inline-block;margin-top:4px;font-size:11px;font-weight:800;border:1px solid;border-radius:99px;padding:2px 9px;white-space:normal;}
+</style>
 </head>
 <body>
 <div class="app">
@@ -45,6 +56,7 @@
   </div>
 
   <footer id="legend"></footer>
+  <div class="tv-marquee" id="tvMarquee" aria-hidden="true"><div class="tv-marquee-track" id="tvMarqueeTrack"></div></div>
 </div>
 
 <div class="banner" id="banner">
@@ -62,6 +74,19 @@ const COLORS={azul:'#1473E6',verde:'#12A150',teal:'#0FB5A6',amarillo:'#D99000',n
 const GRAD={azul:['#0B57C7','#3B93FF'],verde:['#0E8A45','#2ED47E'],teal:['#0C8C82','#22D3C4'],amarillo:['#B8790A','#F0B429'],naranja:['#D9531A','#FF8A4C'],rojo:['#C62B2B','#FF6B6B'],morado:['#6E33C0','#B07BEA'],gris:['#5C6B7E','#93A3B5']};
 const PRIO_COLOR={urgente:COLORS.rojo,muy_alta:COLORS.naranja,alta:COLORS.amarillo,normal:COLORS.azul,baja:COLORS.gris};
 const PRIO_RANK={urgente:5,muy_alta:4,alta:3,normal:2,baja:1};
+const DESTINO_LABEL={recoger_oficinas:'Recoge en oficinas',cliente_recoge:'Cliente recoge',vendedor_recoge:'Vendedor recoge en almacén',queda_almacen:'Se queda en almacén',paqueteria:'Por paquetería',entrega_chihuahua:'Entrega en Chihuahua',traslado_almacenes:'Traslado entre almacenes'};
+const DESTINO_COLOR={recoger_oficinas:COLORS.azul,cliente_recoge:COLORS.verde,vendedor_recoge:COLORS.teal,queda_almacen:COLORS.gris,paqueteria:COLORS.naranja,entrega_chihuahua:COLORS.morado,traslado_almacenes:COLORS.amarillo};
+function destinoResumen(p){
+  if(p.destinoTipo==='paqueteria') return [p.destinoPaqueteria,(p.destinoGuia?('guía '+p.destinoGuia):'')].filter(Boolean).join(' · ');
+  if(p.destinoTipo==='entrega_chihuahua') return p.destinoDireccion||'';
+  if(p.destinoTipo==='traslado_almacenes') return (p.destinoAlmacenOrigen||'—')+' → '+(p.destinoAlmacenDestino||'—');
+  return '';
+}
+function destinoBadgeHtml(p){
+  if(!p.destinoTipo) return '';
+  const c=DESTINO_COLOR[p.destinoTipo]||COLORS.gris, lbl=DESTINO_LABEL[p.destinoTipo]||p.destinoTipo, sub=destinoResumen(p);
+  return `<span class="cdest" style="background:${c}22;color:${c};border-color:${c}66">${lbl}${sub?(' · '+sub):''}</span>`;
+}
 const NEXT={esperando_autorizacion:'pendiente',pendiente:'en_preparacion',en_preparacion:'listo',listo:'entregado',entregado:'finalizado'};
 const now=()=>Date.now(), minsAgo=m=>now()-m*60000;
 
@@ -164,6 +189,7 @@ function buildPanel(tk, list){
     const vencMeta = v ? `<div class="meta"><span class="k">ENTREGA${hero.fechaEntrega?(' · '+hero.fechaEntrega):''}</span><span class="venc-badge" style="background:${v.color}">${v.txt}</span></div>` : '';
     const destinoTxt = [hero.area, (hero.destino||hero.uso)].filter(Boolean).join(' — ');
     const destinoMeta = (esMatPanel && destinoTxt) ? `<div class="meta"><span class="k">ÁREA / DESTINO</span><span class="v" style="font-size:15px">${destinoTxt}</span></div>` : '';
+    const destinoTipoMeta = hero.destinoTipo ? `<div class="meta"><span class="k">¿A DÓNDE VA?</span><span class="v" style="font-size:15px">${DESTINO_LABEL[hero.destinoTipo]||hero.destinoTipo}${destinoResumen(hero)?(' · '+destinoResumen(hero)):''}</span></div>` : '';
     heroEl.innerHTML=`
       <div class="eyebrow">${esMatPanel?'SOLICITUD DE MATERIAL · OPERACIONES':'PEDIDO DE VENTAS'} · SIGUIENTE A SURTIR</div>
       <div class="htop">
@@ -175,6 +201,7 @@ function buildPanel(tk, list){
         <div class="meta"><span class="k"><svg class="i" viewBox="0 0 24 24"><path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="7" r="4"/></svg>${esMatPanel?'SOLICITANTE':'VENDEDOR'}</span><span class="v">${persona}</span></div>
         ${vencMeta}
         ${destinoMeta}
+        ${destinoTipoMeta}
         <div class="meta"><span class="k">PRIORIDAD</span><span class="prio">${hero.prioridad.replace('_',' ').toUpperCase()}</span></div>
         <div class="meta" style="margin-left:auto;align-items:flex-end"><span class="badge">${ec.label}</span></div>
       </div>`;
@@ -208,6 +235,7 @@ function cardHtml(p, isNew){
         <div class="cclient">${p.cliente}</div>
         <div class="citems">${items}</div>
         <div class="cstate" style="color:${c}"><span class="sdot" style="background:${c}"></span>${ec.label} · ${persona} ${vb}</div>
+        ${destinoBadgeHtml(p)}
       </div>
       <div class="cright"><div class="ctimer mono" style="color:${c}">${fmt(now()-p.createdAt)}</div><div class="cpieces">${piezas(p)} pzas</div></div>
     </div>`;
@@ -289,6 +317,15 @@ window.__almRender  = function(){ render(true); };
 function tickReloj(){ const d=new Date(); document.getElementById('clk').textContent = d.toLocaleTimeString('es-MX',{hour12:false}); }
 tickReloj(); setInterval(tickReloj,1000);
 
+// ── Franja de cajas en movimiento: evita que la TV vea la pantalla "quieta" y se suspenda ──
+(function(){
+  const track = document.getElementById('tvMarqueeTrack');
+  if(!track) return;
+  const boxSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>';
+  const tanda = Array.from({length:14}).map(()=>`<span class="tvm-box">${boxSvg}</span>`).join('');
+  track.innerHTML = tanda + tanda; // se duplica para que el recorrido sea continuo, sin salto
+})();
+
 render(true); setInterval(()=>render(false),1000);
 </script>
 
@@ -351,6 +388,12 @@ function iniciarEscucha(){
         area: d.area || '',
         destino: d.destino || '',
         uso: d.uso || d.destino || '',
+        destinoTipo: d.destinoTipo || '',
+        destinoPaqueteria: d.destinoPaqueteria || '',
+        destinoGuia: d.destinoGuia || '',
+        destinoDireccion: d.destinoDireccion || '',
+        destinoAlmacenOrigen: d.destinoAlmacenOrigen || '',
+        destinoAlmacenDestino: d.destinoAlmacenDestino || '',
         productos: Array.isArray(d.productos) ? d.productos.map(it=>({
           clave: it.clave || '',
           cant: Number(it.cant)||0,

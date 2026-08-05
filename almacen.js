@@ -33,6 +33,26 @@
   var PRIO_COLOR = { urgente:COLORS.rojo, muy_alta:COLORS.naranja, alta:COLORS.amarillo, normal:COLORS.azul, baja:COLORS.gris };
   var PRIO_RANK  = { urgente:5, muy_alta:4, alta:3, normal:2, baja:1 };
   var PRIO_LABEL = { urgente:'Urgente', muy_alta:'Muy alta', alta:'Alta', normal:'Normal', baja:'Baja' };
+  // ── Destino de entrega del pedido ──
+  var DESTINO_TIPOS = {
+    recoger_oficinas:   'Recoger en oficinas Tecnocontrol',
+    cliente_recoge:     'Cliente viene por \u00e9l',
+    vendedor_recoge:    'Vendedor recoge en almac\u00e9n',
+    queda_almacen:      'Se queda en almac\u00e9n',
+    paqueteria:         'Enviar por paqueter\u00eda',
+    entrega_chihuahua:  'Entrega en Chihuahua (estaci\u00f3n)',
+    traslado_almacenes: 'Traslado entre almacenes'
+  };
+  var DESTINO_COLOR = {
+    recoger_oficinas:   COLORS.azul,
+    cliente_recoge:     COLORS.verde,
+    vendedor_recoge:    COLORS.teal,
+    queda_almacen:      COLORS.gris,
+    paqueteria:         COLORS.naranja,
+    entrega_chihuahua:  COLORS.morado,
+    traslado_almacenes: COLORS.amarillo
+  };
+  var ALMACENES_DEFAULT = ['CHIHUAHUA','JU\u00c1REZ','PARRAL','MONTERREY','SONORA','JALISCO'];
   var NEXT       = { esperando_autorizacion:'pendiente', pendiente:'en_preparacion', en_preparacion:'listo', listo:'entregado', entregado:'finalizado' };
   var PREV       = { pendiente:'esperando_autorizacion', en_preparacion:'pendiente', listo:'en_preparacion', entregado:'listo' };
 
@@ -58,6 +78,9 @@
   var filtro    = { q:'', prio:'', tipo:'' };   // búsqueda, prioridad y tipo
   var _unsub  = null, _tick = null, _fs = null, _cssOk = false;
   var _conocidos = null;             // Set de ids ya vistos (null = aún no hubo primera carga)
+  var _almacenes = null;             // lista de almacenes para traslados (config/almacenes en Firestore)
+  var _evidenciasCache = {};         // id -> [{id,imagen,subidoPor,subidoEn}]
+  var _destinoEditId = null;         // id del pedido que se está editando en el modal de destino
   var _notifOn = (function(){ try{ return localStorage.getItem('alm_notif_on')!=='0'; }catch(e){ return true; } })();
 
   function cargarFirestore(){
@@ -107,6 +130,54 @@
     }catch(e){ console.warn('[almacen] beep:',e); }
   }
 
+  // Sonido de alerta por tiempo (distinto al de "pedido nuevo"): un tono suave para "por vencer",
+  // tres tonos más agudos para "retrasado". Suena UNA VEZ al cruzar el umbral, no se repite en bucle.
+  function reproducirAlertaSLA(tipo){
+    try{
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      if(!Ctx) return;
+      var ctx = new Ctx();
+      var tonos = tipo==='retrasado' ? [700,700,700] : [520];
+      tonos.forEach(function(f,i){
+        var osc = ctx.createOscillator(), gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = f;
+        osc.connect(gain); gain.connect(ctx.destination);
+        var t0 = ctx.currentTime + i*0.22;
+        gain.gain.setValueAtTime(0.0001, t0);
+        gain.gain.exponentialRampToValueAtTime(0.2, t0+0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0+0.18);
+        osc.start(t0); osc.stop(t0+0.2);
+      });
+      setTimeout(function(){ try{ ctx.close(); }catch(e){} }, 900);
+    }catch(e){ console.warn('[almacen] alerta SLA:',e); }
+  }
+  var _alertPorVencer = {};  // id -> true, ya avisado (para no repetir el sonido cada segundo)
+  var _alertRetrasado = {};
+  function revisarAlertasSLA(){
+    pedidos.forEach(function(p){
+      var st = estadoSLA(p);
+      if (st==='porvencer'){
+        if (_notifOn && !_alertPorVencer[p.id]){
+          _alertPorVencer[p.id]=true;
+          reproducirAlertaSLA('porvencer');
+          if (window.mostrarPush) window.mostrarPush('\u23f3 Por vencer', (p.folio||'')+' \u00b7 '+(p.cliente||''), '\u23f3');
+        }
+      } else {
+        delete _alertPorVencer[p.id];
+      }
+      if (st==='retrasado'){
+        if (_notifOn && !_alertRetrasado[p.id]){
+          _alertRetrasado[p.id]=true;
+          reproducirAlertaSLA('retrasado');
+          if (window.mostrarPush) window.mostrarPush('\ud83d\udea8 Pedido retrasado', (p.folio||'')+' \u00b7 '+(p.cliente||''), '\ud83d\udea8');
+        }
+      } else {
+        delete _alertRetrasado[p.id];
+      }
+    });
+  }
+
   function notificarPedidoNuevo(p){
     if(!_notifOn) return;
     reproducirBeep();
@@ -153,6 +224,14 @@
     if (p.estado==='en_preparacion') return COLORS.verde;
     return COLORS.azul;
   }
+  // Clasificación de tiempo para las alertas: 'ok' | 'porvencer' | 'retrasado'
+  function estadoSLA(p){
+    if (['esperando_autorizacion','listo','entregado','finalizado','cancelado'].indexOf(p.estado)!==-1) return 'ok';
+    var mins=(now()-p.createdAt)/60000, sla=SLA[p.prioridad]||30;
+    if (mins>sla) return 'retrasado';
+    if (mins>SEMAFORO.amarillo) return 'porvencer';
+    return 'ok';
+  }
   function fechaEntregaMs(p){
     if(!p.fechaEntrega) return Infinity;         // sin fecha → al final dentro de su prioridad
     var d = new Date(p.fechaEntrega+'T00:00:00');
@@ -176,6 +255,142 @@
     return true;
   }
   function nChecked(p){ var c=p.check||{}; var n=0; for (var k in c){ if(c[k]) n++; } return n; }
+
+  // =====================================================================
+  //  DESTINO DE ENTREGA
+  // =====================================================================
+  function iconoCaja(){
+    return '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>';
+  }
+  function destinoResumen(p){
+    if (p.destinoTipo==='paqueteria') return [p.destinoPaqueteria, (p.destinoGuia?('gu\u00eda '+p.destinoGuia):'')].filter(Boolean).join(' \u00b7 ');
+    if (p.destinoTipo==='entrega_chihuahua') return p.destinoDireccion||'';
+    if (p.destinoTipo==='traslado_almacenes') return (p.destinoAlmacenOrigen||'\u2014')+' \u2192 '+(p.destinoAlmacenDestino||'\u2014');
+    return '';
+  }
+  // Solo lectura: el destino se registra desde Ventas / Solicitud de Material, no aqu\u00ed.
+  function destinoHtml(p){
+    var tipo=p.destinoTipo;
+    if (!tipo) return '<div class="alm-destino"><span class="alm-destino-chip vacio">'+iconoCaja()+'Sin destino asignado</span></div>';
+    var label = DESTINO_TIPOS[tipo]||tipo;
+    var color = DESTINO_COLOR[tipo]||COLORS.gris;
+    var sub = destinoResumen(p);
+    return '<div class="alm-destino">'
+      + '<span class="alm-destino-chip" style="background:'+color+'1c;color:'+color+';border-color:'+color+'55">'
+      +   iconoCaja()+esc(label)
+      + '</span>'
+      + (sub?'<span class="alm-destino-sub">'+esc(sub)+'</span>':'')
+      + '</div>';
+  }
+  function cargarAlmacenes(){
+    if (_almacenes) return Promise.resolve(_almacenes);
+    return cargarFirestore().then(function(fs){
+      if (!window.db) { _almacenes=ALMACENES_DEFAULT.slice(); return _almacenes; }
+      return fs.getDoc(fs.doc(window.db,'config','almacenes')).then(function(snap){
+        var nombres = snap.exists() ? (snap.data()||{}).nombres : null;
+        if (Array.isArray(nombres) && nombres.length){ _almacenes=nombres; }
+        else {
+          _almacenes = ALMACENES_DEFAULT.slice();
+          fs.setDoc(fs.doc(window.db,'config','almacenes'), { nombres:_almacenes }, {merge:true}).catch(function(){});
+        }
+        return _almacenes;
+      });
+    }).catch(function(err){ console.warn('[almacen] cargarAlmacenes:',err); _almacenes=ALMACENES_DEFAULT.slice(); return _almacenes; });
+  }
+  function agregarAlmacen(nombre){
+    return cargarAlmacenes().then(function(lista){
+      if (lista.indexOf(nombre)!==-1) return lista;
+      return cargarFirestore().then(function(fs){
+        return fs.updateDoc(fs.doc(window.db,'config','almacenes'), { nombres: fs.arrayUnion(nombre) }).then(function(){
+          _almacenes.push(nombre);
+          return _almacenes;
+        });
+      });
+    });
+  }
+  // Expuestas para que Ventas y Solicitud de Material (que a\u00fan no viven en este archivo)
+  // puedan registrar el destino usando la misma lista de almacenes y el mismo esquema de datos.
+  // Aqu\u00ed en Almac\u00e9n el destino es SOLO LECTURA \u2014 no se registra ni se edita desde este m\u00f3dulo.
+  window.__almListaAlmacenes = function(){ return cargarAlmacenes(); };
+  window.__almAgregarAlmacenGlobal = function(nombre){ return agregarAlmacen(String(nombre||'').trim().toUpperCase()); };
+
+  // ── Ver el PDF original adjunto por Ventas al subir el pedido (solo lectura, para validar) ──
+  window.__almVerPDF = function(id){
+    cargarFirestore().then(function(fs){
+      if (!window.db) throw new Error('Firestore no disponible');
+      return fs.getDoc(fs.doc(window.db,'surtidos',id,'adjuntos','pdf_original'));
+    }).then(function(snap){
+      if (!snap.exists() || !(snap.data()||{}).archivo){
+        if (window.mostrarPush) window.mostrarPush('Almac\u00e9n','Este pedido no tiene PDF adjunto todav\u00eda','\u26a0\ufe0f');
+        return;
+      }
+      var w = window.open();
+      if (w) w.document.write('<iframe src="'+(snap.data().archivo)+'" style="border:none;width:100%;height:100%;"></iframe>');
+    }).catch(function(err){
+      console.error('[almacen] verPDF:',err);
+      if (window.mostrarPush) window.mostrarPush('Almac\u00e9n','No se pudo abrir el PDF','\u26a0\ufe0f');
+    });
+  };
+
+  // =====================================================================
+  //  EVIDENCIAS DE ENTREGA (fotos, además de la firma)
+  // =====================================================================
+  function cargarEvidencias(id){
+    if (_evidenciasCache[id]) return Promise.resolve(_evidenciasCache[id]);
+    return cargarFirestore().then(function(fs){
+      if (!window.db) { _evidenciasCache[id]=[]; return []; }
+      var col=fs.collection(window.db,'surtidos',id,'evidencias');
+      var q; try{ q=fs.query(col, fs.orderBy('subidoEn','asc')); }catch(e){ q=col; }
+      return fs.getDocs(q);
+    }).then(function(snap){
+      var list=[];
+      if (snap && snap.forEach) snap.forEach(function(d){ list.push(Object.assign({id:d.id}, d.data())); });
+      _evidenciasCache[id]=list;
+      return list;
+    }).catch(function(err){ console.warn('[almacen] cargarEvidencias:',err); _evidenciasCache[id]=[]; return []; });
+  }
+  function renderEvidenciasThumbs(p){
+    var list=_evidenciasCache[p.id]||[];
+    if (!list.length) return '<div class="alm-empty" style="padding:4px 0;">Sin evidencias a\u00fan</div>';
+    return list.map(function(ev,idx){
+      return '<img class="alm-evid-thumb" src="'+esc(ev.imagen)+'" onclick="window.__almVerEvidencia(\''+p.id+'\','+idx+')">';
+    }).join('');
+  }
+  window.__almSubirEvidencia = function(id){
+    var input=document.getElementById('alm-evid-file-'+id); if (!input) return;
+    input.onchange = function(){
+      var file=input.files&&input.files[0]; input.value='';
+      if (!file) return;
+      comprimirImagen(file).then(function(dataUrl){
+        return cargarFirestore().then(function(fs){
+          if (!window.db) throw new Error('Firestore no disponible');
+          return fs.addDoc(fs.collection(window.db,'surtidos',id,'evidencias'), {
+            imagen:dataUrl, subidoPor:yoNombre(), subidoPorEmail:yoEmail(), subidoEn:fs.serverTimestamp()
+          });
+        });
+      }).then(function(){
+        delete _evidenciasCache[id];
+        return cargarEvidencias(id);
+      }).then(function(){
+        render();
+        if (window.mostrarPush) window.mostrarPush('📷 Evidencia agregada','','✅');
+      }).catch(function(err){
+        console.error('[almacen] subirEvidencia:',err);
+        if (window.mostrarPush) window.mostrarPush('Almacén','No se pudo subir la evidencia','⚠️');
+      });
+    };
+    input.click();
+  };
+  window.__almVerEvidencia = function(id, idx){
+    var list=_evidenciasCache[id]||[]; var ev=list[idx]; if (!ev) return;
+    construirModalHistorial();
+    var box=document.getElementById('alm-modal-hist-box');
+    box.classList.remove('wide');
+    box.innerHTML = '<h4>Evidencia de entrega<button onclick="window.__almCerrarModal()">&times;</button></h4>'
+      + '<img class="alm-firma-full" src="'+esc(ev.imagen)+'" alt="Evidencia">'
+      + (ev.subidoPor?('<div style="font-size:12px;color:#64748b;font-weight:700;">Subida por '+esc(ev.subidoPor)+'</div>'):'');
+    document.getElementById('alm-modal-hist').classList.add('show');
+  };
 
   // =====================================================================
   //  CSS (una sola vez)
@@ -286,8 +501,26 @@
     + '.alm-hist-row .cambio{font-weight:800;color:#0f172a;}'
     + '.alm-hist-row .meta{color:#94a3b8;font-size:11px;}'
     + '.alm-modal-box img.alm-firma-full{max-width:100%;border:1px solid #e6ebf2;border-radius:10px;background:#fff;margin-bottom:14px;}'
+    + '.alm-destino{margin-top:6px;display:flex;flex-direction:column;gap:3px;}'
+    + '.alm-destino-chip{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:800;border:1px solid;border-radius:99px;padding:4px 10px 4px 8px;width:fit-content;}'
+    + '.alm-destino-chip.vacio{background:#f1f5f9;color:#94a3b8;border-color:#e6ebf2;}'
+    + '.alm-destino-chip svg{flex-shrink:0;}'
+    + '.alm-destino-sub{font-size:10.5px;color:#94a3b8;font-weight:700;margin-left:2px;}'
+    + '.alm-destino-form{display:flex;flex-direction:column;gap:2px;}'
+    + '.alm-destino-lbl{font-size:11px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#64748b;margin-top:10px;margin-bottom:4px;}'
+    + '.alm-destino-input{width:100%;padding:11px 13px;border:2px solid #e6ebf2;border-radius:10px;font-size:14px;font-family:inherit;outline:none;box-sizing:border-box;background:#fff;}'
+    + '.alm-destino-caratula-prev{max-width:100%;max-height:140px;border:1px solid #e6ebf2;border-radius:8px;display:block;margin-top:4px;}'
+    + '.alm-evid-block{margin-top:10px;border-top:1px dashed #e6ebf2;padding-top:8px;}'
+    + '.alm-evid-block .lbl{display:block;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#94a3b8;margin-bottom:6px;}'
+    + '.alm-evid-grid{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;}'
+    + '.alm-evid-thumb{width:52px;height:52px;object-fit:cover;border-radius:8px;border:1px solid #e6ebf2;cursor:zoom-in;}'
+    + '.alm-evid-add{border:1px dashed #cbd5e1;background:#fff;color:#475569;border-radius:8px;font-size:11.5px;font-weight:800;padding:6px 12px;cursor:pointer;}'
     + '@keyframes almPulse{0%{box-shadow:0 0 0 0 rgba(18,161,80,.5);}70%{box-shadow:0 0 0 8px rgba(18,161,80,0);}100%{box-shadow:0 0 0 0 rgba(18,161,80,0);}}'
-    + '@keyframes almBlink{0%,100%{opacity:1;}50%{opacity:.55;}}';
+    + '@keyframes almBlink{0%,100%{opacity:1;}50%{opacity:.55;}}'
+    + '.alm-card.porvencer{animation:almBlinkWarn 1.3s infinite;}'
+    + '.alm-card.vencido{animation:almBlinkDanger 1s infinite;}'
+    + '@keyframes almBlinkWarn{0%,100%{box-shadow:0 0 0 0 rgba(217,144,0,0);}50%{box-shadow:0 0 0 4px rgba(217,144,0,.4);}}'
+    + '@keyframes almBlinkDanger{0%,100%{box-shadow:0 0 0 0 rgba(226,59,59,0);}50%{box-shadow:0 0 0 5px rgba(226,59,59,.45);}}';
     var st=document.createElement('style'); st.id='alm-css'; st.textContent=css; document.head.appendChild(st);
   }
 
@@ -411,6 +644,11 @@
         prodHtml += '<div class="alm-firma-mini"><span class="lbl">Firma de entrega'+(p.recibioNombre?(' · recibió '+esc(p.recibioNombre)):'')+'</span>'
           + '<img src="'+esc(p.firmaEntrega)+'" alt="Firma de entrega" onclick="window.__almVerFirma(\''+p.id+'\',\'entrega\')"></div>';
       }
+      prodHtml += '<div class="alm-evid-block"><span class="lbl">Evidencia de entrega</span>'
+        + '<div class="alm-evid-grid" id="alm-evid-grid-'+p.id+'">'+renderEvidenciasThumbs(p)+'</div>'
+        + '<button type="button" class="alm-evid-add" onclick="window.__almSubirEvidencia(\''+p.id+'\')">+ Agregar foto</button>'
+        + '<input type="file" accept="image/*" capture="environment" id="alm-evid-file-'+p.id+'" style="display:none">'
+        + '</div>';
     }
 
     var goCls='alm-btn alm-btn-go'+((p.estado==='en_preparacion'&&!completo)?' wait':'');
@@ -419,11 +657,13 @@
     var accionHtml = esperandoFirma
       ? '<button class="alm-btn alm-btn-ghost" title="Cancelar solicitud de firma" onclick="window.__almCancelarFirmaEntrega(\''+p.id+'\')" style="color:#dc2626;">✍️ Esperando firma… ✕</button>'
       : (sig?'<button class="'+goCls+'" onclick="window.__almGo(\''+p.id+'\')">'+esc(ACCION[p.estado]||'Avanzar')+' ›</button>':'');
-    return '<div class="alm-card'+(urg?' urg':'')+'" data-id="'+p.id+'" style="border-left-color:'+ac+'">'
+    var slaCls = estadoSLA(p)==='retrasado' ? ' vencido' : (estadoSLA(p)==='porvencer' ? ' porvencer' : '');
+    return '<div class="alm-card'+(urg?' urg':'')+slaCls+'" data-id="'+p.id+'" style="border-left-color:'+ac+'">'
       + '<div class="top"><span class="folio">'+esc(p.folio||'—')+'</span>'
       +   '<span class="alm-chip'+(urg?' urg':'')+'" style="background:'+pc+'">'+esc(PRIO_LABEL[p.prioridad]||p.prioridad||'Normal')+'</span></div>'
       + '<div class="cli">'+esc(p.cliente||'Sin cliente')+' '+tipoTag+'</div>'
       + '<div class="vend">Vendedor: '+esc(p.vendedor||'—')+'</div>'
+      + destinoHtml(p)
       + '<div class="alm-meta"><span>⏱ <span class="alm-timer" data-id="'+p.id+'" style="color:'+ac+'">'+fmt(now()-p.createdAt)+'</span></span>'
       +   '<span><b>'+piezas(p)+'</b> pzas</span>'+(total?'<span><b>'+hechas+'</b>/'+total+' líneas</span>':'')+'</div>'
       + progHtml + prodHtml
@@ -436,11 +676,14 @@
       +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></button>':'')
       +   '<button class="alm-btn alm-btn-ghost" title="Imprimir etiqueta" onclick="window.__almImprimirEtiqueta(\''+p.id+'\')">'
       +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg></button>'
+      +   (p.tienePdfOriginal?('<button class="alm-btn alm-btn-ghost" title="Ver PDF original" onclick="window.__almVerPDF(\''+p.id+'\')">'
+      +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></button>'):'')
       +   accionHtml
       + '</div></div>';
   }
 
   function tickTimers(){
+    revisarAlertasSLA();
     var cont=contenedor(); if(!cont) return;
     pedidos.forEach(function(p){
       if(p.estado==='finalizado') return;
@@ -559,7 +802,11 @@
     moverEstado(id,destino);
   };
   window.__almBack   = function(id){ var p=buscarP(id); if(p&&PREV[p.estado]) moverEstado(id,PREV[p.estado]); };
-  window.__almToggle = function(id){ expandido[id]=!expandido[id]; render(); };
+  window.__almToggle = function(id){
+    expandido[id]=!expandido[id];
+    render();
+    if (expandido[id] && !_evidenciasCache[id]) cargarEvidencias(id).then(function(){ render(); });
+  };
   window.__almCheck  = function(id,idx){ toggleCheck(id,idx); };
   window.__almBuscar = function(v){ filtro.q=v||''; render(); var i=document.getElementById('alm-q'); if(i){ i.focus(); i.value=filtro.q; } };
   window.__almPrio   = function(v){
@@ -788,6 +1035,9 @@
             recibioNombre:d.recibioNombre||'', firmaEntrega:d.firmaEntrega||'',
             entregaPendienteFirma:!!d.entregaPendienteFirma,
             cotizacionOrigen:d.cotizacionOrigen||'', motivoCancelacion:d.motivoCancelacion||'',
+            destinoTipo:d.destinoTipo||'', destinoPaqueteria:d.destinoPaqueteria||'', destinoGuia:d.destinoGuia||'',
+            destinoDireccion:d.destinoDireccion||'', destinoAlmacenOrigen:d.destinoAlmacenOrigen||'', destinoAlmacenDestino:d.destinoAlmacenDestino||'',
+            tienePdfOriginal:!!d.tienePdfOriginal,
             createdAt:toMs(d.createdAt)
           });
         });
@@ -1086,6 +1336,11 @@
     campo(p.tipo==='material'?'Solicitante':'Vendedor', p.vendedor);
     campo('Prioridad', (PRIO_LABEL[p.prioridad]||p.prioridad||'Normal'));
     if(p.fechaEntrega) campo('Fecha de entrega', p.fechaEntrega);
+    if(p.destinoTipo){
+      var destTxt = (DESTINO_TIPOS[p.destinoTipo]||p.destinoTipo);
+      var destSub = destinoResumen(p);
+      campo('Destino', destTxt + (destSub?(' — '+destSub):''));
+    }
     if(p.cotizacionOrigen) campo('Cotización de origen', p.cotizacionOrigen);
 
     y += 2;
