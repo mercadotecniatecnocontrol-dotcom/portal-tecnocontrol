@@ -653,6 +653,7 @@
       +   (esAdminActual()?'<button class="alm-notif-btn" title="Fotos de catálogo (solo admin)" onclick="window.__almAbrirFotos()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>':'')
       +   '<button class="alm-notif-btn" title="Historial de entregas" onclick="window.__almAbrirHistorialEntregas()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11H3v10h6"/><path d="M9 21h12V8l-5-5H9v6"/><line x1="13" y1="12" x2="17" y2="12"/><line x1="13" y1="16" x2="17" y2="16"/></svg></button>'
       +   '<button class="alm-notif-btn" title="KPIs de tiempos de surtido" onclick="window.__almAbrirKPIs()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></button>'
+      +   '<button class="alm-notif-btn" title="Cumplea\u00f1os del equipo (para la TV)" onclick="window.__almAbrirCumpleanos()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="12" width="16" height="8" rx="1"/><path d="M4 16h16"/><path d="M8 12V9a1 1 0 0 1 2 0v3"/><path d="M14 12V9a1 1 0 0 1 2 0v3"/><path d="M9 6c0-1 1-1 1-2s-1-1-1-2"/><path d="M15 6c0-1 1-1 1-2s-1-1-1-2"/></svg></button>'
       + '</div>'
       + '<div class="alm-kpis" id="alm-kpis"></div>'
       + '<div class="alm-board" id="alm-board"></div>'
@@ -1385,6 +1386,78 @@
 
   // ── KPIs de tiempos de surtido: % en SLA, promedio, desglose por persona y por día ──
   var SLA_MIN = { urgente:15, muy_alta:20, alta:30, normal:60, baja:120 };
+
+  // =====================================================================
+  //  CUMPLEAÑOS DEL EQUIPO — alimenta la decoración de la TV (pedidos-almacen.html)
+  // =====================================================================
+  var _cumpleCache = null;
+  function cargarCumpleanos(){
+    if (_cumpleCache) return Promise.resolve(_cumpleCache);
+    return cargarFirestore().then(function(fs){
+      if (!window.db) { _cumpleCache=[]; return []; }
+      return fs.getDoc(fs.doc(window.db,'config','cumpleanos')).then(function(snap){
+        var lista = (snap.exists() && Array.isArray((snap.data()||{}).lista)) ? snap.data().lista : [];
+        _cumpleCache = lista;
+        return lista;
+      });
+    }).catch(function(){ _cumpleCache=[]; return []; });
+  }
+  function guardarCumpleanos(lista){
+    return cargarFirestore().then(function(fs){
+      if (!window.db) throw new Error('Firestore no disponible');
+      return fs.setDoc(fs.doc(window.db,'config','cumpleanos'), { lista:lista }, { merge:false });
+    }).then(function(){ _cumpleCache = lista; });
+  }
+  window.__almAbrirCumpleanos = function(){
+    cargarCumpleanos().then(function(lista){
+      construirModalHistorial();
+      var box=document.getElementById('alm-modal-hist-box');
+      box.classList.remove('wide');
+      var filas = lista.map(function(c,idx){
+        var dd = String(c.dia||'').padStart(2,'0'), mm = String(c.mes||'').padStart(2,'0');
+        return '<div class="alm-doc-row"><span class="n">'+esc(c.nombre||'—')+' \u00b7 '+dd+'/'+mm+'</span>'
+          + '<button type="button" class="alm-rep-btn sec" style="color:#dc2626;" onclick="window.__almQuitarCumpleanos('+idx+')">Quitar</button></div>';
+      }).join('') || '<div class="alm-empty">A\u00fan no hay cumplea\u00f1os registrados.</div>';
+      box.innerHTML = '<h4>\ud83c\udf82 Cumplea\u00f1os del equipo<button onclick="window.__almCerrarModal()">&times;</button></h4>'
+        + '<div style="font-size:12px;color:#64748b;margin-bottom:10px;">El d\u00eda que le toque a alguien, la TV de Almac\u00e9n lo muestra con un detalle discreto en la franja de abajo.</div>'
+        + '<div id="alm-cumple-lista">'+filas+'</div>'
+        + '<button type="button" class="alm-addrow" style="margin-top:10px;" onclick="window.__almAgregarCumpleanos()">+ Agregar cumplea\u00f1os</button>';
+      document.getElementById('alm-modal-hist').classList.add('show');
+    });
+  };
+  window.__almAgregarCumpleanos = function(){
+    var nombre = prompt('Nombre de la persona:');
+    if (!nombre || !nombre.trim()) return;
+    var fecha = prompt('Fecha de cumplea\u00f1os (formato DD/MM, ej. 24/12):');
+    if (!fecha) return;
+    var partes = fecha.split('/');
+    var dia = parseInt(partes[0],10), mes = parseInt(partes[1],10);
+    if (!dia || !mes || dia<1 || dia>31 || mes<1 || mes>12){
+      alert('Fecha no v\u00e1lida. Usa el formato D\u00cdA/MES, por ejemplo 24/12.');
+      return;
+    }
+    cargarCumpleanos().then(function(lista){
+      var nueva = lista.concat([{ nombre:nombre.trim(), dia:dia, mes:mes }]);
+      return guardarCumpleanos(nueva);
+    }).then(function(){
+      if (window.mostrarPush) window.mostrarPush('\ud83c\udf82 Cumplea\u00f1os agregado', nombre.trim(), '\u2705');
+      window.__almAbrirCumpleanos();
+    }).catch(function(err){
+      console.error('[almacen] agregarCumpleanos:',err);
+      if (window.mostrarPush) window.mostrarPush('Almac\u00e9n','No se pudo guardar','\u26a0\ufe0f');
+    });
+  };
+  window.__almQuitarCumpleanos = function(idx){
+    cargarCumpleanos().then(function(lista){
+      var nueva = lista.slice(); nueva.splice(idx,1);
+      return guardarCumpleanos(nueva);
+    }).then(function(){
+      window.__almAbrirCumpleanos();
+    }).catch(function(err){
+      console.error('[almacen] quitarCumpleanos:',err);
+      if (window.mostrarPush) window.mostrarPush('Almac\u00e9n','No se pudo quitar','\u26a0\ufe0f');
+    });
+  };
 
   window.__almAbrirKPIs = function(){
     construirModalHistorial();
