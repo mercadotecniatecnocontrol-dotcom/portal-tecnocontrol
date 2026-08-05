@@ -53,22 +53,17 @@
     traslado_almacenes: COLORS.amarillo
   };
   var ALMACENES_DEFAULT = ['CHIHUAHUA','JU\u00c1REZ','PARRAL','MONTERREY','SONORA','JALISCO'];
-  var NEXT       = { esperando_autorizacion:'pendiente', pendiente:'en_preparacion', en_preparacion:'listo', listo:'entregado', entregado:'finalizado' };
-  var PREV       = { pendiente:'esperando_autorizacion', en_preparacion:'pendiente', listo:'en_preparacion', entregado:'listo' };
+  var NEXT       = { esperando_autorizacion:'pendiente' };
+  var PREV       = { pendiente:'esperando_autorizacion' };
 
-  // Columnas del tablero con nombres estilo WMS (finalizado se archiva)
+  // Tablero simplificado a 2 columnas: Solicitud Recibida (incluye "en preparación")
+  // y Entrega Parcial Pendiente. "Entregado" cierra el pedido y sale del tablero.
   var COLUMNAS = [
-    { estado:'pendiente',      titulo:'Por surtir',    sub:'Recibo',        color:COLORS.azul  },
-    { estado:'en_preparacion', titulo:'En surtido',    sub:'Picking',       color:COLORS.verde },
-    { estado:'listo',          titulo:'Verificado',    sub:'Listo',         color:COLORS.teal  },
-    { estado:'entregado',      titulo:'Entregado',     sub:'Embarque',      color:COLORS.gris  }
+    { estados:['esperando_autorizacion','pendiente','en_preparacion'], titulo:'Solicitud Recibida', sub:'Por atender', color:COLORS.azul },
+    { estados:['parcial'], titulo:'Entrega Parcial Pendiente', sub:'Falta completar', color:COLORS.naranja }
   ];
   var ACCION = {
-    esperando_autorizacion:'Autorizar',
-    pendiente:'Iniciar surtido',
-    en_preparacion:'Marcar listo',
-    listo:'Marcar entregado',
-    entregado:'Finalizar'
+    esperando_autorizacion:'Autorizar'
   };
 
   // ── Estado interno ──
@@ -216,7 +211,7 @@
   function acento(p){
     if (p.estado==='esperando_autorizacion') return COLORS.morado;
     if (p.estado==='entregado')              return COLORS.gris;
-    if (p.estado==='listo')                  return COLORS.teal;
+    if (p.estado==='parcial')                return COLORS.naranja;
     var mins=(now()-p.createdAt)/60000, sla=SLA[p.prioridad]||30;
     if (mins>sla)               return COLORS.rojo;
     if (mins>SEMAFORO.naranja)  return COLORS.naranja;
@@ -226,7 +221,7 @@
   }
   // Clasificación de tiempo para las alertas: 'ok' | 'porvencer' | 'retrasado'
   function estadoSLA(p){
-    if (['esperando_autorizacion','listo','entregado','finalizado','cancelado'].indexOf(p.estado)!==-1) return 'ok';
+    if (['esperando_autorizacion','parcial','entregado','finalizado','cancelado'].indexOf(p.estado)!==-1) return 'ok';
     var mins=(now()-p.createdAt)/60000, sla=SLA[p.prioridad]||30;
     if (mins>sla) return 'retrasado';
     if (mins>SEMAFORO.amarillo) return 'porvencer';
@@ -330,6 +325,99 @@
       console.error('[almacen] verPDF:',err);
       if (window.mostrarPush) window.mostrarPush('Almac\u00e9n','No se pudo abrir el PDF','\u26a0\ufe0f');
     });
+  };
+
+  // ── Car\u00e1tula de env\u00edo profesional (capturada en Ventas, aqu\u00ed solo se ve/imprime) ──
+  function filaCE(label, valor){ return '<tr><td class="ce-k">' + esc(label) + '</td><td class="ce-v">' + esc(valor || '\u2014') + '</td></tr>'; }
+  function construirCaratulaHTML(c){
+    var R = c.remitente || {}, D = c.destinatario || {};
+    return '<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Car\u00e1tula de env\u00edo ' + esc(c.folio) + '</title><style>'
+      + 'body{font-family:"Segoe UI",Arial,sans-serif;color:#1e293b;margin:0;padding:32px;background:#fff;}'
+      + '.ce-head{display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #0e7490;padding-bottom:14px;margin-bottom:18px;}'
+      + '.ce-brand{font-size:22px;font-weight:800;color:#0e7490;letter-spacing:.5px;}'
+      + '.ce-brand small{display:block;font-size:10px;font-weight:600;color:#64748b;letter-spacing:2px;}'
+      + '.ce-meta{text-align:right;font-size:11px;color:#475569;}'
+      + '.ce-meta b{color:#0f172a;}'
+      + '.ce-title{font-size:15px;font-weight:800;color:#fff;background:#0e7490;padding:9px 16px;border-radius:8px;margin-bottom:16px;}'
+      + '.ce-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:16px;}'
+      + '.ce-box{border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;}'
+      + '.ce-box-h{background:#f1f5f9;color:#0f172a;font-size:11px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;padding:8px 12px;border-bottom:1px solid #e2e8f0;}'
+      + 'table{width:100%;border-collapse:collapse;}'
+      + '.ce-k{width:36%;font-size:10.5px;font-weight:700;color:#64748b;padding:6px 12px;border-top:1px solid #f1f5f9;vertical-align:top;}'
+      + '.ce-v{font-size:11.5px;color:#1e293b;padding:6px 12px;border-top:1px solid #f1f5f9;}'
+      + '.ce-envio{border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:16px;}'
+      + '.ce-flags{display:flex;gap:14px;margin-top:14px;}'
+      + '.ce-flag{flex:1;border:1px solid #e2e8f0;border-radius:10px;padding:10px 14px;font-size:11px;}'
+      + '.ce-flag b{display:block;font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;}'
+      + '.ce-check{color:#0e7490;font-weight:800;}'
+      + '.ce-foot{margin-top:30px;font-size:9.5px;color:#94a3b8;text-align:center;}'
+      + '@media print{body{padding:14px;}}'
+      + '</style></head><body>'
+      + '<div class="ce-head"><div class="ce-brand">TECNOCONTROL<small>SISTEMA DE ENV\u00cdOS</small></div>'
+      +   '<div class="ce-meta"><div>Solicitante: <b>' + esc(c.solicitante) + '</b></div><div>N\u00fam. pedido: <b>' + esc(c.folio) + '</b></div>'
+      +   '<div>Almac\u00e9n: <b>' + esc(c.almacen) + '</b></div><div>Fecha: <b>' + esc(c.fecha) + '</b></div></div></div>'
+      + '<div class="ce-title">Car\u00e1tula de env\u00edo de mercanc\u00eda</div>'
+      + '<div class="ce-grid">'
+      +   '<div class="ce-box"><div class="ce-box-h">Datos del remitente</div><table>'
+      +     filaCE('Nombre', R.nombre) + filaCE('RFC', R.rfc) + filaCE('Direcci\u00f3n', R.direccion) + filaCE('Colonia', R.colonia)
+      +     filaCE('C.P.', R.cp) + filaCE('Ciudad, Estado', R.ciudadEstado) + filaCE('Tel\u00e9fono', R.telefono)
+      +   '</table></div>'
+      +   '<div class="ce-box"><div class="ce-box-h">Datos del destinatario</div><table>'
+      +     filaCE('Nombre', D.nombre) + filaCE('RFC', D.rfc) + filaCE('R\u00e9gimen fiscal', D.regimen) + filaCE('Direcci\u00f3n', D.direccion)
+      +     filaCE('Colonia', D.colonia) + filaCE('C.P.', D.cp) + filaCE('Ciudad, Estado', D.ciudadEstado) + filaCE('Tel\u00e9fono', D.telefono) + filaCE('Correo', D.correo)
+      +   '</table></div>'
+      + '</div>'
+      + '<div class="ce-envio"><div class="ce-box-h">Datos del env\u00edo</div><table>'
+      +   filaCE('Paqueter\u00eda', c.paqueteria) + filaCE('Gu\u00eda', c.guia) + filaCE('Tipo de env\u00edo', c.tipoEnvio) + filaCE('Atenci\u00f3n a', c.atencion)
+      +   filaCE('Recolecci\u00f3n', c.recoleccion) + filaCE('Referencias', c.referencias) + filaCE('Instrucciones especiales', c.instrucciones)
+      + '</table></div>'
+      + '<div class="ce-flags">'
+      +   '<div class="ce-flag"><b>Fletera</b>' + (c.flete==='pagado' ? '<span class="ce-check">\u2713</span> Flete pagado' : 'Flete pagado') + ' &nbsp;&nbsp; ' + (c.flete==='por_cobrar' ? '<span class="ce-check">\u2713</span> Flete por cobrar' : 'Flete por cobrar') + '</div>'
+      +   '<div class="ce-flag"><b>Entrega</b>' + (c.entregaTipo==='oficina' ? '<span class="ce-check">\u2713</span> Ocurre oficina' : 'Ocurre oficina') + ' &nbsp;&nbsp; ' + (c.entregaTipo==='domicilio' ? '<span class="ce-check">\u2713</span> Domicilio' : 'Domicilio') + '</div>'
+      + '</div>'
+      + '<div class="ce-foot">Generado autom\u00e1ticamente por el Portal Operativo de Tecnocontrol \u00b7 ' + esc(c.fecha) + '</div>'
+      + '</body></html>';
+  }
+  window.__almVerCaratula = function(id){
+    var p = buscarP(id); if (!p || !p.caratulaEnvio) return;
+    var w = window.open();
+    if (w){ w.document.write(construirCaratulaHTML(p.caratulaEnvio)); w.document.close(); }
+  };
+
+  // ── Documentos adicionales (\u00f3rdenes de compra, etc.) que Ventas adjunt\u00f3 al subir el pedido ──
+  var _docsCache = {}; // id -> [{id,tipo,archivo,nombre,subidoPor}]
+  window.__almVerDocumentos = function(id){
+    cargarFirestore().then(function(fs){
+      if (!window.db) throw new Error('Firestore no disponible');
+      return fs.getDocs(fs.collection(window.db,'surtidos',id,'documentos'));
+    }).then(function(snap){
+      var items = [];
+      snap.forEach(function(d){ items.push(Object.assign({id:d.id}, d.data())); });
+      _docsCache[id] = items;
+      construirModalHistorial();
+      var box = document.getElementById('alm-modal-hist-box');
+      box.classList.remove('wide');
+      if (!items.length){
+        box.innerHTML = '<h4>Documentos adjuntos<button onclick="window.__almCerrarModal()">&times;</button></h4><div class="alm-empty">Sin documentos adjuntos.</div>';
+      } else {
+        box.innerHTML = '<h4>Documentos adjuntos<button onclick="window.__almCerrarModal()">&times;</button></h4>'
+          + '<div>' + items.map(function(it,idx){
+              return '<div class="alm-doc-row"><span class="n">'+esc(it.nombre||('Documento '+(idx+1)))+'</span>'
+                + '<button type="button" class="alm-rep-btn sec" onclick="window.__almVerUnDocumento(\''+id+'\','+idx+')">Ver</button></div>';
+            }).join('') + '</div>';
+      }
+      document.getElementById('alm-modal-hist').classList.add('show');
+    }).catch(function(err){
+      console.error('[almacen] verDocumentos:',err);
+      if (window.mostrarPush) window.mostrarPush('Almac\u00e9n','No se pudieron cargar los documentos','\u26a0\ufe0f');
+    });
+  };
+  window.__almVerUnDocumento = function(id, idx){
+    var it = (_docsCache[id]||[])[idx]; if (!it || !it.archivo) return;
+    var w = window.open();
+    if (!w) return;
+    if ((it.tipo||'')==='imagen') w.document.write('<body style="margin:0;background:#0f172a;display:flex;align-items:center;justify-content:center;min-height:100vh;"><img src="'+it.archivo+'" style="max-width:100%;max-height:100vh;"></body>');
+    else w.document.write('<iframe src="'+it.archivo+'" style="border:none;width:100%;height:100%;"></iframe>');
   };
 
   // =====================================================================
@@ -515,6 +603,9 @@
     + '.alm-evid-grid{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;}'
     + '.alm-evid-thumb{width:52px;height:52px;object-fit:cover;border-radius:8px;border:1px solid #e6ebf2;cursor:zoom-in;}'
     + '.alm-evid-add{border:1px dashed #cbd5e1;background:#fff;color:#475569;border-radius:8px;font-size:11.5px;font-weight:800;padding:6px 12px;cursor:pointer;}'
+    + '.alm-doc-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid #f1f5f9;font-size:12.5px;}'
+    + '.alm-doc-row:last-child{border-bottom:none;}'
+    + '.alm-doc-row .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#334155;font-weight:600;}'
     + '@keyframes almPulse{0%{box-shadow:0 0 0 0 rgba(18,161,80,.5);}70%{box-shadow:0 0 0 8px rgba(18,161,80,0);}100%{box-shadow:0 0 0 0 rgba(18,161,80,0);}}'
     + '@keyframes almBlink{0%,100%{opacity:1;}50%{opacity:.55;}}'
     + '.alm-card.porvencer{animation:almBlinkWarn 1.3s infinite;}'
@@ -570,28 +661,28 @@
     var kpisEl=cont.querySelector('#alm-kpis'), boardEl=cont.querySelector('#alm-board');
     if(!kpisEl||!boardEl) return;
 
-    var activos = pedidos.filter(function(p){ return p.estado!=='finalizado' && p.estado!=='cancelado'; });
+    var activos = pedidos.filter(function(p){ return ['finalizado','cancelado','entregado'].indexOf(p.estado)===-1; });
     var visibles = activos.filter(pasaFiltro);
 
-    var kPend=activos.filter(function(p){return p.estado==='pendiente';}).length;
-    var kPrep=activos.filter(function(p){return p.estado==='en_preparacion';}).length;
+    var kRecibidos = activos.filter(function(p){ return ['esperando_autorizacion','pendiente','en_preparacion'].indexOf(p.estado)!==-1; }).length;
+    var kParcial = activos.filter(function(p){ return p.estado==='parcial'; }).length;
     var enTiempo=activos.filter(enSLA).length;
     var retras=activos.length-enTiempo;
     var kPzas=activos.reduce(function(a,p){return a+piezas(p);},0);
     var h0=inicioDeHoy();
-    var kFin=pedidos.filter(function(p){return p.estado==='finalizado'&&p.createdAt>=h0;}).length;
+    var kEntregadosHoy = pedidos.filter(function(p){ return p.estado==='entregado' && p.entregadoEn>=h0; }).length;
 
     kpisEl.innerHTML =
-        kpi(COLORS.azul,  kPend,    'Por surtir')
-      + kpi(COLORS.verde, kPrep,    'En surtido')
-      + kpi(COLORS.verde, enTiempo, 'En SLA')
-      + kpi(COLORS.rojo,  retras,   'Retrasados')
-      + kpi('#0f172a',    kPzas,    'Piezas pendientes')
-      + kpi(COLORS.teal,  kFin,     'Surtidos hoy');
+        kpi(COLORS.azul,    kRecibidos, 'Solicitud recibida')
+      + kpi(COLORS.naranja, kParcial,   'Entrega parcial')
+      + kpi(COLORS.verde,   enTiempo,   'En SLA')
+      + kpi(COLORS.rojo,    retras,     'Retrasados')
+      + kpi('#0f172a',      kPzas,      'Piezas pendientes')
+      + kpi(COLORS.teal,    kEntregadosHoy, 'Entregados hoy');
 
     var html='';
     COLUMNAS.forEach(function(col){
-      var lista=ordenar(visibles.filter(function(p){return p.estado===col.estado;}));
+      var lista=ordenar(visibles.filter(function(p){return col.estados.indexOf(p.estado)!==-1;}));
       html += '<div class="alm-col"><div class="alm-col-h">'
         + '<span class="t"><span class="a"><span class="dot" style="background:'+col.color+'"></span>'+col.titulo+'</span><span class="b">'+col.sub+'</span></span>'
         + '<span class="c">'+lista.length+'</span></div>';
@@ -651,19 +742,30 @@
         + '</div>';
     }
 
-    var goCls='alm-btn alm-btn-go'+((p.estado==='en_preparacion'&&!completo)?' wait':'');
+    var goCls='alm-btn alm-btn-go';
     var tipoTag='<span class="alm-tipo-tag '+(p.tipo==='material'?'mat':'ven')+'">'+(p.tipo==='material'?'Material':'Venta')+'</span>';
     var esperandoFirma = !!p.entregaPendienteFirma;
-    var accionHtml = esperandoFirma
-      ? '<button class="alm-btn alm-btn-ghost" title="Cancelar solicitud de firma" onclick="window.__almCancelarFirmaEntrega(\''+p.id+'\')" style="color:#dc2626;">✍️ Esperando firma… ✕</button>'
-      : (sig?'<button class="'+goCls+'" onclick="window.__almGo(\''+p.id+'\')">'+esc(ACCION[p.estado]||'Avanzar')+' ›</button>':'');
+    var accionHtml = '';
+    if (esperandoFirma){
+      accionHtml = '<button class="alm-btn alm-btn-ghost" title="Cancelar solicitud de firma" onclick="window.__almCancelarFirmaEntrega(\''+p.id+'\')" style="color:#dc2626;">✍️ Esperando firma… ✕</button>';
+    } else if (p.estado==='esperando_autorizacion'){
+      accionHtml = '<button class="'+goCls+'" onclick="window.__almGo(\''+p.id+'\')">Autorizar ›</button>';
+    } else if (p.estado==='pendiente'){
+      accionHtml = '<button class="'+goCls+'" onclick="window.__almDescargarPDF(\''+p.id+'\')">'+(p.tienePdfOriginal?'📥 Descargar PDF':'▶️ Iniciar preparación')+'</button>';
+    } else if (p.estado==='en_preparacion'){
+      accionHtml = '<button class="'+goCls+'" onclick="window.__almAbrirEntrega(\''+p.id+'\')">✅ Entregar pedido</button>';
+    } else if (p.estado==='parcial'){
+      accionHtml = '<button class="'+goCls+'" onclick="window.__almAbrirEntrega(\''+p.id+'\')">✅ Completar entrega</button>';
+    }
+    var badgePrep = (p.estado==='en_preparacion') ? '<span class="alm-tipo-tag" style="background:#eff6ff;color:#1473E6;">En preparación</span>' : '';
     var slaCls = estadoSLA(p)==='retrasado' ? ' vencido' : (estadoSLA(p)==='porvencer' ? ' porvencer' : '');
     return '<div class="alm-card'+(urg?' urg':'')+slaCls+'" data-id="'+p.id+'" style="border-left-color:'+ac+'">'
       + '<div class="top"><span class="folio">'+esc(p.folio||'—')+'</span>'
       +   '<span class="alm-chip'+(urg?' urg':'')+'" style="background:'+pc+'">'+esc(PRIO_LABEL[p.prioridad]||p.prioridad||'Normal')+'</span></div>'
-      + '<div class="cli">'+esc(p.cliente||'Sin cliente')+' '+tipoTag+'</div>'
+      + '<div class="cli">'+esc(p.cliente||'Sin cliente')+' '+tipoTag+badgePrep+'</div>'
       + '<div class="vend">Vendedor: '+esc(p.vendedor||'—')+'</div>'
       + destinoHtml(p)
+      + (p.entregaObservaciones ? ('<div class="alm-destino"><span class="alm-destino-chip" style="background:#F26B211c;color:#F26B21;border-color:#F26B2155;">⚠ '+esc(p.entregaObservaciones)+'</span></div>') : '')
       + '<div class="alm-meta"><span>⏱ <span class="alm-timer" data-id="'+p.id+'" style="color:'+ac+'">'+fmt(now()-p.createdAt)+'</span></span>'
       +   '<span><b>'+piezas(p)+'</b> pzas</span>'+(total?'<span><b>'+hechas+'</b>/'+total+' líneas</span>':'')+'</div>'
       + progHtml + prodHtml
@@ -672,12 +774,16 @@
       +   '<button class="alm-btn alm-btn-ghost" onclick="window.__almToggle(\''+p.id+'\')">'+(abierta?'Ocultar':'Ver')+'</button>'
       +   '<button class="alm-btn alm-btn-ghost" title="Ver historial" onclick="window.__almVerHistorial(\''+p.id+'\')">'
       +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg></button>'
-      +   (!esperandoFirma&&p.estado!=='entregado'?'<button class="alm-btn alm-btn-ghost" title="Cancelar pedido" onclick="window.__almAbrirCancelar(\''+p.id+'\')" style="color:#dc2626;">'
+      +   (!esperandoFirma?'<button class="alm-btn alm-btn-ghost" title="Cancelar pedido" onclick="window.__almAbrirCancelar(\''+p.id+'\')" style="color:#dc2626;">'
       +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></button>':'')
       +   '<button class="alm-btn alm-btn-ghost" title="Imprimir etiqueta" onclick="window.__almImprimirEtiqueta(\''+p.id+'\')">'
       +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg></button>'
       +   (p.tienePdfOriginal?('<button class="alm-btn alm-btn-ghost" title="Ver PDF original" onclick="window.__almVerPDF(\''+p.id+'\')">'
       +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></button>'):'')
+      +   (p.numOrdenesCompra?('<button class="alm-btn alm-btn-ghost" title="Documentos adjuntos ('+p.numOrdenesCompra+')" onclick="window.__almVerDocumentos(\''+p.id+'\')">'
+      +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>'):'')
+      +   (p.caratulaEnvio?('<button class="alm-btn alm-btn-ghost" title="Ver car\u00e1tula de env\u00edo" onclick="window.__almVerCaratula(\''+p.id+'\')">'
+      +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></button>'):'')
       +   accionHtml
       + '</div></div>';
   }
@@ -723,6 +829,90 @@
       return fs.updateDoc(fs.doc(window.db,'surtidos',id),{check:chk});
     }).catch(function(err){ console.error('[almacen] check:',err); });
   }
+
+  // ── "Descargar PDF" en Solicitud Recibida: abre el PDF (si existe) y avanza a "en preparación" automáticamente ──
+  window.__almDescargarPDF = function(id){
+    var p=buscarP(id); if(!p) return;
+    var origen=p.estado;
+    if (p.tienePdfOriginal) window.__almVerPDF(id);
+    cargarFirestore().then(function(fs){
+      if(!window.db) throw new Error('Firestore no disponible');
+      return fs.updateDoc(fs.doc(window.db,'surtidos',id), {estado:'en_preparacion'}).then(function(){
+        try{
+          fs.addDoc(fs.collection(window.db,'surtidos',id,'historial'),
+            { de:origen, a:'en_preparacion', por:yoNombre(), porEmail:yoEmail(), ts:fs.serverTimestamp() });
+        }catch(e){}
+      });
+    }).catch(function(err){
+      console.error('[almacen] descargarPDF:',err);
+      if(window.mostrarPush) window.mostrarPush('Almac\u00e9n','No se pudo iniciar la preparaci\u00f3n','\u26a0\ufe0f');
+    });
+  };
+
+  // ── Entregar pedido: evidencia + observaciones + completo/parcial ──
+  window.__almAbrirEntrega = function(id){
+    var p=buscarP(id); if(!p) return;
+    construirModalHistorial();
+    var box=document.getElementById('alm-modal-hist-box');
+    box.classList.remove('wide');
+    box.innerHTML='<h4>Entregar pedido · '+esc(p.folio||'')+'<button onclick="window.__almCerrarModal()">&times;</button></h4>'
+      + '<div style="font-size:12.5px;color:#64748b;font-weight:700;margin-bottom:12px">'+esc(p.cliente||'')+' \u00b7 '+piezas(p)+' piezas</div>'
+      + '<div class="alm-evid-block" style="border-top:none;padding-top:0;"><span class="lbl">Evidencia fotogr\u00e1fica (embarque / entrega)</span>'
+      +   '<div class="alm-evid-grid" id="alm-evid-grid-'+p.id+'">'+renderEvidenciasThumbs(p)+'</div>'
+      +   '<button type="button" class="alm-evid-add" onclick="window.__almSubirEvidencia(\''+p.id+'\')">+ Agregar foto</button>'
+      +   '<input type="file" accept="image/*" capture="environment" id="alm-evid-file-'+p.id+'" style="display:none">'
+      + '</div>'
+      + '<label style="display:block;font-size:11px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#64748b;margin:14px 0 6px">Observaciones</label>'
+      + '<textarea id="alm-entrega-obs" placeholder="Ej. Se entreg\u00f3 completo / falta 1 pieza que se enviar\u00e1 despu\u00e9s\u2026" style="width:100%;min-height:70px;padding:11px 13px;border:2px solid #e6ebf2;border-radius:10px;font-size:14px;font-family:inherit;outline:none;resize:vertical;box-sizing:border-box;">'+esc(p.entregaObservaciones||'')+'</textarea>'
+      + '<label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:12.5px;font-weight:700;color:#334155;cursor:pointer;"><input type="checkbox" id="alm-entrega-firma"> Solicitar firma de quien recibe (en el kiosko)</label>'
+      + '<div style="font-size:12.5px;font-weight:700;color:#dc2626;margin-top:8px" id="alm-entrega-msg"></div>'
+      + '<div style="display:flex;gap:10px;margin-top:16px">'
+      +   '<button type="button" id="alm-entrega-parcial" onclick="window.__almGuardarEntrega(\''+p.id+'\', false)" style="flex:1;padding:12px;border:none;border-radius:11px;background:#F26B21;color:#fff;font-weight:800;font-size:13px;cursor:pointer">Entrega parcial</button>'
+      +   '<button type="button" id="alm-entrega-completa" onclick="window.__almGuardarEntrega(\''+p.id+'\', true)" style="flex:1;padding:12px;border:none;border-radius:11px;background:#12A150;color:#fff;font-weight:800;font-size:13px;cursor:pointer">Entrega completa</button>'
+      + '</div>';
+    document.getElementById('alm-modal-hist').classList.add('show');
+    if (!_evidenciasCache[id]){
+      cargarEvidencias(id).then(function(){
+        var g=document.getElementById('alm-evid-grid-'+id); if(g) g.innerHTML=renderEvidenciasThumbs(buscarP(id));
+      });
+    }
+  };
+
+  window.__almGuardarEntrega = function(id, completo){
+    var p=buscarP(id); if(!p) return;
+    var obsEl=document.getElementById('alm-entrega-obs');
+    var obs=(obsEl&&obsEl.value||'').trim();
+    if (!completo && !obs){
+      var msgEl=document.getElementById('alm-entrega-msg');
+      if(msgEl) msgEl.textContent='Escribe qu\u00e9 falta por entregar.';
+      return;
+    }
+    var pedirFirma = !!(document.getElementById('alm-entrega-firma')||{}).checked;
+    var nuevoEstado = completo ? 'entregado' : 'parcial';
+    var origen = p.estado;
+    var btnP=document.getElementById('alm-entrega-parcial'), btnC=document.getElementById('alm-entrega-completa');
+    if(btnP) btnP.disabled=true; if(btnC) btnC.disabled=true;
+    cargarFirestore().then(function(fs){
+      if(!window.db) throw new Error('Firestore no disponible');
+      var datos={ estado:nuevoEstado, entregaObservaciones:obs };
+      if (completo) datos.entregadoEn = fs.serverTimestamp();
+      return fs.updateDoc(fs.doc(window.db,'surtidos',id), datos).then(function(){
+        try{
+          fs.addDoc(fs.collection(window.db,'surtidos',id,'historial'),
+            { de:origen, a:nuevoEstado, por:yoNombre(), porEmail:yoEmail(), nota:obs, ts:fs.serverTimestamp() });
+        }catch(e){}
+        if (pedirFirma) window.__almPedirFirmaEntrega(id);
+      });
+    }).then(function(){
+      if(window.mostrarPush) window.mostrarPush(completo?'\u2705 Pedido entregado':'\ud83d\udce6 Entrega parcial registrada', (p.folio||''), completo?'\u2705':'\u26a0\ufe0f');
+      window.__almCerrarModal();
+    }).catch(function(err){
+      console.error('[almacen] guardarEntrega:',err);
+      var msgEl=document.getElementById('alm-entrega-msg');
+      if(msgEl) msgEl.textContent='No se pudo registrar. Intenta de nuevo.';
+      if(btnP) btnP.disabled=false; if(btnC) btnC.disabled=false;
+    });
+  };
 
   // ── Confirmación de entrega: Almacén SOLICITA la firma, quien recibe firma en el kiosko ──
   window.__almPedirFirmaEntrega = function(id){
@@ -1037,7 +1227,9 @@
             cotizacionOrigen:d.cotizacionOrigen||'', motivoCancelacion:d.motivoCancelacion||'',
             destinoTipo:d.destinoTipo||'', destinoPaqueteria:d.destinoPaqueteria||'', destinoGuia:d.destinoGuia||'',
             destinoDireccion:d.destinoDireccion||'', destinoAlmacenOrigen:d.destinoAlmacenOrigen||'', destinoAlmacenDestino:d.destinoAlmacenDestino||'',
-            tienePdfOriginal:!!d.tienePdfOriginal,
+            tienePdfOriginal:!!d.tienePdfOriginal, numOrdenesCompra:Number(d.numOrdenesCompra)||0,
+            caratulaEnvio:d.caratulaEnvio||null,
+            entregaObservaciones:d.entregaObservaciones||'', entregadoEn: d.entregadoEn ? toMs(d.entregadoEn) : 0,
             createdAt:toMs(d.createdAt)
           });
         });
