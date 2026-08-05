@@ -1,0 +1,6 @@
+@echo off
+echo Cerrando servidores anteriores...
+taskkill /IM node.exe /F >nul 2>&1
+timeout /t 1 >nul
+echo Iniciando servidor limpio...
+npx serve
