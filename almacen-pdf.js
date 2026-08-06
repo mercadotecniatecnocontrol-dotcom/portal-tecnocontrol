@@ -198,7 +198,7 @@
 
     // ── Productos (tabla: Cantidad · Clave · Descripción · P/U · Importe) ──
     // La clave se conserva como TEXTO para no perder ceros a la izquierda (p.ej. "06023").
-    var reProd = /^(\d+(?:\.\d+)?)\s+([A-Za-z0-9]{2,10})\s+(.+?)\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})$/;
+    var reProd = /^(\d+(?:\.\d+)?)\s+([A-Za-z0-9\-\.\/]{2,20})\s+(.+?)\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})$/;
     var enTabla = false;
     lineas.forEach(function (ln) {
       if (/Cantidad.*Clave.*Descrip/i.test(ln)) { enTabla = true; return; }
