@@ -38,7 +38,7 @@
   var ALMACENES_FALLBACK = ['CHIHUAHUA','JU\u00c1REZ','PARRAL','MONTERREY','SONORA','JALISCO'];
   // Datos del remitente para la car\u00e1tula de env\u00edo (precargados, editables).
   var REMITENTE_DEFAULT = {
-    nombre: 'Hedma Tecnocontrol, Mart\u00edn de la O.',
+    nombre: 'Hedma Tecnocontrol',
     rfc: 'HTE1107133B3',
     direccion: 'Avenida Fuerza A\u00e9rea Mexicana N\u00fam. 7030',
     colonia: 'Tabalaopa',
@@ -636,6 +636,10 @@
       + '.ce-flag{flex:1;border:1px solid #dbe3f5;border-radius:10px;padding:10px 14px;font-size:11px;}'
       + '.ce-flag b{display:block;font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;}'
       + '.ce-check{color:#E2231A;font-weight:800;}'
+      + '.ce-opt{display:inline-flex;align-items:center;margin-right:16px;}'
+      + '.ce-box2{display:inline-block;width:12px;height:12px;border:1.6px solid #13246B;border-radius:2px;margin-right:6px;position:relative;flex-shrink:0;}'
+      + '.ce-box2.on{background:#13246B;}'
+      + '.ce-box2.on::after{content:"";position:absolute;left:3px;top:0px;width:4px;height:7px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(40deg);}'
       + '.ce-foot{margin-top:30px;font-size:9.5px;color:#94a3b8;text-align:center;}'
       + '@media print{body{padding:6px;}}'
       + '</style></head><body>'
@@ -654,14 +658,14 @@
       +   '</table></div>'
       + '</div>'
       + '<div class="ce-envio"><div class="ce-box-h">Datos del env\u00edo</div><table>'
-      +   fila('Paqueter\u00eda', c.paqueteria) + fila('Gu\u00eda', c.guia) + fila('Tipo de env\u00edo', c.tipoEnvio) + fila('Atenci\u00f3n a', c.atencion)
+      +   fila('Paqueter\u00eda', c.paqueteria) + fila('Atenci\u00f3n a', c.atencion)
       +   fila('Recolecci\u00f3n', c.recoleccion) + fila('Referencias', c.referencias) + fila('Instrucciones especiales', c.instrucciones)
       + '</table></div>'
       + '<div class="ce-flags">'
-      +   '<div class="ce-flag"><b>Fletera</b>' + (c.flete==='pagado' ? '<span class="ce-check">\u2713</span> Flete pagado' : 'Flete pagado') + ' &nbsp;&nbsp; ' + (c.flete==='por_cobrar' ? '<span class="ce-check">\u2713</span> Flete por cobrar' : 'Flete por cobrar') + '</div>'
-      +   '<div class="ce-flag"><b>Entrega</b>' + (c.entregaTipo==='oficina' ? '<span class="ce-check">\u2713</span> Ocurre oficina' : 'Ocurre oficina') + ' &nbsp;&nbsp; ' + (c.entregaTipo==='domicilio' ? '<span class="ce-check">\u2713</span> Domicilio' : 'Domicilio') + '</div>'
+      +   '<div class="ce-flag"><b>Fletera</b><span class="ce-opt"><span class="ce-box2' + (c.flete==='pagado'?' on':'') + '"></span>Flete pagado</span><span class="ce-opt"><span class="ce-box2' + (c.flete==='por_cobrar'?' on':'') + '"></span>Flete por cobrar</span></div>'
+      +   '<div class="ce-flag"><b>Entrega</b><span class="ce-opt"><span class="ce-box2' + (c.entregaTipo==='oficina'?' on':'') + '"></span>Ocurre oficina</span><span class="ce-opt"><span class="ce-box2' + (c.entregaTipo==='domicilio'?' on':'') + '"></span>Domicilio</span></div>'
       + '</div>'
-      + '<div class="ce-foot">Generado autom\u00e1ticamente por el Portal Operativo de Tecnocontrol \u00b7 ' + esc(c.fecha) + '</div>'
+      + '<div class="ce-foot">www.tecnocontrol.com.mx</div>'
       + '<script>window.onload=function(){setTimeout(function(){window.print();},300);}<\/script>'
       + '</body></html>';
   }
