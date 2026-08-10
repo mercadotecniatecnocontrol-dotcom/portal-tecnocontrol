@@ -7383,22 +7383,22 @@ window.flPipelineModal = function(estInicial) {
           const plaza = veh.plaza||s.plaza||'—';
           const subEst = !['Solicitud','Evaluación','Servicio','Rechazada','Cerrada'].includes(s.estatus)?` <span style="font-size:9px;color:#94A3B8">(${s.estatus})</span>`:'';
           return `<tr onclick="flVerSol('${s.id}')" style="cursor:pointer" onmouseover="this.style.background='#F8FAFD'" onmouseout="this.style.background=''">
-            <td style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#64748B">${(s.id||'').slice(-6).toUpperCase()}</td>
-            <td style="font-size:11px">${fecha}</td>
-            <td style="font-weight:700;font-family:'JetBrains Mono',monospace">ECO ${s.vehiculoEco||'—'}</td>
-            <td style="font-size:10px;color:#64748B">${plaza}</td>
+            <td style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#64748B;white-space:nowrap">${(s.id||'').slice(-6).toUpperCase()}</td>
+            <td style="font-size:11px;white-space:nowrap">${fecha}</td>
+            <td style="font-weight:700;font-family:'JetBrains Mono',monospace;white-space:nowrap">ECO ${s.vehiculoEco||'—'}</td>
+            <td style="font-size:10px;color:#64748B;white-space:nowrap">${plaza}</td>
             <td style="font-size:11px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.tipo||'—'}</td>
             <td style="font-size:11px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${flNombrePorCorreo(s.solicitante||s.creadoPor)||'—'}</td>
-            <td style="font-size:11px">${s.tallerNombre||'—'}</td>
-            <td style="font-size:11px;font-weight:700;color:#15803D">${s.montoCotizacion?'$'+Number(s.montoCotizacion).toLocaleString('es-MX'):'—'}</td>
-            <td onclick="event.stopPropagation()"><div style="display:flex;gap:3px;align-items:center;flex-wrap:wrap">${accionesSol(s)}</div></td>
+            <td style="font-size:11px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.tallerNombre||'—'}</td>
+            <td style="font-size:11px;font-weight:700;color:#15803D;white-space:nowrap">${s.montoCotizacion?'$'+Number(s.montoCotizacion).toLocaleString('es-MX'):'—'}</td>
+            <td onclick="event.stopPropagation()"><div style="display:flex;gap:4px;align-items:center;flex-wrap:nowrap;white-space:nowrap">${accionesSol(s)}</div></td>
           </tr>`;
         }).join('')
       : `<tr><td colspan="8" style="text-align:center;padding:28px;color:#94A3B8;font-size:12px">Sin solicitudes en este estatus</td></tr>`;
 
     const html = `
       <div class="fl-ov" id="flpm-ov" onclick="if(event.target===this)this.remove()" style="z-index:3000">
-        <div class="fl-modal" style="max-width:min(94vw,1000px);width:100%;max-height:88vh;display:flex;flex-direction:column;overflow:hidden">
+        <div class="fl-modal" style="max-width:min(96vw,1360px);width:100%;max-height:88vh;display:flex;flex-direction:column;overflow:hidden">
           <!-- HEADER -->
           <div class="fl-mh" style="flex-shrink:0">
             <div>
@@ -7428,8 +7428,8 @@ window.flPipelineModal = function(estInicial) {
             ℹ ${notaPaso}
           </div>` : ''}
           <!-- TABLA -->
-          <div style="overflow-y:auto;flex:1;padding:0">
-            <table class="fl-adm-table" style="width:100%">
+          <div style="overflow:auto;flex:1;padding:0">
+            <table class="fl-adm-table" style="width:100%;min-width:1080px">
               <thead><tr>
                 <th>ID</th><th>Fecha</th><th>ECO</th><th>Plaza</th><th>Tipo</th><th>Solicitante</th>
                 <th>Taller</th><th>Monto</th><th style="text-align:center">Acciones</th>
