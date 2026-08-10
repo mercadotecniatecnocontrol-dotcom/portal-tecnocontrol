@@ -571,8 +571,8 @@ function injectCSS(){
 
 /* ── PANEL DERECHO INFO VEHÍCULO ── */
 .fl-rp{width:700px;flex-shrink:0;background:#F4F6FA;height:100%;overflow-y:auto;border-radius:14px;}
-.fl-rp-grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;padding:6px 22px 22px;align-items:start;}
-.fl-rp-card{border:1px solid #DCE3EE;border-radius:14px;padding:22px 24px;display:flex;flex-direction:column;background:#fff;box-shadow:0 2px 6px rgba(15,23,42,.06);}
+.fl-rp-grid{display:grid;grid-template-columns:1fr 1fr;gap:34px;padding:6px 24px 24px;align-items:start;}
+.fl-rp-card{border:1px solid #DCE3EE;border-radius:14px;padding:22px 26px;display:flex;flex-direction:column;background:#fff;box-shadow:0 2px 6px rgba(15,23,42,.06);}
 .fl-rp-fila{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:8px 2px;font-size:12.5px;}
 .fl-rp-fila:not(:last-child){border-bottom:1px solid #F8FAFC;}
 @media(max-width:700px){.fl-rp-grid{grid-template-columns:1fr;}}
@@ -3697,7 +3697,10 @@ function renderRP(id){
 
     ${flTieneGPS(v.eco)?(()=>{
       const g=flGPS[String(v.eco)];
-      const mins=g.ultimoReporte?Math.round((Date.now()-new Date(g.ultimoReporte).getTime())/60000):null;
+      // ultimoReporte llega como Firestore Timestamp (tiene .toDate()), no como texto —
+      // por eso hacía falta convertirlo antes de restar fechas (causaba "hace NaN d").
+      const fechaReporte=g.ultimoReporte?(typeof g.ultimoReporte.toDate==='function'?g.ultimoReporte.toDate():new Date(g.ultimoReporte)):null;
+      const mins=fechaReporte&&!isNaN(fechaReporte)?Math.round((Date.now()-fechaReporte.getTime())/60000):null;
       const reciente=mins!==null&&mins<=15;
       const txtReporte=mins===null?'—':mins<60?`hace ${mins} min`:mins<1440?`hace ${Math.round(mins/60)} h`:`hace ${Math.round(mins/1440)} d`;
       const mapaUrl=(g.lat&&g.lng)?`https://www.google.com/maps?q=${g.lat},${g.lng}`:null;
