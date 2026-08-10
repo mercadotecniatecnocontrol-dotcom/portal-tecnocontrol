@@ -29,6 +29,20 @@
   /* ── Temporada activa: pequeña etiqueta discreta junto al reloj, nunca invasiva ── */
   .tv-temporada{display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:700;color:var(--tv-theme,#64748b);opacity:.85;letter-spacing:.3px;}
   .tv-temporada svg{width:14px;height:14px;}
+  /* ── Cumpleaños: banner grande y llamativo (a propósito, NO discreto) + confeti ── */
+  .bday-banner{display:none;align-items:center;justify-content:center;gap:16px;padding:11px 20px;position:relative;overflow:hidden;
+    background:linear-gradient(90deg,#E23B3B,#F26B21,#D99000,#12A150,#1473E6,#8B4FD6,#E23B3B);
+    background-size:300% 100%;animation:bdayGradiente 5s linear infinite;box-shadow:0 3px 16px rgba(0,0,0,.28);}
+  .bday-banner.show{display:flex;}
+  @keyframes bdayGradiente{0%{background-position:0% 50%}100%{background-position:300% 50%}}
+  .bday-inner{display:flex;align-items:center;justify-content:center;gap:14px;color:#fff;font-family:'Barlow Condensed',sans-serif;
+    font-weight:700;font-size:23px;letter-spacing:.4px;text-shadow:0 1px 5px rgba(0,0,0,.4);animation:bdayPulso 1.3s ease-in-out infinite;text-align:center;}
+  .bday-inner b{font-weight:800;}
+  .bday-ico{font-size:30px;line-height:1;display:inline-block;animation:bdayRebota .9s ease-in-out infinite;filter:drop-shadow(0 2px 3px rgba(0,0,0,.3));}
+  .bday-ico.b2{animation-delay:.3s;}
+  @keyframes bdayPulso{0%,100%{transform:scale(1);}50%{transform:scale(1.035);}}
+  @keyframes bdayRebota{0%,100%{transform:translateY(0) rotate(-8deg);}50%{transform:translateY(-7px) rotate(8deg);}}
+  #bdayConfetti{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:9999;display:none;}
 </style>
 </head>
 
@@ -49,6 +63,15 @@
     <button class="nightbtn" id="btnNight" title="Modo nocturno"><svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>
     <div class="clock"><span id="clk" class="mono">--:--:--</span><small>EN VIVO</small></div>
   </header>
+
+  <div class="bday-banner" id="bdayBanner">
+    <div class="bday-inner">
+      <span class="bday-ico">🎉</span>
+      <span>¡HOY ES CUMPLEAÑOS! <b id="bdayNombres">—</b> · ¡Felicidades! 🎈</span>
+      <span class="bday-ico b2">🎂</span>
+    </div>
+  </div>
+  <canvas id="bdayConfetti"></canvas>
 
   <div class="board-split">
     <section class="panel panel-ventas">
@@ -313,6 +336,73 @@ function flashNuevo(p){
 }
 window.__flashNuevo = flashNuevo;
 
+/* ===== Cumpleaños: banner grande + confeti (a propósito muy notorio, para que nadie lo ignore) ===== */
+function beepCumple(){
+  try{
+    const ac=new(window.AudioContext||window.webkitAudioContext)();
+    [523,659,784,1046].forEach((f,i)=>{
+      const o=ac.createOscillator(),g=ac.createGain();
+      o.type='triangle'; o.frequency.value=f; o.connect(g); g.connect(ac.destination);
+      const t=ac.currentTime+i*0.14;
+      g.gain.setValueAtTime(0,t);
+      g.gain.linearRampToValueAtTime(0.22,t+0.02);
+      g.gain.exponentialRampToValueAtTime(0.001,t+0.32);
+      o.start(t); o.stop(t+0.32);
+    });
+  }catch(e){}
+}
+
+function lanzarConfeti(duracionMs){
+  const canvas=document.getElementById('bdayConfetti');
+  if(!canvas) return;
+  const ctx=canvas.getContext('2d');
+  canvas.width=window.innerWidth; canvas.height=window.innerHeight;
+  const colores=['#F26B21','#1473E6','#12A150','#D99000','#E23B3B','#8B4FD6','#0FB5A6','#FFD23F'];
+  const piezas=[];
+  for(let i=0;i<160;i++){
+    piezas.push({
+      x:Math.random()*canvas.width,
+      y:-30-Math.random()*canvas.height*0.6,
+      w:6+Math.random()*6, h:9+Math.random()*10,
+      color:colores[Math.floor(Math.random()*colores.length)],
+      vy:2.2+Math.random()*3, vx:-1.6+Math.random()*3.2,
+      rot:Math.random()*360, vr:-7+Math.random()*14
+    });
+  }
+  const fin=performance.now()+duracionMs;
+  canvas.style.display='block';
+  (function frame(t){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    piezas.forEach(p=>{
+      p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr;
+      ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot*Math.PI/180);
+      ctx.fillStyle=p.color; ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h);
+      ctx.restore();
+    });
+    if(t<fin){ requestAnimationFrame(frame); }
+    else { canvas.style.display='none'; }
+  })(performance.now());
+}
+
+let bdayTimer=null;
+function activarBannerCumpleanos(nombres){
+  const banner=document.getElementById('bdayBanner');
+  const txt=document.getElementById('bdayNombres');
+  if(!banner) return;
+  if (txt) txt.textContent = (nombres && nombres.length) ? nombres.join(' · ') : 'Todo el equipo celebra hoy';
+  banner.classList.add('show');
+  beepCumple();
+  lanzarConfeti(7000);
+  if (bdayTimer) clearInterval(bdayTimer);
+  // Refuerzo periódico: cada 3 minutos vuelve a lanzar confeti para que sea imposible pasarlo por alto
+  bdayTimer=setInterval(()=>{ lanzarConfeti(7000); beepCumple(); }, 3*60*1000);
+}
+window.__tvActivarCumpleanos = activarBannerCumpleanos;
+window.addEventListener('resize', ()=>{
+  const c=document.getElementById('bdayConfetti');
+  if(c && c.style.display==='block'){ c.width=window.innerWidth; c.height=window.innerHeight; }
+});
+
 legend.innerHTML=[['Nuevo','azul'],['En preparación','verde'],['Listo','teal'],['Por vencer SLA','amarillo'],['Cerca del límite','naranja'],['Retrasado','rojo'],['Esperando aut.','morado']]
   .map(([t,k])=>`<span class="l"><span class="d" style="background:${COLORS[k]}"></span>${t}</span>`).join('')
   +'<span class="hint">· tablero de solo lectura · actualización en vivo</span>';
@@ -402,8 +492,11 @@ tickReloj(); setInterval(tickReloj,1000);
         return fs.getDoc(fs.doc(window.db,'config','cumpleanos'));
       }).then(snap=>{
         const lista = (snap && snap.exists() && Array.isArray(snap.data().lista)) ? snap.data().lista : [];
-        const hayHoy = lista.some(c=>Number(c.mes)===mes && Number(c.dia)===dia);
-        if (hayHoy) aplicarTemporada(ICONO_PASTEL);
+        const deHoy = lista.filter(c=>Number(c.mes)===mes && Number(c.dia)===dia);
+        if (deHoy.length){
+          aplicarTemporada(ICONO_PASTEL);
+          if (window.__tvActivarCumpleanos) window.__tvActivarCumpleanos(deHoy.map(c=>c.nombre).filter(Boolean));
+        }
       }).catch(()=>{});
     }catch(e){}
   };
