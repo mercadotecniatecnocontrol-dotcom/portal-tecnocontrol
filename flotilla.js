@@ -166,6 +166,7 @@ const I={
 // ESTADO
 let db=window.db, fs=null;
 let flV=[], flS=[], flCom=[], flTrans=[], flChkSem=[], flCfgSem={}, flUsos=[], flFlUsuarios=[], flSiniestros=[], flUbicaciones=[], flLlantas=[];
+let flGPS={}; // { [eco]: {kilometraje,horasMotor,lat,lng,velocidad,ultimoReporte,...} } — datos en vivo de Wialon, colección flotilla_gps
 let vistaAct='panel';
 let ST={
   vehId:null, tipoVeh:'auto', vistaImg:'frente',
@@ -886,7 +887,7 @@ window.cargarFlotilla=async function(){
   // Solo lo esencial para el primer render bloquea: vehículos y solicitudes.
   // Todo lo demás se carga en segundo plano una vez que el dashboard ya está
   // en pantalla — sus propias vistas se refrescan solas cuando llegue.
-  await Promise.all([ldVehs(),ldSols()]);
+  await Promise.all([ldVehs(),ldSols(),ldGPS()]);
   renderSB();
   flVista('panel');
   window._flInitDone=true;
@@ -952,6 +953,35 @@ function ldVehs(){
   });
 }
 let _unsubSols=null;
+// Listener en tiempo real de flotilla_gps (datos de Wialon, alimentados por el
+// Worker de Cloudflare cada 5 min). Es de solo-lectura: nada en el portal
+// escribe aquí, solo el Worker.
+let _unsubGPS=null;
+function flTieneGPS(eco){ return !!flGPS[String(eco)]; }
+function ldGPS(){
+  return new Promise((resolve)=>{
+    if(_unsubGPS){resolve();return;}
+    try{
+      _unsubGPS=fs.onSnapshot(fs.collection(db,'flotilla_gps'),(s)=>{
+        const mapa={};
+        s.docs.forEach(d=>{mapa[d.id]=d.data();});
+        flGPS=mapa;
+        resolve();
+        if(window._flInitDone){
+          renderSB();
+          if(vistaAct==='panel')rPanel();
+          else if(vistaAct==='admin')rAdmin();
+        }
+      },(err)=>{
+        console.error('[FL] onSnapshot flotilla_gps',err);
+        resolve();
+      });
+    }catch(e){
+      console.error('[FL] ldGPS',e);
+      resolve();
+    }
+  });
+}
 function ldSols(){
   return new Promise((resolve)=>{
     if(_unsubSols){resolve();return;}
@@ -1449,7 +1479,7 @@ function rAdmTabVehs(plazas){
     </div>
     <div class="fl-tw" style="overflow:auto;max-height:calc(100vh - 400px)">
       <table class="fl-adm-table" id="adm-tabla">
-        <thead><tr><th>ECO</th><th>Unidad</th><th>Placas</th><th>Responsable</th><th>Plaza</th><th>Estatus</th><th>KM actual</th><th>NIP</th><th>Póliza seguro</th><th>Vto. póliza</th><th>Color</th><th>Tipo</th><th style="text-align:center">Editar</th></tr></thead>
+        <thead><tr><th>ECO</th><th>Unidad</th><th>Placas</th><th>Responsable</th><th>Plaza</th><th>Estatus</th><th>KM actual</th><th>Usa KM</th><th>NIP</th><th>Póliza seguro</th><th>Vto. póliza</th><th>Color</th><th>Tipo</th><th style="text-align:center">Editar</th></tr></thead>
         <tbody id="adm-tbody">${renderAdmRows(flV)}</tbody>
       </table>
     </div>`;
@@ -1980,7 +2010,7 @@ function rAdmTabUsuarios(){
     <div id="adm-ur-msg" style="margin-top:10px;font-size:12px;display:none"></div>`;
 }
 function renderAdmRows(lista){
-  if(!lista.length)return`<tr><td colspan="13" style="text-align:center;padding:24px;color:#94A3B8">Sin vehículos que mostrar</td></tr>`;
+  if(!lista.length)return`<tr><td colspan="14" style="text-align:center;padding:24px;color:#94A3B8">Sin vehículos que mostrar</td></tr>`;
   return lista.map(v=>{
     const isEditing=admEditId===v.id;
     const statCls={activo:'fl-adm-stat-activo',taller:'fl-adm-stat-taller',comision:'fl-adm-stat-comision',baja:'fl-adm-stat-baja'}[v.status||'activo']||'fl-adm-stat-activo';
@@ -1988,6 +2018,9 @@ function renderAdmRows(lista){
     const d=hD(v.pv);
     const pvColor=d===null?'#0A0F1E':d<0?'#B91C1C':d<90?'#B45309':'#15803D';
     if(isEditing){
+      const gps=flGPS[String(v.eco)];
+      const tieneGPS=!!gps;
+      const usaKm=v.usaKilometraje!==false; // por defecto true si nunca se ha definido
       return`<tr class="editing" id="adm-row-${v.id}">
         <td><strong style="font-family:'JetBrains Mono',monospace">${v.eco}</strong></td>
         <td><input class="fl-adm-inp" id="adm-unidad-${v.id}" value="${v.unidad||''}"></td>
@@ -2000,7 +2033,17 @@ function renderAdmRows(lista){
           <option ${v.status==='comision'?'selected':''}>comision</option>
           <option ${v.status==='baja'?'selected':''}>baja</option>
         </select></td>
-        <td><input class="fl-adm-inp" type="number" id="adm-km-${v.id}" value="${v.km||0}" style="width:80px"></td>
+        <td>${!usaKm
+            ? `<span style="font-size:10.5px;color:#94A3B8;font-style:italic">No aplica</span>`
+            : tieneGPS
+              ? `<span title="Se actualiza solo desde el GPS — ya no se edita a mano" style="display:flex;align-items:center;gap:5px;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:#0A1628">📡 ${Number(gps.kilometraje||0).toLocaleString()} km</span>`
+              : `<input class="fl-adm-inp" type="number" id="adm-km-${v.id}" value="${v.km||0}" style="width:80px">`
+          }</td>
+        <td style="text-align:center">
+          <label style="display:inline-flex;align-items:center;cursor:pointer" title="¿Este vehículo usa kilometraje? (desactivar para dolly, remolques, maquinaria estacionaria)">
+            <input type="checkbox" id="adm-usakm-${v.id}" ${usaKm?'checked':''} style="width:16px;height:16px;cursor:pointer">
+          </label>
+        </td>
         <td><input class="fl-adm-inp" id="adm-nip-${v.id}" value="${v.nip||''}"></td>
         <td><input class="fl-adm-inp" id="adm-pol-${v.id}" value="${v.pol||''}"></td>
         <td><input class="fl-adm-inp" type="date" id="adm-pv-${v.id}" value="${v.pv&&v.pv!=='—'?v.pv:''}" style="width:130px"></td>
@@ -2019,6 +2062,13 @@ function renderAdmRows(lista){
         </td>
       </tr>`;
     }
+    const gpsR=flGPS[String(v.eco)];
+    const usaKmR=v.usaKilometraje!==false;
+    const kmCelda=!usaKmR
+      ? `<span style="font-size:11px;color:#94A3B8;font-style:italic">No aplica</span>`
+      : gpsR
+        ? `<span title="Actualizado por GPS" style="font-family:'JetBrains Mono',monospace;font-size:11px">📡 ${Number(gpsR.kilometraje||0).toLocaleString()} km</span>`
+        : `<span style="font-family:'JetBrains Mono',monospace;font-size:11px">${v.km||0} km</span>`;
     return`<tr id="adm-row-${v.id}">
       <td><strong style="font-family:'JetBrains Mono',monospace;font-size:13px">${v.eco}</strong></td>
       <td style="font-weight:600">${v.unidad||'—'}</td>
@@ -2026,7 +2076,8 @@ function renderAdmRows(lista){
       <td>${v.responsable&&v.responsable!=='—'?flNombrePorCorreo(v.responsable):`<span style="color:#EF4444;font-size:11px;font-weight:700">Sin asignar</span>`}</td>
       <td><span style="font-size:11px">${v.plaza||'—'}</span></td>
       <td><span class="fl-adm-badge ${statCls}">${v.status||'activo'}</span></td>
-      <td style="font-family:'JetBrains Mono',monospace;font-size:11px">${v.km||0} km</td>
+      <td>${kmCelda}</td>
+      <td style="text-align:center">${usaKmR?'<span style="color:#15803D;font-weight:700">Sí</span>':'<span style="color:#94A3B8">No</span>'}</td>
       <td style="font-size:11px">${v.nip||'—'}</td>
       <td style="font-family:'JetBrains Mono',monospace;font-size:10px">${v.pol||'—'}</td>
       <td style="font-size:11px;font-weight:700;color:${pvColor}">${v.pv&&v.pv!=='—'?v.pv:'—'}</td>
@@ -2065,13 +2116,19 @@ window.admCancelar=function(){
 window.admGuardar=async function(id){
   const v=flV.find(x=>x.id===id);if(!v)return;
   const respAnterior=v.responsable;
+  const usaKilometraje=!!document.getElementById('adm-usakm-'+id)?.checked;
+  const tieneGPS=flTieneGPS(v.eco);
+  // El campo KM manual solo existe en el DOM si el vehículo no tiene GPS y sí usa kilometraje.
+  // Si tiene GPS, el kilometraje se actualiza solo (vía el Worker) — nunca desde aquí.
+  const kmInput=document.getElementById('adm-km-'+id);
   const nuevos={
     unidad:document.getElementById('adm-unidad-'+id)?.value?.trim()||v.unidad,
     placas:document.getElementById('adm-placas-'+id)?.value?.trim()||v.placas,
     responsable:document.getElementById('adm-resp-'+id)?.value?.trim()||v.responsable,
     plaza:document.getElementById('adm-plaza-'+id)?.value?.trim()||v.plaza,
     status:document.getElementById('adm-status-'+id)?.value||v.status,
-    km:Number(document.getElementById('adm-km-'+id)?.value)||v.km||0,
+    usaKilometraje,
+    km:(!usaKilometraje||tieneGPS)?(v.km||0):(kmInput?(Number(kmInput.value)||v.km||0):(v.km||0)),
     nip:document.getElementById('adm-nip-'+id)?.value?.trim()||v.nip||'',
     pol:document.getElementById('adm-pol-'+id)?.value?.trim()||v.pol||'',
     pv:document.getElementById('adm-pv-'+id)?.value||v.pv||'—',
