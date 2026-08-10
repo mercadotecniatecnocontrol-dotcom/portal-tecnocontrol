@@ -571,8 +571,10 @@ function injectCSS(){
 
 /* ── PANEL DERECHO INFO VEHÍCULO ── */
 .fl-rp{width:700px;flex-shrink:0;background:#F4F6FA;height:100%;overflow-y:auto;border-radius:14px;}
-.fl-rp-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;padding:4px 20px 20px;align-items:start;}
-.fl-rp-card{border:1px solid #DCE3EE;border-radius:14px;padding:20px 22px;display:flex;flex-direction:column;background:#fff;box-shadow:0 2px 6px rgba(15,23,42,.06);}
+.fl-rp-grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;padding:6px 22px 22px;align-items:start;}
+.fl-rp-card{border:1px solid #DCE3EE;border-radius:14px;padding:22px 24px;display:flex;flex-direction:column;background:#fff;box-shadow:0 2px 6px rgba(15,23,42,.06);}
+.fl-rp-fila{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:8px 2px;font-size:12.5px;}
+.fl-rp-fila:not(:last-child){border-bottom:1px solid #F8FAFC;}
 @media(max-width:700px){.fl-rp-grid{grid-template-columns:1fr;}}
 #fl-veh-backdrop{position:fixed;inset:0;background:rgba(10,15,30,0);pointer-events:none;transition:background .2s ease;z-index:2999;display:flex;align-items:center;justify-content:center;padding:24px;}
 #fl-veh-backdrop.abierto{background:rgba(10,15,30,.75);backdrop-filter:blur(8px);pointer-events:auto;}
@@ -1042,23 +1044,26 @@ function ldTrans(){
 async function flRevisarTransferenciasPendientes(){
   const ahora=Date.now();
   const pendientes=flTrans.filter(t=>t.estatus==='Pendiente recepción');
+  // Si un admin reactivó la transferencia, el conteo vuelve a empezar desde
+  // ese momento (reactivadaEn) en vez de la fecha de creación original.
+  const ref=t=>new Date(t.reactivadaEn||t.creadoEn).getTime();
 
-  // 24h — aviso temprano (ya existía)
-  const stale=pendientes.filter(t=>!t.avisadoPendiente&&(ahora-new Date(t.creadoEn).getTime())>24*60*60*1000);
+  // 72h — aviso temprano (antes 24h)
+  const stale=pendientes.filter(t=>!t.avisadoPendiente&&(ahora-ref(t))>72*60*60*1000);
   for(const t of stale){
     try{
       await fs.updateDoc(fs.doc(db,C.TRANS,t.id),{avisadoPendiente:true});
       await Promise.all(FLOTILLA_ADMINS.map(admEmail=>fs.addDoc(fs.collection(db,'flotilla_notificaciones'),{
         tipo:'transferencia_pendiente_larga',codigo:t.codigo,vehiculoEco:t.vehiculoEco||'—',
         para:admEmail,
-        mensaje:`Transferencia del ECO ${t.vehiculoEco||'—'} sigue "Pendiente recepción" desde hace más de 24h (código ${t.codigo}). Entregó: ${t.entregaNombre||'—'}.`,
+        mensaje:`Transferencia del ECO ${t.vehiculoEco||'—'} sigue "Pendiente recepción" desde hace más de 72h (código ${t.codigo}). Entregó: ${t.entregaNombre||'—'}.`,
         leido:false,creadoEn:new Date().toISOString(),
       }).catch(()=>{})));
-    }catch(e){console.warn('[FL] flRevisarTransferenciasPendientes 24h',e);}
+    }catch(e){console.warn('[FL] flRevisarTransferenciasPendientes 72h',e);}
   }
 
-  // 42h — aviso de "por vencer" (nuevo), va al entregador y al receptor designado
-  const porVencer=pendientes.filter(t=>!t.avisadoPorVencer&&(ahora-new Date(t.creadoEn).getTime())>42*60*60*1000);
+  // 162h — aviso de "por vencer" (6h antes del vencimiento final), va al entregador y al receptor designado
+  const porVencer=pendientes.filter(t=>!t.avisadoPorVencer&&(ahora-ref(t))>162*60*60*1000);
   for(const t of porVencer){
     try{
       await fs.updateDoc(fs.doc(db,C.TRANS,t.id),{avisadoPorVencer:true});
@@ -1070,12 +1075,13 @@ async function flRevisarTransferenciasPendientes(){
         mensaje:`⚠ La transferencia del ECO ${t.vehiculoEco||'—'} (código ${t.codigo}) vence en menos de 6 horas si no se recibe. Entregó: ${t.entregaNombre||'—'}.`,
         leido:false,creadoEn:new Date().toISOString(),
       }).catch(()=>{})));
-    }catch(e){console.warn('[FL] flRevisarTransferenciasPendientes 42h',e);}
+    }catch(e){console.warn('[FL] flRevisarTransferenciasPendientes 162h',e);}
   }
 
-  // 48h — vencimiento automático: la transferencia se marca "Vencida" y el
+  // 168h (7 días) — vencimiento automático: la transferencia se marca "Vencida" y el
   // vehículo se libera de vuelta a quien la inició (nunca llegó a completarse).
-  const vencidas=pendientes.filter(t=>(ahora-new Date(t.creadoEn).getTime())>48*60*60*1000);
+  // Un administrador siempre puede reactivarla o cancelarla desde el historial.
+  const vencidas=pendientes.filter(t=>(ahora-ref(t))>168*60*60*1000);
   for(const t of vencidas){
     try{
       await fs.updateDoc(fs.doc(db,C.TRANS,t.id),{estatus:'Vencida',venciadoEn:new Date().toISOString()});
@@ -1090,10 +1096,10 @@ async function flRevisarTransferenciasPendientes(){
       await Promise.all([...destinatarios].map(email=>fs.addDoc(fs.collection(db,'flotilla_notificaciones'),{
         tipo:'transferencia_vencida',codigo:t.codigo,vehiculoEco:t.vehiculoEco||'—',
         para:email,
-        mensaje:`La transferencia del ECO ${t.vehiculoEco||'—'} (código ${t.codigo}) venció después de 48h sin ser recibida. El vehículo sigue asignado a ${t.entregaNombre||'—'}.`,
+        mensaje:`La transferencia del ECO ${t.vehiculoEco||'—'} (código ${t.codigo}) venció después de 7 días sin ser recibida. El vehículo sigue asignado a ${t.entregaNombre||'—'}. Un administrador puede reactivarla o cancelarla desde el historial de transferencias.`,
         leido:false,creadoEn:new Date().toISOString(),
       }).catch(()=>{})));
-    }catch(e){console.warn('[FL] flRevisarTransferenciasPendientes 48h',e);}
+    }catch(e){console.warn('[FL] flRevisarTransferenciasPendientes 168h',e);}
   }
 }
 async function ldChkSem(){try{const s=await fs.getDocs(fs.query(fs.collection(db,C.CHKSEM),fs.orderBy('creadoEn','desc'),fs.limit(400)));flChkSem=s.docs.map(d=>({id:d.id,...d.data()}));flChkSem.sort((a,b)=>(b.creadoEn||"").localeCompare(a.creadoEn||""));}catch(e){console.warn('[FL] ldChkSem con límite falló, reintentando sin orderBy',e);try{const s2=await fs.getDocs(fs.collection(db,C.CHKSEM));flChkSem=s2.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.creadoEn||"").localeCompare(a.creadoEn||"")).slice(0,400);}catch{flChkSem=[];}}}
@@ -3604,7 +3610,7 @@ function renderRP(id){
     <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">${titulo}${extra||''}</div>
     <div>${contenido}</div>
   </div>`;
-  const fila=(label,val,mono)=>`<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:6px 0;font-size:12.5px"><span style="color:#94A3B8;flex-shrink:0">${label}</span><span style="font-weight:700;${mono?"font-family:'JetBrains Mono',monospace;":''}text-align:right;overflow-wrap:anywhere;word-break:break-word;min-width:0">${val}</span></div>`;
+  const fila=(label,val,mono)=>`<div class="fl-rp-fila"><span style="color:#94A3B8;flex-shrink:0">${label}</span><span style="font-weight:700;${mono?"font-family:'JetBrains Mono',monospace;":''}text-align:right;overflow-wrap:anywhere;word-break:break-word;min-width:0">${val}</span></div>`;
 
   rp.innerHTML=`
     ${comAct?`<div style="background:#FEF2F2;border:1px solid #FCA5A5;border-radius:9px;padding:9px 12px;margin:12px 20px 0;display:flex;align-items:flex-start;gap:8px">
@@ -3659,7 +3665,7 @@ function renderRP(id){
       ${fila('Número de serie / VIN',v.serie||'—',true)}
       ${fila('Año modelo',v.año||'—')}
       ${fila('Color',v.color||'—')}
-      ${fila('Kilometraje',v.km?`${v.km} km`:'—',true)}
+      ${fila('Kilometraje',v.usaKilometraje===false?'<span style="color:#94A3B8;font-style:italic">No aplica</span>':flTieneGPS(v.eco)?`<span title="Actualizado por GPS">📡 ${Number(flGPS[String(v.eco)].kilometraje||0).toLocaleString()} km</span>`:v.km?`${v.km} km`:'—',true)}
       ${(()=>{
         const regsKm=flChkSem.filter(c=>String(c.vehiculoEco)===String(v.eco)&&c.km!=null&&c.km!=='').sort((a,b)=>String(a.creadoEn||a.semana||'').localeCompare(String(b.creadoEn||b.semana||'')));
         if(regsKm.length<2)return'';
@@ -3688,6 +3694,24 @@ function renderRP(id){
       ${v.dashcamInstalado==='si'?fila('Fecha de instalación',v.dashcamFecha?hF(v.dashcamFecha):'—'):''}
       ${v.gpsDashcamNotas?`<div style="margin-top:8px;padding:8px 10px;background:#F8FAFD;border-radius:8px;font-size:11.5px;color:#374151;white-space:pre-wrap">${v.gpsDashcamNotas}</div>`:''}
     `)}
+
+    ${flTieneGPS(v.eco)?(()=>{
+      const g=flGPS[String(v.eco)];
+      const mins=g.ultimoReporte?Math.round((Date.now()-new Date(g.ultimoReporte).getTime())/60000):null;
+      const reciente=mins!==null&&mins<=15;
+      const txtReporte=mins===null?'—':mins<60?`hace ${mins} min`:mins<1440?`hace ${Math.round(mins/60)} h`:`hace ${Math.round(mins/1440)} d`;
+      const mapaUrl=(g.lat&&g.lng)?`https://www.google.com/maps?q=${g.lat},${g.lng}`:null;
+      return card('GPS en vivo',`
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+          <div style="width:7px;height:7px;border-radius:50%;background:${reciente?'#22C55E':'#F59E0B'}"></div>
+          <span style="font-size:10.5px;font-weight:800;color:${reciente?'#15803D':'#B45309'}">${reciente?'REPORTANDO EN VIVO':'SIN REPORTAR RECIENTEMENTE'}</span>
+        </div>
+        ${fila('Kilometraje GPS',`${Number(g.kilometraje||0).toLocaleString()} km`,true)}
+        ${g.horasMotor!=null?fila('Horas de motor',`${Number(g.horasMotor).toLocaleString(undefined,{maximumFractionDigits:1})} h`,true):''}
+        ${fila('Último reporte',txtReporte)}
+        ${mapaUrl?`<div style="margin-top:10px"><a href="${mapaUrl}" target="_blank" style="display:flex;align-items:center;justify-content:center;gap:6px;padding:9px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:9px;font-size:11.5px;font-weight:800;color:#2563EB;text-decoration:none">${I.mappin} Ver ubicación en el mapa</a></div>`:''}
+      `,`<span style="font-size:9px;font-weight:800;color:#94A3B8;text-transform:none;letter-spacing:0">vía Wialon</span>`);
+    })():''}
 
     ${hAdm()?card('Administrar estatus (admin)',`
       <div style="display:flex;flex-direction:column;gap:4px">
@@ -5056,6 +5080,54 @@ window.flActualizarEvidenciaSolicitud = function(solId) {
 };
 
 // ── HISTORIAL DE TRANSFERENCIAS — filtros y exportación ─────────
+// Reactivar una transferencia "Vencida": vuelve a "Pendiente recepción" y le
+// da otros 7 días completos (el conteo se reinicia desde ahora, no desde la
+// fecha de creación original).
+window.flReactivarTransferencia=async function(id){
+  if(!hAdm())return;
+  const t=flTrans.find(x=>x.id===id);if(!t)return;
+  if(!confirm(`¿Reactivar la transferencia del ECO ${t.vehiculoEco||'—'} (código ${t.codigo})? Tendrá otros 7 días para completarse.`))return;
+  try{
+    const ahora=new Date().toISOString();
+    await fs.updateDoc(fs.doc(db,C.TRANS,id),{
+      estatus:'Pendiente recepción',
+      reactivadaEn:ahora,
+      avisadoPendiente:false,
+      avisadoPorVencer:false,
+      venciadoEn:null,
+    });
+    Object.assign(t,{estatus:'Pendiente recepción',reactivadaEn:ahora,avisadoPendiente:false,avisadoPorVencer:false,venciadoEn:null});
+    flToast('Transferencia reactivada — 7 días más para completarse','ok');
+    document.getElementById('fl-trans-r')&&(document.getElementById('fl-trans-r').innerHTML=rTransListFiltrada(flTrans));
+    document.querySelector('.fl-ov')?.remove();
+  }catch(e){console.error('[FL] flReactivarTransferencia',e);flToast('No se pudo reactivar','err');}
+};
+
+// Cancelar una transferencia definitivamente (no se puede deshacer).
+window.flCancelarTransferencia=async function(id){
+  if(!hAdm())return;
+  const t=flTrans.find(x=>x.id===id);if(!t)return;
+  if(!confirm(`¿Cancelar definitivamente la transferencia del ECO ${t.vehiculoEco||'—'} (código ${t.codigo})? Esto no se puede deshacer.`))return;
+  try{
+    const user=window.auth?.currentUser;
+    await fs.updateDoc(fs.doc(db,C.TRANS,id),{
+      estatus:'Cancelada',
+      canceladaPor:user?.email||'',
+      canceladaEn:new Date().toISOString(),
+    });
+    if(t.entregaEmail){
+      try{
+        const snapEnt=await fs.getDocs(fs.query(fs.collection(db,'fl_usuarios'),fs.where('email','==',t.entregaEmail)));
+        if(!snapEnt.empty) await fs.updateDoc(snapEnt.docs[0].ref,{transferenciaPendiente:null,transferenciaPendienteEco:null});
+      }catch(e2){console.warn('[FL] limpiar transferenciaPendiente al cancelar',e2);}
+    }
+    Object.assign(t,{estatus:'Cancelada'});
+    flToast('Transferencia cancelada','ok');
+    document.getElementById('fl-trans-r')&&(document.getElementById('fl-trans-r').innerHTML=rTransListFiltrada(flTrans));
+    document.querySelector('.fl-ov')?.remove();
+  }catch(e){console.error('[FL] flCancelarTransferencia',e);flToast('No se pudo cancelar','err');}
+};
+
 function rTransListFiltrada(lista){
   if(!lista||!lista.length)return`<div style="padding:20px;text-align:center;color:#94A3B8;font-size:12px">Sin transferencias registradas</div>`;
   // Pendientes primero, luego por fecha desc
@@ -5066,15 +5138,18 @@ function rTransListFiltrada(lista){
   });
   return`<div style="display:flex;flex-direction:column;gap:8px">${ord.map(t=>{
     const isPend=t.estatus==='Pendiente recepción';
-    const borde=isPend?'2px solid #F59E0B':'1px solid #E8EDF5';
-    const bg=isPend?'#FFFBEB':'#fff';
+    const isVencida=t.estatus==='Vencida';
+    const borde=isPend?'2px solid #F59E0B':isVencida?'2px solid #EF4444':'1px solid #E8EDF5';
+    const bg=isPend?'#FFFBEB':isVencida?'#FEF2F2':'#fff';
+    const badgeBg=isPend?'#FEF3C7':isVencida?'#FEE2E2':'#DCFCE7';
+    const badgeColor=isPend?'#B45309':isVencida?'#B91C1C':'#15803D';
     const fecha=(t.creadoEn||'').substring(0,10)||'—';
     const fotos=(t.entregaFotos||t.fotos||[]).slice(0,4);
     return`<div style="background:${bg};border:${borde};border-radius:12px;padding:14px 16px;cursor:pointer" onclick="flVerTrans('${t.id}')">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <div style="display:flex;align-items:center;gap:10px">
-          <div style="width:36px;height:36px;border-radius:9px;background:${isPend?'#FEF3C7':'#EFF6FF'};display:flex;align-items:center;justify-content:center">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="${isPend?'#B45309':'#2563EB'}" stroke-width="2" stroke-linecap="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>
+          <div style="width:36px;height:36px;border-radius:9px;background:${isPend?'#FEF3C7':isVencida?'#FEE2E2':'#EFF6FF'};display:flex;align-items:center;justify-content:center">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="${isPend?'#B45309':isVencida?'#B91C1C':'#2563EB'}" stroke-width="2" stroke-linecap="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>
           </div>
           <div>
             <div style="font-size:13px;font-weight:800;color:#0A1628">ECO ${t.vehiculoEco||'—'} · ${t.vehiculoUnidad||'—'}</div>
@@ -5083,7 +5158,7 @@ function rTransListFiltrada(lista){
         </div>
         <div style="display:flex;align-items:center;gap:8px">
           <span style="font-size:10px;color:#94A3B8">${fecha}</span>
-          <span style="padding:3px 10px;border-radius:100px;font-size:10px;font-weight:800;background:${isPend?'#FEF3C7':'#DCFCE7'};color:${isPend?'#B45309':'#15803D'}">${t.estatus||'—'}</span>
+          <span style="padding:3px 10px;border-radius:100px;font-size:10px;font-weight:800;background:${badgeBg};color:${badgeColor}">${t.estatus||'—'}</span>
         </div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;background:#F8FAFD;border-radius:8px;padding:8px">
@@ -5097,6 +5172,10 @@ function rTransListFiltrada(lista){
       ${fotos.length?`<div style="display:flex;gap:5px;margin-top:8px">${fotos.map(f=>`<img src="${f}" style="width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid #E8EDF5">`).join('')}${(t.entregaFotos||t.fotos||[]).length>4?`<div style="width:44px;height:44px;border-radius:6px;background:#F1F5F9;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#64748B">+${(t.entregaFotos||t.fotos||[]).length-4}</div>`:''}
       </div>`:''}
       ${isPend?`<div style="margin-top:8px;padding:6px 10px;background:#FEF3C7;border-radius:7px;font-size:11px;font-weight:700;color:#B45309">Esperando que el receptor confirme con el código ${t.codigo||'—'}</div>`:''}
+      ${isVencida&&hAdm()?`<div style="margin-top:8px;display:flex;gap:8px" onclick="event.stopPropagation()">
+        <button onclick="flReactivarTransferencia('${t.id}')" style="flex:1;font-size:11px;font-weight:800;padding:8px;background:#0A1628;color:#fff;border:none;border-radius:8px;cursor:pointer">↻ Reactivar (+7 días)</button>
+        <button onclick="flCancelarTransferencia('${t.id}')" style="flex:1;font-size:11px;font-weight:800;padding:8px;background:#fff;color:#B91C1C;border:1px solid #FCA5A5;border-radius:8px;cursor:pointer">✕ Cancelar</button>
+      </div>`:''}
     </div>`;
   }).join('')}</div>`;
 }
@@ -7894,6 +7973,34 @@ window.flConfirmarRechazo = async function(id, esDevol, btn) {
 // ═══════════════════════════════════════════════════════
 // RESUMEN FINAL — expediente completo para compartir/PDF
 // ═══════════════════════════════════════════════════════
+// Corrección de monto cotizado, incluso con la solicitud ya cerrada.
+// Solo administradores la ven (botón oculto para el resto). Deja registro de quién y cuándo corrigió.
+window.flEditarMontoCotizacion=async function(id){
+  const s=flS.find(x=>x.id===id);if(!s)return;
+  const actual=s.montoCotizacion||0;
+  const txt=prompt('Corregir monto cotizado (MXN):',actual||'');
+  if(txt===null)return; // canceló
+  const nuevo=Number(txt);
+  if(!txt.trim()||isNaN(nuevo)||nuevo<0){flToast('Ingresa un monto válido','err');return;}
+  try{
+    const user=window.auth?.currentUser;
+    await fs.updateDoc(fs.doc(db,C.SOLS,id),{
+      montoCotizacion:nuevo,
+      montoCorregidoDe:actual,
+      montoCorregidoPor:user?.email||'',
+      montoCorregidoEn:new Date().toISOString(),
+    });
+    s.montoCotizacion=nuevo;
+    flToast('Monto corregido correctamente','ok');
+    // Refrescar la vista abierta (expediente) con el dato ya actualizado
+    document.getElementById('flres-ov')?.remove();
+    window.flResumenFinal(id);
+  }catch(e){
+    console.error('[FL] flEditarMontoCotizacion',e);
+    flToast('No se pudo guardar la corrección','err');
+  }
+};
+
 window.flResumenFinal = function(id) {
   // Refrescar s desde flS actualizado
   const s = flS.find(x => x.id === id); if (!s) return;
@@ -7971,7 +8078,13 @@ window.flResumenFinal = function(id) {
 
           ${seccion('💰 Cotización y Pago', `
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:0">
-              ${campo('Monto cotizado', fmtM(s.montoCotizacion))}
+              <div style="display:flex;justify-content:space-between;align-items:baseline;padding:4px 0;border-bottom:1px solid #F8FAFC">
+                <span style="font-size:10px;color:#94A3B8;font-weight:600">Monto cotizado</span>
+                <span style="display:flex;align-items:center;gap:6px">
+                  <span style="font-size:11px;font-weight:700;color:#0A0F1E">${fmtM(s.montoCotizacion)}</span>
+                  ${hAdm()?`<button onclick="flEditarMontoCotizacion('${s.id}')" title="Corregir monto" style="border:none;background:none;cursor:pointer;padding:2px;color:#94A3B8;display:flex">${I.edit}</button>`:''}
+                </span>
+              </div>
               ${campo('Fecha pago programada', fmt(s.fechaPagoProgramada))}
               ${campo('Validado por', s.validadoPor)}
               ${campo('Validado el', fmt(s.validadoEn))}
