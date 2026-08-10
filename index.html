@@ -5611,6 +5611,10 @@ window.irAlmacen = function(btn){
             nodo.style.display = 'block';
             nodo.style.margin = '0';
             if (typeof window.actualizarLabelAP === 'function') window.actualizarLabelAP();
+            // Siempre recargar los documentos del mes/área actual al abrir el
+            // panel — antes solo se refrescaba la etiqueta y el calendario se
+            // quedaba en blanco si no se había disparado una carga previa.
+            if (typeof window.cargarDocsAP === 'function') window.cargarDocsAP();
         }
         requestAnimationFrame(() => overlay.classList.add('abierto'));
     };
