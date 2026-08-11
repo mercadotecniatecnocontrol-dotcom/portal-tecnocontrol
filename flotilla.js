@@ -608,7 +608,7 @@ function injectCSS(){
 .fl-rp-alt.e{background:#FEF2F2;color:#991B1B;border:1px solid #FECACA;}
 .fl-rp-hist{padding:8px 12px;}
 .fl-rp-hist-t{font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin-bottom:8px;}
-.fl-rp-h-item{padding:6px 0;border-bottom:1px solid #F8FAFD;font-size:11px;}
+.fl-rp-h-item{padding:8px 4px;border-bottom:1px solid #F8FAFD;font-size:11px;}
 .fl-rp-h-item:hover{background:#FAFBFD;}
 
 /* ── PANEL GENERAL ── */
@@ -693,14 +693,14 @@ function injectCSS(){
 .fl-panor-card .fl-panor-resp{font-size:10.5px;color:#64748B;margin-top:3px;display:flex;align-items:center;gap:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .fl-panor-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 18px;border-top:1px solid #F1F5F9;background:#F8FAFD;flex-wrap:wrap;}
 .fl-panor-sum-card{border:1px solid #E2E8F0;border-radius:12px;margin-bottom:14px;overflow:hidden;}
-.fl-panor-sum-h{display:flex;align-items:center;gap:10px;padding:12px 14px;background:linear-gradient(180deg,#F8FAFF,#fff);border-bottom:1px solid #F1F5F9;}
+.fl-panor-sum-h{display:flex;align-items:center;gap:10px;padding:14px 20px;background:linear-gradient(180deg,#F8FAFF,#fff);border-bottom:1px solid #F1F5F9;}
 .fl-panor-sum-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:#F1F5F9;}
 .fl-panor-sum-kpi{background:#fff;padding:12px 8px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:4px;}
 .fl-panor-kpi-dot{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin-bottom:2px;}
 .fl-panor-kpi-dot svg{width:13px;height:13px;}
 .fl-panor-sum-kpi b{display:block;font-size:16px;font-weight:900;color:#0A1628;}
 .fl-panor-sum-kpi span{font-size:8.5px;color:#94A3B8;font-weight:700;text-transform:uppercase;letter-spacing:.3px;}
-.fl-panor-sum-sec{padding:10px 14px;}
+.fl-panor-sum-sec{padding:14px 20px;}
 .fl-panor-sum-sec-t{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#64748B;margin-bottom:6px;}
 @media(max-width:640px){.fl-panor-grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr));}.fl-panor-sum-kpis{grid-template-columns:repeat(2,1fr);}}
 @media(max-width:1200px){.fl-rp{display:none;}.fl-kpis{grid-template-columns:1fr 1fr;}}
@@ -728,10 +728,6 @@ function buildHTML(){
     <div class="fl-tb-sep"></div>
     <div style="position:relative">
       <button class="fl-tab-btn on" id="fl-tb-panel" onclick="flVista('panel')" title="Dashboards">${I.grid}</button>
-    </div>
-    <div style="position:relative">
-      <button class="fl-tab-btn" id="fl-tb-sols" onclick="flVista('sols')" title="Solicitudes">${I.car}</button>
-      <span id="fl-cnt-s" class="fl-tab-cnt" style="display:none">0</span>
     </div>
     <div style="position:relative">
       <button class="fl-tab-btn" id="fl-tb-tareas" onclick="flVista('tareas')" title="Tareas">
