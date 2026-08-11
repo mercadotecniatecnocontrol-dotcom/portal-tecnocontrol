@@ -125,6 +125,38 @@ const CHK_CATS={
   Legal:      ['Tarjeta de circulación'],
 };
 
+// ── Resolución robusta de un ítem del checklist semanal ──
+// Distintas versiones de la app móvil han guardado el mismo dato bajo llaves
+// distintas (p.ej. "sem-Cristales-0" en la versión nueva, pero el nombre del
+// ítem tal cual, o "Cristales-0", en registros más viejos). Antes solo se
+// probaba una llave, así que un check list "viejo" mostraba todo en "—" y sin
+// foto aunque el técnico sí lo hubiera llenado. Esta función intenta varias
+// variantes conocidas, de la más nueva a la más vieja, y regresa la primera
+// que tenga datos — así todos los check list, sin importar su antigüedad,
+// muestran su estatus real y su foto (si existe).
+function flChecklistLlaves(cat,item,i,globalIdx){
+  return [
+    `sem-${cat}-${i}`,
+    `${cat}-${i}`,
+    `sem-${item}`,
+    item,
+    `sem-${globalIdx}`,
+    String(globalIdx),
+  ];
+}
+function flResolverItemChecklist(chk,chkFotos,cat,item,i,globalIdx){
+  const llaves=flChecklistLlaves(cat,item,i,globalIdx);
+  let val='',fotoSrc=null;
+  for(const k of llaves){
+    if(chk&&chk[k]!=null&&chk[k]!==''){val=chk[k];break;}
+  }
+  for(const k of llaves){
+    const f=chkFotos&&chkFotos[k];
+    if(f){fotoSrc=typeof f==='object'?f.src:f;break;}
+  }
+  return{val,fotoSrc};
+}
+
 const TIPOS_SOL=[
   'Mantenimiento preventivo','Mantenimiento correctivo','Siniestro / Accidente',
   'Batería','Motor','Llantas','Frenos','Suspensión','Dirección','Transmisión',
@@ -571,11 +603,16 @@ function injectCSS(){
 
 /* ── PANEL DERECHO INFO VEHÍCULO ── */
 .fl-rp{width:700px;flex-shrink:0;background:#F4F6FA;height:100%;overflow-y:auto;border-radius:14px;}
-.fl-rp-grid{display:grid;grid-template-columns:1fr 1fr;gap:34px;padding:6px 24px 24px;align-items:start;}
-.fl-rp-card{border:1px solid #DCE3EE;border-radius:14px;padding:22px 26px;display:flex;flex-direction:column;background:#fff;box-shadow:0 2px 6px rgba(15,23,42,.06);}
-.fl-rp-fila{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:8px 2px;font-size:12.5px;}
+/* minmax(0,1fr) en vez de 1fr evita que un texto largo sin espacios (VIN, correos)
+   fuerce el ancho de la columna del grid más allá del contenedor — ese era el
+   causante real de que el texto "se saliera" del panel. */
+.fl-rp-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:34px;padding:6px 24px 24px;align-items:start;box-sizing:border-box;}
+.fl-rp-card{border:1px solid #DCE3EE;border-radius:14px;padding:20px 22px;display:flex;flex-direction:column;background:#fff;box-shadow:0 2px 6px rgba(15,23,42,.06);min-width:0;box-sizing:border-box;overflow:hidden;}
+.fl-rp-fila{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:9px 2px;font-size:12.5px;min-width:0;}
 .fl-rp-fila:not(:last-child){border-bottom:1px solid #F8FAFC;}
-@media(max-width:700px){.fl-rp-grid{grid-template-columns:1fr;}}
+.fl-rp-fila>span:first-child{flex-shrink:0;padding-top:1px;}
+.fl-rp-fila>span:last-child{min-width:0;overflow-wrap:anywhere;word-break:break-word;}
+@media(max-width:700px){.fl-rp-grid{grid-template-columns:minmax(0,1fr);}}
 #fl-veh-backdrop{position:fixed;inset:0;background:rgba(10,15,30,0);pointer-events:none;transition:background .2s ease;z-index:2999;display:flex;align-items:center;justify-content:center;padding:24px;}
 #fl-veh-backdrop.abierto{background:rgba(10,15,30,.75);backdrop-filter:blur(8px);pointer-events:auto;}
 #fl-veh-modal-wrap{position:relative;display:flex;flex-direction:row;gap:0;max-width:calc(100vw - 48px);width:1140px;height:94vh;max-height:94vh;background:#fff;border-radius:18px;border:1px solid rgba(255,255,255,.4);box-shadow:0 24px 70px rgba(0,0,0,.45),0 0 0 1px rgba(255,255,255,.06);overflow:hidden;transform:scale(.96);opacity:0;transition:all .2s ease;}
@@ -608,7 +645,7 @@ function injectCSS(){
 .fl-rp-alt.e{background:#FEF2F2;color:#991B1B;border:1px solid #FECACA;}
 .fl-rp-hist{padding:8px 12px;}
 .fl-rp-hist-t{font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin-bottom:8px;}
-.fl-rp-h-item{padding:8px 4px;border-bottom:1px solid #F8FAFD;font-size:11px;}
+.fl-rp-h-item{padding:9px 10px;border-bottom:1px solid #F8FAFD;font-size:11px;box-sizing:border-box;overflow:hidden;}
 .fl-rp-h-item:hover{background:#FAFBFD;}
 
 /* ── PANEL GENERAL ── */
@@ -692,15 +729,15 @@ function injectCSS(){
 .fl-panor-card .fl-panor-un{font-size:12.5px;font-weight:800;color:#0A1628;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .fl-panor-card .fl-panor-resp{font-size:10.5px;color:#64748B;margin-top:3px;display:flex;align-items:center;gap:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .fl-panor-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 18px;border-top:1px solid #F1F5F9;background:#F8FAFD;flex-wrap:wrap;}
-.fl-panor-sum-card{border:1px solid #E2E8F0;border-radius:12px;margin-bottom:14px;overflow:hidden;}
-.fl-panor-sum-h{display:flex;align-items:center;gap:10px;padding:14px 20px;background:linear-gradient(180deg,#F8FAFF,#fff);border-bottom:1px solid #F1F5F9;}
-.fl-panor-sum-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:#F1F5F9;}
-.fl-panor-sum-kpi{background:#fff;padding:12px 8px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:4px;}
+.fl-panor-sum-card{border:1px solid #E2E8F0;border-radius:12px;margin-bottom:14px;overflow:hidden;box-sizing:border-box;min-width:0;}
+.fl-panor-sum-h{display:flex;align-items:center;gap:10px;padding:14px 20px;background:linear-gradient(180deg,#F8FAFF,#fff);border-bottom:1px solid #F1F5F9;box-sizing:border-box;min-width:0;}
+.fl-panor-sum-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:#F1F5F9;}
+.fl-panor-sum-kpi{background:#fff;padding:12px 8px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0;box-sizing:border-box;}
 .fl-panor-kpi-dot{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin-bottom:2px;}
 .fl-panor-kpi-dot svg{width:13px;height:13px;}
 .fl-panor-sum-kpi b{display:block;font-size:16px;font-weight:900;color:#0A1628;}
 .fl-panor-sum-kpi span{font-size:8.5px;color:#94A3B8;font-weight:700;text-transform:uppercase;letter-spacing:.3px;}
-.fl-panor-sum-sec{padding:14px 20px;}
+.fl-panor-sum-sec{padding:14px 20px;box-sizing:border-box;min-width:0;overflow-wrap:anywhere;}
 .fl-panor-sum-sec-t{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#64748B;margin-bottom:6px;}
 @media(max-width:640px){.fl-panor-grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr));}.fl-panor-sum-kpis{grid-template-columns:repeat(2,1fr);}}
 @media(max-width:1200px){.fl-rp{display:none;}.fl-kpis{grid-template-columns:1fr 1fr;}}
@@ -891,6 +928,7 @@ window.cargarFlotilla=async function(){
   window._flInitDone=true;
   Promise.all([ldComs(),ldTrans(),ldChkSem(),ldCfgSem(),ldUsos(),ldFlUsuarios(),ldSiniestros()]).then(()=>{
     if(vistaAct==='panel')rPanel(); // refresca el dashboard con lo que llegó tarde (KPIs de comisión, en uso, etc.)
+    flAutoGestionarChecklistSemanal(); // activa/desactiva el check list según la ventana vie–lun, si aplica
   });
   ldLlantas();
   ldUbicaciones();
@@ -3768,13 +3806,13 @@ function renderRP(id){
 function flRPUsoItem(u){
   const dt=iso=>iso?new Date(iso).toLocaleString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
   return`<div class="fl-rp-h-item">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:4px">
-      <span style="font-weight:700;font-size:11px">${flNombrePorCorreo(u.nombre||u.email)||'—'}</span>
-      ${u.activo?'<span style="font-size:9px;font-weight:800;padding:2px 7px;border-radius:100px;background:#DCFCE7;color:#15803D">EN USO</span>':'<span style="font-size:9px;font-weight:800;padding:2px 7px;border-radius:100px;background:#F1F5F9;color:#64748B">CERRADO</span>'}
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <span style="font-weight:700;font-size:11px;min-width:0;overflow-wrap:anywhere;word-break:break-word">${flNombrePorCorreo(u.nombre||u.email)||'—'}</span>
+      ${u.activo?'<span style="font-size:9px;font-weight:800;padding:2px 7px;border-radius:100px;background:#DCFCE7;color:#15803D;flex-shrink:0;white-space:nowrap">EN USO</span>':'<span style="font-size:9px;font-weight:800;padding:2px 7px;border-radius:100px;background:#F1F5F9;color:#64748B;flex-shrink:0;white-space:nowrap">CERRADO</span>'}
     </div>
-    <div style="font-size:10px;color:#374151;margin-top:3px"><strong style="color:#94A3B8;font-weight:800;text-transform:uppercase;font-size:8.5px;letter-spacing:.5px">Vinculado</strong> ${dt(u.vinculadoEn)}</div>
-    <div style="font-size:10px;color:#374151;margin-top:1px"><strong style="color:#94A3B8;font-weight:800;text-transform:uppercase;font-size:8.5px;letter-spacing:.5px">Desvinculado</strong> ${u.activo?'<span style="color:#94A3B8">— sigue vinculado —</span>':dt(u.desvinculadoEn)}</div>
-    ${!u.activo&&u.motivo?`<div style="font-size:9.5px;color:#94A3B8;margin-top:2px;font-style:italic">${u.motivo}</div>`:''}
+    <div style="font-size:10px;color:#374151;margin-top:3px;overflow-wrap:anywhere"><strong style="color:#94A3B8;font-weight:800;text-transform:uppercase;font-size:8.5px;letter-spacing:.5px">Vinculado</strong> ${dt(u.vinculadoEn)}</div>
+    <div style="font-size:10px;color:#374151;margin-top:1px;overflow-wrap:anywhere"><strong style="color:#94A3B8;font-weight:800;text-transform:uppercase;font-size:8.5px;letter-spacing:.5px">Desvinculado</strong> ${u.activo?'<span style="color:#94A3B8">— sigue vinculado —</span>':dt(u.desvinculadoEn)}</div>
+    ${!u.activo&&u.motivo?`<div style="font-size:9.5px;color:#94A3B8;margin-top:2px;font-style:italic;overflow-wrap:anywhere">${u.motivo}</div>`:''}
   </div>`;
 }
 
@@ -4177,8 +4215,8 @@ function flPanorResumenVeh(v){
     <div class="fl-panor-sum-h">
       <span style="display:flex;align-items:center;color:#1E3A5F">${hEmo(v.tipo)}</span>
       <div style="flex:1;min-width:0">
-        <div style="font-size:13px;font-weight:900;color:#0A1628">ECO ${v.eco} · ${v.unidad||'—'}</div>
-        <div style="font-size:10.5px;color:#64748B;margin-top:1px">${flNombrePorCorreo(v.responsable)||'Sin responsable'} · ${v.plaza||'—'} · ${v.placas||'—'}</div>
+        <div style="font-size:13px;font-weight:900;color:#0A1628;overflow-wrap:anywhere">ECO ${v.eco} · ${v.unidad||'—'}</div>
+        <div style="font-size:10.5px;color:#64748B;margin-top:1px;overflow-wrap:anywhere">${flNombrePorCorreo(v.responsable)||'Sin responsable'} · ${v.plaza||'—'} · ${v.placas||'—'}</div>
       </div>
       ${vivo!==null?`<span style="font-size:9px;font-weight:800;padding:3px 9px;border-radius:100px;background:#DCFCE7;color:#15803D;white-space:nowrap">EN USO · ${vivo}</span>`
         :`<span style="font-size:9px;font-weight:800;padding:3px 9px;border-radius:100px;background:#F1F5F9;color:#64748B;white-space:nowrap">DISPONIBLE</span>`}
@@ -4837,6 +4875,7 @@ function rComis(){
           <div style="font-size:15px;font-weight:900;letter-spacing:-.3px">
             Transferencias entre técnicos
             ${flTrans.filter(t=>t.estatus==='Pendiente recepción').length?`<span style="background:#F59E0B;color:#fff;font-size:10px;font-weight:800;border-radius:12px;padding:2px 9px;margin-left:8px">${flTrans.filter(t=>t.estatus==='Pendiente recepción').length} pendiente(s)</span>`:''}
+            ${flTrans.filter(t=>t.estatus==='Vencida').length?`<span onclick="event.stopPropagation();document.getElementById('fl-tf-est').value='Vencida';flFTrans();document.getElementById('fl-trans-r')?.scrollIntoView({behavior:'smooth',block:'start'})" style="background:#EF4444;color:#fff;font-size:10px;font-weight:800;border-radius:12px;padding:2px 9px;margin-left:6px;cursor:pointer" title="Ver códigos vencidos">${flTrans.filter(t=>t.estatus==='Vencida').length} vencida(s)</span>`:''}
           </div>
           <div style="font-size:11px;color:#64748B;margin-top:2px">${flTrans.length} registro(s) · desde la app móvil</div>
         </div>
@@ -4869,7 +4908,9 @@ function rComis(){
             style="padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;background:#fff;outline:none;height:36px">
             <option value="">Todos</option>
             <option value="Pendiente recepción">Pendiente</option>
+            <option value="Vencida">Vencida</option>
             <option value="Completada">Completada</option>
+            <option value="Cancelada">Cancelada</option>
           </select>
         </div>
       </div>
@@ -5129,10 +5170,12 @@ window.flCancelarTransferencia=async function(id){
 
 function rTransListFiltrada(lista){
   if(!lista||!lista.length)return`<div style="padding:20px;text-align:center;color:#94A3B8;font-size:12px">Sin transferencias registradas</div>`;
-  // Pendientes primero, luego por fecha desc
+  // Prioridad de seguimiento: Pendiente y Vencida primero (requieren acción),
+  // luego el resto por fecha desc.
+  const prioridad=e=>e==='Pendiente recepción'?0:e==='Vencida'?1:2;
   const ord=[...lista].sort((a,b)=>{
-    if(a.estatus==='Pendiente recepción'&&b.estatus!=='Pendiente recepción')return -1;
-    if(b.estatus==='Pendiente recepción'&&a.estatus!=='Pendiente recepción')return 1;
+    const pa=prioridad(a.estatus),pb=prioridad(b.estatus);
+    if(pa!==pb)return pa-pb;
     return(b.creadoEn||'').localeCompare(a.creadoEn||'');
   });
   return`<div style="display:flex;flex-direction:column;gap:8px">${ord.map(t=>{
@@ -5171,6 +5214,7 @@ function rTransListFiltrada(lista){
       ${fotos.length?`<div style="display:flex;gap:5px;margin-top:8px">${fotos.map(f=>`<img src="${f}" style="width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid #E8EDF5">`).join('')}${(t.entregaFotos||t.fotos||[]).length>4?`<div style="width:44px;height:44px;border-radius:6px;background:#F1F5F9;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#64748B">+${(t.entregaFotos||t.fotos||[]).length-4}</div>`:''}
       </div>`:''}
       ${isPend?`<div style="margin-top:8px;padding:6px 10px;background:#FEF3C7;border-radius:7px;font-size:11px;font-weight:700;color:#B45309">Esperando que el receptor confirme con el código ${t.codigo||'—'}</div>`:''}
+      ${isVencida?`<div style="margin-top:8px;padding:6px 10px;background:#FEF2F2;border-radius:7px;font-size:11px;font-weight:700;color:#B91C1C">Código vencido${t.venciadoEn?` desde el ${new Date(t.venciadoEn).toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'})}`:''} — el vehículo sigue asignado a ${t.entregaNombre||'—'}${hAdm()?'. Reactiva o cancela abajo.':''}</div>`:''}
       ${isVencida&&hAdm()?`<div style="margin-top:8px;display:flex;gap:8px" onclick="event.stopPropagation()">
         <button onclick="flReactivarTransferencia('${t.id}')" style="flex:1;font-size:11px;font-weight:800;padding:8px;background:#0A1628;color:#fff;border:none;border-radius:8px;cursor:pointer">↻ Reactivar (+7 días)</button>
         <button onclick="flCancelarTransferencia('${t.id}')" style="flex:1;font-size:11px;font-weight:800;padding:8px;background:#fff;color:#B91C1C;border:1px solid #FCA5A5;border-radius:8px;cursor:pointer">✕ Cancelar</button>
@@ -5750,6 +5794,38 @@ window.flVerComparVeh=function(vehId,offsetSem){
 // CHECK LIST SEMANAL — comparativo + detalle
 // ══════════════════════════════════════════════════════
 let chkSemFiltroVeh='';
+// ── VENTANA AUTOMÁTICA DEL CHECK LIST SEMANAL (viernes a lunes) ──
+// El check list se activa solo (sin que un admin tenga que darle clic) los
+// viernes, sábados, domingos y lunes de cada semana. Un administrador
+// siempre puede activarlo o desactivarlo manualmente en cualquier otro
+// momento (o incluso dentro de esa ventana) — esa decisión manual se
+// respeta durante el resto de la semana en curso y no se pisa por este
+// automatismo; hasta que empieza la semana ISO siguiente, el ciclo
+// automático vuelve a tomar el control.
+function flDiaAutoActivoChecklist(d){
+  const dia=(d||new Date()).getDay(); // 0=domingo … 6=sábado
+  return dia===5||dia===6||dia===0||dia===1; // viernes, sábado, domingo, lunes
+}
+async function flAutoGestionarChecklistSemanal(){
+  if(!hAdm())return; // solo un admin con el portal abierto puede escribir el config
+  try{
+    const semActual=getSemanaISOPortal();
+    const esSemanaVigente=flCfgSem.semana===semActual;
+    // Si ya hubo una decisión manual de un admin para ESTA semana, se respeta
+    // tal cual (encendido o apagado) y el automatismo no la toca.
+    if(esSemanaVigente&&flCfgSem.manualEstaSemana)return;
+    const deseadoAuto=flDiaAutoActivoChecklist();
+    const yaCoincide=esSemanaVigente&&!!flCfgSem.activo===deseadoAuto;
+    if(yaCoincide)return;
+    const datos=deseadoAuto
+      ?{activo:true,semana:semActual,activadoPor:'Automático (vie–lun)',activadoEn:new Date().toISOString(),manualEstaSemana:false}
+      :{activo:false,semana:semActual,desactivadoPor:'Automático (fin de ventana vie–lun)',desactivadoEn:new Date().toISOString(),manualEstaSemana:false};
+    await fs.setDoc(fs.doc(db,C.CFG,'checklist_semanal'),datos,{merge:true});
+    flCfgSem={...flCfgSem,...datos};
+    if(vistaAct==='chksemanal')rChkSemanal();
+  }catch(e){console.warn('[FL] flAutoGestionarChecklistSemanal',e);}
+}
+
 // ── SEMANA ISO (portal) ──
 function getSemanaISOPortal(d){
   d=d||new Date();
@@ -5769,22 +5845,25 @@ function hCfgSemPanel(){
   const semActual=getSemanaISOPortal();
   const esEstaSemana=semCfg===semActual;
   const activadoPor=flCfgSem.activadoPor||'';
+  const esAuto=activadoPor==='Automático (vie–lun)';
   const activadoEn=flCfgSem.activadoEn?new Date(flCfgSem.activadoEn).toLocaleString('es-MX',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'';
+  const enVentana=flDiaAutoActivoChecklist();
 
   return`<div style="background:${activo&&esEstaSemana?'#F0FDF4':'#F8FAFD'};border:1.5px solid ${activo&&esEstaSemana?'#86EFAC':'#E2E8F0'};border-radius:12px;padding:14px 16px;margin-bottom:16px">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
-      <div>
+      <div style="min-width:0">
         <div style="font-size:13px;font-weight:800;color:${activo&&esEstaSemana?'#15803D':'#374151'}">
           ${activo&&esEstaSemana
-            ?`✅ Check list activo — ${semCfg}`
+            ?`✅ Check list activo — ${semCfg}${esAuto?' (automático vie–lun)':' (activado manualmente)'}`
             :activo&&!esEstaSemana
               ?`⚠️ Activo para ${semCfg} (semana pasada) — desactiva y reactiva`
-              :`🔒 Check list desactivado`}
+              :`🔒 Check list desactivado${enVentana?' (fuera de lo automático — un admin lo apagó esta ventana)':''}`}
         </div>
         <div style="font-size:11px;color:#64748B;margin-top:3px">
-          ${activo&&activadoPor?`Activado por ${activadoPor}${activadoEn?' · '+activadoEn:''}`:'Semana actual: '+semActual}
-          ${activo&&esEstaSemana?' · Técnicos pueden llenarlo lunes-viernes':''}
+          ${activo&&activadoPor?`Activado por ${esAuto?'el sistema':activadoPor}${activadoEn?' · '+activadoEn:''}`:'Semana actual: '+semActual}
+          ${activo&&esEstaSemana?' · Técnicos pueden llenarlo':''}
         </div>
+        <div style="font-size:10px;color:#94A3B8;margin-top:3px">Automático viernes, sábado, domingo y lunes de cada semana · un administrador puede activarlo o desactivarlo manualmente en cualquier momento</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-shrink:0">
         ${activo
@@ -5803,8 +5882,8 @@ window.flToggleCfgSem=async function(activar){
   const semActual=getSemanaISOPortal();
   const email=window.auth?.currentUser?.email||'—';
   const datos=activar
-    ?{activo:true,semana:semActual,activadoPor:email,activadoEn:new Date().toISOString()}
-    :{activo:false,semana:semActual,desactivadoPor:email,desactivadoEn:new Date().toISOString()};
+    ?{activo:true,semana:semActual,activadoPor:email,activadoEn:new Date().toISOString(),manualEstaSemana:true}
+    :{activo:false,semana:semActual,desactivadoPor:email,desactivadoEn:new Date().toISOString(),manualEstaSemana:true};
   try{
     await fs.setDoc(fs.doc(db,C.CFG,'checklist_semanal'),datos,{merge:true});
     flCfgSem={...flCfgSem,...datos};
@@ -5852,12 +5931,13 @@ function hChkSemMetrics(semSel, porVeh, vehsSinRegistro, total){
 }
 
 function rChkSemanal(){
+  flAutoGestionarChecklistSemanal(); // revisa la ventana automática vie–lun cada vez que se abre esta pestaña
   const semanas=[...new Set(flChkSem.map(r=>r.semana))].sort().reverse();
   const semSel=semanas[0]||getSemanaISOPortal();
   if(!semanas.length){
     setContent(padded(`
       <div style="font-size:17px;font-weight:900;letter-spacing:-.4px;margin-bottom:4px">Check list semanal</div>
-      <div style="font-size:11px;color:#64748B;margin-bottom:14px">Inspección semanal de vehículos (lunes)</div>
+      <div style="font-size:11px;color:#64748B;margin-bottom:14px">Inspección semanal de vehículos (viernes a lunes)</div>
       ${hCfgSemPanel()}
       <div class="fl-empty" style="min-height:200px"><div class="fl-empty-ico"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="1.5"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></div><h3>Sin registros</h3><p>Aún no se han registrado check lists semanales desde la app móvil.</p></div>
     `));
@@ -5976,13 +6056,11 @@ window.flVerChkSem=async function(id){
     });
   }catch(e){console.warn('[FL] fotos subcol:',e);}
   let chkHtml='';
+  let _globalIdx=0;
   Object.entries(CHK_CATS).forEach(([cat,items])=>{
     chkHtml+=`<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin:10px 0 5px;border-bottom:1px solid #E2E8F0;padding-bottom:3px">${cat}</div>`;
     items.forEach((item,i)=>{
-      const key=`sem-${cat}-${i}`;
-      const val=chk[key]||'';
-      const foto=chkFotos[key];
-      const fotoSrc=foto?(typeof foto==='object'?foto.src:foto):null;
+      const{val,fotoSrc}=flResolverItemChecklist(chk,chkFotos,cat,item,i,_globalIdx++);
       chkHtml+=`<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #F8FAFD">
         <span style="flex:1;font-size:12px">${item}</span>
         <span style="font-size:10px;font-weight:800;padding:2px 9px;border-radius:99px;${val==='si'?'background:#DCFCE7;color:#15803D':val==='no'?'background:#FEE2E2;color:#B91C1C':'background:#F1F5F9;color:#94A3B8'}">${val==='si'?'OK':val==='no'?'Detalle':'—'}</span>
@@ -6062,13 +6140,11 @@ window.flGenerarPDFChkSem = async function(id) {
 
   // Construir filas del checklist por categoría
   let chkFullHTML = '';
+  let _pdfGlobalIdx = 0;
   for (const [cat, items] of Object.entries(CHK_CATS)) {
     let catRows = '';
     items.forEach((item, idx) => {
-      const key = `sem-${cat}-${idx}`;
-      const val = chk[key] || '';
-      const foto = chkFotos[key];
-      const fotoSrc = foto ? (typeof foto === 'object' ? foto.src : foto) : null;
+      const { val, fotoSrc } = flResolverItemChecklist(chk, chkFotos, cat, item, idx, _pdfGlobalIdx++);
       const isDetalle = val === 'no';
       const badge = val === 'si'
         ? `<span style="display:inline-block;padding:2px 8px;background:#DCFCE7;color:#15803D;border-radius:10px;font-size:9px;font-weight:800">OK</span>`
@@ -7973,23 +8049,36 @@ window.flConfirmarRechazo = async function(id, esDevol, btn) {
 // RESUMEN FINAL — expediente completo para compartir/PDF
 // ═══════════════════════════════════════════════════════
 // Corrección de monto cotizado, incluso con la solicitud ya cerrada.
-// Solo administradores la ven (botón oculto para el resto). Deja registro de quién y cuándo corrigió.
+// Solo administradores la ven (botón oculto para el resto). Guarda un
+// histórico completo (no solo el último cambio) con quién, cuándo, el monto
+// anterior/nuevo y el motivo de la corrección — para poder auditar por qué
+// cambió un monto y quién lo autorizó.
 window.flEditarMontoCotizacion=async function(id){
   const s=flS.find(x=>x.id===id);if(!s)return;
   const actual=s.montoCotizacion||0;
-  const txt=prompt('Corregir monto cotizado (MXN):',actual||'');
+  const txt=prompt('Nuevo monto cotizado (MXN):',actual||'');
   if(txt===null)return; // canceló
   const nuevo=Number(txt);
   if(!txt.trim()||isNaN(nuevo)||nuevo<0){flToast('Ingresa un monto válido','err');return;}
+  const motivo=prompt('¿Por qué se corrige el monto? (obligatorio, se guarda en el histórico)','');
+  if(motivo===null)return; // canceló
+  if(!motivo.trim()){flToast('El motivo es obligatorio para corregir el monto','err');return;}
   try{
     const user=window.auth?.currentUser;
+    const ahora=new Date().toISOString();
+    const entrada={de:actual,a:nuevo,motivo:motivo.trim(),por:user?.email||'',en:ahora};
+    const historial=[...(s.historialMonto||[]),entrada];
     await fs.updateDoc(fs.doc(db,C.SOLS,id),{
       montoCotizacion:nuevo,
+      historialMonto:historial,
+      // Se conservan estos campos por compatibilidad con reportes existentes.
       montoCorregidoDe:actual,
       montoCorregidoPor:user?.email||'',
-      montoCorregidoEn:new Date().toISOString(),
+      montoCorregidoEn:ahora,
+      montoCorregidoMotivo:motivo.trim(),
     });
     s.montoCotizacion=nuevo;
+    s.historialMonto=historial;
     flToast('Monto corregido correctamente','ok');
     // Refrescar la vista abierta (expediente) con el dato ya actualizado
     document.getElementById('flres-ov')?.remove();
@@ -7998,6 +8087,38 @@ window.flEditarMontoCotizacion=async function(id){
     console.error('[FL] flEditarMontoCotizacion',e);
     flToast('No se pudo guardar la corrección','err');
   }
+};
+
+// Muestra el histórico de correcciones del monto cotizado (quién, cuándo,
+// de cuánto a cuánto y por qué).
+window.flVerHistorialMonto=function(id){
+  const s=flS.find(x=>x.id===id);if(!s)return;
+  const fmtM2=n=>'$'+Number(n||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const fmtDt=iso=>iso?new Date(iso).toLocaleString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
+  // Compatibilidad: si no hay historialMonto pero sí quedó el registro legacy
+  // de una sola corrección (montoCorregidoDe/Por/En), se muestra igual.
+  let hist=s.historialMonto||[];
+  if(!hist.length&&s.montoCorregidoPor){
+    hist=[{de:s.montoCorregidoDe,a:s.montoCotizacion,motivo:s.montoCorregidoMotivo||'',por:s.montoCorregidoPor,en:s.montoCorregidoEn}];
+  }
+  const ov=document.createElement('div');ov.className='fl-ov';ov.style.zIndex='4200';
+  ov.innerHTML=`<div class="fl-modal" style="max-width:460px">
+    <div class="fl-mh"><h3>${I.doc||''} Histórico de correcciones de monto</h3><button class="fl-mx" onclick="this.closest('.fl-ov').remove()">✕</button></div>
+    <div class="fl-mb">
+      ${hist.length?`<div style="display:flex;flex-direction:column;gap:10px">${hist.slice().reverse().map(h=>`
+        <div style="border:1px solid #E8EDF5;border-radius:10px;padding:10px 12px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+            <span style="font-size:12.5px;font-weight:800;color:#0A1628">${fmtM2(h.de)} → ${fmtM2(h.a)}</span>
+            <span style="font-size:9.5px;color:#94A3B8">${fmtDt(h.en)}</span>
+          </div>
+          <div style="font-size:11px;color:#374151;margin-top:4px">${h.motivo?h.motivo:'<span style="color:#94A3B8;font-style:italic">Sin motivo registrado</span>'}</div>
+          <div style="font-size:10px;color:#64748B;margin-top:4px">Corregido por <strong>${flNombrePorCorreo(h.por)||h.por||'—'}</strong></div>
+        </div>`).join('')}</div>`
+      :`<div style="font-size:12px;color:#94A3B8;text-align:center;padding:12px 0">Este monto no tiene correcciones registradas.</div>`}
+      <div class="fl-fa" style="margin-top:12px"><button class="fb gho" onclick="this.closest('.fl-ov').remove()">Cerrar</button></div>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
 };
 
 window.flResumenFinal = function(id) {
@@ -8082,6 +8203,7 @@ window.flResumenFinal = function(id) {
                 <span style="display:flex;align-items:center;gap:6px">
                   <span style="font-size:11px;font-weight:700;color:#0A0F1E">${fmtM(s.montoCotizacion)}</span>
                   ${hAdm()?`<button onclick="flEditarMontoCotizacion('${s.id}')" title="Corregir monto" style="border:none;background:none;cursor:pointer;padding:2px;color:#94A3B8;display:flex">${I.edit}</button>`:''}
+                  ${(s.historialMonto?.length||s.montoCorregidoPor)?`<button onclick="flVerHistorialMonto('${s.id}')" title="Ver histórico de correcciones" style="border:none;background:#F1F5F9;border-radius:100px;padding:2px 8px;cursor:pointer;color:#475569;font-size:9px;font-weight:800;display:flex;align-items:center;gap:3px">🕘 ${s.historialMonto?.length||1}</button>`:''}
                 </span>
               </div>
               ${campo('Fecha pago programada', fmt(s.fechaPagoProgramada))}
