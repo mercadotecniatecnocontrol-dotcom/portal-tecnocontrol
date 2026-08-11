@@ -5960,20 +5960,21 @@ window.flVerChkSem=async function(id){
   const v=flV.find(x=>String(x.eco)===String(r.vehiculoEco))||{};
   const chk=r.checklist||{};
 
-  // Cargar fotos de la subcolección (nuevo modelo) o del doc principal (legacy)
+  // Cargar fotos: primero las que vengan inline en el doc principal (legacy),
+  // y SIEMPRE intentar también la subcolección 'fotos' (nuevo modelo desde la
+  // app móvil), sin depender de r.chkFotosKeys — ese campo nunca se escribe
+  // desde la app móvil, así que confiar solo en él dejaba fotos sin mostrar
+  // aunque el técnico sí las hubiera subido.
   let chkFotos=r.chkFotos||{};
   let evidencias=r.evidencias||[];
-  const tieneSubcol=r.chkFotosKeys&&r.chkFotosKeys.length>0;
-  if(tieneSubcol){
-    try{
-      const fotosSnap=await fs.getDocs(fs.collection(db,C.CHKSEM,id,'fotos'));
-      fotosSnap.docs.forEach(d=>{
-        const f=d.data();
-        if(f.tipo==='chk'&&f.key)chkFotos[f.key]={src:f.src,meta:f.meta||{}};
-        if(f.tipo==='evidencia')evidencias.push({src:f.src,meta:f.meta||{}});
-      });
-    }catch(e){console.warn('[FL] fotos subcol:',e);}
-  }
+  try{
+    const fotosSnap=await fs.getDocs(fs.collection(db,C.CHKSEM,id,'fotos'));
+    fotosSnap.docs.forEach(d=>{
+      const f=d.data();
+      if(f.tipo==='chk'&&f.key)chkFotos[f.key]={src:f.src,meta:f.meta||{}};
+      if(f.tipo==='evidencia')evidencias.push({src:f.src,meta:f.meta||{}});
+    });
+  }catch(e){console.warn('[FL] fotos subcol:',e);}
   let chkHtml='';
   Object.entries(CHK_CATS).forEach(([cat,items])=>{
     chkHtml+=`<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin:10px 0 5px;border-bottom:1px solid #E2E8F0;padding-bottom:3px">${cat}</div>`;
@@ -6025,20 +6026,19 @@ window.flGenerarPDFChkSem = async function(id) {
   const r = flChkSem.find(x => x.id === id); if (!r) return;
   const v = flV.find(x => String(x.eco) === String(r.vehiculoEco)) || {};
 
-  // Cargar fotos de subcol si aplica
+  // Cargar fotos: inline (legacy) + SIEMPRE intentar la subcolección también
+  // (ver comentario equivalente en flVerChkSem — r.chkFotosKeys nunca se
+  // escribe desde la app móvil, por lo que no se puede usar como condición).
   let chkFotos = r.chkFotos || {};
   let evidencias = r.evidencias || [];
-  const tieneSubcol = r.chkFotosKeys && r.chkFotosKeys.length > 0;
-  if (tieneSubcol) {
-    try {
-      const fotosSnap = await fs.getDocs(fs.collection(db, C.CHKSEM, id, 'fotos'));
-      fotosSnap.docs.forEach(d => {
-        const f = d.data();
-        if (f.tipo === 'chk' && f.key) chkFotos[f.key] = { src: f.src, meta: f.meta || {} };
-        if (f.tipo === 'evidencia') evidencias.push({ src: f.src, meta: f.meta || {} });
-      });
-    } catch(e) { console.warn('[PDF chksem]', e); }
-  }
+  try {
+    const fotosSnap = await fs.getDocs(fs.collection(db, C.CHKSEM, id, 'fotos'));
+    fotosSnap.docs.forEach(d => {
+      const f = d.data();
+      if (f.tipo === 'chk' && f.key) chkFotos[f.key] = { src: f.src, meta: f.meta || {} };
+      if (f.tipo === 'evidencia') evidencias.push({ src: f.src, meta: f.meta || {} });
+    });
+  } catch(e) { console.warn('[PDF chksem]', e); }
 
   const chk = r.checklist || {};
   const gasPct = Number(r.gasolina) || 0;
