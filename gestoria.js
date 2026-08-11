@@ -3320,10 +3320,24 @@
         v.textContent = String(serial);
     }
 
+    // Antes se reconocía solo el amarillo EXACTO "FFFF00" — algunos
+    // machotes (p.ej. F-16-04, con fill "FCF600") usan un tono de
+    // amarillo ligeramente distinto que no coincidía con esa comparación
+    // literal, así que ese relleno nunca se limpiaba. Se detecta ahora
+    // por "se ve amarillo" (rojo y verde altos, azul bajo) en vez de por
+    // el valor hexadecimal exacto, para cubrir esta variante y cualquier
+    // otra que aparezca en futuros machotes.
+    function pareceRellenoAmarilloXlsx(rgbHex) {
+        const hex = (rgbHex || '').slice(-6);
+        if (hex.length !== 6 || /[^0-9a-fA-F]/.test(hex)) return false;
+        const r = parseInt(hex.slice(0, 2), 16), g = parseInt(hex.slice(2, 4), 16), b = parseInt(hex.slice(4, 6), 16);
+        return r > 200 && g > 200 && b < 100;
+    }
+
     function quitarRellenoAmarilloXlsx(stylesDoc) {
         for (const fill of Array.from(stylesDoc.getElementsByTagNameNS(NS_S, 'fill'))) {
             const fg = fill.getElementsByTagNameNS(NS_S, 'fgColor')[0];
-            if (fg && (fg.getAttribute('rgb') || '').toUpperCase().endsWith('FFFF00')) {
+            if (fg && pareceRellenoAmarilloXlsx(fg.getAttribute('rgb'))) {
                 const patt = fill.getElementsByTagNameNS(NS_S, 'patternFill')[0];
                 if (patt) {
                     patt.setAttribute('patternType', 'none');
@@ -3631,12 +3645,70 @@
         return s;
     }
 
-    async function procesarXlsxSASISOPA(buffer, datos, stats, ctxImg) {
-        const zip = await JSZip.loadAsync(buffer);
-        const rutaSheet = 'xl/worksheets/sheet1.xml';
-        let sheetXmlTexto, stylesXmlTexto, sharedXmlTexto;
+    // Mapea nombre de pestaña -> ruta de su sheetN.xml, leyendo
+    // xl/workbook.xml y su .rels. Necesario porque el número de hoja
+    // (sheet4.xml, sheet5.xml...) puede variar entre copias del mismo
+    // machote — el NOMBRE de la pestaña ("Desmantelamiento", "Abandono
+    // del sitio") es lo único estable para ubicarlas.
+    async function mapaNombresHojasXlsx(zip) {
+        let workbookXml, relsXml;
         try {
-            sheetXmlTexto = await zip.file(rutaSheet).async('string');
+            workbookXml = await zip.file('xl/workbook.xml').async('string');
+            relsXml = await zip.file('xl/_rels/workbook.xml.rels').async('string');
+        } catch (e) { return {}; }
+        const relPorId = {};
+        for (const m of relsXml.matchAll(/<Relationship\s+Id="(rId\d+)"[^>]*Target="([^"]+)"/g)) {
+            relPorId[m[1]] = m[2].replace(/^\.?\/?/, '');
+        }
+        const mapa = {};
+        for (const m of workbookXml.matchAll(/<sheet\b[^>]*\bname="([^"]+)"[^>]*\br:id="(rId\d+)"[^>]*\/>|<sheet\b[^>]*\br:id="(rId\d+)"[^>]*\bname="([^"]+)"[^>]*\/>/g)) {
+            const nombre = m[1] || m[4];
+            const rId = m[2] || m[3];
+            const target = relPorId[rId];
+            if (nombre && target) mapa[nombre] = 'xl/' + target;
+        }
+        return mapa;
+    }
+
+    // F-02-02: las hojas "Desmantelamiento" y "Abandono del sitio" no
+    // traen ninguna celda "LOGO" — el logo de referencia en esas dos
+    // etapas vive únicamente en el encabezado de impresión (oddHeader)
+    // del machote, como parte de la insignia de "SUPERSERVICIO CUATRO
+    // CAMINOS" incrustada ahí. Tocar ese encabezado de impresión con
+    // VML ya se intentó antes y Excel rechazó el archivo las 3 veces —
+    // así que en vez de eso se inserta el logo del cliente como imagen
+    // normal (DrawingML, el mismo mecanismo ya probado que se usa para
+    // el resto de logos de SASISOPA/SGM) directamente en la esquina
+    // donde debería verse, sin tocar el encabezado de impresión.
+    const NOMBRES_HOJAS_LOGO_FLOTANTE_F0202 = ['Desmantelamiento', 'Abandono del sitio'];
+
+    async function insertarLogoFlotanteHojasF0202(zip, datos, stats, ctxImg) {
+        const mapa = await mapaNombresHojasXlsx(zip);
+        const parser = new DOMParser();
+        const xmlSerializer = new XMLSerializer();
+        for (const nombreHoja of NOMBRES_HOJAS_LOGO_FLOTANTE_F0202) {
+            const rutaSheet = mapa[nombreHoja];
+            if (!rutaSheet) continue;
+            let sheetXmlTexto;
+            try { sheetXmlTexto = await zip.file(rutaSheet).async('string'); } catch (e) { continue; }
+            const sheetDoc = parser.parseFromString(sheetXmlTexto, 'application/xml');
+            if (datos.LOGO_BASE64) {
+                await insertarImagenesXlsxSGM(zip, sheetDoc, rutaSheet, [
+                    { dataUrl: datos.LOGO_BASE64, col: 0, fila: 0, maxAncho: 150, maxAlto: 90,
+                      anchoColPx: anchoColumnaPx(sheetDoc, 0), altoFilaPx: altoFilaPx(sheetDoc, 0) },
+                ], ctxImg);
+                stats.logosInsertados++;
+            } else {
+                stats.logosPendientes++;
+            }
+            zip.file(rutaSheet, xmlSerializer.serializeToString(sheetDoc), { createFolders: false });
+        }
+    }
+
+    async function procesarXlsxSASISOPA(buffer, datos, stats, ctxImg, nombreArchivo) {
+        const zip = await JSZip.loadAsync(buffer);
+        let stylesXmlTexto, sharedXmlTexto;
+        try {
             stylesXmlTexto = await zip.file('xl/styles.xml').async('string');
         } catch (e) {
             return await zip.generateAsync({ type: 'blob' });
@@ -3644,7 +3716,7 @@
         try { sharedXmlTexto = await zip.file('xl/sharedStrings.xml').async('string'); } catch (e) { sharedXmlTexto = null; }
 
         const parser = new DOMParser();
-        const sheetDoc = parser.parseFromString(sheetXmlTexto, 'application/xml');
+        const xmlSerializer = new XMLSerializer();
         const stylesDoc = parser.parseFromString(stylesXmlTexto, 'application/xml');
         const sharedStrings = leerSharedStringsXlsx(sharedXmlTexto);
 
@@ -3653,6 +3725,19 @@
         const roles = SASISOPA_ROLES_DISPONIBLES;
         const norm = t => (t || '').replace(/[.:]+\s*$/, '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         const rolPorEtiqueta = etiqueta => roles.find(r => norm(r.etiqueta) === norm(etiqueta));
+
+        // Algunos machotes (p.ej. F-02-02) traen VARIAS hojas — una por
+        // etapa: Operación, Mantenimiento, Desmantelamiento, Abandono
+        // del sitio... — cada una con su propio encabezado/fecha/AÑO
+        // que personalizar. Antes solo se procesaba "sheet1.xml" y el
+        // resto se copiaba intacto (por eso esas hojas nunca recibían
+        // ningún reemplazo). Se procesan TODAS las hojas del libro.
+        const rutasHojas = Object.keys(zip.files).filter(p => /^xl\/worksheets\/sheet\d+\.xml$/i.test(p));
+
+        for (const rutaSheet of rutasHojas) {
+        let sheetXmlTexto;
+        try { sheetXmlTexto = await zip.file(rutaSheet).async('string'); } catch (e) { continue; }
+        const sheetDoc = parser.parseFromString(sheetXmlTexto, 'application/xml');
 
         const celdas = Array.from(sheetDoc.getElementsByTagNameNS(NS_S, 'c'));
         const celdasLogo = [];
@@ -3776,6 +3861,9 @@
             }
         }
 
+        zip.file(rutaSheet, xmlSerializer.serializeToString(sheetDoc), { createFolders: false });
+        } // fin del ciclo por cada hoja (rutasHojas)
+
         // Cuadros de texto flotantes (capa de dibujo) — algunos machotes
         // SASISOPA (p.ej. F-04-01) usan un cuadro de texto flotante para
         // la firma de "ELABORÓ/REVISÓ" en vez de una tabla de celdas. El
@@ -3819,10 +3907,15 @@
             if (cambios) zip.file(rutaDrawing, resultado, { createFolders: false });
         }
 
-        const xmlSerializer = new XMLSerializer();
-
-        zip.file(rutaSheet, xmlSerializer.serializeToString(sheetDoc), { createFolders: false });
         zip.file('xl/styles.xml', xmlSerializer.serializeToString(stylesDoc), { createFolders: false });
+
+        // F-02-02: logo flotante en Desmantelamiento y Abandono del
+        // sitio (ver comentario en insertarLogoFlotanteHojasF0202) —
+        // esas dos hojas no tienen celda "LOGO", así que no las cubre
+        // el bucle genérico de arriba.
+        if (/^F-02-02/i.test(nombreArchivo || '')) {
+            await insertarLogoFlotanteHojasF0202(zip, datos, stats, ctxImg);
+        }
 
         return await zip.generateAsync({ type: 'blob' });
     }
@@ -5217,7 +5310,7 @@
                     zipSalida.file(nombreArchivo, blobSalida);
                 } else if (nombreArchivo.toLowerCase().endsWith('.xlsx')) {
                     const ctxImg = { contador: 0 };
-                    const blobSalida = await procesarXlsxSASISOPA(buffer, datos, stats, ctxImg);
+                    const blobSalida = await procesarXlsxSASISOPA(buffer, datos, stats, ctxImg, nombreArchivo);
                     zipSalida.file(nombreArchivo, blobSalida);
                 } else {
                     zipSalida.file(nombreArchivo, buffer);
