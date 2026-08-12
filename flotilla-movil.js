@@ -185,19 +185,18 @@ const _DRAFT={
 function _draftSave(key,state){
   try{
     const s=Object.assign({},state);
-    // evFotos nunca se guardan (evidencia general — muy pesadas)
-    s.evFotos=[];
-    if(key===_DRAFT.UTIL){
-      s.fotoKm=null;s.chkFotos={};s.firma=null;
-      localStorage.setItem(key,JSON.stringify(s));
-      return;
-    }
-    // SOL y SEM: guardar fotos de checklist tal cual (ya vienen comprimidas a 400px)
+    // evFotos: en Solicitud y Semanal son evidencia SUPLEMENTARIA (muy pesadas,
+    // no vale la pena arriesgar la cuota de localStorage por ellas) — se
+    // siguen excluyendo igual que siempre. En Transferencia, en cambio, las 7
+    // fotos de ángulo SON el contenido principal del proceso, así que aquí sí
+    // se guardan; si no caben (cuota excedida), el catch de abajo las quita y
+    // reintenta sin ellas, igual que ya protege a fotoKm/chkFotos/firma.
+    if(key!==_DRAFT.UTIL)s.evFotos=[];
     try{
       localStorage.setItem(key,JSON.stringify(s));
     }catch(e){
       // Si no caben con fotos, guardar sin fotos pero avisar
-      s.chkFotos={};
+      s.fotoKm=null;s.chkFotos={};s.firma=null;s.evFotos=[];
       try{localStorage.setItem(key,JSON.stringify(s));}catch{}
     }
   }catch(e){/* error inesperado — ignorar */}
@@ -349,6 +348,7 @@ function chkSemPermitido(semana){
 
 // ── CHECK LIST SEMANAL — BANNER ──
 window._semChkCache={};
+window._semChkDocCache={}; // guarda el doc completo (para poder mostrar respuestaAdmin, no solo si existe)
 function semChkBanner(){
   const eco=miVeh?.eco;if(!eco)return'';
   const semana=getSemanaISO();
@@ -366,7 +366,11 @@ function semChkBanner(){
 
   if(yaExiste===undefined){
     db.collection(C.CHKSEM).where('vehiculoEco','==',String(eco)).where('semana','==',semana).limit(1).get()
-      .then(snap=>{window._semChkCache[cacheKey]=!snap.empty;if(vistaAct==='vehiculo')renderVehiculo();})
+      .then(snap=>{
+        window._semChkCache[cacheKey]=!snap.empty;
+        window._semChkDocCache[cacheKey]=snap.empty?null:snap.docs[0].data();
+        if(vistaAct==='vehiculo')renderVehiculo();
+      })
       .catch(()=>{window._semChkCache[cacheKey]=false;});
     return`<div class="fm-card" style="background:#F8FAFD;display:flex;align-items:center;gap:10px;margin-bottom:12px">
       <div style="width:20px;height:20px;border:2px solid #CBD5E1;border-top-color:#2563EB;border-radius:50%;animation:fmspin .7s linear infinite"></div>
@@ -374,11 +378,23 @@ function semChkBanner(){
     </div>`;
   }
   if(yaExiste){
-    return`<div class="fm-card" style="background:#DCFCE7;border:1px solid #BBF7D0;display:flex;align-items:center;gap:10px;margin-bottom:12px">
+    // Si el admin dejó un comentario/respuesta sobre ESTE check list, se muestra
+    // debajo de la confirmación de "completado" — así el técnico lo ve sin que
+    // exista todavía una pantalla dedicada de historial.
+    const doc=window._semChkDocCache[cacheKey];
+    const resp=doc?.respuestaAdmin;
+    return`<div class="fm-card" style="background:#DCFCE7;border:1px solid #BBF7D0;display:flex;align-items:center;gap:10px;margin-bottom:${resp?'0':'12px'}">
       <span style="color:#15803D;flex-shrink:0">${IC.check}</span>
       <div><div style="font-size:13px;font-weight:800;color:#15803D">Check list semanal completado</div>
       <div style="font-size:11px;color:#166534;margin-top:2px">Semana ${semana} · Ya se registró la inspección de esta semana</div></div>
-    </div>`;
+    </div>
+    ${resp?`<div class="fm-card" style="background:#EFF6FF;border:1px solid #BFDBFE;margin-top:8px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+        <span style="color:#1D4ED8">${IC.bell}</span>
+        <span style="font-size:11px;font-weight:800;color:#1D4ED8;text-transform:uppercase;letter-spacing:.3px">Respuesta del admin</span>
+      </div>
+      <div style="font-size:12.5px;color:#1E3A5F;line-height:1.4">${resp}</div>
+    </div>`:''}`;
   }
   if(chkSemPermitido(semana)){
     const cfg=window._cfgSem||{};
@@ -692,6 +708,7 @@ body{margin:0;padding:0;background:#F0F2F7;font-family:'Plus Jakarta Sans',-appl
 /* OFFLINE BANNER */
 .fm-offline-bar{background:#B45309;color:#fff;text-align:center;padding:6px 14px;font-size:11.5px;font-weight:700;display:none;}
 .fm-offline-bar.show{display:block;}
+.fm-offline-bar svg{width:13px;height:13px;vertical-align:-2px;margin-right:3px;display:inline-block;}
 @keyframes fmspin{to{transform:rotate(360deg);}}
 
 /* EMPTY */
@@ -1436,7 +1453,7 @@ window.adminCambiarVehiculo=function(){
   if(!esRolLibre())return;
   const todos=(window._fmAllVehs?.length?window._fmAllVehs:window.CAT_FL)||[];
   const opciones=todos
-    .filter(v=>v.status==='activo')
+    .filter(v=>v.status!=='baja')
     .sort((a,b)=>Number(a.eco)-Number(b.eco))
     .map(v=>`<option value="${v.eco}" ${String(v.eco)===String(miVeh?.eco)?'selected':''}>${v.eco} · ${v.unidad} (${v.plaza})</option>`)
     .join('');
@@ -3328,9 +3345,11 @@ window.utilFiltrarReceptor=async function(q){
 window.utilSelReceptor=function(nombre,email){
   const inp=document.getElementById('util-receptor-inp');
   const hidden=document.getElementById('util-receptor');
+  const hiddenEmail=document.getElementById('util-receptor-email');
   const lista=document.getElementById('util-receptor-list');
   if(inp)inp.value=nombre;
-  if(hidden)hidden.value=nombre+(email?' ('+email+')':'');
+  if(hidden)hidden.value=nombre; // solo el nombre — el email va aparte en util-receptor-email
+  if(hiddenEmail)hiddenEmail.value=email||'';
   if(lista)lista.style.display='none';
   // Cambiar borde a verde para confirmar selección
   const wrap=document.getElementById('util-receptor-inp');
@@ -3339,6 +3358,20 @@ window.utilSelReceptor=function(nombre,email){
 
 // PASO 1: Elegir modo
 function renderUtilPaso1(){
+  // Si hay un borrador de una transferencia a medio llenar (se cerró la app,
+  // se fue la señal, etc.), ofrecer continuar donde se quedó — mismo patrón
+  // que ya usan Solicitud y Check list semanal.
+  const _utilDraft=_draftLoad(_DRAFT.UTIL);
+  if(_utilDraft&&_utilDraft.modo&&_utilDraft.paso>1){
+    setTimeout(()=>_draftBanner('util',
+      ()=>{
+        Object.assign(utilState,_utilDraft);
+        renderUtil();
+        toast('Borrador restaurado ✓','ok');
+      },
+      ()=>{ _draftClear(_DRAFT.UTIL); }
+    ),400);
+  }
   return`
     <div class="fm-card" style="text-align:center;padding:24px">
       <div style="color:#1E3A5F;margin-bottom:12px;display:flex;justify-content:center">
@@ -3422,29 +3455,31 @@ function renderUtilPaso2(){
 
     <div class="fm-fld"><label>¿A quién se entrega?</label>
       <div style="position:relative" id="util-receptor-wrap">
-        <input id="util-receptor-inp" placeholder="Buscar por nombre o email…" autocomplete="off"
-          style="width:100%;padding:11px 14px;border:1.5px solid #E2E8F0;border-radius:11px;font-size:13px;background:#fff;outline:none;box-sizing:border-box;color:#0A0F1E"
+        <input id="util-receptor-inp" placeholder="Buscar por nombre o email…" autocomplete="off" value="${utilState.receptorNombre||''}"
+          style="width:100%;padding:11px 14px;border:1.5px solid #E2E8F0;border-radius:11px;font-size:13px;background:${utilState.receptorNombre?'#F0FDF4':'#fff'};outline:none;box-sizing:border-box;color:#0A0F1E;${utilState.receptorNombre?'border-color:#22C55E':''}"
           oninput="utilFiltrarReceptor(this.value)"
           onfocus="utilFiltrarReceptor(this.value)">
-        <input type="hidden" id="util-receptor" value="">
+        <input type="hidden" id="util-receptor" value="${utilState.receptorNombre||''}">
+        <input type="hidden" id="util-receptor-email" value="${utilState.receptorEmail||''}">
         <div id="util-receptor-list" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1.5px solid #E2E8F0;border-radius:11px;margin-top:4px;max-height:220px;overflow-y:auto;z-index:999;box-shadow:0 8px 24px rgba(0,0,0,.12)"></div>
       </div>
     </div>
     <div class="fm-fld"><label>Comentarios de entrega <span style="font-size:9px;font-weight:500;text-transform:none;color:#94A3B8">(opcional)</span></label>
-      <textarea id="util-comentario-entrega" placeholder="Estado del vehículo, observaciones, acuerdos…" rows="2" style="width:100%;padding:10px 14px;border:1.5px solid #E2E8F0;border-radius:11px;font-size:13px;background:#fff;outline:none;box-sizing:border-box;resize:none;font-family:inherit"></textarea>
+      <textarea id="util-comentario-entrega" placeholder="Estado del vehículo, observaciones, acuerdos…" rows="2" style="width:100%;padding:10px 14px;border:1.5px solid #E2E8F0;border-radius:11px;font-size:13px;background:#fff;outline:none;box-sizing:border-box;resize:none;font-family:inherit">${utilState.comentarioEntrega||''}</textarea>
     </div>
 
     <div class="fm-fld"><label>KM al entregar</label>
-      <input type="number" id="util-km" placeholder="${v?.km||0}" inputmode="numeric"></div>
+      <input type="number" id="util-km" placeholder="${v?.km||0}" inputmode="numeric" value="${utilState.km||''}"></div>
 
     <div class="fm-fld">
       <label>Foto del odómetro <span style="font-size:9px;font-weight:500;text-transform:none;color:#EF4444">obligatoria</span></label>
       <div id="util-km-foto-wrap" style="display:flex;align-items:center;gap:10px">
+        ${utilState.fotoKm?`<img src="${utilState.fotoKm}" onclick="fmVerImg(this.src)" style="width:60px;height:45px;object-fit:cover;border-radius:7px;border:2px solid #22C55E;cursor:pointer">`:''}
         <button onclick="utilCapturarKm()" style="display:flex;align-items:center;gap:6px;padding:9px 16px;background:#F8FAFD;border:1.5px dashed #CBD5E1;border-radius:10px;font-family:inherit;font-size:12px;font-weight:700;color:#475569;cursor:pointer">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
-          Foto odómetro
+          ${utilState.fotoKm?'Retomar foto':'Foto odómetro'}
         </button>
-        <span id="util-km-foto-ok" style="font-size:11px;color:#94A3B8">Sin foto</span>
+        <span id="util-km-foto-ok" style="font-size:11px;${utilState.fotoKm?'color:#15803D':'color:#94A3B8'}">${utilState.fotoKm?'Foto OK ✓':'Sin foto'}</span>
       </div>
     </div>
 
@@ -3683,6 +3718,11 @@ window.utilCapturar=async function(angulo){
     const tomadas=UTIL_ANGULOS.filter(a=>utilState.evFotos.some(f=>f?.meta?.angulo===a.key)).length;
     toast(`"${UTIL_ANGULOS.find(a=>a.key===angulo)?.label||angulo}" · ${tomadas}/7 fotos`,'ok');
     renderAngulosGrid();
+    // Autoguardar borrador incluyendo la foto recién tomada — mismo patrón que
+    // fmCapturar usa para Solicitud y Check list semanal (evFotos, aunque no
+    // se persiste en localStorage por pesado, sí importa mantener el resto del
+    // estado sincronizado ante un cierre inesperado justo después de la foto).
+    _draftSave(_DRAFT.UTIL,utilState);
     document.body.removeChild(inp);
   };
   inp.click();
@@ -3713,6 +3753,7 @@ window.utilCapturarKm=async function(){
     }
     if(ok){ok.textContent='Foto OK ✓';ok.style.color='#15803D';}
     toast('Foto de odómetro guardada','ok');
+    _draftSave(_DRAFT.UTIL,utilState);
     document.body.removeChild(inp);
   };
   inp.click();
@@ -3720,9 +3761,14 @@ window.utilCapturarKm=async function(){
 
 window.utilSiguiente=function(){
   const receptor=document.getElementById('util-receptor')?.value?.trim();
+  const receptorEmail=document.getElementById('util-receptor-email')?.value?.trim()||'';
   const km=document.getElementById('util-km')?.value?.trim();
-  // Autoguardar km y receptor antes de validar
+  const comentarioEnt=document.getElementById('util-comentario-entrega')?.value?.trim()||'';
+  // Autoguardar km, comentario, receptor y su email antes de validar
   if(km) utilState.km=km;
+  utilState.comentarioEntrega=comentarioEnt;
+  utilState.receptorNombre=receptor||'';
+  utilState.receptorEmail=receptorEmail;
   _draftSave(_DRAFT.UTIL,{...utilState, receptor:receptor||'', km:km||''});
 
   if(!receptor){toast('⚠ Selecciona a quién se entrega el vehículo','err');return;}
@@ -3755,11 +3801,10 @@ window.utilSiguiente=function(){
     return;
   }
 
-  const comentarioEnt=document.getElementById('util-comentario-entrega')?.value?.trim()||'';
   utilState.chkComt=utilState.chkComt||{};
   utilState.datosEntrega={
     vehiculo:miVeh?.unidad||'—',eco:miVeh?.eco||'—',
-    km,receptor,
+    km,receptor,receptorEmail,
     chkComt:utilState.chkComt,
     nombre:window.auth?.currentUser?.displayName||window.auth?.currentUser?.email||'—',
     comentarioEntrega:comentarioEnt,
@@ -3856,6 +3901,13 @@ window.utilConfirmarFirma=async function(){
       );
       // Foto odómetro separada
       const fotoKmComp=utilState.fotoKm?await comprimirBase64(utilState.fotoKm,800,0.65):null;
+      const receptorEmail=(utilState.datosEntrega?.receptorEmail||'').toLowerCase();
+      // Mismo plazo que ya hace cumplir flRevisarTransferenciasPendientes en el
+      // portal (168h = 7 días) — antes esto no se decía en ningún lado al
+      // iniciar la transferencia, así que ni el receptor ni la plataforma
+      // sabían de cuánto tiempo disponían hasta que ya casi vencía.
+      const venceEn=new Date(now.getTime()+168*60*60*1000);
+      const venceTxt=venceEn.toLocaleString('es-MX',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
       // Crear documento de transferencia
       const docObj={
         codigo,tipo:'transferencia',
@@ -3866,10 +3918,12 @@ window.utilConfirmarFirma=async function(){
         entregaFotosMeta:utilState.evFotos.map(e=>e.meta),
         fotoKm:fotoKmComp||null,
         receptorNombre:utilState.datosEntrega?.receptor||'',
+        receptorEmail,
+        venceEn:venceEn.toISOString(),
         comentarioEntrega:utilState.datosEntrega?.comentarioEntrega||'',
         comentarioRecepcion:document.getElementById('util-comentario-recepcion')?.value?.trim()||'',
         estatus:'Pendiente recepción',
-        emails:[userEmail],
+        emails:[userEmail,receptorEmail].filter(Boolean),
         creadoEn:now.toISOString(),
       };
       await db.collection('flotilla_transferencias').add(docObj);
@@ -3888,12 +3942,24 @@ window.utilConfirmarFirma=async function(){
         miPerfil.transferenciaPendiente=codigo;
         miPerfil.transferenciaPendienteEco=docObj.vehiculoEco;
       }
-      // Notificar
-      await db.collection('flotilla_notificaciones').add({
-        tipo:'transferencia_iniciada',codigo,vehiculoEco:docObj.vehiculoEco,
-        mensaje:`${userName} inició transferencia del ECO ${docObj.vehiculoEco||'—'} a ${utilState.datosEntrega?.receptor||'—'}. Pendiente de recepción.`,
-        leido:false,creadoEn:now.toISOString(),
-      });
+      // Notificar — ANTES esta notificación no tenía "para" en absoluto, así
+      // que no llegaba al inbox de nadie. Ahora sí llega directo al técnico
+      // que debe recibir (si capturamos su correo) con instrucción clara y
+      // plazo, y también a los admins de flotilla (la "plataforma") con quién
+      // es el receptor y el mismo límite de tiempo.
+      const destinatarios=new Set(FLOTILLA_ADMINS);
+      if(receptorEmail)destinatarios.add(receptorEmail);
+      await Promise.all([...destinatarios].map(email=>{
+        const esReceptor=email===receptorEmail;
+        return db.collection('flotilla_notificaciones').add({
+          tipo:'transferencia_iniciada',codigo,vehiculoEco:docObj.vehiculoEco,
+          para:email,
+          mensaje:esReceptor
+            ?`${userName} te está transfiriendo el ECO ${docObj.vehiculoEco||'—'}. Debes recibirlo (confirmar con tu firma) antes del ${venceTxt}, o la transferencia vencerá.`
+            :`${userName} inició transferencia del ECO ${docObj.vehiculoEco||'—'} a ${docObj.receptorNombre||'—'}${receptorEmail?' ('+receptorEmail+')':' — sin correo capturado, no se le pudo notificar directamente'}. Pendiente de recepción, vence el ${venceTxt}.`,
+          leido:false,creadoEn:now.toISOString(),
+        }).catch(()=>{});
+      }));
     } else {
       // RECIBIR: completar transferencia
       if(utilState.transferenciaId){
