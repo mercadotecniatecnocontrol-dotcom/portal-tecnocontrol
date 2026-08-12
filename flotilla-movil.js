@@ -3947,7 +3947,7 @@ window.utilConfirmarFirma=async function(){
       // que debe recibir (si capturamos su correo) con instrucción clara y
       // plazo, y también a los admins de flotilla (la "plataforma") con quién
       // es el receptor y el mismo límite de tiempo.
-      const destinatarios=new Set(FLOTILLA_ADMINS);
+      const destinatarios=new Set(ADMINS_FLOTILLA);
       if(receptorEmail)destinatarios.add(receptorEmail);
       await Promise.all([...destinatarios].map(email=>{
         const esReceptor=email===receptorEmail;
