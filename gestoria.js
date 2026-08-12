@@ -2282,10 +2282,25 @@
     // título del puesto (no convertirse al nombre de la persona), a
     // diferencia de 1.1, 1.2 y otros puntos del mismo documento donde sí
     // debe ser el nombre. Cada párrafo se ubica por su texto distintivo.
+    // Menciones de "Alta Dirección" que deben quedarse como título del
+    // puesto (no convertirse al nombre de la persona) — cada una se
+    // ubica por su texto distintivo, sin importar en qué documento SGM
+    // aparezca (el mismo criterio ya usado para 4.2/4.3 de PROC-G-001).
+    // Retro de Glen (sesión de limpieza):
+    //   - PROC-G-001, 1.1 (Objetivo) y 1.2 (Alcance): antes se dejaban
+    //     sin proteger a propósito (se asumía que ahí sí debía ir el
+    //     nombre) — corregido: también deben quedarse como puesto.
+    //   - PROC-G-002, 4.2 (Disponibilidad de documentos): "Alta
+    //     Dirección se asegura:" tampoco estaba protegido en ningún
+    //     documento distinto a PROC-G-001, así que aquí se convertía al
+    //     nombre por error.
     function procesarRevisionPorDireccionSGM(xmlDoc) {
         const TEXTOS_DISTINTIVOS = [
-            'reunión en la que participa',      // 4.2 Realización de la revisión por la dirección
-            'tiene la responsabilidad de asegurarse', // 4.3 Registros de hallazgos de la revisión por la dirección
+            'reunión en la que participa',      // PROC-G-001, 4.2 Realización de la revisión por la dirección
+            'tiene la responsabilidad de asegurarse', // PROC-G-001, 4.3 Registros de hallazgos de la revisión por la dirección
+            'planear y conducir las revisiones', // PROC-G-001, 1.1 Objetivo
+            'con respecto al Sistema de Gestión de Mediciones', // PROC-G-001, 1.2 Alcance
+            'Alta Dirección se asegura:',        // PROC-G-002, 4.2 Disponibilidad de documentos
         ];
         const parrafos = Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'));
         for (const p of parrafos) {
@@ -4132,11 +4147,37 @@
         return _clientesCache;
     }
 
-    async function guardarCliente(id, datos) {
-        const { collection, doc, setDoc, serverTimestamp } = await fsFns();
+    // Recorre el formulario actual y devuelve TODAS las claves que
+    // podrían llegar a existir en Firestore para este cliente (roles del
+    // checklist, campos de texto, tablas dinámicas) — sin importar si
+    // ahora mismo están marcadas/llenas o no. Se usa para saber qué
+    // campos hay que BORRAR explícitamente al guardar (ver guardarCliente).
+    function calcularCamposPosiblesDelFormulario(cont) {
+        const claves = new Set();
+        cont.querySelectorAll('#gs-columna-form [data-clave]').forEach(el => claves.add(el.dataset.clave));
+        cont.querySelectorAll('[data-clave-tabla]').forEach(el => claves.add(el.dataset.claveTabla));
+        return Array.from(claves);
+    }
+
+    // `setDoc(..., {merge:true})` NUNCA borra un campo que ya existía en
+    // Firestore si ese campo simplemente no viene en el objeto nuevo —
+    // solo agrega/actualiza lo que sí viene. Por eso, si el cliente
+    // desmarca un puesto del checklist, borra todas las filas de "Equipo
+    // de medición", o deja en blanco un campo de texto que antes tenía
+    // valor, el dato viejo se quedaba guardado para siempre (merge no
+    // "ve" una ausencia como una instrucción de borrar). Se le pasan
+    // aquí TODAS las claves que el formulario podría llegar a guardar
+    // (`camposPosibles`) y, para las que no vengan en `datos` esta vez,
+    // se marcan con `deleteField()` para que Firestore sí las quite.
+    async function guardarCliente(id, datos, camposPosibles) {
+        const { collection, doc, setDoc, serverTimestamp, deleteField } = await fsFns();
         const sis = sistemaActivo();
         const ref = id ? doc(window.db, sis.coleccion, id) : doc(collection(window.db, sis.coleccion));
-        await setDoc(ref, { ...datos, actualizado: serverTimestamp() }, { merge: true });
+        const payload = { ...datos, actualizado: serverTimestamp() };
+        (camposPosibles || []).forEach(clave => {
+            if (!(clave in payload)) payload[clave] = deleteField();
+        });
+        await setDoc(ref, payload, { merge: true });
         return ref.id;
     }
 
@@ -5114,7 +5155,7 @@
         cont.querySelector('#gs-btn-volver').addEventListener('click', cargarGestoria);
         cont.querySelector('#gs-btn-guardar').addEventListener('click', async () => {
             const datos = leerFormulario(cont);
-            const id = await guardarCliente(_clienteActualId, datos);
+            const id = await guardarCliente(_clienteActualId, datos, calcularCamposPosiblesDelFormulario(cont));
             _clienteActualId = id;
             mostrarProgreso(cont, 'ok', ICONO.check + ' Guardado correctamente.');
         });
@@ -5280,7 +5321,7 @@
             return;
         }
 
-        const id = await guardarCliente(_clienteActualId, datos);
+        const id = await guardarCliente(_clienteActualId, datos, calcularCamposPosiblesDelFormulario(cont));
         _clienteActualId = id;
 
         mostrarProgreso(cont, '', ICONO.reloj + ' Descargando lista de machotes…');
