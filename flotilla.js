@@ -115,6 +115,10 @@ const CAT=[
   {eco:'96',unidad:'MORTOCONFORMADORA',año:0,plaza:'CHIHUAHUA',responsable:'—',placas:'DZ9854B',serie:'—',rend:'—',pv:'—',pol:'—',tipo:'camion',color:'—',nip:'',km:0,status:'activo'},
 ];
 
+// CHK_CATS: catálogo usado por el checklist de "solicitud" (creado desde el
+// portal, formato de llave `${cat}__${i}`). NO tocar sus conteos/orden por
+// categoría — cambiarlos desalinearía solicitudes ya guardadas con este
+// esquema de llaves posicionales.
 const CHK_CATS={
   Cristales:  ['Medallón delantero','Vidrio trasero','Lateral der. delantero','Lateral der. trasero','Lateral izq. delantero','Lateral izq. trasero'],
   Espejos:    ['Retrovisor izquierdo','Retrovisor derecho','Espejo central'],
@@ -123,6 +127,26 @@ const CHK_CATS={
   Motor:      ['Batería','Bobinas','Tapón agua limpiabrisas','Tapón radiador','Tapón dirección hidráulica','Limpiaparabrisas en buen estado'],
   Cajuela:    ['Herramienta','Cables de arranque','Extintor','Llave L','Llave de cruz'],
   Legal:      ['Tarjeta de circulación'],
+};
+
+// CHK_CATS_SEM_GENERICO: espejo EXACTO del CHK_CATS_GENERICO de
+// flotilla-movil.js (mismos textos, mismo orden, mismo número de ítems por
+// categoría). El checklist SEMANAL que llena el técnico en la app usa llaves
+// posicionales `sem-${categoría}-${índice}`, así que si el portal usara aquí
+// el CHK_CATS de arriba (que tiene conteos distintos en Interiores y Motor)
+// los ítems se desalineaban a partir de esa diferencia: la respuesta y la
+// foto de un ítem terminaban mostrándose bajo la etiqueta de OTRO ítem, y los
+// ítems que el portal tiene de más se quedaban en "—" para siempre. Mantener
+// este catálogo en espejo exacto es lo que permite que flResolverItemChecklist
+// encuentre cada respuesta/foto en el ítem correcto.
+const CHK_CATS_SEM_GENERICO={
+  Cristales:  ['vidrio delantero','Vidrio trasero','Lat. der. delantero','Lat. der. trasero','Lat. izq. delantero','Lat. izq. trasero'],
+  Espejos:    ['Retrovisor izquierdo','Retrovisor derecho','Espejo central'],
+  Neumáticos: ['Llanta del. der.','Llanta del. izq.','Llanta tra. der.','Llanta tra. izq.','Refacción'],
+  Interiores: ['Póliza / Manual','Radio','Pantallas','Asientos','Tablero','Tapetes'],
+  Motor:      ['Batería','Tapón agua','Tapón radiador','Tapón dirección'],
+  Cajuela:    ['Herramienta','Cables arranque','Extintor','Llave L','Llave cruz'],
+  Legal:      ['Tarjeta circulación'],
 };
 
 // ── Resolución robusta de un ítem del checklist semanal ──
@@ -1887,6 +1911,23 @@ async function flCargarChkAdapt(){
     _flChkAdaptCfg=d.exists()?d.data():JSON.parse(JSON.stringify(CHKADAPT_DEFAULT));
   }catch(e){_flChkAdaptCfg=JSON.parse(JSON.stringify(CHKADAPT_DEFAULT));}
   return _flChkAdaptCfg;
+}
+// La app móvil (flotilla-movil.js → fijarChkCatsParaVehiculo) decide, por
+// vehículo, si usa el checklist adaptativo (categoría única "Checklist" con
+// los ítems configurados para ese tipo de unidad) o el genérico CHK_CATS.
+// El portal antes SIEMPRE asumía el CHK_CATS genérico al mostrar/exportar un
+// check list semanal, así que cualquier vehículo con categoría adaptativa
+// asignada (p.ej. RAM 700 → "pickup_doble") mostraba TODOS sus ítems en "—"
+// porque las llaves guardadas ("sem-Checklist-0", "sem-Checklist-1"…) nunca
+// coincidían con ninguna variante que probaba flResolverItemChecklist. Esta
+// función replica esa misma decisión para que la vista y el PDF usen el
+// mismo set de ítems con el que el técnico realmente llenó el formulario.
+function flCatsParaVehiculo(cfg,v){
+  if(!cfg)return CHK_CATS_SEM_GENERICO;
+  const unidad=(v?.unidad||'').toUpperCase().trim();
+  const catKey=cfg.asignaciones&&cfg.asignaciones[unidad];
+  const cat=catKey&&cfg.categorias&&cfg.categorias[catKey];
+  return(cat&&cat.items&&cat.items.length)?{Checklist:cat.items}:CHK_CATS_SEM_GENERICO;
 }
 
 function rAdmTabChkAdapt(){
@@ -5895,7 +5936,7 @@ window.flToggleCfgSem=async function(activar){
 };
 
 // ── MÉTRICAS CHECK LIST SEMANAL ──
-function hChkSemMetrics(semSel, porVeh, vehsSinRegistro, total){
+function hChkSemMetrics(semSel, porVeh, vehsSinRegistro){
   const regs=Object.values(porVeh);
   const totalVehs=regs.length+vehsSinRegistro.length;
   const registrados=regs.length;
@@ -5908,7 +5949,8 @@ function hChkSemMetrics(semSel, porVeh, vehsSinRegistro, total){
     const oks=Object.values(chk).filter(v=>v==='si').length;
     totalDetalles+=nos;
     totalOks+=oks;
-    totalItems+=total;
+    const v=flV.find(x=>String(x.eco)===String(r.vehiculoEco))||{};
+    totalItems+=Object.values(flCatsParaVehiculo(_flChkAdaptCfg,v)).flat().length;
     if(!r.firma)sinFirma++;
     if(r.observaciones&&r.observaciones.trim())conObs++;
   });
@@ -5930,8 +5972,9 @@ function hChkSemMetrics(semSel, porVeh, vehsSinRegistro, total){
   </div>`;
 }
 
-function rChkSemanal(){
+async function rChkSemanal(){
   flAutoGestionarChecklistSemanal(); // revisa la ventana automática vie–lun cada vez que se abre esta pestaña
+  await flCargarChkAdapt(); // precarga config adaptativa: deja _flChkAdaptCfg listo para uso síncrono en rChkSemanalTabla
   const semanas=[...new Set(flChkSem.map(r=>r.semana))].sort().reverse();
   const semSel=semanas[0]||getSemanaISOPortal();
   if(!semanas.length){
@@ -5949,7 +5992,6 @@ function rChkSemanal(){
 function rChkSemanalTabla(semSel){
   const semanas=[...new Set(flChkSem.map(r=>r.semana))].sort().reverse();
   const idx=semanas.indexOf(semSel);
-  const total=Object.values(CHK_CATS).flat().length;
   let regs=flChkSem.filter(r=>r.semana===semSel);
   if(chkSemFiltroVeh)regs=regs.filter(r=>String(r.vehiculoEco)===String(chkSemFiltroVeh));
   // un registro por vehículo (el más reciente si hubiera duplicados)
@@ -5970,6 +6012,7 @@ function rChkSemanalTabla(semSel){
   ecos.forEach((eco,i)=>{
     const r=porVeh[eco];
     const v=flV.find(x=>String(x.eco)===String(eco))||{};
+    const total=Object.values(flCatsParaVehiculo(_flChkAdaptCfg,v)).flat().length;
     const bg=i%2===0?'background:#fff':'background:#FAFBFD';
     const ok=okCount(r),no=noCount(r);
     trs+=`<tr style="border-bottom:1px solid #F1F5F9;${bg};cursor:pointer" onclick="flVerChkSem('${r.id}')">
@@ -6026,7 +6069,7 @@ function rChkSemanalTabla(semSel){
     <div style="font-size:17px;font-weight:900;letter-spacing:-.4px;margin-bottom:4px">Check list semanal</div>
     <div style="font-size:11px;color:#64748B;margin-bottom:10px">Semana ${semSel} · ${ecos.length} de ${ecos.length+vehsSinRegistro.length} vehículos registrados · ${Object.values(porVeh).reduce((a,r)=>a+Object.values(r.checklist||{}).filter(v=>v==='no').length,0)} detalles detectados</div>
     ${hCfgSemPanel()}
-    ${!chkSemFiltroVeh?hChkSemMetrics(semSel,porVeh,vehsSinRegistro,total):''}
+    ${!chkSemFiltroVeh?hChkSemMetrics(semSel,porVeh,vehsSinRegistro):''}
     ${navSem}
     ${body}
   `));
@@ -6055,9 +6098,11 @@ window.flVerChkSem=async function(id){
       if(f.tipo==='evidencia')evidencias.push({src:f.src,meta:f.meta||{}});
     });
   }catch(e){console.warn('[FL] fotos subcol:',e);}
+  const _chkAdaptCfg=await flCargarChkAdapt();
+  const catsVeh=flCatsParaVehiculo(_chkAdaptCfg,v);
   let chkHtml='';
   let _globalIdx=0;
-  Object.entries(CHK_CATS).forEach(([cat,items])=>{
+  Object.entries(catsVeh).forEach(([cat,items])=>{
     chkHtml+=`<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin:10px 0 5px;border-bottom:1px solid #E2E8F0;padding-bottom:3px">${cat}</div>`;
     items.forEach((item,i)=>{
       const{val,fotoSrc}=flResolverItemChecklist(chk,chkFotos,cat,item,i,_globalIdx++);
@@ -6118,6 +6163,9 @@ window.flGenerarPDFChkSem = async function(id) {
     });
   } catch(e) { console.warn('[PDF chksem]', e); }
 
+  const _chkAdaptCfgPdf = await flCargarChkAdapt();
+  const catsVehPdf = flCatsParaVehiculo(_chkAdaptCfgPdf, v);
+
   const chk = r.checklist || {};
   const gasPct = Number(r.gasolina) || 0;
   const gasColor = gasPct > 50 ? '#16A34A' : gasPct > 25 ? '#D97706' : '#DC2626';
@@ -6141,7 +6189,7 @@ window.flGenerarPDFChkSem = async function(id) {
   // Construir filas del checklist por categoría
   let chkFullHTML = '';
   let _pdfGlobalIdx = 0;
-  for (const [cat, items] of Object.entries(CHK_CATS)) {
+  for (const [cat, items] of Object.entries(catsVehPdf)) {
     let catRows = '';
     items.forEach((item, idx) => {
       const { val, fotoSrc } = flResolverItemChecklist(chk, chkFotos, cat, item, idx, _pdfGlobalIdx++);
@@ -6186,7 +6234,7 @@ window.flGenerarPDFChkSem = async function(id) {
     : '<div style="font-size:11px;color:#94A3B8;padding:8px">Sin evidencias generales</div>';
 
   // Resumen del checklist
-  const totalItems = Object.values(CHK_CATS).flat().length;
+  const totalItems = Object.values(catsVehPdf).flat().length;
   const okItems = Object.values(chk).filter(v => v === 'si').length;
   const detalleItems = Object.values(chk).filter(v => v === 'no').length;
   const sinResp = totalItems - okItems - detalleItems;
