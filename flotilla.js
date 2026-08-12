@@ -37,6 +37,28 @@ async function agregarColaborador(nombre){
 
 const C={VEHS:'flotilla_vehiculos',SOLS:'flotilla_solicitudes',COMIS:'flotilla_comisiones',TRANS:'flotilla_transferencias',CHKSEM:'flotilla_checklist_semanal',CFG:'flotilla_config',TAREAS:'flotilla_tareas',USOS:'flotilla_usos',USUARIOS:'fl_usuarios',SINIESTROS:'flotilla_siniestros',UBICACIONES:'flotilla_ubicaciones',EVENTOS:'flotilla_eventos',LLANTAS:'flotilla_llantas'};
 
+// Lista de correos que reciben notificaciones administrativas de Flotilla
+// (siniestros, transferencias pendientes/por vencer/vencidas). Este arreglo
+// se usaba en 4 lugares del archivo pero nunca estaba definido en ningún
+// lado — un bug ya existente antes de esta sesión que lanzaba
+// "Can't find variable: FLOTILLA_ADMINS" en cuanto se ejecutaba ese código
+// (algunos casos lo tragaban en un try/catch silencioso; otros no, como el
+// que viste en la app al confirmar una transferencia). Mismo listado que
+// ADMINS_FLOTILLA en flotilla-movil.js, para que ambos lados notifiquen a
+// la misma gente.
+const FLOTILLA_ADMINS=[
+  'rh@tecnocontrol.com.mx',
+  'c.acosta@tecnocontrol.com.mx',
+  'mercadotecniatecnocontrol@gmail.com.mx',
+  'mercadotecnia@tecnocontrol.com.mx',
+  'p.pinedo@tecnocontrol.com.mx',
+  'm.delao@tecnocontrol.com.mx',
+  'i.saucedo@tecnocontrol.com.mx',
+  'v.garcia@tecnocontrol.com.mx',
+  'nicolas@tecnocontrol.com.mx',
+  'fatima@tecnocontrol.com.mx',
+];
+
 // ══════════════════════════════════════════════════════════════
 // FUENTE ÚNICA DE VERDAD — "EN TALLER"
 // Un vehículo está en taller SOLO si su campo status === 'taller'.
