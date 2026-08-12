@@ -1128,8 +1128,8 @@ async function flRevisarTransferenciasPendientes(){
   // ese momento (reactivadaEn) en vez de la fecha de creación original.
   const ref=t=>new Date(t.reactivadaEn||t.creadoEn).getTime();
 
-  // 72h — aviso temprano (antes 24h)
-  const stale=pendientes.filter(t=>!t.avisadoPendiente&&(ahora-ref(t))>72*60*60*1000);
+  // 10h — aviso temprano (mitad del plazo de 24h)
+  const stale=pendientes.filter(t=>!t.avisadoPendiente&&(ahora-ref(t))>10*60*60*1000);
   for(const t of stale){
     try{
       await fs.updateDoc(fs.doc(db,C.TRANS,t.id),{avisadoPendiente:true});
@@ -1144,8 +1144,8 @@ async function flRevisarTransferenciasPendientes(){
     }catch(e){console.warn('[FL] flRevisarTransferenciasPendientes 72h',e);}
   }
 
-  // 162h — aviso de "por vencer" (6h antes del vencimiento final), va al entregador y al receptor designado
-  const porVencer=pendientes.filter(t=>!t.avisadoPorVencer&&(ahora-ref(t))>162*60*60*1000);
+  // 20h — aviso de "por vencer" (4h antes del vencimiento final de 24h), va al entregador y al receptor designado
+  const porVencer=pendientes.filter(t=>!t.avisadoPorVencer&&(ahora-ref(t))>20*60*60*1000);
   for(const t of porVencer){
     try{
       await fs.updateDoc(fs.doc(db,C.TRANS,t.id),{avisadoPorVencer:true});
@@ -1155,16 +1155,16 @@ async function flRevisarTransferenciasPendientes(){
       await Promise.all([...destinatarios].map(email=>fs.addDoc(fs.collection(db,'flotilla_notificaciones'),{
         tipo:'transferencia_por_vencer',codigo:t.codigo,vehiculoEco:t.vehiculoEco||'—',
         para:email,
-        mensaje:`⚠ La transferencia del ECO ${t.vehiculoEco||'—'} (código ${t.codigo}) vence en menos de 6 horas si no se recibe. Entregó: ${t.entregaNombre||'—'}.`,
+        mensaje:`⚠ La transferencia del ECO ${t.vehiculoEco||'—'} (código ${t.codigo}) vence en menos de 4 horas si no se recibe. Entregó: ${t.entregaNombre||'—'}.`,
         leido:false,creadaEn:new Date().toISOString(),
       }).catch(()=>{})));
-    }catch(e){console.warn('[FL] flRevisarTransferenciasPendientes 162h',e);}
+    }catch(e){console.warn('[FL] flRevisarTransferenciasPendientes 20h',e);}
   }
 
-  // 168h (7 días) — vencimiento automático: la transferencia se marca "Vencida" y el
+  // 24h — vencimiento automático: la transferencia se marca "Vencida" y el
   // vehículo se libera de vuelta a quien la inició (nunca llegó a completarse).
   // Un administrador siempre puede reactivarla o cancelarla desde el historial.
-  const vencidas=pendientes.filter(t=>(ahora-ref(t))>168*60*60*1000);
+  const vencidas=pendientes.filter(t=>(ahora-ref(t))>24*60*60*1000);
   for(const t of vencidas){
     try{
       await fs.updateDoc(fs.doc(db,C.TRANS,t.id),{estatus:'Vencida',venciadoEn:new Date().toISOString()});
@@ -1179,10 +1179,10 @@ async function flRevisarTransferenciasPendientes(){
       await Promise.all([...destinatarios].map(email=>fs.addDoc(fs.collection(db,'flotilla_notificaciones'),{
         tipo:'transferencia_vencida',codigo:t.codigo,vehiculoEco:t.vehiculoEco||'—',
         para:email,
-        mensaje:`La transferencia del ECO ${t.vehiculoEco||'—'} (código ${t.codigo}) venció después de 7 días sin ser recibida. El vehículo sigue asignado a ${t.entregaNombre||'—'}. Un administrador puede reactivarla o cancelarla desde el historial de transferencias.`,
+        mensaje:`La transferencia del ECO ${t.vehiculoEco||'—'} (código ${t.codigo}) venció después de 24 horas sin ser recibida. El vehículo sigue asignado a ${t.entregaNombre||'—'}. Un administrador puede reactivarla o cancelarla desde el historial de transferencias.`,
         leido:false,creadaEn:new Date().toISOString(),
       }).catch(()=>{})));
-    }catch(e){console.warn('[FL] flRevisarTransferenciasPendientes 168h',e);}
+    }catch(e){console.warn('[FL] flRevisarTransferenciasPendientes 24h',e);}
   }
 }
 async function ldChkSem(){try{const s=await fs.getDocs(fs.query(fs.collection(db,C.CHKSEM),fs.orderBy('creadoEn','desc'),fs.limit(400)));flChkSem=s.docs.map(d=>({id:d.id,...d.data()}));flChkSem.sort((a,b)=>(b.creadoEn||"").localeCompare(a.creadoEn||""));}catch(e){console.warn('[FL] ldChkSem con límite falló, reintentando sin orderBy',e);try{const s2=await fs.getDocs(fs.collection(db,C.CHKSEM));flChkSem=s2.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.creadoEn||"").localeCompare(a.creadoEn||"")).slice(0,400);}catch{flChkSem=[];}}}
@@ -4948,6 +4948,10 @@ function rComis(){
           </div>
           <div style="font-size:11px;color:#64748B;margin-top:2px">${flTrans.length} registro(s) · desde la app móvil</div>
         </div>
+        <button onclick="flAbrirReporteUso()" style="display:flex;align-items:center;gap:6px;padding:7px 14px;background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:8px;font-family:inherit;font-size:11.5px;font-weight:700;color:#1D4ED8;cursor:pointer">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/></svg>
+          Reporte de uso por técnico
+        </button>
         <button onclick="flExportarTransCSV()" style="display:flex;align-items:center;gap:6px;padding:7px 14px;background:#F8FAFD;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:11.5px;font-weight:700;color:#475569;cursor:pointer">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           Exportar CSV
@@ -5289,7 +5293,7 @@ function rTransListFiltrada(lista){
       </div>`:''}
       ${isVencida?`<div style="margin-top:8px;padding:6px 10px;background:#FEF2F2;border-radius:7px;font-size:11px;font-weight:700;color:#B91C1C">Código vencido${t.venciadoEn?` desde el ${new Date(t.venciadoEn).toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'})}`:''} — el vehículo sigue asignado a ${t.entregaNombre||'—'}${hAdm()?'. Reactiva o cancela abajo.':''}</div>`:''}
       ${isVencida&&hAdm()?`<div style="margin-top:8px;display:flex;gap:8px" onclick="event.stopPropagation()">
-        <button onclick="flReactivarTransferencia('${t.id}')" style="flex:1;font-size:11px;font-weight:800;padding:8px;background:#0A1628;color:#fff;border:none;border-radius:8px;cursor:pointer">↻ Reactivar (+7 días)</button>
+        <button onclick="flReactivarTransferencia('${t.id}')" style="flex:1;font-size:11px;font-weight:800;padding:8px;background:#0A1628;color:#fff;border:none;border-radius:8px;cursor:pointer">↻ Reactivar (+24h)</button>
         <button onclick="flCancelarTransferencia('${t.id}')" style="flex:1;font-size:11px;font-weight:800;padding:8px;background:#fff;color:#B91C1C;border:1px solid #FCA5A5;border-radius:8px;cursor:pointer">✕ Cancelar</button>
       </div>`:''}
     </div>`;
@@ -5363,6 +5367,204 @@ window.flCancelarPendientesFiltradas=async function(){
   }
   flToast(`${ok} transferencia(s) cancelada(s)`,'ok');
   document.getElementById('fl-trans-r')&&(document.getElementById('fl-trans-r').innerHTML=rTransListFiltrada(flTrans));
+};
+
+// ═══════════════════════════════════════════════════════════════
+// REPORTE DE USO POR TÉCNICO — qué vehículo(s) ha usado cada técnico,
+// por cuánto tiempo, cuál trae ahora y en qué condición está ese vehículo.
+// Se arma desde flUsos (historial de vinculación/desvinculación, ya
+// alimentado en tiempo real desde la app móvil) + flV (catálogo de
+// vehículos, para condición/unidad actual).
+// ═══════════════════════════════════════════════════════════════
+function flFmtDuracion(ms){
+  if(!ms||ms<0)return'—';
+  const dias=Math.floor(ms/86400000);
+  const horas=Math.floor((ms%86400000)/3600000);
+  if(dias>0)return`${dias}d ${horas}h`;
+  const mins=Math.floor((ms%3600000)/60000);
+  if(horas>0)return`${horas}h ${mins}min`;
+  return`${mins}min`;
+}
+function flDatosReporteUso(){
+  const porTecnico={};
+  (flUsos||[]).forEach(u=>{
+    const key=(u.email||'').toLowerCase().trim();
+    if(!key)return;
+    if(!porTecnico[key])porTecnico[key]={email:key,nombre:u.nombre||key,periodos:[]};
+    if(u.nombre)porTecnico[key].nombre=flNombrePorCorreo(key)||u.nombre;
+    const v=flV.find(x=>String(x.eco)===String(u.eco));
+    const inicio=u.vinculadoEn?new Date(u.vinculadoEn):null;
+    const fin=u.activo?new Date():(u.desvinculadoEn?new Date(u.desvinculadoEn):null);
+    const ms=(inicio&&fin&&!isNaN(inicio)&&!isNaN(fin))?(fin-inicio):0;
+    porTecnico[key].periodos.push({
+      eco:u.eco,unidad:v?.unidad||'—',placas:v?.placas||'—',
+      status:v?.status||'—',
+      vinculadoEn:u.vinculadoEn,desvinculadoEn:u.desvinculadoEn,activo:!!u.activo,
+      duracionMs:ms,
+    });
+  });
+  return Object.values(porTecnico).map(t=>{
+    t.periodos.sort((a,b)=>(b.vinculadoEn||'').localeCompare(a.vinculadoEn||''));
+    const actual=t.periodos.find(p=>p.activo);
+    return{
+      ...t,
+      vehiculoActualTxt:actual?`ECO ${actual.eco} · ${actual.unidad}`:'Sin vehículo asignado',
+      condicionActual:actual?(actual.status==='taller'?'En taller':actual.status==='comision'?'En comisión':actual.status==='baja'?'Baja':'Activo'):'—',
+      totalVehiculos:t.periodos.length,
+    };
+  }).sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
+}
+
+window.flAbrirReporteUso=function(){
+  const datos=flDatosReporteUso();
+  const ov=document.createElement('div');ov.className='fl-ov';ov.id='fl-reporteuso-ov';
+  ov.innerHTML=`<div class="fl-modal" style="max-width:960px;width:96%">
+    <div class="fl-mh">
+      <div>
+        <h3>${I.doc||''} Reporte de uso por técnico</h3>
+        <div style="font-size:11px;color:#64748B;margin-top:2px">${datos.length} técnico(s) con historial de vinculación</div>
+      </div>
+      <button class="fl-mx" onclick="this.closest('.fl-ov').remove()">✕</button>
+    </div>
+    <div class="fl-mb">
+      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+        <button onclick="flReporteUsoPDF()" style="display:flex;align-items:center;gap:6px;padding:8px 16px;background:#0A1628;color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          Exportar PDF
+        </button>
+        <button onclick="flReporteUsoExcel()" id="fl-reporteuso-xlsx-btn" style="display:flex;align-items:center;gap:6px;padding:8px 16px;background:#15803D;color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span id="fl-reporteuso-xlsx-lbl">Exportar Excel</span>
+        </button>
+      </div>
+      <div id="fl-reporteuso-tabla">${rReporteUsoTabla(datos)}</div>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+};
+
+function rReporteUsoTabla(datos){
+  if(!datos.length)return`<div style="padding:30px;text-align:center;color:#94A3B8;font-size:12px">Sin historial de vinculación todavía.</div>`;
+  const condColor=c=>c==='En taller'?'#B45309':c==='En comisión'?'#7C3AED':c==='Baja'?'#B91C1C':c==='Activo'?'#15803D':'#94A3B8';
+  return`<div style="display:flex;flex-direction:column;gap:8px">${datos.map((t,i)=>`
+    <div style="border:1px solid #E8EDF5;border-radius:12px;overflow:hidden">
+      <div onclick="flReporteUsoToggle(${i})" style="cursor:pointer;display:flex;align-items:center;gap:12px;padding:12px 16px;background:#F8FAFD">
+        <span id="fl-rpu-chev-${i}" style="display:flex;color:#94A3B8;transition:transform .15s;flex-shrink:0">${I.chevDown||'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>'}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:800;color:#0A1628">${t.nombre}</div>
+          <div style="font-size:10.5px;color:#94A3B8;margin-top:1px">${t.email}</div>
+        </div>
+        <div style="text-align:right;min-width:0">
+          <div style="font-size:12px;font-weight:700;color:#0A1628">${t.vehiculoActualTxt}</div>
+          <span style="font-size:9.5px;font-weight:800;color:${condColor(t.condicionActual)}">${t.condicionActual}</span>
+        </div>
+        <div style="font-size:10px;font-weight:700;color:#64748B;background:#fff;border:1px solid #E2E8F0;border-radius:100px;padding:3px 9px;flex-shrink:0">${t.totalVehiculos} vehículo(s)</div>
+      </div>
+      <div id="fl-rpu-body-${i}" style="display:none;padding:4px 16px 12px">
+        <table style="width:100%;border-collapse:collapse;font-size:11.5px">
+          <thead><tr style="border-bottom:1px solid #F1F5F9">
+            <th style="text-align:left;padding:6px 8px;font-size:9.5px;font-weight:800;color:#94A3B8;text-transform:uppercase">Vehículo</th>
+            <th style="text-align:left;padding:6px 8px;font-size:9.5px;font-weight:800;color:#94A3B8;text-transform:uppercase">Vinculado</th>
+            <th style="text-align:left;padding:6px 8px;font-size:9.5px;font-weight:800;color:#94A3B8;text-transform:uppercase">Desvinculado</th>
+            <th style="text-align:right;padding:6px 8px;font-size:9.5px;font-weight:800;color:#94A3B8;text-transform:uppercase">Duración</th>
+          </tr></thead>
+          <tbody>${t.periodos.map(p=>`<tr style="border-bottom:1px solid #F8FAFD">
+            <td style="padding:6px 8px;font-weight:700">ECO ${p.eco} · ${p.unidad}${p.activo?' <span style="color:#15803D;font-weight:800">(actual)</span>':''}</td>
+            <td style="padding:6px 8px;color:#475569">${p.vinculadoEn?new Date(p.vinculadoEn).toLocaleDateString('es-MX'):'—'}</td>
+            <td style="padding:6px 8px;color:#475569">${p.activo?'—':(p.desvinculadoEn?new Date(p.desvinculadoEn).toLocaleDateString('es-MX'):'—')}</td>
+            <td style="padding:6px 8px;text-align:right;font-weight:700">${flFmtDuracion(p.duracionMs)}</td>
+          </tr>`).join('')}</tbody>
+        </table>
+      </div>
+    </div>`).join('')}</div>`;
+}
+window.flReporteUsoToggle=function(i){
+  const body=document.getElementById('fl-rpu-body-'+i);
+  const chev=document.getElementById('fl-rpu-chev-'+i);
+  if(!body)return;
+  const abierto=body.style.display==='block';
+  body.style.display=abierto?'none':'block';
+  if(chev)chev.style.transform=abierto?'rotate(0deg)':'rotate(180deg)';
+};
+
+// ── Exportar a PDF: misma técnica que el resto del portal — armar el HTML
+// completo, abrirlo en pestaña nueva, y que el usuario le dé "Guardar como PDF"
+// desde el diálogo de impresión del navegador (sin depender de ninguna
+// librería externa de PDF). ──
+window.flReporteUsoPDF=function(){
+  const datos=flDatosReporteUso();
+  const condColor=c=>c==='En taller'?'#B45309':c==='En comisión'?'#7C3AED':c==='Baja'?'#B91C1C':c==='Activo'?'#15803D':'#94A3B8';
+  const filas=datos.map(t=>`
+    <tr style="border-bottom:2px solid #0A1628"><td colspan="4" style="padding:10px 6px 4px;font-weight:900;font-size:12.5px">${t.nombre} <span style="font-weight:400;color:#64748B;font-size:10px">(${t.email})</span></td></tr>
+    <tr style="background:#F8FAFD"><td colspan="2" style="padding:5px 6px;font-size:10.5px;color:#64748B">Vehículo actual: <strong style="color:#0A1628">${t.vehiculoActualTxt}</strong></td><td colspan="2" style="padding:5px 6px;font-size:10.5px;text-align:right;color:${condColor(t.condicionActual)};font-weight:800">${t.condicionActual}</td></tr>
+    ${t.periodos.map(p=>`<tr style="border-bottom:1px solid #F1F5F9">
+      <td style="padding:5px 6px;font-size:10.5px">ECO ${p.eco} · ${p.unidad}${p.activo?' (actual)':''}</td>
+      <td style="padding:5px 6px;font-size:10.5px;color:#64748B">${p.vinculadoEn?new Date(p.vinculadoEn).toLocaleDateString('es-MX'):'—'}</td>
+      <td style="padding:5px 6px;font-size:10.5px;color:#64748B">${p.activo?'—':(p.desvinculadoEn?new Date(p.desvinculadoEn).toLocaleDateString('es-MX'):'—')}</td>
+      <td style="padding:5px 6px;font-size:10.5px;text-align:right;font-weight:700">${flFmtDuracion(p.duracionMs)}</td>
+    </tr>`).join('')}
+  `).join('');
+  const html=`<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Reporte de uso por técnico — Tecnocontrol</title>
+    <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui,Arial,sans-serif;color:#0A0F1E;padding:28px 32px}
+    .logo{font-size:20px;font-weight:900;letter-spacing:-1px}.logo em{color:#2563EB;font-style:normal}
+    .hdr{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #0A1628;padding-bottom:12px;margin-bottom:18px}
+    table{width:100%;border-collapse:collapse}th{text-align:left;padding:6px;font-size:9.5px;text-transform:uppercase;color:#94A3B8;border-bottom:2px solid #E2E8F0}
+    @media print{button{display:none!important}}</style></head><body>
+    <div class="hdr"><div><div class="logo">TECNO<em>CONTROL</em></div><div style="font-size:10.5px;color:#64748B;margin-top:3px">Reporte de uso de vehículos por técnico</div></div>
+    <div style="text-align:right;font-size:10px;color:#64748B">${new Date().toLocaleString('es-MX')}<br>${datos.length} técnico(s)</div></div>
+    <table><thead><tr><th>Vehículo</th><th>Vinculado</th><th>Desvinculado</th><th style="text-align:right">Duración</th></tr></thead><tbody>${filas}</tbody></table>
+    <div style="margin-top:20px;text-align:right"><button onclick="window.print()" style="padding:11px 28px;background:#0A1628;color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:800;cursor:pointer">Imprimir / Guardar PDF</button></div>
+    </body></html>`;
+  const w=window.open('','_blank');
+  if(!w){flToast('El navegador bloqueó la ventana — permite pop-ups para este sitio','err');return;}
+  w.document.write(html);w.document.close();
+};
+
+// ── Exportar a Excel real (.xlsx) — se carga SheetJS solo cuando se pide
+// este export (no en cada carga del portal), ya que es la única función
+// que lo necesita. ──
+function flCargarSheetJS(){
+  return new Promise((resolve,reject)=>{
+    if(window.XLSX){resolve();return;}
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload=()=>resolve();
+    s.onerror=()=>reject(new Error('No se pudo cargar la librería de Excel'));
+    document.head.appendChild(s);
+  });
+}
+window.flReporteUsoExcel=async function(){
+  const btn=document.getElementById('fl-reporteuso-xlsx-btn');
+  const lbl=document.getElementById('fl-reporteuso-xlsx-lbl');
+  if(btn){btn.disabled=true;}
+  if(lbl){lbl.textContent='Generando…';}
+  try{
+    await flCargarSheetJS();
+    const datos=flDatosReporteUso();
+    const resumen=datos.map(t=>({
+      'Técnico':t.nombre,'Correo':t.email,
+      'Vehículo actual':t.vehiculoActualTxt,'Condición actual':t.condicionActual,
+      'Vehículos usados (histórico)':t.totalVehiculos,
+    }));
+    const historial=[];
+    datos.forEach(t=>t.periodos.forEach(p=>historial.push({
+      'Técnico':t.nombre,'Correo':t.email,
+      'ECO':p.eco,'Unidad':p.unidad,'Placas':p.placas,
+      'Vinculado':p.vinculadoEn?new Date(p.vinculadoEn).toLocaleString('es-MX'):'—',
+      'Desvinculado':p.activo?'— (actual)':(p.desvinculadoEn?new Date(p.desvinculadoEn).toLocaleString('es-MX'):'—'),
+      'Duración':flFmtDuracion(p.duracionMs),
+    })));
+    const wb=window.XLSX.utils.book_new();
+    window.XLSX.utils.book_append_sheet(wb,window.XLSX.utils.json_to_sheet(resumen),'Resumen actual');
+    window.XLSX.utils.book_append_sheet(wb,window.XLSX.utils.json_to_sheet(historial),'Historial detallado');
+    window.XLSX.writeFile(wb,`Reporte_uso_vehiculos_${new Date().toISOString().slice(0,10)}.xlsx`);
+  }catch(e){
+    console.error('[FL reporteUso xlsx]',e);
+    flToast('No se pudo generar el Excel: '+(e.message||e),'err');
+  }finally{
+    if(btn){btn.disabled=false;}
+    if(lbl){lbl.textContent='Exportar Excel';}
+  }
 };
 
 window.flExportarTransCSV=function(){
@@ -6241,6 +6443,17 @@ window.flGuardarRespuestaChkSem=async function(id){
     const enISO=new Date().toISOString();
     await fs.updateDoc(fs.doc(db,C.CHKSEM,id),{respuestaAdmin:texto,respuestaAdminPor:porEmail,respuestaAdminEn:enISO});
     r.respuestaAdmin=texto;r.respuestaAdminPor=porEmail;r.respuestaAdminEn=enISO;
+    // Avisar al técnico — antes esta respuesta solo se veía si el técnico
+    // volvía a entrar a "Mi vehículo" por su cuenta; ahora también le llega
+    // como notificación normal (Avisos) igual que el resto del sistema.
+    if(texto&&r.tecnico){
+      await fs.addDoc(fs.collection(db,'flotilla_notificaciones'),{
+        tipo:'chksem_respuesta_admin',chkSemId:id,vehiculoEco:r.vehiculoEco||'—',
+        para:String(r.tecnico).toLowerCase(),
+        mensaje:`Recibiste una respuesta del admin sobre tu check list del ECO ${r.vehiculoEco||'—'} (semana ${r.semana||'—'}): "${texto}"`,
+        leido:false,creadaEn:enISO,
+      }).catch(()=>{});
+    }
     document.querySelector('.fl-ov')?.remove();
     flVerChkSem(id);
   }catch(e){
