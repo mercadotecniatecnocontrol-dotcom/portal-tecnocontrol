@@ -110,13 +110,38 @@ const CHK_CATS_GENERICO={
 // categoría asignada, o la config no cargó, se usa el genérico de siempre.
 let CHK_CATS=CHK_CATS_GENERICO;
 
-// ── CHECKLIST ADAPTATIVO — leído desde la config del portal ──
+// ── CHECKLIST ADAPTATIVO — leído desde la config del portal, EN VIVO ──
+// Antes se leía una sola vez con .get(), así que un cambio guardado en el
+// portal (Administración → Checklist adaptativo) solo llegaba a la app la
+// próxima vez que el técnico cerraba y volvía a abrir la app — podía tardar
+// hasta el día siguiente. Con onSnapshot, Firestore empuja el cambio al
+// instante a cualquier sesión con la app abierta.
+// Cuidado importante: si el técnico YA está a mitad de un checklist cuando
+// tú guardas un cambio, NO le reescribimos el formulario debajo de las manos
+// (perdería lo que llevaba, o se desalinearía). Solo se refresca en vivo la
+// pantalla si todavía no ha respondido ningún ítem; si ya empezó, el cambio
+// se aplicará limpio la próxima vez que abra un checklist nuevo.
 window._chkAdaptCfg=null; // cache: {categorias,asignaciones} o null si no cargado
+let _chkAdaptUnsub=null; // desuscriptor, evita registrar el listener más de una vez
 function cargarChkAdaptCfg(){
-  if(window._chkAdaptCfg!==null)return Promise.resolve();
-  return db.collection(C.CFG).doc('checklist_adaptativo').get()
-    .then(d=>{window._chkAdaptCfg=d.exists?d.data():{categorias:{},asignaciones:{}};})
-    .catch(()=>{window._chkAdaptCfg={categorias:{},asignaciones:{}};});
+  if(window._chkAdaptCfg!==null&&_chkAdaptUnsub)return Promise.resolve();
+  if(_chkAdaptUnsub){_chkAdaptUnsub();_chkAdaptUnsub=null;}
+  return new Promise(resolve=>{
+    let primeraCarga=true;
+    _chkAdaptUnsub=db.collection(C.CFG).doc('checklist_adaptativo').onSnapshot(d=>{
+      window._chkAdaptCfg=d.exists?d.data():{categorias:{},asignaciones:{}};
+      if(primeraCarga){primeraCarga=false;resolve();return;}
+      const sinRespuestasAun=!semState.chk||Object.keys(semState.chk).length===0;
+      if(vistaAct==='chksemanal'&&sinRespuestasAun&&miVeh){
+        fijarChkCatsParaVehiculo(miVeh);
+        const wrap=document.getElementById('fm-sem-chk-list');
+        if(wrap)wrap.innerHTML=renderChkSemanalList();
+      }
+    },()=>{
+      window._chkAdaptCfg={categorias:{},asignaciones:{}};
+      if(primeraCarga){primeraCarga=false;resolve();}
+    });
+  });
 }
 // Decide qué CHK_CATS usar para un vehículo dado, y lo deja asignado en la
 // variable global CHK_CATS antes de construir el formulario.
