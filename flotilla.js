@@ -1111,7 +1111,9 @@ async function flRevisarTransferenciasPendientes(){
   for(const t of stale){
     try{
       await fs.updateDoc(fs.doc(db,C.TRANS,t.id),{avisadoPendiente:true});
-      await Promise.all(FLOTILLA_ADMINS.map(admEmail=>fs.addDoc(fs.collection(db,'flotilla_notificaciones'),{
+      const destinatarios=new Set(FLOTILLA_ADMINS);
+      if(t.receptorEmail)destinatarios.add(t.receptorEmail);
+      await Promise.all([...destinatarios].map(admEmail=>fs.addDoc(fs.collection(db,'flotilla_notificaciones'),{
         tipo:'transferencia_pendiente_larga',codigo:t.codigo,vehiculoEco:t.vehiculoEco||'—',
         para:admEmail,
         mensaje:`Transferencia del ECO ${t.vehiculoEco||'—'} sigue "Pendiente recepción" desde hace más de 72h (código ${t.codigo}). Entregó: ${t.entregaNombre||'—'}.`,
@@ -1127,6 +1129,7 @@ async function flRevisarTransferenciasPendientes(){
       await fs.updateDoc(fs.doc(db,C.TRANS,t.id),{avisadoPorVencer:true});
       const destinatarios=new Set(FLOTILLA_ADMINS);
       if(t.entregaEmail)destinatarios.add(t.entregaEmail);
+      if(t.receptorEmail)destinatarios.add(t.receptorEmail);
       await Promise.all([...destinatarios].map(email=>fs.addDoc(fs.collection(db,'flotilla_notificaciones'),{
         tipo:'transferencia_por_vencer',codigo:t.codigo,vehiculoEco:t.vehiculoEco||'—',
         para:email,
@@ -3682,7 +3685,10 @@ function renderRP(id){
   const ultChk=flChkSem.filter(c=>String(c.vehiculoEco)===String(v.eco)).sort((a,b)=>(b.creadoEn||'').localeCompare(a.creadoEn||''))[0];
 
   const card=(titulo,contenido,extra)=>`<div class="fl-rp-card">
-    <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">${titulo}${extra||''}</div>
+    <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-shrink:0">
+      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${titulo}</span>
+      ${extra?`<span style="flex-shrink:0;white-space:nowrap">${extra}</span>`:''}
+    </div>
     <div>${contenido}</div>
   </div>`;
   const fila=(label,val,mono)=>`<div class="fl-rp-fila"><span style="color:#94A3B8;flex-shrink:0">${label}</span><span style="font-weight:700;${mono?"font-family:'JetBrains Mono',monospace;":''}text-align:right;overflow-wrap:anywhere;word-break:break-word;min-width:0">${val}</span></div>`;
@@ -5248,13 +5254,13 @@ function rTransListFiltrada(lista){
         <div><div style="font-size:8px;font-weight:800;text-transform:uppercase;color:#94A3B8;margin-bottom:2px">Entrega</div>
           <div style="font-size:11.5px;font-weight:600;color:#0A1628;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${flNombrePorCorreo(t.entregaNombre||t.entregaEmail)||'—'}</div></div>
         <div><div style="font-size:8px;font-weight:800;text-transform:uppercase;color:#94A3B8;margin-bottom:2px">Recibe</div>
-          <div style="font-size:11.5px;font-weight:600;color:${isPend?'#B45309':'#0A1628'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${flNombrePorCorreo(t.recibioNombre||t.recibioEmail)||(isPend?'Pendiente':'—')}</div></div>
+          <div style="font-size:11.5px;font-weight:600;color:${isPend?'#B45309':'#0A1628'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${isPend?(flNombrePorCorreo(t.receptorEmail)||t.receptorNombre||t.receptorEmail||'Sin receptor designado'):(flNombrePorCorreo(t.recibioNombre||t.recibioEmail)||'—')}</div></div>
         <div><div style="font-size:8px;font-weight:800;text-transform:uppercase;color:#94A3B8;margin-bottom:2px">KM · Gas</div>
           <div style="font-size:11.5px;font-weight:600;color:#0A1628">${t.entregaKm||t.km||'—'} · ${t.entregaGasolina!=null?t.entregaGasolina+'%':'—'}</div></div>
       </div>
       ${fotos.length?`<div style="display:flex;gap:5px;margin-top:8px">${fotos.map(f=>`<img src="${f}" style="width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid #E8EDF5">`).join('')}${(t.entregaFotos||t.fotos||[]).length>4?`<div style="width:44px;height:44px;border-radius:6px;background:#F1F5F9;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#64748B">+${(t.entregaFotos||t.fotos||[]).length-4}</div>`:''}
       </div>`:''}
-      ${isPend?`<div style="margin-top:8px;padding:6px 10px;background:#FEF3C7;border-radius:7px;font-size:11px;font-weight:700;color:#B45309">Esperando que el receptor confirme con el código ${t.codigo||'—'}</div>`:''}
+      ${isPend?`<div style="margin-top:8px;padding:6px 10px;background:#FEF3C7;border-radius:7px;font-size:11px;font-weight:700;color:#B45309">Esperando que ${t.receptorNombre||'el receptor'} confirme con el código ${t.codigo||'—'}${t.venceEn?` · Vence el ${new Date(t.venceEn).toLocaleString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}`:''}</div>`:''}
       ${isVencida?`<div style="margin-top:8px;padding:6px 10px;background:#FEF2F2;border-radius:7px;font-size:11px;font-weight:700;color:#B91C1C">Código vencido${t.venciadoEn?` desde el ${new Date(t.venciadoEn).toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'})}`:''} — el vehículo sigue asignado a ${t.entregaNombre||'—'}${hAdm()?'. Reactiva o cancela abajo.':''}</div>`:''}
       ${isVencida&&hAdm()?`<div style="margin-top:8px;display:flex;gap:8px" onclick="event.stopPropagation()">
         <button onclick="flReactivarTransferencia('${t.id}')" style="flex:1;font-size:11px;font-weight:800;padding:8px;background:#0A1628;color:#fff;border:none;border-radius:8px;cursor:pointer">↻ Reactivar (+7 días)</button>
@@ -5558,7 +5564,7 @@ window.flTransWA=function(id){
 };
 
 window.flAbrirCom=function(){
-  const vehs=flV.filter(v=>!v.status||v.status==='activo');
+  const vehs=flV.filter(v=>v.status!=='baja');
   window.flComEv=[];const comEv=window.flComEv;
   const ov=document.createElement('div');ov.className='fl-ov';ov.id='fl-mcom';
   ov.innerHTML=`<div class="fl-modal"><div class="fl-mh"><h3>${I.truck} Registrar utilitario</h3><button class="fl-mx" onclick="this.closest('.fl-ov').remove()">✕</button></div>
@@ -6132,6 +6138,18 @@ window.flVerChkSem=async function(id){
       <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin:12px 0 4px">Firma del técnico</div>
       ${r.firma?`<img src="${r.firma}" onclick="flImg('${r.firma}')" style="max-width:240px;width:100%;border:1px solid #E8EDF5;border-radius:8px;cursor:pointer;background:#fff">`:'<div style="font-size:12px;color:#B91C1C;font-weight:700">⚠ Sin firma registrada</div>'}
 
+      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin:12px 0 4px">Respuesta del admin</div>
+      ${hAdm()?`
+        <textarea id="fl-chksem-resp-${id}" placeholder="Escribe un comentario o respuesta para el técnico sobre este check list…" style="width:100%;min-height:60px;padding:9px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;resize:vertical;box-sizing:border-box">${r.respuestaAdmin||''}</textarea>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;gap:8px;flex-wrap:wrap">
+          <span style="font-size:9.5px;color:#94A3B8">${r.respuestaAdminPor?`Últ. actualización: ${flNombrePorCorreo(r.respuestaAdminPor)||r.respuestaAdminPor} · ${hF(r.respuestaAdminEn)}`:'Aún sin respuesta'}</span>
+          <button class="fb acc sm" id="fl-chksem-resp-btn-${id}" onclick="flGuardarRespuestaChkSem('${id}')">Guardar respuesta</button>
+        </div>
+      `:`
+        <div style="font-size:12px;background:#F8FAFD;border-radius:8px;padding:9px 11px;border:1px solid #E8EDF5;min-height:20px">${r.respuestaAdmin?r.respuestaAdmin:'<span style="color:#94A3B8">Sin respuesta del admin todavía</span>'}</div>
+        ${r.respuestaAdminPor?`<div style="font-size:9.5px;color:#94A3B8;margin-top:4px">— ${flNombrePorCorreo(r.respuestaAdminPor)||r.respuestaAdminPor} · ${hF(r.respuestaAdminEn)}</div>`:''}
+      `}
+
       <div class="fl-fa" style="margin-top:14px">
         <button class="fb gho" onclick="this.closest('.fl-ov').remove()">Cerrar</button>
         <button class="fb gho" onclick="flGenerarPDFChkSem('${id}')" style="display:inline-flex;align-items:center;gap:5px">
@@ -6141,6 +6159,29 @@ window.flVerChkSem=async function(id){
       </div>
     </div></div>`;
   document.body.appendChild(ov);ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+};
+
+// Guarda (o actualiza) el comentario/respuesta del admin sobre un check list
+// semanal específico. El técnico lo verá en la app la próxima vez que abra
+// esa unidad (ver renderVehiculo en flotilla-movil.js).
+window.flGuardarRespuestaChkSem=async function(id){
+  const ta=document.getElementById(`fl-chksem-resp-${id}`);if(!ta)return;
+  const texto=ta.value.trim();
+  const r=flChkSem.find(x=>x.id===id);if(!r)return;
+  const btn=document.getElementById(`fl-chksem-resp-btn-${id}`);
+  if(btn){btn.disabled=true;btn.textContent='Guardando…';}
+  try{
+    const porEmail=window.auth?.currentUser?.email||'';
+    const enISO=new Date().toISOString();
+    await fs.updateDoc(fs.doc(db,C.CHKSEM,id),{respuestaAdmin:texto,respuestaAdminPor:porEmail,respuestaAdminEn:enISO});
+    r.respuestaAdmin=texto;r.respuestaAdminPor=porEmail;r.respuestaAdminEn=enISO;
+    document.querySelector('.fl-ov')?.remove();
+    flVerChkSem(id);
+  }catch(e){
+    console.warn('[FL resp chksem]',e);
+    alert('No se pudo guardar la respuesta: '+(e.message||e));
+    if(btn){btn.disabled=false;btn.textContent='Guardar respuesta';}
+  }
 };
 
 
@@ -6379,26 +6420,34 @@ function _renderPresupuesto(){
   const puedeEditar=puedeEditarPresupuesto();
   const d=_presupuestoData||{};
 
+  // El monto "real" de una solicitud es lo que realmente se pagó (montoPagado,
+  // capturado al cerrar el servicio) si existe; si todavía no se ha pagado,
+  // se usa el monto cotizado como estimado. ANTES este panel solo miraba
+  // montoCotizacion en todos lados — así que si Fátima/Contraloría corregía
+  // el monto ya en la etapa de pago/cierre (porque la factura real llegó
+  // distinta a la cotización), ese ajuste nunca se reflejaba aquí.
+  const montoReal=s=>Number(s.montoPagado??s.montoCotizacion??0)||0;
+
   // Presupuesto mensual aprobado
   const presTotal=Number(d.presupuestoMensual)||0;
 
   // Calcular gastos reales desde solicitudes cerradas este mes con monto
   const solsMes=flS.filter(s=>{
-    if(!s.montoCotizacion)return false;
+    if(!montoReal(s))return false;
     const f=new Date(s.actualizadoEn||s.creadoEn||'');
     return s.estatus==='Cerrada'&&f.getMonth()===mes&&f.getFullYear()===anio;
   });
-  const gastadoTotal=solsMes.reduce((a,s)=>a+Number(s.montoCotizacion||0),0);
+  const gastadoTotal=solsMes.reduce((a,s)=>a+montoReal(s),0);
 
   // Solicitudes en proceso (comprometido) — SOLO las generadas en el mes actual.
   // Las que se arrastran de meses anteriores no cuentan contra el presupuesto de este mes.
   const solsEnProceso=flS.filter(s=>{
-    if(!s.montoCotizacion)return false;
+    if(!montoReal(s))return false;
     if(!['Servicio','Pagos','Cierre'].includes(s.estatus))return false;
     const f=new Date(s.creadoEn||s.actualizadoEn||'');
     return f.getMonth()===mes&&f.getFullYear()===anio;
   });
-  const comprometido=solsEnProceso.reduce((a,s)=>a+Number(s.montoCotizacion||0),0);
+  const comprometido=solsEnProceso.reduce((a,s)=>a+montoReal(s),0);
 
   const disponible=Math.max(0,presTotal-gastadoTotal-comprometido);
   const pctGastado=presTotal?Math.round(gastadoTotal/presTotal*100):0;
@@ -6408,7 +6457,7 @@ function _renderPresupuesto(){
 
   // Gastos por tipo de servicio
   const porTipo={};
-  solsMes.forEach(s=>{const t=s.tipo||'Otro';porTipo[t]=(porTipo[t]||0)+Number(s.montoCotizacion||0);});
+  solsMes.forEach(s=>{const t=s.tipo||'Otro';porTipo[t]=(porTipo[t]||0)+montoReal(s);});
   const topTipos=Object.entries(porTipo).sort((a,b)=>b[1]-a[1]).slice(0,6);
   const maxTipo=topTipos[0]?.[1]||1;
 
@@ -6498,7 +6547,7 @@ function _renderPresupuesto(){
           <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #F8FAFD">
             <div style="font-size:10px;font-weight:700;color:#B45309;font-family:monospace">ECO ${s.vehiculoEco||'—'}</div>
             <div style="flex:1;font-size:11.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.tipo||'—'}</div>
-            <div style="font-size:12px;font-weight:800;color:#B45309">${fmt(Number(s.montoCotizacion||0))}</div>
+            <div style="font-size:12px;font-weight:800;color:#B45309">${fmt(montoReal(s))}</div>
           </div>`).join(''):`<div style="font-size:11px;color:#94A3B8">Sin servicios en proceso con monto</div>`}
         ${solsEnProceso.length>8?`<div style="font-size:10px;color:#94A3B8;margin-top:6px">+${solsEnProceso.length-8} más</div>`:''}
       </div>
@@ -6523,7 +6572,7 @@ function _renderPresupuesto(){
               <td style="padding:7px 8px;color:#475569">${s.tipo||'—'}</td>
               <td style="padding:7px 8px;color:#475569">${s.tallerNombre||'—'}</td>
               <td style="padding:7px 8px;color:#94A3B8">${(s.actualizadoEn||s.creadoEn||'').substring(0,10)}</td>
-              <td style="padding:7px 8px;font-weight:800;color:#15803D;text-align:right">${fmt(Number(s.montoCotizacion||0))}</td>
+              <td style="padding:7px 8px;font-weight:800;color:#15803D;text-align:right">${fmt(montoReal(s))}</td>
             </tr>`).join('')}
             <tr style="border-top:2px solid #E2E8F0">
               <td colspan="4" style="padding:8px;font-weight:800;color:#0A1628;font-size:12px">Total gastado</td>
@@ -8254,6 +8303,10 @@ window.flResumenFinal = function(id) {
                   ${(s.historialMonto?.length||s.montoCorregidoPor)?`<button onclick="flVerHistorialMonto('${s.id}')" title="Ver histórico de correcciones" style="border:none;background:#F1F5F9;border-radius:100px;padding:2px 8px;cursor:pointer;color:#475569;font-size:9px;font-weight:800;display:flex;align-items:center;gap:3px">🕘 ${s.historialMonto?.length||1}</button>`:''}
                 </span>
               </div>
+              ${s.montoPagado!=null?`<div style="display:flex;justify-content:space-between;align-items:baseline;padding:4px 0;border-bottom:1px solid #F8FAFC">
+                <span style="font-size:10px;color:#94A3B8;font-weight:600">Monto pagado</span>
+                <span style="font-size:11px;font-weight:800;color:#15803D">${fmtM(s.montoPagado)}</span>
+              </div>`:''}
               ${campo('Fecha pago programada', fmt(s.fechaPagoProgramada))}
               ${campo('Validado por', s.validadoPor)}
               ${campo('Validado el', fmt(s.validadoEn))}
