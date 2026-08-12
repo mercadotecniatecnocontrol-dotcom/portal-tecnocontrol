@@ -654,10 +654,10 @@ function injectCSS(){
    causante real de que el texto "se saliera" del panel. */
 .fl-rp-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:34px;padding:6px 24px 24px;align-items:start;box-sizing:border-box;}
 .fl-rp-card{border:1px solid #DCE3EE;border-radius:14px;padding:20px 22px;display:flex;flex-direction:column;background:#fff;box-shadow:0 2px 6px rgba(15,23,42,.06);min-width:0;box-sizing:border-box;overflow:hidden;}
-.fl-rp-fila{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:9px 2px;font-size:12.5px;min-width:0;}
+.fl-rp-fila{display:flex;flex-direction:column;gap:3px;padding:10px 2px;font-size:12.5px;min-width:0;}
 .fl-rp-fila:not(:last-child){border-bottom:1px solid #F8FAFC;}
-.fl-rp-fila>span:first-child{flex-shrink:0;padding-top:1px;}
-.fl-rp-fila>span:last-child{min-width:0;overflow-wrap:anywhere;word-break:break-word;}
+.fl-rp-fila>span:first-child{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#94A3B8;}
+.fl-rp-fila>span:last-child{min-width:0;overflow-wrap:anywhere;word-break:break-word;font-size:13px;}
 @media(max-width:700px){.fl-rp-grid{grid-template-columns:minmax(0,1fr);}}
 #fl-veh-backdrop{position:fixed;inset:0;background:rgba(10,15,30,0);pointer-events:none;transition:background .2s ease;z-index:2999;display:flex;align-items:center;justify-content:center;padding:24px;}
 #fl-veh-backdrop.abierto{background:rgba(10,15,30,.75);backdrop-filter:blur(8px);pointer-events:auto;}
@@ -1139,7 +1139,7 @@ async function flRevisarTransferenciasPendientes(){
         tipo:'transferencia_pendiente_larga',codigo:t.codigo,vehiculoEco:t.vehiculoEco||'—',
         para:admEmail,
         mensaje:`Transferencia del ECO ${t.vehiculoEco||'—'} sigue "Pendiente recepción" desde hace más de 72h (código ${t.codigo}). Entregó: ${t.entregaNombre||'—'}.`,
-        leido:false,creadoEn:new Date().toISOString(),
+        leido:false,creadaEn:new Date().toISOString(),
       }).catch(()=>{})));
     }catch(e){console.warn('[FL] flRevisarTransferenciasPendientes 72h',e);}
   }
@@ -1156,7 +1156,7 @@ async function flRevisarTransferenciasPendientes(){
         tipo:'transferencia_por_vencer',codigo:t.codigo,vehiculoEco:t.vehiculoEco||'—',
         para:email,
         mensaje:`⚠ La transferencia del ECO ${t.vehiculoEco||'—'} (código ${t.codigo}) vence en menos de 6 horas si no se recibe. Entregó: ${t.entregaNombre||'—'}.`,
-        leido:false,creadoEn:new Date().toISOString(),
+        leido:false,creadaEn:new Date().toISOString(),
       }).catch(()=>{})));
     }catch(e){console.warn('[FL] flRevisarTransferenciasPendientes 162h',e);}
   }
@@ -1180,7 +1180,7 @@ async function flRevisarTransferenciasPendientes(){
         tipo:'transferencia_vencida',codigo:t.codigo,vehiculoEco:t.vehiculoEco||'—',
         para:email,
         mensaje:`La transferencia del ECO ${t.vehiculoEco||'—'} (código ${t.codigo}) venció después de 7 días sin ser recibida. El vehículo sigue asignado a ${t.entregaNombre||'—'}. Un administrador puede reactivarla o cancelarla desde el historial de transferencias.`,
-        leido:false,creadoEn:new Date().toISOString(),
+        leido:false,creadaEn:new Date().toISOString(),
       }).catch(()=>{})));
     }catch(e){console.warn('[FL] flRevisarTransferenciasPendientes 168h',e);}
   }
@@ -3713,15 +3713,15 @@ function renderRP(id){
     </div>
     <div>${contenido}</div>
   </div>`;
-  const fila=(label,val,mono)=>`<div class="fl-rp-fila"><span style="color:#94A3B8;flex-shrink:0">${label}</span><span style="font-weight:700;${mono?"font-family:'JetBrains Mono',monospace;":''}text-align:right;overflow-wrap:anywhere;word-break:break-word;min-width:0">${val}</span></div>`;
+  const fila=(label,val,mono)=>`<div class="fl-rp-fila"><span style="color:#94A3B8">${label}</span><span style="font-weight:700;${mono?"font-family:'JetBrains Mono',monospace;":''}overflow-wrap:anywhere;word-break:break-word">${val}</span></div>`;
 
   rp.innerHTML=`
     ${comAct?`<div style="background:#FEF2F2;border:1px solid #FCA5A5;border-radius:9px;padding:9px 12px;margin:12px 20px 0;display:flex;align-items:flex-start;gap:8px">
-      <span style="color:#DC2626">${I.alert}</span>
-      <div style="flex:1">
+      <span style="color:#DC2626;flex-shrink:0">${I.alert}</span>
+      <div style="flex:1;min-width:0">
         <div style="font-size:11px;font-weight:800;color:#DC2626">Vehículo en uso</div>
-        <div style="font-size:10.5px;color:#7F1D1D;margin-top:2px"><strong>Responsable:</strong> ${comAct.responsable||'—'}</div>
-        ${comAct.motivo?`<div style="font-size:10.5px;color:#7F1D1D;margin-top:1px"><strong>Motivo:</strong> ${comAct.motivo}</div>`:''}
+        <div style="font-size:10.5px;color:#7F1D1D;margin-top:2px;overflow-wrap:anywhere"><strong>Responsable:</strong> ${comAct.responsable||'—'}</div>
+        ${comAct.motivo?`<div style="font-size:10.5px;color:#7F1D1D;margin-top:1px;overflow-wrap:anywhere"><strong>Motivo:</strong> ${comAct.motivo}</div>`:''}
       </div>
     </div>`:''}
 
@@ -3749,10 +3749,10 @@ function renderRP(id){
       </div>
     </div>
 
-    <div style="padding:18px 20px 4px;display:flex;align-items:flex-start;justify-content:space-between">
-      <div>
-        <div style="font-size:16px;font-weight:900;letter-spacing:-.3px">ECO ${v.eco} · ${v.unidad||'—'}</div>
-        <div style="font-size:12px;color:#64748B;margin-top:2px">${(v.tipo||'—').charAt(0).toUpperCase()+(v.tipo||'').slice(1)} · ${v.plaza||'—'} · ${v.placas||'—'}</div>
+    <div style="padding:18px 20px 4px;display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
+      <div style="min-width:0">
+        <div style="font-size:16px;font-weight:900;letter-spacing:-.3px;overflow-wrap:anywhere">ECO ${v.eco} · ${v.unidad||'—'}</div>
+        <div style="font-size:12px;color:#64748B;margin-top:2px;overflow-wrap:anywhere">${(v.tipo||'—').charAt(0).toUpperCase()+(v.tipo||'').slice(1)} · ${v.plaza||'—'} · ${v.placas||'—'}</div>
       </div>
       ${hAdm()?`<button onclick="flEditarVeh('${id}')" style="font-size:10px;font-weight:800;padding:6px 12px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:7px;cursor:pointer;color:#2563EB;flex:0 0 auto">${I.edit} Editar</button>`:``}
     </div>
@@ -3760,7 +3760,7 @@ function renderRP(id){
     ${vivo!==null?`<div style="margin:10px 20px 0"><span style="font-size:10px;font-weight:800;padding:4px 10px;border-radius:100px;background:#DCFCE7;color:#15803D">EN USO · ${vivo}</span></div>`
       :`<div style="margin:10px 20px 0"><span style="font-size:10px;font-weight:800;padding:4px 10px;border-radius:100px;background:#F1F5F9;color:#64748B">DISPONIBLE</span></div>`}
 
-    ${alts.length?`<div style="margin:12px 20px 0">${alts.map(a=>`<div style="display:flex;align-items:center;gap:7px;padding:9px 12px;border-radius:9px;font-size:11.5px;font-weight:700;background:${a.e?'#FEF2F2':'#FFFBEB'};color:${a.e?'#B91C1C':'#B45309'};margin-bottom:6px">${I.alert} ${a.t}</div>`).join('')}</div>`:''}
+    ${alts.length?`<div style="margin:12px 20px 0">${alts.map(a=>`<div style="display:flex;align-items:center;gap:7px;padding:9px 12px;border-radius:9px;font-size:11.5px;font-weight:700;background:${a.e?'#FEF2F2':'#FFFBEB'};color:${a.e?'#B91C1C':'#B45309'};margin-bottom:6px"><span style="flex-shrink:0">${I.alert}</span><span style="min-width:0;overflow-wrap:anywhere">${a.t}</span></div>`).join('')}</div>`:''}
 
     <div class="fl-rp-grid">
     ${card('Información general',`
@@ -3822,7 +3822,7 @@ function renderRP(id){
     ${hAdm()?card('Administrar estatus (admin)',`
       <div style="display:flex;flex-direction:column;gap:4px">
         <label style="font-size:10px;font-weight:700;color:#64748B">Estatus del vehículo</label>
-        <select id="fl-rp-status-${id}" onchange="flRPCambiarStatus('${id}',this.value)" style="width:100%;padding:7px 9px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;background:#F8FAFD;cursor:pointer">
+        <select id="fl-rp-status-${id}" onchange="flRPCambiarStatus('${id}',this.value)" style="width:100%;padding:7px 9px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;background:#F8FAFD;cursor:pointer;box-sizing:border-box">
           <option value="activo" ${(v.status||'activo')==='activo'?'selected':''}>Activo</option>
           <option value="taller" ${v.status==='taller'?'selected':''}>En taller</option>
           <option value="comision" ${v.status==='comision'?'selected':''}>En comisión/préstamo</option>
@@ -3830,8 +3830,8 @@ function renderRP(id){
         </select>
       </div>
       <label style="display:flex;align-items:center;gap:8px;margin-top:10px;cursor:pointer;user-select:none">
-        <input type="checkbox" id="fl-rp-sincambios-${id}" ${v.asignadoSinCambios?'checked':''} onchange="flRPToggleSinCambios('${id}',this.checked)" style="width:15px;height:15px;accent-color:#2563EB;cursor:pointer">
-        <span style="font-size:11.5px;font-weight:600;color:#374151">Asignado sin cambios (mismo técnico, sin reasignaciones)</span>
+        <input type="checkbox" id="fl-rp-sincambios-${id}" ${v.asignadoSinCambios?'checked':''} onchange="flRPToggleSinCambios('${id}',this.checked)" style="width:15px;height:15px;accent-color:#2563EB;cursor:pointer;flex-shrink:0">
+        <span style="font-size:11.5px;font-weight:600;color:#374151;min-width:0;overflow-wrap:anywhere">Asignado sin cambios (mismo técnico, sin reasignaciones)</span>
       </label>
       <div style="font-size:10px;color:#94A3B8;margin-top:5px">Marca esto cuando el vehículo lleva mucho tiempo con el mismo responsable y no debe reasignarse. Se ve en azul en la lista de la izquierda y aplica en todo el portal (taller, técnico, etc.) de inmediato.</div>
     `):''}
@@ -4983,8 +4983,9 @@ function rComis(){
           </select>
         </div>
       </div>
-      <div style="display:flex;gap:6px;margin-bottom:12px">
+      <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
         <button onclick="flFTransReset()" style="padding:5px 12px;background:#F1F5F9;border:none;border-radius:7px;font-family:inherit;font-size:11px;font-weight:700;color:#64748B;cursor:pointer">Limpiar filtros</button>
+        ${hAdm()?`<button onclick="flCancelarPendientesFiltradas()" style="padding:5px 12px;background:#FEF2F2;border:1px solid #FCA5A5;border-radius:7px;font-family:inherit;font-size:11px;font-weight:700;color:#B91C1C;cursor:pointer">✕ Cancelar pendientes filtradas</button>`:''}
         <span id="fl-trans-count" style="font-size:11px;color:#94A3B8;align-self:center"></span>
       </div>
       <div id="fl-trans-r">${rTransListFiltrada(flTrans)}</div>
@@ -5283,6 +5284,9 @@ function rTransListFiltrada(lista){
       ${fotos.length?`<div style="display:flex;gap:5px;margin-top:8px">${fotos.map(f=>`<img src="${f}" style="width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid #E8EDF5">`).join('')}${(t.entregaFotos||t.fotos||[]).length>4?`<div style="width:44px;height:44px;border-radius:6px;background:#F1F5F9;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#64748B">+${(t.entregaFotos||t.fotos||[]).length-4}</div>`:''}
       </div>`:''}
       ${isPend?`<div style="margin-top:8px;padding:6px 10px;background:#FEF3C7;border-radius:7px;font-size:11px;font-weight:700;color:#B45309">Esperando que ${t.receptorNombre||'el receptor'} confirme con el código ${t.codigo||'—'}${t.venceEn?` · Vence el ${new Date(t.venceEn).toLocaleString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}`:''}</div>`:''}
+      ${isPend&&hAdm()?`<div style="margin-top:8px" onclick="event.stopPropagation()">
+        <button onclick="flCancelarTransferencia('${t.id}')" style="width:100%;font-size:11px;font-weight:800;padding:8px;background:#fff;color:#B91C1C;border:1px solid #FCA5A5;border-radius:8px;cursor:pointer">✕ Cancelar transferencia</button>
+      </div>`:''}
       ${isVencida?`<div style="margin-top:8px;padding:6px 10px;background:#FEF2F2;border-radius:7px;font-size:11px;font-weight:700;color:#B91C1C">Código vencido${t.venciadoEn?` desde el ${new Date(t.venciadoEn).toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'})}`:''} — el vehículo sigue asignado a ${t.entregaNombre||'—'}${hAdm()?'. Reactiva o cancela abajo.':''}</div>`:''}
       ${isVencida&&hAdm()?`<div style="margin-top:8px;display:flex;gap:8px" onclick="event.stopPropagation()">
         <button onclick="flReactivarTransferencia('${t.id}')" style="flex:1;font-size:11px;font-weight:800;padding:8px;background:#0A1628;color:#fff;border:none;border-radius:8px;cursor:pointer">↻ Reactivar (+7 días)</button>
@@ -5319,6 +5323,46 @@ window.flFTransReset=function(){
   const cnt=document.getElementById('fl-trans-count');if(cnt)cnt.textContent='';
   const wrap=document.getElementById('fl-trans-r');
   if(wrap)wrap.innerHTML=rTransListFiltrada(flTrans);
+};
+
+// Cancela TODAS las transferencias "Pendiente recepción" que coincidan con
+// los filtros de ECO/persona/fecha puestos en ese momento — pensado para
+// limpiar de un jalón pruebas duplicadas (como las 5 de un mismo ECO que
+// quedaron regadas mientras el bug de notificaciones seguía activo), sin
+// tener que darle "Cancelar" una por una.
+window.flCancelarPendientesFiltradas=async function(){
+  if(!hAdm())return;
+  const eco=(document.getElementById('fl-tf-eco')?.value||'').toLowerCase().trim();
+  const persona=(document.getElementById('fl-tf-persona')?.value||'').toLowerCase().trim();
+  const fecha=(document.getElementById('fl-tf-fecha')?.value||'').trim();
+  let candidatas=flTrans.filter(t=>t.estatus==='Pendiente recepción');
+  if(eco)candidatas=candidatas.filter(t=>String(t.vehiculoEco||'').toLowerCase().includes(eco)||(t.vehiculoUnidad||'').toLowerCase().includes(eco));
+  if(persona)candidatas=candidatas.filter(t=>
+    (t.entregaNombre||'').toLowerCase().includes(persona)||
+    (t.entregaEmail||'').toLowerCase().includes(persona)||
+    (t.receptorNombre||'').toLowerCase().includes(persona)||
+    (t.receptorEmail||'').toLowerCase().includes(persona)
+  );
+  if(fecha)candidatas=candidatas.filter(t=>(t.creadoEn||'').startsWith(fecha));
+  if(!candidatas.length){flToast('No hay transferencias pendientes que coincidan con el filtro actual','err');return;}
+  if(!confirm(`¿Cancelar ${candidatas.length} transferencia(s) "Pendiente recepción" que coinciden con el filtro actual? Esto no se puede deshacer.`))return;
+  const user=window.auth?.currentUser;
+  let ok=0;
+  for(const t of candidatas){
+    try{
+      await fs.updateDoc(fs.doc(db,C.TRANS,t.id),{estatus:'Cancelada',canceladaPor:user?.email||'',canceladaEn:new Date().toISOString()});
+      if(t.entregaEmail){
+        try{
+          const snapEnt=await fs.getDocs(fs.query(fs.collection(db,'fl_usuarios'),fs.where('email','==',t.entregaEmail)));
+          if(!snapEnt.empty) await fs.updateDoc(snapEnt.docs[0].ref,{transferenciaPendiente:null,transferenciaPendienteEco:null});
+        }catch(e2){console.warn('[FL] limpiar transferenciaPendiente al cancelar (masivo)',e2);}
+      }
+      Object.assign(t,{estatus:'Cancelada'});
+      ok++;
+    }catch(e){console.warn('[FL] flCancelarPendientesFiltradas',t.id,e);}
+  }
+  flToast(`${ok} transferencia(s) cancelada(s)`,'ok');
+  document.getElementById('fl-trans-r')&&(document.getElementById('fl-trans-r').innerHTML=rTransListFiltrada(flTrans));
 };
 
 window.flExportarTransCSV=function(){
