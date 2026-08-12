@@ -654,7 +654,7 @@ function injectCSS(){
    causante real de que el texto "se saliera" del panel. */
 .fl-rp-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:34px;padding:6px 24px 24px;align-items:start;box-sizing:border-box;}
 .fl-rp-card{border:1px solid #DCE3EE;border-radius:14px;padding:20px 22px;display:flex;flex-direction:column;background:#fff;box-shadow:0 2px 6px rgba(15,23,42,.06);min-width:0;box-sizing:border-box;overflow:hidden;}
-.fl-rp-fila{display:flex;flex-direction:column;gap:3px;padding:10px 2px;font-size:12.5px;min-width:0;}
+.fl-rp-fila{display:flex;flex-direction:column;gap:3px;padding:10px 6px;font-size:12.5px;min-width:0;}
 .fl-rp-fila:not(:last-child){border-bottom:1px solid #F8FAFC;}
 .fl-rp-fila>span:first-child{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#94A3B8;}
 .fl-rp-fila>span:last-child{min-width:0;overflow-wrap:anywhere;word-break:break-word;font-size:13px;}
@@ -4601,14 +4601,91 @@ window.flEditarVeh=function(id){
         </div>
       </div>
 
-      <div class="fl-fa" style="margin-top:4px">
-        <button onclick="this.closest('.fl-ov').remove()" class="fb gho" style="padding:9px 20px">Cancelar</button>
-        <button onclick="flGuardarEditVeh('${id}')" class="fb acc" id="ve-btn-guardar" style="padding:9px 24px">Guardar cambios</button>
+      <div class="fl-fa" style="margin-top:4px;justify-content:space-between">
+        ${hAdm()?`<button onclick="flConfirmarEliminarVeh('${id}','${v.eco}','${(v.unidad||'').replace(/'/g,"\\'")}')" class="fb gho" style="padding:9px 16px;color:#B91C1C;border-color:#FCA5A5">🗑 Eliminar definitivamente</button>`:'<span></span>'}
+        <div style="display:flex;gap:8px">
+          <button onclick="this.closest('.fl-ov').remove()" class="fb gho" style="padding:9px 20px">Cancelar</button>
+          <button onclick="flGuardarEditVeh('${id}')" class="fb acc" id="ve-btn-guardar" style="padding:9px 24px">Guardar cambios</button>
+        </div>
       </div>
       <div id="ve-msg" style="display:none;padding:8px 12px;border-radius:8px;font-size:12px;text-align:center"></div>
     </div>
   </div>`;
   document.body.appendChild(ov);ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+};
+
+// ── ELIMINAR VEHÍCULO DEFINITIVAMENTE — de todas partes ──
+// Pensado para limpiar duplicados (ej. un ECO que se dio de alta dos veces,
+// uno con info real y otro vacío). Revisa qué historial tiene relacionado
+// ANTES de dejar confirmar, para que el admin sepa exactamente qué se va a
+// perder — pero sí permite borrar aunque haya historial, si de verdad se
+// quiere (es responsabilidad del admin en ese caso).
+window.flConfirmarEliminarVeh=async function(id,eco,unidad){
+  document.querySelector('.fl-ov')?.remove();
+  const ov=document.createElement('div');ov.className='fl-ov';ov.style.zIndex='3400';
+  ov.innerHTML=`<div class="fl-modal" style="max-width:440px">
+    <div class="fl-mh"><div style="font-size:15px;font-weight:900;color:#B91C1C">⚠ Eliminar ECO ${eco} definitivamente</div>
+      <button onclick="this.closest('.fl-ov').remove()" style="width:30px;height:30px;border:none;border-radius:50%;background:#F1F5F9;cursor:pointer;font-size:16px;color:#64748B">✕</button>
+    </div>
+    <div class="fl-mb">
+      <div id="ve-del-check" style="font-size:12px;color:#64748B;padding:20px 0;text-align:center">Revisando historial relacionado…</div>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  const chk=document.getElementById('ve-del-check');
+  try{
+    const [sols,chks,trans,usuarios]=await Promise.all([
+      fs.getDocs(fs.query(fs.collection(db,C.SOLS),fs.where('vehiculoEco','==',String(eco)))),
+      fs.getDocs(fs.query(fs.collection(db,C.CHKSEM),fs.where('vehiculoEco','==',String(eco)))),
+      fs.getDocs(fs.query(fs.collection(db,C.TRANS),fs.where('vehiculoEco','==',String(eco)))),
+      fs.getDocs(fs.query(fs.collection(db,C.USUARIOS),fs.where('ecoVinculado','==',String(eco)))),
+    ]);
+    const partes=[];
+    if(sols.size)partes.push(`${sols.size} solicitud(es)`);
+    if(chks.size)partes.push(`${chks.size} check list(s) semanal(es)`);
+    if(trans.size)partes.push(`${trans.size} transferencia(s)`);
+    if(usuarios.size)partes.push(`${usuarios.size} usuario(s) vinculado(s) a este ECO (se desvincularán)`);
+    chk.innerHTML=`
+      <div style="font-size:13px;color:#374151;margin-bottom:10px">Vas a eliminar <strong>ECO ${eco} · ${unidad||'—'}</strong> de la base de datos por completo. Esto no se puede deshacer.</div>
+      ${partes.length?`<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:9px;padding:10px 12px;margin-bottom:14px;text-align:left;font-size:11.5px;color:#92400E"><strong>Ojo:</strong> este ECO tiene historial relacionado: ${partes.join(', ')}. Esos registros se quedarán, pero ya no van a poder mostrar el vehículo (aparecerá como "no encontrado"). Si esto es un duplicado con información real, cancela y borra el OTRO registro vacío en su lugar.</div>`:`<div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:9px;padding:10px 12px;margin-bottom:14px;text-align:left;font-size:11.5px;color:#15803D">Sin historial relacionado — es seguro eliminarlo.</div>`}
+      <label style="font-size:11px;font-weight:700;color:#374151;display:block;margin-bottom:6px">Escribe el ECO (<strong>${eco}</strong>) para confirmar:</label>
+      <input id="ve-del-confirm" type="text" placeholder="${eco}" style="width:100%;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:13px;outline:none;box-sizing:border-box;margin-bottom:14px">
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button onclick="this.closest('.fl-ov').remove()" class="fb gho">Cancelar</button>
+        <button onclick="flEjecutarEliminarVeh('${id}','${eco}')" id="ve-del-btn" style="padding:9px 20px;background:#B91C1C;color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:12.5px;font-weight:800;cursor:pointer">Eliminar definitivamente</button>
+      </div>`;
+  }catch(e){
+    chk.innerHTML=`<div style="color:#B91C1C;font-size:12px">No se pudo revisar el historial: ${e.message||e}. Puedes cancelar e intentar de nuevo.</div>`;
+  }
+};
+
+window.flEjecutarEliminarVeh=async function(id,eco){
+  const inp=document.getElementById('ve-del-confirm');
+  if((inp?.value||'').trim()!==String(eco)){
+    flToast('El ECO escrito no coincide — no se eliminó nada','err');
+    return;
+  }
+  const btn=document.getElementById('ve-del-btn');
+  if(btn){btn.disabled=true;btn.textContent='Eliminando…';}
+  try{
+    // Desvincular a cualquier usuario que siga apuntando a este ECO, para no
+    // dejar referencias rotas en la app móvil.
+    const usuarios=await fs.getDocs(fs.query(fs.collection(db,C.USUARIOS),fs.where('ecoVinculado','==',String(eco))));
+    await Promise.all(usuarios.docs.map(d=>{
+      const data=d.data();
+      const ecosNuevos=(data.ecosVinculados||[]).map(String).filter(e=>e!==String(eco));
+      return fs.updateDoc(d.ref,{ecoVinculado:ecosNuevos[0]||null,ecosVinculados:ecosNuevos});
+    }));
+    await fs.deleteDoc(fs.doc(db,C.VEHS,id));
+    const idx=flV.findIndex(x=>x.id===id);
+    if(idx>-1)flV.splice(idx,1);
+    document.querySelector('.fl-ov')?.remove();
+    flToast(`ECO ${eco} eliminado definitivamente`,'ok');
+    window.flCerrarModalVehiculo?.();
+  }catch(e){
+    flToast('No se pudo eliminar: '+(e.message||e),'err');
+    if(btn){btn.disabled=false;btn.textContent='Eliminar definitivamente';}
+  }
 };
 
 window.flGuardarEditVeh=async function(id){
