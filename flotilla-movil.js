@@ -163,6 +163,7 @@ let miVeh=null, misSols=[], misTareas=[], misNotif=[], misPipelineNotif=[];
 let miPerfil=null; // {email, nombre, ecoVinculado, rol}
 let _unsubNotif=null; // listener en tiempo real de flotilla_notificaciones
 let _unsubRecibirPendiente=null; // listener en tiempo real: transferencias donde soy el receptor designado
+let _unsubRespChk=null; // listener en tiempo real: respuestas del admin a mis check lists semanales
 let vistaAct='vehiculo';
 let solState={modo:'entrada',tipo:'',prior:'Normal',desc:'',km:'',taller:'',gasolina:50,chk:{},chkFotos:{},evFotos:[],dmg:{}};
 let semState={km:'',gasolina:50,chk:{},chkFotos:{},evFotos:[],observaciones:'',firma:null,yaExiste:false};
@@ -1132,6 +1133,23 @@ async function cargarMisTareas(){
         }, err=>{console.warn('[MOVIL recibirPendiente onSnapshot]',err);});
     }catch(e){console.error('[MOVIL recibirPendiente]',e);}
   }
+
+  // ── Listener en tiempo real: respuestas del admin a MIS check lists ──
+  // Mismo trato "invasivo" que el de recibir vehículo: modal encima de todo,
+  // no solo una notificación discreta en la campanita.
+  if(miPerfil?.email && !_unsubRespChk){
+    try{
+      _unsubRespChk = db.collection(C.CHKSEM)
+        .where('tecnico','==',miPerfil.email)
+        .onSnapshot(snap=>{
+          const conRespuesta = snap.docs
+            .map(d=>({id:d.id,...d.data()}))
+            .filter(r=>r.respuestaAdmin);
+          const nueva = conRespuesta.find(r=>!window._recibirModalVistos.has('chk_'+r.id+'_'+(r.respuestaAdminEn||'')));
+          if(nueva) mostrarModalRespuestaChk(nueva);
+        }, err=>{console.warn('[MOVIL respChk onSnapshot]',err);});
+    }catch(e){console.error('[MOVIL respChk]',e);}
+  }
 }
 
 window._recibirModalVistos = window._recibirModalVistos || new Set();
@@ -1182,6 +1200,28 @@ window.utilIrARecibirCodigo=async function(codigo){
     setTimeout(()=>renderUtil(),50);
   }catch(e){toast('Error: '+(e.message||e),'err');fmVista('util');}
 };
+
+// Modal invasivo para la respuesta del admin a un check list semanal —
+// mismo look&feel que el de "vehículo por recibir".
+function mostrarModalRespuestaChk(r){
+  if(document.getElementById('fm-modal-recibir-pend')||document.getElementById('fm-modal-resp-chk'))return;
+  window._recibirModalVistos.add('chk_'+r.id+'_'+(r.respuestaAdminEn||''));
+  const fechaTxt = r.respuestaAdminEn ? new Date(r.respuestaAdminEn).toLocaleString('es-MX',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
+  const ov=document.createElement('div');
+  ov.id='fm-modal-resp-chk';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(10,15,30,.72);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+  ov.innerHTML=`
+    <div style="background:#fff;border-radius:18px;max-width:340px;width:100%;padding:24px 22px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.4)">
+      <div style="width:52px;height:52px;border-radius:50%;background:#EFF6FF;display:flex;align-items:center;justify-content:center;margin:0 auto 14px">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#1D4ED8" stroke-width="2" stroke-linecap="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"/></svg>
+      </div>
+      <div style="font-size:16px;font-weight:800;color:#0A0F1E;margin-bottom:6px">Respuesta del admin</div>
+      <div style="font-size:12px;color:#94A3B8;margin-bottom:10px">Sobre tu check list del ECO ${r.vehiculoEco||'—'} · Semana ${r.semana||'—'} · ${fechaTxt}</div>
+      <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:13px;color:#1E3A5F;line-height:1.5;text-align:left">${r.respuestaAdmin}</div>
+      <button onclick="document.getElementById('fm-modal-resp-chk').remove()" style="width:100%;padding:12px;background:#0A1628;color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:13.5px;font-weight:800;cursor:pointer">Entendido</button>
+    </div>`;
+  document.body.appendChild(ov);
+}
 
 function actualizarBadges(){
   const bt=document.getElementById('fm-badge-tareas');
@@ -1511,6 +1551,10 @@ window.fmUsarUnidad=async function(eco){
   }
   const v=await cargarVehiculoPorEco(eco);
   if(!v){toast('Vehículo no encontrado','err');return;}
+  if(!esRolLibre()&&!_vehiculoAsignadoA(v,window.auth?.currentUser)){
+    toast(`ECO ${eco} ya no está asignado a ti. Pide a un administrador que lo verifique.`,'err');
+    return;
+  }
   miVeh=v;
   guardarUltimoEco(eco);
   await cargarMisSols();
@@ -1735,11 +1779,46 @@ async function flSincronizarResponsable(eco,nombreOVacio){
   }catch(e){console.error('[FL] sincronizar responsable',e);}
 }
 
+// ── BLOQUEO: nadie puede usar un vehículo a menos que le haya sido asignado
+// (desde la plataforma en Configuración, o mediante una transferencia
+// completada) — ANTES cualquier técnico podía autoasignarse cualquier
+// vehículo del catálogo con solo elegirlo de la lista, sin validación
+// alguna. No aplica a rol libre (admin/flotilla/encargado): ellos sí
+// necesitan poder moverse libremente por toda la flota.
+function _normNombre(s){
+  return (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+}
+function _vehiculoAsignadoA(v,user){
+  if(!v)return false;
+  const email=_normNombre(user?.email);
+  const nombre=_normNombre(user?.displayName||miPerfil?.nombre);
+  const resp=_normNombre(v.responsable);
+  if(!resp||resp==='—')return false;
+  if(email&&resp===email)return true;
+  if(!nombre)return false;
+  // Coincidencia por tokens — permite "Sergio Carmona" == "Carmona Lagunas Sergio"
+  // (nombres capturados en distinto orden entre el Excel original y el login).
+  const tokensNombre=nombre.split(/\s+/).filter(Boolean);
+  const tokensResp=resp.split(/\s+/).filter(Boolean);
+  if(!tokensNombre.length||!tokensResp.length)return false;
+  return tokensNombre.every(t=>tokensResp.includes(t))||tokensResp.every(t=>tokensNombre.includes(t));
+}
+
 window.fmVincular=async function(){
   const eco=document.getElementById('fm-sel-veh')?.value;
   if(!eco){toast('Selecciona un vehículo','err');return;}
   const user=window.auth?.currentUser;
   if(!user){toast('No hay sesión activa','err');return;}
+  if(!esRolLibre()){
+    try{
+      const snapV=await db.collection(C.VEHS).where('eco','==',String(eco)).get();
+      const v=snapV.empty?window.CAT_FL?.find(x=>String(x.eco)===String(eco)):{id:snapV.docs[0].id,...snapV.docs[0].data()};
+      if(!_vehiculoAsignadoA(v,user)){
+        toast(`ECO ${eco} no te ha sido asignado. Pide a un administrador que te lo asigne desde la plataforma o mediante una transferencia.`,'err');
+        return;
+      }
+    }catch(e){console.warn('[FL] validar asignación',e);toast('No se pudo validar la asignación, intenta de nuevo','err');return;}
+  }
   try{
     const snap=await db.collection(C.USUARIOS).where('email','==',user.email).get();
     const datos={email:user.email,nombre:user.displayName||user.email,ecoVinculado:String(eco),ecosVinculados:[String(eco)],vinculadoEn:new Date().toISOString()};
@@ -3974,10 +4053,10 @@ window.utilConfirmarFirma=async function(){
       const fotoKmComp=utilState.fotoKm?await comprimirBase64(utilState.fotoKm,800,0.65):null;
       const receptorEmail=(utilState.datosEntrega?.receptorEmail||'').toLowerCase();
       // Mismo plazo que ya hace cumplir flRevisarTransferenciasPendientes en el
-      // portal (168h = 7 días) — antes esto no se decía en ningún lado al
-      // iniciar la transferencia, así que ni el receptor ni la plataforma
-      // sabían de cuánto tiempo disponían hasta que ya casi vencía.
-      const venceEn=new Date(now.getTime()+168*60*60*1000);
+      // portal (24h) — antes esto no se decía en ningún lado al iniciar la
+      // transferencia, así que ni el receptor ni la plataforma sabían de
+      // cuánto tiempo disponían hasta que ya casi vencía.
+      const venceEn=new Date(now.getTime()+24*60*60*1000);
       const venceTxt=venceEn.toLocaleString('es-MX',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
       // Crear documento de transferencia
       const docObj={
