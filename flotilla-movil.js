@@ -162,6 +162,7 @@ const esMaquinaria=v=>!!v&&v.tipo==='maquinaria';
 let miVeh=null, misSols=[], misTareas=[], misNotif=[], misPipelineNotif=[];
 let miPerfil=null; // {email, nombre, ecoVinculado, rol}
 let _unsubNotif=null; // listener en tiempo real de flotilla_notificaciones
+let _unsubRecibirPendiente=null; // listener en tiempo real: transferencias donde soy el receptor designado
 let vistaAct='vehiculo';
 let solState={modo:'entrada',tipo:'',prior:'Normal',desc:'',km:'',taller:'',gasolina:50,chk:{},chkFotos:{},evFotos:[],dmg:{}};
 let semState={km:'',gasolina:50,chk:{},chkFotos:{},evFotos:[],observaciones:'',firma:null,yaExiste:false};
@@ -1110,7 +1111,77 @@ async function cargarMisTareas(){
     if(_unsubNotif){ _unsubNotif(); _unsubNotif=null; }
     misPipelineNotif=[];
   }
+
+  // ── Listener en tiempo real: transferencias donde SOY el receptor designado ──
+  // A diferencia del aviso discreto de la campanita, esto es una alerta
+  // INVASIVA a propósito (pedida explícitamente): un modal que se pone
+  // encima de lo que el técnico esté haciendo, para que no se le pase por
+  // alto que alguien le está transfiriendo un vehículo y tiene un plazo.
+  // Se vuelve a mostrar cada vez que se abre la app mientras siga pendiente
+  // (no solo una vez), pero no se repite en cada re-render dentro de la
+  // misma sesión una vez que el técnico ya la vio/cerró.
+  if(miPerfil?.email && !_unsubRecibirPendiente){
+    try{
+      _unsubRecibirPendiente = db.collection('flotilla_transferencias')
+        .where('receptorEmail','==',miPerfil.email.toLowerCase())
+        .where('estatus','==','Pendiente recepción')
+        .onSnapshot(snap=>{
+          const pendientes = snap.docs.map(d=>({id:d.id,...d.data()}));
+          const nueva = pendientes.find(t=>!window._recibirModalVistos.has(t.id));
+          if(nueva) mostrarModalRecibirPendiente(nueva);
+        }, err=>{console.warn('[MOVIL recibirPendiente onSnapshot]',err);});
+    }catch(e){console.error('[MOVIL recibirPendiente]',e);}
+  }
 }
+
+window._recibirModalVistos = window._recibirModalVistos || new Set();
+function mostrarModalRecibirPendiente(t){
+  if(document.getElementById('fm-modal-recibir-pend'))return; // ya hay uno abierto
+  window._recibirModalVistos.add(t.id);
+  const venceTxt = t.venceEn ? new Date(t.venceEn).toLocaleString('es-MX',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
+  const ov=document.createElement('div');
+  ov.id='fm-modal-recibir-pend';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(10,15,30,.72);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+  ov.innerHTML=`
+    <div style="background:#fff;border-radius:18px;max-width:340px;width:100%;padding:24px 22px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.4)">
+      <div style="width:52px;height:52px;border-radius:50%;background:#FEF3C7;display:flex;align-items:center;justify-content:center;margin:0 auto 14px">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#B45309" stroke-width="2" stroke-linecap="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>
+      </div>
+      <div style="font-size:16px;font-weight:800;color:#0A0F1E;margin-bottom:6px">Tienes un vehículo por recibir</div>
+      <div style="font-size:13px;color:#374151;line-height:1.5;margin-bottom:14px"><strong>${t.entregaNombre||t.entregaEmail||'Alguien'}</strong> te envió un código para recibir el <strong>ECO ${t.vehiculoEco||'—'}${t.vehiculoUnidad?' · '+t.vehiculoUnidad:''}</strong>.</div>
+      <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px;margin-bottom:16px">
+        <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#B45309;margin-bottom:2px">Vence</div>
+        <div style="font-size:13px;font-weight:800;color:#92400E">${venceTxt}</div>
+      </div>
+      <button onclick="utilIrARecibirCodigo('${t.codigo}')" style="width:100%;padding:12px;background:#0A1628;color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:13.5px;font-weight:800;cursor:pointer;margin-bottom:8px">Recibir ahora</button>
+      <button onclick="document.getElementById('fm-modal-recibir-pend').remove()" style="width:100%;padding:10px;background:none;border:none;color:#94A3B8;font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer">Recordarme más tarde</button>
+    </div>`;
+  document.body.appendChild(ov);
+}
+
+// Atajo directo desde el modal invasivo: valida el código y salta al paso de
+// firma, sin que el técnico tenga que volver a escribirlo a mano.
+window.utilIrARecibirCodigo=async function(codigo){
+  document.getElementById('fm-modal-recibir-pend')?.remove();
+  try{
+    const snap=await db.collection('flotilla_transferencias').where('codigo','==',codigo).where('estatus','==','Pendiente recepción').get();
+    if(snap.empty){toast('El código ya no está disponible (puede que ya haya vencido o se haya cancelado)','err');fmVista('util');return;}
+    const t={id:snap.docs[0].id,...snap.docs[0].data()};
+    utilState.modo='recibir';
+    utilState.transferenciaId=t.id;
+    utilState.transferenciaData=t;
+    utilState.datosEntrega={
+      vehiculo:t.vehiculoUnidad,eco:t.vehiculoEco,
+      km:t.entregaKm||'',
+      receptor:window.auth?.currentUser?.displayName||window.auth?.currentUser?.email||'—',
+      nombre:t.entregaNombre,
+      entregaEmail:t.entregaEmail||'',
+    };
+    utilState.paso=3;
+    fmVista('util');
+    setTimeout(()=>renderUtil(),50);
+  }catch(e){toast('Error: '+(e.message||e),'err');fmVista('util');}
+};
 
 function actualizarBadges(){
   const bt=document.getElementById('fm-badge-tareas');
@@ -3225,7 +3296,7 @@ window.utilRechazarTransferencia=async function(){
         tipo:'transferencia_rechazada',codigo:t.codigo||utilState.codigo,vehiculoEco:t.vehiculoEco||'—',
         para:t.entregaEmail,
         mensaje:`Tu transferencia del ECO ${t.vehiculoEco||'—'} fue rechazada. Motivo: "${motivo||'sin especificar'}"`,
-        leido:false,creadoEn:new Date().toISOString(),
+        leido:false,creadaEn:new Date().toISOString(),
       });
     }
     toast('Transferencia rechazada','ok');
@@ -3957,7 +4028,7 @@ window.utilConfirmarFirma=async function(){
           mensaje:esReceptor
             ?`${userName} te está transfiriendo el ECO ${docObj.vehiculoEco||'—'}. Debes recibirlo (confirmar con tu firma) antes del ${venceTxt}, o la transferencia vencerá.`
             :`${userName} inició transferencia del ECO ${docObj.vehiculoEco||'—'} a ${docObj.receptorNombre||'—'}${receptorEmail?' ('+receptorEmail+')':' — sin correo capturado, no se le pudo notificar directamente'}. Pendiente de recepción, vence el ${venceTxt}.`,
-          leido:false,creadoEn:now.toISOString(),
+          leido:false,creadaEn:now.toISOString(),
         }).catch(()=>{});
       }));
     } else {
@@ -4034,7 +4105,7 @@ window.utilConfirmarFirma=async function(){
           tipo:'transferencia_completada',codigo:utilState.codigoGenerado||utilState.codigo||'',
           vehiculoEco:ecoRecibido,
           mensaje:`Transferencia completada. ${userName} recibió el ECO ${ecoRecibido||'—'}. Vehículo liberado del perfil anterior.`,
-          leido:false,creadoEn:now.toISOString(),
+          leido:false,creadaEn:now.toISOString(),
         });
       }
     }
