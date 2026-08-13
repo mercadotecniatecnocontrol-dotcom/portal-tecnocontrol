@@ -1891,6 +1891,22 @@ function mostrarNotif(titulo, cuerpo, tag) {
     } catch(e) {}
 }
 
+// Se llama cada vez que se conoce/actualiza el permiso de notificaciones del
+// navegador (granted/denied/default). ANTES esta función se llamaba en 3
+// lugares pero nunca se había definido — tronaba con
+// "ReferenceError: actualizarPushStatus is not defined" en cada login de
+// cualquier persona que ya tuviera el permiso concedido, justo después de
+// renderSidebarAreas(). Se deja mínima a propósito (solo registra el estado
+// en el div ya reservado para esto, #push-status-bar, sin inventar un diseño
+// visual nuevo) — si se quiere mostrar algo ahí, decirme qué texto/estilo y
+// se agrega.
+window.actualizarPushStatus = function(status){
+    try{
+        const bar = document.getElementById('push-status-bar');
+        if(bar) bar.dataset.pushStatus = status || '';
+    }catch(e){}
+};
+
 // ── Notificación visual in-app estilo WhatsApp ──────────────
 // Funciona para TODOS sin permisos del sistema operativo.
 // Se apilan en la esquina inferior derecha y se auto-cierran en 5s.
@@ -2940,13 +2956,12 @@ const EMAIL_AREA_MAP = {
     'fatima@tecnocontrol.com.mx':           'Flotilla',
     'pagos@tecnocontrol.com.mx':            'Flotilla',
     'nicolas@tecnocontrol.com.mx':          'Flotilla',
-    'miguel@tecnocontrol.com.mx':          'Flotilla',
     'irvinjulian05@gmail.com':              'Flotilla',
     // ── Vendedores ──
     'guillermo.d@tecnocontrol.com.mx':      'Ventas',
     'antonio@tecnocontrol.com.mx':          'Ventas', 
     'jenriquez@tecnocontrol.com.mx':        'Ventas',
-    'miguel@tecnocontrol.com.mx':           'Operaciones',
+    'miguel@tecnocontrol.com.mx':           'Operaciones', // + acceso extra de solo lectura a Flotilla, ver EMAIL_ACCESO_EXTRA abajo
     // ── Directores (acceso admin, igual ven todo) ──
     'p.pinedo@tecnocontrol.com.mx':         'Administración',
     'm.delao@tecnocontrol.com.mx':          'Administración',
