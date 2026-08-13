@@ -5447,6 +5447,141 @@ window.flCancelarPendientesFiltradas=async function(){
 };
 
 // ═══════════════════════════════════════════════════════════════
+// RESUMEN COMPLETO DEL CHECK LIST SEMANAL — quién lo hizo, quién no,
+// qué tipo de vehículo es cada uno (auto/camión/camioneta/maquinaria),
+// y cuáles están marcados "asignado sin cambios". Una fila por vehículo
+// activo, para una semana específica.
+// ═══════════════════════════════════════════════════════════════
+function flTipoLabel(t){return t==='maquinaria'?'Maquinaria':t==='camion'?'Camión':t==='camioneta'?'Camioneta':'Auto';}
+function flEstatusLabel(s){return s==='taller'?'Taller':s==='comision'?'Comisión':s==='baja'?'Baja':'Activo';}
+function flDatosResumenChkSem(semSel){
+  const regs=flChkSem.filter(r=>r.semana===semSel);
+  const porVeh={};
+  regs.forEach(r=>{if(!porVeh[r.vehiculoEco]||(r.creadoEn||'')>(porVeh[r.vehiculoEco].creadoEn||''))porVeh[r.vehiculoEco]=r;});
+  return flV.filter(v=>v.status!=='baja').map(v=>{
+    const r=porVeh[String(v.eco)];
+    const ok=r?Object.values(r.checklist||{}).filter(x=>x==='si').length:0;
+    const no=r?Object.values(r.checklist||{}).filter(x=>x==='no').length:0;
+    const total=Object.values(flCatsParaVehiculo(_flChkAdaptCfg,v)).flat().length;
+    return{
+      eco:v.eco,unidad:v.unidad||'—',
+      tipo:flTipoLabel(v.tipo),
+      responsable:v.responsable&&v.responsable!=='—'?v.responsable:'Sin asignar',
+      estatus:flEstatusLabel(v.status),
+      asignadoSinCambios:!!v.asignadoSinCambios,
+      hizoChecklist:!!r,
+      tecnico:r?(flNombrePorCorreo(r.tecnico)||r.tecnico||'—'):'—',
+      ok,no,total,
+      firma:r?!!r.firma:false,
+    };
+  }).sort((a,b)=>Number(a.eco)-Number(b.eco));
+}
+
+window.flAbrirResumenChkSem=function(semSel){
+  const datos=flDatosResumenChkSem(semSel);
+  const ov=document.createElement('div');ov.className='fl-ov';ov.id='fl-resumenchk-ov';
+  ov.innerHTML=`<div class="fl-modal" style="max-width:980px;width:96%">
+    <div class="fl-mh">
+      <div>
+        <h3>Resumen completo · Check list semanal ${semSel}</h3>
+        <div style="font-size:11px;color:#64748B;margin-top:2px">${datos.length} vehículo(s) activo(s) · ${datos.filter(d=>d.hizoChecklist).length} lo hicieron · ${datos.filter(d=>!d.hizoChecklist).length} pendientes</div>
+      </div>
+      <button class="fl-mx" onclick="this.closest('.fl-ov').remove()">✕</button>
+    </div>
+    <div class="fl-mb">
+      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+        <button onclick="flResumenChkSemPDF('${semSel}')" style="display:flex;align-items:center;gap:6px;padding:8px 16px;background:#0A1628;color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          Exportar PDF
+        </button>
+        <button onclick="flResumenChkSemExcel('${semSel}')" id="fl-resumenchk-xlsx-btn" style="display:flex;align-items:center;gap:6px;padding:8px 16px;background:#15803D;color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span id="fl-resumenchk-xlsx-lbl">Exportar Excel</span>
+        </button>
+      </div>
+      ${rResumenChkSemTabla(datos)}
+    </div>
+  </div>`;
+  document.body.appendChild(ov);ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+};
+
+function rResumenChkSemTabla(datos){
+  const th='text-align:left;padding:7px 8px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#94A3B8;border-bottom:2px solid #E2E8F0;white-space:nowrap';
+  const td='padding:7px 8px;font-size:11.5px;border-bottom:1px solid #F1F5F9';
+  return`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">
+    <thead><tr>
+      <th style="${th}">Vehículo</th><th style="${th}">Tipo</th><th style="${th}">Responsable</th>
+      <th style="${th}">Estatus</th><th style="${th}">Sin cambios</th>
+      <th style="${th}">¿Hizo checklist?</th><th style="${th}">Técnico que lo hizo</th><th style="${th}">Resultado</th>
+    </tr></thead><tbody>${datos.map(d=>`<tr style="${d.hizoChecklist?'':'background:#FFFBEB'}">
+      <td style="${td};font-weight:700">ECO ${d.eco} · ${d.unidad}</td>
+      <td style="${td}">${d.tipo}</td>
+      <td style="${td}">${d.responsable}</td>
+      <td style="${td};color:${d.estatus==='Taller'?'#B45309':d.estatus==='Comisión'?'#7C3AED':'#15803D'};font-weight:700">${d.estatus}</td>
+      <td style="${td};text-align:center">${d.asignadoSinCambios?'<span style="color:#2563EB;font-weight:800">✓</span>':'<span style="color:#CBD5E1">—</span>'}</td>
+      <td style="${td}">${d.hizoChecklist?'<span style="color:#15803D;font-weight:800">✓ Sí</span>':'<span style="color:#B91C1C;font-weight:800">✗ No</span>'}</td>
+      <td style="${td}">${d.tecnico}</td>
+      <td style="${td}">${d.hizoChecklist?`${d.ok}/${d.total} OK${d.no?' · '+d.no+' detalle'+(d.no>1?'s':''):''}${d.firma?'':' · <span style=\"color:#B91C1C\">sin firma</span>'}`:'—'}</td>
+    </tr>`).join('')}</tbody></table></div>`;
+}
+
+window.flResumenChkSemPDF=function(semSel){
+  const datos=flDatosResumenChkSem(semSel);
+  const filas=datos.map(d=>`<tr style="border-bottom:1px solid #F1F5F9;${d.hizoChecklist?'':'background:#FFFBEB'}">
+    <td style="padding:6px;font-size:10.5px;font-weight:700">ECO ${d.eco} · ${d.unidad}</td>
+    <td style="padding:6px;font-size:10.5px">${d.tipo}</td>
+    <td style="padding:6px;font-size:10.5px">${d.responsable}</td>
+    <td style="padding:6px;font-size:10.5px">${d.estatus}</td>
+    <td style="padding:6px;font-size:10.5px;text-align:center">${d.asignadoSinCambios?'Sí':'—'}</td>
+    <td style="padding:6px;font-size:10.5px;font-weight:800;color:${d.hizoChecklist?'#15803D':'#B91C1C'}">${d.hizoChecklist?'Sí':'No'}</td>
+    <td style="padding:6px;font-size:10.5px">${d.tecnico}</td>
+    <td style="padding:6px;font-size:10.5px">${d.hizoChecklist?`${d.ok}/${d.total} OK${d.no?' · '+d.no+' det.':''}`:'—'}</td>
+  </tr>`).join('');
+  const html=`<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Resumen check list semanal ${semSel} — Tecnocontrol</title>
+    <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui,Arial,sans-serif;color:#0A0F1E;padding:28px 32px}
+    .logo{font-size:20px;font-weight:900;letter-spacing:-1px}.logo em{color:#2563EB;font-style:normal}
+    .hdr{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #0A1628;padding-bottom:12px;margin-bottom:18px}
+    table{width:100%;border-collapse:collapse}th{text-align:left;padding:6px;font-size:9px;text-transform:uppercase;color:#94A3B8;border-bottom:2px solid #E2E8F0}
+    @media print{button{display:none!important}}</style></head><body>
+    <div class="hdr"><div><div class="logo">TECNO<em>CONTROL</em></div><div style="font-size:10.5px;color:#64748B;margin-top:3px">Resumen completo · Check list semanal ${semSel}</div></div>
+    <div style="text-align:right;font-size:10px;color:#64748B">${new Date().toLocaleString('es-MX')}<br>${datos.length} vehículos · ${datos.filter(d=>d.hizoChecklist).length} completados</div></div>
+    <table><thead><tr><th>Vehículo</th><th>Tipo</th><th>Responsable</th><th>Estatus</th><th>Sin cambios</th><th>¿Hizo checklist?</th><th>Técnico</th><th>Resultado</th></tr></thead><tbody>${filas}</tbody></table>
+    <div style="margin-top:20px;text-align:right"><button onclick="window.print()" style="padding:11px 28px;background:#0A1628;color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:800;cursor:pointer">Imprimir / Guardar PDF</button></div>
+    </body></html>`;
+  const w=window.open('','_blank');
+  if(!w){flToast('El navegador bloqueó la ventana — permite pop-ups para este sitio','err');return;}
+  w.document.write(html);w.document.close();
+};
+
+window.flResumenChkSemExcel=async function(semSel){
+  const btn=document.getElementById('fl-resumenchk-xlsx-btn');
+  const lbl=document.getElementById('fl-resumenchk-xlsx-lbl');
+  if(btn)btn.disabled=true;
+  if(lbl)lbl.textContent='Generando…';
+  try{
+    await flCargarSheetJS();
+    const datos=flDatosResumenChkSem(semSel);
+    const filas=datos.map(d=>({
+      'ECO':d.eco,'Unidad':d.unidad,'Tipo':d.tipo,'Responsable':d.responsable,'Estatus':d.estatus,
+      'Asignado sin cambios':d.asignadoSinCambios?'Sí':'No',
+      '¿Hizo checklist?':d.hizoChecklist?'Sí':'No',
+      'Técnico':d.tecnico,
+      'OK':d.hizoChecklist?d.ok:'', 'Detalles':d.hizoChecklist?d.no:'', 'Total ítems':d.hizoChecklist?d.total:'',
+      'Firmado':d.hizoChecklist?(d.firma?'Sí':'No'):'',
+    }));
+    const wb=window.XLSX.utils.book_new();
+    window.XLSX.utils.book_append_sheet(wb,window.XLSX.utils.json_to_sheet(filas),`Semana ${semSel}`);
+    window.XLSX.writeFile(wb,`Resumen_checklist_semanal_${semSel}.xlsx`);
+  }catch(e){
+    console.error('[FL resumenChkSem xlsx]',e);
+    flToast('No se pudo generar el Excel: '+(e.message||e),'err');
+  }finally{
+    if(btn)btn.disabled=false;
+    if(lbl)lbl.textContent='Exportar Excel';
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════
 // REPORTE DE USO POR TÉCNICO — qué vehículo(s) ha usado cada técnico,
 // por cuánto tiempo, cuál trae ahora y en qué condición está ese vehículo.
 // Se arma desde flUsos (historial de vinculación/desvinculación, ya
@@ -6410,6 +6545,10 @@ function rChkSemanalTabla(semSel){
     <button ${idx>=semanas.length-1?'disabled':''} onclick="rChkSemanalTabla('${semanas[idx+1]}')" style="padding:6px 12px;border:1.5px solid #E2E8F0;border-radius:8px;background:#fff;cursor:pointer;font-size:12px;font-weight:700;${idx>=semanas.length-1?'opacity:.4;cursor:default':''}">← Semana anterior</button>
     <span style="padding:6px 12px;border-radius:8px;background:#0A1628;color:#fff;font-size:12px;font-weight:700;font-family:'JetBrains Mono',monospace">${semSel}</span>
     ${idx>0?`<button onclick="rChkSemanalTabla('${semanas[idx-1]}')" style="padding:6px 12px;border:1.5px solid #E2E8F0;border-radius:8px;background:#fff;cursor:pointer;font-size:12px;font-weight:700">Semana siguiente →</button>`:''}
+    <button onclick="flAbrirResumenChkSem('${semSel}')" style="padding:6px 12px;border:1.5px solid #BFDBFE;border-radius:8px;background:#EFF6FF;color:#1D4ED8;cursor:pointer;font-size:12px;font-weight:700;display:flex;align-items:center;gap:5px">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/></svg>
+      Resumen completo
+    </button>
     <select onchange="chkSemFiltroVeh=this.value;rChkSemanalTabla('${semSel}')" style="margin-left:auto;padding:6px 10px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px">
       <option value="">Todos los vehículos</option>
       ${flV.filter(v=>v.status!=='baja').map(v=>`<option value="${v.eco}" ${String(v.eco)===String(chkSemFiltroVeh)?'selected':''}>ECO ${v.eco} · ${v.unidad||''}</option>`).join('')}
