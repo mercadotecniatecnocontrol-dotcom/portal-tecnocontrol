@@ -613,6 +613,11 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
         <div id="pag-registros-lista"></div>
     </div>
 </div>
+     <style>
+        .ops-btn-herramientas{position:relative;background:linear-gradient(135deg,#4b5563,#1f2937)!important;border-bottom:3px solid #b91c1c!important;box-shadow:0 3px 10px rgba(31,41,55,0.35);}
+        .ops-btn-herramientas:hover{filter:brightness(1.08);}
+        .ops-btn-herramientas-count{position:absolute;top:-8px;right:-8px;background:#dc2626;color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px;border:2px solid #fff;line-height:1.3;}
+     </style>
      <!-- ═══ MÓDULO FORMULARIOS — OPERACIONES ═══ -->
 <div id="operaciones-forms" style="display:none;margin-bottom:28px;">
     <div class="rh-dash-header">
@@ -620,12 +625,20 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
             <span class="rh-dash-badge" style="background:#fef3c7;color:#92400e;">Servicio Técnico</span>
             <span class="rh-dash-badge" style="background:#ede9fe;color:#5b21b6;">Póliza</span>
             <span class="rh-dash-badge" style="background:#ecfdf5;color:#065f46;">Manto. Vehicular</span>
+            <span class="rh-dash-badge" style="background:#e2e8f0;color:#1e293b;display:inline-flex;align-items:center;gap:4px;">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+                Herramientas
+            </span>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
             <button onclick="abrirFormServicio()" class="mkt-add-btn" style="background:linear-gradient(135deg,#4f46e5,#4338ca);">📋 Nuevo Servicio Técnico</button>
             <button onclick="toggleListaServicios()" class="mkt-add-btn" style="background:linear-gradient(135deg,#059669,#047857);">📊 Ver registros</button>
             <button onclick="typeof abrirFormPoliza==='function'?abrirFormPoliza():(window.mostrarPush?mostrarPush('📝 Póliza','Módulo cargando, intenta en un momento','⏳'):null)" class="mkt-add-btn" style="background:linear-gradient(135deg,#7c3aed,#6d28d9);">📝 Nueva Póliza</button>
             <button onclick="typeof abrirFormVehicular==='function'?abrirFormVehicular():(window.mostrarPush?mostrarPush('🚗 Vehicular','Módulo cargando, intenta en un momento','⏳'):null)" class="mkt-add-btn" style="background:linear-gradient(135deg,#0891b2,#0e7490);">🚗 Manto. Vehicular</button>
+            <button onclick="typeof opsAbrirHerramientas==='function'?opsAbrirHerramientas():(window.mostrarPush?mostrarPush('Herramientas','Módulo cargando, intenta en un momento','⏳'):null)" class="mkt-add-btn ops-btn-herramientas">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:5px;"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>Control de Herramientas
+                <span id="ops-badge-count-herr" class="ops-btn-herramientas-count">23</span>
+            </button>
         </div>
     </div>
 
@@ -5415,6 +5428,7 @@ window.apPrevImg2 = (input) => {
 
 <div id="flotilla-dashboard"></div>
 <div id="gestoria-dashboard"></div>
+<div id="ops-herramientas-overlay" style="display:none;"></div>
 <div id="modal-compartir" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);z-index:999999 !important;align-items:center;justify-content:center;display:none;">
     <div style="background:#ffffff;border-radius:20px;padding:28px;width:460px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.25);position:relative;">
         <div style="font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;color:#1e293b;margin-bottom:6px;">📤 Compartir actividad</div>
@@ -5586,6 +5600,7 @@ window.irAlmacen = function(btn){
 <script src="almacen-pdf.js"></script>
 <script src="mis-pedidos.js"></script>
 <script src="gestoria.js"></script>
+<script src="operaciones.js?v=1"></script>
 <script>
 // ══════════════════════════════════════════════════════════
 // PANEL FLOTANTE UNIVERSAL — Parrilla de Documentos
