@@ -627,7 +627,7 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
             <span class="rh-dash-badge" style="background:#ecfdf5;color:#065f46;">Manto. Vehicular</span>
             <span class="rh-dash-badge" style="background:#e2e8f0;color:#1e293b;display:inline-flex;align-items:center;gap:4px;">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
-                Herramientas
+                Operaciones
             </span>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
@@ -636,7 +636,7 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
             <button onclick="typeof abrirFormPoliza==='function'?abrirFormPoliza():(window.mostrarPush?mostrarPush('📝 Póliza','Módulo cargando, intenta en un momento','⏳'):null)" class="mkt-add-btn" style="background:linear-gradient(135deg,#7c3aed,#6d28d9);">📝 Nueva Póliza</button>
             <button onclick="typeof abrirFormVehicular==='function'?abrirFormVehicular():(window.mostrarPush?mostrarPush('🚗 Vehicular','Módulo cargando, intenta en un momento','⏳'):null)" class="mkt-add-btn" style="background:linear-gradient(135deg,#0891b2,#0e7490);">🚗 Manto. Vehicular</button>
             <button onclick="typeof opsAbrirHerramientas==='function'?opsAbrirHerramientas():(window.mostrarPush?mostrarPush('Herramientas','Módulo cargando, intenta en un momento','⏳'):null)" class="mkt-add-btn ops-btn-herramientas">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:5px;"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>Control de Herramientas
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:5px;"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>Operaciones
                 <span id="ops-badge-count-herr" class="ops-btn-herramientas-count">23</span>
             </button>
         </div>
@@ -5600,7 +5600,8 @@ window.irAlmacen = function(btn){
 <script src="almacen-pdf.js"></script>
 <script src="mis-pedidos.js"></script>
 <script src="gestoria.js"></script>
-<script src="operaciones.js?v=1"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="operaciones.js?v=2"></script>
 <script>
 // ══════════════════════════════════════════════════════════
 // PANEL FLOTANTE UNIVERSAL — Parrilla de Documentos
