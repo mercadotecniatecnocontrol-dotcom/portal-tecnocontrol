@@ -32,6 +32,40 @@
     const COL_HERRAMIENTAS = "ops_herramientas";
     const COL_MOVIMIENTOS  = "ops_movimientos";
     const COL_CONTADORES   = "ops_contadores";
+    const COL_PERSONAS     = "ops_personas";
+    const COL_PUESTOS      = "ops_puestos";
+    const COL_HIST_PUESTO  = "ops_historial_puesto";
+    const COL_ALMACEN_TEC  = "ops_almacen_tecnico";
+    const COL_SURTIDOS     = "surtidos"; // colección REAL de Almacén (almacen.js / pedidos-almacen.html) — reutilizada, no duplicada
+    const COL_CATALOGO_DOC = ["catalogo", "productos"]; // doc real de Almacén: catalogo/productos { items:[{clave,desc}] }
+
+    // Catálogo de puestos (Operaciones + departamentos ya existentes en el portal).
+    // No es rígido: es un catálogo en Firestore que se puede editar/ampliar sin tocar código.
+    const PUESTOS_SEED = [
+        { nombre: "Gerente de Operaciones",              departamento: "Operaciones", permisos: ["admin_operaciones"] },
+        { nombre: "Subgerente / Coordinador de Operaciones", departamento: "Operaciones", permisos: ["gestionar_herramientas", "gestionar_tecnicos", "autorizar_material"] },
+        { nombre: "Auxiliar Administrativa",             departamento: "Operaciones", permisos: ["gestionar_herramientas", "solicitar_material"] },
+        { nombre: "Auxiliar de Subgerencia/Coordinación", departamento: "Operaciones", permisos: ["solicitar_material", "consulta"] },
+        { nombre: "Técnico de Operaciones",               departamento: "Operaciones", permisos: ["consulta_propia"] },
+        // Departamentos ya existentes en el portal (index.html) — puesto genérico por si se liga una persona de otro depto.
+        ...["Ingresos","Egresos","Contabilidad","Recursos Humanos","Marketing","Administración","Ventas","Pagos","Gestoría","Almacén","Compras","Flotilla","Contraloría"]
+            .map(d => ({ nombre: d, departamento: d, permisos: d === "Almacén" ? ["gestionar_herramientas", "autorizar_material"] : ["consulta"] })),
+    ];
+
+    // Capa de integración ASPEL — placeholder intencional.
+    // La UI llama SIEMPRE estas funciones, nunca a ASPEL directamente.
+    // El día que exista la integración real, solo se reemplaza el interior de estas funciones.
+    window.opsAspelAdapter = {
+        async obtenerExistencia(claveProducto) {
+            // TODO: conectar con ASPEL. Por ahora no hay dato de existencia en vivo —
+            // el catálogo actual (catalogo/productos) solo trae clave/descripción, no stock.
+            return null;
+        },
+        async registrarSalida(claveProducto, cantidad, contexto) {
+            // TODO: conectar con ASPEL (salida de almacén por consumo de técnico).
+            console.warn("[opsAspelAdapter] registrarSalida es un placeholder — no conectado a ASPEL todavía.", claveProducto, cantidad, contexto);
+        },
+    };
 
     const UBICACIONES = ["Almacén central", "Estación / cliente", "Vehículo", "Taller de reparación"];
 
@@ -113,17 +147,47 @@
         return (window.nombreUsuario && window.nombreUsuario(opsUsuarioActual())) || opsUsuarioActual();
     }
 
-    // ── Roles (reutiliza lo que ya existe en index.html) ─────────────
+    // ── Roles / permisos (catálogo configurable de puestos, no fijo en código) ──
+    let cachePuestos = [];
+    let cachePersonas = [];
+    let cacheHistPuesto = [];
+    let cacheAlmacenTec = [];
+    let catalogoProductos = []; // de catalogo/productos (Almacén real), cargado bajo demanda
+
+    async function opsSembrarPuestosSiNecesario() {
+        const { db, fs } = await opsGetFB();
+        const snap = await fs.getDocs(fs.collection(db, COL_PUESTOS));
+        if (!snap.empty) return;
+        for (const p of PUESTOS_SEED) {
+            await fs.addDoc(fs.collection(db, COL_PUESTOS), p);
+        }
+    }
+
     function opsRolActual() {
+        // Puente de compatibilidad con el esquema anterior (admin/almacén/consulta),
+        // usado como respaldo cuando el usuario no tiene una Persona ligada todavía.
         const email = opsUsuarioActual();
         if (window.esAdminTotal && window.esAdminTotal(email)) return "administrador";
         const almacen = (window.USUARIOS_AREA && window.USUARIOS_AREA["Almacen"]) || [];
         if (almacen.map(e => e.toLowerCase()).includes(email.toLowerCase())) return "almacen";
         return "consulta";
     }
+
+    function opsPermisosActuales() {
+        if (window.esAdminTotal && window.esAdminTotal(opsUsuarioActual())) {
+            return PUESTOS_SEED.flatMap(p => p.permisos).concat(["admin_operaciones"]); // acceso total
+        }
+        const rolLegado = opsRolActual();
+        if (rolLegado === "almacen") return ["gestionar_herramientas", "autorizar_material", "solicitar_material"];
+        return ["consulta"];
+    }
+
+    function opsPuedeHacer(accion) {
+        return opsPermisosActuales().includes(accion) || opsPermisosActuales().includes("admin_operaciones");
+    }
+    // Alias de compatibilidad con el código ya escrito en este archivo.
     function opsPuedeGestionar() {
-        const rol = opsRolActual();
-        return rol === "administrador" || rol === "almacen";
+        return opsPuedeHacer("gestionar_herramientas");
     }
 
     // ── Contadores atómicos para folios permanentes ──────────────────
@@ -170,6 +234,125 @@
         });
     }
 
+    // ═══════════════ RESPONSIVA PDF INDIVIDUAL (jsPDF) ═══════════════
+    // Genera un PDF de una sola pieza con los datos REALES de Firestore
+    // (folio HT-XXXXXX, técnico, fecha de asignación) — mismo diseño
+    // azul/rojo/gris ya aprobado. Se dispara sola al confirmar una
+    // asignación/transferencia, y también desde un botón manual en la
+    // ficha de la herramienta mientras esté "asignada".
+    const PDF_AZUL = [10, 46, 92];
+    const PDF_ROJO = [192, 24, 45];
+    const PDF_GRIS = [88, 89, 91];
+    const PDF_GRIS_LINEA = [191, 192, 194];
+    const PDF_GRIS_CLARO = [233, 233, 234];
+
+    function opsGenerarResponsivaPDF(herramientaId, silencioso) {
+        if (!window.jspdf || !window.jspdf.jsPDF) {
+            console.error("[operaciones.js] jsPDF no está cargado.");
+            return;
+        }
+        const h = cacheHerr.find(x => x.id === herramientaId);
+        if (!h || !h.tecnicoActualId) return;
+        const t = cacheTec.find(x => x.id === h.tecnicoActualId);
+        if (!t) return;
+
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ unit: "pt", format: "letter" });
+        const W = 612, M = 46;
+        let y;
+
+        // Banda superior azul + filete rojo
+        doc.setFillColor(...PDF_AZUL); doc.rect(0, 0, W, 68, "F");
+        doc.setFillColor(...PDF_ROJO); doc.rect(0, 68, W, 3, "F");
+        doc.setTextColor(255, 255, 255);
+        doc.setFont("helvetica", "bold"); doc.setFontSize(15);
+        doc.text("HEDMA TECNOCONTROL", M, 30);
+        doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
+        doc.text("S.A. DE C.V.  ·  Chihuahua, Chihuahua, México", M, 46);
+        doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+        doc.text("Responsiva N.°: RH-" + h.folio, W - M, 27, { align: "right" });
+        doc.setFont("helvetica", "normal");
+        doc.text("Fecha: " + (h.fechaAsignacion || opsHoy()), W - M, 42, { align: "right" });
+
+        y = 96;
+        doc.setTextColor(...PDF_ROJO); doc.setFont("helvetica", "bold"); doc.setFontSize(15);
+        doc.text("RESPONSIVA DE ASIGNACIÓN DE HERRAMIENTA", W / 2, y, { align: "center" });
+        y += 16;
+        doc.setTextColor(...PDF_GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(9.5);
+        doc.text("Departamento de Operaciones  |  Control de Herramientas", W / 2, y, { align: "center" });
+
+        function seccion(titulo) {
+            y += 22;
+            doc.setFillColor(...PDF_AZUL); doc.rect(M, y - 12, W - 2 * M, 20, "F");
+            doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(10.5);
+            doc.text(titulo, M + 8, y + 2);
+            y += 18;
+        }
+        function campo(label, valor) {
+            doc.setTextColor(...PDF_GRIS); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+            doc.text(label, M, y);
+            doc.setTextColor(20, 20, 20); doc.setFont("helvetica", "normal"); doc.setFontSize(10);
+            doc.text(String(valor || "—"), M + 130, y);
+            y += 16;
+        }
+
+        seccion("1  ·  DATOS DEL EMPLEADO");
+        campo("Nombre completo:", t.nombre);
+        campo("N.° operativo:", t.numeroOperativo);
+        campo("Puesto:", t.puesto);
+        campo("Departamento:", t.departamento);
+        campo("Fecha de asignación:", h.fechaAsignacion || opsHoy());
+
+        seccion("2  ·  HERRAMIENTA ASIGNADA");
+        campo("Folio (permanente):", h.folio);
+        campo("Descripción:", h.descripcion);
+        campo("Marca / modelo:", (h.marca || "—") + " " + (h.modelo || ""));
+        campo("N.° de serie:", h.numeroSerie || "—");
+        campo("Ubicación:", h.ubicacionActual || "—");
+
+        seccion("3  ·  TÉRMINOS DE LA RESPONSIVA");
+        const clausulas = [
+            "Recibo de conformidad la herramienta descrita arriba, en las condiciones señaladas, para uso exclusivo en mis funciones dentro de HEDMA TECNOCONTROL S.A. DE C.V.",
+            "Me comprometo a dar buen uso, resguardo y mantenimiento a la herramienta, y a reportar de inmediato cualquier falla, pérdida, robo o extravío al Departamento de Operaciones.",
+            "En caso de pérdida, extravío o daño por negligencia comprobada, acepto que el costo de reposición o reparación podrá ser descontado conforme a la política interna vigente.",
+            "La herramienta es propiedad de HEDMA TECNOCONTROL S.A. DE C.V. y deberá devolverse íntegra al concluir la asignación o al término de la relación laboral, lo que ocurra primero.",
+        ];
+        doc.setDrawColor(...PDF_GRIS_LINEA); doc.setLineWidth(0.8);
+        const cajaY0 = y - 4;
+        doc.setTextColor(20, 20, 20); doc.setFont("helvetica", "normal"); doc.setFontSize(8.7);
+        clausulas.forEach(c => {
+            const lineas = doc.splitTextToSize("•  " + c, W - 2 * M - 16);
+            doc.text(lineas, M + 8, y);
+            y += lineas.length * 11 + 5;
+        });
+        doc.rect(M, cajaY0, W - 2 * M, y - cajaY0 + 4);
+        doc.setFillColor(...PDF_ROJO); doc.rect(M, cajaY0, 3, y - cajaY0 + 4, "F");
+        y += 26;
+
+        seccion("4  ·  FIRMAS DE ENTREGA-RECEPCIÓN");
+        y += 34;
+        const colW = (W - 2 * M - 20) / 2;
+        doc.setDrawColor(...PDF_GRIS_LINEA);
+        doc.line(M, y, M + colW, y);
+        doc.line(M + colW + 20, y, M + 2 * colW + 20, y);
+        y += 12;
+        doc.setTextColor(...PDF_AZUL); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+        doc.text("QUIEN ENTREGA", M + colW / 2, y, { align: "center" });
+        doc.text("QUIEN RECIBE", M + colW + 20 + colW / 2, y, { align: "center" });
+        y += 12;
+        doc.setTextColor(...PDF_GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(7.6);
+        doc.text("Responsable de Operaciones / Almacén", M + colW / 2, y, { align: "center" });
+        doc.text(t.nombre + " — Nombre y firma", M + colW + 20 + colW / 2, y, { align: "center" });
+
+        doc.setTextColor(...PDF_GRIS); doc.setFontSize(7.3);
+        doc.text("HEDMA TECNOCONTROL S.A. DE C.V. · Generado automáticamente desde Control de Herramientas · " + opsFechaHora().slice(0, 16).replace("T", " "), M, 770);
+
+        const nombreArchivo = "Responsiva_" + h.folio + "_" + t.numeroOperativo + ".pdf";
+        doc.save(nombreArchivo);
+        if (!silencioso && window.mostrarPush) mostrarPush("Herramientas", "Responsiva PDF generada: " + nombreArchivo, "📄");
+    }
+    window.opsGenerarResponsivaPDF = opsGenerarResponsivaPDF;
+
     function opsNombreTecnico(idInterno) {
         if (!idInterno) return "Sin asignar";
         const t = cacheTec.find(x => x.id === idInterno);
@@ -183,6 +366,7 @@
         cont.innerHTML = opsRenderShell();
         cont.style.display = "block";
         document.body.style.overflow = "hidden";
+        await opsSembrarPuestosSiNecesario();
         await opsSuscribirTodo();
         opsCambiarTab("dashboard");
     };
@@ -261,6 +445,16 @@
                 if (tabActual === "movimientos") opsRenderMovimientos();
             });
         }
+        // Puestos, personas, historial de puesto y almacén de técnico: se leen una vez
+        // por apertura (no cambian con la frecuencia de herramientas/movimientos).
+        const snapPuestos = await fs.getDocs(fs.collection(db, COL_PUESTOS));
+        cachePuestos = snapPuestos.docs.map(d => ({ id: d.id, ...d.data() }));
+        const snapPersonas = await fs.getDocs(fs.collection(db, COL_PERSONAS));
+        cachePersonas = snapPersonas.docs.map(d => ({ id: d.id, ...d.data() }));
+        const snapHist = await fs.getDocs(fs.collection(db, COL_HIST_PUESTO));
+        cacheHistPuesto = snapHist.docs.map(d => ({ id: d.id, ...d.data() }));
+        const snapAlmTec = await fs.getDocs(fs.collection(db, COL_ALMACEN_TEC));
+        cacheAlmacenTec = snapAlmTec.docs.map(d => ({ id: d.id, ...d.data() }));
     }
 
     // ═══════════════════════ TAB: DASHBOARD ═══════════════════════
@@ -377,6 +571,7 @@
                 ${gestion && h.estado !== "baja" ? `
                 <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;">
                     <button onclick="opsAbrirModalMovimiento('${id}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#4b5563,#1f2937);">Registrar movimiento</button>
+                    ${h.estado === "asignada" ? `<button onclick="opsGenerarResponsivaPDF('${id}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#0891b2,#0e7490);">Regenerar responsiva PDF</button>` : ""}
                     <button onclick="opsAbrirModalBaja('${id}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#b91c1c,#7f1d1d);">${ICON.trash} Dar de baja</button>
                 </div>` : ""}
 
@@ -565,6 +760,14 @@
         document.getElementById("ops-modal-wrap").innerHTML = "";
         const panel = document.getElementById("ops-panel-wrap");
         if (panel) panel.innerHTML = "";
+
+        if (tipo === "asignacion" || tipo === "transferencia") {
+            // Refrescar caché local con los valores recién guardados antes de generar el PDF,
+            // porque onSnapshot puede tardar unos ms en llegar.
+            const idx = cacheHerr.findIndex(x => x.id === herramientaId);
+            if (idx >= 0) cacheHerr[idx] = { ...cacheHerr[idx], ...update };
+            opsGenerarResponsivaPDF(herramientaId);
+        }
     };
 
     // ── Baja de herramienta (nunca se elimina el documento) ────────
@@ -651,101 +854,270 @@
     }
 
     window.opsAbrirModalTecnico = function () {
+        const personasActivas = cachePersonas.filter(p => p.estatus !== "baja");
         const wrap = document.getElementById("ops-modal-wrap");
         wrap.innerHTML = `
         <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;">
-            <div style="background:#fff;border-radius:14px;width:400px;max-width:92vw;padding:22px;">
-                <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:14px;">Nuevo técnico</div>
-                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Nombre completo</label>
-                <input id="ops-in-nombretec" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+            <div style="background:#fff;border-radius:14px;width:420px;max-width:92vw;padding:22px;max-height:88vh;overflow-y:auto;">
+                <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:4px;">Nuevo técnico (asignación operativa)</div>
+                <div style="font-size:11px;color:#94a3b8;margin-bottom:14px;">La persona y el número operativo son entidades separadas: si el número se reutiliza más adelante, el historial de esta persona no se mezcla con el de quien lo tenga después.</div>
+
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Persona</label>
+                <select id="ops-in-persona" onchange="opsToggleNuevaPersona()" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                    <option value="__nueva__">+ Nueva persona...</option>
+                    ${personasActivas.map(p => `<option value="${p.id}">${opsEsc(p.nombre)}</option>`).join("")}
+                </select>
+                <div id="ops-campo-nueva-persona">
+                    <label style="font-size:11.5px;color:#64748b;font-weight:600;">Nombre completo (persona nueva)</label>
+                    <input id="ops-in-nombretec" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                </div>
+
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">N.° de técnico (manual)</label>
+                <input id="ops-in-numop" placeholder="Ej. 017" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
                 <label style="font-size:11.5px;color:#64748b;font-weight:600;">Puesto</label>
-                <input id="ops-in-puestotec" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
-                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Departamento</label>
-                <input id="ops-in-deptotec" value="Servicios Técnicos" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 16px;">
+                <select id="ops-in-puestotec" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 16px;">
+                    ${cachePuestos.map(p => `<option value="${p.id}">${opsEsc(p.nombre)} (${opsEsc(p.departamento)})</option>`).join("")}
+                </select>
                 <div style="display:flex;gap:8px;justify-content:flex-end;">
                     <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
-                    <button onclick="opsGuardarTecnico()" class="mkt-add-btn" style="background:linear-gradient(135deg,#4b5563,#1f2937);">Generar N.° y guardar</button>
+                    <button onclick="opsGuardarTecnico()" class="mkt-add-btn" style="background:linear-gradient(135deg,#4b5563,#1f2937);">Guardar</button>
                 </div>
             </div>
         </div>`;
     };
 
+    window.opsToggleNuevaPersona = function () {
+        const esNueva = document.getElementById("ops-in-persona").value === "__nueva__";
+        document.getElementById("ops-campo-nueva-persona").style.display = esNueva ? "block" : "none";
+    };
+
     window.opsGuardarTecnico = async function () {
-        const nombre = document.getElementById("ops-in-nombretec").value.trim();
-        if (!nombre) { alert("El nombre es obligatorio"); return; }
-        const puesto = document.getElementById("ops-in-puestotec").value.trim();
-        const departamento = document.getElementById("ops-in-deptotec").value.trim();
+        const numeroOperativo = document.getElementById("ops-in-numop").value.trim();
+        if (!numeroOperativo) { alert("El número de técnico es obligatorio"); return; }
+
+        // Validación anti-duplicado: no puede haber dos técnicos ACTIVOS con el mismo número.
+        // Si el número perteneció a alguien dado de baja, sí se puede reutilizar (nuevo registro histórico).
+        const yaActivo = cacheTec.find(t => t.numeroOperativo === numeroOperativo && t.estatus === "activo");
+        if (yaActivo) { alert(`El número ${numeroOperativo} ya está activo (asignado a ${yaActivo.nombre}). Da de baja ese registro antes de reutilizarlo.`); return; }
+        const vecesUsado = cacheTec.filter(t => t.numeroOperativo === numeroOperativo).length;
+
+        const puestoId = document.getElementById("ops-in-puestotec").value;
+        const puesto = cachePuestos.find(p => p.id === puestoId);
         const { db, fs } = await opsGetFB();
-        const numeroOperativo = await opsSiguienteNumeroTecnico();
+
+        let personaId = document.getElementById("ops-in-persona").value;
+        let nombrePersona;
+        if (personaId === "__nueva__") {
+            nombrePersona = document.getElementById("ops-in-nombretec").value.trim();
+            if (!nombrePersona) { alert("El nombre de la persona es obligatorio"); return; }
+            const refPersona = await fs.addDoc(fs.collection(db, COL_PERSONAS), {
+                nombre: nombrePersona, estatus: "activo", fechaAlta: opsHoy(), fechaBaja: null,
+                telefono: null, correo: null, observaciones: null,
+            });
+            personaId = refPersona.id;
+            cachePersonas.push({ id: personaId, nombre: nombrePersona, estatus: "activo" });
+        } else {
+            nombrePersona = (cachePersonas.find(p => p.id === personaId) || {}).nombre;
+        }
+
         await fs.addDoc(fs.collection(db, COL_TECNICOS), {
-            numeroOperativo, nombre, puesto, departamento,
+            numeroOperativo, personaId, nombre: nombrePersona,
+            puestoId, puesto: puesto ? puesto.nombre : "", departamento: puesto ? puesto.departamento : "",
+            registroHistorico: vecesUsado + 1,
             estatus: "activo", fechaIngreso: opsHoy(), fechaBaja: null,
             supervisor: null, telefono: null, correo: null, observaciones: null,
         });
+        // Abre el primer periodo en el historial de puesto de esta persona.
+        await fs.addDoc(fs.collection(db, COL_HIST_PUESTO), { personaId, puestoId, desde: opsHoy(), hasta: null });
+        cacheHistPuesto.push({ personaId, puestoId, desde: opsHoy(), hasta: null });
+
         document.getElementById("ops-modal-wrap").innerHTML = "";
     };
+
 
     window.opsAbrirFichaTecnico = function (idInterno) {
         const t = cacheTec.find(x => x.id === idInterno);
         if (!t) return;
         const activo = t.estatus === "activo";
         const asignadas = cacheHerr.filter(h => h.tecnicoActualId === idInterno);
+        const buenEstado = asignadas.filter(h => h.estado === "asignada" && !["danada","extraviada"].includes(h.condicionFisica)).length;
+        const materiales = cacheAlmacenTec.filter(m => m.tecnicoId === idInterno && m.cantidad > 0);
         const historial = cacheMov.filter(m => m.tecnicoAnteriorId === idInterno || m.tecnicoNuevoId === idInterno);
+        const iniciales = (t.nombre || "?").split(" ").filter(Boolean).slice(0, 2).map(s => s[0]).join("").toUpperCase();
+
+        function kpiMini(label, valor, total, color) {
+            const pct = total > 0 ? Math.round((valor / total) * 100) : 0;
+            return `<div style="flex:1;min-width:0;">
+                <div style="font-size:10.5px;color:#94a3b8;margin-bottom:3px;">${label}</div>
+                <div style="font-size:15px;font-weight:700;color:#1e293b;">${valor}</div>
+                <div style="height:4px;background:#e2e8f0;border-radius:99px;margin-top:5px;overflow:hidden;"><div style="height:100%;width:${pct}%;background:${color};"></div></div>
+            </div>`;
+        }
+
         const wrap = document.getElementById("ops-panel-wrap");
         wrap.innerHTML = `
         <div style="position:fixed;inset:0;background:rgba(15,23,42,0.5);z-index:99998;display:flex;justify-content:flex-end;" onclick="if(event.target===this)document.getElementById('ops-panel-wrap').innerHTML=''">
-            <div style="background:#fff;width:460px;max-width:92vw;height:100%;overflow-y:auto;padding:22px;box-shadow:-6px 0 20px rgba(0,0,0,0.15);">
-                <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px;">
-                    <div>
-                        <div style="font-size:11px;color:#94a3b8;font-weight:600;">${opsEsc(t.numeroOperativo)}</div>
-                        <div style="font-size:16px;font-weight:700;color:#1e293b;">${opsEsc(t.nombre)}</div>
-                    </div>
-                    <button onclick="document.getElementById('ops-panel-wrap').innerHTML=''" style="background:#f1f5f9;border:none;width:28px;height:28px;border-radius:7px;cursor:pointer;">${ICON.close}</button>
+            <div style="background:#f1f5f9;width:480px;max-width:92vw;height:100%;overflow-y:auto;padding:22px;box-shadow:-6px 0 20px rgba(0,0,0,0.15);">
+                <div style="display:flex;justify-content:flex-end;">
+                    <button onclick="document.getElementById('ops-panel-wrap').innerHTML=''" style="background:#fff;border:1px solid #e2e8f0;width:28px;height:28px;border-radius:7px;cursor:pointer;">${ICON.close}</button>
                 </div>
-                <span style="background:${activo ? "#dcfce7" : "#e5e7eb"};color:${activo ? "#166534" : "#374151"};font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;">${activo ? "Activo" : "Baja"}</span>
+                <div style="background:#fff;border-radius:14px;padding:18px;display:flex;align-items:center;gap:14px;margin-top:8px;">
+                    <div style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#1f2937,#0a2e5c);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;flex-shrink:0;">${opsEsc(iniciales)}</div>
+                    <div style="min-width:0;">
+                        <div style="font-size:15.5px;font-weight:700;color:#1e293b;">${opsEsc(t.nombre)}</div>
+                        <div style="font-size:11.5px;color:#64748b;">${opsEsc(t.puesto || "—")} · N.° ${opsEsc(t.numeroOperativo)}${t.registroHistorico > 1 ? ` (registro ${t.registroHistorico})` : ""}</div>
+                        <span style="background:${activo ? "#dcfce7" : "#e5e7eb"};color:${activo ? "#166534" : "#374151"};font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:999px;display:inline-block;margin-top:4px;">${activo ? "Activo" : "Baja"}</span>
+                    </div>
+                </div>
 
-                <div style="margin-top:14px;font-size:12.5px;color:#334155;line-height:1.9;">
-                    <div><strong>Puesto:</strong> ${opsEsc(t.puesto || "—")}</div>
+                <div style="background:#fff;border-radius:14px;padding:16px 18px;margin-top:12px;display:flex;gap:16px;">
+                    ${kpiMini("Herramientas", asignadas.length, Math.max(asignadas.length, 1), "#0891b2")}
+                    ${kpiMini("En buen estado", buenEstado, Math.max(asignadas.length, 1), "#059669")}
+                    ${kpiMini("Material activo", materiales.length, Math.max(materiales.length, 1), "#7c3aed")}
+                </div>
+
+                <div style="background:#fff;border-radius:14px;padding:16px 18px;margin-top:12px;font-size:12.5px;color:#334155;line-height:1.9;">
                     <div><strong>Departamento:</strong> ${opsEsc(t.departamento || "—")}</div>
                     <div><strong>Fecha de ingreso:</strong> ${opsEsc(t.fechaIngreso || "—")}</div>
                     ${t.fechaBaja ? `<div><strong>Fecha de baja:</strong> ${opsEsc(t.fechaBaja)}</div>` : ""}
                 </div>
 
-                ${activo && opsPuedeGestionar() ? `<div style="margin-top:14px;"><button onclick="opsIniciarBajaTecnico('${idInterno}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#b91c1c,#7f1d1d);">${ICON.trash} Dar de baja al técnico</button></div>` : ""}
+                ${activo ? `<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
+                    ${opsPuedeHacer("solicitar_material") ? `<button onclick="opsAbrirModalSolicitud('${idInterno}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#7c3aed,#5b21b6);">Solicitar material</button>` : ""}
+                    ${opsPuedeGestionar() ? `<button onclick="opsIniciarBajaTecnico('${idInterno}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#b91c1c,#7f1d1d);">${ICON.trash} Dar de baja</button>` : ""}
+                </div>` : ""}
 
-                <div style="margin-top:20px;font-size:12.5px;font-weight:700;color:#1e293b;">Herramientas actualmente asignadas (${asignadas.length})</div>
-                <div style="margin-top:8px;">
-                    ${asignadas.length ? asignadas.map(h => `<div style="padding:8px 0;border-bottom:1px solid #eef1f5;font-size:12px;"><strong>${opsEsc(h.folio)}</strong> — ${opsEsc(h.descripcion)}</div>`).join("") : '<div style="color:#94a3b8;font-size:12px;">Ninguna.</div>'}
+                <div style="background:#fff;border-radius:14px;padding:16px 18px;margin-top:12px;">
+                    <div style="font-size:12.5px;font-weight:700;color:#1e293b;margin-bottom:8px;">Herramientas asignadas (${asignadas.length})</div>
+                    ${asignadas.length ? asignadas.map(h => `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #eef1f5;font-size:12px;"><span style="color:#059669;">${ICON.check}</span><strong>${opsEsc(h.folio)}</strong> — ${opsEsc(h.descripcion)}</div>`).join("") : '<div style="color:#94a3b8;font-size:12px;">Ninguna.</div>'}
                 </div>
 
-                <div style="margin-top:20px;font-size:12.5px;font-weight:700;color:#1e293b;display:flex;align-items:center;gap:6px;">${ICON.clock} Historial</div>
-                <div style="margin-top:10px;border-left:2px solid #e2e8f0;padding-left:14px;">
-                    ${historial.length ? historial.sort((a,b)=>(a.fecha<b.fecha?1:-1)).map(m => `
-                    <div style="margin-bottom:12px;position:relative;">
-                        <div style="position:absolute;left:-19px;top:3px;width:8px;height:8px;border-radius:50%;background:#1f2937;"></div>
-                        <div style="font-size:12px;color:#334155;">${opsEsc((m.fecha||"").slice(0,10))} · ${opsEsc(m.tipo)} · ${opsEsc(m.herramientaId)}</div>
-                    </div>`).join("") : '<div style="color:#94a3b8;font-size:12px;">Sin movimientos.</div>'}
+                <div style="background:#fff;border-radius:14px;padding:16px 18px;margin-top:12px;">
+                    <div style="font-size:12.5px;font-weight:700;color:#1e293b;margin-bottom:8px;">Almacén del técnico — material (${materiales.length})</div>
+                    <div style="font-size:10.5px;color:#94a3b8;margin-bottom:8px;">Consumibles de uso operativo, distinto del control de activos/herramientas. Conectado a Almacén (surtidos) — la existencia en vivo vendrá de ASPEL cuando esa integración exista.</div>
+                    ${materiales.length ? materiales.map(m => `<div style="padding:7px 0;border-bottom:1px solid #eef1f5;font-size:12px;">${opsEsc(m.productoDesc)} — <strong>${opsEsc(m.cantidad)}</strong></div>`).join("") : '<div style="color:#94a3b8;font-size:12px;">Sin material registrado todavía.</div>'}
+                </div>
+
+                <div style="background:#fff;border-radius:14px;padding:16px 18px;margin-top:12px;">
+                    <div style="font-size:12.5px;font-weight:700;color:#1e293b;display:flex;align-items:center;gap:6px;margin-bottom:8px;">${ICON.clock} Historial</div>
+                    <div style="border-left:2px solid #e2e8f0;padding-left:14px;">
+                        ${historial.length ? historial.sort((a,b)=>(a.fecha<b.fecha?1:-1)).map(m => `
+                        <div style="margin-bottom:12px;position:relative;">
+                            <div style="position:absolute;left:-19px;top:3px;width:8px;height:8px;border-radius:50%;background:#1f2937;"></div>
+                            <div style="font-size:12px;color:#334155;">${opsEsc((m.fecha||"").slice(0,10))} · ${opsEsc(m.tipo)} · ${opsEsc(m.herramientaId)}</div>
+                        </div>`).join("") : '<div style="color:#94a3b8;font-size:12px;">Sin movimientos.</div>'}
+                    </div>
                 </div>
             </div>
         </div>`;
     };
 
-    // ── Baja de técnico: bloquea si tiene herramientas pendientes ──
+    // ── Baja de técnico: bloquea si tiene herramientas o material pendiente ──
     window.opsIniciarBajaTecnico = function (idInterno) {
         const asignadas = cacheHerr.filter(h => h.tecnicoActualId === idInterno);
-        if (asignadas.length > 0) {
-            alert(`No se puede dar de baja: este técnico tiene ${asignadas.length} herramienta(s) asignada(s). Primero devuélvelas o reasígnalas desde la ficha de cada herramienta.`);
+        const materiales = cacheAlmacenTec.filter(m => m.tecnicoId === idInterno && m.cantidad > 0);
+        if (asignadas.length > 0 || materiales.length > 0) {
+            const partes = [];
+            if (asignadas.length) partes.push(`${asignadas.length} herramienta(s) asignada(s)`);
+            if (materiales.length) partes.push(`${materiales.length} material(es) pendiente(s) en su almacén`);
+            alert(`NO SE PUEDE CERRAR EL EXPEDIENTE OPERATIVO.\nPendiente: ${partes.join(" y ")}.\nResuelve esto desde la ficha de cada herramienta / almacén del técnico antes de dar de baja.`);
             return;
         }
-        if (!confirm("¿Confirmar baja de este técnico? El número operativo podrá reutilizarse en el futuro sin perder este historial.")) return;
+        if (!confirm("¿Confirmar baja de este técnico? El número operativo podrá reutilizarse en el futuro sin perder este historial (queda como registro histórico independiente).")) return;
         opsConfirmarBajaTecnico(idInterno);
     };
 
     window.opsConfirmarBajaTecnico = async function (idInterno) {
         const { db, fs } = await opsGetFB();
         await fs.updateDoc(fs.doc(db, COL_TECNICOS, idInterno), { estatus: "baja", fechaBaja: opsHoy() });
+        // Cierra el periodo abierto en el historial de puesto (hasta = hoy).
+        const t = cacheTec.find(x => x.id === idInterno);
+        if (t && t.personaId) {
+            const abierto = cacheHistPuesto.find(h => h.personaId === t.personaId && !h.hasta);
+            if (abierto && abierto.id) await fs.updateDoc(fs.doc(db, COL_HIST_PUESTO, abierto.id), { hasta: opsHoy() });
+        }
         const panel = document.getElementById("ops-panel-wrap");
         if (panel) panel.innerHTML = "";
+    };
+
+    // ═══════════════ SOLICITUD DE MATERIAL (conectada al Almacén real) ═══════════════
+    // Escribe en la MISMA colección `surtidos` que usa almacen.js / pedidos-almacen.html,
+    // con campos extra (tecnicoId, folioServicio, justificacion, origen:'operaciones')
+    // para no duplicar el módulo de Almacén — solo lo alimenta desde Operaciones.
+    async function opsCargarCatalogoProductos() {
+        if (catalogoProductos.length) return catalogoProductos;
+        const { db, fs } = await opsGetFB();
+        try {
+            const snap = await fs.getDoc(fs.doc(db, ...COL_CATALOGO_DOC));
+            catalogoProductos = snap.exists() && Array.isArray(snap.data().items) ? snap.data().items : [];
+        } catch (e) {
+            console.warn("[operaciones.js] No se pudo leer catalogo/productos:", e.message);
+            catalogoProductos = [];
+        }
+        return catalogoProductos;
+    }
+
+    window.opsAbrirModalSolicitud = async function (tecnicoId) {
+        const t = cacheTec.find(x => x.id === tecnicoId);
+        await opsCargarCatalogoProductos();
+        const wrap = document.getElementById("ops-modal-wrap");
+        wrap.innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;">
+            <div style="background:#fff;border-radius:14px;width:420px;max-width:92vw;padding:22px;max-height:88vh;overflow-y:auto;">
+                <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:4px;">Solicitar material</div>
+                <div style="font-size:12px;color:#64748b;margin-bottom:14px;">Para ${opsEsc(t.nombre)} (N.° ${opsEsc(t.numeroOperativo)}) — se envía directo al Almacén.</div>
+
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Producto</label>
+                <input list="ops-datalist-prod" id="ops-in-prod" placeholder="Escribe para buscar en el catálogo..." style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                <datalist id="ops-datalist-prod">${catalogoProductos.map(p => `<option value="${opsEsc(p.desc || p.clave)}">`).join("")}</datalist>
+
+                <div style="display:flex;gap:8px;">
+                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Cantidad</label>
+                    <input id="ops-in-cant" type="number" min="1" value="1" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
+                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Prioridad</label>
+                    <select id="ops-in-prio" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                        <option value="normal">Normal</option><option value="urgente" selected>Urgente</option>
+                    </select></div>
+                </div>
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Folio de servicio / póliza relacionada (opcional)</label>
+                <input id="ops-in-folioserv" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Justificación / uso</label>
+                <textarea id="ops-in-justif" rows="2" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 16px;resize:vertical;"></textarea>
+
+                <div style="display:flex;gap:8px;justify-content:flex-end;">
+                    <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
+                    <button onclick="opsEnviarSolicitudMaterial('${tecnicoId}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#7c3aed,#5b21b6);">Enviar a Almacén</button>
+                </div>
+            </div>
+        </div>`;
+    };
+
+    window.opsEnviarSolicitudMaterial = async function (tecnicoId) {
+        const t = cacheTec.find(x => x.id === tecnicoId);
+        const descProd = document.getElementById("ops-in-prod").value.trim();
+        const cantidad = parseInt(document.getElementById("ops-in-cant").value, 10) || 1;
+        if (!descProd) { alert("Indica el producto"); return; }
+        const prioridad = document.getElementById("ops-in-prio").value;
+        const folioServicio = document.getElementById("ops-in-folioserv").value.trim();
+        const justif = document.getElementById("ops-in-justif").value.trim();
+        const encontrado = catalogoProductos.find(p => (p.desc || "").toLowerCase() === descProd.toLowerCase());
+
+        const { db, fs } = await opsGetFB();
+        const folio = "SM-" + String(Date.now()).slice(-6);
+        await fs.addDoc(fs.collection(db, COL_SURTIDOS), {
+            tipo: "material", folio,
+            cliente: "Operaciones", solicitante: opsNombreActual(), vendedor: opsNombreActual(),
+            area: "Operaciones", uso: justif || "Solicitud desde expediente de técnico",
+            fechaEntrega: opsHoy(), prioridad, estado: "pendiente",
+            productos: [{ clave: encontrado ? encontrado.clave : "", desc: descProd, cantidad }],
+            firma: null, origen: "operaciones",
+            // Campos extra — no rompen las pantallas existentes de Almacén, solo las enriquecen.
+            tecnicoId, tecnicoNumero: t.numeroOperativo, tecnicoNombre: t.nombre,
+            folioServicio: folioServicio || null, justificacion: justif || null,
+            createdAt: fs.serverTimestamp ? fs.serverTimestamp() : opsFechaHora(),
+        });
+        document.getElementById("ops-modal-wrap").innerHTML = "";
+        window.mostrarPush ? mostrarPush("Herramientas", `Solicitud ${folio} enviada a Almacén.`, "📦") : alert(`Solicitud ${folio} enviada a Almacén.`);
     };
 
     // ═══════════════════════ TAB: MOVIMIENTOS ═══════════════════════
