@@ -38,6 +38,31 @@
     const COL_ALMACEN_TEC  = "ops_almacen_tecnico";
     const COL_SURTIDOS     = "surtidos"; // colección REAL de Almacén (almacen.js / pedidos-almacen.html) — reutilizada, no duplicada
     const COL_CATALOGO_DOC = ["catalogo", "productos"]; // doc real de Almacén: catalogo/productos { items:[{clave,desc}] }
+    const COL_AUDITORIA    = "ops_auditoria";     // bitácora: quién, qué, cuándo, valor anterior/nuevo
+    const COL_NOTIFICACIONES = "ops_notificaciones"; // ej. "solicitud lista para surtir"
+
+    // Capa de integración con RH — mismo patrón que opsAspelAdapter: placeholder documentado.
+    // Cuando exista sincronización real de personas/altas/bajas/puestos, solo se reemplaza el interior.
+    window.opsHRProvider = {
+        async sincronizarPersona(personaId) {
+            console.warn("[opsHRProvider] sincronizarPersona es un placeholder — no conectado a RH todavía.", personaId);
+            return null;
+        },
+        async notificarBaja(personaId, motivo) {
+            console.warn("[opsHRProvider] notificarBaja es un placeholder — no conectado a RH todavía.", personaId, motivo);
+        },
+    };
+
+    // Registra un cambio en la bitácora de auditoría (usuario, fecha, campo, valor anterior/nuevo).
+    async function opsAuditar(entidad, entidadId, campo, valorAnterior, valorNuevo) {
+        const { db, fs } = await opsGetFB();
+        await fs.addDoc(fs.collection(db, COL_AUDITORIA), {
+            entidad, entidadId, campo,
+            valorAnterior: valorAnterior ?? null, valorNuevo: valorNuevo ?? null,
+            usuarioEmail: opsUsuarioActual(), usuarioNombre: opsNombreActual(),
+            fecha: opsFechaHora(),
+        });
+    }
 
     // Catálogo de puestos (Operaciones + departamentos ya existentes en el portal).
     // No es rígido: es un catálogo en Firestore que se puede editar/ampliar sin tocar código.
@@ -93,6 +118,8 @@
         search: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>',
         clock:  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>',
         back:   '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>',
+        gear:   '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+        bell:   '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>',
     };
 
     // Catálogo base (mismo listado de "AYUDA VISUAL / HERRAMIENTA BÁSICA PARA SERVICIOS")
@@ -386,7 +413,7 @@
         const rolLabel = { administrador: "Administrador", almacen: "Almacén", consulta: "Consulta" }[rol];
         return `
         <div style="position:fixed;inset:0;z-index:99997;background:#f1f5f9;overflow-y:auto;font-family:'Inter',sans-serif;">
-            <div style="background:linear-gradient(135deg,#1f2937,#111827);border-bottom:3px solid #b91c1c;padding:16px 26px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:5;">
+            <div style="background:linear-gradient(135deg,#0B5FFF,#0842B0);border-bottom:3px solid #062F73;padding:16px 26px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:5;">
                 <div style="display:flex;align-items:center;gap:10px;color:#fff;">
                     <span style="width:32px;height:32px;border-radius:9px;background:rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;">${ICON.wrench}</span>
                     <div>
@@ -399,7 +426,9 @@
 
             <div style="max-width:1200px;margin:0 auto;padding:18px 26px 60px;">
                 <div style="display:flex;gap:6px;margin-bottom:18px;border-bottom:1px solid #e2e8f0;">
-                    ${["resumen:Resumen", "dashboard:Herramientas", "tecnicos:Técnicos", "movimientos:Movimientos"].map(t => {
+                    ${["resumen:Resumen", "dashboard:Herramientas", "tecnicos:Técnicos",
+                       ...(opsPuedeHacer("autorizar_material") ? ["solicitudes:Solicitudes"] : []),
+                       "alertas:Alertas", "movimientos:Movimientos"].map(t => {
                         const [id, label] = t.split(":");
                         return `<button onclick="opsCambiarTab('${id}')" id="ops-tab-${id}" class="ops-tab-btn" style="background:none;border:none;padding:9px 14px;font-size:12.5px;font-weight:600;color:#64748b;cursor:pointer;border-bottom:2px solid transparent;">${label}</button>`;
                     }).join("")}
@@ -418,10 +447,12 @@
             b.style.color = "#64748b"; b.style.borderBottomColor = "transparent";
         });
         const activo = document.getElementById("ops-tab-" + tab);
-        if (activo) { activo.style.color = "#1f2937"; activo.style.borderBottomColor = "#b91c1c"; }
+        if (activo) { activo.style.color = "#0B5FFF"; activo.style.borderBottomColor = "#0B5FFF"; }
         if (tab === "resumen") opsRenderResumen();
         else if (tab === "dashboard") opsRenderDashboard();
         else if (tab === "tecnicos") opsRenderTecnicos();
+        else if (tab === "solicitudes") opsRenderSolicitudes();
+        else if (tab === "alertas") opsRenderAlertas();
         else if (tab === "movimientos") opsRenderMovimientos();
     };
 
@@ -454,6 +485,8 @@
             unsubSurt = fs.onSnapshot(fs.query(fs.collection(db, COL_SURTIDOS), fs.orderBy("createdAt", "desc"), fs.limit(100)), snap => {
                 cacheSurtidos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                 if (tabActual === "resumen") opsRenderResumen();
+                if (tabActual === "solicitudes") opsRenderSolicitudes();
+                if (tabActual === "alertas") opsRenderAlertas();
             }, () => { /* si aún no existe la colección o el índice, Resumen simplemente muestra 0 */ });
         }
         // Puestos, personas, historial de puesto y almacén de técnico: se leen una vez
@@ -552,7 +585,7 @@
                         <div style="border-left:2px solid #e2e8f0;padding-left:12px;">${actividad}</div>
                     </div>
                     ${inconsistencias.length ? `
-                    <div style="background:linear-gradient(135deg,#4b5563,#1f2937);border-radius:12px;padding:16px 18px;color:#fff;">
+                    <div style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);border-radius:12px;padding:16px 18px;color:#fff;">
                         <div style="font-size:12.5px;font-weight:700;margin-bottom:6px;">Cierre operativo pendiente</div>
                         ${inconsistencias.map(x => `<div style="font-size:11px;color:#d1d5db;line-height:1.5;">${opsEsc(x.t.nombre)} (baja) tiene ${x.herrPend ? x.herrPend + " herramienta(s)" : ""}${x.herrPend && x.matPend ? " y " : ""}${x.matPend ? x.matPend + " material(es)" : ""} sin devolver.</div>`).join("")}
                         <button onclick="opsCambiarTab('tecnicos')" style="margin-top:10px;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:11px;font-weight:600;padding:6px 12px;border-radius:7px;cursor:pointer;">Resolver ahora</button>
@@ -600,7 +633,7 @@
                     </div>
                     ${gestion ? `
                     <div style="display:flex;gap:8px;">
-                        <button onclick="opsAbrirModalPieza()" class="mkt-add-btn" style="background:linear-gradient(135deg,#4b5563,#1f2937);">${ICON.plus} Nueva pieza</button>
+                        <button onclick="opsAbrirModalPieza()" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">${ICON.plus} Nueva pieza</button>
                         <button onclick="opsSembrarCatalogoBase()" class="mkt-add-btn" style="background:linear-gradient(135deg,#0891b2,#0e7490);">${ICON.box} Cargar catálogo base</button>
                     </div>` : ""}
                 </div>
@@ -673,7 +706,7 @@
 
                 ${gestion && h.estado !== "baja" ? `
                 <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;">
-                    <button onclick="opsAbrirModalMovimiento('${id}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#4b5563,#1f2937);">Registrar movimiento</button>
+                    <button onclick="opsAbrirModalMovimiento('${id}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">Registrar movimiento</button>
                     ${h.estado === "asignada" ? `<button onclick="opsGenerarResponsivaPDF('${id}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#0891b2,#0e7490);">Regenerar responsiva PDF</button>` : ""}
                     <button onclick="opsAbrirModalBaja('${id}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#b91c1c,#7f1d1d);">${ICON.trash} Dar de baja</button>
                 </div>` : ""}
@@ -724,7 +757,7 @@
                 <input id="ops-in-serie" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 16px;">
                 <div style="display:flex;gap:8px;justify-content:flex-end;">
                     <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
-                    <button onclick="opsGuardarPieza()" class="mkt-add-btn" style="background:linear-gradient(135deg,#4b5563,#1f2937);">Generar folio y guardar</button>
+                    <button onclick="opsGuardarPieza()" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">Generar folio y guardar</button>
                 </div>
             </div>
         </div>`;
@@ -745,6 +778,7 @@
             tecnicoActualId: null, fechaAsignacion: null,
             folioLegado: null, observaciones: null,
             fechaAlta: opsHoy(),
+            externalId: null, sourceSystem: "manual", lastSync: null, syncStatus: "no_sincronizado",
         });
         await opsRegistrarMovimiento({ herramientaId: folio, tipo: "alta", ubicacionNueva: UBICACIONES[0] });
         document.getElementById("ops-modal-wrap").innerHTML = "";
@@ -762,6 +796,7 @@
                 tecnicoActualId: null, fechaAsignacion: null,
                 folioLegado: null, observaciones: null,
                 fechaAlta: opsHoy(),
+                externalId: null, sourceSystem: "manual", lastSync: null, syncStatus: "no_sincronizado",
             });
             await opsRegistrarMovimiento({ herramientaId: folio, tipo: "alta", ubicacionNueva: UBICACIONES[0], observaciones: "Sembrado desde catálogo base" });
         }
@@ -810,7 +845,7 @@
 
                 <div style="display:flex;gap:8px;justify-content:flex-end;">
                     <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
-                    <button onclick="opsConfirmarMovimiento('${herramientaId}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#4b5563,#1f2937);">Confirmar</button>
+                    <button onclick="opsConfirmarMovimiento('${herramientaId}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">Confirmar</button>
                 </div>
             </div>
         </div>`;
@@ -924,7 +959,7 @@
             <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px 18px;">
                 <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;">
                     <input type="text" placeholder="Buscar técnico..." oninput="opsFiltrarTec(this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 11px;font-size:12.5px;width:260px;outline:none;">
-                    ${gestion ? `<button onclick="opsAbrirModalTecnico()" class="mkt-add-btn" style="background:linear-gradient(135deg,#4b5563,#1f2937);">${ICON.plus} Nuevo técnico</button>` : ""}
+                    ${gestion ? `<button onclick="opsAbrirModalTecnico()" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">${ICON.plus} Nuevo técnico</button>` : ""}
                 </div>
                 <div style="overflow-x:auto;">
                     <table style="width:100%;border-collapse:collapse;font-size:12.3px;">
@@ -956,6 +991,68 @@
         </tr>`;
     }
 
+    window.opsToggleMenuTecnico = function (ev) {
+        ev.stopPropagation();
+        const menu = document.getElementById("ops-menu-tecnico");
+        if (!menu) return;
+        const abrir = menu.style.display === "none";
+        menu.style.display = abrir ? "block" : "none";
+        if (abrir) {
+            const cerrar = () => { menu.style.display = "none"; document.removeEventListener("click", cerrar); };
+            setTimeout(() => document.addEventListener("click", cerrar), 0);
+        }
+    };
+
+    window.opsAbrirModalEditarTecnico = function (idInterno) {
+        const t = cacheTec.find(x => x.id === idInterno);
+        if (!t) return;
+        const wrap = document.getElementById("ops-modal-wrap");
+        wrap.innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;">
+            <div style="background:#fff;border-radius:14px;width:400px;max-width:92vw;padding:22px;">
+                <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:4px;">Editar datos generales</div>
+                <div style="font-size:11px;color:#94a3b8;margin-bottom:14px;">Cada cambio queda registrado en la auditoría (usuario, fecha, valor anterior/nuevo).</div>
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Puesto</label>
+                <select id="ops-edit-puesto" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                    ${cachePuestos.map(p => `<option value="${p.id}" ${p.id === t.puestoId ? "selected" : ""}>${opsEsc(p.nombre)} (${opsEsc(p.departamento)})</option>`).join("")}
+                </select>
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Observaciones</label>
+                <textarea id="ops-edit-obs" rows="3" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 16px;">${opsEsc(t.observaciones || "")}</textarea>
+                <div style="display:flex;gap:8px;justify-content:flex-end;">
+                    <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
+                    <button onclick="opsGuardarEdicionTecnico('${idInterno}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">Guardar cambios</button>
+                </div>
+            </div>
+        </div>`;
+    };
+
+    window.opsGuardarEdicionTecnico = async function (idInterno) {
+        const t = cacheTec.find(x => x.id === idInterno);
+        const nuevoPuestoId = document.getElementById("ops-edit-puesto").value;
+        const nuevoPuesto = cachePuestos.find(p => p.id === nuevoPuestoId);
+        const nuevasObs = document.getElementById("ops-edit-obs").value.trim();
+        const { db, fs } = await opsGetFB();
+        const cambios = {};
+        if (nuevoPuestoId !== t.puestoId) {
+            cambios.puestoId = nuevoPuestoId; cambios.puesto = nuevoPuesto ? nuevoPuesto.nombre : "";
+            cambios.departamento = nuevoPuesto ? nuevoPuesto.departamento : "";
+            await opsAuditar("tecnico", idInterno, "puesto", t.puesto, cambios.puesto);
+            // Cierra el periodo anterior en el historial de puesto y abre uno nuevo.
+            if (t.personaId) {
+                const abierto = cacheHistPuesto.find(h => h.personaId === t.personaId && !h.hasta);
+                if (abierto && abierto.id) await fs.updateDoc(fs.doc(db, COL_HIST_PUESTO, abierto.id), { hasta: opsHoy() });
+                await fs.addDoc(fs.collection(db, COL_HIST_PUESTO), { personaId: t.personaId, puestoId: nuevoPuestoId, desde: opsHoy(), hasta: null });
+            }
+        }
+        if (nuevasObs !== (t.observaciones || "")) {
+            cambios.observaciones = nuevasObs;
+            await opsAuditar("tecnico", idInterno, "observaciones", t.observaciones, nuevasObs);
+        }
+        if (Object.keys(cambios).length) await fs.updateDoc(fs.doc(db, COL_TECNICOS, idInterno), cambios);
+        document.getElementById("ops-modal-wrap").innerHTML = "";
+        opsAbrirFichaTecnico(idInterno);
+    };
+
     window.opsAbrirModalTecnico = function () {
         const personasActivas = cachePersonas.filter(p => p.estatus !== "baja");
         const wrap = document.getElementById("ops-modal-wrap");
@@ -983,7 +1080,7 @@
                 </select>
                 <div style="display:flex;gap:8px;justify-content:flex-end;">
                     <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
-                    <button onclick="opsGuardarTecnico()" class="mkt-add-btn" style="background:linear-gradient(135deg,#4b5563,#1f2937);">Guardar</button>
+                    <button onclick="opsGuardarTecnico()" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">Guardar</button>
                 </div>
             </div>
         </div>`;
@@ -1065,12 +1162,20 @@
                     <button onclick="document.getElementById('ops-panel-wrap').innerHTML=''" style="background:#fff;border:1px solid #e2e8f0;width:28px;height:28px;border-radius:7px;cursor:pointer;">${ICON.close}</button>
                 </div>
                 <div style="background:#fff;border-radius:14px;padding:18px;display:flex;align-items:center;gap:14px;margin-top:8px;">
-                    <div style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#1f2937,#0a2e5c);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;flex-shrink:0;">${opsEsc(iniciales)}</div>
-                    <div style="min-width:0;">
+                    <div style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#0B5FFF,#0842B0);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;flex-shrink:0;">${opsEsc(iniciales)}</div>
+                    <div style="min-width:0;flex:1;">
                         <div style="font-size:15.5px;font-weight:700;color:#1e293b;">${opsEsc(t.nombre)}</div>
                         <div style="font-size:11.5px;color:#64748b;">${opsEsc(t.puesto || "—")} · N.° ${opsEsc(t.numeroOperativo)}${t.registroHistorico > 1 ? ` (registro ${t.registroHistorico})` : ""}</div>
                         <span style="background:${activo ? "#dcfce7" : "#e5e7eb"};color:${activo ? "#166534" : "#374151"};font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:999px;display:inline-block;margin-top:4px;">${activo ? "Activo" : "Baja"}</span>
                     </div>
+                    ${opsPuedeGestionar() ? `
+                    <div style="position:relative;">
+                        <button onclick="opsToggleMenuTecnico(event)" title="Configuración" style="background:#f1f5f9;border:none;width:32px;height:32px;border-radius:8px;cursor:pointer;color:#475569;display:flex;align-items:center;justify-content:center;">${ICON.gear}</button>
+                        <div id="ops-menu-tecnico" style="display:none;position:absolute;right:0;top:38px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.12);min-width:190px;z-index:10;overflow:hidden;">
+                            <button onclick="opsAbrirModalEditarTecnico('${idInterno}')" style="width:100%;text-align:left;background:none;border:none;padding:10px 14px;font-size:12.5px;color:#334155;cursor:pointer;">Editar datos generales</button>
+                            ${activo ? `<button onclick="document.getElementById('ops-menu-tecnico').style.display='none';opsIniciarBajaTecnico('${idInterno}')" style="width:100%;text-align:left;background:none;border-top:1px solid #f1f5f9;border-bottom:none;border-left:none;border-right:none;padding:10px 14px;font-size:12.5px;color:#b91c1c;cursor:pointer;">${ICON.trash} Dar de baja al técnico</button>` : ""}
+                        </div>
+                    </div>` : ""}
                 </div>
 
                 <div style="background:#fff;border-radius:14px;padding:16px 18px;margin-top:12px;display:flex;gap:16px;">
@@ -1085,9 +1190,8 @@
                     ${t.fechaBaja ? `<div><strong>Fecha de baja:</strong> ${opsEsc(t.fechaBaja)}</div>` : ""}
                 </div>
 
-                ${activo ? `<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
-                    ${opsPuedeHacer("solicitar_material") ? `<button onclick="opsAbrirModalSolicitud('${idInterno}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#7c3aed,#5b21b6);">Solicitar material</button>` : ""}
-                    ${opsPuedeGestionar() ? `<button onclick="opsIniciarBajaTecnico('${idInterno}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#b91c1c,#7f1d1d);">${ICON.trash} Dar de baja</button>` : ""}
+                ${activo && opsPuedeHacer("solicitar_material") ? `<div style="margin-top:12px;">
+                    <button onclick="opsAbrirModalSolicitud('${idInterno}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">Solicitar material</button>
                 </div>` : ""}
 
                 <div style="background:#fff;border-radius:14px;padding:16px 18px;margin-top:12px;">
@@ -1195,6 +1299,19 @@
         </div>`;
     };
 
+    async function opsSiguienteFolioSolicitud() {
+        const { db, fs } = await opsGetFB();
+        const ref = fs.doc(db, COL_CONTADORES, "solicitudes");
+        const n = await fs.runTransaction(db, async (tx) => {
+            const snap = await tx.get(ref);
+            const actual = snap.exists() ? (snap.data().valor || 0) : 0;
+            const siguiente = actual + 1;
+            tx.set(ref, { valor: siguiente }, { merge: true });
+            return siguiente;
+        });
+        return "SOL-" + String(n).padStart(6, "0");
+    }
+
     window.opsEnviarSolicitudMaterial = async function (tecnicoId) {
         const t = cacheTec.find(x => x.id === tecnicoId);
         const descProd = document.getElementById("ops-in-prod").value.trim();
@@ -1206,22 +1323,198 @@
         const encontrado = catalogoProductos.find(p => (p.desc || "").toLowerCase() === descProd.toLowerCase());
 
         const { db, fs } = await opsGetFB();
-        const folio = "SM-" + String(Date.now()).slice(-6);
+        const folio = await opsSiguienteFolioSolicitud();
         await fs.addDoc(fs.collection(db, COL_SURTIDOS), {
             tipo: "material", folio,
             cliente: "Operaciones", solicitante: opsNombreActual(), vendedor: opsNombreActual(),
             area: "Operaciones", uso: justif || "Solicitud desde expediente de técnico",
-            fechaEntrega: opsHoy(), prioridad, estado: "pendiente",
-            productos: [{ clave: encontrado ? encontrado.clave : "", desc: descProd, cantidad }],
+            fechaEntrega: opsHoy(), prioridad, estado: "pendiente", // compatible con pantallas existentes de Almacén
+            estadoOperativo: "solicitada", // ciclo de vida ampliado, propio de Operaciones
+            productos: [{ clave: encontrado ? encontrado.clave : "", desc: descProd, cantidad,
+                // Forward-compat ASPEL: cuando exista integración, estos campos se llenan desde ahí.
+                externalId: encontrado ? (encontrado.clave || null) : null, sourceSystem: "manual", lastSync: null, syncStatus: "no_sincronizado" }],
             firma: null, origen: "operaciones",
-            // Campos extra — no rompen las pantallas existentes de Almacén, solo las enriquecen.
             tecnicoId, tecnicoNumero: t.numeroOperativo, tecnicoNombre: t.nombre,
             folioServicio: folioServicio || null, justificacion: justif || null,
+            timeline: [{ evento: `${opsNombreActual()} creó la solicitud`, usuario: opsUsuarioActual(), fecha: opsFechaHora() }],
             createdAt: fs.serverTimestamp ? fs.serverTimestamp() : opsFechaHora(),
         });
         document.getElementById("ops-modal-wrap").innerHTML = "";
         window.mostrarPush ? mostrarPush("Herramientas", `Solicitud ${folio} enviada a Almacén.`, "📦") : alert(`Solicitud ${folio} enviada a Almacén.`);
     };
+
+    // ═══════════════════════ TAB: SOLICITUDES (bandeja de Almacén) ═══════════════════════
+    const ESTADOS_SOLICITUD = {
+        solicitada:          { label: "Solicitada",           bg: "#e0e7ff", fg: "#3730a3", siguiente: "recibida" },
+        recibida:            { label: "Recibida por Almacén", bg: "#e0f2fe", fg: "#075985", siguiente: "en_revision" },
+        en_revision:         { label: "En revisión",          bg: "#fef9c3", fg: "#854d0e", siguiente: "disponible" },
+        disponible:          { label: "Disponible",           bg: "#dcfce7", fg: "#166534", siguiente: "en_preparacion" },
+        en_preparacion:      { label: "En preparación",       bg: "#fef3c7", fg: "#92400e", siguiente: "lista_para_surtir" },
+        lista_para_surtir:   { label: "Lista para surtir",    bg: "#cffafe", fg: "#155e75", siguiente: "entregada" },
+        entregada:           { label: "Entregada",            bg: "#dcfce7", fg: "#166534", siguiente: null },
+        parcial:             { label: "Parcialmente surtida",  bg: "#fef3c7", fg: "#92400e", siguiente: "entregada" },
+        no_disponible:       { label: "No disponible",        bg: "#fee2e2", fg: "#991b1b", siguiente: null },
+        rechazada:           { label: "Rechazada",             bg: "#fee2e2", fg: "#991b1b", siguiente: null },
+        cancelada:           { label: "Cancelada",             bg: "#e5e7eb", fg: "#374151", siguiente: null },
+    };
+    let filtroSolic = "todas";
+
+    function opsRenderSolicitudes() {
+        const el = document.getElementById("ops-tab-content");
+        if (!el) return;
+        const lista = cacheSurtidos.filter(s => {
+            if (filtroSolic === "pendientes") return !["entregada", "rechazada", "cancelada", "no_disponible"].includes(s.estadoOperativo || "solicitada");
+            if (filtroSolic === "urgentes") return s.prioridad === "urgente";
+            if (filtroSolic === "operaciones") return s.origen === "operaciones";
+            return true;
+        });
+
+        el.innerHTML = `
+            <div style="background:#fff;border-radius:14px;padding:16px 18px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+                    <div style="font-size:12.5px;font-weight:700;color:#1e293b;">Solicitudes de material</div>
+                    <div style="display:flex;gap:6px;">
+                        ${["todas:Todas", "pendientes:Pendientes", "urgentes:Urgentes", "operaciones:Desde Operaciones"].map(f => {
+                            const [id, label] = f.split(":");
+                            const activo = filtroSolic === id;
+                            return `<button onclick="opsFiltrarSolic('${id}')" style="background:${activo ? "#0B5FFF" : "#f1f5f9"};color:${activo ? "#fff" : "#475569"};border:none;font-size:11px;font-weight:600;padding:6px 11px;border-radius:7px;cursor:pointer;">${label}</button>`;
+                        }).join("")}
+                    </div>
+                </div>
+                <div style="overflow-x:auto;">
+                    <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                        <thead><tr style="background:#0B5FFF;color:#fff;text-align:left;">
+                            <th style="padding:7px 10px;border-radius:8px 0 0 8px;">Folio</th>
+                            <th style="padding:7px 10px;">Técnico</th>
+                            <th style="padding:7px 10px;">Producto</th>
+                            <th style="padding:7px 10px;">Prioridad</th>
+                            <th style="padding:7px 10px;">Estado</th>
+                            <th style="padding:7px 10px;border-radius:0 8px 8px 0;text-align:right;">Acción</th>
+                        </tr></thead>
+                        <tbody>${lista.length ? lista.map((s, i) => opsFilaSolicitud(s, i)).join("") : '<tr><td colspan="6" style="padding:22px;text-align:center;color:#94a3b8;">Sin solicitudes en este filtro.</td></tr>'}</tbody>
+                    </table>
+                </div>
+            </div>`;
+    }
+    window.opsFiltrarSolic = function (f) { filtroSolic = f; opsRenderSolicitudes(); };
+
+    function opsFilaSolicitud(s, i) {
+        const estadoKey = s.estadoOperativo || "solicitada";
+        const e = ESTADOS_SOLICITUD[estadoKey] || ESTADOS_SOLICITUD.solicitada;
+        const prod = (s.productos && s.productos[0]) || {};
+        const zebra = i % 2 === 0 ? "#fff" : "#f8fafc";
+        const prio = s.prioridad === "urgente" ? `<span style="color:#b91c1c;font-weight:600;">Urgente</span>` : "Normal";
+        return `<tr style="background:${zebra};border-bottom:1px solid #eef1f5;cursor:pointer;" onclick="opsAbrirFichaSolicitud('${s.id}')">
+            <td style="padding:7px 10px;font-weight:600;color:#334155;">${opsEsc(s.folio)}</td>
+            <td style="padding:7px 10px;color:#334155;">${opsEsc(s.tecnicoNombre || s.solicitante || "—")}</td>
+            <td style="padding:7px 10px;color:#334155;">${opsEsc(prod.desc)} ${prod.cantidad ? `× ${opsEsc(prod.cantidad)}` : ""}</td>
+            <td style="padding:7px 10px;">${prio}</td>
+            <td style="padding:7px 10px;"><span style="background:${e.bg};color:${e.fg};font-size:10.5px;font-weight:600;padding:3px 8px;border-radius:999px;">${e.label}</span></td>
+            <td style="padding:7px 10px;text-align:right;" onclick="event.stopPropagation()">
+                ${e.siguiente ? `<button onclick="opsAvanzarSolicitud('${s.id}','${e.siguiente}')" style="background:#0B5FFF15;border:none;color:#0B5FFF;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:10.5px;font-weight:600;">Avanzar</button>` : ""}
+            </td>
+        </tr>`;
+    }
+
+    window.opsAbrirFichaSolicitud = function (id) {
+        const s = cacheSurtidos.find(x => x.id === id);
+        if (!s) return;
+        const timeline = (s.timeline || []).slice().reverse();
+        const prod = (s.productos && s.productos[0]) || {};
+        const estadoKey = s.estadoOperativo || "solicitada";
+        const e = ESTADOS_SOLICITUD[estadoKey] || ESTADOS_SOLICITUD.solicitada;
+        const wrap = document.getElementById("ops-panel-wrap");
+        wrap.innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.5);z-index:99998;display:flex;justify-content:flex-end;" onclick="if(event.target===this)document.getElementById('ops-panel-wrap').innerHTML=''">
+            <div style="background:#fff;width:440px;max-width:92vw;height:100%;overflow-y:auto;padding:22px;box-shadow:-6px 0 20px rgba(0,0,0,0.15);">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px;">
+                    <div><div style="font-size:11px;color:#94a3b8;font-weight:600;">${opsEsc(s.folio)}</div><div style="font-size:16px;font-weight:700;color:#1e293b;">${opsEsc(prod.desc)}</div></div>
+                    <button onclick="document.getElementById('ops-panel-wrap').innerHTML=''" style="background:#f1f5f9;border:none;width:28px;height:28px;border-radius:7px;cursor:pointer;">${ICON.close}</button>
+                </div>
+                <span style="background:${e.bg};color:${e.fg};font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;">${e.label}</span>
+                <div style="margin-top:14px;font-size:12.5px;color:#334155;line-height:1.9;">
+                    <div><strong>Técnico:</strong> ${opsEsc(s.tecnicoNombre || "—")} ${s.tecnicoNumero ? `(N.° ${opsEsc(s.tecnicoNumero)})` : ""}</div>
+                    <div><strong>Cantidad:</strong> ${opsEsc(prod.cantidad)}</div>
+                    <div><strong>Prioridad:</strong> ${opsEsc(s.prioridad)}</div>
+                    <div><strong>Folio de servicio:</strong> ${opsEsc(s.folioServicio || "—")}</div>
+                    <div><strong>Solicitante:</strong> ${opsEsc(s.solicitante || "—")}</div>
+                    ${s.justificacion ? `<div><strong>Justificación:</strong> ${opsEsc(s.justificacion)}</div>` : ""}
+                </div>
+                ${e.siguiente && opsPuedeHacer("autorizar_material") ? `<div style="margin-top:14px;"><button onclick="opsAvanzarSolicitud('${s.id}','${e.siguiente}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">Avanzar a "${ESTADOS_SOLICITUD[e.siguiente].label}"</button></div>` : ""}
+                <div style="margin-top:20px;font-size:12.5px;font-weight:700;color:#1e293b;display:flex;align-items:center;gap:6px;">${ICON.clock} Línea de tiempo</div>
+                <div style="margin-top:10px;border-left:2px solid #e2e8f0;padding-left:14px;">
+                    ${timeline.length ? timeline.map(ev => `<div style="margin-bottom:12px;position:relative;"><div style="position:absolute;left:-19px;top:3px;width:8px;height:8px;border-radius:50%;background:#0B5FFF;"></div><div style="font-size:12px;color:#334155;">${opsEsc(ev.evento)}</div><div style="font-size:10.5px;color:#94a3b8;">${opsEsc((ev.fecha || "").slice(0, 16).replace("T", " "))}</div></div>`).join("") : '<div style="color:#94a3b8;font-size:12px;">Sin eventos.</div>'}
+                </div>
+            </div>
+        </div>`;
+    };
+
+    window.opsAvanzarSolicitud = async function (id, siguienteEstado) {
+        const s = cacheSurtidos.find(x => x.id === id);
+        const e = ESTADOS_SOLICITUD[siguienteEstado];
+        const { db, fs } = await opsGetFB();
+        const nuevoEvento = { evento: `${opsNombreActual()} avanzó a "${e.label}"`, usuario: opsUsuarioActual(), fecha: opsFechaHora() };
+        await fs.updateDoc(fs.doc(db, COL_SURTIDOS, id), {
+            estadoOperativo: siguienteEstado,
+            estado: ["entregada"].includes(siguienteEstado) ? "surtido" : "pendiente",
+            timeline: fs.arrayUnion(nuevoEvento),
+        });
+        // Notificación real cuando queda lista para surtir — Operaciones no depende de estar viendo la pantalla.
+        if (siguienteEstado === "lista_para_surtir") {
+            const prod = (s.productos && s.productos[0]) || {};
+            await fs.addDoc(fs.collection(db, COL_NOTIFICACIONES), {
+                tipo: "solicitud_lista", solicitudId: id, folio: s.folio,
+                mensaje: `Solicitud ${s.folio} lista para surtir — ${opsEsc(prod.desc)} para ${opsEsc(s.tecnicoNombre || "—")}.`,
+                leida: false, fecha: opsFechaHora(),
+            });
+            window.mostrarPush ? mostrarPush("Almacén", `Solicitud ${s.folio} lista para surtir.`, "🔔") : null;
+        }
+        const panel = document.getElementById("ops-panel-wrap");
+        if (panel) panel.innerHTML = "";
+    };
+
+    // ═══════════════════════ TAB: CENTRO DE ALERTAS ═══════════════════════
+    function opsRenderAlertas() {
+        const el = document.getElementById("ops-tab-content");
+        if (!el) return;
+
+        const criticas = [];
+        const pendientes = [];
+        const preventivas = [];
+        const info = [];
+
+        cacheHerr.filter(h => ["danada", "extraviada"].includes(h.estado)).forEach(h =>
+            criticas.push(`Herramienta ${h.folio} (${h.descripcion}) reportada ${h.estado === "danada" ? "dañada" : "extraviada"}.`));
+
+        cacheHerr.filter(h => h.estado === "reparacion").forEach(h =>
+            pendientes.push(`Herramienta ${h.folio} sigue en reparación.`));
+
+        cacheSurtidos.filter(s => (s.prioridad === "urgente") && !["entregada", "rechazada", "cancelada"].includes(s.estadoOperativo || "solicitada")).forEach(s =>
+            pendientes.push(`Solicitud ${s.folio} urgente sin entregar (${(ESTADOS_SOLICITUD[s.estadoOperativo || "solicitada"] || {}).label || "solicitada"}).`));
+
+        cacheTec.filter(t => t.estatus === "baja").forEach(t => {
+            const herrPend = cacheHerr.filter(h => h.tecnicoActualId === t.id).length;
+            const matPend = cacheAlmacenTec.filter(m => m.tecnicoId === t.id && m.cantidad > 0).length;
+            if (herrPend || matPend) criticas.push(`${t.nombre} (baja) tiene ${herrPend ? herrPend + " herramienta(s)" : ""}${herrPend && matPend ? " y " : ""}${matPend ? matPend + " material(es)" : ""} sin devolver.`);
+        });
+
+        cacheTec.filter(t => t.estatus === "activo" && t.fechaIngreso === opsHoy()).forEach(t => info.push(`Alta reciente: ${t.nombre} (N.° ${t.numeroOperativo}).`));
+
+        function bloque(titulo, color, bg, items) {
+            if (!items.length) return "";
+            return `<div style="background:#fff;border-radius:12px;padding:14px 16px;margin-bottom:12px;">
+                <div style="font-size:12px;font-weight:700;color:${color};margin-bottom:8px;display:flex;align-items:center;gap:6px;"><span style="width:8px;height:8px;border-radius:50%;background:${color};display:inline-block;"></span>${titulo} (${items.length})</div>
+                ${items.map(txt => `<div style="font-size:12px;color:#334155;padding:6px 0;border-bottom:1px solid #eef1f5;">${opsEsc(txt)}</div>`).join("")}
+            </div>`;
+        }
+
+        el.innerHTML = bloque("Críticas", "#b91c1c", "#fee2e2", criticas)
+            + bloque("Pendientes", "#b45309", "#fef3c7", pendientes)
+            + bloque("Preventivas", "#854d0e", "#fef9c3", preventivas)
+            + bloque("Información", "#0B5FFF", "#e0e7ff", info)
+            + (!criticas.length && !pendientes.length && !preventivas.length && !info.length
+                ? '<div style="background:#fff;border-radius:12px;padding:24px;text-align:center;color:#94a3b8;font-size:12.5px;">Sin alertas activas — todo en orden.</div>' : "");
+    }
 
     // ═══════════════════════ TAB: MOVIMIENTOS ═══════════════════════
     function opsRenderMovimientos() {
