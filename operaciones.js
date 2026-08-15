@@ -123,8 +123,8 @@
     ];
 
     let opsFB = null;
-    let unsubHerr = null, unsubTec = null, unsubMov = null;
-    let cacheHerr = [], cacheTec = [], cacheMov = [];
+    let unsubHerr = null, unsubTec = null, unsubMov = null, unsubSurt = null;
+    let cacheHerr = [], cacheTec = [], cacheMov = [], cacheSurtidos = [];
     let tabActual = "dashboard";
     let filtroHerr = "", filtroTec = "";
 
@@ -368,7 +368,7 @@
         document.body.style.overflow = "hidden";
         await opsSembrarPuestosSiNecesario();
         await opsSuscribirTodo();
-        opsCambiarTab("dashboard");
+        opsCambiarTab("resumen");
     };
 
     window.opsCerrarHerramientas = function () {
@@ -378,6 +378,7 @@
         if (unsubHerr) { unsubHerr(); unsubHerr = null; }
         if (unsubTec)  { unsubTec();  unsubTec = null; }
         if (unsubMov)  { unsubMov();  unsubMov = null; }
+        if (unsubSurt) { unsubSurt(); unsubSurt = null; }
     };
 
     function opsRenderShell() {
@@ -398,7 +399,7 @@
 
             <div style="max-width:1200px;margin:0 auto;padding:18px 26px 60px;">
                 <div style="display:flex;gap:6px;margin-bottom:18px;border-bottom:1px solid #e2e8f0;">
-                    ${["dashboard:Dashboard", "tecnicos:Técnicos", "movimientos:Movimientos"].map(t => {
+                    ${["resumen:Resumen", "dashboard:Herramientas", "tecnicos:Técnicos", "movimientos:Movimientos"].map(t => {
                         const [id, label] = t.split(":");
                         return `<button onclick="opsCambiarTab('${id}')" id="ops-tab-${id}" class="ops-tab-btn" style="background:none;border:none;padding:9px 14px;font-size:12.5px;font-weight:600;color:#64748b;cursor:pointer;border-bottom:2px solid transparent;">${label}</button>`;
                     }).join("")}
@@ -418,7 +419,8 @@
         });
         const activo = document.getElementById("ops-tab-" + tab);
         if (activo) { activo.style.color = "#1f2937"; activo.style.borderBottomColor = "#b91c1c"; }
-        if (tab === "dashboard") opsRenderDashboard();
+        if (tab === "resumen") opsRenderResumen();
+        else if (tab === "dashboard") opsRenderDashboard();
         else if (tab === "tecnicos") opsRenderTecnicos();
         else if (tab === "movimientos") opsRenderMovimientos();
     };
@@ -430,6 +432,7 @@
             unsubHerr = fs.onSnapshot(fs.query(fs.collection(db, COL_HERRAMIENTAS), fs.orderBy("folio")), snap => {
                 cacheHerr = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                 if (tabActual === "dashboard") opsRenderDashboard();
+                if (tabActual === "resumen") opsRenderResumen();
             });
         }
         if (!unsubTec) {
@@ -437,13 +440,21 @@
                 cacheTec = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                 if (tabActual === "tecnicos") opsRenderTecnicos();
                 if (tabActual === "dashboard") opsRenderDashboard();
+                if (tabActual === "resumen") opsRenderResumen();
             });
         }
         if (!unsubMov) {
             unsubMov = fs.onSnapshot(fs.query(fs.collection(db, COL_MOVIMIENTOS), fs.orderBy("fecha", "desc"), fs.limit(200)), snap => {
                 cacheMov = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                 if (tabActual === "movimientos") opsRenderMovimientos();
+                if (tabActual === "resumen") opsRenderResumen();
             });
+        }
+        if (!unsubSurt) {
+            unsubSurt = fs.onSnapshot(fs.query(fs.collection(db, COL_SURTIDOS), fs.orderBy("createdAt", "desc"), fs.limit(100)), snap => {
+                cacheSurtidos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                if (tabActual === "resumen") opsRenderResumen();
+            }, () => { /* si aún no existe la colección o el índice, Resumen simplemente muestra 0 */ });
         }
         // Puestos, personas, historial de puesto y almacén de técnico: se leen una vez
         // por apertura (no cambian con la frecuencia de herramientas/movimientos).
@@ -458,6 +469,98 @@
     }
 
     // ═══════════════════════ TAB: DASHBOARD ═══════════════════════
+    // ═══════════════════════ TAB: RESUMEN (vista general del departamento) ═══════════════════════
+    function opsRenderResumen() {
+        const el = document.getElementById("ops-tab-content");
+        if (!el) return;
+
+        const tecActivos = cacheTec.filter(t => t.estatus === "activo");
+        const tecBaja = cacheTec.filter(t => t.estatus === "baja");
+        const totalHerr = cacheHerr.length;
+        const asignadas = cacheHerr.filter(h => h.estado === "asignada").length;
+        const danadas = cacheHerr.filter(h => ["danada", "extraviada", "reparacion", "revision"].includes(h.estado)).length;
+        const solicitudesOps = cacheSurtidos.filter(s => s.origen === "operaciones");
+        const pendientes = solicitudesOps.filter(s => s.estado === "pendiente");
+        const urgentes = pendientes.filter(s => s.prioridad === "urgente").length;
+
+        // Cierre operativo pendiente: técnicos de baja que por alguna razón todavía
+        // conservan herramientas o material (no debería pasar con el flujo nuevo,
+        // pero sirve como red de seguridad ante datos migrados/manuales).
+        const inconsistencias = tecBaja.map(t => {
+            const herrPend = cacheHerr.filter(h => h.tecnicoActualId === t.id).length;
+            const matPend = cacheAlmacenTec.filter(m => m.tecnicoId === t.id && m.cantidad > 0).length;
+            return { t, herrPend, matPend };
+        }).filter(x => x.herrPend > 0 || x.matPend > 0);
+
+        const avatar = (nombre, activo) => {
+            const ini = (nombre || "?").split(" ").filter(Boolean).slice(0, 2).map(s => s[0]).join("").toUpperCase();
+            const bg = activo ? "linear-gradient(135deg,#1f2937,#0a2e5c)" : "#94a3b8";
+            return `<div style="width:34px;height:34px;border-radius:50%;background:${bg};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex-shrink:0;">${opsEsc(ini)}</div>`;
+        };
+
+        const listaTecnicos = [...tecActivos, ...tecBaja].slice(0, 6).map(t => {
+            const activo = t.estatus === "activo";
+            return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #eef1f5;cursor:pointer;" onclick="opsCambiarTab('tecnicos');setTimeout(()=>opsAbrirFichaTecnico('${t.id}'),50)">
+                ${avatar(t.nombre, activo)}
+                <div style="flex:1;min-width:0;"><div style="font-size:12.5px;font-weight:600;color:#1e293b;">${opsEsc(t.nombre)}</div><div style="font-size:10.5px;color:#64748b;">${opsEsc(t.puesto || "—")} · N.° ${opsEsc(t.numeroOperativo)}</div></div>
+                <span style="background:${activo ? "#dcfce7" : "#e5e7eb"};color:${activo ? "#166534" : "#374151"};font-size:10px;font-weight:600;padding:2px 8px;border-radius:999px;">${activo ? "Activo" : "Baja"}</span>
+            </div>`;
+        }).join("") || '<div style="color:#94a3b8;font-size:12px;padding:8px 0;">Sin técnicos registrados todavía.</div>';
+
+        const actividad = cacheMov.slice(0, 5).map(m => {
+            const color = { asignacion: "#0891b2", transferencia: "#0891b2", devolucion: "#059669", baja: "#b91c1c", danio: "#b91c1c", perdida: "#b91c1c", reparacion: "#b45309" }[m.tipo] || "#64748b";
+            return `<div style="margin-bottom:10px;position:relative;">
+                <div style="position:absolute;left:-17px;top:3px;width:7px;height:7px;border-radius:50%;background:${color};"></div>
+                <div style="font-size:11.5px;color:#334155;">${opsEsc(m.tipo)} · ${opsEsc(m.herramientaId)}</div>
+                <div style="font-size:10px;color:#94a3b8;">${opsEsc((m.fecha || "").slice(0, 16).replace("T", " "))}</div>
+            </div>`;
+        }).join("") || '<div style="color:#94a3b8;font-size:12px;">Sin actividad reciente.</div>';
+
+        el.innerHTML = `
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;">
+                <div style="background:#fff;border-radius:12px;padding:14px 16px;">
+                    <div style="font-size:10.5px;color:#94a3b8;">Técnicos activos</div>
+                    <div style="font-size:20px;font-weight:700;color:#1e293b;margin-top:2px;">${tecActivos.length}</div>
+                </div>
+                <div style="background:#fff;border-radius:12px;padding:14px 16px;">
+                    <div style="font-size:10.5px;color:#94a3b8;">Herramientas asignadas</div>
+                    <div style="font-size:20px;font-weight:700;color:#1e293b;margin-top:2px;">${asignadas} / ${totalHerr}</div>
+                    <div style="height:4px;background:#e2e8f0;border-radius:99px;margin-top:6px;overflow:hidden;"><div style="height:100%;width:${totalHerr ? Math.round(asignadas / totalHerr * 100) : 0}%;background:#0891b2;"></div></div>
+                </div>
+                <div style="background:#fff;border-radius:12px;padding:14px 16px;">
+                    <div style="font-size:10.5px;color:#94a3b8;">Solicitudes pendientes</div>
+                    <div style="font-size:20px;font-weight:700;color:#1e293b;margin-top:2px;">${pendientes.length}</div>
+                    ${urgentes ? `<div style="font-size:10px;color:#b45309;margin-top:3px;">${urgentes} urgente(s)</div>` : ""}
+                </div>
+                <div style="background:#fff;border-radius:12px;padding:14px 16px;">
+                    <div style="font-size:10.5px;color:#94a3b8;">Reparación / dañadas</div>
+                    <div style="font-size:20px;font-weight:700;color:#1e293b;margin-top:2px;">${danadas}</div>
+                </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:12px;">
+                <div style="background:#fff;border-radius:12px;padding:16px 18px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                        <div style="font-size:12.5px;font-weight:700;color:#1e293b;">Técnicos</div>
+                        <span style="font-size:11px;color:#0891b2;cursor:pointer;" onclick="opsCambiarTab('tecnicos')">Ver todos</span>
+                    </div>
+                    ${listaTecnicos}
+                </div>
+                <div style="display:flex;flex-direction:column;gap:12px;">
+                    <div style="background:#fff;border-radius:12px;padding:16px 18px;">
+                        <div style="font-size:12.5px;font-weight:700;color:#1e293b;margin-bottom:10px;">Actividad reciente</div>
+                        <div style="border-left:2px solid #e2e8f0;padding-left:12px;">${actividad}</div>
+                    </div>
+                    ${inconsistencias.length ? `
+                    <div style="background:linear-gradient(135deg,#4b5563,#1f2937);border-radius:12px;padding:16px 18px;color:#fff;">
+                        <div style="font-size:12.5px;font-weight:700;margin-bottom:6px;">Cierre operativo pendiente</div>
+                        ${inconsistencias.map(x => `<div style="font-size:11px;color:#d1d5db;line-height:1.5;">${opsEsc(x.t.nombre)} (baja) tiene ${x.herrPend ? x.herrPend + " herramienta(s)" : ""}${x.herrPend && x.matPend ? " y " : ""}${x.matPend ? x.matPend + " material(es)" : ""} sin devolver.</div>`).join("")}
+                        <button onclick="opsCambiarTab('tecnicos')" style="margin-top:10px;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:11px;font-weight:600;padding:6px 12px;border-radius:7px;cursor:pointer;">Resolver ahora</button>
+                    </div>` : ""}
+                </div>
+            </div>`;
+    }
+
     function opsRenderDashboard() {
         const el = document.getElementById("ops-tab-content");
         if (!el) return;
