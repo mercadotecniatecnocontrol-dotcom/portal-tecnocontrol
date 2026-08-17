@@ -41,6 +41,7 @@
     const COL_AUDITORIA    = "ops_auditoria";     // bitácora: quién, qué, cuándo, valor anterior/nuevo
     const COL_NOTIFICACIONES = "ops_notificaciones"; // ej. "solicitud lista para surtir"
     const COL_GUARDIAS = "ops_guardias"; // herramienta de guardia: distinta de la asignación permanente
+    const COL_VEHICULOS_ASIG = "ops_vehiculo_asignaciones"; // historial real de vehículo por técnico (dato propio de Operaciones, no inventa GPS de Flotilla)
 
     // Capa de integración con RH — mismo patrón que opsAspelAdapter: placeholder documentado.
     // Cuando exista sincronización real de personas/altas/bajas/puestos, solo se reemplaza el interior.
@@ -54,16 +55,41 @@
         },
     };
 
-    // Capa de integración con Flotilla — mismo patrón que ASPEL/RH.
-    // Cuando exista API o Firestore compartido con Flotilla, solo se reemplaza el interior.
+    // Flotilla vive en LA MISMA base de Firestore que Operaciones (fl_usuarios, flotilla_vehiculos,
+    // flotilla_transferencias) — no es un sistema externo. Se lee directamente, sin adaptador ficticio.
     window.opsFlotillaProvider = {
         async obtenerVehiculoActual(tecnicoId) {
-            console.warn("[opsFlotillaProvider] obtenerVehiculoActual es un placeholder — no conectado a Flotilla todavía.", tecnicoId);
-            return null; // { unidad, placas, marca, modelo, estado, fechaAsignacion, ubicacion, ultimaActualizacion }
+            const t = cacheTec.find(x => x.id === tecnicoId);
+            if (!t || !t.correo) return null; // sin correo capturado todavía no hay forma de hacer match confiable
+            try {
+                const { db, fs } = await opsGetFB();
+                const snapUser = await fs.getDocs(fs.query(fs.collection(db, "fl_usuarios"), fs.where("email", "==", t.correo)));
+                if (snapUser.empty) return null;
+                const flUser = snapUser.docs[0].data();
+                const eco = flUser.ecoVinculado || (Array.isArray(flUser.ecosVinculados) ? flUser.ecosVinculados[0] : null);
+                if (!eco) return null;
+                let vehData = null;
+                const directo = await fs.getDoc(fs.doc(db, "flotilla_vehiculos", String(eco)));
+                if (directo.exists()) vehData = directo.data();
+                else {
+                    const snapVeh = await fs.getDocs(fs.query(fs.collection(db, "flotilla_vehiculos"), fs.where("eco", "==", String(eco))));
+                    if (!snapVeh.empty) vehData = snapVeh.docs[0].data();
+                }
+                if (!vehData) return { unidad: "ECO " + eco, marca: "", modelo: "", estado: "Sin detalle en Flotilla" };
+                return {
+                    unidad: "ECO " + eco,
+                    marca: vehData.marca || "", modelo: vehData.modelo || "",
+                    estado: vehData.estatus || vehData.estado || "—",
+                };
+            } catch (e) {
+                console.warn("[opsFlotillaProvider] No se pudo leer Flotilla:", e.message);
+                return null;
+            }
         },
         async obtenerUbicacionesEnCampo() {
-            console.warn("[opsFlotillaProvider] obtenerUbicacionesEnCampo es un placeholder — no conectado a Flotilla todavía.");
-            return []; // [{ tecnicoId, lat, lng, estado, folioActual, ultimaActualizacion }]
+            // Flotilla todavía no registra GPS/lat-lng en ningún documento — cuando lo haga,
+            // aquí se lee esa colección/campo real. No se inventa ubicación.
+            return [];
         },
     };
     async function opsAuditar(entidad, entidadId, campo, valorAnterior, valorNuevo) {
@@ -136,6 +162,390 @@
 
     // Catálogo base (mismo listado de "AYUDA VISUAL / HERRAMIENTA BÁSICA PARA SERVICIOS")
     // Se usa solo para el sembrado inicial; cada pieza recibe un folio HT-XXXXXX real.
+    // Dataset REAL importado del Excel HERRAMIENTA_TECNICOS.xlsx (12 técnicos, 354 piezas).
+    // Folios EXACTOS del Excel (#01-001 etc.) se conservan como identificador permanente,
+    // por decisión explícita — no se migran a HT-XXXXXX.
+    const EXCEL_REAL_TECNICOS = [
+        { numero: "01", nombre: "Ulises Nu\u00f1ez", items: [
+            ["#01-001", "JUEGO DE DADOS", 1, null],
+            ["#01-002", "JGO. LLAVES ESPA\u00d1OLAS STD DE 9 PIEZAS", 1, null],
+            ["#01-003", "JGO. LLAVES ESPA\u00d1OLAS MM DE 9 PIEZAS", 1, null],
+            ["#01-004", "LLAVE STILSON 8\" URREA", 1, null],
+            ["#01-005", "LLAVE STILSON 14\" URREA", 1, null],
+            ["#01-006", "LLAVE STILSON 18\" URREA", 1, null],
+            ["#01-007", "JUEGO LLAVES ALLEN STD. TIPO L", 1, "NUEVO"],
+            ["#01-008", "JUEGO LLAVES ALLEN MM. TIPO L", 1, "NUEVO"],
+            ["#01-009", "PINZAS ELECTRICISTA URREA", 1, null],
+            ["#01-011", "JUEGO DESARMADORES AMBAR 8 PIEZAS", 1, "NUEVO"],
+            ["#01-012", "JUEGO DESARMADORES ELECTRICISTA", 1, null],
+            ["#01-013", "MULTIMETRO  TURPER MUL-33", 1, null],
+            ["#01-014", "LLAVE UNIVERSAL DE CADENA URREA", 1, null],
+            ["#01-015", "LLAVE AJUSTABLE 10\" (CRECENT)", 1, null],
+            ["#01-016", "LLAVE AJUSTABLE 15\" (CRECENT)", 2, null],
+            ["#01-017", "MARRO 4LB MANGO FIBRA DE VIDRIO", 1, "NUEVO"],
+            ["#01-018", "PINZAS DE PRESION 10\" (PERRAS)", 1, null],
+            ["#01-019", "ARCO DE SEGUETA", 1, null],
+            ["#01-022", "MARTILLO DE BOLA", 1, null],
+            ["#01-023", "LLAVE DE BANDA", 1, null],
+            ["#01-024", "PINZAS DE PUNTA PRETUL", 1, "NUEVO"],
+            ["#01-025", "DESARMADOR DE CAJA 1/4", 1, null],
+            ["#01-026", "CORTA TUBO PRETUL", 1, null],
+            ["#01-027", "LIMA PLANA", 1, null],
+            ["#01-028", "PORTA NAVAJA SIN NAVAJA", 1, null],
+            ["#01-029", "CEPILLO DE ALMABRE", 1, null],
+            ["#01-030", "LLAVES TROX", 1, null],
+            ["#01-031", "PINZAS DE MECANICO", 1, "NUEVO"],
+            ["#01-032", "LLAVE STILSON 10\" URREA", 1, "NUEVO"],
+            ["#01-033", "CAJA HERRAMIENTA HUSKY 3 NIVELES", 1, "NUEVO"],
+            ["#01-034", "LLAVE DE CADENA 5/8\" GEARWRENCH", 1, "NUEVO / MERCADO LIBRE"],
+            ["#01-035", "CABLE USB A SERIAL (PARA VEEDER ROOT)", 1, "STEREN 5/08/25  $290"],
+            ["#01-036", "CAUTIN DE LAPIZ", 1, "STEREN 5/08/25  $190"],
+            ["#01-034", "LLAVE DE CADENA 5/8\" GEARWRENCH", 1, null],
+        ]},
+        { numero: "02", nombre: "Alan Estrada", items: [
+            ["#02-001", "JUEGO DE DADOS", 1, null],
+            ["#02-002", "JGO. LLAVES ESPA\u00d1OLAS STD DE 9 PIEZAS", 1, null],
+            ["#02-003", "JGO. LLAVES ESPA\u00d1OLAS MM DE 9 PIEZAS", 1, null],
+            ["#02-004", "LLAVE STILSON 8\" URREA", 1, null],
+            ["#02-005", "LLAVE STILSON 14\" URREA", 1, null],
+            ["#02-006", "LLAVE STILSON 18\" URREA", 1, null],
+            ["#02-007", "JUEGO LLAVES ALLEN STD. TIPO L", 1, null],
+            ["#02-008", "JUEGO LLAVES ALLEN MM. TIPO L", 1, null],
+            ["#02-009", "PINZAS ELECTRICISTA URREA", 1, null],
+            ["#02-010", "JUEGO DESARMADORES AMBAR 8 PIEZAS", 1, null],
+            ["#02-011", "JUEGO DESARMADORES AMBAR", 1, null],
+            ["#02-012", "JUEGO DESARMADORES ELECTRICISTA", 1, null],
+            ["#02-013", "MULTIMETRO  TURPER MUL-33", 1, null],
+            ["#02-014", "LLAVE UNIVERSAL DE CADENA URREA", 1, null],
+            ["#02-015", "LLAVE AJUSTABLE 10\" (CRECENT)", 1, null],
+            ["#02-016", "LLAVE AJUSTABLE 15\" (CRECENT)", 2, null],
+            ["#02-017", "MARRO 4LB MANGO FIBRA DE VIDRIO", 1, null],
+            ["#02-018", "PINZAS DE PRESION 10\" (PERRAS)", 1, null],
+            ["#02-019", "ARCO DE SEGUETA", 1, null],
+            ["#02-022", "MARTILLO DE BOLA", 1, null],
+            ["#02-023", "LLAVE DE BANDA", 1, null],
+            ["#02-024", "PINZAS DE PUNTA PRETUL", 1, null],
+            ["#02-025", "DESARMADOR DE CAJA 1/4", 1, null],
+            ["#02-026", "CORTA TUBO PRETUL", 1, null],
+            ["#02-027", "LIMA PLANA", 1, null],
+            ["#02-028", "PORTA NAVAJA SIN NAVAJA", 1, null],
+            ["#02-029", "CEPILLO DE ALMABRE", 1, null],
+            ["#02-030", "LLAVES TROX", 1, null],
+            ["#02-031", "PINZAS DE MECANICO", 1, null],
+            ["#02-032", "CAJA HERRAMIENTA HUSKY 3 NIVELES", 1, null],
+        ]},
+        { numero: "03", nombre: "Roberto Mu\u00f1oz", items: [
+            ["#03-001", "JUEGO DE DADOS", 1, null],
+            ["#03-002", "JGO. LLAVES ESPA\u00d1OLAS STD DE 9 PIEZAS", 1, null],
+            ["#03-003", "JGO. LLAVES ESPA\u00d1OLAS MM DE 9 PIEZAS", 1, null],
+            ["#03-004", "LLAVE STILSON 8\" URREA", 1, null],
+            ["#03-005", "LLAVE STILSON 14\" URREA", 1, null],
+            ["#03-006", "LLAVE STILSON 18\" URREA", 1, null],
+            ["#03-006", "LLAVE STILSON 18\" URREA", 1, null],
+            ["#03-007", "JUEGO LLAVES ALLEN STD. TIPO L", 1, null],
+            ["#03-008", "JUEGO LLAVES ALLEN MM. TIPO L", 1, null],
+            ["#03-009", "PINZAS ELECTRICISTA URREA", 1, null],
+            ["#03-011", "JUEGO DESARMADORES AMBAR 8 PIEZAS", 1, null],
+            ["#03-011", "JUEGO DESARMADORES AMBAR", 1, null],
+            ["#03-012", "JUEGO DESARMADORES ELECTRICISTA", 1, null],
+            ["#03-013", "MULTIMETRO  TURPER MUL-33", 1, null],
+            ["#03-014", "LLAVE UNIVERSAL DE CADENA URREA", 1, null],
+            ["#03-015", "LLAVE AJUSTABLE 10\" (CRECENT)", 1, null],
+            ["#03-016", "LLAVE AJUSTABLE 15\" (CRECENT)", 2, null],
+            ["#03-017", "MARRO 4LB MANGO FIBRA DE VIDRIO", 1, null],
+            ["#03-018", "PINZAS DE PRESION 10\" (PERRAS)", 1, null],
+            ["#03-019", "ARCO DE SEGUETA", 1, null],
+            ["#03-022", "MARTILLO DE BOLA", 1, null],
+            ["#03-023", "LLAVE DE BANDA", 1, null],
+            ["#03-024", "PINZAS DE PUNTA PRETUL", 1, null],
+            ["#03-025", "DESARMADOR DE CAJA 1/4", 1, null],
+            ["#03-026", "CORTA TUBO PRETUL", 1, null],
+            ["#03-027", "LIMA PLANA", 1, null],
+            ["#03-028", "PORTA NAVAJA SIN NAVAJA", 1, null],
+            ["#03-029", "CEPILLO DE ALMABRE", 1, null],
+            ["#03-030", "LLAVES TROX", 1, null],
+            ["#03-031", "PINZAS DE MECANICO", 1, null],
+            ["#03-032", "CAJA HERRAMIENTA HUSKY 3 NIVELES", 1, null],
+        ]},
+        { numero: "04", nombre: "Ricardo Gonzalez", items: [
+            ["#04-001", "JUEGO DE DADOS", 1, null],
+            ["#04-002", "JGO. LLAVES ESPA\u00d1OLAS STD DE 9 PIEZAS", 1, "DE 1/4 A 3/4 FALTA 7/16"],
+            ["#04-003", "JGO. LLAVES ESPA\u00d1OLAS MM DE 9 PIEZAS", 1, "8,12,13,15,17,18,19,20"],
+            ["#04-004", "LLAVE STILSON 8\" URREA", 1, "NUEVO"],
+            ["#04-005", "LLAVE STILSON 14\" URREA", 1, "NUEVO"],
+            ["#04-006", "LLAVE STILSON 18\" URREA", 1, "NUEVO"],
+            ["#04-006", "LLAVE STILSON 18\" URREA", 1, null],
+            ["#04-007", "JUEGO LLAVES ALLEN STD. TIPO L", 1, "AMARILLO COMBINADO"],
+            ["#04-008", "JUEGO LLAVES ALLEN MM. TIPO L", 1, "NARAJNA COMBINADO"],
+            ["#04-009", "PINZAS ELECTRICISTA URREA", 1, "NUEVO"],
+            ["#04-011", "JUEGO DESARMADORES AMBAR 8 PIEZAS", 1, "NUEVO"],
+            ["#04-011", "JUEGO DESARMADORES AMBAR", 1, "2 DE PALETA 1 DE CRUZ"],
+            ["#04-012", "JUEGO DESARMADORES ELECTRICISTA", 1, "2 PALETA 1 CRUZ"],
+            ["#04-013", "MULTIMETRO  TURPER MUL-33", 1, null],
+            ["#04-014", "LLAVE UNIVERSAL DE CADENA URREA", 1, "NUEVO"],
+            ["#04-015", "LLAVE AJUSTABLE 10\" (CRECENT)", 1, "NUEVO"],
+            ["#04-016", "LLAVE AJUSTABLE 15\" (CRECENT)", 2, null],
+            ["#04-017", "MARRO 4LB MANGO FIBRA DE VIDRIO", 1, null],
+            ["#04-018", "PINZAS DE PRESION 10\" (PERRAS)", 1, "NUEVO"],
+            ["#04-019", "ARCO DE SEGUETA", 1, "NUEVO"],
+            ["#04-022", "MARTILLO DE BOLA", 1, null],
+            ["#04-023", "LLAVE DE BANDA", 1, null],
+            ["#04-024", "PINZAS DE PUNTA PRETUL", 1, null],
+            ["#04-025", "DESARMADOR DE CAJA 1/4", 1, null],
+            ["#04-026", "CORTA TUBO PRETUL", 1, null],
+            ["#04-027", "LIMA PLANA", 1, null],
+            ["#04-028", "PORTA NAVAJA SIN NAVAJA", 1, null],
+            ["#04-029", "CEPILLO DE ALMABRE", 1, null],
+            ["#04-030", "LLAVES TROX", 1, null],
+            ["#04-031", "PINZAS DE MECANICO", 1, null],
+            ["#04-032", "TALADRO INALAMBRICO DEWALT BRUSHLESS", 1, "NUEVO"],
+            ["#04-033", "CAJA HERRAMIENTA HUSKY 3 NIVELES", 1, null],
+            ["#04-034", "SERRUCHO PARA PALMAS", 1, "HOME DEPOT 165"],
+        ]},
+        { numero: "05", nombre: "Jorge Uribe", items: [
+            ["#05-001", "JUEGO DE DADOS STANLY", 1, null],
+            ["#05-002", "JGO. LLAVES ESPA\u00d1OLAS STD DE 9 PIEZAS", 1, null],
+            ["#05-003", "JGO. LLAVES ESPA\u00d1OLAS MM DE 9 PIEZAS", 1, null],
+            ["#05-004", "LLAVE STILSON 8\" URREA", 1, null],
+            ["#05-005", "LLAVE STILSON 14\" URREA", 1, null],
+            ["#05-006", "LLAVE STILSON 18\" URREA", 1, null],
+            ["#05-007", "JUEGO LLAVES ALLEN STD. TIPO L", 1, null],
+            ["#05-008", "JUEGO LLAVES ALLEN MM. TIPO L", 1, null],
+            ["#05-009", "PINZAS ELECTRICISTA URREA", 1, null],
+            ["#05-010", "PINZAS DE PUNTA URREA", 1, null],
+            ["#05-011", "JUEGO DESARMADORES AMBAR 8 PIEZAS", 1, null],
+            ["#05-012", "JUEGO DESARMADORES ELECTRICISTA", 1, null],
+            ["#05-013", "MULTIMETRO STEREN MUL-108", 1, null],
+            ["#05-014", "LLAVE UNIVERSAL DE CADENA URREA", 1, null],
+            ["#05-015", "LLAVE AJUSTABLE 10\" (CRECENT)", 1, null],
+            ["#05-016", "LLAVE AJUSTABLE 15\" (CRECENT)", 1, null],
+            ["#05-017", "MARRO 4LB MANGO FIBRA DE VIDRIO", 1, null],
+            ["#05-018", "PINZAS DE PRESION 10\" (PERRAS)", 1, null],
+            ["#05-019", "ARCO DE SEGUETA", 1, null],
+            ["#05-020", "CAJA HERRAMIENTA SURTEK", 1, null],
+            ["#05-021", "PINZAS DE CORTE DIAGONAL URREA", 1, null],
+            ["#05-022", "CAJA HERRAMIENTA HUSKY 3 NIVELES", 1, null],
+            ["#05-023", "TALADRO INALAMBRICO DEWALT BRUSHLESS", 1, "3 JUL 25 HERRAMIENTAS DEL NORTE"],
+            ["#05-024", "JUEGO DE DESARMADORES ELECTRICOS 10 PIEZAS", 1, "CHINA"],
+            ["#05-025", "TESTER POLARIDAD ELECTRICA", 1, null],
+            ["#05-026", "PINZAS DE PONCHADO RJ45 CAT 5", 1, null],
+            ["#05-027", "PINZAS DE PONCHADO RJ45 CAT 6", 1, null],
+            ["#05-028", "PONCHADORA DE IMPACTO RJ45", 1, null],
+            ["#05-029", "PINZA DESFORRADORA MECANICA", 1, "CHINA"],
+            ["#05-030", "PROBADOR CABLE DE RED RJ 45", 1, null],
+            ["#05-031", "CAUTIN TIPO LAPIZ 25W CON AJUSTE DE POT", 1, "STEREN 04/07/2023 FACT 626292"],
+            ["#05-032", "SOPLADORA DE AIRE CON CARGADOR", 1, null],
+            ["#05-023", "TALADRO INALAMBRICO DEWALT BRUSHLESS", 1, "#05-024 JUEGO DE DESARMADORES ELECTRICOS 10 PIEZAS"],
+            ["#05-025", "TESTER POLARIDAD ELECTRICA", 1, null],
+            ["#05-027", "PINZAS DE PONCHADO RJ45 CAT 6", 1, "#05-028 PONCHADORA DE IMPACTO RJ45"],
+            ["#05-029", "PINZA DESFORRADORA MECANICA", 1, "#05-030 PROBADOR CABLE DE RED RJ 45"],
+            ["#05-031", "CAUTIN TIPO LAPIZ 25W CON AJUSTE DE POT", 1, null],
+        ]},
+        { numero: "06", nombre: "Ismael Barraza", items: [
+            ["#06-001", "JUEGO DE DADOS STANLY", 1, "*PEND"],
+            ["#06-002", "JGO. LLAVES ESPA\u00d1OLAS STD DE 9 PIEZAS", 1, null],
+            ["#06-003", "JGO. LLAVES ESPA\u00d1OLAS MM DE 9 PIEZAS", 1, null],
+            ["#06-004", "LLAVE STILSON 8\" URREA", 1, "NUEVO"],
+            ["#06-005", "LLAVE STILSON 14\" URREA", 1, null],
+            ["#06-006", "LLAVE STILSON 18\" URREA", 1, null],
+            ["#06-007", "JUEGO LLAVES ALLEN STD. TIPO L", 1, "NUEVO"],
+            ["#06-008", "JUEGO LLAVES ALLEN MM. TIPO L", 1, null],
+            ["#06-009", "PINZAS ELECTRICISTA URREA", 1, "NUEVO"],
+            ["#06-010", "PINZAS DE PUNTA URREA", 1, null],
+            ["#06-011", "JUEGO DESARMADORES AMBAR 8 PIEZAS", 1, "NUEVO"],
+            ["#06-012", "JUEGO DESARMADORES ELECTRICISTA", 1, null],
+            ["#06-013", "MULTIMETRO STEREN MUL-108", 1, null],
+            ["#06-014", "LLAVE UNIVERSAL DE CADENA URREA", 1, null],
+            ["#06-015", "LLAVE AJUSTABLE 10\" (CRECENT)", 1, "NUEVO"],
+            ["#06-016", "LLAVE AJUSTABLE 15\" (CRECENT)", 1, null],
+            ["#06-017", "MARRO 4LB MANGO FIBRA DE VIDRIO", 1, null],
+            ["#06-018", "PINZAS DE PRESION 10\" (PERRAS)", 1, "NUEVO"],
+            ["#06-019", "ARCO DE SEGUETA", 1, "NUEVO"],
+            ["#06-020", "CAJA HERRAMIENTA SURTEK", 1, null],
+            ["#06-021", "PINZAS DE CORTE DIAGONAL URREA", 1, null],
+            ["#06-022", "TALADRO INALAMBRICO DEWALT BRUSHLESS", 1, "NUEVO"],
+            ["#06-023", "CAJA HERRAMIENTA HUSKY 3 NIVELES", 1, null],
+        ]},
+        { numero: "07", nombre: "Roel Luna", items: [
+            ["#07-001", "JUEGO DE DADOS STANLY", 1, null],
+            ["#07-002", "JGO. LLAVES ESPA\u00d1OLAS STD DE 9 PIEZAS", 1, null],
+            ["#07-003", "JGO. LLAVES ESPA\u00d1OLAS MM DE 9 PIEZAS", 1, null],
+            ["#07-004", "LLAVE STILSON 8\" URREA", 1, null],
+            ["#07-005", "LLAVE STILSON 14\" URREA", 1, null],
+            ["#07-006", "LLAVE STILSON 18\" URREA", 1, null],
+            ["#07-007", "JUEGO LLAVES ALLEN STD. TIPO L", 1, null],
+            ["#07-008", "JUEGO LLAVES ALLEN MM. TIPO L", 1, null],
+            ["#07-009", "PINZAS ELECTRICISTA URREA", 1, null],
+            ["#07-010", "PINZAS DE PUNTA URREA", 1, null],
+            ["#07-011", "JUEGO DESARMADORES AMBAR 8 PIEZAS", 1, null],
+            ["#07-012", "JUEGO DESARMADORES ELECTRICISTA", 1, null],
+            ["#07-013", "MULTIMETRO STEREN MUL-108", 1, null],
+            ["#07-014", "LLAVE UNIVERSAL DE CADENA URREA", 1, null],
+            ["#07-015", "LLAVE AJUSTABLE 10\" (CRECENT)", 1, null],
+            ["#07-016", "LLAVE AJUSTABLE 15\" (CRECENT)", 1, null],
+            ["#07-017", "MARRO 4LB MANGO FIBRA DE VIDRIO", 1, null],
+            ["#07-018", "PINZAS DE PRESION 10\" (PERRAS)", 1, null],
+            ["#07-019", "ARCO DE SEGUETA", 1, null],
+            ["#07-020", "CAJA HERRAMIENTA HUSKY 3 NIVELES", 1, "YA SE TIENE"],
+            ["#07-021", "PINZAS DE CORTE DIAGONAL URREA", 1, null],
+            ["#07-022", "TALADRO INALAMBRICO DEWALT BRUSHLESS", 1, null],
+            ["#07-023", "ASPIRADORA RIDGID 16", 1, "YA SE TIENE"],
+            ["#07-024", "HIDROLAVADORA ELECTRICA 2,000 PSI CON MANGUERA (HOME DEPOT)", 1, "6464"],
+            ["#07-025", "DADOS", 1, "30 JUN 25 CASA MYERS"],
+            ["#07-026", "JUEGO DE 3 ADAPTADORES DE DADO PARA TALADRO TRUPER", 1, "FERRE MARGARITA HERNANDEZ DAVILA"],
+            ["#07-027", "GAUGE DOBLE 120 PSI", 1, "04/08/2025 CASA MYERS"],
+            ["#07-028", "MANGUERA 3 CAPAS DE 1/2\" X 25 MTS", 1, "07/08/2025 CASA MYERS - 28/AGOSTO"],
+            ["#07-029", "MANGUERA DE USO RUDO 1/2\" 500 PSI CON CONEXIONES", 1, "PARKER SOTRE 30 AGO"],
+        ]},
+        { numero: "08", nombre: "Sergio Mendoza", items: [
+            ["#08-001", "JUEGO DE DADOS", 1, null],
+            ["#08-002", "JGO. LLAVES ESPA\u00d1OLAS STD DE 9 PIEZAS", 1, null],
+            ["#08-003", "JGO. LLAVES ESPA\u00d1OLAS MM DE 9 PIEZAS", 1, null],
+            ["#08-004", "LLAVE STILSON 8\" URREA", 1, null],
+            ["#08-005", "LLAVE STILSON 14\" URREA", 1, null],
+            ["#08-006", "LLAVE STILSON 18\" URREA", 1, null],
+            ["#08-007", "JUEGO LLAVES ALLEN STD. TIPO L", 1, "NUEVO"],
+            ["#08-008", "JUEGO LLAVES ALLEN MM. TIPO L", 1, "NUEVO"],
+            ["#08-009", "PINZAS ELECTRICISTA URREA", 1, null],
+            ["#08-011", "JUEGO DESARMADORES AMBAR 8 PIEZAS", 1, "NUEVO"],
+            ["#08-012", "JUEGO DESARMADORES ELECTRICISTA", 1, null],
+            ["#08-013", "MULTIMETRO  TURPER MUL-33", 1, null],
+            ["#08-014", "LLAVE UNIVERSAL DE CADENA URREA", 1, null],
+            ["#08-015", "LLAVE AJUSTABLE 10\" (CRECENT)", 1, null],
+            ["#08-016", "LLAVE AJUSTABLE 15\" (CRECENT)", 2, null],
+            ["#08-017", "MARRO 4LB MANGO FIBRA DE VIDRIO", 1, "NUEVO"],
+            ["#08-018", "PINZAS DE PRESION 10\" (PERRAS)", 1, null],
+            ["#08-019", "ARCO DE SEGUETA", 1, null],
+            ["#08-022", "MARTILLO DE BOLA", 1, null],
+            ["#08-023", "LLAVE DE BANDA", 1, null],
+            ["#08-024", "PINZAS DE PUNTA PRETUL", 1, "NUEVO"],
+            ["#08-025", "DESARMADOR DE CAJA 1/4", 1, null],
+            ["#08-026", "CORTA TUBO PRETUL", 1, null],
+            ["#08-027", "LIMA PLANA", 1, null],
+            ["#08-028", "PORTA NAVAJA SIN NAVAJA", 1, null],
+            ["#08-029", "CEPILLO DE ALMABRE", 1, null],
+            ["#08-030", "LLAVES TROX", 1, null],
+            ["#08-031", "PINZAS DE MECANICO", 1, "NUEVO"],
+            ["#08-032", "LLAVE STILSON 10\" URREA", 1, "NUEVO"],
+            ["#08-033", "CAJA HERRAMIENTA HUSKY 3 NIVELES", 1, null],
+        ]},
+        { numero: "09", nombre: "Enrique Arguelles", items: [
+            ["#09-001", "JUEGO DE DADOS STANLY", 1, null],
+            ["#09-002", "JGO. LLAVES ESPA\u00d1OLAS STD DE 9 PIEZAS", 1, null],
+            ["#09-003", "JGO. LLAVES ESPA\u00d1OLAS MM DE 9 PIEZAS", 1, null],
+            ["#09-004", "LLAVE STILSON 8\" URREA", 1, null],
+            ["#09-005", "LLAVE STILSON 14\" URREA", 1, null],
+            ["#09-006", "LLAVE STILSON 18\" URREA", 1, null],
+            ["#09-007", "JUEGO LLAVES ALLEN STD. TIPO L", 1, null],
+            ["#09-008", "JUEGO LLAVES ALLEN MM. TIPO L", 1, null],
+            ["#09-009", "PINZAS ELECTRICISTA URREA", 1, null],
+            ["#09-010", "PINZAS DE PUNTA URREA", 1, null],
+            ["#09-011", "JUEGO DESARMADORES AMBAR 8 PIEZAS", 1, null],
+            ["#09-012", "JUEGO DESARMADORES ELECTRICISTA", 1, null],
+            ["#09-013", "MULTIMETRO STEREN MUL-108", 1, null],
+            ["#09-014", "LLAVE UNIVERSAL DE CADENA URREA", 1, null],
+            ["#09-015", "LLAVE AJUSTABLE 10\" (CRECENT)", 1, null],
+            ["#09-016", "LLAVE AJUSTABLE 15\" (CRECENT)", 1, null],
+            ["#09-017", "MARRO 4LB MANGO FIBRA DE VIDRIO", 1, null],
+            ["#09-018", "PINZAS DE PRESION 10\" (PERRAS)", 1, null],
+            ["#09-019", "ARCO DE SEGUETA", 1, null],
+            ["#09-020", "CAJA HERRAMIENTA HUSKY 3 NIVELES", 1, null],
+            ["#09-021", "PINZAS DE CORTE DIAGONAL URREA", 1, null],
+            ["#09-022", "TALADRO INALAMBRICO DEWALT BRUSHLESS", 1, null],
+            ["#09-023", "SOPLADORA DE AIRE CON CARGADOR", 1, null],
+        ]},
+        { numero: "10", nombre: "Sergio Carmona", items: [
+            ["#010-001", "JUEGO DE DADOS STANLY", 1, null],
+            ["#010-002", "JGO. LLAVES ESPA\u00d1OLAS STD DE 9 PIEZAS", 1, null],
+            ["#010-003", "JGO. LLAVES ESPA\u00d1OLAS MM DE 9 PIEZAS", 1, null],
+            ["#010-004", "LLAVE STILSON 8\" URREA", 1, null],
+            ["#010-005", "LLAVE STILSON 14\" URREA", 1, null],
+            ["#010-006", "LLAVE STILSON 18\" URREA", 1, null],
+            ["#010-007", "JUEGO LLAVES ALLEN STD. TIPO L", 1, null],
+            ["#010-008", "JUEGO LLAVES ALLEN MM. TIPO L", 1, null],
+            ["#010-009", "PINZAS ELECTRICISTA URREA", 1, null],
+            ["#010-010", "PINZAS DE PUNTA URREA", 1, null],
+            ["#010-011", "JUEGO DESARMADORES AMBAR 8 PIEZAS", 1, null],
+            ["#010-012", "JUEGO DESARMADORES ELECTRICISTA", 1, null],
+            ["#010-013", "MULTIMETRO STEREN MUL-108", 1, null],
+            ["#010-014", "LLAVE UNIVERSAL DE CADENA URREA", 1, null],
+            ["#010-015", "LLAVE AJUSTABLE 10\" (CRECENT)", 1, null],
+            ["#010-016", "LLAVE AJUSTABLE 15\" (CRECENT)", 1, null],
+            ["#010-017", "MARRO 4LB MANGO FIBRA DE VIDRIO", 1, null],
+            ["#010-018", "PINZAS DE PRESION 10\" (PERRAS)", 1, null],
+            ["#010-019", "ARCO DE SEGUETA", 1, null],
+            ["#010-020", "CAJA HERRAMIENTA HUSKY 3 NIVELES", 1, null],
+            ["#010-021", "PINZAS DE CORTE DIAGONAL URREA", 1, null],
+            ["#010-022", "TALADRO INALAMBRICO DEWALT BRUSHLESS", 1, null],
+        ]},
+        { numero: "11", nombre: "Ricardo Moriel", items: [
+            ["#011-001", "ADAPTADOR PUNTA PARA DADO 3/8", 1, null],
+            ["#011-002", "ARCO DE SEGUETA FIJO", 1, null],
+            ["#011-003", "CINCEL 3/4 X 8\u201d", 1, "DA\u00d1ADO"],
+            ["#011-004", "CORTATUBO CAP. DE 1 1/4\u201d", 1, null],
+            ["#011-005", "DESARMADOR CRUZ TIPO TROMPO", 1, null],
+            ["#011-006", "DESARMADOR PALETA TIPO TROMPO", 1, null],
+            ["#011-007", "FLEXOMETRO 5 MTS.", 1, null],
+            ["#011-008", "JGO DE DADOS 205 PZAS", 1, null],
+            ["#011-009", "JGO. BROCAS AL TITANIO", 1, "4 DESARMADORES"],
+            ["#011-010", "JGO. DE DESARMADORES", 1, null],
+            ["#011-011", "JGO. DE LLAVES ALLEN MM.", 1, null],
+            ["#011-012", "JGO. DE LLAVES ALLEN STD", 1, "INCOMPLETAS"],
+            ["#011-013", "JGO. DESARMADORES DE ELECTRICISTA", 1, null],
+            ["#011-014", "JGO. DESARMADORES DE JOYERO", 1, null],
+            ["#011-015", "JGO. LIMAS", 1, null],
+            ["#011-016", "JGO. LLAVES MIXTAS MM", 1, "INCOMPLETAS"],
+            ["#011-017", "JGO. LLAVES MIXTAS STD", 1, null],
+            ["#011-018", "JGO. LLAVES TORX", 1, null],
+            ["#011-019", "LINTERNA LED", 1, null],
+            ["#011-020", "LLAVE INGLESA 10\u201d", 1, "FALTA 1"],
+            ["#011-021", "LLAVE INGLESA 15\u201d", 1, null],
+            ["#011-022", "LLAVE STILLSON 14\u201d", 1, "FALTA 1"],
+            ["#011-023", "LLAVE STILLSON 18\u201d", 1, null],
+            ["#011-024", "LLAVE STILLSON 8\u201d", 1, null],
+            ["#011-025", "LLAVE UNIVERSAL DE CADENA", 1, null],
+            ["#011-026", "MAGNETO TELESCOPICO", 1, null],
+            ["#011-027", "MARRO CON MANGO", 1, null],
+            ["#011-028", "MARTILLO DE BOLA", 1, null],
+            ["#011-029", "MULTIMETRO", 1, null],
+            ["#011-030", "NAVAJA METALICA RETRACTIL", 1, null],
+            ["#011-031", "PINZA MECANICA 8\u201d", 1, null],
+            ["#011-032", "PINZAS DE CORTE DIAGONAL", 1, null],
+            ["#011-033", "PINZAS DE ELECTRICISTA", 1, null],
+            ["#011-034", "PINZAS DE PRESION 10\u201d", 1, null],
+            ["#011-035", "PINZAS DE PUNTA", 1, null],
+            ["#011-036", "QUITA FILTRO DE BANDA", 1, null],
+            ["#011-037", "SUJETADOR", 1, null],
+            ["#011-038", "TALADRO INALAMBRICO DEWALT BRUSHLESS", 1, null],
+            ["#011-039", "TERMO NEGRO 128 OZ", 1, null],
+        ]},
+        { numero: "13", nombre: "Jose Luis Valenzuela", items: [
+            ["#013-001", "JUEGO DE DADOS STANLY", 1, null],
+            ["#013-002", "JGO. LLAVES ESPA\u00d1OLAS STD DE 9 PIEZAS", 1, null],
+            ["#013-003", "JGO. LLAVES ESPA\u00d1OLAS MM DE 9 PIEZAS", 1, null],
+            ["#013-004", "LLAVE STILSON 8\" URREA", 1, null],
+            ["#013-005", "LLAVE STILSON 14\" URREA", 1, null],
+            ["#013-006", "LLAVE STILSON 18\" URREA", 1, null],
+            ["#013-007", "JUEGO LLAVES ALLEN STD. TIPO L", 1, null],
+            ["#013-008", "JUEGO LLAVES ALLEN MM. TIPO L", 1, null],
+            ["#013-009", "PINZAS ELECTRICISTA URREA", 1, null],
+            ["#013-010", "PINZAS DE PUNTA URREA", 1, null],
+            ["#013-011", "JUEGO DESARMADORES AMBAR 8 PIEZAS", 1, null],
+            ["#013-012", "JUEGO DESARMADORES ELECTRICISTA", 1, null],
+            ["#013-013", "MULTIMETRO STEREN MUL-108", 1, null],
+            ["#013-014", "LLAVE UNIVERSAL DE CADENA URREA", 1, null],
+            ["#013-015", "LLAVE AJUSTABLE 10\" (CRECENT)", 1, null],
+            ["#013-016", "LLAVE AJUSTABLE 15\" (CRECENT)", 1, null],
+            ["#013-017", "MARRO 4LB MANGO FIBRA DE VIDRIO", 1, null],
+            ["#013-018", "PINZAS DE PRESION 10\" (PERRAS)", 1, null],
+            ["#013-019", "ARCO DE SEGUETA", 1, null],
+            ["#013-020", "CAJA HERRAMIENTA HUSKY 3 NIVELES", 1, null],
+            ["#013-021", "PINZAS DE CORTE DIAGONAL URREA", 1, null],
+            ["#013-022", "TALADRO INALAMBRICO DEWALT BRUSHLESS", 1, null],
+            ["#013-023", "SOPLADORA DE AIRE CON CARGADOR", 1, null],
+        ]},
+    ];
+
     const CATALOGO_BASE = [
         ["Juego de dados Stanley", "Herramienta manual", "Juegos"],
         ["Jgo. llaves españolas std. de 9 piezas", "Herramienta manual", "Juegos"],
@@ -192,6 +602,8 @@
     let cacheHistPuesto = [];
     let cacheAlmacenTec = [];
     let cacheGuardias = [];
+    let cacheVehiculosAsig = [];
+    let fichaTecTabActual = "resumen";
     let catalogoProductos = []; // de catalogo/productos (Almacén real), cargado bajo demanda
 
     async function opsSembrarPuestosSiNecesario() {
@@ -421,32 +833,48 @@
         if (unsubSurt) { unsubSurt(); unsubSurt = null; }
     };
 
+    const NAV_ICONS = {
+        resumen: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>',
+        dashboard: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>',
+        guardias: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3Z"/></svg>',
+        tecnicos: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="7" r="4"/></svg>',
+        servicios: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7 12 3 4 7v10l8 4 8-4V7Z"/><path d="M4 7l8 4 8-4M12 11v10"/></svg>',
+        solicitudes: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11H4a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h5m0-10v10m0-10h9a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1h-9"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>',
+        alertas: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>',
+        movimientos: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>',
+    };
+
     function opsRenderShell() {
         const rol = opsRolActual();
         const rolLabel = { administrador: "Administrador", almacen: "Almacén", consulta: "Consulta" }[rol];
+        const items = ["resumen:Resumen", "dashboard:Herramientas", "guardias:Guardias", "tecnicos:Técnicos", "servicios:Servicios",
+            ...(opsPuedeHacer("autorizar_material") ? ["solicitudes:Solicitudes"] : []),
+            "alertas:Alertas", "movimientos:Movimientos"];
         return `
-        <div style="position:fixed;inset:0;z-index:99997;background:#f1f5f9;overflow-y:auto;font-family:'Inter',sans-serif;">
-            <div style="background:linear-gradient(135deg,#0B5FFF,#0842B0);border-bottom:3px solid #062F73;padding:16px 26px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:5;">
+        <div style="position:fixed;inset:0;z-index:99997;background:#f1f5f9;font-family:'Inter',sans-serif;display:flex;flex-direction:column;">
+            <div style="background:linear-gradient(135deg,#0B5FFF,#0842B0);border-bottom:3px solid #062F73;padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
                 <div style="display:flex;align-items:center;gap:10px;color:#fff;">
-                    <span style="width:32px;height:32px;border-radius:9px;background:rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;">${ICON.wrench}</span>
+                    <span style="width:30px;height:30px;border-radius:9px;background:rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;">${ICON.wrench}</span>
                     <div>
-                        <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:15.5px;">Operaciones</div>
-                        <div style="font-size:11px;color:#9ca3af;">Operaciones · Hedma Tecnocontrol · Rol: ${rolLabel}</div>
+                        <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:15px;">Operaciones</div>
+                        <div style="font-size:10.5px;color:#dbeafe;">Hedma Tecnocontrol · Rol: ${rolLabel}</div>
                     </div>
                 </div>
-                <button onclick="opsCerrarHerramientas()" style="background:rgba(255,255,255,0.08);border:none;color:#fff;width:32px;height:32px;border-radius:9px;cursor:pointer;">${ICON.close}</button>
+                <button onclick="opsCerrarHerramientas()" style="background:rgba(255,255,255,0.08);border:none;color:#fff;width:30px;height:30px;border-radius:9px;cursor:pointer;">${ICON.close}</button>
             </div>
 
-            <div style="max-width:1200px;margin:0 auto;padding:18px 26px 60px;">
-                <div style="display:flex;gap:6px;margin-bottom:18px;border-bottom:1px solid #e2e8f0;">
-                    ${["resumen:Resumen", "dashboard:Herramientas", "guardias:Guardias", "tecnicos:Técnicos", "servicios:Servicios",
-                       ...(opsPuedeHacer("autorizar_material") ? ["solicitudes:Solicitudes"] : []),
-                       "alertas:Alertas", "movimientos:Movimientos"].map(t => {
+            <div style="flex:1;display:flex;overflow:hidden;">
+                <div style="width:190px;background:#fff;border-right:1px solid #e2e8f0;padding:16px 10px;overflow-y:auto;flex-shrink:0;">
+                    ${items.map(t => {
                         const [id, label] = t.split(":");
-                        return `<button onclick="opsCambiarTab('${id}')" id="ops-tab-${id}" class="ops-tab-btn" style="background:none;border:none;padding:9px 14px;font-size:12.5px;font-weight:600;color:#64748b;cursor:pointer;border-bottom:2px solid transparent;">${label}</button>`;
+                        return `<button onclick="opsCambiarTab('${id}')" id="ops-tab-${id}" class="ops-tab-btn" style="width:100%;text-align:left;display:flex;align-items:center;gap:10px;background:none;border:none;border-left:3px solid transparent;padding:10px 11px;margin-bottom:2px;border-radius:0 8px 8px 0;font-size:12.5px;font-weight:600;color:#64748b;cursor:pointer;">
+                            <span style="flex-shrink:0;display:flex;">${NAV_ICONS[id] || ""}</span>${label}
+                        </button>`;
                     }).join("")}
                 </div>
-                <div id="ops-tab-content"></div>
+                <div style="flex:1;overflow-y:auto;padding:20px 26px 60px;">
+                    <div id="ops-tab-content"></div>
+                </div>
             </div>
         </div>
         <div id="ops-modal-wrap"></div>
@@ -457,10 +885,10 @@
     window.opsCambiarTab = function (tab) {
         tabActual = tab;
         document.querySelectorAll(".ops-tab-btn").forEach(b => {
-            b.style.color = "#64748b"; b.style.borderBottomColor = "transparent";
+            b.style.color = "#64748b"; b.style.background = "none"; b.style.borderLeftColor = "transparent";
         });
         const activo = document.getElementById("ops-tab-" + tab);
-        if (activo) { activo.style.color = "#0B5FFF"; activo.style.borderBottomColor = "#0B5FFF"; }
+        if (activo) { activo.style.color = "#0B5FFF"; activo.style.background = "#eaf0ff"; activo.style.borderLeftColor = "#0B5FFF"; }
         if (tab === "resumen") opsRenderResumen();
         else if (tab === "dashboard") opsRenderDashboard();
         else if (tab === "guardias") opsRenderGuardias();
@@ -516,11 +944,13 @@
         cacheAlmacenTec = snapAlmTec.docs.map(d => ({ id: d.id, ...d.data() }));
         const snapGuardias = await fs.getDocs(fs.collection(db, COL_GUARDIAS));
         cacheGuardias = snapGuardias.docs.map(d => ({ id: d.id, ...d.data() }));
+        const snapVeh = await fs.getDocs(fs.collection(db, COL_VEHICULOS_ASIG));
+        cacheVehiculosAsig = snapVeh.docs.map(d => ({ id: d.id, ...d.data() }));
     }
 
     // ═══════════════════════ TAB: DASHBOARD ═══════════════════════
     // ═══════════════════════ TAB: RESUMEN (vista general del departamento) ═══════════════════════
-    function opsRenderResumen() {
+    async function opsRenderResumen() {
         const el = document.getElementById("ops-tab-content");
         if (!el) return;
 
@@ -566,7 +996,17 @@
             </div>`;
         }).join("") || '<div style="color:#94a3b8;font-size:12px;">Sin actividad reciente.</div>';
 
+        const ubicacionesCampo = await window.opsFlotillaProvider.obtenerUbicacionesEnCampo();
+
         el.innerHTML = `
+            <div style="background:#fff;border-radius:14px;padding:16px 18px;margin-bottom:16px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                    <div style="font-size:12.5px;font-weight:700;color:#1e293b;">📍 Técnicos en campo — mapa en vivo</div>
+                    <span style="font-size:10px;color:#94a3b8;">Fuente: Flotilla</span>
+                </div>
+                <div id="ops-mapa-resumen" style="height:220px;border-radius:10px;overflow:hidden;background:#e2e8f0;"></div>
+                ${!ubicacionesCampo.length ? `<div style="font-size:10.5px;color:#94a3b8;margin-top:8px;">Sin conexión con Flotilla todavía — cuando exista GPS en tiempo real, aquí aparecerán los marcadores de cada técnico.</div>` : ""}
+            </div>
             <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;">
                 <div style="background:#fff;border-radius:12px;padding:14px 16px;">
                     <div style="font-size:10.5px;color:#94a3b8;">Técnicos activos</div>
@@ -609,6 +1049,18 @@
                     </div>` : ""}
                 </div>
             </div>`;
+
+        // Mapa real (Leaflet, ya usado en Flotilla) — centrado en Chihuahua, sin marcadores inventados.
+        setTimeout(() => {
+            const mapEl = document.getElementById("ops-mapa-resumen");
+            if (!mapEl || !window.L) return;
+            const mapa = L.map(mapEl, { zoomControl: false, attributionControl: false }).setView([28.6353, -106.0889], 12);
+            L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(mapa);
+            L.control.zoom({ position: "bottomright" }).addTo(mapa);
+            ubicacionesCampo.forEach(u => {
+                if (u.lat && u.lng) L.marker([u.lat, u.lng]).addTo(mapa).bindPopup(opsEsc(u.tecnicoNombre || u.tecnicoId));
+            });
+        }, 30);
     }
 
     function opsRenderDashboard() {
@@ -652,6 +1104,7 @@
                     <div style="display:flex;gap:8px;">
                         <button onclick="opsAbrirModalPieza()" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">${ICON.plus} Nueva pieza</button>
                         <button onclick="opsSembrarCatalogoBase()" class="mkt-add-btn" style="background:linear-gradient(135deg,#0891b2,#0e7490);">${ICON.box} Cargar catálogo base</button>
+                        <button onclick="opsImportarExcelReal()" class="mkt-add-btn" style="background:linear-gradient(135deg,#059669,#047857);">📥 Importar Excel real (12 técnicos)</button>
                     </div>` : ""}
                 </div>
                 <div style="overflow-x:auto;">
@@ -802,6 +1255,68 @@
     };
 
     // ── Sembrado del catálogo base (folios HT-XXXXXX reales) ──────
+    // ── Importación REAL desde el Excel (folios exactos #01-001, permanentes) ──
+    window.opsImportarExcelReal = async function () {
+        const yaImportado = cacheHerr.some(h => /^#\d+-\d+$/.test(h.folio));
+        if (yaImportado && !confirm("Parece que ya hay piezas con folio del Excel importadas. ¿Importar de todos modos? (los folios que ya existan se omiten, no se duplican)")) return;
+
+        const { db, fs } = await opsGetFB();
+        const foliosExistentes = new Set(cacheHerr.map(h => h.folio));
+        let tecnicosCreados = 0, piezasCreadas = 0, piezasOmitidas = 0;
+
+        for (const tec of EXCEL_REAL_TECNICOS) {
+            // Buscar o crear el técnico por número operativo exacto del Excel.
+            let tecnico = cacheTec.find(t => t.numeroOperativo === tec.numero);
+            let tecnicoId;
+            if (!tecnico) {
+                const refPersona = await fs.addDoc(fs.collection(db, COL_PERSONAS), {
+                    nombre: tec.nombre, estatus: "activo", fechaAlta: opsHoy(), fechaBaja: null,
+                    telefono: null, correo: null, observaciones: "Importado desde Excel real",
+                });
+                const puestoTecnico = cachePuestos.find(p => p.nombre === "Técnico de Operaciones");
+                const refTec = await fs.addDoc(fs.collection(db, COL_TECNICOS), {
+                    numeroOperativo: tec.numero, personaId: refPersona.id, nombre: tec.nombre,
+                    puestoId: puestoTecnico ? puestoTecnico.id : null,
+                    puesto: puestoTecnico ? puestoTecnico.nombre : "Técnico de Operaciones",
+                    departamento: "Operaciones", registroHistorico: 1,
+                    estatus: "activo", fechaIngreso: opsHoy(), fechaBaja: null,
+                    supervisor: null, telefono: null, correo: null, observaciones: "Importado desde Excel real",
+                    employeeId: null, fleetUserId: null, firebaseUid: null,
+                });
+                tecnicoId = refTec.id;
+                cacheTec.push({ id: tecnicoId, numeroOperativo: tec.numero, nombre: tec.nombre, estatus: "activo" });
+                tecnicosCreados++;
+            } else {
+                tecnicoId = tecnico.id;
+            }
+
+            for (const [folio, descripcion, cantidad, observaciones] of tec.items) {
+                if (foliosExistentes.has(folio)) { piezasOmitidas++; continue; }
+                await fs.setDoc(fs.doc(db, COL_HERRAMIENTAS, folio), {
+                    folio, descripcion, cantidad, categoria: null, marca: "", modelo: "", numeroSerie: "",
+                    condicionFisica: observaciones || null,
+                    estado: "asignada", ubicacionActual: UBICACIONES[0],
+                    tecnicoActualId: tecnicoId, fechaAsignacion: opsHoy(),
+                    folioLegado: null, observaciones: observaciones || null,
+                    fechaAlta: opsHoy(),
+                    externalId: null, sourceSystem: "excel_import", lastSync: null, syncStatus: "no_sincronizado",
+                });
+                await opsRegistrarMovimiento({ herramientaId: folio, tipo: "alta", tecnicoNuevoId: tecnicoId, ubicacionNueva: UBICACIONES[0], observaciones: "Importado desde Excel real (HERRAMIENTA_TECNICOS.xlsx)" });
+                foliosExistentes.add(folio);
+                piezasCreadas++;
+            }
+        }
+        // Refrescar cachés locales tras la importación masiva.
+        const snapTec = await fs.getDocs(fs.collection(db, COL_TECNICOS));
+        cacheTec = snapTec.docs.map(d => ({ id: d.id, ...d.data() }));
+        const snapHerr = await fs.getDocs(fs.query(fs.collection(db, COL_HERRAMIENTAS), fs.orderBy("folio")));
+        cacheHerr = snapHerr.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        const msg = `Importación completa: ${tecnicosCreados} técnico(s) nuevo(s), ${piezasCreadas} pieza(s) creada(s)${piezasOmitidas ? `, ${piezasOmitidas} omitida(s) por ya existir` : ""}.`;
+        window.mostrarPush ? mostrarPush("Herramientas", msg, "📥") : alert(msg);
+        opsRenderDashboard();
+    };
+
     window.opsSembrarCatalogoBase = async function () {
         if (cacheHerr.length > 0 && !confirm("Ya hay piezas registradas. ¿Agregar de todos modos el catálogo base (22 piezas)?")) return;
         const { db, fs } = await opsGetFB();
@@ -1026,9 +1541,19 @@
         const wrap = document.getElementById("ops-modal-wrap");
         wrap.innerHTML = `
         <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;">
-            <div style="background:#fff;border-radius:14px;width:400px;max-width:92vw;padding:22px;">
-                <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:4px;">Editar datos generales</div>
+            <div style="background:#fff;border-radius:14px;width:400px;max-width:92vw;padding:22px;max-height:88vh;overflow-y:auto;">
+                <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:4px;">✏️ Editar perfil</div>
                 <div style="font-size:11px;color:#94a3b8;margin-bottom:14px;">Cada cambio queda registrado en la auditoría (usuario, fecha, valor anterior/nuevo).</div>
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Nombre</label>
+                <input id="ops-edit-nombre" value="${opsEsc(t.nombre)}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                <div style="display:flex;gap:8px;">
+                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">N.° de técnico</label>
+                    <input id="ops-edit-numop" value="${opsEsc(t.numeroOperativo)}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
+                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">N.° de empleado (RH)</label>
+                    <input id="ops-edit-empid" value="${opsEsc(t.employeeId || "")}" placeholder="EMP-0000" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
+                </div>
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Correo</label>
+                <input id="ops-edit-correo" value="${opsEsc(t.correo || "")}" placeholder="nombre@tecnocontrol.com.mx" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
                 <label style="font-size:11.5px;color:#64748b;font-weight:600;">Puesto</label>
                 <select id="ops-edit-puesto" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
                     ${cachePuestos.map(p => `<option value="${p.id}" ${p.id === t.puestoId ? "selected" : ""}>${opsEsc(p.nombre)} (${opsEsc(p.departamento)})</option>`).join("")}
@@ -1045,11 +1570,25 @@
 
     window.opsGuardarEdicionTecnico = async function (idInterno) {
         const t = cacheTec.find(x => x.id === idInterno);
+        const nuevoNombre = document.getElementById("ops-edit-nombre").value.trim();
+        const nuevoNumOp = document.getElementById("ops-edit-numop").value.trim();
+        const nuevoEmpId = document.getElementById("ops-edit-empid").value.trim();
+        const nuevoCorreo = document.getElementById("ops-edit-correo").value.trim();
         const nuevoPuestoId = document.getElementById("ops-edit-puesto").value;
         const nuevoPuesto = cachePuestos.find(p => p.id === nuevoPuestoId);
         const nuevasObs = document.getElementById("ops-edit-obs").value.trim();
         const { db, fs } = await opsGetFB();
         const cambios = {};
+
+        if (nuevoNombre && nuevoNombre !== t.nombre) { cambios.nombre = nuevoNombre; await opsAuditar("tecnico", idInterno, "nombre", t.nombre, nuevoNombre); }
+        if (nuevoNumOp && nuevoNumOp !== t.numeroOperativo) {
+            const dupActivo = cacheTec.find(x => x.id !== idInterno && x.numeroOperativo === nuevoNumOp && x.estatus === "activo");
+            if (dupActivo) { alert(`El número ${nuevoNumOp} ya está activo (${dupActivo.nombre}).`); return; }
+            cambios.numeroOperativo = nuevoNumOp;
+            await opsAuditar("tecnico", idInterno, "numeroOperativo", t.numeroOperativo, nuevoNumOp);
+        }
+        if (nuevoEmpId !== (t.employeeId || "")) { cambios.employeeId = nuevoEmpId || null; await opsAuditar("tecnico", idInterno, "employeeId", t.employeeId, nuevoEmpId); }
+        if (nuevoCorreo !== (t.correo || "")) { cambios.correo = nuevoCorreo || null; await opsAuditar("tecnico", idInterno, "correo", t.correo, nuevoCorreo); }
         if (nuevoPuestoId !== t.puestoId) {
             cambios.puestoId = nuevoPuestoId; cambios.puesto = nuevoPuesto ? nuevoPuesto.nombre : "";
             cambios.departamento = nuevoPuesto ? nuevoPuesto.departamento : "";
@@ -1066,9 +1605,12 @@
             await opsAuditar("tecnico", idInterno, "observaciones", t.observaciones, nuevasObs);
         }
         if (Object.keys(cambios).length) await fs.updateDoc(fs.doc(db, COL_TECNICOS, idInterno), cambios);
+        const snapTec = await fs.getDocs(fs.collection(db, COL_TECNICOS));
+        cacheTec = snapTec.docs.map(d => ({ id: d.id, ...d.data() }));
         document.getElementById("ops-modal-wrap").innerHTML = "";
         opsAbrirFichaTecnico(idInterno);
     };
+
 
     window.opsAbrirModalTecnico = function () {
         const personasActivas = cachePersonas.filter(p => p.estatus !== "baja");
@@ -1154,109 +1696,189 @@
     };
 
 
-    window.opsAbrirFichaTecnico = async function (idInterno) {
+    window.opsAbrirFichaTecnico = async function (idInterno, tabInicial) {
+        fichaTecTabActual = tabInicial || "resumen";
         const t = cacheTec.find(x => x.id === idInterno);
         if (!t) return;
         const activo = t.estatus === "activo";
         const asignadas = cacheHerr.filter(h => h.tecnicoActualId === idInterno);
-        const buenEstado = asignadas.filter(h => h.estado === "asignada" && !["danada","extraviada"].includes(h.condicionFisica)).length;
         const materiales = cacheAlmacenTec.filter(m => m.tecnicoId === idInterno && m.cantidad > 0);
-        const historial = cacheMov.filter(m => m.tecnicoAnteriorId === idInterno || m.tecnicoNuevoId === idInterno);
         const guardiaActiva = cacheGuardias.find(g => g.tecnicoId === idInterno && g.estado === "activa");
         const iniciales = (t.nombre || "?").split(" ").filter(Boolean).slice(0, 2).map(s => s[0]).join("").toUpperCase();
-        const vehiculo = await window.opsFlotillaProvider.obtenerVehiculoActual(idInterno);
-
-        function kpiMini(label, valor, total, color) {
-            const pct = total > 0 ? Math.round((valor / total) * 100) : 0;
-            return `<div style="flex:1;min-width:0;">
-                <div style="font-size:10.5px;color:#94a3b8;margin-bottom:3px;">${label}</div>
-                <div style="font-size:15px;font-weight:700;color:#1e293b;">${valor}</div>
-                <div style="height:4px;background:#e2e8f0;border-radius:99px;margin-top:5px;overflow:hidden;"><div style="height:100%;width:${pct}%;background:${color};"></div></div>
-            </div>`;
-        }
-
-        const bannerVehiculo = vehiculo ? `
-            <div style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);border-radius:12px;padding:14px 16px;margin-top:12px;color:#fff;">
-                <div style="font-size:11.5px;font-weight:700;">🚐 Vehículo asignado</div>
-                <div style="font-size:13px;font-weight:700;margin-top:2px;">${opsEsc(vehiculo.unidad)} — ${opsEsc(vehiculo.marca)} ${opsEsc(vehiculo.modelo)}</div>
-                <div style="font-size:11px;color:#dbeafe;margin-top:2px;">Estado: ${opsEsc(vehiculo.estado)}</div>
-            </div>` : `
-            <div style="background:#f8fafc;border:1px dashed #cbd5e1;border-radius:12px;padding:12px 16px;margin-top:12px;">
-                <div style="font-size:11px;color:#94a3b8;">🚐 Vehículo asignado: sin conexión con Flotilla todavía. En cuanto exista la integración, este banner mostrará la unidad, placas y estado en tiempo real.</div>
-            </div>`;
-
-        const bloqueRH = `
-            <div style="background:#f8fafc;border:1px dashed #cbd5e1;border-radius:12px;padding:12px 16px;margin-top:12px;">
-                <div style="font-size:11px;color:#94a3b8;">👤 Información de RH: ${t.employeeId ? `ID empleado ${opsEsc(t.employeeId)}` : "sin match todavía"} — se conectará por correo/ID de empleado, no por nombre, cuando exista sincronización con RH.</div>
-            </div>`;
+        const vehActual = cacheVehiculosAsig.find(v => v.tecnicoId === idInterno && !v.fechaFin);
 
         const wrap = document.getElementById("ops-panel-wrap");
         wrap.innerHTML = `
         <div style="position:fixed;inset:0;background:rgba(15,23,42,0.5);z-index:99998;display:flex;justify-content:flex-end;" onclick="if(event.target===this)document.getElementById('ops-panel-wrap').innerHTML=''">
-            <div style="background:#f1f5f9;width:480px;max-width:92vw;height:100%;overflow-y:auto;padding:22px;box-shadow:-6px 0 20px rgba(0,0,0,0.15);">
+            <div style="background:#f1f5f9;width:500px;max-width:92vw;height:100%;overflow-y:auto;padding:22px;box-shadow:-6px 0 20px rgba(0,0,0,0.15);">
                 <div style="display:flex;justify-content:flex-end;">
                     <button onclick="document.getElementById('ops-panel-wrap').innerHTML=''" style="background:#fff;border:1px solid #e2e8f0;width:28px;height:28px;border-radius:7px;cursor:pointer;">${ICON.close}</button>
                 </div>
                 ${guardiaActiva ? `<div style="background:linear-gradient(135deg,#7c3aed,#5b21b6);border-radius:12px;padding:10px 14px;margin-bottom:8px;color:#fff;font-size:11.5px;font-weight:700;">🛡 En guardia — herramienta ${opsEsc(guardiaActiva.herramientaId)}</div>` : ""}
+
                 <div style="background:#fff;border-radius:14px;padding:18px;display:flex;align-items:center;gap:14px;margin-top:8px;">
                     <div style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#0B5FFF,#0842B0);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;flex-shrink:0;">${opsEsc(iniciales)}</div>
                     <div style="min-width:0;flex:1;">
                         <div style="font-size:15.5px;font-weight:700;color:#1e293b;">${opsEsc(t.nombre)}</div>
-                        <div style="font-size:11.5px;color:#64748b;">${opsEsc(t.puesto || "—")} · N.° ${opsEsc(t.numeroOperativo)}${t.registroHistorico > 1 ? ` (registro ${t.registroHistorico})` : ""}</div>
+                        <div style="font-size:11.5px;color:#64748b;">${opsEsc(t.puesto || "—")} · Técnico N.° ${opsEsc(t.numeroOperativo)}${t.registroHistorico > 1 ? ` (registro ${t.registroHistorico})` : ""}${t.employeeId ? ` · ${opsEsc(t.employeeId)}` : ""}</div>
                         <span style="background:${activo ? "#dcfce7" : "#e5e7eb"};color:${activo ? "#166534" : "#374151"};font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:999px;display:inline-block;margin-top:4px;">${activo ? "Activo" : "Baja"}</span>
                     </div>
                     ${opsPuedeGestionar() ? `
                     <div style="position:relative;">
                         <button onclick="opsToggleMenuTecnico(event)" title="Configuración" style="background:#f1f5f9;border:none;width:32px;height:32px;border-radius:8px;cursor:pointer;color:#475569;display:flex;align-items:center;justify-content:center;">${ICON.gear}</button>
                         <div id="ops-menu-tecnico" style="display:none;position:absolute;right:0;top:38px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.12);min-width:190px;z-index:10;overflow:hidden;">
-                            <button onclick="opsAbrirModalEditarTecnico('${idInterno}')" style="width:100%;text-align:left;background:none;border:none;padding:10px 14px;font-size:12.5px;color:#334155;cursor:pointer;">Editar datos generales</button>
+                            <button onclick="opsAbrirModalEditarTecnico('${idInterno}')" style="width:100%;text-align:left;background:none;border:none;padding:10px 14px;font-size:12.5px;color:#334155;cursor:pointer;">✏️ Editar perfil</button>
                             ${activo ? `<button onclick="document.getElementById('ops-menu-tecnico').style.display='none';opsIniciarBajaTecnico('${idInterno}')" style="width:100%;text-align:left;background:none;border-top:1px solid #f1f5f9;border-bottom:none;border-left:none;border-right:none;padding:10px 14px;font-size:12.5px;color:#b91c1c;cursor:pointer;">${ICON.trash} Dar de baja al técnico</button>` : ""}
                         </div>
                     </div>` : ""}
                 </div>
 
-                <div style="background:#fff;border-radius:14px;padding:16px 18px;margin-top:12px;display:flex;gap:16px;">
-                    ${kpiMini("Herramientas", asignadas.length, Math.max(asignadas.length, 1), "#0891b2")}
-                    ${kpiMini("En buen estado", buenEstado, Math.max(asignadas.length, 1), "#059669")}
-                    ${kpiMini("Material activo", materiales.length, Math.max(materiales.length, 1), "#7c3aed")}
+                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px;">
+                    <div style="background:#fff;border-radius:12px;padding:11px;text-align:center;"><div style="font-size:9.5px;color:#94a3b8;">VEHÍCULO</div><div style="font-size:13px;font-weight:700;color:#1e293b;margin-top:2px;">${vehActual ? opsEsc(vehActual.unidad) : "—"}</div></div>
+                    <div style="background:#fff;border-radius:12px;padding:11px;text-align:center;"><div style="font-size:9.5px;color:#94a3b8;">MATERIAL</div><div style="font-size:13px;font-weight:700;color:#1e293b;margin-top:2px;">${materiales.length}</div></div>
+                    <div style="background:#fff;border-radius:12px;padding:11px;text-align:center;"><div style="font-size:9.5px;color:#94a3b8;">HERRAM.</div><div style="font-size:13px;font-weight:700;color:#1e293b;margin-top:2px;">${asignadas.length}</div></div>
                 </div>
 
-                ${bannerVehiculo}
-                ${bloqueRH}
+                <div style="display:flex;gap:4px;margin:14px 0;overflow-x:auto;border-bottom:1px solid #e2e8f0;">
+                    ${["resumen:Resumen", "rh:RH", "vehiculo:Vehículo", "herramientas:Herramientas", "historial:Historial"].map(x => {
+                        const [id, label] = x.split(":");
+                        const on = fichaTecTabActual === id;
+                        return `<button onclick="opsFichaTecCambiarTab('${idInterno}','${id}')" style="background:none;border:none;padding:8px 10px;font-size:11.5px;font-weight:600;white-space:nowrap;color:${on ? "#0B5FFF" : "#64748b"};border-bottom:2px solid ${on ? "#0B5FFF" : "transparent"};cursor:pointer;">${label}</button>`;
+                    }).join("")}
+                </div>
 
-                <div style="background:#fff;border-radius:14px;padding:16px 18px;margin-top:12px;font-size:12.5px;color:#334155;line-height:1.9;">
+                <div id="ops-ficha-tec-content"></div>
+            </div>
+        </div>`;
+        opsRenderFichaTecContenido(idInterno);
+    };
+
+    window.opsFichaTecCambiarTab = function (idInterno, tab) {
+        fichaTecTabActual = tab;
+        opsAbrirFichaTecnico(idInterno, tab);
+    };
+
+    async function opsRenderFichaTecContenido(idInterno) {
+        const t = cacheTec.find(x => x.id === idInterno);
+        const el = document.getElementById("ops-ficha-tec-content");
+        if (!el || !t) return;
+        const asignadas = cacheHerr.filter(h => h.tecnicoActualId === idInterno);
+        const materiales = cacheAlmacenTec.filter(m => m.tecnicoId === idInterno && m.cantidad > 0);
+        const historialMov = cacheMov.filter(m => m.tecnicoAnteriorId === idInterno || m.tecnicoNuevoId === idInterno).sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
+        const vehActual = cacheVehiculosAsig.find(v => v.tecnicoId === idInterno && !v.fechaFin);
+        const vehHistorial = cacheVehiculosAsig.filter(v => v.tecnicoId === idInterno && v.fechaFin).sort((a, b) => (a.fechaInicio < b.fechaInicio ? 1 : -1));
+        const activo = t.estatus === "activo";
+
+        if (fichaTecTabActual === "resumen") {
+            el.innerHTML = `
+                ${activo && opsPuedeHacer("solicitar_material") ? `<div style="margin-bottom:12px;"><button onclick="opsAbrirModalSolicitud('${idInterno}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">Solicitar material</button></div>` : ""}
+                <div style="background:#fff;border-radius:14px;padding:16px 18px;font-size:12.5px;color:#334155;line-height:1.9;">
                     <div><strong>Departamento:</strong> ${opsEsc(t.departamento || "—")}</div>
                     <div><strong>Fecha de ingreso:</strong> ${opsEsc(t.fechaIngreso || "—")}</div>
                     ${t.fechaBaja ? `<div><strong>Fecha de baja:</strong> ${opsEsc(t.fechaBaja)}</div>` : ""}
+                </div>`;
+        } else if (fichaTecTabActual === "rh") {
+            const sincronizado = !!(t.employeeId && t.firebaseUid);
+            el.innerHTML = `
+                <div style="background:#fff;border-radius:14px;padding:16px 18px;">
+                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">
+                        <span style="font-size:11.5px;font-weight:700;color:${sincronizado ? "#166534" : "#b45309"};">${sincronizado ? "🟢 Sincronizado con RH" : "🟠 Pendiente de sincronización"}</span>
+                    </div>
+                    <div style="font-size:12.5px;color:#334155;line-height:1.9;">
+                        <div><strong>Empleado:</strong> ${opsEsc(t.employeeId || "—")}</div>
+                        <div><strong>Correo:</strong> ${opsEsc(t.correo || "—")}</div>
+                        <div><strong>Fleet User ID:</strong> ${opsEsc(t.fleetUserId || "—")}</div>
+                        <div><strong>Firebase UID:</strong> ${opsEsc(t.firebaseUid || "—")}</div>
+                    </div>
+                    <div style="font-size:10.5px;color:#94a3b8;margin-top:10px;">Estos identificadores permiten el match con RH/Flotilla por ID, no por nombre. Hoy no hay sincronización real conectada — se completan editando el perfil manualmente.</div>
+                </div>`;
+        } else if (fichaTecTabActual === "vehiculo") {
+            el.innerHTML = `<div style="text-align:center;padding:20px;color:#94a3b8;font-size:12px;">Consultando Flotilla…</div>`;
+            const vehFlotilla = await window.opsFlotillaProvider.obtenerVehiculoActual(idInterno);
+            el.innerHTML = `
+                <div style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);border-radius:14px;padding:16px 18px;margin-bottom:12px;color:#fff;">
+                    <div style="font-size:10.5px;font-weight:700;opacity:0.85;">🚐 VEHÍCULO EN FLOTILLA (en vivo)</div>
+                    ${vehFlotilla ? `<div style="font-size:14px;font-weight:700;margin-top:4px;">${opsEsc(vehFlotilla.unidad)} ${vehFlotilla.marca ? "— " + opsEsc(vehFlotilla.marca) + " " + opsEsc(vehFlotilla.modelo) : ""}</div><div style="font-size:11px;color:#dbeafe;margin-top:2px;">Estado: ${opsEsc(vehFlotilla.estado)}</div>`
+                        : `<div style="font-size:11.5px;color:#dbeafe;margin-top:4px;">${t.correo ? "Sin vehículo vinculado en Flotilla para este correo." : "Captura el correo del técnico (⚙ Editar perfil) para hacer match con Flotilla."}</div>`}
                 </div>
-
-                ${activo && opsPuedeHacer("solicitar_material") ? `<div style="margin-top:12px;">
-                    <button onclick="opsAbrirModalSolicitud('${idInterno}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">Solicitar material</button>
-                </div>` : ""}
-
-                <div style="background:#fff;border-radius:14px;padding:16px 18px;margin-top:12px;">
+                <div style="background:#fff;border-radius:14px;padding:16px 18px;margin-bottom:12px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                        <div style="font-size:12.5px;font-weight:700;color:#1e293b;">Asignación manual (Operaciones)</div>
+                        ${opsPuedeGestionar() ? `<button onclick="opsAbrirModalVehiculo('${idInterno}')" style="background:#eef2f7;border:none;color:#0B5FFF;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">Asignar vehículo</button>` : ""}
+                    </div>
+                    <div style="font-size:10px;color:#94a3b8;margin-bottom:8px;">Este registro lo lleva Operaciones por separado del dato en vivo de Flotilla — útil si necesitas anotar algo que Flotilla todavía no refleja.</div>
+                    ${vehActual ? `<div style="font-size:13px;font-weight:700;color:#1e293b;">${opsEsc(vehActual.unidad)}</div><div style="font-size:11px;color:#64748b;">Desde ${opsEsc(vehActual.fechaInicio)} · ${opsEsc(vehActual.motivo || "")}</div>`
+                        : '<div style="color:#94a3b8;font-size:12px;">Sin registro manual.</div>'}
+                </div>
+                <div style="background:#fff;border-radius:14px;padding:16px 18px;">
+                    <div style="font-size:12.5px;font-weight:700;color:#1e293b;margin-bottom:8px;">Historial (Operaciones)</div>
+                    ${vehHistorial.length ? vehHistorial.map(v => `<div style="padding:7px 0;border-bottom:1px solid #eef1f5;font-size:12px;color:#334155;">${opsEsc(v.unidad)} · ${opsEsc(v.fechaInicio)} → ${opsEsc(v.fechaFin)}</div>`).join("") : '<div style="color:#94a3b8;font-size:12px;">Sin historial todavía.</div>'}
+                </div>`;
+            return;
+        } else if (fichaTecTabActual === "herramientas") {
+            el.innerHTML = `
+                <div style="background:#fff;border-radius:14px;padding:16px 18px;margin-bottom:12px;">
                     <div style="font-size:12.5px;font-weight:700;color:#1e293b;margin-bottom:8px;">Herramientas asignadas (${asignadas.length})</div>
                     ${asignadas.length ? asignadas.map(h => `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #eef1f5;font-size:12px;"><span style="color:#059669;">${ICON.check}</span><strong>${opsEsc(h.folio)}</strong> — ${opsEsc(h.descripcion)}</div>`).join("") : '<div style="color:#94a3b8;font-size:12px;">Ninguna.</div>'}
                 </div>
-
-                <div style="background:#fff;border-radius:14px;padding:16px 18px;margin-top:12px;">
+                <div style="background:#fff;border-radius:14px;padding:16px 18px;">
                     <div style="font-size:12.5px;font-weight:700;color:#1e293b;margin-bottom:8px;">Almacén del técnico — material (${materiales.length})</div>
-                    <div style="font-size:10.5px;color:#94a3b8;margin-bottom:8px;">Consumibles de uso operativo, distinto del control de activos/herramientas. Conectado a Almacén (surtidos) — la existencia en vivo vendrá de ASPEL cuando esa integración exista.</div>
-                    ${materiales.length ? materiales.map(m => `<div style="padding:7px 0;border-bottom:1px solid #eef1f5;font-size:12px;">${opsEsc(m.productoDesc)} — <strong>${opsEsc(m.cantidad)}</strong></div>`).join("") : '<div style="color:#94a3b8;font-size:12px;">Sin material registrado todavía.</div>'}
-                </div>
-
-                <div style="background:#fff;border-radius:14px;padding:16px 18px;margin-top:12px;">
-                    <div style="font-size:12.5px;font-weight:700;color:#1e293b;display:flex;align-items:center;gap:6px;margin-bottom:8px;">${ICON.clock} Historial</div>
+                    ${materiales.length ? materiales.map(m => `<div style="padding:7px 0;border-bottom:1px solid #eef1f5;font-size:12px;">${opsEsc(m.productoDesc)} — <strong>${opsEsc(m.cantidad)}</strong></div>`).join("") : '<div style="color:#94a3b8;font-size:12px;">Sin material registrado.</div>'}
+                </div>`;
+        } else if (fichaTecTabActual === "historial") {
+            el.innerHTML = `
+                <div style="background:#fff;border-radius:14px;padding:16px 18px;">
+                    <div style="font-size:12.5px;font-weight:700;color:#1e293b;display:flex;align-items:center;gap:6px;margin-bottom:8px;">${ICON.clock} Historial de movimientos</div>
                     <div style="border-left:2px solid #e2e8f0;padding-left:14px;">
-                        ${historial.length ? historial.sort((a,b)=>(a.fecha<b.fecha?1:-1)).map(m => `
+                        ${historialMov.length ? historialMov.map(m => `
                         <div style="margin-bottom:12px;position:relative;">
                             <div style="position:absolute;left:-19px;top:3px;width:8px;height:8px;border-radius:50%;background:#1f2937;"></div>
                             <div style="font-size:12px;color:#334155;">${opsEsc((m.fecha||"").slice(0,10))} · ${opsEsc(m.tipo)} · ${opsEsc(m.herramientaId)}</div>
                         </div>`).join("") : '<div style="color:#94a3b8;font-size:12px;">Sin movimientos.</div>'}
                     </div>
+                </div>`;
+        }
+    }
+
+    // ── Vehículo: asignar (cierra automáticamente la asignación anterior) ──
+    window.opsAbrirModalVehiculo = function (idInterno) {
+        const wrap = document.getElementById("ops-modal-wrap");
+        wrap.innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;">
+            <div style="background:#fff;border-radius:14px;width:380px;max-width:92vw;padding:22px;">
+                <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:4px;">Asignar vehículo</div>
+                <div style="font-size:11px;color:#94a3b8;margin-bottom:14px;">Si el técnico ya tenía un vehículo, esa asignación se cierra automáticamente.</div>
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Unidad / placas</label>
+                <input id="ops-in-veh-unidad" placeholder="Ej. TC-017" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Fecha de inicio</label>
+                <input id="ops-in-veh-fecha" type="date" value="${opsHoy()}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Motivo / observaciones</label>
+                <textarea id="ops-in-veh-motivo" rows="2" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 16px;"></textarea>
+                <div style="display:flex;gap:8px;justify-content:flex-end;">
+                    <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
+                    <button onclick="opsConfirmarVehiculo('${idInterno}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">Asignar</button>
                 </div>
             </div>
         </div>`;
+    };
+
+    window.opsConfirmarVehiculo = async function (idInterno) {
+        const unidad = document.getElementById("ops-in-veh-unidad").value.trim();
+        if (!unidad) { alert("Indica la unidad/placas"); return; }
+        const fechaInicio = document.getElementById("ops-in-veh-fecha").value || opsHoy();
+        const motivo = document.getElementById("ops-in-veh-motivo").value.trim();
+        const { db, fs } = await opsGetFB();
+        const anterior = cacheVehiculosAsig.find(v => v.tecnicoId === idInterno && !v.fechaFin);
+        if (anterior) await fs.updateDoc(fs.doc(db, COL_VEHICULOS_ASIG, anterior.id), { fechaFin: fechaInicio });
+        await fs.addDoc(fs.collection(db, COL_VEHICULOS_ASIG), {
+            tecnicoId: idInterno, unidad, fechaInicio, fechaFin: null, motivo: motivo || null,
+            usuarioAsigno: opsUsuarioActual(),
+        });
+        const snapVeh = await fs.getDocs(fs.collection(db, COL_VEHICULOS_ASIG));
+        cacheVehiculosAsig = snapVeh.docs.map(d => ({ id: d.id, ...d.data() }));
+        document.getElementById("ops-modal-wrap").innerHTML = "";
+        fichaTecTabActual = "vehiculo";
+        opsAbrirFichaTecnico(idInterno, "vehiculo");
     };
 
     // ── Baja de técnico: bloquea si tiene herramientas o material pendiente ──
