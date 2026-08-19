@@ -42,6 +42,7 @@
     const COL_NOTIFICACIONES = "ops_notificaciones"; // ej. "solicitud lista para surtir"
     const COL_GUARDIAS = "ops_guardias"; // herramienta de guardia: distinta de la asignación permanente
     const COL_VEHICULOS_ASIG = "ops_vehiculo_asignaciones"; // historial real de vehículo por técnico (dato propio de Operaciones, no inventa GPS de Flotilla)
+    const COL_FOLIOS = "ops_folios"; // Folios de servicio (Connecteam) con seguimiento de vencimiento/atención/solución
 
     // Capa de integración con RH — mismo patrón que opsAspelAdapter: placeholder documentado.
     // Cuando exista sincronización real de personas/altas/bajas/puestos, solo se reemplaza el interior.
@@ -87,9 +88,27 @@
             }
         },
         async obtenerUbicacionesEnCampo() {
-            // Flotilla todavía no registra GPS/lat-lng en ningún documento — cuando lo haga,
-            // aquí se lee esa colección/campo real. No se inventa ubicación.
-            return [];
+            // Flotilla SÍ registra GPS en tiempo real desde hace unas semanas:
+            // colección flotilla_ubicaciones, un documento por ECO, campos
+            // {eco, lat, lng, precision, email, nombre, capturadoEn}. Se
+            // sobreescribe cada vez que un técnico abre la app o se vincula
+            // a un vehículo (no hay rastreo continuo en segundo plano —
+            // limitación real de la PWA, no de este código).
+            try {
+                const { db, fs } = await opsGetFB();
+                const snap = await fs.getDocs(fs.collection(db, "flotilla_ubicaciones"));
+                return snap.docs
+                    .map(d => d.data())
+                    .filter(u => u.lat && u.lng)
+                    .map(u => ({
+                        lat: u.lat, lng: u.lng, eco: u.eco,
+                        tecnicoNombre: u.nombre || u.email || ("ECO " + u.eco),
+                        actualizadoEn: u.capturadoEn || null,
+                    }));
+            } catch (e) {
+                console.warn("[opsFlotillaProvider] No se pudo leer flotilla_ubicaciones:", e.message);
+                return [];
+            }
         },
     };
     async function opsAuditar(entidad, entidadId, campo, valorAnterior, valorNuevo) {
@@ -572,8 +591,9 @@
     ];
 
     let opsFB = null;
-    let unsubHerr = null, unsubTec = null, unsubMov = null, unsubSurt = null;
-    let cacheHerr = [], cacheTec = [], cacheMov = [], cacheSurtidos = [];
+    let unsubHerr = null, unsubTec = null, unsubMov = null, unsubSurt = null, unsubFolios = null;
+    let cacheHerr = [], cacheTec = [], cacheMov = [], cacheSurtidos = [], cacheFolios = [];
+    let filtroFolios = "", filtroFolioSemaforo = "todos";
     let tabActual = "dashboard";
     let filtroHerr = "", filtroTec = "";
 
@@ -831,6 +851,7 @@
         if (unsubTec)  { unsubTec();  unsubTec = null; }
         if (unsubMov)  { unsubMov();  unsubMov = null; }
         if (unsubSurt) { unsubSurt(); unsubSurt = null; }
+        if (unsubFolios) { unsubFolios(); unsubFolios = null; }
     };
 
     const NAV_ICONS = {
@@ -842,12 +863,14 @@
         solicitudes: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11H4a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h5m0-10v10m0-10h9a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1h-9"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>',
         alertas: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>',
         movimientos: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>',
+        folios: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><circle cx="8" cy="15" r="1.5" fill="currentColor" stroke="none"/></svg>',
     };
 
     function opsRenderShell() {
         const rol = opsRolActual();
         const rolLabel = { administrador: "Administrador", almacen: "Almacén", consulta: "Consulta" }[rol];
         const items = ["resumen:Resumen", "dashboard:Herramientas", "guardias:Guardias", "tecnicos:Técnicos", "servicios:Servicios",
+            "folios:Folios",
             ...(opsPuedeHacer("autorizar_material") ? ["solicitudes:Solicitudes"] : []),
             "alertas:Alertas", "movimientos:Movimientos"];
         return `
@@ -894,6 +917,7 @@
         else if (tab === "guardias") opsRenderGuardias();
         else if (tab === "tecnicos") opsRenderTecnicos();
         else if (tab === "servicios") opsRenderServicios();
+        else if (tab === "folios") opsRenderFolios();
         else if (tab === "solicitudes") opsRenderSolicitudes();
         else if (tab === "alertas") opsRenderAlertas();
         else if (tab === "movimientos") opsRenderMovimientos();
@@ -931,6 +955,13 @@
                 if (tabActual === "solicitudes") opsRenderSolicitudes();
                 if (tabActual === "alertas") opsRenderAlertas();
             }, () => { /* si aún no existe la colección o el índice, Resumen simplemente muestra 0 */ });
+        }
+        if (!unsubFolios) {
+            unsubFolios = fs.onSnapshot(fs.collection(db, COL_FOLIOS), snap => {
+                cacheFolios = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                if (tabActual === "folios") opsRenderFolios();
+                if (tabActual === "resumen") opsRenderResumen();
+            }, () => { /* si aún no existe la colección, Folios simplemente inicia vacío */ });
         }
         // Puestos, personas, historial de puesto y almacén de técnico: se leen una vez
         // por apertura (no cambian con la frecuencia de herramientas/movimientos).
@@ -2213,12 +2244,300 @@
             <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
                 ${tarjeta(ICON.plus, "Nuevo servicio técnico", "Abre el formulario ya existente en Operaciones", "typeof abrirFormServicio==='function' && abrirFormServicio()", typeof window.abrirFormServicio === "function")}
                 ${tarjeta(ICON.box, "Servicios / registros", "Ver la lista de servicios técnicos capturados", "typeof toggleListaServicios==='function' && toggleListaServicios()", typeof window.toggleListaServicios === "function")}
-                ${tarjeta(ICON.clock, "Folios de servicio", "Próximamente — módulo aún no existe en el portal", "", false)}
+                ${tarjeta(NAV_ICONS.folios, "Folios de servicio", "Seguimiento de vencimiento, atención y solución (Connecteam)", "opsCambiarTab('folios')", true)}
                 ${tarjeta(ICON.check, "Pólizas", "Próximamente — módulo aún no existe en el portal", "", false)}
                 ${tarjeta(ICON.bell, "Servicios pendientes / completados", "Próximamente — requiere el módulo de Folios", "", false)}
                 ${tarjeta(ICON.clock, "Historial y evidencias", "Próximamente — se conectará con Evidencias por asignación", "", false)}
             </div>`;
     }
+
+    // ═══════════════════════ TAB: FOLIOS (seguimiento de vencimiento — reemplaza el Excel de Connecteam) ═══════════════════════
+    // Jerarquía de fechas (regla del proceso real, confirmada contra el Excel de Glen):
+    //   1. FECHA DE SOLUCIÓN existe             → SOLUCIONADO, cierra el folio sin excepción.
+    //   2. Inconsistencia entre fechas           → REVISAR DATOS (no se asume nada).
+    //   3. FECHA DE ATENCIÓN existe (sin sol.)   → plazo activo = fecha de atención.
+    //   4. Ninguna de las anteriores              → plazo activo = VENCIMIENTO original.
+    // Rangos del semáforo (validados contra folios reales, plazos típicos de 0-3 días):
+    //   días > 3 → verde · días 2-3 → amarillo · días 0-1 → naranja · días < 0 → rojo.
+    // Fechas se guardan como string "YYYY-MM-DD" (mismo criterio que opsHoy() en el resto del archivo).
+    const OPS_SEMAFORO = {
+        verde:    { bg: "#dcfce7", fg: "#166534", dot: "#16a34a" },
+        amarillo: { bg: "#fef9c3", fg: "#854d0e", dot: "#eab308" },
+        naranja:  { bg: "#ffedd5", fg: "#9a3412", dot: "#ea580c" },
+        rojo:     { bg: "#fee2e2", fg: "#991b1b", dot: "#dc2626" },
+        gris:     { bg: "#e5e7eb", fg: "#374151", dot: "#9ca3af" },
+    };
+
+    function opsDiasEntreFechas(fechaLimite, hoy) {
+        const MS_DIA = 24 * 60 * 60 * 1000;
+        return Math.round((new Date(fechaLimite + "T00:00:00") - new Date(hoy + "T00:00:00")) / MS_DIA);
+    }
+
+    function opsCalcularSemaforoFolio(f) {
+        const hoy = opsHoy();
+        const base = { fechaLimite: null, dias: null, diasTexto: "—", estado: "SIN FECHA", semaforo: "gris", motivo: null };
+
+        // 1) Inconsistencias primero — nunca asumir certeza sobre datos contradictorios
+        const inc = [];
+        if (f.fechaAtencion && f.fechaSolicitud && f.fechaAtencion < f.fechaSolicitud) inc.push("Atención anterior a la solicitud");
+        if (f.fechaSolucion && f.fechaSolicitud && f.fechaSolucion < f.fechaSolicitud) inc.push("Solución anterior a la solicitud");
+        if (f.fechaSolucion && f.fechaAtencion && f.fechaSolucion < f.fechaAtencion) inc.push("Solución anterior a la atención");
+        if (f.vencimiento && f.fechaSolicitud && f.vencimiento < f.fechaSolicitud) inc.push("Vencimiento anterior a la solicitud");
+        if (inc.length) return { ...base, estado: "REVISAR DATOS", semaforo: "gris", motivo: inc.join("; ") };
+
+        // 2) Solución existe → cierra el folio definitivamente, sin importar lo demás
+        if (f.fechaSolucion) return { ...base, fechaLimite: f.fechaSolucion, diasTexto: "Solucionado", estado: "SOLUCIONADO", semaforo: "verde" };
+
+        // 3) Plazo activo: atención tiene prioridad sobre vencimiento
+        const fechaLimite = f.fechaAtencion || f.vencimiento;
+        const enAtencion = !!f.fechaAtencion;
+        if (!fechaLimite) return base;
+
+        const dias = opsDiasEntreFechas(fechaLimite, hoy);
+        let diasTexto;
+        if (dias > 1) diasTexto = `${dias} días`;
+        else if (dias === 1) diasTexto = "1 día";
+        else if (dias === 0) diasTexto = "HOY";
+        else diasTexto = `VENCIDO ${Math.abs(dias)} día${Math.abs(dias) === 1 ? "" : "s"}`;
+
+        let estado, semaforo;
+        if (dias < 0) { estado = "VENCIDO"; semaforo = "rojo"; }
+        else if (dias <= 1) { estado = "URGENTE"; semaforo = "naranja"; }
+        else if (dias <= 3) { estado = "PRÓXIMO A VENCER"; semaforo = "amarillo"; }
+        else { estado = enAtencion ? "EN ATENCIÓN" : "EN PLAZO"; semaforo = "verde"; }
+
+        return { fechaLimite, dias, diasTexto, estado, semaforo, motivo: null };
+    }
+    window.opsCalcularSemaforoFolio = opsCalcularSemaforoFolio;
+
+    function opsBadgeSemaforoFolio(info) {
+        const c = OPS_SEMAFORO[info.semaforo] || OPS_SEMAFORO.gris;
+        return `<span style="display:inline-flex;align-items:center;gap:6px;background:${c.bg};color:${c.fg};font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:999px;white-space:nowrap;">
+            <span style="width:7px;height:7px;border-radius:50%;background:${c.dot};flex-shrink:0;"></span>${opsEsc(info.estado)}
+        </span>`;
+    }
+
+    function opsFmtFechaCorta(iso) {
+        if (!iso) return "—";
+        const d = new Date(iso + "T00:00:00");
+        if (isNaN(d.getTime())) return "—";
+        return d.toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" });
+    }
+
+    function opsRenderFolios() {
+        const el = document.getElementById("ops-tab-content");
+        if (!el) return;
+        const gestion = opsPuedeHacer("gestionar_herramientas");
+
+        const calc = cacheFolios.map(f => ({ f, info: opsCalcularSemaforoFolio(f) }));
+        const kpis = [
+            { label: "Total de folios", valor: calc.length, color: "#1f2937" },
+            { label: "Solucionados", valor: calc.filter(x => x.info.estado === "SOLUCIONADO").length, color: OPS_SEMAFORO.verde.dot },
+            { label: "Próximos a vencer", valor: calc.filter(x => x.info.semaforo === "amarillo").length, color: OPS_SEMAFORO.amarillo.dot },
+            { label: "Urgentes", valor: calc.filter(x => x.info.semaforo === "naranja").length, color: OPS_SEMAFORO.naranja.dot },
+            { label: "Vencidos", valor: calc.filter(x => x.info.semaforo === "rojo").length, color: OPS_SEMAFORO.rojo.dot },
+            { label: "Por revisar", valor: calc.filter(x => x.info.estado === "REVISAR DATOS" || x.info.estado === "SIN FECHA").length, color: OPS_SEMAFORO.gris.dot },
+        ];
+
+        const filtroTexto = filtroFolios.trim().toLowerCase();
+        let filtrados = calc.filter(({ f, info }) => {
+            if (filtroFolioSemaforo !== "todos" && info.semaforo !== filtroFolioSemaforo) return false;
+            if (!filtroTexto) return true;
+            return `${f.estacion || ""} ${f.comentarios || ""} ${f.responsable || ""}`.toLowerCase().includes(filtroTexto);
+        });
+        const orden = { rojo: 0, naranja: 1, amarillo: 2, gris: 3, verde: 4 };
+        filtrados.sort((a, b) => orden[a.info.semaforo] - orden[b.info.semaforo]);
+
+        el.innerHTML = `
+            <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:18px;">
+                ${kpis.map(k => `
+                    <div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;border-top:3px solid ${k.color};padding:12px 14px;">
+                        <div style="font-size:19px;font-weight:700;color:#1e293b;line-height:1;">${k.valor}</div>
+                        <div style="font-size:10px;color:#64748b;margin-top:4px;">${k.label}</div>
+                    </div>`).join("")}
+            </div>
+            <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px 18px;">
+                <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;">
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                        <span style="color:#94a3b8;">${ICON.search}</span>
+                        <input type="text" placeholder="Buscar estación, comentario o responsable..." value="${opsEsc(filtroFolios)}" oninput="opsFiltrarFolios(this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 11px;font-size:12.5px;width:260px;outline:none;">
+                        <select onchange="opsFiltrarFolioSemaforo(this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:12px;outline:none;">
+                            <option value="todos" ${filtroFolioSemaforo === "todos" ? "selected" : ""}>Todos</option>
+                            <option value="rojo" ${filtroFolioSemaforo === "rojo" ? "selected" : ""}>Vencidos</option>
+                            <option value="naranja" ${filtroFolioSemaforo === "naranja" ? "selected" : ""}>Urgentes</option>
+                            <option value="amarillo" ${filtroFolioSemaforo === "amarillo" ? "selected" : ""}>Próximos a vencer</option>
+                            <option value="verde" ${filtroFolioSemaforo === "verde" ? "selected" : ""}>En plazo / Solucionados</option>
+                            <option value="gris" ${filtroFolioSemaforo === "gris" ? "selected" : ""}>Por revisar / sin fecha</option>
+                        </select>
+                    </div>
+                    ${gestion ? `
+                    <div style="display:flex;gap:8px;">
+                        <button onclick="opsAbrirModalFolio()" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">${ICON.plus} Nuevo folio</button>
+                        <button onclick="document.getElementById('ops-folios-import-input').click()" class="mkt-add-btn" style="background:linear-gradient(135deg,#059669,#047857);">📥 Importar Excel</button>
+                        <input type="file" id="ops-folios-import-input" accept=".xlsx,.xls" style="display:none" onchange="opsImportarExcelFolios(this.files[0])">
+                    </div>` : ""}
+                </div>
+                <div style="overflow-x:auto;">
+                    <table style="width:100%;border-collapse:collapse;font-size:12.3px;">
+                        <thead><tr style="background:#1f2937;color:#fff;text-align:left;">
+                            <th style="padding:8px 10px;border-radius:8px 0 0 8px;">Estación</th>
+                            <th style="padding:8px 10px;">Solicitud</th>
+                            <th style="padding:8px 10px;">Vencimiento</th>
+                            <th style="padding:8px 10px;">Atención</th>
+                            <th style="padding:8px 10px;">Solución</th>
+                            <th style="padding:8px 10px;">Responsable</th>
+                            <th style="padding:8px 10px;">Fecha límite activa</th>
+                            <th style="padding:8px 10px;">Días</th>
+                            <th style="padding:8px 10px;">Estado</th>
+                            <th style="padding:8px 10px;border-radius:0 8px 8px 0;"></th>
+                        </tr></thead>
+                        <tbody>${filtrados.length ? filtrados.map(({ f, info }, i) => opsFilaFolio(f, info, i, gestion)).join("") : `<tr><td colspan="10" style="padding:22px;text-align:center;color:#94a3b8;">Sin folios registrados. ${gestion ? 'Usa "Nuevo folio" o "Importar Excel".' : ""}</td></tr>`}</tbody>
+                    </table>
+                </div>
+            </div>`;
+    }
+    window.opsRenderFolios = opsRenderFolios;
+
+    function opsFilaFolio(f, info, i, gestion) {
+        const zebra = i % 2 === 0 ? "#fff" : "#f8fafc";
+        const filaVencida = info.semaforo === "rojo" ? "background:#fef2f2;" : `background:${zebra};`;
+        return `<tr style="${filaVencida}border-bottom:1px solid #eef1f5;" title="${info.motivo ? opsEsc(info.motivo) : ""}">
+            <td style="padding:8px 10px;font-weight:600;color:#334155;">${opsEsc(f.estacion)}</td>
+            <td style="padding:8px 10px;color:#64748b;">${opsFmtFechaCorta(f.fechaSolicitud)}</td>
+            <td style="padding:8px 10px;color:#64748b;">${opsFmtFechaCorta(f.vencimiento)}</td>
+            <td style="padding:8px 10px;color:#64748b;">${f.fechaAtencion ? opsFmtFechaCorta(f.fechaAtencion) : "—"}</td>
+            <td style="padding:8px 10px;color:#64748b;">${f.fechaSolucion ? opsFmtFechaCorta(f.fechaSolucion) : "—"}</td>
+            <td style="padding:8px 10px;color:#334155;">${opsEsc(f.responsable || "—")}</td>
+            <td style="padding:8px 10px;color:#334155;">${info.fechaLimite ? opsFmtFechaCorta(info.fechaLimite) : "—"}</td>
+            <td style="padding:8px 10px;color:#334155;">${opsEsc(info.diasTexto)}</td>
+            <td style="padding:8px 10px;">${opsBadgeSemaforoFolio(info)}</td>
+            <td style="padding:8px 10px;text-align:right;">${gestion ? `<button onclick="opsAbrirModalFolio('${f.id}')" style="background:#eef2f7;border:none;color:#1f2937;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">Editar</button>` : ""}</td>
+        </tr>`;
+    }
+
+    window.opsFiltrarFolios = function (v) { filtroFolios = v || ""; opsRenderFolios(); };
+    window.opsFiltrarFolioSemaforo = function (v) { filtroFolioSemaforo = v || "todos"; opsRenderFolios(); };
+
+    // ── Alta / edición manual de folio ──────────────────────────────
+    window.opsAbrirModalFolio = function (id) {
+        const f = id ? cacheFolios.find(x => x.id === id) : null;
+        const wrap = document.getElementById("ops-modal-wrap");
+        wrap.innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;">
+            <div style="background:#fff;border-radius:14px;width:440px;max-width:92vw;max-height:88vh;overflow-y:auto;padding:22px;">
+                <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:14px;">${f ? "Editar folio" : "Nuevo folio"}</div>
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Estación</label>
+                <input id="ops-fol-estacion" value="${opsEsc(f?.estacion || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Comentarios</label>
+                <textarea id="ops-fol-comentarios" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;min-height:60px;">${opsEsc(f?.comentarios || "")}</textarea>
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Responsable</label>
+                <input id="ops-fol-responsable" value="${opsEsc(f?.responsable || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                <div style="display:flex;gap:8px;">
+                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Fecha de solicitud</label>
+                    <input type="date" id="ops-fol-solicitud" value="${f?.fechaSolicitud || opsHoy()}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
+                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Vencimiento</label>
+                    <input type="date" id="ops-fol-vencimiento" value="${f?.vencimiento || ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
+                </div>
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Fecha de atención (compromiso de lo pendiente)</label>
+                <input type="date" id="ops-fol-atencion" value="${f?.fechaAtencion || ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Fecha de solución (folio 100% cerrado)</label>
+                <input type="date" id="ops-fol-solucion" value="${f?.fechaSolucion || ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 16px;">
+                <div style="display:flex;justify-content:space-between;gap:8px;">
+                    ${f ? `<button onclick="opsEliminarFolio('${f.id}')" style="background:#fef2f2;border:none;color:#b91c1c;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Eliminar</button>` : "<span></span>"}
+                    <div style="display:flex;gap:8px;">
+                        <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
+                        <button onclick="opsGuardarFolio('${id || ""}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">Guardar</button>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    };
+
+    window.opsGuardarFolio = async function (id) {
+        const estacion = document.getElementById("ops-fol-estacion").value.trim();
+        if (!estacion) { alert("La estación es obligatoria"); return; }
+        const { db, fs } = await opsGetFB();
+        const datos = {
+            estacion,
+            comentarios: document.getElementById("ops-fol-comentarios").value.trim(),
+            responsable: document.getElementById("ops-fol-responsable").value.trim(),
+            fechaSolicitud: document.getElementById("ops-fol-solicitud").value || null,
+            vencimiento: document.getElementById("ops-fol-vencimiento").value || null,
+            fechaAtencion: document.getElementById("ops-fol-atencion").value || null,
+            fechaSolucion: document.getElementById("ops-fol-solucion").value || null,
+        };
+        if (id) {
+            await fs.updateDoc(fs.doc(db, COL_FOLIOS, id), datos);
+        } else {
+            await fs.addDoc(fs.collection(db, COL_FOLIOS), { ...datos, origen: "manual", creadoPor: opsUsuarioActual(), creadoEn: opsFechaHora() });
+        }
+        document.getElementById("ops-modal-wrap").innerHTML = "";
+        if (window.mostrarPush) mostrarPush("Operaciones", "Folio guardado.", "📋"); else alert("Folio guardado.");
+    };
+
+    window.opsEliminarFolio = async function (id) {
+        if (!confirm("¿Eliminar este folio? Esta acción no se puede deshacer.")) return;
+        const { db, fs } = await opsGetFB();
+        await fs.deleteDoc(fs.doc(db, COL_FOLIOS, id));
+        document.getElementById("ops-modal-wrap").innerHTML = "";
+        if (window.mostrarPush) mostrarPush("Operaciones", "Folio eliminado.", "🗑️"); else alert("Folio eliminado.");
+    };
+
+    // ── Importación desde el Excel real de Connecteam (idempotente por estación+solicitud+vencimiento) ──
+    // Columnas reales de la hoja mensual (encabezado en la fila 6): ESTACION, COMENTARIOS,
+    // FECHA DE SOLICITUD, PRIORIDAD, VENCIMIENTO, HORARIO, RESPONSABLE, FECHA DE ATENCION,
+    // PLAZO, FECHA DE SOLUCION, DIAS DISPONIBLES (fórmula vieja, se ignora), O.S.,
+    // ESTADO ACTUAL (fórmula vieja, se ignora — la reemplaza este módulo).
+    // Requiere SheetJS cargado en index.html: <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+    window.opsImportarExcelFolios = async function (file) {
+        if (!file) return;
+        if (typeof XLSX === "undefined") { alert("Falta cargar SheetJS (XLSX) en index.html para poder importar Excel."); return; }
+        const { db, fs } = await opsGetFB();
+
+        const buf = await file.arrayBuffer();
+        const wb = XLSX.read(buf, { type: "array", cellDates: false });
+
+        // Llave de deduplicación: no hay un folio numérico confiable y estable en todas las hojas,
+        // así que se dedupe por estación+fecha de solicitud+vencimiento (combinación que identifica al ticket).
+        const clave = f => `${f.estacion}|${f.fechaSolicitud}|${f.vencimiento}`;
+        const existentesSet = new Set(cacheFolios.map(clave));
+
+        let importados = 0, omitidos = 0;
+        const toISO = (v) => {
+            if (!v && v !== 0) return null;
+            if (v instanceof Date) return v.toISOString().slice(0, 10);
+            if (typeof v === "number") { const d = XLSX.SSF.parse_date_code(v); return d ? `${d.y}-${String(d.m).padStart(2, "0")}-${String(d.d).padStart(2, "0")}` : null; }
+            const d = new Date(v); return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+        };
+
+        for (const nombreHoja of wb.SheetNames) {
+            const filas = XLSX.utils.sheet_to_json(wb.Sheets[nombreHoja], { header: 1, range: 5, defval: null });
+            const [encabezado, ...datos] = filas;
+            if (!encabezado || !encabezado.some(h => String(h || "").toUpperCase().includes("ESTACION"))) continue;
+            const idx = campo => encabezado.findIndex(h => String(h || "").trim().toUpperCase().startsWith(campo));
+            const iEst = idx("ESTACION"), iCom = idx("COMENTARIOS"), iSol = idx("FECHA DE SOLICITUD"),
+                  iVen = idx("VENCIMIENTO"), iResp = idx("RESPONSABLE"), iAt = idx("FECHA DE ATENCION"), iSlc = idx("FECHA DE SOLUCION");
+
+            for (const fila of datos) {
+                if (!fila || !fila[iEst]) continue;
+                const registro = {
+                    estacion: String(fila[iEst] || "").trim(),
+                    comentarios: iCom >= 0 ? String(fila[iCom] || "").trim() : "",
+                    responsable: iResp >= 0 ? String(fila[iResp] || "").trim() : "",
+                    fechaSolicitud: iSol >= 0 ? toISO(fila[iSol]) : null,
+                    vencimiento: iVen >= 0 ? toISO(fila[iVen]) : null,
+                    fechaAtencion: iAt >= 0 ? toISO(fila[iAt]) : null,
+                    fechaSolucion: iSlc >= 0 ? toISO(fila[iSlc]) : null,
+                };
+                if (existentesSet.has(clave(registro))) { omitidos++; continue; }
+                await fs.addDoc(fs.collection(db, COL_FOLIOS), { ...registro, origen: "connecteam", hojaOrigen: nombreHoja, creadoEn: opsFechaHora() });
+                existentesSet.add(clave(registro));
+                importados++;
+            }
+        }
+        if (window.mostrarPush) mostrarPush("Operaciones", `Importación completa: ${importados} nuevos, ${omitidos} ya existían.`, "📥");
+        else alert(`Importación completa: ${importados} nuevos, ${omitidos} ya existían.`);
+    };
 
     // ═══════════════════════ TAB: SOLICITUDES (bandeja de Almacén) ═══════════════════════
     // Estados REALES tal como los usa el kiosco/almacén: pendiente → listo → entregado.
