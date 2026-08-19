@@ -43,6 +43,8 @@
     const COL_GUARDIAS = "ops_guardias"; // herramienta de guardia: distinta de la asignación permanente
     const COL_VEHICULOS_ASIG = "ops_vehiculo_asignaciones"; // historial real de vehículo por técnico (dato propio de Operaciones, no inventa GPS de Flotilla)
     const COL_FOLIOS = "ops_folios"; // Folios de servicio (Connecteam) con seguimiento de vencimiento/atención/solución
+    const COL_CLIENTES = "ops_clientes"; // Catálogo de clientes con su tabla de SLA por prioridad (P1-P6, en horas)
+    const MIGUEL_EMAIL = "miguel@tecnocontrol.com.mx"; // dueño del seguimiento interno (fecha de atención / compromiso)
 
     // Capa de integración con RH — mismo patrón que opsAspelAdapter: placeholder documentado.
     // Cuando exista sincronización real de personas/altas/bajas/puestos, solo se reemplaza el interior.
@@ -134,7 +136,13 @@
             .map(d => ({ nombre: d, departamento: d, permisos: d === "Almacén" ? ["gestionar_herramientas", "autorizar_material"] : ["consulta"] })),
     ];
 
-    // Capa de integración ASPEL — placeholder intencional.
+    // Catálogo inicial de clientes con su tabla de SLA (horas por prioridad P1-P6).
+    // OXXO GAS: 7 días=168h, 15 días=360h, 30 días=720h, 6 meses=4380h (30.4d/mes promedio).
+    // "palabrasClave" se usa para detectar el cliente automáticamente por el nombre de la estación.
+    const CLIENTES_SEED = [
+        { nombre: "Petro Siete", palabrasClave: ["petro siete", "petrosiete"], horasSLA: { P1: 4, P2: 8, P3: 24, P4: 36, P5: 48, P6: 168 } },
+        { nombre: "OXXO GAS", palabrasClave: ["oxxo"], horasSLA: { P1: 6, P2: 24, P3: 168, P4: 360, P5: 720, P6: 4380 } },
+    ];
     // La UI llama SIEMPRE estas funciones, nunca a ASPEL directamente.
     // El día que exista la integración real, solo se reemplaza el interior de estas funciones.
     window.opsAspelAdapter = {
@@ -623,6 +631,7 @@
     let cacheAlmacenTec = [];
     let cacheGuardias = [];
     let cacheVehiculosAsig = [];
+    let cacheClientes = [];
     let fichaTecTabActual = "resumen";
     let catalogoProductos = []; // de catalogo/productos (Almacén real), cargado bajo demanda
 
@@ -633,6 +642,24 @@
         for (const p of PUESTOS_SEED) {
             await fs.addDoc(fs.collection(db, COL_PUESTOS), p);
         }
+    }
+
+    async function opsSembrarClientesSiNecesario() {
+        const { db, fs } = await opsGetFB();
+        const snap = await fs.getDocs(fs.collection(db, COL_CLIENTES));
+        if (!snap.empty) return;
+        for (const c of CLIENTES_SEED) {
+            await fs.addDoc(fs.collection(db, COL_CLIENTES), c);
+        }
+    }
+
+    // Detecta el cliente por nombre de estación usando las palabras clave del catálogo.
+    // No fuerza nada: si no hay coincidencia, regresa null y se captura manual.
+    function opsDetectarClientePorNombre(estacion) {
+        const texto = String(estacion || "").toLowerCase();
+        if (!texto) return null;
+        const match = cacheClientes.find(c => (c.palabrasClave || []).some(p => texto.includes(String(p).toLowerCase())));
+        return match ? match.id : null;
     }
 
     function opsRolActual() {
@@ -839,7 +866,9 @@
         cont.style.display = "block";
         document.body.style.overflow = "hidden";
         await opsSembrarPuestosSiNecesario();
+        await opsSembrarClientesSiNecesario();
         await opsSuscribirTodo();
+        opsIniciarVigilanciaFolios();
         opsCambiarTab("resumen");
     };
 
@@ -852,6 +881,7 @@
         if (unsubMov)  { unsubMov();  unsubMov = null; }
         if (unsubSurt) { unsubSurt(); unsubSurt = null; }
         if (unsubFolios) { unsubFolios(); unsubFolios = null; }
+        opsDetenerVigilanciaFolios();
     };
 
     const NAV_ICONS = {
@@ -864,13 +894,14 @@
         alertas: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>',
         movimientos: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>',
         folios: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><circle cx="8" cy="15" r="1.5" fill="currentColor" stroke="none"/></svg>',
+        clientes: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21V7l9-4 9 4v14"/><path d="M9 21V12h6v9"/><path d="M9 8h.01M15 8h.01M12 8h.01"/></svg>',
     };
 
     function opsRenderShell() {
         const rol = opsRolActual();
         const rolLabel = { administrador: "Administrador", almacen: "Almacén", consulta: "Consulta" }[rol];
         const items = ["resumen:Resumen", "dashboard:Herramientas", "guardias:Guardias", "tecnicos:Técnicos", "servicios:Servicios",
-            "folios:Folios",
+            "folios:Folios", "clientes:Clientes",
             ...(opsPuedeHacer("autorizar_material") ? ["solicitudes:Solicitudes"] : []),
             "alertas:Alertas", "movimientos:Movimientos"];
         return `
@@ -918,6 +949,7 @@
         else if (tab === "tecnicos") opsRenderTecnicos();
         else if (tab === "servicios") opsRenderServicios();
         else if (tab === "folios") opsRenderFolios();
+        else if (tab === "clientes") opsRenderClientes();
         else if (tab === "solicitudes") opsRenderSolicitudes();
         else if (tab === "alertas") opsRenderAlertas();
         else if (tab === "movimientos") opsRenderMovimientos();
@@ -961,6 +993,7 @@
                 cacheFolios = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                 if (tabActual === "folios") opsRenderFolios();
                 if (tabActual === "resumen") opsRenderResumen();
+                if (opsFoliosVigilanciaBase) opsVigilarFoliosSeveridad();
             }, () => { /* si aún no existe la colección, Folios simplemente inicia vacío */ });
         }
         // Puestos, personas, historial de puesto y almacén de técnico: se leen una vez
@@ -977,6 +1010,8 @@
         cacheGuardias = snapGuardias.docs.map(d => ({ id: d.id, ...d.data() }));
         const snapVeh = await fs.getDocs(fs.collection(db, COL_VEHICULOS_ASIG));
         cacheVehiculosAsig = snapVeh.docs.map(d => ({ id: d.id, ...d.data() }));
+        const snapClientes = await fs.getDocs(fs.collection(db, COL_CLIENTES));
+        cacheClientes = snapClientes.docs.map(d => ({ id: d.id, ...d.data() }));
     }
 
     // ═══════════════════════ TAB: DASHBOARD ═══════════════════════
@@ -2252,14 +2287,22 @@
     }
 
     // ═══════════════════════ TAB: FOLIOS (seguimiento de vencimiento — reemplaza el Excel de Connecteam) ═══════════════════════
-    // Jerarquía de fechas (regla del proceso real, confirmada contra el Excel de Glen):
+    // Jerarquía de fechas (regla del proceso real):
     //   1. FECHA DE SOLUCIÓN existe             → SOLUCIONADO, cierra el folio sin excepción.
     //   2. Inconsistencia entre fechas           → REVISAR DATOS (no se asume nada).
-    //   3. FECHA DE ATENCIÓN existe (sin sol.)   → plazo activo = fecha de atención.
-    //   4. Ninguna de las anteriores              → plazo activo = VENCIMIENTO original.
-    // Rangos del semáforo (validados contra folios reales, plazos típicos de 0-3 días):
-    //   días > 3 → verde · días 2-3 → amarillo · días 0-1 → naranja · días < 0 → rojo.
-    // Fechas se guardan como string "YYYY-MM-DD" (mismo criterio que opsHoy() en el resto del archivo).
+    //   3. FECHA DE ATENCIÓN existe (sin sol.)   → plazo activo = fecha de atención (compromiso INTERNO, no usa la tabla de clientes).
+    //   4. Ninguna de las anteriores              → plazo activo = VENCIMIENTO original (automático: Cliente + Prioridad → tabla de horas).
+    //
+    // El vencimiento original YA NO se captura a mano cuando hay Cliente + Prioridad: se calcula
+    // fecha/hora de solicitud + horas de SLA del cliente para esa prioridad. Esto es necesario porque
+    // hay prioridades de 4-8 horas (Petro Siete P1/P2) — un cálculo a nivel de "día completo" sería
+    // demasiado impreciso y escondería folios que ya vencieron hace varias horas.
+    //
+    // Rangos del semáforo — en HORAS restantes, no en días, precisamente por lo anterior:
+    //   horas < 0 → rojo (VENCIDO) · horas 0-24 → naranja (URGENTE) ·
+    //   horas 24-72 → amarillo (PRÓXIMO A VENCER) · horas > 72 → verde (EN PLAZO / EN ATENCIÓN)
+    // Con esto, un folio P1 de Petro Siete (4h) se vuelve naranja casi de inmediato — correcto,
+    // porque su ventana completa de respuesta ya está dentro del rango "urgente".
     const OPS_SEMAFORO = {
         verde:    { bg: "#dcfce7", fg: "#166534", dot: "#16a34a" },
         amarillo: { bg: "#fef9c3", fg: "#854d0e", dot: "#eab308" },
@@ -2267,46 +2310,86 @@
         rojo:     { bg: "#fee2e2", fg: "#991b1b", dot: "#dc2626" },
         gris:     { bg: "#e5e7eb", fg: "#374151", dot: "#9ca3af" },
     };
+    const OPS_PRIORIDADES = ["P1", "P2", "P3", "P4", "P5", "P6"];
 
-    function opsDiasEntreFechas(fechaLimite, hoy) {
-        const MS_DIA = 24 * 60 * 60 * 1000;
-        return Math.round((new Date(fechaLimite + "T00:00:00") - new Date(hoy + "T00:00:00")) / MS_DIA);
+    // Convierte cualquiera de los dos formatos de fecha que usa este módulo a un objeto Date real:
+    //  - "YYYY-MM-DD"        (fecha de atención / solución / folios importados o legacy) → medianoche local
+    //  - "YYYY-MM-DDTHH:MM"  (fecha-hora de solicitud / vencimiento calculado)           → hora local exacta
+    function opsAFechaObj(v) {
+        if (!v) return null;
+        const s = String(v);
+        const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(s) ? s + "T00:00:00" : s);
+        return isNaN(d.getTime()) ? null : d;
+    }
+
+    function opsHorasEntre(fechaLimite, ahora) {
+        const fl = opsAFechaObj(fechaLimite);
+        if (!fl) return null;
+        return (fl.getTime() - ahora.getTime()) / (60 * 60 * 1000);
+    }
+
+    // Calcula el vencimiento original automático: fecha/hora de solicitud + horas de SLA
+    // del cliente para esa prioridad. Si falta cliente, prioridad o solicitud, regresa null
+    // (el vencimiento se queda como campo manual — folios legacy/importados sin clasificar).
+    function opsCalcularVencimientoAutomatico(fechaHoraSolicitud, clienteId, prioridad) {
+        if (!fechaHoraSolicitud || !clienteId || !prioridad) return null;
+        const cliente = cacheClientes.find(c => c.id === clienteId);
+        const horas = cliente?.horasSLA?.[prioridad];
+        if (!cliente || !horas) return null;
+        const base = opsAFechaObj(fechaHoraSolicitud);
+        if (!base) return null;
+        const venc = new Date(base.getTime() + horas * 60 * 60 * 1000);
+        // Se guarda en formato "YYYY-MM-DDTHH:MM" (hora local, sin zona) — mismo criterio que el input datetime-local.
+        const pad = n => String(n).padStart(2, "0");
+        return `${venc.getFullYear()}-${pad(venc.getMonth() + 1)}-${pad(venc.getDate())}T${pad(venc.getHours())}:${pad(venc.getMinutes())}`;
+    }
+
+    function opsFormatoRestante(horas) {
+        if (horas === null) return "—";
+        const abs = Math.abs(horas);
+        const vencido = horas < 0;
+        if (abs < 48) {
+            if (abs < 1) return (vencido ? "VENCIDO hace " : "") + Math.round(abs * 60) + " min" + (vencido ? "" : " restantes");
+            const h = Math.floor(abs), m = Math.round((abs - h) * 60);
+            const txt = `${h}h ${m}m`;
+            return vencido ? `VENCIDO hace ${txt}` : `${txt} restantes`;
+        }
+        const dias = Math.round(abs / 24);
+        return vencido ? `VENCIDO ${dias} día${dias === 1 ? "" : "s"}` : `${dias} día${dias === 1 ? "" : "s"}`;
     }
 
     function opsCalcularSemaforoFolio(f) {
-        const hoy = opsHoy();
-        const base = { fechaLimite: null, dias: null, diasTexto: "—", estado: "SIN FECHA", semaforo: "gris", motivo: null };
+        const ahora = new Date();
+        const base = { fechaLimite: null, horas: null, diasTexto: "—", estado: "SIN FECHA", semaforo: "gris", motivo: null, enAtencion: false };
 
         // 1) Inconsistencias primero — nunca asumir certeza sobre datos contradictorios
+        const fSol = opsAFechaObj(f.fechaSolicitud), fAt = opsAFechaObj(f.fechaAtencion),
+              fSlc = opsAFechaObj(f.fechaSolucion), fVen = opsAFechaObj(f.vencimiento);
         const inc = [];
-        if (f.fechaAtencion && f.fechaSolicitud && f.fechaAtencion < f.fechaSolicitud) inc.push("Atención anterior a la solicitud");
-        if (f.fechaSolucion && f.fechaSolicitud && f.fechaSolucion < f.fechaSolicitud) inc.push("Solución anterior a la solicitud");
-        if (f.fechaSolucion && f.fechaAtencion && f.fechaSolucion < f.fechaAtencion) inc.push("Solución anterior a la atención");
-        if (f.vencimiento && f.fechaSolicitud && f.vencimiento < f.fechaSolicitud) inc.push("Vencimiento anterior a la solicitud");
+        if (fAt && fSol && fAt < fSol) inc.push("Atención anterior a la solicitud");
+        if (fSlc && fSol && fSlc < fSol) inc.push("Solución anterior a la solicitud");
+        if (fSlc && fAt && fSlc < fAt) inc.push("Solución anterior a la atención");
+        if (fVen && fSol && fVen < fSol) inc.push("Vencimiento anterior a la solicitud");
         if (inc.length) return { ...base, estado: "REVISAR DATOS", semaforo: "gris", motivo: inc.join("; ") };
 
         // 2) Solución existe → cierra el folio definitivamente, sin importar lo demás
         if (f.fechaSolucion) return { ...base, fechaLimite: f.fechaSolucion, diasTexto: "Solucionado", estado: "SOLUCIONADO", semaforo: "verde" };
 
-        // 3) Plazo activo: atención tiene prioridad sobre vencimiento
+        // 3) Plazo activo: atención (compromiso interno) tiene prioridad sobre vencimiento (SLA cliente)
         const fechaLimite = f.fechaAtencion || f.vencimiento;
         const enAtencion = !!f.fechaAtencion;
         if (!fechaLimite) return base;
 
-        const dias = opsDiasEntreFechas(fechaLimite, hoy);
-        let diasTexto;
-        if (dias > 1) diasTexto = `${dias} días`;
-        else if (dias === 1) diasTexto = "1 día";
-        else if (dias === 0) diasTexto = "HOY";
-        else diasTexto = `VENCIDO ${Math.abs(dias)} día${Math.abs(dias) === 1 ? "" : "s"}`;
+        const horas = opsHorasEntre(fechaLimite, ahora);
+        const diasTexto = opsFormatoRestante(horas);
 
         let estado, semaforo;
-        if (dias < 0) { estado = "VENCIDO"; semaforo = "rojo"; }
-        else if (dias <= 1) { estado = "URGENTE"; semaforo = "naranja"; }
-        else if (dias <= 3) { estado = "PRÓXIMO A VENCER"; semaforo = "amarillo"; }
+        if (horas < 0) { estado = "VENCIDO"; semaforo = "rojo"; }
+        else if (horas <= 24) { estado = "URGENTE"; semaforo = "naranja"; }
+        else if (horas <= 72) { estado = "PRÓXIMO A VENCER"; semaforo = "amarillo"; }
         else { estado = enAtencion ? "EN ATENCIÓN" : "EN PLAZO"; semaforo = "verde"; }
 
-        return { fechaLimite, dias, diasTexto, estado, semaforo, motivo: null };
+        return { fechaLimite, horas, diasTexto, estado, semaforo, motivo: null, enAtencion };
     }
     window.opsCalcularSemaforoFolio = opsCalcularSemaforoFolio;
 
@@ -2317,11 +2400,121 @@
         </span>`;
     }
 
-    function opsFmtFechaCorta(iso) {
-        if (!iso) return "—";
-        const d = new Date(iso + "T00:00:00");
-        if (isNaN(d.getTime())) return "—";
-        return d.toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" });
+    function opsFmtFechaCorta(v) {
+        const d = opsAFechaObj(v);
+        if (!d) return "—";
+        const esConHora = /T\d{2}:\d{2}/.test(String(v));
+        return d.toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" }) + (esConHora ? ` ${d.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}` : "");
+    }
+
+    function opsResponsableFolio(f) {
+        if (f.tecnicoResponsableId) {
+            const t = cacheTec.find(x => x.id === f.tecnicoResponsableId);
+            if (t) return `${t.nombre}${t.correo ? " · " + t.correo : ""}`;
+        }
+        return f.responsable || "—";
+    }
+
+    // ── Alarma sonora (Web Audio, ~10 segundos, imposible de ignorar) ──────
+    // Solo suena mientras el portal está abierto en esta pestaña — misma limitación
+    // honesta que el resto de las alarmas del portal (Flotilla/siniestros).
+    function opsReproducirAlarmaFolio() {
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            let tiempo = ctx.currentTime;
+            const fin = tiempo + 10;
+            function pulso(t) {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = "square";
+                osc.frequency.setValueAtTime(880, t);
+                gain.gain.setValueAtTime(0.15, t);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+                osc.connect(gain).connect(ctx.destination);
+                osc.start(t);
+                osc.stop(t + 0.3);
+            }
+            while (tiempo < fin) { pulso(tiempo); tiempo += 0.45; }
+            setTimeout(() => { try { ctx.close(); } catch (e) {} }, 10500);
+        } catch (e) { console.warn("[Folios] No se pudo reproducir la alarma:", e.message); }
+    }
+
+    // ── Ventana flotante imposible de ignorar (apilable, varias a la vez) ──
+    function opsMostrarFlotanteFolio(f, info) {
+        let cont = document.getElementById("ops-alertas-flotantes");
+        if (!cont) {
+            cont = document.createElement("div");
+            cont.id = "ops-alertas-flotantes";
+            cont.style.cssText = "position:fixed;top:16px;right:16px;z-index:2147483000;display:flex;flex-direction:column;gap:10px;max-width:340px;";
+            document.body.appendChild(cont);
+        }
+        const c = OPS_SEMAFORO[info.semaforo] || OPS_SEMAFORO.rojo;
+        const idFlot = "ops-flot-" + f.id + "-" + Date.now();
+        const div = document.createElement("div");
+        div.id = idFlot;
+        div.style.cssText = `background:#fff;border-left:5px solid ${c.dot};border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,0.25);padding:14px 16px;animation:opsFlotIn .25s ease;`;
+        div.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+                <div style="font-size:11px;font-weight:700;color:${c.fg};text-transform:uppercase;letter-spacing:.4px;">${opsEsc(info.estado)}${info.enAtencion ? " · Seguimiento" : ""}</div>
+                <button onclick="document.getElementById('${idFlot}').remove()" style="background:none;border:none;cursor:pointer;color:#94a3b8;font-size:14px;line-height:1;">✕</button>
+            </div>
+            <div style="font-size:13.5px;font-weight:700;color:#1e293b;margin-top:4px;">${opsEsc(f.estacion)}</div>
+            <div style="font-size:11.5px;color:#64748b;margin-top:2px;">${f.folioOS ? "O.S. " + opsEsc(f.folioOS) + " · " : ""}${opsEsc(info.diasTexto)}</div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:2px;">Responsable: ${opsEsc(opsResponsableFolio(f))}</div>
+            <button onclick="window.opsCambiarTab('folios');document.getElementById('${idFlot}').remove();" style="margin-top:10px;background:${c.dot};border:none;color:#fff;padding:6px 12px;border-radius:7px;cursor:pointer;font-size:11.5px;font-weight:600;">Ver folio</button>
+        `;
+        cont.appendChild(div);
+        setTimeout(() => { const el = document.getElementById(idFlot); if (el) el.remove(); }, 30000);
+    }
+
+    // ── Notificación cruzada a Flotilla (colección real flotilla_notificaciones) ──
+    // Escritura exacta al esquema ya usado por Flotilla: {tipo, para, mensaje, codigo, creadaEn}.
+    // OJO: el campo de fecha se llama "creadaEn" (no "creadoEn") — la app móvil filtra por ese nombre exacto.
+    async function opsNotificarFlotillaFolio(f, info) {
+        const paraEmail = info.enAtencion ? MIGUEL_EMAIL : (f.tecnicoResponsableCorreo || null);
+        if (!paraEmail) return; // sin correo confiable no se inventa destinatario
+        try {
+            const { db, fs } = await opsGetFB();
+            await fs.addDoc(fs.collection(db, "flotilla_notificaciones"), {
+                tipo: "ops_folio_alerta",
+                codigo: f.folioOS || f.estacion,
+                para: paraEmail.toLowerCase(),
+                mensaje: `⚠ Folio ${f.folioOS ? "O.S. " + f.folioOS + " — " : ""}${f.estacion}: ${info.estado}${info.enAtencion ? " (fecha de atención / compromiso)" : ""}. ${info.diasTexto}.`,
+                creadaEn: new Date().toISOString(),
+            });
+        } catch (e) { console.warn("[Folios] No se pudo notificar a Flotilla:", e.message); }
+    }
+
+    // ── Vigilancia en tiempo real: dispara alarma solo al CRUZAR hacia naranja/rojo ──
+    // (nunca al cargar folios ya vencidos de antes — eso sería una avalancha de alarmas).
+    const OPS_SEVERIDAD = { gris: 0, verde: 0, amarillo: 1, naranja: 2, rojo: 3 };
+    let opsFoliosAlertaState = new Map(); // folioId -> última severidad ya vista
+    let opsFoliosVigilanciaBase = false;
+    let opsFoliosVigilanciaTimer = null;
+
+    function opsVigilarFoliosSeveridad() {
+        for (const f of cacheFolios) {
+            const info = opsCalcularSemaforoFolio(f);
+            const sev = OPS_SEVERIDAD[info.semaforo] ?? 0;
+            const previa = opsFoliosAlertaState.get(f.id);
+            if (opsFoliosVigilanciaBase && previa !== undefined && sev > previa && sev >= 2) {
+                opsReproducirAlarmaFolio();
+                opsMostrarFlotanteFolio(f, info);
+                opsNotificarFlotillaFolio(f, info);
+            }
+            opsFoliosAlertaState.set(f.id, sev);
+        }
+        opsFoliosVigilanciaBase = true; // a partir de la primera pasada, sí se alerta en escaladas reales
+    }
+    function opsIniciarVigilanciaFolios() {
+        opsVigilarFoliosSeveridad(); // primera pasada: solo establece la base, no alerta
+        if (opsFoliosVigilanciaTimer) clearInterval(opsFoliosVigilanciaTimer);
+        opsFoliosVigilanciaTimer = setInterval(opsVigilarFoliosSeveridad, 60000); // recheck cada minuto (el reloj avanza aunque no cambien datos)
+    }
+    function opsDetenerVigilanciaFolios() {
+        if (opsFoliosVigilanciaTimer) { clearInterval(opsFoliosVigilanciaTimer); opsFoliosVigilanciaTimer = null; }
+        opsFoliosVigilanciaBase = false;
+        opsFoliosAlertaState.clear();
     }
 
     function opsRenderFolios() {
@@ -2343,7 +2536,7 @@
         let filtrados = calc.filter(({ f, info }) => {
             if (filtroFolioSemaforo !== "todos" && info.semaforo !== filtroFolioSemaforo) return false;
             if (!filtroTexto) return true;
-            return `${f.estacion || ""} ${f.comentarios || ""} ${f.responsable || ""}`.toLowerCase().includes(filtroTexto);
+            return `${f.estacion || ""} ${f.comentarios || ""} ${opsResponsableFolio(f)} ${f.folioOS || ""}`.toLowerCase().includes(filtroTexto);
         });
         const orden = { rojo: 0, naranja: 1, amarillo: 2, gris: 3, verde: 4 };
         filtrados.sort((a, b) => orden[a.info.semaforo] - orden[b.info.semaforo]);
@@ -2360,7 +2553,7 @@
                 <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;">
                     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                         <span style="color:#94a3b8;">${ICON.search}</span>
-                        <input type="text" placeholder="Buscar estación, comentario o responsable..." value="${opsEsc(filtroFolios)}" oninput="opsFiltrarFolios(this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 11px;font-size:12.5px;width:260px;outline:none;">
+                        <input type="text" placeholder="Buscar estación, O.S., comentario o responsable..." value="${opsEsc(filtroFolios)}" oninput="opsFiltrarFolios(this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 11px;font-size:12.5px;width:280px;outline:none;">
                         <select onchange="opsFiltrarFolioSemaforo(this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:12px;outline:none;">
                             <option value="todos" ${filtroFolioSemaforo === "todos" ? "selected" : ""}>Todos</option>
                             <option value="rojo" ${filtroFolioSemaforo === "rojo" ? "selected" : ""}>Vencidos</option>
@@ -2380,18 +2573,19 @@
                 <div style="overflow-x:auto;">
                     <table style="width:100%;border-collapse:collapse;font-size:12.3px;">
                         <thead><tr style="background:#1f2937;color:#fff;text-align:left;">
-                            <th style="padding:8px 10px;border-radius:8px 0 0 8px;">Estación</th>
+                            <th style="padding:8px 10px;border-radius:8px 0 0 8px;">O.S.</th>
+                            <th style="padding:8px 10px;">Estación</th>
+                            <th style="padding:8px 10px;">Cliente / Prioridad</th>
                             <th style="padding:8px 10px;">Solicitud</th>
-                            <th style="padding:8px 10px;">Vencimiento</th>
+                            <th style="padding:8px 10px;">Vencimiento (SLA)</th>
                             <th style="padding:8px 10px;">Atención</th>
                             <th style="padding:8px 10px;">Solución</th>
                             <th style="padding:8px 10px;">Responsable</th>
-                            <th style="padding:8px 10px;">Fecha límite activa</th>
-                            <th style="padding:8px 10px;">Días</th>
+                            <th style="padding:8px 10px;">Plazo activo</th>
                             <th style="padding:8px 10px;">Estado</th>
                             <th style="padding:8px 10px;border-radius:0 8px 8px 0;"></th>
                         </tr></thead>
-                        <tbody>${filtrados.length ? filtrados.map(({ f, info }, i) => opsFilaFolio(f, info, i, gestion)).join("") : `<tr><td colspan="10" style="padding:22px;text-align:center;color:#94a3b8;">Sin folios registrados. ${gestion ? 'Usa "Nuevo folio" o "Importar Excel".' : ""}</td></tr>`}</tbody>
+                        <tbody>${filtrados.length ? filtrados.map(({ f, info }, i) => opsFilaFolio(f, info, i, gestion)).join("") : `<tr><td colspan="11" style="padding:22px;text-align:center;color:#94a3b8;">Sin folios registrados. ${gestion ? 'Usa "Nuevo folio" o "Importar Excel".' : ""}</td></tr>`}</tbody>
                     </table>
                 </div>
             </div>`;
@@ -2401,15 +2595,20 @@
     function opsFilaFolio(f, info, i, gestion) {
         const zebra = i % 2 === 0 ? "#fff" : "#f8fafc";
         const filaVencida = info.semaforo === "rojo" ? "background:#fef2f2;" : `background:${zebra};`;
+        const cp = [f.clienteNombre, f.prioridad].filter(Boolean).join(" · ") || "—";
         return `<tr style="${filaVencida}border-bottom:1px solid #eef1f5;" title="${info.motivo ? opsEsc(info.motivo) : ""}">
+            <td style="padding:8px 10px;color:#334155;font-weight:600;">${opsEsc(f.folioOS || "—")}</td>
             <td style="padding:8px 10px;font-weight:600;color:#334155;">${opsEsc(f.estacion)}</td>
+            <td style="padding:8px 10px;color:#64748b;">${opsEsc(cp)}</td>
             <td style="padding:8px 10px;color:#64748b;">${opsFmtFechaCorta(f.fechaSolicitud)}</td>
             <td style="padding:8px 10px;color:#64748b;">${opsFmtFechaCorta(f.vencimiento)}</td>
             <td style="padding:8px 10px;color:#64748b;">${f.fechaAtencion ? opsFmtFechaCorta(f.fechaAtencion) : "—"}</td>
             <td style="padding:8px 10px;color:#64748b;">${f.fechaSolucion ? opsFmtFechaCorta(f.fechaSolucion) : "—"}</td>
-            <td style="padding:8px 10px;color:#334155;">${opsEsc(f.responsable || "—")}</td>
-            <td style="padding:8px 10px;color:#334155;">${info.fechaLimite ? opsFmtFechaCorta(info.fechaLimite) : "—"}</td>
-            <td style="padding:8px 10px;color:#334155;">${opsEsc(info.diasTexto)}</td>
+            <td style="padding:8px 10px;color:#334155;">${opsEsc(opsResponsableFolio(f))}</td>
+            <td style="padding:8px 10px;color:#334155;">
+                ${info.enAtencion ? `<div style="font-size:9.5px;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:.3px;">Plazo de atención</div>` : ""}
+                ${opsEsc(info.diasTexto)}
+            </td>
             <td style="padding:8px 10px;">${opsBadgeSemaforoFolio(info)}</td>
             <td style="padding:8px 10px;text-align:right;">${gestion ? `<button onclick="opsAbrirModalFolio('${f.id}')" style="background:#eef2f7;border:none;color:#1f2937;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">Editar</button>` : ""}</td>
         </tr>`;
@@ -2418,30 +2617,98 @@
     window.opsFiltrarFolios = function (v) { filtroFolios = v || ""; opsRenderFolios(); };
     window.opsFiltrarFolioSemaforo = function (v) { filtroFolioSemaforo = v || "todos"; opsRenderFolios(); };
 
+    // Recalcula y refresca en vivo el preview de "Vencimiento (automático)" dentro del modal,
+    // cada vez que cambia Cliente, Prioridad o Fecha/hora de solicitud.
+    window.opsFolioActualizarVencimientoPreview = function () {
+        const clienteId = document.getElementById("ops-fol-cliente").value || null;
+        const prioridad = document.getElementById("ops-fol-prioridad").value || null;
+        const fechaSolicitud = document.getElementById("ops-fol-solicitud").value || null;
+        const preview = document.getElementById("ops-fol-vencimiento-preview");
+        const manualWrap = document.getElementById("ops-fol-vencimiento-manual-wrap");
+        const auto = opsCalcularVencimientoAutomatico(fechaSolicitud, clienteId, prioridad);
+        if (auto) {
+            preview.style.display = "block";
+            manualWrap.style.display = "none";
+            preview.dataset.valor = auto;
+            const cliente = cacheClientes.find(c => c.id === clienteId);
+            preview.innerHTML = `<strong>${opsFmtFechaCorta(auto)}</strong><div style="font-size:10.5px;color:#64748b;margin-top:2px;">Calculado: ${opsEsc(cliente?.nombre || "")} · ${opsEsc(prioridad)} · ${cliente.horasSLA[prioridad]}h desde la solicitud</div>`;
+        } else {
+            preview.style.display = "none";
+            manualWrap.style.display = "block";
+        }
+    };
+
+    window.opsDetectarClienteFolio = function () {
+        const estacion = document.getElementById("ops-fol-estacion").value;
+        const id = opsDetectarClientePorNombre(estacion);
+        if (id) { document.getElementById("ops-fol-cliente").value = id; window.opsFolioActualizarVencimientoPreview(); }
+        else if (window.mostrarPush) mostrarPush("Operaciones", "No se detectó un cliente por el nombre de la estación.", "🔍");
+        else alert("No se detectó un cliente por el nombre de la estación.");
+    };
+
     // ── Alta / edición manual de folio ──────────────────────────────
     window.opsAbrirModalFolio = function (id) {
         const f = id ? cacheFolios.find(x => x.id === id) : null;
         const wrap = document.getElementById("ops-modal-wrap");
+        const solicitudDefault = f?.fechaSolicitud || (() => {
+            const n = new Date(); const pad = x => String(x).padStart(2, "0");
+            return `${n.getFullYear()}-${pad(n.getMonth() + 1)}-${pad(n.getDate())}T${pad(n.getHours())}:${pad(n.getMinutes())}`;
+        })();
+        const vencAuto = f ? opsCalcularVencimientoAutomatico(f.fechaSolicitud, f.clienteId, f.prioridad) : null;
         wrap.innerHTML = `
         <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;">
-            <div style="background:#fff;border-radius:14px;width:440px;max-width:92vw;max-height:88vh;overflow-y:auto;padding:22px;">
+            <div style="background:#fff;border-radius:14px;width:480px;max-width:92vw;max-height:90vh;overflow-y:auto;padding:22px;">
                 <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:14px;">${f ? "Editar folio" : "Nuevo folio"}</div>
-                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Estación</label>
-                <input id="ops-fol-estacion" value="${opsEsc(f?.estacion || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
-                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Comentarios</label>
-                <textarea id="ops-fol-comentarios" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;min-height:60px;">${opsEsc(f?.comentarios || "")}</textarea>
-                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Responsable</label>
-                <input id="ops-fol-responsable" value="${opsEsc(f?.responsable || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+
                 <div style="display:flex;gap:8px;">
-                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Fecha de solicitud</label>
-                    <input type="date" id="ops-fol-solicitud" value="${f?.fechaSolicitud || opsHoy()}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
-                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Vencimiento</label>
-                    <input type="date" id="ops-fol-vencimiento" value="${f?.vencimiento || ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
+                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">O.S. (Orden de Servicio)</label>
+                    <input id="ops-fol-os" value="${opsEsc(f?.folioOS || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
+                    <div style="flex:2;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Estación</label>
+                    <input id="ops-fol-estacion" value="${opsEsc(f?.estacion || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
                 </div>
-                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Fecha de atención (compromiso de lo pendiente)</label>
-                <input type="date" id="ops-fol-atencion" value="${f?.fechaAtencion || ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Comentarios</label>
+                <textarea id="ops-fol-comentarios" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;min-height:50px;">${opsEsc(f?.comentarios || "")}</textarea>
+
+                <div style="display:flex;gap:8px;align-items:flex-end;">
+                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Cliente</label>
+                    <select id="ops-fol-cliente" onchange="window.opsFolioActualizarVencimientoPreview()" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                        <option value="">— Sin clasificar —</option>
+                        ${cacheClientes.map(c => `<option value="${c.id}" ${f?.clienteId === c.id ? "selected" : ""}>${opsEsc(c.nombre)}</option>`).join("")}
+                    </select></div>
+                    <button type="button" onclick="window.opsDetectarClienteFolio()" style="background:#eef2f7;border:none;color:#1f2937;padding:9px 12px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:600;margin-bottom:10px;">Detectar</button>
+                </div>
+
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Prioridad</label>
+                <select id="ops-fol-prioridad" onchange="window.opsFolioActualizarVencimientoPreview()" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                    <option value="">— Sin prioridad —</option>
+                    ${OPS_PRIORIDADES.map(p => `<option value="${p}" ${f?.prioridad === p ? "selected" : ""}>${p}</option>`).join("")}
+                </select>
+
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Fecha y hora de solicitud</label>
+                <input type="datetime-local" id="ops-fol-solicitud" value="${solicitudDefault}" oninput="window.opsFolioActualizarVencimientoPreview()" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Vencimiento original (SLA)</label>
+                <div id="ops-fol-vencimiento-preview" style="display:none;background:#eef2ff;border:1px solid #c7d2fe;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;color:#3730a3;"></div>
+                <div id="ops-fol-vencimiento-manual-wrap" style="display:none;">
+                    <input type="datetime-local" id="ops-fol-vencimiento" value="${f?.vencimiento && !vencAuto ? f.vencimiento : ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                    <div style="font-size:10px;color:#94a3b8;margin:-6px 0 10px;">Sin Cliente + Prioridad no se puede calcular automático — captúralo manual (folios legacy/importados).</div>
+                </div>
+
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Fecha de atención (compromiso interno de seguimiento)</label>
+                <input type="date" id="ops-fol-atencion" value="${f?.fechaAtencion || ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 4px;">
+                <div style="font-size:10px;color:#94a3b8;margin:0 0 10px;">Solo si el folio se cerró en tiempo pero quedó un pendiente. No usa la tabla de SLA del cliente.</div>
+
                 <label style="font-size:11.5px;color:#64748b;font-weight:600;">Fecha de solución (folio 100% cerrado)</label>
-                <input type="date" id="ops-fol-solucion" value="${f?.fechaSolucion || ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 16px;">
+                <input type="date" id="ops-fol-solucion" value="${f?.fechaSolucion || ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Responsable (ligado a Técnicos)</label>
+                <select id="ops-fol-tecnico" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                    <option value="">— Sin ligar / texto libre —</option>
+                    ${cacheTec.map(t => `<option value="${t.id}" ${f?.tecnicoResponsableId === t.id ? "selected" : ""}>${opsEsc(t.nombre)}${t.correo ? " (" + opsEsc(t.correo) + ")" : ""}</option>`).join("")}
+                </select>
+                <input id="ops-fol-responsable-texto" placeholder="Nombre libre (solo si no está en Técnicos)" value="${opsEsc(!f?.tecnicoResponsableId ? (f?.responsable || "") : "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 16px;">
+
                 <div style="display:flex;justify-content:space-between;gap:8px;">
                     ${f ? `<button onclick="opsEliminarFolio('${f.id}')" style="background:#fef2f2;border:none;color:#b91c1c;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Eliminar</button>` : "<span></span>"}
                     <div style="display:flex;gap:8px;">
@@ -2451,20 +2718,36 @@
                 </div>
             </div>
         </div>`;
+        window.opsFolioActualizarVencimientoPreview();
     };
 
     window.opsGuardarFolio = async function (id) {
         const estacion = document.getElementById("ops-fol-estacion").value.trim();
         if (!estacion) { alert("La estación es obligatoria"); return; }
         const { db, fs } = await opsGetFB();
+
+        const clienteId = document.getElementById("ops-fol-cliente").value || null;
+        const prioridad = document.getElementById("ops-fol-prioridad").value || null;
+        const fechaSolicitud = document.getElementById("ops-fol-solicitud").value || null;
+        const vencAuto = opsCalcularVencimientoAutomatico(fechaSolicitud, clienteId, prioridad);
+        const vencimiento = vencAuto || document.getElementById("ops-fol-vencimiento").value || null;
+        const clienteNombre = clienteId ? (cacheClientes.find(c => c.id === clienteId)?.nombre || null) : null;
+
+        const tecnicoResponsableId = document.getElementById("ops-fol-tecnico").value || null;
+        const tec = tecnicoResponsableId ? cacheTec.find(t => t.id === tecnicoResponsableId) : null;
+
         const datos = {
+            folioOS: document.getElementById("ops-fol-os").value.trim(),
             estacion,
             comentarios: document.getElementById("ops-fol-comentarios").value.trim(),
-            responsable: document.getElementById("ops-fol-responsable").value.trim(),
-            fechaSolicitud: document.getElementById("ops-fol-solicitud").value || null,
-            vencimiento: document.getElementById("ops-fol-vencimiento").value || null,
+            clienteId, clienteNombre, prioridad,
+            fechaSolicitud, vencimiento,
             fechaAtencion: document.getElementById("ops-fol-atencion").value || null,
             fechaSolucion: document.getElementById("ops-fol-solucion").value || null,
+            tecnicoResponsableId,
+            tecnicoResponsableNombre: tec?.nombre || null,
+            tecnicoResponsableCorreo: tec?.correo || null,
+            responsable: tec?.nombre || document.getElementById("ops-fol-responsable-texto").value.trim() || null,
         };
         if (id) {
             await fs.updateDoc(fs.doc(db, COL_FOLIOS, id), datos);
@@ -2488,6 +2771,11 @@
     // FECHA DE SOLICITUD, PRIORIDAD, VENCIMIENTO, HORARIO, RESPONSABLE, FECHA DE ATENCION,
     // PLAZO, FECHA DE SOLUCION, DIAS DISPONIBLES (fórmula vieja, se ignora), O.S.,
     // ESTADO ACTUAL (fórmula vieja, se ignora — la reemplaza este módulo).
+    // HORARIO = la hora exacta en la que VENCE el folio (aclarado por Glen) — se combina con la
+    // fecha de VENCIMIENTO para dar precisión de hora también a los folios históricos importados,
+    // en vez de dejarlos fijos a medianoche.
+    // Los folios importados NO se reclasifican con Cliente automáticamente (para no pisar el
+    // vencimiento manual ya capturado en Connecteam) — Glen puede abrirlos y usar "Detectar" si quiere.
     // Requiere SheetJS cargado en index.html: <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
     window.opsImportarExcelFolios = async function (file) {
         if (!file) return;
@@ -2497,9 +2785,10 @@
         const buf = await file.arrayBuffer();
         const wb = XLSX.read(buf, { type: "array", cellDates: false });
 
-        // Llave de deduplicación: no hay un folio numérico confiable y estable en todas las hojas,
-        // así que se dedupe por estación+fecha de solicitud+vencimiento (combinación que identifica al ticket).
-        const clave = f => `${f.estacion}|${f.fechaSolicitud}|${f.vencimiento}`;
+        // Comparación SIEMPRE a nivel de fecha (sin hora): así, sin importar si el registro ya
+        // guardado en Firestore es de antes (vencimiento a medianoche) o de ahora (con HORARIO
+        // combinado), se sigue reconociendo como el mismo folio y no se duplica al reimportar.
+        const clave = f => `${f.estacion}|${String(f.fechaSolicitud || "").slice(0, 10)}|${String(f.vencimiento || "").slice(0, 10)}`;
         const existentesSet = new Set(cacheFolios.map(clave));
 
         let importados = 0, omitidos = 0;
@@ -2509,23 +2798,35 @@
             if (typeof v === "number") { const d = XLSX.SSF.parse_date_code(v); return d ? `${d.y}-${String(d.m).padStart(2, "0")}-${String(d.d).padStart(2, "0")}` : null; }
             const d = new Date(v); return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
         };
+        const horaDesdeCelda = (v) => {
+            if (v === null || v === undefined || v === "") return null;
+            if (typeof v === "number") { const d = XLSX.SSF.parse_date_code(v); return d ? `${String(d.H).padStart(2, "0")}:${String(d.M).padStart(2, "0")}` : null; }
+            const m = String(v).match(/^(\d{1,2}):(\d{2})/);
+            return m ? `${m[1].padStart(2, "0")}:${m[2]}` : null;
+        };
 
         for (const nombreHoja of wb.SheetNames) {
             const filas = XLSX.utils.sheet_to_json(wb.Sheets[nombreHoja], { header: 1, range: 5, defval: null });
             const [encabezado, ...datos] = filas;
             if (!encabezado || !encabezado.some(h => String(h || "").toUpperCase().includes("ESTACION"))) continue;
             const idx = campo => encabezado.findIndex(h => String(h || "").trim().toUpperCase().startsWith(campo));
-            const iEst = idx("ESTACION"), iCom = idx("COMENTARIOS"), iSol = idx("FECHA DE SOLICITUD"),
-                  iVen = idx("VENCIMIENTO"), iResp = idx("RESPONSABLE"), iAt = idx("FECHA DE ATENCION"), iSlc = idx("FECHA DE SOLUCION");
+            const iEst = idx("ESTACION"), iCom = idx("COMENTARIOS"), iSol = idx("FECHA DE SOLICITUD"), iPrio = idx("PRIORIDAD"),
+                  iVen = idx("VENCIMIENTO"), iHor = idx("HORARIO"), iResp = idx("RESPONSABLE"), iAt = idx("FECHA DE ATENCION"), iSlc = idx("FECHA DE SOLUCION"), iOS = idx("O.S.");
 
             for (const fila of datos) {
                 if (!fila || !fila[iEst]) continue;
+                let vencimiento = iVen >= 0 ? toISO(fila[iVen]) : null;
+                const horaVence = iHor >= 0 ? horaDesdeCelda(fila[iHor]) : null;
+                if (vencimiento && horaVence) vencimiento = `${vencimiento}T${horaVence}`; // fecha + hora exacta de vencimiento
+
                 const registro = {
                     estacion: String(fila[iEst] || "").trim(),
                     comentarios: iCom >= 0 ? String(fila[iCom] || "").trim() : "",
                     responsable: iResp >= 0 ? String(fila[iResp] || "").trim() : "",
+                    folioOS: iOS >= 0 ? String(fila[iOS] ?? "").trim() : "",
+                    prioridad: iPrio >= 0 && OPS_PRIORIDADES.includes(String(fila[iPrio] || "").trim().toUpperCase()) ? String(fila[iPrio]).trim().toUpperCase() : null,
                     fechaSolicitud: iSol >= 0 ? toISO(fila[iSol]) : null,
-                    vencimiento: iVen >= 0 ? toISO(fila[iVen]) : null,
+                    vencimiento,
                     fechaAtencion: iAt >= 0 ? toISO(fila[iAt]) : null,
                     fechaSolucion: iSlc >= 0 ? toISO(fila[iSlc]) : null,
                 };
@@ -2539,6 +2840,100 @@
         else alert(`Importación completa: ${importados} nuevos, ${omitidos} ya existían.`);
     };
 
+    // ═══════════════════════ TAB: CLIENTES (catálogo de SLA por prioridad) ═══════════════════════
+    function opsRenderClientes() {
+        const el = document.getElementById("ops-tab-content");
+        if (!el) return;
+        const gestion = opsPuedeHacer("gestionar_herramientas");
+        el.innerHTML = `
+            <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px 18px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                    <div style="font-size:12.5px;font-weight:700;color:#1e293b;">Clientes y su tabla de SLA (horas por prioridad)</div>
+                    ${gestion ? `<button onclick="opsAbrirModalCliente()" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">${ICON.plus} Nuevo cliente</button>` : ""}
+                </div>
+                <div style="overflow-x:auto;">
+                    <table style="width:100%;border-collapse:collapse;font-size:12.3px;">
+                        <thead><tr style="background:#1f2937;color:#fff;text-align:left;">
+                            <th style="padding:8px 10px;border-radius:8px 0 0 8px;">Cliente</th>
+                            <th style="padding:8px 10px;">Palabras clave</th>
+                            ${OPS_PRIORIDADES.map(p => `<th style="padding:8px 10px;text-align:center;">${p}</th>`).join("")}
+                            <th style="padding:8px 10px;border-radius:0 8px 8px 0;"></th>
+                        </tr></thead>
+                        <tbody>${cacheClientes.length ? cacheClientes.map((c, i) => `
+                            <tr style="background:${i % 2 === 0 ? "#fff" : "#f8fafc"};border-bottom:1px solid #eef1f5;">
+                                <td style="padding:8px 10px;font-weight:600;color:#334155;">${opsEsc(c.nombre)}</td>
+                                <td style="padding:8px 10px;color:#64748b;">${opsEsc((c.palabrasClave || []).join(", ") || "—")}</td>
+                                ${OPS_PRIORIDADES.map(p => `<td style="padding:8px 10px;text-align:center;color:#334155;">${c.horasSLA?.[p] ?? "—"}h</td>`).join("")}
+                                <td style="padding:8px 10px;text-align:right;">${gestion ? `<button onclick="opsAbrirModalCliente('${c.id}')" style="background:#eef2f7;border:none;color:#1f2937;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">Editar</button>` : ""}</td>
+                            </tr>`).join("") : `<tr><td colspan="9" style="padding:22px;text-align:center;color:#94a3b8;">Sin clientes registrados.</td></tr>`}</tbody>
+                    </table>
+                </div>
+            </div>`;
+    }
+    window.opsRenderClientes = opsRenderClientes;
+
+    window.opsAbrirModalCliente = function (id) {
+        const c = id ? cacheClientes.find(x => x.id === id) : null;
+        const wrap = document.getElementById("ops-modal-wrap");
+        wrap.innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;">
+            <div style="background:#fff;border-radius:14px;width:420px;max-width:92vw;max-height:88vh;overflow-y:auto;padding:22px;">
+                <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:14px;">${c ? "Editar cliente" : "Nuevo cliente"}</div>
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Nombre</label>
+                <input id="ops-cli-nombre" value="${opsEsc(c?.nombre || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Palabras clave para detectar por nombre de estación (separadas por coma)</label>
+                <input id="ops-cli-palabras" value="${opsEsc((c?.palabrasClave || []).join(", "))}" placeholder="ej. oxxo" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 12px;">
+                <div style="font-size:11.5px;color:#64748b;font-weight:600;margin-bottom:6px;">Horas de SLA por prioridad</div>
+                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px;">
+                    ${OPS_PRIORIDADES.map(p => `
+                        <div><label style="font-size:10.5px;color:#94a3b8;">${p} (horas)</label>
+                        <input type="number" min="0" id="ops-cli-${p}" value="${c?.horasSLA?.[p] ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 8px;font-size:12.5px;margin-top:3px;"></div>`).join("")}
+                </div>
+                <div style="display:flex;justify-content:space-between;gap:8px;">
+                    ${c ? `<button onclick="opsEliminarCliente('${c.id}')" style="background:#fef2f2;border:none;color:#b91c1c;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Eliminar</button>` : "<span></span>"}
+                    <div style="display:flex;gap:8px;">
+                        <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
+                        <button onclick="opsGuardarCliente('${id || ""}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">Guardar</button>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    };
+
+    window.opsGuardarCliente = async function (id) {
+        const nombre = document.getElementById("ops-cli-nombre").value.trim();
+        if (!nombre) { alert("El nombre del cliente es obligatorio"); return; }
+        const { db, fs } = await opsGetFB();
+        const horasSLA = {};
+        OPS_PRIORIDADES.forEach(p => {
+            const v = document.getElementById(`ops-cli-${p}`).value;
+            if (v !== "") horasSLA[p] = Number(v);
+        });
+        const datos = {
+            nombre,
+            palabrasClave: document.getElementById("ops-cli-palabras").value.split(",").map(s => s.trim().toLowerCase()).filter(Boolean),
+            horasSLA,
+        };
+        if (id) await fs.updateDoc(fs.doc(db, COL_CLIENTES, id), datos);
+        else await fs.addDoc(fs.collection(db, COL_CLIENTES), datos);
+        const snap = await fs.getDocs(fs.collection(db, COL_CLIENTES));
+        cacheClientes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        document.getElementById("ops-modal-wrap").innerHTML = "";
+        opsRenderClientes();
+        if (window.mostrarPush) mostrarPush("Operaciones", "Cliente guardado.", "🏢"); else alert("Cliente guardado.");
+    };
+
+    window.opsEliminarCliente = async function (id) {
+        if (!confirm("¿Eliminar este cliente? Los folios que ya lo tengan asignado conservan el nombre, pero perderán el vínculo para recalcular su SLA.")) return;
+        const { db, fs } = await opsGetFB();
+        await fs.deleteDoc(fs.doc(db, COL_CLIENTES, id));
+        cacheClientes = cacheClientes.filter(c => c.id !== id);
+        document.getElementById("ops-modal-wrap").innerHTML = "";
+        opsRenderClientes();
+        if (window.mostrarPush) mostrarPush("Operaciones", "Cliente eliminado.", "🗑️"); else alert("Cliente eliminado.");
+    };
+
+    // ═══════════════════════ TAB: SOLICITUDES (bandeja de Almacén) ═══════════════════════
     // ═══════════════════════ TAB: SOLICITUDES (bandeja de Almacén) ═══════════════════════
     // Estados REALES tal como los usa el kiosco/almacén: pendiente → listo → entregado.
     // rechazada/cancelada son extensiones de Operaciones (no rompen al kiosco, que solo
