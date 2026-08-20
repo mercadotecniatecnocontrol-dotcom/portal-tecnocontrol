@@ -702,6 +702,32 @@
         });
         return "HT-" + String(n).padStart(6, "0");
     }
+    // Folio consecutivo de Solicitud de Material: "OPERACIONES 0001", "OPERACIONES 0002"...
+    // OJO: el kiosco público (solicitud-material.html) escribe con auth ANÓNIMA a Firestore,
+    // por lo que NO puede compartir un contador atómico (ops_contadores) protegido para
+    // usuarios autenticados — no sabemos si las reglas se lo permitirían. En vez de eso,
+    // ambos puntos de entrada (kiosco y este módulo) calculan el folio leyendo el máximo
+    // "folioNum" ya existente en `surtidos` con folioPrefijo:"OPERACIONES" y sumando 1.
+    // Es "best effort" (no 100% atómico): si dos personas envían una solicitud en el mismo
+    // instante podría repetirse un folio, igual que el resto de folios de este portal
+    // (ver duplicado en almacen-pdf.js). Riesgo aceptado dado el volumen real de solicitudes.
+    async function opsSiguienteFolioMaterial() {
+        const { db, fs } = await opsGetFB();
+        try {
+            const snap = await fs.getDocs(fs.query(fs.collection(db, COL_SURTIDOS), fs.where("folioPrefijo", "==", "OPERACIONES")));
+            let max = 0;
+            snap.forEach(d => {
+                const n = (d.data() || {}).folioNum;
+                if (typeof n === "number" && n > max) max = n;
+            });
+            const siguiente = max + 1;
+            return { folio: "OPERACIONES " + String(siguiente).padStart(4, "0"), folioNum: siguiente, folioPrefijo: "OPERACIONES" };
+        } catch (e) {
+            console.warn("[operaciones.js] no se pudo calcular el folio consecutivo, se usa respaldo temporal:", e && e.message);
+            const respaldo = Date.now() % 10000;
+            return { folio: "OPERACIONES " + String(respaldo).padStart(4, "0") + "-R", folioNum: null, folioPrefijo: "OPERACIONES" };
+        }
+    }
     async function opsSiguienteNumeroTecnico() {
         const { db, fs } = await opsGetFB();
         const ref = fs.doc(db, COL_CONTADORES, "tecnicos");
@@ -2136,9 +2162,9 @@
         msgEl.textContent = "";
 
         const { db, fs } = await opsGetFB();
-        const folio = "SM-" + String(Date.now()).slice(-6);
+        const folioInfo = await opsSiguienteFolioMaterial();
         await fs.addDoc(fs.collection(db, COL_SURTIDOS), {
-            tipo: "material", folio,
+            tipo: "material", folio: folioInfo.folio, folioNum: folioInfo.folioNum, folioPrefijo: folioInfo.folioPrefijo,
             cliente: destino || "Almacén · Operaciones",
             solicitante, vendedor: solicitante,
             area, destino, uso,
@@ -2150,7 +2176,7 @@
             createdAt: fs.serverTimestamp ? fs.serverTimestamp() : opsFechaHora(),
         });
         document.getElementById("ops-modal-wrap").innerHTML = "";
-        window.mostrarPush ? mostrarPush("Herramientas", `Solicitud ${folio} enviada a Almacén.`, "📦") : alert(`Solicitud ${folio} enviada a Almacén.`);
+        window.mostrarPush ? mostrarPush("Herramientas", `Solicitud ${folioInfo.folio} enviada a Almacén.`, "📦") : alert(`Solicitud ${folioInfo.folio} enviada a Almacén.`);
     };
 
     // ═══════════════════════ TAB: HERRAMIENTA DE GUARDIA ═══════════════════════
@@ -3060,7 +3086,7 @@
         const s = cacheSurtidos.find(x => x.id === id);
         if (!s) return;
         const prod = (s.productos && s.productos[0]) || {};
-        const otros = (s.productos || []).slice(1);
+        const listaArticulos = Array.isArray(s.productos) ? s.productos : [];
         const estadoKey = s.estado || "pendiente";
         const e = ESTADOS_SOLICITUD[estadoKey] || ESTADOS_SOLICITUD.pendiente;
         const { db, fs } = await opsGetFB();
@@ -3080,20 +3106,37 @@
                 <span style="background:${e.bg};color:${e.fg};font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;">${e.label}</span>
                 <div style="margin-top:14px;font-size:12.5px;color:#334155;line-height:1.9;">
                     <div><strong>Técnico:</strong> ${opsEsc(s.tecnicoNombre || s.solicitante || "—")} ${s.tecnicoNumero ? `(N.° ${opsEsc(s.tecnicoNumero)})` : ""}</div>
-                    <div><strong>Cantidad:</strong> ${opsEsc(prod.cant)}${otros.length ? ` (+${otros.length} artículo(s) más)` : ""}</div>
                     <div><strong>Prioridad:</strong> ${opsEsc(s.prioridad)}</div>
                     <div><strong>Operación destino:</strong> ${opsEsc(s.destino || "—")}</div>
                     <div><strong>Folio de servicio:</strong> ${opsEsc(s.folioServicio || "—")}</div>
                     <div><strong>Uso:</strong> ${opsEsc(s.uso || "—")}</div>
                     ${s.recibioNombre ? `<div><strong>Recibió:</strong> ${opsEsc(s.recibioNombre)}</div>` : ""}
                 </div>
-                ${e.siguiente && opsPuedeHacer("autorizar_material") ? `<div style="margin-top:14px;"><button onclick="opsAvanzarSolicitud('${s.id}','${e.siguiente}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">Avanzar a "${ESTADOS_SOLICITUD[e.siguiente].label}"</button></div>` : ""}
+                <div style="margin-top:12px;">
+                    <div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#94a3b8;margin-bottom:6px;">Artículos solicitados (${listaArticulos.length})</div>
+                    ${listaArticulos.length
+                        ? listaArticulos.map(it => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:12.5px;color:#1e293b;padding:3px 0;border-bottom:1px solid #f1f5f9;"><span>${opsEsc(it.desc || "—")}${it.clave ? ` <span style="color:#94a3b8;">(${opsEsc(it.clave)})</span>` : ""}</span><span style="font-weight:700;white-space:nowrap;">×${opsEsc(it.cant || 0)}</span></div>`).join("")
+                        : '<div style="color:#94a3b8;font-size:12px;">Sin artículos capturados.</div>'}
+                </div>
+                <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;">
+                    ${e.siguiente && opsPuedeHacer("autorizar_material") ? `<button onclick="opsAvanzarSolicitud('${s.id}','${e.siguiente}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">Avanzar a "${ESTADOS_SOLICITUD[e.siguiente].label}"</button>` : ""}
+                    <button onclick="opsImprimirSolicitud('${s.id}')" style="background:#f1f5f9;border:none;color:#334155;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">🖨️ Imprimir PDF</button>
+                </div>
                 <div style="margin-top:20px;font-size:12.5px;font-weight:700;color:#1e293b;display:flex;align-items:center;gap:6px;">${ICON.clock} Línea de tiempo</div>
                 <div style="margin-top:10px;border-left:2px solid #e2e8f0;padding-left:14px;">
                     ${historial.length ? historial.map(ev => `<div style="margin-bottom:12px;position:relative;"><div style="position:absolute;left:-19px;top:3px;width:8px;height:8px;border-radius:50%;background:#0B5FFF;"></div><div style="font-size:12px;color:#334155;">${opsEsc(ev.de || "—")} → ${opsEsc(ev.a || "—")} · ${opsEsc(ev.por || "")}</div></div>`).join("") : '<div style="color:#94a3b8;font-size:12px;">Sin eventos registrados aún.</div>'}
                 </div>
             </div>
         </div>`;
+    };
+
+    // Reusa el generador de PDF profesional que vive en almacen.js (mismo esquema
+    // `surtidos`, mismo folio) — evita duplicar la plantilla del PDF en dos módulos.
+    // almacen.js siempre está cargado antes que operaciones.js en index.html, pero
+    // se deja el aviso por si algún día cambia el orden de carga.
+    window.opsImprimirSolicitud = function (id) {
+        if (window.__almImprimirSolicitudMaterial) window.__almImprimirSolicitudMaterial(id);
+        else alert("No se pudo generar el PDF: el módulo de Almacén no está cargado en esta sesión. Recarga la página e inténtalo de nuevo.");
     };
 
     window.opsAvanzarSolicitud = async function (id, siguienteEstado) {
