@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Solicitud de Material · Almacén Tecnocontrol</title>
 <link rel="stylesheet" href="CSS/solicitud-material.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
 <div class="hero">
@@ -77,9 +78,13 @@
     <div class="done-ic"><svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
     <h2>¡Solicitud enviada!</h2>
     <div class="folio">Folio <b id="done-folio">—</b></div>
+    <button id="done-whatsapp" type="button" style="background:#25D366;margin-bottom:10px;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="#fff" style="vertical-align:-3px;margin-right:6px;"><path d="M17.6 6.32A7.85 7.85 0 0 0 12.05 4a7.94 7.94 0 0 0-6.9 11.9L4 20l4.2-1.1a7.9 7.9 0 0 0 3.85 1h.005a7.94 7.94 0 0 0 5.55-13.6zm-5.55 12.2h-.003a6.6 6.6 0 0 1-3.37-.92l-.24-.14-2.5.65.67-2.44-.16-.25a6.58 6.58 0 0 1 10.2-8.18 6.55 6.55 0 0 1 1.94 4.66 6.6 6.6 0 0 1-6.53 6.62zm3.6-4.93c-.2-.1-1.17-.58-1.35-.64s-.31-.1-.44.1-.5.64-.62.77-.23.15-.43.05a5.4 5.4 0 0 1-1.59-.98 6 6 0 0 1-1.1-1.37c-.12-.2 0-.3.09-.4s.2-.23.29-.35a1.3 1.3 0 0 0 .2-.33.37.37 0 0 0 0-.35c0-.1-.44-1.06-.6-1.45-.16-.38-.32-.33-.44-.33h-.37a.72.72 0 0 0-.52.24 2.2 2.2 0 0 0-.68 1.63 3.8 3.8 0 0 0 .8 2.02 8.7 8.7 0 0 0 3.33 2.95c.46.2.82.32 1.1.4.46.15.88.13 1.21.08.37-.06 1.17-.48 1.33-.94s.16-.86.11-.94-.18-.13-.38-.23z"/></svg>Enviar por WhatsApp
+    </button>
     <button id="done-new" type="button">Nueva solicitud</button>
   </div>
 </div>
+
 
 <!-- Toma de pantalla completa: Almacén pide firma de quien recibe -->
 <div class="entrega-ov" id="entrega-ov">
@@ -340,6 +345,7 @@ $('submit').onclick = async ()=>{
   try{
     await authReady;
     const folioInfo = await siguienteFolioMaterial();
+    const firma = firmaBase64();
     await addDoc(collection(db,'surtidos'), {
       tipo: 'material',
       folio: folioInfo.folio,
@@ -354,10 +360,11 @@ $('submit').onclick = async ()=>{
       prioridad: 'urgente',           // material siempre es "ahora", sin fecha tentativa
       estado: 'pendiente',
       productos,
-      firma: firmaBase64(),
+      firma,
       origen: 'kiosco',
       createdAt: serverTimestamp()
     });
+    ultimaSolicitudEnviada = { folio: folioInfo.folio, solicitante, area, destino, uso, productos, firma, prioridad:'urgente' };
     $('done-folio').textContent = folioInfo.folio;
     $('done').classList.add('on');
     setMsg('');
@@ -367,12 +374,141 @@ $('submit').onclick = async ()=>{
   }finally{ btn.disabled=false; }
 };
 
+/* ============ WhatsApp: mismo espíritu que el botón de Ventas (almacen-pdf.js) ============
+   Genera el mismo PDF profesional (logo + colores de marca) que usa Almacén, e intenta
+   compartirlo nativo (Web Share API con archivo — funciona en Android/iOS, ahí WhatsApp
+   aparece como destino con el PDF ya adjunto). En navegadores de escritorio esa API casi
+   nunca soporta archivos, así que se abre el PDF en una pestaña nueva (para adjuntarlo a
+   mano) y WhatsApp con el resumen de texto ya redactado — WhatsApp no permite adjuntar un
+   archivo automáticamente desde un enlace web, en ningún flujo del portal. */
+let ultimaSolicitudEnviada = null;
+
+function resumenTextoSolicitud(d){
+  const lineas = [
+    '📦 Solicitud de Material — ' + (d.folio||'—'),
+    'Solicitante: ' + (d.solicitante||'—'),
+    'Área: ' + (d.area||'—'),
+    'Destino: ' + (d.destino||'—'),
+    'Prioridad: Urgente',
+    '',
+    'Artículos:'
+  ];
+  (d.productos||[]).forEach(it=> lineas.push('• '+(it.desc||'—')+' ×'+(it.cant||0)+(it.clave?(' ('+it.clave+')'):'')));
+  if(d.uso) lineas.push('', 'Uso: '+d.uso);
+  return lineas.join('\n');
+}
+
+function construirPDFSolicitud(d){
+  if(!window.jspdf) return null;
+  const { jsPDF } = window.jspdf;
+  const docu = new jsPDF({ orientation:'portrait', unit:'mm', format:'letter' });
+  const PW=215.9, PH=279.4, ML=14, MR=14;
+  const AZUL = {r:29,g:46,b:115}, ROJO = {r:231,g:64,b:43};
+  const logoSrc = (document.querySelector('.hero-logo')||{}).src || '';
+
+  docu.setFillColor(AZUL.r,AZUL.g,AZUL.b); docu.rect(0,0,PW,30,'F');
+  docu.setFillColor(ROJO.r,ROJO.g,ROJO.b); docu.rect(0,30,PW,2.2,'F');
+  try{ if(logoSrc) docu.addImage(logoSrc,'PNG',ML,6,18,18); }catch(e){}
+  docu.setTextColor(255,255,255); docu.setFont('helvetica','bold'); docu.setFontSize(15);
+  docu.text('TECNOCONTROL', ML+22, 15);
+  docu.setFont('helvetica','normal'); docu.setFontSize(8.5);
+  docu.text('Solicitud de Material · Almacén / Operaciones', ML+22, 21);
+  docu.setFontSize(7.5);
+  docu.text('Generado: '+new Date().toLocaleString('es-MX'), PW-MR, 21, {align:'right'});
+
+  docu.setFillColor(ROJO.r,ROJO.g,ROJO.b); docu.roundedRect(ML,38,PW-ML-MR,16,3,3,'F');
+  docu.setTextColor(255,255,255); docu.setFont('helvetica','bold'); docu.setFontSize(13);
+  docu.text(String(d.folio||'—'), ML+6, 48);
+  docu.setFontSize(9.5);
+  docu.text('Prioridad: Urgente', PW-MR-6, 48, {align:'right'});
+
+  let y = 62;
+  function campo(x,label,valor){
+    docu.setFont('helvetica','bold'); docu.setFontSize(7.5); docu.setTextColor(100,116,139);
+    docu.text(label.toUpperCase(), x, y);
+    docu.setFont('helvetica','normal'); docu.setFontSize(10.5); docu.setTextColor(15,23,42);
+    docu.text(String(valor||'—'), x, y+5.5);
+  }
+  const xMid = ML + (PW-ML-MR)/2 + 4;
+  campo(ML,'Solicitante', d.solicitante);
+  campo(xMid,'Área', d.area);
+  y += 14;
+  campo(ML,'Operación destino', d.destino);
+  y += 14;
+  docu.setFont('helvetica','bold'); docu.setFontSize(7.5); docu.setTextColor(100,116,139);
+  docu.text('¿PARA QUÉ SE USARÁ EL MATERIAL?', ML, y);
+  docu.setFont('helvetica','normal'); docu.setFontSize(10); docu.setTextColor(15,23,42);
+  const usoLns = docu.splitTextToSize(String(d.uso||'—'), PW-ML-MR);
+  docu.text(usoLns, ML, y+5.5);
+  y += 8 + usoLns.length*5.2;
+
+  y += 4;
+  docu.setDrawColor(226,232,240); docu.line(ML,y,PW-MR,y); y+=8;
+  docu.setFillColor(AZUL.r,AZUL.g,AZUL.b); docu.rect(ML,y-5,PW-ML-MR,8,'F');
+  docu.setFont('helvetica','bold'); docu.setFontSize(8.5); docu.setTextColor(255,255,255);
+  docu.text('CLAVE', ML+2, y); docu.text('DESCRIPCIÓN', ML+32, y); docu.text('CANT.', PW-MR-2, y, {align:'right'});
+  y += 8;
+  docu.setFont('helvetica','normal'); docu.setFontSize(9.5);
+  (d.productos||[]).forEach((it,idx)=>{
+    const lns = docu.splitTextToSize(String(it.desc||'—'), PW-ML-MR-32-20);
+    if(y + lns.length*5 > PH-55){ docu.addPage(); y=20; }
+    if(idx%2===1){ docu.setFillColor(248,250,252); docu.rect(ML,y-4,PW-ML-MR,lns.length*5+2,'F'); }
+    docu.setTextColor(15,23,42);
+    docu.text(String(it.clave||'—'), ML+2, y);
+    docu.text(lns, ML+32, y);
+    docu.text('×'+String(it.cant||0), PW-MR-2, y, {align:'right'});
+    y += Math.max(6, lns.length*5+1.5);
+  });
+
+  y += 6;
+  if(y > PH-60){ docu.addPage(); y=20; }
+  docu.setFont('helvetica','bold'); docu.setFontSize(8); docu.setTextColor(100,116,139);
+  docu.text('FIRMA DEL SOLICITANTE', ML, y); y += 4;
+  if(d.firma){ try{ docu.addImage(d.firma,'PNG',ML,y,60,26); }catch(e){} }
+  else { docu.setDrawColor(203,213,225); docu.line(ML,y+20,ML+60,y+20); }
+
+  const xAlm = ML+80;
+  docu.setFont('helvetica','bold'); docu.setFontSize(8); docu.setTextColor(ROJO.r,ROJO.g,ROJO.b);
+  docu.text('SURTIÓ / ENTREGÓ (ALMACÉN)', xAlm, y);
+  docu.setDrawColor(203,213,225); docu.line(xAlm,y+20,xAlm+70,y+20);
+  docu.setFont('helvetica','normal'); docu.setFontSize(7); docu.setTextColor(100,116,139); docu.text('Nombre y firma', xAlm, y+24);
+
+  docu.setFillColor(ROJO.r,ROJO.g,ROJO.b); docu.rect(0,PH-11.5,PW,1.5,'F');
+  docu.setFillColor(AZUL.r,AZUL.g,AZUL.b); docu.rect(0,PH-10,PW,10,'F');
+  docu.setTextColor(255,255,255); docu.setFontSize(7);
+  docu.text('Tecnocontrol · '+String(d.folio||'')+' · '+new Date().toLocaleString('es-MX'), PW/2, PH-4, {align:'center'});
+
+  return docu;
+}
+
+$('done-whatsapp').onclick = async ()=>{
+  if(!ultimaSolicitudEnviada) return;
+  const d = ultimaSolicitudEnviada;
+  const resumen = resumenTextoSolicitud(d);
+  const docu = construirPDFSolicitud(d);
+  if(!docu){ window.open('https://wa.me/?text='+encodeURIComponent(resumen), '_blank'); return; }
+  let compartioNativo = false;
+  try{
+    const blob = docu.output('blob');
+    const file = new File([blob], 'Solicitud_'+String(d.folio).replace(/\s+/g,'_')+'.pdf', {type:'application/pdf'});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      compartioNativo = true;
+      await navigator.share({ files:[file], title:'Solicitud '+d.folio, text: resumen });
+    }
+  }catch(e){ /* Web Share con archivos no soportado — se usa el respaldo abajo */ }
+  if(!compartioNativo){
+    try{ window.open(docu.output('bloburl'), '_blank'); }catch(e){}
+    window.open('https://wa.me/?text='+encodeURIComponent(resumen), '_blank');
+  }
+};
+
 /* Reiniciar para el siguiente */
 $('done-new').onclick = ()=>{
   $('done').classList.remove('on');
   $('f-solicitante').value=''; $('f-area').value=''; $('f-destino').value=''; $('f-uso').value='';
   carrito = {}; prodSearch.value=''; renderGrid(); renderCarrito();
   ctx.clearRect(0,0,cv.width,cv.height); hayFirma=false; $('sign-hint').style.display='flex';
+  ultimaSolicitudEnviada = null;
   setMsg(''); window.scrollTo({top:0,behavior:'smooth'});
 };
 
