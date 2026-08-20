@@ -110,7 +110,7 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, collection, addDoc, doc, getDoc, updateDoc, onSnapshot, query, where, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, collection, addDoc, doc, getDoc, getDocs, updateDoc, onSnapshot, query, where, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 const config = { apiKey:"AIzaSyBXh-P0oMtMiDjyz9PObuJ8DNfROlXvhLE", authDomain:"tecnocontrol-1c42f.firebaseapp.com", projectId:"tecnocontrol-1c42f", storageBucket:"tecnocontrol-1c42f.firebasestorage.app", appId:"1:27642771956:web:54225af9e386afded8a1a1" };
@@ -302,6 +302,26 @@ function firmaBase64(){
 const msg = $('msg');
 function setMsg(t,c){ msg.textContent=t||''; msg.style.color=c||'var(--rojo)'; }
 
+/* Folio consecutivo "OPERACIONES 0001", "OPERACIONES 0002"... — compartido con el
+   módulo interno de Operaciones (operaciones.js). Como este kiosco escribe con auth
+   ANÓNIMA, no usamos un contador atómico protegido (podría no tener permiso de
+   escritura); en vez de eso leemos el máximo folioNum ya existente y sumamos 1.
+   No es 100% atómico (colisión rara si dos solicitudes llegan en el mismo instante),
+   pero es consistente con el resto de folios de este portal. */
+async function siguienteFolioMaterial(){
+  try{
+    const snap = await getDocs(query(collection(db,'surtidos'), where('folioPrefijo','==','OPERACIONES')));
+    let max = 0;
+    snap.forEach(d=>{ const n=(d.data()||{}).folioNum; if(typeof n==='number' && n>max) max=n; });
+    const siguiente = max+1;
+    return { folio:'OPERACIONES '+String(siguiente).padStart(4,'0'), folioNum:siguiente, folioPrefijo:'OPERACIONES' };
+  }catch(e){
+    console.warn('[kiosco] no se pudo calcular el folio consecutivo, se usa respaldo temporal:', e && e.message);
+    const respaldo = Date.now()%10000;
+    return { folio:'OPERACIONES '+String(respaldo).padStart(4,'0')+'-R', folioNum:null, folioPrefijo:'OPERACIONES' };
+  }
+}
+
 $('submit').onclick = async ()=>{
   const solicitante = $('f-solicitante').value.trim();
   const area = $('f-area').value.trim();
@@ -317,12 +337,14 @@ $('submit').onclick = async ()=>{
   if(!hayFirma){ setMsg('Falta la firma del solicitante.'); return; }
 
   const btn = $('submit'); btn.disabled=true; setMsg('Enviando…','var(--teal)');
-  const folio = 'SM-' + String(Date.now()).slice(-6);
   try{
     await authReady;
+    const folioInfo = await siguienteFolioMaterial();
     await addDoc(collection(db,'surtidos'), {
       tipo: 'material',
-      folio,
+      folio: folioInfo.folio,
+      folioNum: folioInfo.folioNum,
+      folioPrefijo: folioInfo.folioPrefijo,
       cliente: destino || 'Almacén · Operaciones',
       solicitante,
       vendedor: solicitante,
@@ -336,7 +358,7 @@ $('submit').onclick = async ()=>{
       origen: 'kiosco',
       createdAt: serverTimestamp()
     });
-    $('done-folio').textContent = folio;
+    $('done-folio').textContent = folioInfo.folio;
     $('done').classList.add('on');
     setMsg('');
   }catch(e){
