@@ -21,8 +21,21 @@
     <div class="sec-title"><span class="n">1</span> Datos de la solicitud</div>
     <div class="grid">
       <div class="full">
-        <label>Nombre del solicitante *</label>
-        <input id="f-solicitante" type="text" placeholder="¿Quién solicita el material?" autocomplete="off" required>
+        <label>¿Quién solicita el material? *</label>
+        <div style="display:flex;gap:8px;margin-bottom:2px;">
+          <button type="button" id="btn-modo-propio" onclick="setModoSolicitud('propio')" style="flex:1;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--teal);color:#fff;font-weight:700;font-size:13px;cursor:pointer;">Soy el técnico</button>
+          <button type="button" id="btn-modo-terceros" onclick="setModoSolicitud('terceros')" style="flex:1;padding:10px;border-radius:10px;border:1px solid var(--line);background:#fff;color:var(--mute);font-weight:700;font-size:13px;cursor:pointer;">Solicito para un técnico</button>
+        </div>
+      </div>
+      <div class="full">
+        <label>Técnico *</label>
+        <input list="dl-tecnicos" id="f-tecnico" type="text" placeholder="Escribe o elige un técnico..." autocomplete="off" oninput="onTecnicoInput()" required>
+        <datalist id="dl-tecnicos"></datalist>
+        <div id="f-tecnico-correo" style="font-size:12px;color:var(--mute);margin-top:4px;min-height:16px;"></div>
+      </div>
+      <div class="full" id="wrap-solicitante-terceros" style="display:none;">
+        <label>Tu nombre (quien solicita, si no es el técnico) *</label>
+        <input id="f-solicitante" type="text" placeholder="¿Quién solicita el material?" autocomplete="off">
       </div>
       <div>
         <label>Área *</label>
@@ -144,6 +157,50 @@ authReady.then(() => getDoc(doc(db,'catalogo','productos')).then(snap=>{
     console.warn('[kiosco] no existe catalogo/productos — captura manual disponible');
   }
 }).catch(e=>console.warn('[kiosco] catálogo no disponible:', e.message)));
+
+/* ============ Técnicos (para el picker "¿quién solicita?") ============
+   Lectura de ops_tecnicos — mismo Firestore, distinta app (auth anónima).
+   Si las reglas no permiten lectura anónima aquí, el picker queda vacío
+   y el campo sigue funcionando como texto libre (no rompe el flujo). */
+let TECNICOS = []; // [{id, nombre, correo}]
+const mapaTecnicos = {}; // nombre (lower) -> {id, nombre, correo}
+let modoSolicitud = 'propio'; // 'propio' | 'terceros'
+
+authReady.then(() => getDocs(query(collection(db,'ops_tecnicos'), where('estatus','==','activo'))).then(snap=>{
+  TECNICOS = [];
+  snap.forEach(d=>{
+    const t = d.data()||{};
+    const item = { id:d.id, nombre:t.nombre||'—', correo:t.correo||'' };
+    TECNICOS.push(item);
+    mapaTecnicos[item.nombre.toLowerCase()] = item;
+  });
+  const dl = $('dl-tecnicos');
+  if(dl) dl.innerHTML = TECNICOS.map(t=>'<option value="'+esc(t.nombre)+'">').join('');
+  console.log('[kiosco] técnicos cargados:', TECNICOS.length);
+}).catch(e=>{
+  console.warn('[kiosco] no se pudo cargar ops_tecnicos (¿reglas de Firestore no permiten lectura anónima?):', e.message);
+}));
+
+window.setModoSolicitud = function(modo){
+  modoSolicitud = modo;
+  const btnPropio = $('btn-modo-propio'), btnTerceros = $('btn-modo-terceros');
+  const wrap = $('wrap-solicitante-terceros');
+  if(modo==='propio'){
+    btnPropio.style.background='var(--teal)'; btnPropio.style.color='#fff';
+    btnTerceros.style.background='#fff'; btnTerceros.style.color='var(--mute)';
+    wrap.style.display='none';
+  } else {
+    btnTerceros.style.background='var(--teal)'; btnTerceros.style.color='#fff';
+    btnPropio.style.background='#fff'; btnPropio.style.color='var(--mute)';
+    wrap.style.display='block';
+  }
+};
+
+window.onTecnicoInput = function(){
+  const val = $('f-tecnico').value.trim().toLowerCase();
+  const t = mapaTecnicos[val];
+  $('f-tecnico-correo').textContent = t && t.correo ? ('✉ '+t.correo) : '';
+};
 
 /*  Filas de productos con autocompletado  */
 /*  Buscador + grid + carrito (sin categorías)  */
@@ -328,13 +385,16 @@ async function siguienteFolioMaterial(){
 }
 
 $('submit').onclick = async ()=>{
-  const solicitante = $('f-solicitante').value.trim();
+  const tecnicoNombre = $('f-tecnico').value.trim();
   const area = $('f-area').value.trim();
   const destino = $('f-destino').value.trim();
   const uso = $('f-uso').value.trim();
   const productos = Object.values(carrito).map(v=>({ clave: v.clave, cant: v.cant, desc: v.desc }));
+  const tecnicoInfo = mapaTecnicos[tecnicoNombre.toLowerCase()] || null;
+  const solicitante = modoSolicitud==='propio' ? tecnicoNombre : $('f-solicitante').value.trim();
 
-  if(!solicitante){ setMsg('Escribe el nombre del solicitante.'); return; }
+  if(!tecnicoNombre){ setMsg('Escribe o elige el técnico.'); return; }
+  if(modoSolicitud==='terceros' && !solicitante){ setMsg('Escribe tu nombre (quién solicita).'); return; }
   if(!area){ setMsg('Escribe el área.'); return; }
   if(!destino){ setMsg('Escribe la operación destino.'); return; }
   if(!uso){ setMsg('Describe para qué se usará el material.'); return; }
@@ -354,6 +414,10 @@ $('submit').onclick = async ()=>{
       cliente: destino || 'Almacén · Operaciones',
       solicitante,
       vendedor: solicitante,
+      tecnicoId: tecnicoInfo ? tecnicoInfo.id : null,
+      tecnicoNombre,
+      tecnicoCorreo: tecnicoInfo ? tecnicoInfo.correo : null,
+      solicitaParaSiMismo: modoSolicitud==='propio',
       area,
       destino,
       uso,
@@ -406,23 +470,21 @@ function construirPDFSolicitud(d){
   const AZUL = {r:29,g:46,b:115}, ROJO = {r:231,g:64,b:43};
   const logoSrc = (document.querySelector('.hero-logo')||{}).src || '';
 
-  docu.setFillColor(AZUL.r,AZUL.g,AZUL.b); docu.rect(0,0,PW,30,'F');
-  docu.setFillColor(ROJO.r,ROJO.g,ROJO.b); docu.rect(0,30,PW,2.2,'F');
-  try{ if(logoSrc) docu.addImage(logoSrc,'PNG',ML,6,18,18); }catch(e){}
-  docu.setTextColor(255,255,255); docu.setFont('helvetica','bold'); docu.setFontSize(15);
-  docu.text('TECNOCONTROL', ML+22, 15);
-  docu.setFont('helvetica','normal'); docu.setFontSize(8.5);
-  docu.text('Solicitud de Material · Almacén / Operaciones', ML+22, 21);
-  docu.setFontSize(7.5);
-  docu.text('Generado: '+new Date().toLocaleString('es-MX'), PW-MR, 21, {align:'right'});
+  docu.setFillColor(AZUL.r,AZUL.g,AZUL.b); docu.rect(0,0,PW,3,'F'); // franja superior, solo acento — no bloque sólido
+  try{ if(logoSrc) docu.addImage(logoSrc,'PNG',ML,9,30,8.93); }catch(e){} // proporción real del logo (420x125px)
+  docu.setTextColor(AZUL.r,AZUL.g,AZUL.b); docu.setFont('helvetica','bold'); docu.setFontSize(9.5);
+  docu.text('Solicitud de Material · Almacén / Operaciones', ML+34, 14.5);
+  docu.setTextColor(120,120,120); docu.setFont('helvetica','normal'); docu.setFontSize(7.5);
+  docu.text('Generado: '+new Date().toLocaleString('es-MX'), PW-MR, 14.5, {align:'right'});
+  docu.setDrawColor(226,232,240); docu.line(ML,24,PW-MR,24);
 
-  docu.setFillColor(ROJO.r,ROJO.g,ROJO.b); docu.roundedRect(ML,38,PW-ML-MR,16,3,3,'F');
+  docu.setFillColor(ROJO.r,ROJO.g,ROJO.b); docu.roundedRect(ML,32,PW-ML-MR,16,3,3,'F');
   docu.setTextColor(255,255,255); docu.setFont('helvetica','bold'); docu.setFontSize(13);
-  docu.text(String(d.folio||'—'), ML+6, 48);
+  docu.text(String(d.folio||'—'), ML+6, 42);
   docu.setFontSize(9.5);
-  docu.text('Prioridad: Urgente', PW-MR-6, 48, {align:'right'});
+  docu.text('Prioridad: Urgente', PW-MR-6, 42, {align:'right'});
 
-  let y = 62;
+  let y = 56;
   function campo(x,label,valor){
     docu.setFont('helvetica','bold'); docu.setFontSize(7.5); docu.setTextColor(100,116,139);
     docu.text(label.toUpperCase(), x, y);
@@ -473,7 +535,6 @@ function construirPDFSolicitud(d){
   docu.setDrawColor(203,213,225); docu.line(xAlm,y+20,xAlm+70,y+20);
   docu.setFont('helvetica','normal'); docu.setFontSize(7); docu.setTextColor(100,116,139); docu.text('Nombre y firma', xAlm, y+24);
 
-  docu.setFillColor(ROJO.r,ROJO.g,ROJO.b); docu.rect(0,PH-11.5,PW,1.5,'F');
   docu.setFillColor(AZUL.r,AZUL.g,AZUL.b); docu.rect(0,PH-10,PW,10,'F');
   docu.setTextColor(255,255,255); docu.setFontSize(7);
   docu.text('Tecnocontrol · '+String(d.folio||'')+' · '+new Date().toLocaleString('es-MX'), PW/2, PH-4, {align:'center'});
@@ -505,7 +566,9 @@ $('done-whatsapp').onclick = async ()=>{
 /* Reiniciar para el siguiente */
 $('done-new').onclick = ()=>{
   $('done').classList.remove('on');
-  $('f-solicitante').value=''; $('f-area').value=''; $('f-destino').value=''; $('f-uso').value='';
+  $('f-tecnico').value=''; $('f-tecnico-correo').textContent=''; $('f-solicitante').value='';
+  $('f-area').value=''; $('f-destino').value=''; $('f-uso').value='';
+  setModoSolicitud('propio');
   carrito = {}; prodSearch.value=''; renderGrid(); renderCarrito();
   ctx.clearRect(0,0,cv.width,cv.height); hayFirma=false; $('sign-hint').style.display='flex';
   ultimaSolicitudEnviada = null;
