@@ -342,6 +342,7 @@
     return '<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Car\u00e1tula de env\u00edo ' + esc(c.folio) + '</title><style>'
       + '@page{size:letter portrait;margin:12mm;}'
       + '*{box-sizing:border-box;}'
+      + '*,*::before,*::after{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;}'
       + 'body{font-family:"Segoe UI",Arial,sans-serif;color:#1e293b;margin:0;padding:20px;background:#fff;max-width:800px;}'
       + '.ce-head{display:flex;align-items:center;justify-content:space-between;border-bottom:4px solid #E2231A;padding-bottom:14px;margin-bottom:18px;gap:16px;}'
       + '.ce-logo{height:50px;display:block;}'
@@ -648,6 +649,31 @@
     document.body.appendChild(ov);
   }
 
+  // ── Subir evidencia desde el celular: genera un enlace (+ QR) a una página
+  // independiente (evidencia-salida.html) donde cualquiera con el link puede
+  // fotografiar y subir evidencia de salida para ESTE pedido específico, sin
+  // necesidad de entrar al portal completo desde el teléfono. ──
+  window.__almAbrirLinkMovilEvidencia = function(id){
+    var p = buscarP(id);
+    var base = window.location.href.replace(/[^/]*$/, ''); // carpeta actual, sin el archivo
+    var link = base + 'evidencia-salida.html?id=' + encodeURIComponent(id);
+    var qrSrc = 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=' + encodeURIComponent(link);
+    construirModalHistorial();
+    var box=document.getElementById('alm-modal-hist-box');
+    box.classList.remove('wide');
+    box.innerHTML = '<h4>Subir evidencia desde el celular<button onclick="window.__almCerrarModal()">&times;</button></h4>'
+      + '<div style="text-align:center;padding:6px 0 14px;">'
+      +   '<div style="font-size:12.5px;color:#64748b;margin-bottom:12px;">'+(p?('Folio <b>'+esc(p.folio)+'</b> — '):'')+'Escanea con la cámara del celular o comparte el enlace.</div>'
+      +   '<img src="'+qrSrc+'" alt="Código QR" style="border:1px solid #e2e8f0;border-radius:12px;padding:10px;background:#fff;">'
+      +   '<div style="margin-top:14px;display:flex;gap:6px;">'
+      +     '<input type="text" readonly value="'+esc(link)+'" id="alm-link-evid-movil" style="flex:1;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:11.5px;color:#475569;" onclick="this.select()">'
+      +     '<button onclick="navigator.clipboard.writeText(document.getElementById(\'alm-link-evid-movil\').value).then(function(){ if(window.mostrarPush) window.mostrarPush(\'Enlace copiado\',\'\',\'📋\'); })" style="background:#f1f5f9;border:none;color:#334155;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:600;white-space:nowrap;">Copiar</button>'
+      +   '</div>'
+      +   '<a href="https://wa.me/?text='+encodeURIComponent('📷 Sube la evidencia de salida aquí: '+link)+'" target="_blank" style="display:inline-block;margin-top:10px;background:#25D366;color:#fff;padding:9px 16px;border-radius:8px;text-decoration:none;font-size:12.5px;font-weight:600;">💬 Enviar por WhatsApp</a>'
+      + '</div>';
+    document.getElementById('alm-modal-hist').classList.add('show');
+  };
+
   function construirShell(){
     var cont=contenedor(); if(!cont) return;
     if (cont.querySelector('#alm-toolbar')) return; // ya construido → no perder foco del buscador
@@ -796,6 +822,8 @@
       +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg></button>'):'')
       +   (p.tipo==='material'?('<button class="alm-btn alm-btn-ghost" title="Enviar por WhatsApp" onclick="window.__almWhatsAppSolicitudMaterial(\''+p.id+'\')" style="color:#25D366;">'
       +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M17.6 6.32A7.85 7.85 0 0 0 12.05 4a7.94 7.94 0 0 0-6.9 11.9L4 20l4.2-1.1a7.9 7.9 0 0 0 3.85 1h.005a7.94 7.94 0 0 0 5.55-13.6zm-5.55 12.2h-.003a6.6 6.6 0 0 1-3.37-.92l-.24-.14-2.5.65.67-2.44-.16-.25a6.58 6.58 0 0 1 10.2-8.18 6.55 6.55 0 0 1 1.94 4.66 6.6 6.6 0 0 1-6.53 6.62zm3.6-4.93c-.2-.1-1.17-.58-1.35-.64s-.31-.1-.44.1-.5.64-.62.77-.23.15-.43.05a5.4 5.4 0 0 1-1.59-.98 6 6 0 0 1-1.1-1.37c-.12-.2 0-.3.09-.4s.2-.23.29-.35a1.3 1.3 0 0 0 .2-.33.37.37 0 0 0 0-.35c0-.1-.44-1.06-.6-1.45-.16-.38-.32-.33-.44-.33h-.37a.72.72 0 0 0-.52.24 2.2 2.2 0 0 0-.68 1.63 3.8 3.8 0 0 0 .8 2.02 8.7 8.7 0 0 0 3.33 2.95c.46.2.82.32 1.1.4.46.15.88.13 1.21.08.37-.06 1.17-.48 1.33-.94s.16-.86.11-.94-.18-.13-.38-.23z"/></svg></button>'):'')
+      +   '<button class="alm-btn alm-btn-ghost" title="Subir evidencia desde el celular (QR / enlace)" onclick="window.__almAbrirLinkMovilEvidencia(\''+p.id+'\')" style="color:#0e7490;">'
+      +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"/><line x1="11" y1="18" x2="13" y2="18"/></svg></button>'
       +   accionHtml
       + '</div></div>';
   }
@@ -1341,15 +1369,15 @@
         : '<span class="alm-rep-tag" style="background:rgba(20,115,230,.1);color:#1473E6">VENTA</span>';
       var esCancelado = e.estado==='cancelado';
       var firmasHtml = ''
-        + (e.firma ? '<span class="alm-rep-firma" onclick="window.__almVerFirmaId(\''+e.id+'\',\'sol\')">solicitud</span>' : '')
+        + (e.firma ? '<span class="alm-rep-firma" onclick="event.stopPropagation();window.__almVerFirmaId(\''+e.id+'\',\'sol\')">solicitud</span>' : '')
         + (e.firma && e.firmaEntrega ? ' · ' : '')
-        + (e.firmaEntrega ? '<span class="alm-rep-firma" onclick="window.__almVerFirmaId(\''+e.id+'\',\'entrega\')">entrega</span>' : '')
+        + (e.firmaEntrega ? '<span class="alm-rep-firma" onclick="event.stopPropagation();window.__almVerFirmaId(\''+e.id+'\',\'entrega\')">entrega</span>' : '')
         || '<span style="color:#cbd5e1">—</span>';
       var colRecibio = esCancelado
         ? '<span class="alm-rep-tag" style="background:rgba(220,38,38,.1);color:#dc2626">CANCELADO</span><br><span style="font-size:11px;color:#64748b">'+esc(e.motivoCancelacion||'—')+'</span>'
         : esc(e.recibio||'—');
       var colFechaFin = esCancelado ? fmtFecha(e.canceladoMs) : fmtFecha(e.entregadoMs);
-      return '<tr>'
+      return '<tr style="cursor:pointer;" onclick="window.__almVerDetalleHistorial(\''+e.id+'\')" title="Ver detalle completo">'
         + '<td><b>'+esc(e.folio)+'</b><br>'+tag+'</td>'
         + '<td>'+esc(e.cliente||'—')+'</td>'
         + '<td>'+esc(e.solicito||'—')+'</td>'
@@ -1360,6 +1388,45 @@
         + '</tr>';
     }).join('');
   }
+
+  // ── Ventana emergente con el detalle completo de una solicitud del historial:
+  // productos, firmas y evidencia de entrega (fotos), en una sola vista. ──
+  window.__almVerDetalleHistorial = function(id){
+    var e = (_repEntregas||[]).find(function(x){ return x.id===id; });
+    if(!e) return;
+    construirModalHistorial();
+    var box=document.getElementById('alm-modal-hist-box');
+    box.classList.add('wide');
+    var esCancelado = e.estado==='cancelado';
+    box.innerHTML = '<h4>'+esc(e.folio)+' · '+(e.tipo==='material'?'Material':'Venta')+'<button onclick="window.__almCerrarModal()">&times;</button></h4>'
+      + '<div style="font-size:13px;color:#334155;line-height:1.9;margin-bottom:12px;">'
+      +   '<div><strong>Cliente:</strong> '+esc(e.cliente||'—')+'</div>'
+      +   '<div><strong>Solicitó:</strong> '+esc(e.solicito||'—')+'</div>'
+      +   (esCancelado
+            ? '<div><strong>Cancelado:</strong> '+fmtFecha(e.canceladoMs)+' · '+esc(e.motivoCancelacion||'—')+'</div>'
+            : '<div><strong>Recibió:</strong> '+esc(e.recibio||'—')+' · <strong>Entregado:</strong> '+fmtFecha(e.entregadoMs)+'</div>')
+      +   '<div><strong>Fecha de solicitud:</strong> '+fmtFecha(e.creadoMs)+'</div>'
+      + '</div>'
+      + '<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#94a3b8;margin-bottom:6px;">Artículos ('+e.piezas+' pzas)</div>'
+      + '<div style="margin-bottom:14px;">'
+      +   (e.productos.length ? e.productos.map(function(it){
+            return '<div style="display:flex;justify-content:space-between;font-size:12.5px;color:#1e293b;padding:3px 0;border-bottom:1px solid #f1f5f9;"><span>'+esc(it.desc||'—')+(it.clave?(' <span style="color:#94a3b8;">('+esc(it.clave)+')</span>'):'')+'</span><span style="font-weight:700;">×'+esc(it.cant||0)+'</span></div>';
+          }).join('') : '<div style="color:#94a3b8;font-size:12px;">Sin artículos capturados.</div>')
+      + '</div>'
+      + (e.firma ? '<div style="margin-bottom:10px;"><div style="font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:4px;">FIRMA DEL SOLICITANTE</div><img src="'+esc(e.firma)+'" style="max-width:220px;border:1px solid #e2e8f0;border-radius:8px;cursor:pointer;" onclick="window.__almVerFirmaId(\''+e.id+'\',\'sol\')"></div>' : '')
+      + (e.firmaEntrega ? '<div style="margin-bottom:14px;"><div style="font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:4px;">FIRMA DE ENTREGA</div><img src="'+esc(e.firmaEntrega)+'" style="max-width:220px;border:1px solid #e2e8f0;border-radius:8px;cursor:pointer;" onclick="window.__almVerFirmaId(\''+e.id+'\',\'entrega\')"></div>' : '')
+      + '<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#94a3b8;margin-bottom:6px;">Evidencia de entrega</div>'
+      + '<div class="alm-evid-grid" id="alm-hist-evid-'+e.id+'"><div style="color:#94a3b8;font-size:12px;">Cargando…</div></div>';
+    document.getElementById('alm-modal-hist').classList.add('show');
+
+    cargarEvidencias(e.id).then(function(list){
+      var cont=document.getElementById('alm-hist-evid-'+e.id);
+      if(!cont) return; // el modal ya se cerró
+      cont.innerHTML = list.length
+        ? list.map(function(ev,idx){ return '<img class="alm-evid-thumb" src="'+esc(ev.imagen)+'" onclick="window.open(this.src,\'_blank\')">'; }).join('')
+        : '<div style="color:#94a3b8;font-size:12px;">Sin evidencias.</div>';
+    });
+  };
 
   window.__almVerFirmaId = function(id, cual){
     var e = (_repEntregas||[]).find(function(x){ return x.id===id; });
@@ -1676,28 +1743,29 @@
     var PW=215.9, PH=279.4, ML=14, MR=14;
     var azul = hexRGB(TC_AZUL), rojo = hexRGB(TC_ROJO);
 
-    // ── Encabezado con logo (azul de marca + franja roja de acento) ──
-    docu.setFillColor(azul.r,azul.g,azul.b); docu.rect(0,0,PW,30,'F');
-    docu.setFillColor(rojo.r,rojo.g,rojo.b); docu.rect(0,30,PW,2.2,'F');
-    try{ docu.addImage('data:image/png;base64,'+LOGO_TECNOCONTROL_B64,'PNG',ML,6,18,18); }catch(e){}
-    docu.setTextColor(255,255,255); docu.setFont('helvetica','bold'); docu.setFontSize(15);
-    docu.text('TECNOCONTROL', ML+22, 15);
-    docu.setFont('helvetica','normal'); docu.setFontSize(8.5);
-    docu.text('Solicitud de Material · Almacén / Operaciones', ML+22, 21);
-    docu.setFont('helvetica','normal'); docu.setFontSize(7.5);
-    docu.text('Generado: '+new Date().toLocaleString('es-MX'), PW-MR, 21, {align:'right'});
+    // ── Encabezado: fondo BLANCO (el logo trae texto azul marino/negro sobre
+    // transparencia — sobre fondo navy se vuelve ilegible) con un margen navy
+    // elegante como acento, no un bloque sólido. Logo con su proporción real
+    // (420×125 px ≈ 3.36:1) para que no salga comprimido/deformado.
+    docu.setFillColor(azul.r,azul.g,azul.b); docu.rect(0,0,PW,3,'F'); // franja superior, solo acento
+    try{ docu.addImage('data:image/png;base64,'+LOGO_TECNOCONTROL_B64,'PNG',ML,9,30,8.93); }catch(e){}
+    docu.setTextColor(azul.r,azul.g,azul.b); docu.setFont('helvetica','bold'); docu.setFontSize(9.5);
+    docu.text('Solicitud de Material · Almacén / Operaciones', ML+34, 14.5);
+    docu.setTextColor(120,120,120); docu.setFont('helvetica','normal'); docu.setFontSize(7.5);
+    docu.text('Generado: '+new Date().toLocaleString('es-MX'), PW-MR, 14.5, {align:'right'});
+    docu.setDrawColor(226,232,240); docu.line(ML,24,PW-MR,24);
 
     // ── Folio + prioridad (rojo si es urgente, azul de marca en cualquier otro caso) ──
     var esUrgente = p.prioridad === 'urgente';
     var rgb = esUrgente ? rojo : azul;
-    docu.setFillColor(rgb.r,rgb.g,rgb.b); docu.roundedRect(ML,38,PW-ML-MR,16,3,3,'F');
+    docu.setFillColor(rgb.r,rgb.g,rgb.b); docu.roundedRect(ML,32,PW-ML-MR,16,3,3,'F');
     docu.setTextColor(255,255,255); docu.setFont('helvetica','bold'); docu.setFontSize(13);
-    docu.text(String(p.folio||'—'), ML+6, 48);
+    docu.text(String(p.folio||'—'), ML+6, 42);
     docu.setFontSize(9.5);
-    docu.text('Prioridad: '+(PRIO_LABEL[p.prioridad]||p.prioridad||'Normal'), PW-MR-6, 48, {align:'right'});
+    docu.text('Prioridad: '+(PRIO_LABEL[p.prioridad]||p.prioridad||'Normal'), PW-MR-6, 42, {align:'right'});
 
     // ── Datos de la solicitud ──
-    var y = 62;
+    var y = 56;
     docu.setTextColor(30,41,59);
     function campo2col(x1,x2,label,valor){
       docu.setFont('helvetica','bold'); docu.setFontSize(7.5); docu.setTextColor(100,116,139);
@@ -1760,14 +1828,10 @@
     docu.setDrawColor(203,213,225); docu.line(xAlm,y+20,xAlm+70,y+20);
     docu.setFont('helvetica','normal'); docu.setFontSize(7); docu.setTextColor(100,116,139); docu.text('Nombre y firma', xAlm, y+24);
 
-    // ── Pie de página (azul de marca + franja roja de acento) ──
-    docu.setFillColor(rojo.r,rojo.g,rojo.b); docu.rect(0,PH-11.5,PW,1.5,'F');
+    // ── Pie de página (azul de marca, limpio — sin franja roja) ──
     docu.setFillColor(azul.r,azul.g,azul.b); docu.rect(0,PH-10,PW,10,'F');
     docu.setTextColor(255,255,255); docu.setFontSize(7);
     docu.text('Tecnocontrol · '+String(p.folio||'')+' · '+new Date().toLocaleString('es-MX'), PW/2, PH-4, {align:'center'});
-
-    // ── Franja roja de acento en el margen izquierdo (detalle de letterhead) ──
-    docu.setFillColor(rojo.r,rojo.g,rojo.b); docu.rect(0,32.2,2.2,PH-32.2-11.5,'F');
 
     return docu;
   }
