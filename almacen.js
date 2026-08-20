@@ -561,6 +561,11 @@
     + '.alm-tipo-tag{display:inline-block;margin-left:6px;font-size:10px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:#fff;border-radius:6px;padding:2px 7px;vertical-align:middle;}'
     + '.alm-tipo-tag.ven{background:'+COLORS.azul+';}'
     + '.alm-tipo-tag.mat{background:'+COLORS.morado+';}'
+    + '.alm-mat-lista{margin-top:9px;border-top:1px dashed #e6ebf2;padding-top:8px;}'
+    + '.alm-mat-lista .lbl{display:block;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#94a3b8;margin-bottom:6px;}'
+    + '.alm-mat-item{display:flex;justify-content:space-between;gap:8px;font-size:12.5px;color:#1e293b;padding:3px 0;}'
+    + '.alm-mat-item .d{flex:1;}'
+    + '.alm-mat-item .c{font-weight:800;color:#0f172a;white-space:nowrap;}'
     + '.alm-firma-mini{margin-top:10px;border-top:1px dashed #e6ebf2;padding-top:8px;}'
     + '.alm-firma-mini .lbl{display:block;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#94a3b8;margin-bottom:6px;}'
     + '.alm-firma-mini img{max-width:100%;max-height:70px;border:1px solid #e6ebf2;border-radius:8px;background:#fff;cursor:zoom-in;display:block;}'
@@ -717,8 +722,18 @@
     var total=prods.length;
 
     // El detalle de productos ya no se captura desde Ventas (se valida abriendo el PDF),
-    // así que aquí solo mostramos firma y evidencia al expandir — nada de checklist.
+    // así que en Ventas solo mostramos firma y evidencia al expandir — nada de checklist.
+    // Las solicitudes de MATERIAL sí traen el detalle completo (kiosco / Operaciones),
+    // así que aquí SIEMPRE se muestra la lista de artículos: es el resumen que Almacén
+    // necesita para saber qué surtir, sin depender de un PDF externo.
     var prodHtml='';
+    if (p.tipo==='material' && prods.length){
+      prodHtml += '<div class="alm-mat-lista"><span class="lbl">Artículos solicitados ('+total+')</span>'
+        + prods.map(function(it){
+            return '<div class="alm-mat-item"><span class="d">'+esc(it.desc||'—')+(it.clave?(' <span style="color:#94a3b8;">('+esc(it.clave)+')</span>'):'')+'</span><span class="c">×'+esc(it.cant||0)+'</span></div>';
+          }).join('')
+        + '</div>';
+    }
     if (abierta){
       if (p.firma){
         prodHtml += '<div class="alm-firma-mini"><span class="lbl">Firma del solicitante</span>'
@@ -776,6 +791,8 @@
       +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>'):'')
       +   (p.caratulaEnvio?('<button class="alm-btn alm-btn-ghost" title="Ver car\u00e1tula de env\u00edo" onclick="window.__almVerCaratula(\''+p.id+'\')">'
       +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></button>'):'')
+      +   (p.tipo==='material'?('<button class="alm-btn alm-btn-ghost" title="Imprimir solicitud (PDF)" onclick="window.__almImprimirSolicitudMaterial(\''+p.id+'\')">'
+      +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg></button>'):'')
       +   accionHtml
       + '</div></div>';
   }
@@ -1556,6 +1573,137 @@
     // La prioridad no se guarda en el objeto de reporte; se recupera del pedido en caché si aún existe
     var p = buscarP(e.id);
     return (p && p.prioridad) || 'normal';
+  }
+
+  // ── PDF profesional de Solicitud de Material (carta completa, con logo) ──
+  // A diferencia de __almImprimirEtiqueta (media carta, genérica para Ventas y Material),
+  // esta plantilla es específica de MATERIAL: trae los datos completos del formulario
+  // (solicitante, área, destino, uso, folio de servicio si viene de Operaciones) y el
+  // detalle línea por línea de artículos, más la firma del solicitante. Pensada para
+  // que Almacén la abra, la imprima y sepa exactamente qué surtir — el mismo espíritu
+  // que la cotización de Ventas (portalGenerarPDFCot en ventas.js).
+  window.__almImprimirSolicitudMaterial = function(id){
+    var p = buscarP(id);
+    if(!p){
+      // El caché local (pedidos) solo se llena cuando se ha abierto Almacén en esta
+      // sesión. Si nos llaman desde otro módulo (p.ej. Operaciones) sin pasar por ahí,
+      // se hace una lectura puntual a Firestore en vez de fallar.
+      cargarFirestore().then(function(fs){
+        if(!window.db) throw new Error('Firestore no disponible');
+        return fs.getDoc(fs.doc(window.db,'surtidos',id));
+      }).then(function(snap){
+        if(!snap.exists()){ if(window.mostrarPush) window.mostrarPush('Almacén','No se encontró la solicitud','⚠️'); return; }
+        _almImprimirSolicitudMaterialPDF(Object.assign({id:snap.id}, snap.data()));
+      }).catch(function(err){
+        console.error('[almacen] __almImprimirSolicitudMaterial:', err);
+        if(window.mostrarPush) window.mostrarPush('Almacén','No se pudo cargar la solicitud','⚠️');
+      });
+      return;
+    }
+    _almImprimirSolicitudMaterialPDF(p);
+  };
+
+  function _almImprimirSolicitudMaterialPDF(p){
+    if(!window.jspdf){ if(window.mostrarPush) window.mostrarPush('Almacén','Librería PDF no cargada','⚠️'); return; }
+    var jsPDF = window.jspdf.jsPDF;
+    var docu = new jsPDF({ orientation:'portrait', unit:'mm', format:'letter' });
+    var PW=215.9, PH=279.4, ML=14, MR=14;
+
+    // ── Encabezado con logo ──
+    docu.setFillColor(10,15,30); docu.rect(0,0,PW,30,'F');
+    try{ docu.addImage('data:image/png;base64,'+LOGO_TECNOCONTROL_B64,'PNG',ML,6,18,18); }catch(e){}
+    docu.setTextColor(255,255,255); docu.setFont('helvetica','bold'); docu.setFontSize(15);
+    docu.text('TECNOCONTROL', ML+22, 15);
+    docu.setFont('helvetica','normal'); docu.setFontSize(8.5);
+    docu.text('Solicitud de Material · Almacén / Operaciones', ML+22, 21);
+    docu.setFont('helvetica','normal'); docu.setFontSize(7.5);
+    docu.text('Generado: '+new Date().toLocaleString('es-MX'), PW-MR, 21, {align:'right'});
+
+    // ── Folio + prioridad ──
+    var pc = PRIO_COLOR[p.prioridad]||COLORS.azul;
+    var rgb = hexRGB(pc);
+    docu.setFillColor(rgb.r,rgb.g,rgb.b); docu.roundedRect(ML,36,PW-ML-MR,16,3,3,'F');
+    docu.setTextColor(255,255,255); docu.setFont('helvetica','bold'); docu.setFontSize(13);
+    docu.text(String(p.folio||'—'), ML+6, 46);
+    docu.setFontSize(9.5);
+    docu.text('Prioridad: '+(PRIO_LABEL[p.prioridad]||p.prioridad||'Normal'), PW-MR-6, 46, {align:'right'});
+
+    // ── Datos de la solicitud ──
+    var y = 60;
+    docu.setTextColor(30,41,59);
+    function campo2col(x1,x2,label,valor){
+      docu.setFont('helvetica','bold'); docu.setFontSize(7.5); docu.setTextColor(100,116,139);
+      docu.text(label.toUpperCase(), x1, y);
+      docu.setFont('helvetica','normal'); docu.setFontSize(10.5); docu.setTextColor(15,23,42);
+      docu.text(String(valor||'—'), x1, y+5.5);
+    }
+    var xMid = ML + (PW-ML-MR)/2 + 4;
+    campo2col(ML, xMid, p.solicitante!==undefined?'Solicitante':'Vendedor', p.solicitante||p.vendedor);
+    campo2col(xMid, xMid, 'Área', p.area||'—');
+    y += 14;
+    campo2col(ML, xMid, 'Operación destino', p.destino||p.cliente);
+    campo2col(xMid, xMid, 'Folio de servicio', p.folioServicio||'—');
+    y += 14;
+    docu.setFont('helvetica','bold'); docu.setFontSize(7.5); docu.setTextColor(100,116,139);
+    docu.text('¿PARA QUÉ SE USARÁ EL MATERIAL?', ML, y);
+    docu.setFont('helvetica','normal'); docu.setFontSize(10); docu.setTextColor(15,23,42);
+    var usoLns = docu.splitTextToSize(String(p.uso||'—'), PW-ML-MR);
+    docu.text(usoLns, ML, y+5.5);
+    y += 8 + usoLns.length*5.2;
+
+    // ── Tabla de artículos ──
+    y += 4;
+    docu.setDrawColor(226,232,240); docu.line(ML,y,PW-MR,y); y+=8;
+    docu.setFillColor(248,250,252); docu.rect(ML,y-5,PW-ML-MR,8,'F');
+    docu.setFont('helvetica','bold'); docu.setFontSize(8.5); docu.setTextColor(71,85,105);
+    docu.text('CLAVE', ML+2, y);
+    docu.text('DESCRIPCIÓN', ML+32, y);
+    docu.text('CANT.', PW-MR-2, y, {align:'right'});
+    y += 8;
+    var prods = Array.isArray(p.productos)?p.productos:[];
+    docu.setFont('helvetica','normal'); docu.setFontSize(9.5); docu.setTextColor(15,23,42);
+    prods.forEach(function(it){
+      var lns = docu.splitTextToSize(String(it.desc||'—'), PW-ML-MR-32-20);
+      if(y + lns.length*5 > PH-55){ docu.addPage(); y=20; }
+      docu.text(String(it.clave||'—'), ML+2, y);
+      docu.text(lns, ML+32, y);
+      docu.text('×'+String(it.cant||0), PW-MR-2, y, {align:'right'});
+      y += Math.max(6, lns.length*5+1.5);
+    });
+    if(!prods.length){ docu.text('Sin artículos capturados.', ML+2, y); y+=6; }
+
+    // ── Firma del solicitante ──
+    y += 6;
+    if(y > PH-60){ docu.addPage(); y=20; }
+    docu.setFont('helvetica','bold'); docu.setFontSize(8); docu.setTextColor(100,116,139);
+    docu.text('FIRMA DEL SOLICITANTE', ML, y); y += 4;
+    if(p.firma){
+      try{ docu.addImage(p.firma,'PNG',ML,y,60,26); }catch(e){}
+    } else {
+      docu.setDrawColor(203,213,225); docu.line(ML,y+20,ML+60,y+20);
+    }
+
+    // ── Recuadro para Almacén (recibió / entregó) ──
+    var xAlm = ML+80;
+    docu.setFont('helvetica','bold'); docu.setFontSize(8); docu.setTextColor(100,116,139);
+    docu.text('SURTIÓ / ENTREGÓ (ALMACÉN)', xAlm, y);
+    docu.setDrawColor(203,213,225); docu.line(xAlm,y+20,xAlm+70,y+20);
+    docu.setFont('helvetica','normal'); docu.setFontSize(7); docu.text('Nombre y firma', xAlm, y+24);
+
+    // ── Pie de página ──
+    docu.setFillColor(10,15,30); docu.rect(0,PH-10,PW,10,'F');
+    docu.setTextColor(180,180,180); docu.setFontSize(7);
+    docu.text('Tecnocontrol · '+String(p.folio||'')+' · '+new Date().toLocaleString('es-MX'), PW/2, PH-4, {align:'center'});
+
+    try{ window.open(docu.output('bloburl'), '_blank'); }
+    catch(e){ docu.save('Solicitud_'+(p.folio||'material')+'.pdf'); }
+  }
+
+  function hexRGB(hex){
+    hex = (hex||'#1473E6').replace('#','');
+    if(hex.length===3) hex = hex.split('').map(function(c){return c+c;}).join('');
+    var num = parseInt(hex,16);
+    return { r:(num>>16)&255, g:(num>>8)&255, b:num&255 };
   }
 
   // ── Impresión de etiqueta / orden de surtido (media carta, para pegar en la caja) ──
