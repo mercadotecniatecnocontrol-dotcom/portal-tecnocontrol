@@ -44,6 +44,7 @@
     const COL_VEHICULOS_ASIG = "ops_vehiculo_asignaciones"; // historial real de vehículo por técnico (dato propio de Operaciones, no inventa GPS de Flotilla)
     const COL_FOLIOS = "ops_folios"; // Folios de servicio (Connecteam) con seguimiento de vencimiento/atención/solución
     const COL_CLIENTES = "ops_clientes"; // Catálogo de clientes con su tabla de SLA por prioridad (P1-P6, en horas)
+    const COL_REVISIONES = "ops_revisiones_herramienta"; // Bitácora de auditorías físicas de herramienta por técnico (distinta de COL_AUDITORIA, que es el log de cambios de campos)
     const MIGUEL_EMAIL = "miguel@tecnocontrol.com.mx"; // dueño del seguimiento interno (fecha de atención / compromiso)
 
     // Capa de integración con RH — mismo patrón que opsAspelAdapter: placeholder documentado.
@@ -1572,6 +1573,91 @@
     };
 
     // ═══════════════════════ TAB: TÉCNICOS ═══════════════════════
+    // ── Exportar inventario de herramienta por técnico (auditoría) — PDF y Excel ──
+    // Glen: "un botón... para poder imprimir un PDF y un XML o Excel de qué herramienta
+    // tiene cada técnico para poder hacer auditorías o revisiones a su herramienta".
+    // Agrupa por técnico activo, listando cada pieza asignada con folio/descripción/
+    // categoría/marca/modelo/serie/fecha de asignación.
+    function opsInventarioPorTecnico() {
+        const activos = cacheTec.filter(t => t.estatus === "activo").sort((a, b) => (a.nombre || "").localeCompare(b.nombre || ""));
+        return activos.map(t => ({ tecnico: t, herramientas: cacheHerr.filter(h => h.tecnicoActualId === t.id) }));
+    }
+
+    window.opsExportarInventarioPDF = function () {
+        if (!window.jspdf) { alert("Librería PDF no cargada."); return; }
+        const { jsPDF } = window.jspdf;
+        const docu = new jsPDF({ orientation: "portrait", unit: "mm", format: "letter" });
+        const PW = 215.9, PH = 279.4, ML = 14, MR = 14;
+        const AZUL = { r: 29, g: 46, b: 115 }, ROJO = { r: 231, g: 64, b: 43 };
+        const grupos = opsInventarioPorTecnico();
+        let y = 20;
+
+        function encabezado(esPrimera) {
+            docu.setFillColor(AZUL.r, AZUL.g, AZUL.b); docu.rect(0, 0, PW, 22, "F");
+            docu.setFillColor(ROJO.r, ROJO.g, ROJO.b); docu.rect(0, 22, PW, 1.6, "F");
+            try { if (window.LOGO_TECNOCONTROL_B64) docu.addImage("data:image/png;base64," + window.LOGO_TECNOCONTROL_B64, "PNG", ML, 4, 14, 14); } catch (e) {}
+            docu.setTextColor(255, 255, 255); docu.setFont("helvetica", "bold"); docu.setFontSize(13);
+            docu.text("TECNOCONTROL", ML + 18, 11);
+            docu.setFont("helvetica", "normal"); docu.setFontSize(8);
+            docu.text(esPrimera ? "Inventario de herramienta por técnico · Auditoría" : "Inventario de herramienta por técnico (continuación)", ML + 18, 17);
+            docu.setFontSize(7);
+            docu.text("Generado: " + new Date().toLocaleString("es-MX"), PW - MR, 17, { align: "right" });
+            return 30;
+        }
+        y = encabezado(true);
+
+        grupos.forEach(g => {
+            if (y > PH - 35) { docu.addPage(); y = encabezado(false); }
+            docu.setFillColor(241, 245, 249); docu.rect(ML, y - 5, PW - ML - MR, 8, "F");
+            docu.setFont("helvetica", "bold"); docu.setFontSize(10); docu.setTextColor(15, 23, 42);
+            docu.text(`${g.tecnico.nombre}  ·  N.° ${g.tecnico.numeroOperativo || "—"}  ·  ${g.herramientas.length} herramienta(s)`, ML + 2, y);
+            y += 9;
+            if (!g.herramientas.length) {
+                docu.setFont("helvetica", "italic"); docu.setFontSize(9); docu.setTextColor(148, 163, 184);
+                docu.text("Sin herramienta asignada.", ML + 2, y); y += 7;
+            } else {
+                g.herramientas.forEach((h, idx) => {
+                    if (y > PH - 20) { docu.addPage(); y = encabezado(false); }
+                    if (idx % 2 === 1) { docu.setFillColor(248, 250, 252); docu.rect(ML, y - 4, PW - ML - MR, 6, "F"); }
+                    docu.setFont("helvetica", "normal"); docu.setFontSize(8.5); docu.setTextColor(30, 41, 59);
+                    const linea = `${h.folio || "—"}  ·  ${h.descripcion || "—"}${h.marca ? "  ·  " + h.marca + " " + (h.modelo || "") : ""}${h.numeroSerie ? "  ·  S/N " + h.numeroSerie : ""}`;
+                    docu.text(linea, ML + 4, y);
+                    docu.text(h.fechaAsignacion || "—", PW - MR - 2, y, { align: "right" });
+                    y += 6;
+                });
+            }
+            y += 4;
+        });
+
+        try { window.open(docu.output("bloburl"), "_blank"); }
+        catch (e) { docu.save("Inventario_herramienta_por_tecnico.pdf"); }
+    };
+
+    window.opsExportarInventarioExcel = function () {
+        if (typeof XLSX === "undefined") { alert("Falta cargar SheetJS (XLSX) en index.html."); return; }
+        const grupos = opsInventarioPorTecnico();
+        const filas = [];
+        grupos.forEach(g => {
+            if (!g.herramientas.length) {
+                filas.push({ Técnico: g.tecnico.nombre, "N.° operativo": g.tecnico.numeroOperativo || "", Folio: "", Descripción: "(sin herramienta asignada)", Categoría: "", Marca: "", Modelo: "", "N.° de serie": "", "Fecha de asignación": "", Estado: "" });
+            } else {
+                g.herramientas.forEach(h => {
+                    filas.push({
+                        Técnico: g.tecnico.nombre, "N.° operativo": g.tecnico.numeroOperativo || "",
+                        Folio: h.folio || "", Descripción: h.descripcion || "", Categoría: h.categoria || "",
+                        Marca: h.marca || "", Modelo: h.modelo || "", "N.° de serie": h.numeroSerie || "",
+                        "Fecha de asignación": h.fechaAsignacion || "", Estado: h.estado || "",
+                    });
+                });
+            }
+        });
+        const ws = XLSX.utils.json_to_sheet(filas);
+        ws["!cols"] = [{ wch: 24 }, { wch: 12 }, { wch: 14 }, { wch: 34 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 10 }];
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Inventario x técnico");
+        XLSX.writeFile(wb, "Inventario_herramienta_por_tecnico_" + opsFechaHora().slice(0, 10) + ".xlsx");
+    };
+
     function opsRenderTecnicos() {
         const el = document.getElementById("ops-tab-content");
         if (!el) return;
@@ -1583,7 +1669,11 @@
             <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px 18px;">
                 <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;">
                     <input type="text" placeholder="Buscar técnico..." oninput="opsFiltrarTec(this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 11px;font-size:12.5px;width:260px;outline:none;">
-                    ${gestion ? `<button onclick="opsAbrirModalTecnico()" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">${ICON.plus} Nuevo técnico</button>` : ""}
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                        ${gestion ? `<button onclick="opsExportarInventarioPDF()" title="PDF de herramienta por técnico, para auditoría" style="background:#eef2f7;border:none;color:#1f2937;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:600;">🖨️ PDF auditoría</button>` : ""}
+                        ${gestion ? `<button onclick="opsExportarInventarioExcel()" title="Excel de herramienta por técnico, para auditoría" style="background:#eef2f7;border:none;color:#1f2937;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:600;">📊 Excel auditoría</button>` : ""}
+                        ${gestion ? `<button onclick="opsAbrirModalTecnico()" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">${ICON.plus} Nuevo técnico</button>` : ""}
+                    </div>
                 </div>
                 <div style="overflow-x:auto;">
                     <table style="width:100%;border-collapse:collapse;font-size:12.3px;">
@@ -1832,7 +1922,7 @@
                 </div>
 
                 <div style="display:flex;gap:4px;margin:14px 0;overflow-x:auto;border-bottom:1px solid #e2e8f0;">
-                    ${["resumen:Resumen", "rh:RH", "vehiculo:Vehículo", "herramientas:Herramientas", "historial:Historial"].map(x => {
+                    ${["resumen:Resumen", "rh:RH", "vehiculo:Vehículo", "herramientas:Herramientas", "auditoria:Auditoría", "historial:Historial"].map(x => {
                         const [id, label] = x.split(":");
                         const on = fichaTecTabActual === id;
                         return `<button onclick="opsFichaTecCambiarTab('${idInterno}','${id}')" style="background:none;border:none;padding:8px 10px;font-size:11.5px;font-weight:600;white-space:nowrap;color:${on ? "#0B5FFF" : "#64748b"};border-bottom:2px solid ${on ? "#0B5FFF" : "transparent"};cursor:pointer;">${label}</button>`;
@@ -1910,13 +2000,43 @@
         } else if (fichaTecTabActual === "herramientas") {
             el.innerHTML = `
                 <div style="background:#fff;border-radius:14px;padding:16px 18px;margin-bottom:12px;">
-                    <div style="font-size:12.5px;font-weight:700;color:#1e293b;margin-bottom:8px;">Herramientas asignadas (${asignadas.length})</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                        <div style="font-size:12.5px;font-weight:700;color:#1e293b;">Herramientas asignadas (${asignadas.length})</div>
+                        ${asignadas.length && opsPuedeGestionar() ? `<button onclick="opsAbrirModalRevision('${idInterno}')" style="background:#eef2f7;border:none;color:#0B5FFF;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">🔍 Registrar revisión</button>` : ""}
+                    </div>
                     ${asignadas.length ? asignadas.map(h => `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #eef1f5;font-size:12px;"><span style="color:#059669;">${ICON.check}</span><strong>${opsEsc(h.folio)}</strong> — ${opsEsc(h.descripcion)}</div>`).join("") : '<div style="color:#94a3b8;font-size:12px;">Ninguna.</div>'}
                 </div>
                 <div style="background:#fff;border-radius:14px;padding:16px 18px;">
                     <div style="font-size:12.5px;font-weight:700;color:#1e293b;margin-bottom:8px;">Almacén del técnico — material (${materiales.length})</div>
                     ${materiales.length ? materiales.map(m => `<div style="padding:7px 0;border-bottom:1px solid #eef1f5;font-size:12px;">${opsEsc(m.productoDesc)} — <strong>${opsEsc(m.cantidad)}</strong></div>`).join("") : '<div style="color:#94a3b8;font-size:12px;">Sin material registrado.</div>'}
                 </div>`;
+        } else if (fichaTecTabActual === "auditoria") {
+            el.innerHTML = `<div style="text-align:center;padding:20px;color:#94a3b8;font-size:12px;">Cargando historial de auditorías…</div>`;
+            const { db, fs } = await opsGetFB();
+            let revisiones = [];
+            try {
+                const snap = await fs.getDocs(fs.query(fs.collection(db, COL_REVISIONES), fs.where("tecnicoId", "==", idInterno), fs.orderBy("fecha", "desc")));
+                revisiones = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            } catch (err) { console.warn("[operaciones.js] no se pudo leer ops_revisiones_herramienta:", err.message); }
+            if (fichaTecTabActual !== "auditoria") return; // el usuario cambió de pestaña mientras cargaba
+            el.innerHTML = `
+                <div style="background:#fff;border-radius:14px;padding:16px 18px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
+                    <div style="font-size:12.5px;font-weight:700;color:#1e293b;">Auditorías de herramienta (${revisiones.length})</div>
+                    ${asignadas.length && opsPuedeGestionar() ? `<button onclick="opsAbrirModalRevision('${idInterno}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">🔍 Nueva revisión</button>` : ""}
+                </div>
+                ${revisiones.length ? revisiones.map(r => {
+                    const faltantes = (r.herramientas || []).filter(h => h.estado !== "conforme");
+                    return `<div style="background:#fff;border-radius:14px;padding:14px 16px;margin-bottom:10px;border-left:4px solid ${faltantes.length ? "#dc2626" : "#16a34a"};">
+                        <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <div style="font-size:12.5px;font-weight:700;color:#1e293b;">${opsEsc((r.fecha || "").slice(0, 10))}</div>
+                            <span style="font-size:10.5px;font-weight:700;color:${faltantes.length ? "#b91c1c" : "#166534"};">${faltantes.length ? `⚠ ${faltantes.length} con novedad` : "✓ Todo conforme"}</span>
+                        </div>
+                        <div style="font-size:11px;color:#94a3b8;margin-bottom:6px;">Revisó: ${opsEsc(r.realizadoPor || "—")}</div>
+                        ${(r.herramientas || []).map(h => `<div style="font-size:11.5px;color:#334155;padding:2px 0;">${h.estado === "conforme" ? "✓" : (h.estado === "faltante" ? "❌" : "⚠️")} ${opsEsc(h.folio)} — ${opsEsc(h.descripcion)}${h.observacion ? ` · <em>${opsEsc(h.observacion)}</em>` : ""}</div>`).join("")}
+                        ${r.observacionesGenerales ? `<div style="font-size:11.5px;color:#64748b;margin-top:6px;border-top:1px solid #f1f5f9;padding-top:6px;">${opsEsc(r.observacionesGenerales)}</div>` : ""}
+                    </div>`;
+                }).join("") : '<div style="background:#fff;border-radius:14px;padding:16px 18px;color:#94a3b8;font-size:12px;">Sin revisiones registradas todavía.</div>'}`;
+            return;
         } else if (fichaTecTabActual === "historial") {
             el.innerHTML = `
                 <div style="background:#fff;border-radius:14px;padding:16px 18px;">
@@ -1931,6 +2051,73 @@
                 </div>`;
         }
     }
+
+    // ── Auditoría física de herramienta: registra el estado de cada pieza asignada al
+    // momento de la revisión (conforme / faltante / dañada), con quién y observaciones.
+    // Queda en ops_revisiones_herramienta como bitácora permanente para auditorías.
+    window.opsAbrirModalRevision = function (idInterno) {
+        const t = cacheTec.find(x => x.id === idInterno);
+        const asignadas = cacheHerr.filter(h => h.tecnicoActualId === idInterno);
+        if (!t || !asignadas.length) return;
+        const wrap = document.getElementById("ops-modal-wrap");
+        wrap.innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;">
+            <div style="background:#fff;border-radius:14px;width:520px;max-width:94vw;max-height:88vh;overflow-y:auto;padding:22px;">
+                <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:2px;">Registrar revisión de herramienta</div>
+                <div style="font-size:11.5px;color:#94a3b8;margin-bottom:14px;">${opsEsc(t.nombre)} · N.° ${opsEsc(t.numeroOperativo)} · ${asignadas.length} pieza(s) asignada(s)</div>
+                <div id="ops-revision-lista">
+                    ${asignadas.map(h => `
+                    <div style="border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;margin-bottom:8px;" data-herr-id="${h.id}" data-folio="${opsEsc(h.folio)}" data-desc="${opsEsc(h.descripcion)}">
+                        <div style="font-size:12.5px;font-weight:700;color:#1e293b;margin-bottom:6px;">${opsEsc(h.folio)} — ${opsEsc(h.descripcion)}</div>
+                        <div style="display:flex;gap:6px;margin-bottom:6px;">
+                            <label style="flex:1;text-align:center;font-size:11px;font-weight:600;padding:6px;border-radius:7px;background:#f0fdf4;color:#166534;cursor:pointer;"><input type="radio" name="rev-${h.id}" value="conforme" checked style="margin-right:4px;">Conforme</label>
+                            <label style="flex:1;text-align:center;font-size:11px;font-weight:600;padding:6px;border-radius:7px;background:#fef2f2;color:#b91c1c;cursor:pointer;"><input type="radio" name="rev-${h.id}" value="faltante" style="margin-right:4px;">Faltante</label>
+                            <label style="flex:1;text-align:center;font-size:11px;font-weight:600;padding:6px;border-radius:7px;background:#fff7ed;color:#c2410c;cursor:pointer;"><input type="radio" name="rev-${h.id}" value="danada" style="margin-right:4px;">Dañada</label>
+                        </div>
+                        <input type="text" placeholder="Observación (opcional)" id="ops-rev-obs-${h.id}" style="width:100%;border:1px solid #cbd5e1;border-radius:7px;padding:6px 9px;font-size:11.5px;box-sizing:border-box;">
+                    </div>`).join("")}
+                </div>
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Observaciones generales de la revisión</label>
+                <textarea id="ops-rev-obs-generales" rows="2" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 14px;resize:vertical;box-sizing:border-box;"></textarea>
+                <div style="display:flex;gap:8px;justify-content:flex-end;">
+                    <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
+                    <button onclick="opsGuardarRevision('${idInterno}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">Guardar revisión</button>
+                </div>
+            </div>
+        </div>`;
+    };
+
+    window.opsGuardarRevision = async function (idInterno) {
+        const t = cacheTec.find(x => x.id === idInterno);
+        const filas = Array.from(document.querySelectorAll("#ops-revision-lista > div"));
+        const herramientas = filas.map(div => {
+            const herrId = div.getAttribute("data-herr-id");
+            const seleccionado = div.querySelector(`input[name="rev-${herrId}"]:checked`);
+            const obsEl = document.getElementById(`ops-rev-obs-${herrId}`);
+            return {
+                herramientaId: herrId,
+                folio: div.getAttribute("data-folio") || "",
+                descripcion: div.getAttribute("data-desc") || "",
+                estado: seleccionado ? seleccionado.value : "conforme",
+                observacion: (obsEl && obsEl.value.trim()) || null,
+            };
+        });
+        const observacionesGenerales = (document.getElementById("ops-rev-obs-generales") || {}).value || "";
+        const { db, fs } = await opsGetFB();
+        await fs.addDoc(fs.collection(db, COL_REVISIONES), {
+            tecnicoId: idInterno,
+            tecnicoNombre: t ? t.nombre : "—",
+            tecnicoNumero: t ? t.numeroOperativo : "",
+            fecha: opsFechaHora(),
+            realizadoPor: opsNombreActual(),
+            herramientas,
+            observacionesGenerales: observacionesGenerales.trim() || null,
+            createdAt: fs.serverTimestamp ? fs.serverTimestamp() : opsFechaHora(),
+        });
+        document.getElementById("ops-modal-wrap").innerHTML = "";
+        window.mostrarPush ? mostrarPush("Auditoría", "Revisión de herramienta guardada.", "🔍") : alert("Revisión guardada.");
+        opsFichaTecCambiarTab(idInterno, "auditoria");
+    };
 
     // ── Vehículo: asignar (cierra automáticamente la asignación anterior) ──
     window.opsAbrirModalVehiculo = function (idInterno) {
@@ -2622,7 +2809,7 @@
         const zebra = i % 2 === 0 ? "#fff" : "#f8fafc";
         const filaVencida = info.semaforo === "rojo" ? "background:#fef2f2;" : `background:${zebra};`;
         const cp = [f.clienteNombre, f.prioridad].filter(Boolean).join(" · ") || "—";
-        return `<tr style="${filaVencida}border-bottom:1px solid #eef1f5;" title="${info.motivo ? opsEsc(info.motivo) : ""}">
+        return `<tr style="${filaVencida}border-bottom:1px solid #eef1f5;cursor:pointer;" title="${info.motivo ? opsEsc(info.motivo) : ""}" onclick="opsAbrirFichaFolio('${f.id}')">
             <td style="padding:8px 10px;color:#334155;font-weight:600;">${opsEsc(f.folioOS || "—")}</td>
             <td style="padding:8px 10px;font-weight:600;color:#334155;">${opsEsc(f.estacion)}</td>
             <td style="padding:8px 10px;color:#64748b;">${opsEsc(cp)}</td>
@@ -2636,7 +2823,7 @@
                 ${opsEsc(info.diasTexto)}
             </td>
             <td style="padding:8px 10px;">${opsBadgeSemaforoFolio(info)}</td>
-            <td style="padding:8px 10px;text-align:right;">${gestion ? `<button onclick="opsAbrirModalFolio('${f.id}')" style="background:#eef2f7;border:none;color:#1f2937;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">Editar</button>` : ""}</td>
+            <td style="padding:8px 10px;text-align:right;" onclick="event.stopPropagation()">${gestion ? `<button onclick="opsAbrirModalFolio('${f.id}')" style="background:#eef2f7;border:none;color:#1f2937;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">Editar</button>` : ""}</td>
         </tr>`;
     }
 
@@ -2778,7 +2965,22 @@
         if (id) {
             await fs.updateDoc(fs.doc(db, COL_FOLIOS, id), datos);
         } else {
-            await fs.addDoc(fs.collection(db, COL_FOLIOS), { ...datos, origen: "manual", creadoPor: opsUsuarioActual(), creadoEn: opsFechaHora() });
+            const nuevo = await fs.addDoc(fs.collection(db, COL_FOLIOS), { ...datos, origen: "manual", creadoPor: opsUsuarioActual(), creadoEn: opsFechaHora() });
+            // Primer comentario automático: deja registrado quién capturó el folio y con qué datos,
+            // como punto de partida del seguimiento (Glen: "creo que hace falta el primer comentario
+            // desde la captura del folio").
+            const notaCaptura = [
+                `Folio capturado por ${opsNombreActual()}.`,
+                `Estación: ${datos.estacion}.`,
+                datos.clienteNombre ? `Cliente: ${datos.clienteNombre}${datos.prioridad ? " (" + datos.prioridad + ")" : ""}.` : null,
+                datos.vencimiento ? `Vencimiento (SLA): ${opsFmtFechaCorta(datos.vencimiento)}.` : null,
+                datos.fechaAtencion ? `Fecha de atención asignada: ${opsFmtFechaCorta(datos.fechaAtencion)}.` : null,
+                datos.comentarios ? `Comentario inicial: ${datos.comentarios}` : null,
+            ].filter(Boolean).join(" ");
+            await fs.addDoc(fs.collection(db, COL_FOLIOS, nuevo.id, "comentarios"), {
+                texto: notaCaptura, autor: opsNombreActual(), autorEmail: opsUsuarioActual(),
+                tipo: "captura", createdAt: fs.serverTimestamp ? fs.serverTimestamp() : opsFechaHora(),
+            });
         }
         document.getElementById("ops-modal-wrap").innerHTML = "";
         if (window.mostrarPush) mostrarPush("Operaciones", "Folio guardado.", "📋"); else alert("Folio guardado.");
@@ -2790,6 +2992,85 @@
         await fs.deleteDoc(fs.doc(db, COL_FOLIOS, id));
         document.getElementById("ops-modal-wrap").innerHTML = "";
         if (window.mostrarPush) mostrarPush("Operaciones", "Folio eliminado.", "🗑️"); else alert("Folio eliminado.");
+    };
+
+    // ── Ficha de folio: línea de tiempo de comentarios/feedback (administradores, seguimiento
+    // post-compromiso) — Glen: "que se despliegue información, comentarios de feedback por
+    // parte de administradores después de la fecha compromiso... con fecha/hora, quién hizo
+    // el comentario, etc." El primer comentario (captura) se guarda automático al crear el folio. ──
+    window.opsAbrirFichaFolio = async function (id) {
+        const f = cacheFolios.find(x => x.id === id);
+        if (!f) return;
+        const info = opsCalcularSemaforoFolio(f);
+        const wrap = document.getElementById("ops-panel-wrap");
+        wrap.innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.5);z-index:99998;display:flex;justify-content:flex-end;" onclick="if(event.target===this)document.getElementById('ops-panel-wrap').innerHTML=''">
+            <div style="background:#fff;width:460px;max-width:92vw;height:100%;overflow-y:auto;padding:22px;box-shadow:-6px 0 20px rgba(0,0,0,0.15);">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px;">
+                    <div><div style="font-size:11px;color:#94a3b8;font-weight:600;">${opsEsc(f.folioOS || "Sin N.º de O.S.")}</div><div style="font-size:16px;font-weight:700;color:#1e293b;">${opsEsc(f.estacion)}</div></div>
+                    <button onclick="document.getElementById('ops-panel-wrap').innerHTML=''" style="background:#f1f5f9;border:none;width:28px;height:28px;border-radius:7px;cursor:pointer;">${ICON.close}</button>
+                </div>
+                <div style="margin-bottom:8px;">${opsBadgeSemaforoFolio(info)} ${info.enAtencion ? `<span style="font-size:9.5px;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:.3px;margin-left:6px;">Plazo de atención</span>` : ""}</div>
+                <div style="font-size:12.5px;color:#334155;line-height:1.9;">
+                    <div><strong>Cliente:</strong> ${opsEsc(f.clienteNombre || "—")} ${f.prioridad ? `(${opsEsc(f.prioridad)})` : ""}</div>
+                    <div><strong>Fecha de solicitud:</strong> ${opsFmtFechaCorta(f.fechaSolicitud)}</div>
+                    <div><strong>Vencimiento (SLA cliente):</strong> ${opsFmtFechaCorta(f.vencimiento)}</div>
+                    <div><strong>Fecha de atención (compromiso Miguel):</strong> ${f.fechaAtencion ? opsFmtFechaCorta(f.fechaAtencion) : "—"}</div>
+                    <div><strong>Fecha de solución:</strong> ${f.fechaSolucion ? opsFmtFechaCorta(f.fechaSolucion) : "— (sigue abierto: " + opsEsc(info.diasTexto) + ")"}</div>
+                    <div><strong>Responsable:</strong> ${opsEsc(opsResponsableFolio(f))}</div>
+                </div>
+                <div style="margin-top:18px;font-size:12.5px;font-weight:700;color:#1e293b;display:flex;align-items:center;gap:6px;">${ICON.clock} Comentarios y seguimiento</div>
+                <div id="ops-folio-comentarios" style="margin-top:10px;">
+                    <div style="text-align:center;padding:16px;color:#94a3b8;font-size:12px;">Cargando…</div>
+                </div>
+                ${opsPuedeGestionar() ? `
+                <div style="margin-top:12px;">
+                    <textarea id="ops-nuevo-comentario-folio" rows="2" placeholder="Agregar comentario / feedback..." style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;resize:vertical;box-sizing:border-box;"></textarea>
+                    <button onclick="opsAgregarComentarioFolio('${f.id}')" style="margin-top:6px;background:linear-gradient(135deg,#2E7CF6,#0B5FFF);color:#fff;border:none;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Agregar comentario</button>
+                </div>` : ""}
+            </div>
+        </div>`;
+        opsRenderComentariosFolio(f.id, f.fechaAtencion);
+    };
+
+    async function opsRenderComentariosFolio(folioId, fechaAtencion) {
+        const el = document.getElementById("ops-folio-comentarios");
+        if (!el) return;
+        const { db, fs } = await opsGetFB();
+        let comentarios = [];
+        try {
+            const snap = await fs.getDocs(fs.query(fs.collection(db, COL_FOLIOS, folioId, "comentarios"), fs.orderBy("createdAt", "asc")));
+            comentarios = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        } catch (err) { console.warn("[operaciones.js] no se pudo leer comentarios del folio:", err.message); }
+        if (!document.getElementById("ops-folio-comentarios")) return; // el panel ya se cerró mientras cargaba
+        const atencionMs = fechaAtencion ? new Date(fechaAtencion).getTime() : null;
+        el.innerHTML = comentarios.length ? comentarios.map(c => {
+            const ts = c.createdAt && typeof c.createdAt.toDate === "function" ? c.createdAt.toDate() : (c.createdAt ? new Date(c.createdAt) : null);
+            const esPosteriorCompromiso = atencionMs && ts && ts.getTime() > atencionMs && c.tipo !== "captura";
+            return `<div style="border-left:3px solid ${c.tipo === "captura" ? "#94a3b8" : (esPosteriorCompromiso ? "#dc2626" : "#0B5FFF")};padding:8px 12px;margin-bottom:8px;background:#f8fafc;border-radius:0 8px 8px 0;">
+                <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;">
+                    <span style="font-size:11.5px;font-weight:700;color:#1e293b;">${opsEsc(c.autor || "—")}</span>
+                    <span style="font-size:10px;color:#94a3b8;white-space:nowrap;">${ts ? ts.toLocaleString("es-MX") : "—"}</span>
+                </div>
+                ${esPosteriorCompromiso ? `<div style="font-size:9.5px;font-weight:700;color:#b91c1c;text-transform:uppercase;letter-spacing:.3px;margin:2px 0;">⚠ Posterior a la fecha de atención comprometida</div>` : ""}
+                ${c.tipo === "captura" ? `<div style="font-size:9.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;margin:2px 0;">📋 Captura inicial</div>` : ""}
+                <div style="font-size:12.5px;color:#334155;margin-top:2px;">${opsEsc(c.texto)}</div>
+            </div>`;
+        }).join("") : '<div style="color:#94a3b8;font-size:12px;">Sin comentarios todavía.</div>';
+    }
+
+    window.opsAgregarComentarioFolio = async function (folioId) {
+        const ta = document.getElementById("ops-nuevo-comentario-folio");
+        const texto = (ta?.value || "").trim();
+        if (!texto) return;
+        const { db, fs } = await opsGetFB();
+        await fs.addDoc(fs.collection(db, COL_FOLIOS, folioId, "comentarios"), {
+            texto, autor: opsNombreActual(), autorEmail: opsUsuarioActual(),
+            tipo: "feedback", createdAt: fs.serverTimestamp ? fs.serverTimestamp() : opsFechaHora(),
+        });
+        if (ta) ta.value = "";
+        const f = cacheFolios.find(x => x.id === folioId);
+        opsRenderComentariosFolio(folioId, f ? f.fechaAtencion : null);
     };
 
     // ── Importación desde el Excel real de Connecteam (idempotente por estación+solicitud+vencimiento) ──
@@ -2972,20 +3253,62 @@
         cancelada:  { label: "Cancelada",  bg: "#e5e7eb", fg: "#374151", siguiente: null },
     };
     let filtroSolic = "todas";
+    let solicBusqueda = "";
+    let solicFechaDesde = "";
+    let solicFechaHasta = "";
+
+    function opsSolicFechaMs(s) {
+        const c = s.createdAt;
+        if (!c) return 0;
+        if (typeof c.toDate === "function") return c.toDate().getTime();
+        if (typeof c === "string") { const t = new Date(c).getTime(); return isNaN(t) ? 0 : t; }
+        if (typeof c === "number") return c;
+        return 0;
+    }
+
+    function opsSolicListaFiltrada() {
+        const desdeMs = solicFechaDesde ? new Date(solicFechaDesde + "T00:00:00").getTime() : null;
+        const hastaMs = solicFechaHasta ? new Date(solicFechaHasta + "T23:59:59").getTime() : null;
+        const busq = solicBusqueda.trim().toLowerCase();
+        return cacheSurtidos.filter(s => {
+            if (filtroSolic === "papelera") { if (!s.eliminada) return false; }
+            else { if (s.eliminada) return false; }
+            if (filtroSolic === "pendientes" && ["entregado", "rechazada", "cancelada"].includes(s.estado || "pendiente")) return false;
+            if (filtroSolic === "urgentes" && s.prioridad !== "urgente") return false;
+            if (filtroSolic === "operaciones" && s.origen !== "operaciones") return false;
+            const ms = opsSolicFechaMs(s);
+            if (desdeMs !== null && (!ms || ms < desdeMs)) return false;
+            if (hastaMs !== null && (!ms || ms > hastaMs)) return false;
+            if (busq) {
+                const prods = (s.productos || []).map(p => `${p.desc || ""} ${p.clave || ""}`).join(" ");
+                const texto = `${s.folio || ""} ${s.tecnicoNombre || ""} ${s.solicitante || ""} ${s.destino || ""} ${s.area || ""} ${prods}`.toLowerCase();
+                if (!texto.includes(busq)) return false;
+            }
+            return true;
+        });
+    }
+
+    function opsFilaSolicitudLista(puedeEliminar) {
+        const lista = opsSolicListaFiltrada();
+        return lista.length
+            ? lista.map((s, i) => opsFilaSolicitud(s, i, puedeEliminar)).join("")
+            : '<tr><td colspan="7" style="padding:22px;text-align:center;color:#94a3b8;">Sin solicitudes en este filtro.</td></tr>';
+    }
+
+    function opsSolicRefrescarTabla() {
+        const puedeEliminar = opsPuedeHacer("eliminar_solicitudes") || opsRolActual() === "administrador";
+        const tbody = document.getElementById("ops-solic-tbody");
+        if (tbody) tbody.innerHTML = opsFilaSolicitudLista(puedeEliminar);
+        const limpiarBtn = document.getElementById("ops-solic-limpiar-wrap");
+        if (limpiarBtn) limpiarBtn.innerHTML = (solicBusqueda || solicFechaDesde || solicFechaHasta)
+            ? `<button onclick="opsSolicLimpiarFiltros()" style="background:#fff;border:1px solid #cbd5e1;color:#475569;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:600;">Limpiar</button>` : "";
+    }
 
     function opsRenderSolicitudes() {
         const el = document.getElementById("ops-tab-content");
         if (!el) return;
         opsLimpiarPapeleraVencida(); // best-effort: borra en segundo plano lo que ya cumplió 3 meses
         const puedeEliminar = opsPuedeHacer("eliminar_solicitudes") || opsRolActual() === "administrador";
-        const lista = cacheSurtidos.filter(s => {
-            if (filtroSolic === "papelera") return !!s.eliminada;
-            if (s.eliminada) return false; // el resto de filtros nunca muestra eliminadas
-            if (filtroSolic === "pendientes") return !["entregado", "rechazada", "cancelada"].includes(s.estado || "pendiente");
-            if (filtroSolic === "urgentes") return s.prioridad === "urgente";
-            if (filtroSolic === "operaciones") return s.origen === "operaciones";
-            return true;
-        });
         const enPapelera = cacheSurtidos.filter(s => s.eliminada).length;
 
         el.innerHTML = `
@@ -3001,40 +3324,65 @@
                         ${puedeEliminar ? `<button onclick="opsFiltrarSolic('papelera')" style="background:${filtroSolic === "papelera" ? "#b91c1c" : "#fee2e2"};color:${filtroSolic === "papelera" ? "#fff" : "#991b1b"};border:none;font-size:11px;font-weight:600;padding:6px 11px;border-radius:7px;cursor:pointer;">${ICON.trash} Papelera (${enPapelera})</button>` : ""}
                     </div>
                 </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;padding:10px 12px;background:#f8fafc;border-radius:10px;">
+                    <div style="flex:1;min-width:180px;">
+                        <label style="font-size:10px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#94a3b8;display:block;margin-bottom:4px;">Buscar</label>
+                        <input id="ops-solic-buscar" type="text" placeholder="Folio, técnico, destino, artículo..." value="${opsEsc(solicBusqueda)}" oninput="opsSolicBuscarInput(this.value)" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 10px;font-size:12.5px;box-sizing:border-box;">
+                    </div>
+                    <div>
+                        <label style="font-size:10px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#94a3b8;display:block;margin-bottom:4px;">Desde</label>
+                        <input id="ops-solic-desde" type="date" value="${opsEsc(solicFechaDesde)}" onchange="opsSolicFechaInput('desde',this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 10px;font-size:12.5px;">
+                    </div>
+                    <div>
+                        <label style="font-size:10px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#94a3b8;display:block;margin-bottom:4px;">Hasta</label>
+                        <input id="ops-solic-hasta" type="date" value="${opsEsc(solicFechaHasta)}" onchange="opsSolicFechaInput('hasta',this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 10px;font-size:12.5px;">
+                    </div>
+                    <div id="ops-solic-limpiar-wrap">${(solicBusqueda || solicFechaDesde || solicFechaHasta) ? `<button onclick="opsSolicLimpiarFiltros()" style="background:#fff;border:1px solid #cbd5e1;color:#475569;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:600;">Limpiar</button>` : ""}</div>
+                </div>
                 ${filtroSolic === "papelera" ? '<div style="font-size:10.5px;color:#94a3b8;margin-bottom:10px;">Las solicitudes eliminadas se conservan 3 meses antes de borrarse automáticamente.</div>' : ""}
+                <div style="font-size:10.5px;color:#94a3b8;margin-bottom:10px;">Esta vista es solo informativa: el estado (Pendiente / Listo / Entregado) lo controla Almacén — desde aquí no se puede avanzar el flujo.</div>
                 <div style="overflow-x:auto;">
                     <table style="width:100%;border-collapse:collapse;font-size:12px;">
                         <thead><tr style="background:#0B5FFF;color:#fff;text-align:left;">
                             <th style="padding:7px 10px;border-radius:8px 0 0 8px;">Folio</th>
+                            <th style="padding:7px 10px;">Fecha</th>
                             <th style="padding:7px 10px;">Técnico</th>
                             <th style="padding:7px 10px;">Producto</th>
                             <th style="padding:7px 10px;">Prioridad</th>
                             <th style="padding:7px 10px;">Estado</th>
                             <th style="padding:7px 10px;border-radius:0 8px 8px 0;text-align:right;">Acción</th>
                         </tr></thead>
-                        <tbody>${lista.length ? lista.map((s, i) => opsFilaSolicitud(s, i, puedeEliminar)).join("") : '<tr><td colspan="6" style="padding:22px;text-align:center;color:#94a3b8;">Sin solicitudes en este filtro.</td></tr>'}</tbody>
+                        <tbody id="ops-solic-tbody">${opsFilaSolicitudLista(puedeEliminar)}</tbody>
                     </table>
                 </div>
             </div>`;
     }
     window.opsFiltrarSolic = function (f) { filtroSolic = f; opsRenderSolicitudes(); };
+    window.opsSolicBuscarInput = function (v) { solicBusqueda = v; opsSolicRefrescarTabla(); };
+    window.opsSolicFechaInput = function (cual, v) { if (cual === "desde") solicFechaDesde = v; else solicFechaHasta = v; opsSolicRefrescarTabla(); };
+    window.opsSolicLimpiarFiltros = function () { solicBusqueda = ""; solicFechaDesde = ""; solicFechaHasta = ""; opsRenderSolicitudes(); };
 
     function opsFilaSolicitud(s, i, puedeEliminar) {
         const estadoKey = s.estado || "pendiente";
         const e = ESTADOS_SOLICITUD[estadoKey] || ESTADOS_SOLICITUD.pendiente;
         const prod = (s.productos && s.productos[0]) || {};
+        const otros = (s.productos || []).length - 1;
         const zebra = i % 2 === 0 ? "#fff" : "#f8fafc";
         const prio = s.prioridad === "urgente" ? `<span style="color:#b91c1c;font-weight:600;">Urgente</span>` : "Normal";
+        const ms = opsSolicFechaMs(s);
+        const fecha = ms ? new Date(ms).toLocaleDateString("es-MX", { day: "2-digit", month: "short" }) : "—";
         return `<tr style="background:${zebra};border-bottom:1px solid #eef1f5;cursor:pointer;" onclick="opsAbrirFichaSolicitud('${s.id}')">
             <td style="padding:7px 10px;font-weight:600;color:#334155;">${opsEsc(s.folio)}</td>
+            <td style="padding:7px 10px;color:#64748b;white-space:nowrap;">${fecha}</td>
             <td style="padding:7px 10px;color:#334155;">${opsEsc(s.tecnicoNombre || s.solicitante || "—")}</td>
-            <td style="padding:7px 10px;color:#334155;">${opsEsc(prod.desc)} ${prod.cant ? `× ${opsEsc(prod.cant)}` : ""}</td>
+            <td style="padding:7px 10px;color:#334155;">${opsEsc(prod.desc)}${prod.cant ? ` × ${opsEsc(prod.cant)}` : ""}${otros > 0 ? ` (+${otros})` : ""}</td>
             <td style="padding:7px 10px;">${prio}</td>
             <td style="padding:7px 10px;"><span style="background:${e.bg};color:${e.fg};font-size:10.5px;font-weight:600;padding:3px 8px;border-radius:999px;">${e.label}</span></td>
             <td style="padding:7px 10px;text-align:right;white-space:nowrap;" onclick="event.stopPropagation()">
                 ${s.eliminada
                     ? (puedeEliminar ? `<button onclick="opsRestaurarSolicitud('${s.id}')" style="background:#dcfce715;border:1px solid #bbf7d0;color:#166534;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:10.5px;font-weight:600;">Restaurar</button>` : "")
-                    : `${e.siguiente ? `<button onclick="opsAvanzarSolicitud('${s.id}','${e.siguiente}')" style="background:#0B5FFF15;border:none;color:#0B5FFF;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:10.5px;font-weight:600;margin-right:4px;">Avanzar</button>` : ""}
+                    : `<button onclick="opsImprimirSolicitud('${s.id}')" title="Imprimir PDF" style="background:#f1f5f9;border:none;color:#334155;width:26px;height:26px;border-radius:7px;cursor:pointer;margin-right:4px;">🖨️</button>
+                       <button onclick="opsWhatsAppSolicitud('${s.id}')" title="Enviar por WhatsApp" style="background:#f0fdf4;border:none;color:#16a34a;width:26px;height:26px;border-radius:7px;cursor:pointer;margin-right:4px;">💬</button>
                        ${puedeEliminar ? `<button onclick="opsEnviarPapeleraSolicitud('${s.id}')" title="Enviar a papelera" style="background:#fef2f2;border:none;color:#b91c1c;width:26px;height:26px;border-radius:7px;cursor:pointer;">${ICON.trash}</button>` : ""}`}
             </td>
         </tr>`;
@@ -3119,8 +3467,8 @@
                         : '<div style="color:#94a3b8;font-size:12px;">Sin artículos capturados.</div>'}
                 </div>
                 <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;">
-                    ${e.siguiente && opsPuedeHacer("autorizar_material") ? `<button onclick="opsAvanzarSolicitud('${s.id}','${e.siguiente}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">Avanzar a "${ESTADOS_SOLICITUD[e.siguiente].label}"</button>` : ""}
                     <button onclick="opsImprimirSolicitud('${s.id}')" style="background:#f1f5f9;border:none;color:#334155;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">🖨️ Imprimir PDF</button>
+                    <button onclick="opsWhatsAppSolicitud('${s.id}')" style="background:#f0fdf4;border:none;color:#16a34a;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">💬 Enviar por WhatsApp</button>
                 </div>
                 <div style="margin-top:20px;font-size:12.5px;font-weight:700;color:#1e293b;display:flex;align-items:center;gap:6px;">${ICON.clock} Línea de tiempo</div>
                 <div style="margin-top:10px;border-left:2px solid #e2e8f0;padding-left:14px;">
@@ -3137,6 +3485,10 @@
     window.opsImprimirSolicitud = function (id) {
         if (window.__almImprimirSolicitudMaterial) window.__almImprimirSolicitudMaterial(id);
         else alert("No se pudo generar el PDF: el módulo de Almacén no está cargado en esta sesión. Recarga la página e inténtalo de nuevo.");
+    };
+    window.opsWhatsAppSolicitud = function (id) {
+        if (window.__almWhatsAppSolicitudMaterial) window.__almWhatsAppSolicitudMaterial(id);
+        else alert("No se pudo abrir WhatsApp: el módulo de Almacén no está cargado en esta sesión. Recarga la página e inténtalo de nuevo.");
     };
 
     window.opsAvanzarSolicitud = async function (id, siguienteEstado) {
