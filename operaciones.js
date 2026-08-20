@@ -600,7 +600,7 @@
     ];
 
     let opsFB = null;
-    let unsubHerr = null, unsubTec = null, unsubMov = null, unsubSurt = null, unsubFolios = null;
+    let unsubHerr = null, unsubTec = null, unsubMov = null, unsubSurt = null, unsubFolios = null, unsubNotif = null;
     let cacheHerr = [], cacheTec = [], cacheMov = [], cacheSurtidos = [], cacheFolios = [];
     let filtroFolios = "", filtroFolioSemaforo = "todos";
     let tabActual = "dashboard";
@@ -908,6 +908,7 @@
         if (unsubMov)  { unsubMov();  unsubMov = null; }
         if (unsubSurt) { unsubSurt(); unsubSurt = null; }
         if (unsubFolios) { unsubFolios(); unsubFolios = null; }
+        if (unsubNotif) { unsubNotif(); unsubNotif = null; }
         opsDetenerVigilanciaFolios();
     };
 
@@ -1022,6 +1023,28 @@
                 if (tabActual === "resumen") opsRenderResumen();
                 if (opsFoliosVigilanciaBase) opsVigilarFoliosSeveridad();
             }, () => { /* si aún no existe la colección, Folios simplemente inicia vacío */ });
+        }
+        if (!unsubNotif) {
+            // Notificaciones generales (ej. "solicitud lista para surtir") — llegan a TODOS los
+            // administradores que tengan Operaciones abierto en ese momento (onSnapshot en vivo),
+            // con la misma alarma sonora (~10s) y ventana flotante que ya usan los folios vencidos.
+            // "docChanges" con type:'added' es lo que evita una avalancha de alarmas al cargar:
+            // solo se alerta por documentos genuinamente nuevos, nunca por los que ya existían.
+            let notifBase = false;
+            // Nota: solo filtro de igualdad (leida==false), sin orderBy — así Firestore no exige
+            // crear un índice compuesto a mano; aquí no necesitamos orden, solo detectar altas nuevas.
+            unsubNotif = fs.onSnapshot(fs.query(fs.collection(db, COL_NOTIFICACIONES), fs.where("leida", "==", false), fs.limit(30)), snap => {
+                if (notifBase) {
+                    snap.docChanges().forEach(ch => {
+                        if (ch.type === "added") {
+                            const n = { id: ch.doc.id, ...ch.doc.data() };
+                            opsReproducirAlarmaFolio();
+                            opsMostrarFlotanteGenerica(n.mensaje || "Nueva notificación de Operaciones.", n.esPrueba ? "#8B4FD6" : "#0B5FFF");
+                        }
+                    });
+                }
+                notifBase = true;
+            }, () => { /* si aún no existe la colección o el índice, no pasa nada — se ignora */ });
         }
         // Puestos, personas, historial de puesto y almacén de técnico: se leen una vez
         // por apertura (no cambian con la frecuencia de herramientas/movimientos).
@@ -1593,16 +1616,17 @@
         let y = 20;
 
         function encabezado(esPrimera) {
-            docu.setFillColor(AZUL.r, AZUL.g, AZUL.b); docu.rect(0, 0, PW, 22, "F");
-            docu.setFillColor(ROJO.r, ROJO.g, ROJO.b); docu.rect(0, 22, PW, 1.6, "F");
-            try { if (window.LOGO_TECNOCONTROL_B64) docu.addImage("data:image/png;base64," + window.LOGO_TECNOCONTROL_B64, "PNG", ML, 4, 14, 14); } catch (e) {}
-            docu.setTextColor(255, 255, 255); docu.setFont("helvetica", "bold"); docu.setFontSize(13);
-            docu.text("TECNOCONTROL", ML + 18, 11);
-            docu.setFont("helvetica", "normal"); docu.setFontSize(8);
-            docu.text(esPrimera ? "Inventario de herramienta por técnico · Auditoría" : "Inventario de herramienta por técnico (continuación)", ML + 18, 17);
-            docu.setFontSize(7);
-            docu.text("Generado: " + new Date().toLocaleString("es-MX"), PW - MR, 17, { align: "right" });
-            return 30;
+            // Fondo BLANCO: el logo trae texto azul marino/negro sobre transparencia —
+            // sobre navy se vuelve ilegible. Proporción real del logo (420x125px, ~3.36:1)
+            // para que no salga comprimido.
+            docu.setFillColor(AZUL.r, AZUL.g, AZUL.b); docu.rect(0, 0, PW, 2.2, "F"); // acento, no bloque sólido
+            try { if (window.LOGO_TECNOCONTROL_B64) docu.addImage("data:image/png;base64," + window.LOGO_TECNOCONTROL_B64, "PNG", ML, 6, 24, 7.14); } catch (e) {}
+            docu.setTextColor(AZUL.r, AZUL.g, AZUL.b); docu.setFont("helvetica", "bold"); docu.setFontSize(9);
+            docu.text(esPrimera ? "Inventario de herramienta por técnico · Auditoría" : "Inventario de herramienta por técnico (continuación)", ML + 28, 10.5);
+            docu.setTextColor(120, 120, 120); docu.setFont("helvetica", "normal"); docu.setFontSize(7);
+            docu.text("Generado: " + new Date().toLocaleString("es-MX"), PW - MR, 10.5, { align: "right" });
+            docu.setDrawColor(226, 232, 240); docu.line(ML, 17, PW - MR, 17);
+            return 25;
         }
         y = encabezado(true);
 
@@ -2680,7 +2704,33 @@
         setTimeout(() => { const el = document.getElementById(idFlot); if (el) el.remove(); }, 30000);
     }
 
-    // ── Notificación cruzada a Flotilla (colección real flotilla_notificaciones) ──
+    // ── Ventana flotante genérica (notificaciones de ops_notificaciones: "solicitud
+    // lista para surtir", etc.) — mismo estilo/comportamiento que la de folios pero
+    // sin datos de folio específicos, para cualquier mensaje de texto simple. ──
+    function opsMostrarFlotanteGenerica(mensaje, colorHex) {
+        let cont = document.getElementById("ops-alertas-flotantes");
+        if (!cont) {
+            cont = document.createElement("div");
+            cont.id = "ops-alertas-flotantes";
+            cont.style.cssText = "position:fixed;top:16px;right:16px;z-index:2147483000;display:flex;flex-direction:column;gap:10px;max-width:340px;";
+            document.body.appendChild(cont);
+        }
+        const idFlot = "ops-flot-gen-" + Date.now() + "-" + Math.floor(Math.random() * 1000);
+        const div = document.createElement("div");
+        div.id = idFlot;
+        div.style.cssText = `background:#fff;border-left:5px solid ${colorHex};border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,0.25);padding:14px 16px;animation:opsFlotIn .25s ease;`;
+        div.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+                <div style="font-size:11px;font-weight:700;color:${colorHex};text-transform:uppercase;letter-spacing:.4px;">🔔 Operaciones</div>
+                <button onclick="document.getElementById('${idFlot}').remove()" style="background:none;border:none;cursor:pointer;color:#94a3b8;font-size:14px;line-height:1;">✕</button>
+            </div>
+            <div style="font-size:13px;color:#1e293b;margin-top:4px;">${opsEsc(mensaje)}</div>
+        `;
+        cont.appendChild(div);
+        setTimeout(() => { const el = document.getElementById(idFlot); if (el) el.remove(); }, 30000);
+    }
+
+
     // Escritura exacta al esquema ya usado por Flotilla: {tipo, para, mensaje, codigo, creadaEn}.
     // OJO: el campo de fecha se llama "creadaEn" (no "creadoEn") — la app móvil filtra por ese nombre exacto.
     async function opsNotificarFlotillaFolio(f, info) {
@@ -3551,13 +3601,35 @@
             </div>`;
         }
 
-        el.innerHTML = bloque("Críticas", "#b91c1c", "#fee2e2", criticas)
+        el.innerHTML = `
+            <div style="background:#fff;border-radius:12px;padding:14px 16px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+                <div style="font-size:11.5px;color:#64748b;max-width:520px;">🔔 Prueba el sistema de alertas: genera una notificación real que suena (~10s) y aparece como ventana flotante en <b>todas</b> las sesiones de Operaciones abiertas ahora mismo.</div>
+                <button onclick="opsProbarAlerta()" style="background:linear-gradient(135deg,#8B4FD6,#6d28d9);border:none;color:#fff;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700;white-space:nowrap;">🔔 Probar alerta</button>
+            </div>`
+            + bloque("Críticas", "#b91c1c", "#fee2e2", criticas)
             + bloque("Pendientes", "#b45309", "#fef3c7", pendientes)
             + bloque("Preventivas", "#854d0e", "#fef9c3", preventivas)
             + bloque("Información", "#0B5FFF", "#e0e7ff", info)
             + (!criticas.length && !pendientes.length && !preventivas.length && !info.length
                 ? '<div style="background:#fff;border-radius:12px;padding:24px;text-align:center;color:#94a3b8;font-size:12.5px;">Sin alertas activas — todo en orden.</div>' : "");
     }
+
+    // ── Genera una notificación de PRUEBA real (misma colección ops_notificaciones que
+    // usa "solicitud lista para surtir"), para que Glen vea la alarma + ventana flotante
+    // funcionando de punta a punta. Se marca leida:true de inmediato así no se acumula
+    // como pendiente real en el sistema. ──
+    window.opsProbarAlerta = async function () {
+        const { db, fs } = await opsGetFB();
+        const ref = await fs.addDoc(fs.collection(db, COL_NOTIFICACIONES), {
+            tipo: "prueba", esPrueba: true,
+            mensaje: `Notificación de prueba generada por ${opsNombreActual()} — así se ve una alerta real.`,
+            leida: false, fecha: opsFechaHora(),
+        });
+        // Se marca leída casi de inmediato para no dejar basura acumulada en la colección real
+        // de notificaciones — el listener ya alcanzó a dispararse con leida:false antes de esto.
+        setTimeout(() => { fs.updateDoc(ref, { leida: true }).catch(() => {}); }, 2000);
+        window.mostrarPush ? mostrarPush("Operaciones", "Alerta de prueba enviada — deberías verla y escucharla en unos segundos.", "🔔") : null;
+    };
 
     // ═══════════════════════ TAB: MOVIMIENTOS ═══════════════════════
     let filtroMovRango = "todos";
