@@ -684,7 +684,24 @@
         return "consulta";
     }
 
+    // Permisos derivados del puesto REAL asignado al usuario en el módulo de Técnicos/Personas
+    // (ops_tecnicos.puestoId → ops_puestos.permisos), haciendo match por correo con la sesión
+    // actual. Esto es lo que faltaba: antes el catálogo de puestos existía pero nunca se
+    // consultaba para decidir permisos de login — solo la lista fija OPS_ADMINS/Almacén.
+    function opsPermisosPorPuestoDeCorreo(email) {
+        if (!email) return [];
+        const correo = String(email).toLowerCase().trim();
+        const tec = cacheTec.find(t => t.estatus === "activo" && (t.correo || "").toLowerCase().trim() === correo);
+        if (!tec || !tec.puestoId) return [];
+        // Si cachePuestos aún no cargó (carrera de timing), se cae a PUESTOS_SEED emparejando
+        // por nombre de puesto (PUESTOS_SEED no tiene id porque los ids los asigna Firestore).
+        const puesto = (cachePuestos.length ? cachePuestos : PUESTOS_SEED)
+            .find(p => (p.id && p.id === tec.puestoId) || p.nombre === tec.puesto);
+        return puesto ? (puesto.permisos || []) : [];
+    }
+
     function opsPermisosActuales() {
+        const email = opsUsuarioActual();
         const rolLegado = opsRolActual();
         // "administrador" cubre tanto esAdminTotal (admin global del portal) como los
         // OPS_ADMINS (administradores solo de este departamento) — opsRolActual() ya
@@ -692,8 +709,10 @@
         if (rolLegado === "administrador") {
             return PUESTOS_SEED.flatMap(p => p.permisos).concat(["admin_operaciones"]); // acceso total
         }
-        if (rolLegado === "almacen") return ["gestionar_herramientas", "autorizar_material", "solicitar_material"];
-        return ["consulta"];
+        const basePorRolLegado = rolLegado === "almacen" ? ["gestionar_herramientas", "autorizar_material", "solicitar_material"] : [];
+        // Unión: respaldo legado (Almacén) + puesto real asignado al correo actual. Así cualquier
+        // usuario con un puesto que incluya el permiso lo tiene, sin depender de listas fijas en código.
+        return [...new Set([...basePorRolLegado, ...opsPermisosPorPuestoDeCorreo(email), "consulta"])];
     }
 
     function opsPuedeHacer(accion) {
