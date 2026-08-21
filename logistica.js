@@ -92,12 +92,14 @@
   // ── Estado del módulo ──
   var estado = {
     pedidos: [],       // surtidos activos con destinoTipo === 'entrega_chihuahua'
+    recolecciones: [], // recolecciones_locales pendientes (ver sección "Recolección Local")
     estaciones: {},    // { estacionId: {..., id} } — catálogo indexado por id (caché de sesión)
     cargando: true,
     pinEstacionId: null,
     pinOnGuardado: null, // callback opcional(lat,lng) — para módulos externos (ej. Ventas) que llaman a __logAbrirPin
     mapaPin: null,     // instancia Leaflet del modal de pin
-    markerPin: null
+    markerPin: null,
+    evidenciaArchivo: null // {tipo, nombre, data} temporal mientras se llena el formulario de recolección
   };
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -139,7 +141,25 @@
       + '.log-btn{padding:11px 20px;border:none;border-radius:11px;font-weight:800;font-size:13px;cursor:pointer;}'
       + '.log-btn-sec{background:#f1f5f9;color:#475569;}'
       + '.log-btn-ok{background:linear-gradient(135deg,#0d9488,#0f766e);color:#fff;}'
-      + '.log-btn-ok:disabled{opacity:.5;cursor:not-allowed;}';
+      + '.log-btn-ok:disabled{opacity:.5;cursor:not-allowed;}'
+      + '.log-nueva-btn{background:rgba(255,255,255,.22);border:1px solid rgba(255,255,255,.4);color:#fff;border-radius:9px;padding:7px 13px;font-size:12px;font-weight:800;cursor:pointer;margin-right:8px;}'
+      + '.log-recol-item{border-left:4px solid #7c3aed;}'
+      + '.log-recol-item .tag{display:inline-block;background:#ede9fe;color:#5b21b6;font-size:10px;font-weight:800;border-radius:6px;padding:2px 7px;margin-bottom:3px;}'
+      + '.log-prio{font-size:10px;font-weight:800;border-radius:999px;padding:4px 9px;white-space:nowrap;}'
+      + '.log-prio-urgente{background:#fee2e2;color:#991b1b;}'
+      + '.log-prio-alta{background:#ffedd5;color:#9a3412;}'
+      + '.log-prio-normal{background:#fef9c3;color:#854d0e;}'
+      + '.log-prio-programado{background:#dcfce7;color:#166534;}'
+      + '.log-form-row{margin-bottom:14px;}'
+      + '.log-form-row label{display:block;font-size:11.5px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px;}'
+      + '.log-form-row input[type=text], .log-form-row input[type=url], .log-form-row textarea, .log-form-row select{width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:13.5px;font-family:inherit;box-sizing:border-box;}'
+      + '.log-form-row textarea{resize:vertical;min-height:56px;}'
+      + '.log-form-2col{display:grid;grid-template-columns:1fr 1fr;gap:14px;}'
+      + '.log-evid-tabs{display:flex;gap:8px;margin-bottom:8px;}'
+      + '.log-evid-tab{flex:1;text-align:center;padding:8px;border:1px solid #cbd5e1;border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;color:#475569;background:#f8fafc;}'
+      + '.log-evid-tab.active{background:#0f766e;border-color:#0f766e;color:#fff;}'
+      + '.log-evid-preview{font-size:11.5px;color:#059669;margin-top:6px;font-weight:700;}'
+      + '.log-required{color:#dc2626;}';
     var s = document.createElement('style');
     s.id = 'log-styles';
     s.textContent = css;
@@ -156,11 +176,16 @@
         fs.collection(window.db, 'surtidos'),
         fs.where('destinoTipo', '==', 'entrega_chihuahua')
       );
+      var qRecolecciones = fs.query(
+        fs.collection(window.db, 'recolecciones_locales'),
+        fs.where('estado', '==', 'pendiente')
+      );
       return Promise.all([
         fs.getDocs(qPedidos),
-        fs.getDocs(fs.collection(window.db, 'estaciones_servicio'))
+        fs.getDocs(fs.collection(window.db, 'estaciones_servicio')),
+        fs.getDocs(qRecolecciones)
       ]).then(function (r) {
-        var snapPedidos = r[0], snapEst = r[1];
+        var snapPedidos = r[0], snapEst = r[1], snapRecol = r[2];
         var ESTADOS_CERRADOS = ['finalizado', 'cancelado', 'entregado'];
         estado.pedidos = snapPedidos.docs
           .map(function (d) { return Object.assign({ id: d.id }, d.data()); })
@@ -168,6 +193,7 @@
         var idx = {};
         snapEst.forEach(function (d) { idx[d.id] = Object.assign({ id: d.id }, d.data()); });
         estado.estaciones = idx;
+        estado.recolecciones = snapRecol.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
         estado.cargando = false;
       });
     }).catch(function (err) {
@@ -202,17 +228,36 @@
       else { sinUbicacion++; }
     });
 
+    var totalRecol = estado.recolecciones.length;
+
     var resumen = '<div class="log-resumen">'
       + '<div class="log-chip"><b>' + total + '</b> pedidos en cola</div>'
       + '<div class="log-chip"><b>' + conUbicacion + '</b> listos para ruta (con ubicación)</div>'
       + (sinUbicacion ? '<div class="log-chip warn"><b>' + sinUbicacion + '</b> necesitan ubicación</div>' : '')
       + (sinCatalogo ? '<div class="log-chip warn"><b>' + sinCatalogo + '</b> con dirección manual (fuera del catálogo)</div>' : '')
+      + (totalRecol ? '<div class="log-chip" style="background:#f5f3ff;border-color:#ddd6fe;color:#5b21b6;"><b>' + totalRecol + '</b> recolecciones locales pendientes</div>' : '')
       + '</div>';
 
-    if (!total) {
-      body.innerHTML = resumen + '<div class="log-empty">No hay pedidos pendientes con destino "Entrega en Chihuahua (estación)".</div>';
+    if (!total && !totalRecol) {
+      body.innerHTML = resumen + '<div class="log-empty">No hay pedidos ni recolecciones pendientes.</div>';
       return;
     }
+
+    var html = resumen;
+
+    if (totalRecol) {
+      html += '<div class="log-zona"><div class="log-zona-tit">📦 Recolecciones locales · ' + totalRecol + '</div>';
+      var ORDEN_PRIO = { urgente: 0, alta: 1, normal: 2, programado: 3 };
+      var recolOrdenadas = estado.recolecciones.slice().sort(function (a, b) {
+        return (ORDEN_PRIO[a.prioridad] != null ? ORDEN_PRIO[a.prioridad] : 9) - (ORDEN_PRIO[b.prioridad] != null ? ORDEN_PRIO[b.prioridad] : 9);
+      });
+      recolOrdenadas.forEach(function (r) {
+        html += renderItemRecoleccion(r);
+      });
+      html += '</div>';
+    }
+
+    if (!total) { body.innerHTML = html; return; }
 
     var zonasOrden = Object.keys(grupos).sort(function (a, b) {
       if (a === 'Sin zona asignada') return 1;
@@ -253,6 +298,51 @@
     body.innerHTML = html;
   }
 
+  var PRIO_LABEL = { urgente: '🔴 Urgente', alta: '🟠 Alta', normal: '🟡 Normal', programado: '🟢 Programado' };
+
+  function renderItemRecoleccion(r) {
+    var prioClase = 'log-prio-' + (r.prioridad || 'normal');
+    var prioTxt = PRIO_LABEL[r.prioridad] || '🟡 Normal';
+    var evid = '';
+    if (r.evidenciaTipo === 'liga' && r.evidenciaData) {
+      evid = '<a href="' + esc(r.evidenciaData) + '" target="_blank" rel="noopener" style="font-size:11.5px;color:#0e7490;font-weight:700;">🔗 Ver liga</a>';
+    } else if ((r.evidenciaTipo === 'imagen' || r.evidenciaTipo === 'documento') && r.evidenciaData) {
+      evid = '<a href="' + r.evidenciaData + '" download="' + esc(r.evidenciaNombre || 'evidencia') + '" style="font-size:11.5px;color:#0e7490;font-weight:700;">📎 ' + (r.evidenciaTipo === 'imagen' ? 'Ver imagen' : 'Ver documento') + '</a>';
+    }
+    return '<div class="log-item log-recol-item">'
+      + '<div class="info">'
+      +   '<div class="tag">RECOLECCIÓN LOCAL</div>'
+      +   '<div class="est">' + esc(r.lugar || '—') + '</div>'
+      +   '<div class="dir">' + esc(r.direccion || '—') + '</div>'
+      +   '<div class="dir">📦 ' + esc(r.materialARecoger || '—') + ' · 🕑 ' + esc(r.horario || '—') + '</div>'
+      +   (r.dirigirseCon ? '<div class="dir">💁 ' + esc(r.dirigirseCon) + '</div>' : '')
+      +   (r.comentario ? '<div class="dir">💬 ' + esc(r.comentario) + '</div>' : '')
+      +   (evid ? '<div style="margin-top:4px;">' + evid + '</div>' : '')
+      + '</div>'
+      + '<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">'
+      +   '<span class="log-prio ' + prioClase + '">' + prioTxt + '</span>'
+      +   '<button type="button" class="log-badge ok" style="border:none;cursor:pointer;" onclick="window.__logCompletarRecoleccion(\'' + r.id + '\')">✔ Marcar completada</button>'
+      + '</div>'
+      + '</div>';
+  }
+
+  window.__logCompletarRecoleccion = function (id) {
+    cargarFirestore().then(function (fs) {
+      return fs.updateDoc(fs.doc(window.db, 'recolecciones_locales', id), {
+        estado: 'completada',
+        completadoPor: (window.auth && window.auth.currentUser && window.auth.currentUser.email) || '',
+        completadoEn: new Date().toISOString()
+      });
+    }).then(function () {
+      if (window.mostrarPush) window.mostrarPush('✔ Recolección marcada como completada', '', '✅');
+      estado.recolecciones = estado.recolecciones.filter(function (r) { return r.id !== id; });
+      render();
+    }).catch(function (err) {
+      console.error('[logistica] error completando recolección:', err);
+      alert('No se pudo marcar como completada: ' + err.message);
+    });
+  };
+
   // =====================================================================
   //  MODAL PRINCIPAL — cola de logística
   // =====================================================================
@@ -264,7 +354,10 @@
         '<div class="log-card">'
       +   '<div class="log-head">'
       +     '<h3>🚚 Logística — Cola de entregas (Chihuahua)</h3>'
-      +     '<button class="log-x" onclick="window.__logCerrarCola()">&times;</button>'
+      +     '<div style="display:flex;align-items:center;">'
+      +       '<button class="log-nueva-btn" onclick="window.__logAbrirNuevaRecoleccion()">+ Nueva recolección local</button>'
+      +       '<button class="log-x" onclick="window.__logCerrarCola()">&times;</button>'
+      +     '</div>'
       +   '</div>'
       +   '<div class="log-body" id="log-body-cola"></div>'
       + '</div>';
@@ -435,6 +528,188 @@
       console.error('[logistica] error guardando ubicación:', err);
       msg.style.color = '#dc2626';
       msg.textContent = 'No se pudo guardar. Revisa permisos de Firestore.';
+      btn.disabled = false;
+    });
+  };
+
+  // =====================================================================
+  //  FORMULARIO — Nueva recolección local (libre, sin depender del catálogo)
+  //  Cualquier persona con acceso al portal puede registrar una recolección:
+  //  lugar, dirección, horario, material, con quién y prioridad, más UNA
+  //  evidencia opcional (imagen, documento o liga). Se guarda en su propia
+  //  colección `recolecciones_locales` y aparece mezclada en esta misma cola.
+  // =====================================================================
+  var MAX_BYTES_ARCHIVO = 650 * 1024; // ~650KB crudo -> ~870KB en base64, deja margen bajo el límite de 1MB/doc de Firestore
+
+  function construirModalNuevaRecoleccion() {
+    if (document.getElementById('log-recol-modal')) return;
+    var wrap = document.createElement('div');
+    wrap.id = 'log-recol-modal';
+    wrap.style.cssText = 'position:fixed;inset:0;z-index:100070;display:none;align-items:center;justify-content:center;background:rgba(15,23,42,.6);';
+    wrap.innerHTML =
+        '<div class="log-card" style="width:640px;">'
+      +   '<div class="log-head" style="background:linear-gradient(135deg,#6d28d9,#7c3aed);">'
+      +     '<h3>📦 Nueva recolección local</h3>'
+      +     '<button class="log-x" onclick="window.__logCerrarNuevaRecoleccion()">&times;</button>'
+      +   '</div>'
+      +   '<div class="log-body">'
+      +     '<div class="log-form-2col">'
+      +       '<div class="log-form-row"><label>📍 Lugar <span class="log-required">*</span></label><input type="text" id="log-recol-lugar" placeholder="Ej. CIMAV"></div>'
+      +       '<div class="log-form-row"><label>🕑 Horario para recolección</label><input type="text" id="log-recol-horario" placeholder="Ej. 9:00am a 5pm aprox"></div>'
+      +     '</div>'
+      +     '<div class="log-form-row"><label>📌 Dirección <span class="log-required">*</span></label><input type="text" id="log-recol-direccion" placeholder="Dirección completa del lugar"></div>'
+      +     '<div class="log-form-2col">'
+      +       '<div class="log-form-row"><label>📍 Lugar para entregar el material</label><input type="text" id="log-recol-entrega" placeholder="Ej. Almacén Tecnocontrol"></div>'
+      +       '<div class="log-form-row"><label>Prioridad</label><select id="log-recol-prioridad">'
+      +         '<option value="urgente">🔴 Urgente</option>'
+      +         '<option value="alta">🟠 Alta</option>'
+      +         '<option value="normal" selected>🟡 Normal</option>'
+      +         '<option value="programado">🟢 Programado</option>'
+      +       '</select></div>'
+      +     '</div>'
+      +     '<div class="log-form-row"><label>📦 Material a recoger <span class="log-required">*</span></label><input type="text" id="log-recol-material" placeholder="Ej. 3 equipos de tierras físicas"></div>'
+      +     '<div class="log-form-row"><label>💁 Dirigirse con quién</label><input type="text" id="log-recol-quien" placeholder="Ej. En caseta, lo reciben con ACUSE"></div>'
+      +     '<div class="log-form-row"><label>Comentario</label><textarea id="log-recol-comentario" placeholder="Notas adicionales"></textarea></div>'
+      +     '<div class="log-form-row">'
+      +       '<label>Evidencia (opcional)</label>'
+      +       '<div class="log-evid-tabs">'
+      +         '<div class="log-evid-tab active" data-tipo="imagen" onclick="window.__logRecolCambiarTab(\'imagen\')">🖼️ Imagen</div>'
+      +         '<div class="log-evid-tab" data-tipo="documento" onclick="window.__logRecolCambiarTab(\'documento\')">📄 Documento</div>'
+      +         '<div class="log-evid-tab" data-tipo="liga" onclick="window.__logRecolCambiarTab(\'liga\')">🔗 Liga</div>'
+      +       '</div>'
+      +       '<div id="log-recol-evid-campo"></div>'
+      +       '<div class="log-evid-preview" id="log-recol-evid-preview"></div>'
+      +     '</div>'
+      +   '</div>'
+      +   '<div class="log-foot">'
+      +     '<span class="log-msg" id="log-recol-msg"></span>'
+      +     '<button class="log-btn log-btn-sec" onclick="window.__logCerrarNuevaRecoleccion()">Cancelar</button>'
+      +     '<button class="log-btn log-btn-ok" id="log-recol-guardar" onclick="window.__logGuardarRecoleccion()">Guardar recolección</button>'
+      +   '</div>'
+      + '</div>';
+    document.body.appendChild(wrap);
+  }
+
+  window.__logRecolCambiarTab = function (tipo) {
+    estado.evidenciaArchivo = null;
+    document.getElementById('log-recol-evid-preview').textContent = '';
+    var tabs = document.querySelectorAll('#log-recol-modal .log-evid-tab');
+    tabs.forEach(function (t) { t.classList.toggle('active', t.getAttribute('data-tipo') === tipo); });
+    var campo = document.getElementById('log-recol-evid-campo');
+    if (tipo === 'liga') {
+      campo.innerHTML = '<input type="url" id="log-recol-evid-liga" placeholder="https://…">';
+    } else {
+      var accept = tipo === 'imagen' ? 'image/*' : '.pdf,.doc,.docx,.xls,.xlsx';
+      campo.innerHTML = '<input type="file" id="log-recol-evid-file" accept="' + accept + '" onchange="window.__logRecolArchivoElegido(this,\'' + tipo + '\')">';
+    }
+  };
+
+  window.__logRecolArchivoElegido = function (input, tipo) {
+    var preview = document.getElementById('log-recol-evid-preview');
+    var file = input.files && input.files[0];
+    if (!file) { estado.evidenciaArchivo = null; preview.textContent = ''; return; }
+    if (file.size > MAX_BYTES_ARCHIVO) {
+      preview.style.color = '#dc2626';
+      preview.textContent = 'El archivo pesa ' + Math.round(file.size / 1024) + 'KB — el máximo es ' + Math.round(MAX_BYTES_ARCHIVO / 1024) + 'KB (límite de Firestore). Usa "Liga" para archivos más grandes (ej. Google Drive).';
+      input.value = '';
+      estado.evidenciaArchivo = null;
+      return;
+    }
+    var reader = new FileReader();
+    reader.onload = function () {
+      estado.evidenciaArchivo = { tipo: tipo, nombre: file.name, data: reader.result };
+      preview.style.color = '#059669';
+      preview.textContent = '✔ ' + file.name + ' (' + Math.round(file.size / 1024) + 'KB) listo para subir.';
+    };
+    reader.onerror = function () {
+      preview.style.color = '#dc2626';
+      preview.textContent = 'No se pudo leer el archivo.';
+    };
+    reader.readAsDataURL(file);
+  };
+
+  window.__logAbrirNuevaRecoleccion = function () {
+    injectStyles();
+    construirModalNuevaRecoleccion();
+    ['log-recol-lugar', 'log-recol-horario', 'log-recol-direccion', 'log-recol-entrega', 'log-recol-material', 'log-recol-quien', 'log-recol-comentario'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+    document.getElementById('log-recol-prioridad').value = 'normal';
+    document.getElementById('log-recol-msg').textContent = '';
+    estado.evidenciaArchivo = null;
+    window.__logRecolCambiarTab('imagen');
+    document.getElementById('log-recol-modal').style.display = 'flex';
+  };
+
+  window.__logCerrarNuevaRecoleccion = function () {
+    var m = document.getElementById('log-recol-modal');
+    if (m) m.style.display = 'none';
+    estado.evidenciaArchivo = null;
+  };
+
+  window.__logGuardarRecoleccion = function () {
+    var lugar = (document.getElementById('log-recol-lugar').value || '').trim();
+    var direccion = (document.getElementById('log-recol-direccion').value || '').trim();
+    var material = (document.getElementById('log-recol-material').value || '').trim();
+    var msg = document.getElementById('log-recol-msg');
+
+    if (!lugar || !direccion || !material) {
+      msg.style.color = '#dc2626';
+      msg.textContent = 'Lugar, dirección y material a recoger son obligatorios.';
+      return;
+    }
+
+    var tabActiva = document.querySelector('#log-recol-modal .log-evid-tab.active');
+    var tipoEvid = tabActiva ? tabActiva.getAttribute('data-tipo') : null;
+    var evidenciaTipo = null, evidenciaData = null, evidenciaNombre = null;
+
+    if (tipoEvid === 'liga') {
+      var liga = (document.getElementById('log-recol-evid-liga').value || '').trim();
+      if (liga) { evidenciaTipo = 'liga'; evidenciaData = liga; }
+    } else if (estado.evidenciaArchivo) {
+      evidenciaTipo = estado.evidenciaArchivo.tipo;
+      evidenciaData = estado.evidenciaArchivo.data;
+      evidenciaNombre = estado.evidenciaArchivo.nombre;
+    }
+
+    var data = {
+      lugar: lugar,
+      direccion: direccion,
+      horario: (document.getElementById('log-recol-horario').value || '').trim(),
+      lugarEntrega: (document.getElementById('log-recol-entrega').value || '').trim(),
+      materialARecoger: material,
+      dirigirseCon: (document.getElementById('log-recol-quien').value || '').trim(),
+      prioridad: document.getElementById('log-recol-prioridad').value,
+      comentario: (document.getElementById('log-recol-comentario').value || '').trim(),
+      evidenciaTipo: evidenciaTipo,
+      evidenciaData: evidenciaData,
+      evidenciaNombre: evidenciaNombre,
+      estado: 'pendiente',
+      creadoPor: (window.auth && window.auth.currentUser && window.auth.currentUser.email) || '',
+      creadoEn: new Date().toISOString()
+    };
+
+    var btn = document.getElementById('log-recol-guardar');
+    btn.disabled = true;
+    msg.style.color = '#0e7490';
+    msg.textContent = 'Guardando…';
+
+    cargarFirestore().then(function (fs) {
+      return fs.addDoc(fs.collection(window.db, 'recolecciones_locales'), data);
+    }).then(function (ref) {
+      msg.style.color = '#059669';
+      msg.textContent = '✔ Recolección registrada.';
+      if (window.mostrarPush) window.mostrarPush('📦 Recolección local registrada', lugar, '✅');
+      estado.recolecciones.push(Object.assign({ id: ref.id }, data));
+      setTimeout(function () {
+        window.__logCerrarNuevaRecoleccion();
+        render();
+      }, 500);
+    }).catch(function (err) {
+      console.error('[logistica] error guardando recolección:', err);
+      msg.style.color = '#dc2626';
+      msg.textContent = 'No se pudo guardar: ' + err.message;
       btn.disabled = false;
     });
   };
