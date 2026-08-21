@@ -107,19 +107,24 @@
 /*  CONFIG (igual que config/surtido en Firestore)  */
 const SLA={urgente:15,muy_alta:20,alta:30,normal:60,baja:120};
 const SEMAFORO={amarillo:20,naranja:30};
-const COLORS={azul:'#1473E6',verde:'#12A150',teal:'#0FB5A6',amarillo:'#D99000',naranja:'#F26B21',rojo:'#E23B3B',morado:'#8B4FD6',gris:'#7C8CA1'};
-const GRAD={azul:['#0B57C7','#3B93FF'],verde:['#0E8A45','#2ED47E'],teal:['#0C8C82','#22D3C4'],amarillo:['#B8790A','#F0B429'],naranja:['#D9531A','#FF8A4C'],rojo:['#C62B2B','#FF6B6B'],morado:['#6E33C0','#B07BEA'],gris:['#5C6B7E','#93A3B5']};
+const COLORS={azul:'#1473E6',verde:'#12A150',teal:'#0FB5A6',amarillo:'#D99000',naranja:'#F26B21',rojo:'#E23B3B',morado:'#8B4FD6',gris:'#7C8CA1',rosa:'#DB2777'};
+const GRAD={azul:['#0B57C7','#3B93FF'],verde:['#0E8A45','#2ED47E'],teal:['#0C8C82','#22D3C4'],amarillo:['#B8790A','#F0B429'],naranja:['#D9531A','#FF8A4C'],rojo:['#C62B2B','#FF6B6B'],morado:['#6E33C0','#B07BEA'],gris:['#5C6B7E','#93A3B5'],rosa:['#BE185D','#F472B6']};
 const PRIO_COLOR={urgente:COLORS.rojo,muy_alta:COLORS.naranja,alta:COLORS.amarillo,normal:COLORS.azul,baja:COLORS.gris};
-const PRIO_RANK={urgente:5,muy_alta:4,alta:3,normal:2,baja:1};
-const DESTINO_LABEL={recoger_oficinas:'Recoge en oficinas',cliente_recoge:'Cliente recoge',vendedor_recoge:'Vendedor recoge en almac\u00e9n',queda_almacen:'Se queda en almac\u00e9n',paqueteria:'Por paqueter\u00eda',entrega_chihuahua:'Entrega en Chihuahua',traslado_almacenes:'Traslado entre almacenes'};
-const DESTINO_COLOR={recoger_oficinas:COLORS.azul,cliente_recoge:COLORS.verde,vendedor_recoge:COLORS.teal,queda_almacen:COLORS.gris,paqueteria:COLORS.naranja,entrega_chihuahua:COLORS.morado,traslado_almacenes:COLORS.amarillo};
+// 'programado' es exclusivo de Recolecciones locales (logistica.js) — se agrega aquí solo para el orden de la cola.
+const PRIO_RANK={urgente:5,muy_alta:4,alta:3,normal:2,baja:1,programado:1};
+const DESTINO_LABEL={recoger_oficinas:'Recoge en oficinas',cliente_recoge:'Cliente recoge',vendedor_recoge:'Vendedor recoge en almac\u00e9n',queda_almacen:'Se queda en almac\u00e9n',paqueteria:'Por paqueter\u00eda',entrega_chihuahua:'Entrega en Chihuahua',traslado_almacenes:'Traslado entre almacenes',entrega_tecnico:'Entrega directa a t\u00e9cnico'};
+const DESTINO_COLOR={recoger_oficinas:COLORS.azul,cliente_recoge:COLORS.verde,vendedor_recoge:COLORS.teal,queda_almacen:COLORS.gris,paqueteria:COLORS.naranja,entrega_chihuahua:COLORS.morado,traslado_almacenes:COLORS.amarillo,entrega_tecnico:COLORS.teal};
 function destinoResumen(p){
   if(p.destinoTipo==='paqueteria') return [p.destinoPaqueteria,(p.destinoGuia?('gu\u00eda '+p.destinoGuia):'')].filter(Boolean).join(' \u00b7 ');
   if(p.destinoTipo==='entrega_chihuahua') return p.destinoDireccion||'';
   if(p.destinoTipo==='traslado_almacenes') return (p.destinoAlmacenOrigen||'\u2014')+' \u2192 '+(p.destinoAlmacenDestino||'\u2014');
+  if(p.destinoTipo==='entrega_tecnico') return (p.destinoAlmacenOrigen||'\u2014')+' \u2192 '+(p.tecnicoNombre||p.solicitante||'\u2014');
   return '';
 }
 function destinoBadgeHtml(p){
+  if(p._recoleccion){
+    return `<span class="cdest" style="background:${COLORS.rosa}22;color:${COLORS.rosa};border-color:${COLORS.rosa}66">\u{1F3ED} Entregar en: ${p.lugarEntrega||'\u2014'}</span>`;
+  }
   if(!p.destinoTipo) return '';
   const c=DESTINO_COLOR[p.destinoTipo]||COLORS.gris, lbl=DESTINO_LABEL[p.destinoTipo]||p.destinoTipo, sub=destinoResumen(p);
   return `<span class="cdest" style="background:${c}22;color:${c};border-color:${c}66">${lbl}${sub?(' \u00b7 '+sub):''}</span>`;
@@ -127,11 +132,18 @@ function destinoBadgeHtml(p){
 const NEXT={esperando_autorizacion:'pendiente'};
 const now=()=>Date.now(), minsAgo=m=>now()-m*60000;
 
-/*  DATOS EN VIVO (poblado por onSnapshot de la colección `surtidos`)  */
+/*  DATOS EN VIVO (poblado por onSnapshot de las colecciones `surtidos` y, mezcladas
+    en el panel de Material con etiqueta propia, `recolecciones_locales`)  */
 let pedidos=[];
+let recolecciones=[]; // recolecciones locales activas (pendiente/recogido) — ver logistica.js
 
 /*  COLOR: estado + semáforo de tiempo  */
 function effColor(p){
+  if(p._recoleccion){
+    return p.estado==='recogido'
+      ? {k:'rosa',label:'\u{1F69A} EN CAMINO A ENTREGAR'}
+      : {k:'rosa',label:'\u{1F4E6} POR RECOGER \u00b7 RECOLECCI\u00d3N'};
+  }
   if(p.estado==='esperando_autorizacion') return {k:'morado',label:'ESPERANDO AUT.'};
   if(p.estado==='entregado') return {k:'gris',label:'ENTREGADO'};
   if(p.estado==='parcial') return {k:'naranja',label:'ENTREGA PARCIAL'};
@@ -189,7 +201,9 @@ function signature(list){return list.map(p=>p.folio+':'+effColor(p).k+':'+p.esta
 
 function render(force){
   const ventas   = ordenar(pedidos.filter(p=>p.tipo!=='material'));
-  const material = ordenar(pedidos.filter(p=>p.tipo==='material'));
+  // Recolecciones locales se mezclan en el panel de Material, con su propia
+  // etiqueta/color (rosa) — son "pedidos para recoger", no de venta.
+  const material = ordenar([...pedidos.filter(p=>p.tipo==='material'), ...recolecciones]);
   renderPanel('v', ventas, force);
   renderPanel('m', material, force);
   updateChips();
@@ -227,18 +241,21 @@ function buildPanel(tk, list){
     const destinoTxt = [hero.area, (hero.destino||hero.uso)].filter(Boolean).join(' — ');
     const destinoMeta = (esMatPanel && destinoTxt) ? `<div class="meta"><span class="k">ÁREA / DESTINO</span><span class="v" style="font-size:15px">${destinoTxt}</span></div>` : '';
     const destinoTipoMeta = hero.destinoTipo ? `<div class="meta"><span class="k">\u00bfA D\u00d3NDE VA?</span><span class="v" style="font-size:15px">${DESTINO_LABEL[hero.destinoTipo]||hero.destinoTipo}${destinoResumen(hero)?(' \u00b7 '+destinoResumen(hero)):''}</span></div>` : '';
+    const entregaRecolMeta = hero._recoleccion ? `<div class="meta"><span class="k">\u{1F3ED} ENTREGAR EN</span><span class="v" style="font-size:15px">${hero.lugarEntrega||'\u2014'}</span></div>` : '';
+    const eyebrowTxt = hero._recoleccion ? '\u{1F69A} RECOLECCI\u00d3N EXTERNA · PEDIDO PARA RECOGER' : (esMatPanel?'SOLICITUD DE MATERIAL · OPERACIONES':'PEDIDO DE VENTAS') + ' · SIGUIENTE A SURTIR';
     heroEl.innerHTML=`
-      <div class="eyebrow">${esMatPanel?'SOLICITUD DE MATERIAL · OPERACIONES':'PEDIDO DE VENTAS'} · SIGUIENTE A SURTIR</div>
+      <div class="eyebrow"${hero._recoleccion?' style="color:#fff;font-weight:900;"':''}>${eyebrowTxt}</div>
       <div class="htop">
         <div class="hid"><div class="folio num">${hero.folio}</div><div class="client">${hero.cliente}</div></div>
         <div class="hpick"><div class="ph"><span id="${tk}PhTxt" data-base="${baseTxt}">${phTxt}</span></div><div class="hpick-view">${pagesHtml}</div>${dots}</div>
       </div>
       <div class="metaRow">
         <div class="meta"><span class="k"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>ESPERANDO</span><span class="v timer num mono" id="${tk}HTimer">${fmt(now()-hero.createdAt)}</span></div>
-        <div class="meta"><span class="k"><svg class="i" viewBox="0 0 24 24"><path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="7" r="4"/></svg>${esMatPanel?'SOLICITANTE':'VENDEDOR'}</span><span class="v">${persona}</span></div>
+        <div class="meta"><span class="k"><svg class="i" viewBox="0 0 24 24"><path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="7" r="4"/></svg>${hero._recoleccion?'RECOGER EN':(esMatPanel?'SOLICITANTE':'VENDEDOR')}</span><span class="v">${persona}</span></div>
         ${vencMeta}
         ${destinoMeta}
         ${destinoTipoMeta}
+        ${entregaRecolMeta}
         <div class="meta"><span class="k">PRIORIDAD</span><span class="prio">${hero.prioridad.replace('_',' ').toUpperCase()}</span></div>
         <div class="meta" style="margin-left:auto;align-items:flex-end"><span class="badge">${ec.label}</span></div>
       </div>`;
@@ -265,10 +282,12 @@ function cardHtml(p, isNew){
   const first=prods[0]||{cant:'',desc:'\u2014'}, extra=prods.length-1;
   const items=`${first.cant}\u00d7 ${first.desc||''}${extra>0?'  +'+extra+' m\u00e1s':''}`;
   const vb = v ? `<span class="cvenc" style="background:${v.color}">${v.txt}</span>` : '';
+  const ribbon = p._recoleccion ? `<div style="background:${COLORS.rosa};color:#fff;font-size:10.5px;font-weight:900;letter-spacing:.6px;border-radius:6px;padding:2px 8px;display:inline-block;margin-bottom:3px;">\u{1F69A} RECOLECCI\u00d3N EXTERNA</div>` : '';
   return `<div class="card ${isNew?'is-new':''}" data-folio="${p.folio}">
       <div class="bar" style="background:${c}"></div>
       <div class="cfolio num" style="color:${c}">${p.folio}</div>
       <div class="cmid">
+        ${ribbon}
         <div class="cclient">${p.cliente}</div>
         <div class="citems">${items}</div>
         <div class="cstate" style="color:${c}"><span class="sdot" style="background:${c}"></span>${ec.label} · ${persona} ${vb}</div>
@@ -409,6 +428,7 @@ legend.innerHTML=[['Nuevo','azul'],['En preparación','verde'],['Listo','teal'],
 
 // ── Hooks para el módulo de datos en vivo (script type=module) ──
 window.__setPedidos = function(arr){ pedidos = Array.isArray(arr)?arr:[]; render(true); };
+window.__setRecolecciones = function(arr){ recolecciones = Array.isArray(arr)?arr:[]; render(true); };
 window.__almRender  = function(){ render(true); };
 
 // ── Reloj EN VIVO ──
@@ -620,16 +640,53 @@ function iniciarEscucha(){
   });
 }
 
+// ── Recolecciones locales (logistica.js) — SOLO LECTURA, igual que `surtidos`.
+//   Se muestran mezcladas en el panel de Material con etiqueta/color propios
+//   (rosa) y "folio" sintético REC-xxxxx, ya que no son pedidos de venta ni
+//   solicitudes de material: son un pedido para RECOGER. Se marcan como
+//   recogidas/entregadas desde el portal (logistica.js), no desde esta TV.
+let escuchandoRecol = false;
+function iniciarEscuchaRecolecciones(){
+  if(escuchandoRecol) return; escuchandoRecol = true;
+  onSnapshot(collection(db,'recolecciones_locales'), (snap)=>{
+    const lista = [];
+    snap.forEach(docu=>{
+      const d = docu.data() || {};
+      const est = d.estado || 'pendiente';
+      if(est !== 'pendiente' && est !== 'recogido') return; // ya entregada o cancelada: fuera del tablero
+      lista.push({
+        id: docu.id,
+        _recoleccion: true,
+        folio: 'REC-'+docu.id.slice(-5).toUpperCase(),
+        cliente: d.lugar || '\u2014',
+        solicitante: d.lugar || '\u2014',
+        lugarEntrega: d.lugarEntrega || '',
+        prioridad: d.prioridad || 'normal',
+        estado: est,
+        createdAt: toMs(d.creadoEn),
+        tipo: 'recoleccion',
+        fechaEntrega: '',
+        productos: [{ clave:'', cant:1, desc: d.materialARecoger || 'Material a recoger' }]
+      });
+    });
+    if(window.__setRecolecciones) window.__setRecolecciones(lista);
+  }, (err)=>{
+    // No interrumpe el tablero de surtidos si esta colección aún no tiene permiso de lectura pública.
+    console.error('[TV recolecciones_locales] onSnapshot error:', err);
+  });
+}
+
 // Sesi\u00f3n an\u00f3nima para poder leer aun sin usuario logueado.
-onAuthStateChanged(auth, (user)=>{ if(user) iniciarEscucha(); });
+onAuthStateChanged(auth, (user)=>{ if(user){ iniciarEscucha(); iniciarEscuchaRecolecciones(); } });
 signInAnonymously(auth).catch((err)=>{
   console.error('[TV auth] signInAnonymously:', err);
   if(err && err.code === 'auth/operation-not-allowed'){
     avisoTV('Falta activar el acceso an\u00f3nimo',
-      'En Firebase \u2192 Authentication \u2192 Sign-in method, activa el proveedor <b>An\u00f3nimo</b>. (Alternativa: permitir lectura p\u00fablica de <b>surtidos</b> en las Reglas.)');
+      'En Firebase \u2192 Authentication \u2192 Sign-in method, activa el proveedor <b>An\u00f3nimo</b>. (Alternativa: permitir lectura p\u00fablica de <b>surtidos</b> y <b>recolecciones_locales</b> en las Reglas.)');
   }
   // Aun as\u00ed intenta leer, por si las Reglas permiten lectura p\u00fablica:
   iniciarEscucha();
+  iniciarEscuchaRecolecciones();
 });
 </script>
 </body>
