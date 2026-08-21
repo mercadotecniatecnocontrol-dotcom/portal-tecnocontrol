@@ -3005,7 +3005,7 @@ const EMAIL_AREA_MAP = {
 // módulo correspondiente (p.ej. flotilla-reglas.js para Flotilla).
 window.EMAIL_ACCESO_EXTRA = window.EMAIL_ACCESO_EXTRA || {};
 const EMAIL_ACCESO_EXTRA = {
-    'miguel@tecnocontrol.com.mx': ['Flotilla'], // Operación con vista de solo lectura a Flotilla
+    'miguel@tecnocontrol.com.mx': ['Flotilla', 'Operaciones'], // vista de solo lectura a Flotilla y Operaciones (por si Firestore trae otro departamento)
 };
 window.EMAIL_ACCESO_EXTRA = EMAIL_ACCESO_EXTRA;
 function tieneAccesoExtra(email, area){
