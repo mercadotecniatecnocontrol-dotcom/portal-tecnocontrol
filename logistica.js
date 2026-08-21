@@ -96,6 +96,7 @@
     estaciones: {},    // { estacionId: {..., id} } — catálogo indexado por id (caché de sesión)
     cargando: true,
     pinEstacionId: null,
+    pinColeccion: 'estaciones_servicio', // 'estaciones_servicio' o 'recolecciones_locales' — a qué colección se guarda el pin actual
     pinOnGuardado: null, // callback opcional(lat,lng) — para módulos externos (ej. Ventas) que llaman a __logAbrirPin
     mapaPin: null,     // instancia Leaflet del modal de pin
     markerPin: null,
@@ -309,6 +310,9 @@
     } else if ((r.evidenciaTipo === 'imagen' || r.evidenciaTipo === 'documento') && r.evidenciaData) {
       evid = '<a href="' + r.evidenciaData + '" download="' + esc(r.evidenciaNombre || 'evidencia') + '" style="font-size:11.5px;color:#0e7490;font-weight:700;">📎 ' + (r.evidenciaTipo === 'imagen' ? 'Ver imagen' : 'Ver documento') + '</a>';
     }
+    var badgeUbic = (r.lat != null && r.lng != null)
+      ? '<span class="log-badge ok">📍 Ubicada</span>'
+      : '<button type="button" class="log-badge falta" onclick="window.__logAbrirPin(\'' + r.id + '\', null, \'recolecciones_locales\')">📍 Asignar ubicación</button>';
     return '<div class="log-item log-recol-item">'
       + '<div class="info">'
       +   '<div class="tag">RECOLECCIÓN LOCAL</div>'
@@ -321,6 +325,7 @@
       + '</div>'
       + '<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">'
       +   '<span class="log-prio ' + prioClase + '">' + prioTxt + '</span>'
+      +   badgeUbic
       +   '<button type="button" class="log-badge ok" style="border:none;cursor:pointer;" onclick="window.__logCompletarRecoleccion(\'' + r.id + '\')">✔ Marcar completada</button>'
       + '</div>'
       + '</div>';
@@ -355,6 +360,7 @@
       +   '<div class="log-head">'
       +     '<h3>🚚 Logística — Cola de entregas (Chihuahua)</h3>'
       +     '<div style="display:flex;align-items:center;">'
+      +       '<button class="log-nueva-btn" onclick="window.__logAbrirMapa()">🗺️ Ver mapa</button>'
       +       '<button class="log-nueva-btn" onclick="window.__logAbrirNuevaRecoleccion()">+ Nueva recolección local</button>'
       +       '<button class="log-x" onclick="window.__logCerrarCola()">&times;</button>'
       +     '</div>'
@@ -407,50 +413,63 @@
     document.body.appendChild(wrap);
   }
 
-  // window.__logAbrirPin(estacionId, onGuardado?)
-  //   - estacionId: id del doc en estaciones_servicio.
+  // window.__logAbrirPin(id, onGuardado?, coleccion?)
+  //   - id: id del doc (en estaciones_servicio o, si coleccion='recolecciones_locales', en esa colección).
   //   - onGuardado(lat,lng): callback OPCIONAL, para módulos externos (ej. Ventas)
   //     que necesitan reflejar la ubicación en su propia colección (ventas_clientes)
   //     además de guardarse en el catálogo maestro. Si no llama desde este módulo,
-  //     igual funciona: busca la estación aunque no esté en la caché local (por si
+  //     igual funciona: busca el documento aunque no esté en la caché local (por si
   //     se invoca sin haber abierto antes la cola de Logística).
-  window.__logAbrirPin = function (estacionId, onGuardado) {
+  //   - coleccion: 'estaciones_servicio' (default) o 'recolecciones_locales'.
+  window.__logAbrirPin = function (id, onGuardado, coleccion) {
     estado.pinOnGuardado = (typeof onGuardado === 'function') ? onGuardado : null;
+    estado.pinColeccion = coleccion || 'estaciones_servicio';
+    var esRecoleccion = estado.pinColeccion === 'recolecciones_locales';
+    var cache = esRecoleccion
+      ? estado.recolecciones.find(function (r) { return r.id === id; })
+      : estado.estaciones[id];
 
     injectStyles();
     construirModalPin();
     var modal = document.getElementById('log-pin-modal');
     modal.style.display = 'flex';
-    document.getElementById('log-pin-info').innerHTML = 'Cargando estación…';
+    document.getElementById('log-pin-info').innerHTML = 'Cargando…';
     document.getElementById('log-pin-msg').textContent = '';
     document.getElementById('log-pin-coords').textContent = 'Cargando mapa…';
 
-    var pEstacion = estado.estaciones[estacionId]
-      ? Promise.resolve(estado.estaciones[estacionId])
+    var pDoc = cache
+      ? Promise.resolve(cache)
       : cargarFirestore().then(function (fs) {
-          return fs.getDoc(fs.doc(window.db, 'estaciones_servicio', estacionId)).then(function (snap) {
+          return fs.getDoc(fs.doc(window.db, estado.pinColeccion, id)).then(function (snap) {
             return snap.exists() ? Object.assign({ id: snap.id }, snap.data()) : null;
           });
         });
 
-    pEstacion.then(function (est) {
-      if (!est) {
-        document.getElementById('log-pin-info').innerHTML = 'No se encontró la estación en el catálogo.';
+    pDoc.then(function (item) {
+      if (!item) {
+        document.getElementById('log-pin-info').innerHTML = 'No se encontró el registro.';
         document.getElementById('log-pin-coords').textContent = '';
         return;
       }
-      estado.estaciones[estacionId] = est; // cachea para el resto de la sesión
-      estado.pinEstacionId = estacionId;
+      if (esRecoleccion) {
+        var idx = estado.recolecciones.findIndex(function (r) { return r.id === id; });
+        if (idx >= 0) estado.recolecciones[idx] = item; else estado.recolecciones.push(item);
+      } else {
+        estado.estaciones[id] = item;
+      }
+      estado.pinEstacionId = id;
 
-      document.getElementById('log-pin-info').innerHTML =
-          '<b>' + esc(est.razonSocial) + '</b><br>' + esc(est.direccionNormalizada);
+      document.getElementById('log-pin-info').innerHTML = esRecoleccion
+        ? ('<b>📦 ' + esc(item.lugar) + '</b><br>' + esc(item.direccion))
+        : ('<b>' + esc(item.razonSocial) + '</b><br>' + esc(item.direccionNormalizada));
 
       cargarLeaflet().then(function (L) {
         // Si ya tiene una ubicación guardada, se abre centrado ahí (permite corregir el pin);
-        // si no, se centra en el municipio como punto de partida.
-        var centro = (est.lat != null && est.lng != null)
-          ? [est.lat, est.lng]
-          : (CENTRO_MUNICIPIO[(est.municipio || '').toUpperCase()] || CENTRO_ESTADO);
+        // si no, se centra en el municipio (o en el estado si no aplica) como punto de partida.
+        var municipioRef = esRecoleccion ? '' : (item.municipio || '');
+        var centro = (item.lat != null && item.lng != null)
+          ? [item.lat, item.lng]
+          : (CENTRO_MUNICIPIO[municipioRef.toUpperCase()] || CENTRO_ESTADO);
 
         // Si el modal se reabre, destruye el mapa anterior para no duplicar instancias Leaflet.
         if (estado.mapaPin) { estado.mapaPin.remove(); estado.mapaPin = null; }
@@ -475,8 +494,8 @@
         document.getElementById('log-pin-coords').textContent = 'No se pudo cargar el mapa. Revisa tu conexión.';
       });
     }).catch(function (err) {
-      console.error('[logistica] error buscando la estación:', err);
-      document.getElementById('log-pin-info').innerHTML = 'Error al buscar la estación.';
+      console.error('[logistica] error buscando el registro:', err);
+      document.getElementById('log-pin-info').innerHTML = 'Error al buscar el registro.';
     });
   };
 
@@ -491,11 +510,14 @@
     if (estado.mapaPin) { estado.mapaPin.remove(); estado.mapaPin = null; estado.markerPin = null; }
     estado.pinEstacionId = null;
     estado.pinOnGuardado = null;
+    estado.pinColeccion = 'estaciones_servicio';
   };
 
   window.__logGuardarPin = function () {
     if (!estado.pinEstacionId || !estado.markerPin) return;
     var latlng = estado.markerPin.getLatLng();
+    var coleccion = estado.pinColeccion;
+    var id = estado.pinEstacionId;
     var btn = document.getElementById('log-pin-guardar');
     var msg = document.getElementById('log-pin-msg');
     btn.disabled = true;
@@ -503,17 +525,20 @@
     msg.textContent = 'Guardando…';
 
     cargarFirestore().then(function (fs) {
-      return fs.updateDoc(fs.doc(window.db, 'estaciones_servicio', estado.pinEstacionId), {
+      return fs.updateDoc(fs.doc(window.db, coleccion, id), {
         lat: latlng.lat,
         lng: latlng.lng,
         ubicacionCapturadaPor: (window.auth && window.auth.currentUser && window.auth.currentUser.email) || '',
         ubicacionCapturadaEn: new Date().toISOString()
       });
     }).then(function () {
-      // Refleja el cambio también en el catálogo en memoria de este módulo.
-      if (estado.estaciones[estado.pinEstacionId]) {
-        estado.estaciones[estado.pinEstacionId].lat = latlng.lat;
-        estado.estaciones[estado.pinEstacionId].lng = latlng.lng;
+      // Refleja el cambio también en la caché en memoria de este módulo.
+      if (coleccion === 'recolecciones_locales') {
+        var idx = estado.recolecciones.findIndex(function (r) { return r.id === id; });
+        if (idx >= 0) { estado.recolecciones[idx].lat = latlng.lat; estado.recolecciones[idx].lng = latlng.lng; }
+      } else if (estado.estaciones[id]) {
+        estado.estaciones[id].lat = latlng.lat;
+        estado.estaciones[id].lng = latlng.lng;
       }
       msg.style.color = '#059669';
       msg.textContent = '✔ Ubicación guardada.';
@@ -686,6 +711,8 @@
       evidenciaData: evidenciaData,
       evidenciaNombre: evidenciaNombre,
       estado: 'pendiente',
+      lat: null,
+      lng: null,
       creadoPor: (window.auth && window.auth.currentUser && window.auth.currentUser.email) || '',
       creadoEn: new Date().toISOString()
     };
@@ -712,6 +739,104 @@
       msg.textContent = 'No se pudo guardar: ' + err.message;
       btn.disabled = false;
     });
+  };
+
+  // =====================================================================
+  //  MAPA COMBINADO — todas las paradas que ya tienen ubicación (entregas +
+  //  recolecciones), para ver de un vistazo qué se le compartiría a un
+  //  repartidor. NO genera ruta ni orden de paradas todavía — es solo la
+  //  vista de conjunto, paso previo a construir la ruta óptima.
+  // =====================================================================
+  var mapaCombinado = null;
+
+  function construirModalMapa() {
+    if (document.getElementById('log-mapa-modal')) return;
+    var wrap = document.createElement('div');
+    wrap.id = 'log-mapa-modal';
+    wrap.style.cssText = 'position:fixed;inset:0;z-index:100065;display:none;align-items:center;justify-content:center;background:rgba(15,23,42,.6);';
+    wrap.innerHTML =
+        '<div class="log-card" style="width:820px;max-width:96vw;">'
+      +   '<div class="log-head" style="background:linear-gradient(135deg,#1e3a8a,#1d4ed8);">'
+      +     '<h3>🗺️ Paradas listas para ruta</h3>'
+      +     '<button class="log-x" onclick="window.__logCerrarMapa()">&times;</button>'
+      +   '</div>'
+      +   '<div class="log-body">'
+      +     '<div id="log-mapa-leyenda" class="log-resumen"></div>'
+      +     '<div id="log-mapa-combinado" style="width:100%;height:420px;border-radius:12px;border:1px solid #e2e8f0;"></div>'
+      +     '<div id="log-mapa-vacio" class="log-empty" style="display:none;">Todavía no hay ninguna parada con ubicación asignada.</div>'
+      +   '</div>'
+      + '</div>';
+    document.body.appendChild(wrap);
+  }
+
+  window.__logAbrirMapa = function () {
+    injectStyles();
+    construirModalMapa();
+    document.getElementById('log-mapa-modal').style.display = 'flex';
+
+    var entregas = estado.pedidos
+      .map(function (p) { return { p: p, est: p.destinoEstacionId ? estado.estaciones[p.destinoEstacionId] : null }; })
+      .filter(function (x) { return x.est && x.est.lat != null && x.est.lng != null; });
+
+    var recolecciones = estado.recolecciones.filter(function (r) { return r.lat != null && r.lng != null; });
+
+    var totalPuntos = entregas.length + recolecciones.length;
+    var leyenda = document.getElementById('log-mapa-leyenda');
+    leyenda.innerHTML =
+        '<div class="log-chip"><b>' + entregas.length + '</b> entregas ubicadas</div>'
+      + '<div class="log-chip" style="background:#f5f3ff;border-color:#ddd6fe;color:#5b21b6;"><b>' + recolecciones.length + '</b> recolecciones ubicadas</div>';
+
+    var vacio = document.getElementById('log-mapa-vacio');
+    var cont = document.getElementById('log-mapa-combinado');
+    if (!totalPuntos) {
+      cont.style.display = 'none';
+      vacio.style.display = 'block';
+      return;
+    }
+    cont.style.display = 'block';
+    vacio.style.display = 'none';
+
+    cargarLeaflet().then(function (L) {
+      if (mapaCombinado) { mapaCombinado.remove(); mapaCombinado = null; }
+      mapaCombinado = L.map('log-mapa-combinado');
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap'
+      }).addTo(mapaCombinado);
+
+      var puntos = [];
+
+      entregas.forEach(function (x) {
+        var m = L.marker([x.est.lat, x.est.lng]).addTo(mapaCombinado);
+        m.bindPopup('<b>' + esc(x.p.folio || '') + '</b><br>' + esc(x.est.razonSocial) + '<br>' + esc(x.est.direccionNormalizada));
+        puntos.push([x.est.lat, x.est.lng]);
+      });
+
+      var iconoRecoleccion = L.divIcon({
+        html: '<div style="background:#7c3aed;width:16px;height:16px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #7c3aed;"></div>',
+        className: '', iconSize: [16, 16], iconAnchor: [8, 8]
+      });
+      recolecciones.forEach(function (r) {
+        var m = L.marker([r.lat, r.lng], { icon: iconoRecoleccion }).addTo(mapaCombinado);
+        var prioTxt = PRIO_LABEL[r.prioridad] || '🟡 Normal';
+        m.bindPopup('<b>📦 ' + esc(r.lugar) + '</b><br>' + esc(r.materialARecoger) + '<br>' + prioTxt);
+        puntos.push([r.lat, r.lng]);
+      });
+
+      if (puntos.length === 1) {
+        mapaCombinado.setView(puntos[0], 14);
+      } else {
+        mapaCombinado.fitBounds(puntos, { padding: [30, 30] });
+      }
+
+      setTimeout(function () { mapaCombinado.invalidateSize(); }, 80);
+    }).catch(function (err) {
+      console.error('[logistica] error cargando Leaflet para el mapa combinado:', err);
+    });
+  };
+
+  window.__logCerrarMapa = function () {
+    var m = document.getElementById('log-mapa-modal');
+    if (m) m.style.display = 'none';
   };
 
 })();
