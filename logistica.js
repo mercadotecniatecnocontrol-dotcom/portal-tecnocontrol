@@ -304,12 +304,12 @@
         var badge;
         if (!est) {
           if (p.destinoLat != null && p.destinoLng != null) {
-            badge = '<span class="log-badge ok">📍 Ubicada</span>';
+            badge = badgeUbicada(p.ubicacionVerificada, p.id, null);
           } else {
             badge = '<button type="button" class="log-badge falta" onclick="window.__logAsignarUbicacionManual(\'' + p.id + '\')">🔍 Buscar ubicación</button>';
           }
         } else if (est.lat != null && est.lng != null) {
-          badge = '<span class="log-badge ok">📍 Ubicada</span>';
+          badge = badgeUbicada(est.ubicacionVerificada, est.id, 'estaciones_servicio');
         } else {
           badge = '<button type="button" class="log-badge falta" onclick="window.__logAbrirPin(\'' + est.id + '\')">📍 Asignar ubicación</button>';
         }
@@ -330,6 +330,19 @@
 
   var PRIO_LABEL = { urgente: '🔴 Urgente', alta: '🟠 Alta', normal: '🟡 Normal', programado: '🟢 Programado' };
 
+  // Pinta el badge de ubicación distinguiendo entre confirmada a mano (verde)
+  // y geocodificada automáticamente en masa, todavía sin revisar (ámbar,
+  // clickeable para corregirla). `id`/`coleccion` null cuando es un pedido
+  // manual (usa __logAsignarUbicacionManual en vez de __logAbrirPin).
+  function badgeUbicada(verificada, id, coleccion) {
+    if (verificada) return '<span class="log-badge ok">📍 Ubicada</span>';
+    var onclick = coleccion
+      ? "window.__logAbrirPin('" + id + "', null, '" + coleccion + "')"
+      : "window.__logAsignarUbicacionManual('" + id + "')";
+    return '<button type="button" class="log-badge" style="background:#fef3c7;color:#92400e;border:none;cursor:pointer;" '
+      + 'onclick="' + onclick + '" title="Ubicada por geocodificación automática — clic para revisar/corregir">📍 Ubicada · sin verificar</button>';
+  }
+
   function renderItemRecoleccion(r) {
     var prioClase = 'log-prio-' + (r.prioridad || 'normal');
     var prioTxt = PRIO_LABEL[r.prioridad] || '🟡 Normal';
@@ -340,7 +353,7 @@
       evid = '<a href="' + r.evidenciaData + '" download="' + esc(r.evidenciaNombre || 'evidencia') + '" style="font-size:11.5px;color:#0e7490;font-weight:700;">📎 ' + (r.evidenciaTipo === 'imagen' ? 'Ver imagen' : 'Ver documento') + '</a>';
     }
     var badgeUbic = (r.lat != null && r.lng != null)
-      ? '<span class="log-badge ok">📍 Ubicada</span>'
+      ? badgeUbicada(r.ubicacionVerificada, r.id, 'recolecciones_locales')
       : '<button type="button" class="log-badge falta" onclick="window.__logAbrirPin(\'' + r.id + '\', null, \'recolecciones_locales\')">📍 Asignar ubicación</button>';
     return '<div class="log-item log-recol-item">'
       + '<div class="info">'
@@ -564,6 +577,7 @@
     datosGuardar[campoLng] = latlng.lng;
     datosGuardar.ubicacionCapturadaPor = (window.auth && window.auth.currentUser && window.auth.currentUser.email) || '';
     datosGuardar.ubicacionCapturadaEn = new Date().toISOString();
+    datosGuardar.ubicacionVerificada = true; // el supervisor puso el pin a mano/lo confirmó — a diferencia de un geocodificado automático masivo
 
     cargarFirestore().then(function (fs) {
       return fs.updateDoc(fs.doc(window.db, coleccion, id), datosGuardar);
@@ -571,13 +585,14 @@
       // Refleja el cambio también en la caché en memoria de este módulo.
       if (coleccion === 'recolecciones_locales') {
         var idx = estado.recolecciones.findIndex(function (r) { return r.id === id; });
-        if (idx >= 0) { estado.recolecciones[idx].lat = latlng.lat; estado.recolecciones[idx].lng = latlng.lng; }
+        if (idx >= 0) { estado.recolecciones[idx].lat = latlng.lat; estado.recolecciones[idx].lng = latlng.lng; estado.recolecciones[idx].ubicacionVerificada = true; }
       } else if (coleccion === 'surtidos') {
         var idxP = estado.pedidos.findIndex(function (p) { return p.id === id; });
-        if (idxP >= 0) { estado.pedidos[idxP][campoLat] = latlng.lat; estado.pedidos[idxP][campoLng] = latlng.lng; }
+        if (idxP >= 0) { estado.pedidos[idxP][campoLat] = latlng.lat; estado.pedidos[idxP][campoLng] = latlng.lng; estado.pedidos[idxP].ubicacionVerificada = true; }
       } else if (estado.estaciones[id]) {
         estado.estaciones[id].lat = latlng.lat;
         estado.estaciones[id].lng = latlng.lng;
+        estado.estaciones[id].ubicacionVerificada = true;
       }
       msg.style.color = '#059669';
       msg.textContent = '✔ Ubicación guardada.';
