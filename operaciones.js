@@ -2893,7 +2893,11 @@
         const filaVencida = info.semaforo === "rojo" ? "background:#fef2f2;" : `background:${zebra};`;
         const cp = [f.clienteNombre, f.prioridad].filter(Boolean).join(" · ") || "—";
         return `<tr style="${filaVencida}border-bottom:1px solid #eef1f5;cursor:pointer;" title="${info.motivo ? opsEsc(info.motivo) : ""}" onclick="opsAbrirFichaFolio('${f.id}')">
-            <td style="padding:8px 10px;color:#334155;font-weight:600;">${f.folioOS ? opsEsc(f.folioOS) : (f.folioClienteId ? `<span style="color:#94a3b8;font-weight:500;">Cliente: </span>${opsEsc(f.folioClienteId)}` : "—")}</td>
+            <td style="padding:8px 10px;color:#334155;">
+                <div style="font-size:9px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:.3px;">O.S.</div>
+                <div style="font-weight:600;margin-bottom:${f.folioClienteId ? "4px" : "0"};">${f.folioOS ? opsEsc(f.folioOS) : "—"}</div>
+                ${f.folioClienteId ? `<div style="font-size:9px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:.3px;">ID Orden</div><div style="font-weight:600;">${opsEsc(f.folioClienteId)}</div>` : ""}
+            </td>
             <td style="padding:8px 10px;font-weight:600;color:#334155;">${opsEsc(f.estacion)}</td>
             <td style="padding:8px 10px;color:#64748b;">${opsEsc(cp)}</td>
             <td style="padding:8px 10px;color:#64748b;">${opsFmtFechaCorta(f.fechaSolicitud)}</td>
