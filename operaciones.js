@@ -2893,7 +2893,7 @@
         const filaVencida = info.semaforo === "rojo" ? "background:#fef2f2;" : `background:${zebra};`;
         const cp = [f.clienteNombre, f.prioridad].filter(Boolean).join(" · ") || "—";
         return `<tr style="${filaVencida}border-bottom:1px solid #eef1f5;cursor:pointer;" title="${info.motivo ? opsEsc(info.motivo) : ""}" onclick="opsAbrirFichaFolio('${f.id}')">
-            <td style="padding:8px 10px;color:#334155;font-weight:600;">${opsEsc(f.folioOS || "—")}</td>
+            <td style="padding:8px 10px;color:#334155;font-weight:600;">${f.folioOS ? opsEsc(f.folioOS) : (f.folioClienteId ? `<span style="color:#94a3b8;font-weight:500;">Cliente: </span>${opsEsc(f.folioClienteId)}` : "—")}</td>
             <td style="padding:8px 10px;font-weight:600;color:#334155;">${opsEsc(f.estacion)}</td>
             <td style="padding:8px 10px;color:#64748b;">${opsEsc(cp)}</td>
             <td style="padding:8px 10px;color:#64748b;">${opsFmtFechaCorta(f.fechaSolicitud)}</td>
@@ -3156,16 +3156,27 @@
         opsRenderComentariosFolio(folioId, f ? f.fechaAtencion : null);
     };
 
-    // ── Importación desde el Excel real de Connecteam (idempotente por estación+solicitud+vencimiento) ──
-    // Columnas reales de la hoja mensual (encabezado en la fila 6): ESTACION, COMENTARIOS,
-    // FECHA DE SOLICITUD, PRIORIDAD, VENCIMIENTO, HORARIO, RESPONSABLE, FECHA DE ATENCION,
-    // PLAZO, FECHA DE SOLUCION, DIAS DISPONIBLES (fórmula vieja, se ignora), O.S.,
-    // ESTADO ACTUAL (fórmula vieja, se ignora — la reemplaza este módulo).
-    // HORARIO = la hora exacta en la que VENCE el folio (aclarado por Glen) — se combina con la
-    // fecha de VENCIMIENTO para dar precisión de hora también a los folios históricos importados,
-    // en vez de dejarlos fijos a medianoche.
+    // ── Importación de folios desde Excel (idempotente por estación+solicitud+vencimiento) ──
+    // Soporta DOS formatos, se detecta solo por hoja (probando encabezado en fila 1 y luego fila 6):
+    //
+    // FORMATO NUEVO (estandar desde ago-2026, "Base de Datos", encabezado en fila 1):
+    //   ID ORDEN, O.S., Tareas a realizar, Estación, Cliente, Prioridad, Fecha de Solicitud,
+    //   Hora de Emisión del Servicio, Vencimiento, Horario de Carga del Archivo,
+    //   Feedback/Tareas pendientes, Fecha de Atención, Plazo de Días, Fecha de Solución,
+    //   Días Disponibles, Estado Actual (las últimas 4 son fórmulas viejas, se ignoran).
+    //   OJO: "O.S." (orden de servicio INTERNA de Tecnocontrol) y "ID ORDEN" (folio con el que
+    //   el CLIENTE solicita el servicio desde su portal) son identificadores distintos — NO se
+    //   sustituyen entre sí (aclarado por Glen). Se guardan ambos por separado.
+    //   La hora exacta de vencimiento (aclarado por Glen) sale de "Hora de Emisión del Servicio",
+    //   no de "Horario de Carga del Archivo".
+    //
+    // FORMATO VIEJO (reporte mensual de Connecteam, encabezado en fila 6):
+    //   ESTACION, COMENTARIOS, FECHA DE SOLICITUD, PRIORIDAD, VENCIMIENTO, HORARIO, RESPONSABLE,
+    //   FECHA DE ATENCION, PLAZO, FECHA DE SOLUCION, DIAS DISPONIBLES (fórmula vieja, se ignora),
+    //   O.S., ESTADO ACTUAL (fórmula vieja, se ignora).
+    //
     // Los folios importados NO se reclasifican con Cliente automáticamente (para no pisar el
-    // vencimiento manual ya capturado en Connecteam) — Glen puede abrirlos y usar "Detectar" si quiere.
+    // vencimiento manual ya capturado) — Glen puede abrirlos y usar "Detectar" si quiere.
     // Requiere SheetJS cargado en index.html: <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
     window.opsImportarExcelFolios = async function (file) {
         if (!file) return;
@@ -3176,32 +3187,58 @@
         const wb = XLSX.read(buf, { type: "array", cellDates: false });
 
         // Comparación SIEMPRE a nivel de fecha (sin hora): así, sin importar si el registro ya
-        // guardado en Firestore es de antes (vencimiento a medianoche) o de ahora (con HORARIO
-        // combinado), se sigue reconociendo como el mismo folio y no se duplica al reimportar.
+        // guardado en Firestore es de antes (vencimiento a medianoche) o de ahora (con hora exacta
+        // combinada), se sigue reconociendo como el mismo folio y no se duplica al reimportar.
         const clave = f => `${f.estacion}|${String(f.fechaSolicitud || "").slice(0, 10)}|${String(f.vencimiento || "").slice(0, 10)}`;
         const existentesSet = new Set(cacheFolios.map(clave));
 
         let importados = 0, omitidos = 0;
+
+        // Quita acentos y normaliza para que "Estación"/"ESTACION", "Atención"/"ATENCION", etc.
+        // hagan match sin importar si el encabezado del Excel trae tilde o no.
+        const norm = s => String(s || "").trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+        // Conversión manual de serial de Excel (sistema 1900, con la fecha de referencia -25569
+        // que usa Excel/Google Sheets) a milisegundos Unix — no depende de XLSX.SSF, que varía
+        // entre builds de SheetJS y no siempre viene cargado.
         const toISO = (v) => {
             if (!v && v !== 0) return null;
             if (v instanceof Date) return v.toISOString().slice(0, 10);
-            if (typeof v === "number") { const d = XLSX.SSF.parse_date_code(v); return d ? `${d.y}-${String(d.m).padStart(2, "0")}-${String(d.d).padStart(2, "0")}` : null; }
-            const d = new Date(v); return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+            if (typeof v === "number") { const d = new Date(Math.round((v - 25569) * 86400000)); return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10); }
+            const s = String(v).trim();
+            const mDMA = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); // DD/MM/YYYY, como texto en el formato nuevo
+            if (mDMA) return `${mDMA[3]}-${mDMA[2].padStart(2, "0")}-${mDMA[1].padStart(2, "0")}`;
+            const d = new Date(s); return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
         };
         const horaDesdeCelda = (v) => {
             if (v === null || v === undefined || v === "") return null;
-            if (typeof v === "number") { const d = XLSX.SSF.parse_date_code(v); return d ? `${String(d.H).padStart(2, "0")}:${String(d.M).padStart(2, "0")}` : null; }
+            if (v instanceof Date) return `${String(v.getUTCHours()).padStart(2, "0")}:${String(v.getUTCMinutes()).padStart(2, "0")}`;
+            // Serial de Excel para hora: la parte fraccionaria del día (ej. 0.325 = 7:48 a.m.).
+            if (typeof v === "number") { const totalMin = Math.round((v % 1) * 1440); const H = Math.floor(totalMin / 60), M = totalMin % 60; return `${String(H).padStart(2, "0")}:${String(M).padStart(2, "0")}`; }
             const m = String(v).match(/^(\d{1,2}):(\d{2})/);
             return m ? `${m[1].padStart(2, "0")}:${m[2]}` : null;
         };
 
         for (const nombreHoja of wb.SheetNames) {
-            const filas = XLSX.utils.sheet_to_json(wb.Sheets[nombreHoja], { header: 1, range: 5, defval: null });
-            const [encabezado, ...datos] = filas;
-            if (!encabezado || !encabezado.some(h => String(h || "").toUpperCase().includes("ESTACION"))) continue;
-            const idx = campo => encabezado.findIndex(h => String(h || "").trim().toUpperCase().startsWith(campo));
-            const iEst = idx("ESTACION"), iCom = idx("COMENTARIOS"), iSol = idx("FECHA DE SOLICITUD"), iPrio = idx("PRIORIDAD"),
-                  iVen = idx("VENCIMIENTO"), iHor = idx("HORARIO"), iResp = idx("RESPONSABLE"), iAt = idx("FECHA DE ATENCION"), iSlc = idx("FECHA DE SOLUCION"), iOS = idx("O.S.");
+            // Se prueba primero el encabezado en fila 1 (formato nuevo) y si no hay "ESTACION" ahí,
+            // en fila 6 (formato viejo de Connecteam) — así conviven ambos formatos sin configurar nada.
+            let encabezado = null, datos = null;
+            for (const rango of [0, 5]) {
+                const filas = XLSX.utils.sheet_to_json(wb.Sheets[nombreHoja], { header: 1, range: rango, defval: null });
+                const [enc, ...dat] = filas;
+                if (enc && enc.some(h => norm(h).includes("ESTACION"))) { encabezado = enc; datos = dat; break; }
+            }
+            if (!encabezado) continue; // ninguno de los dos formatos coincide en esta hoja, se ignora
+
+            // Busca la primera columna cuyo encabezado normalizado empiece con cualquiera de los candidatos.
+            const idx = (...candidatos) => {
+                const cs = candidatos.map(norm);
+                return encabezado.findIndex(h => { const nh = norm(h); return cs.some(c => nh.startsWith(c)); });
+            };
+            const iEst = idx("ESTACION"), iCom = idx("TAREAS A REALIZAR", "COMENTARIOS"), iSol = idx("FECHA DE SOLICITUD"),
+                  iPrio = idx("PRIORIDAD"), iVen = idx("VENCIMIENTO"), iHor = idx("HORA DE EMISION DEL SERVICIO", "HORARIO"),
+                  iResp = idx("RESPONSABLE"), iAt = idx("FECHA DE ATENCION"), iSlc = idx("FECHA DE SOLUCION"),
+                  iOS = idx("O.S."), iIdOrden = idx("ID ORDEN");
 
             for (const fila of datos) {
                 if (!fila || !fila[iEst]) continue;
@@ -3214,6 +3251,8 @@
                     comentarios: iCom >= 0 ? String(fila[iCom] || "").trim() : "",
                     responsable: iResp >= 0 ? String(fila[iResp] || "").trim() : "",
                     folioOS: iOS >= 0 ? String(fila[iOS] ?? "").trim() : "",
+                    // Folio con el que el CLIENTE solicita el servicio desde su portal — distinto de folioOS.
+                    folioClienteId: iIdOrden >= 0 && fila[iIdOrden] != null ? String(fila[iIdOrden]).trim() : "",
                     prioridad: iPrio >= 0 && OPS_PRIORIDADES.includes(String(fila[iPrio] || "").trim().toUpperCase()) ? String(fila[iPrio]).trim().toUpperCase() : null,
                     fechaSolicitud: iSol >= 0 ? toISO(fila[iSol]) : null,
                     vencimiento,
