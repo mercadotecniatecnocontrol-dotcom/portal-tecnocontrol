@@ -5344,6 +5344,14 @@ function vpRenderListaClientes() {
     el.innerHTML = filtrados.map(c => {
         const inicial = (c.nombre||'?')[0].toUpperCase();
         const ciudad = [c.ciudad, c.estado].filter(Boolean).join(', ');
+        const tieneUbicacion = (c.lat != null && c.lng != null);
+        // Solo los clientes que vienen del catálogo de estaciones (estacionCatalogoId)
+        // muestran este indicador — un cliente capturado a mano no tiene con qué enlazar.
+        const badgeUbicacion = c.estacionCatalogoId
+            ? (tieneUbicacion
+                ? '<div class="vp-client-badge" style="background:#d1fae5;color:#065f46;">📍 Ubicada</div>'
+                : `<button type="button" onclick="event.stopPropagation();window.__vpAsignarUbicacion('${c.id}','${c.estacionCatalogoId}')" style="background:#fef3c7;color:#92400e;border:none;border-radius:999px;padding:4px 10px;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap;">📍 Asignar ubicación</button>`)
+            : '';
         return `<div class="vp-client-card" onclick="vpVerCliente('${c.id}')">
             <div class="vp-client-avatar">${inicial}</div>
             <div style="flex:1;min-width:0;">
@@ -5351,9 +5359,32 @@ function vpRenderListaClientes() {
                 <div class="vp-client-meta">${ciudad||'—'} · ${c.sector||'—'}</div>
             </div>
             <div class="vp-client-badge">${c.visitas||0} visitas</div>
+            ${badgeUbicacion}
         </div>`;
     }).join('');
 }
+
+// Abre el mapa de pin de logistica.js (fuente única: estaciones_servicio) y,
+// al guardar, refleja la misma lat/lng en ventas_clientes para que el mapa de
+// Ventas (Leaflet, arriba en este archivo) también pueda pintar el marcador.
+// estaciones_servicio sigue siendo el catálogo maestro; esto es solo un espejo
+// para no tener que unir colecciones al momento de dibujar el mapa de clientes.
+window.__vpAsignarUbicacion = function(clienteId, estacionCatalogoId){
+    if (!window.__logAbrirPin) {
+        alert('El módulo de Logística (logistica.js) no está cargado en esta página todavía.');
+        return;
+    }
+    window.__logAbrirPin(estacionCatalogoId, async function(lat, lng){
+        try {
+            await updateDoc(doc(db,'ventas_clientes', clienteId), { lat, lng });
+            await cargarClientes(); // recarga clientesDB, vuelve a pintar mapa y lista
+            if (window.mostrarPush) window.mostrarPush('📍 Ubicación reflejada en Ventas', '', '✅');
+        } catch(e) {
+            console.error('[ventas] error guardando ubicación del cliente:', e);
+            alert('La ubicación se guardó en el catálogo de estaciones, pero no se pudo reflejar en Ventas: '+e.message);
+        }
+    });
+};
 
 //  MÓDULO CLIENTES
 function vpCargarClientes() {
