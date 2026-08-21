@@ -121,6 +121,8 @@
     pinOnGuardado: null, // callback opcional(lat,lng) — para módulos externos (ej. Ventas) que llaman a __logAbrirPin
     pinCampoLat: 'lat',
     pinCampoLng: 'lng',
+    pinCampoVerificada: 'ubicacionVerificada', // nombre del campo booleano de "confirmado a mano" a escribir (varía si es pin de recolección o de entrega)
+    pinModoEntrega: false, // true cuando el pin que se está fijando es el punto de ENTREGA de una recolección local (no el de recolección)
     mapaPin: null,     // instancia Leaflet del modal de pin
     markerPin: null,
     evidenciaArchivo: null // {tipo, nombre, data} temporal mientras se llena el formulario de recolección
@@ -202,7 +204,7 @@
       );
       var qRecolecciones = fs.query(
         fs.collection(window.db, 'recolecciones_locales'),
-        fs.where('estado', '==', 'pendiente')
+        fs.where('estado', 'in', ['pendiente', 'recogido'])
       );
       return Promise.all([
         fs.getDocs(qPedidos),
@@ -343,6 +345,12 @@
       + 'onclick="' + onclick + '" title="Ubicada por geocodificación automática — clic para revisar/corregir">📍 Ubicada · sin verificar</button>';
   }
 
+  // Etiqueta + color de la ETAPA de la recolección (independiente de la prioridad).
+  // pendiente  -> todavía no se recoge en el origen.
+  // recogido   -> ya se recogió, va en camino al lugar de entrega.
+  // (al marcar "entregado" sale de la cola: cargarDatos() solo trae pendiente/recogido)
+  var ETAPA_LABEL = { pendiente: '📦 Por recoger', recogido: '🚚 En camino a entregar' };
+
   function renderItemRecoleccion(r) {
     var prioClase = 'log-prio-' + (r.prioridad || 'normal');
     var prioTxt = PRIO_LABEL[r.prioridad] || '🟡 Normal';
@@ -354,39 +362,77 @@
     }
     var badgeUbic = (r.lat != null && r.lng != null)
       ? badgeUbicada(r.ubicacionVerificada, r.id, 'recolecciones_locales')
-      : '<button type="button" class="log-badge falta" onclick="window.__logAbrirPin(\'' + r.id + '\', null, \'recolecciones_locales\')">📍 Asignar ubicación</button>';
-    return '<div class="log-item log-recol-item">'
-      + '<div class="info">'
-      +   '<div class="tag">RECOLECCIÓN LOCAL</div>'
-      +   '<div class="est">' + esc(r.lugar || '—') + '</div>'
-      +   '<div class="dir">' + esc(r.direccion || '—') + '</div>'
-      +   '<div class="dir">📦 ' + esc(r.materialARecoger || '—') + ' · 🕑 ' + esc(r.horario || '—') + '</div>'
-      +   (r.dirigirseCon ? '<div class="dir">💁 ' + esc(r.dirigirseCon) + '</div>' : '')
-      +   (r.comentario ? '<div class="dir">💬 ' + esc(r.comentario) + '</div>' : '')
-      +   (evid ? '<div style="margin-top:4px;">' + evid + '</div>' : '')
+      : '<button type="button" class="log-badge falta" onclick="window.__logAbrirPin(\'' + r.id + '\', null, \'recolecciones_locales\')">📍 Asignar recolección</button>';
+    var badgeEntrega = (r.entregaLat != null && r.entregaLng != null)
+      ? (r.entregaVerificada
+          ? '<span class="log-badge ok" style="cursor:pointer;" onclick="window.__logAbrirPinEntregaRecoleccion(\'' + r.id + '\')" title="Clic para corregir">🏭 Entrega ubicada</span>'
+          : '<button type="button" class="log-badge" style="background:#fef3c7;color:#92400e;border:none;cursor:pointer;" onclick="window.__logAbrirPinEntregaRecoleccion(\'' + r.id + '\')" title="Ubicada por geocodificación automática — clic para revisar/corregir">🏭 Entrega · sin verificar</button>')
+      : '<button type="button" class="log-badge falta" onclick="window.__logAbrirPinEntregaRecoleccion(\'' + r.id + '\')">🏭 Asignar entrega</button>';
+    var hayRuta = r.lat != null && r.lng != null && r.entregaLat != null && r.entregaLng != null;
+    var etapaTxt = ETAPA_LABEL[r.estado] || ETAPA_LABEL.pendiente;
+    var btnEtapa = r.estado === 'recogido'
+      ? '<button type="button" class="log-badge ok" style="border:none;cursor:pointer;" onclick="window.__logMarcarEntregadaRecoleccion(\'' + r.id + '\')">📬 Marcar entregado</button>'
+      : '<button type="button" class="log-badge ok" style="border:none;cursor:pointer;background:#0f766e;color:#fff;" onclick="window.__logMarcarRecogidaRecoleccion(\'' + r.id + '\')">🚚 Marcar recogido</button>';
+    return '<div class="log-item log-recol-item" style="flex-direction:column;align-items:stretch;">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">'
+      +   '<div class="info">'
+      +     '<div class="tag">RECOLECCIÓN LOCAL · ' + esc(etapaTxt) + '</div>'
+      +     '<div class="est">' + esc(r.lugar || '—') + '</div>'
+      +     '<div class="dir">📍 ' + esc(r.direccion || '—') + '</div>'
+      +     '<div class="dir">🏭 Entrega en: ' + esc(r.lugarEntrega || '—') + '</div>'
+      +     '<div class="dir">📦 ' + esc(r.materialARecoger || '—') + ' · 🕑 ' + esc(r.horario || '—') + '</div>'
+      +     (r.dirigirseCon ? '<div class="dir">💁 ' + esc(r.dirigirseCon) + '</div>' : '')
+      +     (r.comentario ? '<div class="dir">💬 ' + esc(r.comentario) + '</div>' : '')
+      +     (evid ? '<div style="margin-top:4px;">' + evid + '</div>' : '')
+      +   '</div>'
+      +   '<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;flex-shrink:0;">'
+      +     '<span class="log-prio ' + prioClase + '">' + prioTxt + '</span>'
+      +     badgeUbic
+      +     badgeEntrega
+      +     btnEtapa
+      +   '</div>'
       + '</div>'
-      + '<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">'
-      +   '<span class="log-prio ' + prioClase + '">' + prioTxt + '</span>'
-      +   badgeUbic
-      +   '<button type="button" class="log-badge ok" style="border:none;cursor:pointer;" onclick="window.__logCompletarRecoleccion(\'' + r.id + '\')">✔ Marcar completada</button>'
+      + '<div style="display:flex;gap:8px;margin-top:8px;border-top:1px dashed #e2e8f0;padding-top:8px;">'
+      +   (hayRuta ? '<button type="button" class="log-badge" style="background:#eff6ff;color:#1d4ed8;border:none;cursor:pointer;" onclick="window.__logVerRutaRecoleccion(\'' + r.id + '\')">🗺️ Ver mapa (recolección → entrega)</button>' : '')
+      +   '<button type="button" class="log-badge" style="background:#dcfce7;color:#166534;border:none;cursor:pointer;" onclick="window.__logWhatsAppRecoleccion(\'' + r.id + '\')">💬 Enviar por WhatsApp</button>'
       + '</div>'
       + '</div>';
   }
 
-  window.__logCompletarRecoleccion = function (id) {
+  // Etapa 1: se recogió el material en el origen — todavía falta entregarlo.
+  window.__logMarcarRecogidaRecoleccion = function (id) {
     cargarFirestore().then(function (fs) {
       return fs.updateDoc(fs.doc(window.db, 'recolecciones_locales', id), {
-        estado: 'completada',
-        completadoPor: (window.auth && window.auth.currentUser && window.auth.currentUser.email) || '',
-        completadoEn: new Date().toISOString()
+        estado: 'recogido',
+        recogidoPor: (window.auth && window.auth.currentUser && window.auth.currentUser.email) || '',
+        recogidoEn: new Date().toISOString()
       });
     }).then(function () {
-      if (window.mostrarPush) window.mostrarPush('✔ Recolección marcada como completada', '', '✅');
+      if (window.mostrarPush) window.mostrarPush('🚚 Recolección marcada como recogida', 'Ahora falta entregarla', '✅');
+      var idx = estado.recolecciones.findIndex(function (r) { return r.id === id; });
+      if (idx >= 0) estado.recolecciones[idx].estado = 'recogido';
+      render();
+    }).catch(function (err) {
+      console.error('[logistica] error marcando recogida:', err);
+      alert('No se pudo actualizar: ' + err.message);
+    });
+  };
+
+  // Etapa 2 (final): se entregó el material en destino — sale de la cola activa.
+  window.__logMarcarEntregadaRecoleccion = function (id) {
+    cargarFirestore().then(function (fs) {
+      return fs.updateDoc(fs.doc(window.db, 'recolecciones_locales', id), {
+        estado: 'entregado',
+        entregadoPor: (window.auth && window.auth.currentUser && window.auth.currentUser.email) || '',
+        entregadoEn: new Date().toISOString()
+      });
+    }).then(function () {
+      if (window.mostrarPush) window.mostrarPush('✔ Recolección entregada', '', '✅');
       estado.recolecciones = estado.recolecciones.filter(function (r) { return r.id !== id; });
       render();
     }).catch(function (err) {
-      console.error('[logistica] error completando recolección:', err);
-      alert('No se pudo marcar como completada: ' + err.message);
+      console.error('[logistica] error marcando entregada:', err);
+      alert('No se pudo marcar como entregada: ' + err.message);
     });
   };
 
@@ -468,6 +514,8 @@
     estado.pinColeccion = coleccion || 'estaciones_servicio';
     estado.pinCampoLat = 'lat';
     estado.pinCampoLng = 'lng';
+    estado.pinCampoVerificada = 'ubicacionVerificada';
+    estado.pinModoEntrega = false;
     var esRecoleccion = estado.pinColeccion === 'recolecciones_locales';
     var cache = esRecoleccion
       ? estado.recolecciones.find(function (r) { return r.id === id; })
@@ -557,6 +605,8 @@
     estado.pinColeccion = 'estaciones_servicio';
     estado.pinCampoLat = 'lat';
     estado.pinCampoLng = 'lng';
+    estado.pinCampoVerificada = 'ubicacionVerificada';
+    estado.pinModoEntrega = false;
   };
 
   window.__logGuardarPin = function () {
@@ -572,20 +622,23 @@
     msg.style.color = '#0e7490';
     msg.textContent = 'Guardando…';
 
+    var campoVerificada = estado.pinCampoVerificada || 'ubicacionVerificada';
+
     var datosGuardar = {};
     datosGuardar[campoLat] = latlng.lat;
     datosGuardar[campoLng] = latlng.lng;
     datosGuardar.ubicacionCapturadaPor = (window.auth && window.auth.currentUser && window.auth.currentUser.email) || '';
     datosGuardar.ubicacionCapturadaEn = new Date().toISOString();
-    datosGuardar.ubicacionVerificada = true; // el supervisor puso el pin a mano/lo confirmó — a diferencia de un geocodificado automático masivo
+    datosGuardar[campoVerificada] = true; // el supervisor puso el pin a mano/lo confirmó — a diferencia de un geocodificado automático masivo
 
     cargarFirestore().then(function (fs) {
       return fs.updateDoc(fs.doc(window.db, coleccion, id), datosGuardar);
     }).then(function () {
-      // Refleja el cambio también en la caché en memoria de este módulo.
+      // Refleja el cambio también en la caché en memoria de este módulo — usando
+      // los campos dinámicos (lat/lng para recolección, entregaLat/entregaLng para entrega).
       if (coleccion === 'recolecciones_locales') {
         var idx = estado.recolecciones.findIndex(function (r) { return r.id === id; });
-        if (idx >= 0) { estado.recolecciones[idx].lat = latlng.lat; estado.recolecciones[idx].lng = latlng.lng; estado.recolecciones[idx].ubicacionVerificada = true; }
+        if (idx >= 0) { estado.recolecciones[idx][campoLat] = latlng.lat; estado.recolecciones[idx][campoLng] = latlng.lng; estado.recolecciones[idx][campoVerificada] = true; }
       } else if (coleccion === 'surtidos') {
         var idxP = estado.pedidos.findIndex(function (p) { return p.id === id; });
         if (idxP >= 0) { estado.pedidos[idxP][campoLat] = latlng.lat; estado.pedidos[idxP][campoLng] = latlng.lng; estado.pedidos[idxP].ubicacionVerificada = true; }
@@ -657,6 +710,70 @@
           var base = 'Lat: ' + latlng.lat.toFixed(6) + '  ·  Lng: ' + latlng.lng.toFixed(6);
           document.getElementById('log-pin-coords').textContent = base
             + (resultado.encontrado ? '' : ' — no se encontró automáticamente esta dirección, ajusta el pin a mano');
+        }
+        marker.on('dragend', actualizarTexto);
+        mapa.on('click', function (e) { marker.setLatLng(e.latlng); actualizarTexto(); });
+
+        estado.mapaPin = mapa;
+        estado.markerPin = marker;
+        actualizarTexto();
+
+        setTimeout(function () { mapa.invalidateSize(); }, 80);
+      }).catch(function (err) {
+        console.error('[logistica] error cargando Leaflet:', err);
+        document.getElementById('log-pin-coords').textContent = 'No se pudo cargar el mapa. Revisa tu conexión.';
+      });
+    });
+  };
+
+  // window.__logAbrirPinEntregaRecoleccion(id)
+  //   Igual que __logAsignarUbicacionManual pero para el punto de ENTREGA de una
+  //   recolección local: geocodifica `lugarEntrega` (texto libre) para centrar el
+  //   pin, y guarda en `recolecciones_locales/{id}` como entregaLat/entregaLng
+  //   (no en lat/lng, que son del punto de RECOLECCIÓN). Necesario para poder
+  //   mostrar "de dónde recoge y a dónde entrega" en el mapa y en WhatsApp.
+  window.__logAbrirPinEntregaRecoleccion = function (id) {
+    var r = estado.recolecciones.find(function (x) { return x.id === id; });
+    if (!r) return;
+
+    estado.pinOnGuardado = null;
+    estado.pinColeccion = 'recolecciones_locales';
+    estado.pinCampoLat = 'entregaLat';
+    estado.pinCampoLng = 'entregaLng';
+    estado.pinCampoVerificada = 'entregaVerificada';
+    estado.pinModoEntrega = true;
+    estado.pinEstacionId = id;
+
+    injectStyles();
+    construirModalPin();
+    var modal = document.getElementById('log-pin-modal');
+    modal.style.display = 'flex';
+    document.getElementById('log-pin-info').innerHTML =
+        '<b>🏭 Entrega: ' + esc(r.lugarEntrega || '—') + '</b><br>Recolección: ' + esc(r.lugar || '');
+    document.getElementById('log-pin-msg').textContent = '';
+    document.getElementById('log-pin-coords').textContent = 'Buscando el lugar de entrega en el mapa…';
+
+    var direccion = r.lugarEntrega || '';
+    var pCentro = (r.entregaLat != null && r.entregaLng != null)
+      ? Promise.resolve({ lat: r.entregaLat, lng: r.entregaLng, encontrado: true })
+      : geocodificarDireccion(direccion);
+
+    pCentro.then(function (resultado) {
+      var centro = resultado.encontrado ? [resultado.lat, resultado.lng] : CENTRO_ESTADO;
+
+      cargarLeaflet().then(function (L) {
+        if (estado.mapaPin) { estado.mapaPin.remove(); estado.mapaPin = null; }
+        var mapa = L.map('log-pin-mapa').setView(centro, resultado.encontrado ? 15 : 11);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '© OpenStreetMap'
+        }).addTo(mapa);
+
+        var marker = L.marker(centro, { draggable: true }).addTo(mapa);
+        function actualizarTexto() {
+          var latlng = marker.getLatLng();
+          var base = 'Lat: ' + latlng.lat.toFixed(6) + '  ·  Lng: ' + latlng.lng.toFixed(6);
+          document.getElementById('log-pin-coords').textContent = base
+            + (resultado.encontrado ? '' : ' — no se encontró automáticamente este lugar, ajusta el pin a mano');
         }
         marker.on('dragend', actualizarTexto);
         mapa.on('click', function (e) { marker.setLatLng(e.latlng); actualizarTexto(); });
@@ -829,6 +946,8 @@
       estado: 'pendiente',
       lat: null,
       lng: null,
+      entregaLat: null,
+      entregaLng: null,
       creadoPor: (window.auth && window.auth.currentUser && window.auth.currentUser.email) || '',
       creadoEn: new Date().toISOString()
     };
@@ -849,6 +968,30 @@
         window.__logCerrarNuevaRecoleccion();
         render();
       }, 500);
+
+      // Geocodifica el lugar de entrega en automático, igual que se hace con
+      // direcciones libres de pedidos (__logAsignarUbicacionManual) — nunca
+      // queda "sin verificar" como verdadero, el supervisor la revisa/corrige
+      // desde el badge "🏭 Entrega · sin verificar" (__logAbrirPinEntregaRecoleccion).
+      // Es best-effort: si falla o no encuentra nada, simplemente se deja para
+      // asignar el pin a mano — no bloquea ni retrasa el guardado ya confirmado.
+      if (data.lugarEntrega) {
+        geocodificarDireccion(data.lugarEntrega).then(function (resultado) {
+          if (!resultado.encontrado) return;
+          return cargarFirestore().then(function (fs) {
+            return fs.updateDoc(fs.doc(window.db, 'recolecciones_locales', ref.id), {
+              entregaLat: resultado.lat,
+              entregaLng: resultado.lng
+            });
+          }).then(function () {
+            var idx = estado.recolecciones.findIndex(function (r) { return r.id === ref.id; });
+            if (idx >= 0) { estado.recolecciones[idx].entregaLat = resultado.lat; estado.recolecciones[idx].entregaLng = resultado.lng; }
+            render();
+          });
+        }).catch(function (err) {
+          console.warn('[logistica] no se pudo geocodificar el lugar de entrega automáticamente:', err);
+        });
+      }
     }).catch(function (err) {
       console.error('[logistica] error guardando recolección:', err);
       msg.style.color = '#dc2626';
@@ -962,6 +1105,138 @@
   window.__logCerrarMapa = function () {
     var m = document.getElementById('log-mapa-modal');
     if (m) m.style.display = 'none';
+  };
+
+  // =====================================================================
+  //  MAPA DE RUTA DE UNA SOLA RECOLECCIÓN — un pedido, un punto de recolección
+  //  y un punto de entrega (nunca varios mezclados). Es la vista que respalda
+  //  al botón de WhatsApp: aquí se ve exactamente lo mismo que se comparte.
+  // =====================================================================
+  var mapaRutaRecoleccion = null;
+
+  function construirModalRuta() {
+    if (document.getElementById('log-ruta-modal')) return;
+    var wrap = document.createElement('div');
+    wrap.id = 'log-ruta-modal';
+    wrap.style.cssText = 'position:fixed;inset:0;z-index:100068;display:none;align-items:center;justify-content:center;background:rgba(15,23,42,.6);';
+    wrap.innerHTML =
+        '<div class="log-card" style="width:720px;max-width:96vw;">'
+      +   '<div class="log-head" style="background:linear-gradient(135deg,#6d28d9,#7c3aed);">'
+      +     '<h3 id="log-ruta-titulo">🗺️ Recolección → Entrega</h3>'
+      +     '<button class="log-x" onclick="window.__logCerrarRutaRecoleccion()">&times;</button>'
+      +   '</div>'
+      +   '<div class="log-body">'
+      +     '<div id="log-ruta-leyenda" class="log-resumen"></div>'
+      +     '<div id="log-ruta-mapa" style="width:100%;height:380px;border-radius:12px;border:1px solid #e2e8f0;"></div>'
+      +   '</div>'
+      + '</div>';
+    document.body.appendChild(wrap);
+  }
+
+  window.__logVerRutaRecoleccion = function (id) {
+    var r = estado.recolecciones.find(function (x) { return x.id === id; });
+    if (!r || r.lat == null || r.lng == null || r.entregaLat == null || r.entregaLng == null) return;
+
+    injectStyles();
+    construirModalRuta();
+    document.getElementById('log-ruta-modal').style.display = 'flex';
+    document.getElementById('log-ruta-titulo').innerHTML = '🗺️ ' + esc(r.lugar || 'Recolección') + ' → ' + esc(r.lugarEntrega || 'Entrega');
+    document.getElementById('log-ruta-leyenda').innerHTML =
+        '<div class="log-chip" style="background:#f5f3ff;border-color:#ddd6fe;color:#5b21b6;">📦 Recoge: ' + esc(r.lugar || '—') + '</div>'
+      + '<div class="log-chip" style="background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8;">🏭 Entrega: ' + esc(r.lugarEntrega || '—') + '</div>';
+
+    cargarLeaflet().then(function (L) {
+      if (mapaRutaRecoleccion) { mapaRutaRecoleccion.remove(); mapaRutaRecoleccion = null; }
+      mapaRutaRecoleccion = L.map('log-ruta-mapa');
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(mapaRutaRecoleccion);
+
+      var iconoRecol = L.divIcon({ html: '<div style="background:#7c3aed;width:16px;height:16px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #7c3aed;"></div>', className: '', iconSize: [16, 16], iconAnchor: [8, 8] });
+      var iconoEntrega = L.divIcon({ html: '<div style="background:#1d4ed8;width:16px;height:16px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #1d4ed8;"></div>', className: '', iconSize: [16, 16], iconAnchor: [8, 8] });
+
+      var mRecol = L.marker([r.lat, r.lng], { icon: iconoRecol }).addTo(mapaRutaRecoleccion);
+      mRecol.bindPopup('<b>📦 Recoge aquí</b><br>' + esc(r.lugar || ''));
+      var mEntrega = L.marker([r.entregaLat, r.entregaLng], { icon: iconoEntrega }).addTo(mapaRutaRecoleccion);
+      mEntrega.bindPopup('<b>🏭 Entrega aquí</b><br>' + esc(r.lugarEntrega || ''));
+
+      L.polyline([[r.lat, r.lng], [r.entregaLat, r.entregaLng]], { color: '#7c3aed', weight: 3, dashArray: '6,8' }).addTo(mapaRutaRecoleccion);
+
+      mapaRutaRecoleccion.fitBounds([[r.lat, r.lng], [r.entregaLat, r.entregaLng]], { padding: [40, 40] });
+      setTimeout(function () { mapaRutaRecoleccion.invalidateSize(); }, 80);
+    }).catch(function (err) {
+      console.error('[logistica] error cargando Leaflet para la ruta de recolección:', err);
+    });
+  };
+
+  window.__logCerrarRutaRecoleccion = function () {
+    var m = document.getElementById('log-ruta-modal');
+    if (m) m.style.display = 'none';
+  };
+
+  // =====================================================================
+  //  ENVIAR POR WHATSAPP — UNA sola recolección por mensaje (un pedido, un
+  //  origen, un destino: nunca se agrupan varias recolecciones en un envío).
+  //  Mismo patrón que el resto del portal (almacen.js / almacen-pdf.js):
+  //  1) SIEMPRE se abre primero wa.me/?text= con el resumen — es la única vía
+  //     100% confiable para el texto (WhatsApp normalmente IGNORA el "text"
+  //     de Web Share cuando también llega un archivo).
+  //  2) La evidencia (si existe) se comparte por separado: nativo con
+  //     navigator.share si el navegador lo soporta (celular/tablet — ahí
+  //     aparece WhatsApp como destino con el archivo ya adjunto), o si no,
+  //     se abre en una pestaña aparte para adjuntarla a mano.
+  // =====================================================================
+  function _logMapsLink(lat, lng) {
+    return 'https://www.google.com/maps?q=' + lat + ',' + lng;
+  }
+
+  function _logResumenTextoRecoleccion(r) {
+    var lineas = [
+      '📦 Recolección local — ' + (r.lugar || '—'),
+      '📍 Dirección: ' + (r.direccion || '—'),
+      (r.lat != null && r.lng != null) ? ('🗺️ Ubicación de recolección: ' + _logMapsLink(r.lat, r.lng)) : null,
+      '',
+      '🏭 Entrega en: ' + (r.lugarEntrega || '—'),
+      (r.entregaLat != null && r.entregaLng != null) ? ('🗺️ Ubicación de entrega: ' + _logMapsLink(r.entregaLat, r.entregaLng)) : null,
+      '',
+      '📦 Material: ' + (r.materialARecoger || '—'),
+      '🕑 Horario: ' + (r.horario || '—'),
+      'Prioridad: ' + (PRIO_LABEL[r.prioridad] || r.prioridad || 'Normal'),
+      r.dirigirseCon ? ('💁 Dirigirse con: ' + r.dirigirseCon) : null,
+      r.comentario ? ('💬 ' + r.comentario) : null,
+      (r.evidenciaTipo === 'liga' && r.evidenciaData) ? ('🔗 Evidencia: ' + r.evidenciaData) : null
+    ].filter(Boolean);
+    return lineas.join('\n');
+  }
+
+  window.__logWhatsAppRecoleccion = function (id) {
+    var r = estado.recolecciones.find(function (x) { return x.id === id; });
+    if (!r) return;
+
+    var resumen = _logResumenTextoRecoleccion(r);
+    window.open('https://wa.me/?text=' + encodeURIComponent(resumen), '_blank');
+
+    // La evidencia tipo "liga" ya viaja dentro del texto de arriba — nada más que hacer.
+    if (r.evidenciaTipo !== 'imagen' && r.evidenciaTipo !== 'documento') return;
+    if (!r.evidenciaData) return;
+
+    try {
+      var partes = r.evidenciaData.split(',');
+      var mimeMatch = /data:([^;]+);base64/.exec(partes[0]);
+      var mime = mimeMatch ? mimeMatch[1] : (r.evidenciaTipo === 'imagen' ? 'image/jpeg' : 'application/pdf');
+      var binario = atob(partes[1]);
+      var bytes = new Uint8Array(binario.length);
+      for (var i = 0; i < binario.length; i++) bytes[i] = binario.charCodeAt(i);
+      var nombreArchivo = r.evidenciaNombre || ('evidencia_' + id);
+      var file = new File([bytes], nombreArchivo, { type: mime });
+
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        navigator.share({ files: [file], title: 'Recolección — ' + (r.lugar || '') }).catch(function () {});
+        if (window.mostrarPush) window.mostrarPush('WhatsApp', 'Se abrió el resumen en WhatsApp y el cuadro para compartir la evidencia — elige WhatsApp otra vez ahí para adjuntarla a la misma conversación.', 'ℹ️');
+        return;
+      }
+    } catch (e) { /* Web Share con archivos no soportado — se usa el respaldo abajo */ }
+
+    try { window.open(r.evidenciaData, '_blank'); } catch (e) {}
+    if (window.mostrarPush) window.mostrarPush('WhatsApp', 'Se abrió el resumen en WhatsApp y la evidencia en otra pestaña — adjúntala manualmente, WhatsApp no permite adjuntarla automático desde un enlace web.', 'ℹ️');
   };
 
 })();
