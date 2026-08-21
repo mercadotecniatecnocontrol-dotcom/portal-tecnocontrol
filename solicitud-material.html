@@ -41,9 +41,47 @@
         <label>Área *</label>
         <input id="f-area" type="text" placeholder="Ej. Ventas, Servicio, Flotilla…" autocomplete="off" required>
       </div>
-      <div>
+      <div id="wrap-destino-operacion">
         <label>Operación destino *</label>
         <input id="f-destino" type="text" placeholder="Ej. Instalación gasolinera X" autocomplete="off" required>
+      </div>
+      <div>
+        <label>Prioridad *</label>
+        <select id="f-prioridad">
+          <option value="urgente" selected>🔴 Urgente</option>
+          <option value="alta">🟠 Alta</option>
+          <option value="normal">🟡 Normal</option>
+          <option value="programado">🟢 Programado</option>
+        </select>
+      </div>
+      <div class="full">
+        <label>Tipo de traslado *</label>
+        <select id="f-tipo-traslado" onchange="onTipoTrasladoChange()">
+          <option value="" selected>Operación / proyecto (destino normal, arriba)</option>
+          <option value="traslado_almacenes">Traslado entre almacenes</option>
+          <option value="entrega_tecnico">Entrega directa a técnico (desde un almacén)</option>
+        </select>
+      </div>
+      <div class="full" id="wrap-traslado-almacenes" style="display:none;">
+        <div class="grid" style="grid-template-columns:1fr 1fr;gap:14px;padding:0;">
+          <div>
+            <label>Almacén origen *</label>
+            <input list="dl-almacenes" id="f-almacen-origen" type="text" placeholder="Ej. Almacén Chihuahua" autocomplete="off">
+          </div>
+          <div>
+            <label>Almacén destino *</label>
+            <input list="dl-almacenes" id="f-almacen-destino" type="text" placeholder="Ej. Almacén Parral" autocomplete="off">
+          </div>
+        </div>
+        <datalist id="dl-almacenes">
+          <option value="Almacén Chihuahua"></option>
+          <option value="Almacén Parral"></option>
+        </datalist>
+      </div>
+      <div class="full" id="wrap-entrega-tecnico" style="display:none;">
+        <label>Almacén origen *</label>
+        <input list="dl-almacenes" id="f-almacen-origen-tecnico" type="text" placeholder="Ej. Almacén Chihuahua" autocomplete="off">
+        <div style="font-size:12px;color:var(--mute);margin-top:4px;">Se entrega al técnico indicado arriba<span id="f-entrega-tecnico-nombre"></span>.</div>
       </div>
       <div class="full">
         <label>¿Para qué se usará el material? *</label>
@@ -200,6 +238,22 @@ window.onTecnicoInput = function(){
   const val = $('f-tecnico').value.trim().toLowerCase();
   const t = mapaTecnicos[val];
   $('f-tecnico-correo').textContent = t && t.correo ? ('✉ '+t.correo) : '';
+  const nombreSpan = $('f-entrega-tecnico-nombre');
+  if(nombreSpan){ const n = $('f-tecnico').value.trim(); nombreSpan.textContent = n ? (' ('+n+')') : ''; }
+};
+
+/* ============ Tipo de traslado — Operación normal / entre almacenes / a técnico ============
+   Por default el material va ligado a una operación/proyecto (comportamiento de
+   siempre, campo "Operación destino" libre). Las otras dos opciones son para
+   movimientos internos de logística: no van ligadas a un cliente/operación, así
+   que el campo "Operación destino" se oculta y se autocalcula a partir del
+   traslado elegido (ej. "Almacén Chihuahua → Almacén Parral"). */
+window.onTipoTrasladoChange = function(){
+  const tipo = $('f-tipo-traslado').value;
+  $('wrap-destino-operacion').style.display = (tipo==='') ? '' : 'none';
+  $('wrap-traslado-almacenes').style.display = (tipo==='traslado_almacenes') ? 'block' : 'none';
+  $('wrap-entrega-tecnico').style.display = (tipo==='entrega_tecnico') ? 'block' : 'none';
+  if(tipo!=='') onTecnicoInput(); // refresca el nombre del técnico en el aviso de "entrega directa"
 };
 
 /*  Filas de productos con autocompletado  */
@@ -387,16 +441,42 @@ async function siguienteFolioMaterial(){
 $('submit').onclick = async ()=>{
   const tecnicoNombre = $('f-tecnico').value.trim();
   const area = $('f-area').value.trim();
-  const destino = $('f-destino').value.trim();
   const uso = $('f-uso').value.trim();
   const productos = Object.values(carrito).map(v=>({ clave: v.clave, cant: v.cant, desc: v.desc }));
   const tecnicoInfo = mapaTecnicos[tecnicoNombre.toLowerCase()] || null;
   const solicitante = modoSolicitud==='propio' ? tecnicoNombre : $('f-solicitante').value.trim();
+  const prioridad = $('f-prioridad').value || 'urgente';
+
+  // ── Tipo de traslado: por default es una operación/proyecto normal (destino
+  //    libre, como siempre). Las otras dos opciones son movimientos internos de
+  //    logística (entre almacenes, o de un almacén directo a un técnico) — no
+  //    llevan "Operación destino" propia, se autocalcula un resumen legible. ──
+  const tipoTraslado = $('f-tipo-traslado').value; // '' | 'traslado_almacenes' | 'entrega_tecnico'
+  const destinoManual = $('f-destino').value.trim();
+  const almacenOrigen = $('f-almacen-origen').value.trim();
+  const almacenDestino = $('f-almacen-destino').value.trim();
+  const almacenOrigenTecnico = $('f-almacen-origen-tecnico').value.trim();
+
+  let destino, destinoTipo, destinoAlmacenOrigen, destinoAlmacenDestino;
+  if(tipoTraslado==='traslado_almacenes'){
+    destinoTipo = 'traslado_almacenes';
+    destinoAlmacenOrigen = almacenOrigen;
+    destinoAlmacenDestino = almacenDestino;
+    destino = almacenOrigen && almacenDestino ? (almacenOrigen+' → '+almacenDestino) : '';
+  } else if(tipoTraslado==='entrega_tecnico'){
+    destinoTipo = 'entrega_tecnico';
+    destinoAlmacenOrigen = almacenOrigenTecnico;
+    destino = almacenOrigenTecnico && tecnicoNombre ? (almacenOrigenTecnico+' → '+tecnicoNombre) : '';
+  } else {
+    destino = destinoManual;
+  }
 
   if(!tecnicoNombre){ setMsg('Escribe o elige el técnico.'); return; }
   if(modoSolicitud==='terceros' && !solicitante){ setMsg('Escribe tu nombre (quién solicita).'); return; }
   if(!area){ setMsg('Escribe el área.'); return; }
-  if(!destino){ setMsg('Escribe la operación destino.'); return; }
+  if(tipoTraslado==='traslado_almacenes' && (!almacenOrigen || !almacenDestino)){ setMsg('Escribe almacén origen y destino.'); return; }
+  if(tipoTraslado==='entrega_tecnico' && !almacenOrigenTecnico){ setMsg('Escribe el almacén de origen.'); return; }
+  if(tipoTraslado==='' && !destino){ setMsg('Escribe la operación destino.'); return; }
   if(!uso){ setMsg('Describe para qué se usará el material.'); return; }
   if(!productos.length){ setMsg('Agrega al menos un artículo con descripción y cantidad.'); return; }
   if(!hayFirma){ setMsg('Falta la firma del solicitante.'); return; }
@@ -420,15 +500,18 @@ $('submit').onclick = async ()=>{
       solicitaParaSiMismo: modoSolicitud==='propio',
       area,
       destino,
+      destinoTipo: destinoTipo || null,
+      destinoAlmacenOrigen: destinoAlmacenOrigen || null,
+      destinoAlmacenDestino: destinoAlmacenDestino || null,
       uso,
-      prioridad: 'urgente',           // material siempre es "ahora", sin fecha tentativa
+      prioridad,                     // urgente / alta / normal / programado (mismas que Logística)
       estado: 'pendiente',
       productos,
       firma,
       origen: 'kiosco',
       createdAt: serverTimestamp()
     });
-    ultimaSolicitudEnviada = { folio: folioInfo.folio, solicitante, area, destino, uso, productos, firma, prioridad:'urgente' };
+    ultimaSolicitudEnviada = { folio: folioInfo.folio, solicitante, area, destino, uso, productos, firma, prioridad };
     $('done-folio').textContent = folioInfo.folio;
     $('done').classList.add('on');
     setMsg('');
@@ -568,6 +651,9 @@ $('done-new').onclick = ()=>{
   $('done').classList.remove('on');
   $('f-tecnico').value=''; $('f-tecnico-correo').textContent=''; $('f-solicitante').value='';
   $('f-area').value=''; $('f-destino').value=''; $('f-uso').value='';
+  $('f-prioridad').value='urgente';
+  $('f-tipo-traslado').value=''; $('f-almacen-origen').value=''; $('f-almacen-destino').value=''; $('f-almacen-origen-tecnico').value='';
+  onTipoTrasladoChange();
   setModoSolicitud('propio');
   carrito = {}; prodSearch.value=''; renderGrid(); renderCarrito();
   ctx.clearRect(0,0,cv.width,cv.height); hayFirma=false; $('sign-hint').style.display='flex';
