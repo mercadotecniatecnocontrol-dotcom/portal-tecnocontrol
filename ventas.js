@@ -5369,6 +5369,17 @@ function vpRenderListaClientes() {
 // Ventas (Leaflet, arriba en este archivo) también pueda pintar el marcador.
 // estaciones_servicio sigue siendo el catálogo maestro; esto es solo un espejo
 // para no tener que unir colecciones al momento de dibujar el mapa de clientes.
+// Nota: se usa import dinámico + window.db (en vez de los `updateDoc`/`doc`
+// usados arriba en este archivo) porque en este punto del módulo esos nombres
+// no están garantizados en alcance; este patrón es el mismo que ya usan
+// almacen-pdf.js y logistica.js y no depende de esa suposición.
+var _vpFsPromise = null;
+function _vpCargarFirestore() {
+    if (_vpFsPromise) return _vpFsPromise;
+    _vpFsPromise = import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+    return _vpFsPromise;
+}
+
 window.__vpAsignarUbicacion = function(clienteId, estacionCatalogoId){
     if (!window.__logAbrirPin) {
         alert('El módulo de Logística (logistica.js) no está cargado en esta página todavía.');
@@ -5376,7 +5387,9 @@ window.__vpAsignarUbicacion = function(clienteId, estacionCatalogoId){
     }
     window.__logAbrirPin(estacionCatalogoId, async function(lat, lng){
         try {
-            await updateDoc(doc(db,'ventas_clientes', clienteId), { lat, lng });
+            const fs = await _vpCargarFirestore();
+            if (!window.db) throw new Error('Firestore no está disponible (window.db).');
+            await fs.updateDoc(fs.doc(window.db, 'ventas_clientes', clienteId), { lat, lng });
             await cargarClientes(); // recarga clientesDB, vuelve a pintar mapa y lista
             if (window.mostrarPush) window.mostrarPush('📍 Ubicación reflejada en Ventas', '', '✅');
         } catch(e) {
