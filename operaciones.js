@@ -685,10 +685,13 @@
     }
 
     function opsPermisosActuales() {
-        if (window.esAdminTotal && window.esAdminTotal(opsUsuarioActual())) {
+        const rolLegado = opsRolActual();
+        // "administrador" cubre tanto esAdminTotal (admin global del portal) como los
+        // OPS_ADMINS (administradores solo de este departamento) — opsRolActual() ya
+        // resuelve ambos casos, así que basta con leer su resultado una sola vez.
+        if (rolLegado === "administrador") {
             return PUESTOS_SEED.flatMap(p => p.permisos).concat(["admin_operaciones"]); // acceso total
         }
-        const rolLegado = opsRolActual();
         if (rolLegado === "almacen") return ["gestionar_herramientas", "autorizar_material", "solicitar_material"];
         return ["consulta"];
     }
