@@ -66,6 +66,26 @@
       });
     });
   }
+
+  // ── Catálogo maestro de estaciones de servicio (colección compartida con
+  //    Ventas/Operaciones — fuente única de direcciones, ver estaciones_servicio).
+  //    Se carga una sola vez por sesión de módulo y se reutiliza en memoria. ──
+  var _estacionesCache = null; // null = aún no cargado; array = ya cargado (aunque esté vacío)
+  function cargarCatalogoEstaciones(){
+    if (_estacionesCache) return Promise.resolve(_estacionesCache);
+    return cargarFirestore().then(function(fs){
+      if (!window.db) return [];
+      return fs.getDocs(fs.collection(window.db,'estaciones_servicio')).then(function(snap){
+        var lista = [];
+        snap.forEach(function(d){ lista.push(Object.assign({ id: d.id }, d.data())); });
+        _estacionesCache = lista;
+        return lista;
+      }).catch(function(err){
+        console.warn('[almacen-pdf] no se pudo cargar el catálogo de estaciones:', err);
+        return [];
+      });
+    });
+  }
  
   // ── CDN de pdf.js (ESM). Se importa una sola vez. ──
   var PDFJS_VER = '4.5.136';
@@ -97,7 +117,8 @@
     pdfBuffer: null, pdfSize: 0,     // para adjuntar el PDF original al surtido
     caratulaImg: null,               // foto de carátula comprimida (si el destino es "paquetería")
     documentosPendientes: [],        // [File, ...] órdenes de compra u otros documentos, aún sin subir
-    ultimoGuardado: null             // {folio,cliente,...} del último surtido creado, para el botón de WhatsApp
+    ultimoGuardado: null,            // {folio,cliente,...} del último surtido creado, para el botón de WhatsApp
+    estacionSeleccionada: null       // estación elegida del catálogo (destino "entrega_chihuahua"); null = modo manual
   };
  
   // =====================================================================
@@ -267,6 +288,18 @@
       + '.alm-destino-fld label{display:block;font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#64748b;margin-bottom:4px;}'
       + '.alm-destino-fld input,.alm-destino-fld select,.alm-destino-fld textarea{width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;color:#1e293b;outline:none;background:#fff;box-sizing:border-box;font-family:inherit;}'
       + '.alm-destino-caratula-prev{max-width:100%;max-height:130px;border:1px solid #e2e8f0;border-radius:8px;display:block;margin-top:6px;}'
+      + '.alm-estacion-search{position:relative;}'
+      + '.alm-estacion-results{position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #cbd5e1;border-radius:10px;margin-top:4px;max-height:220px;overflow-y:auto;box-shadow:0 8px 24px rgba(2,20,50,.14);z-index:10;}'
+      + '.alm-estacion-item{padding:9px 12px;cursor:pointer;border-bottom:1px solid #eef2f7;}'
+      + '.alm-estacion-item:last-child{border-bottom:none;}'
+      + '.alm-estacion-item:hover{background:#ecfeff;}'
+      + '.alm-estacion-item .n{font-size:13px;font-weight:700;color:#0f172a;}'
+      + '.alm-estacion-item .d{font-size:11.5px;color:#64748b;margin-top:1px;}'
+      + '.alm-estacion-selected{border:1px solid #a7f3d0;background:#f0fdf4;border-radius:10px;padding:10px 12px;margin-top:8px;}'
+      + '.alm-estacion-selected .n{font-size:13px;font-weight:800;color:#065f46;}'
+      + '.alm-estacion-selected .d{font-size:12px;color:#334155;margin-top:2px;}'
+      + '.alm-estacion-selected button{margin-top:8px;border:1px solid #fecaca;background:#fff;color:#dc2626;border-radius:7px;padding:5px 10px;font-size:11.5px;font-weight:700;cursor:pointer;}'
+      + '.alm-estacion-link{margin-top:8px;background:none;border:none;color:#0e7490;font-size:11.5px;font-weight:700;cursor:pointer;text-decoration:underline;padding:0;}'
       + '.alm-whatsapp-btn{background:#25D366;color:#fff;}'
       + '.alm-docs-box{border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;margin-bottom:14px;background:#f8fafc;}'
       + '.alm-doc-item{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:9px;margin-bottom:6px;font-size:12.5px;color:#334155;}'
@@ -507,11 +540,7 @@
         + '<button type="button" class="alm-addrow" style="margin-top:6px;" onclick="window.__almPdfElegirCaratula()">' + (estado.caratulaImg?'Cambiar foto':'Subir foto en su lugar') + '</button>'
         + '<input type="file" id="alm-destino-caratula-file" accept="image/*" style="display:none"></div>';
     } else if (tipo === 'entrega_chihuahua'){
-      extra.innerHTML =
-        '<div class="alm-destino-fld"><label>Dirección de la estación</label><textarea id="alm-destino-dir" rows="2" placeholder="Dirección completa de la estación de servicio"></textarea></div>';
-      var dirEl = document.getElementById('alm-destino-dir');
-      var entregaEl = document.getElementById('alm-entrega');
-      if (dirEl && !dirEl.value && entregaEl && entregaEl.value) dirEl.value = entregaEl.value;
+      renderDestinoEstacion();
     } else if (tipo === 'traslado_almacenes'){
       extra.innerHTML =
           '<div class="alm-destino-fld"><label>Almacén origen</label><select id="alm-destino-origen"></select></div>'
@@ -526,7 +555,94 @@
       extra.innerHTML = '';
     }
   };
- 
+
+  // ── Destino "Entrega en Chihuahua (estación)" — buscador sobre el catálogo
+  //    maestro estaciones_servicio. Con estación elegida, la dirección viene
+  //    del catálogo (fuente única); "usar dirección escrita a mano" conserva
+  //    la captura manual de siempre para excepciones fuera del catálogo. ──
+  function renderDestinoEstacion(){
+    var extra = document.getElementById('alm-destino-extra');
+    if (!extra) return;
+    var sel = estado.estacionSeleccionada;
+    if (sel){
+      extra.innerHTML =
+          '<div class="alm-estacion-selected">'
+        +   '<div class="n">' + esc(sel.razonSocial) + '</div>'
+        +   '<div class="d">' + esc(sel.direccionNormalizada) + '</div>'
+        +   '<button type="button" onclick="window.__almPdfEstacionQuitar()">Cambiar estación</button>'
+        + '</div>';
+      return;
+    }
+    extra.innerHTML =
+        '<div class="alm-destino-fld alm-estacion-search">'
+      +   '<label>Buscar estación (Chihuahua)</label>'
+      +   '<input id="alm-estacion-q" placeholder="Razón social, municipio, colonia o permiso…" autocomplete="off" '
+      +     'oninput="window.__almPdfEstacionBuscar(this.value)" '
+      +     'onblur="setTimeout(function(){var b=document.getElementById(\'alm-estacion-results\');if(b)b.style.display=\'none\';},150)">'
+      +   '<div id="alm-estacion-results" class="alm-estacion-results" style="display:none;"></div>'
+      + '</div>'
+      + '<button type="button" class="alm-estacion-link" onclick="window.__almPdfEstacionManual()">La estación no está en el catálogo / usar dirección escrita a mano</button>';
+    cargarCatalogoEstaciones(); // precarga en cache; no bloquea el render del campo
+  }
+
+  window.__almPdfEstacionBuscar = function(valor){
+    var box = document.getElementById('alm-estacion-results');
+    if (!box) return;
+    var q = (valor || '').trim().toLowerCase();
+    if (!q){ box.style.display = 'none'; box.innerHTML = ''; return; }
+    cargarCatalogoEstaciones().then(function(lista){
+      var actual = document.getElementById('alm-estacion-q');
+      if (!actual || actual.value.trim().toLowerCase() !== q) return; // el usuario ya escribió otra cosa mientras cargaba
+      var resultados = lista.filter(function(e){
+        var texto = [e.razonSocial, e.municipio, e.colonia, e.permiso, e.domicilioRaw, e.codigoPostal].filter(Boolean).join(' ').toLowerCase();
+        return texto.indexOf(q) !== -1;
+      }).slice(0, 25);
+      if (!resultados.length){
+        box.innerHTML = '<div class="alm-estacion-item" style="cursor:default;color:#94a3b8;">Sin resultados en el catálogo.</div>';
+        box.style.display = 'block';
+        return;
+      }
+      box.innerHTML = resultados.map(function(e){
+        return '<div class="alm-estacion-item" onmousedown="window.__almPdfEstacionElegir(\'' + e.id + '\')">'
+          +   '<div class="n">' + esc(e.razonSocial) + '</div>'
+          +   '<div class="d">' + esc(e.municipio) + ' · ' + esc(e.domicilioRaw) + '</div>'
+          + '</div>';
+      }).join('');
+      box.style.display = 'block';
+    });
+  };
+
+  window.__almPdfEstacionElegir = function(estacionId){
+    cargarCatalogoEstaciones().then(function(lista){
+      var e = lista.find(function(x){ return x.id === estacionId; });
+      if (!e) return;
+      estado.estacionSeleccionada = e;
+      renderDestinoEstacion();
+    });
+  };
+
+  window.__almPdfEstacionQuitar = function(){
+    estado.estacionSeleccionada = null;
+    renderDestinoEstacion();
+  };
+
+  // Modo manual (excepción — estación no está en el catálogo)
+  window.__almPdfEstacionManual = function(){
+    var extra = document.getElementById('alm-destino-extra');
+    if (!extra) return;
+    extra.innerHTML =
+        '<div class="alm-destino-fld"><label>Dirección de la estación (manual)</label><textarea id="alm-destino-dir" rows="2" placeholder="Dirección completa de la estación de servicio"></textarea></div>'
+      + '<button type="button" class="alm-estacion-link" onclick="window.__almPdfEstacionBuscarModo()">Buscar en el catálogo en su lugar</button>';
+    var dirEl = document.getElementById('alm-destino-dir');
+    var entregaEl = document.getElementById('alm-entrega');
+    if (dirEl && !dirEl.value && entregaEl && entregaEl.value) dirEl.value = entregaEl.value;
+  };
+
+  window.__almPdfEstacionBuscarModo = function(){
+    estado.estacionSeleccionada = null;
+    renderDestinoEstacion();
+  };
+
   window.__almPdfAgregarAlmacen = function(){
     var nombre = prompt('Nombre del almacén nuevo (ej. TORREÓN):');
     if (!nombre) return;
@@ -785,7 +901,20 @@
         if (estado.caratulaImg) datosDestino.destinoCaratulaImg = estado.caratulaImg;
         if (document.getElementById('cx-dest-nombre')) datosDestino.caratulaEnvio = leerCaratulaDelFormulario();
       } else if (destinoTipo === 'entrega_chihuahua') {
-        datosDestino.destinoDireccion = ((document.getElementById('alm-destino-dir') || {}).value || '').trim();
+        if (estado.estacionSeleccionada) {
+          // Dirección proveniente del catálogo maestro (fuente única). Se guarda
+          // una COPIA congelada en destinoDireccion para no alterar documentos
+          // históricos si el catálogo cambia después; destinoEstacionId es la
+          // referencia viva para reutilizar en Logística/Rutas más adelante.
+          var est = estado.estacionSeleccionada;
+          datosDestino.destinoDireccion = est.direccionNormalizada;
+          datosDestino.destinoEstacionId = est.id;
+          datosDestino.destinoEstacionRazonSocial = est.razonSocial;
+          datosDestino.destinoEstacionMunicipio = est.municipio;
+        } else {
+          // Excepción: estación fuera del catálogo, captura manual (como antes).
+          datosDestino.destinoDireccion = ((document.getElementById('alm-destino-dir') || {}).value || '').trim();
+        }
       } else if (destinoTipo === 'traslado_almacenes') {
         datosDestino.destinoAlmacenOrigen = (document.getElementById('alm-destino-origen') || {}).value || '';
         datosDestino.destinoAlmacenDestino = (document.getElementById('alm-destino-destino') || {}).value || '';
@@ -895,6 +1024,7 @@
     estado.caratulaImg = null;
     estado.documentosPendientes = [];
     estado.ultimoGuardado = null;
+    estado.estacionSeleccionada = null;
     var up = document.getElementById('alm-step-upload');
     var rv = document.getElementById('alm-step-review');
     if (up) up.style.display = 'block';
