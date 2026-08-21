@@ -89,6 +89,27 @@
   };
   var CENTRO_ESTADO = [28.63, -106.07]; // fallback: centro aproximado del estado de Chihuahua
 
+  // ── Geocodificación de direcciones escritas a mano (destinos "fuera del
+  //    catálogo") usando Nominatim/OpenStreetMap — gratis, sin API key.
+  //    Solo se usa como PUNTO DE PARTIDA: el pin siempre queda arrastrable
+  //    para corregirlo si el resultado no es exacto (las direcciones libres
+  //    no siempre geocodifican bien). Uso ligero y ocasional (clic manual
+  //    por pedido), dentro de la política de uso justo de Nominatim. ──
+  function geocodificarDireccion(direccion) {
+    var url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=mx&q='
+      + encodeURIComponent(direccion + ', Chihuahua, México');
+    return fetch(url, { headers: { 'Accept-Language': 'es' } })
+      .then(function (r) { return r.json(); })
+      .then(function (rows) {
+        if (rows && rows[0]) return { lat: parseFloat(rows[0].lat), lng: parseFloat(rows[0].lon), encontrado: true };
+        return { encontrado: false };
+      })
+      .catch(function (err) {
+        console.warn('[logistica] geocodificación falló:', err);
+        return { encontrado: false };
+      });
+  }
+
   // ── Estado del módulo ──
   var estado = {
     pedidos: [],       // surtidos activos con destinoTipo === 'entrega_chihuahua'
@@ -98,6 +119,8 @@
     pinEstacionId: null,
     pinColeccion: 'estaciones_servicio', // 'estaciones_servicio' o 'recolecciones_locales' — a qué colección se guarda el pin actual
     pinOnGuardado: null, // callback opcional(lat,lng) — para módulos externos (ej. Ventas) que llaman a __logAbrirPin
+    pinCampoLat: 'lat',
+    pinCampoLng: 'lng',
     mapaPin: null,     // instancia Leaflet del modal de pin
     markerPin: null,
     evidenciaArchivo: null // {tipo, nombre, data} temporal mientras se llena el formulario de recolección
@@ -224,9 +247,11 @@
       var zona = est ? (est.zonaReparto || 'Sin zona asignada') : 'Fuera del catálogo (dirección manual)';
       if (!grupos[zona]) grupos[zona] = [];
       grupos[zona].push({ pedido: p, estacion: est });
-      if (!est) { sinCatalogo++; }
-      else if (est.lat != null && est.lng != null) { conUbicacion++; }
-      else { sinUbicacion++; }
+      if (est) {
+        if (est.lat != null && est.lng != null) { conUbicacion++; } else { sinUbicacion++; }
+      } else {
+        if (p.destinoLat != null && p.destinoLng != null) { conUbicacion++; } else { sinCatalogo++; }
+      }
     });
 
     var totalRecol = estado.recolecciones.length;
@@ -235,7 +260,7 @@
       + '<div class="log-chip"><b>' + total + '</b> pedidos en cola</div>'
       + '<div class="log-chip"><b>' + conUbicacion + '</b> listos para ruta (con ubicación)</div>'
       + (sinUbicacion ? '<div class="log-chip warn"><b>' + sinUbicacion + '</b> necesitan ubicación</div>' : '')
-      + (sinCatalogo ? '<div class="log-chip warn"><b>' + sinCatalogo + '</b> con dirección manual (fuera del catálogo)</div>' : '')
+      + (sinCatalogo ? '<div class="log-chip warn"><b>' + sinCatalogo + '</b> con dirección manual sin ubicar</div>' : '')
       + (totalRecol ? '<div class="log-chip" style="background:#f5f3ff;border-color:#ddd6fe;color:#5b21b6;"><b>' + totalRecol + '</b> recolecciones locales pendientes</div>' : '')
       + '</div>';
 
@@ -278,7 +303,11 @@
         var dir = est ? est.direccionNormalizada : (p.destinoDireccion || '—');
         var badge;
         if (!est) {
-          badge = '<span class="log-badge" style="background:#f1f5f9;color:#64748b;">Manual</span>';
+          if (p.destinoLat != null && p.destinoLng != null) {
+            badge = '<span class="log-badge ok">📍 Ubicada</span>';
+          } else {
+            badge = '<button type="button" class="log-badge falta" onclick="window.__logAsignarUbicacionManual(\'' + p.id + '\')">🔍 Buscar ubicación</button>';
+          }
         } else if (est.lat != null && est.lng != null) {
           badge = '<span class="log-badge ok">📍 Ubicada</span>';
         } else {
@@ -424,6 +453,8 @@
   window.__logAbrirPin = function (id, onGuardado, coleccion) {
     estado.pinOnGuardado = (typeof onGuardado === 'function') ? onGuardado : null;
     estado.pinColeccion = coleccion || 'estaciones_servicio';
+    estado.pinCampoLat = 'lat';
+    estado.pinCampoLng = 'lng';
     var esRecoleccion = estado.pinColeccion === 'recolecciones_locales';
     var cache = esRecoleccion
       ? estado.recolecciones.find(function (r) { return r.id === id; })
@@ -511,6 +542,8 @@
     estado.pinEstacionId = null;
     estado.pinOnGuardado = null;
     estado.pinColeccion = 'estaciones_servicio';
+    estado.pinCampoLat = 'lat';
+    estado.pinCampoLng = 'lng';
   };
 
   window.__logGuardarPin = function () {
@@ -518,24 +551,30 @@
     var latlng = estado.markerPin.getLatLng();
     var coleccion = estado.pinColeccion;
     var id = estado.pinEstacionId;
+    var campoLat = estado.pinCampoLat || 'lat';
+    var campoLng = estado.pinCampoLng || 'lng';
     var btn = document.getElementById('log-pin-guardar');
     var msg = document.getElementById('log-pin-msg');
     btn.disabled = true;
     msg.style.color = '#0e7490';
     msg.textContent = 'Guardando…';
 
+    var datosGuardar = {};
+    datosGuardar[campoLat] = latlng.lat;
+    datosGuardar[campoLng] = latlng.lng;
+    datosGuardar.ubicacionCapturadaPor = (window.auth && window.auth.currentUser && window.auth.currentUser.email) || '';
+    datosGuardar.ubicacionCapturadaEn = new Date().toISOString();
+
     cargarFirestore().then(function (fs) {
-      return fs.updateDoc(fs.doc(window.db, coleccion, id), {
-        lat: latlng.lat,
-        lng: latlng.lng,
-        ubicacionCapturadaPor: (window.auth && window.auth.currentUser && window.auth.currentUser.email) || '',
-        ubicacionCapturadaEn: new Date().toISOString()
-      });
+      return fs.updateDoc(fs.doc(window.db, coleccion, id), datosGuardar);
     }).then(function () {
       // Refleja el cambio también en la caché en memoria de este módulo.
       if (coleccion === 'recolecciones_locales') {
         var idx = estado.recolecciones.findIndex(function (r) { return r.id === id; });
         if (idx >= 0) { estado.recolecciones[idx].lat = latlng.lat; estado.recolecciones[idx].lng = latlng.lng; }
+      } else if (coleccion === 'surtidos') {
+        var idxP = estado.pedidos.findIndex(function (p) { return p.id === id; });
+        if (idxP >= 0) { estado.pedidos[idxP][campoLat] = latlng.lat; estado.pedidos[idxP][campoLng] = latlng.lng; }
       } else if (estado.estaciones[id]) {
         estado.estaciones[id].lat = latlng.lat;
         estado.estaciones[id].lng = latlng.lng;
@@ -554,6 +593,68 @@
       msg.style.color = '#dc2626';
       msg.textContent = 'No se pudo guardar. Revisa permisos de Firestore.';
       btn.disabled = false;
+    });
+  };
+
+  // window.__logAsignarUbicacionManual(pedidoId)
+  //   Para pedidos con destino escrito a mano (fuera del catálogo de estaciones):
+  //   busca la dirección en Nominatim/OpenStreetMap y abre el pin ya centrado
+  //   ahí, listo para ajustar y confirmar. Guarda en `surtidos/{pedidoId}` como
+  //   destinoLat/destinoLng (no en `lat`/`lng`, para no mezclarse con otros
+  //   campos del documento del pedido).
+  window.__logAsignarUbicacionManual = function (pedidoId) {
+    var p = estado.pedidos.find(function (x) { return x.id === pedidoId; });
+    if (!p) return;
+
+    estado.pinOnGuardado = null;
+    estado.pinColeccion = 'surtidos';
+    estado.pinCampoLat = 'destinoLat';
+    estado.pinCampoLng = 'destinoLng';
+    estado.pinEstacionId = pedidoId;
+
+    injectStyles();
+    construirModalPin();
+    var modal = document.getElementById('log-pin-modal');
+    modal.style.display = 'flex';
+    document.getElementById('log-pin-info').innerHTML =
+        '<b>' + esc(p.destinoEstacionRazonSocial || p.cliente || p.folio || 'Pedido') + '</b><br>' + esc(p.destinoDireccion || '');
+    document.getElementById('log-pin-msg').textContent = '';
+    document.getElementById('log-pin-coords').textContent = 'Buscando la dirección en el mapa…';
+
+    var direccion = p.destinoDireccion || '';
+    var pCentro = (p.destinoLat != null && p.destinoLng != null)
+      ? Promise.resolve({ lat: p.destinoLat, lng: p.destinoLng, encontrado: true })
+      : geocodificarDireccion(direccion);
+
+    pCentro.then(function (resultado) {
+      var centro = resultado.encontrado ? [resultado.lat, resultado.lng] : CENTRO_ESTADO;
+
+      cargarLeaflet().then(function (L) {
+        if (estado.mapaPin) { estado.mapaPin.remove(); estado.mapaPin = null; }
+        var mapa = L.map('log-pin-mapa').setView(centro, resultado.encontrado ? 15 : 11);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '© OpenStreetMap'
+        }).addTo(mapa);
+
+        var marker = L.marker(centro, { draggable: true }).addTo(mapa);
+        function actualizarTexto() {
+          var latlng = marker.getLatLng();
+          var base = 'Lat: ' + latlng.lat.toFixed(6) + '  ·  Lng: ' + latlng.lng.toFixed(6);
+          document.getElementById('log-pin-coords').textContent = base
+            + (resultado.encontrado ? '' : ' — no se encontró automáticamente esta dirección, ajusta el pin a mano');
+        }
+        marker.on('dragend', actualizarTexto);
+        mapa.on('click', function (e) { marker.setLatLng(e.latlng); actualizarTexto(); });
+
+        estado.mapaPin = mapa;
+        estado.markerPin = marker;
+        actualizarTexto();
+
+        setTimeout(function () { mapa.invalidateSize(); }, 80);
+      }).catch(function (err) {
+        console.error('[logistica] error cargando Leaflet:', err);
+        document.getElementById('log-pin-coords').textContent = 'No se pudo cargar el mapa. Revisa tu conexión.';
+      });
     });
   };
 
@@ -778,12 +879,15 @@
       .map(function (p) { return { p: p, est: p.destinoEstacionId ? estado.estaciones[p.destinoEstacionId] : null }; })
       .filter(function (x) { return x.est && x.est.lat != null && x.est.lng != null; });
 
+    var entregasManuales = estado.pedidos
+      .filter(function (p) { return !p.destinoEstacionId && p.destinoLat != null && p.destinoLng != null; });
+
     var recolecciones = estado.recolecciones.filter(function (r) { return r.lat != null && r.lng != null; });
 
-    var totalPuntos = entregas.length + recolecciones.length;
+    var totalPuntos = entregas.length + entregasManuales.length + recolecciones.length;
     var leyenda = document.getElementById('log-mapa-leyenda');
     leyenda.innerHTML =
-        '<div class="log-chip"><b>' + entregas.length + '</b> entregas ubicadas</div>'
+        '<div class="log-chip"><b>' + (entregas.length + entregasManuales.length) + '</b> entregas ubicadas</div>'
       + '<div class="log-chip" style="background:#f5f3ff;border-color:#ddd6fe;color:#5b21b6;"><b>' + recolecciones.length + '</b> recolecciones ubicadas</div>';
 
     var vacio = document.getElementById('log-mapa-vacio');
@@ -809,6 +913,12 @@
         var m = L.marker([x.est.lat, x.est.lng]).addTo(mapaCombinado);
         m.bindPopup('<b>' + esc(x.p.folio || '') + '</b><br>' + esc(x.est.razonSocial) + '<br>' + esc(x.est.direccionNormalizada));
         puntos.push([x.est.lat, x.est.lng]);
+      });
+
+      entregasManuales.forEach(function (p) {
+        var m = L.marker([p.destinoLat, p.destinoLng]).addTo(mapaCombinado);
+        m.bindPopup('<b>' + esc(p.folio || '') + '</b><br>' + esc(p.destinoEstacionRazonSocial || p.cliente || '') + '<br>' + esc(p.destinoDireccion || ''));
+        puntos.push([p.destinoLat, p.destinoLng]);
       });
 
       var iconoRecoleccion = L.divIcon({
