@@ -1272,6 +1272,14 @@
             caratulaEnvio:d.caratulaEnvio||null,
             entregaObservaciones:d.entregaObservaciones||'', entregadoEn: d.entregadoEn ? toMs(d.entregadoEn) : 0,
             comentariosAlmacen:d.comentariosAlmacen||'',
+            // Campos propios de Solicitud de Material (origen 'operaciones'/'kiosco') —
+            // sin esto, _almConstruirPDFSolicitudMaterial / _almResumenTextoSolicitud
+            // reciben el pedido "recortado" de esta caché en vez del documento completo
+            // y el PDF/WhatsApp salen con Área, Uso y Folio de servicio en blanco.
+            solicitante:d.solicitante||'', area:d.area||'', uso:d.uso||'', destino:d.destino||'',
+            folioServicio:d.folioServicio||'', origen:d.origen||'',
+            tecnicoId:d.tecnicoId||'', tecnicoNumero:d.tecnicoNumero||'', tecnicoNombre:d.tecnicoNombre||'',
+            folioNum:d.folioNum||'', folioPrefijo:d.folioPrefijo||'',
             createdAt:toMs(d.createdAt)
           });
         });
@@ -1696,27 +1704,32 @@
   window.__almWhatsAppSolicitudMaterial = function(id){
     _almResolverPedido(id, function(p){
       var resumen = _almResumenTextoSolicitud(p);
-      if(!window.jspdf){
-        window.open('https://wa.me/?text='+encodeURIComponent(resumen), '_blank');
-        return;
-      }
+
+      // 1) SIEMPRE se abre primero el resumen en WhatsApp vía wa.me/?text= — es la
+      //    única vía 100% confiable para el texto. WhatsApp (Android/iOS) normalmente
+      //    IGNORA el "text" de Web Share cuando también recibe un archivo, así que no
+      //    podemos depender de mandar archivo+texto juntos en un solo navigator.share.
+      window.open('https://wa.me/?text='+encodeURIComponent(resumen), '_blank');
+
+      if(!window.jspdf) return;
       var docu = _almConstruirPDFSolicitudMaterial(p);
-      if(!docu){ window.open('https://wa.me/?text='+encodeURIComponent(resumen), '_blank'); return; }
+      if(!docu) return;
       var archivoNombre = 'Solicitud_'+(p.folio||'material').replace(/\s+/g,'_')+'.pdf';
-      var compartioNativo = false;
+
+      // 2) El PDF se comparte/abre por separado — el resumen de texto ya quedó
+      //    garantizado en el paso anterior, así que aquí NO se manda "text" de nuevo.
       try{
         var blob = docu.output('blob');
         var file = new File([blob], archivoNombre, {type:'application/pdf'});
         if(navigator.canShare && navigator.canShare({files:[file]})){
-          compartioNativo = true;
-          navigator.share({ files:[file], title:'Solicitud '+(p.folio||''), text:resumen }).catch(function(){});
+          navigator.share({ files:[file], title:'Solicitud '+(p.folio||'') }).catch(function(){});
+          if(window.mostrarPush) window.mostrarPush('WhatsApp','Se abrió el resumen en WhatsApp y el cuadro para compartir el PDF — elige WhatsApp otra vez ahí para adjuntarlo a la misma conversación.', 'ℹ️');
+          return;
         }
       }catch(e){ /* Web Share con archivos no soportado — se usa el respaldo abajo */ }
-      if(!compartioNativo){
-        try{ window.open(docu.output('bloburl'), '_blank'); }catch(e){}
-        window.open('https://wa.me/?text='+encodeURIComponent(resumen), '_blank');
-        if(window.mostrarPush) window.mostrarPush('WhatsApp','Se abrió el PDF y WhatsApp — adjunta el PDF manualmente, WhatsApp no permite adjuntarlo automático desde un enlace web.', 'ℹ️');
-      }
+
+      try{ window.open(docu.output('bloburl'), '_blank'); }catch(e){}
+      if(window.mostrarPush) window.mostrarPush('WhatsApp','Se abrió el resumen en WhatsApp y el PDF en otra pestaña — adjunta el PDF manualmente, WhatsApp no permite adjuntarlo automático desde un enlace web.', 'ℹ️');
     });
   };
 
