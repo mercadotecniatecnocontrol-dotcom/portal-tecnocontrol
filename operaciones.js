@@ -47,6 +47,16 @@
     const COL_REVISIONES = "ops_revisiones_herramienta"; // Bitácora de auditorías físicas de herramienta por técnico (distinta de COL_AUDITORIA, que es el log de cambios de campos)
     const MIGUEL_EMAIL = "miguel@tecnocontrol.com.mx"; // dueño del seguimiento interno (fecha de atención / compromiso)
 
+    // Administradores del departamento de Operaciones: acceso total DENTRO de este módulo
+    // (subir/editar/cambiar todo). No son esAdminTotal, así que NO obtienen acceso a otros
+    // departamentos del portal — el alcance queda limitado a operaciones.js.
+    const OPS_ADMINS = [
+        "miguel@tecnocontrol.com.mx",
+        "clientes@tecnocontrol.com.mx",
+        "u.nunez@tecnocontrol.com.mx",
+        "magali@tecnocontrol.com.mx",
+    ];
+
     // Capa de integración con RH — mismo patrón que opsAspelAdapter: placeholder documentado.
     // Cuando exista sincronización real de personas/altas/bajas/puestos, solo se reemplaza el interior.
     window.opsHRProvider = {
@@ -668,6 +678,7 @@
         // usado como respaldo cuando el usuario no tiene una Persona ligada todavía.
         const email = opsUsuarioActual();
         if (window.esAdminTotal && window.esAdminTotal(email)) return "administrador";
+        if (OPS_ADMINS.includes((email || "").toLowerCase().trim())) return "administrador";
         const almacen = (window.USUARIOS_AREA && window.USUARIOS_AREA["Almacen"]) || [];
         if (almacen.map(e => e.toLowerCase()).includes(email.toLowerCase())) return "almacen";
         return "consulta";
