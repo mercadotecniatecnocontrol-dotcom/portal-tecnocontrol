@@ -92,9 +92,10 @@
   // ── Estado del módulo ──
   var estado = {
     pedidos: [],       // surtidos activos con destinoTipo === 'entrega_chihuahua'
-    estaciones: {},    // { estacionId: {..., id} } — catálogo indexado por id
+    estaciones: {},    // { estacionId: {..., id} } — catálogo indexado por id (caché de sesión)
     cargando: true,
     pinEstacionId: null,
+    pinOnGuardado: null, // callback opcional(lat,lng) — para módulos externos (ej. Ventas) que llaman a __logAbrirPin
     mapaPin: null,     // instancia Leaflet del modal de pin
     markerPin: null
   };
@@ -313,45 +314,76 @@
     document.body.appendChild(wrap);
   }
 
-  window.__logAbrirPin = function (estacionId) {
-    var est = estado.estaciones[estacionId];
-    if (!est) return;
-    estado.pinEstacionId = estacionId;
+  // window.__logAbrirPin(estacionId, onGuardado?)
+  //   - estacionId: id del doc en estaciones_servicio.
+  //   - onGuardado(lat,lng): callback OPCIONAL, para módulos externos (ej. Ventas)
+  //     que necesitan reflejar la ubicación en su propia colección (ventas_clientes)
+  //     además de guardarse en el catálogo maestro. Si no llama desde este módulo,
+  //     igual funciona: busca la estación aunque no esté en la caché local (por si
+  //     se invoca sin haber abierto antes la cola de Logística).
+  window.__logAbrirPin = function (estacionId, onGuardado) {
+    estado.pinOnGuardado = (typeof onGuardado === 'function') ? onGuardado : null;
 
     injectStyles();
     construirModalPin();
     var modal = document.getElementById('log-pin-modal');
     modal.style.display = 'flex';
-
-    document.getElementById('log-pin-info').innerHTML =
-        '<b>' + esc(est.razonSocial) + '</b><br>' + esc(est.direccionNormalizada);
+    document.getElementById('log-pin-info').innerHTML = 'Cargando estación…';
     document.getElementById('log-pin-msg').textContent = '';
     document.getElementById('log-pin-coords').textContent = 'Cargando mapa…';
 
-    cargarLeaflet().then(function (L) {
-      var centro = CENTRO_MUNICIPIO[(est.municipio || '').toUpperCase()] || CENTRO_ESTADO;
+    var pEstacion = estado.estaciones[estacionId]
+      ? Promise.resolve(estado.estaciones[estacionId])
+      : cargarFirestore().then(function (fs) {
+          return fs.getDoc(fs.doc(window.db, 'estaciones_servicio', estacionId)).then(function (snap) {
+            return snap.exists() ? Object.assign({ id: snap.id }, snap.data()) : null;
+          });
+        });
 
-      // Si el modal se reabre, destruye el mapa anterior para no duplicar instancias Leaflet.
-      if (estado.mapaPin) { estado.mapaPin.remove(); estado.mapaPin = null; }
+    pEstacion.then(function (est) {
+      if (!est) {
+        document.getElementById('log-pin-info').innerHTML = 'No se encontró la estación en el catálogo.';
+        document.getElementById('log-pin-coords').textContent = '';
+        return;
+      }
+      estado.estaciones[estacionId] = est; // cachea para el resto de la sesión
+      estado.pinEstacionId = estacionId;
 
-      var mapa = L.map('log-pin-mapa').setView(centro, 13);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap'
-      }).addTo(mapa);
+      document.getElementById('log-pin-info').innerHTML =
+          '<b>' + esc(est.razonSocial) + '</b><br>' + esc(est.direccionNormalizada);
 
-      var marker = L.marker(centro, { draggable: true }).addTo(mapa);
-      marker.on('dragend', function () { actualizarCoordsTexto(marker.getLatLng()); });
-      mapa.on('click', function (e) { marker.setLatLng(e.latlng); actualizarCoordsTexto(e.latlng); });
+      cargarLeaflet().then(function (L) {
+        // Si ya tiene una ubicación guardada, se abre centrado ahí (permite corregir el pin);
+        // si no, se centra en el municipio como punto de partida.
+        var centro = (est.lat != null && est.lng != null)
+          ? [est.lat, est.lng]
+          : (CENTRO_MUNICIPIO[(est.municipio || '').toUpperCase()] || CENTRO_ESTADO);
 
-      estado.mapaPin = mapa;
-      estado.markerPin = marker;
-      actualizarCoordsTexto(marker.getLatLng());
+        // Si el modal se reabre, destruye el mapa anterior para no duplicar instancias Leaflet.
+        if (estado.mapaPin) { estado.mapaPin.remove(); estado.mapaPin = null; }
 
-      // Leaflet necesita recalcular el tamaño una vez que el contenedor ya es visible.
-      setTimeout(function () { mapa.invalidateSize(); }, 80);
+        var mapa = L.map('log-pin-mapa').setView(centro, 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '© OpenStreetMap'
+        }).addTo(mapa);
+
+        var marker = L.marker(centro, { draggable: true }).addTo(mapa);
+        marker.on('dragend', function () { actualizarCoordsTexto(marker.getLatLng()); });
+        mapa.on('click', function (e) { marker.setLatLng(e.latlng); actualizarCoordsTexto(e.latlng); });
+
+        estado.mapaPin = mapa;
+        estado.markerPin = marker;
+        actualizarCoordsTexto(marker.getLatLng());
+
+        // Leaflet necesita recalcular el tamaño una vez que el contenedor ya es visible.
+        setTimeout(function () { mapa.invalidateSize(); }, 80);
+      }).catch(function (err) {
+        console.error('[logistica] error cargando Leaflet:', err);
+        document.getElementById('log-pin-coords').textContent = 'No se pudo cargar el mapa. Revisa tu conexión.';
+      });
     }).catch(function (err) {
-      console.error('[logistica] error cargando Leaflet:', err);
-      document.getElementById('log-pin-coords').textContent = 'No se pudo cargar el mapa. Revisa tu conexión.';
+      console.error('[logistica] error buscando la estación:', err);
+      document.getElementById('log-pin-info').innerHTML = 'Error al buscar la estación.';
     });
   };
 
@@ -365,6 +397,7 @@
     if (modal) modal.style.display = 'none';
     if (estado.mapaPin) { estado.mapaPin.remove(); estado.mapaPin = null; estado.markerPin = null; }
     estado.pinEstacionId = null;
+    estado.pinOnGuardado = null;
   };
 
   window.__logGuardarPin = function () {
@@ -392,9 +425,11 @@
       msg.style.color = '#059669';
       msg.textContent = '✔ Ubicación guardada.';
       if (window.mostrarPush) window.mostrarPush('📍 Ubicación guardada', '', '✅');
+      var callback = estado.pinOnGuardado;
       setTimeout(function () {
         window.__logCerrarPin();
-        render();
+        render(); // no-op seguro si la cola de Logística no está abierta en esta pantalla
+        if (typeof callback === 'function') callback(latlng.lat, latlng.lng);
       }, 500);
     }).catch(function (err) {
       console.error('[logistica] error guardando ubicación:', err);
