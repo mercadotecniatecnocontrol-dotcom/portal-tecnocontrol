@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="CSS/pedidos-almacen.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
   /* ── Franja de cajas en movimiento: mantiene la pantalla "viva" para que la TV no la trate como estática y no se suspenda ──
      Se decora automáticamente según la fecha (Halloween, Navidad, 16 de Sept.) y cumpleaños registrados, siempre discreta. */
@@ -94,6 +95,14 @@
 
   <footer id="legend"></footer>
   <div class="tv-marquee" id="tvMarquee" aria-hidden="true"><div class="tv-marquee-track" id="tvMarqueeTrack"></div></div>
+
+  <!-- ── Mini-mapa de rutas pendientes (Ventas, Material, Traspasos, Paquetería,
+       Recolecciones) — flotante, no altera el grid de los 2 paneles principales.
+       Solo lectura, no interactivo: es una TV, nadie le da clic. ── -->
+  <div id="tv-mini-mapa-wrap" style="position:fixed;bottom:14px;right:14px;width:270px;height:190px;border-radius:12px;overflow:hidden;border:2px solid rgba(255,255,255,.18);z-index:500;box-shadow:0 4px 20px rgba(0,0,0,.45);">
+    <div id="tv-mini-mapa" style="width:100%;height:100%;"></div>
+    <div style="position:absolute;top:6px;left:8px;background:rgba(15,23,42,.75);color:#fff;font-size:10px;font-weight:800;letter-spacing:.4px;padding:3px 8px;border-radius:6px;pointer-events:none;">🚚 RUTAS PENDIENTES</div>
+  </div>
 </div>
 
 <div class="banner" id="banner">
@@ -136,6 +145,73 @@ const now=()=>Date.now(), minsAgo=m=>now()-m*60000;
     en el panel de Material con etiqueta propia, `recolecciones_locales`)  */
 let pedidos=[];
 let recolecciones=[]; // recolecciones locales activas (pendiente/recogido) — ver logistica.js
+
+/* ── Mini-mapa de rutas pendientes ─────────────────────────────────────────
+   Esta pantalla usa auth ANÓNIMA (es una TV, no hay quien inicie sesión),
+   así que a diferencia del mapa de Ventas, aquí NO se puede leer el catálogo
+   `estaciones_servicio` (exige sesión real por las reglas de Firestore) —
+   por eso solo se ubican: paquetería y traspasos (usan una coordenada fija
+   del almacén, no el catálogo), pedidos con pin manual ya guardado
+   (destinoLat/destinoLng directo en el documento) y recolecciones locales
+   (ya traen lat/lng propio). Es un subconjunto de lo que ve Ventas, pero no
+   requiere ningún cambio de permisos para funcionar. */
+const ALMACEN_FZA_COORDS_TV = [28.6353, -106.0889]; // mismo placeholder que logistica.js — ajustar cuando haya coordenada real
+let tvMiniMapa = null, tvMiniMapaMarkers = [];
+function tvPuntosDesdeEstadoActual(){
+  const puntos = [];
+  pedidos.forEach(p=>{
+    if(p.destinoTipo==='paqueteria'){
+      puntos.push({lat:ALMACEN_FZA_COORDS_TV[0], lng:ALMACEN_FZA_COORDS_TV[1], color:'#F26B21',
+        popup:'📦 <b>'+(p.folio||'')+'</b><br>Pendiente de recolección por paquetería'+(p.destinoPaqueteria?(' · '+p.destinoPaqueteria):'')});
+      return;
+    }
+    if(p.destinoTipo==='traslado_almacenes'){
+      puntos.push({lat:ALMACEN_FZA_COORDS_TV[0], lng:ALMACEN_FZA_COORDS_TV[1], color:'#D99000',
+        popup:'🔁 <b>'+(p.folio||'')+'</b><br>Traspaso a '+(p.destinoAlmacenDestino||'otro almacén')});
+      return;
+    }
+    if(p.destinoLat!=null && p.destinoLng!=null){
+      const color = p.tipo==='material' ? '#8B4FD6' : '#1473E6';
+      puntos.push({lat:p.destinoLat, lng:p.destinoLng, color,
+        popup:'<b>'+(p.folio||'')+'</b><br>'+(p.cliente||'—')});
+    }
+  });
+  recolecciones.forEach(r=>{
+    if(r.lat==null||r.lng==null) return;
+    puntos.push({lat:r.lat, lng:r.lng, color:'#DB2777', popup:'📦 <b>'+(r.lugar||'—')+'</b><br>'+(r.materialARecoger||'Recolección')});
+  });
+  return puntos;
+}
+function tvCargarLeaflet(){
+  if(window.L) return Promise.resolve(window.L);
+  return new Promise((resolve,reject)=>{
+    const s = document.createElement('script');
+    s.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    s.onload = ()=>resolve(window.L);
+    s.onerror = ()=>reject(new Error('No se pudo cargar Leaflet'));
+    document.head.appendChild(s);
+  });
+}
+function tvActualizarMiniMapa(){
+  tvCargarLeaflet().then(L=>{
+    const puntos = tvPuntosDesdeEstadoActual();
+    if(!tvMiniMapa){
+      tvMiniMapa = L.map('tv-mini-mapa', {zoomControl:false, attributionControl:false, dragging:false, scrollWheelZoom:false, doubleClickZoom:false, boxZoom:false, keyboard:false, tap:false});
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(tvMiniMapa);
+    }
+    tvMiniMapaMarkers.forEach(m=>m.remove());
+    tvMiniMapaMarkers = [];
+    if(!puntos.length){ tvMiniMapa.setView(ALMACEN_FZA_COORDS_TV, 11); return; }
+    puntos.forEach(p=>{
+      const m = L.circleMarker([p.lat,p.lng], {radius:6, color:p.color, fillColor:p.color, fillOpacity:0.85, weight:1.5}).addTo(tvMiniMapa);
+      m.bindPopup(p.popup);
+      tvMiniMapaMarkers.push(m);
+    });
+    if(puntos.length===1) tvMiniMapa.setView([puntos[0].lat,puntos[0].lng], 12);
+    else tvMiniMapa.fitBounds(puntos.map(p=>[p.lat,p.lng]), {padding:[16,16]});
+    setTimeout(()=>tvMiniMapa.invalidateSize(), 60);
+  }).catch(err=>console.error('[TV mini-mapa]', err));
+}
 
 /*  COLOR: estado + semáforo de tiempo  */
 function effColor(p){
@@ -427,8 +503,8 @@ legend.innerHTML=[['Nuevo','azul'],['En preparación','verde'],['Listo','teal'],
   +'<span class="hint">· tablero de solo lectura · actualización en vivo</span>';
 
 // ── Hooks para el módulo de datos en vivo (script type=module) ──
-window.__setPedidos = function(arr){ pedidos = Array.isArray(arr)?arr:[]; render(true); };
-window.__setRecolecciones = function(arr){ recolecciones = Array.isArray(arr)?arr:[]; render(true); };
+window.__setPedidos = function(arr){ pedidos = Array.isArray(arr)?arr:[]; render(true); tvActualizarMiniMapa(); };
+window.__setRecolecciones = function(arr){ recolecciones = Array.isArray(arr)?arr:[]; render(true); tvActualizarMiniMapa(); };
 window.__almRender  = function(){ render(true); };
 
 // ── Reloj EN VIVO ──
