@@ -116,7 +116,11 @@ window.filtrarClientesMapa = () => {
         (cl.sector||'').toLowerCase().includes(q)||
         (cl.contacto||'').toLowerCase().includes(q)||
         (cl.vendedor||'').toLowerCase().includes(q)||
-        (cl.cve||'').toString().includes(q)
+        (cl.cve||'').toString().includes(q)||
+        // Búsqueda por Permiso CRE (cubre distintos nombres de campo posibles)
+        (cl.permisoCRE||cl.permisoCre||cl.permiso_cre||cl.permiso||'').toString().toLowerCase().includes(q)||
+        // Búsqueda por ID de catálogo (ej. CHIH-0182)
+        (cl.catalogoId||cl.estacionCatalogoId||'').toString().toLowerCase().includes(q)
     ) : clientesDB;
     if(window.renderMapa) window.renderMapa(filtrados);
     renderListaClientes(filtrados);
