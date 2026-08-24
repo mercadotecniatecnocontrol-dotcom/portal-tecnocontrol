@@ -906,7 +906,7 @@ function buildHTML(){
     <div id="fl-veh-modal-wrap">
       <button id="fl-veh-modal-close" onclick="flCerrarModalVehiculo()">✕</button>
       <div class="fl-rp" id="fl-rp">${rpVacio()}</div>
-      <div class="fl-panor-col" id="fl-panor-col" style="display:none"></div>
+      <div class="fl-panor-col" id="fl-panor-col" style="display:none; flex-shrink: 0; min-width: 380px; width: 440px; padding: 20px; box-sizing: border-box;"></div>
     </div>
   </div>
   </div>`;
@@ -4280,7 +4280,7 @@ function flPanorResumenVeh(v){
   const vivo=flQuienUsaEcoAhora(v.eco);
   const ultReporte=hist[0];
   const dt=iso=>iso?new Date(iso).toLocaleString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
-  return`<div class="fl-panor-sum-card">
+  return`<div class="fl-panor-sum-card"style="padding: 15px 20px; box-sizing: border-box; display: flex; flex-direction: column; width: 100%;">
     <div class="fl-panor-sum-h">
       <span style="display:flex;align-items:center;color:#1E3A5F">${hEmo(v.tipo)}</span>
       <div style="flex:1;min-width:0">
