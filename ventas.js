@@ -280,23 +280,23 @@ window.calcularAlertasClientes = async () => {
             await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
         const dbb = window.db; if(!dbb) return;
         const cache = {};
+        // Helper: evita empujar el mismo docId dos veces para el mismo cliente
+        const empujar = (clienteId, item) => {
+            if(!cache[clienteId]) cache[clienteId]={alerta:false,razones:[]};
+            if(item.id && cache[clienteId].razones.some(r=>r.id===item.id && r.tipo===item.tipo)) return;
+            cache[clienteId].alerta=true;
+            cache[clienteId].razones.push(item);
+        };
         try {
             const snapT = await getDocs(query(collection(dbb,'actividades'), where('estatus','in',['Sin Iniciar','En Proceso'])));
             snapT.forEach(d => {
                 const r = d.data();
+                const item = {texto:'📋 Tarea: '+(r.actividad||'').substring(0,35), tipo:'actividad', id:d.id};
                 const txt = ((r.actividad||'')+(r.origen||'')+(r.descripcion||'')).toLowerCase();
                 (clientesDB||[]).forEach(cl => {
-                    if(cl.nombre && txt.includes(cl.nombre.toLowerCase().substring(0,6))){
-                        if(!cache[cl.id]) cache[cl.id]={alerta:false,razones:[]};
-                        cache[cl.id].alerta=true;
-                        cache[cl.id].razones.push('📋 Tarea: '+(r.actividad||'').substring(0,35));
-                    }
+                    if(cl.nombre && txt.includes(cl.nombre.toLowerCase().substring(0,6))) empujar(cl.id, item);
                 });
-                if(r.clienteId){
-                    if(!cache[r.clienteId]) cache[r.clienteId]={alerta:false,razones:[]};
-                    cache[r.clienteId].alerta=true;
-                    cache[r.clienteId].razones.push('📋 Tarea: '+(r.actividad||'').substring(0,35));
-                }
+                if(r.clienteId) empujar(r.clienteId, item);
             });
         } catch(e){}
         try {
@@ -304,18 +304,13 @@ window.calcularAlertasClientes = async () => {
             snapC.forEach(d => {
                 const r=d.data(); const st=(r.statusCot||r.estatus||'').toLowerCase();
                 if(['colocada','aprobada','cancelada','completada'].includes(st)) return;
+                const item = {texto:'💰 Cotización pendiente', tipo:'cotizacion', id:d.id};
                 if(r.clienteId){
-                    if(!cache[r.clienteId]) cache[r.clienteId]={alerta:false,razones:[]};
-                    cache[r.clienteId].alerta=true;
-                    cache[r.clienteId].razones.push('💰 Cotización pendiente');
+                    empujar(r.clienteId, item);
                 } else {
                     const nomCot=(r.cliente||'').toLowerCase();
                     (clientesDB||[]).forEach(cl=>{
-                        if(cl.nombre && nomCot && nomCot.includes(cl.nombre.toLowerCase().substring(0,6))){
-                            if(!cache[cl.id]) cache[cl.id]={alerta:false,razones:[]};
-                            cache[cl.id].alerta=true;
-                            cache[cl.id].razones.push('💰 Cotización pendiente');
-                        }
+                        if(cl.nombre && nomCot && nomCot.includes(cl.nombre.toLowerCase().substring(0,6))) empujar(cl.id, item);
                     });
                 }
             });
@@ -330,10 +325,8 @@ window.calcularAlertasClientes = async () => {
                 const em=(from.match(/<(.+?)>/)||[null,from])[1]||'';
                 const cl=cEmails[em.toLowerCase().trim()];
                 if(cl){
-                    if(!cache[cl.id]) cache[cl.id]={alerta:false,razones:[]};
-                    cache[cl.id].alerta=true;
                     const subj=hdrs.find(h=>h.name==='Subject')?.value||'(sin asunto)';
-                    cache[cl.id].razones.push('📧 Correo sin leer: '+subj.substring(0,35));
+                    empujar(cl.id, {texto:'📧 Correo sin leer: '+subj.substring(0,35), tipo:'correo'});
                 }
             });
         }
@@ -343,16 +336,67 @@ window.calcularAlertasClientes = async () => {
             const ahora=Date.now();
             Object.entries(ultima).forEach(([cid,f])=>{
                 const diff=ahora-new Date(f).getTime(); const dias=Math.floor(diff/(24*60*60*1000));
-                if(dias>3&&dias<30){
-                    if(!cache[cid]) cache[cid]={alerta:false,razones:[]};
-                    cache[cid].alerta=true;
-                    cache[cid].razones.push('🚶 Sin visita hace '+dias+' días');
-                }
+                if(dias>3&&dias<30) empujar(cid, {texto:'🚶 Sin visita hace '+dias+' días', tipo:'visita'});
             });
         } catch(e){}
         window._alertasCliente=cache;
         if(window.renderMapa) window.renderMapa();
     } catch(e){ console.warn('[AlertaMapa]',e); }
+};
+
+// RESOLVER / ELIMINAR pendientes directamente desde el banner del mapa
+// tipo: 'actividad' -> colección 'actividades', campo 'estatus'
+// tipo: 'cotizacion' -> colección 'cotizaciones', campo 'statusCot'
+window.vpResolverPendiente = async (tipo, id) => {
+    const conf = {
+        actividad:  {coleccion:'actividades',  campo:'estatus',   valor:'Completada'},
+        cotizacion: {coleccion:'cotizaciones', campo:'statusCot', valor:'colocada'}
+    }[tipo];
+    if(!conf) return;
+    if(!confirm('¿Marcar este pendiente como resuelto/finalizado?')) return;
+    try {
+        await updateDoc(doc(db, conf.coleccion, id), {
+            [conf.campo]: conf.valor,
+            resueltoEn: new Date().toISOString(),
+            resueltoPor: auth.currentUser?.email||''
+        });
+        if(window.mostrarPush) window.mostrarPush('✅ Resuelto', '', '✅');
+        await window.calcularAlertasClientes();
+    } catch(e){ alert('Error: '+e.message); }
+};
+
+window.vpEliminarPendiente = async (tipo, id) => {
+    const coleccion = {actividad:'actividades', cotizacion:'cotizaciones'}[tipo];
+    if(!coleccion) return;
+    if(!confirm('¿Eliminar este pendiente por completo? No se puede deshacer.')) return;
+    try {
+        await deleteDoc(doc(db, coleccion, id));
+        if(window.mostrarPush) window.mostrarPush('🗑 Eliminado', '', '🗑');
+        await window.calcularAlertasClientes();
+    } catch(e){ alert('Error: '+e.message); }
+};
+
+// Resuelve TODOS los pendientes accionables (tareas y cotizaciones) de un cliente de un golpe
+window.vpResolverTodosPendientes = async (clienteId) => {
+    const info = window._alertasCliente[clienteId];
+    if(!info || !info.razones.length) return;
+    const accionables = info.razones.filter(r => r.id && (r.tipo==='actividad' || r.tipo==='cotizacion'));
+    if(!accionables.length){ alert('No hay pendientes con acción disponible para este cliente (correos/visitas se resuelven por su cuenta).'); return; }
+    if(!confirm(`¿Marcar como resueltos los ${accionables.length} pendiente(s) accionables de este cliente?`)) return;
+    try {
+        for(const item of accionables){
+            const conf = item.tipo==='actividad'
+                ? {coleccion:'actividades', campo:'estatus', valor:'Completada'}
+                : {coleccion:'cotizaciones', campo:'statusCot', valor:'colocada'};
+            await updateDoc(doc(db, conf.coleccion, item.id), {
+                [conf.campo]: conf.valor,
+                resueltoEn: new Date().toISOString(),
+                resueltoPor: auth.currentUser?.email||''
+            });
+        }
+        if(window.mostrarPush) window.mostrarPush('✅ Pendientes resueltos', accionables.length+' resuelto(s)', '✅');
+        await window.calcularAlertasClientes();
+    } catch(e){ alert('Error: '+e.message); }
 };
 
 // renderMapa ÚNICA — con foto en popup + alertas rojas 
@@ -385,8 +429,23 @@ window.renderMapa = (lista) => {
             zIndexOffset: tieneAlerta ? 1000 : 0
         });
         const fotoHTML = cl.fotoUrl ? `<img src="${cl.fotoUrl}" style="width:100%;height:90px;object-fit:cover;border-radius:8px;margin-bottom:6px;" onerror="this.style.display='none'">` : '';
+        const numAccionables = tieneAlerta ? alertaInfo.razones.filter(r=>r.id && (r.tipo==='actividad'||r.tipo==='cotizacion')).length : 0;
         const alertaBanner = tieneAlerta
-            ? `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:7px 10px;margin-bottom:8px;"><div style="font-size:10px;font-weight:800;color:#dc2626;margin-bottom:4px;">⚠️ PENDIENTES</div>${alertaInfo.razones.slice(0,4).map(r=>`<div style="font-size:10px;color:#7f1d1d;margin-bottom:2px;">• ${r}</div>`).join('')}</div>`
+            ? `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:7px 10px;margin-bottom:8px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+                    <div style="font-size:10px;font-weight:800;color:#dc2626;">⚠️ PENDIENTES</div>
+                    ${numAccionables>1?`<button onclick="event.stopPropagation();window.vpResolverTodosPendientes('${cl.id}')" style="font-size:9px;font-weight:700;background:#dc2626;color:white;border:none;border-radius:6px;padding:2px 7px;cursor:pointer;">✅ Resolver todos</button>`:''}
+                </div>
+                ${alertaInfo.razones.slice(0,4).map(r=>`
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:2px;">
+                        <div style="font-size:10px;color:#7f1d1d;">• ${r.texto}</div>
+                        ${r.id && (r.tipo==='actividad'||r.tipo==='cotizacion') ? `
+                        <div style="display:flex;gap:3px;flex-shrink:0;">
+                            <button onclick="event.stopPropagation();window.vpResolverPendiente('${r.tipo}','${r.id}')" title="Marcar como resuelto" style="font-size:10px;background:#dcfce7;color:#15803d;border:none;border-radius:5px;padding:1px 5px;cursor:pointer;">✅</button>
+                            <button onclick="event.stopPropagation();window.vpEliminarPendiente('${r.tipo}','${r.id}')" title="Eliminar por completo" style="font-size:10px;background:#fee2e2;color:#dc2626;border:none;border-radius:5px;padding:1px 5px;cursor:pointer;">🗑</button>
+                        </div>` : ''}
+                    </div>`).join('')}
+            </div>`
             : `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:5px 10px;margin-bottom:8px;font-size:10px;font-weight:700;color:#15803d;">✅ Sin pendientes</div>`;
         const popupHTML = `<div class="cliente-popup">
             ${fotoHTML}
