@@ -89,6 +89,107 @@
   };
   var CENTRO_ESTADO = [28.63, -106.07]; // fallback: centro aproximado del estado de Chihuahua
 
+  // ── Coordenada de referencia del almacén Fuerza Aérea (para ubicar en el
+  //    mapa los pendientes que NO tienen una dirección de entrega propia:
+  //    paquetería en espera de que la recojan, y traspasos hacia otro
+  //    almacén). PLACEHOLDER — es el centro de Chihuahua capital; Glen debe
+  //    ajustarlo a la coordenada exacta del almacén cuando la tenga a mano. ──
+  var ALMACEN_FZA_COORDS = [28.6353, -106.0889];
+
+  // ── Estilo por categoría para el mapa combinado (Logística, Ventas y TV).
+  // Colores alineados a los que YA usa pedidos-almacen.html (COLORS/DESTINO_COLOR)
+  // para que un mismo tipo de pendiente se vea igual en toda la pantalla y en
+  // el mapa — no se inventa una paleta nueva. ──
+  var TC_CATEGORIA_ESTILO = {
+    venta:       { color: '#1473E6', label: 'Pedido de Ventas' },
+    material:    { color: '#8B4FD6', label: 'Solicitud de Material · Operaciones' },
+    traslado:    { color: '#D99000', label: 'Traspaso entre almacenes' },
+    paqueteria:  { color: '#F26B21', label: 'Envío por paquetería' },
+    recoleccion: { color: '#DB2777', label: 'Recolección de material/paquetería' }
+  };
+
+  // ═══════════════════════════════════════════════════════════════════════
+  //  MAPA COMPARTIDO DE LOGÍSTICA — punto único de verdad para "qué hay
+  //  pendiente y dónde". Lo usa el mapa combinado de este módulo, el mapa
+  //  de Ventas (capa opcional sobre el mapa de clientes) y, en una versión
+  //  más ligera sin catálogo de estaciones (porque esa colección exige
+  //  sesión real y la TV usa auth anónima), pedidos-almacen.html.
+  //
+  //  Hace su propia consulta a Firestore — NO depende de `estado` (que solo
+  //  se llena si alguien abrió la pantalla de Logística primero), así que es
+  //  seguro llamarla desde cualquier módulo en cualquier momento.
+  //
+  //  Devuelve un array de puntos: { lat, lng, categoria, color, folio,
+  //  cliente, popupHtml }. `categoria` es una de: 'venta','material',
+  //  'traslado','paqueteria','recoleccion'.
+  // ═══════════════════════════════════════════════════════════════════════
+  window.tcObtenerPuntosLogisticos = function () {
+    return cargarFirestore().then(function (fs) {
+      if (!window.db) return [];
+      var ESTADOS_CERRADOS = ['finalizado', 'cancelado', 'entregado'];
+      return Promise.all([
+        fs.getDocs(fs.collection(window.db, 'surtidos')),
+        fs.getDocs(fs.collection(window.db, 'estaciones_servicio')).catch(function () { return { forEach: function () {} }; }),
+        fs.getDocs(fs.query(fs.collection(window.db, 'recolecciones_locales'), fs.where('estado', 'in', ['pendiente', 'recogido'])))
+      ]).then(function (r) {
+        var snapPedidos = r[0], snapEst = r[1], snapRecol = r[2];
+        var estMap = {};
+        snapEst.forEach(function (d) { estMap[d.id] = Object.assign({ id: d.id }, d.data()); });
+        var puntos = [];
+
+        snapPedidos.forEach(function (docu) {
+          var p = Object.assign({ id: docu.id }, docu.data());
+          if (ESTADOS_CERRADOS.indexOf(p.estado) !== -1) return;
+
+          if (p.destinoTipo === 'paqueteria') {
+            puntos.push({
+              lat: ALMACEN_FZA_COORDS[0], lng: ALMACEN_FZA_COORDS[1], categoria: 'paqueteria',
+              folio: p.folio, cliente: p.cliente,
+              popupHtml: '📦 <b>' + esc(p.folio || '') + '</b><br>Pendiente de recolección por paquetería' + (p.destinoPaqueteria ? (' · ' + esc(p.destinoPaqueteria)) : '') + (p.destinoGuia ? ('<br>Guía: ' + esc(p.destinoGuia)) : '')
+            });
+            return;
+          }
+          if (p.destinoTipo === 'traslado_almacenes') {
+            puntos.push({
+              lat: ALMACEN_FZA_COORDS[0], lng: ALMACEN_FZA_COORDS[1], categoria: 'traslado',
+              folio: p.folio, cliente: p.cliente,
+              popupHtml: '🔁 <b>' + esc(p.folio || '') + '</b><br>Traspaso a ' + esc(p.destinoAlmacenDestino || 'otro almacén')
+            });
+            return;
+          }
+
+          var est = p.destinoEstacionId ? estMap[p.destinoEstacionId] : null;
+          var lat = null, lng = null;
+          if (est && est.lat != null && est.lng != null) { lat = est.lat; lng = est.lng; }
+          else if (p.destinoLat != null && p.destinoLng != null) { lat = p.destinoLat; lng = p.destinoLng; }
+          if (lat == null || lng == null) return; // sin ubicación capturada todavía — no se puede plotear
+
+          var esMaterial = p.tipo === 'material';
+          puntos.push({
+            lat: lat, lng: lng, categoria: esMaterial ? 'material' : 'venta',
+            folio: p.folio, cliente: p.cliente,
+            popupHtml: '<b>' + esc(p.folio || '') + '</b><br>' + esc(p.cliente || est && est.razonSocial || '—') + (p.destino ? ('<br>' + esc(p.destino)) : '')
+          });
+        });
+
+        snapRecol.forEach(function (docu) {
+          var rr = Object.assign({ id: docu.id }, docu.data());
+          if (rr.lat == null || rr.lng == null) return;
+          puntos.push({
+            lat: rr.lat, lng: rr.lng, categoria: 'recoleccion',
+            folio: 'REC-' + docu.id.slice(-5).toUpperCase(), cliente: rr.lugar || '—',
+            popupHtml: '📦 <b>' + esc(rr.lugar || '—') + '</b><br>' + esc(rr.materialARecoger || 'Recolección de material')
+          });
+        });
+
+        return puntos;
+      });
+    }).catch(function (err) {
+      console.error('[logistica] tcObtenerPuntosLogisticos:', err);
+      return [];
+    });
+  };
+
   // ── Geocodificación de direcciones escritas a mano (destinos "fuera del
   //    catálogo") usando Nominatim/OpenStreetMap — gratis, sin API key.
   //    Solo se usa como PUNTO DE PARTIDA: el pin siempre queda arrastrable
