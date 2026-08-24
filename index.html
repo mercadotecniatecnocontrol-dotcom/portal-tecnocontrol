@@ -2123,6 +2123,10 @@ const db = getFirestore(app);
 const auth = getAuth(app);
 // Exponer globalmente para módulos de ventas (CRM, Cotizaciones, Perfil Cliente)
 window.db = db;
+// Config pública de Firebase (misma que usa el kiosco) — para que módulos externos
+// (operaciones.js) puedan crear apps secundarias de Firebase Auth (alta de cuentas
+// de técnico) sin duplicar la config ni cerrar la sesión del admin.
+window.firebaseConfig = config;
 window.auth = auth;
 window.app = app;
 
