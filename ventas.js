@@ -347,6 +347,8 @@ window.calcularAlertasClientes = async () => {
 // RESOLVER / ELIMINAR pendientes directamente desde el banner del mapa
 // tipo: 'actividad' -> colección 'actividades', campo 'estatus'
 // tipo: 'cotizacion' -> colección 'cotizaciones', campo 'statusCot'
+// NOTA: doc/updateDoc/deleteDoc se importan aquí dinámicamente (igual que calcularAlertasClientes)
+// porque en este archivo NO están disponibles como globales.
 window.vpResolverPendiente = async (tipo, id) => {
     const conf = {
         actividad:  {coleccion:'actividades',  campo:'estatus',   valor:'Completada'},
@@ -355,10 +357,12 @@ window.vpResolverPendiente = async (tipo, id) => {
     if(!conf) return;
     if(!confirm('¿Marcar este pendiente como resuelto/finalizado?')) return;
     try {
-        await updateDoc(doc(db, conf.coleccion, id), {
+        const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const dbb = window.db; if(!dbb) throw new Error('Firestore no disponible (window.db)');
+        await updateDoc(doc(dbb, conf.coleccion, id), {
             [conf.campo]: conf.valor,
             resueltoEn: new Date().toISOString(),
-            resueltoPor: auth.currentUser?.email||''
+            resueltoPor: (window.auth?.currentUser?.email) || ''
         });
         if(window.mostrarPush) window.mostrarPush('✅ Resuelto', '', '✅');
         await window.calcularAlertasClientes();
@@ -370,7 +374,9 @@ window.vpEliminarPendiente = async (tipo, id) => {
     if(!coleccion) return;
     if(!confirm('¿Eliminar este pendiente por completo? No se puede deshacer.')) return;
     try {
-        await deleteDoc(doc(db, coleccion, id));
+        const { doc, deleteDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const dbb = window.db; if(!dbb) throw new Error('Firestore no disponible (window.db)');
+        await deleteDoc(doc(dbb, coleccion, id));
         if(window.mostrarPush) window.mostrarPush('🗑 Eliminado', '', '🗑');
         await window.calcularAlertasClientes();
     } catch(e){ alert('Error: '+e.message); }
@@ -384,14 +390,16 @@ window.vpResolverTodosPendientes = async (clienteId) => {
     if(!accionables.length){ alert('No hay pendientes con acción disponible para este cliente (correos/visitas se resuelven por su cuenta).'); return; }
     if(!confirm(`¿Marcar como resueltos los ${accionables.length} pendiente(s) accionables de este cliente?`)) return;
     try {
+        const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const dbb = window.db; if(!dbb) throw new Error('Firestore no disponible (window.db)');
         for(const item of accionables){
             const conf = item.tipo==='actividad'
                 ? {coleccion:'actividades', campo:'estatus', valor:'Completada'}
                 : {coleccion:'cotizaciones', campo:'statusCot', valor:'colocada'};
-            await updateDoc(doc(db, conf.coleccion, item.id), {
+            await updateDoc(doc(dbb, conf.coleccion, item.id), {
                 [conf.campo]: conf.valor,
                 resueltoEn: new Date().toISOString(),
-                resueltoPor: auth.currentUser?.email||''
+                resueltoPor: (window.auth?.currentUser?.email) || ''
             });
         }
         if(window.mostrarPush) window.mostrarPush('✅ Pendientes resueltos', accionables.length+' resuelto(s)', '✅');
