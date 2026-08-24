@@ -116,11 +116,7 @@ window.filtrarClientesMapa = () => {
         (cl.sector||'').toLowerCase().includes(q)||
         (cl.contacto||'').toLowerCase().includes(q)||
         (cl.vendedor||'').toLowerCase().includes(q)||
-        (cl.cve||'').toString().includes(q)||
-        // Búsqueda por Permiso CRE (cubre distintos nombres de campo posibles)
-        (cl.permisoCRE||cl.permisoCre||cl.permiso_cre||cl.permiso||'').toString().toLowerCase().includes(q)||
-        // Búsqueda por ID de catálogo (ej. CHIH-0182)
-        (cl.catalogoId||cl.estacionCatalogoId||'').toString().toLowerCase().includes(q)
+        (cl.cve||'').toString().includes(q)
     ) : clientesDB;
     if(window.renderMapa) window.renderMapa(filtrados);
     renderListaClientes(filtrados);
@@ -280,23 +276,23 @@ window.calcularAlertasClientes = async () => {
             await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
         const dbb = window.db; if(!dbb) return;
         const cache = {};
-        // Helper: evita empujar el mismo docId dos veces para el mismo cliente
-        const empujar = (clienteId, item) => {
-            if(!cache[clienteId]) cache[clienteId]={alerta:false,razones:[]};
-            if(item.id && cache[clienteId].razones.some(r=>r.id===item.id && r.tipo===item.tipo)) return;
-            cache[clienteId].alerta=true;
-            cache[clienteId].razones.push(item);
-        };
         try {
             const snapT = await getDocs(query(collection(dbb,'actividades'), where('estatus','in',['Sin Iniciar','En Proceso'])));
             snapT.forEach(d => {
                 const r = d.data();
-                const item = {texto:'📋 Tarea: '+(r.actividad||'').substring(0,35), tipo:'actividad', id:d.id};
                 const txt = ((r.actividad||'')+(r.origen||'')+(r.descripcion||'')).toLowerCase();
                 (clientesDB||[]).forEach(cl => {
-                    if(cl.nombre && txt.includes(cl.nombre.toLowerCase().substring(0,6))) empujar(cl.id, item);
+                    if(cl.nombre && txt.includes(cl.nombre.toLowerCase().substring(0,6))){
+                        if(!cache[cl.id]) cache[cl.id]={alerta:false,razones:[]};
+                        cache[cl.id].alerta=true;
+                        cache[cl.id].razones.push('📋 Tarea: '+(r.actividad||'').substring(0,35));
+                    }
                 });
-                if(r.clienteId) empujar(r.clienteId, item);
+                if(r.clienteId){
+                    if(!cache[r.clienteId]) cache[r.clienteId]={alerta:false,razones:[]};
+                    cache[r.clienteId].alerta=true;
+                    cache[r.clienteId].razones.push('📋 Tarea: '+(r.actividad||'').substring(0,35));
+                }
             });
         } catch(e){}
         try {
@@ -304,13 +300,18 @@ window.calcularAlertasClientes = async () => {
             snapC.forEach(d => {
                 const r=d.data(); const st=(r.statusCot||r.estatus||'').toLowerCase();
                 if(['colocada','aprobada','cancelada','completada'].includes(st)) return;
-                const item = {texto:'💰 Cotización pendiente', tipo:'cotizacion', id:d.id};
                 if(r.clienteId){
-                    empujar(r.clienteId, item);
+                    if(!cache[r.clienteId]) cache[r.clienteId]={alerta:false,razones:[]};
+                    cache[r.clienteId].alerta=true;
+                    cache[r.clienteId].razones.push('💰 Cotización pendiente');
                 } else {
                     const nomCot=(r.cliente||'').toLowerCase();
                     (clientesDB||[]).forEach(cl=>{
-                        if(cl.nombre && nomCot && nomCot.includes(cl.nombre.toLowerCase().substring(0,6))) empujar(cl.id, item);
+                        if(cl.nombre && nomCot && nomCot.includes(cl.nombre.toLowerCase().substring(0,6))){
+                            if(!cache[cl.id]) cache[cl.id]={alerta:false,razones:[]};
+                            cache[cl.id].alerta=true;
+                            cache[cl.id].razones.push('💰 Cotización pendiente');
+                        }
                     });
                 }
             });
@@ -325,8 +326,10 @@ window.calcularAlertasClientes = async () => {
                 const em=(from.match(/<(.+?)>/)||[null,from])[1]||'';
                 const cl=cEmails[em.toLowerCase().trim()];
                 if(cl){
+                    if(!cache[cl.id]) cache[cl.id]={alerta:false,razones:[]};
+                    cache[cl.id].alerta=true;
                     const subj=hdrs.find(h=>h.name==='Subject')?.value||'(sin asunto)';
-                    empujar(cl.id, {texto:'📧 Correo sin leer: '+subj.substring(0,35), tipo:'correo'});
+                    cache[cl.id].razones.push('📧 Correo sin leer: '+subj.substring(0,35));
                 }
             });
         }
@@ -336,75 +339,16 @@ window.calcularAlertasClientes = async () => {
             const ahora=Date.now();
             Object.entries(ultima).forEach(([cid,f])=>{
                 const diff=ahora-new Date(f).getTime(); const dias=Math.floor(diff/(24*60*60*1000));
-                if(dias>3&&dias<30) empujar(cid, {texto:'🚶 Sin visita hace '+dias+' días', tipo:'visita'});
+                if(dias>3&&dias<30){
+                    if(!cache[cid]) cache[cid]={alerta:false,razones:[]};
+                    cache[cid].alerta=true;
+                    cache[cid].razones.push('🚶 Sin visita hace '+dias+' días');
+                }
             });
         } catch(e){}
         window._alertasCliente=cache;
         if(window.renderMapa) window.renderMapa();
     } catch(e){ console.warn('[AlertaMapa]',e); }
-};
-
-// RESOLVER / ELIMINAR pendientes directamente desde el banner del mapa
-// tipo: 'actividad' -> colección 'actividades', campo 'estatus'
-// tipo: 'cotizacion' -> colección 'cotizaciones', campo 'statusCot'
-// NOTA: doc/updateDoc/deleteDoc se importan aquí dinámicamente (igual que calcularAlertasClientes)
-// porque en este archivo NO están disponibles como globales.
-window.vpResolverPendiente = async (tipo, id) => {
-    const conf = {
-        actividad:  {coleccion:'actividades',  campo:'estatus',   valor:'Completada'},
-        cotizacion: {coleccion:'cotizaciones', campo:'statusCot', valor:'colocada'}
-    }[tipo];
-    if(!conf) return;
-    if(!confirm('¿Marcar este pendiente como resuelto/finalizado?')) return;
-    try {
-        const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-        const dbb = window.db; if(!dbb) throw new Error('Firestore no disponible (window.db)');
-        await updateDoc(doc(dbb, conf.coleccion, id), {
-            [conf.campo]: conf.valor,
-            resueltoEn: new Date().toISOString(),
-            resueltoPor: (window.auth?.currentUser?.email) || ''
-        });
-        if(window.mostrarPush) window.mostrarPush('✅ Resuelto', '', '✅');
-        await window.calcularAlertasClientes();
-    } catch(e){ alert('Error: '+e.message); }
-};
-
-window.vpEliminarPendiente = async (tipo, id) => {
-    const coleccion = {actividad:'actividades', cotizacion:'cotizaciones'}[tipo];
-    if(!coleccion) return;
-    if(!confirm('¿Eliminar este pendiente por completo? No se puede deshacer.')) return;
-    try {
-        const { doc, deleteDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-        const dbb = window.db; if(!dbb) throw new Error('Firestore no disponible (window.db)');
-        await deleteDoc(doc(dbb, coleccion, id));
-        if(window.mostrarPush) window.mostrarPush('🗑 Eliminado', '', '🗑');
-        await window.calcularAlertasClientes();
-    } catch(e){ alert('Error: '+e.message); }
-};
-
-// Resuelve TODOS los pendientes accionables (tareas y cotizaciones) de un cliente de un golpe
-window.vpResolverTodosPendientes = async (clienteId) => {
-    const info = window._alertasCliente[clienteId];
-    if(!info || !info.razones.length) return;
-    const accionables = info.razones.filter(r => r.id && (r.tipo==='actividad' || r.tipo==='cotizacion'));
-    if(!accionables.length){ alert('No hay pendientes con acción disponible para este cliente (correos/visitas se resuelven por su cuenta).'); return; }
-    if(!confirm(`¿Marcar como resueltos los ${accionables.length} pendiente(s) accionables de este cliente?`)) return;
-    try {
-        const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-        const dbb = window.db; if(!dbb) throw new Error('Firestore no disponible (window.db)');
-        for(const item of accionables){
-            const conf = item.tipo==='actividad'
-                ? {coleccion:'actividades', campo:'estatus', valor:'Completada'}
-                : {coleccion:'cotizaciones', campo:'statusCot', valor:'colocada'};
-            await updateDoc(doc(dbb, conf.coleccion, item.id), {
-                [conf.campo]: conf.valor,
-                resueltoEn: new Date().toISOString(),
-                resueltoPor: (window.auth?.currentUser?.email) || ''
-            });
-        }
-        if(window.mostrarPush) window.mostrarPush('✅ Pendientes resueltos', accionables.length+' resuelto(s)', '✅');
-        await window.calcularAlertasClientes();
-    } catch(e){ alert('Error: '+e.message); }
 };
 
 // renderMapa ÚNICA — con foto en popup + alertas rojas 
@@ -437,23 +381,8 @@ window.renderMapa = (lista) => {
             zIndexOffset: tieneAlerta ? 1000 : 0
         });
         const fotoHTML = cl.fotoUrl ? `<img src="${cl.fotoUrl}" style="width:100%;height:90px;object-fit:cover;border-radius:8px;margin-bottom:6px;" onerror="this.style.display='none'">` : '';
-        const numAccionables = tieneAlerta ? alertaInfo.razones.filter(r=>r.id && (r.tipo==='actividad'||r.tipo==='cotizacion')).length : 0;
         const alertaBanner = tieneAlerta
-            ? `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:7px 10px;margin-bottom:8px;">
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
-                    <div style="font-size:10px;font-weight:800;color:#dc2626;">⚠️ PENDIENTES</div>
-                    ${numAccionables>1?`<button onclick="event.stopPropagation();window.vpResolverTodosPendientes('${cl.id}')" style="font-size:9px;font-weight:700;background:#dc2626;color:white;border:none;border-radius:6px;padding:2px 7px;cursor:pointer;">✅ Resolver todos</button>`:''}
-                </div>
-                ${alertaInfo.razones.slice(0,4).map(r=>`
-                    <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:2px;">
-                        <div style="font-size:10px;color:#7f1d1d;">• ${r.texto}</div>
-                        ${r.id && (r.tipo==='actividad'||r.tipo==='cotizacion') ? `
-                        <div style="display:flex;gap:3px;flex-shrink:0;">
-                            <button onclick="event.stopPropagation();window.vpResolverPendiente('${r.tipo}','${r.id}')" title="Marcar como resuelto" style="font-size:10px;background:#dcfce7;color:#15803d;border:none;border-radius:5px;padding:1px 5px;cursor:pointer;">✅</button>
-                            <button onclick="event.stopPropagation();window.vpEliminarPendiente('${r.tipo}','${r.id}')" title="Eliminar por completo" style="font-size:10px;background:#fee2e2;color:#dc2626;border:none;border-radius:5px;padding:1px 5px;cursor:pointer;">🗑</button>
-                        </div>` : ''}
-                    </div>`).join('')}
-            </div>`
+            ? `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:7px 10px;margin-bottom:8px;"><div style="font-size:10px;font-weight:800;color:#dc2626;margin-bottom:4px;">⚠️ PENDIENTES</div>${alertaInfo.razones.slice(0,4).map(r=>`<div style="font-size:10px;color:#7f1d1d;margin-bottom:2px;">• ${r}</div>`).join('')}</div>`
             : `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:5px 10px;margin-bottom:8px;font-size:10px;font-weight:700;color:#15803d;">✅ Sin pendientes</div>`;
         const popupHTML = `<div class="cliente-popup">
             ${fotoHTML}
@@ -5001,7 +4930,7 @@ function portalCpGeneral() {
     </div>` : ''}
 
     
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:4px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-top:4px;">
         ${c.tel ? `<a href="tel:${c.tel}" style="padding:12px 6px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;text-decoration:none;display:flex;flex-direction:column;align-items:center;gap:4px;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.99 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.92 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 8.91a16 16 0 0 0 5.99 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
             <span style="font-size:10px;font-weight:700;color:#2563eb;">Llamar</span>
@@ -5009,6 +4938,10 @@ function portalCpGeneral() {
         <button onclick="portalCpNuevaCot()" style="padding:12px 6px;background:#f0fdfa;border:1px solid #99f6e4;border-radius:12px;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0891b2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
             <span style="font-size:10px;font-weight:700;color:#0891b2;">Cotizar</span>
+        </button>
+        <button onclick="ventasAbrirModalSolicitud('${c.id}')" style="padding:12px 6px;background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c2410c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+            <span style="font-size:10px;font-weight:700;color:#c2410c;">Material</span>
         </button>
         ${c.tel ? `<a href="https://wa.me/52${c.tel.replace(/[^0-9]/g,'')}" target="_blank" style="padding:12px 6px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;text-decoration:none;display:flex;flex-direction:column;align-items:center;gap:4px;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
@@ -5621,13 +5554,17 @@ function vpCpGeneral(c) {
     ${ultimaAct ? `<div class="vp-cp-section"><div class="vp-cp-label">Última actividad</div>
         <div style="display:flex;gap:8px;"><div style="width:28px;height:28px;border-radius:50%;background:${(VP_ACT_COLORS[ultimaAct.tipo]||{bg:'#f1f5f9'}).bg};display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;">${VP_ACT_ICONS[ultimaAct.tipo]||'📌'}</div>
         <div><div style="font-size:12px;font-weight:700;">${ultimaAct.titulo||'—'}</div><div style="font-size:10px;color:#94a3b8;">${ultimaAct.tipo} · ${vpFmt(ultimaAct.creadoEn)}</div></div></div></div>` : ''}
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:4px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-top:4px;">
         ${c.tel ? `<a href="tel:${c.tel}" style="padding:10px 4px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;text-decoration:none;display:flex;flex-direction:column;align-items:center;gap:3px;">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.99 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.92 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 8.91a16 16 0 0 0 5.99 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
             <span style="font-size:9px;font-weight:700;color:#2563eb;">Llamar</span></a>` : '<div></div>'}
         <button onclick="vpNuevaCotizacion('${c.id}')" style="padding:10px 4px;background:#f0fdfa;border:1px solid #99f6e4;border-radius:10px;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0891b2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
             <span style="font-size:9px;font-weight:700;color:#0891b2;">Cotizar</span>
+        </button>
+        <button onclick="ventasAbrirModalSolicitud('${c.id}')" style="padding:10px 4px;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#c2410c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+            <span style="font-size:9px;font-weight:700;color:#c2410c;">Material</span>
         </button>
         ${c.tel ? `<a href="https://wa.me/52${c.tel.replace(/[^0-9]/g,'')}" target="_blank" style="padding:10px 4px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;text-decoration:none;display:flex;flex-direction:column;align-items:center;gap:3px;">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
@@ -6402,3 +6339,260 @@ window.vpRenderCalendarioActividades = async function() {
     renderLista();
 };
 console.log('VENTAS PORTAL v2 cargado ✅ — diseño basado en la app');
+
+/* ============================================================================
+ * SOLICITUD DE MATERIAL DESDE VENTAS
+ * ----------------------------------------------------------------------------
+ * Botón "📦 Material" en la ficha del cliente (ambas vistas: modal móvil
+ * portalCp* y panel de escritorio vp*). Escribe en la MISMA colección
+ * `surtidos` que usan el kiosco, Operaciones y Almacén — no duplica nada.
+ *
+ * Diferencia clave frente a Operaciones/kiosco: aquí el destinatario NO es
+ * obligatoriamente un técnico. El vendedor solicita material para ENTREGAR
+ * en la estación/cliente (destino ya viene del perfil, no se escribe a mano),
+ * y opcionalmente puede asignar un técnico responsable de la instalación si
+ * ya se sabe quién va a ir. Ninguno de los dos es texto libre: el técnico,
+ * si se asigna, sale de la lista real de ops_tecnicos.
+ *
+ * Solicitante: la sesión real del portal (window.auth.currentUser), igual
+ * que el resto de Ventas — no se pide login aparte, ya se está autenticado.
+ *
+ * Catálogo: usa `catalogo/productos` (el catálogo REAL de refacciones que
+ * usan Almacén y el kiosco) — NO usa PRODUCTOS_DB (ese es el catálogo de
+ * precios para cotizaciones, cosas muy distintas aunque ambos vivan aquí).
+ *
+ * Folio: prefijo "VENTAS" (contador propio, no choca con "OPERACIONES").
+ * ==========================================================================*/
+let ventasCatalogoProductos = [];
+let ventasTecnicosCache = [];
+let ventasSolicitudCarrito = {};
+let ventasSolicitudClienteActual = null;
+let ventasFirmaCtx = null, ventasFirmaDibujando = false, ventasFirmaHay = false, ventasFirmaLastX = 0, ventasFirmaLastY = 0;
+
+function ventasEsc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+async function ventasCargarCatalogoYTecnicos(){
+    const { getDoc, getDocs, doc, collection, query, where } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+    if(!ventasCatalogoProductos.length){
+        try{
+            const snap = await getDoc(doc(window.db,'catalogo','productos'));
+            ventasCatalogoProductos = snap.exists() && Array.isArray(snap.data().items) ? snap.data().items : [];
+        }catch(e){ console.warn('[ventas] no se pudo leer catalogo/productos:', e.message); }
+    }
+    if(!ventasTecnicosCache.length){
+        try{
+            const snap = await getDocs(query(collection(window.db,'ops_tecnicos'), where('estatus','==','activo')));
+            ventasTecnicosCache = snap.docs.map(d=>({id:d.id,...d.data()}));
+        }catch(e){ console.warn('[ventas] no se pudo leer ops_tecnicos:', e.message); }
+    }
+}
+
+async function ventasSiguienteFolioMaterial(){
+    const { getDocs, collection, query, where } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+    try{
+        const snap = await getDocs(query(collection(window.db,'surtidos'), where('folioPrefijo','==','VENTAS')));
+        let max = 0;
+        snap.forEach(d=>{ const n=(d.data()||{}).folioNum; if(typeof n==='number' && n>max) max=n; });
+        const siguiente = max+1;
+        return { folio:'VENTAS '+String(siguiente).padStart(4,'0'), folioNum:siguiente, folioPrefijo:'VENTAS' };
+    }catch(e){
+        const respaldo = Date.now()%10000;
+        return { folio:'VENTAS '+String(respaldo).padStart(4,'0')+'-R', folioNum:null, folioPrefijo:'VENTAS' };
+    }
+}
+
+window.ventasAbrirModalSolicitud = async function(clienteId){
+    const c = (window.clientesDB||[]).find(x=>x.id===clienteId);
+    if(!c){ alert('Cliente no encontrado.'); return; }
+    ventasSolicitudClienteActual = c;
+    ventasSolicitudCarrito = {};
+    await ventasCargarCatalogoYTecnicos();
+
+    const destinoDefault = c.direccionEntrega || c.direccion || c.dir || c.ciudad || '';
+    let wrap = document.getElementById('ventas-modal-solicitud');
+    if(!wrap){
+        wrap = document.createElement('div');
+        wrap.id = 'ventas-modal-solicitud';
+        document.body.appendChild(wrap);
+    }
+    wrap.innerHTML = `
+    <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:999999;display:flex;align-items:center;justify-content:center;padding:20px;">
+        <div style="background:#fff;border-radius:14px;width:460px;max-width:94vw;padding:22px;max-height:90vh;overflow-y:auto;">
+            <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:2px;">📦 Solicitud de material</div>
+            <div style="font-size:11px;color:#94a3b8;margin-bottom:14px;">Se surte desde Almacén, igual que las solicitudes del kiosco y Operaciones.</div>
+
+            <div style="background:#fff7ed;border-radius:10px;padding:10px 12px;margin-bottom:14px;">
+                <div style="font-size:12.5px;font-weight:700;color:#7c2d12;">${ventasEsc(c.nombre||'—')}</div>
+                <div style="font-size:10.5px;color:#c2410c;">${ventasEsc([c.ciudad,c.estado].filter(Boolean).join(', ')||'—')}</div>
+            </div>
+
+            <label style="font-size:11.5px;color:#64748b;font-weight:600;">Dirección de entrega *</label>
+            <input id="vsm-destino" value="${ventasEsc(destinoDefault)}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;box-sizing:border-box;">
+
+            <label style="display:flex;align-items:center;gap:8px;font-size:11.5px;color:#64748b;font-weight:600;margin-bottom:6px;">
+                <input type="checkbox" id="vsm-con-tecnico" onchange="ventasToggleTecnico()"> ¿Ya hay técnico asignado para instalar/entregar?
+            </label>
+            <div id="vsm-wrap-tecnico" style="display:none;margin-bottom:10px;">
+                <select id="vsm-tecnico" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;box-sizing:border-box;">
+                    <option value="">Selecciona un técnico…</option>
+                    ${ventasTecnicosCache.map(t=>`<option value="${t.id}">${ventasEsc(t.nombre)}${t.numeroOperativo?(' · N.° '+ventasEsc(t.numeroOperativo)):''}</option>`).join('')}
+                </select>
+            </div>
+
+            <label style="font-size:11.5px;color:#64748b;font-weight:600;">Prioridad *</label>
+            <select id="vsm-prioridad" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;box-sizing:border-box;">
+                <option value="urgente">🔴 Urgente</option>
+                <option value="alta" selected>🟠 Alta</option>
+                <option value="normal">🟡 Normal</option>
+                <option value="programado">🟢 Programado</option>
+            </select>
+
+            <label style="font-size:11.5px;color:#64748b;font-weight:600;">¿Para qué se usará el material? *</label>
+            <textarea id="vsm-uso" rows="2" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 14px;resize:vertical;box-sizing:border-box;"></textarea>
+
+            <div style="font-size:11px;font-weight:700;color:#c2410c;margin-bottom:6px;">Artículos solicitados</div>
+            <input list="vsm-datalist-prod" id="vsm-buscarprod" placeholder="Busca un producto por nombre o clave..." style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin-bottom:8px;box-sizing:border-box;">
+            <datalist id="vsm-datalist-prod">${ventasCatalogoProductos.map(p=>`<option data-clave="${ventasEsc(p.clave||'')}" value="${ventasEsc(p.desc||p.clave)}">`).join('')}</datalist>
+            <div style="display:flex;gap:6px;margin-bottom:10px;">
+                <input id="vsm-cantprod" type="number" min="1" value="1" style="width:70px;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;">
+                <button onclick="ventasAgregarProductoCarrito()" style="flex:1;background:#f1f5f9;border:none;border-radius:8px;color:#334155;font-weight:600;font-size:12.5px;cursor:pointer;">+ Agregar al pedido</button>
+            </div>
+            <div id="vsm-carrito-lista" style="margin-bottom:14px;"></div>
+
+            <div style="font-size:11px;font-weight:700;color:#c2410c;margin-bottom:6px;">Firma del solicitante</div>
+            <div style="position:relative;border:1px dashed #cbd5e1;border-radius:10px;height:120px;overflow:hidden;">
+                <canvas id="vsm-sign-canvas" style="width:100%;height:100%;touch-action:none;"></canvas>
+                <div id="vsm-sign-hint" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:11.5px;pointer-events:none;">Firma aquí con el dedo o el mouse</div>
+            </div>
+            <div style="display:flex;justify-content:flex-end;margin:6px 0 14px;">
+                <button onclick="ventasLimpiarFirma()" style="background:none;border:none;color:#c2410c;font-size:11.5px;font-weight:600;cursor:pointer;">Limpiar firma</button>
+            </div>
+
+            <div id="vsm-msg" style="color:#b91c1c;font-size:11.5px;margin-bottom:8px;"></div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;">
+                <button onclick="document.getElementById('ventas-modal-solicitud').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
+                <button onclick="ventasEnviarSolicitudMaterial('${clienteId}')" style="background:linear-gradient(135deg,#f97316,#c2410c);color:#fff;border:none;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700;">Enviar solicitud</button>
+            </div>
+        </div>
+    </div>`;
+    ventasInicializarFirma();
+    ventasRenderCarritoSolicitud();
+};
+
+window.ventasToggleTecnico = function(){
+    const on = document.getElementById('vsm-con-tecnico').checked;
+    document.getElementById('vsm-wrap-tecnico').style.display = on ? 'block' : 'none';
+};
+
+window.ventasAgregarProductoCarrito = function(){
+    const input = document.getElementById('vsm-buscarprod');
+    const desc = input.value.trim();
+    const cant = parseInt(document.getElementById('vsm-cantprod').value,10) || 1;
+    if(!desc) return;
+    const opt = Array.from(document.querySelectorAll('#vsm-datalist-prod option')).find(o=>o.value===desc);
+    const clave = opt ? opt.dataset.clave : '';
+    const key = (clave+'|'+desc).toLowerCase();
+    if(!ventasSolicitudCarrito[key]) ventasSolicitudCarrito[key] = { clave, desc, cant:0 };
+    ventasSolicitudCarrito[key].cant += cant;
+    input.value = ''; document.getElementById('vsm-cantprod').value = 1;
+    ventasRenderCarritoSolicitud();
+};
+window.ventasQuitarProductoCarrito = function(key){ delete ventasSolicitudCarrito[key]; ventasRenderCarritoSolicitud(); };
+
+function ventasRenderCarritoSolicitud(){
+    const el = document.getElementById('vsm-carrito-lista');
+    if(!el) return;
+    const items = Object.entries(ventasSolicitudCarrito);
+    el.innerHTML = items.length ? items.map(([k,v])=>`
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #eef1f5;font-size:12px;">
+            <div style="flex:1;">${ventasEsc(v.desc)}</div>
+            <div style="color:#64748b;">× ${ventasEsc(v.cant)}</div>
+            <button onclick="ventasQuitarProductoCarrito('${k}')" style="background:none;border:none;color:#b91c1c;cursor:pointer;font-size:11px;">Quitar</button>
+        </div>`).join('') : '<div style="color:#94a3b8;font-size:11.5px;">Tu pedido está vacío.</div>';
+}
+
+function ventasInicializarFirma(){
+    const cv = document.getElementById('vsm-sign-canvas');
+    const r = cv.getBoundingClientRect();
+    cv.width = r.width; cv.height = r.height;
+    ventasFirmaCtx = cv.getContext('2d');
+    ventasFirmaCtx.lineWidth = 2.4; ventasFirmaCtx.lineCap = 'round'; ventasFirmaCtx.lineJoin = 'round'; ventasFirmaCtx.strokeStyle = '#0f172a';
+    ventasFirmaHay = false;
+    function pos(e){ const rr=cv.getBoundingClientRect(); const p=e.touches?e.touches[0]:e; return {x:p.clientX-rr.left,y:p.clientY-rr.top}; }
+    function start(e){ e.preventDefault(); ventasFirmaDibujando=true; const p=pos(e); ventasFirmaLastX=p.x; ventasFirmaLastY=p.y; }
+    function move(e){
+        if(!ventasFirmaDibujando) return; e.preventDefault();
+        const p = pos(e);
+        ventasFirmaCtx.beginPath(); ventasFirmaCtx.moveTo(ventasFirmaLastX,ventasFirmaLastY); ventasFirmaCtx.lineTo(p.x,p.y); ventasFirmaCtx.stroke();
+        ventasFirmaLastX=p.x; ventasFirmaLastY=p.y;
+        if(!ventasFirmaHay){ ventasFirmaHay=true; document.getElementById('vsm-sign-hint').style.display='none'; }
+    }
+    function end(){ ventasFirmaDibujando=false; }
+    cv.addEventListener('mousedown',start); cv.addEventListener('mousemove',move); window.addEventListener('mouseup',end);
+    cv.addEventListener('touchstart',start,{passive:false}); cv.addEventListener('touchmove',move,{passive:false}); cv.addEventListener('touchend',end);
+}
+window.ventasLimpiarFirma = function(){
+    const cv = document.getElementById('vsm-sign-canvas');
+    ventasFirmaCtx.clearRect(0,0,cv.width,cv.height);
+    ventasFirmaHay = false;
+    document.getElementById('vsm-sign-hint').style.display = 'flex';
+};
+function ventasFirmaBase64(){
+    const cv = document.getElementById('vsm-sign-canvas');
+    const tmp = document.createElement('canvas');
+    const W=600, H=Math.round(W*(cv.height/cv.width));
+    tmp.width=W; tmp.height=H;
+    const t = tmp.getContext('2d');
+    t.fillStyle='#ffffff'; t.fillRect(0,0,W,H);
+    t.drawImage(cv,0,0,W,H);
+    return tmp.toDataURL('image/png');
+}
+
+window.ventasEnviarSolicitudMaterial = async function(clienteId){
+    const c = ventasSolicitudClienteActual;
+    const destino = document.getElementById('vsm-destino').value.trim();
+    const conTecnico = document.getElementById('vsm-con-tecnico').checked;
+    const tecnicoId = conTecnico ? document.getElementById('vsm-tecnico').value : '';
+    const tecnico = tecnicoId ? ventasTecnicosCache.find(t=>t.id===tecnicoId) : null;
+    const prioridad = document.getElementById('vsm-prioridad').value || 'alta';
+    const uso = document.getElementById('vsm-uso').value.trim();
+    const productos = Object.values(ventasSolicitudCarrito).map(v=>({clave:v.clave,cant:v.cant,desc:v.desc}));
+    const msgEl = document.getElementById('vsm-msg');
+
+    const yo = (window.auth && window.auth.currentUser && window.auth.currentUser.email) || '';
+    const solicitante = (window.nombreUsuario ? window.nombreUsuario(yo) : '') || yo;
+
+    if(!yo){ msgEl.textContent = 'Tu sesión no está disponible — recarga el portal.'; return; }
+    if(!destino){ msgEl.textContent = 'Escribe la dirección de entrega.'; return; }
+    if(conTecnico && !tecnicoId){ msgEl.textContent = 'Elige el técnico de la lista o desmarca la casilla.'; return; }
+    if(!uso){ msgEl.textContent = 'Describe para qué se usará el material.'; return; }
+    if(!productos.length){ msgEl.textContent = 'Agrega al menos un artículo con descripción y cantidad.'; return; }
+    if(!ventasFirmaHay){ msgEl.textContent = 'Falta la firma del solicitante.'; return; }
+    msgEl.textContent = '';
+
+    try{
+        const { collection, addDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const folioInfo = await ventasSiguienteFolioMaterial();
+        await addDoc(collection(window.db,'surtidos'), {
+            tipo: 'material',
+            folio: folioInfo.folio, folioNum: folioInfo.folioNum, folioPrefijo: folioInfo.folioPrefijo,
+            cliente: (c && c.nombre) || destino,
+            clienteId: clienteId || null,
+            solicitante, solicitanteEmail: yo, vendedor: solicitante,
+            tecnicoId: tecnico ? tecnico.id : null,
+            tecnicoNombre: tecnico ? tecnico.nombre : null,
+            tecnicoCorreo: tecnico ? (tecnico.correo||null) : null,
+            area: 'Ventas',
+            destino, destinoTipo: 'entrega_chihuahua', destinoDireccion: destino,
+            uso, prioridad, estado: 'pendiente',
+            productos, firma: ventasFirmaBase64(),
+            origen: 'ventas',
+            createdAt: serverTimestamp ? serverTimestamp() : new Date().toISOString(),
+        });
+        document.getElementById('ventas-modal-solicitud').innerHTML = '';
+        if(window.mostrarToast) window.mostrarToast('✅ Solicitud enviada', `${folioInfo.folio} → Almacén`, '📦');
+        else alert(`Solicitud ${folioInfo.folio} enviada a Almacén.`);
+    }catch(e){
+        msgEl.textContent = 'No se pudo enviar (' + (e.code||e.message||'error') + ').';
+    }
+};
