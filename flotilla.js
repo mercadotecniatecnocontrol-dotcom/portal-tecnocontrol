@@ -3706,12 +3706,12 @@ function renderRP(id){
   const vivo=typeof flQuienUsaEcoAhora==='function'?flQuienUsaEcoAhora(v.eco):null;
   const ultChk=flChkSem.filter(c=>String(c.vehiculoEco)===String(v.eco)).sort((a,b)=>(b.creadoEn||'').localeCompare(a.creadoEn||''))[0];
 
-  const card=(titulo,contenido,extra)=>`<div class="fl-rp-card" style="padding: 15px 20px;">
+  const card = (titulo, contenido, extra) => `<div class="fl-rp-card" style="padding: 15px 20px; box-sizing: border-box; display: flex; flex-direction: column; width: 100%;">
     <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-shrink:0">
       <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${titulo}</span>
-      ${extra?`<span style="flex-shrink:0;white-space:nowrap">${extra}</span>`:''}
+      ${extra ? `<span style="flex-shrink:0;white-space:nowrap">${extra}</span>` : ''}
     </div>
-    <div>${contenido}</div>
+    <div style="width: 100%; overflow-wrap: break-word;">${contenido}</div>
   </div>`;
   const fila=(label,val,mono)=>`<div class="fl-rp-fila"><span style="color:#94A3B8">${label}</span><span style="font-weight:700;${mono?"font-family:'JetBrains Mono',monospace;":''}overflow-wrap:anywhere;word-break:break-word">${val}</span></div>`;
 
