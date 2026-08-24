@@ -1214,6 +1214,9 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
                     <button class="vsi-btn" id="vsi-surtido" onclick="if(window.abrirSurtidoPDF){abrirSurtidoPDF();}else{alert('El módulo de surtido está cargando, intenta de nuevo en un momento.');}" title="Subir pedido a surtir · PDF (formato CHH)" style="color:#5eead4;">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                     </button>
+                    <button class="vsi-btn" id="vsi-solicitud-material" onclick="if(window.ventasAbrirModalSolicitud){ventasAbrirModalSolicitud();}else{alert('El módulo de Solicitud de Material está cargando, intenta de nuevo en un momento.');}" title="Solicitud de Material · Operaciones" style="color:#fdba74;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                    </button>
                     <button class="vsi-btn" id="vsi-mispedidos" onclick="if(window.abrirMisPedidosVentas){abrirMisPedidosVentas();}else{alert('El módulo de Mis Pedidos está cargando, intenta de nuevo en un momento.');}" title="Mis pedidos · pedidos que tú subiste" style="color:#93c5fd;">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                     </button>
@@ -1269,6 +1272,7 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
                     <!-- Mapa -->
                     <div id="ventas-mapa-desktop" style="flex:1;min-height:300px;position:relative;">
                         <div id="mapa-clientes" style="width:100%;height:100%;"></div>
+                        <button id="vp-btn-capa-logistica" onclick="ventasToggleCapaLogistica()" title="Mostrar/ocultar pendientes de Almacén en el mapa (material, traspasos, paquetería, recolecciones)" style="position:absolute;top:12px;right:12px;z-index:1000;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:8px 12px;font-family:'Space Grotesk',sans-serif;font-size:11.5px;font-weight:700;color:#475569;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.12);">🚚 Rutas de Almacén</button>
                     </div>
                     <!-- Panel detalle perfil cliente -->
                     <div id="ventas-panel-detalle" style="display:none;flex-direction:column;background:#f8fafc;position:absolute;inset:0;overflow:hidden;">
@@ -1281,12 +1285,6 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
                                     <div class="vp-cp-nombre" id="vp-cp-nombre">—</div>
                                     <div class="vp-cp-sub" id="vp-cp-sub">—</div>
                                 </div>
-                                <button onclick="editarCliente(window._vpClienteActual)" title="Editar cliente" style="width:30px;height:30px;border-radius:8px;background:rgba(255,255,255,0.2);border:none;color:white;cursor:pointer;display:flex;align-items:center;justify-content:center;">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                                </button>
-                                <button onclick="vpEliminarClienteActual()" title="Eliminar cliente" style="width:30px;height:30px;border-radius:8px;background:rgba(255,255,255,0.2);border:none;color:white;cursor:pointer;display:flex;align-items:center;justify-content:center;">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                                </button>
                                 <button onclick="vpNuevaActividad()" style="padding:7px 12px;background:white;color:#1e3a8a;border:none;border-radius:8px;font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:800;cursor:pointer;">+ Actividad</button>
                             </div>
                             <div class="vp-cp-kpis">
@@ -1414,16 +1412,12 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
                             <option value="">Sin asignar</option>
                             <option value="PALOMA PINEDO">Paloma Pinedo</option>
                             <option value="JORGE ENRIQUEZ">Jorge Enríquez</option>
-                            <option value="ANTONIO LUNA">Antonio Luna</option>
                             <option value="MIGUEL MONTELLANO">Miguel Montellano</option>
                             <option value="GUILLERMO DURSTEWITZ">Guillermo Durstewitz</option>
                             <option value="MARTIN ROBERTO DE LA O MAESE">Martín De la O</option>
                             <option value="FATIMA SAUZAMEDA">Fátima Sauzameda</option>
                             <option value="MONTERREY">Monterrey</option>
                             <option value="SERVICIO">Servicio</option>
-                            <option value="GESTORIA">Gestoría</option>
-                            <option value="JUAREZ">Juárez</option>
-                            <option value="PARRAL">Parral</option>
                         </select>
                     </div>
                     <div style="grid-column:span 2">
