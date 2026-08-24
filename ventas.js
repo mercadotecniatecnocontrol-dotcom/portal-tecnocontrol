@@ -175,13 +175,12 @@ window.editarCliente = (id) => {
 // guardarCliente — versión consolidada más abajo
 
 window.eliminarCliente = async (id) => {
-    if(!confirm('¿Eliminar este cliente del mapa?')) return false;
+    if(!confirm('¿Eliminar este cliente del mapa?')) return;
     try {
         await deleteDoc(doc(db,'ventas_clientes',id));
         window.mostrarPush('🗑 Cliente eliminado','','📍');
         cargarClientes();
-        return true;
-    } catch(e){ alert('Error: '+e.message); return false; }
+    } catch(e){ alert('Error: '+e.message); }
 };
 
 document.getElementById('modal-cliente').addEventListener('click', e=>{
@@ -5646,15 +5645,6 @@ window.vpCerrarPerfil = function() {
     if(mapa) mapa.style.display = 'flex';
 };
 
-// Elimina el cliente que se está viendo en el panel de perfil (reutiliza eliminarCliente)
-// y cierra el panel al terminar, ya que el cliente mostrado dejó de existir.
-window.vpEliminarClienteActual = async function() {
-    const id = window._vpClienteActual;
-    if(!id) return;
-    const borrado = await window.eliminarCliente(id);
-    if(borrado) window.vpCerrarPerfil();
-};
-
 // MÓDULO CRM
 async function vpCargarCRM() {
     const lista = document.getElementById('vp-lista-content');
@@ -6412,13 +6402,14 @@ async function ventasSiguienteFolioMaterial(){
 }
 
 window.ventasAbrirModalSolicitud = async function(clienteId){
-    const c = (window.clientesDB||[]).find(x=>x.id===clienteId);
-    if(!c){ alert('Cliente no encontrado.'); return; }
+    const cid = clienteId || '';
+    const c = cid ? (window.clientesDB||[]).find(x=>x.id===cid) : null;
+    if(cid && !c){ alert('Cliente no encontrado.'); return; }
     ventasSolicitudClienteActual = c;
     ventasSolicitudCarrito = {};
     await ventasCargarCatalogoYTecnicos();
 
-    const destinoDefault = c.direccionEntrega || c.direccion || c.dir || c.ciudad || '';
+    const destinoDefault = c ? (c.direccionEntrega || c.direccion || c.dir || c.ciudad || '') : '';
     let wrap = document.getElementById('ventas-modal-solicitud');
     if(!wrap){
         wrap = document.createElement('div');
@@ -6431,10 +6422,12 @@ window.ventasAbrirModalSolicitud = async function(clienteId){
             <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:2px;">📦 Solicitud de material</div>
             <div style="font-size:11px;color:#94a3b8;margin-bottom:14px;">Se surte desde Almacén, igual que las solicitudes del kiosco y Operaciones.</div>
 
-            <div style="background:#fff7ed;border-radius:10px;padding:10px 12px;margin-bottom:14px;">
+            ${c ? `<div style="background:#fff7ed;border-radius:10px;padding:10px 12px;margin-bottom:14px;">
                 <div style="font-size:12.5px;font-weight:700;color:#7c2d12;">${ventasEsc(c.nombre||'—')}</div>
                 <div style="font-size:10.5px;color:#c2410c;">${ventasEsc([c.ciudad,c.estado].filter(Boolean).join(', ')||'—')}</div>
-            </div>
+            </div>` : `
+            <label style="font-size:11.5px;color:#64748b;font-weight:600;">Cliente / estación (opcional)</label>
+            <input id="vsm-cliente-libre" placeholder="Nombre del cliente o estación, si aplica" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 14px;box-sizing:border-box;">`}
 
             <label style="font-size:11.5px;color:#64748b;font-weight:600;">Dirección de entrega *</label>
             <input id="vsm-destino" value="${ventasEsc(destinoDefault)}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;box-sizing:border-box;">
@@ -6481,7 +6474,7 @@ window.ventasAbrirModalSolicitud = async function(clienteId){
             <div id="vsm-msg" style="color:#b91c1c;font-size:11.5px;margin-bottom:8px;"></div>
             <div style="display:flex;gap:8px;justify-content:flex-end;">
                 <button onclick="document.getElementById('ventas-modal-solicitud').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
-                <button onclick="ventasEnviarSolicitudMaterial('${clienteId}')" style="background:linear-gradient(135deg,#f97316,#c2410c);color:#fff;border:none;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700;">Enviar solicitud</button>
+                <button onclick="ventasEnviarSolicitudMaterial('${cid}')" style="background:linear-gradient(135deg,#f97316,#c2410c);color:#fff;border:none;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700;">Enviar solicitud</button>
             </div>
         </div>
     </div>`;
@@ -6560,6 +6553,8 @@ function ventasFirmaBase64(){
 
 window.ventasEnviarSolicitudMaterial = async function(clienteId){
     const c = ventasSolicitudClienteActual;
+    const clienteLibreEl = document.getElementById('vsm-cliente-libre');
+    const clienteNombreLibre = clienteLibreEl ? clienteLibreEl.value.trim() : '';
     const destino = document.getElementById('vsm-destino').value.trim();
     const conTecnico = document.getElementById('vsm-con-tecnico').checked;
     const tecnicoId = conTecnico ? document.getElementById('vsm-tecnico').value : '';
@@ -6586,7 +6581,7 @@ window.ventasEnviarSolicitudMaterial = async function(clienteId){
         await addDoc(collection(window.db,'surtidos'), {
             tipo: 'material',
             folio: folioInfo.folio, folioNum: folioInfo.folioNum, folioPrefijo: folioInfo.folioPrefijo,
-            cliente: (c && c.nombre) || destino,
+            cliente: (c && c.nombre) || clienteNombreLibre || destino,
             clienteId: clienteId || null,
             solicitante, solicitanteEmail: yo, vendedor: solicitante,
             tecnicoId: tecnico ? tecnico.id : null,
@@ -6605,4 +6600,54 @@ window.ventasEnviarSolicitudMaterial = async function(clienteId){
     }catch(e){
         msgEl.textContent = 'No se pudo enviar (' + (e.code||e.message||'error') + ').';
     }
+};
+
+/* ============================================================================
+ * CAPA DE LOGÍSTICA SOBRE EL MAPA DE VENTAS
+ * ----------------------------------------------------------------------------
+ * Superpone en el MISMO mapa de clientes (mapaLeaflet) los pendientes reales
+ * de Almacén: pedidos de Ventas y solicitudes de Material con destino ya
+ * ubicado, traspasos entre almacenes, envíos por paquetería (círculo naranja,
+ * como se pidió) y recolecciones — todo viene de window.tcObtenerPuntosLogisticos()
+ * (logistica.js), que es la ÚNICA fuente de esta información: no se duplica
+ * la consulta ni la lógica de categorías aquí.
+ * ==========================================================================*/
+let ventasCapaLogisticaActiva = false;
+let ventasCapaLogisticaMarkers = [];
+
+window.ventasToggleCapaLogistica = async function(){
+    const btn = document.getElementById('vp-btn-capa-logistica');
+    if(ventasCapaLogisticaActiva){
+        ventasCapaLogisticaMarkers.forEach(m=>m.remove());
+        ventasCapaLogisticaMarkers = [];
+        ventasCapaLogisticaActiva = false;
+        if(btn){ btn.style.background='#fff'; btn.style.color='#475569'; }
+        return;
+    }
+    if(!window.tcObtenerPuntosLogisticos){
+        alert('El módulo de Logística todavía está cargando — intenta de nuevo en un momento.');
+        return;
+    }
+    if(btn){ btn.textContent = 'Cargando…'; }
+    const puntos = await window.tcObtenerPuntosLogisticos();
+    if(btn){ btn.textContent = '🚚 Rutas de Almacén'; btn.style.background='#fff7ed'; btn.style.color='#c2410c'; }
+    if(!mapaLeaflet) return;
+
+    const ESTILO = {
+        venta:       { color:'#1473E6', label:'Pedido de Ventas' },
+        material:    { color:'#8B4FD6', label:'Solicitud de Material · Operaciones' },
+        traslado:    { color:'#D99000', label:'Traspaso entre almacenes' },
+        paqueteria:  { color:'#F26B21', label:'Envío por paquetería' },
+        recoleccion: { color:'#DB2777', label:'Recolección de material/paquetería' }
+    };
+    puntos.forEach(p=>{
+        const est = ESTILO[p.categoria] || ESTILO.venta;
+        const marker = L.circleMarker([p.lat,p.lng], {
+            radius: 8, color: est.color, fillColor: est.color, fillOpacity: 0.85, weight: 2
+        }).addTo(mapaLeaflet);
+        marker.bindPopup('<b style="color:'+est.color+'">'+est.label+'</b><br>'+(p.popupHtml||''));
+        ventasCapaLogisticaMarkers.push(marker);
+    });
+    ventasCapaLogisticaActiva = true;
+    if(window.mostrarPush) window.mostrarPush('Rutas de Almacén', puntos.length+' pendientes ubicados en el mapa.', '🚚');
 };
