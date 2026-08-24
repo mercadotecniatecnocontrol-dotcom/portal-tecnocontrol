@@ -168,6 +168,97 @@
         },
     };
 
+    // ── Acceso al kiosco de Solicitud de Material (Firebase Auth real) ──────
+    // El kiosco (solicitud-material.html) dejó de usar auth anónima; ahora cada
+    // técnico necesita una cuenta real para identificar quién solicita y para
+    // quién. Reutiliza el mismo patrón que la alta de usuarios del portal en
+    // index.html: app secundaria de Firebase para crear la cuenta sin cerrar la
+    // sesión del admin. El UID resultante se guarda en ops_tecnicos.firebaseUid
+    // — el mismo campo que ya existía para "sincronización con RH" — así que
+    // también sirve para saber de un vistazo quién ya tiene acceso al kiosco.
+    // Esta cuenta NO da acceso al portal: se crea con rol:"tecnico_campo" y sin
+    // departamento en usuarios/{uid}, así que si por error entra a index.html no
+    // encuentra ningún área asignada.
+    function opsPasswordSugerida(t) {
+        const digitos = String(t.numeroOperativo || "").replace(/\D/g, "") || "000";
+        return digitos + "Tecno1";
+    }
+
+    window.opsAbrirModalAccesoKiosco = function (idInterno) {
+        const t = cacheTec.find(x => x.id === idInterno);
+        if (!t) return;
+        if (!t.correo) { alert("Primero captura el correo del técnico (✏️ Editar perfil) — sin correo no se puede crear el acceso al kiosco."); return; }
+        if (t.firebaseUid) { alert("Este técnico ya tiene acceso al kiosco.\nCorreo: " + t.correo); return; }
+        const wrap = document.getElementById("ops-modal-wrap");
+        const passSugerida = opsPasswordSugerida(t);
+        wrap.innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;">
+            <div style="background:#fff;border-radius:14px;width:380px;max-width:92vw;padding:22px;">
+                <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:4px;">🔑 Crear acceso al kiosco</div>
+                <div style="font-size:11px;color:#94a3b8;margin-bottom:14px;">Esta cuenta solo sirve para iniciar sesión en el kiosco de Solicitud de Material — no da acceso al portal.</div>
+                <div style="background:#f8fafc;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:12.5px;color:#334155;">
+                    <div><strong>${opsEsc(t.nombre)}</strong></div>
+                    <div style="color:#64748b;">${opsEsc(t.correo)}</div>
+                </div>
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Contraseña inicial</label>
+                <input id="ops-acceso-pass" value="${opsEsc(passSugerida)}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 4px;">
+                <div style="font-size:10.5px;color:#94a3b8;margin-bottom:14px;">Mínimo 6 caracteres. Dísela al técnico de palabra — no se vuelve a mostrar después de crear la cuenta.</div>
+                <div id="ops-acceso-msg" style="color:#b91c1c;font-size:11.5px;margin-bottom:8px;"></div>
+                <div style="display:flex;gap:8px;justify-content:flex-end;">
+                    <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
+                    <button id="ops-acceso-btn" onclick="opsCrearAccesoKiosco('${idInterno}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">Crear acceso</button>
+                </div>
+            </div>
+        </div>`;
+    };
+
+    window.opsCrearAccesoKiosco = async function (idInterno) {
+        const t = cacheTec.find(x => x.id === idInterno);
+        const passInput = document.getElementById("ops-acceso-pass");
+        const msgEl = document.getElementById("ops-acceso-msg");
+        const btn = document.getElementById("ops-acceso-btn");
+        const pass = passInput ? passInput.value : "";
+        if (!pass || pass.length < 6) { if (msgEl) msgEl.textContent = "La contraseña debe tener al menos 6 caracteres."; return; }
+        if (!window.firebaseConfig) { if (msgEl) msgEl.textContent = "Falta window.firebaseConfig en index.html — no se puede crear la cuenta."; return; }
+        if (msgEl) msgEl.textContent = "";
+        if (btn) { btn.textContent = "Creando…"; btn.disabled = true; }
+
+        let secondaryApp = null;
+        try {
+            const { appMod, authMod } = await opsGetAuthHerramientas();
+            secondaryApp = appMod.initializeApp(window.firebaseConfig, "acceso-kiosco-" + Date.now());
+            const secondaryAuth = authMod.getAuth(secondaryApp);
+            const cred = await authMod.createUserWithEmailAndPassword(secondaryAuth, t.correo, pass);
+            const uid = cred.user.uid;
+            await authMod.signOut(secondaryAuth);
+
+            const { db, fs } = await opsGetFB();
+            await fs.setDoc(fs.doc(db, "usuarios", uid), {
+                correo: t.correo, nombre: t.nombre, departamento: null, rol: "tecnico_campo", activo: true,
+                tecnicoId: idInterno, creadoPor: opsUsuarioActual(), creadoEn: opsFechaHora(),
+            });
+            await fs.updateDoc(fs.doc(db, COL_TECNICOS, idInterno), { firebaseUid: uid });
+            await opsAuditar("tecnico", idInterno, "firebaseUid", null, uid);
+
+            const snapTec = await fs.getDocs(fs.collection(db, COL_TECNICOS));
+            cacheTec = snapTec.docs.map(d => ({ id: d.id, ...d.data() }));
+            document.getElementById("ops-modal-wrap").innerHTML = "";
+            if (window.mostrarPush) window.mostrarPush("Acceso creado", `${t.nombre} ya puede entrar al kiosco con ${t.correo}.`, "🔑");
+            else alert(`Acceso creado.\nCorreo: ${t.correo}\nContraseña: ${pass}`);
+            opsAbrirFichaTecnico(idInterno, "rh");
+        } catch (e) {
+            const msgs = {
+                "auth/email-already-in-use": "Ese correo ya tiene una cuenta (revisa si ya existe acceso al portal o a otro técnico).",
+                "auth/invalid-email": "Correo inválido — revisa el campo Correo en el perfil del técnico.",
+                "auth/weak-password": "Contraseña muy débil (mínimo 6 caracteres).",
+            };
+            if (msgEl) msgEl.textContent = msgs[e.code] || ("Error al crear el acceso: " + e.message);
+        } finally {
+            if (btn) { btn.textContent = "Crear acceso"; btn.disabled = false; }
+            if (secondaryApp) { try { const { appMod } = await opsGetAuthHerramientas(); await appMod.deleteApp(secondaryApp); } catch (_e) { /* no crítico */ } }
+        }
+    };
+
     const UBICACIONES = ["Almacén central", "Estación / cliente", "Vehículo", "Taller de reparación"];
 
     const ESTADOS_HERRAMIENTA = {
@@ -621,6 +712,18 @@
         const fs = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
         opsFB = { db: window.db, fs };
         return opsFB;
+    }
+
+    // Carga perezosa de firebase-app/firebase-auth — solo se usan al crear el
+    // acceso al kiosco de un técnico (operación poco frecuente), así que no vale
+    // la pena importarlos junto con el resto del módulo.
+    let opsAuthTools = null;
+    async function opsGetAuthHerramientas() {
+        if (opsAuthTools) return opsAuthTools;
+        const appMod = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js");
+        const authMod = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
+        opsAuthTools = { appMod, authMod };
+        return opsAuthTools;
     }
 
     function opsEsc(s) {
@@ -2019,6 +2122,13 @@
         } else if (fichaTecTabActual === "rh") {
             const sincronizado = !!(t.employeeId && t.firebaseUid);
             el.innerHTML = `
+                <div style="background:#fff;border-radius:14px;padding:16px 18px;margin-bottom:12px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                        <span style="font-size:11.5px;font-weight:700;color:${t.firebaseUid ? "#166534" : "#b45309"};">${t.firebaseUid ? "🟢 Tiene acceso al kiosco" : "🟠 Sin acceso al kiosco"}</span>
+                        ${!t.firebaseUid && opsPuedeGestionar() ? `<button onclick="opsAbrirModalAccesoKiosco('${idInterno}')" style="background:#eef2f7;border:none;color:#0B5FFF;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">🔑 Crear acceso</button>` : ""}
+                    </div>
+                    <div style="font-size:10.5px;color:#94a3b8;">El kiosco de Solicitud de Material (solicitud-material.html) ahora exige inicio de sesión real — sin esta cuenta el técnico no puede pedir material desde ahí.</div>
+                </div>
                 <div style="background:#fff;border-radius:14px;padding:16px 18px;">
                     <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">
                         <span style="font-size:11.5px;font-weight:700;color:${sincronizado ? "#166534" : "#b45309"};">${sincronizado ? "🟢 Sincronizado con RH" : "🟠 Pendiente de sincronización"}</span>
