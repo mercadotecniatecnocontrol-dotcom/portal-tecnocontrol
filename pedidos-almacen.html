@@ -74,7 +74,7 @@
   </div>
   <canvas id="bdayConfetti"></canvas>
 
-  <div class="board-split">
+  <div class="board-split" style="grid-template-columns:1fr 1fr minmax(340px,32%);">
     <section class="panel panel-ventas">
       <div class="panel-h"><span class="ptitle"><span class="pdot" style="background:var(--azul)"></span>PEDIDOS DE VENTA</span><span class="pcount" id="vCount">0</span></div>
       <section class="phero" id="vHero"></section>
@@ -91,22 +91,17 @@
         <div class="pqueue" id="mQueue"></div>
       </section>
     </section>
+    <!-- ── 3ra columna del mismo grid (ya no flotante, no tapa nada) — mismo
+         .panel que los otros dos para que se vea igual de proporcionado. ── -->
+    <section class="panel panel-mapa" style="display:flex;flex-direction:column;overflow:hidden;">
+      <div class="panel-h"><span class="ptitle"><span class="pdot" style="background:#1473E6"></span>🚚 RUTAS PENDIENTES</span></div>
+      <div id="tv-mini-mapa" style="flex:1;position:relative;min-height:0;"></div>
+      <div id="tv-mini-mapa-leyenda" style="flex-shrink:0;padding:8px 10px;font-size:11px;color:#334155;display:flex;flex-wrap:wrap;gap:6px 12px;border-top:1px solid #e2e8f0;"></div>
+    </section>
   </div>
 
   <footer id="legend"></footer>
   <div class="tv-marquee" id="tvMarquee" aria-hidden="true"><div class="tv-marquee-track" id="tvMarqueeTrack"></div></div>
-
-  <!-- ── Mini-mapa de rutas pendientes (Ventas, Material, Traspasos, Paquetería,
-       Recolecciones) — franja vertical a la derecha, ~30% del ancho de pantalla.
-       Sigue siendo "flotante" (position:fixed) porque el grid de 2 columnas
-       (.board-split) vive en CSS/pedidos-almacen.css, que no tengo disponible
-       — una integración real como 3ra columna del grid necesita ese archivo.
-       Solo lectura, no interactivo: es una TV, nadie le da clic. ── -->
-  <div id="tv-mini-mapa-wrap" style="position:fixed;top:104px;bottom:44px;right:14px;width:30vw;max-width:520px;min-width:320px;border-radius:16px;overflow:hidden;border:2px solid rgba(255,255,255,.18);z-index:500;box-shadow:0 6px 28px rgba(0,0,0,.5);">
-    <div id="tv-mini-mapa" style="width:100%;height:100%;"></div>
-    <div style="position:absolute;top:10px;left:12px;background:rgba(15,23,42,.78);color:#fff;font-size:13px;font-weight:800;letter-spacing:.4px;padding:5px 12px;border-radius:8px;pointer-events:none;">🚚 RUTAS PENDIENTES</div>
-    <div id="tv-mini-mapa-leyenda" style="position:absolute;bottom:10px;left:12px;right:12px;background:rgba(15,23,42,.78);border-radius:8px;padding:8px 10px;font-size:10.5px;color:#e2e8f0;pointer-events:none;display:flex;flex-wrap:wrap;gap:6px 12px;"></div>
-  </div>
 </div>
 
 <div class="banner" id="banner">
@@ -174,6 +169,15 @@ function tvPuntosDesdeEstadoActual(){
         popup:'🔁 <b>'+(p.folio||'')+'</b><br>Traspaso a '+(p.destinoAlmacenDestino||'otro almacén')});
       return;
     }
+    if(p.destinoTipo==='entrega_tecnico'){
+      // Va directo a un técnico (no a una dirección de cliente) — mismo color
+      // teal que ya usan las tarjetas (DESTINO_COLOR.entrega_tecnico) para esto.
+      // Sin dirección propia capturada, se ubica en el almacén como referencia
+      // de "pendiente de entregar a técnico".
+      puntos.push({lat:ALMACEN_FZA_COORDS_TV[0], lng:ALMACEN_FZA_COORDS_TV[1], color:'#0FB5A6',
+        popup:'👷 <b>'+(p.folio||'')+'</b><br>Entrega directa a técnico'+(p.tecnicoNombre?(' · '+p.tecnicoNombre):'')});
+      return;
+    }
     if(p.destinoLat!=null && p.destinoLng!=null){
       const color = p.tipo==='material' ? '#8B4FD6' : '#1473E6';
       puntos.push({lat:p.destinoLat, lng:p.destinoLng, color,
@@ -220,8 +224,8 @@ function tvActualizarMiniMapa(){
     // Leyenda: solo muestra las categorías que realmente tienen puntos ahora mismo.
     const CATS = [
       {color:'#1473E6', label:'Ventas'}, {color:'#8B4FD6', label:'Material'},
-      {color:'#D99000', label:'Traspaso'}, {color:'#F26B21', label:'Paquetería'},
-      {color:'#DB2777', label:'Recolección'}
+      {color:'#D99000', label:'Traspaso almacén'}, {color:'#0FB5A6', label:'Entrega a técnico'},
+      {color:'#F26B21', label:'Paquetería'}, {color:'#DB2777', label:'Recolección'}
     ];
     const coloresUsados = new Set(puntos.map(p=>p.color));
     const leyEl = document.getElementById('tv-mini-mapa-leyenda');
@@ -254,18 +258,50 @@ function effColor(p){
 const fmt=ms=>{const s=Math.max(0,Math.floor(ms/1000));return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')};
 const piezas=p=>(Array.isArray(p.productos)?p.productos:[]).reduce((a,x)=>a+(Number(x.cant)||0),0);
 // ── Vencimiento por fecha tentativa de entrega ──
+// Bug real que reportó Glen: una entrega programada para HOY salía como
+// "VENCIÓ hace 1d". Causa: si fechaEntrega llega como cadena ISO completa
+// con hora (ej. guardada como medianoche UTC desde Chihuahua, UTC-6/-7),
+// `new Date(fechaStr)` la interpretaba en THIS huso horario y el día
+// calendario se recorría uno hacia atrás. Fix: siempre se compara por
+// CALENDARIO (año/mes/día), nunca por instante exacto — una fecha de
+// entrega es un día, no un momento preciso.
 function diasA(fechaStr){
   if(!fechaStr) return null;
   const hoy=new Date(); hoy.setHours(0,0,0,0);
-  const f=new Date(String(fechaStr).length<=10 ? fechaStr+'T00:00:00' : fechaStr);
-  if(isNaN(f)) return null; f.setHours(0,0,0,0);
+  let f;
+  if(fechaStr && typeof fechaStr==='object' && typeof fechaStr.toDate==='function') fechaStr = fechaStr.toDate(); // Firestore Timestamp
+  if(fechaStr instanceof Date){
+    f = new Date(fechaStr.getFullYear(), fechaStr.getMonth(), fechaStr.getDate());
+  } else {
+    const s = String(fechaStr);
+    if(s.length<=10){
+      f = new Date(s+'T00:00:00'); // fecha-solo: medianoche LOCAL, correcto tal cual
+    } else {
+      // cadena ISO con hora: tomamos año/mes/día en UTC (como se guardó) y
+      // construimos medianoche LOCAL con esos mismos números — así no se
+      // gana ni se pierde un día por el huso horario de Chihuahua.
+      const tmp = new Date(s);
+      if(isNaN(tmp)) return null;
+      f = new Date(tmp.getUTCFullYear(), tmp.getUTCMonth(), tmp.getUTCDate());
+    }
+  }
+  if(isNaN(f)) return null;
+  f.setHours(0,0,0,0);
   return Math.round((f-hoy)/86400000);
 }
 function venc(p){
   const dd=diasA(p.fechaEntrega); if(dd===null) return null;
   let txt,k;
   if(dd<0){ txt='VENCIÓ hace '+Math.abs(dd)+'d'; k='rojo'; }
-  else if(dd===0){ txt='ENTREGA HOY'; k='naranja'; }
+  else if(dd===0){
+    // Entrega HOY: en vez de un simple "ENTREGA HOY", contador de horas
+    // restantes hasta medianoche — más útil para priorizar en el día,
+    // que fue justo lo que pidió Glen.
+    const ahora=new Date(), medianoche=new Date(); medianoche.setHours(24,0,0,0);
+    const horasRest = (medianoche-ahora)/3600000;
+    txt = horasRest<=1 ? 'ENTREGA HOY · ¡ÚLTIMA HORA!' : ('ENTREGA HOY · faltan '+Math.floor(horasRest)+'h');
+    k = horasRest<=2 ? 'rojo' : 'naranja';
+  }
   else if(dd<=2){ txt=dd+'d p/ entrega'; k='amarillo'; }
   else { txt=dd+'d p/ entrega'; k='verde'; }
   return { txt, color:COLORS[k] };
