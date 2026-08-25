@@ -5350,13 +5350,15 @@ function vpRenderListaClientes() {
         const inicial = (c.nombre||'?')[0].toUpperCase();
         const ciudad = [c.ciudad, c.estado].filter(Boolean).join(', ');
         const tieneUbicacion = (c.lat != null && c.lng != null);
-        // Solo los clientes que vienen del catálogo de estaciones (estacionCatalogoId)
-        // muestran este indicador — un cliente capturado a mano no tiene con qué enlazar.
-        const badgeUbicacion = c.estacionCatalogoId
-            ? (tieneUbicacion
-                ? '<div class="vp-client-badge" style="background:#d1fae5;color:#065f46;">📍 Ubicada</div>'
-                : `<button type="button" onclick="event.stopPropagation();window.__vpAsignarUbicacion('${c.id}','${c.estacionCatalogoId}')" style="background:#fef3c7;color:#92400e;border:none;border-radius:999px;padding:4px 10px;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap;">📍 Asignar ubicación</button>`)
-            : '';
+        // Antes: los clientes SIN estacionCatalogoId (la mayoría de los capturados
+        // a mano) no mostraban ningún botón aquí — no había forma de ubicarlos desde
+        // la lista. Ahora, si no vienen del catálogo de estaciones, se manda directo
+        // al formulario de edición, que ya tiene captura de GPS y lat/lng manual.
+        const badgeUbicacion = tieneUbicacion
+            ? '<div class="vp-client-badge" style="background:#d1fae5;color:#065f46;">📍 Ubicada</div>'
+            : (c.estacionCatalogoId
+                ? `<button type="button" onclick="event.stopPropagation();window.__vpAsignarUbicacion('${c.id}','${c.estacionCatalogoId}')" style="background:#fef3c7;color:#92400e;border:none;border-radius:999px;padding:4px 10px;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap;">📍 Asignar ubicación</button>`
+                : `<button type="button" onclick="event.stopPropagation();editarCliente('${c.id}')" style="background:#fef3c7;color:#92400e;border:none;border-radius:999px;padding:4px 10px;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap;">📍 Agregar ubicación</button>`);
         return `<div class="vp-client-card" onclick="vpVerCliente('${c.id}')">
             <div class="vp-client-avatar">${inicial}</div>
             <div style="flex:1;min-width:0;">
@@ -5539,7 +5541,8 @@ function vpCpGeneral(c) {
     const urgentes = vpCpActividades.filter(a=>a.prioridad==='Urgente'&&a.estatus!=='Completada');
     return `
     ${urgentes.length ? `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:10px;margin-bottom:10px;font-size:11px;font-weight:700;color:#dc2626;">⚠️ ${urgentes.length} actividad urgente pendiente</div>` : ''}
-    <div class="vp-cp-section">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;align-items:start;">
+    <div class="vp-cp-section" style="margin-bottom:0;">
         <div class="vp-cp-label">Información general</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;">
             ${c.cve ? `<div><div style="color:#94a3b8;font-size:10px;">CVE</div><div style="font-weight:700;">${c.cve}</div></div>` : ''}
@@ -5552,10 +5555,11 @@ function vpCpGeneral(c) {
         ${c.notas ? `<div style="margin-top:8px;font-size:11px;color:#64748b;">${c.notas}</div>` : ''}
         ${c.lat&&c.lng ? `<a href="https://www.google.com/maps?q=${c.lat},${c.lng}" target="_blank" style="font-size:11px;color:#2563eb;font-weight:700;text-decoration:none;display:block;margin-top:8px;">Ver en Google Maps →</a>` : ''}
     </div>
-    ${ultimaAct ? `<div class="vp-cp-section"><div class="vp-cp-label">Última actividad</div>
+    ${ultimaAct ? `<div class="vp-cp-section" style="margin-bottom:0;"><div class="vp-cp-label">Última actividad</div>
         <div style="display:flex;gap:8px;"><div style="width:28px;height:28px;border-radius:50%;background:${(VP_ACT_COLORS[ultimaAct.tipo]||{bg:'#f1f5f9'}).bg};display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;">${VP_ACT_ICONS[ultimaAct.tipo]||'📌'}</div>
         <div><div style="font-size:12px;font-weight:700;">${ultimaAct.titulo||'—'}</div><div style="font-size:10px;color:#94a3b8;">${ultimaAct.tipo} · ${vpFmt(ultimaAct.creadoEn)}</div></div></div></div>` : ''}
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-top:4px;">
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-top:14px;max-width:520px;">
         ${c.tel ? `<a href="tel:${c.tel}" style="padding:10px 4px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;text-decoration:none;display:flex;flex-direction:column;align-items:center;gap:3px;">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.99 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.92 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 8.91a16 16 0 0 0 5.99 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
             <span style="font-size:9px;font-weight:700;color:#2563eb;">Llamar</span></a>` : '<div></div>'}
