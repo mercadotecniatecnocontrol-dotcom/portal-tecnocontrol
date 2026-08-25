@@ -97,11 +97,15 @@
   <div class="tv-marquee" id="tvMarquee" aria-hidden="true"><div class="tv-marquee-track" id="tvMarqueeTrack"></div></div>
 
   <!-- ── Mini-mapa de rutas pendientes (Ventas, Material, Traspasos, Paquetería,
-       Recolecciones) — flotante, no altera el grid de los 2 paneles principales.
+       Recolecciones) — franja vertical a la derecha, ~30% del ancho de pantalla.
+       Sigue siendo "flotante" (position:fixed) porque el grid de 2 columnas
+       (.board-split) vive en CSS/pedidos-almacen.css, que no tengo disponible
+       — una integración real como 3ra columna del grid necesita ese archivo.
        Solo lectura, no interactivo: es una TV, nadie le da clic. ── -->
-  <div id="tv-mini-mapa-wrap" style="position:fixed;bottom:14px;right:14px;width:270px;height:190px;border-radius:12px;overflow:hidden;border:2px solid rgba(255,255,255,.18);z-index:500;box-shadow:0 4px 20px rgba(0,0,0,.45);">
+  <div id="tv-mini-mapa-wrap" style="position:fixed;top:104px;bottom:44px;right:14px;width:30vw;max-width:520px;min-width:320px;border-radius:16px;overflow:hidden;border:2px solid rgba(255,255,255,.18);z-index:500;box-shadow:0 6px 28px rgba(0,0,0,.5);">
     <div id="tv-mini-mapa" style="width:100%;height:100%;"></div>
-    <div style="position:absolute;top:6px;left:8px;background:rgba(15,23,42,.75);color:#fff;font-size:10px;font-weight:800;letter-spacing:.4px;padding:3px 8px;border-radius:6px;pointer-events:none;">🚚 RUTAS PENDIENTES</div>
+    <div style="position:absolute;top:10px;left:12px;background:rgba(15,23,42,.78);color:#fff;font-size:13px;font-weight:800;letter-spacing:.4px;padding:5px 12px;border-radius:8px;pointer-events:none;">🚚 RUTAS PENDIENTES</div>
+    <div id="tv-mini-mapa-leyenda" style="position:absolute;bottom:10px;left:12px;right:12px;background:rgba(15,23,42,.78);border-radius:8px;padding:8px 10px;font-size:10.5px;color:#e2e8f0;pointer-events:none;display:flex;flex-wrap:wrap;gap:6px 12px;"></div>
   </div>
 </div>
 
@@ -201,15 +205,32 @@ function tvActualizarMiniMapa(){
     }
     tvMiniMapaMarkers.forEach(m=>m.remove());
     tvMiniMapaMarkers = [];
-    if(!puntos.length){ tvMiniMapa.setView(ALMACEN_FZA_COORDS_TV, 11); return; }
-    puntos.forEach(p=>{
-      const m = L.circleMarker([p.lat,p.lng], {radius:6, color:p.color, fillColor:p.color, fillOpacity:0.85, weight:1.5}).addTo(tvMiniMapa);
-      m.bindPopup(p.popup);
-      tvMiniMapaMarkers.push(m);
-    });
-    if(puntos.length===1) tvMiniMapa.setView([puntos[0].lat,puntos[0].lng], 12);
-    else tvMiniMapa.fitBounds(puntos.map(p=>[p.lat,p.lng]), {padding:[16,16]});
+    if(!puntos.length){ tvMiniMapa.setView(ALMACEN_FZA_COORDS_TV, 11); }
+    else {
+      puntos.forEach(p=>{
+        const m = L.circleMarker([p.lat,p.lng], {radius:8, color:p.color, fillColor:p.color, fillOpacity:0.85, weight:2}).addTo(tvMiniMapa);
+        m.bindPopup(p.popup);
+        tvMiniMapaMarkers.push(m);
+      });
+      if(puntos.length===1) tvMiniMapa.setView([puntos[0].lat,puntos[0].lng], 12);
+      else tvMiniMapa.fitBounds(puntos.map(p=>[p.lat,p.lng]), {padding:[24,24]});
+    }
     setTimeout(()=>tvMiniMapa.invalidateSize(), 60);
+
+    // Leyenda: solo muestra las categorías que realmente tienen puntos ahora mismo.
+    const CATS = [
+      {color:'#1473E6', label:'Ventas'}, {color:'#8B4FD6', label:'Material'},
+      {color:'#D99000', label:'Traspaso'}, {color:'#F26B21', label:'Paquetería'},
+      {color:'#DB2777', label:'Recolección'}
+    ];
+    const coloresUsados = new Set(puntos.map(p=>p.color));
+    const leyEl = document.getElementById('tv-mini-mapa-leyenda');
+    if(leyEl){
+      const activos = CATS.filter(c=>coloresUsados.has(c.color));
+      leyEl.innerHTML = activos.length ? activos.map(c=>
+        `<span style="display:flex;align-items:center;gap:5px;"><span style="width:9px;height:9px;border-radius:50%;background:${c.color};display:inline-block;"></span>${c.label}</span>`
+      ).join('') : '<span style="opacity:.7;">Sin pendientes ubicados ahora mismo</span>';
+    }
   }).catch(err=>console.error('[TV mini-mapa]', err));
 }
 
