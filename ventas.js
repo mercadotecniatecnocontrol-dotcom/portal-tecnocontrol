@@ -175,12 +175,13 @@ window.editarCliente = (id) => {
 // guardarCliente — versión consolidada más abajo
 
 window.eliminarCliente = async (id) => {
-    if(!confirm('¿Eliminar este cliente del mapa?')) return;
+    if(!confirm('¿Eliminar este cliente del mapa?')) return false;
     try {
         await deleteDoc(doc(db,'ventas_clientes',id));
         window.mostrarPush('🗑 Cliente eliminado','','📍');
         cargarClientes();
-    } catch(e){ alert('Error: '+e.message); }
+        return true;
+    } catch(e){ alert('Error: '+e.message); return false; }
 };
 
 document.getElementById('modal-cliente').addEventListener('click', e=>{
@@ -5643,6 +5644,15 @@ window.vpCerrarPerfil = function() {
     const mapa = document.getElementById('ventas-mapa-desktop');
     if(panel) panel.style.display = 'none';
     if(mapa) mapa.style.display = 'flex';
+};
+
+// Elimina el cliente que se está viendo en el panel de perfil (reutiliza eliminarCliente)
+// y cierra el panel al terminar, ya que el cliente mostrado dejó de existir.
+window.vpEliminarClienteActual = async function() {
+    const id = window._vpClienteActual;
+    if(!id) return;
+    const borrado = await window.eliminarCliente(id);
+    if(borrado) window.vpCerrarPerfil();
 };
 
 // MÓDULO CRM
