@@ -1285,6 +1285,7 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
                                     <div class="vp-cp-nombre" id="vp-cp-nombre">—</div>
                                     <div class="vp-cp-sub" id="vp-cp-sub">—</div>
                                 </div>
+                                <button onclick="editarCliente(vpCpClienteActual && vpCpClienteActual.id)" style="padding:7px 12px;background:rgba(255,255,255,0.2);color:white;border:none;border-radius:8px;font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:800;cursor:pointer;">✏️ Editar</button>
                                 <button onclick="vpNuevaActividad()" style="padding:7px 12px;background:white;color:#1e3a8a;border:none;border-radius:8px;font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:800;cursor:pointer;">+ Actividad</button>
                             </div>
                             <div class="vp-cp-kpis">
@@ -1302,7 +1303,7 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
                             <button class="vp-cp-tab" onclick="vpCpTab('correos',this)">Correos</button>
                             <button class="vp-cp-tab" onclick="vpCpTab('facturacion',this)">Facturación</button>
                         </div>
-                        <div class="vp-cp-content" id="vp-cp-body"></div>
+                        <div class="vp-cp-content" id="vp-cp-body" style="width:100%;max-width:none;box-sizing:border-box;flex:1;overflow-y:auto;padding:20px 28px;background:#f1f5f9;"></div>
                     </div>
                     <!-- Panel CRM kanban (visible en módulo CRM) -->
                     <div id="vp-crm-kanban-wrap" style="display:none;flex:1;overflow:hidden;flex-direction:column;">
@@ -5553,6 +5554,7 @@ window.apPrevImg2 = (input) => {
                     <div id="portal-cp-nombre" style="font-size:17px;font-weight:800;color:white;line-height:1.2;">—</div>
                     <div id="portal-cp-sub" style="font-size:11px;color:rgba(255,255,255,0.75);margin-top:3px;">—</div>
                 </div>
+                <button onclick="editarCliente(portalCpCliente && portalCpCliente.id)" style="padding:8px 10px;background:rgba(255,255,255,0.2);color:white;border:none;border-radius:10px;font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:800;cursor:pointer;">✏️</button>
                 <button onclick="portalCpNuevaActividad()" style="padding:8px 12px;background:white;color:#1e3a8a;border:none;border-radius:10px;font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:800;cursor:pointer;">+ Actividad</button>
             </div>
             
