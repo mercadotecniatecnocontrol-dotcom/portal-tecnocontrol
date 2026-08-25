@@ -33,6 +33,7 @@
   var PRIO_COLOR = { urgente:COLORS.rojo, muy_alta:COLORS.naranja, alta:COLORS.amarillo, normal:COLORS.azul, baja:COLORS.gris };
   var PRIO_RANK  = { urgente:5, muy_alta:4, alta:3, normal:2, baja:1 };
   var PRIO_LABEL = { urgente:'Urgente', muy_alta:'Muy alta', alta:'Alta', normal:'Normal', baja:'Baja' };
+  var ORIGEN_LABEL = { kiosco:'Kiosco (técnico en campo)', operaciones:'Operaciones', ventas:'Ventas' };
   // ── Destino de entrega del pedido ──
   var DESTINO_TIPOS = {
     recoger_oficinas:   'Recoger en oficinas Tecnocontrol',
@@ -697,13 +698,28 @@
       +   '<button class="alm-notif-btn" title="Cumplea\u00f1os del equipo (para la TV)" onclick="window.__almAbrirCumpleanos()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="12" width="16" height="8" rx="1"/><path d="M4 16h16"/><path d="M8 12V9a1 1 0 0 1 2 0v3"/><path d="M14 12V9a1 1 0 0 1 2 0v3"/><path d="M9 6c0-1 1-1 1-2s-1-1-1-2"/><path d="M15 6c0-1 1-1 1-2s-1-1-1-2"/></svg></button>'
       + '</div>'
       + '<div class="alm-kpis" id="alm-kpis"></div>'
-      + '<div class="alm-board" id="alm-board"></div>'
+      + '<div style="display:flex;gap:14px;align-items:flex-start;">'
+      +   '<div class="alm-board" id="alm-board" style="flex:1;min-width:0;"></div>'
+      +   '<div id="alm-mapa-rutas-panel" style="flex:0 0 32%;max-width:440px;min-width:300px;background:#fff;border-radius:14px;overflow:hidden;display:flex;flex-direction:column;position:sticky;top:0;box-shadow:0 1px 3px rgba(0,0,0,0.06);">'
+      +     '<div style="padding:10px 14px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;">'
+      +       '<span style="font-weight:700;font-size:13px;color:#1e293b;">🗺️ Rutas pendientes</span>'
+      +       '<button onclick="window.__almRefrescarMapaEmbed()" title="Actualizar" style="background:#f1f5f9;border:none;color:#475569;width:24px;height:24px;border-radius:6px;cursor:pointer;font-size:12px;">↻</button>'
+      +     '</div>'
+      +     '<div id="alm-mapa-rutas-embed" style="height:420px;position:relative;"></div>'
+      +     '<div id="alm-mapa-rutas-embed-leyenda" style="padding:8px 12px;font-size:10.5px;color:#334155;display:flex;flex-wrap:wrap;gap:6px 10px;border-top:1px solid #e2e8f0;"></div>'
+      +   '</div>'
+      + '</div>'
       + '</div>';
   }
 
+  var _almMapaEmbedIniciado = false;
   function render(){
     var cont=contenedor(); if(!cont) return;
     construirShell();
+    if(!_almMapaEmbedIniciado && cont.querySelector('#alm-mapa-rutas-embed')){
+      _almMapaEmbedIniciado = true;
+      window.__almRefrescarMapaEmbed();
+    }
     var kpisEl=cont.querySelector('#alm-kpis'), boardEl=cont.querySelector('#alm-board');
     if(!kpisEl||!boardEl) return;
 
@@ -1512,6 +1528,77 @@
       return fs.setDoc(fs.doc(window.db,'config','cumpleanos'), { lista:lista }, { merge:false });
     }).then(function(){ _cumpleCache = lista; });
   }
+  // ═══════════════════════════════════════════════════════════════════
+  //  MAPA DE RUTAS EN ALMACÉN — panel embebido permanente (3ra columna,
+  //  igual que en la pantalla de TV), NO modal. Usa
+  //  window.tcObtenerPuntosLogisticos() (logistica.js) — la única fuente
+  //  de esta información en todo el portal — así que las categorías y
+  //  colores son siempre los mismos, se vea desde donde se vea.
+  // ═══════════════════════════════════════════════════════════════════
+  var _almMapaLeaflet = null, _almMapaMarkers = [];
+  window.__almRefrescarMapaEmbed = function(){
+    var cont = document.getElementById('alm-mapa-rutas-embed');
+    if(!cont) return; // el panel no está en el DOM todavía (pantalla de Almacén no abierta)
+    if(!window.tcObtenerPuntosLogisticos){
+      cont.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#94a3b8;font-size:12px;text-align:center;padding:12px;">El módulo de Logística (logistica.js) todavía está cargando…</div>';
+      return;
+    }
+    cargarLeafletAlm().then(function(){
+      return window.tcObtenerPuntosLogisticos();
+    }).then(function(puntos){
+      var contAhora = document.getElementById('alm-mapa-rutas-embed');
+      if(!contAhora) return; // se cerró/recargó la pantalla mientras cargaba
+      if(!_almMapaLeaflet){
+        _almMapaLeaflet = L.map('alm-mapa-rutas-embed', {zoomControl:false}).setView([28.63,-106.07], 11);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(_almMapaLeaflet);
+      }
+      _almMapaMarkers.forEach(function(m){ m.remove(); });
+      _almMapaMarkers = [];
+      var ESTILO = {
+        venta:{color:'#1473E6',label:'Pedido de Ventas'}, material:{color:'#8B4FD6',label:'Solicitud de Material'},
+        traslado:{color:'#D99000',label:'Traspaso entre almacenes'}, tecnico:{color:'#0FB5A6',label:'Entrega a técnico'},
+        paqueteria:{color:'#F26B21',label:'Paquetería'}, recoleccion:{color:'#DB2777',label:'Recolección'}
+      };
+      var usados = {};
+      puntos.forEach(function(p){
+        var est = ESTILO[p.categoria] || ESTILO.venta;
+        usados[p.categoria] = est;
+        var m = L.circleMarker([p.lat,p.lng], {radius:7, color:est.color, fillColor:est.color, fillOpacity:0.85, weight:2}).addTo(_almMapaLeaflet);
+        m.bindPopup('<b style="color:'+est.color+'">'+est.label+'</b><br>'+(p.popupHtml||''));
+        _almMapaMarkers.push(m);
+      });
+      var leyEl = document.getElementById('alm-mapa-rutas-embed-leyenda');
+      if(leyEl){
+        var keys = Object.keys(usados);
+        leyEl.innerHTML = keys.length ? keys.map(function(k){
+          var e = usados[k];
+          return '<span style="display:flex;align-items:center;gap:4px;"><span style="width:8px;height:8px;border-radius:50%;background:'+e.color+';display:inline-block;"></span>'+e.label+'</span>';
+        }).join('') : '<span style="color:#94a3b8;">Sin pendientes ubicados ahora mismo.</span>';
+      }
+      if(puntos.length) _almMapaLeaflet.fitBounds(puntos.map(function(p){return [p.lat,p.lng];}), {padding:[24,24]});
+      setTimeout(function(){ if(_almMapaLeaflet) _almMapaLeaflet.invalidateSize(); }, 80);
+    }).catch(function(err){
+      console.error('[almacen] mapa de rutas:', err);
+      var c2 = document.getElementById('alm-mapa-rutas-embed');
+      if(c2) c2.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#dc2626;font-size:12px;">No se pudo cargar el mapa.</div>';
+    });
+  };
+  function cargarLeafletAlm(){
+    if(window.L) return Promise.resolve(window.L);
+    if(!document.querySelector('link[href*="leaflet"]')){
+      var link = document.createElement('link');
+      link.rel = 'stylesheet'; link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      document.head.appendChild(link);
+    }
+    return new Promise(function(resolve, reject){
+      var s = document.createElement('script');
+      s.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+      s.onload = function(){ resolve(window.L); };
+      s.onerror = function(){ reject(new Error('No se pudo cargar Leaflet')); };
+      document.head.appendChild(s);
+    });
+  }
+
   window.__almAbrirCumpleanos = function(){
     cargarCumpleanos().then(function(lista){
       construirModalHistorial();
@@ -1767,6 +1854,15 @@
     docu.text('Solicitud de Material · Almacén / Operaciones', ML+34, 14.5);
     docu.setTextColor(120,120,120); docu.setFont('helvetica','normal'); docu.setFontSize(7.5);
     docu.text('Generado: '+new Date().toLocaleString('es-MX'), PW-MR, 14.5, {align:'right'});
+    // Fecha real de captura de la solicitud (distinta de "Generado", que es cuando se
+    // abrió/imprimió este PDF) — información de seguimiento pedida explícitamente.
+    var fechaCaptura = '—';
+    try{
+      if(p.createdAt && typeof p.createdAt.toDate === 'function') fechaCaptura = p.createdAt.toDate().toLocaleString('es-MX');
+      else if(p.createdAt) fechaCaptura = new Date(p.createdAt).toLocaleString('es-MX');
+    }catch(e){}
+    docu.setFontSize(7);
+    docu.text('Capturado: '+fechaCaptura+'  ·  Origen: '+(ORIGEN_LABEL[p.origen]||p.origen||'—'), PW-MR, 19.5, {align:'right'});
     docu.setDrawColor(226,232,240); docu.line(ML,24,PW-MR,24);
 
     // ── Folio + prioridad (rojo si es urgente, azul de marca en cualquier otro caso) ──
@@ -1794,6 +1890,19 @@
     campo2col(ML, xMid, 'Operación destino', p.destino||p.cliente);
     campo2col(xMid, xMid, 'Folio de servicio', p.folioServicio||'—');
     y += 14;
+    // Técnico/destinatario: antes no aparecía en el PDF impreso, aunque ya se capturaba
+    // en el sistema (tecnicoNombre) — es la información de seguimiento más pedida por
+    // Almacén ("¿para quién es esto?"). "Estado" ayuda a saber de un vistazo si esta
+    // copia sigue vigente o ya fue surtida sin tener que abrir el portal.
+    var destinatario = p.tecnicoNombre || (p.solicitaParaSiMismo ? (p.solicitante||p.vendedor||'—') : 'Sin técnico asignado');
+    var estadoTxt = p.estado ? (p.estado.charAt(0).toUpperCase()+p.estado.slice(1).replace(/_/g,' ')) : 'Pendiente';
+    campo2col(ML, xMid, 'Técnico / destinatario', destinatario);
+    campo2col(xMid, xMid, 'Estado actual', estadoTxt);
+    y += 14;
+    if(p.solicitanteEmail){
+      docu.setFont('helvetica','normal'); docu.setFontSize(7); docu.setTextColor(148,163,184);
+      docu.text('Solicitante verificado por sesión: '+p.solicitanteEmail, ML, y-3);
+    }
     docu.setFont('helvetica','bold'); docu.setFontSize(7.5); docu.setTextColor(100,116,139);
     docu.text('¿PARA QUÉ SE USARÁ EL MATERIAL?', ML, y);
     docu.setFont('helvetica','normal'); docu.setFontSize(10); docu.setTextColor(15,23,42);
