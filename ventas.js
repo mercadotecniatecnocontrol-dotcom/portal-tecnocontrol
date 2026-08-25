@@ -116,7 +116,11 @@ window.filtrarClientesMapa = () => {
         (cl.sector||'').toLowerCase().includes(q)||
         (cl.contacto||'').toLowerCase().includes(q)||
         (cl.vendedor||'').toLowerCase().includes(q)||
-        (cl.cve||'').toString().includes(q)
+        (cl.cve||'').toString().includes(q)||
+        // Búsqueda por Permiso CRE — campo confirmado: cl.permiso (ej. "PL/5122/EXP/ES/2015")
+        (cl.permiso||'').toString().toLowerCase().includes(q)||
+        // Búsqueda por ID de catálogo — campo confirmado: cl.estacionCatalogoId (ej. "CHIH-0227")
+        (cl.estacionCatalogoId||'').toString().toLowerCase().includes(q)
     ) : clientesDB;
     if(window.renderMapa) window.renderMapa(filtrados);
     renderListaClientes(filtrados);
@@ -177,7 +181,8 @@ window.editarCliente = (id) => {
 window.eliminarCliente = async (id) => {
     if(!confirm('¿Eliminar este cliente del mapa?')) return false;
     try {
-        await deleteDoc(doc(db,'ventas_clientes',id));
+        const { deleteDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        await deleteDoc(doc(window.db,'ventas_clientes',id));
         window.mostrarPush('🗑 Cliente eliminado','','📍');
         cargarClientes();
         return true;
@@ -253,12 +258,13 @@ window.guardarCliente = async () => {
         vendedor:  document.getElementById('cl-vendedor')?.value.trim() || '',
         fotoUrl:   document.getElementById('cl-foto-url')?.value || '',
         actualizadoEn:  new Date().toISOString(),
-        actualizadoPor: auth.currentUser?.email||''
+        actualizadoPor: window.auth?.currentUser?.email||''
     };
     try {
+        const { addDoc, updateDoc, doc, collection } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
         const editId = document.getElementById('cliente-edit-id').value;
-        if(editId){ await updateDoc(doc(db,'ventas_clientes',editId), data); }
-        else { await addDoc(collection(db,'ventas_clientes'), data); }
+        if(editId){ await updateDoc(doc(window.db,'ventas_clientes',editId), data); }
+        else { await addDoc(collection(window.db,'ventas_clientes'), data); }
         document.getElementById('modal-cliente').style.display='none';
         window.mostrarPush('📍 Cliente guardado', nombre, '📍');
         await cargarClientes(); // recarga DB y llama window.renderMapa
@@ -510,7 +516,7 @@ window.registrarCheckin = async () => {
     const notas = document.getElementById('checkin-notas').value.trim();
     if(!clienteId){ alert('Selecciona un cliente'); return; }
     const cl = clientesDB.find(x=>x.id===clienteId);
-    const yo = auth.currentUser?.email || '';
+    const yo = window.auth?.currentUser?.email || '';
     const ahora = new Date();
     const checkin = {
         clienteId, clienteNombre: cl?.nombre||'',
@@ -522,9 +528,10 @@ window.registrarCheckin = async () => {
         timestamp: ahora.toISOString()
     };
     try {
-        await addDoc(collection(db,'ventas_checkins'), checkin);
+        const { addDoc, updateDoc, doc, collection } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        await addDoc(collection(window.db,'ventas_checkins'), checkin);
         // Incrementar contador de visitas del cliente
-        if(cl){ await updateDoc(doc(db,'ventas_clientes',clienteId),{ visitas:(cl.visitas||0)+1 }); }
+        if(cl){ await updateDoc(doc(window.db,'ventas_clientes',clienteId),{ visitas:(cl.visitas||0)+1 }); }
         document.getElementById('modal-checkin').style.display='none';
         window.mostrarPush('✅ Visita registrada', cl?.nombre||'', '📍');
         cargarClientes();
@@ -3126,7 +3133,8 @@ window.cerrarDetalleActividad = () => {
 window.cambiarEstatus = async (nuevoEstatus) => {
     if(!_detalleActId) return;
     try {
-        await updateDoc(doc(db,'actividades',_detalleActId), {estatus: nuevoEstatus});
+        const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        await updateDoc(doc(window.db,'actividades',_detalleActId), {estatus: nuevoEstatus});
         const idx = localDB.findIndex(x=>x.id===_detalleActId);
         if(idx>=0) localDB[idx].estatus = nuevoEstatus;
         // Actualizar botones
@@ -3174,7 +3182,8 @@ window.agregarSubtarea = async () => {
     if(!r) return;
     const subtareas = [...(r.subtareas||[]), {texto, done:false, creadoEn:new Date().toISOString()}];
     try {
-        await updateDoc(doc(db,'actividades',_detalleActId), {subtareas});
+        const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        await updateDoc(doc(window.db,'actividades',_detalleActId), {subtareas});
         const idx = localDB.findIndex(x=>x.id===_detalleActId);
         if(idx>=0) localDB[idx].subtareas = subtareas;
         if(input) input.value = '';
@@ -3190,7 +3199,8 @@ window.toggleSubtarea = async (subt_idx) => {
     const subtareas = [...(r.subtareas||[])];
     subtareas[subt_idx] = {...subtareas[subt_idx], done: !subtareas[subt_idx].done};
     try {
-        await updateDoc(doc(db,'actividades',_detalleActId), {subtareas});
+        const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        await updateDoc(doc(window.db,'actividades',_detalleActId), {subtareas});
         const idx = localDB.findIndex(x=>x.id===_detalleActId);
         if(idx>=0) localDB[idx].subtareas = subtareas;
         renderSubtareasDetalle(subtareas);
@@ -3204,7 +3214,8 @@ window.eliminarSubtarea = async (subt_idx) => {
     if(!r) return;
     const subtareas = (r.subtareas||[]).filter((_,i)=>i!==subt_idx);
     try {
-        await updateDoc(doc(db,'actividades',_detalleActId), {subtareas});
+        const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        await updateDoc(doc(window.db,'actividades',_detalleActId), {subtareas});
         const idx = localDB.findIndex(x=>x.id===_detalleActId);
         if(idx>=0) localDB[idx].subtareas = subtareas;
         renderSubtareasDetalle(subtareas);
@@ -3212,7 +3223,7 @@ window.eliminarSubtarea = async (subt_idx) => {
     } catch(e) { console.error(e); }
 };
 
-window.toggleDescEdit = () => {
+window.toggleDescEdit = async () => {
     const descEl = document.getElementById('det-descripcion');
     const descEdit = document.getElementById('det-desc-edit');
     const btn = document.getElementById('det-desc-btn');
@@ -3222,7 +3233,8 @@ window.toggleDescEdit = () => {
         // Guardar
         const newDesc = descEdit.value.trim();
         if(_detalleActId) {
-            updateDoc(doc(db,'actividades',_detalleActId), {descripcion: newDesc}).then(()=>{
+            const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+            updateDoc(doc(window.db,'actividades',_detalleActId), {descripcion: newDesc}).then(()=>{
                 const idx = localDB.findIndex(x=>x.id===_detalleActId);
                 if(idx>=0) localDB[idx].descripcion = newDesc;
                 descEl.textContent = newDesc || 'Sin descripción';
@@ -3268,12 +3280,13 @@ window.enviarComentarioDetalle = async () => {
     const input = document.getElementById('det-nuevo-comentario');
     const texto = input?.value.trim();
     if(!texto || !_detalleActId) return;
-    const yo = auth.currentUser?.email || '';
+    const yo = window.auth?.currentUser?.email || '';
     const nuevo = {u: yo, texto, fecha: new Date().toISOString()};
     const r = localDB.find(x=>x.id===_detalleActId);
     const comentarios = [...(r?.comentarios||[]), nuevo];
     try {
-        await updateDoc(doc(db,'actividades',_detalleActId), {comentarios});
+        const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        await updateDoc(doc(window.db,'actividades',_detalleActId), {comentarios});
         const idx = localDB.findIndex(x=>x.id===_detalleActId);
         if(idx>=0) localDB[idx].comentarios = comentarios;
         if(input) input.value = '';
@@ -3310,7 +3323,7 @@ window.guardarTarea = async () => {
     const d = document.getElementById('n-desc').value.trim();
     if(!d) return;
     const area = document.getElementById('n-area').value;
-    const encargado = document.getElementById('n-encargado')?.value || auth.currentUser.email;
+    const encargado = document.getElementById('n-encargado')?.value || window.auth?.currentUser?.email || '';
     const prioridad = document.getElementById('n-prioridad')?.value || 'Media';
     const tipo = document.getElementById('n-tipo')?.value || 'Tarea';
     const descripcion = document.getElementById('n-descripcion')?.value.trim() || '';
@@ -3319,12 +3332,13 @@ window.guardarTarea = async () => {
     const fechaLimite = document.getElementById('n-date')?.value || '';
     const subtareas = [..._formSubtareas];
 
-    await addDoc(collection(db,'actividades'),{
+    const { addDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+    await addDoc(collection(window.db,'actividades'),{
         actividad: d, area, fechaLimite, fechaInicio, prioridad, origen,
         tipo, descripcion, subtareas,
         estatus: 'Sin Iniciar',
         fechaCreacion: new Date().toISOString(),
-        responsable: auth.currentUser.email,
+        responsable: window.auth?.currentUser?.email || '',
         encargado, comentarios: []
     });
 
@@ -6468,13 +6482,16 @@ window.ventasAbrirModalSolicitud = async function(clienteId){
             <textarea id="vsm-uso" rows="2" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 14px;resize:vertical;box-sizing:border-box;"></textarea>
 
             <div style="font-size:11px;font-weight:700;color:#c2410c;margin-bottom:6px;">Artículos solicitados</div>
-            <input list="vsm-datalist-prod" id="vsm-buscarprod" placeholder="Busca un producto por nombre o clave..." style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin-bottom:8px;box-sizing:border-box;">
-            <datalist id="vsm-datalist-prod">${ventasCatalogoProductos.map(p=>`<option data-clave="${ventasEsc(p.clave||'')}" value="${ventasEsc(p.desc||p.clave)}">`).join('')}</datalist>
-            <div style="display:flex;gap:6px;margin-bottom:10px;">
-                <input id="vsm-cantprod" type="number" min="1" value="1" style="width:70px;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;">
-                <button onclick="ventasAgregarProductoCarrito()" style="flex:1;background:#f1f5f9;border:none;border-radius:8px;color:#334155;font-weight:600;font-size:12.5px;cursor:pointer;">+ Agregar al pedido</button>
+            <div style="position:relative;margin-bottom:8px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input id="vsm-buscarprod" type="text" placeholder="Busca un producto por nombre o clave..." autocomplete="off" oninput="ventasOnBuscarProdInput()" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px 8px 32px;font-size:13px;box-sizing:border-box;">
             </div>
-            <div id="vsm-carrito-lista" style="margin-bottom:14px;"></div>
+            <div id="vsm-prod-hint" style="font-size:11px;color:#94a3b8;margin-bottom:8px;">Escribe al menos 2 letras para buscar en el catálogo.</div>
+            <div id="vsm-prod-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-bottom:10px;"></div>
+            <div id="vsm-cart-panel" style="display:none;background:#fff7ed;border-radius:10px;padding:10px 12px;margin-bottom:14px;">
+                <div style="font-size:11px;font-weight:700;color:#7c2d12;margin-bottom:6px;">Tu pedido <span id="vsm-cart-count">(0)</span></div>
+                <div id="vsm-carrito-lista"></div>
+            </div>
 
             <div style="font-size:11px;font-weight:700;color:#c2410c;margin-bottom:6px;">Firma del solicitante</div>
             <div style="position:relative;border:1px dashed #cbd5e1;border-radius:10px;height:120px;overflow:hidden;">
@@ -6501,31 +6518,86 @@ window.ventasToggleTecnico = function(){
     document.getElementById('vsm-wrap-tecnico').style.display = on ? 'block' : 'none';
 };
 
-window.ventasAgregarProductoCarrito = function(){
-    const input = document.getElementById('vsm-buscarprod');
-    const desc = input.value.trim();
-    const cant = parseInt(document.getElementById('vsm-cantprod').value,10) || 1;
-    if(!desc) return;
-    const opt = Array.from(document.querySelectorAll('#vsm-datalist-prod option')).find(o=>o.value===desc);
-    const clave = opt ? opt.dataset.clave : '';
-    const key = (clave+'|'+desc).toLowerCase();
-    if(!ventasSolicitudCarrito[key]) ventasSolicitudCarrito[key] = { clave, desc, cant:0 };
-    ventasSolicitudCarrito[key].cant += cant;
-    input.value = ''; document.getElementById('vsm-cantprod').value = 1;
+// ── Grid de productos con tarjetas (misma experiencia que el kiosco de
+//    Almacén: buscas, aparecen tarjetas con clave/descripción, "+ Agregar"
+//    se convierte en contador +/−). Antes esto era solo un input con
+//    datalist y un botón — por eso se veía distinto y más plano que el
+//    kiosco; ya es la misma mecánica visual. ──
+const VSM_ICONO_PROD = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#c2410c" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>';
+let vsmSearchDebounce = null;
+window.ventasOnBuscarProdInput = function(){
+    clearTimeout(vsmSearchDebounce);
+    vsmSearchDebounce = setTimeout(ventasRenderGridProductos, 120);
+};
+function ventasRenderGridProductos(){
+    const q = (document.getElementById('vsm-buscarprod').value||'').trim().toLowerCase();
+    const grid = document.getElementById('vsm-prod-grid');
+    const hint = document.getElementById('vsm-prod-hint');
+    if(q.length < 2){
+        grid.innerHTML = '';
+        hint.style.display = 'block';
+        hint.textContent = ventasCatalogoProductos.length ? 'Escribe al menos 2 letras para buscar en el catálogo.' : 'Catálogo no disponible en este momento.';
+        return;
+    }
+    const res = ventasCatalogoProductos.filter(p => (p.desc||'').toLowerCase().includes(q) || (p.clave||'').toLowerCase().includes(q)).slice(0,24);
+    if(!res.length){ grid.innerHTML=''; hint.style.display='block'; hint.textContent='Sin resultados para "'+ventasEsc(document.getElementById('vsm-buscarprod').value.trim())+'".'; return; }
+    hint.style.display = 'none';
+    grid.innerHTML = res.map(p=>{
+        const k = (p.clave||'')+'|'+(p.desc||'');
+        const enCarrito = ventasSolicitudCarrito[k];
+        return `<div style="background:#fff;border:1px solid ${enCarrito?'#F26B21':'#e2e8f0'};border-radius:10px;padding:8px;text-align:center;">
+            <div style="width:32px;height:32px;margin:0 auto 4px;display:flex;align-items:center;justify-content:center;">${VSM_ICONO_PROD}</div>
+            <div style="font-size:10.5px;font-weight:600;color:#1e293b;line-height:1.25;min-height:26px;">${ventasEsc((p.desc||'Sin descripción').slice(0,50))}</div>
+            <div style="font-size:9.5px;color:#94a3b8;margin-bottom:6px;">${p.clave?('Clave '+ventasEsc(p.clave)):'Sin clave'}</div>
+            ${enCarrito
+                ? `<div style="display:flex;align-items:center;justify-content:center;gap:8px;">
+                        <button onclick="ventasCambiarCantCarrito('${k}',-1)" style="width:22px;height:22px;border-radius:6px;border:none;background:#fed7aa;color:#7c2d12;font-weight:700;cursor:pointer;">−</button>
+                        <span style="font-size:12px;font-weight:700;color:#1e293b;">${enCarrito.cant}</span>
+                        <button onclick="ventasCambiarCantCarrito('${k}',1)" style="width:22px;height:22px;border-radius:6px;border:none;background:#fed7aa;color:#7c2d12;font-weight:700;cursor:pointer;">+</button>
+                   </div>`
+                : `<button onclick="ventasAgregarProductoCarrito('${ventasEsc(p.clave||'')}','${ventasEsc((p.desc||'').replace(/'/g,"\\'"))}')" style="width:100%;background:#f1f5f9;border:none;border-radius:6px;color:#334155;font-weight:600;font-size:10.5px;padding:5px;cursor:pointer;">+ Agregar</button>`}
+        </div>`;
+    }).join('');
+}
+window.ventasAgregarProductoCarrito = function(clave, desc){
+    const k = (clave||'')+'|'+(desc||'');
+    if(!ventasSolicitudCarrito[k]) ventasSolicitudCarrito[k] = { clave, desc, cant:0 };
+    ventasSolicitudCarrito[k].cant += 1;
+    ventasRenderGridProductos();
     ventasRenderCarritoSolicitud();
 };
-window.ventasQuitarProductoCarrito = function(key){ delete ventasSolicitudCarrito[key]; ventasRenderCarritoSolicitud(); };
+window.ventasCambiarCantCarrito = function(k, delta){
+    if(!ventasSolicitudCarrito[k]) return;
+    ventasSolicitudCarrito[k].cant += delta;
+    if(ventasSolicitudCarrito[k].cant <= 0) delete ventasSolicitudCarrito[k];
+    ventasRenderGridProductos();
+    ventasRenderCarritoSolicitud();
+};
+window.ventasQuitarProductoCarrito = function(key){ delete ventasSolicitudCarrito[key]; ventasRenderGridProductos(); ventasRenderCarritoSolicitud(); };
 
 function ventasRenderCarritoSolicitud(){
-    const el = document.getElementById('vsm-carrito-lista');
-    if(!el) return;
     const items = Object.entries(ventasSolicitudCarrito);
-    el.innerHTML = items.length ? items.map(([k,v])=>`
-        <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #eef1f5;font-size:12px;">
-            <div style="flex:1;">${ventasEsc(v.desc)}</div>
-            <div style="color:#64748b;">× ${ventasEsc(v.cant)}</div>
-            <button onclick="ventasQuitarProductoCarrito('${k}')" style="background:none;border:none;color:#b91c1c;cursor:pointer;font-size:11px;">Quitar</button>
-        </div>`).join('') : '<div style="color:#94a3b8;font-size:11.5px;">Tu pedido está vacío.</div>';
+    const panel = document.getElementById('vsm-cart-panel');
+    const countEl = document.getElementById('vsm-cart-count');
+    const el = document.getElementById('vsm-carrito-lista');
+    if(!panel || !el) return;
+    countEl.textContent = '('+items.reduce((a,[,v])=>a+v.cant,0)+')';
+    if(!items.length){ panel.style.display = 'none'; return; }
+    panel.style.display = 'block';
+    el.innerHTML = items.map(([k,v])=>`
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #fed7aa;font-size:12px;">
+            <div style="width:26px;height:26px;flex-shrink:0;display:flex;align-items:center;justify-content:center;">${VSM_ICONO_PROD}</div>
+            <div style="flex:1;min-width:0;">
+                <div style="color:#1e293b;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${ventasEsc(v.desc)}</div>
+                <div style="font-size:10px;color:#94a3b8;">${v.clave?('Clave '+ventasEsc(v.clave)):'Sin clave'}</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;">
+                <button onclick="ventasCambiarCantCarrito('${k}',-1)" style="width:20px;height:20px;border-radius:5px;border:none;background:#fed7aa;color:#7c2d12;font-weight:700;cursor:pointer;font-size:11px;">−</button>
+                <span style="font-weight:700;color:#1e293b;min-width:14px;text-align:center;">${v.cant}</span>
+                <button onclick="ventasCambiarCantCarrito('${k}',1)" style="width:20px;height:20px;border-radius:5px;border:none;background:#fed7aa;color:#7c2d12;font-weight:700;cursor:pointer;font-size:11px;">+</button>
+            </div>
+            <button onclick="ventasQuitarProductoCarrito('${k}')" style="background:none;border:none;color:#b91c1c;cursor:pointer;font-size:14px;padding:0 2px;">×</button>
+        </div>`).join('');
 }
 
 function ventasInicializarFirma(){
