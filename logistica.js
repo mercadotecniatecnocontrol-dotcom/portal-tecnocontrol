@@ -104,6 +104,7 @@
     venta:       { color: '#1473E6', label: 'Pedido de Ventas' },
     material:    { color: '#8B4FD6', label: 'Solicitud de Material · Operaciones' },
     traslado:    { color: '#D99000', label: 'Traspaso entre almacenes' },
+    tecnico:     { color: '#0FB5A6', label: 'Entrega directa a técnico' },
     paqueteria:  { color: '#F26B21', label: 'Envío por paquetería' },
     recoleccion: { color: '#DB2777', label: 'Recolección de material/paquetería' }
   };
@@ -154,6 +155,14 @@
               lat: ALMACEN_FZA_COORDS[0], lng: ALMACEN_FZA_COORDS[1], categoria: 'traslado',
               folio: p.folio, cliente: p.cliente,
               popupHtml: '🔁 <b>' + esc(p.folio || '') + '</b><br>Traspaso a ' + esc(p.destinoAlmacenDestino || 'otro almacén')
+            });
+            return;
+          }
+          if (p.destinoTipo === 'entrega_tecnico') {
+            puntos.push({
+              lat: ALMACEN_FZA_COORDS[0], lng: ALMACEN_FZA_COORDS[1], categoria: 'tecnico',
+              folio: p.folio, cliente: p.cliente,
+              popupHtml: '👷 <b>' + esc(p.folio || '') + '</b><br>Entrega directa a técnico' + (p.tecnicoNombre ? (' · ' + esc(p.tecnicoNombre)) : '')
             });
             return;
           }
