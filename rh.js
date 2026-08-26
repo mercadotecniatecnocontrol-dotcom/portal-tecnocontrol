@@ -1735,6 +1735,41 @@ function rhCargarTesseract(){
     });
 }
 
+function rhCargarPDFjs(){
+    return new Promise((resolve, reject)=>{
+        if(window.pdfjsLib){ resolve(window.pdfjsLib); return; }
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js';
+        s.onload = ()=>{
+            window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+            resolve(window.pdfjsLib);
+        };
+        s.onerror = ()=> reject(new Error('No se pudo cargar el lector de PDF. Revisa tu conexión.'));
+        document.head.appendChild(s);
+    });
+}
+
+// Convierte cada página de un PDF en una imagen (dataURL) para poder
+// leerla igual que una foto — Tesseract.js no lee PDF directo.
+async function rhPDFaImagenes(file, maxAncho, onProgress){
+    const pdfjsLib = await rhCargarPDFjs();
+    const buffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+    const imagenes = [];
+    for(let i=1; i<=pdf.numPages; i++){
+        if(onProgress) onProgress(Math.round((i-1)/pdf.numPages*100), `Convirtiendo página ${i} de ${pdf.numPages}…`);
+        const page = await pdf.getPage(i);
+        const viewportBase = page.getViewport({ scale: 1 });
+        const escala = Math.min(2, maxAncho/viewportBase.width);
+        const viewport = page.getViewport({ scale: Math.max(escala, 0.5) });
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width; canvas.height = viewport.height;
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+        imagenes.push(canvas.toDataURL('image/jpeg', 0.85));
+    }
+    return imagenes;
+}
+
 function rhArchivoADataURL(file, maxAncho){
     return new Promise((resolve, reject)=>{
         const reader = new FileReader();
@@ -1836,19 +1871,32 @@ function rhOcultarProgresoOCR(){
 
 window.rhEscanearDocumento = function(id){
     const inp = document.createElement('input');
-    inp.type = 'file'; inp.accept = 'image/*'; inp.style.display = 'none';
+    inp.type = 'file'; inp.accept = 'image/*,application/pdf'; inp.style.display = 'none';
     document.body.appendChild(inp);
     inp.onchange = async function(){
         const file = this.files[0];
         document.body.removeChild(inp);
         if(!file) return;
-        rhMostrarProgresoOCR(0, 'Preparando imagen…');
+        rhMostrarProgresoOCR(0, 'Preparando documento…');
         try {
-            const dataUrl = await rhArchivoADataURL(file, 1600);
-            const texto = await rhOCR(dataUrl, (p)=> rhMostrarProgresoOCR(p, 'Leyendo documento…'));
+            let imagenes;
+            if(file.type === 'application/pdf'){
+                imagenes = await rhPDFaImagenes(file, 1600, (p,msg)=> rhMostrarProgresoOCR(p, msg));
+            } else {
+                imagenes = [await rhArchivoADataURL(file, 1600)];
+            }
+
+            let textoCompleto = '';
+            for(let i=0; i<imagenes.length; i++){
+                const texto = await rhOCR(imagenes[i], (p)=>{
+                    const pctGlobal = Math.round(((i + p/100) / imagenes.length) * 100);
+                    rhMostrarProgresoOCR(pctGlobal, `Leyendo página ${i+1} de ${imagenes.length}…`);
+                });
+                textoCompleto += '\n' + texto;
+            }
             rhOcultarProgresoOCR();
-            const campos = rhAnalizarTextoOCR(texto);
-            rhAbrirRevisionOCR(id, campos, dataUrl);
+            const campos = rhAnalizarTextoOCR(textoCompleto);
+            rhAbrirRevisionOCR(id, campos, imagenes);
         } catch(err){
             rhOcultarProgresoOCR();
             alert('No se pudo leer el documento: '+err.message);
@@ -1862,7 +1910,7 @@ const RH_CAMPO_LABELS_OCR = {
     fechaIngreso:'Fecha de ingreso', tipo_contrato:'Tipo de contrato', estado_civil:'Estado civil',
 };
 
-function rhAbrirRevisionOCR(id, campos, dataUrl){
+function rhAbrirRevisionOCR(id, campos, imagenes){
     const claves = Object.keys(campos);
     const modal = document.createElement('div');
     modal.id = 'rh-ocr-modal';
@@ -1870,9 +1918,9 @@ function rhAbrirRevisionOCR(id, campos, dataUrl){
     modal.innerHTML =
         '<div style="background:#fff;border-radius:18px;max-width:520px;width:100%;max-height:85vh;overflow:auto;padding:22px;">'+
             '<div style="font-size:14px;font-weight:800;margin-bottom:4px">Datos detectados en el documento</div>'+
-            '<div style="font-size:11.5px;color:#64748B;margin-bottom:16px">Revisa y desmarca lo que no quieras aplicar. No se guarda nada hasta que confirmes.</div>'+
+            '<div style="font-size:11.5px;color:#64748B;margin-bottom:16px">Revisa y desmarca lo que no quieras aplicar. No se guarda nada hasta que confirmes.'+(imagenes.length>1?' ('+imagenes.length+' páginas leídas)':'')+'</div>'+
             '<div id="rh-ocr-campos" style="display:flex;flex-direction:column;gap:8px;"></div>'+
-            (claves.length===0 ? '<div style="text-align:center;padding:16px;color:#94A3B8;font-size:12px">No se detectó ningún campo automáticamente. Intenta con una foto más clara y bien iluminada, o llena el perfil manualmente.</div>' : '')+
+            (claves.length===0 ? '<div style="text-align:center;padding:16px;color:#94A3B8;font-size:12px">No se detectó ningún campo automáticamente. Intenta con una foto/escaneo más claro, o llena el perfil manualmente.</div>' : '')+
             '<div style="display:flex;gap:8px;margin-top:18px;">'+
                 '<button id="rh-ocr-aplicar" class="rhd-tab on" style="flex:1"'+(claves.length===0?' disabled':'')+'>Aplicar seleccionados</button>'+
                 '<button id="rh-ocr-cancelar" class="rhd-tab" style="flex:1">Cerrar</button>'+
@@ -1909,11 +1957,14 @@ function rhAbrirRevisionOCR(id, campos, dataUrl){
             const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
             datos.actualizadoEn = new Date().toISOString();
             await fs.updateDoc(fs.doc(db,'colaboradores',id), datos);
-            // El documento en sí se guarda aparte, en subcolección, para no
-            // pelear con el límite de 1MB por documento en Firestore.
-            await fs.addDoc(fs.collection(db,'colaboradores',id,'documentos'), {
-                imagen: dataUrl, camposDetectados: Object.keys(campos), subidoEn: new Date().toISOString(),
-            });
+            // El documento en sí se guarda aparte, en subcolección (una entrada
+            // por página), para no pelear con el límite de 1MB por documento.
+            for(let i=0; i<imagenes.length; i++){
+                await fs.addDoc(fs.collection(db,'colaboradores',id,'documentos'), {
+                    imagen: imagenes[i], pagina: i+1, totalPaginas: imagenes.length,
+                    camposDetectados: Object.keys(campos), subidoEn: new Date().toISOString(),
+                });
+            }
             const c = rhColabs.find(x=>x.id===id);
             if(c) Object.assign(c, datos);
             modal.remove();
