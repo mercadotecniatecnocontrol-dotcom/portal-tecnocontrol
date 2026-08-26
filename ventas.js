@@ -263,9 +263,14 @@ window.guardarCliente = async () => {
     try {
         const { addDoc, updateDoc, doc, collection } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
         const editId = document.getElementById('cliente-edit-id').value;
-        if(editId){ await updateDoc(doc(window.db,'ventas_clientes',editId), data); }
-        else {
-            // Cliente nuevo: además de ventas_clientes, se crea un doc espejo en
+        // Cliente que ya existe en ventas_clientes pero aún no tiene su doc
+        // espejo en estaciones_servicio (p.ej. capturado antes de este fix).
+        // Se detecta comparando contra la copia en memoria (clientesDB).
+        const clienteActual = editId ? (window.clientesDB||[]).find(c=>c.id===editId) : null;
+        const necesitaEstacion = !editId || (clienteActual && !clienteActual.estacionCatalogoId);
+        if (necesitaEstacion) {
+            // Cliente nuevo, o cliente existente huérfano de catálogo: además de
+            // ventas_clientes, se crea (o completa) un doc espejo en
             // estaciones_servicio (catálogo maestro que leen almacen-pdf.js y
             // logistica.js) y se enlaza con estacionCatalogoId. Sin esto, un
             // cliente capturado aquí a mano nunca aparecía en el buscador de
@@ -285,12 +290,33 @@ window.guardarCliente = async () => {
             };
             const refEstacion = await addDoc(collection(window.db,'estaciones_servicio'), estacionDoc);
             data.estacionCatalogoId = refEstacion.id;
-            await addDoc(collection(window.db,'ventas_clientes'), data);
             // Invalida el caché en memoria de almacen-pdf.js (si ese módulo está
-            // cargado en esta página) para que la estación nueva aparezca sin
+            // cargado en esta página) para que la estación aparezca sin
             // necesitar un hard-reload.
             if (window.__almInvalidarCacheEstaciones) window.__almInvalidarCacheEstaciones();
+            // Si no se capturó GPS a mano, geocodifica la dirección en automático
+            // (misma función de logistica.js que ya usa el resto del portal para
+            // esto — no se duplica lógica). Es best-effort y NO bloquea el guardado:
+            // si Nominatim no encuentra nada, la estación queda igual que antes,
+            // pendiente de "📍 Asignar ubicación" a mano. Sin esto, cada estación
+            // nueva se quedaba invisible en los 4 mapas del portal hasta que
+            // alguien le pusiera el pin manualmente.
+            if (!data.lat && !data.lng && window.__logGeocodificarDireccion && estacionDoc.direccionNormalizada) {
+                var direccionParaGeocodificar = [estacionDoc.direccionNormalizada, estacionDoc.municipio].filter(Boolean).join(', ');
+                window.__logGeocodificarDireccion(direccionParaGeocodificar).then(function(resultado){
+                    if (!resultado || !resultado.encontrado) return;
+                    return updateDoc(doc(window.db,'estaciones_servicio',refEstacion.id), {
+                        lat: resultado.lat, lng: resultado.lng,
+                        ubicacionVerificada: false,
+                        ubicacionGeocodificadaEn: new Date().toISOString()
+                    }).then(function(){
+                        if (window.__almInvalidarCacheEstaciones) window.__almInvalidarCacheEstaciones();
+                    });
+                }).catch(function(err){ console.warn('[ventas] no se pudo geocodificar la estación automáticamente:', err); });
+            }
         }
+        if(editId){ await updateDoc(doc(window.db,'ventas_clientes',editId), data); }
+        else { await addDoc(collection(window.db,'ventas_clientes'), data); }
         document.getElementById('modal-cliente').style.display='none';
         window.mostrarPush('📍 Cliente guardado', nombre, '📍');
         await cargarClientes(); // recarga DB y llama window.renderMapa
