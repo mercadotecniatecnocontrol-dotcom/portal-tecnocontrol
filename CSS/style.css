@@ -1049,7 +1049,7 @@ main.main.con-rail-universal{margin-left:304px;}
             /* Panel detalle inferior */
             #ventas-panel-detalle {
                 display:none;background:white;border-top:2px solid #2563eb;
-                padding:16px 20px;max-height:40%;overflow-y:auto;flex-shrink:0;
+                padding:16px 20px;max-height:60%;overflow-y:auto;flex-shrink:0;
             }
 
             /* Kanban CRM */
