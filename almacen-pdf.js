@@ -71,6 +71,11 @@
   //    Ventas/Operaciones — fuente única de direcciones, ver estaciones_servicio).
   //    Se carga una sola vez por sesión de módulo y se reutiliza en memoria. ──
   var _estacionesCache = null; // null = aún no cargado; array = ya cargado (aunque esté vacío)
+  // Invalidación pública: cualquier módulo que agregue/edite una estación en
+  // `estaciones_servicio` (p.ej. logistica.js al crear una desde "nuevo cliente")
+  // debe llamar esto justo después de guardar, para que este caché en memoria
+  // no siga sirviendo la lista vieja durante el resto de la sesión.
+  window.__almInvalidarCacheEstaciones = function(){ _estacionesCache = null; };
   function cargarCatalogoEstaciones(){
     if (_estacionesCache) return Promise.resolve(_estacionesCache);
     return cargarFirestore().then(function(fs){
