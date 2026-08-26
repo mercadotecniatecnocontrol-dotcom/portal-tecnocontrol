@@ -979,6 +979,8 @@ window.toggleRHDash = function(area, email) {
         .rhd-search{flex:1;min-width:180px;padding:9px 14px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13px;outline:none;background:#fff;}
         .rhd-search:focus{border-color:#2563EB;}
         .rhd-add{margin-left:auto;background:#F0FDF4;color:#15803D;border:1px solid #BBF7D0;padding:9px 16px;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;}
+        .rhd-filtro{padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:12px;font-weight:600;color:#475569;background:#fff;outline:none;cursor:pointer;}
+        .rhd-filtro:focus{border-color:#2563EB;}
 
         /* Directorio — filas tipo acordeón */
         .rhd-hint{font-size:11px;color:#64748B;margin-bottom:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
@@ -1077,6 +1079,8 @@ let rhPerfilId = null;          // id del colaborador abierto (null = sin perfil
 let rhModoEdicion = false;
 let rhExpandidoId = null;       // fila del directorio actualmente expandida
 let rhMostrarSinNombre = false; // cuentas sin nombre (buzones genéricos) ocultas por default
+let rhFiltroDepto = '';         // '' = todos
+let rhFiltroEstatus = '';       // '' = todos, 'activo', 'baja'
 
 // Documentos con semáforo de vigencia
 const RH_DOCS = [
@@ -1163,16 +1167,36 @@ function rhHTMLTopbar(){
     const labels = {directorio:'Directorio', organigrama:'Organigrama', alertas:'Alertas'};
     return '<div class="rhd-topbar">'+
         Object.keys(labels).map(v=>'<button class="rhd-tab'+(rhVista===v?' on':'')+'" onclick="rhSetVista(\''+v+'\')">'+labels[v]+'</button>').join('')+
-        (rhVista==='directorio' ? '<input class="rhd-search" placeholder="Buscar por nombre, puesto o departamento…" oninput="rhBuscar(this.value)" value="'+rh360Escape(rhBusqueda)+'">' : '')+
+        (rhVista==='directorio' ? (
+            '<input class="rhd-search" placeholder="Buscar por nombre, puesto o departamento…" oninput="rhBuscar(this.value)" value="'+rh360Escape(rhBusqueda)+'">'+
+            rhHTMLFiltroDepto()+
+            '<select class="rhd-filtro" onchange="rhFiltrarEstatus(this.value)">'+
+                '<option value=""'+(rhFiltroEstatus===''?' selected':'')+'>Todos los estatus</option>'+
+                '<option value="activo"'+(rhFiltroEstatus==='activo'?' selected':'')+'>Activos</option>'+
+                '<option value="baja"'+(rhFiltroEstatus==='baja'?' selected':'')+'>Baja</option>'+
+            '</select>'
+        ) : '')+
         '<button class="rhd-add" onclick="rhNuevoColaborador()">+ Agregar colaborador</button>'+
     '</div>';
 }
+
+function rhHTMLFiltroDepto(){
+    const deptos = [...new Set(rhColabs.map(c=>c.departamento).filter(Boolean))].sort();
+    return '<select class="rhd-filtro" onchange="rhFiltrarDepto(this.value)">'+
+        '<option value=""'+(rhFiltroDepto===''?' selected':'')+'>Todos los departamentos</option>'+
+        deptos.map(d=>'<option value="'+rh360Escape(d)+'"'+(rhFiltroDepto===d?' selected':'')+'>'+rh360Escape(d)+'</option>').join('')+
+    '</select>';
+}
+
+window.rhFiltrarDepto = function(v){ rhFiltroDepto = v; rhRenderDirectorioGrid(); };
+window.rhFiltrarEstatus = function(v){ rhFiltroEstatus = v; rhRenderDirectorioGrid(); };
 
 function rhHTMLVistaActual(){
     if(rhVista==='organigrama') return rhHTMLOrganigrama();
     if(rhVista==='alertas') return rhHTMLAlertas();
     return '<div class="rhd-hint" id="rh-dir-hint"></div><div class="rhd-list" id="rh-dir-grid"></div>';
 }
+
 
 // ── Directorio (filas tipo acordeón) ────────────────────────────
 function rhListaBase(){
@@ -1196,6 +1220,8 @@ function rhRenderDirectorioGrid(){
 
     const q = rhBusqueda.trim().toLowerCase();
     const lista = rhListaBase().filter(c=>{
+        if(rhFiltroDepto && c.departamento !== rhFiltroDepto) return false;
+        if(rhFiltroEstatus && (c.estatus||'activo').toLowerCase() !== rhFiltroEstatus) return false;
         if(!q) return true;
         return (c.nombre||'').toLowerCase().includes(q) ||
                (c.puesto||'').toLowerCase().includes(q) ||
