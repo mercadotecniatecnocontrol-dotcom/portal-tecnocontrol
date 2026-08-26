@@ -176,6 +176,8 @@ function _draftKeys(){
     SOL:'fl_draft_sol_'+email,
     SEM:'fl_draft_sem_'+email,
     UTIL:'fl_draft_util_'+email,
+    MAT:'fl_draft_mat_'+email,
+    REQ:'fl_draft_req_'+email,
   };
 }
 // _DRAFT se resuelve dinámicamente en cada llamada
@@ -183,6 +185,8 @@ const _DRAFT={
   get SOL(){return _draftKeys().SOL;},
   get SEM(){return _draftKeys().SEM;},
   get UTIL(){return _draftKeys().UTIL;},
+  get MAT(){return _draftKeys().MAT;},
+  get REQ(){return _draftKeys().REQ;},
 };
 function _draftSave(key,state){
   try{
@@ -209,6 +213,8 @@ function _draftLoad(key){
 function _draftClear(key){
   try{localStorage.removeItem(key);}catch{}
 }
+// Usado por los formularios flotantes (Solicitud de material / Requisición de compra)
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function _draftBanner(tipo,onRestaurar,onDescartar){
   const id='fl-draft-banner-'+tipo;
   if(document.getElementById(id))return;
@@ -1414,6 +1420,12 @@ function renderVehiculo(){
         <button onclick="fmVista('solicitud')" class="fm-btn primary fm-btn-sm" style="gap:5px">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           Solicitud
+        </button>
+        <button onclick="fmAbrirFlotante('material')" title="Solicitud de material" style="padding:7px 9px;border:1.5px solid #CBD5E1;border-radius:9px;background:#F1F5F9;color:#475569;cursor:pointer;display:inline-flex;align-items:center">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>
+        </button>
+        <button onclick="fmAbrirFlotante('requisicion')" title="Requisición de compra" style="padding:7px 9px;border:1.5px solid #CBD5E1;border-radius:9px;background:#F1F5F9;color:#475569;cursor:pointer;display:inline-flex;align-items:center">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>
         </button>
       </div>
     </div>
@@ -4196,6 +4208,515 @@ window.utilConfirmarFirma=async function(){
     toast('Error al guardar: '+e.message,'err');
     if(btn){btn.disabled=false;btn.textContent='Firmar y confirmar';}
   }
+};
+
+/* ============================================================================
+ * VENTANA FLOTANTE — Solicitud de Material / Requisición de Compra
+ * Se monta en document.body (no en #fl-movil-root) para que sobreviva a
+ * cambios de pestaña (fmVista) y se pueda cerrar/reabrir en cualquier
+ * momento sin perder el trabajo — cada tipo autoguarda su borrador con el
+ * mismo sistema _DRAFT que ya usa Solicitud/Semanal/Utilitario.
+ * ==========================================================================*/
+let _flotTipo=null; // 'material' | 'requisicion'
+let _flotYaCargado={material:false,requisicion:false};
+
+window.fmAbrirFlotante=function(tipo){
+  _flotTipo=tipo;
+  let ov=document.getElementById('fm-flotante');
+  if(!ov){
+    ov=document.createElement('div');
+    ov.id='fm-flotante';
+    ov.style.cssText='position:fixed;inset:0;z-index:5000;background:rgba(10,22,40,.55);display:flex;align-items:flex-end;justify-content:center';
+    ov.innerHTML=`
+      <div id="fm-flot-panel" style="background:#F8FAFD;width:100%;max-width:480px;height:92vh;border-radius:18px 18px 0 0;display:flex;flex-direction:column;overflow:hidden">
+        <div style="background:#0A1628;color:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+          <div id="fm-flot-title" style="font-size:14px;font-weight:800"></div>
+          <button onclick="fmCerrarFlotante()" style="background:rgba(255,255,255,.12);border:none;border-radius:8px;width:30px;height:30px;color:#fff;font-size:16px;cursor:pointer">✕</button>
+        </div>
+        <div id="fm-flot-body" style="flex:1;overflow-y:auto;padding:14px 16px 24px"></div>
+      </div>`;
+    document.body.appendChild(ov);
+  }
+  ov.style.display='flex';
+  const titleEl=document.getElementById('fm-flot-title');
+  if(tipo==='material'){
+    titleEl.textContent='Solicitud de material';
+    renderFlotMaterial();
+  }else{
+    titleEl.textContent='Requisición de compra';
+    renderFlotRequisicion();
+  }
+};
+window.fmCerrarFlotante=function(){
+  const ov=document.getElementById('fm-flotante');
+  if(ov)ov.style.display='none';
+  // El borrador YA quedó guardado en cada input/cambio — cerrar no lo pierde.
+};
+
+/* ── SOLICITUD DE MATERIAL (mismo patrón/colección que Operaciones y el
+   kiosko de Almacén: colección 'surtidos', catálogo 'catalogo/productos'),
+   solo que el solicitante/técnico se resuelve del usuario de Flotilla ya
+   logueado en vez de pedir sesión aparte. ── */
+let matState={area:'',destino:'',uso:'',prioridad:'urgente',carrito:{},firma:null};
+let _matCatalogo=null; // se carga una sola vez por sesión de la app
+let _matTecnicoResuelto=undefined; // undefined=sin resolver, null=no encontrado, obj=encontrado
+
+async function _matResolverTecnico(){
+  if(_matTecnicoResuelto!==undefined)return _matTecnicoResuelto;
+  try{
+    const correo=(window.auth?.currentUser?.email||'').toLowerCase().trim();
+    const snap=await db.collection('ops_tecnicos').where('correo','==',correo).get();
+    _matTecnicoResuelto=snap.empty?null:{id:snap.docs[0].id,...snap.docs[0].data()};
+  }catch(e){ _matTecnicoResuelto=null; }
+  return _matTecnicoResuelto;
+}
+
+async function renderFlotMaterial(){
+  const body=document.getElementById('fm-flot-body');
+  if(!_flotYaCargado.material){
+    const draft=_draftLoad(_DRAFT.MAT);
+    if(draft)matState=Object.assign(matState,draft);
+    _flotYaCargado.material=true;
+  }
+  if(_matCatalogo===null||_matCatalogo===undefined){
+    body.innerHTML='<div style="text-align:center;padding:30px;color:#94A3B8;font-size:13px">Cargando catálogo…</div>';
+    try{
+      const snap=await db.collection('catalogo').doc('productos').get();
+      _matCatalogo=snap.exists?(Array.isArray(snap.data().items)?snap.data().items:[]):[];
+    }catch(e){ _matCatalogo=[]; }
+  }
+  await _matResolverTecnico();
+  const tec=_matTecnicoResuelto;
+  const carritoArr=Object.values(matState.carrito);
+  body.innerHTML=`
+    <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:9px 11px;margin-bottom:12px;font-size:12px;color:#1D4ED8;font-weight:700">
+      Solicitante: ${esc(tec?tec.nombre:(miPerfil?.nombre||window.auth?.currentUser?.email||'—'))}
+      ${!tec?'<div style="font-weight:400;color:#64748B;margin-top:2px">No estás vinculado en Operaciones como técnico — la solicitud se enviará con tu nombre de perfil.</div>':''}
+    </div>
+    <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">Prioridad</label>
+    <select id="mat-prior" onchange="matState.prioridad=this.value;_draftSave(_DRAFT.MAT,matState)" style="width:100%;padding:11px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13.5px;margin-bottom:12px;background:#fff">
+      ${['urgente','alta','normal','programado'].map(p=>`<option value="${p}" ${matState.prioridad===p?'selected':''}>${p[0].toUpperCase()+p.slice(1)}</option>`).join('')}
+    </select>
+    <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">Área</label>
+    <input id="mat-area" value="${esc(matState.area)}" placeholder="Ej. Mantenimiento, Servicio…" oninput="matState.area=this.value;_draftSave(_DRAFT.MAT,matState)" style="width:100%;padding:11px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13.5px;margin-bottom:12px;box-sizing:border-box">
+    <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">Operación / destino</label>
+    <input id="mat-destino" value="${esc(matState.destino)}" placeholder="A qué operación va este material" oninput="matState.destino=this.value;_draftSave(_DRAFT.MAT,matState)" style="width:100%;padding:11px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13.5px;margin-bottom:12px;box-sizing:border-box">
+    <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">¿Para qué se usará?</label>
+    <textarea id="mat-uso" rows="2" oninput="matState.uso=this.value;_draftSave(_DRAFT.MAT,matState)" style="width:100%;padding:11px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13.5px;margin-bottom:12px;box-sizing:border-box;resize:vertical">${esc(matState.uso)}</textarea>
+
+    <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">Productos</label>
+    <input id="mat-search" placeholder="Busca por nombre o clave…" oninput="_matRenderGrid()" style="width:100%;padding:11px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13.5px;margin-bottom:8px;box-sizing:border-box">
+    <div id="mat-grid" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px;max-height:220px;overflow-y:auto"></div>
+    <div id="mat-carrito" style="margin-bottom:14px">
+      ${carritoArr.length?carritoArr.map(it=>`
+        <div style="display:flex;align-items:center;justify-content:space-between;background:#fff;border:1px solid #E2E8F0;border-radius:9px;padding:8px 10px;margin-bottom:6px">
+          <div style="font-size:12.5px;flex:1"><b>×${it.cant}</b> ${esc(it.desc)}</div>
+          <button onclick="_matQuitar('${esc(it.clave||it.desc)}')" style="background:none;border:none;color:#B91C1C;font-size:16px;cursor:pointer;padding:0 6px">✕</button>
+        </div>`).join(''):'<div style="font-size:12px;color:#94A3B8">Sin artículos agregados todavía.</div>'}
+    </div>
+
+    <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">Firma del solicitante</label>
+    <canvas id="mat-firma-cv" style="width:100%;height:120px;background:#fff;border:1.5px dashed #CBD5E1;border-radius:10px;touch-action:none"></canvas>
+    <div style="display:flex;justify-content:flex-end;margin:6px 0 16px"><button onclick="_matLimpiarFirma()" style="font-size:11px;color:#64748B;background:none;border:none;cursor:pointer">Borrar firma</button></div>
+
+    <div id="mat-msg" style="font-size:12px;color:#B91C1C;min-height:16px;margin-bottom:6px"></div>
+    <button id="mat-submit" onclick="_matEnviar()" class="fm-btn primary" style="width:100%">Enviar solicitud</button>
+  `;
+  _matRenderGrid();
+  _matInitFirma();
+}
+
+function _matRenderGrid(){
+  const q=(document.getElementById('mat-search')?.value||'').trim().toLowerCase();
+  const grid=document.getElementById('mat-grid');
+  if(!grid)return;
+  if(q.length<2){ grid.innerHTML=''; return; }
+  const res=(_matCatalogo||[]).filter(it=>(it.desc||'').toLowerCase().includes(q)||(it.clave||'').toLowerCase().includes(q)).slice(0,15);
+  grid.innerHTML=res.length?res.map(it=>{
+    const k=it.clave||it.desc;
+    const enCarrito=matState.carrito[k];
+    return `<div style="display:flex;align-items:center;justify-content:space-between;background:#fff;border:1px solid #E2E8F0;border-radius:9px;padding:8px 10px">
+      <div style="font-size:12.5px;flex:1">${esc(it.desc||'—')}${it.clave?`<div style="font-size:10.5px;color:#94A3B8">Clave ${esc(it.clave)}</div>`:''}</div>
+      ${enCarrito
+        ? `<div style="display:flex;align-items:center;gap:8px"><button onclick="_matCant('${esc(k)}',-1)" style="width:26px;height:26px;border-radius:7px;border:1px solid #E2E8F0;background:#F8FAFD;cursor:pointer">−</button><span style="font-weight:800;font-size:13px;min-width:16px;text-align:center">${enCarrito.cant}</span><button onclick="_matCant('${esc(k)}',1)" style="width:26px;height:26px;border-radius:7px;border:1px solid #E2E8F0;background:#F8FAFD;cursor:pointer">+</button></div>`
+        : `<button onclick='_matAgregar(${JSON.stringify(it)})' style="padding:6px 10px;background:#2563EB;color:#fff;border:none;border-radius:7px;font-size:11.5px;font-weight:700;cursor:pointer">+ Agregar</button>`}
+    </div>`;
+  }).join(''):'<div style="font-size:12px;color:#94A3B8;padding:6px 2px">Sin resultados.</div>';
+}
+window._matAgregar=function(it){
+  const k=it.clave||it.desc;
+  matState.carrito[k]={clave:it.clave||'',desc:it.desc,cant:1};
+  _draftSave(_DRAFT.MAT,matState);
+  renderFlotMaterial();
+};
+window._matCant=function(k,delta){
+  const it=matState.carrito[k]; if(!it)return;
+  it.cant=Math.max(1,it.cant+delta);
+  _draftSave(_DRAFT.MAT,matState);
+  renderFlotMaterial();
+};
+window._matQuitar=function(k){
+  delete matState.carrito[k];
+  _draftSave(_DRAFT.MAT,matState);
+  renderFlotMaterial();
+};
+
+let _matCtx=null,_matDibujando=false,_matLastX=0,_matLastY=0,_matHayFirma=false;
+function _matInitFirma(){
+  const cv=document.getElementById('mat-firma-cv'); if(!cv)return;
+  const ajustar=()=>{ const r=cv.getBoundingClientRect(); cv.width=r.width*2; cv.height=r.height*2; _matCtx=cv.getContext('2d'); _matCtx.scale(2,2); _matCtx.strokeStyle='#0A1628'; _matCtx.lineWidth=2; _matCtx.lineCap='round'; if(matState.firma){ const img=new Image(); img.onload=()=>_matCtx.drawImage(img,0,0,r.width,r.height); img.src=matState.firma; _matHayFirma=true; } };
+  ajustar();
+  const pos=e=>{ const r=cv.getBoundingClientRect(); const p=e.touches?e.touches[0]:e; return {x:p.clientX-r.left,y:p.clientY-r.top}; };
+  const start=e=>{ e.preventDefault(); _matDibujando=true; const p=pos(e); _matLastX=p.x; _matLastY=p.y; };
+  const move=e=>{ if(!_matDibujando)return; e.preventDefault(); const p=pos(e); _matCtx.beginPath(); _matCtx.moveTo(_matLastX,_matLastY); _matCtx.lineTo(p.x,p.y); _matCtx.stroke(); _matLastX=p.x; _matLastY=p.y; _matHayFirma=true; };
+  const end=()=>{ if(_matDibujando){ _matDibujando=false; matState.firma=cv.toDataURL('image/png'); _draftSave(_DRAFT.MAT,matState); } };
+  cv.onmousedown=start; cv.onmousemove=move; cv.onmouseup=end; cv.onmouseleave=end;
+  cv.ontouchstart=start; cv.ontouchmove=move; cv.ontouchend=end;
+}
+window._matLimpiarFirma=function(){
+  const cv=document.getElementById('mat-firma-cv'); if(cv&&_matCtx)_matCtx.clearRect(0,0,cv.width,cv.height);
+  _matHayFirma=false; matState.firma=null; _draftSave(_DRAFT.MAT,matState);
+};
+
+async function _matSiguienteFolio(){
+  try{
+    const snap=await db.collection('surtidos').where('folioPrefijo','==','OPERACIONES').get();
+    let max=0; snap.forEach(d=>{ const n=(d.data()||{}).folioNum; if(typeof n==='number'&&n>max)max=n; });
+    return {folio:'OPERACIONES '+String(max+1).padStart(4,'0'),folioNum:max+1,folioPrefijo:'OPERACIONES'};
+  }catch(e){
+    const resp=Date.now()%10000;
+    return {folio:'OPERACIONES '+String(resp).padStart(4,'0')+'-R',folioNum:null,folioPrefijo:'OPERACIONES'};
+  }
+}
+
+window._matEnviar=async function(){
+  const msg=document.getElementById('mat-msg');
+  const productos=Object.values(matState.carrito).map(v=>({clave:v.clave,cant:v.cant,desc:v.desc}));
+  if(!matState.area){ msg.textContent='Escribe el área.'; return; }
+  if(!matState.destino){ msg.textContent='Escribe la operación destino.'; return; }
+  if(!matState.uso){ msg.textContent='Describe para qué se usará el material.'; return; }
+  if(!productos.length){ msg.textContent='Agrega al menos un artículo.'; return; }
+  if(!_matHayFirma){ msg.textContent='Falta la firma del solicitante.'; return; }
+  msg.textContent='';
+  const btn=document.getElementById('mat-submit'); btn.disabled=true; btn.textContent='Enviando…';
+  try{
+    const tec=_matTecnicoResuelto;
+    const folioInfo=await _matSiguienteFolio();
+    await db.collection('surtidos').add({
+      tipo:'material',
+      folio:folioInfo.folio, folioNum:folioInfo.folioNum, folioPrefijo:folioInfo.folioPrefijo,
+      cliente:matState.destino||'Almacén · Operaciones',
+      solicitante:tec?tec.nombre:(miPerfil?.nombre||window.auth?.currentUser?.email||''),
+      vendedor:tec?tec.nombre:(miPerfil?.nombre||''),
+      solicitanteEmail:window.auth?.currentUser?.email||'',
+      tecnicoId:tec?tec.id:null,
+      tecnicoNombre:tec?tec.nombre:(miPerfil?.nombre||''),
+      tecnicoCorreo:tec?tec.correo:(window.auth?.currentUser?.email||''),
+      solicitaParaSiMismo:true,
+      area:matState.area, destino:matState.destino, uso:matState.uso,
+      prioridad:matState.prioridad, estado:'pendiente',
+      productos, firma:matState.firma,
+      origen:'flotilla',
+      createdAt:firebase.firestore.FieldValue.serverTimestamp(),
+    });
+    _draftClear(_DRAFT.MAT);
+    matState={area:'',destino:'',uso:'',prioridad:'urgente',carrito:{},firma:null};
+    toast('Solicitud '+folioInfo.folio+' enviada','ok');
+    fmCerrarFlotante();
+  }catch(e){
+    console.error('[flotilla material]',e);
+    msg.textContent='No se pudo enviar ('+(e.code||e.message)+').';
+  }finally{ if(btn){btn.disabled=false; btn.textContent='Enviar solicitud';} }
+};
+
+/* ── REQUISICIÓN DE COMPRA ──────────────────────────────────────────────
+   Colección nueva 'empresas_requisicion' (no existía ninguna equivalente
+   en el portal — la parrilla de documentos del index usa un <select>
+   fijo en HTML, no Firestore). Se autosiembra la primera vez que alguien
+   abre este formulario, con las mismas 12 empresas del index, sin logo
+   (los admins lo suben después — ver fmSubirLogoEmpresa). ── */
+const REQ_EMPRESAS_SEED=['TECNOCONTROL','JOMAR','DESARROLLOS','VH','AKURIS','TECNOLAB','TECNO2.0','WIL TECH','NOKA','MARTIN DE LA O','PALOMA PINEDO','OXXO GAS'];
+const REQ_SIN_LOGO=new Set(['MARTIN DE LA O','PALOMA PINEDO']); // personas físicas: solo texto, sin logo ni iniciales
+
+let reqState={empresa:'',urgencia:'media',tipoCompra:'servicio',motivo:'',cliente:'',ciudad:'',items:[{cant:'',unidad:'',parte:'',desc:'',proveedor:''}],firma:null};
+let _reqEmpresas=null;
+
+async function _reqCargarEmpresas(){
+  if(_reqEmpresas)return _reqEmpresas;
+  const snap=await db.collection('empresas_requisicion').orderBy('orden').get();
+  if(snap.empty){
+    const batch=db.batch();
+    REQ_EMPRESAS_SEED.forEach((nombre,i)=>{
+      const ref=db.collection('empresas_requisicion').doc();
+      batch.set(ref,{nombre,logoBase64:null,orden:i});
+    });
+    await batch.commit();
+    const snap2=await db.collection('empresas_requisicion').orderBy('orden').get();
+    _reqEmpresas=snap2.docs.map(d=>({id:d.id,...d.data()}));
+  }else{
+    _reqEmpresas=snap.docs.map(d=>({id:d.id,...d.data()}));
+  }
+  return _reqEmpresas;
+}
+
+async function renderFlotRequisicion(){
+  const body=document.getElementById('fm-flot-body');
+  if(!_flotYaCargado.requisicion){
+    const draft=_draftLoad(_DRAFT.REQ);
+    if(draft)reqState=Object.assign(reqState,draft);
+    _flotYaCargado.requisicion=true;
+  }
+  body.innerHTML='<div style="text-align:center;padding:30px;color:#94A3B8;font-size:13px">Cargando…</div>';
+  const empresas=await _reqCargarEmpresas();
+  if(!reqState.empresa&&empresas.length)reqState.empresa=empresas[0].nombre;
+
+  body.innerHTML=`
+    <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">Empresa que factura</label>
+    <select id="req-empresa" onchange="reqState.empresa=this.value;_draftSave(_DRAFT.REQ,reqState);_reqActualizarLogo()" style="width:100%;padding:11px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13.5px;margin-bottom:6px;background:#fff">
+      ${empresas.map(e=>`<option value="${esc(e.nombre)}" ${reqState.empresa===e.nombre?'selected':''}>${esc(e.nombre)}</option>`).join('')}
+    </select>
+    <div id="req-empresa-logo-wrap" style="margin-bottom:14px"></div>
+
+    <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">Urgencia</label>
+    <div style="display:flex;gap:6px;margin-bottom:12px">
+      ${[['baja','Baja · 1 sem'],['media','Media · 3 días'],['alta','Alta · 1 día']].map(([v,l])=>`
+        <button type="button" onclick="reqState.urgencia='${v}';_draftSave(_DRAFT.REQ,reqState);renderFlotRequisicion()" style="flex:1;padding:8px 4px;border-radius:9px;border:1.5px solid ${reqState.urgencia===v?'#2563EB':'#E2E8F0'};background:${reqState.urgencia===v?'#EFF6FF':'#fff'};color:${reqState.urgencia===v?'#1D4ED8':'#64748B'};font-size:11px;font-weight:700;cursor:pointer">${l}</button>`).join('')}
+    </div>
+
+    <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">Tipo de compra</label>
+    <div style="display:flex;gap:6px;margin-bottom:12px">
+      ${[['stock','Stock'],['servicio','Servicio'],['insumo','Insumo']].map(([v,l])=>`
+        <button type="button" onclick="reqState.tipoCompra='${v}';_draftSave(_DRAFT.REQ,reqState);renderFlotRequisicion()" style="flex:1;padding:8px 4px;border-radius:9px;border:1.5px solid ${reqState.tipoCompra===v?'#2563EB':'#E2E8F0'};background:${reqState.tipoCompra===v?'#EFF6FF':'#fff'};color:${reqState.tipoCompra===v?'#1D4ED8':'#64748B'};font-size:11px;font-weight:700;cursor:pointer">${l}</button>`).join('')}
+    </div>
+
+    <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">Motivo de la solicitud</label>
+    <input id="req-motivo" value="${esc(reqState.motivo)}" oninput="reqState.motivo=this.value;_draftSave(_DRAFT.REQ,reqState)" style="width:100%;padding:11px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13.5px;margin-bottom:12px;box-sizing:border-box">
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <div style="flex:1"><label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">Cliente / proyecto</label>
+        <input id="req-cliente" value="${esc(reqState.cliente)}" oninput="reqState.cliente=this.value;_draftSave(_DRAFT.REQ,reqState)" style="width:100%;padding:11px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13.5px;box-sizing:border-box"></div>
+      <div style="flex:1"><label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">Ciudad</label>
+        <input id="req-ciudad" value="${esc(reqState.ciudad)}" oninput="reqState.ciudad=this.value;_draftSave(_DRAFT.REQ,reqState)" style="width:100%;padding:11px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13.5px;box-sizing:border-box"></div>
+    </div>
+
+    <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:6px">Partidas</label>
+    <div id="req-items">${_reqRenderItems()}</div>
+    <button type="button" onclick="_reqAgregarItem()" style="width:100%;padding:9px;border:1.5px dashed #CBD5E1;border-radius:9px;background:#fff;color:#2563EB;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:16px">+ Agregar partida</button>
+
+    <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">Firma del solicitante</label>
+    <canvas id="req-firma-cv" style="width:100%;height:120px;background:#fff;border:1.5px dashed #CBD5E1;border-radius:10px;touch-action:none"></canvas>
+    <div style="display:flex;justify-content:flex-end;margin:6px 0 16px"><button onclick="_reqLimpiarFirma()" style="font-size:11px;color:#64748B;background:none;border:none;cursor:pointer">Borrar firma</button></div>
+
+    <div style="background:#F8FAFD;border:1px solid #E2E8F0;border-radius:10px;padding:10px 12px;font-size:11.5px;color:#64748B;margin-bottom:16px">
+      Flujo de autorización: Solicitante (tú) → Jefe de área → Compras. Cada aprobador recibe un aviso al llegar su turno.
+    </div>
+
+    <div id="req-msg" style="font-size:12px;color:#B91C1C;min-height:16px;margin-bottom:6px"></div>
+    <button id="req-submit" onclick="_reqEnviar()" class="fm-btn primary" style="width:100%">Generar PDF y enviar a compras</button>
+  `;
+  _reqActualizarLogo();
+  _reqInitFirma();
+}
+
+function _reqActualizarLogo(){
+  const wrap=document.getElementById('req-empresa-logo-wrap'); if(!wrap)return;
+  const emp=(_reqEmpresas||[]).find(e=>e.nombre===reqState.empresa);
+  if(!emp||REQ_SIN_LOGO.has(emp.nombre)){ wrap.innerHTML=''; return; }
+  wrap.innerHTML=emp.logoBase64
+    ? `<div style="display:flex;align-items:center;gap:8px"><img src="${emp.logoBase64}" style="height:28px;max-width:120px;object-fit:contain"><label style="font-size:11px;color:#2563EB;font-weight:700;cursor:pointer">Cambiar logo<input type="file" accept="image/*" style="display:none" onchange="_reqSubirLogo(this,'${emp.id}')"></label></div>`
+    : `<label style="font-size:11px;color:#2563EB;font-weight:700;cursor:pointer">+ Subir logo de ${esc(emp.nombre)}<input type="file" accept="image/*" style="display:none" onchange="_reqSubirLogo(this,'${emp.id}')"></label>`;
+}
+window._reqSubirLogo=function(input,empresaId){
+  const file=input.files[0]; if(!file)return;
+  const reader=new FileReader();
+  reader.onload=async()=>{
+    try{
+      await db.collection('empresas_requisicion').doc(empresaId).update({logoBase64:reader.result});
+      const emp=_reqEmpresas.find(e=>e.id===empresaId); if(emp)emp.logoBase64=reader.result;
+      _reqActualizarLogo();
+      toast('Logo actualizado','ok');
+    }catch(e){ toast('No se pudo subir el logo: '+e.message,'err'); }
+  };
+  reader.readAsDataURL(file);
+};
+
+function _reqRenderItems(){
+  return reqState.items.map((it,i)=>`
+    <div style="background:#fff;border:1px solid #E2E8F0;border-radius:10px;padding:10px;margin-bottom:8px">
+      <div style="display:flex;gap:6px;margin-bottom:6px">
+        <input placeholder="Cant." value="${esc(it.cant)}" oninput="reqState.items[${i}].cant=this.value;_draftSave(_DRAFT.REQ,reqState)" style="width:52px;padding:8px;border:1px solid #E2E8F0;border-radius:7px;font-size:12.5px">
+        <input placeholder="Unidad" value="${esc(it.unidad)}" oninput="reqState.items[${i}].unidad=this.value;_draftSave(_DRAFT.REQ,reqState)" style="width:70px;padding:8px;border:1px solid #E2E8F0;border-radius:7px;font-size:12.5px">
+        <input placeholder="No. parte" value="${esc(it.parte)}" oninput="reqState.items[${i}].parte=this.value;_draftSave(_DRAFT.REQ,reqState)" style="flex:1;padding:8px;border:1px solid #E2E8F0;border-radius:7px;font-size:12.5px">
+        ${reqState.items.length>1?`<button onclick="_reqQuitarItem(${i})" style="background:none;border:none;color:#B91C1C;font-size:15px;cursor:pointer">✕</button>`:''}
+      </div>
+      <input placeholder="Descripción" value="${esc(it.desc)}" oninput="reqState.items[${i}].desc=this.value;_draftSave(_DRAFT.REQ,reqState)" style="width:100%;padding:8px;border:1px solid #E2E8F0;border-radius:7px;font-size:12.5px;margin-bottom:6px;box-sizing:border-box">
+      <input placeholder="Proveedor sugerido" value="${esc(it.proveedor)}" oninput="reqState.items[${i}].proveedor=this.value;_draftSave(_DRAFT.REQ,reqState)" style="width:100%;padding:8px;border:1px solid #E2E8F0;border-radius:7px;font-size:12.5px;box-sizing:border-box">
+    </div>`).join('');
+}
+window._reqAgregarItem=function(){
+  reqState.items.push({cant:'',unidad:'',parte:'',desc:'',proveedor:''});
+  _draftSave(_DRAFT.REQ,reqState);
+  document.getElementById('req-items').innerHTML=_reqRenderItems();
+};
+window._reqQuitarItem=function(i){
+  reqState.items.splice(i,1);
+  _draftSave(_DRAFT.REQ,reqState);
+  document.getElementById('req-items').innerHTML=_reqRenderItems();
+};
+
+let _reqCtx=null,_reqDibujando=false,_reqLastX=0,_reqLastY=0,_reqHayFirma=false;
+function _reqInitFirma(){
+  const cv=document.getElementById('req-firma-cv'); if(!cv)return;
+  const r=cv.getBoundingClientRect(); cv.width=r.width*2; cv.height=r.height*2; _reqCtx=cv.getContext('2d'); _reqCtx.scale(2,2); _reqCtx.strokeStyle='#0A1628'; _reqCtx.lineWidth=2; _reqCtx.lineCap='round';
+  if(reqState.firma){ const img=new Image(); img.onload=()=>_reqCtx.drawImage(img,0,0,r.width,r.height); img.src=reqState.firma; _reqHayFirma=true; }
+  const pos=e=>{ const rr=cv.getBoundingClientRect(); const p=e.touches?e.touches[0]:e; return {x:p.clientX-rr.left,y:p.clientY-rr.top}; };
+  const start=e=>{ e.preventDefault(); _reqDibujando=true; const p=pos(e); _reqLastX=p.x; _reqLastY=p.y; };
+  const move=e=>{ if(!_reqDibujando)return; e.preventDefault(); const p=pos(e); _reqCtx.beginPath(); _reqCtx.moveTo(_reqLastX,_reqLastY); _reqCtx.lineTo(p.x,p.y); _reqCtx.stroke(); _reqLastX=p.x; _reqLastY=p.y; _reqHayFirma=true; };
+  const end=()=>{ if(_reqDibujando){ _reqDibujando=false; reqState.firma=cv.toDataURL('image/png'); _draftSave(_DRAFT.REQ,reqState); } };
+  cv.onmousedown=start; cv.onmousemove=move; cv.onmouseup=end; cv.onmouseleave=end;
+  cv.ontouchstart=start; cv.ontouchmove=move; cv.ontouchend=end;
+}
+window._reqLimpiarFirma=function(){
+  const cv=document.getElementById('req-firma-cv'); if(cv&&_reqCtx)_reqCtx.clearRect(0,0,cv.width,cv.height);
+  _reqHayFirma=false; reqState.firma=null; _draftSave(_DRAFT.REQ,reqState);
+};
+
+async function _reqSiguienteFolio(){
+  try{
+    const snap=await db.collection('requisiciones_compra').where('folioPrefijo','==','RC').get();
+    let max=0; snap.forEach(d=>{ const n=(d.data()||{}).folioNum; if(typeof n==='number'&&n>max)max=n; });
+    return {folio:'RC-'+String(max+1).padStart(4,'0'),folioNum:max+1,folioPrefijo:'RC'};
+  }catch(e){
+    const resp=Date.now()%10000;
+    return {folio:'RC-'+String(resp).padStart(4,'0')+'-R',folioNum:null,folioPrefijo:'RC'};
+  }
+}
+
+function _reqConstruirPDF(d,empresaLogo){
+  if(!window.jspdf)return null;
+  const {jsPDF}=window.jspdf;
+  const docu=new jsPDF({orientation:'portrait',unit:'mm',format:'letter'});
+  const PW=215.9,PH=279.4,ML=14,MR=14;
+  const AZUL={r:10,g:22,b:40},AZULC={r:37,g:99,b:235};
+  const URG={baja:{t:'Urgencia baja · 1 semana',c:{r:100,g:116,b:139}},media:{t:'Urgencia media · 3 días',c:{r:180,g:83,b:9}},alta:{t:'Urgencia alta · 1 día',c:{r:185,g:28,b:28}}}[d.urgencia]||{};
+
+  docu.setFillColor(AZUL.r,AZUL.g,AZUL.b); docu.rect(0,0,PW,26,'F');
+  if(empresaLogo){ try{ docu.addImage(empresaLogo,ML,6,32,14,undefined,'FAST'); }catch(e){} }
+  docu.setTextColor(255,255,255); docu.setFont('helvetica','bold'); docu.setFontSize(9);
+  docu.text(empresaLogo?'':String(d.empresa||'TECNOCONTROL'), empresaLogo?ML+38:ML, 15);
+  docu.setFont('helvetica','normal'); docu.setFontSize(7.5);
+  docu.text('Requisición de compra', empresaLogo?ML+38:ML, 20.5);
+  docu.setFontSize(7.5);
+  docu.text('Generado: '+new Date().toLocaleString('es-MX'), PW-MR, 15, {align:'right'});
+  docu.text(String(d.folio||'—'), PW-MR, 20.5, {align:'right'});
+
+  docu.setFillColor(URG.c.r,URG.c.g,URG.c.b); docu.roundedRect(ML,32,PW-ML-MR,10,2,2,'F');
+  docu.setTextColor(255,255,255); docu.setFont('helvetica','bold'); docu.setFontSize(9.5);
+  docu.text(URG.t||'—', ML+5, 38.5);
+  docu.text('Tipo: '+String(d.tipoCompra||'—').toUpperCase(), PW-MR-5, 38.5, {align:'right'});
+
+  let y=50;
+  function campo(x,label,valor){
+    docu.setFont('helvetica','bold'); docu.setFontSize(7.5); docu.setTextColor(100,116,139);
+    docu.text(label.toUpperCase(),x,y);
+    docu.setFont('helvetica','normal'); docu.setFontSize(10); docu.setTextColor(15,23,42);
+    docu.text(String(valor||'—'),x,y+5);
+  }
+  const xMid=ML+(PW-ML-MR)/2+4;
+  campo(ML,'Solicitante',d.solicitante); campo(xMid,'Ciudad',d.ciudad);
+  y+=13;
+  campo(ML,'Cliente / proyecto',d.cliente); campo(xMid,'Motivo',d.motivo);
+  y+=16;
+
+  docu.setDrawColor(226,232,240); docu.line(ML,y,PW-MR,y); y+=8;
+  docu.setFillColor(AZUL.r,AZUL.g,AZUL.b); docu.rect(ML,y-5,PW-ML-MR,8,'F');
+  docu.setFont('helvetica','bold'); docu.setFontSize(8); docu.setTextColor(255,255,255);
+  docu.text('CANT.',ML+2,y); docu.text('UNIDAD',ML+18,y); docu.text('DESCRIPCIÓN',ML+42,y); docu.text('PROVEEDOR',PW-MR-2,y,{align:'right'});
+  y+=8;
+  docu.setFont('helvetica','normal'); docu.setFontSize(9.5);
+  (d.items||[]).forEach((it,idx)=>{
+    const lns=docu.splitTextToSize(String(it.desc||'—'),PW-ML-MR-42-35);
+    if(y+lns.length*5>PH-70){ docu.addPage(); y=20; }
+    if(idx%2===1){ docu.setFillColor(248,250,252); docu.rect(ML,y-4,PW-ML-MR,lns.length*5+2,'F'); }
+    docu.setTextColor(15,23,42);
+    docu.text(String(it.cant||'—'),ML+2,y); docu.text(String(it.unidad||'—'),ML+18,y);
+    docu.text(lns,ML+42,y); docu.text(String(it.proveedor||'—'),PW-MR-2,y,{align:'right'});
+    y+=Math.max(6,lns.length*5+1.5);
+  });
+
+  y+=8; if(y>PH-60){ docu.addPage(); y=20; }
+  docu.setFont('helvetica','bold'); docu.setFontSize(8); docu.setTextColor(100,116,139);
+  docu.text('FLUJO DE AUTORIZACIÓN',ML,y); y+=6;
+  (d.flujoAutorizacion||[]).forEach(p=>{
+    docu.setFont('helvetica','normal'); docu.setFontSize(9);
+    docu.setTextColor(15,23,42);
+    docu.text((p.orden+'. '+p.label),ML+2,y);
+    docu.setTextColor(p.estatus==='aprobado'?[21,128,61]:[180,83,9]);
+    docu.setFont('helvetica','bold');
+    docu.text(p.estatus==='aprobado'?'Aprobado':'Pendiente',PW-MR-2,y,{align:'right'});
+    y+=6;
+  });
+
+  y+=6; if(y>PH-40){ docu.addPage(); y=20; }
+  docu.setFont('helvetica','bold'); docu.setFontSize(8); docu.setTextColor(100,116,139);
+  docu.text('FIRMA DEL SOLICITANTE',ML,y); y+=4;
+  if(d.firma){ try{ docu.addImage(d.firma,'PNG',ML,y,55,24); }catch(e){} }
+  else { docu.setDrawColor(203,213,225); docu.line(ML,y+18,ML+55,y+18); }
+
+  docu.setFillColor(AZUL.r,AZUL.g,AZUL.b); docu.rect(0,PH-10,PW,10,'F');
+  docu.setTextColor(255,255,255); docu.setFontSize(7);
+  docu.text(String(d.empresa||'')+' · '+String(d.folio||'')+' · '+new Date().toLocaleString('es-MX'), PW/2, PH-4, {align:'center'});
+  return docu;
+}
+
+window._reqEnviar=async function(){
+  const msg=document.getElementById('req-msg');
+  const items=reqState.items.filter(it=>it.desc);
+  if(!reqState.motivo){ msg.textContent='Escribe el motivo de la solicitud.'; return; }
+  if(!items.length){ msg.textContent='Agrega al menos una partida con descripción.'; return; }
+  if(!_reqHayFirma){ msg.textContent='Falta la firma del solicitante.'; return; }
+  msg.textContent='';
+  const btn=document.getElementById('req-submit'); btn.disabled=true; btn.textContent='Generando…';
+  try{
+    const folioInfo=await _reqSiguienteFolio();
+    const solicitante=miPerfil?.nombre||window.auth?.currentUser?.email||'';
+    const flujoAutorizacion=[
+      {orden:1,rol:'solicitante',label:'Solicitante',estatus:'aprobado',uid:window.auth?.currentUser?.uid||null,fecha:new Date().toISOString()},
+      {orden:2,rol:'jefe_area',label:'Jefe de área',estatus:'pendiente',uid:null,fecha:null},
+      {orden:3,rol:'compras',label:'Compras',estatus:'pendiente',uid:null,fecha:null},
+    ];
+    const data={
+      folio:folioInfo.folio, folioNum:folioInfo.folioNum, folioPrefijo:folioInfo.folioPrefijo,
+      empresa:reqState.empresa, urgencia:reqState.urgencia, tipoCompra:reqState.tipoCompra,
+      motivo:reqState.motivo, cliente:reqState.cliente, ciudad:reqState.ciudad,
+      items, firma:reqState.firma, solicitante,
+      solicitanteEmail:window.auth?.currentUser?.email||'',
+      flujoAutorizacion, estatus:'pendiente',
+      origen:'flotilla', vehiculoEco:miVeh?.eco||null,
+      createdAt:firebase.firestore.FieldValue.serverTimestamp(),
+    };
+    await db.collection('requisiciones_compra').add(data);
+
+    const emp=(_reqEmpresas||[]).find(e=>e.nombre===reqState.empresa);
+    const pdf=_reqConstruirPDF(data, emp&&!REQ_SIN_LOGO.has(emp.nombre)?emp.logoBase64:null);
+    if(pdf){
+      try{
+        const blob=pdf.output('blob');
+        const file=new File([blob],'Requisicion_'+String(folioInfo.folio).replace(/\s+/g,'_')+'.pdf',{type:'application/pdf'});
+        if(navigator.canShare&&navigator.canShare({files:[file]})){
+          await navigator.share({files:[file],title:'Requisición '+folioInfo.folio});
+        }else{
+          window.open(pdf.output('bloburl'),'_blank');
+        }
+      }catch(e){ try{ window.open(pdf.output('bloburl'),'_blank'); }catch(e2){} }
+    }
+    _draftClear(_DRAFT.REQ);
+    reqState={empresa:'',urgencia:'media',tipoCompra:'servicio',motivo:'',cliente:'',ciudad:'',items:[{cant:'',unidad:'',parte:'',desc:'',proveedor:''}],firma:null};
+    toast('Requisición '+folioInfo.folio+' enviada a Compras','ok');
+    fmCerrarFlotante();
+  }catch(e){
+    console.error('[flotilla requisicion]',e);
+    msg.textContent='No se pudo enviar ('+(e.code||e.message)+').';
+  }finally{ if(btn){btn.disabled=false; btn.textContent='Generar PDF y enviar a compras';} }
 };
 
 })();
