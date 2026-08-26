@@ -264,7 +264,33 @@ window.guardarCliente = async () => {
         const { addDoc, updateDoc, doc, collection } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
         const editId = document.getElementById('cliente-edit-id').value;
         if(editId){ await updateDoc(doc(window.db,'ventas_clientes',editId), data); }
-        else { await addDoc(collection(window.db,'ventas_clientes'), data); }
+        else {
+            // Cliente nuevo: además de ventas_clientes, se crea un doc espejo en
+            // estaciones_servicio (catálogo maestro que leen almacen-pdf.js y
+            // logistica.js) y se enlaza con estacionCatalogoId. Sin esto, un
+            // cliente capturado aquí a mano nunca aparecía en el buscador de
+            // "Subir pedido · formato CHH" porque esa colección nunca se tocaba.
+            const estacionDoc = {
+                razonSocial: nombre,
+                direccionNormalizada: data.direccion,
+                domicilioRaw: data.direccion,
+                municipio: data.ciudad,
+                codigoPostal: '',
+                permiso: '',
+                lat: data.lat, lng: data.lng,
+                ubicacionVerificada: !!(data.lat && data.lng),
+                origen: 'ventas_manual',
+                creadoPor: data.actualizadoPor,
+                creadoEn: data.actualizadoEn
+            };
+            const refEstacion = await addDoc(collection(window.db,'estaciones_servicio'), estacionDoc);
+            data.estacionCatalogoId = refEstacion.id;
+            await addDoc(collection(window.db,'ventas_clientes'), data);
+            // Invalida el caché en memoria de almacen-pdf.js (si ese módulo está
+            // cargado en esta página) para que la estación nueva aparezca sin
+            // necesitar un hard-reload.
+            if (window.__almInvalidarCacheEstaciones) window.__almInvalidarCacheEstaciones();
+        }
         document.getElementById('modal-cliente').style.display='none';
         window.mostrarPush('📍 Cliente guardado', nombre, '📍');
         await cargarClientes(); // recarga DB y llama window.renderMapa
