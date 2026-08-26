@@ -106,7 +106,8 @@
     traslado:    { color: '#D99000', label: 'Traspaso entre almacenes' },
     tecnico:     { color: '#0FB5A6', label: 'Entrega directa a técnico' },
     paqueteria:  { color: '#F26B21', label: 'Envío por paquetería' },
-    recoleccion: { color: '#DB2777', label: 'Recolección de material/paquetería' }
+    recoleccion: { color: '#DB2777', label: 'Recolección de material/paquetería' },
+    cliente:     { color: '#64748B', label: 'Cliente de Ventas' }
   };
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -122,18 +123,29 @@
   //
   //  Devuelve un array de puntos: { lat, lng, categoria, color, folio,
   //  cliente, popupHtml }. `categoria` es una de: 'venta','material',
-  //  'traslado','paqueteria','recoleccion'.
+  //  'traslado','paqueteria','recoleccion','cliente'.
+  //
+  //  opciones.incluirClientes (bool, default false): si es true, agrega TODOS
+  //  los clientes de ventas_clientes que ya tengan lat/lng, sin importar si
+  //  tienen pedido pendiente o no — es la capa que pidió Glen para ver
+  //  "todo intercomunicado". Queda detrás de un flag y no default-true para
+  //  no cambiar el comportamiento de las pantallas que ya consumían esta
+  //  función antes (evita saturar mapas que solo querían ver pendientes).
   // ═══════════════════════════════════════════════════════════════════════
-  window.tcObtenerPuntosLogisticos = function () {
+  window.tcObtenerPuntosLogisticos = function (opciones) {
+    var incluirClientes = !!(opciones && opciones.incluirClientes);
     return cargarFirestore().then(function (fs) {
       if (!window.db) return [];
       var ESTADOS_CERRADOS = ['finalizado', 'cancelado', 'entregado'];
       return Promise.all([
         fs.getDocs(fs.collection(window.db, 'surtidos')),
         fs.getDocs(fs.collection(window.db, 'estaciones_servicio')).catch(function () { return { forEach: function () {} }; }),
-        fs.getDocs(fs.query(fs.collection(window.db, 'recolecciones_locales'), fs.where('estado', 'in', ['pendiente', 'recogido'])))
+        fs.getDocs(fs.query(fs.collection(window.db, 'recolecciones_locales'), fs.where('estado', 'in', ['pendiente', 'recogido']))),
+        incluirClientes
+          ? fs.getDocs(fs.collection(window.db, 'ventas_clientes')).catch(function () { return { forEach: function () {} }; })
+          : Promise.resolve({ forEach: function () {} })
       ]).then(function (r) {
-        var snapPedidos = r[0], snapEst = r[1], snapRecol = r[2];
+        var snapPedidos = r[0], snapEst = r[1], snapRecol = r[2], snapClientes = r[3];
         var estMap = {};
         snapEst.forEach(function (d) { estMap[d.id] = Object.assign({ id: d.id }, d.data()); });
         var puntos = [];
@@ -190,6 +202,22 @@
             popupHtml: '📦 <b>' + esc(rr.lugar || '—') + '</b><br>' + esc(rr.materialARecoger || 'Recolección de material')
           });
         });
+
+        // Capa opcional: TODOS los clientes de Ventas con GPS, sin importar si
+        // tienen pedido pendiente o no — pueden salir duplicados junto a un
+        // punto 'venta'/'material' del mismo cliente si además tiene un pedido
+        // activo; el color/leyenda los distingue como categorías separadas.
+        if (incluirClientes) {
+          snapClientes.forEach(function (docu) {
+            var c = Object.assign({ id: docu.id }, docu.data());
+            if (c.lat == null || c.lng == null) return;
+            puntos.push({
+              lat: c.lat, lng: c.lng, categoria: 'cliente',
+              folio: '', cliente: c.nombre || '—',
+              popupHtml: '📍 <b>' + esc(c.nombre || '—') + '</b>' + (c.ciudad ? ('<br>' + esc(c.ciudad)) : '') + (c.sector ? ('<br>' + esc(c.sector)) : '')
+            });
+          });
+        }
 
         return puntos;
       });
