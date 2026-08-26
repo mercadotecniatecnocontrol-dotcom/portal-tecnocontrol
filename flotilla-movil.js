@@ -4216,12 +4216,20 @@ window.utilConfirmarFirma=async function(){
  * cambios de pestaña (fmVista) y se pueda cerrar/reabrir en cualquier
  * momento sin perder el trabajo — cada tipo autoguarda su borrador con el
  * mismo sistema _DRAFT que ya usa Solicitud/Semanal/Utilitario.
+ *
+ * IMPORTANTE — por qué todo se llama vía window.xxx():
+ * Todo este archivo vive dentro de un IIFE (function(){ ... })(). El HTML
+ * que se inyecta con innerHTML lleva atributos onclick/oninput/onchange
+ * como TEXTO — el navegador los ejecuta en el scope GLOBAL, no dentro del
+ * cierre (closure) del IIFE. Por eso cualquier identificador referenciado
+ * directamente en esos atributos (reqState, matState, _draftSave, funciones
+ * internas, etc.) debe colgarse de window primero, igual que ya hace el
+ * resto del archivo con fmVista, fmCambiarUnidad, etc. — si no, el atributo
+ * lanza un ReferenceError silencioso y el campo/botón "no hace nada".
  * ==========================================================================*/
-let _flotTipo=null; // 'material' | 'requisicion'
 let _flotYaCargado={material:false,requisicion:false};
 
 window.fmAbrirFlotante=function(tipo){
-  _flotTipo=tipo;
   let ov=document.getElementById('fm-flotante');
   if(!ov){
     ov=document.createElement('div');
@@ -4241,24 +4249,25 @@ window.fmAbrirFlotante=function(tipo){
   const titleEl=document.getElementById('fm-flot-title');
   if(tipo==='material'){
     titleEl.textContent='Solicitud de material';
-    renderFlotMaterial();
+    window.renderFlotMaterial();
   }else{
     titleEl.textContent='Requisición de compra';
-    renderFlotRequisicion();
+    window.renderFlotRequisicion();
   }
 };
 window.fmCerrarFlotante=function(){
   const ov=document.getElementById('fm-flotante');
   if(ov)ov.style.display='none';
-  // El borrador YA quedó guardado en cada input/cambio — cerrar no lo pierde.
+  // El borrador YA quedó guardado en cada cambio — cerrar no lo pierde.
 };
 
 /* ── SOLICITUD DE MATERIAL (mismo patrón/colección que Operaciones y el
    kiosko de Almacén: colección 'surtidos', catálogo 'catalogo/productos'),
    solo que el solicitante/técnico se resuelve del usuario de Flotilla ya
    logueado en vez de pedir sesión aparte. ── */
-let matState={area:'',destino:'',uso:'',prioridad:'urgente',carrito:{},firma:null};
-let _matCatalogo=null; // se carga una sola vez por sesión de la app
+const MAT_AREAS=['Operaciones','Almacén','Logística','Mantenimiento','Administración'];
+window.matState={area:'',destino:'',uso:'',prioridad:'urgente',carrito:{},firma:null};
+let _matCatalogo=null; // se carga una sola vez por sesión de la app — sin volver a pedirlo por cada tecla
 let _matTecnicoResuelto=undefined; // undefined=sin resolver, null=no encontrado, obj=encontrado
 
 async function _matResolverTecnico(){
@@ -4271,11 +4280,11 @@ async function _matResolverTecnico(){
   return _matTecnicoResuelto;
 }
 
-async function renderFlotMaterial(){
+window.renderFlotMaterial=async function(){
   const body=document.getElementById('fm-flot-body');
   if(!_flotYaCargado.material){
     const draft=_draftLoad(_DRAFT.MAT);
-    if(draft)matState=Object.assign(matState,draft);
+    if(draft)window.matState=Object.assign(window.matState,draft);
     _flotYaCargado.material=true;
   }
   if(_matCatalogo===null||_matCatalogo===undefined){
@@ -4287,95 +4296,109 @@ async function renderFlotMaterial(){
   }
   await _matResolverTecnico();
   const tec=_matTecnicoResuelto;
-  const carritoArr=Object.values(matState.carrito);
+  // Área: preseleccionada según el usuario (técnico vinculado en Operaciones → Operaciones),
+  // pero se puede cambiar — no todos los que usan Flotilla capturan siempre para su propia área.
+  if(!window.matState.area) window.matState.area = tec ? 'Operaciones' : '';
+  const carritoArr=Object.values(window.matState.carrito);
   body.innerHTML=`
     <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:9px 11px;margin-bottom:12px;font-size:12px;color:#1D4ED8;font-weight:700">
       Solicitante: ${esc(tec?tec.nombre:(miPerfil?.nombre||window.auth?.currentUser?.email||'—'))}
       ${!tec?'<div style="font-weight:400;color:#64748B;margin-top:2px">No estás vinculado en Operaciones como técnico — la solicitud se enviará con tu nombre de perfil.</div>':''}
     </div>
     <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">Prioridad</label>
-    <select id="mat-prior" onchange="matState.prioridad=this.value;_draftSave(_DRAFT.MAT,matState)" style="width:100%;padding:11px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13.5px;margin-bottom:12px;background:#fff">
-      ${['urgente','alta','normal','programado'].map(p=>`<option value="${p}" ${matState.prioridad===p?'selected':''}>${p[0].toUpperCase()+p.slice(1)}</option>`).join('')}
+    <select onchange="matSetField('prioridad',this.value)" style="width:100%;padding:11px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13.5px;margin-bottom:12px;background:#fff">
+      ${['urgente','alta','normal','programado'].map(p=>`<option value="${p}" ${window.matState.prioridad===p?'selected':''}>${p[0].toUpperCase()+p.slice(1)}</option>`).join('')}
     </select>
     <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">Área</label>
-    <input id="mat-area" value="${esc(matState.area)}" placeholder="Ej. Mantenimiento, Servicio…" oninput="matState.area=this.value;_draftSave(_DRAFT.MAT,matState)" style="width:100%;padding:11px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13.5px;margin-bottom:12px;box-sizing:border-box">
+    <select onchange="matSetField('area',this.value)" style="width:100%;padding:11px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13.5px;margin-bottom:12px;background:#fff">
+      ${MAT_AREAS.map(a=>`<option value="${esc(a)}" ${window.matState.area===a?'selected':''}>${esc(a)}</option>`).join('')}
+    </select>
     <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">Operación / destino</label>
-    <input id="mat-destino" value="${esc(matState.destino)}" placeholder="A qué operación va este material" oninput="matState.destino=this.value;_draftSave(_DRAFT.MAT,matState)" style="width:100%;padding:11px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13.5px;margin-bottom:12px;box-sizing:border-box">
+    <input value="${esc(window.matState.destino)}" placeholder="A qué operación va este material" oninput="matSetField('destino',this.value)" style="width:100%;padding:11px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13.5px;margin-bottom:12px;box-sizing:border-box">
     <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">¿Para qué se usará?</label>
-    <textarea id="mat-uso" rows="2" oninput="matState.uso=this.value;_draftSave(_DRAFT.MAT,matState)" style="width:100%;padding:11px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13.5px;margin-bottom:12px;box-sizing:border-box;resize:vertical">${esc(matState.uso)}</textarea>
+    <textarea rows="2" oninput="matSetField('uso',this.value)" style="width:100%;padding:11px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13.5px;margin-bottom:12px;box-sizing:border-box;resize:vertical">${esc(window.matState.uso)}</textarea>
 
     <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">Productos</label>
-    <input id="mat-search" placeholder="Busca por nombre o clave…" oninput="_matRenderGrid()" style="width:100%;padding:11px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13.5px;margin-bottom:8px;box-sizing:border-box">
+    <input id="mat-search" placeholder="Busca por nombre o clave…" oninput="matBuscarProductos()" style="width:100%;padding:11px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13.5px;margin-bottom:8px;box-sizing:border-box">
     <div id="mat-grid" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px;max-height:220px;overflow-y:auto"></div>
     <div id="mat-carrito" style="margin-bottom:14px">
       ${carritoArr.length?carritoArr.map(it=>`
         <div style="display:flex;align-items:center;justify-content:space-between;background:#fff;border:1px solid #E2E8F0;border-radius:9px;padding:8px 10px;margin-bottom:6px">
           <div style="font-size:12.5px;flex:1"><b>×${it.cant}</b> ${esc(it.desc)}</div>
-          <button onclick="_matQuitar('${esc(it.clave||it.desc)}')" style="background:none;border:none;color:#B91C1C;font-size:16px;cursor:pointer;padding:0 6px">✕</button>
+          <button onclick="matQuitar('${esc(it.clave||it.desc)}')" style="background:none;border:none;color:#B91C1C;font-size:16px;cursor:pointer;padding:0 6px">✕</button>
         </div>`).join(''):'<div style="font-size:12px;color:#94A3B8">Sin artículos agregados todavía.</div>'}
     </div>
 
     <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">Firma del solicitante</label>
     <canvas id="mat-firma-cv" style="width:100%;height:120px;background:#fff;border:1.5px dashed #CBD5E1;border-radius:10px;touch-action:none"></canvas>
-    <div style="display:flex;justify-content:flex-end;margin:6px 0 16px"><button onclick="_matLimpiarFirma()" style="font-size:11px;color:#64748B;background:none;border:none;cursor:pointer">Borrar firma</button></div>
+    <div style="display:flex;justify-content:flex-end;margin:6px 0 16px"><button onclick="matLimpiarFirma()" style="font-size:11px;color:#64748B;background:none;border:none;cursor:pointer">Borrar firma</button></div>
 
     <div id="mat-msg" style="font-size:12px;color:#B91C1C;min-height:16px;margin-bottom:6px"></div>
-    <button id="mat-submit" onclick="_matEnviar()" class="fm-btn primary" style="width:100%">Enviar solicitud</button>
+    <button id="mat-submit" onclick="matEnviar()" class="fm-btn primary" style="width:100%">Enviar solicitud</button>
   `;
-  _matRenderGrid();
+  matBuscarProductos();
   _matInitFirma();
-}
+};
 
-function _matRenderGrid(){
+// Setter genérico para los campos simples — un solo punto de entrada desde los oninput/onchange.
+window.matSetField=function(campo,valor){
+  window.matState[campo]=valor;
+  _draftSave(_DRAFT.MAT,window.matState);
+};
+
+window.matBuscarProductos=function(){
   const q=(document.getElementById('mat-search')?.value||'').trim().toLowerCase();
   const grid=document.getElementById('mat-grid');
   if(!grid)return;
-  if(q.length<2){ grid.innerHTML=''; return; }
+  if(q.length<2){
+    grid.innerHTML=`<div style="font-size:11.5px;color:#94A3B8;padding:4px 2px">${(_matCatalogo&&_matCatalogo.length)?'Escribe al menos 2 letras para buscar en el catálogo ('+_matCatalogo.length+' productos cargados).':'Catálogo no disponible — puedes seguir aunque no aparezcan sugerencias.'}</div>`;
+    return;
+  }
   const res=(_matCatalogo||[]).filter(it=>(it.desc||'').toLowerCase().includes(q)||(it.clave||'').toLowerCase().includes(q)).slice(0,15);
   grid.innerHTML=res.length?res.map(it=>{
     const k=it.clave||it.desc;
-    const enCarrito=matState.carrito[k];
+    const enCarrito=window.matState.carrito[k];
     return `<div style="display:flex;align-items:center;justify-content:space-between;background:#fff;border:1px solid #E2E8F0;border-radius:9px;padding:8px 10px">
       <div style="font-size:12.5px;flex:1">${esc(it.desc||'—')}${it.clave?`<div style="font-size:10.5px;color:#94A3B8">Clave ${esc(it.clave)}</div>`:''}</div>
       ${enCarrito
-        ? `<div style="display:flex;align-items:center;gap:8px"><button onclick="_matCant('${esc(k)}',-1)" style="width:26px;height:26px;border-radius:7px;border:1px solid #E2E8F0;background:#F8FAFD;cursor:pointer">−</button><span style="font-weight:800;font-size:13px;min-width:16px;text-align:center">${enCarrito.cant}</span><button onclick="_matCant('${esc(k)}',1)" style="width:26px;height:26px;border-radius:7px;border:1px solid #E2E8F0;background:#F8FAFD;cursor:pointer">+</button></div>`
-        : `<button onclick='_matAgregar(${JSON.stringify(it)})' style="padding:6px 10px;background:#2563EB;color:#fff;border:none;border-radius:7px;font-size:11.5px;font-weight:700;cursor:pointer">+ Agregar</button>`}
+        ? `<div style="display:flex;align-items:center;gap:8px"><button onclick="matCant('${esc(k)}',-1)" style="width:26px;height:26px;border-radius:7px;border:1px solid #E2E8F0;background:#F8FAFD;cursor:pointer">−</button><span style="font-weight:800;font-size:13px;min-width:16px;text-align:center">${enCarrito.cant}</span><button onclick="matCant('${esc(k)}',1)" style="width:26px;height:26px;border-radius:7px;border:1px solid #E2E8F0;background:#F8FAFD;cursor:pointer">+</button></div>`
+        : `<button onclick='matAgregar(${JSON.stringify(it)})' style="padding:6px 10px;background:#2563EB;color:#fff;border:none;border-radius:7px;font-size:11.5px;font-weight:700;cursor:pointer">+ Agregar</button>`}
     </div>`;
-  }).join(''):'<div style="font-size:12px;color:#94A3B8;padding:6px 2px">Sin resultados.</div>';
-}
-window._matAgregar=function(it){
+  }).join(''):'<div style="font-size:12px;color:#94A3B8;padding:6px 2px">Sin resultados para "'+esc(document.getElementById('mat-search').value)+'".</div>';
+};
+window.matAgregar=function(it){
   const k=it.clave||it.desc;
-  matState.carrito[k]={clave:it.clave||'',desc:it.desc,cant:1};
-  _draftSave(_DRAFT.MAT,matState);
-  renderFlotMaterial();
+  window.matState.carrito[k]={clave:it.clave||'',desc:it.desc,cant:1};
+  _draftSave(_DRAFT.MAT,window.matState);
+  window.renderFlotMaterial();
 };
-window._matCant=function(k,delta){
-  const it=matState.carrito[k]; if(!it)return;
+window.matCant=function(k,delta){
+  const it=window.matState.carrito[k]; if(!it)return;
   it.cant=Math.max(1,it.cant+delta);
-  _draftSave(_DRAFT.MAT,matState);
-  renderFlotMaterial();
+  _draftSave(_DRAFT.MAT,window.matState);
+  window.renderFlotMaterial();
 };
-window._matQuitar=function(k){
-  delete matState.carrito[k];
-  _draftSave(_DRAFT.MAT,matState);
-  renderFlotMaterial();
+window.matQuitar=function(k){
+  delete window.matState.carrito[k];
+  _draftSave(_DRAFT.MAT,window.matState);
+  window.renderFlotMaterial();
 };
 
 let _matCtx=null,_matDibujando=false,_matLastX=0,_matLastY=0,_matHayFirma=false;
 function _matInitFirma(){
   const cv=document.getElementById('mat-firma-cv'); if(!cv)return;
-  const ajustar=()=>{ const r=cv.getBoundingClientRect(); cv.width=r.width*2; cv.height=r.height*2; _matCtx=cv.getContext('2d'); _matCtx.scale(2,2); _matCtx.strokeStyle='#0A1628'; _matCtx.lineWidth=2; _matCtx.lineCap='round'; if(matState.firma){ const img=new Image(); img.onload=()=>_matCtx.drawImage(img,0,0,r.width,r.height); img.src=matState.firma; _matHayFirma=true; } };
-  ajustar();
-  const pos=e=>{ const r=cv.getBoundingClientRect(); const p=e.touches?e.touches[0]:e; return {x:p.clientX-r.left,y:p.clientY-r.top}; };
+  const r=cv.getBoundingClientRect(); cv.width=r.width*2; cv.height=r.height*2; _matCtx=cv.getContext('2d'); _matCtx.scale(2,2); _matCtx.strokeStyle='#0A1628'; _matCtx.lineWidth=2; _matCtx.lineCap='round';
+  if(window.matState.firma){ const img=new Image(); img.onload=()=>_matCtx.drawImage(img,0,0,r.width,r.height); img.src=window.matState.firma; _matHayFirma=true; }
+  const pos=e=>{ const rr=cv.getBoundingClientRect(); const p=e.touches?e.touches[0]:e; return {x:p.clientX-rr.left,y:p.clientY-rr.top}; };
   const start=e=>{ e.preventDefault(); _matDibujando=true; const p=pos(e); _matLastX=p.x; _matLastY=p.y; };
   const move=e=>{ if(!_matDibujando)return; e.preventDefault(); const p=pos(e); _matCtx.beginPath(); _matCtx.moveTo(_matLastX,_matLastY); _matCtx.lineTo(p.x,p.y); _matCtx.stroke(); _matLastX=p.x; _matLastY=p.y; _matHayFirma=true; };
-  const end=()=>{ if(_matDibujando){ _matDibujando=false; matState.firma=cv.toDataURL('image/png'); _draftSave(_DRAFT.MAT,matState); } };
+  const end=()=>{ if(_matDibujando){ _matDibujando=false; window.matState.firma=cv.toDataURL('image/png'); _draftSave(_DRAFT.MAT,window.matState); } };
   cv.onmousedown=start; cv.onmousemove=move; cv.onmouseup=end; cv.onmouseleave=end;
   cv.ontouchstart=start; cv.ontouchmove=move; cv.ontouchend=end;
 }
-window._matLimpiarFirma=function(){
+window.matLimpiarFirma=function(){
   const cv=document.getElementById('mat-firma-cv'); if(cv&&_matCtx)_matCtx.clearRect(0,0,cv.width,cv.height);
-  _matHayFirma=false; matState.firma=null; _draftSave(_DRAFT.MAT,matState);
+  _matHayFirma=false; window.matState.firma=null; _draftSave(_DRAFT.MAT,window.matState);
 };
 
 async function _matSiguienteFolio(){
@@ -4389,12 +4412,12 @@ async function _matSiguienteFolio(){
   }
 }
 
-window._matEnviar=async function(){
+window.matEnviar=async function(){
   const msg=document.getElementById('mat-msg');
-  const productos=Object.values(matState.carrito).map(v=>({clave:v.clave,cant:v.cant,desc:v.desc}));
-  if(!matState.area){ msg.textContent='Escribe el área.'; return; }
-  if(!matState.destino){ msg.textContent='Escribe la operación destino.'; return; }
-  if(!matState.uso){ msg.textContent='Describe para qué se usará el material.'; return; }
+  const productos=Object.values(window.matState.carrito).map(v=>({clave:v.clave,cant:v.cant,desc:v.desc}));
+  if(!window.matState.area){ msg.textContent='Elige el área.'; return; }
+  if(!window.matState.destino){ msg.textContent='Escribe la operación destino.'; return; }
+  if(!window.matState.uso){ msg.textContent='Describe para qué se usará el material.'; return; }
   if(!productos.length){ msg.textContent='Agrega al menos un artículo.'; return; }
   if(!_matHayFirma){ msg.textContent='Falta la firma del solicitante.'; return; }
   msg.textContent='';
@@ -4405,7 +4428,7 @@ window._matEnviar=async function(){
     await db.collection('surtidos').add({
       tipo:'material',
       folio:folioInfo.folio, folioNum:folioInfo.folioNum, folioPrefijo:folioInfo.folioPrefijo,
-      cliente:matState.destino||'Almacén · Operaciones',
+      cliente:window.matState.destino||'Almacén · Operaciones',
       solicitante:tec?tec.nombre:(miPerfil?.nombre||window.auth?.currentUser?.email||''),
       vendedor:tec?tec.nombre:(miPerfil?.nombre||''),
       solicitanteEmail:window.auth?.currentUser?.email||'',
@@ -4413,14 +4436,14 @@ window._matEnviar=async function(){
       tecnicoNombre:tec?tec.nombre:(miPerfil?.nombre||''),
       tecnicoCorreo:tec?tec.correo:(window.auth?.currentUser?.email||''),
       solicitaParaSiMismo:true,
-      area:matState.area, destino:matState.destino, uso:matState.uso,
-      prioridad:matState.prioridad, estado:'pendiente',
-      productos, firma:matState.firma,
+      area:window.matState.area, destino:window.matState.destino, uso:window.matState.uso,
+      prioridad:window.matState.prioridad, estado:'pendiente',
+      productos, firma:window.matState.firma,
       origen:'flotilla',
       createdAt:firebase.firestore.FieldValue.serverTimestamp(),
     });
     _draftClear(_DRAFT.MAT);
-    matState={area:'',destino:'',uso:'',prioridad:'urgente',carrito:{},firma:null};
+    window.matState={area:'',destino:'',uso:'',prioridad:'urgente',carrito:{},firma:null};
     toast('Solicitud '+folioInfo.folio+' enviada','ok');
     fmCerrarFlotante();
   }catch(e){
@@ -4434,12 +4457,22 @@ window._matEnviar=async function(){
    en el portal — la parrilla de documentos del index usa un <select>
    fijo en HTML, no Firestore). Se autosiembra la primera vez que alguien
    abre este formulario, con las mismas 12 empresas del index, sin logo
-   (los admins lo suben después — ver fmSubirLogoEmpresa). ── */
+   (los admins lo suben después). ── */
 const REQ_EMPRESAS_SEED=['TECNOCONTROL','JOMAR','DESARROLLOS','VH','AKURIS','TECNOLAB','TECNO2.0','WIL TECH','NOKA','MARTIN DE LA O','PALOMA PINEDO','OXXO GAS'];
 const REQ_SIN_LOGO=new Set(['MARTIN DE LA O','PALOMA PINEDO']); // personas físicas: solo texto, sin logo ni iniciales
 
-let reqState={empresa:'',urgencia:'media',tipoCompra:'servicio',motivo:'',cliente:'',ciudad:'',items:[{cant:'',unidad:'',parte:'',desc:'',proveedor:''}],firma:null};
+// Notas contables por tipo de compra — igual que en los formatos de papel (Stock/Servicio/Insumo).
+// No son un campo que se captura: se calculan del tipo elegido y se muestran + van siempre al PDF,
+// así se garantiza que queden documentadas sin depender de que alguien las escriba a mano.
+const REQ_TIPO_INFO={
+  stock:{entrada:'Mercancía que SÍ requiere entrada en Sistema',factura:'Factura debe salir como Adquisición de mercancía'},
+  servicio:{entrada:'Mercancía que NO requiere entrada en Sistema',factura:'Factura debe salir como Gastos en general'},
+  insumo:{entrada:'Mercancía que NO requiere entrada en Sistema',factura:'Factura debe salir como Gastos en general'},
+};
+
+window.reqState={empresa:'',urgencia:'media',tipoCompra:'servicio',motivo:'',cliente:'',ciudad:'',items:[{cant:'',unidad:'',parte:'',desc:'',proveedor:''}],firma:null};
 let _reqEmpresas=null;
+let _reqClientesCache=null; // solo nombres de ventas_clientes, cargado una vez y reusado (no vuelve a pedirse)
 
 async function _reqCargarEmpresas(){
   if(_reqEmpresas)return _reqEmpresas;
@@ -4459,73 +4492,127 @@ async function _reqCargarEmpresas(){
   return _reqEmpresas;
 }
 
-async function renderFlotRequisicion(){
+// Solo los nombres (no los documentos completos de venta) — ligero, una sola lectura por sesión,
+// y sirve como <datalist> de sugerencias: el campo sigue siendo texto libre si no está en la lista.
+async function _reqCargarClientes(){
+  if(_reqClientesCache)return _reqClientesCache;
+  try{
+    const snap=await db.collection('ventas_clientes').get();
+    const nombres=new Set();
+    snap.forEach(d=>{ const n=(d.data()||{}).nombre; if(n)nombres.add(n); });
+    _reqClientesCache=Array.from(nombres).sort();
+  }catch(e){ _reqClientesCache=[]; }
+  return _reqClientesCache;
+}
+
+window.renderFlotRequisicion=async function(){
   const body=document.getElementById('fm-flot-body');
   if(!_flotYaCargado.requisicion){
     const draft=_draftLoad(_DRAFT.REQ);
-    if(draft)reqState=Object.assign(reqState,draft);
+    if(draft)window.reqState=Object.assign(window.reqState,draft);
     _flotYaCargado.requisicion=true;
   }
   body.innerHTML='<div style="text-align:center;padding:30px;color:#94A3B8;font-size:13px">Cargando…</div>';
-  const empresas=await _reqCargarEmpresas();
-  if(!reqState.empresa&&empresas.length)reqState.empresa=empresas[0].nombre;
+  const [empresas]=await Promise.all([_reqCargarEmpresas(), _reqCargarClientes()]);
+  if(!window.reqState.empresa&&empresas.length)window.reqState.empresa=empresas[0].nombre;
+  const tipoInfo=REQ_TIPO_INFO[window.reqState.tipoCompra]||REQ_TIPO_INFO.servicio;
 
   body.innerHTML=`
     <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">Empresa que factura</label>
-    <select id="req-empresa" onchange="reqState.empresa=this.value;_draftSave(_DRAFT.REQ,reqState);_reqActualizarLogo()" style="width:100%;padding:11px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13.5px;margin-bottom:6px;background:#fff">
-      ${empresas.map(e=>`<option value="${esc(e.nombre)}" ${reqState.empresa===e.nombre?'selected':''}>${esc(e.nombre)}</option>`).join('')}
+    <select onchange="reqSetEmpresa(this.value)" style="width:100%;padding:11px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13.5px;margin-bottom:6px;background:#fff">
+      ${empresas.map(e=>`<option value="${esc(e.nombre)}" ${window.reqState.empresa===e.nombre?'selected':''}>${esc(e.nombre)}</option>`).join('')}
     </select>
     <div id="req-empresa-logo-wrap" style="margin-bottom:14px"></div>
 
     <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">Urgencia</label>
     <div style="display:flex;gap:6px;margin-bottom:12px">
       ${[['baja','Baja · 1 sem'],['media','Media · 3 días'],['alta','Alta · 1 día']].map(([v,l])=>`
-        <button type="button" onclick="reqState.urgencia='${v}';_draftSave(_DRAFT.REQ,reqState);renderFlotRequisicion()" style="flex:1;padding:8px 4px;border-radius:9px;border:1.5px solid ${reqState.urgencia===v?'#2563EB':'#E2E8F0'};background:${reqState.urgencia===v?'#EFF6FF':'#fff'};color:${reqState.urgencia===v?'#1D4ED8':'#64748B'};font-size:11px;font-weight:700;cursor:pointer">${l}</button>`).join('')}
+        <button type="button" onclick="reqSetUrgencia('${v}')" style="flex:1;padding:8px 4px;border-radius:9px;border:1.5px solid ${window.reqState.urgencia===v?'#2563EB':'#E2E8F0'};background:${window.reqState.urgencia===v?'#EFF6FF':'#fff'};color:${window.reqState.urgencia===v?'#1D4ED8':'#64748B'};font-size:11px;font-weight:700;cursor:pointer">${l}</button>`).join('')}
     </div>
 
     <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">Tipo de compra</label>
-    <div style="display:flex;gap:6px;margin-bottom:12px">
+    <div style="display:flex;gap:6px;margin-bottom:8px">
       ${[['stock','Stock'],['servicio','Servicio'],['insumo','Insumo']].map(([v,l])=>`
-        <button type="button" onclick="reqState.tipoCompra='${v}';_draftSave(_DRAFT.REQ,reqState);renderFlotRequisicion()" style="flex:1;padding:8px 4px;border-radius:9px;border:1.5px solid ${reqState.tipoCompra===v?'#2563EB':'#E2E8F0'};background:${reqState.tipoCompra===v?'#EFF6FF':'#fff'};color:${reqState.tipoCompra===v?'#1D4ED8':'#64748B'};font-size:11px;font-weight:700;cursor:pointer">${l}</button>`).join('')}
+        <button type="button" onclick="reqSetTipoCompra('${v}')" style="flex:1;padding:8px 4px;border-radius:9px;border:1.5px solid ${window.reqState.tipoCompra===v?'#2563EB':'#E2E8F0'};background:${window.reqState.tipoCompra===v?'#EFF6FF':'#fff'};color:${window.reqState.tipoCompra===v?'#1D4ED8':'#64748B'};font-size:11px;font-weight:700;cursor:pointer">${l}</button>`).join('')}
+    </div>
+    <div style="background:#F8FAFD;border:1px solid #E2E8F0;border-radius:9px;padding:8px 10px;font-size:11px;color:#64748B;margin-bottom:12px">
+      ${esc(tipoInfo.entrada)} · ${esc(tipoInfo.factura)}<br><span style="color:#94A3B8">Esto se agrega automáticamente al PDF, no hay que escribirlo.</span>
     </div>
 
     <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">Motivo de la solicitud</label>
-    <input id="req-motivo" value="${esc(reqState.motivo)}" oninput="reqState.motivo=this.value;_draftSave(_DRAFT.REQ,reqState)" style="width:100%;padding:11px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13.5px;margin-bottom:12px;box-sizing:border-box">
+    <input value="${esc(window.reqState.motivo)}" oninput="reqSetField('motivo',this.value)" style="width:100%;padding:11px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13.5px;margin-bottom:12px;box-sizing:border-box">
     <div style="display:flex;gap:8px;margin-bottom:12px">
       <div style="flex:1"><label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">Cliente / proyecto</label>
-        <input id="req-cliente" value="${esc(reqState.cliente)}" oninput="reqState.cliente=this.value;_draftSave(_DRAFT.REQ,reqState)" style="width:100%;padding:11px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13.5px;box-sizing:border-box"></div>
+        <input list="req-clientes-dl" value="${esc(window.reqState.cliente)}" oninput="reqSetField('cliente',this.value)" style="width:100%;padding:11px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13.5px;box-sizing:border-box">
+        <datalist id="req-clientes-dl">${(_reqClientesCache||[]).map(n=>`<option value="${esc(n)}">`).join('')}</datalist>
+      </div>
       <div style="flex:1"><label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">Ciudad</label>
-        <input id="req-ciudad" value="${esc(reqState.ciudad)}" oninput="reqState.ciudad=this.value;_draftSave(_DRAFT.REQ,reqState)" style="width:100%;padding:11px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13.5px;box-sizing:border-box"></div>
+        <div style="display:flex;gap:6px">
+          <input id="req-ciudad" value="${esc(window.reqState.ciudad)}" oninput="reqSetField('ciudad',this.value)" style="flex:1;min-width:0;padding:11px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13.5px;box-sizing:border-box">
+          <button type="button" onclick="reqDetectarCiudad()" id="req-gps-btn" title="Detectar con GPS" style="padding:0 10px;border:1.5px solid #E2E8F0;border-radius:10px;background:#fff;cursor:pointer">📍</button>
+        </div>
+      </div>
     </div>
 
     <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:6px">Partidas</label>
     <div id="req-items">${_reqRenderItems()}</div>
-    <button type="button" onclick="_reqAgregarItem()" style="width:100%;padding:9px;border:1.5px dashed #CBD5E1;border-radius:9px;background:#fff;color:#2563EB;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:16px">+ Agregar partida</button>
+    <button type="button" onclick="reqAgregarItem()" style="width:100%;padding:9px;border:1.5px dashed #CBD5E1;border-radius:9px;background:#fff;color:#2563EB;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:16px">+ Agregar partida</button>
 
     <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">Firma del solicitante</label>
     <canvas id="req-firma-cv" style="width:100%;height:120px;background:#fff;border:1.5px dashed #CBD5E1;border-radius:10px;touch-action:none"></canvas>
-    <div style="display:flex;justify-content:flex-end;margin:6px 0 16px"><button onclick="_reqLimpiarFirma()" style="font-size:11px;color:#64748B;background:none;border:none;cursor:pointer">Borrar firma</button></div>
+    <div style="display:flex;justify-content:flex-end;margin:6px 0 16px"><button onclick="reqLimpiarFirma()" style="font-size:11px;color:#64748B;background:none;border:none;cursor:pointer">Borrar firma</button></div>
 
     <div style="background:#F8FAFD;border:1px solid #E2E8F0;border-radius:10px;padding:10px 12px;font-size:11.5px;color:#64748B;margin-bottom:16px">
       Flujo de autorización: Solicitante (tú) → Jefe de área → Compras. Cada aprobador recibe un aviso al llegar su turno.
     </div>
 
     <div id="req-msg" style="font-size:12px;color:#B91C1C;min-height:16px;margin-bottom:6px"></div>
-    <button id="req-submit" onclick="_reqEnviar()" class="fm-btn primary" style="width:100%">Generar PDF y enviar a compras</button>
+    <button id="req-submit" onclick="reqEnviar()" class="fm-btn primary" style="width:100%">Generar PDF y enviar a compras</button>
   `;
   _reqActualizarLogo();
   _reqInitFirma();
-}
+};
+
+window.reqSetEmpresa=function(v){ window.reqState.empresa=v; _draftSave(_DRAFT.REQ,window.reqState); _reqActualizarLogo(); };
+window.reqSetUrgencia=function(v){ window.reqState.urgencia=v; _draftSave(_DRAFT.REQ,window.reqState); window.renderFlotRequisicion(); };
+window.reqSetTipoCompra=function(v){ window.reqState.tipoCompra=v; _draftSave(_DRAFT.REQ,window.reqState); window.renderFlotRequisicion(); };
+window.reqSetField=function(campo,valor){ window.reqState[campo]=valor; _draftSave(_DRAFT.REQ,window.reqState); };
+
+window.reqDetectarCiudad=function(){
+  if(!navigator.geolocation){ toast('Tu navegador no soporta geolocalización','err'); return; }
+  const btn=document.getElementById('req-gps-btn'); if(btn)btn.textContent='…';
+  navigator.geolocation.getCurrentPosition(async pos=>{
+    try{
+      // Mismo servicio (Nominatim/OpenStreetMap, gratis, sin API key) que ya usa Logística
+      // para geocodificar direcciones — aquí en modo inverso (lat/lng → ciudad).
+      const url='https://nominatim.openstreetmap.org/reverse?format=json&lat='+pos.coords.latitude+'&lon='+pos.coords.longitude;
+      const r=await fetch(url,{headers:{'Accept-Language':'es'}});
+      const d=await r.json();
+      const a=d.address||{};
+      const ciudad=a.city||a.town||a.village||a.municipality||a.county||'';
+      if(ciudad){
+        document.getElementById('req-ciudad').value=ciudad;
+        window.reqSetField('ciudad',ciudad);
+      }else{
+        toast('No se pudo determinar la ciudad — escríbela a mano','err');
+      }
+    }catch(e){ toast('No se pudo detectar la ciudad','err'); }
+    finally{ if(btn)btn.textContent='📍'; }
+  }, err=>{
+    toast('No se pudo obtener tu ubicación ('+err.message+')','err');
+    if(btn)btn.textContent='📍';
+  }, {timeout:8000});
+};
 
 function _reqActualizarLogo(){
   const wrap=document.getElementById('req-empresa-logo-wrap'); if(!wrap)return;
-  const emp=(_reqEmpresas||[]).find(e=>e.nombre===reqState.empresa);
+  const emp=(_reqEmpresas||[]).find(e=>e.nombre===window.reqState.empresa);
   if(!emp||REQ_SIN_LOGO.has(emp.nombre)){ wrap.innerHTML=''; return; }
   wrap.innerHTML=emp.logoBase64
-    ? `<div style="display:flex;align-items:center;gap:8px"><img src="${emp.logoBase64}" style="height:28px;max-width:120px;object-fit:contain"><label style="font-size:11px;color:#2563EB;font-weight:700;cursor:pointer">Cambiar logo<input type="file" accept="image/*" style="display:none" onchange="_reqSubirLogo(this,'${emp.id}')"></label></div>`
-    : `<label style="font-size:11px;color:#2563EB;font-weight:700;cursor:pointer">+ Subir logo de ${esc(emp.nombre)}<input type="file" accept="image/*" style="display:none" onchange="_reqSubirLogo(this,'${emp.id}')"></label>`;
+    ? `<div style="display:flex;align-items:center;gap:8px"><img src="${emp.logoBase64}" style="height:28px;max-width:120px;object-fit:contain"><label style="font-size:11px;color:#2563EB;font-weight:700;cursor:pointer">Cambiar logo<input type="file" accept="image/*" style="display:none" onchange="reqSubirLogo(this,'${emp.id}')"></label></div>`
+    : `<label style="font-size:11px;color:#2563EB;font-weight:700;cursor:pointer">+ Subir logo de ${esc(emp.nombre)}<input type="file" accept="image/*" style="display:none" onchange="reqSubirLogo(this,'${emp.id}')"></label>`;
 }
-window._reqSubirLogo=function(input,empresaId){
+window.reqSubirLogo=function(input,empresaId){
   const file=input.files[0]; if(!file)return;
   const reader=new FileReader();
   reader.onload=async()=>{
@@ -4540,26 +4627,33 @@ window._reqSubirLogo=function(input,empresaId){
 };
 
 function _reqRenderItems(){
-  return reqState.items.map((it,i)=>`
+  return window.reqState.items.map((it,i)=>`
     <div style="background:#fff;border:1px solid #E2E8F0;border-radius:10px;padding:10px;margin-bottom:8px">
       <div style="display:flex;gap:6px;margin-bottom:6px">
-        <input placeholder="Cant." value="${esc(it.cant)}" oninput="reqState.items[${i}].cant=this.value;_draftSave(_DRAFT.REQ,reqState)" style="width:52px;padding:8px;border:1px solid #E2E8F0;border-radius:7px;font-size:12.5px">
-        <input placeholder="Unidad" value="${esc(it.unidad)}" oninput="reqState.items[${i}].unidad=this.value;_draftSave(_DRAFT.REQ,reqState)" style="width:70px;padding:8px;border:1px solid #E2E8F0;border-radius:7px;font-size:12.5px">
-        <input placeholder="No. parte" value="${esc(it.parte)}" oninput="reqState.items[${i}].parte=this.value;_draftSave(_DRAFT.REQ,reqState)" style="flex:1;padding:8px;border:1px solid #E2E8F0;border-radius:7px;font-size:12.5px">
-        ${reqState.items.length>1?`<button onclick="_reqQuitarItem(${i})" style="background:none;border:none;color:#B91C1C;font-size:15px;cursor:pointer">✕</button>`:''}
+        <input placeholder="Cant." value="${esc(it.cant)}" oninput="reqSetItemField(${i},'cant',this.value)" style="width:52px;padding:8px;border:1px solid #E2E8F0;border-radius:7px;font-size:12.5px">
+        <input placeholder="Unidad" value="${esc(it.unidad)}" oninput="reqSetItemField(${i},'unidad',this.value)" style="width:70px;padding:8px;border:1px solid #E2E8F0;border-radius:7px;font-size:12.5px">
+        <input placeholder="No. parte" value="${esc(it.parte)}" oninput="reqSetItemField(${i},'parte',this.value)" style="flex:1;padding:8px;border:1px solid #E2E8F0;border-radius:7px;font-size:12.5px">
+        ${window.reqState.items.length>1?`<button onclick="reqQuitarItem(${i})" style="background:none;border:none;color:#B91C1C;font-size:15px;cursor:pointer">✕</button>`:''}
       </div>
-      <input placeholder="Descripción" value="${esc(it.desc)}" oninput="reqState.items[${i}].desc=this.value;_draftSave(_DRAFT.REQ,reqState)" style="width:100%;padding:8px;border:1px solid #E2E8F0;border-radius:7px;font-size:12.5px;margin-bottom:6px;box-sizing:border-box">
-      <input placeholder="Proveedor sugerido" value="${esc(it.proveedor)}" oninput="reqState.items[${i}].proveedor=this.value;_draftSave(_DRAFT.REQ,reqState)" style="width:100%;padding:8px;border:1px solid #E2E8F0;border-radius:7px;font-size:12.5px;box-sizing:border-box">
+      <input placeholder="Descripción" value="${esc(it.desc)}" oninput="reqSetItemField(${i},'desc',this.value)" style="width:100%;padding:8px;border:1px solid #E2E8F0;border-radius:7px;font-size:12.5px;margin-bottom:6px;box-sizing:border-box">
+      <input placeholder="Proveedor sugerido" value="${esc(it.proveedor)}" oninput="reqSetItemField(${i},'proveedor',this.value)" style="width:100%;padding:8px;border:1px solid #E2E8F0;border-radius:7px;font-size:12.5px;box-sizing:border-box">
     </div>`).join('');
 }
-window._reqAgregarItem=function(){
-  reqState.items.push({cant:'',unidad:'',parte:'',desc:'',proveedor:''});
-  _draftSave(_DRAFT.REQ,reqState);
+window.reqSetItemField=function(i,campo,valor){
+  if(!window.reqState.items[i])return;
+  window.reqState.items[i][campo]=valor;
+  _draftSave(_DRAFT.REQ,window.reqState);
+  // Solo re-renderizamos el input que cambió NO hace falta — el valor ya vive en reqState.
+  // No se vuelve a pintar la lista aquí (por eso ya no se "borran" las partidas anteriores).
+};
+window.reqAgregarItem=function(){
+  window.reqState.items.push({cant:'',unidad:'',parte:'',desc:'',proveedor:''});
+  _draftSave(_DRAFT.REQ,window.reqState);
   document.getElementById('req-items').innerHTML=_reqRenderItems();
 };
-window._reqQuitarItem=function(i){
-  reqState.items.splice(i,1);
-  _draftSave(_DRAFT.REQ,reqState);
+window.reqQuitarItem=function(i){
+  window.reqState.items.splice(i,1);
+  _draftSave(_DRAFT.REQ,window.reqState);
   document.getElementById('req-items').innerHTML=_reqRenderItems();
 };
 
@@ -4567,17 +4661,17 @@ let _reqCtx=null,_reqDibujando=false,_reqLastX=0,_reqLastY=0,_reqHayFirma=false;
 function _reqInitFirma(){
   const cv=document.getElementById('req-firma-cv'); if(!cv)return;
   const r=cv.getBoundingClientRect(); cv.width=r.width*2; cv.height=r.height*2; _reqCtx=cv.getContext('2d'); _reqCtx.scale(2,2); _reqCtx.strokeStyle='#0A1628'; _reqCtx.lineWidth=2; _reqCtx.lineCap='round';
-  if(reqState.firma){ const img=new Image(); img.onload=()=>_reqCtx.drawImage(img,0,0,r.width,r.height); img.src=reqState.firma; _reqHayFirma=true; }
+  if(window.reqState.firma){ const img=new Image(); img.onload=()=>_reqCtx.drawImage(img,0,0,r.width,r.height); img.src=window.reqState.firma; _reqHayFirma=true; }
   const pos=e=>{ const rr=cv.getBoundingClientRect(); const p=e.touches?e.touches[0]:e; return {x:p.clientX-rr.left,y:p.clientY-rr.top}; };
   const start=e=>{ e.preventDefault(); _reqDibujando=true; const p=pos(e); _reqLastX=p.x; _reqLastY=p.y; };
   const move=e=>{ if(!_reqDibujando)return; e.preventDefault(); const p=pos(e); _reqCtx.beginPath(); _reqCtx.moveTo(_reqLastX,_reqLastY); _reqCtx.lineTo(p.x,p.y); _reqCtx.stroke(); _reqLastX=p.x; _reqLastY=p.y; _reqHayFirma=true; };
-  const end=()=>{ if(_reqDibujando){ _reqDibujando=false; reqState.firma=cv.toDataURL('image/png'); _draftSave(_DRAFT.REQ,reqState); } };
+  const end=()=>{ if(_reqDibujando){ _reqDibujando=false; window.reqState.firma=cv.toDataURL('image/png'); _draftSave(_DRAFT.REQ,window.reqState); } };
   cv.onmousedown=start; cv.onmousemove=move; cv.onmouseup=end; cv.onmouseleave=end;
   cv.ontouchstart=start; cv.ontouchmove=move; cv.ontouchend=end;
 }
-window._reqLimpiarFirma=function(){
+window.reqLimpiarFirma=function(){
   const cv=document.getElementById('req-firma-cv'); if(cv&&_reqCtx)_reqCtx.clearRect(0,0,cv.width,cv.height);
-  _reqHayFirma=false; reqState.firma=null; _draftSave(_DRAFT.REQ,reqState);
+  _reqHayFirma=false; window.reqState.firma=null; _draftSave(_DRAFT.REQ,window.reqState);
 };
 
 async function _reqSiguienteFolio(){
@@ -4596,8 +4690,9 @@ function _reqConstruirPDF(d,empresaLogo){
   const {jsPDF}=window.jspdf;
   const docu=new jsPDF({orientation:'portrait',unit:'mm',format:'letter'});
   const PW=215.9,PH=279.4,ML=14,MR=14;
-  const AZUL={r:10,g:22,b:40},AZULC={r:37,g:99,b:235};
-  const URG={baja:{t:'Urgencia baja · 1 semana',c:{r:100,g:116,b:139}},media:{t:'Urgencia media · 3 días',c:{r:180,g:83,b:9}},alta:{t:'Urgencia alta · 1 día',c:{r:185,g:28,b:28}}}[d.urgencia]||{};
+  const AZUL={r:10,g:22,b:40};
+  const URG={baja:{t:'Urgencia baja · 1 semana',c:{r:100,g:116,b:139}},media:{t:'Urgencia media · 3 días',c:{r:180,g:83,b:9}},alta:{t:'Urgencia alta · 1 día',c:{r:185,g:28,b:28}}}[d.urgencia]||{c:{r:100,g:116,b:139}};
+  const tipoInfo=REQ_TIPO_INFO[d.tipoCompra]||REQ_TIPO_INFO.servicio;
 
   docu.setFillColor(AZUL.r,AZUL.g,AZUL.b); docu.rect(0,0,PW,26,'F');
   if(empresaLogo){ try{ docu.addImage(empresaLogo,ML,6,32,14,undefined,'FAST'); }catch(e){} }
@@ -4605,7 +4700,6 @@ function _reqConstruirPDF(d,empresaLogo){
   docu.text(empresaLogo?'':String(d.empresa||'TECNOCONTROL'), empresaLogo?ML+38:ML, 15);
   docu.setFont('helvetica','normal'); docu.setFontSize(7.5);
   docu.text('Requisición de compra', empresaLogo?ML+38:ML, 20.5);
-  docu.setFontSize(7.5);
   docu.text('Generado: '+new Date().toLocaleString('es-MX'), PW-MR, 15, {align:'right'});
   docu.text(String(d.folio||'—'), PW-MR, 20.5, {align:'right'});
 
@@ -4614,7 +4708,12 @@ function _reqConstruirPDF(d,empresaLogo){
   docu.text(URG.t||'—', ML+5, 38.5);
   docu.text('Tipo: '+String(d.tipoCompra||'—').toUpperCase(), PW-MR-5, 38.5, {align:'right'});
 
-  let y=50;
+  // Notas contables — SIEMPRE quedan en el PDF, se calculan del tipo de compra elegido.
+  let y=48;
+  docu.setFont('helvetica','italic'); docu.setFontSize(7.5); docu.setTextColor(100,116,139);
+  docu.text(tipoInfo.entrada+' · '+tipoInfo.factura, ML, y);
+  y+=8;
+
   function campo(x,label,valor){
     docu.setFont('helvetica','bold'); docu.setFontSize(7.5); docu.setTextColor(100,116,139);
     docu.text(label.toUpperCase(),x,y);
@@ -4650,7 +4749,8 @@ function _reqConstruirPDF(d,empresaLogo){
     docu.setFont('helvetica','normal'); docu.setFontSize(9);
     docu.setTextColor(15,23,42);
     docu.text((p.orden+'. '+p.label),ML+2,y);
-    docu.setTextColor(p.estatus==='aprobado'?[21,128,61]:[180,83,9]);
+    const col=p.estatus==='aprobado'?[21,128,61]:[180,83,9];
+    docu.setTextColor(col[0],col[1],col[2]);
     docu.setFont('helvetica','bold');
     docu.text(p.estatus==='aprobado'?'Aprobado':'Pendiente',PW-MR-2,y,{align:'right'});
     y+=6;
@@ -4668,10 +4768,10 @@ function _reqConstruirPDF(d,empresaLogo){
   return docu;
 }
 
-window._reqEnviar=async function(){
+window.reqEnviar=async function(){
   const msg=document.getElementById('req-msg');
-  const items=reqState.items.filter(it=>it.desc);
-  if(!reqState.motivo){ msg.textContent='Escribe el motivo de la solicitud.'; return; }
+  const items=window.reqState.items.filter(it=>it.desc);
+  if(!window.reqState.motivo){ msg.textContent='Escribe el motivo de la solicitud.'; return; }
   if(!items.length){ msg.textContent='Agrega al menos una partida con descripción.'; return; }
   if(!_reqHayFirma){ msg.textContent='Falta la firma del solicitante.'; return; }
   msg.textContent='';
@@ -4686,9 +4786,9 @@ window._reqEnviar=async function(){
     ];
     const data={
       folio:folioInfo.folio, folioNum:folioInfo.folioNum, folioPrefijo:folioInfo.folioPrefijo,
-      empresa:reqState.empresa, urgencia:reqState.urgencia, tipoCompra:reqState.tipoCompra,
-      motivo:reqState.motivo, cliente:reqState.cliente, ciudad:reqState.ciudad,
-      items, firma:reqState.firma, solicitante,
+      empresa:window.reqState.empresa, urgencia:window.reqState.urgencia, tipoCompra:window.reqState.tipoCompra,
+      motivo:window.reqState.motivo, cliente:window.reqState.cliente, ciudad:window.reqState.ciudad,
+      items, firma:window.reqState.firma, solicitante,
       solicitanteEmail:window.auth?.currentUser?.email||'',
       flujoAutorizacion, estatus:'pendiente',
       origen:'flotilla', vehiculoEco:miVeh?.eco||null,
@@ -4696,7 +4796,7 @@ window._reqEnviar=async function(){
     };
     await db.collection('requisiciones_compra').add(data);
 
-    const emp=(_reqEmpresas||[]).find(e=>e.nombre===reqState.empresa);
+    const emp=(_reqEmpresas||[]).find(e=>e.nombre===window.reqState.empresa);
     const pdf=_reqConstruirPDF(data, emp&&!REQ_SIN_LOGO.has(emp.nombre)?emp.logoBase64:null);
     if(pdf){
       try{
@@ -4710,7 +4810,7 @@ window._reqEnviar=async function(){
       }catch(e){ try{ window.open(pdf.output('bloburl'),'_blank'); }catch(e2){} }
     }
     _draftClear(_DRAFT.REQ);
-    reqState={empresa:'',urgencia:'media',tipoCompra:'servicio',motivo:'',cliente:'',ciudad:'',items:[{cant:'',unidad:'',parte:'',desc:'',proveedor:''}],firma:null};
+    window.reqState={empresa:'',urgencia:'media',tipoCompra:'servicio',motivo:'',cliente:'',ciudad:'',items:[{cant:'',unidad:'',parte:'',desc:'',proveedor:''}],firma:null};
     toast('Requisición '+folioInfo.folio+' enviada a Compras','ok');
     fmCerrarFlotante();
   }catch(e){
