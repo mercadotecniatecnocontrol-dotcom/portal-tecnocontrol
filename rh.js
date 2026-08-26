@@ -1391,8 +1391,11 @@ function rhHTMLPerfil(id){
     const antig = c.fechaIngreso ? rh360Antiguedad(c.fechaIngreso) : '—';
     const docsCompletos = RH_DOCS.filter(d=>rh360ColorDoc(c['doc_'+d.key]||'')==='verde').length;
 
-    return '<div class="rhp-back" onclick="rhVolverDirectorio()">'+
-            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg> Directorio'+
+    return '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">'+
+            '<div class="rhp-back" style="margin-bottom:0" onclick="rhVolverDirectorio()">'+
+                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg> Directorio'+
+            '</div>'+
+            '<button class="rhp-doc-edit" style="color:#DC2626;border-color:#FECACA" onclick="rhEliminarColaborador(\''+c.id+'\')">Eliminar colaborador</button>'+
         '</div>'+
         (c.sinCorreo ? '<div class="rhp-pendcorreo"><span>Este colaborador todavía no tiene correo asignado.</span>'+
             '<button class="rhp-doc-edit" onclick="rhAsignarCorreo(\''+c.id+'\')">Asignar correo</button></div>' : '')+
@@ -1583,6 +1586,23 @@ window.rhEliminarFoto = async function(id){
 };
 
 // ── Asignar correo real a un colaborador "sinCorreo_" ──────────
+window.rhEliminarColaborador = async function(id){
+    const c = rhColabs.find(x=>x.id===id);
+    if(!c) return;
+    if(!confirm('¿Eliminar a '+(c.nombre||'este registro')+' de forma permanente?\n\nEsto borra su ficha de "colaboradores" (perfil, documentos, trayectoria). No afecta su historial ya guardado en Flotilla u Operaciones.')) return;
+    const confirmacion = prompt('Para confirmar, escribe ELIMINAR:');
+    if(confirmacion !== 'ELIMINAR'){ alert('Cancelado — no se escribió "ELIMINAR" exactamente.'); return; }
+    try {
+        const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        await fs.deleteDoc(fs.doc(db,'colaboradores',id));
+        rhColabs = rhColabs.filter(x=>x.id!==id);
+        rhPerfilId = null;
+        rhVista = 'directorio';
+        rhRenderRoot();
+        if(typeof window.mostrarPush==='function') window.mostrarPush('Colaborador eliminado','Se borró el registro correctamente','🗑️');
+    } catch(err){ alert('Error al eliminar: '+err.message); }
+};
+
 window.rhAsignarCorreo = async function(idViejo){
     const c = rhColabs.find(x=>x.id===idViejo);
     if(!c) return;
