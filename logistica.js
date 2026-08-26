@@ -220,6 +220,67 @@
       });
   }
 
+  // Expuesta para que otros módulos (ventas.js, al crear una estación nueva
+  // en "Nuevo cliente") reutilicen la misma geocodificación sin duplicarla.
+  window.__logGeocodificarDireccion = geocodificarDireccion;
+
+  // ═══════════════════════════════════════════════════════════════════
+  //  BACKFILL — geocodifica en lote las estaciones de estaciones_servicio
+  //  que quedaron sin lat/lng (capturadas a mano en Ventas antes de que
+  //  guardarCliente() geocodificara sola, o importadas sin coordenada).
+  //  Esta es la causa raíz de que muchos pedidos no aparecieran en NINGÚN
+  //  mapa del portal (TV, panel de Almacén, mapa combinado de Logística):
+  //  todos dependen de que la estación ya tenga lat/lng guardado.
+  //
+  //  Utilidad de un solo uso — NO está enganchada a ningún botón a propósito,
+  //  para no disparar cientos de llamadas a Nominatim por accidente. Se
+  //  corre a mano una vez desde la consola del navegador:
+  //    window.__logGeocodificarPendientes()
+  //  Respeta ~1.1s entre solicitudes (política de uso justo de Nominatim).
+  //  Deja todo como "sin verificar" (mismo criterio que el resto del
+  //  portal) para que el supervisor revise el pin si algo quedó impreciso.
+  // ═══════════════════════════════════════════════════════════════════
+  window.__logGeocodificarPendientes = function () {
+    return cargarFirestore().then(function (fs) {
+      if (!window.db) { console.error('[logistica] Firestore no disponible.'); return; }
+      return fs.getDocs(fs.collection(window.db, 'estaciones_servicio')).then(function (snap) {
+        var pendientes = [];
+        snap.forEach(function (d) {
+          var e = d.data() || {};
+          if (e.lat == null || e.lng == null) pendientes.push(Object.assign({ id: d.id }, e));
+        });
+        console.log('[logistica] Estaciones sin coordenada: ' + pendientes.length + '. Iniciando geocodificación (~' + Math.ceil(pendientes.length * 1.1 / 60) + ' min)…');
+        var ok = 0, fail = 0, i = 0;
+
+        function siguiente() {
+          if (i >= pendientes.length) {
+            console.log('[logistica] Geocodificación terminada. Ubicadas: ' + ok + ' · Sin resultado: ' + fail);
+            if (window.mostrarPush) window.mostrarPush('📍 Geocodificación de estaciones terminada', ok + ' ubicadas · ' + fail + ' sin resultado', '✅');
+            if (window.__almInvalidarCacheEstaciones) window.__almInvalidarCacheEstaciones();
+            return;
+          }
+          var e = pendientes[i++];
+          var direccion = [e.direccionNormalizada || e.domicilioRaw, e.municipio].filter(Boolean).join(', ');
+          if (!direccion) { fail++; setTimeout(siguiente, 1100); return; }
+          geocodificarDireccion(direccion).then(function (resultado) {
+            if (!resultado.encontrado) { fail++; console.warn('[logistica] sin resultado: ' + (e.razonSocial || e.id) + ' — ' + direccion); setTimeout(siguiente, 1100); return; }
+            return cargarFirestore().then(function (fs2) {
+              return fs2.updateDoc(fs2.doc(window.db, 'estaciones_servicio', e.id), {
+                lat: resultado.lat, lng: resultado.lng,
+                ubicacionVerificada: false,
+                ubicacionGeocodificadaEn: new Date().toISOString()
+              });
+            }).then(function () { ok++; setTimeout(siguiente, 1100); });
+          }).catch(function (err) {
+            fail++; console.warn('[logistica] error geocodificando ' + (e.razonSocial || e.id) + ':', err);
+            setTimeout(siguiente, 1100);
+          });
+        }
+        siguiente();
+      });
+    });
+  };
+
   // ── Estado del módulo ──
   var estado = {
     pedidos: [],       // surtidos activos con destinoTipo === 'entrega_chihuahua'
