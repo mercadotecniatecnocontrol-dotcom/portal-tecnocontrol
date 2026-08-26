@@ -1544,7 +1544,7 @@
       return;
     }
     cargarLeafletAlm().then(function(){
-      return window.tcObtenerPuntosLogisticos();
+      return window.tcObtenerPuntosLogisticos({ incluirClientes: true });
     }).then(function(puntos){
       var contAhora = document.getElementById('alm-mapa-rutas-embed');
       if(!contAhora) return; // se cerró/recargó la pantalla mientras cargaba
@@ -1557,7 +1557,8 @@
       var ESTILO = {
         venta:{color:'#1473E6',label:'Pedido de Ventas'}, material:{color:'#8B4FD6',label:'Solicitud de Material'},
         traslado:{color:'#D99000',label:'Traspaso entre almacenes'}, tecnico:{color:'#0FB5A6',label:'Entrega a técnico'},
-        paqueteria:{color:'#F26B21',label:'Paquetería'}, recoleccion:{color:'#DB2777',label:'Recolección'}
+        paqueteria:{color:'#F26B21',label:'Paquetería'}, recoleccion:{color:'#DB2777',label:'Recolección'},
+        cliente:{color:'#64748B',label:'Cliente de Ventas'}
       };
       var usados = {};
       puntos.forEach(function(p){
