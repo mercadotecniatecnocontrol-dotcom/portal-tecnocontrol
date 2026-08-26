@@ -1426,8 +1426,15 @@ function rhHTMLPerfil(id){
                     rhHTMLDatosGenerales(c)+
                 '</div>'+
                 '<div class="rhp-card">'+
-                    '<h3>Documentos</h3>'+
+                    '<h3>Documentos <span class="link" onclick="rhEscanearDocumento(\''+c.id+'\')">📷 Escanear y autocompletar</span></h3>'+
                     rhHTMLDocumentos(c)+
+                '</div>'+
+                '<div class="rhp-card">'+
+                    '<h3>Extraer datos de un documento <span style="font-size:9px;font-weight:700;color:#94A3B8;background:#F1F5F9;padding:2px 7px;border-radius:99px">BETA · GRATIS</span></h3>'+
+                    '<div style="font-size:11px;color:#64748B;margin-bottom:10px">Sube la foto de una identificación, CURP, RFC o similar — se lee en tu navegador (nada se envía a ningún servidor) y te propone los datos para que los confirmes.</div>'+
+                    '<input type="file" accept="image/*" id="rhp-ocr-input" style="display:none" onchange="rhOCRProcesar(\''+c.id+'\', this)">'+
+                    '<button class="rhd-tab" onclick="document.getElementById(\'rhp-ocr-input\').click()">📷 Elegir foto de un documento</button>'+
+                    '<div id="rhp-ocr-resultado" style="margin-top:12px"></div>'+
                 '</div>'+
             '</div>'+
             '<div>'+
@@ -1586,6 +1593,117 @@ window.rhEliminarFoto = async function(id){
 };
 
 // ── Asignar correo real a un colaborador "sinCorreo_" ──────────
+// ── Extracción de datos de documentos — OCR 100% gratis, corre en el
+// navegador del usuario con Tesseract.js. No hay servidor, no hay costo,
+// no requiere plan Blaze. A cambio, es menos preciso que una lectura con
+// IA real — por eso SIEMPRE se muestra como propuesta editable, nunca se
+// guarda solo. Funciona mejor con texto impreso (INE, CURP, RFC) que con
+// letra manuscrita.
+function rhCargarTesseract(){
+    return new Promise((resolve, reject) => {
+        if (window.Tesseract) { resolve(); return; }
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.0.4/dist/tesseract.min.js';
+        s.onload = () => resolve();
+        s.onerror = () => reject(new Error('No se pudo cargar el lector de documentos. Revisa tu conexión a internet.'));
+        document.head.appendChild(s);
+    });
+}
+
+function rhExtraerCamposDeTexto(texto){
+    const limpio = texto.replace(/\s+/g, ' ');
+    const out = {};
+    const curp = limpio.match(/[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]\d/);
+    if (curp) out.curp = curp[0];
+    const rfc = limpio.match(/\b[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}\b/);
+    if (rfc) out.rfc = rfc[0];
+    const nss = limpio.match(/\b\d{11}\b/);
+    if (nss) out.nss = nss[0];
+    const fecha = limpio.match(/\b\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4}\b/);
+    if (fecha) out.fechaDetectada = fecha[0];
+    return out;
+}
+
+window.rhOCRProcesar = async function(colaboradorId, inputEl){
+    const file = inputEl.files[0];
+    if (!file) return;
+    const cont = document.getElementById('rhp-ocr-resultado');
+    if (!cont) return;
+
+    cont.innerHTML = '<div style="font-size:11.5px;color:#64748B">Leyendo documento… <span id="rhp-ocr-pct">0%</span></div>';
+
+    try {
+        const dataUrl = await new Promise((res, rej) => {
+            const reader = new FileReader();
+            reader.onload = e => res(e.target.result);
+            reader.onerror = rej;
+            reader.readAsDataURL(file);
+        });
+
+        await rhCargarTesseract();
+
+        const { data } = await window.Tesseract.recognize(dataUrl, 'spa', {
+            logger: m => {
+                if (m.status === 'recognizing text') {
+                    const pct = document.getElementById('rhp-ocr-pct');
+                    if (pct) pct.textContent = Math.round(m.progress * 100) + '%';
+                }
+            }
+        });
+
+        const campos = rhExtraerCamposDeTexto(data.text || '');
+        rhRenderPropuestaOCR(colaboradorId, campos, cont);
+    } catch (err) {
+        cont.innerHTML = '<div style="font-size:11.5px;color:#DC2626">No se pudo leer el documento: ' + err.message + '</div>';
+    } finally {
+        inputEl.value = '';
+    }
+};
+
+function rhRenderPropuestaOCR(colaboradorId, campos, cont){
+    const etiquetas = { curp: 'CURP', rfc: 'RFC', nss: 'NSS', fechaDetectada: 'Fecha detectada' };
+    const claves = Object.keys(campos);
+
+    if (!claves.length) {
+        cont.innerHTML = '<div style="font-size:11.5px;color:#94A3B8">No se detectó ningún dato reconocible en esa imagen. Intenta con una foto más nítida o de frente.</div>';
+        return;
+    }
+
+    cont.innerHTML =
+        '<div style="font-size:10.5px;font-weight:700;color:#B45309;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:8px 10px;margin-bottom:8px">Revisa cada dato antes de guardar — la lectura automática puede tener errores.</div>' +
+        claves.map(k =>
+            '<div class="rhp-field" style="margin-bottom:6px"><div class="k">' + (etiquetas[k] || k) + '</div>' +
+            '<input type="text" id="rhp-ocr-campo-' + k + '" value="' + rh360Escape(campos[k]) + '"></div>'
+        ).join('') +
+        '<button class="rhd-tab on" style="margin-top:8px" onclick="rhAplicarOCR(\'' + colaboradorId + '\', ' + JSON.stringify(claves).replace(/"/g,'&quot;') + ')">Aplicar al perfil</button>';
+}
+
+window.rhAplicarOCR = async function(colaboradorId, claves){
+    const data = {};
+    claves.forEach(k => {
+        const el = document.getElementById('rhp-ocr-campo-' + k);
+        if (!el || !el.value.trim()) return;
+        if (k === 'curp') data.curp = el.value.trim().toUpperCase();
+        else if (k === 'rfc') data.rfc = el.value.trim().toUpperCase();
+        else if (k === 'nss') data.nss = el.value.trim();
+        // "fechaDetectada" es informativa — no se sabe si es nacimiento, ingreso u
+        // otra, así que no se guarda sola en ningún campo específico.
+    });
+    if (!Object.keys(data).length){
+        alert('No hay nada que aplicar (revisa que los campos no estén vacíos).');
+        return;
+    }
+    try {
+        const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        data.actualizadoEn = new Date().toISOString();
+        await fs.updateDoc(fs.doc(db, 'colaboradores', colaboradorId), data);
+        const c = rhColabs.find(x => x.id === colaboradorId);
+        if (c) Object.assign(c, data);
+        if (typeof window.mostrarPush === 'function') window.mostrarPush('Datos aplicados', 'Se actualizó el perfil con los datos confirmados', '👤');
+        rhRenderRoot();
+    } catch (err) { alert('Error al guardar: ' + err.message); }
+};
+
 window.rhEliminarColaborador = async function(id){
     const c = rhColabs.find(x=>x.id===id);
     if(!c) return;
@@ -1602,6 +1720,211 @@ window.rhEliminarColaborador = async function(id){
         if(typeof window.mostrarPush==='function') window.mostrarPush('Colaborador eliminado','Se borró el registro correctamente','🗑️');
     } catch(err){ alert('Error al eliminar: '+err.message); }
 };
+
+// ── Escaneo de documentos — 100% gratis, corre en el navegador ─
+// (Tesseract.js vía CDN, sin backend, sin Cloud Functions, sin cambio de plan)
+
+function rhCargarTesseract(){
+    return new Promise((resolve, reject)=>{
+        if(window.Tesseract){ resolve(); return; }
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+        s.onload = ()=> resolve();
+        s.onerror = ()=> reject(new Error('No se pudo cargar el lector de documentos. Revisa tu conexión.'));
+        document.head.appendChild(s);
+    });
+}
+
+function rhArchivoADataURL(file, maxAncho){
+    return new Promise((resolve, reject)=>{
+        const reader = new FileReader();
+        reader.onload = e=>{
+            const img = new Image();
+            img.onload = ()=>{
+                const ratio = Math.min(1, maxAncho/img.width);
+                const w = Math.round(img.width*ratio), h = Math.round(img.height*ratio);
+                const cv = document.createElement('canvas'); cv.width=w; cv.height=h;
+                cv.getContext('2d').drawImage(img,0,0,w,h);
+                resolve(cv.toDataURL('image/jpeg',0.85));
+            };
+            img.onerror = reject;
+            img.src = e.target.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+
+async function rhOCR(dataUrl, onProgress){
+    await rhCargarTesseract();
+    const { data } = await window.Tesseract.recognize(dataUrl, 'spa', {
+        logger: m => { if(onProgress && m.status==='recognizing text') onProgress(Math.round((m.progress||0)*100)); }
+    });
+    return data.text || '';
+}
+
+// Patrones con formato fijo — alta confiabilidad
+function rhDetectarCURP(texto){
+    const t = texto.toUpperCase().replace(/\s+/g,'');
+    const m = t.match(/[A-Z][AEIOUX][A-Z]{2}\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])[HM][A-Z]{2}[B-DF-HJ-NP-TV-Z]{3}[A-Z\d]\d/);
+    return m ? m[0] : null;
+}
+function rhDetectarRFC(texto){
+    const t = texto.toUpperCase().replace(/\s+/g,'');
+    const m = t.match(/[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}/);
+    return m ? m[0] : null;
+}
+function rhDetectarNSS(texto){
+    const m = texto.match(/\d{2}\s?\d{2}\s?\d{2}\s?\d{4}\s?\d/);
+    return m ? m[0].replace(/\s/g,'') : null;
+}
+// Lectura por etiqueta — mejor esfuerzo, pensado para tus formatos ya
+// estandarizados (Formato de Descripción del Trabajador, etc.)
+function rhDetectarPorEtiqueta(texto, etiquetas){
+    for(const et of etiquetas){
+        const re = new RegExp(et+'\\s*[:\\-]?\\s*\\n?\\s*([^\\n]{2,70})','i');
+        const m = texto.match(re);
+        if(m && m[1].trim().length>1) return m[1].trim();
+    }
+    return null;
+}
+
+function rhAnalizarTextoOCR(texto){
+    const campos = {};
+    const curp = rhDetectarCURP(texto); if(curp) campos.curp = curp;
+    const rfc = rhDetectarRFC(texto); if(rfc) campos.rfc = rfc;
+    const nss = rhDetectarNSS(texto); if(nss) campos.nss = nss;
+
+    const nombre = rhDetectarPorEtiqueta(texto, ['NOMBRE COMPLETO','NOMBRE DEL TRABAJADOR','NOMBRE\\s*\\(S\\)']);
+    if(nombre) campos.nombre = nombre;
+
+    const puesto = rhDetectarPorEtiqueta(texto, ['NOMBRE DEL PUESTO','PUESTO']);
+    if(puesto) campos.puesto = puesto;
+
+    const ingreso = rhDetectarPorEtiqueta(texto, ['FECHA DE INGRESO A LA EMPRESA','FECHA DE INGRESO']);
+    if(ingreso) campos.fechaIngreso = ingreso;
+
+    const contrato = rhDetectarPorEtiqueta(texto, ['TIPO DE CONTRATACI[ÓO]N']);
+    if(contrato) campos.tipo_contrato = contrato;
+
+    const civil = rhDetectarPorEtiqueta(texto, ['ESTADO CIVIL']);
+    if(civil) campos.estado_civil = civil;
+
+    return campos;
+}
+
+function rhMostrarProgresoOCR(pct, msg){
+    let el = document.getElementById('rh-ocr-progreso');
+    if(!el){
+        el = document.createElement('div');
+        el.id = 'rh-ocr-progreso';
+        el.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,.75);z-index:99999;display:flex;align-items:center;justify-content:center;';
+        el.innerHTML = '<div style="background:#fff;border-radius:16px;padding:24px 30px;min-width:260px;text-align:center;">'+
+            '<div style="font-size:13px;font-weight:800;margin-bottom:10px" id="rh-ocr-msg"></div>'+
+            '<div style="background:#F1F5F9;border-radius:99px;height:8px;overflow:hidden;"><div id="rh-ocr-bar" style="background:#2563EB;height:100%;width:0%;transition:width .2s;"></div></div>'+
+            '<div style="font-size:11px;color:#94A3B8;margin-top:6px" id="rh-ocr-pct"></div></div>';
+        document.body.appendChild(el);
+    }
+    document.getElementById('rh-ocr-msg').textContent = msg;
+    document.getElementById('rh-ocr-bar').style.width = pct+'%';
+    document.getElementById('rh-ocr-pct').textContent = pct+'%';
+}
+function rhOcultarProgresoOCR(){
+    const el = document.getElementById('rh-ocr-progreso');
+    if(el) el.remove();
+}
+
+window.rhEscanearDocumento = function(id){
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'image/*'; inp.style.display = 'none';
+    document.body.appendChild(inp);
+    inp.onchange = async function(){
+        const file = this.files[0];
+        document.body.removeChild(inp);
+        if(!file) return;
+        rhMostrarProgresoOCR(0, 'Preparando imagen…');
+        try {
+            const dataUrl = await rhArchivoADataURL(file, 1600);
+            const texto = await rhOCR(dataUrl, (p)=> rhMostrarProgresoOCR(p, 'Leyendo documento…'));
+            rhOcultarProgresoOCR();
+            const campos = rhAnalizarTextoOCR(texto);
+            rhAbrirRevisionOCR(id, campos, dataUrl);
+        } catch(err){
+            rhOcultarProgresoOCR();
+            alert('No se pudo leer el documento: '+err.message);
+        }
+    };
+    inp.click();
+};
+
+const RH_CAMPO_LABELS_OCR = {
+    nombre:'Nombre completo', puesto:'Puesto', curp:'CURP', rfc:'RFC', nss:'NSS',
+    fechaIngreso:'Fecha de ingreso', tipo_contrato:'Tipo de contrato', estado_civil:'Estado civil',
+};
+
+function rhAbrirRevisionOCR(id, campos, dataUrl){
+    const claves = Object.keys(campos);
+    const modal = document.createElement('div');
+    modal.id = 'rh-ocr-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,.75);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;';
+    modal.innerHTML =
+        '<div style="background:#fff;border-radius:18px;max-width:520px;width:100%;max-height:85vh;overflow:auto;padding:22px;">'+
+            '<div style="font-size:14px;font-weight:800;margin-bottom:4px">Datos detectados en el documento</div>'+
+            '<div style="font-size:11.5px;color:#64748B;margin-bottom:16px">Revisa y desmarca lo que no quieras aplicar. No se guarda nada hasta que confirmes.</div>'+
+            '<div id="rh-ocr-campos" style="display:flex;flex-direction:column;gap:8px;"></div>'+
+            (claves.length===0 ? '<div style="text-align:center;padding:16px;color:#94A3B8;font-size:12px">No se detectó ningún campo automáticamente. Intenta con una foto más clara y bien iluminada, o llena el perfil manualmente.</div>' : '')+
+            '<div style="display:flex;gap:8px;margin-top:18px;">'+
+                '<button id="rh-ocr-aplicar" class="rhd-tab on" style="flex:1"'+(claves.length===0?' disabled':'')+'>Aplicar seleccionados</button>'+
+                '<button id="rh-ocr-cancelar" class="rhd-tab" style="flex:1">Cerrar</button>'+
+            '</div>'+
+        '</div>';
+    document.body.appendChild(modal);
+
+    const cont = modal.querySelector('#rh-ocr-campos');
+    claves.forEach(k=>{
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:8px;background:#F8FAFD;border-radius:10px;padding:8px 10px;';
+        row.innerHTML =
+            '<input type="checkbox" data-k="'+k+'" checked>'+
+            '<div style="flex:1">'+
+                '<div style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8">'+(RH_CAMPO_LABELS_OCR[k]||k)+'</div>'+
+                '<input type="text" data-v="'+k+'" value="'+rh360Escape(campos[k])+'" style="width:100%;border:none;background:transparent;font-size:12.5px;font-weight:700;outline:none;">'+
+            '</div>';
+        cont.appendChild(row);
+    });
+
+    modal.querySelector('#rh-ocr-cancelar').onclick = ()=> modal.remove();
+    modal.querySelector('#rh-ocr-aplicar').onclick = async ()=>{
+        const datos = {};
+        cont.querySelectorAll('input[type=checkbox]').forEach(chk=>{
+            if(chk.checked){
+                const k = chk.dataset.k;
+                const valEl = cont.querySelector('input[data-v="'+k+'"]');
+                if(valEl.value.trim()) datos[k] = valEl.value.trim();
+            }
+        });
+        const btn = modal.querySelector('#rh-ocr-aplicar');
+        btn.textContent = 'Guardando…'; btn.disabled = true;
+        try {
+            const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+            datos.actualizadoEn = new Date().toISOString();
+            await fs.updateDoc(fs.doc(db,'colaboradores',id), datos);
+            // El documento en sí se guarda aparte, en subcolección, para no
+            // pelear con el límite de 1MB por documento en Firestore.
+            await fs.addDoc(fs.collection(db,'colaboradores',id,'documentos'), {
+                imagen: dataUrl, camposDetectados: Object.keys(campos), subidoEn: new Date().toISOString(),
+            });
+            const c = rhColabs.find(x=>x.id===id);
+            if(c) Object.assign(c, datos);
+            modal.remove();
+            rhRenderRoot();
+            if(typeof window.mostrarPush==='function') window.mostrarPush('Documento aplicado','El perfil se actualizó con los datos detectados','📄');
+        } catch(err){
+            alert('Error al guardar: '+err.message);
+            btn.disabled = false; btn.textContent = 'Aplicar seleccionados';
+        }
+    };
+}
 
 window.rhAsignarCorreo = async function(idViejo){
     const c = rhColabs.find(x=>x.id===idViejo);
