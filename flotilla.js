@@ -35,7 +35,7 @@ async function agregarColaborador(nombre){
   _flColabCache=null;
 }
 
-const C={VEHS:'flotilla_vehiculos',SOLS:'flotilla_solicitudes',COMIS:'flotilla_comisiones',TRANS:'flotilla_transferencias',CHKSEM:'flotilla_checklist_semanal',CFG:'flotilla_config',TAREAS:'flotilla_tareas',USOS:'flotilla_usos',USUARIOS:'fl_usuarios',SINIESTROS:'flotilla_siniestros',UBICACIONES:'flotilla_ubicaciones',EVENTOS:'flotilla_eventos',LLANTAS:'flotilla_llantas'};
+const C={VEHS:'flotilla_vehiculos',SOLS:'flotilla_solicitudes',COMIS:'flotilla_comisiones',TRANS:'flotilla_transferencias',CHKSEM:'flotilla_checklist_semanal',CFG:'flotilla_config',TAREAS:'flotilla_tareas',USOS:'flotilla_usos',USUARIOS:'fl_usuarios',SINIESTROS:'flotilla_siniestros',UBICACIONES:'flotilla_ubicaciones',EVENTOS:'flotilla_eventos',LLANTAS:'flotilla_llantas',COLABORADORES:'colaboradores'};
 
 // Lista de correos que reciben notificaciones administrativas de Flotilla
 // (siniestros, transferencias pendientes/por vencer/vencidas). Este arreglo
@@ -243,7 +243,7 @@ const I={
 
 // ESTADO
 let db=window.db, fs=null;
-let flV=[], flS=[], flCom=[], flTrans=[], flChkSem=[], flCfgSem={}, flUsos=[], flFlUsuarios=[], flSiniestros=[], flUbicaciones=[], flLlantas=[];
+let flV=[], flS=[], flCom=[], flTrans=[], flChkSem=[], flCfgSem={}, flUsos=[], flFlUsuarios=[], flSiniestros=[], flUbicaciones=[], flLlantas=[], flColaboradores=[];
 let flGPS={}; // { [eco]: {kilometraje,horasMotor,lat,lng,velocidad,ultimoReporte,...} } — datos en vivo de Wialon, colección flotilla_gps
 let vistaAct='panel';
 let ST={
@@ -263,7 +263,10 @@ const hF=iso=>iso&&iso!=='—'?String(iso).substring(0,10):'—';
 function flNombrePorCorreo(valor){
   if(!valor)return valor;
   if(!valor.includes('@'))return valor; // ya es un nombre, no un correo
-  const u=flFlUsuarios.find(x=>(x.email||'').toLowerCase()===valor.toLowerCase());
+  const correoNorm=valor.toLowerCase().trim();
+  const col=flColaboradores.find(x=>(x.correo||x.id||'').toLowerCase()===correoNorm);
+  if(col?.nombre)return col.nombre;
+  const u=flFlUsuarios.find(x=>(x.email||'').toLowerCase()===correoNorm);
   return u?.nombre||valor;
 }
 
@@ -972,7 +975,7 @@ window.cargarFlotilla=async function(){
   renderSB();
   flVista('panel');
   window._flInitDone=true;
-  Promise.all([ldComs(),ldTrans(),ldChkSem(),ldCfgSem(),ldUsos(),ldFlUsuarios(),ldSiniestros()]).then(()=>{
+  Promise.all([ldComs(),ldTrans(),ldChkSem(),ldCfgSem(),ldUsos(),ldFlUsuarios(),ldFlColaboradores(),ldSiniestros()]).then(()=>{
     if(vistaAct==='panel')rPanel(); // refresca el dashboard con lo que llegó tarde (KPIs de comisión, en uso, etc.)
     flAutoGestionarChecklistSemanal(); // activa/desactiva el check list según la ventana vie–lun, si aplica
   });
@@ -1274,6 +1277,22 @@ function ldFlUsuarios(){
         }
       },(err)=>{console.error('[FL] onSnapshot fl_usuarios',err);if(!flFlUsuarios)flFlUsuarios=[];window._flUsuariosMap=window._flUsuariosMap||{};resolve();});
     }catch(e){console.error('[FL] ldFlUsuarios',e);flFlUsuarios=[];window._flUsuariosMap={};resolve();}
+  });
+}
+
+// Fuente unificada de identidad (RH). Se carga en vivo para que si RH
+// actualiza nombre/foto/estatus de un colaborador, Flotilla lo refleje
+// sin necesitar su propia copia de los datos.
+let _unsubFlColaboradores=null;
+function ldFlColaboradores(){
+  return new Promise((resolve)=>{
+    if(_unsubFlColaboradores){resolve();return;}
+    try{
+      _unsubFlColaboradores=fs.onSnapshot(fs.collection(db,C.COLABORADORES),(s)=>{
+        flColaboradores=s.docs.map(d=>({id:d.id,...d.data()}));
+        resolve();
+      },(err)=>{console.error('[FL] onSnapshot colaboradores',err);if(!flColaboradores)flColaboradores=[];resolve();});
+    }catch(e){console.error('[FL] ldFlColaboradores',e);flColaboradores=[];resolve();}
   });
 }
 
