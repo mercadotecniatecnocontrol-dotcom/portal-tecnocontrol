@@ -286,16 +286,25 @@ authReady.then(() => getDoc(doc(db,'catalogo','productos')).then(snap=>{
    Lectura de ops_tecnicos — ahora con sesión REAL, así que ya cumple la regla
    de Firestore que exige esReal() (antes, con auth anónima, esta lectura
    fallaba silenciosamente — ver reglas: ops_tecnicos cae en la regla comodín
-   que exige sesión real, no anónima). */
+   que exige sesión real, no anónima).
+
+   IMPORTANTE: ops_tecnicos NO tiene un campo literal "estatus" — el esquema
+   real usa "fechaBaja" (mismo criterio que ya usa el script de migración a
+   la colección "colaboradores": si tiene fechaBaja, está de baja; si no,
+   está activo). Antes filtrábamos con where('estatus','==','activo') contra
+   un campo que no existe, así que la query siempre regresaba 0 resultados
+   sin error — de ahí el datalist vacío. Se trae la colección completa y se
+   filtra en el cliente por fechaBaja, igual que la migración. */
 let TECNICOS = []; // [{id, nombre, correo}]
 const mapaTecnicos = {}; // nombre (lower) -> {id, nombre, correo}
 const mapaTecnicosPorCorreo = {}; // correo (lower) -> {id, nombre, correo}
 let modoSolicitud = 'propio'; // 'propio' | 'terceros'
 
-authReady.then(() => getDocs(query(collection(db,'ops_tecnicos'), where('estatus','==','activo'))).then(snap=>{
+authReady.then(() => getDocs(collection(db,'ops_tecnicos')).then(snap=>{
   TECNICOS = [];
   snap.forEach(d=>{
     const t = d.data()||{};
+    if(t.fechaBaja) return; // de baja, no aparece en el kiosco
     const item = { id:d.id, nombre:t.nombre||'—', correo:t.correo||'' };
     TECNICOS.push(item);
     mapaTecnicos[item.nombre.toLowerCase()] = item;
@@ -304,9 +313,19 @@ authReady.then(() => getDocs(query(collection(db,'ops_tecnicos'), where('estatus
   const dl = $('dl-tecnicos');
   if(dl) dl.innerHTML = TECNICOS.map(t=>'<option value="'+esc(t.nombre)+'">').join('');
   console.log('[kiosco] técnicos cargados:', TECNICOS.length);
+  const avisoEl = $('f-tecnico-correo');
+  if(TECNICOS.length===0 && avisoEl){
+    avisoEl.textContent = '⚠ No hay técnicos activos en ops_tecnicos (revisa que existan documentos sin "fechaBaja").';
+    avisoEl.style.color = 'var(--rojo, #dc2626)';
+  }
   resolverMiTecnicoYAplicar();
 }).catch(e=>{
   console.warn('[kiosco] no se pudo cargar ops_tecnicos:', e.message);
+  const avisoEl = $('f-tecnico-correo');
+  if(avisoEl){
+    avisoEl.textContent = '⚠ No se pudo cargar la lista de técnicos (' + (e.code||e.message) + ').';
+    avisoEl.style.color = 'var(--rojo, #dc2626)';
+  }
 }));
 
 /* Se llama tanto al terminar de cargar ops_tecnicos como en cada login nuevo
