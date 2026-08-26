@@ -957,17 +957,114 @@ window.toggleRHDash = function(area, email) {
     _toggleRHDash(area, email);
 };
 
-// MÓDULO RH 360° — Directorio, Perfiles, Organigrama
-// Colección Firestore: rh_empleados
+// ============================================================
+// MÓDULO RH 360° — Directorio, Perfil, Organigrama
+// Fuente de datos: colección "colaboradores" (fusión de usuarios,
+// ops_tecnicos, fl_usuarios y rh_empleados)
+// ============================================================
 
-// Estado global del módulo 
-let rh360Empleados = [];        // todos los colaboradores cargados
-let rh360Vista = 'directorio';  // vista activa: directorio | organigrama | alertas
-let rh360EmpleadoAct = null;    // colaborador abierto en modal
-let rh360TabModal = 'info';     // tab activo dentro del modal
+// ── CSS del directorio/perfil/organigrama nuevos ──────────────
+(function inyectarCSSRHPerfil() {
+    if (document.getElementById('css-rh-perfil')) return;
+    const style = document.createElement('style');
+    style.id = 'css-rh-perfil';
+    style.textContent = `
+        #rh360-root{display:none;margin-top:16px;}
 
-// Campos de documentos con alertas 
-const RH360_DOCS = [
+        /* Barra superior */
+        .rhd-topbar{display:flex;gap:8px;margin-bottom:16px;border-bottom:2px solid #f1f5f9;padding-bottom:12px;flex-wrap:wrap;align-items:center;}
+        .rhd-tab{padding:8px 18px;border-radius:10px;border:1.5px solid #E2E8F0;background:#fff;color:#475569;font-size:12px;font-weight:700;cursor:pointer;}
+        .rhd-tab.on{background:#0A1628;color:#fff;border-color:#0A1628;}
+        .rhd-tab:hover:not(.on){background:#F8FAFD;border-color:#CBD5E1;}
+        .rhd-search{flex:1;min-width:180px;padding:9px 14px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13px;outline:none;background:#fff;}
+        .rhd-search:focus{border-color:#2563EB;}
+        .rhd-add{margin-left:auto;background:#F0FDF4;color:#15803D;border:1px solid #BBF7D0;padding:9px 16px;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;}
+
+        /* Directorio */
+        .rhd-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;}
+        .rhd-card{background:#fff;border-radius:14px;border:1.5px solid #E8EDF5;padding:14px;cursor:pointer;transition:.15s;}
+        .rhd-card:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(37,99,235,.08);border-color:#BFDBFE;}
+        .rhd-head{display:flex;align-items:center;gap:10px;}
+        .rhd-avatar{width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#1E3A5F,#2563EB);display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:800;flex-shrink:0;overflow:hidden;}
+        .rhd-avatar img{width:100%;height:100%;object-fit:cover;}
+        .rhd-name{font-size:12.5px;font-weight:800;color:#0A0F1E;line-height:1.25;}
+        .rhd-puesto{font-size:10.5px;color:#64748B;margin-top:1px;}
+        .rhd-tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:10px;}
+        .rhd-tag{font-size:9px;font-weight:700;padding:2px 8px;border-radius:99px;background:#F1F5F9;color:#475569;}
+        .rhd-tag.pend{background:#FFFBEB;color:#B45309;}
+        .rhd-tag.baja{background:#FEE2E2;color:#DC2626;}
+
+        /* Perfil */
+        .rhp-back{font-size:12px;color:#64748B;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px;margin-bottom:16px;}
+        .rhp-back:hover{color:#0A0F1E;}
+        .rhp-grid{display:grid;grid-template-columns:290px 1fr 290px;gap:16px;align-items:start;}
+        @media(max-width:1000px){.rhp-grid{grid-template-columns:1fr;}}
+        .rhp-photo{position:relative;border-radius:18px;overflow:hidden;height:230px;background:linear-gradient(135deg,#0A1628,#1E3A5F);cursor:pointer;}
+        .rhp-photo img{width:100%;height:100%;object-fit:cover;}
+        .rhp-photo-overlay{position:absolute;left:0;right:0;bottom:0;padding:14px;background:linear-gradient(0deg,rgba(10,22,40,.92),transparent);}
+        .rhp-photo-name{color:#fff;font-size:15px;font-weight:800;}
+        .rhp-photo-puesto{color:rgba(255,255,255,.7);font-size:11px;margin-top:2px;}
+        .rhp-photo-actions{position:absolute;top:10px;right:10px;display:flex;gap:6px;}
+        .rhp-photo-btn{width:28px;height:28px;border-radius:50%;background:rgba(0,0,0,.4);backdrop-filter:blur(4px);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:12px;}
+        .rhp-stat-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;}
+        .rhp-stat{background:#fff;border:1px solid #E8EDF5;border-radius:12px;padding:12px;text-align:center;}
+        .rhp-stat .v{font-size:16px;font-weight:900;color:#0A0F1E;}
+        .rhp-stat .l{font-size:9px;font-weight:700;text-transform:uppercase;color:#94A3B8;margin-top:2px;}
+        .rhp-card{background:#fff;border-radius:16px;border:1px solid #E8EDF5;padding:16px 18px;margin-bottom:14px;}
+        .rhp-card h3{font-size:12px;font-weight:800;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;}
+        .rhp-card h3 .link{font-size:11px;font-weight:700;color:#2563EB;cursor:pointer;}
+        .rhp-tl{position:relative;padding-left:16px;}
+        .rhp-tl::before{content:'';position:absolute;left:4px;top:2px;bottom:2px;width:2px;background:#E2E8F0;}
+        .rhp-tl-item{position:relative;padding-bottom:14px;}
+        .rhp-tl-item:last-child{padding-bottom:0;}
+        .rhp-tl-dot{position:absolute;left:-16px;top:3px;width:8px;height:8px;border-radius:50%;background:#2563EB;border:2px solid #fff;box-shadow:0 0 0 1px #E2E8F0;}
+        .rhp-tl-date{font-size:9px;font-weight:700;color:#94A3B8;}
+        .rhp-tl-text{font-size:11.5px;font-weight:700;color:#0A0F1E;margin-top:1px;}
+        .rhp-data-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+        .rhp-field{background:#F8FAFD;border-radius:10px;padding:9px 12px;}
+        .rhp-field .k{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#94A3B8;margin-bottom:2px;}
+        .rhp-field .v{font-size:12.5px;font-weight:700;color:#0A0F1E;word-break:break-word;}
+        .rhp-field .v.empty{color:#CBD5E1;font-weight:500;font-style:italic;}
+        .rhp-field input,.rhp-field select{width:100%;border:1px solid #E2E8F0;border-radius:6px;padding:5px 7px;font-size:12px;outline:none;background:#fff;}
+        .rhp-doc-row{display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid #F1F5F9;border-radius:10px;margin-bottom:6px;}
+        .rhp-doc-icn{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#fff;flex-shrink:0;}
+        .rhp-doc-name{font-size:12px;font-weight:700;flex:1;color:#0A0F1E;}
+        .rhp-doc-status{font-size:10px;font-weight:700;}
+        .rhp-doc-edit{font-size:10px;font-weight:700;padding:4px 10px;border:1px solid #E2E8F0;border-radius:6px;background:#fff;cursor:pointer;color:#64748B;}
+        .rhp-act{padding:11px 0;border-bottom:1px solid #F1F5F9;}
+        .rhp-act:last-child{border-bottom:none;padding-bottom:0;}
+        .rhp-act-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;gap:8px;}
+        .rhp-act-title{font-size:12px;font-weight:800;color:#0A0F1E;}
+        .rhp-mod-tag{font-size:8.5px;font-weight:800;padding:2px 7px;border-radius:99px;text-transform:uppercase;white-space:nowrap;}
+        .rhp-mod-tag.flotilla{background:#EFF6FF;color:#2563EB;}
+        .rhp-mod-tag.operaciones{background:#F5F3FF;color:#7C3AED;}
+        .rhp-act-desc{font-size:11px;color:#64748B;}
+        .rhp-empty-mod{text-align:center;padding:20px 10px;color:#94A3B8;font-size:11.5px;}
+        .rhp-pendcorreo{background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px;font-size:11.5px;color:#92400E;margin-bottom:14px;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;}
+
+        /* Organigrama en árbol */
+        .rho-tree{overflow-x:auto;padding:10px 0;}
+        .rho-root-item{margin-bottom:28px;text-align:center;}
+        .rho-node{display:inline-block;background:#fff;border:1.5px solid #E2E8F0;border-radius:12px;padding:10px 14px;text-align:center;cursor:pointer;min-width:150px;transition:.15s;}
+        .rho-node:hover{border-color:#2563EB;box-shadow:0 4px 14px rgba(37,99,235,.12);}
+        .rho-node.root{background:#0A1628;color:#fff;border-color:#0A1628;}
+        .rho-node-name{font-size:11.5px;font-weight:800;}
+        .rho-node-puesto{font-size:9.5px;color:#94A3B8;margin-top:2px;}
+        .rho-node.root .rho-node-puesto{color:rgba(255,255,255,.6);}
+        .rho-children{display:flex;gap:20px;flex-wrap:wrap;justify-content:center;border-top:1px solid #E2E8F0;padding-top:16px;margin-top:14px;}
+    `;
+    document.head.appendChild(style);
+})();
+
+// ── Estado del módulo ──────────────────────────────────────────
+let rhColabs = [];              // todos los colaboradores cargados
+let rhVista = 'directorio';     // directorio | organigrama | alertas
+let rhBusqueda = '';
+let rhPerfilId = null;          // id del colaborador abierto (null = sin perfil abierto)
+let rhModoEdicion = false;
+
+// Documentos con semáforo de vigencia
+const RH_DOCS = [
     {key:'ine',        label:'INE'},
     {key:'licencia',   label:'Licencia'},
     {key:'curp',       label:'CURP'},
@@ -980,379 +1077,377 @@ const RH360_DOCS = [
     {key:'verificacion',label:'Verificación'},
 ];
 
-// URL del Google Sheet publicado como CSV
-const RH360_SHEET_CSV = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTSL761esTwMxJgMnSkV4AAxidLzLL6B-fIaeM9xkR02BeBrYifAvvVt8Dnk4mFpQ/pub?output=csv';
+// Campos editables del perfil (correo NO se incluye aquí — se cambia solo
+// vía rhAsignarCorreo porque es el ID del documento en Firestore)
+const RH_CAMPOS_EDITABLES = [
+    {key:'nombre',        label:'Nombre completo'},
+    {key:'puesto',        label:'Puesto'},
+    {key:'telefono',      label:'Teléfono'},
+    {key:'departamento',  label:'Departamento'},
+    {key:'jefe',          label:'Jefe directo'},
+    {key:'estatus',       label:'Estatus', type:'select', opts:['activo','baja']},
+    {key:'rfc',           label:'RFC'},
+    {key:'curp',          label:'CURP'},
+    {key:'nss',           label:'NSS'},
+    {key:'tipo_contrato', label:'Tipo de contrato'},
+    {key:'plaza',         label:'Plaza'},
+    {key:'tipo_sangre',   label:'Tipo de sangre'},
+    {key:'estado_civil',  label:'Estado civil'},
+    {key:'num_empleado',  label:'# Empleado'},
+];
+// Campos que se muestran en la vista (no edición) — igual a los editables,
+// excluyendo nombre/puesto/estatus porque ya se ven en la tarjeta de foto,
+// y agregando correo al inicio (solo lectura).
+const RH_CAMPOS_VISTA = [
+    {key:'correo', label:'Correo'},
+    ...RH_CAMPOS_EDITABLES.filter(f=>!['nombre','puesto','estatus'].includes(f.key)),
+];
 
-// Inicializar módulo RH 360° 
+// ── Entrada del módulo ─────────────────────────────────────────
 window.initRH360 = async function(){
     const root = document.getElementById('rh360-root');
     if(!root) return;
     root.style.display = 'block';
-    root.innerHTML = rh360NavHTML() + '<div id="rh360-contenido"><div style="text-align:center;padding:40px;color:#94A3B8;font-size:13px">Cargando directorio…</div></div>' + rh360ModalHTML();
-    await rh360CargarEmpleados();
-    rh360SetVista('directorio');
-    document.getElementById('rh360-modal').addEventListener('click', e=>{
-        if(e.target===document.getElementById('rh360-modal')) rh360CerrarModal();
-    });
+    root.innerHTML = '<div style="text-align:center;padding:40px;color:#94A3B8;font-size:13px">Cargando directorio…</div>';
+    await rhCargarColaboradores();
+    rhPerfilId = null;
+    rhVista = 'directorio';
+    rhRenderRoot();
 };
 
-//  Cargar empleados: primero Firestore, luego Sheet como fallback 
-async function rh360CargarEmpleados(){
+async function rhCargarColaboradores(){
     try {
         const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-        const snap = await fs.getDocs(fs.collection(db,'rh_empleados'));
-        if(!snap.empty){
-            const todos = snap.docs.map(d=>({id:d.id,...d.data()}));
-            // Deduplicar en memoria por nombre+puesto
-            const vistos = new Set();
-            rh360Empleados = todos.filter(e=>{
-                const key = (e.nombre||'').trim().toUpperCase()+'__'+(e.puesto||e.cargo||'').trim().toUpperCase();
-                if(!e.nombre||e.nombre.trim().length<2) return false;
-                if(vistos.has(key)) return false;
-                vistos.add(key);
-                return true;
-            });
-            console.log('[RH360] Firestore: '+todos.length+' docs → '+rh360Empleados.length+' únicos');
-            // Si hay muchos duplicados (más del doble), limpiar Firestore automáticamente
-            if(todos.length > rh360Empleados.length * 1.5){
-                console.warn('[RH360] Detectados '+todos.length+' duplicados — limpiando...');
-                rh360LimpiarDuplicados(todos, fs);
-            }
-            return;
-        }
-    } catch(e){ console.warn('[RH360] Firestore no disponible:', e.message); }
-
-    // Firestore vacío → leer Sheet CSV
-    try {
-        const r = await fetch(RH360_SHEET_CSV);
-        const csv = await r.text();
-        const parsed = rh360ParseCSV(csv);
-        console.log('[RH360] Sheet: '+parsed.length+' colaboradores');
-        rh360Empleados = parsed;
-        if(parsed.length > 0) rh360SincronizarSheet(parsed);
+        const snap = await fs.getDocs(fs.collection(db,'colaboradores'));
+        rhColabs = snap.docs.map(d=>({id:d.id, ...d.data()}));
+        console.log('[RH] '+rhColabs.length+' colaboradores cargados');
     } catch(e){
-        console.error('[RH360] Error cargando Sheet:', e.message);
-        rh360Empleados = [];
+        console.error('[RH] Error cargando colaboradores:', e.message);
+        rhColabs = [];
     }
 }
 
-//  Limpiar duplicados en Firestore: conservar uno por nombre+puesto
-async function rh360LimpiarDuplicados(todos, fs){
-    try {
-        const vistos = new Set();
-        const borrar = [];
-        // Ordenar por creadoEn para conservar el más reciente
-        const ord = [...todos].sort((a,b)=>(b.creadoEn||'').localeCompare(a.creadoEn||''));
-        ord.forEach(e=>{
-            const key = (e.nombre||'').trim().toUpperCase()+'__'+(e.puesto||'').trim().toUpperCase();
-            if(!e.nombre||e.nombre.trim().length<2){borrar.push(e.id);return;}
-            if(vistos.has(key)){borrar.push(e.id);}
-            else vistos.add(key);
-        });
-        console.log('[RH360] Borrando '+borrar.length+' duplicados de Firestore...');
-        // Borrar en lotes de 20 para no saturar
-        for(let i=0;i<borrar.length;i+=20){
-            const lote=borrar.slice(i,i+20);
-            await Promise.all(lote.map(id=>fs.deleteDoc(fs.doc(db,'rh_empleados',id)).catch(()=>{})));
-        }
-        console.log('[RH360] Limpieza completada');
-    } catch(e){ console.warn('[RH360] Error limpiando duplicados:', e.message); }
+// ── Render raíz ─────────────────────────────────────────────────
+function rhRenderRoot(){
+    const root = document.getElementById('rh360-root');
+    if(!root) return;
+    if(rhPerfilId){
+        root.innerHTML = rhHTMLPerfil(rhPerfilId);
+        rhWirePerfil();
+        return;
+    }
+    root.innerHTML = rhHTMLTopbar() + '<div id="rh-vista">' + rhHTMLVistaActual() + '</div>';
+    if(rhVista==='directorio') rhRenderDirectorioGrid();
 }
 
-//  Parsear CSV del Sheet 
-// Detecta automáticamente las columnas reales del Sheet
-function rh360ParseCSV(csv){
-    const rawLines = csv.split('\n');
-    // Encontrar la primera fila que parezca un header real (tiene varias celdas no vacías)
-    let headerIdx = 0;
-    for(let i=0;i<Math.min(5,rawLines.length);i++){
-        const cells = rawLines[i].split(',').filter(c=>c.trim().length>0);
-        if(cells.length >= 3){headerIdx=i;break;}
-    }
-    const lines = rawLines.slice(headerIdx).filter(l=>l.trim());
-    if(lines.length < 2) return [];
+window.rhSetVista = function(v){ rhVista=v; rhPerfilId=null; rhRenderRoot(); };
+window.rhAbrirPerfil = function(id){ rhPerfilId=id; rhModoEdicion=false; rhRenderRoot(); };
+window.rhVolverDirectorio = function(){ rhPerfilId=null; rhVista='directorio'; rhRenderRoot(); };
 
-    // Parsear una línea CSV respetando comillas
-    function parseLine(line){
-        const vals=[];let cur='',inQ=false;
-        for(const ch of line){
-            if(ch==='"'){inQ=!inQ;}
-            else if(ch===','&&!inQ){vals.push(cur.replace(/\r/g,'').trim());cur='';}
-            else cur+=ch;
-        }
-        vals.push(cur.replace(/\r/g,'').trim());
-        return vals;
-    }
-
-    // Normalizar nombre de columna
-    function normCol(h){
-        return h.toLowerCase()
-            .replace(/\s+/g,'_')
-            .replace(/[áàäâ]/g,'a').replace(/[éèëê]/g,'e')
-            .replace(/[íìïî]/g,'i').replace(/[óòöô]/g,'o').replace(/[úùüû]/g,'u')
-            .replace(/[ñ]/g,'n').replace(/[^a-z0-9_]/g,'').replace(/_+/g,'_').replace(/^_|_$/g,'');
-    }
-
-    const rawHeaders = parseLine(lines[0]);
-    const headers = rawHeaders.map(normCol);
-    console.log('[RH360] Columnas detectadas:', headers.join(' | '));
-
-    // Mapa de columnas conocidas a campos internos
-    const MAPA = {
-        // Nombre
-        nombre:['nombre','nombre_completo','colaborador','empleado','trabajador','nombre_trabajador'],
-        puesto:['puesto','cargo','posicion','puesto_cargo','descripcion_puesto'],
-        departamento:['departamento','depto','area','departamento_area','unidad'],
-        plaza:['plaza','sucursal','ubicacion','sede','ciudad'],
-        fecha_ingreso:['fecha_ingreso','fecha_alta','ingreso','fecha_de_ingreso','alta','f_ingreso'],
-        estatus:['estatus','status','situacion','estado'],
-        num_empleado:['num_empleado','numero_empleado','no_empleado','id_empleado','clave','folio'],
-        curp:['curp'],
-        rfc:['rfc'],
-        nss:['nss','imss','seguro_social'],
-        email:['email','correo','correo_electronico','correo_corporativo','mail'],
-        telefono:['telefono','tel','celular','phone'],
-        jefe:['jefe','jefe_directo','responsable','supervisor','gerente'],
-        tipo_contrato:['tipo_contrato','contrato','tipo_de_contrato'],
-        fecha_nacimiento:['fecha_nacimiento','nacimiento','f_nacimiento'],
-    };
-
-    // Construir mapa de índice real por campo interno
-    const colIdx = {};
-    Object.entries(MAPA).forEach(([campo,alternativas])=>{
-        const idx = headers.findIndex(h=>alternativas.includes(h));
-        if(idx>=0) colIdx[campo]=idx;
-    });
-    console.log('[RH360] Campos mapeados:', Object.keys(colIdx).join(', '));
-
-    const result = [];
-    const nombresSeen = new Set();
-
-    lines.slice(1).forEach((line,i)=>{
-        const vals = parseLine(line);
-        if(vals.every(v=>!v)) return; // fila vacía
-
-        const obj={id:'sheet_'+i};
-        // Asignar por mapa de campos
-        Object.entries(colIdx).forEach(([campo,idx])=>{
-            obj[campo] = vals[idx]||'';
-        });
-        // Fallback: asignar todas las columnas también (por si alguna coincide)
-        headers.forEach((h,j)=>{ if(h&&!obj[h]) obj[h]=vals[j]||''; });
-
-        if(!obj.estatus) obj.estatus='activo';
-
-        // Filtrar filas sin nombre o con nombre muy corto
-        const nombre=(obj.nombre||'').trim();
-        if(nombre.length<2) return;
-
-        // Deduplicar por nombre
-        const key=nombre.toUpperCase();
-        if(nombresSeen.has(key)) return;
-        nombresSeen.add(key);
-
-        result.push(obj);
-    });
-
-    return result;
-}
-
-// ── Sincronizar Sheet → Firestore (solo si Firestore está vacío) ──
-async function rh360SincronizarSheet(empleados){
-    try {
-        const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-        // Verificar de nuevo que Firestore esté vacío antes de escribir
-        const check = await fs.getDocs(fs.query(fs.collection(db,'rh_empleados'),fs.limit(1)));
-        if(!check.empty){
-            console.log('[RH360] Firestore ya tiene datos — no sincronizar');
-            return;
-        }
-        // Escribir en lotes de 400 (límite Firestore es 500)
-        const BATCH_SIZE=400;
-        for(let i=0;i<empleados.length;i+=BATCH_SIZE){
-            const lote=empleados.slice(i,i+BATCH_SIZE);
-            const batch=fs.writeBatch(db);
-            lote.forEach(emp=>{
-                const ref=fs.doc(fs.collection(db,'rh_empleados'));
-                const {id,...data}=emp;
-                batch.set(ref,{...data,importadoSheet:true,creadoEn:new Date().toISOString()});
-            });
-            await batch.commit();
-        }
-        console.log('[RH360] '+empleados.length+' colaboradores sincronizados a Firestore');
-    } catch(e){ console.warn('[RH360] No se pudo sincronizar Sheet:', e.message); }
-}
-
-//  HTML de navegación
-function rh360NavHTML(){
-    return '<div class="rh360-nav" id="rh360-nav">'+
-        '<button class="rh360-nav-btn on" id="rh360-btn-directorio" onclick="rh360SetVista(\'directorio\')">'+
-            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>'+
-            'Directorio</button>'+
-        '<button class="rh360-nav-btn" id="rh360-btn-organigrama" onclick="rh360SetVista(\'organigrama\')">'+
-            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="8" y="2" width="8" height="4" rx="1"/><rect x="1" y="18" width="6" height="4" rx="1"/><rect x="9" y="18" width="6" height="4" rx="1"/><rect x="17" y="18" width="6" height="4" rx="1"/><path d="M4 22v-4M12 22v-4M20 22v-4M12 6v12M4 18V14h16v4"/></svg>'+
-            'Organigrama</button>'+
-        '<button class="rh360-nav-btn" id="rh360-btn-alertas" onclick="rh360SetVista(\'alertas\')">'+
-            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>'+
-            'Alertas</button>'+
-        '<button class="rh360-nav-btn" style="margin-left:auto;background:#F0FDF4;color:#15803D;border-color:#BBF7D0" onclick="rh360AbrirAgregarEmp()">'+
-            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>'+
-            'Agregar colaborador</button>'+
+function rhHTMLTopbar(){
+    const labels = {directorio:'Directorio', organigrama:'Organigrama', alertas:'Alertas'};
+    return '<div class="rhd-topbar">'+
+        Object.keys(labels).map(v=>'<button class="rhd-tab'+(rhVista===v?' on':'')+'" onclick="rhSetVista(\''+v+'\')">'+labels[v]+'</button>').join('')+
+        (rhVista==='directorio' ? '<input class="rhd-search" placeholder="Buscar por nombre, puesto o departamento…" oninput="rhBuscar(this.value)" value="'+rh360Escape(rhBusqueda)+'">' : '')+
+        '<button class="rhd-add" onclick="rhNuevoColaborador()">+ Agregar colaborador</button>'+
     '</div>';
 }
 
-//  Cambiar vista activa 
-window.rh360SetVista = function(v){
-    rh360Vista = v;
-    ['directorio','organigrama','alertas'].forEach(k=>{
-        const btn = document.getElementById('rh360-btn-'+k);
-        if(btn) btn.classList.toggle('on', k===v);
-    });
-    const cont = document.getElementById('rh360-contenido');
-    if(!cont) return;
-    if(v==='directorio') cont.innerHTML = rh360HTMLDirectorio();
-    else if(v==='organigrama') cont.innerHTML = rh360HTMLOrganigrama();
-    else if(v==='alertas') cont.innerHTML = rh360HTMLAlertas();
-};
-
-// DIRECTORIO
-function rh360PuedeEliminar(){
-    const yo = window.auth?.currentUser?.email||'';
-    return yo===RH_EMAIL||(typeof esAdminTotal==='function'&&esAdminTotal(yo))||(typeof window.esAdminTotal==='function'&&window.esAdminTotal(yo));
+function rhHTMLVistaActual(){
+    if(rhVista==='organigrama') return rhHTMLOrganigrama();
+    if(rhVista==='alertas') return rhHTMLAlertas();
+    return '<div id="rh-dir-count" style="font-size:11px;color:#64748B;margin-bottom:12px"></div><div class="rhd-grid" id="rh-dir-grid"></div>';
 }
 
-function rh360HTMLDirectorio(){
-    const deptos = [...new Set(rh360Empleados.map(e=>e.departamento||e.area||'').filter(x=>x&&x!=='—'))].sort();
-    const plazas = [...new Set(rh360Empleados.map(e=>e.plaza||e.sucursal||'').filter(x=>x&&x!=='—'))].sort();
-    const puedeElim = rh360PuedeEliminar();
+// ── Directorio ──────────────────────────────────────────────────
+function rhRenderDirectorioGrid(){
+    const gridEl = document.getElementById('rh-dir-grid');
+    const countEl = document.getElementById('rh-dir-count');
+    if(!gridEl) return;
+    const q = rhBusqueda.trim().toLowerCase();
+    const lista = rhColabs.filter(c=>{
+        if(!q) return true;
+        return (c.nombre||'').toLowerCase().includes(q) ||
+               (c.puesto||'').toLowerCase().includes(q) ||
+               (c.departamento||'').toLowerCase().includes(q);
+    }).sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
 
-    return ''+
-    // Barra de búsqueda + botón filtros
-    '<div style="display:flex;gap:8px;margin-bottom:10px;align-items:center">'+
-        '<input class="rh360-search" id="rh360-buscar" placeholder="Buscar por nombre, puesto, departamento..." oninput="rh360Filtrar()" style="flex:1">'+
-        '<button onclick="rh360ToggleFiltros()" id="rh360-btn-filtros" style="padding:9px 14px;border:1.5px solid #E2E8F0;border-radius:10px;background:#fff;font-size:12px;font-weight:700;cursor:pointer;color:#475569;white-space:nowrap;display:inline-flex;align-items:center;gap:6px">'+
-            '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="11" y1="18" x2="13" y2="18"/></svg>'+
-            'Filtros <span id="rh360-filtros-badge" style="display:none;background:#2563EB;color:#fff;border-radius:99px;font-size:9px;padding:1px 6px">0</span>'+
-        '</button>'+
-        '<div style="font-size:11px;color:#94A3B8;white-space:nowrap" id="rh360-total">'+rh360Empleados.length+' colaboradores</div>'+
-    '</div>'+
-    // ── Panel de filtros colapsable ──
-    '<div id="rh360-filtros-panel" style="display:none;background:#F8FAFD;border:1.5px solid #E2E8F0;border-radius:12px;padding:14px;margin-bottom:12px">'+
-        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">'+
-            '<div>'+
-                '<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:5px">Departamento</div>'+
-                '<select class="rh360-filter" id="rh360-f-depto" onchange="rh360Filtrar()" style="width:100%">'+
-                    '<option value="">Todos</option>'+deptos.map(d=>'<option>'+d+'</option>').join('')+
-                '</select>'+
-            '</div>'+
-            '<div>'+
-                '<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:5px">Plaza / Sucursal</div>'+
-                '<select class="rh360-filter" id="rh360-f-plaza" onchange="rh360Filtrar()" style="width:100%">'+
-                    '<option value="">Todas</option>'+plazas.map(p=>'<option>'+p+'</option>').join('')+
-                '</select>'+
-            '</div>'+
-            '<div>'+
-                '<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:5px">Estatus</div>'+
-                '<select class="rh360-filter" id="rh360-f-estatus" onchange="rh360Filtrar()" style="width:100%">'+
-                    '<option value="">Todos</option>'+
-                    '<option value="activo">Activos</option>'+
-                    '<option value="baja">Bajas</option>'+
-                '</select>'+
-            '</div>'+
-        '</div>'+
-        '<button onclick="rh360LimpiarFiltros()" style="margin-top:10px;font-size:11px;font-weight:700;color:#64748B;background:none;border:none;cursor:pointer;padding:0">Limpiar filtros</button>'+
-    '</div>'+
-    //  Grid de tarjetas 
-    '<div class="rh360-grid" id="rh360-cards">'+rh360CardsHTML(rh360Empleados, puedeElim)+'</div>';
-}
+    if(countEl) countEl.textContent = lista.length+' colaboradores';
 
-window.rh360ToggleFiltros = function(){
-    const panel = document.getElementById('rh360-filtros-panel');
-    const btn = document.getElementById('rh360-btn-filtros');
-    if(!panel) return;
-    const abierto = panel.style.display !== 'none';
-    panel.style.display = abierto ? 'none' : 'block';
-    if(btn) btn.style.background = abierto ? '#fff' : '#EFF6FF';
-};
+    if(!lista.length){
+        gridEl.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#94A3B8;font-size:13px">Sin resultados</div>';
+        return;
+    }
 
-window.rh360LimpiarFiltros = function(){
-    ['rh360-f-depto','rh360-f-plaza','rh360-f-estatus'].forEach(id=>{
-        const el = document.getElementById(id);
-        if(el) el.value = '';
-    });
-    const badge = document.getElementById('rh360-filtros-badge');
-    if(badge) badge.style.display = 'none';
-    rh360Filtrar();
-};
-
-window.rh360Filtrar = function(){
-    const q = (document.getElementById('rh360-buscar')?.value||'').toLowerCase();
-    const depto = document.getElementById('rh360-f-depto')?.value||'';
-    const plaza = document.getElementById('rh360-f-plaza')?.value||'';
-    const estatus = document.getElementById('rh360-f-estatus')?.value||'';
-    // Actualizar badge de filtros activos
-    const activos = [depto,plaza,estatus].filter(Boolean).length;
-    const badge = document.getElementById('rh360-filtros-badge');
-    if(badge){badge.style.display=activos?'inline':'none';badge.textContent=activos;}
-    const filtrados = rh360Empleados.filter(e=>{
-        const nombre = (e.nombre||'').toLowerCase();
-        const puesto = (e.puesto||'').toLowerCase();
-        const depto_ = (e.departamento||e.area||'').toLowerCase();
-        const matchQ = !q || nombre.includes(q) || puesto.includes(q) || depto_.includes(q);
-        const matchD = !depto || (e.departamento||e.area||'').includes(depto);
-        const matchP = !plaza || (e.plaza||e.sucursal||'').includes(plaza);
-        const matchE = !estatus || (e.estatus||'activo').toLowerCase()===estatus;
-        return matchQ && matchD && matchP && matchE;
-    });
-    const cards = document.getElementById('rh360-cards');
-    const total = document.getElementById('rh360-total');
-    if(cards) cards.innerHTML = rh360CardsHTML(filtrados, rh360PuedeEliminar());
-    if(total) total.textContent = filtrados.length+' colaborador(es)';
-};
-
-function rh360CardsHTML(lista, puedeElim){
-    if(!lista.length) return '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#94A3B8">No se encontraron colaboradores</div>';
-    return lista.map(e=>{
-        const ini = e.fecha_ingreso||e.ingreso||'';
-        const antig = ini ? rh360Antiguedad(ini) : '—';
-        const baja = (e.estatus||'activo').toLowerCase()==='baja';
-        const iniciales = (e.nombre||'?').split(' ').slice(0,2).map(p=>p[0]||'').join('').toUpperCase();
-        const semaforo = RH360_DOCS.map(d=>{
-            const val = e['doc_'+d.key]||e[d.key]||'';
-            const color = rh360ColorDoc(val);
-            return '<div class="rh360-doc-dot '+color+'" title="'+d.label+': '+(val||'Sin info')+'"></div>';
-        }).join('');
-        const veh = (typeof flV !== 'undefined') ? flV.find(v=>(v.responsable||'').toUpperCase().includes((e.nombre||'').split(' ')[0].toUpperCase())) : null;
-        const btnElim = puedeElim
-            ? '<button onclick="event.stopPropagation();rh360Eliminar(\''+e.id+'\')" title="Eliminar colaborador" style="position:absolute;top:10px;right:10px;background:#FEE2E2;border:none;border-radius:6px;width:24px;height:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#B91C1C;font-size:13px;font-weight:900;opacity:0;transition:.15s" class="rh360-del-btn">✕</button>'
-            : '';
-        return '<div class="rh360-card" onclick="rh360AbrirPerfil(\''+e.id+'\')" style="position:relative" onmouseenter="this.querySelector(\'.rh360-del-btn\')&&(this.querySelector(\'.rh360-del-btn\').style.opacity=\'1\')" onmouseleave="this.querySelector(\'.rh360-del-btn\')&&(this.querySelector(\'.rh360-del-btn\').style.opacity=\'0\')">'+
-            btnElim+
-            '<div class="rh360-card-head">'+
-                '<div class="rh360-avatar">'+(e.foto?'<img src="'+e.foto+'" alt="'+e.nombre+'">':iniciales)+'</div>'+
-                '<div style="min-width:0">'+
-                    '<div class="rh360-name">'+rh360Escape(e.nombre||'Sin nombre')+'</div>'+
-                    '<div class="rh360-puesto">'+rh360Escape(e.puesto||e.cargo||'—')+'</div>'+
+    gridEl.innerHTML = lista.map(c=>{
+        const iniciales = (c.nombre||'?').split(' ').filter(Boolean).slice(0,2).map(p=>p[0]).join('').toUpperCase();
+        const esBaja = (c.estatus||'activo').toLowerCase()==='baja';
+        return '<div class="rhd-card" onclick="rhAbrirPerfil(\''+c.id+'\')">'+
+            '<div class="rhd-head">'+
+                '<div class="rhd-avatar">'+(c.foto?'<img src="'+c.foto+'">':iniciales)+'</div>'+
+                '<div><div class="rhd-name">'+rh360Escape(c.nombre||'(sin nombre)')+'</div>'+
+                (c.puesto?'<div class="rhd-puesto">'+rh360Escape(c.puesto)+'</div>':'')+
                 '</div>'+
             '</div>'+
-            '<div class="rh360-card-pills">'+
-                (e.departamento||e.area?'<span class="rh360-pill depto">'+rh360Escape(e.departamento||e.area)+'</span>':'')+
-                (e.plaza||e.sucursal?'<span class="rh360-pill plaza">'+rh360Escape(e.plaza||e.sucursal)+'</span>':'')+
-                (baja?'<span class="rh360-pill baja">BAJA</span>':'')+
-                (veh?'<span class="rh360-pill" style="background:#FEF3C7;color:#B45309">ECO '+veh.eco+'</span>':'')+
+            '<div class="rhd-tags">'+
+                (c.departamento?'<span class="rhd-tag">'+rh360Escape(c.departamento)+'</span>':'')+
+                (c.sinCorreo?'<span class="rhd-tag pend">Correo pendiente</span>':'')+
+                (esBaja?'<span class="rhd-tag baja">Baja</span>':'')+
             '</div>'+
-            '<div class="rh360-card-stats">'+
-                '<div class="rh360-stat-item"><div class="rh360-stat-val">'+antig+'</div><div class="rh360-stat-lbl">Antigüedad</div></div>'+
-                '<div class="rh360-stat-item"><div class="rh360-stat-val">'+(e.nss||'—')+'</div><div class="rh360-stat-lbl">NSS</div></div>'+
-                '<div class="rh360-stat-item"><div class="rh360-stat-val">'+(e.num_empleado||e.numero_empleado||'—')+'</div><div class="rh360-stat-lbl"># Emp.</div></div>'+
-            '</div>'+
-            '<div class="rh360-semaforo" style="margin-top:8px">'+semaforo+'</div>'+
         '</div>';
     }).join('');
 }
 
-// Subir foto de perfil
-window.rh360SubirFoto = function(empId){
+window.rhBuscar = function(v){ rhBusqueda = v; rhRenderDirectorioGrid(); };
+
+window.rhNuevoColaborador = async function(){
+    const nombre = prompt('Nombre completo del nuevo colaborador:');
+    if(!nombre || !nombre.trim()) return;
+    const correo = prompt('Correo corporativo (déjalo vacío si aún no lo tiene):', '');
+    const correoNorm = (correo||'').trim().toLowerCase();
+    const tieneCorreo = correoNorm.includes('@');
+    const id = tieneCorreo ? correoNorm :
+        ('sinCorreo_'+nombre.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'_'));
+    try {
+        const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const data = {
+            colaboradorId: id, nombre: nombre.trim(), correo: tieneCorreo ? correoNorm : null,
+            sinCorreo: !tieneCorreo, estatus: 'activo',
+            creadoEn: new Date().toISOString(), actualizadoEn: new Date().toISOString(),
+        };
+        await fs.setDoc(fs.doc(db,'colaboradores',id), data, {merge:true});
+        await rhCargarColaboradores();
+        rhPerfilId = id;
+        rhModoEdicion = true;
+        rhRenderRoot();
+    } catch(err){ alert('Error al crear: '+err.message); }
+};
+
+// ── Organigrama en árbol jerárquico real ───────────────────────
+function rhNormNombre(s){
+    return (s||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+}
+
+function rhHTMLOrganigrama(){
+    const activos = rhColabs.filter(c=>(c.estatus||'activo').toLowerCase()==='activo' && c.nombre);
+    if(!activos.length) return '<div style="text-align:center;padding:40px;color:#94A3B8;font-size:13px">Sin colaboradores activos</div>';
+
+    const porNombre = {};
+    activos.forEach(c=>{ porNombre[rhNormNombre(c.nombre)] = c; });
+
+    const hijosDe = {};
+    activos.forEach(c=>{
+        const jn = rhNormNombre(c.jefe);
+        const jefeMatch = jn ? porNombre[jn] : null;
+        if(jefeMatch && jefeMatch.id !== c.id){
+            (hijosDe[jefeMatch.id] = hijosDe[jefeMatch.id] || []).push(c);
+        }
+    });
+
+    const conJefeValido = new Set();
+    Object.values(hijosDe).forEach(arr=>arr.forEach(c=>conJefeValido.add(c.id)));
+    const raices = activos.filter(c=>!conJefeValido.has(c.id));
+
+    function nodoHTML(c, visitados, esRaiz){
+        if(visitados.has(c.id)) return ''; // corta ciclos accidentales
+        const nv = new Set(visitados); nv.add(c.id);
+        const hijos = hijosDe[c.id] || [];
+        return '<div>'+
+            '<div class="rho-node'+(esRaiz?' root':'')+'" onclick="rhAbrirPerfil(\''+c.id+'\')">'+
+                '<div class="rho-node-name">'+rh360Escape(c.nombre)+'</div>'+
+                (c.puesto?'<div class="rho-node-puesto">'+rh360Escape(c.puesto)+'</div>':'')+
+            '</div>'+
+            (hijos.length ? '<div class="rho-children">'+hijos.map(h=>nodoHTML(h, nv, false)).join('')+'</div>' : '')+
+        '</div>';
+    }
+
+    const conHijos = raices.filter(r=>(hijosDe[r.id]||[]).length>0);
+    const sinHijos = raices.filter(r=>!(hijosDe[r.id]||[]).length);
+
+    let html = '<div style="font-size:11px;color:#64748B;margin-bottom:14px">'+activos.length+' colaboradores activos</div>';
+    html += '<div class="rho-tree">';
+    conHijos.forEach(r=>{ html += '<div class="rho-root-item">'+nodoHTML(r, new Set(), true)+'</div>'; });
+    if(sinHijos.length){
+        html += '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin:10px 0">Sin jefe directo capturado o sin reportes</div>';
+        html += '<div class="rho-children" style="border-top:none;padding-top:0;margin-top:0">'+sinHijos.map(r=>nodoHTML(r, new Set(), false)).join('')+'</div>';
+    }
+    html += '</div>';
+    return html;
+}
+
+// ── Alertas ─────────────────────────────────────────────────────
+function rhHTMLAlertas(){
+    const alertas = [];
+    rhColabs.forEach(c=>{
+        RH_DOCS.forEach(d=>{
+            const color = rh360ColorDoc(c['doc_'+d.key]||'');
+            if(color==='rojo') alertas.push({tipo:'rojo', msg:rh360Escape(c.nombre||'—')+' — '+d.label+' VENCIDO', id:c.id});
+            else if(color==='amarillo') alertas.push({tipo:'amarillo', msg:rh360Escape(c.nombre||'—')+' — '+d.label+' próximo a vencer', id:c.id});
+        });
+    });
+    if(!alertas.length) return '<div class="rh360-alert verde"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Sin alertas activas — todos los documentos están en orden</div>';
+    const rojas = alertas.filter(a=>a.tipo==='rojo');
+    const amarillas = alertas.filter(a=>a.tipo==='amarillo');
+    let html = '';
+    if(rojas.length) html += '<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#B91C1C;margin-bottom:8px">'+rojas.length+' alertas críticas</div>'+
+        rojas.map(a=>'<div class="rh360-alert rojo" onclick="rhAbrirPerfil(\''+a.id+'\')" style="cursor:pointer">'+a.msg+'</div>').join('');
+    if(amarillas.length) html += '<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#B45309;margin-top:16px;margin-bottom:8px">'+amarillas.length+' advertencias</div>'+
+        amarillas.map(a=>'<div class="rh360-alert amarillo" onclick="rhAbrirPerfil(\''+a.id+'\')" style="cursor:pointer">'+a.msg+'</div>').join('');
+    return html;
+}
+
+// ── Perfil ──────────────────────────────────────────────────────
+function rhHTMLPerfil(id){
+    const c = rhColabs.find(x=>x.id===id);
+    if(!c) return '<div class="rhp-back" onclick="rhVolverDirectorio()">← Directorio</div><div style="color:#94A3B8">No encontrado.</div>';
+
+    const antig = c.fechaIngreso ? rh360Antiguedad(c.fechaIngreso) : '—';
+    const docsCompletos = RH_DOCS.filter(d=>rh360ColorDoc(c['doc_'+d.key]||'')==='verde').length;
+
+    return '<div class="rhp-back" onclick="rhVolverDirectorio()">'+
+            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg> Directorio'+
+        '</div>'+
+        (c.sinCorreo ? '<div class="rhp-pendcorreo"><span>Este colaborador todavía no tiene correo asignado.</span>'+
+            '<button class="rhp-doc-edit" onclick="rhAsignarCorreo(\''+c.id+'\')">Asignar correo</button></div>' : '')+
+        '<div class="rhp-grid">'+
+            '<div>'+
+                '<div class="rhp-photo" onclick="rhSubirFoto(\''+c.id+'\')">'+
+                    (c.foto?'<img src="'+c.foto+'">':'')+
+                    '<div class="rhp-photo-actions">'+
+                        (c.foto?'<button class="rhp-photo-btn" onclick="event.stopPropagation();rhEliminarFoto(\''+c.id+'\')" title="Eliminar foto">✕</button>':'')+
+                    '</div>'+
+                    '<div class="rhp-photo-overlay">'+
+                        '<div class="rhp-photo-name">'+rh360Escape(c.nombre||'(sin nombre)')+'</div>'+
+                        '<div class="rhp-photo-puesto">'+rh360Escape(c.puesto||'—')+'</div>'+
+                    '</div>'+
+                '</div>'+
+                '<div class="rhp-stat-row">'+
+                    '<div class="rhp-stat"><div class="v">'+antig+'</div><div class="l">Antigüedad</div></div>'+
+                    '<div class="rhp-stat"><div class="v">'+docsCompletos+'/'+RH_DOCS.length+'</div><div class="l">Documentos</div></div>'+
+                '</div>'+
+                '<div class="rhp-card" style="margin-top:14px">'+
+                    '<h3>Trayectoria <span class="link" onclick="rhAgregarHistorial(\''+c.id+'\')">+ Agregar</span></h3>'+
+                    rhHTMLTrayectoria(c)+
+                '</div>'+
+            '</div>'+
+            '<div>'+
+                '<div class="rhp-card">'+
+                    '<h3>Datos generales <span class="link" onclick="rhToggleEdicion()">'+(rhModoEdicion?'Cancelar':'Editar')+'</span></h3>'+
+                    rhHTMLDatosGenerales(c)+
+                '</div>'+
+                '<div class="rhp-card">'+
+                    '<h3>Documentos</h3>'+
+                    rhHTMLDocumentos(c)+
+                '</div>'+
+            '</div>'+
+            '<div>'+
+                '<div class="rhp-card">'+
+                    '<h3>Actividad reciente</h3>'+
+                    '<div id="rhp-actividad"><div class="rhp-empty-mod">Cargando…</div></div>'+
+                '</div>'+
+            '</div>'+
+        '</div>';
+}
+
+function rhHTMLDatosGenerales(c){
+    if(!rhModoEdicion){
+        return '<div class="rhp-data-grid">'+RH_CAMPOS_VISTA.map(f=>{
+            const val = c[f.key];
+            return '<div class="rhp-field"><div class="k">'+f.label+'</div><div class="v'+(val?'':' empty')+'">'+(val?rh360Escape(val):'Sin capturar')+'</div></div>';
+        }).join('')+'</div>';
+    }
+    return '<div class="rhp-data-grid">'+RH_CAMPOS_EDITABLES.map(f=>{
+        if(f.type==='select'){
+            return '<div class="rhp-field"><div class="k">'+f.label+'</div><select id="rhp-edit-'+f.key+'">'+
+                f.opts.map(o=>'<option value="'+o+'"'+(c[f.key]===o?' selected':'')+'>'+o+'</option>').join('')+
+            '</select></div>';
+        }
+        return '<div class="rhp-field"><div class="k">'+f.label+'</div><input type="text" id="rhp-edit-'+f.key+'" value="'+rh360Escape(c[f.key]||'')+'"></div>';
+    }).join('')+'</div>'+
+    '<div style="margin-top:12px">'+
+        '<button class="rhd-tab on" onclick="rhGuardarDatos(\''+c.id+'\')">Guardar cambios</button>'+
+    '</div>';
+}
+
+window.rhToggleEdicion = function(){ rhModoEdicion = !rhModoEdicion; rhRenderRoot(); };
+
+window.rhGuardarDatos = async function(id){
+    const data = {};
+    RH_CAMPOS_EDITABLES.forEach(f=>{
+        const el = document.getElementById('rhp-edit-'+f.key);
+        if(el) data[f.key] = el.value.trim();
+    });
+    try {
+        const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        data.actualizadoEn = new Date().toISOString();
+        await fs.updateDoc(fs.doc(db,'colaboradores',id), data);
+        const c = rhColabs.find(x=>x.id===id);
+        if(c) Object.assign(c, data);
+        rhModoEdicion = false;
+        if(typeof window.mostrarPush==='function') window.mostrarPush('Guardado','Datos actualizados correctamente','👤');
+        rhRenderRoot();
+    } catch(err){ alert('Error al guardar: '+err.message); }
+};
+
+function rhHTMLDocumentos(c){
+    const colores = {verde:'#16A34A',amarillo:'#D97706',rojo:'#DC2626',gris:'#94A3B8'};
+    const labelsColor = {verde:'Vigente',amarillo:'Por vencer',rojo:'Vencido',gris:'Sin información'};
+    const iconos = {verde:'✓',amarillo:'!',rojo:'✗',gris:'–'};
+    return RH_DOCS.map(d=>{
+        const val = c['doc_'+d.key]||'';
+        const color = rh360ColorDoc(val);
+        return '<div class="rhp-doc-row">'+
+            '<div class="rhp-doc-icn" style="background:'+colores[color]+'">'+iconos[color]+'</div>'+
+            '<div class="rhp-doc-name">'+d.label+'<br><span style="font-weight:500;color:#94A3B8;font-size:10px">'+labelsColor[color]+(val&&color!=='gris'?' · '+rh360Escape(val):'')+'</span></div>'+
+            '<button class="rhp-doc-edit" onclick="rhEditarDoc(\''+c.id+'\',\''+d.key+'\')">Actualizar</button>'+
+        '</div>';
+    }).join('');
+}
+
+window.rhEditarDoc = async function(id, key){
+    const d = RH_DOCS.find(x=>x.key===key);
+    const c = rhColabs.find(x=>x.id===id);
+    const actual = c['doc_'+key] || '';
+    const val = prompt('Estado de "'+d.label+'":\n• Fecha de vencimiento (AAAA-MM-DD)\n• O escribe "vigente" si no vence\n• Vacío para borrar el dato', actual);
+    if(val===null) return;
+    try {
+        const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const campo = {}; campo['doc_'+key] = val.trim();
+        campo.actualizadoEn = new Date().toISOString();
+        await fs.updateDoc(fs.doc(db,'colaboradores',id), campo);
+        c['doc_'+key] = val.trim();
+        rhRenderRoot();
+    } catch(err){ alert('Error: '+err.message); }
+};
+
+function rhHTMLTrayectoria(c){
+    const eventos = Array.isArray(c.historial) ? [...c.historial] : [];
+    if(c.fechaIngreso) eventos.push({fecha:c.fechaIngreso, texto:'Ingreso a Tecnocontrol'+(c.puesto?' — '+c.puesto:'')});
+    if(!eventos.length) return '<div style="text-align:center;padding:16px;color:#94A3B8;font-size:11.5px">Sin eventos registrados</div>';
+    eventos.sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
+    return '<div class="rhp-tl">'+eventos.map(ev=>
+        '<div class="rhp-tl-item"><div class="rhp-tl-dot"></div><div class="rhp-tl-date">'+rh360Escape(ev.fecha||'—')+'</div><div class="rhp-tl-text">'+rh360Escape(ev.texto||'—')+'</div></div>'
+    ).join('')+'</div>';
+}
+
+window.rhAgregarHistorial = async function(id){
+    const texto = prompt('Descripción del evento (ej. "Promoción a Encargado de Flotilla"):');
+    if(!texto || !texto.trim()) return;
+    const fecha = prompt('Fecha (AAAA-MM-DD):', new Date().toISOString().slice(0,10));
+    if(!fecha) return;
+    try {
+        const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const c = rhColabs.find(x=>x.id===id);
+        const historial = Array.isArray(c.historial) ? [...c.historial] : [];
+        historial.push({fecha: fecha.trim(), texto: texto.trim()});
+        await fs.updateDoc(fs.doc(db,'colaboradores',id), {historial, actualizadoEn:new Date().toISOString()});
+        c.historial = historial;
+        rhRenderRoot();
+    } catch(err){ alert('Error: '+err.message); }
+};
+
+// ── Foto de perfil ──────────────────────────────────────────────
+window.rhSubirFoto = function(id){
     const inp = document.createElement('input');
     inp.type='file'; inp.accept='image/*'; inp.style.display='none';
     document.body.appendChild(inp);
@@ -1360,7 +1455,6 @@ window.rh360SubirFoto = function(empId){
         const file = this.files[0];
         if(!file){document.body.removeChild(inp);return;}
         if(file.size > 5*1024*1024){alert('La imagen es demasiado grande. Usa una menor a 5MB.');document.body.removeChild(inp);return;}
-        // Comprimir a 400px, suficiente para avatar
         const b64 = await new Promise(res=>{
             const reader = new FileReader();
             reader.onload = e=>{
@@ -1369,465 +1463,126 @@ window.rh360SubirFoto = function(empId){
                     const size = 400;
                     const ratio = Math.min(1, size/Math.max(img.width,img.height));
                     const w = Math.round(img.width*ratio), h = Math.round(img.height*ratio);
-                    const c = document.createElement('canvas'); c.width=w; c.height=h;
-                    c.getContext('2d').drawImage(img,0,0,w,h);
-                    res(c.toDataURL('image/jpeg',0.82));
+                    const cv = document.createElement('canvas'); cv.width=w; cv.height=h;
+                    cv.getContext('2d').drawImage(img,0,0,w,h);
+                    res(cv.toDataURL('image/jpeg',0.82));
                 };
                 img.src = e.target.result;
             };
             reader.readAsDataURL(file);
         });
         document.body.removeChild(inp);
-        // Guardar en Firestore
         try {
             const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-            if(!empId.startsWith('sheet_')&&!empId.startsWith('new_')){
-                await fs.updateDoc(fs.doc(db,'rh_empleados',empId),{foto:b64,actualizadoEn:new Date().toISOString()});
-            }
-            // Actualizar en memoria
-            const e = rh360Empleados.find(x=>x.id===empId);
-            if(e) e.foto = b64;
-            if(rh360EmpleadoAct&&rh360EmpleadoAct.id===empId) rh360EmpleadoAct.foto = b64;
-            // Refrescar el avatar en el modal sin cerrar ni cambiar de tab
-            const avEl = document.querySelector('.rh360-modal-avatar');
-            if(avEl){
-                const iniciales = (rh360EmpleadoAct?.nombre||'?').split(' ').slice(0,2).map(p=>p[0]||'').join('').toUpperCase();
-                avEl.innerHTML = '<img src="'+b64+'" style="width:72px;height:72px;border-radius:50%;object-fit:cover">'+
-                    '<div class="rh360-avatar-overlay">'+
-                        '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>'+
-                        '<span>CAMBIAR</span>'+
-                    '</div>';
-            }
+            await fs.updateDoc(fs.doc(db,'colaboradores',id), {foto:b64, actualizadoEn:new Date().toISOString()});
+            const c = rhColabs.find(x=>x.id===id);
+            if(c) c.foto = b64;
+            rhRenderRoot();
             if(typeof window.mostrarPush==='function') window.mostrarPush('Foto actualizada','La foto de perfil se guardó correctamente','👤');
-        } catch(err){
-            alert('Error al guardar la foto: '+err.message);
-        }
+        } catch(err){ alert('Error al guardar la foto: '+err.message); }
     };
     inp.click();
 };
 
-window.rh360Eliminar = async function(id){
-    const e = rh360Empleados.find(x=>x.id===id);
-    if(!e) return;
-    if(!confirm('¿Eliminar a '+e.nombre+' del directorio?\n\nEsta acción no se puede deshacer.')) return;
-    try {
-        if(!id.startsWith('sheet_') && !id.startsWith('new_')){
-            const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-            await fs.deleteDoc(fs.doc(db,'rh_empleados',id));
-        }
-        rh360Empleados = rh360Empleados.filter(x=>x.id!==id);
-        rh360SetVista('directorio');
-        if(typeof window.mostrarPush==='function') window.mostrarPush('Eliminado',e.nombre+' eliminado del directorio','👤');
-    } catch(err){
-        alert('Error al eliminar: '+err.message);
-    }
-};
-
-// PERFIL 360°
-window.rh360AbrirPerfil = function(id){
-    const e = rh360Empleados.find(x=>x.id===id);
-    if(!e) return;
-    rh360EmpleadoAct = e;
-    rh360TabModal = 'info';
-    const modal = document.getElementById('rh360-modal');
-    if(!modal) return;
-    modal.classList.add('show');
-    rh360RenderModal(e);
-};
-
-window.rh360CerrarModal = function(){
-    document.getElementById('rh360-modal')?.classList.remove('show');
-    rh360EmpleadoAct = null;
-};
-
-function rh360RenderModal(e){
-    const box = document.getElementById('rh360-modal-box');
-    if(!box) return;
-    const iniciales = (e.nombre||'?').split(' ').slice(0,2).map(p=>p[0]||'').join('').toUpperCase();
-    const ini = e.fecha_ingreso||e.ingreso||'';
-    const antig = ini ? rh360Antiguedad(ini) : '—';
-    const tabs = [
-        {key:'info',   label:'Información'},
-        {key:'docs',   label:'Documentos'},
-        {key:'veh',    label:'Vehículo'},
-        {key:'hist',   label:'Historial'},
-        {key:'edit',   label:'Editar'},
-    ];
-    box.innerHTML =
-        '<div class="rh360-modal-hero">'+
-            '<div class="rh360-modal-avatar" onclick="rh360SubirFoto(\''+e.id+'\')" title="Clic para cambiar foto">'+
-                (e.foto?'<img src="'+e.foto+'" style="width:72px;height:72px;border-radius:50%;object-fit:cover">':iniciales)+
-                '<div class="rh360-avatar-overlay">'+
-                    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>'+
-                    '<span>CAMBIAR</span>'+
-                '</div>'+
-            '</div>'+
-            '<div style="flex:1;min-width:0">'+
-                '<div class="rh360-modal-name">'+rh360Escape(e.nombre||'—')+'</div>'+
-                '<div class="rh360-modal-sub">'+rh360Escape(e.puesto||e.cargo||'—')+' · '+rh360Escape(e.departamento||e.area||'—')+'</div>'+
-                '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">'+
-                    '<span style="font-size:10px;font-weight:700;background:rgba(255,255,255,.15);padding:3px 10px;border-radius:99px;color:#fff">'+rh360Escape(e.plaza||e.sucursal||'—')+'</span>'+
-                    '<span style="font-size:10px;font-weight:700;background:rgba(255,255,255,.15);padding:3px 10px;border-radius:99px;color:#fff">'+antig+'</span>'+
-                    ((e.estatus||'activo').toLowerCase()==='baja'?'<span style="font-size:10px;font-weight:700;background:#DC2626;padding:3px 10px;border-radius:99px;color:#fff">BAJA</span>':'')+
-                '</div>'+
-            '</div>'+
-            '<button onclick="rh360CerrarModal()" style="background:rgba(255,255,255,.1);border:none;color:#fff;width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:16px;flex-shrink:0">✕</button>'+
-        '</div>'+
-        '<div class="rh360-modal-tabs">'+
-            tabs.map(t=>'<div class="rh360-modal-tab'+(t.key===rh360TabModal?' on':'')+'" onclick="rh360TabSwitch(\''+t.key+'\')">'+t.label+'</div>').join('')+
-        '</div>'+
-        '<div class="rh360-modal-body" id="rh360-modal-body">'+rh360TabContent(e,rh360TabModal)+'</div>';
-}
-
-window.rh360TabSwitch = function(tab){
-    rh360TabModal = tab;
-    const tabs = document.querySelectorAll('.rh360-modal-tab');
-    tabs.forEach(t=>t.classList.toggle('on', t.onclick?.toString().includes("'"+tab+"'")));
-    // Refrescar tabs activos visualmente
-    document.querySelectorAll('.rh360-modal-tab').forEach(t=>{
-        t.classList.remove('on');
-        if(t.getAttribute('onclick')&&t.getAttribute('onclick').includes("'"+tab+"'")) t.classList.add('on');
-    });
-    const body = document.getElementById('rh360-modal-body');
-    if(body && rh360EmpleadoAct) body.innerHTML = rh360TabContent(rh360EmpleadoAct, tab);
-};
-
-function rh360TabContent(e, tab){
-    if(tab==='info') return rh360TabInfo(e);
-    if(tab==='docs') return rh360TabDocs(e);
-    if(tab==='veh')  return rh360TabVeh(e);
-    if(tab==='hist') return rh360TabHist(e);
-    if(tab==='edit') return rh360TabEdit(e);
-    return '';
-}
-
-// Tab: Información general
-function rh360TabInfo(e){
-    const campos = [
-        ['Nombre completo', e.nombre],
-        ['# Empleado', e.num_empleado||e.numero_empleado],
-        ['Puesto / Cargo', e.puesto||e.cargo],
-        ['Departamento', e.departamento||e.area],
-        ['Plaza / Sucursal', e.plaza||e.sucursal],
-        ['Jefe directo', e.jefe||e.responsable||e.jefe_directo],
-        ['Fecha ingreso', e.fecha_ingreso||e.ingreso],
-        ['Estatus', e.estatus||'activo'],
-        ['CURP', e.curp],
-        ['RFC', e.rfc],
-        ['NSS', e.nss],
-        ['Fecha nacimiento', e.fecha_nacimiento||e.nacimiento],
-        ['Tipo de sangre', e.tipo_sangre||e.sangre],
-        ['Estado civil', e.estado_civil],
-        ['Tipo de contrato', e.tipo_contrato||e.contrato],
-    ];
-    const contacto = [
-        ['Correo corporativo', e.email||e.correo||e.correo_corporativo],
-        ['Correo personal', e.correo_personal],
-        ['Teléfono', e.telefono||e.tel],
-        ['Teléfono alterno', e.telefono_alterno||e.tel2],
-        ['Dirección', e.direccion||e.domicilio],
-        ['Contacto emergencia', e.contacto_emergencia],
-        ['Tel. emergencia', e.tel_emergencia],
-    ];
-    const rFld = (label,val) => '<div class="rh360-field"><div class="rh360-field-lbl">'+label+'</div><div class="rh360-field-val">'+rh360Escape(val||'—')+'</div></div>';
-    return '<div class="rh360-section"><div class="rh360-section-title">Datos personales y laborales</div>'+
-        '<div class="rh360-grid2">'+campos.map(([l,v])=>rFld(l,v)).join('')+'</div></div>'+
-        '<div class="rh360-section"><div class="rh360-section-title">Contacto</div>'+
-        '<div class="rh360-grid2">'+contacto.map(([l,v])=>rFld(l,v)).join('')+'</div></div>';
-}
-
-// Tab: Documentos con semáforo
-function rh360TabDocs(e){
-    const semaforo = {verde:'Vigente',amarillo:'Próximo a vencer',rojo:'Vencido',gris:'Sin información'};
-    const colores = {verde:'#15803D',amarillo:'#D97706',rojo:'#DC2626',gris:'#94A3B8'};
-    const iconos = {verde:'✓',amarillo:'!',rojo:'✗',gris:'—'};
-    const rows = RH360_DOCS.map(d=>{
-        const val = e['doc_'+d.key]||e[d.key]||'';
-        const color = rh360ColorDoc(val);
-        const venc = e['venc_'+d.key]||e[d.key+'_vencimiento']||val;
-        return '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px;border-radius:8px;border:1px solid #F1F5F9;margin-bottom:6px;background:#fff">'+
-            '<div style="display:flex;align-items:center;gap:10px">'+
-                '<div style="width:28px;height:28px;border-radius:50%;background:'+colores[color]+';display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:800">'+iconos[color]+'</div>'+
-                '<div>'+
-                    '<div style="font-size:12px;font-weight:700">'+d.label+'</div>'+
-                    '<div style="font-size:10px;color:#94A3B8">'+semaforo[color]+(venc&&color!=='gris'?' · '+venc:'')+'</div>'+
-                '</div>'+
-            '</div>'+
-            '<button onclick="rh360EditarDoc(\''+e.id+'\',\''+d.key+'\')" style="font-size:10px;font-weight:700;padding:4px 10px;border:1px solid #E2E8F0;border-radius:6px;background:#fff;cursor:pointer;color:#64748B">Actualizar</button>'+
-        '</div>';
-    }).join('');
-    return '<div class="rh360-section"><div class="rh360-section-title">Estado documental</div>'+rows+'</div>';
-}
-
-//  Tab: Vehículo asignado
-function rh360TabVeh(e){
-    const veh = (typeof flV !== 'undefined')
-        ? flV.find(v=>(v.responsable||'').toUpperCase().includes((e.nombre||'').split(' ')[0].toUpperCase()))||
-          flV.find(v=>String(v.eco)===(e.eco_vehiculo||e.vehiculo_eco||''))
-        : null;
-    if(!veh) return '<div style="text-align:center;padding:32px;color:#94A3B8">'+
-        '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#CBD5E1" stroke-width="1.5" style="margin:0 auto 10px;display:block"><path d="M5 17H3a2 2 0 01-2-2V9a2 2 0 012-2h11a2 2 0 012 2v6h-2"/><path d="M7 9l2-4h6l2 4"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>'+
-        '<div style="font-size:13px;font-weight:700">Sin vehículo asignado</div>'+
-        '<div style="font-size:11px;margin-top:4px">El responsable en Flotilla no coincide con este colaborador</div>'+
-    '</div>';
-    const campos = [
-        ['ECO', veh.eco],['Unidad', veh.unidad],['Año', veh.año],
-        ['Placas', veh.placas],['Plaza', veh.plaza],['Color', veh.color],
-        ['Tipo', veh.tipo],['Serie / VIN', veh.serie],['KM actual', veh.km||'0'],
-        ['Rendimiento', veh.rend],['Póliza seguro', veh.pol],['Vence póliza', veh.pv],
-        ['NIP gasolina', veh.nip],['Estatus', veh.status||'activo'],
-    ];
-    return '<div class="rh360-section"><div class="rh360-section-title">Vehículo asignado en Flotilla</div>'+
-        '<div class="rh360-grid2">'+campos.map(([l,v])=>
-            '<div class="rh360-field"><div class="rh360-field-lbl">'+l+'</div><div class="rh360-field-val">'+rh360Escape(String(v||'—'))+'</div></div>'
-        ).join('')+'</div></div>';
-}
-
-//  Tab: Historial / Timeline
-function rh360TabHist(e){
-    const eventos = e.historial || [];
-    // Si no hay historial manual, construir uno desde los datos básicos
-    const autoEvents = [];
-    if(e.fecha_ingreso||e.ingreso) autoEvents.push({fecha:e.fecha_ingreso||e.ingreso,texto:'Ingreso a Tecnocontrol — '+rh360Escape(e.puesto||e.cargo||'')});
-    eventos.forEach(ev=>autoEvents.push(ev));
-    autoEvents.sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
-    if(!autoEvents.length) return '<div style="text-align:center;padding:24px;color:#94A3B8;font-size:12px">Sin historial registrado</div>';
-    const items = autoEvents.map(ev=>'<div class="rh360-tl-item">'+
-        '<div class="rh360-tl-dot"></div>'+
-        '<div class="rh360-tl-date">'+rh360Escape(ev.fecha||'—')+'</div>'+
-        '<div class="rh360-tl-text">'+rh360Escape(ev.texto||ev.descripcion||ev.movimiento||'—')+'</div>'+
-    '</div>').join('');
-    return '<div class="rh360-section"><div class="rh360-section-title">Línea de tiempo laboral</div>'+
-        '<div class="rh360-timeline">'+items+'</div>'+
-        '<button onclick="rh360AgregarHistorial(\''+e.id+'\')" style="margin-top:12px;padding:8px 16px;border:1.5px solid #E2E8F0;border-radius:8px;background:#fff;font-size:11px;font-weight:700;cursor:pointer;color:#64748B">+ Agregar evento</button>'+
-    '</div>';
-}
-
-//  Tab: Editar colaborador 
-function rh360TabEdit(e){
-    const campos = [
-        {key:'nombre',label:'Nombre completo',type:'text'},
-        {key:'puesto',label:'Puesto / Cargo',type:'text'},
-        {key:'departamento',label:'Departamento',type:'text'},
-        {key:'plaza',label:'Plaza / Sucursal',type:'text'},
-        {key:'jefe',label:'Jefe directo',type:'text'},
-        {key:'fecha_ingreso',label:'Fecha ingreso',type:'date'},
-        {key:'estatus',label:'Estatus',type:'select',opts:['activo','baja','licencia','suspendido']},
-        {key:'email',label:'Correo corporativo',type:'email'},
-        {key:'telefono',label:'Teléfono',type:'tel'},
-        {key:'curp',label:'CURP',type:'text'},
-        {key:'rfc',label:'RFC',type:'text'},
-        {key:'nss',label:'NSS',type:'text'},
-        {key:'num_empleado',label:'# Empleado',type:'text'},
-        {key:'tipo_contrato',label:'Tipo de contrato',type:'text'},
-        {key:'tipo_sangre',label:'Tipo de sangre',type:'text'},
-        {key:'estado_civil',label:'Estado civil',type:'text'},
-    ];
-    const inputs = campos.map(c=>{
-        if(c.type==='select'){
-            return '<div><label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">'+c.label+'</label>'+
-                '<select class="rh-form-input" id="rh360-edit-'+c.key+'">'+
-                c.opts.map(o=>'<option value="'+o+'"'+(e[c.key]===o?' selected':'')+'>'+o+'</option>').join('')+
-                '</select></div>';
-        }
-        return '<div><label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">'+c.label+'</label>'+
-            '<input type="'+c.type+'" class="rh-form-input" id="rh360-edit-'+c.key+'" value="'+rh360Escape(e[c.key]||'')+'"></div>';
-    }).join('');
-    return '<div class="rh360-section">'+
-        '<div class="rh360-grid2">'+inputs+'</div>'+
-        '<div style="margin-top:16px;display:flex;gap:8px">'+
-            '<button onclick="rh360Guardar(\''+e.id+'\')" style="padding:10px 20px;background:#0A1628;color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer">Guardar cambios</button>'+
-            '<button onclick="rh360TabSwitch(\'info\')" style="padding:10px 20px;background:#F1F5F9;color:#475569;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer">Cancelar</button>'+
-        '</div>'+
-    '</div>';
-}
-
-//  Guardar edición de colaborador
-window.rh360Guardar = async function(id){
-    const campos = ['nombre','puesto','departamento','plaza','jefe','fecha_ingreso','estatus','email','telefono','curp','rfc','nss','num_empleado','tipo_contrato','tipo_sangre','estado_civil'];
-    const data = {};
-    campos.forEach(k=>{
-        const el = document.getElementById('rh360-edit-'+k);
-        if(el) data[k]=el.value.trim();
-    });
-    data.actualizadoEn = new Date().toISOString();
+window.rhEliminarFoto = async function(id){
+    if(!confirm('¿Eliminar la foto de este colaborador?')) return;
     try {
         const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-        if(id.startsWith('sheet_') || id.startsWith('new_')){
-            // Crear nuevo doc en Firestore
-            const ref = await fs.addDoc(fs.collection(db,'rh_empleados'),{...data});
-            // Actualizar en memoria
-            const idx = rh360Empleados.findIndex(e=>e.id===id);
-            if(idx>=0){rh360Empleados[idx]={...rh360Empleados[idx],...data,id:ref.id};}
-        } else {
-            await fs.updateDoc(fs.doc(db,'rh_empleados',id), data);
-            const idx = rh360Empleados.findIndex(e=>e.id===id);
-            if(idx>=0) rh360Empleados[idx]={...rh360Empleados[idx],...data};
-        }
-        rh360EmpleadoAct={...rh360EmpleadoAct,...data};
-        rh360RenderModal(rh360EmpleadoAct);
-        rh360TabSwitch('info');
-        if(typeof window.mostrarPush==='function') window.mostrarPush('Guardado','Colaborador actualizado','👤');
-    } catch(e){
-        alert('Error al guardar: '+e.message);
-    }
+        await fs.updateDoc(fs.doc(db,'colaboradores',id), {foto:null, actualizadoEn:new Date().toISOString()});
+        const c = rhColabs.find(x=>x.id===id);
+        if(c) c.foto = null;
+        rhRenderRoot();
+    } catch(err){ alert('Error: '+err.message); }
 };
 
-//  Actualizar estado de documento
-window.rh360EditarDoc = function(empId, docKey){
-    const e = rh360Empleados.find(x=>x.id===empId);
-    if(!e) return;
-    const doc = RH360_DOCS.find(d=>d.key===docKey);
-    const ov = document.createElement('div');
-    ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
-    ov.innerHTML='<div style="background:#fff;border-radius:16px;padding:24px;width:100%;max-width:400px">'+
-        '<div style="font-size:15px;font-weight:800;margin-bottom:16px">Actualizar: '+doc.label+'</div>'+
-        '<div style="margin-bottom:12px"><label style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8;display:block;margin-bottom:4px">Estado</label>'+
-        '<select id="rh360-doc-status" class="rh-form-input">'+
-            '<option value="">Sin información</option>'+
-            '<option value="vigente"'+(e['doc_'+docKey]==='vigente'?' selected':'')+'>Vigente</option>'+
-            '<option value="por_vencer"'+(e['doc_'+docKey]==='por_vencer'?' selected':'')+'>Próximo a vencer</option>'+
-            '<option value="vencido"'+(e['doc_'+docKey]==='vencido'?' selected':'')+'>Vencido</option>'+
-        '</select></div>'+
-        '<div style="margin-bottom:16px"><label style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8;display:block;margin-bottom:4px">Fecha vencimiento (opcional)</label>'+
-        '<input type="date" id="rh360-doc-venc" class="rh-form-input" value="'+(e['venc_'+docKey]||'')+'"></div>'+
-        '<div style="display:flex;gap:8px">'+
-            '<button id="rh360-doc-save" style="flex:1;padding:10px;background:#0A1628;color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer">Guardar</button>'+
-            '<button onclick="this.closest(\'div[style*=fixed]\').remove()" style="flex:1;padding:10px;background:#F1F5F9;color:#64748B;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer">Cancelar</button>'+
-        '</div>'+
-    '</div>';
-    ov.addEventListener('click',ev=>{if(ev.target===ov)ov.remove();});
-    document.body.appendChild(ov);
-    document.getElementById('rh360-doc-save').onclick=async()=>{
-        const status=document.getElementById('rh360-doc-status').value;
-        const venc=document.getElementById('rh360-doc-venc').value;
-        const upd={['doc_'+docKey]:status,['venc_'+docKey]:venc,actualizadoEn:new Date().toISOString()};
-        try{
-            const fs=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-            if(!empId.startsWith('sheet_') && !empId.startsWith('new_')) await fs.updateDoc(fs.doc(db,'rh_empleados',empId),upd);
-            Object.assign(e,upd);
-            ov.remove();
-            rh360TabSwitch('docs');
-        }catch(err){alert('Error: '+err.message);}
-    };
+// ── Asignar correo real a un colaborador "sinCorreo_" ──────────
+window.rhAsignarCorreo = async function(idViejo){
+    const c = rhColabs.find(x=>x.id===idViejo);
+    if(!c) return;
+    const correo = prompt('Correo real de '+(c.nombre||'este colaborador')+':', '');
+    if(!correo) return;
+    const correoNorm = correo.trim().toLowerCase();
+    if(!correoNorm.includes('@')){ alert('Correo inválido.'); return; }
+    try {
+        const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const refNuevo = fs.doc(db,'colaboradores',correoNorm);
+        const existente = await fs.getDoc(refNuevo);
+        const base = existente.exists() ? existente.data() : {};
+        const combinado = { ...c, ...base, colaboradorId:correoNorm, correo:correoNorm, sinCorreo:false, actualizadoEn:new Date().toISOString() };
+        delete combinado.id;
+        await fs.setDoc(refNuevo, combinado, {merge:true});
+        if(idViejo !== correoNorm) await fs.deleteDoc(fs.doc(db,'colaboradores',idViejo));
+        await rhCargarColaboradores();
+        rhPerfilId = correoNorm;
+        rhRenderRoot();
+        if(typeof window.mostrarPush==='function') window.mostrarPush('Correo asignado','Colaborador actualizado correctamente','👤');
+    } catch(err){ alert('Error: '+err.message); }
 };
 
-//  Agregar evento al historial
-window.rh360AgregarHistorial = function(empId){
-    const e = rh360Empleados.find(x=>x.id===empId);
-    if(!e) return;
-    const ov=document.createElement('div');
-    ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
-    ov.innerHTML='<div style="background:#fff;border-radius:16px;padding:24px;width:100%;max-width:400px">'+
-        '<div style="font-size:15px;font-weight:800;margin-bottom:16px">Agregar al historial</div>'+
-        '<div style="margin-bottom:10px"><label style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8;display:block;margin-bottom:4px">Fecha</label>'+
-        '<input type="date" id="rh360-hl-fecha" class="rh-form-input" value="'+new Date().toISOString().slice(0,10)+'"></div>'+
-        '<div style="margin-bottom:16px"><label style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8;display:block;margin-bottom:4px">Descripción</label>'+
-        '<input type="text" id="rh360-hl-texto" class="rh-form-input" placeholder="Ej: Cambio de puesto, promoción, capacitación..."></div>'+
-        '<div style="display:flex;gap:8px">'+
-            '<button id="rh360-hl-save" style="flex:1;padding:10px;background:#0A1628;color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer">Guardar</button>'+
-            '<button onclick="this.closest(\'div[style*=fixed]\').remove()" style="flex:1;padding:10px;background:#F1F5F9;color:#64748B;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer">Cancelar</button>'+
-        '</div></div>';
-    ov.addEventListener('click',ev=>{if(ev.target===ov)ov.remove();});
-    document.body.appendChild(ov);
-    document.getElementById('rh360-hl-save').onclick=async()=>{
-        const fecha=document.getElementById('rh360-hl-fecha').value;
-        const texto=document.getElementById('rh360-hl-texto').value.trim();
-        if(!texto){alert('Escribe una descripción');return;}
-        const hist=[...(e.historial||[]),{fecha,texto}];
-        try{
-            const fs=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-            if(!empId.startsWith('sheet_') && !empId.startsWith('new_')) await fs.updateDoc(fs.doc(db,'rh_empleados',empId),{historial:hist});
-            e.historial=hist;
-            ov.remove();
-            rh360TabSwitch('hist');
-        }catch(err){alert('Error: '+err.message);}
-    };
-};
+// ── Actividad cruzada: Flotilla + Operaciones, solo lectura ────
+async function rhCargarActividadCruzada(correo){
+    const resultado = { vehiculo:null, herramientas:[] };
+    const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
 
-//  Agregar nuevo colaborador
-window.rh360AbrirAgregarEmp = function(){
-    const nuevo={id:'new_'+Date.now(),nombre:'',puesto:'',departamento:'',plaza:'',estatus:'activo'};
-    rh360EmpleadoAct=nuevo;
-    rh360TabModal='edit';
-    const modal=document.getElementById('rh360-modal');
-    if(modal){modal.classList.add('show');rh360RenderModal(nuevo);}
-};
-
-// ORGANIGRAMA
-function rh360HTMLOrganigrama(){
-    // Agrupar por departamento y jefe
-    const deptos = {};
-    rh360Empleados.filter(e=>(e.estatus||'activo').toLowerCase()==='activo').forEach(e=>{
-        const d = e.departamento||e.area||'Sin departamento';
-        if(!deptos[d]) deptos[d]=[];
-        deptos[d].push(e);
-    });
-    const nodos = Object.entries(deptos).map(([depto,emps])=>{
-        const jefes = emps.filter(e=>e.jefe&&emps.some(x=>x.nombre===e.jefe)).concat(emps.filter(e=>!e.jefe));
-        return '<div style="background:#fff;border-radius:12px;border:1.5px solid #E2E8F0;padding:14px;min-width:200px;cursor:default">'+
-            '<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#2563EB;margin-bottom:10px">'+rh360Escape(depto)+'</div>'+
-            emps.map(e=>'<div style="display:flex;align-items:center;gap:8px;padding:6px;border-radius:7px;cursor:pointer;transition:.1s" onclick="rh360AbrirPerfil(\''+e.id+'\')" onmouseover="this.style.background=\'#F8FAFD\'" onmouseout="this.style.background=\'\'">'+
-                '<div style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#1E3A5F,#2563EB);display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:800;flex-shrink:0">'+
-                    (e.nombre||'?').split(' ').slice(0,2).map(p=>p[0]||'').join('').toUpperCase()+
-                '</div>'+
-                '<div><div style="font-size:11.5px;font-weight:700;color:#0A0F1E">'+rh360Escape(e.nombre||'—')+'</div>'+
-                '<div style="font-size:9.5px;color:#94A3B8">'+rh360Escape(e.puesto||e.cargo||'—')+'</div></div>'+
-            '</div>').join('')+
-        '</div>';
-    }).join('');
-    const total=rh360Empleados.filter(e=>(e.estatus||'activo').toLowerCase()==='activo').length;
-    return '<div style="margin-bottom:14px;font-size:11px;color:#64748B">'+total+' colaboradores activos · '+Object.keys(deptos).length+' departamentos</div>'+
-        '<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start">'+nodos+'</div>';
-}
-
-// ALERTAS
-function rh360HTMLAlertas(){
-    const alertas=[];
-    rh360Empleados.forEach(e=>{
-        RH360_DOCS.forEach(d=>{
-            const color=rh360ColorDoc(e['doc_'+d.key]||'');
-            if(color==='rojo') alertas.push({tipo:'rojo',msg:rh360Escape(e.nombre||'—')+' — '+d.label+' VENCIDO',emp:e.id});
-            else if(color==='amarillo') alertas.push({tipo:'amarillo',msg:rh360Escape(e.nombre||'—')+' — '+d.label+' próximo a vencer',emp:e.id});
-        });
-        // Póliza vehículo
-        if(typeof flV!=='undefined'){
-            const veh=flV.find(v=>(v.responsable||'').toUpperCase().includes((e.nombre||'').split(' ')[0].toUpperCase()));
-            if(veh&&veh.pv){
-                const dias=Math.round((new Date(veh.pv)-new Date())/86400000);
-                if(dias<0) alertas.push({tipo:'rojo',msg:'ECO '+veh.eco+' ('+rh360Escape(e.nombre||'—')+') — Póliza seguro VENCIDA',emp:e.id});
-                else if(dias<30) alertas.push({tipo:'amarillo',msg:'ECO '+veh.eco+' ('+rh360Escape(e.nombre||'—')+') — Póliza vence en '+dias+' días',emp:e.id});
+    try {
+        const uSnap = await fs.getDocs(fs.query(fs.collection(db,'fl_usuarios'), fs.where('email','==',correo)));
+        if(!uSnap.empty){
+            const u = uSnap.docs[0].data();
+            const eco = u.ecoVinculado || (Array.isArray(u.ecosVinculados) && u.ecosVinculados[0]) || null;
+            if(eco){
+                const vSnap = await fs.getDocs(fs.query(fs.collection(db,'flotilla_vehiculos'), fs.where('eco','==',String(eco))));
+                if(!vSnap.empty) resultado.vehiculo = {id:vSnap.docs[0].id, ...vSnap.docs[0].data()};
             }
         }
+    } catch(e){ console.warn('[RH] Flotilla cross-ref:', e.message); }
+
+    try {
+        const tSnap = await fs.getDocs(fs.query(fs.collection(db,'ops_tecnicos'), fs.where('correo','==',correo)));
+        if(!tSnap.empty){
+            const idInterno = tSnap.docs[0].id;
+            const hSnap = await fs.getDocs(fs.query(fs.collection(db,'ops_herramientas'), fs.where('tecnicoActualId','==',idInterno)));
+            resultado.herramientas = hSnap.docs.map(d=>({id:d.id, ...d.data()}));
+        }
+    } catch(e){ console.warn('[RH] Operaciones cross-ref:', e.message); }
+
+    return resultado;
+}
+
+function rhWirePerfil(){
+    const c = rhColabs.find(x=>x.id===rhPerfilId);
+    const el = document.getElementById('rhp-actividad');
+    if(!c || !c.correo){
+        if(el) el.innerHTML = '<div class="rhp-empty-mod">Sin correo asignado — no se puede cruzar con Flotilla/Operaciones todavía.</div>';
+        return;
+    }
+    rhCargarActividadCruzada(c.correo).then(res=>{
+        if(!el) return;
+        let html = '';
+        if(res.vehiculo){
+            html += '<div class="rhp-act"><div class="rhp-act-head"><div class="rhp-act-title">Vehículo asignado</div><span class="rhp-mod-tag flotilla">Flotilla</span></div>'+
+                '<div class="rhp-act-desc">ECO-'+rh360Escape(res.vehiculo.eco||'—')+' · '+rh360Escape(res.vehiculo.unidad||'—')+'</div></div>';
+        }
+        res.herramientas.forEach(h=>{
+            html += '<div class="rhp-act"><div class="rhp-act-head"><div class="rhp-act-title">'+rh360Escape(h.id||'Herramienta')+'</div><span class="rhp-mod-tag operaciones">Operaciones</span></div>'+
+                '<div class="rhp-act-desc">'+rh360Escape(h.descripcion||h.nombre||'—')+'</div></div>';
+        });
+        if(!html) html = '<div class="rhp-empty-mod">Sin actividad registrada en Flotilla u Operaciones.</div>';
+        el.innerHTML = html;
+    }).catch(err=>{
+        if(el) el.innerHTML = '<div class="rhp-empty-mod">No se pudo cargar (revisa permisos de Firestore).</div>';
+        console.warn('[RH] actividad cruzada:', err.message);
     });
-    if(!alertas.length) return '<div class="rh360-alert verde"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Sin alertas activas — todos los documentos están en orden</div>';
-    const rojas=alertas.filter(a=>a.tipo==='rojo');
-    const amarillas=alertas.filter(a=>a.tipo==='amarillo');
-    let html='';
-    if(rojas.length) html+='<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#B91C1C;margin-bottom:8px">'+rojas.length+' alertas críticas</div>'+
-        rojas.map(a=>'<div class="rh360-alert rojo" onclick="rh360AbrirPerfil(\''+a.emp+'\')" style="cursor:pointer">'+
-            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>'+a.msg+'</div>').join('');
-    if(amarillas.length) html+='<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#B45309;margin-top:16px;margin-bottom:8px">'+amarillas.length+' advertencias</div>'+
-        amarillas.map(a=>'<div class="rh360-alert amarillo" onclick="rh360AbrirPerfil(\''+a.emp+'\')" style="cursor:pointer">'+
-            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'+a.msg+'</div>').join('');
-    return html;
 }
 
-//  HTML del modal 
-function rh360ModalHTML(){
-    return '<div id="rh360-modal"><div class="rh360-modal-box" id="rh360-modal-box"></div></div>';
-}
-
-//  Helpers 
+// ── Helpers compartidos ─────────────────────────────────────────
 function rh360ColorDoc(val){
     if(!val||val==='') return 'gris';
     if(val==='vigente') return 'verde';
     if(val==='por_vencer') return 'amarillo';
     if(val==='vencido') return 'rojo';
-    // Si es una fecha, calcular días
-    const d=new Date(val);
+    const d = new Date(val);
     if(!isNaN(d)){
-        const dias=Math.round((d-new Date())/86400000);
+        const dias = Math.round((d-new Date())/86400000);
         if(dias<0) return 'rojo';
         if(dias<30) return 'amarillo';
         return 'verde';
@@ -1837,11 +1592,11 @@ function rh360ColorDoc(val){
 
 function rh360Antiguedad(fechaStr){
     if(!fechaStr) return '—';
-    const ini=new Date(fechaStr);
+    const ini = new Date(fechaStr);
     if(isNaN(ini)) return '—';
-    const diff=new Date()-ini;
-    const años=Math.floor(diff/31536000000);
-    const meses=Math.floor((diff%31536000000)/2592000000);
+    const diff = new Date()-ini;
+    const años = Math.floor(diff/31536000000);
+    const meses = Math.floor((diff%31536000000)/2592000000);
     if(años>0) return años+'a '+(meses>0?meses+'m':'');
     if(meses>0) return meses+' meses';
     return 'Nuevo ingreso';
@@ -1851,16 +1606,14 @@ function rh360Escape(s){
     return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-//  Integración con toggleRHDash 
-// Cuando se activa el área de RH, también inicializar el módulo 360°
+// ── Integración con toggleRHDash (igual que antes) ──────────────
 const _origToggleRHDash = window.toggleRHDash;
 window.toggleRHDash = function(area, email){
     if(_origToggleRHDash) _origToggleRHDash(area, email);
     if(area==='Recursos Humanos' && puedeVerRH(email)){
-        // Esperar a que el DOM esté listo y luego inicializar
         setTimeout(()=>{ if(typeof window.initRH360==='function') window.initRH360(); }, 200);
     }
 };
 
 console.log('[rh.js] ✅ Módulo RH cargado');
-console.log('[rh.js] ✅ Módulo RH 360° listo');
+console.log('[rh.js] ✅ Módulo RH 360° (colaboradores) listo');
