@@ -58,6 +58,7 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, getDocs, doc, getDoc, setDoc, deleteDoc, updateDoc, serverTimestamp }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
@@ -65,6 +66,7 @@ import { getFirestore, collection, getDocs, doc, getDoc, setDoc, deleteDoc, upda
 const config = { apiKey:"AIzaSyBXh-P0oMtMiDjyz9PObuJ8DNfROlXvhLE", authDomain:"tecnocontrol-1c42f.firebaseapp.com", projectId:"tecnocontrol-1c42f", storageBucket:"tecnocontrol-1c42f.firebasestorage.app", appId:"1:27642771956:web:54225af9e386afded8a1a1" };
 const app = initializeApp(config);
 const db = getFirestore(app);
+const auth = getAuth(app);
 
 const COL = "colaboradores";
 let resueltos = 0;
@@ -235,7 +237,18 @@ function renderCluster(cl, idx){
   return card;
 }
 
-cargar();
+// Esperar a que Firebase restaure la sesión (compartida con el portal, mismo dominio)
+// antes de consultar Firestore — si se dispara la consulta antes, sale sin permisos.
+onAuthStateChanged(auth, (user) => {
+  if (!user) {
+    document.getElementById("lista").innerHTML =
+      '<div class="done">No hay una sesión activa.<br><br>' +
+      'Abre <strong>el portal principal</strong> en otra pestaña, inicia sesión ahí, ' +
+      'y luego recarga esta página (F5).</div>';
+    return;
+  }
+  cargar();
+});
 </script>
 </body>
 </html>
