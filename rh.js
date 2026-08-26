@@ -980,19 +980,32 @@ window.toggleRHDash = function(area, email) {
         .rhd-search:focus{border-color:#2563EB;}
         .rhd-add{margin-left:auto;background:#F0FDF4;color:#15803D;border:1px solid #BBF7D0;padding:9px 16px;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;}
 
-        /* Directorio */
-        .rhd-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;}
-        .rhd-card{background:#fff;border-radius:14px;border:1.5px solid #E8EDF5;padding:14px;cursor:pointer;transition:.15s;}
-        .rhd-card:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(37,99,235,.08);border-color:#BFDBFE;}
-        .rhd-head{display:flex;align-items:center;gap:10px;}
-        .rhd-avatar{width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#1E3A5F,#2563EB);display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:800;flex-shrink:0;overflow:hidden;}
+        /* Directorio — filas tipo acordeón */
+        .rhd-hint{font-size:11px;color:#64748B;margin-bottom:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+        .rhd-hint .toggle-link{color:#2563EB;font-weight:700;cursor:pointer;}
+        .rhd-list{display:flex;flex-direction:column;gap:6px;}
+        .rhd-row{background:#fff;border:1.5px solid #E8EDF5;border-radius:12px;overflow:hidden;transition:.15s;}
+        .rhd-row.open{border-color:#BFDBFE;box-shadow:0 4px 14px rgba(37,99,235,.08);}
+        .rhd-row-head{display:flex;align-items:center;gap:10px;padding:9px 12px;cursor:pointer;}
+        .rhd-row-head:hover{background:#F8FAFD;}
+        .rhd-avatar{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#1E3A5F,#2563EB);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:800;flex-shrink:0;overflow:hidden;}
         .rhd-avatar img{width:100%;height:100%;object-fit:cover;}
-        .rhd-name{font-size:12.5px;font-weight:800;color:#0A0F1E;line-height:1.25;}
+        .rhd-name{font-size:12px;font-weight:800;color:#0A0F1E;line-height:1.2;}
         .rhd-puesto{font-size:10.5px;color:#64748B;margin-top:1px;}
-        .rhd-tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:10px;}
-        .rhd-tag{font-size:9px;font-weight:700;padding:2px 8px;border-radius:99px;background:#F1F5F9;color:#475569;}
+        .rhd-row-mid{flex:1;min-width:0;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+        .rhd-tags{display:flex;flex-wrap:wrap;gap:4px;}
+        .rhd-tag{font-size:8.5px;font-weight:700;padding:2px 7px;border-radius:99px;background:#F1F5F9;color:#475569;white-space:nowrap;}
         .rhd-tag.pend{background:#FFFBEB;color:#B45309;}
         .rhd-tag.baja{background:#FEE2E2;color:#DC2626;}
+        .rhd-chevron{color:#94A3B8;transition:transform .15s;flex-shrink:0;}
+        .rhd-row.open .rhd-chevron{transform:rotate(180deg);}
+        .rhd-row-body{padding:4px 16px 14px 52px;border-top:1px solid #F1F5F9;}
+        .rhd-detail-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-top:10px;}
+        .rhd-detail-field{font-size:11px;}
+        .rhd-detail-field .k{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#94A3B8;}
+        .rhd-detail-field .v{font-weight:700;color:#0A0F1E;margin-top:1px;}
+        .rhd-detail-actions{margin-top:12px;display:flex;gap:8px;}
+        .rhd-btn-perfil{font-size:11px;font-weight:700;padding:6px 14px;border-radius:8px;background:#0A1628;color:#fff;border:none;cursor:pointer;}
 
         /* Perfil */
         .rhp-back{font-size:12px;color:#64748B;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px;margin-bottom:16px;}
@@ -1043,15 +1056,15 @@ window.toggleRHDash = function(area, email) {
         .rhp-pendcorreo{background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px;font-size:11.5px;color:#92400E;margin-bottom:14px;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;}
 
         /* Organigrama en árbol */
-        .rho-tree{overflow-x:auto;padding:10px 0;}
-        .rho-root-item{margin-bottom:28px;text-align:center;}
-        .rho-node{display:inline-block;background:#fff;border:1.5px solid #E2E8F0;border-radius:12px;padding:10px 14px;text-align:center;cursor:pointer;min-width:150px;transition:.15s;}
+        .rho-tree{overflow-x:auto;padding:8px 0;}
+        .rho-root-item{margin-bottom:18px;text-align:center;}
+        .rho-node{display:inline-block;background:#fff;border:1.5px solid #E2E8F0;border-radius:10px;padding:7px 11px;text-align:center;cursor:pointer;min-width:120px;transition:.15s;}
         .rho-node:hover{border-color:#2563EB;box-shadow:0 4px 14px rgba(37,99,235,.12);}
         .rho-node.root{background:#0A1628;color:#fff;border-color:#0A1628;}
-        .rho-node-name{font-size:11.5px;font-weight:800;}
-        .rho-node-puesto{font-size:9.5px;color:#94A3B8;margin-top:2px;}
+        .rho-node-name{font-size:10.5px;font-weight:800;}
+        .rho-node-puesto{font-size:9px;color:#94A3B8;margin-top:1px;}
         .rho-node.root .rho-node-puesto{color:rgba(255,255,255,.6);}
-        .rho-children{display:flex;gap:20px;flex-wrap:wrap;justify-content:center;border-top:1px solid #E2E8F0;padding-top:16px;margin-top:14px;}
+        .rho-children{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;border-top:1px solid #E2E8F0;padding-top:10px;margin-top:10px;}
     `;
     document.head.appendChild(style);
 })();
@@ -1062,6 +1075,8 @@ let rhVista = 'directorio';     // directorio | organigrama | alertas
 let rhBusqueda = '';
 let rhPerfilId = null;          // id del colaborador abierto (null = sin perfil abierto)
 let rhModoEdicion = false;
+let rhExpandidoId = null;       // fila del directorio actualmente expandida
+let rhMostrarSinNombre = false; // cuentas sin nombre (buzones genéricos) ocultas por default
 
 // Documentos con semáforo de vigencia
 const RH_DOCS = [
@@ -1156,47 +1171,93 @@ function rhHTMLTopbar(){
 function rhHTMLVistaActual(){
     if(rhVista==='organigrama') return rhHTMLOrganigrama();
     if(rhVista==='alertas') return rhHTMLAlertas();
-    return '<div id="rh-dir-count" style="font-size:11px;color:#64748B;margin-bottom:12px"></div><div class="rhd-grid" id="rh-dir-grid"></div>';
+    return '<div class="rhd-hint" id="rh-dir-hint"></div><div class="rhd-list" id="rh-dir-grid"></div>';
 }
 
-// ── Directorio ──────────────────────────────────────────────────
+// ── Directorio (filas tipo acordeón) ────────────────────────────
+function rhListaBase(){
+    return rhColabs.filter(c=>{
+        if(!rhMostrarSinNombre && !(c.nombre && c.nombre.trim())) return false;
+        return true;
+    });
+}
+
 function rhRenderDirectorioGrid(){
     const gridEl = document.getElementById('rh-dir-grid');
-    const countEl = document.getElementById('rh-dir-count');
+    const hintEl = document.getElementById('rh-dir-hint');
     if(!gridEl) return;
+
+    const sinNombreTotal = rhColabs.filter(c=>!(c.nombre && c.nombre.trim())).length;
+    if(hintEl){
+        hintEl.innerHTML = '<span></span>'+
+            (sinNombreTotal ? '<span class="toggle-link" onclick="rhToggleSinNombre()">'+
+                (rhMostrarSinNombre ? 'Ocultar' : 'Mostrar')+' '+sinNombreTotal+' cuentas sin nombre</span>' : '');
+    }
+
     const q = rhBusqueda.trim().toLowerCase();
-    const lista = rhColabs.filter(c=>{
+    const lista = rhListaBase().filter(c=>{
         if(!q) return true;
         return (c.nombre||'').toLowerCase().includes(q) ||
                (c.puesto||'').toLowerCase().includes(q) ||
                (c.departamento||'').toLowerCase().includes(q);
     }).sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
 
-    if(countEl) countEl.textContent = lista.length+' colaboradores';
+    if(hintEl) hintEl.querySelector('span').textContent = lista.length+' colaboradores';
 
     if(!lista.length){
-        gridEl.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#94A3B8;font-size:13px">Sin resultados</div>';
+        gridEl.innerHTML = '<div style="text-align:center;padding:40px;color:#94A3B8;font-size:13px">Sin resultados</div>';
         return;
     }
 
-    gridEl.innerHTML = lista.map(c=>{
-        const iniciales = (c.nombre||'?').split(' ').filter(Boolean).slice(0,2).map(p=>p[0]).join('').toUpperCase();
-        const esBaja = (c.estatus||'activo').toLowerCase()==='baja';
-        return '<div class="rhd-card" onclick="rhAbrirPerfil(\''+c.id+'\')">'+
-            '<div class="rhd-head">'+
-                '<div class="rhd-avatar">'+(c.foto?'<img src="'+c.foto+'">':iniciales)+'</div>'+
+    gridEl.innerHTML = lista.map(c=>rhHTMLRowDirectorio(c)).join('');
+}
+
+function rhHTMLRowDirectorio(c){
+    const iniciales = (c.nombre||'?').split(' ').filter(Boolean).slice(0,2).map(p=>p[0]).join('').toUpperCase();
+    const esBaja = (c.estatus||'activo').toLowerCase()==='baja';
+    const abierta = rhExpandidoId === c.id;
+    const antig = c.fechaIngreso ? rh360Antiguedad(c.fechaIngreso) : null;
+
+    const detalleCampos = [
+        ['Correo', c.correo],
+        ['Teléfono', c.telefono],
+        ['Jefe directo', c.jefe],
+        ['Antigüedad', antig],
+    ].filter(([,v])=>v);
+
+    return '<div class="rhd-row'+(abierta?' open':'')+'" id="rhd-row-'+c.id+'">'+
+        '<div class="rhd-row-head" onclick="rhToggleExpand(\''+c.id+'\')">'+
+            '<div class="rhd-avatar">'+(c.foto?'<img src="'+c.foto+'">':iniciales)+'</div>'+
+            '<div class="rhd-row-mid">'+
                 '<div><div class="rhd-name">'+rh360Escape(c.nombre||'(sin nombre)')+'</div>'+
-                (c.puesto?'<div class="rhd-puesto">'+rh360Escape(c.puesto)+'</div>':'')+
+                (c.puesto?'<div class="rhd-puesto">'+rh360Escape(c.puesto)+'</div>':'')+'</div>'+
+                '<div class="rhd-tags">'+
+                    (c.departamento?'<span class="rhd-tag">'+rh360Escape(c.departamento)+'</span>':'')+
+                    (c.sinCorreo?'<span class="rhd-tag pend">Correo pendiente</span>':'')+
+                    (esBaja?'<span class="rhd-tag baja">Baja</span>':'')+
                 '</div>'+
             '</div>'+
-            '<div class="rhd-tags">'+
-                (c.departamento?'<span class="rhd-tag">'+rh360Escape(c.departamento)+'</span>':'')+
-                (c.sinCorreo?'<span class="rhd-tag pend">Correo pendiente</span>':'')+
-                (esBaja?'<span class="rhd-tag baja">Baja</span>':'')+
+            '<svg class="rhd-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>'+
+        '</div>'+
+        (abierta ? '<div class="rhd-row-body">'+
+            (detalleCampos.length ? '<div class="rhd-detail-grid">'+detalleCampos.map(([l,v])=>
+                '<div class="rhd-detail-field"><div class="k">'+l+'</div><div class="v">'+rh360Escape(v)+'</div></div>'
+            ).join('')+'</div>' : '<div style="font-size:11px;color:#94A3B8;margin-top:8px">Sin datos adicionales capturados.</div>')+
+            '<div class="rhd-detail-actions">'+
+                '<button class="rhd-btn-perfil" onclick="event.stopPropagation();rhAbrirPerfil(\''+c.id+'\')">Ver perfil completo</button>'+
             '</div>'+
-        '</div>';
-    }).join('');
+        '</div>' : '');
 }
+
+window.rhToggleExpand = function(id){
+    rhExpandidoId = (rhExpandidoId===id) ? null : id;
+    rhRenderDirectorioGrid();
+};
+
+window.rhToggleSinNombre = function(){
+    rhMostrarSinNombre = !rhMostrarSinNombre;
+    rhRenderDirectorioGrid();
+};
 
 window.rhBuscar = function(v){ rhBusqueda = v; rhRenderDirectorioGrid(); };
 
