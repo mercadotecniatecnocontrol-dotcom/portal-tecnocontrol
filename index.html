@@ -3292,6 +3292,12 @@ window.verArea=(a,b)=>{
         if(typeof window.toggleMktDash === 'function') window.toggleMktDash(a, yo);
         toggleRHDash(a, yo);
         toggleVentasMapa(a, yo);
+        // Operaciones — abrir el módulo completo directo, en vez de dejar
+        // que el usuario tenga que entrar primero a "Formularios Operaciones"
+        // y buscar el botón/pill "Operaciones" para llegar al panel real.
+        if(a === 'Operaciones' && typeof window.opsAbrirHerramientas === 'function'){
+            window.opsAbrirHerramientas();
+        }
         // Flotilla
         const _flPanel = document.getElementById('flotilla-dashboard');
         const _actWrap = document.getElementById('area-actividades-wrap');
