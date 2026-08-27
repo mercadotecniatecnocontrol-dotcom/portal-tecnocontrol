@@ -194,6 +194,7 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
             </div>
             <!-- ═══ CENTRO DE SURTIDO (solo departamento Almacén) ═══ -->
             <div id="vista-almacen-area" style="display:none;margin-bottom:24px;"></div>
+            <div id="vista-compras-area" style="display:none;margin-bottom:24px;"></div>
             <!-- ═══ PARRILLA UNIVERSAL POR ÁREA ═══ -->
 <div id="area-parrilla-wrap" style="display:none;margin-bottom:20px;">
     <div class="parrilla-wrap">
@@ -4888,6 +4889,14 @@ cargarModuloMarketing();
                     if(window.abrirAlmacen){ try{ window.abrirAlmacen('vista-almacen-area'); }catch(e){ console.error('[almacen] abrirAlmacen:', e); } }
                 } else { almBox.style.display = 'none'; }
             }
+            // ── Tablero de Compras embebido en el departamento de Compras (mismo patrón que Almacén) ──
+            const comprasBox = document.getElementById('vista-compras-area');
+            if(comprasBox){
+                if(area === 'Compras'){
+                    comprasBox.style.display = 'block';
+                    if(window.abrirCompras){ try{ window.abrirCompras('vista-compras-area'); }catch(e){ console.error('[compras] abrirCompras:', e); } }
+                } else { comprasBox.style.display = 'none'; }
+            }
             // La parrilla YA NO se muestra embebida en ningún área — solo vía
             // el panel flotante universal (window.abrirPanelParrilla). Aquí solo
             // se deja lista la variable de contexto para cuando se abra el panel.
@@ -5619,6 +5628,7 @@ window.irAlmacen = function(btn){
 <script src="rh.js"></script>
 <script src="almacen.js"></script>
 <script src="almacen-pdf.js"></script>
+<script src="compras.js"></script>
 <script src="logistica.js"></script>
 <script src="mis-pedidos.js"></script>
 <script src="gestoria.js"></script>
