@@ -44,6 +44,10 @@
   @keyframes bdayPulso{0%,100%{transform:scale(1);}50%{transform:scale(1.035);}}
   @keyframes bdayRebota{0%,100%{transform:translateY(0) rotate(-8deg);}50%{transform:translateY(-7px) rotate(8deg);}}
   #bdayConfetti{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:9999;display:none;}
+.tv-mini-mapa-label{background:rgba(15,23,42,.78)!important;border:none!important;box-shadow:none!important;color:#fff!important;font-size:9px!important;font-weight:600;padding:1px 5px!important;border-radius:4px;white-space:nowrap;}
+.tv-mini-mapa-label::before{display:none!important;}
+.tv-ruta-anim{stroke-dasharray:1 9;stroke-linecap:round;animation:tvRutaFlow 900ms linear infinite;}
+@keyframes tvRutaFlow{to{stroke-dashoffset:-20;}}
 </style>
 </head>
 
@@ -154,18 +158,44 @@ let recolecciones=[]; // recolecciones locales activas (pendiente/recogido) — 
    (destinoLat/destinoLng directo en el documento) y recolecciones locales
    (ya traen lat/lng propio). Es un subconjunto de lo que ve Ventas, pero no
    requiere ningún cambio de permisos para funcionar. */
-const ALMACEN_FZA_COORDS_TV = [28.6353, -106.0889]; // mismo placeholder que logistica.js — ajustar cuando haya coordenada real
-let tvMiniMapa = null, tvMiniMapaMarkers = [];
+const ALMACEN_FZA_COORDS_TV = [28.6353, -106.0889]; // PLACEHOLDER — no es la coordenada real de
+  // Avenida Fuerza Aérea Mexicana Núm. 7030, Tabalaopa, Chihuahua (ver REMITENTE_DEFAULT en almacen-pdf.js).
+  // Pendiente: geocodificar esa dirección con window.__logGeocodificarDireccion (ya usado en Ventas)
+  // y reemplazar este valor por el real — hoy el punto cae en un lugar sin relación con el almacén.
+const COLOR_PAQ_ENVIO = '#F26B21';      // se lleva a sucursal/oficina de la paquetería
+const COLOR_PAQ_RECOLECCION = '#EC4899'; // la paquetería pasa a recoger al almacén
+let tvMiniMapa = null, tvMiniMapaMarkers = [], tvMiniMapaLineas = [];
+// Pequeño desplazamiento determinístico (~50–170 m) para que varios pines que comparten
+// la coordenada del almacén (paquetería, traspasos, entrega a técnico...) no queden
+// exactamente encimados uno sobre otro en el mini-mapa.
+function tvJitterAlmacen(seed){
+  let h = 0;
+  const s = String(seed||'');
+  for(let i=0;i<s.length;i++) h = (h*31 + s.charCodeAt(i)) >>> 0;
+  const ang = (h % 360) * Math.PI/180;
+  const r = 0.00045 + (h % 5)*0.00018;
+  return [ALMACEN_FZA_COORDS_TV[0] + Math.sin(ang)*r, ALMACEN_FZA_COORDS_TV[1] + Math.cos(ang)*r];
+}
 function tvPuntosDesdeEstadoActual(){
   const puntos = [];
   pedidos.forEach(p=>{
     if(p.destinoTipo==='paqueteria'){
-      puntos.push({lat:ALMACEN_FZA_COORDS_TV[0], lng:ALMACEN_FZA_COORDS_TV[1], color:'#F26B21',
-        popup:'📦 <b>'+(p.folio||'')+'</b><br>Pendiente de recolección por paquetería'+(p.destinoPaqueteria?(' · '+p.destinoPaqueteria):'')});
+      // entregaTipo viene de la carátula de envío (almacen-pdf.js → leerCaratulaDelFormulario):
+      // 'domicilio' = la paquetería pasa a recoger al almacén · 'oficina' (o sin carátula) = se lleva a su sucursal.
+      const entregaTipo = (p.caratulaEnvio && p.caratulaEnvio.entregaTipo) || 'oficina';
+      const [lat,lng] = tvJitterAlmacen('paq'+(p.folio||''));
+      if(entregaTipo==='domicilio'){
+        puntos.push({lat, lng, color:COLOR_PAQ_RECOLECCION, label:p.folio||'',
+          popup:'📦 <b>'+(p.folio||'')+'</b><br>Paquetería pasa a recoger al almacén'+(p.destinoPaqueteria?(' · '+p.destinoPaqueteria):'')});
+      } else {
+        puntos.push({lat, lng, color:COLOR_PAQ_ENVIO, label:p.folio||'',
+          popup:'📦 <b>'+(p.folio||'')+'</b><br>Pendiente de llevar a sucursal de paquetería'+(p.destinoPaqueteria?(' · '+p.destinoPaqueteria):'')});
+      }
       return;
     }
     if(p.destinoTipo==='traslado_almacenes'){
-      puntos.push({lat:ALMACEN_FZA_COORDS_TV[0], lng:ALMACEN_FZA_COORDS_TV[1], color:'#D99000',
+      const [lat,lng] = tvJitterAlmacen('tra'+(p.folio||''));
+      puntos.push({lat, lng, color:'#D99000', label:p.folio||'',
         popup:'🔁 <b>'+(p.folio||'')+'</b><br>Traspaso a '+(p.destinoAlmacenDestino||'otro almacén')});
       return;
     }
@@ -174,19 +204,21 @@ function tvPuntosDesdeEstadoActual(){
       // teal que ya usan las tarjetas (DESTINO_COLOR.entrega_tecnico) para esto.
       // Sin dirección propia capturada, se ubica en el almacén como referencia
       // de "pendiente de entregar a técnico".
-      puntos.push({lat:ALMACEN_FZA_COORDS_TV[0], lng:ALMACEN_FZA_COORDS_TV[1], color:'#0FB5A6',
+      const [lat,lng] = tvJitterAlmacen('tec'+(p.folio||''));
+      puntos.push({lat, lng, color:'#0FB5A6', label:p.folio||'',
         popup:'👷 <b>'+(p.folio||'')+'</b><br>Entrega directa a técnico'+(p.tecnicoNombre?(' · '+p.tecnicoNombre):'')});
       return;
     }
     if(p.destinoLat!=null && p.destinoLng!=null){
       const color = p.tipo==='material' ? '#8B4FD6' : '#1473E6';
-      puntos.push({lat:p.destinoLat, lng:p.destinoLng, color,
+      puntos.push({lat:p.destinoLat, lng:p.destinoLng, color, label:p.folio||'', ruta:true,
         popup:'<b>'+(p.folio||'')+'</b><br>'+(p.cliente||'—')});
     }
   });
   recolecciones.forEach(r=>{
     if(r.lat==null||r.lng==null) return;
-    puntos.push({lat:r.lat, lng:r.lng, color:'#DB2777', popup:'📦 <b>'+(r.lugar||'—')+'</b><br>'+(r.materialARecoger||'Recolección')});
+    puntos.push({lat:r.lat, lng:r.lng, color:'#DB2777', label:r.lugar||'', ruta:true,
+      popup:'📦 <b>'+(r.lugar||'—')+'</b><br>'+(r.materialARecoger||'Recolección')});
   });
   return puntos;
 }
@@ -209,15 +241,32 @@ function tvActualizarMiniMapa(){
     }
     tvMiniMapaMarkers.forEach(m=>m.remove());
     tvMiniMapaMarkers = [];
+    tvMiniMapaLineas.forEach(l=>l.remove());
+    tvMiniMapaLineas = [];
     if(!puntos.length){ tvMiniMapa.setView(ALMACEN_FZA_COORDS_TV, 11); }
     else {
+      // Líneas de ruta (discretas, animadas) primero, así los pines quedan encima.
+      // Solo a puntos con destino real (ruta:true) — a los que comparten coordenada
+      // con el almacén (paquetería/traspaso/técnico) no se les traza nada, sería una
+      // "ruta" hacia el mismo punto.
+      puntos.forEach(p=>{
+        if(!p.ruta) return;
+        const l = L.polyline([ALMACEN_FZA_COORDS_TV, [p.lat,p.lng]], {
+          color:p.color, weight:2, opacity:0.5, className:'tv-ruta-anim', interactive:false
+        }).addTo(tvMiniMapa);
+        tvMiniMapaLineas.push(l);
+      });
       puntos.forEach(p=>{
         const m = L.circleMarker([p.lat,p.lng], {radius:8, color:p.color, fillColor:p.color, fillOpacity:0.85, weight:2}).addTo(tvMiniMapa);
         m.bindPopup(p.popup);
+        if(p.label) m.bindTooltip(p.label, {permanent:true, direction:'top', offset:[0,-8], className:'tv-mini-mapa-label'});
         tvMiniMapaMarkers.push(m);
       });
-      if(puntos.length===1) tvMiniMapa.setView([puntos[0].lat,puntos[0].lng], 12);
-      else tvMiniMapa.fitBounds(puntos.map(p=>[p.lat,p.lng]), {padding:[24,24]});
+      const conRuta = puntos.some(p=>p.ruta);
+      const boundsPts = puntos.map(p=>[p.lat,p.lng]);
+      if(conRuta) boundsPts.push(ALMACEN_FZA_COORDS_TV);
+      if(puntos.length===1 && !conRuta) tvMiniMapa.setView([puntos[0].lat,puntos[0].lng], 12);
+      else tvMiniMapa.fitBounds(boundsPts, {padding:[24,24]});
     }
     setTimeout(()=>tvMiniMapa.invalidateSize(), 60);
 
@@ -225,7 +274,8 @@ function tvActualizarMiniMapa(){
     const CATS = [
       {color:'#1473E6', label:'Ventas'}, {color:'#8B4FD6', label:'Material'},
       {color:'#D99000', label:'Traspaso almacén'}, {color:'#0FB5A6', label:'Entrega a técnico'},
-      {color:'#F26B21', label:'Paquetería'}, {color:'#DB2777', label:'Recolección'}
+      {color:COLOR_PAQ_ENVIO, label:'Paquetería · envío'}, {color:COLOR_PAQ_RECOLECCION, label:'Paquetería · recolección'},
+      {color:'#DB2777', label:'Recolección local'}
     ];
     const coloresUsados = new Set(puntos.map(p=>p.color));
     const leyEl = document.getElementById('tv-mini-mapa-leyenda');
