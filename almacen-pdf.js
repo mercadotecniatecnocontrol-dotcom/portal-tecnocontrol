@@ -92,6 +92,84 @@
     });
   }
  
+  // ── Catálogo genérico de puntos de referencia (paquetería, plazas, almacenes
+  //    propios, oficinas...) — un solo esquema simple {nombre,tipo,direccion,lat,lng}
+  //    reutilizable en todos los destinos, para que el mapa ya no tenga que
+  //    "adivinar" ubicaciones con un placeholder. Colección: puntos_referencia. ──
+  var _puntosCache = null;
+  window.__almInvalidarCachePuntos = function(){ _puntosCache = null; };
+  function cargarCatalogoPuntos(){
+    if (_puntosCache) return Promise.resolve(_puntosCache);
+    return cargarFirestore().then(function(fs){
+      if (!window.db) return [];
+      return fs.getDocs(fs.collection(window.db,'puntos_referencia')).then(function(snap){
+        var lista = [];
+        snap.forEach(function(d){ lista.push(Object.assign({ id: d.id }, d.data())); });
+        _puntosCache = lista;
+        return lista;
+      }).catch(function(err){
+        console.warn('[almacen-pdf] no se pudo cargar el catálogo de puntos:', err);
+        return [];
+      });
+    });
+  }
+  function guardarPuntoNuevo(punto){
+    return cargarFirestore().then(function(fs){
+      if (!window.db) return Promise.reject(new Error('Firestore no disponible'));
+      return fs.addDoc(fs.collection(window.db,'puntos_referencia'), Object.assign({
+        creadoPor: window.nombreUsuario || '—',
+        creadoEn: new Date().toISOString()
+      }, punto)).then(function(ref){
+        _puntosCache = null; // fuerza recarga la próxima vez que se abra el buscador
+        return ref.id;
+      });
+    });
+  }
+  function tipoPuntoLabel(t){
+    return { paqueteria:'Paquetería', plaza:'Plaza', almacen:'Almacén', oficina:'Oficina', otro:'Otro' }[t] || 'Otro';
+  }
+  // Geocodificación por dirección. Reusa la utilidad ya expuesta por Ventas si
+  // está cargada en la página; si no, hace la consulta directo contra Nominatim.
+  function geocodificarDireccion(direccion){
+    if (window.__logGeocodificarDireccion) {
+      return Promise.resolve(window.__logGeocodificarDireccion(direccion)).then(function(r){
+        if (r && r.lat != null && r.lng != null) return { lat: +r.lat, lng: +r.lng };
+        if (r && r.lat != null && r.lon != null) return { lat: +r.lat, lng: +r.lon };
+        return geocodificarDireccionDirecto(direccion);
+      }).catch(function(){ return geocodificarDireccionDirecto(direccion); });
+    }
+    return geocodificarDireccionDirecto(direccion);
+  }
+  function geocodificarDireccionDirecto(direccion){
+    var url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=mx&q=' + encodeURIComponent(direccion);
+    return fetch(url, { headers: { 'Accept-Language': 'es' } }).then(function(r){ return r.json(); })
+      .then(function(arr){
+        if (!arr || !arr.length) return null;
+        return { lat: parseFloat(arr[0].lat), lng: parseFloat(arr[0].lon) };
+      }).catch(function(err){ console.warn('[almacen-pdf] geocodificación falló:', err); return null; });
+  }
+  // Leaflet bajo demanda, solo para el mini-mapa de "marcar en el mapa" al
+  // registrar un punto nuevo (independiente de si el resto de la página ya lo cargó).
+  var _leafletPromise = null;
+  function cargarLeafletPunto(){
+    if (window.L) return Promise.resolve(window.L);
+    if (_leafletPromise) return _leafletPromise;
+    if (!document.getElementById('alm-leaflet-css')){
+      var link = document.createElement('link');
+      link.id = 'alm-leaflet-css'; link.rel = 'stylesheet';
+      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      document.head.appendChild(link);
+    }
+    _leafletPromise = new Promise(function(resolve, reject){
+      var s = document.createElement('script');
+      s.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+      s.onload = function(){ resolve(window.L); };
+      s.onerror = function(){ reject(new Error('No se pudo cargar Leaflet')); };
+      document.head.appendChild(s);
+    });
+    return _leafletPromise;
+  }
+
   // ── CDN de pdf.js (ESM). Se importa una sola vez. ──
   var PDFJS_VER = '4.5.136';
   var PDFJS_BASE = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@' + PDFJS_VER + '/build/';
@@ -123,7 +201,9 @@
     caratulaImg: null,               // foto de carátula comprimida (si el destino es "paquetería")
     documentosPendientes: [],        // [File, ...] órdenes de compra u otros documentos, aún sin subir
     ultimoGuardado: null,            // {folio,cliente,...} del último surtido creado, para el botón de WhatsApp
-    estacionSeleccionada: null       // estación elegida del catálogo (destino "entrega_chihuahua"); null = modo manual
+    estacionSeleccionada: null,      // estación elegida del catálogo (destino "entrega_chihuahua"); null = modo manual
+    puntoSeleccionado: null,         // punto de recolección/entrega elegido del catálogo genérico (paquetería)
+    puntoNuevo: null                 // {lat,lng} en captura, mientras se registra un punto nuevo
   };
  
   // =====================================================================
@@ -313,7 +393,11 @@
       + '.alm-caratula-box{border:1px solid #cbd5e1;border-radius:12px;padding:14px 16px;margin-top:6px;background:#fff;}'
       + '.alm-caratula-tit{font-size:13px;font-weight:800;color:#0f172a;margin-bottom:8px;}'
       + '.alm-caratula-sub{font-size:10.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#0e7490;margin:12px 0 6px;border-top:1px dashed #e2e8f0;padding-top:10px;}'
-      + '.alm-caratula-box .alm-caratula-sub:first-of-type{border-top:none;padding-top:0;margin-top:0;}';
+      + '.alm-caratula-box .alm-caratula-sub:first-of-type{border-top:none;padding-top:0;margin-top:0;}'
+      + '.alm-punto-tipo{display:inline-block;font-size:9px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;padding:2px 7px;border-radius:5px;background:#e0f2fe;color:#075985;margin-left:6px;vertical-align:1px;}'
+      + '.alm-punto-nuevo-box{border:1px dashed #cbd5e1;border-radius:10px;padding:10px 12px;margin-top:8px;background:#fff;}'
+      + '.alm-punto-mapa{width:100%;height:180px;border-radius:9px;margin-top:8px;border:1px solid #cbd5e1;}'
+      + '.alm-punto-coord{font-size:11px;color:#0e7490;font-weight:700;margin-top:6px;min-height:14px;}';
     var s = document.createElement('style');
     s.id = 'alm-pdf-styles';
     s.textContent = css;
@@ -533,7 +617,7 @@
         +   '<div class="alm-destino-fld"><label>Gu\u00eda (opcional)</label><input id="cx-guia"></div>'
         +   '<div class="alm-destino-fld"><label>Tipo de env\u00edo</label><input id="cx-tipo-envio" placeholder="Ej. Terrestre, express"></div>'
         +   '<div class="alm-destino-fld"><label>Atenci\u00f3n a</label><input id="cx-atencion"></div>'
-        +   '<div class="alm-destino-fld"><label>Recolecci\u00f3n</label><input id="cx-recoleccion" placeholder="D\u00f3nde y cu\u00e1ndo recoge la paqueter\u00eda"></div>'
+        +   '<div id="alm-punto-recoleccion-wrap"></div>'
         +   '<div class="alm-destino-fld"><label>Referencias</label><input id="cx-referencias"></div>'
         +   '<div class="alm-destino-fld"><label>Instrucciones especiales</label><textarea id="cx-instrucciones" rows="2"></textarea></div>'
         +   '<div class="alm-destino-fld"><label>Flete</label><select id="cx-flete"><option value="pagado">Flete pagado</option><option value="por_cobrar">Flete por cobrar</option></select></div>'
@@ -544,6 +628,7 @@
         + '<div class="alm-destino-fld" style="margin-top:12px;"><label>\u00bfYa tienes la car\u00e1tula en papel? (opcional)</label>' + prev
         + '<button type="button" class="alm-addrow" style="margin-top:6px;" onclick="window.__almPdfElegirCaratula()">' + (estado.caratulaImg?'Cambiar foto':'Subir foto en su lugar') + '</button>'
         + '<input type="file" id="alm-destino-caratula-file" accept="image/*" style="display:none"></div>';
+      renderPuntoRecoleccion();
     } else if (tipo === 'entrega_chihuahua'){
       renderDestinoEstacion();
     } else if (tipo === 'traslado_almacenes'){
@@ -648,6 +733,168 @@
     renderDestinoEstacion();
   };
 
+  // ── Punto de recolección/entrega (destino "paquetería") — buscador sobre el
+  //    catálogo genérico puntos_referencia, con alta inline si no existe aún:
+  //    geocodificación por dirección o pin manual en un mini-mapa. ──
+  function renderPuntoRecoleccion(){
+    var wrap = document.getElementById('alm-punto-recoleccion-wrap');
+    if (!wrap) return;
+    var horarioHtml = '<div class="alm-destino-fld"><label>Horario / instrucciones para el paquetero</label>'
+      + '<input id="cx-recoleccion-horario" placeholder="Ej. despu\u00e9s de las 2pm, preguntar por Lupita"></div>';
+    var p = estado.puntoSeleccionado;
+    if (p){
+      wrap.innerHTML =
+          '<div class="alm-destino-fld"><label>Punto de recolecci\u00f3n / entrega</label>'
+        +   '<div class="alm-estacion-selected">'
+        +     '<div class="n">' + esc(p.nombre) + ' <span class="alm-punto-tipo">' + esc(tipoPuntoLabel(p.tipo)) + '</span></div>'
+        +     '<div class="d">' + esc(p.direccion || 'Sin dirección capturada') + '</div>'
+        +     '<button type="button" onclick="window.__almPdfPuntoQuitar()">Cambiar punto</button>'
+        +   '</div>'
+        + '</div>'
+        + horarioHtml;
+      return;
+    }
+    wrap.innerHTML =
+        '<div class="alm-destino-fld alm-estacion-search">'
+      +   '<label>Punto de recolecci\u00f3n / entrega (paquetera, plaza, oficina...)</label>'
+      +   '<input id="alm-punto-q" placeholder="Nombre de la sucursal, plaza, direcci\u00f3n\u2026" autocomplete="off" '
+      +     'oninput="window.__almPdfPuntoBuscar(this.value)" '
+      +     'onblur="setTimeout(function(){var b=document.getElementById(\'alm-punto-results\');if(b)b.style.display=\'none\';},150)">'
+      +   '<div id="alm-punto-results" class="alm-estacion-results" style="display:none;"></div>'
+      + '</div>'
+      + '<button type="button" class="alm-estacion-link" onclick="window.__almPdfPuntoRegistrarNuevo()">No est\u00e1 en el cat\u00e1logo \u00b7 registrar punto nuevo</button>'
+      + '<div id="alm-punto-nuevo-form"></div>'
+      + horarioHtml;
+    cargarCatalogoPuntos(); // precarga en cache; no bloquea el render del campo
+  }
+
+  window.__almPdfPuntoBuscar = function(valor){
+    var box = document.getElementById('alm-punto-results');
+    if (!box) return;
+    var q = (valor || '').trim().toLowerCase();
+    if (!q){ box.style.display = 'none'; box.innerHTML = ''; return; }
+    cargarCatalogoPuntos().then(function(lista){
+      var actual = document.getElementById('alm-punto-q');
+      if (!actual || actual.value.trim().toLowerCase() !== q) return; // ya escribió otra cosa mientras cargaba
+      var resultados = lista.filter(function(pt){
+        var texto = [pt.nombre, pt.direccion, pt.tipo, pt.notas].filter(Boolean).join(' ').toLowerCase();
+        return texto.indexOf(q) !== -1;
+      }).slice(0, 20);
+      if (!resultados.length){
+        box.innerHTML = '<div class="alm-estacion-item" style="cursor:default;color:#94a3b8;">Sin resultados \u2014 usa "registrar punto nuevo".</div>';
+        box.style.display = 'block';
+        return;
+      }
+      box.innerHTML = resultados.map(function(pt){
+        return '<div class="alm-estacion-item" onmousedown="window.__almPdfPuntoElegir(\'' + pt.id + '\')">'
+          +   '<div class="n">' + esc(pt.nombre) + ' <span class="alm-punto-tipo">' + esc(tipoPuntoLabel(pt.tipo)) + '</span></div>'
+          +   '<div class="d">' + esc(pt.direccion || '') + '</div>'
+          + '</div>';
+      }).join('');
+      box.style.display = 'block';
+    });
+  };
+
+  window.__almPdfPuntoElegir = function(id){
+    cargarCatalogoPuntos().then(function(lista){
+      var pt = lista.find(function(x){ return x.id === id; });
+      if (!pt) return;
+      estado.puntoSeleccionado = pt;
+      renderPuntoRecoleccion();
+    });
+  };
+
+  window.__almPdfPuntoQuitar = function(){
+    estado.puntoSeleccionado = null;
+    renderPuntoRecoleccion();
+  };
+
+  window.__almPdfPuntoRegistrarNuevo = function(){
+    var box = document.getElementById('alm-punto-nuevo-form');
+    if (!box) return;
+    estado.puntoNuevo = null;
+    box.innerHTML =
+        '<div class="alm-punto-nuevo-box">'
+      +   '<div class="alm-destino-fld"><label>Nombre</label><input id="alm-punto-nombre" placeholder="Ej. Estafeta Sucursal Centro \u00b7 Plaza Ju\u00e1rez"></div>'
+      +   '<div class="alm-destino-fld"><label>Tipo</label><select id="alm-punto-tipo">'
+      +     '<option value="paqueteria">Paqueter\u00eda</option><option value="plaza">Plaza</option>'
+      +     '<option value="almacen">Almac\u00e9n propio</option><option value="oficina">Oficina</option><option value="otro">Otro</option>'
+      +   '</select></div>'
+      +   '<div class="alm-destino-fld"><label>Direcci\u00f3n</label><input id="alm-punto-dir" placeholder="Calle, colonia, ciudad"></div>'
+      +   '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">'
+      +     '<button type="button" class="alm-addrow" onclick="window.__almPdfPuntoGeocodificar()">\ud83d\udccd Geocodificar por direcci\u00f3n</button>'
+      +     '<button type="button" class="alm-addrow" onclick="window.__almPdfPuntoMostrarMapa()">\ud83d\uddfa\ufe0f Marcar en mapa</button>'
+      +   '</div>'
+      +   '<div id="alm-punto-coord-msg" class="alm-punto-coord"></div>'
+      +   '<div id="alm-punto-mapa-wrap"></div>'
+      +   '<div style="display:flex;gap:8px;margin-top:8px;align-items:center;">'
+      +     '<button type="button" class="alm-addrow alm-btn-ok" onclick="window.__almPdfPuntoGuardar()">Guardar punto y usarlo</button>'
+      +     '<button type="button" class="alm-estacion-link" onclick="window.__almPdfPuntoCancelarNuevo()">Cancelar</button>'
+      +   '</div>'
+      + '</div>';
+  };
+
+  window.__almPdfPuntoCancelarNuevo = function(){
+    var box = document.getElementById('alm-punto-nuevo-form');
+    if (box) box.innerHTML = '';
+    estado.puntoNuevo = null;
+  };
+
+  window.__almPdfPuntoGeocodificar = function(){
+    var dirEl = document.getElementById('alm-punto-dir');
+    var dir = dirEl ? dirEl.value.trim() : '';
+    var msgEl = document.getElementById('alm-punto-coord-msg');
+    if (!dir){ if (msgEl) msgEl.textContent = 'Escribe la dirección primero.'; return; }
+    if (msgEl) msgEl.textContent = 'Buscando coordenada…';
+    geocodificarDireccion(dir).then(function(coord){
+      if (!coord){ if (msgEl) msgEl.textContent = 'No se encontró — intenta con "Marcar en mapa".'; return; }
+      estado.puntoNuevo = { lat: coord.lat, lng: coord.lng };
+      if (msgEl) msgEl.textContent = '\u2713 Coordenada encontrada: ' + coord.lat.toFixed(5) + ', ' + coord.lng.toFixed(5);
+    });
+  };
+
+  window.__almPdfPuntoMostrarMapa = function(){
+    var wrap = document.getElementById('alm-punto-mapa-wrap');
+    if (!wrap) return;
+    wrap.innerHTML = '<div id="alm-punto-mapa" class="alm-punto-mapa"></div><div style="font-size:10.5px;color:#64748b;margin-top:4px;">Toca el mapa para marcar el punto exacto (se puede arrastrar el pin).</div>';
+    cargarLeafletPunto().then(function(L){
+      var centro = (estado.puntoNuevo && estado.puntoNuevo.lat != null) ? [estado.puntoNuevo.lat, estado.puntoNuevo.lng] : [28.6353, -106.0889];
+      var mapa = L.map('alm-punto-mapa').setView(centro, 12);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapa);
+      var marcador = L.marker(centro, { draggable: true }).addTo(mapa);
+      function actualizarCoord(latlng){
+        estado.puntoNuevo = { lat: latlng.lat, lng: latlng.lng };
+        var msgEl = document.getElementById('alm-punto-coord-msg');
+        if (msgEl) msgEl.textContent = '\u2713 Punto marcado: ' + latlng.lat.toFixed(5) + ', ' + latlng.lng.toFixed(5);
+      }
+      marcador.on('dragend', function(){ actualizarCoord(marcador.getLatLng()); });
+      mapa.on('click', function(e){ marcador.setLatLng(e.latlng); actualizarCoord(e.latlng); });
+    }).catch(function(err){
+      wrap.innerHTML = '<div style="font-size:11.5px;color:#dc2626;">No se pudo cargar el mapa: ' + esc(err && err.message || err) + '</div>';
+    });
+  };
+
+  window.__almPdfPuntoGuardar = function(){
+    var nombreEl = document.getElementById('alm-punto-nombre');
+    var tipoEl = document.getElementById('alm-punto-tipo');
+    var dirEl = document.getElementById('alm-punto-dir');
+    var nombre = nombreEl ? nombreEl.value.trim() : '';
+    var tipo = tipoEl ? tipoEl.value : 'otro';
+    var direccion = dirEl ? dirEl.value.trim() : '';
+    var pn = estado.puntoNuevo;
+    if (!nombre){ msg('Falta el nombre del punto.', '#dc2626'); return; }
+    if (!pn || pn.lat == null || pn.lng == null){ msg('Falta la coordenada \u2014 geocodifica la dirección o márcala en el mapa.', '#dc2626'); return; }
+    guardarPuntoNuevo({ nombre: nombre, tipo: tipo, direccion: direccion, lat: pn.lat, lng: pn.lng }).then(function(id){
+      estado.puntoSeleccionado = { id: id, nombre: nombre, tipo: tipo, direccion: direccion, lat: pn.lat, lng: pn.lng };
+      estado.puntoNuevo = null;
+      renderPuntoRecoleccion();
+      msg('Punto guardado y listo en el catálogo.', '#16a34a');
+    }).catch(function(err){
+      console.error('[almacen-pdf] error guardando punto:', err);
+      msg('No se pudo guardar el punto: ' + (err && err.message || err), '#dc2626');
+    });
+  };
+
   window.__almPdfAgregarAlmacen = function(){
     var nombre = prompt('Nombre del almacén nuevo (ej. TORREÓN):');
     if (!nombre) return;
@@ -720,6 +967,15 @@
   // =====================================================================
   //  CAR\u00c1TULA DE ENV\u00cdO — documento profesional (mismos datos, mejor dise\u00f1o)
   // =====================================================================
+  // Texto legible para la carátula impresa: combina el punto elegido del
+  // catálogo (nombre + dirección) con el horario/instrucciones libres.
+  function textoRecoleccion(){
+    var horario = (document.getElementById('cx-recoleccion-horario')||{}).value || '';
+    var p = estado.puntoSeleccionado;
+    if (!p) return horario.trim();
+    var base = p.nombre + (p.direccion ? (' · ' + p.direccion) : '');
+    return horario.trim() ? (base + ' · ' + horario.trim()) : base;
+  }
   function leerCaratulaDelFormulario(){
     function v(id){ var el = document.getElementById(id); return el ? el.value.trim() : ''; }
     return {
@@ -727,7 +983,7 @@
       remitente: { nombre: v('cx-rem-nombre'), rfc: v('cx-rem-rfc'), direccion: v('cx-rem-dir'), colonia: v('cx-rem-col'), cp: v('cx-rem-cp'), ciudadEstado: v('cx-rem-ciu'), telefono: v('cx-rem-tel') },
       destinatario: { nombre: v('cx-dest-nombre'), rfc: v('cx-dest-rfc'), regimen: v('cx-dest-regimen'), direccion: v('cx-dest-dir'), colonia: v('cx-dest-col'), cp: v('cx-dest-cp'), ciudadEstado: v('cx-dest-ciu'), telefono: v('cx-dest-tel'), correo: v('cx-dest-correo') },
       paqueteria: v('cx-paqueteria'), guia: v('cx-guia'), tipoEnvio: v('cx-tipo-envio'), atencion: v('cx-atencion'),
-      recoleccion: v('cx-recoleccion'), referencias: v('cx-referencias'), instrucciones: v('cx-instrucciones'),
+      recoleccion: textoRecoleccion(), referencias: v('cx-referencias'), instrucciones: v('cx-instrucciones'),
       flete: (document.getElementById('cx-flete')||{}).value || 'pagado',
       entregaTipo: (document.getElementById('cx-entrega-tipo')||{}).value || 'oficina',
       folio: (document.getElementById('alm-folio')||{}).value || '', almacen: (document.getElementById('alm-almacen')||{}).value || '',
@@ -905,6 +1161,18 @@
         datosDestino.destinoGuia = ((document.getElementById('cx-guia') || {}).value || '').trim();
         if (estado.caratulaImg) datosDestino.destinoCaratulaImg = estado.caratulaImg;
         if (document.getElementById('cx-dest-nombre')) datosDestino.caratulaEnvio = leerCaratulaDelFormulario();
+        // Punto de recolección/entrega elegido del catálogo puntos_referencia:
+        // se congela el lat/lng en el propio pedido (igual que entrega_chihuahua
+        // con destinoEstacionId) para que la TV no necesite leer el catálogo.
+        if (estado.puntoSeleccionado) {
+          var pt = estado.puntoSeleccionado;
+          datosDestino.destinoPuntoId = pt.id;
+          datosDestino.destinoPuntoNombre = pt.nombre;
+          datosDestino.destinoPuntoTipo = pt.tipo;
+          datosDestino.destinoPuntoDireccion = pt.direccion || '';
+          datosDestino.destinoLat = pt.lat;
+          datosDestino.destinoLng = pt.lng;
+        }
       } else if (destinoTipo === 'entrega_chihuahua') {
         if (estado.estacionSeleccionada) {
           // Dirección proveniente del catálogo maestro (fuente única). Se guarda
@@ -1030,6 +1298,8 @@
     estado.documentosPendientes = [];
     estado.ultimoGuardado = null;
     estado.estacionSeleccionada = null;
+    estado.puntoSeleccionado = null;
+    estado.puntoNuevo = null;
     var up = document.getElementById('alm-step-upload');
     var rv = document.getElementById('alm-step-review');
     if (up) up.style.display = 'block';
