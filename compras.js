@@ -623,7 +623,15 @@
     // ── Encabezado (con logo si la empresa tiene uno cargado) ──
     docu.setFillColor(AZUL.r,AZUL.g,AZUL.b); docu.rect(0,0,PW,26,'F');
     var xTexto = ML;
-    if(logo){ try{ docu.addImage(logo,ML,6,32,14,undefined,'FAST'); xTexto = ML+36; }catch(e){} }
+    if(logo){
+      // Fondo blanco detrás del logo — el logo de TECNOCONTROL tiene texto
+      // oscuro y se volvía invisible sobre la franja azul marino.
+      try{
+        docu.setFillColor(255,255,255); docu.roundedRect(ML,5,34,16,2,2,'F');
+        docu.addImage(logo,ML+1,6,32,14,undefined,'FAST');
+        xTexto = ML+38;
+      }catch(e){}
+    }
     docu.setTextColor(255,255,255); docu.setFont('helvetica','bold'); docu.setFontSize(11);
     docu.text('Orden de compra', xTexto, 15);
     docu.setFont('helvetica','normal'); docu.setFontSize(8);
@@ -656,9 +664,17 @@
     var nSolicitante = campo(ML,'Solicitante', nombrePorCorreo(d.solicitante));
     var nCiudad = campo(xMid,'Ciudad', d.ciudad);
     y += Math.max(nSolicitante,nCiudad)*5 + 9;
-    var nCliente = campo(ML,'Cliente / proyecto', d.cliente);
-    var nMotivo = campo(xMid,'Motivo', d.motivo);
-    y += Math.max(nCliente,nMotivo)*5 + 9;
+    function campoAncho(label,valor){
+      docu.setFont('helvetica','bold'); docu.setFontSize(7.5); docu.setTextColor(100,116,139);
+      docu.text(String(label).toUpperCase(), ML, y);
+      docu.setFont('helvetica','normal'); docu.setFontSize(10); docu.setTextColor(15,23,42);
+      var lns = docu.splitTextToSize(String(valor==null||valor===''?'—':valor), PW-ML-MR);
+      docu.text(lns, ML, y+5);
+      y += 5+lns.length*5+6;
+    }
+    campoAncho('Cliente / razón social', d.razonSocial||d.cliente);
+    if(d.estacionNombre||d.direccion) campoAncho('Estación / ubicación', d.estacionNombre||d.direccion);
+    campoAncho('Motivo', d.motivo);
     var nProveedor = campo(ML,'Proveedor ganador', (d.cotizacionGanadora&&d.cotizacionGanadora.proveedor));
     var nMonto = campo(xMid,'Monto', d.cotizacionGanadora&&d.cotizacionGanadora.monto!=null ? ('$'+d.cotizacionGanadora.monto) : null);
     y += Math.max(nProveedor,nMonto)*5 + 10;
