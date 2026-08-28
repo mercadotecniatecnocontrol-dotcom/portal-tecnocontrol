@@ -29,17 +29,29 @@
 <h1>Directorio — Revisión de nombre / correo / departamento</h1>
 <div class="sub">Junta <b>usuarios</b>, <b>colaboradores</b> y <b>fl_usuarios</b>. Corrige y da clic en Guardar por fila — actualiza <b>usuarios</b> y <b>colaboradores</b> a la vez (las dos fuentes que usa el portal para mostrar nombres).</div>
 
+<div style="background:#fff;border-radius:10px;padding:16px;margin-bottom:18px;box-shadow:0 1px 3px rgba(0,0,0,.08)">
+  <div style="font-weight:700;font-size:13.5px;margin-bottom:10px">+ Nuevo usuario</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:8px;align-items:start">
+    <input id="nu-correo" type="text" placeholder="Correo">
+    <input id="nu-nombre" type="text" placeholder="Nombre completo">
+    <select id="nu-depto"><option value="">Departamento…</option></select>
+    <input id="nu-pass" type="text" placeholder="Contraseña temporal (mín. 6)">
+    <button class="guardar" onclick="window.__crearUsuario()" style="padding:9px 16px">Crear cuenta</button>
+  </div>
+  <div class="estado" id="nu-msg"></div>
+</div>
+
 <input id="filtro" type="text" placeholder="Buscar por correo o nombre…">
 <div id="resumen">Cargando…</div>
 <table>
-  <thead><tr><th style="width:22%">Correo</th><th style="width:22%">Nombre</th><th style="width:18%">Departamento</th><th style="width:14%">Aparece en</th><th style="width:10%">Activo</th><th style="width:14%"></th></tr></thead>
+  <thead><tr><th style="width:19%">Correo</th><th style="width:19%">Nombre</th><th style="width:14%">Departamento</th><th style="width:11%">Rol</th><th style="width:13%">Aparece en</th><th style="width:8%">Activo</th><th style="width:14%"></th></tr></thead>
   <tbody id="tbody"></tbody>
 </table>
 
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getFirestore, collection, getDocs, doc, updateDoc, setDoc, query, where } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, createUserWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 const config = { apiKey:"AIzaSyBXh-P0oMtMiDjyz9PObuJ8DNfROlXvhLE", authDomain:"tecnocontrol-1c42f.firebaseapp.com", projectId:"tecnocontrol-1c42f", storageBucket:"tecnocontrol-1c42f.firebasestorage.app", appId:"1:27642771956:web:54225af9e386afded8a1a1" };
 const app = initializeApp(config, 'admin-directorio');
@@ -47,6 +59,8 @@ const db = getFirestore(app);
 const auth = getAuth(app);
 
 const DEPARTAMENTOS = ['Ingresos','Egresos','Contabilidad','Administración','Recursos Humanos','Marketing','Ventas','Pagos','Gestoría','Almacén','Compras','Operaciones','Flotilla','Contraloría'];
+const ROLES = ['colaborador','jefe_area','admin_area'];
+document.getElementById('nu-depto').innerHTML += DEPARTAMENTOS.map(d=>'<option value="'+d+'">'+d+'</option>').join('');
 const $ = id => document.getElementById(id);
 
 // Requiere sesión real del portal (mismas cuentas de siempre) — esta
@@ -89,7 +103,7 @@ async function cargarTodo(){
   function asegurar(correo){
     const k = clave(correo);
     if(!k) return null;
-    if(!registro[k]) registro[k] = {correo:k, nombre:'', departamento:'', activo:true, fuentes:new Set()};
+    if(!registro[k]) registro[k] = {correo:k, nombre:'', departamento:'', rol:'colaborador', activo:true, fuentes:new Set()};
     return registro[k];
   }
 
@@ -98,6 +112,7 @@ async function cargarTodo(){
     r.fuentes.add('usuarios'); r.uidUsuarios=d.id;
     if(u.nombre) r.nombre=u.nombre;
     if(u.departamento) r.departamento=u.departamento;
+    if(u.rol) r.rol=u.rol;
     if(u.activo===false) r.activo=false;
   });
   snapColab.forEach(d=>{
@@ -130,6 +145,7 @@ function render(filtro){
       '<td>'+r.correo+'</td>'+
       '<td><input type="text" class="in-nombre" value="'+esc(r.nombre)+'" placeholder="Nombre completo"></td>'+
       '<td><select class="in-depto"><option value="">—</option>'+DEPARTAMENTOS.map(d=>'<option value="'+d+'" '+(r.departamento===d?'selected':'')+'>'+d+'</option>').join('')+'</select></td>'+
+      '<td><select class="in-rol">'+ROLES.map(rl=>'<option value="'+rl+'" '+(r.rol===rl?'selected':'')+'>'+rl+'</option>').join('')+'</select></td>'+
       '<td class="fuentes">'+
         '<span class="'+(faltaUsuarios?'falta':'')+'">usuarios</span>'+
         '<span class="'+(faltaColab?'falta':'')+'">colaboradores</span>'+
@@ -148,6 +164,7 @@ window.__guardarFila = async function(correo, idRow){
   const tr = document.getElementById(idRow);
   const nombre = tr.querySelector('.in-nombre').value.trim();
   const departamento = tr.querySelector('.in-depto').value;
+  const rol = tr.querySelector('.in-rol').value;
   const activo = tr.querySelector('.in-activo').checked;
   const btn = tr.querySelector('button.guardar');
   const msgEl = document.getElementById(idRow+'-msg');
@@ -163,7 +180,7 @@ window.__guardarFila = async function(correo, idRow){
       if(!snap.empty) uid = snap.docs[0].id;
     }
     if(uid){
-      await updateDoc(doc(db,'usuarios',uid), {nombre, departamento, activo});
+      await updateDoc(doc(db,'usuarios',uid), {nombre, departamento, rol, activo});
     }else{
       msgEl.textContent='Guardado en colaboradores. Sin cuenta en "usuarios" todavía — créala desde Administración de usuarios.';
     }
@@ -175,15 +192,57 @@ window.__guardarFila = async function(correo, idRow){
     }
     await setDoc(doc(db,'colaboradores',idColab), {correo, nombre, departamento}, {merge:true});
 
-    r.nombre=nombre; r.departamento=departamento; r.activo=activo; r.uidUsuarios=uid; r.idColaborador=idColab;
+    r.nombre=nombre; r.departamento=departamento; r.rol=rol; r.activo=activo; r.uidUsuarios=uid; r.idColaborador=idColab;
     r.fuentes.add('colaboradores'); if(uid) r.fuentes.add('usuarios');
-    msgEl.textContent = uid ? 'Guardado en usuarios y colaboradores ✓' : msgEl.textContent;
+    // NO se vuelve a llamar render() aquí — reconstruía la tabla al instante
+    // y borraba la confirmación antes de que se alcanzara a ver.
+    msgEl.textContent = uid ? 'Guardado ✓' : 'Guardado en colaboradores ✓ (falta cuenta en "usuarios")';
     msgEl.className='estado ok';
-    render($('filtro').value);
+    const original = btn.textContent;
+    btn.textContent = '✓ Guardado'; btn.style.background = '#15803d';
+    setTimeout(()=>{ btn.textContent = original; btn.style.background = ''; }, 2000);
   }catch(e){
     msgEl.textContent = 'Error: '+(e.code||e.message);
     msgEl.className='estado err';
+    btn.style.background = '#b91c1c';
+    setTimeout(()=>{ btn.style.background = ''; }, 2500);
   }finally{ btn.disabled=false; }
+};
+
+// ── Alta de cuenta nueva ──────────────────────────────────────────
+// createUserWithEmailAndPassword deja logueada la sesión ACTUAL como el
+// usuario nuevo — para no cerrar tu sesión de admin, se crea en una
+// instancia de Firebase aparte, se cierra esa sesión secundaria y se
+// destruye la instancia; tu sesión principal nunca se toca.
+window.__crearUsuario = async function(){
+  const correo = document.getElementById('nu-correo').value.trim().toLowerCase();
+  const nombre = document.getElementById('nu-nombre').value.trim();
+  const departamento = document.getElementById('nu-depto').value;
+  const passTemp = document.getElementById('nu-pass').value;
+  const msgEl = document.getElementById('nu-msg');
+  if(!correo || !nombre || !passTemp){ msgEl.textContent='Completa correo, nombre y contraseña temporal.'; msgEl.className='estado err'; return; }
+  if(passTemp.length<6){ msgEl.textContent='La contraseña debe tener al menos 6 caracteres.'; msgEl.className='estado err'; return; }
+  if(registro[correo]?.uidUsuarios){ msgEl.textContent='Ese correo ya tiene cuenta en "usuarios".'; msgEl.className='estado err'; return; }
+  msgEl.textContent='Creando cuenta…'; msgEl.className='estado';
+  const secApp = initializeApp(config, 'crear-usuario-'+Date.now());
+  const secAuth = getAuth(secApp);
+  try{
+    const cred = await createUserWithEmailAndPassword(secAuth, correo, passTemp);
+    const uid = cred.user.uid;
+    await signOut(secAuth);
+    await deleteApp(secApp);
+    await setDoc(doc(db,'usuarios',uid), {correo, nombre, departamento, rol:'colaborador', activo:true});
+    await setDoc(doc(db,'colaboradores',correo), {correo, nombre, departamento}, {merge:true});
+    registro[correo] = {correo, nombre, departamento, rol:'colaborador', activo:true, fuentes:new Set(['usuarios','colaboradores']), uidUsuarios:uid, idColaborador:correo};
+    msgEl.textContent='Cuenta creada ✓ — comparte correo y esta contraseña temporal con la persona.';
+    msgEl.className='estado ok';
+    document.getElementById('nu-correo').value=''; document.getElementById('nu-nombre').value=''; document.getElementById('nu-pass').value=''; document.getElementById('nu-depto').value='';
+    render($('filtro').value);
+  }catch(e){
+    msgEl.textContent='Error: '+(e.code||e.message);
+    msgEl.className='estado err';
+    try{ await deleteApp(secApp); }catch(_){}
+  }
 };
 </script>
 </body>
