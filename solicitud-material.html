@@ -6,6 +6,7 @@
 <title>Solicitud de Material · Almacén Tecnocontrol</title>
 <link rel="stylesheet" href="CSS/solicitud-material.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="material-pdf.js"></script>
 </head>
 <body>
 
@@ -60,6 +61,15 @@
       <div>
         <label>Área *</label>
         <input id="f-area" type="text" placeholder="Ej. Ventas, Servicio, Flotilla…" autocomplete="off" required>
+      </div>
+      <div>
+        <label>Razón social *</label>
+        <input id="f-razon" type="text" placeholder="Razón social del cliente/estación" autocomplete="off" required>
+      </div>
+      <div class="full">
+        <label>Estación / ubicación *</label>
+        <div id="f-ubic-resumen" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:9px 11px;font-size:12.5px;color:#475569;margin-bottom:6px;">Sin ubicación seleccionada</div>
+        <button type="button" onclick="elegirUbicacionKiosco()" style="width:100%;padding:9px;border:1.5px dashed #cbd5e1;border-radius:8px;background:#fff;color:var(--teal,#0FB5A6);font-size:12.5px;font-weight:700;cursor:pointer;">📍 Elegir estación / dirección / mapa</button>
       </div>
       <div id="wrap-destino-operacion">
         <label>Operación destino *</label>
@@ -195,6 +205,10 @@ const config = { apiKey:"AIzaSyBXh-P0oMtMiDjyz9PObuJ8DNfROlXvhLE", authDomain:"t
 const app = initializeApp(config, 'kiosco-material');
 const db  = getFirestore(app);
 const auth = getAuth(app);
+// Expuestos para material-pdf.js (módulo compartido de selector de ubicación),
+// que no puede usar los imports de este <script type="module"> directamente.
+window.db = db;
+window.__tcModularFs = { collection, getDocs, addDoc };
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -569,6 +583,15 @@ function firmaBase64(){
 const msg = $('msg');
 function setMsg(t,c){ msg.textContent=t||''; msg.style.color=c||'var(--rojo)'; }
 
+// Ubicación (razón social se captura en f-razon; estación/dirección/mapa aquí)
+let ubicacionKiosco = null;
+window.elegirUbicacionKiosco = function(){
+  window.tcAbrirSelectorUbicacion(ubicacionKiosco, function(sel){
+    ubicacionKiosco = sel;
+    $('f-ubic-resumen').textContent = sel.estacionNombre || sel.direccion || (sel.lat ? ('Ubicación marcada en el mapa ('+sel.lat.toFixed(5)+', '+sel.lng.toFixed(5)+')') : '—');
+  });
+};
+
 /* Folio consecutivo "OPERACIONES 0001", "OPERACIONES 0002"... — compartido con el
    módulo interno de Operaciones (operaciones.js). Sigue leyendo el máximo folioNum
    existente y sumando 1 (no 100% atómico — colisión rara si dos solicitudes llegan
@@ -593,6 +616,7 @@ async function siguienteFolioMaterial(){
 $('submit').onclick = async ()=>{
   const tecnicoNombre = $('f-tecnico').value.trim();
   const area = $('f-area').value.trim();
+  const razonSocial = $('f-razon').value.trim();
   const uso = $('f-uso').value.trim();
   const productos = Object.values(carrito).map(v=>({ clave: v.clave, cant: v.cant, desc: v.desc }));
   const tecnicoInfo = mapaTecnicos[tecnicoNombre.toLowerCase()] || null;
@@ -626,8 +650,11 @@ $('submit').onclick = async ()=>{
 
   if(!auth.currentUser){ setMsg('Tu sesión expiró — vuelve a iniciar sesión.'); return; }
   if(!tecnicoNombre){ setMsg('Escribe o elige el técnico.'); return; }
-  if(!tecnicoInfo){ setMsg('Elige un técnico de la lista (no se aceptan nombres que no existan en Operaciones).'); return; }
+  // Validación de técnico FLEXIBLE (confirmado): si no está en el catálogo de
+  // Operaciones, se acepta igual — ya no bloquea el envío.
   if(!area){ setMsg('Escribe el área.'); return; }
+  if(!razonSocial){ setMsg('Escribe la razón social.'); return; }
+  if(!ubicacionKiosco){ setMsg('Elige la estación, dirección o ubicación en el mapa.'); return; }
   if(tipoTraslado==='traslado_almacenes' && (!almacenOrigen || !almacenDestino)){ setMsg('Escribe almacén origen y destino.'); return; }
   if(tipoTraslado==='entrega_tecnico' && !almacenOrigenTecnico){ setMsg('Escribe el almacén de origen.'); return; }
   if(tipoTraslado==='' && !destino){ setMsg('Escribe la operación destino.'); return; }
@@ -635,46 +662,60 @@ $('submit').onclick = async ()=>{
   if(!productos.length){ setMsg('Agrega al menos un artículo con descripción y cantidad.'); return; }
   if(!hayFirma){ setMsg('Falta la firma del solicitante.'); return; }
 
-  const btn = $('submit'); btn.disabled=true; setMsg('Enviando…','var(--teal)');
-  try{
-    await authReady;
-    const folioInfo = await siguienteFolioMaterial();
-    const firma = firmaBase64();
-    await addDoc(collection(db,'surtidos'), {
-      tipo: 'material',
-      folio: folioInfo.folio,
-      folioNum: folioInfo.folioNum,
-      folioPrefijo: folioInfo.folioPrefijo,
-      cliente: destino || 'Almacén · Operaciones',
-      solicitante,
-      vendedor: solicitante,
-      solicitanteEmail: auth.currentUser.email,
-      solicitanteTecnicoId: miTecnico ? miTecnico.id : null,
-      tecnicoId: tecnicoInfo ? tecnicoInfo.id : null,
-      tecnicoNombre,
-      tecnicoCorreo: tecnicoInfo ? tecnicoInfo.correo : null,
-      solicitaParaSiMismo: modoSolicitud==='propio',
-      area,
-      destino,
-      destinoTipo: destinoTipo || null,
-      destinoAlmacenOrigen: destinoAlmacenOrigen || null,
-      destinoAlmacenDestino: destinoAlmacenDestino || null,
-      uso,
-      prioridad,                     // urgente / alta / normal / programado (mismas que Logística)
-      estado: 'pendiente',
-      productos,
-      firma,
-      origen: 'kiosco',
-      createdAt: serverTimestamp()
-    });
-    ultimaSolicitudEnviada = { folio: folioInfo.folio, solicitante, area, destino, uso, productos, firma, prioridad };
-    $('done-folio').textContent = folioInfo.folio;
-    $('done').classList.add('on');
-    setMsg('');
-  }catch(e){
-    console.error('[kiosco] error al enviar:', e);
-    setMsg('No se pudo enviar (' + (e.code||e.message||'error') + '). Revisa tu conexión.');
-  }finally{ btn.disabled=false; }
+  const btn = $('submit'); btn.disabled=true; setMsg('Generando vista previa…','var(--teal)');
+  const folioInfo = await siguienteFolioMaterial();
+  const firma = firmaBase64();
+  const docPrevio = {
+    folio: folioInfo.folio, solicitante, area, razonSocial,
+    estacionNombre: ubicacionKiosco.estacionNombre, direccion: ubicacionKiosco.direccion,
+    lat: ubicacionKiosco.lat, lng: ubicacionKiosco.lng,
+    destino: destino || 'Almacén · Operaciones', uso, prioridad, productos, firma,
+  };
+  const pdfPrevio = window.tcConstruirPDFSolicitud(docPrevio, (document.querySelector('.hero-logo')||{}).src||null);
+  btn.disabled=false; setMsg('');
+  window.tcPrevisualizarPDF(pdfPrevio, folioInfo.folio, async ()=>{
+    btn.disabled=true; setMsg('Enviando…','var(--teal)');
+    try{
+      await authReady;
+      await addDoc(collection(db,'surtidos'), {
+        tipo: 'material',
+        folio: folioInfo.folio,
+        folioNum: folioInfo.folioNum,
+        folioPrefijo: folioInfo.folioPrefijo,
+        cliente: razonSocial, razonSocial,
+        estacionId: ubicacionKiosco.estacionId||null, estacionNombre: ubicacionKiosco.estacionNombre||null,
+        direccion: ubicacionKiosco.direccion||null, lat: ubicacionKiosco.lat!=null?ubicacionKiosco.lat:null, lng: ubicacionKiosco.lng!=null?ubicacionKiosco.lng:null,
+        solicitante,
+        vendedor: solicitante,
+        solicitanteEmail: auth.currentUser.email,
+        solicitanteTecnicoId: miTecnico ? miTecnico.id : null,
+        tecnicoId: tecnicoInfo ? tecnicoInfo.id : null,
+        tecnicoNombre,
+        tecnicoCorreo: tecnicoInfo ? tecnicoInfo.correo : null,
+        solicitaParaSiMismo: modoSolicitud==='propio',
+        area,
+        destino,
+        destinoTipo: destinoTipo || null,
+        destinoAlmacenOrigen: destinoAlmacenOrigen || null,
+        destinoAlmacenDestino: destinoAlmacenDestino || null,
+        uso,
+        prioridad,                     // urgente / alta / normal / programado (mismas que Logística)
+        estado: 'pendiente',
+        productos,
+        firma,
+        origen: 'kiosco',
+        createdAt: serverTimestamp()
+      });
+      ultimaSolicitudEnviada = { folio: folioInfo.folio, solicitante, area, razonSocial, destino, uso, productos, firma, prioridad, estacionNombre: ubicacionKiosco.estacionNombre, direccion: ubicacionKiosco.direccion, lat: ubicacionKiosco.lat, lng: ubicacionKiosco.lng };
+      $('done-folio').textContent = folioInfo.folio;
+      $('done').classList.add('on');
+      setMsg('');
+      window.tcCompartirPDFWhatsApp(pdfPrevio, folioInfo.folio, resumenTextoSolicitud(ultimaSolicitudEnviada));
+    }catch(e){
+      console.error('[kiosco] error al enviar:', e);
+      setMsg('No se pudo enviar (' + (e.code||e.message||'error') + '). Revisa tu conexión.');
+    }finally{ btn.disabled=false; }
+  });
 };
 
 /* ============ WhatsApp: mismo espíritu que el botón de Ventas (almacen-pdf.js) ============
@@ -806,7 +847,8 @@ $('done-whatsapp').onclick = async ()=>{
 $('done-new').onclick = ()=>{
   $('done').classList.remove('on');
   $('f-tecnico').value=''; $('f-tecnico-correo').textContent='';
-  $('f-area').value=''; $('f-destino').value=''; $('f-uso').value='';
+  $('f-area').value=''; $('f-razon').value=''; $('f-destino').value=''; $('f-uso').value='';
+  ubicacionKiosco = null; $('f-ubic-resumen').textContent = 'Sin ubicación seleccionada';
   $('f-prioridad').value='urgente';
   $('f-tipo-traslado').value=''; $('f-almacen-origen').value=''; $('f-almacen-destino').value=''; $('f-almacen-origen-tecnico').value='';
   onTipoTrasladoChange();
