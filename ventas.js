@@ -6447,6 +6447,7 @@ let ventasCatalogoProductos = [];
 let ventasTecnicosCache = [];
 let ventasSolicitudCarrito = {};
 let ventasSolicitudClienteActual = null;
+let ventasSolicitudUbicacion = null;
 let ventasFirmaCtx = null, ventasFirmaDibujando = false, ventasFirmaHay = false, ventasFirmaLastX = 0, ventasFirmaLastY = 0;
 
 function ventasEsc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -6496,21 +6497,22 @@ window.ventasAbrirModalSolicitud = async function(clienteId){
         wrap.id = 'ventas-modal-solicitud';
         document.body.appendChild(wrap);
     }
+    ventasSolicitudUbicacion = c && c.estacionCatalogoId ? {
+        modo:'estacion', estacionId:c.estacionCatalogoId, estacionNombre:c.nombre,
+        direccion: c.direccionEntrega||c.direccion||'', lat:c.lat, lng:c.lng
+    } : null;
     wrap.innerHTML = `
     <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:999999;display:flex;align-items:center;justify-content:center;padding:20px;">
         <div style="background:#fff;border-radius:14px;width:460px;max-width:94vw;padding:22px;max-height:90vh;overflow-y:auto;">
             <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:2px;">📦 Solicitud de material</div>
             <div style="font-size:11px;color:#94a3b8;margin-bottom:14px;">Se surte desde Almacén, igual que las solicitudes del kiosco y Operaciones.</div>
 
-            ${c ? `<div style="background:#fff7ed;border-radius:10px;padding:10px 12px;margin-bottom:14px;">
-                <div style="font-size:12.5px;font-weight:700;color:#7c2d12;">${ventasEsc(c.nombre||'—')}</div>
-                <div style="font-size:10.5px;color:#c2410c;">${ventasEsc([c.ciudad,c.estado].filter(Boolean).join(', ')||'—')}</div>
-            </div>` : `
-            <label style="font-size:11.5px;color:#64748b;font-weight:600;">Cliente / estación (opcional)</label>
-            <input id="vsm-cliente-libre" placeholder="Nombre del cliente o estación, si aplica" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 14px;box-sizing:border-box;">`}
+            <label style="font-size:11.5px;color:#64748b;font-weight:600;">Razón social *</label>
+            <input id="vsm-razon" value="${ventasEsc((c&&c.nombre)||'')}" placeholder="Razón social del cliente/estación" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 14px;box-sizing:border-box;">
 
-            <label style="font-size:11.5px;color:#64748b;font-weight:600;">Dirección de entrega *</label>
-            <input id="vsm-destino" value="${ventasEsc(destinoDefault)}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;box-sizing:border-box;">
+            <label style="font-size:11.5px;color:#64748b;font-weight:600;">Estación / ubicación de entrega *</label>
+            <div id="vsm-ubic-resumen" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;font-size:12px;color:#475569;margin:4px 0 6px;">${ventasEsc(destinoDefault||'Sin ubicación seleccionada')}</div>
+            <button type="button" onclick="ventasElegirUbicacionSolicitud()" style="width:100%;padding:8px;border:1.5px dashed #cbd5e1;border-radius:8px;background:#fff;color:#c2410c;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:14px;">📍 Elegir estación / dirección / mapa</button>
 
             <label style="display:flex;align-items:center;gap:8px;font-size:11.5px;color:#64748b;font-weight:600;margin-bottom:6px;">
                 <input type="checkbox" id="vsm-con-tecnico" onchange="ventasToggleTecnico()"> ¿Ya hay técnico asignado para instalar/entregar?
@@ -6518,8 +6520,10 @@ window.ventasAbrirModalSolicitud = async function(clienteId){
             <div id="vsm-wrap-tecnico" style="display:none;margin-bottom:10px;">
                 <select id="vsm-tecnico" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;box-sizing:border-box;">
                     <option value="">Selecciona un técnico…</option>
+                    <option value="__libre__">Escribir nombre (no está en la lista)</option>
                     ${ventasTecnicosCache.map(t=>`<option value="${t.id}">${ventasEsc(t.nombre)}${t.numeroOperativo?(' · N.° '+ventasEsc(t.numeroOperativo)):''}</option>`).join('')}
                 </select>
+                <input id="vsm-tecnico-libre" placeholder="Nombre del técnico" style="display:none;width:100%;margin-top:6px;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;box-sizing:border-box;">
             </div>
 
             <label style="font-size:11.5px;color:#64748b;font-weight:600;">Prioridad *</label>
@@ -6569,6 +6573,20 @@ window.ventasToggleTecnico = function(){
     const on = document.getElementById('vsm-con-tecnico').checked;
     document.getElementById('vsm-wrap-tecnico').style.display = on ? 'block' : 'none';
 };
+window.ventasElegirUbicacionSolicitud = function(){
+    window.tcAbrirSelectorUbicacion(ventasSolicitudUbicacion, function(sel){
+        ventasSolicitudUbicacion = sel;
+        const resumen = sel.estacionNombre || sel.direccion || (sel.lat?('Ubicación marcada en el mapa ('+sel.lat.toFixed(5)+', '+sel.lng.toFixed(5)+')'):'—');
+        document.getElementById('vsm-ubic-resumen').textContent = resumen;
+    });
+};
+// Validación de técnico flexible: si escribe un nombre que no está en el catálogo,
+// se acepta igual (no se bloquea el envío) — solo se guarda como texto libre.
+document.addEventListener('change', function(e){
+    if(e.target && e.target.id==='vsm-tecnico'){
+        document.getElementById('vsm-tecnico-libre').style.display = e.target.value==='__libre__' ? 'block' : 'none';
+    }
+});
 
 // ── Grid de productos con tarjetas (misma experiencia que el kiosco de
 //    Almacén: buscas, aparecen tarjetas con clave/descripción, "+ Agregar"
@@ -6691,12 +6709,11 @@ function ventasFirmaBase64(){
 
 window.ventasEnviarSolicitudMaterial = async function(clienteId){
     const c = ventasSolicitudClienteActual;
-    const clienteLibreEl = document.getElementById('vsm-cliente-libre');
-    const clienteNombreLibre = clienteLibreEl ? clienteLibreEl.value.trim() : '';
-    const destino = document.getElementById('vsm-destino').value.trim();
+    const razonSocial = document.getElementById('vsm-razon').value.trim();
     const conTecnico = document.getElementById('vsm-con-tecnico').checked;
-    const tecnicoId = conTecnico ? document.getElementById('vsm-tecnico').value : '';
-    const tecnico = tecnicoId ? ventasTecnicosCache.find(t=>t.id===tecnicoId) : null;
+    const tecnicoSel = conTecnico ? document.getElementById('vsm-tecnico').value : '';
+    const tecnico = tecnicoSel && tecnicoSel!=='__libre__' ? ventasTecnicosCache.find(t=>t.id===tecnicoSel) : null;
+    const tecnicoLibreNombre = tecnicoSel==='__libre__' ? document.getElementById('vsm-tecnico-libre').value.trim() : '';
     const prioridad = document.getElementById('vsm-prioridad').value || 'alta';
     const uso = document.getElementById('vsm-uso').value.trim();
     const productos = Object.values(ventasSolicitudCarrito).map(v=>({clave:v.clave,cant:v.cant,desc:v.desc}));
@@ -6706,38 +6723,52 @@ window.ventasEnviarSolicitudMaterial = async function(clienteId){
     const solicitante = (window.nombreUsuario ? window.nombreUsuario(yo) : '') || yo;
 
     if(!yo){ msgEl.textContent = 'Tu sesión no está disponible — recarga el portal.'; return; }
-    if(!destino){ msgEl.textContent = 'Escribe la dirección de entrega.'; return; }
-    if(conTecnico && !tecnicoId){ msgEl.textContent = 'Elige el técnico de la lista o desmarca la casilla.'; return; }
+    if(!razonSocial){ msgEl.textContent = 'Escribe la razón social.'; return; }
+    if(!ventasSolicitudUbicacion){ msgEl.textContent = 'Elige la estación, dirección o ubicación en el mapa.'; return; }
+    // Validación de técnico FLEXIBLE (confirmado): no se bloquea si el nombre no
+    // está en el catálogo — solo se pide que se escriba algo cuando aplica.
+    if(conTecnico && !tecnico && !tecnicoLibreNombre){ msgEl.textContent = 'Elige un técnico o escribe su nombre.'; return; }
     if(!uso){ msgEl.textContent = 'Describe para qué se usará el material.'; return; }
     if(!productos.length){ msgEl.textContent = 'Agrega al menos un artículo con descripción y cantidad.'; return; }
     if(!ventasFirmaHay){ msgEl.textContent = 'Falta la firma del solicitante.'; return; }
     msgEl.textContent = '';
 
-    try{
-        const { collection, addDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-        const folioInfo = await ventasSiguienteFolioMaterial();
-        await addDoc(collection(window.db,'surtidos'), {
-            tipo: 'material',
-            folio: folioInfo.folio, folioNum: folioInfo.folioNum, folioPrefijo: folioInfo.folioPrefijo,
-            cliente: (c && c.nombre) || clienteNombreLibre || destino,
-            clienteId: clienteId || null,
-            solicitante, solicitanteEmail: yo, vendedor: solicitante,
-            tecnicoId: tecnico ? tecnico.id : null,
-            tecnicoNombre: tecnico ? tecnico.nombre : null,
-            tecnicoCorreo: tecnico ? (tecnico.correo||null) : null,
-            area: 'Ventas',
-            destino, destinoTipo: 'entrega_chihuahua', destinoDireccion: destino,
-            uso, prioridad, estado: 'pendiente',
-            productos, firma: ventasFirmaBase64(),
-            origen: 'ventas',
-            createdAt: serverTimestamp ? serverTimestamp() : new Date().toISOString(),
-        });
-        document.getElementById('ventas-modal-solicitud').innerHTML = '';
-        if(window.mostrarToast) window.mostrarToast('✅ Solicitud enviada', `${folioInfo.folio} → Almacén`, '📦');
-        else alert(`Solicitud ${folioInfo.folio} enviada a Almacén.`);
-    }catch(e){
-        msgEl.textContent = 'No se pudo enviar (' + (e.code||e.message||'error') + ').';
-    }
+    const folioInfo = await ventasSiguienteFolioMaterial();
+    const ubic = ventasSolicitudUbicacion;
+    const surtidoData = {
+        tipo: 'material',
+        folio: folioInfo.folio, folioNum: folioInfo.folioNum, folioPrefijo: folioInfo.folioPrefijo,
+        cliente: razonSocial, razonSocial,
+        clienteId: clienteId || null,
+        estacionId: ubic.estacionId||null, estacionNombre: ubic.estacionNombre||null,
+        direccion: ubic.direccion||null, lat: ubic.lat!=null?ubic.lat:null, lng: ubic.lng!=null?ubic.lng:null,
+        solicitante, solicitanteEmail: yo, vendedor: solicitante,
+        tecnicoId: tecnico ? tecnico.id : null,
+        tecnicoNombre: tecnico ? tecnico.nombre : (tecnicoLibreNombre || null),
+        tecnicoCorreo: tecnico ? (tecnico.correo||null) : null,
+        area: 'Ventas',
+        destino: ubic.estacionNombre || ubic.direccion || razonSocial, destinoTipo: 'entrega_chihuahua', destinoDireccion: ubic.direccion||null,
+        uso, prioridad, estado: 'pendiente',
+        productos, firma: ventasFirmaBase64(),
+        origen: 'ventas',
+    };
+
+    const pdf = window.tcConstruirPDFSolicitud(surtidoData, null);
+    const resumen = '📦 Solicitud de Material — '+folioInfo.folio+'\nRazón social: '+razonSocial+'\nÁrea: Ventas\n'+(surtidoData.destino?('Destino: '+surtidoData.destino+'\n'):'')+'\nArtículos:\n'+productos.map(p=>'• '+p.desc+' ×'+p.cant).join('\n');
+
+    window.tcPrevisualizarPDF(pdf, folioInfo.folio, async function(){
+        try{
+            const { collection, addDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+            surtidoData.createdAt = serverTimestamp ? serverTimestamp() : new Date().toISOString();
+            await addDoc(collection(window.db,'surtidos'), surtidoData);
+            document.getElementById('ventas-modal-solicitud').innerHTML = '';
+            window.tcCompartirPDFWhatsApp(pdf, folioInfo.folio, resumen);
+            if(window.mostrarToast) window.mostrarToast('✅ Solicitud enviada', `${folioInfo.folio} → Almacén`, '📦');
+            else alert(`Solicitud ${folioInfo.folio} enviada a Almacén.`);
+        }catch(e){
+            msgEl.textContent = 'No se pudo enviar (' + (e.code||e.message||'error') + ').';
+        }
+    });
 };
 
 /* ============================================================================
