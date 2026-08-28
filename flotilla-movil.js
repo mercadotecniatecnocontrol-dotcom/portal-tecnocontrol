@@ -4318,8 +4318,6 @@ window.renderFlotMaterial=async function(){
     <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">Estación / ubicación</label>
     <div style="background:#F8FAFD;border:1px solid #E2E8F0;border-radius:10px;padding:9px 11px;font-size:12px;color:#475569;margin-bottom:6px">${esc((window.matState.ubicacion&&(window.matState.ubicacion.estacionNombre||window.matState.ubicacion.direccion))||'Sin ubicación seleccionada')}</div>
     <button type="button" onclick="matElegirUbicacion()" style="width:100%;padding:9px;border:1.5px dashed #CBD5E1;border-radius:9px;background:#fff;color:#2563EB;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:12px">📍 Elegir estación / dirección / mapa</button>
-    <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">Operación / destino</label>
-    <input value="${esc(window.matState.destino)}" placeholder="A qué operación va este material" oninput="matSetField('destino',this.value)" style="width:100%;padding:11px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13.5px;margin-bottom:12px;box-sizing:border-box">
     <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">¿Para qué se usará?</label>
     <textarea rows="2" oninput="matSetField('uso',this.value)" style="width:100%;padding:11px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13.5px;margin-bottom:12px;box-sizing:border-box;resize:vertical">${esc(window.matState.uso)}</textarea>
 
@@ -4430,7 +4428,6 @@ window.matEnviar=async function(){
   if(!window.matState.area){ msg.textContent='Elige el área.'; return; }
   if(!window.matState.razonSocial){ msg.textContent='Escribe la razón social.'; return; }
   if(!window.matState.ubicacion){ msg.textContent='Elige la estación, dirección o ubicación en el mapa.'; return; }
-  if(!window.matState.destino){ msg.textContent='Escribe la operación destino.'; return; }
   if(!window.matState.uso){ msg.textContent='Describe para qué se usará el material.'; return; }
   if(!productos.length){ msg.textContent='Agrega al menos un artículo.'; return; }
   if(!_matHayFirma){ msg.textContent='Falta la firma del solicitante.'; return; }
@@ -4454,7 +4451,7 @@ window.matEnviar=async function(){
       tecnicoNombre:tec?tec.nombre:(miPerfil?.nombre||''),
       tecnicoCorreo:tec?tec.correo:(window.auth?.currentUser?.email||''),
       solicitaParaSiMismo:true,
-      area:window.matState.area, destino:window.matState.destino, uso:window.matState.uso,
+      area:window.matState.area, destino:(ubic.estacionNombre||ubic.direccion||window.matState.razonSocial), uso:window.matState.uso,
       prioridad:window.matState.prioridad, estado:'pendiente',
       productos, firma:window.matState.firma,
       origen:'flotilla',
@@ -4502,7 +4499,7 @@ const REQ_TIPO_INFO={
   insumo:{entrada:'Mercancía que NO requiere entrada en Sistema',factura:'Factura debe salir como Gastos en general'},
 };
 
-window.reqState={empresa:'',urgencia:'media',tipoCompra:'servicio',motivo:'',cliente:'',ciudad:'',items:[{cant:'',unidad:'',parte:'',desc:'',proveedor:''}],firma:null,fotos:[],comentario:''};
+window.reqState={empresa:'',urgencia:'media',tipoCompra:'servicio',motivo:'',cliente:'',ciudad:'',razonSocial:'',ubicacion:null,items:[{cant:'',unidad:'',parte:'',desc:'',proveedor:''}],firma:null,fotos:[],comentario:''};
 let _reqEmpresas=null;
 let _reqClientesCache=null; // solo nombres de ventas_clientes, cargado una vez y reusado (no vuelve a pedirse)
 
@@ -4573,9 +4570,9 @@ window.renderFlotRequisicion=async function(){
 
     <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">Motivo de la solicitud</label>
     <input value="${esc(window.reqState.motivo)}" oninput="reqSetField('motivo',this.value)" style="width:100%;padding:11px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13.5px;margin-bottom:12px;box-sizing:border-box">
-    <div style="display:flex;gap:8px;margin-bottom:12px">
-      <div style="flex:1"><label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">Cliente / proyecto</label>
-        <input list="req-clientes-dl" value="${esc(window.reqState.cliente)}" oninput="reqSetField('cliente',this.value)" style="width:100%;padding:11px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13.5px;box-sizing:border-box">
+    <div style="display:flex;gap:8px;margin-bottom:8px">
+      <div style="flex:1"><label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">Razón social</label>
+        <input list="req-clientes-dl" value="${esc(window.reqState.razonSocial)}" oninput="reqSetField('razonSocial',this.value)" style="width:100%;padding:11px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13.5px;box-sizing:border-box">
         <datalist id="req-clientes-dl">${(_reqClientesCache||[]).map(n=>`<option value="${esc(n)}">`).join('')}</datalist>
       </div>
       <div style="flex:1"><label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">Ciudad</label>
@@ -4585,6 +4582,9 @@ window.renderFlotRequisicion=async function(){
         </div>
       </div>
     </div>
+    <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">Estación / ubicación <span style="font-weight:400;color:#94A3B8">(opcional)</span></label>
+    <div style="background:#F8FAFD;border:1px solid #E2E8F0;border-radius:10px;padding:9px 11px;font-size:12px;color:#475569;margin-bottom:6px">${esc((window.reqState.ubicacion&&(window.reqState.ubicacion.estacionNombre||window.reqState.ubicacion.direccion))||'Sin ubicación seleccionada')}</div>
+    <button type="button" onclick="reqElegirUbicacion()" style="width:100%;padding:9px;border:1.5px dashed #CBD5E1;border-radius:9px;background:#fff;color:#2563EB;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:12px">📍 Elegir estación / dirección / mapa</button>
 
     <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:6px">Partidas</label>
     <div id="req-items">${_reqRenderItems()}</div>
@@ -4619,6 +4619,13 @@ window.reqSetEmpresa=function(v){ window.reqState.empresa=v; _draftSave(_DRAFT.R
 window.reqSetUrgencia=function(v){ window.reqState.urgencia=v; _draftSave(_DRAFT.REQ,window.reqState); window.renderFlotRequisicion(); };
 window.reqSetTipoCompra=function(v){ window.reqState.tipoCompra=v; _draftSave(_DRAFT.REQ,window.reqState); window.renderFlotRequisicion(); };
 window.reqSetField=function(campo,valor){ window.reqState[campo]=valor; _draftSave(_DRAFT.REQ,window.reqState); };
+window.reqElegirUbicacion=function(){
+  window.tcAbrirSelectorUbicacion(window.reqState.ubicacion, function(sel){
+    window.reqState.ubicacion=sel;
+    _draftSave(_DRAFT.REQ,window.reqState);
+    window.renderFlotRequisicion();
+  });
+};
 
 window.reqDetectarCiudad=function(){
   if(!navigator.geolocation){ toast('Tu navegador no soporta geolocalización','err'); return; }
@@ -4777,14 +4784,27 @@ function _reqConstruirPDF(d,empresaLogo,fotoDim){
   const URG={baja:{t:'Urgencia baja · 1 semana',c:{r:100,g:116,b:139}},media:{t:'Urgencia media · 3 días',c:{r:180,g:83,b:9}},alta:{t:'Urgencia alta · 1 día',c:{r:185,g:28,b:28}}}[d.urgencia]||{c:{r:100,g:116,b:139}};
   const tipoInfo=REQ_TIPO_INFO[d.tipoCompra]||REQ_TIPO_INFO.servicio;
 
-  docu.setFillColor(AZUL.r,AZUL.g,AZUL.b); docu.rect(0,0,PW,26,'F');
-  if(empresaLogo){ try{ docu.addImage(empresaLogo,ML,6,32,14,undefined,'FAST'); }catch(e){} }
-  docu.setTextColor(255,255,255); docu.setFont('helvetica','bold'); docu.setFontSize(9);
+  docu.setFillColor(AZUL.r,AZUL.g,AZUL.b); docu.rect(0,0,PW,3,'F');
+  if(empresaLogo){
+    // Fondo blanco detrás del logo — nunca se dibuja sobre la franja oscura,
+    // así se ve bien sin importar si el logo tiene texto negro u oscuro.
+    try{ docu.addImage(empresaLogo,ML,9,32,10,undefined,'FAST'); }catch(e){}
+  }
+  docu.setTextColor(AZUL.r,AZUL.g,AZUL.b); docu.setFont('helvetica','bold'); docu.setFontSize(9);
   docu.text(empresaLogo?'':String(d.empresa||'TECNOCONTROL'), empresaLogo?ML+38:ML, 15);
-  docu.setFont('helvetica','normal'); docu.setFontSize(7.5);
+  docu.setFont('helvetica','normal'); docu.setFontSize(7.5); docu.setTextColor(100,116,139);
   docu.text('Requisición de compra', empresaLogo?ML+38:ML, 20.5);
+  docu.setTextColor(100,116,139);
   docu.text('Generado: '+new Date().toLocaleString('es-MX'), PW-MR, 15, {align:'right'});
   docu.text(String(d.folio||'—'), PW-MR, 20.5, {align:'right'});
+
+  function nuevaPaginaReq(){
+    docu.addPage();
+    docu.setFont('helvetica','normal'); docu.setFontSize(8); docu.setTextColor(148,163,184);
+    docu.text(String(d.empresa||'TECNOCONTROL')+' · '+String(d.folio||'')+' (continuación)', ML, 14);
+    docu.setDrawColor(226,232,240); docu.line(ML,17,PW-MR,17);
+    return 26;
+  }
 
   docu.setFillColor(URG.c.r,URG.c.g,URG.c.b); docu.roundedRect(ML,32,PW-ML-MR,10,2,2,'F');
   docu.setTextColor(255,255,255); docu.setFont('helvetica','bold'); docu.setFontSize(9.5);
@@ -4797,17 +4817,32 @@ function _reqConstruirPDF(d,empresaLogo,fotoDim){
   docu.text(tipoInfo.entrada+' · '+tipoInfo.factura, ML, y);
   y+=8;
 
-  function campo(x,label,valor){
+  // Campo de UNA columna (texto largo — direcciones, razón social) — se envuelve
+  // a todo el ancho de página, nunca se encima con la columna vecina.
+  function campoAncho(label,valor){
+    docu.setFont('helvetica','bold'); docu.setFontSize(7.5); docu.setTextColor(100,116,139);
+    docu.text(label.toUpperCase(),ML,y);
+    docu.setFont('helvetica','normal'); docu.setFontSize(10); docu.setTextColor(15,23,42);
+    const lns=docu.splitTextToSize(String(valor||'—'),PW-ML-MR);
+    docu.text(lns,ML,y+5);
+    y+=5+lns.length*5+6;
+  }
+  // Campo de DOS columnas — solo para textos cortos (nombre de persona, ciudad).
+  function campo(x,label,valor,anchoCol){
     docu.setFont('helvetica','bold'); docu.setFontSize(7.5); docu.setTextColor(100,116,139);
     docu.text(label.toUpperCase(),x,y);
     docu.setFont('helvetica','normal'); docu.setFontSize(10); docu.setTextColor(15,23,42);
-    docu.text(String(valor||'—'),x,y+5);
+    const lns=docu.splitTextToSize(String(valor||'—'),anchoCol);
+    docu.text(lns,x,y+5);
+    return lns.length;
   }
+  const anchoCol=(PW-ML-MR)/2-6;
   const xMid=ML+(PW-ML-MR)/2+4;
-  campo(ML,'Solicitante',d.solicitante); campo(xMid,'Ciudad',d.ciudad);
-  y+=13;
-  campo(ML,'Cliente / proyecto',d.cliente); campo(xMid,'Motivo',d.motivo);
-  y+=16;
+  const n1=campo(ML,'Solicitante',d.solicitante,anchoCol), n2=campo(xMid,'Ciudad',d.ciudad,anchoCol);
+  y+=Math.max(n1,n2)*5+9;
+  campoAncho('Razón social', d.razonSocial||d.cliente);
+  if(d.estacionNombre||d.direccion) campoAncho('Estación / ubicación', d.estacionNombre||d.direccion);
+  campoAncho('Motivo', d.motivo);
 
   docu.setDrawColor(226,232,240); docu.line(ML,y,PW-MR,y); y+=8;
   docu.setFillColor(AZUL.r,AZUL.g,AZUL.b); docu.rect(ML,y-5,PW-ML-MR,8,'F');
@@ -4817,7 +4852,7 @@ function _reqConstruirPDF(d,empresaLogo,fotoDim){
   docu.setFont('helvetica','normal'); docu.setFontSize(9.5);
   (d.items||[]).forEach((it,idx)=>{
     const lns=docu.splitTextToSize(String(it.desc||'—'),PW-ML-MR-42-35);
-    if(y+lns.length*5>PH-70){ docu.addPage(); y=20; }
+    if(y+lns.length*5>PH-70){ y=nuevaPaginaReq(); }
     if(idx%2===1){ docu.setFillColor(248,250,252); docu.rect(ML,y-4,PW-ML-MR,lns.length*5+2,'F'); }
     docu.setTextColor(15,23,42);
     docu.text(String(it.cant||'—'),ML+2,y); docu.text(String(it.unidad||'—'),ML+18,y);
@@ -4825,7 +4860,7 @@ function _reqConstruirPDF(d,empresaLogo,fotoDim){
     y+=Math.max(6,lns.length*5+1.5);
   });
 
-  y+=8; if(y>PH-60){ docu.addPage(); y=20; }
+  y+=8; if(y>PH-60){ y=nuevaPaginaReq(); }
   docu.setFont('helvetica','bold'); docu.setFontSize(8); docu.setTextColor(100,116,139);
   docu.text('FLUJO DE AUTORIZACIÓN',ML,y); y+=6;
   (d.flujoAutorizacion||[]).forEach(p=>{
@@ -4841,13 +4876,13 @@ function _reqConstruirPDF(d,empresaLogo,fotoDim){
 
   // ── COMENTARIOS ──
   if(d.comentarios&&d.comentarios.length){
-    y+=6; if(y>PH-40){ docu.addPage(); y=20; }
+    y+=6; if(y>PH-40){ y=nuevaPaginaReq(); }
     docu.setFont('helvetica','bold'); docu.setFontSize(8); docu.setTextColor(100,116,139);
     docu.text('COMENTARIOS',ML,y); y+=6;
     d.comentarios.forEach(c=>{
       const fechaTxt = c.fecha ? (' · '+new Date(c.fecha).toLocaleDateString('es-MX')) : '';
       const lns=docu.splitTextToSize(String(c.texto||''),PW-ML-MR);
-      if(y+7+lns.length*5>PH-30){ docu.addPage(); y=20; }
+      if(y+7+lns.length*5>PH-30){ y=nuevaPaginaReq(); }
       docu.setFont('helvetica','bold'); docu.setFontSize(8); docu.setTextColor(37,99,235);
       docu.text(String(c.autor||'—')+fechaTxt,ML,y); y+=5;
       docu.setFont('helvetica','normal'); docu.setFontSize(9); docu.setTextColor(15,23,42);
@@ -4858,12 +4893,12 @@ function _reqConstruirPDF(d,empresaLogo,fotoDim){
 
   // ── FOTOS DE REFERENCIA (grid 2 columnas, respetando proporción real) ──
   if(d.fotos&&d.fotos.length){
-    y+=6; if(y>PH-70){ docu.addPage(); y=20; }
+    y+=6; if(y>PH-70){ y=nuevaPaginaReq(); }
     docu.setFont('helvetica','bold'); docu.setFontSize(8); docu.setTextColor(100,116,139);
     docu.text('FOTOS DE REFERENCIA',ML,y); y+=6;
     const colW=(PW-ML-MR-8)/2, boxH=60;
     for(let i=0;i<d.fotos.length;i+=2){
-      if(y+boxH>PH-20){ docu.addPage(); y=20; }
+      if(y+boxH>PH-20){ y=nuevaPaginaReq(); }
       for(let c=0;c<2;c++){
         const f=d.fotos[i+c]; if(!f)continue;
         const x=ML+c*(colW+8);
@@ -4879,7 +4914,7 @@ function _reqConstruirPDF(d,empresaLogo,fotoDim){
     }
   }
 
-  y+=6; if(y>PH-40){ docu.addPage(); y=20; }
+  y+=6; if(y>PH-40){ y=nuevaPaginaReq(); }
   docu.setFont('helvetica','bold'); docu.setFontSize(8); docu.setTextColor(100,116,139);
   docu.text('FIRMA DEL SOLICITANTE',ML,y); y+=4;
   if(d.firma){ try{ docu.addImage(d.firma,'PNG',ML,y,55,24); }catch(e){} }
@@ -4918,10 +4953,13 @@ window.reqEnviar=async function(){
     const comentarios=window.reqState.comentario.trim()
       ? [{texto:window.reqState.comentario.trim(),autor:solicitante,autorEmail:window.auth?.currentUser?.email||'',fecha:new Date().toISOString()}]
       : [];
+    const ubic=window.reqState.ubicacion;
     const data={
       folio:folioInfo.folio, folioNum:folioInfo.folioNum, folioPrefijo:folioInfo.folioPrefijo,
       empresa:window.reqState.empresa, urgencia:window.reqState.urgencia, tipoCompra:window.reqState.tipoCompra,
-      motivo:window.reqState.motivo, cliente:window.reqState.cliente, ciudad:window.reqState.ciudad,
+      motivo:window.reqState.motivo, cliente:window.reqState.razonSocial, razonSocial:window.reqState.razonSocial, ciudad:window.reqState.ciudad,
+      estacionId:ubic?.estacionId||null, estacionNombre:ubic?.estacionNombre||null,
+      direccion:ubic?.direccion||null, lat:ubic?.lat!=null?ubic.lat:null, lng:ubic?.lng!=null?ubic.lng:null,
       items, firma:window.reqState.firma, solicitante, comentarios,
       solicitanteEmail:window.auth?.currentUser?.email||'',
       flujoAutorizacion, estatus:'pendiente',
@@ -4957,7 +4995,7 @@ window.reqEnviar=async function(){
       }catch(e){ try{ window.open(pdf.output('bloburl'),'_blank'); }catch(e2){} }
     }
     _draftClear(_DRAFT.REQ);
-    window.reqState={empresa:'',urgencia:'media',tipoCompra:'servicio',motivo:'',cliente:'',ciudad:'',items:[{cant:'',unidad:'',parte:'',desc:'',proveedor:''}],firma:null,fotos:[],comentario:''};
+    window.reqState={empresa:'',urgencia:'media',tipoCompra:'servicio',motivo:'',cliente:'',ciudad:'',razonSocial:'',ubicacion:null,items:[{cant:'',unidad:'',parte:'',desc:'',proveedor:''}],firma:null,fotos:[],comentario:''};
     toast('Requisición '+folioInfo.folio+' enviada a Compras','ok');
     fmCerrarFlotante();
   }catch(e){
