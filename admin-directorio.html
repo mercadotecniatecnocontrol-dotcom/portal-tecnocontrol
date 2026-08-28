@@ -53,14 +53,21 @@ const $ = id => document.getElementById(id);
 // herramienta no crea acceso nuevo, solo lee/edita lo que tu cuenta ya
 // puede leer/editar según las reglas de Firestore.
 onAuthStateChanged(auth, user=>{
-  if(user) cargarTodo();
-  else {
-    document.body.innerHTML = '<div style="max-width:360px;margin:60px auto;background:#fff;padding:24px;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.1)">'+
+  if(user){
+    document.getElementById('login-overlay')?.remove();
+    cargarTodo();
+  } else {
+    if(document.getElementById('login-overlay')) return;
+    const ov = document.createElement('div');
+    ov.id = 'login-overlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:99999;display:flex;align-items:center;justify-content:center';
+    ov.innerHTML = '<div style="max-width:360px;width:100%;background:#fff;padding:24px;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.1)">'+
       '<h2 style="font-size:15px;margin:0 0 14px">Inicia sesión</h2>'+
       '<input id="li-mail" placeholder="Correo" style="width:100%;padding:9px;margin-bottom:8px;border:1px solid #cbd5e1;border-radius:8px;box-sizing:border-box">'+
       '<input id="li-pass" type="password" placeholder="Contraseña" style="width:100%;padding:9px;margin-bottom:10px;border:1px solid #cbd5e1;border-radius:8px;box-sizing:border-box">'+
       '<button id="li-btn" style="width:100%;padding:10px;background:#0A1628;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">Entrar</button>'+
       '<div id="li-err" style="color:#b91c1c;font-size:12px;margin-top:8px"></div></div>';
+    document.body.appendChild(ov);
     document.getElementById('li-btn').onclick = async ()=>{
       try{ await signInWithEmailAndPassword(auth, document.getElementById('li-mail').value.trim(), document.getElementById('li-pass').value); }
       catch(e){ document.getElementById('li-err').textContent = 'No se pudo entrar: '+(e.code||e.message); }
