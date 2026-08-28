@@ -98,6 +98,12 @@
   //    "adivinar" ubicaciones con un placeholder. Colección: puntos_referencia. ──
   var _puntosCache = null;
   window.__almInvalidarCachePuntos = function(){ _puntosCache = null; };
+  // Exponer para reutilizar en Solicitud de material (ventas.js, flotilla-movil.js,
+  // solicitud-material.html) sin duplicar el catálogo ni la geocodificación.
+  window.tcCargarCatalogoEstaciones = function(){ return cargarCatalogoEstaciones(); };
+  window.tcCargarCatalogoPuntos = function(){ return cargarCatalogoPuntos(); };
+  window.tcGeocodificarDireccion = function(direccion){ return geocodificarDireccion(direccion); };
+  window.tcCargarLeaflet = function(){ return cargarLeafletPunto(); };
   function cargarCatalogoPuntos(){
     if (_puntosCache) return Promise.resolve(_puntosCache);
     return cargarFirestore().then(function(fs){
