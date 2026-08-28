@@ -202,7 +202,7 @@ function _draftSave(key,state){
       localStorage.setItem(key,JSON.stringify(s));
     }catch(e){
       // Si no caben con fotos, guardar sin fotos pero avisar
-      s.fotoKm=null;s.chkFotos={};s.firma=null;s.evFotos=[];
+      s.fotoKm=null;s.chkFotos={};s.firma=null;s.evFotos=[];s.fotos=[];
       try{localStorage.setItem(key,JSON.stringify(s));}catch{}
     }
   }catch(e){/* error inesperado — ignorar */}
@@ -4470,7 +4470,7 @@ const REQ_TIPO_INFO={
   insumo:{entrada:'Mercancía que NO requiere entrada en Sistema',factura:'Factura debe salir como Gastos en general'},
 };
 
-window.reqState={empresa:'',urgencia:'media',tipoCompra:'servicio',motivo:'',cliente:'',ciudad:'',items:[{cant:'',unidad:'',parte:'',desc:'',proveedor:''}],firma:null};
+window.reqState={empresa:'',urgencia:'media',tipoCompra:'servicio',motivo:'',cliente:'',ciudad:'',items:[{cant:'',unidad:'',parte:'',desc:'',proveedor:''}],firma:null,fotos:[],comentario:''};
 let _reqEmpresas=null;
 let _reqClientesCache=null; // solo nombres de ventas_clientes, cargado una vez y reusado (no vuelve a pedirse)
 
@@ -4557,6 +4557,16 @@ window.renderFlotRequisicion=async function(){
     <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:6px">Partidas</label>
     <div id="req-items">${_reqRenderItems()}</div>
     <button type="button" onclick="reqAgregarItem()" style="width:100%;padding:9px;border:1.5px dashed #CBD5E1;border-radius:9px;background:#fff;color:#2563EB;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:16px">+ Agregar partida</button>
+
+    <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">Fotos de referencia <span style="font-weight:400;color:#94A3B8">(opcional)</span></label>
+    <div id="req-fotos-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:8px">${_reqRenderFotos()}</div>
+    <label style="display:block;width:100%;padding:9px;border:1.5px dashed #CBD5E1;border-radius:9px;background:#fff;color:#2563EB;font-size:12px;font-weight:700;cursor:pointer;text-align:center;margin-bottom:16px;box-sizing:border-box">
+      + Agregar foto (cámara o galería)
+      <input type="file" accept="image/*" multiple capture="environment" onchange="reqAgregarFoto(this)" style="display:none">
+    </label>
+
+    <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">Comentarios <span style="font-weight:400;color:#94A3B8">(opcional)</span></label>
+    <textarea rows="2" placeholder="Información adicional para Compras…" oninput="reqSetField('comentario',this.value)" style="width:100%;padding:11px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13.5px;margin-bottom:16px;box-sizing:border-box;resize:vertical">${esc(window.reqState.comentario)}</textarea>
 
     <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">Firma del solicitante</label>
     <canvas id="req-firma-cv" style="width:100%;height:120px;background:#fff;border:1.5px dashed #CBD5E1;border-radius:10px;touch-action:none"></canvas>
@@ -4657,6 +4667,35 @@ window.reqQuitarItem=function(i){
   document.getElementById('req-items').innerHTML=_reqRenderItems();
 };
 
+// ── FOTOS DE REFERENCIA (opcional) — igual patrón de compresión que el resto
+//    de la app; se guardan en memoria/borrador y, al enviar, se suben a la
+//    subcolección requisiciones_compra/{id}/fotos (no al documento principal,
+//    para no arriesgar el límite de 1MB de Firestore con varias fotos). ──
+function _reqRenderFotos(){
+  return (window.reqState.fotos||[]).map((f,i)=>`
+    <div style="position:relative">
+      <img src="${f.src}" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;border:1px solid #E2E8F0">
+      <button onclick="reqQuitarFoto(${i})" style="position:absolute;top:3px;right:3px;background:rgba(15,23,42,.7);color:#fff;border:none;border-radius:6px;width:20px;height:20px;font-size:12px;cursor:pointer;line-height:1">✕</button>
+    </div>`).join('');
+}
+window.reqAgregarFoto=async function(input){
+  const files=Array.from(input.files||[]);
+  if(!files.length)return;
+  for(const file of files){
+    const src=await new Promise(res=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.readAsDataURL(file); });
+    const comprimida=await comprimirBase64(src,1000,0.75);
+    window.reqState.fotos.push({src:comprimida});
+  }
+  input.value='';
+  _draftSave(_DRAFT.REQ,window.reqState);
+  document.getElementById('req-fotos-grid').innerHTML=_reqRenderFotos();
+};
+window.reqQuitarFoto=function(i){
+  window.reqState.fotos.splice(i,1);
+  _draftSave(_DRAFT.REQ,window.reqState);
+  document.getElementById('req-fotos-grid').innerHTML=_reqRenderFotos();
+};
+
 let _reqCtx=null,_reqDibujando=false,_reqLastX=0,_reqLastY=0,_reqHayFirma=false;
 function _reqInitFirma(){
   const cv=document.getElementById('req-firma-cv'); if(!cv)return;
@@ -4685,8 +4724,20 @@ async function _reqSiguienteFolio(){
   }
 }
 
-function _reqConstruirPDF(d,empresaLogo){
+// Precarga ancho/alto reales de cada foto (necesario para no deformarlas al
+// acomodarlas en la cuadrícula del PDF — jsPDF no puede calcular esto solo).
+function _reqPrecargarDimensiones(fotos){
+  return Promise.all((fotos||[]).map(f=>new Promise(res=>{
+    const img=new Image();
+    img.onload=()=>res([f.src,{w:img.width,h:img.height}]);
+    img.onerror=()=>res([f.src,{w:1,h:1}]);
+    img.src=f.src;
+  }))).then(pares=>Object.fromEntries(pares));
+}
+
+function _reqConstruirPDF(d,empresaLogo,fotoDim){
   if(!window.jspdf)return null;
+  fotoDim=fotoDim||{};
   const {jsPDF}=window.jspdf;
   const docu=new jsPDF({orientation:'portrait',unit:'mm',format:'letter'});
   const PW=215.9,PH=279.4,ML=14,MR=14;
@@ -4756,15 +4807,60 @@ function _reqConstruirPDF(d,empresaLogo){
     y+=6;
   });
 
+  // ── COMENTARIOS ──
+  if(d.comentarios&&d.comentarios.length){
+    y+=6; if(y>PH-40){ docu.addPage(); y=20; }
+    docu.setFont('helvetica','bold'); docu.setFontSize(8); docu.setTextColor(100,116,139);
+    docu.text('COMENTARIOS',ML,y); y+=6;
+    d.comentarios.forEach(c=>{
+      const lns=docu.splitTextToSize(String(c.texto||''),PW-ML-MR-30);
+      if(y+lns.length*5>PH-30){ docu.addPage(); y=20; }
+      docu.setFont('helvetica','bold'); docu.setFontSize(8); docu.setTextColor(37,99,235);
+      docu.text(String(c.autor||'—')+':',ML,y);
+      docu.setFont('helvetica','normal'); docu.setFontSize(9); docu.setTextColor(15,23,42);
+      docu.text(lns,ML+28,y);
+      y+=Math.max(6,lns.length*5+2);
+    });
+  }
+
+  // ── FOTOS DE REFERENCIA (grid 2 columnas, respetando proporción real) ──
+  if(d.fotos&&d.fotos.length){
+    y+=6; if(y>PH-70){ docu.addPage(); y=20; }
+    docu.setFont('helvetica','bold'); docu.setFontSize(8); docu.setTextColor(100,116,139);
+    docu.text('FOTOS DE REFERENCIA',ML,y); y+=6;
+    const colW=(PW-ML-MR-8)/2, boxH=60;
+    for(let i=0;i<d.fotos.length;i+=2){
+      if(y+boxH>PH-20){ docu.addPage(); y=20; }
+      for(let c=0;c<2;c++){
+        const f=d.fotos[i+c]; if(!f)continue;
+        const x=ML+c*(colW+8);
+        try{
+          const dim=fotoDim[f.src]||{w:1,h:1};
+          const ratio=Math.min(colW/dim.w,boxH/dim.h);
+          const w=dim.w*ratio, h=dim.h*ratio;
+          docu.addImage(f.src,'JPEG',x+(colW-w)/2,y+(boxH-h)/2,w,h);
+        }catch(e){}
+        docu.setDrawColor(226,232,240); docu.rect(x,y,colW,boxH);
+      }
+      y+=boxH+6;
+    }
+  }
+
   y+=6; if(y>PH-40){ docu.addPage(); y=20; }
   docu.setFont('helvetica','bold'); docu.setFontSize(8); docu.setTextColor(100,116,139);
   docu.text('FIRMA DEL SOLICITANTE',ML,y); y+=4;
   if(d.firma){ try{ docu.addImage(d.firma,'PNG',ML,y,55,24); }catch(e){} }
   else { docu.setDrawColor(203,213,225); docu.line(ML,y+18,ML+55,y+18); }
 
-  docu.setFillColor(AZUL.r,AZUL.g,AZUL.b); docu.rect(0,PH-10,PW,10,'F');
-  docu.setTextColor(255,255,255); docu.setFontSize(7);
-  docu.text(String(d.empresa||'')+' · '+String(d.folio||'')+' · '+new Date().toLocaleString('es-MX'), PW/2, PH-4, {align:'center'});
+  // ── Pie con folio + "página X de Y" en cada página ──
+  const totalPaginas=docu.internal.getNumberOfPages();
+  for(let p=1;p<=totalPaginas;p++){
+    docu.setPage(p);
+    docu.setFillColor(AZUL.r,AZUL.g,AZUL.b); docu.rect(0,PH-10,PW,10,'F');
+    docu.setTextColor(255,255,255); docu.setFontSize(7);
+    docu.text(String(d.empresa||'')+' · '+String(d.folio||'')+' · '+new Date().toLocaleString('es-MX'), ML, PH-4);
+    docu.text('Página '+p+' de '+totalPaginas, PW-MR, PH-4, {align:'right'});
+  }
   return docu;
 }
 
@@ -4784,20 +4880,38 @@ window.reqEnviar=async function(){
       {orden:2,rol:'jefe_area',label:'Jefe de área',estatus:'pendiente',uid:null,fecha:null},
       {orden:3,rol:'compras',label:'Compras',estatus:'pendiente',uid:null,fecha:null},
     ];
+    // Comentario inicial del solicitante (opcional) — mismo formato {texto,autor,
+    // autorEmail,fecha} que usará luego Compras para agregar los suyos.
+    const comentarios=window.reqState.comentario.trim()
+      ? [{texto:window.reqState.comentario.trim(),autor:solicitante,autorEmail:window.auth?.currentUser?.email||'',fecha:new Date().toISOString()}]
+      : [];
     const data={
       folio:folioInfo.folio, folioNum:folioInfo.folioNum, folioPrefijo:folioInfo.folioPrefijo,
       empresa:window.reqState.empresa, urgencia:window.reqState.urgencia, tipoCompra:window.reqState.tipoCompra,
       motivo:window.reqState.motivo, cliente:window.reqState.cliente, ciudad:window.reqState.ciudad,
-      items, firma:window.reqState.firma, solicitante,
+      items, firma:window.reqState.firma, solicitante, comentarios,
       solicitanteEmail:window.auth?.currentUser?.email||'',
       flujoAutorizacion, estatus:'pendiente',
       origen:'flotilla', vehiculoEco:miVeh?.eco||null,
       createdAt:firebase.firestore.FieldValue.serverTimestamp(),
     };
-    await db.collection('requisiciones_compra').add(data);
+    // Las fotos NO van en el documento principal (riesgo de exceder 1MB con
+    // varias) — se suben aparte a requisiciones_compra/{id}/fotos, mismo
+    // patrón que ya usa flotilla_checklist_semanal.
+    const fotosParaSubir=(window.reqState.fotos||[]).slice();
+    const ref=await db.collection('requisiciones_compra').add(data);
+    if(fotosParaSubir.length){
+      const fotosRef=db.collection('requisiciones_compra').doc(ref.id).collection('fotos');
+      await Promise.all(fotosParaSubir.map(f=>fotosRef.add({
+        src:f.src, origen:'tecnico', autor:solicitante, autorEmail:window.auth?.currentUser?.email||'',
+        creadoEn:new Date().toISOString(),
+      }))).catch(e=>console.warn('[flotilla requisicion] fotos:',e));
+    }
 
     const emp=(_reqEmpresas||[]).find(e=>e.nombre===window.reqState.empresa);
-    const pdf=_reqConstruirPDF(data, emp&&!REQ_SIN_LOGO.has(emp.nombre)?emp.logoBase64:null);
+    const fotoDim=await _reqPrecargarDimensiones(fotosParaSubir);
+    const dataParaPdf=Object.assign({},data,{fotos:fotosParaSubir});
+    const pdf=_reqConstruirPDF(dataParaPdf, emp&&!REQ_SIN_LOGO.has(emp.nombre)?emp.logoBase64:null, fotoDim);
     if(pdf){
       try{
         const blob=pdf.output('blob');
@@ -4810,7 +4924,7 @@ window.reqEnviar=async function(){
       }catch(e){ try{ window.open(pdf.output('bloburl'),'_blank'); }catch(e2){} }
     }
     _draftClear(_DRAFT.REQ);
-    window.reqState={empresa:'',urgencia:'media',tipoCompra:'servicio',motivo:'',cliente:'',ciudad:'',items:[{cant:'',unidad:'',parte:'',desc:'',proveedor:''}],firma:null};
+    window.reqState={empresa:'',urgencia:'media',tipoCompra:'servicio',motivo:'',cliente:'',ciudad:'',items:[{cant:'',unidad:'',parte:'',desc:'',proveedor:''}],firma:null,fotos:[],comentario:''};
     toast('Requisición '+folioInfo.folio+' enviada a Compras','ok');
     fmCerrarFlotante();
   }catch(e){
