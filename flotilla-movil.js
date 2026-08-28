@@ -4266,7 +4266,7 @@ window.fmCerrarFlotante=function(){
    solo que el solicitante/técnico se resuelve del usuario de Flotilla ya
    logueado en vez de pedir sesión aparte. ── */
 const MAT_AREAS=['Operaciones','Almacén','Logística','Mantenimiento','Administración'];
-window.matState={area:'',destino:'',uso:'',prioridad:'urgente',carrito:{},firma:null};
+window.matState={area:'',destino:'',uso:'',prioridad:'urgente',carrito:{},firma:null,razonSocial:'',ubicacion:null};
 let _matCatalogo=null; // se carga una sola vez por sesión de la app — sin volver a pedirlo por cada tecla
 let _matTecnicoResuelto=undefined; // undefined=sin resolver, null=no encontrado, obj=encontrado
 
@@ -4313,6 +4313,11 @@ window.renderFlotMaterial=async function(){
     <select onchange="matSetField('area',this.value)" style="width:100%;padding:11px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13.5px;margin-bottom:12px;background:#fff">
       ${MAT_AREAS.map(a=>`<option value="${esc(a)}" ${window.matState.area===a?'selected':''}>${esc(a)}</option>`).join('')}
     </select>
+    <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">Razón social</label>
+    <input value="${esc(window.matState.razonSocial)}" placeholder="Razón social del cliente/estación" oninput="matSetField('razonSocial',this.value)" style="width:100%;padding:11px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13.5px;margin-bottom:12px;box-sizing:border-box">
+    <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">Estación / ubicación</label>
+    <div style="background:#F8FAFD;border:1px solid #E2E8F0;border-radius:10px;padding:9px 11px;font-size:12px;color:#475569;margin-bottom:6px">${esc((window.matState.ubicacion&&(window.matState.ubicacion.estacionNombre||window.matState.ubicacion.direccion))||'Sin ubicación seleccionada')}</div>
+    <button type="button" onclick="matElegirUbicacion()" style="width:100%;padding:9px;border:1.5px dashed #CBD5E1;border-radius:9px;background:#fff;color:#2563EB;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:12px">📍 Elegir estación / dirección / mapa</button>
     <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">Operación / destino</label>
     <input value="${esc(window.matState.destino)}" placeholder="A qué operación va este material" oninput="matSetField('destino',this.value)" style="width:100%;padding:11px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13.5px;margin-bottom:12px;box-sizing:border-box">
     <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">¿Para qué se usará?</label>
@@ -4344,6 +4349,13 @@ window.renderFlotMaterial=async function(){
 window.matSetField=function(campo,valor){
   window.matState[campo]=valor;
   _draftSave(_DRAFT.MAT,window.matState);
+};
+window.matElegirUbicacion=function(){
+  window.tcAbrirSelectorUbicacion(window.matState.ubicacion, function(sel){
+    window.matState.ubicacion=sel;
+    _draftSave(_DRAFT.MAT,window.matState);
+    window.renderFlotMaterial();
+  });
 };
 
 window.matBuscarProductos=function(){
@@ -4416,20 +4428,26 @@ window.matEnviar=async function(){
   const msg=document.getElementById('mat-msg');
   const productos=Object.values(window.matState.carrito).map(v=>({clave:v.clave,cant:v.cant,desc:v.desc}));
   if(!window.matState.area){ msg.textContent='Elige el área.'; return; }
+  if(!window.matState.razonSocial){ msg.textContent='Escribe la razón social.'; return; }
+  if(!window.matState.ubicacion){ msg.textContent='Elige la estación, dirección o ubicación en el mapa.'; return; }
   if(!window.matState.destino){ msg.textContent='Escribe la operación destino.'; return; }
   if(!window.matState.uso){ msg.textContent='Describe para qué se usará el material.'; return; }
   if(!productos.length){ msg.textContent='Agrega al menos un artículo.'; return; }
   if(!_matHayFirma){ msg.textContent='Falta la firma del solicitante.'; return; }
   msg.textContent='';
-  const btn=document.getElementById('mat-submit'); btn.disabled=true; btn.textContent='Enviando…';
+  const btn=document.getElementById('mat-submit'); btn.disabled=true; btn.textContent='Generando…';
   try{
     const tec=_matTecnicoResuelto;
     const folioInfo=await _matSiguienteFolio();
-    await db.collection('surtidos').add({
+    const ubic=window.matState.ubicacion;
+    const solicitante=tec?tec.nombre:(miPerfil?.nombre||window.auth?.currentUser?.email||'');
+    const surtidoData={
       tipo:'material',
       folio:folioInfo.folio, folioNum:folioInfo.folioNum, folioPrefijo:folioInfo.folioPrefijo,
-      cliente:window.matState.destino||'Almacén · Operaciones',
-      solicitante:tec?tec.nombre:(miPerfil?.nombre||window.auth?.currentUser?.email||''),
+      cliente:window.matState.razonSocial, razonSocial:window.matState.razonSocial,
+      estacionId:ubic.estacionId||null, estacionNombre:ubic.estacionNombre||null,
+      direccion:ubic.direccion||null, lat:ubic.lat!=null?ubic.lat:null, lng:ubic.lng!=null?ubic.lng:null,
+      solicitante,
       vendedor:tec?tec.nombre:(miPerfil?.nombre||''),
       solicitanteEmail:window.auth?.currentUser?.email||'',
       tecnicoId:tec?tec.id:null,
@@ -4440,16 +4458,30 @@ window.matEnviar=async function(){
       prioridad:window.matState.prioridad, estado:'pendiente',
       productos, firma:window.matState.firma,
       origen:'flotilla',
-      createdAt:firebase.firestore.FieldValue.serverTimestamp(),
+    };
+    const pdf=window.tcConstruirPDFSolicitud(surtidoData,null);
+    const resumen='📦 Solicitud de Material — '+folioInfo.folio+'\nRazón social: '+surtidoData.razonSocial+'\nÁrea: '+surtidoData.area+'\nDestino: '+surtidoData.destino+'\n\nArtículos:\n'+productos.map(p=>'• '+p.desc+' ×'+p.cant).join('\n');
+    btn.disabled=false; btn.textContent='Enviar solicitud';
+    window.tcPrevisualizarPDF(pdf, folioInfo.folio, async function(){
+      btn.disabled=true; btn.textContent='Enviando…';
+      try{
+        surtidoData.createdAt=firebase.firestore.FieldValue.serverTimestamp();
+        await db.collection('surtidos').add(surtidoData);
+        _draftClear(_DRAFT.MAT);
+        window.matState={area:'',destino:'',uso:'',prioridad:'urgente',carrito:{},firma:null,razonSocial:'',ubicacion:null};
+        window.tcCompartirPDFWhatsApp(pdf, folioInfo.folio, resumen);
+        toast('Solicitud '+folioInfo.folio+' enviada','ok');
+        fmCerrarFlotante();
+      }catch(e){
+        console.error('[flotilla material]',e);
+        msg.textContent='No se pudo enviar ('+(e.code||e.message)+').';
+      }finally{ btn.disabled=false; btn.textContent='Enviar solicitud'; }
     });
-    _draftClear(_DRAFT.MAT);
-    window.matState={area:'',destino:'',uso:'',prioridad:'urgente',carrito:{},firma:null};
-    toast('Solicitud '+folioInfo.folio+' enviada','ok');
-    fmCerrarFlotante();
   }catch(e){
     console.error('[flotilla material]',e);
-    msg.textContent='No se pudo enviar ('+(e.code||e.message)+').';
-  }finally{ if(btn){btn.disabled=false; btn.textContent='Enviar solicitud';} }
+    msg.textContent='No se pudo generar el PDF ('+(e.code||e.message)+').';
+    btn.disabled=false; btn.textContent='Enviar solicitud';
+  }
 };
 
 /* ── REQUISICIÓN DE COMPRA ──────────────────────────────────────────────
@@ -4813,13 +4845,14 @@ function _reqConstruirPDF(d,empresaLogo,fotoDim){
     docu.setFont('helvetica','bold'); docu.setFontSize(8); docu.setTextColor(100,116,139);
     docu.text('COMENTARIOS',ML,y); y+=6;
     d.comentarios.forEach(c=>{
-      const lns=docu.splitTextToSize(String(c.texto||''),PW-ML-MR-30);
-      if(y+lns.length*5>PH-30){ docu.addPage(); y=20; }
+      const fechaTxt = c.fecha ? (' · '+new Date(c.fecha).toLocaleDateString('es-MX')) : '';
+      const lns=docu.splitTextToSize(String(c.texto||''),PW-ML-MR);
+      if(y+7+lns.length*5>PH-30){ docu.addPage(); y=20; }
       docu.setFont('helvetica','bold'); docu.setFontSize(8); docu.setTextColor(37,99,235);
-      docu.text(String(c.autor||'—')+':',ML,y);
+      docu.text(String(c.autor||'—')+fechaTxt,ML,y); y+=5;
       docu.setFont('helvetica','normal'); docu.setFontSize(9); docu.setTextColor(15,23,42);
-      docu.text(lns,ML+28,y);
-      y+=Math.max(6,lns.length*5+2);
+      docu.text(lns,ML,y);
+      y+=lns.length*5+5;
     });
   }
 
