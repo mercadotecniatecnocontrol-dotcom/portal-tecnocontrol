@@ -254,7 +254,8 @@
       html += '<input id="cp-cot-proveedor" placeholder="Proveedor" style="flex:1;padding:8px;border:1px solid #E2E8F0;border-radius:8px;font-size:12px">';
       html += '<input id="cp-cot-monto" placeholder="Monto" type="number" style="width:100px;padding:8px;border:1px solid #E2E8F0;border-radius:8px;font-size:12px">';
       html += '<label style="padding:8px 12px;border:1px solid #E2E8F0;border-radius:8px;font-size:11.5px;cursor:pointer;background:#fff">Adjuntar<input id="cp-cot-file" type="file" accept="image/*,application/pdf" style="display:none"></label></div>';
-      html += '<button onclick="window.__cpAgregarCotizacion(\''+d.id+'\')" style="width:100%;padding:9px;border:1.5px dashed #E2E8F0;background:#fff;color:#1473E6;border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:12px">+ Agregar cotización</button>';
+      html += '<button onclick="window.__cpAgregarCotizacion(\''+d.id+'\')" style="width:100%;padding:9px;border:1.5px dashed #E2E8F0;background:#fff;color:#1473E6;border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:8px">+ Agregar cotización</button>';
+      html += '<button onclick="window.__cpEnviarDirectoACompra(\''+d.id+'\')" style="width:100%;padding:10px;background:#12A150;color:#fff;border:none;border-radius:9px;font-size:12.5px;font-weight:700;cursor:pointer;margin-bottom:12px">✓ Enviar directo a compra (genera OC)</button>';
     }
     if(d.estatus==='orden_generada'){
       html += '<button onclick="window.__cpMarcarRecibida(\''+d.id+'\')" style="width:100%;margin-top:10px;padding:11px;background:#12A150;color:#fff;border:none;border-radius:9px;font-weight:600;cursor:pointer">Marcar como recibida</button>';
@@ -402,6 +403,43 @@
       });
     });
   };
+  // Atajo: guarda la cotización, la marca ganadora y descarga la OC en un
+  // solo clic — sin pasar por la lista intermedia de "elegir ganadora".
+  window.__cpEnviarDirectoACompra = function(id){
+    var proveedor=document.getElementById('cp-cot-proveedor').value.trim();
+    var monto=document.getElementById('cp-cot-monto').value.trim();
+    if(!proveedor||!monto){ alert('Escribe proveedor y monto.'); return; }
+    var d = docs.find(function(x){ return x.id===id; }); if(!d) return;
+    var fileInput=document.getElementById('cp-cot-file');
+    var leer = fileInput && fileInput.files[0] ? new Promise(function(res){
+      var r=new FileReader(); r.onload=function(){ res(r.result); }; r.readAsDataURL(fileInput.files[0]);
+    }) : Promise.resolve(null);
+    leer.then(function(archivoBase64){
+      cargarFirestore().then(function(fs){
+        fs.addDoc(fs.collection(window.db,'requisiciones_compra',id,'cotizaciones'), {
+          proveedor:proveedor, monto:Number(monto), archivoBase64:archivoBase64,
+          creadaEn:new Date().toISOString(), porUid: window.auth&&window.auth.currentUser?window.auth.currentUser.uid:null,
+        }).then(function(cotRef){
+          var ocFolio='OC-'+String(Date.now()).slice(-6);
+          var cotizacionGanadora={proveedor:proveedor,monto:Number(monto),cotizacionId:cotRef.id};
+          fs.updateDoc(fs.doc(window.db,'requisiciones_compra',id), {
+            estatus:'orden_generada', cotizacionGanadora:cotizacionGanadora, ocFolio:ocFolio,
+          }).then(function(){
+            toast('Orden de compra generada — descargando…');
+            // No esperamos el onSnapshot (llega async) — armamos el objeto ya
+            // actualizado a mano para generar el PDF de inmediato.
+            var dActualizado = Object.assign({}, d, {estatus:'orden_generada', cotizacionGanadora:cotizacionGanadora, ocFolio:ocFolio});
+            Promise.all([cargarFotos(id), cargarColaboradores(), cargarLogoEmpresa(dActualizado.empresa)]).then(function(res2){
+              var fotos=res2[0], logo=res2[2];
+              return _cpPrecargarDimensiones(fotos).then(function(fotoDim){
+                _cpConstruirYDescargarOC(dActualizado, fotos, fotoDim, logo);
+              });
+            });
+          });
+        });
+      });
+    });
+  };
   window.__cpMarcarRecibida = function(id){
     cargarFirestore().then(function(fs){
       fs.updateDoc(fs.doc(window.db,'requisiciones_compra',id), {estatus:'recibida'}).then(function(){ toast('Marcada como recibida'); });
@@ -425,18 +463,33 @@
     });
   }
 
+  // ── Logo de la empresa (misma fuente que ya usa Requisición: empresas_requisicion.logoBase64) ──
+  var _logosCache = null;
+  function cargarLogoEmpresa(nombreEmpresa){
+    var p = _logosCache ? Promise.resolve(_logosCache) : cargarFirestore().then(function(fs){
+      return fs.getDocs(fs.collection(window.db,'empresas_requisicion')).then(function(snap){
+        _logosCache = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+        return _logosCache;
+      }).catch(function(){ _logosCache=[]; return _logosCache; });
+    });
+    return p.then(function(lista){
+      var emp = lista.find(function(e){ return e.nombre===nombreEmpresa; });
+      return emp ? emp.logoBase64 : null;
+    });
+  }
+
   window.__cpDescargarOC = function(id){
     var d = docs.find(function(x){ return x.id===id; });
     if(!d || !window.jspdf) return;
-    Promise.all([cargarFotos(id), cargarColaboradores()]).then(function(res){
-      var fotos = res[0];
+    Promise.all([cargarFotos(id), cargarColaboradores(), cargarLogoEmpresa(d.empresa)]).then(function(res){
+      var fotos = res[0], logo = res[2];
       return _cpPrecargarDimensiones(fotos).then(function(fotoDim){
-        _cpConstruirYDescargarOC(d, fotos, fotoDim);
+        _cpConstruirYDescargarOC(d, fotos, fotoDim, logo);
       });
     }).catch(function(e){ console.error('[compras] error al generar OC:', e); alert('No se pudo generar el PDF: '+(e.message||e)); });
   };
 
-  function _cpConstruirYDescargarOC(d, fotos, fotoDim){
+  function _cpConstruirYDescargarOC(d, fotos, fotoDim, logo){
     var jsPDF = window.jspdf.jsPDF;
     var docu = new jsPDF({orientation:'portrait',unit:'mm',format:'letter'});
     var PW=215.9, PH=279.4, ML=14, MR=14;
@@ -446,12 +499,14 @@
 
     function nuevaPagina(){ docu.addPage(); return 20; }
 
-    // ── Encabezado ──
+    // ── Encabezado (con logo si la empresa tiene uno cargado) ──
     docu.setFillColor(AZUL.r,AZUL.g,AZUL.b); docu.rect(0,0,PW,26,'F');
+    var xTexto = ML;
+    if(logo){ try{ docu.addImage(logo,ML,6,32,14,undefined,'FAST'); xTexto = ML+36; }catch(e){} }
     docu.setTextColor(255,255,255); docu.setFont('helvetica','bold'); docu.setFontSize(11);
-    docu.text('Orden de compra', ML, 15);
+    docu.text('Orden de compra', xTexto, 15);
     docu.setFont('helvetica','normal'); docu.setFontSize(8);
-    docu.text((d.empresa||'TECNOCONTROL')+' · Requisición '+(d.folio||''), ML, 20.5);
+    docu.text((d.empresa||'TECNOCONTROL')+' · Requisición '+(d.folio||''), xTexto, 20.5);
     docu.text(String(d.ocFolio||'OC'), PW-MR, 15, {align:'right'});
     docu.text(new Date().toLocaleDateString('es-MX'), PW-MR, 20.5, {align:'right'});
 
@@ -537,13 +592,15 @@
       docu.setFont('helvetica','bold'); docu.setFontSize(8); docu.setTextColor(100,116,139);
       docu.text('COMENTARIOS',ML,y); y+=6;
       comentarios.forEach(function(c){
-        var lns = docu.splitTextToSize(String(c.texto||''), PW-ML-MR-30);
-        if(y+lns.length*5>PH-25){ y=nuevaPagina(); }
+        var autor = String(nombrePorCorreo(c.autorEmail||c.autor)||'—');
+        var fechaTxt = c.fecha ? (' · '+new Date(c.fecha).toLocaleDateString('es-MX')) : '';
+        var lns = docu.splitTextToSize(String(c.texto||''), PW-ML-MR);
+        if(y+7+lns.length*5>PH-25){ y=nuevaPagina(); }
         docu.setFont('helvetica','bold'); docu.setFontSize(8); docu.setTextColor(37,99,235);
-        docu.text(String(nombrePorCorreo(c.autorEmail||c.autor)||'—')+':', ML, y);
+        docu.text(autor+fechaTxt, ML, y); y+=5;
         docu.setFont('helvetica','normal'); docu.setFontSize(9); docu.setTextColor(15,23,42);
-        docu.text(lns, ML+28, y);
-        y += Math.max(6, lns.length*5+2);
+        docu.text(lns, ML, y);
+        y += lns.length*5+5;
       });
     }
 
