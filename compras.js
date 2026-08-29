@@ -451,12 +451,27 @@
       var esUltimo = idx===flujo.length-1;
       var update = {flujoAutorizacion:flujo};
       if(esUltimo) update.estatus='cotizando';
-      // NOTA: si no era el último paso, el flujo avanza pero todavía no hay
-      // en el portal un mapeo "rol de aprobador → persona" por departamento
-      // para notificar exactamente a quién sigue — pendiente para una
-      // siguiente entrega (pantalla de configuración de flujos).
       fs.updateDoc(fs.doc(window.db,'requisiciones_compra',id), update).then(function(){
-        if(esUltimo) toast('Requisición autorizada — pasa a Cotizando');
+        if(esUltimo){ toast('Requisición autorizada — pasa a Cotizando'); return; }
+        // Notifica a quien deba autorizar el SIGUIENTE paso, con liga directa
+        // al documento (?firmar=id) — antes nadie se enteraba de que le tocaba.
+        var siguiente = flujo[idx+1];
+        var destinatarios = [];
+        if(siguiente.label==='Jefe de área'){
+          var depto = departamentoPorCorreo(d.solicitante);
+          var jefe = depto && _configFlujoCache && _configFlujoCache.jefesPorDepto ? _configFlujoCache.jefesPorDepto[depto] : null;
+          if(jefe && jefe.correo) destinatarios.push(jefe.correo);
+        } else if(siguiente.label==='Compras'){
+          (_configFlujoCache&&_configFlujoCache.aprobadoresCompras||[]).forEach(function(a){ if(a.correo) destinatarios.push(a.correo); });
+        }
+        destinatarios.forEach(function(correo){
+          fs.addDoc(fs.collection(window.db,'flotilla_notificaciones'), {
+            para:correo, tipo:'requisicion_autorizar',
+            mensaje:'Requisición '+(d.folio||id)+' espera tu autorización',
+            link:'?firmar='+id,
+            leido:false, creadaEn:new Date().toISOString(),
+          }).catch(function(e){ console.warn('[compras] no se pudo notificar al siguiente aprobador', e); });
+        });
       });
     });
   };
