@@ -404,6 +404,130 @@
 
     console.log('[PAGOS v2] ✅ Módulo cargado');
 
+// ══════════════════════════════════════════════════════════════════════
+// CUENTAS POR PAGAR — puente Compras → Pagos.
+// Compras informa (folio, proveedor, monto) al generar la OC o marcarla
+// recibida; Pagos es dueño de estatusPago/fechaPago. No toca index.html:
+// el panel se inyecta como hermano de #pagos-dashboard la primera vez que
+// se entra a Pagos. `aspelFolio` queda listo para que, el día que exista
+// el API de Aspel, solo haya que llenarlo automático en vez de a mano.
+// ══════════════════════════════════════════════════════════════════════
+(function(){
+'use strict';
+let _cxpDatos = [];
+
+async function _cxpGetDB(){
+  const appMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+  const fsMod  = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+  const app = appMod.getApps()[0];
+  return { db:fsMod.getFirestore(app), fs:fsMod };
+}
+
+function _cxpAsegurarPanel(){
+  let panel = document.getElementById('pagos-cxp');
+  if(panel) return panel;
+  const dash = document.getElementById('pagos-dashboard');
+  if(!dash || !dash.parentNode) return null;
+  panel = document.createElement('div');
+  panel.id = 'pagos-cxp';
+  panel.style.cssText = 'display:none;margin-top:20px';
+  panel.innerHTML = `
+    <div style="background:#fff;border-radius:14px;padding:18px;box-shadow:0 1px 3px rgba(0,0,0,.08)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <h3 style="margin:0;font-size:15px;color:#0A1628">Cuentas por pagar (Compras)</h3>
+        <button onclick="window.__cxpRecargar()" style="padding:6px 12px;border:1px solid #E2E8F0;border-radius:8px;background:#fff;font-size:11.5px;font-weight:700;cursor:pointer">↻ Actualizar</button>
+      </div>
+      <p id="pagos-cxp-resumen" style="font-size:11.5px;color:#5C7089;margin:4px 0 12px"></p>
+      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="background:#0A1628;color:#fff;text-align:left">
+          <th style="padding:7px 8px">Folio OC</th><th style="padding:7px 8px">Empresa</th><th style="padding:7px 8px">Proveedor</th>
+          <th style="padding:7px 8px">Monto</th><th style="padding:7px 8px">Estatus pago</th><th style="padding:7px 8px">Fecha pago</th>
+          <th style="padding:7px 8px">Folio Aspel</th><th style="padding:7px 8px"></th>
+        </tr></thead>
+        <tbody id="pagos-cxp-tbody"></tbody>
+      </table></div>
+    </div>`;
+  dash.parentNode.insertBefore(panel, dash.nextSibling);
+  return panel;
+}
+
+function _cxpEsc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+async function _cxpCargar(){
+  const panel = _cxpAsegurarPanel();
+  if(!panel) return;
+  const tbody = document.getElementById('pagos-cxp-tbody');
+  tbody.innerHTML = '<tr><td colspan="8" style="padding:14px;text-align:center;color:#94a3b8">Cargando…</td></tr>';
+  try{
+    const { db, fs } = await _cxpGetDB();
+    const snap = await fs.getDocs(fs.query(fs.collection(db,'pagos_cuentas_por_pagar'), fs.orderBy('creadaEn','desc')));
+    _cxpDatos = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    _cxpRender();
+  }catch(e){
+    tbody.innerHTML = '<tr><td colspan="8" style="padding:14px;color:#B91C1C">Error: '+_cxpEsc(e.message)+'</td></tr>';
+  }
+}
+
+function _cxpRender(){
+  const tbody = document.getElementById('pagos-cxp-tbody'); if(!tbody) return;
+  const pendientes = _cxpDatos.filter(d=>d.estatusPago!=='pagado');
+  const totalPendiente = pendientes.reduce((s,d)=>s+(Number(d.monto)||0),0);
+  document.getElementById('pagos-cxp-resumen').textContent =
+    _cxpDatos.length+' cuentas · '+pendientes.length+' pendientes · $'+totalPendiente.toLocaleString('es-MX')+' por pagar';
+  tbody.innerHTML = _cxpDatos.map(d=>{
+    const rowId = 'cxp-'+d.id;
+    return `<tr id="${rowId}" style="border-bottom:1px solid #F1F5F9">
+      <td style="padding:6px 8px;font-weight:700">${_cxpEsc(d.ocFolio||d.folio||'—')}</td>
+      <td style="padding:6px 8px">${_cxpEsc(d.empresa||'—')}</td>
+      <td style="padding:6px 8px">${_cxpEsc(d.proveedor||'—')}</td>
+      <td style="padding:6px 8px">${d.monto!=null?'$'+Number(d.monto).toLocaleString('es-MX'):'—'}</td>
+      <td style="padding:6px 8px"><select class="cxp-estatus" style="padding:4px 6px;border:1px solid #E2E8F0;border-radius:6px;font-size:11.5px">
+        ${['pendiente','programado','pagado'].map(e=>`<option value="${e}" ${d.estatusPago===e?'selected':''}>${e}</option>`).join('')}
+      </select></td>
+      <td style="padding:6px 8px"><input class="cxp-fecha" type="date" value="${d.fechaPago?String(d.fechaPago).slice(0,10):''}" style="padding:4px 6px;border:1px solid #E2E8F0;border-radius:6px;font-size:11.5px"></td>
+      <td style="padding:6px 8px"><input class="cxp-aspel" type="text" placeholder="Se llenará solo con Aspel" value="${_cxpEsc(d.aspelFolio||'')}" style="padding:4px 6px;border:1px solid #E2E8F0;border-radius:6px;font-size:11.5px;width:110px"></td>
+      <td style="padding:6px 8px"><button onclick="window.__cxpGuardar('${d.id}')" style="padding:5px 10px;background:#0A1628;color:#fff;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer">Guardar</button></td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="8" style="padding:14px;text-align:center;color:#94a3b8">Sin cuentas por pagar todavía — se llenan solas cuando Compras genera una orden.</td></tr>';
+}
+
+window.__cxpRecargar = _cxpCargar;
+
+window.__cxpGuardar = async function(id){
+  const tr = document.getElementById('cxp-'+id); if(!tr) return;
+  const estatusPago = tr.querySelector('.cxp-estatus').value;
+  const fechaPago = tr.querySelector('.cxp-fecha').value || null;
+  const aspelFolio = tr.querySelector('.cxp-aspel').value.trim() || null;
+  const btn = tr.querySelector('button');
+  const original = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Guardando…';
+  try{
+    const { db, fs } = await _cxpGetDB();
+    await fs.updateDoc(fs.doc(db,'pagos_cuentas_por_pagar',id), {estatusPago, fechaPago, aspelFolio, actualizadaEn:new Date().toISOString()});
+    btn.textContent = '✓ Guardado'; btn.style.background = '#15803d';
+    setTimeout(()=>{ btn.textContent = original; btn.style.background=''; btn.disabled=false; }, 1800);
+  }catch(e){
+    btn.textContent = 'Error'; btn.style.background = '#b91c1c';
+    setTimeout(()=>{ btn.textContent = original; btn.style.background=''; btn.disabled=false; }, 2200);
+  }
+};
+
+const CHECK_CXP = setInterval(()=>{
+  if(typeof window.verArea !== 'function') return;
+  clearInterval(CHECK_CXP);
+  const _orig2 = window.verArea;
+  window.verArea = function(area, btn){
+    _orig2(area, btn);
+    const panel = _cxpAsegurarPanel();
+    if(!panel) return;
+    if(area === 'Pagos'){ panel.style.display = 'block'; _cxpCargar(); }
+    else { panel.style.display = 'none'; }
+  };
+}, 200);
+
+console.log('[PAGOS · Cuentas por pagar] ✅ listo (preparado para Aspel: campo aspelFolio)');
+})();
+
 // SECCIÓN FLOTILLA — Bandeja de pagos pendientes de vehículos
 // Lee flotilla_solicitudes donde estatus = 'Pagos'
 // Escribe comprobante, monto, factura de vuelta al mismo doc
