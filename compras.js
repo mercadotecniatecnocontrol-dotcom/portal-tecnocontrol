@@ -113,6 +113,105 @@
     return false; // paso desconocido — no se asume permiso
   }
 
+  // ── BUSCADOR / HISTORIAL — filtra sobre 'docs' (ya sincronizado en vivo
+  //    por el onSnapshot), sin lecturas extra a Firestore ──
+  window.__cpAbrirBuscador = function(){
+    cargarColaboradores().then(function(){
+      var ov = document.createElement('div');
+      ov.id = 'cp-buscador-overlay';
+      ov.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,.55);z-index:2100;display:flex;align-items:center;justify-content:center;padding:18px';
+      ov.innerHTML =
+        '<div style="background:#fff;border-radius:14px;max-width:1100px;width:100%;max-height:92vh;overflow-y:auto;padding:22px">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><h3 style="margin:0;font-size:16px">Buscar / historial de requisiciones</h3><button onclick="document.getElementById(\'cp-buscador-overlay\').remove()" style="background:#F1F5F9;border:none;border-radius:8px;width:28px;height:28px;cursor:pointer">✕</button></div>' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:8px;margin-bottom:6px">' +
+            '<input id="cp-bq-texto" placeholder="Folio, solicitante, empresa, proveedor…" style="padding:8px;border:1px solid #E2E8F0;border-radius:8px;font-size:12px;grid-column:span 2">' +
+            '<select id="cp-bq-estatus" style="padding:8px;border:1px solid #E2E8F0;border-radius:8px;font-size:12px"><option value="">Todos los estatus</option>'+ESTADOS.map(function(e){return '<option value="'+e.id+'">'+e.label+'</option>';}).join('')+'</select>' +
+            '<input id="cp-bq-desde" type="date" style="padding:8px;border:1px solid #E2E8F0;border-radius:8px;font-size:12px">' +
+            '<input id="cp-bq-hasta" type="date" style="padding:8px;border:1px solid #E2E8F0;border-radius:8px;font-size:12px">' +
+          '</div>' +
+          '<div style="display:flex;gap:8px;margin-bottom:14px">' +
+            '<button onclick="window.__cpEjecutarBusqueda()" style="padding:8px 16px;background:#0A1628;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Buscar</button>' +
+            '<button onclick="window.__cpExportarCSV()" style="padding:8px 16px;background:#12A150;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">⬇ Exportar a Excel (CSV)</button>' +
+          '</div>' +
+          '<div id="cp-bq-resumen" style="font-size:11.5px;color:#5C7089;margin-bottom:8px"></div>' +
+          '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">' +
+            '<thead><tr style="background:#0A1628;color:#fff;text-align:left"><th style="padding:7px 8px">Folio</th><th style="padding:7px 8px">Fecha</th><th style="padding:7px 8px">Solicitante</th><th style="padding:7px 8px">Empresa</th><th style="padding:7px 8px">Estatus</th><th style="padding:7px 8px">Proveedor</th><th style="padding:7px 8px">Monto</th><th style="padding:7px 8px"></th></tr></thead>' +
+            '<tbody id="cp-bq-tbody"></tbody>' +
+          '</table></div>' +
+        '</div>';
+      document.body.appendChild(ov);
+      window.__cpEjecutarBusqueda();
+    });
+  };
+
+  function _cpFechaDoc(d){
+    if(d.createdAt && d.createdAt.toDate) return d.createdAt.toDate();
+    if(d.createdAt) return new Date(d.createdAt);
+    return null;
+  }
+
+  window.__cpEjecutarBusqueda = function(){
+    var texto = (document.getElementById('cp-bq-texto').value||'').toLowerCase().trim();
+    var estatusF = document.getElementById('cp-bq-estatus').value;
+    var desde = document.getElementById('cp-bq-desde').value ? new Date(document.getElementById('cp-bq-desde').value+'T00:00:00') : null;
+    var hasta = document.getElementById('cp-bq-hasta').value ? new Date(document.getElementById('cp-bq-hasta').value+'T23:59:59') : null;
+
+    var resultados = docs.filter(function(d){
+      if(estatusF && d.estatus!==estatusF) return false;
+      var fecha = _cpFechaDoc(d);
+      if(desde && fecha && fecha<desde) return false;
+      if(hasta && fecha && fecha>hasta) return false;
+      if(texto){
+        var proveedor = (d.cotizacionGanadora&&d.cotizacionGanadora.proveedor) || (d.items||[]).map(function(i){return i.proveedor;}).join(' ');
+        var bolsa = [d.folio, d.ocFolio, nombrePorCorreo(d.solicitante), d.solicitante, d.empresa, proveedor].join(' ').toLowerCase();
+        if(bolsa.indexOf(texto)===-1) return false;
+      }
+      return true;
+    });
+
+    window.__cpResultadosActuales = resultados; // usado por la exportación CSV
+    var estLabel = function(id){ return (ESTADOS.find(function(e){return e.id===id;})||{}).label || id || '—'; };
+    document.getElementById('cp-bq-resumen').textContent = resultados.length+' requisiciones encontradas.';
+    document.getElementById('cp-bq-tbody').innerHTML = resultados.map(function(d){
+      var fecha = _cpFechaDoc(d);
+      var monto = d.cotizacionGanadora&&d.cotizacionGanadora.monto!=null ? ('$'+d.cotizacionGanadora.monto) : '—';
+      var proveedor = (d.cotizacionGanadora&&d.cotizacionGanadora.proveedor) || '—';
+      var puedeDescargar = d.estatus==='orden_generada' || d.estatus==='recibida';
+      return '<tr style="border-bottom:1px solid #F1F5F9">' +
+        '<td style="padding:6px 8px;font-weight:700">'+esc(d.folio||'—')+'</td>' +
+        '<td style="padding:6px 8px">'+(fecha?fecha.toLocaleDateString('es-MX'):'—')+'</td>' +
+        '<td style="padding:6px 8px">'+esc(nombrePorCorreo(d.solicitante)||'—')+'</td>' +
+        '<td style="padding:6px 8px">'+esc(d.empresa||'—')+'</td>' +
+        '<td style="padding:6px 8px">'+esc(estLabel(d.estatus))+'</td>' +
+        '<td style="padding:6px 8px">'+esc(proveedor)+'</td>' +
+        '<td style="padding:6px 8px">'+esc(monto)+'</td>' +
+        '<td style="padding:6px 8px">'+(puedeDescargar?'<button onclick="window.__cpDescargarOC(\''+d.id+'\')" style="padding:5px 10px;background:#1473E6;color:#fff;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer">PDF</button>':'<button onclick="document.getElementById(\'cp-buscador-overlay\').remove();window.__cpAbrirDetalle(\''+d.id+'\')" style="padding:5px 10px;background:#F1F5F9;color:#475569;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer">Ver</button>') +
+        '</td></tr>';
+    }).join('') || '<tr><td colspan="8" style="padding:14px;text-align:center;color:#94a3b8">Sin resultados con esos filtros.</td></tr>';
+  };
+
+  window.__cpExportarCSV = function(){
+    var filas = window.__cpResultadosActuales || docs;
+    var estLabel = function(id){ return (ESTADOS.find(function(e){return e.id===id;})||{}).label || id || '—'; };
+    var encabezado = ['Folio','OC Folio','Fecha','Solicitante','Empresa','Ciudad','Urgencia','Tipo','Estatus','Motivo','Proveedor ganador','Monto'];
+    var lineas = [encabezado.join(',')];
+    filas.forEach(function(d){
+      var fecha = _cpFechaDoc(d);
+      var fila = [
+        d.folio||'', d.ocFolio||'', fecha?fecha.toLocaleDateString('es-MX'):'',
+        nombrePorCorreo(d.solicitante)||'', d.empresa||'', d.ciudad||'', d.urgencia||'', d.tipoCompra||'',
+        estLabel(d.estatus), d.motivo||'', (d.cotizacionGanadora&&d.cotizacionGanadora.proveedor)||'',
+        d.cotizacionGanadora&&d.cotizacionGanadora.monto!=null?d.cotizacionGanadora.monto:'',
+      ].map(function(v){ v=String(v).replace(/"/g,'""'); return /[,"\n]/.test(v)?'"'+v+'"':v; });
+      lineas.push(fila.join(','));
+    });
+    var blob = new Blob(['\uFEFF'+lineas.join('\r\n')], {type:'text/csv;charset=utf-8'});
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'requisiciones_compra_'+new Date().toISOString().slice(0,10)+'.csv';
+    a.click();
+  };
+
   window.__cpAbrirConfigFlujo = function(){
     Promise.all([cargarConfigFlujo(), cargarColaboradores()]).then(function(){
       var cfg = _configFlujoCache;
@@ -200,6 +299,7 @@
           '<h2 style="font-size:17px;font-weight:700;margin:0;color:#0A1628">Requisiciones de compra</h2>' +
           '<div style="display:flex;gap:8px">' +
           '<button onclick="window.__cpAbrirConfigFlujo()" style="padding:7px 14px;border-radius:9px;border:1px solid #E2E8F0;background:#fff;color:#0A1628;font-size:12px;font-weight:700;cursor:pointer">⚙ Configurar flujo</button>' +
+          '<button onclick="window.__cpAbrirBuscador()" style="padding:7px 14px;border-radius:9px;border:1px solid #E2E8F0;background:#fff;color:#0A1628;font-size:12px;font-weight:700;cursor:pointer">🔍 Buscar / historial</button>' +
           '<button onclick="window.__cpExportarAspel()" style="padding:7px 14px;border-radius:9px;border:1px solid #E2E8F0;background:#fff;color:#0A1628;font-size:12px;font-weight:700;cursor:pointer">Exportar JSON (Aspel)</button>' +
           '</div>' +
         '</div>' +
@@ -531,11 +631,15 @@
       fs.getDoc(fs.doc(window.db,'requisiciones_compra',id,'cotizaciones',cotId)).then(function(snap){
         if(!snap.exists()) return;
         var c=snap.data();
+        var cotizacionGanadora={proveedor:c.proveedor,monto:c.monto,cotizacionId:cotId};
+        var ocFolio='OC-'+String(Date.now()).slice(-6);
         fs.updateDoc(fs.doc(window.db,'requisiciones_compra',id), {
-          estatus:'orden_generada',
-          cotizacionGanadora:{proveedor:c.proveedor,monto:c.monto,cotizacionId:cotId},
-          ocFolio:'OC-'+String(Date.now()).slice(-6),
-        }).then(function(){ toast('Orden de compra generada'); });
+          estatus:'orden_generada', cotizacionGanadora:cotizacionGanadora, ocFolio:ocFolio,
+        }).then(function(){
+          toast('Orden de compra generada');
+          var d = docs.find(function(x){ return x.id===id; });
+          if(d) sincronizarCuentaPorPagar(Object.assign({},d,{estatus:'orden_generada',cotizacionGanadora:cotizacionGanadora,ocFolio:ocFolio}), 'orden_generada');
+        });
       });
     });
   };
@@ -565,6 +669,7 @@
             // No esperamos el onSnapshot (llega async) — armamos el objeto ya
             // actualizado a mano para generar el PDF de inmediato.
             var dActualizado = Object.assign({}, d, {estatus:'orden_generada', cotizacionGanadora:cotizacionGanadora, ocFolio:ocFolio});
+            sincronizarCuentaPorPagar(dActualizado, 'orden_generada');
             Promise.all([cargarFotos(id), cargarColaboradores(), cargarLogoEmpresa(dActualizado.empresa)]).then(function(res2){
               var fotos=res2[0], logo=res2[2];
               return _cpPrecargarDimensiones(fotos).then(function(fotoDim){
@@ -576,9 +681,40 @@
       });
     });
   };
+  // ── PUENTE COMPRAS → PAGOS ──────────────────────────────────────
+  // Colección 'pagos_cuentas_por_pagar' — un doc por requisición (id =
+  // requisicionId, upsert). Compras solo informa que existe una cuenta por
+  // pagar y su monto; Pagos es dueño de estatusPago/fechaPago y nunca se
+  // sobreescribe desde aquí. `aspelFolio` va vacío — es el campo que la
+  // futura integración con Aspel llenará sola; el resto de la estructura ya
+  // queda lista para ese día sin tener que rediseñar nada.
+  function sincronizarCuentaPorPagar(d, estatusCompra){
+    cargarFirestore().then(function(fs){
+      var ref = fs.doc(window.db,'pagos_cuentas_por_pagar',d.id);
+      fs.getDoc(ref).then(function(snap){
+        var payload = {
+          requisicionId:d.id, folio:d.folio||null, ocFolio:d.ocFolio||null,
+          empresa:d.empresa||null, proveedor:(d.cotizacionGanadora&&d.cotizacionGanadora.proveedor)||null,
+          monto:(d.cotizacionGanadora&&d.cotizacionGanadora.monto)!=null?d.cotizacionGanadora.monto:null,
+          solicitante:nombrePorCorreo(d.solicitante)||null,
+          estatusCompra:estatusCompra, actualizadaEn:new Date().toISOString(),
+        };
+        if(!snap.exists()){
+          payload.estatusPago='pendiente'; payload.fechaPago=null; payload.aspelFolio=null;
+          payload.creadaEn=new Date().toISOString();
+        }
+        fs.setDoc(ref, payload, {merge:true}).catch(function(e){ console.warn('[compras→pagos] no se pudo sincronizar', e); });
+      });
+    });
+  }
+
   window.__cpMarcarRecibida = function(id){
     cargarFirestore().then(function(fs){
-      fs.updateDoc(fs.doc(window.db,'requisiciones_compra',id), {estatus:'recibida'}).then(function(){ toast('Marcada como recibida'); });
+      fs.updateDoc(fs.doc(window.db,'requisiciones_compra',id), {estatus:'recibida'}).then(function(){
+        toast('Marcada como recibida');
+        var d = docs.find(function(x){ return x.id===id; });
+        if(d) sincronizarCuentaPorPagar(Object.assign({},d,{estatus:'recibida'}), 'recibida');
+      });
     });
   };
 
