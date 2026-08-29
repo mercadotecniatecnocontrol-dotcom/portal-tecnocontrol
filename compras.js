@@ -298,15 +298,15 @@
         '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">' +
           '<h2 style="font-size:17px;font-weight:700;margin:0;color:#0A1628">Requisiciones de compra</h2>' +
           '<div style="display:flex;gap:8px">' +
-          '<button onclick="window.__cpAbrirConfigFlujo()" style="padding:7px 14px;border-radius:9px;border:1px solid #E2E8F0;background:#fff;color:#0A1628;font-size:12px;font-weight:700;cursor:pointer">⚙ Configurar flujo</button>' +
-          '<button onclick="window.__cpAbrirBuscador()" style="padding:7px 14px;border-radius:9px;border:1px solid #E2E8F0;background:#fff;color:#0A1628;font-size:12px;font-weight:700;cursor:pointer">🔍 Buscar / historial</button>' +
-          '<button onclick="window.__cpExportarAspel()" style="padding:7px 14px;border-radius:9px;border:1px solid #E2E8F0;background:#fff;color:#0A1628;font-size:12px;font-weight:700;cursor:pointer">Exportar JSON (Aspel)</button>' +
+          '<button onclick="window.__cpAbrirConfigFlujo()" style="padding:8px 15px;border-radius:10px;border:none;background:#fff;color:#0A1628;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 1px 3px rgba(10,22,40,.08)">⚙ Configurar flujo</button>' +
+          '<button onclick="window.__cpAbrirBuscador()" style="padding:8px 15px;border-radius:10px;border:none;background:#fff;color:#0A1628;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 1px 3px rgba(10,22,40,.08)">🔍 Buscar / historial</button>' +
+          '<button onclick="window.__cpExportarAspel()" style="padding:8px 15px;border-radius:10px;border:none;background:#fff;color:#0A1628;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 1px 3px rgba(10,22,40,.08)">Exportar JSON (Aspel)</button>' +
           '</div>' +
         '</div>' +
         '<div id="cp-kpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px"></div>' +
-        '<div style="display:flex;gap:6px;margin-bottom:10px">' +
-          '<button id="cp-tab-activas" onclick="window.__cpSetTab(false)" style="padding:7px 14px;border-radius:9px;border:1px solid #E23B2E;background:#E23B2E;color:#fff;font-size:12.5px;font-weight:600;cursor:pointer">Activas</button>' +
-          '<button id="cp-tab-rechazadas" onclick="window.__cpSetTab(true)" style="padding:7px 14px;border-radius:9px;border:1px solid #E2E8F0;background:#fff;color:#5C7089;font-size:12.5px;font-weight:600;cursor:pointer">Rechazadas</button>' +
+        '<div style="display:flex;gap:6px;margin-bottom:14px">' +
+          '<button id="cp-tab-activas" onclick="window.__cpSetTab(false)" style="padding:8px 16px;border-radius:20px;border:none;background:#0A1628;color:#fff;font-size:12.5px;font-weight:700;cursor:pointer;box-shadow:0 1px 3px rgba(10,22,40,.15)">Activas</button>' +
+          '<button id="cp-tab-rechazadas" onclick="window.__cpSetTab(true)" style="padding:8px 16px;border-radius:20px;border:none;background:#fff;color:#5C7089;font-size:12.5px;font-weight:700;cursor:pointer">Rechazadas</button>' +
         '</div>' +
         '<div id="cp-board" style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px"></div>' +
       '</div>' +
@@ -336,8 +336,8 @@
   window.__cpSetTab = function(rechazadas){
     verRechazadas = rechazadas;
     var a=document.getElementById('cp-tab-activas'), r=document.getElementById('cp-tab-rechazadas');
-    a.style.background = rechazadas?'#fff':'#E23B2E'; a.style.color = rechazadas?'#5C7089':'#fff'; a.style.borderColor = rechazadas?'#E2E8F0':'#E23B2E';
-    r.style.background = rechazadas?'#E23B2E':'#fff'; r.style.color = rechazadas?'#fff':'#5C7089'; r.style.borderColor = rechazadas?'#E23B2E':'#E2E8F0';
+    a.style.background = rechazadas?'#fff':'#0A1628'; a.style.color = rechazadas?'#5C7089':'#fff'; a.style.boxShadow = rechazadas?'none':'0 1px 3px rgba(10,22,40,.15)';
+    r.style.background = rechazadas?'#0A1628':'#fff'; r.style.color = rechazadas?'#fff':'#5C7089'; r.style.boxShadow = rechazadas?'0 1px 3px rgba(10,22,40,.15)':'none';
     renderBoard();
   };
 
@@ -348,9 +348,9 @@
     var cotizando = docs.filter(function(d){ return d.estatus==='cotizando'; }).length;
     var el=document.getElementById('cp-kpis'); if(!el) return;
     function kpi(label,val,color){
-      return '<div style="background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:14px 16px">' +
-        '<p style="font-size:11px;color:#5C7089;margin:0 0 4px;font-weight:700;text-transform:uppercase;letter-spacing:.3px">'+label+'</p>' +
-        '<p style="font-size:24px;font-weight:700;margin:0;color:'+(color||'#0A1628')+'">'+val+'</p></div>';
+      return '<div style="background:#fff;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(10,22,40,.08)">' +
+        '<p style="font-size:10.5px;color:#94A3B8;margin:0 0 6px;font-weight:700;text-transform:uppercase;letter-spacing:.4px">'+label+'</p>' +
+        '<p style="font-size:26px;font-weight:800;margin:0;color:'+(color||'#0A1628')+'">'+val+'</p></div>';
     }
     el.innerHTML = kpi('En proceso',activas.length) + kpi('Urgentes',urgentes,'#E23B2E') + kpi('Por autorizar',pendientes,'#D99000') + kpi('Cotizando',cotizando,'#1473E6');
   }
@@ -366,21 +366,28 @@
     board.style.gridTemplateColumns='repeat(5,1fr)';
     board.innerHTML = ESTADOS.map(function(col){
       var ds = fuente.filter(function(d){ return (d.estatus||'pendiente')===col.id; });
-      return '<div style="background:#F8FAFD;border-radius:12px;padding:10px;min-height:110px">' +
-        '<p style="font-size:10.5px;font-weight:700;color:#5C7089;margin:0 0 8px;text-transform:uppercase;letter-spacing:.2px">'+col.label+' · '+ds.length+'</p>' +
-        (ds.length ? ds.map(cardHTML).join('') : '<p style="font-size:11px;color:#B7C0CC;margin:0">Vacío</p>') +
+      return '<div style="background:#F1F5F9;border-radius:14px;padding:12px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
+        '<p style="font-size:10.5px;font-weight:800;color:#5C7089;margin:0;text-transform:uppercase;letter-spacing:.3px">'+col.label+'</p>' +
+        '<span style="background:#fff;color:#0A1628;font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:20px;box-shadow:0 1px 2px rgba(10,22,40,.08)">'+ds.length+'</span></div>' +
+        (ds.length ? ds.map(cardHTML).join('') : '<p style="font-size:11px;color:#B7C0CC;margin:0;text-align:center;padding:20px 0">Vacío</p>') +
         '</div>';
     }).join('');
   }
 
   function cardHTML(d){
     var urgColor = d.urgencia==='alta'?'#E23B2E':d.urgencia==='media'?'#D99000':'#5C7089';
-    var urgBg = d.urgencia==='alta'?'#FCEBEB':d.urgencia==='media'?'#FAEEDA':'#F1F5F9';
-    return '<div onclick="window.__cpAbrirDetalle(\''+d.id+'\')" style="background:#fff;border:1px solid #E2E8F0;border-radius:10px;padding:10px;margin-bottom:8px;cursor:pointer">' +
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">' +
-      '<span style="font-size:12px;font-weight:700">'+esc(d.folio||d.id)+'</span>' +
-      '<span style="background:'+urgBg+';color:'+urgColor+';font-size:9.5px;font-weight:700;padding:2px 6px;border-radius:6px">'+esc((d.urgencia||'—').toUpperCase())+'</span></div>' +
-      '<p style="font-size:11.5px;color:#5C7089;margin:0">'+esc(nombrePorCorreo(d.solicitante)||'—')+' · '+esc(d.empresa||'—')+'</p></div>';
+    var monto = d.cotizacionGanadora&&d.cotizacionGanadora.monto!=null ? ('$'+Number(d.cotizacionGanadora.monto).toLocaleString('es-MX')) : null;
+    return '<div onclick="window.__cpAbrirDetalle(\''+d.id+'\')" style="background:#fff;border-radius:11px;padding:0;margin-bottom:9px;cursor:pointer;box-shadow:0 1px 3px rgba(10,22,40,.09);overflow:hidden;transition:box-shadow .15s" onmouseover="this.style.boxShadow=\'0 3px 10px rgba(10,22,40,.15)\'" onmouseout="this.style.boxShadow=\'0 1px 3px rgba(10,22,40,.09)\'">' +
+      '<div style="display:flex">' +
+      '<div style="width:4px;background:'+urgColor+';flex-shrink:0"></div>' +
+      '<div style="padding:10px 12px;flex:1;min-width:0">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">' +
+      '<span style="font-size:12.5px;font-weight:800;color:#0A1628">'+esc(d.folio||d.id)+'</span>' +
+      (monto?'<span style="font-size:11px;font-weight:700;color:#12A150">'+monto+'</span>':'<span style="font-size:9px;font-weight:800;color:'+urgColor+';text-transform:uppercase;letter-spacing:.3px">'+esc(d.urgencia||'')+'</span>') +
+      '</div>' +
+      '<p style="font-size:11.5px;color:#5C7089;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(nombrePorCorreo(d.solicitante)||'—')+' · '+esc(d.empresa||'—')+'</p>' +
+      '</div></div></div>';
   }
 
   // ── DETALLE / AUTORIZAR / RECHAZAR ─────────────────────────────
