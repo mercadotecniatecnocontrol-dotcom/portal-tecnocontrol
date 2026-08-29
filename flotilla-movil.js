@@ -3051,6 +3051,7 @@ function renderNotif(){
       time:hF(n.creadaEn),
       unread:!n.leido,
       id:n.id,
+      link:n.link||null,
     };
   });
   const items=[...pipelineItems];
@@ -3066,17 +3067,23 @@ function renderNotif(){
       ${(misPipelineNotif||[]).some(n=>!n.leido)?`<button onclick="fmMarcarNotifLeidas()" style="padding:6px 12px;background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:8px;font-size:11px;font-weight:700;color:#1D4ED8;cursor:pointer">Marcar leídas</button>`:''}
     </div>
     ${!items.length?`<div class="fm-empty"><div class="fm-empty-ico" style="color:var(--color-text-secondary,#94A3B8)">${IC.bell}</div><h3>Sin avisos</h3><p>No hay notificaciones nuevas.</p></div>`:
-    items.map(n=>`<div class="fm-notif ${n.unread?'unread':''}">
+    items.map(n=>`<div class="fm-notif ${n.unread?'unread':''}" ${n.link?`onclick="window.fmAbrirLigaNotif('${n.link.replace(/'/g,"\\'")}')" style="cursor:pointer"`:''}>
       <div class="fm-notif-ico" style="background:${n.bg};color:${n.ico==='ok'?'#15803D':n.ico==='err'?'#B91C1C':n.ico==='warn'?'#B45309':'#6D28D9'}">${n.icoSvg||IC.bell}</div>
       <div class="fm-notif-body">
         <div class="fm-notif-t">${n.t}</div>
         <div class="fm-notif-s">${n.s}</div>
         <div class="fm-notif-time">${n.time}</div>
+        ${n.link?'<div style="font-size:11px;color:#2563EB;font-weight:700;margin-top:3px">Toca para abrir →</div>':''}
       </div>
     </div>`).join('')}
     <div style="height:20px"></div>
   `);
 }
+window.fmAbrirLigaNotif=function(link){
+  // El link apunta al portal (index.html?firmar=id) — se abre en pestaña
+  // aparte porque Flotilla móvil es una PWA distinta al portal de escritorio.
+  window.open(new URL(link, location.href.replace(/flotilla-app\.html.*$/,'index.html')).href, '_blank');
+};
 
 // ── VER SOLICITUD EXISTENTE ──
 window.fmVerSol=function(id){
@@ -4774,6 +4781,27 @@ function _reqPrecargarDimensiones(fotos){
   }))).then(pares=>Object.fromEntries(pares));
 }
 
+// Notifica al jefe de área correspondiente en cuanto se crea la requisición
+// (el paso 1 "Solicitante" ya nace aprobado, así que el paso "Jefe de área"
+// queda pendiente desde el primer momento — antes nadie se enteraba).
+async function _reqNotificarJefeArea(idDoc, data){
+  try{
+    const cfgSnap = await db.collection('config_flujo_compras').doc('general').get();
+    const cfg = cfgSnap.exists ? cfgSnap.data() : null;
+    if(!cfg || !cfg.jefesPorDepto) return;
+    const colabSnap = await db.collection('colaboradores').where('correo','==',data.solicitanteEmail).limit(1).get();
+    const depto = !colabSnap.empty ? colabSnap.docs[0].data().departamento : null;
+    const jefe = depto ? cfg.jefesPorDepto[depto] : null;
+    if(!jefe || !jefe.correo) return;
+    await db.collection('flotilla_notificaciones').add({
+      para: jefe.correo, tipo:'requisicion_autorizar',
+      mensaje:'Requisición '+(data.folio||idDoc)+' de '+(data.solicitante||'')+' espera tu autorización',
+      link: '?firmar='+idDoc,
+      leido:false, creadaEn:new Date().toISOString(),
+    });
+  }catch(e){ console.warn('[requisicion] no se pudo notificar al jefe de área', e); }
+}
+
 function _reqConstruirPDF(d,empresaLogo,fotoDim){
   if(!window.jspdf)return null;
   fotoDim=fotoDim||{};
@@ -4971,6 +4999,7 @@ window.reqEnviar=async function(){
     // patrón que ya usa flotilla_checklist_semanal.
     const fotosParaSubir=(window.reqState.fotos||[]).slice();
     const ref=await db.collection('requisiciones_compra').add(data);
+    _reqNotificarJefeArea(ref.id, data); // no se espera — no debe bloquear el envío si falla
     if(fotosParaSubir.length){
       const fotosRef=db.collection('requisiciones_compra').doc(ref.id).collection('fotos');
       await Promise.all(fotosParaSubir.map(f=>fotosRef.add({
