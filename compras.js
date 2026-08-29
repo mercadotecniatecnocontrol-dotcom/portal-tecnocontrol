@@ -311,7 +311,7 @@
         '<div id="cp-board" style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px"></div>' +
       '</div>' +
       '<div id="cp-detalle-overlay" style="display:none;position:fixed;inset:0;background:rgba(10,22,40,.55);z-index:2000;align-items:center;justify-content:center;padding:24px">' +
-        '<div id="cp-detalle-panel" style="background:#fff;border-radius:14px;max-width:640px;width:100%;max-height:88vh;overflow-y:auto;padding:22px"></div>' +
+        '<div id="cp-detalle-panel" style="background:#fff;border-radius:14px;max-width:920px;width:100%;max-height:88vh;overflow-y:auto;padding:22px"></div>' +
       '</div>';
   }
 
@@ -394,67 +394,88 @@
     var pasoActivo = flujo.find(function(f){ return f.estatus==='pendiente'; });
 
     var html = '';
-    html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">';
     html += '<div><h2 style="font-size:18px;margin:0">'+esc(d.folio||d.id)+' · '+esc(d.empresa||'—')+'</h2>';
     html += '<p style="font-size:12px;color:#5C7089;margin:4px 0 0">'+esc(nombrePorCorreo(d.solicitante)||'—')+' · '+esc(d.origen||'—')+'</p></div>';
     html += '<button onclick="window.__cpCerrarDetalle()" style="background:#F1F5F9;border:none;border-radius:8px;width:30px;height:30px;cursor:pointer">✕</button></div>';
 
-    html += '<div style="display:flex;gap:8px;margin-bottom:12px">';
-    html += '<span style="background:#F1F5F9;color:#0A1628;font-size:11px;font-weight:600;padding:4px 10px;border-radius:8px">'+esc((d.urgencia||'—').toUpperCase())+'</span>';
-    html += '<span style="background:#F1F5F9;color:#0A1628;font-size:11px;font-weight:600;padding:4px 10px;border-radius:8px">'+esc((d.tipoCompra||'—').toUpperCase())+'</span>';
-    var estLabel = (ESTADOS.find(function(e){ return e.id===(d.estatus||'pendiente'); })||{}).label || d.estatus || '—';
-    html += '<span style="background:#F1F5F9;color:#0A1628;font-size:11px;font-weight:600;padding:4px 10px;border-radius:8px">'+esc(estLabel)+'</span></div>';
-    html += '<p style="font-size:11.5px;color:#5C7089;margin:0 0 14px">'+esc(tipoInfo.entrada)+' · '+esc(tipoInfo.factura)+'</p>';
+    // ── Barra de progreso general (5 etapas del documento completo) ──
+    var ETAPAS_CP = [
+      {id:'pendiente', label:'Solicitud'}, {id:'autorizacion', label:'Autorización'},
+      {id:'cotizando', label:'Cotización'}, {id:'orden_generada', label:'Orden generada'},
+      {id:'recibida', label:'Recibida'},
+    ];
+    var etapaActualIdx = d.estatus==='rechazada' ? -1
+      : d.estatus==='recibida' ? 4 : d.estatus==='orden_generada' ? 3 : d.estatus==='cotizando' ? 2
+      : pasoActivo && pasoActivo.orden>1 ? 1 : 0;
+    html += '<div style="display:flex;align-items:center;margin-bottom:16px">' + ETAPAS_CP.map(function(e,i){
+      var estado = d.estatus==='rechazada' ? 'rechazada' : (i<etapaActualIdx?'hecho':(i===etapaActualIdx?'actual':'espera'));
+      var col = estado==='hecho'?'#12A150':estado==='actual'?'#1473E6':estado==='rechazada'?'#E23B2E':'#CBD5E1';
+      var bg = estado==='hecho'?'#12A150':estado==='actual'?'#1473E6':estado==='rechazada'?'#E23B2E':'#F1F5F9';
+      var fg = estado==='espera'?'#94A3B8':'#fff';
+      return '<div style="flex:1;text-align:center">' +
+          '<div style="width:22px;height:22px;border-radius:50%;background:'+bg+';color:'+fg+';font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;margin:0 auto 4px">'+(estado==='hecho'?'✓':(i+1))+'</div>' +
+          '<div style="font-size:9.5px;font-weight:700;color:'+col+'">'+esc(e.label)+'</div>' +
+        '</div>' + (i<ETAPAS_CP.length-1?'<div style="flex:0.6;height:2px;background:'+(i<etapaActualIdx?'#12A150':'#E2E8F0')+';margin-bottom:16px"></div>':'');
+    }).join('') + '</div>';
+    if(d.estatus==='rechazada'){
+      html += '<div style="background:#FCEBEB;border-radius:9px;padding:10px 12px;font-size:12px;color:#791F1F;margin-bottom:14px"><b>Rechazada:</b> '+esc(d.motivoRechazo||'Sin motivo registrado')+'</div>';
+    }
 
-    html += '<table style="width:100%;font-size:12.5px;border-collapse:collapse;margin-bottom:14px">';
-    html += '<tr style="color:#5C7089;text-align:left"><td style="padding:4px 0">Cant.</td><td>Descripción</td><td style="text-align:right">Proveedor</td></tr>';
-    (d.items||[]).forEach(function(it){
-      html += '<tr style="border-top:1px solid #E2E8F0"><td style="padding:6px 0">'+esc(it.cant)+' '+esc(it.unidad||'')+'</td><td>'+esc(it.desc)+'</td><td style="text-align:right">'+esc(it.proveedor||'—')+'</td></tr>';
-    });
-    html += '</table>';
+    html += '<div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap">';
 
-    html += '<p style="font-size:11px;font-weight:700;color:#5C7089;margin:0 0 8px">Flujo de autorización</p><div style="display:flex;gap:6px;margin-bottom:16px">';
+    // ══ COLUMNA IZQUIERDA — detalle, partidas, autorización, comentarios, fotos ══
+    var htmlIzq = '';
+    htmlIzq += '<p style="font-size:11.5px;color:#5C7089;margin:0 0 12px">'+esc(tipoInfo.entrada)+' · '+esc(tipoInfo.factura)+'</p>';
+
+    // Partidas como tarjetas (no tabla plana)
+    htmlIzq += '<p style="font-size:11px;font-weight:700;color:#5C7089;margin:0 0 8px">Partidas</p>';
+    htmlIzq += '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">' + (d.items||[]).map(function(it){
+      return '<div style="border:1px solid #E2E8F0;border-radius:10px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;gap:10px">' +
+        '<div style="min-width:0"><p style="font-size:13px;font-weight:600;color:#0A1628;margin:0;overflow-wrap:break-word">'+esc(it.desc||'—')+'</p>' +
+        '<p style="font-size:11px;color:#94A3B8;margin:2px 0 0">Proveedor sugerido: '+esc(it.proveedor||'—')+'</p></div>' +
+        '<span style="flex-shrink:0;background:#F1F5F9;color:#0A1628;font-size:12px;font-weight:800;padding:5px 10px;border-radius:8px;white-space:nowrap">×'+esc(it.cant||'—')+' '+esc(it.unidad||'')+'</span>' +
+        '</div>';
+    }).join('') + '</div>';
+
+    htmlIzq += '<p style="font-size:11px;font-weight:700;color:#5C7089;margin:0 0 8px">Flujo de autorización</p><div style="display:flex;gap:6px;margin-bottom:16px">';
     flujo.forEach(function(f){
       var bg = f.estatus==='aprobado'?'#EAF3DE':(f===pasoActivo?'#FAEEDA':'#F1F5F9');
       var col = f.estatus==='aprobado'?'#3B6D11':(f===pasoActivo?'#633806':'#5C7089');
-      html += '<div style="flex:1;text-align:center;padding:8px 4px;border-radius:9px;background:'+bg+'">' +
+      htmlIzq += '<div style="flex:1;text-align:center;padding:8px 4px;border-radius:9px;background:'+bg+'">' +
         '<p style="font-size:10.5px;font-weight:700;margin:0;color:'+col+'">'+esc(f.label)+'</p>' +
         '<p style="font-size:9.5px;margin:2px 0 0;color:#5C7089">'+(f.estatus==='aprobado'?'Aprobado':(f===pasoActivo?'Tu turno':'En espera'))+'</p></div>';
     });
-    html += '</div>';
+    htmlIzq += '</div>';
 
-    if(d.firma) html += '<img src="'+d.firma+'" style="height:50px;border:1px solid #E2E8F0;border-radius:8px;margin-bottom:14px">';
+    if(d.firma) htmlIzq += '<img src="'+d.firma+'" style="height:50px;border:1px solid #E2E8F0;border-radius:8px;margin-bottom:14px">';
 
     // ── Comentarios ──
     var comentarios = d.comentarios || [];
-    html += '<p style="font-size:11px;font-weight:700;color:#5C7089;margin:0 0 8px">Comentarios</p>';
-    html += '<div id="cp-comentarios-list" style="margin-bottom:8px">' + (comentarios.length ? comentarios.map(function(c){
+    htmlIzq += '<p style="font-size:11px;font-weight:700;color:#5C7089;margin:0 0 8px">Comentarios</p>';
+    htmlIzq += '<div id="cp-comentarios-list" style="margin-bottom:8px">' + (comentarios.length ? comentarios.map(function(c){
       return '<div style="background:#F8FAFD;border-radius:8px;padding:8px 10px;margin-bottom:6px">' +
         '<p style="font-size:10.5px;font-weight:700;color:#1473E6;margin:0 0 2px">'+esc(nombrePorCorreo(c.autorEmail||c.autor)||'—')+' <span style="font-weight:400;color:#B7C0CC">'+esc((c.fecha||'').slice(0,10))+'</span></p>' +
         '<p style="font-size:12.5px;color:#0A1628;margin:0">'+esc(c.texto)+'</p></div>';
     }).join('') : '<p style="font-size:11.5px;color:#94a3b8;margin:0">Sin comentarios todavía.</p>') + '</div>';
-    html += '<div style="display:flex;gap:6px;margin-bottom:16px">' +
+    htmlIzq += '<div style="display:flex;gap:6px;margin-bottom:16px">' +
       '<input id="cp-comentario-txt" placeholder="Agregar un comentario…" style="flex:1;padding:8px;border:1px solid #E2E8F0;border-radius:8px;font-size:12px">' +
       '<button onclick="window.__cpAgregarComentario(\''+d.id+'\')" style="padding:8px 14px;background:#0A1628;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Agregar</button></div>';
 
     // ── Fotos (subidas por el técnico y/o por Compras) ──
-    html += '<p style="font-size:11px;font-weight:700;color:#5C7089;margin:0 0 8px">Fotos de referencia</p>';
-    html += '<div id="cp-fotos-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px"><p style="font-size:11px;color:#94a3b8;grid-column:1/-1">Cargando…</p></div>';
-    html += '<label style="display:inline-block;padding:8px 14px;border:1.5px dashed #E2E8F0;border-radius:8px;background:#fff;color:#1473E6;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:16px">+ Agregar foto (Compras)<input id="cp-foto-file" type="file" accept="image/*" multiple onchange="window.__cpAgregarFoto(\''+d.id+'\',this)" style="display:none"></label>';
-
-    if(d.estatus==='rechazada'){
-      html += '<div style="background:#FCEBEB;border-radius:9px;padding:10px 12px;font-size:12px;color:#791F1F;margin-bottom:12px"><b>Rechazada:</b> '+esc(d.motivoRechazo||'Sin motivo registrado')+'</div>';
-    }
+    htmlIzq += '<p style="font-size:11px;font-weight:700;color:#5C7089;margin:0 0 8px">Fotos de referencia</p>';
+    htmlIzq += '<div id="cp-fotos-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px"><p style="font-size:11px;color:#94a3b8;grid-column:1/-1">Cargando…</p></div>';
+    htmlIzq += '<label style="display:inline-block;padding:8px 14px;border:1.5px dashed #E2E8F0;border-radius:8px;background:#fff;color:#1473E6;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:16px">+ Agregar foto (Compras)<input id="cp-foto-file" type="file" accept="image/*" multiple onchange="window.__cpAgregarFoto(\''+d.id+'\',this)" style="display:none"></label>';
 
     if(pasoActivo && d.estatus!=='rechazada' && d.estatus!=='recibida'){
       var miCorreo = window.auth && window.auth.currentUser ? window.auth.currentUser.email : '';
       var autorizado = puedoAutorizarPaso(d, pasoActivo, miCorreo);
       if(autorizado){
-        html += '<div id="cp-rechazo-motivo" style="display:none;margin-bottom:10px"><textarea id="cp-motivo-txt" rows="2" placeholder="Motivo del rechazo" style="width:100%;padding:9px;border:1px solid #E2E8F0;border-radius:8px;font-size:12.5px;box-sizing:border-box"></textarea></div>';
-        html += '<div style="display:flex;gap:8px">';
-        html += '<button onclick="window.__cpAutorizar(\''+d.id+'\')" style="flex:1;padding:11px;background:#0A1628;color:#fff;border:none;border-radius:9px;font-weight:600;cursor:pointer">Autorizar</button>';
-        html += '<button onclick="document.getElementById(\'cp-rechazo-motivo\').style.display=\'block\';document.getElementById(\'cp-confirmar-rechazo\').style.display=\'block\'" style="flex:1;padding:11px;background:#fff;color:#E23B2E;border:1px solid #F0997B;border-radius:9px;font-weight:600;cursor:pointer">Rechazar</button></div>';
-        html += '<button id="cp-confirmar-rechazo" onclick="window.__cpRechazar(\''+d.id+'\')" style="display:none;width:100%;margin-top:8px;padding:11px;background:#E23B2E;color:#fff;border:none;border-radius:9px;font-weight:600;cursor:pointer">Confirmar rechazo</button>';
+        htmlIzq += '<div id="cp-rechazo-motivo" style="display:none;margin-bottom:10px"><textarea id="cp-motivo-txt" rows="2" placeholder="Motivo del rechazo" style="width:100%;padding:9px;border:1px solid #E2E8F0;border-radius:8px;font-size:12.5px;box-sizing:border-box"></textarea></div>';
+        htmlIzq += '<div style="display:flex;gap:8px">';
+        htmlIzq += '<button onclick="window.__cpAutorizar(\''+d.id+'\')" style="flex:1;padding:11px;background:#0A1628;color:#fff;border:none;border-radius:9px;font-weight:600;cursor:pointer">Autorizar</button>';
+        htmlIzq += '<button onclick="document.getElementById(\'cp-rechazo-motivo\').style.display=\'block\';document.getElementById(\'cp-confirmar-rechazo\').style.display=\'block\'" style="flex:1;padding:11px;background:#fff;color:#E23B2E;border:1px solid #F0997B;border-radius:9px;font-weight:600;cursor:pointer">Rechazar</button></div>';
+        htmlIzq += '<button id="cp-confirmar-rechazo" onclick="window.__cpRechazar(\''+d.id+'\')" style="display:none;width:100%;margin-top:8px;padding:11px;background:#E23B2E;color:#fff;border:none;border-radius:9px;font-weight:600;cursor:pointer">Confirmar rechazo</button>';
       } else {
         var cfg2 = _configFlujoCache || {jefesPorDepto:{}, aprobadoresCompras:[]};
         var quien = '—';
@@ -465,25 +486,46 @@
         } else if(pasoActivo.label==='Compras'){
           quien = (cfg2.aprobadoresCompras||[]).map(function(a){return a.nombre||a.correo;}).join(', ') || 'sin aprobadores de Compras configurados';
         }
-        html += '<div style="background:#FFF7ED;border-radius:9px;padding:10px 12px;font-size:12px;color:#7C2D12">Este paso ("'+esc(pasoActivo.label)+'") solo lo puede autorizar: <b>'+esc(quien)+'</b>. Configúralo en "⚙ Configurar flujo" si falta.</div>';
+        htmlIzq += '<div style="background:#FFF7ED;border-radius:9px;padding:10px 12px;font-size:12px;color:#7C2D12">Este paso ("'+esc(pasoActivo.label)+'") solo lo puede autorizar: <b>'+esc(quien)+'</b>. Configúralo en "⚙ Configurar flujo" si falta.</div>';
       }
     }
 
     if(d.estatus==='cotizando'){
-      html += '<p style="font-size:11px;font-weight:700;color:#5C7089;margin:14px 0 8px">Cotizaciones</p><div id="cp-cotizaciones-list" style="margin-bottom:8px"></div>';
-      html += '<div style="display:flex;gap:6px;margin-bottom:10px">';
-      html += '<input id="cp-cot-proveedor" placeholder="Proveedor" style="flex:1;padding:8px;border:1px solid #E2E8F0;border-radius:8px;font-size:12px">';
-      html += '<input id="cp-cot-monto" placeholder="Monto" type="number" style="width:100px;padding:8px;border:1px solid #E2E8F0;border-radius:8px;font-size:12px">';
-      html += '<label style="padding:8px 12px;border:1px solid #E2E8F0;border-radius:8px;font-size:11.5px;cursor:pointer;background:#fff">Adjuntar<input id="cp-cot-file" type="file" accept="image/*,application/pdf" style="display:none"></label></div>';
-      html += '<button onclick="window.__cpAgregarCotizacion(\''+d.id+'\')" style="width:100%;padding:9px;border:1.5px dashed #E2E8F0;background:#fff;color:#1473E6;border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:8px">+ Agregar cotización</button>';
-      html += '<button onclick="window.__cpEnviarDirectoACompra(\''+d.id+'\')" style="width:100%;padding:10px;background:#12A150;color:#fff;border:none;border-radius:9px;font-size:12.5px;font-weight:700;cursor:pointer;margin-bottom:12px">✓ Enviar directo a compra (genera OC)</button>';
+      htmlIzq += '<p style="font-size:11px;font-weight:700;color:#5C7089;margin:14px 0 8px">Cotizaciones</p><div id="cp-cotizaciones-list" style="margin-bottom:8px"></div>';
+      htmlIzq += '<div style="display:flex;gap:6px;margin-bottom:10px">';
+      htmlIzq += '<input id="cp-cot-proveedor" placeholder="Proveedor" style="flex:1;padding:8px;border:1px solid #E2E8F0;border-radius:8px;font-size:12px">';
+      htmlIzq += '<input id="cp-cot-monto" placeholder="Monto" type="number" style="width:100px;padding:8px;border:1px solid #E2E8F0;border-radius:8px;font-size:12px">';
+      htmlIzq += '<label style="padding:8px 12px;border:1px solid #E2E8F0;border-radius:8px;font-size:11.5px;cursor:pointer;background:#fff">Adjuntar<input id="cp-cot-file" type="file" accept="image/*,application/pdf" style="display:none"></label></div>';
+      htmlIzq += '<button onclick="window.__cpAgregarCotizacion(\''+d.id+'\')" style="width:100%;padding:9px;border:1.5px dashed #E2E8F0;background:#fff;color:#1473E6;border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:8px">+ Agregar cotización</button>';
+      htmlIzq += '<button onclick="window.__cpEnviarDirectoACompra(\''+d.id+'\')" style="width:100%;padding:10px;background:#12A150;color:#fff;border:none;border-radius:9px;font-size:12.5px;font-weight:700;cursor:pointer;margin-bottom:12px">✓ Enviar directo a compra (genera OC)</button>';
     }
+
+    // ══ COLUMNA DERECHA — resumen fijo (como el "Payment Summary" de referencia) ══
+    var estLabel = (ESTADOS.find(function(e){ return e.id===(d.estatus||'pendiente'); })||{}).label || d.estatus || '—';
+    var htmlDer = '<div style="background:#F8FAFD;border-radius:12px;padding:16px;position:sticky;top:0">';
+    htmlDer += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">';
+    htmlDer += '<span style="background:#fff;border:1px solid #E2E8F0;color:#0A1628;font-size:10.5px;font-weight:700;padding:4px 9px;border-radius:7px">'+esc((d.urgencia||'—').toUpperCase())+'</span>';
+    htmlDer += '<span style="background:#fff;border:1px solid #E2E8F0;color:#0A1628;font-size:10.5px;font-weight:700;padding:4px 9px;border-radius:7px">'+esc((d.tipoCompra||'—').toUpperCase())+'</span>';
+    htmlDer += '<span style="background:#0A1628;color:#fff;font-size:10.5px;font-weight:700;padding:4px 9px;border-radius:7px">'+esc(estLabel)+'</span></div>';
+    htmlDer += '<div style="border-top:1px solid #E2E8F0;padding-top:10px">';
+    [['Proveedor ganador', (d.cotizacionGanadora&&d.cotizacionGanadora.proveedor)||'—'],
+     ['Monto', d.cotizacionGanadora&&d.cotizacionGanadora.monto!=null?('$'+Number(d.cotizacionGanadora.monto).toLocaleString('es-MX')):'—'],
+     ['Ciudad', d.ciudad||'—'],
+     ['Folio OC', d.ocFolio||'—']].forEach(function(row){
+      htmlDer += '<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:12px"><span style="color:#5C7089">'+esc(row[0])+'</span><span style="font-weight:700;color:#0A1628">'+esc(row[1])+'</span></div>';
+    });
+    htmlDer += '</div>';
     if(d.estatus==='orden_generada'){
-      html += '<button onclick="window.__cpMarcarRecibida(\''+d.id+'\')" style="width:100%;margin-top:10px;padding:11px;background:#12A150;color:#fff;border:none;border-radius:9px;font-weight:600;cursor:pointer">Marcar como recibida</button>';
+      htmlDer += '<button onclick="window.__cpMarcarRecibida(\''+d.id+'\')" style="width:100%;margin-top:12px;padding:11px;background:#12A150;color:#fff;border:none;border-radius:9px;font-weight:600;cursor:pointer;font-size:12.5px">Marcar como recibida</button>';
     }
     if(d.estatus==='orden_generada' || d.estatus==='recibida'){
-      html += '<button onclick="window.__cpDescargarOC(\''+d.id+'\')" style="width:100%;margin-top:8px;padding:11px;background:#fff;color:#0A1628;border:1px solid #E2E8F0;border-radius:9px;font-weight:600;cursor:pointer">Descargar orden de compra (PDF)</button>';
+      htmlDer += '<button onclick="window.__cpDescargarOC(\''+d.id+'\')" style="width:100%;margin-top:8px;padding:11px;background:#fff;color:#0A1628;border:1px solid #E2E8F0;border-radius:9px;font-weight:600;cursor:pointer;font-size:12.5px">Descargar orden de compra (PDF)</button>';
     }
+    htmlDer += '</div>';
+
+    html += '<div style="flex:1;min-width:280px">'+htmlIzq+'</div>';
+    html += '<div style="width:250px;min-width:220px;flex-shrink:0">'+htmlDer+'</div>';
+    html += '</div>';
 
     p.innerHTML = html;
     ov.style.display='flex';
