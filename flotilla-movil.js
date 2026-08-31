@@ -4924,7 +4924,7 @@ function _reqConstruirPDF(d,empresaLogo,fotoDim){
     y+=6; if(y>PH-70){ y=nuevaPaginaReq(); }
     docu.setFont('helvetica','bold'); docu.setFontSize(8); docu.setTextColor(100,116,139);
     docu.text('FOTOS DE REFERENCIA',ML,y); y+=6;
-    const colW=(PW-ML-MR-8)/2, boxH=60;
+    const colW=(PW-ML-MR-8)/2, boxH=52;
     for(let i=0;i<d.fotos.length;i+=2){
       if(y+boxH>PH-20){ y=nuevaPaginaReq(); }
       for(let c=0;c<2;c++){
@@ -4942,7 +4942,7 @@ function _reqConstruirPDF(d,empresaLogo,fotoDim){
     }
   }
 
-  y+=6; if(y>PH-40){ y=nuevaPaginaReq(); }
+  y+=6; if(y>PH-34){ y=nuevaPaginaReq(); }
   docu.setFont('helvetica','bold'); docu.setFontSize(8); docu.setTextColor(100,116,139);
   docu.text('FIRMA DEL SOLICITANTE',ML,y); y+=4;
   if(d.firma){ try{ docu.addImage(d.firma,'PNG',ML,y,55,24); }catch(e){} }
@@ -5012,6 +5012,7 @@ window.reqEnviar=async function(){
     const fotoDim=await _reqPrecargarDimensiones(fotosParaSubir);
     const dataParaPdf=Object.assign({},data,{fotos:fotosParaSubir});
     const pdf=_reqConstruirPDF(dataParaPdf, emp&&!REQ_SIN_LOGO.has(emp.nombre)?emp.logoBase64:null, fotoDim);
+    const resumenReq='📋 Requisición de compra — '+folioInfo.folio+'\nEmpresa: '+window.reqState.empresa+'\nRazón social: '+window.reqState.razonSocial+'\nMotivo: '+window.reqState.motivo+'\n\nPartidas:\n'+items.map(it=>'• '+it.desc+' ×'+it.cant).join('\n');
     if(pdf){
       try{
         const blob=pdf.output('blob');
@@ -5019,9 +5020,15 @@ window.reqEnviar=async function(){
         if(navigator.canShare&&navigator.canShare({files:[file]})){
           await navigator.share({files:[file],title:'Requisición '+folioInfo.folio});
         }else{
+          // Sin Web Share (típico en escritorio): abre el PDF y, aparte,
+          // WhatsApp Web con el resumen ya escrito — así siempre queda algo
+          // accionable en vez de solo abrir el PDF sin más.
           window.open(pdf.output('bloburl'),'_blank');
+          window.open('https://wa.me/?text='+encodeURIComponent(resumenReq),'_blank');
         }
-      }catch(e){ try{ window.open(pdf.output('bloburl'),'_blank'); }catch(e2){} }
+      }catch(e){
+        try{ window.open(pdf.output('bloburl'),'_blank'); window.open('https://wa.me/?text='+encodeURIComponent(resumenReq),'_blank'); }catch(e2){}
+      }
     }
     _draftClear(_DRAFT.REQ);
     window.reqState={empresa:'',urgencia:'media',tipoCompra:'servicio',motivo:'',cliente:'',ciudad:'',razonSocial:'',ubicacion:null,items:[{cant:'',unidad:'',parte:'',desc:'',proveedor:''}],firma:null,fotos:[],comentario:''};
