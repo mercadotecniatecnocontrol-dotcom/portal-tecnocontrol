@@ -428,6 +428,7 @@
       (monto?'<span style="font-size:11px;font-weight:700;color:#12A150">'+monto+'</span>':'<span style="font-size:9px;font-weight:800;color:'+urgColor+';text-transform:uppercase;letter-spacing:.3px">'+esc(d.urgencia||'')+'</span>') +
       '</div>' +
       '<p style="font-size:11.5px;color:#5C7089;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(nombrePorCorreo(d.solicitante)||'—')+' · '+esc(d.empresa||'—')+'</p>' +
+      '<p style="font-size:10.5px;color:#1473E6;font-weight:700;margin:5px 0 0">Ver detalle →</p>' +
       '</div></div></div>';
   }
 
