@@ -3080,9 +3080,11 @@ function renderNotif(){
   `);
 }
 window.fmAbrirLigaNotif=function(link){
-  // El link apunta al portal (index.html?firmar=id) — se abre en pestaña
-  // aparte porque Flotilla móvil es una PWA distinta al portal de escritorio.
-  window.open(new URL(link, location.href.replace(/flotilla-app\.html.*$/,'index.html')).href, '_blank');
+  // El link ya es relativo a la carpeta del portal (firmar.html?id=...) —
+  // se resuelve contra la raíz del sitio (misma carpeta que flotilla-app.html)
+  // y se abre en pestaña aparte, ya que Flotilla móvil es una PWA distinta.
+  const base=location.href.replace(/flotilla-app\.html.*$/,'');
+  window.open(new URL(link, base).href, '_blank');
 };
 
 // ── VER SOLICITUD EXISTENTE ──
@@ -4823,7 +4825,7 @@ async function _reqNotificarJefeArea(idDoc, data){
     await db.collection('flotilla_notificaciones').add({
       para: jefe.correo, tipo:'requisicion_autorizar',
       mensaje:'Requisición '+(data.folio||idDoc)+' de '+(data.solicitante||'')+' espera tu autorización',
-      link: '?firmar='+idDoc,
+      link: 'firmar.html?id='+idDoc,
       leido:false, creadaEn:new Date().toISOString(),
     });
   }catch(e){ console.warn('[requisicion] no se pudo notificar al jefe de área', e); }
@@ -5040,7 +5042,7 @@ window.reqEnviar=async function(){
     const dataParaPdf=Object.assign({},data,{fotos:fotosParaSubir});
     const pdf=_reqConstruirPDF(dataParaPdf, emp&&!REQ_SIN_LOGO.has(emp.nombre)?emp.logoBase64:null, fotoDim);
     const resumenReq='📋 Requisición de compra — '+folioInfo.folio+'\nEmpresa: '+window.reqState.empresa+'\nRazón social: '+window.reqState.razonSocial+'\nMotivo: '+window.reqState.motivo+'\n\nPartidas:\n'+items.map(it=>'• '+it.desc+' ×'+it.cant).join('\n');
-    const ligaFirma=location.origin+location.pathname.replace(/flotilla-app\.html.*$/,'index.html')+'?firmar='+ref.id;
+    const ligaFirma=location.origin+location.pathname.replace(/flotilla-app\.html.*$/,'')+'firmar.html?id='+ref.id;
 
     // Vista previa + botón real de WhatsApp (patrón ya probado en Solicitud
     // de material) — evita el bloqueo de ventanas emergentes que ocurría al
