@@ -268,7 +268,8 @@
         '<div style="color:#fff;font-weight:700;font-size:13.5px">Vista previa · '+esc(folio||'')+'</div>'+
         '<button onclick="document.getElementById(\'tc-preview-ov\').remove()" style="background:rgba(255,255,255,.15);border:none;border-radius:8px;width:30px;height:30px;color:#fff;font-size:16px;cursor:pointer">✕</button>'+
       '</div>'+
-      '<iframe src="'+url+'" style="flex:1;width:100%;border:none;border-radius:10px;background:#fff"></iframe>'+
+      '<iframe src="'+url+'" style="flex:1;width:100%;border:none;border-radius:10px;background:#fff;-webkit-overflow-scrolling:touch"></iframe>'+
+      '<a href="'+url+'" target="_blank" style="text-align:center;color:#fff;font-size:11.5px;font-weight:700;text-decoration:underline;margin-top:8px">Abrir en pantalla completa (con zoom) ↗</a>'+
       '<div style="display:flex;gap:8px;margin-top:10px">'+
         '<button onclick="document.getElementById(\'tc-preview-ov\').remove()" style="flex:1;padding:12px;background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:9px;font-weight:700;cursor:pointer">Seguir editando</button>'+
         '<button id="tc-preview-enviar" style="flex:2;padding:12px;background:#25D366;color:#fff;border:none;border-radius:9px;font-weight:700;cursor:pointer">Confirmar y enviar por WhatsApp</button>'+
