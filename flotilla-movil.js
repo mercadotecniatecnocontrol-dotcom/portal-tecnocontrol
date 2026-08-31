@@ -1075,7 +1075,7 @@ async function cargarMisTareas(){
   if(miPerfil?.email && !_unsubNotif){
     try {
       const qNotif = db.collection('flotilla_notificaciones')
-        .where('para','==',miPerfil.email)
+        .where('para','==',(miPerfil.email||'').toLowerCase().trim())
         .orderBy('creadaEn','desc')
         .limit(30);
 
@@ -4823,7 +4823,7 @@ async function _reqNotificarJefeArea(idDoc, data){
     const jefe = depto ? cfg.jefesPorDepto[depto] : null;
     if(!jefe || !jefe.correo) return;
     await db.collection('flotilla_notificaciones').add({
-      para: jefe.correo, tipo:'requisicion_autorizar',
+      para: (jefe.correo||'').toLowerCase().trim(), tipo:'requisicion_autorizar',
       mensaje:'Requisición '+(data.folio||idDoc)+' de '+(data.solicitante||'')+' espera tu autorización',
       link: 'firmar.html?id='+idDoc,
       leido:false, creadaEn:new Date().toISOString(),
@@ -5041,8 +5041,8 @@ window.reqEnviar=async function(){
     const fotoDim=await _reqPrecargarDimensiones(fotosParaSubir);
     const dataParaPdf=Object.assign({},data,{fotos:fotosParaSubir});
     const pdf=_reqConstruirPDF(dataParaPdf, emp&&!REQ_SIN_LOGO.has(emp.nombre)?emp.logoBase64:null, fotoDim);
-    const resumenReq='📋 Requisición de compra — '+folioInfo.folio+'\nEmpresa: '+window.reqState.empresa+'\nRazón social: '+window.reqState.razonSocial+'\nMotivo: '+window.reqState.motivo+'\n\nPartidas:\n'+items.map(it=>'• '+it.desc+' ×'+it.cant).join('\n');
     const ligaFirma=location.origin+location.pathname.replace(/flotilla-app\.html.*$/,'')+'firmar.html?id='+ref.id;
+    const resumenReq='📋 Requisición de compra — '+folioInfo.folio+'\nEmpresa: '+window.reqState.empresa+'\nRazón social: '+window.reqState.razonSocial+'\nMotivo: '+window.reqState.motivo+'\n\nPartidas:\n'+items.map(it=>'• '+it.desc+' ×'+it.cant).join('\n')+'\n\n🖊 Autorizar: '+ligaFirma;
 
     // Vista previa + botón real de WhatsApp (patrón ya probado en Solicitud
     // de material) — evita el bloqueo de ventanas emergentes que ocurría al
