@@ -145,7 +145,7 @@
     });
   };
   window.__cpCopiarLigaFirma = function(id, btn){
-    var liga = location.origin + location.pathname + '?firmar=' + id;
+    var liga = location.origin + location.pathname.replace(/index\.html.*$/,'') + 'firmar.html?id=' + id;
     navigator.clipboard.writeText(liga).then(function(){
       var original = btn.textContent;
       btn.textContent = '✓ Copiada'; btn.style.background = '#EAF3DE'; btn.style.color = '#3B6D11';
@@ -344,47 +344,57 @@
 
   function pintarShell(cont){
     cont.innerHTML =
-      '<div style="max-width:1180px;margin:0 auto">' +
-        '<div style="display:flex;gap:6px;margin-bottom:18px;border-bottom:1px solid #E2E8F0">' +
-          '<button id="cp-mtab-req" onclick="window.__cpSetVistaModulo(\'req\')" style="padding:10px 4px;margin-right:20px;border:none;background:none;font-size:13.5px;font-weight:700;color:#0A1628;border-bottom:2px solid #0A1628;cursor:pointer">Requisiciones</button>' +
-          '<button id="cp-mtab-prov" onclick="window.__cpSetVistaModulo(\'prov\')" style="padding:10px 4px;margin-right:20px;border:none;background:none;font-size:13.5px;font-weight:700;color:#94A3B8;border-bottom:2px solid transparent;cursor:pointer">Proveedores</button>' +
-          '<button id="cp-mtab-cxp" onclick="window.__cpSetVistaModulo(\'cxp\')" style="padding:10px 4px;border:none;background:none;font-size:13.5px;font-weight:700;color:#94A3B8;border-bottom:2px solid transparent;cursor:pointer">Cuentas por pagar</button>' +
+      '<div style="background:#EEF2F7;margin:-20px;padding:24px;min-height:100vh">' +
+      '<div style="max-width:1180px;margin:0 auto;background:#fff;border-radius:16px;box-shadow:0 1px 4px rgba(10,22,40,.06);padding:24px 28px;min-height:70vh">' +
+
+        '<div style="display:flex;gap:22px;margin-bottom:22px;border-bottom:1px solid #EEF2F7">' +
+          '<button id="cp-mtab-req" onclick="window.__cpSetVistaModulo(\'req\')" style="padding:10px 2px;border:none;background:none;font-size:13.5px;font-weight:700;color:#0A1628;border-bottom:2px solid #0A1628;cursor:pointer">Requisiciones</button>' +
+          '<button id="cp-mtab-prov" onclick="window.__cpSetVistaModulo(\'prov\')" style="padding:10px 2px;border:none;background:none;font-size:13.5px;font-weight:700;color:#94A3B8;border-bottom:2px solid transparent;cursor:pointer">Proveedores</button>' +
+          '<button id="cp-mtab-cxp" onclick="window.__cpSetVistaModulo(\'cxp\')" style="padding:10px 2px;border:none;background:none;font-size:13.5px;font-weight:700;color:#94A3B8;border-bottom:2px solid transparent;cursor:pointer">Cuentas por pagar</button>' +
         '</div>' +
 
         '<div id="cp-vista-req">' +
-        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">' +
-          '<h2 style="font-size:17px;font-weight:700;margin:0;color:#0A1628">Requisiciones de compra</h2>' +
-          '<div style="display:flex;gap:8px">' +
-          '<button onclick="window.__cpAbrirFirmasPendientes()" style="padding:8px 15px;border-radius:10px;border:none;background:#fff;color:#0A1628;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 1px 3px rgba(10,22,40,.08)">🖊 Firmas pendientes</button>' +
-          '<button onclick="window.__cpAbrirConfigFlujo()" style="padding:8px 15px;border-radius:10px;border:none;background:#fff;color:#0A1628;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 1px 3px rgba(10,22,40,.08)">⚙ Configurar flujo</button>' +
-          '<button onclick="window.__cpAbrirBuscador()" style="padding:8px 15px;border-radius:10px;border:none;background:#fff;color:#0A1628;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 1px 3px rgba(10,22,40,.08)">🔍 Buscar / historial</button>' +
-          '<button onclick="window.__cpExportarAspel()" style="padding:8px 15px;border-radius:10px;border:none;background:#fff;color:#0A1628;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 1px 3px rgba(10,22,40,.08)">Exportar JSON (Aspel)</button>' +
+        '<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">' +
+          '<div><h2 style="font-size:19px;font-weight:700;margin:0;color:#0A1628">Requisiciones de compra</h2>' +
+          '<p style="font-size:12px;color:#94A3B8;margin:3px 0 0">Solicitud → autorización → cotización → orden → recibida</p></div>' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+          '<button onclick="window.__cpAbrirFirmasPendientes()" style="padding:9px 14px;border-radius:9px;border:1px solid #EEF2F7;background:#fff;color:#0A1628;font-size:11.5px;font-weight:700;cursor:pointer">🖊 Firmas pendientes</button>' +
+          '<button onclick="window.__cpAbrirConfigFlujo()" style="padding:9px 14px;border-radius:9px;border:1px solid #EEF2F7;background:#fff;color:#0A1628;font-size:11.5px;font-weight:700;cursor:pointer">⚙ Configurar flujo</button>' +
+          '<button onclick="window.__cpAbrirBuscador()" style="padding:9px 14px;border-radius:9px;border:1px solid #EEF2F7;background:#fff;color:#0A1628;font-size:11.5px;font-weight:700;cursor:pointer">🔍 Buscar</button>' +
+          '<button onclick="window.__cpExportarAspel()" style="padding:9px 14px;border-radius:9px;border:1px solid #EEF2F7;background:#fff;color:#0A1628;font-size:11.5px;font-weight:700;cursor:pointer">Exportar Aspel</button>' +
           '</div>' +
         '</div>' +
-        '<div id="cp-kpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px"></div>' +
-        '<div style="display:flex;gap:6px;margin-bottom:14px">' +
-          '<button id="cp-tab-activas" onclick="window.__cpSetTab(false)" style="padding:8px 16px;border-radius:20px;border:none;background:#0A1628;color:#fff;font-size:12.5px;font-weight:700;cursor:pointer;box-shadow:0 1px 3px rgba(10,22,40,.15)">Activas</button>' +
-          '<button id="cp-tab-rechazadas" onclick="window.__cpSetTab(true)" style="padding:8px 16px;border-radius:20px;border:none;background:#fff;color:#5C7089;font-size:12.5px;font-weight:700;cursor:pointer">Rechazadas</button>' +
+
+        '<div style="background:#F8FAFC;border-radius:12px;padding:16px 20px;margin-bottom:20px;display:flex;flex-wrap:wrap;gap:0">' +
+          '<div style="flex:1;min-width:110px;padding-right:16px"><p style="font-size:11px;color:#94A3B8;margin:0 0 4px">En proceso</p><p style="font-size:22px;font-weight:700;margin:0;color:#0A1628" id="cp-kpi-proceso">0</p></div>' +
+          '<div style="flex:1;min-width:110px;padding:0 16px;border-left:1px solid #E2E8F0"><p style="font-size:11px;color:#94A3B8;margin:0 0 4px">Urgentes</p><p style="font-size:22px;font-weight:700;margin:0;color:#E23B2E" id="cp-kpi-urgentes">0</p></div>' +
+          '<div style="flex:1;min-width:110px;padding:0 16px;border-left:1px solid #E2E8F0"><p style="font-size:11px;color:#94A3B8;margin:0 0 4px">Por autorizar</p><p style="font-size:22px;font-weight:700;margin:0;color:#B45309" id="cp-kpi-autorizar">0</p></div>' +
+          '<div style="flex:1;min-width:110px;padding-left:16px;border-left:1px solid #E2E8F0"><p style="font-size:11px;color:#94A3B8;margin:0 0 4px">Cotizando</p><p style="font-size:22px;font-weight:700;margin:0;color:#1473E6" id="cp-kpi-cotizando">0</p></div>' +
         '</div>' +
-        '<div id="cp-board" style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px"></div>' +
+
+        '<div style="display:flex;gap:6px;margin-bottom:16px">' +
+          '<button id="cp-tab-activas" onclick="window.__cpSetTab(false)" style="padding:7px 15px;border-radius:20px;border:none;background:#0A1628;color:#fff;font-size:12px;font-weight:700;cursor:pointer">Activas</button>' +
+          '<button id="cp-tab-rechazadas" onclick="window.__cpSetTab(true)" style="padding:7px 15px;border-radius:20px;border:none;background:#F8FAFC;color:#5C7089;font-size:12px;font-weight:700;cursor:pointer">Rechazadas</button>' +
+        '</div>' +
+        '<div id="cp-board" style="display:grid;grid-template-columns:repeat(5,1fr);gap:16px"></div>' +
         '</div>' +
 
         '<div id="cp-vista-prov" style="display:none">' +
-          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><h2 style="font-size:17px;font-weight:700;margin:0;color:#0A1628">Proveedores</h2>' +
-          '<button onclick="window.__cpAbrirNuevoProveedor()" style="padding:8px 15px;border-radius:10px;border:none;background:#0A1628;color:#fff;font-size:12px;font-weight:700;cursor:pointer">+ Nuevo proveedor</button></div>' +
-          '<div id="cp-prov-lista" style="display:flex;flex-direction:column;gap:8px"></div>' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px"><h2 style="font-size:19px;font-weight:700;margin:0;color:#0A1628">Proveedores</h2>' +
+          '<button onclick="window.__cpAbrirNuevoProveedor()" style="padding:9px 16px;border-radius:9px;border:none;background:#0A1628;color:#fff;font-size:12px;font-weight:700;cursor:pointer">+ Nuevo proveedor</button></div>' +
+          '<div id="cp-prov-lista" style="background:#F8FAFC;border-radius:12px;overflow:hidden"></div>' +
         '</div>' +
 
         '<div id="cp-vista-cxp" style="display:none">' +
-          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><h2 style="font-size:17px;font-weight:700;margin:0;color:#0A1628">Cuentas por pagar</h2></div>' +
-          '<p style="font-size:11.5px;color:#94A3B8;margin:0 0 14px">Solo lectura — se administra desde Pagos. Aquí se ve para dar seguimiento sin salir de Compras.</p>' +
-          '<p id="cp-cxp-resumen" style="font-size:11.5px;color:#5C7089;margin:0 0 10px"></p>' +
-          '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">' +
-            '<thead><tr style="background:#0A1628;color:#fff;text-align:left"><th style="padding:7px 8px">Folio OC</th><th style="padding:7px 8px">Empresa</th><th style="padding:7px 8px">Proveedor</th><th style="padding:7px 8px">Monto</th><th style="padding:7px 8px">Estatus pago</th></tr></thead>' +
+          '<h2 style="font-size:19px;font-weight:700;margin:0 0 4px;color:#0A1628">Cuentas por pagar</h2>' +
+          '<p style="font-size:12px;color:#94A3B8;margin:0 0 18px">Solo lectura — se administra desde Pagos.</p>' +
+          '<p id="cp-cxp-resumen" style="font-size:12px;color:#5C7089;margin:0 0 12px;font-weight:600"></p>' +
+          '<div style="background:#F8FAFC;border-radius:12px;overflow:hidden"><table style="width:100%;border-collapse:collapse;font-size:12.5px">' +
+            '<thead><tr style="text-align:left"><th style="padding:11px 16px;font-size:10.5px;color:#94A3B8;text-transform:uppercase">Folio OC</th><th style="padding:11px 16px;font-size:10.5px;color:#94A3B8;text-transform:uppercase">Empresa</th><th style="padding:11px 16px;font-size:10.5px;color:#94A3B8;text-transform:uppercase">Proveedor</th><th style="padding:11px 16px;font-size:10.5px;color:#94A3B8;text-transform:uppercase">Monto</th><th style="padding:11px 16px;font-size:10.5px;color:#94A3B8;text-transform:uppercase">Estatus</th></tr></thead>' +
             '<tbody id="cp-cxp-tbody"></tbody>' +
           '</table></div>' +
         '</div>' +
-      '</div>' +
+      '</div></div>' +
       '<div id="cp-detalle-overlay" style="display:none;position:fixed;inset:0;background:rgba(10,22,40,.55);z-index:2000;align-items:center;justify-content:center;padding:24px">' +
         '<div id="cp-detalle-panel" style="background:#fff;border-radius:14px;max-width:920px;width:100%;max-height:88vh;overflow-y:auto;padding:22px"></div>' +
       '</div>';
@@ -418,12 +428,12 @@
     var el = document.getElementById('cp-prov-lista'); if(!el) return;
     var lista = _proveedoresCache || [];
     el.innerHTML = lista.length ? lista.map(function(p){
-      return '<div style="background:#fff;border-radius:11px;box-shadow:0 1px 3px rgba(10,22,40,.08);padding:12px 14px;display:flex;justify-content:space-between;align-items:center">' +
-        '<div><p style="font-size:13.5px;font-weight:700;margin:0;color:#0A1628">'+esc(p.nombre)+'</p>' +
-        '<p style="font-size:11.5px;color:#5C7089;margin:2px 0 0">'+esc(p.categoria||'Sin categoría')+' · '+esc(p.contacto||'—')+' · '+esc(p.telefono||p.correo||'—')+'</p></div>' +
-        '<button onclick="window.__cpEliminarProveedor(\''+p.id+'\')" style="padding:6px 12px;background:#F1F5F9;color:#E23B2E;border:none;border-radius:8px;font-size:11.5px;font-weight:700;cursor:pointer">Eliminar</button>' +
+      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:13px 16px;border-bottom:1px solid #EEF2F7">' +
+        '<div><p style="font-size:13px;font-weight:700;margin:0;color:#0A1628">'+esc(p.nombre)+'</p>' +
+        '<p style="font-size:11px;color:#94A3B8;margin:2px 0 0">'+esc(p.categoria||'Sin categoría')+' · '+esc(p.contacto||'—')+' · '+esc(p.telefono||p.correo||'—')+'</p></div>' +
+        '<button onclick="window.__cpEliminarProveedor(\''+p.id+'\')" style="padding:6px 12px;background:none;color:#E23B2E;border:none;font-size:11.5px;font-weight:700;cursor:pointer">Eliminar</button>' +
         '</div>';
-    }).join('') : '<p style="font-size:12.5px;color:#94a3b8;text-align:center;padding:20px 0">Sin proveedores todavía — agrega el primero.</p>';
+    }).join('') : '<p style="font-size:12.5px;color:#94a3b8;text-align:center;padding:24px 0">Sin proveedores todavía — agrega el primero.</p>';
   }
   window.__cpAbrirNuevoProveedor = function(){
     var ov = document.createElement('div');
@@ -518,13 +528,11 @@
     var urgentes = activas.filter(function(d){ return d.urgencia==='alta'; }).length;
     var pendientes = docs.filter(function(d){ return (d.estatus||'pendiente')==='pendiente'; }).length;
     var cotizando = docs.filter(function(d){ return d.estatus==='cotizando'; }).length;
-    var el=document.getElementById('cp-kpis'); if(!el) return;
-    function kpi(label,val,color){
-      return '<div style="background:#fff;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(10,22,40,.08)">' +
-        '<p style="font-size:10.5px;color:#94A3B8;margin:0 0 6px;font-weight:700;text-transform:uppercase;letter-spacing:.4px">'+label+'</p>' +
-        '<p style="font-size:26px;font-weight:800;margin:0;color:'+(color||'#0A1628')+'">'+val+'</p></div>';
-    }
-    el.innerHTML = kpi('En proceso',activas.length) + kpi('Urgentes',urgentes,'#E23B2E') + kpi('Por autorizar',pendientes,'#D99000') + kpi('Cotizando',cotizando,'#1473E6');
+    var elP=document.getElementById('cp-kpi-proceso'); if(!elP) return;
+    elP.textContent = activas.length;
+    document.getElementById('cp-kpi-urgentes').textContent = urgentes;
+    document.getElementById('cp-kpi-autorizar').textContent = pendientes;
+    document.getElementById('cp-kpi-cotizando').textContent = cotizando;
   }
 
   function renderBoard(){
@@ -532,35 +540,34 @@
     var fuente = verRechazadas ? docs.filter(function(d){ return d.estatus==='rechazada'; }) : docs.filter(function(d){ return d.estatus!=='rechazada'; });
     if(verRechazadas){
       board.style.gridTemplateColumns='1fr';
-      board.innerHTML = fuente.length ? fuente.map(cardHTML).join('') : '<div style="text-align:center;padding:30px;color:#94a3b8;font-size:13px">Sin requisiciones rechazadas.</div>';
+      board.innerHTML = fuente.length ? '<div style="background:#F8FAFC;border-radius:12px;overflow:hidden">'+fuente.map(cardHTML).join('')+'</div>' : '<div style="text-align:center;padding:30px;color:#94a3b8;font-size:13px">Sin requisiciones rechazadas.</div>';
       return;
     }
     board.style.gridTemplateColumns='repeat(5,1fr)';
     board.innerHTML = ESTADOS.map(function(col){
       var ds = fuente.filter(function(d){ return (d.estatus||'pendiente')===col.id; });
-      return '<div style="background:#F1F5F9;border-radius:14px;padding:12px">' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
-        '<p style="font-size:10.5px;font-weight:800;color:#5C7089;margin:0;text-transform:uppercase;letter-spacing:.3px">'+col.label+'</p>' +
-        '<span style="background:#fff;color:#0A1628;font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:20px;box-shadow:0 1px 2px rgba(10,22,40,.08)">'+ds.length+'</span></div>' +
-        (ds.length ? ds.map(cardHTML).join('') : '<p style="font-size:11px;color:#B7C0CC;margin:0;text-align:center;padding:20px 0">Vacío</p>') +
-        '</div>';
+      return '<div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;padding:0 2px">' +
+        '<p style="font-size:10.5px;font-weight:700;color:#94A3B8;margin:0;text-transform:uppercase;letter-spacing:.3px">'+col.label+'</p>' +
+        '<span style="color:#CBD5E1;font-size:11px;font-weight:700">'+ds.length+'</span></div>' +
+        '<div style="background:#F8FAFC;border-radius:12px;min-height:60px;overflow:hidden">' +
+        (ds.length ? ds.map(cardHTML).join('') : '<p style="font-size:11px;color:#CBD5E1;margin:0;text-align:center;padding:24px 0">Vacío</p>') +
+        '</div></div>';
     }).join('');
   }
 
   function cardHTML(d){
-    var urgColor = d.urgencia==='alta'?'#E23B2E':d.urgencia==='media'?'#D99000':'#5C7089';
+    var urgColor = d.urgencia==='alta'?'#E23B2E':d.urgencia==='media'?'#B45309':'#94A3B8';
     var monto = d.cotizacionGanadora&&d.cotizacionGanadora.monto!=null ? ('$'+Number(d.cotizacionGanadora.monto).toLocaleString('es-MX')) : null;
-    return '<div onclick="window.__cpAbrirDetalle(\''+d.id+'\')" style="background:#fff;border-radius:11px;padding:0;margin-bottom:9px;cursor:pointer;box-shadow:0 1px 3px rgba(10,22,40,.09);overflow:hidden;transition:box-shadow .15s" onmouseover="this.style.boxShadow=\'0 3px 10px rgba(10,22,40,.15)\'" onmouseout="this.style.boxShadow=\'0 1px 3px rgba(10,22,40,.09)\'">' +
-      '<div style="display:flex">' +
-      '<div style="width:4px;background:'+urgColor+';flex-shrink:0"></div>' +
-      '<div style="padding:10px 12px;flex:1;min-width:0">' +
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">' +
-      '<span style="font-size:12.5px;font-weight:800;color:#0A1628">'+esc(d.folio||d.id)+'</span>' +
-      (monto?'<span style="font-size:11px;font-weight:700;color:#12A150">'+monto+'</span>':'<span style="font-size:9px;font-weight:800;color:'+urgColor+';text-transform:uppercase;letter-spacing:.3px">'+esc(d.urgencia||'')+'</span>') +
+    var inicial = esc((d.folio||d.id||'?').replace(/[^0-9]/g,'').slice(-2) || '·');
+    return '<div onclick="window.__cpAbrirDetalle(\''+d.id+'\')" style="display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid #EEF2F7;cursor:pointer;transition:background .12s" onmouseover="this.style.background=\'#F1F5F9\'" onmouseout="this.style.background=\'transparent\'">' +
+      '<div style="width:32px;height:32px;border-radius:9px;background:#fff;color:'+urgColor+';display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:800;flex-shrink:0">'+inicial+'</div>' +
+      '<div style="flex:1;min-width:0">' +
+      '<p style="font-size:12px;font-weight:700;color:#0A1628;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(d.folio||d.id)+'</p>' +
+      '<p style="font-size:10.5px;color:#94A3B8;margin:1px 0 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(nombrePorCorreo(d.solicitante)||'—')+'</p>' +
       '</div>' +
-      '<p style="font-size:11.5px;color:#5C7089;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(nombrePorCorreo(d.solicitante)||'—')+' · '+esc(d.empresa||'—')+'</p>' +
-      '<p style="font-size:10.5px;color:#1473E6;font-weight:700;margin:5px 0 0">Ver detalle →</p>' +
-      '</div></div></div>';
+      (monto?'<span style="font-size:11px;font-weight:700;color:#12A150;flex-shrink:0">'+monto+'</span>':'<span style="font-size:8.5px;font-weight:800;color:'+urgColor+';flex-shrink:0">'+esc((d.urgencia||'').toUpperCase())+'</span>') +
+      '</div>';
   }
 
   // ── DETALLE / AUTORIZAR / RECHAZAR ─────────────────────────────
@@ -802,7 +809,7 @@
       fs.addDoc(fs.collection(window.db,'flotilla_notificaciones'), {
         para:persona.correo, tipo:'requisicion_autorizar',
         mensaje:'Requisición '+(d.folio||d.id)+' espera tu autorización',
-        link:'?firmar='+d.id,
+        link:'firmar.html?id='+d.id,
         leido:false, creadaEn:new Date().toISOString(),
       }).catch(function(e){ console.warn('[compras] no se pudo notificar', e); });
     });
