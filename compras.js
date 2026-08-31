@@ -134,12 +134,22 @@
               return '<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #F1F5F9;padding:10px 4px">' +
                 '<div><p style="font-size:13px;font-weight:700;margin:0;color:#0A1628">'+esc(d.folio||d.id)+' · '+esc(paso.label)+'</p>' +
                 '<p style="font-size:11.5px;color:#5C7089;margin:2px 0 0">Solicitó: '+esc(nombrePorCorreo(d.solicitante)||'—')+' · Falta: <b>'+esc(quien)+'</b></p></div>' +
-                '<button '+(destinos.length?'':'disabled')+' onclick="window.__cpReenviarFirma(\''+d.id+'\',this)" style="padding:7px 13px;background:'+(destinos.length?'#0A1628':'#E2E8F0')+';color:'+(destinos.length?'#fff':'#94A3B8')+';border:none;border-radius:8px;font-size:11.5px;font-weight:700;cursor:'+(destinos.length?'pointer':'default')+'">Reenviar liga</button>' +
-                '</div>';
+                '<div style="display:flex;gap:6px;flex-shrink:0">' +
+                '<button onclick="window.__cpCopiarLigaFirma(\''+d.id+'\',this)" style="padding:7px 13px;background:#F1F5F9;color:#0A1628;border:none;border-radius:8px;font-size:11.5px;font-weight:700;cursor:pointer">Copiar liga</button>' +
+                '<button '+(destinos.length?'':'disabled')+' onclick="window.__cpReenviarFirma(\''+d.id+'\',this)" style="padding:7px 13px;background:'+(destinos.length?'#0A1628':'#E2E8F0')+';color:'+(destinos.length?'#fff':'#94A3B8')+';border:none;border-radius:8px;font-size:11.5px;font-weight:700;cursor:'+(destinos.length?'pointer':'default')+'">Reenviar aviso (in-app)</button>' +
+                '</div></div>';
             }).join('') : '<p style="font-size:12.5px;color:#94a3b8;text-align:center;padding:20px 0">No hay firmas pendientes 🎉</p>') + '</div>' +
           '</div>';
         document.body.appendChild(ov);
       });
+    });
+  };
+  window.__cpCopiarLigaFirma = function(id, btn){
+    var liga = location.origin + location.pathname + '?firmar=' + id;
+    navigator.clipboard.writeText(liga).then(function(){
+      var original = btn.textContent;
+      btn.textContent = '✓ Copiada'; btn.style.background = '#EAF3DE'; btn.style.color = '#3B6D11';
+      setTimeout(function(){ btn.textContent = original; btn.style.background = '#F1F5F9'; btn.style.color = '#0A1628'; }, 1800);
     });
   };
   window.__cpReenviarFirma = function(id, btn){
