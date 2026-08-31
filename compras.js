@@ -335,6 +335,13 @@
   function pintarShell(cont){
     cont.innerHTML =
       '<div style="max-width:1180px;margin:0 auto">' +
+        '<div style="display:flex;gap:6px;margin-bottom:18px;border-bottom:1px solid #E2E8F0">' +
+          '<button id="cp-mtab-req" onclick="window.__cpSetVistaModulo(\'req\')" style="padding:10px 4px;margin-right:20px;border:none;background:none;font-size:13.5px;font-weight:700;color:#0A1628;border-bottom:2px solid #0A1628;cursor:pointer">Requisiciones</button>' +
+          '<button id="cp-mtab-prov" onclick="window.__cpSetVistaModulo(\'prov\')" style="padding:10px 4px;margin-right:20px;border:none;background:none;font-size:13.5px;font-weight:700;color:#94A3B8;border-bottom:2px solid transparent;cursor:pointer">Proveedores</button>' +
+          '<button id="cp-mtab-cxp" onclick="window.__cpSetVistaModulo(\'cxp\')" style="padding:10px 4px;border:none;background:none;font-size:13.5px;font-weight:700;color:#94A3B8;border-bottom:2px solid transparent;cursor:pointer">Cuentas por pagar</button>' +
+        '</div>' +
+
+        '<div id="cp-vista-req">' +
         '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">' +
           '<h2 style="font-size:17px;font-weight:700;margin:0;color:#0A1628">Requisiciones de compra</h2>' +
           '<div style="display:flex;gap:8px">' +
@@ -350,15 +357,129 @@
           '<button id="cp-tab-rechazadas" onclick="window.__cpSetTab(true)" style="padding:8px 16px;border-radius:20px;border:none;background:#fff;color:#5C7089;font-size:12.5px;font-weight:700;cursor:pointer">Rechazadas</button>' +
         '</div>' +
         '<div id="cp-board" style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px"></div>' +
+        '</div>' +
+
+        '<div id="cp-vista-prov" style="display:none">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><h2 style="font-size:17px;font-weight:700;margin:0;color:#0A1628">Proveedores</h2>' +
+          '<button onclick="window.__cpAbrirNuevoProveedor()" style="padding:8px 15px;border-radius:10px;border:none;background:#0A1628;color:#fff;font-size:12px;font-weight:700;cursor:pointer">+ Nuevo proveedor</button></div>' +
+          '<div id="cp-prov-lista" style="display:flex;flex-direction:column;gap:8px"></div>' +
+        '</div>' +
+
+        '<div id="cp-vista-cxp" style="display:none">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><h2 style="font-size:17px;font-weight:700;margin:0;color:#0A1628">Cuentas por pagar</h2></div>' +
+          '<p style="font-size:11.5px;color:#94A3B8;margin:0 0 14px">Solo lectura — se administra desde Pagos. Aquí se ve para dar seguimiento sin salir de Compras.</p>' +
+          '<p id="cp-cxp-resumen" style="font-size:11.5px;color:#5C7089;margin:0 0 10px"></p>' +
+          '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">' +
+            '<thead><tr style="background:#0A1628;color:#fff;text-align:left"><th style="padding:7px 8px">Folio OC</th><th style="padding:7px 8px">Empresa</th><th style="padding:7px 8px">Proveedor</th><th style="padding:7px 8px">Monto</th><th style="padding:7px 8px">Estatus pago</th></tr></thead>' +
+            '<tbody id="cp-cxp-tbody"></tbody>' +
+          '</table></div>' +
+        '</div>' +
       '</div>' +
       '<div id="cp-detalle-overlay" style="display:none;position:fixed;inset:0;background:rgba(10,22,40,.55);z-index:2000;align-items:center;justify-content:center;padding:24px">' +
         '<div id="cp-detalle-panel" style="background:#fff;border-radius:14px;max-width:920px;width:100%;max-height:88vh;overflow-y:auto;padding:22px"></div>' +
       '</div>';
   }
 
+  window.__cpSetVistaModulo = function(vista){
+    ['req','prov','cxp'].forEach(function(v){
+      document.getElementById('cp-vista-'+v).style.display = v===vista?'block':'none';
+      var tab = document.getElementById('cp-mtab-'+(v==='req'?'req':v));
+      tab.style.color = v===vista?'#0A1628':'#94A3B8';
+      tab.style.borderBottomColor = v===vista?'#0A1628':'transparent';
+    });
+    if(vista==='prov') cargarProveedores();
+    if(vista==='cxp') cargarCuentasPorPagarVista();
+  };
+
+  // ── PROVEEDORES — catálogo propio de Compras; alimenta el autocompletar
+  //    de "Proveedor" al cotizar, en vez de texto libre sin memoria ──
+  var _proveedoresCache = null;
+  function cargarProveedores(forzar){
+    var el = document.getElementById('cp-prov-lista');
+    if(el) el.innerHTML = '<p style="font-size:12px;color:#94a3b8">Cargando…</p>';
+    cargarFirestore().then(function(fs){
+      fs.getDocs(fs.query(fs.collection(window.db,'proveedores'), fs.orderBy('nombre'))).then(function(snap){
+        _proveedoresCache = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+        renderProveedores();
+      }).catch(function(e){ if(el) el.innerHTML = '<p style="font-size:12px;color:#b91c1c">Error: '+esc(e.message||e)+'</p>'; });
+    });
+  }
+  function renderProveedores(){
+    var el = document.getElementById('cp-prov-lista'); if(!el) return;
+    var lista = _proveedoresCache || [];
+    el.innerHTML = lista.length ? lista.map(function(p){
+      return '<div style="background:#fff;border-radius:11px;box-shadow:0 1px 3px rgba(10,22,40,.08);padding:12px 14px;display:flex;justify-content:space-between;align-items:center">' +
+        '<div><p style="font-size:13.5px;font-weight:700;margin:0;color:#0A1628">'+esc(p.nombre)+'</p>' +
+        '<p style="font-size:11.5px;color:#5C7089;margin:2px 0 0">'+esc(p.categoria||'Sin categoría')+' · '+esc(p.contacto||'—')+' · '+esc(p.telefono||p.correo||'—')+'</p></div>' +
+        '<button onclick="window.__cpEliminarProveedor(\''+p.id+'\')" style="padding:6px 12px;background:#F1F5F9;color:#E23B2E;border:none;border-radius:8px;font-size:11.5px;font-weight:700;cursor:pointer">Eliminar</button>' +
+        '</div>';
+    }).join('') : '<p style="font-size:12.5px;color:#94a3b8;text-align:center;padding:20px 0">Sin proveedores todavía — agrega el primero.</p>';
+  }
+  window.__cpAbrirNuevoProveedor = function(){
+    var ov = document.createElement('div');
+    ov.id = 'cp-prov-overlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,.55);z-index:2100;display:flex;align-items:center;justify-content:center;padding:18px';
+    ov.innerHTML =
+      '<div style="background:#fff;border-radius:14px;max-width:400px;width:100%;padding:20px">' +
+        '<h3 style="margin:0 0 14px;font-size:15px">Nuevo proveedor</h3>' +
+        '<input id="cp-np-nombre" placeholder="Nombre / razón social" style="width:100%;padding:9px;border:1px solid #E2E8F0;border-radius:8px;font-size:13px;margin-bottom:8px;box-sizing:border-box">' +
+        '<input id="cp-np-categoria" placeholder="Categoría (ej. Refacciones, Insumos)" style="width:100%;padding:9px;border:1px solid #E2E8F0;border-radius:8px;font-size:13px;margin-bottom:8px;box-sizing:border-box">' +
+        '<input id="cp-np-contacto" placeholder="Nombre del contacto" style="width:100%;padding:9px;border:1px solid #E2E8F0;border-radius:8px;font-size:13px;margin-bottom:8px;box-sizing:border-box">' +
+        '<input id="cp-np-telefono" placeholder="Teléfono" style="width:100%;padding:9px;border:1px solid #E2E8F0;border-radius:8px;font-size:13px;margin-bottom:8px;box-sizing:border-box">' +
+        '<input id="cp-np-correo" placeholder="Correo" style="width:100%;padding:9px;border:1px solid #E2E8F0;border-radius:8px;font-size:13px;margin-bottom:14px;box-sizing:border-box">' +
+        '<div style="display:flex;gap:8px"><button onclick="document.getElementById(\'cp-prov-overlay\').remove()" style="flex:1;padding:10px;background:#F1F5F9;color:#5C7089;border:none;border-radius:9px;font-weight:700;cursor:pointer">Cancelar</button>' +
+        '<button onclick="window.__cpGuardarProveedor()" style="flex:1;padding:10px;background:#0A1628;color:#fff;border:none;border-radius:9px;font-weight:700;cursor:pointer">Guardar</button></div>' +
+      '</div>';
+    document.body.appendChild(ov);
+  };
+  window.__cpGuardarProveedor = function(){
+    var nombre = document.getElementById('cp-np-nombre').value.trim();
+    if(!nombre){ alert('Escribe el nombre del proveedor.'); return; }
+    var datos = {
+      nombre:nombre, categoria:document.getElementById('cp-np-categoria').value.trim(),
+      contacto:document.getElementById('cp-np-contacto').value.trim(), telefono:document.getElementById('cp-np-telefono').value.trim(),
+      correo:document.getElementById('cp-np-correo').value.trim(), creadoEn:new Date().toISOString(),
+    };
+    cargarFirestore().then(function(fs){
+      fs.addDoc(fs.collection(window.db,'proveedores'), datos).then(function(){
+        document.getElementById('cp-prov-overlay').remove();
+        cargarProveedores();
+      }).catch(function(e){ alert('No se pudo guardar: '+(e.message||e)); });
+    });
+  };
+  window.__cpEliminarProveedor = function(id){
+    if(!confirm('¿Eliminar este proveedor?')) return;
+    cargarFirestore().then(function(fs){
+      fs.deleteDoc(fs.doc(window.db,'proveedores',id)).then(function(){ cargarProveedores(); });
+    });
+  };
+
+  // ── CUENTAS POR PAGAR (vista de solo lectura dentro de Compras) ──
+  function cargarCuentasPorPagarVista(){
+    var tbody = document.getElementById('cp-cxp-tbody');
+    tbody.innerHTML = '<tr><td colspan="5" style="padding:14px;text-align:center;color:#94a3b8">Cargando…</td></tr>';
+    cargarFirestore().then(function(fs){
+      fs.getDocs(fs.query(fs.collection(window.db,'pagos_cuentas_por_pagar'), fs.orderBy('creadaEn','desc'))).then(function(snap){
+        var filas = snap.docs.map(function(d){ return d.data(); });
+        var pendiente = filas.filter(function(f){ return f.estatusPago!=='pagado'; }).reduce(function(s,f){ return s+(Number(f.monto)||0); },0);
+        document.getElementById('cp-cxp-resumen').textContent = filas.length+' cuentas · $'+pendiente.toLocaleString('es-MX')+' pendientes de pagar';
+        tbody.innerHTML = filas.length ? filas.map(function(f){
+          var col = f.estatusPago==='pagado'?'#12A150':f.estatusPago==='programado'?'#D99000':'#5C7089';
+          return '<tr style="border-bottom:1px solid #F1F5F9">' +
+            '<td style="padding:6px 8px;font-weight:700">'+esc(f.ocFolio||f.folio||'—')+'</td>' +
+            '<td style="padding:6px 8px">'+esc(f.empresa||'—')+'</td>' +
+            '<td style="padding:6px 8px">'+esc(f.proveedor||'—')+'</td>' +
+            '<td style="padding:6px 8px">'+(f.monto!=null?'$'+Number(f.monto).toLocaleString('es-MX'):'—')+'</td>' +
+            '<td style="padding:6px 8px;color:'+col+';font-weight:700">'+esc(f.estatusPago||'pendiente')+'</td></tr>';
+        }).join('') : '<tr><td colspan="5" style="padding:14px;text-align:center;color:#94a3b8">Sin cuentas por pagar todavía.</td></tr>';
+      }).catch(function(e){ tbody.innerHTML = '<tr><td colspan="5" style="padding:14px;color:#b91c1c">Error: '+esc(e.message||e)+'</td></tr>'; });
+    });
+  }
+
   function escuchar(){
     cargarColaboradores();
     cargarConfigFlujo();
+    cargarProveedores();
     cargarFirestore().then(function(fs){
       var q = fs.query(fs.collection(window.db,'requisiciones_compra'), fs.orderBy('createdAt','desc'));
       _unsub = fs.onSnapshot(q, function(snap){
@@ -542,7 +663,8 @@
     if(d.estatus==='cotizando'){
       htmlIzq += '<p style="font-size:11px;font-weight:700;color:#5C7089;margin:14px 0 8px">Cotizaciones</p><div id="cp-cotizaciones-list" style="margin-bottom:8px"></div>';
       htmlIzq += '<div style="display:flex;gap:6px;margin-bottom:10px">';
-      htmlIzq += '<input id="cp-cot-proveedor" placeholder="Proveedor" style="flex:1;padding:8px;border:1px solid #E2E8F0;border-radius:8px;font-size:12px">';
+      htmlIzq += '<input id="cp-cot-proveedor" list="cp-proveedores-dl" placeholder="Proveedor" style="flex:1;padding:8px;border:1px solid #E2E8F0;border-radius:8px;font-size:12px">' +
+        '<datalist id="cp-proveedores-dl">'+(_proveedoresCache||[]).map(function(p){ return '<option value="'+esc(p.nombre)+'">'; }).join('')+'</datalist>';
       htmlIzq += '<input id="cp-cot-monto" placeholder="Monto" type="number" style="width:100px;padding:8px;border:1px solid #E2E8F0;border-radius:8px;font-size:12px">';
       htmlIzq += '<label style="padding:8px 12px;border:1px solid #E2E8F0;border-radius:8px;font-size:11.5px;cursor:pointer;background:#fff">Adjuntar<input id="cp-cot-file" type="file" accept="image/*,application/pdf" style="display:none"></label></div>';
       htmlIzq += '<button onclick="window.__cpAgregarCotizacion(\''+d.id+'\')" style="width:100%;padding:9px;border:1.5px dashed #E2E8F0;background:#fff;color:#1473E6;border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:8px">+ Agregar cotización</button>';
