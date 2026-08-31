@@ -5707,26 +5707,14 @@ window.irAlmacen = function(btn){
 </script>
 <script>
 // ── LIGA DIRECTA DE AUTORIZACIÓN (?firmar=<id>) ──────────────────────────
-// Viene de una notificación de Compras. Requiere la sesión real del
-// portal (decisión tomada: no hay firma sin login) — si ya hay sesión,
-// entra derecho al documento; si no, el login normal del portal aparece
-// primero y esto se reintenta hasta que haya sesión.
+// Ligas viejas (antes de firmar.html) — se redirigen a la pantalla dedicada
+// mobile-first en vez de abrir el tablero completo de escritorio. Las ligas
+// nuevas ya apuntan directo a firmar.html?id=... y no pasan por aquí.
 (function(){
   const params = new URLSearchParams(location.search);
   const firmarId = params.get('firmar');
   if(!firmarId) return;
-  let intentos = 0;
-  function intentar(){
-    intentos++;
-    const haySesion = window.auth && window.auth.currentUser;
-    if(haySesion && typeof window.verArea === 'function' && typeof window.__cpAbrirDetalle === 'function'){
-      window.verArea('Compras');
-      setTimeout(()=>{ try{ window.__cpAbrirDetalle(firmarId); }catch(e){ console.error('[firmar] no se pudo abrir el detalle:', e); } }, 700);
-      return;
-    }
-    if(intentos<40) setTimeout(intentar, 500); // hasta 20s esperando login + carga de módulos
-  }
-  intentar();
+  location.replace('firmar.html?id='+encodeURIComponent(firmarId));
 })();
 </script>
 </body>
