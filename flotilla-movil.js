@@ -4781,6 +4781,33 @@ function _reqPrecargarDimensiones(fotos){
   }))).then(pares=>Object.fromEntries(pares));
 }
 
+// Muestra la liga de autorización (?firmar=id) con botón de copiar — respaldo
+// manual por si la notificación automática al jefe de área no llegó (por
+// ejemplo, si el departamento del solicitante no está configurado todavía).
+function _reqMostrarLigaFirma(folio, liga, onVerPDF){
+  const ov=document.createElement('div');
+  ov.id='req-liga-firma-ov';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.6);z-index:1000002;display:flex;align-items:center;justify-content:center;padding:20px';
+  ov.innerHTML=`
+    <div style="background:#fff;border-radius:14px;max-width:360px;width:100%;padding:20px">
+      <p style="font-weight:700;font-size:14.5px;color:#0A1628;margin:0 0 4px">Requisición ${folio} enviada</p>
+      <p style="font-size:12px;color:#5C7089;margin:0 0 12px">Si el jefe de área no recibe el aviso automático, comparte esta liga a mano:</p>
+      <div style="background:#F8FAFD;border-radius:8px;padding:8px 10px;font-size:11px;color:#475569;word-break:break-all;margin-bottom:10px">${liga}</div>
+      <button id="req-liga-copiar" style="width:100%;padding:10px;background:#F1F5F9;color:#0A1628;border:none;border-radius:9px;font-weight:700;font-size:12.5px;cursor:pointer;margin-bottom:8px">Copiar liga</button>
+      <button id="req-liga-verpdf" style="width:100%;padding:10px;background:#0A1628;color:#fff;border:none;border-radius:9px;font-weight:700;font-size:12.5px;cursor:pointer;margin-bottom:8px">Ver PDF y enviar por WhatsApp</button>
+      <button onclick="document.getElementById('req-liga-firma-ov').remove()" style="width:100%;padding:10px;background:#F1F5F9;color:#5C7089;border:none;border-radius:9px;font-weight:700;font-size:12.5px;cursor:pointer">Cerrar</button>
+    </div>`;
+  document.body.appendChild(ov);
+  document.getElementById('req-liga-copiar').onclick=function(){
+    navigator.clipboard.writeText(liga);
+    this.textContent='✓ Copiada'; setTimeout(()=>{ this.textContent='Copiar liga'; },1500);
+  };
+  document.getElementById('req-liga-verpdf').onclick=function(){
+    ov.remove();
+    if(onVerPDF) onVerPDF();
+  };
+}
+
 // Notifica al jefe de área correspondiente en cuanto se crea la requisición
 // (el paso 1 "Solicitante" ya nace aprobado, así que el paso "Jefe de área"
 // queda pendiente desde el primer momento — antes nadie se enteraba).
@@ -5013,23 +5040,20 @@ window.reqEnviar=async function(){
     const dataParaPdf=Object.assign({},data,{fotos:fotosParaSubir});
     const pdf=_reqConstruirPDF(dataParaPdf, emp&&!REQ_SIN_LOGO.has(emp.nombre)?emp.logoBase64:null, fotoDim);
     const resumenReq='📋 Requisición de compra — '+folioInfo.folio+'\nEmpresa: '+window.reqState.empresa+'\nRazón social: '+window.reqState.razonSocial+'\nMotivo: '+window.reqState.motivo+'\n\nPartidas:\n'+items.map(it=>'• '+it.desc+' ×'+it.cant).join('\n');
-    if(pdf){
-      try{
-        const blob=pdf.output('blob');
-        const file=new File([blob],'Requisicion_'+String(folioInfo.folio).replace(/\s+/g,'_')+'.pdf',{type:'application/pdf'});
-        if(navigator.canShare&&navigator.canShare({files:[file]})){
-          await navigator.share({files:[file],title:'Requisición '+folioInfo.folio});
-        }else{
-          // Sin Web Share (típico en escritorio): abre el PDF y, aparte,
-          // WhatsApp Web con el resumen ya escrito — así siempre queda algo
-          // accionable en vez de solo abrir el PDF sin más.
-          window.open(pdf.output('bloburl'),'_blank');
-          window.open('https://wa.me/?text='+encodeURIComponent(resumenReq),'_blank');
-        }
-      }catch(e){
-        try{ window.open(pdf.output('bloburl'),'_blank'); window.open('https://wa.me/?text='+encodeURIComponent(resumenReq),'_blank'); }catch(e2){}
+    const ligaFirma=location.origin+location.pathname.replace(/flotilla-app\.html.*$/,'index.html')+'?firmar='+ref.id;
+
+    // Vista previa + botón real de WhatsApp (patrón ya probado en Solicitud
+    // de material) — evita el bloqueo de ventanas emergentes que ocurría al
+    // llamar window.open() después de varios await (Chrome lo bloquea sin
+    // avisar). Aquí el share solo se dispara con un clic real del usuario.
+    _reqMostrarLigaFirma(folioInfo.folio, ligaFirma, function(){
+      if(pdf && window.tcPrevisualizarPDF){
+        window.tcPrevisualizarPDF(pdf, folioInfo.folio, function(){
+          window.tcCompartirPDFWhatsApp(pdf, folioInfo.folio, resumenReq);
+        });
       }
-    }
+    });
+
     _draftClear(_DRAFT.REQ);
     window.reqState={empresa:'',urgencia:'media',tipoCompra:'servicio',motivo:'',cliente:'',ciudad:'',razonSocial:'',ubicacion:null,items:[{cant:'',unidad:'',parte:'',desc:'',proveedor:''}],firma:null,fotos:[],comentario:''};
     toast('Requisición '+folioInfo.folio+' enviada a Compras','ok');
