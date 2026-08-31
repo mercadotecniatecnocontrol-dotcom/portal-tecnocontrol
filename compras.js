@@ -301,7 +301,7 @@
     var col = (_colaboradoresCache||[]).find(function(c){ return (c.correo||c.id)===correo; });
     _configFlujoCache.aprobadoresCompras = _configFlujoCache.aprobadoresCompras || [];
     if(_configFlujoCache.aprobadoresCompras.some(function(a){ return a.correo===correo; })) return;
-    _configFlujoCache.aprobadoresCompras.push({correo:correo, nombre: col?col.nombre:correo});
+    _configFlujoCache.aprobadoresCompras.push({correo:correo.toLowerCase().trim(), nombre: col?col.nombre:correo});
     document.getElementById('cp-config-overlay').remove();
     window.__cpAbrirConfigFlujo();
   };
@@ -315,7 +315,7 @@
     document.querySelectorAll('.cp-cfg-jefe').forEach(function(sel){
       if(!sel.value) return;
       var col = (_colaboradoresCache||[]).find(function(c){ return (c.correo||c.id)===sel.value; });
-      jefesPorDepto[sel.dataset.depto] = {correo:sel.value, nombre: col?col.nombre:sel.value};
+      jefesPorDepto[sel.dataset.depto] = {correo:sel.value.toLowerCase().trim(), nombre: col?col.nombre:sel.value};
     });
     _configFlujoCache.jefesPorDepto = jefesPorDepto;
     var msgEl = document.getElementById('cp-cfg-msg');
@@ -345,7 +345,7 @@
   function pintarShell(cont){
     cont.innerHTML =
       '<div style="background:#EEF2F7;margin:-20px;padding:24px;min-height:100vh">' +
-      '<div style="max-width:1180px;margin:0 auto;background:#fff;border-radius:16px;box-shadow:0 1px 4px rgba(10,22,40,.06);padding:24px 28px;min-height:70vh">' +
+      '<div style="max-width:1180px;margin:0 auto;background:#fff;border:1px solid #E5EAF1;border-radius:16px;box-shadow:0 2px 8px rgba(10,22,40,.07);padding:24px 28px;min-height:70vh">' +
 
         '<div style="display:flex;gap:22px;margin-bottom:22px;border-bottom:1px solid #EEF2F7">' +
           '<button id="cp-mtab-req" onclick="window.__cpSetVistaModulo(\'req\')" style="padding:10px 2px;border:none;background:none;font-size:13.5px;font-weight:700;color:#0A1628;border-bottom:2px solid #0A1628;cursor:pointer">Requisiciones</button>' +
@@ -356,7 +356,7 @@
         '<div id="cp-vista-req">' +
         '<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">' +
           '<div><h2 style="font-size:19px;font-weight:700;margin:0;color:#0A1628">Requisiciones de compra</h2>' +
-          '<p style="font-size:12px;color:#94A3B8;margin:3px 0 0">Solicitud → autorización → cotización → orden → recibida</p></div>' +
+          '<p style="font-size:12px;color:#94A3B8;margin:3px 0 0">Mostrando el mes en curso · <a href="#" onclick="window.__cpAbrirBuscador();return false" style="color:#1473E6;font-weight:600">ver historial completo →</a></p></div>' +
           '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
           '<button onclick="window.__cpAbrirFirmasPendientes()" style="padding:9px 14px;border-radius:9px;border:1px solid #EEF2F7;background:#fff;color:#0A1628;font-size:11.5px;font-weight:700;cursor:pointer">🖊 Firmas pendientes</button>' +
           '<button onclick="window.__cpAbrirConfigFlujo()" style="padding:9px 14px;border-radius:9px;border:1px solid #EEF2F7;background:#fff;color:#0A1628;font-size:11.5px;font-weight:700;cursor:pointer">⚙ Configurar flujo</button>' +
@@ -537,20 +537,27 @@
 
   function renderBoard(){
     var board=document.getElementById('cp-board'); if(!board) return;
-    var fuente = verRechazadas ? docs.filter(function(d){ return d.estatus==='rechazada'; }) : docs.filter(function(d){ return d.estatus!=='rechazada'; });
+    // Solo el mes en curso por default — el histórico completo vive en
+    // "🔍 Buscar / historial" para no saturar el tablero indefinidamente.
+    var ahora = new Date();
+    var fuente = docs.filter(function(d){
+      var f = _cpFechaDoc(d);
+      return f && f.getMonth()===ahora.getMonth() && f.getFullYear()===ahora.getFullYear();
+    });
+    fuente = verRechazadas ? fuente.filter(function(d){ return d.estatus==='rechazada'; }) : fuente.filter(function(d){ return d.estatus!=='rechazada'; });
     if(verRechazadas){
       board.style.gridTemplateColumns='1fr';
-      board.innerHTML = fuente.length ? '<div style="background:#F8FAFC;border-radius:12px;overflow:hidden">'+fuente.map(cardHTML).join('')+'</div>' : '<div style="text-align:center;padding:30px;color:#94a3b8;font-size:13px">Sin requisiciones rechazadas.</div>';
+      board.innerHTML = fuente.length ? '<div style="background:#F8FAFC;border-radius:12px;overflow:hidden">'+fuente.map(cardHTML).join('')+'</div>' : '<div style="text-align:center;padding:30px;color:#94a3b8;font-size:13px">Sin requisiciones rechazadas este mes.</div>';
       return;
     }
-    board.style.gridTemplateColumns='repeat(5,1fr)';
+    board.style.gridTemplateColumns='repeat(5,minmax(0,1fr))';
     board.innerHTML = ESTADOS.map(function(col){
       var ds = fuente.filter(function(d){ return (d.estatus||'pendiente')===col.id; });
-      return '<div>' +
+      return '<div style="min-width:0">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;padding:0 2px">' +
-        '<p style="font-size:10.5px;font-weight:700;color:#94A3B8;margin:0;text-transform:uppercase;letter-spacing:.3px">'+col.label+'</p>' +
-        '<span style="color:#CBD5E1;font-size:11px;font-weight:700">'+ds.length+'</span></div>' +
-        '<div style="background:#F8FAFC;border-radius:12px;min-height:60px;overflow:hidden">' +
+        '<p style="font-size:10.5px;font-weight:700;color:#5C7089;margin:0;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+col.label+'</p>' +
+        '<span style="color:#94A3B8;font-size:11px;font-weight:700;flex-shrink:0;margin-left:4px">'+ds.length+'</span></div>' +
+        '<div style="background:#F8FAFC;border:1px solid #EEF2F7;border-radius:12px;min-height:60px;overflow:hidden">' +
         (ds.length ? ds.map(cardHTML).join('') : '<p style="font-size:11px;color:#CBD5E1;margin:0;text-align:center;padding:24px 0">Vacío</p>') +
         '</div></div>';
     }).join('');
@@ -564,7 +571,7 @@
       '<div style="width:32px;height:32px;border-radius:9px;background:#fff;color:'+urgColor+';display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:800;flex-shrink:0">'+inicial+'</div>' +
       '<div style="flex:1;min-width:0">' +
       '<p style="font-size:12px;font-weight:700;color:#0A1628;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(d.folio||d.id)+'</p>' +
-      '<p style="font-size:10.5px;color:#94A3B8;margin:1px 0 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(nombrePorCorreo(d.solicitante)||'—')+'</p>' +
+      '<p style="font-size:10.5px;color:#64748B;margin:1px 0 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(nombrePorCorreo(d.solicitante)||'—')+'</p>' +
       '</div>' +
       (monto?'<span style="font-size:11px;font-weight:700;color:#12A150;flex-shrink:0">'+monto+'</span>':'<span style="font-size:8.5px;font-weight:800;color:'+urgColor+';flex-shrink:0">'+esc((d.urgencia||'').toUpperCase())+'</span>') +
       '</div>';
@@ -807,7 +814,7 @@
   function _cpNotificarPaso(fs, d, paso){
     _cpDestinatariosPaso(d, paso).forEach(function(persona){
       fs.addDoc(fs.collection(window.db,'flotilla_notificaciones'), {
-        para:persona.correo, tipo:'requisicion_autorizar',
+        para:(persona.correo||'').toLowerCase().trim(), tipo:'requisicion_autorizar',
         mensaje:'Requisición '+(d.folio||d.id)+' espera tu autorización',
         link:'firmar.html?id='+d.id,
         leido:false, creadaEn:new Date().toISOString(),
