@@ -239,7 +239,7 @@ window.autorizar = async function(){
         (cfg.aprobadoresCompras||[]).forEach(a=>{ if(a.correo) destinos.push(a.correo); });
       }
       await Promise.all(destinos.map(correo => addDoc(collection(db,'flotilla_notificaciones'), {
-        para: correo, tipo:'requisicion_autorizar',
+        para: (correo||'').toLowerCase().trim(), tipo:'requisicion_autorizar',
         mensaje: 'Requisición '+(dReq.folio||reqId)+' espera tu autorización',
         link: 'firmar.html?id='+reqId,
         leido:false, creadaEn:new Date().toISOString(),
@@ -261,7 +261,7 @@ window.rechazar = async function(){
   try{
     await updateDoc(doc(db,'requisiciones_compra',reqId), { estatus:'rechazada', motivoRechazo: motivo });
     await addDoc(collection(db,'flotilla_notificaciones'), {
-      para: dReq.solicitante, tipo:'requisicion_rechazada',
+      para: (dReq.solicitante||'').toLowerCase().trim(), tipo:'requisicion_rechazada',
       mensaje: 'Tu requisición '+(dReq.folio||reqId)+' fue rechazada: '+motivo,
       leido:false, creadaEn:new Date().toISOString(),
     });
