@@ -4890,6 +4890,11 @@ cargarModuloMarketing();
                 } else { almBox.style.display = 'none'; }
             }
             // ── Tablero de Compras embebido en el departamento de Compras (mismo patrón que Almacén) ──
+            // La sección genérica de "Actividades" (tabla + buscador) no aporta
+            // nada en Compras — ya tiene su propio tablero completo — se oculta
+            // solo ahí para no dejar espacio vacío; en las demás áreas sigue igual.
+            const actWrap = document.getElementById('area-actividades-wrap');
+            if(actWrap) actWrap.style.display = (area === 'Compras') ? 'none' : '';
             const comprasBox = document.getElementById('vista-compras-area');
             if(comprasBox){
                 if(area === 'Compras'){
