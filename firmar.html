@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Autorizar · Tecnocontrol</title>
+<style>
+  *{box-sizing:border-box}
+  body{font-family:-apple-system,'Segoe UI',sans-serif;background:#F1F5F9;margin:0;color:#0A1628;
+    padding-bottom:calc(200px + env(safe-area-inset-bottom))}
+  .top{background:#0A1628;color:#fff;padding:14px 16px calc(14px + env(safe-area-inset-top)) 16px}
+  .top h1{font-size:15px;margin:0;font-weight:800}
+  .top p{font-size:11px;margin:3px 0 0;opacity:.7}
+  .stepper{display:flex;align-items:center;background:#fff;padding:16px 12px 12px}
+  .step{flex:1;text-align:center}
+  .dot{width:22px;height:22px;border-radius:50%;font-size:10.5px;font-weight:800;display:flex;align-items:center;justify-content:center;margin:0 auto 4px}
+  .lbl{font-size:9px;font-weight:700}
+  .line{flex:.6;height:0;border-top:2px dotted #E2E8F0;margin-bottom:16px}
+  .card{background:#fff;border-radius:12px;padding:14px;margin:10px 12px}
+  .card h3{font-size:11px;font-weight:800;color:#5C7089;margin:0 0 8px;text-transform:uppercase;letter-spacing:.3px}
+  .row{display:flex;justify-content:space-between;padding:5px 0;font-size:13px}
+  .row span:first-child{color:#5C7089}
+  .row span:last-child{font-weight:700;text-align:right}
+  .partida{border:1px solid #E2E8F0;border-radius:10px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+  .partida p{margin:0;font-size:13px;font-weight:600}
+  .partida small{color:#94A3B8;font-size:11px}
+  .badge{background:#F1F5F9;font-size:11.5px;font-weight:800;padding:4px 9px;border-radius:8px;white-space:nowrap}
+  .comentario{background:#F8FAFD;border-radius:8px;padding:8px 10px;margin-bottom:6px}
+  .comentario b{font-size:10.5px;color:#1473E6}
+  .comentario p{font-size:12.5px;margin:2px 0 0}
+  .fotos{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+  .fotos img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px}
+  .bar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid #E2E8F0;
+    padding:12px 14px calc(12px + env(safe-area-inset-bottom)) 14px;box-shadow:0 -4px 16px rgba(10,22,40,.08)}
+  .bar-status{font-size:12px;font-weight:700;margin-bottom:8px;text-align:center}
+  canvas{border:1.5px dashed #CBD5E1;border-radius:10px;width:100%;height:100px;touch-action:none;background:#fff;display:block}
+  .btnrow{display:flex;gap:8px;margin-top:8px}
+  button{border:none;border-radius:10px;font-weight:800;font-size:13px;padding:13px;cursor:pointer}
+  .btn-auth{flex:1;background:#0A1628;color:#fff}
+  .btn-rej{flex:1;background:#fff;color:#E23B2E;border:1px solid #F0997B}
+  .btn-clear{background:none;color:#5C7089;font-weight:600;font-size:11px;padding:4px 0}
+  #loading, #login, #noauth, #done{padding:40px 20px;text-align:center}
+  input[type=email], input[type=password], textarea{width:100%;padding:11px;border:1px solid #CBD5E1;border-radius:9px;font-size:14px;margin-bottom:8px}
+</style>
+</head>
+<body>
+
+<div id="loading">Cargando…</div>
+
+<div id="login" style="display:none">
+  <h2 style="font-size:16px">Inicia sesión para continuar</h2>
+  <input id="li-mail" type="email" placeholder="Correo">
+  <input id="li-pass" type="password" placeholder="Contraseña">
+  <button class="btn-auth" style="width:100%" onclick="hacerLogin()">Entrar</button>
+  <p id="li-err" style="color:#E23B2E;font-size:12px"></p>
+</div>
+
+<div id="app" style="display:none">
+  <div class="top">
+    <h1 id="t-folio">—</h1>
+    <p id="t-empresa">—</p>
+  </div>
+  <div class="stepper" id="stepper"></div>
+  <div class="card" id="c-datos"></div>
+  <div class="card" id="c-partidas"></div>
+  <div class="card" id="c-comentarios"></div>
+  <div class="card" id="c-fotos" style="display:none"></div>
+</div>
+
+<div id="noauth" style="display:none"></div>
+<div id="done" style="display:none"></div>
+
+<div class="bar" id="bar" style="display:none">
+  <div class="bar-status" id="bar-status"></div>
+  <canvas id="cv"></canvas>
+  <div class="btn-clear" onclick="limpiarFirma()">Borrar firma</div>
+  <div class="btnrow">
+    <button class="btn-auth" onclick="autorizar()">Autorizar</button>
+    <button class="btn-rej" onclick="mostrarRechazo()">Rechazar</button>
+  </div>
+  <textarea id="motivo" placeholder="Motivo del rechazo" style="display:none;margin-top:8px"></textarea>
+  <button id="btn-confirmar-rechazo" style="display:none;width:100%;background:#E23B2E;color:#fff;margin-top:6px" onclick="rechazar()">Confirmar rechazo</button>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, doc, getDoc, updateDoc, collection, getDocs, query, where, addDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+const config = { apiKey:"AIzaSyBXh-P0oMtMiDjyz9PObuJ8DNfROlXvhLE", authDomain:"tecnocontrol-1c42f.firebaseapp.com", projectId:"tecnocontrol-1c42f", storageBucket:"tecnocontrol-1c42f.firebasestorage.app", appId:"1:27642771956:web:54225af9e386afded8a1a1" };
+const app = initializeApp(config);
+const db = getFirestore(app);
+const auth = getAuth(app);
+window.db = db;
+
+const params = new URLSearchParams(location.search);
+const reqId = params.get('id');
+const $ = id => document.getElementById(id);
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+let miCorreo = null, dReq = null, pasoActivo = null, pasoIdx = -1, hayFirma = false;
+
+window.hacerLogin = async function(){
+  try{
+    await signInWithEmailAndPassword(auth, $('li-mail').value.trim(), $('li-pass').value);
+  }catch(e){ $('li-err').textContent = 'No se pudo entrar: '+(e.code||e.message); }
+};
+
+onAuthStateChanged(auth, user=>{
+  $('loading').style.display='none';
+  if(!user){ $('login').style.display='block'; $('app').style.display='none'; $('bar').style.display='none'; return; }
+  $('login').style.display='none';
+  miCorreo = user.email;
+  cargar();
+});
+
+async function cargar(){
+  if(!reqId){ $('noauth').style.display='block'; $('noauth').innerHTML='<p>Falta el identificador de la requisición en la liga.</p>'; return; }
+  const snap = await getDoc(doc(db,'requisiciones_compra',reqId));
+  if(!snap.exists()){ $('noauth').style.display='block'; $('noauth').innerHTML='<p>No se encontró esa requisición.</p>'; return; }
+  dReq = { id: snap.id, ...snap.data() };
+  const flujo = dReq.flujoAutorizacion || [];
+  pasoIdx = flujo.findIndex(f=>f.estatus==='pendiente');
+  pasoActivo = pasoIdx>=0 ? flujo[pasoIdx] : null;
+
+  $('app').style.display='block';
+  $('t-folio').textContent = dReq.folio || dReq.id;
+  $('t-empresa').textContent = (dReq.empresa||'—') + ' · ' + (dReq.razonSocial||dReq.cliente||'');
+
+  const ETAPAS = [{l:'Solicitud'},{l:'Autorización'},{l:'Cotización'},{l:'Orden generada'},{l:'Recibida'}];
+  const idxEtapa = dReq.estatus==='rechazada' ? -1 : dReq.estatus==='recibida'?4 : dReq.estatus==='orden_generada'?3 : dReq.estatus==='cotizando'?2 : (pasoActivo&&pasoActivo.orden>1?1:0);
+  $('stepper').innerHTML = ETAPAS.map((e,i)=>{
+    const st = dReq.estatus==='rechazada'?'r':(i<idxEtapa?'h':(i===idxEtapa?'a':'e'));
+    const col = st==='h'?'#12A150':st==='a'?'#1473E6':st==='r'?'#E23B2E':'#CBD5E1';
+    const bg = st==='e'?'#F1F5F9':col;
+    return `<div class="step"><div class="dot" style="background:${bg};color:${st==='e'?'#94A3B8':'#fff'}">${st==='h'?'✓':i+1}</div><div class="lbl" style="color:${col}">${e.l}</div></div>` + (i<4?'<div class="line"></div>':'');
+  }).join('');
+
+  $('c-datos').innerHTML = `
+    <h3>Datos</h3>
+    <div class="row"><span>Solicitante</span><span>${esc(dReq.solicitante)}</span></div>
+    <div class="row"><span>Urgencia</span><span>${esc((dReq.urgencia||'—').toUpperCase())}</span></div>
+    <div class="row"><span>Tipo</span><span>${esc((dReq.tipoCompra||'—').toUpperCase())}</span></div>
+    <div class="row"><span>Motivo</span><span>${esc(dReq.motivo||'—')}</span></div>
+    ${dReq.estacionNombre||dReq.direccion?`<div class="row"><span>Estación</span><span>${esc(dReq.estacionNombre||dReq.direccion)}</span></div>`:''}
+  `;
+  $('c-partidas').innerHTML = '<h3>Partidas</h3>' + (dReq.items||[]).map(it=>`
+    <div class="partida"><div><p>${esc(it.desc)}</p><small>Proveedor: ${esc(it.proveedor||'—')}</small></div><span class="badge">×${esc(it.cant)} ${esc(it.unidad||'')}</span></div>
+  `).join('');
+  const coments = dReq.comentarios||[];
+  $('c-comentarios').innerHTML = '<h3>Comentarios</h3>' + (coments.length ? coments.map(c=>`<div class="comentario"><b>${esc(c.autor)}</b><p>${esc(c.texto)}</p></div>`).join('') : '<p style="font-size:12px;color:#94A3B8">Sin comentarios.</p>');
+
+  const fotosSnap = await getDocs(collection(db,'requisiciones_compra',reqId,'fotos'));
+  if(!fotosSnap.empty){
+    $('c-fotos').style.display='block';
+    $('c-fotos').innerHTML = '<h3>Fotos</h3><div class="fotos">' + fotosSnap.docs.map(d=>`<img src="${d.data().src}">`).join('') + '</div>';
+  }
+
+  await evaluarPermiso();
+}
+
+async function evaluarPermiso(){
+  const bar = $('bar');
+  if(!pasoActivo || dReq.estatus==='rechazada' || dReq.estatus==='recibida'){
+    $('done').style.display='block';
+    $('done').innerHTML = dReq.estatus==='rechazada' ? '<p style="color:#E23B2E;font-weight:700">Esta requisición fue rechazada.</p>' : '<p style="color:#12A150;font-weight:700">✓ No queda ningún paso pendiente por tu parte.</p>';
+    return;
+  }
+  if(pasoActivo.label==='Solicitante'){ return; } // ya nace aprobado, no debería llegar aquí
+
+  let permitido = false, quien = '—';
+  const cfgSnap = await getDoc(doc(db,'config_flujo_compras','general'));
+  const cfg = cfgSnap.exists() ? cfgSnap.data() : {jefesPorDepto:{},aprobadoresCompras:[]};
+  if(pasoActivo.label==='Jefe de área'){
+    const colSnap = await getDocs(query(collection(db,'colaboradores'), where('correo','==',dReq.solicitante)));
+    const depto = !colSnap.empty ? colSnap.docs[0].data().departamento : null;
+    const jefe = depto && cfg.jefesPorDepto ? cfg.jefesPorDepto[depto] : null;
+    quien = jefe ? jefe.nombre : 'sin jefe de área asignado';
+    permitido = !!(jefe && jefe.correo && jefe.correo.toLowerCase()===miCorreo.toLowerCase());
+  } else if(pasoActivo.label==='Compras'){
+    const lista = cfg.aprobadoresCompras||[];
+    quien = lista.map(a=>a.nombre||a.correo).join(', ') || 'sin aprobadores configurados';
+    permitido = lista.some(a=>a.correo && a.correo.toLowerCase()===miCorreo.toLowerCase());
+  }
+
+  if(!permitido){
+    $('done').style.display='block';
+    $('done').innerHTML = `<p style="color:#B45309;font-weight:700">Este paso ("${esc(pasoActivo.label)}") solo lo puede autorizar: ${esc(quien)}.</p><p style="font-size:12px;color:#5C7089">Si esa persona sos tú y no coincide, avisa a Compras para corregir tu correo/departamento.</p>`;
+    return;
+  }
+
+  bar.style.display='block';
+  $('bar-status').textContent = 'Te toca autorizar: '+pasoActivo.label;
+  initCanvas();
+}
+
+// ── Firma (canvas) ──
+let ctx, dibujando=false;
+function initCanvas(){
+  const cv = $('cv');
+  cv.width = cv.offsetWidth * 2; cv.height = cv.offsetHeight * 2;
+  ctx = cv.getContext('2d'); ctx.scale(2,2); ctx.lineWidth=2.2; ctx.lineCap='round'; ctx.strokeStyle='#0A1628';
+  const pos = e=>{ const r=cv.getBoundingClientRect(); const t=e.touches?e.touches[0]:e; return {x:t.clientX-r.left, y:t.clientY-r.top}; };
+  const start = e=>{ e.preventDefault(); dibujando=true; hayFirma=true; const p=pos(e); ctx.beginPath(); ctx.moveTo(p.x,p.y); };
+  const move = e=>{ if(!dibujando) return; e.preventDefault(); const p=pos(e); ctx.lineTo(p.x,p.y); ctx.stroke(); };
+  const end = ()=>{ dibujando=false; };
+  cv.addEventListener('mousedown',start); cv.addEventListener('mousemove',move); window.addEventListener('mouseup',end);
+  cv.addEventListener('touchstart',start,{passive:false}); cv.addEventListener('touchmove',move,{passive:false}); cv.addEventListener('touchend',end);
+}
+window.limpiarFirma = function(){ const cv=$('cv'); ctx.clearRect(0,0,cv.width,cv.height); hayFirma=false; };
+
+window.mostrarRechazo = function(){ $('motivo').style.display='block'; $('btn-confirmar-rechazo').style.display='block'; };
+
+window.autorizar = async function(){
+  if(!hayFirma){ alert('Dibuja tu firma antes de autorizar.'); return; }
+  const btn = document.querySelector('.btn-auth'); btn.disabled=true; btn.textContent='Guardando…';
+  try{
+    const flujo = (dReq.flujoAutorizacion||[]).map(f=>({...f}));
+    flujo[pasoIdx].estatus = 'aprobado';
+    flujo[pasoIdx].uid = auth.currentUser.uid;
+    flujo[pasoIdx].fecha = new Date().toISOString();
+    flujo[pasoIdx].firmaAprobador = $('cv').toDataURL('image/png');
+    const esUltimo = pasoIdx===flujo.length-1;
+    const update = { flujoAutorizacion: flujo };
+    if(esUltimo) update.estatus = 'cotizando';
+    await updateDoc(doc(db,'requisiciones_compra',reqId), update);
+
+    if(!esUltimo){
+      const siguiente = flujo[pasoIdx+1];
+      const cfgSnap = await getDoc(doc(db,'config_flujo_compras','general'));
+      const cfg = cfgSnap.exists() ? cfgSnap.data() : {jefesPorDepto:{},aprobadoresCompras:[]};
+      let destinos = [];
+      if(siguiente.label==='Jefe de área'){
+        const colSnap = await getDocs(query(collection(db,'colaboradores'), where('correo','==',dReq.solicitante)));
+        const depto = !colSnap.empty ? colSnap.docs[0].data().departamento : null;
+        const jefe = depto && cfg.jefesPorDepto ? cfg.jefesPorDepto[depto] : null;
+        if(jefe && jefe.correo) destinos.push(jefe.correo);
+      } else if(siguiente.label==='Compras'){
+        (cfg.aprobadoresCompras||[]).forEach(a=>{ if(a.correo) destinos.push(a.correo); });
+      }
+      await Promise.all(destinos.map(correo => addDoc(collection(db,'flotilla_notificaciones'), {
+        para: correo, tipo:'requisicion_autorizar',
+        mensaje: 'Requisición '+(dReq.folio||reqId)+' espera tu autorización',
+        link: 'firmar.html?id='+reqId,
+        leido:false, creadaEn:new Date().toISOString(),
+      })));
+    }
+
+    $('app').style.display='none'; $('bar').style.display='none';
+    $('done').style.display='block';
+    $('done').innerHTML = '<p style="color:#12A150;font-weight:700;font-size:16px">✓ Autorizado</p><p style="font-size:12.5px;color:#5C7089">'+(esUltimo?'La requisición ya está en Cotizando.':'Se notificó al siguiente responsable.')+'</p>';
+  }catch(e){
+    alert('No se pudo guardar: '+(e.message||e));
+    btn.disabled=false; btn.textContent='Autorizar';
+  }
+};
+
+window.rechazar = async function(){
+  const motivo = $('motivo').value.trim();
+  if(!motivo){ alert('Escribe el motivo del rechazo.'); return; }
+  try{
+    await updateDoc(doc(db,'requisiciones_compra',reqId), { estatus:'rechazada', motivoRechazo: motivo });
+    await addDoc(collection(db,'flotilla_notificaciones'), {
+      para: dReq.solicitante, tipo:'requisicion_rechazada',
+      mensaje: 'Tu requisición '+(dReq.folio||reqId)+' fue rechazada: '+motivo,
+      leido:false, creadaEn:new Date().toISOString(),
+    });
+    $('app').style.display='none'; $('bar').style.display='none';
+    $('done').style.display='block';
+    $('done').innerHTML = '<p style="color:#E23B2E;font-weight:700">Requisición rechazada.</p>';
+  }catch(e){ alert('No se pudo guardar: '+(e.message||e)); }
+};
+</script>
+</body>
+</html>
