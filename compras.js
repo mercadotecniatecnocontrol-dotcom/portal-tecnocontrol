@@ -113,8 +113,48 @@
     return false; // paso desconocido — no se asume permiso
   }
 
-  // ── BUSCADOR / HISTORIAL — filtra sobre 'docs' (ya sincronizado en vivo
-  //    por el onSnapshot), sin lecturas extra a Firestore ──
+  // ── FIRMAS PENDIENTES — todas las requisiciones con un paso esperando a
+  //    alguien, con quién es y botón para reenviar la liga (?firmar=id) ──
+  window.__cpAbrirFirmasPendientes = function(){
+    cargarFirestore().then(function(fs){
+      Promise.all([cargarColaboradores(), cargarConfigFlujo()]).then(function(){
+        var pendientes = docs.filter(function(d){
+          return d.estatus!=='rechazada' && d.estatus!=='recibida' && (d.flujoAutorizacion||[]).some(function(f){ return f.estatus==='pendiente'; });
+        });
+        var ov = document.createElement('div');
+        ov.id = 'cp-firmas-overlay';
+        ov.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,.55);z-index:2100;display:flex;align-items:center;justify-content:center;padding:18px';
+        ov.innerHTML =
+          '<div style="background:#fff;border-radius:14px;max-width:680px;width:100%;max-height:88vh;overflow-y:auto;padding:22px">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><h3 style="margin:0;font-size:16px">Firmas pendientes</h3><button onclick="document.getElementById(\'cp-firmas-overlay\').remove()" style="background:#F1F5F9;border:none;border-radius:8px;width:28px;height:28px;cursor:pointer">✕</button></div>' +
+            '<div id="cp-firmas-list">' + (pendientes.length ? pendientes.map(function(d){
+              var paso = (d.flujoAutorizacion||[]).find(function(f){ return f.estatus==='pendiente'; });
+              var destinos = _cpDestinatariosPaso(d, paso);
+              var quien = destinos.length ? destinos.map(function(p){return p.nombre||p.correo;}).join(', ') : 'sin asignar — configúralo en "⚙ Configurar flujo"';
+              return '<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #F1F5F9;padding:10px 4px">' +
+                '<div><p style="font-size:13px;font-weight:700;margin:0;color:#0A1628">'+esc(d.folio||d.id)+' · '+esc(paso.label)+'</p>' +
+                '<p style="font-size:11.5px;color:#5C7089;margin:2px 0 0">Solicitó: '+esc(nombrePorCorreo(d.solicitante)||'—')+' · Falta: <b>'+esc(quien)+'</b></p></div>' +
+                '<button '+(destinos.length?'':'disabled')+' onclick="window.__cpReenviarFirma(\''+d.id+'\',this)" style="padding:7px 13px;background:'+(destinos.length?'#0A1628':'#E2E8F0')+';color:'+(destinos.length?'#fff':'#94A3B8')+';border:none;border-radius:8px;font-size:11.5px;font-weight:700;cursor:'+(destinos.length?'pointer':'default')+'">Reenviar liga</button>' +
+                '</div>';
+            }).join('') : '<p style="font-size:12.5px;color:#94a3b8;text-align:center;padding:20px 0">No hay firmas pendientes 🎉</p>') + '</div>' +
+          '</div>';
+        document.body.appendChild(ov);
+      });
+    });
+  };
+  window.__cpReenviarFirma = function(id, btn){
+    var d = docs.find(function(x){ return x.id===id; }); if(!d) return;
+    var paso = (d.flujoAutorizacion||[]).find(function(f){ return f.estatus==='pendiente'; }); if(!paso) return;
+    var original = btn.textContent;
+    btn.textContent = 'Enviando…'; btn.disabled = true;
+    cargarFirestore().then(function(fs){
+      _cpNotificarPaso(fs, d, paso);
+      btn.textContent = '✓ Enviada'; btn.style.background = '#12A150';
+      setTimeout(function(){ btn.textContent = original; btn.style.background = '#0A1628'; btn.disabled = false; }, 2000);
+    });
+  };
+
+
   window.__cpAbrirBuscador = function(){
     cargarColaboradores().then(function(){
       var ov = document.createElement('div');
@@ -298,6 +338,7 @@
         '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">' +
           '<h2 style="font-size:17px;font-weight:700;margin:0;color:#0A1628">Requisiciones de compra</h2>' +
           '<div style="display:flex;gap:8px">' +
+          '<button onclick="window.__cpAbrirFirmasPendientes()" style="padding:8px 15px;border-radius:10px;border:none;background:#fff;color:#0A1628;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 1px 3px rgba(10,22,40,.08)">🖊 Firmas pendientes</button>' +
           '<button onclick="window.__cpAbrirConfigFlujo()" style="padding:8px 15px;border-radius:10px;border:none;background:#fff;color:#0A1628;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 1px 3px rgba(10,22,40,.08)">⚙ Configurar flujo</button>' +
           '<button onclick="window.__cpAbrirBuscador()" style="padding:8px 15px;border-radius:10px;border:none;background:#fff;color:#0A1628;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 1px 3px rgba(10,22,40,.08)">🔍 Buscar / historial</button>' +
           '<button onclick="window.__cpExportarAspel()" style="padding:8px 15px;border-radius:10px;border:none;background:#fff;color:#0A1628;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 1px 3px rgba(10,22,40,.08)">Exportar JSON (Aspel)</button>' +
@@ -421,9 +462,9 @@
       var bg = estado==='hecho'?'#12A150':estado==='actual'?'#1473E6':estado==='rechazada'?'#E23B2E':'#F1F5F9';
       var fg = estado==='espera'?'#94A3B8':'#fff';
       return '<div style="flex:1;text-align:center">' +
-          '<div style="width:22px;height:22px;border-radius:50%;background:'+bg+';color:'+fg+';font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;margin:0 auto 4px">'+(estado==='hecho'?'✓':(i+1))+'</div>' +
+          '<div style="width:24px;height:24px;border-radius:50%;background:'+bg+';color:'+fg+';font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;margin:0 auto 4px;box-shadow:0 0 0 3px '+(estado==='actual'?'rgba(20,115,230,.15)':'transparent')+'">'+(estado==='hecho'?'✓':(i+1))+'</div>' +
           '<div style="font-size:9.5px;font-weight:700;color:'+col+'">'+esc(e.label)+'</div>' +
-        '</div>' + (i<ETAPAS_CP.length-1?'<div style="flex:0.6;height:2px;background:'+(i<etapaActualIdx?'#12A150':'#E2E8F0')+';margin-bottom:16px"></div>':'');
+        '</div>' + (i<ETAPAS_CP.length-1?'<div style="flex:0.6;height:0;border-top:2px dotted '+(i<etapaActualIdx?'#12A150':'#E2E8F0')+';margin-bottom:16px"></div>':'');
     }).join('') + '</div>';
     if(d.estatus==='rechazada'){
       html += '<div style="background:#FCEBEB;border-radius:9px;padding:10px 12px;font-size:12px;color:#791F1F;margin-bottom:14px"><b>Rechazada:</b> '+esc(d.motivoRechazo||'Sin motivo registrado')+'</div>';
@@ -564,6 +605,25 @@
     });
   };
 
+  // Compresión de imágenes antes de subir — Firestore tope 1MB por doc de
+  // subcolección; una foto de celular sin comprimir lo rebasa y el addDoc
+  // fallaba en silencio (parecía que el botón "no servía").
+  function _cpComprimirImagen(dataUrl, maxW, calidad){
+    return new Promise(function(resolve){
+      var img = new Image();
+      img.onload = function(){
+        var ratio = Math.min(1, maxW/img.width);
+        var w = img.width*ratio, h = img.height*ratio;
+        var canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        try{ resolve(canvas.toDataURL('image/jpeg', calidad)); }catch(e){ resolve(dataUrl); }
+      };
+      img.onerror = function(){ resolve(dataUrl); };
+      img.src = dataUrl;
+    });
+  }
+
   window.__cpAgregarFoto = function(id,input){
     var files = Array.from(input.files||[]);
     if(!files.length) return;
@@ -574,9 +634,11 @@
         return new Promise(function(res){
           var r = new FileReader();
           r.onload = function(){
-            fs.addDoc(fs.collection(window.db,'requisiciones_compra',id,'fotos'), {
-              src:r.result, origen:'compras', autor:autor, autorEmail:autorEmail, creadoEn:new Date().toISOString()
-            }).then(function(){ res(); }).catch(function(){ res(); });
+            _cpComprimirImagen(r.result, 1000, 0.72).then(function(comprimida){
+              fs.addDoc(fs.collection(window.db,'requisiciones_compra',id,'fotos'), {
+                src:comprimida, origen:'compras', autor:autor, autorEmail:autorEmail, creadoEn:new Date().toISOString()
+              }).then(function(){ res(); }).catch(function(e){ alert('No se pudo subir una foto: '+(e.message||e)); res(); });
+            });
           };
           r.readAsDataURL(file);
         });
@@ -587,6 +649,31 @@
     document.getElementById('cp-detalle-overlay').style.display='none';
     detalleId=null;
   };
+
+  // Resuelve quién debe autorizar un paso dado — reusado por el autorizar
+  // automático y por "Reenviar liga" en el panel de firmas pendientes.
+  function _cpDestinatariosPaso(d, paso){
+    var cfg = _configFlujoCache || {jefesPorDepto:{}, aprobadoresCompras:[]};
+    var out = [];
+    if(paso.label==='Jefe de área'){
+      var depto = departamentoPorCorreo(d.solicitante);
+      var jefe = depto && cfg.jefesPorDepto ? cfg.jefesPorDepto[depto] : null;
+      if(jefe && jefe.correo) out.push(jefe);
+    } else if(paso.label==='Compras'){
+      (cfg.aprobadoresCompras||[]).forEach(function(a){ if(a.correo) out.push(a); });
+    }
+    return out;
+  }
+  function _cpNotificarPaso(fs, d, paso){
+    _cpDestinatariosPaso(d, paso).forEach(function(persona){
+      fs.addDoc(fs.collection(window.db,'flotilla_notificaciones'), {
+        para:persona.correo, tipo:'requisicion_autorizar',
+        mensaje:'Requisición '+(d.folio||d.id)+' espera tu autorización',
+        link:'?firmar='+d.id,
+        leido:false, creadaEn:new Date().toISOString(),
+      }).catch(function(e){ console.warn('[compras] no se pudo notificar', e); });
+    });
+  }
 
   window.__cpAutorizar = function(id){
     var d = docs.find(function(x){ return x.id===id; }); if(!d) return;
@@ -604,23 +691,7 @@
         if(esUltimo){ toast('Requisición autorizada — pasa a Cotizando'); return; }
         // Notifica a quien deba autorizar el SIGUIENTE paso, con liga directa
         // al documento (?firmar=id) — antes nadie se enteraba de que le tocaba.
-        var siguiente = flujo[idx+1];
-        var destinatarios = [];
-        if(siguiente.label==='Jefe de área'){
-          var depto = departamentoPorCorreo(d.solicitante);
-          var jefe = depto && _configFlujoCache && _configFlujoCache.jefesPorDepto ? _configFlujoCache.jefesPorDepto[depto] : null;
-          if(jefe && jefe.correo) destinatarios.push(jefe.correo);
-        } else if(siguiente.label==='Compras'){
-          (_configFlujoCache&&_configFlujoCache.aprobadoresCompras||[]).forEach(function(a){ if(a.correo) destinatarios.push(a.correo); });
-        }
-        destinatarios.forEach(function(correo){
-          fs.addDoc(fs.collection(window.db,'flotilla_notificaciones'), {
-            para:correo, tipo:'requisicion_autorizar',
-            mensaje:'Requisición '+(d.folio||id)+' espera tu autorización',
-            link:'?firmar='+id,
-            leido:false, creadaEn:new Date().toISOString(),
-          }).catch(function(e){ console.warn('[compras] no se pudo notificar al siguiente aprobador', e); });
-        });
+        _cpNotificarPaso(fs, d, flujo[idx+1]);
       });
     });
   };
@@ -675,6 +746,26 @@
       });
     });
   };
+  function _cpMostrarExito(folio, id){
+    var ov = document.createElement('div');
+    ov.id = 'cp-exito-overlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,.6);z-index:2200;display:flex;align-items:center;justify-content:center;padding:20px';
+    ov.innerHTML =
+      '<div style="background:#fff;border-radius:16px;max-width:380px;width:100%;text-align:center;padding:0;overflow:hidden">' +
+        '<div style="background:#F8FAFD;padding:28px 24px 22px">' +
+          '<div style="width:56px;height:56px;border-radius:50%;background:#EAF3DE;display:flex;align-items:center;justify-content:center;margin:0 auto 14px"><span style="font-size:26px;color:#12A150">✓</span></div>' +
+          '<h3 style="margin:0 0 6px;font-size:17px;color:#0A1628">Orden generada</h3>' +
+          '<p style="margin:0;font-size:12.5px;color:#5C7089">La orden de compra ya está lista para descargar.</p>' +
+        '</div>' +
+        '<div style="padding:20px 24px">' +
+          '<div style="background:#FCEBEB;border-radius:9px;padding:10px;margin-bottom:16px"><p style="margin:0;font-size:10.5px;color:#94A3B8;font-weight:700">FOLIO</p><p style="margin:2px 0 0;font-size:15px;font-weight:800;color:#E23B2E">'+esc(folio)+'</p></div>' +
+          '<button onclick="document.getElementById(\'cp-exito-overlay\').remove();window.__cpDescargarOC(\''+id+'\')" style="width:100%;padding:12px;background:#0A1628;color:#fff;border:none;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;margin-bottom:8px">Descargar PDF</button>' +
+          '<button onclick="document.getElementById(\'cp-exito-overlay\').remove()" style="width:100%;padding:12px;background:#F1F5F9;color:#5C7089;border:none;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer">Cerrar</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(ov);
+  }
+
   window.__cpElegirGanadora = function(id,cotId){
     cargarFirestore().then(function(fs){
       fs.getDoc(fs.doc(window.db,'requisiciones_compra',id,'cotizaciones',cotId)).then(function(snap){
@@ -688,6 +779,7 @@
           toast('Orden de compra generada');
           var d = docs.find(function(x){ return x.id===id; });
           if(d) sincronizarCuentaPorPagar(Object.assign({},d,{estatus:'orden_generada',cotizacionGanadora:cotizacionGanadora,ocFolio:ocFolio}), 'orden_generada');
+          _cpMostrarExito(ocFolio, id);
         });
       });
     });
@@ -714,17 +806,9 @@
           fs.updateDoc(fs.doc(window.db,'requisiciones_compra',id), {
             estatus:'orden_generada', cotizacionGanadora:cotizacionGanadora, ocFolio:ocFolio,
           }).then(function(){
-            toast('Orden de compra generada — descargando…');
-            // No esperamos el onSnapshot (llega async) — armamos el objeto ya
-            // actualizado a mano para generar el PDF de inmediato.
             var dActualizado = Object.assign({}, d, {estatus:'orden_generada', cotizacionGanadora:cotizacionGanadora, ocFolio:ocFolio});
             sincronizarCuentaPorPagar(dActualizado, 'orden_generada');
-            Promise.all([cargarFotos(id), cargarColaboradores(), cargarLogoEmpresa(dActualizado.empresa)]).then(function(res2){
-              var fotos=res2[0], logo=res2[2];
-              return _cpPrecargarDimensiones(fotos).then(function(fotoDim){
-                _cpConstruirYDescargarOC(dActualizado, fotos, fotoDim, logo);
-              });
-            });
+            _cpMostrarExito(ocFolio, id);
           });
         });
       });
