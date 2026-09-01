@@ -1325,56 +1325,13 @@ window.guardarDatoRHInline = async () => {
         }, 300);
     }
 
-    // Interceptar guardado de rotación para incluir empresa
-    function inyectarEmpresaEnGuardado(){
-        const check = setInterval(()=>{
-            if(!window.guardarRHInline) return;
-            clearInterval(check);
-            
-            const _prevGuardar = window.guardarRHInline;
-            window.guardarRHInline = async function(){
-                // Antes de guardar, inyectar empresa en el DOM como campo hidden
-                const empresaSel = document.getElementById('rh-f-empresa');
-                if(empresaSel){
-                    // Crear campo hidden temporal
-                    let hidden = document.getElementById('rh-f-empresa-val');
-                    if(!hidden){
-                        hidden = document.createElement('input');
-                        hidden.type = 'hidden';
-                        hidden.id = 'rh-f-empresa-val';
-                        empresaSel.parentElement.appendChild(hidden);
-                    }
-                    hidden.value = empresaSel.value;
-                }
-                await _prevGuardar();
-                // Después de guardar, recargar rotación
-                setTimeout(()=> cargarRotacionRegs(), 1000);
-            };
-        }, 300);
-    }
-
-    // Override del guardado en FIX v3 para incluir empresa
-    function patchGuardadoRotacion(){
-        const check = setInterval(()=>{
-            if(!window.guardarRHInline) return;
-            clearInterval(check);
-
-            // Interceptar el guardado para agregar campo empresa a los datos de rotación
-            const origFetch = window.fetch;
-            // Método más directo: interceptar addDoc para rh_indicadores
-            const _origGuardar = window.guardarRHInline;
-            window.guardarRHInline = async function(){
-                // Agregar empresa al dataset del form para que el FIX v3 lo incluya
-                const empresaSel = document.getElementById('rh-f-empresa');
-                const formEl = document.getElementById('rh-inline-form');
-                if(empresaSel && formEl){
-                    formEl.dataset.empresa = empresaSel.value;
-                }
-                await _origGuardar();
-                setTimeout(()=> cargarRotacionRegs(), 1500);
-            };
-        }, 500);
-    }
+    // NOTA: aquí vivían dos parches sobre window.guardarRHInline
+    // (inyectarEmpresaEnGuardado / patchGuardadoRotacion) que quedaron
+    // obsoletos — guardarRegistroRH() ya captura el campo empresa
+    // directamente (ver el case 'rotacion' más abajo) y ya recarga la
+    // vista sola (recargarYRenderizarRH()). Se eliminaron por muertas:
+    // una nunca se llamaba, la otra sobreescribía sin aportar nada que
+    // el guardado actual no hiciera ya mejor.
 
     // Hook: mostrar panel cuando entra a RH
     const CHECK_ROT = setInterval(()=>{
@@ -1400,7 +1357,6 @@ window.guardarDatoRHInline = async () => {
     });
 
     inyectarCampoEmpresa();
-    patchGuardadoRotacion();
 
     console.log('[ROTACION EMPRESA] ✅ Módulo cargado');
 })();
@@ -4539,37 +4495,11 @@ window.ventasRenderClientesMapa = function() {
         </div>`).join('');
 };
 
-window.ventasSeleccionarCliente = function(id) {
-    if(typeof verPerfilCliente === 'function') { verPerfilCliente(id); return; }
-    const c = (window.clientesDB||[]).find(x => x.id === id);
-    if(!c) return;
-    // Enfocar en mapa
-    if(window.mapaClientes && c.lat && c.lng) {
-        window.mapaClientes.setView([c.lat, c.lng], 14);
-    }
-    // Panel de detalle
-    const panel = document.getElementById('ventas-panel-detalle');
-    if(panel) {
-        panel.style.display = 'block';
-        panel.innerHTML = `
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-                <div style="font-size:14px;font-weight:700;color:#1e293b;">${c.nombre||'Sin nombre'}</div>
-                <button onclick="document.getElementById('ventas-panel-detalle').style.display='none'" style="background:none;border:none;font-size:16px;cursor:pointer;color:#94a3b8;">✕</button>
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;">
-                <div><span style="color:#94a3b8;">Ciudad</span><br><b>${c.ciudad||'—'}</b></div>
-                <div><span style="color:#94a3b8;">Sector</span><br><b>${c.sector||'—'}</b></div>
-                <div><span style="color:#94a3b8;">Vendedor</span><br><b>${c.vendedor||'—'}</b></div>
-                <div><span style="color:#94a3b8;">Visitas</span><br><b>${c.visitas||0}</b></div>
-                ${c.telefono ? `<div style="grid-column:span 2;"><span style="color:#94a3b8;">Teléfono</span><br><b>${c.telefono}</b></div>` : ''}
-                ${c.notas ? `<div style="grid-column:span 2;"><span style="color:#94a3b8;">Notas</span><br><span style="color:#475569;">${c.notas.slice(0,100)}</span></div>` : ''}
-            </div>
-            <div style="display:flex;gap:6px;margin-top:12px;">
-                <button onclick="abrirModalCheckin('${id}')" style="flex:1;padding:8px;background:#059669;color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">📍 Check-in</button>
-                <button onclick="portalAbrirNuevaCot()" style="flex:1;padding:8px;background:#2563eb;color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">📋 Cotizar</button>
-            </div>`;
-    }
-};
+// NOTA: aquí vivía una primera versión de window.ventasSeleccionarCliente
+// (panel de detalle inline con botones Check-in/Cotizar) — quedó 100%
+// inalcanzable porque la versión de abajo la sobreescribe sin llamarla.
+// Se eliminó por muerta; si se quiere recuperar ese panel más ligero en
+// vez del perfil completo, está en el historial de git.
 
 window.ventasRenderClienteStats = function() {
     const el = document.getElementById('ventas-cliente-stats');
@@ -5235,7 +5165,6 @@ window.portalCpCambiarEstatus = async function(actividadId, nuevoEstatus, btn) {
 };
 
 // Hook en ventasSeleccionarCliente para abrir el perfil completo
-const _origVentasSeleccionar = window.ventasSeleccionarCliente;
 window.ventasSeleccionarCliente = function(id) {
     // Abrir perfil completo en lugar del panel inferior
     window.abrirPerfilCliente(id);
