@@ -348,8 +348,11 @@
       // Jefe de área por departamento y quién es Director ya NO se configuran
       // aquí — viven en admin-directorio.html ("Jefe directo por
       // departamento" y "Tipo de usuario"), general para todo el portal.
-      // Aquí solo se muestran de referencia, en solo lectura.
-      var filasDeptosSoloLectura = DEPTOS_CP.map(function(dep){
+      // Aquí solo se muestran de referencia, en solo lectura. La lista de
+      // departamentos también viene de ahí (org.departamentos) — si no
+      // existe todavía (organigrama nunca guardado), se cae a DEPTOS_CP.
+      var deptosParaMostrar = (Array.isArray(org.departamentos) && org.departamentos.length) ? org.departamentos : DEPTOS_CP;
+      var filasDeptosSoloLectura = deptosParaMostrar.map(function(dep){
         var actual = (org.jefesPorDepto||{})[dep];
         return '<tr><td style="padding:6px 8px;font-size:12.5px">'+esc(dep)+'</td><td style="padding:6px 8px;font-size:12.5px;color:#475569">'+esc(actual?(actual.nombre||actual.correo):'— sin asignar —')+'</td></tr>';
       }).join('');
