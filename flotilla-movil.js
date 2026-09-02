@@ -5000,9 +5000,20 @@ window.reqEnviar=async function(){
   try{
     const folioInfo=await _reqSiguienteFolio();
     const solicitante=miPerfil?.nombre||window.auth?.currentUser?.email||'';
+    const miCorreoReq=(window.auth?.currentUser?.email||'').toLowerCase().trim();
+    // Directores (Paloma, Martín, etc.) no tienen jefe de área arriba de
+    // ellos — cuando ELLOS son quien solicita, ese paso nace ya aprobado.
+    let esDirectorReq=false;
+    try{
+      const cfgSnapReq=await db.collection('config_flujo_compras').doc('general').get();
+      const directoresReq=(cfgSnapReq.exists?cfgSnapReq.data():{}).directores||[];
+      esDirectorReq=directoresReq.some(x=>x.correo===miCorreoReq);
+    }catch(e){ console.warn('[flotilla requisicion] no se pudo checar directores:',e.message); }
     const flujoAutorizacion=[
       {orden:1,rol:'solicitante',label:'Solicitante',estatus:'aprobado',uid:window.auth?.currentUser?.uid||null,fecha:new Date().toISOString()},
-      {orden:2,rol:'jefe_area',label:'Jefe de área',estatus:'pendiente',uid:null,fecha:null},
+      esDirectorReq
+        ? {orden:2,rol:'jefe_area',label:'Jefe de área',estatus:'aprobado',uid:window.auth?.currentUser?.uid||null,fecha:new Date().toISOString()}
+        : {orden:2,rol:'jefe_area',label:'Jefe de área',estatus:'pendiente',uid:null,fecha:null},
       {orden:3,rol:'compras',label:'Compras',estatus:'pendiente',uid:null,fecha:null},
     ];
     // Comentario inicial del solicitante (opcional) — mismo formato {texto,autor,
