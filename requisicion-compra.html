@@ -470,7 +470,9 @@ async function siguienteFolioRequisicion(){
    Flotilla móvil, así el flujo de autorización es idéntico sin importar el origen. ============ */
 async function notificarJefeArea(idDoc, data){
   try{
-    const cfgSnap = await getDoc(doc(db,'config_flujo_compras','general'));
+    // "Jefe de área por departamento" vive centralizado en config_organigrama
+    // (se edita en admin-directorio.html, general para todo el portal).
+    const cfgSnap = await getDoc(doc(db,'config_organigrama','general'));
     const cfg = cfgSnap.exists() ? cfgSnap.data() : null;
     if(!cfg || !cfg.jefesPorDepto) return;
     const colabSnap = await getDocs(query(collection(db,'colaboradores'), where('correo','==',data.solicitanteEmail), limit(1)));
@@ -677,9 +679,20 @@ $('submit').onclick = async ()=>{
     const solicitanteEmail = auth.currentUser.email;
     const folioInfo = await siguienteFolioRequisicion();
     const firma = firmaBase64();
+    // Directores (Paloma, Martín, etc.) no tienen jefe de área arriba de
+    // ellos — cuando ELLOS son quien solicita, ese paso nace ya aprobado.
+    // "Director" es el tipoUsuario de su ficha en colaboradores (se asigna
+    // desde admin-directorio.html, general para todo el portal).
+    let esDirector = false;
+    try{
+      const colSnap = await getDocs(query(collection(db,'colaboradores'), where('correo','==',solicitanteEmail.toLowerCase().trim()), limit(1)));
+      esDirector = !colSnap.empty && colSnap.docs[0].data().tipoUsuario==='director';
+    }catch(e){ console.warn('[requisición] no se pudo checar tipoUsuario:', e.message); }
     const flujoAutorizacion = [
       {orden:1, rol:'solicitante', label:'Solicitante', estatus:'aprobado', uid:auth.currentUser.uid, fecha:new Date().toISOString()},
-      {orden:2, rol:'jefe_area', label:'Jefe de área', estatus:'pendiente', uid:null, fecha:null},
+      esDirector
+        ? {orden:2, rol:'jefe_area', label:'Jefe de área', estatus:'aprobado', uid:auth.currentUser.uid, fecha:new Date().toISOString()}
+        : {orden:2, rol:'jefe_area', label:'Jefe de área', estatus:'pendiente', uid:null, fecha:null},
       {orden:3, rol:'compras', label:'Compras', estatus:'pendiente', uid:null, fecha:null},
     ];
     const comentarios = comentarioTexto
