@@ -3,10 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Directorio · Revisión nombre/correo/departamento</title>
+<title>Directorio · Administración de colaboradores</title>
 <style>
   body{font-family:-apple-system,'Segoe UI',sans-serif;background:#f8fafc;margin:0;padding:24px;color:#0f172a}
   h1{font-size:18px;margin:0 0 4px}
+  h2{font-size:14px;margin:0 0 4px}
   .sub{font-size:12.5px;color:#64748b;margin-bottom:18px}
   table{width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)}
   th{background:#0A1628;color:#fff;font-size:11px;text-transform:uppercase;letter-spacing:.3px;padding:9px 10px;text-align:left}
@@ -17,40 +18,67 @@
   .fuentes span.falta{background:#fef2f2;color:#b91c1c}
   button.guardar{padding:6px 12px;background:#0A1628;color:#fff;border:none;border-radius:7px;font-size:11.5px;font-weight:700;cursor:pointer}
   button.guardar:disabled{opacity:.5;cursor:default}
+  button.baja{padding:6px 10px;background:#fff;color:#B91C1C;border:1px solid #FCA5A5;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;margin-top:4px}
+  button.reactivar{padding:6px 10px;background:#fff;color:#15803d;border:1px solid #86efac;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;margin-top:4px}
   .estado{font-size:10.5px;margin-top:3px}
   .estado.ok{color:#15803d}
   .estado.err{color:#b91c1c}
   #filtro{width:320px;padding:9px 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;margin-bottom:14px}
-  #resumen{font-size:12px;color:#64748b;margin-bottom:10px}
+  .resumen{font-size:12px;color:#64748b;margin-bottom:10px}
+  .panel{background:#fff;border-radius:10px;padding:16px;margin-bottom:18px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  .baja-badge{display:inline-block;background:#FEF2F2;color:#B91C1C;font-size:10px;font-weight:800;padding:3px 8px;border-radius:99px;margin-bottom:3px}
+  .jefe-txt{font-size:11.5px;color:#475569}
+  .seccion-title{font-weight:700;font-size:13.5px;margin:26px 0 10px}
 </style>
 </head>
 <body>
 
-<h1>Directorio — Revisión de nombre / correo / departamento</h1>
-<div class="sub">Junta <b>usuarios</b>, <b>colaboradores</b> y <b>fl_usuarios</b>. Corrige y da clic en Guardar por fila — actualiza <b>usuarios</b> y <b>colaboradores</b> a la vez (las dos fuentes que usa el portal para mostrar nombres).</div>
+<h1>Directorio — Administración de colaboradores</h1>
+<div class="sub">Junta <b>usuarios</b>, <b>colaboradores</b> y <b>fl_usuarios</b>. Corrige y da clic en Guardar por fila — actualiza <b>usuarios</b> y <b>colaboradores</b> a la vez. Solo visible para administradores.</div>
 
-<div style="background:#fff;border-radius:10px;padding:16px;margin-bottom:18px;box-shadow:0 1px 3px rgba(0,0,0,.08)">
-  <div style="font-weight:700;font-size:13.5px;margin-bottom:10px">+ Nuevo usuario</div>
-  <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:8px;align-items:start">
-    <input id="nu-correo" type="text" placeholder="Correo">
-    <input id="nu-nombre" type="text" placeholder="Nombre completo">
-    <select id="nu-depto"><option value="">Departamento…</option></select>
-    <input id="nu-pass" type="text" placeholder="Contraseña temporal (mín. 6)">
-    <button class="guardar" onclick="window.__crearUsuario()" style="padding:9px 16px">Crear cuenta</button>
-  </div>
-  <div class="estado" id="nu-msg"></div>
+<div id="acceso-negado" style="display:none;background:#fff;border-radius:10px;padding:24px;box-shadow:0 1px 3px rgba(0,0,0,.08);text-align:center;color:#B91C1C;font-weight:700">
+  No tienes permiso de administrador para entrar aquí. Si crees que es un error, pide a un administrador que revise tu "Rol" en esta misma herramienta.
 </div>
 
-<input id="filtro" type="text" placeholder="Buscar por correo o nombre…">
-<div id="resumen">Cargando…</div>
-<table>
-  <thead><tr><th style="width:19%">Correo</th><th style="width:19%">Nombre</th><th style="width:14%">Departamento</th><th style="width:11%">Rol</th><th style="width:13%">Aparece en</th><th style="width:8%">Activo</th><th style="width:14%"></th></tr></thead>
-  <tbody id="tbody"></tbody>
-</table>
+<div id="contenido" style="display:none">
+
+  <div class="panel">
+    <div style="font-weight:700;font-size:13.5px;margin-bottom:10px">+ Nuevo usuario</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:8px;align-items:start">
+      <input id="nu-correo" type="text" placeholder="Correo">
+      <input id="nu-nombre" type="text" placeholder="Nombre completo">
+      <select id="nu-depto"><option value="">Departamento…</option></select>
+      <input id="nu-pass" type="text" placeholder="Contraseña temporal (mín. 6)">
+      <button class="guardar" onclick="window.__crearUsuario()" style="padding:9px 16px">Crear cuenta</button>
+    </div>
+    <div class="estado" id="nu-msg"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Jefe directo por departamento</h2>
+    <div class="sub" style="margin-bottom:12px">General para todo el portal — de aquí toman el dato Compras, Flotilla y cualquier otro módulo que necesite saber quién autoriza por un usuario normal de cada departamento.</div>
+    <table id="tbl-jefes"><thead><tr><th style="width:30%">Departamento</th><th>Jefe directo</th></tr></thead><tbody id="tbody-jefes"></tbody></table>
+    <button class="guardar" onclick="window.__guardarOrganigrama()" style="margin-top:12px">Guardar jefes por departamento</button>
+    <div class="estado" id="org-msg"></div>
+  </div>
+
+  <input id="filtro" type="text" placeholder="Buscar por correo o nombre…">
+
+  <div class="seccion-title">⚠ Pendientes de completar</div>
+  <div class="resumen" id="resumen-pendientes"></div>
+  <table><thead><tr><th style="width:16%">Correo</th><th style="width:15%">Nombre</th><th style="width:11%">Departamento</th><th style="width:12%">Tipo de usuario</th><th style="width:9%">Rol</th><th style="width:11%">Jefe directo</th><th style="width:11%">Aparece en</th><th style="width:15%"></th></tr></thead>
+    <tbody id="tbody-pendientes"></tbody></table>
+
+  <div class="seccion-title">✓ Completos y actualizados</div>
+  <div class="resumen" id="resumen-completos"></div>
+  <table><thead><tr><th style="width:16%">Correo</th><th style="width:15%">Nombre</th><th style="width:11%">Departamento</th><th style="width:12%">Tipo de usuario</th><th style="width:9%">Rol</th><th style="width:11%">Jefe directo</th><th style="width:11%">Aparece en</th><th style="width:15%"></th></tr></thead>
+    <tbody id="tbody-completos"></tbody></table>
+
+</div>
 
 <script type="module">
 import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, collection, getDocs, doc, updateDoc, setDoc, query, where } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, collection, getDocs, doc, getDoc, updateDoc, setDoc, query, where } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, createUserWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 const config = { apiKey:"AIzaSyBXh-P0oMtMiDjyz9PObuJ8DNfROlXvhLE", authDomain:"tecnocontrol-1c42f.firebaseapp.com", projectId:"tecnocontrol-1c42f", storageBucket:"tecnocontrol-1c42f.firebasestorage.app", appId:"1:27642771956:web:54225af9e386afded8a1a1" };
@@ -60,15 +88,32 @@ const auth = getAuth(app);
 
 const DEPARTAMENTOS = ['Ingresos','Egresos','Contabilidad','Administración','Recursos Humanos','Marketing','Ventas','Pagos','Gestoría','Almacén','Compras','Operaciones','Flotilla','Contraloría'];
 const ROLES = ['colaborador','jefe_area','admin_area'];
+const TIPOS_USUARIO = [
+  {id:'director', label:'Director'},
+  {id:'jefe_area', label:'Jefe de área'},
+  {id:'usuario', label:'Usuario normal'},
+];
 document.getElementById('nu-depto').innerHTML += DEPARTAMENTOS.map(d=>'<option value="'+d+'">'+d+'</option>').join('');
 const $ = id => document.getElementById(id);
 
 // Requiere sesión real del portal (mismas cuentas de siempre) — esta
 // herramienta no crea acceso nuevo, solo lee/edita lo que tu cuenta ya
-// puede leer/editar según las reglas de Firestore.
-onAuthStateChanged(auth, user=>{
+// puede leer/editar según las reglas de Firestore. Además, solo se abre si
+// tu propio rol es admin_area — el resto de las cuentas ven un aviso y no
+// pasa de ahí (el candado real sigue siendo las reglas de Firestore, esto
+// es la puerta a nivel de la herramienta).
+onAuthStateChanged(auth, async user=>{
   if(user){
     document.getElementById('login-overlay')?.remove();
+    const snap = await getDocs(query(collection(db,'usuarios'), where('correo','==',(user.email||'').toLowerCase().trim())));
+    const soyAdmin = !snap.empty && snap.docs[0].data().rol==='admin_area';
+    if(!soyAdmin){
+      $('acceso-negado').style.display='block';
+      $('contenido').style.display='none';
+      return;
+    }
+    $('acceso-negado').style.display='none';
+    $('contenido').style.display='block';
     cargarTodo();
   } else {
     if(document.getElementById('login-overlay')) return;
@@ -89,21 +134,26 @@ onAuthStateChanged(auth, user=>{
   }
 });
 
-let registro = {}; // correo → {nombre, departamento, activo, fuentes:Set, uidUsuarios, idColaborador}
+let registro = {}; // correo → {nombre, departamento, tipoUsuario, activo, fechaBaja, bajaPor, bajaMotivo, fuentes:Set, uidUsuarios, idColaborador}
+let organigrama = {jefesPorDepto:{}};
 
 async function cargarTodo(){
-  $('resumen').textContent = 'Cargando usuarios, colaboradores y fl_usuarios…';
-  const [snapUsuarios, snapColab, snapFl] = await Promise.all([
+  $('resumen-pendientes').textContent = 'Cargando…';
+  $('resumen-completos').textContent = '';
+  const [snapUsuarios, snapColab, snapFl, snapOrg] = await Promise.all([
     getDocs(collection(db,'usuarios')).catch(()=>({forEach:()=>{}})),
     getDocs(collection(db,'colaboradores')).catch(()=>({forEach:()=>{}})),
     getDocs(collection(db,'fl_usuarios')).catch(()=>({forEach:()=>{}})),
+    getDoc(doc(db,'config_organigrama','general')).catch(()=>null),
   ]);
+  organigrama = (snapOrg && snapOrg.exists()) ? snapOrg.data() : {jefesPorDepto:{}};
+  organigrama.jefesPorDepto = organigrama.jefesPorDepto || {};
 
   function clave(correo){ return (correo||'').toLowerCase().trim(); }
   function asegurar(correo){
     const k = clave(correo);
     if(!k) return null;
-    if(!registro[k]) registro[k] = {correo:k, nombre:'', departamento:'', rol:'colaborador', activo:true, fuentes:new Set()};
+    if(!registro[k]) registro[k] = {correo:k, nombre:'', departamento:'', rol:'colaborador', tipoUsuario:'usuario', activo:true, fechaBaja:null, bajaPor:null, bajaMotivo:null, fuentes:new Set()};
     return registro[k];
   }
 
@@ -120,6 +170,9 @@ async function cargarTodo(){
     r.fuentes.add('colaboradores'); r.idColaborador=d.id;
     if(!r.nombre && c.nombre) r.nombre=c.nombre;
     if(!r.departamento && c.departamento) r.departamento=c.departamento;
+    if(c.tipoUsuario) r.tipoUsuario=c.tipoUsuario;
+    if(c.activo===false) r.activo=false;
+    if(c.fechaBaja){ r.fechaBaja=c.fechaBaja; r.bajaPor=c.bajaPor||null; r.bajaMotivo=c.bajaMotivo||null; }
   });
   snapFl.forEach(d=>{
     const f=d.data(); const r=asegurar(f.email||f.correo); if(!r) return;
@@ -127,45 +180,143 @@ async function cargarTodo(){
     if(!r.nombre && f.nombre) r.nombre=f.nombre;
   });
 
+  renderOrganigrama();
   render();
 }
 
+function renderOrganigrama(){
+  const opciones = Object.values(registro).map(r=>'<option value="'+esc(r.correo)+'">'+esc(r.nombre||r.correo)+'</option>').join('');
+  $('tbody-jefes').innerHTML = DEPARTAMENTOS.map(dep=>{
+    const actual = organigrama.jefesPorDepto[dep];
+    const actualCorreo = actual ? actual.correo : '';
+    return '<tr><td style="font-weight:600">'+dep+'</td><td>'+
+      '<select class="org-jefe" data-depto="'+esc(dep)+'"><option value="">— Sin asignar —</option>'+
+      opciones.replace('value="'+esc(actualCorreo||'###')+'"', 'value="'+esc(actualCorreo||'###')+'" selected')+
+      '</select></td></tr>';
+  }).join('');
+}
+
+window.__guardarOrganigrama = async function(){
+  const jefesPorDepto = {};
+  document.querySelectorAll('.org-jefe').forEach(sel=>{
+    if(!sel.value) return;
+    const r = registro[sel.value];
+    jefesPorDepto[sel.dataset.depto] = {correo:sel.value, nombre: r?r.nombre:sel.value};
+  });
+  const msgEl = $('org-msg');
+  msgEl.textContent = 'Guardando…'; msgEl.className='estado';
+  try{
+    await setDoc(doc(db,'config_organigrama','general'), {jefesPorDepto}, {merge:true});
+    organigrama.jefesPorDepto = jefesPorDepto;
+    msgEl.textContent = 'Guardado ✓'; msgEl.className='estado ok';
+    render($('filtro').value);
+  }catch(e){
+    msgEl.textContent = 'Error: '+(e.code||e.message); msgEl.className='estado err';
+  }
+};
+
+// "Completo" = tiene nombre, departamento, tipo de usuario, y existe tanto en
+// usuarios como en colaboradores. Cualquier fila que no cumpla esto cae en
+// "Pendientes de completar" — en cuanto se guarda bien, pasa sola a la otra lista.
+function estaCompleto(r){
+  return r.fuentes.has('usuarios') && r.fuentes.has('colaboradores') && !!r.nombre && !!r.departamento && !!r.tipoUsuario;
+}
+function jefeDirectoTexto(r){
+  if(r.tipoUsuario==='director') return '<span class="jefe-txt">— (director)</span>';
+  if(r.tipoUsuario==='jefe_area') return '<span class="jefe-txt">— (es jefe de área)</span>';
+  const jefe = r.departamento ? organigrama.jefesPorDepto[r.departamento] : null;
+  return '<span class="jefe-txt">'+(jefe ? esc(jefe.nombre||jefe.correo) : 'sin asignar para '+esc(r.departamento||'—'))+'</span>';
+}
+
 function render(filtro){
-  const tbody = $('tbody');
   const q=(filtro||'').toLowerCase().trim();
-  const filas = Object.values(registro)
+  const todas = Object.values(registro)
     .filter(r=> !q || r.correo.includes(q) || (r.nombre||'').toLowerCase().includes(q))
     .sort((a,b)=> (a.nombre||a.correo).localeCompare(b.nombre||b.correo));
-  $('resumen').textContent = filas.length+' correos encontrados. Los que faltan en alguna colección aparecen marcados en rojo — eso es lo que causa que se muestre el correo en vez del nombre en algunas partes del portal.';
-  tbody.innerHTML = filas.map(r=>{
-    const idRow = 'row-'+btoa(r.correo).replace(/[^a-zA-Z0-9]/g,'');
-    const faltaUsuarios = !r.fuentes.has('usuarios');
-    const faltaColab = !r.fuentes.has('colaboradores');
-    return '<tr id="'+idRow+'">'+
-      '<td>'+r.correo+'</td>'+
-      '<td><input type="text" class="in-nombre" value="'+esc(r.nombre)+'" placeholder="Nombre completo"></td>'+
-      '<td><select class="in-depto"><option value="">—</option>'+DEPARTAMENTOS.map(d=>'<option value="'+d+'" '+(r.departamento===d?'selected':'')+'>'+d+'</option>').join('')+'</select></td>'+
-      '<td><select class="in-rol">'+ROLES.map(rl=>'<option value="'+rl+'" '+(r.rol===rl?'selected':'')+'>'+rl+'</option>').join('')+'</select></td>'+
-      '<td class="fuentes">'+
-        '<span class="'+(faltaUsuarios?'falta':'')+'">usuarios</span>'+
-        '<span class="'+(faltaColab?'falta':'')+'">colaboradores</span>'+
-        (r.fuentes.has('fl_usuarios')?'<span>fl_usuarios</span>':'')+
-      '</td>'+
-      '<td><input type="checkbox" class="in-activo" '+(r.activo?'checked':'')+'></td>'+
-      '<td><button class="guardar" onclick="window.__guardarFila(\''+r.correo+'\',\''+idRow+'\')">Guardar</button><div class="estado" id="'+idRow+'-msg"></div></td>'+
-      '</tr>';
-  }).join('');
+  const pendientes = todas.filter(r=>!estaCompleto(r));
+  const completos = todas.filter(estaCompleto);
+  $('resumen-pendientes').textContent = pendientes.length+' correos con algo por completar — el rojo marca qué falta.';
+  $('resumen-completos').textContent = completos.length+' correos completos y al corriente.';
+  $('tbody-pendientes').innerHTML = pendientes.map(fila).join('') || '<tr><td colspan="8" style="text-align:center;padding:20px;color:#94a3b8">Nada pendiente 🎉</td></tr>';
+  $('tbody-completos').innerHTML = completos.map(fila).join('') || '<tr><td colspan="8" style="text-align:center;padding:20px;color:#94a3b8">Sin registros todavía.</td></tr>';
+}
+
+function fila(r){
+  const idRow = 'row-'+btoa(r.correo).replace(/[^a-zA-Z0-9]/g,'');
+  const faltaUsuarios = !r.fuentes.has('usuarios');
+  const faltaColab = !r.fuentes.has('colaboradores');
+  const bajaInfo = !r.activo ? '<div class="baja-badge">DE BAJA'+(r.fechaBaja?(' · '+new Date(r.fechaBaja).toLocaleDateString('es-MX')):'')+'</div>'+(r.bajaMotivo?'<div style="font-size:10px;color:#94a3b8">'+esc(r.bajaMotivo)+'</div>':'') : '';
+  return '<tr id="'+idRow+'">'+
+    '<td>'+r.correo+'</td>'+
+    '<td><input type="text" class="in-nombre" value="'+esc(r.nombre)+'" placeholder="Nombre completo"></td>'+
+    '<td><select class="in-depto"><option value="">—</option>'+DEPARTAMENTOS.map(d=>'<option value="'+d+'" '+(r.departamento===d?'selected':'')+'>'+d+'</option>').join('')+'</select></td>'+
+    '<td><select class="in-tipo">'+TIPOS_USUARIO.map(t=>'<option value="'+t.id+'" '+(r.tipoUsuario===t.id?'selected':'')+'>'+t.label+'</option>').join('')+'</select></td>'+
+    '<td><select class="in-rol">'+ROLES.map(rl=>'<option value="'+rl+'" '+(r.rol===rl?'selected':'')+'>'+rl+'</option>').join('')+'</select></td>'+
+    '<td>'+jefeDirectoTexto(r)+'</td>'+
+    '<td class="fuentes">'+
+      '<span class="'+(faltaUsuarios?'falta':'')+'">usuarios</span>'+
+      '<span class="'+(faltaColab?'falta':'')+'">colaboradores</span>'+
+      (r.fuentes.has('fl_usuarios')?'<span>fl_usuarios</span>':'')+
+    '</td>'+
+    '<td>'+bajaInfo+
+      '<button class="guardar" onclick="window.__guardarFila(\''+r.correo+'\',\''+idRow+'\')">Guardar</button>'+
+      '<button class="baja" style="color:#0A1628;border-color:#CBD5E1;margin-left:4px" onclick="window.__verHistorial(\''+r.correo+'\')">Ver historial</button>'+
+      (r.activo
+        ? '<button class="baja" onclick="window.__darDeBaja(\''+r.correo+'\')">Dar de baja</button>'
+        : '<button class="reactivar" onclick="window.__reactivar(\''+r.correo+'\')">Reactivar</button>') +
+      '<div class="estado" id="'+idRow+'-msg"></div></td>'+
+    '</tr>';
 }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 $('filtro').oninput = ()=> render($('filtro').value);
 
+// ── Ver historial — resumen rápido de qué tiene abierto o a su nombre esta
+//    persona en los módulos operativos principales, ANTES de decidir si se
+//    le da de baja. No es un barrido de toda la base de datos (eso sería
+//    lento e impráctico desde el navegador) — cubre las colecciones que
+//    generan trabajo pendiente para alguien más si la persona desaparece:
+//    requisiciones de compra y solicitudes de material, como solicitante. ──
+window.__verHistorial = async function(correo){
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+  ov.innerHTML = '<div style="max-width:460px;width:100%;max-height:82vh;overflow-y:auto;background:#fff;padding:22px;border-radius:12px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><h2 style="font-size:15px;margin:0">Historial · '+esc(correo)+'</h2><button onclick="this.closest(\'div[style*=fixed]\').remove()" style="background:#F1F5F9;border:none;border-radius:8px;width:26px;height:26px;cursor:pointer">✕</button></div>'+
+    '<div class="sub" style="margin-bottom:14px">Resumen de los módulos principales — no es un barrido de toda la base de datos.</div>'+
+    '<div id="vh-body">Cargando…</div></div>';
+  document.body.appendChild(ov);
+  const body = ov.querySelector('#vh-body');
+  try{
+    const [reqSnap, matSnap] = await Promise.all([
+      getDocs(query(collection(db,'requisiciones_compra'), where('solicitanteEmail','==',correo))),
+      getDocs(query(collection(db,'surtidos'), where('solicitanteEmail','==',correo))),
+    ]);
+    const reqs = reqSnap.docs.map(d=>d.data());
+    const mats = matSnap.docs.map(d=>d.data());
+    const reqsAbiertas = reqs.filter(r=>r.estatus!=='rechazada' && r.estatus!=='recibida');
+    const matsAbiertas = mats.filter(m=>m.estado!=='entregado' && m.estado!=='cancelado');
+    body.innerHTML =
+      '<div style="background:#F8FAFC;border-radius:9px;padding:12px 14px;margin-bottom:10px">'+
+        '<p style="font-weight:700;font-size:13px;margin:0 0 4px">Requisiciones de compra</p>'+
+        '<p style="font-size:12px;color:#475569;margin:0">'+reqs.length+' en total · <b style="color:'+(reqsAbiertas.length?'#B91C1C':'#15803d')+'">'+reqsAbiertas.length+' todavía abiertas</b></p>'+
+      '</div>'+
+      '<div style="background:#F8FAFC;border-radius:9px;padding:12px 14px;margin-bottom:10px">'+
+        '<p style="font-weight:700;font-size:13px;margin:0 0 4px">Solicitudes de material</p>'+
+        '<p style="font-size:12px;color:#475569;margin:0">'+mats.length+' en total · <b style="color:'+(matsAbiertas.length?'#B91C1C':'#15803d')+'">'+matsAbiertas.length+' todavía abiertas</b></p>'+
+      '</div>'+
+      ((reqsAbiertas.length||matsAbiertas.length) ? '<p style="font-size:12px;color:#B45309;font-weight:700">⚠ Tiene pendientes abiertos — revísalos antes de dar de baja, o alguien más tendrá que hacerse cargo de ellos.</p>' : '<p style="font-size:12px;color:#15803d;font-weight:700">✓ Sin pendientes abiertos en estos módulos.</p>');
+  }catch(e){
+    body.innerHTML = '<p style="color:#b91c1c;font-size:12.5px">Error al cargar historial: '+esc(e.code||e.message)+'</p>';
+  }
+};
+
+
 window.__guardarFila = async function(correo, idRow){
   const tr = document.getElementById(idRow);
   const nombre = tr.querySelector('.in-nombre').value.trim();
   const departamento = tr.querySelector('.in-depto').value;
+  const tipoUsuario = tr.querySelector('.in-tipo').value;
   const rol = tr.querySelector('.in-rol').value;
-  const activo = tr.querySelector('.in-activo').checked;
   const btn = tr.querySelector('button.guardar');
   const msgEl = document.getElementById(idRow+'-msg');
   if(!nombre){ msgEl.textContent='Escribe el nombre.'; msgEl.className='estado err'; return; }
@@ -180,40 +331,60 @@ window.__guardarFila = async function(correo, idRow){
       if(!snap.empty) uid = snap.docs[0].id;
     }
     if(uid){
-      await updateDoc(doc(db,'usuarios',uid), {nombre, departamento, rol, activo});
-    }else{
-      msgEl.textContent='Guardado en colaboradores. Sin cuenta en "usuarios" todavía — créala desde Administración de usuarios.';
+      await updateDoc(doc(db,'usuarios',uid), {nombre, departamento, rol});
     }
     // 2) colaboradores — mismo criterio: actualizar si existe, crear si no.
+    //    Aquí vive tipoUsuario, que es el dato que usa el resto del portal
+    //    para saber quién es director / jefe de área / usuario normal.
     let idColab = r.idColaborador;
     if(!idColab){
       const snap2 = await getDocs(query(collection(db,'colaboradores'), where('correo','==',correo)));
-      idColab = snap2.empty ? correo : snap2.docs[0].id; // si no existe, usa el correo como id (mismo patrón que ya usa el portal)
+      idColab = snap2.empty ? correo : snap2.docs[0].id;
     }
-    await setDoc(doc(db,'colaboradores',idColab), {correo, nombre, departamento}, {merge:true});
+    await setDoc(doc(db,'colaboradores',idColab), {correo, nombre, departamento, tipoUsuario}, {merge:true});
 
-    r.nombre=nombre; r.departamento=departamento; r.rol=rol; r.activo=activo; r.uidUsuarios=uid; r.idColaborador=idColab;
+    r.nombre=nombre; r.departamento=departamento; r.tipoUsuario=tipoUsuario; r.rol=rol; r.uidUsuarios=uid; r.idColaborador=idColab;
     r.fuentes.add('colaboradores'); if(uid) r.fuentes.add('usuarios');
-    // NO se vuelve a llamar render() aquí — reconstruía la tabla al instante
-    // y borraba la confirmación antes de que se alcanzara a ver.
     msgEl.textContent = uid ? 'Guardado ✓' : 'Guardado en colaboradores ✓ (falta cuenta en "usuarios")';
     msgEl.className='estado ok';
-    const original = btn.textContent;
-    btn.textContent = '✓ Guardado'; btn.style.background = '#15803d';
-    setTimeout(()=>{ btn.textContent = original; btn.style.background = ''; }, 2000);
+    render($('filtro').value); // aquí SÍ se vuelve a pintar — es lo que mueve la fila de "Pendientes" a "Completos" cuando ya quedó bien
   }catch(e){
     msgEl.textContent = 'Error: '+(e.code||e.message);
     msgEl.className='estado err';
-    btn.style.background = '#b91c1c';
-    setTimeout(()=>{ btn.style.background = ''; }, 2500);
   }finally{ btn.disabled=false; }
 };
 
+// ── Dar de baja / Reactivar ──────────────────────────────────────
+// Nunca se borra el documento de colaboradores ni de usuarios — así el
+// historial pasado (requisiciones, ventas, checklists…) sigue resolviendo
+// el nombre de la persona en vez de mostrar "usuario desconocido". Solo se
+// marca activo:false con quién y por qué, y (aparte, en cada módulo) se
+// revisa esa bandera para cerrarle la sesión si intenta volver a entrar.
+window.__darDeBaja = async function(correo){
+  const motivo = prompt('¿Por qué se da de baja a este usuario? (queda guardado para historial)');
+  if(motivo===null) return;
+  if(!motivo.trim()){ alert('Escribe un motivo — es obligatorio.'); return; }
+  const r = registro[correo]; if(!r) return;
+  const bajaPor = (auth.currentUser && auth.currentUser.email) || '—';
+  const fechaBaja = new Date().toISOString();
+  try{
+    if(r.idColaborador) await setDoc(doc(db,'colaboradores',r.idColaborador), {activo:false, fechaBaja, bajaPor, bajaMotivo:motivo.trim()}, {merge:true});
+    if(r.uidUsuarios) await updateDoc(doc(db,'usuarios',r.uidUsuarios), {activo:false});
+    r.activo=false; r.fechaBaja=fechaBaja; r.bajaPor=bajaPor; r.bajaMotivo=motivo.trim();
+    render($('filtro').value);
+  }catch(e){ alert('Error al dar de baja: '+(e.code||e.message)); }
+};
+window.__reactivar = async function(correo){
+  const r = registro[correo]; if(!r) return;
+  try{
+    if(r.idColaborador) await setDoc(doc(db,'colaboradores',r.idColaborador), {activo:true, fechaBaja:null, bajaPor:null, bajaMotivo:null}, {merge:true});
+    if(r.uidUsuarios) await updateDoc(doc(db,'usuarios',r.uidUsuarios), {activo:true});
+    r.activo=true; r.fechaBaja=null; r.bajaPor=null; r.bajaMotivo=null;
+    render($('filtro').value);
+  }catch(e){ alert('Error al reactivar: '+(e.code||e.message)); }
+};
+
 // ── Alta de cuenta nueva ──────────────────────────────────────────
-// createUserWithEmailAndPassword deja logueada la sesión ACTUAL como el
-// usuario nuevo — para no cerrar tu sesión de admin, se crea en una
-// instancia de Firebase aparte, se cierra esa sesión secundaria y se
-// destruye la instancia; tu sesión principal nunca se toca.
 window.__crearUsuario = async function(){
   const correo = document.getElementById('nu-correo').value.trim().toLowerCase();
   const nombre = document.getElementById('nu-nombre').value.trim();
@@ -232,11 +403,12 @@ window.__crearUsuario = async function(){
     await signOut(secAuth);
     await deleteApp(secApp);
     await setDoc(doc(db,'usuarios',uid), {correo, nombre, departamento, rol:'colaborador', activo:true});
-    await setDoc(doc(db,'colaboradores',correo), {correo, nombre, departamento}, {merge:true});
-    registro[correo] = {correo, nombre, departamento, rol:'colaborador', activo:true, fuentes:new Set(['usuarios','colaboradores']), uidUsuarios:uid, idColaborador:correo};
+    await setDoc(doc(db,'colaboradores',correo), {correo, nombre, departamento, tipoUsuario:'usuario', activo:true}, {merge:true});
+    registro[correo] = {correo, nombre, departamento, rol:'colaborador', tipoUsuario:'usuario', activo:true, fechaBaja:null, bajaPor:null, bajaMotivo:null, fuentes:new Set(['usuarios','colaboradores']), uidUsuarios:uid, idColaborador:correo};
     msgEl.textContent='Cuenta creada ✓ — comparte correo y esta contraseña temporal con la persona.';
     msgEl.className='estado ok';
     document.getElementById('nu-correo').value=''; document.getElementById('nu-nombre').value=''; document.getElementById('nu-pass').value=''; document.getElementById('nu-depto').value='';
+    renderOrganigrama();
     render($('filtro').value);
   }catch(e){
     msgEl.textContent='Error: '+(e.code||e.message);
