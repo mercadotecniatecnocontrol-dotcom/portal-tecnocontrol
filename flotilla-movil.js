@@ -4815,7 +4815,9 @@ function _reqMostrarLigaFirma(folio, liga, onVerPDF){
 // queda pendiente desde el primer momento — antes nadie se enteraba).
 async function _reqNotificarJefeArea(idDoc, data){
   try{
-    const cfgSnap = await db.collection('config_flujo_compras').doc('general').get();
+    // "Jefe de área por departamento" vive centralizado en config_organigrama
+    // (se edita en admin-directorio.html, general para todo el portal).
+    const cfgSnap = await db.collection('config_organigrama').doc('general').get();
     const cfg = cfgSnap.exists ? cfgSnap.data() : null;
     if(!cfg || !cfg.jefesPorDepto) return;
     const colabSnap = await db.collection('colaboradores').where('correo','==',data.solicitanteEmail).limit(1).get();
@@ -5003,12 +5005,13 @@ window.reqEnviar=async function(){
     const miCorreoReq=(window.auth?.currentUser?.email||'').toLowerCase().trim();
     // Directores (Paloma, Martín, etc.) no tienen jefe de área arriba de
     // ellos — cuando ELLOS son quien solicita, ese paso nace ya aprobado.
+    // "Director" es el tipoUsuario de su ficha en colaboradores (se asigna
+    // desde admin-directorio.html, general para todo el portal).
     let esDirectorReq=false;
     try{
-      const cfgSnapReq=await db.collection('config_flujo_compras').doc('general').get();
-      const directoresReq=(cfgSnapReq.exists?cfgSnapReq.data():{}).directores||[];
-      esDirectorReq=directoresReq.some(x=>x.correo===miCorreoReq);
-    }catch(e){ console.warn('[flotilla requisicion] no se pudo checar directores:',e.message); }
+      const colSnapReq=await db.collection('colaboradores').where('correo','==',miCorreoReq).limit(1).get();
+      esDirectorReq=!colSnapReq.empty && colSnapReq.docs[0].data().tipoUsuario==='director';
+    }catch(e){ console.warn('[flotilla requisicion] no se pudo checar tipoUsuario:',e.message); }
     const flujoAutorizacion=[
       {orden:1,rol:'solicitante',label:'Solicitante',estatus:'aprobado',uid:window.auth?.currentUser?.uid||null,fecha:new Date().toISOString()},
       esDirectorReq
