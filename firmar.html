@@ -172,7 +172,7 @@ async function evaluarPermiso(){
   const cfgSnap = await getDoc(doc(db,'config_flujo_compras','general'));
   const cfg = cfgSnap.exists() ? cfgSnap.data() : {jefesPorDepto:{},aprobadoresCompras:[]};
   if(pasoActivo.label==='Jefe de área'){
-    const colSnap = await getDocs(query(collection(db,'colaboradores'), where('correo','==',dReq.solicitante)));
+    const colSnap = await getDocs(query(collection(db,'colaboradores'), where('correo','==',dReq.solicitanteEmail)));
     const depto = !colSnap.empty ? colSnap.docs[0].data().departamento : null;
     const jefe = depto && cfg.jefesPorDepto ? cfg.jefesPorDepto[depto] : null;
     quien = jefe ? jefe.nombre : 'sin jefe de área asignado';
@@ -231,7 +231,7 @@ window.autorizar = async function(){
       const cfg = cfgSnap.exists() ? cfgSnap.data() : {jefesPorDepto:{},aprobadoresCompras:[]};
       let destinos = [];
       if(siguiente.label==='Jefe de área'){
-        const colSnap = await getDocs(query(collection(db,'colaboradores'), where('correo','==',dReq.solicitante)));
+        const colSnap = await getDocs(query(collection(db,'colaboradores'), where('correo','==',dReq.solicitanteEmail)));
         const depto = !colSnap.empty ? colSnap.docs[0].data().departamento : null;
         const jefe = depto && cfg.jefesPorDepto ? cfg.jefesPorDepto[depto] : null;
         if(jefe && jefe.correo) destinos.push(jefe.correo);
