@@ -56,6 +56,17 @@
   </div>
 
   <div class="panel">
+    <h2>Departamentos</h2>
+    <div class="sub" style="margin-bottom:12px">La lista general de departamentos del portal — agrega uno nuevo aquí (como "Cobranza") sin necesidad de tocar código; aparece de inmediato en todos los selectores de esta página.</div>
+    <div id="lista-departamentos" style="margin-bottom:10px"></div>
+    <div style="display:flex;gap:8px">
+      <input id="nuevo-depto" type="text" placeholder="Nombre del departamento nuevo" style="flex:1;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:12.5px">
+      <button class="guardar" onclick="window.__agregarDepartamento()">+ Agregar</button>
+    </div>
+    <div class="estado" id="depto-msg"></div>
+  </div>
+
+  <div class="panel">
     <h2>Jefe directo por departamento</h2>
     <div class="sub" style="margin-bottom:12px">General para todo el portal — de aquí toman el dato Compras, Flotilla y cualquier otro módulo que necesite saber quién autoriza por un usuario normal de cada departamento.</div>
     <table id="tbl-jefes"><thead><tr><th style="width:30%">Departamento</th><th>Jefe directo</th></tr></thead><tbody id="tbody-jefes"></tbody></table>
@@ -87,7 +98,7 @@ const app = initializeApp(config, 'admin-directorio');
 const db = getFirestore(app);
 const auth = getAuth(app);
 
-const DEPARTAMENTOS = ['Ingresos','Egresos','Contabilidad','Administración','Recursos Humanos','Marketing','Ventas','Pagos','Gestoría','Almacén','Compras','Operaciones','Flotilla','Contraloría'];
+let DEPARTAMENTOS = ['Ingresos','Egresos','Contabilidad','Administración','Recursos Humanos','Marketing','Ventas','Pagos','Gestoría','Almacén','Compras','Operaciones','Flotilla','Contraloría'];
 const PLAZAS = ['Chihuahua','Juárez','Parral','Monterrey','Jalisco','Sonora','Otra'];
 const ROLES = ['colaborador','jefe_area','admin_area'];
 const TIPOS_USUARIO = [
@@ -95,7 +106,9 @@ const TIPOS_USUARIO = [
   {id:'jefe_area', label:'Jefe de área'},
   {id:'usuario', label:'Usuario normal'},
 ];
-document.getElementById('nu-depto').innerHTML += DEPARTAMENTOS.map(d=>'<option value="'+d+'">'+d+'</option>').join('');
+function renderDeptoSelects(){
+  document.getElementById('nu-depto').innerHTML = '<option value="">Departamento…</option>'+DEPARTAMENTOS.map(d=>'<option value="'+d+'">'+d+'</option>').join('');
+}
 document.getElementById('nu-plaza').innerHTML += PLAZAS.map(p=>'<option value="'+p+'">'+p+'</option>').join('');
 const $ = id => document.getElementById(id);
 
@@ -151,6 +164,17 @@ async function cargarTodo(){
   ]);
   organigrama = (snapOrg && snapOrg.exists()) ? snapOrg.data() : {jefesPorDepto:{}};
   organigrama.jefesPorDepto = organigrama.jefesPorDepto || {};
+  // La lista de departamentos también vive en config_organigrama — así se
+  // puede agregar uno nuevo (como "Cobranza") desde este mismo panel, sin
+  // tocar código. La primera vez que corre esto (el doc no trae
+  // "departamentos" todavía) se siembra con la lista que traía el código.
+  if(Array.isArray(organigrama.departamentos) && organigrama.departamentos.length){
+    DEPARTAMENTOS = organigrama.departamentos;
+  } else {
+    organigrama.departamentos = DEPARTAMENTOS;
+    setDoc(doc(db,'config_organigrama','general'), {departamentos:DEPARTAMENTOS}, {merge:true}).catch(()=>{});
+  }
+  renderDeptoSelects();
 
   function clave(correo){ return (correo||'').toLowerCase().trim(); }
   function asegurar(correo){
@@ -184,9 +208,52 @@ async function cargarTodo(){
     if(!r.nombre && f.nombre) r.nombre=f.nombre;
   });
 
+  renderListaDepartamentos();
   renderOrganigrama();
   render();
 }
+
+function renderListaDepartamentos(){
+  $('lista-departamentos').innerHTML = DEPARTAMENTOS.map((d,i)=>
+    '<span style="display:inline-flex;align-items:center;gap:5px;background:#F1F5F9;color:#334155;font-size:11.5px;font-weight:600;padding:4px 6px 4px 10px;border-radius:99px;margin:0 6px 6px 0">'+esc(d)+
+    '<button onclick="window.__quitarDepartamento('+i+')" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:13px;line-height:1;padding:0 4px" title="Quitar">✕</button></span>'
+  ).join('');
+}
+window.__agregarDepartamento = async function(){
+  const input = $('nuevo-depto');
+  const nombre = input.value.trim();
+  const msgEl = $('depto-msg');
+  if(!nombre){ msgEl.textContent='Escribe un nombre.'; msgEl.className='estado err'; return; }
+  if(DEPARTAMENTOS.some(d=>d.toLowerCase()===nombre.toLowerCase())){ msgEl.textContent='Ese departamento ya existe.'; msgEl.className='estado err'; return; }
+  msgEl.textContent='Guardando…'; msgEl.className='estado';
+  DEPARTAMENTOS = [...DEPARTAMENTOS, nombre];
+  try{
+    await setDoc(doc(db,'config_organigrama','general'), {departamentos:DEPARTAMENTOS}, {merge:true});
+    input.value='';
+    msgEl.textContent='Agregado ✓'; msgEl.className='estado ok';
+    renderDeptoSelects(); renderListaDepartamentos(); renderOrganigrama(); render($('filtro').value);
+  }catch(e){
+    DEPARTAMENTOS = DEPARTAMENTOS.filter(d=>d!==nombre); // revertir si falló el guardado
+    msgEl.textContent = 'Error: '+(e.code||e.message); msgEl.className='estado err';
+  }
+};
+// Quitar un departamento de la lista NO toca a las personas que ya lo
+// tienen asignado (su ficha lo conserva) — solo deja de aparecer como
+// opción para asignaciones nuevas. Si alguien lo tenía como jefe directo,
+// esa asignación también se queda tal cual hasta que la corrijas a mano.
+window.__quitarDepartamento = async function(i){
+  const nombre = DEPARTAMENTOS[i];
+  if(!confirm('¿Quitar "'+nombre+'" de la lista? No borra a nadie que ya lo tenga asignado, solo deja de estar disponible para asignaciones nuevas.')) return;
+  const anterior = DEPARTAMENTOS;
+  DEPARTAMENTOS = DEPARTAMENTOS.filter((_,idx)=>idx!==i);
+  try{
+    await setDoc(doc(db,'config_organigrama','general'), {departamentos:DEPARTAMENTOS}, {merge:true});
+    renderDeptoSelects(); renderListaDepartamentos(); renderOrganigrama(); render($('filtro').value);
+  }catch(e){
+    DEPARTAMENTOS = anterior;
+    alert('Error al quitar: '+(e.code||e.message));
+  }
+};
 
 function renderOrganigrama(){
   const opciones = Object.values(registro).map(r=>'<option value="'+esc(r.correo)+'">'+esc(r.nombre||r.correo)+'</option>').join('');
