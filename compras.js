@@ -104,7 +104,11 @@
     if(paso.label==='Solicitante') return true;
     var cfg = _configFlujoCache || {jefesPorDepto:{}, aprobadoresCompras:[]};
     if(paso.label==='Jefe de área'){
-      var depto = departamentoPorCorreo(d.solicitante);
+      // Un director puede autorizar CUALQUIER paso de "Jefe de área" — cubre
+      // tanto su propio caso (no tiene jefe arriba) como requisiciones viejas
+      // que quedaron atoradas antes de que se configurara el flujo bien.
+      if((cfg.directores||[]).some(function(x){ return x.correo===(miCorreo||'').toLowerCase().trim(); })) return true;
+      var depto = departamentoPorCorreo(d.solicitanteEmail);
       var jefe = depto && cfg.jefesPorDepto ? cfg.jefesPorDepto[depto] : null;
       return !!(jefe && jefe.correo && jefe.correo.toLowerCase()===(miCorreo||'').toLowerCase());
     }
@@ -624,11 +628,27 @@
     renderBoard();
   };
 
+  // Todo lo que sigue "vivo" en el flujo — sin importar en qué mes se creó.
+  // Ocultar por antigüedad algo que sigue pendiente es justo lo que dejaba
+  // pasar desapercibidas requisiciones atoradas de meses anteriores.
+  function _cpDocsActivos(){
+    return docs.filter(function(d){ return d.estatus!=='rechazada' && d.estatus!=='recibida'; });
+  }
+  // Lo ya cerrado (recibida/rechazada) sí se acota al mes en curso — es
+  // historial, y "ver historial completo" existe para lo más viejo.
+  function _cpDocsCerradosDelMes(estatusId){
+    var ahora = new Date();
+    return docs.filter(function(d){
+      if(d.estatus!==estatusId) return false;
+      var f = _cpFechaDoc(d);
+      return f && f.getMonth()===ahora.getMonth() && f.getFullYear()===ahora.getFullYear();
+    });
+  }
   function renderKPIs(){
-    var activas = docs.filter(function(d){ return d.estatus!=='rechazada' && d.estatus!=='recibida'; });
+    var activas = _cpDocsActivos();
     var urgentes = activas.filter(function(d){ return d.urgencia==='alta'; }).length;
-    var pendientes = docs.filter(function(d){ return (d.estatus||'pendiente')==='pendiente'; }).length;
-    var cotizando = docs.filter(function(d){ return d.estatus==='cotizando'; }).length;
+    var pendientes = activas.filter(function(d){ return (d.estatus||'pendiente')==='pendiente'; }).length;
+    var cotizando = activas.filter(function(d){ return d.estatus==='cotizando'; }).length;
     var elP=document.getElementById('cp-kpi-proceso'); if(!elP) return;
     elP.textContent = activas.length;
     document.getElementById('cp-kpi-urgentes').textContent = urgentes;
@@ -638,22 +658,16 @@
 
   function renderBoard(){
     var board=document.getElementById('cp-board'); if(!board) return;
-    // Solo el mes en curso por default — el histórico completo vive en
-    // "🔍 Buscar / historial" para no saturar el tablero indefinidamente.
-    var ahora = new Date();
-    var fuente = docs.filter(function(d){
-      var f = _cpFechaDoc(d);
-      return f && f.getMonth()===ahora.getMonth() && f.getFullYear()===ahora.getFullYear();
-    });
-    fuente = verRechazadas ? fuente.filter(function(d){ return d.estatus==='rechazada'; }) : fuente.filter(function(d){ return d.estatus!=='rechazada'; });
     if(verRechazadas){
+      var fuenteRech = _cpDocsCerradosDelMes('rechazada');
       board.style.gridTemplateColumns='1fr';
-      board.innerHTML = fuente.length ? '<div style="background:#F8FAFC;border-radius:12px;overflow:hidden">'+fuente.map(cardHTML).join('')+'</div>' : '<div style="text-align:center;padding:30px;color:#94a3b8;font-size:13px">Sin requisiciones rechazadas este mes.</div>';
+      board.innerHTML = fuenteRech.length ? '<div style="background:#F8FAFC;border-radius:12px;overflow:hidden">'+fuenteRech.map(cardHTML).join('')+'</div>' : '<div style="text-align:center;padding:30px;color:#94a3b8;font-size:13px">Sin requisiciones rechazadas este mes.</div>';
       return;
     }
+    var activos = _cpDocsActivos();
     board.style.gridTemplateColumns='repeat(5,minmax(0,1fr))';
     board.innerHTML = ESTADOS.map(function(col){
-      var ds = fuente.filter(function(d){ return (d.estatus||'pendiente')===col.id; });
+      var ds = col.id==='recibida' ? _cpDocsCerradosDelMes('recibida') : activos.filter(function(d){ return (d.estatus||'pendiente')===col.id; });
       return '<div style="min-width:0">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;padding:0 2px">' +
         '<p style="font-size:10.5px;font-weight:700;color:#5C7089;margin:0;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+col.label+'</p>' +
@@ -777,9 +791,10 @@
         var cfg2 = _configFlujoCache || {jefesPorDepto:{}, aprobadoresCompras:[]};
         var quien = '—';
         if(pasoActivo.label==='Jefe de área'){
-          var depto2 = departamentoPorCorreo(d.solicitante);
+          var depto2 = departamentoPorCorreo(d.solicitanteEmail);
           var jefe2 = depto2 && cfg2.jefesPorDepto ? cfg2.jefesPorDepto[depto2] : null;
-          quien = jefe2 ? jefe2.nombre : (depto2 ? 'sin jefe de área asignado para '+depto2 : 'departamento del solicitante desconocido — revisa su ficha en colaboradores');
+          var dirNombres = (cfg2.directores||[]).map(function(x){return x.nombre||x.correo;}).join(', ');
+          quien = jefe2 ? jefe2.nombre + (dirNombres?' (o un director: '+dirNombres+')':'') : (dirNombres ? 'un director: '+dirNombres : (depto2 ? 'sin jefe de área asignado para '+depto2 : 'departamento del solicitante desconocido — revisa su ficha en colaboradores'));
         } else if(pasoActivo.label==='Compras'){
           quien = (cfg2.aprobadoresCompras||[]).map(function(a){return a.nombre||a.correo;}).join(', ') || 'sin aprobadores de Compras configurados';
         }
@@ -916,9 +931,10 @@
     var cfg = _configFlujoCache || {jefesPorDepto:{}, aprobadoresCompras:[]};
     var out = [];
     if(paso.label==='Jefe de área'){
-      var depto = departamentoPorCorreo(d.solicitante);
+      var depto = departamentoPorCorreo(d.solicitanteEmail);
       var jefe = depto && cfg.jefesPorDepto ? cfg.jefesPorDepto[depto] : null;
       if(jefe && jefe.correo) out.push(jefe);
+      else (cfg.directores||[]).forEach(function(a){ if(a.correo) out.push(a); }); // sin jefe asignado — avisa a los directores como respaldo
     } else if(paso.label==='Compras'){
       (cfg.aprobadoresCompras||[]).forEach(function(a){ if(a.correo) out.push(a); });
     }
