@@ -172,11 +172,16 @@ async function evaluarPermiso(){
   const cfgSnap = await getDoc(doc(db,'config_flujo_compras','general'));
   const cfg = cfgSnap.exists() ? cfgSnap.data() : {jefesPorDepto:{},aprobadoresCompras:[]};
   if(pasoActivo.label==='Jefe de área'){
-    const colSnap = await getDocs(query(collection(db,'colaboradores'), where('correo','==',dReq.solicitanteEmail)));
-    const depto = !colSnap.empty ? colSnap.docs[0].data().departamento : null;
-    const jefe = depto && cfg.jefesPorDepto ? cfg.jefesPorDepto[depto] : null;
-    quien = jefe ? jefe.nombre : 'sin jefe de área asignado';
-    permitido = !!(jefe && jefe.correo && jefe.correo.toLowerCase()===miCorreo.toLowerCase());
+    const esDirector = (cfg.directores||[]).some(x=>x.correo===(miCorreo||'').toLowerCase().trim());
+    if(esDirector){
+      permitido = true; quien = 'un director';
+    } else {
+      const colSnap = await getDocs(query(collection(db,'colaboradores'), where('correo','==',dReq.solicitanteEmail)));
+      const depto = !colSnap.empty ? colSnap.docs[0].data().departamento : null;
+      const jefe = depto && cfg.jefesPorDepto ? cfg.jefesPorDepto[depto] : null;
+      quien = jefe ? jefe.nombre : 'sin jefe de área asignado';
+      permitido = !!(jefe && jefe.correo && jefe.correo.toLowerCase()===miCorreo.toLowerCase());
+    }
   } else if(pasoActivo.label==='Compras'){
     const lista = cfg.aprobadoresCompras||[];
     quien = lista.map(a=>a.nombre||a.correo).join(', ') || 'sin aprobadores configurados';
