@@ -17,6 +17,7 @@
   var contId = 'vista-compras-area';
   var _fs = null, _unsub = null;
   var docs = [];
+  var docsEliminados = []; // requisiciones marcadas eliminada:true — no se borran de Firestore, solo se ocultan del board (ver papelera)
   var verRechazadas = false;
   var detalleId = null;
 
@@ -141,6 +142,53 @@
             }).join('') : '<p style="font-size:12.5px;color:#94a3b8;text-align:center;padding:20px 0">No hay firmas pendientes 🎉</p>') + '</div>' +
           '</div>';
         document.body.appendChild(ov);
+      });
+    });
+  };
+  // ── PAPELERA — nunca se borra de Firestore. Se marca eliminada:true con
+  //    quién y por qué, se oculta del board, y queda visible aquí con opción
+  //    de restaurar. Así siempre hay rastro de auditoría. ──
+  window.__cpAbrirPapelera = function(){
+    var ov = document.createElement('div');
+    ov.id = 'cp-papelera-overlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,.55);z-index:2100;display:flex;align-items:center;justify-content:center;padding:18px';
+    ov.innerHTML =
+      '<div style="background:#fff;border-radius:14px;max-width:680px;width:100%;max-height:88vh;overflow-y:auto;padding:22px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><h3 style="margin:0;font-size:16px">Papelera</h3><button onclick="document.getElementById(\'cp-papelera-overlay\').remove()" style="background:#F1F5F9;border:none;border-radius:8px;width:28px;height:28px;cursor:pointer">✕</button></div>' +
+        '<div>' + (docsEliminados.length ? docsEliminados.map(function(d){
+          return '<div style="border-bottom:1px solid #F1F5F9;padding:10px 4px">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center">' +
+            '<p style="font-size:13px;font-weight:700;margin:0;color:#0A1628">'+esc(d.folio||d.id)+'</p>' +
+            '<button onclick="window.__cpRestaurarRequisicion(\''+d.id+'\')" style="padding:6px 12px;background:#F1F5F9;color:#0A1628;border:none;border-radius:8px;font-size:11.5px;font-weight:700;cursor:pointer">Restaurar</button>' +
+            '</div>' +
+            '<p style="font-size:11.5px;color:#5C7089;margin:2px 0 0">Eliminada por <b>'+esc(d.eliminadaPor||'—')+'</b> el '+esc(d.eliminadaEn?new Date(d.eliminadaEn).toLocaleString('es-MX'):'—')+'</p>' +
+            '<p style="font-size:11.5px;color:#5C7089;margin:2px 0 0">Motivo: '+esc(d.eliminadaMotivo||'—')+'</p>' +
+            '</div>';
+        }).join('') : '<p style="font-size:12.5px;color:#94a3b8;text-align:center;padding:20px 0">La papelera está vacía.</p>') + '</div>' +
+      '</div>';
+    document.body.appendChild(ov);
+  };
+  window.__cpEliminarRequisicion = function(id){
+    var motivo = prompt('¿Por qué se elimina esta requisición? (queda guardado para auditoría)');
+    if(motivo===null) return; // canceló
+    if(!motivo.trim()){ alert('Escribe un motivo — es obligatorio para poder auditar después.'); return; }
+    cargarFirestore().then(function(fs){
+      fs.updateDoc(fs.doc(window.db,'requisiciones_compra',id), {
+        eliminada:true, eliminadaPor:_cpMiCorreo()||'—', eliminadaMotivo:motivo.trim(), eliminadaEn:new Date().toISOString(),
+      }).then(function(){
+        toast('Requisición movida a la papelera');
+        window.__cpCerrarDetalle();
+      });
+    });
+  };
+  window.__cpRestaurarRequisicion = function(id){
+    cargarFirestore().then(function(fs){
+      fs.updateDoc(fs.doc(window.db,'requisiciones_compra',id), {
+        eliminada:false, eliminadaPor:null, eliminadaMotivo:null, eliminadaEn:null,
+      }).then(function(){
+        toast('Requisición restaurada');
+        document.getElementById('cp-papelera-overlay')?.remove();
+        window.__cpAbrirPapelera();
       });
     });
   };
@@ -279,6 +327,17 @@
       var listaAprobadores = (cfg.aprobadoresCompras||[]).map(function(a,i){
         return '<div style="display:flex;justify-content:space-between;align-items:center;background:#F8FAFD;border-radius:8px;padding:6px 10px;margin-bottom:5px"><span style="font-size:12.5px">'+esc(a.nombre||a.correo)+'</span><button onclick="window.__cpQuitarAprobadorCompras('+i+')" style="background:none;border:none;color:#E23B2E;cursor:pointer;font-size:12px">Quitar</button></div>';
       }).join('') || '<p style="font-size:12px;color:#94a3b8">Sin aprobadores de Compras todavía.</p>';
+      // ── Directores: su propio paso "Jefe de área" se autoaprueba solo al
+      //    crear la requisición (no tienen jefe arriba de ellos). ──
+      var listaDirectores = (cfg.directores||[]).map(function(a,i){
+        return '<div style="display:flex;justify-content:space-between;align-items:center;background:#F8FAFD;border-radius:8px;padding:6px 10px;margin-bottom:5px"><span style="font-size:12.5px">'+esc(a.nombre||a.correo)+'</span><button onclick="window.__cpQuitarDirector('+i+')" style="background:none;border:none;color:#E23B2E;cursor:pointer;font-size:12px">Quitar</button></div>';
+      }).join('') || '<p style="font-size:12px;color:#94a3b8">Sin directores configurados todavía.</p>';
+      // ── Facultados: pueden autorizar ellos mismos la generación de la OC
+      //    cuando el monto cotizado no rebasa su tope — si lo rebasa, se le
+      //    pide autorización a un director. ──
+      var listaFacultados = (cfg.facultados||[]).map(function(a,i){
+        return '<div style="display:flex;justify-content:space-between;align-items:center;background:#F8FAFD;border-radius:8px;padding:6px 10px;margin-bottom:5px"><span style="font-size:12.5px">'+esc(a.nombre||a.correo)+' · hasta $'+esc(a.tope)+'</span><button onclick="window.__cpQuitarFacultado('+i+')" style="background:none;border:none;color:#E23B2E;cursor:pointer;font-size:12px">Quitar</button></div>';
+      }).join('') || '<p style="font-size:12px;color:#94a3b8">Sin facultados configurados todavía.</p>';
       ov.innerHTML =
         '<div style="background:#fff;border-radius:14px;max-width:560px;width:100%;max-height:88vh;overflow-y:auto;padding:22px">' +
           '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><h3 style="margin:0;font-size:16px">Configurar flujo de autorización</h3><button onclick="document.getElementById(\'cp-config-overlay\').remove()" style="background:#F1F5F9;border:none;border-radius:8px;width:28px;height:28px;cursor:pointer">✕</button></div>' +
@@ -289,6 +348,14 @@
           '<p style="font-size:11px;color:#94a3b8;margin:0 0 10px">Quien puede autorizar el paso final "Compras" — puede ser más de uno.</p>' +
           '<div id="cp-cfg-aprobadores-list" style="margin-bottom:8px">'+listaAprobadores+'</div>' +
           '<div style="display:flex;gap:6px;margin-bottom:18px"><select id="cp-cfg-nuevo-aprobador" style="flex:1;padding:7px;border:1px solid #E2E8F0;border-radius:7px;font-size:12px"><option value="">Elegir colaborador…</option>'+opcionesColab+'</select><button onclick="window.__cpAgregarAprobadorCompras()" style="padding:7px 14px;background:#0A1628;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">+ Agregar</button></div>' +
+          '<p style="font-size:11.5px;color:#5C7089;margin:0 0 6px;font-weight:700">Directores</p>' +
+          '<p style="font-size:11px;color:#94a3b8;margin:0 0 10px">Cuando ELLOS son quien solicita, su propio paso "Jefe de área" se autoaprueba solo — no tienen a quién pedirle permiso. También son quienes autorizan cuando una compra rebasa el tope de un facultado.</p>' +
+          '<div id="cp-cfg-directores-list" style="margin-bottom:8px">'+listaDirectores+'</div>' +
+          '<div style="display:flex;gap:6px;margin-bottom:18px"><select id="cp-cfg-nuevo-director" style="flex:1;padding:7px;border:1px solid #E2E8F0;border-radius:7px;font-size:12px"><option value="">Elegir colaborador…</option>'+opcionesColab+'</select><button onclick="window.__cpAgregarDirector()" style="padding:7px 14px;background:#0A1628;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">+ Agregar</button></div>' +
+          '<p style="font-size:11.5px;color:#5C7089;margin:0 0 6px;font-weight:700">Facultados para autorizar compras (con tope)</p>' +
+          '<p style="font-size:11px;color:#94a3b8;margin:0 0 10px">Al elegir la cotización ganadora, si el monto no rebasa su tope generan la orden de compra ellos mismos; si lo rebasa, se le pide autorización a un director.</p>' +
+          '<div id="cp-cfg-facultados-list" style="margin-bottom:8px">'+listaFacultados+'</div>' +
+          '<div style="display:flex;gap:6px;margin-bottom:18px"><select id="cp-cfg-nuevo-facultado" style="flex:1;padding:7px;border:1px solid #E2E8F0;border-radius:7px;font-size:12px"><option value="">Elegir colaborador…</option>'+opcionesColab+'</select><input id="cp-cfg-nuevo-tope" type="number" placeholder="Tope $" value="12000" style="width:90px;padding:7px;border:1px solid #E2E8F0;border-radius:7px;font-size:12px"><button onclick="window.__cpAgregarFacultado()" style="padding:7px 14px;background:#0A1628;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">+ Agregar</button></div>' +
           '<button onclick="window.__cpGuardarConfigFlujo()" style="width:100%;padding:11px;background:#12A150;color:#fff;border:none;border-radius:9px;font-weight:700;cursor:pointer">Guardar configuración</button>' +
           '<div id="cp-cfg-msg" style="font-size:11.5px;margin-top:8px;text-align:center"></div>' +
         '</div>';
@@ -307,6 +374,37 @@
   };
   window.__cpQuitarAprobadorCompras = function(i){
     _configFlujoCache.aprobadoresCompras.splice(i,1);
+    document.getElementById('cp-config-overlay').remove();
+    window.__cpAbrirConfigFlujo();
+  };
+  window.__cpAgregarDirector = function(){
+    var sel = document.getElementById('cp-cfg-nuevo-director');
+    var correo = sel.value; if(!correo) return;
+    var col = (_colaboradoresCache||[]).find(function(c){ return (c.correo||c.id)===correo; });
+    _configFlujoCache.directores = _configFlujoCache.directores || [];
+    if(_configFlujoCache.directores.some(function(a){ return a.correo===correo; })) return;
+    _configFlujoCache.directores.push({correo:correo.toLowerCase().trim(), nombre: col?col.nombre:correo});
+    document.getElementById('cp-config-overlay').remove();
+    window.__cpAbrirConfigFlujo();
+  };
+  window.__cpQuitarDirector = function(i){
+    _configFlujoCache.directores.splice(i,1);
+    document.getElementById('cp-config-overlay').remove();
+    window.__cpAbrirConfigFlujo();
+  };
+  window.__cpAgregarFacultado = function(){
+    var sel = document.getElementById('cp-cfg-nuevo-facultado');
+    var correo = sel.value; if(!correo) return;
+    var tope = Number(document.getElementById('cp-cfg-nuevo-tope').value)||12000;
+    var col = (_colaboradoresCache||[]).find(function(c){ return (c.correo||c.id)===correo; });
+    _configFlujoCache.facultados = _configFlujoCache.facultados || [];
+    if(_configFlujoCache.facultados.some(function(a){ return a.correo===correo; })) return;
+    _configFlujoCache.facultados.push({correo:correo.toLowerCase().trim(), nombre: col?col.nombre:correo, tope:tope});
+    document.getElementById('cp-config-overlay').remove();
+    window.__cpAbrirConfigFlujo();
+  };
+  window.__cpQuitarFacultado = function(i){
+    _configFlujoCache.facultados.splice(i,1);
     document.getElementById('cp-config-overlay').remove();
     window.__cpAbrirConfigFlujo();
   };
@@ -360,6 +458,7 @@
           '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
           '<button onclick="window.__cpAbrirFirmasPendientes()" style="padding:9px 14px;border-radius:9px;border:1px solid #EEF2F7;background:#fff;color:#0A1628;font-size:11.5px;font-weight:700;cursor:pointer">🖊 Firmas pendientes</button>' +
           '<button onclick="window.__cpAbrirConfigFlujo()" style="padding:9px 14px;border-radius:9px;border:1px solid #EEF2F7;background:#fff;color:#0A1628;font-size:11.5px;font-weight:700;cursor:pointer">⚙ Configurar flujo</button>' +
+          '<button onclick="window.__cpAbrirPapelera()" style="padding:9px 14px;border-radius:9px;border:1px solid #EEF2F7;background:#fff;color:#0A1628;font-size:11.5px;font-weight:700;cursor:pointer">🗑 Papelera</button>' +
           '<button onclick="window.__cpAbrirBuscador()" style="padding:9px 14px;border-radius:9px;border:1px solid #EEF2F7;background:#fff;color:#0A1628;font-size:11.5px;font-weight:700;cursor:pointer">🔍 Buscar</button>' +
           '<button onclick="window.__cpExportarAspel()" style="padding:9px 14px;border-radius:9px;border:1px solid #EEF2F7;background:#fff;color:#0A1628;font-size:11.5px;font-weight:700;cursor:pointer">Exportar Aspel</button>' +
           '</div>' +
@@ -503,7 +602,9 @@
     cargarFirestore().then(function(fs){
       var q = fs.query(fs.collection(window.db,'requisiciones_compra'), fs.orderBy('createdAt','desc'));
       _unsub = fs.onSnapshot(q, function(snap){
-        docs = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+        var todos = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+        docs = todos.filter(function(d){ return !d.eliminada; });
+        docsEliminados = todos.filter(function(d){ return d.eliminada; });
         renderKPIs();
         renderBoard();
         if(detalleId) window.__cpAbrirDetalle(detalleId);
@@ -591,7 +692,9 @@
     html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">';
     html += '<div><h2 style="font-size:18px;margin:0">'+esc(d.folio||d.id)+' · '+esc(d.empresa||'—')+'</h2>';
     html += '<p style="font-size:12px;color:#5C7089;margin:4px 0 0">'+esc(nombrePorCorreo(d.solicitante)||'—')+' · '+esc(d.origen||'—')+'</p></div>';
-    html += '<button onclick="window.__cpCerrarDetalle()" style="background:#F1F5F9;border:none;border-radius:8px;width:30px;height:30px;cursor:pointer">✕</button></div>';
+    html += '<div style="display:flex;gap:6px;flex-shrink:0">';
+    html += '<button onclick="window.__cpEliminarRequisicion(\''+d.id+'\')" title="Mover a la papelera" style="background:#FEF2F2;border:none;border-radius:8px;width:30px;height:30px;cursor:pointer;color:#E23B2E">🗑</button>';
+    html += '<button onclick="window.__cpCerrarDetalle()" style="background:#F1F5F9;border:none;border-radius:8px;width:30px;height:30px;cursor:pointer">✕</button></div></div>';
 
     // ── Barra de progreso general (5 etapas del documento completo) ──
     var ETAPAS_CP = [
@@ -693,6 +796,15 @@
       htmlIzq += '<label style="padding:8px 12px;border:1px solid #E2E8F0;border-radius:8px;font-size:11.5px;cursor:pointer;background:#fff">Adjuntar<input id="cp-cot-file" type="file" accept="image/*,application/pdf" style="display:none"></label></div>';
       htmlIzq += '<button onclick="window.__cpAgregarCotizacion(\''+d.id+'\')" style="width:100%;padding:9px;border:1.5px dashed #E2E8F0;background:#fff;color:#1473E6;border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:8px">+ Agregar cotización</button>';
       htmlIzq += '<button onclick="window.__cpEnviarDirectoACompra(\''+d.id+'\')" style="width:100%;padding:10px;background:#12A150;color:#fff;border:none;border-radius:9px;font-size:12.5px;font-weight:700;cursor:pointer;margin-bottom:12px">✓ Enviar directo a compra (genera OC)</button>';
+      // Monto por arriba del tope del facultado — esperando a que un director
+      // lo autorice. Solo un director ve el botón de autorizar; a los demás
+      // les avisamos que está en espera.
+      if(d.pendienteAutorizacionMonto){
+        var esDirector = ((_configFlujoCache&&_configFlujoCache.directores)||[]).some(function(x){ return x.correo===(_cpMiCorreo()||'').toLowerCase().trim(); });
+        htmlIzq += '<div style="background:#FFF7ED;border-radius:9px;padding:10px 12px;font-size:12px;color:#7C2D12;margin-bottom:10px">Monto de $'+esc(d.pendienteAutorizacionMonto.monto)+' con '+esc(d.pendienteAutorizacionMonto.proveedor)+' rebasa el tope del facultado — necesita autorización de un director.' +
+          (esDirector ? '<button onclick="window.__cpAutorizarMontoYGenerarOC(\''+d.id+'\')" style="display:block;width:100%;margin-top:8px;padding:9px;background:#0A1628;color:#fff;border:none;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer">Autorizar y generar OC</button>' : '') +
+        '</div>';
+      }
     }
 
     // ══ COLUMNA DERECHA — resumen fijo (como el "Payment Summary" de referencia) ══
@@ -712,6 +824,7 @@
     htmlDer += '</div>';
     if(d.estatus==='orden_generada'){
       htmlDer += '<button onclick="window.__cpMarcarRecibida(\''+d.id+'\')" style="width:100%;margin-top:12px;padding:11px;background:#12A150;color:#fff;border:none;border-radius:9px;font-weight:600;cursor:pointer;font-size:12.5px">Marcar como recibida</button>';
+      htmlDer += '<button onclick="window.__cpAvisarWhatsApp(\''+d.id+'\')" style="width:100%;margin-top:8px;padding:10px;background:#25D366;color:#fff;border:none;border-radius:9px;font-weight:600;cursor:pointer;font-size:12px">💬 Avisar por WhatsApp</button>';
     }
     if(d.estatus==='orden_generada' || d.estatus==='recibida'){
       htmlDer += '<button onclick="window.__cpDescargarOC(\''+d.id+'\')" style="width:100%;margin-top:8px;padding:11px;background:#fff;color:#0A1628;border:1px solid #E2E8F0;border-radius:9px;font-weight:600;cursor:pointer;font-size:12.5px">Descargar orden de compra (PDF)</button>';
@@ -913,26 +1026,71 @@
     document.body.appendChild(ov);
   }
 
+  // Correo de quien tiene la sesión abierta ahora mismo.
+  function _cpMiCorreo(){ return window.auth && window.auth.currentUser ? window.auth.currentUser.email : ''; }
+  // ¿Puede este correo generar la OC él mismo para este monto, sin pedirle
+  // autorización a un director? Sí si está en 'facultados' y el monto no
+  // rebasa su tope, o si es un director (sin tope — puede lo que sea).
+  function _cpPuedeGenerarOC(monto, correo){
+    var cfg = _configFlujoCache || {};
+    correo = (correo||'').toLowerCase().trim();
+    if((cfg.directores||[]).some(function(d){ return d.correo===correo; })) return true;
+    var fac = (cfg.facultados||[]).find(function(f){ return f.correo===correo; });
+    return !!(fac && Number(monto) <= Number(fac.tope));
+  }
+  // Genera la orden de compra de verdad — reusado tanto por el camino directo
+  // (facultado dentro de su tope) como por el de autorización de un director.
+  function _cpGenerarOC(fs, id, ganadora){
+    var ocFolio='OC-'+String(Date.now()).slice(-6);
+    return fs.updateDoc(fs.doc(window.db,'requisiciones_compra',id), {
+      estatus:'orden_generada', cotizacionGanadora:ganadora, ocFolio:ocFolio,
+      pendienteAutorizacionMonto:null,
+    }).then(function(){
+      toast('Orden de compra generada');
+      var d = docs.find(function(x){ return x.id===id; });
+      if(d) sincronizarCuentaPorPagar(Object.assign({},d,{estatus:'orden_generada',cotizacionGanadora:ganadora,ocFolio:ocFolio}), 'orden_generada');
+      _cpMostrarExito(ocFolio, id);
+    });
+  }
+  // Deja la requisición marcada como "esperando a un director" y les avisa —
+  // no genera la OC todavía, eso lo hace __cpAutorizarMontoYGenerarOC.
+  function _cpPedirAutorizacionMonto(fs, id, ganadora){
+    var cfg = _configFlujoCache || {};
+    var pendiente = Object.assign({}, ganadora, {
+      solicitadaPor: _cpMiCorreo(), solicitadaEn: new Date().toISOString(),
+    });
+    return fs.updateDoc(fs.doc(window.db,'requisiciones_compra',id), {pendienteAutorizacionMonto:pendiente}).then(function(){
+      toast('El monto rebasa tu tope — se pidió autorización a un director');
+      (cfg.directores||[]).forEach(function(dir){
+        if(!dir.correo) return;
+        fs.addDoc(fs.collection(window.db,'flotilla_notificaciones'), {
+          para:dir.correo.toLowerCase().trim(), tipo:'requisicion_autorizar_monto',
+          mensaje:'Requisición '+(ganadora.folio||id)+' necesita tu autorización — monto $'+ganadora.monto,
+          link:'firmar.html?id='+id,
+          leido:false, creadaEn:new Date().toISOString(),
+        }).catch(function(e){ console.warn('[compras] no se pudo notificar al director', e); });
+      });
+      var d = docs.find(function(x){ return x.id===id; });
+      if(d) d.pendienteAutorizacionMonto = pendiente;
+    });
+  }
   window.__cpElegirGanadora = function(id,cotId){
     cargarFirestore().then(function(fs){
-      fs.getDoc(fs.doc(window.db,'requisiciones_compra',id,'cotizaciones',cotId)).then(function(snap){
-        if(!snap.exists()) return;
+      Promise.all([fs.getDoc(fs.doc(window.db,'requisiciones_compra',id,'cotizaciones',cotId)), cargarConfigFlujo()]).then(function(res){
+        var snap = res[0]; if(!snap.exists()) return;
         var c=snap.data();
-        var cotizacionGanadora={proveedor:c.proveedor,monto:c.monto,cotizacionId:cotId};
-        var ocFolio='OC-'+String(Date.now()).slice(-6);
-        fs.updateDoc(fs.doc(window.db,'requisiciones_compra',id), {
-          estatus:'orden_generada', cotizacionGanadora:cotizacionGanadora, ocFolio:ocFolio,
-        }).then(function(){
-          toast('Orden de compra generada');
-          var d = docs.find(function(x){ return x.id===id; });
-          if(d) sincronizarCuentaPorPagar(Object.assign({},d,{estatus:'orden_generada',cotizacionGanadora:cotizacionGanadora,ocFolio:ocFolio}), 'orden_generada');
-          _cpMostrarExito(ocFolio, id);
-        });
+        var ganadora={proveedor:c.proveedor,monto:c.monto,cotizacionId:cotId};
+        if(_cpPuedeGenerarOC(c.monto, _cpMiCorreo())){
+          _cpGenerarOC(fs, id, ganadora);
+        } else {
+          _cpPedirAutorizacionMonto(fs, id, ganadora);
+        }
       });
     });
   };
-  // Atajo: guarda la cotización, la marca ganadora y descarga la OC en un
-  // solo clic — sin pasar por la lista intermedia de "elegir ganadora".
+  // Atajo: guarda la cotización, la marca ganadora y (si el monto está
+  // dentro del tope de quien la sube) descarga la OC en un solo clic — sin
+  // pasar por la lista intermedia de "elegir ganadora".
   window.__cpEnviarDirectoACompra = function(id){
     var proveedor=document.getElementById('cp-cot-proveedor').value.trim();
     var monto=document.getElementById('cp-cot-monto').value.trim();
@@ -943,23 +1101,28 @@
       var r=new FileReader(); r.onload=function(){ res(r.result); }; r.readAsDataURL(fileInput.files[0]);
     }) : Promise.resolve(null);
     leer.then(function(archivoBase64){
-      cargarFirestore().then(function(fs){
+      Promise.all([cargarFirestore(), cargarConfigFlujo()]).then(function(res){
+        var fs = res[0];
         fs.addDoc(fs.collection(window.db,'requisiciones_compra',id,'cotizaciones'), {
           proveedor:proveedor, monto:Number(monto), archivoBase64:archivoBase64,
           creadaEn:new Date().toISOString(), porUid: window.auth&&window.auth.currentUser?window.auth.currentUser.uid:null,
         }).then(function(cotRef){
-          var ocFolio='OC-'+String(Date.now()).slice(-6);
-          var cotizacionGanadora={proveedor:proveedor,monto:Number(monto),cotizacionId:cotRef.id};
-          fs.updateDoc(fs.doc(window.db,'requisiciones_compra',id), {
-            estatus:'orden_generada', cotizacionGanadora:cotizacionGanadora, ocFolio:ocFolio,
-          }).then(function(){
-            var dActualizado = Object.assign({}, d, {estatus:'orden_generada', cotizacionGanadora:cotizacionGanadora, ocFolio:ocFolio});
-            sincronizarCuentaPorPagar(dActualizado, 'orden_generada');
-            _cpMostrarExito(ocFolio, id);
-          });
+          var ganadora={proveedor:proveedor,monto:Number(monto),cotizacionId:cotRef.id};
+          if(_cpPuedeGenerarOC(Number(monto), _cpMiCorreo())){
+            _cpGenerarOC(fs, id, ganadora);
+          } else {
+            _cpPedirAutorizacionMonto(fs, id, ganadora);
+          }
         });
       });
     });
+  };
+  // El director hace clic para autorizar una OC que rebasó el tope de un
+  // facultado — ahí sí se genera la orden de compra.
+  window.__cpAutorizarMontoYGenerarOC = function(id){
+    var d = docs.find(function(x){ return x.id===id; }); if(!d || !d.pendienteAutorizacionMonto) return;
+    var ganadora = {proveedor:d.pendienteAutorizacionMonto.proveedor, monto:d.pendienteAutorizacionMonto.monto, cotizacionId:d.pendienteAutorizacionMonto.cotizacionId};
+    cargarFirestore().then(function(fs){ _cpGenerarOC(fs, id, ganadora); });
   };
   // ── PUENTE COMPRAS → PAGOS ──────────────────────────────────────
   // Colección 'pagos_cuentas_por_pagar' — un doc por requisición (id =
@@ -994,8 +1157,25 @@
         toast('Marcada como recibida');
         var d = docs.find(function(x){ return x.id===id; });
         if(d) sincronizarCuentaPorPagar(Object.assign({},d,{estatus:'recibida'}), 'recibida');
+        // Aviso automático al solicitante — siempre por dentro de la app (no
+        // depende de que tenga WhatsApp Desktop ni de guardar su teléfono).
+        if(d && d.solicitanteEmail){
+          fs.addDoc(fs.collection(window.db,'flotilla_notificaciones'), {
+            para:(d.solicitanteEmail||'').toLowerCase().trim(), tipo:'requisicion_recibida',
+            mensaje:'Tu requisición '+(d.folio||id)+' ya fue recibida — el pedido está completo',
+            link:'', leido:false, creadaEn:new Date().toISOString(),
+          }).catch(function(e){ console.warn('[compras] no se pudo notificar recibida', e); });
+        }
       });
     });
+  };
+  // Botón manual — abre WhatsApp con el mensaje ya armado (no hay teléfono
+  // guardado del solicitante, así que se abre el selector de contacto de
+  // WhatsApp, mismo patrón que ya se usa para compartir la liga del kiosco).
+  window.__cpAvisarWhatsApp = function(id){
+    var d = docs.find(function(x){ return x.id===id; }); if(!d) return;
+    var texto = 'Tu requisición '+(d.folio||id)+' ya fue recibida — el pedido está completo. Gracias por tu paciencia.';
+    window.open('https://wa.me/?text='+encodeURIComponent(texto), '_blank');
   };
 
   // ── ORDEN DE COMPRA EN PDF ──────────────────────────────────────
