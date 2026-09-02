@@ -211,6 +211,10 @@ onAuthStateChanged(auth, user => {
     authReadyResolve();
     reiniciarIdleTimer();
     resolverMiPerfil();
+    // El canvas de firma se dimensiona con getBoundingClientRect(), que da 0x0
+    // mientras #app-content está oculto (antes de iniciar sesión) — hay que
+    // volver a ajustarlo justo cuando el formulario se hace visible.
+    setTimeout(ajustarCanvas, 60);
   } else {
     $('app-content').style.display = 'none';
     $('login-ov').style.display = 'flex';
