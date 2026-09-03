@@ -5581,7 +5581,7 @@ window.flResumenChkSemExcel=async function(semSel){
     await flCargarSheetJS();
     const datos=flDatosResumenChkSem(semSel);
     const filas=datos.map(d=>({
-      'ECO':d.eco,'Unidad':d.unidad,'Tipo':d.tipo,'Responsable':d.responsable,'Estatus':d.estatus,
+      'ECO':d.eco,'Unidad':d.unidad,'Tipo':d.tipo,'Responsable':flNombrePorCorreo(d.responsable),'Estatus':d.estatus,
       'Asignado sin cambios':d.asignadoSinCambios?'Sí':'No',
       '¿Hizo checklist?':d.hizoChecklist?'Sí':'No',
       'Técnico':d.tecnico,
