@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover, user-scalable=no">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Flotilla TC">
+  <meta name="theme-color" content="#0A1628">
+  <title>Flotilla · Tecnocontrol</title>
+
+  <!-- Ícono para pantalla de inicio (iOS y Android) -->
+  <link rel="apple-touch-icon" href="./icons/icon-192.png">
+  <link rel="manifest" href="./manifest-flotilla.json">
+  <link rel="stylesheet" href="CSS/flotilla-app.css">
+
+</head>
+<body>
+
+<!-- SPLASH SCREEN -->
+<div id="splash">
+  <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
+    <circle cx="28" cy="28" r="26" stroke="white" stroke-width="2.5"/>
+    <circle cx="28" cy="28" r="16" stroke="#3B82F6" stroke-width="2.5"/>
+    <circle cx="28" cy="28" r="6" fill="#3B82F6"/>
+  </svg>
+  <div id="splash-brand">TECNO<em>CONTROL</em></div>
+  <div id="splash-sub">FLOTILLA · APP TÉCNICOS</div>
+  <div id="splash-bar"><div id="splash-prog"></div></div>
+</div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<!-- jsPDF: usado por Solicitud de material y Requisición de compra (PDF generado en el dispositivo) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="material-pdf.js"></script>
+
+<script>
+// ── PROGRESO SPLASH ──
+let prog = 0;
+const bar = document.getElementById('splash-prog');
+const iv = setInterval(() => {
+  prog = Math.min(prog + Math.random() * 18, 85);
+  bar.style.width = prog + '%';
+}, 120);
+
+// ── FIREBASE CONFIG ──
+// IMPORTANTE: Reemplaza con tu configuración real de Firebase
+const firebaseConfig = {
+  apiKey: "AIzaSyBXh-P0oMtMiDjyz9PObuJ8DNfROlXvhLE",
+  authDomain: "tecnocontrol-1c42f.firebaseapp.com",
+  projectId: "tecnocontrol-1c42f",
+  storageBucket: "tecnocontrol-1c42f.firebasestorage.app",
+  messagingSenderId: "27642771956",
+  appId: "1:27642771956:web:54225af9e386afded8a1a1",
+  measurementId: "G-ZT5YDBJ9KR"
+};
+
+firebase.initializeApp(firebaseConfig);
+
+// Configuración optimizada para móvil
+const _db = firebase.firestore();
+_db.settings({
+  experimentalAutoDetectLongPolling: true, // detecta automáticamente el mejor método
+  merge: true
+});
+
+_db.enablePersistence({ synchronizeTabs: true }).catch(err => {
+  console.warn('[FLOTILLA-APP] Persistencia offline no disponible:', err.code || err.message);
+});
+
+const auth = firebase.auth();
+const db   = _db; // usar instancia con persistencia
+
+// Exponer globalmente para flotilla-movil.js
+window.auth = auth;
+window.db   = db;
+
+// Prueba de conexión inmediata
+window.addEventListener('load', async ()=>{
+  try{
+    const user = auth.currentUser;
+    if(user){
+      // Timeout de 10 segundos para detectar cuelgues
+      const timeout = new Promise((_,rej)=>setTimeout(()=>rej(new Error('TIMEOUT: Firestore no respondió en 10s')),10000));
+      const query = db.collection('flotilla_vehiculos').limit(1).get();
+      await Promise.race([query, timeout]);
+      console.log('[FLOTILLA-APP] Conexión Firestore OK');
+    }
+  }catch(e){
+    console.error('[FLOTILLA-APP] Error Firestore:', e.message);
+  }
+});
+
+// Exponer firebase/firestore helpers que usa flotilla-movil.js
+window.fs = {
+  collection : (d, c)      => d.collection(c),
+  doc        : (d, c, id)  => d.collection(c).doc(id),
+  getDocs    : (q)         => q.get(),
+  addDoc     : (ref, data) => ref.add(data),
+  updateDoc  : (ref, data) => ref.update(data),
+  deleteDoc  : (ref)       => ref.delete(),
+  query      : (ref, ...constraints) => {
+    let q = ref;
+    for (const c of constraints) { q = c(q); }
+    return q;
+  },
+  where      : (field, op, val) => q => q.where(field, op, val),
+  orderBy    : (field, dir)     => q => q.orderBy(field, dir || 'asc'),
+  limit      : (n)              => q => q.limit(n),
+};
+</script>
+
+<!-- BANNER PWA INSTALAR -->
+<div id="pwa-banner">
+  <svg width="32" height="32" viewBox="0 0 56 56" fill="none" style="flex-shrink:0">
+    <circle cx="28" cy="28" r="26" stroke="white" stroke-width="2"/>
+    <circle cx="28" cy="28" r="16" stroke="#3B82F6" stroke-width="2"/>
+    <circle cx="28" cy="28" r="6" fill="#3B82F6"/>
+  </svg>
+  <p>Instala la app para usarla sin barra del navegador</p>
+  <button id="pwa-btn-install" onclick="pwaInstalar()">Instalar</button>
+  <button id="pwa-btn-close" onclick="document.getElementById('pwa-banner').classList.remove('show')">✕</button>
+</div>
+
+<!-- LOGIN PANTALLA (si no hay sesión) -->
+<div id="fl-login" style="display:none;position:fixed;inset:0;background:#0A1628;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:28px;z-index:1000">
+  <svg width="48" height="48" viewBox="0 0 56 56" fill="none" style="margin-bottom:20px">
+    <circle cx="28" cy="28" r="26" stroke="white" stroke-width="2.5"/>
+    <circle cx="28" cy="28" r="16" stroke="#3B82F6" stroke-width="2.5"/>
+    <circle cx="28" cy="28" r="6" fill="#3B82F6"/>
+  </svg>
+  <h1 style="font-family:-apple-system,'Plus Jakarta Sans',sans-serif;font-size:22px;font-weight:900;color:#fff;margin-bottom:6px;letter-spacing:-.3px">TECNO<span style="color:#3B82F6">CONTROL</span></h1>
+  <p style="font-size:13px;color:rgba(255,255,255,.45);margin-bottom:32px;letter-spacing:.3px">FLOTILLA · APP TÉCNICOS</p>
+
+  <div style="width:100%;max-width:340px">
+    <div style="margin-bottom:14px">
+      <label style="display:block;font-family:-apple-system,sans-serif;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:rgba(255,255,255,.4);margin-bottom:6px">Correo electrónico</label>
+      <input type="email" id="login-email" placeholder="tu@tecnocontrol.mx" autocomplete="email" inputmode="email"
+        style="width:100%;padding:14px 16px;border:1.5px solid rgba(255,255,255,.12);border-radius:12px;background:rgba(255,255,255,.07);color:#fff;font-size:15px;outline:none;font-family:-apple-system,sans-serif;-webkit-appearance:none">
+    </div>
+    <div style="margin-bottom:24px">
+      <label style="display:block;font-family:-apple-system,sans-serif;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:rgba(255,255,255,.4);margin-bottom:6px">Contraseña</label>
+      <input type="password" id="login-pass" placeholder="••••••••" autocomplete="current-password"
+        style="width:100%;padding:14px 16px;border:1.5px solid rgba(255,255,255,.12);border-radius:12px;background:rgba(255,255,255,.07);color:#fff;font-size:15px;outline:none;font-family:-apple-system,sans-serif;-webkit-appearance:none">
+    </div>
+    <button id="login-btn" onclick="doLogin()"
+      style="width:100%;padding:15px;background:#2563EB;color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:800;cursor:pointer;font-family:-apple-system,sans-serif;letter-spacing:.2px">
+      Iniciar sesión
+    </button>
+    <div id="login-err" style="display:none;margin-top:12px;background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);border-radius:9px;padding:10px 14px;color:#FCA5A5;font-size:13px;text-align:center;font-family:-apple-system,sans-serif"></div>
+  </div>
+</div>
+
+<!-- CONTENEDOR APP -->
+<div id="fl-movil-root" style="display:none;height:100vh"></div>
+
+<script>
+// ── DETECCIÓN DE SESIÓN ──
+// Cargar flotilla-movil.js dinámicamente DESPUÉS de que Firebase esté listo
+function cargarAppMovil(){
+  return new Promise((resolve)=>{
+    if(typeof initFlotillaMovil === 'function'){resolve();return;}
+    const script=document.createElement('script');
+    script.src='./flotilla-movil.js?v='+Date.now();
+    script.onload=()=>resolve();
+    script.onerror=()=>{console.error('Error cargando flotilla-movil.js');resolve();};
+    document.head.appendChild(script);
+  });
+}
+
+auth.onAuthStateChanged(async (user) => {
+  clearInterval(iv);
+  bar.style.width = '100%';
+
+  await new Promise(r => setTimeout(r, 300));
+  document.getElementById('splash').classList.add('hide');
+
+  if (user) {
+    // Hay sesión → cargar y mostrar app
+    document.getElementById('fl-login').style.display  = 'none';
+    document.getElementById('fl-movil-root').style.display = 'block';
+    // Asegurar que db y auth estén globales ANTES de cargar flotilla-movil.js
+    window.auth = auth;
+    window.db   = db;
+    await cargarAppMovil();
+    if (typeof initFlotillaMovil === 'function') initFlotillaMovil();
+  } else {
+    // Sin sesión → mostrar login
+    document.getElementById('fl-login').style.display  = 'flex';
+    document.getElementById('fl-movil-root').style.display = 'none';
+  }
+});
+
+// ── LOGIN ──
+async function doLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const pass  = document.getElementById('login-pass').value;
+  const btn   = document.getElementById('login-btn');
+  const err   = document.getElementById('login-err');
+  if (!email || !pass) { showErr('Ingresa tu correo y contraseña'); return; }
+  btn.textContent = 'Entrando…'; btn.disabled = true;
+  try {
+    await auth.signInWithEmailAndPassword(email, pass);
+    // onAuthStateChanged se encarga del resto
+  } catch (e) {
+    btn.textContent = 'Iniciar sesión'; btn.disabled = false;
+    const msgs = {
+      'auth/user-not-found'  : 'Usuario no encontrado',
+      'auth/wrong-password'  : 'Contraseña incorrecta',
+      'auth/invalid-email'   : 'Correo inválido',
+      'auth/too-many-requests': 'Demasiados intentos — espera un momento',
+    };
+    showErr(msgs[e.code] || 'Error al iniciar sesión');
+  }
+}
+
+function showErr(msg) {
+  const err = document.getElementById('login-err');
+  err.textContent = msg; err.style.display = 'block';
+  setTimeout(() => err.style.display = 'none', 4000);
+}
+
+// Enter para login
+document.getElementById('login-pass')?.addEventListener('keydown', e => {
+  if (e.key === 'Enter') doLogin();
+});
+
+// ── OCULTAR BARRA NAVEGADOR (scroll trick) ──
+function ocultarBarraNav(){
+  if(window.innerHeight < window.screen.height){
+    window.scrollTo(0,1);
+    setTimeout(()=>window.scrollTo(0,0),100);
+  }
+}
+window.addEventListener('load', ocultarBarraNav);
+window.addEventListener('orientationchange', ()=>setTimeout(ocultarBarraNav,300));
+
+// ── PWA INSTALL PROMPT ──
+let deferredPrompt=null;
+window.addEventListener('beforeinstallprompt',(e)=>{
+  e.preventDefault();
+  deferredPrompt=e;
+  // Mostrar banner después de 3 segundos
+  setTimeout(()=>{
+    if(!window.matchMedia('(display-mode: standalone)').matches){
+      document.getElementById('pwa-banner')?.classList.add('show');
+    }
+  },3000);
+});
+
+window.pwaInstalar=async function(){
+  if(!deferredPrompt)return;
+  deferredPrompt.prompt();
+  const {outcome}=await deferredPrompt.userChoice;
+  deferredPrompt=null;
+  document.getElementById('pwa-banner')?.classList.remove('show');
+};
+
+// Si ya está instalada como PWA, ocultar banner
+if(window.matchMedia('(display-mode: standalone)').matches){
+  document.getElementById('pwa-banner')?.remove();
+}
+
+// ── SERVICE WORKER ──
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw-flotilla.js').catch(() => {});
+}
+</script>
+
+<script>
+// ── PERMISO DE NOTIFICACIONES PUSH DEL NAVEGADOR ──
+// (El listado/historial de avisos vive en la pestaña "Avisos" de la app,
+// que lee la colección correcta 'flotilla_notificaciones'. Aquí solo se
+// pide el permiso del navegador para que esas notificaciones nativas
+// puedan aparecer aunque la app esté minimizada.)
+(function(){
+  window.auth?.onAuthStateChanged(user => {
+    if (user) {
+      // Pedir permiso de notificaciones al iniciar sesión
+      setTimeout(() => flNotifPedirPermiso(), 2000);
+    }
+  });
+
+  // Pedir permiso con UI amigable
+  window.flNotifPedirPermiso = async function() {
+    if (!('Notification' in window)) return;
+    if (Notification.permission === 'granted') return; // ya tiene permiso
+    if (Notification.permission === 'denied') return;  // ya rechazó, no insistir
+
+    // Mostrar banner amigable antes de pedir el permiso del sistema
+    const banner = document.createElement('div');
+    banner.id = 'fl-push-banner';
+    banner.style.cssText = `
+      position:fixed;bottom:0;left:0;right:0;z-index:2000;
+      background:#0A1628;padding:16px;
+      display:flex;align-items:center;gap:12px;
+      border-top:1px solid rgba(255,255,255,.1);
+      font-family:-apple-system,'Plus Jakarta Sans',sans-serif;
+      animation:slideUp .3s ease
+    `;
+    banner.innerHTML = `
+      <style>@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}</style>
+      <div style="width:40px;height:40px;border-radius:12px;background:rgba(59,130,246,.2);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" stroke-width="2" stroke-linecap="round">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+        </svg>
+      </div>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:700;color:#fff">Activar notificaciones</div>
+        <div style="font-size:11px;color:rgba(255,255,255,.5);margin-top:2px">Recibe avisos cuando tu solicitud cambie de estatus</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button onclick="document.getElementById('fl-push-banner').remove()" style="padding:8px 12px;background:rgba(255,255,255,.1);border:none;border-radius:8px;color:rgba(255,255,255,.6);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Ahora no</button>
+        <button onclick="flNotifActivar()" style="padding:8px 16px;background:#3B82F6;border:none;border-radius:8px;color:#fff;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit">Activar</button>
+      </div>
+    `;
+    document.body.appendChild(banner);
+  };
+
+  window.flNotifActivar = async function() {
+    document.getElementById('fl-push-banner')?.remove();
+    if (!('Notification' in window)) return;
+    const perm = await Notification.requestPermission();
+    if (perm === 'granted') {
+      // Confirmar con una notificación de prueba
+      const sw = navigator.serviceWorker?.controller;
+      if (sw) {
+        sw.postMessage({
+          type: 'SHOW_NOTIF',
+          title: '✅ Tecnocontrol · Flotilla',
+          body: 'Notificaciones activadas. Te avisaremos cuando tu solicitud cambie de estatus.',
+          tag: 'fl-notif-test',
+          notifTipo: 'cerrada',
+        });
+      } else {
+        try {
+          new Notification('✅ Tecnocontrol · Flotilla', {
+            body: 'Notificaciones activadas.',
+            icon: './icons/icon-192.png',
+          });
+        } catch(e) {}
+      }
+    }
+  };
+
+})();
+</script>
+
+</body>
+</html>

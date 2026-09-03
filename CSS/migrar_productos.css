@@ -1,0 +1,17 @@
+/* ══════════════════════════════════════════════════
+   CSS/migrar_productos.css — extraído de migrar_productos.html
+   
+   ══════════════════════════════════════════════════ */
+
+/* ── Bloque 1 ── */
+  body{font-family:sans-serif;padding:30px;background:#f8faff;}
+  h1{color:#1e293b;}
+  button{padding:14px 28px;background:#2563eb;color:white;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;margin:10px 4px;}
+  button:disabled{background:#94a3b8;cursor:not-allowed;}
+  button.red{background:#ef4444;}
+  #log{background:#1e293b;color:#a3e635;padding:20px;border-radius:10px;font-family:monospace;font-size:12px;height:400px;overflow-y:auto;margin-top:20px;white-space:pre-wrap;}
+  .progress{background:#e2e8f0;border-radius:10px;height:12px;margin:10px 0;}
+  .progress-bar{background:#2563eb;height:100%;border-radius:10px;transition:width 0.3s;}
+  .stat{display:inline-block;background:white;border:1px solid #e2e8f0;border-radius:10px;padding:12px 20px;margin:6px;text-align:center;}
+  .stat-num{font-size:28px;font-weight:800;color:#2563eb;}
+  .stat-label{font-size:11px;color:#64748b;text-transform:uppercase;}

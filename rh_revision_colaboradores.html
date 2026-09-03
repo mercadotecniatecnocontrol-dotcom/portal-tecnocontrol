@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Revisión de colaboradores sin correo</title>
+<style>
+  :root{
+    --navy:#0A1628; --blue:#2563EB; --blue-l:#EFF6FF;
+    --bg:#F1F4F9; --card:#fff; --border:#E8EDF5;
+    --text:#0A0F1E; --text2:#64748B; --text3:#94A3B8;
+    --green:#16A34A; --green-l:#F0FDF4;
+    --amber:#D97706; --amber-l:#FFFBEB;
+  }
+  *{box-sizing:border-box;font-family:-apple-system,'Inter',sans-serif;}
+  body{margin:0;background:var(--bg);color:var(--text);padding:28px;}
+  .wrap{max-width:900px;margin:0 auto;}
+  h1{font-size:19px;font-weight:800;margin-bottom:4px;}
+  .sub{font-size:12.5px;color:var(--text2);margin-bottom:20px;}
+  .stats{display:flex;gap:10px;margin-bottom:20px;}
+  .stat{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px 16px;}
+  .stat .v{font-size:18px;font-weight:900;}
+  .stat .l{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;}
+
+  .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px 18px;margin-bottom:14px;}
+  .members{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;}
+  .member{display:flex;align-items:center;gap:6px;background:var(--bg);border-radius:9px;padding:6px 10px;font-size:12px;}
+  .member label{display:flex;align-items:center;gap:6px;cursor:pointer;}
+  .depto-tag{font-size:9.5px;font-weight:700;color:var(--blue);background:var(--blue-l);padding:2px 7px;border-radius:99px;margin-left:4px;}
+
+  .suggest{background:var(--amber-l);border:1px solid #FDE68A;border-radius:10px;padding:9px 12px;font-size:12px;color:#92400E;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;}
+  .suggest button{white-space:nowrap;}
+
+  .row{display:flex;gap:8px;align-items:center;}
+  input[type=email]{flex:1;padding:9px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:12.5px;outline:none;}
+  input[type=email]:focus{border-color:var(--blue);}
+  button{border:none;border-radius:9px;padding:9px 14px;font-size:12px;font-weight:700;cursor:pointer;}
+  .btn-primary{background:var(--navy);color:#fff;}
+  .btn-ghost{background:var(--bg);color:var(--text2);}
+  .btn-suggest{background:var(--amber);color:#fff;}
+  button:disabled{opacity:.5;cursor:not-allowed;}
+
+  .actions{display:flex;gap:8px;margin-top:10px;}
+  .done{text-align:center;padding:40px;color:var(--text3);font-size:13px;}
+  .log{font-size:11px;color:var(--green);margin-top:6px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Revisión de colaboradores sin correo</h1>
+  <div class="sub">Agrupa posibles duplicados por nombre parecido y sugiere coincidencias contra colaboradores que ya tienen correo real. Nada se guarda hasta que tú decidas cada caso.</div>
+  <div class="stats">
+    <div class="stat"><div class="v" id="st-total">–</div><div class="l">Por revisar</div></div>
+    <div class="stat"><div class="v" id="st-clusters">–</div><div class="l">Grupos detectados</div></div>
+    <div class="stat"><div class="v" id="st-resueltos">0</div><div class="l">Resueltos esta sesión</div></div>
+  </div>
+  <div id="lista"><div class="done">Cargando…</div></div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getFirestore, collection, getDocs, doc, getDoc, setDoc, deleteDoc, updateDoc, serverTimestamp }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+// Misma config pública que usa el resto del portal (index.html / kiosco)
+const config = { apiKey:"AIzaSyBXh-P0oMtMiDjyz9PObuJ8DNfROlXvhLE", authDomain:"tecnocontrol-1c42f.firebaseapp.com", projectId:"tecnocontrol-1c42f", storageBucket:"tecnocontrol-1c42f.firebasestorage.app", appId:"1:27642771956:web:54225af9e386afded8a1a1" };
+const app = initializeApp(config);
+const db = getFirestore(app);
+const auth = getAuth(app);
+
+const COL = "colaboradores";
+let resueltos = 0;
+
+function normalizar(s){ return (s||"").trim().toLowerCase(); }
+function tokens(nombre){
+  const s = normalizar(nombre).normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+  return new Set(s.split(/[^a-z0-9]+/).filter(t=>t.length>1));
+}
+function similitud(a,b){
+  const ta=tokens(a), tb=tokens(b);
+  if(ta.size===0||tb.size===0) return 0;
+  let inter=0;
+  ta.forEach(t=>{ if(tb.has(t)) inter++; });
+  return inter/Math.max(ta.size,tb.size, ta.size+tb.size-inter);
+}
+
+async function cargar(){
+  const snap = await getDocs(collection(db, COL));
+  const todos = snap.docs.map(d=>({id:d.id, ...d.data()}));
+  const sinCorreo = todos.filter(d=>d.sinCorreo && !d.revisado);
+  const conCorreo = todos.filter(d=>!d.sinCorreo);
+
+  // Union-find para agrupar sinCorreo entre sí
+  const parent = {};
+  sinCorreo.forEach(d=>parent[d.id]=d.id);
+  function find(x){ while(parent[x]!==x){ x=parent[x]; } return x; }
+  function unir(a,b){ const ra=find(a), rb=find(b); if(ra!==rb) parent[ra]=rb; }
+
+  for(let i=0;i<sinCorreo.length;i++){
+    for(let j=i+1;j<sinCorreo.length;j++){
+      if(similitud(sinCorreo[i].nombre, sinCorreo[j].nombre) >= 0.5){
+        unir(sinCorreo[i].id, sinCorreo[j].id);
+      }
+    }
+  }
+
+  const grupos = {};
+  sinCorreo.forEach(d=>{
+    const r = find(d.id);
+    (grupos[r] = grupos[r]||[]).push(d);
+  });
+
+  // Para cada grupo, buscar mejor sugerencia contra conCorreo
+  const clusters = Object.values(grupos).map(miembros=>{
+    let mejor=null, mejorScore=0;
+    miembros.forEach(m=>{
+      conCorreo.forEach(c=>{
+        const sc = similitud(m.nombre, c.nombre);
+        if(sc>mejorScore){ mejorScore=sc; mejor=c; }
+      });
+    });
+    return { miembros, sugerencia: mejorScore>=0.5 ? mejor : null };
+  });
+
+  document.getElementById("st-total").textContent = sinCorreo.length;
+  document.getElementById("st-clusters").textContent = clusters.length;
+
+  render(clusters);
+}
+
+function render(clusters){
+  const cont = document.getElementById("lista");
+  if(clusters.length===0){
+    cont.innerHTML = '<div class="done">Todo revisado 🎉</div>';
+    return;
+  }
+  cont.innerHTML = "";
+  clusters.forEach((cl, idx)=> cont.appendChild(renderCluster(cl, idx)));
+}
+
+function renderCluster(cl, idx){
+  const card = document.createElement("div");
+  card.className = "card";
+  const cid = "cl"+idx;
+
+  const membersHtml = cl.miembros.map((m,i)=>{
+    return `<div class="member"><label>
+      <input type="checkbox" data-id="${m.id}" checked>
+      ${m.nombre||"(sin nombre)"} ${m.departamento?`<span class="depto-tag">${m.departamento}</span>`:""}
+    </label></div>`;
+  }).join("");
+
+  const suggestHtml = cl.sugerencia ? `
+    <div class="suggest">
+      <span>¿Es la misma persona que <strong>${cl.sugerencia.nombre}</strong> (${cl.sugerencia.correo})?</span>
+      <button class="btn-suggest" data-action="usar-sugerencia">Sí, usar ese correo</button>
+    </div>` : "";
+
+  card.innerHTML = `
+    <div class="members">${membersHtml}</div>
+    ${suggestHtml}
+    <div class="row">
+      <input type="email" placeholder="correo@tecnocontrol.com.mx" class="input-correo">
+      <button class="btn-primary" data-action="fusionar">Fusionar seleccionados con este correo</button>
+    </div>
+    <div class="actions">
+      <button class="btn-ghost" data-action="omitir">Omitir por ahora</button>
+    </div>
+    <div class="log"></div>
+  `;
+
+  const inputCorreo = card.querySelector(".input-correo");
+  const log = card.querySelector(".log");
+
+  if(cl.sugerencia){
+    card.querySelector('[data-action="usar-sugerencia"]').onclick = ()=>{
+      inputCorreo.value = cl.sugerencia.correo;
+    };
+  }
+
+  card.querySelector('[data-action="fusionar"]').onclick = async ()=>{
+    const correo = normalizar(inputCorreo.value);
+    if(!correo || !correo.includes("@")){ alert("Escribe un correo válido primero."); return; }
+    const seleccionados = [...card.querySelectorAll('input[type=checkbox]:checked')].map(c=>c.dataset.id);
+    if(seleccionados.length===0){ alert("Selecciona al menos uno."); return; }
+
+    card.querySelectorAll("button").forEach(b=>b.disabled=true);
+    log.textContent = "Fusionando…";
+
+    try {
+      const refDestino = doc(db, "colaboradores", correo);
+      const existente = await getDoc(refDestino);
+      let combinado = existente.exists() ? existente.data() : {};
+
+      for(const id of seleccionados){
+        const refOrigen = doc(db, "colaboradores", id);
+        const snapOrigen = await getDoc(refOrigen);
+        if(snapOrigen.exists()){
+          const d = snapOrigen.data();
+          combinado = { ...d, ...combinado }; // lo ya existente en destino gana
+        }
+      }
+      combinado.colaboradorId = correo;
+      combinado.correo = correo;
+      combinado.sinCorreo = false;
+      combinado.actualizadoEn = serverTimestamp();
+
+      await setDoc(refDestino, combinado, { merge: true });
+      for(const id of seleccionados){
+        if(id !== correo) await deleteDoc(doc(db, "colaboradores", id));
+      }
+      resueltos++;
+      document.getElementById("st-resueltos").textContent = resueltos;
+      log.textContent = "✔ Fusionado con " + correo;
+      setTimeout(()=>card.remove(), 600);
+    } catch(err){
+      log.textContent = "Error: " + err.message;
+      card.querySelectorAll("button").forEach(b=>b.disabled=false);
+    }
+  };
+
+  card.querySelector('[data-action="omitir"]').onclick = async ()=>{
+    card.querySelectorAll("button").forEach(b=>b.disabled=true);
+    log.textContent = "Omitiendo…";
+    try {
+      for(const m of cl.miembros){
+        await updateDoc(doc(db, "colaboradores", m.id), { revisado: true, actualizadoEn: serverTimestamp() });
+      }
+      log.textContent = "Omitido — no volverá a aparecer.";
+      setTimeout(()=>card.remove(), 500);
+    } catch(err){
+      log.textContent = "Error: " + err.message;
+      card.querySelectorAll("button").forEach(b=>b.disabled=false);
+    }
+  };
+
+  return card;
+}
+
+// Esperar a que Firebase restaure la sesión (compartida con el portal, mismo dominio)
+// antes de consultar Firestore — si se dispara la consulta antes, sale sin permisos.
+onAuthStateChanged(auth, (user) => {
+  if (!user) {
+    document.getElementById("lista").innerHTML =
+      '<div class="done">No hay una sesión activa.<br><br>' +
+      'Abre <strong>el portal principal</strong> en otra pestaña, inicia sesión ahí, ' +
+      'y luego recarga esta página (F5).</div>';
+    return;
+  }
+  cargar();
+});
+</script>
+</body>
+</html>

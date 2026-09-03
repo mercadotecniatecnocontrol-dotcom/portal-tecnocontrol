@@ -1,0 +1,101 @@
+/* ══════════════════════════════════════════════════
+   CSS/solicitud-material.css — extraído de solicitud-material.html
+   
+   ══════════════════════════════════════════════════ */
+
+/* ── Bloque 1 ── */
+  :root{
+    --azul:#1473E6; --teal:#0e7490; --teal2:#0891b2; --morado:#8B4FD6;
+    --ink:#0f172a; --mute:#64748b; --line:#e6ebf2; --bg:#eef2f7; --ok:#12A150; --rojo:#E23B3B;
+    --rey1:#1e3a8a; --rey2:#1e40af; --rey3:#1d4ed8;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;background:var(--bg);color:var(--ink);font-family:'Segoe UI',system-ui,-apple-system,sans-serif}
+  .hero{background:linear-gradient(135deg,var(--rey1) 0%,var(--rey2) 55%,var(--rey3) 100%);padding:38px 20px 58px;text-align:center;color:#fff;position:relative}
+  .hero-logo{height:54px;width:auto;object-fit:contain;margin-bottom:16px;filter:drop-shadow(0 6px 14px rgba(0,0,0,.28)) brightness(0) invert(1)}
+  .hero h1{margin:0;font-size:24px;font-weight:800;letter-spacing:.2px}
+  .hero p{margin:5px 0 16px;font-size:12.5px;color:rgba(255,255,255,.8);font-weight:700;letter-spacing:1.6px;text-transform:uppercase}
+  .wrap{max-width:920px;margin:-30px auto 0;padding:0 18px 60px;position:relative}
+  .card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:22px;box-shadow:0 4px 18px rgba(16,24,40,.05);margin-bottom:18px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:640px){.grid{grid-template-columns:1fr}}
+  label{display:block;font-size:12px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:var(--mute);margin-bottom:7px}
+  input,select,textarea{width:100%;font-size:17px;padding:14px 15px;border:2px solid var(--line);border-radius:12px;background:#fff;color:var(--ink);font-family:inherit;outline:none;transition:border-color .15s}
+  input:focus,select:focus,textarea:focus{border-color:var(--teal2)}
+  textarea{resize:vertical;min-height:70px}
+  .full{grid-column:1/-1}
+  .sec-title{font-size:14px;font-weight:800;color:var(--ink);margin:4px 0 14px;display:flex;align-items:center;gap:9px}
+  .sec-title .n{width:24px;height:24px;border-radius:8px;background:var(--teal);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:13px}
+
+  /* Buscador + grid de productos (sin categorías) */
+  .search-wrap{position:relative;margin-bottom:6px}
+  .search-wrap svg{position:absolute;left:16px;top:50%;transform:translateY(-50%);pointer-events:none}
+  .search-wrap input{padding-left:46px}
+  .prod-hint{font-size:13px;color:var(--mute);font-weight:600;padding:14px 2px;text-align:center}
+  .prod-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;margin:14px 0}
+  .prod-card{border:2px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px;background:#fff;transition:border-color .15s}
+  .prod-card.in-cart{border-color:var(--rey3);background:#f5f8ff}
+  .prod-card .icn{width:64px;height:64px;border-radius:11px;background:#eef2f7;display:flex;align-items:center;justify-content:center;color:var(--rey2);overflow:hidden;flex:0 0 auto}
+  .prod-card .icn svg{width:26px;height:26px}
+  .prod-card .icn img{width:100%;height:100%;object-fit:cover}
+  .prod-card .d{font-size:14px;font-weight:700;color:var(--ink);line-height:1.3;min-height:36px}
+  .prod-card .k{font-size:11.5px;color:var(--mute);font-weight:700}
+  .prod-add{margin-top:auto;background:var(--rey3);border:none;color:#fff;font-weight:800;font-size:14px;padding:10px;border-radius:10px;cursor:pointer;width:100%}
+  .prod-add:active{filter:brightness(.92)}
+  .prod-stepper{margin-top:auto;display:flex;align-items:center;justify-content:space-between;gap:8px;background:#eaf0ff;border-radius:10px;padding:6px}
+  .prod-stepper button{width:32px;height:32px;border:none;border-radius:8px;background:#fff;color:var(--rey2);font-size:18px;font-weight:800;cursor:pointer;box-shadow:0 1px 3px rgba(16,24,40,.12)}
+  .prod-stepper .qn{font-weight:800;font-size:15px;min-width:22px;text-align:center}
+
+  .cart-panel{border:2px solid var(--rey3);border-radius:14px;margin-top:18px;padding:14px 16px;background:#f5f8ff;box-shadow:0 2px 10px rgba(29,78,216,.08)}
+  .cart-title{font-size:13px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:var(--mute);margin-bottom:10px}
+  .cart-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #f1f5f9}
+  .cart-row:last-child{border-bottom:none}
+  .cart-row .icn{width:44px;height:44px;border-radius:10px;background:#eef2f7;display:flex;align-items:center;justify-content:center;color:var(--rey2);flex:0 0 auto;overflow:hidden}
+  .cart-row .icn svg{width:20px;height:20px}
+  .cart-row .icn img{width:100%;height:100%;object-fit:cover}
+  .cart-row .info{flex:1;min-width:0}
+  .cart-row .d{font-size:14px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cart-row .k{font-size:11.5px;color:var(--mute);font-weight:700}
+  .cart-row .qty{display:flex;align-items:center;gap:6px;flex:0 0 auto}
+  .cart-row .qty button{width:26px;height:26px;border:1px solid var(--line);border-radius:7px;background:#fff;color:var(--rey2);font-weight:800;cursor:pointer}
+  .cart-row .qn{font-weight:800;font-size:14px;min-width:18px;text-align:center}
+  .cart-row .rm{border:none;background:none;color:#cbd5e1;font-size:18px;cursor:pointer;flex:0 0 auto}
+  .cart-row .rm:active{color:var(--rojo)}
+
+  /* Firma */
+  .sign-box{border:2px dashed var(--line);border-radius:14px;background:#fafcff;position:relative;overflow:hidden}
+  canvas{display:block;width:100%;height:190px;touch-action:none;cursor:crosshair}
+  .sign-hint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#cbd5e1;font-size:15px;font-weight:700;pointer-events:none}
+  .sign-actions{display:flex;justify-content:space-between;align-items:center;margin-top:10px}
+  .link-btn{background:none;border:none;color:var(--mute);font-weight:800;font-size:14px;cursor:pointer;padding:8px 4px}
+
+  .submit{width:100%;padding:19px;border:none;border-radius:14px;background:linear-gradient(135deg,var(--teal),var(--teal2));color:#fff;font-size:19px;font-weight:800;letter-spacing:.4px;cursor:pointer;box-shadow:0 8px 20px rgba(14,116,144,.28)}
+  .submit:active{filter:brightness(.96)}
+  .submit:disabled{opacity:.55;cursor:not-allowed}
+  .msg{text-align:center;font-size:14px;font-weight:700;margin-top:12px;min-height:20px}
+  .tag-mat{display:inline-block;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);color:#fff;font-size:12px;font-weight:800;padding:6px 14px;border-radius:99px;letter-spacing:.6px}
+
+  /* Éxito */
+  .done{position:fixed;inset:0;background:rgba(15,23,42,.55);backdrop-filter:blur(6px);display:none;align-items:center;justify-content:center;z-index:100;padding:24px}
+  .done.on{display:flex}
+  .done-card{background:#fff;border-radius:22px;padding:38px 30px;text-align:center;max-width:420px;width:100%;box-shadow:0 24px 60px rgba(0,0,0,.3)}
+  .done-ic{width:82px;height:82px;border-radius:50%;background:var(--ok);display:flex;align-items:center;justify-content:center;margin:0 auto 18px}
+  .done h2{margin:0 0 6px;font-size:24px}
+  .done .folio{font-size:15px;color:var(--mute);font-weight:700;margin-bottom:22px}
+  .done .folio b{color:var(--teal);font-size:22px}
+
+  /* Toma de pantalla completa: firma de entrega */
+  .entrega-ov{position:fixed;inset:0;background:linear-gradient(135deg,var(--rey1) 0%,var(--rey2) 55%,var(--rey3) 100%);display:none;align-items:center;justify-content:center;z-index:200;padding:24px;overflow-y:auto}
+  .entrega-ov.on{display:flex}
+  .entrega-card{background:#fff;border-radius:22px;padding:30px 26px;max-width:440px;width:100%;box-shadow:0 24px 60px rgba(0,0,0,.35)}
+  .entrega-badge{display:inline-block;background:#fef3c7;color:#92400e;font-size:12px;font-weight:800;padding:5px 12px;border-radius:99px;margin-bottom:10px;letter-spacing:.3px}
+  .entrega-eyebrow{font-size:11.5px;letter-spacing:2px;font-weight:800;color:var(--rey3);text-transform:uppercase}
+  .entrega-folio{font-size:34px;font-weight:800;color:var(--ink);line-height:1.1;margin-top:4px}
+  .entrega-cliente{font-size:16px;font-weight:700;color:var(--mute);margin-top:2px}
+  .entrega-piezas{font-size:13px;color:var(--mute);font-weight:600;margin-top:6px;margin-bottom:18px}
+  .entrega-card label{display:block;font-size:12px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:var(--mute);margin-bottom:7px;margin-top:14px}
+  .entrega-card input{width:100%;font-size:17px;padding:14px 15px;border:2px solid var(--line);border-radius:12px;background:#fff;color:var(--ink);font-family:inherit;outline:none}
+  .entrega-card input:focus{border-color:var(--teal2)}
+  #entrega-cv{display:block;width:100%;height:150px;touch-action:none;cursor:crosshair}
+  .entrega-card .submit{margin-top:18px}
+  .done button{width:100%;padding:16px;border:none;border-radius:13px;background:var(--teal);color:#fff;font-size:17px;font-weight:800;cursor:pointer}
