@@ -17,7 +17,6 @@
   var contId = 'vista-compras-area';
   var _fs = null, _unsub = null;
   var docs = [];
-  var docsEliminados = []; // requisiciones marcadas eliminada:true — no se borran de Firestore, solo se ocultan del board (ver papelera)
   var verRechazadas = false;
   var detalleId = null;
 
@@ -87,52 +86,25 @@
     if(_configFlujoCache) return Promise.resolve(_configFlujoCache);
     return cargarFirestore().then(function(fs){
       return fs.getDoc(fs.doc(window.db,'config_flujo_compras','general')).then(function(snap){
-        _configFlujoCache = snap.exists() ? snap.data() : {aprobadoresCompras:[], facultados:[]};
+        _configFlujoCache = snap.exists() ? snap.data() : {jefesPorDepto:{}, aprobadoresCompras:[]};
         return _configFlujoCache;
-      }).catch(function(){ _configFlujoCache = {aprobadoresCompras:[], facultados:[]}; return _configFlujoCache; });
-    });
-  }
-  // ── Organigrama general del portal (config_organigrama/general) — vive
-  //    fuera de Compras, se edita en admin-directorio.html, y de aquí lo
-  //    toman TODOS los módulos que necesiten saber el jefe directo de un
-  //    departamento. Compras ya no mantiene su propia copia. ──
-  var _orgCache = null;
-  function cargarOrganigrama(){
-    if(_orgCache) return Promise.resolve(_orgCache);
-    return cargarFirestore().then(function(fs){
-      return fs.getDoc(fs.doc(window.db,'config_organigrama','general')).then(function(snap){
-        _orgCache = snap.exists() ? snap.data() : {jefesPorDepto:{}};
-        _orgCache.jefesPorDepto = _orgCache.jefesPorDepto || {};
-        return _orgCache;
-      }).catch(function(){ _orgCache = {jefesPorDepto:{}}; return _orgCache; });
+      }).catch(function(){ _configFlujoCache = {jefesPorDepto:{}, aprobadoresCompras:[]}; return _configFlujoCache; });
     });
   }
   function departamentoPorCorreo(correo){
     var col = (_colaboradoresCache||[]).find(function(x){ return (x.correo||x.id||'').toLowerCase()===(correo||'').toLowerCase(); });
     return col ? col.departamento : null;
   }
-  // "Director" ya no es una lista aparte que hay que mantener sincronizada —
-  // es el mismo tipoUsuario que se asigna por persona en admin-directorio.html.
-  function esDirectorPorCorreo(correo){
-    var col = (_colaboradoresCache||[]).find(function(x){ return (x.correo||x.id||'').toLowerCase()===(correo||'').toLowerCase().trim(); });
-    return !!(col && col.tipoUsuario==='director');
-  }
   // ¿Puede ESTE usuario aprobar ESTE paso? Solicitante siempre puede (su propio
   // paso ya llega aprobado al crear la requisición). Jefe de área: debe ser el
-  // asignado al departamento del solicitante (o cualquier director). Compras:
-  // debe estar en la lista.
+  // asignado al departamento del solicitante. Compras: debe estar en la lista.
   function puedoAutorizarPaso(d, paso, miCorreo){
     if(!paso) return false;
     if(paso.label==='Solicitante') return true;
-    var cfg = _configFlujoCache || {aprobadoresCompras:[]};
-    var org = _orgCache || {jefesPorDepto:{}};
+    var cfg = _configFlujoCache || {jefesPorDepto:{}, aprobadoresCompras:[]};
     if(paso.label==='Jefe de área'){
-      // Un director puede autorizar CUALQUIER paso de "Jefe de área" — cubre
-      // tanto su propio caso (no tiene jefe arriba) como requisiciones viejas
-      // que quedaron atoradas antes de que se configurara el flujo bien.
-      if(esDirectorPorCorreo(miCorreo)) return true;
-      var depto = departamentoPorCorreo(d.solicitanteEmail);
-      var jefe = depto && org.jefesPorDepto ? org.jefesPorDepto[depto] : null;
+      var depto = departamentoPorCorreo(d.solicitante);
+      var jefe = depto && cfg.jefesPorDepto ? cfg.jefesPorDepto[depto] : null;
       return !!(jefe && jefe.correo && jefe.correo.toLowerCase()===(miCorreo||'').toLowerCase());
     }
     if(paso.label==='Compras'){
@@ -145,7 +117,7 @@
   //    alguien, con quién es y botón para reenviar la liga (?firmar=id) ──
   window.__cpAbrirFirmasPendientes = function(){
     cargarFirestore().then(function(fs){
-      Promise.all([cargarColaboradores(), cargarConfigFlujo(), cargarOrganigrama()]).then(function(){
+      Promise.all([cargarColaboradores(), cargarConfigFlujo()]).then(function(){
         var pendientes = docs.filter(function(d){
           return d.estatus!=='rechazada' && d.estatus!=='recibida' && (d.flujoAutorizacion||[]).some(function(f){ return f.estatus==='pendiente'; });
         });
@@ -169,53 +141,6 @@
             }).join('') : '<p style="font-size:12.5px;color:#94a3b8;text-align:center;padding:20px 0">No hay firmas pendientes 🎉</p>') + '</div>' +
           '</div>';
         document.body.appendChild(ov);
-      });
-    });
-  };
-  // ── PAPELERA — nunca se borra de Firestore. Se marca eliminada:true con
-  //    quién y por qué, se oculta del board, y queda visible aquí con opción
-  //    de restaurar. Así siempre hay rastro de auditoría. ──
-  window.__cpAbrirPapelera = function(){
-    var ov = document.createElement('div');
-    ov.id = 'cp-papelera-overlay';
-    ov.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,.55);z-index:2100;display:flex;align-items:center;justify-content:center;padding:18px';
-    ov.innerHTML =
-      '<div style="background:#fff;border-radius:14px;max-width:680px;width:100%;max-height:88vh;overflow-y:auto;padding:22px">' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><h3 style="margin:0;font-size:16px">Papelera</h3><button onclick="document.getElementById(\'cp-papelera-overlay\').remove()" style="background:#F1F5F9;border:none;border-radius:8px;width:28px;height:28px;cursor:pointer">✕</button></div>' +
-        '<div>' + (docsEliminados.length ? docsEliminados.map(function(d){
-          return '<div style="border-bottom:1px solid #F1F5F9;padding:10px 4px">' +
-            '<div style="display:flex;justify-content:space-between;align-items:center">' +
-            '<p style="font-size:13px;font-weight:700;margin:0;color:#0A1628">'+esc(d.folio||d.id)+'</p>' +
-            '<button onclick="window.__cpRestaurarRequisicion(\''+d.id+'\')" style="padding:6px 12px;background:#F1F5F9;color:#0A1628;border:none;border-radius:8px;font-size:11.5px;font-weight:700;cursor:pointer">Restaurar</button>' +
-            '</div>' +
-            '<p style="font-size:11.5px;color:#5C7089;margin:2px 0 0">Eliminada por <b>'+esc(d.eliminadaPor||'—')+'</b> el '+esc(d.eliminadaEn?new Date(d.eliminadaEn).toLocaleString('es-MX'):'—')+'</p>' +
-            '<p style="font-size:11.5px;color:#5C7089;margin:2px 0 0">Motivo: '+esc(d.eliminadaMotivo||'—')+'</p>' +
-            '</div>';
-        }).join('') : '<p style="font-size:12.5px;color:#94a3b8;text-align:center;padding:20px 0">La papelera está vacía.</p>') + '</div>' +
-      '</div>';
-    document.body.appendChild(ov);
-  };
-  window.__cpEliminarRequisicion = function(id){
-    var motivo = prompt('¿Por qué se elimina esta requisición? (queda guardado para auditoría)');
-    if(motivo===null) return; // canceló
-    if(!motivo.trim()){ alert('Escribe un motivo — es obligatorio para poder auditar después.'); return; }
-    cargarFirestore().then(function(fs){
-      fs.updateDoc(fs.doc(window.db,'requisiciones_compra',id), {
-        eliminada:true, eliminadaPor:_cpMiCorreo()||'—', eliminadaMotivo:motivo.trim(), eliminadaEn:new Date().toISOString(),
-      }).then(function(){
-        toast('Requisición movida a la papelera');
-        window.__cpCerrarDetalle();
-      });
-    });
-  };
-  window.__cpRestaurarRequisicion = function(id){
-    cargarFirestore().then(function(fs){
-      fs.updateDoc(fs.doc(window.db,'requisiciones_compra',id), {
-        eliminada:false, eliminadaPor:null, eliminadaMotivo:null, eliminadaEn:null,
-      }).then(function(){
-        toast('Requisición restaurada');
-        document.getElementById('cp-papelera-overlay')?.remove();
-        window.__cpAbrirPapelera();
       });
     });
   };
@@ -338,47 +263,32 @@
   };
 
   window.__cpAbrirConfigFlujo = function(){
-    Promise.all([cargarConfigFlujo(), cargarColaboradores(), cargarOrganigrama()]).then(function(){
+    Promise.all([cargarConfigFlujo(), cargarColaboradores()]).then(function(){
       var cfg = _configFlujoCache;
-      var org = _orgCache || {jefesPorDepto:{}};
       var ov = document.createElement('div');
       ov.id = 'cp-config-overlay';
       ov.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,.55);z-index:2100;display:flex;align-items:center;justify-content:center;padding:24px';
       var opcionesColab = (_colaboradoresCache||[]).map(function(c){ return '<option value="'+esc(c.correo||c.id)+'">'+esc(c.nombre||c.correo||c.id)+'</option>'; }).join('');
-      // Jefe de área por departamento y quién es Director ya NO se configuran
-      // aquí — viven en admin-directorio.html ("Jefe directo por
-      // departamento" y "Tipo de usuario"), general para todo el portal.
-      // Aquí solo se muestran de referencia, en solo lectura. La lista de
-      // departamentos también viene de ahí (org.departamentos) — si no
-      // existe todavía (organigrama nunca guardado), se cae a DEPTOS_CP.
-      var deptosParaMostrar = (Array.isArray(org.departamentos) && org.departamentos.length) ? org.departamentos : DEPTOS_CP;
-      var filasDeptosSoloLectura = deptosParaMostrar.map(function(dep){
-        var actual = (org.jefesPorDepto||{})[dep];
-        return '<tr><td style="padding:6px 8px;font-size:12.5px">'+esc(dep)+'</td><td style="padding:6px 8px;font-size:12.5px;color:#475569">'+esc(actual?(actual.nombre||actual.correo):'— sin asignar —')+'</td></tr>';
+      var filasDeptos = DEPTOS_CP.map(function(dep){
+        var actual = (cfg.jefesPorDepto||{})[dep];
+        return '<tr><td style="padding:6px 8px;font-size:12.5px">'+esc(dep)+'</td>' +
+          '<td style="padding:6px 8px"><select class="cp-cfg-jefe" data-depto="'+esc(dep)+'" style="width:100%;padding:6px;border:1px solid #E2E8F0;border-radius:7px;font-size:12px">' +
+            '<option value="">— Sin asignar —</option>' + opcionesColab.replace('value="'+esc(actual&&actual.correo||'###')+'"', 'value="'+esc(actual&&actual.correo||'###')+'" selected') +
+          '</select></td></tr>';
       }).join('');
       var listaAprobadores = (cfg.aprobadoresCompras||[]).map(function(a,i){
         return '<div style="display:flex;justify-content:space-between;align-items:center;background:#F8FAFD;border-radius:8px;padding:6px 10px;margin-bottom:5px"><span style="font-size:12.5px">'+esc(a.nombre||a.correo)+'</span><button onclick="window.__cpQuitarAprobadorCompras('+i+')" style="background:none;border:none;color:#E23B2E;cursor:pointer;font-size:12px">Quitar</button></div>';
       }).join('') || '<p style="font-size:12px;color:#94a3b8">Sin aprobadores de Compras todavía.</p>';
-      // ── Facultados: pueden autorizar ellos mismos la generación de la OC
-      //    cuando el monto cotizado no rebasa su tope — si lo rebasa, se le
-      //    pide autorización a un director. ──
-      var listaFacultados = (cfg.facultados||[]).map(function(a,i){
-        return '<div style="display:flex;justify-content:space-between;align-items:center;background:#F8FAFD;border-radius:8px;padding:6px 10px;margin-bottom:5px"><span style="font-size:12.5px">'+esc(a.nombre||a.correo)+' · hasta $'+esc(a.tope)+'</span><button onclick="window.__cpQuitarFacultado('+i+')" style="background:none;border:none;color:#E23B2E;cursor:pointer;font-size:12px">Quitar</button></div>';
-      }).join('') || '<p style="font-size:12px;color:#94a3b8">Sin facultados configurados todavía.</p>';
       ov.innerHTML =
         '<div style="background:#fff;border-radius:14px;max-width:560px;width:100%;max-height:88vh;overflow-y:auto;padding:22px">' +
           '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><h3 style="margin:0;font-size:16px">Configurar flujo de autorización</h3><button onclick="document.getElementById(\'cp-config-overlay\').remove()" style="background:#F1F5F9;border:none;border-radius:8px;width:28px;height:28px;cursor:pointer">✕</button></div>' +
-          '<p style="font-size:11.5px;color:#5C7089;margin:0 0 6px;font-weight:700">Jefe de área por departamento <span style="font-weight:400;color:#94a3b8">(solo lectura)</span></p>' +
-          '<p style="font-size:11px;color:#94a3b8;margin:0 0 10px">Quién puede autorizar el paso "Jefe de área" — y quién es Director (autoaprueba el suyo) — ahora se edita en un solo lugar para todo el portal: <a href="admin-directorio.html" target="_blank" style="color:#1473E6;font-weight:700">admin-directorio.html</a>.</p>' +
-          '<table style="width:100%;border-collapse:collapse;margin-bottom:18px">'+filasDeptosSoloLectura+'</table>' +
+          '<p style="font-size:11.5px;color:#5C7089;margin:0 0 6px;font-weight:700">Jefe de área por departamento</p>' +
+          '<p style="font-size:11px;color:#94a3b8;margin:0 0 10px">Se usa para saber quién puede autorizar el paso "Jefe de área" de cada requisición, según el departamento del solicitante.</p>' +
+          '<table style="width:100%;border-collapse:collapse;margin-bottom:18px">'+filasDeptos+'</table>' +
           '<p style="font-size:11.5px;color:#5C7089;margin:0 0 6px;font-weight:700">Aprobadores de Compras</p>' +
-          '<p style="font-size:11px;color:#94a3b8;margin:0 0 10px">Quien puede autorizar el paso final "Compras" — puede ser más de uno. Esto sí es propio de Compras.</p>' +
+          '<p style="font-size:11px;color:#94a3b8;margin:0 0 10px">Quien puede autorizar el paso final "Compras" — puede ser más de uno.</p>' +
           '<div id="cp-cfg-aprobadores-list" style="margin-bottom:8px">'+listaAprobadores+'</div>' +
           '<div style="display:flex;gap:6px;margin-bottom:18px"><select id="cp-cfg-nuevo-aprobador" style="flex:1;padding:7px;border:1px solid #E2E8F0;border-radius:7px;font-size:12px"><option value="">Elegir colaborador…</option>'+opcionesColab+'</select><button onclick="window.__cpAgregarAprobadorCompras()" style="padding:7px 14px;background:#0A1628;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">+ Agregar</button></div>' +
-          '<p style="font-size:11.5px;color:#5C7089;margin:0 0 6px;font-weight:700">Facultados para autorizar compras (con tope)</p>' +
-          '<p style="font-size:11px;color:#94a3b8;margin:0 0 10px">Al elegir la cotización ganadora, si el monto no rebasa su tope generan la orden de compra ellos mismos; si lo rebasa, se le pide autorización a un director. Esto también es propio de Compras (el tope no aplica a nada más del portal).</p>' +
-          '<div id="cp-cfg-facultados-list" style="margin-bottom:8px">'+listaFacultados+'</div>' +
-          '<div style="display:flex;gap:6px;margin-bottom:18px"><select id="cp-cfg-nuevo-facultado" style="flex:1;padding:7px;border:1px solid #E2E8F0;border-radius:7px;font-size:12px"><option value="">Elegir colaborador…</option>'+opcionesColab+'</select><input id="cp-cfg-nuevo-tope" type="number" placeholder="Tope $" value="12000" style="width:90px;padding:7px;border:1px solid #E2E8F0;border-radius:7px;font-size:12px"><button onclick="window.__cpAgregarFacultado()" style="padding:7px 14px;background:#0A1628;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">+ Agregar</button></div>' +
           '<button onclick="window.__cpGuardarConfigFlujo()" style="width:100%;padding:11px;background:#12A150;color:#fff;border:none;border-radius:9px;font-weight:700;cursor:pointer">Guardar configuración</button>' +
           '<div id="cp-cfg-msg" style="font-size:11.5px;margin-top:8px;text-align:center"></div>' +
         '</div>';
@@ -400,25 +310,14 @@
     document.getElementById('cp-config-overlay').remove();
     window.__cpAbrirConfigFlujo();
   };
-  window.__cpAgregarFacultado = function(){
-    var sel = document.getElementById('cp-cfg-nuevo-facultado');
-    var correo = sel.value; if(!correo) return;
-    var tope = Number(document.getElementById('cp-cfg-nuevo-tope').value)||12000;
-    var col = (_colaboradoresCache||[]).find(function(c){ return (c.correo||c.id)===correo; });
-    _configFlujoCache.facultados = _configFlujoCache.facultados || [];
-    if(_configFlujoCache.facultados.some(function(a){ return a.correo===correo; })) return;
-    _configFlujoCache.facultados.push({correo:correo.toLowerCase().trim(), nombre: col?col.nombre:correo, tope:tope});
-    document.getElementById('cp-config-overlay').remove();
-    window.__cpAbrirConfigFlujo();
-  };
-  window.__cpQuitarFacultado = function(i){
-    _configFlujoCache.facultados.splice(i,1);
-    document.getElementById('cp-config-overlay').remove();
-    window.__cpAbrirConfigFlujo();
-  };
   window.__cpGuardarConfigFlujo = function(){
-    // "Jefe de área por departamento" ya no se edita aquí (ver admin-directorio.html)
-    // — solo se guardan aprobadoresCompras y facultados, que sí son propios de Compras.
+    var jefesPorDepto = {};
+    document.querySelectorAll('.cp-cfg-jefe').forEach(function(sel){
+      if(!sel.value) return;
+      var col = (_colaboradoresCache||[]).find(function(c){ return (c.correo||c.id)===sel.value; });
+      jefesPorDepto[sel.dataset.depto] = {correo:sel.value.toLowerCase().trim(), nombre: col?col.nombre:sel.value};
+    });
+    _configFlujoCache.jefesPorDepto = jefesPorDepto;
     var msgEl = document.getElementById('cp-cfg-msg');
     msgEl.textContent = 'Guardando…';
     cargarFirestore().then(function(fs){
@@ -452,6 +351,7 @@
           '<button id="cp-mtab-req" onclick="window.__cpSetVistaModulo(\'req\')" style="padding:10px 2px;border:none;background:none;font-size:13.5px;font-weight:700;color:#0A1628;border-bottom:2px solid #0A1628;cursor:pointer">Requisiciones</button>' +
           '<button id="cp-mtab-prov" onclick="window.__cpSetVistaModulo(\'prov\')" style="padding:10px 2px;border:none;background:none;font-size:13.5px;font-weight:700;color:#94A3B8;border-bottom:2px solid transparent;cursor:pointer">Proveedores</button>' +
           '<button id="cp-mtab-cxp" onclick="window.__cpSetVistaModulo(\'cxp\')" style="padding:10px 2px;border:none;background:none;font-size:13.5px;font-weight:700;color:#94A3B8;border-bottom:2px solid transparent;cursor:pointer">Cuentas por pagar</button>' +
+          '<button id="cp-mtab-presup" onclick="window.__cpSetVistaModulo(\'presup\')" style="padding:10px 2px;border:none;background:none;font-size:13.5px;font-weight:700;color:#94A3B8;border-bottom:2px solid transparent;cursor:pointer">Presupuestos</button>' +
         '</div>' +
 
         '<div id="cp-vista-req">' +
@@ -461,7 +361,6 @@
           '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
           '<button onclick="window.__cpAbrirFirmasPendientes()" style="padding:9px 14px;border-radius:9px;border:1px solid #EEF2F7;background:#fff;color:#0A1628;font-size:11.5px;font-weight:700;cursor:pointer">🖊 Firmas pendientes</button>' +
           '<button onclick="window.__cpAbrirConfigFlujo()" style="padding:9px 14px;border-radius:9px;border:1px solid #EEF2F7;background:#fff;color:#0A1628;font-size:11.5px;font-weight:700;cursor:pointer">⚙ Configurar flujo</button>' +
-          '<button onclick="window.__cpAbrirPapelera()" style="padding:9px 14px;border-radius:9px;border:1px solid #EEF2F7;background:#fff;color:#0A1628;font-size:11.5px;font-weight:700;cursor:pointer">🗑 Papelera</button>' +
           '<button onclick="window.__cpAbrirBuscador()" style="padding:9px 14px;border-radius:9px;border:1px solid #EEF2F7;background:#fff;color:#0A1628;font-size:11.5px;font-weight:700;cursor:pointer">🔍 Buscar</button>' +
           '<button onclick="window.__cpExportarAspel()" style="padding:9px 14px;border-radius:9px;border:1px solid #EEF2F7;background:#fff;color:#0A1628;font-size:11.5px;font-weight:700;cursor:pointer">Exportar Aspel</button>' +
           '</div>' +
@@ -496,6 +395,15 @@
             '<tbody id="cp-cxp-tbody"></tbody>' +
           '</table></div>' +
         '</div>' +
+
+        '<div id="cp-vista-presup" style="display:none">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><h2 style="font-size:19px;font-weight:700;margin:0;color:#0A1628">Presupuestos por departamento</h2>' +
+          '<button onclick="window.__cpAbrirEditarPresupuesto()" style="padding:9px 16px;border-radius:9px;border:none;background:#0A1628;color:#fff;font-size:12px;font-weight:700;cursor:pointer">✎ Editar presupuesto</button></div>' +
+          '<p style="font-size:12px;color:#94A3B8;margin:0 0 18px">Mes en curso — el gastado se calcula de las órdenes de compra ya generadas este mes.</p>' +
+          '<div id="cp-presup-lista" style="display:flex;flex-direction:column;gap:10px"></div>' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin:24px 0 10px"><h3 style="font-size:13.5px;font-weight:700;margin:0;color:#0A1628">Historial de cambios</h3></div>' +
+          '<div id="cp-presup-historial" style="background:#F8FAFC;border-radius:12px;overflow:hidden"></div>' +
+        '</div>' +
       '</div></div>' +
       '<div id="cp-detalle-overlay" style="display:none;position:fixed;inset:0;background:rgba(10,22,40,.55);z-index:2000;align-items:center;justify-content:center;padding:24px">' +
         '<div id="cp-detalle-panel" style="background:#fff;border-radius:14px;max-width:920px;width:100%;max-height:88vh;overflow-y:auto;padding:22px"></div>' +
@@ -503,19 +411,139 @@
   }
 
   window.__cpSetVistaModulo = function(vista){
-    ['req','prov','cxp'].forEach(function(v){
+    ['req','prov','cxp','presup'].forEach(function(v){
       document.getElementById('cp-vista-'+v).style.display = v===vista?'block':'none';
-      var tab = document.getElementById('cp-mtab-'+(v==='req'?'req':v));
+      var tab = document.getElementById('cp-mtab-'+v);
       tab.style.color = v===vista?'#0A1628':'#94A3B8';
       tab.style.borderBottomColor = v===vista?'#0A1628':'transparent';
     });
     if(vista==='prov') cargarProveedores();
     if(vista==='cxp') cargarCuentasPorPagarVista();
+    if(vista==='presup') cargarPresupuestos();
   };
 
   // ── PROVEEDORES — catálogo propio de Compras; alimenta el autocompletar
   //    de "Proveedor" al cotizar, en vez de texto libre sin memoria ──
   var _proveedoresCache = null;
+  // ── PRESUPUESTOS — por departamento, mes en curso. El "gastado" se
+  //    calcula solo (suma de OC ya generadas este mes por solicitantes de
+  //    ese departamento) — nadie lo captura a mano. El monto asignado sí
+  //    es editable, y cada cambio queda en presupuestos_historial (quién,
+  //    cuándo, de cuánto a cuánto) — nunca se sobreescribe sin rastro.
+  var _presupuestosCache = {};
+  function cargarPresupuestos(){
+    var elLista = document.getElementById('cp-presup-lista');
+    if(elLista) elLista.innerHTML = '<p style="font-size:12px;color:#94a3b8">Cargando…</p>';
+    Promise.all([cargarColaboradores()]).then(function(){
+      cargarFirestore().then(function(fs){
+        fs.getDocs(fs.collection(window.db,'presupuestos')).then(function(snap){
+          _presupuestosCache = {};
+          snap.docs.forEach(function(d){ _presupuestosCache[d.id] = d.data(); });
+          renderPresupuestos();
+        });
+        fs.getDocs(fs.query(fs.collection(window.db,'presupuestos_historial'), fs.orderBy('fecha','desc'), fs.limit(20))).then(function(snap){
+          renderHistorialPresupuesto(snap.docs.map(function(d){ return d.data(); }));
+        }).catch(function(){ renderHistorialPresupuesto([]); });
+      });
+    });
+  }
+
+  function _cpGastadoPorDepto(){
+    var ahora = new Date();
+    var gastado = {};
+    docs.forEach(function(d){
+      if(d.estatus!=='orden_generada' && d.estatus!=='recibida') return;
+      var f = _cpFechaDoc(d);
+      if(!f || f.getMonth()!==ahora.getMonth() || f.getFullYear()!==ahora.getFullYear()) return;
+      var depto = departamentoPorCorreo(d.solicitante);
+      if(!depto) return;
+      var monto = d.cotizacionGanadora && d.cotizacionGanadora.monto!=null ? Number(d.cotizacionGanadora.monto) : 0;
+      gastado[depto] = (gastado[depto]||0) + monto;
+    });
+    return gastado;
+  }
+
+  function renderPresupuestos(){
+    var el = document.getElementById('cp-presup-lista'); if(!el) return;
+    var gastado = _cpGastadoPorDepto();
+    el.innerHTML = DEPTOS_CP.map(function(depto){
+      var asignado = (_presupuestosCache[depto]&&_presupuestosCache[depto].montoMensual) || 0;
+      var g = gastado[depto] || 0;
+      var pct = asignado>0 ? Math.min(100, Math.round(g/asignado*100)) : 0;
+      var color = pct>=100?'#E23B2E':pct>=75?'#B45309':'#12A150';
+      return '<div style="background:#F8FAFC;border-radius:12px;padding:14px 16px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">' +
+        '<span style="font-size:13px;font-weight:700;color:#0A1628">'+esc(depto)+'</span>' +
+        '<span style="font-size:12px;color:#5C7089">$'+g.toLocaleString('es-MX')+' de $'+asignado.toLocaleString('es-MX')+(asignado?' ('+pct+'%)':' — sin asignar')+'</span>' +
+        '</div>' +
+        '<div style="background:#E2E8F0;border-radius:6px;height:7px;overflow:hidden"><div style="width:'+pct+'%;height:100%;background:'+color+'"></div></div>' +
+        '</div>';
+    }).join('');
+  }
+
+  function renderHistorialPresupuesto(filas){
+    var el = document.getElementById('cp-presup-historial'); if(!el) return;
+    el.innerHTML = filas.length ? filas.map(function(h){
+      var fecha = h.fecha ? new Date(h.fecha).toLocaleString('es-MX') : '—';
+      return '<div style="padding:10px 16px;border-bottom:1px solid #EEF2F7;font-size:12px">' +
+        '<span style="font-weight:700;color:#0A1628">'+esc(h.departamento)+'</span> — '+
+        '$'+Number(h.montoAnterior||0).toLocaleString('es-MX')+' → <b>$'+Number(h.montoNuevo||0).toLocaleString('es-MX')+'</b>' +
+        '<div style="color:#94A3B8;font-size:11px;margin-top:2px">'+esc(nombrePorCorreo(h.autorEmail)||h.autor||'—')+' · '+fecha+'</div></div>';
+    }).join('') : '<p style="font-size:12px;color:#94a3b8;padding:14px 16px;margin:0">Sin cambios registrados todavía.</p>';
+  }
+
+  window.__cpAbrirEditarPresupuesto = function(){
+    var ov = document.createElement('div');
+    ov.id = 'cp-presup-overlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,.55);z-index:2100;display:flex;align-items:center;justify-content:center;padding:18px';
+    ov.innerHTML =
+      '<div style="background:#fff;border-radius:14px;max-width:460px;width:100%;max-height:88vh;overflow-y:auto;padding:22px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><h3 style="margin:0;font-size:16px">Editar presupuestos</h3><button onclick="document.getElementById(\'cp-presup-overlay\').remove()" style="background:#F1F5F9;border:none;border-radius:8px;width:28px;height:28px;cursor:pointer">✕</button></div>' +
+        '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">' +
+        DEPTOS_CP.map(function(depto){
+          var actual = (_presupuestosCache[depto]&&_presupuestosCache[depto].montoMensual) || '';
+          return '<div style="display:flex;align-items:center;gap:8px"><span style="flex:1;font-size:12.5px;color:#0A1628">'+esc(depto)+'</span>' +
+            '<input type="number" class="cp-presup-input" data-depto="'+esc(depto)+'" value="'+actual+'" placeholder="$0" style="width:120px;padding:7px 9px;border:1px solid #E2E8F0;border-radius:8px;font-size:12.5px"></div>';
+        }).join('') +
+        '</div>' +
+        '<button onclick="window.__cpGuardarPresupuestos()" style="width:100%;padding:11px;background:#0A1628;color:#fff;border:none;border-radius:9px;font-weight:700;cursor:pointer">Guardar cambios</button>' +
+        '<div id="cp-presup-msg" style="font-size:11.5px;margin-top:8px;text-align:center"></div>' +
+      '</div>';
+    document.body.appendChild(ov);
+  };
+
+  window.__cpGuardarPresupuestos = function(){
+    var msgEl = document.getElementById('cp-presup-msg');
+    msgEl.textContent = 'Guardando…';
+    var autorEmail = window.auth && window.auth.currentUser ? window.auth.currentUser.email : '';
+    var autor = nombrePorCorreo(autorEmail) || autorEmail;
+    var inputs = Array.prototype.slice.call(document.querySelectorAll('.cp-presup-input'));
+    cargarFirestore().then(function(fs){
+      var tareas = [];
+      inputs.forEach(function(inp){
+        var depto = inp.dataset.depto;
+        var nuevo = Number(inp.value)||0;
+        var anterior = (_presupuestosCache[depto]&&_presupuestosCache[depto].montoMensual) || 0;
+        if(nuevo===anterior) return; // sin cambio, no genera historial de ruido
+        tareas.push(
+          fs.setDoc(fs.doc(window.db,'presupuestos',depto), {
+            departamento:depto, montoMensual:nuevo, actualizadoPor:autor, actualizadoEmail:autorEmail, actualizadoEn:new Date().toISOString(),
+          }, {merge:true}).then(function(){
+            return fs.addDoc(fs.collection(window.db,'presupuestos_historial'), {
+              departamento:depto, montoAnterior:anterior, montoNuevo:nuevo,
+              autor:autor, autorEmail:autorEmail, fecha:new Date().toISOString(),
+            });
+          })
+        );
+      });
+      if(!tareas.length){ msgEl.textContent = 'Sin cambios que guardar.'; return; }
+      Promise.all(tareas).then(function(){
+        msgEl.textContent = '✓ Guardado'; msgEl.style.color = '#15803d';
+        setTimeout(function(){ document.getElementById('cp-presup-overlay')?.remove(); cargarPresupuestos(); }, 800);
+      }).catch(function(e){ msgEl.textContent = 'Error: '+(e.message||e); msgEl.style.color='#b91c1c'; });
+    });
+  };
+
   function cargarProveedores(forzar){
     var el = document.getElementById('cp-prov-lista');
     if(el) el.innerHTML = '<p style="font-size:12px;color:#94a3b8">Cargando…</p>';
@@ -601,14 +629,11 @@
   function escuchar(){
     cargarColaboradores();
     cargarConfigFlujo();
-    cargarOrganigrama();
     cargarProveedores();
     cargarFirestore().then(function(fs){
       var q = fs.query(fs.collection(window.db,'requisiciones_compra'), fs.orderBy('createdAt','desc'));
       _unsub = fs.onSnapshot(q, function(snap){
-        var todos = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
-        docs = todos.filter(function(d){ return !d.eliminada; });
-        docsEliminados = todos.filter(function(d){ return d.eliminada; });
+        docs = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
         renderKPIs();
         renderBoard();
         if(detalleId) window.__cpAbrirDetalle(detalleId);
@@ -628,27 +653,11 @@
     renderBoard();
   };
 
-  // Todo lo que sigue "vivo" en el flujo — sin importar en qué mes se creó.
-  // Ocultar por antigüedad algo que sigue pendiente es justo lo que dejaba
-  // pasar desapercibidas requisiciones atoradas de meses anteriores.
-  function _cpDocsActivos(){
-    return docs.filter(function(d){ return d.estatus!=='rechazada' && d.estatus!=='recibida'; });
-  }
-  // Lo ya cerrado (recibida/rechazada) sí se acota al mes en curso — es
-  // historial, y "ver historial completo" existe para lo más viejo.
-  function _cpDocsCerradosDelMes(estatusId){
-    var ahora = new Date();
-    return docs.filter(function(d){
-      if(d.estatus!==estatusId) return false;
-      var f = _cpFechaDoc(d);
-      return f && f.getMonth()===ahora.getMonth() && f.getFullYear()===ahora.getFullYear();
-    });
-  }
   function renderKPIs(){
-    var activas = _cpDocsActivos();
+    var activas = docs.filter(function(d){ return d.estatus!=='rechazada' && d.estatus!=='recibida'; });
     var urgentes = activas.filter(function(d){ return d.urgencia==='alta'; }).length;
-    var pendientes = activas.filter(function(d){ return (d.estatus||'pendiente')==='pendiente'; }).length;
-    var cotizando = activas.filter(function(d){ return d.estatus==='cotizando'; }).length;
+    var pendientes = docs.filter(function(d){ return (d.estatus||'pendiente')==='pendiente'; }).length;
+    var cotizando = docs.filter(function(d){ return d.estatus==='cotizando'; }).length;
     var elP=document.getElementById('cp-kpi-proceso'); if(!elP) return;
     elP.textContent = activas.length;
     document.getElementById('cp-kpi-urgentes').textContent = urgentes;
@@ -658,16 +667,22 @@
 
   function renderBoard(){
     var board=document.getElementById('cp-board'); if(!board) return;
+    // Solo el mes en curso por default — el histórico completo vive en
+    // "🔍 Buscar / historial" para no saturar el tablero indefinidamente.
+    var ahora = new Date();
+    var fuente = docs.filter(function(d){
+      var f = _cpFechaDoc(d);
+      return f && f.getMonth()===ahora.getMonth() && f.getFullYear()===ahora.getFullYear();
+    });
+    fuente = verRechazadas ? fuente.filter(function(d){ return d.estatus==='rechazada'; }) : fuente.filter(function(d){ return d.estatus!=='rechazada'; });
     if(verRechazadas){
-      var fuenteRech = _cpDocsCerradosDelMes('rechazada');
       board.style.gridTemplateColumns='1fr';
-      board.innerHTML = fuenteRech.length ? '<div style="background:#F8FAFC;border-radius:12px;overflow:hidden">'+fuenteRech.map(cardHTML).join('')+'</div>' : '<div style="text-align:center;padding:30px;color:#94a3b8;font-size:13px">Sin requisiciones rechazadas este mes.</div>';
+      board.innerHTML = fuente.length ? '<div style="background:#F8FAFC;border-radius:12px;overflow:hidden">'+fuente.map(cardHTML).join('')+'</div>' : '<div style="text-align:center;padding:30px;color:#94a3b8;font-size:13px">Sin requisiciones rechazadas este mes.</div>';
       return;
     }
-    var activos = _cpDocsActivos();
     board.style.gridTemplateColumns='repeat(5,minmax(0,1fr))';
     board.innerHTML = ESTADOS.map(function(col){
-      var ds = col.id==='recibida' ? _cpDocsCerradosDelMes('recibida') : activos.filter(function(d){ return (d.estatus||'pendiente')===col.id; });
+      var ds = fuente.filter(function(d){ return (d.estatus||'pendiente')===col.id; });
       return '<div style="min-width:0">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;padding:0 2px">' +
         '<p style="font-size:10.5px;font-weight:700;color:#5C7089;margin:0;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+col.label+'</p>' +
@@ -706,9 +721,7 @@
     html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">';
     html += '<div><h2 style="font-size:18px;margin:0">'+esc(d.folio||d.id)+' · '+esc(d.empresa||'—')+'</h2>';
     html += '<p style="font-size:12px;color:#5C7089;margin:4px 0 0">'+esc(nombrePorCorreo(d.solicitante)||'—')+' · '+esc(d.origen||'—')+'</p></div>';
-    html += '<div style="display:flex;gap:6px;flex-shrink:0">';
-    html += '<button onclick="window.__cpEliminarRequisicion(\''+d.id+'\')" title="Mover a la papelera" style="background:#FEF2F2;border:none;border-radius:8px;width:30px;height:30px;cursor:pointer;color:#E23B2E">🗑</button>';
-    html += '<button onclick="window.__cpCerrarDetalle()" style="background:#F1F5F9;border:none;border-radius:8px;width:30px;height:30px;cursor:pointer">✕</button></div></div>';
+    html += '<button onclick="window.__cpCerrarDetalle()" style="background:#F1F5F9;border:none;border-radius:8px;width:30px;height:30px;cursor:pointer">✕</button></div>';
 
     // ── Barra de progreso general (5 etapas del documento completo) ──
     var ETAPAS_CP = [
@@ -788,18 +801,16 @@
         htmlIzq += '<button onclick="document.getElementById(\'cp-rechazo-motivo\').style.display=\'block\';document.getElementById(\'cp-confirmar-rechazo\').style.display=\'block\'" style="flex:1;padding:11px;background:#fff;color:#E23B2E;border:1px solid #F0997B;border-radius:9px;font-weight:600;cursor:pointer">Rechazar</button></div>';
         htmlIzq += '<button id="cp-confirmar-rechazo" onclick="window.__cpRechazar(\''+d.id+'\')" style="display:none;width:100%;margin-top:8px;padding:11px;background:#E23B2E;color:#fff;border:none;border-radius:9px;font-weight:600;cursor:pointer">Confirmar rechazo</button>';
       } else {
-        var cfg2 = _configFlujoCache || {aprobadoresCompras:[]};
-        var org2 = _orgCache || {jefesPorDepto:{}};
+        var cfg2 = _configFlujoCache || {jefesPorDepto:{}, aprobadoresCompras:[]};
         var quien = '—';
         if(pasoActivo.label==='Jefe de área'){
-          var depto2 = departamentoPorCorreo(d.solicitanteEmail);
-          var jefe2 = depto2 && org2.jefesPorDepto ? org2.jefesPorDepto[depto2] : null;
-          var dirNombres = (_colaboradoresCache||[]).filter(function(x){return x.tipoUsuario==='director';}).map(function(x){return x.nombre||x.correo;}).join(', ');
-          quien = jefe2 ? jefe2.nombre + (dirNombres?' (o un director: '+dirNombres+')':'') : (dirNombres ? 'un director: '+dirNombres : (depto2 ? 'sin jefe de área asignado para '+depto2+' — asígnalo en admin-directorio.html' : 'departamento del solicitante desconocido — revisa su ficha en colaboradores'));
+          var depto2 = departamentoPorCorreo(d.solicitante);
+          var jefe2 = depto2 && cfg2.jefesPorDepto ? cfg2.jefesPorDepto[depto2] : null;
+          quien = jefe2 ? jefe2.nombre : (depto2 ? 'sin jefe de área asignado para '+depto2 : 'departamento del solicitante desconocido — revisa su ficha en colaboradores');
         } else if(pasoActivo.label==='Compras'){
           quien = (cfg2.aprobadoresCompras||[]).map(function(a){return a.nombre||a.correo;}).join(', ') || 'sin aprobadores de Compras configurados';
         }
-        htmlIzq += '<div style="background:#FFF7ED;border-radius:9px;padding:10px 12px;font-size:12px;color:#7C2D12">Este paso ("'+esc(pasoActivo.label)+'") solo lo puede autorizar: <b>'+esc(quien)+'</b>. Configúralo en "⚙ Configurar flujo" (o en admin-directorio.html si es el jefe de área/director) si falta.</div>';
+        htmlIzq += '<div style="background:#FFF7ED;border-radius:9px;padding:10px 12px;font-size:12px;color:#7C2D12">Este paso ("'+esc(pasoActivo.label)+'") solo lo puede autorizar: <b>'+esc(quien)+'</b>. Configúralo en "⚙ Configurar flujo" si falta.</div>';
       }
     }
 
@@ -812,15 +823,6 @@
       htmlIzq += '<label style="padding:8px 12px;border:1px solid #E2E8F0;border-radius:8px;font-size:11.5px;cursor:pointer;background:#fff">Adjuntar<input id="cp-cot-file" type="file" accept="image/*,application/pdf" style="display:none"></label></div>';
       htmlIzq += '<button onclick="window.__cpAgregarCotizacion(\''+d.id+'\')" style="width:100%;padding:9px;border:1.5px dashed #E2E8F0;background:#fff;color:#1473E6;border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:8px">+ Agregar cotización</button>';
       htmlIzq += '<button onclick="window.__cpEnviarDirectoACompra(\''+d.id+'\')" style="width:100%;padding:10px;background:#12A150;color:#fff;border:none;border-radius:9px;font-size:12.5px;font-weight:700;cursor:pointer;margin-bottom:12px">✓ Enviar directo a compra (genera OC)</button>';
-      // Monto por arriba del tope del facultado — esperando a que un director
-      // lo autorice. Solo un director ve el botón de autorizar; a los demás
-      // les avisamos que está en espera.
-      if(d.pendienteAutorizacionMonto){
-        var esDirector = esDirectorPorCorreo(_cpMiCorreo());
-        htmlIzq += '<div style="background:#FFF7ED;border-radius:9px;padding:10px 12px;font-size:12px;color:#7C2D12;margin-bottom:10px">Monto de $'+esc(d.pendienteAutorizacionMonto.monto)+' con '+esc(d.pendienteAutorizacionMonto.proveedor)+' rebasa el tope del facultado — necesita autorización de un director.' +
-          (esDirector ? '<button onclick="window.__cpAutorizarMontoYGenerarOC(\''+d.id+'\')" style="display:block;width:100%;margin-top:8px;padding:9px;background:#0A1628;color:#fff;border:none;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer">Autorizar y generar OC</button>' : '') +
-        '</div>';
-      }
     }
 
     // ══ COLUMNA DERECHA — resumen fijo (como el "Payment Summary" de referencia) ══
@@ -840,7 +842,6 @@
     htmlDer += '</div>';
     if(d.estatus==='orden_generada'){
       htmlDer += '<button onclick="window.__cpMarcarRecibida(\''+d.id+'\')" style="width:100%;margin-top:12px;padding:11px;background:#12A150;color:#fff;border:none;border-radius:9px;font-weight:600;cursor:pointer;font-size:12.5px">Marcar como recibida</button>';
-      htmlDer += '<button onclick="window.__cpAvisarWhatsApp(\''+d.id+'\')" style="width:100%;margin-top:8px;padding:10px;background:#25D366;color:#fff;border:none;border-radius:9px;font-weight:600;cursor:pointer;font-size:12px">💬 Avisar por WhatsApp</button>';
     }
     if(d.estatus==='orden_generada' || d.estatus==='recibida'){
       htmlDer += '<button onclick="window.__cpDescargarOC(\''+d.id+'\')" style="width:100%;margin-top:8px;padding:11px;background:#fff;color:#0A1628;border:1px solid #E2E8F0;border-radius:9px;font-weight:600;cursor:pointer;font-size:12.5px">Descargar orden de compra (PDF)</button>';
@@ -929,14 +930,12 @@
   // Resuelve quién debe autorizar un paso dado — reusado por el autorizar
   // automático y por "Reenviar liga" en el panel de firmas pendientes.
   function _cpDestinatariosPaso(d, paso){
-    var cfg = _configFlujoCache || {aprobadoresCompras:[]};
-    var org = _orgCache || {jefesPorDepto:{}};
+    var cfg = _configFlujoCache || {jefesPorDepto:{}, aprobadoresCompras:[]};
     var out = [];
     if(paso.label==='Jefe de área'){
-      var depto = departamentoPorCorreo(d.solicitanteEmail);
-      var jefe = depto && org.jefesPorDepto ? org.jefesPorDepto[depto] : null;
+      var depto = departamentoPorCorreo(d.solicitante);
+      var jefe = depto && cfg.jefesPorDepto ? cfg.jefesPorDepto[depto] : null;
       if(jefe && jefe.correo) out.push(jefe);
-      else (_colaboradoresCache||[]).filter(function(x){return x.tipoUsuario==='director';}).forEach(function(a){ if(a.correo) out.push(a); }); // sin jefe asignado — avisa a los directores como respaldo
     } else if(paso.label==='Compras'){
       (cfg.aprobadoresCompras||[]).forEach(function(a){ if(a.correo) out.push(a); });
     }
@@ -1044,70 +1043,26 @@
     document.body.appendChild(ov);
   }
 
-  // Correo de quien tiene la sesión abierta ahora mismo.
-  function _cpMiCorreo(){ return window.auth && window.auth.currentUser ? window.auth.currentUser.email : ''; }
-  // ¿Puede este correo generar la OC él mismo para este monto, sin pedirle
-  // autorización a un director? Sí si está en 'facultados' y el monto no
-  // rebasa su tope, o si es un director (sin tope — puede lo que sea).
-  function _cpPuedeGenerarOC(monto, correo){
-    var cfg = _configFlujoCache || {};
-    correo = (correo||'').toLowerCase().trim();
-    if(esDirectorPorCorreo(correo)) return true;
-    var fac = (cfg.facultados||[]).find(function(f){ return f.correo===correo; });
-    return !!(fac && Number(monto) <= Number(fac.tope));
-  }
-  // Genera la orden de compra de verdad — reusado tanto por el camino directo
-  // (facultado dentro de su tope) como por el de autorización de un director.
-  function _cpGenerarOC(fs, id, ganadora){
-    var ocFolio='OC-'+String(Date.now()).slice(-6);
-    return fs.updateDoc(fs.doc(window.db,'requisiciones_compra',id), {
-      estatus:'orden_generada', cotizacionGanadora:ganadora, ocFolio:ocFolio,
-      pendienteAutorizacionMonto:null,
-    }).then(function(){
-      toast('Orden de compra generada');
-      var d = docs.find(function(x){ return x.id===id; });
-      if(d) sincronizarCuentaPorPagar(Object.assign({},d,{estatus:'orden_generada',cotizacionGanadora:ganadora,ocFolio:ocFolio}), 'orden_generada');
-      _cpMostrarExito(ocFolio, id);
-    });
-  }
-  // Deja la requisición marcada como "esperando a un director" y les avisa —
-  // no genera la OC todavía, eso lo hace __cpAutorizarMontoYGenerarOC.
-  function _cpPedirAutorizacionMonto(fs, id, ganadora){
-    var pendiente = Object.assign({}, ganadora, {
-      solicitadaPor: _cpMiCorreo(), solicitadaEn: new Date().toISOString(),
-    });
-    return fs.updateDoc(fs.doc(window.db,'requisiciones_compra',id), {pendienteAutorizacionMonto:pendiente}).then(function(){
-      toast('El monto rebasa tu tope — se pidió autorización a un director');
-      (_colaboradoresCache||[]).filter(function(dir){ return dir.tipoUsuario==='director'; }).forEach(function(dir){
-        if(!dir.correo) return;
-        fs.addDoc(fs.collection(window.db,'flotilla_notificaciones'), {
-          para:dir.correo.toLowerCase().trim(), tipo:'requisicion_autorizar_monto',
-          mensaje:'Requisición '+(ganadora.folio||id)+' necesita tu autorización — monto $'+ganadora.monto,
-          link:'firmar.html?id='+id,
-          leido:false, creadaEn:new Date().toISOString(),
-        }).catch(function(e){ console.warn('[compras] no se pudo notificar al director', e); });
-      });
-      var d = docs.find(function(x){ return x.id===id; });
-      if(d) d.pendienteAutorizacionMonto = pendiente;
-    });
-  }
   window.__cpElegirGanadora = function(id,cotId){
     cargarFirestore().then(function(fs){
-      Promise.all([fs.getDoc(fs.doc(window.db,'requisiciones_compra',id,'cotizaciones',cotId)), cargarConfigFlujo(), cargarColaboradores()]).then(function(res){
-        var snap = res[0]; if(!snap.exists()) return;
+      fs.getDoc(fs.doc(window.db,'requisiciones_compra',id,'cotizaciones',cotId)).then(function(snap){
+        if(!snap.exists()) return;
         var c=snap.data();
-        var ganadora={proveedor:c.proveedor,monto:c.monto,cotizacionId:cotId};
-        if(_cpPuedeGenerarOC(c.monto, _cpMiCorreo())){
-          _cpGenerarOC(fs, id, ganadora);
-        } else {
-          _cpPedirAutorizacionMonto(fs, id, ganadora);
-        }
+        var cotizacionGanadora={proveedor:c.proveedor,monto:c.monto,cotizacionId:cotId};
+        var ocFolio='OC-'+String(Date.now()).slice(-6);
+        fs.updateDoc(fs.doc(window.db,'requisiciones_compra',id), {
+          estatus:'orden_generada', cotizacionGanadora:cotizacionGanadora, ocFolio:ocFolio,
+        }).then(function(){
+          toast('Orden de compra generada');
+          var d = docs.find(function(x){ return x.id===id; });
+          if(d) sincronizarCuentaPorPagar(Object.assign({},d,{estatus:'orden_generada',cotizacionGanadora:cotizacionGanadora,ocFolio:ocFolio}), 'orden_generada');
+          _cpMostrarExito(ocFolio, id);
+        });
       });
     });
   };
-  // Atajo: guarda la cotización, la marca ganadora y (si el monto está
-  // dentro del tope de quien la sube) descarga la OC en un solo clic — sin
-  // pasar por la lista intermedia de "elegir ganadora".
+  // Atajo: guarda la cotización, la marca ganadora y descarga la OC en un
+  // solo clic — sin pasar por la lista intermedia de "elegir ganadora".
   window.__cpEnviarDirectoACompra = function(id){
     var proveedor=document.getElementById('cp-cot-proveedor').value.trim();
     var monto=document.getElementById('cp-cot-monto').value.trim();
@@ -1118,28 +1073,23 @@
       var r=new FileReader(); r.onload=function(){ res(r.result); }; r.readAsDataURL(fileInput.files[0]);
     }) : Promise.resolve(null);
     leer.then(function(archivoBase64){
-      Promise.all([cargarFirestore(), cargarConfigFlujo(), cargarColaboradores()]).then(function(res){
-        var fs = res[0];
+      cargarFirestore().then(function(fs){
         fs.addDoc(fs.collection(window.db,'requisiciones_compra',id,'cotizaciones'), {
           proveedor:proveedor, monto:Number(monto), archivoBase64:archivoBase64,
           creadaEn:new Date().toISOString(), porUid: window.auth&&window.auth.currentUser?window.auth.currentUser.uid:null,
         }).then(function(cotRef){
-          var ganadora={proveedor:proveedor,monto:Number(monto),cotizacionId:cotRef.id};
-          if(_cpPuedeGenerarOC(Number(monto), _cpMiCorreo())){
-            _cpGenerarOC(fs, id, ganadora);
-          } else {
-            _cpPedirAutorizacionMonto(fs, id, ganadora);
-          }
+          var ocFolio='OC-'+String(Date.now()).slice(-6);
+          var cotizacionGanadora={proveedor:proveedor,monto:Number(monto),cotizacionId:cotRef.id};
+          fs.updateDoc(fs.doc(window.db,'requisiciones_compra',id), {
+            estatus:'orden_generada', cotizacionGanadora:cotizacionGanadora, ocFolio:ocFolio,
+          }).then(function(){
+            var dActualizado = Object.assign({}, d, {estatus:'orden_generada', cotizacionGanadora:cotizacionGanadora, ocFolio:ocFolio});
+            sincronizarCuentaPorPagar(dActualizado, 'orden_generada');
+            _cpMostrarExito(ocFolio, id);
+          });
         });
       });
     });
-  };
-  // El director hace clic para autorizar una OC que rebasó el tope de un
-  // facultado — ahí sí se genera la orden de compra.
-  window.__cpAutorizarMontoYGenerarOC = function(id){
-    var d = docs.find(function(x){ return x.id===id; }); if(!d || !d.pendienteAutorizacionMonto) return;
-    var ganadora = {proveedor:d.pendienteAutorizacionMonto.proveedor, monto:d.pendienteAutorizacionMonto.monto, cotizacionId:d.pendienteAutorizacionMonto.cotizacionId};
-    cargarFirestore().then(function(fs){ _cpGenerarOC(fs, id, ganadora); });
   };
   // ── PUENTE COMPRAS → PAGOS ──────────────────────────────────────
   // Colección 'pagos_cuentas_por_pagar' — un doc por requisición (id =
@@ -1174,25 +1124,8 @@
         toast('Marcada como recibida');
         var d = docs.find(function(x){ return x.id===id; });
         if(d) sincronizarCuentaPorPagar(Object.assign({},d,{estatus:'recibida'}), 'recibida');
-        // Aviso automático al solicitante — siempre por dentro de la app (no
-        // depende de que tenga WhatsApp Desktop ni de guardar su teléfono).
-        if(d && d.solicitanteEmail){
-          fs.addDoc(fs.collection(window.db,'flotilla_notificaciones'), {
-            para:(d.solicitanteEmail||'').toLowerCase().trim(), tipo:'requisicion_recibida',
-            mensaje:'Tu requisición '+(d.folio||id)+' ya fue recibida — el pedido está completo',
-            link:'', leido:false, creadaEn:new Date().toISOString(),
-          }).catch(function(e){ console.warn('[compras] no se pudo notificar recibida', e); });
-        }
       });
     });
-  };
-  // Botón manual — abre WhatsApp con el mensaje ya armado (no hay teléfono
-  // guardado del solicitante, así que se abre el selector de contacto de
-  // WhatsApp, mismo patrón que ya se usa para compartir la liga del kiosco).
-  window.__cpAvisarWhatsApp = function(id){
-    var d = docs.find(function(x){ return x.id===id; }); if(!d) return;
-    var texto = 'Tu requisición '+(d.folio||id)+' ya fue recibida — el pedido está completo. Gracias por tu paciencia.';
-    window.open('https://wa.me/?text='+encodeURIComponent(texto), '_blank');
   };
 
   // ── ORDEN DE COMPRA EN PDF ──────────────────────────────────────
