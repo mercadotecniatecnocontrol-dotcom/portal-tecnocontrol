@@ -83,6 +83,14 @@
     if (_fs) return Promise.resolve(_fs);
     return import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js').then(function(m){ _fs=m; return m; });
   }
+  var _storage = null;
+  function cargarStorage(){
+    if (_storage) return Promise.resolve(_storage);
+    return import('https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js').then(function(m){
+      _storage = { mod:m, storage: m.getStorage(window.app) };
+      return _storage;
+    });
+  }
 
   // ── Helpers ──
   function now(){ return Date.now(); }
@@ -456,7 +464,11 @@
     var list=_evidenciasCache[p.id]||[];
     if (!list.length) return '<div class="alm-empty" style="padding:4px 0;">Sin evidencias a\u00fan</div>';
     return list.map(function(ev,idx){
-      return '<img class="alm-evid-thumb" src="'+esc(ev.imagen)+'" onclick="window.__almVerEvidencia(\''+p.id+'\','+idx+')">';
+      if (ev.imagen){
+        return '<img class="alm-evid-thumb" src="'+esc(ev.imagen)+'" onclick="window.__almVerEvidencia(\''+p.id+'\','+idx+')">';
+      }
+      return '<a href="'+esc(ev.url||'#')+'" target="_blank" class="alm-evid-thumb alm-evid-doc" style="display:flex;flex-direction:column;align-items:center;justify-content:center;text-decoration:none;color:#334155;background:#f8fafc;">'
+        + '<span style="font-size:20px;">\ud83d\udcc4</span><span style="font-size:9px;text-align:center;padding:0 3px;word-break:break-word;">'+esc(ev.nombre||'Documento')+'</span></a>';
     }).join('');
   }
   window.__almSubirEvidencia = function(id){
@@ -464,19 +476,37 @@
     input.onchange = function(){
       var file=input.files&&input.files[0]; input.value='';
       if (!file) return;
-      comprimirImagen(file).then(function(dataUrl){
-        return cargarFirestore().then(function(fs){
-          if (!window.db) throw new Error('Firestore no disponible');
-          return fs.addDoc(fs.collection(window.db,'surtidos',id,'evidencias'), {
-            imagen:dataUrl, subidoPor:yoNombre(), subidoPorEmail:yoEmail(), subidoEn:fs.serverTimestamp()
+      var esImagen = file.type && file.type.indexOf('image/')===0;
+      var subida = esImagen
+        ? comprimirImagen(file).then(function(dataUrl){
+            return cargarFirestore().then(function(fs){
+              if (!window.db) throw new Error('Firestore no disponible');
+              return fs.addDoc(fs.collection(window.db,'surtidos',id,'evidencias'), {
+                tipo:'imagen', imagen:dataUrl, subidoPor:yoNombre(), subidoPorEmail:yoEmail(), subidoEn:fs.serverTimestamp()
+              });
+            });
+          })
+        // Documento (PDF/Word/etc.): va a Firebase Storage — un documento normal no cabe
+        // en un documento de Firestore (límite 1MB), a diferencia de la foto comprimida.
+        : cargarStorage().then(function(st){
+            var ruta = 'evidencias/' + id + '/' + Date.now() + '_' + file.name;
+            var sref = st.mod.ref(st.storage, ruta);
+            return st.mod.uploadBytes(sref, file).then(function(){ return st.mod.getDownloadURL(sref); });
+          }).then(function(url){
+            return cargarFirestore().then(function(fs){
+              if (!window.db) throw new Error('Firestore no disponible');
+              return fs.addDoc(fs.collection(window.db,'surtidos',id,'evidencias'), {
+                tipo:'archivo', nombre:file.name, url:url, mimeType:file.type||null,
+                subidoPor:yoNombre(), subidoPorEmail:yoEmail(), subidoEn:fs.serverTimestamp()
+              });
+            });
           });
-        });
-      }).then(function(){
+      subida.then(function(){
         delete _evidenciasCache[id];
         return cargarEvidencias(id);
       }).then(function(){
         render();
-        if (window.mostrarPush) window.mostrarPush('📷 Evidencia agregada','','✅');
+        if (window.mostrarPush) window.mostrarPush(esImagen?'📷 Evidencia agregada':'📄 Documento agregado','','✅');
       }).catch(function(err){
         console.error('[almacen] subirEvidencia:',err);
         if (window.mostrarPush) window.mostrarPush('Almacén','No se pudo subir la evidencia','⚠️');
@@ -790,8 +820,8 @@
       }
       prodHtml += '<div class="alm-evid-block"><span class="lbl">Evidencia de entrega</span>'
         + '<div class="alm-evid-grid" id="alm-evid-grid-'+p.id+'">'+renderEvidenciasThumbs(p)+'</div>'
-        + '<button type="button" class="alm-evid-add" onclick="window.__almSubirEvidencia(\''+p.id+'\')">+ Agregar foto</button>'
-        + '<input type="file" accept="image/*" capture="environment" id="alm-evid-file-'+p.id+'" style="display:none">'
+        + '<button type="button" class="alm-evid-add" onclick="window.__almSubirEvidencia(\''+p.id+'\')">+ Agregar foto o documento</button>'
+        + '<input type="file" accept="image/*,.pdf,.doc,.docx" id="alm-evid-file-'+p.id+'" style="display:none">'
         + '</div>';
     }
 
@@ -917,8 +947,8 @@
       + '<div style="font-size:12.5px;color:#64748b;font-weight:700;margin-bottom:12px">'+esc(p.cliente||'')+' \u00b7 '+piezas(p)+' piezas</div>'
       + '<div class="alm-evid-block" style="border-top:none;padding-top:0;"><span class="lbl">Evidencia fotogr\u00e1fica (embarque / entrega)</span>'
       +   '<div class="alm-evid-grid" id="alm-evid-grid-'+p.id+'">'+renderEvidenciasThumbs(p)+'</div>'
-      +   '<button type="button" class="alm-evid-add" onclick="window.__almSubirEvidencia(\''+p.id+'\')">+ Agregar foto</button>'
-      +   '<input type="file" accept="image/*" capture="environment" id="alm-evid-file-'+p.id+'" style="display:none">'
+      +   '<button type="button" class="alm-evid-add" onclick="window.__almSubirEvidencia(\''+p.id+'\')">+ Agregar foto o documento</button>'
+      +   '<input type="file" accept="image/*,.pdf,.doc,.docx" id="alm-evid-file-'+p.id+'" style="display:none">'
       + '</div>'
       + '<label style="display:block;font-size:11px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#64748b;margin:14px 0 6px">Observaciones</label>'
       + '<textarea id="alm-entrega-obs" placeholder="Ej. Se entreg\u00f3 completo / falta 1 pieza que se enviar\u00e1 despu\u00e9s\u2026" style="width:100%;min-height:70px;padding:11px 13px;border:2px solid #e6ebf2;border-radius:10px;font-size:14px;font-family:inherit;outline:none;resize:vertical;box-sizing:border-box;">'+esc(p.entregaObservaciones||'')+'</textarea>'
