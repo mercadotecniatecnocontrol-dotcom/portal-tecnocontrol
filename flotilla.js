@@ -2464,6 +2464,7 @@ async function flSyncVehiculoServicio(eco,nuevoStatus,solicitudIdExcluir){
 // de las solicitudes (para arreglar datos legacy sin esperar nuevas transiciones).
 // Uso: flReconciliarTaller()
 window.flReconciliarTaller=async function(){
+  if(!window.flEsAdmin?.()){console.warn('[FL] flReconciliarTaller: requiere rol administrador.');if(typeof flToast==='function')flToast('Esta acción requiere rol de administrador.','err');return;}
   if(!fs){const m=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');fs=m;}
   const ecosConServicio=new Set(flS.filter(s=>['Servicio','Pagos','Cierre'].includes(s.estatus)).map(s=>String(s.vehiculoEco)));
   let aTaller=0,aActivo=0;
@@ -5384,8 +5385,9 @@ function rTransListFiltrada(lista){
       ${fotos.length?`<div style="display:flex;gap:5px;margin-top:8px">${fotos.map(f=>`<img src="${f}" style="width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid #E8EDF5">`).join('')}${(t.entregaFotos||t.fotos||[]).length>4?`<div style="width:44px;height:44px;border-radius:6px;background:#F1F5F9;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#64748B">+${(t.entregaFotos||t.fotos||[]).length-4}</div>`:''}
       </div>`:''}
       ${isPend?`<div style="margin-top:8px;padding:6px 10px;background:#FEF3C7;border-radius:7px;font-size:11px;font-weight:700;color:#B45309">Esperando que ${t.receptorNombre||'el receptor'} confirme con el código ${t.codigo||'—'}${t.venceEn?` · Vence el ${new Date(t.venceEn).toLocaleString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}`:''}</div>`:''}
-      ${isPend&&hAdm()?`<div style="margin-top:8px" onclick="event.stopPropagation()">
-        <button onclick="flCancelarTransferencia('${t.id}')" style="width:100%;font-size:11px;font-weight:800;padding:8px;background:#fff;color:#B91C1C;border:1px solid #FCA5A5;border-radius:8px;cursor:pointer">✕ Cancelar transferencia</button>
+      ${isPend&&hAdm()?`<div style="margin-top:8px;display:flex;gap:8px" onclick="event.stopPropagation()">
+        <button onclick="flRecibirTransferencia('${t.id}')" style="flex:1;font-size:11px;font-weight:800;padding:8px;background:#0A1628;color:#fff;border:none;border-radius:8px;cursor:pointer">Recibir desde portal</button>
+        <button onclick="flCancelarTransferencia('${t.id}')" style="flex:1;font-size:11px;font-weight:800;padding:8px;background:#fff;color:#B91C1C;border:1px solid #FCA5A5;border-radius:8px;cursor:pointer">✕ Cancelar</button>
       </div>`:''}
       ${isVencida?`<div style="margin-top:8px;padding:6px 10px;background:#FEF2F2;border-radius:7px;font-size:11px;font-weight:700;color:#B91C1C">Código vencido${t.venciadoEn?` desde el ${new Date(t.venciadoEn).toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'})}`:''} — el vehículo sigue asignado a ${t.entregaNombre||'—'}${hAdm()?'. Reactiva o cancela abajo.':''}</div>`:''}
       ${isVencida&&hAdm()?`<div style="margin-top:8px;display:flex;gap:8px" onclick="event.stopPropagation()">
@@ -7748,19 +7750,6 @@ async function flLeerArchivo(file, maxMB = 4) {
   });
 }
 
-// HELPER — renderizar lista de archivos adjuntos
-function flHtmlArchivos(archivos, onElim) {
-  if (!archivos?.length) return '';
-  return archivos.map((a, i) => `
-    <div style="display:flex;align-items:center;gap:8px;padding:7px 11px;background:#F8FAFC;border-radius:8px;border:1px solid #E2E8F0">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="${a.tipo==='pdf'?'#B91C1C':'#1D4ED8'}" stroke-width="2" stroke-linecap="round">
-        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>
-      </svg>
-      <span style="font-size:11px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.nombre||'Archivo '+(i+1)}</span>
-      <span style="font-size:10px;color:#94A3B8">${a.kb||''}KB</span>
-      ${onElim ? `<button onclick="${onElim}(${i})" style="border:none;background:none;cursor:pointer;color:#EF4444;font-size:14px;padding:0 2px;line-height:1">✕</button>` : ''}
-    </div>`).join('');
-}
 
 // ═══════════════════════════════════════════════════════
 // VISOR DE ARCHIVOS (PDF o imagen) — z-index máximo
@@ -9664,6 +9653,7 @@ window.flEliminarTarea = async function(tareaId) {
 // ── UTILIDAD: Limpiar duplicados de flotilla_vehiculos ──────────
 // Ejecutar desde consola del portal (Admin): await window.flLimpiarDuplicados()
 window.flLimpiarDuplicados=async function(){
+  if(!window.flEsAdmin?.()){console.warn('[FL] flLimpiarDuplicados: requiere rol administrador.');if(typeof flToast==='function')flToast('Esta acción requiere rol de administrador.','err');return;}
   const snap=await fs.getDocs(fs.collection(db,C.VEHS));
   const docs=snap.docs.map(d=>({id:d.id,...d.data()}));
   // Agrupar por ECO
