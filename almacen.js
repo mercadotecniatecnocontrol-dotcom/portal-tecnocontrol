@@ -531,6 +531,8 @@
   function inyectarCSS(){
     if (_cssOk) return; _cssOk = true;
     var css = ''
+    + '.tv-ruta-anim{stroke-dasharray:1 9;stroke-linecap:round;animation:almRutaFlow 900ms linear infinite;}'
+    + '@keyframes almRutaFlow{to{stroke-dashoffset:-20;}}'
     + '.alm-wrap{--r:14px;}'
     + '.alm-bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:2px 0 18px;}'
     + '.alm-live{display:inline-flex;align-items:center;gap:7px;font-size:11px;font-weight:800;letter-spacing:.06em;color:#12A150;text-transform:uppercase;}'
@@ -706,6 +708,94 @@
     document.getElementById('alm-modal-hist').classList.add('show');
   };
 
+  // ═══════════════════════════════════════════════════════════════════
+  //  CATÁLOGO DE PAQUETERÍAS — reutiliza el mismo catálogo genérico
+  //  puntos_referencia que ya usa almacen-pdf.js (tipo:'paqueteria'), a
+  //  través de sus funciones ya expuestas (window.tcCargarCatalogoPuntos /
+  //  window.tcGeocodificarDireccion) — no se duplica el catálogo ni la
+  //  geocodificación. Al vivir en esa misma colección compartida, cualquier
+  //  paquetería que se dé de alta aquí o desde Ventas se ve del otro lado
+  //  automáticamente — no hay nada más que sincronizar.
+  // ═══════════════════════════════════════════════════════════════════
+  window.__almAbrirPaqueterias = function(){
+    if (!window.tcCargarCatalogoPuntos){
+      if (window.mostrarPush) window.mostrarPush('Almacén','El catálogo de puntos todavía está cargando — intenta de nuevo en un momento.','⚠️');
+      return;
+    }
+    construirModalHistorial();
+    var box=document.getElementById('alm-modal-hist-box');
+    box.classList.add('wide');
+    box.innerHTML = '<h4>📦 Catálogo de paqueterías<button onclick="window.__almCerrarModal()">&times;</button></h4>'
+      + '<div id="alm-paq-lista" style="max-height:260px;overflow-y:auto;margin-bottom:14px;"><div class="alm-empty">Cargando…</div></div>'
+      + '<div style="border-top:1px dashed #e2e8f0;padding-top:12px;">'
+      +   '<div style="font-weight:700;font-size:12.5px;color:#1e293b;margin-bottom:8px;">+ Registrar paquetería nueva</div>'
+      +   '<input id="alm-paq-nombre" placeholder="Nombre (ej. Estafeta Sucursal Centro)" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin-bottom:8px;box-sizing:border-box;">'
+      +   '<input id="alm-paq-dir" placeholder="Dirección (calle, colonia, ciudad)" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin-bottom:8px;box-sizing:border-box;">'
+      +   '<button type="button" class="alm-evid-add" onclick="window.__almPaqAgregar()">Geocodificar y guardar</button>'
+      +   '<div id="alm-paq-msg" style="font-size:11.5px;margin-top:6px;"></div>'
+      + '</div>';
+    document.getElementById('alm-modal-hist').classList.add('show');
+    __almPaqRenderLista();
+  };
+
+  function __almPaqRenderLista(){
+    var cont = document.getElementById('alm-paq-lista');
+    if (!cont) return;
+    window.tcCargarCatalogoPuntos().then(function(lista){
+      var cont2 = document.getElementById('alm-paq-lista'); if (!cont2) return;
+      var paqs = lista.filter(function(p){ return p.tipo === 'paqueteria'; });
+      cont2.innerHTML = paqs.length ? paqs.map(function(p){
+        return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid #f1f5f9;">'
+          + '<div style="min-width:0;"><div style="font-weight:700;font-size:12.5px;color:#1e293b;">'+esc(p.nombre)+'</div>'
+          +   '<div style="font-size:11px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(p.direccion||'Sin dirección')+'</div></div>'
+          + '<button type="button" onclick="window.__almPaqEliminar(\''+p.id+'\')" style="flex-shrink:0;background:#fef2f2;border:none;color:#dc2626;padding:5px 9px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:700;">Eliminar</button>'
+          + '</div>';
+      }).join('') : '<div class="alm-empty">Aún no hay paqueterías registradas.</div>';
+    });
+  }
+
+  window.__almPaqAgregar = function(){
+    var nombre = (document.getElementById('alm-paq-nombre')||{}).value || '';
+    var direccion = (document.getElementById('alm-paq-dir')||{}).value || '';
+    nombre = nombre.trim(); direccion = direccion.trim();
+    var msgEl = document.getElementById('alm-paq-msg');
+    if (!nombre || !direccion){ if (msgEl){ msgEl.textContent = 'Falta el nombre o la dirección.'; msgEl.style.color = '#dc2626'; } return; }
+    if (msgEl){ msgEl.textContent = 'Geocodificando…'; msgEl.style.color = '#0e7490'; }
+    window.tcGeocodificarDireccion(direccion).then(function(coord){
+      if (!coord){ if (msgEl){ msgEl.textContent = 'No se encontró la dirección — revísala e intenta de nuevo.'; msgEl.style.color = '#dc2626'; } return; }
+      return cargarFirestore().then(function(fs){
+        if (!window.db) throw new Error('Firestore no disponible');
+        return fs.addDoc(fs.collection(window.db,'puntos_referencia'), {
+          nombre: nombre, tipo: 'paqueteria', direccion: direccion, lat: coord.lat, lng: coord.lng,
+          creadoPor: yoNombre(), creadoEn: new Date().toISOString()
+        });
+      }).then(function(){
+        if (window.__almInvalidarCachePuntos) window.__almInvalidarCachePuntos();
+        document.getElementById('alm-paq-nombre').value = '';
+        document.getElementById('alm-paq-dir').value = '';
+        if (msgEl){ msgEl.textContent = '✓ Guardada'; msgEl.style.color = '#16a34a'; }
+        __almPaqRenderLista();
+      });
+    }).catch(function(err){
+      console.error('[almacen] paqueteria agregar:', err);
+      if (msgEl){ msgEl.textContent = 'No se pudo guardar: ' + (err && err.message || err); msgEl.style.color = '#dc2626'; }
+    });
+  };
+
+  window.__almPaqEliminar = function(id){
+    if (!confirm('¿Eliminar esta paquetería del catálogo?')) return;
+    cargarFirestore().then(function(fs){
+      if (!window.db) throw new Error('Firestore no disponible');
+      return fs.deleteDoc(fs.doc(window.db,'puntos_referencia',id));
+    }).then(function(){
+      if (window.__almInvalidarCachePuntos) window.__almInvalidarCachePuntos();
+      __almPaqRenderLista();
+    }).catch(function(err){
+      console.error('[almacen] paqueteria eliminar:', err);
+      if (window.mostrarPush) window.mostrarPush('Almacén','No se pudo eliminar','⚠️');
+    });
+  };
+
   function construirShell(){
     var cont=contenedor(); if(!cont) return;
     if (cont.querySelector('#alm-toolbar')) return; // ya construido → no perder foco del buscador
@@ -725,6 +815,7 @@
       +   (esAdminActual()?'<button class="alm-notif-btn" title="Fotos de catálogo (solo admin)" onclick="window.__almAbrirFotos()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>':'')
       +   '<button class="alm-notif-btn" title="Historial de entregas" onclick="window.__almAbrirHistorialEntregas()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11H3v10h6"/><path d="M9 21h12V8l-5-5H9v6"/><line x1="13" y1="12" x2="17" y2="12"/><line x1="13" y1="16" x2="17" y2="16"/></svg></button>'
       +   '<button class="alm-notif-btn" title="Logística y Rutas (Chihuahua)" onclick="window.__logAbrirLogistica && window.__logAbrirLogistica()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></button>'
+      +   '<button class="alm-notif-btn" title="Catálogo de paqueterías" onclick="window.__almAbrirPaqueterias()">📦</button>'
       +   '<button class="alm-notif-btn" title="KPIs de tiempos de surtido" onclick="window.__almAbrirKPIs()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></button>'
       +   '<button class="alm-notif-btn" title="Cumplea\u00f1os del equipo (para la TV)" onclick="window.__almAbrirCumpleanos()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="12" width="16" height="8" rx="1"/><path d="M4 16h16"/><path d="M8 12V9a1 1 0 0 1 2 0v3"/><path d="M14 12V9a1 1 0 0 1 2 0v3"/><path d="M9 6c0-1 1-1 1-2s-1-1-1-2"/><path d="M15 6c0-1 1-1 1-2s-1-1-1-2"/></svg></button>'
       + '</div>'
@@ -820,7 +911,12 @@
       }
       prodHtml += '<div class="alm-evid-block"><span class="lbl">Evidencia de entrega</span>'
         + '<div class="alm-evid-grid" id="alm-evid-grid-'+p.id+'">'+renderEvidenciasThumbs(p)+'</div>'
-        + '<button type="button" class="alm-evid-add" onclick="window.__almSubirEvidencia(\''+p.id+'\')">+ Agregar foto o documento</button>'
+        + '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:2px;">'
+        +   '<button type="button" class="alm-evid-add" onclick="window.__almSubirEvidencia(\''+p.id+'\')">+ Agregar foto o documento</button>'
+        +   (p.remisionado
+              ? '<span style="font-size:11px;font-weight:700;color:#16a34a;">✓ Remisionado'+(p.remisionadoPor?(' · '+esc(p.remisionadoPor)):'')+'</span>'
+              : '<button type="button" class="alm-evid-add" style="border-style:solid;border-color:#16a34a;color:#16a34a;" onclick="window.__almConfirmarRemision(\''+p.id+'\')">✅ Confirmar y remisionar</button>')
+        + '</div>'
         + '<input type="file" accept="image/*,.pdf,.doc,.docx" id="alm-evid-file-'+p.id+'" style="display:none">'
         + '</div>';
     }
@@ -890,6 +986,42 @@
   //  ACCIONES → Firestore
   // =====================================================================
   function buscarP(id){ for(var i=0;i<pedidos.length;i++){ if(pedidos[i].id===id) return pedidos[i]; } return null; }
+
+  // ── Confirmar y remisionar: marca el pedido como formalmente remisionado y
+  //    deja un registro en `pedido_notificaciones` dirigido a quien lo generó
+  //    (vendedor o solicitante), mismo patrón que ya usa flotilla_notificaciones
+  //    en este portal — no se inventa un mecanismo nuevo de notificación.
+  //    OJO: hoy nada en Ventas está escuchando esta colección todavía — el
+  //    aviso queda registrado y listo para que Ventas lo muestre en cuanto
+  //    se agregue ahí un listener, pero por ahora no llega como push real. ──
+  window.__almConfirmarRemision = function(id){
+    var p = buscarP(id);
+    var eHist = (_repEntregas||[]).find(function(x){ return x.id===id; });
+    var ref = p || eHist; if (!ref) return;
+    if (!confirm('¿Confirmar y remisionar el pedido '+(ref.folio||'')+'?')) return;
+    cargarFirestore().then(function(fs){
+      if (!window.db) throw new Error('Firestore no disponible');
+      return fs.updateDoc(fs.doc(window.db,'surtidos',id), {
+        remisionado: true, remisionadoPor: yoNombre(), remisionadoPorEmail: yoEmail(), remisionadoEn: fs.serverTimestamp()
+      }).then(function(){
+        return fs.addDoc(fs.collection(window.db,'pedido_notificaciones'), {
+          surtidoId: id, folio: ref.folio || null,
+          destinatarioNombre: ref.solicitante || ref.solicito || ref.vendedor || null,
+          destinatarioEmail: ref.solicitanteEmail || null,
+          tipo: 'remisionado',
+          mensaje: 'Tu pedido ' + (ref.folio||'') + ' fue confirmado y remisionado por Almacén.',
+          leido: false, creadoPor: yoNombre(), creadoEn: fs.serverTimestamp()
+        }).catch(function(err){ console.warn('[almacen] no se pudo registrar la notificación:', err); });
+      });
+    }).then(function(){
+      if (p){ p.remisionado = true; p.remisionadoPor = yoNombre(); render(); }
+      if (eHist){ eHist.remisionado = true; eHist.remisionadoPor = yoNombre(); if (document.getElementById('alm-hist-evid-'+id)) window.__almVerDetalleHistorial(id); }
+      if (window.mostrarPush) window.mostrarPush('✅ Remisionado', (ref.folio||''), '✅');
+    }).catch(function(err){
+      console.error('[almacen] confirmarRemision:', err);
+      if (window.mostrarPush) window.mostrarPush('Almacén','No se pudo confirmar la remisión','⚠️');
+    });
+  };
 
   function moverEstado(id,destino){
     var p=buscarP(id); if(!p||!destino) return;
@@ -1378,7 +1510,8 @@
           entregadoMs: d.entregadoEn ? toMs(d.entregadoEn) : null,
           canceladoMs: d.canceladoEn ? toMs(d.canceladoEn) : null,
           piezas: (Array.isArray(d.productos)?d.productos:[]).reduce(function(a,x){return a+(Number(x.cant)||0);},0),
-          productos: Array.isArray(d.productos)?d.productos:[]
+          productos: Array.isArray(d.productos)?d.productos:[],
+          remisionado: !!d.remisionado, remisionadoPor: d.remisionadoPor||''
         });
       });
       arr.sort(function(a,b){ return (b.entregadoMs||b.canceladoMs||b.creadoMs)-(a.entregadoMs||a.canceladoMs||a.creadoMs); });
@@ -1472,14 +1605,28 @@
       + (e.firma ? '<div style="margin-bottom:10px;"><div style="font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:4px;">FIRMA DEL SOLICITANTE</div><img src="'+esc(e.firma)+'" style="max-width:220px;border:1px solid #e2e8f0;border-radius:8px;cursor:pointer;" onclick="window.__almVerFirmaId(\''+e.id+'\',\'sol\')"></div>' : '')
       + (e.firmaEntrega ? '<div style="margin-bottom:14px;"><div style="font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:4px;">FIRMA DE ENTREGA</div><img src="'+esc(e.firmaEntrega)+'" style="max-width:220px;border:1px solid #e2e8f0;border-radius:8px;cursor:pointer;" onclick="window.__almVerFirmaId(\''+e.id+'\',\'entrega\')"></div>' : '')
       + '<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#94a3b8;margin-bottom:6px;">Evidencia de entrega</div>'
-      + '<div class="alm-evid-grid" id="alm-hist-evid-'+e.id+'"><div style="color:#94a3b8;font-size:12px;">Cargando…</div></div>';
+      + '<div class="alm-evid-grid" id="alm-hist-evid-'+e.id+'"><div style="color:#94a3b8;font-size:12px;">Cargando…</div></div>'
+      + '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px;">'
+      +   '<button type="button" class="alm-evid-add" onclick="window.__almSubirEvidencia(\''+e.id+'\');setTimeout(function(){window.__almRefrescarEvidHist(\''+e.id+'\');},1200);">+ Agregar foto o documento</button>'
+      +   (e.remisionado
+            ? '<span style="font-size:11px;font-weight:700;color:#16a34a;">✓ Remisionado'+(e.remisionadoPor?(' · '+esc(e.remisionadoPor)):'')+'</span>'
+            : '<button type="button" class="alm-evid-add" style="border-style:solid;border-color:#16a34a;color:#16a34a;" onclick="window.__almConfirmarRemision(\''+e.id+'\')">✅ Confirmar y remisionar</button>')
+      + '</div>'
+      + '<input type="file" accept="image/*,.pdf,.doc,.docx" id="alm-evid-file-'+e.id+'" style="display:none">';
     document.getElementById('alm-modal-hist').classList.add('show');
+    window.__almRefrescarEvidHist(e.id);
+  };
 
-    cargarEvidencias(e.id).then(function(list){
-      var cont=document.getElementById('alm-hist-evid-'+e.id);
+  window.__almRefrescarEvidHist = function(id){
+    delete _evidenciasCache[id];
+    cargarEvidencias(id).then(function(list){
+      var cont=document.getElementById('alm-hist-evid-'+id);
       if(!cont) return; // el modal ya se cerró
       cont.innerHTML = list.length
-        ? list.map(function(ev,idx){ return '<img class="alm-evid-thumb" src="'+esc(ev.imagen)+'" onclick="window.open(this.src,\'_blank\')">'; }).join('')
+        ? list.map(function(ev){
+            if (ev.imagen) return '<img class="alm-evid-thumb" src="'+esc(ev.imagen)+'" onclick="window.open(this.src,\'_blank\')">';
+            return '<a href="'+esc(ev.url||'#')+'" target="_blank" class="alm-evid-thumb alm-evid-doc" style="display:flex;flex-direction:column;align-items:center;justify-content:center;text-decoration:none;color:#334155;background:#f8fafc;"><span style="font-size:20px;">📄</span><span style="font-size:9px;text-align:center;padding:0 3px;word-break:break-word;">'+esc(ev.nombre||'Documento')+'</span></a>';
+          }).join('')
         : '<div style="color:#94a3b8;font-size:12px;">Sin evidencias.</div>';
     });
   };
@@ -1566,7 +1713,30 @@
   //  de esta información en todo el portal — así que las categorías y
   //  colores son siempre los mismos, se vea desde donde se vea.
   // ═══════════════════════════════════════════════════════════════════
-  var _almMapaLeaflet = null, _almMapaMarkers = [];
+  var _almMapaLeaflet = null, _almMapaMarkers = [], _almMapaLineas = [];
+  var _almTruckMarkers = [], _almTruckAnimId = null;
+  function _almIconoCamion(){
+    return L.divIcon({className:'', html:'<div style="font-size:14px;line-height:1;filter:drop-shadow(0 1px 1px rgba(0,0,0,.45));">🚚</div>', iconSize:[16,16], iconAnchor:[8,8]});
+  }
+  function _almIniciarCamiones(rutas){
+    if (_almTruckAnimId){ cancelAnimationFrame(_almTruckAnimId); _almTruckAnimId=null; }
+    _almTruckMarkers.forEach(function(t){ t.marker.remove(); });
+    _almTruckMarkers = rutas.map(function(r){
+      return { origen:r.origen, destino:r.destino, marker: L.marker(r.origen, {icon:_almIconoCamion(), interactive:false, zIndexOffset:500}).addTo(_almMapaLeaflet) };
+    });
+    if (!_almTruckMarkers.length) return;
+    var DURACION_MS = 7000;
+    function paso(ts){
+      var fase = (ts % DURACION_MS) / DURACION_MS;
+      _almTruckMarkers.forEach(function(t){
+        var lat = t.origen[0] + (t.destino[0]-t.origen[0])*fase;
+        var lng = t.origen[1] + (t.destino[1]-t.origen[1])*fase;
+        t.marker.setLatLng([lat,lng]);
+      });
+      _almTruckAnimId = requestAnimationFrame(paso);
+    }
+    _almTruckAnimId = requestAnimationFrame(paso);
+  }
   window.__almRefrescarMapaEmbed = function(){
     var cont = document.getElementById('alm-mapa-rutas-embed');
     if(!cont) return; // el panel no está en el DOM todavía (pantalla de Almacén no abierta)
@@ -1585,12 +1755,24 @@
       }
       _almMapaMarkers.forEach(function(m){ m.remove(); });
       _almMapaMarkers = [];
+      _almMapaLineas.forEach(function(l){ l.remove(); });
+      _almMapaLineas = [];
       var ESTILO = {
         venta:{color:'#1473E6',label:'Pedido de Ventas'}, material:{color:'#8B4FD6',label:'Solicitud de Material'},
         traslado:{color:'#D99000',label:'Traspaso entre almacenes'}, tecnico:{color:'#0FB5A6',label:'Entrega a técnico'},
         paqueteria:{color:'#F26B21',label:'Paquetería'}, recoleccion:{color:'#DB2777',label:'Recolección'},
         cliente:{color:'#64748B',label:'Cliente de Ventas'}
       };
+      var rutasParaCamion = [];
+      // Líneas primero, así los pines quedan encima.
+      puntos.forEach(function(p){
+        if (!p.ruta || !p.origen) return;
+        var est = ESTILO[p.categoria] || ESTILO.venta;
+        var l = L.polyline([p.origen, [p.lat,p.lng]], { color:est.color, weight:2, opacity:0.5, className:'tv-ruta-anim', interactive:false }).addTo(_almMapaLeaflet);
+        _almMapaLineas.push(l);
+        rutasParaCamion.push({ origen:p.origen, destino:[p.lat,p.lng] });
+      });
+      _almIniciarCamiones(rutasParaCamion);
       var usados = {};
       puntos.forEach(function(p){
         var est = ESTILO[p.categoria] || ESTILO.venta;
@@ -1607,7 +1789,8 @@
           return '<span style="display:flex;align-items:center;gap:4px;"><span style="width:8px;height:8px;border-radius:50%;background:'+e.color+';display:inline-block;"></span>'+e.label+'</span>';
         }).join('') : '<span style="color:#94a3b8;">Sin pendientes ubicados ahora mismo.</span>';
       }
-      if(puntos.length) _almMapaLeaflet.fitBounds(puntos.map(function(p){return [p.lat,p.lng];}), {padding:[24,24]});
+      var todosLosPuntos = puntos.map(function(p){return [p.lat,p.lng];}).concat(rutasParaCamion.map(function(r){return r.origen;}));
+      if(todosLosPuntos.length) _almMapaLeaflet.fitBounds(todosLosPuntos, {padding:[24,24]});
       setTimeout(function(){ if(_almMapaLeaflet) _almMapaLeaflet.invalidateSize(); }, 80);
     }).catch(function(err){
       console.error('[almacen] mapa de rutas:', err);
