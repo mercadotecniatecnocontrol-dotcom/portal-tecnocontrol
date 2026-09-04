@@ -391,12 +391,12 @@ window.flGuardarLlanta=async function(vehId,eco,llantaId){
     if(llantaId)await fs.updateDoc(fs.doc(db,C.LLANTAS,llantaId),data);
     else await fs.addDoc(fs.collection(db,C.LLANTAS),{...data,creadoEn:new Date().toISOString()});
     document.getElementById('fl-ll-ov')?.remove();
-  }catch(e){alert('Error al guardar: '+e.message);if(btn){btn.disabled=false;btn.textContent='Guardar';}}
+  }catch(e){flToast('Error al guardar: '+e.message,'err');if(btn){btn.disabled=false;btn.textContent='Guardar';}}
 };
 
 window.flEliminarLlanta=async function(llantaId){
-  if(!confirm('¿Eliminar este registro de llanta?'))return;
-  try{await fs.deleteDoc(fs.doc(db,C.LLANTAS,llantaId));}catch(e){alert('Error: '+e.message);}
+  if(!(await flConfirmar('¿Eliminar este registro de llanta?',{peligroso:true})))return;
+  try{await fs.deleteDoc(fs.doc(db,C.LLANTAS,llantaId));}catch(e){flToast('Error: '+e.message,'err');}
 };
 
 // Devuelve las solicitudes que pertenecen al vehículo FÍSICO actual (v).
@@ -1354,13 +1354,13 @@ window.flSbTipo=function(t){
   }
   renderSB();
 };
-window.flSbSel=function(id){
+window.flSbSel=async function(id){
   const vChk=flV.find(x=>x.id===id);
   if(vChk&&vChk.status==='comision'){
     const comAct=flCom.find(c=>c.estatus==='En préstamo'&&(c.vehiculoId===vChk.id||String(c.vehiculoEco)===String(vChk.eco)));
     if(comAct){
       const msg=`⚠ Este vehículo está EN USO\n\nResponsable: ${flNombrePorCorreo(comAct.responsable)||'—'}\nMotivo: ${comAct.motivo||'—'}\n\n¿Deseas continuar de todos modos?`;
-      if(!confirm(msg))return;
+      if(!(await flConfirmar(msg,{peligroso:false})))return;
     }
   }
   document.querySelectorAll('.fl-sb-item').forEach(e=>e.classList.remove('on'));
@@ -1523,15 +1523,15 @@ function flDetectarEcoDuplicados(){
 }
 window.admVerificarDuplicados=function(){
   const dups=flDetectarEcoDuplicados();
-  if(!dups.length){alert('No se encontraron ECOs duplicados entre vehículos activos. Todo en orden.');return;}
+  if(!dups.length){flToast('No se encontraron ECOs duplicados entre vehículos activos. Todo en orden.','ok');return;}
   if(typeof rAdmin==='function')rAdmin();
 };
 
 // ── Migrar solicitudes viejas (evidencias inline) a la subcolección nueva ──
 window.admMigrarEvidencias=async function(){
   const viejas=flS.filter(s=>s.evidencias!==undefined);
-  if(!viejas.length){alert('No hay solicitudes con fotos en formato antiguo. Nada que migrar.');return;}
-  if(!confirm(`Se encontraron ${viejas.length} solicitudes con fotos guardadas en el documento principal (formato viejo).\n\nEsto las moverá a una subcolección y aligerará el documento principal — no se pierde ninguna foto. Puede tardar unos minutos.\n\n¿Continuar?`))return;
+  if(!viejas.length){flToast('No hay solicitudes con fotos en formato antiguo. Nada que migrar.','info');return;}
+  if(!(await flConfirmar(`Se encontraron ${viejas.length} solicitudes con fotos guardadas en el documento principal (formato viejo).\n\nEsto las moverá a una subcolección y aligerará el documento principal — no se pierde ninguna foto. Puede tardar unos minutos.`,{titulo:'¿Continuar?',peligroso:false})))return;
   const btn=document.getElementById('adm-migrar-btn');
   let ok=0,fallo=0;
   for(let i=0;i<viejas.length;i++){
@@ -1555,7 +1555,7 @@ window.admMigrarEvidencias=async function(){
     }catch(e){console.error('[FL] migrar',s.id,e);fallo++;}
   }
   if(btn){btn.disabled=false;btn.textContent='Migrar evidencias antiguas';}
-  alert(`Migración terminada: ${ok} solicitudes migradas correctamente${fallo?`, ${fallo} con error (revisa la consola)`:''}.`);
+  flToast(`Migración terminada: ${ok} solicitudes migradas correctamente${fallo?`, ${fallo} con error (revisa la consola)`:''}.`,'ok');
 };
 
 function rAdmTabVehs(plazas){
@@ -2355,7 +2355,7 @@ window.admSolLimpiar=function(){
 
 // Eliminar solicitud con confirmación
 window.admElimSol=async function(id){
-  if(!confirm('¿Eliminar esta solicitud permanentemente? Esta acción no se puede deshacer.'))return;
+  if(!(await flConfirmar('¿Eliminar esta solicitud permanentemente? Esta acción no se puede deshacer.',{peligroso:true})))return;
   try{
     if(!fs){const m=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');fs=m;}
     await fs.deleteDoc(fs.doc(db,C.SOLS,id));
@@ -2602,7 +2602,7 @@ window.admRevisarSync=function(){
 window.admAplicarSync=async function(mismatches){
   const btn=document.getElementById('fl-sync-apply');
   const seleccionados=mismatches.filter((_,i)=>document.getElementById('fl-sync-chk-'+i)?.checked);
-  if(!seleccionados.length){alert('No hay ninguno seleccionado.');return;}
+  if(!seleccionados.length){flToast('No hay ninguno seleccionado.','err');return;}
   if(btn){btn.disabled=true;btn.textContent='Aplicando…';}
   const resultados=await Promise.allSettled(seleccionados.map(m=>fs.updateDoc(fs.doc(db,C.VEHS,m.vehId),{responsable:m.esperado})));
   const ok=[],fallidos=[];
@@ -2614,24 +2614,24 @@ window.admAplicarSync=async function(mismatches){
   document.getElementById('fl-sync-ov')?.remove();
   if(typeof rAdmin==='function')rAdmin();
   if(!fallidos.length){
-    alert(`${ok.length} vehículo${ok.length===1?'':'s'} corregido${ok.length===1?'':'s'}.`);
+    flToast(`${ok.length} vehículo${ok.length===1?'':'s'} corregido${ok.length===1?'':'s'}.`,'ok');
   }else{
     const detalle=fallidos.map(f=>`• ECO ${f.eco} (${f.unidad}) — el documento ya no existe en Firestore`).join('\n');
-    alert(`${ok.length} corregido${ok.length===1?'':'s'} correctamente.\n\n${fallidos.length} NO se pudieron corregir (documento eliminado o inexistente):\n${detalle}\n\nEstos probablemente son vehículos de prueba borrados manualmente, y ya no aparecerán en la lista de vehículos activos.`);
+    flToast(`${ok.length} corregido${ok.length===1?'':'s'} correctamente. ${fallidos.length} NO se pudieron corregir (documento eliminado o inexistente): ${detalle}. Probablemente son vehículos de prueba borrados manualmente.`,'info');
   }
 };
 
 window.admCopiarCorreosFlotilla=function(){
   const dir=window._flUsuariosDirectorio||[];
   const correos=[...new Set(dir.map(u=>u.email).filter(Boolean))];
-  if(!correos.length){alert('No hay correos detectados todavía.');return;}
+  if(!correos.length){flToast('No hay correos detectados todavía.','err');return;}
   const texto=correos.join(', ');
   const hecho=()=>{const b=event?.target;if(b){const t=b.textContent;b.textContent='Copiado ✓';setTimeout(()=>b.textContent=t,1600);}};
   if(navigator.clipboard&&navigator.clipboard.writeText){
-    navigator.clipboard.writeText(texto).then(hecho).catch(()=>alert(texto));
+    navigator.clipboard.writeText(texto).then(hecho).catch(()=>prompt('Copia manualmente (Ctrl+C):', texto));
   }else{
     const ta=document.createElement('textarea');ta.value=texto;document.body.appendChild(ta);ta.select();
-    try{document.execCommand('copy');hecho();}catch{alert(texto);}
+    try{document.execCommand('copy');hecho();}catch{prompt('Copia manualmente (Ctrl+C):', texto);}
     ta.remove();
   }
 };
@@ -2977,11 +2977,11 @@ function rSiniestrosVista(){
 }
 
 window.flResolverSiniestroInline=async function(id){
-  if(!confirm('¿Marcar este siniestro como resuelto?'))return;
+  if(!(await flConfirmar('¿Marcar este siniestro como resuelto?',{peligroso:false})))return;
   try{
     await fs.updateDoc(fs.doc(db,C.SINIESTROS,id),{estatus:'resuelto',resueltoEn:new Date().toISOString()});
     rSiniestrosVista();
-  }catch(e){alert('Error: '+e.message);}
+  }catch(e){flToast('Error: '+e.message,'err');}
 };
 
 // ── SOLICITUDES — layout imagen referencia ──
@@ -3406,7 +3406,7 @@ window.flCapturarEvidencia=async function(tipo, key){
   flMsgInfo('Obteniendo ubicación GPS…');
   const gps=await getGPS();
   if(!gps){
-    const continuar=confirm('No se pudo obtener GPS.\n¿Deseas continuar sin coordenadas?\n\nSe registrará sin ubicación verificable.');
+    const continuar=await flConfirmar('No se pudo obtener GPS.\n¿Deseas continuar sin coordenadas?\n\nSe registrará sin ubicación verificable.',{peligroso:false});
     if(!continuar)return;
   }
 
@@ -3528,7 +3528,18 @@ function actualizarPillsEv(){
 function flMsgInfo(txt){flToast(txt,'#1E3A5F','#fff');}
 function flMsgOk(txt){flToast(txt,'#15803D','#fff');}
 function flMsgError(txt){flToast(txt,'#B91C1C','#fff');}
-function flToast(txt,bg,color){
+function flToast(txt,tipoOColor,colorExplicito){
+  // Compatibilidad: 3 argumentos con colores CSS reales (como usan
+  // flMsgInfo/flMsgOk/flMsgError arriba) se respetan tal cual. Con 2
+  // argumentos y una palabra 'ok'/'err'/'info'/'warn' (como ya hace el resto
+  // del código), se traduce al color correspondiente — antes esa palabra se
+  // pasaba tal cual como `background` CSS, lo cual es inválido y el toast
+  // salía sin fondo ni color de texto.
+  const TIPOS={ok:{bg:'#15803D',color:'#fff'},err:{bg:'#B91C1C',color:'#fff'},info:{bg:'#1E3A5F',color:'#fff'},warn:{bg:'#B45309',color:'#fff'}};
+  let bg,color;
+  if(colorExplicito!==undefined){bg=tipoOColor;color=colorExplicito;}
+  else if(TIPOS[tipoOColor]){bg=TIPOS[tipoOColor].bg;color=TIPOS[tipoOColor].color;}
+  else{bg=TIPOS.info.bg;color=TIPOS.info.color;}
   const t=document.createElement('div');
   t.style.cssText=`position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:${bg};color:${color};padding:10px 20px;border-radius:100px;font-size:12.5px;font-weight:700;z-index:9999;font-family:'Plus Jakarta Sans',sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.25);max-width:90vw;text-align:center;animation:flTIn .2s ease`;
   t.textContent=txt;
@@ -3541,27 +3552,51 @@ function flToast(txt,bg,color){
   setTimeout(()=>{t.style.opacity='0';t.style.transition='opacity .3s';setTimeout(()=>t.remove(),300);},2800);
 }
 
+// ── Confirmación en modal propio — reemplaza confirm() nativo del navegador ──
+// Devuelve una Promise<boolean>. Uso: if(!(await flConfirmar('¿Seguro?')))return;
+// peligroso:true pinta el botón de confirmar en rojo, para acciones destructivas.
+window.flConfirmar=function(mensaje,{titulo='Confirmar',textoOk='Confirmar',textoCancelar='Cancelar',peligroso=false}={}){
+  return new Promise(resolve=>{
+    const ov=document.createElement('div');ov.className='fl-ov';ov.style.zIndex='5000';
+    ov.innerHTML=`<div class="fl-modal" style="max-width:420px">
+      <div class="fl-mh"><div style="font-size:14.5px;font-weight:900;${peligroso?'color:#B91C1C':'color:#0A1628'}">${peligroso?'⚠ ':''}${titulo}</div></div>
+      <div class="fl-mb">
+        <div style="font-size:13px;color:#334155;white-space:pre-line;margin-bottom:18px">${mensaje}</div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button id="fl-conf-no" class="fb gho">${textoCancelar}</button>
+          <button id="fl-conf-si" style="padding:9px 20px;background:${peligroso?'#B91C1C':'#0A1628'};color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:12.5px;font-weight:800;cursor:pointer">${textoOk}</button>
+        </div>
+      </div>
+    </div>`;
+    document.body.appendChild(ov);
+    const cerrar=(resultado)=>{ov.remove();resolve(resultado);};
+    ov.querySelector('#fl-conf-si').onclick=()=>cerrar(true);
+    ov.querySelector('#fl-conf-no').onclick=()=>cerrar(false);
+    ov.onclick=(e)=>{if(e.target===ov)cerrar(false);};
+  });
+};
+
 // GUARDAR SOLICITUD
 window.flSolGuardar=async function(){
-  if(!hP('crear_solicitud')){alert('Tu perfil tiene acceso de solo lectura a Flotilla. No puedes crear solicitudes.');return;}
-  if(!ST.vehId){alert('Selecciona un vehículo del panel izquierdo.');return;}
+  if(!hP('crear_solicitud')){flToast('Tu perfil tiene acceso de solo lectura a Flotilla. No puedes crear solicitudes.','err');return;}
+  if(!ST.vehId){flToast('Selecciona un vehículo del panel izquierdo.','err');return;}
   const tipo=document.getElementById('fl-sol-tipo')?.value;
   const desc=document.getElementById('fl-sol-desc')?.value?.trim();
   const km=document.getElementById('fl-sol-km')?.value;
   const prior=document.getElementById('fl-sol-prior')?.value||'Normal';
-  if(!tipo){alert('Selecciona el tipo de solicitud.');return;}
-  if(!desc){alert('Describe el problema.');return;}
+  if(!tipo){flToast('Selecciona el tipo de solicitud.','err');return;}
+  if(!desc){flToast('Describe el problema.','err');return;}
   const v=flV.find(x=>x.id===ST.vehId);
   const usarConfirm=flUsarConfirmSemanal(v);
   let chkFirmaConfirmacion=null;
   if(usarConfirm){
-    if(!document.getElementById('fl-sol-confirm-chk')?.checked){alert('Confirma que el vehículo está en las mismas condiciones que su checklist semanal.');return;}
-    if(!flFirmaTieneTrazo('fl-sol-confirm-firma')){alert('Falta la firma de confirmación.');return;}
+    if(!document.getElementById('fl-sol-confirm-chk')?.checked){flToast('Confirma que el vehículo está en las mismas condiciones que su checklist semanal.','err');return;}
+    if(!flFirmaTieneTrazo('fl-sol-confirm-firma')){flToast('Falta la firma de confirmación.','err');return;}
     chkFirmaConfirmacion=flFirmaExportar('fl-sol-confirm-firma');
   } else if(v&&v.tipo==='maquinaria'){
     // Maquinaria: exigir las 4 fotos en lugar del checklist
     const faltan=MAQ_FOTOS.map((_,i)=>`maq__${i}`).filter(k=>!ST.chkFotos[k]);
-    if(faltan.length){alert(`Faltan ${faltan.length} de 4 fotos requeridas de la maquinaria.`);return;}
+    if(faltan.length){flToast(`Faltan ${faltan.length} de 4 fotos requeridas de la maquinaria.`,'err');return;}
   }
   // Leer notas checklist
   const chkFinal=usarConfirm?{}:{...ST.chk};
@@ -3591,7 +3626,7 @@ window.flSolGuardar=async function(){
     ST={...ST,dmg:{frente:[],atras:[],derecha:[],izquierda:[]},chk:{},chkFotos:{},evFotos:[],gasolina:50};
     await ldSols();rSols();
     if(window.mostrarPush)window.mostrarPush('Solicitud creada','En proceso de validación.','✓');
-  }catch(e){console.error('[FL]',e);alert('Error: '+e.message);if(btn){btn.disabled=false;btn.textContent=`${I.check} Crear solicitud`;}}
+  }catch(e){console.error('[FL]',e);flToast('Error: '+e.message,'err');if(btn){btn.disabled=false;btn.textContent=`${I.check} Crear solicitud`;}}
 };
 
 // PANEL DERECHO INFO VEHÍCULO
@@ -4075,8 +4110,8 @@ function flSonarAlarmaSiniestro(){
 window.flGuardarSiniestro=async function(){
   const eco=(document.getElementById('fl-sin-eco')?.value||'').trim();
   const desc=(document.getElementById('fl-sin-desc')?.value||'').trim();
-  if(!eco){alert('Selecciona el vehículo involucrado.');return;}
-  if(!desc){alert('Describe brevemente qué pasó.');return;}
+  if(!eco){flToast('Selecciona el vehículo involucrado.','err');return;}
+  if(!desc){flToast('Describe brevemente qué pasó.','err');return;}
   const btn=document.getElementById('fl-sin-guardar');
   if(btn){btn.disabled=true;btn.textContent='Guardando…';}
   try{
@@ -4094,20 +4129,20 @@ window.flGuardarSiniestro=async function(){
       leido:false,creadaEn:new Date().toISOString(),
     }).catch(()=>{})));
     document.getElementById('fl-sin-ov')?.remove();
-    alert('Siniestro reportado. Se notificó a los administradores. El botón de siniestro seguirá parpadeando hasta que se marque como resuelto.');
+    flToast('Siniestro reportado. Se notificó a los administradores.','ok');
   }catch(e){
     console.error('[FL] guardar siniestro',e);
-    alert('Error al reportar: '+e.message);
+    flToast('Error al reportar: '+e.message,'err');
     if(btn){btn.disabled=false;btn.textContent='Reportar ahora';}
   }
 };
 
 window.flResolverSiniestro=async function(id){
-  if(!confirm('¿Marcar este siniestro como resuelto?'))return;
+  if(!(await flConfirmar('¿Marcar este siniestro como resuelto?',{peligroso:false})))return;
   try{
     await fs.updateDoc(fs.doc(db,C.SINIESTROS,id),{estatus:'resuelto',resueltoEn:new Date().toISOString()});
     document.getElementById('fl-sin-ov')?.remove();
-  }catch(e){alert('Error: '+e.message);}
+  }catch(e){flToast('Error: '+e.message,'err');}
 };
 
 // ── Panorama del vehículo, dentro del modal conjunto con el panel de
@@ -4336,7 +4371,7 @@ function flPanorResumenVeh(v){
 }
 
 window.flRPBorrarFoto=async function(vehId,idx){
-  if(!confirm('¿Eliminar esta foto? No se puede deshacer.'))return;
+  if(!(await flConfirmar('¿Eliminar esta foto? No se puede deshacer.',{peligroso:true})))return;
   const v=flV.find(x=>x.id===vehId);if(!v||!v.fotos)return;
   v.fotos.splice(idx,1);
   try{
@@ -4347,7 +4382,7 @@ window.flRPBorrarFoto=async function(vehId,idx){
 
 window.flRPFoto=function(inp,vehId){
   const f=inp.files[0];if(!f)return;
-  if(f.size>800000){alert('La imagen es demasiado grande. Usa una imagen menor a 800KB.');inp.value='';return;}
+  if(f.size>800000){flToast('La imagen es demasiado grande. Usa una imagen menor a 800KB.','err');inp.value='';return;}
   const r=new FileReader();
   r.onload=async e=>{
     const b64=e.target.result;
@@ -4428,7 +4463,7 @@ window.flRPDoc=function(tipo,vehId){
 window.flDocPreview=function(tipo,vehId){
   const v=flV.find(x=>x.id===vehId);
   const b64=v?.[`doc_${tipo}`];
-  if(!b64){alert('Documento no encontrado.');return;}
+  if(!b64){flToast('Documento no encontrado.','err');return;}
   const labels={tarjeta:'Tarjeta de circulación',poliza:'Póliza de seguro',verificacion:'Verificación ambiental',factura:'Factura del vehículo'};
   const esPDF=b64.startsWith('data:application/pdf');
   const ov=document.createElement('div');ov.className='fl-ov';ov.style.zIndex='3400';
@@ -4448,7 +4483,7 @@ window.flDocPreview=function(tipo,vehId){
 };
 
 window.flDocBorrar=async function(tipo,vehId,ovRef){
-  if(!confirm(`¿Borrar el documento "${({tarjeta:'Tarjeta de circulación',poliza:'Póliza de seguro',verificacion:'Verificación ambiental',factura:'Factura del vehículo'})[tipo]||tipo}"? Esta acción no se puede deshacer.`))return;
+  if(!(await flConfirmar(`¿Borrar el documento "${({tarjeta:'Tarjeta de circulación',poliza:'Póliza de seguro',verificacion:'Verificación ambiental',factura:'Factura del vehículo'})[tipo]||tipo}"? Esta acción no se puede deshacer.`,{peligroso:true})))return;
   try{
     const v=flV.find(x=>x.id===vehId);
     if(v) delete v[`doc_${tipo}`];
@@ -4457,12 +4492,12 @@ window.flDocBorrar=async function(tipo,vehId,ovRef){
     }
     ovRef?.remove();
     renderRP(vehId);
-  }catch(e){console.error('[FL]',e);alert('Error al borrar: '+e.message);}
+  }catch(e){console.error('[FL]',e);flToast('Error al borrar: '+e.message,'err');}
 };
 
 window.flDocLoad=async function(inp,tipo,vehId){
   const f=inp.files[0];if(!f)return;
-  if(f.size>3*1024*1024){alert('El archivo supera 3 MB. Comprime el PDF o imagen antes de subirlo.');inp.value='';return;}
+  if(f.size>3*1024*1024){flToast('El archivo supera 3 MB. Comprime el PDF o imagen antes de subirlo.','err');inp.value='';return;}
   const r=new FileReader();
   r.onload=async e=>{
     const b64=e.target.result;
@@ -5170,7 +5205,7 @@ window.flRecibirTransferenciaConfirmada = async function(id) {
     flToast('Transferencia recibida correctamente', 'ok');
     await ldTrans();
     rComis();
-  } catch(e) { alert('Error al recibir: ' + e.message); }
+  } catch(e) { flToast('Error al recibir: ' + e.message,'err'); }
 };
 
 // ── AGREGAR DOCUMENTO A SOLICITUD CERRADA (admin, no Fátima) ──
@@ -5180,7 +5215,7 @@ window.flRecibirTransferenciaConfirmada = async function(id) {
 // ── Borrar UN archivo de una subcolección (Evaluación/Servicio) sin
 // afectar a los demás — carga todos, quita el borrado, guarda el resto.
 window.flBorrarArchivoEtapa = async function(solId, subcol, archivoId, tituloEtapa){
-  if(!confirm('¿Borrar este documento de '+tituloEtapa+'? No se puede deshacer.')) return;
+  if(!(await flConfirmar('¿Borrar este documento de '+tituloEtapa+'? No se puede deshacer.',{peligroso:true}))) return;
   try{
     const existentes = await flCargarArchivosSubcol(solId, subcol);
     const restantes = existentes.filter(a=>a.id!==archivoId);
@@ -5193,7 +5228,7 @@ window.flBorrarArchivoEtapa = async function(solId, subcol, archivoId, tituloEta
 
 // ── Borrar UNA evidencia general (etapa Solicitud) por índice ──
 window.flBorrarEvidenciaSolicitud = async function(solId, idx){
-  if(!confirm('¿Borrar esta evidencia? No se puede deshacer.')) return;
+  if(!(await flConfirmar('¿Borrar esta evidencia? No se puede deshacer.',{peligroso:true}))) return;
   try{
     const s=flS.find(x=>x.id===solId); if(!s) return;
     const evidenciasActualizadas=(s.evidencias||[]).filter((_,i)=>i!==idx);
@@ -5297,7 +5332,7 @@ window.flActualizarEvidenciaSolicitud = function(solId) {
 window.flReactivarTransferencia=async function(id){
   if(!hAdm())return;
   const t=flTrans.find(x=>x.id===id);if(!t)return;
-  if(!confirm(`¿Reactivar la transferencia del ECO ${t.vehiculoEco||'—'} (código ${t.codigo})? Tendrá otros 7 días para completarse.`))return;
+  if(!(await flConfirmar(`¿Reactivar la transferencia del ECO ${t.vehiculoEco||'—'} (código ${t.codigo})? Tendrá otros 7 días para completarse.`,{peligroso:false})))return;
   try{
     const ahora=new Date().toISOString();
     await fs.updateDoc(fs.doc(db,C.TRANS,id),{
@@ -5318,7 +5353,7 @@ window.flReactivarTransferencia=async function(id){
 window.flCancelarTransferencia=async function(id){
   if(!hAdm())return;
   const t=flTrans.find(x=>x.id===id);if(!t)return;
-  if(!confirm(`¿Cancelar definitivamente la transferencia del ECO ${t.vehiculoEco||'—'} (código ${t.codigo})? Esto no se puede deshacer.`))return;
+  if(!(await flConfirmar(`¿Cancelar definitivamente la transferencia del ECO ${t.vehiculoEco||'—'} (código ${t.codigo})? Esto no se puede deshacer.`,{peligroso:true})))return;
   try{
     const user=window.auth?.currentUser;
     await fs.updateDoc(fs.doc(db,C.TRANS,id),{
@@ -5447,7 +5482,7 @@ window.flCancelarPendientesFiltradas=async function(){
   );
   if(fecha)candidatas=candidatas.filter(t=>(t.creadoEn||'').startsWith(fecha));
   if(!candidatas.length){flToast('No hay transferencias pendientes que coincidan con el filtro actual','err');return;}
-  if(!confirm(`¿Cancelar ${candidatas.length} transferencia(s) "Pendiente recepción" que coinciden con el filtro actual? Esto no se puede deshacer.`))return;
+  if(!(await flConfirmar(`¿Cancelar ${candidatas.length} transferencia(s) "Pendiente recepción" que coinciden con el filtro actual? Esto no se puede deshacer.`,{peligroso:true})))return;
   const user=window.auth?.currentUser;
   let ok=0;
   for(const t of candidatas){
@@ -5618,7 +5653,12 @@ function flFmtDuracion(ms){
   if(horas>0)return`${horas}h ${mins}min`;
   return`${mins}min`;
 }
-function flDatosReporteUso(){
+// Filtro compartido del "Reporte de uso por técnico" — pantalla, PDF y Excel
+// leen del mismo estado para que siempre coincida lo que se ve con lo que se exporta.
+let _flUsoFiltro = {tecnico:'', desde:'', hasta:'', soloActual:false};
+
+function flDatosReporteUso(filtro){
+  const f = filtro || _flUsoFiltro;
   const porTecnico={};
   (flUsos||[]).forEach(u=>{
     const key=(u.email||'').toLowerCase().trim();
@@ -5629,6 +5669,9 @@ function flDatosReporteUso(){
     const inicio=u.vinculadoEn?new Date(u.vinculadoEn):null;
     const fin=u.activo?new Date():(u.desvinculadoEn?new Date(u.desvinculadoEn):null);
     const ms=(inicio&&fin&&!isNaN(inicio)&&!isNaN(fin))?(fin-inicio):0;
+    // Filtro de rango de fechas — aplica sobre la fecha de vinculación del período
+    if(f.desde && (!u.vinculadoEn || new Date(u.vinculadoEn) < new Date(f.desde))) return;
+    if(f.hasta && (!u.vinculadoEn || new Date(u.vinculadoEn) > new Date(f.hasta+'T23:59:59'))) return;
     porTecnico[key].periodos.push({
       eco:u.eco,unidad:v?.unidad||'—',placas:v?.placas||'—',
       status:v?.status||'—',
@@ -5636,7 +5679,7 @@ function flDatosReporteUso(){
       duracionMs:ms,
     });
   });
-  return Object.values(porTecnico).map(t=>{
+  let resultado = Object.values(porTecnico).map(t=>{
     t.periodos.sort((a,b)=>(b.vinculadoEn||'').localeCompare(a.vinculadoEn||''));
     const actual=t.periodos.find(p=>p.activo);
     return{
@@ -5644,22 +5687,43 @@ function flDatosReporteUso(){
       vehiculoActualTxt:actual?`ECO ${actual.eco} · ${actual.unidad}`:'Sin vehículo asignado',
       condicionActual:actual?(actual.status==='taller'?'En taller':actual.status==='comision'?'En comisión':actual.status==='baja'?'Baja':'Activo'):'—',
       totalVehiculos:t.periodos.length,
+      tieneActual:!!actual,
     };
-  }).sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
+  }).filter(t=>t.periodos.length>0); // sin períodos en el rango filtrado -> no mostrar al técnico
+  if(f.tecnico){
+    const q=f.tecnico.toLowerCase();
+    resultado = resultado.filter(t=>(t.nombre||'').toLowerCase().includes(q)||(t.email||'').toLowerCase().includes(q));
+  }
+  if(f.soloActual){
+    resultado = resultado.filter(t=>t.tieneActual);
+  }
+  return resultado.sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
 }
 
 window.flAbrirReporteUso=function(){
+  _flUsoFiltro = {tecnico:'', desde:'', hasta:'', soloActual:false};
   const datos=flDatosReporteUso();
   const ov=document.createElement('div');ov.className='fl-ov';ov.id='fl-reporteuso-ov';
   ov.innerHTML=`<div class="fl-modal" style="max-width:960px;width:96%">
     <div class="fl-mh">
       <div>
         <h3>${I.doc||''} Reporte de uso por técnico</h3>
-        <div style="font-size:11px;color:#64748B;margin-top:2px">${datos.length} técnico(s) con historial de vinculación</div>
+        <div id="fl-reporteuso-count" style="font-size:11px;color:#64748B;margin-top:2px">${datos.length} técnico(s) con historial de vinculación</div>
       </div>
       <button class="fl-mx" onclick="this.closest('.fl-ov').remove()">✕</button>
     </div>
     <div class="fl-mb">
+      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center">
+        <input type="text" id="fl-ru-tecnico" placeholder="Buscar técnico..." oninput="flReporteUsoAplicarFiltro()" style="flex:1;min-width:160px;padding:8px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px">
+        <label style="font-size:10px;color:#94A3B8;font-weight:700">Desde</label>
+        <input type="date" id="fl-ru-desde" onchange="flReporteUsoAplicarFiltro()" style="padding:8px 10px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px">
+        <label style="font-size:10px;color:#94A3B8;font-weight:700">Hasta</label>
+        <input type="date" id="fl-ru-hasta" onchange="flReporteUsoAplicarFiltro()" style="padding:8px 10px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px">
+        <label style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#475569;cursor:pointer">
+          <input type="checkbox" id="fl-ru-soloactual" onchange="flReporteUsoAplicarFiltro()"> Solo con vehículo actual
+        </label>
+        <button onclick="flReporteUsoLimpiarFiltro()" style="padding:8px 12px;background:#F1F5F9;border:none;border-radius:8px;font-family:inherit;font-size:11px;font-weight:700;color:#64748B;cursor:pointer">Limpiar</button>
+      </div>
       <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
         <button onclick="flReporteUsoPDF()" style="display:flex;align-items:center;gap:6px;padding:8px 16px;background:#0A1628;color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
@@ -5674,6 +5738,27 @@ window.flAbrirReporteUso=function(){
     </div>
   </div>`;
   document.body.appendChild(ov);ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+};
+
+window.flReporteUsoAplicarFiltro=function(){
+  _flUsoFiltro = {
+    tecnico: document.getElementById('fl-ru-tecnico')?.value.trim() || '',
+    desde: document.getElementById('fl-ru-desde')?.value || '',
+    hasta: document.getElementById('fl-ru-hasta')?.value || '',
+    soloActual: !!document.getElementById('fl-ru-soloactual')?.checked,
+  };
+  const datos=flDatosReporteUso();
+  document.getElementById('fl-reporteuso-tabla').innerHTML = rReporteUsoTabla(datos);
+  const cont=document.getElementById('fl-reporteuso-count');
+  if(cont)cont.textContent = `${datos.length} técnico(s) — filtro aplicado`;
+};
+
+window.flReporteUsoLimpiarFiltro=function(){
+  document.getElementById('fl-ru-tecnico').value='';
+  document.getElementById('fl-ru-desde').value='';
+  document.getElementById('fl-ru-hasta').value='';
+  document.getElementById('fl-ru-soloactual').checked=false;
+  flReporteUsoAplicarFiltro();
 };
 
 function rReporteUsoTabla(datos){
@@ -5742,7 +5827,7 @@ window.flReporteUsoPDF=function(){
     .hdr{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #0A1628;padding-bottom:12px;margin-bottom:18px}
     table{width:100%;border-collapse:collapse}th{text-align:left;padding:6px;font-size:9.5px;text-transform:uppercase;color:#94A3B8;border-bottom:2px solid #E2E8F0}
     @media print{button{display:none!important}}</style></head><body>
-    <div class="hdr"><div><div class="logo">TECNO<em>CONTROL</em></div><div style="font-size:10.5px;color:#64748B;margin-top:3px">Reporte de uso de vehículos por técnico</div></div>
+    <div class="hdr"><div><div class="logo">TECNO<em>CONTROL</em></div><div style="font-size:10.5px;color:#64748B;margin-top:3px">Reporte de uso de vehículos por técnico${(_flUsoFiltro.tecnico||_flUsoFiltro.desde||_flUsoFiltro.hasta||_flUsoFiltro.soloActual)?` — filtrado${_flUsoFiltro.tecnico?` · "${_flUsoFiltro.tecnico}"`:''}${_flUsoFiltro.desde?` · desde ${_flUsoFiltro.desde}`:''}${_flUsoFiltro.hasta?` · hasta ${_flUsoFiltro.hasta}`:''}${_flUsoFiltro.soloActual?' · solo con vehículo actual':''}`:''}</div></div>
     <div style="text-align:right;font-size:10px;color:#64748B">${new Date().toLocaleString('es-MX')}<br>${datos.length} técnico(s)</div></div>
     <table><thead><tr><th>Vehículo</th><th>Vinculado</th><th>Desvinculado</th><th style="text-align:right">Duración</th></tr></thead><tbody>${filas}</tbody></table>
     <div style="margin-top:20px;text-align:right"><button onclick="window.print()" style="padding:11px 28px;background:#0A1628;color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:800;cursor:pointer">Imprimir / Guardar PDF</button></div>
@@ -6081,10 +6166,10 @@ window.flAbrirCom=function(){
 };
 window.flGCom=async function(comEv){
   const sel=document.getElementById('fl-cv');const vId=sel?.value;const resp=document.getElementById('fl-cre')?.value?.trim();const fent=document.getElementById('fl-cfe')?.value;
-  if(!vId||!resp||!fent){alert('Completa los campos requeridos.');return;}
+  if(!vId||!resp||!fent){flToast('Completa los campos requeridos.','err');return;}
   const v=flV.find(x=>x.id===vId);const eco=sel.options[sel.selectedIndex]?.dataset?.eco||v?.eco||'';
   const doc={vehiculoId:vId,vehiculoEco:eco,vehiculo:`${eco} · ${v?.unidad||''}`,responsable:resp,tipo:document.getElementById('fl-cti')?.value||'Corto plazo',motivo:document.getElementById('fl-cmo')?.value?.trim()||'',estatus:'En préstamo',fechaEntrega:fent,fechaRegreso:document.getElementById('fl-cfr')?.value||'',kmEntrega:document.getElementById('fl-ckm')?.value||'',gasolinaEntrega:document.getElementById('fl-cga')?.value,evidenciasEntrega:comEv||[],evidenciasRecepcion:[],registradoPor:window.auth?.currentUser?.email||'',creadoEn:new Date().toISOString()};
-  try{await fs.addDoc(fs.collection(db,C.COMIS),doc);if(v&&!v.id.startsWith('eco-'))await fs.updateDoc(fs.doc(db,C.VEHS,v.id),{status:'comision'}).catch(()=>{});document.getElementById('fl-mcom')?.remove();await ldComs();rComis();}catch(e){console.error('[FL]',e);alert('Error: '+e.message);}
+  try{await fs.addDoc(fs.collection(db,C.COMIS),doc);if(v&&!v.id.startsWith('eco-'))await fs.updateDoc(fs.doc(db,C.VEHS,v.id),{status:'comision'}).catch(()=>{});document.getElementById('fl-mcom')?.remove();await ldComs();rComis();}catch(e){console.error('[FL]',e);flToast('Error: '+e.message,'err');}
 };
 window.flVerCom=function(id){
   const c=flCom.find(x=>x.id===id);if(!c)return;let rEv=[];
@@ -6109,7 +6194,7 @@ window.flCCom=async function(id,rEv){
   const km=document.getElementById('fl-rkm')?.value;const gas=document.getElementById('fl-rga')?.value||'—';
   try{await fs.updateDoc(fs.doc(db,C.COMIS,id),{estatus:'Devuelto',kmRecepcion:km||'',gasolinaRecepcion:gas,evidenciasRecepcion:rEv||[],fechaDevolucion:new Date().toISOString()});
     const c=flCom.find(x=>x.id===id);if(c){const v=flV.find(x=>x.id===c.vehiculoId);if(v&&!v.id.startsWith('eco-'))await fs.updateDoc(fs.doc(db,C.VEHS,v.id),{status:'activo',km:Number(km)||v.km}).catch(()=>{});}
-    document.querySelector('.fl-ov')?.remove();await ldComs();rComis();}catch(e){console.error('[FL]',e);alert('Error: '+e.message);}
+    document.querySelector('.fl-ov')?.remove();await ldComs();rComis();}catch(e){console.error('[FL]',e);flToast('Error: '+e.message,'err');}
 };
 
 // ── COMPARATIVA SEMANAL ──
@@ -6694,7 +6779,7 @@ window.flGuardarRespuestaChkSem=async function(id){
     flVerChkSem(id);
   }catch(e){
     console.warn('[FL resp chksem]',e);
-    alert('No se pudo guardar la respuesta: '+(e.message||e));
+    flToast('No se pudo guardar la respuesta: '+(e.message||e),'err');
     if(btn){btn.disabled=false;btn.textContent='Guardar respuesta';}
   }
 };
@@ -7198,10 +7283,30 @@ window.flCheckLimitePresupuesto=function(solicitudId,monto){
   if(monto&&Number(monto)>0)flAlertaCotizacion(solicitudId,Number(monto));
 };
 
+// Mes seleccionado para "Resumen de Movimientos" — null = mes actual (comportamiento de siempre).
+// Se comparte entre la vista en pantalla y la exportación a PDF para que
+// siempre coincidan.
+let _flResumenMes = null; // {m, a} o null
+
+function flResumenMesesDisponibles(){
+  const opciones=[];
+  const hoy=new Date();
+  for(let i=0;i<12;i++){
+    const d=new Date(hoy.getFullYear(),hoy.getMonth()-i,1);
+    opciones.push({m:d.getMonth(),a:d.getFullYear(),label:new Intl.DateTimeFormat('es-MX',{month:'long',year:'numeric'}).format(d)});
+  }
+  return opciones;
+}
+window.flResumenCambiarMes=function(valor){
+  const [a,m]=valor.split('-').map(Number);
+  _flResumenMes = valor==='actual' ? null : {m:m-1,a};
+  rResumen();
+};
+
 function rResumen(){
   const hoy=new Date();
-  const mesActual=hoy.getMonth();
-  const anioActual=hoy.getFullYear();
+  const mesActual=_flResumenMes?_flResumenMes.m:hoy.getMonth();
+  const anioActual=_flResumenMes?_flResumenMes.a:hoy.getFullYear();
 
   // ── Helpers de rango ──
   const enMes=(iso,m,a)=>{if(!iso)return false;const d=new Date(iso);return d.getMonth()===m&&d.getFullYear()===a;};
@@ -7284,7 +7389,8 @@ function rResumen(){
       <div style="font-size:9px;color:#94A3B8">${s.label}</div>
     </div>`).join('');
 
-  const mesNom=new Intl.DateTimeFormat('es-MX',{month:'long'}).format(hoy);
+  const mesRefFecha=new Date(anioActual,mesActual,1);
+  const mesNom=new Intl.DateTimeFormat('es-MX',{month:'long'}).format(mesRefFecha);
   const fechaGen=hoy.toLocaleDateString('es-MX',{day:'numeric',month:'long',year:'numeric'});
 
   setContent(`<div style="padding:20px 24px;max-width:1200px">
@@ -7295,10 +7401,16 @@ function rResumen(){
         <div style="font-size:18px;font-weight:900;letter-spacing:-.3px">Resumen de Movimientos</div>
         <div style="font-size:12px;color:#64748B;margin-top:2px">${fechaGen} · ${flS.length} solicitudes totales · ${activos.length} vehículos activos</div>
       </div>
-      <button onclick="flExportarResumenPDF()" style="display:flex;align-items:center;gap:8px;padding:10px 20px;background:#0A1628;color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:12.5px;font-weight:800;cursor:pointer;letter-spacing:.3px">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-        Exportar PDF Ejecutivo
-      </button>
+      <div style="display:flex;align-items:center;gap:10px">
+        <select onchange="flResumenCambiarMes(this.value)" style="padding:9px 14px;border:1.5px solid #E2E8F0;border-radius:9px;font-family:inherit;font-size:12px;font-weight:700;color:#0A1628;background:#fff;cursor:pointer">
+          <option value="actual" ${!_flResumenMes?'selected':''}>Mes actual</option>
+          ${flResumenMesesDisponibles().map(o=>`<option value="${o.a}-${o.m+1}" ${_flResumenMes&&_flResumenMes.m===o.m&&_flResumenMes.a===o.a?'selected':''}>${o.label}</option>`).join('')}
+        </select>
+        <button onclick="flExportarResumenPDF()" style="display:flex;align-items:center;gap:8px;padding:10px 20px;background:#0A1628;color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:12.5px;font-weight:800;cursor:pointer;letter-spacing:.3px">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          Exportar PDF Ejecutivo
+        </button>
+      </div>
     </div>
 
     <!-- KPIs PRINCIPALES -->
@@ -7404,10 +7516,10 @@ window.rResumen=rResumen;
 // ── EXPORTAR RESUMEN PDF EJECUTIVO ──────────────────────────────
 window.flExportarResumenPDF=function(){
   const hoy=new Date();
-  const mesActual=hoy.getMonth();
-  const anioActual=hoy.getFullYear();
+  const mesActual=_flResumenMes?_flResumenMes.m:hoy.getMonth();
+  const anioActual=_flResumenMes?_flResumenMes.a:hoy.getFullYear();
   const enMes=(iso,m,a)=>{if(!iso)return false;const d=new Date(iso);return d.getMonth()===m&&d.getFullYear()===a;};
-  const mesNom=new Intl.DateTimeFormat('es-MX',{month:'long',year:'numeric'}).format(hoy);
+  const mesNom=new Intl.DateTimeFormat('es-MX',{month:'long',year:'numeric'}).format(new Date(anioActual,mesActual,1));
   const fechaGen=hoy.toLocaleDateString('es-MX',{day:'numeric',month:'long',year:'numeric'});
 
   const solsMes=flS.filter(s=>enMes(s.creadoEn,mesActual,anioActual));
@@ -7630,7 +7742,7 @@ window.flRechazar = async id => {
   } catch(e) { console.error('[FL]', e); }
 };
 window.flElim = async id => {
-  if (!confirm('¿Eliminar solicitud permanentemente?')) return;
+  if (!(await flConfirmar('¿Eliminar solicitud permanentemente?',{peligroso:true}))) return;
   try {
     await fs.deleteDoc(fs.doc(db, C.SOLS, id));
     await ldSols();
@@ -7837,7 +7949,7 @@ window.flCalDia = function(fecha) {
 window.flRegresarEtapa=async function(id,etapaDestino){
   const s=flS.find(x=>x.id===id);if(!s)return;
   const etapaActual=s.estatus;
-  if(!confirm(`¿Regresar esta solicitud de "${etapaActual}" a "${etapaDestino}"?\n\nEsta acción quedará registrada.`))return;
+  if(!(await flConfirmar(`¿Regresar esta solicitud de "${etapaActual}" a "${etapaDestino}"? Esta acción quedará registrada.`,{peligroso:false})))return;
   try{
     const motivo=prompt(`Motivo del retroceso (obligatorio):`)?.trim();
     if(!motivo)return;
@@ -8162,7 +8274,7 @@ window.flModalEvaluacion = function(id) {
         try {
           const b64 = await flLeerArchivo(file,4);
           window._flEvalArchivos.push({nombre:file.name,datos:b64,tipo:file.type.includes('pdf')?'pdf':'img',kb:Math.round(file.size/1024)});
-        } catch(e){alert(e.message);}
+        } catch(e){flToast(e.message,'err');}
       }
       document.getElementById('eval-arch-list').innerHTML=renderArchivosEval();
     };
@@ -8319,7 +8431,7 @@ window.flModalServicio = function(id) {
     inp.onchange=async()=>{
       for(const file of [...inp.files]){
         try{const b64=await flLeerArchivo(file,4);window._flServArchivos.push({nombre:file.name,datos:b64,tipo:file.type.includes('pdf')?'pdf':'img',kb:Math.round(file.size/1024)});}
-        catch(e){alert(e.message);}
+        catch(e){flToast(e.message,'err');}
       }
       document.getElementById('serv-arch-list').innerHTML=renderArchivosServ();
     };
@@ -8640,7 +8752,7 @@ window.flConfirmarRechazo = async function(id, esDevol, btn) {
   } catch(e) {
     console.error('[FL]', e);
     btn.textContent = textoBtn; btn.disabled = false;
-    alert('No se pudo guardar el rechazo: ' + (e.message || e));
+    flToast('No se pudo guardar el rechazo: ' + (e.message || e),'err');
   }
 };
 
@@ -9005,7 +9117,7 @@ window.flCompartirWA=function(id){
 };
 
 
-window.flReact=async function(id){if(!confirm('¿Reactivar este vehículo?'))return;try{await fs.updateDoc(fs.doc(db,C.VEHS,id),{status:'activo',fechaBaja:'',motivoBaja:''});const v=flV.find(x=>x.id===id);if(v)v.status='activo';rBajas();}catch(e){console.error('[FL]',e);}};
+window.flReact=async function(id){if(!(await flConfirmar('¿Reactivar este vehículo?',{peligroso:false})))return;try{await fs.updateDoc(fs.doc(db,C.VEHS,id),{status:'activo',fechaBaja:'',motivoBaja:''});const v=flV.find(x=>x.id===id);if(v)v.status='activo';rBajas();}catch(e){console.error('[FL]',e);}};
 
 // ── Ver vehículo de baja ──
 window.flVerVeh=function(id){const v=flV.find(x=>x.id===id);if(!v)return;const ov=document.createElement('div');ov.className='fl-ov';ov.style.zIndex='3300';ov.innerHTML=`<div class="fl-modal"><div class="fl-mh"><h3>ECO ${v.eco} · ${v.unidad||'—'}</h3><button class="fl-mx" onclick="this.closest('.fl-ov').remove()">✕</button></div><div class="fl-mb"><div style="display:grid;grid-template-columns:1fr 1fr;background:#F8FAFD;border-radius:9px;overflow:hidden;border:1px solid #E8EDF5">${[['Placas',v.placas||'—'],['Año',v.año||'—'],['Serie',v.serie||'—'],['Color',v.color||'—'],['Plaza',v.plaza||'—'],['Responsable',flNombrePorCorreo(v.responsable)||'—'],['KM',v.km||'—'],['Baja',v.fechaBaja?v.fechaBaja.slice(0,10):'—']].map(([l,val])=>`<dl style="padding:7px 11px;border-right:1px solid #E8EDF5;border-bottom:1px solid #E8EDF5"><dt style="font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">${l}</dt><dd style="font-size:11.5px;font-weight:600">${val}</dd></dl>`).join('')}<dl style="grid-column:1/-1;padding:7px 11px"><dt style="font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">Motivo baja</dt><dd style="font-size:11.5px">${v.motivoBaja||'—'}</dd></dl></div><div class="fl-fa"><button class="fb gho" onclick="this.closest('.fl-ov').remove()">Cerrar</button>${hAdm()?`<button class="fb acc" onclick="flReact('${v.id}');this.closest('.fl-ov').remove()">Reactivar</button>`:''}</div></div></div>`;document.body.appendChild(ov);ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});};
@@ -9641,7 +9753,7 @@ window._flLimpiarFiltrosTareas = function() {
 
 // Eliminar tarea con confirmación
 window.flEliminarTarea = async function(tareaId) {
-  if(!confirm('¿Eliminar esta tarea permanentemente? No se puede deshacer.')) return;
+  if(!(await flConfirmar('¿Eliminar esta tarea permanentemente? No se puede deshacer.',{peligroso:true}))) return;
   try {
     await fs.deleteDoc(fs.doc(db, C.TAREAS, tareaId));
     _flTareasAll = _flTareasAll.filter(t=>t.id!==tareaId);
@@ -9681,9 +9793,9 @@ window.flLimpiarDuplicados=async function(){
   resumen.forEach(r=>console.log(r));
   if(eliminados>0){
     await ldVehs();renderSB();
-    alert('Limpieza completada: '+eliminados+' documento(s) duplicado(s) eliminado(s).\nRevisa la consola para el detalle.');
+    flToast('Limpieza completada: '+eliminados+' documento(s) duplicado(s) eliminado(s). Revisa la consola para el detalle.','ok');
   } else {
-    alert('Sin duplicados encontrados en flotilla_vehiculos.');
+    flToast('Sin duplicados encontrados en flotilla_vehiculos.','info');
   }
   return {eliminados,resumen};
 };
