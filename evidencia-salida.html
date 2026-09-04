@@ -40,8 +40,8 @@
   <div class="card">
     <label>Tu nombre (quién sube la evidencia) *</label>
     <input type="text" id="f-nombre" placeholder="Ej. Ricardo Torres" autocomplete="off">
-    <input type="file" accept="image/*" capture="environment" id="f-file" style="display:none">
-    <button class="upload-btn" id="btn-subir" type="button">📷 Tomar / subir foto</button>
+    <input type="file" accept="image/*,.pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" id="f-file" style="display:none">
+    <button class="upload-btn" id="btn-subir" type="button">📷 Tomar foto / subir documento</button>
     <div class="msg" id="msg"></div>
   </div>
   <div class="card">
@@ -54,11 +54,13 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getFirestore, doc, getDoc, collection, addDoc, onSnapshot, orderBy, query, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
 const config = { apiKey:"AIzaSyBXh-P0oMtMiDjyz9PObuJ8DNfROlXvhLE", authDomain:"tecnocontrol-1c42f.firebaseapp.com", projectId:"tecnocontrol-1c42f", storageBucket:"tecnocontrol-1c42f.firebasestorage.app", appId:"1:27642771956:web:54225af9e386afded8a1a1" };
 const app = initializeApp(config, 'kiosco-evidencia');
 const db = getFirestore(app);
 const auth = getAuth(app);
+const storage = getStorage(app);
 
 /* Auth anónima (requerida por las reglas de Firestore) — mismo patrón que solicitud-material.html */
 let authReadyResolve;
@@ -138,14 +140,28 @@ if(!pedidoId){
     $('btn-subir').disabled = true;
     try{
       await authReady;
-      const dataUrl = await comprimirImagen(file);
-      await addDoc(collection(db,'surtidos',pedidoId,'evidencias'), {
-        imagen: dataUrl, subidoPor: nombre, subidoPorEmail: null, subidoEn: serverTimestamp()
-      });
-      setMsg('✓ Foto subida','var(--ok)');
+      if(file.type && file.type.startsWith('image/')){
+        // Foto: se comprime y se guarda incrustada en el propio documento — igual que siempre.
+        const dataUrl = await comprimirImagen(file);
+        await addDoc(collection(db,'surtidos',pedidoId,'evidencias'), {
+          tipo:'imagen', imagen: dataUrl, subidoPor: nombre, subidoPorEmail: null, subidoEn: serverTimestamp()
+        });
+      } else {
+        // Documento (PDF/Word/etc.): va a Firebase Storage, y en Firestore solo se guarda la
+        // referencia — un documento normal no cabe en un documento de Firestore (límite 1MB).
+        const ruta = 'evidencias/' + pedidoId + '/' + Date.now() + '_' + file.name;
+        const sref = storageRef(storage, ruta);
+        await uploadBytes(sref, file);
+        const url = await getDownloadURL(sref);
+        await addDoc(collection(db,'surtidos',pedidoId,'evidencias'), {
+          tipo:'archivo', nombre: file.name, url, mimeType: file.type || null,
+          subidoPor: nombre, subidoPorEmail: null, subidoEn: serverTimestamp()
+        });
+      }
+      setMsg('✓ Subido','var(--ok)');
     }catch(e){
       console.error('[evidencia] error al subir:', e);
-      setMsg('No se pudo subir ('+(e.code||e.message||'error')+'). Si el error es de permisos, revisa las reglas de Firestore para permitir escritura anónima en surtidos/{id}/evidencias.');
+      setMsg('No se pudo subir ('+(e.code||e.message||'error')+'). Si el error es de permisos, revisa las reglas de Firestore/Storage para permitir escritura anónima.');
     }finally{
       $('btn-subir').disabled = false;
     }
@@ -159,7 +175,10 @@ if(!pedidoId){
       snap.forEach(d=> items.push(Object.assign({id:d.id}, d.data())));
       $('cont-count').textContent = items.length;
       $('grid-evid').innerHTML = items.length ? items.map(it=>{
-        return '<div class="evid-item"><img src="'+esc(it.imagen)+'" onclick="window.open(this.src, \'_blank\')"><div class="meta">'+esc(it.subidoPor||'—')+'</div></div>';
+        if(it.imagen){
+          return '<div class="evid-item"><img src="'+esc(it.imagen)+'" onclick="window.open(this.src, \'_blank\')"><div class="meta">'+esc(it.subidoPor||'—')+'</div></div>';
+        }
+        return '<div class="evid-item"><a href="'+esc(it.url||'#')+'" target="_blank" style="display:flex;flex-direction:column;align-items:center;justify-content:center;aspect-ratio:1;background:#f8fafc;border:1px solid var(--line);border-radius:10px;text-decoration:none;color:inherit;"><span style="font-size:32px;">📄</span><span style="font-size:11px;text-align:center;padding:0 4px;word-break:break-word;">'+esc(it.nombre||'Documento')+'</span></a><div class="meta">'+esc(it.subidoPor||'—')+'</div></div>';
       }).join('') : '<div class="loading" style="grid-column:1/-1;">Aún no hay evidencia subida.</div>';
     }, e=>{ console.warn('[evidencia] no se pudo escuchar evidencias:', e.message); });
   });
