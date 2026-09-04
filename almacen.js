@@ -552,8 +552,9 @@
     + '.alm-check svg{stroke:#fff;}'
     + '.alm-prow .k{font-weight:700;color:#0f172a;}'
     + '.alm-prow .q{font-weight:800;color:#0f172a;font-variant-numeric:tabular-nums;}'
-    + '.alm-actions{display:flex;gap:8px;margin-top:11px;}'
+    + '.alm-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:11px;}'
     + '.alm-btn{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;border:none;cursor:pointer;border-radius:9px;font-size:12.5px;font-weight:800;padding:9px 10px;transition:filter .12s;}'
+    + '.alm-btn-icon{flex:0 0 34px;width:34px;height:34px;padding:0;}'
     + '.alm-btn:hover{filter:brightness(.96);}'
     + '.alm-btn-go{background:linear-gradient(135deg,#0e7490,#0891b2);color:#fff;}'
     + '.alm-btn-go.wait{background:#e2e8f0;color:#94a3b8;}'
@@ -825,21 +826,21 @@
       + '<div class="alm-actions">'
       +   (PREV[p.estado]?'<button class="alm-btn alm-btn-back" title="Regresar etapa" onclick="window.__almBack(\''+p.id+'\')">‹</button>':'')
       +   '<button class="alm-btn alm-btn-ghost" onclick="window.__almToggle(\''+p.id+'\')">'+(abierta?'Ocultar':'Ver')+'</button>'
-      +   '<button class="alm-btn alm-btn-ghost" title="Ver historial" onclick="window.__almVerHistorial(\''+p.id+'\')">'
+      +   '<button class="alm-btn alm-btn-ghost alm-btn-icon" title="Ver historial" onclick="window.__almVerHistorial(\''+p.id+'\')">'
       +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg></button>'
-      +   (!esperandoFirma?'<button class="alm-btn alm-btn-ghost" title="Cancelar pedido" onclick="window.__almAbrirCancelar(\''+p.id+'\')" style="color:#dc2626;">'
+      +   (!esperandoFirma?'<button class="alm-btn alm-btn-ghost alm-btn-icon" title="Cancelar pedido" onclick="window.__almAbrirCancelar(\''+p.id+'\')" style="color:#dc2626;">'
       +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></button>':'')
-      +   (p.tienePdfOriginal?('<button class="alm-btn alm-btn-ghost" title="Ver PDF original" onclick="window.__almVerPDF(\''+p.id+'\')">'
+      +   (p.tienePdfOriginal?('<button class="alm-btn alm-btn-ghost alm-btn-icon" title="Ver PDF original" onclick="window.__almVerPDF(\''+p.id+'\')">'
       +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></button>'):'')
-      +   (p.numOrdenesCompra?('<button class="alm-btn alm-btn-ghost" title="Documentos adjuntos ('+p.numOrdenesCompra+')" onclick="window.__almVerDocumentos(\''+p.id+'\')">'
+      +   (p.numOrdenesCompra?('<button class="alm-btn alm-btn-ghost alm-btn-icon" title="Documentos adjuntos ('+p.numOrdenesCompra+')" onclick="window.__almVerDocumentos(\''+p.id+'\')">'
       +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>'):'')
-      +   (p.caratulaEnvio?('<button class="alm-btn alm-btn-ghost" title="Ver car\u00e1tula de env\u00edo" onclick="window.__almVerCaratula(\''+p.id+'\')">'
+      +   (p.caratulaEnvio?('<button class="alm-btn alm-btn-ghost alm-btn-icon" title="Ver car\u00e1tula de env\u00edo" onclick="window.__almVerCaratula(\''+p.id+'\')">'
       +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></button>'):'')
-      +   (p.tipo==='material'?('<button class="alm-btn alm-btn-ghost" title="Imprimir solicitud (PDF)" onclick="window.__almImprimirSolicitudMaterial(\''+p.id+'\')">'
+      +   (p.tipo==='material'?('<button class="alm-btn alm-btn-ghost alm-btn-icon" title="Imprimir solicitud (PDF)" onclick="window.__almImprimirSolicitudMaterial(\''+p.id+'\')">'
       +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg></button>'):'')
-      +   (p.tipo==='material'?('<button class="alm-btn alm-btn-ghost" title="Enviar por WhatsApp" onclick="window.__almWhatsAppSolicitudMaterial(\''+p.id+'\')" style="color:#25D366;">'
+      +   (p.tipo==='material'?('<button class="alm-btn alm-btn-ghost alm-btn-icon" title="Enviar por WhatsApp" onclick="window.__almWhatsAppSolicitudMaterial(\''+p.id+'\')" style="color:#25D366;">'
       +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M17.6 6.32A7.85 7.85 0 0 0 12.05 4a7.94 7.94 0 0 0-6.9 11.9L4 20l4.2-1.1a7.9 7.9 0 0 0 3.85 1h.005a7.94 7.94 0 0 0 5.55-13.6zm-5.55 12.2h-.003a6.6 6.6 0 0 1-3.37-.92l-.24-.14-2.5.65.67-2.44-.16-.25a6.58 6.58 0 0 1 10.2-8.18 6.55 6.55 0 0 1 1.94 4.66 6.6 6.6 0 0 1-6.53 6.62zm3.6-4.93c-.2-.1-1.17-.58-1.35-.64s-.31-.1-.44.1-.5.64-.62.77-.23.15-.43.05a5.4 5.4 0 0 1-1.59-.98 6 6 0 0 1-1.1-1.37c-.12-.2 0-.3.09-.4s.2-.23.29-.35a1.3 1.3 0 0 0 .2-.33.37.37 0 0 0 0-.35c0-.1-.44-1.06-.6-1.45-.16-.38-.32-.33-.44-.33h-.37a.72.72 0 0 0-.52.24 2.2 2.2 0 0 0-.68 1.63 3.8 3.8 0 0 0 .8 2.02 8.7 8.7 0 0 0 3.33 2.95c.46.2.82.32 1.1.4.46.15.88.13 1.21.08.37-.06 1.17-.48 1.33-.94s.16-.86.11-.94-.18-.13-.38-.23z"/></svg></button>'):'')
-      +   '<button class="alm-btn alm-btn-ghost" title="Subir evidencia desde el celular (QR / enlace)" onclick="window.__almAbrirLinkMovilEvidencia(\''+p.id+'\')" style="color:#0e7490;">'
+      +   '<button class="alm-btn alm-btn-ghost alm-btn-icon" title="Subir evidencia desde el celular (QR / enlace)" onclick="window.__almAbrirLinkMovilEvidencia(\''+p.id+'\')" style="color:#0e7490;">'
       +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"/><line x1="11" y1="18" x2="13" y2="18"/></svg></button>'
       +   accionHtml
       + '</div></div>';
