@@ -1,61 +1,67 @@
-// flotilla-reglas.js v3 — Roles de Flotilla centralizados en la colección `usuarios`
-// Ya NO hay listas de correos aquí. El rol de cada persona vive en un solo lugar:
-// el campo `rolFlotilla` dentro de su documento en la colección `usuarios`.
-// Valores posibles: 'administrador' | 'aprobador' | 'pagos' | 'flotilla' | 'lector' | (nada = Técnico)
+// flotilla-reglas.js v4 — Roles de Flotilla centralizados en la colección `usuarios`
+// El rol/permisos de cada persona viven en su documento en `usuarios`:
+//   - rolFlotilla: 'administrador' | 'lector' | (legado: 'aprobador'|'pagos'|'flotilla') | '' | null
+//   - permisosFlotilla: array de acciones concedidas explícitamente (granular),
+//     asignado desde el panel "Roles de Flotilla" del portal (index.html).
+//
+// Compatibilidad: si un usuario NO tiene permisosFlotilla todavía (no lo han
+// tocado desde el panel nuevo), sus permisos se derivan de su rolFlotilla
+// legado con el mismo mapeo que existía antes de v4 — nadie pierde acceso
+// solo por este cambio. En cuanto Glen edita sus casillas en el panel, ese
+// usuario pasa a usar permisosFlotilla explícito de ahí en adelante.
 
 let _flRolCache = '';
+let _flPermisosCache = null; // null = usar mapeo legado; array = permisos explícitos
+
+const FL_ACCIONES_LEGADO = {
+  administrador: ['crear_solicitud','validar','cotizar','asignar_taller','aprobar','rechazar','gestionar_pagos','subir_comprobante','cerrar','enviar_cierre','subir_cotizacion','eliminar'],
+  aprobador:     ['crear_solicitud','aprobar','rechazar'],
+  pagos:         ['crear_solicitud','gestionar_pagos','subir_comprobante'],
+  flotilla:      ['crear_solicitud','validar','cotizar','asignar_taller','cerrar','enviar_cierre','subir_cotizacion'],
+  lector:        [],
+  '':            ['crear_solicitud'], // técnico base — cualquiera con cuenta puede crear una solicitud
+};
 
 // Debe llamarse UNA VEZ justo después de que el login se confirma
 // (en index.html, junto a cargarUsuariosFirestore()).
 window.flCargarRolActual = async function() {
   try {
     const uid = window.auth?.currentUser?.uid;
-    if (!uid) { _flRolCache = ''; return; }
+    if (!uid) { _flRolCache = ''; _flPermisosCache = null; return; }
     const fbFL = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
     const snap = await fbFL.getDoc(fbFL.doc(db, 'usuarios', uid));
-    _flRolCache = (snap.exists() && snap.data().activo !== false) ? (snap.data().rolFlotilla || '') : '';
+    if (snap.exists() && snap.data().activo !== false) {
+      const d = snap.data();
+      _flRolCache = d.rolFlotilla || '';
+      _flPermisosCache = Array.isArray(d.permisosFlotilla) ? d.permisosFlotilla : null;
+    } else {
+      _flRolCache = ''; _flPermisosCache = null;
+    }
   } catch(e) {
     console.warn('[FL-REGLAS] No se pudo cargar rolFlotilla:', e.message);
-    _flRolCache = '';
+    _flRolCache = ''; _flPermisosCache = null;
   }
 };
 
 window.flTienePermiso = function(accion) {
-  const rol = _flRolCache || '';
-  const isAdmin     = rol === 'administrador';
-  const isAprobador = rol === 'aprobador';
-  const isPagos     = rol === 'pagos';
-  const isFlotilla  = rol === 'flotilla';
-  const isLector    = rol === 'lector';
+  if (accion === 'crear_solicitud') return true; // siempre permitido con cuenta activa
+  if (_flRolCache === 'administrador') return true; // admin total de Flotilla, sin excepción
+  if (_flRolCache === 'lector') return false; // lector nunca modifica nada, solo ve
 
-  if (isLector && !isAdmin) return false; // un lector nunca modifica nada, solo ve
-
-  switch(accion) {
-    case 'crear_solicitud':
-      return true;
-    case 'validar': case 'cotizar': case 'asignar_taller':
-      return isFlotilla || isAdmin;
-    case 'aprobar': case 'rechazar':
-      return isAprobador || isAdmin;
-    case 'gestionar_pagos': case 'subir_comprobante':
-      return isPagos || isAdmin;
-    case 'cerrar': case 'enviar_cierre': case 'subir_cotizacion':
-      return isFlotilla || isAdmin;
-    case 'eliminar':
-      return isAdmin;
-    default:
-      return isAdmin;
+  if (Array.isArray(_flPermisosCache)) {
+    // Permisos explícitos asignados desde el panel — fuente de verdad para este usuario
+    return _flPermisosCache.includes(accion);
   }
+  // Sin permisos explícitos todavía → comportamiento legado por rol
+  const acciones = FL_ACCIONES_LEGADO[_flRolCache] || FL_ACCIONES_LEGADO[''];
+  return acciones.includes(accion);
 };
 
 window.flGetRolActual = function() {
-  const map = {
-    administrador: 'Administrador',
-    aprobador: 'Contraloría',
-    pagos: 'Pagos',
-    flotilla: 'Flotilla',
-    lector: 'Lector (solo lectura)'
-  };
+  if (_flRolCache === 'administrador') return 'Administrador';
+  if (_flRolCache === 'lector') return 'Lector (solo lectura)';
+  if (Array.isArray(_flPermisosCache) && _flPermisosCache.length) return 'Personalizado';
+  const map = { aprobador: 'Contraloría', pagos: 'Pagos', flotilla: 'Flotilla' };
   return map[_flRolCache] || 'Técnico';
 };
 
