@@ -1772,12 +1772,14 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
 
 <!-- MODAL ROLES DE FLOTILLA — asignación libre por rotación de personal -->
 <div id="modal-roles-flotilla" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);z-index:3200;align-items:center;justify-content:center;">
-    <div style="background:#ffffff;border-radius:20px;padding:28px;width:640px;max-width:95vw;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.25);">
-        <div style="font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;color:#1e293b;margin-bottom:6px;">🚚 Roles de Flotilla</div>
-        <div style="font-size:11px;color:#64748b;margin-bottom:14px;">Asigna quién tiene cada rol dentro de Flotilla (portal y app de técnicos). El cambio aplica de inmediato, sin tocar código — pensado para cuando hay rotación de personal.</div>
+    <div style="background:#ffffff;border-radius:20px;padding:28px;width:920px;max-width:96vw;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.25);">
+        <div style="font-family:'Space Grotesk',sans-serif;font-size:17px;font-weight:700;color:#1e293b;margin-bottom:6px;">🚚 Roles de Flotilla</div>
+        <div style="font-size:11px;color:#64748b;margin-bottom:12px;">Marca Administrador o Lector para acceso total/solo-lectura, o deja ambos sin marcar y elige exactamente qué puede hacer cada quién. El cambio aplica de inmediato.</div>
+        <div id="rf-sin-cuenta" style="display:none;margin-bottom:12px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px 14px;font-size:11.5px;color:#92400E"></div>
         <input type="text" id="rf-buscar" class="edit-field" placeholder="Buscar por nombre o correo..." style="margin-bottom:10px" oninput="rfFiltrar()">
-        <div id="rf-lista" style="overflow-y:auto;flex:1;border:1px solid #E2E8F0;border-radius:12px">
-            <div style="padding:20px;text-align:center;color:#94A3B8;font-size:12px">Cargando usuarios...</div>
+        <div id="rf-total" style="font-size:10.5px;color:#94A3B8;margin-bottom:8px"></div>
+        <div id="rf-lista" style="overflow-y:auto;flex:1;display:grid;grid-template-columns:1fr 1fr;gap:10px;align-content:start;padding:2px">
+            <div style="padding:20px;text-align:center;color:#94A3B8;font-size:12px;grid-column:1/-1">Cargando usuarios...</div>
         </div>
         <div style="margin-top:16px;">
             <button class="btn-cancel-edit" style="width:100%" onclick="document.getElementById('modal-roles-flotilla').style.display='none'">Cerrar</button>
@@ -3215,20 +3217,35 @@ window.guardarUsuarioNuevo = async () => {
 };
 
 // ── Roles de Flotilla — asignación libre, pensada para rotación de personal ──
-// Escribe directo en usuarios/{uid}.rolFlotilla, el mismo campo que ya lee
-// flotilla-reglas.js (portal) y flotilla-movil.js (app técnicos). No requiere
-// tocar código: el cambio aplica en el siguiente inicio de sesión de esa
-// persona (o de inmediato si ya está dentro, la próxima vez que el portal
-// evalúe un permiso).
-const RF_ROLES = [
-    {v:'',              t:'Sin rol de Flotilla'},
-    {v:'lector',        t:'Lector (solo ver)'},
-    {v:'flotilla',      t:'Flotilla (validar, cotizar, asignar taller, cerrar)'},
-    {v:'pagos',         t:'Pagos (gestionar pagos, comprobantes)'},
-    {v:'aprobador',     t:'Aprobador / Contraloría (aprobar, rechazar)'},
-    {v:'administrador', t:'Administrador de Flotilla (todo, incluido eliminar)'},
+// Escribe en usuarios/{uid}.rolFlotilla ('administrador'|'lector'|null) y
+// usuarios/{uid}.permisosFlotilla (array de acciones), los mismos campos que
+// lee flotilla-reglas.js (portal y app técnicos, ver ese archivo v4).
+const FL_ACCIONES = [
+    {v:'validar',          t:'Validar solicitud'},
+    {v:'cotizar',          t:'Cotizar'},
+    {v:'asignar_taller',   t:'Asignar taller'},
+    {v:'aprobar',          t:'Aprobar'},
+    {v:'rechazar',         t:'Rechazar'},
+    {v:'gestionar_pagos',  t:'Gestionar pagos'},
+    {v:'subir_comprobante',t:'Subir comprobante'},
+    {v:'cerrar',           t:'Cerrar solicitud'},
+    {v:'enviar_cierre',    t:'Enviar a cierre'},
+    {v:'subir_cotizacion', t:'Subir cotización'},
+    {v:'eliminar',         t:'Eliminar registros'},
 ];
+const FL_ACCIONES_LEGADO_UI = {
+    administrador: FL_ACCIONES.map(a=>a.v),
+    aprobador:     ['aprobar','rechazar'],
+    pagos:         ['gestionar_pagos','subir_comprobante'],
+    flotilla:      ['validar','cotizar','asignar_taller','cerrar','enviar_cierre','subir_cotizacion'],
+    lector:        [],
+    '':            [],
+};
 let _rfUsuarios = [];
+
+function rfNormNombre(s){
+    return (s||'').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Z\s]/g,'').split(/\s+/).filter(Boolean);
+}
 
 window.abrirModalRolesFlotilla = async () => {
     if(!esAdminTotal(auth.currentUser?.email||'')){
@@ -3237,32 +3254,76 @@ window.abrirModalRolesFlotilla = async () => {
     }
     document.getElementById('rf-buscar').value = '';
     document.getElementById('modal-roles-flotilla').style.display = 'flex';
-    document.getElementById('rf-lista').innerHTML = '<div style="padding:20px;text-align:center;color:#94A3B8;font-size:12px">Cargando usuarios...</div>';
+    document.getElementById('rf-lista').innerHTML = '<div style="padding:20px;text-align:center;color:#94A3B8;font-size:12px;grid-column:1/-1">Cargando usuarios...</div>';
+    document.getElementById('rf-sin-cuenta').style.display = 'none';
     try {
         const snap = await getDocs(collection(db,'usuarios'));
         _rfUsuarios = snap.docs
             .map(d=>({uid:d.id, ...d.data()}))
-            .filter(u=>u.activo !== false)
-            .sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
+            .sort((a,b)=>(a.nombre||a.correo||'').localeCompare(b.nombre||b.correo||''));
+        document.getElementById('rf-total').textContent = `${_rfUsuarios.length} cuenta(s) cargada(s)`;
         rfRender(_rfUsuarios);
+        rfMostrarSinCuenta();
     } catch(e){
-        document.getElementById('rf-lista').innerHTML = `<div style="padding:20px;text-align:center;color:#B91C1C;font-size:12px">No se pudo cargar la lista: ${e.message}</div>`;
+        document.getElementById('rf-lista').innerHTML = `<div style="padding:20px;text-align:center;color:#B91C1C;font-size:12px;grid-column:1/-1">No se pudo cargar la lista: ${e.message}</div>`;
     }
 };
 
+// Compara EMPLEADOS_TECNOCONTROL (plantilla completa, solo nombres) contra los
+// nombres de usuarios ya dados de alta. Es una comparación aproximada por
+// palabras del nombre — puede haber falsos positivos si el nombre del portal
+// está escrito distinto a la plantilla; úsala como pista, no como verdad absoluta.
+function rfMostrarSinCuenta(){
+    const cont = document.getElementById('rf-sin-cuenta');
+    if(typeof EMPLEADOS_TECNOCONTROL === 'undefined'){ cont.style.display='none'; return; }
+    const nombresUsuarios = _rfUsuarios.map(u=>rfNormNombre(u.nombre));
+    const faltantes = EMPLEADOS_TECNOCONTROL.filter(emp=>{
+        const palabrasEmp = rfNormNombre(emp);
+        if(!palabrasEmp.length) return false;
+        return !nombresUsuarios.some(palabrasU=>{
+            if(!palabrasU.length) return false;
+            const coincide = palabrasEmp.filter(p=>palabrasU.includes(p)).length;
+            return coincide >= Math.min(2, palabrasEmp.length); // al menos 2 palabras del nombre coinciden
+        });
+    });
+    if(!faltantes.length){ cont.style.display='none'; return; }
+    cont.style.display = 'block';
+    cont.innerHTML = `<strong>${faltantes.length} de tu plantilla parecen no tener cuenta en el portal</strong> (comparación aproximada por nombre, verifica antes de asumir):<br>${faltantes.join(' · ')}<br><span style="font-weight:700;cursor:pointer;text-decoration:underline" onclick="document.getElementById('modal-roles-flotilla').style.display='none';abrirModalUsuario()">+ Agregar usuario</span>`;
+}
+
 function rfRender(lista){
     const cont = document.getElementById('rf-lista');
-    if(!lista.length){ cont.innerHTML = '<div style="padding:20px;text-align:center;color:#94A3B8;font-size:12px">Sin usuarios</div>'; return; }
-    cont.innerHTML = lista.map(u => `
-        <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #F1F5F9">
-            <div style="flex:1;min-width:0">
-                <div style="font-size:12.5px;font-weight:700;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${u.nombre||u.correo}</div>
-                <div style="font-size:10.5px;color:#94A3B8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${u.correo}${u.departamento?' · '+u.departamento:''}</div>
+    if(!lista.length){ cont.innerHTML = '<div style="padding:20px;text-align:center;color:#94A3B8;font-size:12px;grid-column:1/-1">Sin usuarios</div>'; return; }
+    cont.innerHTML = lista.map(u => {
+        const esAdmin = u.rolFlotilla === 'administrador';
+        const esLector = u.rolFlotilla === 'lector';
+        const permisos = Array.isArray(u.permisosFlotilla) ? u.permisosFlotilla : (FL_ACCIONES_LEGADO_UI[u.rolFlotilla||''] || []);
+        const bloqueado = esAdmin || esLector;
+        return `
+        <div style="border:1.5px solid #E2E8F0;border-radius:12px;padding:12px 14px;${u.activo===false?'opacity:.55;background:#F8FAFC':''}">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                <div style="width:32px;height:32px;border-radius:50%;background:#1D2E73;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex-shrink:0">${(u.nombre||u.correo||'?').trim().charAt(0).toUpperCase()}</div>
+                <div style="flex:1;min-width:0">
+                    <div style="font-size:12.5px;font-weight:700;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${u.nombre||u.correo}${u.activo===false?' <span style="color:#B91C1C;font-weight:800">· INACTIVO</span>':''}</div>
+                    <div style="font-size:10px;color:#94A3B8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${u.correo}</div>
+                </div>
             </div>
-            <select class="edit-field" style="margin-bottom:0;width:auto;min-width:220px" onchange="rfCambiarRol('${u.uid}', this.value, this)">
-                ${RF_ROLES.map(r=>`<option value="${r.v}" ${((u.rolFlotilla||'')===r.v)?'selected':''}>${r.t}</option>`).join('')}
-            </select>
-        </div>`).join('');
+            <div style="display:flex;gap:6px;margin-bottom:8px">
+                <label style="flex:1;display:flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;color:#B45309;background:#FFFBEB;border:1px solid #FDE68A;border-radius:7px;padding:5px 8px;cursor:pointer">
+                    <input type="checkbox" ${esAdmin?'checked':''} onchange="rfSetEspecial('${u.uid}','administrador',this.checked)"> Administrador
+                </label>
+                <label style="flex:1;display:flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;color:#475569;background:#F1F5F9;border:1px solid #E2E8F0;border-radius:7px;padding:5px 8px;cursor:pointer">
+                    <input type="checkbox" ${esLector?'checked':''} onchange="rfSetEspecial('${u.uid}','lector',this.checked)"> Lector
+                </label>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;${bloqueado?'opacity:.4;pointer-events:none':''}">
+                ${FL_ACCIONES.map(a=>`
+                <label style="display:flex;align-items:center;gap:5px;font-size:10.5px;color:#334155;cursor:pointer">
+                    <input type="checkbox" ${permisos.includes(a.v)?'checked':''} onchange="rfTogglePermiso('${u.uid}','${a.v}',this.checked)"> ${a.t}
+                </label>`).join('')}
+            </div>
+        </div>`;
+    }).join('');
 }
 
 window.rfFiltrar = () => {
@@ -3271,17 +3332,35 @@ window.rfFiltrar = () => {
     rfRender(_rfUsuarios.filter(u => (u.nombre||'').toLowerCase().includes(q) || (u.correo||'').toLowerCase().includes(q)));
 };
 
-window.rfCambiarRol = async (uid, nuevoRol, selectEl) => {
-    selectEl.disabled = true;
+window.rfSetEspecial = async (uid, cual, marcado) => {
+    const u = _rfUsuarios.find(x=>x.uid===uid);
+    if(!u) return;
+    const nuevoRol = marcado ? cual : '';
     try {
         await updateDoc(doc(db,'usuarios', uid), { rolFlotilla: nuevoRol || null });
-        const u = _rfUsuarios.find(x=>x.uid===uid);
-        if(u) u.rolFlotilla = nuevoRol;
-        if(window.mostrarToast) window.mostrarToast('✅ Rol actualizado', u ? (u.nombre||u.correo) : '', '🚚');
+        u.rolFlotilla = nuevoRol;
+        if(window.mostrarToast) window.mostrarToast('✅ Actualizado', u.nombre||u.correo, '🚚');
+        rfRender(_rfUsuarios.filter(x=>{
+            const q=(document.getElementById('rf-buscar').value||'').toLowerCase().trim();
+            return !q || (x.nombre||'').toLowerCase().includes(q) || (x.correo||'').toLowerCase().includes(q);
+        }));
     } catch(e){
         if(window.mostrarToast) window.mostrarToast('❌ No se pudo guardar', e.message, '⚠️');
-    } finally {
-        selectEl.disabled = false;
+    }
+};
+
+window.rfTogglePermiso = async (uid, accion, marcado) => {
+    const u = _rfUsuarios.find(x=>x.uid===uid);
+    if(!u) return;
+    let permisos = Array.isArray(u.permisosFlotilla) ? [...u.permisosFlotilla] : (FL_ACCIONES_LEGADO_UI[u.rolFlotilla||''] || []).slice();
+    permisos = marcado ? [...new Set([...permisos, accion])] : permisos.filter(p=>p!==accion);
+    try {
+        await updateDoc(doc(db,'usuarios', uid), { permisosFlotilla: permisos, rolFlotilla: null });
+        u.permisosFlotilla = permisos;
+        u.rolFlotilla = null;
+        if(window.mostrarToast) window.mostrarToast('✅ Permiso actualizado', u.nombre||u.correo, '🚚');
+    } catch(e){
+        if(window.mostrarToast) window.mostrarToast('❌ No se pudo guardar', e.message, '⚠️');
     }
 };
 
