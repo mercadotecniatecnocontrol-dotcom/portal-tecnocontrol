@@ -209,7 +209,10 @@
     ultimoGuardado: null,            // {folio,cliente,...} del último surtido creado, para el botón de WhatsApp
     estacionSeleccionada: null,      // estación elegida del catálogo (destino "entrega_chihuahua"); null = modo manual
     puntoSeleccionado: null,         // punto de recolección/entrega elegido del catálogo genérico (paquetería)
-    puntoNuevo: null                 // {lat,lng} en captura, mientras se registra un punto nuevo
+    almacenOrigenSeleccionado: null,  // punto (tipo:'almacen') elegido del catálogo genérico — destino "traslado_almacenes"
+    almacenDestinoSeleccionado: null, // ídem, almacén destino
+    puntoNuevo: {},                  // {origenTarget: {lat,lng}, ...} — coordenada en captura por cada formulario "registrar punto nuevo" abierto
+    puntoNuevoTarget: null           // último target abierto (recoleccion|almacenOrigen|almacenDestino), solo informativo/depuración
   };
  
   // =====================================================================
@@ -639,14 +642,10 @@
       renderDestinoEstacion();
     } else if (tipo === 'traslado_almacenes'){
       extra.innerHTML =
-          '<div class="alm-destino-fld"><label>Almacén origen</label><select id="alm-destino-origen"></select></div>'
-        + '<div class="alm-destino-fld"><label>Almacén destino</label><select id="alm-destino-destino"></select></div>'
-        + '<button type="button" class="alm-addrow" style="margin-top:6px;" onclick="window.__almPdfAgregarAlmacen()">+ Agregar almacén nuevo</button>';
-      listaAlmacenes().then(function(lista){
-        var selO = document.getElementById('alm-destino-origen'), selD = document.getElementById('alm-destino-destino');
-        if (selO) selO.innerHTML = opcionesAlmacenesHtml(lista);
-        if (selD) selD.innerHTML = opcionesAlmacenesHtml(lista);
-      });
+          '<div id="alm-almacen-wrap-almacenOrigen"></div>'
+        + '<div id="alm-almacen-wrap-almacenDestino"></div>';
+      renderSelectorAlmacen('almacenOrigen');
+      renderSelectorAlmacen('almacenDestino');
     } else {
       extra.innerHTML = '';
     }
@@ -739,22 +738,37 @@
     renderDestinoEstacion();
   };
 
-  // ── Punto de recolección/entrega (destino "paquetería") — buscador sobre el
-  //    catálogo genérico puntos_referencia, con alta inline si no existe aún:
-  //    geocodificación por dirección o pin manual en un mini-mapa. ──
-  function renderPuntoRecoleccion(){
-    var wrap = document.getElementById('alm-punto-recoleccion-wrap');
+  // ── Selector genérico de un punto del catálogo puntos_referencia — buscador +
+  //    alta inline (geocodificación por dirección o pin manual en mini-mapa).
+  //    Reutilizado en 3 lugares ("target"), cada uno con su propio estado y
+  //    su propio juego de ids en el DOM (para poder mostrar dos a la vez, como
+  //    almacén origen + destino, sin que se pisen los campos):
+  //      'recoleccion'    → destino "paquetería" (cualquier tipo de punto)
+  //      'almacenOrigen'  → destino "traslado_almacenes", almacén de salida
+  //      'almacenDestino' → destino "traslado_almacenes", almacén de llegada ──
+  var SELECTOR_CFG = {
+    recoleccion:    { estadoKey: 'puntoSeleccionado',        wrapId: 'alm-punto-recoleccion-wrap',     tipoFiltro: null,      tipoDefaultNuevo: 'paqueteria', label: 'Punto de recolecci\u00f3n / entrega (paquetera, plaza, oficina...)', placeholder: 'Nombre de la sucursal, plaza, direcci\u00f3n\u2026' },
+    almacenOrigen:  { estadoKey: 'almacenOrigenSeleccionado', wrapId: 'alm-almacen-wrap-almacenOrigen', tipoFiltro: 'almacen', tipoDefaultNuevo: 'almacen',     label: 'Almac\u00e9n origen',  placeholder: 'Nombre del almac\u00e9n\u2026' },
+    almacenDestino: { estadoKey: 'almacenDestinoSeleccionado',wrapId: 'alm-almacen-wrap-almacenDestino',tipoFiltro: 'almacen', tipoDefaultNuevo: 'almacen',     label: 'Almac\u00e9n destino', placeholder: 'Nombre del almac\u00e9n\u2026' }
+  };
+  function renderPuntoRecoleccion(){ renderSelectorPunto('recoleccion'); }
+  function renderSelectorAlmacen(target){ renderSelectorPunto(target); }
+  function renderSelectorPunto(target){
+    var cfg = SELECTOR_CFG[target];
+    var wrap = document.getElementById(cfg.wrapId);
     if (!wrap) return;
-    var horarioHtml = '<div class="alm-destino-fld"><label>Horario / instrucciones para el paquetero</label>'
-      + '<input id="cx-recoleccion-horario" placeholder="Ej. despu\u00e9s de las 2pm, preguntar por Lupita"></div>';
-    var p = estado.puntoSeleccionado;
+    var horarioHtml = target === 'recoleccion'
+      ? '<div class="alm-destino-fld"><label>Horario / instrucciones para el paquetero</label>'
+        + '<input id="cx-recoleccion-horario" placeholder="Ej. despu\u00e9s de las 2pm, preguntar por Lupita"></div>'
+      : '';
+    var p = estado[cfg.estadoKey];
     if (p){
       wrap.innerHTML =
-          '<div class="alm-destino-fld"><label>Punto de recolecci\u00f3n / entrega</label>'
+          '<div class="alm-destino-fld"><label>' + esc(cfg.label) + '</label>'
         +   '<div class="alm-estacion-selected">'
         +     '<div class="n">' + esc(p.nombre) + ' <span class="alm-punto-tipo">' + esc(tipoPuntoLabel(p.tipo)) + '</span></div>'
         +     '<div class="d">' + esc(p.direccion || 'Sin dirección capturada') + '</div>'
-        +     '<button type="button" onclick="window.__almPdfPuntoQuitar()">Cambiar punto</button>'
+        +     '<button type="button" onclick="window.__almPdfPuntoQuitar(\'' + target + '\')">Cambiar</button>'
         +   '</div>'
         + '</div>'
         + horarioHtml;
@@ -762,37 +776,39 @@
     }
     wrap.innerHTML =
         '<div class="alm-destino-fld alm-estacion-search">'
-      +   '<label>Punto de recolecci\u00f3n / entrega (paquetera, plaza, oficina...)</label>'
-      +   '<input id="alm-punto-q" placeholder="Nombre de la sucursal, plaza, direcci\u00f3n\u2026" autocomplete="off" '
-      +     'oninput="window.__almPdfPuntoBuscar(this.value)" '
-      +     'onblur="setTimeout(function(){var b=document.getElementById(\'alm-punto-results\');if(b)b.style.display=\'none\';},150)">'
-      +   '<div id="alm-punto-results" class="alm-estacion-results" style="display:none;"></div>'
+      +   '<label>' + esc(cfg.label) + '</label>'
+      +   '<input id="alm-punto-q-' + target + '" placeholder="' + esc(cfg.placeholder) + '" autocomplete="off" '
+      +     'oninput="window.__almPdfPuntoBuscar(\'' + target + '\',this.value)" '
+      +     'onblur="setTimeout(function(){var b=document.getElementById(\'alm-punto-results-' + target + '\');if(b)b.style.display=\'none\';},150)">'
+      +   '<div id="alm-punto-results-' + target + '" class="alm-estacion-results" style="display:none;"></div>'
       + '</div>'
-      + '<button type="button" class="alm-estacion-link" onclick="window.__almPdfPuntoRegistrarNuevo()">No est\u00e1 en el cat\u00e1logo \u00b7 registrar punto nuevo</button>'
-      + '<div id="alm-punto-nuevo-form"></div>'
+      + '<button type="button" class="alm-estacion-link" onclick="window.__almPdfPuntoRegistrarNuevo(\'' + target + '\')">No est\u00e1 en el cat\u00e1logo \u00b7 registrar nuevo</button>'
+      + '<div id="alm-punto-nuevo-form-' + target + '"></div>'
       + horarioHtml;
     cargarCatalogoPuntos(); // precarga en cache; no bloquea el render del campo
   }
 
-  window.__almPdfPuntoBuscar = function(valor){
-    var box = document.getElementById('alm-punto-results');
+  window.__almPdfPuntoBuscar = function(target, valor){
+    var cfg = SELECTOR_CFG[target];
+    var box = document.getElementById('alm-punto-results-' + target);
     if (!box) return;
     var q = (valor || '').trim().toLowerCase();
     if (!q){ box.style.display = 'none'; box.innerHTML = ''; return; }
     cargarCatalogoPuntos().then(function(lista){
-      var actual = document.getElementById('alm-punto-q');
+      var actual = document.getElementById('alm-punto-q-' + target);
       if (!actual || actual.value.trim().toLowerCase() !== q) return; // ya escribió otra cosa mientras cargaba
       var resultados = lista.filter(function(pt){
+        if (cfg.tipoFiltro && pt.tipo !== cfg.tipoFiltro) return false;
         var texto = [pt.nombre, pt.direccion, pt.tipo, pt.notas].filter(Boolean).join(' ').toLowerCase();
         return texto.indexOf(q) !== -1;
       }).slice(0, 20);
       if (!resultados.length){
-        box.innerHTML = '<div class="alm-estacion-item" style="cursor:default;color:#94a3b8;">Sin resultados \u2014 usa "registrar punto nuevo".</div>';
+        box.innerHTML = '<div class="alm-estacion-item" style="cursor:default;color:#94a3b8;">Sin resultados \u2014 usa "registrar nuevo".</div>';
         box.style.display = 'block';
         return;
       }
       box.innerHTML = resultados.map(function(pt){
-        return '<div class="alm-estacion-item" onmousedown="window.__almPdfPuntoElegir(\'' + pt.id + '\')">'
+        return '<div class="alm-estacion-item" onmousedown="window.__almPdfPuntoElegir(\'' + target + '\',\'' + pt.id + '\')">'
           +   '<div class="n">' + esc(pt.nombre) + ' <span class="alm-punto-tipo">' + esc(tipoPuntoLabel(pt.tipo)) + '</span></div>'
           +   '<div class="d">' + esc(pt.direccion || '') + '</div>'
           + '</div>';
@@ -801,76 +817,79 @@
     });
   };
 
-  window.__almPdfPuntoElegir = function(id){
+  window.__almPdfPuntoElegir = function(target, id){
     cargarCatalogoPuntos().then(function(lista){
       var pt = lista.find(function(x){ return x.id === id; });
       if (!pt) return;
-      estado.puntoSeleccionado = pt;
-      renderPuntoRecoleccion();
+      estado[SELECTOR_CFG[target].estadoKey] = pt;
+      renderSelectorPunto(target);
     });
   };
 
-  window.__almPdfPuntoQuitar = function(){
-    estado.puntoSeleccionado = null;
-    renderPuntoRecoleccion();
+  window.__almPdfPuntoQuitar = function(target){
+    estado[SELECTOR_CFG[target].estadoKey] = null;
+    renderSelectorPunto(target);
   };
 
-  window.__almPdfPuntoRegistrarNuevo = function(){
-    var box = document.getElementById('alm-punto-nuevo-form');
+  window.__almPdfPuntoRegistrarNuevo = function(target){
+    var cfg = SELECTOR_CFG[target];
+    var box = document.getElementById('alm-punto-nuevo-form-' + target);
     if (!box) return;
-    estado.puntoNuevo = null;
+    estado.puntoNuevo[target] = null;
+    var opcionesTipo = cfg.tipoFiltro
+      ? '<option value="' + cfg.tipoFiltro + '" selected>' + esc(tipoPuntoLabel(cfg.tipoFiltro)) + '</option>'
+      : '<option value="paqueteria">Paquetería</option><option value="plaza">Plaza</option>'
+        + '<option value="almacen">Almacén propio</option><option value="oficina">Oficina</option><option value="otro">Otro</option>';
     box.innerHTML =
         '<div class="alm-punto-nuevo-box">'
-      +   '<div class="alm-destino-fld"><label>Nombre</label><input id="alm-punto-nombre" placeholder="Ej. Estafeta Sucursal Centro \u00b7 Plaza Ju\u00e1rez"></div>'
-      +   '<div class="alm-destino-fld"><label>Tipo</label><select id="alm-punto-tipo">'
-      +     '<option value="paqueteria">Paqueter\u00eda</option><option value="plaza">Plaza</option>'
-      +     '<option value="almacen">Almac\u00e9n propio</option><option value="oficina">Oficina</option><option value="otro">Otro</option>'
-      +   '</select></div>'
-      +   '<div class="alm-destino-fld"><label>Direcci\u00f3n</label><input id="alm-punto-dir" placeholder="Calle, colonia, ciudad"></div>'
+      +   '<div class="alm-destino-fld"><label>Nombre</label><input id="alm-punto-nombre-' + target + '" placeholder="Ej. Estafeta Sucursal Centro \u00b7 Plaza Ju\u00e1rez"></div>'
+      +   '<div class="alm-destino-fld"><label>Tipo</label><select id="alm-punto-tipo-' + target + '"' + (cfg.tipoFiltro ? ' disabled' : '') + '>' + opcionesTipo + '</select></div>'
+      +   '<div class="alm-destino-fld"><label>Direcci\u00f3n</label><input id="alm-punto-dir-' + target + '" placeholder="Calle, colonia, ciudad"></div>'
       +   '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">'
-      +     '<button type="button" class="alm-addrow" onclick="window.__almPdfPuntoGeocodificar()">\ud83d\udccd Geocodificar por direcci\u00f3n</button>'
-      +     '<button type="button" class="alm-addrow" onclick="window.__almPdfPuntoMostrarMapa()">\ud83d\uddfa\ufe0f Marcar en mapa</button>'
+      +     '<button type="button" class="alm-addrow" onclick="window.__almPdfPuntoGeocodificar(\'' + target + '\')">\ud83d\udccd Geocodificar por direcci\u00f3n</button>'
+      +     '<button type="button" class="alm-addrow" onclick="window.__almPdfPuntoMostrarMapa(\'' + target + '\')">\ud83d\uddfa\ufe0f Marcar en mapa</button>'
       +   '</div>'
-      +   '<div id="alm-punto-coord-msg" class="alm-punto-coord"></div>'
-      +   '<div id="alm-punto-mapa-wrap"></div>'
+      +   '<div id="alm-punto-coord-msg-' + target + '" class="alm-punto-coord"></div>'
+      +   '<div id="alm-punto-mapa-wrap-' + target + '"></div>'
       +   '<div style="display:flex;gap:8px;margin-top:8px;align-items:center;">'
-      +     '<button type="button" class="alm-addrow alm-btn-ok" onclick="window.__almPdfPuntoGuardar()">Guardar punto y usarlo</button>'
-      +     '<button type="button" class="alm-estacion-link" onclick="window.__almPdfPuntoCancelarNuevo()">Cancelar</button>'
+      +     '<button type="button" class="alm-addrow alm-btn-ok" onclick="window.__almPdfPuntoGuardar(\'' + target + '\')">Guardar y usarlo</button>'
+      +     '<button type="button" class="alm-estacion-link" onclick="window.__almPdfPuntoCancelarNuevo(\'' + target + '\')">Cancelar</button>'
       +   '</div>'
       + '</div>';
   };
 
-  window.__almPdfPuntoCancelarNuevo = function(){
-    var box = document.getElementById('alm-punto-nuevo-form');
+  window.__almPdfPuntoCancelarNuevo = function(target){
+    var box = document.getElementById('alm-punto-nuevo-form-' + target);
     if (box) box.innerHTML = '';
-    estado.puntoNuevo = null;
+    estado.puntoNuevo[target] = null;
   };
 
-  window.__almPdfPuntoGeocodificar = function(){
-    var dirEl = document.getElementById('alm-punto-dir');
+  window.__almPdfPuntoGeocodificar = function(target){
+    var dirEl = document.getElementById('alm-punto-dir-' + target);
     var dir = dirEl ? dirEl.value.trim() : '';
-    var msgEl = document.getElementById('alm-punto-coord-msg');
+    var msgEl = document.getElementById('alm-punto-coord-msg-' + target);
     if (!dir){ if (msgEl) msgEl.textContent = 'Escribe la dirección primero.'; return; }
     if (msgEl) msgEl.textContent = 'Buscando coordenada…';
     geocodificarDireccion(dir).then(function(coord){
       if (!coord){ if (msgEl) msgEl.textContent = 'No se encontró — intenta con "Marcar en mapa".'; return; }
-      estado.puntoNuevo = { lat: coord.lat, lng: coord.lng };
+      estado.puntoNuevo[target] = { lat: coord.lat, lng: coord.lng };
       if (msgEl) msgEl.textContent = '\u2713 Coordenada encontrada: ' + coord.lat.toFixed(5) + ', ' + coord.lng.toFixed(5);
     });
   };
 
-  window.__almPdfPuntoMostrarMapa = function(){
-    var wrap = document.getElementById('alm-punto-mapa-wrap');
+  window.__almPdfPuntoMostrarMapa = function(target){
+    var wrap = document.getElementById('alm-punto-mapa-wrap-' + target);
     if (!wrap) return;
-    wrap.innerHTML = '<div id="alm-punto-mapa" class="alm-punto-mapa"></div><div style="font-size:10.5px;color:#64748b;margin-top:4px;">Toca el mapa para marcar el punto exacto (se puede arrastrar el pin).</div>';
+    wrap.innerHTML = '<div id="alm-punto-mapa-' + target + '" class="alm-punto-mapa"></div><div style="font-size:10.5px;color:#64748b;margin-top:4px;">Toca el mapa para marcar el punto exacto (se puede arrastrar el pin).</div>';
     cargarLeafletPunto().then(function(L){
-      var centro = (estado.puntoNuevo && estado.puntoNuevo.lat != null) ? [estado.puntoNuevo.lat, estado.puntoNuevo.lng] : [28.6353, -106.0889];
-      var mapa = L.map('alm-punto-mapa').setView(centro, 12);
+      var actual = estado.puntoNuevo[target];
+      var centro = (actual && actual.lat != null) ? [actual.lat, actual.lng] : [28.6353, -106.0889];
+      var mapa = L.map('alm-punto-mapa-' + target).setView(centro, 12);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapa);
       var marcador = L.marker(centro, { draggable: true }).addTo(mapa);
       function actualizarCoord(latlng){
-        estado.puntoNuevo = { lat: latlng.lat, lng: latlng.lng };
-        var msgEl = document.getElementById('alm-punto-coord-msg');
+        estado.puntoNuevo[target] = { lat: latlng.lat, lng: latlng.lng };
+        var msgEl = document.getElementById('alm-punto-coord-msg-' + target);
         if (msgEl) msgEl.textContent = '\u2713 Punto marcado: ' + latlng.lat.toFixed(5) + ', ' + latlng.lng.toFixed(5);
       }
       marcador.on('dragend', function(){ actualizarCoord(marcador.getLatLng()); });
@@ -880,24 +899,25 @@
     });
   };
 
-  window.__almPdfPuntoGuardar = function(){
-    var nombreEl = document.getElementById('alm-punto-nombre');
-    var tipoEl = document.getElementById('alm-punto-tipo');
-    var dirEl = document.getElementById('alm-punto-dir');
+  window.__almPdfPuntoGuardar = function(target){
+    var cfg = SELECTOR_CFG[target];
+    var nombreEl = document.getElementById('alm-punto-nombre-' + target);
+    var tipoEl = document.getElementById('alm-punto-tipo-' + target);
+    var dirEl = document.getElementById('alm-punto-dir-' + target);
     var nombre = nombreEl ? nombreEl.value.trim() : '';
-    var tipo = tipoEl ? tipoEl.value : 'otro';
+    var tipo = cfg.tipoFiltro || (tipoEl ? tipoEl.value : 'otro');
     var direccion = dirEl ? dirEl.value.trim() : '';
-    var pn = estado.puntoNuevo;
-    if (!nombre){ msg('Falta el nombre del punto.', '#dc2626'); return; }
+    var pn = estado.puntoNuevo[target];
+    if (!nombre){ msg('Falta el nombre.', '#dc2626'); return; }
     if (!pn || pn.lat == null || pn.lng == null){ msg('Falta la coordenada \u2014 geocodifica la dirección o márcala en el mapa.', '#dc2626'); return; }
     guardarPuntoNuevo({ nombre: nombre, tipo: tipo, direccion: direccion, lat: pn.lat, lng: pn.lng }).then(function(id){
-      estado.puntoSeleccionado = { id: id, nombre: nombre, tipo: tipo, direccion: direccion, lat: pn.lat, lng: pn.lng };
-      estado.puntoNuevo = null;
-      renderPuntoRecoleccion();
-      msg('Punto guardado y listo en el catálogo.', '#16a34a');
+      estado[cfg.estadoKey] = { id: id, nombre: nombre, tipo: tipo, direccion: direccion, lat: pn.lat, lng: pn.lng };
+      estado.puntoNuevo[target] = null;
+      renderSelectorPunto(target);
+      msg('Guardado y listo en el catálogo.', '#16a34a');
     }).catch(function(err){
       console.error('[almacen-pdf] error guardando punto:', err);
-      msg('No se pudo guardar el punto: ' + (err && err.message || err), '#dc2626');
+      msg('No se pudo guardar: ' + (err && err.message || err), '#dc2626');
     });
   };
 
@@ -1195,8 +1215,14 @@
           datosDestino.destinoDireccion = ((document.getElementById('alm-destino-dir') || {}).value || '').trim();
         }
       } else if (destinoTipo === 'traslado_almacenes') {
-        datosDestino.destinoAlmacenOrigen = (document.getElementById('alm-destino-origen') || {}).value || '';
-        datosDestino.destinoAlmacenDestino = (document.getElementById('alm-destino-destino') || {}).value || '';
+        // Almacenes elegidos del catálogo puntos_referencia (tipo:'almacen'): se
+        // congela nombre + lat/lng en el propio pedido, igual que "paquetería" con
+        // destinoPuntoId, para que la TV pinte la ruta real sin leer el catálogo.
+        var almO = estado.almacenOrigenSeleccionado, almD = estado.almacenDestinoSeleccionado;
+        datosDestino.destinoAlmacenOrigen = almO ? almO.nombre : '';
+        datosDestino.destinoAlmacenDestino = almD ? almD.nombre : '';
+        if (almO) { datosDestino.destinoAlmacenOrigenId = almO.id; datosDestino.destinoAlmacenOrigenLat = almO.lat; datosDestino.destinoAlmacenOrigenLng = almO.lng; }
+        if (almD) { datosDestino.destinoAlmacenDestinoId = almD.id; datosDestino.destinoAlmacenDestinoLat = almD.lat; datosDestino.destinoAlmacenDestinoLng = almD.lng; }
       }
     }
  
@@ -1305,7 +1331,9 @@
     estado.ultimoGuardado = null;
     estado.estacionSeleccionada = null;
     estado.puntoSeleccionado = null;
-    estado.puntoNuevo = null;
+    estado.almacenOrigenSeleccionado = null;
+    estado.almacenDestinoSeleccionado = null;
+    estado.puntoNuevo = {};
     var up = document.getElementById('alm-step-upload');
     var rv = document.getElementById('alm-step-review');
     if (up) up.style.display = 'block';
