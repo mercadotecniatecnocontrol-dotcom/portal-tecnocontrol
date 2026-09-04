@@ -89,6 +89,10 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
                 Agregar usuario
             </button>
+            <button id="btn-roles-flotilla" onclick="abrirModalRolesFlotilla()" style="display:none;width:100%;align-items:center;gap:8px;padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:rgba(255,255,255,.75);font-family:inherit;font-size:11.5px;font-weight:600;cursor:pointer;text-align:left">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                Roles de Flotilla
+            </button>
         </div>
         <div class="sidebar-footer" onclick="cerrarSesion()">↩ Cerrar Sesión</div>
     </nav>
@@ -1766,6 +1770,21 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
     </div>
 </div>
 
+<!-- MODAL ROLES DE FLOTILLA — asignación libre por rotación de personal -->
+<div id="modal-roles-flotilla" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);z-index:3200;align-items:center;justify-content:center;">
+    <div style="background:#ffffff;border-radius:20px;padding:28px;width:640px;max-width:95vw;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.25);">
+        <div style="font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;color:#1e293b;margin-bottom:6px;">🚚 Roles de Flotilla</div>
+        <div style="font-size:11px;color:#64748b;margin-bottom:14px;">Asigna quién tiene cada rol dentro de Flotilla (portal y app de técnicos). El cambio aplica de inmediato, sin tocar código — pensado para cuando hay rotación de personal.</div>
+        <input type="text" id="rf-buscar" class="edit-field" placeholder="Buscar por nombre o correo..." style="margin-bottom:10px" oninput="rfFiltrar()">
+        <div id="rf-lista" style="overflow-y:auto;flex:1;border:1px solid #E2E8F0;border-radius:12px">
+            <div style="padding:20px;text-align:center;color:#94A3B8;font-size:12px">Cargando usuarios...</div>
+        </div>
+        <div style="margin-top:16px;">
+            <button class="btn-cancel-edit" style="width:100%" onclick="document.getElementById('modal-roles-flotilla').style.display='none'">Cerrar</button>
+        </div>
+    </div>
+</div>
+
 <!-- MODAL RH -->
 <div id="modal-rh">
     <div class="rh-modal-box">
@@ -2613,6 +2632,8 @@ onAuthStateChanged(auth, async user=>{
         // Botón "Agregar usuario" — solo ADMIN_EMAILS
         const btnAgUsr = document.getElementById('btn-agregar-usuario');
         if(btnAgUsr) btnAgUsr.style.display = esAdminTotal(user.email) ? 'flex' : 'none';
+        const btnRolesFl = document.getElementById('btn-roles-flotilla');
+        if(btnRolesFl) btnRolesFl.style.display = esAdminTotal(user.email) ? 'flex' : 'none';
         // Notificaciones: admin total recibe todas las áreas
         // (ya está manejado con esAdminTotal en escuchar())
         // Inicializar encargados en el formulario de nueva tarea
@@ -3190,6 +3211,77 @@ window.guardarUsuarioNuevo = async () => {
     } finally {
         if(btn){ btn.textContent='CREAR USUARIO'; btn.disabled=false; }
         if(secondaryApp){ try{ await deleteApp(secondaryApp); }catch(_e){} }
+    }
+};
+
+// ── Roles de Flotilla — asignación libre, pensada para rotación de personal ──
+// Escribe directo en usuarios/{uid}.rolFlotilla, el mismo campo que ya lee
+// flotilla-reglas.js (portal) y flotilla-movil.js (app técnicos). No requiere
+// tocar código: el cambio aplica en el siguiente inicio de sesión de esa
+// persona (o de inmediato si ya está dentro, la próxima vez que el portal
+// evalúe un permiso).
+const RF_ROLES = [
+    {v:'',              t:'Sin rol de Flotilla'},
+    {v:'lector',        t:'Lector (solo ver)'},
+    {v:'flotilla',      t:'Flotilla (validar, cotizar, asignar taller, cerrar)'},
+    {v:'pagos',         t:'Pagos (gestionar pagos, comprobantes)'},
+    {v:'aprobador',     t:'Aprobador / Contraloría (aprobar, rechazar)'},
+    {v:'administrador', t:'Administrador de Flotilla (todo, incluido eliminar)'},
+];
+let _rfUsuarios = [];
+
+window.abrirModalRolesFlotilla = async () => {
+    if(!esAdminTotal(auth.currentUser?.email||'')){
+        if(window.mostrarToast) window.mostrarToast('🔒 Acceso restringido','Solo administradores pueden asignar roles','⚠️');
+        return;
+    }
+    document.getElementById('rf-buscar').value = '';
+    document.getElementById('modal-roles-flotilla').style.display = 'flex';
+    document.getElementById('rf-lista').innerHTML = '<div style="padding:20px;text-align:center;color:#94A3B8;font-size:12px">Cargando usuarios...</div>';
+    try {
+        const snap = await getDocs(collection(db,'usuarios'));
+        _rfUsuarios = snap.docs
+            .map(d=>({uid:d.id, ...d.data()}))
+            .filter(u=>u.activo !== false)
+            .sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
+        rfRender(_rfUsuarios);
+    } catch(e){
+        document.getElementById('rf-lista').innerHTML = `<div style="padding:20px;text-align:center;color:#B91C1C;font-size:12px">No se pudo cargar la lista: ${e.message}</div>`;
+    }
+};
+
+function rfRender(lista){
+    const cont = document.getElementById('rf-lista');
+    if(!lista.length){ cont.innerHTML = '<div style="padding:20px;text-align:center;color:#94A3B8;font-size:12px">Sin usuarios</div>'; return; }
+    cont.innerHTML = lista.map(u => `
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #F1F5F9">
+            <div style="flex:1;min-width:0">
+                <div style="font-size:12.5px;font-weight:700;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${u.nombre||u.correo}</div>
+                <div style="font-size:10.5px;color:#94A3B8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${u.correo}${u.departamento?' · '+u.departamento:''}</div>
+            </div>
+            <select class="edit-field" style="margin-bottom:0;width:auto;min-width:220px" onchange="rfCambiarRol('${u.uid}', this.value, this)">
+                ${RF_ROLES.map(r=>`<option value="${r.v}" ${((u.rolFlotilla||'')===r.v)?'selected':''}>${r.t}</option>`).join('')}
+            </select>
+        </div>`).join('');
+}
+
+window.rfFiltrar = () => {
+    const q = (document.getElementById('rf-buscar').value||'').toLowerCase().trim();
+    if(!q){ rfRender(_rfUsuarios); return; }
+    rfRender(_rfUsuarios.filter(u => (u.nombre||'').toLowerCase().includes(q) || (u.correo||'').toLowerCase().includes(q)));
+};
+
+window.rfCambiarRol = async (uid, nuevoRol, selectEl) => {
+    selectEl.disabled = true;
+    try {
+        await updateDoc(doc(db,'usuarios', uid), { rolFlotilla: nuevoRol || null });
+        const u = _rfUsuarios.find(x=>x.uid===uid);
+        if(u) u.rolFlotilla = nuevoRol;
+        if(window.mostrarToast) window.mostrarToast('✅ Rol actualizado', u ? (u.nombre||u.correo) : '', '🚚');
+    } catch(e){
+        if(window.mostrarToast) window.mostrarToast('❌ No se pudo guardar', e.message, '⚠️');
+    } finally {
+        selectEl.disabled = false;
     }
 };
 
