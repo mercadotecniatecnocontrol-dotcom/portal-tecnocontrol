@@ -522,6 +522,38 @@
     };
     input.click();
   };
+
+  // ── Modal unificado de evidencia: siempre abre una ventana visible con 3
+  //    formas de subir (elegir archivo aquí mismo, o escanear/copiar el enlace
+  //    para subir desde el celular) — antes el botón de escritorio dependía
+  //    de un <input> oculto sin ninguna ventana visible, lo que en algunos
+  //    casos se sentía como que "no pasaba nada". ──
+  window.__almAbrirModalEvidencia = function(id){
+    var p = buscarP(id) || (_repEntregas||[]).find(function(x){ return x.id===id; });
+    var base = window.location.href.replace(/[^/]*$/, '');
+    var link = base + 'evidencia-salida.html?id=' + encodeURIComponent(id);
+    var qrSrc = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(link);
+    construirModalHistorial();
+    var box=document.getElementById('alm-modal-hist-box');
+    box.classList.remove('wide');
+    box.innerHTML = '<h4>Subir evidencia'+(p?(' · '+esc(p.folio||'')):'')+'<button onclick="window.__almCerrarModal()">&times;</button></h4>'
+      + '<button type="button" class="alm-evid-add" style="width:100%;margin-bottom:14px;box-sizing:border-box;" onclick="window.__almSubirEvidencia(\''+id+'\')">📎 Elegir foto o documento desde esta computadora</button>'
+      + '<input type="file" accept="image/*,.pdf,.doc,.docx" id="alm-evid-file-'+id+'" style="display:none">'
+      + '<div style="border-top:1px dashed #e2e8f0;padding-top:14px;text-align:center;">'
+      +   '<div style="font-size:11.5px;font-weight:700;color:#64748b;margin-bottom:10px;">O escanea con el celular para subirla desde ahí</div>'
+      +   '<img src="'+qrSrc+'" alt="Código QR" style="border:1px solid #e2e8f0;border-radius:12px;padding:8px;background:#fff;">'
+      +   '<div style="margin-top:12px;display:flex;gap:6px;">'
+      +     '<input type="text" readonly value="'+esc(link)+'" id="alm-link-evid-movil" style="flex:1;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:11px;color:#475569;" onclick="this.select()">'
+      +     '<button onclick="navigator.clipboard.writeText(document.getElementById(\'alm-link-evid-movil\').value).then(function(){ if(window.mostrarPush) window.mostrarPush(\'Enlace copiado\',\'\',\'📋\'); })" style="background:#f1f5f9;border:none;color:#334155;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap;">Copiar</button>'
+      +   '</div>'
+      +   '<a href="https://wa.me/?text='+encodeURIComponent('📷 Sube la evidencia aquí: '+link)+'" target="_blank" style="display:inline-block;margin-top:10px;background:#25D366;color:#fff;padding:8px 14px;border-radius:8px;text-decoration:none;font-size:11.5px;font-weight:600;">💬 Enviar por WhatsApp</a>'
+      + '</div>'
+      + '<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#94a3b8;margin:16px 0 6px;">Evidencia ya subida</div>'
+      + '<div class="alm-evid-grid" id="alm-hist-evid-'+id+'"><div style="color:#94a3b8;font-size:12px;">Cargando…</div></div>';
+    document.getElementById('alm-modal-hist').classList.add('show');
+    window.__almRefrescarEvidHist(id);
+  };
+
   window.__almVerEvidencia = function(id, idx){
     var list=_evidenciasCache[id]||[]; var ev=list[idx]; if (!ev) return;
     construirModalHistorial();
@@ -808,7 +840,7 @@
         if (!window.db) throw new Error('Firestore no disponible');
         return fs.addDoc(fs.collection(window.db,'puntos_referencia'), {
           nombre: nombre, tipo: 'paqueteria', direccion: direccion, lat: coord.lat, lng: coord.lng,
-          creadoPor: yoNombre(), creadoEn: new Date().toISOString()
+          creadoPor: String(yoNombre()||''), creadoEn: new Date().toISOString()
         });
       }).then(function(){
         if (window.__almInvalidarCachePuntos) window.__almInvalidarCachePuntos();
@@ -955,7 +987,7 @@
       prodHtml += '<div class="alm-evid-block"><span class="lbl">Evidencia de entrega</span>'
         + '<div class="alm-evid-grid" id="alm-evid-grid-'+p.id+'">'+renderEvidenciasThumbs(p)+'</div>'
         + '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:2px;">'
-        +   '<button type="button" class="alm-evid-add" onclick="window.__almSubirEvidencia(\''+p.id+'\')">+ Agregar foto o documento</button>'
+        +   '<button type="button" class="alm-evid-add" onclick="window.__almAbrirModalEvidencia(\''+p.id+'\')">+ Agregar foto o documento</button>'
         +   (p.remisionado
               ? '<span style="font-size:11px;font-weight:700;color:#16a34a;">✓ Remisionado'+(p.remisionadoPor?(' · '+esc(p.remisionadoPor)):'')+'</span>'
               : '<button type="button" class="alm-evid-add" style="border-style:solid;border-color:#16a34a;color:#16a34a;" onclick="window.__almConfirmarRemision(\''+p.id+'\')">✅ Confirmar y remisionar</button>')
@@ -1009,7 +1041,7 @@
       +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg></button>'):'')
       +   (p.tipo==='material'?('<button class="alm-btn alm-btn-ghost alm-btn-icon" title="Enviar por WhatsApp" onclick="window.__almWhatsAppSolicitudMaterial(\''+p.id+'\')" style="color:#25D366;">'
       +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M17.6 6.32A7.85 7.85 0 0 0 12.05 4a7.94 7.94 0 0 0-6.9 11.9L4 20l4.2-1.1a7.9 7.9 0 0 0 3.85 1h.005a7.94 7.94 0 0 0 5.55-13.6zm-5.55 12.2h-.003a6.6 6.6 0 0 1-3.37-.92l-.24-.14-2.5.65.67-2.44-.16-.25a6.58 6.58 0 0 1 10.2-8.18 6.55 6.55 0 0 1 1.94 4.66 6.6 6.6 0 0 1-6.53 6.62zm3.6-4.93c-.2-.1-1.17-.58-1.35-.64s-.31-.1-.44.1-.5.64-.62.77-.23.15-.43.05a5.4 5.4 0 0 1-1.59-.98 6 6 0 0 1-1.1-1.37c-.12-.2 0-.3.09-.4s.2-.23.29-.35a1.3 1.3 0 0 0 .2-.33.37.37 0 0 0 0-.35c0-.1-.44-1.06-.6-1.45-.16-.38-.32-.33-.44-.33h-.37a.72.72 0 0 0-.52.24 2.2 2.2 0 0 0-.68 1.63 3.8 3.8 0 0 0 .8 2.02 8.7 8.7 0 0 0 3.33 2.95c.46.2.82.32 1.1.4.46.15.88.13 1.21.08.37-.06 1.17-.48 1.33-.94s.16-.86.11-.94-.18-.13-.38-.23z"/></svg></button>'):'')
-      +   '<button class="alm-btn alm-btn-ghost alm-btn-icon" title="Subir evidencia desde el celular (QR / enlace)" onclick="window.__almAbrirLinkMovilEvidencia(\''+p.id+'\')" style="color:#0e7490;">'
+      +   '<button class="alm-btn alm-btn-ghost alm-btn-icon" title="Subir evidencia (archivo, QR o enlace)" onclick="window.__almAbrirModalEvidencia(\''+p.id+'\')" style="color:#0e7490;">'
       +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"/><line x1="11" y1="18" x2="13" y2="18"/></svg></button>'
       +   accionHtml
       + '</div></div>';
@@ -1053,7 +1085,7 @@
           destinatarioEmail: ref.solicitanteEmail || null,
           tipo: 'remisionado',
           mensaje: 'Tu pedido ' + (ref.folio||'') + ' fue confirmado y remisionado por Almacén.',
-          leido: false, creadoPor: yoNombre(), creadoEn: fs.serverTimestamp()
+          leido: false, creadoPor: String(yoNombre()||''), creadoEn: fs.serverTimestamp()
         }).catch(function(err){ console.warn('[almacen] no se pudo registrar la notificación:', err); });
       });
     }).then(function(){
@@ -1122,7 +1154,7 @@
       + '<div style="font-size:12.5px;color:#64748b;font-weight:700;margin-bottom:12px">'+esc(p.cliente||'')+' \u00b7 '+piezas(p)+' piezas</div>'
       + '<div class="alm-evid-block" style="border-top:none;padding-top:0;"><span class="lbl">Evidencia fotogr\u00e1fica (embarque / entrega)</span>'
       +   '<div class="alm-evid-grid" id="alm-evid-grid-'+p.id+'">'+renderEvidenciasThumbs(p)+'</div>'
-      +   '<button type="button" class="alm-evid-add" onclick="window.__almSubirEvidencia(\''+p.id+'\')">+ Agregar foto o documento</button>'
+      +   '<button type="button" class="alm-evid-add" onclick="window.__almAbrirModalEvidencia(\''+p.id+'\')">+ Agregar foto o documento</button>'
       +   '<input type="file" accept="image/*,.pdf,.doc,.docx" id="alm-evid-file-'+p.id+'" style="display:none">'
       + '</div>'
       + '<label style="display:block;font-size:11px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#64748b;margin:14px 0 6px">Observaciones</label>'
@@ -1610,7 +1642,7 @@
         : esc(e.recibio||'—');
       var colFechaFin = esCancelado ? fmtFecha(e.canceladoMs) : fmtFecha(e.entregadoMs);
       var accionesHtml = '<div style="display:flex;flex-direction:column;gap:4px;margin-top:6px;align-items:flex-start;">'
-        + '<button type="button" onclick="event.stopPropagation();window.__almSubirEvidencia(\''+e.id+'\');setTimeout(function(){window.__almRefrescarEvidHist(\''+e.id+'\');},1200);" style="border:1px dashed #cbd5e1;background:#fff;color:#475569;border-radius:6px;font-size:10.5px;font-weight:700;padding:3px 8px;cursor:pointer;white-space:nowrap;">+ Evidencia</button>'
+        + '<button type="button" onclick="event.stopPropagation();window.__almAbrirModalEvidencia(\''+e.id+'\')" style="border:1px dashed #cbd5e1;background:#fff;color:#475569;border-radius:6px;font-size:10.5px;font-weight:700;padding:3px 8px;cursor:pointer;white-space:nowrap;">+ Evidencia</button>'
         + (e.remisionado
             ? '<span style="font-size:10.5px;font-weight:700;color:#16a34a;white-space:nowrap;">✓ Remisionado</span>'
             : '<button type="button" onclick="event.stopPropagation();window.__almConfirmarRemision(\''+e.id+'\')" style="border:1px solid #16a34a;background:#fff;color:#16a34a;border-radius:6px;font-size:10.5px;font-weight:700;padding:3px 8px;cursor:pointer;white-space:nowrap;">✅ Remisionar</button>')
