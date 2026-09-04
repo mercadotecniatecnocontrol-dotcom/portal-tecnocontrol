@@ -182,6 +182,24 @@ function tvBuscarAlmacen(nombre){
 const COLOR_PAQ_ENVIO = '#F26B21';      // se lleva a sucursal/oficina de la paquetería
 const COLOR_PAQ_RECOLECCION = '#EC4899'; // la paquetería pasa a recoger al almacén
 let tvMiniMapa = null, tvMiniMapaMarkers = [], tvMiniMapaLineas = [];
+// Ciclo automático de popups: en la TV nadie hace click, así que cada punto se
+// destapa solo por turnos (nombre + detalle) en vez de quedar oculto hasta un click.
+let tvMiniMapaCicloTimer = null;
+function tvIniciarCicloPopups(){
+  if(tvMiniMapaCicloTimer){ clearInterval(tvMiniMapaCicloTimer); tvMiniMapaCicloTimer = null; }
+  if(!tvMiniMapa) return;
+  tvMiniMapa.closePopup();
+  if(!tvMiniMapaMarkers.length) return;
+  let idx = 0;
+  const mostrarSiguiente = ()=>{
+    tvMiniMapa.closePopup();
+    const m = tvMiniMapaMarkers[idx % tvMiniMapaMarkers.length];
+    idx++;
+    if(m) m.openPopup();
+  };
+  mostrarSiguiente();
+  if(tvMiniMapaMarkers.length > 1) tvMiniMapaCicloTimer = setInterval(mostrarSiguiente, 4000);
+}
 // Pequeño desplazamiento determinístico (~50–170 m) para que varios pines que comparten
 // la coordenada del almacén (paquetería, traspasos, entrega a técnico...) no queden
 // exactamente encimados uno sobre otro en el mini-mapa.
@@ -296,7 +314,7 @@ function tvActualizarMiniMapa(){
       });
       puntos.forEach(p=>{
         const m = L.circleMarker([p.lat,p.lng], {radius:8, color:p.color, fillColor:p.color, fillOpacity:0.85, weight:2}).addTo(tvMiniMapa);
-        m.bindPopup(p.popup);
+        m.bindPopup(p.popup, {closeButton:false, autoPan:false, className:'tv-mini-mapa-popup'});
         if(p.label) m.bindTooltip(p.label, {permanent:true, direction:'top', offset:[0,-8], className:'tv-mini-mapa-label'});
         tvMiniMapaMarkers.push(m);
       });
@@ -307,6 +325,7 @@ function tvActualizarMiniMapa(){
       else tvMiniMapa.fitBounds(boundsPts, {padding:[24,24]});
     }
     setTimeout(()=>tvMiniMapa.invalidateSize(), 60);
+    tvIniciarCicloPopups();
 
     // Leyenda: solo muestra las categorías que realmente tienen puntos ahora mismo.
     const CATS = [
