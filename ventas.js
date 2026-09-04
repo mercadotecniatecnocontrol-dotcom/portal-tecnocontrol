@@ -6715,15 +6715,18 @@ let ventasCapaLogisticaMarkers = [];
 let ventasCapaLogisticaLineas = [];
 let ventasTruckMarkers = [];
 let ventasTruckAnimId = null;
-function ventasIconoCamion(){
-    return L.divIcon({className:'', html:'<div style="font-size:14px;line-height:1;filter:drop-shadow(0 1px 1px rgba(0,0,0,.45));">🚚</div>', iconSize:[16,16], iconAnchor:[8,8]});
+function ventasIconoCamion(color){
+    const c = color || '#0f172a';
+    return L.divIcon({className:'', html:'<div style="width:20px;height:20px;background:'+c+';border-radius:6px;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.4);">'
+        + '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></div>',
+        iconSize:[20,20], iconAnchor:[10,10]});
 }
 function ventasIniciarCamiones(rutas){
     if(ventasTruckAnimId){ cancelAnimationFrame(ventasTruckAnimId); ventasTruckAnimId=null; }
     ventasTruckMarkers.forEach(t=>t.marker.remove());
     ventasTruckMarkers = rutas.map(r=>({
         origen:r.origen, destino:r.destino,
-        marker: L.marker(r.origen, {icon:ventasIconoCamion(), interactive:false, zIndexOffset:500}).addTo(mapaLeaflet)
+        marker: L.marker(r.origen, {icon:ventasIconoCamion(r.color), interactive:false, zIndexOffset:500}).addTo(mapaLeaflet)
     }));
     if(!ventasTruckMarkers.length) return;
     const DURACION_MS = 7000;
@@ -6781,7 +6784,7 @@ window.ventasToggleCapaLogistica = async function(){
         const est = ESTILO[p.categoria] || ESTILO.venta;
         const l = L.polyline([p.origen, [p.lat,p.lng]], { color: est.color, weight:2, opacity:0.5, className:'tv-ruta-anim', interactive:false }).addTo(mapaLeaflet);
         ventasCapaLogisticaLineas.push(l);
-        rutasParaCamion.push({ origen:p.origen, destino:[p.lat,p.lng] });
+        rutasParaCamion.push({ origen:p.origen, destino:[p.lat,p.lng], color: est.color });
     });
     ventasIniciarCamiones(rutasParaCamion);
     puntos.forEach(p=>{
