@@ -6712,12 +6712,47 @@ window.ventasEnviarSolicitudMaterial = async function(clienteId){
  * ==========================================================================*/
 let ventasCapaLogisticaActiva = false;
 let ventasCapaLogisticaMarkers = [];
+let ventasCapaLogisticaLineas = [];
+let ventasTruckMarkers = [];
+let ventasTruckAnimId = null;
+function ventasIconoCamion(){
+    return L.divIcon({className:'', html:'<div style="font-size:14px;line-height:1;filter:drop-shadow(0 1px 1px rgba(0,0,0,.45));">🚚</div>', iconSize:[16,16], iconAnchor:[8,8]});
+}
+function ventasIniciarCamiones(rutas){
+    if(ventasTruckAnimId){ cancelAnimationFrame(ventasTruckAnimId); ventasTruckAnimId=null; }
+    ventasTruckMarkers.forEach(t=>t.marker.remove());
+    ventasTruckMarkers = rutas.map(r=>({
+        origen:r.origen, destino:r.destino,
+        marker: L.marker(r.origen, {icon:ventasIconoCamion(), interactive:false, zIndexOffset:500}).addTo(mapaLeaflet)
+    }));
+    if(!ventasTruckMarkers.length) return;
+    const DURACION_MS = 7000;
+    function paso(ts){
+        const fase = (ts % DURACION_MS) / DURACION_MS;
+        ventasTruckMarkers.forEach(t=>{
+            const lat = t.origen[0] + (t.destino[0]-t.origen[0])*fase;
+            const lng = t.origen[1] + (t.destino[1]-t.origen[1])*fase;
+            t.marker.setLatLng([lat,lng]);
+        });
+        ventasTruckAnimId = requestAnimationFrame(paso);
+    }
+    ventasTruckAnimId = requestAnimationFrame(paso);
+}
+if(!document.getElementById('ventas-ruta-anim-css')){
+    const styleTag = document.createElement('style');
+    styleTag.id = 'ventas-ruta-anim-css';
+    styleTag.textContent = '.tv-ruta-anim{stroke-dasharray:1 9;stroke-linecap:round;animation:ventasRutaFlow 900ms linear infinite;} @keyframes ventasRutaFlow{to{stroke-dashoffset:-20;}}';
+    document.head.appendChild(styleTag);
+}
 
 window.ventasToggleCapaLogistica = async function(){
     const btn = document.getElementById('vp-btn-capa-logistica');
     if(ventasCapaLogisticaActiva){
         ventasCapaLogisticaMarkers.forEach(m=>m.remove());
         ventasCapaLogisticaMarkers = [];
+        ventasCapaLogisticaLineas.forEach(l=>l.remove());
+        ventasCapaLogisticaLineas = [];
+        ventasIniciarCamiones([]);
         ventasCapaLogisticaActiva = false;
         if(btn){ btn.style.background='#fff'; btn.style.color='#475569'; }
         return;
@@ -6739,6 +6774,16 @@ window.ventasToggleCapaLogistica = async function(){
         paqueteria:  { color:'#F26B21', label:'Envío por paquetería' },
         recoleccion: { color:'#DB2777', label:'Recolección de material/paquetería' }
     };
+    const rutasParaCamion = [];
+    // Líneas primero, así los pines quedan encima.
+    puntos.forEach(p=>{
+        if(!p.ruta || !p.origen) return;
+        const est = ESTILO[p.categoria] || ESTILO.venta;
+        const l = L.polyline([p.origen, [p.lat,p.lng]], { color: est.color, weight:2, opacity:0.5, className:'tv-ruta-anim', interactive:false }).addTo(mapaLeaflet);
+        ventasCapaLogisticaLineas.push(l);
+        rutasParaCamion.push({ origen:p.origen, destino:[p.lat,p.lng] });
+    });
+    ventasIniciarCamiones(rutasParaCamion);
     puntos.forEach(p=>{
         const est = ESTILO[p.categoria] || ESTILO.venta;
         const marker = L.circleMarker([p.lat,p.lng], {
