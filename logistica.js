@@ -89,6 +89,26 @@
   };
   var CENTRO_ESTADO = [28.63, -106.07]; // fallback: centro aproximado del estado de Chihuahua
 
+  // ── Busca coordenadas de municipio a partir de un nombre libre (ej. nombre
+  //    de un almacén como "Almacén Juárez"), reutilizando CENTRO_MUNICIPIO de
+  //    arriba en vez de duplicar otro catálogo de ciudades. Coincide si el
+  //    nombre CONTIENE el nombre del municipio (sin acentos, sin importar
+  //    mayúsculas). Devuelve null si no encuentra nada. ──
+  function normalizarTexto(s) {
+    return String(s == null ? '' : s).toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  }
+  function coordsPorNombreLugar(nombre) {
+    var n = normalizarTexto(nombre);
+    if (!n) return null;
+    for (var k in CENTRO_MUNICIPIO) {
+      if (n.indexOf(normalizarTexto(k)) !== -1) return CENTRO_MUNICIPIO[k];
+    }
+    return null;
+  }
+  function estadoPopupLinea(p) {
+    return p.estado ? ('<br>Estado: ' + esc(String(p.estado).replace(/_/g, ' '))) : '';
+  }
+
   // ── Coordenada de referencia del almacén Fuerza Aérea (para ubicar en el
   //    mapa los pendientes que NO tienen una dirección de entrega propia:
   //    paquetería en espera de que la recojan, y traspasos hacia otro
@@ -155,18 +175,35 @@
           if (ESTADOS_CERRADOS.indexOf(p.estado) !== -1) return;
 
           if (p.destinoTipo === 'paqueteria') {
+            // destinoLat/destinoLng: punto real elegido del catálogo puntos_referencia
+            // o marcado a mano (almacen-pdf.js), congelado en el propio pedido.
+            var tienePinPaq = (p.destinoLat != null && p.destinoLng != null);
             puntos.push({
-              lat: ALMACEN_FZA_COORDS[0], lng: ALMACEN_FZA_COORDS[1], categoria: 'paqueteria',
+              lat: tienePinPaq ? p.destinoLat : ALMACEN_FZA_COORDS[0],
+              lng: tienePinPaq ? p.destinoLng : ALMACEN_FZA_COORDS[1],
+              categoria: 'paqueteria',
               folio: p.folio, cliente: p.cliente,
-              popupHtml: '📦 <b>' + esc(p.folio || '') + '</b><br>Pendiente de recolección por paquetería' + (p.destinoPaqueteria ? (' · ' + esc(p.destinoPaqueteria)) : '') + (p.destinoGuia ? ('<br>Guía: ' + esc(p.destinoGuia)) : '')
+              popupHtml: '📦 <b>' + esc(p.folio || '') + '</b><br>' + esc(p.cliente || '')
+                + (p.destinoPaqueteria ? ('<br>' + esc(p.destinoPaqueteria)) : '')
+                + (p.destinoGuia ? ('<br>Guía: ' + esc(p.destinoGuia)) : '')
+                + (!tienePinPaq ? '<br><i>(sin ubicación registrada)</i>' : '')
+                + estadoPopupLinea(p)
             });
             return;
           }
           if (p.destinoTipo === 'traslado_almacenes') {
+            // destinoAlmacenDestinoLat/Lng: almacén elegido del catálogo puntos_referencia
+            // (almacen-pdf.js). Si el pedido es de antes de ese cambio, cae a buscar el
+            // municipio por nombre en CENTRO_MUNICIPIO; si tampoco, al almacén de origen.
+            var destRealAlm = (p.destinoAlmacenDestinoLat != null && p.destinoAlmacenDestinoLng != null);
+            var coordsAlm = destRealAlm ? [p.destinoAlmacenDestinoLat, p.destinoAlmacenDestinoLng]
+              : (coordsPorNombreLugar(p.destinoAlmacenDestino) || ALMACEN_FZA_COORDS);
             puntos.push({
-              lat: ALMACEN_FZA_COORDS[0], lng: ALMACEN_FZA_COORDS[1], categoria: 'traslado',
+              lat: coordsAlm[0], lng: coordsAlm[1], categoria: 'traslado',
               folio: p.folio, cliente: p.cliente,
               popupHtml: '🔁 <b>' + esc(p.folio || '') + '</b><br>Traspaso a ' + esc(p.destinoAlmacenDestino || 'otro almacén')
+                + (!destRealAlm && !coordsPorNombreLugar(p.destinoAlmacenDestino) ? '<br><i>(sin ubicación registrada)</i>' : '')
+                + estadoPopupLinea(p)
             });
             return;
           }
@@ -174,7 +211,7 @@
             puntos.push({
               lat: ALMACEN_FZA_COORDS[0], lng: ALMACEN_FZA_COORDS[1], categoria: 'tecnico',
               folio: p.folio, cliente: p.cliente,
-              popupHtml: '👷 <b>' + esc(p.folio || '') + '</b><br>Entrega directa a técnico' + (p.tecnicoNombre ? (' · ' + esc(p.tecnicoNombre)) : '')
+              popupHtml: '👷 <b>' + esc(p.folio || '') + '</b><br>Entrega directa a técnico' + (p.tecnicoNombre ? (' · ' + esc(p.tecnicoNombre)) : '') + estadoPopupLinea(p)
             });
             return;
           }
@@ -190,6 +227,8 @@
             lat: lat, lng: lng, categoria: esMaterial ? 'material' : 'venta',
             folio: p.folio, cliente: p.cliente,
             popupHtml: '<b>' + esc(p.folio || '') + '</b><br>' + esc(p.cliente || est && est.razonSocial || '—') + (p.destino ? ('<br>' + esc(p.destino)) : '')
+              + (p.vendedor ? ('<br>Vendedor: ' + esc(p.vendedor)) : '')
+              + estadoPopupLinea(p)
           });
         });
 
