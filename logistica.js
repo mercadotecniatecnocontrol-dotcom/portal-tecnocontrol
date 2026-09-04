@@ -183,6 +183,7 @@
               lng: tienePinPaq ? p.destinoLng : ALMACEN_FZA_COORDS[1],
               categoria: 'paqueteria',
               folio: p.folio, cliente: p.cliente,
+              ruta: tienePinPaq, origen: ALMACEN_FZA_COORDS,
               popupHtml: '📦 <b>' + esc(p.folio || '') + '</b><br>' + esc(p.cliente || '')
                 + (p.destinoPaqueteria ? ('<br>' + esc(p.destinoPaqueteria)) : '')
                 + (p.destinoGuia ? ('<br>Guía: ' + esc(p.destinoGuia)) : '')
@@ -196,13 +197,16 @@
             // (almacen-pdf.js). Si el pedido es de antes de ese cambio, cae a buscar el
             // municipio por nombre en CENTRO_MUNICIPIO; si tampoco, al almacén de origen.
             var destRealAlm = (p.destinoAlmacenDestinoLat != null && p.destinoAlmacenDestinoLng != null);
-            var coordsAlm = destRealAlm ? [p.destinoAlmacenDestinoLat, p.destinoAlmacenDestinoLng]
-              : (coordsPorNombreLugar(p.destinoAlmacenDestino) || ALMACEN_FZA_COORDS);
+            var coincideMunicipio = coordsPorNombreLugar(p.destinoAlmacenDestino);
+            var coordsAlm = destRealAlm ? [p.destinoAlmacenDestinoLat, p.destinoAlmacenDestinoLng] : (coincideMunicipio || ALMACEN_FZA_COORDS);
+            var origenAlm = (p.destinoAlmacenOrigenLat != null && p.destinoAlmacenOrigenLng != null)
+              ? [p.destinoAlmacenOrigenLat, p.destinoAlmacenOrigenLng] : ALMACEN_FZA_COORDS;
             puntos.push({
               lat: coordsAlm[0], lng: coordsAlm[1], categoria: 'traslado',
               folio: p.folio, cliente: p.cliente,
+              ruta: !!(destRealAlm || coincideMunicipio), origen: origenAlm,
               popupHtml: '🔁 <b>' + esc(p.folio || '') + '</b><br>Traspaso a ' + esc(p.destinoAlmacenDestino || 'otro almacén')
-                + (!destRealAlm && !coordsPorNombreLugar(p.destinoAlmacenDestino) ? '<br><i>(sin ubicación registrada)</i>' : '')
+                + (!destRealAlm && !coincideMunicipio ? '<br><i>(sin ubicación registrada)</i>' : '')
                 + estadoPopupLinea(p)
             });
             return;
@@ -226,6 +230,7 @@
           puntos.push({
             lat: lat, lng: lng, categoria: esMaterial ? 'material' : 'venta',
             folio: p.folio, cliente: p.cliente,
+            ruta: true, origen: ALMACEN_FZA_COORDS,
             popupHtml: '<b>' + esc(p.folio || '') + '</b><br>' + esc(p.cliente || est && est.razonSocial || '—') + (p.destino ? ('<br>' + esc(p.destino)) : '')
               + (p.vendedor ? ('<br>Vendedor: ' + esc(p.vendedor)) : '')
               + estadoPopupLinea(p)
