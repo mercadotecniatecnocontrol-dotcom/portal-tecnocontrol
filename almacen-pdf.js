@@ -122,8 +122,10 @@
   function guardarPuntoNuevo(punto){
     return cargarFirestore().then(function(fs){
       if (!window.db) return Promise.reject(new Error('Firestore no disponible'));
+      var yo = (window.auth && window.auth.currentUser && window.auth.currentUser.email) || '';
+      var nombreQuienGuarda = (window.nombreUsuario ? window.nombreUsuario(yo) : '') || yo || '—';
       return fs.addDoc(fs.collection(window.db,'puntos_referencia'), Object.assign({
-        creadoPor: window.nombreUsuario || '—',
+        creadoPor: String(nombreQuienGuarda||''),
         creadoEn: new Date().toISOString()
       }, punto)).then(function(ref){
         _puntosCache = null; // fuerza recarga la próxima vez que se abra el buscador
@@ -747,10 +749,32 @@
   //      'almacenOrigen'  → destino "traslado_almacenes", almacén de salida
   //      'almacenDestino' → destino "traslado_almacenes", almacén de llegada ──
   var SELECTOR_CFG = {
-    recoleccion:    { estadoKey: 'puntoSeleccionado',        wrapId: 'alm-punto-recoleccion-wrap',     tipoFiltro: null,      tipoDefaultNuevo: 'paqueteria', label: 'Punto de recolecci\u00f3n / entrega (paquetera, plaza, oficina...)', placeholder: 'Nombre de la sucursal, plaza, direcci\u00f3n\u2026' },
-    almacenOrigen:  { estadoKey: 'almacenOrigenSeleccionado', wrapId: 'alm-almacen-wrap-almacenOrigen', tipoFiltro: 'almacen', tipoDefaultNuevo: 'almacen',     label: 'Almac\u00e9n origen',  placeholder: 'Nombre del almac\u00e9n\u2026' },
-    almacenDestino: { estadoKey: 'almacenDestinoSeleccionado',wrapId: 'alm-almacen-wrap-almacenDestino',tipoFiltro: 'almacen', tipoDefaultNuevo: 'almacen',     label: 'Almac\u00e9n destino', placeholder: 'Nombre del almac\u00e9n\u2026' }
+    recoleccion:    { estadoKey: 'puntoSeleccionado',        wrapId: 'alm-punto-recoleccion-wrap',     tipoFiltro: null, fuente:'puntos',   tipoDefaultNuevo: 'paqueteria', label: 'Punto de recolecci\u00f3n / entrega (paquetera, plaza, oficina...)', placeholder: 'Nombre de la sucursal, plaza, direcci\u00f3n\u2026' },
+    // Los almacenes/oficinas de la empresa (Ju\u00e1rez, Parral, Monterrey...) ya est\u00e1n
+    // dados de alta como CLIENTES en ventas_clientes (con lat/lng) \u2014 no se duplica un
+    // cat\u00e1logo aparte, se busca directo ah\u00ed. Alta de una oficina nueva = alta de cliente
+    // nuevo en Ventas, no algo que se registre desde aqu\u00ed.
+    almacenOrigen:  { estadoKey: 'almacenOrigenSeleccionado', wrapId: 'alm-almacen-wrap-almacenOrigen', tipoFiltro: null, fuente:'clientes', label: 'Almac\u00e9n / oficina origen',  placeholder: 'Nombre de la oficina o ciudad (Ju\u00e1rez, Parral\u2026)' },
+    almacenDestino: { estadoKey: 'almacenDestinoSeleccionado',wrapId: 'alm-almacen-wrap-almacenDestino',tipoFiltro: null, fuente:'clientes', label: 'Almac\u00e9n / oficina destino', placeholder: 'Nombre de la oficina o ciudad (Ju\u00e1rez, Parral\u2026)' }
   };
+  var _clientesOficinasCache = null;
+  window.__almInvalidarCacheClientesOficinas = function(){ _clientesOficinasCache = null; };
+  function cargarCatalogoClientesOficinas(){
+    if (_clientesOficinasCache) return Promise.resolve(_clientesOficinasCache);
+    return cargarFirestore().then(function(fs){
+      if (!window.db) return [];
+      return fs.getDocs(fs.collection(window.db,'ventas_clientes')).then(function(snap){
+        var lista = [];
+        snap.forEach(function(d){
+          var c = d.data()||{};
+          if (c.lat == null || c.lng == null) return; // sin ubicaci\u00f3n capturada, no sirve para el mapa
+          lista.push({ id: d.id, nombre: c.nombre||'\u2014', tipo:'oficina', direccion: c.direccionEntrega||c.direccion||c.dir||'', lat: c.lat, lng: c.lng });
+        });
+        _clientesOficinasCache = lista;
+        return lista;
+      });
+    }).catch(function(err){ console.warn('[almacen-pdf] no se pudo cargar ventas_clientes:', err); return []; });
+  }
   function renderPuntoRecoleccion(){ renderSelectorPunto('recoleccion'); }
   function renderSelectorAlmacen(target){ renderSelectorPunto(target); }
   function renderSelectorPunto(target){
@@ -774,6 +798,9 @@
         + horarioHtml;
       return;
     }
+    var altaHtml = cfg.fuente === 'clientes'
+      ? '<div style="font-size:10.5px;color:#94a3b8;margin-top:2px;">¿No aparece? Dalo de alta como cliente en Ventas — aquí se ve en cuanto lo guardes, sin nada más que hacer.</div>'
+      : '<button type="button" class="alm-estacion-link" onclick="window.__almPdfPuntoRegistrarNuevo(\'' + target + '\')">No está en el catálogo · registrar nuevo</button><div id="alm-punto-nuevo-form-' + target + '"></div>';
     wrap.innerHTML =
         '<div class="alm-destino-fld alm-estacion-search">'
       +   '<label>' + esc(cfg.label) + '</label>'
@@ -782,10 +809,9 @@
       +     'onblur="setTimeout(function(){var b=document.getElementById(\'alm-punto-results-' + target + '\');if(b)b.style.display=\'none\';},150)">'
       +   '<div id="alm-punto-results-' + target + '" class="alm-estacion-results" style="display:none;"></div>'
       + '</div>'
-      + '<button type="button" class="alm-estacion-link" onclick="window.__almPdfPuntoRegistrarNuevo(\'' + target + '\')">No est\u00e1 en el cat\u00e1logo \u00b7 registrar nuevo</button>'
-      + '<div id="alm-punto-nuevo-form-' + target + '"></div>'
+      + altaHtml
       + horarioHtml;
-    cargarCatalogoPuntos(); // precarga en cache; no bloquea el render del campo
+    if (cfg.fuente === 'clientes') cargarCatalogoClientesOficinas(); else cargarCatalogoPuntos(); // precarga en cache
   }
 
   window.__almPdfPuntoBuscar = function(target, valor){
@@ -794,7 +820,8 @@
     if (!box) return;
     var q = (valor || '').trim().toLowerCase();
     if (!q){ box.style.display = 'none'; box.innerHTML = ''; return; }
-    cargarCatalogoPuntos().then(function(lista){
+    var promesa = cfg.fuente === 'clientes' ? cargarCatalogoClientesOficinas() : cargarCatalogoPuntos();
+    promesa.then(function(lista){
       var actual = document.getElementById('alm-punto-q-' + target);
       if (!actual || actual.value.trim().toLowerCase() !== q) return; // ya escribió otra cosa mientras cargaba
       var resultados = lista.filter(function(pt){
@@ -803,7 +830,7 @@
         return texto.indexOf(q) !== -1;
       }).slice(0, 20);
       if (!resultados.length){
-        box.innerHTML = '<div class="alm-estacion-item" style="cursor:default;color:#94a3b8;">Sin resultados \u2014 usa "registrar nuevo".</div>';
+        box.innerHTML = '<div class="alm-estacion-item" style="cursor:default;color:#94a3b8;">Sin resultados'+(cfg.fuente==='clientes'?' — revisa que el cliente tenga ubicación en Ventas.':' — usa "registrar nuevo".')+'</div>';
         box.style.display = 'block';
         return;
       }
@@ -818,10 +845,12 @@
   };
 
   window.__almPdfPuntoElegir = function(target, id){
-    cargarCatalogoPuntos().then(function(lista){
+    var cfg = SELECTOR_CFG[target];
+    var promesa = cfg.fuente === 'clientes' ? cargarCatalogoClientesOficinas() : cargarCatalogoPuntos();
+    promesa.then(function(lista){
       var pt = lista.find(function(x){ return x.id === id; });
       if (!pt) return;
-      estado[SELECTOR_CFG[target].estadoKey] = pt;
+      estado[cfg.estadoKey] = pt;
       renderSelectorPunto(target);
     });
   };
