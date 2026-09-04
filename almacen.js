@@ -111,7 +111,15 @@
 
   function piezas(p){ return (Array.isArray(p.productos)?p.productos:[]).reduce(function(a,x){ return a+(Number(x.cant)||0); },0); }
   function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
-  function fmt(ms){ var s=Math.max(0,Math.floor(ms/1000)); return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0'); }
+  function fmt(ms){
+    var s = Math.max(0, Math.floor(ms/1000));
+    var dias = Math.floor(s/86400);
+    var horas = Math.floor((s%86400)/3600);
+    var min = Math.floor((s%3600)/60);
+    var seg = s%60;
+    function p2(n){ return String(n).padStart(2,'0'); }
+    return (dias>0 ? dias+'d ' : '') + p2(horas)+':'+p2(min)+':'+p2(seg);
+  }
 
   // ── Notificación sonora + push al llegar pedido nuevo ──
   function reproducirBeep(){
@@ -608,7 +616,7 @@
     + '.alm-modal-ov{display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;align-items:center;justify-content:center;padding:20px;}'
     + '.alm-modal-ov.show{display:flex;}'
     + '.alm-modal-box{background:#fff;border-radius:14px;max-width:480px;width:100%;max-height:82vh;overflow:auto;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.25);}'
-    + '.alm-modal-box.wide{max-width:860px;}'
+    + '.alm-modal-box.wide{max-width:1400px;width:96vw;max-height:90vh;}'
     + '.alm-fotos-search{position:relative;margin-bottom:14px;}'
     + '.alm-fotos-search svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);pointer-events:none;}'
     + '.alm-fotos-search input{width:100%;padding:11px 14px 11px 38px;border:2px solid #e6ebf2;border-radius:10px;font-size:14px;font-family:inherit;outline:none;}'
@@ -632,7 +640,7 @@
     + '.alm-rep-tbl th{text-align:left;font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:#94a3b8;padding:7px 8px;border-bottom:2px solid #e6ebf2;position:sticky;top:0;background:#fff;}'
     + '.alm-rep-tbl td{padding:7px 8px;border-bottom:1px solid #f1f5f9;vertical-align:top;}'
     + '.alm-rep-tbl tr:hover td{background:#fafcff;}'
-    + '.alm-rep-wrap{max-height:360px;overflow:auto;border:1px solid #e6ebf2;border-radius:10px;}'
+    + '.alm-rep-wrap{max-height:56vh;overflow:auto;border:1px solid #e6ebf2;border-radius:10px;}'
     + '.alm-rep-firma{color:#0891b2;cursor:pointer;font-weight:700;text-decoration:underline;}'
     + '.alm-rep-tag{font-size:10px;font-weight:800;padding:2px 7px;border-radius:6px;letter-spacing:.3px;}'
     + '.alm-modal-box h4{margin:0 0 14px;font-size:15px;font-weight:800;color:#0f172a;display:flex;align-items:center;justify-content:space-between;}'
@@ -722,6 +730,7 @@
       if (window.mostrarPush) window.mostrarPush('Almacén','El catálogo de puntos todavía está cargando — intenta de nuevo en un momento.','⚠️');
       return;
     }
+    _almPaqCoordManual = null;
     construirModalHistorial();
     var box=document.getElementById('alm-modal-hist-box');
     box.classList.add('wide');
@@ -731,11 +740,38 @@
       +   '<div style="font-weight:700;font-size:12.5px;color:#1e293b;margin-bottom:8px;">+ Registrar paquetería nueva</div>'
       +   '<input id="alm-paq-nombre" placeholder="Nombre (ej. Estafeta Sucursal Centro)" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin-bottom:8px;box-sizing:border-box;">'
       +   '<input id="alm-paq-dir" placeholder="Dirección (calle, colonia, ciudad)" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin-bottom:8px;box-sizing:border-box;">'
-      +   '<button type="button" class="alm-evid-add" onclick="window.__almPaqAgregar()">Geocodificar y guardar</button>'
+      +   '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;">'
+      +     '<button type="button" class="alm-evid-add" onclick="window.__almPaqAgregar()">📍 Geocodificar por dirección</button>'
+      +     '<button type="button" class="alm-evid-add" onclick="window.__almPaqMostrarMapa()">🗺️ Marcar en mapa</button>'
+      +   '</div>'
+      +   '<div id="alm-paq-mapa-wrap"></div>'
       +   '<div id="alm-paq-msg" style="font-size:11.5px;margin-top:6px;"></div>'
       + '</div>';
     document.getElementById('alm-modal-hist').classList.add('show');
     __almPaqRenderLista();
+  };
+
+  var _almPaqCoordManual = null;
+  window.__almPaqMostrarMapa = function(){
+    var wrap = document.getElementById('alm-paq-mapa-wrap');
+    if (!wrap) return;
+    wrap.innerHTML = '<div id="alm-paq-mapa" style="height:220px;border-radius:10px;overflow:hidden;margin-top:6px;"></div><div style="font-size:10.5px;color:#64748b;margin-top:4px;">Toca el mapa para marcar el punto exacto (se puede arrastrar el pin).</div>';
+    cargarLeafletAlm().then(function(){
+      var centro = _almPaqCoordManual ? [_almPaqCoordManual.lat, _almPaqCoordManual.lng] : [28.6353, -106.0889];
+      var mapa = L.map('alm-paq-mapa').setView(centro, 12);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapa);
+      var marcador = L.marker(centro, { draggable:true }).addTo(mapa);
+      function actualizar(latlng){
+        _almPaqCoordManual = { lat: latlng.lat, lng: latlng.lng };
+        var msgEl = document.getElementById('alm-paq-msg');
+        if (msgEl){ msgEl.textContent = '✓ Punto marcado: ' + latlng.lat.toFixed(5) + ', ' + latlng.lng.toFixed(5); msgEl.style.color = '#16a34a'; }
+      }
+      marcador.on('dragend', function(){ actualizar(marcador.getLatLng()); });
+      mapa.on('click', function(e){ marcador.setLatLng(e.latlng); actualizar(e.latlng); });
+      setTimeout(function(){ mapa.invalidateSize(); }, 80);
+    }).catch(function(err){
+      wrap.innerHTML = '<div style="font-size:11px;color:#dc2626;">No se pudo cargar el mapa: '+(err&&err.message||err)+'</div>';
+    });
   };
 
   function __almPaqRenderLista(){
@@ -759,10 +795,15 @@
     var direccion = (document.getElementById('alm-paq-dir')||{}).value || '';
     nombre = nombre.trim(); direccion = direccion.trim();
     var msgEl = document.getElementById('alm-paq-msg');
-    if (!nombre || !direccion){ if (msgEl){ msgEl.textContent = 'Falta el nombre o la dirección.'; msgEl.style.color = '#dc2626'; } return; }
-    if (msgEl){ msgEl.textContent = 'Geocodificando…'; msgEl.style.color = '#0e7490'; }
-    window.tcGeocodificarDireccion(direccion).then(function(coord){
-      if (!coord){ if (msgEl){ msgEl.textContent = 'No se encontró la dirección — revísala e intenta de nuevo.'; msgEl.style.color = '#dc2626'; } return; }
+    if (!nombre){ if (msgEl){ msgEl.textContent = 'Falta el nombre.'; msgEl.style.color = '#dc2626'; } return; }
+    // Si ya se marcó un punto en el mapa, se usa ese en vez de geocodificar la dirección escrita.
+    var coordPromesa = _almPaqCoordManual ? Promise.resolve(_almPaqCoordManual) : (function(){
+      if (!direccion){ if (msgEl){ msgEl.textContent = 'Falta la dirección (o marca el punto en el mapa).'; msgEl.style.color = '#dc2626'; } return Promise.resolve(null); }
+      if (msgEl){ msgEl.textContent = 'Geocodificando…'; msgEl.style.color = '#0e7490'; }
+      return window.tcGeocodificarDireccion(direccion);
+    })();
+    coordPromesa.then(function(coord){
+      if (!coord){ if (msgEl && msgEl.textContent.indexOf('Falta')===-1){ msgEl.textContent = 'No se encontró la dirección — revísala o marca el punto en el mapa.'; msgEl.style.color = '#dc2626'; } return; }
       return cargarFirestore().then(function(fs){
         if (!window.db) throw new Error('Firestore no disponible');
         return fs.addDoc(fs.collection(window.db,'puntos_referencia'), {
@@ -771,8 +812,10 @@
         });
       }).then(function(){
         if (window.__almInvalidarCachePuntos) window.__almInvalidarCachePuntos();
+        _almPaqCoordManual = null;
         document.getElementById('alm-paq-nombre').value = '';
         document.getElementById('alm-paq-dir').value = '';
+        document.getElementById('alm-paq-mapa-wrap').innerHTML = '';
         if (msgEl){ msgEl.textContent = '✓ Guardada'; msgEl.style.color = '#16a34a'; }
         __almPaqRenderLista();
       });
@@ -822,12 +865,12 @@
       + '<div class="alm-kpis" id="alm-kpis"></div>'
       + '<div style="display:flex;gap:14px;align-items:flex-start;">'
       +   '<div class="alm-board" id="alm-board" style="flex:1;min-width:0;"></div>'
-      +   '<div id="alm-mapa-rutas-panel" style="flex:0 0 32%;max-width:440px;min-width:300px;background:#fff;border-radius:14px;overflow:hidden;display:flex;flex-direction:column;position:sticky;top:0;box-shadow:0 1px 3px rgba(0,0,0,0.06);">'
+      +   '<div id="alm-mapa-rutas-panel" style="flex:0 0 32%;min-width:340px;background:#fff;border-radius:14px;overflow:hidden;display:flex;flex-direction:column;position:sticky;top:0;box-shadow:0 1px 3px rgba(0,0,0,0.06);">'
       +     '<div style="padding:10px 14px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;">'
       +       '<span style="font-weight:700;font-size:13px;color:#1e293b;">🗺️ Rutas pendientes</span>'
       +       '<button onclick="window.__almRefrescarMapaEmbed()" title="Actualizar" style="background:#f1f5f9;border:none;color:#475569;width:24px;height:24px;border-radius:6px;cursor:pointer;font-size:12px;">↻</button>'
       +     '</div>'
-      +     '<div id="alm-mapa-rutas-embed" style="height:420px;position:relative;"></div>'
+      +     '<div id="alm-mapa-rutas-embed" style="height:560px;position:relative;"></div>'
       +     '<div id="alm-mapa-rutas-embed-leyenda" style="padding:8px 12px;font-size:10.5px;color:#334155;display:flex;flex-wrap:wrap;gap:6px 10px;border-top:1px solid #e2e8f0;"></div>'
       +   '</div>'
       + '</div>'
@@ -1015,7 +1058,7 @@
       });
     }).then(function(){
       if (p){ p.remisionado = true; p.remisionadoPor = yoNombre(); render(); }
-      if (eHist){ eHist.remisionado = true; eHist.remisionadoPor = yoNombre(); if (document.getElementById('alm-hist-evid-'+id)) window.__almVerDetalleHistorial(id); }
+      if (eHist){ eHist.remisionado = true; eHist.remisionadoPor = yoNombre(); if (document.getElementById('alm-hist-evid-'+id)) window.__almVerDetalleHistorial(id); if (document.getElementById('alm-rep-tbody')) renderTablaReporte(); }
       if (window.mostrarPush) window.mostrarPush('✅ Remisionado', (ref.folio||''), '✅');
     }).catch(function(err){
       console.error('[almacen] confirmarRemision:', err);
@@ -1566,8 +1609,15 @@
         ? '<span class="alm-rep-tag" style="background:rgba(220,38,38,.1);color:#dc2626">CANCELADO</span><br><span style="font-size:11px;color:#64748b">'+esc(e.motivoCancelacion||'—')+'</span>'
         : esc(e.recibio||'—');
       var colFechaFin = esCancelado ? fmtFecha(e.canceladoMs) : fmtFecha(e.entregadoMs);
+      var accionesHtml = '<div style="display:flex;flex-direction:column;gap:4px;margin-top:6px;align-items:flex-start;">'
+        + '<button type="button" onclick="event.stopPropagation();window.__almSubirEvidencia(\''+e.id+'\');setTimeout(function(){window.__almRefrescarEvidHist(\''+e.id+'\');},1200);" style="border:1px dashed #cbd5e1;background:#fff;color:#475569;border-radius:6px;font-size:10.5px;font-weight:700;padding:3px 8px;cursor:pointer;white-space:nowrap;">+ Evidencia</button>'
+        + (e.remisionado
+            ? '<span style="font-size:10.5px;font-weight:700;color:#16a34a;white-space:nowrap;">✓ Remisionado</span>'
+            : '<button type="button" onclick="event.stopPropagation();window.__almConfirmarRemision(\''+e.id+'\')" style="border:1px solid #16a34a;background:#fff;color:#16a34a;border-radius:6px;font-size:10.5px;font-weight:700;padding:3px 8px;cursor:pointer;white-space:nowrap;">✅ Remisionar</button>')
+        + '</div>'
+        + '<input type="file" accept="image/*,.pdf,.doc,.docx" id="alm-evid-file-'+e.id+'" style="display:none">';
       return '<tr style="cursor:pointer;" onclick="window.__almVerDetalleHistorial(\''+e.id+'\')" title="Ver detalle completo">'
-        + '<td><b>'+esc(e.folio)+'</b><br>'+tag+'</td>'
+        + '<td><b>'+esc(e.folio)+'</b><br>'+tag+accionesHtml+'</td>'
         + '<td>'+esc(e.cliente||'—')+'</td>'
         + '<td>'+esc(e.solicito||'—')+'</td>'
         + '<td>'+colRecibio+'</td>'
@@ -1604,15 +1654,8 @@
       + '</div>'
       + (e.firma ? '<div style="margin-bottom:10px;"><div style="font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:4px;">FIRMA DEL SOLICITANTE</div><img src="'+esc(e.firma)+'" style="max-width:220px;border:1px solid #e2e8f0;border-radius:8px;cursor:pointer;" onclick="window.__almVerFirmaId(\''+e.id+'\',\'sol\')"></div>' : '')
       + (e.firmaEntrega ? '<div style="margin-bottom:14px;"><div style="font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:4px;">FIRMA DE ENTREGA</div><img src="'+esc(e.firmaEntrega)+'" style="max-width:220px;border:1px solid #e2e8f0;border-radius:8px;cursor:pointer;" onclick="window.__almVerFirmaId(\''+e.id+'\',\'entrega\')"></div>' : '')
-      + '<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#94a3b8;margin-bottom:6px;">Evidencia de entrega</div>'
-      + '<div class="alm-evid-grid" id="alm-hist-evid-'+e.id+'"><div style="color:#94a3b8;font-size:12px;">Cargando…</div></div>'
-      + '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px;">'
-      +   '<button type="button" class="alm-evid-add" onclick="window.__almSubirEvidencia(\''+e.id+'\');setTimeout(function(){window.__almRefrescarEvidHist(\''+e.id+'\');},1200);">+ Agregar foto o documento</button>'
-      +   (e.remisionado
-            ? '<span style="font-size:11px;font-weight:700;color:#16a34a;">✓ Remisionado'+(e.remisionadoPor?(' · '+esc(e.remisionadoPor)):'')+'</span>'
-            : '<button type="button" class="alm-evid-add" style="border-style:solid;border-color:#16a34a;color:#16a34a;" onclick="window.__almConfirmarRemision(\''+e.id+'\')">✅ Confirmar y remisionar</button>')
-      + '</div>'
-      + '<input type="file" accept="image/*,.pdf,.doc,.docx" id="alm-evid-file-'+e.id+'" style="display:none">';
+      + '<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#94a3b8;margin-bottom:6px;">Evidencia de entrega'+(e.remisionado?' · <span style="color:#16a34a;">✓ Remisionado</span>':'')+'</div>'
+      + '<div class="alm-evid-grid" id="alm-hist-evid-'+e.id+'"><div style="color:#94a3b8;font-size:12px;">Cargando…</div></div>';
     document.getElementById('alm-modal-hist').classList.add('show');
     window.__almRefrescarEvidHist(e.id);
   };
@@ -1715,14 +1758,21 @@
   // ═══════════════════════════════════════════════════════════════════
   var _almMapaLeaflet = null, _almMapaMarkers = [], _almMapaLineas = [];
   var _almTruckMarkers = [], _almTruckAnimId = null;
-  function _almIconoCamion(){
-    return L.divIcon({className:'', html:'<div style="font-size:14px;line-height:1;filter:drop-shadow(0 1px 1px rgba(0,0,0,.45));">🚚</div>', iconSize:[16,16], iconAnchor:[8,8]});
+  function _almIconoCamion(color){
+    var c = color || '#0f172a';
+    return L.divIcon({
+      className:'',
+      html:'<div style="width:20px;height:20px;background:'+c+';border-radius:6px;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.4);">'
+        + '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>'
+        + '</div>',
+      iconSize:[20,20], iconAnchor:[10,10]
+    });
   }
   function _almIniciarCamiones(rutas){
     if (_almTruckAnimId){ cancelAnimationFrame(_almTruckAnimId); _almTruckAnimId=null; }
     _almTruckMarkers.forEach(function(t){ t.marker.remove(); });
     _almTruckMarkers = rutas.map(function(r){
-      return { origen:r.origen, destino:r.destino, marker: L.marker(r.origen, {icon:_almIconoCamion(), interactive:false, zIndexOffset:500}).addTo(_almMapaLeaflet) };
+      return { origen:r.origen, destino:r.destino, marker: L.marker(r.origen, {icon:_almIconoCamion(r.color), interactive:false, zIndexOffset:500}).addTo(_almMapaLeaflet) };
     });
     if (!_almTruckMarkers.length) return;
     var DURACION_MS = 7000;
@@ -1770,7 +1820,7 @@
         var est = ESTILO[p.categoria] || ESTILO.venta;
         var l = L.polyline([p.origen, [p.lat,p.lng]], { color:est.color, weight:2, opacity:0.5, className:'tv-ruta-anim', interactive:false }).addTo(_almMapaLeaflet);
         _almMapaLineas.push(l);
-        rutasParaCamion.push({ origen:p.origen, destino:[p.lat,p.lng] });
+        rutasParaCamion.push({ origen:p.origen, destino:[p.lat,p.lng], color:est.color });
       });
       _almIniciarCamiones(rutasParaCamion);
       var usados = {};
