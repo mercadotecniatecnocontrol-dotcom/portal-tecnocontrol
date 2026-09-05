@@ -133,7 +133,6 @@
         { clave: "ROL_INTENDENCIA",           etiqueta: "Intendencia",             escolaridadClave: "ESCOLARIDAD_INTENDENCIA",           obligatorio: false },
     ];
 
-<<<<<<< HEAD
     // Artículo gramaticalmente correcto para anteponer a cada puesto
     // (p.ej. "La Alta Dirección", "El Representante Técnico") — se usa
     // para armar frases donde el puesto se elige dinámicamente en vez de
@@ -150,8 +149,6 @@
     };
 
 
-=======
->>>>>>> 8f4b0f618b6672344cf1731545cd9e3236dbbf78
     // Placeholder del catálogo genérico de SASISOPA (Responsabilidades/
     // Funciones/Autoridad/Interrelaciones por puesto).
     const SASISOPA_CATALOGO_GENERICO = {};
@@ -187,7 +184,6 @@
             ESCOLARIDAD_MANTENIMIENTO: "Secundaria.", ESCOLARIDAD_FACTURISTA: "Secundaria.",
             ESCOLARIDAD_INTENDENCIA: "Primaria.", ESCOLARIDAD_DESPACHADOR: "Primaria.",
         }},
-<<<<<<< HEAD
         { titulo: "Punto 4.1.5 (P-07 Comunicación, Participación y Consulta) — Puesto responsable", icono: ICONO.usuarios,
           tipo: "selector_rol_documento", clave: "P07_ROL_4_1_5", opciones: SASISOPA_ROLES_DISPONIBLES },
         { titulo: "Puntos 3.1 y 4.4.2 (P-08.2 Control de Documentos) — Quién revisa", icono: ICONO.usuarios,
@@ -212,8 +208,6 @@
           tipo: "selector_rol_documento", clave: "F1501_ROL_ALTA_DIRECCION", opciones: SASISOPA_ROLES_DISPONIBLES },
         { titulo: "P-10.7 (Suministro de Combustible), puntos 4.3 y 4.5 — Representante Técnico o Alta Dirección", icono: ICONO.usuarios,
           tipo: "selector_rol_documento", clave: "P107_ROL_RESPONSABLE", opciones: SASISOPA_ROLES_DISPONIBLES },
-=======
->>>>>>> 8f4b0f618b6672344cf1731545cd9e3236dbbf78
     ];
 
     // NUMERO_PERMISO ya no es obligatorio: puede decir "PERMISO EN PROCESO"
@@ -313,15 +307,12 @@
     // diagrama de proceso (no un organigrama) y por lo tanto NO deben
     // pasar por el reemplazo automático del organigrama gráfico.
     const RE_SIN_ORGANIGRAMA_SGM = /^PROC-/i;
-<<<<<<< HEAD
     // SASISOPA: documentos que traen su propio pict/drawing incidental
     // (no un organigrama real) y por lo tanto NO deben pasar por el
     // reemplazo automático del organigrama gráfico. Se agrega cada
     // archivo aquí conforme se detecta el problema — no hay un patrón
     // general como en SGM (PROC-*), varía documento por documento.
     const RE_SIN_ORGANIGRAMA_SASISOPA = /^F-07-01|^F-07-04|^F-10_1-02|^P-10_2|^P-10_3|^F-13-05|^F-12-01|^F-12-02/i;
-=======
->>>>>>> 8f4b0f618b6672344cf1731545cd9e3236dbbf78
 
     const SGM_CATALOGO_GENERICO = {
         "ROL_ALTA_DIRECCION": {
@@ -905,7 +896,6 @@
         if (_seccionActual === 'sgm') {
             await insertarImagenEnGrupo(zip, xmlDoc, rutaXml, grupoRuns, dataUrl, ctxImg, 40, 85);
         } else if (_seccionActual === 'bitacoras') {
-<<<<<<< HEAD
             // La celda real del encabezado mide ~256px de ancho (3837 dxa)
             // y la fila donde vive ~47px de alto (700 dxa) — el tamaño
             // anterior (48x196) dejaba bastante espacio sin usar a los
@@ -913,9 +903,6 @@
             // de la celda, sin acercarse al alto de la fila (para no
             // forzarla a crecer y mover el resto del encabezado).
             await insertarImagenEnGrupo(zip, xmlDoc, rutaXml, grupoRuns, dataUrl, ctxImg, 60, 245);
-=======
-            await insertarImagenEnGrupo(zip, xmlDoc, rutaXml, grupoRuns, dataUrl, ctxImg, 48, 196);
->>>>>>> 8f4b0f618b6672344cf1731545cd9e3236dbbf78
         } else {
             await insertarImagenEnGrupo(zip, xmlDoc, rutaXml, grupoRuns, dataUrl, ctxImg, 105, 105);
         }
@@ -937,7 +924,6 @@
             parrafo.appendChild(run);
             runs = [run];
         }
-<<<<<<< HEAD
         // Firma más grande (antes 26x90px, casi minúscula frente al
         // ancho real de la columna "Firma" — ~190px en un machote
         // típico) y centrada dentro de la celda — antes se insertaba
@@ -945,9 +931,6 @@
         // siempre a la izquierda).
         await insertarImagenEnGrupo(zip, xmlDoc, rutaXml, runs, dataUrl, ctxImg, 40, 160);
         normalizarCentradoParrafo(parrafo);
-=======
-        await insertarImagenEnGrupo(zip, xmlDoc, rutaXml, runs, dataUrl, ctxImg, 26, 90);
->>>>>>> 8f4b0f618b6672344cf1731545cd9e3236dbbf78
     }
 
     async function procesarParrafo(p, datos, stats, ctx) {
@@ -1343,7 +1326,6 @@
     // ocupa ese puesto. En cualquier otro lugar donde aparezca "NOMBRE"
     // suelto (encabezados de columna, etc.) se deja tal cual — solo se le
     // quita el resaltado en la limpieza final.
-<<<<<<< HEAD
     // Agrupa los runs de un párrafo en "etiquetas": tramos de texto no
     // vacío, separados por espacio en blanco (el patrón que usan los
     // machotes para alinear varias etiquetas en la misma línea). El
@@ -2057,21 +2039,15 @@
     }
 
     function resolverNombresPorRolSASISOPA(xmlDoc, datos, stats, nombreArchivo) {
-=======
-    function resolverNombresPorRolSASISOPA(xmlDoc, datos, stats) {
->>>>>>> 8f4b0f618b6672344cf1731545cd9e3236dbbf78
         const sis = sistemaActivo();
         const roles = sis.rolesOrganigrama || [];
         const extras = Array.isArray(datos.ROLES_EXTRA) ? datos.ROLES_EXTRA : [];
         const norm = t => (t || '').replace(/[.:]+\s*$/, '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         const nombrePorEtiqueta = etiqueta => {
-<<<<<<< HEAD
             // F-07-04: el "NOMBRE" junto a la etiqueta "Cliente" es una
             // persona externa (no un puesto interno de la organización)
             // — se deja SIEMPRE en blanco, para llenarse a mano. No se
             // intenta resolver ningún nombre ahí.
-=======
->>>>>>> 8f4b0f618b6672344cf1731545cd9e3236dbbf78
             const rol = roles.find(r => norm(r.etiqueta) === norm(etiqueta));
             if (rol) return datos[rol.clave] || '';
             const extra = extras.find(e => norm(e.etiqueta) === norm(etiqueta));
@@ -2102,7 +2078,6 @@
             }
             return null;
         };
-<<<<<<< HEAD
         // Misma búsqueda de arriba, pero para el caso de VARIOS "NOMBRE"
         // en la misma línea (p.ej. F-07-04: "NOMBRE" / "NOMBRE" con
         // "Representante Técnico" / "Cliente" debajo, cada etiqueta bajo
@@ -2217,21 +2192,12 @@
 
             const texto = textoParrafo(p).trim();
             if (norm(texto) !== 'nombre') return;
-=======
-        parrafos.forEach((p, i) => {
-            const texto = textoParrafo(p).trim();
-            if (norm(texto) !== 'nombre') return;
-            const runs = Array.from(p.getElementsByTagNameNS(NS_W, 'r'));
->>>>>>> 8f4b0f618b6672344cf1731545cd9e3236dbbf78
             if (!runs.some(esResaltadoAmarillo)) return;
             const encontrado = buscarEtiquetaCercana(i);
             if (!encontrado) return; // no es un bloque de firma por puesto conocido; se deja tal cual
             if (encontrado.nombre) {
                 reemplazarTextoParrafo(p, encontrado.nombre);
-<<<<<<< HEAD
                 normalizarCentradoParrafo(p);
-=======
->>>>>>> 8f4b0f618b6672344cf1731545cd9e3236dbbf78
                 stats.reemplazos++;
             } else {
                 runs.forEach(quitarResaltado);
@@ -2531,7 +2497,6 @@
     // título del puesto (no convertirse al nombre de la persona), a
     // diferencia de 1.1, 1.2 y otros puntos del mismo documento donde sí
     // debe ser el nombre. Cada párrafo se ubica por su texto distintivo.
-<<<<<<< HEAD
     // Menciones de "Alta Dirección" que deben quedarse como título del
     // puesto (no convertirse al nombre de la persona) — cada una se
     // ubica por su texto distintivo, sin importar en qué documento SGM
@@ -2551,12 +2516,6 @@
             'planear y conducir las revisiones', // PROC-G-001, 1.1 Objetivo
             'con respecto al Sistema de Gestión de Mediciones', // PROC-G-001, 1.2 Alcance
             'Alta Dirección se asegura:',        // PROC-G-002, 4.2 Disponibilidad de documentos
-=======
-    function procesarRevisionPorDireccionSGM(xmlDoc) {
-        const TEXTOS_DISTINTIVOS = [
-            'reunión en la que participa',      // 4.2 Realización de la revisión por la dirección
-            'tiene la responsabilidad de asegurarse', // 4.3 Registros de hallazgos de la revisión por la dirección
->>>>>>> 8f4b0f618b6672344cf1731545cd9e3236dbbf78
         ];
         const parrafos = Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'));
         for (const p of parrafos) {
@@ -3591,7 +3550,6 @@
         v.textContent = String(serial);
     }
 
-<<<<<<< HEAD
     // Antes se reconocía solo el amarillo EXACTO "FFFF00" — algunos
     // machotes (p.ej. F-16-04, con fill "FCF600") usan un tono de
     // amarillo ligeramente distinto que no coincidía con esa comparación
@@ -3610,12 +3568,6 @@
         for (const fill of Array.from(stylesDoc.getElementsByTagNameNS(NS_S, 'fill'))) {
             const fg = fill.getElementsByTagNameNS(NS_S, 'fgColor')[0];
             if (fg && pareceRellenoAmarilloXlsx(fg.getAttribute('rgb'))) {
-=======
-    function quitarRellenoAmarilloXlsx(stylesDoc) {
-        for (const fill of Array.from(stylesDoc.getElementsByTagNameNS(NS_S, 'fill'))) {
-            const fg = fill.getElementsByTagNameNS(NS_S, 'fgColor')[0];
-            if (fg && (fg.getAttribute('rgb') || '').toUpperCase().endsWith('FFFF00')) {
->>>>>>> 8f4b0f618b6672344cf1731545cd9e3236dbbf78
                 const patt = fill.getElementsByTagNameNS(NS_S, 'patternFill')[0];
                 if (patt) {
                     patt.setAttribute('patternType', 'none');
@@ -3737,7 +3689,6 @@
 
             const drawingEl = sheetDoc.createElementNS(NS_S, 'drawing');
             drawingEl.setAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'r:id', rIdDrawing);
-<<<<<<< HEAD
             // El esquema de <worksheet> exige un orden estricto de hijos:
             // <drawing> debe ir ANTES de legacyDrawing/legacyDrawingHF/
             // picture/oleObjects/controls/webPublishItems/tableParts, y
@@ -3763,9 +3714,6 @@
             } else {
                 sheetDoc.documentElement.appendChild(drawingEl);
             }
-=======
-            sheetDoc.documentElement.appendChild(drawingEl);
->>>>>>> 8f4b0f618b6672344cf1731545cd9e3236dbbf78
 
             const drawingXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><xdr:wsDr xmlns:xdr="${NS_XDR}" xmlns:a="${NS_A}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">${anchorsXml}</xdr:wsDr>`;
             zip.file(rutaDrawing, drawingXml, { createFolders: false });
@@ -3801,7 +3749,6 @@
         }
     }
 
-<<<<<<< HEAD
     // Algunos machotes .xlsx fueron editados alguna vez en Google
     // Sheets y luego descargados/exportados de vuelta a .xlsx — ese
     // exportador de Google deja "relaciones" propietarias
@@ -3869,10 +3816,6 @@
     async function procesarXlsxSGM(buffer, datos, stats, ctxImg) {
         const zip = await JSZip.loadAsync(buffer);
         await limpiarMetadatosGoogleSheetsXlsx(zip);
-=======
-    async function procesarXlsxSGM(buffer, datos, stats, ctxImg) {
-        const zip = await JSZip.loadAsync(buffer);
->>>>>>> 8f4b0f618b6672344cf1731545cd9e3236dbbf78
         const rutaSheet = 'xl/worksheets/sheet1.xml';
         let sheetXmlTexto, stylesXmlTexto;
         try {
@@ -3934,7 +3877,6 @@
         const imagenes = [];
         if (datos.LOGO_BASE64) { imagenes.push({ dataUrl: datos.LOGO_BASE64, col: 0, fila: 0, maxAncho: 130, maxAlto: 75 }); stats.logosInsertados++; }
         else stats.logosPendientes++;
-<<<<<<< HEAD
         // Firmas más grandes (antes 90x26px) — ya se centran dentro de
         // su celda vía el cálculo de colOffX/rowOffY de
         // insertarImagenesXlsxSGM; el tamaño se sube manteniéndose
@@ -3943,11 +3885,6 @@
         if (datos.FIRMA_ELABORA_BASE64) imagenes.push({ dataUrl: datos.FIRMA_ELABORA_BASE64, col: 5, fila: 17, maxAncho: 108, maxAlto: 32, anchoColPx: 118, altoFilaPx: 37 });
         if (datos.FIRMA_REVISO_BASE64) imagenes.push({ dataUrl: datos.FIRMA_REVISO_BASE64, col: 5, fila: 18, maxAncho: 108, maxAlto: 32, anchoColPx: 118, altoFilaPx: 50 });
         if (datos.FIRMA_APRUEBA_BASE64) imagenes.push({ dataUrl: datos.FIRMA_APRUEBA_BASE64, col: 5, fila: 19, maxAncho: 108, maxAlto: 32, anchoColPx: 118, altoFilaPx: 52 });
-=======
-        if (datos.FIRMA_ELABORA_BASE64) imagenes.push({ dataUrl: datos.FIRMA_ELABORA_BASE64, col: 5, fila: 17, maxAncho: 90, maxAlto: 26, anchoColPx: 118, altoFilaPx: 37 });
-        if (datos.FIRMA_REVISO_BASE64) imagenes.push({ dataUrl: datos.FIRMA_REVISO_BASE64, col: 5, fila: 18, maxAncho: 90, maxAlto: 26, anchoColPx: 118, altoFilaPx: 50 });
-        if (datos.FIRMA_APRUEBA_BASE64) imagenes.push({ dataUrl: datos.FIRMA_APRUEBA_BASE64, col: 5, fila: 19, maxAncho: 90, maxAlto: 26, anchoColPx: 118, altoFilaPx: 52 });
->>>>>>> 8f4b0f618b6672344cf1731545cd9e3236dbbf78
         if (imagenes.length) await insertarImagenesXlsxSGM(zip, sheetDoc, rutaSheet, imagenes, ctxImg);
 
         const xmlSerializer = new XMLSerializer();
@@ -4032,7 +3969,6 @@
         return s;
     }
 
-<<<<<<< HEAD
     // Mapea nombre de pestaña -> ruta de su sheetN.xml, leyendo
     // xl/workbook.xml y su .rels. Necesario porque el número de hoja
     // (sheet4.xml, sheet5.xml...) puede variar entre copias del mismo
@@ -4098,14 +4034,6 @@
         await limpiarMetadatosGoogleSheetsXlsx(zip);
         let stylesXmlTexto, sharedXmlTexto;
         try {
-=======
-    async function procesarXlsxSASISOPA(buffer, datos, stats, ctxImg) {
-        const zip = await JSZip.loadAsync(buffer);
-        const rutaSheet = 'xl/worksheets/sheet1.xml';
-        let sheetXmlTexto, stylesXmlTexto, sharedXmlTexto;
-        try {
-            sheetXmlTexto = await zip.file(rutaSheet).async('string');
->>>>>>> 8f4b0f618b6672344cf1731545cd9e3236dbbf78
             stylesXmlTexto = await zip.file('xl/styles.xml').async('string');
         } catch (e) {
             return await zip.generateAsync({ type: 'blob' });
@@ -4113,11 +4041,7 @@
         try { sharedXmlTexto = await zip.file('xl/sharedStrings.xml').async('string'); } catch (e) { sharedXmlTexto = null; }
 
         const parser = new DOMParser();
-<<<<<<< HEAD
         const xmlSerializer = new XMLSerializer();
-=======
-        const sheetDoc = parser.parseFromString(sheetXmlTexto, 'application/xml');
->>>>>>> 8f4b0f618b6672344cf1731545cd9e3236dbbf78
         const stylesDoc = parser.parseFromString(stylesXmlTexto, 'application/xml');
         const sharedStrings = leerSharedStringsXlsx(sharedXmlTexto);
 
@@ -4127,7 +4051,6 @@
         const norm = t => (t || '').replace(/[.:]+\s*$/, '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         const rolPorEtiqueta = etiqueta => roles.find(r => norm(r.etiqueta) === norm(etiqueta));
 
-<<<<<<< HEAD
         // Algunos machotes (p.ej. F-02-02) traen VARIAS hojas — una por
         // etapa: Operación, Mantenimiento, Desmantelamiento, Abandono
         // del sitio... — cada una con su propio encabezado/fecha/AÑO
@@ -4141,8 +4064,6 @@
         try { sheetXmlTexto = await zip.file(rutaSheet).async('string'); } catch (e) { continue; }
         const sheetDoc = parser.parseFromString(sheetXmlTexto, 'application/xml');
 
-=======
->>>>>>> 8f4b0f618b6672344cf1731545cd9e3236dbbf78
         const celdas = Array.from(sheetDoc.getElementsByTagNameNS(NS_S, 'c'));
         const celdasLogo = [];
         const celdasNombre = [];
@@ -4198,7 +4119,6 @@
                 stats.reemplazos++;
                 continue;
             }
-<<<<<<< HEAD
             // 3.6) Bloque "Revisión: 0 / Página X de Y / Efectivo:
             // dd/mm/aaaa" — texto de referencia sin marcar. Solo se
             // actualiza la fecha de "Efectivo:" (a la fecha de
@@ -4213,8 +4133,6 @@
                 stats.reemplazos++;
                 continue;
             }
-=======
->>>>>>> 8f4b0f618b6672344cf1731545cd9e3236dbbf78
 
             // 4) Bloques "NOMBRE" — el puesto suele estar en la celda de
             // abajo o a la derecha (se resuelve después, ya con todas las
@@ -4268,12 +4186,9 @@
             }
         }
 
-<<<<<<< HEAD
         zip.file(rutaSheet, xmlSerializer.serializeToString(sheetDoc), { createFolders: false });
         } // fin del ciclo por cada hoja (rutasHojas)
 
-=======
->>>>>>> 8f4b0f618b6672344cf1731545cd9e3236dbbf78
         // Cuadros de texto flotantes (capa de dibujo) — algunos machotes
         // SASISOPA (p.ej. F-04-01) usan un cuadro de texto flotante para
         // la firma de "ELABORÓ/REVISÓ" en vez de una tabla de celdas. El
@@ -4288,7 +4203,6 @@
             try { texto = await zip.file(rutaDrawing).async('string'); } catch (e) { continue; }
             let resultado = texto;
             let cambios = false;
-<<<<<<< HEAD
             // F-11-01: "NOMBRE" a veces viene con espacios de relleno
             // pegados DENTRO del mismo <a:t> ("                    NOMBRE",
             // para alinear la palabra bajo una línea de firma más larga)
@@ -4316,25 +4230,12 @@
                 if (!siguienteParrafo) continue;
                 const textosDelParrafo = Array.from(siguienteParrafo[1].matchAll(/<a:t>([^<]*)<\/a:t>/g)).map(x => x[1]);
                 const rolTexto = textosDelParrafo.join('').trim();
-=======
-            const RE_NOMBRE = /<a:t>NOMBRE<\/a:t>/g;
-            let m;
-            while ((m = RE_NOMBRE.exec(texto)) !== null) {
-                const finNombre = m.index + m[0].length;
-                const siguiente = /<a:t>([^<]*)<\/a:t>/.exec(texto.slice(finNombre));
-                if (!siguiente) continue;
-                const rolTexto = siguiente[1].trim();
->>>>>>> 8f4b0f618b6672344cf1731545cd9e3236dbbf78
                 const rol = rolPorEtiqueta(rolTexto);
                 if (!rol) continue;
                 const nombre = datos[rol.clave];
                 cambios = true;
                 if (nombre) {
-<<<<<<< HEAD
                     resultado = resultado.replace(m[0], '<a:t>' + escaparXml(nombre) + '</a:t>');
-=======
-                    resultado = resultado.replace('<a:t>NOMBRE</a:t>', '<a:t>' + escaparXml(nombre) + '</a:t>');
->>>>>>> 8f4b0f618b6672344cf1731545cd9e3236dbbf78
                     stats.reemplazos++;
                 } else {
                     stats.pendientes.push(`Nombre de ${rolTexto} (cuadro de texto, hoja Excel)`);
@@ -4351,7 +4252,6 @@
             if (cambios) zip.file(rutaDrawing, resultado, { createFolders: false });
         }
 
-<<<<<<< HEAD
         zip.file('xl/styles.xml', xmlSerializer.serializeToString(stylesDoc), { createFolders: false });
 
         // F-02-02: logo flotante en Desmantelamiento y Abandono del
@@ -4361,12 +4261,6 @@
         if (/^F-02-02/i.test(nombreArchivo || '')) {
             await insertarLogoFlotanteHojasF0202(zip, datos, stats, ctxImg);
         }
-=======
-        const xmlSerializer = new XMLSerializer();
-
-        zip.file(rutaSheet, xmlSerializer.serializeToString(sheetDoc), { createFolders: false });
-        zip.file('xl/styles.xml', xmlSerializer.serializeToString(stylesDoc), { createFolders: false });
->>>>>>> 8f4b0f618b6672344cf1731545cd9e3236dbbf78
 
         return await zip.generateAsync({ type: 'blob' });
     }
@@ -4439,7 +4333,6 @@
                 procesarFrasesMultiPuestoSGM(xmlDoc, datos, stats);
                 procesarInmediatoSiguienteSGM(xmlDoc, datos, nombreArchivo, stats);
             } else if (_seccionActual === 'sasisopa') {
-<<<<<<< HEAD
                 procesarPuestoDinamicoP07(xmlDoc, datos, nombreArchivo, stats);
                 procesarRolesDinamicosP082(xmlDoc, datos, nombreArchivo, stats);
                 procesarRolesDinamicosP18(xmlDoc, datos, nombreArchivo, stats);
@@ -4558,9 +4451,6 @@
                 resolverRolesEnFormasSASISOPA(xmlDoc, datos, stats);
                 resolverNombresPorRolSASISOPA(xmlDoc, datos, stats, nombreArchivo);
                 procesarCartaResponsivaF1202(xmlDoc, datos, nombreArchivo, stats);
-=======
-                resolverNombresPorRolSASISOPA(xmlDoc, datos, stats);
->>>>>>> 8f4b0f618b6672344cf1731545cd9e3236dbbf78
             } else if (_seccionActual === 'bitacoras') {
                 procesarCamposBitacoras(xmlDoc, datos, stats);
             }
@@ -4569,7 +4459,6 @@
             // organigrama gráfico — solo aplica a manuales/formatos que sí
             // llevan el organigrama real de la organización. Bitácoras
             // tampoco lleva organigrama.
-<<<<<<< HEAD
             // Además, esto SOLO corre sobre word/document.xml — los
             // encabezados/pies (word/header*.xml, word/footer*.xml) se
             // repiten en cada página de su sección y pueden traer sus
@@ -4583,9 +4472,6 @@
                 && _seccionActual !== 'bitacoras'
                 && !(_seccionActual === 'sgm' && RE_SIN_ORGANIGRAMA_SGM.test(nombreArchivo))
                 && !(_seccionActual === 'sasisopa' && RE_SIN_ORGANIGRAMA_SASISOPA.test(nombreArchivo))) {
-=======
-            if (_seccionActual !== 'bitacoras' && !(_seccionActual === 'sgm' && RE_SIN_ORGANIGRAMA_SGM.test(nombreArchivo))) {
->>>>>>> 8f4b0f618b6672344cf1731545cd9e3236dbbf78
                 reemplazarOrganigramaMGM(xmlDoc, datos);
             }
 
@@ -4614,11 +4500,7 @@
                                 // espacio original del logo ahí es más grande
                                 // (~357x87px) que en el encabezado de los 9
                                 // machotes (~196x48px) — se respeta ese tamaño.
-<<<<<<< HEAD
                                 await insertarImagenEnGrupo(zip, xmlDoc, ruta, [run], datos.LOGO_BASE64, ctxImagen, 190, 750);
-=======
-                                await insertarImagenEnGrupo(zip, xmlDoc, ruta, [run], datos.LOGO_BASE64, ctxImagen, 87, 357);
->>>>>>> 8f4b0f618b6672344cf1731545cd9e3236dbbf78
                             } else {
                                 await insertarLogoEnGrupo(zip, xmlDoc, ruta, [run], datos.LOGO_BASE64, ctxImagen);
                             }
@@ -4679,7 +4561,6 @@
         return _clientesCache;
     }
 
-<<<<<<< HEAD
     // Recorre el formulario actual y devuelve TODAS las claves que
     // podrían llegar a existir en Firestore para este cliente (roles del
     // checklist, campos de texto, tablas dinámicas) — sin importar si
@@ -4711,13 +4592,6 @@
             if (!(clave in payload)) payload[clave] = deleteField();
         });
         await setDoc(ref, payload, { merge: true });
-=======
-    async function guardarCliente(id, datos) {
-        const { collection, doc, setDoc, serverTimestamp } = await fsFns();
-        const sis = sistemaActivo();
-        const ref = id ? doc(window.db, sis.coleccion, id) : doc(collection(window.db, sis.coleccion));
-        await setDoc(ref, { ...datos, actualizado: serverTimestamp() }, { merge: true });
->>>>>>> 8f4b0f618b6672344cf1731545cd9e3236dbbf78
         return ref.id;
     }
 
@@ -5068,7 +4942,6 @@
     }
 
     function renderSeccionForm(sec, cliente) {
-<<<<<<< HEAD
         if (sec.tipo === 'selector_rol_documento') {
             const valorActual = cliente[sec.clave] || '';
             return `
@@ -5086,8 +4959,6 @@
                 </div>
             </div>`;
         }
-=======
->>>>>>> 8f4b0f618b6672344cf1731545cd9e3236dbbf78
         if (sec.tipo === 'escolaridad_dinamica') {
             return `
             <div class="gs-card">
@@ -5692,21 +5563,13 @@
         renderDropzone(cont);
         bindSeccionesEspeciales(cont);
         actualizarPreview(cont);
-<<<<<<< HEAD
         cont.querySelectorAll('#gs-columna-form input[data-clave], #gs-columna-form input[data-equipo-campo], #gs-columna-form select[data-clave]').forEach(inp => {
-=======
-        cont.querySelectorAll('#gs-columna-form input[data-clave], #gs-columna-form input[data-equipo-campo]').forEach(inp => {
->>>>>>> 8f4b0f618b6672344cf1731545cd9e3236dbbf78
             inp.addEventListener('input', () => actualizarPreview(cont));
         });
         cont.querySelector('#gs-btn-volver').addEventListener('click', cargarGestoria);
         cont.querySelector('#gs-btn-guardar').addEventListener('click', async () => {
             const datos = leerFormulario(cont);
-<<<<<<< HEAD
             const id = await guardarCliente(_clienteActualId, datos, calcularCamposPosiblesDelFormulario(cont));
-=======
-            const id = await guardarCliente(_clienteActualId, datos);
->>>>>>> 8f4b0f618b6672344cf1731545cd9e3236dbbf78
             _clienteActualId = id;
             mostrarProgreso(cont, 'ok', ICONO.check + ' Guardado correctamente.');
         });
@@ -5788,13 +5651,10 @@
             if (input.disabled) return;
             if (input.type === 'text' && input.value.trim()) datos[input.dataset.clave] = input.value.trim();
         });
-<<<<<<< HEAD
         cont.querySelectorAll('#gs-columna-form select[data-clave]').forEach(sel => {
             if (sel.disabled || !sel.value) return;
             datos[sel.dataset.clave] = sel.value;
         });
-=======
->>>>>>> 8f4b0f618b6672344cf1731545cd9e3236dbbf78
         cont.querySelectorAll('[data-clave-tabla]').forEach(contTabla => {
             const claveTabla = contTabla.dataset.claveTabla;
             const filas = Array.from(contTabla.querySelectorAll('.gs-equipo-fila')).map(fila => {
@@ -5875,11 +5735,7 @@
             return;
         }
 
-<<<<<<< HEAD
         const id = await guardarCliente(_clienteActualId, datos, calcularCamposPosiblesDelFormulario(cont));
-=======
-        const id = await guardarCliente(_clienteActualId, datos);
->>>>>>> 8f4b0f618b6672344cf1731545cd9e3236dbbf78
         _clienteActualId = id;
 
         mostrarProgreso(cont, '', ICONO.reloj + ' Descargando lista de machotes…');
@@ -5909,11 +5765,7 @@
                     zipSalida.file(nombreArchivo, blobSalida);
                 } else if (nombreArchivo.toLowerCase().endsWith('.xlsx')) {
                     const ctxImg = { contador: 0 };
-<<<<<<< HEAD
                     const blobSalida = await procesarXlsxSASISOPA(buffer, datos, stats, ctxImg, nombreArchivo);
-=======
-                    const blobSalida = await procesarXlsxSASISOPA(buffer, datos, stats, ctxImg);
->>>>>>> 8f4b0f618b6672344cf1731545cd9e3236dbbf78
                     zipSalida.file(nombreArchivo, blobSalida);
                 } else {
                     zipSalida.file(nombreArchivo, buffer);
