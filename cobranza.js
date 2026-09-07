@@ -30,10 +30,14 @@
   var cuentas = [];
   var clientes = [];
   var tabActual = 'activas'; // 'activas' | 'pagadas' | 'incobrables'
+  var vistaActual = 'cuentas'; // 'cuentas' | 'pedidos' — vista general del módulo
   var filtroTexto = '';
   var filtroAntiguedad = 'todas';
   var detalleId = null;
   var _pedidosCache = {};      // clienteNombre -> [surtidos]
+  var pedidosTodos = null;     // cache de TODOS los surtidos, para la vista "Pedidos de Almacén"
+  var filtroPedidosTexto = '';
+  var pedidoAbiertoGlobal = null; // pedido expandido en la vista global (independiente del expediente de cuenta)
   var _evidenciasCache = {};   // surtidoId -> [evidencias]
   var _pedidoAbierto = null;   // id del pedido con evidencias expandidas
 
@@ -96,7 +100,24 @@
   }
   function clienteNombre(c){ return c.nombre || c.razonSocial || '(sin nombre)'; }
 
-  // ── Cuentas por cobrar ──
+  // ── TODOS los pedidos de Almacén (para la vista "Pedidos de Almacén") ──
+  function cargarTodosPedidos(){
+    if(pedidosTodos) return Promise.resolve(pedidosTodos);
+    return cargarFirestore().then(function(fs){
+      return fs.getDocs(fs.collection(window.db,'surtidos')).then(function(snap){
+        var list = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+        list.sort(function(a,b){
+          var ta = a.createdAt && a.createdAt.seconds ? a.createdAt.seconds : 0;
+          var tb = b.createdAt && b.createdAt.seconds ? b.createdAt.seconds : 0;
+          return tb-ta;
+        });
+        pedidosTodos = list;
+        return list;
+      }).catch(function(e){ console.warn('[cobranza] cargarTodosPedidos:',e); pedidosTodos=[]; return []; });
+    });
+  }
+
+
   function cargarCuentas(){
     return cargarFirestore().then(function(fs){
       return fs.getDocs(fs.query(fs.collection(window.db,'cuentas_por_cobrar'), fs.orderBy('fechaVencimiento','asc'))).then(function(snap){
@@ -251,6 +272,66 @@
     });
   }
 
+  // ══════════════════ VISTA: Pedidos de Almacén (global, todos los clientes) ══════════════════
+  function cargarYRenderPedidosGlobal(){
+    if(pedidosTodos) return; // ya en caché — la tabla ya se pintó con esos datos en este render()
+    cargarTodosPedidos().then(function(){
+      if(vistaActual==='pedidos') render();
+    });
+  }
+
+  window.__cbSetFiltroPedidosTexto = function(v){
+    filtroPedidosTexto = v;
+    var cont = document.getElementById('cb-pedidos-tabla-wrap');
+    if(cont) cont.innerHTML = renderTablaPedidosGlobal();
+    var el = document.getElementById('cb-filtro-pedidos-texto');
+    if(el){ el.focus(); el.selectionStart=el.selectionEnd=el.value.length; }
+  };
+
+  function renderVistaPedidos(){
+    return '<div style="background:#fff;border-radius:14px;padding:18px 22px;box-shadow:0 1px 3px rgba(10,22,40,.08)">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">'+
+        '<h3 style="font-size:15px;font-weight:700;margin:0;color:#0A1628">Pedidos de Almacén</h3>'+
+        '<input id="cb-filtro-pedidos-texto" placeholder="Buscar folio o cliente…" value="'+esc(filtroPedidosTexto)+'" oninput="window.__cbSetFiltroPedidosTexto(this.value)" style="padding:8px 12px;border:1px solid #E2E8F0;border-radius:8px;font-size:12px;min-width:220px">'+
+      '</div>'+
+      '<div id="cb-pedidos-tabla-wrap">'+renderTablaPedidosGlobal()+'</div>'+
+    '</div>';
+  }
+
+  function renderTablaPedidosGlobal(){
+    if(!pedidosTodos) return '<p style="text-align:center;color:#94A3B8;padding:40px 0;font-size:13px">Cargando pedidos…</p>';
+    var q = filtroPedidosTexto.toLowerCase();
+    var lista = pedidosTodos.filter(function(p){
+      if(!q) return true;
+      return (p.folio||'').toLowerCase().indexOf(q)>=0 || (p.cliente||'').toLowerCase().indexOf(q)>=0;
+    });
+    if(!lista.length) return '<p style="text-align:center;color:#94A3B8;padding:40px 0;font-size:13px">Sin pedidos que coincidan con la búsqueda.</p>';
+    return lista.map(renderPedidoRowGlobal).join('');
+  }
+
+  function renderPedidoRowGlobal(p){
+    var fecha = p.createdAt && p.createdAt.seconds ? new Date(p.createdAt.seconds*1000) : null;
+    var abierto = pedidoAbiertoGlobal===p.id;
+    var remisionBadge = p.remisionado
+      ? '<span style="font-size:10.5px;font-weight:700;color:#16A34A">✓ Remisionado'+(p.remisionadoPor?(' · '+esc(p.remisionadoPor)):'')+'</span>'
+      : '<span style="font-size:10.5px;font-weight:700;color:#94A3B8">Sin remisionar</span>';
+    return '<div style="border-top:1px solid #F1F5F9;padding:10px 0">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="window.__cbToggleEvidenciasGlobal(\''+p.id+'\')">'+
+        '<div><p style="font-size:12.5px;font-weight:700;color:#0A1628;margin:0">'+esc(p.folio||p.id)+' <span style="font-weight:400;color:#5C7089">· '+esc(p.cliente||'—')+'</span></p>'+
+        '<p style="font-size:10.5px;color:#94A3B8;margin:2px 0 0">'+(fecha?fecha.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}):'—')+' · '+esc(p.estado||'—')+' · '+remisionBadge+'</p></div>'+
+        '<span style="font-size:11px;font-weight:700;color:#1473E6;white-space:nowrap">'+(abierto?'Ocultar detalle ▲':'Ver detalle ▼')+'</span>'+
+      '</div>'+
+      '<div id="cb-gped-'+p.id+'" style="margin-top:8px;'+(abierto?'':'display:none')+'">'+(abierto?'<p style="font-size:11px;color:#94A3B8">Cargando…</p>':'')+'</div>'+
+    '</div>';
+  }
+
+  window.__cbToggleEvidenciasGlobal = function(pedidoId){
+    pedidoAbiertoGlobal = (pedidoAbiertoGlobal===pedidoId) ? null : pedidoId;
+    var cont = document.getElementById('cb-pedidos-tabla-wrap');
+    if(cont) cont.innerHTML = renderTablaPedidosGlobal();
+    if(pedidoAbiertoGlobal) renderDetallePedido('cb-gped-'+pedidoAbiertoGlobal, pedidoAbiertoGlobal);
+  };
+
   // ══════════════════════════ RENDER ══════════════════════════
   function render(){
     var cont = document.getElementById(contId);
@@ -294,6 +375,11 @@
         '</div>'+
       '</div>'+
 
+      '<div style="display:flex;gap:6px;margin-bottom:16px">'+
+        vistaBtn('cuentas','Cuentas por cobrar')+ vistaBtn('pedidos','Pedidos de Almacén')+
+      '</div>'+
+
+      (vistaActual==='cuentas' ? (
       '<div style="background:#fff;border-radius:14px;padding:18px 22px;box-shadow:0 1px 3px rgba(10,22,40,.08)">'+
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">'+
           '<div style="display:flex;gap:6px">'+
@@ -312,11 +398,19 @@
         '</div>'+
         (lista.length ? renderTabla(lista) : '<p style="text-align:center;color:#94A3B8;padding:40px 0;font-size:13px">Sin cuentas en esta vista.</p>')+
       '</div>'+
-      (detalleId ? renderDetalle() : '');
+      (detalleId ? renderDetalle() : '')
+      ) : renderVistaPedidos());
 
     calcularCobradoMes(mesActual);
-    if(detalleId) window.__cbCargarDetalleAsync(detalleId);
+    if(vistaActual==='cuentas' && detalleId) window.__cbCargarDetalleAsync(detalleId);
+    if(vistaActual==='pedidos') cargarYRenderPedidosGlobal();
   }
+
+  function vistaBtn(id, label){
+    var activo = vistaActual===id;
+    return '<button onclick="window.__cbSetVista(\''+id+'\')" style="padding:9px 16px;border-radius:9px;border:1px solid '+(activo?'#0A1628':'#E2E8F0')+';background:'+(activo?'#0A1628':'#fff')+';color:'+(activo?'#fff':'#5C7089')+';font-size:12px;font-weight:700;cursor:pointer">'+label+'</button>';
+  }
+  window.__cbSetVista = function(v){ vistaActual = v; render(); };
 
   function tabBtn(id, label){
     var activo = tabActual===id;
@@ -478,7 +572,7 @@
           pedList.innerHTML = '<p style="font-size:12px;color:#94A3B8">Sin pedidos de Almacén encontrados para este cliente.</p>';
         } else {
           pedList.innerHTML = pedidos.map(renderPedidoRow).join('');
-          if(_pedidoAbierto) renderEvidenciasDe(_pedidoAbierto);
+          if(_pedidoAbierto) renderDetallePedido('cb-evid-'+_pedidoAbierto, _pedidoAbierto);
         }
       }
     });
@@ -509,8 +603,8 @@
     return '<div style="margin-bottom:12px"><p style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#94A3B8;margin:0 0 6px">'+titulo+'</p>'+html+'</div>';
   }
 
-  function renderEvidenciasDe(pedidoId){
-    var el = document.getElementById('cb-evid-'+pedidoId);
+  function renderDetallePedido(elId, pedidoId){
+    var el = document.getElementById(elId);
     if(!el) return;
     Promise.all([cargarHistorialPedido(pedidoId), cargarDocumentosPedido(pedidoId), cargarEvidenciasPedido(pedidoId)]).then(function(r){
       var hist = r[0], docs = r[1], evid = r[2];
@@ -540,6 +634,7 @@
         '<button onclick="window.__cbVerPdfPedido(\''+pedidoId+'\')" style="padding:6px 12px;background:#F1F5F9;color:#0A1628;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer">Ver PDF original del pedido</button>';
     });
   }
+
 
   // ── Modal: registrar pago ──
   window.__cbAbrirRegistrarPago = function(cuentaId){
