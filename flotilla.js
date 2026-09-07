@@ -190,9 +190,9 @@ function flChecklistLlaves(cat,item,i,globalIdx){
     String(globalIdx),
   ];
 }
-function flResolverItemChecklist(chk,chkFotos,cat,item,i,globalIdx){
+function flResolverItemChecklist(chk,chkFotos,cat,item,i,globalIdx,chkComentarios){
   const llaves=flChecklistLlaves(cat,item,i,globalIdx);
-  let val='',fotoSrc=null;
+  let val='',fotoSrc=null,comentario='';
   for(const k of llaves){
     if(chk&&chk[k]!=null&&chk[k]!==''){val=chk[k];break;}
   }
@@ -200,7 +200,10 @@ function flResolverItemChecklist(chk,chkFotos,cat,item,i,globalIdx){
     const f=chkFotos&&chkFotos[k];
     if(f){fotoSrc=typeof f==='object'?f.src:f;break;}
   }
-  return{val,fotoSrc};
+  for(const k of llaves){
+    if(chkComentarios&&chkComentarios[k]){comentario=chkComentarios[k];break;}
+  }
+  return{val,fotoSrc,comentario};
 }
 
 const TIPOS_SOL=[
@@ -1174,7 +1177,7 @@ async function flRevisarTransferenciasPendientes(){
       if(t.entregaEmail){
         try{
           const snapEnt=await fs.getDocs(fs.query(fs.collection(db,'fl_usuarios'),fs.where('email','==',t.entregaEmail)));
-          if(!snapEnt.empty) await fs.updateDoc(snapEnt.docs[0].ref,{transferenciaPendiente:null,transferenciaPendienteEco:null});
+          if(!snapEnt.empty) await fs.updateDoc(snapEnt.docs[0].ref,{transferenciaPendiente:null,transferenciaPendienteEco:null,transferenciaPendienteReceptor:null});
         }catch(e2){console.warn('[FL] limpiar transferenciaPendiente al vencer',e2);}
       }
       const destinatarios=new Set(FLOTILLA_ADMINS);
@@ -5393,7 +5396,7 @@ window.flCancelarTransferencia=async function(id){
     if(t.entregaEmail){
       try{
         const snapEnt=await fs.getDocs(fs.query(fs.collection(db,'fl_usuarios'),fs.where('email','==',t.entregaEmail)));
-        if(!snapEnt.empty) await fs.updateDoc(snapEnt.docs[0].ref,{transferenciaPendiente:null,transferenciaPendienteEco:null});
+        if(!snapEnt.empty) await fs.updateDoc(snapEnt.docs[0].ref,{transferenciaPendiente:null,transferenciaPendienteEco:null,transferenciaPendienteReceptor:null});
       }catch(e2){console.warn('[FL] limpiar transferenciaPendiente al cancelar',e2);}
     }
     Object.assign(t,{estatus:'Cancelada'});
@@ -5442,7 +5445,7 @@ function rTransListFiltrada(lista){
         <div><div style="font-size:8px;font-weight:800;text-transform:uppercase;color:#94A3B8;margin-bottom:2px">Entrega</div>
           <div style="font-size:11.5px;font-weight:600;color:#0A1628;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${flNombrePorCorreo(t.entregaNombre||t.entregaEmail)||'—'}</div></div>
         <div><div style="font-size:8px;font-weight:800;text-transform:uppercase;color:#94A3B8;margin-bottom:2px">Recibe</div>
-          <div style="font-size:11.5px;font-weight:600;color:${isPend?'#B45309':'#0A1628'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${isPend?(flNombrePorCorreo(t.receptorEmail)||t.receptorNombre||t.receptorEmail||'Sin receptor designado'):(flNombrePorCorreo(t.recibioNombre||t.recibioEmail)||'—')}</div></div>
+          <div style="font-size:11.5px;font-weight:600;color:${isPend||isVencida?'#B45309':'#0A1628'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(isPend||isVencida)?(flNombrePorCorreo(t.receptorEmail)||t.receptorNombre||t.receptorEmail||'Sin receptor designado'):(flNombrePorCorreo(t.recibioNombre||t.recibioEmail)||'—')}</div></div>
         <div><div style="font-size:8px;font-weight:800;text-transform:uppercase;color:#94A3B8;margin-bottom:2px">KM · Gas</div>
           <div style="font-size:11.5px;font-weight:600;color:#0A1628">${t.entregaKm||t.km||'—'} · ${t.entregaGasolina!=null?t.entregaGasolina+'%':'—'}</div></div>
       </div>
@@ -5453,7 +5456,7 @@ function rTransListFiltrada(lista){
         <button onclick="flRecibirTransferencia('${t.id}')" style="flex:1;font-size:11px;font-weight:800;padding:8px;background:#0A1628;color:#fff;border:none;border-radius:8px;cursor:pointer">Recibir desde portal</button>
         <button onclick="flCancelarTransferencia('${t.id}')" style="flex:1;font-size:11px;font-weight:800;padding:8px;background:#fff;color:#B91C1C;border:1px solid #FCA5A5;border-radius:8px;cursor:pointer">✕ Cancelar</button>
       </div>`:''}
-      ${isVencida?`<div style="margin-top:8px;padding:6px 10px;background:#FEF2F2;border-radius:7px;font-size:11px;font-weight:700;color:#B91C1C">Código vencido${t.venciadoEn?` desde el ${new Date(t.venciadoEn).toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'})}`:''} — el vehículo sigue asignado a ${t.entregaNombre||'—'}${hAdm()?'. Reactiva o cancela abajo.':''}</div>`:''}
+      ${isVencida?`<div style="margin-top:8px;padding:6px 10px;background:#FEF2F2;border-radius:7px;font-size:11px;font-weight:700;color:#B91C1C">Código vencido${t.venciadoEn?` desde el ${new Date(t.venciadoEn).toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'})}`:''} — el vehículo sigue asignado a ${t.entregaNombre||'—'}. Debía recibirlo ${t.receptorNombre||t.receptorEmail||'—'} con el código ${t.codigo||'—'}.${hAdm()?' Reactiva o cancela abajo.':''}</div>`:''}
       ${isVencida&&hAdm()?`<div style="margin-top:8px;display:flex;gap:8px" onclick="event.stopPropagation()">
         <button onclick="flReactivarTransferencia('${t.id}')" style="flex:1;font-size:11px;font-weight:800;padding:8px;background:#0A1628;color:#fff;border:none;border-radius:8px;cursor:pointer">↻ Reactivar (+24h)</button>
         <button onclick="flCancelarTransferencia('${t.id}')" style="flex:1;font-size:11px;font-weight:800;padding:8px;background:#fff;color:#B91C1C;border:1px solid #FCA5A5;border-radius:8px;cursor:pointer">✕ Cancelar</button>
@@ -5520,7 +5523,7 @@ window.flCancelarPendientesFiltradas=async function(){
       if(t.entregaEmail){
         try{
           const snapEnt=await fs.getDocs(fs.query(fs.collection(db,'fl_usuarios'),fs.where('email','==',t.entregaEmail)));
-          if(!snapEnt.empty) await fs.updateDoc(snapEnt.docs[0].ref,{transferenciaPendiente:null,transferenciaPendienteEco:null});
+          if(!snapEnt.empty) await fs.updateDoc(snapEnt.docs[0].ref,{transferenciaPendiente:null,transferenciaPendienteEco:null,transferenciaPendienteReceptor:null});
         }catch(e2){console.warn('[FL] limpiar transferenciaPendiente al cancelar (masivo)',e2);}
       }
       Object.assign(t,{estatus:'Cancelada'});
@@ -6731,11 +6734,14 @@ window.flVerChkSem=async function(id){
   Object.entries(catsVeh).forEach(([cat,items])=>{
     chkHtml+=`<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin:10px 0 5px;border-bottom:1px solid #E2E8F0;padding-bottom:3px">${cat}</div>`;
     items.forEach((item,i)=>{
-      const{val,fotoSrc}=flResolverItemChecklist(chk,chkFotos,cat,item,i,_globalIdx++);
-      chkHtml+=`<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #F8FAFD">
+      const{val,fotoSrc,comentario}=flResolverItemChecklist(chk,chkFotos,cat,item,i,_globalIdx++,r.chkComentarios||{});
+      chkHtml+=`<div style="padding:5px 0;border-bottom:1px solid #F8FAFD">
+      <div style="display:flex;align-items:center;gap:8px">
         <span style="flex:1;font-size:12px">${item}</span>
         <span style="font-size:10px;font-weight:800;padding:2px 9px;border-radius:99px;${val==='si'?'background:#DCFCE7;color:#15803D':val==='no'?'background:#FEE2E2;color:#B91C1C':'background:#F1F5F9;color:#94A3B8'}">${val==='si'?'OK':val==='no'?'Detalle':'—'}</span>
         ${fotoSrc?`<img src="${fotoSrc}" onclick="flImg('${fotoSrc}')" style="width:32px;height:32px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid #E2E8F0">`:'<div style="width:32px"></div>'}
+      </div>
+      ${val==='no'&&comentario?`<div style="font-size:11px;color:#B91C1C;background:#FEF2F2;border-radius:6px;padding:5px 9px;margin-top:3px">${comentario}</div>`:''}
       </div>`;
     });
   });
@@ -6744,7 +6750,7 @@ window.flVerChkSem=async function(id){
     <div class="fl-mh"><h3>${I.truck||''} Check list semanal · ${r.semana}</h3><button class="fl-mx" onclick="this.closest('.fl-ov').remove()">✕</button></div>
     <div class="fl-mb">
       <div style="display:grid;grid-template-columns:1fr 1fr;background:#F8FAFD;border-radius:9px;overflow:hidden;border:1px solid #E8EDF5;margin-bottom:10px">
-        ${[['Vehículo',`ECO ${r.vehiculoEco} · ${v.unidad||r.vehiculo||'—'}`],['Fecha',hF(r.fecha)],['Kilometraje',r.km?Number(r.km).toLocaleString()+' km':'—'],['Gasolina',r.gasolina!=null?r.gasolina+'%':'—'],['Técnico',flNombrePorCorreo(r.tecnico)||'—'],['Semana',r.semana||'—']].map(([l,val])=>`<dl style="padding:7px 11px;border-right:1px solid #E8EDF5;border-bottom:1px solid #E8EDF5"><dt style="font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">${l}</dt><dd style="font-size:11.5px;font-weight:600">${val}</dd></dl>`).join('')}
+        ${[['Vehículo',`ECO ${r.vehiculoEco} · ${v.unidad||r.vehiculo||'—'}`],['Fecha',hF(r.fecha)],['Kilometraje',r.km?Number(r.km).toLocaleString()+' km':'—'],['Gasolina',r.gasolina!=null?r.gasolina+'%':'—'],['Técnico',flNombrePorCorreo(r.tecnico)||'—'],['Semana',r.semana||'—'],['Responsable del vehículo',v.responsable&&v.responsable!=='—'?(flNombrePorCorreo(v.responsable)||v.responsable):'Sin asignar']].map(([l,val])=>`<dl style="padding:7px 11px;border-right:1px solid #E8EDF5;border-bottom:1px solid #E8EDF5"><dt style="font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">${l}</dt><dd style="font-size:11.5px;font-weight:600">${val}</dd></dl>`).join('')}
       </div>
 
       ${evidencias?.length?`<div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:5px">Evidencias generales</div><div class="fl-pills" style="margin-bottom:10px">${evidencias.map((e,i)=>{const src=typeof e==='object'?e.src:e;return`<span class="fl-pill" onclick="flImg('${src}')">${I.camera||'📷'} Foto ${i+1}</span>`;}).join('')}</div>`:''}
