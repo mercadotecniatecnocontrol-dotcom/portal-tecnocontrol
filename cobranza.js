@@ -202,6 +202,49 @@
     });
   }
 
+  // ── Seguimiento del pedido (cambios de estado) — solo lectura ──
+  var _historialCache = {}; // surtidoId -> [historial]
+  function cargarHistorialPedido(surtidoId){
+    if(_historialCache[surtidoId]) return Promise.resolve(_historialCache[surtidoId]);
+    return cargarFirestore().then(function(fs){
+      var col = fs.collection(window.db,'surtidos',surtidoId,'historial');
+      var q; try{ q = fs.query(col, fs.orderBy('ts','asc')); }catch(e){ q = col; }
+      return fs.getDocs(q).then(function(snap){
+        var list = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+        _historialCache[surtidoId] = list;
+        return list;
+      }).catch(function(){ _historialCache[surtidoId]=[]; return []; });
+    });
+  }
+
+  // ── Documentos adjuntos por Ventas (órdenes de compra, etc.) — solo lectura ──
+  var _documentosCache = {}; // surtidoId -> [documentos]
+  function cargarDocumentosPedido(surtidoId){
+    if(_documentosCache[surtidoId]) return Promise.resolve(_documentosCache[surtidoId]);
+    return cargarFirestore().then(function(fs){
+      return fs.getDocs(fs.collection(window.db,'surtidos',surtidoId,'documentos')).then(function(snap){
+        var list = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+        _documentosCache[surtidoId] = list;
+        return list;
+      }).catch(function(){ _documentosCache[surtidoId]=[]; return []; });
+    });
+  }
+
+  // ── PDF original del pedido (si Ventas lo adjuntó) — abre en pestaña nueva ──
+  window.__cbVerPdfPedido = function(surtidoId){
+    var w = window.open('', '_blank');
+    cargarFirestore().then(function(fs){
+      return fs.getDoc(fs.doc(window.db,'surtidos',surtidoId,'adjuntos','pdf_original'));
+    }).then(function(snap){
+      if(!snap.exists() || !(snap.data()||{}).archivo){
+        if(w) w.close();
+        toast('Este pedido no tiene PDF adjunto');
+        return;
+      }
+      if(w){ w.document.write('<iframe src="'+(snap.data().archivo)+'" style="border:none;width:100%;height:100%;"></iframe>'); w.document.close(); }
+    }).catch(function(e){ if(w) w.close(); toast('No se pudo abrir el PDF'); });
+  };
+
   function marcarIncobrable(cuentaId){
     return cargarFirestore().then(function(fs){
       return fs.updateDoc(fs.doc(window.db,'cuentas_por_cobrar',cuentaId), {estado:'incobrable'});
@@ -444,13 +487,16 @@
   function renderPedidoRow(p){
     var fecha = p.createdAt && p.createdAt.seconds ? new Date(p.createdAt.seconds*1000) : null;
     var abierto = _pedidoAbierto===p.id;
+    var remisionBadge = p.remisionado
+      ? '<span style="font-size:10.5px;font-weight:700;color:#16A34A">✓ Remisionado'+(p.remisionadoPor?(' · '+esc(p.remisionadoPor)):'')+'</span>'
+      : '<span style="font-size:10.5px;font-weight:700;color:#94A3B8">Sin remisionar</span>';
     return '<div style="border-top:1px solid #F1F5F9;padding:10px 0">'+
       '<div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="window.__cbToggleEvidencias(\''+p.id+'\')">'+
         '<div><p style="font-size:12.5px;font-weight:700;color:#0A1628;margin:0">'+esc(p.folio||p.id)+'</p>'+
-        '<p style="font-size:10.5px;color:#94A3B8;margin:2px 0 0">'+(fecha?fecha.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}):'—')+' · '+esc(p.estado||'—')+'</p></div>'+
-        '<span style="font-size:11px;font-weight:700;color:#1473E6">'+(abierto?'Ocultar evidencias ▲':'Ver evidencias ▼')+'</span>'+
+        '<p style="font-size:10.5px;color:#94A3B8;margin:2px 0 0">'+(fecha?fecha.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}):'—')+' · '+esc(p.estado||'—')+' · '+remisionBadge+'</p></div>'+
+        '<span style="font-size:11px;font-weight:700;color:#1473E6;white-space:nowrap">'+(abierto?'Ocultar detalle ▲':'Ver detalle ▼')+'</span>'+
       '</div>'+
-      '<div id="cb-evid-'+p.id+'" style="margin-top:8px;'+(abierto?'':'display:none')+'">'+(abierto?'<p style="font-size:11px;color:#94A3B8">Cargando evidencias…</p>':'')+'</div>'+
+      '<div id="cb-evid-'+p.id+'" style="margin-top:8px;'+(abierto?'':'display:none')+'">'+(abierto?'<p style="font-size:11px;color:#94A3B8">Cargando…</p>':'')+'</div>'+
     '</div>';
   }
 
@@ -459,18 +505,39 @@
     if(detalleId) window.__cbCargarDetalleAsync(detalleId);
   };
 
+  function subseccion(titulo, html){
+    return '<div style="margin-bottom:12px"><p style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#94A3B8;margin:0 0 6px">'+titulo+'</p>'+html+'</div>';
+  }
+
   function renderEvidenciasDe(pedidoId){
     var el = document.getElementById('cb-evid-'+pedidoId);
     if(!el) return;
-    cargarEvidenciasPedido(pedidoId).then(function(list){
-      if(!list.length){ el.innerHTML = '<p style="font-size:11px;color:#94A3B8">Sin evidencias en este pedido.</p>'; return; }
-      el.innerHTML = '<div style="display:flex;gap:8px;flex-wrap:wrap">'+list.map(function(ev){
+    Promise.all([cargarHistorialPedido(pedidoId), cargarDocumentosPedido(pedidoId), cargarEvidenciasPedido(pedidoId)]).then(function(r){
+      var hist = r[0], docs = r[1], evid = r[2];
+
+      var histHtml = hist.length ? hist.map(function(h){
+        var t = h.ts && h.ts.seconds ? new Date(h.ts.seconds*1000) : null;
+        return '<div style="font-size:11px;color:#334155;padding:3px 0"><b>'+esc(h.de||'—')+'</b> → <b>'+esc(h.a||'—')+'</b>'+
+          '<span style="color:#94A3B8"> · '+(t?t.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}):'—')+(h.por?(' · '+esc(h.por)):'')+'</span></div>';
+      }).join('') : '<p style="font-size:11px;color:#94A3B8">Sin cambios de estado registrados.</p>';
+
+      var docsHtml = docs.length ? '<div style="display:flex;flex-direction:column;gap:4px">'+docs.map(function(d){
+        return '<a href="'+esc(d.archivo||d.url||'#')+'" target="_blank" style="font-size:11.5px;color:#1473E6;text-decoration:none">📄 '+esc(d.nombre||'Documento')+'</a>';
+      }).join('')+'</div>' : '<p style="font-size:11px;color:#94A3B8">Sin documentos adjuntos.</p>';
+
+      var evidHtml = evid.length ? '<div style="display:flex;gap:8px;flex-wrap:wrap">'+evid.map(function(ev){
         if(ev.tipo==='imagen' && ev.imagen){
           return '<img src="'+esc(ev.imagen)+'" onclick="window.open(this.src)" style="width:64px;height:64px;object-fit:cover;border-radius:8px;cursor:pointer;border:1px solid #E2E8F0">';
         }
         return '<a href="'+esc(ev.url||'#')+'" target="_blank" style="width:64px;height:64px;border-radius:8px;border:1px solid #E2E8F0;background:#F8FAFC;display:flex;flex-direction:column;align-items:center;justify-content:center;text-decoration:none;color:#334155;font-size:9px;text-align:center;padding:2px">'+
           '<span style="font-size:18px">📄</span>'+esc(ev.nombre||'Documento')+'</a>';
-      }).join('')+'</div>';
+      }).join('')+'</div>' : '<p style="font-size:11px;color:#94A3B8">Sin evidencias de entrega.</p>';
+
+      el.innerHTML =
+        subseccion('Seguimiento', histHtml)+
+        subseccion('Documentos adjuntos', docsHtml)+
+        subseccion('Evidencia de entrega', evidHtml)+
+        '<button onclick="window.__cbVerPdfPedido(\''+pedidoId+'\')" style="padding:6px 12px;background:#F1F5F9;color:#0A1628;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer">Ver PDF original del pedido</button>';
     });
   }
 
