@@ -154,6 +154,11 @@
   // ═══════════════════════════════════════════════════════════════════════
   window.tcObtenerPuntosLogisticos = function (opciones) {
     var incluirClientes = !!(opciones && opciones.incluirClientes);
+    // Capa fija del catálogo de paqueterías (puntos_referencia, tipo:'paqueteria') —
+    // a diferencia de la categoría 'paqueteria' de abajo (que solo aparece si hay
+    // un pedido EN CURSO hacia allá), esta capa muestra TODAS las paqueterías
+    // registradas siempre, tengan o no un envío pendiente ahora mismo.
+    var incluirPaqueterias = !!(opciones && opciones.incluirPaqueterias);
     return cargarFirestore().then(function (fs) {
       if (!window.db) return [];
       var ESTADOS_CERRADOS = ['finalizado', 'cancelado', 'entregado'];
@@ -163,9 +168,12 @@
         fs.getDocs(fs.query(fs.collection(window.db, 'recolecciones_locales'), fs.where('estado', 'in', ['pendiente', 'recogido']))),
         incluirClientes
           ? fs.getDocs(fs.collection(window.db, 'ventas_clientes')).catch(function () { return { forEach: function () {} }; })
+          : Promise.resolve({ forEach: function () {} }),
+        incluirPaqueterias
+          ? fs.getDocs(fs.query(fs.collection(window.db, 'puntos_referencia'), fs.where('tipo', '==', 'paqueteria'))).catch(function () { return { forEach: function () {} }; })
           : Promise.resolve({ forEach: function () {} })
       ]).then(function (r) {
-        var snapPedidos = r[0], snapEst = r[1], snapRecol = r[2], snapClientes = r[3];
+        var snapPedidos = r[0], snapEst = r[1], snapRecol = r[2], snapClientes = r[3], snapPaqueterias = r[4];
         var estMap = {};
         snapEst.forEach(function (d) { estMap[d.id] = Object.assign({ id: d.id }, d.data()); });
         var puntos = [];
@@ -259,6 +267,25 @@
               lat: c.lat, lng: c.lng, categoria: 'cliente',
               folio: '', cliente: c.nombre || '—',
               popupHtml: '📍 <b>' + esc(c.nombre || '—') + '</b>' + (c.ciudad ? ('<br>' + esc(c.ciudad)) : '') + (c.sector ? ('<br>' + esc(c.sector)) : '')
+            });
+          });
+        }
+
+        // Capa opcional: TODO el catálogo de paqueterías registradas, siempre
+        // visible — a diferencia de la categoría 'paqueteria' de arriba, que
+        // solo aparece cuando hay un pedido en curso hacia esa dirección. Esta
+        // capa resuelve poder ver en el mapa "dónde están todas mis paqueterías"
+        // sin depender de que haya un envío pendiente.
+        if (incluirPaqueterias) {
+          snapPaqueterias.forEach(function (docu) {
+            var pt = Object.assign({ id: docu.id }, docu.data());
+            if (pt.lat == null || pt.lng == null) return;
+            puntos.push({
+              lat: pt.lat, lng: pt.lng, categoria: 'paqueteria_catalogo',
+              folio: '', cliente: pt.nombre || '—', esCatalogo: true,
+              popupHtml: '📦 <b>' + esc(pt.nombre || '—') + '</b>'
+                + (pt.direccion ? ('<br>' + esc(pt.direccion)) : '')
+                + (pt.telefono ? ('<br>Tel: ' + esc(pt.telefono)) : '')
             });
           });
         }
