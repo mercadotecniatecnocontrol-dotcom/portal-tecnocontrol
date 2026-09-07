@@ -1188,7 +1188,28 @@ async function flRevisarTransferenciasPendientes(){
     }catch(e){console.warn('[FL] flRevisarTransferenciasPendientes 24h',e);}
   }
 }
-async function ldChkSem(){try{const s=await fs.getDocs(fs.query(fs.collection(db,C.CHKSEM),fs.orderBy('creadoEn','desc'),fs.limit(400)));flChkSem=s.docs.map(d=>({id:d.id,...d.data()}));flChkSem.sort((a,b)=>(b.creadoEn||"").localeCompare(a.creadoEn||""));}catch(e){console.warn('[FL] ldChkSem con límite falló, reintentando sin orderBy',e);try{const s2=await fs.getDocs(fs.collection(db,C.CHKSEM));flChkSem=s2.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.creadoEn||"").localeCompare(a.creadoEn||"")).slice(0,400);}catch{flChkSem=[];}}}
+let _unsubChkSem=null;
+let chkSemSelActual=null; // recuerda qué semana está viendo el admin, para no saltarle la vista al llegar un checklist nuevo en vivo
+function ldChkSem(){
+  return new Promise((resolve)=>{
+    if(_unsubChkSem){resolve();return;}
+    try{
+      _unsubChkSem=fs.onSnapshot(fs.query(fs.collection(db,C.CHKSEM),fs.orderBy('creadoEn','desc'),fs.limit(400)),(s)=>{
+        flChkSem=s.docs.map(d=>({id:d.id,...d.data()}));
+        flChkSem.sort((a,b)=>(b.creadoEn||"").localeCompare(a.creadoEn||""));
+        resolve();
+        // Refresca la tabla en vivo si el admin ya la tiene abierta — este era
+        // exactamente el bug reportado: un checklist nuevo (p.ej. ECO 43) no
+        // aparecía hasta recargar la página porque antes esto era una lectura
+        // única (getDocs) en vez de un listener en tiempo real.
+        if(window._flInitDone&&vistaAct==='chksemanal'){
+          const semanas=[...new Set(flChkSem.map(r=>r.semana))].sort().reverse();
+          rChkSemanalTabla(chkSemSelActual&&semanas.includes(chkSemSelActual)?chkSemSelActual:(semanas[0]||getSemanaISOPortal()));
+        }
+      },(err)=>{console.error('[FL] onSnapshot checklist semanal',err);if(!flChkSem)flChkSem=[];resolve();});
+    }catch(e){console.error('[FL] ldChkSem',e);flChkSem=[];resolve();}
+  });
+}
 async function ldCfgSem(){try{const d=await fs.getDoc(fs.doc(db,C.CFG,'checklist_semanal'));flCfgSem=d.exists()?d.data():{};}catch{flCfgSem={};}}
 let _unsubUsos=null;
 function ldUsos(){
@@ -4577,6 +4598,13 @@ window.flEditarVeh=function(id){
             <option value="baja" ${v.status==='baja'?'selected':''}>Baja</option>
           </select>
         </div>
+        <div>
+          <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">¿Requiere check list semanal?</label>
+          <select id="ve-requiereChecklist" style="width:100%;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;outline:none">
+            <option value="si" ${v.requiereChecklist!==false?'selected':''}>Sí</option>
+            <option value="no" ${v.requiereChecklist===false?'selected':''}>No</option>
+          </select>
+        </div>
       </div>
 
       <div style="border-top:1px solid #F1F5F9;padding-top:12px;margin-top:2px">
@@ -4755,6 +4783,7 @@ window.flGuardarEditVeh=async function(id){
     servicioIntervaloKm: Number(get('servicioIntervaloKm'))||null,
     kmUltimoServicio: get('kmUltimoServicio')===''?null:Number(get('kmUltimoServicio')),
     status: document.getElementById('ve-status')?.value||'activo',
+    requiereChecklist: (document.getElementById('ve-requiereChecklist')?.value||'si')==='si',
     gpsInstalado: document.getElementById('ve-gpsInstalado')?.value||'no',
     gpsEstatus: document.getElementById('ve-gpsEstatus')?.value||'activo',
     gpsProveedor: get('gpsProveedor'),
@@ -5514,7 +5543,7 @@ function flDatosResumenChkSem(semSel){
   const regs=flChkSem.filter(r=>r.semana===semSel);
   const porVeh={};
   regs.forEach(r=>{if(!porVeh[r.vehiculoEco]||(r.creadoEn||'')>(porVeh[r.vehiculoEco].creadoEn||''))porVeh[r.vehiculoEco]=r;});
-  return flV.filter(v=>v.status!=='baja').map(v=>{
+  return flV.filter(v=>v.status!=='baja'&&v.requiereChecklist!==false).map(v=>{
     const r=porVeh[String(v.eco)];
     const ok=r?Object.values(r.checklist||{}).filter(x=>x==='si').length:0;
     const no=r?Object.values(r.checklist||{}).filter(x=>x==='no').length:0;
@@ -6436,22 +6465,23 @@ let chkSemFiltroVeh='';
 // automático vuelve a tomar el control.
 function flDiaAutoActivoChecklist(d){
   const dia=(d||new Date()).getDay(); // 0=domingo … 6=sábado
-  return dia===5||dia===6||dia===0||dia===1; // viernes, sábado, domingo, lunes
+  return dia===6||dia===0||dia===1; // sábado, domingo, lunes (ya no viernes)
 }
+// Ya NO activa el check list automáticamente — un administrador tiene que
+// prenderlo a mano cada semana (botón "Activar semana ..." en el panel).
+// Lo único que sigue siendo automático es APAGARLO cuando la ventana
+// sábado–domingo–lunes ya terminó, como red de seguridad por si algún admin
+// lo activó y se le olvidó desactivarlo.
 async function flAutoGestionarChecklistSemanal(){
   if(!hAdm())return; // solo un admin con el portal abierto puede escribir el config
   try{
     const semActual=getSemanaISOPortal();
     const esSemanaVigente=flCfgSem.semana===semActual;
-    // Si ya hubo una decisión manual de un admin para ESTA semana, se respeta
-    // tal cual (encendido o apagado) y el automatismo no la toca.
-    if(esSemanaVigente&&flCfgSem.manualEstaSemana)return;
-    const deseadoAuto=flDiaAutoActivoChecklist();
-    const yaCoincide=esSemanaVigente&&!!flCfgSem.activo===deseadoAuto;
-    if(yaCoincide)return;
-    const datos=deseadoAuto
-      ?{activo:true,semana:semActual,activadoPor:'Automático (vie–lun)',activadoEn:new Date().toISOString(),manualEstaSemana:false}
-      :{activo:false,semana:semActual,desactivadoPor:'Automático (fin de ventana vie–lun)',desactivadoEn:new Date().toISOString(),manualEstaSemana:false};
+    if(esSemanaVigente&&flCfgSem.manualEstaSemana)return; // respeta la decisión manual del admin para esta semana
+    if(!flCfgSem.activo)return; // nunca lo prende solo
+    const dentroDeVentana=esSemanaVigente&&flDiaAutoActivoChecklist();
+    if(dentroDeVentana)return; // sigue dentro de sáb-dom-lun, no hay nada que hacer
+    const datos={activo:false,semana:semActual,desactivadoPor:'Automático (fin de ventana sáb–dom–lun)',desactivadoEn:new Date().toISOString(),manualEstaSemana:false};
     await fs.setDoc(fs.doc(db,C.CFG,'checklist_semanal'),datos,{merge:true});
     flCfgSem={...flCfgSem,...datos};
     if(vistaAct==='chksemanal')rChkSemanal();
@@ -6477,7 +6507,7 @@ function hCfgSemPanel(){
   const semActual=getSemanaISOPortal();
   const esEstaSemana=semCfg===semActual;
   const activadoPor=flCfgSem.activadoPor||'';
-  const esAuto=activadoPor==='Automático (vie–lun)';
+  const esAuto=activadoPor==='Automático (vie–lun)'; // valor histórico, ya no se genera desde ahora
   const activadoEn=flCfgSem.activadoEn?new Date(flCfgSem.activadoEn).toLocaleString('es-MX',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'';
   const enVentana=flDiaAutoActivoChecklist();
 
@@ -6489,13 +6519,13 @@ function hCfgSemPanel(){
             ?`✅ Check list activo — ${semCfg}${esAuto?' (automático vie–lun)':' (activado manualmente)'}`
             :activo&&!esEstaSemana
               ?`⚠️ Activo para ${semCfg} (semana pasada) — desactiva y reactiva`
-              :`🔒 Check list desactivado${enVentana?' (fuera de lo automático — un admin lo apagó esta ventana)':''}`}
+              :`🔒 Check list desactivado${enVentana?' — ventana sáb-dom-lun abierta, actívalo para que los técnicos puedan llenarlo':''}`}
         </div>
         <div style="font-size:11px;color:#64748B;margin-top:3px">
           ${activo&&activadoPor?`Activado por ${esAuto?'el sistema':activadoPor}${activadoEn?' · '+activadoEn:''}`:'Semana actual: '+semActual}
           ${activo&&esEstaSemana?' · Técnicos pueden llenarlo':''}
         </div>
-        <div style="font-size:10px;color:#94A3B8;margin-top:3px">Automático viernes, sábado, domingo y lunes de cada semana · un administrador puede activarlo o desactivarlo manualmente en cualquier momento</div>
+        <div style="font-size:10px;color:#94A3B8;margin-top:3px">Ventana sábado, domingo y lunes de cada semana · un administrador debe activarlo manualmente cada semana (ya no se activa solo) · se apaga automáticamente al terminar la ventana</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-shrink:0">
         ${activo
@@ -6581,6 +6611,7 @@ async function rChkSemanal(){
 }
 
 function rChkSemanalTabla(semSel){
+  chkSemSelActual=semSel;
   const semanas=[...new Set(flChkSem.map(r=>r.semana))].sort().reverse();
   const idx=semanas.indexOf(semSel);
   let regs=flChkSem.filter(r=>r.semana===semSel);
@@ -6589,7 +6620,7 @@ function rChkSemanalTabla(semSel){
   const porVeh={};
   regs.forEach(r=>{if(!porVeh[r.vehiculoEco]||(r.creadoEn||'')>(porVeh[r.vehiculoEco].creadoEn||''))porVeh[r.vehiculoEco]=r;});
   const ecos=Object.keys(porVeh).sort((a,b)=>Number(a)-Number(b));
-  const vehsSinRegistro=flV.filter(v=>v.status!=='baja'&&!ecos.includes(String(v.eco))&&(!chkSemFiltroVeh||String(v.eco)===String(chkSemFiltroVeh)));
+  const vehsSinRegistro=flV.filter(v=>v.status!=='baja'&&v.requiereChecklist!==false&&!ecos.includes(String(v.eco))&&(!chkSemFiltroVeh||String(v.eco)===String(chkSemFiltroVeh)));
 
   const okCount=r=>Object.values(r.checklist||{}).filter(v=>v==='si').length;
   const noCount=r=>Object.values(r.checklist||{}).filter(v=>v==='no').length;
@@ -6656,7 +6687,7 @@ function rChkSemanalTabla(semSel){
     </button>
     <select onchange="chkSemFiltroVeh=this.value;rChkSemanalTabla('${semSel}')" style="margin-left:auto;padding:6px 10px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px">
       <option value="">Todos los vehículos</option>
-      ${flV.filter(v=>v.status!=='baja').map(v=>`<option value="${v.eco}" ${String(v.eco)===String(chkSemFiltroVeh)?'selected':''}>ECO ${v.eco} · ${v.unidad||''}</option>`).join('')}
+      ${flV.filter(v=>v.status!=='baja'&&v.requiereChecklist!==false).map(v=>`<option value="${v.eco}" ${String(v.eco)===String(chkSemFiltroVeh)?'selected':''}>ECO ${v.eco} · ${v.unidad||''}</option>`).join('')}
     </select>
   </div>`;
 
