@@ -1540,7 +1540,7 @@ window.fmCambiarUnidad=async function(){
         </div>
         <div style="flex:1;min-width:0">
           <div style="font-size:13px;font-weight:800;color:#9A3412">${v.unidad||'—'} — En transferencia</div>
-          <div style="font-size:10.5px;color:#C2410C;margin-top:1px">ECO ${v.eco} · Pendiente de recepción por el destinatario</div>
+          <div style="font-size:10.5px;color:#C2410C;margin-top:1px">ECO ${v.eco} · Para: ${miPerfil?.transferenciaPendienteReceptor||'—'} · Código ${miPerfil?.transferenciaPendiente||'—'}</div>
         </div>
         <span style="font-size:9px;font-weight:700;color:#EA580C;background:#FFEDD5;border-radius:6px;padding:3px 7px;white-space:nowrap">Pendiente</span>
       </div>`;
@@ -1561,7 +1561,7 @@ window.fmCambiarUnidad=async function(){
 window.fmUsarUnidad=async function(eco){
   // Bloquear si el ECO tiene una transferencia pendiente de confirmación
   if(miPerfil?.transferenciaPendienteEco&&String(eco)===String(miPerfil.transferenciaPendienteEco)){
-    toast(`ECO ${eco} tiene una transferencia pendiente — espera a que el receptor confirme con su firma`,'err');
+    toast(`ECO ${eco} tiene una transferencia pendiente para ${miPerfil?.transferenciaPendienteReceptor||'el destinatario'} (código ${miPerfil?.transferenciaPendiente||'—'}) — espera a que confirme con su firma`,'err');
     return;
   }
   const v=await cargarVehiculoPorEco(eco);
@@ -2467,6 +2467,7 @@ window.fmGuardarChkSemanal=async function(){
       km:km||String(miVeh.km||0),
       gasolina:semState.gasolina,
       checklist:semState.chk,          // solo SI/NO por ítem — muy ligero
+      chkComentarios:semState.chkComt||{}, // texto "Describe el problema" por ítem marcado NO — antes se capturaba en pantalla pero nunca se guardaba
       chkFotosKeys:Object.keys(semState.chkFotos||{}), // solo lista de claves con foto
       numEvidencias:(semState.evFotos||[]).length,
       observaciones,
@@ -2480,6 +2481,7 @@ window.fmGuardarChkSemanal=async function(){
 
     // ── Subcolección de fotos (un doc por foto, sin límite de 1MB) ──
     const fotosCount=Object.keys(semState.chkFotos||{}).length+(semState.evFotos||[]).length;
+    var fotosFallidas=0;
     if(fotosCount>0){
       if(btn)btn.textContent=`Subiendo ${fotosCount} fotos…`;
       const fotosRef=db.collection(C.CHKSEM).doc(ref.id).collection('fotos');
@@ -2507,8 +2509,16 @@ window.fmGuardarChkSemanal=async function(){
         );
       }
 
-      // Subir todas en paralelo
-      await Promise.allSettled(uploads);
+      // Subir todas en paralelo — antes se ignoraban los fallos por completo
+      // (Promise.allSettled nunca lanza error aunque una foto falle al subir),
+      // así que un check list podía guardarse "con éxito" sin ninguna de sus
+      // fotos. Ahora si algo falla, queda registrado y se avisa al técnico.
+      const resultadosFotos=await Promise.allSettled(uploads);
+      fotosFallidas=resultadosFotos.filter(x=>x.status==='rejected').length;
+      if(fotosFallidas>0){
+        console.warn('[FM chksem] fotos que fallaron:',fotosFallidas,'de',resultadosFotos.length);
+        flRegistrarEvento('error',{mensaje:`Check list semanal guardado pero ${fotosFallidas} de ${resultadosFotos.length} fotos no se subieron (ECO ${doc.vehiculoEco})`});
+      }
     }
 
     // Actualizar KM del vehículo
@@ -2531,18 +2541,31 @@ window.fmGuardarChkSemanal=async function(){
       }).catch(()=>{})));
     }catch(e){console.warn('[FM chksem] notificación admins',e);}
 
-    // WhatsApp — se abre con el mensaje ya redactado; el técnico elige a quién
-    // mandárselo (grupo de Flotilla, admin, etc.) y solo le da Enviar. Mismo
-    // patrón wa.me que ya usa el resto de la app para compartir.
-    try{
-      const waTxt=`✅ *Check list semanal completado*\nECO ${doc.vehiculoEco} · ${doc.vehiculo||''}\nTécnico: ${doc.tecnico}\nSemana ${semana}\n${conDetalles>0?`⚠ ${conDetalles} detalle(s) marcados con NO`:'Todo en buen estado'}`;
-      window.open('https://wa.me/?text='+encodeURIComponent(waTxt),'_blank');
-    }catch(e){console.warn('[FM chksem] whatsapp',e);}
-
     window._semChkCache[cacheKey]=true;
-    toast('Check list semanal guardado ✓','ok');
     _draftClear(_DRAFT.SEM);
     semState={km:'',gasolina:50,chk:{},chkFotos:{},evFotos:[],observaciones:'',firma:null,yaExiste:false};
+
+    // Pantalla de confirmación con botón real de WhatsApp — un window.open()
+    // automático aquí puede ser bloqueado por el navegador (ya pasó varias
+    // veces varios segundos después del toque original), así que en vez de
+    // abrir solo, se muestra un botón que el técnico toca directamente.
+    const waTxt=`✅ *Check list semanal completado*\nECO ${doc.vehiculoEco} · ${doc.vehiculo||''}\nTécnico: ${doc.tecnico}\nSemana ${semana}\n${conDetalles>0?`⚠ ${conDetalles} detalle(s) marcados con NO`:'Todo en buen estado'}`;
+    const ov=document.createElement('div');
+    ov.className='fm-chk-success-ov';
+    ov.style.cssText='position:fixed;inset:0;background:rgba(10,22,40,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    ov.innerHTML=`<div style="background:#fff;border-radius:16px;padding:24px 20px;max-width:340px;width:100%;text-align:center">
+      <div style="font-size:40px;margin-bottom:8px">✅</div>
+      <div style="font-size:16px;font-weight:800;color:#0A1628;margin-bottom:4px">Check list guardado</div>
+      <div style="font-size:12px;color:#64748B;margin-bottom:${fotosFallidas>0?'6px':'18px'}">ECO ${doc.vehiculoEco} · Semana ${semana}</div>
+      ${fotosFallidas>0?`<div style="font-size:11.5px;color:#B45309;background:#FFFBEB;border-radius:8px;padding:8px 10px;margin-bottom:18px">⚠ ${fotosFallidas} foto(s) no se pudieron subir — revisa tu conexión y vuelve a intentar desde el historial si es importante.</div>`:''}
+      <button onclick="window.open('https://wa.me/?text=${encodeURIComponent(waTxt)}','_blank');this.closest('.fm-chk-success-ov').remove();" style="width:100%;padding:12px;background:#25D366;color:#fff;border:none;border-radius:10px;font-weight:800;font-size:13px;cursor:pointer;margin-bottom:8px;display:flex;align-items:center;justify-content:center;gap:8px">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 2C6.477 2 2 6.477 2 12c0 1.821.487 3.53 1.338 5.002L2 22l5.13-1.318C8.552 21.514 10.226 22 12 22c5.523 0 10-4.477 10-10S17.523 2 12 2zm0 18c-1.617 0-3.116-.475-4.379-1.291l-.314-.187-3.043.782.813-2.968-.205-.305A7.936 7.936 0 014 12c0-4.411 3.589-8 8-8s8 3.589 8 8-3.589 8-8 8z"/></svg>
+        Enviar por WhatsApp
+      </button>
+      <button onclick="this.closest('.fm-chk-success-ov').remove()" style="width:100%;padding:11px;background:#F1F5F9;color:#475569;border:none;border-radius:10px;font-weight:700;font-size:12.5px;cursor:pointer">Cerrar</button>
+    </div>`;
+    document.body.appendChild(ov);
+
     fmVista('vehiculo');
   }catch(e){
     console.error('[FM chksem]',e);
@@ -4151,12 +4174,14 @@ window.utilConfirmarFirma=async function(){
           transferenciaPendiente:codigo,
           transferenciaPendienteEco:docObj.vehiculoEco,
           transferenciaPendienteEn:now.toISOString(),
+          transferenciaPendienteReceptor:docObj.receptorNombre||docObj.receptorEmail||'',
         });
       }
       // Actualizar en memoria — vehículo sigue vinculado pero marcado como "pendiente"
       if(miPerfil){
         miPerfil.transferenciaPendiente=codigo;
         miPerfil.transferenciaPendienteEco=docObj.vehiculoEco;
+        miPerfil.transferenciaPendienteReceptor=docObj.receptorNombre||docObj.receptorEmail||'';
       }
       // Notificar — ANTES esta notificación no tenía "para" en absoluto, así
       // que no llegaba al inbox de nadie. Ahora sí llega directo al técnico
@@ -4204,6 +4229,7 @@ window.utilConfirmarFirma=async function(){
               ecoEntregado:ecoRecibido,
               transferenciaPendiente:null,
               transferenciaPendienteEco:null,
+              transferenciaPendienteReceptor:null,
             });
           }
         }
