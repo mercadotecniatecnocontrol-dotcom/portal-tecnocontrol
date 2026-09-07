@@ -767,6 +767,7 @@
     var box=document.getElementById('alm-modal-hist-box');
     box.classList.add('wide');
     box.innerHTML = '<h4>📦 Catálogo de paqueterías<button onclick="window.__almCerrarModal()">&times;</button></h4>'
+      + '<div style="font-size:11px;color:#64748b;margin:-6px 0 10px;">Toca una paquetería para ver o editar su ficha completa (teléfono, correo, fotos del local…).</div>'
       + '<div id="alm-paq-lista" style="max-height:260px;overflow-y:auto;margin-bottom:14px;"><div class="alm-empty">Cargando…</div></div>'
       + '<div style="border-top:1px dashed #e2e8f0;padding-top:12px;">'
       +   '<div style="font-weight:700;font-size:12.5px;color:#1e293b;margin-bottom:8px;">+ Registrar paquetería nueva</div>'
@@ -775,12 +776,23 @@
       +   '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;">'
       +     '<button type="button" class="alm-evid-add" onclick="window.__almPaqAgregar()">📍 Geocodificar por dirección</button>'
       +     '<button type="button" class="alm-evid-add" onclick="window.__almPaqMostrarMapa()">🗺️ Marcar en mapa</button>'
+      +     '<button type="button" class="alm-evid-add" onclick="window.__almPaqAbrirEnGoogleMaps()">🔗 Buscar en Google Maps</button>'
       +   '</div>'
       +   '<div id="alm-paq-mapa-wrap"></div>'
+      +   '<div class="alm-destino-fld" style="margin-top:6px;">'
+      +     '<label style="font-size:10.5px;color:#64748b;">¿La dirección no dio con el punto exacto? Abre "Buscar en Google Maps", copia las coordenadas del pin y pégalas aquí:</label>'
+      +     '<input id="alm-paq-coord-pegada" placeholder="Ej. 28.63530, -106.08890" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;box-sizing:border-box;margin-top:4px;">'
+      +   '</div>'
       +   '<div id="alm-paq-msg" style="font-size:11.5px;margin-top:6px;"></div>'
       + '</div>';
     document.getElementById('alm-modal-hist').classList.add('show');
     __almPaqRenderLista();
+  };
+
+  window.__almPaqAbrirEnGoogleMaps = function(){
+    var dir = (document.getElementById('alm-paq-dir')||{}).value || '';
+    var url = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent((dir||'') + ', Chihuahua, México');
+    window.open(url, '_blank');
   };
 
   var _almPaqCoordManual = null;
@@ -813,14 +825,168 @@
       var cont2 = document.getElementById('alm-paq-lista'); if (!cont2) return;
       var paqs = lista.filter(function(p){ return p.tipo === 'paqueteria'; });
       cont2.innerHTML = paqs.length ? paqs.map(function(p){
-        return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid #f1f5f9;">'
-          + '<div style="min-width:0;"><div style="font-weight:700;font-size:12.5px;color:#1e293b;">'+esc(p.nombre)+'</div>'
-          +   '<div style="font-size:11px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(p.direccion||'Sin dirección')+'</div></div>'
-          + '<button type="button" onclick="window.__almPaqEliminar(\''+p.id+'\')" style="flex-shrink:0;background:#fef2f2;border:none;color:#dc2626;padding:5px 9px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:700;">Eliminar</button>'
+        var foto = (p.fotos && p.fotos[0]) ? '<img src="'+esc(p.fotos[0])+'" style="width:38px;height:38px;border-radius:8px;object-fit:cover;flex-shrink:0;">'
+          : '<div style="width:38px;height:38px;border-radius:8px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#94a3b8;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg></div>';
+        return '<div class="alm-paq-card" onclick="window.__almPaqAbrirPerfil(\''+p.id+'\')" style="display:flex;align-items:center;gap:10px;padding:8px 6px;border-bottom:1px solid #f1f5f9;cursor:pointer;border-radius:8px;">'
+          + foto
+          + '<div style="min-width:0;flex:1;"><div style="font-weight:700;font-size:12.5px;color:#1e293b;">'+esc(p.nombre)+'</div>'
+          +   '<div style="font-size:11px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(p.telefono ? p.telefono+' · ' : '')+esc(p.direccion||'Sin dirección')+'</div></div>'
+          +   '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><polyline points="9 18 15 12 9 6"/></svg>'
           + '</div>';
       }).join('') : '<div class="alm-empty">Aún no hay paqueterías registradas.</div>';
+      cont2.querySelectorAll('.alm-paq-card').forEach(function(el){
+        el.onmouseenter = function(){ el.style.background = '#f8fafc'; };
+        el.onmouseleave = function(){ el.style.background = ''; };
+      });
     });
   }
+
+  // ── Ficha de perfil completo de una paquetería: editable, con fotos del
+  //    local, teléfono/correo con acceso directo (WhatsApp / mailto) y notas
+  //    — mismo espíritu que la ficha de cliente en Ventas. ──
+  var _almPaqPerfil = null; // { id, datos, fotos:[...], coordManual:{lat,lng}|null }
+  window.__almPaqAbrirPerfil = function(id){
+    window.tcCargarCatalogoPuntos().then(function(lista){
+      var p = lista.find(function(x){ return x.id === id; });
+      if (!p){ if (window.mostrarPush) window.mostrarPush('Almacén','No se encontró esa paquetería.','⚠️'); return; }
+      _almPaqPerfil = { id: id, fotos: (p.fotos||[]).slice(), coordManual: null };
+      var box = document.getElementById('alm-modal-hist-box');
+      box.classList.add('wide');
+      box.innerHTML = '<h4>📦 Ficha de paquetería<button onclick="window.__almCerrarModal()">&times;</button></h4>'
+        + '<div id="alm-paqp-fotos" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;"></div>'
+        + '<button type="button" class="alm-evid-add" onclick="window.__almPaqPerfilFotoAgregar()">+ Agregar foto del local (máx. 3)</button>'
+        + '<input type="file" id="alm-paqp-foto-file" accept="image/*" style="display:none">'
+        + '<div style="border-top:1px dashed #e2e8f0;margin:12px 0;"></div>'
+        + campoPaq('Nombre', 'alm-paqp-nombre', p.nombre)
+        + '<div class="alm-destino-fld"><label>Tipo</label><select id="alm-paqp-tipo" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;box-sizing:border-box;">'
+        +   ['paqueteria','plaza','almacen','oficina','otro'].map(function(t){ return '<option value="'+t+'"'+(p.tipo===t?' selected':'')+'>'+esc(tipoPuntoLabelAlm(t))+'</option>'; }).join('')
+        + '</select></div>'
+        + campoPaq('Dirección', 'alm-paqp-dir', p.direccion)
+        + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0;">'
+        +   '<button type="button" class="alm-evid-add" onclick="window.__almPaqPerfilGeocodificar()">📍 Geocodificar por dirección</button>'
+        +   '<button type="button" class="alm-evid-add" onclick="window.__almPaqPerfilMostrarMapa()">🗺️ Marcar en mapa</button>'
+        +   '<button type="button" class="alm-evid-add" onclick="window.__almPaqPerfilAbrirGoogleMaps()">🔗 Buscar en Google Maps</button>'
+        + '</div>'
+        + '<div id="alm-paqp-mapa-wrap"></div>'
+        + campoPaq('Pegar coordenada de Google Maps (opcional)', 'alm-paqp-coord-pegada', '', 'Ej. 28.63530, -106.08890')
+        + '<div id="alm-paqp-coord-msg" style="font-size:11px;color:'+(p.lat!=null?'#16a34a':'#dc2626')+';margin:2px 0 8px;">'+(p.lat!=null?('✓ Ubicación guardada: '+p.lat.toFixed(5)+', '+p.lng.toFixed(5)):'Sin coordenada guardada todavía.')+'</div>'
+        + campoPaq('Teléfono', 'alm-paqp-tel', p.telefono, 'Ej. 6141234567')
+        + campoPaq('Correo', 'alm-paqp-correo', p.correo, 'contacto@paqueteria.com')
+        + '<div class="alm-destino-fld"><label>Notas</label><textarea id="alm-paqp-notas" rows="2" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;box-sizing:border-box;resize:vertical;" placeholder="Horario, referencias del local, con quién preguntar…">'+esc(p.notas||'')+'</textarea></div>'
+        + '<div id="alm-paqp-contacto" style="display:flex;gap:8px;margin:6px 0 12px;"></div>'
+        + '<div id="alm-paqp-msg" style="font-size:11.5px;margin-bottom:8px;"></div>'
+        + '<div style="display:flex;gap:8px;flex-wrap:wrap;">'
+        +   '<button type="button" class="alm-evid-add alm-btn-ok" onclick="window.__almPaqPerfilGuardar()">Guardar cambios</button>'
+        +   '<button type="button" onclick="window.__almPaqEliminar(\''+id+'\', true)" style="background:#fef2f2;border:none;color:#dc2626;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700;">Eliminar del catálogo</button>'
+        + '</div>';
+      document.getElementById('alm-modal-hist').classList.add('show');
+      _almPaqPerfilRenderFotos();
+      _almPaqPerfilRenderContacto(p.telefono, p.correo);
+    });
+  };
+
+  function campoPaq(label, id, valor, placeholder){
+    return '<div class="alm-destino-fld"><label>'+esc(label)+'</label><input id="'+id+'" value="'+esc(valor||'')+'" placeholder="'+esc(placeholder||'')+'" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;box-sizing:border-box;"></div>';
+  }
+  function tipoPuntoLabelAlm(t){
+    return { paqueteria:'Paquetería', plaza:'Plaza', almacen:'Almacén propio', oficina:'Oficina', otro:'Otro' }[t] || 'Otro';
+  }
+
+  function _almPaqPerfilRenderFotos(){
+    var cont = document.getElementById('alm-paqp-fotos'); if (!cont || !_almPaqPerfil) return;
+    cont.innerHTML = _almPaqPerfil.fotos.map(function(f, i){
+      return '<div style="position:relative;"><img src="'+esc(f)+'" style="width:64px;height:64px;border-radius:8px;object-fit:cover;">'
+        + '<button type="button" onclick="window.__almPaqPerfilFotoQuitar('+i+')" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:#dc2626;color:#fff;border:2px solid #fff;font-size:12px;line-height:1;cursor:pointer;">&times;</button></div>';
+    }).join('') + (_almPaqPerfil.fotos.length === 0 ? '<div style="font-size:11px;color:#94a3b8;">Sin fotos todavía.</div>' : '');
+  }
+  window.__almPaqPerfilFotoAgregar = function(){
+    if (!_almPaqPerfil) return;
+    if (_almPaqPerfil.fotos.length >= 3){ if (window.mostrarPush) window.mostrarPush('Almacén','Máximo 3 fotos por paquetería.','⚠️'); return; }
+    var input = document.getElementById('alm-paqp-foto-file'); if (!input) return;
+    input.onchange = function(){
+      var file = input.files && input.files[0]; input.value = '';
+      if (!file) return;
+      comprimirImagen(file).then(function(dataUrl){
+        _almPaqPerfil.fotos.push(dataUrl);
+        _almPaqPerfilRenderFotos();
+      }).catch(function(err){ console.error('[almacen] foto paquetería:', err); });
+    };
+    input.click();
+  };
+  window.__almPaqPerfilFotoQuitar = function(i){
+    if (!_almPaqPerfil) return;
+    _almPaqPerfil.fotos.splice(i, 1);
+    _almPaqPerfilRenderFotos();
+  };
+
+  function _almPaqPerfilRenderContacto(tel, correo){
+    var cont = document.getElementById('alm-paqp-contacto'); if (!cont) return;
+    var html = '';
+    if (tel) html += '<a href="https://wa.me/52'+esc(String(tel).replace(/\D/g,''))+'" target="_blank" style="background:#25D366;color:#fff;padding:8px 14px;border-radius:8px;text-decoration:none;font-size:12.5px;font-weight:600;">💬 WhatsApp</a>';
+    if (correo) html += '<a href="mailto:'+esc(correo)+'" style="background:#0ea5e9;color:#fff;padding:8px 14px;border-radius:8px;text-decoration:none;font-size:12.5px;font-weight:600;">✉️ Correo</a>';
+    cont.innerHTML = html;
+  }
+
+  window.__almPaqPerfilAbrirGoogleMaps = function(){
+    var dir = (document.getElementById('alm-paqp-dir')||{}).value || '';
+    window.open('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent((dir||'') + ', Chihuahua, México'), '_blank');
+  };
+  window.__almPaqPerfilGeocodificar = function(){
+    var dir = (document.getElementById('alm-paqp-dir')||{}).value || '';
+    var msgEl = document.getElementById('alm-paqp-coord-msg');
+    if (!dir){ if (msgEl){ msgEl.textContent = 'Escribe la dirección primero.'; msgEl.style.color = '#dc2626'; } return; }
+    if (msgEl){ msgEl.textContent = 'Buscando coordenada…'; msgEl.style.color = '#0e7490'; }
+    window.tcGeocodificarDireccion(dir).then(function(coord){
+      if (!coord){ if (msgEl){ msgEl.textContent = 'No se encontró — usa "Buscar en Google Maps" y pega la coordenada, o marca el punto en el mapa.'; msgEl.style.color = '#dc2626'; } return; }
+      _almPaqPerfil.coordManual = { lat: coord.lat, lng: coord.lng };
+      if (msgEl){ msgEl.textContent = '✓ Coordenada encontrada: ' + coord.lat.toFixed(5) + ', ' + coord.lng.toFixed(5); msgEl.style.color = '#16a34a'; }
+    });
+  };
+  window.__almPaqPerfilMostrarMapa = function(){
+    var wrap = document.getElementById('alm-paqp-mapa-wrap'); if (!wrap) return;
+    wrap.innerHTML = '<div id="alm-paqp-mapa" style="height:220px;border-radius:10px;overflow:hidden;margin-top:6px;"></div><div style="font-size:10.5px;color:#64748b;margin-top:4px;">Toca el mapa para marcar el punto exacto (se puede arrastrar el pin).</div>';
+    cargarLeafletAlm().then(function(){
+      var centro = _almPaqPerfil.coordManual ? [_almPaqPerfil.coordManual.lat, _almPaqPerfil.coordManual.lng] : [28.6353, -106.0889];
+      var mapa = L.map('alm-paqp-mapa').setView(centro, 12);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapa);
+      var marcador = L.marker(centro, { draggable:true }).addTo(mapa);
+      function actualizar(latlng){
+        _almPaqPerfil.coordManual = { lat: latlng.lat, lng: latlng.lng };
+        var msgEl = document.getElementById('alm-paqp-coord-msg');
+        if (msgEl){ msgEl.textContent = '✓ Punto marcado: ' + latlng.lat.toFixed(5) + ', ' + latlng.lng.toFixed(5); msgEl.style.color = '#16a34a'; }
+      }
+      marcador.on('dragend', function(){ actualizar(marcador.getLatLng()); });
+      mapa.on('click', function(e){ marcador.setLatLng(e.latlng); actualizar(e.latlng); });
+      setTimeout(function(){ mapa.invalidateSize(); }, 80);
+    }).catch(function(err){
+      wrap.innerHTML = '<div style="font-size:11px;color:#dc2626;">No se pudo cargar el mapa: '+(err&&err.message||err)+'</div>';
+    });
+  };
+
+  window.__almPaqPerfilGuardar = function(){
+    if (!_almPaqPerfil) return;
+    var nombre = (document.getElementById('alm-paqp-nombre')||{}).value.trim();
+    var tipo = (document.getElementById('alm-paqp-tipo')||{}).value || 'paqueteria';
+    var direccion = (document.getElementById('alm-paqp-dir')||{}).value.trim();
+    var telefono = (document.getElementById('alm-paqp-tel')||{}).value.trim();
+    var correo = (document.getElementById('alm-paqp-correo')||{}).value.trim();
+    var notas = (document.getElementById('alm-paqp-notas')||{}).value.trim();
+    var msgEl = document.getElementById('alm-paqp-msg');
+    if (!nombre){ if (msgEl){ msgEl.textContent = 'Falta el nombre.'; msgEl.style.color = '#dc2626'; } return; }
+    var coordPegada = window.tcParsearCoordenadas ? window.tcParsearCoordenadas((document.getElementById('alm-paqp-coord-pegada')||{}).value) : null;
+    var coord = coordPegada || _almPaqPerfil.coordManual; // solo se actualiza la coordenada si el usuario tocó algo; si no, se conserva la que ya tenía
+    var datos = { nombre: nombre, tipo: tipo, direccion: direccion, telefono: telefono, correo: correo, notas: notas, fotos: _almPaqPerfil.fotos };
+    if (coord){ datos.lat = coord.lat; datos.lng = coord.lng; }
+    if (msgEl){ msgEl.textContent = 'Guardando…'; msgEl.style.color = '#0e7490'; }
+    window.tcActualizarPunto(_almPaqPerfil.id, datos).then(function(){
+      if (window.__almInvalidarCachePuntos) window.__almInvalidarCachePuntos();
+      if (msgEl){ msgEl.textContent = '✓ Cambios guardados.'; msgEl.style.color = '#16a34a'; }
+      _almPaqPerfilRenderContacto(telefono, correo);
+    }).catch(function(err){
+      console.error('[almacen] guardar perfil paquetería:', err);
+      if (msgEl){ msgEl.textContent = 'No se pudo guardar: ' + (err && err.message || err); msgEl.style.color = '#dc2626'; }
+    });
+  };
 
   window.__almPaqAgregar = function(){
     var nombre = (document.getElementById('alm-paq-nombre')||{}).value || '';
@@ -828,8 +994,10 @@
     nombre = nombre.trim(); direccion = direccion.trim();
     var msgEl = document.getElementById('alm-paq-msg');
     if (!nombre){ if (msgEl){ msgEl.textContent = 'Falta el nombre.'; msgEl.style.color = '#dc2626'; } return; }
-    // Si ya se marcó un punto en el mapa, se usa ese en vez de geocodificar la dirección escrita.
-    var coordPromesa = _almPaqCoordManual ? Promise.resolve(_almPaqCoordManual) : (function(){
+    // Prioridad: 1) coordenada pegada de Google Maps (la más confiable) →
+    // 2) punto marcado a mano en el mini-mapa → 3) geocodificar la dirección escrita.
+    var coordPegada = window.tcParsearCoordenadas ? window.tcParsearCoordenadas((document.getElementById('alm-paq-coord-pegada')||{}).value) : null;
+    var coordPromesa = coordPegada ? Promise.resolve(coordPegada) : _almPaqCoordManual ? Promise.resolve(_almPaqCoordManual) : (function(){
       if (!direccion){ if (msgEl){ msgEl.textContent = 'Falta la dirección (o marca el punto en el mapa).'; msgEl.style.color = '#dc2626'; } return Promise.resolve(null); }
       if (msgEl){ msgEl.textContent = 'Geocodificando…'; msgEl.style.color = '#0e7490'; }
       return window.tcGeocodificarDireccion(direccion);
@@ -847,6 +1015,7 @@
         _almPaqCoordManual = null;
         document.getElementById('alm-paq-nombre').value = '';
         document.getElementById('alm-paq-dir').value = '';
+        var coordEl = document.getElementById('alm-paq-coord-pegada'); if (coordEl) coordEl.value = '';
         document.getElementById('alm-paq-mapa-wrap').innerHTML = '';
         if (msgEl){ msgEl.textContent = '✓ Guardada'; msgEl.style.color = '#16a34a'; }
         __almPaqRenderLista();
@@ -857,14 +1026,14 @@
     });
   };
 
-  window.__almPaqEliminar = function(id){
+  window.__almPaqEliminar = function(id, desdePerfil){
     if (!confirm('¿Eliminar esta paquetería del catálogo?')) return;
     cargarFirestore().then(function(fs){
       if (!window.db) throw new Error('Firestore no disponible');
       return fs.deleteDoc(fs.doc(window.db,'puntos_referencia',id));
     }).then(function(){
       if (window.__almInvalidarCachePuntos) window.__almInvalidarCachePuntos();
-      __almPaqRenderLista();
+      if (desdePerfil) window.__almAbrirPaqueterias(); else __almPaqRenderLista();
     }).catch(function(err){
       console.error('[almacen] paqueteria eliminar:', err);
       if (window.mostrarPush) window.mostrarPush('Almacén','No se pudo eliminar','⚠️');
