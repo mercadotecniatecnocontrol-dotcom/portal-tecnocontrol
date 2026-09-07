@@ -2516,6 +2516,21 @@ window.fmGuardarChkSemanal=async function(){
       try{await db.collection(C.VEHS).doc(miVeh.id).update({km:Number(km)});}catch{}
     }
 
+    // Notificación dentro de la plataforma a los admins de Flotilla — igual
+    // que ya se hace con las transferencias. Los detalles (SI/NO por punto)
+    // ya avisan si hay algo qué revisar.
+    try{
+      const totalItems=Object.keys(doc.checklist||{}).length;
+      const okItems=Object.values(doc.checklist||{}).filter(v=>v==='si').length;
+      const conDetalles=totalItems-okItems;
+      await Promise.all(ADMINS_FLOTILLA.map(email=>db.collection('flotilla_notificaciones').add({
+        tipo:'checklist_completado',vehiculoEco:doc.vehiculoEco,semana,
+        para:email,
+        mensaje:`${doc.tecnico} completó el check list semanal del ECO ${doc.vehiculoEco} (${doc.vehiculo||''})${conDetalles>0?` — ${conDetalles} detalle(s) marcados con NO`:' — todo en buen estado'}.`,
+        leido:false,creadaEn:new Date().toISOString(),
+      }).catch(()=>{})));
+    }catch(e){console.warn('[FM chksem] notificación admins',e);}
+
     window._semChkCache[cacheKey]=true;
     toast('Check list semanal guardado ✓','ok');
     _draftClear(_DRAFT.SEM);
