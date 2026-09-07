@@ -136,6 +136,37 @@
   function tipoPuntoLabel(t){
     return { paqueteria:'Paquetería', plaza:'Plaza', almacen:'Almacén', oficina:'Oficina', otro:'Otro' }[t] || 'Otro';
   }
+  // Edita un punto ya existente del catálogo (perfil completo: teléfono, correo,
+  // notas, fotos...), a diferencia de guardarPuntoNuevo que solo da de alta.
+  function actualizarPunto(id, datos){
+    return cargarFirestore().then(function(fs){
+      if (!window.db) return Promise.reject(new Error('Firestore no disponible'));
+      var yo = (window.auth && window.auth.currentUser && window.auth.currentUser.email) || '';
+      var nombreQuienGuarda = (window.nombreUsuario ? window.nombreUsuario(yo) : '') || yo || '—';
+      return fs.updateDoc(fs.doc(window.db,'puntos_referencia', id), Object.assign({
+        actualizadoPor: String(nombreQuienGuarda||''),
+        actualizadoEn: new Date().toISOString()
+      }, datos)).then(function(){
+        _puntosCache = null;
+      });
+    });
+  }
+  window.tcActualizarPunto = function(id, datos){ return actualizarPunto(id, datos); };
+  // Reconoce una coordenada pegada desde Google Maps: "28.6353, -106.0889",
+  // una URL con "@lat,lng" o "?q=lat,lng", etc. Nominatim (gratis) suele fallar
+  // con direcciones de Chihuahua; este atajo deja usar el pin real de Google
+  // Maps sin necesitar una API de pago: el usuario busca la dirección en Maps,
+  // copia las coordenadas del pin y las pega aquí.
+  function parsearCoordenadasPegadas(texto){
+    texto = String(texto || '').trim();
+    if (!texto) return null;
+    var m = texto.match(/(-?\d{1,3}\.\d+)\s*[,\s]\s*(-?\d{1,3}\.\d+)/);
+    if (!m) return null;
+    var lat = parseFloat(m[1]), lng = parseFloat(m[2]);
+    if (isNaN(lat) || isNaN(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+    return { lat: lat, lng: lng };
+  }
+  window.tcParsearCoordenadas = function(texto){ return parsearCoordenadasPegadas(texto); };
   // Geocodificación por dirección. Reusa la utilidad ya expuesta por Ventas si
   // está cargada en la página; si no, hace la consulta directo contra Nominatim.
   function geocodificarDireccion(direccion){
