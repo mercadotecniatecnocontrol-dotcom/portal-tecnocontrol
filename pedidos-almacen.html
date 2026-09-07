@@ -182,6 +182,10 @@ function tvBuscarAlmacen(nombre){
 const COLOR_PAQ_ENVIO = '#F26B21';      // se lleva a sucursal/oficina de la paquetería
 const COLOR_PAQ_RECOLECCION = '#EC4899'; // la paquetería pasa a recoger al almacén
 let tvMiniMapa = null, tvMiniMapaMarkers = [], tvMiniMapaLineas = [];
+// Catálogo de paqueterías registradas (puntos_referencia, tipo:'paqueteria') —
+// capa fija, independiente de si hay o no un pedido en curso hacia allá.
+// Poblada por onSnapshot más abajo, igual que `pedidos` y `recolecciones`.
+let puntosCatalogoPaqueterias = [];
 // Camioncito animado sobre cada línea de ruta — puramente visual (interpola en
 // línea recta origen→destino), no reemplaza ni simula la posición real del
 // vehículo. Si algún día hay GPS real del repartidor, eso debe tener prioridad
@@ -193,6 +197,14 @@ function tvIconoCamion(color){
   return L.divIcon({className:'', html:'<div style="width:22px;height:22px;background:'+c+';border-radius:6px;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.4);">'
     + '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></div>',
     iconSize:[22,22], iconAnchor:[11,11]});
+}
+// Ícono fijo de "cajita" para el catálogo de paqueterías registradas — distinto
+// del punto naranja de "envío en curso" para no confundir ambos casos en la TV.
+const COLOR_PAQ_CATALOGO = '#EA580C';
+function tvIconoPaqueteriaCatalogo(){
+  return L.divIcon({className:'', html:'<div style="width:24px;height:24px;background:'+COLOR_PAQ_CATALOGO+';border-radius:6px;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.4);border:2px solid #fff;">'
+    + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg></div>',
+    iconSize:[24,24], iconAnchor:[12,22], popupAnchor:[0,-22]});
 }
 function tvIniciarAnimacionCamiones(rutas){
   if(tvTruckAnimId){ cancelAnimationFrame(tvTruckAnimId); tvTruckAnimId=null; }
@@ -308,6 +320,13 @@ function tvPuntosDesdeEstadoActual(){
     puntos.push({lat:r.lat, lng:r.lng, color:'#DB2777', label:r.lugar||'', ruta:true,
       popup:'📦 <b>'+(r.lugar||'—')+'</b><br>'+(r.materialARecoger||'Recolección')});
   });
+  // Catálogo de paqueterías registradas — capa fija, sin ruta trazada (no son
+  // un envío en curso, solo referencia de dónde están las sucursales).
+  puntosCatalogoPaqueterias.forEach(pt=>{
+    if(pt.lat==null||pt.lng==null) return;
+    puntos.push({lat:pt.lat, lng:pt.lng, color:COLOR_PAQ_CATALOGO, label:'', esCatalogo:true,
+      popup:'📦 <b>'+(pt.nombre||'—')+'</b>'+(pt.direccion?('<br>'+pt.direccion):'')+(pt.telefono?('<br>Tel: '+pt.telefono):'')});
+  });
   return puntos;
 }
 function tvCargarLeaflet(){
@@ -349,7 +368,9 @@ function tvActualizarMiniMapa(){
       });
       tvIniciarAnimacionCamiones(rutasParaCamion);
       puntos.forEach(p=>{
-        const m = L.circleMarker([p.lat,p.lng], {radius:8, color:p.color, fillColor:p.color, fillOpacity:0.85, weight:2}).addTo(tvMiniMapa);
+        const m = p.esCatalogo
+          ? L.marker([p.lat,p.lng], {icon: tvIconoPaqueteriaCatalogo()}).addTo(tvMiniMapa)
+          : L.circleMarker([p.lat,p.lng], {radius:8, color:p.color, fillColor:p.color, fillOpacity:0.85, weight:2}).addTo(tvMiniMapa);
         m.bindPopup(p.popup, {closeButton:false, autoPan:false, className:'tv-mini-mapa-popup'});
         if(p.label) m.bindTooltip(p.label, {permanent:true, direction:'top', offset:[0,-8], className:'tv-mini-mapa-label'});
         tvMiniMapaMarkers.push(m);
@@ -368,7 +389,7 @@ function tvActualizarMiniMapa(){
       {color:'#1473E6', label:'Ventas'}, {color:'#8B4FD6', label:'Material'},
       {color:'#D99000', label:'Traspaso almacén'}, {color:'#0FB5A6', label:'Entrega a técnico'},
       {color:COLOR_PAQ_ENVIO, label:'Paquetería · envío'}, {color:COLOR_PAQ_RECOLECCION, label:'Paquetería · recolección'},
-      {color:'#DB2777', label:'Recolección local'}
+      {color:'#DB2777', label:'Recolección local'}, {color:COLOR_PAQ_CATALOGO, label:'Paquetería registrada'}
     ];
     const coloresUsados = new Set(puntos.map(p=>p.color));
     const leyEl = document.getElementById('tv-mini-mapa-leyenda');
@@ -710,6 +731,7 @@ legend.innerHTML=[['Nuevo','azul'],['En preparación','verde'],['Listo','teal'],
 // ── Hooks para el módulo de datos en vivo (script type=module) ──
 window.__setPedidos = function(arr){ pedidos = Array.isArray(arr)?arr:[]; render(true); tvActualizarMiniMapa(); };
 window.__setRecolecciones = function(arr){ recolecciones = Array.isArray(arr)?arr:[]; render(true); tvActualizarMiniMapa(); };
+window.__setPuntosCatalogoPaqueterias = function(arr){ puntosCatalogoPaqueterias = Array.isArray(arr)?arr:[]; tvActualizarMiniMapa(); };
 window.__almRender  = function(){ render(true); };
 
 // ── Reloj EN VIVO ──
@@ -831,7 +853,7 @@ render(true); setInterval(()=>render(false),1000);
 <!-- ===== DATOS EN VIVO · Firestore (colección `surtidos`) · SOLO LECTURA ===== -->
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, collection, onSnapshot, query, where } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 const config = { apiKey:"AIzaSyBXh-P0oMtMiDjyz9PObuJ8DNfROlXvhLE", authDomain:"tecnocontrol-1c42f.firebaseapp.com", projectId:"tecnocontrol-1c42f", storageBucket:"tecnocontrol-1c42f.firebasestorage.app", appId:"1:27642771956:web:54225af9e386afded8a1a1" };
@@ -957,8 +979,29 @@ function iniciarEscuchaRecolecciones(){
   });
 }
 
+// ── Catálogo de paqueterías (puntos_referencia, tipo:'paqueteria') — SOLO
+//   LECTURA, capa fija del mini-mapa independiente de si hay pedidos activos.
+//   Se da de alta/edita desde Almacén (almacen.js) o desde el flujo de envío
+//   (almacen-pdf.js); aquí solo se refleja en tiempo real.
+let escuchandoPaqueterias = false;
+function iniciarEscuchaPaqueterias(){
+  if(escuchandoPaqueterias) return; escuchandoPaqueterias = true;
+  onSnapshot(query(collection(db,'puntos_referencia'), where('tipo','==','paqueteria')), (snap)=>{
+    const lista = [];
+    snap.forEach(docu=>{
+      const d = docu.data() || {};
+      if(d.lat==null || d.lng==null) return;
+      lista.push({ id:docu.id, nombre:d.nombre||'', direccion:d.direccion||'', telefono:d.telefono||'', lat:d.lat, lng:d.lng });
+    });
+    if(window.__setPuntosCatalogoPaqueterias) window.__setPuntosCatalogoPaqueterias(lista);
+  }, (err)=>{
+    // No interrumpe el tablero si esta colección aún no tiene permiso de lectura pública.
+    console.error('[TV puntos_referencia] onSnapshot error:', err);
+  });
+}
+
 // Sesi\u00f3n an\u00f3nima para poder leer aun sin usuario logueado.
-onAuthStateChanged(auth, (user)=>{ if(user){ iniciarEscucha(); iniciarEscuchaRecolecciones(); } });
+onAuthStateChanged(auth, (user)=>{ if(user){ iniciarEscucha(); iniciarEscuchaRecolecciones(); iniciarEscuchaPaqueterias(); } });
 signInAnonymously(auth).catch((err)=>{
   console.error('[TV auth] signInAnonymously:', err);
   if(err && err.code === 'auth/operation-not-allowed'){
@@ -968,6 +1011,7 @@ signInAnonymously(auth).catch((err)=>{
   // Aun as\u00ed intenta leer, por si las Reglas permiten lectura p\u00fablica:
   iniciarEscucha();
   iniciarEscuchaRecolecciones();
+  iniciarEscuchaPaqueterias();
 });
 </script>
 </body>
