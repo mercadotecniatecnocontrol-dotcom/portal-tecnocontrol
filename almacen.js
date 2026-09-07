@@ -1969,6 +1969,20 @@
       iconSize:[20,20], iconAnchor:[10,10]
     });
   }
+  // Ícono fijo de "cajita" para el catálogo de paqueterías registradas (siempre
+  // visibles), distinto del punto circular naranja que ya se usaba para un
+  // ENVÍO en curso — así se distingue a simple vista "aquí hay una paquetería"
+  // de "hay un pedido viajando hacia allá ahora mismo".
+  function _almIconoPaqueteria(color){
+    var c = color || '#EA580C';
+    return L.divIcon({
+      className:'',
+      html:'<div style="width:22px;height:22px;background:'+c+';border-radius:6px;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.4);border:2px solid #fff;">'
+        + '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>'
+        + '</div>',
+      iconSize:[22,22], iconAnchor:[11,20], popupAnchor:[0,-20]
+    });
+  }
   function _almIniciarCamiones(rutas){
     if (_almTruckAnimId){ cancelAnimationFrame(_almTruckAnimId); _almTruckAnimId=null; }
     _almTruckMarkers.forEach(function(t){ t.marker.remove(); });
@@ -1996,7 +2010,7 @@
       return;
     }
     cargarLeafletAlm().then(function(){
-      return window.tcObtenerPuntosLogisticos({ incluirClientes: true });
+      return window.tcObtenerPuntosLogisticos({ incluirClientes: true, incluirPaqueterias: true });
     }).then(function(puntos){
       var contAhora = document.getElementById('alm-mapa-rutas-embed');
       if(!contAhora) return; // se cerró/recargó la pantalla mientras cargaba
@@ -2011,8 +2025,8 @@
       var ESTILO = {
         venta:{color:'#1473E6',label:'Pedido de Ventas'}, material:{color:'#8B4FD6',label:'Solicitud de Material'},
         traslado:{color:'#D99000',label:'Traspaso entre almacenes'}, tecnico:{color:'#0FB5A6',label:'Entrega a técnico'},
-        paqueteria:{color:'#F26B21',label:'Paquetería'}, recoleccion:{color:'#DB2777',label:'Recolección'},
-        cliente:{color:'#64748B',label:'Cliente de Ventas'}
+        paqueteria:{color:'#F26B21',label:'Envío en curso (paquetería)'}, recoleccion:{color:'#DB2777',label:'Recolección'},
+        cliente:{color:'#64748B',label:'Cliente de Ventas'}, paqueteria_catalogo:{color:'#EA580C',label:'Paquetería registrada'}
       };
       var rutasParaCamion = [];
       // Líneas primero, así los pines quedan encima.
@@ -2028,7 +2042,9 @@
       puntos.forEach(function(p){
         var est = ESTILO[p.categoria] || ESTILO.venta;
         usados[p.categoria] = est;
-        var m = L.circleMarker([p.lat,p.lng], {radius:7, color:est.color, fillColor:est.color, fillOpacity:0.85, weight:2}).addTo(_almMapaLeaflet);
+        var m = p.categoria === 'paqueteria_catalogo'
+          ? L.marker([p.lat,p.lng], { icon: _almIconoPaqueteria(est.color) }).addTo(_almMapaLeaflet)
+          : L.circleMarker([p.lat,p.lng], {radius:7, color:est.color, fillColor:est.color, fillOpacity:0.85, weight:2}).addTo(_almMapaLeaflet);
         m.bindPopup('<b style="color:'+est.color+'">'+est.label+'</b><br>'+(p.popupHtml||''));
         _almMapaMarkers.push(m);
       });
