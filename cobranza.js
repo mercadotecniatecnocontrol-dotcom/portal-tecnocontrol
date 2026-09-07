@@ -15,6 +15,13 @@
  *
  * Cliente se elige de 'ventas_clientes' (ya existe) — no se recaptura nada.
  * Fase 1: un solo usuario (Francisca) — sin flujo de autorización ni roles.
+ *
+ * Relación con Almacén (solo lectura, sin duplicar nada): el expediente de
+ * cada cuenta muestra los pedidos de la colección 'surtidos' de ese mismo
+ * cliente (match por nombre, igual patrón que ya usa ventas.js:
+ * where('cliente','==', c.nombre)) junto con sus evidencias
+ * (surtidos/{id}/evidencias — fotos/documentos que ya sube Almacén al
+ * entregar). Cobranza NO sube ni edita evidencia, solo la consulta.
  * ============================================================================*/
 (function(){
 
@@ -26,6 +33,9 @@
   var filtroTexto = '';
   var filtroAntiguedad = 'todas';
   var detalleId = null;
+  var _pedidosCache = {};      // clienteNombre -> [surtidos]
+  var _evidenciasCache = {};   // surtidoId -> [evidencias]
+  var _pedidoAbierto = null;   // id del pedido con evidencias expandidas
 
   function cargarFirestore(){
     if(_fs) return Promise.resolve(_fs);
@@ -160,6 +170,35 @@
       return fs.getDocs(fs.query(fs.collection(window.db,'cuentas_por_cobrar',cuentaId,'pagos'), fs.orderBy('fecha','desc'))).then(function(snap){
         return snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
       }).catch(function(){ return []; });
+    });
+  }
+
+  // ── Pedidos de Almacén del mismo cliente (solo lectura) ──
+  function cargarPedidosAlmacen(clienteNombre){
+    if(!clienteNombre) return Promise.resolve([]);
+    if(_pedidosCache[clienteNombre]) return Promise.resolve(_pedidosCache[clienteNombre]);
+    return cargarFirestore().then(function(fs){
+      return fs.getDocs(fs.query(fs.collection(window.db,'surtidos'), fs.where('cliente','==',clienteNombre))).then(function(snap){
+        var list = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+        list.sort(function(a,b){
+          var ta = a.createdAt && a.createdAt.seconds ? a.createdAt.seconds : 0;
+          var tb = b.createdAt && b.createdAt.seconds ? b.createdAt.seconds : 0;
+          return tb-ta;
+        });
+        _pedidosCache[clienteNombre] = list;
+        return list;
+      }).catch(function(e){ console.warn('[cobranza] cargarPedidosAlmacen:',e); return []; });
+    });
+  }
+
+  function cargarEvidenciasPedido(surtidoId){
+    if(_evidenciasCache[surtidoId]) return Promise.resolve(_evidenciasCache[surtidoId]);
+    return cargarFirestore().then(function(fs){
+      return fs.getDocs(fs.collection(window.db,'surtidos',surtidoId,'evidencias')).then(function(snap){
+        var list = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+        _evidenciasCache[surtidoId] = list;
+        return list;
+      }).catch(function(){ _evidenciasCache[surtidoId]=[]; return []; });
     });
   }
 
@@ -364,16 +403,19 @@
         '<div id="cb-seg-list" style="margin-bottom:18px;font-size:12px;color:#94A3B8">Cargando…</div>'+
         '<h4 style="font-size:12.5px;font-weight:700;color:#0A1628;margin:0 0 8px">Pagos</h4>'+
         '<div id="cb-pagos-list" style="font-size:12px;color:#94A3B8">Cargando…</div>'+
+        '<h4 style="font-size:12.5px;font-weight:700;color:#0A1628;margin:18px 0 8px">Historial de pedidos de Almacén</h4>'+
+        '<div id="cb-pedidos-list" style="font-size:12px;color:#94A3B8">Cargando…</div>'+
       '</div>'+
     '</div>';
   }
 
   // Nota: el detalle se pinta como HTML estático en render(); las listas de
-  // seguimiento/pagos se rellenan aparte porque requieren lecturas async —
-  // render() llama a esta función justo después de montar el HTML.
+  // seguimiento/pagos/pedidos se rellenan aparte porque requieren lecturas
+  // async — render() llama a esta función justo después de montar el HTML.
   window.__cbCargarDetalleAsync = function(id){
-    Promise.all([cargarSeguimiento(id), cargarPagos(id)]).then(function(r){
-      var seg = r[0], pagos = r[1];
+    var cuenta = cuentas.find(function(x){ return x.id===id; });
+    Promise.all([cargarSeguimiento(id), cargarPagos(id), cargarPedidosAlmacen(cuenta && cuenta.clienteNombre)]).then(function(r){
+      var seg = r[0], pagos = r[1], pedidos = r[2];
       var segList = document.getElementById('cb-seg-list');
       if(segList){
         segList.innerHTML = seg.length ? seg.map(function(s){
@@ -387,8 +429,50 @@
           return '<div style="padding:8px 0;border-top:1px solid #F1F5F9;display:flex;justify-content:space-between"><span style="font-size:12.5px;color:#334155">'+fmtFecha(p.fecha)+' · '+esc(p.formaPago)+'</span><span style="font-size:12.5px;font-weight:700;color:#16A34A">'+fmtMoney(p.monto)+'</span></div>';
         }).join('') : '<p style="font-size:12px;color:#94A3B8">Sin pagos registrados.</p>';
       }
+      var pedList = document.getElementById('cb-pedidos-list');
+      if(pedList){
+        if(!pedidos.length){
+          pedList.innerHTML = '<p style="font-size:12px;color:#94A3B8">Sin pedidos de Almacén encontrados para este cliente.</p>';
+        } else {
+          pedList.innerHTML = pedidos.map(renderPedidoRow).join('');
+          if(_pedidoAbierto) renderEvidenciasDe(_pedidoAbierto);
+        }
+      }
     });
   };
+
+  function renderPedidoRow(p){
+    var fecha = p.createdAt && p.createdAt.seconds ? new Date(p.createdAt.seconds*1000) : null;
+    var abierto = _pedidoAbierto===p.id;
+    return '<div style="border-top:1px solid #F1F5F9;padding:10px 0">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="window.__cbToggleEvidencias(\''+p.id+'\')">'+
+        '<div><p style="font-size:12.5px;font-weight:700;color:#0A1628;margin:0">'+esc(p.folio||p.id)+'</p>'+
+        '<p style="font-size:10.5px;color:#94A3B8;margin:2px 0 0">'+(fecha?fecha.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}):'—')+' · '+esc(p.estado||'—')+'</p></div>'+
+        '<span style="font-size:11px;font-weight:700;color:#1473E6">'+(abierto?'Ocultar evidencias ▲':'Ver evidencias ▼')+'</span>'+
+      '</div>'+
+      '<div id="cb-evid-'+p.id+'" style="margin-top:8px;'+(abierto?'':'display:none')+'">'+(abierto?'<p style="font-size:11px;color:#94A3B8">Cargando evidencias…</p>':'')+'</div>'+
+    '</div>';
+  }
+
+  window.__cbToggleEvidencias = function(pedidoId){
+    _pedidoAbierto = (_pedidoAbierto===pedidoId) ? null : pedidoId;
+    if(detalleId) window.__cbCargarDetalleAsync(detalleId);
+  };
+
+  function renderEvidenciasDe(pedidoId){
+    var el = document.getElementById('cb-evid-'+pedidoId);
+    if(!el) return;
+    cargarEvidenciasPedido(pedidoId).then(function(list){
+      if(!list.length){ el.innerHTML = '<p style="font-size:11px;color:#94A3B8">Sin evidencias en este pedido.</p>'; return; }
+      el.innerHTML = '<div style="display:flex;gap:8px;flex-wrap:wrap">'+list.map(function(ev){
+        if(ev.tipo==='imagen' && ev.imagen){
+          return '<img src="'+esc(ev.imagen)+'" onclick="window.open(this.src)" style="width:64px;height:64px;object-fit:cover;border-radius:8px;cursor:pointer;border:1px solid #E2E8F0">';
+        }
+        return '<a href="'+esc(ev.url||'#')+'" target="_blank" style="width:64px;height:64px;border-radius:8px;border:1px solid #E2E8F0;background:#F8FAFC;display:flex;flex-direction:column;align-items:center;justify-content:center;text-decoration:none;color:#334155;font-size:9px;text-align:center;padding:2px">'+
+          '<span style="font-size:18px">📄</span>'+esc(ev.nombre||'Documento')+'</a>';
+      }).join('')+'</div>';
+    });
+  }
 
   // ── Modal: registrar pago ──
   window.__cbAbrirRegistrarPago = function(cuentaId){
