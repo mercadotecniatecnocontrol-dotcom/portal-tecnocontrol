@@ -47,6 +47,9 @@
   }
 
   function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  // Para incrustar una URL dentro de un onclick="...('...')" — escapa backslash y
+  // comilla simple (delimitador del string JS) y comilla doble (delimitador del atributo HTML).
+  function escAttr(s){ return String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;'); }
 
   function toast(msg){
     if(window.mostrarPush){ window.mostrarPush('Cobranza', msg, '💰'); return; }
@@ -68,6 +71,16 @@
     return d.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'});
   }
   function hoyISO(){ return new Date().toISOString().slice(0,10); }
+  function ahoraISO(){ return new Date().toISOString(); } // fecha+hora completas, capturadas automáticamente
+  function fmtFechaHora(f){
+    if(!f) return '—';
+    var d;
+    if(f && typeof f==='object' && typeof f.seconds==='number') d = new Date(f.seconds*1000);
+    else if(typeof f==='string') d = (f.indexOf('T')>=0) ? new Date(f) : new Date(f+'T00:00:00');
+    else d = new Date(f);
+    if(isNaN(d.getTime())) return '—';
+    return d.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'})+' · '+d.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
+  }
   function diasVencido(fechaVenc){
     if(!fechaVenc) return null;
     var v = new Date(fechaVenc+'T00:00:00');
@@ -154,7 +167,7 @@
       return fs.addDoc(fs.collection(window.db,'cuentas_por_cobrar',cuentaId,'seguimiento'), {
         nota: nota||'',
         proximoContacto: proximoContacto||null,
-        fecha: hoyISO(),
+        fecha: ahoraISO(),
         usuario: (window.auth && window.auth.currentUser && window.auth.currentUser.email) || ''
       });
     });
@@ -177,7 +190,7 @@
         var nuevoSaldo = Math.max(0, Number(c.monto||0) - nuevoTotal);
         var nuevoEstado = nuevoSaldo<=0 ? 'pagada' : (nuevoTotal>0 ? 'parcial' : c.estado);
         return fs.addDoc(fs.collection(window.db,'cuentas_por_cobrar',cuentaId,'pagos'), {
-          monto: Number(monto), formaPago: formaPago||'—', fecha: hoyISO(),
+          monto: Number(monto), formaPago: formaPago||'—', fecha: ahoraISO(),
           usuario: (window.auth && window.auth.currentUser && window.auth.currentUser.email) || ''
         }).then(function(){
           return fs.updateDoc(cRef, { totalPagado: nuevoTotal, estado: nuevoEstado });
@@ -557,13 +570,13 @@
       if(segList){
         segList.innerHTML = seg.length ? seg.map(function(s){
           return '<div style="padding:8px 0;border-top:1px solid #F1F5F9"><p style="font-size:12.5px;color:#334155;margin:0">'+esc(s.nota)+'</p>'+
-            '<p style="font-size:10.5px;color:#94A3B8;margin:2px 0 0">'+fmtFecha(s.fecha)+(s.proximoContacto?' · Próximo contacto: '+fmtFecha(s.proximoContacto):'')+'</p></div>';
+            '<p style="font-size:10.5px;color:#94A3B8;margin:2px 0 0">'+fmtFechaHora(s.fecha)+(s.proximoContacto?' · Próximo contacto: '+fmtFecha(s.proximoContacto):'')+'</p></div>';
         }).join('') : '<p style="font-size:12px;color:#94A3B8">Sin notas todavía.</p>';
       }
       var pagList = document.getElementById('cb-pagos-list');
       if(pagList){
         pagList.innerHTML = pagos.length ? pagos.map(function(p){
-          return '<div style="padding:8px 0;border-top:1px solid #F1F5F9;display:flex;justify-content:space-between"><span style="font-size:12.5px;color:#334155">'+fmtFecha(p.fecha)+' · '+esc(p.formaPago)+'</span><span style="font-size:12.5px;font-weight:700;color:#16A34A">'+fmtMoney(p.monto)+'</span></div>';
+          return '<div style="padding:8px 0;border-top:1px solid #F1F5F9;display:flex;justify-content:space-between"><span style="font-size:12.5px;color:#334155">'+fmtFechaHora(p.fecha)+' · '+esc(p.formaPago)+'</span><span style="font-size:12.5px;font-weight:700;color:#16A34A">'+fmtMoney(p.monto)+'</span></div>';
         }).join('') : '<p style="font-size:12px;color:#94A3B8">Sin pagos registrados.</p>';
       }
       var pedList = document.getElementById('cb-pedidos-list');
@@ -603,28 +616,48 @@
     return '<div style="margin-bottom:12px"><p style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#94A3B8;margin:0 0 6px">'+titulo+'</p>'+html+'</div>';
   }
 
+  // ── Abrir imagen/documento en ventana flotante de vista previa ──
+  // (mismo truco que ya usa el PDF: abrir la ventana en blanco y escribir el
+  // contenido con document.write — Chrome bloquea la navegación directa de
+  // una pestaña a una URL data:, por eso el clic no hacía nada antes).
+  window.__cbAbrirArchivo = function(url, tipo){
+    if(!url){ toast('Este archivo no tiene contenido para mostrar'); return; }
+    var w = window.open('', '_blank');
+    if(!w){ toast('El navegador bloqueó la ventana de vista previa'); return; }
+    var esImagen = tipo==='imagen' || /^data:image\//.test(url) || /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(url);
+    if(esImagen){
+      w.document.write('<body style="margin:0;background:#0f172a;display:flex;align-items:center;justify-content:center;min-height:100vh;"><img src="'+url+'" style="max-width:100%;max-height:100vh;"></body>');
+    } else {
+      w.document.write('<iframe src="'+url+'" style="border:none;width:100%;height:100%;"></iframe>');
+    }
+    w.document.close();
+  };
+
   function renderDetallePedido(elId, pedidoId){
     var el = document.getElementById(elId);
     if(!el) return;
     Promise.all([cargarHistorialPedido(pedidoId), cargarDocumentosPedido(pedidoId), cargarEvidenciasPedido(pedidoId)]).then(function(r){
       var hist = r[0], docs = r[1], evid = r[2];
 
-      var histHtml = hist.length ? hist.map(function(h){
-        var t = h.ts && h.ts.seconds ? new Date(h.ts.seconds*1000) : null;
-        return '<div style="font-size:11px;color:#334155;padding:3px 0"><b>'+esc(h.de||'—')+'</b> → <b>'+esc(h.a||'—')+'</b>'+
-          '<span style="color:#94A3B8"> · '+(t?t.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}):'—')+(h.por?(' · '+esc(h.por)):'')+'</span></div>';
-      }).join('') : '<p style="font-size:11px;color:#94A3B8">Sin cambios de estado registrados.</p>';
+      var histHtml = hist.length ? '<div style="border-left:2px solid #E2E8F0;padding-left:12px">'+hist.map(function(h){
+        return '<div style="position:relative;padding:4px 0 10px"><span style="position:absolute;left:-16.5px;top:6px;width:8px;height:8px;border-radius:50%;background:#1473E6"></span>'+
+          '<span style="font-size:11.5px;color:#334155"><b>'+esc(h.de||'—')+'</b> → <b>'+esc(h.a||'—')+'</b></span><br>'+
+          '<span style="font-size:10.5px;color:#94A3B8">'+fmtFechaHora(h.ts)+(h.por?(' · '+esc(h.por)):'')+'</span></div>';
+      }).join('')+'</div>' : '<p style="font-size:11px;color:#94A3B8">Sin cambios de estado registrados.</p>';
 
-      var docsHtml = docs.length ? '<div style="display:flex;flex-direction:column;gap:4px">'+docs.map(function(d){
-        return '<a href="'+esc(d.archivo||d.url||'#')+'" target="_blank" style="font-size:11.5px;color:#1473E6;text-decoration:none">📄 '+esc(d.nombre||'Documento')+'</a>';
+      var docsHtml = docs.length ? '<div style="display:flex;flex-direction:column;gap:6px">'+docs.map(function(d){
+        var url = d.archivo||d.url||'';
+        return '<div><a href="javascript:void(0)" onclick="window.__cbAbrirArchivo(\''+escAttr(url)+'\')" style="font-size:11.5px;color:#1473E6;text-decoration:none">📄 '+esc(d.nombre||'Documento')+'</a>'+
+          (d.subidoEn||d.fecha?('<div style="font-size:10px;color:#94A3B8">'+fmtFechaHora(d.subidoEn||d.fecha)+(d.subidoPor?(' · '+esc(d.subidoPor)):'')+'</div>'):'')+'</div>';
       }).join('')+'</div>' : '<p style="font-size:11px;color:#94A3B8">Sin documentos adjuntos.</p>';
 
-      var evidHtml = evid.length ? '<div style="display:flex;gap:8px;flex-wrap:wrap">'+evid.map(function(ev){
+      var evidHtml = evid.length ? '<div style="display:flex;gap:10px;flex-wrap:wrap">'+evid.map(function(ev){
+        var cap = '<div style="font-size:9.5px;color:#94A3B8;text-align:center;margin-top:2px;max-width:64px">'+fmtFechaHora(ev.subidoEn)+(ev.subidoPor?('<br>'+esc(ev.subidoPor)):'')+'</div>';
         if(ev.tipo==='imagen' && ev.imagen){
-          return '<img src="'+esc(ev.imagen)+'" onclick="window.open(this.src)" style="width:64px;height:64px;object-fit:cover;border-radius:8px;cursor:pointer;border:1px solid #E2E8F0">';
+          return '<div><img onclick="window.__cbAbrirArchivo(this.getAttribute(\'data-src\'),\'imagen\')" data-src="'+esc(ev.imagen)+'" src="'+esc(ev.imagen)+'" style="width:64px;height:64px;object-fit:cover;border-radius:8px;cursor:pointer;border:1px solid #E2E8F0;display:block">'+cap+'</div>';
         }
-        return '<a href="'+esc(ev.url||'#')+'" target="_blank" style="width:64px;height:64px;border-radius:8px;border:1px solid #E2E8F0;background:#F8FAFC;display:flex;flex-direction:column;align-items:center;justify-content:center;text-decoration:none;color:#334155;font-size:9px;text-align:center;padding:2px">'+
-          '<span style="font-size:18px">📄</span>'+esc(ev.nombre||'Documento')+'</a>';
+        return '<div><a href="javascript:void(0)" onclick="window.__cbAbrirArchivo(\''+escAttr(ev.url||'')+'\')" style="width:64px;height:64px;border-radius:8px;border:1px solid #E2E8F0;background:#F8FAFC;display:flex;flex-direction:column;align-items:center;justify-content:center;text-decoration:none;color:#334155;font-size:9px;text-align:center;padding:2px">'+
+          '<span style="font-size:18px">📄</span>'+esc(ev.nombre||'Documento')+'</a>'+cap+'</div>';
       }).join('')+'</div>' : '<p style="font-size:11px;color:#94A3B8">Sin evidencias de entrega.</p>';
 
       el.innerHTML =
