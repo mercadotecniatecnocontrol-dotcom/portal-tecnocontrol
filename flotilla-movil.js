@@ -337,6 +337,9 @@ function esLunes(){return new Date().getDay()===1;}
 function esLunesAViernes(){const d=new Date().getDay();return d>=1&&d<=5;}
 // Lunes(1)/Martes(2)/Miércoles(3) → si el checklist semanal ya está hecho, se confirma en vez de repetirlo
 function esLunesAMiercoles(){const d=new Date().getDay();return d>=1&&d<=3;}
+// Sábado(6)/Domingo(0)/Lunes(1) — única ventana en la que se puede llenar el
+// check list semanal (ya no viernes, y ya no de forma automática).
+function esSabDomLun(){const d=new Date().getDay();return d===6||d===0||d===1;}
 
 // ── CONFIG CHECK LIST SEMANAL ──
 window._cfgSem=null; // cache: {activo, semana, ...} o null si no cargado
@@ -347,11 +350,12 @@ function cargarCfgSem(){
     .catch(()=>{window._cfgSem={activo:false};});
 }
 function chkSemPermitido(semana){
-  // Si es lunes → siempre permitido (comportamiento original)
-  if(esLunes())return true;
-  // Si no es lunes pero hay config activa para esta semana → permitir lunes-viernes
+  // Regla de negocio vigente: el check list SOLO se puede llenar sábado,
+  // domingo o lunes, y SOLO cuando un administrador activó esa semana desde
+  // el portal — ya no hay excepción automática (antes cualquier lunes se
+  // permitía aunque nadie lo hubiera activado).
   const cfg=window._cfgSem||{};
-  return !!(cfg.activo&&cfg.semana===semana&&esLunesAViernes());
+  return !!(cfg.activo&&cfg.semana===semana&&esSabDomLun());
 }
 
 // ── CHECK LIST SEMANAL — BANNER ──
@@ -359,6 +363,7 @@ window._semChkCache={};
 window._semChkDocCache={}; // guarda el doc completo (para poder mostrar respuestaAdmin, no solo si existe)
 function semChkBanner(){
   const eco=miVeh?.eco;if(!eco)return'';
+  if(miVeh?.requiereChecklist===false)return''; // vehículo marcado por un admin como "no requiere check list semanal"
   const semana=getSemanaISO();
   const cacheKey=`${eco}_${semana}`;
   const yaExiste=window._semChkCache[cacheKey];
@@ -405,13 +410,11 @@ function semChkBanner(){
     </div>`:''}`;
   }
   if(chkSemPermitido(semana)){
-    const cfg=window._cfgSem||{};
-    const extendido=cfg.activo&&cfg.semana===semana&&!esLunes();
     return`<div class="fm-card" style="background:#EFF6FF;border:1.5px solid #BFDBFE;margin-bottom:12px;cursor:pointer" onclick="fmVista('chksemanal')">
       <div style="display:flex;align-items:center;gap:10px">
         <span style="color:#1D4ED8;flex-shrink:0">${IC.tasks}</span>
         <div style="flex:1"><div style="font-size:13px;font-weight:800;color:#1D4ED8">Check list semanal pendiente</div>
-        <div style="font-size:11px;color:#1E40AF;margin-top:2px">${extendido?'Habilitado por admin':'Hoy es lunes'} · Semana ${semana} · Toca para llenarlo</div></div>
+        <div style="font-size:11px;color:#1E40AF;margin-top:2px">Habilitado por admin · Semana ${semana} · Toca para llenarlo</div></div>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1D4ED8" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
       </div>
     </div>`;
@@ -419,7 +422,7 @@ function semChkBanner(){
   return`<div class="fm-card" style="background:#F8FAFD;display:flex;align-items:center;gap:10px;margin-bottom:12px;opacity:.7">
     <span style="color:#94A3B8;flex-shrink:0">${IC.tasks}</span>
     <div><div style="font-size:12.5px;font-weight:700;color:#64748B">Check list semanal</div>
-    <div style="font-size:11px;color:#94A3B8;margin-top:2px">Disponible los lunes · Semana ${semana}</div></div>
+    <div style="font-size:11px;color:#94A3B8;margin-top:2px">Disponible sábado, domingo y lunes, cuando lo active un administrador · Semana ${semana}</div></div>
   </div>`;
 }
 
@@ -2255,7 +2258,7 @@ function renderChkSemanal(){
     const cfg=window._cfgSem||{};
     const msg=cfg.activo&&cfg.semana!==semana
       ?`El check list activo es para la semana ${cfg.semana}, no la actual.`
-      :'El check list solo está disponible los lunes, o cuando sea habilitado por el administrador.';
+      :'El check list solo está disponible sábado, domingo o lunes, y únicamente cuando lo habilita un administrador.';
     setContent(`
       <div class="fm-sec-hd"><div><div class="fm-sec-t">Check list semanal</div><div class="fm-sec-s">ECO ${miVeh.eco} · Semana ${semana}</div></div></div>
       <div class="fm-empty">
@@ -3789,9 +3792,28 @@ window.utilReset=function(){
   renderUtil();
 };
 
-window.utilSetModo=function(m){
+window.utilSetModo=async function(m){
   if(m==='entregar'&&!miVeh){
     toast('No tienes vehículo vinculado para entregar','err');return;
+  }
+  if(m==='entregar'){
+    // Confirmación explícita del vehículo — evita el caso real ya visto de
+    // alguien con varios vehículos vinculados subiendo fotos de un ECO a la
+    // transferencia de otro por no fijarse cuál tenía seleccionado.
+    if(!confirm(`Vas a entregar el ECO ${miVeh.eco} · ${miVeh.unidad||''}.\n\n¿Es este el vehículo correcto?`)){return;}
+    // Bloqueo: no permitir iniciar otra entrega si este vehículo ya tiene una
+    // transferencia sin resolver (pendiente de recepción o vencida sin que un
+    // admin la haya cancelado/reactivado). Esto es lo que dejaba vehículos con
+    // dos códigos de transferencia abiertos al mismo tiempo (ej. ECO 43).
+    try{
+      const pend=await db.collection('flotilla_transferencias')
+        .where('vehiculoEco','==',String(miVeh.eco))
+        .where('estatus','in',['Pendiente recepción','Vencida']).limit(1).get();
+      if(!pend.empty){
+        toast('Este vehículo ya tiene una transferencia pendiente o vencida sin resolver. Pide a un administrador que la cancele o reactive antes de continuar.','err');
+        return;
+      }
+    }catch(e){console.warn('[UTIL] validar transferencia pendiente',e);}
   }
   utilState.modo=m;utilState.paso=2;renderUtil();
 };
