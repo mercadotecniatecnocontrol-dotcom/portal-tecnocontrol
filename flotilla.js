@@ -5559,7 +5559,7 @@ function flDatosResumenChkSem(semSel){
       ok,no,total,
       firma:r?!!r.firma:false,
     };
-  }).sort((a,b)=>Number(a.eco)-Number(b.eco));
+  }).sort((a,b)=>(Number(b.hizoChecklist)-Number(a.hizoChecklist))||(Number(a.eco)-Number(b.eco)));
 }
 
 window.flAbrirResumenChkSem=function(semSel){
