@@ -85,6 +85,13 @@ const C={
   USOS:'flotilla_usos',
   EVENTOS:'flotilla_eventos',
   OFFLINE_KEY:'tcn_offline_queue',
+  // Colecciones de Operaciones (sistema de herramientas) — se leen/escriben
+  // desde aquí también, con las mismas reglas que ya usa opsHerramientasStaff()
+  // en firestore.rules más una excepción acotada para transferencia técnico-a-técnico.
+  OPS_HERR:'ops_herramientas',
+  OPS_MOV:'ops_movimientos',
+  OPS_TEC:'ops_tecnicos',
+  OPS_TRASP:'ops_herramienta_traspasos',
 };
 
 const TIPOS_SOL=[
@@ -1142,6 +1149,9 @@ async function cargarMisTareas(){
         }, err=>{console.warn('[MOVIL recibirPendiente onSnapshot]',err);});
     }catch(e){console.error('[MOVIL recibirPendiente]',e);}
   }
+
+  // Traspasos de herramienta donde soy el receptor — mismo trato invasivo.
+  herrEscucharPendientes();
 
   // ── Listener en tiempo real: respuestas del admin a MIS check lists ──
   // Mismo trato "invasivo" que el de recibir vehículo: modal encima de todo,
@@ -3453,7 +3463,370 @@ window.utilRechazarTransferencia=async function(){
   }catch(e){toast('Error: '+e.message,'err');}
 };
 
+// ══════════════════════════════════════════════════════════
+// TRASPASO DE HERRAMIENTA TÉCNICO-A-TÉCNICO
+// Vive dentro de Utilitarios, como flujo independiente del wizard de
+// vehículo. Mismo patrón que ya usa flotilla_transferencias: se crea
+// una "solicitud" (ops_herramienta_traspasos) con estatus "Pendiente
+// recepción", el receptor la acepta/rechaza con un modal invasivo, y
+// vence sola a las 24h si nadie responde. Al aceptar, el propio
+// navegador del receptor actualiza ops_herramientas/ops_movimientos
+// (Opción A acordada con Glen: mismo nivel de confianza que ya tiene
+// flotilla_vehiculos — la UI controla el flujo, no hay Cloud Function).
+// ══════════════════════════════════════════════════════════
+let herrState={activo:false,paso:1,miIdInterno:null,misPiezas:[],piezaSel:null,receptorNombre:'',receptorEmail:''};
+
+// ops_tecnicos usa su propio doc.id (idInterno), distinto del id de fl_usuarios.
+// El puente entre ambos mundos es el campo `correo` en ops_tecnicos.
+async function herrResolverIdInterno(email){
+  if(!email)return null;
+  try{
+    const snap=await db.collection(C.OPS_TEC).where('correo','==',email.toLowerCase().trim()).limit(1).get();
+    if(snap.empty)return null;
+    return {id:snap.docs[0].id,...snap.docs[0].data()};
+  }catch(e){console.warn('[HERR] no se pudo resolver idInterno de',email,e);return null;}
+}
+
+// Mejor esfuerzo, no bloquea el traspaso si el técnico niega el permiso
+// o el dispositivo no tiene GPS — el "lugar" queda como dato adicional,
+// no como requisito.
+function herrObtenerUbicacion(){
+  return new Promise(resolve=>{
+    if(!navigator.geolocation){resolve(null);return;}
+    const t=setTimeout(()=>resolve(null),4000);
+    navigator.geolocation.getCurrentPosition(
+      pos=>{clearTimeout(t);resolve({lat:pos.coords.latitude,lng:pos.coords.longitude});},
+      ()=>{clearTimeout(t);resolve(null);},
+      {timeout:3500}
+    );
+  });
+}
+
+window.herrAbrirTraspaso=async function(){
+  herrState={activo:true,paso:1,miIdInterno:null,misPiezas:[],piezaSel:null,receptorNombre:'',receptorEmail:''};
+  renderUtil();
+  const email=(window.auth?.currentUser?.email||miPerfil?.email||'').toLowerCase();
+  const tec=await herrResolverIdInterno(email);
+  if(!tec){
+    herrState.error='No encontramos tu ficha de técnico en Operaciones (correo no vinculado). Pide a Almacén que capture tu correo en tu ficha de Operaciones > Técnicos.';
+    renderUtil();
+    return;
+  }
+  herrState.miIdInterno=tec.id;
+  try{
+    const snap=await db.collection(C.OPS_HERR).where('tecnicoActualId','==',tec.id).where('estado','==','asignada').get();
+    herrState.misPiezas=snap.docs.map(d=>({id:d.id,...d.data()}));
+  }catch(e){console.error('[HERR] error al cargar mis piezas',e);herrState.error='No se pudo cargar tu herramienta asignada. Intenta de nuevo.';}
+  renderUtil();
+};
+
+window.herrCerrarTraspaso=function(){ herrState={activo:false,paso:1,miIdInterno:null,misPiezas:[],piezaSel:null,receptorNombre:'',receptorEmail:''}; fmVista('util'); };
+
+function herrRender(){
+  if(herrState.error){
+    setContent(`
+      <div class="fm-sec-hd"><div><div class="fm-sec-t">Traspasar herramienta</div><div class="fm-sec-s">Error</div></div></div>
+      <div class="fm-card" style="text-align:center;padding:22px">
+        <p style="font-size:13px;color:#B91C1C;line-height:1.5;margin-bottom:16px">${herrState.error}</p>
+        <button class="fm-btn ghost" onclick="herrCerrarTraspaso()">Volver</button>
+      </div>`);
+    return;
+  }
+  if(herrState.paso===1) return herrRenderPaso1();
+  if(herrState.paso===2) return herrRenderPaso2();
+  if(herrState.paso===3) return herrRenderPaso3();
+  return herrRenderPaso4();
+}
+window.herrRender=herrRender;
+
+// PASO 1 — elegir cuál de mis piezas traspaso
+function herrRenderPaso1(){
+  setContent(`
+    <div class="fm-sec-hd">
+      <div><div class="fm-sec-t">Traspasar herramienta</div><div class="fm-sec-s">Elige la pieza que vas a entregar</div></div>
+    </div>
+    ${!herrState.misPiezas.length?`
+      <div class="fm-empty" style="padding:24px">
+        <p style="font-size:12.5px;color:#94A3B8">No tienes herramienta asignada en Operaciones.</p>
+      </div>`:herrState.misPiezas.map(h=>`
+      <div onclick="herrElegirPieza('${h.id}')" class="fm-card" style="cursor:pointer;margin-bottom:8px;padding:13px 15px;display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-size:13px;font-weight:800;color:#0A0F1E">${h.folio||'—'}</div>
+          <div style="font-size:11.5px;color:#64748B;margin-top:1px">${h.descripcion||'—'}</div>
+        </div>
+        <span style="color:#94A3B8">${IC.check}</span>
+      </div>`).join('')}
+    <div style="margin-top:6px"><button class="fm-btn ghost" onclick="herrCerrarTraspaso()">Cancelar</button></div>
+  `);
+}
+
+window.herrElegirPieza=function(id){
+  herrState.piezaSel=herrState.misPiezas.find(h=>h.id===id)||null;
+  if(!herrState.piezaSel)return;
+  herrState.paso=2;
+  renderUtil();
+  setTimeout(()=>{ cargarPersonalEnSelect().then(()=>herrFiltrarReceptor('')); },50);
+};
+
+// PASO 2 — elegir receptor (reutiliza el mismo cache de personas que ya
+// carga la transferencia de vehículo — mismo directorio, no se duplica)
+function herrRenderPaso2(){
+  const h=herrState.piezaSel;
+  setContent(`
+    <div class="fm-sec-hd">
+      <div><div class="fm-sec-t">Traspasar herramienta</div><div class="fm-sec-s">${h?.folio||''} — ${h?.descripcion||''}</div></div>
+    </div>
+    <div class="fm-card" style="padding:16px" id="herr-receptor-wrap">
+      <label style="font-size:11.5px;font-weight:700;color:#374151;display:block;margin-bottom:6px">¿A quién se la entregas?</label>
+      <input id="herr-receptor-inp" placeholder="Buscar por nombre o email…" autocomplete="off"
+        oninput="herrFiltrarReceptor(this.value)"
+        style="width:100%;padding:11px 14px;border:1.5px solid #E2E8F0;border-radius:11px;font-size:13px;outline:none;box-sizing:border-box;color:#0A0F1E">
+      <div id="herr-receptor-list" style="position:relative;margin-top:4px;max-height:260px;overflow-y:auto;border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.08);display:none"></div>
+      <input type="hidden" id="herr-receptor" value="${herrState.receptorNombre||''}">
+      <input type="hidden" id="herr-receptor-email" value="${herrState.receptorEmail||''}">
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="fm-btn ghost" style="flex:1" onclick="herrState.paso=1;renderUtil();">Atrás</button>
+      <button class="fm-btn primary" style="flex:1" onclick="herrConfirmarReceptor()">Continuar</button>
+    </div>
+  `);
+}
+
+window.herrFiltrarReceptor=function(q){
+  const lista=document.getElementById('herr-receptor-list');
+  if(!lista)return;
+  const norm=s=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  const term=norm(q||'').trim();
+  const tokens=term?term.split(/\s+/).filter(Boolean):[];
+  const filtrados=tokens.length
+    ?_flPersonasCache.filter(p=>{const haystack=norm(p.nombre+' '+p.email);return tokens.every(t=>haystack.includes(t));})
+    :_flPersonasCache;
+  if(!filtrados.length){
+    lista.innerHTML=`<div style="padding:12px 14px;font-size:12px;color:#94A3B8;background:#fff">Sin resultados</div>`;
+    lista.style.display='block';
+    return;
+  }
+  lista.innerHTML=filtrados.slice(0,12).map(p=>`
+    <div onclick="herrSelReceptor('${p.nombre.replace(/'/g,"\\'")}','${p.email}')"
+      style="padding:10px 14px;cursor:pointer;background:#fff;border-bottom:1px solid #F1F5F9">
+      <div style="font-size:13px;font-weight:700;color:#0A0F1E">${p.nombre}</div>
+      <div style="font-size:10px;color:#94A3B8">${p.email||'—'}</div>
+    </div>`).join('');
+  lista.style.display='block';
+};
+
+window.herrSelReceptor=function(nombre,email){
+  herrState.receptorNombre=nombre; herrState.receptorEmail=email||'';
+  const inp=document.getElementById('herr-receptor-inp');
+  if(inp){inp.value=nombre;inp.style.borderColor='#22C55E';inp.style.background='#F0FDF4';}
+  const lista=document.getElementById('herr-receptor-list');
+  if(lista)lista.style.display='none';
+};
+
+window.herrConfirmarReceptor=function(){
+  const email=(herrState.receptorEmail||document.getElementById('herr-receptor-email')?.value||'').trim();
+  const nombre=(herrState.receptorNombre||document.getElementById('herr-receptor')?.value||'').trim();
+  if(!email){toast('Elige un receptor de la lista (necesitamos su correo para notificarle)','err');return;}
+  herrState.receptorNombre=nombre; herrState.receptorEmail=email.toLowerCase();
+  herrState.paso=3;
+  renderUtil();
+};
+
+// PASO 3 — confirmar y crear la solicitud de traspaso
+function herrRenderPaso3(){
+  const h=herrState.piezaSel;
+  setContent(`
+    <div class="fm-sec-hd"><div><div class="fm-sec-t">Traspasar herramienta</div><div class="fm-sec-s">Confirmar</div></div></div>
+    <div class="fm-card" style="padding:18px">
+      <div style="font-size:12px;color:#94A3B8;margin-bottom:2px">Vas a entregar</div>
+      <div style="font-size:14px;font-weight:800;color:#0A0F1E;margin-bottom:14px">${h?.folio||''} — ${h?.descripcion||''}</div>
+      <div style="font-size:12px;color:#94A3B8;margin-bottom:2px">A</div>
+      <div style="font-size:14px;font-weight:800;color:#0A0F1E;margin-bottom:14px">${herrState.receptorNombre} (${herrState.receptorEmail})</div>
+      <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px;font-size:11.5px;color:#92400E">
+        ${herrState.receptorNombre.split(' ')[0]||'El receptor'} tendrá 24 horas para aceptar. Mientras confirma, la herramienta sigue apareciendo como tuya.
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="fm-btn ghost" style="flex:1" onclick="herrState.paso=2;renderUtil();">Atrás</button>
+      <button id="herr-btn-confirmar" class="fm-btn primary" style="flex:1" onclick="herrEnviarTraspaso()">Enviar traspaso</button>
+    </div>
+  `);
+}
+
+window.herrEnviarTraspaso=async function(){
+  const btn=document.getElementById('herr-btn-confirmar');
+  if(btn){btn.disabled=true;btn.textContent='Enviando...';}
+  try{
+    const h=herrState.piezaSel;
+    const userEmail=(window.auth?.currentUser?.email||miPerfil?.email||'').toLowerCase();
+    const userName=window.auth?.currentUser?.displayName||miPerfil?.nombre||userEmail;
+    const now=new Date();
+    const venceEn=new Date(now.getTime()+24*60*60*1000);
+    const venceTxt=venceEn.toLocaleString('es-MX',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+    const ubicacion=await herrObtenerUbicacion();
+    const receptorTec=await herrResolverIdInterno(herrState.receptorEmail);
+
+    const docObj={
+      herramientaId:h.id, folio:h.folio||'', descripcion:h.descripcion||'',
+      entregaTecnicoId:herrState.miIdInterno, entregaEmail:userEmail, entregaNombre:userName,
+      receptorTecnicoId:receptorTec?receptorTec.id:null,
+      receptorEmail:herrState.receptorEmail, receptorNombre:herrState.receptorNombre,
+      estatus:'Pendiente recepción', creadoEn:now.toISOString(), venceEn:venceEn.toISOString(),
+      lugarLat:ubicacion?ubicacion.lat:null, lugarLng:ubicacion?ubicacion.lng:null,
+    };
+    const ref=await db.collection(C.OPS_TRASP).add(docObj);
+
+    await Promise.all([
+      db.collection('flotilla_notificaciones').add({
+        tipo:'herramienta_traspaso_iniciada', traspasoId:ref.id, para:herrState.receptorEmail,
+        mensaje:`${userName} te está traspasando la herramienta ${h.folio||''} (${h.descripcion||''}). Acéptala antes del ${venceTxt} o el traspaso vencerá.`,
+        leido:false, creadaEn:now.toISOString(),
+      }).catch(()=>{}),
+      ...(receptorTec?[]:[]), // sin acción extra — el modal invasivo llega por el listener, no por esta notificación
+    ]);
+
+    herrState.paso=4;
+    renderUtil();
+    toast('Traspaso enviado — el receptor debe aceptarlo','ok');
+  }catch(e){
+    console.error('[HERR] error al enviar traspaso',e);
+    toast('Error al enviar: '+(e.message||e),'err');
+    if(btn){btn.disabled=false;btn.textContent='Enviar traspaso';}
+  }
+};
+
+function herrRenderPaso4(){
+  setContent(`
+    <div class="fm-card" style="text-align:center;padding:28px">
+      <div style="width:52px;height:52px;border-radius:50%;background:#DCFCE7;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;color:#166534">${IC.check}</div>
+      <div style="font-size:15px;font-weight:800;color:#0A0F1E;margin-bottom:6px">Traspaso enviado</div>
+      <p style="font-size:12.5px;color:#64748B;line-height:1.5;margin-bottom:18px">${herrState.receptorNombre} recibió la notificación. En cuanto acepte, la herramienta pasa a su nombre y queda registrado en el historial.</p>
+      <button class="fm-btn primary" onclick="herrCerrarTraspaso()">Listo</button>
+    </div>`);
+}
+
+// ── Listener en tiempo real: traspasos de herramienta donde SOY el receptor ──
+// Mismo trato invasivo que ya usa mostrarModalRecibirPendiente para vehículos.
+let _unsubHerrPendiente=null;
+window._herrModalVistos=window._herrModalVistos||new Set();
+
+function herrEscucharPendientes(){
+  if(!miPerfil?.email||_unsubHerrPendiente)return;
+  try{
+    _unsubHerrPendiente=db.collection(C.OPS_TRASP)
+      .where('receptorEmail','==',miPerfil.email.toLowerCase())
+      .where('estatus','==','Pendiente recepción')
+      .onSnapshot(snap=>{
+        const pendientes=snap.docs.map(d=>({id:d.id,...d.data()}))
+          .filter(t=>!t.venceEn||new Date(t.venceEn).getTime()>Date.now()); // ignora ya vencidos
+        const nueva=pendientes.find(t=>!window._herrModalVistos.has(t.id));
+        if(nueva)herrMostrarModalPendiente(nueva);
+      },err=>{console.warn('[HERR pendientes onSnapshot]',err);});
+  }catch(e){console.error('[HERR escucharPendientes]',e);}
+}
+
+function herrMostrarModalPendiente(t){
+  if(document.getElementById('fm-modal-herr-pend'))return;
+  window._herrModalVistos.add(t.id);
+  const venceTxt=t.venceEn?new Date(t.venceEn).toLocaleString('es-MX',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
+  const ov=document.createElement('div');
+  ov.id='fm-modal-herr-pend';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(10,15,30,.72);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+  ov.innerHTML=`
+    <div style="background:#fff;border-radius:18px;max-width:340px;width:100%;padding:24px 22px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.4)">
+      <div style="width:52px;height:52px;border-radius:50%;background:#EAF0FF;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;color:#0B5FFF">${IC.doc}</div>
+      <div style="font-size:16px;font-weight:800;color:#0A0F1E;margin-bottom:6px">Tienes herramienta por recibir</div>
+      <div style="font-size:13px;color:#374151;line-height:1.5;margin-bottom:14px"><strong>${t.entregaNombre||t.entregaEmail||'Alguien'}</strong> te quiere traspasar <strong>${t.folio||'—'} — ${t.descripcion||''}</strong>.</div>
+      <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px;margin-bottom:16px">
+        <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#B45309;margin-bottom:2px">Vence</div>
+        <div style="font-size:13px;font-weight:800;color:#92400E">${venceTxt}</div>
+      </div>
+      <button onclick="herrAceptarTraspaso('${t.id}')" style="width:100%;padding:12px;background:#15803D;color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:13.5px;font-weight:800;cursor:pointer;margin-bottom:8px">Aceptar</button>
+      <button onclick="herrRechazarTraspaso('${t.id}')" style="width:100%;padding:10px;background:none;border:none;color:#B91C1C;font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer;margin-bottom:4px">Rechazar</button>
+      <button onclick="document.getElementById('fm-modal-herr-pend').remove()" style="width:100%;padding:8px;background:none;border:none;color:#94A3B8;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer">Recordarme más tarde</button>
+    </div>`;
+  document.body.appendChild(ov);
+}
+
+window.herrAceptarTraspaso=async function(traspasoId){
+  document.getElementById('fm-modal-herr-pend')?.remove();
+  try{
+    const doc=await db.collection(C.OPS_TRASP).doc(traspasoId).get();
+    if(!doc.exists){toast('El traspaso ya no está disponible.','err');return;}
+    const t=doc.data();
+    if(t.venceEn&&new Date(t.venceEn).getTime()<Date.now()){
+      await db.collection(C.OPS_TRASP).doc(traspasoId).update({estatus:'Vencido'});
+      toast('Este traspaso ya venció.','err');
+      return;
+    }
+    const userEmail=(window.auth?.currentUser?.email||miPerfil?.email||'').toLowerCase();
+    const userName=window.auth?.currentUser?.displayName||miPerfil?.nombre||userEmail;
+    let receptorId=t.receptorTecnicoId;
+    if(!receptorId){
+      const tec=await herrResolverIdInterno(userEmail);
+      if(!tec){toast('No encontramos tu ficha de técnico en Operaciones. Pide a Almacén que capture tu correo ahí antes de aceptar.','err');return;}
+      receptorId=tec.id;
+    }
+    const now=new Date().toISOString();
+    const ubicacion=await herrObtenerUbicacion();
+    const herrRef=db.collection(C.OPS_HERR).doc(t.herramientaId);
+    const herrSnap=await herrRef.get();
+    const ubicacionActual=herrSnap.exists?(herrSnap.data().ubicacionActual||null):null;
+
+    await herrRef.update({ tecnicoActualId:receptorId, fechaAsignacion:now.slice(0,10), estado:'asignada' });
+    await db.collection(C.OPS_MOV).add({
+      herramientaId:t.herramientaId, tipo:'transferencia',
+      tecnicoAnteriorId:t.entregaTecnicoId||null, tecnicoNuevoId:receptorId,
+      ubicacionAnterior:ubicacionActual, ubicacionNueva:ubicacionActual,
+      motivo:null,
+      observaciones:ubicacion?`Traspaso desde Flotilla móvil · lugar aprox. ${ubicacion.lat.toFixed(5)}, ${ubicacion.lng.toFixed(5)}`:'Traspaso desde Flotilla móvil',
+      usuarioEmail:userEmail, usuarioNombre:userName, fecha:now,
+    });
+    await db.collection(C.OPS_TRASP).doc(traspasoId).update({ estatus:'Completado', completadoEn:now, receptorTecnicoId:receptorId });
+    if(t.entregaEmail){
+      db.collection('flotilla_notificaciones').add({
+        tipo:'herramienta_traspaso_completada', traspasoId,
+        para:t.entregaEmail,
+        mensaje:`${userName} aceptó el traspaso de ${t.folio||''} (${t.descripcion||''}). Ya quedó registrada a su nombre.`,
+        leido:false, creadaEn:now,
+      }).catch(()=>{});
+    }
+    toast('Herramienta recibida y registrada ✓','ok');
+    if(herrState.activo)herrCerrarTraspaso();
+  }catch(e){
+    console.error('[HERR aceptar]',e);
+    toast('Error al aceptar: '+(e.message||e),'err');
+  }
+};
+
+window.herrRechazarTraspaso=async function(traspasoId){
+  document.getElementById('fm-modal-herr-pend')?.remove();
+  const motivo=prompt('¿Por qué rechazas este traspaso? (opcional)')||'';
+  try{
+    const doc=await db.collection(C.OPS_TRASP).doc(traspasoId).get();
+    const t=doc.exists?doc.data():{};
+    const now=new Date().toISOString();
+    await db.collection(C.OPS_TRASP).doc(traspasoId).update({ estatus:'Rechazado', motivoRechazo:motivo||null, rechazadoEn:now });
+    if(t.entregaEmail){
+      db.collection('flotilla_notificaciones').add({
+        tipo:'herramienta_traspaso_rechazada', traspasoId,
+        para:t.entregaEmail,
+        mensaje:`El traspaso de ${t.folio||''} (${t.descripcion||''}) fue rechazado.${motivo?' Motivo: "'+motivo+'"':''}`,
+        leido:false, creadaEn:now,
+      }).catch(()=>{});
+    }
+    toast('Traspaso rechazado','ok');
+  }catch(e){
+    console.error('[HERR rechazar]',e);
+    toast('Error al rechazar: '+(e.message||e),'err');
+  }
+};
+
 function renderUtil(){
+  // Si el técnico está en medio de un traspaso de herramienta, ese flujo
+  // manda — es independiente del wizard de transferencia de vehículo
+  // (utilState) para no mezclar sus pasos/borradores.
+  if(herrState.activo){ herrRender(); return; }
   setContent(`
     <div class="fm-sec-hd">
       <div>
@@ -3605,6 +3978,9 @@ function renderUtilPaso1(){
         </button>
         <button class="fm-btn" onclick="utilSetModo('recibir')" style="background:#15803D;color:#fff">
           ${IC.check} Recibir un vehículo
+        </button>
+        <button class="fm-btn" onclick="herrAbrirTraspaso()" style="background:#0B5FFF;color:#fff">
+          ${IC.doc} Traspasar herramienta
         </button>
       </div>
     </div>
