@@ -1755,7 +1755,8 @@
           canceladoMs: d.canceladoEn ? toMs(d.canceladoEn) : null,
           piezas: (Array.isArray(d.productos)?d.productos:[]).reduce(function(a,x){return a+(Number(x.cant)||0);},0),
           productos: Array.isArray(d.productos)?d.productos:[],
-          remisionado: !!d.remisionado, remisionadoPor: d.remisionadoPor||''
+          remisionado: !!d.remisionado, remisionadoPor: d.remisionadoPor||'',
+          remisionAspelFolio: d.remisionAspelFolio||'', remisionAspelFecha: d.remisionAspelFecha||null
         });
       });
       arr.sort(function(a,b){ return (b.entregadoMs||b.canceladoMs||b.creadoMs)-(a.entregadoMs||a.canceladoMs||a.creadoMs); });
@@ -1770,7 +1771,7 @@
       if(filtros.desde && fechaRef < filtros.desde) return false;
       if(filtros.hasta && fechaRef > filtros.hasta) return false;
       if(filtros.q){
-        var blob=(e.folio+' '+e.cliente+' '+e.solicito+' '+e.recibio+' '+e.motivoCancelacion).toLowerCase();
+        var blob=(e.folio+' '+e.cliente+' '+e.solicito+' '+e.recibio+' '+e.motivoCancelacion+' '+e.remisionAspelFolio).toLowerCase();
         if(blob.indexOf(filtros.q)===-1) return false;
       }
       return true;
@@ -1813,7 +1814,7 @@
       var accionesHtml = '<div style="display:flex;flex-direction:column;gap:4px;margin-top:6px;align-items:flex-start;">'
         + '<button type="button" onclick="event.stopPropagation();window.__almAbrirModalEvidencia(\''+e.id+'\')" style="border:1px dashed #cbd5e1;background:#fff;color:#475569;border-radius:6px;font-size:10.5px;font-weight:700;padding:3px 8px;cursor:pointer;white-space:nowrap;">+ Evidencia</button>'
         + (e.remisionado
-            ? '<span style="font-size:10.5px;font-weight:700;color:#16a34a;white-space:nowrap;">✓ Remisionado</span>'
+            ? '<span style="font-size:10.5px;font-weight:700;color:#16a34a;white-space:nowrap;">✓ Remisionado</span>'+(e.remisionAspelFolio?('<br><span style="font-size:9.5px;color:#64748b;white-space:nowrap;">Aspel: '+esc(e.remisionAspelFolio)+'</span>'):'')
             : '<button type="button" onclick="event.stopPropagation();window.__almConfirmarRemision(\''+e.id+'\')" style="border:1px solid #16a34a;background:#fff;color:#16a34a;border-radius:6px;font-size:10.5px;font-weight:700;padding:3px 8px;cursor:pointer;white-space:nowrap;">✅ Remisionar</button>')
         + '</div>'
         + '<input type="file" accept="image/*,.pdf,.doc,.docx" id="alm-evid-file-'+e.id+'" style="display:none">';
@@ -1897,7 +1898,7 @@
       + '<div class="alm-rep-filtros">'
       +   '<div class="alm-rep-fld"><label>Desde</label><input type="date" id="alm-rep-desde"></div>'
       +   '<div class="alm-rep-fld"><label>Hasta</label><input type="date" id="alm-rep-hasta"></div>'
-      +   '<div class="alm-rep-fld grow"><label>Buscar (folio, cliente, solicitó, recibió)</label><input type="text" id="alm-rep-q" placeholder="Ej. CHH0007635, Victor, Los Cachorros…"></div>'
+      +   '<div class="alm-rep-fld grow"><label>Buscar (folio de pedido, folio de remisión, cliente, solicitó, recibió)</label><input type="text" id="alm-rep-q" placeholder="Ej. CHH0007635, CHH0007599 (remisión), Victor…"></div>'
       +   '<button class="alm-rep-btn sec" type="button" onclick="window.__almRecargarReporte()">↻ Recargar</button>'
       +   '<button class="alm-rep-btn" type="button" onclick="window.__almExportarReportePDF()">⬇ Exportar PDF</button>'
       + '</div>'
