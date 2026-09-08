@@ -3658,6 +3658,18 @@ window.herrEnviarTraspaso=async function(){
   if(btn){btn.disabled=true;btn.textContent='Enviando...';}
   try{
     const h=herrState.piezaSel;
+
+    // Bloqueo: si ya hay un traspaso pendiente para esta misma pieza (lo haya
+    // iniciado Almacén desde el Portal o el propio técnico antes), no se puede
+    // iniciar otro — se avisa y se corta aquí.
+    const yaHayPend=await db.collection(C.OPS_TRASP)
+      .where('herramientaId','==',h.id).where('estatus','==','Pendiente recepción').limit(1).get();
+    if(!yaHayPend.empty){
+      toast('Esta pieza ya tiene un traspaso pendiente de aceptación. Espera a que se resuelva.','err');
+      if(btn){btn.disabled=false;btn.textContent='Enviar traspaso';}
+      return;
+    }
+
     const userEmail=(window.auth?.currentUser?.email||miPerfil?.email||'').toLowerCase();
     const userName=window.auth?.currentUser?.displayName||miPerfil?.nombre||userEmail;
     const now=new Date();
@@ -3673,6 +3685,7 @@ window.herrEnviarTraspaso=async function(){
       receptorEmail:herrState.receptorEmail, receptorNombre:herrState.receptorNombre,
       estatus:'Pendiente recepción', creadoEn:now.toISOString(), venceEn:venceEn.toISOString(),
       lugarLat:ubicacion?ubicacion.lat:null, lugarLng:ubicacion?ubicacion.lng:null,
+      origen:'flotilla_movil',
     };
     const ref=await db.collection(C.OPS_TRASP).add(docObj);
 
@@ -3774,12 +3787,17 @@ window.herrAceptarTraspaso=async function(traspasoId){
     const ubicacionActual=herrSnap.exists?(herrSnap.data().ubicacionActual||null):null;
 
     await herrRef.update({ tecnicoActualId:receptorId, fechaAsignacion:now.slice(0,10), estado:'asignada' });
+    const partesObs=[];
+    partesObs.push(t.origen==='operaciones'?'Traspaso iniciado desde Operaciones (Almacén)':'Traspaso desde Flotilla móvil');
+    if(t.comentario)partesObs.push(`Comentario: "${t.comentario}"`);
+    if(t.evidenciaURL)partesObs.push(`Evidencia: ${t.evidenciaURL}`);
+    if(ubicacion)partesObs.push(`Lugar aprox. ${ubicacion.lat.toFixed(5)}, ${ubicacion.lng.toFixed(5)}`);
     await db.collection(C.OPS_MOV).add({
       herramientaId:t.herramientaId, tipo:'transferencia',
       tecnicoAnteriorId:t.entregaTecnicoId||null, tecnicoNuevoId:receptorId,
       ubicacionAnterior:ubicacionActual, ubicacionNueva:ubicacionActual,
       motivo:null,
-      observaciones:ubicacion?`Traspaso desde Flotilla móvil · lugar aprox. ${ubicacion.lat.toFixed(5)}, ${ubicacion.lng.toFixed(5)}`:'Traspaso desde Flotilla móvil',
+      observaciones:partesObs.join(' · '),
       usuarioEmail:userEmail, usuarioNombre:userName, fecha:now,
     });
     await db.collection(C.OPS_TRASP).doc(traspasoId).update({ estatus:'Completado', completadoEn:now, receptorTecnicoId:receptorId });
