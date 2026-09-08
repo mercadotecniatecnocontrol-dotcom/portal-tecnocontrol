@@ -52,10 +52,24 @@
   .bv-label{display:flex;align-items:center;gap:7px;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:14px;letter-spacing:.7px;color:#E23B3B;flex-shrink:0;white-space:nowrap;}
   .bv-label svg{width:18px;height:18px;flex-shrink:0;}
   .bv-count{background:#E23B3B;color:#fff;border-radius:99px;font-size:11px;font-weight:800;padding:1px 8px;margin-left:2px;}
-  .bv-track{display:flex;flex-wrap:wrap;gap:8px;flex:1;}
-  .bv-chip{display:inline-flex;align-items:center;gap:6px;background:#E23B3B;color:#fff;font-weight:800;font-size:13px;letter-spacing:.3px;border-radius:8px;padding:5px 10px 5px 8px;box-shadow:0 0 0 0 rgba(226,59,59,.35);animation:chipHalo 2.2s ease-in-out infinite;}
+  /* Viewport que recorta la franja; el track de adentro es el que se desplaza
+     (mismo patrón que .tv-marquee / .tv-marquee-track) para que los folios
+     vencidos se muevan en banda continua, igual que las cajitas de abajo. */
+  .bv-viewport{flex:1;overflow:hidden;min-width:0;-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 22px,#000 calc(100% - 22px),transparent 100%);mask-image:linear-gradient(90deg,transparent 0,#000 22px,#000 calc(100% - 22px),transparent 100%);}
+  .bv-track{display:flex;align-items:center;gap:8px;white-space:nowrap;will-change:transform;}
+  .bv-track.bv-scroll{animation:bvScroll var(--bv-dur,20s) linear infinite;}
+  @keyframes bvScroll{from{transform:translateX(0);}to{transform:translateX(-50%);}}
+  .bv-chip{display:inline-flex;align-items:center;gap:6px;background:#E23B3B;color:#fff;font-weight:800;font-size:13px;letter-spacing:.3px;border-radius:8px;padding:5px 10px 5px 8px;box-shadow:0 0 0 0 rgba(226,59,59,.35);animation:chipHalo 2.2s ease-in-out infinite;flex-shrink:0;}
   .bv-chip svg{width:15px;height:15px;flex-shrink:0;}
   body.dark .banda-vencidos{background:linear-gradient(90deg,rgba(226,59,59,.24),rgba(226,59,59,.09));}
+  /* ── Tarjeta "hero" de un pedido vencido, cuando sube arriba a ocupar el
+     lugar donde antes se veía el pedido en turno. Reutiliza las mismas
+     clases del hero normal (htop, metaRow, meta, badge…) para que se vea
+     igual de completa, solo con acento rojo y barra/():contador de rotación. ── */
+  .venc-rot-bar{margin-top:12px;height:4px;border-radius:99px;background:rgba(255,255,255,.28);overflow:hidden;}
+  .venc-rot-fill{height:100%;background:#fff;border-radius:99px;width:100%;animation:vencRotShrink 30s linear forwards;}
+  @keyframes vencRotShrink{from{width:100%;}to{width:0%;}}
+  .venc-rot-info{margin-top:6px;font-size:11px;font-weight:800;letter-spacing:.5px;color:#fff;opacity:.9;text-align:right;}
 .tv-mini-mapa-label{background:rgba(15,23,42,.78)!important;border:none!important;box-shadow:none!important;color:#fff!important;font-size:9px!important;font-weight:600;padding:1px 5px!important;border-radius:4px;white-space:nowrap;}
 .tv-mini-mapa-label::before{display:none!important;}
 .tv-ruta-anim{stroke-dasharray:1 9;stroke-linecap:round;animation:tvRutaFlow 900ms linear infinite;}
@@ -121,7 +135,7 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
       VENCIDOS<span class="bv-count" id="bvCount">0</span>
     </div>
-    <div class="bv-track" id="bandaVencidosTrack"></div>
+    <div class="bv-viewport"><div class="bv-track" id="bandaVencidosTrack"></div></div>
   </section>
 
   <footer id="legend"></footer>
@@ -533,17 +547,78 @@ function renderBandaVencidos(list){
   const track=document.getElementById('bandaVencidosTrack');
   const countEl=document.getElementById('bvCount');
   if(!band||!track) return;
-  if(!list.length){ band.classList.remove('show'); prevSigVenc=null; return; }
+  if(!list.length){ band.classList.remove('show'); prevSigVenc=null; track.classList.remove('bv-scroll'); track.innerHTML=''; return; }
   band.classList.add('show');
   const ordenados=[...list].sort((a,b)=>a.createdAt-b.createdAt);
   const sig=ordenados.map(p=>p.folio).join('|');
   countEl.textContent=ordenados.length;
   if(sig===prevSigVenc) return; // evita reconstruir el DOM cada segundo si no cambió
   prevSigVenc=sig;
-  track.innerHTML=ordenados.map(p=>`<div class="bv-chip" data-folio="${p.folio}">
+  const chipsHtml=ordenados.map(p=>`<div class="bv-chip" data-folio="${p.folio}">
       <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
       <span class="num">${p.folio}</span>
     </div>`).join('');
+  // Igual que la franja de cajitas: se duplica el contenido y se anima el
+  // track completo -50% para que el recorrido sea continuo, sin saltos.
+  track.innerHTML=chipsHtml+chipsHtml;
+  const dur=Math.max(14, ordenados.length*3.2);
+  track.style.setProperty('--bv-dur', dur+'s');
+  track.classList.add('bv-scroll');
+}
+
+// ── Rotación de "vencidos" en el hero: cuando un panel se queda sin pedidos
+//   vigentes (como en la captura de Glen), en vez de un cartel estático
+//   "SIN PEDIDOS EN COLA" se muestra ahí, arriba, un vencido a la vez —
+//   igual de completo que un pedido normal — y cada 30s sube el siguiente,
+//   así se ven todos y los que vayan llegando nuevos entran al carrusel.
+const VENC_ROT_SECONDS=30;
+const vencRotState={ v:{list:[],idx:0,secLeft:VENC_ROT_SECONDS}, m:{list:[],idx:0,secLeft:VENC_ROT_SECONDS} };
+function syncVencRot(tk, list, isIdle){
+  const st=vencRotState[tk];
+  const prevFolio = st.list[st.idx] ? st.list[st.idx].folio : null;
+  const changed = list.length!==st.list.length || list.some((p,i)=>!st.list[i]||st.list[i].folio!==p.folio);
+  st.list=list;
+  if(!list.length){ st.idx=0; st.secLeft=VENC_ROT_SECONDS; return; }
+  let newIdx = prevFolio ? list.findIndex(p=>p.folio===prevFolio) : -1;
+  if(newIdx<0){ newIdx=0; st.secLeft=VENC_ROT_SECONDS; }
+  st.idx=newIdx;
+  // Si el panel está inactivo y la lista cambió (llegó uno nuevo, se resolvió
+  // otro, etc.), refresca ya la tarjeta sin esperar al corte de 30s.
+  if(isIdle && changed) buildVencHero(tk);
+}
+function buildVencHero(tk){
+  const st=vencRotState[tk];
+  const p=st.list[st.idx];
+  const heroEl=document.getElementById(tk+'Hero');
+  if(!p || !heroEl) return;
+  const esMatPanel=(tk==='m');
+  const ec=effColor(p), persona=p.solicitante||p.vendedor||'\u2014', v=venc(p);
+  heroEl.classList.remove('empty');
+  heroEl.style.background='linear-gradient(115deg,#C62B2B,#FF6B6B)';
+  const hprods=Array.isArray(p.productos)?p.productos:[];
+  const rowsHtml = hprods.length ? hprods.map(it=>`<div class="pitem"><div class="box"></div><div class="qty">${it.cant}</div><div><div class="desc">${it.desc||''}</div><div class="clave">${it.clave?('Clave '+it.clave):''}</div></div></div>`).join('') : '<div class="pitem" style="opacity:.6">Sin productos</div>';
+  const vencMeta = v ? `<div class="meta"><span class="k">ENTREGA${p.fechaEntrega?(' · '+p.fechaEntrega):''}</span><span class="venc-badge" style="background:${v.color}">${v.txt}</span></div>` : '';
+  const destinoTxt=[p.area,(p.destino||p.uso)].filter(Boolean).join(' — ');
+  const destinoMeta=(esMatPanel && destinoTxt)?`<div class="meta"><span class="k">ÁREA / DESTINO</span><span class="v" style="font-size:15px">${destinoTxt}</span></div>`:'';
+  const destinoTipoMeta = p.destinoTipo ? `<div class="meta"><span class="k">\u00bfA D\u00d3NDE VA?</span><span class="v" style="font-size:15px">${DESTINO_LABEL[p.destinoTipo]||p.destinoTipo}${destinoResumen(p)?(' \u00b7 '+destinoResumen(p)):''}</span></div>` : '';
+  heroEl.innerHTML=`
+    <div class="eyebrow" style="color:#fff;font-weight:900;">\u26A0\uFE0F PEDIDO VENCIDO \u00b7 SUPER\u00d3 TIEMPO DE ENTREGA</div>
+    <div class="htop">
+      <div class="hid"><div class="folio num">${p.folio}</div><div class="client">${p.cliente}</div></div>
+      <div class="hpick"><div class="ph"><span>${hprods.length} PRODUCTOS · ${piezas(p)} PIEZAS</span></div><div class="hpick-view"><div class="hpick-page on">${rowsHtml}</div></div></div>
+    </div>
+    <div class="metaRow">
+      <div class="meta"><span class="k"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>ESPERANDO</span><span class="v timer num mono" id="${tk}HTimer">${fmt(now()-p.createdAt)}</span></div>
+      <div class="meta"><span class="k"><svg class="i" viewBox="0 0 24 24"><path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="7" r="4"/></svg>${esMatPanel?'SOLICITANTE':'VENDEDOR'}</span><span class="v">${persona}</span></div>
+      ${vencMeta}
+      ${destinoMeta}
+      ${destinoTipoMeta}
+      <div class="meta"><span class="k">PRIORIDAD</span><span class="prio">${(p.prioridad||'').replace('_',' ').toUpperCase()}</span></div>
+      <div class="meta" style="margin-left:auto;align-items:flex-end"><span class="badge">${ec.label}</span></div>
+    </div>
+    <div class="venc-rot-bar"><div class="venc-rot-fill"></div></div>
+    <div class="venc-rot-info">VENCIDO ${st.idx+1} DE ${st.list.length} \u00b7 SIGUIENTE EN <span id="${tk}VencCountdown">${st.secLeft}</span>s</div>`;
+  clearInterval(heroState[tk].timer); heroState[tk].timer=null; // este hero no usa el carrusel de páginas de productos
 }
 
 /* ===== RENDER: separa estructura (solo si cambia) de cronómetros (cada seg) — un panel por tipo ===== */
@@ -552,14 +627,19 @@ function signature(list){return list.map(p=>p.folio+':'+effColor(p).k+':'+p.esta
 
 function render(force){
   // Los pedidos urgentes/vencidos que ya superaron su tiempo de entrega no
-  // entran a las columnas normales (héroe + cola): se apartan aquí y se
-  // muestran abajo en la banda de vencidos, compactos.
+  // entran a las columnas normales (héroe + cola): se apartan aquí. Si el
+  // panel se queda sin pedidos vigentes, van rotando arriba uno a uno; y
+  // siempre se muestran, todos juntos, en la banda de abajo.
   const vigentes = pedidos.filter(p=>!esVencido(p));
   const vencidos = pedidos.filter(esVencido);
   const ventas   = ordenar(vigentes.filter(p=>p.tipo!=='material'));
   // Recolecciones locales se mezclan en el panel de Material, con su propia
   // etiqueta/color (rosa) — son "pedidos para recoger", no de venta.
   const material = ordenar([...vigentes.filter(p=>p.tipo==='material'), ...recolecciones]);
+  const vencVenta    = ordenar(vencidos.filter(p=>p.tipo!=='material'));
+  const vencMaterial = ordenar(vencidos.filter(p=>p.tipo==='material'));
+  syncVencRot('v', vencVenta, ventas.length===0);
+  syncVencRot('m', vencMaterial, material.length===0);
   renderPanel('v', ventas, force);
   renderPanel('m', material, force);
   renderBandaVencidos(vencidos);
@@ -618,9 +698,14 @@ function buildPanel(tk, list){
       </div>`;
     startHeroCarousel(tk);
   } else {
-    clearInterval(heroState[tk].timer); heroState[tk].timer=null;
-    heroEl.classList.add('empty');
-    heroEl.innerHTML = '<div style="font-size:14px;font-weight:800;letter-spacing:1.5px;opacity:.92;">SIN PEDIDOS EN COLA</div>';
+    const st=vencRotState[tk];
+    if(st.list.length){
+      buildVencHero(tk);
+    } else {
+      clearInterval(heroState[tk].timer); heroState[tk].timer=null;
+      heroEl.classList.add('empty');
+      heroEl.innerHTML = '<div style="font-size:14px;font-weight:800;letter-spacing:1.5px;opacity:.92;">SIN PEDIDOS EN COLA</div>';
+    }
   }
   const rest=list.slice(1);
   prevFolios[tk]=new Set(list.map(p=>p.folio));
@@ -683,6 +768,25 @@ function tickPanel(tk, list){
   if(hero&&ht) ht.textContent=fmt(now()-hero.createdAt);
   const queueEl=document.getElementById(tk+'Queue');
   queueState[tk].list.forEach(p=>{const el=queueEl.querySelector('[data-folio="'+p.folio+'"] .ctimer');if(el)el.textContent=fmt(now()-p.createdAt)});
+
+  // Panel sin pedidos vigentes: cronómetro del vencido en turno (HH:MM:SS) y
+  // cuenta regresiva de los 30s antes de subir el siguiente.
+  if(list.length===0){
+    const st=vencRotState[tk];
+    if(st.list.length){
+      const actual=st.list[st.idx];
+      const htv=document.getElementById(tk+'HTimer');
+      if(actual&&htv) htv.textContent=fmt(now()-actual.createdAt);
+      st.secLeft=Math.max(0, st.secLeft-1);
+      const cd=document.getElementById(tk+'VencCountdown');
+      if(cd) cd.textContent=st.secLeft;
+      if(st.secLeft<=0){
+        if(st.list.length>1) st.idx=(st.idx+1)%st.list.length;
+        st.secLeft=VENC_ROT_SECONDS;
+        buildVencHero(tk);
+      }
+    }
+  }
 }
 
 function updateChips(){
