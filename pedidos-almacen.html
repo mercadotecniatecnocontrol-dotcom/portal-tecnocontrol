@@ -177,6 +177,18 @@ function destinoBadgeHtml(p){
 }
 const NEXT={esperando_autorizacion:'pendiente'};
 const now=()=>Date.now(), minsAgo=m=>now()-m*60000;
+// ── Hora de pared de Chihuahua, forzada por zona horaria (America/Chihuahua) ──
+// No depende de cómo tenga configurado el reloj/zona el dispositivo/TV: usa
+// Intl para leer los componentes reales en Chihuahua y arma un Date con esos
+// mismos números, así getHours()/getDate()/etc. siempre reflejan Chihuahua,
+// aunque el equipo esté en otro huso horario o mal configurado.
+function nowChih(){
+  try{
+    const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/Chihuahua',hourCycle:'h23',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'}).formatToParts(new Date());
+    const o={}; parts.forEach(p=>{ if(p.type!=='literal') o[p.type]=p.value; });
+    return new Date(Number(o.year), Number(o.month)-1, Number(o.day), Number(o.hour), Number(o.minute), Number(o.second));
+  }catch(e){ return new Date(); } // respaldo si el navegador no soporta Intl con timeZone
+}
 
 /*  DATOS EN VIVO (poblado por onSnapshot de las colecciones `surtidos` y, mezcladas
     en el panel de Material con etiqueta propia, `recolecciones_locales`)  */
@@ -470,7 +482,7 @@ const piezas=p=>(Array.isArray(p.productos)?p.productos:[]).reduce((a,x)=>a+(Num
 // entrega es un día, no un momento preciso.
 function diasA(fechaStr){
   if(!fechaStr) return null;
-  const hoy=new Date(); hoy.setHours(0,0,0,0);
+  const hoy=nowChih(); hoy.setHours(0,0,0,0);
   let f;
   if(fechaStr && typeof fechaStr==='object' && typeof fechaStr.toDate==='function') fechaStr = fechaStr.toDate(); // Firestore Timestamp
   if(fechaStr instanceof Date){
@@ -500,7 +512,7 @@ function venc(p){
     // Entrega HOY: en vez de un simple "ENTREGA HOY", contador de horas
     // restantes hasta medianoche — más útil para priorizar en el día,
     // que fue justo lo que pidió Glen.
-    const ahora=new Date(), medianoche=new Date(); medianoche.setHours(24,0,0,0);
+    const ahora=nowChih(), medianoche=nowChih(); medianoche.setHours(24,0,0,0);
     const horasRest = (medianoche-ahora)/3600000;
     txt = horasRest<=1 ? 'ENTREGA HOY · ¡ÚLTIMA HORA!' : ('ENTREGA HOY · faltan '+Math.floor(horasRest)+'h');
     k = horasRest<=2 ? 'rojo' : 'naranja';
@@ -905,7 +917,7 @@ window.__almRender  = function(){ render(true); };
   };
 })();
 
-function tickReloj(){ const d=new Date(); document.getElementById('clk').textContent = d.toLocaleTimeString('es-MX',{hour12:false}); }
+function tickReloj(){ const d=nowChih(); document.getElementById('clk').textContent = d.toLocaleTimeString('es-MX',{hour12:false}); }
 tickReloj(); setInterval(tickReloj,1000);
 
 // ── Franja de cajas en movimiento: refuerzo visual + indicador de "en vivo" ──
@@ -926,8 +938,8 @@ tickReloj(); setInterval(tickReloj,1000);
   const ICONO_FUEGO = '<path d="M12 2v5"/><path d="M12 2 9 6"/><path d="M12 2l3 4"/><circle cx="12" cy="14" r="6"/>';
   const ICONO_PASTEL = '<rect x="4" y="12" width="16" height="8" rx="1"/><path d="M4 16h16"/><path d="M8 12V9a1 1 0 0 1 2 0v3"/><path d="M14 12V9a1 1 0 0 1 2 0v3"/><path d="M9 6c0-1 1-1 1-2s-1-1-1-2"/><path d="M15 6c0-1 1-1 1-2s-1-1-1-2"/>';
 
-  // Fecha de hoy en Chihuahua (usa hora local del navegador, suficiente para esto)
-  const hoy = new Date();
+  // Fecha de hoy, forzada a la zona horaria de Chihuahua (nowChih)
+  const hoy = nowChih();
   const mes = hoy.getMonth()+1, dia = hoy.getDate();
   const enRango = (m1,d1,m2,d2)=>{
     const marca=(m,d)=>m*100+d, t=marca(mes,dia);
