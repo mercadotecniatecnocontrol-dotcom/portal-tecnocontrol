@@ -44,9 +44,10 @@
   @keyframes bdayPulso{0%,100%{transform:scale(1);}50%{transform:scale(1.035);}}
   @keyframes bdayRebota{0%,100%{transform:translateY(0) rotate(-8deg);}50%{transform:translateY(-7px) rotate(8deg);}}
   #bdayConfetti{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:9999;display:none;}
-  /* ── Banda de VENCIDOS/URGENTES: pedidos que superaron su tiempo de entrega
-     (SLA por prioridad o fecha de entrega ya pasada). Se muestran abajo,
-     compactos (solo folio + ícono), fuera del flujo normal de tarjetas. ── */
+  /* ── Banda de VENCIDOS: pedidos cuya fecha de entrega ya pasó (no incluye
+     los que solo llevan mucho esperando en el almacén, eso es aparte).
+     Se muestran abajo, compactos (solo folio + ícono), fuera del flujo
+     normal de tarjetas. ── */
   .banda-vencidos{display:none;align-items:center;gap:14px;width:100%;padding:9px 18px;background:linear-gradient(90deg,rgba(226,59,59,.16),rgba(226,59,59,.05));border-top:2px solid rgba(226,59,59,.5);border-bottom:1px solid rgba(226,59,59,.25);}
   .banda-vencidos.show{display:flex;}
   .bv-label{display:flex;align-items:center;gap:7px;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:14px;letter-spacing:.7px;color:#E23B3B;flex-shrink:0;white-space:nowrap;}
@@ -547,9 +548,14 @@ function ordenar(list){ return [...list].sort((a,b)=>(PRIO_RANK[b.prioridad]-PRI
 //   prioridad (mins>sla \u2192 effColor 'rojo') o la fecha de entrega ya pasada
 //   (venc() con d\u00edas negativos). Estos salen de la cola normal y se muestran
 //   abajo en la banda compacta, para que la TV no los pierda entre lo dem\u00e1s.
+// ── VENCIDO = solo la fecha de entrega prometida ya pasó (día calendario
+//   anterior a hoy). Que un pedido lleve mucho esperando en el almacén
+//   (RETRASADO por SLA de prioridad) es otra cosa aparte — eso se sigue
+//   viendo con su propio color rojo en la tarjeta normal, pero NO lo saca
+//   de la cola ni lo sube a la banda de vencidos: aquí solo importa la
+//   fecha que se le prometió al cliente.
 function esVencido(p){
   if(['entregado','cancelado','finalizado'].indexOf(p.estado)!==-1) return false;
-  if(effColor(p).k==='rojo') return true;
   const dd=diasA(p.fechaEntrega);
   return dd!==null && dd<0;
 }
@@ -614,7 +620,7 @@ function buildVencHero(tk){
   const destinoMeta=(esMatPanel && destinoTxt)?`<div class="meta"><span class="k">ÁREA / DESTINO</span><span class="v" style="font-size:15px">${destinoTxt}</span></div>`:'';
   const destinoTipoMeta = p.destinoTipo ? `<div class="meta"><span class="k">\u00bfA D\u00d3NDE VA?</span><span class="v" style="font-size:15px">${DESTINO_LABEL[p.destinoTipo]||p.destinoTipo}${destinoResumen(p)?(' \u00b7 '+destinoResumen(p)):''}</span></div>` : '';
   heroEl.innerHTML=`
-    <div class="eyebrow" style="color:#fff;font-weight:900;">\u26A0\uFE0F PEDIDO VENCIDO \u00b7 SUPER\u00d3 TIEMPO DE ENTREGA</div>
+    <div class="eyebrow" style="color:#fff;font-weight:900;">\u26A0\uFE0F PEDIDO VENCIDO \u00b7 YA PAS\u00d3 LA FECHA DE ENTREGA</div>
     <div class="htop">
       <div class="hid"><div class="folio num">${p.folio}</div><div class="client">${p.cliente}</div></div>
       <div class="hpick"><div class="ph"><span>${hprods.length} PRODUCTOS · ${piezas(p)} PIEZAS</span></div><div class="hpick-view"><div class="hpick-page on">${rowsHtml}</div></div></div>
@@ -638,10 +644,12 @@ let prevSig={v:null,m:null}, prevFolios={v:new Set(),m:new Set()};
 function signature(list){return list.map(p=>p.folio+':'+effColor(p).k+':'+p.estado+':'+(p.tipo||'')+':'+(p.fechaEntrega||'')).join('|')}
 
 function render(force){
-  // Los pedidos urgentes/vencidos que ya superaron su tiempo de entrega no
-  // entran a las columnas normales (héroe + cola): se apartan aquí. Si el
-  // panel se queda sin pedidos vigentes, van rotando arriba uno a uno; y
-  // siempre se muestran, todos juntos, en la banda de abajo.
+  // Los pedidos con la fecha de entrega ya vencida no entran a las columnas
+  // normales (héroe + cola): se apartan aquí. Si el panel se queda sin
+  // pedidos vigentes, van rotando arriba uno a uno; y siempre se muestran,
+  // todos juntos, en la banda de abajo. (Un pedido solo "RETRASADO" por
+  // SLA pero con fecha de entrega vigente NO cuenta como vencido — sigue
+  // en su cola normal, marcado en rojo como ya lo hacía el sistema.)
   const vigentes = pedidos.filter(p=>!esVencido(p));
   const vencidos = pedidos.filter(esVencido);
   const ventas   = ordenar(vigentes.filter(p=>p.tipo!=='material'));
