@@ -1636,6 +1636,7 @@
                     <div><strong>Técnico asignado:</strong> ${opsEsc(opsNombreTecnico(h.tecnicoActualId))}</div>
                     ${h.fechaAsignacion ? `<div><strong>Fecha de asignación:</strong> ${opsEsc(h.fechaAsignacion)}</div>` : ""}
                     ${h.folioLegado ? `<div><strong>Folio legado (migración):</strong> ${opsEsc(h.folioLegado)}</div>` : ""}
+                    ${h.origenRequisicionFolio ? `<div><strong>Origen:</strong> Requisición de compra #${opsEsc(h.origenRequisicionFolio)}</div>` : ""}
                     ${h.observaciones ? `<div><strong>Observaciones:</strong> ${opsEsc(h.observaciones)}</div>` : ""}
                 </div>
 
@@ -1672,11 +1673,17 @@
     }
 
     // ── Alta de pieza nueva ────────────────────────────────────────
+    // Se llena al buscar una requisición de compra en el modal de alta; vive
+    // solo mientras el modal está abierto (igual que opsRevisionFotos).
+    let opsRequisicionSeleccionada = null;
+
     window.opsAbrirModalPieza = function () {
+        opsRequisicionSeleccionada = null;
+        const tecnicosActivos = cacheTec.filter(t => t.estatus === "activo");
         const wrap = document.getElementById("ops-modal-wrap");
         wrap.innerHTML = `
         <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;">
-            <div style="background:#fff;border-radius:14px;width:400px;max-width:92vw;padding:22px;">
+            <div style="background:#fff;border-radius:14px;width:400px;max-width:92vw;max-height:90vh;overflow-y:auto;padding:22px;">
                 <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:14px;">Nueva pieza de herramienta</div>
                 <label style="font-size:11.5px;color:#64748b;font-weight:600;">Descripción</label>
                 <input id="ops-in-desc" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
@@ -1719,17 +1726,60 @@
                     <input id="ops-in-medida" placeholder="Ej. 45 x 12 x 8 cm" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
                 </div>
 
+                <div style="border-top:1px dashed #e2e8f0;margin:12px 0 10px;padding-top:10px;">
+                    <label style="font-size:11.5px;color:#64748b;font-weight:600;">Requisición de compra de origen (opcional)</label>
+                    <div style="display:flex;gap:6px;margin:4px 0 4px;">
+                        <input id="ops-in-requi-folio" placeholder="Folio de la requisición" style="flex:1;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;">
+                        <button type="button" onclick="opsBuscarRequisicionParaAlta()" style="background:#eef2f7;border:none;color:#1f2937;padding:0 12px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;">Buscar</button>
+                    </div>
+                    <div id="ops-requi-resultado" style="font-size:11px;color:#94a3b8;margin-bottom:8px;min-height:14px;"></div>
+
+                    <label style="font-size:11.5px;color:#64748b;font-weight:600;">Asignar de inmediato a técnico (opcional)</label>
+                    <select id="ops-in-tecnico-destino" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 4px;">
+                        <option value="">— Sin asignar (queda disponible en almacén) —</option>
+                        ${tecnicosActivos.map(t => `<option value="${t.id}">${opsEsc(t.nombre)} (${opsEsc(t.numeroOperativo)})</option>`).join("")}
+                    </select>
+                </div>
+
                 <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px;">
                     <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
-                    <button onclick="opsGuardarPieza()" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">Generar folio y guardar</button>
+                    <button id="ops-pieza-btn-guardar" onclick="opsGuardarPieza()" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">Generar folio y guardar</button>
                 </div>
             </div>
         </div>`;
     };
 
+    // Busca la requisición por folio en Compras. Si tu módulo de Compras no
+    // guarda el campo con el nombre exacto "folio", ajusta el fs.where() de
+    // abajo — el resto del flujo no depende de más campos que ese.
+    window.opsBuscarRequisicionParaAlta = async function () {
+        const folio = document.getElementById("ops-in-requi-folio").value.trim();
+        const resEl = document.getElementById("ops-requi-resultado");
+        opsRequisicionSeleccionada = null;
+        if (!folio) { resEl.textContent = ""; return; }
+        resEl.textContent = "Buscando...";
+        try {
+            const { db, fs } = await opsGetFB();
+            const snap = await fs.getDocs(fs.query(fs.collection(db, "requisiciones_compra"), fs.where("folio", "==", folio)));
+            if (snap.empty) {
+                resEl.innerHTML = `<span style="color:#b91c1c;">No se encontró una requisición con ese folio.</span>`;
+                return;
+            }
+            const d = snap.docs[0];
+            const data = d.data();
+            opsRequisicionSeleccionada = { id: d.id, folio: data.folio || folio };
+            resEl.innerHTML = `<span style="color:#166534;">✓ Vinculada a requisición ${opsEsc(opsRequisicionSeleccionada.folio)}${data.proveedor ? " · " + opsEsc(data.proveedor) : ""}</span>`;
+        } catch (err) {
+            console.error("[operaciones.js] error al buscar requisición de compra:", err);
+            resEl.innerHTML = `<span style="color:#b91c1c;">Error al buscar. Revisa el nombre del campo "folio" en Compras.</span>`;
+        }
+    };
+
     window.opsGuardarPieza = async function () {
         const descripcion = document.getElementById("ops-in-desc").value.trim();
         if (!descripcion) { alert("La descripción es obligatoria"); return; }
+        const btnGuardar = document.getElementById("ops-pieza-btn-guardar");
+        if (btnGuardar) { btnGuardar.disabled = true; btnGuardar.textContent = "Guardando..."; }
         const marca = document.getElementById("ops-in-marca").value.trim();
         const modelo = document.getElementById("ops-in-modelo").value.trim();
         const categoria = document.getElementById("ops-in-cat").value.trim();
@@ -1741,18 +1791,57 @@
         const peso = pesoVal ? Number(pesoVal) : null;
         const pesoUnidad = peso !== null ? document.getElementById("ops-in-peso-unidad").value : null;
         const medida = document.getElementById("ops-in-medida").value.trim() || null;
+        const tecnicoDestinoId = document.getElementById("ops-in-tecnico-destino").value || null;
         const { db, fs } = await opsGetFB();
         const folio = await opsSiguienteFolioHerramienta();
+
         await fs.setDoc(fs.doc(db, COL_HERRAMIENTAS, folio), {
             folio, descripcion, marca, modelo, categoria, numeroSerie,
             departamento, condicion, uso, peso, pesoUnidad, medida,
-            estado: "disponible", ubicacionActual: UBICACIONES[0],
-            tecnicoActualId: null, fechaAsignacion: null,
+            estado: tecnicoDestinoId ? "asignada" : "disponible",
+            ubicacionActual: UBICACIONES[0],
+            tecnicoActualId: tecnicoDestinoId,
+            fechaAsignacion: tecnicoDestinoId ? opsHoy() : null,
             folioLegado: null, observaciones: null,
             fechaAlta: opsHoy(),
+            origenRequisicionId: opsRequisicionSeleccionada ? opsRequisicionSeleccionada.id : null,
+            origenRequisicionFolio: opsRequisicionSeleccionada ? opsRequisicionSeleccionada.folio : null,
             externalId: null, sourceSystem: "manual", lastSync: null, syncStatus: "no_sincronizado",
         });
-        await opsRegistrarMovimiento({ herramientaId: folio, tipo: "alta", ubicacionNueva: UBICACIONES[0] });
+        await opsRegistrarMovimiento({
+            herramientaId: folio, tipo: "alta", ubicacionNueva: UBICACIONES[0],
+            tecnicoNuevoId: tecnicoDestinoId || null,
+            observaciones: opsRequisicionSeleccionada ? `Origen: requisición de compra ${opsRequisicionSeleccionada.folio}` : null,
+        });
+
+        // Cierra el círculo del lado de Compras: la requisición queda marcada
+        // con la pieza (folio) que resultó de ella y a quién se le entregó.
+        // Solo escribe campos NUEVOS — no toca nada que ya use compras.js.
+        if (opsRequisicionSeleccionada) {
+            try {
+                await fs.updateDoc(fs.doc(db, "requisiciones_compra", opsRequisicionSeleccionada.id), {
+                    herramientaId: folio,
+                    herramientaDescripcion: descripcion,
+                    herramientaAltaFecha: opsHoy(),
+                    herramientaTecnicoDestinoId: tecnicoDestinoId || null,
+                });
+            } catch (err) {
+                console.error("[operaciones.js] no se pudo actualizar la requisición de origen:", err);
+            }
+        }
+
+        if (tecnicoDestinoId) {
+            // opsGenerarResponsivaPDF lee de cacheHerr, que aún no tiene esta pieza
+            // recién creada (el onSnapshot tarda unos ms) — se agrega en caliente,
+            // igual que ya hace opsConfirmarMovimiento antes de generar el PDF.
+            cacheHerr.push({
+                id: folio, folio, descripcion, marca, modelo, categoria, numeroSerie,
+                estado: "asignada", ubicacionActual: UBICACIONES[0],
+                tecnicoActualId: tecnicoDestinoId, fechaAsignacion: opsHoy(),
+            });
+            opsGenerarResponsivaPDF(folio, true);
+        }
+        opsRequisicionSeleccionada = null;
         document.getElementById("ops-modal-wrap").innerHTML = "";
     };
 
