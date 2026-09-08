@@ -44,6 +44,18 @@
   @keyframes bdayPulso{0%,100%{transform:scale(1);}50%{transform:scale(1.035);}}
   @keyframes bdayRebota{0%,100%{transform:translateY(0) rotate(-8deg);}50%{transform:translateY(-7px) rotate(8deg);}}
   #bdayConfetti{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:9999;display:none;}
+  /* ── Banda de VENCIDOS/URGENTES: pedidos que superaron su tiempo de entrega
+     (SLA por prioridad o fecha de entrega ya pasada). Se muestran abajo,
+     compactos (solo folio + ícono), fuera del flujo normal de tarjetas. ── */
+  .banda-vencidos{display:none;align-items:center;gap:14px;width:100%;padding:9px 18px;background:linear-gradient(90deg,rgba(226,59,59,.16),rgba(226,59,59,.05));border-top:2px solid rgba(226,59,59,.5);border-bottom:1px solid rgba(226,59,59,.25);}
+  .banda-vencidos.show{display:flex;}
+  .bv-label{display:flex;align-items:center;gap:7px;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:14px;letter-spacing:.7px;color:#E23B3B;flex-shrink:0;white-space:nowrap;}
+  .bv-label svg{width:18px;height:18px;flex-shrink:0;}
+  .bv-count{background:#E23B3B;color:#fff;border-radius:99px;font-size:11px;font-weight:800;padding:1px 8px;margin-left:2px;}
+  .bv-track{display:flex;flex-wrap:wrap;gap:8px;flex:1;}
+  .bv-chip{display:inline-flex;align-items:center;gap:6px;background:#E23B3B;color:#fff;font-weight:800;font-size:13px;letter-spacing:.3px;border-radius:8px;padding:5px 10px 5px 8px;box-shadow:0 0 0 0 rgba(226,59,59,.35);animation:chipHalo 2.2s ease-in-out infinite;}
+  .bv-chip svg{width:15px;height:15px;flex-shrink:0;}
+  body.dark .banda-vencidos{background:linear-gradient(90deg,rgba(226,59,59,.24),rgba(226,59,59,.09));}
 .tv-mini-mapa-label{background:rgba(15,23,42,.78)!important;border:none!important;box-shadow:none!important;color:#fff!important;font-size:9px!important;font-weight:600;padding:1px 5px!important;border-radius:4px;white-space:nowrap;}
 .tv-mini-mapa-label::before{display:none!important;}
 .tv-ruta-anim{stroke-dasharray:1 9;stroke-linecap:round;animation:tvRutaFlow 900ms linear infinite;}
@@ -103,6 +115,14 @@
       <div id="tv-mini-mapa-leyenda" style="flex-shrink:0;padding:8px 10px;font-size:11px;color:#334155;display:flex;flex-wrap:wrap;gap:6px 12px;border-top:1px solid #e2e8f0;"></div>
     </section>
   </div>
+
+  <section class="banda-vencidos" id="bandaVencidos">
+    <div class="bv-label">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      VENCIDOS<span class="bv-count" id="bvCount">0</span>
+    </div>
+    <div class="bv-track" id="bandaVencidosTrack"></div>
+  </section>
 
   <footer id="legend"></footer>
   <div class="tv-marquee" id="tvMarquee" aria-hidden="true"><div class="tv-marquee-track" id="tvMarqueeTrack"></div></div>
@@ -497,17 +517,52 @@ function startHeroCarousel(tk){
 const fechaEntregaMs=p=>{ if(!p.fechaEntrega) return Infinity; const d=new Date(p.fechaEntrega+'T00:00:00'); return isNaN(d.getTime())?Infinity:d.getTime(); };
 function ordenar(list){ return [...list].sort((a,b)=>(PRIO_RANK[b.prioridad]-PRIO_RANK[a.prioridad])||(fechaEntregaMs(a)-fechaEntregaMs(b))||(a.createdAt-b.createdAt)); }
 
+// ── VENCIDOS: pedidos que superaron su tiempo de entrega — ya sea el SLA por
+//   prioridad (mins>sla \u2192 effColor 'rojo') o la fecha de entrega ya pasada
+//   (venc() con d\u00edas negativos). Estos salen de la cola normal y se muestran
+//   abajo en la banda compacta, para que la TV no los pierda entre lo dem\u00e1s.
+function esVencido(p){
+  if(['entregado','cancelado','finalizado'].indexOf(p.estado)!==-1) return false;
+  if(effColor(p).k==='rojo') return true;
+  const dd=diasA(p.fechaEntrega);
+  return dd!==null && dd<0;
+}
+let prevSigVenc=null;
+function renderBandaVencidos(list){
+  const band=document.getElementById('bandaVencidos');
+  const track=document.getElementById('bandaVencidosTrack');
+  const countEl=document.getElementById('bvCount');
+  if(!band||!track) return;
+  if(!list.length){ band.classList.remove('show'); prevSigVenc=null; return; }
+  band.classList.add('show');
+  const ordenados=[...list].sort((a,b)=>a.createdAt-b.createdAt);
+  const sig=ordenados.map(p=>p.folio).join('|');
+  countEl.textContent=ordenados.length;
+  if(sig===prevSigVenc) return; // evita reconstruir el DOM cada segundo si no cambió
+  prevSigVenc=sig;
+  track.innerHTML=ordenados.map(p=>`<div class="bv-chip" data-folio="${p.folio}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <span class="num">${p.folio}</span>
+    </div>`).join('');
+}
+
 /* ===== RENDER: separa estructura (solo si cambia) de cronómetros (cada seg) — un panel por tipo ===== */
 let prevSig={v:null,m:null}, prevFolios={v:new Set(),m:new Set()};
 function signature(list){return list.map(p=>p.folio+':'+effColor(p).k+':'+p.estado+':'+(p.tipo||'')+':'+(p.fechaEntrega||'')).join('|')}
 
 function render(force){
-  const ventas   = ordenar(pedidos.filter(p=>p.tipo!=='material'));
+  // Los pedidos urgentes/vencidos que ya superaron su tiempo de entrega no
+  // entran a las columnas normales (héroe + cola): se apartan aquí y se
+  // muestran abajo en la banda de vencidos, compactos.
+  const vigentes = pedidos.filter(p=>!esVencido(p));
+  const vencidos = pedidos.filter(esVencido);
+  const ventas   = ordenar(vigentes.filter(p=>p.tipo!=='material'));
   // Recolecciones locales se mezclan en el panel de Material, con su propia
   // etiqueta/color (rosa) — son "pedidos para recoger", no de venta.
-  const material = ordenar([...pedidos.filter(p=>p.tipo==='material'), ...recolecciones]);
+  const material = ordenar([...vigentes.filter(p=>p.tipo==='material'), ...recolecciones]);
   renderPanel('v', ventas, force);
   renderPanel('m', material, force);
+  renderBandaVencidos(vencidos);
   updateChips();
 }
 
