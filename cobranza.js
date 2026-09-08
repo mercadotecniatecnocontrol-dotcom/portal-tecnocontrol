@@ -305,7 +305,7 @@
     return '<div style="background:#fff;border-radius:14px;padding:18px 22px;box-shadow:0 1px 3px rgba(10,22,40,.08)">'+
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">'+
         '<h3 style="font-size:15px;font-weight:700;margin:0;color:#0A1628">Pedidos de Almacén</h3>'+
-        '<input id="cb-filtro-pedidos-texto" placeholder="Buscar folio o cliente…" value="'+esc(filtroPedidosTexto)+'" oninput="window.__cbSetFiltroPedidosTexto(this.value)" style="padding:8px 12px;border:1px solid #E2E8F0;border-radius:8px;font-size:12px;min-width:220px">'+
+        '<input id="cb-filtro-pedidos-texto" placeholder="Buscar folio de pedido, folio de remisión o cliente…" value="'+esc(filtroPedidosTexto)+'" oninput="window.__cbSetFiltroPedidosTexto(this.value)" style="padding:8px 12px;border:1px solid #E2E8F0;border-radius:8px;font-size:12px;min-width:280px">'+
       '</div>'+
       '<div id="cb-pedidos-tabla-wrap">'+renderTablaPedidosGlobal()+'</div>'+
     '</div>';
@@ -316,26 +316,22 @@
     var q = filtroPedidosTexto.toLowerCase();
     var lista = pedidosTodos.filter(function(p){
       if(!q) return true;
-      return (p.folio||'').toLowerCase().indexOf(q)>=0 || (p.cliente||'').toLowerCase().indexOf(q)>=0;
+      return (p.folio||'').toLowerCase().indexOf(q)>=0 ||
+        (p.cliente||'').toLowerCase().indexOf(q)>=0 ||
+        (p.remisionAspelFolio||'').toLowerCase().indexOf(q)>=0;
     });
     if(!lista.length) return '<p style="text-align:center;color:#94A3B8;padding:40px 0;font-size:13px">Sin pedidos que coincidan con la búsqueda.</p>';
     return lista.map(renderPedidoRowGlobal).join('');
   }
 
   function renderPedidoRowGlobal(p){
-    var fecha = p.createdAt && p.createdAt.seconds ? new Date(p.createdAt.seconds*1000) : null;
     var abierto = pedidoAbiertoGlobal===p.id;
-    var remisionBadge = p.remisionado
-      ? '<span style="font-size:10.5px;font-weight:700;color:#16A34A">✓ Remisionado'+(p.remisionadoPor?(' · '+esc(p.remisionadoPor)):'')+'</span>'
-      : '<span style="font-size:10.5px;font-weight:700;color:#94A3B8">Sin remisionar</span>';
-    return '<div style="border-top:1px solid #F1F5F9;padding:10px 0">'+
-      '<div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="window.__cbToggleEvidenciasGlobal(\''+p.id+'\')">'+
-        '<div><p style="font-size:12.5px;font-weight:700;color:#0A1628;margin:0">'+esc(p.folio||p.id)+' <span style="font-weight:400;color:#5C7089">· '+esc(p.cliente||'—')+'</span></p>'+
-        '<p style="font-size:10.5px;color:#94A3B8;margin:2px 0 0">'+(fecha?fecha.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}):'—')+' · '+esc(p.estado||'—')+' · '+remisionBadge+'</p></div>'+
-        '<span style="font-size:11px;font-weight:700;color:#1473E6;white-space:nowrap">'+(abierto?'Ocultar detalle ▲':'Ver detalle ▼')+'</span>'+
-      '</div>'+
-      '<div id="cb-gped-'+p.id+'" style="margin-top:8px;'+(abierto?'':'display:none')+'">'+(abierto?'<p style="font-size:11px;color:#94A3B8">Cargando…</p>':'')+'</div>'+
-    '</div>';
+    return renderPedidoCard(p, {
+      abierto: abierto,
+      mostrarCliente: true,
+      onToggle: "window.__cbToggleEvidenciasGlobal('"+p.id+"')",
+      detalleId: 'cb-gped-'+p.id
+    });
   }
 
   window.__cbToggleEvidenciasGlobal = function(pedidoId){
@@ -592,19 +588,13 @@
   };
 
   function renderPedidoRow(p){
-    var fecha = p.createdAt && p.createdAt.seconds ? new Date(p.createdAt.seconds*1000) : null;
     var abierto = _pedidoAbierto===p.id;
-    var remisionBadge = p.remisionado
-      ? '<span style="font-size:10.5px;font-weight:700;color:#16A34A">✓ Remisionado'+(p.remisionadoPor?(' · '+esc(p.remisionadoPor)):'')+'</span>'
-      : '<span style="font-size:10.5px;font-weight:700;color:#94A3B8">Sin remisionar</span>';
-    return '<div style="border-top:1px solid #F1F5F9;padding:10px 0">'+
-      '<div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="window.__cbToggleEvidencias(\''+p.id+'\')">'+
-        '<div><p style="font-size:12.5px;font-weight:700;color:#0A1628;margin:0">'+esc(p.folio||p.id)+'</p>'+
-        '<p style="font-size:10.5px;color:#94A3B8;margin:2px 0 0">'+(fecha?fecha.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}):'—')+' · '+esc(p.estado||'—')+' · '+remisionBadge+'</p></div>'+
-        '<span style="font-size:11px;font-weight:700;color:#1473E6;white-space:nowrap">'+(abierto?'Ocultar detalle ▲':'Ver detalle ▼')+'</span>'+
-      '</div>'+
-      '<div id="cb-evid-'+p.id+'" style="margin-top:8px;'+(abierto?'':'display:none')+'">'+(abierto?'<p style="font-size:11px;color:#94A3B8">Cargando…</p>':'')+'</div>'+
-    '</div>';
+    return renderPedidoCard(p, {
+      abierto: abierto,
+      mostrarCliente: false,
+      onToggle: "window.__cbToggleEvidencias('"+p.id+"')",
+      detalleId: 'cb-evid-'+p.id
+    });
   }
 
   window.__cbToggleEvidencias = function(pedidoId){
@@ -614,6 +604,44 @@
 
   function subseccion(titulo, html){
     return '<div style="margin-bottom:12px"><p style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#94A3B8;margin:0 0 6px">'+titulo+'</p>'+html+'</div>';
+  }
+
+  // ── Estilo compartido de "chip" (etiqueta con fondo) para estados/badges ──
+  function chip(texto, bg, color){
+    return '<span style="display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;color:'+color+';background:'+bg+';padding:3px 9px;border-radius:20px;white-space:nowrap">'+texto+'</span>';
+  }
+
+  // ── Tarjeta profesional de un pedido: marco completo, acento de color por
+  //    estado, chips en vez de texto plano — reemplaza al renglón con solo
+  //    "border-top" que se veía como texto corrido sin delimitar. ──
+  function renderPedidoCard(p, opts){
+    opts = opts || {};
+    var fecha = p.createdAt && p.createdAt.seconds ? new Date(p.createdAt.seconds*1000) : null;
+    var abierto = opts.abierto;
+    var acento = p.remisionado ? '#16A34A' : '#CBD5E1';
+    var remisionChip = p.remisionado
+      ? chip('✓ Remisionado', '#DCFCE7', '#16A34A')
+      : chip('Sin remisionar', '#F1F5F9', '#64748B');
+    var remisionAspelLinea = p.remisionado && p.remisionAspelFolio
+      ? '<p style="font-size:10.5px;color:#94A3B8;margin:3px 0 0">Remisión Aspel: <b style="color:#334155">'+esc(p.remisionAspelFolio)+'</b>'+(p.remisionAspelFecha?(' · '+fmtFecha(p.remisionAspelFecha)):'')+'</p>'
+      : '';
+    var clienteTxt = opts.mostrarCliente && p.cliente ? ' <span style="font-weight:400;color:#5C7089">· '+esc(p.cliente)+'</span>' : '';
+    return '<div style="background:#fff;border:1px solid #E2E8F0;border-left:4px solid '+acento+';border-radius:12px;padding:14px 16px;margin-bottom:10px;transition:box-shadow .15s" onmouseenter="this.style.boxShadow=\'0 2px 8px rgba(10,22,40,.08)\'" onmouseleave="this.style.boxShadow=\'none\'">'+
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;cursor:pointer" onclick="'+esc(opts.onToggle)+'">'+
+        '<div style="min-width:0">'+
+          '<p style="font-size:13.5px;font-weight:700;color:#0A1628;margin:0">'+esc(p.folio||p.id)+clienteTxt+'</p>'+
+          '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px">'+
+            '<span style="font-size:10.5px;color:#94A3B8">'+(fecha?fecha.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}):'—')+'</span>'+
+            chip(esc(p.estado||'—'), '#EFF6FF', '#1473E6')+
+            remisionChip+
+          '</div>'+
+          remisionAspelLinea+
+        '</div>'+
+        '<span style="flex-shrink:0;font-size:11px;font-weight:700;color:#1473E6;white-space:nowrap;display:flex;align-items:center;gap:4px">'+(abierto?'Ocultar':'Ver detalle')+
+          '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="transform:rotate('+(abierto?'180':'0')+'deg);transition:transform .15s"><polyline points="6 9 12 15 18 9"/></svg></span>'+
+      '</div>'+
+      '<div id="'+esc(opts.detalleId)+'" style="margin-top:'+(abierto?'12':'0')+'px;'+(abierto?'':'display:none')+';border-top:'+(abierto?'1px solid #F1F5F9;padding-top:12px':'none')+'">'+(abierto?'<p style="font-size:11px;color:#94A3B8">Cargando…</p>':'')+'</div>'+
+    '</div>';
   }
 
   // ── Abrir imagen/documento en ventana flotante de vista previa ──
