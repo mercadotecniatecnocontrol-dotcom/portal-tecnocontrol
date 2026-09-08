@@ -273,6 +273,17 @@
         baja:        { label: "Baja",             bg: "#e5e7eb", fg: "#374151" },
     };
 
+    // Campos "enterprise" de alta (Glen, sep-2026): departamento de uso, condición
+    // (nueva/usada/reacondicionada) y unidad de peso. Son opcionales — piezas ya
+    // existentes simplemente no los tienen y se muestran como "—".
+    const DEPARTAMENTOS_HERRAMIENTA = ["Operaciones", "Almacén", "Flotilla", "Ventas", "Mantenimiento", "Construcción / Desarrollos", "Administración", "Otro"];
+    const CONDICIONES_HERRAMIENTA = {
+        nueva:           { label: "Nueva",           bg: "#dcfce7", fg: "#166534" },
+        usada:           { label: "Usada",           bg: "#fef9c3", fg: "#854d0e" },
+        reacondicionada: { label: "Reacondicionada", bg: "#e0e7ff", fg: "#3730a3" },
+    };
+    const UNIDADES_PESO = ["kg", "g", "lb"];
+
     const ICON = {
         wrench: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>',
         close:  '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>',
@@ -706,6 +717,7 @@
     let filtroFolios = "", filtroFolioSemaforo = "todos";
     let tabActual = "dashboard";
     let filtroHerr = "", filtroTec = "";
+    let filtroCat = { busca: "", categoria: "", departamento: "", estado: "", condicion: "" };
 
     async function opsGetFB() {
         if (opsFB) return opsFB;
@@ -724,6 +736,46 @@
         const authMod = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
         opsAuthTools = { appMod, authMod };
         return opsAuthTools;
+    }
+
+    // Carga perezosa de firebase-storage — solo se usa al guardar fotos de
+    // evidencia de una revisión de herramienta. Reutiliza la app por defecto
+    // (la misma que ya inicializó window.db en index.html).
+    let opsStorageTools = null;
+    async function opsGetStorage() {
+        if (opsStorageTools) return opsStorageTools;
+        const appMod = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js");
+        const stMod = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js");
+        const storage = stMod.getStorage(appMod.getApp());
+        opsStorageTools = { storage, stMod };
+        return opsStorageTools;
+    }
+
+    // Redimensiona/comprime una imagen en el navegador antes de subirla —
+    // "buen tamaño" para el PDF de auditoría, sin subir fotos de 8-12MB
+    // directo de la cámara del celular. Máximo ~1600px de lado mayor, JPEG 0.82.
+    function opsComprimirImagen(file, maxLado, calidad) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            const reader = new FileReader();
+            reader.onerror = reject;
+            reader.onload = () => {
+                img.onerror = reject;
+                img.onload = () => {
+                    let { width, height } = img;
+                    if (width > maxLado || height > maxLado) {
+                        if (width >= height) { height = Math.round(height * (maxLado / width)); width = maxLado; }
+                        else { width = Math.round(width * (maxLado / height)); height = maxLado; }
+                    }
+                    const canvas = document.createElement("canvas");
+                    canvas.width = width; canvas.height = height;
+                    canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+                    canvas.toBlob(blob => resolve(blob), "image/jpeg", calidad);
+                };
+                img.src = reader.result;
+            };
+            reader.readAsDataURL(file);
+        });
     }
 
     function opsEsc(s) {
@@ -1059,12 +1111,13 @@
         movimientos: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>',
         folios: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><circle cx="8" cy="15" r="1.5" fill="currentColor" stroke="none"/></svg>',
         clientes: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21V7l9-4 9 4v14"/><path d="M9 21V12h6v9"/><path d="M9 8h.01M15 8h.01M12 8h.01"/></svg>',
+        catalogo: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>',
     };
 
     function opsRenderShell() {
         const rol = opsRolActual();
         const rolLabel = { administrador: "Administrador", almacen: "Almacén", consulta: "Consulta" }[rol];
-        const items = ["resumen:Resumen", "dashboard:Herramientas", "guardias:Guardias", "tecnicos:Técnicos", "servicios:Servicios",
+        const items = ["resumen:Resumen", "dashboard:Herramientas", "catalogo:Catálogo", "guardias:Guardias", "tecnicos:Técnicos", "servicios:Servicios",
             "folios:Folios", "clientes:Clientes",
             ...(opsPuedeHacer("autorizar_material") ? ["solicitudes:Solicitudes"] : []),
             "alertas:Alertas", "movimientos:Movimientos"];
@@ -1109,6 +1162,7 @@
         if (activo) { activo.style.color = "#0B5FFF"; activo.style.background = "#eaf0ff"; activo.style.borderLeftColor = "#0B5FFF"; }
         if (tab === "resumen") opsRenderResumen();
         else if (tab === "dashboard") opsRenderDashboard();
+        else if (tab === "catalogo") opsRenderCatalogo();
         else if (tab === "guardias") opsRenderGuardias();
         else if (tab === "tecnicos") opsRenderTecnicos();
         else if (tab === "servicios") opsRenderServicios();
@@ -1126,6 +1180,7 @@
             unsubHerr = fs.onSnapshot(fs.query(fs.collection(db, COL_HERRAMIENTAS), fs.orderBy("folio")), snap => {
                 cacheHerr = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                 if (tabActual === "dashboard") opsRenderDashboard();
+                if (tabActual === "catalogo") opsRenderCatalogo();
                 if (tabActual === "resumen") opsRenderResumen();
             });
         }
@@ -1134,6 +1189,7 @@
                 cacheTec = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                 if (tabActual === "tecnicos") opsRenderTecnicos();
                 if (tabActual === "dashboard") opsRenderDashboard();
+                if (tabActual === "catalogo") opsRenderCatalogo();
                 if (tabActual === "resumen") opsRenderResumen();
             });
         }
@@ -1395,6 +1451,158 @@
 
     window.opsFiltrarHerr = function (v) { filtroHerr = v || ""; opsRenderDashboard(); };
 
+    // ── Catálogo agrupado (vista "por tipo de artículo") ────────────
+    // No cambia el modelo de datos: sigue siendo un folio por pieza física
+    // (trazabilidad completa por unidad). Esto solo AGRUPA esas piezas por
+    // descripción para mostrar, ej., "Juego de dados: 31 en sistema" con
+    // el desglose de cuántas tiene cada almacén técnico — como pidió Glen.
+    let cacheGruposCatalogo = [];
+
+    function opsClaveCatalogo(desc) {
+        return (desc || "").trim().toUpperCase().replace(/\s+/g, " ");
+    }
+
+    function opsAgruparCatalogo(lista) {
+        const grupos = new Map();
+        lista.forEach(h => {
+            const clave = opsClaveCatalogo(h.descripcion);
+            if (!clave) return;
+            if (!grupos.has(clave)) grupos.set(clave, { descripcion: h.descripcion, categoria: h.categoria || "", piezas: [] });
+            grupos.get(clave).piezas.push(h);
+        });
+        return Array.from(grupos.values()).sort((a, b) => b.piezas.length - a.piezas.length || a.descripcion.localeCompare(b.descripcion));
+    }
+
+    window.opsFiltrarCatalogo = function (campo, valor) { filtroCat[campo] = valor; opsRenderCatalogo(); };
+    window.opsLimpiarFiltrosCatalogo = function () {
+        filtroCat = { busca: filtroCat.busca, categoria: "", departamento: "", estado: "", condicion: "" };
+        opsRenderCatalogo();
+    };
+
+    function opsRenderCatalogo() {
+        const el = document.getElementById("ops-tab-content");
+        if (!el) return;
+
+        const categorias = [...new Set(cacheHerr.map(h => (h.categoria || "").trim()).filter(Boolean))].sort();
+
+        let lista = cacheHerr.slice();
+        const b = filtroCat.busca.trim().toLowerCase();
+        if (b) lista = lista.filter(h => (h.folio || "").toLowerCase().includes(b) || (h.descripcion || "").toLowerCase().includes(b) || (h.marca || "").toLowerCase().includes(b) || opsNombreTecnico(h.tecnicoActualId).toLowerCase().includes(b));
+        if (filtroCat.categoria) lista = lista.filter(h => (h.categoria || "") === filtroCat.categoria);
+        if (filtroCat.departamento) lista = lista.filter(h => (h.departamento || "") === filtroCat.departamento);
+        if (filtroCat.estado) lista = lista.filter(h => (h.estado || "disponible") === filtroCat.estado);
+        if (filtroCat.condicion) lista = lista.filter(h => (h.condicion || "") === filtroCat.condicion);
+
+        cacheGruposCatalogo = opsAgruparCatalogo(lista);
+
+        const selFiltro = (id, campo, opciones, valorActual) => `
+            <select id="${id}" onchange="opsFiltrarCatalogo('${campo}', this.value)" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:12px;margin:4px 0 12px;background:#fff;">
+                <option value="">Todos</option>
+                ${opciones.map(o => `<option value="${opsEsc(o)}" ${valorActual === o ? "selected" : ""}>${opsEsc(o)}</option>`).join("")}
+            </select>`;
+        const selFiltroEstado = (valorActual) => `
+            <select id="ops-cat-f-estado" onchange="opsFiltrarCatalogo('estado', this.value)" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:12px;margin:4px 0 12px;background:#fff;">
+                <option value="">Todos</option>
+                ${Object.keys(ESTADOS_HERRAMIENTA).map(k => `<option value="${k}" ${valorActual === k ? "selected" : ""}>${ESTADOS_HERRAMIENTA[k].label}</option>`).join("")}
+            </select>`;
+        const selFiltroCondicion = (valorActual) => `
+            <select id="ops-cat-f-cond" onchange="opsFiltrarCatalogo('condicion', this.value)" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:12px;margin:4px 0 12px;background:#fff;">
+                <option value="">Todas</option>
+                ${Object.keys(CONDICIONES_HERRAMIENTA).map(k => `<option value="${k}" ${valorActual === k ? "selected" : ""}>${CONDICIONES_HERRAMIENTA[k].label}</option>`).join("")}
+            </select>`;
+
+        el.innerHTML = `
+            <div style="display:flex;gap:18px;align-items:flex-start;">
+                <div style="width:200px;flex-shrink:0;background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px;">
+                    <div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:2px;">Categoría</div>
+                    ${selFiltro("ops-cat-f-categoria", "categoria", categorias, filtroCat.categoria)}
+                    <div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:2px;">Departamento</div>
+                    ${selFiltro("ops-cat-f-depto", "departamento", DEPARTAMENTOS_HERRAMIENTA, filtroCat.departamento)}
+                    <div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:2px;">Estado</div>
+                    ${selFiltroEstado(filtroCat.estado)}
+                    <div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:2px;">Condición</div>
+                    ${selFiltroCondicion(filtroCat.condicion)}
+                    <button onclick="opsLimpiarFiltrosCatalogo()" style="width:100%;background:#f1f5f9;border:none;color:#475569;padding:8px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:600;margin-top:2px;">Limpiar filtros</button>
+                </div>
+                <div style="flex:1;min-width:0;">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:9px 13px;">
+                        <span style="color:#94a3b8;">${ICON.search}</span>
+                        <input type="text" placeholder="Buscar por folio, descripción, marca o técnico..." value="${opsEsc(filtroCat.busca)}" oninput="opsFiltrarCatalogo('busca', this.value)" style="border:none;outline:none;font-size:12.5px;flex:1;">
+                        <span style="font-size:11px;color:#94a3b8;font-weight:600;white-space:nowrap;">${cacheGruposCatalogo.length} artículo(s) · ${lista.length} pieza(s)</span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;">
+                        ${cacheGruposCatalogo.length ? cacheGruposCatalogo.map((g, i) => opsCardCatalogo(g, i)).join("") : `<div style="grid-column:1/-1;padding:40px;text-align:center;color:#94a3b8;background:#fff;border-radius:14px;border:1px solid #e2e8f0;">Sin artículos que coincidan con el filtro.</div>`}
+                    </div>
+                </div>
+            </div>`;
+    }
+
+    function opsCardCatalogo(g, idx) {
+        const total = g.piezas.length;
+        const enAlmacen = g.piezas.filter(p => !p.tecnicoActualId).length;
+        const porTecnico = new Map();
+        g.piezas.forEach(p => {
+            if (!p.tecnicoActualId) return;
+            porTecnico.set(p.tecnicoActualId, (porTecnico.get(p.tecnicoActualId) || 0) + 1);
+        });
+        const filasTec = Array.from(porTecnico.entries()).sort((a, b) => b[1] - a[1]).slice(0, 4);
+        const masOtros = porTecnico.size - filasTec.length;
+        const condMuestra = g.piezas.find(p => p.condicion) ? g.piezas.find(p => p.condicion).condicion : null;
+        const cond = condMuestra ? CONDICIONES_HERRAMIENTA[condMuestra] : null;
+
+        return `<div onclick="opsAbrirGrupoCatalogo(${idx})" style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:15px 16px;cursor:pointer;transition:box-shadow .15s;" onmouseover="this.style.boxShadow='0 4px 14px rgba(15,23,42,0.08)'" onmouseout="this.style.boxShadow='none'">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+                <div style="font-size:13.5px;font-weight:700;color:#1e293b;line-height:1.3;">${opsEsc(g.descripcion)}</div>
+                <span style="flex-shrink:0;width:34px;height:34px;border-radius:9px;background:#eaf0ff;color:#0B5FFF;display:flex;align-items:center;justify-content:center;">${ICON.wrench}</span>
+            </div>
+            <div style="font-size:11px;color:#94a3b8;margin:2px 0 10px;">${opsEsc(g.categoria || "Sin categoría")}${cond ? ` · <span style="color:${cond.fg};font-weight:600;">${cond.label}</span>` : ""}</div>
+            <div style="display:flex;align-items:baseline;gap:5px;margin-bottom:10px;">
+                <span style="font-size:22px;font-weight:800;color:#1e293b;">${total}</span>
+                <span style="font-size:11px;color:#64748b;">en sistema</span>
+            </div>
+            <div style="border-top:1px solid #f1f5f9;padding-top:9px;">
+                <div style="font-size:10.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px;">Almacén técnico</div>
+                ${filasTec.length ? filasTec.map(([tecId, n]) => `
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                        <span style="font-size:11.5px;color:#334155;">${opsEsc(opsNombreTecnico(tecId))}</span>
+                        <span style="font-size:11.5px;font-weight:700;color:#1e293b;">${n}</span>
+                    </div>`).join("") : '<div style="font-size:11px;color:#cbd5e1;">Ninguno asignado.</div>'}
+                ${masOtros > 0 ? `<div style="font-size:10.5px;color:#94a3b8;">+${masOtros} técnico(s) más</div>` : ""}
+                ${enAlmacen ? `<div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;padding-top:4px;border-top:1px dashed #eef1f5;"><span style="font-size:11.5px;color:#64748b;">Sin asignar (almacén)</span><span style="font-size:11.5px;font-weight:700;color:#64748b;">${enAlmacen}</span></div>` : ""}
+            </div>
+        </div>`;
+    }
+
+    // ── Panel: piezas individuales de un artículo del catálogo ─────
+    window.opsAbrirGrupoCatalogo = function (idx) {
+        const g = cacheGruposCatalogo[idx];
+        if (!g || !g.piezas.length) return;
+        const piezas = g.piezas.slice().sort((a, b) => (a.folio || "").localeCompare(b.folio || ""));
+        const wrap = document.getElementById("ops-panel-wrap");
+        wrap.innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.5);z-index:99998;display:flex;justify-content:flex-end;" onclick="if(event.target===this)document.getElementById('ops-panel-wrap').innerHTML=''">
+            <div style="background:#fff;width:460px;max-width:92vw;height:100%;overflow-y:auto;padding:22px;box-shadow:-6px 0 20px rgba(0,0,0,0.15);">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;">
+                    <div>
+                        <div style="font-size:16px;font-weight:700;color:#1e293b;">${opsEsc(piezas[0].descripcion)}</div>
+                        <div style="font-size:11.5px;color:#94a3b8;">${piezas.length} pieza(s) en sistema</div>
+                    </div>
+                    <button onclick="document.getElementById('ops-panel-wrap').innerHTML=''" style="background:#f1f5f9;border:none;width:28px;height:28px;border-radius:7px;cursor:pointer;">${ICON.close}</button>
+                </div>
+                ${piezas.map(h => {
+                    const e = ESTADOS_HERRAMIENTA[h.estado] || ESTADOS_HERRAMIENTA.disponible;
+                    return `<div onclick="opsAbrirFichaHerramienta('${h.id}')" style="border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;margin-bottom:8px;cursor:pointer;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <span style="font-size:12.5px;font-weight:700;color:#334155;">${opsEsc(h.folio)}</span>
+                            <span style="background:${e.bg};color:${e.fg};font-size:10px;font-weight:600;padding:2px 8px;border-radius:999px;">${e.label}</span>
+                        </div>
+                        <div style="font-size:11.5px;color:#64748b;margin-top:3px;">${opsEsc(opsNombreTecnico(h.tecnicoActualId))} · ${opsEsc(h.ubicacionActual || "—")}</div>
+                    </div>`;
+                }).join("")}
+            </div>
+        </div>`;
+    };
+
     // ── Ficha de herramienta (panel lateral) ──────────────────────
     window.opsAbrirFichaHerramienta = function (id) {
         const h = cacheHerr.find(x => x.id === id);
@@ -1414,11 +1622,16 @@
                     <button onclick="document.getElementById('ops-panel-wrap').innerHTML=''" style="background:#f1f5f9;border:none;width:28px;height:28px;border-radius:7px;cursor:pointer;">${ICON.close}</button>
                 </div>
                 <span style="background:${e.bg};color:${e.fg};font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;">${e.label}</span>
+                ${h.condicion && CONDICIONES_HERRAMIENTA[h.condicion] ? `<span style="background:${CONDICIONES_HERRAMIENTA[h.condicion].bg};color:${CONDICIONES_HERRAMIENTA[h.condicion].fg};font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;margin-left:6px;">${CONDICIONES_HERRAMIENTA[h.condicion].label}</span>` : ""}
 
                 <div style="margin-top:16px;font-size:12.5px;color:#334155;line-height:1.9;">
                     <div><strong>Categoría:</strong> ${opsEsc(h.categoria || "—")}</div>
                     <div><strong>Marca / modelo:</strong> ${opsEsc(h.marca || "—")} ${opsEsc(h.modelo || "")}</div>
                     <div><strong>N.° de serie:</strong> ${opsEsc(h.numeroSerie || "—")}</div>
+                    <div><strong>Departamento:</strong> ${opsEsc(h.departamento || "—")}</div>
+                    <div><strong>Uso:</strong> ${opsEsc(h.uso || "—")}</div>
+                    <div><strong>Peso:</strong> ${h.peso != null ? opsEsc(h.peso) + " " + opsEsc(h.pesoUnidad || "") : "—"}</div>
+                    <div><strong>Medida:</strong> ${opsEsc(h.medida || "—")}</div>
                     <div><strong>Ubicación actual:</strong> ${opsEsc(h.ubicacionActual || "—")}</div>
                     <div><strong>Técnico asignado:</strong> ${opsEsc(opsNombreTecnico(h.tecnicoActualId))}</div>
                     ${h.fechaAsignacion ? `<div><strong>Fecha de asignación:</strong> ${opsEsc(h.fechaAsignacion)}</div>` : ""}
@@ -1476,8 +1689,37 @@
                 <label style="font-size:11.5px;color:#64748b;font-weight:600;">Categoría</label>
                 <input id="ops-in-cat" placeholder="Ej. Herramienta eléctrica" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
                 <label style="font-size:11.5px;color:#64748b;font-weight:600;">N.° de serie (opcional)</label>
-                <input id="ops-in-serie" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 16px;">
-                <div style="display:flex;gap:8px;justify-content:flex-end;">
+                <input id="ops-in-serie" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+
+                <div style="display:flex;gap:8px;">
+                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Departamento</label>
+                    <select id="ops-in-depto" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                        <option value="">— Selecciona —</option>
+                        ${DEPARTAMENTOS_HERRAMIENTA.map(d => `<option value="${opsEsc(d)}">${opsEsc(d)}</option>`).join("")}
+                    </select></div>
+                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Condición</label>
+                    <select id="ops-in-cond" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                        ${Object.keys(CONDICIONES_HERRAMIENTA).map(k => `<option value="${k}">${CONDICIONES_HERRAMIENTA[k].label}</option>`).join("")}
+                    </select></div>
+                </div>
+
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Uso / para qué sirve (opcional)</label>
+                <input id="ops-in-uso" placeholder="Ej. Apriete de tuercas hidráulicas" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+
+                <div style="display:flex;gap:8px;">
+                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Peso (opcional)</label>
+                        <div style="display:flex;gap:6px;">
+                            <input id="ops-in-peso" type="number" step="0.01" min="0" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                            <select id="ops-in-peso-unidad" style="border:1px solid #cbd5e1;border-radius:8px;padding:8px 6px;font-size:13px;margin:4px 0 10px;">
+                                ${UNIDADES_PESO.map(u => `<option value="${u}">${u}</option>`).join("")}
+                            </select>
+                        </div>
+                    </div>
+                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Medida (opcional)</label>
+                    <input id="ops-in-medida" placeholder="Ej. 45 x 12 x 8 cm" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
+                </div>
+
+                <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px;">
                     <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
                     <button onclick="opsGuardarPieza()" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">Generar folio y guardar</button>
                 </div>
@@ -1492,10 +1734,18 @@
         const modelo = document.getElementById("ops-in-modelo").value.trim();
         const categoria = document.getElementById("ops-in-cat").value.trim();
         const numeroSerie = document.getElementById("ops-in-serie").value.trim();
+        const departamento = document.getElementById("ops-in-depto").value || null;
+        const condicion = document.getElementById("ops-in-cond").value || null;
+        const uso = document.getElementById("ops-in-uso").value.trim() || null;
+        const pesoVal = document.getElementById("ops-in-peso").value;
+        const peso = pesoVal ? Number(pesoVal) : null;
+        const pesoUnidad = peso !== null ? document.getElementById("ops-in-peso-unidad").value : null;
+        const medida = document.getElementById("ops-in-medida").value.trim() || null;
         const { db, fs } = await opsGetFB();
         const folio = await opsSiguienteFolioHerramienta();
         await fs.setDoc(fs.doc(db, COL_HERRAMIENTAS, folio), {
             folio, descripcion, marca, modelo, categoria, numeroSerie,
+            departamento, condicion, uso, peso, pesoUnidad, medida,
             estado: "disponible", ubicacionActual: UBICACIONES[0],
             tecnicoActualId: null, fechaAsignacion: null,
             folioLegado: null, observaciones: null,
@@ -2193,14 +2443,18 @@
                 </div>
                 ${revisiones.length ? revisiones.map(r => {
                     const faltantes = (r.herramientas || []).filter(h => h.estado !== "conforme");
+                    const conFoto = (r.herramientas || []).filter(h => h.fotoURL).length;
                     return `<div style="background:#fff;border-radius:14px;padding:14px 16px;margin-bottom:10px;border-left:4px solid ${faltantes.length ? "#dc2626" : "#16a34a"};">
                         <div style="display:flex;justify-content:space-between;align-items:center;">
                             <div style="font-size:12.5px;font-weight:700;color:#1e293b;">${opsEsc((r.fecha || "").slice(0, 10))}</div>
                             <span style="font-size:10.5px;font-weight:700;color:${faltantes.length ? "#b91c1c" : "#166534"};">${faltantes.length ? `⚠ ${faltantes.length} con novedad` : "✓ Todo conforme"}</span>
                         </div>
-                        <div style="font-size:11px;color:#94a3b8;margin-bottom:6px;">Revisó: ${opsEsc(r.realizadoPor || "—")}</div>
-                        ${(r.herramientas || []).map(h => `<div style="font-size:11.5px;color:#334155;padding:2px 0;">${h.estado === "conforme" ? "✓" : (h.estado === "faltante" ? "❌" : "⚠️")} ${opsEsc(h.folio)} — ${opsEsc(h.descripcion)}${h.observacion ? ` · <em>${opsEsc(h.observacion)}</em>` : ""}</div>`).join("")}
+                        <div style="font-size:11px;color:#94a3b8;margin-bottom:6px;">Revisó: ${opsEsc(r.realizadoPor || "—")}${conFoto ? ` · 📷 ${conFoto} foto(s)` : ""}</div>
+                        ${(r.herramientas || []).map(h => `<div style="font-size:11.5px;color:#334155;padding:2px 0;">${h.estado === "conforme" ? "✓" : (h.estado === "faltante" ? "❌" : "⚠️")} ${opsEsc(h.folio)} — ${opsEsc(h.descripcion)}${h.observacion ? ` · <em>${opsEsc(h.observacion)}</em>` : ""}${h.fotoURL ? " · 📷" : ""}</div>`).join("")}
                         ${r.observacionesGenerales ? `<div style="font-size:11.5px;color:#64748b;margin-top:6px;border-top:1px solid #f1f5f9;padding-top:6px;">${opsEsc(r.observacionesGenerales)}</div>` : ""}
+                        <div style="margin-top:8px;text-align:right;">
+                            <button id="ops-rev-share-${r.id}" onclick="opsCompartirRevisionPDF('${r.id}')" style="background:#eef2f7;border:none;color:#0B5FFF;padding:6px 11px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">📄 PDF / WhatsApp</button>
+                        </div>
                     </div>`;
                 }).join("") : '<div style="background:#fff;border-radius:14px;padding:16px 18px;color:#94a3b8;font-size:12px;">Sin revisiones registradas todavía.</div>'}`;
             return;
@@ -2220,12 +2474,15 @@
     }
 
     // ── Auditoría física de herramienta: registra el estado de cada pieza asignada al
-    // momento de la revisión (conforme / faltante / dañada), con quién y observaciones.
-    // Queda en ops_revisiones_herramienta como bitácora permanente para auditorías.
+    // momento de la revisión (conforme / faltante / dañada), con foto, quién y
+    // observaciones. Queda en ops_revisiones_herramienta como bitácora permanente.
+    let opsRevisionFotos = new Map(); // herrId -> Blob comprimido, solo mientras el modal está abierto
+
     window.opsAbrirModalRevision = function (idInterno) {
         const t = cacheTec.find(x => x.id === idInterno);
         const asignadas = cacheHerr.filter(h => h.tecnicoActualId === idInterno);
         if (!t || !asignadas.length) return;
+        opsRevisionFotos = new Map();
         const wrap = document.getElementById("ops-modal-wrap");
         wrap.innerHTML = `
         <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;">
@@ -2241,36 +2498,87 @@
                             <label style="flex:1;text-align:center;font-size:11px;font-weight:600;padding:6px;border-radius:7px;background:#fef2f2;color:#b91c1c;cursor:pointer;"><input type="radio" name="rev-${h.id}" value="faltante" style="margin-right:4px;">Faltante</label>
                             <label style="flex:1;text-align:center;font-size:11px;font-weight:600;padding:6px;border-radius:7px;background:#fff7ed;color:#c2410c;cursor:pointer;"><input type="radio" name="rev-${h.id}" value="danada" style="margin-right:4px;">Dañada</label>
                         </div>
-                        <input type="text" placeholder="Observación (opcional)" id="ops-rev-obs-${h.id}" style="width:100%;border:1px solid #cbd5e1;border-radius:7px;padding:6px 9px;font-size:11.5px;box-sizing:border-box;">
+                        <input type="text" placeholder="Observación (opcional)" id="ops-rev-obs-${h.id}" style="width:100%;border:1px solid #cbd5e1;border-radius:7px;padding:6px 9px;font-size:11.5px;box-sizing:border-box;margin-bottom:6px;">
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <label style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#0B5FFF;background:#eaf0ff;padding:6px 10px;border-radius:7px;cursor:pointer;">
+                                📷 Tomar/adjuntar foto
+                                <input type="file" accept="image/*" capture="environment" style="display:none;" onchange="opsSeleccionarFotoRevision('${h.id}', this)">
+                            </label>
+                            <img id="ops-rev-thumb-${h.id}" style="display:none;width:34px;height:34px;object-fit:cover;border-radius:6px;border:1px solid #e2e8f0;">
+                            <span id="ops-rev-foto-estado-${h.id}" style="font-size:10.5px;color:#94a3b8;"></span>
+                        </div>
                     </div>`).join("")}
                 </div>
                 <label style="font-size:11.5px;color:#64748b;font-weight:600;">Observaciones generales de la revisión</label>
                 <textarea id="ops-rev-obs-generales" rows="2" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 14px;resize:vertical;box-sizing:border-box;"></textarea>
                 <div style="display:flex;gap:8px;justify-content:flex-end;">
                     <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
-                    <button onclick="opsGuardarRevision('${idInterno}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">Guardar revisión</button>
+                    <button id="ops-rev-btn-guardar" onclick="opsGuardarRevision('${idInterno}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">Guardar revisión</button>
                 </div>
             </div>
         </div>`;
     };
 
+    window.opsSeleccionarFotoRevision = async function (herrId, inputEl) {
+        const file = inputEl.files && inputEl.files[0];
+        if (!file) return;
+        const estadoEl = document.getElementById(`ops-rev-foto-estado-${herrId}`);
+        if (estadoEl) estadoEl.textContent = "Procesando...";
+        try {
+            const blob = await opsComprimirImagen(file, 1600, 0.82);
+            opsRevisionFotos.set(herrId, blob);
+            const thumb = document.getElementById(`ops-rev-thumb-${herrId}`);
+            if (thumb) { thumb.src = URL.createObjectURL(blob); thumb.style.display = "block"; }
+            if (estadoEl) estadoEl.textContent = "Foto lista";
+        } catch (err) {
+            console.error("[operaciones.js] error al comprimir foto de revisión:", err);
+            if (estadoEl) estadoEl.textContent = "Error al procesar la foto";
+        }
+    };
+
     window.opsGuardarRevision = async function (idInterno) {
         const t = cacheTec.find(x => x.id === idInterno);
+        const btnGuardar = document.getElementById("ops-rev-btn-guardar");
+        if (btnGuardar) { btnGuardar.disabled = true; btnGuardar.textContent = "Guardando..."; }
         const filas = Array.from(document.querySelectorAll("#ops-revision-lista > div"));
-        const herramientas = filas.map(div => {
+        const { db, fs } = await opsGetFB();
+
+        // Subir fotos a Storage ANTES de armar el documento (evidencia = archivo grande,
+        // no va en base64 dentro de Firestore — mismo criterio que Glen ya definió
+        // para documentos/evidencia del portal).
+        let storageTools = null;
+        if (opsRevisionFotos.size > 0) {
+            try { storageTools = await opsGetStorage(); }
+            catch (err) { console.error("[operaciones.js] no se pudo inicializar Storage:", err); }
+        }
+
+        const herramientas = [];
+        for (const div of filas) {
             const herrId = div.getAttribute("data-herr-id");
             const seleccionado = div.querySelector(`input[name="rev-${herrId}"]:checked`);
             const obsEl = document.getElementById(`ops-rev-obs-${herrId}`);
-            return {
+            let fotoURL = null;
+            const blob = opsRevisionFotos.get(herrId);
+            if (blob && storageTools) {
+                try {
+                    const ruta = `revisiones_herramienta/${idInterno}/${Date.now()}_${herrId}.jpg`;
+                    const ref = storageTools.stMod.ref(storageTools.storage, ruta);
+                    await storageTools.stMod.uploadBytes(ref, blob, { contentType: "image/jpeg" });
+                    fotoURL = await storageTools.stMod.getDownloadURL(ref);
+                } catch (err) {
+                    console.error(`[operaciones.js] no se pudo subir la foto de ${herrId}:`, err);
+                }
+            }
+            herramientas.push({
                 herramientaId: herrId,
                 folio: div.getAttribute("data-folio") || "",
                 descripcion: div.getAttribute("data-desc") || "",
                 estado: seleccionado ? seleccionado.value : "conforme",
                 observacion: (obsEl && obsEl.value.trim()) || null,
-            };
-        });
+                fotoURL,
+            });
+        }
         const observacionesGenerales = (document.getElementById("ops-rev-obs-generales") || {}).value || "";
-        const { db, fs } = await opsGetFB();
         await fs.addDoc(fs.collection(db, COL_REVISIONES), {
             tecnicoId: idInterno,
             tecnicoNombre: t ? t.nombre : "—",
@@ -2281,9 +2589,117 @@
             observacionesGenerales: observacionesGenerales.trim() || null,
             createdAt: fs.serverTimestamp ? fs.serverTimestamp() : opsFechaHora(),
         });
+        opsRevisionFotos = new Map();
         document.getElementById("ops-modal-wrap").innerHTML = "";
         window.mostrarPush ? mostrarPush("Auditoría", "Revisión de herramienta guardada.", "🔍") : alert("Revisión guardada.");
         opsFichaTecCambiarTab(idInterno, "auditoria");
+    };
+
+    // ── PDF de una revisión (con fotos) + compartir por WhatsApp ───
+    // Genera un PDF con las fotos de evidencia a buen tamaño (no thumbnails)
+    // y ofrece compartirlo directo por WhatsApp vía Web Share API cuando el
+    // navegador lo soporta (celular); si no, descarga el PDF y abre WhatsApp
+    // para que Glen/el técnico lo adjunte manualmente en 1 paso más.
+    async function opsImagenAB64(url) {
+        try {
+            const resp = await fetch(url);
+            const blob = await resp.blob();
+            return await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+        } catch (err) {
+            console.error("[operaciones.js] no se pudo descargar foto de evidencia:", err);
+            return null;
+        }
+    }
+
+    async function opsGenerarPDFRevision(revision) {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "letter" });
+        const M = 14, W = 216 - M * 2;
+        let y = 16;
+        doc.setFont("helvetica", "bold"); doc.setFontSize(14);
+        doc.text("REPORTE DE AUDITORÍA DE HERRAMIENTA", M, y); y += 6;
+        doc.setFont("helvetica", "normal"); doc.setFontSize(9.5); doc.setTextColor(90);
+        doc.text("HEDMA TECNOCONTROL S.A. DE C.V.", M, y); y += 5;
+        doc.text(`Técnico: ${revision.tecnicoNombre || "—"}  ·  N.° ${revision.tecnicoNumero || "—"}`, M, y); y += 5;
+        doc.text(`Fecha: ${(revision.fecha || "").slice(0, 16).replace("T", " ")}  ·  Revisó: ${revision.realizadoPor || "—"}`, M, y); y += 8;
+        doc.setTextColor(20);
+
+        const cols = 2, imgW = (W - 6) / cols, imgH = 42;
+        let col = 0;
+        for (const h of (revision.herramientas || [])) {
+            if (y > 250) { doc.addPage(); y = 16; }
+            const x = M + col * (imgW + 6);
+            doc.setDrawColor(226, 232, 240);
+            doc.roundedRect(x, y, imgW, imgH + 20, 2, 2);
+            let imgY = y + 3;
+            if (h.fotoURL) {
+                const b64 = await opsImagenAB64(h.fotoURL);
+                if (b64) { try { doc.addImage(b64, "JPEG", x + 3, imgY, imgW - 6, imgH, undefined, "FAST"); } catch (_e) { /* formato no soportado, se omite */ } }
+            } else {
+                doc.setFontSize(8); doc.setTextColor(180);
+                doc.text("Sin foto", x + imgW / 2, imgY + imgH / 2, { align: "center" });
+                doc.setTextColor(20);
+            }
+            const estadoLabel = { conforme: "✓ Conforme", faltante: "✗ Faltante", danada: "⚠ Dañada" }[h.estado] || h.estado;
+            const estadoColor = h.estado === "conforme" ? [22, 101, 52] : (h.estado === "faltante" ? [185, 28, 28] : [194, 65, 12]);
+            doc.setFontSize(8.5); doc.setFont("helvetica", "bold");
+            doc.text(`${h.folio} — ${h.descripcion}`, x + 3, imgY + imgH + 6, { maxWidth: imgW - 6 });
+            doc.setFont("helvetica", "normal");
+            doc.setTextColor(estadoColor[0], estadoColor[1], estadoColor[2]);
+            doc.text(estadoLabel, x + 3, imgY + imgH + 11);
+            doc.setTextColor(90);
+            if (h.observacion) doc.text(h.observacion, x + 3, imgY + imgH + 15.5, { maxWidth: imgW - 6 });
+            doc.setTextColor(20);
+
+            col++;
+            if (col >= cols) { col = 0; y += imgH + 24; }
+        }
+        if (revision.observacionesGenerales) {
+            if (col !== 0) { col = 0; y += imgH + 24; }
+            if (y > 255) { doc.addPage(); y = 16; }
+            doc.setFontSize(9.5); doc.setFont("helvetica", "bold");
+            doc.text("Observaciones generales:", M, y); y += 5;
+            doc.setFont("helvetica", "normal");
+            doc.text(revision.observacionesGenerales, M, y, { maxWidth: W });
+        }
+        return doc;
+    }
+
+    window.opsCompartirRevisionPDF = async function (revisionId) {
+        const btn = document.getElementById(`ops-rev-share-${revisionId}`);
+        if (btn) { btn.disabled = true; btn.textContent = "Generando PDF..."; }
+        try {
+            const { db, fs } = await opsGetFB();
+            const snap = await fs.getDoc(fs.doc(db, COL_REVISIONES, revisionId));
+            if (!snap.exists()) { alert("No se encontró la revisión."); return; }
+            const revision = snap.data();
+            const doc = await opsGenerarPDFRevision(revision);
+            const nombreArchivo = `Auditoria_${(revision.tecnicoNumero || "tec").replace(/\s+/g, "_")}_${(revision.fecha || "").slice(0, 10)}.pdf`;
+            const blob = doc.output("blob");
+            const file = new File([blob], nombreArchivo, { type: "application/pdf" });
+
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                await navigator.share({
+                    files: [file],
+                    title: "Reporte de auditoría de herramienta",
+                    text: `Auditoría de herramienta — ${revision.tecnicoNombre || ""} (${(revision.fecha || "").slice(0, 10)})`,
+                });
+            } else {
+                doc.save(nombreArchivo);
+                const texto = encodeURIComponent(`Reporte de auditoría de herramienta de ${revision.tecnicoNombre || ""} (${(revision.fecha || "").slice(0, 10)}). Adjunto el PDF "${nombreArchivo}" que se acaba de descargar.`);
+                window.open(`https://wa.me/?text=${texto}`, "_blank");
+            }
+        } catch (err) {
+            console.error("[operaciones.js] error al compartir PDF de revisión:", err);
+            alert("No se pudo generar/compartir el PDF. Intenta de nuevo.");
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = "📄 PDF / WhatsApp"; }
+        }
     };
 
     // ── Vehículo: asignar (cierra automáticamente la asignación anterior) ──
