@@ -45,6 +45,7 @@
     const COL_FOLIOS = "ops_folios"; // Folios de servicio (Connecteam) con seguimiento de vencimiento/atención/solución
     const COL_CLIENTES = "ops_clientes"; // Catálogo de clientes con su tabla de SLA por prioridad (P1-P6, en horas)
     const COL_REVISIONES = "ops_revisiones_herramienta"; // Bitácora de auditorías físicas de herramienta por técnico (distinta de COL_AUDITORIA, que es el log de cambios de campos)
+    const COL_HERR_TRASPASOS = "ops_herramienta_traspasos"; // Solicitudes de traspaso técnico-a-técnico que requieren aceptación (mismo patrón que flotilla_transferencias)
     const MIGUEL_EMAIL = "miguel@tecnocontrol.com.mx"; // dueño del seguimiento interno (fecha de atención / compromiso)
 
     // Administradores del departamento de Operaciones: acceso total DENTRO de este módulo
@@ -712,8 +713,9 @@
     ];
 
     let opsFB = null;
-    let unsubHerr = null, unsubTec = null, unsubMov = null, unsubSurt = null, unsubFolios = null, unsubNotif = null;
+    let unsubHerr = null, unsubTec = null, unsubMov = null, unsubSurt = null, unsubFolios = null, unsubNotif = null, unsubTraspasos = null;
     let cacheHerr = [], cacheTec = [], cacheMov = [], cacheSurtidos = [], cacheFolios = [];
+    let cacheTraspasosPend = []; // ops_herramienta_traspasos con estatus "Pendiente recepción" — bloquea la pieza hasta que el receptor acepte/rechace/venza
     let filtroFolios = "", filtroFolioSemaforo = "todos";
     let tabActual = "dashboard";
     let filtroHerr = "", filtroTec = "";
@@ -1073,6 +1075,13 @@
         return t ? `${t.nombre} (${t.numeroOperativo})` : "Técnico desconocido";
     }
 
+    // Traspaso técnico-a-técnico pendiente de aceptación para esta pieza, si hay uno.
+    // Mientras exista, la pieza queda bloqueada: nadie puede iniciar otro movimiento
+    // sobre ella salvo cancelar este traspaso (Almacén/Operaciones).
+    function opsTraspasoPendientePara(herramientaId) {
+        return cacheTraspasosPend.find(t => t.herramientaId === herramientaId) || null;
+    }
+
     // ═══════════════════════ MONTAJE / OVERLAY ═══════════════════════
     window.opsAbrirHerramientas = async function () {
         const cont = document.getElementById("ops-herramientas-overlay");
@@ -1215,6 +1224,15 @@
                 if (tabActual === "resumen") opsRenderResumen();
                 if (opsFoliosVigilanciaBase) opsVigilarFoliosSeveridad();
             }, () => { /* si aún no existe la colección, Folios simplemente inicia vacío */ });
+        }
+        if (!unsubTraspasos) {
+            // Sin orderBy para no exigir un índice compuesto — el volumen de traspasos
+            // pendientes a la vez es bajo, se ordena si hiciera falta en el cliente.
+            unsubTraspasos = fs.onSnapshot(fs.query(fs.collection(db, COL_HERR_TRASPASOS), fs.where("estatus", "==", "Pendiente recepción")), snap => {
+                cacheTraspasosPend = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                if (tabActual === "dashboard") opsRenderDashboard();
+                if (tabActual === "catalogo") opsRenderCatalogo();
+            }, () => { cacheTraspasosPend = []; });
         }
         if (!unsubNotif) {
             // Notificaciones generales (ej. "solicitud lista para surtir") — llegan a TODOS los
@@ -1406,7 +1424,7 @@
                 <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;">
                     <div style="display:flex;align-items:center;gap:8px;">
                         <span style="color:#94a3b8;">${ICON.search}</span>
-                        <input type="text" placeholder="Buscar por folio, descripción, marca o técnico..." oninput="opsFiltrarHerr(this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 11px;font-size:12.5px;width:300px;outline:none;">
+                        <input type="text" id="ops-herr-buscar" value="${opsEsc(filtroHerr)}" placeholder="Buscar por folio, descripción, marca o técnico..." oninput="opsFiltrarHerr(this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 11px;font-size:12.5px;width:300px;outline:none;">
                     </div>
                     ${gestion ? `
                     <div style="display:flex;gap:8px;">
@@ -1437,19 +1455,42 @@
     function opsFilaHerramienta(h, i, gestion) {
         const e = ESTADOS_HERRAMIENTA[h.estado] || ESTADOS_HERRAMIENTA.disponible;
         const zebra = i % 2 === 0 ? "#fff" : "#f8fafc";
+        const pend = opsTraspasoPendientePara(h.id);
         return `<tr style="background:${zebra};border-bottom:1px solid #eef1f5;cursor:pointer;" onclick="opsAbrirFichaHerramienta('${h.id}')">
             <td style="padding:8px 10px;font-weight:600;color:#334155;">${opsEsc(h.folio)}</td>
             <td style="padding:8px 10px;color:#334155;">${opsEsc(h.descripcion)}${h.folioLegado ? ` <span style="color:#94a3b8;font-size:10.5px;">(ex ${opsEsc(h.folioLegado)})</span>` : ""}</td>
-            <td style="padding:8px 10px;"><span style="background:${e.bg};color:${e.fg};font-size:10.5px;font-weight:600;padding:3px 8px;border-radius:999px;">${e.label}</span></td>
+            <td style="padding:8px 10px;"><span style="background:${e.bg};color:${e.fg};font-size:10.5px;font-weight:600;padding:3px 8px;border-radius:999px;">${e.label}</span>${pend ? ` <span title="Traspaso pendiente de aceptación" style="background:#fef3c7;color:#92400e;font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px;margin-left:4px;">🔒 pendiente</span>` : ""}</td>
             <td style="padding:8px 10px;color:#334155;">${opsEsc(opsNombreTecnico(h.tecnicoActualId))}</td>
             <td style="padding:8px 10px;color:#64748b;">${opsEsc(h.ubicacionActual || "—")}</td>
             <td style="padding:8px 10px;text-align:right;" onclick="event.stopPropagation()">
-                ${gestion && h.estado !== "baja" ? `<button onclick="opsAbrirModalMovimiento('${h.id}')" style="background:#eef2f7;border:none;color:#1f2937;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">Mover</button>` : ""}
+                ${gestion && h.estado !== "baja" ? `<button onclick="opsAbrirModalMovimiento('${h.id}')" style="background:#eef2f7;border:none;color:#1f2937;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">${pend ? "Ver traspaso" : "Mover"}</button>` : ""}
             </td>
         </tr>`;
     }
 
-    window.opsFiltrarHerr = function (v) { filtroHerr = v || ""; opsRenderDashboard(); };
+    // Los buscadores en vivo (Herramientas, Catálogo, Técnicos) re-dibujan todo
+    // el contenido de la pestaña en cada tecla — sin esto, el <input> se
+    // reemplaza a sí mismo y pierde el foco después de la primera letra
+    // (parecía que "no servía"). Se restaura el foco y la posición del cursor
+    // sobre el input recién dibujado, usando su id.
+    function opsRerenderConFoco(renderFn) {
+        const el = document.activeElement;
+        const id = el && el.id;
+        const selStart = el && typeof el.selectionStart === "number" ? el.selectionStart : null;
+        const selEnd = el && typeof el.selectionEnd === "number" ? el.selectionEnd : null;
+        renderFn();
+        if (id) {
+            const nuevo = document.getElementById(id);
+            if (nuevo) {
+                nuevo.focus();
+                if (selStart !== null && nuevo.setSelectionRange) {
+                    try { nuevo.setSelectionRange(selStart, selEnd); } catch (_e) { /* input sin soporte de selección (ej. type=number) */ }
+                }
+            }
+        }
+    }
+
+    window.opsFiltrarHerr = function (v) { filtroHerr = v || ""; opsRerenderConFoco(opsRenderDashboard); };
 
     // ── Catálogo agrupado (vista "por tipo de artículo") ────────────
     // No cambia el modelo de datos: sigue siendo un folio por pieza física
@@ -1473,7 +1514,7 @@
         return Array.from(grupos.values()).sort((a, b) => b.piezas.length - a.piezas.length || a.descripcion.localeCompare(b.descripcion));
     }
 
-    window.opsFiltrarCatalogo = function (campo, valor) { filtroCat[campo] = valor; opsRenderCatalogo(); };
+    window.opsFiltrarCatalogo = function (campo, valor) { filtroCat[campo] = valor; opsRerenderConFoco(opsRenderCatalogo); };
     window.opsLimpiarFiltrosCatalogo = function () {
         filtroCat = { busca: filtroCat.busca, categoria: "", departamento: "", estado: "", condicion: "" };
         opsRenderCatalogo();
@@ -1527,7 +1568,7 @@
                 <div style="flex:1;min-width:0;">
                     <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:9px 13px;">
                         <span style="color:#94a3b8;">${ICON.search}</span>
-                        <input type="text" placeholder="Buscar por folio, descripción, marca o técnico..." value="${opsEsc(filtroCat.busca)}" oninput="opsFiltrarCatalogo('busca', this.value)" style="border:none;outline:none;font-size:12.5px;flex:1;">
+                        <input type="text" id="ops-cat-buscar" placeholder="Buscar por folio, descripción, marca o técnico..." value="${opsEsc(filtroCat.busca)}" oninput="opsFiltrarCatalogo('busca', this.value)" style="border:none;outline:none;font-size:12.5px;flex:1;">
                         <span style="font-size:11px;color:#94a3b8;font-weight:600;white-space:nowrap;">${cacheGruposCatalogo.length} artículo(s) · ${lista.length} pieza(s)</span>
                     </div>
                     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;">
@@ -1642,7 +1683,7 @@
 
                 ${gestion && h.estado !== "baja" ? `
                 <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;">
-                    <button onclick="opsAbrirModalMovimiento('${id}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">Registrar movimiento</button>
+                    <button onclick="opsAbrirModalMovimiento('${id}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">${opsTraspasoPendientePara(id) ? "🔒 Ver traspaso pendiente" : "Registrar movimiento"}</button>
                     ${h.estado === "asignada" ? `<button onclick="opsGenerarResponsivaPDF('${id}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#0891b2,#0e7490);">Regenerar responsiva PDF</button>` : ""}
                     <button onclick="opsAbrirModalBaja('${id}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#b91c1c,#7f1d1d);">${ICON.trash} Dar de baja</button>
                 </div>` : ""}
@@ -1780,69 +1821,76 @@
         if (!descripcion) { alert("La descripción es obligatoria"); return; }
         const btnGuardar = document.getElementById("ops-pieza-btn-guardar");
         if (btnGuardar) { btnGuardar.disabled = true; btnGuardar.textContent = "Guardando..."; }
-        const marca = document.getElementById("ops-in-marca").value.trim();
-        const modelo = document.getElementById("ops-in-modelo").value.trim();
-        const categoria = document.getElementById("ops-in-cat").value.trim();
-        const numeroSerie = document.getElementById("ops-in-serie").value.trim();
-        const departamento = document.getElementById("ops-in-depto").value || null;
-        const condicion = document.getElementById("ops-in-cond").value || null;
-        const uso = document.getElementById("ops-in-uso").value.trim() || null;
-        const pesoVal = document.getElementById("ops-in-peso").value;
-        const peso = pesoVal ? Number(pesoVal) : null;
-        const pesoUnidad = peso !== null ? document.getElementById("ops-in-peso-unidad").value : null;
-        const medida = document.getElementById("ops-in-medida").value.trim() || null;
-        const tecnicoDestinoId = document.getElementById("ops-in-tecnico-destino").value || null;
-        const { db, fs } = await opsGetFB();
-        const folio = await opsSiguienteFolioHerramienta();
+        try {
+            const marca = document.getElementById("ops-in-marca").value.trim();
+            const modelo = document.getElementById("ops-in-modelo").value.trim();
+            const categoria = document.getElementById("ops-in-cat").value.trim();
+            const numeroSerie = document.getElementById("ops-in-serie").value.trim();
+            const departamento = document.getElementById("ops-in-depto").value || null;
+            const condicion = document.getElementById("ops-in-cond").value || null;
+            const uso = document.getElementById("ops-in-uso").value.trim() || null;
+            const pesoVal = document.getElementById("ops-in-peso").value;
+            const peso = pesoVal ? Number(pesoVal) : null;
+            const pesoUnidad = peso !== null ? document.getElementById("ops-in-peso-unidad").value : null;
+            const medida = document.getElementById("ops-in-medida").value.trim() || null;
+            const tecnicoDestinoId = document.getElementById("ops-in-tecnico-destino").value || null;
+            const { db, fs } = await opsGetFB();
+            const folio = await opsSiguienteFolioHerramienta();
 
-        await fs.setDoc(fs.doc(db, COL_HERRAMIENTAS, folio), {
-            folio, descripcion, marca, modelo, categoria, numeroSerie,
-            departamento, condicion, uso, peso, pesoUnidad, medida,
-            estado: tecnicoDestinoId ? "asignada" : "disponible",
-            ubicacionActual: UBICACIONES[0],
-            tecnicoActualId: tecnicoDestinoId,
-            fechaAsignacion: tecnicoDestinoId ? opsHoy() : null,
-            folioLegado: null, observaciones: null,
-            fechaAlta: opsHoy(),
-            origenRequisicionId: opsRequisicionSeleccionada ? opsRequisicionSeleccionada.id : null,
-            origenRequisicionFolio: opsRequisicionSeleccionada ? opsRequisicionSeleccionada.folio : null,
-            externalId: null, sourceSystem: "manual", lastSync: null, syncStatus: "no_sincronizado",
-        });
-        await opsRegistrarMovimiento({
-            herramientaId: folio, tipo: "alta", ubicacionNueva: UBICACIONES[0],
-            tecnicoNuevoId: tecnicoDestinoId || null,
-            observaciones: opsRequisicionSeleccionada ? `Origen: requisición de compra ${opsRequisicionSeleccionada.folio}` : null,
-        });
-
-        // Cierra el círculo del lado de Compras: la requisición queda marcada
-        // con la pieza (folio) que resultó de ella y a quién se le entregó.
-        // Solo escribe campos NUEVOS — no toca nada que ya use compras.js.
-        if (opsRequisicionSeleccionada) {
-            try {
-                await fs.updateDoc(fs.doc(db, "requisiciones_compra", opsRequisicionSeleccionada.id), {
-                    herramientaId: folio,
-                    herramientaDescripcion: descripcion,
-                    herramientaAltaFecha: opsHoy(),
-                    herramientaTecnicoDestinoId: tecnicoDestinoId || null,
-                });
-            } catch (err) {
-                console.error("[operaciones.js] no se pudo actualizar la requisición de origen:", err);
-            }
-        }
-
-        if (tecnicoDestinoId) {
-            // opsGenerarResponsivaPDF lee de cacheHerr, que aún no tiene esta pieza
-            // recién creada (el onSnapshot tarda unos ms) — se agrega en caliente,
-            // igual que ya hace opsConfirmarMovimiento antes de generar el PDF.
-            cacheHerr.push({
-                id: folio, folio, descripcion, marca, modelo, categoria, numeroSerie,
-                estado: "asignada", ubicacionActual: UBICACIONES[0],
-                tecnicoActualId: tecnicoDestinoId, fechaAsignacion: opsHoy(),
+            await fs.setDoc(fs.doc(db, COL_HERRAMIENTAS, folio), {
+                folio, descripcion, marca, modelo, categoria, numeroSerie,
+                departamento, condicion, uso, peso, pesoUnidad, medida,
+                estado: tecnicoDestinoId ? "asignada" : "disponible",
+                ubicacionActual: UBICACIONES[0],
+                tecnicoActualId: tecnicoDestinoId,
+                fechaAsignacion: tecnicoDestinoId ? opsHoy() : null,
+                folioLegado: null, observaciones: null,
+                fechaAlta: opsHoy(),
+                origenRequisicionId: opsRequisicionSeleccionada ? opsRequisicionSeleccionada.id : null,
+                origenRequisicionFolio: opsRequisicionSeleccionada ? opsRequisicionSeleccionada.folio : null,
+                externalId: null, sourceSystem: "manual", lastSync: null, syncStatus: "no_sincronizado",
             });
-            opsGenerarResponsivaPDF(folio, true);
+            await opsRegistrarMovimiento({
+                herramientaId: folio, tipo: "alta", ubicacionNueva: UBICACIONES[0],
+                tecnicoNuevoId: tecnicoDestinoId || null,
+                observaciones: opsRequisicionSeleccionada ? `Origen: requisición de compra ${opsRequisicionSeleccionada.folio}` : null,
+            });
+
+            // Cierra el círculo del lado de Compras: la requisición queda marcada
+            // con la pieza (folio) que resultó de ella y a quién se le entregó.
+            // Solo escribe campos NUEVOS — no toca nada que ya use compras.js.
+            if (opsRequisicionSeleccionada) {
+                try {
+                    await fs.updateDoc(fs.doc(db, "requisiciones_compra", opsRequisicionSeleccionada.id), {
+                        herramientaId: folio,
+                        herramientaDescripcion: descripcion,
+                        herramientaAltaFecha: opsHoy(),
+                        herramientaTecnicoDestinoId: tecnicoDestinoId || null,
+                    });
+                } catch (err) {
+                    console.error("[operaciones.js] no se pudo actualizar la requisición de origen:", err);
+                }
+            }
+
+            if (tecnicoDestinoId) {
+                // opsGenerarResponsivaPDF lee de cacheHerr, que aún no tiene esta pieza
+                // recién creada (el onSnapshot tarda unos ms) — se agrega en caliente,
+                // igual que ya hace opsConfirmarMovimiento antes de generar el PDF.
+                cacheHerr.push({
+                    id: folio, folio, descripcion, marca, modelo, categoria, numeroSerie,
+                    estado: "asignada", ubicacionActual: UBICACIONES[0],
+                    tecnicoActualId: tecnicoDestinoId, fechaAsignacion: opsHoy(),
+                });
+                try { opsGenerarResponsivaPDF(folio, true); }
+                catch (err) { console.error("[operaciones.js] la pieza se guardó, pero falló la responsiva PDF:", err); }
+            }
+            opsRequisicionSeleccionada = null;
+            document.getElementById("ops-modal-wrap").innerHTML = "";
+        } catch (err) {
+            console.error("[operaciones.js] error al guardar la pieza:", err);
+            alert("No se pudo guardar la pieza: " + (err && err.message ? err.message : err) + "\n\nRevisa la consola del navegador (F12) para más detalle — probablemente sea un problema de permisos en Firestore.");
+            if (btnGuardar) { btnGuardar.disabled = false; btnGuardar.textContent = "Generar folio y guardar"; }
         }
-        opsRequisicionSeleccionada = null;
-        document.getElementById("ops-modal-wrap").innerHTML = "";
     };
 
     // ── Sembrado del catálogo base (folios HT-XXXXXX reales) ──────
@@ -1930,11 +1978,18 @@
     window.opsAbrirModalMovimiento = function (herramientaId) {
         const h = cacheHerr.find(x => x.id === herramientaId);
         if (!h) return;
+
+        // Pieza con traspaso pendiente de aceptación: no se abre el formulario
+        // normal — solo se puede ver el estatus o cancelarlo. Así "no se puede
+        // saltar" la herramienta mientras el otro técnico no haya respondido.
+        const pend = opsTraspasoPendientePara(herramientaId);
+        if (pend) { return opsAbrirModalTraspasoPendiente(herramientaId, pend); }
+
         const tecnicosActivos = cacheTec.filter(t => t.estatus === "activo");
         const wrap = document.getElementById("ops-modal-wrap");
         wrap.innerHTML = `
         <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;">
-            <div style="background:#fff;border-radius:14px;width:400px;max-width:92vw;padding:22px;">
+            <div style="background:#fff;border-radius:14px;width:400px;max-width:92vw;max-height:90vh;overflow-y:auto;padding:22px;">
                 <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:4px;">Registrar movimiento</div>
                 <div style="font-size:12px;color:#64748b;margin-bottom:14px;">${opsEsc(h.folio)} · ${opsEsc(h.descripcion)}</div>
 
@@ -1952,8 +2007,12 @@
                     <label style="font-size:11.5px;color:#64748b;font-weight:600;">Técnico</label>
                     <select id="ops-in-tecnico" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 12px;">
                         <option value="">Selecciona un técnico...</option>
-                        ${tecnicosActivos.map(t => `<option value="${t.id}">${opsEsc(t.nombre)} (${opsEsc(t.numeroOperativo)})</option>`).join("")}
+                        ${tecnicosActivos.map(t => `<option value="${t.id}">${opsEsc(t.nombre)} (${opsEsc(t.numeroOperativo)})${t.correo ? "" : " — sin correo"}</option>`).join("")}
                     </select>
+                </div>
+
+                <div id="ops-campo-transferencia-info" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:9px 11px;font-size:11px;color:#1e40af;margin-bottom:12px;line-height:1.5;">
+                    Esto NO mueve la pieza de inmediato: se envía un traspaso que el técnico receptor debe <strong>aceptar desde Flotilla</strong> (igual que un vehículo). Mientras tanto la pieza queda bloqueada.
                 </div>
 
                 <div id="ops-campo-ubicacion" style="display:none;">
@@ -1964,72 +2023,235 @@
                 </div>
 
                 <label style="font-size:11.5px;color:#64748b;font-weight:600;">Condición / observaciones</label>
-                <textarea id="ops-in-obs" rows="2" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 16px;resize:vertical;"></textarea>
+                <textarea id="ops-in-obs" rows="2" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 12px;resize:vertical;"></textarea>
 
-                <div style="display:flex;gap:8px;justify-content:flex-end;">
+                <div id="ops-campo-evidencia-transferencia" style="display:none;margin-bottom:6px;">
+                    <label style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#0B5FFF;background:#eaf0ff;padding:6px 10px;border-radius:7px;cursor:pointer;width:fit-content;">
+                        📷 Adjuntar foto de evidencia (opcional)
+                        <input type="file" accept="image/*" capture="environment" style="display:none;" onchange="opsSeleccionarFotoTraspaso(this)">
+                    </label>
+                    <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
+                        <img id="ops-traspaso-thumb" style="display:none;width:34px;height:34px;object-fit:cover;border-radius:6px;border:1px solid #e2e8f0;">
+                        <span id="ops-traspaso-foto-estado" style="font-size:10.5px;color:#94a3b8;"></span>
+                    </div>
+                </div>
+
+                <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;">
                     <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
-                    <button onclick="opsConfirmarMovimiento('${herramientaId}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">Confirmar</button>
+                    <button id="ops-mov-btn-confirmar" onclick="opsConfirmarMovimiento('${herramientaId}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">Confirmar</button>
                 </div>
             </div>
         </div>`;
         opsToggleCamposMovimiento();
     };
 
+    // Info de solo-lectura + botón para cancelar, cuando la pieza ya tiene un
+    // traspaso pendiente de aceptación — así nadie más puede "brincarse" el
+    // paso de que el receptor acepte.
+    function opsAbrirModalTraspasoPendiente(herramientaId, pend) {
+        const h = cacheHerr.find(x => x.id === herramientaId);
+        const wrap = document.getElementById("ops-modal-wrap");
+        const venceTxt = pend.venceEn ? new Date(pend.venceEn).toLocaleString("es-MX", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
+        wrap.innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;">
+            <div style="background:#fff;border-radius:14px;width:380px;max-width:92vw;padding:22px;">
+                <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:4px;">🔒 Traspaso pendiente</div>
+                <div style="font-size:12px;color:#64748b;margin-bottom:14px;">${opsEsc(h ? h.folio : "")} · ${opsEsc(h ? h.descripcion : "")}</div>
+                <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:11px 13px;font-size:12.5px;color:#92400e;line-height:1.7;margin-bottom:16px;">
+                    <div><strong>De:</strong> ${opsEsc(pend.entregaNombre || "—")}</div>
+                    <div><strong>Para:</strong> ${opsEsc(pend.receptorNombre || "—")}</div>
+                    <div><strong>Vence:</strong> ${venceTxt}</div>
+                    <div style="margin-top:4px;">Esta pieza está bloqueada hasta que ${opsEsc((pend.receptorNombre || "el receptor").split(" ")[0])} la acepte o la rechace desde Flotilla — o hasta que canceles el traspaso aquí.</div>
+                </div>
+                <div style="display:flex;gap:8px;justify-content:flex-end;">
+                    <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cerrar</button>
+                    <button onclick="opsCancelarTraspasoPendiente('${pend.id}')" style="background:linear-gradient(135deg,#b91c1c,#7f1d1d);color:#fff;border:none;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar traspaso</button>
+                </div>
+            </div>
+        </div>`;
+    }
+
+    window.opsCancelarTraspasoPendiente = async function (traspasoId) {
+        if (!confirm("¿Cancelar este traspaso? El técnico que lo inició deberá volver a intentarlo si aún quiere transferir la pieza.")) return;
+        try {
+            const { db, fs } = await opsGetFB();
+            await fs.updateDoc(fs.doc(db, COL_HERR_TRASPASOS, traspasoId), {
+                estatus: "Cancelado", canceladoEn: opsFechaHora(), canceladoPor: opsNombreActual(),
+            });
+            document.getElementById("ops-modal-wrap").innerHTML = "";
+            window.mostrarPush ? mostrarPush("Herramientas", "Traspaso cancelado.", "🔓") : alert("Traspaso cancelado.");
+        } catch (err) {
+            console.error("[operaciones.js] error al cancelar traspaso:", err);
+            alert("No se pudo cancelar: " + (err && err.message ? err.message : err));
+        }
+    };
+
+    // Foto de evidencia opcional al iniciar un traspaso desde el Portal — mismo
+    // helper de compresión que ya usa la revisión de herramienta (Fase 2).
+    let opsTraspasoFotoBlob = null;
+    window.opsSeleccionarFotoTraspaso = async function (inputEl) {
+        const file = inputEl.files && inputEl.files[0];
+        if (!file) return;
+        const estadoEl = document.getElementById("ops-traspaso-foto-estado");
+        if (estadoEl) estadoEl.textContent = "Procesando...";
+        try {
+            const blob = await opsComprimirImagen(file, 1600, 0.82);
+            opsTraspasoFotoBlob = blob;
+            const thumb = document.getElementById("ops-traspaso-thumb");
+            if (thumb) { thumb.src = URL.createObjectURL(blob); thumb.style.display = "block"; }
+            if (estadoEl) estadoEl.textContent = "Foto lista";
+        } catch (err) {
+            console.error("[operaciones.js] error al comprimir foto de traspaso:", err);
+            if (estadoEl) estadoEl.textContent = "Error al procesar la foto";
+        }
+    };
+
     window.opsToggleCamposMovimiento = function () {
         const tipo = document.getElementById("ops-in-tipomov").value;
         document.getElementById("ops-campo-tecnico").style.display = (tipo === "asignacion" || tipo === "transferencia") ? "block" : "none";
         document.getElementById("ops-campo-ubicacion").style.display = (tipo === "cambio_ubicacion") ? "block" : "none";
+        document.getElementById("ops-campo-transferencia-info").style.display = (tipo === "transferencia") ? "block" : "none";
+        document.getElementById("ops-campo-evidencia-transferencia").style.display = (tipo === "transferencia") ? "block" : "none";
+        const btn = document.getElementById("ops-mov-btn-confirmar");
+        if (btn) btn.textContent = tipo === "transferencia" ? "Enviar traspaso" : "Confirmar";
     };
 
     window.opsConfirmarMovimiento = async function (herramientaId) {
         const h = cacheHerr.find(x => x.id === herramientaId);
         const tipo = document.getElementById("ops-in-tipomov").value;
         const obs = document.getElementById("ops-in-obs").value.trim();
-        const { db, fs } = await opsGetFB();
-        const ref = fs.doc(db, COL_HERRAMIENTAS, herramientaId);
+        const btn = document.getElementById("ops-mov-btn-confirmar");
 
-        const mapaEstado = {
-            asignacion: "asignada", transferencia: "asignada", devolucion: "disponible",
-            reparacion: "reparacion", retorno_reparacion: "disponible",
-            perdida: "extraviada", danio: "danada", cambio_ubicacion: h.estado,
-        };
-        const nuevoEstado = mapaEstado[tipo] || h.estado;
-        const update = { estado: nuevoEstado, observaciones: obs || h.observaciones || null };
-        let tecnicoNuevoId = h.tecnicoActualId;
-
-        if (tipo === "asignacion" || tipo === "transferencia") {
-            tecnicoNuevoId = document.getElementById("ops-in-tecnico").value;
-            if (!tecnicoNuevoId) { alert("Selecciona un técnico"); return; }
-            update.tecnicoActualId = tecnicoNuevoId;
-            update.fechaAsignacion = opsHoy();
-        } else if (tipo === "devolucion" || tipo === "perdida" || tipo === "danio") {
-            update.tecnicoActualId = null;
-            update.fechaAsignacion = null;
-        } else if (tipo === "cambio_ubicacion") {
-            update.ubicacionActual = document.getElementById("ops-in-ubicacion").value;
+        // "Reasignar a otro técnico" ya NO mueve la pieza al instante: crea un
+        // traspaso que el receptor debe aceptar desde Flotilla, igual que un
+        // vehículo — así ninguna herramienta "brinca" de técnico sin que el
+        // que la recibe lo confirme.
+        if (tipo === "transferencia") {
+            return opsIniciarTraspasoDesdeOperaciones(herramientaId, obs);
         }
 
-        await fs.updateDoc(ref, update);
-        await opsRegistrarMovimiento({
-            herramientaId, tipo,
-            tecnicoAnteriorId: h.tecnicoActualId,
-            tecnicoNuevoId: (tipo === "asignacion" || tipo === "transferencia") ? tecnicoNuevoId : null,
-            ubicacionAnterior: h.ubicacionActual,
-            ubicacionNueva: update.ubicacionActual || h.ubicacionActual,
-            observaciones: obs,
-        });
-        document.getElementById("ops-modal-wrap").innerHTML = "";
-        const panel = document.getElementById("ops-panel-wrap");
-        if (panel) panel.innerHTML = "";
+        if (btn) { btn.disabled = true; btn.textContent = "Guardando..."; }
+        try {
+            const { db, fs } = await opsGetFB();
+            const ref = fs.doc(db, COL_HERRAMIENTAS, herramientaId);
 
-        if (tipo === "asignacion" || tipo === "transferencia") {
-            // Refrescar caché local con los valores recién guardados antes de generar el PDF,
-            // porque onSnapshot puede tardar unos ms en llegar.
-            const idx = cacheHerr.findIndex(x => x.id === herramientaId);
-            if (idx >= 0) cacheHerr[idx] = { ...cacheHerr[idx], ...update };
-            opsGenerarResponsivaPDF(herramientaId);
+            const mapaEstado = {
+                asignacion: "asignada", devolucion: "disponible",
+                reparacion: "reparacion", retorno_reparacion: "disponible",
+                perdida: "extraviada", danio: "danada", cambio_ubicacion: h.estado,
+            };
+            const nuevoEstado = mapaEstado[tipo] || h.estado;
+            const update = { estado: nuevoEstado, observaciones: obs || h.observaciones || null };
+            let tecnicoNuevoId = h.tecnicoActualId;
+
+            if (tipo === "asignacion") {
+                tecnicoNuevoId = document.getElementById("ops-in-tecnico").value;
+                if (!tecnicoNuevoId) { alert("Selecciona un técnico"); if (btn) { btn.disabled = false; btn.textContent = "Confirmar"; } return; }
+                update.tecnicoActualId = tecnicoNuevoId;
+                update.fechaAsignacion = opsHoy();
+            } else if (tipo === "devolucion" || tipo === "perdida" || tipo === "danio") {
+                update.tecnicoActualId = null;
+                update.fechaAsignacion = null;
+            } else if (tipo === "cambio_ubicacion") {
+                update.ubicacionActual = document.getElementById("ops-in-ubicacion").value;
+            }
+
+            await fs.updateDoc(ref, update);
+            await opsRegistrarMovimiento({
+                herramientaId, tipo,
+                tecnicoAnteriorId: h.tecnicoActualId,
+                tecnicoNuevoId: tipo === "asignacion" ? tecnicoNuevoId : null,
+                ubicacionAnterior: h.ubicacionActual,
+                ubicacionNueva: update.ubicacionActual || h.ubicacionActual,
+                observaciones: obs,
+            });
+            document.getElementById("ops-modal-wrap").innerHTML = "";
+            const panel = document.getElementById("ops-panel-wrap");
+            if (panel) panel.innerHTML = "";
+
+            if (tipo === "asignacion") {
+                // Refrescar caché local con los valores recién guardados antes de generar el PDF,
+                // porque onSnapshot puede tardar unos ms en llegar.
+                const idx = cacheHerr.findIndex(x => x.id === herramientaId);
+                if (idx >= 0) cacheHerr[idx] = { ...cacheHerr[idx], ...update };
+                opsGenerarResponsivaPDF(herramientaId);
+            }
+        } catch (err) {
+            console.error("[operaciones.js] error al registrar movimiento:", err);
+            alert("No se pudo registrar el movimiento: " + (err && err.message ? err.message : err));
+            if (btn) { btn.disabled = false; btn.textContent = "Confirmar"; }
         }
     };
+
+    // Crea la solicitud de traspaso (ops_herramienta_traspasos) en vez de mover
+    // la pieza al instante. La acepta/rechaza el receptor desde Flotilla móvil
+    // (herrAceptarTraspaso ya funciona igual sin importar quién inició el
+    // traspaso — Almacén desde aquí, o el propio técnico desde su celular).
+    async function opsIniciarTraspasoDesdeOperaciones(herramientaId, comentario) {
+        const btn = document.getElementById("ops-mov-btn-confirmar");
+        const h = cacheHerr.find(x => x.id === herramientaId);
+        const tecnicoNuevoId = document.getElementById("ops-in-tecnico").value;
+        if (!tecnicoNuevoId) { alert("Selecciona un técnico"); return; }
+        if (tecnicoNuevoId === h.tecnicoActualId) { alert("Ese técnico ya tiene esta pieza asignada."); return; }
+
+        const pendActual = opsTraspasoPendientePara(herramientaId);
+        if (pendActual) { alert("Ya hay un traspaso pendiente para esta pieza. Cancélalo antes de iniciar otro."); return; }
+
+        const receptor = cacheTec.find(t => t.id === tecnicoNuevoId);
+        const entrega = cacheTec.find(t => t.id === h.tecnicoActualId);
+        if (!receptor || !receptor.correo) {
+            alert(`${receptor ? receptor.nombre : "Este técnico"} no tiene correo capturado en su ficha de Operaciones > Técnicos. Sin correo no puede ver ni aceptar el traspaso desde Flotilla — captúralo primero ahí.`);
+            return;
+        }
+
+        if (btn) { btn.disabled = true; btn.textContent = "Enviando..."; }
+        try {
+            const { db, fs } = await opsGetFB();
+            const now = new Date();
+            const venceEn = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+            const venceTxt = venceEn.toLocaleString("es-MX", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
+            let evidenciaURL = null;
+            if (opsTraspasoFotoBlob) {
+                try {
+                    const storageTools = await opsGetStorage();
+                    const ruta = `traspasos_herramienta/${herramientaId}_${Date.now()}.jpg`;
+                    const ref = storageTools.stMod.ref(storageTools.storage, ruta);
+                    await storageTools.stMod.uploadBytes(ref, opsTraspasoFotoBlob, { contentType: "image/jpeg" });
+                    evidenciaURL = await storageTools.stMod.getDownloadURL(ref);
+                } catch (err) { console.error("[operaciones.js] no se pudo subir la evidencia del traspaso:", err); }
+            }
+
+            const traspasoRef = await fs.addDoc(fs.collection(db, COL_HERR_TRASPASOS), {
+                herramientaId, folio: h.folio || "", descripcion: h.descripcion || "",
+                entregaTecnicoId: h.tecnicoActualId || null,
+                entregaEmail: entrega && entrega.correo ? entrega.correo : null,
+                entregaNombre: entrega ? entrega.nombre : "Almacén",
+                receptorTecnicoId: tecnicoNuevoId,
+                receptorEmail: receptor.correo,
+                receptorNombre: receptor.nombre,
+                comentario: comentario || null,
+                evidenciaURL,
+                estatus: "Pendiente recepción",
+                creadoEn: now.toISOString(), venceEn: venceEn.toISOString(),
+                origen: "operaciones", creadoPorEmail: opsUsuarioActual(), creadoPorNombre: opsNombreActual(),
+            });
+
+            await fs.addDoc(fs.collection(db, "flotilla_notificaciones"), {
+                tipo: "herramienta_traspaso_iniciada", traspasoId: traspasoRef.id, para: receptor.correo,
+                mensaje: `${opsNombreActual()} te está traspasando la herramienta ${h.folio || ""} (${h.descripcion || ""}). Acéptala antes del ${venceTxt} desde Flotilla, o el traspaso vencerá.`,
+                leido: false, creadaEn: now.toISOString(),
+            }).catch(err => console.warn("[operaciones.js] no se pudo notificar al receptor:", err));
+
+            opsTraspasoFotoBlob = null;
+            document.getElementById("ops-modal-wrap").innerHTML = "";
+            window.mostrarPush ? mostrarPush("Herramientas", `Traspaso enviado a ${receptor.nombre} — pendiente de que lo acepte.`, "🔒") : alert(`Traspaso enviado a ${receptor.nombre}. Queda pendiente hasta que lo acepte desde Flotilla.`);
+        } catch (err) {
+            console.error("[operaciones.js] error al iniciar traspaso:", err);
+            alert("No se pudo enviar el traspaso: " + (err && err.message ? err.message : err));
+            if (btn) { btn.disabled = false; btn.textContent = "Enviar traspaso"; }
+        }
+    }
 
     // ── Baja de herramienta (nunca se elimina el documento) ────────
     window.opsAbrirModalBaja = function (herramientaId) {
@@ -2167,7 +2389,7 @@
         el.innerHTML = `
             <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px 18px;">
                 <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;">
-                    <input type="text" placeholder="Buscar técnico..." oninput="opsFiltrarTec(this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 11px;font-size:12.5px;width:260px;outline:none;">
+                    <input type="text" id="ops-tec-buscar" value="${opsEsc(filtroTec)}" placeholder="Buscar técnico..." oninput="opsFiltrarTec(this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 11px;font-size:12.5px;width:260px;outline:none;">
                     <div style="display:flex;gap:6px;flex-wrap:wrap;">
                         ${gestion ? `<button onclick="opsExportarInventarioPDF()" title="PDF de herramienta por técnico, para auditoría" style="background:#eef2f7;border:none;color:#1f2937;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:600;">🖨️ PDF auditoría</button>` : ""}
                         ${gestion ? `<button onclick="opsExportarInventarioExcel()" title="Excel de herramienta por técnico, para auditoría" style="background:#eef2f7;border:none;color:#1f2937;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:600;">📊 Excel auditoría</button>` : ""}
@@ -2189,7 +2411,7 @@
             </div>`;
     }
 
-    window.opsFiltrarTec = function (v) { filtroTec = v || ""; opsRenderTecnicos(); };
+    window.opsFiltrarTec = function (v) { filtroTec = v || ""; opsRerenderConFoco(opsRenderTecnicos); };
 
     function opsFilaTecnico(t, i) {
         const activo = t.estatus === "activo";
