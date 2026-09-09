@@ -53,6 +53,15 @@
     // tabla de cruce, tecnicoActualId ES la referencia al almacén (o null = general).
     const COL_ALMACENES = "ops_almacenes";
     const ALMACEN_GENERAL_ID = "general";
+    // Equipo que requiere autorización previa (ej. equipo de calibración TecnoLab)
+    // antes de poder asignarse/traspasarse — a petición de Glen (sep-2026).
+    const COL_CONFIG_CALIBRACION = "ops_config_calibracion";
+    // Catálogo de servicios / Planeación Operativa (sep-2026): recetas parametrizadas
+    // por tipo de servicio (materiales, personal por rol, vehículos, herramienta,
+    // seguridad, costo). Fase 1 — modelo de datos + import real del Excel de Paloma;
+    // el motor de cálculo/calendario/disponibilidad quedan para fases siguientes.
+    const COL_SERVICIOS_CATALOGO = "ops_servicios_catalogo";
+    const COL_TARIFAS_PERSONAL = "ops_tarifas_personal"; // doc por rol (lider/tecnico/obra_civil) — nunca por nombre de empleado
     const MIGUEL_EMAIL = "miguel@tecnocontrol.com.mx"; // dueño del seguimiento interno (fecha de atención / compromiso)
 
     // Administradores del departamento de Operaciones: acceso total DENTRO de este módulo
@@ -725,9 +734,11 @@
     ];
 
     let opsFB = null;
-    let unsubHerr = null, unsubTec = null, unsubMov = null, unsubSurt = null, unsubFolios = null, unsubNotif = null, unsubTraspasos = null;
+    let unsubHerr = null, unsubTec = null, unsubMov = null, unsubSurt = null, unsubFolios = null, unsubNotif = null, unsubTraspasos = null, unsubConfigCalibracion = null, unsubServiciosCatalogo = null, unsubTarifasPersonal = null;
     let cacheHerr = [], cacheTec = [], cacheMov = [], cacheSurtidos = [], cacheFolios = [];
+    let cacheServiciosCatalogo = [], cacheTarifasPersonal = {};
     let cacheTraspasosPend = []; // ops_herramienta_traspasos con estatus "Pendiente recepción" — bloquea la pieza hasta que el receptor acepte/rechace/venza
+    let cacheAutorizadoresCalibracion = []; // [{email,nombre}] — quién puede aprobar mover equipo con requiereAutorizacion=true
     let filtroFolios = "", filtroFolioSemaforo = "todos";
     let tabActual = "dashboard";
     let filtroHerr = "", filtroTec = "";
@@ -1134,6 +1145,76 @@
         return tecnicoId ? opsNombreTecnico(tecnicoId) : "Almacén General";
     }
 
+    // Equipo con requiereAutorizacion=true (ej. calibración TecnoLab) solo lo puede
+    // mover/asignar/traspasar alguien de esta lista — configurable sin tocar código.
+    function opsEsAutorizadorCalibracion() {
+        const correo = opsUsuarioActual();
+        return (window.esAdminTotal && window.esAdminTotal(correo)) || cacheAutorizadoresCalibracion.some(a => (a.email || "").toLowerCase() === correo);
+    }
+
+    window.opsAbrirConfigCalibracion = function () {
+        const wrap = document.getElementById("ops-modal-wrap");
+        wrap.innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;">
+            <div style="background:#fff;border-radius:14px;width:420px;max-width:92vw;max-height:88vh;overflow-y:auto;padding:22px;">
+                <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:4px;">Autorización de equipo especializado</div>
+                <div style="font-size:11.5px;color:#64748b;margin-bottom:14px;">Solo estas personas (o un Administrador) pueden asignar/traspasar una pieza marcada como "Requiere autorización previa" — ej. equipo de calibración de TecnoLab.</div>
+                <div id="ops-config-calib-lista" style="margin-bottom:12px;">
+                    ${cacheAutorizadoresCalibracion.length ? cacheAutorizadoresCalibracion.map((a, i) => `
+                        <div style="display:flex;justify-content:space-between;align-items:center;border:1px solid #e2e8f0;border-radius:8px;padding:8px 11px;margin-bottom:6px;">
+                            <div><div style="font-size:12.5px;font-weight:600;color:#1e293b;">${opsEsc(a.nombre || a.email)}</div><div style="font-size:10.5px;color:#94a3b8;">${opsEsc(a.email)}</div></div>
+                            <button onclick="opsQuitarAutorizadorCalibracion(${i})" style="background:#fee2e2;border:none;color:#E7402B;width:26px;height:26px;border-radius:6px;cursor:pointer;">${ICON.close}</button>
+                        </div>`).join("") : '<div style="color:#94a3b8;font-size:12px;">Nadie configurado todavía — por ahora solo Administradores pueden autorizar.</div>'}
+                </div>
+                <div style="display:flex;gap:6px;">
+                    <input id="ops-config-calib-nombre" placeholder="Nombre" style="flex:1;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;">
+                    <input id="ops-config-calib-email" placeholder="correo@tecnocontrol.com.mx" style="flex:1;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;">
+                    <button onclick="opsAgregarAutorizadorCalibracion()" style="background:#1D2E73;color:#fff;border:none;padding:0 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;">Agregar</button>
+                </div>
+                <div style="text-align:right;margin-top:16px;">
+                    <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cerrar</button>
+                </div>
+            </div>
+        </div>`;
+    };
+
+    async function opsGuardarAutorizadoresCalibracion() {
+        const { db, fs } = await opsGetFB();
+        await fs.setDoc(fs.doc(db, COL_CONFIG_CALIBRACION, "general"), { autorizadores: cacheAutorizadoresCalibracion }, { merge: true });
+    }
+
+    window.opsAgregarAutorizadorCalibracion = function () {
+        const nombre = document.getElementById("ops-config-calib-nombre").value.trim();
+        const email = document.getElementById("ops-config-calib-email").value.trim().toLowerCase();
+        if (!email) { alert("Captura el correo"); return; }
+        cacheAutorizadoresCalibracion = [...cacheAutorizadoresCalibracion, { nombre, email }];
+        opsGuardarAutorizadoresCalibracion().catch(err => alert("No se pudo guardar: " + err.message));
+        opsAbrirConfigCalibracion();
+    };
+    window.opsQuitarAutorizadorCalibracion = function (idx) {
+        cacheAutorizadoresCalibracion = cacheAutorizadoresCalibracion.filter((_, i) => i !== idx);
+        opsGuardarAutorizadoresCalibracion().catch(err => alert("No se pudo guardar: " + err.message));
+        opsAbrirConfigCalibracion();
+    };
+
+    window.opsSolicitarAutorizacion = async function (herramientaId) {
+        const h = cacheHerr.find(x => x.id === herramientaId);
+        if (!h) return;
+        if (!cacheAutorizadoresCalibracion.length) { alert("No hay autorizadores configurados todavía — pide a un Administrador que los agregue."); return; }
+        try {
+            const { db, fs } = await opsGetFB();
+            await Promise.all(cacheAutorizadoresCalibracion.map(a => fs.addDoc(fs.collection(db, "flotilla_notificaciones"), {
+                tipo: "autorizacion_equipo_especializado", para: a.email,
+                mensaje: `${opsNombreActual()} solicita autorización para mover/asignar ${h.folio} — ${h.descripcion}.`,
+                leido: false, creadaEn: opsFechaHora(),
+            }).catch(() => {})));
+            document.getElementById("ops-modal-wrap").innerHTML = "";
+            alert("Solicitud enviada a: " + cacheAutorizadoresCalibracion.map(a => a.nombre || a.email).join(", "));
+        } catch (err) {
+            alert("No se pudo enviar la solicitud: " + err.message);
+        }
+    };
+
     async function opsAsegurarAlmacenGeneral(db, fs) {
         await fs.setDoc(fs.doc(db, COL_ALMACENES, ALMACEN_GENERAL_ID), {
             nombre: "Almacén General", tipo: "general", tecnicoId: null, activo: true,
@@ -1203,7 +1284,7 @@
     function opsRenderShell() {
         const rol = opsRolActual();
         const rolLabel = { administrador: "Administrador", almacen: "Almacén", consulta: "Consulta" }[rol];
-        const items = ["resumen:Resumen", "dashboard:Herramientas", "guardias:Guardias", "tecnicos:Técnicos", "servicios:Servicios",
+        const items = ["resumen:Resumen", "dashboard:Herramientas", "planeacion:Planeación", "guardias:Guardias", "tecnicos:Técnicos", "servicios:Servicios",
             "folios:Folios", "clientes:Clientes",
             ...(opsPuedeHacer("autorizar_material") ? ["solicitudes:Solicitudes"] : []),
             "alertas:Alertas", "movimientos:Movimientos"];
@@ -1248,6 +1329,7 @@
         if (activo) { activo.style.color = "#1D2E73"; activo.style.background = "#E9ECF5"; activo.style.borderLeftColor = "#1D2E73"; }
         if (tab === "resumen") opsRenderResumen();
         else if (tab === "dashboard") opsRenderDashboard();
+        else if (tab === "planeacion") opsRenderPlaneacion();
         else if (tab === "guardias") opsRenderGuardias();
         else if (tab === "tecnicos") opsRenderTecnicos();
         else if (tab === "servicios") opsRenderServicios();
@@ -1307,6 +1389,24 @@
                 cacheTraspasosPend = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                 if (tabActual === "dashboard") opsRenderDashboard();
             }, () => { cacheTraspasosPend = []; });
+        }
+        if (!unsubConfigCalibracion) {
+            unsubConfigCalibracion = fs.onSnapshot(fs.doc(db, COL_CONFIG_CALIBRACION, "general"), snap => {
+                cacheAutorizadoresCalibracion = snap.exists() ? (snap.data().autorizadores || []) : [];
+            }, () => { cacheAutorizadoresCalibracion = []; });
+        }
+        if (!unsubServiciosCatalogo) {
+            unsubServiciosCatalogo = fs.onSnapshot(fs.collection(db, COL_SERVICIOS_CATALOGO), snap => {
+                cacheServiciosCatalogo = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                if (tabActual === "planeacion") opsRenderPlaneacion();
+            }, () => { cacheServiciosCatalogo = []; });
+        }
+        if (!unsubTarifasPersonal) {
+            unsubTarifasPersonal = fs.onSnapshot(fs.collection(db, COL_TARIFAS_PERSONAL), snap => {
+                cacheTarifasPersonal = {};
+                snap.docs.forEach(d => { cacheTarifasPersonal[d.id] = d.data(); });
+                if (tabActual === "planeacion") opsRenderPlaneacion();
+            }, () => { cacheTarifasPersonal = {}; });
         }
         if (!unsubNotif) {
             // Notificaciones generales (ej. "solicitud lista para surtir") — llegan a TODOS los
@@ -1505,6 +1605,7 @@
                         <button onclick="opsCambiarVistaHerr('almacen')" style="border:none;background:${vistaHerr === "almacen" ? "#1D2E73" : "transparent"};color:${vistaHerr === "almacen" ? "#fff" : "#475569"};padding:6px 12px;border-radius:7px;cursor:pointer;font-size:11.5px;font-weight:600;">Por almacén</button>
                         <button onclick="opsCambiarVistaHerr('tipo')" style="border:none;background:${vistaHerr === "tipo" ? "#1D2E73" : "transparent"};color:${vistaHerr === "tipo" ? "#fff" : "#475569"};padding:6px 12px;border-radius:7px;cursor:pointer;font-size:11.5px;font-weight:600;">Por tipo de artículo</button>
                     </div>
+                    ${gestion ? `<button onclick="opsAbrirConfigCalibracion()" title="Configurar quién autoriza equipo especializado" style="background:#eef2f7;border:none;color:#475569;width:32px;height:32px;border-radius:8px;cursor:pointer;">${ICON.lock}</button>` : ""}
                     ${gestion ? `
                     <button onclick="opsAbrirModalPieza()" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Nueva pieza</button>
                     <button onclick="opsSembrarCatalogoBase()" class="mkt-add-btn" style="background:#334155;">${ICON.box} Cargar catálogo base</button>
@@ -1805,6 +1906,7 @@
 
                 <span style="background:${e.bg};color:${e.fg};font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;">${e.label}</span>
                 ${h.condicion && CONDICIONES_HERRAMIENTA[h.condicion] ? `<span style="background:${CONDICIONES_HERRAMIENTA[h.condicion].bg};color:${CONDICIONES_HERRAMIENTA[h.condicion].fg};font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;margin-left:6px;">${CONDICIONES_HERRAMIENTA[h.condicion].label}</span>` : ""}
+                ${h.requiereAutorizacion ? `<span style="background:#fef3c7;color:#92400e;font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;margin-left:6px;">${ICON.lock} Requiere autorización</span>` : ""}
 
                 <div style="margin-top:16px;font-size:12.5px;color:#334155;line-height:1.9;">
                     <div><strong>Categoría:</strong> ${opsEsc(h.categoria || "—")}</div>
@@ -1942,6 +2044,11 @@
                         <option value="">— Sin asignar (queda disponible en almacén) —</option>
                         ${tecnicosActivos.map(t => `<option value="${t.id}">${opsEsc(t.nombre)} (${opsEsc(t.numeroOperativo)})</option>`).join("")}
                     </select>
+
+                    <label style="display:flex;align-items:center;gap:7px;margin-top:8px;font-size:12px;color:#334155;cursor:pointer;">
+                        <input type="checkbox" id="ops-in-requiere-autorizacion" style="width:15px;height:15px;">
+                        Requiere autorización previa para asignarse/traspasarse (ej. equipo de calibración)
+                    </label>
                 </div>
 
                 <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px;">
@@ -1996,6 +2103,7 @@
             const pesoUnidad = peso !== null ? document.getElementById("ops-in-peso-unidad").value : null;
             const medida = document.getElementById("ops-in-medida").value.trim() || null;
             const tecnicoDestinoId = document.getElementById("ops-in-tecnico-destino").value || null;
+            const requiereAutorizacion = document.getElementById("ops-in-requiere-autorizacion").checked;
             const { db, fs } = await opsGetFB();
             const folio = await opsSiguienteFolioHerramienta();
 
@@ -2010,6 +2118,7 @@
                 fechaAlta: opsHoy(),
                 origenRequisicionId: opsRequisicionSeleccionada ? opsRequisicionSeleccionada.id : null,
                 origenRequisicionFolio: opsRequisicionSeleccionada ? opsRequisicionSeleccionada.folio : null,
+                requiereAutorizacion,
                 externalId: null, sourceSystem: "manual", lastSync: null, syncStatus: "no_sincronizado",
             });
             await opsRegistrarMovimiento({
@@ -2147,6 +2256,28 @@
         // saltar" la herramienta mientras el otro técnico no haya respondido.
         const pend = opsTraspasoPendientePara(herramientaId);
         if (pend) { return opsAbrirModalTraspasoPendiente(herramientaId, pend); }
+
+        // Equipo que requiere autorización previa (ej. calibración TecnoLab):
+        // si quien intenta moverlo no está en la lista, no ve el formulario —
+        // solo puede pedir autorización a quien sí puede.
+        if (h.requiereAutorizacion && !opsEsAutorizadorCalibracion()) {
+            const wrap = document.getElementById("ops-modal-wrap");
+            wrap.innerHTML = `
+            <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;">
+                <div style="background:#fff;border-radius:14px;width:380px;max-width:92vw;padding:22px;">
+                    <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:4px;">${ICON.lock} Requiere autorización</div>
+                    <div style="font-size:12px;color:#64748b;margin-bottom:14px;">${opsEsc(h.folio)} · ${opsEsc(h.descripcion)}</div>
+                    <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:11px 13px;font-size:12.5px;color:#92400e;margin-bottom:16px;">
+                        Esta pieza solo la puede mover/asignar/traspasar: ${cacheAutorizadoresCalibracion.length ? opsEsc(cacheAutorizadoresCalibracion.map(a => a.nombre || a.email).join(", ")) : "un Administrador (no hay autorizadores adicionales configurados)"}.
+                    </div>
+                    <div style="display:flex;gap:8px;justify-content:flex-end;">
+                        <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cerrar</button>
+                        <button onclick="opsSolicitarAutorizacion('${herramientaId}')" style="background:#1D2E73;color:#fff;border:none;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Solicitar autorización</button>
+                    </div>
+                </div>
+            </div>`;
+            return;
+        }
 
         const tecnicosActivos = cacheTec.filter(t => t.estatus === "activo");
         const wrap = document.getElementById("ops-modal-wrap");
@@ -4695,6 +4826,233 @@
         // de notificaciones — el listener ya alcanzó a dispararse con leida:false antes de esto.
         setTimeout(() => { fs.updateDoc(ref, { leida: true }).catch(() => {}); }, 2000);
         window.mostrarPush ? mostrarPush("Operaciones", "Alerta de prueba enviada — deberías verla y escucharla en unos segundos.", "🔔") : null;
+    };
+
+    // ══════════════════════════════════════════════════════════
+    // PLANEACIÓN OPERATIVA — Fase 1: modelo de datos + catálogo de
+    // servicios (recetas parametrizadas), importado del Excel real de
+    // Paloma. El motor de cálculo/calendario/disponibilidad son fases
+    // siguientes — esto solo deja los datos bien estructurados y una
+    // ficha para revisarlos, sin inventar cálculos todavía.
+    // ══════════════════════════════════════════════════════════
+    function _matBase(overoles, conFrecuencia) {
+        const freq = conFrecuencia ? "frecuencia" : "proporcional";
+        const notaFreq = conFrecuencia ? "se cambia cada 10 tanques" : null;
+        const paramFreq = conFrecuencia ? 10 : null;
+        return [
+            { nombre: "Hule rojo 3.2mm", unidad: "m", costoUnitario: 0.01, cantidadBase: 80, reglaConsumo: "proporcional" },
+            { nombre: "Silicón superseal marca FESTER", unidad: "pza", costoUnitario: 207.54, cantidadBase: 1, reglaConsumo: "proporcional" },
+            { nombre: 'Tuercas 1/2" acero inoxidable', unidad: "pza", costoUnitario: 4.13, cantidadBase: 20, reglaConsumo: "proporcional" },
+            { nombre: 'Arandela 1/2" acero inoxidable', unidad: "pza", costoUnitario: 2.10, cantidadBase: 20, reglaConsumo: "proporcional" },
+            { nombre: "Desengrasante SIMPLE GREEN", unidad: "L", costoUnitario: 68.91, cantidadBase: 50, reglaConsumo: "proporcional" },
+            { nombre: "Overol blanco desechable", unidad: "pza", costoUnitario: 43, cantidadBase: overoles, reglaConsumo: "proporcional" },
+            { nombre: "Almohadillas para máscara 3M", unidad: "pza", costoUnitario: 36, cantidadBase: 6, reglaConsumo: "proporcional" },
+            { nombre: "Cartuchos filtro 6003 3M", unidad: "pza", costoUnitario: 254, cantidadBase: 1.5, reglaConsumo: "proporcional" },
+            { nombre: "Tambos 200L recolección de residuos", unidad: "pza", costoUnitario: 240, cantidadBase: 2, reglaConsumo: "proporcional" },
+            { nombre: "Lata limpiador", unidad: "lata", costoUnitario: 453.60, cantidadBase: 0.33, reglaConsumo: "proporcional" },
+            { nombre: "Lata líquido penetrante", unidad: "lata", costoUnitario: 510.30, cantidadBase: 0.33, reglaConsumo: "proporcional" },
+            { nombre: "Lata líquido revelador", unidad: "lata", costoUnitario: 472.50, cantidadBase: 0.33, reglaConsumo: "proporcional" },
+            { nombre: "Trapeador de microfibra", unidad: "pza", costoUnitario: 140, cantidadBase: 0.1, reglaConsumo: freq, parametroBase: paramFreq, nota: notaFreq },
+            { nombre: "Escoba", unidad: "pza", costoUnitario: 100, cantidadBase: 0.1, reglaConsumo: freq, parametroBase: paramFreq, nota: notaFreq },
+            { nombre: "Trapos de microfibra", unidad: "pza", costoUnitario: 20, cantidadBase: 0.1, reglaConsumo: freq, parametroBase: paramFreq, nota: notaFreq },
+            { nombre: "Gasolina", unidad: "L", costoUnitario: 94.41, cantidadBase: 0.06, reglaConsumo: "proporcional" },
+            { nombre: "Teflón", unidad: "pza", costoUnitario: 56.48, cantidadBase: 0.33, reglaConsumo: "proporcional" },
+            { nombre: "Aceite penetrante", unidad: "pza", costoUnitario: 96.13, cantidadBase: 0.1, reglaConsumo: freq, parametroBase: paramFreq, nota: notaFreq },
+        ];
+    }
+    const _herrBase = [
+        "Juego básico de técnico", "Pistola eléctrica de impacto con dado de 3/4", "Distanciómetro digital de doble láser",
+        "Linterna LED con lente ajustable", "Escalera articulada marca Cuprum", "Taladro inalámbrico brushless o neumático",
+        "Carda tipo copa bañada en bronce de 2.5\" para taladro", "Medidor de ultrasonido", "Tripié con polipasto",
+        "Pistola para silicón", "Llaves españolas de 3/4", "Escalera de 4.2 mts fija", "Bomba de diafragma neumática",
+        "Bomba de diafragma eléctrica", "4 tótems de 1,000 litros (si hay pipa o autotanque)",
+        "Tubería galvanizada o PVC 1\" extremos roscados", "Mangueras transparentes 1\" con conexiones Dixon",
+        "Manguera de aire 1/4 x 30 mts", "Conexiones rápidas para aire 1/4", "Hidrolavadora eléctrica",
+        "Manguera y pistola para hidrolavadora", "Porrón de 20 y 50 litros para SimpleGreen", "Pichancha de 1\"",
+        "Manguera 1/2\" transparente 1.5 mts con conexiones tipo jardín", "Embudo de plástico 4\"",
+        "Embudo metálico galvanizado 30cm", "2 reflectores LED con mica de plástico", "Soga 12.7mm x 8 mts con gancho",
+        "3 cubetas de 19 litros", "2 palas antichispa", "Explosímetro", "Sobre tapa de plástico para cartucho", "Campana tipo cencerro",
+    ];
+    const _segBase = [
+        { nombre: "Arnés de seguridad", cantidad: 2 },
+        { nombre: "Máscara antigases 3M", cantidad: "1 por persona" },
+        { nombre: "Botas de hule grandes", cantidad: 2 },
+    ];
+    const _vehBase = {
+        sugerido: { nombre: "F-450 con remolque largo", razon: "Capacidad de carga y remolque para el equipo del servicio" },
+        alternos: [{ nombre: "Camión Isuzu 450", condicion: "Si F-450 no está disponible" }, { nombre: "Silverado con remolque largo", condicion: "Si ninguno de los anteriores está disponible" }],
+        duracionNota: "2 días de trabajo por tanque",
+    };
+    const _personalBase = [{ rol: "lider", cantidad: 1 }, { rol: "tecnico", cantidad: 2 }];
+
+    // Datos reales tal como están en INTEGRIDAD_MECANICA.xlsx (Paloma, sep-2026) —
+    // 9 pestañas = 9 recetas. Origen queda anotado por trazabilidad.
+    function _recetasReales() {
+        const base = (nombre, overoles, conFrecuencia, herrExtra) => ({
+            nombre, categoria: "Mantenimiento a estaciones de servicio", tipoServicio: "ambos", activo: true,
+            requiereObraCivil: false, requiereVehiculo: true, requiereRemolque: true,
+            personal: _personalBase,
+            materiales: _matBase(overoles, conFrecuencia),
+            herramientaRequerida: [..._herrBase, ...(herrExtra || [])].map(d => ({ descripcion: d, cantidad: 1 })),
+            equipoSeguridad: _segBase,
+            vehiculos: _vehBase,
+            origenImportacion: "Excel INTEGRIDAD_MECANICA.xlsx (Paloma, sep-2026)",
+        });
+        return [
+            base("Remodelación de Instalación Eléctrica", 4, true),
+            base("Cambio de Tubería Primaria", 4, true),
+            base("Cambio de Contenedor", 3, false),
+            base("Integridad Mecánica", 4, true, ["1 extensión de 30 mts", "2 extensiones de 10 mts (con dos tomacorrientes)"]),
+            base("Retank", 3, false),
+            base("Cambio de Contenedor de Motobomba", 4, true),
+            base("Montaje de Dispensario", 4, true),
+            base("Instalación de Cónsolas de Tanques", 4, true),
+            {
+                nombre: "Cambio de Botas de Contenedor", categoria: "Mantenimiento a estaciones de servicio",
+                tipoServicio: "externo", activo: true, requiereObraCivil: true, requiereVehiculo: true, requiereRemolque: false,
+                personal: [{ rol: "lider", cantidad: 1 }, { rol: "tecnico", cantidad: 1 }, { rol: "obra_civil", cantidad: 2 }],
+                materiales: [
+                    { nombre: "Bota BTR4015 (bota completa)", unidad: "pza", costoUnitario: 0.01, cantidadBase: 1, reglaConsumo: "proporcional" },
+                    { nombre: "Bota BR4015 (solo parte interior)", unidad: "pza", costoUnitario: 0, cantidadBase: 1, reglaConsumo: "proporcional" },
+                ],
+                herramientaRequerida: [
+                    { descripcion: "Extensión eléctrica (3 de 15 mts)", cantidad: 1, etapa: "tecnico" },
+                    { descripcion: "Cegueta manual o sable eléctrico", cantidad: 1, etapa: "tecnico" },
+                    { descripcion: "Juego de dados", cantidad: 1, etapa: "tecnico" },
+                    { descripcion: 'Saca bocados de 6" para bota de 4.5"', cantidad: 1, etapa: "tecnico" },
+                    { descripcion: "Kit de herramienta básica técnico", cantidad: 1, etapa: "tecnico" },
+                    { descripcion: "Broca de 3/8", cantidad: 1, etapa: "tecnico" },
+                    { descripcion: "Aspiradora", cantidad: 1, etapa: "tecnico" },
+                    { descripcion: "Carrucha", cantidad: 1, etapa: "obra_civil" },
+                    { descripcion: "Demoledor de 25 kilos con punta", cantidad: 1, etapa: "obra_civil" },
+                    { descripcion: "Pala de punta", cantidad: 1, etapa: "obra_civil" },
+                    { descripcion: "Pala cuadrada", cantidad: 1, etapa: "obra_civil" },
+                    { descripcion: "Pico", cantidad: 1, etapa: "obra_civil" },
+                    { descripcion: "Barra", cantidad: 1, etapa: "obra_civil" },
+                    { descripcion: "Llana y flota", cantidad: 1, etapa: "obra_civil" },
+                    { descripcion: "Retiro de escombro (se programa con proveedor o se lleva en la troca)", cantidad: 1, etapa: "obra_civil" },
+                ],
+                equipoSeguridad: _segBase,
+                vehiculos: {
+                    sugerido: { nombre: "RAM 700", razon: "Vehículo asignado en la receta original" },
+                    alternos: [{ nombre: "L200", condicion: "Si RAM 700 no está disponible" }],
+                    duracionNota: "2 días de trabajo por tanque",
+                },
+                origenImportacion: "Excel INTEGRIDAD_MECANICA.xlsx, pestaña CAMBIO DE BOTAS DE CONTENEDOR (Paloma, sep-2026) — datos de costo incompletos en el original, revisar antes de usarse para costeo real",
+                notaImportacion: "Personal 'Pepito Ismael' de la hoja original no tenía sueldo capturado — Ismael y Pepito son quienes cubren técnico + obra civil, según lo platicado con Paloma.",
+            },
+        ];
+    }
+
+    window.opsImportarRecetasReales = async function () {
+        if (!confirm("Esto crea/actualiza las 9 recetas reales del Excel de Paloma en el catálogo de servicios. ¿Continuar?")) return;
+        try {
+            const { db, fs } = await opsGetFB();
+            const recetas = _recetasReales();
+            for (const r of recetas) {
+                const id = r.nombre.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+                await fs.setDoc(fs.doc(db, COL_SERVICIOS_CATALOGO, id), { ...r, fechaAlta: opsHoy(), creadoPor: opsNombreActual() }, { merge: true });
+            }
+            // Tarifas de personal — costo real por rol, calculado UNA vez a partir de
+            // los 3 empleados del Excel (sueldo + IMSS patrón + INFONAVIT bimestral/2,
+            // entre 30 días). Es un punto de partida editable, no un valor fijo — el
+            // costo por nombre de empleado NO se guarda aquí, solo el promedio por rol.
+            const tarifas = {
+                lider: { costoDia: Math.round(((29594.78 + 4086.42 + 6072.61 / 2) / 30) * 100) / 100, nota: "Calculado de Sergio Mendoza (líder) en el Excel — ajustar si cambia el sueldo real." },
+                tecnico: { costoDia: Math.round((((15502.10 + 2490.23 + 3034.22 / 2) / 30 + (16660.72 + 2747.93 + 3280.53 / 2) / 30) / 2) * 100) / 100, nota: "Promedio de Barraza y Luna (técnicos) en el Excel — ajustar si cambia el equipo." },
+                obra_civil: { costoDia: Math.round((((15502.10 + 2490.23 + 3034.22 / 2) / 30 + (16660.72 + 2747.93 + 3280.53 / 2) / 30) / 2) * 100) / 100, nota: "Sin dato propio en el Excel — se usó el promedio de técnico como punto de partida. Ajustar." },
+            };
+            for (const rol in tarifas) {
+                await fs.setDoc(fs.doc(db, COL_TARIFAS_PERSONAL, rol), tarifas[rol], { merge: true });
+            }
+            alert(`Listo — ${recetas.length} recetas de servicio importadas/actualizadas, y tarifas de personal por rol creadas (editables en Planeación).`);
+        } catch (err) {
+            console.error("[operaciones.js] error al importar recetas:", err);
+            alert("No se pudo importar: " + err.message);
+        }
+    };
+
+    function opsRenderPlaneacion() {
+        const el = document.getElementById("ops-tab-content");
+        if (!el) return;
+        const gestion = opsPuedeGestionar();
+        el.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+                <div>
+                    <div style="font-size:12.5px;font-weight:700;color:#1e293b;">Catálogo de servicios</div>
+                    <div style="font-size:11px;color:#94a3b8;">Fase 1 — modelo de datos y recetas. El cálculo automático por cantidad, el calendario y la disponibilidad son las siguientes fases.</div>
+                </div>
+                ${gestion ? `<button onclick="opsImportarRecetasReales()" class="mkt-add-btn" style="background:#15803D;">${ICON.file} Importar recetas reales (9 servicios)</button>` : ""}
+            </div>
+            ${Object.keys(cacheTarifasPersonal).length ? `
+            <div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:13px 16px;margin-bottom:16px;">
+                <div style="font-size:11.5px;font-weight:700;color:#1e293b;margin-bottom:8px;">Tarifas de personal por rol (costo-día, editable)</div>
+                <div style="display:flex;gap:18px;flex-wrap:wrap;">
+                    ${Object.entries(cacheTarifasPersonal).map(([rol, t]) => `
+                        <div>
+                            <div style="font-size:10.5px;color:#94a3b8;text-transform:uppercase;">${opsEsc(rol.replace("_", " "))}</div>
+                            <div style="font-size:16px;font-weight:700;color:#1D2E73;">$${Number(t.costoDia || 0).toLocaleString("es-MX", { minimumFractionDigits: 2 })}<span style="font-size:10.5px;color:#94a3b8;font-weight:400;">/día</span></div>
+                        </div>`).join("")}
+                </div>
+                <div style="font-size:10px;color:#94a3b8;margin-top:8px;">Calculado del Excel de Paloma (sueldo + IMSS patrón + INFONAVIT/2, entre 30 días) — es un punto de partida, no un valor fijo de nómina.</div>
+            </div>` : ""}
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;">
+                ${cacheServiciosCatalogo.length ? cacheServiciosCatalogo.map(s => `
+                    <div onclick="opsAbrirFichaServicio('${s.id}')" style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:15px 16px;cursor:pointer;transition:border-color .15s;" onmouseover="this.style.borderColor='#1D2E73'" onmouseout="this.style.borderColor='#e2e8f0'">
+                        <div style="font-size:13.5px;font-weight:700;color:#1e293b;line-height:1.3;">${opsEsc(s.nombre)}</div>
+                        <div style="font-size:11px;color:#94a3b8;margin:2px 0 10px;">${opsEsc(s.categoria || "Sin categoría")} · ${s.tipoServicio === "externo" ? "Externo" : (s.tipoServicio === "interno" ? "Interno" : "Interno/Externo")}</div>
+                        <div style="font-size:11px;color:#334155;">${(s.personal || []).map(p => `${p.cantidad} ${p.rol.replace("_", " ")}`).join(" · ")}</div>
+                        <div style="font-size:11px;color:#334155;margin-top:3px;">${(s.materiales || []).length} materiales · ${(s.herramientaRequerida || []).length} herramientas</div>
+                    </div>`).join("") : `<div style="grid-column:1/-1;padding:40px;text-align:center;color:#94a3b8;background:#fff;border-radius:14px;border:1px solid #e2e8f0;">Sin servicios en el catálogo todavía.${gestion ? ' Usa "Importar recetas reales".' : ""}</div>`}
+            </div>`;
+    }
+
+    window.opsAbrirFichaServicio = function (id) {
+        const s = cacheServiciosCatalogo.find(x => x.id === id);
+        if (!s) return;
+        const wrap = document.getElementById("ops-panel-wrap");
+        wrap.innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.5);z-index:99998;display:flex;justify-content:flex-end;" onclick="if(event.target===this)document.getElementById('ops-panel-wrap').innerHTML=''">
+            <div style="background:#fff;width:480px;max-width:92vw;height:100%;overflow-y:auto;padding:22px;box-shadow:-6px 0 20px rgba(0,0,0,0.15);">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px;">
+                    <div>
+                        <div style="font-size:16px;font-weight:700;color:#1e293b;">${opsEsc(s.nombre)}</div>
+                        <div style="font-size:11px;color:#94a3b8;">${opsEsc(s.categoria || "")} · ${s.tipoServicio === "externo" ? "Externo" : (s.tipoServicio === "interno" ? "Interno" : "Interno/Externo")}</div>
+                    </div>
+                    <button onclick="document.getElementById('ops-panel-wrap').innerHTML=''" style="background:#f1f5f9;border:none;width:28px;height:28px;border-radius:7px;cursor:pointer;">${ICON.close}</button>
+                </div>
+
+                <div style="margin-top:14px;">
+                    <div style="font-size:11px;font-weight:700;color:#1D2E73;text-transform:uppercase;margin-bottom:6px;">Personal</div>
+                    ${(s.personal || []).map(p => `<div style="font-size:12.5px;color:#334155;">${p.cantidad} × ${opsEsc(p.rol.replace("_", " "))}</div>`).join("")}
+                </div>
+
+                <div style="margin-top:14px;">
+                    <div style="font-size:11px;font-weight:700;color:#1D2E73;text-transform:uppercase;margin-bottom:6px;">Vehículo</div>
+                    <div style="font-size:12.5px;color:#334155;"><strong>Sugerido:</strong> ${opsEsc(s.vehiculos?.sugerido?.nombre || "—")} <span style="color:#94a3b8;">— ${opsEsc(s.vehiculos?.sugerido?.razon || "")}</span></div>
+                    ${(s.vehiculos?.alternos || []).map(v => `<div style="font-size:12px;color:#64748b;margin-top:2px;">Alterno: ${opsEsc(v.nombre)} — ${opsEsc(v.condicion)}</div>`).join("")}
+                    ${s.vehiculos?.duracionNota ? `<div style="font-size:11px;color:#94a3b8;margin-top:4px;">${opsEsc(s.vehiculos.duracionNota)}</div>` : ""}
+                </div>
+
+                <div style="margin-top:14px;">
+                    <div style="font-size:11px;font-weight:700;color:#1D2E73;text-transform:uppercase;margin-bottom:6px;">Materiales (${(s.materiales || []).length})</div>
+                    ${(s.materiales || []).map(m => `<div style="font-size:11.5px;color:#334155;display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #f8fafc;"><span>${opsEsc(m.nombre)}${m.nota ? ` <span style="color:#94a3b8;">(${opsEsc(m.nota)})</span>` : ""}</span><span style="color:#64748b;flex-shrink:0;margin-left:8px;">${m.cantidadBase} ${opsEsc(m.unidad)} · $${m.costoUnitario}</span></div>`).join("")}
+                </div>
+
+                <div style="margin-top:14px;">
+                    <div style="font-size:11px;font-weight:700;color:#1D2E73;text-transform:uppercase;margin-bottom:6px;">Equipo de seguridad</div>
+                    ${(s.equipoSeguridad || []).map(e => `<div style="font-size:11.5px;color:#334155;">${opsEsc(e.nombre)} — ${opsEsc(String(e.cantidad))}</div>`).join("")}
+                </div>
+
+                <div style="margin-top:14px;">
+                    <div style="font-size:11px;font-weight:700;color:#1D2E73;text-transform:uppercase;margin-bottom:6px;">Herramienta requerida (${(s.herramientaRequerida || []).length})</div>
+                    ${(s.herramientaRequerida || []).map(h => `<div style="font-size:11.5px;color:#334155;">${h.etapa === "obra_civil" ? '<span style="color:#94a3b8;font-size:10px;">[Obra civil] </span>' : ""}${opsEsc(h.descripcion)}${h.cantidad > 1 ? ` ×${h.cantidad}` : ""}</div>`).join("")}
+                </div>
+
+                ${s.notaImportacion ? `<div style="margin-top:14px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;font-size:11px;color:#92400e;">${opsEsc(s.notaImportacion)}</div>` : ""}
+                <div style="margin-top:10px;font-size:10px;color:#cbd5e1;">${opsEsc(s.origenImportacion || "")}</div>
+            </div>
+        </div>`;
     };
 
     // ═══════════════════════ TAB: MOVIMIENTOS ═══════════════════════
