@@ -88,6 +88,10 @@
     comentariosAlmacen: 'comentarios_almacen', area: 'area', uso: 'uso', folioServicio: 'folio_servicio',
     origen: 'origen', tecnicoId: 'tecnico_id', tecnicoNumero: 'tecnico_numero', tecnicoNombre: 'tecnico_nombre',
     folioNum: 'folio_num', folioPrefijo: 'folio_prefijo',
+    razonSocial: 'razon_social', clienteId: 'cliente_id',
+    estacionId: 'estacion_id', estacionNombre: 'estacion_nombre',
+    direccion: 'direccion', lat: 'lat', lng: 'lng', tecnicoCorreo: 'tecnico_correo',
+    createdAt: 'created_at',
   };
   function aColumnas(datosCamelCase) {
     var out = {};
@@ -228,6 +232,19 @@
         tipo: datos.tipo || null, mensaje: datos.mensaje || null, leido: false, creado_por: datos.creadoPor || null,
       });
     }).then(function (r) { if (r.error) throw r.error; });
+  };
+
+  // ── Siguiente folio de material por prefijo (ej. "VENTAS") — antes:
+  //    consulta a Firestore buscando el folioNum más alto con ese prefijo.
+  window.tcSbSiguienteFolioMaterial = function (prefijo) {
+    return cargarSupabase().then(function (sb) {
+      return sb.from('surtidos').select('folio_num').eq('folio_prefijo', prefijo)
+        .order('folio_num', { ascending: false }).limit(1).maybeSingle();
+    }).then(function (r) {
+      if (r.error) throw r.error;
+      var max = (r.data && r.data.folio_num) || 0;
+      return max + 1;
+    });
   };
 
   // ── Crear un pedido nuevo ────────────────────────────────────────────
