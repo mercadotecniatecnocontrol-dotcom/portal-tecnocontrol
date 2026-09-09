@@ -3764,6 +3764,11 @@ window.herrEnviarTraspaso=async function(){
     const venceTxt=venceEn.toLocaleString('es-MX',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
     const ubicacion=await herrObtenerUbicacion();
     const receptorTec=await herrResolverIdInterno(herrState.receptorEmail,herrState.receptorNombre);
+    if(!receptorTec){
+      toast(`${herrState.receptorNombre||'Ese técnico'} no tiene ficha vinculada en Operaciones (correo/nombre sin coincidencia). Pide a Almacén que la vincule antes de traspasarle herramienta.`,'err');
+      if(btn){btn.disabled=false;btn.textContent='Enviar traspaso';}
+      return;
+    }
 
     const docObj={
       herramientaId:h.id, folio:h.folio||'', descripcion:h.descripcion||'',
