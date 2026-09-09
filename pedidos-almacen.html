@@ -71,6 +71,57 @@
   .venc-rot-fill{height:100%;background:#fff;border-radius:99px;width:100%;animation:vencRotShrink 30s linear forwards;}
   @keyframes vencRotShrink{from{width:100%;}to{width:0%;}}
   .venc-rot-info{margin-top:6px;font-size:11px;font-weight:800;letter-spacing:.5px;color:#fff;opacity:.9;text-align:right;}
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     PUBLICIDAD INTERNA / TECNOINFORMA: pantalla completa que aparece cada
+     cierto tiempo sobre el tablero (cumpleaños, aniversarios, efemérides,
+     altas y bajas de personal, avisos). Es solo visual — no toca ni pausa
+     nada del tablero de pedidos, que sigue corriendo debajo; al terminar
+     el tiempo se desvanece y todo sigue exactamente donde iba.
+     ═══════════════════════════════════════════════════════════════════════ */
+  .interstitial{position:fixed;inset:0;z-index:20000;display:flex;align-items:center;justify-content:center;
+    opacity:0;pointer-events:none;transition:opacity .6s ease;overflow:hidden;}
+  .interstitial.show{opacity:1;pointer-events:auto;}
+  .int-bg{position:absolute;inset:0;transition:background .3s;}
+  .int-bg.t-cumple{background:radial-gradient(ellipse at 30% 20%,#1c3fa8 0%,#0c1a4d 55%,#080f30 100%);}
+  .int-bg.t-aniv{background:linear-gradient(150deg,#F5A300 0%,#E88A00 55%,#C96A00 100%);}
+  .int-bg.t-efem{background:radial-gradient(ellipse at 70% 15%,#1a2a5e 0%,#0a1230 60%,#05081c 100%);}
+  .int-bg.t-alta{background:linear-gradient(150deg,#0E9F6E 0%,#0A7A55 55%,#075A3E 100%);}
+  .int-bg.t-baja{background:linear-gradient(150deg,#334155 0%,#1e293b 60%,#0f172a 100%);}
+  .int-bg.t-aviso{background:radial-gradient(ellipse at 30% 20%,#1c3fa8 0%,#0c1a4d 55%,#080f30 100%);}
+  .int-particles{position:absolute;inset:0;overflow:hidden;pointer-events:none;}
+  .int-p{position:absolute;bottom:-40px;opacity:.85;animation:intFloat linear infinite;}
+  @keyframes intFloat{0%{transform:translateY(0) rotate(0deg);opacity:0;}8%{opacity:.85;}92%{opacity:.7;}100%{transform:translateY(-112vh) rotate(360deg);opacity:0;}}
+  .int-card{position:relative;z-index:2;max-width:min(90vw,1180px);width:100%;padding:0 40px;text-align:center;
+    transform:translateY(26px) scale(.96);opacity:0;transition:transform .65s cubic-bezier(.2,.8,.2,1),opacity .55s ease;}
+  .interstitial.show .int-card{transform:translateY(0) scale(1);opacity:1;}
+  .int-eyebrow{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:22px;letter-spacing:3px;color:rgba(255,255,255,.72);text-transform:uppercase;margin-bottom:10px;}
+  .int-title{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:76px;line-height:1.02;color:#fff;letter-spacing:.5px;text-shadow:0 4px 26px rgba(0,0,0,.35);margin-bottom:6px;}
+  .int-sub{font-family:'Inter',sans-serif;font-weight:600;font-size:24px;color:rgba(255,255,255,.88);margin-bottom:26px;}
+  .int-body{font-family:'Inter',sans-serif;font-weight:400;font-size:19px;line-height:1.55;color:rgba(255,255,255,.92);max-width:820px;margin:0 auto 8px;}
+  .int-avatar{width:150px;height:150px;border-radius:50%;margin:0 auto 22px;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(150deg,rgba(255,255,255,.22),rgba(255,255,255,.05));border:3px solid rgba(255,255,255,.55);
+    font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:56px;color:#fff;box-shadow:0 10px 40px rgba(0,0,0,.3);
+    animation:intAvatarPulse 2.4s ease-in-out infinite;}
+  @keyframes intAvatarPulse{0%,100%{transform:scale(1);}50%{transform:scale(1.045);}}
+  .int-roster{display:flex;flex-direction:column;gap:9px;max-width:760px;margin:0 auto;text-align:left;}
+  .int-roster-row{display:flex;align-items:center;gap:16px;background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.16);
+    border-radius:12px;padding:10px 18px;backdrop-filter:blur(2px);}
+  .int-roster-row.today{background:rgba(255,255,255,.22);border-color:rgba(255,255,255,.55);}
+  .int-roster-date{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:20px;color:#fff;background:rgba(255,255,255,.16);
+    border-radius:8px;padding:4px 11px;flex-shrink:0;min-width:38px;text-align:center;}
+  .int-roster-name{font-family:'Inter',sans-serif;font-weight:700;font-size:17px;color:#fff;flex:1;}
+  .int-roster-area{font-family:'Inter',sans-serif;font-weight:500;font-size:14px;color:rgba(255,255,255,.7);}
+  .int-ribbon{display:inline-block;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:26px;letter-spacing:2px;
+    color:#7A4B00;background:#fff;padding:8px 32px;border-radius:5px;margin:14px 0 24px;box-shadow:0 6px 22px rgba(0,0,0,.22);}
+  .int-years{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:150px;line-height:1;color:#fff;
+    text-shadow:0 6px 30px rgba(0,0,0,.25);}
+  .int-progress{position:absolute;bottom:0;left:0;right:0;height:5px;background:rgba(255,255,255,.15);}
+  .int-progress-fill{height:100%;background:rgba(255,255,255,.85);width:100%;}
+  .interstitial.show .int-progress-fill{animation:intShrink 16s linear forwards;} /* debe coincidir con INTERSTITIAL_DURACION_MS del script */
+  @keyframes intShrink{from{width:100%;}to{width:0%;}}
+  .int-badge-tc{position:absolute;top:34px;left:0;right:0;display:flex;align-items:center;justify-content:center;gap:10px;
+    font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:16px;letter-spacing:2px;color:rgba(255,255,255,.6);}
 .tv-mini-mapa-label{background:rgba(15,23,42,.78)!important;border:none!important;box-shadow:none!important;color:#fff!important;font-size:9px!important;font-weight:600;padding:1px 5px!important;border-radius:4px;white-space:nowrap;}
 .tv-mini-mapa-label::before{display:none!important;}
 .tv-ruta-anim{stroke-dasharray:1 9;stroke-linecap:round;animation:tvRutaFlow 900ms linear infinite;}
@@ -104,6 +155,18 @@
     </div>
   </div>
   <canvas id="bdayConfetti"></canvas>
+
+  <!-- Publicidad interna / TECNOINFORMA: toma toda la pantalla cada cierto
+       tiempo (ver INTERSTITIAL_INTERVALO_MS más abajo en el script) y luego
+       se desvanece sola. No reemplaza nada del tablero, solo se le pone
+       encima un rato. -->
+  <div class="interstitial" id="interstitial">
+    <div class="int-bg" id="intBg"></div>
+    <div class="int-particles" id="intParticles"></div>
+    <div class="int-badge-tc" id="intBadge">TECNOCONTROL</div>
+    <div class="int-card" id="intCard"></div>
+    <div class="int-progress"><div class="int-progress-fill" id="intProgressFill"></div></div>
+  </div>
 
   <div class="board-split" style="grid-template-columns:1fr 1fr minmax(340px,32%);">
     <section class="panel panel-ventas">
@@ -190,6 +253,160 @@ function nowChih(){
     return new Date(Number(o.year), Number(o.month)-1, Number(o.day), Number(o.hour), Number(o.minute), Number(o.second));
   }catch(e){ return new Date(); } // respaldo si el navegador no soporta Intl con timeZone
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PUBLICIDAD INTERNA (TECNOINFORMA) — edita esta lista cada mes con lo que
+   te pase RH. Cada tarjeta se muestra por turnos, en pantalla completa,
+   cada INTERSTITIAL_INTERVALO_MS, y se desvanece sola sin tocar el
+   tablero de pedidos de abajo.
+
+   Tipos disponibles (copia y pega el bloque que necesites):
+
+   { tipo:'cumple_mes', mes:'Septiembre', personas:[
+       {nombre:'Nombre Apellido', dia:5, area:'Área / sucursal'}, ...
+   ]}
+   — Si el día de alguien coincide con hoy, automáticamente además se le
+     dedica una tarjeta grande e individual (no hay que hacer nada extra).
+
+   { tipo:'aniversario', empresa:'JOMAR', nombre:'Nombre Apellido', anios:7,
+     mensaje:'Texto de agradecimiento…' }
+
+   { tipo:'efemeride', fecha:'2 de septiembre', titulo:'Día del Notario',
+     texto:'Texto…' }
+
+   { tipo:'personal_alta', personas:[
+       {nombre:'Nombre Apellido', area:'Área', puesto:'Puesto', fecha:'10/08/2026'}, ...
+   ]}
+
+   { tipo:'personal_baja', personas:[ {nombre, area, puesto, fecha}, ... ] }
+   — Disponible pero no la agregué por defecto: piénsalo bien antes de
+     mostrar salidas de personal en una pantalla que ven todos.
+
+   { tipo:'aviso', titulo:'Título', texto:'Texto libre…' }
+   ═══════════════════════════════════════════════════════════════════════ */
+const INTERSTITIAL_INTERVALO_MS       = 6*60*1000; // cada cuánto aparece (6 min)
+const INTERSTITIAL_DURACION_MS        = 16000;     // cuánto dura cada tarjeta (16s)
+const INTERSTITIAL_RETRASO_INICIAL_MS = 45000;     // espera antes del primer anuncio al cargar
+
+const ANUNCIOS = [
+  { tipo:'cumple_mes', mes:'Septiembre', personas:[
+    {nombre:'Pedro Reyes', dia:1, area:'Desarrollos Monterrey'},
+    {nombre:'Roquel Leal', dia:4, area:'Operaciones Monterrey'},
+    {nombre:'Denisse Gutiérrez', dia:5, area:'Gestoría'},
+    {nombre:'Miguel Montellano', dia:5, area:'Operaciones Chihuahua'},
+    {nombre:'Ivan Sepúlveda', dia:12, area:'Operaciones Monterrey'},
+    {nombre:'Aracely Pérez', dia:15, area:'Almacén'},
+    {nombre:'Alfredo Honorato', dia:19, area:'Sistemas'}
+  ]},
+  { tipo:'aniversario', empresa:'JOMAR', nombre:'Argenis Aceves', anios:7,
+    mensaje:'Hoy celebramos un año más de contar con tu talento y compromiso en nuestro equipo. Gracias por ser parte fundamental del crecimiento de la empresa y por la dedicación que pones en cada proyecto.' },
+  { tipo:'efemeride', fecha:'2 de septiembre', titulo:'Día del Notario',
+    texto:'Reconocemos la importante labor de quienes, con ética, legalidad y compromiso, brindan certeza y seguridad jurídica a nuestra sociedad. ¡Gracias por dar fe y confianza!' },
+  { tipo:'personal_alta', personas:[
+    {nombre:'Juan Emanuel Fierro Ríos', area:'Operaciones Chihuahua', puesto:'Ayudante de Técnico', fecha:'10/08/2026'},
+    {nombre:'Magaly Johana Chávez Almader', area:'Operaciones Chihuahua', puesto:'Auxiliar Administrativo', fecha:'10/08/2026'},
+    {nombre:'José Pedro Mora Márquez', area:'Desarrollos', puesto:'Residente de Obra', fecha:'14/08/2026'},
+    {nombre:'Eva Alejandra Espinoza Olivas', area:'Administrativa', puesto:'Analista de Ingresos', fecha:'17/08/2026'}
+  ]}
+];
+
+// ── Motor del carrusel de publicidad interna ──
+(function(){
+  const overlay=document.getElementById('interstitial');
+  const bgEl=document.getElementById('intBg');
+  const cardEl=document.getElementById('intCard');
+  const partEl=document.getElementById('intParticles');
+  if(!overlay) return;
+
+  const iniciales=n=>(n||'').trim().split(/\s+/).slice(0,2).map(w=>w[0]||'').join('').toUpperCase();
+  const badgeEl=document.getElementById('intBadge');
+
+  function construir(item){
+    switch(item.tipo){
+      case 'cumple_hoy': return { bg:'t-cumple', particulas:'confeti', html:`
+        <div class="int-eyebrow">¡HOY ES SU CUMPLEAÑOS!</div>
+        <div class="int-avatar">${iniciales(item.persona.nombre)}</div>
+        <div class="int-title">${item.persona.nombre}</div>
+        <div class="int-sub">${item.persona.area||''}</div>
+        <div class="int-body">Todo el equipo de TECNOCONTROL te desea un excelente día. ¡Felicidades! 🎉</div>` };
+      case 'cumple_mes': {
+        const hoy=nowChih().getDate();
+        const filas=[...item.personas].sort((a,b)=>a.dia-b.dia).map(p=>
+          `<div class="int-roster-row${p.dia===hoy?' today':''}"><div class="int-roster-date">${String(p.dia).padStart(2,'0')}</div><div class="int-roster-name">${p.nombre}</div><div class="int-roster-area">${p.area||''}</div></div>`
+        ).join('');
+        return { bg:'t-cumple', particulas:'confeti', html:`
+          <div class="int-eyebrow">Cumpleañeros de ${item.mes}</div>
+          <div class="int-title" style="font-size:50px;margin-bottom:20px;">¡Feliz cumpleaños!</div>
+          <div class="int-roster">${filas}</div>` };
+      }
+      case 'aniversario': return { bg:'t-aniv', particulas:'brillos', badge:item.empresa||'TECNOCONTROL', html:`
+        <div class="int-eyebrow">${item.empresa||''} · Aniversario laboral</div>
+        <div class="int-years">${item.anios}</div>
+        <div class="int-ribbon">AÑOS</div>
+        <div class="int-title" style="font-size:50px;">${item.nombre}</div>
+        <div class="int-body">${item.mensaje||''}</div>` };
+      case 'efemeride': return { bg:'t-efem', particulas:'', html:`
+        <div class="int-eyebrow">${item.fecha||''}</div>
+        <div class="int-title" style="font-size:56px;">${item.titulo}</div>
+        <div class="int-body" style="margin-top:16px;">${item.texto||''}</div>` };
+      case 'personal_alta': return { bg:'t-alta', particulas:'confeti', html:`
+        <div class="int-eyebrow">¡Bienvenidos al equipo!</div>
+        <div class="int-title" style="font-size:50px;margin-bottom:20px;">Nuevos ingresos</div>
+        <div class="int-roster">${item.personas.map(p=>`<div class="int-roster-row"><div class="int-roster-name">${p.nombre}</div><div class="int-roster-area">${[p.puesto,p.area].filter(Boolean).join(' · ')}</div></div>`).join('')}</div>` };
+      case 'personal_baja': return { bg:'t-baja', particulas:'', html:`
+        <div class="int-eyebrow">Agradecemos su tiempo con nosotros</div>
+        <div class="int-title" style="font-size:50px;margin-bottom:20px;">Hasta pronto</div>
+        <div class="int-roster">${item.personas.map(p=>`<div class="int-roster-row"><div class="int-roster-name">${p.nombre}</div><div class="int-roster-area">${[p.puesto,p.area].filter(Boolean).join(' · ')}</div></div>`).join('')}</div>` };
+      default: return { bg:'t-aviso', particulas:'', html:`
+        <div class="int-eyebrow">Aviso</div>
+        <div class="int-title" style="font-size:52px;">${item.titulo||''}</div>
+        <div class="int-body" style="margin-top:16px;">${item.texto||''}</div>` };
+    }
+  }
+
+  function particulas(tipo){
+    if(!tipo){ partEl.innerHTML=''; return; }
+    const emojis = tipo==='confeti' ? ['🎉','🎈','✨','🎊'] : ['✨','⭐'];
+    let html='';
+    for(let i=0;i<18;i++){
+      const left=Math.round(Math.random()*100);
+      const delay=(Math.random()*8).toFixed(1);
+      const dur=(9+Math.random()*7).toFixed(1);
+      const size=14+Math.round(Math.random()*16);
+      html+=`<span class="int-p" style="left:${left}%;font-size:${size}px;animation-duration:${dur}s;animation-delay:${delay}s;">${emojis[i%emojis.length]}</span>`;
+    }
+    partEl.innerHTML=html;
+  }
+
+  // Cola del día: los anuncios fijos de ANUNCIOS + una tarjeta especial y
+  // grande por cada persona de "cumple_mes" cuyo día sea justo hoy.
+  function colaDeHoy(){
+    const cola=[], hoy=nowChih().getDate();
+    ANUNCIOS.forEach(item=>{
+      if(item.tipo==='cumple_mes') item.personas.filter(p=>p.dia===hoy).forEach(p=>cola.push({tipo:'cumple_hoy', persona:p}));
+      cola.push(item);
+    });
+    return cola;
+  }
+
+  let idx=0, ocultarTimer=null;
+  function mostrarSiguiente(){
+    const cola=colaDeHoy();
+    if(!cola.length) return;
+    if(idx>=cola.length) idx=0;
+    const item=cola[idx]; idx++;
+    const {bg,particulas:tipoP,html,badge}=construir(item);
+    bgEl.className='int-bg '+bg;
+    cardEl.innerHTML=html;
+    particulas(tipoP);
+    if(badgeEl) badgeEl.textContent=badge||'TECNOCONTROL';
+    overlay.classList.add('show');
+    clearTimeout(ocultarTimer);
+    ocultarTimer=setTimeout(()=>overlay.classList.remove('show'), INTERSTITIAL_DURACION_MS);
+  }
+
+  setTimeout(()=>{ mostrarSiguiente(); setInterval(mostrarSiguiente, INTERSTITIAL_INTERVALO_MS); }, INTERSTITIAL_RETRASO_INICIAL_MS);
+})();
 
 /*  DATOS EN VIVO (poblado por onSnapshot de las colecciones `surtidos` y, mezcladas
     en el panel de Material con etiqueta propia, `recolecciones_locales`)  */
