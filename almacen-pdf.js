@@ -1348,7 +1348,7 @@
     })
     .catch(function (e) {
       if (e && e.message === 'cancelado') { msg('Operación cancelada.', '#64748b'); }
-      else { console.error('[almacen-pdf] error guardando:', e); msg('No se pudo guardar. Revisa permisos de Firestore.', '#dc2626'); }
+      else { console.error('[almacen-pdf] error guardando:', e); msg('No se pudo guardar: ' + (e && e.message || e), '#dc2626'); }
     })
     .finally(function () {
       btn.disabled = false;
