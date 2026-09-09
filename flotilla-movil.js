@@ -3617,7 +3617,7 @@ function herrRenderVer(){
               <div style="font-size:13px;font-weight:800;color:#0A0F1E">${h.folio||'—'}</div>
               <div style="font-size:11.5px;color:#64748B;margin-top:1px">${h.descripcion||'—'}</div>
             </div>
-            ${reciente?'<span style="background:#7C3AED;color:#fff;font-size:9px;font-weight:800;padding:3px 8px;border-radius:100px;white-space:nowrap;flex-shrink:0">🔄 TE LA TRASPASARON</span>':''}
+            ${reciente?`<span style="background:#7C3AED;color:#fff;font-size:9px;font-weight:800;padding:3px 8px;border-radius:100px;white-space:nowrap;flex-shrink:0;display:inline-flex;align-items:center;gap:4px"><span style="width:11px;height:11px;display:inline-block">${IC.swap}</span> TE LA TRASPASARON</span>`:''}
           </div>
           ${reciente?`<div style="font-size:10.5px;color:#7C3AED;margin-top:6px;font-weight:700">No era tuya originalmente — la recibiste el ${fecha}</div>`:''}
         </div>`;
@@ -3770,6 +3770,10 @@ window.herrEnviarTraspaso=async function(){
       entregaTecnicoId:herrState.miIdInterno, entregaEmail:userEmail, entregaNombre:userName,
       receptorTecnicoId:receptorTec?receptorTec.id:null,
       receptorEmail:herrState.receptorEmail, receptorNombre:herrState.receptorNombre,
+      // Mismo dato en vocabulario "almacén" (el almacén de un técnico usa su propio
+      // id de ops_tecnicos; null = Almacén General) — para el puente con Aspel.
+      almacenOrigenId:herrState.miIdInterno||'general',
+      almacenDestinoId:(receptorTec?receptorTec.id:null)||'general',
       estatus:'Pendiente recepción', creadoEn:now.toISOString(), venceEn:venceEn.toISOString(),
       lugarLat:ubicacion?ubicacion.lat:null, lugarLng:ubicacion?ubicacion.lng:null,
       origen:'flotilla_movil',
@@ -3882,6 +3886,8 @@ window.herrAceptarTraspaso=async function(traspasoId){
     await db.collection(C.OPS_MOV).add({
       herramientaId:t.herramientaId, tipo:'transferencia',
       tecnicoAnteriorId:t.entregaTecnicoId||null, tecnicoNuevoId:receptorId,
+      almacenOrigenId:(t.entregaTecnicoId||null)||'general',
+      almacenDestinoId:receptorId||'general',
       ubicacionAnterior:ubicacionActual, ubicacionNueva:ubicacionActual,
       motivo:null,
       observaciones:partesObs.join(' · '),
@@ -3896,7 +3902,7 @@ window.herrAceptarTraspaso=async function(traspasoId){
         leido:false, creadaEn:now,
       }).catch(()=>{});
     }
-    toast('Herramienta recibida y registrada ✓','ok');
+    toast('Herramienta recibida y registrada','ok');
     if(herrState.activo)herrCerrarTraspaso();
   }catch(e){
     console.error('[HERR aceptar]',e);
