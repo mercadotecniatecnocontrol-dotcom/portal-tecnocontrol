@@ -46,6 +46,13 @@
     const COL_CLIENTES = "ops_clientes"; // Catálogo de clientes con su tabla de SLA por prioridad (P1-P6, en horas)
     const COL_REVISIONES = "ops_revisiones_herramienta"; // Bitácora de auditorías físicas de herramienta por técnico (distinta de COL_AUDITORIA, que es el log de cambios de campos)
     const COL_HERR_TRASPASOS = "ops_herramienta_traspasos"; // Solicitudes de traspaso técnico-a-técnico que requieren aceptación (mismo patrón que flotilla_transferencias)
+    // Almacenes como entidad real (sep-2026, a petición de Glen): Almacén General +
+    // un almacén por técnico activo, en vocabulario "traspaso entre almacenes" — así
+    // cuando se conecte con Aspel es una traducción directa, no una reconstrucción.
+    // El almacén de un técnico usa EL MISMO id que su doc en ops_tecnicos — no existe
+    // tabla de cruce, tecnicoActualId ES la referencia al almacén (o null = general).
+    const COL_ALMACENES = "ops_almacenes";
+    const ALMACEN_GENERAL_ID = "general";
     const MIGUEL_EMAIL = "miguel@tecnocontrol.com.mx"; // dueño del seguimiento interno (fecha de atención / compromiso)
 
     // Administradores del departamento de Operaciones: acceso total DENTRO de este módulo
@@ -944,6 +951,11 @@
             herramientaId: datos.herramientaId,
             tecnicoAnteriorId: datos.tecnicoAnteriorId || null,
             tecnicoNuevoId: datos.tecnicoNuevoId || null,
+            // Mismo dato que tecnicoAnterior/NuevoId, en vocabulario de almacenes
+            // ("traspaso entre almacenes") — listo para el puente con Aspel sin
+            // tener que reconstruir el historial después.
+            almacenOrigenId: opsAlmacenIdDe(datos.tecnicoAnteriorId),
+            almacenDestinoId: opsAlmacenIdDe(datos.tecnicoNuevoId),
             ubicacionAnterior: datos.ubicacionAnterior || null,
             ubicacionNueva: datos.ubicacionNueva || null,
             tipo: datos.tipo,
@@ -1087,6 +1099,39 @@
         return cacheTraspasosPend.find(t => t.herramientaId === herramientaId) || null;
     }
 
+    // El almacén de una pieza se DERIVA de tecnicoActualId — no es un campo aparte
+    // que se pueda desincronizar. null/vacío = Almacén General.
+    function opsAlmacenIdDe(tecnicoId) { return tecnicoId || ALMACEN_GENERAL_ID; }
+    function opsNombreAlmacen(tecnicoId) {
+        return tecnicoId ? opsNombreTecnico(tecnicoId) : "Almacén General";
+    }
+
+    async function opsAsegurarAlmacenGeneral(db, fs) {
+        await fs.setDoc(fs.doc(db, COL_ALMACENES, ALMACEN_GENERAL_ID), {
+            nombre: "Almacén General", tipo: "general", tecnicoId: null, activo: true,
+        }, { merge: true });
+    }
+    async function opsCrearAlmacenTecnico(db, fs, tecnicoId, nombreTecnico) {
+        await fs.setDoc(fs.doc(db, COL_ALMACENES, tecnicoId), {
+            nombre: nombreTecnico, tipo: "tecnico", tecnicoId, activo: true,
+        }, { merge: true });
+    }
+
+    // Backfill: crea el almacén de cualquier técnico activo que ya existiera antes
+    // de este cambio y todavía no tenga su ops_almacenes/{id}. Idempotente — se
+    // puede correr las veces que haga falta, con merge:true no duplica nada.
+    window.opsBackfillAlmacenes = async function () {
+        const { db, fs } = await opsGetFB();
+        await opsAsegurarAlmacenGeneral(db, fs);
+        let n = 0;
+        for (const t of cacheTec.filter(x => x.estatus === "activo")) {
+            await opsCrearAlmacenTecnico(db, fs, t.id, t.nombre);
+            n++;
+        }
+        alert(`Listo — Almacén General verificado y ${n} almacén(es) de técnico verificado(s)/creado(s).`);
+        if (tabActual === "almacenes") opsRenderAlmacenes();
+    };
+
     // ═══════════════════════ MONTAJE / OVERLAY ═══════════════════════
     window.opsAbrirHerramientas = async function () {
         const cont = document.getElementById("ops-herramientas-overlay");
@@ -1131,7 +1176,7 @@
     function opsRenderShell() {
         const rol = opsRolActual();
         const rolLabel = { administrador: "Administrador", almacen: "Almacén", consulta: "Consulta" }[rol];
-        const items = ["resumen:Resumen", "dashboard:Herramientas", "catalogo:Catálogo", "guardias:Guardias", "tecnicos:Técnicos", "servicios:Servicios",
+        const items = ["resumen:Resumen", "dashboard:Herramientas", "catalogo:Catálogo", "almacenes:Almacenes", "guardias:Guardias", "tecnicos:Técnicos", "servicios:Servicios",
             "folios:Folios", "clientes:Clientes",
             ...(opsPuedeHacer("autorizar_material") ? ["solicitudes:Solicitudes"] : []),
             "alertas:Alertas", "movimientos:Movimientos"];
@@ -1177,6 +1222,7 @@
         if (tab === "resumen") opsRenderResumen();
         else if (tab === "dashboard") opsRenderDashboard();
         else if (tab === "catalogo") opsRenderCatalogo();
+        else if (tab === "almacenes") opsRenderAlmacenes();
         else if (tab === "guardias") opsRenderGuardias();
         else if (tab === "tecnicos") opsRenderTecnicos();
         else if (tab === "servicios") opsRenderServicios();
@@ -1190,6 +1236,7 @@
     // ── Suscripciones en tiempo real ──────────────────────────────
     async function opsSuscribirTodo() {
         const { db, fs } = await opsGetFB();
+        opsAsegurarAlmacenGeneral(db, fs).catch(err => console.warn("[operaciones.js] no se pudo asegurar el Almacén General:", err));
         if (!unsubHerr) {
             unsubHerr = fs.onSnapshot(fs.query(fs.collection(db, COL_HERRAMIENTAS), fs.orderBy("folio")), snap => {
                 cacheHerr = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -1496,6 +1543,42 @@
     }
 
     window.opsFiltrarHerr = function (v) { filtroHerr = v || ""; opsRerenderConFoco(opsRenderDashboard); };
+
+    // ── Almacenes (Almacén General + uno por técnico) ──────────────
+    function opsRenderAlmacenes() {
+        const el = document.getElementById("ops-tab-content");
+        if (!el) return;
+
+        const enGeneral = cacheHerr.filter(h => !h.tecnicoActualId && h.estado !== "baja");
+        const tecnicosActivos = cacheTec.filter(t => t.estatus === "activo");
+
+        el.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+                <div style="font-size:12.5px;color:#64748b;">Cada técnico activo tiene su propio almacén — mismo id que su ficha, para poder ligarlo después con Aspel como traspaso entre almacenes.</div>
+                <button onclick="opsBackfillAlmacenes()" style="background:#eef2f7;border:none;color:#1D2E73;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:600;white-space:nowrap;margin-left:12px;">Verificar/crear almacenes faltantes</button>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;">
+                <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;border-left:4px solid #1D2E73;padding:15px 16px;">
+                    <div style="font-size:13.5px;font-weight:700;color:#1e293b;">Almacén General</div>
+                    <div style="font-size:11px;color:#94a3b8;margin:2px 0 10px;">Sin técnico asignado</div>
+                    <div style="display:flex;align-items:baseline;gap:5px;">
+                        <span style="font-size:22px;font-weight:800;color:#1D2E73;">${enGeneral.length}</span>
+                        <span style="font-size:11px;color:#64748b;">pieza(s)</span>
+                    </div>
+                </div>
+                ${tecnicosActivos.map(t => {
+                    const n = cacheHerr.filter(h => h.tecnicoActualId === t.id && h.estado !== "baja").length;
+                    return `<div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:15px 16px;">
+                        <div style="font-size:13.5px;font-weight:700;color:#1e293b;">${opsEsc(t.nombre)}</div>
+                        <div style="font-size:11px;color:#94a3b8;margin:2px 0 10px;">N.° ${opsEsc(t.numeroOperativo)} · almacén ${opsEsc(t.id)}</div>
+                        <div style="display:flex;align-items:baseline;gap:5px;">
+                            <span style="font-size:22px;font-weight:800;color:#1e293b;">${n}</span>
+                            <span style="font-size:11px;color:#64748b;">pieza(s)</span>
+                        </div>
+                    </div>`;
+                }).join("")}
+            </div>`;
+    }
 
     // ── Catálogo agrupado (vista "por tipo de artículo") ────────────
     // No cambia el modelo de datos: sigue siendo un folio por pieza física
@@ -1928,6 +2011,7 @@
                     employeeId: null, fleetUserId: null, firebaseUid: null,
                 });
                 tecnicoId = refTec.id;
+                await opsCrearAlmacenTecnico(db, fs, tecnicoId, tec.nombre);
                 cacheTec.push({ id: tecnicoId, numeroOperativo: tec.numero, nombre: tec.nombre, estatus: "activo" });
                 tecnicosCreados++;
             } else {
@@ -2235,6 +2319,8 @@
                 receptorTecnicoId: tecnicoNuevoId,
                 receptorEmail: receptor.correo,
                 receptorNombre: receptor.nombre,
+                almacenOrigenId: opsAlmacenIdDe(h.tecnicoActualId),
+                almacenDestinoId: opsAlmacenIdDe(tecnicoNuevoId),
                 comentario: comentario || null,
                 evidenciaURL,
                 estatus: "Pendiente recepción",
@@ -2587,7 +2673,7 @@
             nombrePersona = (cachePersonas.find(p => p.id === personaId) || {}).nombre;
         }
 
-        await fs.addDoc(fs.collection(db, COL_TECNICOS), {
+        const refTecNuevo = await fs.addDoc(fs.collection(db, COL_TECNICOS), {
             numeroOperativo, personaId, nombre: nombrePersona,
             puestoId, puesto: puesto ? puesto.nombre : "", departamento: puesto ? puesto.departamento : "",
             registroHistorico: vecesUsado + 1,
@@ -2596,6 +2682,7 @@
             // Identificadores para hacer match confiable con RH/Flotilla/Firebase (no solo por nombre).
             employeeId: null, fleetUserId: null, firebaseUid: null,
         });
+        await opsCrearAlmacenTecnico(db, fs, refTecNuevo.id, nombrePersona);
         // Abre el primer periodo en el historial de puesto de esta persona.
         await fs.addDoc(fs.collection(db, COL_HIST_PUESTO), { personaId, puestoId, desde: opsHoy(), hasta: null });
         cacheHistPuesto.push({ personaId, puestoId, desde: opsHoy(), hasta: null });
