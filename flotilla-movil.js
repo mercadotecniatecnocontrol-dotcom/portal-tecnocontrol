@@ -3886,7 +3886,7 @@ window.herrAceptarTraspaso=async function(traspasoId){
     const partesObs=[];
     partesObs.push(t.origen==='operaciones'?'Traspaso iniciado desde Operaciones (Almacén)':'Traspaso desde Flotilla móvil');
     if(t.comentario)partesObs.push(`Comentario: "${t.comentario}"`);
-    if(t.evidenciaURL)partesObs.push(`Evidencia: ${t.evidenciaURL}`);
+    if(t.evidenciaBase64)partesObs.push('Con foto de evidencia (ver en Operaciones)');
     if(ubicacion)partesObs.push(`Lugar aprox. ${ubicacion.lat.toFixed(5)}, ${ubicacion.lng.toFixed(5)}`);
     await db.collection(C.OPS_MOV).add({
       herramientaId:t.herramientaId, tipo:'transferencia',
