@@ -38,7 +38,8 @@
   //    leer los datos, solo de dónde vienen. ──
   function filaASurtido(row) {
     if (!row) return null;
-    return {
+    var base = row.extra && typeof row.extra === 'object' ? Object.assign({}, row.extra) : {};
+    return Object.assign(base, {
       id: row.id,
       folio: row.folio || '—', cliente: row.cliente || '', vendedor: row.vendedor || '',
       prioridad: row.prioridad || 'normal', estado: row.estado || 'pendiente',
@@ -65,7 +66,7 @@
       remisionAspelFolio: row.remision_aspel_folio || '', remisionAspelFecha: row.remision_aspel_fecha || '',
       solicitanteEmail: row.solicitante_email || '',
       createdAt: row.created_at ? new Date(row.created_at).getTime() : 0,
-    };
+    });
   }
 
   // Convierte un objeto de cambios en camelCase (como los mandaba el
@@ -160,7 +161,27 @@
       return sb.from('surtido_historial').select('*').eq('surtido_id', id).order('ts', { ascending: true });
     }).then(function (r) {
       if (r.error) throw r.error;
-      return (r.data || []).map(function (h) { return { de: h.de, a: h.a, por: h.por, ts: h.ts, nota: h.nota }; });
+      return (r.data || []).map(function (h) { return { id: h.id, de: h.de, a: h.a, por: h.por, ts: h.ts, nota: h.nota }; });
+    });
+  };
+
+  // ── Todos los pedidos (para vistas de solo lectura tipo "Pedidos de Almacén" en Cobranza) ─
+  window.tcSbListarTodosSurtidos = function () {
+    return cargarSupabase().then(function (sb) {
+      return sb.from('surtidos').select('*').order('created_at', { ascending: false });
+    }).then(function (r) {
+      if (r.error) throw r.error;
+      return (r.data || []).map(filaASurtido);
+    });
+  };
+
+  // ── Pedidos de un cliente específico (solo lectura, ej. Cobranza) ────────
+  window.tcSbSurtidosPorCliente = function (clienteNombre) {
+    return cargarSupabase().then(function (sb) {
+      return sb.from('surtidos').select('*').eq('cliente', clienteNombre).order('created_at', { ascending: false });
+    }).then(function (r) {
+      if (r.error) throw r.error;
+      return (r.data || []).map(filaASurtido);
     });
   };
 
@@ -170,7 +191,7 @@
       return sb.from('surtido_documentos').select('*').eq('surtido_id', id).order('subido_en', { ascending: true });
     }).then(function (r) {
       if (r.error) throw r.error;
-      return (r.data || []).map(function (d) { return { nombre: d.nombre, archivo: d.archivo, subidoEn: d.subido_en, subidoPor: d.subido_por }; });
+      return (r.data || []).map(function (d) { return { id: d.id, nombre: d.nombre, archivo: d.archivo, subidoEn: d.subido_en, subidoPor: d.subido_por }; });
     });
   };
   window.tcSbAgregarDocumento = function (id, datos) {
@@ -187,7 +208,7 @@
       return sb.from('surtido_evidencias').select('*').eq('surtido_id', id).order('subido_en', { ascending: true });
     }).then(function (r) {
       if (r.error) throw r.error;
-      return (r.data || []).map(function (e) { return { tipo: e.tipo, imagen: e.imagen, nombre: e.nombre, url: e.url, subidoEn: e.subido_en, subidoPor: e.subido_por }; });
+      return (r.data || []).map(function (e) { return { id: e.id, tipo: e.tipo, imagen: e.imagen, nombre: e.nombre, url: e.url, subidoEn: e.subido_en, subidoPor: e.subido_por }; });
     });
   };
   window.tcSbAgregarEvidencia = function (id, datos) {
