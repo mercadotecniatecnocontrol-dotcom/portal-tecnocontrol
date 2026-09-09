@@ -792,6 +792,34 @@
         });
     }
 
+    // Sin plan Blaze no hay Firebase Storage — las fotos se guardan comprimidas
+    // directo en Firestore como base64 (mismo criterio histórico del resto del
+    // portal). Tamaño moderado (~700px, calidad .6) para quedar típicamente en
+    // 60-150KB por foto — muy por debajo del límite de 1MB por documento.
+    function opsComprimirImagenBase64(file, maxLado, calidad) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            const reader = new FileReader();
+            reader.onerror = reject;
+            reader.onload = () => {
+                img.onerror = reject;
+                img.onload = () => {
+                    let { width, height } = img;
+                    if (width > maxLado || height > maxLado) {
+                        if (width >= height) { height = Math.round(height * (maxLado / width)); width = maxLado; }
+                        else { width = Math.round(width * (maxLado / height)); height = maxLado; }
+                    }
+                    const canvas = document.createElement("canvas");
+                    canvas.width = width; canvas.height = height;
+                    canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+                    resolve(canvas.toDataURL("image/jpeg", calidad));
+                };
+                img.src = reader.result;
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
     function opsEsc(s) {
         return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
     }
@@ -1536,8 +1564,8 @@
     window.opsCambiarVistaHerr = function (v) { vistaHerr = v; opsRenderDashboard(); };
 
     function opsThumb(h, size) {
-        return h.fotoURL
-            ? `<img src="${opsEsc(h.fotoURL)}" style="width:${size}px;height:${size}px;object-fit:cover;border-radius:7px;border:1px solid #e2e8f0;flex-shrink:0;">`
+        return h.fotoBase64
+            ? `<img src="${h.fotoBase64}" style="width:${size}px;height:${size}px;object-fit:cover;border-radius:7px;border:1px solid #e2e8f0;flex-shrink:0;">`
             : `<span style="width:${size}px;height:${size}px;border-radius:7px;background:#E9ECF5;color:#1D2E73;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${ICON.wrench}</span>`;
     }
 
@@ -1686,7 +1714,7 @@
         const masOtros = porTecnico.size - filasTec.length;
         const condMuestra = g.piezas.find(p => p.condicion) ? g.piezas.find(p => p.condicion).condicion : null;
         const cond = condMuestra ? CONDICIONES_HERRAMIENTA[condMuestra] : null;
-        const conFoto = g.piezas.find(p => p.fotoURL);
+        const conFoto = g.piezas.find(p => p.fotoBase64);
 
         return `<div onclick="opsAbrirGrupoCatalogo(${idx})" style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:15px 16px;cursor:pointer;transition:border-color .15s;" onmouseover="this.style.borderColor='#1D2E73'" onmouseout="this.style.borderColor='#e2e8f0'">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
@@ -1764,12 +1792,12 @@
                 </div>
 
                 <div style="margin:12px 0;">
-                    ${h.fotoURL
-                        ? `<img id="ops-ficha-foto-img" src="${opsEsc(h.fotoURL)}" style="width:100%;height:170px;object-fit:cover;border-radius:10px;border:1px solid #e2e8f0;display:block;">`
+                    ${h.fotoBase64
+                        ? `<img id="ops-ficha-foto-img" src="${h.fotoBase64}" style="width:100%;height:170px;object-fit:cover;border-radius:10px;border:1px solid #e2e8f0;display:block;">`
                         : `<div id="ops-ficha-foto-img" style="width:100%;height:110px;border-radius:10px;background:#E9ECF5;color:#1D2E73;display:flex;align-items:center;justify-content:center;">${ICON.wrench}</div>`}
                     ${gestion ? `
                     <label style="display:flex;align-items:center;justify-content:center;gap:6px;margin-top:8px;font-size:11.5px;font-weight:600;color:#1D2E73;background:#E9ECF5;padding:7px 10px;border-radius:8px;cursor:pointer;">
-                        ${ICON.camera} ${h.fotoURL ? "Cambiar foto" : "Agregar foto"}
+                        ${ICON.camera} ${h.fotoBase64 ? "Cambiar foto" : "Agregar foto"}
                         <input type="file" accept="image/*" capture="environment" style="display:none;" onchange="opsSubirFotoHerramienta('${id}', this)">
                     </label>
                     <span id="ops-ficha-foto-estado" style="font-size:10.5px;color:#94a3b8;display:block;text-align:center;margin-top:3px;"></span>` : ""}
@@ -1813,24 +1841,20 @@
         const file = inputEl.files && inputEl.files[0];
         if (!file) return;
         const estadoEl = document.getElementById("ops-ficha-foto-estado");
-        if (estadoEl) estadoEl.textContent = "Subiendo...";
+        if (estadoEl) estadoEl.textContent = "Procesando...";
         try {
-            const blob = await opsComprimirImagen(file, 1200, 0.82);
-            const storageTools = await opsGetStorage();
-            const ref = storageTools.stMod.ref(storageTools.storage, `herramientas/fotos/${id}.jpg`);
-            await storageTools.stMod.uploadBytes(ref, blob, { contentType: "image/jpeg" });
-            const url = await storageTools.stMod.getDownloadURL(ref);
+            const dataUrl = await opsComprimirImagenBase64(file, 700, 0.6);
             const { db, fs } = await opsGetFB();
-            await fs.updateDoc(fs.doc(db, COL_HERRAMIENTAS, id), { fotoURL: url });
+            await fs.updateDoc(fs.doc(db, COL_HERRAMIENTAS, id), { fotoBase64: dataUrl });
             const idx = cacheHerr.findIndex(x => x.id === id);
-            if (idx >= 0) cacheHerr[idx].fotoURL = url;
+            if (idx >= 0) cacheHerr[idx].fotoBase64 = dataUrl;
             const img = document.getElementById("ops-ficha-foto-img");
-            if (img && img.tagName === "IMG") { img.src = url; }
-            else if (img) { img.outerHTML = `<img id="ops-ficha-foto-img" src="${opsEsc(url)}" style="width:100%;height:170px;object-fit:cover;border-radius:10px;border:1px solid #e2e8f0;display:block;">`; }
+            if (img && img.tagName === "IMG") { img.src = dataUrl; }
+            else if (img) { img.outerHTML = `<img id="ops-ficha-foto-img" src="${dataUrl}" style="width:100%;height:170px;object-fit:cover;border-radius:10px;border:1px solid #e2e8f0;display:block;">`; }
             if (estadoEl) estadoEl.textContent = "Foto guardada";
         } catch (err) {
-            console.error("[operaciones.js] error al subir foto de herramienta:", err);
-            if (estadoEl) estadoEl.textContent = "Error al subir la foto";
+            console.error("[operaciones.js] error al guardar foto de herramienta:", err);
+            if (estadoEl) estadoEl.textContent = "Error al guardar la foto (revisa que no sea muy pesada)";
         }
     };
 
@@ -2227,17 +2251,17 @@
 
     // Foto de evidencia opcional al iniciar un traspaso desde el Portal — mismo
     // helper de compresión que ya usa la revisión de herramienta (Fase 2).
-    let opsTraspasoFotoBlob = null;
+    let opsTraspasoFotoBase64 = null;
     window.opsSeleccionarFotoTraspaso = async function (inputEl) {
         const file = inputEl.files && inputEl.files[0];
         if (!file) return;
         const estadoEl = document.getElementById("ops-traspaso-foto-estado");
         if (estadoEl) estadoEl.textContent = "Procesando...";
         try {
-            const blob = await opsComprimirImagen(file, 1600, 0.82);
-            opsTraspasoFotoBlob = blob;
+            const dataUrl = await opsComprimirImagenBase64(file, 700, 0.6);
+            opsTraspasoFotoBase64 = dataUrl;
             const thumb = document.getElementById("ops-traspaso-thumb");
-            if (thumb) { thumb.src = URL.createObjectURL(blob); thumb.style.display = "block"; }
+            if (thumb) { thumb.src = dataUrl; thumb.style.display = "block"; }
             if (estadoEl) estadoEl.textContent = "Foto lista";
         } catch (err) {
             console.error("[operaciones.js] error al comprimir foto de traspaso:", err);
@@ -2350,17 +2374,6 @@
             const venceEn = new Date(now.getTime() + 24 * 60 * 60 * 1000);
             const venceTxt = venceEn.toLocaleString("es-MX", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
-            let evidenciaURL = null;
-            if (opsTraspasoFotoBlob) {
-                try {
-                    const storageTools = await opsGetStorage();
-                    const ruta = `herramientas/traspasos/${herramientaId}_${Date.now()}.jpg`;
-                    const ref = storageTools.stMod.ref(storageTools.storage, ruta);
-                    await storageTools.stMod.uploadBytes(ref, opsTraspasoFotoBlob, { contentType: "image/jpeg" });
-                    evidenciaURL = await storageTools.stMod.getDownloadURL(ref);
-                } catch (err) { console.error("[operaciones.js] no se pudo subir la evidencia del traspaso:", err); }
-            }
-
             const traspasoRef = await fs.addDoc(fs.collection(db, COL_HERR_TRASPASOS), {
                 herramientaId, folio: h.folio || "", descripcion: h.descripcion || "",
                 entregaTecnicoId: h.tecnicoActualId || null,
@@ -2372,7 +2385,7 @@
                 almacenOrigenId: opsAlmacenIdDe(h.tecnicoActualId),
                 almacenDestinoId: opsAlmacenIdDe(tecnicoNuevoId),
                 comentario: comentario || null,
-                evidenciaURL,
+                evidenciaBase64: opsTraspasoFotoBase64 || null,
                 estatus: "Pendiente recepción",
                 creadoEn: now.toISOString(), venceEn: venceEn.toISOString(),
                 origen: "operaciones", creadoPorEmail: opsUsuarioActual(), creadoPorNombre: opsNombreActual(),
@@ -2384,7 +2397,7 @@
                 leido: false, creadaEn: now.toISOString(),
             }).catch(err => console.warn("[operaciones.js] no se pudo notificar al receptor:", err));
 
-            opsTraspasoFotoBlob = null;
+            opsTraspasoFotoBase64 = null;
             document.getElementById("ops-modal-wrap").innerHTML = "";
             window.mostrarPush ? mostrarPush("Herramientas", `Traspaso enviado a ${receptor.nombre} — pendiente de que lo acepte.`, ICON.lock) : alert(`Traspaso enviado a ${receptor.nombre}. Queda pendiente hasta que lo acepte desde Flotilla.`);
         } catch (err) {
@@ -2896,14 +2909,14 @@
                 </div>
                 ${revisiones.length ? revisiones.map(r => {
                     const faltantes = (r.herramientas || []).filter(h => h.estado !== "conforme");
-                    const conFoto = (r.herramientas || []).filter(h => h.fotoURL).length;
+                    const conFoto = (r.herramientas || []).filter(h => h.tieneFoto).length;
                     return `<div style="background:#fff;border-radius:14px;padding:14px 16px;margin-bottom:10px;border-left:4px solid ${faltantes.length ? "#E7402B" : "#16a34a"};">
                         <div style="display:flex;justify-content:space-between;align-items:center;">
                             <div style="font-size:12.5px;font-weight:700;color:#1e293b;">${opsEsc((r.fecha || "").slice(0, 10))}</div>
                             <span style="font-size:10.5px;font-weight:700;color:${faltantes.length ? "#E7402B" : "#166534"};">${faltantes.length ? `${ICON.alert} ${faltantes.length} con novedad` : `${ICON.check} Todo conforme`}</span>
                         </div>
                         <div style="font-size:11px;color:#94a3b8;margin-bottom:6px;">Revisó: ${opsEsc(r.realizadoPor || "—")}${conFoto ? ` · ${ICON.camera} ${conFoto} foto(s)` : ""}</div>
-                        ${(r.herramientas || []).map(h => `<div style="font-size:11.5px;color:#334155;padding:2px 0;">${h.estado === "conforme" ? ICON.check : (h.estado === "faltante" ? ICON.xCircle : ICON.alert)} ${opsEsc(h.folio)} — ${opsEsc(h.descripcion)}${h.observacion ? ` · <em>${opsEsc(h.observacion)}</em>` : ""}${h.fotoURL ? ` · ${ICON.camera}` : ""}</div>`).join("")}
+                        ${(r.herramientas || []).map(h => `<div style="font-size:11.5px;color:#334155;padding:2px 0;">${h.estado === "conforme" ? ICON.check : (h.estado === "faltante" ? ICON.xCircle : ICON.alert)} ${opsEsc(h.folio)} — ${opsEsc(h.descripcion)}${h.observacion ? ` · <em>${opsEsc(h.observacion)}</em>` : ""}${h.tieneFoto ? ` · ${ICON.camera}` : ""}</div>`).join("")}
                         ${r.observacionesGenerales ? `<div style="font-size:11.5px;color:#64748b;margin-top:6px;border-top:1px solid #f1f5f9;padding-top:6px;">${opsEsc(r.observacionesGenerales)}</div>` : ""}
                         <div style="margin-top:8px;text-align:right;">
                             <button id="ops-rev-share-${r.id}" onclick="opsCompartirRevisionPDF('${r.id}')" style="background:#eef2f7;border:none;color:#1D2E73;padding:6px 11px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">${ICON.file} PDF / WhatsApp</button>
@@ -2978,10 +2991,10 @@
         const estadoEl = document.getElementById(`ops-rev-foto-estado-${herrId}`);
         if (estadoEl) estadoEl.textContent = "Procesando...";
         try {
-            const blob = await opsComprimirImagen(file, 1600, 0.82);
-            opsRevisionFotos.set(herrId, blob);
+            const dataUrl = await opsComprimirImagenBase64(file, 700, 0.6);
+            opsRevisionFotos.set(herrId, dataUrl);
             const thumb = document.getElementById(`ops-rev-thumb-${herrId}`);
-            if (thumb) { thumb.src = URL.createObjectURL(blob); thumb.style.display = "block"; }
+            if (thumb) { thumb.src = dataUrl; thumb.style.display = "block"; }
             if (estadoEl) estadoEl.textContent = "Foto lista";
         } catch (err) {
             console.error("[operaciones.js] error al comprimir foto de revisión:", err);
@@ -2996,30 +3009,24 @@
         const filas = Array.from(document.querySelectorAll("#ops-revision-lista > div"));
         const { db, fs } = await opsGetFB();
 
-        // Subir fotos a Storage ANTES de armar el documento (evidencia = archivo grande,
-        // no va en base64 dentro de Firestore — mismo criterio que Glen ya definió
-        // para documentos/evidencia del portal).
-        let storageTools = null;
-        if (opsRevisionFotos.size > 0) {
-            try { storageTools = await opsGetStorage(); }
-            catch (err) { console.error("[operaciones.js] no se pudo inicializar Storage:", err); }
-        }
-
+        // Sin Storage (Spark, sin Blaze): cada foto se guarda como su propio
+        // documento chico en una SUBCOLECCIÓN de la revisión — así, sin importar
+        // cuántas piezas traigan foto, ningún documento se acerca al límite de
+        // 1MB de Firestore (es el mismo patrón que ya usa el resto del portal
+        // para fotos comprimidas). El documento de la revisión solo guarda
+        // "tieneFoto: true/false" por pieza, no la imagen.
+        const revisionRef = fs.doc(fs.collection(db, COL_REVISIONES));
         const herramientas = [];
         for (const div of filas) {
             const herrId = div.getAttribute("data-herr-id");
             const seleccionado = div.querySelector(`input[name="rev-${herrId}"]:checked`);
             const obsEl = document.getElementById(`ops-rev-obs-${herrId}`);
-            let fotoURL = null;
-            const blob = opsRevisionFotos.get(herrId);
-            if (blob && storageTools) {
+            const dataUrl = opsRevisionFotos.get(herrId);
+            if (dataUrl) {
                 try {
-                    const ruta = `herramientas/revisiones/${idInterno}/${Date.now()}_${herrId}.jpg`;
-                    const ref = storageTools.stMod.ref(storageTools.storage, ruta);
-                    await storageTools.stMod.uploadBytes(ref, blob, { contentType: "image/jpeg" });
-                    fotoURL = await storageTools.stMod.getDownloadURL(ref);
+                    await fs.setDoc(fs.doc(fs.collection(revisionRef, "fotos"), herrId), { fotoBase64: dataUrl });
                 } catch (err) {
-                    console.error(`[operaciones.js] no se pudo subir la foto de ${herrId}:`, err);
+                    console.error(`[operaciones.js] no se pudo guardar la foto de ${herrId}:`, err);
                 }
             }
             herramientas.push({
@@ -3028,11 +3035,11 @@
                 descripcion: div.getAttribute("data-desc") || "",
                 estado: seleccionado ? seleccionado.value : "conforme",
                 observacion: (obsEl && obsEl.value.trim()) || null,
-                fotoURL,
+                tieneFoto: !!dataUrl,
             });
         }
         const observacionesGenerales = (document.getElementById("ops-rev-obs-generales") || {}).value || "";
-        await fs.addDoc(fs.collection(db, COL_REVISIONES), {
+        await fs.setDoc(revisionRef, {
             tecnicoId: idInterno,
             tecnicoNombre: t ? t.nombre : "—",
             tecnicoNumero: t ? t.numeroOperativo : "",
@@ -3044,7 +3051,7 @@
         });
         opsRevisionFotos = new Map();
         document.getElementById("ops-modal-wrap").innerHTML = "";
-        window.mostrarPush ? mostrarPush("Auditoría", "Revisión de herramienta guardada.", "🔍") : alert("Revisión guardada.");
+        window.mostrarPush ? mostrarPush("Auditoría", "Revisión de herramienta guardada.", ICON.search) : alert("Revisión guardada.");
         opsFichaTecCambiarTab(idInterno, "auditoria");
     };
 
@@ -3069,7 +3076,7 @@
         }
     }
 
-    async function opsGenerarPDFRevision(revision) {
+    async function opsGenerarPDFRevision(revision, revisionId) {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "letter" });
         const M = 14, W = 216 - M * 2;
@@ -3090,9 +3097,13 @@
             doc.setDrawColor(226, 232, 240);
             doc.roundedRect(x, y, imgW, imgH + 20, 2, 2);
             let imgY = y + 3;
-            if (h.fotoURL) {
-                const b64 = await opsImagenAB64(h.fotoURL);
-                if (b64) { try { doc.addImage(b64, "JPEG", x + 3, imgY, imgW - 6, imgH, undefined, "FAST"); } catch (_e) { /* formato no soportado, se omite */ } }
+            if (h.tieneFoto) {
+                try {
+                    const { db, fs } = await opsGetFB();
+                    const fotoSnap = await fs.getDoc(fs.doc(db, COL_REVISIONES, revisionId, "fotos", h.herramientaId));
+                    const b64 = fotoSnap.exists() ? fotoSnap.data().fotoBase64 : null;
+                    if (b64) { try { doc.addImage(b64, "JPEG", x + 3, imgY, imgW - 6, imgH, undefined, "FAST"); } catch (_e) { /* formato no soportado, se omite */ } }
+                } catch (err) { console.warn("[operaciones.js] no se pudo leer la foto de", h.herramientaId, err); }
             } else {
                 doc.setFontSize(8); doc.setTextColor(180);
                 doc.text("Sin foto", x + imgW / 2, imgY + imgH / 2, { align: "center" });
@@ -3131,7 +3142,7 @@
             const snap = await fs.getDoc(fs.doc(db, COL_REVISIONES, revisionId));
             if (!snap.exists()) { alert("No se encontró la revisión."); return; }
             const revision = snap.data();
-            const doc = await opsGenerarPDFRevision(revision);
+            const doc = await opsGenerarPDFRevision(revision, revisionId);
             const nombreArchivo = `Auditoria_${(revision.tecnicoNumero || "tec").replace(/\s+/g, "_")}_${(revision.fecha || "").slice(0, 10)}.pdf`;
             const blob = doc.output("blob");
             const file = new File([blob], nombreArchivo, { type: "application/pdf" });
