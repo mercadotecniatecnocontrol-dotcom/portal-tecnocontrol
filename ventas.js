@@ -6398,12 +6398,8 @@ async function ventasCargarCatalogoYTecnicos(){
 }
 
 async function ventasSiguienteFolioMaterial(){
-    const { getDocs, collection, query, where } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
     try{
-        const snap = await getDocs(query(collection(window.db,'surtidos'), where('folioPrefijo','==','VENTAS')));
-        let max = 0;
-        snap.forEach(d=>{ const n=(d.data()||{}).folioNum; if(typeof n==='number' && n>max) max=n; });
-        const siguiente = max+1;
+        const siguiente = await window.tcSbSiguienteFolioMaterial('VENTAS');
         return { folio:'VENTAS '+String(siguiente).padStart(4,'0'), folioNum:siguiente, folioPrefijo:'VENTAS' };
     }catch(e){
         const respaldo = Date.now()%10000;
@@ -6687,9 +6683,8 @@ window.ventasEnviarSolicitudMaterial = async function(clienteId){
 
     window.tcPrevisualizarPDF(pdf, folioInfo.folio, async function(){
         try{
-            const { collection, addDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-            surtidoData.createdAt = serverTimestamp ? serverTimestamp() : new Date().toISOString();
-            await addDoc(collection(window.db,'surtidos'), surtidoData);
+            surtidoData.createdAt = new Date().toISOString();
+            await window.tcSbCrearSurtido(surtidoData);
             document.getElementById('ventas-modal-solicitud').innerHTML = '';
             window.tcCompartirPDFWhatsApp(pdf, folioInfo.folio, resumen);
             if(window.mostrarToast) window.mostrarToast('✅ Solicitud enviada', `${folioInfo.folio} → Almacén`, '📦');
