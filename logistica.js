@@ -159,27 +159,32 @@
     // un pedido EN CURSO hacia allá), esta capa muestra TODAS las paqueterías
     // registradas siempre, tengan o no un envío pendiente ahora mismo.
     var incluirPaqueterias = !!(opciones && opciones.incluirPaqueterias);
-    return cargarFirestore().then(function (fs) {
-      if (!window.db) return [];
-      var ESTADOS_CERRADOS = ['finalizado', 'cancelado', 'entregado'];
-      return Promise.all([
-        fs.getDocs(fs.collection(window.db, 'surtidos')),
-        fs.getDocs(fs.collection(window.db, 'estaciones_servicio')).catch(function () { return { forEach: function () {} }; }),
-        fs.getDocs(fs.query(fs.collection(window.db, 'recolecciones_locales'), fs.where('estado', 'in', ['pendiente', 'recogido']))),
-        incluirClientes
-          ? fs.getDocs(fs.collection(window.db, 'ventas_clientes')).catch(function () { return { forEach: function () {} }; })
-          : Promise.resolve({ forEach: function () {} }),
-        incluirPaqueterias
-          ? fs.getDocs(fs.query(fs.collection(window.db, 'puntos_referencia'), fs.where('tipo', '==', 'paqueteria'))).catch(function () { return { forEach: function () {} }; })
-          : Promise.resolve({ forEach: function () {} })
-      ]).then(function (r) {
-        var snapPedidos = r[0], snapEst = r[1], snapRecol = r[2], snapClientes = r[3], snapPaqueterias = r[4];
+    var ESTADOS_CERRADOS = ['finalizado', 'cancelado', 'entregado'];
+    return Promise.all([
+      // surtidos ya vive en Supabase — el resto de estas colecciones sigue en
+      // Firestore por ahora, se combinan abajo.
+      window.tcSbListarTodosSurtidos().catch(function () { return []; }),
+      cargarFirestore().then(function (fs) {
+        if (!window.db) return [{ forEach: function () {} }, { forEach: function () {} }, { forEach: function () {} }, { forEach: function () {} }];
+        return Promise.all([
+          fs.getDocs(fs.collection(window.db, 'estaciones_servicio')).catch(function () { return { forEach: function () {} }; }),
+          fs.getDocs(fs.query(fs.collection(window.db, 'recolecciones_locales'), fs.where('estado', 'in', ['pendiente', 'recogido']))),
+          incluirClientes
+            ? fs.getDocs(fs.collection(window.db, 'ventas_clientes')).catch(function () { return { forEach: function () {} }; })
+            : Promise.resolve({ forEach: function () {} }),
+          incluirPaqueterias
+            ? fs.getDocs(fs.query(fs.collection(window.db, 'puntos_referencia'), fs.where('tipo', '==', 'paqueteria'))).catch(function () { return { forEach: function () {} }; })
+            : Promise.resolve({ forEach: function () {} })
+        ]);
+      })
+    ]).then(function (resultados) {
+        var listaSurtidos = resultados[0];
+        var snapEst = resultados[1][0], snapRecol = resultados[1][1], snapClientes = resultados[1][2], snapPaqueterias = resultados[1][3];
         var estMap = {};
         snapEst.forEach(function (d) { estMap[d.id] = Object.assign({ id: d.id }, d.data()); });
         var puntos = [];
 
-        snapPedidos.forEach(function (docu) {
-          var p = Object.assign({ id: docu.id }, docu.data());
+        listaSurtidos.forEach(function (p) {
           if (ESTADOS_CERRADOS.indexOf(p.estado) !== -1) return;
 
           if (p.destinoTipo === 'paqueteria') {
@@ -291,7 +296,6 @@
         }
 
         return puntos;
-      });
     }).catch(function (err) {
       console.error('[logistica] tcObtenerPuntosLogisticos:', err);
       return [];
@@ -466,32 +470,31 @@
   //  CARGA DE DATOS
   // =====================================================================
   function cargarDatos() {
-    return cargarFirestore().then(function (fs) {
-      if (!window.db) return;
-      var qPedidos = fs.query(
-        fs.collection(window.db, 'surtidos'),
-        fs.where('destinoTipo', '==', 'entrega_chihuahua')
-      );
-      var qRecolecciones = fs.query(
-        fs.collection(window.db, 'recolecciones_locales'),
-        fs.where('estado', 'in', ['pendiente', 'recogido'])
-      );
-      return Promise.all([
-        fs.getDocs(qPedidos),
-        fs.getDocs(fs.collection(window.db, 'estaciones_servicio')),
-        fs.getDocs(qRecolecciones)
-      ]).then(function (r) {
-        var snapPedidos = r[0], snapEst = r[1], snapRecol = r[2];
+    return Promise.all([
+      window.tcSbListarTodosSurtidos().catch(function () { return []; }),
+      cargarFirestore().then(function (fs) {
+        if (!window.db) return [{ docs: [] }, { forEach: function () {} }];
+        var qRecolecciones = fs.query(
+          fs.collection(window.db, 'recolecciones_locales'),
+          fs.where('estado', 'in', ['pendiente', 'recogido'])
+        );
+        return Promise.all([
+          fs.getDocs(fs.collection(window.db, 'estaciones_servicio')),
+          fs.getDocs(qRecolecciones)
+        ]);
+      })
+    ]).then(function (resultados) {
+        var listaSurtidos = resultados[0];
+        var snapEst = resultados[1][0], snapRecol = resultados[1][1];
         var ESTADOS_CERRADOS = ['finalizado', 'cancelado', 'entregado'];
-        estado.pedidos = snapPedidos.docs
-          .map(function (d) { return Object.assign({ id: d.id }, d.data()); })
-          .filter(function (p) { return ESTADOS_CERRADOS.indexOf(p.estado) === -1; });
+        estado.pedidos = listaSurtidos.filter(function (p) {
+          return p.destinoTipo === 'entrega_chihuahua' && ESTADOS_CERRADOS.indexOf(p.estado) === -1;
+        });
         var idx = {};
         snapEst.forEach(function (d) { idx[d.id] = Object.assign({ id: d.id }, d.data()); });
         estado.estaciones = idx;
         estado.recolecciones = snapRecol.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
         estado.cargando = false;
-      });
     }).catch(function (err) {
       console.error('[logistica] error cargando datos:', err);
       estado.cargando = false;
@@ -901,9 +904,11 @@
     datosGuardar.ubicacionCapturadaEn = new Date().toISOString();
     datosGuardar[campoVerificada] = true; // el supervisor puso el pin a mano/lo confirmó — a diferencia de un geocodificado automático masivo
 
-    cargarFirestore().then(function (fs) {
-      return fs.updateDoc(fs.doc(window.db, coleccion, id), datosGuardar);
-    }).then(function () {
+    var guardarPromesa = (coleccion === 'surtidos')
+      ? window.tcSbActualizarSurtido(id, datosGuardar)
+      : cargarFirestore().then(function (fs) { return fs.updateDoc(fs.doc(window.db, coleccion, id), datosGuardar); });
+
+    guardarPromesa.then(function () {
       // Refleja el cambio también en la caché en memoria de este módulo — usando
       // los campos dinámicos (lat/lng para recolección, entregaLat/entregaLng para entrega).
       if (coleccion === 'recolecciones_locales') {
