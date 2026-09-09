@@ -194,7 +194,7 @@
           tipo: "selector_rol_documento", clave: "P18_ROL_1_1", opciones: SASISOPA_ROLES_DISPONIBLES },
         { titulo: "Punto 3.1 (P-18 Informes de Desempeño) — Puesto de máxima autoridad", icono: ICONO.usuarios,
           tipo: "selector_rol_documento", clave: "P18_ROL_3_1", opciones: SASISOPA_ROLES_DISPONIBLES },
-        { titulo: "P-11 Integridad Mecánica — Puesto en lugar de Alta Dirección", icono: ICONO.usuarios,
+        { titulo: "P-11 y M-11 Integridad Mecánica — Puesto en lugar de Alta Dirección", icono: ICONO.usuarios,
           tipo: "selector_rol_documento", clave: "P11_ROL_ALTA_DIRECCION", opciones: SASISOPA_ROLES_DISPONIBLES },
         { titulo: "Punto 3.1 (P-14.1 Monitoreo y Medición) — Puesto responsable", icono: ICONO.usuarios,
           tipo: "selector_rol_documento", clave: "P141_ROL_3_1", opciones: SASISOPA_ROLES_DISPONIBLES },
@@ -202,8 +202,6 @@
           tipo: "selector_rol_documento", clave: "P142_ROL_3_1", opciones: SASISOPA_ROLES_DISPONIBLES },
         { titulo: "Punto 4 (P-15 Auditoria Interna) — Quién firma el Plan de Auditoría", icono: ICONO.usuarios,
           tipo: "selector_rol_documento", clave: "P15_ROL_4", opciones: SASISOPA_ROLES_DISPONIBLES },
-        { titulo: "Punto I (M-11 Integridad Mecánica) — Puesto en lugar de Alta Dirección", icono: ICONO.usuarios,
-          tipo: "selector_rol_documento", clave: "M11_ROL_ALTA_DIRECCION", opciones: SASISOPA_ROLES_DISPONIBLES },
         { titulo: "F-15-01 (Selección de Auditores) — Puesto en lugar de Alta Dirección", icono: ICONO.usuarios,
           tipo: "selector_rol_documento", clave: "F1501_ROL_ALTA_DIRECCION", opciones: SASISOPA_ROLES_DISPONIBLES },
         { titulo: "P-10.7 (Suministro de Combustible), puntos 4.3 y 4.5 — Representante Técnico o Alta Dirección", icono: ICONO.usuarios,
@@ -312,7 +310,7 @@
     // reemplazo automático del organigrama gráfico. Se agrega cada
     // archivo aquí conforme se detecta el problema — no hay un patrón
     // general como en SGM (PROC-*), varía documento por documento.
-    const RE_SIN_ORGANIGRAMA_SASISOPA = /^F-07-01|^F-07-04|^F-10_1-02|^P-10_2|^P-10_3|^F-13-05|^F-12-01|^F-12-02/i;
+    const RE_SIN_ORGANIGRAMA_SASISOPA = /^F-07-01|^F-07-04|^F-10_1-02|^P-10_2|^P-10_3|^F-13-05|^F-12-01|^F-12-02|^F-15-04|^F-16-01/i;
 
     const SGM_CATALOGO_GENERICO = {
         "ROL_ALTA_DIRECCION": {
@@ -988,6 +986,61 @@
                 i++;
             }
         }
+    }
+
+    // F-06-02 (Perfil de Puestos): el machote trae los 8 puestos del
+    // catálogo, cada uno como un bloque "encabezado (MAYÚSCULAS) +
+    // tabla" — antes se quedaban TODOS tal cual, aunque el cliente no
+    // hubiera marcado/llenado ese puesto en el checklist de
+    // "Organigrama y nomenclatura de puestos". Se quita el bloque
+    // completo (encabezado, tabla, y los párrafos en blanco intermedios
+    // que le pertenecen) para cualquier puesto sin nombre capturado —
+    // mismo criterio que reconstruirTarjetasPuestosSGM usa en SGM, pero
+    // aquí no hace falta reconstruir nada: SASISOPA no renombra el
+    // encabezado al nombre de la persona, solo se conserva o se quita
+    // el bloque entero.
+    const ROL_A_CLAVE_PERFIL_F0602 = {
+        "ALTA DIRECCIÓN": "ROL_ALTA_DIRECCION",
+        "REPRESENTANTE TÉCNICO": "ROL_REPRESENTANTE_TECNICO",
+        "SUPERVISOR DE ESTACIÓN": "ROL_SUPERVISOR_ESTACION",
+        "ASISTENTE ADMINISTRATIVO": "ROL_ASISTENTE_ADMIN",
+        "MANTENIMIENTO": "ROL_MANTENIMIENTO",
+        "FACTURACIÓN": "ROL_FACTURISTA",
+        "INTENDENCIA": "ROL_INTENDENCIA",
+        "DESPACHADOR": "ROL_DESPACHADOR",
+    };
+
+    function filtrarPerfilesDePuestosF0602(xmlDoc, datos, stats) {
+        const body = xmlDoc.getElementsByTagNameNS(NS_W, 'body')[0];
+        if (!body) return;
+        const hijos = Array.from(body.children);
+        const encabezados = [];
+        hijos.forEach((child, i) => {
+            if (child.localName !== 'p') return;
+            const texto = Array.from(child.getElementsByTagNameNS(NS_W, 't')).map(t => t.textContent).join('').trim().toUpperCase();
+            const clave = ROL_A_CLAVE_PERFIL_F0602[texto];
+            if (clave) encabezados.push({ idx: i, clave, texto });
+        });
+        if (!encabezados.length) return;
+
+        const paraEliminar = [];
+        encabezados.forEach((enc, k) => {
+            const idxFin = (k + 1 < encabezados.length) ? encabezados[k + 1].idx : hijos.length;
+            if (!datos[enc.clave]) {
+                for (let j = enc.idx; j < idxFin; j++) paraEliminar.push(hijos[j]);
+                stats.reemplazos++;
+            } else {
+                // El encabezado ("ALTA DIRECCIÓN", etc.) viene resaltado
+                // en el machote — el motor genérico lo reconoce vía
+                // SASISOPA_MAPEO (variante "_MAYUS") y lo convertía al
+                // nombre de la persona en mayúsculas. Debe quedarse
+                // siempre como el título del puesto.
+                Array.from(hijos[enc.idx].getElementsByTagNameNS(NS_W, 'r'))
+                    .filter(esResaltadoAmarillo)
+                    .forEach(quitarResaltado);
+            }
+        });
+        paraEliminar.forEach(nodo => { if (nodo.parentNode) nodo.parentNode.removeChild(nodo); });
     }
 
     function procesarEscolaridadF0602(xmlDoc, datos, stats) {
@@ -4375,14 +4428,55 @@
                 // ninguno de estos documentos — ésas ya funcionan bien
                 // tal cual (son la etiqueta de puesto de esa tabla, no
                 // texto narrativo).
-                protegerListaDeRolesSASISOPA(xmlDoc, nombreArchivo, /^M-05/i, 'es la encargada de designar cuáles son los recursos necesarios');
+                // M-05: "En Superservicio Cuatro Caminos S.A. de C.V., la
+                // Alta Dirección es la encargada de designar..." — la razón
+                // social comparte párrafo con "Alta Dirección"; antes
+                // protegerListaDeRolesSASISOPA le quitaba el resaltado a
+                // TODO lo amarillo del párrafo (incluida la razón social,
+                // dejándola sin sustituir por la del cliente). Se usa el
+                // mecanismo dirigido, que solo toca "Alta Dirección".
+                procesarMencionRolNarrativaSASISOPA(xmlDoc, datos, stats, {
+                    nombreArchivo, patronArchivo: /^M-05/i,
+                    anclas: ['es la encargada de designar cuáles son los recursos necesarios'],
+                    clave: 'M05_ROL_SIN_USAR', rolPorDefecto: 'ROL_ALTA_DIRECCION', conArticulo: true,
+                });
                 protegerListaDeRolesSASISOPA(xmlDoc, nombreArchivo, /^M-17/i, 'se encarga de revisar los resultados de desempeño');
                 protegerListaDeRolesSASISOPA(xmlDoc, nombreArchivo, /^M-17/i, 'utiliza una lista de apoyo F-17-01');
-                protegerListaDeRolesSASISOPA(xmlDoc, nombreArchivo, /^M-18/i, 'y definir la vía de comunicarlo');
+                // M-18, punto 1 (Objetivo): mismo texto que P-18, pero
+                // aquí "Alta Dirección" comparte PÁRRAFO con la razón
+                // social ("Superservicio Cuatro Caminos S.A. De C.V.,
+                // cuenta con un procedimiento... por parte de la Alta
+                // Dirección, y definir la vía de comunicarlo..."). Antes
+                // se usaba protegerListaDeRolesSASISOPA, que le quita el
+                // resaltado a TODO lo amarillo del párrafo que coincida
+                // — sin querer, también dejaba la razón social sin
+                // resaltado, así que nunca se sustituía por la del
+                // cliente (se quedaba con el texto de referencia del
+                // machote). Se usa el mecanismo dirigido en su lugar,
+                // que solo toca el run de "Alta Dirección".
+                procesarMencionRolNarrativaSASISOPA(xmlDoc, datos, stats, {
+                    nombreArchivo, patronArchivo: /^M-18/i,
+                    anclas: ['y definir la vía de comunicarlo'],
+                    clave: 'M18_ROL_OBJETIVO_SIN_USAR', rolPorDefecto: 'ROL_ALTA_DIRECCION', conArticulo: true,
+                });
+                protegerListaDeRolesSASISOPA(xmlDoc, nombreArchivo, /^M-18/i, 'en caso de detectar una desviación notificar a la Alta Dirección');
                 protegerListaDeRolesSASISOPA(xmlDoc, nombreArchivo, /^P-04/i, 'procede a revisar y aprobar los objetivos');
                 protegerListaDeRolesSASISOPA(xmlDoc, nombreArchivo, /^P-05/i, 'del Regulado acerca del desempeño del SA');
-                protegerListaDeRolesSASISOPA(xmlDoc, nombreArchivo, /^P-05/i, 'es el encargado de designar cuáles son los recursos necesarios');
-                protegerListaDeRolesSASISOPA(xmlDoc, nombreArchivo, /^P-05/i, 'garantizará la asignación de los recursos financieros');
+                // P-05, puntos 4.1 y 4.2: igual que M-05, comparten
+                // párrafo con la razón social ("Superservicio Cuatro
+                // Caminos S.A de C.V., la/su Alta Dirección...") — se
+                // usa el mecanismo dirigido para no arrastrar el
+                // resaltado de la razón social.
+                procesarMencionRolNarrativaSASISOPA(xmlDoc, datos, stats, {
+                    nombreArchivo, patronArchivo: /^P-05/i,
+                    anclas: ['es el encargado de designar cuáles son los recursos necesarios'],
+                    clave: 'P05_ROL_4_1_SIN_USAR', rolPorDefecto: 'ROL_ALTA_DIRECCION', conArticulo: true,
+                });
+                procesarMencionRolNarrativaSASISOPA(xmlDoc, datos, stats, {
+                    nombreArchivo, patronArchivo: /^P-05/i,
+                    anclas: ['garantizará la asignación de los recursos financieros'],
+                    clave: 'P05_ROL_4_2_SIN_USAR', rolPorDefecto: 'ROL_ALTA_DIRECCION', conArticulo: true,
+                });
                 protegerListaDeRolesSASISOPA(xmlDoc, nombreArchivo, /^P-05/i, 'revisará la disponibilidad de recursos otorgados');
                 protegerListaDeRolesSASISOPA(xmlDoc, nombreArchivo, /^P-05/i, 'designar de manera formal al Representante Técnico ante la Agencia');
                 // P-07, punto 4.3.4 — mención distinta a la de 4.1.5
@@ -4446,7 +4540,7 @@
                 procesarMencionRolNarrativaSASISOPA(xmlDoc, datos, stats, {
                     nombreArchivo, patronArchivo: /^M-11/i,
                     anclas: ['designado por la', 'que designe la'],
-                    clave: 'M11_ROL_ALTA_DIRECCION', rolPorDefecto: 'ROL_ALTA_DIRECCION', conArticulo: true,
+                    clave: 'P11_ROL_ALTA_DIRECCION', rolPorDefecto: 'ROL_ALTA_DIRECCION', conArticulo: true,
                 });
                 resolverRolesEnFormasSASISOPA(xmlDoc, datos, stats);
                 resolverNombresPorRolSASISOPA(xmlDoc, datos, stats, nombreArchivo);
@@ -4516,7 +4610,32 @@
                 }
             }
 
-            for (const p of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'))) {
+            // F-06-02: debe correr ANTES del motor genérico de abajo —
+            // si corriera después (como estaba antes), el motor genérico
+            // ya habría convertido los encabezados resaltados al nombre
+            // de la persona antes de que esta función alcanzara a
+            // quitarles el resaltado, dejando el "fix" sin efecto real.
+            if (ruta === 'word/document.xml' && nombreArchivo.startsWith('F-06-02')) {
+                filtrarPerfilesDePuestosF0602(xmlDoc, datos, stats);
+            }
+
+            // Algunos documentos reales (p.ej. F-12-01, header4.xml)
+            // tienen una estructura corrupta con <w:p> anidados dentro de
+            // otro <w:p> — inválido según el esquema OOXML, pero presente
+            // en la práctica (probablemente un remanente de cómo se armó
+            // el encabezado). Si se procesan TODOS los <w:p> sin filtrar,
+            // el párrafo "envoltorio" comparte los MISMOS nodos de run
+            // que sus "hijos", y agrupa placeholders resaltados
+            // consecutivos que en realidad pertenecen a párrafos
+            // distintos (p.ej. "LOGO" + el nombre de la razón social,
+            // sin separador entre ellos) — corrompiendo esos runs antes
+            // de que el párrafo real (más específico) llegue a
+            // procesarse por su cuenta, y dejando el LOGO sin insertar.
+            // Se procesan solo los párrafos de nivel hoja (sin otro
+            // <w:p> anidado dentro).
+            const parrafosDeNivelHoja = Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'))
+                .filter(p => p.getElementsByTagNameNS(NS_W, 'p').length === 0);
+            for (const p of parrafosDeNivelHoja) {
                 await procesarParrafo(p, datos, stats, ctx);
             }
             for (const { celda, dataUrl } of celdasFirmaPendientes) {
