@@ -204,10 +204,10 @@
                 <label style="font-size:11.5px;color:#64748b;font-weight:600;">Contraseña inicial</label>
                 <input id="ops-acceso-pass" value="${opsEsc(passSugerida)}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 4px;">
                 <div style="font-size:10.5px;color:#94a3b8;margin-bottom:14px;">Mínimo 6 caracteres. Dísela al técnico de palabra — no se vuelve a mostrar después de crear la cuenta.</div>
-                <div id="ops-acceso-msg" style="color:#b91c1c;font-size:11.5px;margin-bottom:8px;"></div>
+                <div id="ops-acceso-msg" style="color:#E7402B;font-size:11.5px;margin-bottom:8px;"></div>
                 <div style="display:flex;gap:8px;justify-content:flex-end;">
                     <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
-                    <button id="ops-acceso-btn" onclick="opsCrearAccesoKiosco('${idInterno}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">Crear acceso</button>
+                    <button id="ops-acceso-btn" onclick="opsCrearAccesoKiosco('${idInterno}')" class="mkt-add-btn" style="background:#1D2E73;">Crear acceso</button>
                 </div>
             </div>
         </div>`;
@@ -268,7 +268,7 @@
         prestamo:    { label: "En préstamo",      bg: "#e0e7ff", fg: "#3730a3" },
         revision:    { label: "En revisión",      bg: "#fef9c3", fg: "#854d0e" },
         reparacion:  { label: "En reparación",    bg: "#fef3c7", fg: "#92400e" },
-        danada:      { label: "Dañada",           bg: "#fee2e2", fg: "#991b1b" },
+        danada:      { label: "Dañada",           bg: "#fee2e2", fg: "#E7402B" },
         extraviada:  { label: "Extraviada",       bg: "#fce7f3", fg: "#9d174d" },
         garantia:    { label: "En garantía",      bg: "#ede9fe", fg: "#5b21b6" },
         baja:        { label: "Baja",             bg: "#e5e7eb", fg: "#374151" },
@@ -299,6 +299,11 @@
         back:   '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>',
         gear:   '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
         bell:   '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>',
+        lock:   '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>',
+        unlock: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.6-1.8"/></svg>',
+        camera: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2Z"/><circle cx="12" cy="13" r="4"/></svg>',
+        file:   '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>',
+        xCircle:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m15 9-6 6M9 9l6 6"/></svg>',
     };
 
     // Catálogo base (mismo listado de "AYUDA VISUAL / HERRAMIENTA BÁSICA PARA SERVICIOS")
@@ -1065,7 +1070,7 @@
 
         const nombreArchivo = "Responsiva_" + h.folio + "_" + t.numeroOperativo + ".pdf";
         doc.save(nombreArchivo);
-        if (!silencioso && window.mostrarPush) mostrarPush("Herramientas", "Responsiva PDF generada: " + nombreArchivo, "📄");
+        if (!silencioso && window.mostrarPush) mostrarPush("Herramientas", "Responsiva PDF generada: " + nombreArchivo, ICON.file);
     }
     window.opsGenerarResponsivaPDF = opsGenerarResponsivaPDF;
 
@@ -1132,12 +1137,12 @@
             "alertas:Alertas", "movimientos:Movimientos"];
         return `
         <div style="position:fixed;inset:0;z-index:99997;background:#f1f5f9;font-family:'Inter',sans-serif;display:flex;flex-direction:column;">
-            <div style="background:linear-gradient(135deg,#0B5FFF,#0842B0);border-bottom:3px solid #062F73;padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+            <div style="background:#1D2E73;border-bottom:3px solid #062F73;padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
                 <div style="display:flex;align-items:center;gap:10px;color:#fff;">
                     <span style="width:30px;height:30px;border-radius:9px;background:rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;">${ICON.wrench}</span>
                     <div>
                         <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:15px;">Operaciones</div>
-                        <div style="font-size:10.5px;color:#dbeafe;">Hedma Tecnocontrol · Rol: ${rolLabel}</div>
+                        <div style="font-size:10.5px;color:#C7CEE0;">Hedma Tecnocontrol · Rol: ${rolLabel}</div>
                     </div>
                 </div>
                 <button onclick="opsCerrarHerramientas()" style="background:rgba(255,255,255,0.08);border:none;color:#fff;width:30px;height:30px;border-radius:9px;cursor:pointer;">${ICON.close}</button>
@@ -1168,7 +1173,7 @@
             b.style.color = "#64748b"; b.style.background = "none"; b.style.borderLeftColor = "transparent";
         });
         const activo = document.getElementById("ops-tab-" + tab);
-        if (activo) { activo.style.color = "#0B5FFF"; activo.style.background = "#eaf0ff"; activo.style.borderLeftColor = "#0B5FFF"; }
+        if (activo) { activo.style.color = "#1D2E73"; activo.style.background = "#E9ECF5"; activo.style.borderLeftColor = "#1D2E73"; }
         if (tab === "resumen") opsRenderResumen();
         else if (tab === "dashboard") opsRenderDashboard();
         else if (tab === "catalogo") opsRenderCatalogo();
@@ -1249,7 +1254,7 @@
                         if (ch.type === "added") {
                             const n = { id: ch.doc.id, ...ch.doc.data() };
                             opsReproducirAlarmaFolio();
-                            opsMostrarFlotanteGenerica(n.mensaje || "Nueva notificación de Operaciones.", n.esPrueba ? "#8B4FD6" : "#0B5FFF");
+                            opsMostrarFlotanteGenerica(n.mensaje || "Nueva notificación de Operaciones.", n.esPrueba ? "#8B4FD6" : "#1D2E73");
                         }
                     });
                 }
@@ -1300,7 +1305,7 @@
 
         const avatar = (nombre, activo) => {
             const ini = (nombre || "?").split(" ").filter(Boolean).slice(0, 2).map(s => s[0]).join("").toUpperCase();
-            const bg = activo ? "linear-gradient(135deg,#1f2937,#0a2e5c)" : "#94a3b8";
+            const bg = activo ? "#1D2E73" : "#94a3b8";
             return `<div style="width:34px;height:34px;border-radius:50%;background:${bg};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex-shrink:0;">${opsEsc(ini)}</div>`;
         };
 
@@ -1314,7 +1319,7 @@
         }).join("") || '<div style="color:#94a3b8;font-size:12px;padding:8px 0;">Sin técnicos registrados todavía.</div>';
 
         const actividad = cacheMov.slice(0, 5).map(m => {
-            const color = { asignacion: "#0891b2", transferencia: "#0891b2", devolucion: "#059669", baja: "#b91c1c", danio: "#b91c1c", perdida: "#b91c1c", reparacion: "#b45309" }[m.tipo] || "#64748b";
+            const color = { asignacion: "#0891b2", transferencia: "#0891b2", devolucion: "#059669", baja: "#E7402B", danio: "#E7402B", perdida: "#E7402B", reparacion: "#b45309" }[m.tipo] || "#64748b";
             return `<div style="margin-bottom:10px;position:relative;">
                 <div style="position:absolute;left:-17px;top:3px;width:7px;height:7px;border-radius:50%;background:${color};"></div>
                 <div style="font-size:11.5px;color:#334155;">${opsEsc(m.tipo)} · ${opsEsc(m.herramientaId)}</div>
@@ -1368,7 +1373,7 @@
                         <div style="border-left:2px solid #e2e8f0;padding-left:12px;">${actividad}</div>
                     </div>
                     ${inconsistencias.length ? `
-                    <div style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);border-radius:12px;padding:16px 18px;color:#fff;">
+                    <div style="background:#1D2E73;border-radius:12px;padding:16px 18px;color:#fff;">
                         <div style="font-size:12.5px;font-weight:700;margin-bottom:6px;">Cierre operativo pendiente</div>
                         ${inconsistencias.map(x => `<div style="font-size:11px;color:#d1d5db;line-height:1.5;">${opsEsc(x.t.nombre)} (baja) tiene ${x.herrPend ? x.herrPend + " herramienta(s)" : ""}${x.herrPend && x.matPend ? " y " : ""}${x.matPend ? x.matPend + " material(es)" : ""} sin devolver.</div>`).join("")}
                         <button onclick="opsCambiarTab('tecnicos')" style="margin-top:10px;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:11px;font-weight:600;padding:6px 12px;border-radius:7px;cursor:pointer;">Resolver ahora</button>
@@ -1400,7 +1405,7 @@
             { label: "Disponibles", valor: conteo.disponible || 0, color: "#059669", icon: ICON.check },
             { label: "Asignadas", valor: conteo.asignada || 0, color: "#0891b2", icon: ICON.user },
             { label: "En reparación / revisión", valor: (conteo.reparacion || 0) + (conteo.revision || 0), color: "#b45309", icon: ICON.alert },
-            { label: "Dañadas / extraviadas", valor: (conteo.danada || 0) + (conteo.extraviada || 0), color: "#b91c1c", icon: ICON.alert },
+            { label: "Dañadas / extraviadas", valor: (conteo.danada || 0) + (conteo.extraviada || 0), color: "#E7402B", icon: ICON.alert },
             { label: "Dadas de baja", valor: conteo.baja || 0, color: "#6b7280", icon: ICON.trash },
         ];
 
@@ -1428,9 +1433,9 @@
                     </div>
                     ${gestion ? `
                     <div style="display:flex;gap:8px;">
-                        <button onclick="opsAbrirModalPieza()" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">${ICON.plus} Nueva pieza</button>
-                        <button onclick="opsSembrarCatalogoBase()" class="mkt-add-btn" style="background:linear-gradient(135deg,#0891b2,#0e7490);">${ICON.box} Cargar catálogo base</button>
-                        <button onclick="opsImportarExcelReal()" class="mkt-add-btn" style="background:linear-gradient(135deg,#059669,#047857);">📥 Importar Excel real (12 técnicos)</button>
+                        <button onclick="opsAbrirModalPieza()" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Nueva pieza</button>
+                        <button onclick="opsSembrarCatalogoBase()" class="mkt-add-btn" style="background:#334155;">${ICON.box} Cargar catálogo base</button>
+                        <button onclick="opsImportarExcelReal()" class="mkt-add-btn" style="background:#15803D;">📥 Importar Excel real (12 técnicos)</button>
                     </div>` : ""}
                 </div>
                 <div style="overflow-x:auto;">
@@ -1459,7 +1464,7 @@
         return `<tr style="background:${zebra};border-bottom:1px solid #eef1f5;cursor:pointer;" onclick="opsAbrirFichaHerramienta('${h.id}')">
             <td style="padding:8px 10px;font-weight:600;color:#334155;">${opsEsc(h.folio)}</td>
             <td style="padding:8px 10px;color:#334155;">${opsEsc(h.descripcion)}${h.folioLegado ? ` <span style="color:#94a3b8;font-size:10.5px;">(ex ${opsEsc(h.folioLegado)})</span>` : ""}</td>
-            <td style="padding:8px 10px;"><span style="background:${e.bg};color:${e.fg};font-size:10.5px;font-weight:600;padding:3px 8px;border-radius:999px;">${e.label}</span>${pend ? ` <span title="Traspaso pendiente de aceptación" style="background:#fef3c7;color:#92400e;font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px;margin-left:4px;">🔒 pendiente</span>` : ""}</td>
+            <td style="padding:8px 10px;"><span style="background:${e.bg};color:${e.fg};font-size:10.5px;font-weight:600;padding:3px 8px;border-radius:999px;">${e.label}</span>${pend ? ` <span title="Traspaso pendiente de aceptación" style="background:#fef3c7;color:#92400e;font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px;margin-left:4px;">${ICON.lock} pendiente</span>` : ""}</td>
             <td style="padding:8px 10px;color:#334155;">${opsEsc(opsNombreTecnico(h.tecnicoActualId))}</td>
             <td style="padding:8px 10px;color:#64748b;">${opsEsc(h.ubicacionActual || "—")}</td>
             <td style="padding:8px 10px;text-align:right;" onclick="event.stopPropagation()">
@@ -1591,10 +1596,10 @@
         const condMuestra = g.piezas.find(p => p.condicion) ? g.piezas.find(p => p.condicion).condicion : null;
         const cond = condMuestra ? CONDICIONES_HERRAMIENTA[condMuestra] : null;
 
-        return `<div onclick="opsAbrirGrupoCatalogo(${idx})" style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:15px 16px;cursor:pointer;transition:box-shadow .15s;" onmouseover="this.style.boxShadow='0 4px 14px rgba(15,23,42,0.08)'" onmouseout="this.style.boxShadow='none'">
+        return `<div onclick="opsAbrirGrupoCatalogo(${idx})" style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:15px 16px;cursor:pointer;transition:border-color .15s;" onmouseover="this.style.borderColor='#1D2E73'" onmouseout="this.style.borderColor='#e2e8f0'">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
                 <div style="font-size:13.5px;font-weight:700;color:#1e293b;line-height:1.3;">${opsEsc(g.descripcion)}</div>
-                <span style="flex-shrink:0;width:34px;height:34px;border-radius:9px;background:#eaf0ff;color:#0B5FFF;display:flex;align-items:center;justify-content:center;">${ICON.wrench}</span>
+                <span style="flex-shrink:0;width:34px;height:34px;border-radius:9px;background:#E9ECF5;color:#1D2E73;display:flex;align-items:center;justify-content:center;">${ICON.wrench}</span>
             </div>
             <div style="font-size:11px;color:#94a3b8;margin:2px 0 10px;">${opsEsc(g.categoria || "Sin categoría")}${cond ? ` · <span style="color:${cond.fg};font-weight:600;">${cond.label}</span>` : ""}</div>
             <div style="display:flex;align-items:baseline;gap:5px;margin-bottom:10px;">
@@ -1683,9 +1688,9 @@
 
                 ${gestion && h.estado !== "baja" ? `
                 <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;">
-                    <button onclick="opsAbrirModalMovimiento('${id}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">${opsTraspasoPendientePara(id) ? "🔒 Ver traspaso pendiente" : "Registrar movimiento"}</button>
-                    ${h.estado === "asignada" ? `<button onclick="opsGenerarResponsivaPDF('${id}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#0891b2,#0e7490);">Regenerar responsiva PDF</button>` : ""}
-                    <button onclick="opsAbrirModalBaja('${id}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#b91c1c,#7f1d1d);">${ICON.trash} Dar de baja</button>
+                    <button onclick="opsAbrirModalMovimiento('${id}')" class="mkt-add-btn" style="background:#1D2E73;">${opsTraspasoPendientePara(id) ? `${ICON.lock} Ver traspaso pendiente` : "Registrar movimiento"}</button>
+                    ${h.estado === "asignada" ? `<button onclick="opsGenerarResponsivaPDF('${id}')" class="mkt-add-btn" style="background:#334155;">Regenerar responsiva PDF</button>` : ""}
+                    <button onclick="opsAbrirModalBaja('${id}')" class="mkt-add-btn" style="background:#E7402B;">${ICON.trash} Dar de baja</button>
                 </div>` : ""}
 
                 <div style="margin-top:22px;font-size:12.5px;font-weight:700;color:#1e293b;display:flex;align-items:center;gap:6px;">${ICON.clock} Historial de movimientos</div>
@@ -1784,7 +1789,7 @@
 
                 <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px;">
                     <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
-                    <button id="ops-pieza-btn-guardar" onclick="opsGuardarPieza()" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">Generar folio y guardar</button>
+                    <button id="ops-pieza-btn-guardar" onclick="opsGuardarPieza()" class="mkt-add-btn" style="background:#1D2E73;">Generar folio y guardar</button>
                 </div>
             </div>
         </div>`;
@@ -1803,7 +1808,7 @@
             const { db, fs } = await opsGetFB();
             const snap = await fs.getDocs(fs.query(fs.collection(db, "requisiciones_compra"), fs.where("folio", "==", folio)));
             if (snap.empty) {
-                resEl.innerHTML = `<span style="color:#b91c1c;">No se encontró una requisición con ese folio.</span>`;
+                resEl.innerHTML = `<span style="color:#E7402B;">No se encontró una requisición con ese folio.</span>`;
                 return;
             }
             const d = snap.docs[0];
@@ -1812,7 +1817,7 @@
             resEl.innerHTML = `<span style="color:#166534;">✓ Vinculada a requisición ${opsEsc(opsRequisicionSeleccionada.folio)}${data.proveedor ? " · " + opsEsc(data.proveedor) : ""}</span>`;
         } catch (err) {
             console.error("[operaciones.js] error al buscar requisición de compra:", err);
-            resEl.innerHTML = `<span style="color:#b91c1c;">Error al buscar. Revisa el nombre del campo "folio" en Compras.</span>`;
+            resEl.innerHTML = `<span style="color:#E7402B;">Error al buscar. Revisa el nombre del campo "folio" en Compras.</span>`;
         }
     };
 
@@ -2011,7 +2016,7 @@
                     </select>
                 </div>
 
-                <div id="ops-campo-transferencia-info" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:9px 11px;font-size:11px;color:#1e40af;margin-bottom:12px;line-height:1.5;">
+                <div id="ops-campo-transferencia-info" style="display:none;background:#EDF0F7;border:1px solid #C7CEE0;border-radius:8px;padding:9px 11px;font-size:11px;color:#1D2E73;margin-bottom:12px;line-height:1.5;">
                     Esto NO mueve la pieza de inmediato: se envía un traspaso que el técnico receptor debe <strong>aceptar desde Flotilla</strong> (igual que un vehículo). Mientras tanto la pieza queda bloqueada.
                 </div>
 
@@ -2026,8 +2031,8 @@
                 <textarea id="ops-in-obs" rows="2" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 12px;resize:vertical;"></textarea>
 
                 <div id="ops-campo-evidencia-transferencia" style="display:none;margin-bottom:6px;">
-                    <label style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#0B5FFF;background:#eaf0ff;padding:6px 10px;border-radius:7px;cursor:pointer;width:fit-content;">
-                        📷 Adjuntar foto de evidencia (opcional)
+                    <label style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#1D2E73;background:#E9ECF5;padding:6px 10px;border-radius:7px;cursor:pointer;width:fit-content;">
+                        ${ICON.camera} Adjuntar foto de evidencia (opcional)
                         <input type="file" accept="image/*" capture="environment" style="display:none;" onchange="opsSeleccionarFotoTraspaso(this)">
                     </label>
                     <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
@@ -2038,7 +2043,7 @@
 
                 <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;">
                     <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
-                    <button id="ops-mov-btn-confirmar" onclick="opsConfirmarMovimiento('${herramientaId}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">Confirmar</button>
+                    <button id="ops-mov-btn-confirmar" onclick="opsConfirmarMovimiento('${herramientaId}')" class="mkt-add-btn" style="background:#1D2E73;">Confirmar</button>
                 </div>
             </div>
         </div>`;
@@ -2055,7 +2060,7 @@
         wrap.innerHTML = `
         <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;">
             <div style="background:#fff;border-radius:14px;width:380px;max-width:92vw;padding:22px;">
-                <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:4px;">🔒 Traspaso pendiente</div>
+                <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:4px;">${ICON.lock} Traspaso pendiente</div>
                 <div style="font-size:12px;color:#64748b;margin-bottom:14px;">${opsEsc(h ? h.folio : "")} · ${opsEsc(h ? h.descripcion : "")}</div>
                 <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:11px 13px;font-size:12.5px;color:#92400e;line-height:1.7;margin-bottom:16px;">
                     <div><strong>De:</strong> ${opsEsc(pend.entregaNombre || "—")}</div>
@@ -2065,7 +2070,7 @@
                 </div>
                 <div style="display:flex;gap:8px;justify-content:flex-end;">
                     <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cerrar</button>
-                    <button onclick="opsCancelarTraspasoPendiente('${pend.id}')" style="background:linear-gradient(135deg,#b91c1c,#7f1d1d);color:#fff;border:none;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar traspaso</button>
+                    <button onclick="opsCancelarTraspasoPendiente('${pend.id}')" style="background:#E7402B;color:#fff;border:none;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar traspaso</button>
                 </div>
             </div>
         </div>`;
@@ -2079,7 +2084,7 @@
                 estatus: "Cancelado", canceladoEn: opsFechaHora(), canceladoPor: opsNombreActual(),
             });
             document.getElementById("ops-modal-wrap").innerHTML = "";
-            window.mostrarPush ? mostrarPush("Herramientas", "Traspaso cancelado.", "🔓") : alert("Traspaso cancelado.");
+            window.mostrarPush ? mostrarPush("Herramientas", "Traspaso cancelado.", ICON.unlock) : alert("Traspaso cancelado.");
         } catch (err) {
             console.error("[operaciones.js] error al cancelar traspaso:", err);
             alert("No se pudo cancelar: " + (err && err.message ? err.message : err));
@@ -2245,7 +2250,7 @@
 
             opsTraspasoFotoBlob = null;
             document.getElementById("ops-modal-wrap").innerHTML = "";
-            window.mostrarPush ? mostrarPush("Herramientas", `Traspaso enviado a ${receptor.nombre} — pendiente de que lo acepte.`, "🔒") : alert(`Traspaso enviado a ${receptor.nombre}. Queda pendiente hasta que lo acepte desde Flotilla.`);
+            window.mostrarPush ? mostrarPush("Herramientas", `Traspaso enviado a ${receptor.nombre} — pendiente de que lo acepte.`, ICON.lock) : alert(`Traspaso enviado a ${receptor.nombre}. Queda pendiente hasta que lo acepte desde Flotilla.`);
         } catch (err) {
             console.error("[operaciones.js] error al iniciar traspaso:", err);
             alert("No se pudo enviar el traspaso: " + (err && err.message ? err.message : err));
@@ -2260,7 +2265,7 @@
         wrap.innerHTML = `
         <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;">
             <div style="background:#fff;border-radius:14px;width:400px;max-width:92vw;padding:22px;">
-                <div style="font-weight:700;font-size:15px;color:#b91c1c;margin-bottom:4px;">Dar de baja</div>
+                <div style="font-weight:700;font-size:15px;color:#E7402B;margin-bottom:4px;">Dar de baja</div>
                 <div style="font-size:12px;color:#64748b;margin-bottom:14px;">${opsEsc(h.folio)} · ${opsEsc(h.descripcion)}. Esta acción no elimina el registro; conserva el historial permanentemente.</div>
                 <label style="font-size:11.5px;color:#64748b;font-weight:600;">Motivo</label>
                 <select id="ops-in-motivobaja" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 12px;">
@@ -2272,7 +2277,7 @@
                 <textarea id="ops-in-obsbaja" rows="2" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 16px;"></textarea>
                 <div style="display:flex;gap:8px;justify-content:flex-end;">
                     <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
-                    <button onclick="opsConfirmarBaja('${herramientaId}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#b91c1c,#7f1d1d);">Confirmar baja</button>
+                    <button onclick="opsConfirmarBaja('${herramientaId}')" class="mkt-add-btn" style="background:#E7402B;">Confirmar baja</button>
                 </div>
             </div>
         </div>`;
@@ -2393,7 +2398,7 @@
                     <div style="display:flex;gap:6px;flex-wrap:wrap;">
                         ${gestion ? `<button onclick="opsExportarInventarioPDF()" title="PDF de herramienta por técnico, para auditoría" style="background:#eef2f7;border:none;color:#1f2937;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:600;">🖨️ PDF auditoría</button>` : ""}
                         ${gestion ? `<button onclick="opsExportarInventarioExcel()" title="Excel de herramienta por técnico, para auditoría" style="background:#eef2f7;border:none;color:#1f2937;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:600;">📊 Excel auditoría</button>` : ""}
-                        ${gestion ? `<button onclick="opsAbrirModalTecnico()" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">${ICON.plus} Nuevo técnico</button>` : ""}
+                        ${gestion ? `<button onclick="opsAbrirModalTecnico()" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Nuevo técnico</button>` : ""}
                     </div>
                 </div>
                 <div style="overflow-x:auto;">
@@ -2465,7 +2470,7 @@
                 <textarea id="ops-edit-obs" rows="3" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 16px;">${opsEsc(t.observaciones || "")}</textarea>
                 <div style="display:flex;gap:8px;justify-content:flex-end;">
                     <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
-                    <button onclick="opsGuardarEdicionTecnico('${idInterno}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">Guardar cambios</button>
+                    <button onclick="opsGuardarEdicionTecnico('${idInterno}')" class="mkt-add-btn" style="background:#1D2E73;">Guardar cambios</button>
                 </div>
             </div>
         </div>`;
@@ -2542,7 +2547,7 @@
                 </select>
                 <div style="display:flex;gap:8px;justify-content:flex-end;">
                     <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
-                    <button onclick="opsGuardarTecnico()" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">Guardar</button>
+                    <button onclick="opsGuardarTecnico()" class="mkt-add-btn" style="background:#1D2E73;">Guardar</button>
                 </div>
             </div>
         </div>`;
@@ -2617,10 +2622,10 @@
                 <div style="display:flex;justify-content:flex-end;">
                     <button onclick="document.getElementById('ops-panel-wrap').innerHTML=''" style="background:#fff;border:1px solid #e2e8f0;width:28px;height:28px;border-radius:7px;cursor:pointer;">${ICON.close}</button>
                 </div>
-                ${guardiaActiva ? `<div style="background:linear-gradient(135deg,#7c3aed,#5b21b6);border-radius:12px;padding:10px 14px;margin-bottom:8px;color:#fff;font-size:11.5px;font-weight:700;">🛡 En guardia — herramienta ${opsEsc(guardiaActiva.herramientaId)}</div>` : ""}
+                ${guardiaActiva ? `<div style="background:#5b21b6;border-radius:12px;padding:10px 14px;margin-bottom:8px;color:#fff;font-size:11.5px;font-weight:700;">🛡 En guardia — herramienta ${opsEsc(guardiaActiva.herramientaId)}</div>` : ""}
 
                 <div style="background:#fff;border-radius:14px;padding:18px;display:flex;align-items:center;gap:14px;margin-top:8px;">
-                    <div style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#0B5FFF,#0842B0);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;flex-shrink:0;">${opsEsc(iniciales)}</div>
+                    <div style="width:52px;height:52px;border-radius:50%;background:#1D2E73;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;flex-shrink:0;">${opsEsc(iniciales)}</div>
                     <div style="min-width:0;flex:1;">
                         <div style="font-size:15.5px;font-weight:700;color:#1e293b;">${opsEsc(t.nombre)}</div>
                         <div style="font-size:11.5px;color:#64748b;">${opsEsc(t.puesto || "—")} · Técnico N.° ${opsEsc(t.numeroOperativo)}${t.registroHistorico > 1 ? ` (registro ${t.registroHistorico})` : ""}${t.employeeId ? ` · ${opsEsc(t.employeeId)}` : ""}</div>
@@ -2631,7 +2636,7 @@
                         <button onclick="opsToggleMenuTecnico(event)" title="Configuración" style="background:#f1f5f9;border:none;width:32px;height:32px;border-radius:8px;cursor:pointer;color:#475569;display:flex;align-items:center;justify-content:center;">${ICON.gear}</button>
                         <div id="ops-menu-tecnico" style="display:none;position:absolute;right:0;top:38px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.12);min-width:190px;z-index:10;overflow:hidden;">
                             <button onclick="opsAbrirModalEditarTecnico('${idInterno}')" style="width:100%;text-align:left;background:none;border:none;padding:10px 14px;font-size:12.5px;color:#334155;cursor:pointer;">✏️ Editar perfil</button>
-                            ${activo ? `<button onclick="document.getElementById('ops-menu-tecnico').style.display='none';opsIniciarBajaTecnico('${idInterno}')" style="width:100%;text-align:left;background:none;border-top:1px solid #f1f5f9;border-bottom:none;border-left:none;border-right:none;padding:10px 14px;font-size:12.5px;color:#b91c1c;cursor:pointer;">${ICON.trash} Dar de baja al técnico</button>` : ""}
+                            ${activo ? `<button onclick="document.getElementById('ops-menu-tecnico').style.display='none';opsIniciarBajaTecnico('${idInterno}')" style="width:100%;text-align:left;background:none;border-top:1px solid #f1f5f9;border-bottom:none;border-left:none;border-right:none;padding:10px 14px;font-size:12.5px;color:#E7402B;cursor:pointer;">${ICON.trash} Dar de baja al técnico</button>` : ""}
                         </div>
                     </div>` : ""}
                 </div>
@@ -2646,7 +2651,7 @@
                     ${["resumen:Resumen", "rh:RH", "vehiculo:Vehículo", "herramientas:Herramientas", "auditoria:Auditoría", "historial:Historial"].map(x => {
                         const [id, label] = x.split(":");
                         const on = fichaTecTabActual === id;
-                        return `<button onclick="opsFichaTecCambiarTab('${idInterno}','${id}')" style="background:none;border:none;padding:8px 10px;font-size:11.5px;font-weight:600;white-space:nowrap;color:${on ? "#0B5FFF" : "#64748b"};border-bottom:2px solid ${on ? "#0B5FFF" : "transparent"};cursor:pointer;">${label}</button>`;
+                        return `<button onclick="opsFichaTecCambiarTab('${idInterno}','${id}')" style="background:none;border:none;padding:8px 10px;font-size:11.5px;font-weight:600;white-space:nowrap;color:${on ? "#1D2E73" : "#64748b"};border-bottom:2px solid ${on ? "#1D2E73" : "transparent"};cursor:pointer;">${label}</button>`;
                     }).join("")}
                 </div>
 
@@ -2674,7 +2679,7 @@
 
         if (fichaTecTabActual === "resumen") {
             el.innerHTML = `
-                ${activo && opsPuedeHacer("solicitar_material") ? `<div style="margin-bottom:12px;"><button onclick="opsAbrirModalSolicitud('${idInterno}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">Solicitar material</button></div>` : ""}
+                ${activo && opsPuedeHacer("solicitar_material") ? `<div style="margin-bottom:12px;"><button onclick="opsAbrirModalSolicitud('${idInterno}')" class="mkt-add-btn" style="background:#1D2E73;">Solicitar material</button></div>` : ""}
                 <div style="background:#fff;border-radius:14px;padding:16px 18px;font-size:12.5px;color:#334155;line-height:1.9;">
                     <div><strong>Departamento:</strong> ${opsEsc(t.departamento || "—")}</div>
                     <div><strong>Fecha de ingreso:</strong> ${opsEsc(t.fechaIngreso || "—")}</div>
@@ -2686,7 +2691,7 @@
                 <div style="background:#fff;border-radius:14px;padding:16px 18px;margin-bottom:12px;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                         <span style="font-size:11.5px;font-weight:700;color:${t.firebaseUid ? "#166534" : "#b45309"};">${t.firebaseUid ? "🟢 Tiene acceso al kiosco" : "🟠 Sin acceso al kiosco"}</span>
-                        ${!t.firebaseUid && opsPuedeGestionar() ? `<button onclick="opsAbrirModalAccesoKiosco('${idInterno}')" style="background:#eef2f7;border:none;color:#0B5FFF;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">🔑 Crear acceso</button>` : ""}
+                        ${!t.firebaseUid && opsPuedeGestionar() ? `<button onclick="opsAbrirModalAccesoKiosco('${idInterno}')" style="background:#eef2f7;border:none;color:#1D2E73;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">🔑 Crear acceso</button>` : ""}
                     </div>
                     <div style="font-size:10.5px;color:#94a3b8;">El kiosco de Solicitud de Material (solicitud-material.html) ahora exige inicio de sesión real — sin esta cuenta el técnico no puede pedir material desde ahí.</div>
                 </div>
@@ -2706,15 +2711,15 @@
             el.innerHTML = `<div style="text-align:center;padding:20px;color:#94a3b8;font-size:12px;">Consultando Flotilla…</div>`;
             const vehFlotilla = await window.opsFlotillaProvider.obtenerVehiculoActual(idInterno);
             el.innerHTML = `
-                <div style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);border-radius:14px;padding:16px 18px;margin-bottom:12px;color:#fff;">
+                <div style="background:#1D2E73;border-radius:14px;padding:16px 18px;margin-bottom:12px;color:#fff;">
                     <div style="font-size:10.5px;font-weight:700;opacity:0.85;">🚐 VEHÍCULO EN FLOTILLA (en vivo)</div>
-                    ${vehFlotilla ? `<div style="font-size:14px;font-weight:700;margin-top:4px;">${opsEsc(vehFlotilla.unidad)} ${vehFlotilla.marca ? "— " + opsEsc(vehFlotilla.marca) + " " + opsEsc(vehFlotilla.modelo) : ""}</div><div style="font-size:11px;color:#dbeafe;margin-top:2px;">Estado: ${opsEsc(vehFlotilla.estado)}</div>`
-                        : `<div style="font-size:11.5px;color:#dbeafe;margin-top:4px;">${t.correo ? "Sin vehículo vinculado en Flotilla para este correo." : "Captura el correo del técnico (⚙ Editar perfil) para hacer match con Flotilla."}</div>`}
+                    ${vehFlotilla ? `<div style="font-size:14px;font-weight:700;margin-top:4px;">${opsEsc(vehFlotilla.unidad)} ${vehFlotilla.marca ? "— " + opsEsc(vehFlotilla.marca) + " " + opsEsc(vehFlotilla.modelo) : ""}</div><div style="font-size:11px;color:#C7CEE0;margin-top:2px;">Estado: ${opsEsc(vehFlotilla.estado)}</div>`
+                        : `<div style="font-size:11.5px;color:#C7CEE0;margin-top:4px;">${t.correo ? "Sin vehículo vinculado en Flotilla para este correo." : "Captura el correo del técnico (⚙ Editar perfil) para hacer match con Flotilla."}</div>`}
                 </div>
                 <div style="background:#fff;border-radius:14px;padding:16px 18px;margin-bottom:12px;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                         <div style="font-size:12.5px;font-weight:700;color:#1e293b;">Asignación manual (Operaciones)</div>
-                        ${opsPuedeGestionar() ? `<button onclick="opsAbrirModalVehiculo('${idInterno}')" style="background:#eef2f7;border:none;color:#0B5FFF;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">Asignar vehículo</button>` : ""}
+                        ${opsPuedeGestionar() ? `<button onclick="opsAbrirModalVehiculo('${idInterno}')" style="background:#eef2f7;border:none;color:#1D2E73;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">Asignar vehículo</button>` : ""}
                     </div>
                     <div style="font-size:10px;color:#94a3b8;margin-bottom:8px;">Este registro lo lleva Operaciones por separado del dato en vivo de Flotilla — útil si necesitas anotar algo que Flotilla todavía no refleja.</div>
                     ${vehActual ? `<div style="font-size:13px;font-weight:700;color:#1e293b;">${opsEsc(vehActual.unidad)}</div><div style="font-size:11px;color:#64748b;">Desde ${opsEsc(vehActual.fechaInicio)} · ${opsEsc(vehActual.motivo || "")}</div>`
@@ -2730,7 +2735,7 @@
                 <div style="background:#fff;border-radius:14px;padding:16px 18px;margin-bottom:12px;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                         <div style="font-size:12.5px;font-weight:700;color:#1e293b;">Herramientas asignadas (${asignadas.length})</div>
-                        ${asignadas.length && opsPuedeGestionar() ? `<button onclick="opsAbrirModalRevision('${idInterno}')" style="background:#eef2f7;border:none;color:#0B5FFF;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">🔍 Registrar revisión</button>` : ""}
+                        ${asignadas.length && opsPuedeGestionar() ? `<button onclick="opsAbrirModalRevision('${idInterno}')" style="background:#eef2f7;border:none;color:#1D2E73;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">🔍 Registrar revisión</button>` : ""}
                     </div>
                     ${asignadas.length ? asignadas.map(h => `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #eef1f5;font-size:12px;"><span style="color:#059669;">${ICON.check}</span><strong>${opsEsc(h.folio)}</strong> — ${opsEsc(h.descripcion)}</div>`).join("") : '<div style="color:#94a3b8;font-size:12px;">Ninguna.</div>'}
                 </div>
@@ -2750,21 +2755,21 @@
             el.innerHTML = `
                 <div style="background:#fff;border-radius:14px;padding:16px 18px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
                     <div style="font-size:12.5px;font-weight:700;color:#1e293b;">Auditorías de herramienta (${revisiones.length})</div>
-                    ${asignadas.length && opsPuedeGestionar() ? `<button onclick="opsAbrirModalRevision('${idInterno}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">🔍 Nueva revisión</button>` : ""}
+                    ${asignadas.length && opsPuedeGestionar() ? `<button onclick="opsAbrirModalRevision('${idInterno}')" class="mkt-add-btn" style="background:#1D2E73;">🔍 Nueva revisión</button>` : ""}
                 </div>
                 ${revisiones.length ? revisiones.map(r => {
                     const faltantes = (r.herramientas || []).filter(h => h.estado !== "conforme");
                     const conFoto = (r.herramientas || []).filter(h => h.fotoURL).length;
-                    return `<div style="background:#fff;border-radius:14px;padding:14px 16px;margin-bottom:10px;border-left:4px solid ${faltantes.length ? "#dc2626" : "#16a34a"};">
+                    return `<div style="background:#fff;border-radius:14px;padding:14px 16px;margin-bottom:10px;border-left:4px solid ${faltantes.length ? "#E7402B" : "#16a34a"};">
                         <div style="display:flex;justify-content:space-between;align-items:center;">
                             <div style="font-size:12.5px;font-weight:700;color:#1e293b;">${opsEsc((r.fecha || "").slice(0, 10))}</div>
-                            <span style="font-size:10.5px;font-weight:700;color:${faltantes.length ? "#b91c1c" : "#166534"};">${faltantes.length ? `⚠ ${faltantes.length} con novedad` : "✓ Todo conforme"}</span>
+                            <span style="font-size:10.5px;font-weight:700;color:${faltantes.length ? "#E7402B" : "#166534"};">${faltantes.length ? `${ICON.alert} ${faltantes.length} con novedad` : `${ICON.check} Todo conforme`}</span>
                         </div>
-                        <div style="font-size:11px;color:#94a3b8;margin-bottom:6px;">Revisó: ${opsEsc(r.realizadoPor || "—")}${conFoto ? ` · 📷 ${conFoto} foto(s)` : ""}</div>
-                        ${(r.herramientas || []).map(h => `<div style="font-size:11.5px;color:#334155;padding:2px 0;">${h.estado === "conforme" ? "✓" : (h.estado === "faltante" ? "❌" : "⚠️")} ${opsEsc(h.folio)} — ${opsEsc(h.descripcion)}${h.observacion ? ` · <em>${opsEsc(h.observacion)}</em>` : ""}${h.fotoURL ? " · 📷" : ""}</div>`).join("")}
+                        <div style="font-size:11px;color:#94a3b8;margin-bottom:6px;">Revisó: ${opsEsc(r.realizadoPor || "—")}${conFoto ? ` · ${ICON.camera} ${conFoto} foto(s)` : ""}</div>
+                        ${(r.herramientas || []).map(h => `<div style="font-size:11.5px;color:#334155;padding:2px 0;">${h.estado === "conforme" ? ICON.check : (h.estado === "faltante" ? ICON.xCircle : ICON.alert)} ${opsEsc(h.folio)} — ${opsEsc(h.descripcion)}${h.observacion ? ` · <em>${opsEsc(h.observacion)}</em>` : ""}${h.fotoURL ? ` · ${ICON.camera}` : ""}</div>`).join("")}
                         ${r.observacionesGenerales ? `<div style="font-size:11.5px;color:#64748b;margin-top:6px;border-top:1px solid #f1f5f9;padding-top:6px;">${opsEsc(r.observacionesGenerales)}</div>` : ""}
                         <div style="margin-top:8px;text-align:right;">
-                            <button id="ops-rev-share-${r.id}" onclick="opsCompartirRevisionPDF('${r.id}')" style="background:#eef2f7;border:none;color:#0B5FFF;padding:6px 11px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">📄 PDF / WhatsApp</button>
+                            <button id="ops-rev-share-${r.id}" onclick="opsCompartirRevisionPDF('${r.id}')" style="background:#eef2f7;border:none;color:#1D2E73;padding:6px 11px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">${ICON.file} PDF / WhatsApp</button>
                         </div>
                     </div>`;
                 }).join("") : '<div style="background:#fff;border-radius:14px;padding:16px 18px;color:#94a3b8;font-size:12px;">Sin revisiones registradas todavía.</div>'}`;
@@ -2806,13 +2811,13 @@
                         <div style="font-size:12.5px;font-weight:700;color:#1e293b;margin-bottom:6px;">${opsEsc(h.folio)} — ${opsEsc(h.descripcion)}</div>
                         <div style="display:flex;gap:6px;margin-bottom:6px;">
                             <label style="flex:1;text-align:center;font-size:11px;font-weight:600;padding:6px;border-radius:7px;background:#f0fdf4;color:#166534;cursor:pointer;"><input type="radio" name="rev-${h.id}" value="conforme" checked style="margin-right:4px;">Conforme</label>
-                            <label style="flex:1;text-align:center;font-size:11px;font-weight:600;padding:6px;border-radius:7px;background:#fef2f2;color:#b91c1c;cursor:pointer;"><input type="radio" name="rev-${h.id}" value="faltante" style="margin-right:4px;">Faltante</label>
+                            <label style="flex:1;text-align:center;font-size:11px;font-weight:600;padding:6px;border-radius:7px;background:#fef2f2;color:#E7402B;cursor:pointer;"><input type="radio" name="rev-${h.id}" value="faltante" style="margin-right:4px;">Faltante</label>
                             <label style="flex:1;text-align:center;font-size:11px;font-weight:600;padding:6px;border-radius:7px;background:#fff7ed;color:#c2410c;cursor:pointer;"><input type="radio" name="rev-${h.id}" value="danada" style="margin-right:4px;">Dañada</label>
                         </div>
                         <input type="text" placeholder="Observación (opcional)" id="ops-rev-obs-${h.id}" style="width:100%;border:1px solid #cbd5e1;border-radius:7px;padding:6px 9px;font-size:11.5px;box-sizing:border-box;margin-bottom:6px;">
                         <div style="display:flex;align-items:center;gap:8px;">
-                            <label style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#0B5FFF;background:#eaf0ff;padding:6px 10px;border-radius:7px;cursor:pointer;">
-                                📷 Tomar/adjuntar foto
+                            <label style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#1D2E73;background:#E9ECF5;padding:6px 10px;border-radius:7px;cursor:pointer;">
+                                ${ICON.camera} Tomar/adjuntar foto
                                 <input type="file" accept="image/*" capture="environment" style="display:none;" onchange="opsSeleccionarFotoRevision('${h.id}', this)">
                             </label>
                             <img id="ops-rev-thumb-${h.id}" style="display:none;width:34px;height:34px;object-fit:cover;border-radius:6px;border:1px solid #e2e8f0;">
@@ -2824,7 +2829,7 @@
                 <textarea id="ops-rev-obs-generales" rows="2" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 14px;resize:vertical;box-sizing:border-box;"></textarea>
                 <div style="display:flex;gap:8px;justify-content:flex-end;">
                     <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
-                    <button id="ops-rev-btn-guardar" onclick="opsGuardarRevision('${idInterno}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">Guardar revisión</button>
+                    <button id="ops-rev-btn-guardar" onclick="opsGuardarRevision('${idInterno}')" class="mkt-add-btn" style="background:#1D2E73;">Guardar revisión</button>
                 </div>
             </div>
         </div>`;
@@ -2956,7 +2961,7 @@
                 doc.text("Sin foto", x + imgW / 2, imgY + imgH / 2, { align: "center" });
                 doc.setTextColor(20);
             }
-            const estadoLabel = { conforme: "✓ Conforme", faltante: "✗ Faltante", danada: "⚠ Dañada" }[h.estado] || h.estado;
+            const estadoLabel = { conforme: "Conforme", faltante: "Faltante", danada: "Dañada" }[h.estado] || h.estado;
             const estadoColor = h.estado === "conforme" ? [22, 101, 52] : (h.estado === "faltante" ? [185, 28, 28] : [194, 65, 12]);
             doc.setFontSize(8.5); doc.setFont("helvetica", "bold");
             doc.text(`${h.folio} — ${h.descripcion}`, x + 3, imgY + imgH + 6, { maxWidth: imgW - 6 });
@@ -3009,7 +3014,7 @@
             console.error("[operaciones.js] error al compartir PDF de revisión:", err);
             alert("No se pudo generar/compartir el PDF. Intenta de nuevo.");
         } finally {
-            if (btn) { btn.disabled = false; btn.textContent = "📄 PDF / WhatsApp"; }
+            if (btn) { btn.disabled = false; btn.textContent = "PDF / WhatsApp"; }
         }
     };
 
@@ -3029,7 +3034,7 @@
                 <textarea id="ops-in-veh-motivo" rows="2" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 16px;"></textarea>
                 <div style="display:flex;gap:8px;justify-content:flex-end;">
                     <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
-                    <button onclick="opsConfirmarVehiculo('${idInterno}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">Asignar</button>
+                    <button onclick="opsConfirmarVehiculo('${idInterno}')" class="mkt-add-btn" style="background:#1D2E73;">Asignar</button>
                 </div>
             </div>
         </div>`;
@@ -3112,12 +3117,12 @@
             <div style="background:#fff;border-radius:14px;width:460px;max-width:94vw;padding:22px;max-height:90vh;overflow-y:auto;">
                 <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:2px;">Solicitud de material</div>
                 <div style="font-size:11px;color:#94a3b8;margin-bottom:10px;">Mismo formato que el kiosco de Almacén — técnico preseleccionado.</div>
-                <div style="background:#eff6ff;border-radius:10px;padding:10px 12px;margin-bottom:14px;display:flex;align-items:center;gap:8px;">
-                    <span style="color:#0B5FFF;">${ICON.user}</span>
+                <div style="background:#EDF0F7;border-radius:10px;padding:10px 12px;margin-bottom:14px;display:flex;align-items:center;gap:8px;">
+                    <span style="color:#1D2E73;">${ICON.user}</span>
                     <div><div style="font-size:12.5px;font-weight:700;color:#1e3a8a;">${opsEsc(t.nombre)}</div><div style="font-size:10.5px;color:#3b82f6;">Técnico N.° ${opsEsc(t.numeroOperativo)}</div></div>
                 </div>
 
-                <div style="font-size:11px;font-weight:700;color:#0B5FFF;margin-bottom:6px;">1 · Datos de la solicitud</div>
+                <div style="font-size:11px;font-weight:700;color:#1D2E73;margin-bottom:6px;">1 · Datos de la solicitud</div>
                 <label style="font-size:11.5px;color:#64748b;font-weight:600;">Nombre del solicitante *</label>
                 <input id="ops-in-solicitante" value="${opsEsc(opsNombreActual())}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
                 <label style="font-size:11.5px;color:#64748b;font-weight:600;">Área *</label>
@@ -3129,7 +3134,7 @@
                 <label style="font-size:11.5px;color:#64748b;font-weight:600;">Folio de servicio / póliza (opcional)</label>
                 <input id="ops-in-folioserv" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 14px;">
 
-                <div style="font-size:11px;font-weight:700;color:#0B5FFF;margin-bottom:6px;">2 · Artículos solicitados</div>
+                <div style="font-size:11px;font-weight:700;color:#1D2E73;margin-bottom:6px;">2 · Artículos solicitados</div>
                 <input list="ops-datalist-prod" id="ops-in-buscarprod" placeholder="Busca un producto por nombre o clave..." style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin-bottom:8px;">
                 <datalist id="ops-datalist-prod">${catalogoProductos.map(p => `<option data-clave="${opsEsc(p.clave || "")}" value="${opsEsc(p.desc || p.clave)}">`).join("")}</datalist>
                 <div style="display:flex;gap:6px;margin-bottom:10px;">
@@ -3138,19 +3143,19 @@
                 </div>
                 <div id="ops-carrito-lista" style="margin-bottom:14px;"></div>
 
-                <div style="font-size:11px;font-weight:700;color:#0B5FFF;margin-bottom:6px;">3 · Firma del solicitante</div>
+                <div style="font-size:11px;font-weight:700;color:#1D2E73;margin-bottom:6px;">3 · Firma del solicitante</div>
                 <div style="position:relative;border:1px dashed #cbd5e1;border-radius:10px;height:120px;overflow:hidden;">
                     <canvas id="ops-sign-canvas" style="width:100%;height:100%;touch-action:none;"></canvas>
                     <div id="ops-sign-hint" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:11.5px;pointer-events:none;">Firma aquí con el dedo o el mouse</div>
                 </div>
                 <div style="display:flex;justify-content:flex-end;margin:6px 0 14px;">
-                    <button onclick="opsLimpiarFirma()" style="background:none;border:none;color:#0B5FFF;font-size:11.5px;font-weight:600;cursor:pointer;">Limpiar firma</button>
+                    <button onclick="opsLimpiarFirma()" style="background:none;border:none;color:#1D2E73;font-size:11.5px;font-weight:600;cursor:pointer;">Limpiar firma</button>
                 </div>
 
-                <div id="ops-solic-msg" style="color:#b91c1c;font-size:11.5px;margin-bottom:8px;"></div>
+                <div id="ops-solic-msg" style="color:#E7402B;font-size:11.5px;margin-bottom:8px;"></div>
                 <div style="display:flex;gap:8px;justify-content:flex-end;">
                     <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
-                    <button onclick="opsEnviarSolicitudMaterial('${tecnicoId}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">Enviar solicitud de material</button>
+                    <button onclick="opsEnviarSolicitudMaterial('${tecnicoId}')" class="mkt-add-btn" style="background:#1D2E73;">Enviar solicitud de material</button>
                 </div>
             </div>
         </div>`;
@@ -3182,7 +3187,7 @@
             <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #eef1f5;font-size:12px;">
                 <div style="flex:1;">${opsEsc(v.desc)}</div>
                 <div style="color:#64748b;">× ${opsEsc(v.cant)}</div>
-                <button onclick="opsQuitarProductoCarrito('${k}')" style="background:none;border:none;color:#b91c1c;cursor:pointer;font-size:11px;">Quitar</button>
+                <button onclick="opsQuitarProductoCarrito('${k}')" style="background:none;border:none;color:#E7402B;cursor:pointer;font-size:11px;">Quitar</button>
             </div>`).join("") : '<div style="color:#94a3b8;font-size:11.5px;">Tu pedido está vacío.</div>';
     }
 
@@ -3275,11 +3280,11 @@
             <div style="background:#fff;border-radius:14px;padding:16px 18px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
                     <div style="font-size:12.5px;font-weight:700;color:#1e293b;">Herramienta de guardia</div>
-                    ${gestion ? `<button onclick="opsAbrirModalGuardia()" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">${ICON.plus} Asignar guardia</button>` : ""}
+                    ${gestion ? `<button onclick="opsAbrirModalGuardia()" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Asignar guardia</button>` : ""}
                 </div>
                 <div style="font-size:11px;color:#94a3b8;margin-bottom:14px;">Distinto de la herramienta de trabajo permanente — se asigna solo mientras dura la guardia y se cierra al devolver.</div>
 
-                <div style="font-size:11.5px;font-weight:700;color:#0B5FFF;margin-bottom:8px;">Guardias activas (${activas.length})</div>
+                <div style="font-size:11.5px;font-weight:700;color:#1D2E73;margin-bottom:8px;">Guardias activas (${activas.length})</div>
                 ${activas.length ? activas.map(g => opsFilaGuardia(g, true, gestion)).join("") : '<div style="color:#94a3b8;font-size:12px;padding:8px 0 16px;">Ninguna guardia activa.</div>'}
 
                 <div style="font-size:11.5px;font-weight:700;color:#64748b;margin:18px 0 8px;">Historial de guardias (${cerradas.length})</div>
@@ -3328,7 +3333,7 @@
                 <textarea id="ops-in-obsguardia" rows="2" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 16px;"></textarea>
                 <div style="display:flex;gap:8px;justify-content:flex-end;">
                     <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
-                    <button onclick="opsGuardarGuardia()" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">Asignar guardia</button>
+                    <button onclick="opsGuardarGuardia()" class="mkt-add-btn" style="background:#1D2E73;">Asignar guardia</button>
                 </div>
             </div>
         </div>`;
@@ -3378,7 +3383,7 @@
         if (!el) return;
         function tarjeta(icono, titulo, sub, onclick, disponible) {
             return `<div onclick="${disponible ? onclick : ""}" style="background:#fff;border-radius:12px;padding:16px;display:flex;align-items:center;gap:12px;cursor:${disponible ? "pointer" : "default"};opacity:${disponible ? "1" : "0.55"};">
-                <span style="width:36px;height:36px;border-radius:9px;background:#e0e7ff;color:#0B5FFF;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${icono}</span>
+                <span style="width:36px;height:36px;border-radius:9px;background:#e0e7ff;color:#1D2E73;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${icono}</span>
                 <div><div style="font-size:12.5px;font-weight:700;color:#1e293b;">${titulo}</div><div style="font-size:10.5px;color:#94a3b8;">${sub}</div></div>
             </div>`;
         }
@@ -3414,7 +3419,7 @@
         verde:    { bg: "#dcfce7", fg: "#166534", dot: "#16a34a" },
         amarillo: { bg: "#fef9c3", fg: "#854d0e", dot: "#eab308" },
         naranja:  { bg: "#ffedd5", fg: "#9a3412", dot: "#ea580c" },
-        rojo:     { bg: "#fee2e2", fg: "#991b1b", dot: "#dc2626" },
+        rojo:     { bg: "#fee2e2", fg: "#E7402B", dot: "#E7402B" },
         gris:     { bg: "#e5e7eb", fg: "#374151", dot: "#9ca3af" },
     };
     const OPS_PRIORIDADES = ["P1", "P2", "P3", "P4", "P5", "P6"];
@@ -3698,8 +3703,8 @@
                     </div>
                     ${gestion ? `
                     <div style="display:flex;gap:8px;">
-                        <button onclick="opsAbrirModalFolio()" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">${ICON.plus} Nuevo folio</button>
-                        <button onclick="document.getElementById('ops-folios-import-input').click()" class="mkt-add-btn" style="background:linear-gradient(135deg,#059669,#047857);">📥 Importar Excel</button>
+                        <button onclick="opsAbrirModalFolio()" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Nuevo folio</button>
+                        <button onclick="document.getElementById('ops-folios-import-input').click()" class="mkt-add-btn" style="background:#15803D;">📥 Importar Excel</button>
                         <input type="file" id="ops-folios-import-input" accept=".xlsx,.xls" style="display:none" onchange="opsImportarExcelFolios(this.files[0])">
                     </div>` : ""}
                 </div>
@@ -3847,10 +3852,10 @@
                 <input id="ops-fol-responsable-texto" placeholder="Nombre libre (solo si no está en Técnicos)" value="${opsEsc(!f?.tecnicoResponsableId ? (f?.responsable || "") : "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 16px;">
 
                 <div style="display:flex;justify-content:space-between;gap:8px;">
-                    ${f ? `<button onclick="opsEliminarFolio('${f.id}')" style="background:#fef2f2;border:none;color:#b91c1c;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Eliminar</button>` : "<span></span>"}
+                    ${f ? `<button onclick="opsEliminarFolio('${f.id}')" style="background:#fef2f2;border:none;color:#E7402B;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Eliminar</button>` : "<span></span>"}
                     <div style="display:flex;gap:8px;">
                         <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
-                        <button onclick="opsGuardarFolio('${id || ""}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">Guardar</button>
+                        <button onclick="opsGuardarFolio('${id || ""}')" class="mkt-add-btn" style="background:#1D2E73;">Guardar</button>
                     </div>
                 </div>
             </div>
@@ -3950,7 +3955,7 @@
                 ${opsPuedeGestionar() ? `
                 <div style="margin-top:12px;">
                     <textarea id="ops-nuevo-comentario-folio" rows="2" placeholder="Agregar comentario / feedback..." style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;resize:vertical;box-sizing:border-box;"></textarea>
-                    <button onclick="opsAgregarComentarioFolio('${f.id}')" style="margin-top:6px;background:linear-gradient(135deg,#2E7CF6,#0B5FFF);color:#fff;border:none;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Agregar comentario</button>
+                    <button onclick="opsAgregarComentarioFolio('${f.id}')" style="margin-top:6px;background:#1D2E73;color:#fff;border:none;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Agregar comentario</button>
                 </div>` : ""}
             </div>
         </div>`;
@@ -3971,12 +3976,12 @@
         el.innerHTML = comentarios.length ? comentarios.map(c => {
             const ts = c.createdAt && typeof c.createdAt.toDate === "function" ? c.createdAt.toDate() : (c.createdAt ? new Date(c.createdAt) : null);
             const esPosteriorCompromiso = atencionMs && ts && ts.getTime() > atencionMs && c.tipo !== "captura";
-            return `<div style="border-left:3px solid ${c.tipo === "captura" ? "#94a3b8" : (esPosteriorCompromiso ? "#dc2626" : "#0B5FFF")};padding:8px 12px;margin-bottom:8px;background:#f8fafc;border-radius:0 8px 8px 0;">
+            return `<div style="border-left:3px solid ${c.tipo === "captura" ? "#94a3b8" : (esPosteriorCompromiso ? "#E7402B" : "#1D2E73")};padding:8px 12px;margin-bottom:8px;background:#f8fafc;border-radius:0 8px 8px 0;">
                 <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;">
                     <span style="font-size:11.5px;font-weight:700;color:#1e293b;">${opsEsc(c.autor || "—")}</span>
                     <span style="font-size:10px;color:#94a3b8;white-space:nowrap;">${ts ? ts.toLocaleString("es-MX") : "—"}</span>
                 </div>
-                ${esPosteriorCompromiso ? `<div style="font-size:9.5px;font-weight:700;color:#b91c1c;text-transform:uppercase;letter-spacing:.3px;margin:2px 0;">⚠ Posterior a la fecha de atención comprometida</div>` : ""}
+                ${esPosteriorCompromiso ? `<div style="font-size:9.5px;font-weight:700;color:#E7402B;text-transform:uppercase;letter-spacing:.3px;margin:2px 0;">⚠ Posterior a la fecha de atención comprometida</div>` : ""}
                 ${c.tipo === "captura" ? `<div style="font-size:9.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;margin:2px 0;">📋 Captura inicial</div>` : ""}
                 <div style="font-size:12.5px;color:#334155;margin-top:2px;">${opsEsc(c.texto)}</div>
             </div>`;
@@ -4119,7 +4124,7 @@
             <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px 18px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
                     <div style="font-size:12.5px;font-weight:700;color:#1e293b;">Clientes y su tabla de SLA (horas por prioridad)</div>
-                    ${gestion ? `<button onclick="opsAbrirModalCliente()" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">${ICON.plus} Nuevo cliente</button>` : ""}
+                    ${gestion ? `<button onclick="opsAbrirModalCliente()" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Nuevo cliente</button>` : ""}
                 </div>
                 <div style="overflow-x:auto;">
                     <table style="width:100%;border-collapse:collapse;font-size:12.3px;">
@@ -4160,10 +4165,10 @@
                         <input type="number" min="0" id="ops-cli-${p}" value="${c?.horasSLA?.[p] ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 8px;font-size:12.5px;margin-top:3px;"></div>`).join("")}
                 </div>
                 <div style="display:flex;justify-content:space-between;gap:8px;">
-                    ${c ? `<button onclick="opsEliminarCliente('${c.id}')" style="background:#fef2f2;border:none;color:#b91c1c;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Eliminar</button>` : "<span></span>"}
+                    ${c ? `<button onclick="opsEliminarCliente('${c.id}')" style="background:#fef2f2;border:none;color:#E7402B;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Eliminar</button>` : "<span></span>"}
                     <div style="display:flex;gap:8px;">
                         <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
-                        <button onclick="opsGuardarCliente('${id || ""}')" class="mkt-add-btn" style="background:linear-gradient(135deg,#2E7CF6,#0B5FFF);">Guardar</button>
+                        <button onclick="opsGuardarCliente('${id || ""}')" class="mkt-add-btn" style="background:#1D2E73;">Guardar</button>
                     </div>
                 </div>
             </div>
@@ -4212,7 +4217,7 @@
         pendiente:  { label: "Pendiente",  bg: "#e0e7ff", fg: "#3730a3", siguiente: "listo" },
         listo:      { label: "Listo",      bg: "#cffafe", fg: "#155e75", siguiente: "entregado" },
         entregado:  { label: "Entregado",  bg: "#dcfce7", fg: "#166534", siguiente: null },
-        rechazada:  { label: "Rechazada",  bg: "#fee2e2", fg: "#991b1b", siguiente: null },
+        rechazada:  { label: "Rechazada",  bg: "#fee2e2", fg: "#E7402B", siguiente: null },
         cancelada:  { label: "Cancelada",  bg: "#e5e7eb", fg: "#374151", siguiente: null },
     };
     let filtroSolic = "todas";
@@ -4282,9 +4287,9 @@
                         ${["todas:Todas", "pendientes:Pendientes", "urgentes:Urgentes", "operaciones:Desde Operaciones"].map(f => {
                             const [id, label] = f.split(":");
                             const activo = filtroSolic === id;
-                            return `<button onclick="opsFiltrarSolic('${id}')" style="background:${activo ? "#0B5FFF" : "#f1f5f9"};color:${activo ? "#fff" : "#475569"};border:none;font-size:11px;font-weight:600;padding:6px 11px;border-radius:7px;cursor:pointer;">${label}</button>`;
+                            return `<button onclick="opsFiltrarSolic('${id}')" style="background:${activo ? "#1D2E73" : "#f1f5f9"};color:${activo ? "#fff" : "#475569"};border:none;font-size:11px;font-weight:600;padding:6px 11px;border-radius:7px;cursor:pointer;">${label}</button>`;
                         }).join("")}
-                        ${puedeEliminar ? `<button onclick="opsFiltrarSolic('papelera')" style="background:${filtroSolic === "papelera" ? "#b91c1c" : "#fee2e2"};color:${filtroSolic === "papelera" ? "#fff" : "#991b1b"};border:none;font-size:11px;font-weight:600;padding:6px 11px;border-radius:7px;cursor:pointer;">${ICON.trash} Papelera (${enPapelera})</button>` : ""}
+                        ${puedeEliminar ? `<button onclick="opsFiltrarSolic('papelera')" style="background:${filtroSolic === "papelera" ? "#E7402B" : "#fee2e2"};color:${filtroSolic === "papelera" ? "#fff" : "#E7402B"};border:none;font-size:11px;font-weight:600;padding:6px 11px;border-radius:7px;cursor:pointer;">${ICON.trash} Papelera (${enPapelera})</button>` : ""}
                     </div>
                 </div>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;padding:10px 12px;background:#f8fafc;border-radius:10px;">
@@ -4306,7 +4311,7 @@
                 <div style="font-size:10.5px;color:#94a3b8;margin-bottom:10px;">Esta vista es solo informativa: el estado (Pendiente / Listo / Entregado) lo controla Almacén — desde aquí no se puede avanzar el flujo.</div>
                 <div style="overflow-x:auto;">
                     <table style="width:100%;border-collapse:collapse;font-size:12px;">
-                        <thead><tr style="background:#0B5FFF;color:#fff;text-align:left;">
+                        <thead><tr style="background:#1D2E73;color:#fff;text-align:left;">
                             <th style="padding:7px 10px;border-radius:8px 0 0 8px;">Folio</th>
                             <th style="padding:7px 10px;">Fecha</th>
                             <th style="padding:7px 10px;">Técnico</th>
@@ -4331,7 +4336,7 @@
         const prod = (s.productos && s.productos[0]) || {};
         const otros = (s.productos || []).length - 1;
         const zebra = i % 2 === 0 ? "#fff" : "#f8fafc";
-        const prio = s.prioridad === "urgente" ? `<span style="color:#b91c1c;font-weight:600;">Urgente</span>` : "Normal";
+        const prio = s.prioridad === "urgente" ? `<span style="color:#E7402B;font-weight:600;">Urgente</span>` : "Normal";
         const ms = opsSolicFechaMs(s);
         const fecha = ms ? new Date(ms).toLocaleDateString("es-MX", { day: "2-digit", month: "short" }) : "—";
         return `<tr style="background:${zebra};border-bottom:1px solid #eef1f5;cursor:pointer;" onclick="opsAbrirFichaSolicitud('${s.id}')">
@@ -4346,7 +4351,7 @@
                     ? (puedeEliminar ? `<button onclick="opsRestaurarSolicitud('${s.id}')" style="background:#dcfce715;border:1px solid #bbf7d0;color:#166534;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:10.5px;font-weight:600;">Restaurar</button>` : "")
                     : `<button onclick="opsImprimirSolicitud('${s.id}')" title="Imprimir PDF" style="background:#f1f5f9;border:none;color:#334155;width:26px;height:26px;border-radius:7px;cursor:pointer;margin-right:4px;">🖨️</button>
                        <button onclick="opsWhatsAppSolicitud('${s.id}')" title="Enviar por WhatsApp" style="background:#f0fdf4;border:none;color:#16a34a;width:26px;height:26px;border-radius:7px;cursor:pointer;margin-right:4px;">💬</button>
-                       ${puedeEliminar ? `<button onclick="opsEnviarPapeleraSolicitud('${s.id}')" title="Enviar a papelera" style="background:#fef2f2;border:none;color:#b91c1c;width:26px;height:26px;border-radius:7px;cursor:pointer;">${ICON.trash}</button>` : ""}`}
+                       ${puedeEliminar ? `<button onclick="opsEnviarPapeleraSolicitud('${s.id}')" title="Enviar a papelera" style="background:#fef2f2;border:none;color:#E7402B;width:26px;height:26px;border-radius:7px;cursor:pointer;">${ICON.trash}</button>` : ""}`}
             </td>
         </tr>`;
     }
@@ -4435,7 +4440,7 @@
                 </div>
                 <div style="margin-top:20px;font-size:12.5px;font-weight:700;color:#1e293b;display:flex;align-items:center;gap:6px;">${ICON.clock} Línea de tiempo</div>
                 <div style="margin-top:10px;border-left:2px solid #e2e8f0;padding-left:14px;">
-                    ${historial.length ? historial.map(ev => `<div style="margin-bottom:12px;position:relative;"><div style="position:absolute;left:-19px;top:3px;width:8px;height:8px;border-radius:50%;background:#0B5FFF;"></div><div style="font-size:12px;color:#334155;">${opsEsc(ev.de || "—")} → ${opsEsc(ev.a || "—")} · ${opsEsc(ev.por || "")}</div></div>`).join("") : '<div style="color:#94a3b8;font-size:12px;">Sin eventos registrados aún.</div>'}
+                    ${historial.length ? historial.map(ev => `<div style="margin-bottom:12px;position:relative;"><div style="position:absolute;left:-19px;top:3px;width:8px;height:8px;border-radius:50%;background:#1D2E73;"></div><div style="font-size:12px;color:#334155;">${opsEsc(ev.de || "—")} → ${opsEsc(ev.a || "—")} · ${opsEsc(ev.por || "")}</div></div>`).join("") : '<div style="color:#94a3b8;font-size:12px;">Sin eventos registrados aún.</div>'}
                 </div>
             </div>
         </div>`;
@@ -4517,12 +4522,12 @@
         el.innerHTML = `
             <div style="background:#fff;border-radius:12px;padding:14px 16px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
                 <div style="font-size:11.5px;color:#64748b;max-width:520px;">🔔 Prueba el sistema de alertas: genera una notificación real que suena (~10s) y aparece como ventana flotante en <b>todas</b> las sesiones de Operaciones abiertas ahora mismo.</div>
-                <button onclick="opsProbarAlerta()" style="background:linear-gradient(135deg,#8B4FD6,#6d28d9);border:none;color:#fff;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700;white-space:nowrap;">🔔 Probar alerta</button>
+                <button onclick="opsProbarAlerta()" style="background:#6d28d9;border:none;color:#fff;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700;white-space:nowrap;">🔔 Probar alerta</button>
             </div>`
-            + bloque("Críticas", "#b91c1c", "#fee2e2", criticas)
+            + bloque("Críticas", "#E7402B", "#fee2e2", criticas)
             + bloque("Pendientes", "#b45309", "#fef3c7", pendientes)
             + bloque("Preventivas", "#854d0e", "#fef9c3", preventivas)
-            + bloque("Información", "#0B5FFF", "#e0e7ff", info)
+            + bloque("Información", "#1D2E73", "#e0e7ff", info)
             + (!criticas.length && !pendientes.length && !preventivas.length && !info.length
                 ? '<div style="background:#fff;border-radius:12px;padding:24px;text-align:center;color:#94a3b8;font-size:12.5px;">Sin alertas activas — todo en orden.</div>' : "");
     }
@@ -4569,7 +4574,7 @@
             <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px;">
                 <div style="background:#fff;border-radius:12px;padding:13px 15px;"><div style="font-size:10.5px;color:#94a3b8;">Asignaciones/transferencias</div><div style="font-size:19px;font-weight:700;color:#1e293b;">${kpiAsignaciones}</div></div>
                 <div style="background:#fff;border-radius:12px;padding:13px 15px;"><div style="font-size:10.5px;color:#94a3b8;">Devoluciones</div><div style="font-size:19px;font-weight:700;color:#1e293b;">${kpiDevoluciones}</div></div>
-                <div style="background:#fff;border-radius:12px;padding:13px 15px;"><div style="font-size:10.5px;color:#94a3b8;">Incidencias (daño/pérdida/baja)</div><div style="font-size:19px;font-weight:700;color:#b91c1c;">${kpiIncidencias}</div></div>
+                <div style="background:#fff;border-radius:12px;padding:13px 15px;"><div style="font-size:10.5px;color:#94a3b8;">Incidencias (daño/pérdida/baja)</div><div style="font-size:19px;font-weight:700;color:#E7402B;">${kpiIncidencias}</div></div>
             </div>
             <div style="background:#fff;border-radius:14px;padding:16px 18px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
@@ -4578,7 +4583,7 @@
                         ${["todos:Todos", "hoy:Hoy", "semana:Semana", "mes:Mes", "trimestre:Últimos 3 meses"].map(r => {
                             const [id, label] = r.split(":");
                             const activo = filtroMovRango === id;
-                            return `<button onclick="opsFiltrarMovRango('${id}')" style="background:${activo ? "#0B5FFF" : "#f1f5f9"};color:${activo ? "#fff" : "#475569"};border:none;font-size:10.5px;font-weight:600;padding:6px 10px;border-radius:7px;cursor:pointer;">${label}</button>`;
+                            return `<button onclick="opsFiltrarMovRango('${id}')" style="background:${activo ? "#1D2E73" : "#f1f5f9"};color:${activo ? "#fff" : "#475569"};border:none;font-size:10.5px;font-weight:600;padding:6px 10px;border-radius:7px;cursor:pointer;">${label}</button>`;
                         }).join("")}
                         <select onchange="opsFiltrarMovTipo(this.value)" style="border:1px solid #cbd5e1;border-radius:7px;padding:5px 8px;font-size:10.5px;">
                             <option value="todos">Todos los tipos</option>
@@ -4595,7 +4600,7 @@
     window.opsFiltrarMovTipo = function (t) { filtroMovTipo = t; opsRenderMovimientos(); };
 
     function opsItemMovimiento(m) {
-        const color = { asignacion: "#0B5FFF", transferencia: "#0B5FFF", devolucion: "#059669", baja: "#b91c1c", danio: "#b91c1c", perdida: "#b91c1c", reparacion: "#b45309", alta: "#64748b" }[m.tipo] || "#64748b";
+        const color = { asignacion: "#1D2E73", transferencia: "#1D2E73", devolucion: "#059669", baja: "#E7402B", danio: "#E7402B", perdida: "#E7402B", reparacion: "#b45309", alta: "#64748b" }[m.tipo] || "#64748b";
         return `<div style="margin-bottom:12px;position:relative;cursor:pointer;" onclick="opsAbrirDetalleMovimiento('${m.id}')">
             <div style="position:absolute;left:-19px;top:3px;width:8px;height:8px;border-radius:50%;background:${color};"></div>
             <div style="font-size:12.5px;font-weight:600;color:#1e293b;">${opsEsc(m.tipo)} — ${opsEsc(m.herramientaId)}</div>
