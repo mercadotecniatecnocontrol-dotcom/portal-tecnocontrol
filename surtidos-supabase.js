@@ -92,6 +92,7 @@
     estacionId: 'estacion_id', estacionNombre: 'estacion_nombre',
     direccion: 'direccion', lat: 'lat', lng: 'lng', tecnicoCorreo: 'tecnico_correo',
     createdAt: 'created_at',
+    almacen: 'almacen', entrega: 'entrega', total: 'total', creadoPor: 'creado_por',
   };
   function aColumnas(datosCamelCase) {
     var out = {};
@@ -232,6 +233,16 @@
         tipo: datos.tipo || null, mensaje: datos.mensaje || null, leido: false, creado_por: datos.creadoPor || null,
       });
     }).then(function (r) { if (r.error) throw r.error; });
+  };
+
+  // ── ¿Ya existe un folio activo? (chequeo suave de duplicados) ──────────
+  window.tcSbExisteFolioActivo = function (folio) {
+    return cargarSupabase().then(function (sb) {
+      return sb.from('surtidos').select('estado').eq('folio', folio);
+    }).then(function (r) {
+      if (r.error) return false; // no bloqueante ante error, igual que antes
+      return (r.data || []).some(function (row) { return row.estado !== 'finalizado' && row.estado !== 'entregado'; });
+    }).catch(function () { return false; });
   };
 
   // ── Siguiente folio de material por prefijo (ej. "VENTAS") — antes:
