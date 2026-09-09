@@ -1193,12 +1193,11 @@
   }
  
   // Sube todos los documentos pendientes a surtidos/{id}/documentos y devuelve cuántos se guardaron bien.
-  function subirDocumentosPendientes(fs, surtidoId, yo){
+  function subirDocumentosPendientes(surtidoId, yo){
     if (!estado.documentosPendientes.length) return Promise.resolve(0);
-    var col = fs.collection(window.db, 'surtidos', surtidoId, 'documentos');
     var tareas = estado.documentosPendientes.map(function (file) {
       return procesarDocumento(file).then(function (doc) {
-        return fs.addDoc(col, Object.assign(doc, { subidoPor: yo, subidoEn: fs.serverTimestamp() }));
+        return window.tcSbAgregarDocumento(surtidoId, Object.assign({}, doc, { subidoPor: yo }));
       }).catch(function (err) {
         console.warn('[almacen-pdf] no se pudo subir un documento:', file.name, err);
         return null;
@@ -1302,22 +1301,7 @@
     // El PDF solo se adjunta si cabe cómodo en un documento de Firestore (tope 1MB en base64).
     var adjuntarPdf = !!(estado.pdfBuffer && estado.pdfSize && estado.pdfSize < 700 * 1024);
  
-    cargarFirestore().then(function (fs) {
-      var col = fs.collection(window.db, 'surtidos');
- 
-      // Chequeo suave de folio duplicado activo (no bloqueante ante error)
-      var dupCheck = fs.getDocs(fs.query(col, fs.where('folio', '==', folio)))
-        .then(function (snap) {
-          var activo = false;
-          snap.forEach(function (d) {
-            var e = (d.data() && d.data().estado) || '';
-            if (e !== 'finalizado' && e !== 'entregado') activo = true;
-          });
-          return activo;
-        })
-        .catch(function () { return false; });
- 
-      return dupCheck.then(function (dup) {
+    window.tcSbExisteFolioActivo(folio).then(function (dup) {
         if (dup && !confirm('Ya existe un surtido activo con folio ' + folio + '. ¿Crear otro de todos modos?')) {
           throw new Error('cancelado');
         }
@@ -1338,26 +1322,22 @@
           origen: 'pdf',
           creadoPor: yo,
           tienePdfOriginal: adjuntarPdf,
-          createdAt: fs.serverTimestamp()
+          createdAt: new Date().toISOString()
         }, datosDestino);
-        return fs.addDoc(col, doc).then(function (ref) {
-          nuevoId = ref.id;
+        return window.tcSbCrearSurtido(doc).then(function (nuevoIdCreado) {
+          nuevoId = nuevoIdCreado;
           var tareas = [];
           if (adjuntarPdf) {
-            // Adjunta el PDF original en una subcolección (no en el documento principal, para no saturarlo).
-            tareas.push(fs.setDoc(fs.doc(window.db, 'surtidos', ref.id, 'adjuntos', 'pdf_original'), {
-              archivo: pdfABase64(estado.pdfBuffer),
-              subidoPor: yo,
-              subidoEn: fs.serverTimestamp()
-            }).catch(function (err) { console.warn('[almacen-pdf] no se pudo adjuntar el PDF:', err); }));
+            // Adjunta el PDF original directo en la columna pdf_original de Supabase.
+            tareas.push(window.tcSbGuardarPdfOriginal(nuevoIdCreado, pdfABase64(estado.pdfBuffer))
+              .catch(function (err) { console.warn('[almacen-pdf] no se pudo adjuntar el PDF:', err); }));
           }
-          tareas.push(subirDocumentosPendientes(fs, ref.id, yo).then(function (n) {
-            if (n > 0) return fs.updateDoc(ref, { numOrdenesCompra: n }).catch(function(){});
+          tareas.push(subirDocumentosPendientes(nuevoIdCreado, yo).then(function (n) {
+            if (n > 0) return window.tcSbActualizarSurtido(nuevoIdCreado, { numOrdenesCompra: n }).catch(function(){});
           }));
           return Promise.all(tareas);
         });
-      });
-    })
+      })
     .then(function () {
       msg('✔ Surtido ' + folio + ' creado.', '#059669');
       if (window.mostrarPush) window.mostrarPush('📦 Surtido creado', 'Folio ' + folio + ' · ' + cliente, '✅');
