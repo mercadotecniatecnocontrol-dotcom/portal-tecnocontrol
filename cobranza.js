@@ -116,18 +116,11 @@
   // ── TODOS los pedidos de Almacén (para la vista "Pedidos de Almacén") ──
   function cargarTodosPedidos(){
     if(pedidosTodos) return Promise.resolve(pedidosTodos);
-    return cargarFirestore().then(function(fs){
-      return fs.getDocs(fs.collection(window.db,'surtidos')).then(function(snap){
-        var list = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
-        list.sort(function(a,b){
-          var ta = a.createdAt && a.createdAt.seconds ? a.createdAt.seconds : 0;
-          var tb = b.createdAt && b.createdAt.seconds ? b.createdAt.seconds : 0;
-          return tb-ta;
-        });
-        pedidosTodos = list;
-        return list;
-      }).catch(function(e){ console.warn('[cobranza] cargarTodosPedidos:',e); pedidosTodos=[]; return []; });
-    });
+    return window.tcSbListarTodosSurtidos().then(function(list){
+      // tcSbListarTodosSurtidos ya regresa createdAt como número (ms), no {seconds:...} como Firestore.
+      pedidosTodos = list;
+      return list;
+    }).catch(function(e){ console.warn('[cobranza] cargarTodosPedidos:',e); pedidosTodos=[]; return []; });
   }
 
 
@@ -211,71 +204,50 @@
   function cargarPedidosAlmacen(clienteNombre){
     if(!clienteNombre) return Promise.resolve([]);
     if(_pedidosCache[clienteNombre]) return Promise.resolve(_pedidosCache[clienteNombre]);
-    return cargarFirestore().then(function(fs){
-      return fs.getDocs(fs.query(fs.collection(window.db,'surtidos'), fs.where('cliente','==',clienteNombre))).then(function(snap){
-        var list = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
-        list.sort(function(a,b){
-          var ta = a.createdAt && a.createdAt.seconds ? a.createdAt.seconds : 0;
-          var tb = b.createdAt && b.createdAt.seconds ? b.createdAt.seconds : 0;
-          return tb-ta;
-        });
-        _pedidosCache[clienteNombre] = list;
-        return list;
-      }).catch(function(e){ console.warn('[cobranza] cargarPedidosAlmacen:',e); return []; });
-    });
+    return window.tcSbSurtidosPorCliente(clienteNombre).then(function(list){
+      _pedidosCache[clienteNombre] = list;
+      return list;
+    }).catch(function(e){ console.warn('[cobranza] cargarPedidosAlmacen:',e); return []; });
   }
 
   function cargarEvidenciasPedido(surtidoId){
     if(_evidenciasCache[surtidoId]) return Promise.resolve(_evidenciasCache[surtidoId]);
-    return cargarFirestore().then(function(fs){
-      return fs.getDocs(fs.collection(window.db,'surtidos',surtidoId,'evidencias')).then(function(snap){
-        var list = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
-        _evidenciasCache[surtidoId] = list;
-        return list;
-      }).catch(function(){ _evidenciasCache[surtidoId]=[]; return []; });
-    });
+    return window.tcSbListarEvidencias(surtidoId).then(function(list){
+      _evidenciasCache[surtidoId] = list;
+      return list;
+    }).catch(function(){ _evidenciasCache[surtidoId]=[]; return []; });
   }
 
   // ── Seguimiento del pedido (cambios de estado) — solo lectura ──
   var _historialCache = {}; // surtidoId -> [historial]
   function cargarHistorialPedido(surtidoId){
     if(_historialCache[surtidoId]) return Promise.resolve(_historialCache[surtidoId]);
-    return cargarFirestore().then(function(fs){
-      var col = fs.collection(window.db,'surtidos',surtidoId,'historial');
-      var q; try{ q = fs.query(col, fs.orderBy('ts','asc')); }catch(e){ q = col; }
-      return fs.getDocs(q).then(function(snap){
-        var list = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
-        _historialCache[surtidoId] = list;
-        return list;
-      }).catch(function(){ _historialCache[surtidoId]=[]; return []; });
-    });
+    return window.tcSbListarHistorial(surtidoId).then(function(list){
+      _historialCache[surtidoId] = list;
+      return list;
+    }).catch(function(){ _historialCache[surtidoId]=[]; return []; });
   }
 
   // ── Documentos adjuntos por Ventas (órdenes de compra, etc.) — solo lectura ──
   var _documentosCache = {}; // surtidoId -> [documentos]
   function cargarDocumentosPedido(surtidoId){
     if(_documentosCache[surtidoId]) return Promise.resolve(_documentosCache[surtidoId]);
-    return cargarFirestore().then(function(fs){
-      return fs.getDocs(fs.collection(window.db,'surtidos',surtidoId,'documentos')).then(function(snap){
-        var list = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
-        _documentosCache[surtidoId] = list;
-        return list;
-      }).catch(function(){ _documentosCache[surtidoId]=[]; return []; });
-    });
+    return window.tcSbListarDocumentos(surtidoId).then(function(list){
+      _documentosCache[surtidoId] = list;
+      return list;
+    }).catch(function(){ _documentosCache[surtidoId]=[]; return []; });
   }
 
   // ── PDF original del pedido (si Ventas lo adjuntó) — abre en pestaña nueva ──
   window.__cbVerPdfPedido = function(surtidoId){
     var w = window.open('', '_blank');
-    cargarFirestore().then(function(fs){
-      return fs.getDoc(fs.doc(window.db,'surtidos',surtidoId,'adjuntos','pdf_original'));
-    }).then(function(snap){
-      if(!snap.exists() || !(snap.data()||{}).archivo){
+    window.tcSbObtenerPdfOriginal(surtidoId).then(function(res){
+      if(!res || !res.archivo){
         if(w) w.close();
         toast('Este pedido no tiene PDF adjunto');
         return;
       }
-      if(w){ w.document.write('<iframe src="'+(snap.data().archivo)+'" style="border:none;width:100%;height:100%;"></iframe>'); w.document.close(); }
+      if(w){ w.document.write('<iframe src="'+res.archivo+'" style="border:none;width:100%;height:100%;"></iframe>'); w.document.close(); }
     }).catch(function(e){ if(w) w.close(); toast('No se pudo abrir el PDF'); });
   };
 
