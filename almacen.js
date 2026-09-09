@@ -328,19 +328,16 @@
 
   // ── Ver el PDF original adjunto por Ventas al subir el pedido (solo lectura, para validar) ──
   window.__almVerPDF = function(id){
-    // Abrir la pestaña YA, en el mismo clic (si se espera a la consulta de Firestore
+    // Abrir la pestaña YA, en el mismo clic (si se espera a la consulta
     // antes de abrirla, Safari y otros navegadores la bloquean por no verla "inmediata").
     var w = window.open('', '_blank');
-    cargarFirestore().then(function(fs){
-      if (!window.db) throw new Error('Firestore no disponible');
-      return fs.getDoc(fs.doc(window.db,'surtidos',id,'adjuntos','pdf_original'));
-    }).then(function(snap){
-      if (!snap.exists() || !(snap.data()||{}).archivo){
+    window.tcSbObtenerPdfOriginal(id).then(function(res){
+      if (!res || !res.archivo){
         if (w) w.close();
         if (window.mostrarPush) window.mostrarPush('Almac\u00e9n','Este pedido no tiene PDF adjunto todav\u00eda','\u26a0\ufe0f');
         return;
       }
-      if (w){ w.document.write('<iframe src="'+(snap.data().archivo)+'" style="border:none;width:100%;height:100%;"></iframe>'); w.document.close(); }
+      if (w){ w.document.write('<iframe src="'+res.archivo+'" style="border:none;width:100%;height:100%;"></iframe>'); w.document.close(); }
     }).catch(function(err){
       console.error('[almacen] verPDF:',err);
       if (w) w.close();
@@ -418,12 +415,7 @@
   // ── Documentos adicionales (\u00f3rdenes de compra, etc.) que Ventas adjunt\u00f3 al subir el pedido ──
   var _docsCache = {}; // id -> [{id,tipo,archivo,nombre,subidoPor}]
   window.__almVerDocumentos = function(id){
-    cargarFirestore().then(function(fs){
-      if (!window.db) throw new Error('Firestore no disponible');
-      return fs.getDocs(fs.collection(window.db,'surtidos',id,'documentos'));
-    }).then(function(snap){
-      var items = [];
-      snap.forEach(function(d){ items.push(Object.assign({id:d.id}, d.data())); });
+    window.tcSbListarDocumentos(id).then(function(items){
       _docsCache[id] = items;
       construirModalHistorial();
       var box = document.getElementById('alm-modal-hist-box');
@@ -456,14 +448,7 @@
   // =====================================================================
   function cargarEvidencias(id){
     if (_evidenciasCache[id]) return Promise.resolve(_evidenciasCache[id]);
-    return cargarFirestore().then(function(fs){
-      if (!window.db) { _evidenciasCache[id]=[]; return []; }
-      var col=fs.collection(window.db,'surtidos',id,'evidencias');
-      var q; try{ q=fs.query(col, fs.orderBy('subidoEn','asc')); }catch(e){ q=col; }
-      return fs.getDocs(q);
-    }).then(function(snap){
-      var list=[];
-      if (snap && snap.forEach) snap.forEach(function(d){ list.push(Object.assign({id:d.id}, d.data())); });
+    return window.tcSbListarEvidencias(id).then(function(list){
       _evidenciasCache[id]=list;
       return list;
     }).catch(function(err){ console.warn('[almacen] cargarEvidencias:',err); _evidenciasCache[id]=[]; return []; });
@@ -487,11 +472,8 @@
       var esImagen = file.type && file.type.indexOf('image/')===0;
       var subida = esImagen
         ? comprimirImagen(file).then(function(dataUrl){
-            return cargarFirestore().then(function(fs){
-              if (!window.db) throw new Error('Firestore no disponible');
-              return fs.addDoc(fs.collection(window.db,'surtidos',id,'evidencias'), {
-                tipo:'imagen', imagen:dataUrl, subidoPor:yoNombre(), subidoPorEmail:yoEmail(), subidoEn:fs.serverTimestamp()
-              });
+            return window.tcSbAgregarEvidencia(id, {
+              tipo:'imagen', imagen:dataUrl, subidoPor:yoNombre()
             });
           })
         // Documento (PDF/Word/etc.): va a Firebase Storage — un documento normal no cabe
@@ -501,12 +483,8 @@
             var sref = st.mod.ref(st.storage, ruta);
             return st.mod.uploadBytes(sref, file).then(function(){ return st.mod.getDownloadURL(sref); });
           }).then(function(url){
-            return cargarFirestore().then(function(fs){
-              if (!window.db) throw new Error('Firestore no disponible');
-              return fs.addDoc(fs.collection(window.db,'surtidos',id,'evidencias'), {
-                tipo:'archivo', nombre:file.name, url:url, mimeType:file.type||null,
-                subidoPor:yoNombre(), subidoPorEmail:yoEmail(), subidoEn:fs.serverTimestamp()
-              });
+            return window.tcSbAgregarEvidencia(id, {
+              tipo:'archivo', nombre:file.name, url:url, subidoPor:yoNombre()
             });
           });
       subida.then(function(){
@@ -1243,20 +1221,17 @@
     var eHist = (_repEntregas||[]).find(function(x){ return x.id===id; });
     var ref = p || eHist; if (!ref) return;
     if (!confirm('¿Confirmar y remisionar el pedido '+(ref.folio||'')+'?')) return;
-    cargarFirestore().then(function(fs){
-      if (!window.db) throw new Error('Firestore no disponible');
-      return fs.updateDoc(fs.doc(window.db,'surtidos',id), {
-        remisionado: true, remisionadoPor: yoNombre(), remisionadoPorEmail: yoEmail(), remisionadoEn: fs.serverTimestamp()
-      }).then(function(){
-        return fs.addDoc(fs.collection(window.db,'pedido_notificaciones'), {
-          surtidoId: id, folio: ref.folio || null,
-          destinatarioNombre: ref.solicitante || ref.solicito || ref.vendedor || null,
-          destinatarioEmail: ref.solicitanteEmail || null,
-          tipo: 'remisionado',
-          mensaje: 'Tu pedido ' + (ref.folio||'') + ' fue confirmado y remisionado por Almacén.',
-          leido: false, creadoPor: String(yoNombre()||''), creadoEn: fs.serverTimestamp()
-        }).catch(function(err){ console.warn('[almacen] no se pudo registrar la notificación:', err); });
-      });
+    window.tcSbActualizarSurtido(id, {
+      remisionado: true, remisionadoPor: yoNombre(), remisionadoPorEmail: yoEmail(), remisionadoEn: new Date().toISOString()
+    }).then(function(){
+      return window.tcSbAgregarNotificacion({
+        surtidoId: id, folio: ref.folio || null,
+        destinatarioNombre: ref.solicitante || ref.solicito || ref.vendedor || null,
+        destinatarioEmail: ref.solicitanteEmail || null,
+        tipo: 'remisionado',
+        mensaje: 'Tu pedido ' + (ref.folio||'') + ' fue confirmado y remisionado por Almacén.',
+        creadoPor: String(yoNombre()||'')
+      }).catch(function(err){ console.warn('[almacen] no se pudo registrar la notificación:', err); });
     }).then(function(){
       if (p){ p.remisionado = true; p.remisionadoPor = yoNombre(); render(); }
       if (eHist){ eHist.remisionado = true; eHist.remisionadoPor = yoNombre(); if (document.getElementById('alm-hist-evid-'+id)) window.__almVerDetalleHistorial(id); if (document.getElementById('alm-rep-tbody')) renderTablaReporte(); }
@@ -1270,16 +1245,9 @@
   function moverEstado(id,destino){
     var p=buscarP(id); if(!p||!destino) return;
     var origen=p.estado;
-    cargarFirestore().then(function(fs){
-      if(!window.db){ if(window.mostrarPush)window.mostrarPush('Almacén','Firestore no disponible','⚠️'); return; }
-      var ref=fs.doc(window.db,'surtidos',id);
-      return fs.updateDoc(ref,{estado:destino}).then(function(){
-        try{
-          fs.addDoc(fs.collection(window.db,'surtidos',id,'historial'),
-            { de:origen, a:destino, por:yoNombre(), porEmail:yoEmail(), ts:fs.serverTimestamp() });
-        }catch(e){}
-        if(window.mostrarPush) window.mostrarPush('📦 Surtido', (p.folio||'')+' → '+destino.replace(/_/g,' '), '✅');
-      });
+    window.tcSbActualizarSurtido(id, {estado:destino}).then(function(){
+      window.tcSbAgregarHistorial(id, { de:origen, a:destino, por:yoNombre() }).catch(function(){});
+      if(window.mostrarPush) window.mostrarPush('📦 Surtido', (p.folio||'')+' → '+destino.replace(/_/g,' '), '✅');
     }).catch(function(err){ console.error('[almacen] moverEstado:',err); if(window.mostrarPush)window.mostrarPush('Almacén','No se pudo actualizar','⚠️'); });
   }
 
@@ -1288,10 +1256,7 @@
     var chk=Object.assign({},p.check||{});
     chk[idx]=!chk[idx];
     p.check=chk; render(); // respuesta inmediata (optimista)
-    cargarFirestore().then(function(fs){
-      if(!window.db) return;
-      return fs.updateDoc(fs.doc(window.db,'surtidos',id),{check:chk});
-    }).catch(function(err){ console.error('[almacen] check:',err); });
+    window.tcSbActualizarSurtido(id, {check:chk}).catch(function(err){ console.error('[almacen] check:',err); });
   }
 
   // ── "Descargar PDF" en Solicitud Recibida: abre el PDF (si existe) y avanza a "en preparación" automáticamente ──
@@ -1299,14 +1264,8 @@
     var p=buscarP(id); if(!p) return;
     var origen=p.estado;
     if (p.tienePdfOriginal) window.__almVerPDF(id);
-    cargarFirestore().then(function(fs){
-      if(!window.db) throw new Error('Firestore no disponible');
-      return fs.updateDoc(fs.doc(window.db,'surtidos',id), {estado:'en_preparacion'}).then(function(){
-        try{
-          fs.addDoc(fs.collection(window.db,'surtidos',id,'historial'),
-            { de:origen, a:'en_preparacion', por:yoNombre(), porEmail:yoEmail(), ts:fs.serverTimestamp() });
-        }catch(e){}
-      });
+    window.tcSbActualizarSurtido(id, {estado:'en_preparacion'}).then(function(){
+      window.tcSbAgregarHistorial(id, { de:origen, a:'en_preparacion', por:yoNombre() }).catch(function(){});
     }).catch(function(err){
       console.error('[almacen] descargarPDF:',err);
       if(window.mostrarPush) window.mostrarPush('Almac\u00e9n','No se pudo iniciar la preparaci\u00f3n','\u26a0\ufe0f');
@@ -1356,17 +1315,11 @@
     var origen = p.estado;
     var btnP=document.getElementById('alm-entrega-parcial'), btnC=document.getElementById('alm-entrega-completa');
     if(btnP) btnP.disabled=true; if(btnC) btnC.disabled=true;
-    cargarFirestore().then(function(fs){
-      if(!window.db) throw new Error('Firestore no disponible');
-      var datos={ estado:nuevoEstado, entregaObservaciones:obs };
-      if (completo) datos.entregadoEn = fs.serverTimestamp();
-      return fs.updateDoc(fs.doc(window.db,'surtidos',id), datos).then(function(){
-        try{
-          fs.addDoc(fs.collection(window.db,'surtidos',id,'historial'),
-            { de:origen, a:nuevoEstado, por:yoNombre(), porEmail:yoEmail(), nota:obs, ts:fs.serverTimestamp() });
-        }catch(e){}
-        if (pedirFirma) window.__almPedirFirmaEntrega(id);
-      });
+    var datos={ estado:nuevoEstado, entregaObservaciones:obs };
+    if (completo) datos.entregadoEn = new Date().toISOString();
+    window.tcSbActualizarSurtido(id, datos).then(function(){
+      window.tcSbAgregarHistorial(id, { de:origen, a:nuevoEstado, por:yoNombre(), nota:obs }).catch(function(){});
+      if (pedirFirma) window.__almPedirFirmaEntrega(id);
     }).then(function(){
       if(window.mostrarPush) window.mostrarPush(completo?'\u2705 Pedido entregado':'\ud83d\udce6 Entrega parcial registrada', (p.folio||''), completo?'\u2705':'\u26a0\ufe0f');
       window.__almCerrarModal();
@@ -1381,13 +1334,10 @@
   // ── Confirmación de entrega: Almacén SOLICITA la firma, quien recibe firma en el kiosko ──
   window.__almPedirFirmaEntrega = function(id){
     var p=buscarP(id); if(!p) return;
-    cargarFirestore().then(function(fs){
-      if(!window.db) throw new Error('Firestore no disponible');
-      return fs.updateDoc(fs.doc(window.db,'surtidos',id), {
-        entregaPendienteFirma: true,
-        entregaSolicitadaPor: yoNombre(),
-        entregaSolicitadaEn: fs.serverTimestamp()
-      });
+    window.tcSbActualizarSurtido(id, {
+      entregaPendienteFirma: true,
+      entregaSolicitadaPor: yoNombre(),
+      entregaSolicitadaEn: new Date().toISOString()
     }).then(function(){
       if(window.mostrarPush) window.mostrarPush('📦 Esperando firma', (p.folio||'')+' · pídele a quien recibe que firme en el kiosko', '✍️');
     }).catch(function(err){
@@ -1397,10 +1347,7 @@
   };
 
   window.__almCancelarFirmaEntrega = function(id){
-    cargarFirestore().then(function(fs){
-      if(!window.db) return;
-      return fs.updateDoc(fs.doc(window.db,'surtidos',id), { entregaPendienteFirma:false });
-    }).catch(function(err){ console.error('[almacen] cancelarFirmaEntrega:',err); });
+    window.tcSbActualizarSurtido(id, { entregaPendienteFirma:false }).catch(function(err){ console.error('[almacen] cancelarFirmaEntrega:',err); });
   };
 
   window.__almAbrirCancelar = function(id){
@@ -1428,16 +1375,10 @@
     if(!motivo){ if(msgEl) msgEl.textContent='Escribe el motivo de la cancelación.'; return; }
     var btn=document.getElementById('alm-cancel-ok'); if(btn){ btn.disabled=true; btn.textContent='Cancelando…'; }
     var origen=p.estado;
-    cargarFirestore().then(function(fs){
-      if(!window.db) throw new Error('Firestore no disponible');
-      return fs.updateDoc(fs.doc(window.db,'surtidos',id), {
-        estado:'cancelado', motivoCancelacion:motivo, canceladoPor:yoNombre(), canceladoEn:fs.serverTimestamp()
-      }).then(function(){
-        try{
-          fs.addDoc(fs.collection(window.db,'surtidos',id,'historial'),
-            { de:origen, a:'cancelado', por:yoNombre(), porEmail:yoEmail(), motivo:motivo, ts:fs.serverTimestamp() });
-        }catch(e){}
-      });
+    window.tcSbActualizarSurtido(id, {
+      estado:'cancelado', motivoCancelacion:motivo, canceladoPor:yoNombre(), canceladoEn:new Date().toISOString()
+    }).then(function(){
+      window.tcSbAgregarHistorial(id, { de:origen, a:'cancelado', por:yoNombre(), motivo:motivo }).catch(function(){});
     }).then(function(){
       if(window.mostrarPush) window.mostrarPush('✕ Pedido cancelado', (p.folio||''), '⚠️');
       window.__almCerrarModal();
@@ -1500,22 +1441,16 @@
       + '<div id="alm-hist-list" class="alm-empty">Cargando…</div>';
     document.getElementById('alm-modal-hist').classList.add('show');
 
-    cargarFirestore().then(function(fs){
-      if(!window.db) throw new Error('sin db');
-      var col=fs.collection(window.db,'surtidos',id,'historial');
-      var q; try{ q=fs.query(col, fs.orderBy('ts','asc')); }catch(e){ q=col; }
-      return fs.getDocs(q);
-    }).then(function(snap){
+    window.tcSbListarHistorial(id).then(function(rows){
       var list=document.getElementById('alm-hist-list'); if(!list) return;
-      if (snap.empty){ list.innerHTML='<div class="alm-empty">Sin cambios registrados todavía.</div>'; return; }
-      var rows=[];
-      snap.forEach(function(d){
-        var h=d.data()||{};
-        var fecha=toMs(h.ts); var fechaTxt=fecha?new Date(fecha).toLocaleString('es-MX'):'—';
-        rows.push('<div class="alm-hist-row"><span class="cambio">'+esc((h.de||'—').replace(/_/g,' '))+' → '+esc((h.a||'—').replace(/_/g,' '))+'</span>'
-          + '<span class="meta">'+esc(h.por||h.porEmail||'—')+' · '+esc(fechaTxt)+'</span></div>');
+      if (!rows.length){ list.innerHTML='<div class="alm-empty">Sin cambios registrados todavía.</div>'; return; }
+      var html=[];
+      rows.forEach(function(h){
+        var fecha=h.ts?new Date(h.ts).getTime():0; var fechaTxt=fecha?new Date(fecha).toLocaleString('es-MX'):'—';
+        html.push('<div class="alm-hist-row"><span class="cambio">'+esc((h.de||'—').replace(/_/g,' '))+' → '+esc((h.a||'—').replace(/_/g,' '))+'</span>'
+          + '<span class="meta">'+esc(h.por||'—')+' · '+esc(fechaTxt)+'</span></div>');
       });
-      list.outerHTML='<div id="alm-hist-list">'+rows.join('')+'</div>';
+      list.outerHTML='<div id="alm-hist-list">'+html.join('')+'</div>';
     }).catch(function(err){
       console.error('[almacen] historial:',err);
       var list=document.getElementById('alm-hist-list'); if(list) list.innerHTML='<div class="alm-empty">No se pudo cargar el historial.</div>';
@@ -1670,53 +1605,23 @@
   function suscribir(){
     if(_unsub) return;
     var cont=contenedor();
-    if(cont && !cont.querySelector('#alm-toolbar')) cont.innerHTML='<div class="alm-loading">Conectando con Firestore…</div>';
-    cargarFirestore().then(function(fs){
-      if(!window.db){ if(cont) cont.innerHTML='<div class="alm-loading">Firestore no está inicializado (window.db).</div>'; return; }
-      _unsub=fs.onSnapshot(fs.collection(window.db,'surtidos'),function(snap){
-        var arr=[];
-        var idsActuales={};
-        snap.forEach(function(docu){
-          var d=docu.data()||{};
-          idsActuales[docu.id]=true;
-          arr.push({
-            id:docu.id,
-            folio:d.folio||'—', cliente:d.cliente||'', vendedor:d.vendedor||'',
-            prioridad:d.prioridad||'normal', estado:d.estado||'pendiente',
-            productos:Array.isArray(d.productos)?d.productos:[],
-            check:d.check||{},
-            tipo:d.tipo||'venta', firma:d.firma||'', fechaEntrega:d.fechaEntrega||'',
-            recibioNombre:d.recibioNombre||'', firmaEntrega:d.firmaEntrega||'',
-            entregaPendienteFirma:!!d.entregaPendienteFirma,
-            cotizacionOrigen:d.cotizacionOrigen||'', motivoCancelacion:d.motivoCancelacion||'',
-            destinoTipo:d.destinoTipo||'', destinoPaqueteria:d.destinoPaqueteria||'', destinoGuia:d.destinoGuia||'',
-            destinoDireccion:d.destinoDireccion||'', destinoAlmacenOrigen:d.destinoAlmacenOrigen||'', destinoAlmacenDestino:d.destinoAlmacenDestino||'',
-            tienePdfOriginal:!!d.tienePdfOriginal, numOrdenesCompra:Number(d.numOrdenesCompra)||0,
-            caratulaEnvio:d.caratulaEnvio||null,
-            entregaObservaciones:d.entregaObservaciones||'', entregadoEn: d.entregadoEn ? toMs(d.entregadoEn) : 0,
-            comentariosAlmacen:d.comentariosAlmacen||'',
-            // Campos propios de Solicitud de Material (origen 'operaciones'/'kiosco') —
-            // sin esto, _almConstruirPDFSolicitudMaterial / _almResumenTextoSolicitud
-            // reciben el pedido "recortado" de esta caché en vez del documento completo
-            // y el PDF/WhatsApp salen con Área, Uso y Folio de servicio en blanco.
-            solicitante:d.solicitante||'', area:d.area||'', uso:d.uso||'', destino:d.destino||'',
-            folioServicio:d.folioServicio||'', origen:d.origen||'',
-            tecnicoId:d.tecnicoId||'', tecnicoNumero:d.tecnicoNumero||'', tecnicoNombre:d.tecnicoNombre||'',
-            folioNum:d.folioNum||'', folioPrefijo:d.folioPrefijo||'',
-            createdAt:toMs(d.createdAt)
-          });
+    if(cont && !cont.querySelector('#alm-toolbar')) cont.innerHTML='<div class="alm-loading">Conectando con Supabase…</div>';
+    _unsub=window.tcSbSuscribirSurtidos(function(arr){
+      var idsActuales={};
+      arr.forEach(function(p){ idsActuales[p.id]=true; });
+      if(_conocidos===null){
+        _conocidos = idsActuales;              // primera carga: no notificar nada retroactivo
+      } else {
+        arr.forEach(function(p){
+          if(!_conocidos[p.id]) notificarPedidoNuevo(p);
         });
-        if(_conocidos===null){
-          _conocidos = idsActuales;              // primera carga: no notificar nada retroactivo
-        } else {
-          arr.forEach(function(p){
-            if(!_conocidos[p.id]) notificarPedidoNuevo(p);
-          });
-          _conocidos = idsActuales;
-        }
-        pedidos=arr; render();
-      },function(err){ console.error('[almacen] onSnapshot:',err); if(cont) cont.innerHTML='<div class="alm-loading">Error al leer <b>surtidos</b>: '+esc(err.message||err)+'</div>'; });
-    }).catch(function(err){ console.error('[almacen] Firestore load:',err); if(cont) cont.innerHTML='<div class="alm-loading">No se pudo cargar Firestore.</div>'; });
+        _conocidos = idsActuales;
+      }
+      pedidos=arr; render();
+    }, function(err){
+      console.error('[almacen] suscripción Supabase:',err);
+      if(cont) cont.innerHTML='<div class="alm-loading">Error al leer <b>surtidos</b>: '+esc(err.message||err)+'</div>';
+    });
   }
 
   // =====================================================================
@@ -1734,30 +1639,24 @@
   var _repEntregas = null;   // caché de la última carga [{...}]
 
   function cargarEntregas(){
-    return cargarFirestore().then(function(fs){
-      if(!window.db) throw new Error('Firestore no disponible');
-      var q = fs.query(fs.collection(window.db,'surtidos'), fs.where('estado','in',['entregado','finalizado','cancelado']));
-      return fs.getDocs(q);
-    }).then(function(snap){
-      var arr=[];
-      snap.forEach(function(docu){
-        var d=docu.data()||{};
-        arr.push({
-          id: docu.id,
+    return window.tcSbSurtidosPorEstados(['entregado','finalizado','cancelado']).then(function(lista){
+      var arr = lista.map(function(d){
+        return {
+          id: d.id,
           folio: d.folio||'—', cliente: d.cliente||'', tipo: d.tipo||'venta',
           estado: d.estado||'',
           solicito: d.tipo==='material' ? (d.solicitante||'—') : (d.vendedor||'—'),
           recibio: d.recibioNombre||'',
           motivoCancelacion: d.motivoCancelacion||'',
           firma: d.firma||'', firmaEntrega: d.firmaEntrega||'',
-          creadoMs: toMs(d.createdAt),
-          entregadoMs: d.entregadoEn ? toMs(d.entregadoEn) : null,
-          canceladoMs: d.canceladoEn ? toMs(d.canceladoEn) : null,
+          creadoMs: d.createdAt||0,
+          entregadoMs: d.entregadoEn || null,
+          canceladoMs: d.canceladoEn ? new Date(d.canceladoEn).getTime() : null,
           piezas: (Array.isArray(d.productos)?d.productos:[]).reduce(function(a,x){return a+(Number(x.cant)||0);},0),
           productos: Array.isArray(d.productos)?d.productos:[],
           remisionado: !!d.remisionado, remisionadoPor: d.remisionadoPor||'',
           remisionAspelFolio: d.remisionAspelFolio||'', remisionAspelFecha: d.remisionAspelFecha||null
-        });
+        };
       });
       arr.sort(function(a,b){ return (b.entregadoMs||b.canceladoMs||b.creadoMs)-(a.entregadoMs||a.canceladoMs||a.creadoMs); });
       _repEntregas = arr;
@@ -2242,13 +2141,10 @@
     if(p){ cb(p); return; }
     // El caché local (pedidos) solo se llena cuando se ha abierto Almacén en esta
     // sesión. Si nos llaman desde otro módulo (p.ej. Operaciones) sin pasar por ahí,
-    // se hace una lectura puntual a Firestore en vez de fallar.
-    cargarFirestore().then(function(fs){
-      if(!window.db) throw new Error('Firestore no disponible');
-      return fs.getDoc(fs.doc(window.db,'surtidos',id));
-    }).then(function(snap){
-      if(!snap.exists()){ if(window.mostrarPush) window.mostrarPush('Almacén','No se encontró la solicitud','⚠️'); return; }
-      cb(Object.assign({id:snap.id}, snap.data()));
+    // se hace una lectura puntual a Supabase en vez de fallar.
+    window.tcSbObtenerSurtido(id).then(function(p){
+      if(!p){ if(window.mostrarPush) window.mostrarPush('Almacén','No se encontró la solicitud','⚠️'); return; }
+      cb(p);
     }).catch(function(err){
       console.error('[almacen] _almResolverPedido:', err);
       if(window.mostrarPush) window.mostrarPush('Almacén','No se pudo cargar la solicitud','⚠️');
