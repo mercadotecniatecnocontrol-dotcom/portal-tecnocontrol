@@ -1129,7 +1129,6 @@
             n++;
         }
         alert(`Listo — Almacén General verificado y ${n} almacén(es) de técnico verificado(s)/creado(s).`);
-        if (tabActual === "almacenes") opsRenderAlmacenes();
     };
 
     // ═══════════════════════ MONTAJE / OVERLAY ═══════════════════════
@@ -1176,7 +1175,7 @@
     function opsRenderShell() {
         const rol = opsRolActual();
         const rolLabel = { administrador: "Administrador", almacen: "Almacén", consulta: "Consulta" }[rol];
-        const items = ["resumen:Resumen", "dashboard:Herramientas", "catalogo:Catálogo", "almacenes:Almacenes", "guardias:Guardias", "tecnicos:Técnicos", "servicios:Servicios",
+        const items = ["resumen:Resumen", "dashboard:Herramientas", "guardias:Guardias", "tecnicos:Técnicos", "servicios:Servicios",
             "folios:Folios", "clientes:Clientes",
             ...(opsPuedeHacer("autorizar_material") ? ["solicitudes:Solicitudes"] : []),
             "alertas:Alertas", "movimientos:Movimientos"];
@@ -1221,8 +1220,6 @@
         if (activo) { activo.style.color = "#1D2E73"; activo.style.background = "#E9ECF5"; activo.style.borderLeftColor = "#1D2E73"; }
         if (tab === "resumen") opsRenderResumen();
         else if (tab === "dashboard") opsRenderDashboard();
-        else if (tab === "catalogo") opsRenderCatalogo();
-        else if (tab === "almacenes") opsRenderAlmacenes();
         else if (tab === "guardias") opsRenderGuardias();
         else if (tab === "tecnicos") opsRenderTecnicos();
         else if (tab === "servicios") opsRenderServicios();
@@ -1241,7 +1238,6 @@
             unsubHerr = fs.onSnapshot(fs.query(fs.collection(db, COL_HERRAMIENTAS), fs.orderBy("folio")), snap => {
                 cacheHerr = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                 if (tabActual === "dashboard") opsRenderDashboard();
-                if (tabActual === "catalogo") opsRenderCatalogo();
                 if (tabActual === "resumen") opsRenderResumen();
             });
         }
@@ -1250,7 +1246,6 @@
                 cacheTec = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                 if (tabActual === "tecnicos") opsRenderTecnicos();
                 if (tabActual === "dashboard") opsRenderDashboard();
-                if (tabActual === "catalogo") opsRenderCatalogo();
                 if (tabActual === "resumen") opsRenderResumen();
             });
         }
@@ -1283,7 +1278,6 @@
             unsubTraspasos = fs.onSnapshot(fs.query(fs.collection(db, COL_HERR_TRASPASOS), fs.where("estatus", "==", "Pendiente recepción")), snap => {
                 cacheTraspasosPend = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                 if (tabActual === "dashboard") opsRenderDashboard();
-                if (tabActual === "catalogo") opsRenderCatalogo();
             }, () => { cacheTraspasosPend = []; });
         }
         if (!unsubNotif) {
@@ -1457,12 +1451,13 @@
         ];
 
         const gestion = opsPuedeGestionar();
-        const filtro = filtroHerr.trim().toLowerCase();
-        const lista = cacheHerr.filter(h => !filtro
-            || (h.folio || "").toLowerCase().includes(filtro)
-            || (h.descripcion || "").toLowerCase().includes(filtro)
-            || (h.marca || "").toLowerCase().includes(filtro)
-            || opsNombreTecnico(h.tecnicoActualId).toLowerCase().includes(filtro));
+        let lista = cacheHerr.slice();
+        const b = filtroCat.busca.trim().toLowerCase();
+        if (b) lista = lista.filter(h => (h.folio || "").toLowerCase().includes(b) || (h.descripcion || "").toLowerCase().includes(b) || (h.marca || "").toLowerCase().includes(b) || opsNombreTecnico(h.tecnicoActualId).toLowerCase().includes(b));
+        if (filtroCat.categoria) lista = lista.filter(h => (h.categoria || "") === filtroCat.categoria);
+        if (filtroCat.departamento) lista = lista.filter(h => (h.departamento || "") === filtroCat.departamento);
+        if (filtroCat.estado) lista = lista.filter(h => (h.estado || "disponible") === filtroCat.estado);
+        if (filtroCat.condicion) lista = lista.filter(h => (h.condicion || "") === filtroCat.condicion);
 
         el.innerHTML = `
             <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px;">
@@ -1472,36 +1467,24 @@
                         <div><div style="font-size:19px;font-weight:700;color:#1e293b;line-height:1;">${k.valor}</div><div style="font-size:10.5px;color:#64748b;margin-top:3px;">${k.label}</div></div>
                     </div>`).join("")}
             </div>
-            <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px 18px;">
-                <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;">
-                    <div style="display:flex;align-items:center;gap:8px;">
-                        <span style="color:#94a3b8;">${ICON.search}</span>
-                        <input type="text" id="ops-herr-buscar" value="${opsEsc(filtroHerr)}" placeholder="Buscar por folio, descripción, marca o técnico..." oninput="opsFiltrarHerr(this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 11px;font-size:12.5px;width:300px;outline:none;">
+            <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;">
+                <div style="display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:8px 13px;flex:1;min-width:240px;max-width:420px;">
+                    <span style="color:#94a3b8;">${ICON.search}</span>
+                    <input type="text" id="ops-herr-buscar" value="${opsEsc(filtroCat.busca)}" placeholder="Buscar por folio, descripción, marca o técnico..." oninput="opsFiltrarCatalogo('busca', this.value)" style="border:none;outline:none;font-size:12.5px;flex:1;">
+                </div>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <div style="display:flex;background:#eef2f7;border-radius:9px;padding:3px;">
+                        <button onclick="opsCambiarVistaHerr('almacen')" style="border:none;background:${vistaHerr === "almacen" ? "#1D2E73" : "transparent"};color:${vistaHerr === "almacen" ? "#fff" : "#475569"};padding:6px 12px;border-radius:7px;cursor:pointer;font-size:11.5px;font-weight:600;">Por almacén</button>
+                        <button onclick="opsCambiarVistaHerr('tipo')" style="border:none;background:${vistaHerr === "tipo" ? "#1D2E73" : "transparent"};color:${vistaHerr === "tipo" ? "#fff" : "#475569"};padding:6px 12px;border-radius:7px;cursor:pointer;font-size:11.5px;font-weight:600;">Por tipo de artículo</button>
                     </div>
                     ${gestion ? `
-                    <div style="display:flex;gap:8px;">
-                        <button onclick="opsAbrirModalPieza()" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Nueva pieza</button>
-                        <button onclick="opsSembrarCatalogoBase()" class="mkt-add-btn" style="background:#334155;">${ICON.box} Cargar catálogo base</button>
-                        <button onclick="opsImportarExcelReal()" class="mkt-add-btn" style="background:#15803D;">📥 Importar Excel real (12 técnicos)</button>
-                    </div>` : ""}
+                    <button onclick="opsAbrirModalPieza()" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Nueva pieza</button>
+                    <button onclick="opsSembrarCatalogoBase()" class="mkt-add-btn" style="background:#334155;">${ICON.box} Cargar catálogo base</button>
+                    <button onclick="opsImportarExcelReal()" class="mkt-add-btn" style="background:#15803D;">${ICON.file} Importar Excel real (12 técnicos)</button>` : ""}
                 </div>
-                <div style="overflow-x:auto;">
-                    <table style="width:100%;border-collapse:collapse;font-size:12.3px;">
-                        <thead><tr style="background:#1f2937;color:#fff;text-align:left;">
-                            <th style="padding:8px 10px;border-radius:8px 0 0 8px;">Folio</th>
-                            <th style="padding:8px 10px;">Descripción</th>
-                            <th style="padding:8px 10px;">Estado</th>
-                            <th style="padding:8px 10px;">Técnico asignado</th>
-                            <th style="padding:8px 10px;">Ubicación</th>
-                            <th style="padding:8px 10px;border-radius:0 8px 8px 0;text-align:right;">Acciones</th>
-                        </tr></thead>
-                        <tbody>${lista.length ? lista.map((h, i) => opsFilaHerramienta(h, i, gestion)).join("") : `<tr><td colspan="6" style="padding:22px;text-align:center;color:#94a3b8;">Sin herramienta registrada. ${gestion ? 'Usa "Cargar catálogo base" o "Nueva pieza".' : ''}</td></tr>`}</tbody>
-                    </table>
-                </div>
-            </div>`;
-
-        const badge = document.getElementById("ops-badge-count-herr");
-        if (badge) badge.textContent = String(total);
+            </div>
+            ${vistaHerr === "almacen" ? opsFragmentoVistaAlmacen() : opsFragmentoVistaTipo(lista)}
+        `;
     }
 
     function opsFilaHerramienta(h, i, gestion) {
@@ -1545,20 +1528,28 @@
     window.opsFiltrarHerr = function (v) { filtroHerr = v || ""; opsRerenderConFoco(opsRenderDashboard); };
 
     // ── Almacenes (Almacén General + uno por técnico) ──────────────
-    function opsRenderAlmacenes() {
-        const el = document.getElementById("ops-tab-content");
-        if (!el) return;
+    // ── Vista unificada de Herramientas: Almacenes + Catálogo fusionados ──
+    // Antes eran 3 pestañas mostrando la misma información de formas distintas.
+    // Ahora es una sola pantalla con un selector de agrupación; el detalle de
+    // cada almacén o cada tipo de artículo abre el mismo panel de piezas.
+    let vistaHerr = "almacen"; // "almacen" | "tipo"
+    window.opsCambiarVistaHerr = function (v) { vistaHerr = v; opsRenderDashboard(); };
 
+    function opsThumb(h, size) {
+        return h.fotoURL
+            ? `<img src="${opsEsc(h.fotoURL)}" style="width:${size}px;height:${size}px;object-fit:cover;border-radius:7px;border:1px solid #e2e8f0;flex-shrink:0;">`
+            : `<span style="width:${size}px;height:${size}px;border-radius:7px;background:#E9ECF5;color:#1D2E73;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${ICON.wrench}</span>`;
+    }
+
+    function opsFragmentoVistaAlmacen() {
         const enGeneral = cacheHerr.filter(h => !h.tecnicoActualId && h.estado !== "baja");
         const tecnicosActivos = cacheTec.filter(t => t.estatus === "activo");
-
-        el.innerHTML = `
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-                <div style="font-size:12.5px;color:#64748b;">Cada técnico activo tiene su propio almacén — mismo id que su ficha, para poder ligarlo después con Aspel como traspaso entre almacenes.</div>
-                <button onclick="opsBackfillAlmacenes()" style="background:#eef2f7;border:none;color:#1D2E73;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:600;white-space:nowrap;margin-left:12px;">Verificar/crear almacenes faltantes</button>
+        return `
+            <div style="text-align:right;margin-bottom:10px;">
+                <a href="javascript:void(0)" onclick="opsBackfillAlmacenes()" style="font-size:11px;color:#94a3b8;text-decoration:underline;">Verificar/crear almacenes faltantes</a>
             </div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;">
-                <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;border-left:4px solid #1D2E73;padding:15px 16px;">
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px;">
+                <div onclick="opsAbrirAlmacenPiezas(null)" style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;border-left:4px solid #1D2E73;padding:15px 16px;cursor:pointer;transition:border-color .15s;" onmouseover="this.style.borderColor='#1D2E73'" onmouseout="this.style.borderLeftColor='#1D2E73';this.style.borderColor='#e2e8f0';this.style.borderLeftColor='#1D2E73'">
                     <div style="font-size:13.5px;font-weight:700;color:#1e293b;">Almacén General</div>
                     <div style="font-size:11px;color:#94a3b8;margin:2px 0 10px;">Sin técnico asignado</div>
                     <div style="display:flex;align-items:baseline;gap:5px;">
@@ -1568,9 +1559,9 @@
                 </div>
                 ${tecnicosActivos.map(t => {
                     const n = cacheHerr.filter(h => h.tecnicoActualId === t.id && h.estado !== "baja").length;
-                    return `<div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:15px 16px;">
+                    return `<div onclick="opsAbrirAlmacenPiezas('${t.id}')" style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:15px 16px;cursor:pointer;transition:border-color .15s;" onmouseover="this.style.borderColor='#1D2E73'" onmouseout="this.style.borderColor='#e2e8f0'">
                         <div style="font-size:13.5px;font-weight:700;color:#1e293b;">${opsEsc(t.nombre)}</div>
-                        <div style="font-size:11px;color:#94a3b8;margin:2px 0 10px;">N.° ${opsEsc(t.numeroOperativo)} · almacén ${opsEsc(t.id)}</div>
+                        <div style="font-size:11px;color:#94a3b8;margin:2px 0 10px;">N.° ${opsEsc(t.numeroOperativo)}</div>
                         <div style="display:flex;align-items:baseline;gap:5px;">
                             <span style="font-size:22px;font-weight:800;color:#1e293b;">${n}</span>
                             <span style="font-size:11px;color:#64748b;">pieza(s)</span>
@@ -1579,6 +1570,39 @@
                 }).join("")}
             </div>`;
     }
+
+    // ── Panel: piezas de un almacén (General o de un técnico) ─────
+    window.opsAbrirAlmacenPiezas = function (tecnicoId) {
+        const piezas = cacheHerr.filter(h => (tecnicoId ? h.tecnicoActualId === tecnicoId : !h.tecnicoActualId) && h.estado !== "baja")
+            .sort((a, b) => (a.folio || "").localeCompare(b.folio || ""));
+        const nombre = tecnicoId ? opsNombreTecnico(tecnicoId) : "Almacén General";
+        const wrap = document.getElementById("ops-panel-wrap");
+        wrap.innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.5);z-index:99998;display:flex;justify-content:flex-end;" onclick="if(event.target===this)document.getElementById('ops-panel-wrap').innerHTML=''">
+            <div style="background:#fff;width:460px;max-width:92vw;height:100%;overflow-y:auto;padding:22px;box-shadow:-6px 0 20px rgba(0,0,0,0.15);">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;">
+                    <div>
+                        <div style="font-size:16px;font-weight:700;color:#1e293b;">${opsEsc(nombre)}</div>
+                        <div style="font-size:11.5px;color:#94a3b8;">${piezas.length} pieza(s)</div>
+                    </div>
+                    <button onclick="document.getElementById('ops-panel-wrap').innerHTML=''" style="background:#f1f5f9;border:none;width:28px;height:28px;border-radius:7px;cursor:pointer;">${ICON.close}</button>
+                </div>
+                ${piezas.length ? piezas.map(h => {
+                    const e = ESTADOS_HERRAMIENTA[h.estado] || ESTADOS_HERRAMIENTA.disponible;
+                    return `<div onclick="opsAbrirFichaHerramienta('${h.id}')" style="border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;margin-bottom:8px;cursor:pointer;display:flex;gap:10px;align-items:center;">
+                        ${opsThumb(h, 38)}
+                        <div style="min-width:0;flex:1;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;">
+                                <span style="font-size:12.5px;font-weight:700;color:#334155;">${opsEsc(h.folio)}</span>
+                                <span style="background:${e.bg};color:${e.fg};font-size:10px;font-weight:600;padding:2px 8px;border-radius:999px;">${e.label}</span>
+                            </div>
+                            <div style="font-size:11.5px;color:#64748b;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${opsEsc(h.descripcion)}</div>
+                        </div>
+                    </div>`;
+                }).join("") : '<div style="color:#94a3b8;font-size:12px;padding:10px 0;">Sin piezas en este almacén.</div>'}
+            </div>
+        </div>`;
+    };
 
     // ── Catálogo agrupado (vista "por tipo de artículo") ────────────
     // No cambia el modelo de datos: sigue siendo un folio por pieza física
@@ -1602,26 +1626,14 @@
         return Array.from(grupos.values()).sort((a, b) => b.piezas.length - a.piezas.length || a.descripcion.localeCompare(b.descripcion));
     }
 
-    window.opsFiltrarCatalogo = function (campo, valor) { filtroCat[campo] = valor; opsRerenderConFoco(opsRenderCatalogo); };
+    window.opsFiltrarCatalogo = function (campo, valor) { filtroCat[campo] = valor; opsRerenderConFoco(opsRenderDashboard); };
     window.opsLimpiarFiltrosCatalogo = function () {
         filtroCat = { busca: filtroCat.busca, categoria: "", departamento: "", estado: "", condicion: "" };
-        opsRenderCatalogo();
+        opsRenderDashboard();
     };
 
-    function opsRenderCatalogo() {
-        const el = document.getElementById("ops-tab-content");
-        if (!el) return;
-
+    function opsFragmentoVistaTipo(lista) {
         const categorias = [...new Set(cacheHerr.map(h => (h.categoria || "").trim()).filter(Boolean))].sort();
-
-        let lista = cacheHerr.slice();
-        const b = filtroCat.busca.trim().toLowerCase();
-        if (b) lista = lista.filter(h => (h.folio || "").toLowerCase().includes(b) || (h.descripcion || "").toLowerCase().includes(b) || (h.marca || "").toLowerCase().includes(b) || opsNombreTecnico(h.tecnicoActualId).toLowerCase().includes(b));
-        if (filtroCat.categoria) lista = lista.filter(h => (h.categoria || "") === filtroCat.categoria);
-        if (filtroCat.departamento) lista = lista.filter(h => (h.departamento || "") === filtroCat.departamento);
-        if (filtroCat.estado) lista = lista.filter(h => (h.estado || "disponible") === filtroCat.estado);
-        if (filtroCat.condicion) lista = lista.filter(h => (h.condicion || "") === filtroCat.condicion);
-
         cacheGruposCatalogo = opsAgruparCatalogo(lista);
 
         const selFiltro = (id, campo, opciones, valorActual) => `
@@ -1640,7 +1652,7 @@
                 ${Object.keys(CONDICIONES_HERRAMIENTA).map(k => `<option value="${k}" ${valorActual === k ? "selected" : ""}>${CONDICIONES_HERRAMIENTA[k].label}</option>`).join("")}
             </select>`;
 
-        el.innerHTML = `
+        return `
             <div style="display:flex;gap:18px;align-items:flex-start;">
                 <div style="width:200px;flex-shrink:0;background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px;">
                     <div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:2px;">Categoría</div>
@@ -1654,11 +1666,7 @@
                     <button onclick="opsLimpiarFiltrosCatalogo()" style="width:100%;background:#f1f5f9;border:none;color:#475569;padding:8px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:600;margin-top:2px;">Limpiar filtros</button>
                 </div>
                 <div style="flex:1;min-width:0;">
-                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:9px 13px;">
-                        <span style="color:#94a3b8;">${ICON.search}</span>
-                        <input type="text" id="ops-cat-buscar" placeholder="Buscar por folio, descripción, marca o técnico..." value="${opsEsc(filtroCat.busca)}" oninput="opsFiltrarCatalogo('busca', this.value)" style="border:none;outline:none;font-size:12.5px;flex:1;">
-                        <span style="font-size:11px;color:#94a3b8;font-weight:600;white-space:nowrap;">${cacheGruposCatalogo.length} artículo(s) · ${lista.length} pieza(s)</span>
-                    </div>
+                    <div style="font-size:11px;color:#94a3b8;font-weight:600;margin-bottom:10px;">${cacheGruposCatalogo.length} artículo(s) · ${lista.length} pieza(s)</div>
                     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;">
                         ${cacheGruposCatalogo.length ? cacheGruposCatalogo.map((g, i) => opsCardCatalogo(g, i)).join("") : `<div style="grid-column:1/-1;padding:40px;text-align:center;color:#94a3b8;background:#fff;border-radius:14px;border:1px solid #e2e8f0;">Sin artículos que coincidan con el filtro.</div>`}
                     </div>
@@ -1678,11 +1686,12 @@
         const masOtros = porTecnico.size - filasTec.length;
         const condMuestra = g.piezas.find(p => p.condicion) ? g.piezas.find(p => p.condicion).condicion : null;
         const cond = condMuestra ? CONDICIONES_HERRAMIENTA[condMuestra] : null;
+        const conFoto = g.piezas.find(p => p.fotoURL);
 
         return `<div onclick="opsAbrirGrupoCatalogo(${idx})" style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:15px 16px;cursor:pointer;transition:border-color .15s;" onmouseover="this.style.borderColor='#1D2E73'" onmouseout="this.style.borderColor='#e2e8f0'">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
                 <div style="font-size:13.5px;font-weight:700;color:#1e293b;line-height:1.3;">${opsEsc(g.descripcion)}</div>
-                <span style="flex-shrink:0;width:34px;height:34px;border-radius:9px;background:#E9ECF5;color:#1D2E73;display:flex;align-items:center;justify-content:center;">${ICON.wrench}</span>
+                ${opsThumb(conFoto || {}, 34)}
             </div>
             <div style="font-size:11px;color:#94a3b8;margin:2px 0 10px;">${opsEsc(g.categoria || "Sin categoría")}${cond ? ` · <span style="color:${cond.fg};font-weight:600;">${cond.label}</span>` : ""}</div>
             <div style="display:flex;align-items:baseline;gap:5px;margin-bottom:10px;">
@@ -1720,12 +1729,15 @@
                 </div>
                 ${piezas.map(h => {
                     const e = ESTADOS_HERRAMIENTA[h.estado] || ESTADOS_HERRAMIENTA.disponible;
-                    return `<div onclick="opsAbrirFichaHerramienta('${h.id}')" style="border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;margin-bottom:8px;cursor:pointer;">
-                        <div style="display:flex;justify-content:space-between;align-items:center;">
-                            <span style="font-size:12.5px;font-weight:700;color:#334155;">${opsEsc(h.folio)}</span>
-                            <span style="background:${e.bg};color:${e.fg};font-size:10px;font-weight:600;padding:2px 8px;border-radius:999px;">${e.label}</span>
+                    return `<div onclick="opsAbrirFichaHerramienta('${h.id}')" style="border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;margin-bottom:8px;cursor:pointer;display:flex;gap:10px;align-items:center;">
+                        ${opsThumb(h, 38)}
+                        <div style="min-width:0;flex:1;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;">
+                                <span style="font-size:12.5px;font-weight:700;color:#334155;">${opsEsc(h.folio)}</span>
+                                <span style="background:${e.bg};color:${e.fg};font-size:10px;font-weight:600;padding:2px 8px;border-radius:999px;">${e.label}</span>
+                            </div>
+                            <div style="font-size:11.5px;color:#64748b;margin-top:3px;">${opsEsc(opsNombreTecnico(h.tecnicoActualId))} · ${opsEsc(h.ubicacionActual || "—")}</div>
                         </div>
-                        <div style="font-size:11.5px;color:#64748b;margin-top:3px;">${opsEsc(opsNombreTecnico(h.tecnicoActualId))} · ${opsEsc(h.ubicacionActual || "—")}</div>
                     </div>`;
                 }).join("")}
             </div>
@@ -1750,6 +1762,19 @@
                     </div>
                     <button onclick="document.getElementById('ops-panel-wrap').innerHTML=''" style="background:#f1f5f9;border:none;width:28px;height:28px;border-radius:7px;cursor:pointer;">${ICON.close}</button>
                 </div>
+
+                <div style="margin:12px 0;">
+                    ${h.fotoURL
+                        ? `<img id="ops-ficha-foto-img" src="${opsEsc(h.fotoURL)}" style="width:100%;height:170px;object-fit:cover;border-radius:10px;border:1px solid #e2e8f0;display:block;">`
+                        : `<div id="ops-ficha-foto-img" style="width:100%;height:110px;border-radius:10px;background:#E9ECF5;color:#1D2E73;display:flex;align-items:center;justify-content:center;">${ICON.wrench}</div>`}
+                    ${gestion ? `
+                    <label style="display:flex;align-items:center;justify-content:center;gap:6px;margin-top:8px;font-size:11.5px;font-weight:600;color:#1D2E73;background:#E9ECF5;padding:7px 10px;border-radius:8px;cursor:pointer;">
+                        ${ICON.camera} ${h.fotoURL ? "Cambiar foto" : "Agregar foto"}
+                        <input type="file" accept="image/*" capture="environment" style="display:none;" onchange="opsSubirFotoHerramienta('${id}', this)">
+                    </label>
+                    <span id="ops-ficha-foto-estado" style="font-size:10.5px;color:#94a3b8;display:block;text-align:center;margin-top:3px;"></span>` : ""}
+                </div>
+
                 <span style="background:${e.bg};color:${e.fg};font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;">${e.label}</span>
                 ${h.condicion && CONDICIONES_HERRAMIENTA[h.condicion] ? `<span style="background:${CONDICIONES_HERRAMIENTA[h.condicion].bg};color:${CONDICIONES_HERRAMIENTA[h.condicion].fg};font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;margin-left:6px;">${CONDICIONES_HERRAMIENTA[h.condicion].label}</span>` : ""}
 
@@ -1782,6 +1807,31 @@
                 </div>
             </div>
         </div>`;
+    };
+
+    window.opsSubirFotoHerramienta = async function (id, inputEl) {
+        const file = inputEl.files && inputEl.files[0];
+        if (!file) return;
+        const estadoEl = document.getElementById("ops-ficha-foto-estado");
+        if (estadoEl) estadoEl.textContent = "Subiendo...";
+        try {
+            const blob = await opsComprimirImagen(file, 1200, 0.82);
+            const storageTools = await opsGetStorage();
+            const ref = storageTools.stMod.ref(storageTools.storage, `herramientas/fotos/${id}.jpg`);
+            await storageTools.stMod.uploadBytes(ref, blob, { contentType: "image/jpeg" });
+            const url = await storageTools.stMod.getDownloadURL(ref);
+            const { db, fs } = await opsGetFB();
+            await fs.updateDoc(fs.doc(db, COL_HERRAMIENTAS, id), { fotoURL: url });
+            const idx = cacheHerr.findIndex(x => x.id === id);
+            if (idx >= 0) cacheHerr[idx].fotoURL = url;
+            const img = document.getElementById("ops-ficha-foto-img");
+            if (img && img.tagName === "IMG") { img.src = url; }
+            else if (img) { img.outerHTML = `<img id="ops-ficha-foto-img" src="${opsEsc(url)}" style="width:100%;height:170px;object-fit:cover;border-radius:10px;border:1px solid #e2e8f0;display:block;">`; }
+            if (estadoEl) estadoEl.textContent = "Foto guardada";
+        } catch (err) {
+            console.error("[operaciones.js] error al subir foto de herramienta:", err);
+            if (estadoEl) estadoEl.textContent = "Error al subir la foto";
+        }
     };
 
     function opsTimelineItem(m) {
@@ -2304,7 +2354,7 @@
             if (opsTraspasoFotoBlob) {
                 try {
                     const storageTools = await opsGetStorage();
-                    const ruta = `traspasos_herramienta/${herramientaId}_${Date.now()}.jpg`;
+                    const ruta = `herramientas/traspasos/${herramientaId}_${Date.now()}.jpg`;
                     const ref = storageTools.stMod.ref(storageTools.storage, ruta);
                     await storageTools.stMod.uploadBytes(ref, opsTraspasoFotoBlob, { contentType: "image/jpeg" });
                     evidenciaURL = await storageTools.stMod.getDownloadURL(ref);
@@ -2964,7 +3014,7 @@
             const blob = opsRevisionFotos.get(herrId);
             if (blob && storageTools) {
                 try {
-                    const ruta = `revisiones_herramienta/${idInterno}/${Date.now()}_${herrId}.jpg`;
+                    const ruta = `herramientas/revisiones/${idInterno}/${Date.now()}_${herrId}.jpg`;
                     const ref = storageTools.stMod.ref(storageTools.storage, ruta);
                     await storageTools.stMod.uploadBytes(ref, blob, { contentType: "image/jpeg" });
                     fotoURL = await storageTools.stMod.getDownloadURL(ref);
