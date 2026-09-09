@@ -1246,6 +1246,9 @@ tickReloj(); setInterval(tickReloj,1000);
 render(true); setInterval(()=>render(false),1000);
 </script>
 
+<!-- surtidos ya vive en Supabase — este adaptador expone window.tcSb... -->
+<script src="surtidos-supabase.js"></script>
+
 <!-- ===== DATOS EN VIVO · Firestore (colección `surtidos`) · SOLO LECTURA ===== -->
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
@@ -1286,21 +1289,20 @@ function avisoTV(titulo, detalle){
 
 function iniciarEscucha(){
   if(escuchando) return; escuchando = true;
-  onSnapshot(collection(db,'surtidos'), (snap)=>{
+  window.tcSbSuscribirSurtidos((arr)=>{
     const lista = [];
     const nuevos = [];
-    snap.forEach(docu=>{
-      const d = docu.data() || {};
+    arr.forEach(d=>{
       const estado = d.estado || 'pendiente';
       if(estado === 'finalizado' || estado === 'cancelado' || estado === 'entregado') return;    // fuera del tablero
       const p = {
-        id: docu.id,
-        folio: String(d.folio!=null ? d.folio : docu.id),
+        id: d.id,
+        folio: String(d.folio!=null ? d.folio : d.id),
         cliente: d.cliente || '\u2014',
         vendedor: d.vendedor || '\u2014',
         prioridad: d.prioridad || 'normal',
         estado,
-        createdAt: toMs(d.createdAt),
+        createdAt: d.createdAt || 0,
         tipo: d.tipo || 'venta',
         fechaEntrega: d.fechaEntrega || '',
         solicitante: d.solicitante || '',
