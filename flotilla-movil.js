@@ -3478,13 +3478,32 @@ let herrState={activo:false,paso:1,miIdInterno:null,misPiezas:[],piezaSel:null,r
 
 // ops_tecnicos usa su propio doc.id (idInterno), distinto del id de fl_usuarios.
 // El puente entre ambos mundos es el campo `correo` en ops_tecnicos.
-async function herrResolverIdInterno(email){
-  if(!email)return null;
-  try{
-    const snap=await db.collection(C.OPS_TEC).where('correo','==',email.toLowerCase().trim()).limit(1).get();
-    if(snap.empty)return null;
-    return {id:snap.docs[0].id,...snap.docs[0].data()};
-  }catch(e){console.warn('[HERR] no se pudo resolver idInterno de',email,e);return null;}
+// ops_tecnicos usa su propio doc.id (idInterno), distinto del id de fl_usuarios.
+// El puente entre ambos mundos es el campo `correo` en ops_tecnicos — pero varias
+// fichas (ej. administrativos como Glen o Miguel) existen en Operaciones sin ese
+// campo capturado. Respaldo: si el correo no encuentra nada, buscar por nombre
+// (normalizado, sin acentos/mayúsculas) y usarlo SOLO si hay una coincidencia
+// única — evita asignar la ficha equivocada si hay dos técnicos con nombre similar.
+async function herrResolverIdInterno(email,nombreFallback){
+  const correo=(email||'').toLowerCase().trim();
+  if(correo){
+    try{
+      const snap=await db.collection(C.OPS_TEC).where('correo','==',correo).limit(1).get();
+      if(!snap.empty)return {id:snap.docs[0].id,...snap.docs[0].data()};
+    }catch(e){console.warn('[HERR] no se pudo resolver idInterno por correo',correo,e);}
+  }
+  if(nombreFallback){
+    try{
+      const norm=s=>(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+      const objetivo=norm(nombreFallback);
+      if(!objetivo)return null;
+      const snapTodos=await db.collection(C.OPS_TEC).get();
+      const candidatos=snapTodos.docs.map(d=>({id:d.id,...d.data()})).filter(t=>norm(t.nombre)===objetivo);
+      if(candidatos.length===1)return candidatos[0];
+      if(candidatos.length>1)console.warn('[HERR] varios técnicos con el mismo nombre, no se puede resolver sin correo:',nombreFallback);
+    }catch(e){console.warn('[HERR] no se pudo resolver idInterno por nombre',nombreFallback,e);}
+  }
+  return null;
 }
 
 // Mejor esfuerzo, no bloquea el traspaso si el técnico niega el permiso
@@ -3506,7 +3525,8 @@ window.herrAbrirTraspaso=async function(){
   herrState={activo:true,paso:1,miIdInterno:null,misPiezas:[],piezaSel:null,receptorNombre:'',receptorEmail:''};
   renderUtil();
   const email=(window.auth?.currentUser?.email||miPerfil?.email||'').toLowerCase();
-  const tec=await herrResolverIdInterno(email);
+  const nombreSesion=window.auth?.currentUser?.displayName||miPerfil?.nombre||'';
+  const tec=await herrResolverIdInterno(email,nombreSesion);
   if(!tec){
     herrState.error='No encontramos tu ficha de técnico en Operaciones (correo no vinculado). Pide a Almacén que capture tu correo en tu ficha de Operaciones > Técnicos.';
     renderUtil();
@@ -3521,6 +3541,8 @@ window.herrAbrirTraspaso=async function(){
 };
 
 window.herrCerrarTraspaso=function(){ herrState={activo:false,paso:1,miIdInterno:null,misPiezas:[],piezaSel:null,receptorNombre:'',receptorEmail:''}; fmVista('util'); };
+window.herrIrAPaso1=function(){ herrState.paso=1; renderUtil(); };
+window.herrIrAPaso2=function(){ herrState.paso=2; renderUtil(); };
 
 function herrRender(){
   if(herrState.error){
@@ -3532,12 +3554,77 @@ function herrRender(){
       </div>`);
     return;
   }
+  if(herrState.paso==='ver') return herrRenderVer();
   if(herrState.paso===1) return herrRenderPaso1();
   if(herrState.paso===2) return herrRenderPaso2();
   if(herrState.paso===3) return herrRenderPaso3();
   return herrRenderPaso4();
 }
 window.herrRender=herrRender;
+
+// ── "Mi herramienta" — vista de solo lectura, separada de traspasar. Marca
+// con otro color la pieza que se recibió recientemente por traspaso (no la
+// tenía de origen), para que sea obvio de un vistazo que no era suya.
+window.herrVerMisHerramientas=async function(){
+  herrState={activo:true,paso:'ver',miIdInterno:null,misPiezas:[],piezaSel:null,receptorNombre:'',receptorEmail:''};
+  renderUtil();
+  const email=(window.auth?.currentUser?.email||miPerfil?.email||'').toLowerCase();
+  const nombreSesion=window.auth?.currentUser?.displayName||miPerfil?.nombre||'';
+  const tec=await herrResolverIdInterno(email,nombreSesion);
+  if(!tec){
+    herrState.error='No encontramos tu ficha de técnico en Operaciones (correo no vinculado). Pide a Almacén que capture tu correo en tu ficha de Operaciones > Técnicos.';
+    renderUtil();
+    return;
+  }
+  herrState.miIdInterno=tec.id;
+  try{
+    const snap=await db.collection(C.OPS_HERR).where('tecnicoActualId','==',tec.id).where('estado','==','asignada').get();
+    const piezas=snap.docs.map(d=>({id:d.id,...d.data()}));
+    // Por cada pieza, revisar su movimiento más reciente para saber si llegó
+    // por un traspaso hacia este técnico (y no la tenía de origen).
+    await Promise.all(piezas.map(async h=>{
+      try{
+        const movSnap=await db.collection(C.OPS_MOV).where('herramientaId','==',h.id).orderBy('fecha','desc').limit(1).get();
+        if(!movSnap.empty){
+          const m=movSnap.docs[0].data();
+          h._ultimoMovimiento=m;
+          h._esTraspasoReciente=m.tipo==='transferencia'&&m.tecnicoNuevoId===tec.id;
+        }
+      }catch(e){console.warn('[HERR] no se pudo revisar el último movimiento de',h.id,e);}
+    }));
+    herrState.misPiezas=piezas;
+  }catch(e){
+    console.error('[HERR] error al cargar mis piezas',e);
+    herrState.error='No se pudo cargar tu herramienta asignada. Intenta de nuevo.';
+  }
+  renderUtil();
+};
+
+function herrRenderVer(){
+  setContent(`
+    <div class="fm-sec-hd">
+      <div><div class="fm-sec-t">Mi herramienta</div><div class="fm-sec-s">${herrState.misPiezas.length} pieza(s) asignada(s)</div></div>
+    </div>
+    ${!herrState.misPiezas.length?`
+      <div class="fm-empty" style="padding:24px">
+        <p style="font-size:12.5px;color:#94A3B8">No tienes herramienta asignada en Operaciones.</p>
+      </div>`:herrState.misPiezas.map(h=>{
+        const reciente=h._esTraspasoReciente;
+        const fecha=h._ultimoMovimiento?.fecha?new Date(h._ultimoMovimiento.fecha).toLocaleDateString('es-MX',{day:'2-digit',month:'short'}):'';
+        return `<div class="fm-card" style="margin-bottom:8px;padding:13px 15px;${reciente?'border-left:4px solid #7C3AED;background:#F5F3FF':''}">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+            <div>
+              <div style="font-size:13px;font-weight:800;color:#0A0F1E">${h.folio||'—'}</div>
+              <div style="font-size:11.5px;color:#64748B;margin-top:1px">${h.descripcion||'—'}</div>
+            </div>
+            ${reciente?'<span style="background:#7C3AED;color:#fff;font-size:9px;font-weight:800;padding:3px 8px;border-radius:100px;white-space:nowrap;flex-shrink:0">🔄 TE LA TRASPASARON</span>':''}
+          </div>
+          ${reciente?`<div style="font-size:10.5px;color:#7C3AED;margin-top:6px;font-weight:700">No era tuya originalmente — la recibiste el ${fecha}</div>`:''}
+        </div>`;
+      }).join('')}
+    <div style="margin-top:10px"><button class="fm-btn ghost" onclick="herrCerrarTraspaso()">Cerrar</button></div>
+  `);
+}
 
 // PASO 1 — elegir cuál de mis piezas traspaso
 function herrRenderPaso1(){
@@ -3586,7 +3673,7 @@ function herrRenderPaso2(){
       <input type="hidden" id="herr-receptor-email" value="${herrState.receptorEmail||''}">
     </div>
     <div style="display:flex;gap:8px;margin-top:12px">
-      <button class="fm-btn ghost" style="flex:1" onclick="herrState.paso=1;renderUtil();">Atrás</button>
+      <button class="fm-btn ghost" style="flex:1" onclick="herrIrAPaso1()">Atrás</button>
       <button class="fm-btn primary" style="flex:1" onclick="herrConfirmarReceptor()">Continuar</button>
     </div>
   `);
@@ -3647,7 +3734,7 @@ function herrRenderPaso3(){
       </div>
     </div>
     <div style="display:flex;gap:8px;margin-top:12px">
-      <button class="fm-btn ghost" style="flex:1" onclick="herrState.paso=2;renderUtil();">Atrás</button>
+      <button class="fm-btn ghost" style="flex:1" onclick="herrIrAPaso2()">Atrás</button>
       <button id="herr-btn-confirmar" class="fm-btn primary" style="flex:1" onclick="herrEnviarTraspaso()">Enviar traspaso</button>
     </div>
   `);
@@ -3676,7 +3763,7 @@ window.herrEnviarTraspaso=async function(){
     const venceEn=new Date(now.getTime()+24*60*60*1000);
     const venceTxt=venceEn.toLocaleString('es-MX',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
     const ubicacion=await herrObtenerUbicacion();
-    const receptorTec=await herrResolverIdInterno(herrState.receptorEmail);
+    const receptorTec=await herrResolverIdInterno(herrState.receptorEmail,herrState.receptorNombre);
 
     const docObj={
       herramientaId:h.id, folio:h.folio||'', descripcion:h.descripcion||'',
@@ -3776,7 +3863,7 @@ window.herrAceptarTraspaso=async function(traspasoId){
     const userName=window.auth?.currentUser?.displayName||miPerfil?.nombre||userEmail;
     let receptorId=t.receptorTecnicoId;
     if(!receptorId){
-      const tec=await herrResolverIdInterno(userEmail);
+      const tec=await herrResolverIdInterno(userEmail,userName);
       if(!tec){toast('No encontramos tu ficha de técnico en Operaciones. Pide a Almacén que capture tu correo ahí antes de aceptar.','err');return;}
       receptorId=tec.id;
     }
@@ -3999,6 +4086,9 @@ function renderUtilPaso1(){
         </button>
         <button class="fm-btn" onclick="herrAbrirTraspaso()" style="background:#0B5FFF;color:#fff">
           ${IC.doc} Traspasar herramienta
+        </button>
+        <button class="fm-btn" onclick="herrVerMisHerramientas()" style="background:#fff;color:#0B5FFF;border:1.5px solid #0B5FFF">
+          ${IC.doc} Mi herramienta
         </button>
       </div>
     </div>
