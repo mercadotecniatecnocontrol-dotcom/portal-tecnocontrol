@@ -291,6 +291,40 @@
     });
   };
 
+  // ── Escucha en vivo (para cuando el detalle de un pedido está abierto) ──
+  // A diferencia de tcSbListar*, estas SÍ se quedan escuchando cambios —
+  // úsalas mientras el panel de detalle esté visible, y llama a la función
+  // que regresan para dejar de escuchar cuando se cierre.
+  function _escucharTabla(tabla, mapear, surtidoId, onChange){
+    var canal = null;
+    cargarSupabase().then(function (sb) {
+      function refrescar(){
+        sb.from(tabla).select('*').eq('surtido_id', surtidoId).order(tabla==='surtido_historial'?'ts':'subido_en', { ascending: true })
+          .then(function (r) { if (!r.error) onChange((r.data || []).map(mapear)); });
+      }
+      refrescar();
+      canal = sb.channel(tabla + '-' + surtidoId)
+        .on('postgres_changes', { event: '*', schema: 'public', table: tabla, filter: 'surtido_id=eq.' + surtidoId }, refrescar)
+        .subscribe();
+    });
+    return function detener(){ if (canal) cargarSupabase().then(function (sb) { sb.removeChannel(canal); }); };
+  }
+  window.tcSbEscucharEvidencias = function (surtidoId, onChange) {
+    return _escucharTabla('surtido_evidencias', function (e) {
+      return { id: e.id, tipo: e.tipo, imagen: e.imagen, nombre: e.nombre, url: e.url, subidoEn: e.subido_en, subidoPor: e.subido_por };
+    }, surtidoId, onChange);
+  };
+  window.tcSbEscucharHistorial = function (surtidoId, onChange) {
+    return _escucharTabla('surtido_historial', function (h) {
+      return { id: h.id, de: h.de, a: h.a, por: h.por, ts: h.ts, nota: h.nota };
+    }, surtidoId, onChange);
+  };
+  window.tcSbEscucharDocumentos = function (surtidoId, onChange) {
+    return _escucharTabla('surtido_documentos', function (d) {
+      return { id: d.id, nombre: d.nombre, archivo: d.archivo, subidoEn: d.subido_en, subidoPor: d.subido_por };
+    }, surtidoId, onChange);
+  };
+
   // ── Crear un pedido nuevo ────────────────────────────────────────────
   window.tcSbCrearSurtido = function (datosCamelCase) {
     var id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2);
