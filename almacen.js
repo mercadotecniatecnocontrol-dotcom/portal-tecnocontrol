@@ -421,9 +421,9 @@
       var box = document.getElementById('alm-modal-hist-box');
       box.classList.remove('wide');
       if (!items.length){
-        box.innerHTML = '<h4>Documentos adjuntos<button onclick="window.__almCerrarModal()">&times;</button></h4><div class="alm-empty">Sin documentos adjuntos.</div>';
+        box.innerHTML = '<h4>Documentos adjuntos<button onclick="event.stopPropagation();window.__almCerrarModal()">&times;</button></h4><div class="alm-empty">Sin documentos adjuntos.</div>';
       } else {
-        box.innerHTML = '<h4>Documentos adjuntos<button onclick="window.__almCerrarModal()">&times;</button></h4>'
+        box.innerHTML = '<h4>Documentos adjuntos<button onclick="event.stopPropagation();window.__almCerrarModal()">&times;</button></h4>'
           + '<div>' + items.map(function(it,idx){
               return '<div class="alm-doc-row"><span class="n">'+esc(it.nombre||('Documento '+(idx+1)))+'</span>'
                 + '<button type="button" class="alm-rep-btn sec" onclick="window.__almVerUnDocumento(\''+id+'\','+idx+')">Ver</button></div>';
@@ -514,7 +514,15 @@
     construirModalHistorial();
     var box=document.getElementById('alm-modal-hist-box');
     box.classList.remove('wide');
-    box.innerHTML = '<h4>Subir evidencia'+(p?(' · '+esc(p.folio||'')):'')+'<button onclick="window.__almCerrarModal()">&times;</button></h4>'
+    box.innerHTML = '<h4>Subir evidencia'+(p?(' · '+esc(p.folio||'')):'')+'<button onclick="event.stopPropagation();window.__almCerrarModal()">&times;</button></h4>'
+      + '<div style="margin-bottom:12px;">'
+      +   '<label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:6px;">¿Esta evidencia es de qué paso?</label>'
+      +   '<div style="display:flex;gap:8px;flex-wrap:wrap;">'
+      +     '<label style="display:flex;align-items:center;gap:5px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:6px 12px;font-size:11.5px;font-weight:600;color:#334155;cursor:pointer;"><input type="radio" name="alm-evid-cat-'+id+'" value="salida" checked> Salida de almacén</label>'
+      +     '<label style="display:flex;align-items:center;gap:5px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:6px 12px;font-size:11.5px;font-weight:600;color:#334155;cursor:pointer;"><input type="radio" name="alm-evid-cat-'+id+'" value="remision"> Remisión</label>'
+      +     '<label style="display:flex;align-items:center;gap:5px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:6px 12px;font-size:11.5px;font-weight:600;color:#334155;cursor:pointer;"><input type="radio" name="alm-evid-cat-'+id+'" value="general"> Otra</label>'
+      +   '</div>'
+      + '</div>'
       + '<button type="button" class="alm-evid-add" style="width:100%;margin-bottom:14px;box-sizing:border-box;" onclick="window.__almSubirEvidencia(\''+id+'\')">📎 Elegir foto o documento desde esta computadora</button>'
       + '<input type="file" accept="image/*,.pdf,.doc,.docx" id="alm-evid-file-'+id+'" style="display:none">'
       + '<div style="border-top:1px dashed #e2e8f0;padding-top:14px;text-align:center;">'
@@ -537,7 +545,7 @@
     construirModalHistorial();
     var box=document.getElementById('alm-modal-hist-box');
     box.classList.remove('wide');
-    box.innerHTML = '<h4>Evidencia de entrega<button onclick="window.__almCerrarModal()">&times;</button></h4>'
+    box.innerHTML = '<h4>Evidencia de entrega<button onclick="event.stopPropagation();window.__almCerrarModal()">&times;</button></h4>'
       + '<img class="alm-firma-full" src="'+esc(ev.imagen)+'" alt="Evidencia">'
       + (ev.subidoPor?('<div style="font-size:12px;color:#64748b;font-weight:700;">Subida por '+esc(ev.subidoPor)+'</div>'):'');
     document.getElementById('alm-modal-hist').classList.add('show');
@@ -697,7 +705,7 @@
     ov.id='alm-modal-hist';
     ov.className='alm-modal-ov';
     ov.innerHTML='<div class="alm-modal-box" id="alm-modal-hist-box"></div>';
-    ov.addEventListener('click', function(e){ if(e.target===ov) window.__almCerrarModal(); });
+    ov.addEventListener('click', function(e){ if(e.target===ov){ e.stopPropagation(); window.__almCerrarModal(); } });
     document.body.appendChild(ov);
   }
 
@@ -713,7 +721,7 @@
     construirModalHistorial();
     var box=document.getElementById('alm-modal-hist-box');
     box.classList.remove('wide');
-    box.innerHTML = '<h4>Subir evidencia desde el celular<button onclick="window.__almCerrarModal()">&times;</button></h4>'
+    box.innerHTML = '<h4>Subir evidencia desde el celular<button onclick="event.stopPropagation();window.__almCerrarModal()">&times;</button></h4>'
       + '<div style="text-align:center;padding:6px 0 14px;">'
       +   '<div style="font-size:12.5px;color:#64748b;margin-bottom:12px;">'+(p?('Folio <b>'+esc(p.folio)+'</b> — '):'')+'Escanea con la cámara del celular o comparte el enlace.</div>'
       +   '<img src="'+qrSrc+'" alt="Código QR" style="border:1px solid #e2e8f0;border-radius:12px;padding:10px;background:#fff;">'
@@ -744,7 +752,7 @@
     construirModalHistorial();
     var box=document.getElementById('alm-modal-hist-box');
     box.classList.add('wide');
-    box.innerHTML = '<h4>📦 Catálogo de paqueterías<button onclick="window.__almCerrarModal()">&times;</button></h4>'
+    box.innerHTML = '<h4>📦 Catálogo de paqueterías<button onclick="event.stopPropagation();window.__almCerrarModal()">&times;</button></h4>'
       + '<div style="font-size:11px;color:#64748b;margin:-6px 0 10px;">Toca una paquetería para ver o editar su ficha completa (teléfono, correo, fotos del local…).</div>'
       + '<div id="alm-paq-lista" style="max-height:260px;overflow-y:auto;margin-bottom:14px;"><div class="alm-empty">Cargando…</div></div>'
       + '<div style="border-top:1px dashed #e2e8f0;padding-top:12px;">'
@@ -830,7 +838,7 @@
       _almPaqPerfil = { id: id, fotos: (p.fotos||[]).slice(), coordManual: null };
       var box = document.getElementById('alm-modal-hist-box');
       box.classList.add('wide');
-      box.innerHTML = '<h4>📦 Ficha de paquetería<button onclick="window.__almCerrarModal()">&times;</button></h4>'
+      box.innerHTML = '<h4>📦 Ficha de paquetería<button onclick="event.stopPropagation();window.__almCerrarModal()">&times;</button></h4>'
         + '<div id="alm-paqp-fotos" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;"></div>'
         + '<button type="button" class="alm-evid-add" onclick="window.__almPaqPerfilFotoAgregar()">+ Agregar foto del local (máx. 3)</button>'
         + '<input type="file" id="alm-paqp-foto-file" accept="image/*" style="display:none">'
@@ -1246,6 +1254,7 @@
     var p=buscarP(id); if(!p||!destino) return;
     var origen=p.estado;
     window.tcSbActualizarSurtido(id, {estado:destino}).then(function(){
+      p.estado = destino; render();
       window.tcSbAgregarHistorial(id, { de:origen, a:destino, por:yoNombre() }).catch(function(){});
       if(window.mostrarPush) window.mostrarPush('📦 Surtido', (p.folio||'')+' → '+destino.replace(/_/g,' '), '✅');
     }).catch(function(err){ console.error('[almacen] moverEstado:',err); if(window.mostrarPush)window.mostrarPush('Almacén','No se pudo actualizar','⚠️'); });
@@ -1278,7 +1287,7 @@
     construirModalHistorial();
     var box=document.getElementById('alm-modal-hist-box');
     box.classList.remove('wide');
-    box.innerHTML='<h4>Entregar pedido · '+esc(p.folio||'')+'<button onclick="window.__almCerrarModal()">&times;</button></h4>'
+    box.innerHTML='<h4>Entregar pedido · '+esc(p.folio||'')+'<button onclick="event.stopPropagation();window.__almCerrarModal()">&times;</button></h4>'
       + '<div style="font-size:12.5px;color:#64748b;font-weight:700;margin-bottom:12px">'+esc(p.cliente||'')+' \u00b7 '+piezas(p)+' piezas</div>'
       + '<div class="alm-evid-block" style="border-top:none;padding-top:0;"><span class="lbl">Evidencia fotogr\u00e1fica (embarque / entrega)</span>'
       +   '<div class="alm-evid-grid" id="alm-evid-grid-'+p.id+'">'+renderEvidenciasThumbs(p)+'</div>'
@@ -1318,8 +1327,14 @@
     var datos={ estado:nuevoEstado, entregaObservaciones:obs };
     if (completo) datos.entregadoEn = new Date().toISOString();
     window.tcSbActualizarSurtido(id, datos).then(function(){
+      // Actualiza la vista YA, sin esperar a que llegue la señal en tiempo real
+      // (defensa extra por si Realtime tarda o falla por cualquier motivo).
+      p.estado = nuevoEstado;
+      p.entregaObservaciones = obs;
+      if (completo) p.entregadoEn = Date.now();
       window.tcSbAgregarHistorial(id, { de:origen, a:nuevoEstado, por:yoNombre(), nota:obs }).catch(function(){});
       if (pedirFirma) window.__almPedirFirmaEntrega(id);
+      render();
     }).then(function(){
       if(window.mostrarPush) window.mostrarPush(completo?'\u2705 Pedido entregado':'\ud83d\udce6 Entrega parcial registrada', (p.folio||''), completo?'\u2705':'\u26a0\ufe0f');
       window.__almCerrarModal();
@@ -1355,13 +1370,13 @@
     construirModalHistorial();
     var box=document.getElementById('alm-modal-hist-box');
     box.classList.remove('wide');
-    box.innerHTML='<h4>Cancelar pedido · '+esc(p.folio||'')+'<button onclick="window.__almCerrarModal()">&times;</button></h4>'
+    box.innerHTML='<h4>Cancelar pedido · '+esc(p.folio||'')+'<button onclick="event.stopPropagation();window.__almCerrarModal()">&times;</button></h4>'
       + '<div style="font-size:12.5px;color:#64748b;font-weight:700;margin-bottom:12px">'+esc(p.cliente||'')+' · '+piezas(p)+' piezas</div>'
       + '<label style="display:block;font-size:11px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#64748b;margin-bottom:6px">Motivo de cancelación *</label>'
       + '<textarea id="alm-cancel-motivo" placeholder="Ej. Cliente ya no lo requiere, pedido duplicado, error de captura…" style="width:100%;min-height:80px;padding:11px 13px;border:2px solid #e6ebf2;border-radius:10px;font-size:14px;font-family:inherit;outline:none;resize:vertical;box-sizing:border-box;"></textarea>'
       + '<div style="font-size:12.5px;font-weight:700;color:#dc2626;margin-top:8px" id="alm-cancel-msg"></div>'
       + '<div style="display:flex;gap:10px;margin-top:16px">'
-      +   '<button type="button" onclick="window.__almCerrarModal()" style="flex:1;padding:12px;border:none;border-radius:11px;background:#f1f5f9;color:#475569;font-weight:800;font-size:13.5px;cursor:pointer">Volver</button>'
+      +   '<button type="button" onclick="event.stopPropagation();window.__almCerrarModal()" style="flex:1;padding:12px;border:none;border-radius:11px;background:#f1f5f9;color:#475569;font-weight:800;font-size:13.5px;cursor:pointer">Volver</button>'
       +   '<button type="button" id="alm-cancel-ok" onclick="window.__almConfirmarCancelar(\''+id+'\')" style="flex:1;padding:12px;border:none;border-radius:11px;background:#dc2626;color:#fff;font-weight:800;font-size:13.5px;cursor:pointer">Cancelar pedido</button>'
       + '</div>';
     document.getElementById('alm-modal-hist').classList.add('show');
@@ -1378,6 +1393,7 @@
     window.tcSbActualizarSurtido(id, {
       estado:'cancelado', motivoCancelacion:motivo, canceladoPor:yoNombre(), canceladoEn:new Date().toISOString()
     }).then(function(){
+      p.estado = 'cancelado'; p.motivoCancelacion = motivo; render();
       window.tcSbAgregarHistorial(id, { de:origen, a:'cancelado', por:yoNombre(), motivo:motivo }).catch(function(){});
     }).then(function(){
       if(window.mostrarPush) window.mostrarPush('✕ Pedido cancelado', (p.folio||''), '⚠️');
@@ -1438,7 +1454,7 @@
     construirModalHistorial();
     var box=document.getElementById('alm-modal-hist-box');
     var titulo = (cual==='entrega') ? ('Firma de entrega · '+esc(p.folio||'')+(p.recibioNombre?(' · recibió '+esc(p.recibioNombre)):'')) : ('Firma · '+esc(p.folio||''));
-    box.innerHTML='<h4>'+titulo+'<button onclick="window.__almCerrarModal()">&times;</button></h4>'
+    box.innerHTML='<h4>'+titulo+'<button onclick="event.stopPropagation();window.__almCerrarModal()">&times;</button></h4>'
       + '<img class="alm-firma-full" src="'+esc(src)+'" alt="Firma">';
     document.getElementById('alm-modal-hist').classList.add('show');
   };
@@ -1447,7 +1463,7 @@
     var p=buscarP(id); if(!p) return;
     construirModalHistorial();
     var box=document.getElementById('alm-modal-hist-box');
-    box.innerHTML='<h4>Historial · '+esc(p.folio||'')+'<button onclick="window.__almCerrarModal()">&times;</button></h4>'
+    box.innerHTML='<h4>Historial · '+esc(p.folio||'')+'<button onclick="event.stopPropagation();window.__almCerrarModal()">&times;</button></h4>'
       + (p.firma?'<img class="alm-firma-full" src="'+esc(p.firma)+'" alt="Firma">':'')
       + '<div id="alm-hist-list" class="alm-empty">Cargando…</div>';
     document.getElementById('alm-modal-hist').classList.add('show');
@@ -1492,7 +1508,7 @@
     construirModalHistorial();
     var box = document.getElementById('alm-modal-hist-box');
     box.classList.add('wide');
-    box.innerHTML = '<h4>Fotos de catálogo<button onclick="window.__almCerrarModal()">&times;</button></h4>'
+    box.innerHTML = '<h4>Fotos de catálogo<button onclick="event.stopPropagation();window.__almCerrarModal()">&times;</button></h4>'
       + '<div class="alm-fotos-search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>'
       + '<input id="alm-fotos-q" type="text" placeholder="Busca un producto por nombre o clave…"></div>'
       + '<div id="alm-fotos-grid" class="alm-fotos-grid"><div class="alm-empty">Cargando catálogo…</div></div>'
@@ -1749,7 +1765,7 @@
     var box=document.getElementById('alm-modal-hist-box');
     box.classList.add('wide');
     var esCancelado = e.estado==='cancelado';
-    box.innerHTML = '<h4>'+esc(e.folio)+' · '+(e.tipo==='material'?'Material':'Venta')+'<button onclick="window.__almCerrarModal()">&times;</button></h4>'
+    box.innerHTML = '<h4>'+esc(e.folio)+' · '+(e.tipo==='material'?'Material':'Venta')+'<button onclick="event.stopPropagation();window.__almCerrarModal()">&times;</button></h4>'
       + '<div style="font-size:13px;color:#334155;line-height:1.9;margin-bottom:12px;">'
       +   '<div><strong>Cliente:</strong> '+esc(e.cliente||'—')+'</div>'
       +   '<div><strong>Solicitó:</strong> '+esc(e.solicito||'—')+'</div>'
@@ -1795,7 +1811,7 @@
     var box=document.getElementById('alm-modal-hist-box');
     box.classList.add('wide');
     var titulo = cual==='entrega' ? ('Firma de entrega · '+esc(e.folio)+(e.recibio?(' · recibió '+esc(e.recibio)):'')) : ('Firma de solicitud · '+esc(e.folio));
-    box.innerHTML = '<h4>'+titulo+'<button onclick="window.__almCerrarModal()">&times;</button></h4>'
+    box.innerHTML = '<h4>'+titulo+'<button onclick="event.stopPropagation();window.__almCerrarModal()">&times;</button></h4>'
       + '<img class="alm-firma-full" src="'+esc(src)+'" alt="Firma">';
     document.getElementById('alm-modal-hist').classList.add('show');
   };
@@ -1804,7 +1820,7 @@
     construirModalHistorial();
     var box = document.getElementById('alm-modal-hist-box');
     box.classList.add('wide');
-    box.innerHTML = '<h4>Historial de entregas<button onclick="window.__almCerrarModal()">&times;</button></h4>'
+    box.innerHTML = '<h4>Historial de entregas<button onclick="event.stopPropagation();window.__almCerrarModal()">&times;</button></h4>'
       + '<div class="alm-rep-filtros">'
       +   '<div class="alm-rep-fld"><label>Desde</label><input type="date" id="alm-rep-desde"></div>'
       +   '<div class="alm-rep-fld"><label>Hasta</label><input type="date" id="alm-rep-hasta"></div>'
@@ -2002,7 +2018,7 @@
         return '<div class="alm-doc-row"><span class="n">'+esc(c.nombre||'—')+' \u00b7 '+dd+'/'+mm+'</span>'
           + '<button type="button" class="alm-rep-btn sec" style="color:#dc2626;" onclick="window.__almQuitarCumpleanos('+idx+')">Quitar</button></div>';
       }).join('') || '<div class="alm-empty">A\u00fan no hay cumplea\u00f1os registrados.</div>';
-      box.innerHTML = '<h4>\ud83c\udf82 Cumplea\u00f1os del equipo<button onclick="window.__almCerrarModal()">&times;</button></h4>'
+      box.innerHTML = '<h4>\ud83c\udf82 Cumplea\u00f1os del equipo<button onclick="event.stopPropagation();window.__almCerrarModal()">&times;</button></h4>'
         + '<div style="font-size:12px;color:#64748b;margin-bottom:10px;">El d\u00eda que le toque a alguien, la TV de Almac\u00e9n lo muestra con un detalle discreto en la franja de abajo.</div>'
         + '<div id="alm-cumple-lista">'+filas+'</div>'
         + '<button type="button" class="alm-addrow" style="margin-top:10px;" onclick="window.__almAgregarCumpleanos()">+ Agregar cumplea\u00f1os</button>';
@@ -2047,7 +2063,7 @@
     construirModalHistorial();
     var box = document.getElementById('alm-modal-hist-box');
     box.classList.add('wide');
-    box.innerHTML = '<h4>KPIs de tiempos de surtido<button onclick="window.__almCerrarModal()">&times;</button></h4>'
+    box.innerHTML = '<h4>KPIs de tiempos de surtido<button onclick="event.stopPropagation();window.__almCerrarModal()">&times;</button></h4>'
       + '<div class="alm-rep-filtros">'
       +   '<div class="alm-rep-fld"><label>Desde</label><input type="date" id="alm-kpi-desde"></div>'
       +   '<div class="alm-rep-fld"><label>Hasta</label><input type="date" id="alm-kpi-hasta"></div>'
