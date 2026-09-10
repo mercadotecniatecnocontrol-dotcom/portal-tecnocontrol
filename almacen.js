@@ -1397,10 +1397,21 @@
     moverEstado(id,destino);
   };
   window.__almBack   = function(id){ var p=buscarP(id); if(p&&PREV[p.estado]) moverEstado(id,PREV[p.estado]); };
+  var _evidenciasListeners = {}; // id -> función para dejar de escuchar
   window.__almToggle = function(id){
     expandido[id]=!expandido[id];
     render();
-    if (expandido[id] && !_evidenciasCache[id]) cargarEvidencias(id).then(function(){ render(); });
+    if (expandido[id]){
+      if (!_evidenciasListeners[id]){
+        _evidenciasListeners[id] = window.tcSbEscucharEvidencias(id, function(list){
+          _evidenciasCache[id] = list;
+          render();
+        });
+      }
+    } else if (_evidenciasListeners[id]) {
+      _evidenciasListeners[id]();
+      delete _evidenciasListeners[id];
+    }
   };
   window.__almCheck  = function(id,idx){ toggleCheck(id,idx); };
   window.__almBuscar = function(v){ filtro.q=v||''; render(); var i=document.getElementById('alm-q'); if(i){ i.focus(); i.value=filtro.q; } };
