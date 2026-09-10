@@ -62,6 +62,7 @@
     // el motor de cálculo/calendario/disponibilidad quedan para fases siguientes.
     const COL_SERVICIOS_CATALOGO = "ops_servicios_catalogo";
     const COL_TARIFAS_PERSONAL = "ops_tarifas_personal"; // doc por rol (lider/tecnico/obra_civil) — nunca por nombre de empleado
+    const COL_AUSENCIAS = "ops_tecnico_ausencias"; // calendario propio de vacaciones/incapacidad/permiso por técnico (sep-2026, a petición de Glen)
     const MIGUEL_EMAIL = "miguel@tecnocontrol.com.mx"; // dueño del seguimiento interno (fecha de atención / compromiso)
 
     // Administradores del departamento de Operaciones: acceso total DENTRO de este módulo
@@ -734,9 +735,10 @@
     ];
 
     let opsFB = null;
-    let unsubHerr = null, unsubTec = null, unsubMov = null, unsubSurt = null, unsubFolios = null, unsubNotif = null, unsubTraspasos = null, unsubConfigCalibracion = null, unsubServiciosCatalogo = null, unsubTarifasPersonal = null;
+    let unsubHerr = null, unsubTec = null, unsubMov = null, unsubSurt = null, unsubFolios = null, unsubNotif = null, unsubTraspasos = null, unsubConfigCalibracion = null, unsubServiciosCatalogo = null, unsubTarifasPersonal = null, unsubAusencias = null;
     let cacheHerr = [], cacheTec = [], cacheMov = [], cacheSurtidos = [], cacheFolios = [];
     let cacheServiciosCatalogo = [], cacheTarifasPersonal = {};
+    let cacheAusencias = [];
     let cacheTraspasosPend = []; // ops_herramienta_traspasos con estatus "Pendiente recepción" — bloquea la pieza hasta que el receptor acepte/rechace/venza
     let cacheAutorizadoresCalibracion = []; // [{email,nombre}] — quién puede aprobar mover equipo con requiereAutorizacion=true
     let filtroFolios = "", filtroFolioSemaforo = "todos";
@@ -852,6 +854,7 @@
     let cacheVehiculosAsig = [];
     let cacheClientes = [];
     let fichaTecTabActual = "resumen";
+    let fichaTecActual = null;
     let catalogoProductos = []; // de catalogo/productos (Almacén real), cargado bajo demanda
 
     async function opsSembrarPuestosSiNecesario() {
@@ -1407,6 +1410,13 @@
                 snap.docs.forEach(d => { cacheTarifasPersonal[d.id] = d.data(); });
                 if (tabActual === "planeacion") opsRenderPlaneacion();
             }, () => { cacheTarifasPersonal = {}; });
+        }
+        if (!unsubAusencias) {
+            unsubAusencias = fs.onSnapshot(fs.collection(db, COL_AUSENCIAS), snap => {
+                cacheAusencias = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                if (tabActual === "tecnicos") opsRenderTecnicos();
+                if (fichaTecActual) opsRenderFichaTecContenido(fichaTecActual);
+            }, () => { cacheAusencias = []; });
         }
         if (!unsubNotif) {
             // Notificaciones generales (ej. "solicitud lista para surtir") — llegan a TODOS los
@@ -2702,9 +2712,11 @@
         const activo = t.estatus === "activo";
         const nHerr = cacheHerr.filter(h => h.tecnicoActualId === t.id).length;
         const zebra = i % 2 === 0 ? "#fff" : "#f8fafc";
+        const hoy = opsHoy();
+        const ausenteHoy = cacheAusencias.find(a => a.tecnicoId === t.id && a.fechaInicio <= hoy && a.fechaFin >= hoy);
         return `<tr style="background:${zebra};border-bottom:1px solid #eef1f5;cursor:pointer;" onclick="opsAbrirFichaTecnico('${t.id}')">
             <td style="padding:8px 10px;font-weight:600;color:#334155;">${opsEsc(t.numeroOperativo)}</td>
-            <td style="padding:8px 10px;color:#334155;">${opsEsc(t.nombre)}</td>
+            <td style="padding:8px 10px;color:#334155;">${opsEsc(t.nombre)}${ausenteHoy ? ` <span style="background:#fef3c7;color:#b45309;font-size:9.5px;font-weight:700;padding:2px 7px;border-radius:999px;margin-left:4px;">${opsEsc({ vacaciones: "Vacaciones", incapacidad: "Incapacidad", permiso: "Permiso" }[ausenteHoy.tipo] || ausenteHoy.tipo)}</span>` : ""}</td>
             <td style="padding:8px 10px;color:#64748b;">${opsEsc(t.puesto || "—")}</td>
             <td style="padding:8px 10px;"><span style="background:${activo ? "#dcfce7" : "#e5e7eb"};color:${activo ? "#166534" : "#374151"};font-size:10.5px;font-weight:600;padding:3px 8px;border-radius:999px;">${activo ? "Activo" : "Baja"}</span></td>
             <td style="padding:8px 10px;color:#334155;">${nHerr}</td>
@@ -2886,6 +2898,7 @@
 
 
     window.opsAbrirFichaTecnico = async function (idInterno, tabInicial) {
+        fichaTecActual = idInterno;
         fichaTecTabActual = tabInicial || "resumen";
         const t = cacheTec.find(x => x.id === idInterno);
         if (!t) return;
@@ -2929,7 +2942,7 @@
                 </div>
 
                 <div style="display:flex;gap:4px;margin:14px 0;overflow-x:auto;border-bottom:1px solid #e2e8f0;">
-                    ${["resumen:Resumen", "rh:RH", "vehiculo:Vehículo", "herramientas:Herramientas", "auditoria:Auditoría", "historial:Historial"].map(x => {
+                    ${["resumen:Resumen", "rh:RH", "vehiculo:Vehículo", "herramientas:Herramientas", "ausencias:Ausencias", "auditoria:Auditoría", "historial:Historial"].map(x => {
                         const [id, label] = x.split(":");
                         const on = fichaTecTabActual === id;
                         return `<button onclick="opsFichaTecCambiarTab('${idInterno}','${id}')" style="background:none;border:none;padding:8px 10px;font-size:11.5px;font-weight:600;white-space:nowrap;color:${on ? "#1D2E73" : "#64748b"};border-bottom:2px solid ${on ? "#1D2E73" : "transparent"};cursor:pointer;">${label}</button>`;
@@ -3055,6 +3068,31 @@
                     </div>`;
                 }).join("") : '<div style="background:#fff;border-radius:14px;padding:16px 18px;color:#94a3b8;font-size:12px;">Sin revisiones registradas todavía.</div>'}`;
             return;
+        } else if (fichaTecTabActual === "ausencias") {
+            const hoy = opsHoy();
+            const ausenciasTec = cacheAusencias.filter(a => a.tecnicoId === idInterno).sort((a, b) => (a.fechaInicio < b.fechaInicio ? 1 : -1));
+            const activasHoy = ausenciasTec.filter(a => a.fechaInicio <= hoy && a.fechaFin >= hoy);
+            const tipoLabel = { vacaciones: "Vacaciones", incapacidad: "Incapacidad", permiso: "Permiso" };
+            const tipoColor = { vacaciones: { bg: "#dbeafe", fg: "#1e40af" }, incapacidad: { bg: "#fee2e2", fg: "#E7402B" }, permiso: { bg: "#fef3c7", fg: "#b45309" } };
+            el.innerHTML = `
+                ${activasHoy.length ? `<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:10px;padding:10px 13px;margin-bottom:12px;font-size:12px;color:#92400e;font-weight:600;">${activasHoy.map(a => `${tipoLabel[a.tipo] || a.tipo} activo hasta ${opsEsc(a.fechaFin)}`).join(" · ")}</div>` : ""}
+                <div style="background:#fff;border-radius:14px;padding:16px 18px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                        <div style="font-size:12.5px;font-weight:700;color:#1e293b;">Vacaciones, incapacidades y permisos</div>
+                        ${opsPuedeGestionar() ? `<button onclick="opsAbrirModalAusencia('${idInterno}')" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Registrar</button>` : ""}
+                    </div>
+                    <div style="font-size:10.5px;color:#94a3b8;margin-bottom:10px;">Calendario propio de Operaciones — todavía no se cruza automáticamente contra la planeación de servicios (no hay fecha de programación de trabajo todavía).</div>
+                    ${ausenciasTec.length ? ausenciasTec.map(a => {
+                        const c = tipoColor[a.tipo] || { bg: "#e5e7eb", fg: "#374151" };
+                        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid #f1f5f9;">
+                            <div>
+                                <span style="background:${c.bg};color:${c.fg};font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;">${opsEsc(tipoLabel[a.tipo] || a.tipo)}</span>
+                                <div style="font-size:11.5px;color:#334155;margin-top:4px;">${opsEsc(a.fechaInicio)} → ${opsEsc(a.fechaFin)}${a.motivo ? ` · ${opsEsc(a.motivo)}` : ""}</div>
+                            </div>
+                            ${opsPuedeGestionar() ? `<button onclick="opsEliminarAusencia('${a.id}')" style="background:#fee2e2;border:none;color:#E7402B;width:26px;height:26px;border-radius:6px;cursor:pointer;flex-shrink:0;">${ICON.close}</button>` : ""}
+                        </div>`;
+                    }).join("") : '<div style="color:#94a3b8;font-size:12px;">Sin registros.</div>'}
+                </div>`;
         } else if (fichaTecTabActual === "historial") {
             el.innerHTML = `
                 <div style="background:#fff;border-radius:14px;padding:16px 18px;">
@@ -3069,6 +3107,69 @@
                 </div>`;
         }
     }
+
+    window.opsAbrirModalAusencia = function (idInterno) {
+        const t = cacheTec.find(x => x.id === idInterno);
+        const wrap = document.getElementById("ops-modal-wrap");
+        wrap.innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;">
+            <div style="background:#fff;border-radius:14px;width:360px;max-width:92vw;padding:22px;">
+                <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:4px;">Registrar ausencia</div>
+                <div style="font-size:12px;color:#64748b;margin-bottom:14px;">${opsEsc(t ? t.nombre : "")}</div>
+
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Tipo</label>
+                <select id="ops-in-ausencia-tipo" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 12px;">
+                    <option value="vacaciones">Vacaciones</option>
+                    <option value="incapacidad">Incapacidad</option>
+                    <option value="permiso">Permiso</option>
+                </select>
+
+                <div style="display:flex;gap:8px;">
+                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Desde</label>
+                    <input type="date" id="ops-in-ausencia-inicio" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 12px;"></div>
+                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Hasta</label>
+                    <input type="date" id="ops-in-ausencia-fin" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 12px;"></div>
+                </div>
+
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Motivo / observación (opcional)</label>
+                <input id="ops-in-ausencia-motivo" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 16px;">
+
+                <div style="display:flex;gap:8px;justify-content:flex-end;">
+                    <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
+                    <button onclick="opsGuardarAusencia('${idInterno}')" class="mkt-add-btn" style="background:#1D2E73;">Guardar</button>
+                </div>
+            </div>
+        </div>`;
+    };
+
+    window.opsGuardarAusencia = async function (idInterno) {
+        const tipo = document.getElementById("ops-in-ausencia-tipo").value;
+        const fechaInicio = document.getElementById("ops-in-ausencia-inicio").value;
+        const fechaFin = document.getElementById("ops-in-ausencia-fin").value;
+        const motivo = document.getElementById("ops-in-ausencia-motivo").value.trim() || null;
+        if (!fechaInicio || !fechaFin) { alert("Captura las dos fechas"); return; }
+        if (fechaFin < fechaInicio) { alert("La fecha final no puede ser antes que la inicial"); return; }
+        try {
+            const { db, fs } = await opsGetFB();
+            await fs.addDoc(fs.collection(db, COL_AUSENCIAS), {
+                tecnicoId: idInterno, tipo, fechaInicio, fechaFin, motivo,
+                creadoPor: opsNombreActual(), fechaAlta: opsHoy(),
+            });
+            document.getElementById("ops-modal-wrap").innerHTML = "";
+        } catch (err) {
+            alert("No se pudo guardar: " + err.message);
+        }
+    };
+
+    window.opsEliminarAusencia = async function (id) {
+        if (!confirm("¿Eliminar este registro?")) return;
+        try {
+            const { db, fs } = await opsGetFB();
+            await fs.deleteDoc(fs.doc(db, COL_AUSENCIAS, id));
+        } catch (err) {
+            alert("No se pudo eliminar: " + err.message);
+        }
+    };
 
     // ── Auditoría física de herramienta: registra el estado de cada pieza asignada al
     // momento de la revisión (conforme / faltante / dañada), con foto, quién y
@@ -5007,53 +5108,390 @@
             </div>`;
     }
 
+    // Ficha de servicio: editable de verdad (personal, materiales, herramienta,
+    // seguridad, vehículos) + semáforo de disponibilidad real contra el catálogo
+    // de herramientas y la flota de Flotilla. Horarios/vacaciones de técnico NO
+    // se cruzan aquí — ese dato no existe todavía en ningún lado del portal.
+    let servicioEditDraft = null;
+    let servicioOriginalSnapshot = null; // para poder resumir qué cambió al guardar
+    let dispoServicioActual = null; // null = aún cargando
+    let fichaServTabActual = "resumen";
+    let servicioHistorialCache = null; // null = no cargado todavía (se carga al abrir la pestaña Historial)
+
+    window.opsFichaServCambiarTab = function (tab) {
+        fichaServTabActual = tab;
+        if (tab === "historial" && servicioHistorialCache === null) opsCargarHistorialServicio();
+        opsRenderFichaServicio();
+    };
+
+    async function opsCargarHistorialServicio() {
+        servicioHistorialCache = []; // evita relanzar la carga mientras resuelve
+        try {
+            const { db, fs } = await opsGetFB();
+            const snap = await fs.getDocs(fs.query(fs.collection(db, COL_SERVICIOS_CATALOGO, servicioEditDraft.id, "historial"), fs.orderBy("fecha", "desc")));
+            servicioHistorialCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        } catch (err) {
+            console.warn("[operaciones.js] no se pudo cargar historial del servicio:", err);
+            servicioHistorialCache = [];
+        }
+        if (fichaServTabActual === "historial") opsRenderFichaServicio();
+    }
+
+    function _resumenCambiosServicio(antes, despues) {
+        const cambios = [];
+        if (antes.nombre !== despues.nombre) cambios.push(`Nombre: "${antes.nombre}" → "${despues.nombre}"`);
+        if (antes.categoria !== despues.categoria) cambios.push(`Categoría: "${antes.categoria || "—"}" → "${despues.categoria || "—"}"`);
+        const campos = [["materiales", "Materiales"], ["herramientaRequerida", "Herramienta"], ["personal", "Roles de personal"], ["equipoSeguridad", "Equipo de seguridad"]];
+        campos.forEach(([campo, label]) => {
+            const nA = (antes[campo] || []).length, nD = (despues[campo] || []).length;
+            if (nA !== nD) cambios.push(`${label}: ${nA} → ${nD}`);
+            else if (JSON.stringify(antes[campo]) !== JSON.stringify(despues[campo])) cambios.push(`${label} editado(s)`);
+        });
+        if (JSON.stringify(antes.vehiculos) !== JSON.stringify(despues.vehiculos)) cambios.push("Vehículos modificados");
+        return cambios.length ? cambios.join(" · ") : "Guardado sin cambios de contenido detectados";
+    }
+
     window.opsAbrirFichaServicio = function (id) {
         const s = cacheServiciosCatalogo.find(x => x.id === id);
         if (!s) return;
+        servicioEditDraft = JSON.parse(JSON.stringify(s));
+        servicioOriginalSnapshot = JSON.parse(JSON.stringify(s));
+        dispoServicioActual = null;
+        fichaServTabActual = "resumen";
+        servicioHistorialCache = null;
+        opsRenderFichaServicio();
+        opsVerificarDisponibilidadServicio();
+    };
+
+    function opsServSet(ruta, valor) {
+        const partes = ruta.split(".");
+        let obj = servicioEditDraft;
+        for (let i = 0; i < partes.length - 1; i++) obj = obj[partes[i]];
+        obj[partes[partes.length - 1]] = valor;
+    }
+    window.opsServCampo = function (ruta, valor, esNumero) { opsServSet(ruta, esNumero ? Number(valor) || 0 : valor); };
+
+    window.opsServAgregarFila = function (lista, plantilla) {
+        if (!servicioEditDraft[lista]) servicioEditDraft[lista] = [];
+        servicioEditDraft[lista].push(JSON.parse(JSON.stringify(plantilla)));
+        opsRenderFichaServicio();
+    };
+    window.opsServQuitarFila = function (lista, idx) {
+        servicioEditDraft[lista].splice(idx, 1);
+        opsRenderFichaServicio();
+    };
+    window.opsServAgregarAlterno = function () {
+        if (!servicioEditDraft.vehiculos) servicioEditDraft.vehiculos = { sugerido: { nombre: "", razon: "" }, alternos: [] };
+        if (!servicioEditDraft.vehiculos.alternos) servicioEditDraft.vehiculos.alternos = [];
+        servicioEditDraft.vehiculos.alternos.push({ nombre: "", condicion: "" });
+        opsRenderFichaServicio();
+    };
+    window.opsServQuitarAlterno = function (idx) {
+        servicioEditDraft.vehiculos.alternos.splice(idx, 1);
+        opsRenderFichaServicio();
+    };
+
+    window.opsGuardarServicio = async function () {
+        const btn = document.getElementById("ops-serv-btn-guardar");
+        if (btn) { btn.disabled = true; btn.textContent = "Guardando..."; }
+        try {
+            const { db, fs } = await opsGetFB();
+            const { id, ...datos } = servicioEditDraft;
+            const resumen = _resumenCambiosServicio(servicioOriginalSnapshot, servicioEditDraft);
+            await fs.setDoc(fs.doc(db, COL_SERVICIOS_CATALOGO, id), datos, { merge: false });
+            await fs.addDoc(fs.collection(db, COL_SERVICIOS_CATALOGO, id, "historial"), {
+                usuario: opsNombreActual(), usuarioEmail: opsUsuarioActual(),
+                fecha: opsFechaHora(), resumen,
+            }).catch(err => console.warn("[operaciones.js] no se pudo registrar el historial:", err));
+            servicioOriginalSnapshot = JSON.parse(JSON.stringify(servicioEditDraft));
+            servicioHistorialCache = null; // se recarga la próxima vez que se abra esa pestaña
+            if (btn) { btn.disabled = false; btn.textContent = "Guardar cambios"; }
+            window.mostrarPush ? mostrarPush("Planeación", "Receta de servicio guardada.", ICON.check) : alert("Guardado.");
+        } catch (err) {
+            console.error("[operaciones.js] error al guardar servicio:", err);
+            alert("No se pudo guardar: " + err.message);
+            if (btn) { btn.disabled = false; btn.textContent = "Guardar cambios"; }
+        }
+    };
+
+    // Cruce best-effort: no hay ids compartidos entre la receta (texto libre,
+    // copiado del Excel) y el catálogo real de herramientas/flota, así que se
+    // compara por nombre normalizado. Es una ayuda para decidir, no un dato exacto.
+    function _normTxt(s) { return (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim(); }
+    function _coincideTexto(a, b) {
+        const na = _normTxt(a), nb = _normTxt(b);
+        if (!na || !nb) return false;
+        return na.includes(nb) || nb.includes(na);
+    }
+
+    async function opsVerificarDisponibilidadServicio() {
+        const s = servicioEditDraft;
+        const herramientaDispo = (s.herramientaRequerida || []).map(req => {
+            const coincidencias = cacheHerr.filter(h => h.estado !== "baja" && _coincideTexto(h.descripcion, req.descripcion));
+            const disponibles = coincidencias.filter(h => h.estado === "disponible").length;
+            const total = coincidencias.length;
+            let semaforo = "roja";
+            if (total === 0) semaforo = "roja";
+            else if (disponibles >= (req.cantidad || 1)) semaforo = "verde";
+            else if (total >= (req.cantidad || 1)) semaforo = "amarilla";
+            else semaforo = "roja";
+            return { descripcion: req.descripcion, cantidad: req.cantidad || 1, total, disponibles, semaforo };
+        });
+
+        let vehiculosDispo = [];
+        try {
+            const { db, fs } = await opsGetFB();
+            const snap = await fs.getDocs(fs.collection(db, "flotilla_vehiculos"));
+            const flota = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            const candidatos = [
+                { nombre: s.vehiculos?.sugerido?.nombre, rol: "Sugerido" },
+                ...((s.vehiculos?.alternos || []).map(v => ({ nombre: v.nombre, rol: "Alterno" }))),
+            ].filter(c => c.nombre);
+            vehiculosDispo = candidatos.map(c => {
+                const match = flota.find(v => _coincideTexto((v.marca || "") + " " + (v.modelo || ""), c.nombre) || _coincideTexto(v.eco ? "eco " + v.eco : "", c.nombre));
+                if (!match) return { ...c, encontrado: false, estatusTexto: "No se encontró en la flota (revisa el nombre)", semaforo: "gris" };
+                const estatus = (match.estatus || match.estado || "").toLowerCase();
+                const libre = estatus.includes("activo") || estatus.includes("disponible") || !estatus;
+                return { ...c, encontrado: true, eco: match.eco, estatusTexto: match.estatus || match.estado || "—", semaforo: libre ? "verde" : "roja" };
+            });
+        } catch (err) {
+            console.warn("[operaciones.js] no se pudo verificar flota:", err);
+        }
+
+        dispoServicioActual = { herramientaDispo, vehiculosDispo };
+        opsRenderFichaServicio();
+    }
+
+    window.opsExportarServicioPDF = function () {
+        const s = servicioEditDraft;
+        if (!window.jspdf) { alert("jsPDF no está cargado."); return; }
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "letter" });
+        const M = 14, W = 216 - M * 2;
+        let y = 16;
+        doc.setFont("helvetica", "bold"); doc.setFontSize(14);
+        doc.text(s.nombre.toUpperCase(), M, y); y += 6;
+        doc.setFont("helvetica", "normal"); doc.setFontSize(9.5); doc.setTextColor(90);
+        doc.text("HEDMA TECNOCONTROL S.A. DE C.V. — Receta de servicio", M, y); y += 5;
+        doc.text(`${s.categoria || ""} · ${s.tipoServicio === "externo" ? "Externo" : (s.tipoServicio === "interno" ? "Interno" : "Interno/Externo")}`, M, y); y += 8;
+        doc.setTextColor(20);
+
+        function seccion(titulo) {
+            if (y > 260) { doc.addPage(); y = 16; }
+            doc.setFont("helvetica", "bold"); doc.setFontSize(11);
+            doc.setFillColor(29, 46, 115); doc.setTextColor(255);
+            doc.rect(M, y - 4, W, 6, "F");
+            doc.text(titulo, M + 2, y); y += 8;
+            doc.setTextColor(20); doc.setFont("helvetica", "normal"); doc.setFontSize(9.5);
+        }
+        function linea(txt) {
+            if (y > 275) { doc.addPage(); y = 16; }
+            doc.text(txt, M, y, { maxWidth: W }); y += 5;
+        }
+
+        seccion("PERSONAL");
+        (s.personal || []).forEach(p => linea(`${p.cantidad} × ${p.rol.replace("_", " ")}`));
+        y += 3;
+
+        seccion("VEHÍCULO");
+        linea(`Sugerido: ${s.vehiculos?.sugerido?.nombre || "—"} — ${s.vehiculos?.sugerido?.razon || ""}`);
+        (s.vehiculos?.alternos || []).forEach(v => linea(`Alterno: ${v.nombre} — ${v.condicion || ""}`));
+        y += 3;
+
+        seccion(`MATERIALES (${(s.materiales || []).length})`);
+        (s.materiales || []).forEach(m => linea(`${m.nombre} — ${m.cantidadBase} ${m.unidad} · $${m.costoUnitario}${m.nota ? " (" + m.nota + ")" : ""}`));
+        y += 3;
+
+        seccion("EQUIPO DE SEGURIDAD");
+        (s.equipoSeguridad || []).forEach(e => linea(`${e.nombre} — ${e.cantidad}`));
+        y += 3;
+
+        seccion(`HERRAMIENTA REQUERIDA (${(s.herramientaRequerida || []).length})`);
+        (s.herramientaRequerida || []).forEach(h => linea(`${h.etapa === "obra_civil" ? "[Obra civil] " : ""}${h.descripcion}${h.cantidad > 1 ? ` ×${h.cantidad}` : ""}`));
+
+        doc.save(`Receta_${s.nombre.replace(/\s+/g, "_")}.pdf`);
+    };
+
+    window.opsExportarServicioCSV = function () {
+        const s = servicioEditDraft;
+        const filas = [["SECCIÓN", "DESCRIPCIÓN", "CANTIDAD", "UNIDAD", "COSTO UNITARIO", "NOTA"]];
+        (s.personal || []).forEach(p => filas.push(["Personal", p.rol.replace("_", " "), p.cantidad, "", "", ""]));
+        filas.push(["Vehículo", "Sugerido: " + (s.vehiculos?.sugerido?.nombre || ""), "", "", "", s.vehiculos?.sugerido?.razon || ""]);
+        (s.vehiculos?.alternos || []).forEach(v => filas.push(["Vehículo", "Alterno: " + v.nombre, "", "", "", v.condicion || ""]));
+        (s.materiales || []).forEach(m => filas.push(["Material", m.nombre, m.cantidadBase, m.unidad, m.costoUnitario, m.nota || ""]));
+        (s.equipoSeguridad || []).forEach(e => filas.push(["Equipo de seguridad", e.nombre, e.cantidad, "", "", ""]));
+        (s.herramientaRequerida || []).forEach(h => filas.push(["Herramienta", h.descripcion, h.cantidad, "", "", h.etapa === "obra_civil" ? "Obra civil" : ""]));
+        const csv = filas.map(fila => fila.map(v => `"${String(v ?? "").replace(/"/g, '""')}"`).join(",")).join("\r\n");
+        const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" }); // BOM para que Excel abra bien los acentos
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = `Receta_${s.nombre.replace(/\s+/g, "_")}.csv`;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+
+    const _colorSemaforo = { verde: "#15803D", amarilla: "#b45309", roja: "#E7402B", gris: "#94a3b8" };
+    const _bgSemaforo = { verde: "#dcfce7", amarilla: "#fef3c7", roja: "#fee2e2", gris: "#f1f5f9" };
+
+    function opsRenderFichaServicio() {
+        const s = servicioEditDraft;
+        if (!s) return;
         const wrap = document.getElementById("ops-panel-wrap");
-        wrap.innerHTML = `
-        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.5);z-index:99998;display:flex;justify-content:flex-end;" onclick="if(event.target===this)document.getElementById('ops-panel-wrap').innerHTML=''">
-            <div style="background:#fff;width:480px;max-width:92vw;height:100%;overflow-y:auto;padding:22px;box-shadow:-6px 0 20px rgba(0,0,0,0.15);">
-                <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px;">
-                    <div>
-                        <div style="font-size:16px;font-weight:700;color:#1e293b;">${opsEsc(s.nombre)}</div>
-                        <div style="font-size:11px;color:#94a3b8;">${opsEsc(s.categoria || "")} · ${s.tipoServicio === "externo" ? "Externo" : (s.tipoServicio === "interno" ? "Interno" : "Interno/Externo")}</div>
-                    </div>
-                    <button onclick="document.getElementById('ops-panel-wrap').innerHTML=''" style="background:#f1f5f9;border:none;width:28px;height:28px;border-radius:7px;cursor:pointer;">${ICON.close}</button>
+        const gestion = opsPuedeGestionar();
+        const inp = (val, ruta, esNumero, placeholder, ancho) => `<input value="${opsEsc(val ?? "")}" placeholder="${opsEsc(placeholder || "")}" ${esNumero ? 'type="number" step="any"' : ""} oninput="opsServCampo('${ruta}', this.value, ${!!esNumero})" style="width:${ancho || "100%"};border:1px solid #cbd5e1;border-radius:6px;padding:5px 7px;font-size:11.5px;" ${gestion ? "" : "disabled"}>`;
+
+        const tabResumen = `
+                <div style="margin-top:14px;">
+                    <div style="font-size:11px;font-weight:700;color:#1D2E73;text-transform:uppercase;margin-bottom:6px;">Disponibilidad de herramienta</div>
+                    ${dispoServicioActual === null ? '<div style="color:#94a3b8;font-size:11.5px;">Verificando contra el catálogo real...</div>' :
+                        dispoServicioActual.herramientaDispo.map(d => `
+                        <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;">
+                            <span style="font-size:11.5px;color:#334155;">${opsEsc(d.descripcion)}</span>
+                            <span style="background:${_bgSemaforo[d.semaforo]};color:${_colorSemaforo[d.semaforo]};font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap;">Necesarios ${d.cantidad} · Disponibles ${d.disponibles}/${d.total}</span>
+                        </div>`).join("")}
+                    ${dispoServicioActual && !dispoServicioActual.herramientaDispo.length ? '<div style="color:#94a3b8;font-size:11px;">Sin herramienta en la receta.</div>' : ""}
+                    <div style="font-size:10px;color:#94a3b8;margin-top:6px;">Se compara por nombre contra tu catálogo de Herramientas — si no coincide exacto, revisa el nombre en ambos lados.</div>
                 </div>
 
-                <div style="margin-top:14px;">
+                <div style="margin-top:16px;">
+                    <div style="font-size:11px;font-weight:700;color:#1D2E73;text-transform:uppercase;margin-bottom:6px;">Disponibilidad de vehículo</div>
+                    ${dispoServicioActual === null ? '<div style="color:#94a3b8;font-size:11.5px;">Verificando contra Flotilla...</div>' :
+                        (dispoServicioActual.vehiculosDispo.length ? dispoServicioActual.vehiculosDispo.map(v => `
+                        <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;">
+                            <span style="font-size:11.5px;color:#334155;">${opsEsc(v.rol)}: ${opsEsc(v.nombre)}</span>
+                            <span style="background:${_bgSemaforo[v.semaforo]};color:${_colorSemaforo[v.semaforo]};font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap;">${opsEsc(v.estatusTexto)}</span>
+                        </div>`).join("") : '<div style="color:#94a3b8;font-size:11px;">Sin vehículo configurado.</div>')}
+                </div>
+
+                <div style="margin-top:16px;background:#f8fafc;border-radius:8px;padding:9px 11px;font-size:10.5px;color:#64748b;">Personal y horarios: aún no se cruza contra la disponibilidad real — falta la fecha del servicio (Fase 5, calendario). Ya existe el calendario de vacaciones/incapacidad/permiso por técnico en su ficha (pestaña Ausencias).</div>
+
+                <div style="margin-top:16px;">
                     <div style="font-size:11px;font-weight:700;color:#1D2E73;text-transform:uppercase;margin-bottom:6px;">Personal</div>
-                    ${(s.personal || []).map(p => `<div style="font-size:12.5px;color:#334155;">${p.cantidad} × ${opsEsc(p.rol.replace("_", " "))}</div>`).join("")}
+                    ${(s.personal || []).map((p, i) => `
+                        <div style="display:flex;gap:6px;margin-bottom:5px;align-items:center;">
+                            <select onchange="opsServCampo('personal.${i}.rol', this.value)" style="flex:1;border:1px solid #cbd5e1;border-radius:6px;padding:5px 7px;font-size:11.5px;" ${gestion ? "" : "disabled"}>
+                                ${["lider", "tecnico", "obra_civil"].map(r => `<option value="${r}" ${p.rol === r ? "selected" : ""}>${r.replace("_", " ")}</option>`).join("")}
+                            </select>
+                            ${inp(p.cantidad, `personal.${i}.cantidad`, true, "Cant.", "60px")}
+                            ${gestion ? `<button onclick="opsServQuitarFila('personal',${i})" style="background:#fee2e2;border:none;color:#E7402B;width:26px;height:26px;border-radius:6px;cursor:pointer;flex-shrink:0;">${ICON.close}</button>` : ""}
+                        </div>`).join("")}
+                    ${gestion ? `<button onclick="opsServAgregarFila('personal',{rol:'tecnico',cantidad:1})" style="background:#eef2f7;border:none;color:#1D2E73;padding:6px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">+ Agregar rol</button>` : ""}
                 </div>
 
-                <div style="margin-top:14px;">
+                <div style="margin-top:16px;">
                     <div style="font-size:11px;font-weight:700;color:#1D2E73;text-transform:uppercase;margin-bottom:6px;">Vehículo</div>
-                    <div style="font-size:12.5px;color:#334155;"><strong>Sugerido:</strong> ${opsEsc(s.vehiculos?.sugerido?.nombre || "—")} <span style="color:#94a3b8;">— ${opsEsc(s.vehiculos?.sugerido?.razon || "")}</span></div>
-                    ${(s.vehiculos?.alternos || []).map(v => `<div style="font-size:12px;color:#64748b;margin-top:2px;">Alterno: ${opsEsc(v.nombre)} — ${opsEsc(v.condicion)}</div>`).join("")}
-                    ${s.vehiculos?.duracionNota ? `<div style="font-size:11px;color:#94a3b8;margin-top:4px;">${opsEsc(s.vehiculos.duracionNota)}</div>` : ""}
-                </div>
+                    <div style="font-size:10.5px;color:#64748b;margin-bottom:3px;">Sugerido</div>
+                    <div style="display:flex;gap:6px;margin-bottom:8px;">
+                        ${inp(s.vehiculos?.sugerido?.nombre, "vehiculos.sugerido.nombre", false, "Nombre del vehículo")}
+                        ${inp(s.vehiculos?.sugerido?.razon, "vehiculos.sugerido.razon", false, "Razón")}
+                    </div>
+                    <div style="font-size:10.5px;color:#64748b;margin-bottom:3px;">Alternos</div>
+                    ${(s.vehiculos?.alternos || []).map((v, i) => `
+                        <div style="display:flex;gap:6px;margin-bottom:5px;align-items:center;">
+                            ${inp(v.nombre, `vehiculos.alternos.${i}.nombre`, false, "Nombre")}
+                            ${inp(v.condicion, `vehiculos.alternos.${i}.condicion`, false, "Condición")}
+                            ${gestion ? `<button onclick="opsServQuitarAlterno(${i})" style="background:#fee2e2;border:none;color:#E7402B;width:26px;height:26px;border-radius:6px;cursor:pointer;flex-shrink:0;">${ICON.close}</button>` : ""}
+                        </div>`).join("")}
+                    ${gestion ? `<button onclick="opsServAgregarAlterno()" style="background:#eef2f7;border:none;color:#1D2E73;padding:6px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">+ Agregar alterno</button>` : ""}
+                </div>`;
 
+        const tabMateriales = `
                 <div style="margin-top:14px;">
                     <div style="font-size:11px;font-weight:700;color:#1D2E73;text-transform:uppercase;margin-bottom:6px;">Materiales (${(s.materiales || []).length})</div>
-                    ${(s.materiales || []).map(m => `<div style="font-size:11.5px;color:#334155;display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #f8fafc;"><span>${opsEsc(m.nombre)}${m.nota ? ` <span style="color:#94a3b8;">(${opsEsc(m.nota)})</span>` : ""}</span><span style="color:#64748b;flex-shrink:0;margin-left:8px;">${m.cantidadBase} ${opsEsc(m.unidad)} · $${m.costoUnitario}</span></div>`).join("")}
-                </div>
+                    ${(s.materiales || []).map((m, i) => `
+                        <div style="border:1px solid #f1f5f9;border-radius:7px;padding:7px 8px;margin-bottom:6px;">
+                            <div style="display:flex;gap:6px;margin-bottom:5px;">
+                                ${inp(m.nombre, `materiales.${i}.nombre`, false, "Nombre del material")}
+                                ${gestion ? `<button onclick="opsServQuitarFila('materiales',${i})" style="background:#fee2e2;border:none;color:#E7402B;width:26px;height:26px;border-radius:6px;cursor:pointer;flex-shrink:0;">${ICON.close}</button>` : ""}
+                            </div>
+                            <div style="display:flex;gap:6px;">
+                                ${inp(m.cantidadBase, `materiales.${i}.cantidadBase`, true, "Cant.", "60px")}
+                                ${inp(m.unidad, `materiales.${i}.unidad`, false, "Unidad", "60px")}
+                                ${inp(m.costoUnitario, `materiales.${i}.costoUnitario`, true, "Costo unit.", "70px")}
+                                <select onchange="opsServCampo('materiales.${i}.reglaConsumo', this.value)" style="flex:1;border:1px solid #cbd5e1;border-radius:6px;padding:5px 7px;font-size:11px;" ${gestion ? "" : "disabled"}>
+                                    <option value="proporcional" ${m.reglaConsumo === "proporcional" ? "selected" : ""}>Proporcional</option>
+                                    <option value="frecuencia" ${m.reglaConsumo === "frecuencia" ? "selected" : ""}>Por frecuencia</option>
+                                </select>
+                            </div>
+                        </div>`).join("")}
+                    ${gestion ? `<button onclick="opsServAgregarFila('materiales',{nombre:'',unidad:'pza',costoUnitario:0,cantidadBase:1,reglaConsumo:'proporcional'})" style="background:#eef2f7;border:none;color:#1D2E73;padding:6px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">+ Agregar material</button>` : ""}
+                </div>`;
 
+        const tabHerramienta = `
                 <div style="margin-top:14px;">
                     <div style="font-size:11px;font-weight:700;color:#1D2E73;text-transform:uppercase;margin-bottom:6px;">Equipo de seguridad</div>
-                    ${(s.equipoSeguridad || []).map(e => `<div style="font-size:11.5px;color:#334155;">${opsEsc(e.nombre)} — ${opsEsc(String(e.cantidad))}</div>`).join("")}
+                    ${(s.equipoSeguridad || []).map((e, i) => `
+                        <div style="display:flex;gap:6px;margin-bottom:5px;align-items:center;">
+                            ${inp(e.nombre, `equipoSeguridad.${i}.nombre`, false, "Nombre")}
+                            ${inp(e.cantidad, `equipoSeguridad.${i}.cantidad`, false, "Cant.", "90px")}
+                            ${gestion ? `<button onclick="opsServQuitarFila('equipoSeguridad',${i})" style="background:#fee2e2;border:none;color:#E7402B;width:26px;height:26px;border-radius:6px;cursor:pointer;flex-shrink:0;">${ICON.close}</button>` : ""}
+                        </div>`).join("")}
+                    ${gestion ? `<button onclick="opsServAgregarFila('equipoSeguridad',{nombre:'',cantidad:1})" style="background:#eef2f7;border:none;color:#1D2E73;padding:6px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">+ Agregar equipo</button>` : ""}
                 </div>
 
-                <div style="margin-top:14px;">
+                <div style="margin-top:16px;">
                     <div style="font-size:11px;font-weight:700;color:#1D2E73;text-transform:uppercase;margin-bottom:6px;">Herramienta requerida (${(s.herramientaRequerida || []).length})</div>
-                    ${(s.herramientaRequerida || []).map(h => `<div style="font-size:11.5px;color:#334155;">${h.etapa === "obra_civil" ? '<span style="color:#94a3b8;font-size:10px;">[Obra civil] </span>' : ""}${opsEsc(h.descripcion)}${h.cantidad > 1 ? ` ×${h.cantidad}` : ""}</div>`).join("")}
+                    ${(s.herramientaRequerida || []).map((h, i) => `
+                        <div style="display:flex;gap:6px;margin-bottom:5px;align-items:center;">
+                            ${inp(h.descripcion, `herramientaRequerida.${i}.descripcion`, false, "Descripción")}
+                            ${inp(h.cantidad, `herramientaRequerida.${i}.cantidad`, true, "Cant.", "55px")}
+                            <select onchange="opsServCampo('herramientaRequerida.${i}.etapa', this.value)" style="border:1px solid #cbd5e1;border-radius:6px;padding:5px 7px;font-size:11px;" ${gestion ? "" : "disabled"}>
+                                <option value="tecnico" ${h.etapa !== "obra_civil" ? "selected" : ""}>Técnico</option>
+                                <option value="obra_civil" ${h.etapa === "obra_civil" ? "selected" : ""}>Obra civil</option>
+                            </select>
+                            ${gestion ? `<button onclick="opsServQuitarFila('herramientaRequerida',${i})" style="background:#fee2e2;border:none;color:#E7402B;width:26px;height:26px;border-radius:6px;cursor:pointer;flex-shrink:0;">${ICON.close}</button>` : ""}
+                        </div>`).join("")}
+                    ${gestion ? `<button onclick="opsServAgregarFila('herramientaRequerida',{descripcion:'',cantidad:1,etapa:'tecnico'})" style="background:#eef2f7;border:none;color:#1D2E73;padding:6px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">+ Agregar herramienta</button>` : ""}
+                </div>`;
+
+        const tabHistorial = `
+                <div style="margin-top:14px;">
+                    <div style="font-size:11px;font-weight:700;color:#1D2E73;text-transform:uppercase;margin-bottom:6px;">Historial de cambios</div>
+                    ${servicioHistorialCache === null ? '<div style="color:#94a3b8;font-size:11.5px;">Cargando...</div>' :
+                        (servicioHistorialCache.length ? servicioHistorialCache.map(h => `
+                        <div style="border-left:2px solid #e2e8f0;padding-left:12px;margin-bottom:12px;position:relative;">
+                            <div style="position:absolute;left:-5px;top:3px;width:8px;height:8px;border-radius:50%;background:#1D2E73;"></div>
+                            <div style="font-size:11.5px;font-weight:600;color:#1e293b;">${opsEsc(h.usuario || h.usuarioEmail || "—")}</div>
+                            <div style="font-size:10.5px;color:#94a3b8;margin-bottom:3px;">${opsEsc((h.fecha || "").replace("T", " ").slice(0, 16))}</div>
+                            <div style="font-size:11.5px;color:#334155;">${opsEsc(h.resumen || "")}</div>
+                        </div>`).join("") : '<div style="color:#94a3b8;font-size:12px;">Sin cambios registrados todavía — el historial empieza a llenarse desde el primer "Guardar cambios".</div>')}
+                </div>`;
+
+        const contenidoTab = { resumen: tabResumen, materiales: tabMateriales, herramienta: tabHerramienta, historial: tabHistorial }[fichaServTabActual];
+
+        wrap.innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.5);z-index:99998;display:flex;justify-content:flex-end;" onclick="if(event.target===this){document.getElementById('ops-panel-wrap').innerHTML='';servicioEditDraft=null;dispoServicioActual=null;}">
+            <div style="background:#fff;width:520px;max-width:94vw;height:100%;overflow-y:auto;padding:22px;box-shadow:-6px 0 20px rgba(0,0,0,0.15);">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px;">
+                    <div style="flex:1;">
+                        ${inp(s.nombre, "nombre", false, "Nombre del servicio", "100%")}
+                        <div style="font-size:11px;color:#94a3b8;margin-top:4px;">${opsEsc(s.categoria || "")}</div>
+                    </div>
+                    <button onclick="document.getElementById('ops-panel-wrap').innerHTML='';servicioEditDraft=null;dispoServicioActual=null;" style="background:#f1f5f9;border:none;width:28px;height:28px;border-radius:7px;cursor:pointer;margin-left:8px;">${ICON.close}</button>
                 </div>
 
-                ${s.notaImportacion ? `<div style="margin-top:14px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;font-size:11px;color:#92400e;">${opsEsc(s.notaImportacion)}</div>` : ""}
-                <div style="margin-top:10px;font-size:10px;color:#cbd5e1;">${opsEsc(s.origenImportacion || "")}</div>
+                <div style="display:flex;gap:6px;margin:12px 0 4px;">
+                    <button onclick="opsExportarServicioPDF()" style="background:#eef2f7;border:none;color:#1D2E73;padding:6px 11px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">${ICON.file} PDF</button>
+                    <button onclick="opsExportarServicioCSV()" style="background:#eef2f7;border:none;color:#1D2E73;padding:6px 11px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">${ICON.file} Excel (CSV)</button>
+                </div>
+
+                <div style="display:flex;gap:2px;margin:12px 0;border-bottom:1px solid #e2e8f0;overflow-x:auto;">
+                    ${["resumen:Resumen", "materiales:Materiales", "herramienta:Herramienta y seguridad", "historial:Historial"].map(x => {
+                        const [tid, label] = x.split(":");
+                        const on = fichaServTabActual === tid;
+                        return `<button onclick="opsFichaServCambiarTab('${tid}')" style="background:none;border:none;padding:8px 9px;font-size:11px;font-weight:600;white-space:nowrap;color:${on ? "#1D2E73" : "#64748b"};border-bottom:2px solid ${on ? "#1D2E73" : "transparent"};cursor:pointer;">${label}</button>`;
+                    }).join("")}
+                </div>
+
+                ${contenidoTab}
+
+                ${fichaServTabActual !== "historial" && s.notaImportacion ? `<div style="margin-top:16px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;font-size:11px;color:#92400e;">${opsEsc(s.notaImportacion)}</div>` : ""}
+                ${fichaServTabActual !== "historial" ? `<div style="margin-top:10px;font-size:10px;color:#cbd5e1;">${opsEsc(s.origenImportacion || "")}</div>` : ""}
+
+                ${gestion && fichaServTabActual !== "historial" ? `<div style="margin-top:18px;text-align:right;"><button id="ops-serv-btn-guardar" onclick="opsGuardarServicio()" class="mkt-add-btn" style="background:#1D2E73;">Guardar cambios</button></div>` : ""}
             </div>
         </div>`;
-    };
+    }
 
     // ═══════════════════════ TAB: MOVIMIENTOS ═══════════════════════
     let filtroMovRango = "todos";
