@@ -220,7 +220,7 @@
       return sb.from('surtido_evidencias').select('*').eq('surtido_id', id).order('subido_en', { ascending: true });
     }).then(function (r) {
       if (r.error) throw r.error;
-      return (r.data || []).map(function (e) { return { id: e.id, tipo: e.tipo, imagen: e.imagen, nombre: e.nombre, url: e.url, subidoEn: e.subido_en, subidoPor: e.subido_por }; });
+      return (r.data || []).map(function (e) { return { id: e.id, tipo: e.tipo, imagen: e.imagen, nombre: e.nombre, url: e.url, subidoEn: e.subido_en, subidoPor: e.subido_por, categoria: e.categoria || 'general' }; });
     });
   };
   window.tcSbAgregarEvidencia = function (id, datos) {
@@ -228,6 +228,7 @@
       return sb.from('surtido_evidencias').insert({
         surtido_id: id, tipo: datos.tipo || null, imagen: datos.imagen || null,
         nombre: datos.nombre || null, url: datos.url || null, subido_por: datos.subidoPor || null,
+        categoria: datos.categoria || 'general',
       });
     }).then(function (r) { if (r.error) throw r.error; });
   };
@@ -311,7 +312,7 @@
   }
   window.tcSbEscucharEvidencias = function (surtidoId, onChange) {
     return _escucharTabla('surtido_evidencias', function (e) {
-      return { id: e.id, tipo: e.tipo, imagen: e.imagen, nombre: e.nombre, url: e.url, subidoEn: e.subido_en, subidoPor: e.subido_por };
+      return { id: e.id, tipo: e.tipo, imagen: e.imagen, nombre: e.nombre, url: e.url, subidoEn: e.subido_en, subidoPor: e.subido_por, categoria: e.categoria || 'general' };
     }, surtidoId, onChange);
   };
   window.tcSbEscucharHistorial = function (surtidoId, onChange) {
@@ -323,6 +324,31 @@
     return _escucharTabla('surtido_documentos', function (d) {
       return { id: d.id, nombre: d.nombre, archivo: d.archivo, subidoEn: d.subido_en, subidoPor: d.subido_por };
     }, surtidoId, onChange);
+  };
+
+  // ── Resumen en bloque: qué evidencias/documentos tiene cada pedido de una
+  //    lista (para pintar palomitas en la tabla de historial sin hacer una
+  //    consulta por fila) ──────────────────────────────────────────────
+  window.tcSbResumenEvidenciasDocs = function (ids) {
+    if (!ids || !ids.length) return Promise.resolve({ evidencias: {}, documentos: {} });
+    return cargarSupabase().then(function (sb) {
+      return Promise.all([
+        sb.from('surtido_evidencias').select('surtido_id,categoria,imagen,url,nombre,subido_en').in('surtido_id', ids),
+        sb.from('surtido_documentos').select('surtido_id').in('surtido_id', ids),
+      ]);
+    }).then(function (r) {
+      if (r[0].error) throw r[0].error;
+      if (r[1].error) throw r[1].error;
+      var evid = {}, docs = {};
+      (r[0].data || []).forEach(function (e) {
+        var cat = e.categoria || 'general';
+        evid[e.surtido_id] = evid[e.surtido_id] || {};
+        // Guarda la más reciente de cada categoría, para poder previsualizarla directo.
+        if (!evid[e.surtido_id][cat]) evid[e.surtido_id][cat] = { imagen: e.imagen, url: e.url, nombre: e.nombre };
+      });
+      (r[1].data || []).forEach(function (d) { docs[d.surtido_id] = (docs[d.surtido_id] || 0) + 1; });
+      return { evidencias: evid, documentos: docs };
+    });
   };
 
   // ── Crear un pedido nuevo ────────────────────────────────────────────
