@@ -25,6 +25,14 @@
  * ============================================================================*/
 (function(){
 
+  if (!document.getElementById('cb-estilos')){
+    var st = document.createElement('style');
+    st.id = 'cb-estilos';
+    st.textContent = '.cb-pedidos-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;}'
+      + '@media (max-width:760px){.cb-pedidos-grid{grid-template-columns:1fr;}}';
+    document.head.appendChild(st);
+  }
+
   var contId = 'vista-cobranza-area';
   var _fs = null;
   var cuentas = [];
@@ -36,6 +44,7 @@
   var detalleId = null;
   var _pedidosCache = {};      // clienteNombre -> [surtidos]
   var pedidosTodos = null;     // cache de TODOS los surtidos, para la vista "Pedidos de Almacén"
+  var _resumenGlobal = {};     // id -> {salida,remision,documentos} — para los chips rápidos de cada tarjeta
   var filtroPedidosTexto = '';
   var pedidoAbiertoGlobal = null; // pedido expandido en la vista global (independiente del expediente de cuenta)
   var _evidenciasCache = {};   // surtidoId -> [evidencias]
@@ -119,6 +128,19 @@
     return window.tcSbListarTodosSurtidos().then(function(list){
       // tcSbListarTodosSurtidos ya regresa createdAt como número (ms), no {seconds:...} como Firestore.
       pedidosTodos = list;
+      // Resumen en bloque de evidencia/documentos (para los chips rápidos) —
+      // no bloqueante: si tarda o falla, la lista igual se muestra, solo sin
+      // los chips hasta que llegue.
+      window.tcSbResumenEvidenciasDocs(list.map(function(p){ return p.id; })).then(function(r){
+        list.forEach(function(p){
+          var ev = r.evidencias[p.id] || {};
+          _resumenGlobal[p.id] = { salida: !!(ev.salida||ev.general), remision: !!ev.remision, documentos: (r.documentos[p.id]||0)>0 };
+        });
+        if (vistaActual==='pedidos'){
+          var cont = document.getElementById('cb-pedidos-tabla-wrap');
+          if (cont) cont.innerHTML = renderTablaPedidosGlobal();
+        }
+      }).catch(function(){});
       return list;
     }).catch(function(e){ console.warn('[cobranza] cargarTodosPedidos:',e); pedidosTodos=[]; return []; });
   }
@@ -274,10 +296,10 @@
   };
 
   function renderVistaPedidos(){
-    return '<div style="background:#fff;border-radius:14px;padding:18px 22px;box-shadow:0 1px 3px rgba(10,22,40,.08)">'+
+    return '<div style="background:#F1F5F9;border-radius:14px;padding:18px 22px;box-shadow:0 1px 3px rgba(10,22,40,.08)">'+
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">'+
-        '<h3 style="font-size:15px;font-weight:700;margin:0;color:#0A1628">Pedidos de Almacén</h3>'+
-        '<input id="cb-filtro-pedidos-texto" placeholder="Buscar folio de pedido, folio de remisión o cliente…" value="'+esc(filtroPedidosTexto)+'" oninput="window.__cbSetFiltroPedidosTexto(this.value)" style="padding:8px 12px;border:1px solid #E2E8F0;border-radius:8px;font-size:12px;min-width:280px">'+
+        '<h3 style="font-size:15px;font-weight:800;margin:0;color:#0A1628">📦 Pedidos de Almacén</h3>'+
+        '<input id="cb-filtro-pedidos-texto" placeholder="Buscar folio de pedido, folio de remisión o cliente…" value="'+esc(filtroPedidosTexto)+'" oninput="window.__cbSetFiltroPedidosTexto(this.value)" style="padding:8px 12px;border:1px solid #CBD5E1;border-radius:8px;font-size:12px;min-width:280px;background:#fff;">'+
       '</div>'+
       '<div id="cb-pedidos-tabla-wrap">'+renderTablaPedidosGlobal()+'</div>'+
     '</div>';
@@ -293,7 +315,7 @@
         (p.remisionAspelFolio||'').toLowerCase().indexOf(q)>=0;
     });
     if(!lista.length) return '<p style="text-align:center;color:#94A3B8;padding:40px 0;font-size:13px">Sin pedidos que coincidan con la búsqueda.</p>';
-    return lista.map(renderPedidoRowGlobal).join('');
+    return '<div class="cb-pedidos-grid">'+lista.map(renderPedidoRowGlobal).join('')+'</div>';
   }
 
   function renderPedidoRowGlobal(p){
@@ -301,6 +323,7 @@
     return renderPedidoCard(p, {
       abierto: abierto,
       mostrarCliente: true,
+      resumen: _resumenGlobal[p.id],
       onToggle: "window.__cbToggleEvidenciasGlobal('"+p.id+"')",
       detalleId: 'cb-gped-'+p.id
     });
@@ -555,8 +578,19 @@
         if(!pedidos.length){
           pedList.innerHTML = '<p style="font-size:12px;color:#94A3B8">Sin pedidos de Almacén encontrados para este cliente.</p>';
         } else {
-          pedList.innerHTML = pedidos.map(renderPedidoRow).join('');
+          pedList.innerHTML = '<div class="cb-pedidos-grid">'+pedidos.map(renderPedidoRow).join('')+'</div>';
           if(_pedidoAbierto) renderDetallePedido('cb-evid-'+_pedidoAbierto, _pedidoAbierto);
+          var idsSinResumen = pedidos.map(function(p){return p.id;}).filter(function(pid){ return !_resumenGlobal[pid]; });
+          if (idsSinResumen.length){
+            window.tcSbResumenEvidenciasDocs(idsSinResumen).then(function(r){
+              idsSinResumen.forEach(function(pid){
+                var ev = r.evidencias[pid] || {};
+                _resumenGlobal[pid] = { salida: !!(ev.salida||ev.general), remision: !!ev.remision, documentos: (r.documentos[pid]||0)>0 };
+              });
+              var elActual = document.getElementById('cb-pedidos-list');
+              if (elActual) elActual.innerHTML = '<div class="cb-pedidos-grid">'+pedidos.map(renderPedidoRow).join('')+'</div>';
+            }).catch(function(){});
+          }
         }
       }
     });
@@ -567,6 +601,7 @@
     return renderPedidoCard(p, {
       abierto: abierto,
       mostrarCliente: false,
+      resumen: _resumenGlobal[p.id],
       onToggle: "window.__cbToggleEvidencias('"+p.id+"')",
       detalleId: 'cb-evid-'+p.id
     });
@@ -581,7 +616,7 @@
   };
 
   function subseccion(titulo, html){
-    return '<div style="margin-bottom:12px"><p style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#94A3B8;margin:0 0 6px">'+titulo+'</p>'+html+'</div>';
+    return '<div style="margin-bottom:14px"><div style="background:#EEF2F7;border-radius:6px;padding:4px 9px;margin-bottom:8px;display:inline-block;"><p style="font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#475569;margin:0;">'+titulo+'</p></div><div>'+html+'</div></div>';
   }
 
   // ── Estilo compartido de "chip" (etiqueta con fondo) para estados/badges ──
@@ -589,22 +624,31 @@
     return '<span style="display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;color:'+color+';background:'+bg+';padding:3px 9px;border-radius:20px;white-space:nowrap">'+texto+'</span>';
   }
 
+  function chipMini(etiqueta, presente){
+    if (presente) return '<span style="display:inline-flex;align-items:center;gap:3px;background:rgba(22,163,74,.1);border:1px solid rgba(22,163,74,.3);border-radius:6px;padding:2px 7px;font-size:9.5px;font-weight:700;color:#16A34A;white-space:nowrap;">✅ '+etiqueta+'</span>';
+    return '<span style="display:inline-flex;align-items:center;gap:3px;background:#EEF2F7;border:1px dashed #CBD5E1;border-radius:6px;padding:2px 7px;font-size:9.5px;font-weight:700;color:#94A3B8;white-space:nowrap;">— '+etiqueta+'</span>';
+  }
+
   // ── Tarjeta profesional de un pedido: marco completo, acento de color por
-  //    estado, chips en vez de texto plano — reemplaza al renglón con solo
-  //    "border-top" que se veía como texto corrido sin delimitar. ──
+  //    estado, chips en vez de texto plano, con fondo gris muy claro (no
+  //    blanco puro) para que se distinga del fondo de la página. ──
   function renderPedidoCard(p, opts){
     opts = opts || {};
-    var fecha = p.createdAt && p.createdAt.seconds ? new Date(p.createdAt.seconds*1000) : null;
+    var fecha = p.createdAt ? new Date(p.createdAt) : null; // ya es número (ms) desde Supabase, no {seconds:...} de Firestore
     var abierto = opts.abierto;
-    var acento = p.remisionado ? '#16A34A' : '#CBD5E1';
+    var acento = p.remisionado ? '#16A34A' : (p.estado==='cancelado' ? '#DC2626' : '#F59E0B');
     var remisionChip = p.remisionado
       ? chip('✓ Remisionado', '#DCFCE7', '#16A34A')
       : chip('Sin remisionar', '#F1F5F9', '#64748B');
-    var remisionAspelLinea = p.remisionado && p.remisionAspelFolio
-      ? '<p style="font-size:10.5px;color:#94A3B8;margin:3px 0 0">Remisión Aspel: <b style="color:#334155">'+esc(p.remisionAspelFolio)+'</b>'+(p.remisionAspelFecha?(' · '+fmtFecha(p.remisionAspelFecha)):'')+'</p>'
-      : '';
     var clienteTxt = opts.mostrarCliente && p.cliente ? ' <span style="font-weight:400;color:#5C7089">· '+esc(p.cliente)+'</span>' : '';
-    return '<div style="background:#fff;border:1px solid #E2E8F0;border-left:4px solid '+acento+';border-radius:12px;padding:14px 16px;margin-bottom:10px;transition:box-shadow .15s" onmouseenter="this.style.boxShadow=\'0 2px 8px rgba(10,22,40,.08)\'" onmouseleave="this.style.boxShadow=\'none\'">'+
+    var res = opts.resumen || {};
+    var chipsRapidos = '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;">'
+      + chipMini('Salida', !!(res.salida))
+      + chipMini('Remisión', !!(res.remision))
+      + chipMini('Doc.', !!(res.documentos))
+      + chipMini('PDF', !!p.tienePdfOriginal)
+      + '</div>';
+    return '<div style="background:#F8FAFC;border:1px solid #E2E8F0;border-left:5px solid '+acento+';border-radius:12px;padding:14px 16px;margin-bottom:0;transition:box-shadow .15s,background .15s" onmouseenter="this.style.boxShadow=\'0 3px 12px rgba(10,22,40,.1)\';this.style.background=\'#fff\'" onmouseleave="this.style.boxShadow=\'none\';this.style.background=\'#F8FAFC\'">'+
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;cursor:pointer" onclick="'+esc(opts.onToggle)+'">'+
         '<div style="min-width:0">'+
           '<p style="font-size:13.5px;font-weight:700;color:#0A1628;margin:0">'+esc(p.folio||p.id)+clienteTxt+'</p>'+
@@ -613,12 +657,13 @@
             chip(esc(p.estado||'—'), '#EFF6FF', '#1473E6')+
             remisionChip+
           '</div>'+
-          remisionAspelLinea+
+          (p.remisionado && p.remisionAspelFolio ? '<p style="font-size:10.5px;color:#94A3B8;margin:3px 0 0">Remisión Aspel: <b style="color:#334155">'+esc(p.remisionAspelFolio)+'</b>'+(p.remisionAspelFecha?(' · '+fmtFecha(p.remisionAspelFecha)):'')+'</p>' : '')+
+          chipsRapidos+
         '</div>'+
         '<span style="flex-shrink:0;font-size:11px;font-weight:700;color:#1473E6;white-space:nowrap;display:flex;align-items:center;gap:4px">'+(abierto?'Ocultar':'Ver detalle')+
           '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="transform:rotate('+(abierto?'180':'0')+'deg);transition:transform .15s"><polyline points="6 9 12 15 18 9"/></svg></span>'+
       '</div>'+
-      '<div id="'+esc(opts.detalleId)+'" style="margin-top:'+(abierto?'12':'0')+'px;'+(abierto?'':'display:none')+';border-top:'+(abierto?'1px solid #F1F5F9;padding-top:12px':'none')+'">'+(abierto?'<p style="font-size:11px;color:#94A3B8">Cargando…</p>':'')+'</div>'+
+      '<div id="'+esc(opts.detalleId)+'" style="margin-top:'+(abierto?'12':'0')+'px;'+(abierto?'':'display:none')+';border-top:'+(abierto?'1px solid #E2E8F0;padding-top:12px':'none')+'">'+(abierto?'<p style="font-size:11px;color:#94A3B8">Cargando…</p>':'')+'</div>'+
     '</div>';
   }
 
@@ -681,6 +726,11 @@
           '</div>'
         : '';
 
+      var botonesHtml = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">'
+        + (p && p.tienePdfOriginal ? '<button onclick="window.__cbVerPdfPedido(\''+pedidoId+'\')" style="padding:6px 12px;background:#EFF6FF;color:#1473E6;border:1px solid #BFDBFE;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">📄 PDF original</button>' : '')
+        + (p && p.caratulaEnvio ? '<button onclick="window.__cbVerCaratula(\''+pedidoId+'\')" style="padding:6px 12px;background:#F5F0FF;color:#8B4FD6;border:1px solid #DDD6FE;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">📦 Carátula de envío</button>' : '')
+        + '</div>';
+
       var histHtml = hist.length ? '<div style="border-left:2px solid #E2E8F0;padding-left:12px">'+hist.map(function(h){
         return '<div style="position:relative;padding:4px 0 10px"><span style="position:absolute;left:-16.5px;top:6px;width:8px;height:8px;border-radius:50%;background:#1473E6"></span>'+
           '<span style="font-size:11.5px;color:#334155"><b>'+esc(h.de||'—')+'</b> → <b>'+esc(h.a||'—')+'</b></span><br>'+
@@ -693,21 +743,27 @@
           (d.subidoEn||d.fecha?('<div style="font-size:10px;color:#94A3B8">'+fmtFechaHora(d.subidoEn||d.fecha)+(d.subidoPor?(' · '+esc(d.subidoPor)):'')+'</div>'):'')+'</div>';
       }).join('')+'</div>' : '<p style="font-size:11px;color:#94A3B8">Sin documentos adjuntos.</p>';
 
-      var evidHtml = evid.length ? '<div style="display:flex;gap:10px;flex-wrap:wrap">'+evid.map(function(ev){
-        var cap = '<div style="font-size:9.5px;color:#94A3B8;text-align:center;margin-top:2px;max-width:64px">'+fmtFechaHora(ev.subidoEn)+(ev.subidoPor?('<br>'+esc(ev.subidoPor)):'')+'</div>';
-        if(ev.tipo==='imagen' && ev.imagen){
-          return '<div><img onclick="window.__cbAbrirArchivo(this.getAttribute(\'data-src\'),\'imagen\')" data-src="'+esc(ev.imagen)+'" src="'+esc(ev.imagen)+'" style="width:64px;height:64px;object-fit:cover;border-radius:8px;cursor:pointer;border:1px solid #E2E8F0;display:block">'+cap+'</div>';
-        }
-        return '<div><a href="javascript:void(0)" onclick="window.__cbAbrirArchivo(\''+escAttr(ev.url||'')+'\')" style="width:64px;height:64px;border-radius:8px;border:1px solid #E2E8F0;background:#F8FAFC;display:flex;flex-direction:column;align-items:center;justify-content:center;text-decoration:none;color:#334155;font-size:9px;text-align:center;padding:2px">'+
-          '<span style="font-size:18px">📄</span>'+esc(ev.nombre||'Documento')+'</a>'+cap+'</div>';
-      }).join('')+'</div>' : '<p style="font-size:11px;color:#94A3B8">Sin evidencias de entrega.</p>';
+      function evidGrid(items){
+        if (!items.length) return '<p style="font-size:11px;color:#94A3B8">Sin evidencia.</p>';
+        return '<div style="display:flex;gap:10px;flex-wrap:wrap">'+items.map(function(ev){
+          var cap = '<div style="font-size:9.5px;color:#94A3B8;text-align:center;margin-top:2px;max-width:64px">'+fmtFechaHora(ev.subidoEn)+(ev.subidoPor?('<br>'+esc(ev.subidoPor)):'')+'</div>';
+          if(ev.tipo==='imagen' && ev.imagen){
+            return '<div><img onclick="window.__cbAbrirArchivo(this.getAttribute(\'data-src\'),\'imagen\')" data-src="'+esc(ev.imagen)+'" src="'+esc(ev.imagen)+'" style="width:64px;height:64px;object-fit:cover;border-radius:8px;cursor:pointer;border:1px solid #E2E8F0;display:block">'+cap+'</div>';
+          }
+          return '<div><a href="javascript:void(0)" onclick="window.__cbAbrirArchivo(\''+escAttr(ev.url||'')+'\')" style="width:64px;height:64px;border-radius:8px;border:1px solid #E2E8F0;background:#F8FAFC;display:flex;flex-direction:column;align-items:center;justify-content:center;text-decoration:none;color:#334155;font-size:9px;text-align:center;padding:2px">'+
+            '<span style="font-size:18px">📄</span>'+esc(ev.nombre||'Documento')+'</a>'+cap+'</div>';
+        }).join('')+'</div>';
+      }
+      var evidSalida = evid.filter(function(ev){ return (ev.categoria||'general')!=='remision'; });
+      var evidRemision = evid.filter(function(ev){ return ev.categoria==='remision'; });
 
       elActual.innerHTML =
         remisionHtml+
+        botonesHtml+
         subseccion('Seguimiento', histHtml)+
         subseccion('Documentos adjuntos', docsHtml)+
-        subseccion('Evidencia de entrega', evidHtml)+
-        '<button onclick="window.__cbVerPdfPedido(\''+pedidoId+'\')" style="padding:6px 12px;background:#F1F5F9;color:#0A1628;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer">Ver PDF original del pedido</button>';
+        subseccion('Evidencia de salida de almacén', evidGrid(evidSalida))+
+        subseccion('Evidencia de remisión', evidGrid(evidRemision));
     }
 
     el.innerHTML = '<p style="font-size:11px;color:#94A3B8">Cargando…</p>';
@@ -717,6 +773,13 @@
       evid: window.tcSbEscucharEvidencias(pedidoId, function(list){ estado.evid=list; pintar(); })
     };
   }
+
+  window.__cbVerCaratula = function(pedidoId){
+    var p = buscarPedidoPorId(pedidoId);
+    if (!p || !p.caratulaEnvio) return;
+    var c = p.caratulaEnvio, src = typeof c==='string' ? c : (c.imagen||c.url||'');
+    if (src) window.__cbAbrirArchivo(src,'imagen');
+  };
 
 
   // ── Modal: registrar pago ──
