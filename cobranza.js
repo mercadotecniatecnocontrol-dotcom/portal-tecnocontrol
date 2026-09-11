@@ -307,7 +307,10 @@
   }
 
   window.__cbToggleEvidenciasGlobal = function(pedidoId){
-    pedidoAbiertoGlobal = (pedidoAbiertoGlobal===pedidoId) ? null : pedidoId;
+    if (pedidoAbiertoGlobal && pedidoAbiertoGlobal !== pedidoId) detenerEscuchaDetalle(pedidoAbiertoGlobal);
+    var cerrando = pedidoAbiertoGlobal===pedidoId;
+    pedidoAbiertoGlobal = cerrando ? null : pedidoId;
+    if (cerrando) detenerEscuchaDetalle(pedidoId);
     var cont = document.getElementById('cb-pedidos-tabla-wrap');
     if(cont) cont.innerHTML = renderTablaPedidosGlobal();
     if(pedidoAbiertoGlobal) renderDetallePedido('cb-gped-'+pedidoAbiertoGlobal, pedidoAbiertoGlobal);
@@ -570,8 +573,11 @@
   }
 
   window.__cbToggleEvidencias = function(pedidoId){
-    _pedidoAbierto = (_pedidoAbierto===pedidoId) ? null : pedidoId;
-    if(detalleId) window.__cbCargarDetalleAsync(detalleId);
+    if (_pedidoAbierto && _pedidoAbierto !== pedidoId) detenerEscuchaDetalle(_pedidoAbierto);
+    var cerrando = _pedidoAbierto===pedidoId;
+    _pedidoAbierto = cerrando ? null : pedidoId;
+    if (cerrando) detenerEscuchaDetalle(pedidoId);
+    if (detalleId) window.__cbCargarDetalleAsync(detalleId);
   };
 
   function subseccion(titulo, html){
@@ -633,11 +639,47 @@
     w.document.close();
   };
 
+  var _detalleListeners = {}; // pedidoId -> {hist, docs, evid} funciones para dejar de escuchar
+
+  function buscarPedidoPorId(id){
+    var enTodos = (pedidosTodos||[]).find(function(x){ return x.id===id; });
+    if (enTodos) return enTodos;
+    for (var k in _pedidosCache){
+      var hit = (_pedidosCache[k]||[]).find(function(x){ return x.id===id; });
+      if (hit) return hit;
+    }
+    return null;
+  }
+
+  function detenerEscuchaDetalle(pedidoId){
+    var l = _detalleListeners[pedidoId];
+    if (!l) return;
+    if (l.hist) l.hist();
+    if (l.docs) l.docs();
+    if (l.evid) l.evid();
+    delete _detalleListeners[pedidoId];
+  }
+
   function renderDetallePedido(elId, pedidoId){
     var el = document.getElementById(elId);
     if(!el) return;
-    Promise.all([cargarHistorialPedido(pedidoId), cargarDocumentosPedido(pedidoId), cargarEvidenciasPedido(pedidoId)]).then(function(r){
-      var hist = r[0], docs = r[1], evid = r[2];
+    if (_detalleListeners[pedidoId]) return; // ya está escuchando, no duplicar
+
+    var estado = { hist: [], docs: [], evid: [] };
+
+    function pintar(){
+      var elActual = document.getElementById(elId);
+      if (!elActual) { detenerEscuchaDetalle(pedidoId); return; } // el panel ya se cerró
+
+      var hist = estado.hist, docs = estado.docs, evid = estado.evid;
+      var p = buscarPedidoPorId(pedidoId);
+
+      var remisionHtml = p && p.remisionado
+        ? '<div style="background:#DCFCE7;border:1px solid #86EFAC;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:11.5px;color:#166534">'+
+            '<b>✓ Remisionado</b>'+(p.remisionAspelFolio?(' · Folio Aspel: <b>'+esc(p.remisionAspelFolio)+'</b>'):'')+
+            (p.remisionAspelFecha?(' · '+fmtFechaHora(p.remisionAspelFecha)):(p.remisionadoEn?(' · '+fmtFechaHora(p.remisionadoEn)):''))+
+          '</div>'
+        : '';
 
       var histHtml = hist.length ? '<div style="border-left:2px solid #E2E8F0;padding-left:12px">'+hist.map(function(h){
         return '<div style="position:relative;padding:4px 0 10px"><span style="position:absolute;left:-16.5px;top:6px;width:8px;height:8px;border-radius:50%;background:#1473E6"></span>'+
@@ -660,12 +702,20 @@
           '<span style="font-size:18px">📄</span>'+esc(ev.nombre||'Documento')+'</a>'+cap+'</div>';
       }).join('')+'</div>' : '<p style="font-size:11px;color:#94A3B8">Sin evidencias de entrega.</p>';
 
-      el.innerHTML =
+      elActual.innerHTML =
+        remisionHtml+
         subseccion('Seguimiento', histHtml)+
         subseccion('Documentos adjuntos', docsHtml)+
         subseccion('Evidencia de entrega', evidHtml)+
         '<button onclick="window.__cbVerPdfPedido(\''+pedidoId+'\')" style="padding:6px 12px;background:#F1F5F9;color:#0A1628;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer">Ver PDF original del pedido</button>';
-    });
+    }
+
+    el.innerHTML = '<p style="font-size:11px;color:#94A3B8">Cargando…</p>';
+    _detalleListeners[pedidoId] = {
+      hist: window.tcSbEscucharHistorial(pedidoId, function(list){ estado.hist=list; pintar(); }),
+      docs: window.tcSbEscucharDocumentos(pedidoId, function(list){ estado.docs=list; pintar(); }),
+      evid: window.tcSbEscucharEvidencias(pedidoId, function(list){ estado.evid=list; pintar(); })
+    };
   }
 
 
