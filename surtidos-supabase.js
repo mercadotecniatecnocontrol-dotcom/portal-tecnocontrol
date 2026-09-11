@@ -70,6 +70,10 @@
       remisionadoPorEmail: row.remisionado_por_email || '', remisionadoEn: row.remisionado_en,
       remisionAspelFolio: row.remision_aspel_folio || '', remisionAspelFecha: row.remision_aspel_fecha || '',
       solicitanteEmail: row.solicitante_email || '',
+      almacen: row.almacen || '', entrega: row.entrega || '', total: row.total || '', creadoPor: row.creado_por || '',
+      eliminada: !!row.eliminada, fechaEliminacion: row.fecha_eliminacion || null, usuarioElimino: row.usuario_elimino || null,
+      motivoEliminacion: row.motivo_eliminacion || null, fechaProgramadaEliminacion: row.fecha_programada_eliminacion || null,
+      solicitanteTecnicoId: row.solicitante_tecnico_id || null, solicitaParaSiMismo: !!row.solicita_para_si_mismo,
       createdAt: row.created_at ? new Date(row.created_at).getTime() : 0,
     });
   }
@@ -99,6 +103,9 @@
     direccion: 'direccion', lat: 'lat', lng: 'lng', tecnicoCorreo: 'tecnico_correo',
     createdAt: 'created_at',
     almacen: 'almacen', entrega: 'entrega', total: 'total', creadoPor: 'creado_por',
+    eliminada: 'eliminada', fechaEliminacion: 'fecha_eliminacion', usuarioElimino: 'usuario_elimino',
+    motivoEliminacion: 'motivo_eliminacion', fechaProgramadaEliminacion: 'fecha_programada_eliminacion',
+    solicitanteTecnicoId: 'solicitante_tecnico_id', solicitaParaSiMismo: 'solicita_para_si_mismo',
   };
   function aColumnas(datosCamelCase) {
     var out = {};
@@ -131,6 +138,28 @@
         .subscribe();
     }).catch(function (err) { if (onError) onError(err); });
     // Función para cancelar la suscripción — igual que el "unsubscribe" que devolvía onSnapshot.
+    return function detener() {
+      if (canal) cargarSupabase().then(function (sb) { sb.removeChannel(canal); });
+    };
+  };
+
+  // ── Cola de entregas esperando firma en el kiosko (Confirmar recepción) ──
+  window.tcSbEscucharEntregasPendientesFirma = function (onChange, onError) {
+    var canal = null;
+    cargarSupabase().then(function (sb) {
+      function refrescar() {
+        sb.from('surtidos').select('*').eq('entrega_pendiente_firma', true).then(function (r) {
+          if (r.error) { if (onError) onError(r.error); return; }
+          onChange((r.data || []).map(filaASurtido));
+        });
+      }
+      refrescar();
+      // Sin filtro en la suscripción misma (solo al leer) — así no se nos escapa
+      // la transición cuando un pedido DEJA de estar pendiente de firma.
+      canal = sb.channel('surtidos-entrega-firma')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'surtidos' }, refrescar)
+        .subscribe();
+    }).catch(function (err) { if (onError) onError(err); });
     return function detener() {
       if (canal) cargarSupabase().then(function (sb) { sb.removeChannel(canal); });
     };
@@ -342,6 +371,13 @@
       (r[1].data || []).forEach(function (d) { docs[d.surtido_id] = (docs[d.surtido_id] || 0) + 1; });
       return { evidencias: evid, documentos: docs };
     });
+  };
+
+  // ── Borrado permanente (solo para la limpieza automática de la papelera) ─
+  window.tcSbEliminarSurtido = function (id) {
+    return cargarSupabase().then(function (sb) {
+      return sb.from('surtidos').delete().eq('id', id);
+    }).then(function (r) { if (r.error) throw r.error; });
   };
 
   // ── Crear un pedido nuevo ────────────────────────────────────────────
