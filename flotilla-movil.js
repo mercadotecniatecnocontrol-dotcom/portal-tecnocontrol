@@ -5209,9 +5209,8 @@ window.matLimpiarFirma=function(){
 
 async function _matSiguienteFolio(){
   try{
-    const snap=await db.collection('surtidos').where('folioPrefijo','==','OPERACIONES').get();
-    let max=0; snap.forEach(d=>{ const n=(d.data()||{}).folioNum; if(typeof n==='number'&&n>max)max=n; });
-    return {folio:'OPERACIONES '+String(max+1).padStart(4,'0'),folioNum:max+1,folioPrefijo:'OPERACIONES'};
+    const siguiente=await window.tcSbSiguienteFolioMaterial('OPERACIONES');
+    return {folio:'OPERACIONES '+String(siguiente).padStart(4,'0'),folioNum:siguiente,folioPrefijo:'OPERACIONES'};
   }catch(e){
     const resp=Date.now()%10000;
     return {folio:'OPERACIONES '+String(resp).padStart(4,'0')+'-R',folioNum:null,folioPrefijo:'OPERACIONES'};
@@ -5258,8 +5257,8 @@ window.matEnviar=async function(){
     window.tcPrevisualizarPDF(pdf, folioInfo.folio, async function(){
       btn.disabled=true; btn.textContent='Enviando…';
       try{
-        surtidoData.createdAt=firebase.firestore.FieldValue.serverTimestamp();
-        await db.collection('surtidos').add(surtidoData);
+        surtidoData.createdAt=new Date().toISOString();
+        await window.tcSbCrearSurtido(surtidoData);
         _draftClear(_DRAFT.MAT);
         window.matState={area:'',destino:'',uso:'',prioridad:'urgente',carrito:{},firma:null,razonSocial:'',ubicacion:null};
         window.tcCompartirPDFWhatsApp(pdf, folioInfo.folio, resumen);
