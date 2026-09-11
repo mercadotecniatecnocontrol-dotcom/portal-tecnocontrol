@@ -1681,26 +1681,36 @@
   // =====================================================================
   //  CONEXIÓN EN VIVO
   // =====================================================================
+  function _alPedidosActualizados(arr){
+    var idsActuales={};
+    arr.forEach(function(p){ idsActuales[p.id]=true; });
+    if(_conocidos===null){
+      _conocidos = idsActuales;              // primera carga: no notificar nada retroactivo
+    } else {
+      arr.forEach(function(p){
+        if(!_conocidos[p.id]) notificarPedidoNuevo(p);
+      });
+      _conocidos = idsActuales;
+    }
+    pedidos=arr; render();
+  }
+  var _pollRespaldo = null;
   function suscribir(){
     if(_unsub) return;
     var cont=contenedor();
     if(cont && !cont.querySelector('#alm-toolbar')) cont.innerHTML='<div class="alm-loading">Conectando con Supabase…</div>';
-    _unsub=window.tcSbSuscribirSurtidos(function(arr){
-      var idsActuales={};
-      arr.forEach(function(p){ idsActuales[p.id]=true; });
-      if(_conocidos===null){
-        _conocidos = idsActuales;              // primera carga: no notificar nada retroactivo
-      } else {
-        arr.forEach(function(p){
-          if(!_conocidos[p.id]) notificarPedidoNuevo(p);
-        });
-        _conocidos = idsActuales;
-      }
-      pedidos=arr; render();
-    }, function(err){
+    _unsub=window.tcSbSuscribirSurtidos(_alPedidosActualizados, function(err){
       console.error('[almacen] suscripción Supabase:',err);
       if(cont) cont.innerHTML='<div class="alm-loading">Error al leer <b>surtidos</b>: '+esc(err.message||err)+'</div>';
     });
+    // Respaldo: por si un solo evento en vivo se pierde (pasa ocasionalmente con
+    // websockets, sin que sea culpa de nadie), esto se autocorrige solo cada
+    // 30s en vez de quedarse desactualizado hasta un refresco de página completo.
+    if(!_pollRespaldo){
+      _pollRespaldo = setInterval(function(){
+        window.tcSbListarTodosSurtidos().then(_alPedidosActualizados).catch(function(){});
+      }, 30000);
+    }
   }
 
   // =====================================================================
