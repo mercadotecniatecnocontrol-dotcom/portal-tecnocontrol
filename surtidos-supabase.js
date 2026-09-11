@@ -27,19 +27,12 @@
     _clientePromesa = import('https://esm.sh/@supabase/supabase-js@2').then(function (mod) {
       var cliente = mod.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
       window.tcSupabase = cliente; // disponible globalmente por si otro módulo lo necesita
-      // Sin esto, cualquier ESCRITURA (crear pedido, remisionar, mover estado)
-      // se rechaza en silencio: las políticas de seguridad exigen una sesión
-      // "authenticated", y sin iniciar sesión aquí el navegador nunca la tiene
-      // — el login del portal es con Firebase, Supabase no se entera solo.
-      // Una sesión anónima sí cuenta como "authenticated" en Supabase (igual
-      // que exigía Firestore: cualquier sesión, ni siquiera tenía que ser real).
-      return cliente.auth.getSession().then(function (r) {
-        if (r.data && r.data.session) return cliente;
-        return cliente.auth.signInAnonymously().then(function (res) {
-          if (res.error) console.error('[surtidos-supabase] no se pudo iniciar sesión anónima:', res.error);
-          return cliente;
-        });
-      });
+      return cliente;
+      // Nota: ya no se intenta iniciar sesión anónima aquí — desde que las
+      // políticas de seguridad permiten escribir con el rol "anon" (ver
+      // migración 0006), no hace falta, y el intento fallaba siempre con un
+      // error 500 ajeno a nuestro código (revisar Postgres Logs cuando haya
+      // tiempo, probablemente un trigger de otra app en el mismo proyecto).
     });
     return _clientePromesa;
   }
