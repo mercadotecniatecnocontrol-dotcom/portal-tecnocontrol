@@ -92,6 +92,8 @@ const C={
   OPS_MOV:'ops_movimientos',
   OPS_TEC:'ops_tecnicos',
   OPS_TRASP:'ops_herramienta_traspasos',
+  OPS_ALMACENES:'ops_almacenes',
+  OPS_REVISIONES:'ops_revisiones_herramienta',
 };
 
 const TIPOS_SOL=[
@@ -3605,6 +3607,7 @@ function herrRenderVer(){
     <div class="fm-sec-hd">
       <div><div class="fm-sec-t">Mi herramienta</div><div class="fm-sec-s">${herrState.misPiezas.length} pieza(s) asignada(s)</div></div>
     </div>
+    ${herrState.misPiezas.length?`<button class="fm-btn primary" style="margin-bottom:10px" onclick="revAbrirMiRevision()">${IC.check} Revisar mi herramienta (checklist + foto)</button>`:''}
     ${!herrState.misPiezas.length?`
       <div class="fm-empty" style="padding:24px">
         <p style="font-size:12.5px;color:#94A3B8">No tienes herramienta asignada en Operaciones.</p>
@@ -3625,6 +3628,16 @@ function herrRenderVer(){
     <div style="margin-top:10px"><button class="fm-btn ghost" onclick="herrCerrarTraspaso()">Cerrar</button></div>
   `);
 }
+
+// Autorrevisión: cualquier técnico puede revisar SU PROPIA herramienta (incluida
+// especializada/calibración, si la trae asignada) desde su teléfono — a diferencia
+// de "Revisar herramienta" (arriba), que es de administradores y cualquier almacén.
+window.revAbrirMiRevision=function(){
+  if(!herrState.miIdInterno||!herrState.misPiezas.length)return;
+  revState={activo:true,paso:2,almacenId:herrState.miIdInterno,almacenNombre:miPerfil?.nombre||'Mi herramienta',almacenes:[],piezas:herrState.misPiezas,busqueda:''};
+  revFotos=new Map();
+  renderUtil();
+};
 
 // PASO 1 — elegir cuál de mis piezas traspaso
 function herrRenderPaso1(){
@@ -3938,11 +3951,190 @@ window.herrRechazarTraspaso=async function(traspasoId){
   }
 };
 
+// ══════════════════════════════════════════════════════════
+// REVISIÓN DE HERRAMIENTA DESDE LA APP (administradores) — sep-2026, urgente.
+// Mismo checklist que ya existe en el Portal (conforme/faltante/dañada + foto),
+// pero accesible desde cualquier almacén (técnico, general, o ubicación física
+// como "Banco de trabajo Saltillo" o el equipo especializado de calibración) —
+// no solo el propio. Escribe en la MISMA colección que usa Operaciones
+// (ops_revisiones_herramienta), así que se refleja en el Portal de inmediato,
+// sin tener que construir una pantalla aparte.
+// ══════════════════════════════════════════════════════════
+let revState={activo:false,paso:1,almacenId:null,almacenNombre:'',almacenes:[],piezas:[],busqueda:''};
+let revFotos=new Map(); // herramientaId -> dataURL comprimido, solo mientras el modal está abierto
+
+window.revAbrirRevision=async function(){
+  if(!esRolLibre()){toast('Esta función es solo para administradores.','err');return;}
+  revState={activo:true,paso:1,almacenId:null,almacenNombre:'',almacenes:[],piezas:[],busqueda:''};
+  revFotos=new Map();
+  renderUtil();
+  try{
+    const snap=await db.collection(C.OPS_ALMACENES).get();
+    revState.almacenes=snap.docs.map(d=>({id:d.id,...d.data()})).filter(a=>a.activo!==false)
+      .sort((a,b)=>(a.tipo==='general'?-1:1)-(b.tipo==='general'?-1:1)||(a.nombre||'').localeCompare(b.nombre||''));
+  }catch(e){console.error('[REV] error cargando almacenes',e);toast('No se pudieron cargar los almacenes.','err');}
+  renderUtil();
+};
+
+window.revCerrarRevision=function(){
+  revState={activo:false,paso:1,almacenId:null,almacenNombre:'',almacenes:[],piezas:[],busqueda:''};
+  revFotos=new Map();
+  fmVista('util');
+};
+
+window.revFiltrarAlmacen=function(v){ revState.busqueda=v||''; renderUtil(); };
+
+window.revElegirAlmacen=async function(almacenId){
+  const a=revState.almacenes.find(x=>x.id===almacenId);
+  if(!a)return;
+  revState.almacenId=a.id; revState.almacenNombre=a.nombre||a.id; revState.paso=2; revState.piezas=[];
+  renderUtil();
+  try{
+    let q;
+    if(a.tipo==='tecnico') q=db.collection(C.OPS_HERR).where('tecnicoActualId','==',a.tecnicoId||a.id);
+    else q=db.collection(C.OPS_HERR).where('tecnicoActualId','==',null).where('almacenId','==',a.id===('general')?null:a.id);
+    const snap=await q.get();
+    revState.piezas=snap.docs.map(d=>({id:d.id,...d.data()})).filter(h=>h.estado!=='baja');
+  }catch(e){
+    console.error('[REV] error cargando piezas del almacén',e);
+    // Respaldo: si la consulta con almacenId falla (campo nuevo, puede no existir
+    // en piezas viejas) o el almacén es "general", se hace un segundo intento simple.
+    try{
+      const snap2=await db.collection(C.OPS_HERR).where('tecnicoActualId','==',null).get();
+      revState.piezas=snap2.docs.map(d=>({id:d.id,...d.data()})).filter(h=>h.estado!=='baja'&&(a.tipo!=='ubicacion'||h.almacenId===a.id)&&(a.tipo!=='general'||!h.almacenId));
+    }catch(e2){console.error('[REV] respaldo también falló',e2);}
+  }
+  renderUtil();
+};
+
+function revRenderPaso1(){
+  const term=(revState.busqueda||'').toLowerCase();
+  const lista=revState.almacenes.filter(a=>!term||(a.nombre||'').toLowerCase().includes(term));
+  setContent(`
+    <div class="fm-sec-hd"><div><div class="fm-sec-t">Revisar herramienta</div><div class="fm-sec-s">Elige el almacén a revisar</div></div></div>
+    <input placeholder="Buscar almacén..." value="${revState.busqueda||''}" oninput="revFiltrarAlmacen(this.value)"
+      style="width:100%;padding:11px 14px;border:1.5px solid #E2E8F0;border-radius:11px;font-size:13px;outline:none;box-sizing:border-box;margin-bottom:10px;color:#0A0F1E">
+    ${!revState.almacenes.length?`<div class="fm-card" style="padding:22px;text-align:center;color:#94A3B8;font-size:12.5px">Cargando almacenes...</div>`:
+      lista.map(a=>`
+      <div onclick="revElegirAlmacen('${a.id}')" class="fm-card" style="cursor:pointer;margin-bottom:8px;padding:13px 15px;display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-size:13px;font-weight:800;color:#0A0F1E">${a.nombre||a.id}</div>
+          <div style="font-size:11px;color:#64748B;margin-top:1px">${a.tipo==='general'?'Almacén general':(a.tipo==='ubicacion'?'Ubicación física':'Almacén de técnico')}</div>
+        </div>
+        <span style="color:#94A3B8">${IC.check}</span>
+      </div>`).join('')}
+    <div style="margin-top:6px"><button class="fm-btn ghost" onclick="revCerrarRevision()">Cancelar</button></div>
+  `);
+}
+
+function revRenderPaso2(){
+  setContent(`
+    <div class="fm-sec-hd">
+      <div><div class="fm-sec-t">Revisar herramienta</div><div class="fm-sec-s">${revState.almacenNombre} — ${revState.piezas.length} pieza(s)</div></div>
+    </div>
+    ${!revState.piezas.length?`<div class="fm-card" style="padding:22px;text-align:center;color:#94A3B8;font-size:12.5px">Sin piezas en este almacén.</div>`:`
+    <div id="rev-lista">
+    ${revState.piezas.map(h=>`
+      <div style="border:1px solid #E2E8F0;border-radius:12px;padding:12px 14px;margin-bottom:8px;background:#fff" data-herr-id="${h.id}" data-folio="${(h.folio||'').replace(/"/g,'&quot;')}" data-desc="${(h.descripcion||'').replace(/"/g,'&quot;')}">
+        <div style="font-size:12.5px;font-weight:800;color:#0A0F1E;margin-bottom:2px">${h.folio||'—'}</div>
+        <div style="font-size:11.5px;color:#64748B;margin-bottom:8px">${h.descripcion||'—'}</div>
+        <div style="display:flex;gap:6px;margin-bottom:8px">
+          <label style="flex:1;text-align:center;font-size:10.5px;font-weight:700;padding:7px;border-radius:8px;background:#F0FDF4;color:#166534"><input type="radio" name="rev2-${h.id}" value="conforme" checked style="margin-right:4px">Conforme</label>
+          <label style="flex:1;text-align:center;font-size:10.5px;font-weight:700;padding:7px;border-radius:8px;background:#FEF2F2;color:#B91C1C"><input type="radio" name="rev2-${h.id}" value="faltante" style="margin-right:4px">Faltante</label>
+          <label style="flex:1;text-align:center;font-size:10.5px;font-weight:700;padding:7px;border-radius:8px;background:#FFF7ED;color:#C2410C"><input type="radio" name="rev2-${h.id}" value="danada" style="margin-right:4px">Dañada</label>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <label style="display:flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;color:#1D2E73;background:#E9ECF5;padding:6px 10px;border-radius:7px">
+            ${IC.camera} Foto
+            <input type="file" accept="image/*" capture="environment" style="display:none" onchange="revSeleccionarFoto('${h.id}',this)">
+          </label>
+          <img id="rev-thumb-${h.id}" style="display:none;width:32px;height:32px;object-fit:cover;border-radius:6px;border:1px solid #E2E8F0">
+          <span id="rev-foto-estado-${h.id}" style="font-size:10px;color:#94A3B8"></span>
+        </div>
+      </div>`).join('')}
+    </div>
+    <textarea id="rev-obs-generales" placeholder="Observaciones generales (opcional)" rows="2" style="width:100%;border:1.5px solid #E2E8F0;border-radius:10px;padding:10px 12px;font-size:12.5px;box-sizing:border-box;margin-top:6px"></textarea>
+    `}
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="fm-btn ghost" style="flex:1" onclick="revCerrarRevision()">Cancelar</button>
+      <button id="rev-btn-guardar" class="fm-btn primary" style="flex:1" onclick="revGuardar()" ${!revState.piezas.length?'disabled':''}>Guardar revisión</button>
+    </div>
+  `);
+}
+
+window.revSeleccionarFoto=async function(herrId,inputEl){
+  const file=inputEl.files&&inputEl.files[0];
+  if(!file)return;
+  const estadoEl=document.getElementById(`rev-foto-estado-${herrId}`);
+  if(estadoEl)estadoEl.textContent='Procesando...';
+  try{
+    const src=await new Promise(res=>{const r=new FileReader();r.onload=()=>res(r.result);r.readAsDataURL(file);});
+    const comp=await comprimirBase64(src,700,0.6);
+    revFotos.set(herrId,comp);
+    const thumb=document.getElementById(`rev-thumb-${herrId}`);
+    if(thumb){thumb.src=comp;thumb.style.display='block';}
+    if(estadoEl)estadoEl.textContent='Foto lista';
+  }catch(e){
+    console.error('[REV] error al procesar foto',e);
+    if(estadoEl)estadoEl.textContent='Error al procesar';
+  }
+};
+
+window.revGuardar=async function(){
+  const btn=document.getElementById('rev-btn-guardar');
+  if(btn){btn.disabled=true;btn.textContent='Guardando...';}
+  try{
+    const userEmail=(window.auth?.currentUser?.email||miPerfil?.email||'').toLowerCase();
+    const userName=window.auth?.currentUser?.displayName||miPerfil?.nombre||userEmail;
+    const almacen=revState.almacenes.find(a=>a.id===revState.almacenId);
+    // Autorrevisión (revAbrirMiRevision) no pasa por el picker de almacenes —
+    // revState.almacenId ya ES el propio id de técnico en ese caso.
+    const esAutorrevision=!revState.almacenes.length;
+    const now=new Date().toISOString();
+    const revRef=db.collection(C.OPS_REVISIONES).doc();
+
+    const filas=document.querySelectorAll('#rev-lista > div[data-herr-id]');
+    const herramientas=[];
+    for(const div of filas){
+      const herrId=div.getAttribute('data-herr-id');
+      const seleccionado=div.querySelector(`input[name="rev2-${herrId}"]:checked`);
+      const dataUrl=revFotos.get(herrId);
+      if(dataUrl){
+        try{ await revRef.collection('fotos').doc(herrId).set({fotoBase64:dataUrl}); }
+        catch(e){ console.error('[REV] no se pudo guardar la foto de',herrId,e); }
+      }
+      herramientas.push({
+        herramientaId:herrId, folio:div.getAttribute('data-folio')||'', descripcion:div.getAttribute('data-desc')||'',
+        estado:seleccionado?seleccionado.value:'conforme', observacion:null, tieneFoto:!!dataUrl,
+      });
+    }
+    const obsGenerales=(document.getElementById('rev-obs-generales')||{}).value||'';
+
+    await revRef.set({
+      tecnicoId: esAutorrevision ? revState.almacenId : (almacen && almacen.tipo === 'tecnico' ? (almacen.tecnicoId || almacen.id) : null),
+      tecnicoNombre: revState.almacenNombre, tecnicoNumero:'',
+      almacenId: revState.almacenId, almacenNombre: revState.almacenNombre,
+      fecha: now, realizadoPor: userName, realizadoPorEmail: userEmail,
+      herramientas, observacionesGenerales: obsGenerales.trim()||null,
+      origen:'flotilla_movil_admin', createdAt: now,
+    });
+
+    revFotos=new Map();
+    toast('Revisión guardada — ya se refleja en Operaciones','ok');
+    revCerrarRevision();
+  }catch(e){
+    console.error('[REV] error al guardar revisión',e);
+    toast('Error al guardar: '+(e.message||e),'err');
+    if(btn){btn.disabled=false;btn.textContent='Guardar revisión';}
+  }
+};
+
 function renderUtil(){
   // Si el técnico está en medio de un traspaso de herramienta, ese flujo
   // manda — es independiente del wizard de transferencia de vehículo
   // (utilState) para no mezclar sus pasos/borradores.
   if(herrState.activo){ herrRender(); return; }
+  if(revState.activo){ if(revState.paso===1) revRenderPaso1(); else revRenderPaso2(); return; }
   setContent(`
     <div class="fm-sec-hd">
       <div>
@@ -4101,6 +4293,9 @@ function renderUtilPaso1(){
         <button class="fm-btn" onclick="herrVerMisHerramientas()" style="background:#fff;color:#0B5FFF;border:1.5px solid #0B5FFF">
           ${IC.doc} Mi herramienta
         </button>
+        ${esRolLibre()?`<button class="fm-btn" onclick="revAbrirRevision()" style="background:#1D2E73;color:#fff">
+          ${IC.check} Revisar herramienta
+        </button>`:''}
       </div>
     </div>
 
