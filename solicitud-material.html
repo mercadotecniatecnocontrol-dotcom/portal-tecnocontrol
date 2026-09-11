@@ -7,6 +7,8 @@
 <link rel="stylesheet" href="CSS/solicitud-material.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="material-pdf.js"></script>
+<!-- surtidos ya vive en Supabase — este adaptador expone window.tcSb... -->
+<script src="surtidos-supabase.js"></script>
 </head>
 <body>
 
@@ -601,10 +603,7 @@ window.elegirUbicacionKiosco = function(){
    cambio para no mezclar dos cosas a la vez, pero queda como mejora pendiente. */
 async function siguienteFolioMaterial(){
   try{
-    const snap = await getDocs(query(collection(db,'surtidos'), where('folioPrefijo','==','OPERACIONES')));
-    let max = 0;
-    snap.forEach(d=>{ const n=(d.data()||{}).folioNum; if(typeof n==='number' && n>max) max=n; });
-    const siguiente = max+1;
+    const siguiente = await window.tcSbSiguienteFolioMaterial('OPERACIONES');
     return { folio:'OPERACIONES '+String(siguiente).padStart(4,'0'), folioNum:siguiente, folioPrefijo:'OPERACIONES' };
   }catch(e){
     console.warn('[kiosco] no se pudo calcular el folio consecutivo, se usa respaldo temporal:', e && e.message);
@@ -676,8 +675,7 @@ $('submit').onclick = async ()=>{
   window.tcPrevisualizarPDF(pdfPrevio, folioInfo.folio, async ()=>{
     btn.disabled=true; setMsg('Enviando…','var(--teal)');
     try{
-      await authReady;
-      await addDoc(collection(db,'surtidos'), {
+      await window.tcSbCrearSurtido({
         tipo: 'material',
         folio: folioInfo.folio,
         folioNum: folioInfo.folioNum,
@@ -704,7 +702,7 @@ $('submit').onclick = async ()=>{
         productos,
         firma,
         origen: 'kiosco',
-        createdAt: serverTimestamp()
+        createdAt: new Date().toISOString()
       });
       ultimaSolicitudEnviada = { folio: folioInfo.folio, solicitante, area, razonSocial, destino, uso, productos, firma, prioridad, estacionNombre: ubicacionKiosco.estacionNombre, direccion: ubicacionKiosco.direccion, lat: ubicacionKiosco.lat, lng: ubicacionKiosco.lng };
       $('done-folio').textContent = folioInfo.folio;
@@ -937,17 +935,16 @@ $('entrega-confirmar').onclick = async ()=>{
   msgEl.textContent = '';
   const btn = $('entrega-confirmar'); btn.disabled = true; btn.textContent = 'Guardando…';
   try{
-    await authReady;
-    await updateDoc(doc(db,'surtidos',id), {
+    await window.tcSbActualizarSurtido(id, {
       estado: 'entregado',
       recibioNombre: nombre,
       firmaEntrega: firmaEntregaBase64(),
-      entregadoEn: serverTimestamp(),
+      entregadoEn: new Date().toISOString(),
       entregaPendienteFirma: false
     });
     try{
-      await addDoc(collection(db,'surtidos',id,'historial'), {
-        de: 'listo', a: 'entregado', por: nombre, porEmail: 'kiosco', recibio: nombre, ts: serverTimestamp()
+      await window.tcSbAgregarHistorial(id, {
+        de: 'listo', a: 'entregado', por: nombre, nota: 'Confirmado en el kiosko'
       });
     }catch(eh){ console.warn('[kiosco] historial entrega:', eh); }
     colaEntregas.shift();
@@ -961,29 +958,23 @@ $('entrega-confirmar').onclick = async ()=>{
 };
 
 /* Escucha en vivo: pedidos con entregaPendienteFirma === true, uno o varios */
-authReady.then(()=>{
-  onSnapshot(query(collection(db,'surtidos'), where('entregaPendienteFirma','==',true)), snap=>{
-    const lista = [];
-    snap.forEach(docu=>{
-      const d = docu.data()||{};
-      lista.push({
-        id: docu.id, folio: d.folio||docu.id, cliente: d.cliente||'',
-        productos: Array.isArray(d.productos)?d.productos:[],
-        entregaSolicitadaEn: d.entregaSolicitadaEn && d.entregaSolicitadaEn.toMillis ? d.entregaSolicitadaEn.toMillis() : 0
-      });
-    });
-    lista.sort((a,b)=>a.entregaSolicitadaEn-b.entregaSolicitadaEn);
-    colaEntregas = lista;
-    if(!lista.length){ entregaOv.classList.remove('on'); entregaActualId=null; }
-    else if(!entregaActualId || !lista.some(p=>p.id===entregaActualId)) mostrarSiguienteEntrega();
-    else {
-      // Actualiza el contador de "más en espera" sin interrumpir al que ya está firmando
-      const colaEl = $('entrega-cola');
-      if(lista.length > 1){ colaEl.style.display='inline-block'; colaEl.textContent = 'Hay ' + (lista.length-1) + ' más en espera'; }
-      else colaEl.style.display = 'none';
-    }
-  }, err=>console.error('[kiosco] escucha entregaPendienteFirma:', err));
-});
+window.tcSbEscucharEntregasPendientesFirma(function(arr){
+  const lista = arr.map(d=>({
+    id: d.id, folio: d.folio||d.id, cliente: d.cliente||'',
+    productos: Array.isArray(d.productos)?d.productos:[],
+    entregaSolicitadaEn: d.entregaSolicitadaEn ? new Date(d.entregaSolicitadaEn).getTime() : 0
+  }));
+  lista.sort((a,b)=>a.entregaSolicitadaEn-b.entregaSolicitadaEn);
+  colaEntregas = lista;
+  if(!lista.length){ entregaOv.classList.remove('on'); entregaActualId=null; }
+  else if(!entregaActualId || !lista.some(p=>p.id===entregaActualId)) mostrarSiguienteEntrega();
+  else {
+    // Actualiza el contador de "más en espera" sin interrumpir al que ya está firmando
+    const colaEl = $('entrega-cola');
+    if(lista.length > 1){ colaEl.style.display='inline-block'; colaEl.textContent = 'Hay ' + (lista.length-1) + ' más en espera'; }
+    else colaEl.style.display = 'none';
+  }
+}, err=>console.error('[kiosco] escucha entregaPendienteFirma:', err));
 </script>
 </body>
 </html>
