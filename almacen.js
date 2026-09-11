@@ -659,8 +659,12 @@
     + '.alm-rep-tbl td{padding:7px 8px;border-bottom:1px solid #f1f5f9;vertical-align:top;}'
     + '.alm-rep-tbl tr:hover td{background:#fafcff;}'
     + '.alm-rep-wrap{max-height:56vh;overflow:auto;border:1px solid #e6ebf2;border-radius:10px;}'
+    + '.alm-rep-cards{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;max-height:62vh;overflow:auto;padding:2px;}'
+    + '@media (max-width:760px){.alm-rep-cards{grid-template-columns:1fr;}}'
+    + '.alm-rep-card{background:#fff;border:1px solid #e6ebf2;border-left:4px solid #cbd5e1;border-radius:12px;padding:13px 15px;cursor:pointer;transition:box-shadow .15s,transform .15s;}'
+    + '.alm-rep-card:hover{box-shadow:0 4px 16px rgba(15,23,42,.08);transform:translateY(-1px);}'
     + '.alm-rep-firma{color:#0891b2;cursor:pointer;font-weight:700;text-decoration:underline;}'
-    + '.alm-rep-tag{font-size:10px;font-weight:800;padding:2px 7px;border-radius:6px;letter-spacing:.3px;}'
+    + '.alm-rep-tag{font-size:10px;font-weight:800;padding:2px 7px;border-radius:6px;letter-spacing:.3px;white-space:nowrap;}'
     + '.alm-modal-box h4{margin:0 0 14px;font-size:15px;font-weight:800;color:#0f172a;display:flex;align-items:center;justify-content:space-between;}'
     + '.alm-modal-box h4 button{border:none;background:#f1f5f9;color:#475569;width:26px;height:26px;border-radius:8px;cursor:pointer;font-size:15px;line-height:1;}'
     + '.alm-hist-row{display:flex;flex-direction:column;gap:2px;padding:9px 0;border-bottom:1px solid #f1f5f9;font-size:12.5px;}'
@@ -1682,12 +1686,27 @@
           piezas: (Array.isArray(d.productos)?d.productos:[]).reduce(function(a,x){return a+(Number(x.cant)||0);},0),
           productos: Array.isArray(d.productos)?d.productos:[],
           remisionado: !!d.remisionado, remisionadoPor: d.remisionadoPor||'',
-          remisionAspelFolio: d.remisionAspelFolio||'', remisionAspelFecha: d.remisionAspelFecha||null
+          remisionAspelFolio: d.remisionAspelFolio||'', remisionAspelFecha: d.remisionAspelFecha||null,
+          tienePdfOriginal: !!d.tienePdfOriginal, caratulaEnvio: d.caratulaEnvio||null,
+          evidSalida: null, evidRemision: null, evidGeneral: null, numDocumentos: 0
         };
       });
       arr.sort(function(a,b){ return (b.entregadoMs||b.canceladoMs||b.creadoMs)-(a.entregadoMs||a.canceladoMs||a.creadoMs); });
-      _repEntregas = arr;
-      return arr;
+      return window.tcSbResumenEvidenciasDocs(arr.map(function(e){return e.id;})).then(function(resumen){
+        arr.forEach(function(e){
+          var ev = resumen.evidencias[e.id] || {};
+          e.evidSalida = ev.salida || null;
+          e.evidRemision = ev.remision || null;
+          e.evidGeneral = ev.general || null;
+          e.numDocumentos = resumen.documentos[e.id] || 0;
+        });
+        _repEntregas = arr;
+        return arr;
+      }).catch(function(err){
+        console.warn('[almacen] no se pudo traer el resumen de evidencias/documentos:', err);
+        _repEntregas = arr; // seguimos con la lista, solo sin las palomitas
+        return arr;
+      });
     });
   }
 
@@ -1714,45 +1733,58 @@
 
   function fmtFecha(ms){ return ms ? new Date(ms).toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}) : '—'; }
 
+  function chipAdjunto(etiqueta, presente, onClickJS, colorOn){
+    colorOn = colorOn || '#16a34a';
+    if (presente){
+      return '<div onclick="event.stopPropagation();'+onClickJS+'" style="cursor:pointer;display:flex;align-items:center;gap:5px;background:rgba(22,163,74,.08);border:1px solid rgba(22,163,74,.35);border-radius:7px;padding:5px 9px;font-size:10.5px;font-weight:700;color:'+colorOn+';white-space:nowrap;">'
+        + '<span style="font-size:12px;">✅</span>'+etiqueta+'</div>';
+    }
+    return '<div style="display:flex;align-items:center;gap:5px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:7px;padding:5px 9px;font-size:10.5px;font-weight:700;color:#94a3b8;white-space:nowrap;">'
+      + '<span style="font-size:12px;">—</span>'+etiqueta+'</div>';
+  }
+
   function renderTablaReporte(){
     if(!_repEntregas) return;
     var filtros = leerFiltrosReporte();
     var lista = filtrarEntregas(_repEntregas, filtros);
     var resumen = document.getElementById('alm-rep-resumen');
     if(resumen) resumen.textContent = lista.length + ' entrega'+(lista.length===1?'':'s')+' encontrada'+(lista.length===1?'':'s');
-    var tbody = document.getElementById('alm-rep-tbody');
-    if(!tbody) return;
-    if(!lista.length){ tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:20px;">Sin resultados para este filtro.</td></tr>'; return; }
-    tbody.innerHTML = lista.map(function(e){
-      var tag = e.tipo==='material'
+    var cont = document.getElementById('alm-rep-cards');
+    if(!cont) return;
+    if(!lista.length){ cont.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#94a3b8;padding:30px;">Sin resultados para este filtro.</div>'; return; }
+    cont.innerHTML = lista.map(function(e){
+      var esCancelado = e.estado==='cancelado';
+      var tagTipo = e.tipo==='material'
         ? '<span class="alm-rep-tag" style="background:rgba(139,79,214,.12);color:#8B4FD6">MATERIAL</span>'
         : '<span class="alm-rep-tag" style="background:rgba(20,115,230,.1);color:#1473E6">VENTA</span>';
-      var esCancelado = e.estado==='cancelado';
-      var firmasHtml = ''
-        + (e.firma ? '<span class="alm-rep-firma" onclick="event.stopPropagation();window.__almVerFirmaId(\''+e.id+'\',\'sol\')">solicitud</span>' : '')
-        + (e.firma && e.firmaEntrega ? ' · ' : '')
-        + (e.firmaEntrega ? '<span class="alm-rep-firma" onclick="event.stopPropagation();window.__almVerFirmaId(\''+e.id+'\',\'entrega\')">entrega</span>' : '')
-        || '<span style="color:#cbd5e1">—</span>';
-      var colRecibio = esCancelado
-        ? '<span class="alm-rep-tag" style="background:rgba(220,38,38,.1);color:#dc2626">CANCELADO</span><br><span style="font-size:11px;color:#64748b">'+esc(e.motivoCancelacion||'—')+'</span>'
-        : esc(e.recibio||'—');
-      var colFechaFin = esCancelado ? fmtFecha(e.canceladoMs) : fmtFecha(e.entregadoMs);
-      var accionesHtml = '<div style="display:flex;flex-direction:column;gap:4px;margin-top:6px;align-items:flex-start;">'
-        + '<button type="button" onclick="event.stopPropagation();window.__almAbrirModalEvidencia(\''+e.id+'\')" style="border:1px dashed #cbd5e1;background:#fff;color:#475569;border-radius:6px;font-size:10.5px;font-weight:700;padding:3px 8px;cursor:pointer;white-space:nowrap;">+ Evidencia</button>'
-        + (e.remisionado
-            ? '<span style="font-size:10.5px;font-weight:700;color:#16a34a;white-space:nowrap;">✓ Remisionado</span>'+(e.remisionAspelFolio?('<br><span style="font-size:9.5px;color:#64748b;white-space:nowrap;">Aspel: '+esc(e.remisionAspelFolio)+'</span>'):'')
-            : '<button type="button" onclick="event.stopPropagation();window.__almConfirmarRemision(\''+e.id+'\')" style="border:1px solid #16a34a;background:#fff;color:#16a34a;border-radius:6px;font-size:10.5px;font-weight:700;padding:3px 8px;cursor:pointer;white-space:nowrap;">✅ Remisionar</button>')
+      var tagEstado = esCancelado
+        ? '<span class="alm-rep-tag" style="background:rgba(220,38,38,.1);color:#dc2626">CANCELADO</span>'
+        : '<span class="alm-rep-tag" style="background:rgba(22,163,74,.1);color:#16a34a">ENTREGADO</span>';
+      var colorBorde = esCancelado ? '#dc2626' : (e.remisionado ? '#16a34a' : '#f59e0b');
+
+      var chips = ''
+        + chipAdjunto('Salida', !!e.evidSalida, e.evidSalida ? ('window.open(\''+esc(e.evidSalida.imagen||e.evidSalida.url||'')+'\',\'_blank\')') : '')
+        + chipAdjunto('Remisión', !!e.evidRemision, e.evidRemision ? ('window.open(\''+esc(e.evidRemision.imagen||e.evidRemision.url||'')+'\',\'_blank\')') : '')
+        + chipAdjunto('Documento', e.numDocumentos>0, 'window.__almVerDetalleHistorial(\''+e.id+'\')')
+        + chipAdjunto('PDF original', e.tienePdfOriginal, 'window.__almVerPDF(\''+e.id+'\')')
+        + chipAdjunto('Carátula envío', !!e.caratulaEnvio, 'window.__almVerDetalleHistorial(\''+e.id+'\')');
+
+      return '<div class="alm-rep-card" style="border-left-color:'+colorBorde+'" onclick="window.__almVerDetalleHistorial(\''+e.id+'\')">'
+        + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px;">'
+        +   '<div><div style="font-size:16px;font-weight:800;color:#0f172a;">'+esc(e.folio)+'</div>'
+        +   '<div style="font-size:12.5px;font-weight:700;color:#334155;">'+esc(e.cliente||'—')+'</div></div>'
+        +   '<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;">'+tagTipo+tagEstado+'</div>'
         + '</div>'
-        + '<input type="file" accept="image/*,.pdf,.doc,.docx" id="alm-evid-file-'+e.id+'" style="display:none">';
-      return '<tr style="cursor:pointer;" onclick="window.__almVerDetalleHistorial(\''+e.id+'\')" title="Ver detalle completo">'
-        + '<td><b>'+esc(e.folio)+'</b><br>'+tag+accionesHtml+'</td>'
-        + '<td>'+esc(e.cliente||'—')+'</td>'
-        + '<td>'+esc(e.solicito||'—')+'</td>'
-        + '<td>'+colRecibio+'</td>'
-        + '<td>'+fmtFecha(e.creadoMs)+'</td>'
-        + '<td>'+colFechaFin+'</td>'
-        + '<td>'+e.piezas+' pzas'+(esCancelado?'':('<br>'+firmasHtml))+'</td>'
-        + '</tr>';
+        + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 14px;font-size:11.5px;color:#475569;margin-bottom:10px;">'
+        +   '<div><span style="color:#94a3b8;">Solicitó:</span> '+esc(e.solicito||'—')+'</div>'
+        +   '<div><span style="color:#94a3b8;">'+(esCancelado?'Motivo:':'Recibió:')+'</span> '+esc(esCancelado?(e.motivoCancelacion||'—'):(e.recibio||'—'))+'</div>'
+        +   '<div><span style="color:#94a3b8;">Fecha solicitud:</span> '+fmtFecha(e.creadoMs)+'</div>'
+        +   '<div><span style="color:#94a3b8;">'+(esCancelado?'Cancelado:':'Entregado:')+'</span> '+fmtFecha(esCancelado?e.canceladoMs:e.entregadoMs)+'</div>'
+        +   '<div><span style="color:#94a3b8;">Piezas:</span> '+e.piezas+'</div>'
+        +   '<div><span style="color:#94a3b8;">Folio remisión:</span> '+(e.remisionAspelFolio?('<b>'+esc(e.remisionAspelFolio)+'</b>'):'—')+'</div>'
+        + '</div>'
+        + '<div style="display:flex;flex-wrap:wrap;gap:6px;">'+chips+'</div>'
+        + '</div>';
     }).join('');
   }
 
@@ -1773,6 +1805,11 @@
             ? '<div><strong>Cancelado:</strong> '+fmtFecha(e.canceladoMs)+' · '+esc(e.motivoCancelacion||'—')+'</div>'
             : '<div><strong>Recibió:</strong> '+esc(e.recibio||'—')+' · <strong>Entregado:</strong> '+fmtFecha(e.entregadoMs)+'</div>')
       +   '<div><strong>Fecha de solicitud:</strong> '+fmtFecha(e.creadoMs)+'</div>'
+      +   '<div><strong>Remisión Aspel:</strong> '+(e.remisionAspelFolio?('<b style="color:#16a34a;">'+esc(e.remisionAspelFolio)+'</b>'+(e.remisionAspelFecha?(' · '+fmtFecha(new Date(e.remisionAspelFecha).getTime())):'')):'<span style="color:#94a3b8;">sin remisionar</span>')+'</div>'
+      + '</div>'
+      + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">'
+      +   (e.tienePdfOriginal ? '<button type="button" onclick="event.stopPropagation();window.__almVerPDF(\''+e.id+'\')" style="border:1px solid #0891b2;background:#fff;color:#0891b2;border-radius:8px;font-size:11.5px;font-weight:700;padding:6px 12px;cursor:pointer;">📄 Ver PDF original del pedido</button>' : '')
+      +   (e.caratulaEnvio ? '<button type="button" onclick="event.stopPropagation();window.__almVerCaratula(\''+e.id+'\')" style="border:1px solid #8B4FD6;background:#fff;color:#8B4FD6;border-radius:8px;font-size:11.5px;font-weight:700;padding:6px 12px;cursor:pointer;">📦 Ver carátula de envío</button>' : '')
       + '</div>'
       + '<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#94a3b8;margin-bottom:6px;">Artículos ('+e.piezas+' pzas)</div>'
       + '<div style="margin-bottom:14px;">'
@@ -1782,23 +1819,48 @@
       + '</div>'
       + (e.firma ? '<div style="margin-bottom:10px;"><div style="font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:4px;">FIRMA DEL SOLICITANTE</div><img src="'+esc(e.firma)+'" style="max-width:220px;border:1px solid #e2e8f0;border-radius:8px;cursor:pointer;" onclick="window.__almVerFirmaId(\''+e.id+'\',\'sol\')"></div>' : '')
       + (e.firmaEntrega ? '<div style="margin-bottom:14px;"><div style="font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:4px;">FIRMA DE ENTREGA</div><img src="'+esc(e.firmaEntrega)+'" style="max-width:220px;border:1px solid #e2e8f0;border-radius:8px;cursor:pointer;" onclick="window.__almVerFirmaId(\''+e.id+'\',\'entrega\')"></div>' : '')
-      + '<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#94a3b8;margin-bottom:6px;">Evidencia de entrega'+(e.remisionado?' · <span style="color:#16a34a;">✓ Remisionado</span>':'')+'</div>'
-      + '<div class="alm-evid-grid" id="alm-hist-evid-'+e.id+'"><div style="color:#94a3b8;font-size:12px;">Cargando…</div></div>';
+      + '<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#94a3b8;margin-bottom:6px;">Evidencia de salida de almacén</div>'
+      + '<div class="alm-evid-grid" id="alm-hist-evid-salida-'+e.id+'"><div style="color:#94a3b8;font-size:12px;">Cargando…</div></div>'
+      + '<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#94a3b8;margin:14px 0 6px;">Evidencia de remisión'+(e.remisionado?' · <span style="color:#16a34a;">✓ Remisionado</span>':'')+'</div>'
+      + '<div class="alm-evid-grid" id="alm-hist-evid-remision-'+e.id+'"><div style="color:#94a3b8;font-size:12px;">Cargando…</div></div>'
+      + '<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#94a3b8;margin:14px 0 6px;">Documentos adjuntos (órdenes de compra, etc.)</div>'
+      + '<div id="alm-hist-docs-'+e.id+'" style="font-size:12px;color:#94a3b8;">Cargando…</div>';
     document.getElementById('alm-modal-hist').classList.add('show');
     window.__almRefrescarEvidHist(e.id);
+    window.tcSbListarDocumentos(e.id).then(function(docs){
+      var cont = document.getElementById('alm-hist-docs-'+e.id);
+      if (!cont) return;
+      cont.innerHTML = docs.length ? docs.map(function(d){
+        return '<a href="'+esc(d.archivo||'#')+'" target="_blank" style="display:inline-flex;align-items:center;gap:5px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;padding:5px 10px;font-size:11.5px;font-weight:600;color:#334155;text-decoration:none;margin:0 6px 6px 0;">📎 '+esc(d.nombre||'Documento')+'</a>';
+      }).join('') : '<span style="color:#94a3b8;">Sin documentos adjuntos.</span>';
+    }).catch(function(){});
+  };
+
+  window.__almVerCaratula = function(id){
+    var e = (_repEntregas||[]).find(function(x){ return x.id===id; });
+    if(!e || !e.caratulaEnvio) return;
+    var c = e.caratulaEnvio;
+    var src = typeof c === 'string' ? c : (c.imagen || c.url || c.archivo || '');
+    if (src) window.open(src, '_blank');
   };
 
   window.__almRefrescarEvidHist = function(id){
     delete _evidenciasCache[id];
     cargarEvidencias(id).then(function(list){
-      var cont=document.getElementById('alm-hist-evid-'+id);
-      if(!cont) return; // el modal ya se cerró
-      cont.innerHTML = list.length
-        ? list.map(function(ev){
-            if (ev.imagen) return '<img class="alm-evid-thumb" src="'+esc(ev.imagen)+'" onclick="window.open(this.src,\'_blank\')">';
-            return '<a href="'+esc(ev.url||'#')+'" target="_blank" class="alm-evid-thumb alm-evid-doc" style="display:flex;flex-direction:column;align-items:center;justify-content:center;text-decoration:none;color:#334155;background:#f8fafc;"><span style="font-size:20px;">📄</span><span style="font-size:9px;text-align:center;padding:0 3px;word-break:break-word;">'+esc(ev.nombre||'Documento')+'</span></a>';
-          }).join('')
-        : '<div style="color:#94a3b8;font-size:12px;">Sin evidencias.</div>';
+      function pintar(contId, items){
+        var cont=document.getElementById(contId);
+        if(!cont) return; // el modal ya se cerró
+        cont.innerHTML = items.length
+          ? items.map(function(ev){
+              if (ev.imagen) return '<img class="alm-evid-thumb" src="'+esc(ev.imagen)+'" onclick="window.open(this.src,\'_blank\')">';
+              return '<a href="'+esc(ev.url||'#')+'" target="_blank" class="alm-evid-thumb alm-evid-doc" style="display:flex;flex-direction:column;align-items:center;justify-content:center;text-decoration:none;color:#334155;background:#f8fafc;"><span style="font-size:20px;">📄</span><span style="font-size:9px;text-align:center;padding:0 3px;word-break:break-word;">'+esc(ev.nombre||'Documento')+'</span></a>';
+            }).join('')
+          : '<div style="color:#94a3b8;font-size:12px;">Sin evidencia.</div>';
+      }
+      // La evidencia vieja (subida antes de que existiera esta categoría) cae
+      // en "general" — se muestra junto con "salida" para no perderla de vista.
+      pintar('alm-hist-evid-salida-'+id, list.filter(function(ev){ return (ev.categoria||'general')!=='remision'; }));
+      pintar('alm-hist-evid-remision-'+id, list.filter(function(ev){ return ev.categoria==='remision'; }));
     });
   };
 
@@ -1829,10 +1891,7 @@
       +   '<button class="alm-rep-btn" type="button" onclick="window.__almExportarReportePDF()">⬇ Exportar PDF</button>'
       + '</div>'
       + '<div class="alm-rep-summary" id="alm-rep-resumen">Cargando…</div>'
-      + '<div class="alm-rep-wrap"><table class="alm-rep-tbl">'
-      +   '<thead><tr><th>Folio</th><th>Cliente</th><th>Solicitó</th><th>Recibió / Motivo</th><th>Fecha solicitud</th><th>Fecha entrega / cancelación</th><th>Piezas / firmas</th></tr></thead>'
-      +   '<tbody id="alm-rep-tbody"><tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:20px;">Cargando…</td></tr></tbody>'
-      + '</table></div>';
+      + '<div class="alm-rep-cards" id="alm-rep-cards"><div style="grid-column:1/-1;text-align:center;color:#94a3b8;padding:30px;">Cargando…</div></div>';
     document.getElementById('alm-modal-hist').classList.add('show');
 
     ['alm-rep-desde','alm-rep-hasta','alm-rep-q'].forEach(function(fid){
@@ -1845,11 +1904,11 @@
   };
 
   window.__almRecargarReporte = function(){
-    var tbody = document.getElementById('alm-rep-tbody');
-    if(tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:20px;">Cargando…</td></tr>';
+    var cont = document.getElementById('alm-rep-cards');
+    if(cont) cont.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#94a3b8;padding:30px;">Cargando…</div>';
     cargarEntregas().then(renderTablaReporte).catch(function(err){
       console.error('[almacen] cargarEntregas:',err);
-      if(tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#dc2626;padding:20px;">No se pudo cargar el historial.</td></tr>';
+      if(cont) cont.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#dc2626;padding:30px;">No se pudo cargar el historial.</div>';
     });
   };
 
