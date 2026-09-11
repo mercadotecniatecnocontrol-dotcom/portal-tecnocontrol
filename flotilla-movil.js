@@ -270,6 +270,27 @@ function esRolLibre(){
   return ADMINS_FLOTILLA.includes(email)||rol==='admin'||rol==='flotilla'||rol==='encargado';
 }
 
+// Quién puede revisar CUALQUIER almacén de herramienta (no solo el propio) — lista
+// configurable desde el Portal (Operaciones > Herramientas > candado de config),
+// no hardcodeada aquí, a petición de Glen (sep-2026). esRolLibre() se mantiene
+// como respaldo (administradores de Flotilla también pueden, por si acaso).
+let revisoresPermitidos=null; // null = todavía no se cargó
+async function revCargarPermisoRevision(){
+  try{
+    const snap=await db.collection('ops_config_revision').doc('general').get();
+    revisoresPermitidos=snap.exists?(snap.data().revisores||[]):[];
+  }catch(e){
+    console.warn('[REV] no se pudo cargar la config de revisión',e);
+    revisoresPermitidos=[];
+  }
+  if(vistaAct==='util')renderUtil();
+}
+function revPuedeRevisar(){
+  if(revisoresPermitidos===null){ revCargarPermisoRevision(); return esRolLibre(); }
+  const email=(window.auth?.currentUser?.email||miPerfil?.email||'').toLowerCase();
+  return esRolLibre()||revisoresPermitidos.some(r=>(r.email||'').toLowerCase()===email);
+}
+
 // ── ECOS VINCULADOS (1 o varios vehículos/maquinaria por usuario) ──
 // Compatibilidad: si solo existe ecoVinculado (string), se trata como array de 1.
 function getEcosVinculados(){
@@ -661,6 +682,10 @@ body{margin:0;padding:0;background:#F0F2F7;font-family:'Plus Jakarta Sans',-appl
 
 /* BOTONES */
 .fm-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:14px;border-radius:12px;border:none;font-family:inherit;font-size:14px;font-weight:800;cursor:pointer;transition:all .15s;letter-spacing:.2px;}
+.fm-btn svg{width:18px;height:18px;flex-shrink:0;display:block;}
+.fm-tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;border:none;border-radius:12px;padding:14px 8px;font-family:inherit;cursor:pointer;transition:all .15s;text-align:center;}
+.fm-tile svg{width:20px;height:20px;flex-shrink:0;display:block;}
+.fm-tile span{font-size:11.5px;font-weight:700;line-height:1.25;}
 .fm-btn.primary{background:#1E3A5F;color:#fff;}
 .fm-btn.primary:active{background:#142a47;transform:scale(.98);}
 .fm-btn.green{background:#15803D;color:#fff;}
@@ -3964,7 +3989,7 @@ let revState={activo:false,paso:1,almacenId:null,almacenNombre:'',almacenes:[],p
 let revFotos=new Map(); // herramientaId -> dataURL comprimido, solo mientras el modal está abierto
 
 window.revAbrirRevision=async function(){
-  if(!esRolLibre()){toast('Esta función es solo para administradores.','err');return;}
+  if(!revPuedeRevisar()){toast('Esta función es solo para administradores autorizados.','err');return;}
   revState={activo:true,paso:1,almacenId:null,almacenNombre:'',almacenes:[],piezas:[],busqueda:''};
   revFotos=new Map();
   renderUtil();
@@ -4043,7 +4068,7 @@ function revRenderPaso2(){
           <label style="flex:1;text-align:center;font-size:10.5px;font-weight:700;padding:7px;border-radius:8px;background:#FEF2F2;color:#B91C1C"><input type="radio" name="rev2-${h.id}" value="faltante" style="margin-right:4px">Faltante</label>
           <label style="flex:1;text-align:center;font-size:10.5px;font-weight:700;padding:7px;border-radius:8px;background:#FFF7ED;color:#C2410C"><input type="radio" name="rev2-${h.id}" value="danada" style="margin-right:4px">Dañada</label>
         </div>
-        <div style="display:flex;align-items:center;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
           <label style="display:flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;color:#1D2E73;background:#E9ECF5;padding:6px 10px;border-radius:7px">
             ${IC.camera} Foto
             <input type="file" accept="image/*" capture="environment" style="display:none" onchange="revSeleccionarFoto('${h.id}',this)">
@@ -4051,6 +4076,7 @@ function revRenderPaso2(){
           <img id="rev-thumb-${h.id}" style="display:none;width:32px;height:32px;object-fit:cover;border-radius:6px;border:1px solid #E2E8F0">
           <span id="rev-foto-estado-${h.id}" style="font-size:10px;color:#94A3B8"></span>
         </div>
+        <input id="rev-obs-${h.id}" placeholder="Comentario de esta pieza (opcional)" style="width:100%;border:1px solid #E2E8F0;border-radius:8px;padding:7px 9px;font-size:11px;box-sizing:border-box">
       </div>`).join('')}
     </div>
     <textarea id="rev-obs-generales" placeholder="Observaciones generales (opcional)" rows="2" style="width:100%;border:1.5px solid #E2E8F0;border-radius:10px;padding:10px 12px;font-size:12.5px;box-sizing:border-box;margin-top:6px"></textarea>
@@ -4105,7 +4131,7 @@ window.revGuardar=async function(){
       }
       herramientas.push({
         herramientaId:herrId, folio:div.getAttribute('data-folio')||'', descripcion:div.getAttribute('data-desc')||'',
-        estado:seleccionado?seleccionado.value:'conforme', observacion:null, tieneFoto:!!dataUrl,
+        estado:seleccionado?seleccionado.value:'conforme', observacion:(document.getElementById(`rev-obs-${herrId}`)||{}).value?.trim()||null, tieneFoto:!!dataUrl,
       });
     }
     const obsGenerales=(document.getElementById('rev-obs-generales')||{}).value||'';
@@ -4280,21 +4306,21 @@ function renderUtilPaso1(){
       </div>
       <h2 style="font-size:17px;font-weight:800;margin-bottom:8px">¿Qué deseas hacer?</h2>
       <p style="font-size:13px;color:#64748B;margin-bottom:20px;line-height:1.5">Selecciona si vas a entregar o recibir un vehículo</p>
-      <div style="display:flex;flex-direction:column;gap:10px">
-        <button class="fm-btn primary" onclick="utilSetModo('entregar')" style="background:#1E3A5F">
-          ${IC.car} Entregar mi vehículo
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
+        <button class="fm-tile" onclick="utilSetModo('entregar')" style="background:#1D2E73;color:#fff">
+          ${IC.car}<span>Entregar vehículo</span>
         </button>
-        <button class="fm-btn" onclick="utilSetModo('recibir')" style="background:#15803D;color:#fff">
-          ${IC.check} Recibir un vehículo
+        <button class="fm-tile" onclick="utilSetModo('recibir')" style="background:#15803D;color:#fff">
+          ${IC.check}<span>Recibir vehículo</span>
         </button>
-        <button class="fm-btn" onclick="herrAbrirTraspaso()" style="background:#0B5FFF;color:#fff">
-          ${IC.doc} Traspasar herramienta
+        <button class="fm-tile" onclick="herrAbrirTraspaso()" style="background:#fff;color:#1D2E73;border:1.5px solid #1D2E73">
+          ${IC.doc}<span>Traspasar herramienta</span>
         </button>
-        <button class="fm-btn" onclick="herrVerMisHerramientas()" style="background:#fff;color:#0B5FFF;border:1.5px solid #0B5FFF">
-          ${IC.doc} Mi herramienta
+        <button class="fm-tile" onclick="herrVerMisHerramientas()" style="background:#fff;color:#1D2E73;border:1.5px solid #1D2E73">
+          ${IC.wrench}<span>Mi herramienta</span>
         </button>
-        ${esRolLibre()?`<button class="fm-btn" onclick="revAbrirRevision()" style="background:#1D2E73;color:#fff">
-          ${IC.check} Revisar herramienta
+        ${revPuedeRevisar()?`<button class="fm-tile" onclick="revAbrirRevision()" style="background:#E7402B;color:#fff;grid-column:1/-1">
+          ${IC.check}<span>Revisar herramienta (Almacén/Operaciones)</span>
         </button>`:''}
       </div>
     </div>
