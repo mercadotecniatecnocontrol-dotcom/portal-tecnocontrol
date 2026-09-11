@@ -15,6 +15,7 @@
         { id: 'sasisopa', titulo: 'SASISOPA', activa: true },
         { id: 'sgm', titulo: 'SGM', activa: true },
         { id: 'bitacoras', titulo: 'Bitácoras', activa: true },
+        { id: 'manuales', titulo: 'Manuales y Procedimientos', activa: true },
         { id: 'certificado', titulo: 'Certificado TECNOLAB', activa: true },
     ];
     let _seccionActual = 'sasisopa';
@@ -555,8 +556,60 @@
         { etiqueta: /estado\s*:/i, clave: 'ESTADO' },
     ];
 
+    // MANUALES Y PROCEDIMIENTOS — machotes aportados directamente por el
+    // cliente (no forman parte del catálogo SASISOPA/SGM/Bitácoras). A
+    // diferencia de Bitácoras, SÍ usan resaltado amarillo — igual que
+    // SASISOPA/SGM — pero el encabezado (con LOGO, Razón Social, PL y
+    // fecha "Efectivo:") vive normalmente en el ENCABEZADO de página
+    // (repetido en cada hoja), no en el cuerpo, y cada machote trae un
+    // cliente de referencia DISTINTO (no hay un texto fijo único que
+    // buscar como en SASISOPA_MAPEO). Por eso no se ubica por
+    // diccionario de texto exacto, sino por PATRÓN: "LOGO" tal cual,
+    // "PL" con dígitos y "EXP"/"ES", una fecha dd/mm/aaaa, y el primer
+    // bloque resaltado sin clasificar (normalmente junto a "LOGO") como
+    // Razón Social — ver procesarEncabezadoManualesProcedimientos. Solo
+    // se tocan esos 4 campos; cualquier otro resaltado que traiga el
+    // machote (p.ej. domicilio del cliente de referencia) se deja tal
+    // cual, a petición del cliente.
+    const MANUALES_RUTA_MACHOTES = 'manual-procedimientos-machote/';
+    const MANUALES_COLECCION = 'manuales_procedimientos_clientes';
+
+    const MANUALES_SECCIONES_FORM = [
+        { titulo: "Identidad del cliente", icono: ICONO.edificio, campos: [
+            ["RAZON_SOCIAL", "Razón Social completa", "Gasolinera El Navegante, S.A. de C.V."],
+            ["NUMERO_PERMISO", "Número de permiso CRE/ASEA (PL)", "PL/5110/EXP/ES/2015"],
+            ["FECHA_ELABORACION", "Fecha de elaboración (dd/mm/aaaa)", "28/04/2025"],
+            ["DOMICILIO_ESTACION", "Domicilio de la estación", "Ejido La Trinidad #SN Col. Mesa de Sanrafael"],
+            ["CODIGO_POSTAL", "Código postal", "33470"],
+            ["CIUDAD_ESTADO", "Ciudad y Estado", "Guadalupe y Calvo, Chihuahua"],
+        ]},
+    ];
+
+    const MANUALES_CAMPOS_OBLIGATORIOS = ["RAZON_SOCIAL", "FECHA_ELABORACION"];
+
+    // Detecta si un texto (ya con espacios sobrantes recortados) es un
+    // número de permiso CRE/ASEA — tolera variantes de espaciado y
+    // separación en varios runs ("PL/" + "9538" + "/EXP/ES/2015").
+    const RE_MANUALES_PL = /^PL\s*\/?\s*\d+\s*\/?\s*EXP\s*\/?\s*ES\s*\/?\s*\d{4}$/i;
+    const RE_MANUALES_FECHA = /^\d{1,2}\/\d{1,2}\/\d{4}$/;
+
     // ── Config activa según la sección elegida en el riel lateral ──
     function sistemaActivo() {
+        if (_seccionActual === 'manuales') {
+            return {
+                id: 'manuales', nombre: 'Manuales y Procedimientos', subtitulo: 'Machotes propios del cliente — solo se personalizan logo, razón social, fecha y número de permiso',
+                mapeo: {}, seccionesForm: MANUALES_SECCIONES_FORM,
+                camposObligatorios: MANUALES_CAMPOS_OBLIGATORIOS,
+                rutaMachotes: MANUALES_RUTA_MACHOTES, coleccion: MANUALES_COLECCION,
+                campoNombre: 'RAZON_SOCIAL', campoOrden: 'RAZON_SOCIAL',
+                catalogoGenerico: {},
+                jerarquiaOrganigrama: [], rolesOrganigrama: [],
+                columnasTabla: [
+                    { titulo: 'Cliente', valor: c => c.RAZON_SOCIAL || '(sin razón social)' },
+                    { titulo: 'Permiso', valor: c => c.NUMERO_PERMISO || '—' },
+                ],
+            };
+        }
         if (_seccionActual === 'bitacoras') {
             return {
                 id: 'bitacoras', nombre: 'Bitácoras', subtitulo: 'Bitácoras de operación, mantenimiento y limpieza (PL2853)',
@@ -852,6 +905,183 @@
         Array.from(celda.getElementsByTagNameNS(NS_W, 'pict')).forEach(pict => {
             if (pict.parentNode) pict.parentNode.removeChild(pict);
         });
+    }
+
+    // MANUALES Y PROCEDIMIENTOS: encabezado (usualmente repetido por
+    // página, en header1/2/3.xml, aunque también puede vivir en el
+    // cuerpo de algún machote) con LOGO + Razón Social + PL + fecha
+    // "Efectivo:", todos resaltados — pero SIN un texto de referencia
+    // fijo común entre machotes (cada uno trae una razón social/PL
+    // distintos), así que no se puede usar un diccionario de texto
+    // exacto como en SASISOPA_MAPEO. Se ubica por PATRÓN, recorriendo
+    // los grupos de runs resaltados consecutivos de cada párrafo:
+    //   - "LOGO" (exacto) → se inserta la imagen del cliente.
+    //   - coincide con RE_MANUALES_PL (dígitos + EXP + ES) → número de
+    //     permiso — puede venir partido en varios runs ("PL/"+"9538"+
+    //     "/EXP/ES/2015"), por eso se agrupan antes de comparar.
+    //   - coincide con RE_MANUALES_FECHA (dd/mm/aaaa) → fecha de
+    //     elaboración.
+    //   - el PRIMER grupo resaltado que no matcheé ninguno de los
+    //     anteriores → Razón Social (normalmente vive junto a "LOGO",
+    //     antes o después según el machote). Cualquier grupo resaltado
+    //     adicional sin clasificar (p.ej. domicilio del cliente de
+    //     referencia) se deja tal cual, a petición del cliente — el
+    //     barrido final de seguridad le quita el resaltado sin tocar
+    //     el texto.
+    // Algunos machotes usan un CAMPO dinámico de Word para la fecha
+    // "Efectivo:" ({ TIME \@ "dd/MM/yyyy" }) en vez de texto plano — el
+    // valor que se ve (p.ej. "10/09/2026") es solo la caché del campo;
+    // Word/LibreOffice lo RECALCULA a la fecha de HOY cada vez que el
+    // documento se abre o se convierte (a PDF, por ejemplo), sin
+    // importar qué texto se le haya puesto encima. Para que la fecha
+    // capturada por el cliente quede fija, hay que "desvincular" el
+    // campo — quitar los runs de mecánica del campo (fldChar begin,
+    // instrText, fldChar separate, fldChar end) y dejar solo el run de
+    // resultado (con su resaltado intacto) como texto normal, listo
+    // para que el clasificador de abajo lo reconozca como fecha.
+    function desvincularCamposDeFechaWord(xmlDoc) {
+        for (const p of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'))) {
+            const runs = Array.from(p.getElementsByTagNameNS(NS_W, 'r'));
+            let i = 0;
+            while (i < runs.length) {
+                const esInicio = Array.from(runs[i].getElementsByTagNameNS(NS_W, 'fldChar'))
+                    .some(f => f.getAttributeNS(NS_W, 'fldCharType') === 'begin');
+                if (!esInicio) { i++; continue; }
+                let j = i + 1;
+                let instrTexto = '';
+                let separateEncontrado = false;
+                while (j < runs.length) {
+                    Array.from(runs[j].getElementsByTagNameNS(NS_W, 'instrText')).forEach(x => { instrTexto += x.textContent || ''; });
+                    const esSeparate = Array.from(runs[j].getElementsByTagNameNS(NS_W, 'fldChar'))
+                        .some(f => f.getAttributeNS(NS_W, 'fldCharType') === 'separate');
+                    j++;
+                    if (esSeparate) { separateEncontrado = true; break; }
+                }
+                if (!separateEncontrado || !/\b(TIME|DATE)\b/i.test(instrTexto)) { i++; continue; }
+                let k = j;
+                while (k < runs.length) {
+                    const esFin = Array.from(runs[k].getElementsByTagNameNS(NS_W, 'fldChar'))
+                        .some(f => f.getAttributeNS(NS_W, 'fldCharType') === 'end');
+                    if (esFin) break;
+                    k++;
+                }
+                for (let m = i; m < j; m++) { if (runs[m].parentNode) runs[m].parentNode.removeChild(runs[m]); }
+                if (k < runs.length && runs[k].parentNode) runs[k].parentNode.removeChild(runs[k]);
+                i = k + 1;
+            }
+        }
+    }
+
+    async function procesarEncabezadoManualesProcedimientos(xmlDoc, datos, stats, ctx) {
+        desvincularCamposDeFechaWord(xmlDoc);
+        let yaAsignoRazonSocial = false;
+        let yaAsignoDomicilio = false;
+        for (const p of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'))) {
+            const runs = Array.from(p.getElementsByTagNameNS(NS_W, 'r'));
+            let i = 0;
+            while (i < runs.length) {
+                if (!esResaltadoAmarillo(runs[i])) { i++; continue; }
+                // Se agrupan los runs resaltados consecutivos, PERO se
+                // corta el grupo apenas el SIGUIENTE run (por su cuenta,
+                // no el texto acumulado) empieza claramente un campo
+                // distinto ("PL", una fecha completa, o "LOGO") — en
+                // varios machotes la Razón Social y el PL vienen
+                // resaltados de corrido, sin ningún run sin resaltar de
+                // por medio, y sin este corte se fusionaban en un solo
+                // bloque irreconocible (perdiendo el PL por completo).
+                // Si el grupo EMPIEZA con "PL", el corte es distinto: se
+                // sigue extendiendo run por run hasta que el texto
+                // acumulado YA forme un número de permiso completo — el
+                // domicilio a veces viene pegado justo después, sin que
+                // ningún run individual "anuncie" su inicio.
+                let j = i + 1;
+                if (/^pl\b/i.test(textoDeRun(runs[i]).trim())) {
+                    let acumuladoPL = textoDeRun(runs[i]);
+                    while (j < runs.length && esResaltadoAmarillo(runs[j]) && !RE_MANUALES_PL.test(acumuladoPL.trim())) {
+                        acumuladoPL += textoDeRun(runs[j]);
+                        j++;
+                    }
+                } else {
+                    while (j < runs.length && esResaltadoAmarillo(runs[j])) {
+                        const textoRunSiguiente = textoDeRun(runs[j]).trim();
+                        if (/^pl\b/i.test(textoRunSiguiente) || RE_MANUALES_FECHA.test(textoRunSiguiente) || /^logo$/i.test(textoRunSiguiente)) break;
+                        j++;
+                    }
+                }
+                const grupo = runs.slice(i, j);
+                const textoGrupo = grupo.map(textoDeRun).join('').trim();
+                // Algunos machotes traen runs resaltados VACÍOS (sin
+                // ningún <w:t>) mezclados en medio del grupo — si se le
+                // escribe siempre a grupo[0] y ese resulta ser uno de
+                // estos, el texto se pierde en silencio (setTextoRun no
+                // tiene dónde escribirlo). Se usa el primer run del
+                // grupo que sí tenga contenido de texto.
+                const destino = grupo.find(r => r.getElementsByTagNameNS(NS_W, 't').length > 0) || grupo[0];
+                const escribirGrupo = (valor) => { grupo.forEach(r => setTextoRun(r, r === destino ? valor : '')); };
+
+                if (/^logo$/i.test(textoGrupo)) {
+                    if (datos.LOGO_BASE64) {
+                        await insertarLogoEnGrupo(ctx.zip, xmlDoc, ctx.ruta, grupo, datos.LOGO_BASE64, ctx.imagen);
+                        stats.logosInsertados++;
+                    } else {
+                        escribirGrupo('');
+                        grupo.forEach(quitarResaltado);
+                        stats.logosPendientes++;
+                    }
+                    i = j;
+                    continue;
+                }
+                if (RE_MANUALES_PL.test(textoGrupo)) {
+                    escribirGrupo(datos.NUMERO_PERMISO || '');
+                    grupo.forEach(quitarResaltado);
+                    stats.reemplazos++;
+                    i = j;
+                    continue;
+                }
+                if (RE_MANUALES_FECHA.test(textoGrupo)) {
+                    escribirGrupo(datos.FECHA_ELABORACION || textoGrupo);
+                    grupo.forEach(quitarResaltado);
+                    stats.reemplazos++;
+                    i = j;
+                    continue;
+                }
+                if (!yaAsignoRazonSocial) {
+                    yaAsignoRazonSocial = true;
+                    if (datos.RAZON_SOCIAL) {
+                        escribirGrupo(datos.RAZON_SOCIAL);
+                        grupo.forEach(quitarResaltado);
+                        stats.reemplazos++;
+                    } else {
+                        stats.pendientes.push('Razón Social (encabezado Manuales y Procedimientos)');
+                    }
+                    i = j;
+                    continue;
+                }
+                // Segundo bloque resaltado sin clasificar (después de la
+                // Razón Social) — se toma como el domicilio completo de
+                // la estación (calle + CP + ciudad/estado), combinado en
+                // el mismo formato que traen los machotes: "[calle], CP
+                // [código postal] [ciudad, estado]". Cualquier bloque
+                // ADICIONAL sin clasificar después de este se deja tal
+                // cual, sin tocar.
+                if (!yaAsignoDomicilio) {
+                    yaAsignoDomicilio = true;
+                    const partes = [datos.DOMICILIO_ESTACION, datos.CODIGO_POSTAL ? ('CP ' + datos.CODIGO_POSTAL) : '', datos.CIUDAD_ESTADO].filter(Boolean);
+                    if (partes.length) {
+                        escribirGrupo(partes.join(', '));
+                        grupo.forEach(quitarResaltado);
+                        stats.reemplazos++;
+                    } else {
+                        stats.pendientes.push('Domicilio (encabezado Manuales y Procedimientos)');
+                    }
+                    i = j;
+                    continue;
+                }
+                // Resaltado adicional sin clasificar — se deja tal cual,
+                // sin tocar.
+                i = j;
+            }
+        }
     }
 
     // Ubica el "contenedor" (celda de tabla o párrafo suelto) que trae la
@@ -4547,6 +4777,8 @@
                 procesarCartaResponsivaF1202(xmlDoc, datos, nombreArchivo, stats);
             } else if (_seccionActual === 'bitacoras') {
                 procesarCamposBitacoras(xmlDoc, datos, stats);
+            } else if (_seccionActual === 'manuales') {
+                await procesarEncabezadoManualesProcedimientos(xmlDoc, datos, stats, ctx);
             }
             // PROC-G-*/PROC-T-* traen su propio diagrama de proceso (no un
             // organigrama) y no deben pasar por el reemplazo automático del
@@ -4564,6 +4796,7 @@
             // usara ese encabezado.
             if (ruta === 'word/document.xml'
                 && _seccionActual !== 'bitacoras'
+                && _seccionActual !== 'manuales'
                 && !(_seccionActual === 'sgm' && RE_SIN_ORGANIGRAMA_SGM.test(nombreArchivo))
                 && !(_seccionActual === 'sasisopa' && RE_SIN_ORGANIGRAMA_SASISOPA.test(nombreArchivo))) {
                 reemplazarOrganigramaMGM(xmlDoc, datos);
@@ -4579,7 +4812,7 @@
             // logo, se sustituye ahí; si NO subió logo, se quita la
             // insignia de referencia igualmente para no dejar el logo del
             // cliente equivocado (ej. "Servicio Chavo") en el documento final.
-            if (_seccionActual !== 'sgm') {
+            if (_seccionActual !== 'sgm' && _seccionActual !== 'manuales') {
                 const contenedorLogo = localizarContenedorLogo(xmlDoc);
                 if (contenedorLogo) {
                     const tieneTextoLogo = /\blogo\b/i.test(textoDeCelda(contenedorLogo));
@@ -4872,7 +5105,7 @@
             <div class="gs-rail-logo">${ICONO.edificio}</div>
             ${SECCIONES_GESTORIA.map(s => `
                 <button class="gs-rail-btn${_seccionActual === s.id ? ' activo' : ''}" data-seccion="${s.id}" ${s.activa ? '' : 'disabled'}>
-                    ${s.id === 'sasisopa' ? ICONO.carpeta : s.id === 'sgm' ? ICONO.graduacion : s.id === 'bitacoras' ? ICONO.reloj : ICONO.certificado}
+                    ${s.id === 'sasisopa' ? ICONO.carpeta : s.id === 'sgm' ? ICONO.graduacion : s.id === 'bitacoras' ? ICONO.reloj : s.id === 'manuales' ? ICONO.imagen : ICONO.certificado}
                     <span class="gs-rail-tooltip">${s.titulo}${s.activa ? '' : ' (próximamente)'}</span>
                 </button>`).join('')}
             <div class="gs-rail-divisor"></div>
@@ -5648,7 +5881,7 @@
                             </div>
                         </div>
 
-                        <div class="gs-card" style="${_seccionActual === 'bitacoras' ? 'display:none;' : ''}">
+                        <div class="gs-card" style="${(_seccionActual === 'bitacoras' || _seccionActual === 'manuales') ? 'display:none;' : ''}">
                             <div class="gs-card-header"><span class="gs-card-icon">${ICONO.imagen}</span><span class="gs-card-title">Firmas de control</span></div>
                             <div class="gs-card-body">
                                 ${['ELABORA', 'REVISO', 'APRUEBA'].map(rol => `
