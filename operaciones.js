@@ -735,10 +735,11 @@
     ];
 
     let opsFB = null;
-    let unsubHerr = null, unsubTec = null, unsubMov = null, unsubSurt = null, unsubFolios = null, unsubNotif = null, unsubTraspasos = null, unsubConfigCalibracion = null, unsubServiciosCatalogo = null, unsubTarifasPersonal = null, unsubAusencias = null;
+    let unsubHerr = null, unsubTec = null, unsubMov = null, unsubSurt = null, unsubFolios = null, unsubNotif = null, unsubTraspasos = null, unsubConfigCalibracion = null, unsubServiciosCatalogo = null, unsubTarifasPersonal = null, unsubAusencias = null, unsubAlmacenes = null;
     let cacheHerr = [], cacheTec = [], cacheMov = [], cacheSurtidos = [], cacheFolios = [];
     let cacheServiciosCatalogo = [], cacheTarifasPersonal = {};
     let cacheAusencias = [];
+    let cacheAlmacenes = []; // TODOS los almacenes (general/técnico/ubicación) — para las ubicaciones físicas tipo "Banco de trabajo Saltillo"
     let cacheTraspasosPend = []; // ops_herramienta_traspasos con estatus "Pendiente recepción" — bloquea la pieza hasta que el receptor acepte/rechace/venza
     let cacheAutorizadoresCalibracion = []; // [{email,nombre}] — quién puede aprobar mover equipo con requiereAutorizacion=true
     let filtroFolios = "", filtroFolioSemaforo = "todos";
@@ -1143,7 +1144,16 @@
 
     // El almacén de una pieza se DERIVA de tecnicoActualId — no es un campo aparte
     // que se pueda desincronizar. null/vacío = Almacén General.
-    function opsAlmacenIdDe(tecnicoId) { return tecnicoId || ALMACEN_GENERAL_ID; }
+    // Retrocompatible: si se le pasa el objeto herramienta completo, respeta su
+    // almacenId explícito (piezas en una ubicación física, ej. "Banco de trabajo
+    // Saltillo", sin técnico asignado) — si se le pasa solo un id de técnico
+    // (como ya hacía antes en movimientos/traspasos), se comporta igual que siempre.
+    function opsAlmacenIdDe(tecnicoIdOrHerramienta) {
+        if (tecnicoIdOrHerramienta && typeof tecnicoIdOrHerramienta === "object") {
+            return tecnicoIdOrHerramienta.tecnicoActualId || tecnicoIdOrHerramienta.almacenId || ALMACEN_GENERAL_ID;
+        }
+        return tecnicoIdOrHerramienta || ALMACEN_GENERAL_ID;
+    }
     function opsNombreAlmacen(tecnicoId) {
         return tecnicoId ? opsNombreTecnico(tecnicoId) : "Almacén General";
     }
@@ -1232,6 +1242,77 @@
     // Backfill: crea el almacén de cualquier técnico activo que ya existiera antes
     // de este cambio y todavía no tenga su ops_almacenes/{id}. Idempotente — se
     // puede correr las veces que haga falta, con merge:true no duplica nada.
+    // Importa el equipo especializado que Glen listó (sep-2026): el banco de
+    // trabajo físico de Saltillo y el equipo de calibración de TecnoLab (FOR-011,
+    // Zaira) — ambos como ubicaciones físicas reales, no técnicos, para que la
+    // revisión desde Flotilla tenga algo real que revisar en esos dos almacenes.
+    window.opsImportarEquipoEspecializado = async function () {
+        if (!confirm("Esto crea (si no existen) el 'Banco de trabajo 1 (Saltillo)' y el equipo de calibración de TecnoLab, con sus piezas. ¿Continuar?")) return;
+        try {
+            const { db, fs } = await opsGetFB();
+
+            await fs.setDoc(fs.doc(db, COL_ALMACENES, "banco-trabajo-1-saltillo"), { nombre: "Banco de trabajo 1 (Saltillo)", tipo: "ubicacion", tecnicoId: null, activo: true, requiereAutorizacion: false }, { merge: true });
+            await fs.setDoc(fs.doc(db, COL_ALMACENES, "tecnolab-cuarto-control"), { nombre: "TecnoLab — Cuarto de Control de Equipos", tipo: "ubicacion", tecnicoId: null, activo: true, requiereAutorizacion: true }, { merge: true });
+
+            const saltillo = [
+                "Demoledor 2", "Demoledor chico", "Compresor neumático", "Escalera chica 2",
+                "Dron", 'Estación total (triple prisma)', "Zozo", 'Llave 36', 'Llave 24',
+                'Tarraja 3/4', "Tarraja de pulgada",
+            ];
+            const tecnolab = [
+                ["TEC-001", "Medidor de flujo másico", "Emerson Micro Motion", "CMF200M420NU", "455044"],
+                ["TEC-002", "Medidor de flujo másico", "Emerson Micro Motion", "CMF300M425N2BAS2ZZ", "14054682"],
+                ["TEC-003", "Medidor de desplazamiento positivo", "Liquid Controls", "M-30-1", "117105505"],
+                ["TEC-004", "Estación total", "EFIX", "ETSR4", "604278"],
+                ["TEC-005", "Termómetro de lectura directa (digital)", "Thermoprobe", "TP7-D", "7D-42427"],
+                ["TEC-006", "Cinta plomada", "NOKA", "", ""],
+                ["TEC-007", "Cinta plomada", "NOKA", "", ""],
+                ["TEC-008", "Higrotermómetro", "LUTRON", "MHB-382SD", "AM.59932"],
+                ["TEC-009", "Medidor de bajos valores de resistencia (probador de tierra)", "ETCR", "ETCR3100C", "3100240346"],
+                ["TEC-010", "Telurómetro", "ETCR", "ETCR2100A+", "2101250764"],
+                ["TEC-011", "Manovacuómetro digital", "Fande", "", "210707-1-5"],
+                ["TEC-012", "Medida volumétrica 20L", "Volaimex", "JP20-1", "1901"],
+                ["TEC-013", "Probeta de 380 mL", "", "", ""],
+                ["TEC-014", "Densímetro ASTM 83H", "ALLA FRANCE", "ASTM 83H", "333284"],
+                ["TEC-015", "Densímetro ASTM 85H", "ALLA FRANCE", "ASTM 85H", "351219"],
+                ["TEC-016", "Densímetro ASTM 88H", "CHASE USA", "ASTM 88H", "247925"],
+                ["TEC-017", "Probeta de 100 mL", "PYREX", "3025", ""],
+                ["TEC-018", "Transmisor de presión estática", "ROSEMOUNT", "3051S1TA4A3A11A1AD A2E5M5Q4Q8T1", "0728330"],
+                ["TEC-019", "Transmisor de temperatura", "ROSEMOUNT", "3144PD1A1E5M5T1C4Q4XA", "0865266"],
+            ];
+
+            let n = 0;
+            for (const nombre of saltillo) {
+                const folio = await opsSiguienteFolioHerramienta();
+                await fs.setDoc(fs.doc(db, COL_HERRAMIENTAS, folio), {
+                    folio, descripcion: nombre, marca: "", modelo: "", categoria: "Equipo especializado",
+                    numeroSerie: "", departamento: null, condicion: null, uso: null, peso: null, pesoUnidad: null, medida: null,
+                    estado: "disponible", ubicacionActual: "Banco de trabajo 1 (Saltillo)", almacenId: "banco-trabajo-1-saltillo",
+                    tecnicoActualId: null, fechaAsignacion: null, folioLegado: null, observaciones: null,
+                    fechaAlta: opsHoy(), requiereAutorizacion: false,
+                    externalId: null, sourceSystem: "manual", lastSync: null, syncStatus: "no_sincronizado",
+                });
+                n++;
+            }
+            for (const [tecId, nombre, marca, modelo, serie] of tecnolab) {
+                const folio = await opsSiguienteFolioHerramienta();
+                await fs.setDoc(fs.doc(db, COL_HERRAMIENTAS, folio), {
+                    folio, descripcion: nombre, marca, modelo, categoria: "Calibración TecnoLab",
+                    numeroSerie: serie, departamento: null, condicion: null, uso: null, peso: null, pesoUnidad: null, medida: null,
+                    estado: "disponible", ubicacionActual: "TecnoLab — Cuarto de Control de Equipos", almacenId: "tecnolab-cuarto-control",
+                    tecnicoActualId: null, fechaAsignacion: null, folioLegado: tecId, observaciones: "Importado de FOR-011 (TecnoLab Ensayo y Calibración)",
+                    fechaAlta: opsHoy(), requiereAutorizacion: true,
+                    externalId: null, sourceSystem: "manual", lastSync: null, syncStatus: "no_sincronizado",
+                });
+                n++;
+            }
+            alert(`Listo — ${n} pieza(s) creada(s) en los dos almacenes nuevos.`);
+        } catch (err) {
+            console.error("[operaciones.js] error al importar equipo especializado:", err);
+            alert("No se pudo importar: " + err.message);
+        }
+    };
+
     window.opsBackfillAlmacenes = async function () {
         const { db, fs } = await opsGetFB();
         await opsAsegurarAlmacenGeneral(db, fs);
@@ -1287,7 +1368,7 @@
     function opsRenderShell() {
         const rol = opsRolActual();
         const rolLabel = { administrador: "Administrador", almacen: "Almacén", consulta: "Consulta" }[rol];
-        const items = ["resumen:Resumen", "dashboard:Herramientas", "planeacion:Planeación", "guardias:Guardias", "tecnicos:Técnicos", "servicios:Servicios",
+        const items = ["resumen:Resumen", "dashboard:Herramientas", "guardias:Guardias", "tecnicos:Técnicos", "servicios:Servicios",
             "folios:Folios", "clientes:Clientes",
             ...(opsPuedeHacer("autorizar_material") ? ["solicitudes:Solicitudes"] : []),
             "alertas:Alertas", "movimientos:Movimientos"];
@@ -1332,7 +1413,6 @@
         if (activo) { activo.style.color = "#1D2E73"; activo.style.background = "#E9ECF5"; activo.style.borderLeftColor = "#1D2E73"; }
         if (tab === "resumen") opsRenderResumen();
         else if (tab === "dashboard") opsRenderDashboard();
-        else if (tab === "planeacion") opsRenderPlaneacion();
         else if (tab === "guardias") opsRenderGuardias();
         else if (tab === "tecnicos") opsRenderTecnicos();
         else if (tab === "servicios") opsRenderServicios();
@@ -1401,14 +1481,14 @@
         if (!unsubServiciosCatalogo) {
             unsubServiciosCatalogo = fs.onSnapshot(fs.collection(db, COL_SERVICIOS_CATALOGO), snap => {
                 cacheServiciosCatalogo = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                if (tabActual === "planeacion") opsRenderPlaneacion();
+                if (tabActual === "servicios") opsRenderCatalogoRecetas();
             }, () => { cacheServiciosCatalogo = []; });
         }
         if (!unsubTarifasPersonal) {
             unsubTarifasPersonal = fs.onSnapshot(fs.collection(db, COL_TARIFAS_PERSONAL), snap => {
                 cacheTarifasPersonal = {};
                 snap.docs.forEach(d => { cacheTarifasPersonal[d.id] = d.data(); });
-                if (tabActual === "planeacion") opsRenderPlaneacion();
+                if (tabActual === "servicios") opsRenderCatalogoRecetas();
             }, () => { cacheTarifasPersonal = {}; });
         }
         if (!unsubAusencias) {
@@ -1417,6 +1497,12 @@
                 if (tabActual === "tecnicos") opsRenderTecnicos();
                 if (fichaTecActual) opsRenderFichaTecContenido(fichaTecActual);
             }, () => { cacheAusencias = []; });
+        }
+        if (!unsubAlmacenes) {
+            unsubAlmacenes = fs.onSnapshot(fs.collection(db, COL_ALMACENES), snap => {
+                cacheAlmacenes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                if (tabActual === "dashboard") opsRenderDashboard();
+            }, () => { cacheAlmacenes = []; });
         }
         if (!unsubNotif) {
             // Notificaciones generales (ej. "solicitud lista para surtir") — llegan a TODOS los
@@ -1681,11 +1767,17 @@
     }
 
     function opsFragmentoVistaAlmacen() {
-        const enGeneral = cacheHerr.filter(h => !h.tecnicoActualId && h.estado !== "baja");
+        const enGeneral = cacheHerr.filter(h => !h.tecnicoActualId && !h.almacenId && h.estado !== "baja");
         const tecnicosActivos = cacheTec.filter(t => t.estatus === "activo");
+        const ubicaciones = cacheAlmacenes.filter(a => a.tipo === "ubicacion" && a.activo !== false);
         return `
-            <div style="text-align:right;margin-bottom:10px;">
-                <a href="javascript:void(0)" onclick="opsBackfillAlmacenes()" style="font-size:11px;color:#94a3b8;text-decoration:underline;">Verificar/crear almacenes faltantes</a>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                <div style="font-size:11px;color:#94a3b8;">${ubicaciones.length} ubicación(es) física(s) además del almacén general y los de técnico.</div>
+                <div style="display:flex;gap:10px;">
+                    <a href="javascript:void(0)" onclick="opsImportarEquipoEspecializado()" style="font-size:11px;color:#E7402B;font-weight:600;text-decoration:underline;">Importar Saltillo + TecnoLab</a>
+                    <a href="javascript:void(0)" onclick="opsAbrirModalNuevaUbicacion()" style="font-size:11px;color:#1D2E73;font-weight:600;text-decoration:underline;">+ Nueva ubicación física</a>
+                    <a href="javascript:void(0)" onclick="opsBackfillAlmacenes()" style="font-size:11px;color:#94a3b8;text-decoration:underline;">Verificar/crear almacenes faltantes</a>
+                </div>
             </div>
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px;">
                 <div onclick="opsAbrirAlmacenPiezas(null)" style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;border-left:4px solid #1D2E73;padding:15px 16px;cursor:pointer;transition:border-color .15s;" onmouseover="this.style.borderColor='#1D2E73'" onmouseout="this.style.borderLeftColor='#1D2E73';this.style.borderColor='#e2e8f0';this.style.borderLeftColor='#1D2E73'">
@@ -1696,6 +1788,17 @@
                         <span style="font-size:11px;color:#64748b;">pieza(s)</span>
                     </div>
                 </div>
+                ${ubicaciones.map(a => {
+                    const n = cacheHerr.filter(h => h.almacenId === a.id && !h.tecnicoActualId && h.estado !== "baja").length;
+                    return `<div onclick="opsAbrirAlmacenPiezas('${a.id}')" style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;border-left:4px solid #E7402B;padding:15px 16px;cursor:pointer;transition:border-color .15s;" onmouseover="this.style.borderColor='#1D2E73'" onmouseout="this.style.borderColor='#e2e8f0'">
+                        <div style="font-size:13.5px;font-weight:700;color:#1e293b;">${opsEsc(a.nombre)}</div>
+                        <div style="font-size:11px;color:#94a3b8;margin:2px 0 10px;">Ubicación física${a.requiereAutorizacion ? " · requiere autorización" : ""}</div>
+                        <div style="display:flex;align-items:baseline;gap:5px;">
+                            <span style="font-size:22px;font-weight:800;color:#1e293b;">${n}</span>
+                            <span style="font-size:11px;color:#64748b;">pieza(s)</span>
+                        </div>
+                    </div>`;
+                }).join("")}
                 ${tecnicosActivos.map(t => {
                     const n = cacheHerr.filter(h => h.tecnicoActualId === t.id && h.estado !== "baja").length;
                     return `<div onclick="opsAbrirAlmacenPiezas('${t.id}')" style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:15px 16px;cursor:pointer;transition:border-color .15s;" onmouseover="this.style.borderColor='#1D2E73'" onmouseout="this.style.borderColor='#e2e8f0'">
@@ -1710,11 +1813,50 @@
             </div>`;
     }
 
+    window.opsAbrirModalNuevaUbicacion = function () {
+        const wrap = document.getElementById("ops-modal-wrap");
+        wrap.innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;">
+            <div style="background:#fff;border-radius:14px;width:360px;max-width:92vw;padding:22px;">
+                <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:14px;">Nueva ubicación física</div>
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Nombre</label>
+                <input id="ops-in-ubic-nombre" placeholder="Ej. Banco de trabajo 1 (Saltillo)" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 12px;">
+                <label style="display:flex;align-items:center;gap:7px;font-size:12px;color:#334155;cursor:pointer;margin-bottom:16px;">
+                    <input type="checkbox" id="ops-in-ubic-autorizacion" style="width:15px;height:15px;">
+                    Requiere autorización previa para mover herramienta de aquí
+                </label>
+                <div style="display:flex;gap:8px;justify-content:flex-end;">
+                    <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
+                    <button onclick="opsCrearUbicacion()" class="mkt-add-btn" style="background:#1D2E73;">Crear</button>
+                </div>
+            </div>
+        </div>`;
+    };
+    window.opsCrearUbicacion = async function () {
+        const nombre = document.getElementById("ops-in-ubic-nombre").value.trim();
+        if (!nombre) { alert("Captura el nombre"); return; }
+        const requiereAutorizacion = document.getElementById("ops-in-ubic-autorizacion").checked;
+        try {
+            const { db, fs } = await opsGetFB();
+            const id = nombre.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+            await fs.setDoc(fs.doc(db, COL_ALMACENES, id), { nombre, tipo: "ubicacion", tecnicoId: null, activo: true, requiereAutorizacion }, { merge: true });
+            document.getElementById("ops-modal-wrap").innerHTML = "";
+        } catch (err) {
+            alert("No se pudo crear: " + err.message);
+        }
+    };
+
     // ── Panel: piezas de un almacén (General o de un técnico) ─────
-    window.opsAbrirAlmacenPiezas = function (tecnicoId) {
-        const piezas = cacheHerr.filter(h => (tecnicoId ? h.tecnicoActualId === tecnicoId : !h.tecnicoActualId) && h.estado !== "baja")
-            .sort((a, b) => (a.folio || "").localeCompare(b.folio || ""));
-        const nombre = tecnicoId ? opsNombreTecnico(tecnicoId) : "Almacén General";
+    window.opsAbrirAlmacenPiezas = function (almacenId) {
+        const ubicacion = almacenId ? cacheAlmacenes.find(a => a.id === almacenId && a.tipo === "ubicacion") : null;
+        const esTecnico = almacenId && !ubicacion;
+        const piezas = cacheHerr.filter(h => {
+            if (h.estado === "baja") return false;
+            if (esTecnico) return h.tecnicoActualId === almacenId;
+            if (ubicacion) return !h.tecnicoActualId && h.almacenId === almacenId;
+            return !h.tecnicoActualId && !h.almacenId; // Almacén General
+        }).sort((a, b) => (a.folio || "").localeCompare(b.folio || ""));
+        const nombre = esTecnico ? opsNombreTecnico(almacenId) : (ubicacion ? ubicacion.nombre : "Almacén General");
         const wrap = document.getElementById("ops-panel-wrap");
         wrap.innerHTML = `
         <div style="position:fixed;inset:0;background:rgba(15,23,42,0.5);z-index:99998;display:flex;justify-content:flex-end;" onclick="if(event.target===this)document.getElementById('ops-panel-wrap').innerHTML=''">
@@ -3768,15 +3910,21 @@
             </div>`;
         }
         el.innerHTML = `
-            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
+            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:22px;">
                 ${tarjeta(ICON.plus, "Nuevo servicio técnico", "Abre el formulario ya existente en Operaciones", "typeof abrirFormServicio==='function' && abrirFormServicio()", typeof window.abrirFormServicio === "function")}
                 ${tarjeta(ICON.box, "Servicios / registros", "Ver la lista de servicios técnicos capturados", "typeof toggleListaServicios==='function' && toggleListaServicios()", typeof window.toggleListaServicios === "function")}
                 ${tarjeta(NAV_ICONS.folios, "Folios de servicio", "Seguimiento de vencimiento, atención y solución (Connecteam)", "opsCambiarTab('folios')", true)}
                 ${tarjeta(ICON.check, "Pólizas", "Próximamente — módulo aún no existe en el portal", "", false)}
                 ${tarjeta(ICON.bell, "Servicios pendientes / completados", "Próximamente — requiere el módulo de Folios", "", false)}
                 ${tarjeta(ICON.clock, "Historial y evidencias", "Próximamente — se conectará con Evidencias por asignación", "", false)}
+            </div>
+            <div style="border-top:1px solid #e2e8f0;padding-top:18px;">
+                <div id="ops-catalogo-recetas-contenido"></div>
             </div>`;
+        opsRenderCatalogoRecetas();
     }
+
+    // ═══════════════════════ CATÁLOGO DE SERVICIOS (RECETAS) — vive dentro de Servicios ═══════════════════════
 
     // ═══════════════════════ TAB: FOLIOS (seguimiento de vencimiento — reemplaza el Excel de Connecteam) ═══════════════════════
     // Jerarquía de fechas (regla del proceso real):
@@ -5045,6 +5193,58 @@
         ];
     }
 
+    window.opsAbrirModalNuevoServicio = function () {
+        const wrap = document.getElementById("ops-modal-wrap");
+        wrap.innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;">
+            <div style="background:#fff;border-radius:14px;width:380px;max-width:92vw;padding:22px;">
+                <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:14px;">Nuevo servicio</div>
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Nombre del servicio</label>
+                <input id="ops-in-nuevoserv-nombre" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 12px;">
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Categoría</label>
+                <input id="ops-in-nuevoserv-categoria" placeholder="Ej. Mantenimiento a estaciones de servicio" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 12px;">
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Tipo</label>
+                <select id="ops-in-nuevoserv-tipo" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 16px;">
+                    <option value="ambos">Interno/Externo</option>
+                    <option value="interno">Interno</option>
+                    <option value="externo">Externo</option>
+                </select>
+                <div style="display:flex;gap:8px;justify-content:flex-end;">
+                    <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
+                    <button onclick="opsCrearServicioNuevo()" class="mkt-add-btn" style="background:#1D2E73;">Crear y editar</button>
+                </div>
+            </div>
+        </div>`;
+    };
+
+    window.opsCrearServicioNuevo = async function () {
+        const nombre = document.getElementById("ops-in-nuevoserv-nombre").value.trim();
+        if (!nombre) { alert("Captura el nombre"); return; }
+        const categoria = document.getElementById("ops-in-nuevoserv-categoria").value.trim();
+        const tipoServicio = document.getElementById("ops-in-nuevoserv-tipo").value;
+        try {
+            const { db, fs } = await opsGetFB();
+            const id = nombre.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") + "-" + Date.now().toString(36);
+            const datos = {
+                nombre, categoria, tipoServicio, activo: true,
+                requiereObraCivil: false, requiereVehiculo: true, requiereRemolque: false,
+                personal: [{ rol: "tecnico", cantidad: 1 }],
+                materiales: [], herramientaRequerida: [], equipoSeguridad: [],
+                vehiculos: { sugerido: { nombre: "", razon: "" }, alternos: [] },
+                origenImportacion: "Creado manualmente en el portal", fechaAlta: opsHoy(), creadoPor: opsNombreActual(),
+            };
+            await fs.setDoc(fs.doc(db, COL_SERVICIOS_CATALOGO, id), datos);
+            await fs.addDoc(fs.collection(db, COL_SERVICIOS_CATALOGO, id, "historial"), {
+                usuario: opsNombreActual(), usuarioEmail: opsUsuarioActual(), fecha: opsFechaHora(), resumen: "Servicio creado",
+            }).catch(() => {});
+            document.getElementById("ops-modal-wrap").innerHTML = "";
+            cacheServiciosCatalogo.push({ id, ...datos });
+            opsAbrirFichaServicio(id);
+        } catch (err) {
+            alert("No se pudo crear: " + err.message);
+        }
+    };
+
     window.opsImportarRecetasReales = async function () {
         if (!confirm("Esto crea/actualiza las 9 recetas reales del Excel de Paloma en el catálogo de servicios. ¿Continuar?")) return;
         try {
@@ -5073,17 +5273,17 @@
         }
     };
 
-    function opsRenderPlaneacion() {
-        const el = document.getElementById("ops-tab-content");
+    function opsRenderCatalogoRecetas() {
+        const el = document.getElementById("ops-catalogo-recetas-contenido");
         if (!el) return;
         const gestion = opsPuedeGestionar();
         el.innerHTML = `
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
                 <div>
-                    <div style="font-size:12.5px;font-weight:700;color:#1e293b;">Catálogo de servicios</div>
+                    <div style="font-size:12.5px;font-weight:700;color:#1e293b;">Catálogo de servicios (recetas)</div>
                     <div style="font-size:11px;color:#94a3b8;">Fase 1 — modelo de datos y recetas. El cálculo automático por cantidad, el calendario y la disponibilidad son las siguientes fases.</div>
                 </div>
-                ${gestion ? `<button onclick="opsImportarRecetasReales()" class="mkt-add-btn" style="background:#15803D;">${ICON.file} Importar recetas reales (9 servicios)</button>` : ""}
+                ${gestion ? `<div style="display:flex;gap:8px;"><button onclick="opsAbrirModalNuevoServicio()" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Nuevo servicio</button><button onclick="opsImportarRecetasReales()" class="mkt-add-btn" style="background:#15803D;">${ICON.file} Importar recetas reales (9 servicios)</button></div>` : ""}
             </div>
             ${Object.keys(cacheTarifasPersonal).length ? `
             <div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:13px 16px;margin-bottom:16px;">
@@ -5460,8 +5660,8 @@
         const contenidoTab = { resumen: tabResumen, materiales: tabMateriales, herramienta: tabHerramienta, historial: tabHistorial }[fichaServTabActual];
 
         wrap.innerHTML = `
-        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.5);z-index:99998;display:flex;justify-content:flex-end;" onclick="if(event.target===this){document.getElementById('ops-panel-wrap').innerHTML='';servicioEditDraft=null;dispoServicioActual=null;}">
-            <div style="background:#fff;width:520px;max-width:94vw;height:100%;overflow-y:auto;padding:22px;box-shadow:-6px 0 20px rgba(0,0,0,0.15);">
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99998;display:flex;align-items:center;justify-content:center;padding:26px;" onclick="if(event.target===this){document.getElementById('ops-panel-wrap').innerHTML='';servicioEditDraft=null;dispoServicioActual=null;}">
+            <div style="background:#fff;width:640px;max-width:94vw;max-height:90vh;overflow-y:auto;border-radius:16px;padding:26px;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px;">
                     <div style="flex:1;">
                         ${inp(s.nombre, "nombre", false, "Nombre del servicio", "100%")}
