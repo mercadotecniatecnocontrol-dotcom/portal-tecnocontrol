@@ -1716,6 +1716,7 @@
 
   // ── Historial de entregas: buscador por folio/cliente/solicitante/recibió + rango de fechas + exportar PDF ──
   var _repEntregas = null;   // caché de la última carga [{...}]
+  var _repSeleccion = {};    // id -> true, para exportar/imprimir por selección
 
   function cargarEntregas(){
     return window.tcSbSurtidosPorEstados(['entregado','finalizado','cancelado']).then(function(lista){
@@ -1791,6 +1792,33 @@
       + '<span style="font-size:12px;">—</span>'+etiqueta+'</div>';
   }
 
+  function actualizarContadorSeleccion(){
+    var n = Object.keys(_repSeleccion).length;
+    var el = document.getElementById('alm-rep-cont-sel');
+    if (el) el.textContent = n ? (n+' seleccionado'+(n===1?'':'s')) : '';
+  }
+  window.__almRepToggleUno = function(id, marcado){
+    if (marcado) _repSeleccion[id] = true; else delete _repSeleccion[id];
+    actualizarContadorSeleccion();
+  };
+  window.__almRepToggleTodos = function(marcado){
+    var filtros = leerFiltrosReporte();
+    var lista = filtrarEntregas(_repEntregas||[], filtros);
+    _repSeleccion = {};
+    if (marcado) lista.forEach(function(e){ _repSeleccion[e.id]=true; });
+    renderTablaReporte();
+    actualizarContadorSeleccion();
+  };
+  // Devuelve la lista a exportar: si hay algo seleccionado, solo eso;
+  // si no, todo lo que esté visible con el filtro actual.
+  function listaParaExportar(){
+    var filtros = leerFiltrosReporte();
+    var lista = filtrarEntregas(_repEntregas||[], filtros);
+    var idsSel = Object.keys(_repSeleccion);
+    if (idsSel.length) lista = lista.filter(function(e){ return _repSeleccion[e.id]; });
+    return lista;
+  }
+
   function renderTablaReporte(){
     if(!_repEntregas) return;
     var filtros = leerFiltrosReporte();
@@ -1819,8 +1847,11 @@
 
       return '<div class="alm-rep-card" style="border-left-color:'+colorBorde+'" onclick="window.__almVerDetalleHistorial(\''+e.id+'\')">'
         + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px;">'
-        +   '<div><div style="font-size:16px;font-weight:800;color:#0f172a;">'+esc(e.folio)+'</div>'
-        +   '<div style="font-size:12.5px;font-weight:700;color:#334155;">'+esc(e.cliente||'—')+'</div></div>'
+        +   '<div style="display:flex;gap:8px;align-items:flex-start;">'
+        +     '<input type="checkbox" onclick="event.stopPropagation();window.__almRepToggleUno(\''+e.id+'\',this.checked)" '+(_repSeleccion[e.id]?'checked':'')+' style="margin-top:4px;width:15px;height:15px;cursor:pointer;flex-shrink:0;">'
+        +     '<div><div style="font-size:16px;font-weight:800;color:#0f172a;">'+esc(e.folio)+'</div>'
+        +     '<div style="font-size:12.5px;font-weight:700;color:#334155;">'+esc(e.cliente||'—')+'</div></div>'
+        +   '</div>'
         +   '<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;">'+tagTipo+tagEstado+'</div>'
         + '</div>'
         + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 14px;font-size:11.5px;color:#475569;margin-bottom:10px;">'
@@ -1935,9 +1966,14 @@
       +   '<div class="alm-rep-fld"><label>Hasta</label><input type="date" id="alm-rep-hasta"></div>'
       +   '<div class="alm-rep-fld grow"><label>Buscar (folio de pedido, folio de remisión, cliente, solicitó, recibió)</label><input type="text" id="alm-rep-q" placeholder="Ej. CHH0007635, CHH0007599 (remisión), Victor…"></div>'
       +   '<button class="alm-rep-btn sec" type="button" onclick="window.__almRecargarReporte()">↻ Recargar</button>'
-      +   '<button class="alm-rep-btn" type="button" onclick="window.__almExportarReportePDF()">⬇ Exportar PDF</button>'
+      +   '<button class="alm-rep-btn sec" type="button" onclick="window.__almExportarReporteExcel()">⬇ Excel</button>'
+      +   '<button class="alm-rep-btn sec" type="button" onclick="window.__almExportarReportePDF()">⬇ PDF resumen</button>'
+      +   '<button class="alm-rep-btn" type="button" onclick="window.__almExportarReportePDFDetallado()">⬇ PDF con evidencia</button>'
       + '</div>'
-      + '<div class="alm-rep-summary" id="alm-rep-resumen">Cargando…</div>'
+      + '<div class="alm-rep-summary" id="alm-rep-resumen">Cargando…'
+      +   ' <label style="margin-left:14px;font-weight:600;cursor:pointer;"><input type="checkbox" id="alm-rep-check-todos" onchange="window.__almRepToggleTodos(this.checked)"> Seleccionar todos</label>'
+      +   ' <span id="alm-rep-cont-sel" style="margin-left:8px;color:#1473e6;font-weight:700;"></span>'
+      + '</div>'
       + '<div class="alm-rep-cards" id="alm-rep-cards"><div style="grid-column:1/-1;text-align:center;color:#94a3b8;padding:30px;">Cargando…</div></div>';
     document.getElementById('alm-modal-hist').classList.add('show');
 
@@ -2544,8 +2580,7 @@
 
   window.__almExportarReportePDF = function(){
     if(!window.jspdf){ if(window.mostrarPush) window.mostrarPush('Almacén','Librería PDF no cargada','⚠️'); return; }
-    var filtros = leerFiltrosReporte();
-    var lista = filtrarEntregas(_repEntregas||[], filtros);
+    var lista = listaParaExportar();
     var jsPDF = window.jspdf.jsPDF;
     var docu = new jsPDF({ orientation:'landscape', unit:'mm', format:'letter' });
     var PW=279.4, PH=215.9, ML=12, MR=12;
@@ -2567,8 +2602,8 @@
     function encabezadoTabla(y){
       docu.setFillColor(248,250,252); docu.rect(ML, y-4.5, PW-ML-MR, 7, 'F');
       docu.setFont('helvetica','bold'); docu.setFontSize(7.5); docu.setTextColor(71,85,105);
-      var cols=['FOLIO','TIPO','CLIENTE','SOLICITÓ','RECIBIÓ','F. SOLICITUD','F. ENTREGA','PZAS'];
-      var xs=[ML+1, 40, 62, 108, 148, 188, 216, 248];
+      var cols=['FOLIO','TIPO','CLIENTE','SOLICITÓ','RECIBIÓ','F. SOLICITUD','F. ENTREGA','PZAS','FOLIO REMISIÓN'];
+      var xs=[ML+1, 38, 58, 100, 138, 172, 198, 224, 236];
       cols.forEach(function(c,i){ docu.text(c, xs[i], y); });
       return xs;
     }
@@ -2580,18 +2615,125 @@
     lista.forEach(function(e){
       if(y > PH-16){ piePagina(pageNum); docu.addPage(); pageNum++; y=30; encabezado(); xs=encabezadoTabla(y); y+=7; docu.setFont('helvetica','normal'); docu.setFontSize(7.8); docu.setTextColor(30,41,59); }
       var esCancelado = e.estado==='cancelado';
-      docu.text(String(e.folio||'—').slice(0,16), xs[0], y);
+      docu.text(String(e.folio||'—').slice(0,14), xs[0], y);
       docu.text(e.tipo==='material'?'Material':'Venta', xs[1], y);
-      docu.text(String(e.cliente||'—').slice(0,22), xs[2], y);
-      docu.text(String(e.solicito||'—').slice(0,18), xs[3], y);
-      docu.text(esCancelado ? ('CANCELADO: '+String(e.motivoCancelacion||'—').slice(0,22)) : String(e.recibio||'—').slice(0,18), xs[4], y);
+      docu.text(String(e.cliente||'—').slice(0,18), xs[2], y);
+      docu.text(String(e.solicito||'—').slice(0,15), xs[3], y);
+      docu.text(esCancelado ? ('CANCEL: '+String(e.motivoCancelacion||'—').slice(0,15)) : String(e.recibio||'—').slice(0,15), xs[4], y);
       docu.text(fmtFecha(e.creadoMs), xs[5], y);
       docu.text(esCancelado ? fmtFecha(e.canceladoMs) : fmtFecha(e.entregadoMs), xs[6], y);
       docu.text(String(e.piezas), xs[7], y);
+      docu.text(String(e.remisionAspelFolio||'—').slice(0,16), xs[8], y);
       y += 6;
     });
     piePagina(pageNum);
     docu.save('historial-entregas-tecnocontrol.pdf');
+  };
+
+  // ── Exportar a Excel (todos los campos, una fila por pedido) ──────────
+  window.__almExportarReporteExcel = function(){
+    if(!window.XLSX){ if(window.mostrarPush) window.mostrarPush('Almacén','Librería Excel no cargada','⚠️'); return; }
+    var lista = listaParaExportar();
+    var filas = lista.map(function(e){
+      var esCancelado = e.estado==='cancelado';
+      return {
+        'Folio': e.folio||'', 'Tipo': e.tipo==='material'?'Material':'Venta', 'Cliente': e.cliente||'',
+        'Solicitó': e.solicito||'', 'Estado': e.estado||'',
+        'Recibió': esCancelado?'':(e.recibio||''), 'Motivo de cancelación': esCancelado?(e.motivoCancelacion||''):'',
+        'Fecha de solicitud': fmtFecha(e.creadoMs), 'Fecha de entrega/cancelación': fmtFecha(esCancelado?e.canceladoMs:e.entregadoMs),
+        'Piezas': e.piezas, 'Folio remisión Aspel': e.remisionAspelFolio||'',
+        'Fecha remisión': e.remisionAspelFecha?fmtFecha(new Date(e.remisionAspelFecha).getTime()):'',
+        'Remisionado': e.remisionado?'Sí':'No',
+        'Tiene evidencia de salida': e.evidSalida?'Sí':'No', 'Tiene evidencia de remisión': e.evidRemision?'Sí':'No',
+        'Documentos adjuntos': e.numDocumentos||0, 'Tiene PDF original': e.tienePdfOriginal?'Sí':'No',
+        'Tiene carátula de envío': e.caratulaEnvio?'Sí':'No',
+      };
+    });
+    var hoja = window.XLSX.utils.json_to_sheet(filas);
+    var libro = window.XLSX.utils.book_new();
+    window.XLSX.utils.book_append_sheet(libro, hoja, 'Historial');
+    window.XLSX.writeFile(libro, 'historial-entregas-tecnocontrol.xlsx');
+  };
+
+  // ── Exportar a PDF detallado: una página por pedido, con evidencia
+  //    incrustada de verdad (no solo texto) — para auditoría. ───────────
+  window.__almExportarReportePDFDetallado = function(){
+    if(!window.jspdf){ if(window.mostrarPush) window.mostrarPush('Almacén','Librería PDF no cargada','⚠️'); return; }
+    var lista = listaParaExportar();
+    if (!lista.length){ if(window.mostrarPush) window.mostrarPush('Almacén','No hay nada que exportar con este filtro/selección','⚠️'); return; }
+    if (lista.length > 40 && !confirm('Vas a exportar '+lista.length+' pedidos con evidencia — puede tardar un poco y el archivo puede pesar varios MB. ¿Continuar?')) return;
+
+    var jsPDF = window.jspdf.jsPDF;
+    var docu = new jsPDF({ orientation:'portrait', unit:'mm', format:'letter' });
+    var PW=215.9, PH=279.4, ML=14, MR=14;
+
+    if (window.mostrarPush) window.mostrarPush('Almacén','Generando PDF detallado…','⏳');
+
+    // Trae evidencia/documentos completos de cada pedido de la lista (uno por
+    // uno — necesitamos la imagen real, no solo si existe o no).
+    Promise.all(lista.map(function(e){
+      return window.tcSbListarEvidencias(e.id).then(function(evid){ return { e:e, evid:evid }; }).catch(function(){ return { e:e, evid:[] }; });
+    })).then(function(items){
+      items.forEach(function(item, idx){
+        var e = item.e, evid = item.evid;
+        if (idx>0) docu.addPage();
+        var y = 18;
+        docu.setFillColor(10,15,30); docu.rect(0,0,PW,16,'F');
+        docu.setTextColor(255,255,255); docu.setFont('helvetica','bold'); docu.setFontSize(12);
+        docu.text('TECNOCONTROL · '+String(e.folio||'—'), ML, 10);
+        docu.setTextColor(30,41,59);
+        y = 24;
+        docu.setFont('helvetica','normal'); docu.setFontSize(9.5);
+        var esCancelado = e.estado==='cancelado';
+        var lineas = [
+          ['Cliente', e.cliente||'—'], ['Tipo', e.tipo==='material'?'Material':'Venta'],
+          ['Solicitó', e.solicito||'—'], ['Estado', e.estado||'—'],
+          [esCancelado?'Motivo cancelación':'Recibió', esCancelado?(e.motivoCancelacion||'—'):(e.recibio||'—')],
+          ['Fecha solicitud', fmtFecha(e.creadoMs)], [esCancelado?'Fecha cancelación':'Fecha entrega', fmtFecha(esCancelado?e.canceladoMs:e.entregadoMs)],
+          ['Piezas', String(e.piezas)], ['Folio remisión Aspel', e.remisionAspelFolio||'sin remisionar'],
+        ];
+        lineas.forEach(function(l){
+          docu.setFont('helvetica','bold'); docu.text(l[0]+':', ML, y);
+          docu.setFont('helvetica','normal'); docu.text(String(l[1]), ML+42, y);
+          y += 6;
+        });
+        y += 2;
+        // Artículos
+        if (e.productos && e.productos.length){
+          docu.setFont('helvetica','bold'); docu.setFontSize(9.5); docu.text('ARTÍCULOS', ML, y); y+=5;
+          docu.setFont('helvetica','normal'); docu.setFontSize(8.5);
+          e.productos.forEach(function(p){
+            if (y > PH-30) return; // no seguimos empujando la página aquí, la evidencia va después de todos modos
+            docu.text('• '+String(p.desc||'—')+' ×'+String(p.cant||0), ML, y); y+=5;
+          });
+          y += 3;
+        }
+        // Evidencia — incrustada de verdad (son imágenes base64, jsPDF las
+        // acepta directo con addImage).
+        docu.setFont('helvetica','bold'); docu.setFontSize(9.5); docu.text('EVIDENCIA', ML, y); y+=5;
+        var imgs = evid.filter(function(ev){ return ev.imagen; });
+        if (!imgs.length){
+          docu.setFont('helvetica','normal'); docu.setFontSize(8.5); docu.setTextColor(148,163,184);
+          docu.text('Sin evidencia adjunta.', ML, y); docu.setTextColor(30,41,59); y+=6;
+        } else {
+          var anchoImg = 55, altoImg = 40, porFila = 3, gap = 4, x = ML;
+          imgs.forEach(function(ev, i){
+            if (i>0 && i%porFila===0){ x = ML; y += altoImg + 8; }
+            if (y + altoImg > PH-14){ docu.addPage(); y = 20; x = ML; }
+            try { docu.addImage(ev.imagen, 'JPEG', x, y, anchoImg, altoImg); } catch(err){ /* imagen corrupta, se omite */ }
+            docu.setFontSize(6.5); docu.setTextColor(100,116,139);
+            docu.text((ev.categoria==='remision'?'Remisión':'Salida')+(ev.subidoPor?(' · '+ev.subidoPor):''), x, y+altoImg+3.5);
+            docu.setTextColor(30,41,59);
+            x += anchoImg + gap;
+          });
+        }
+      });
+      docu.save('historial-detallado-con-evidencia.pdf');
+      if (window.mostrarPush) window.mostrarPush('Almacén','PDF generado','✅');
+    }).catch(function(err){
+      console.error('[almacen] exportar detallado:', err);
+      if (window.mostrarPush) window.mostrarPush('Almacén','No se pudo generar el PDF','⚠️');
+    });
   };
 
   console.log('[almacen.js] ✅ Centro de Surtido cargado (flujo + picking + SLA)');
