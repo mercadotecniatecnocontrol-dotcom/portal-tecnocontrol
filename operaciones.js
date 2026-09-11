@@ -56,6 +56,10 @@
     // Equipo que requiere autorización previa (ej. equipo de calibración TecnoLab)
     // antes de poder asignarse/traspasarse — a petición de Glen (sep-2026).
     const COL_CONFIG_CALIBRACION = "ops_config_calibracion";
+    // Quién puede revisar CUALQUIER almacén de herramienta desde Flotilla móvil
+    // (no solo el propio) — lista editable, a petición explícita de Glen (sep-2026):
+    // administrativos de Operaciones + administrativos de la plataforma juntos.
+    const COL_CONFIG_REVISION = "ops_config_revision";
     // Catálogo de servicios / Planeación Operativa (sep-2026): recetas parametrizadas
     // por tipo de servicio (materiales, personal por rol, vehículos, herramienta,
     // seguridad, costo). Fase 1 — modelo de datos + import real del Excel de Paloma;
@@ -735,11 +739,13 @@
     ];
 
     let opsFB = null;
-    let unsubHerr = null, unsubTec = null, unsubMov = null, unsubSurt = null, unsubFolios = null, unsubNotif = null, unsubTraspasos = null, unsubConfigCalibracion = null, unsubServiciosCatalogo = null, unsubTarifasPersonal = null, unsubAusencias = null, unsubAlmacenes = null;
+    let unsubHerr = null, unsubTec = null, unsubMov = null, unsubSurt = null, unsubFolios = null, unsubNotif = null, unsubTraspasos = null, unsubConfigCalibracion = null, unsubServiciosCatalogo = null, unsubTarifasPersonal = null, unsubAusencias = null, unsubAlmacenes = null, unsubConfigRevision = null, unsubRevisiones = null;
     let cacheHerr = [], cacheTec = [], cacheMov = [], cacheSurtidos = [], cacheFolios = [];
     let cacheServiciosCatalogo = [], cacheTarifasPersonal = {};
     let cacheAusencias = [];
     let cacheAlmacenes = []; // TODOS los almacenes (general/técnico/ubicación) — para las ubicaciones físicas tipo "Banco de trabajo Saltillo"
+    let cacheRevisoresHerramienta = []; // [{email,nombre}] — quién puede revisar CUALQUIER almacén desde Flotilla móvil
+    let cacheRevisionesHerr = []; // últimas revisiones/checklists de herramienta, de cualquier origen (Portal o Flotilla)
     let cacheTraspasosPend = []; // ops_herramienta_traspasos con estatus "Pendiente recepción" — bloquea la pieza hasta que el receptor acepte/rechace/venza
     let cacheAutorizadoresCalibracion = []; // [{email,nombre}] — quién puede aprobar mover equipo con requiereAutorizacion=true
     let filtroFolios = "", filtroFolioSemaforo = "todos";
@@ -958,8 +964,15 @@
     // instante podría repetirse un folio, igual que el resto de folios de este portal
     // (ver duplicado en almacen-pdf.js). Riesgo aceptado dado el volumen real de solicitudes.
     async function opsSiguienteFolioMaterial() {
+        const { db, fs } = await opsGetFB();
         try {
-            const siguiente = await window.tcSbSiguienteFolioMaterial("OPERACIONES");
+            const snap = await fs.getDocs(fs.query(fs.collection(db, COL_SURTIDOS), fs.where("folioPrefijo", "==", "OPERACIONES")));
+            let max = 0;
+            snap.forEach(d => {
+                const n = (d.data() || {}).folioNum;
+                if (typeof n === "number" && n > max) max = n;
+            });
+            const siguiente = max + 1;
             return { folio: "OPERACIONES " + String(siguiente).padStart(4, "0"), folioNum: siguiente, folioPrefijo: "OPERACIONES" };
         } catch (e) {
             console.warn("[operaciones.js] no se pudo calcular el folio consecutivo, se usa respaldo temporal:", e && e.message);
@@ -1203,6 +1216,67 @@
         opsAbrirConfigCalibracion();
     };
 
+    // ── Configuración: quién puede revisar CUALQUIER almacén desde Flotilla ──
+    window.opsAbrirConfigRevision = function () {
+        const wrap = document.getElementById("ops-modal-wrap");
+        wrap.innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;">
+            <div style="background:#fff;border-radius:14px;width:420px;max-width:92vw;max-height:88vh;overflow-y:auto;padding:22px;">
+                <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:4px;">Quién puede revisar herramienta (Flotilla)</div>
+                <div style="font-size:11.5px;color:#64748b;margin-bottom:14px;">Administrativos de Operaciones + administrativos de la plataforma que pueden usar "Revisar herramienta" en Flotilla móvil para cualquier almacén (no solo el propio).</div>
+                <div id="ops-config-rev-lista" style="margin-bottom:12px;">
+                    ${cacheRevisoresHerramienta.length ? cacheRevisoresHerramienta.map((a, i) => `
+                        <div style="display:flex;justify-content:space-between;align-items:center;border:1px solid #e2e8f0;border-radius:8px;padding:8px 11px;margin-bottom:6px;">
+                            <div><div style="font-size:12.5px;font-weight:600;color:#1e293b;">${opsEsc(a.nombre || a.email)}</div><div style="font-size:10.5px;color:#94a3b8;">${opsEsc(a.email)}</div></div>
+                            <button onclick="opsQuitarRevisorHerramienta(${i})" style="background:#fee2e2;border:none;color:#E7402B;width:26px;height:26px;border-radius:6px;cursor:pointer;">${ICON.close}</button>
+                        </div>`).join("") : `<div style="color:#94a3b8;font-size:12px;margin-bottom:8px;">Nadie configurado todavía.</div><button onclick="opsSembrarRevisoresIniciales()" style="background:#eef2f7;border:none;color:#1D2E73;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:600;">Cargar la lista que me diste (8 personas)</button>`}
+                </div>
+                <div style="display:flex;gap:6px;">
+                    <input id="ops-config-rev-nombre" placeholder="Nombre" style="flex:1;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;">
+                    <input id="ops-config-rev-email" placeholder="correo@tecnocontrol.com.mx" style="flex:1;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;">
+                    <button onclick="opsAgregarRevisorHerramienta()" style="background:#1D2E73;color:#fff;border:none;padding:0 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;">Agregar</button>
+                </div>
+                <div style="text-align:right;margin-top:16px;">
+                    <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cerrar</button>
+                </div>
+            </div>
+        </div>`;
+    };
+
+    async function opsGuardarRevisoresHerramienta() {
+        const { db, fs } = await opsGetFB();
+        await fs.setDoc(fs.doc(db, COL_CONFIG_REVISION, "general"), { revisores: cacheRevisoresHerramienta }, { merge: true });
+    }
+    window.opsAgregarRevisorHerramienta = function () {
+        const nombre = document.getElementById("ops-config-rev-nombre").value.trim();
+        const email = document.getElementById("ops-config-rev-email").value.trim().toLowerCase();
+        if (!email) { alert("Captura el correo"); return; }
+        cacheRevisoresHerramienta = [...cacheRevisoresHerramienta, { nombre, email }];
+        opsGuardarRevisoresHerramienta().catch(err => alert("No se pudo guardar: " + err.message));
+        opsAbrirConfigRevision();
+    };
+    window.opsQuitarRevisorHerramienta = function (idx) {
+        cacheRevisoresHerramienta = cacheRevisoresHerramienta.filter((_, i) => i !== idx);
+        opsGuardarRevisoresHerramienta().catch(err => alert("No se pudo guardar: " + err.message));
+        opsAbrirConfigRevision();
+    };
+    // Precarga exacta de la lista que Glen dio (sep-2026) — un clic, sin tener
+    // que capturar 8 correos a mano. Nombres puestos donde ya los conocemos.
+    window.opsSembrarRevisoresIniciales = function () {
+        cacheRevisoresHerramienta = [
+            { nombre: "", email: "clientes@tecnocontrol.com.mx" },
+            { nombre: "Magali Chávez", email: "magali@tecnocontrol.com.mx" },
+            { nombre: "Miguel", email: "miguel@tecnocontrol.com.mx" },
+            { nombre: "Ulises Núñez", email: "u.nunez@tecnocontrol.com.mx" },
+            { nombre: "Paloma Pinedo", email: "p.pinedo@tecnocontrol.com.mx" },
+            { nombre: "Martín de la O", email: "m.delao@tecnocontrol.com.mx" },
+            { nombre: "Cristina Acosta", email: "c.acosta@tecnocontrol.com.mx" },
+            { nombre: "", email: "mercadotecnia@tecnocontrol.com.mx" },
+        ];
+        opsGuardarRevisoresHerramienta().catch(err => alert("No se pudo guardar: " + err.message));
+        opsAbrirConfigRevision();
+    };
+
     window.opsSolicitarAutorizacion = async function (herramientaId) {
         const h = cacheHerr.find(x => x.id === herramientaId);
         if (!h) return;
@@ -1443,15 +1517,12 @@
             });
         }
         if (!unsubSurt) {
-            unsubSurt = window.tcSbSuscribirSurtidos(arr => {
-                cacheSurtidos = arr
-                    .slice()
-                    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
-                    .slice(0, 100);
+            unsubSurt = fs.onSnapshot(fs.query(fs.collection(db, COL_SURTIDOS), fs.orderBy("createdAt", "desc"), fs.limit(100)), snap => {
+                cacheSurtidos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                 if (tabActual === "resumen") opsRenderResumen();
                 if (tabActual === "solicitudes") opsRenderSolicitudes();
                 if (tabActual === "alertas") opsRenderAlertas();
-            }, () => { /* si aún no hay datos, Resumen simplemente muestra 0 */ });
+            }, () => { /* si aún no existe la colección o el índice, Resumen simplemente muestra 0 */ });
         }
         if (!unsubFolios) {
             unsubFolios = fs.onSnapshot(fs.collection(db, COL_FOLIOS), snap => {
@@ -1499,6 +1570,18 @@
                 cacheAlmacenes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                 if (tabActual === "dashboard") opsRenderDashboard();
             }, () => { cacheAlmacenes = []; });
+        }
+        if (!unsubConfigRevision) {
+            unsubConfigRevision = fs.onSnapshot(fs.doc(db, COL_CONFIG_REVISION, "general"), snap => {
+                cacheRevisoresHerramienta = snap.exists() ? (snap.data().revisores || []) : [];
+                if (tabActual === "dashboard") opsRenderDashboard();
+            }, () => { cacheRevisoresHerramienta = []; });
+        }
+        if (!unsubRevisiones) {
+            unsubRevisiones = fs.onSnapshot(fs.query(fs.collection(db, COL_REVISIONES), fs.orderBy("fecha", "desc"), fs.limit(150)), snap => {
+                cacheRevisionesHerr = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                if (tabActual === "dashboard" && vistaHerr === "revisiones") opsRenderDashboard();
+            }, () => { cacheRevisionesHerr = []; });
         }
         if (!unsubNotif) {
             // Notificaciones generales (ej. "solicitud lista para surtir") — llegan a TODOS los
@@ -1696,15 +1779,17 @@
                     <div style="display:flex;background:#eef2f7;border-radius:9px;padding:3px;">
                         <button onclick="opsCambiarVistaHerr('almacen')" style="border:none;background:${vistaHerr === "almacen" ? "#1D2E73" : "transparent"};color:${vistaHerr === "almacen" ? "#fff" : "#475569"};padding:6px 12px;border-radius:7px;cursor:pointer;font-size:11.5px;font-weight:600;">Por almacén</button>
                         <button onclick="opsCambiarVistaHerr('tipo')" style="border:none;background:${vistaHerr === "tipo" ? "#1D2E73" : "transparent"};color:${vistaHerr === "tipo" ? "#fff" : "#475569"};padding:6px 12px;border-radius:7px;cursor:pointer;font-size:11.5px;font-weight:600;">Por tipo de artículo</button>
+                        <button onclick="opsCambiarVistaHerr('revisiones')" style="border:none;background:${vistaHerr === "revisiones" ? "#1D2E73" : "transparent"};color:${vistaHerr === "revisiones" ? "#fff" : "#475569"};padding:6px 12px;border-radius:7px;cursor:pointer;font-size:11.5px;font-weight:600;">Revisiones</button>
                     </div>
                     ${gestion ? `<button onclick="opsAbrirConfigCalibracion()" title="Configurar quién autoriza equipo especializado" style="background:#eef2f7;border:none;color:#475569;width:32px;height:32px;border-radius:8px;cursor:pointer;">${ICON.lock}</button>` : ""}
+                    ${gestion ? `<button onclick="opsAbrirConfigRevision()" title="Configurar quién puede revisar herramienta desde Flotilla" style="background:#eef2f7;border:none;color:#475569;width:32px;height:32px;border-radius:8px;cursor:pointer;">${ICON.search}</button>` : ""}
                     ${gestion ? `
                     <button onclick="opsAbrirModalPieza()" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Nueva pieza</button>
                     <button onclick="opsSembrarCatalogoBase()" class="mkt-add-btn" style="background:#334155;">${ICON.box} Cargar catálogo base</button>
                     <button onclick="opsImportarExcelReal()" class="mkt-add-btn" style="background:#15803D;">${ICON.file} Importar Excel real (12 técnicos)</button>` : ""}
                 </div>
             </div>
-            ${vistaHerr === "almacen" ? opsFragmentoVistaAlmacen() : opsFragmentoVistaTipo(lista)}
+            ${vistaHerr === "almacen" ? opsFragmentoVistaAlmacen() : (vistaHerr === "revisiones" ? opsFragmentoVistaRevisiones() : opsFragmentoVistaTipo(lista))}
         `;
     }
 
@@ -1760,6 +1845,32 @@
         return h.fotoBase64
             ? `<img src="${h.fotoBase64}" style="width:${size}px;height:${size}px;object-fit:cover;border-radius:7px;border:1px solid #e2e8f0;flex-shrink:0;">`
             : `<span style="width:${size}px;height:${size}px;border-radius:7px;background:#E9ECF5;color:#1D2E73;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${ICON.wrench}</span>`;
+    }
+
+    // ── Vista: Revisiones (checklists de herramienta, cualquier origen) ────
+    function opsFragmentoVistaRevisiones() {
+        if (!cacheRevisionesHerr.length) {
+            return `<div style="padding:40px;text-align:center;color:#94a3b8;background:#fff;border-radius:14px;border:1px solid #e2e8f0;">Sin revisiones registradas todavía — se llenan solas en cuanto alguien use "Revisar herramienta" en el Portal o en Flotilla.</div>`;
+        }
+        return cacheRevisionesHerr.map(r => {
+            const faltantes = (r.herramientas || []).filter(h => h.estado !== "conforme");
+            const conFoto = (r.herramientas || []).filter(h => h.tieneFoto).length;
+            return `<div style="background:#fff;border-radius:14px;padding:14px 16px;margin-bottom:10px;border-left:4px solid ${faltantes.length ? "#E7402B" : "#15803D"};">
+                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
+                    <div>
+                        <span style="font-size:12.5px;font-weight:700;color:#1e293b;">${opsEsc(r.tecnicoNombre || r.almacenNombre || "—")}</span>
+                        <span style="font-size:10.5px;color:#94a3b8;margin-left:6px;">${opsEsc((r.fecha || "").slice(0, 16).replace("T", " "))}</span>
+                        ${r.origen === "flotilla_movil_admin" ? '<span style="background:#E9ECF5;color:#1D2E73;font-size:9.5px;font-weight:700;padding:2px 7px;border-radius:999px;margin-left:6px;">Desde Flotilla</span>' : '<span style="background:#f1f5f9;color:#475569;font-size:9.5px;font-weight:700;padding:2px 7px;border-radius:999px;margin-left:6px;">Desde el Portal</span>'}
+                    </div>
+                    <span style="font-size:10.5px;font-weight:700;color:${faltantes.length ? "#E7402B" : "#166534"};">${faltantes.length ? `${faltantes.length} con novedad` : "Todo conforme"}</span>
+                </div>
+                <div style="font-size:11px;color:#94a3b8;margin:4px 0;">Revisó: ${opsEsc(r.realizadoPor || "—")} · ${(r.herramientas || []).length} pieza(s)${conFoto ? ` · ${conFoto} foto(s)` : ""}</div>
+                ${r.observacionesGenerales ? `<div style="font-size:11.5px;color:#64748b;border-top:1px solid #f1f5f9;padding-top:6px;">${opsEsc(r.observacionesGenerales)}</div>` : ""}
+                <div style="margin-top:8px;text-align:right;">
+                    <button id="ops-rev-share-${r.id}" onclick="opsCompartirRevisionPDF('${r.id}')" style="background:#eef2f7;border:none;color:#1D2E73;padding:6px 11px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">${ICON.file} PDF / WhatsApp</button>
+                </div>
+            </div>`;
+        }).join("");
     }
 
     function opsFragmentoVistaAlmacen() {
@@ -3765,8 +3876,9 @@
         if (!opsFirmaHay) { msgEl.textContent = "Falta la firma del solicitante."; return; }
         msgEl.textContent = "";
 
+        const { db, fs } = await opsGetFB();
         const folioInfo = await opsSiguienteFolioMaterial();
-        await window.tcSbCrearSurtido({
+        await fs.addDoc(fs.collection(db, COL_SURTIDOS), {
             tipo: "material", folio: folioInfo.folio, folioNum: folioInfo.folioNum, folioPrefijo: folioInfo.folioPrefijo,
             cliente: destino || "Almacén · Operaciones",
             solicitante, vendedor: solicitante,
@@ -3776,7 +3888,7 @@
             origen: "operaciones", // (el kiosco físico usa 'kiosco'; Operaciones usa 'operaciones' para distinguir origen sin romper nada)
             tecnicoId, tecnicoNumero: t.numeroOperativo, tecnicoNombre: t.nombre,
             folioServicio: folioServicio || null,
-            createdAt: new Date().toISOString(),
+            createdAt: fs.serverTimestamp ? fs.serverTimestamp() : opsFechaHora(),
         });
         document.getElementById("ops-modal-wrap").innerHTML = "";
         window.mostrarPush ? mostrarPush("Herramientas", `Solicitud ${folioInfo.folio} enviada a Almacén.`, "📦") : alert(`Solicitud ${folioInfo.folio} enviada a Almacén.`);
@@ -4882,9 +4994,10 @@
     // ── Papelera (soft delete) ─────────────────────────────────────
     window.opsEnviarPapeleraSolicitud = async function (id) {
         const motivo = prompt("Motivo para enviar esta solicitud a la papelera (opcional):", "") || null;
+        const { db, fs } = await opsGetFB();
         const dentroDe3Meses = new Date();
         dentroDe3Meses.setDate(dentroDe3Meses.getDate() + 90);
-        await window.tcSbActualizarSurtido(id, {
+        await fs.updateDoc(fs.doc(db, COL_SURTIDOS, id), {
             eliminada: true,
             fechaEliminacion: opsFechaHora(),
             usuarioElimino: opsUsuarioActual(),
@@ -4895,7 +5008,8 @@
     };
 
     window.opsRestaurarSolicitud = async function (id) {
-        await window.tcSbActualizarSurtido(id, {
+        const { db, fs } = await opsGetFB();
+        await fs.updateDoc(fs.doc(db, COL_SURTIDOS, id), {
             eliminada: false, fechaEliminacion: null, usuarioElimino: null,
             motivoEliminacion: null, fechaProgramadaEliminacion: null,
         });
@@ -4913,8 +5027,9 @@
         const ahora = new Date().toISOString();
         const vencidas = cacheSurtidos.filter(s => s.eliminada && s.fechaProgramadaEliminacion && s.fechaProgramadaEliminacion < ahora);
         if (!vencidas.length) return;
+        const { db, fs } = await opsGetFB();
         for (const s of vencidas) {
-            try { await window.tcSbEliminarSurtido(s.id); } catch (e) { console.warn("[operaciones.js] limpieza papelera:", e.message); }
+            try { await fs.deleteDoc(fs.doc(db, COL_SURTIDOS, s.id)); } catch (e) { console.warn("[operaciones.js] limpieza papelera:", e.message); }
         }
     }
 
@@ -4925,9 +5040,11 @@
         const listaArticulos = Array.isArray(s.productos) ? s.productos : [];
         const estadoKey = s.estado || "pendiente";
         const e = ESTADOS_SOLICITUD[estadoKey] || ESTADOS_SOLICITUD.pendiente;
+        const { db, fs } = await opsGetFB();
         let historial = [];
         try {
-            historial = (await window.tcSbListarHistorial(id)).slice().reverse();
+            const snapHist = await fs.getDocs(fs.query(fs.collection(db, COL_SURTIDOS, id, "historial"), fs.orderBy("ts", "desc")));
+            historial = snapHist.docs.map(d => d.data());
         } catch (err) { historial = []; }
         const wrap = document.getElementById("ops-panel-wrap");
         wrap.innerHTML = `
@@ -4982,10 +5099,11 @@
         const estadoAnterior = s.estado || "pendiente";
         const e = ESTADOS_SOLICITUD[siguienteEstado];
         const { db, fs } = await opsGetFB();
-        await window.tcSbActualizarSurtido(id, { estado: siguienteEstado });
-        // Mismo patrón real de historial, ahora en Supabase (tabla surtido_historial).
-        await window.tcSbAgregarHistorial(id, {
-            de: estadoAnterior, a: siguienteEstado, por: opsNombreActual(),
+        await fs.updateDoc(fs.doc(db, COL_SURTIDOS, id), { estado: siguienteEstado });
+        // Mismo patrón real de historial: subcolección surtidos/{id}/historial, no array embebido.
+        await fs.addDoc(fs.collection(db, COL_SURTIDOS, id, "historial"), {
+            de: estadoAnterior, a: siguienteEstado, por: opsNombreActual(), porEmail: opsUsuarioActual(),
+            ts: fs.serverTimestamp ? fs.serverTimestamp() : opsFechaHora(),
         });
         // Notificación real cuando queda "listo" — Operaciones no depende de estar viendo la pantalla.
         if (siguienteEstado === "listo") {
