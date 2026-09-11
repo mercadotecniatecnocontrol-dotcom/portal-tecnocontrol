@@ -406,12 +406,6 @@
       + '<div class="ce-foot">www.tecnocontrol.com.mx</div>'
       + '</body></html>';
   }
-  window.__almVerCaratula = function(id){
-    var p = buscarP(id); if (!p || !p.caratulaEnvio) return;
-    var w = window.open();
-    if (w){ w.document.write(construirCaratulaHTML(p.caratulaEnvio)); w.document.close(); }
-  };
-
   // ── Documentos adicionales (\u00f3rdenes de compra, etc.) que Ventas adjunt\u00f3 al subir el pedido ──
   var _docsCache = {}; // id -> [{id,tipo,archivo,nombre,subidoPor}]
   window.__almVerDocumentos = function(id){
@@ -469,11 +463,13 @@
     input.onchange = function(){
       var file=input.files&&input.files[0]; input.value='';
       if (!file) return;
+      var catEl = document.querySelector('input[name="alm-evid-cat-'+id+'"]:checked');
+      var categoria = catEl ? catEl.value : 'salida';
       var esImagen = file.type && file.type.indexOf('image/')===0;
       var subida = esImagen
-        ? comprimirImagen(file).then(function(dataUrl){
+        ? comprimirImagenEvidencia(file).then(function(dataUrl){
             return window.tcSbAgregarEvidencia(id, {
-              tipo:'imagen', imagen:dataUrl, subidoPor:yoNombre()
+              tipo:'imagen', imagen:dataUrl, subidoPor:yoNombre(), categoria:categoria
             });
           })
         // Documento (PDF/Word/etc.): va a Firebase Storage — un documento normal no cabe
@@ -484,7 +480,7 @@
             return st.mod.uploadBytes(sref, file).then(function(){ return st.mod.getDownloadURL(sref); });
           }).then(function(url){
             return window.tcSbAgregarEvidencia(id, {
-              tipo:'archivo', nombre:file.name, url:url, subidoPor:yoNombre()
+              tipo:'archivo', nombre:file.name, url:url, subidoPor:yoNombre(), categoria:categoria
             });
           });
       subida.then(function(){
@@ -492,6 +488,7 @@
         return cargarEvidencias(id);
       }).then(function(){
         render();
+        if (document.getElementById('alm-hist-evid-salida-'+id)) window.__almRefrescarEvidHist(id);
         if (window.mostrarPush) window.mostrarPush(esImagen?'📷 Evidencia agregada':'📄 Documento agregado','','✅');
       }).catch(function(err){
         console.error('[almacen] subirEvidencia:',err);
@@ -540,14 +537,37 @@
     window.__almRefrescarEvidHist(id);
   };
 
+  // Abre un documento (PDF/Word/etc.) en pestaña nueva. Si viene como data:
+  // (guardado directo en la base), lo convierte primero a blob: — Chrome
+  // permite abrir blob: sin problema, pero bloquea en silencio la navegación
+  // directa a data: en muchos casos, dejando la sensación de que "no pasó nada".
+  window.__almAbrirArchivo = function(src){
+    if (!src) return;
+    if (src.indexOf('data:') === 0){
+      fetch(src).then(function(r){ return r.blob(); }).then(function(blob){
+        window.open(URL.createObjectURL(blob), '_blank');
+      }).catch(function(){ window.open(src, '_blank'); });
+    } else {
+      window.open(src, '_blank');
+    }
+  };
+
   window.__almVerEvidencia = function(id, idx){
     var list=_evidenciasCache[id]||[]; var ev=list[idx]; if (!ev) return;
+    window.__almLightbox(ev.imagen, 'Evidencia de entrega', ev.subidoPor);
+  };
+
+  // Visor genérico dentro de la misma página — evita window.open(), que Chrome
+  // bloquea en silencio (sin ningún aviso) para imágenes tipo data:, dejando
+  // la sensación de "no pasó nada" al hacer clic.
+  window.__almLightbox = function(src, titulo, pie){
+    if (!src) return;
     construirModalHistorial();
     var box=document.getElementById('alm-modal-hist-box');
     box.classList.remove('wide');
-    box.innerHTML = '<h4>Evidencia de entrega<button onclick="event.stopPropagation();window.__almCerrarModal()">&times;</button></h4>'
-      + '<img class="alm-firma-full" src="'+esc(ev.imagen)+'" alt="Evidencia">'
-      + (ev.subidoPor?('<div style="font-size:12px;color:#64748b;font-weight:700;">Subida por '+esc(ev.subidoPor)+'</div>'):'');
+    box.innerHTML = '<h4>'+esc(titulo||'Evidencia')+'<button onclick="event.stopPropagation();window.__almCerrarModal()">&times;</button></h4>'
+      + '<img class="alm-firma-full" src="'+esc(src)+'" alt="Evidencia" style="width:100%;border-radius:10px;">'
+      + (pie?('<div style="font-size:12px;color:#64748b;font-weight:700;margin-top:8px;">Subida por '+esc(pie)+'</div>'):'');
     document.getElementById('alm-modal-hist').classList.add('show');
   };
 
@@ -1630,6 +1650,34 @@
     });
   }
 
+  // Alta calidad para evidencia/documentos auditables — a diferencia de
+  // comprimirImagen() (pensada para fotos de perfil pequeñas), esta conserva
+  // resolución suficiente para leer texto fino (facturas, remisiones, etc.).
+  // Ya no aplica el límite de 1MB por documento que tenía Firestore, así que
+  // hay mucho más margen: hasta 2200px de ancho, calidad 0.9.
+  function comprimirImagenEvidencia(file){
+    return new Promise(function(resolve,reject){
+      var reader = new FileReader();
+      reader.onload = function(e){
+        var img = new Image();
+        img.onload = function(){
+          var maxW = 2200;
+          var scale = Math.min(1, maxW/img.width);
+          var w = Math.max(1,Math.round(img.width*scale)), h = Math.max(1,Math.round(img.height*scale));
+          var c = document.createElement('canvas'); c.width=w; c.height=h;
+          var cx = c.getContext('2d');
+          cx.fillStyle = '#ffffff'; cx.fillRect(0,0,w,h);
+          cx.drawImage(img,0,0,w,h);
+          resolve(c.toDataURL('image/jpeg',0.9));
+        };
+        img.onerror = reject;
+        img.src = e.target.result;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
   // =====================================================================
   //  CONEXIÓN EN VIVO
   // =====================================================================
@@ -1763,8 +1811,8 @@
       var colorBorde = esCancelado ? '#dc2626' : (e.remisionado ? '#16a34a' : '#f59e0b');
 
       var chips = ''
-        + chipAdjunto('Salida', !!e.evidSalida, e.evidSalida ? ('window.open(\''+esc(e.evidSalida.imagen||e.evidSalida.url||'')+'\',\'_blank\')') : '')
-        + chipAdjunto('Remisión', !!e.evidRemision, e.evidRemision ? ('window.open(\''+esc(e.evidRemision.imagen||e.evidRemision.url||'')+'\',\'_blank\')') : '')
+        + chipAdjunto('Salida', !!e.evidSalida, e.evidSalida ? (e.evidSalida.imagen ? ('window.__almLightbox(\''+esc(e.evidSalida.imagen)+'\',\'Evidencia de salida\')') : ('window.open(\''+esc(e.evidSalida.url||'')+'\',\'_blank\')')) : '')
+        + chipAdjunto('Remisión', !!e.evidRemision, e.evidRemision ? (e.evidRemision.imagen ? ('window.__almLightbox(\''+esc(e.evidRemision.imagen)+'\',\'Evidencia de remisión\')') : ('window.open(\''+esc(e.evidRemision.url||'')+'\',\'_blank\')')) : '')
         + chipAdjunto('Documento', e.numDocumentos>0, 'window.__almVerDetalleHistorial(\''+e.id+'\')')
         + chipAdjunto('PDF original', e.tienePdfOriginal, 'window.__almVerPDF(\''+e.id+'\')')
         + chipAdjunto('Carátula envío', !!e.caratulaEnvio, 'window.__almVerDetalleHistorial(\''+e.id+'\')');
@@ -1831,17 +1879,16 @@
       var cont = document.getElementById('alm-hist-docs-'+e.id);
       if (!cont) return;
       cont.innerHTML = docs.length ? docs.map(function(d){
-        return '<a href="'+esc(d.archivo||'#')+'" target="_blank" style="display:inline-flex;align-items:center;gap:5px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;padding:5px 10px;font-size:11.5px;font-weight:600;color:#334155;text-decoration:none;margin:0 6px 6px 0;">📎 '+esc(d.nombre||'Documento')+'</a>';
+        return '<a href="#" onclick="event.preventDefault();window.__almAbrirArchivo(\''+esc(d.archivo||'')+'\')" style="display:inline-flex;align-items:center;gap:5px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;padding:5px 10px;font-size:11.5px;font-weight:600;color:#334155;text-decoration:none;margin:0 6px 6px 0;cursor:pointer;">📎 '+esc(d.nombre||'Documento')+'</a>';
       }).join('') : '<span style="color:#94a3b8;">Sin documentos adjuntos.</span>';
     }).catch(function(){});
   };
 
   window.__almVerCaratula = function(id){
-    var e = (_repEntregas||[]).find(function(x){ return x.id===id; });
-    if(!e || !e.caratulaEnvio) return;
-    var c = e.caratulaEnvio;
-    var src = typeof c === 'string' ? c : (c.imagen || c.url || c.archivo || '');
-    if (src) window.open(src, '_blank');
+    var p = buscarP(id) || (_repEntregas||[]).find(function(x){ return x.id===id; });
+    if (!p || !p.caratulaEnvio) return;
+    var w = window.open();
+    if (w){ w.document.write(construirCaratulaHTML(p.caratulaEnvio)); w.document.close(); }
   };
 
   window.__almRefrescarEvidHist = function(id){
@@ -1852,7 +1899,7 @@
         if(!cont) return; // el modal ya se cerró
         cont.innerHTML = items.length
           ? items.map(function(ev){
-              if (ev.imagen) return '<img class="alm-evid-thumb" src="'+esc(ev.imagen)+'" onclick="window.open(this.src,\'_blank\')">';
+              if (ev.imagen) return '<img class="alm-evid-thumb" src="'+esc(ev.imagen)+'" onclick="window.__almLightbox(this.src,\'Evidencia\',\''+esc(ev.subidoPor||'')+'\')" style="cursor:pointer;">';
               return '<a href="'+esc(ev.url||'#')+'" target="_blank" class="alm-evid-thumb alm-evid-doc" style="display:flex;flex-direction:column;align-items:center;justify-content:center;text-decoration:none;color:#334155;background:#f8fafc;"><span style="font-size:20px;">📄</span><span style="font-size:9px;text-align:center;padding:0 3px;word-break:break-word;">'+esc(ev.nombre||'Documento')+'</span></a>';
             }).join('')
           : '<div style="color:#94a3b8;font-size:12px;">Sin evidencia.</div>';
