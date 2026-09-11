@@ -958,15 +958,8 @@
     // instante podría repetirse un folio, igual que el resto de folios de este portal
     // (ver duplicado en almacen-pdf.js). Riesgo aceptado dado el volumen real de solicitudes.
     async function opsSiguienteFolioMaterial() {
-        const { db, fs } = await opsGetFB();
         try {
-            const snap = await fs.getDocs(fs.query(fs.collection(db, COL_SURTIDOS), fs.where("folioPrefijo", "==", "OPERACIONES")));
-            let max = 0;
-            snap.forEach(d => {
-                const n = (d.data() || {}).folioNum;
-                if (typeof n === "number" && n > max) max = n;
-            });
-            const siguiente = max + 1;
+            const siguiente = await window.tcSbSiguienteFolioMaterial("OPERACIONES");
             return { folio: "OPERACIONES " + String(siguiente).padStart(4, "0"), folioNum: siguiente, folioPrefijo: "OPERACIONES" };
         } catch (e) {
             console.warn("[operaciones.js] no se pudo calcular el folio consecutivo, se usa respaldo temporal:", e && e.message);
@@ -1450,12 +1443,15 @@
             });
         }
         if (!unsubSurt) {
-            unsubSurt = fs.onSnapshot(fs.query(fs.collection(db, COL_SURTIDOS), fs.orderBy("createdAt", "desc"), fs.limit(100)), snap => {
-                cacheSurtidos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            unsubSurt = window.tcSbSuscribirSurtidos(arr => {
+                cacheSurtidos = arr
+                    .slice()
+                    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+                    .slice(0, 100);
                 if (tabActual === "resumen") opsRenderResumen();
                 if (tabActual === "solicitudes") opsRenderSolicitudes();
                 if (tabActual === "alertas") opsRenderAlertas();
-            }, () => { /* si aún no existe la colección o el índice, Resumen simplemente muestra 0 */ });
+            }, () => { /* si aún no hay datos, Resumen simplemente muestra 0 */ });
         }
         if (!unsubFolios) {
             unsubFolios = fs.onSnapshot(fs.collection(db, COL_FOLIOS), snap => {
@@ -3769,9 +3765,8 @@
         if (!opsFirmaHay) { msgEl.textContent = "Falta la firma del solicitante."; return; }
         msgEl.textContent = "";
 
-        const { db, fs } = await opsGetFB();
         const folioInfo = await opsSiguienteFolioMaterial();
-        await fs.addDoc(fs.collection(db, COL_SURTIDOS), {
+        await window.tcSbCrearSurtido({
             tipo: "material", folio: folioInfo.folio, folioNum: folioInfo.folioNum, folioPrefijo: folioInfo.folioPrefijo,
             cliente: destino || "Almacén · Operaciones",
             solicitante, vendedor: solicitante,
@@ -3781,7 +3776,7 @@
             origen: "operaciones", // (el kiosco físico usa 'kiosco'; Operaciones usa 'operaciones' para distinguir origen sin romper nada)
             tecnicoId, tecnicoNumero: t.numeroOperativo, tecnicoNombre: t.nombre,
             folioServicio: folioServicio || null,
-            createdAt: fs.serverTimestamp ? fs.serverTimestamp() : opsFechaHora(),
+            createdAt: new Date().toISOString(),
         });
         document.getElementById("ops-modal-wrap").innerHTML = "";
         window.mostrarPush ? mostrarPush("Herramientas", `Solicitud ${folioInfo.folio} enviada a Almacén.`, "📦") : alert(`Solicitud ${folioInfo.folio} enviada a Almacén.`);
@@ -4887,10 +4882,9 @@
     // ── Papelera (soft delete) ─────────────────────────────────────
     window.opsEnviarPapeleraSolicitud = async function (id) {
         const motivo = prompt("Motivo para enviar esta solicitud a la papelera (opcional):", "") || null;
-        const { db, fs } = await opsGetFB();
         const dentroDe3Meses = new Date();
         dentroDe3Meses.setDate(dentroDe3Meses.getDate() + 90);
-        await fs.updateDoc(fs.doc(db, COL_SURTIDOS, id), {
+        await window.tcSbActualizarSurtido(id, {
             eliminada: true,
             fechaEliminacion: opsFechaHora(),
             usuarioElimino: opsUsuarioActual(),
@@ -4901,8 +4895,7 @@
     };
 
     window.opsRestaurarSolicitud = async function (id) {
-        const { db, fs } = await opsGetFB();
-        await fs.updateDoc(fs.doc(db, COL_SURTIDOS, id), {
+        await window.tcSbActualizarSurtido(id, {
             eliminada: false, fechaEliminacion: null, usuarioElimino: null,
             motivoEliminacion: null, fechaProgramadaEliminacion: null,
         });
@@ -4920,9 +4913,8 @@
         const ahora = new Date().toISOString();
         const vencidas = cacheSurtidos.filter(s => s.eliminada && s.fechaProgramadaEliminacion && s.fechaProgramadaEliminacion < ahora);
         if (!vencidas.length) return;
-        const { db, fs } = await opsGetFB();
         for (const s of vencidas) {
-            try { await fs.deleteDoc(fs.doc(db, COL_SURTIDOS, s.id)); } catch (e) { console.warn("[operaciones.js] limpieza papelera:", e.message); }
+            try { await window.tcSbEliminarSurtido(s.id); } catch (e) { console.warn("[operaciones.js] limpieza papelera:", e.message); }
         }
     }
 
@@ -4933,11 +4925,9 @@
         const listaArticulos = Array.isArray(s.productos) ? s.productos : [];
         const estadoKey = s.estado || "pendiente";
         const e = ESTADOS_SOLICITUD[estadoKey] || ESTADOS_SOLICITUD.pendiente;
-        const { db, fs } = await opsGetFB();
         let historial = [];
         try {
-            const snapHist = await fs.getDocs(fs.query(fs.collection(db, COL_SURTIDOS, id, "historial"), fs.orderBy("ts", "desc")));
-            historial = snapHist.docs.map(d => d.data());
+            historial = (await window.tcSbListarHistorial(id)).slice().reverse();
         } catch (err) { historial = []; }
         const wrap = document.getElementById("ops-panel-wrap");
         wrap.innerHTML = `
@@ -4992,11 +4982,10 @@
         const estadoAnterior = s.estado || "pendiente";
         const e = ESTADOS_SOLICITUD[siguienteEstado];
         const { db, fs } = await opsGetFB();
-        await fs.updateDoc(fs.doc(db, COL_SURTIDOS, id), { estado: siguienteEstado });
-        // Mismo patrón real de historial: subcolección surtidos/{id}/historial, no array embebido.
-        await fs.addDoc(fs.collection(db, COL_SURTIDOS, id, "historial"), {
-            de: estadoAnterior, a: siguienteEstado, por: opsNombreActual(), porEmail: opsUsuarioActual(),
-            ts: fs.serverTimestamp ? fs.serverTimestamp() : opsFechaHora(),
+        await window.tcSbActualizarSurtido(id, { estado: siguienteEstado });
+        // Mismo patrón real de historial, ahora en Supabase (tabla surtido_historial).
+        await window.tcSbAgregarHistorial(id, {
+            de: estadoAnterior, a: siguienteEstado, por: opsNombreActual(),
         });
         // Notificación real cuando queda "listo" — Operaciones no depende de estar viendo la pantalla.
         if (siguienteEstado === "listo") {
