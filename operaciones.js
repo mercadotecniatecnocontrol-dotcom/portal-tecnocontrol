@@ -739,7 +739,7 @@
     ];
 
     let opsFB = null;
-    let unsubHerr = null, unsubTec = null, unsubMov = null, unsubSurt = null, unsubFolios = null, unsubNotif = null, unsubTraspasos = null, unsubConfigCalibracion = null, unsubServiciosCatalogo = null, unsubTarifasPersonal = null, unsubAusencias = null, unsubAlmacenes = null, unsubConfigRevision = null, unsubRevisiones = null;
+    let unsubHerr = null, unsubTec = null, unsubMov = null, unsubSurt = null, unsubSurtPoll = null, unsubFolios = null, unsubNotif = null, unsubTraspasos = null, unsubConfigCalibracion = null, unsubServiciosCatalogo = null, unsubTarifasPersonal = null, unsubAusencias = null, unsubAlmacenes = null, unsubConfigRevision = null, unsubRevisiones = null;
     let cacheHerr = [], cacheTec = [], cacheMov = [], cacheSurtidos = [], cacheFolios = [];
     let cacheServiciosCatalogo = [], cacheTarifasPersonal = {};
     let cacheAusencias = [];
@@ -964,15 +964,11 @@
     // instante podría repetirse un folio, igual que el resto de folios de este portal
     // (ver duplicado en almacen-pdf.js). Riesgo aceptado dado el volumen real de solicitudes.
     async function opsSiguienteFolioMaterial() {
-        const { db, fs } = await opsGetFB();
         try {
-            const snap = await fs.getDocs(fs.query(fs.collection(db, COL_SURTIDOS), fs.where("folioPrefijo", "==", "OPERACIONES")));
-            let max = 0;
-            snap.forEach(d => {
-                const n = (d.data() || {}).folioNum;
-                if (typeof n === "number" && n > max) max = n;
-            });
-            const siguiente = max + 1;
+            // Mismo puente que ya usan Ventas y Almacén — antes esto contaba folios
+            // directo en Firestore, en una colección que Almacén ya no lee desde que
+            // `surtidos` vive en Supabase. Corregido sep-2026 (mismo bug que en Flotilla).
+            const siguiente = await window.tcSbSiguienteFolioMaterial("OPERACIONES");
             return { folio: "OPERACIONES " + String(siguiente).padStart(4, "0"), folioNum: siguiente, folioPrefijo: "OPERACIONES" };
         } catch (e) {
             console.warn("[operaciones.js] no se pudo calcular el folio consecutivo, se usa respaldo temporal:", e && e.message);
@@ -1413,6 +1409,7 @@
         if (unsubTec)  { unsubTec();  unsubTec = null; }
         if (unsubMov)  { unsubMov();  unsubMov = null; }
         if (unsubSurt) { unsubSurt(); unsubSurt = null; }
+        if (unsubSurtPoll) { clearInterval(unsubSurtPoll); unsubSurtPoll = null; }
         if (unsubFolios) { unsubFolios(); unsubFolios = null; }
         if (unsubNotif) { unsubNotif(); unsubNotif = null; }
         opsDetenerVigilanciaFolios();
@@ -1517,12 +1514,27 @@
             });
         }
         if (!unsubSurt) {
-            unsubSurt = fs.onSnapshot(fs.query(fs.collection(db, COL_SURTIDOS), fs.orderBy("createdAt", "desc"), fs.limit(100)), snap => {
-                cacheSurtidos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            // Antes escuchaba Firestore directo; `surtidos` ya vive en Supabase desde
+            // la migración — mismo puente que ya usa almacen.js (tcSbSuscribirSurtidos),
+            // con respaldo de sondeo cada 30s por si se pierde un evento en vivo.
+            unsubSurt = window.tcSbSuscribirSurtidos(lista => {
+                cacheSurtidos = lista || [];
                 if (tabActual === "resumen") opsRenderResumen();
                 if (tabActual === "solicitudes") opsRenderSolicitudes();
                 if (tabActual === "alertas") opsRenderAlertas();
-            }, () => { /* si aún no existe la colección o el índice, Resumen simplemente muestra 0 */ });
+            }, err => { console.warn("[operaciones.js] error en suscripción de Supabase (surtidos):", err && err.message); });
+            if (!unsubSurtPoll) {
+                unsubSurtPoll = setInterval(() => {
+                    if (window.tcSbListarTodosSurtidos) {
+                        window.tcSbListarTodosSurtidos().then(lista => {
+                            cacheSurtidos = lista || [];
+                            if (tabActual === "resumen") opsRenderResumen();
+                            if (tabActual === "solicitudes") opsRenderSolicitudes();
+                            if (tabActual === "alertas") opsRenderAlertas();
+                        }).catch(() => {});
+                    }
+                }, 30000);
+            }
         }
         if (!unsubFolios) {
             unsubFolios = fs.onSnapshot(fs.collection(db, COL_FOLIOS), snap => {
@@ -3876,9 +3888,8 @@
         if (!opsFirmaHay) { msgEl.textContent = "Falta la firma del solicitante."; return; }
         msgEl.textContent = "";
 
-        const { db, fs } = await opsGetFB();
         const folioInfo = await opsSiguienteFolioMaterial();
-        await fs.addDoc(fs.collection(db, COL_SURTIDOS), {
+        await window.tcSbCrearSurtido({
             tipo: "material", folio: folioInfo.folio, folioNum: folioInfo.folioNum, folioPrefijo: folioInfo.folioPrefijo,
             cliente: destino || "Almacén · Operaciones",
             solicitante, vendedor: solicitante,
@@ -3888,10 +3899,10 @@
             origen: "operaciones", // (el kiosco físico usa 'kiosco'; Operaciones usa 'operaciones' para distinguir origen sin romper nada)
             tecnicoId, tecnicoNumero: t.numeroOperativo, tecnicoNombre: t.nombre,
             folioServicio: folioServicio || null,
-            createdAt: fs.serverTimestamp ? fs.serverTimestamp() : opsFechaHora(),
+            createdAt: new Date().toISOString(), // Supabase, no serverTimestamp() de Firestore
         });
         document.getElementById("ops-modal-wrap").innerHTML = "";
-        window.mostrarPush ? mostrarPush("Herramientas", `Solicitud ${folioInfo.folio} enviada a Almacén.`, "📦") : alert(`Solicitud ${folioInfo.folio} enviada a Almacén.`);
+        window.mostrarPush ? mostrarPush("Herramientas", `Solicitud ${folioInfo.folio} enviada a Almacén.`, ICON.box) : alert(`Solicitud ${folioInfo.folio} enviada a Almacén.`);
     };
 
     // ═══════════════════════ TAB: HERRAMIENTA DE GUARDIA ═══════════════════════
@@ -4992,12 +5003,16 @@
     }
 
     // ── Papelera (soft delete) ─────────────────────────────────────
+    // OJO: uso tcSbActualizarSurtido (genérico, ya probado en producción para
+    // "estado") para escribir estos campos — pero no tengo evidencia de que la
+    // tabla `surtidos` en Supabase tenga columnas `eliminada`/`fechaEliminacion`/etc.
+    // Pruébalo: si falla o si Supabase las ignora silenciosamente, la papelera
+    // dejaría de funcionar aunque no truene. Avísame el resultado.
     window.opsEnviarPapeleraSolicitud = async function (id) {
         const motivo = prompt("Motivo para enviar esta solicitud a la papelera (opcional):", "") || null;
-        const { db, fs } = await opsGetFB();
         const dentroDe3Meses = new Date();
         dentroDe3Meses.setDate(dentroDe3Meses.getDate() + 90);
-        await fs.updateDoc(fs.doc(db, COL_SURTIDOS, id), {
+        await window.tcSbActualizarSurtido(id, {
             eliminada: true,
             fechaEliminacion: opsFechaHora(),
             usuarioElimino: opsUsuarioActual(),
@@ -5008,18 +5023,17 @@
     };
 
     window.opsRestaurarSolicitud = async function (id) {
-        const { db, fs } = await opsGetFB();
-        await fs.updateDoc(fs.doc(db, COL_SURTIDOS, id), {
+        await window.tcSbActualizarSurtido(id, {
             eliminada: false, fechaEliminacion: null, usuarioElimino: null,
             motivoEliminacion: null, fechaProgramadaEliminacion: null,
         });
         await opsAuditar("solicitud", id, "eliminada", true, false);
     };
 
-    // Limpieza automática: al no existir Cloud Functions en el plan Spark, esto se
-    // ejecuta best-effort cada vez que alguien abre la bandeja de Solicitudes.
-    // No sustituye un cron real, pero evita que la papelera crezca indefinidamente
-    // mientras el módulo se siga usando con normalidad.
+    // Limpieza automática (borrado definitivo a 90 días): NO hay evidencia de que
+    // exista una función tcSbEliminarSurtido — esto queda deshabilitado hasta
+    // confirmar con Glen si Supabase ya soporta borrado definitivo de un surtido,
+    // para no inventar una llamada a algo que quizá no existe.
     let opsPapeleraLimpiadaEnEstaSesion = false;
     async function opsLimpiarPapeleraVencida() {
         if (opsPapeleraLimpiadaEnEstaSesion) return;
@@ -5027,9 +5041,12 @@
         const ahora = new Date().toISOString();
         const vencidas = cacheSurtidos.filter(s => s.eliminada && s.fechaProgramadaEliminacion && s.fechaProgramadaEliminacion < ahora);
         if (!vencidas.length) return;
-        const { db, fs } = await opsGetFB();
+        if (!window.tcSbEliminarSurtido) {
+            console.warn(`[operaciones.js] ${vencidas.length} solicitud(es) de la papelera ya vencieron sus 90 días, pero no hay función de borrado definitivo en Supabase todavía — no se borran solas.`);
+            return;
+        }
         for (const s of vencidas) {
-            try { await fs.deleteDoc(fs.doc(db, COL_SURTIDOS, s.id)); } catch (e) { console.warn("[operaciones.js] limpieza papelera:", e.message); }
+            try { await window.tcSbEliminarSurtido(s.id); } catch (e) { console.warn("[operaciones.js] limpieza papelera:", e.message); }
         }
     }
 
@@ -5040,11 +5057,9 @@
         const listaArticulos = Array.isArray(s.productos) ? s.productos : [];
         const estadoKey = s.estado || "pendiente";
         const e = ESTADOS_SOLICITUD[estadoKey] || ESTADOS_SOLICITUD.pendiente;
-        const { db, fs } = await opsGetFB();
         let historial = [];
         try {
-            const snapHist = await fs.getDocs(fs.query(fs.collection(db, COL_SURTIDOS, id, "historial"), fs.orderBy("ts", "desc")));
-            historial = snapHist.docs.map(d => d.data());
+            historial = await window.tcSbListarHistorial(id); // tabla surtido_historial en Supabase, no subcolección de Firestore
         } catch (err) { historial = []; }
         const wrap = document.getElementById("ops-panel-wrap");
         wrap.innerHTML = `
@@ -5098,15 +5113,14 @@
         const s = cacheSurtidos.find(x => x.id === id);
         const estadoAnterior = s.estado || "pendiente";
         const e = ESTADOS_SOLICITUD[siguienteEstado];
-        const { db, fs } = await opsGetFB();
-        await fs.updateDoc(fs.doc(db, COL_SURTIDOS, id), { estado: siguienteEstado });
-        // Mismo patrón real de historial: subcolección surtidos/{id}/historial, no array embebido.
-        await fs.addDoc(fs.collection(db, COL_SURTIDOS, id, "historial"), {
-            de: estadoAnterior, a: siguienteEstado, por: opsNombreActual(), porEmail: opsUsuarioActual(),
-            ts: fs.serverTimestamp ? fs.serverTimestamp() : opsFechaHora(),
-        });
+        await window.tcSbActualizarSurtido(id, { estado: siguienteEstado });
+        // Mismo patrón real que ya usa Almacén: tabla surtido_historial en Supabase, no subcolección de Firestore.
+        await window.tcSbAgregarHistorial(id, { de: estadoAnterior, a: siguienteEstado, por: opsNombreActual(), porEmail: opsUsuarioActual() });
         // Notificación real cuando queda "listo" — Operaciones no depende de estar viendo la pantalla.
+        // Esta SÍ sigue en Firestore (ops_notificaciones): es la campanita propia de
+        // Operaciones, no la tabla de surtidos — no es parte de la migración a Supabase.
         if (siguienteEstado === "listo") {
+            const { db, fs } = await opsGetFB();
             const prod = (s.productos && s.productos[0]) || {};
             await fs.addDoc(fs.collection(db, COL_NOTIFICACIONES), {
                 tipo: "solicitud_lista", solicitudId: id, folio: s.folio,
