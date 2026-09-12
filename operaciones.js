@@ -5434,6 +5434,11 @@
     // de herramientas y la flota de Flotilla. Horarios/vacaciones de técnico NO
     // se cruzan aquí — ese dato no existe todavía en ningún lado del portal.
     let servicioEditDraft = null;
+    // Motor de cálculo (Fase 3): cantidad de unidades del servicio + días estimados,
+    // solo para esta sesión de la ficha — no se guarda en la receta, es una
+    // calculadora encima de ella. Personal/vehículo/herramienta NO escalan con la
+    // cantidad (la misma cuadrilla hace 1 o 3 tanques); solo los materiales.
+    let calculoActual = { cantidad: 1, dias: 1 };
     let servicioOriginalSnapshot = null; // para poder resumir qué cambió al guardar
     let dispoServicioActual = null; // null = aún cargando
     let fichaServTabActual = "resumen";
@@ -5480,9 +5485,41 @@
         dispoServicioActual = null;
         fichaServTabActual = "resumen";
         servicioHistorialCache = null;
+        calculoActual = { cantidad: 1, dias: 1 };
         opsRenderFichaServicio();
         opsVerificarDisponibilidadServicio();
     };
+
+    window.opsServCalcularCampo = function (campo, valor) {
+        calculoActual[campo] = Math.max(0, Number(valor) || 0);
+        opsRenderFichaServicio();
+    };
+
+    // Calcula cantidad/costo de cada material para la cantidad de unidades actual.
+    // La regla "proporcional" y "por frecuencia" usan la MISMA multiplicación
+    // (cantidadBase × cantidad) — la diferencia es solo cómo se interpreta: en
+    // frecuencia, cantidadBase ya viene expresada como fracción por unidad
+    // (ej. 0.1 = "1 cada 10 tanques"), así que el resultado es consumo acumulado
+    // hacia el siguiente reemplazo, no una compra inmediata de una pieza completa.
+    function opsCalcularMateriales(materiales, cantidad) {
+        return (materiales || []).map(m => {
+            const cantidadCalculada = (m.cantidadBase || 0) * cantidad;
+            return { ...m, cantidadCalculada, costoCalculado: cantidadCalculada * (m.costoUnitario || 0) };
+        });
+    }
+
+    function opsCalcularCostoServicio(s, cantidad, dias) {
+        const materiales = opsCalcularMateriales(s.materiales, cantidad);
+        const costoMateriales = materiales.reduce((acc, m) => acc + m.costoCalculado, 0);
+        let costoPersonal = null; // null = no se pudo calcular (sin acceso a tarifas o sin personal capturado)
+        if (Object.keys(cacheTarifasPersonal).length && (s.personal || []).length) {
+            costoPersonal = (s.personal || []).reduce((acc, p) => {
+                const tarifa = cacheTarifasPersonal[p.rol];
+                return acc + (tarifa ? (tarifa.costoDia || 0) * (p.cantidad || 0) * dias : 0);
+            }, 0);
+        }
+        return { materiales, costoMateriales, costoPersonal, costoTotal: costoPersonal !== null ? costoMateriales + costoPersonal : null };
+    }
 
     function opsServSet(ruta, valor) {
         const partes = ruta.split(".");
@@ -5661,7 +5698,29 @@
         const gestion = opsPuedeGestionar();
         const inp = (val, ruta, esNumero, placeholder, ancho) => `<input value="${opsEsc(val ?? "")}" placeholder="${opsEsc(placeholder || "")}" ${esNumero ? 'type="number" step="any"' : ""} oninput="opsServCampo('${ruta}', this.value, ${!!esNumero})" style="width:${ancho || "100%"};border:1px solid #cbd5e1;border-radius:6px;padding:5px 7px;font-size:11.5px;" ${gestion ? "" : "disabled"}>`;
 
+        const calculo = opsCalcularCostoServicio(s, calculoActual.cantidad, calculoActual.dias);
+
         const tabResumen = `
+                <div style="background:#E9ECF5;border-radius:12px;padding:14px 16px;margin-bottom:6px;">
+                    <div style="font-size:11px;font-weight:700;color:#1D2E73;text-transform:uppercase;margin-bottom:8px;">Calculadora — este trabajo</div>
+                    <div style="display:flex;gap:10px;margin-bottom:10px;">
+                        <div style="flex:1;">
+                            <label style="font-size:10.5px;color:#475569;font-weight:600;">Cantidad de unidades (tanques, contenedores, etc.)</label>
+                            <input type="number" min="0" step="any" value="${calculoActual.cantidad}" oninput="opsServCalcularCampo('cantidad', this.value)" style="width:100%;border:1px solid #cbd5e1;border-radius:7px;padding:7px 9px;font-size:13px;margin-top:3px;">
+                        </div>
+                        <div style="flex:1;">
+                            <label style="font-size:10.5px;color:#475569;font-weight:600;">Días estimados</label>
+                            <input type="number" min="0" step="any" value="${calculoActual.dias}" oninput="opsServCalcularCampo('dias', this.value)" style="width:100%;border:1px solid #cbd5e1;border-radius:7px;padding:7px 9px;font-size:13px;margin-top:3px;">
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:16px;flex-wrap:wrap;">
+                        <div><div style="font-size:10px;color:#64748b;">Materiales</div><div style="font-size:16px;font-weight:800;color:#1e293b;">$${calculo.costoMateriales.toLocaleString("es-MX", { minimumFractionDigits: 2 })}</div></div>
+                        <div><div style="font-size:10px;color:#64748b;">Personal</div><div style="font-size:16px;font-weight:800;color:#1e293b;">${calculo.costoPersonal !== null ? "$" + calculo.costoPersonal.toLocaleString("es-MX", { minimumFractionDigits: 2 }) : "—"}</div></div>
+                        <div><div style="font-size:10px;color:#64748b;">Total estimado</div><div style="font-size:18px;font-weight:800;color:#1D2E73;">${calculo.costoTotal !== null ? "$" + calculo.costoTotal.toLocaleString("es-MX", { minimumFractionDigits: 2 }) : "—"}</div></div>
+                    </div>
+                    <div style="font-size:9.5px;color:#64748b;margin-top:8px;">No incluye equipo de seguridad ni logística (todavía sin costo capturado en la receta).${calculo.costoPersonal === null ? " Personal no calculado: necesitas permiso para ver tarifas, o la receta no tiene roles capturados." : ""} Herramienta y vehículo no escalan con la cantidad — es la misma cuadrilla y el mismo equipo.</div>
+                </div>
+
                 <div style="margin-top:14px;">
                     <div style="font-size:11px;font-weight:700;color:#1D2E73;text-transform:uppercase;margin-bottom:6px;">Disponibilidad de herramienta</div>
                     ${dispoServicioActual === null ? '<div style="color:#94a3b8;font-size:11.5px;">Verificando contra el catálogo real...</div>' :
@@ -5717,16 +5776,20 @@
                 </div>`;
 
         const tabMateriales = `
-                <div style="margin-top:14px;">
+                <div style="background:#f8fafc;border-radius:8px;padding:8px 11px;margin-top:14px;margin-bottom:10px;font-size:10.5px;color:#475569;">Calculado para <strong>${calculoActual.cantidad}</strong> unidad(es) — cambia la cantidad en la pestaña Resumen.</div>
+                <div>
                     <div style="font-size:11px;font-weight:700;color:#1D2E73;text-transform:uppercase;margin-bottom:6px;">Materiales (${(s.materiales || []).length})</div>
-                    ${(s.materiales || []).map((m, i) => `
+                    ${(s.materiales || []).map((m, i) => {
+                        const calc = calculo.materiales[i];
+                        return `
                         <div style="border:1px solid #f1f5f9;border-radius:7px;padding:7px 8px;margin-bottom:6px;">
-                            <div style="display:flex;gap:6px;margin-bottom:5px;">
+                            <div style="display:flex;gap:6px;margin-bottom:5px;align-items:center;">
                                 ${inp(m.nombre, `materiales.${i}.nombre`, false, "Nombre del material")}
+                                <span style="font-size:11px;font-weight:700;color:#1D2E73;white-space:nowrap;">= ${calc.cantidadCalculada.toLocaleString("es-MX", { maximumFractionDigits: 2 })} ${opsEsc(m.unidad || "")}</span>
                                 ${gestion ? `<button onclick="opsServQuitarFila('materiales',${i})" style="background:#fee2e2;border:none;color:#E7402B;width:26px;height:26px;border-radius:6px;cursor:pointer;flex-shrink:0;">${ICON.close}</button>` : ""}
                             </div>
                             <div style="display:flex;gap:6px;">
-                                ${inp(m.cantidadBase, `materiales.${i}.cantidadBase`, true, "Cant.", "60px")}
+                                ${inp(m.cantidadBase, `materiales.${i}.cantidadBase`, true, "Cant. base", "60px")}
                                 ${inp(m.unidad, `materiales.${i}.unidad`, false, "Unidad", "60px")}
                                 ${inp(m.costoUnitario, `materiales.${i}.costoUnitario`, true, "Costo unit.", "70px")}
                                 <select onchange="opsServCampo('materiales.${i}.reglaConsumo', this.value)" style="flex:1;border:1px solid #cbd5e1;border-radius:6px;padding:5px 7px;font-size:11px;" ${gestion ? "" : "disabled"}>
@@ -5734,7 +5797,9 @@
                                     <option value="frecuencia" ${m.reglaConsumo === "frecuencia" ? "selected" : ""}>Por frecuencia</option>
                                 </select>
                             </div>
-                        </div>`).join("")}
+                            <div style="font-size:10px;color:#94a3b8;margin-top:4px;">Costo calculado: $${calc.costoCalculado.toLocaleString("es-MX", { minimumFractionDigits: 2 })}</div>
+                        </div>`;
+                    }).join("")}
                     ${gestion ? `<button onclick="opsServAgregarFila('materiales',{nombre:'',unidad:'pza',costoUnitario:0,cantidadBase:1,reglaConsumo:'proporcional'})" style="background:#eef2f7;border:none;color:#1D2E73;padding:6px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">+ Agregar material</button>` : ""}
                 </div>`;
 
