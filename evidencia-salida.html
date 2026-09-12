@@ -50,24 +50,9 @@
   </div>
 </div>
 
-<script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, doc, getDoc, collection, addDoc, onSnapshot, orderBy, query, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
-
-const config = { apiKey:"AIzaSyBXh-P0oMtMiDjyz9PObuJ8DNfROlXvhLE", authDomain:"tecnocontrol-1c42f.firebaseapp.com", projectId:"tecnocontrol-1c42f", storageBucket:"tecnocontrol-1c42f.firebasestorage.app", appId:"1:27642771956:web:54225af9e386afded8a1a1" };
-const app = initializeApp(config, 'kiosco-evidencia');
-const db = getFirestore(app);
-const auth = getAuth(app);
-const storage = getStorage(app);
-
-/* Auth anónima (requerida por las reglas de Firestore) — mismo patrón que solicitud-material.html */
-let authReadyResolve;
-const authReady = new Promise(res => { authReadyResolve = res; });
-onAuthStateChanged(auth, user => { if (user) authReadyResolve(); });
-signInAnonymously(auth).catch(err => console.error('[evidencia auth] signInAnonymously:', err));
-
+<!-- surtidos ya vive en Supabase — este adaptador expone window.tcSb... -->
+<script src="surtidos-supabase.js"></script>
+<script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
@@ -78,19 +63,17 @@ if(!pedidoId){
   $('info-card').innerHTML = '<div class="loading" style="color:var(--rojo);">Falta el identificador del pedido en el enlace. Pide un nuevo enlace/QR desde Almacén.</div>';
   $('hero-sub').textContent = 'Enlace incompleto';
 } else {
-  authReady.then(()=> getDoc(doc(db,'surtidos',pedidoId))).then(snap=>{
-    if(!snap.exists()){
+  window.tcSbObtenerSurtido(pedidoId).then(d=>{
+    if(!d){
       $('info-card').innerHTML = '<div class="loading" style="color:var(--rojo);">No se encontró el pedido. Pide un nuevo enlace desde Almacén.</div>';
       $('hero-sub').textContent = 'Pedido no encontrado';
       return;
     }
-    const d = snap.data()||{};
     $('hero-sub').textContent = 'Folio ' + (d.folio||'—');
     $('info-card').innerHTML = ''
       + '<div class="info-row"><b>Folio:</b> '+esc(d.folio||'—')+'</div>'
-      + '<div class="info-row"><b>Cliente / destino:</b> '+esc(d.cliente||d.destino||'—')+'</div>'
-      + '<div class="info-row"><b>Tipo:</b> '+(d.tipo==='material'?'Material':'Venta')+'</div>'
-      + '<div class="info-row"><b>Solicitó:</b> '+esc(d.solicitante||d.vendedor||'—')+'</div>';
+      + '<div class="info-row"><b>Cliente:</b> '+esc(d.cliente||'—')+'</div>'
+      + '<div class="info-row"><b>Estado:</b> '+esc(d.estado||'—')+'</div>';
   }).catch(e=>{
     console.error('[evidencia] error al cargar el pedido:', e);
     $('info-card').innerHTML = '<div class="loading" style="color:var(--rojo);">No se pudo cargar el pedido (revisa tu conexión, o pide un nuevo enlace).</div>';
@@ -99,20 +82,22 @@ if(!pedidoId){
   /* Nombre recordado localmente para no volver a escribirlo cada vez que se usa el mismo celular */
   try{ const guardado = localStorage.getItem('evid_nombre_almacen'); if(guardado) $('f-nombre').value = guardado; }catch(e){}
 
+  // Alta calidad — son documentos auditables, necesitan leerse bien (2200px/90%,
+  // igual que en Almacén; ya no aplica el límite de 1MB que tenía Firestore).
   function comprimirImagen(file){
     return new Promise((resolve,reject)=>{
       const reader = new FileReader();
       reader.onload = e=>{
         const img = new Image();
         img.onload = ()=>{
-          const maxW = 480;
+          const maxW = 2200;
           const scale = Math.min(1, maxW/img.width);
           const w = Math.max(1,Math.round(img.width*scale)), h = Math.max(1,Math.round(img.height*scale));
           const c = document.createElement('canvas'); c.width=w; c.height=h;
           const cx = c.getContext('2d');
           cx.fillStyle='#ffffff'; cx.fillRect(0,0,w,h);
           cx.drawImage(img,0,0,w,h);
-          resolve(c.toDataURL('image/jpeg',0.72));
+          resolve(c.toDataURL('image/jpeg',0.9));
         };
         img.onerror = reject;
         img.src = e.target.result;
@@ -139,29 +124,28 @@ if(!pedidoId){
     setMsg('Subiendo…','var(--teal)');
     $('btn-subir').disabled = true;
     try{
-      await authReady;
       if(file.type && file.type.startsWith('image/')){
-        // Foto: se comprime y se guarda incrustada en el propio documento — igual que siempre.
+        // Foto: se comprime y se guarda incrustada en el propio registro — igual que siempre.
         const dataUrl = await comprimirImagen(file);
-        await addDoc(collection(db,'surtidos',pedidoId,'evidencias'), {
-          tipo:'imagen', imagen: dataUrl, subidoPor: nombre, subidoPorEmail: null, subidoEn: serverTimestamp()
+        await window.tcSbAgregarEvidencia(pedidoId, {
+          tipo:'imagen', imagen: dataUrl, subidoPor: nombre, categoria: 'salida'
         });
       } else {
-        // Documento (PDF/Word/etc.): va a Firebase Storage, y en Firestore solo se guarda la
-        // referencia — un documento normal no cabe en un documento de Firestore (límite 1MB).
-        const ruta = 'evidencias/' + pedidoId + '/' + Date.now() + '_' + file.name;
-        const sref = storageRef(storage, ruta);
-        await uploadBytes(sref, file);
-        const url = await getDownloadURL(sref);
-        await addDoc(collection(db,'surtidos',pedidoId,'evidencias'), {
-          tipo:'archivo', nombre: file.name, url, mimeType: file.type || null,
-          subidoPor: nombre, subidoPorEmail: null, subidoEn: serverTimestamp()
+        // Documento (PDF/Word/etc.) — se guarda igual, como base64, dentro del propio registro.
+        const dataUrl = await new Promise((resolve,reject)=>{
+          const r = new FileReader();
+          r.onload = ()=>resolve(r.result);
+          r.onerror = reject;
+          r.readAsDataURL(file);
+        });
+        await window.tcSbAgregarEvidencia(pedidoId, {
+          tipo:'archivo', nombre: file.name, url: dataUrl, categoria: 'salida'
         });
       }
       setMsg('✓ Subido','var(--ok)');
     }catch(e){
       console.error('[evidencia] error al subir:', e);
-      setMsg('No se pudo subir ('+(e.code||e.message||'error')+'). Si el error es de permisos, revisa las reglas de Firestore/Storage para permitir escritura anónima.');
+      setMsg('No se pudo subir ('+(e.code||e.message||'error')+').');
     }finally{
       $('btn-subir').disabled = false;
     }
@@ -169,19 +153,15 @@ if(!pedidoId){
 
   /* Vista en vivo de las evidencias ya subidas — mismo esquema que usa el portal de escritorio,
      así Almacén ve en la app principal las fotos subidas desde el celular sin recargar nada. */
-  authReady.then(()=>{
-    onSnapshot(query(collection(db,'surtidos',pedidoId,'evidencias'), orderBy('subidoEn','asc')), snap=>{
-      const items = [];
-      snap.forEach(d=> items.push(Object.assign({id:d.id}, d.data())));
-      $('cont-count').textContent = items.length;
-      $('grid-evid').innerHTML = items.length ? items.map(it=>{
-        if(it.imagen){
-          return '<div class="evid-item"><img src="'+esc(it.imagen)+'" onclick="window.open(this.src, \'_blank\')"><div class="meta">'+esc(it.subidoPor||'—')+'</div></div>';
-        }
-        return '<div class="evid-item"><a href="'+esc(it.url||'#')+'" target="_blank" style="display:flex;flex-direction:column;align-items:center;justify-content:center;aspect-ratio:1;background:#f8fafc;border:1px solid var(--line);border-radius:10px;text-decoration:none;color:inherit;"><span style="font-size:32px;">📄</span><span style="font-size:11px;text-align:center;padding:0 4px;word-break:break-word;">'+esc(it.nombre||'Documento')+'</span></a><div class="meta">'+esc(it.subidoPor||'—')+'</div></div>';
-      }).join('') : '<div class="loading" style="grid-column:1/-1;">Aún no hay evidencia subida.</div>';
-    }, e=>{ console.warn('[evidencia] no se pudo escuchar evidencias:', e.message); });
-  });
+  window.tcSbEscucharEvidencias(pedidoId, function(items){
+    $('cont-count').textContent = items.length;
+    $('grid-evid').innerHTML = items.length ? items.map(it=>{
+      if(it.imagen){
+        return '<div class="evid-item"><img src="'+esc(it.imagen)+'" onclick="window.open(this.src, \'_blank\')"><div class="meta">'+esc(it.subidoPor||'—')+'</div></div>';
+      }
+      return '<div class="evid-item"><a href="'+esc(it.url||'#')+'" target="_blank" style="display:flex;flex-direction:column;align-items:center;justify-content:center;aspect-ratio:1;background:#f8fafc;border:1px solid var(--line);border-radius:10px;text-decoration:none;color:inherit;"><span style="font-size:32px;">📄</span><span style="font-size:11px;text-align:center;padding:0 4px;word-break:break-word;">'+esc(it.nombre||'Documento')+'</span></a><div class="meta">'+esc(it.subidoPor||'—')+'</div></div>';
+    }).join('') : '<div class="loading" style="grid-column:1/-1;">Aún no hay evidencia subida.</div>';
+  }, function(e){ console.warn('[evidencia] no se pudo escuchar evidencias:', e.message); });
 }
 </script>
 </body>
