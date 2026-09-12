@@ -5209,9 +5209,13 @@ window.matLimpiarFirma=function(){
 
 async function _matSiguienteFolio(){
   try{
+    // Mismo bridge que ya usa Ventas — antes esto contaba folios directo en
+    // Firestore, en una colección que Almacén ya no lee (surtidos vive en
+    // Supabase desde la migración). Corregido sep-2026.
     const siguiente=await window.tcSbSiguienteFolioMaterial('OPERACIONES');
     return {folio:'OPERACIONES '+String(siguiente).padStart(4,'0'),folioNum:siguiente,folioPrefijo:'OPERACIONES'};
   }catch(e){
+    console.error('[flotilla material] tcSbSiguienteFolioMaterial no disponible:',e);
     const resp=Date.now()%10000;
     return {folio:'OPERACIONES '+String(resp).padStart(4,'0')+'-R',folioNum:null,folioPrefijo:'OPERACIONES'};
   }
@@ -5257,7 +5261,7 @@ window.matEnviar=async function(){
     window.tcPrevisualizarPDF(pdf, folioInfo.folio, async function(){
       btn.disabled=true; btn.textContent='Enviando…';
       try{
-        surtidoData.createdAt=new Date().toISOString();
+        surtidoData.createdAt=new Date().toISOString(); // Supabase, no FieldValue de Firestore
         await window.tcSbCrearSurtido(surtidoData);
         _draftClear(_DRAFT.MAT);
         window.matState={area:'',destino:'',uso:'',prioridad:'urgente',carrito:{},firma:null,razonSocial:'',ubicacion:null};
