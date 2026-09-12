@@ -57,10 +57,10 @@
   var NEXT       = { esperando_autorizacion:'pendiente' };
   var PREV       = { pendiente:'esperando_autorizacion' };
 
-  // Tablero simplificado a 2 columnas: Solicitud Recibida (incluye "en preparación")
-  // y Entrega Parcial Pendiente. "Entregado" cierra el pedido y sale del tablero.
+  // Tablero: Nuevos → En preparación → Entrega Parcial Pendiente. "Entregado" cierra el pedido y sale del tablero.
   var COLUMNAS = [
-    { estados:['esperando_autorizacion','pendiente','en_preparacion'], titulo:'Solicitud Recibida', sub:'Por atender', color:COLORS.azul },
+    { estados:['esperando_autorizacion','pendiente'], titulo:'Nuevos', sub:'Por atender', color:COLORS.azul },
+    { estados:['en_preparacion'], titulo:'En preparación', sub:'Listos para entregar', color:'#1473E6' },
     { estados:['parcial'], titulo:'Entrega Parcial Pendiente', sub:'Falta completar', color:COLORS.naranja }
   ];
   var ACCION = {
@@ -458,13 +458,13 @@
         + '<span style="font-size:20px;">\ud83d\udcc4</span><span style="font-size:9px;text-align:center;padding:0 3px;word-break:break-word;">'+esc(ev.nombre||'Documento')+'</span></a>';
     }).join('');
   }
-  window.__almSubirEvidencia = function(id){
+  window.__almSubirEvidencia = function(id, categoriaForzada){
     var input=document.getElementById('alm-evid-file-'+id); if (!input) return;
     input.onchange = function(){
       var file=input.files&&input.files[0]; input.value='';
       if (!file) return;
       var catEl = document.querySelector('input[name="alm-evid-cat-'+id+'"]:checked');
-      var categoria = catEl ? catEl.value : 'salida';
+      var categoria = categoriaForzada || (catEl ? catEl.value : 'salida');
       var esImagen = file.type && file.type.indexOf('image/')===0;
       var subida = esImagen
         ? comprimirImagenEvidencia(file).then(function(dataUrl){
@@ -1298,6 +1298,7 @@
     var origen=p.estado;
     if (p.tienePdfOriginal) window.__almVerPDF(id);
     window.tcSbActualizarSurtido(id, {estado:'en_preparacion'}).then(function(){
+      p.estado = 'en_preparacion'; render();
       window.tcSbAgregarHistorial(id, { de:origen, a:'en_preparacion', por:yoNombre() }).catch(function(){});
     }).catch(function(err){
       console.error('[almacen] descargarPDF:',err);
@@ -1378,6 +1379,7 @@
       entregaSolicitadaPor: yoNombre(),
       entregaSolicitadaEn: new Date().toISOString()
     }).then(function(){
+      p.entregaPendienteFirma = true; render();
       if(window.mostrarPush) window.mostrarPush('📦 Esperando firma', (p.folio||'')+' · pídele a quien recibe que firme en el kiosko', '✍️');
     }).catch(function(err){
       console.error('[almacen] pedirFirmaEntrega:',err);
@@ -1386,7 +1388,10 @@
   };
 
   window.__almCancelarFirmaEntrega = function(id){
-    window.tcSbActualizarSurtido(id, { entregaPendienteFirma:false }).catch(function(err){ console.error('[almacen] cancelarFirmaEntrega:',err); });
+    var p=buscarP(id);
+    window.tcSbActualizarSurtido(id, { entregaPendienteFirma:false }).then(function(){
+      if (p){ p.entregaPendienteFirma=false; render(); }
+    }).catch(function(err){ console.error('[almacen] cancelarFirmaEntrega:',err); });
   };
 
   window.__almAbrirCancelar = function(id){
@@ -1908,12 +1913,15 @@
       + '</div>'
       + (e.firma ? '<div style="margin-bottom:10px;"><div style="font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:4px;">FIRMA DEL SOLICITANTE</div><img src="'+esc(e.firma)+'" style="max-width:220px;border:1px solid #e2e8f0;border-radius:8px;cursor:pointer;" onclick="window.__almVerFirmaId(\''+e.id+'\',\'sol\')"></div>' : '')
       + (e.firmaEntrega ? '<div style="margin-bottom:14px;"><div style="font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:4px;">FIRMA DE ENTREGA</div><img src="'+esc(e.firmaEntrega)+'" style="max-width:220px;border:1px solid #e2e8f0;border-radius:8px;cursor:pointer;" onclick="window.__almVerFirmaId(\''+e.id+'\',\'entrega\')"></div>' : '')
-      + '<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#94a3b8;margin-bottom:6px;">Evidencia de salida de almacén</div>'
+      + '<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#94a3b8;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;">Evidencia de salida de almacén'
+      +   '<button type="button" onclick="event.stopPropagation();window.__almSubirEvidencia(\''+e.id+'\',\'salida\')" style="text-transform:none;letter-spacing:normal;font-size:10.5px;font-weight:700;color:#0891b2;background:#fff;border:1px dashed #cbd5e1;border-radius:6px;padding:3px 9px;cursor:pointer;">+ Subir</button></div>'
       + '<div class="alm-evid-grid" id="alm-hist-evid-salida-'+e.id+'"><div style="color:#94a3b8;font-size:12px;">Cargando…</div></div>'
-      + '<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#94a3b8;margin:14px 0 6px;">Evidencia de remisión'+(e.remisionado?' · <span style="color:#16a34a;">✓ Remisionado</span>':'')+'</div>'
+      + '<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#94a3b8;margin:14px 0 6px;display:flex;align-items:center;justify-content:space-between;"><span>Evidencia de remisión'+(e.remisionado?' · <span style="color:#16a34a;">✓ Remisionado</span>':'')+'</span>'
+      +   '<button type="button" onclick="event.stopPropagation();window.__almSubirEvidencia(\''+e.id+'\',\'remision\')" style="text-transform:none;letter-spacing:normal;font-size:10.5px;font-weight:700;color:#0891b2;background:#fff;border:1px dashed #cbd5e1;border-radius:6px;padding:3px 9px;cursor:pointer;">+ Subir</button></div>'
       + '<div class="alm-evid-grid" id="alm-hist-evid-remision-'+e.id+'"><div style="color:#94a3b8;font-size:12px;">Cargando…</div></div>'
       + '<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#94a3b8;margin:14px 0 6px;">Documentos adjuntos (órdenes de compra, etc.)</div>'
-      + '<div id="alm-hist-docs-'+e.id+'" style="font-size:12px;color:#94a3b8;">Cargando…</div>';
+      + '<div id="alm-hist-docs-'+e.id+'" style="font-size:12px;color:#94a3b8;">Cargando…</div>'
+      + '<input type="file" accept="image/*,.pdf,.doc,.docx" id="alm-evid-file-'+e.id+'" style="display:none">';
     document.getElementById('alm-modal-hist').classList.add('show');
     window.__almRefrescarEvidHist(e.id);
     window.tcSbListarDocumentos(e.id).then(function(docs){
