@@ -1,0 +1,10 @@
+{
+  "appId": "mx.com.tecnocontrol.flotilla",
+  "appName": "Flotilla Tecnocontrol",
+  "webDir": "www",
+  "server": {
+    "url": "https://mercadotecniatecnocontrol-dotcom.github.io/portal-tecnocontrol/flotilla-app.html",
+    "androidScheme": "https",
+    "cleartext": false
+  }
+}

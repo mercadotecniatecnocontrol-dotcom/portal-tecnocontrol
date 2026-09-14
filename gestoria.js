@@ -866,7 +866,42 @@
         </wp:inline></w:drawing>`;
     }
 
-    async function insertarImagenEnGrupo(zip, xmlDoc, rutaXml, grupoRuns, dataUrl, ctxImg, altoObjetivoPx, anchoMaximoPx) {
+    // Variante flotante (wp:anchor) — igual que la inline, pero
+    // posicionada libremente sobre el texto (con relativeFrom="column"/
+    // "paragraph"), en vez de quedar encajonada dentro de la celda.
+    function construirDrawingAnchorXml(rId, cx, cy, id, offsetXEmu, offsetYEmu) {
+        return `<w:drawing><wp:anchor distT="0" distB="0" distL="114300" distR="114300" simplePos="0" relativeHeight="251658752" behindDoc="0" locked="0" layoutInCell="1" allowOverlap="1">
+            <wp:simplePos x="0" y="0"/>
+            <wp:positionH relativeFrom="column"><wp:posOffset>${offsetXEmu}</wp:posOffset></wp:positionH>
+            <wp:positionV relativeFrom="paragraph"><wp:posOffset>${offsetYEmu}</wp:posOffset></wp:positionV>
+            <wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/>
+            <wp:wrapThrough wrapText="bothSides"><wp:wrapPolygon edited="0"><wp:start x="0" y="0"/><wp:lineTo x="0" y="21600"/><wp:lineTo x="21600" y="21600"/><wp:lineTo x="21600" y="0"/><wp:lineTo x="0" y="0"/></wp:wrapPolygon></wp:wrapThrough>
+            <wp:docPr id="${id}" name="LogoCliente"/><wp:cNvGraphicFramePr/>
+            <a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+                <pic:pic><pic:nvPicPr><pic:cNvPr id="${id}" name="LogoCliente"/><pic:cNvPicPr/></pic:nvPicPr>
+                <pic:blipFill><a:blip r:embed="${rId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>
+                <pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>
+                <a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>
+            </a:graphicData></a:graphic>
+        </wp:anchor></w:drawing>`;
+    }
+
+    // La Razón Social del machote viene a 22pt (fuente fija, pensada
+    // para el nombre corto de referencia) — con razones sociales largas
+    // el texto se desborda y agranda el encabezado. Se reduce el
+    // tamaño proporcionalmente para nombres largos.
+    function ajustarTamanoFuenteSiLargo(run, texto) {
+        if (!texto || texto.length <= 20) return;
+        const rPr = run.getElementsByTagNameNS(NS_W, 'rPr')[0];
+        if (!rPr) return;
+        const sz = rPr.getElementsByTagNameNS(NS_W, 'sz')[0];
+        const szCs = rPr.getElementsByTagNameNS(NS_W, 'szCs')[0];
+        const nuevoValor = String(texto.length <= 32 ? 32 : texto.length <= 45 ? 26 : 22);
+        if (sz) sz.setAttributeNS(NS_W, 'w:val', nuevoValor);
+        if (szCs) szCs.setAttributeNS(NS_W, 'w:val', nuevoValor);
+    }
+
+    async function insertarImagenEnGrupo(zip, xmlDoc, rutaXml, grupoRuns, dataUrl, ctxImg, altoObjetivoPx, anchoMaximoPx, flotante) {
         const { bytes, mime, ext } = dataUrlABytes(dataUrl);
         await asegurarContentType(zip, ext, mime);
         ctxImg.contador++;
@@ -875,13 +910,24 @@
         const rId = await agregarRelacionImagen(zip, rutaXml, mediaFilename);
 
         const { width, height } = await medirImagenDataUrl(dataUrl);
-        let anchoPx = width * (altoObjetivoPx / height);
-        let altoPx = altoObjetivoPx;
-        if (anchoPx > anchoMaximoPx) { altoPx = altoPx * (anchoMaximoPx / anchoPx); anchoPx = anchoMaximoPx; }
+        let anchoPx, altoPx;
+        if (flotante && flotante.anchoExactoPx && flotante.altoExactoPx) {
+            // Tamaño exacto pedido por el cliente (probado a mano en
+            // Word) — no se preserva proporción, se usa tal cual.
+            anchoPx = flotante.anchoExactoPx;
+            altoPx = flotante.altoExactoPx;
+        } else {
+            anchoPx = width * (altoObjetivoPx / height);
+            altoPx = altoObjetivoPx;
+            if (anchoPx > anchoMaximoPx) { altoPx = altoPx * (anchoMaximoPx / anchoPx); anchoPx = anchoMaximoPx; }
+        }
         const cx = Math.round(anchoPx * 9525);
         const cy = Math.round(altoPx * 9525);
 
-        const nodoDrawing = nodosDesdeXml(xmlDoc, construirDrawingXml(rId, cx, cy, 1000 + ctxImg.contador));
+        const xmlDrawing = flotante
+            ? construirDrawingAnchorXml(rId, cx, cy, 1000 + ctxImg.contador, flotante.offsetXEmu, flotante.offsetYEmu + Math.round((altoObjetivoPx - altoPx) / 2 * 9525))
+            : construirDrawingXml(rId, cx, cy, 1000 + ctxImg.contador);
+        const nodoDrawing = nodosDesdeXml(xmlDoc, xmlDrawing);
         const primerRun = grupoRuns[0];
         Array.from(primerRun.getElementsByTagNameNS(NS_W, 't')).forEach(t => t.remove());
         Array.from(primerRun.getElementsByTagNameNS(NS_W, 'drawing')).forEach(d => d.parentNode && d.parentNode.removeChild(d));
@@ -889,6 +935,27 @@
         quitarResaltado(primerRun);
         primerRun.appendChild(nodoDrawing);
         for (let k = 1; k < grupoRuns.length; k++) { setTextoRun(grupoRuns[k], ''); quitarResaltado(grupoRuns[k]); }
+    }
+
+    // Alinea verticalmente hacia abajo la celda que contiene el logo —
+    // el machote de referencia trae su insignia pegada a la parte
+    // inferior de la celda (no centrada), y así se deja el logo del
+    // cliente también.
+    function alinearCeldaLogoAbajo(elementoRun) {
+        let celda = elementoRun.parentNode;
+        while (celda && celda.localName !== 'tc') celda = celda.parentNode;
+        if (!celda) return;
+        let tcPr = celda.getElementsByTagNameNS(NS_W, 'tcPr')[0];
+        if (!tcPr) {
+            tcPr = celda.ownerDocument.createElementNS(NS_W, 'w:tcPr');
+            celda.insertBefore(tcPr, celda.firstChild);
+        }
+        let vAlign = tcPr.getElementsByTagNameNS(NS_W, 'vAlign')[0];
+        if (!vAlign) {
+            vAlign = celda.ownerDocument.createElementNS(NS_W, 'w:vAlign');
+            tcPr.appendChild(vAlign);
+        }
+        vAlign.setAttributeNS(NS_W, 'w:val', 'bottom');
     }
 
     // Quita cualquier imagen que YA existiera en la celda del logo antes de
@@ -973,7 +1040,80 @@
         }
     }
 
-    async function procesarEncabezadoManualesProcedimientos(xmlDoc, datos, stats, ctx) {
+    // Varios machotes de Manuales y Procedimientos vienen en horizontal
+    // pero con tamaño de página Oficio/Legal (14 x 8.5 in) en vez de
+    // Carta (11 x 8.5 in horizontal). Se normaliza cualquier sección
+    // en horizontal a tamaño Carta, y se reescalan proporcionalmente
+    // las tablas que quedaban diseñadas para el ancho anterior (más
+    // ancho), para que no se salgan del margen de la hoja angosta.
+    function normalizarTamanoCartaHorizontal(xmlDoc) {
+        const CARTA_ANCHO_HORIZONTAL = 15840; // 11 in
+        const CARTA_ALTO_HORIZONTAL = 12240;  // 8.5 in
+        for (const sect of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'sectPr'))) {
+            const pgSz = sect.getElementsByTagNameNS(NS_W, 'pgSz')[0];
+            if (!pgSz) continue;
+            const orient = pgSz.getAttributeNS(NS_W, 'orient');
+            if (orient !== 'landscape') continue;
+            const anchoViejo = parseInt(pgSz.getAttributeNS(NS_W, 'w') || '0', 10);
+            const pgMar = sect.getElementsByTagNameNS(NS_W, 'pgMar')[0];
+            const margenIzq = pgMar ? parseInt(pgMar.getAttributeNS(NS_W, 'left') || '0', 10) : 0;
+            const margenDer = pgMar ? parseInt(pgMar.getAttributeNS(NS_W, 'right') || '0', 10) : 0;
+            pgSz.setAttributeNS(NS_W, 'w:w', String(CARTA_ANCHO_HORIZONTAL));
+            pgSz.setAttributeNS(NS_W, 'w:h', String(CARTA_ALTO_HORIZONTAL));
+            const anchoDisponible = CARTA_ANCHO_HORIZONTAL - margenIzq - margenDer;
+            for (const tbl of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'tbl'))) {
+                reescalarTablaSiExcedeAncho(tbl, anchoDisponible);
+            }
+            // Los párrafos con sangría (p.ej. los títulos numerados
+            // "1. Limpieza de... Conforme 8.11.1") traen un margen
+            // DERECHO fijo, calibrado para reservar espacio hasta el
+            // borde de la hoja de 14in. Escalarlo proporcionalmente no
+            // basta (el texto seguía envolviendo) — lo correcto es
+            // restarle exactamente lo que se angostó la página, dejando
+            // el margen izquierdo (alineado con la primera columna de
+            // la tabla) intacto.
+            if (anchoViejo && anchoViejo !== CARTA_ANCHO_HORIZONTAL) {
+                const reduccionPagina = anchoViejo - CARTA_ANCHO_HORIZONTAL;
+                for (const ind of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'ind'))) {
+                    for (const atributo of ['right', 'end']) {
+                        const valor = ind.getAttributeNS(NS_W, atributo);
+                        if (valor === null || valor === '') continue;
+                        const numero = parseInt(valor, 10);
+                        if (Number.isNaN(numero)) continue;
+                        const nuevo = Math.max(0, numero - reduccionPagina);
+                        ind.setAttributeNS(NS_W, 'w:' + atributo, String(nuevo));
+                    }
+                }
+            }
+        }
+    }
+
+    function reescalarTablaSiExcedeAncho(tbl, anchoDisponible) {
+        const grid = tbl.getElementsByTagNameNS(NS_W, 'tblGrid')[0];
+        if (!grid) return;
+        const cols = Array.from(grid.getElementsByTagNameNS(NS_W, 'gridCol'));
+        const anchoActual = cols.reduce((suma, c) => suma + parseInt(c.getAttributeNS(NS_W, 'w') || '0', 10), 0);
+        if (!anchoActual || anchoActual <= anchoDisponible) return;
+        const factor = anchoDisponible / anchoActual;
+        cols.forEach(c => {
+            const nuevo = Math.round(parseInt(c.getAttributeNS(NS_W, 'w'), 10) * factor);
+            c.setAttributeNS(NS_W, 'w:w', String(nuevo));
+        });
+        const tblPr = tbl.getElementsByTagNameNS(NS_W, 'tblPr')[0];
+        const tblW = tblPr ? tblPr.getElementsByTagNameNS(NS_W, 'tblW')[0] : null;
+        if (tblW) tblW.setAttributeNS(NS_W, 'w:w', String(anchoDisponible));
+        for (const tc of Array.from(tbl.getElementsByTagNameNS(NS_W, 'tc'))) {
+            const tcPr = tc.getElementsByTagNameNS(NS_W, 'tcPr')[0];
+            const tcW = tcPr ? tcPr.getElementsByTagNameNS(NS_W, 'tcW')[0] : null;
+            if (!tcW) continue;
+            const valorActual = parseInt(tcW.getAttributeNS(NS_W, 'w') || '0', 10);
+            if (!valorActual) continue;
+            tcW.setAttributeNS(NS_W, 'w:w', String(Math.round(valorActual * factor)));
+        }
+    }
+
+    async function procesarEncabezadoManualesProcedimientos(xmlDoc, datos, stats, ctx, nombreArchivo) {
+        const esIndice = /^indice[\s_]+de[\s_]+procedimientos/i.test(nombreArchivo || '');
         desvincularCamposDeFechaWord(xmlDoc);
         let yaAsignoRazonSocial = false;
         let yaAsignoDomicilio = false;
@@ -1022,7 +1162,7 @@
 
                 if (/^logo$/i.test(textoGrupo)) {
                     if (datos.LOGO_BASE64) {
-                        await insertarLogoEnGrupo(ctx.zip, xmlDoc, ctx.ruta, grupo, datos.LOGO_BASE64, ctx.imagen);
+                        await insertarLogoEnGrupo(ctx.zip, xmlDoc, ctx.ruta, grupo, datos.LOGO_BASE64, ctx.imagen, esIndice);
                         stats.logosInsertados++;
                     } else {
                         escribirGrupo('');
@@ -1049,7 +1189,18 @@
                 if (!yaAsignoRazonSocial) {
                     yaAsignoRazonSocial = true;
                     if (datos.RAZON_SOCIAL) {
-                        escribirGrupo(datos.RAZON_SOCIAL);
+                        // Algunos machotes traen un "." suelto SIN resaltar
+                        // justo después de la Razón Social (parte fija del
+                        // machote, no del placeholder) — si el valor
+                        // capturado ya termina en punto, se duplicaba
+                        // ("...C.V..").
+                        let valorRazonSocial = datos.RAZON_SOCIAL;
+                        const runSiguiente = runs[j];
+                        if (valorRazonSocial.endsWith('.') && runSiguiente && !esResaltadoAmarillo(runSiguiente) && textoDeRun(runSiguiente).trim() === '.') {
+                            valorRazonSocial = valorRazonSocial.slice(0, -1);
+                        }
+                        escribirGrupo(valorRazonSocial);
+                        ajustarTamanoFuenteSiLargo(destino, valorRazonSocial);
                         grupo.forEach(quitarResaltado);
                         stats.reemplazos++;
                     } else {
@@ -1111,7 +1262,23 @@
         return null;
     }
 
-    async function insertarLogoEnGrupo(zip, xmlDoc, rutaXml, grupoRuns, dataUrl, ctxImg) {
+    // Ancho real (en px) de la celda de tabla que contiene este run —
+    // para dimensionar el logo según el espacio disponible de verdad,
+    // en vez de un valor fijo que puede no calzar si la celda se
+    // reescaló (p.ej. por el ajuste a tamaño Carta).
+    function anchoCeldaPxDe(run) {
+        let celda = run.parentNode;
+        while (celda && celda.localName !== 'tc') celda = celda.parentNode;
+        if (!celda) return null;
+        const tcPr = celda.getElementsByTagNameNS(NS_W, 'tcPr')[0];
+        const tcW = tcPr ? tcPr.getElementsByTagNameNS(NS_W, 'tcW')[0] : null;
+        const valor = tcW ? parseInt(tcW.getAttributeNS(NS_W, 'w') || '0', 10) : 0;
+        if (!valor) return null;
+        // Deja ~12% de margen para que no toque los bordes de la celda.
+        return Math.round((valor / 1440 * 96) * 0.88);
+    }
+
+    async function insertarLogoEnGrupo(zip, xmlDoc, rutaXml, grupoRuns, dataUrl, ctxImg, esIndiceManuales) {
         // La celda "LOGO" del encabezado SGM mide 104px de ancho total
         // (incluyendo bordes y márgenes internos de la celda); dejamos
         // ~19px de margen para que no toque los bordes.
@@ -1133,13 +1300,21 @@
             // forzarla a crecer y mover el resto del encabezado).
             await insertarImagenEnGrupo(zip, xmlDoc, rutaXml, grupoRuns, dataUrl, ctxImg, 60, 245);
         } else if (_seccionActual === 'manuales') {
-            // La celda de LOGO en estos machotes mide ~149px de ancho
-            // (2235 dxa) y la columna vertical que ocupa (fusionada con
-            // vMerge a lo largo de razón social + PL + domicilio) mide
-            // en total ~63px de alto (943 dxa) — mucho más chica y
-            // achatada que la celda cuadrada de SASISOPA (105x105), que
-            // se salía del espacio disponible.
-            await insertarImagenEnGrupo(zip, xmlDoc, rutaXml, grupoRuns, dataUrl, ctxImg, 45, 130);
+            if (esIndiceManuales) {
+                // Solo en Índice de procedimientos: flotante, tamaño
+                // exacto medido a mano por el cliente (2.88 x 6.17 cm).
+                const alto2_88cmPx = Math.round(2.88 * 360000 / 9525);
+                const ancho6_17cmPx = Math.round(6.17 * 360000 / 9525);
+                await insertarImagenEnGrupo(zip, xmlDoc, rutaXml, grupoRuns, dataUrl, ctxImg, alto2_88cmPx, ancho6_17cmPx, { offsetXEmu: 230505, offsetYEmu: -1062355, anchoExactoPx: ancho6_17cmPx, altoExactoPx: alto2_88cmPx });
+            } else {
+                // El ancho máximo se calcula del ancho REAL de la celda
+                // (ya reescalada si la hoja se achicó a Carta) en vez de
+                // un valor fijo — si no, el logo se seguía insertando
+                // con el ancho viejo (más ancho) y se salía de la celda
+                // reducida.
+                const anchoMaximoPx = anchoCeldaPxDe(grupoRuns[0]) || 176;
+                await insertarImagenEnGrupo(zip, xmlDoc, rutaXml, grupoRuns, dataUrl, ctxImg, 120, anchoMaximoPx);
+            }
         } else {
             await insertarImagenEnGrupo(zip, xmlDoc, rutaXml, grupoRuns, dataUrl, ctxImg, 105, 105);
         }
@@ -4787,7 +4962,19 @@
             } else if (_seccionActual === 'bitacoras') {
                 procesarCamposBitacoras(xmlDoc, datos, stats);
             } else if (_seccionActual === 'manuales') {
-                await procesarEncabezadoManualesProcedimientos(xmlDoc, datos, stats, ctx);
+                if (ruta === 'word/document.xml') {
+                    normalizarTamanoCartaHorizontal(xmlDoc);
+                } else if (/^word\/header\d*\.xml$/i.test(ruta)) {
+                    // Se reescala la tabla del encabezado ANTES de
+                    // insertar el logo — si se hiciera después, el logo
+                    // ya se habría insertado con el ancho de celda
+                    // viejo (más ancho) y se saldría de la celda
+                    // reducida.
+                    for (const tbl of Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'tbl'))) {
+                        reescalarTablaSiExcedeAncho(tbl, 13146);
+                    }
+                }
+                await procesarEncabezadoManualesProcedimientos(xmlDoc, datos, stats, ctx, nombreArchivo);
             }
             // PROC-G-*/PROC-T-* traen su propio diagrama de proceso (no un
             // organigrama) y no deben pasar por el reemplazo automático del

@@ -1,0 +1,8 @@
+﻿node_modules/
+**/node_modules/
+flotilla-android/node_modules/
+flotilla-android/android/.gradle/
+flotilla-android/android/build/
+flotilla-android/android/app/build/
+*.flat
+*.log
