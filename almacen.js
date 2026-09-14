@@ -57,10 +57,10 @@
   var NEXT       = { esperando_autorizacion:'pendiente' };
   var PREV       = { pendiente:'esperando_autorizacion' };
 
-  // Tablero simplificado a 2 columnas: Solicitud Recibida (incluye "en preparación")
-  // y Entrega Parcial Pendiente. "Entregado" cierra el pedido y sale del tablero.
+  // Tablero: Nuevos → En preparación → Entrega Parcial Pendiente. "Entregado" cierra el pedido y sale del tablero.
   var COLUMNAS = [
-    { estados:['esperando_autorizacion','pendiente','en_preparacion'], titulo:'Solicitud Recibida', sub:'Por atender', color:COLORS.azul },
+    { estados:['esperando_autorizacion','pendiente'], titulo:'Nuevos', sub:'Por atender', color:COLORS.azul },
+    { estados:['en_preparacion'], titulo:'En preparación', sub:'Listos para entregar', color:'#1473E6' },
     { estados:['parcial'], titulo:'Entrega Parcial Pendiente', sub:'Falta completar', color:COLORS.naranja }
   ];
   var ACCION = {
@@ -406,12 +406,6 @@
       + '<div class="ce-foot">www.tecnocontrol.com.mx</div>'
       + '</body></html>';
   }
-  window.__almVerCaratula = function(id){
-    var p = buscarP(id); if (!p || !p.caratulaEnvio) return;
-    var w = window.open();
-    if (w){ w.document.write(construirCaratulaHTML(p.caratulaEnvio)); w.document.close(); }
-  };
-
   // ── Documentos adicionales (\u00f3rdenes de compra, etc.) que Ventas adjunt\u00f3 al subir el pedido ──
   var _docsCache = {}; // id -> [{id,tipo,archivo,nombre,subidoPor}]
   window.__almVerDocumentos = function(id){
@@ -464,16 +458,18 @@
         + '<span style="font-size:20px;">\ud83d\udcc4</span><span style="font-size:9px;text-align:center;padding:0 3px;word-break:break-word;">'+esc(ev.nombre||'Documento')+'</span></a>';
     }).join('');
   }
-  window.__almSubirEvidencia = function(id){
+  window.__almSubirEvidencia = function(id, categoriaForzada){
     var input=document.getElementById('alm-evid-file-'+id); if (!input) return;
     input.onchange = function(){
       var file=input.files&&input.files[0]; input.value='';
       if (!file) return;
+      var catEl = document.querySelector('input[name="alm-evid-cat-'+id+'"]:checked');
+      var categoria = categoriaForzada || (catEl ? catEl.value : 'salida');
       var esImagen = file.type && file.type.indexOf('image/')===0;
       var subida = esImagen
-        ? comprimirImagen(file).then(function(dataUrl){
+        ? comprimirImagenEvidencia(file).then(function(dataUrl){
             return window.tcSbAgregarEvidencia(id, {
-              tipo:'imagen', imagen:dataUrl, subidoPor:yoNombre()
+              tipo:'imagen', imagen:dataUrl, subidoPor:yoNombre(), categoria:categoria
             });
           })
         // Documento (PDF/Word/etc.): va a Firebase Storage — un documento normal no cabe
@@ -484,7 +480,7 @@
             return st.mod.uploadBytes(sref, file).then(function(){ return st.mod.getDownloadURL(sref); });
           }).then(function(url){
             return window.tcSbAgregarEvidencia(id, {
-              tipo:'archivo', nombre:file.name, url:url, subidoPor:yoNombre()
+              tipo:'archivo', nombre:file.name, url:url, subidoPor:yoNombre(), categoria:categoria
             });
           });
       subida.then(function(){
@@ -492,6 +488,7 @@
         return cargarEvidencias(id);
       }).then(function(){
         render();
+        if (document.getElementById('alm-hist-evid-salida-'+id)) window.__almRefrescarEvidHist(id);
         if (window.mostrarPush) window.mostrarPush(esImagen?'📷 Evidencia agregada':'📄 Documento agregado','','✅');
       }).catch(function(err){
         console.error('[almacen] subirEvidencia:',err);
@@ -540,14 +537,37 @@
     window.__almRefrescarEvidHist(id);
   };
 
+  // Abre un documento (PDF/Word/etc.) en pestaña nueva. Si viene como data:
+  // (guardado directo en la base), lo convierte primero a blob: — Chrome
+  // permite abrir blob: sin problema, pero bloquea en silencio la navegación
+  // directa a data: en muchos casos, dejando la sensación de que "no pasó nada".
+  window.__almAbrirArchivo = function(src){
+    if (!src) return;
+    if (src.indexOf('data:') === 0){
+      fetch(src).then(function(r){ return r.blob(); }).then(function(blob){
+        window.open(URL.createObjectURL(blob), '_blank');
+      }).catch(function(){ window.open(src, '_blank'); });
+    } else {
+      window.open(src, '_blank');
+    }
+  };
+
   window.__almVerEvidencia = function(id, idx){
     var list=_evidenciasCache[id]||[]; var ev=list[idx]; if (!ev) return;
+    window.__almLightbox(ev.imagen, 'Evidencia de entrega', ev.subidoPor);
+  };
+
+  // Visor genérico dentro de la misma página — evita window.open(), que Chrome
+  // bloquea en silencio (sin ningún aviso) para imágenes tipo data:, dejando
+  // la sensación de "no pasó nada" al hacer clic.
+  window.__almLightbox = function(src, titulo, pie){
+    if (!src) return;
     construirModalHistorial();
     var box=document.getElementById('alm-modal-hist-box');
     box.classList.remove('wide');
-    box.innerHTML = '<h4>Evidencia de entrega<button onclick="event.stopPropagation();window.__almCerrarModal()">&times;</button></h4>'
-      + '<img class="alm-firma-full" src="'+esc(ev.imagen)+'" alt="Evidencia">'
-      + (ev.subidoPor?('<div style="font-size:12px;color:#64748b;font-weight:700;">Subida por '+esc(ev.subidoPor)+'</div>'):'');
+    box.innerHTML = '<h4>'+esc(titulo||'Evidencia')+'<button onclick="event.stopPropagation();window.__almCerrarModal()">&times;</button></h4>'
+      + '<img class="alm-firma-full" src="'+esc(src)+'" alt="Evidencia" style="width:100%;border-radius:10px;">'
+      + (pie?('<div style="font-size:12px;color:#64748b;font-weight:700;margin-top:8px;">Subida por '+esc(pie)+'</div>'):'');
     document.getElementById('alm-modal-hist').classList.add('show');
   };
 
@@ -1278,6 +1298,7 @@
     var origen=p.estado;
     if (p.tienePdfOriginal) window.__almVerPDF(id);
     window.tcSbActualizarSurtido(id, {estado:'en_preparacion'}).then(function(){
+      p.estado = 'en_preparacion'; render();
       window.tcSbAgregarHistorial(id, { de:origen, a:'en_preparacion', por:yoNombre() }).catch(function(){});
     }).catch(function(err){
       console.error('[almacen] descargarPDF:',err);
@@ -1358,6 +1379,7 @@
       entregaSolicitadaPor: yoNombre(),
       entregaSolicitadaEn: new Date().toISOString()
     }).then(function(){
+      p.entregaPendienteFirma = true; render();
       if(window.mostrarPush) window.mostrarPush('📦 Esperando firma', (p.folio||'')+' · pídele a quien recibe que firme en el kiosko', '✍️');
     }).catch(function(err){
       console.error('[almacen] pedirFirmaEntrega:',err);
@@ -1366,7 +1388,10 @@
   };
 
   window.__almCancelarFirmaEntrega = function(id){
-    window.tcSbActualizarSurtido(id, { entregaPendienteFirma:false }).catch(function(err){ console.error('[almacen] cancelarFirmaEntrega:',err); });
+    var p=buscarP(id);
+    window.tcSbActualizarSurtido(id, { entregaPendienteFirma:false }).then(function(){
+      if (p){ p.entregaPendienteFirma=false; render(); }
+    }).catch(function(err){ console.error('[almacen] cancelarFirmaEntrega:',err); });
   };
 
   window.__almAbrirCancelar = function(id){
@@ -1630,29 +1655,67 @@
     });
   }
 
+  // Alta calidad para evidencia/documentos auditables — a diferencia de
+  // comprimirImagen() (pensada para fotos de perfil pequeñas), esta conserva
+  // resolución suficiente para leer texto fino (facturas, remisiones, etc.).
+  // Ya no aplica el límite de 1MB por documento que tenía Firestore, así que
+  // hay mucho más margen: hasta 2200px de ancho, calidad 0.9.
+  function comprimirImagenEvidencia(file){
+    return new Promise(function(resolve,reject){
+      var reader = new FileReader();
+      reader.onload = function(e){
+        var img = new Image();
+        img.onload = function(){
+          var maxW = 2200;
+          var scale = Math.min(1, maxW/img.width);
+          var w = Math.max(1,Math.round(img.width*scale)), h = Math.max(1,Math.round(img.height*scale));
+          var c = document.createElement('canvas'); c.width=w; c.height=h;
+          var cx = c.getContext('2d');
+          cx.fillStyle = '#ffffff'; cx.fillRect(0,0,w,h);
+          cx.drawImage(img,0,0,w,h);
+          resolve(c.toDataURL('image/jpeg',0.9));
+        };
+        img.onerror = reject;
+        img.src = e.target.result;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
   // =====================================================================
   //  CONEXIÓN EN VIVO
   // =====================================================================
+  function _alPedidosActualizados(arr){
+    var idsActuales={};
+    arr.forEach(function(p){ idsActuales[p.id]=true; });
+    if(_conocidos===null){
+      _conocidos = idsActuales;              // primera carga: no notificar nada retroactivo
+    } else {
+      arr.forEach(function(p){
+        if(!_conocidos[p.id]) notificarPedidoNuevo(p);
+      });
+      _conocidos = idsActuales;
+    }
+    pedidos=arr; render();
+  }
+  var _pollRespaldo = null;
   function suscribir(){
     if(_unsub) return;
     var cont=contenedor();
     if(cont && !cont.querySelector('#alm-toolbar')) cont.innerHTML='<div class="alm-loading">Conectando con Supabase…</div>';
-    _unsub=window.tcSbSuscribirSurtidos(function(arr){
-      var idsActuales={};
-      arr.forEach(function(p){ idsActuales[p.id]=true; });
-      if(_conocidos===null){
-        _conocidos = idsActuales;              // primera carga: no notificar nada retroactivo
-      } else {
-        arr.forEach(function(p){
-          if(!_conocidos[p.id]) notificarPedidoNuevo(p);
-        });
-        _conocidos = idsActuales;
-      }
-      pedidos=arr; render();
-    }, function(err){
+    _unsub=window.tcSbSuscribirSurtidos(_alPedidosActualizados, function(err){
       console.error('[almacen] suscripción Supabase:',err);
       if(cont) cont.innerHTML='<div class="alm-loading">Error al leer <b>surtidos</b>: '+esc(err.message||err)+'</div>';
     });
+    // Respaldo: por si un solo evento en vivo se pierde (pasa ocasionalmente con
+    // websockets, sin que sea culpa de nadie), esto se autocorrige solo cada
+    // 30s en vez de quedarse desactualizado hasta un refresco de página completo.
+    if(!_pollRespaldo){
+      _pollRespaldo = setInterval(function(){
+        window.tcSbListarTodosSurtidos().then(_alPedidosActualizados).catch(function(){});
+      }, 30000);
+    }
   }
 
   // =====================================================================
@@ -1668,6 +1731,7 @@
 
   // ── Historial de entregas: buscador por folio/cliente/solicitante/recibió + rango de fechas + exportar PDF ──
   var _repEntregas = null;   // caché de la última carga [{...}]
+  var _repSeleccion = {};    // id -> true, para exportar/imprimir por selección
 
   function cargarEntregas(){
     return window.tcSbSurtidosPorEstados(['entregado','finalizado','cancelado']).then(function(lista){
@@ -1743,6 +1807,33 @@
       + '<span style="font-size:12px;">—</span>'+etiqueta+'</div>';
   }
 
+  function actualizarContadorSeleccion(){
+    var n = Object.keys(_repSeleccion).length;
+    var el = document.getElementById('alm-rep-cont-sel');
+    if (el) el.textContent = n ? (n+' seleccionado'+(n===1?'':'s')) : '';
+  }
+  window.__almRepToggleUno = function(id, marcado){
+    if (marcado) _repSeleccion[id] = true; else delete _repSeleccion[id];
+    actualizarContadorSeleccion();
+  };
+  window.__almRepToggleTodos = function(marcado){
+    var filtros = leerFiltrosReporte();
+    var lista = filtrarEntregas(_repEntregas||[], filtros);
+    _repSeleccion = {};
+    if (marcado) lista.forEach(function(e){ _repSeleccion[e.id]=true; });
+    renderTablaReporte();
+    actualizarContadorSeleccion();
+  };
+  // Devuelve la lista a exportar: si hay algo seleccionado, solo eso;
+  // si no, todo lo que esté visible con el filtro actual.
+  function listaParaExportar(){
+    var filtros = leerFiltrosReporte();
+    var lista = filtrarEntregas(_repEntregas||[], filtros);
+    var idsSel = Object.keys(_repSeleccion);
+    if (idsSel.length) lista = lista.filter(function(e){ return _repSeleccion[e.id]; });
+    return lista;
+  }
+
   function renderTablaReporte(){
     if(!_repEntregas) return;
     var filtros = leerFiltrosReporte();
@@ -1763,16 +1854,19 @@
       var colorBorde = esCancelado ? '#dc2626' : (e.remisionado ? '#16a34a' : '#f59e0b');
 
       var chips = ''
-        + chipAdjunto('Salida', !!e.evidSalida, e.evidSalida ? ('window.open(\''+esc(e.evidSalida.imagen||e.evidSalida.url||'')+'\',\'_blank\')') : '')
-        + chipAdjunto('Remisión', !!e.evidRemision, e.evidRemision ? ('window.open(\''+esc(e.evidRemision.imagen||e.evidRemision.url||'')+'\',\'_blank\')') : '')
+        + chipAdjunto('Salida', !!e.evidSalida, e.evidSalida ? (e.evidSalida.imagen ? ('window.__almLightbox(\''+esc(e.evidSalida.imagen)+'\',\'Evidencia de salida\')') : ('window.open(\''+esc(e.evidSalida.url||'')+'\',\'_blank\')')) : '')
+        + chipAdjunto('Remisión', !!e.evidRemision, e.evidRemision ? (e.evidRemision.imagen ? ('window.__almLightbox(\''+esc(e.evidRemision.imagen)+'\',\'Evidencia de remisión\')') : ('window.open(\''+esc(e.evidRemision.url||'')+'\',\'_blank\')')) : '')
         + chipAdjunto('Documento', e.numDocumentos>0, 'window.__almVerDetalleHistorial(\''+e.id+'\')')
         + chipAdjunto('PDF original', e.tienePdfOriginal, 'window.__almVerPDF(\''+e.id+'\')')
         + chipAdjunto('Carátula envío', !!e.caratulaEnvio, 'window.__almVerDetalleHistorial(\''+e.id+'\')');
 
       return '<div class="alm-rep-card" style="border-left-color:'+colorBorde+'" onclick="window.__almVerDetalleHistorial(\''+e.id+'\')">'
         + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px;">'
-        +   '<div><div style="font-size:16px;font-weight:800;color:#0f172a;">'+esc(e.folio)+'</div>'
-        +   '<div style="font-size:12.5px;font-weight:700;color:#334155;">'+esc(e.cliente||'—')+'</div></div>'
+        +   '<div style="display:flex;gap:8px;align-items:flex-start;">'
+        +     '<input type="checkbox" onclick="event.stopPropagation();window.__almRepToggleUno(\''+e.id+'\',this.checked)" '+(_repSeleccion[e.id]?'checked':'')+' style="margin-top:4px;width:15px;height:15px;cursor:pointer;flex-shrink:0;">'
+        +     '<div><div style="font-size:16px;font-weight:800;color:#0f172a;">'+esc(e.folio)+'</div>'
+        +     '<div style="font-size:12.5px;font-weight:700;color:#334155;">'+esc(e.cliente||'—')+'</div></div>'
+        +   '</div>'
         +   '<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;">'+tagTipo+tagEstado+'</div>'
         + '</div>'
         + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 14px;font-size:11.5px;color:#475569;margin-bottom:10px;">'
@@ -1819,29 +1913,31 @@
       + '</div>'
       + (e.firma ? '<div style="margin-bottom:10px;"><div style="font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:4px;">FIRMA DEL SOLICITANTE</div><img src="'+esc(e.firma)+'" style="max-width:220px;border:1px solid #e2e8f0;border-radius:8px;cursor:pointer;" onclick="window.__almVerFirmaId(\''+e.id+'\',\'sol\')"></div>' : '')
       + (e.firmaEntrega ? '<div style="margin-bottom:14px;"><div style="font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:4px;">FIRMA DE ENTREGA</div><img src="'+esc(e.firmaEntrega)+'" style="max-width:220px;border:1px solid #e2e8f0;border-radius:8px;cursor:pointer;" onclick="window.__almVerFirmaId(\''+e.id+'\',\'entrega\')"></div>' : '')
-      + '<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#94a3b8;margin-bottom:6px;">Evidencia de salida de almacén</div>'
+      + '<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#94a3b8;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;">Evidencia de salida de almacén'
+      +   '<button type="button" onclick="event.stopPropagation();window.__almSubirEvidencia(\''+e.id+'\',\'salida\')" style="text-transform:none;letter-spacing:normal;font-size:10.5px;font-weight:700;color:#0891b2;background:#fff;border:1px dashed #cbd5e1;border-radius:6px;padding:3px 9px;cursor:pointer;">+ Subir</button></div>'
       + '<div class="alm-evid-grid" id="alm-hist-evid-salida-'+e.id+'"><div style="color:#94a3b8;font-size:12px;">Cargando…</div></div>'
-      + '<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#94a3b8;margin:14px 0 6px;">Evidencia de remisión'+(e.remisionado?' · <span style="color:#16a34a;">✓ Remisionado</span>':'')+'</div>'
+      + '<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#94a3b8;margin:14px 0 6px;display:flex;align-items:center;justify-content:space-between;"><span>Evidencia de remisión'+(e.remisionado?' · <span style="color:#16a34a;">✓ Remisionado</span>':'')+'</span>'
+      +   '<button type="button" onclick="event.stopPropagation();window.__almSubirEvidencia(\''+e.id+'\',\'remision\')" style="text-transform:none;letter-spacing:normal;font-size:10.5px;font-weight:700;color:#0891b2;background:#fff;border:1px dashed #cbd5e1;border-radius:6px;padding:3px 9px;cursor:pointer;">+ Subir</button></div>'
       + '<div class="alm-evid-grid" id="alm-hist-evid-remision-'+e.id+'"><div style="color:#94a3b8;font-size:12px;">Cargando…</div></div>'
       + '<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#94a3b8;margin:14px 0 6px;">Documentos adjuntos (órdenes de compra, etc.)</div>'
-      + '<div id="alm-hist-docs-'+e.id+'" style="font-size:12px;color:#94a3b8;">Cargando…</div>';
+      + '<div id="alm-hist-docs-'+e.id+'" style="font-size:12px;color:#94a3b8;">Cargando…</div>'
+      + '<input type="file" accept="image/*,.pdf,.doc,.docx" id="alm-evid-file-'+e.id+'" style="display:none">';
     document.getElementById('alm-modal-hist').classList.add('show');
     window.__almRefrescarEvidHist(e.id);
     window.tcSbListarDocumentos(e.id).then(function(docs){
       var cont = document.getElementById('alm-hist-docs-'+e.id);
       if (!cont) return;
       cont.innerHTML = docs.length ? docs.map(function(d){
-        return '<a href="'+esc(d.archivo||'#')+'" target="_blank" style="display:inline-flex;align-items:center;gap:5px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;padding:5px 10px;font-size:11.5px;font-weight:600;color:#334155;text-decoration:none;margin:0 6px 6px 0;">📎 '+esc(d.nombre||'Documento')+'</a>';
+        return '<a href="#" onclick="event.preventDefault();window.__almAbrirArchivo(\''+esc(d.archivo||'')+'\')" style="display:inline-flex;align-items:center;gap:5px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;padding:5px 10px;font-size:11.5px;font-weight:600;color:#334155;text-decoration:none;margin:0 6px 6px 0;cursor:pointer;">📎 '+esc(d.nombre||'Documento')+'</a>';
       }).join('') : '<span style="color:#94a3b8;">Sin documentos adjuntos.</span>';
     }).catch(function(){});
   };
 
   window.__almVerCaratula = function(id){
-    var e = (_repEntregas||[]).find(function(x){ return x.id===id; });
-    if(!e || !e.caratulaEnvio) return;
-    var c = e.caratulaEnvio;
-    var src = typeof c === 'string' ? c : (c.imagen || c.url || c.archivo || '');
-    if (src) window.open(src, '_blank');
+    var p = buscarP(id) || (_repEntregas||[]).find(function(x){ return x.id===id; });
+    if (!p || !p.caratulaEnvio) return;
+    var w = window.open();
+    if (w){ w.document.write(construirCaratulaHTML(p.caratulaEnvio)); w.document.close(); }
   };
 
   window.__almRefrescarEvidHist = function(id){
@@ -1852,7 +1948,7 @@
         if(!cont) return; // el modal ya se cerró
         cont.innerHTML = items.length
           ? items.map(function(ev){
-              if (ev.imagen) return '<img class="alm-evid-thumb" src="'+esc(ev.imagen)+'" onclick="window.open(this.src,\'_blank\')">';
+              if (ev.imagen) return '<img class="alm-evid-thumb" src="'+esc(ev.imagen)+'" onclick="window.__almLightbox(this.src,\'Evidencia\',\''+esc(ev.subidoPor||'')+'\')" style="cursor:pointer;">';
               return '<a href="'+esc(ev.url||'#')+'" target="_blank" class="alm-evid-thumb alm-evid-doc" style="display:flex;flex-direction:column;align-items:center;justify-content:center;text-decoration:none;color:#334155;background:#f8fafc;"><span style="font-size:20px;">📄</span><span style="font-size:9px;text-align:center;padding:0 3px;word-break:break-word;">'+esc(ev.nombre||'Documento')+'</span></a>';
             }).join('')
           : '<div style="color:#94a3b8;font-size:12px;">Sin evidencia.</div>';
@@ -1888,9 +1984,14 @@
       +   '<div class="alm-rep-fld"><label>Hasta</label><input type="date" id="alm-rep-hasta"></div>'
       +   '<div class="alm-rep-fld grow"><label>Buscar (folio de pedido, folio de remisión, cliente, solicitó, recibió)</label><input type="text" id="alm-rep-q" placeholder="Ej. CHH0007635, CHH0007599 (remisión), Victor…"></div>'
       +   '<button class="alm-rep-btn sec" type="button" onclick="window.__almRecargarReporte()">↻ Recargar</button>'
-      +   '<button class="alm-rep-btn" type="button" onclick="window.__almExportarReportePDF()">⬇ Exportar PDF</button>'
+      +   '<button class="alm-rep-btn sec" type="button" onclick="window.__almExportarReporteExcel()">⬇ Excel</button>'
+      +   '<button class="alm-rep-btn sec" type="button" onclick="window.__almExportarReportePDF()">⬇ PDF resumen</button>'
+      +   '<button class="alm-rep-btn" type="button" onclick="window.__almExportarReportePDFDetallado()">⬇ PDF con evidencia</button>'
       + '</div>'
-      + '<div class="alm-rep-summary" id="alm-rep-resumen">Cargando…</div>'
+      + '<div class="alm-rep-summary" id="alm-rep-resumen">Cargando…'
+      +   ' <label style="margin-left:14px;font-weight:600;cursor:pointer;"><input type="checkbox" id="alm-rep-check-todos" onchange="window.__almRepToggleTodos(this.checked)"> Seleccionar todos</label>'
+      +   ' <span id="alm-rep-cont-sel" style="margin-left:8px;color:#1473e6;font-weight:700;"></span>'
+      + '</div>'
       + '<div class="alm-rep-cards" id="alm-rep-cards"><div style="grid-column:1/-1;text-align:center;color:#94a3b8;padding:30px;">Cargando…</div></div>';
     document.getElementById('alm-modal-hist').classList.add('show');
 
@@ -2497,8 +2598,7 @@
 
   window.__almExportarReportePDF = function(){
     if(!window.jspdf){ if(window.mostrarPush) window.mostrarPush('Almacén','Librería PDF no cargada','⚠️'); return; }
-    var filtros = leerFiltrosReporte();
-    var lista = filtrarEntregas(_repEntregas||[], filtros);
+    var lista = listaParaExportar();
     var jsPDF = window.jspdf.jsPDF;
     var docu = new jsPDF({ orientation:'landscape', unit:'mm', format:'letter' });
     var PW=279.4, PH=215.9, ML=12, MR=12;
@@ -2520,8 +2620,8 @@
     function encabezadoTabla(y){
       docu.setFillColor(248,250,252); docu.rect(ML, y-4.5, PW-ML-MR, 7, 'F');
       docu.setFont('helvetica','bold'); docu.setFontSize(7.5); docu.setTextColor(71,85,105);
-      var cols=['FOLIO','TIPO','CLIENTE','SOLICITÓ','RECIBIÓ','F. SOLICITUD','F. ENTREGA','PZAS'];
-      var xs=[ML+1, 40, 62, 108, 148, 188, 216, 248];
+      var cols=['FOLIO','TIPO','CLIENTE','SOLICITÓ','RECIBIÓ','F. SOLICITUD','F. ENTREGA','PZAS','FOLIO REMISIÓN'];
+      var xs=[ML+1, 38, 58, 100, 138, 172, 198, 224, 236];
       cols.forEach(function(c,i){ docu.text(c, xs[i], y); });
       return xs;
     }
@@ -2533,18 +2633,125 @@
     lista.forEach(function(e){
       if(y > PH-16){ piePagina(pageNum); docu.addPage(); pageNum++; y=30; encabezado(); xs=encabezadoTabla(y); y+=7; docu.setFont('helvetica','normal'); docu.setFontSize(7.8); docu.setTextColor(30,41,59); }
       var esCancelado = e.estado==='cancelado';
-      docu.text(String(e.folio||'—').slice(0,16), xs[0], y);
+      docu.text(String(e.folio||'—').slice(0,14), xs[0], y);
       docu.text(e.tipo==='material'?'Material':'Venta', xs[1], y);
-      docu.text(String(e.cliente||'—').slice(0,22), xs[2], y);
-      docu.text(String(e.solicito||'—').slice(0,18), xs[3], y);
-      docu.text(esCancelado ? ('CANCELADO: '+String(e.motivoCancelacion||'—').slice(0,22)) : String(e.recibio||'—').slice(0,18), xs[4], y);
+      docu.text(String(e.cliente||'—').slice(0,18), xs[2], y);
+      docu.text(String(e.solicito||'—').slice(0,15), xs[3], y);
+      docu.text(esCancelado ? ('CANCEL: '+String(e.motivoCancelacion||'—').slice(0,15)) : String(e.recibio||'—').slice(0,15), xs[4], y);
       docu.text(fmtFecha(e.creadoMs), xs[5], y);
       docu.text(esCancelado ? fmtFecha(e.canceladoMs) : fmtFecha(e.entregadoMs), xs[6], y);
       docu.text(String(e.piezas), xs[7], y);
+      docu.text(String(e.remisionAspelFolio||'—').slice(0,16), xs[8], y);
       y += 6;
     });
     piePagina(pageNum);
     docu.save('historial-entregas-tecnocontrol.pdf');
+  };
+
+  // ── Exportar a Excel (todos los campos, una fila por pedido) ──────────
+  window.__almExportarReporteExcel = function(){
+    if(!window.XLSX){ if(window.mostrarPush) window.mostrarPush('Almacén','Librería Excel no cargada','⚠️'); return; }
+    var lista = listaParaExportar();
+    var filas = lista.map(function(e){
+      var esCancelado = e.estado==='cancelado';
+      return {
+        'Folio': e.folio||'', 'Tipo': e.tipo==='material'?'Material':'Venta', 'Cliente': e.cliente||'',
+        'Solicitó': e.solicito||'', 'Estado': e.estado||'',
+        'Recibió': esCancelado?'':(e.recibio||''), 'Motivo de cancelación': esCancelado?(e.motivoCancelacion||''):'',
+        'Fecha de solicitud': fmtFecha(e.creadoMs), 'Fecha de entrega/cancelación': fmtFecha(esCancelado?e.canceladoMs:e.entregadoMs),
+        'Piezas': e.piezas, 'Folio remisión Aspel': e.remisionAspelFolio||'',
+        'Fecha remisión': e.remisionAspelFecha?fmtFecha(new Date(e.remisionAspelFecha).getTime()):'',
+        'Remisionado': e.remisionado?'Sí':'No',
+        'Tiene evidencia de salida': e.evidSalida?'Sí':'No', 'Tiene evidencia de remisión': e.evidRemision?'Sí':'No',
+        'Documentos adjuntos': e.numDocumentos||0, 'Tiene PDF original': e.tienePdfOriginal?'Sí':'No',
+        'Tiene carátula de envío': e.caratulaEnvio?'Sí':'No',
+      };
+    });
+    var hoja = window.XLSX.utils.json_to_sheet(filas);
+    var libro = window.XLSX.utils.book_new();
+    window.XLSX.utils.book_append_sheet(libro, hoja, 'Historial');
+    window.XLSX.writeFile(libro, 'historial-entregas-tecnocontrol.xlsx');
+  };
+
+  // ── Exportar a PDF detallado: una página por pedido, con evidencia
+  //    incrustada de verdad (no solo texto) — para auditoría. ───────────
+  window.__almExportarReportePDFDetallado = function(){
+    if(!window.jspdf){ if(window.mostrarPush) window.mostrarPush('Almacén','Librería PDF no cargada','⚠️'); return; }
+    var lista = listaParaExportar();
+    if (!lista.length){ if(window.mostrarPush) window.mostrarPush('Almacén','No hay nada que exportar con este filtro/selección','⚠️'); return; }
+    if (lista.length > 40 && !confirm('Vas a exportar '+lista.length+' pedidos con evidencia — puede tardar un poco y el archivo puede pesar varios MB. ¿Continuar?')) return;
+
+    var jsPDF = window.jspdf.jsPDF;
+    var docu = new jsPDF({ orientation:'portrait', unit:'mm', format:'letter' });
+    var PW=215.9, PH=279.4, ML=14, MR=14;
+
+    if (window.mostrarPush) window.mostrarPush('Almacén','Generando PDF detallado…','⏳');
+
+    // Trae evidencia/documentos completos de cada pedido de la lista (uno por
+    // uno — necesitamos la imagen real, no solo si existe o no).
+    Promise.all(lista.map(function(e){
+      return window.tcSbListarEvidencias(e.id).then(function(evid){ return { e:e, evid:evid }; }).catch(function(){ return { e:e, evid:[] }; });
+    })).then(function(items){
+      items.forEach(function(item, idx){
+        var e = item.e, evid = item.evid;
+        if (idx>0) docu.addPage();
+        var y = 18;
+        docu.setFillColor(10,15,30); docu.rect(0,0,PW,16,'F');
+        docu.setTextColor(255,255,255); docu.setFont('helvetica','bold'); docu.setFontSize(12);
+        docu.text('TECNOCONTROL · '+String(e.folio||'—'), ML, 10);
+        docu.setTextColor(30,41,59);
+        y = 24;
+        docu.setFont('helvetica','normal'); docu.setFontSize(9.5);
+        var esCancelado = e.estado==='cancelado';
+        var lineas = [
+          ['Cliente', e.cliente||'—'], ['Tipo', e.tipo==='material'?'Material':'Venta'],
+          ['Solicitó', e.solicito||'—'], ['Estado', e.estado||'—'],
+          [esCancelado?'Motivo cancelación':'Recibió', esCancelado?(e.motivoCancelacion||'—'):(e.recibio||'—')],
+          ['Fecha solicitud', fmtFecha(e.creadoMs)], [esCancelado?'Fecha cancelación':'Fecha entrega', fmtFecha(esCancelado?e.canceladoMs:e.entregadoMs)],
+          ['Piezas', String(e.piezas)], ['Folio remisión Aspel', e.remisionAspelFolio||'sin remisionar'],
+        ];
+        lineas.forEach(function(l){
+          docu.setFont('helvetica','bold'); docu.text(l[0]+':', ML, y);
+          docu.setFont('helvetica','normal'); docu.text(String(l[1]), ML+42, y);
+          y += 6;
+        });
+        y += 2;
+        // Artículos
+        if (e.productos && e.productos.length){
+          docu.setFont('helvetica','bold'); docu.setFontSize(9.5); docu.text('ARTÍCULOS', ML, y); y+=5;
+          docu.setFont('helvetica','normal'); docu.setFontSize(8.5);
+          e.productos.forEach(function(p){
+            if (y > PH-30) return; // no seguimos empujando la página aquí, la evidencia va después de todos modos
+            docu.text('• '+String(p.desc||'—')+' ×'+String(p.cant||0), ML, y); y+=5;
+          });
+          y += 3;
+        }
+        // Evidencia — incrustada de verdad (son imágenes base64, jsPDF las
+        // acepta directo con addImage).
+        docu.setFont('helvetica','bold'); docu.setFontSize(9.5); docu.text('EVIDENCIA', ML, y); y+=5;
+        var imgs = evid.filter(function(ev){ return ev.imagen; });
+        if (!imgs.length){
+          docu.setFont('helvetica','normal'); docu.setFontSize(8.5); docu.setTextColor(148,163,184);
+          docu.text('Sin evidencia adjunta.', ML, y); docu.setTextColor(30,41,59); y+=6;
+        } else {
+          var anchoImg = 55, altoImg = 40, porFila = 3, gap = 4, x = ML;
+          imgs.forEach(function(ev, i){
+            if (i>0 && i%porFila===0){ x = ML; y += altoImg + 8; }
+            if (y + altoImg > PH-14){ docu.addPage(); y = 20; x = ML; }
+            try { docu.addImage(ev.imagen, 'JPEG', x, y, anchoImg, altoImg); } catch(err){ /* imagen corrupta, se omite */ }
+            docu.setFontSize(6.5); docu.setTextColor(100,116,139);
+            docu.text((ev.categoria==='remision'?'Remisión':'Salida')+(ev.subidoPor?(' · '+ev.subidoPor):''), x, y+altoImg+3.5);
+            docu.setTextColor(30,41,59);
+            x += anchoImg + gap;
+          });
+        }
+      });
+      docu.save('historial-detallado-con-evidencia.pdf');
+      if (window.mostrarPush) window.mostrarPush('Almacén','PDF generado','✅');
+    }).catch(function(err){
+      console.error('[almacen] exportar detallado:', err);
+      if (window.mostrarPush) window.mostrarPush('Almacén','No se pudo generar el PDF','⚠️');
+    });
   };
 
   console.log('[almacen.js] ✅ Centro de Surtido cargado (flujo + picking + SLA)');

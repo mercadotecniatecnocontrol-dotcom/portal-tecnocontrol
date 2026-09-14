@@ -26,7 +26,7 @@
   };
 
   var contId = 'vista-mis-pedidos';
-  var _fs = null, _unsubV = null, _unsubM = null, _unsubC = null, _cssOk = false;
+  var _unsubTodos = null, _cssOk = false;
   var _pedidosVendedor = [], _pedidosSolicitante = [], _pedidosCreador = [];
   var _evidCache = {};
   var _histCache = {};
@@ -110,27 +110,18 @@
 
   function cargarEvidencias(id){
     if (_evidCache[id]) return Promise.resolve(_evidCache[id]);
-    return cargarFirestore().then(function(fs){
-      return fs.getDocs(fs.collection(window.db,'surtidos',id,'evidencias'));
-    }).then(function(snap){
-      var list=[]; snap.forEach(function(d){ list.push(Object.assign({id:d.id}, d.data())); });
+    return window.tcSbListarEvidencias(id).then(function(list){
       _evidCache[id]=list; return list;
     }).catch(function(){ _evidCache[id]=[]; return []; });
   }
 
   function cargarHistorial(id){
     if (_histCache[id]) return Promise.resolve(_histCache[id]);
-    return cargarFirestore().then(function(fs){
-      var col = fs.collection(window.db,'surtidos',id,'historial');
-      var q; try{ q = fs.query(col, fs.orderBy('ts','asc')); }catch(e){ q = col; }
-      return fs.getDocs(q);
-    }).then(function(snap){
-      var list=[];
-      snap.forEach(function(d){
-        var x = d.data() || {};
-        list.push({ de:x.de||'', a:x.a||'', por:x.por||'', nota:x.nota||'', ts: toMs(x.ts) });
+    return window.tcSbListarHistorial(id).then(function(list){
+      var conv = list.map(function(x){
+        return { de:x.de||'', a:x.a||'', por:x.por||'', nota:x.nota||'', ts: x.ts ? new Date(x.ts).getTime() : 0 };
       });
-      _histCache[id]=list; return list;
+      _histCache[id]=conv; return conv;
     }).catch(function(){ _histCache[id]=[]; return []; });
   }
 
@@ -284,10 +275,9 @@
       + '</div>';
   }
 
-  function mapDoc(docu){
-    var d = docu.data() || {};
+  function mapDoc(d){
     return {
-      id: docu.id,
+      id: d.id,
       folio: d.folio||'\u2014', cliente: d.cliente||'', vendedor: d.vendedor||'', solicitante: d.solicitante||'',
       creadoPor: d.creadoPor||'',
       estado: d.estado||'pendiente', tipo: d.tipo||'venta', productos: Array.isArray(d.productos)?d.productos:[],
@@ -296,38 +286,29 @@
       destinoTipo: d.destinoTipo||'', destinoPaqueteria: d.destinoPaqueteria||'', destinoGuia: d.destinoGuia||'',
       destinoDireccion: d.destinoDireccion||'', destinoAlmacenOrigen: d.destinoAlmacenOrigen||'', destinoAlmacenDestino: d.destinoAlmacenDestino||'',
       comentariosAlmacen: d.comentariosAlmacen||'',
-      createdAt: toMs(d.createdAt)
+      createdAt: d.createdAt||0
     };
   }
 
   window.renderMisPedidos = function(){
     var cont = contenedor();
-    if (cont && !_unsubV) cont.innerHTML = '<div class="mp-empty">Cargando tus pedidos\u2026</div>';
+    if (cont && !_unsubTodos) cont.innerHTML = '<div class="mp-empty">Cargando tus pedidos\u2026</div>';
     construirModal();
     var nombre = yoNombre();
     var email = (window.auth && window.auth.currentUser && window.auth.currentUser.email) || '';
     if (!email){ if(cont) cont.innerHTML='<div class="mp-empty">Inicia sesi\u00f3n para ver tus pedidos.</div>'; return; }
 
-    cargarFirestore().then(function(fs){
-      if (!window.db) return;
-      if (!_unsubV && nombre){
-        _unsubV = fs.onSnapshot(fs.query(fs.collection(window.db,'surtidos'), fs.where('vendedor','==',nombre)), function(snap){
-          _pedidosVendedor = snap.docs.map(mapDoc); render();
-        }, function(err){ console.error('[mis-pedidos] vendedor:',err); });
-      }
-      if (!_unsubM && nombre){
-        _unsubM = fs.onSnapshot(fs.query(fs.collection(window.db,'surtidos'), fs.where('solicitante','==',nombre)), function(snap){
-          _pedidosSolicitante = snap.docs.map(mapDoc); render();
-        }, function(err){ console.error('[mis-pedidos] solicitante:',err); });
-      }
-      if (!_unsubC){
+    if (!_unsubTodos){
+      _unsubTodos = window.tcSbSuscribirSurtidos(function(arr){
+        var mapeados = arr.map(mapDoc);
+        _pedidosVendedor = nombre ? mapeados.filter(function(p){ return p.vendedor===nombre; }) : [];
+        _pedidosSolicitante = nombre ? mapeados.filter(function(p){ return p.solicitante===nombre; }) : [];
         // El enlace más confiable: el correo de quien realmente subió/creó el pedido (creadoPor),
         // independiente de lo que diga el campo de texto "vendedor".
-        _unsubC = fs.onSnapshot(fs.query(fs.collection(window.db,'surtidos'), fs.where('creadoPor','==',email)), function(snap){
-          _pedidosCreador = snap.docs.map(mapDoc); render();
-        }, function(err){ console.error('[mis-pedidos] creadoPor:',err); });
-      }
-    });
+        _pedidosCreador = email ? mapeados.filter(function(p){ return p.creadoPor===email; }) : [];
+        render();
+      }, function(err){ console.error('[mis-pedidos] suscripción:',err); });
+    }
   };
 
   console.log('[mis-pedidos.js] \u2705 M\u00f3dulo de perfil cargado');
