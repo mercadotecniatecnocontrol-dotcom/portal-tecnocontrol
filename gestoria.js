@@ -63,6 +63,7 @@
         calendario: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
         cerrar:     '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
         certificado:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="6"/><path d="M8.5 13.5 6 22l6-3 6 3-2.5-8.5"/></svg>',
+        libro:      '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>',
     };
 
     // CATÁLOGO DE REEMPLAZO (idéntico a mapeo_valores.py)
@@ -1131,6 +1132,14 @@
             // de la celda, sin acercarse al alto de la fila (para no
             // forzarla a crecer y mover el resto del encabezado).
             await insertarImagenEnGrupo(zip, xmlDoc, rutaXml, grupoRuns, dataUrl, ctxImg, 60, 245);
+        } else if (_seccionActual === 'manuales') {
+            // La celda de LOGO en estos machotes mide ~149px de ancho
+            // (2235 dxa) y la columna vertical que ocupa (fusionada con
+            // vMerge a lo largo de razón social + PL + domicilio) mide
+            // en total ~63px de alto (943 dxa) — mucho más chica y
+            // achatada que la celda cuadrada de SASISOPA (105x105), que
+            // se salía del espacio disponible.
+            await insertarImagenEnGrupo(zip, xmlDoc, rutaXml, grupoRuns, dataUrl, ctxImg, 45, 130);
         } else {
             await insertarImagenEnGrupo(zip, xmlDoc, rutaXml, grupoRuns, dataUrl, ctxImg, 105, 105);
         }
@@ -4947,6 +4956,12 @@
         return ref.id;
     }
 
+    async function eliminarCliente(id) {
+        const { doc, deleteDoc } = await fsFns();
+        const sis = sistemaActivo();
+        await deleteDoc(doc(window.db, sis.coleccion, id));
+    }
+
     // ESTILOS (tokens tomados de las variables CSS del portal)
     function inyectarEstilosGestoria() {
         if (document.getElementById('gestoria-estilos')) return;
@@ -4987,6 +5002,8 @@
         #gestoria-dashboard .gs-btn-primary:disabled{background:#cbd5e1;box-shadow:none;cursor:not-allowed;transform:none;}
         #gestoria-dashboard .gs-btn-secondary{background:#fff;color:var(--text2);border:1px solid rgba(59,130,246,0.18);padding:10px 18px;}
         #gestoria-dashboard .gs-btn-secondary:hover{background:#f4f8ff;border-color:var(--teal);color:var(--teal2);}
+        #gestoria-dashboard .gs-btn-peligro{background:#fff;color:#dc2626;border:1px solid rgba(220,38,38,0.25);padding:10px 18px;margin-left:auto;}
+        #gestoria-dashboard .gs-btn-peligro:hover{background:#fef2f2;border-color:#dc2626;}
         #gestoria-dashboard .gs-btn-ghost{background:none;color:var(--teal2);padding:8px 10px;}
         #gestoria-dashboard .gs-btn-ghost:hover{background:rgba(37,99,235,0.08);}
 
@@ -5105,7 +5122,7 @@
             <div class="gs-rail-logo">${ICONO.edificio}</div>
             ${SECCIONES_GESTORIA.map(s => `
                 <button class="gs-rail-btn${_seccionActual === s.id ? ' activo' : ''}" data-seccion="${s.id}" ${s.activa ? '' : 'disabled'}>
-                    ${s.id === 'sasisopa' ? ICONO.carpeta : s.id === 'sgm' ? ICONO.graduacion : s.id === 'bitacoras' ? ICONO.reloj : s.id === 'manuales' ? ICONO.imagen : ICONO.certificado}
+                    ${s.id === 'sasisopa' ? ICONO.carpeta : s.id === 'sgm' ? ICONO.graduacion : s.id === 'bitacoras' ? ICONO.reloj : s.id === 'manuales' ? ICONO.libro : ICONO.certificado}
                     <span class="gs-rail-tooltip">${s.titulo}${s.activa ? '' : ' (próximamente)'}</span>
                 </button>`).join('')}
             <div class="gs-rail-divisor"></div>
@@ -5906,6 +5923,7 @@
                 <div class="gs-actions-bar">
                     <button id="gs-btn-guardar" class="gs-btn gs-btn-secondary">Guardar</button>
                     <button id="gs-btn-generar" class="gs-btn gs-btn-primary">${ICONO.descarga} Generar y descargar documentos</button>
+                    ${clienteId ? `<button id="gs-btn-eliminar" class="gs-btn gs-btn-peligro">${ICONO.papelera} Eliminar cliente</button>` : ''}
                     <div id="gs-progreso" class="gs-progreso"></div>
                 </div>
             </div>
@@ -5926,6 +5944,21 @@
             mostrarProgreso(cont, 'ok', ICONO.check + ' Guardado correctamente.');
         });
         cont.querySelector('#gs-btn-generar').addEventListener('click', () => generarDocumentos(cont));
+        const btnEliminar = cont.querySelector('#gs-btn-eliminar');
+        if (btnEliminar) {
+            btnEliminar.addEventListener('click', async () => {
+                const nombre = leerFormulario(cont)[sistemaActivo().campoNombre] || 'este cliente';
+                if (!window.confirm(`¿Eliminar "${nombre}"? Esta acción no se puede deshacer.`)) return;
+                btnEliminar.disabled = true;
+                try {
+                    await eliminarCliente(_clienteActualId);
+                    cargarGestoria();
+                } catch (e) {
+                    btnEliminar.disabled = false;
+                    mostrarProgreso(cont, 'error', ICONO.alerta + ' No se pudo eliminar: ' + e.message);
+                }
+            });
+        }
     }
 
     function renderDropzone(cont) {
