@@ -8161,6 +8161,8 @@ window.flPipelineModal = function(estInicial) {
       const group = estGroup[estActivo];
       return group ? group.includes(s.estatus) : s.estatus === estActivo;
     });
+    window.__flFlujoLista = lista;
+    window.__flFlujoEstado = estActivo;
     const total = flS.length || 1;
     const notaPaso = {
       Solicitud:   'El técnico registra la falla desde la app o portal. Fátima valida y avanza a evaluación.',
@@ -8235,6 +8237,14 @@ window.flPipelineModal = function(estInicial) {
               <span style="font-size:10px;font-weight:800;padding:3px 9px;background:#EFF6FF;color:#1D4ED8;border-radius:100px">
                 ${window.flGetRolActual?window.flGetRolActual():'—'}
               </span>
+              <button onclick="window.__flExportarFlujoExcel()" title="Exportar esta vista a Excel" style="display:flex;align-items:center;gap:5px;font-size:10px;font-weight:800;padding:6px 10px;border-radius:8px;border:1px solid #D1FAE5;background:#ECFDF5;color:#047857;cursor:pointer;font-family:inherit">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Excel
+              </button>
+              <button onclick="window.__flExportarFlujoPDF()" title="Exportar esta vista a PDF" style="display:flex;align-items:center;gap:5px;font-size:10px;font-weight:800;padding:6px 10px;border-radius:8px;border:1px solid #FEE2E2;background:#FEF2F2;color:#B91C1C;cursor:pointer;font-family:inherit">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                PDF
+              </button>
               <button onclick="document.getElementById('flpm-ov').remove()" style="width:30px;height:30px;border:none;border-radius:50%;background:#F1F5F9;cursor:pointer;font-size:17px;color:#64748B">✕</button>
             </div>
           </div>
@@ -8272,6 +8282,104 @@ window.flPipelineModal = function(estInicial) {
     renderModal();
   };
   renderModal();
+};
+
+// ═══════════════════════════════════════════════════════
+// EXPORTAR FLUJO DE SOLICITUDES — Excel y PDF
+// Exporta siempre la pestaña/estatus que se está viendo en ese momento
+// (Solicitud, Evaluación, Servicio, Rechazada o Cerrada), igual que se
+// ve en pantalla — así "exportar" nunca manda más ni menos de lo que
+// el usuario tiene enfrente.
+// ═══════════════════════════════════════════════════════
+function flFilasExportFlujo() {
+  const lista = window.__flFlujoLista || [];
+  return lista.map(function (s) {
+    const veh = flV.find(function (x) { return x.eco === s.vehiculoEco || x.id === s.vehiculoId; }) || {};
+    return {
+      id: (s.id || '').slice(-6).toUpperCase(),
+      fecha: s.creadoEn ? s.creadoEn.slice(0, 10) : '—',
+      eco: s.vehiculoEco || '—',
+      plaza: veh.plaza || s.plaza || '—',
+      tipo: s.tipo || '—',
+      solicitante: flNombrePorCorreo(s.solicitante || s.creadoPor) || '—',
+      taller: s.tallerNombre || '—',
+      monto: s.montoCotizacion ? Number(s.montoCotizacion) : null,
+      estatus: s.estatus || '—',
+      motivoRechazo: s.comentarioRechazo || '',
+    };
+  });
+}
+
+window.__flExportarFlujoExcel = function () {
+  if (!window.XLSX) { if (window.mostrarPush) window.mostrarPush('Flotilla', 'Librería Excel no cargada', '⚠️'); return; }
+  const filas = flFilasExportFlujo().map(function (f) {
+    return {
+      'ID': f.id, 'Fecha': f.fecha, 'ECO': f.eco, 'Plaza': f.plaza, 'Tipo': f.tipo,
+      'Solicitante': f.solicitante, 'Taller': f.taller,
+      'Monto cotización': f.monto != null ? f.monto : '',
+      'Estatus': f.estatus, 'Motivo de rechazo': f.motivoRechazo,
+    };
+  });
+  const estado = window.__flFlujoEstado || 'Solicitudes';
+  const hoja = window.XLSX.utils.json_to_sheet(filas);
+  const libro = window.XLSX.utils.book_new();
+  window.XLSX.utils.book_append_sheet(libro, hoja, estado.slice(0, 31));
+  window.XLSX.writeFile(libro, 'flotilla-solicitudes-' + estado.toLowerCase() + '-' + new Date().toISOString().slice(0, 10) + '.xlsx');
+};
+
+window.__flExportarFlujoPDF = function () {
+  if (!window.jspdf) { if (window.mostrarPush) window.mostrarPush('Flotilla', 'Librería PDF no cargada', '⚠️'); return; }
+  const filas = flFilasExportFlujo();
+  const estado = window.__flFlujoEstado || 'Solicitudes';
+  const jsPDF = window.jspdf.jsPDF;
+  const docu = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'letter' });
+  const PW = 279.4, PH = 215.9, ML = 12, MR = 12;
+
+  function encabezado() {
+    docu.setFillColor(10, 15, 30); docu.rect(0, 0, PW, 20, 'F');
+    docu.setTextColor(255, 255, 255); docu.setFont('helvetica', 'bold'); docu.setFontSize(13);
+    docu.text('TECNOCONTROL · Flotilla — Solicitudes: ' + estado, ML, 12);
+    docu.setFont('helvetica', 'normal'); docu.setFontSize(8);
+    docu.text('Generado: ' + new Date().toLocaleString('es-MX'), PW - MR, 12, { align: 'right' });
+    docu.setTextColor(30, 41, 59);
+  }
+  function piePagina(n) {
+    docu.setFillColor(10, 15, 30); docu.rect(0, PH - 9, PW, 9, 'F');
+    docu.setTextColor(180, 180, 180); docu.setFontSize(7);
+    docu.text('Página ' + n + '  ·  ' + filas.length + ' registro(s)', PW / 2, PH - 4, { align: 'center' });
+  }
+  function encabezadoTabla(y) {
+    docu.setFillColor(248, 250, 252); docu.rect(ML, y - 4.5, PW - ML - MR, 7, 'F');
+    docu.setFont('helvetica', 'bold'); docu.setFontSize(7.5); docu.setTextColor(71, 85, 105);
+    const cols = ['ID', 'FECHA', 'ECO', 'PLAZA', 'TIPO', 'SOLICITANTE', 'TALLER', 'MONTO', 'ESTATUS', 'MOTIVO RECHAZO'];
+    const xs = [ML + 1, 28, 44, 60, 82, 118, 158, 194, 218, 240];
+    cols.forEach(function (c, i) { docu.text(c, xs[i], y); });
+    return xs;
+  }
+
+  let pageNum = 1, y = 30;
+  encabezado(); let xs = encabezadoTabla(y); y += 7;
+  docu.setFont('helvetica', 'normal'); docu.setFontSize(7.5); docu.setTextColor(30, 41, 59);
+
+  if (!filas.length) {
+    docu.text('Sin solicitudes en este estatus.', ML + 1, y);
+  }
+  filas.forEach(function (f) {
+    if (y > PH - 16) { piePagina(pageNum); docu.addPage(); pageNum++; y = 30; encabezado(); xs = encabezadoTabla(y); y += 7; docu.setFont('helvetica', 'normal'); docu.setFontSize(7.5); docu.setTextColor(30, 41, 59); }
+    docu.text(String(f.id), xs[0], y);
+    docu.text(String(f.fecha), xs[1], y);
+    docu.text('ECO ' + String(f.eco), xs[2], y);
+    docu.text(String(f.plaza).slice(0, 12), xs[3], y);
+    docu.text(String(f.tipo).slice(0, 20), xs[4], y);
+    docu.text(String(f.solicitante).slice(0, 22), xs[5], y);
+    docu.text(String(f.taller).slice(0, 22), xs[6], y);
+    docu.text(f.monto != null ? ('$' + f.monto.toLocaleString('es-MX')) : '—', xs[7], y);
+    docu.text(String(f.estatus).slice(0, 12), xs[8], y);
+    docu.text(String(f.motivoRechazo || '—').slice(0, 26), xs[9], y);
+    y += 6;
+  });
+  piePagina(pageNum);
+  docu.save('flotilla-solicitudes-' + estado.toLowerCase() + '-' + new Date().toISOString().slice(0, 10) + '.pdf');
 };
 
 // ═══════════════════════════════════════════════════════
