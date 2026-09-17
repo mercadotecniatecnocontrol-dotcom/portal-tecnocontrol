@@ -8097,6 +8097,11 @@ window.flPipelineModal = function(estInicial) {
     'Pagos':'Servicio','Cierre':'Servicio'
   }[e]||e);
   let estActivo = normEst(estInicial || 'Solicitud');
+  // ── Buscador y filtros del listado (se mantienen mientras el modal está abierto) ──
+  let flFiltroTexto = '';
+  let flFiltroPlaza = '';
+  let flFiltroTipo = '';
+  let lista = []; // lista del estatus activo, sin filtrar aún — la actualiza renderModal()
 
   const colPaso = {
     Solicitud:   ['#EDE9FE','#6D28D9'],
@@ -8151,19 +8156,94 @@ window.flPipelineModal = function(estInicial) {
     return btns.join('');
   }
 
+  function filasHTML(listaX) {
+    return listaX.length
+      ? listaX.map(s => {
+          const fecha = s.creadoEn ? s.creadoEn.slice(0,10) : '—';
+          const veh = flV.find(x=>x.eco===s.vehiculoEco||x.id===s.vehiculoId)||{};
+          const plaza = veh.plaza||s.plaza||'—';
+          return `<tr onclick="flVerSol('${s.id}')" style="cursor:pointer" onmouseover="this.style.background='#F8FAFD'" onmouseout="this.style.background=''">
+            <td style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#64748B;white-space:nowrap">${(s.id||'').slice(-6).toUpperCase()}</td>
+            <td style="font-size:11px;white-space:nowrap">${fecha}</td>
+            <td style="font-weight:700;font-family:'JetBrains Mono',monospace;white-space:nowrap">ECO ${s.vehiculoEco||'—'}</td>
+            <td style="font-size:10px;color:#64748B;white-space:nowrap">${plaza}</td>
+            <td style="font-size:11px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.tipo||'—'}</td>
+            <td style="font-size:11px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${flNombrePorCorreo(s.solicitante||s.creadoPor)||'—'}</td>
+            <td style="font-size:11px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.tallerNombre||'—'}</td>
+            <td style="font-size:11px;font-weight:700;color:#15803D;white-space:nowrap">${s.montoCotizacion?'$'+Number(s.montoCotizacion).toLocaleString('es-MX'):'—'}</td>
+            <td onclick="event.stopPropagation()"><div style="display:flex;gap:4px;align-items:center;flex-wrap:nowrap;white-space:nowrap">${accionesSol(s)}</div></td>
+          </tr>`;
+        }).join('')
+      : `<tr><td colspan="8" style="text-align:center;padding:28px;color:#94A3B8;font-size:12px">Sin solicitudes que coincidan con la búsqueda/filtros</td></tr>`;
+  }
+
+  function listaConFiltro() {
+    let out = lista;
+    if (flFiltroPlaza) {
+      out = out.filter(s => {
+        const veh = flV.find(x => x.eco === s.vehiculoEco || x.id === s.vehiculoId) || {};
+        return (veh.plaza || s.plaza || '') === flFiltroPlaza;
+      });
+    }
+    if (flFiltroTipo) out = out.filter(s => (s.tipo || '') === flFiltroTipo);
+    if (flFiltroTexto) {
+      const q = flFiltroTexto.toLowerCase();
+      out = out.filter(s => {
+        const veh = flV.find(x => x.eco === s.vehiculoEco || x.id === s.vehiculoId) || {};
+        const campos = [
+          (s.id || '').slice(-6), String(s.vehiculoEco || ''), veh.plaza || s.plaza || '',
+          s.tipo || '', flNombrePorCorreo(s.solicitante || s.creadoPor) || '', s.tallerNombre || ''
+        ].join(' ').toLowerCase();
+        return campos.includes(q);
+      });
+    }
+    return out;
+  }
+
+  window.flAplicarFiltroFlujo = function () {
+    const t = document.getElementById('flpm-busca'); if (t) flFiltroTexto = t.value;
+    const p = document.getElementById('flpm-filtro-plaza'); if (p) flFiltroPlaza = p.value;
+    const ti = document.getElementById('flpm-filtro-tipo'); if (ti) flFiltroTipo = ti.value;
+    const listaFiltrada = listaConFiltro();
+    window.__flFlujoLista = listaFiltrada;
+    const tbody = document.getElementById('flpm-tbody');
+    if (tbody) tbody.innerHTML = filasHTML(listaFiltrada);
+    const cnt = document.getElementById('flpm-count');
+    const hayFiltro = !!(flFiltroTexto || flFiltroPlaza || flFiltroTipo);
+    if (cnt) cnt.textContent = flS.length + ' total · ' + listaFiltrada.length + ' en "' + estActivo + '"' + (hayFiltro ? ' (filtrado)' : '');
+    const limpiar = document.getElementById('flpm-limpiar');
+    if (limpiar) limpiar.style.display = hayFiltro ? 'inline-flex' : 'none';
+  };
+  window.flLimpiarFiltroFlujo = function () {
+    flFiltroTexto = ''; flFiltroPlaza = ''; flFiltroTipo = '';
+    const t = document.getElementById('flpm-busca'); if (t) t.value = '';
+    const p = document.getElementById('flpm-filtro-plaza'); if (p) p.value = '';
+    const ti = document.getElementById('flpm-filtro-tipo'); if (ti) ti.value = '';
+    window.flAplicarFiltroFlujo();
+  };
+
   function renderModal() {
     // Agrupar estados legacy bajo los 4 nuevos
     const estGroup = {
       Evaluación: ['Evaluación','Validación','Validada','Cotización','Aprobación','Aprobada'],
       Servicio:   ['Servicio','Pagos','Cierre'],
     };
-    const lista = flS.filter(s => {
+    lista = flS.filter(s => {
       const group = estGroup[estActivo];
       return group ? group.includes(s.estatus) : s.estatus === estActivo;
     });
-    window.__flFlujoLista = lista;
     window.__flFlujoEstado = estActivo;
     const total = flS.length || 1;
+
+    // Opciones de los filtros (Plaza / Tipo), calculadas sobre la pestaña activa
+    const plazasDisp = Array.from(new Set(lista.map(s => {
+      const veh = flV.find(x => x.eco === s.vehiculoEco || x.id === s.vehiculoId) || {};
+      return veh.plaza || s.plaza || '';
+    }).filter(Boolean))).sort();
+    const tiposDisp = Array.from(new Set(lista.map(s => s.tipo || '').filter(Boolean))).sort();
+
+    const listaFiltrada = listaConFiltro();
+    window.__flFlujoLista = listaFiltrada;
     const notaPaso = {
       Solicitud:   'El técnico registra la falla desde la app o portal. Fátima valida y avanza a evaluación.',
       Evaluación:  'Flotilla y Contraloría revisan, cotizan proveedores y autorizan el presupuesto.',
@@ -8201,25 +8281,7 @@ window.flPipelineModal = function(estInicial) {
     }).join('');
 
     // Tabla
-    const filas = lista.length
-      ? lista.map(s => {
-          const fecha = s.creadoEn ? s.creadoEn.slice(0,10) : '—';
-          const veh = flV.find(x=>x.eco===s.vehiculoEco||x.id===s.vehiculoId)||{};
-          const plaza = veh.plaza||s.plaza||'—';
-          const subEst = !['Solicitud','Evaluación','Servicio','Rechazada','Cerrada'].includes(s.estatus)?` <span style="font-size:9px;color:#94A3B8">(${s.estatus})</span>`:'';
-          return `<tr onclick="flVerSol('${s.id}')" style="cursor:pointer" onmouseover="this.style.background='#F8FAFD'" onmouseout="this.style.background=''">
-            <td style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#64748B;white-space:nowrap">${(s.id||'').slice(-6).toUpperCase()}</td>
-            <td style="font-size:11px;white-space:nowrap">${fecha}</td>
-            <td style="font-weight:700;font-family:'JetBrains Mono',monospace;white-space:nowrap">ECO ${s.vehiculoEco||'—'}</td>
-            <td style="font-size:10px;color:#64748B;white-space:nowrap">${plaza}</td>
-            <td style="font-size:11px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.tipo||'—'}</td>
-            <td style="font-size:11px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${flNombrePorCorreo(s.solicitante||s.creadoPor)||'—'}</td>
-            <td style="font-size:11px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.tallerNombre||'—'}</td>
-            <td style="font-size:11px;font-weight:700;color:#15803D;white-space:nowrap">${s.montoCotizacion?'$'+Number(s.montoCotizacion).toLocaleString('es-MX'):'—'}</td>
-            <td onclick="event.stopPropagation()"><div style="display:flex;gap:4px;align-items:center;flex-wrap:nowrap;white-space:nowrap">${accionesSol(s)}</div></td>
-          </tr>`;
-        }).join('')
-      : `<tr><td colspan="8" style="text-align:center;padding:28px;color:#94A3B8;font-size:12px">Sin solicitudes en este estatus</td></tr>`;
+    const filas = filasHTML(listaFiltrada);
 
     const html = `
       <div class="fl-ov" id="flpm-ov" onclick="if(event.target===this)this.remove()" style="z-index:3000">
@@ -8231,7 +8293,7 @@ window.flPipelineModal = function(estInicial) {
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                 Flujo de Solicitudes
               </div>
-              <div style="font-size:11px;color:#64748B;margin-top:1px">${flS.length} total · ${lista.length} en "${estActivo}"</div>
+              <div id="flpm-count" style="font-size:11px;color:#64748B;margin-top:1px">${flS.length} total · ${listaFiltrada.length} en "${estActivo}"${(flFiltroTexto||flFiltroPlaza||flFiltroTipo)?' (filtrado)':''}</div>
             </div>
             <div style="display:flex;align-items:center;gap:8px">
               <span style="font-size:10px;font-weight:800;padding:3px 9px;background:#EFF6FF;color:#1D4ED8;border-radius:100px">
@@ -8260,6 +8322,23 @@ window.flPipelineModal = function(estInicial) {
           ${notaPaso ? `<div style="padding:7px 20px;background:#F8FAFC;border-bottom:1px solid #F1F5F9;font-size:10px;color:#64748B;flex-shrink:0">
             ℹ ${notaPaso}
           </div>` : ''}
+          <!-- BUSCADOR Y FILTROS -->
+          <div style="display:flex;align-items:center;gap:8px;padding:9px 20px;border-bottom:1px solid #F1F5F9;flex-shrink:0;background:#fff;flex-wrap:wrap">
+            <div style="position:relative;flex:1;min-width:180px">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2.5" stroke-linecap="round" style="position:absolute;left:9px;top:50%;transform:translateY(-50%)"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input id="flpm-busca" type="text" value="${flFiltroTexto.replace(/"/g,'&quot;')}" placeholder="Buscar por ID, ECO, solicitante o taller…" oninput="window.flAplicarFiltroFlujo()"
+                style="width:100%;padding:7px 10px 7px 28px;border:1px solid #E2E8F0;border-radius:8px;font-size:11px;font-family:inherit;box-sizing:border-box">
+            </div>
+            <select id="flpm-filtro-plaza" onchange="window.flAplicarFiltroFlujo()" style="padding:7px 8px;border:1px solid #E2E8F0;border-radius:8px;font-size:11px;font-family:inherit;background:#fff;color:#334155">
+              <option value="">Todas las plazas</option>
+              ${plazasDisp.map(p=>`<option value="${p.replace(/"/g,'&quot;')}" ${flFiltroPlaza===p?'selected':''}>${p}</option>`).join('')}
+            </select>
+            <select id="flpm-filtro-tipo" onchange="window.flAplicarFiltroFlujo()" style="padding:7px 8px;border:1px solid #E2E8F0;border-radius:8px;font-size:11px;font-family:inherit;background:#fff;color:#334155">
+              <option value="">Todos los tipos</option>
+              ${tiposDisp.map(t=>`<option value="${t.replace(/"/g,'&quot;')}" ${flFiltroTipo===t?'selected':''}>${t}</option>`).join('')}
+            </select>
+            <button id="flpm-limpiar" onclick="window.flLimpiarFiltroFlujo()" style="display:${(flFiltroTexto||flFiltroPlaza||flFiltroTipo)?'inline-flex':'none'};align-items:center;font-size:10px;font-weight:700;color:#EF4444;background:#FEF2F2;border:1px solid #FEE2E2;border-radius:8px;padding:7px 10px;cursor:pointer;font-family:inherit">Limpiar filtros</button>
+          </div>
           <!-- TABLA -->
           <div style="overflow:auto;flex:1;padding:0">
             <table class="fl-adm-table" style="width:100%;min-width:1080px">
@@ -8267,7 +8346,7 @@ window.flPipelineModal = function(estInicial) {
                 <th>ID</th><th>Fecha</th><th>ECO</th><th>Plaza</th><th>Tipo</th><th>Solicitante</th>
                 <th>Taller</th><th>Monto</th><th style="text-align:center">Acciones</th>
               </tr></thead>
-              <tbody>${filas}</tbody>
+              <tbody id="flpm-tbody">${filas}</tbody>
             </table>
           </div>
         </div>
@@ -8279,6 +8358,7 @@ window.flPipelineModal = function(estInicial) {
 
   window.flPipelineModal._render = function(est) {
     estActivo = est;
+    flFiltroPlaza = ''; flFiltroTipo = ''; // las opciones cambian por etapa; el texto buscado se conserva
     renderModal();
   };
   renderModal();
