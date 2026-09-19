@@ -535,13 +535,6 @@ console.log('[PAGOS · Cuentas por pagar] ✅ listo (preparado para Aspel: campo
 (function(){
 'use strict';
 
-const EMAILS_PAGOS = [
-  'pagos@tecnocontrol.com.mx',
-  'p.pinedo@tecnocontrol.com.mx',
-  'c.acosta@tecnocontrol.com.mx',
-  'm.delao@tecnocontrol.com.mx',
-];
-
 async function _getDB(){
   const appMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
   const fsMod  = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
@@ -550,14 +543,33 @@ async function _getDB(){
   return { db:fsMod.getFirestore(app), fs:fsMod, auth:authMod.getAuth(app) };
 }
 
-function _esUsuarioPagos(email){
+async function _esUsuarioPagos(email){
   if(!email) return false;
-  // Admins totales siempre tienen acceso
-  const ADMINS = ['rh@tecnocontrol.com.mx','c.acosta@tecnocontrol.com.mx',
-    'mercadotecniatecnocontrol@tecnocontrol.com.mx','p.pinedo@tecnocontrol.com.mx',
-    'm.delao@tecnocontrol.com.mx','fatima@tecnocontrol.com.mx'];
-  return EMAILS_PAGOS.includes(email) || ADMINS.includes(email);
+  // Rol centralizado en usuarios/{uid}.roles.pagos — ver roles-modulos.js
+  // (antes: arreglos EMAILS_PAGOS/ADMINS sueltos en este archivo, quitados sep-2026)
+  return await window.tcEsAdminModulo('pagos');
 }
+
+// TEMPORAL — borrar después de correr una vez desde la consola del navegador
+// (F12 → Console → migrarRolesPagos() → Enter). Migra los admins que antes
+// vivían hardcodeados aquí hacia usuarios/{uid}.roles.pagos en Firestore.
+window.migrarRolesPagos = async function(){
+  const { db, fs } = await _getDB();
+  const correos = ['pagos@tecnocontrol.com.mx','p.pinedo@tecnocontrol.com.mx',
+    'c.acosta@tecnocontrol.com.mx','m.delao@tecnocontrol.com.mx',
+    'rh@tecnocontrol.com.mx','mercadotecniatecnocontrol@tecnocontrol.com.mx'];
+  const snap = await fs.getDocs(fs.collection(db,'usuarios'));
+  let n=0;
+  for(const d of snap.docs){
+    const correo=(d.data().correo||'').toLowerCase();
+    if(correos.includes(correo)){
+      const rolesActuales = d.data().roles || {};
+      await fs.updateDoc(fs.doc(db,'usuarios',d.id), { roles: {...rolesActuales, pagos:'administrador'} });
+      n++;
+    }
+  }
+  console.log('Roles de pagos migrados:', n);
+};
 
 // Estado local
 let _flSolsPago   = [];   // solicitudes con estatus Pagos
@@ -574,7 +586,7 @@ async function renderBandejaFlotilla(){
   try {
     const { db, fs, auth } = await _getDB();
     const yo = auth.currentUser?.email || '';
-    if(!_esUsuarioPagos(yo)){
+    if(!(await _esUsuarioPagos(yo))){
       cont.innerHTML = '<div style="text-align:center;padding:24px;color:#EF4444;font-size:13px;font-weight:700">Sin permisos para ver esta sección.</div>';
       return;
     }
@@ -880,7 +892,7 @@ window._pflGuardarPago = async function(solId){
     }
     nots.push(fs.addDoc(fs.collection(db,'flotilla_notificaciones'),{
       solicitudId: solId,
-      para:        'fatima@tecnocontrol.com.mx',
+      para:        'flotilla@tecnocontrol.com.mx',
       vehiculoEco: s?.vehiculoEco||'—',
       tipo:        'pagado',
       mensaje:     'Pago registrado por '+yo+' — ECO '+(s?.vehiculoEco||'—')+' · $'+Number(monto).toLocaleString('es-MX')+' · '+metodo,
@@ -978,7 +990,7 @@ window._pflEnviarComt = async function(solId){
     // Notificar a Fátima (Flotilla) que Pagos comentó
     await fs.addDoc(fs.collection(db,'flotilla_notificaciones'),{
       solicitudId: solId,
-      para:        'fatima@tecnocontrol.com.mx',
+      para:        'flotilla@tecnocontrol.com.mx',
       vehiculoEco: s?.vehiculoEco||'—',
       tipo:        'comentario',
       mensaje:     'Pagos comentó en solicitud ECO '+(s?.vehiculoEco||'—')+': "'+texto.slice(0,80)+'"',
