@@ -550,27 +550,6 @@ async function _esUsuarioPagos(email){
   return await window.tcEsAdminModulo('pagos');
 }
 
-// TEMPORAL — borrar después de correr una vez desde la consola del navegador
-// (F12 → Console → migrarRolesPagos() → Enter). Migra los admins que antes
-// vivían hardcodeados aquí hacia usuarios/{uid}.roles.pagos en Firestore.
-window.migrarRolesPagos = async function(){
-  const { db, fs } = await _getDB();
-  const correos = ['pagos@tecnocontrol.com.mx','p.pinedo@tecnocontrol.com.mx',
-    'c.acosta@tecnocontrol.com.mx','m.delao@tecnocontrol.com.mx',
-    'rh@tecnocontrol.com.mx','mercadotecniatecnocontrol@tecnocontrol.com.mx'];
-  const snap = await fs.getDocs(fs.collection(db,'usuarios'));
-  let n=0;
-  for(const d of snap.docs){
-    const correo=(d.data().correo||'').toLowerCase();
-    if(correos.includes(correo)){
-      const rolesActuales = d.data().roles || {};
-      await fs.updateDoc(fs.doc(db,'usuarios',d.id), { roles: {...rolesActuales, pagos:'administrador'} });
-      n++;
-    }
-  }
-  console.log('Roles de pagos migrados:', n);
-};
-
 // Estado local
 let _flSolsPago   = [];   // solicitudes con estatus Pagos
 let _flFiltroStat = '';   // '' | 'vencida' | 'hoy' | 'proxima'
