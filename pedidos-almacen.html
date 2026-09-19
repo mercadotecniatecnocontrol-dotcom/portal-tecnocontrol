@@ -72,6 +72,22 @@
   @keyframes vencRotShrink{from{width:100%;}to{width:0%;}}
   .venc-rot-info{margin-top:6px;font-size:11px;font-weight:800;letter-spacing:.5px;color:#fff;opacity:.9;text-align:right;}
 
+  /* ── Aviso CENTRAL de pedido nuevo: pantalla completa, texto grande al
+     centro. Se dispara junto con el banner de esquina existente, no lo
+     reemplaza. Se desvanece solo; no pausa ni toca el tablero de atrás. ── */
+  .np-overlay{position:fixed;inset:0;z-index:25000;display:flex;align-items:center;justify-content:center;
+    background:radial-gradient(ellipse at center,rgba(20,115,226,.34) 0%,rgba(6,14,38,.86) 68%,rgba(4,9,26,.94) 100%);
+    opacity:0;pointer-events:none;transition:opacity .35s ease;}
+  .np-overlay.show{opacity:1;}
+  .np-card{text-align:center;transform:scale(.88);transition:transform .35s cubic-bezier(.2,.8,.2,1);}
+  .np-overlay.show .np-card{transform:scale(1);}
+  .np-eyebrow{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:clamp(15px,2.1vw,22px);letter-spacing:5px;color:rgba(255,255,255,.72);text-transform:uppercase;margin-bottom:6px;}
+  .np-title{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:clamp(56px,11vw,150px);line-height:1;color:#fff;letter-spacing:1px;
+    text-shadow:0 6px 34px rgba(0,0,0,.45);animation:npPulso 1s ease-in-out infinite;}
+  @keyframes npPulso{0%,100%{transform:scale(1);}50%{transform:scale(1.045);}}
+  .np-detalle{margin-top:14px;font-family:'Inter',sans-serif;font-weight:600;font-size:clamp(18px,2.6vw,30px);color:rgba(255,255,255,.92);}
+  .np-detalle b{font-weight:800;color:#fff;}
+
   /* ═══════════════════════════════════════════════════════════════════════
      PUBLICIDAD INTERNA / TECNOINFORMA: pantalla completa que aparece cada
      cierto tiempo sobre el tablero (cumpleaños, aniversarios, efemérides,
@@ -226,6 +242,13 @@
   <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21a2 2 0 0 0 4 0"/></svg>
   <span class="bfolio num" id="bFolio">----</span>
   <span class="btxt">NUEVO PEDIDO · <b id="bClient">—</b> · Vendedor <b id="bVend">—</b></span>
+</div>
+<div class="np-overlay" id="npOverlay">
+  <div class="np-card">
+    <div class="np-eyebrow">Almacén · <span id="npFolio">----</span></div>
+    <div class="np-title">NUEVO PEDIDO</div>
+    <div class="np-detalle"><b id="npClient">—</b> · Vendedor <b id="npVend">—</b></div>
+  </div>
 </div>
 <div class="toast" id="toast"></div>
 
@@ -1077,11 +1100,58 @@ function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t
 /* ===== Sonido (Web Audio) ===== */
 function beep(){try{const ac=new(window.AudioContext||window.webkitAudioContext)();[880,1320].forEach((f,i)=>{const o=ac.createOscillator(),g=ac.createGain();o.type='sine';o.frequency.value=f;o.connect(g);g.connect(ac.destination);const t=ac.currentTime+i*0.16;g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(0.2,t+0.02);g.gain.exponentialRampToValueAtTime(0.001,t+0.15);o.start(t);o.stop(t+0.16)})}catch(e){}}
 
-/* ===== Aviso visual de pedido nuevo (banner + beep). No muta datos. ===== */
+/* ===== Tanda de pitidos finos de fondo (para el aviso central de pedido
+   nuevo): varios tonos agudos y cortos, tipo "beep-beep-beep" de radar,
+   NO reemplaza el beep de 2 notas del banner de esquina, es aparte. ===== */
+function pitidosFinos(){
+  try{
+    const ac=new(window.AudioContext||window.webkitAudioContext)();
+    const n=6, gap=0.22;
+    for(let i=0;i<n;i++){
+      const o=ac.createOscillator(),g=ac.createGain();
+      o.type='sine'; o.frequency.value=1760; o.connect(g); g.connect(ac.destination);
+      const t=ac.currentTime+i*gap;
+      g.gain.setValueAtTime(0,t);
+      g.gain.linearRampToValueAtTime(0.14,t+0.01);
+      g.gain.exponentialRampToValueAtTime(0.001,t+0.09);
+      o.start(t); o.stop(t+0.1);
+    }
+  }catch(e){}
+}
+
+/* ===== Voz "Nuevo pedido" (Web Speech API) ===== */
+function vozNuevoPedido(){
+  try{
+    if(!('speechSynthesis' in window)) return;
+    const u=new SpeechSynthesisUtterance('Nuevo pedido');
+    u.lang='es-MX'; u.rate=0.95; u.pitch=1; u.volume=1;
+    const voces=window.speechSynthesis.getVoices();
+    const esVoz=voces.find(v=>/es[-_]/i.test(v.lang));
+    if(esVoz) u.voice=esVoz;
+    window.speechSynthesis.cancel(); // por si venía uno sonando, no encimar voces
+    window.speechSynthesis.speak(u);
+  }catch(e){}
+}
+// Algunos navegadores cargan la lista de voces async; la precalentamos.
+if('speechSynthesis' in window){ window.speechSynthesis.getVoices(); window.speechSynthesis.onvoiceschanged = ()=>window.speechSynthesis.getVoices(); }
+
+/* ===== Aviso visual de pedido nuevo (banner de esquina + aviso central
+   grande + pitidos + voz). No muta datos. ===== */
 function flashNuevo(p){
   bFolio.textContent=p.folio; bClient.textContent=p.cliente; bVend.textContent=p.vendedor||'—';
   banner.classList.add('show'); beep();
   setTimeout(()=>banner.classList.remove('show'),4200);
+
+  const ov=document.getElementById('npOverlay');
+  if(ov){
+    document.getElementById('npFolio').textContent=p.folio;
+    document.getElementById('npClient').textContent=p.cliente;
+    document.getElementById('npVend').textContent=p.vendedor||'—';
+    ov.classList.add('show');
+    pitidosFinos();
+    vozNuevoPedido();
+    setTimeout(()=>ov.classList.remove('show'),4800);
+  }
 }
 window.__flashNuevo = flashNuevo;
 
