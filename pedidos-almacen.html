@@ -445,9 +445,21 @@ function colaDeHoy(){
     clearTimeout(ocultarTimer);
     ocultarTimer=setTimeout(()=>overlay.classList.remove('show'), INTERSTITIAL_DURACION_MS);
   }
+  // Gancho para forzar una vista previa inmediata desde la consola del
+  // navegador, sin esperar los 45s iniciales ni el intervalo de 6 min —
+  // ver window.__tvPreviewAviso() más abajo.
+  window.__intMostrarSiguiente = mostrarSiguiente;
 
   setTimeout(()=>{ mostrarSiguiente(); setInterval(mostrarSiguiente, INTERSTITIAL_INTERVALO_MS); }, INTERSTITIAL_RETRASO_INICIAL_MS);
 })();
+
+// Atajo de vista previa: abre la consola del navegador (F12 o Cmd+Opt+J) en
+// esta misma pantalla de TV y escribe __tvPreviewAviso() — muestra la
+// siguiente tarjeta de la cola YA, en vez de esperar a que le toque su turno.
+window.__tvPreviewAviso = function(){
+  if (window.__intMostrarSiguiente) window.__intMostrarSiguiente();
+  else console.warn('[TV] El carrusel de avisos todavía no está listo.');
+};
 
 /*  DATOS EN VIVO (poblado por onSnapshot de las colecciones `surtidos` y, mezcladas
     en el panel de Material con etiqueta propia, `recolecciones_locales`)  */
