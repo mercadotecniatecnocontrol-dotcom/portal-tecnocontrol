@@ -83,12 +83,18 @@
     if (_fs) return Promise.resolve(_fs);
     return import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js').then(function(m){ _fs=m; return m; });
   }
-  var _storage = null;
-  function cargarStorage(){
-    if (_storage) return Promise.resolve(_storage);
-    return import('https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js').then(function(m){
-      _storage = { mod:m, storage: m.getStorage(window.app) };
-      return _storage;
+  // Documentos de evidencia (PDF/Word/etc., lo que no cabe comprimido en
+  // Firestore/Supabase) → Supabase Storage, bucket `portal_evidencias` —
+  // NO Firebase Storage: el proyecto está en el plan Spark (gratuito) y no
+  // lo tiene habilitado. Reutiliza el cliente que ya inicializa
+  // surtidos-supabase.js (window.tcSupabase) si está disponible.
+  function cargarSupabaseStorage(){
+    if (window.tcSupabase) return Promise.resolve(window.tcSupabase);
+    return import('https://esm.sh/@supabase/supabase-js@2').then(function(mod){
+      var SUPABASE_URL = 'https://vlbyjoqessxcmkejcujp.supabase.co';
+      var SUPABASE_ANON_KEY = 'sb_publishable_18A7j06AwZqdw3gmqUDJHQ_Twu0t2a8';
+      window.tcSupabase = mod.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      return window.tcSupabase;
     });
   }
 
@@ -472,12 +478,14 @@
               tipo:'imagen', imagen:dataUrl, subidoPor:yoNombre(), categoria:categoria
             });
           })
-        // Documento (PDF/Word/etc.): va a Firebase Storage — un documento normal no cabe
-        // en un documento de Firestore (límite 1MB), a diferencia de la foto comprimida.
-        : cargarStorage().then(function(st){
-            var ruta = 'evidencias/' + id + '/' + Date.now() + '_' + file.name;
-            var sref = st.mod.ref(st.storage, ruta);
-            return st.mod.uploadBytes(sref, file).then(function(){ return st.mod.getDownloadURL(sref); });
+        // Documento (PDF/Word/etc.): va a Supabase Storage — un documento normal no cabe
+        // comprimido en el registro de evidencia, a diferencia de la foto.
+        : cargarSupabaseStorage().then(function(sb){
+            var ruta = id + '/' + Date.now() + '_' + file.name.replace(/[^a-zA-Z0-9_.-]/g,'_');
+            return sb.storage.from('portal_evidencias').upload(ruta, file, { upsert:false }).then(function(res){
+              if (res.error) throw res.error;
+              return sb.storage.from('portal_evidencias').getPublicUrl(ruta).data.publicUrl;
+            });
           }).then(function(url){
             return window.tcSbAgregarEvidencia(id, {
               tipo:'archivo', nombre:file.name, url:url, subidoPor:yoNombre(), categoria:categoria
