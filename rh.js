@@ -2107,7 +2107,6 @@ window.toggleRHDash = function(area, email){
 // ═══════════════════════════════════════════════════════════════════════
 let rhAvisosCache = null;
 let rhAvisosTipoActivo = 'cumpleanos';
-let rhAvisosStorageMod = null;
 
 const RH_AVISOS_TIPOS = {
     cumpleanos:  { label:'🎂 Cumpleaños' },
@@ -2119,11 +2118,19 @@ const RH_AVISOS_TIPOS = {
 };
 const RH_AVISOS_MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
-async function rhCargarStorageTV(){
-    if (rhAvisosStorageMod) return rhAvisosStorageMod;
-    const m = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js');
-    rhAvisosStorageMod = { mod:m, storage: m.getStorage(window.app) };
-    return rhAvisosStorageMod;
+// Imágenes de avisos → Supabase Storage (bucket público `tv_avisos`), NO
+// Firebase Storage: el proyecto sigue en el plan Spark (gratuito) y no lo
+// tiene habilitado, y de cualquier forma es lógico construir esto ya
+// directo sobre Supabase (portal en migración). Reutiliza el mismo cliente
+// que ya inicializa surtidos-supabase.js (window.tcSupabase) si está
+// disponible; si no, crea uno propio con las mismas credenciales públicas.
+async function rhCargarSupabaseTV(){
+    if (window.tcSupabase) return window.tcSupabase;
+    const mod = await import('https://esm.sh/@supabase/supabase-js@2');
+    const SUPABASE_URL = 'https://vlbyjoqessxcmkejcujp.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_18A7j06AwZqdw3gmqUDJHQ_Twu0t2a8';
+    window.tcSupabase = mod.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    return window.tcSupabase;
 }
 
 async function rhCargarAvisosTV(forzar){
@@ -2277,11 +2284,12 @@ window.rhAvisosGuardarNuevo = async function(){
         if (file){
             if (btn){ btn.textContent='Subiendo imagen…'; btn.disabled=true; }
             try {
-                const st = await rhCargarStorageTV();
-                const ruta = 'tv_avisos/' + Date.now() + '_' + file.name;
-                const sref = st.mod.ref(st.storage, ruta);
-                await st.mod.uploadBytes(sref, file);
-                docData.imagenURL = await st.mod.getDownloadURL(sref);
+                const sb = await rhCargarSupabaseTV();
+                const ruta = Date.now() + '_' + file.name.replace(/[^a-zA-Z0-9_.-]/g,'_');
+                const { error: upErr } = await sb.storage.from('tv_avisos').upload(ruta, file, { upsert:false });
+                if (upErr) throw upErr;
+                const { data:urlData } = sb.storage.from('tv_avisos').getPublicUrl(ruta);
+                docData.imagenURL = urlData.publicUrl;
             } catch(e){
                 console.error('[RH] subir imagen aviso:', e);
                 alert('No se pudo subir la imagen: '+e.message);
