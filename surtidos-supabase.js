@@ -25,7 +25,27 @@
   function cargarSupabase() {
     if (_clientePromesa) return _clientePromesa;
     _clientePromesa = import('https://esm.sh/@supabase/supabase-js@2').then(function (mod) {
-      var cliente = mod.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      var cliente = mod.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        // Third-Party Auth (Firebase → Supabase, ya activado en el
+        // dashboard): en cada request, si hay una sesión de Firebase,
+        // manda su ID token como si fuera el access token de Supabase —
+        // así auth.jwt() en Postgres puede leer el UID real (sub) y
+        // políticas RLS como "colaboradores_lectura_autenticados" o
+        // "es_admin_actual()" pueden identificar quién pregunta, sin
+        // necesitar una cuenta separada de Supabase Auth. Sesiones
+        // anónimas de Firebase (TV, kiosco) también mandan token, pero
+        // current_firebase_uid() del lado de Postgres las filtra.
+        accessToken: async function () {
+          try {
+            var user = window.auth && window.auth.currentUser;
+            if (!user) return null;
+            return await user.getIdToken();
+          } catch (e) {
+            console.warn('[Supabase] No se pudo obtener el ID token de Firebase:', e);
+            return null;
+          }
+        }
+      });
       window.tcSupabase = cliente; // disponible globalmente por si otro módulo lo necesita
       return cliente;
       // Nota: ya no se intenta iniciar sesión anónima aquí — desde que las
