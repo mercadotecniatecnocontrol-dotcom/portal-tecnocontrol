@@ -115,6 +115,7 @@
   .int-title{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:clamp(40px,8.5vw,96px);line-height:1.02;color:#fff;letter-spacing:.5px;text-shadow:0 4px 26px rgba(0,0,0,.35);margin-bottom:clamp(4px,.8vw,6px);}
   .int-sub{font-family:'Inter',sans-serif;font-weight:600;font-size:clamp(16px,2.6vw,26px);color:rgba(255,255,255,.9);margin-bottom:clamp(16px,3vw,26px);}
   .int-body{font-family:'Inter',sans-serif;font-weight:400;font-size:clamp(15px,2vw,20px);line-height:1.55;color:rgba(255,255,255,.92);max-width:820px;margin:0 auto 8px;}
+  .int-img{max-width:min(78vw,560px);max-height:38vh;width:auto;height:auto;border-radius:14px;margin:0 auto clamp(14px,2.5vw,22px);display:block;box-shadow:0 12px 40px rgba(0,0,0,.35);object-fit:contain;}
   .int-avatar{width:clamp(96px,15vw,160px);height:clamp(96px,15vw,160px);border-radius:50%;margin:0 auto clamp(14px,2.5vw,22px);display:flex;align-items:center;justify-content:center;
     background:linear-gradient(150deg,rgba(255,255,255,.24),rgba(255,255,255,.06));border:3px solid rgba(255,255,255,.55);
     font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:clamp(34px,6vw,58px);color:#fff;box-shadow:0 10px 40px rgba(0,0,0,.3),0 0 0 8px rgba(255,255,255,.06);
@@ -294,60 +295,55 @@ function nowChih(){
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   PUBLICIDAD INTERNA (TECNOINFORMA) — edita esta lista cada mes con lo que
-   te pase RH. Cada tarjeta se muestra por turnos, en pantalla completa,
-   cada INTERSTITIAL_INTERVALO_MS, y se desvanece sola sin tocar el
-   tablero de pedidos de abajo.
+   PUBLICIDAD INTERNA (TECNOINFORMA) — alimentada EN VIVO desde la colección
+   Firestore `tv_avisos`. Ya no se edita este archivo cada mes: los avisos
+   se dan de alta/baja desde el panel "📢 Avisos TV" del módulo de RH
+   (rh.js) y esta pantalla solo los refleja vía onSnapshot (ver
+   iniciarEscuchaAvisos() más abajo → window.__setAvisosTV). Cada tarjeta
+   se muestra por turnos, en pantalla completa, cada
+   INTERSTITIAL_INTERVALO_MS, y se desvanece sola sin tocar el tablero de
+   pedidos de abajo.
 
-   Tipos disponibles (copia y pega el bloque que necesites):
-
-   { tipo:'cumple_mes', mes:'Septiembre', personas:[
-       {nombre:'Nombre Apellido', dia:5, area:'Área / sucursal'}, ...
-   ]}
-   — Si el día de alguien coincide con hoy, automáticamente además se le
-     dedica una tarjeta grande e individual (no hay que hacer nada extra).
-
-   { tipo:'aniversario', empresa:'JOMAR', nombre:'Nombre Apellido', anios:7,
-     mensaje:'Texto de agradecimiento…' }
-
-   { tipo:'efemeride', fecha:'2 de septiembre', titulo:'Día del Notario',
-     texto:'Texto…' }
-
-   { tipo:'personal_alta', personas:[
-       {nombre:'Nombre Apellido', area:'Área', puesto:'Puesto', fecha:'10/08/2026'}, ...
-   ]}
-
-   { tipo:'personal_baja', personas:[ {nombre, area, puesto, fecha}, ... ] }
-   — Disponible pero no la agregué por defecto: piénsalo bien antes de
-     mostrar salidas de personal en una pantalla que ven todos.
-
-   { tipo:'aviso', titulo:'Título', texto:'Texto libre…' }
+   Esquema de un documento en `tv_avisos` según su campo `tipo`:
+     cumpleanos:  {nombre, area, mes:1-12, dia, activo}
+     aniversario: {empresa, nombre, anios, mensaje, activo}
+     efemeride:   {fecha:'2 de septiembre', titulo, texto, activo}
+     alta:        {nombre, area, puesto, fecha, activo}
+     baja:        {nombre, area, puesto, fecha, activo}
+     aviso:       {titulo, texto, imagenURL(opcional), activo}
+   Los `cumpleanos` se agrupan solos por mes actual; `alta`/`baja` se
+   agrupan cada uno en una sola tarjeta con todos los activos; el resto
+   se muestra un documento = una tarjeta.
    ═══════════════════════════════════════════════════════════════════════ */
 const INTERSTITIAL_INTERVALO_MS       = 6*60*1000; // cada cuánto aparece (6 min)
 const INTERSTITIAL_DURACION_MS        = 16000;     // cuánto dura cada tarjeta (16s)
 const INTERSTITIAL_RETRASO_INICIAL_MS = 45000;     // espera antes del primer anuncio al cargar
+const MESES_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
-const ANUNCIOS = [
-  { tipo:'cumple_mes', mes:'Septiembre', personas:[
-    {nombre:'Pedro Reyes', dia:1, area:'Desarrollos Monterrey'},
-    {nombre:'Roquel Leal', dia:4, area:'Operaciones Monterrey'},
-    {nombre:'Denisse Gutiérrez', dia:5, area:'Gestoría'},
-    {nombre:'Miguel Montellano', dia:5, area:'Operaciones Chihuahua'},
-    {nombre:'Ivan Sepúlveda', dia:12, area:'Operaciones Monterrey'},
-    {nombre:'Aracely Pérez', dia:15, area:'Almacén'},
-    {nombre:'Alfredo Honorato', dia:19, area:'Sistemas'}
-  ]},
-  { tipo:'aniversario', empresa:'JOMAR', nombre:'Argenis Aceves', anios:7,
-    mensaje:'Hoy celebramos un año más de contar con tu talento y compromiso en nuestro equipo. Gracias por ser parte fundamental del crecimiento de la empresa y por la dedicación que pones en cada proyecto.' },
-  { tipo:'efemeride', fecha:'2 de septiembre', titulo:'Día del Notario',
-    texto:'Reconocemos la importante labor de quienes, con ética, legalidad y compromiso, brindan certeza y seguridad jurídica a nuestra sociedad. ¡Gracias por dar fe y confianza!' },
-  { tipo:'personal_alta', personas:[
-    {nombre:'Juan Emanuel Fierro Ríos', area:'Operaciones Chihuahua', puesto:'Ayudante de Técnico', fecha:'10/08/2026'},
-    {nombre:'Magaly Johana Chávez Almader', area:'Operaciones Chihuahua', puesto:'Auxiliar Administrativo', fecha:'10/08/2026'},
-    {nombre:'José Pedro Mora Márquez', area:'Desarrollos', puesto:'Residente de Obra', fecha:'14/08/2026'},
-    {nombre:'Eva Alejandra Espinoza Olivas', area:'Administrativa', puesto:'Analista de Ingresos', fecha:'17/08/2026'}
-  ]}
-];
+let AVISOS_LIVE = []; // documentos crudos de tv_avisos, poblados por window.__setAvisosTV
+
+// ── Arma la cola de tarjetas del día a partir de AVISOS_LIVE ──
+function colaDeHoy(){
+  const cola=[];
+  const hoy=nowChih(), diaHoy=hoy.getDate(), mesHoy=hoy.getMonth()+1;
+
+  const cumples = AVISOS_LIVE.filter(a=>a.tipo==='cumpleanos');
+  const delMes = cumples.filter(c=>Number(c.mes)===mesHoy);
+  delMes.filter(c=>Number(c.dia)===diaHoy).forEach(c=>cola.push({tipo:'cumple_hoy', persona:c}));
+  if(delMes.length) cola.push({tipo:'cumple_mes', mes:MESES_ES[mesHoy-1], personas:delMes});
+
+  const altas = AVISOS_LIVE.filter(a=>a.tipo==='alta');
+  if(altas.length) cola.push({tipo:'personal_alta', personas:altas});
+
+  const bajas = AVISOS_LIVE.filter(a=>a.tipo==='baja');
+  if(bajas.length) cola.push({tipo:'personal_baja', personas:bajas});
+
+  AVISOS_LIVE.filter(a=>a.tipo==='aniversario').forEach(a=>cola.push(a));
+  AVISOS_LIVE.filter(a=>a.tipo==='efemeride').forEach(a=>cola.push(a));
+  AVISOS_LIVE.filter(a=>a.tipo==='aviso').forEach(a=>cola.push(a));
+
+  return cola;
+}
 
 // ── Motor del carrusel de publicidad interna ──
 (function(){
@@ -398,6 +394,7 @@ const ANUNCIOS = [
         <div class="int-roster">${item.personas.map(p=>`<div class="int-roster-row"><div class="int-roster-name">${p.nombre}</div><div class="int-roster-area">${[p.puesto,p.area].filter(Boolean).join(' · ')}</div></div>`).join('')}</div>` };
       default: return { bg:'t-aviso', particulas:'', html:`
         <div class="int-eyebrow">Aviso</div>
+        ${item.imagenURL ? `<img class="int-img" src="${item.imagenURL}" alt="">` : ''}
         <div class="int-title" style="font-size:clamp(30px,6vw,54px);">${item.titulo||''}</div>
         <div class="int-body" style="margin-top:16px;">${item.texto||''}</div>` };
     }
@@ -429,17 +426,6 @@ const ANUNCIOS = [
       }
     }
     partEl.innerHTML=html;
-  }
-
-  // Cola del día: los anuncios fijos de ANUNCIOS + una tarjeta especial y
-  // grande por cada persona de "cumple_mes" cuyo día sea justo hoy.
-  function colaDeHoy(){
-    const cola=[], hoy=nowChih().getDate();
-    ANUNCIOS.forEach(item=>{
-      if(item.tipo==='cumple_mes') item.personas.filter(p=>p.dia===hoy).forEach(p=>cola.push({tipo:'cumple_hoy', persona:p}));
-      cola.push(item);
-    });
-    return cola;
   }
 
   let idx=0, ocultarTimer=null;
@@ -1231,6 +1217,13 @@ window.__setPedidos = function(arr){ pedidos = Array.isArray(arr)?arr:[]; render
 window.__setRecolecciones = function(arr){ recolecciones = Array.isArray(arr)?arr:[]; render(true); tvActualizarMiniMapa(); };
 window.__setPuntosCatalogoPaqueterias = function(arr){ puntosCatalogoPaqueterias = Array.isArray(arr)?arr:[]; tvActualizarMiniMapa(); };
 window.__almRender  = function(){ render(true); };
+// Avisos TV (colección `tv_avisos`, administrados desde RH) — alimenta tanto
+// el carrusel de publicidad interna (AVISOS_LIVE) como la decoración de la
+// franja de cajas / banner grande de cumpleaños de hoy (más abajo).
+window.__setAvisosTV = function(arr){
+  AVISOS_LIVE = Array.isArray(arr) ? arr : [];
+  if (window.__tvComprobarCumpleanos) window.__tvComprobarCumpleanos();
+};
 
 // ── Reloj EN VIVO ──
 // ── Modo nocturno (persiste en este dispositivo) ──
@@ -1303,22 +1296,22 @@ tickReloj(); setInterval(tickReloj,1000);
     }
   }
 
-  // Cumpleaños: opcional, se lee de Firestore si ya está disponible (config/cumpleanos → {lista:[{nombre,mes,dia}]}).
-  // El módulo de Firebase carga después que este script, así que se expone un gancho para que lo llame en cuanto esté listo.
+  // Cumpleaños: se lee de AVISOS_LIVE (colección `tv_avisos`, tipo:'cumpleanos'),
+  // poblada por window.__setAvisosTV cada vez que cambia la colección en Firestore.
+  // cumpleActivadoHoy evita relanzar el banner/confeti en cada actualización del
+  // snapshot — solo se activa una vez por carga de página.
   aplicarTemporada(null); // pinta de inmediato con lo que ya sabemos, sin esperar red
+  let cumpleActivadoHoy = false;
   window.__tvComprobarCumpleanos = function(){
     try{
-      if (!window.db) return;
-      import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js').then(fs=>{
-        return fs.getDoc(fs.doc(window.db,'config','cumpleanos'));
-      }).then(snap=>{
-        const lista = (snap && snap.exists() && Array.isArray(snap.data().lista)) ? snap.data().lista : [];
-        const deHoy = lista.filter(c=>Number(c.mes)===mes && Number(c.dia)===dia);
-        if (deHoy.length){
-          aplicarTemporada(ICONO_PASTEL);
+      const deHoy = AVISOS_LIVE.filter(c=>c.tipo==='cumpleanos' && Number(c.mes)===mes && Number(c.dia)===dia);
+      if (deHoy.length){
+        aplicarTemporada(ICONO_PASTEL);
+        if (!cumpleActivadoHoy){
+          cumpleActivadoHoy = true;
           if (window.__tvActivarCumpleanos) window.__tvActivarCumpleanos(deHoy.map(c=>c.nombre).filter(Boolean));
         }
-      }).catch(()=>{});
+      }
     }catch(e){}
   };
 })();
@@ -1362,7 +1355,6 @@ const app = initializeApp(config, 'tv-almacen');
 const db  = getFirestore(app);
 const auth = getAuth(app);
 window.db = db; // para que otras partes de la página (fuera de este módulo) puedan leer configuración
-if (window.__tvComprobarCumpleanos) window.__tvComprobarCumpleanos();
 
 // Normaliza createdAt: Timestamp | número(ms) | ISO | {seconds} → ms
 function toMs(v){
@@ -1500,8 +1492,29 @@ function iniciarEscuchaPaqueterias(){
   });
 }
 
+// ── Avisos TV (`tv_avisos`) — SOLO LECTURA. Se dan de alta/baja desde el
+//   panel "📢 Avisos TV" del módulo de RH (rh.js); aquí solo se reflejan en
+//   tiempo real, alimentando el carrusel de publicidad interna y el banner
+//   de cumpleaños de hoy (ver window.__setAvisosTV en el script de arriba).
+let escuchandoAvisos = false;
+function iniciarEscuchaAvisos(){
+  if(escuchandoAvisos) return; escuchandoAvisos = true;
+  onSnapshot(collection(db,'tv_avisos'), (snap)=>{
+    const lista = [];
+    snap.forEach(docu=>{
+      const d = docu.data() || {};
+      if(d.activo === false) return; // desactivado desde RH: no se muestra, sin borrarlo
+      lista.push({ id:docu.id, ...d });
+    });
+    if(window.__setAvisosTV) window.__setAvisosTV(lista);
+  }, (err)=>{
+    // No interrumpe el tablero si esta colección aún no tiene permiso de lectura pública.
+    console.error('[TV tv_avisos] onSnapshot error:', err);
+  });
+}
+
 // Sesi\u00f3n an\u00f3nima para poder leer aun sin usuario logueado.
-onAuthStateChanged(auth, (user)=>{ if(user){ iniciarEscucha(); iniciarEscuchaRecolecciones(); iniciarEscuchaPaqueterias(); } });
+onAuthStateChanged(auth, (user)=>{ if(user){ iniciarEscucha(); iniciarEscuchaRecolecciones(); iniciarEscuchaPaqueterias(); iniciarEscuchaAvisos(); } });
 signInAnonymously(auth).catch((err)=>{
   console.error('[TV auth] signInAnonymously:', err);
   if(err && err.code === 'auth/operation-not-allowed'){
@@ -1512,6 +1525,7 @@ signInAnonymously(auth).catch((err)=>{
   iniciarEscucha();
   iniciarEscuchaRecolecciones();
   iniciarEscuchaPaqueterias();
+  iniciarEscuchaAvisos();
 });
 </script>
 </body>
