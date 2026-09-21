@@ -1096,6 +1096,25 @@ let toastT;
 function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),2600)}
 
 /* ===== Sonido (Web Audio) ===== */
+// Desbloqueo silencioso de audio: Chrome bloquea el AudioContext hasta que
+// haya al menos una interacción del usuario con la página (clic, toque,
+// tecla). En una TV que nadie toca esto nunca pasa solo — por eso aquí se
+// aprovecha CUALQUIER interacción (aunque no tenga que ver con sonido, ej.
+// tocar el botón de modo nocturno) para "despertar" el audio del resto de
+// la sesión. Esto es un refuerzo: el arreglo real es dar permiso de Sonido
+// permanente al sitio en la configuración de Chrome de la TV.
+(function(){
+  let desbloqueado=false;
+  function desbloquear(){
+    if(desbloqueado) return; desbloqueado=true;
+    try{
+      const ac=new(window.AudioContext||window.webkitAudioContext)();
+      if(ac.state==='suspended') ac.resume();
+    }catch(e){}
+    ['click','touchstart','keydown'].forEach(ev=>document.removeEventListener(ev,desbloquear));
+  }
+  ['click','touchstart','keydown'].forEach(ev=>document.addEventListener(ev,desbloquear,{passive:true}));
+})();
 function beep(){try{const ac=new(window.AudioContext||window.webkitAudioContext)();[880,1320].forEach((f,i)=>{const o=ac.createOscillator(),g=ac.createGain();o.type='sine';o.frequency.value=f;o.connect(g);g.connect(ac.destination);const t=ac.currentTime+i*0.16;g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(0.2,t+0.02);g.gain.exponentialRampToValueAtTime(0.001,t+0.15);o.start(t);o.stop(t+0.16)})}catch(e){}}
 
 /* ===== Tanda de pitidos finos de fondo (para el aviso central de pedido
