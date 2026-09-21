@@ -1,3 +1,4 @@
+
 // ═══════════════════════════════════════════════════════════════════════
 //  surtidos-supabase.js — Portal Operativo Tecnocontrol
 // ═══════════════════════════════════════════════════════════════════════
@@ -25,27 +26,7 @@
   function cargarSupabase() {
     if (_clientePromesa) return _clientePromesa;
     _clientePromesa = import('https://esm.sh/@supabase/supabase-js@2').then(function (mod) {
-      var cliente = mod.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-        // Third-Party Auth (Firebase → Supabase, ya activado en el
-        // dashboard): en cada request, si hay una sesión de Firebase,
-        // manda su ID token como si fuera el access token de Supabase —
-        // así auth.jwt() en Postgres puede leer el UID real (sub) y
-        // políticas RLS como "colaboradores_lectura_autenticados" o
-        // "es_admin_actual()" pueden identificar quién pregunta, sin
-        // necesitar una cuenta separada de Supabase Auth. Sesiones
-        // anónimas de Firebase (TV, kiosco) también mandan token, pero
-        // current_firebase_uid() del lado de Postgres las filtra.
-        accessToken: async function () {
-          try {
-            var user = window.auth && window.auth.currentUser;
-            if (!user) return null;
-            return await user.getIdToken();
-          } catch (e) {
-            console.warn('[Supabase] No se pudo obtener el ID token de Firebase:', e);
-            return null;
-          }
-        }
-      });
+      var cliente = mod.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
       window.tcSupabase = cliente; // disponible globalmente por si otro módulo lo necesita
       return cliente;
       // Nota: ya no se intenta iniciar sesión anónima aquí — desde que las
@@ -53,6 +34,15 @@
       // migración 0006), no hace falta, y el intento fallaba siempre con un
       // error 500 ajeno a nuestro código (revisar Postgres Logs cuando haya
       // tiempo, probablemente un trigger de otra app en el mismo proyecto).
+      //
+      // REVERTIDO (21-sep-2026): se probó mandar el ID token de Firebase
+      // como accessToken (para que auth.jwt() funcionara en RLS de
+      // Fundación) y causó "canceling statement due to statement timeout"
+      // en TODAS las consultas de Supabase, incluida la TV de Almacén —
+      // quedó fuera de servicio unos minutos. No se vuelve a intentar
+      // hasta diagnosticar la causa exacta con calma (probablemente la
+      // validación del JWT de Firebase contra el JWKS es lenta o se
+      // reintenta en cada request, no algo puntual de una tabla).
     });
     return _clientePromesa;
   }
