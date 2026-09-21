@@ -1177,6 +1177,7 @@ function rhHTMLTopbar(){
             '</select>'
         ) : '')+
         '<button class="rhd-add" onclick="rhNuevoColaborador()">+ Agregar colaborador</button>'+
+        '<button class="rhd-tab" onclick="window.rhAbrirAvisosTV()" title="Cumplea\u00f1os, aniversarios, efem\u00e9rides, altas/bajas y avisos que rotan en la TV de Almac\u00e9n">📢 Avisos TV</button>'+
     '</div>';
 }
 
@@ -2093,6 +2094,227 @@ window.toggleRHDash = function(area, email){
     if(_origToggleRHDash) _origToggleRHDash(area, email);
     if(area==='Recursos Humanos' && puedeVerRH(email)){
         setTimeout(()=>{ if(typeof window.initRH360==='function') window.initRH360(); }, 200);
+    }
+};
+
+// ═══════════════════════════════════════════════════════════════════════
+//  AVISOS TV — colección Firestore `tv_avisos`. Alimenta en vivo la
+//  pantalla de TV de Almacén (pedidos-almacen.html): cumpleaños,
+//  aniversarios, efemérides, altas/bajas de personal y avisos libres con
+//  imagen opcional. Antes vivía repartido entre un botón en Almacén
+//  (solo cumpleaños) y un arreglo hardcodeado dentro de la propia TV;
+//  ahora todo se administra desde aquí, en un solo lugar.
+// ═══════════════════════════════════════════════════════════════════════
+let rhAvisosCache = null;
+let rhAvisosTipoActivo = 'cumpleanos';
+let rhAvisosStorageMod = null;
+
+const RH_AVISOS_TIPOS = {
+    cumpleanos:  { label:'🎂 Cumpleaños' },
+    aniversario: { label:'🏆 Aniversario' },
+    efemeride:   { label:'📅 Efeméride' },
+    alta:        { label:'✅ Nuevo ingreso' },
+    baja:        { label:'👋 Baja de personal' },
+    aviso:       { label:'📢 Aviso / imagen' }
+};
+const RH_AVISOS_MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+async function rhCargarStorageTV(){
+    if (rhAvisosStorageMod) return rhAvisosStorageMod;
+    const m = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js');
+    rhAvisosStorageMod = { mod:m, storage: m.getStorage(window.app) };
+    return rhAvisosStorageMod;
+}
+
+async function rhCargarAvisosTV(forzar){
+    if (rhAvisosCache && !forzar) return rhAvisosCache;
+    try {
+        const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const snap = await fs.getDocs(fs.collection(db,'tv_avisos'));
+        rhAvisosCache = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    } catch(e){
+        console.error('[RH] cargarAvisosTV:', e.message);
+        rhAvisosCache = [];
+    }
+    return rhAvisosCache;
+}
+
+window.rhAbrirAvisosTV = async function(){
+    await rhCargarAvisosTV(true);
+    rhAvisosTipoActivo = 'cumpleanos';
+    rhRenderAvisosModal();
+};
+
+window.rhCerrarAvisosTV = function(){
+    const modal = document.getElementById('rh-avisos-modal');
+    if (modal) modal.style.display = 'none';
+};
+
+window.rhAvisosSetTipo = function(tipo){
+    rhAvisosTipoActivo = tipo;
+    rhRenderAvisosModal();
+};
+
+function rhAvisosListaHTML(){
+    const lista = (rhAvisosCache||[]).filter(a=>a.tipo===rhAvisosTipoActivo);
+    if (!lista.length) return '<div style="text-align:center;padding:14px;color:#94a3b8;font-size:12px;">Aún no hay nada aquí.</div>';
+    return lista.map(a=>{
+        let linea = '';
+        if (a.tipo==='cumpleanos') linea = rh360Escape(a.nombre||'—')+' · '+String(a.dia||'').padStart(2,'0')+'/'+String(a.mes||'').padStart(2,'0')+(a.area?' · '+rh360Escape(a.area):'');
+        else if (a.tipo==='aniversario') linea = rh360Escape(a.nombre||'—')+' · '+rh360Escape(a.empresa||'')+' · '+(a.anios||0)+' años';
+        else if (a.tipo==='efemeride') linea = rh360Escape(a.titulo||'—')+' · '+rh360Escape(a.fecha||'');
+        else if (a.tipo==='alta' || a.tipo==='baja') linea = rh360Escape(a.nombre||'—')+' · '+[a.puesto,a.area].filter(Boolean).map(rh360Escape).join(' · ')+(a.fecha?' · '+rh360Escape(a.fecha):'');
+        else linea = rh360Escape(a.titulo||'Aviso');
+        const img = (a.tipo==='aviso' && a.imagenURL) ? '<img src="'+a.imagenURL+'" style="width:36px;height:36px;object-fit:cover;border-radius:6px;flex-shrink:0;">' : '';
+        return '<div style="display:flex;align-items:center;gap:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:8px 10px;">'
+            + img + '<span style="flex:1;font-size:12.5px;color:#334155;">'+linea+'</span>'
+            + '<button onclick="window.rhAvisosQuitar(\''+a.id+'\')" style="padding:4px 9px;background:#fee2e2;color:#dc2626;border:none;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;">Quitar</button>'
+        + '</div>';
+    }).join('');
+}
+
+function rhAvisosFormHTML(){
+    const t = rhAvisosTipoActivo;
+    const mesesOpts = RH_AVISOS_MESES.map((m,i)=>'<option value="'+(i+1)+'">'+m+'</option>').join('');
+    let campos = '';
+    if (t==='cumpleanos'){
+        campos =
+            '<input id="rha-f-nombre" class="rh-form-input" type="text" placeholder="Nombre completo" style="margin-bottom:8px;">'+
+            '<div style="display:flex;gap:8px;margin-bottom:8px;">'+
+                '<input id="rha-f-dia" class="rh-form-input" type="number" min="1" max="31" placeholder="Día" style="width:90px;">'+
+                '<select id="rha-f-mes" class="rh-form-input" style="flex:1;">'+mesesOpts+'</select>'+
+            '</div>'+
+            '<input id="rha-f-area" class="rh-form-input" type="text" placeholder="Área / sucursal (opcional)" style="margin-bottom:8px;">';
+    } else if (t==='aniversario'){
+        campos =
+            '<input id="rha-f-nombre" class="rh-form-input" type="text" placeholder="Nombre completo" style="margin-bottom:8px;">'+
+            '<div style="display:flex;gap:8px;margin-bottom:8px;">'+
+                '<input id="rha-f-empresa" class="rh-form-input" type="text" placeholder="Empresa (ej. JOMAR)" style="flex:1;">'+
+                '<input id="rha-f-anios" class="rh-form-input" type="number" min="1" placeholder="Años" style="width:90px;">'+
+            '</div>'+
+            '<textarea id="rha-f-mensaje" class="rh-form-input" placeholder="Mensaje de felicitación" style="margin-bottom:8px;min-height:60px;"></textarea>';
+    } else if (t==='efemeride'){
+        campos =
+            '<input id="rha-f-titulo" class="rh-form-input" type="text" placeholder="Título (ej. Día del Notario)" style="margin-bottom:8px;">'+
+            '<input id="rha-f-fecha" class="rh-form-input" type="text" placeholder="Fecha a mostrar (ej. 2 de septiembre)" style="margin-bottom:8px;">'+
+            '<textarea id="rha-f-texto" class="rh-form-input" placeholder="Texto" style="margin-bottom:8px;min-height:60px;"></textarea>';
+    } else if (t==='alta' || t==='baja'){
+        campos =
+            '<input id="rha-f-nombre" class="rh-form-input" type="text" placeholder="Nombre completo" style="margin-bottom:8px;">'+
+            '<div style="display:flex;gap:8px;margin-bottom:8px;">'+
+                '<input id="rha-f-puesto" class="rh-form-input" type="text" placeholder="Puesto" style="flex:1;">'+
+                '<input id="rha-f-area" class="rh-form-input" type="text" placeholder="Área" style="flex:1;">'+
+            '</div>'+
+            '<input id="rha-f-fecha" class="rh-form-input" type="date" style="margin-bottom:8px;">';
+    } else { // aviso
+        campos =
+            '<input id="rha-f-titulo" class="rh-form-input" type="text" placeholder="Título" style="margin-bottom:8px;">'+
+            '<textarea id="rha-f-texto" class="rh-form-input" placeholder="Texto libre" style="margin-bottom:8px;min-height:60px;"></textarea>'+
+            '<input id="rha-f-imagen" type="file" accept="image/*" style="margin-bottom:8px;">';
+    }
+    return campos + '<button id="rha-f-btn" onclick="window.rhAvisosGuardarNuevo()" class="rhd-tab on" style="width:100%;">+ Agregar</button>';
+}
+
+function rhRenderAvisosModal(){
+    let modal = document.getElementById('rh-avisos-modal');
+    if (!modal){
+        modal = document.createElement('div');
+        modal.id = 'rh-avisos-modal';
+        modal.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,.75);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;';
+        document.body.appendChild(modal);
+    }
+    modal.style.display = 'flex';
+    modal.innerHTML =
+        '<div style="background:#fff;border-radius:18px;max-width:640px;width:100%;max-height:88vh;overflow:auto;padding:22px;">'+
+            '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">'+
+                '<div style="font-size:15px;font-weight:800;color:#1e293b;">📢 Avisos TV · Almacén</div>'+
+                '<button onclick="window.rhCerrarAvisosTV()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#94a3b8;">&times;</button>'+
+            '</div>'+
+            '<div style="font-size:11.5px;color:#64748b;margin-bottom:14px;">Lo que agregues aquí aparece en vivo en la pantalla de TV de Almacén: cumpleaños, aniversarios, efemérides, altas/bajas de personal y avisos con imagen.</div>'+
+            '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;">'+
+                Object.keys(RH_AVISOS_TIPOS).map(t=>'<button onclick="window.rhAvisosSetTipo(\''+t+'\')" style="padding:6px 12px;border-radius:20px;border:1px solid '+(rhAvisosTipoActivo===t?'#2563eb':'#e2e8f0')+';background:'+(rhAvisosTipoActivo===t?'#eff6ff':'#fff')+';color:'+(rhAvisosTipoActivo===t?'#2563eb':'#475569')+';font-size:11.5px;font-weight:700;cursor:pointer;">'+RH_AVISOS_TIPOS[t].label+'</button>').join('')+
+            '</div>'+
+            '<div id="rh-avisos-lista" style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">'+rhAvisosListaHTML()+'</div>'+
+            '<div id="rh-avisos-form">'+rhAvisosFormHTML()+'</div>'+
+        '</div>';
+}
+
+window.rhAvisosGuardarNuevo = async function(){
+    const t = rhAvisosTipoActivo;
+    const btn = document.getElementById('rha-f-btn');
+    const val = id => { const el=document.getElementById(id); return el ? el.value.trim() : ''; };
+
+    let docData = { tipo:t, activo:true, creadoEn:Date.now(), creadoPor:(auth.currentUser&&auth.currentUser.email)||'' };
+
+    if (t==='cumpleanos'){
+        const nombre = val('rha-f-nombre');
+        const dia = parseInt(val('rha-f-dia'),10);
+        const mesSel = document.getElementById('rha-f-mes');
+        const mes = mesSel ? parseInt(mesSel.value,10) : 0;
+        if (!nombre || !dia || dia<1 || dia>31){ alert('Escribe el nombre y un día válido (1-31).'); return; }
+        docData = {...docData, nombre, dia, mes, area:val('rha-f-area')};
+    } else if (t==='aniversario'){
+        const nombre = val('rha-f-nombre');
+        if (!nombre){ alert('Escribe el nombre.'); return; }
+        docData = {...docData, nombre, empresa:val('rha-f-empresa'), anios:Number(val('rha-f-anios'))||0, mensaje:val('rha-f-mensaje')};
+    } else if (t==='efemeride'){
+        const titulo = val('rha-f-titulo');
+        if (!titulo){ alert('Escribe el título.'); return; }
+        docData = {...docData, titulo, fecha:val('rha-f-fecha'), texto:val('rha-f-texto')};
+    } else if (t==='alta' || t==='baja'){
+        const nombre = val('rha-f-nombre');
+        if (!nombre){ alert('Escribe el nombre.'); return; }
+        const fechaISO = val('rha-f-fecha');
+        const fechaDisplay = fechaISO ? fechaISO.split('-').reverse().join('/') : '';
+        docData = {...docData, nombre, puesto:val('rha-f-puesto'), area:val('rha-f-area'), fecha:fechaDisplay};
+    } else { // aviso
+        const titulo = val('rha-f-titulo');
+        const texto = val('rha-f-texto');
+        if (!titulo && !texto){ alert('Escribe al menos un título o un texto.'); return; }
+        docData = {...docData, titulo, texto};
+        const fileInput = document.getElementById('rha-f-imagen');
+        const file = fileInput && fileInput.files && fileInput.files[0];
+        if (file){
+            if (btn){ btn.textContent='Subiendo imagen…'; btn.disabled=true; }
+            try {
+                const st = await rhCargarStorageTV();
+                const ruta = 'tv_avisos/' + Date.now() + '_' + file.name;
+                const sref = st.mod.ref(st.storage, ruta);
+                await st.mod.uploadBytes(sref, file);
+                docData.imagenURL = await st.mod.getDownloadURL(sref);
+            } catch(e){
+                console.error('[RH] subir imagen aviso:', e);
+                alert('No se pudo subir la imagen: '+e.message);
+                if (btn){ btn.textContent='+ Agregar'; btn.disabled=false; }
+                return;
+            }
+        }
+    }
+
+    if (btn){ btn.textContent='Guardando…'; btn.disabled=true; }
+    try {
+        const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        await fs.addDoc(fs.collection(db,'tv_avisos'), docData);
+        if (window.mostrarPush) window.mostrarPush('📢 Aviso agregado', RH_AVISOS_TIPOS[t].label, '✅');
+        await rhCargarAvisosTV(true);
+        rhRenderAvisosModal();
+    } catch(e){
+        console.error('[RH] guardarAvisoTV:', e);
+        alert('No se pudo guardar: '+e.message);
+        if (btn){ btn.textContent='+ Agregar'; btn.disabled=false; }
+    }
+};
+
+window.rhAvisosQuitar = async function(id){
+    if (!confirm('¿Quitar este aviso de la TV?')) return;
+    try {
+        const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        await fs.deleteDoc(fs.doc(db,'tv_avisos',id));
+        await rhCargarAvisosTV(true);
+        rhRenderAvisosModal();
+    } catch(e){
+        console.error('[RH] quitarAvisoTV:', e);
+        alert('No se pudo quitar: '+e.message);
     }
 };
 
