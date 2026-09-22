@@ -1,4 +1,3 @@
-
 // ═══════════════════════════════════════════════════════════════════════
 //  surtidos-supabase.js — Portal Operativo Tecnocontrol
 // ═══════════════════════════════════════════════════════════════════════
@@ -133,11 +132,15 @@
   // con los eventos de Realtime, a costa de una consulta extra por
   // cambio. Para el volumen de pedidos activos de Almacén esto es
   // imperceptible.
+  // Todas las columnas EXCEPTO pdf_original (base64 pesado). Se lee aparte con
+  // tcSbObtenerPdfOriginal. Evita 'statement timeout' en las listas.
+  var COLS_SURTIDO = 'id,folio,cliente,tipo,vendedor,solicitante,solicitante_email,estado,prioridad,productos,check,num_alma,cotizacion_origen,destino_tipo,destino_lat,destino_lng,created_at,fecha_entrega,entregado_en,cancelado_en,motivo_cancelacion,recibio_nombre,firma,firma_entrega,remisionado,remisionado_por,remisionado_por_email,remisionado_en,remision_aspel_folio,remision_aspel_fecha,updated_at,destino_paqueteria,destino_guia,destino_direccion,destino_almacen_origen,destino_almacen_destino,destino,tiene_pdf_original,num_ordenes_compra,caratula_envio,entrega_observaciones,entrega_pendiente_firma,comentarios_almacen,area,uso,folio_servicio,origen,tecnico_id,tecnico_numero,tecnico_nombre,folio_num,folio_prefijo,extra,razon_social,cliente_id,estacion_id,estacion_nombre,direccion,lat,lng,tecnico_correo,almacen,entrega,total,creado_por,eliminada,fecha_eliminacion,usuario_elimino,motivo_eliminacion,fecha_programada_eliminacion,solicitante_tecnico_id,solicita_para_si_mismo';
+
   window.tcSbSuscribirSurtidos = function (onChange, onError) {
     var canal = null;
     cargarSupabase().then(function (sb) {
       function refrescar() {
-        sb.from('surtidos').select('*').then(function (r) {
+        sb.from('surtidos').select(COLS_SURTIDO).then(function (r) {
           if (r.error) { if (onError) onError(r.error); return; }
           onChange((r.data || []).map(filaASurtido));
         });
@@ -158,7 +161,7 @@
     var canal = null;
     cargarSupabase().then(function (sb) {
       function refrescar() {
-        sb.from('surtidos').select('*').eq('entrega_pendiente_firma', true).then(function (r) {
+        sb.from('surtidos').select(COLS_SURTIDO).eq('entrega_pendiente_firma', true).then(function (r) {
           if (r.error) { if (onError) onError(r.error); return; }
           onChange((r.data || []).map(filaASurtido));
         });
@@ -177,7 +180,7 @@
 
   window.tcSbObtenerSurtido = function (id) {
     return cargarSupabase().then(function (sb) {
-      return sb.from('surtidos').select('*').eq('id', id).maybeSingle();
+      return sb.from('surtidos').select(COLS_SURTIDO).eq('id', id).maybeSingle();
     }).then(function (r) {
       if (r.error) throw r.error;
       return filaASurtido(r.data);
@@ -212,7 +215,7 @@
   // ── Todos los pedidos (para vistas de solo lectura tipo "Pedidos de Almacén" en Cobranza) ─
   window.tcSbListarTodosSurtidos = function () {
     return cargarSupabase().then(function (sb) {
-      return sb.from('surtidos').select('*').order('created_at', { ascending: false });
+      return sb.from('surtidos').select(COLS_SURTIDO).order('created_at', { ascending: false });
     }).then(function (r) {
       if (r.error) throw r.error;
       return (r.data || []).map(filaASurtido);
@@ -222,7 +225,7 @@
   // ── Pedidos de un cliente específico (solo lectura, ej. Cobranza) ────────
   window.tcSbSurtidosPorCliente = function (clienteNombre) {
     return cargarSupabase().then(function (sb) {
-      return sb.from('surtidos').select('*').eq('cliente', clienteNombre).order('created_at', { ascending: false });
+      return sb.from('surtidos').select(COLS_SURTIDO).eq('cliente', clienteNombre).order('created_at', { ascending: false });
     }).then(function (r) {
       if (r.error) throw r.error;
       return (r.data || []).map(filaASurtido);
@@ -283,7 +286,7 @@
   // ── Consultas por estado (ej. Historial de entregas en Cobranza/Almacén) ─
   window.tcSbSurtidosPorEstados = function (estados) {
     return cargarSupabase().then(function (sb) {
-      return sb.from('surtidos').select('*').in('estado', estados);
+      return sb.from('surtidos').select(COLS_SURTIDO).in('estado', estados);
     }).then(function (r) {
       if (r.error) throw r.error;
       return (r.data || []).map(filaASurtido);
