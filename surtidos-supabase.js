@@ -126,56 +126,95 @@
     return out;
   }
 
-  // ── Feed en tiempo real (reemplaza fs.onSnapshot) ───────────────────
-  // Nota de diseño: ante cualquier cambio, se vuelve a pedir la lista
-  // completa — más simple y confiable que reconstruir el estado a mano
-  // con los eventos de Realtime, a costa de una consulta extra por
-  // cambio. Para el volumen de pedidos activos de Almacén esto es
-  // imperceptible.
   // Todas las columnas EXCEPTO pdf_original (base64 pesado). Se lee aparte con
   // tcSbObtenerPdfOriginal. Evita 'statement timeout' en las listas.
   var COLS_SURTIDO = 'id,folio,cliente,tipo,vendedor,solicitante,solicitante_email,estado,prioridad,productos,check,num_alma,cotizacion_origen,destino_tipo,destino_lat,destino_lng,created_at,fecha_entrega,entregado_en,cancelado_en,motivo_cancelacion,recibio_nombre,firma,firma_entrega,remisionado,remisionado_por,remisionado_por_email,remisionado_en,remision_aspel_folio,remision_aspel_fecha,updated_at,destino_paqueteria,destino_guia,destino_direccion,destino_almacen_origen,destino_almacen_destino,destino,tiene_pdf_original,num_ordenes_compra,caratula_envio,entrega_observaciones,entrega_pendiente_firma,comentarios_almacen,area,uso,folio_servicio,origen,tecnico_id,tecnico_numero,tecnico_nombre,folio_num,folio_prefijo,extra,razon_social,cliente_id,estacion_id,estacion_nombre,direccion,lat,lng,tecnico_correo,almacen,entrega,total,creado_por,eliminada,fecha_eliminacion,usuario_elimino,motivo_eliminacion,fecha_programada_eliminacion,solicitante_tecnico_id,solicita_para_si_mismo';
 
-  window.tcSbSuscribirSurtidos = function (onChange, onError) {
-    var canal = null;
+  // ── Feed en tiempo real (reemplaza fs.onSnapshot) ───────────────────
+  // v3: carga la lista UNA vez y luego, por cada evento de Realtime, solo
+  // vuelve a pedir el/los pedido(s) que cambiaron (agrupados en 300 ms).
+  // Antes cada cambio hacía que TODAS las pantallas abiertas descargaran la
+  // tabla completa, lo que saturaba Supabase ("statement timeout").
+  // Se recarga completo solo al conectar/reconectar o al volver la pestaña
+  // a primer plano, para no perder eventos si la TV se durmió.
+  function crearFeedSurtidos(nombreCanal, filtroServidor, filtroLocal, onChange, onError) {
+    var canal = null, sbRef = null, mapa = new Map(), pendientes = new Set();
+    var timer = null, yaConectado = false, activo = true;
+
+    function emitir() {
+      if (!activo) return;
+      var arr = [];
+      mapa.forEach(function (row) { if (!filtroLocal || filtroLocal(row)) arr.push(filaASurtido(row)); });
+      onChange(arr);
+    }
+    function cargarTodo() {
+      if (!sbRef || !activo) return;
+      var q = sbRef.from('surtidos').select(COLS_SURTIDO);
+      if (filtroServidor) q = filtroServidor(q);
+      q.then(function (r) {
+        if (r.error) { if (onError) onError(r.error); return; }
+        mapa.clear();
+        (r.data || []).forEach(function (row) { mapa.set(row.id, row); });
+        emitir();
+      });
+    }
+    function procesarPendientes() {
+      timer = null;
+      var ids = Array.from(pendientes); pendientes.clear();
+      if (!ids.length || !sbRef) return;
+      sbRef.from('surtidos').select(COLS_SURTIDO).in('id', ids).then(function (r) {
+        if (r.error) { if (onError) onError(r.error); return; }
+        var vistos = new Set();
+        (r.data || []).forEach(function (row) { mapa.set(row.id, row); vistos.add(row.id); });
+        ids.forEach(function (id) { if (!vistos.has(id)) mapa.delete(id); });
+        emitir();
+      });
+    }
+    function alVolver() { if (document.visibilityState === 'visible') cargarTodo(); }
+
     cargarSupabase().then(function (sb) {
-      function refrescar() {
-        sb.from('surtidos').select(COLS_SURTIDO).then(function (r) {
-          if (r.error) { if (onError) onError(r.error); return; }
-          onChange((r.data || []).map(filaASurtido));
+      sbRef = sb;
+      cargarTodo();
+      canal = sb.channel(nombreCanal)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'surtidos' }, function (p) {
+          var id = (p.new && p.new.id) || (p.old && p.old.id);
+          if (!id) { cargarTodo(); return; }
+          if (p.eventType === 'DELETE') { mapa.delete(id); emitir(); return; }
+          pendientes.add(id);
+          if (!timer) timer = setTimeout(procesarPendientes, 300);
+        })
+        .subscribe(function (status) {
+          if (status === 'SUBSCRIBED') {
+            if (yaConectado) cargarTodo(); // reconexión: recuperar lo que se haya perdido
+            yaConectado = true;
+          }
         });
-      }
-      refrescar();
-      canal = sb.channel('surtidos-cambios')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'surtidos' }, refrescar)
-        .subscribe();
+      document.addEventListener('visibilitychange', alVolver);
+      window.addEventListener('online', cargarTodo);
     }).catch(function (err) { if (onError) onError(err); });
+
     // Función para cancelar la suscripción — igual que el "unsubscribe" que devolvía onSnapshot.
     return function detener() {
+      activo = false;
+      if (timer) clearTimeout(timer);
+      document.removeEventListener('visibilitychange', alVolver);
+      window.removeEventListener('online', cargarTodo);
       if (canal) cargarSupabase().then(function (sb) { sb.removeChannel(canal); });
     };
+  }
+
+  window.tcSbSuscribirSurtidos = function (onChange, onError) {
+    return crearFeedSurtidos('surtidos-cambios', null, null, onChange, onError);
   };
 
   // ── Cola de entregas esperando firma en el kiosko (Confirmar recepción) ──
+  // Carga inicial filtrada en servidor; los cambios se filtran localmente para
+  // que no se escape la transición cuando un pedido DEJA de estar pendiente.
   window.tcSbEscucharEntregasPendientesFirma = function (onChange, onError) {
-    var canal = null;
-    cargarSupabase().then(function (sb) {
-      function refrescar() {
-        sb.from('surtidos').select(COLS_SURTIDO).eq('entrega_pendiente_firma', true).then(function (r) {
-          if (r.error) { if (onError) onError(r.error); return; }
-          onChange((r.data || []).map(filaASurtido));
-        });
-      }
-      refrescar();
-      // Sin filtro en la suscripción misma (solo al leer) — así no se nos escapa
-      // la transición cuando un pedido DEJA de estar pendiente de firma.
-      canal = sb.channel('surtidos-entrega-firma')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'surtidos' }, refrescar)
-        .subscribe();
-    }).catch(function (err) { if (onError) onError(err); });
-    return function detener() {
-      if (canal) cargarSupabase().then(function (sb) { sb.removeChannel(canal); });
-    };
+    return crearFeedSurtidos('surtidos-entrega-firma',
+      function (q) { return q.eq('entrega_pendiente_firma', true); },
+      function (row) { return !!row.entrega_pendiente_firma; },
+      onChange, onError);
   };
 
   window.tcSbObtenerSurtido = function (id) {
