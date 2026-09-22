@@ -642,7 +642,7 @@ function renderCheckins(checkins){
 
 //  METAS DE VISITAS 
 let metasDB = {};
-const VENDEDORES_LIST = ['PALOMA PINEDO','JORGE ENRIQUEZ','MIGUEL MONTELLANO','GUILLERMO DURSTEWITZ','MARTIN ROBERTO DE LA O MAESE','FATIMA SAUZAMEDA'];
+const VENDEDORES_LIST = ['PALOMA PINEDO','JORGE ENRIQUEZ','MIGUEL MONTELLANO','GUILLERMO DURSTEWITZ','MARTIN ROBERTO DE LA O MAESE'];
 const MARTIN_EMAIL = 'm.delao@tecnocontrol.com.mx'; // Email real de Martín
 
 async function cargarMetas(checkins){
