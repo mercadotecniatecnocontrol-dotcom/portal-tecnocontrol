@@ -218,6 +218,7 @@ const VISTA_NOM={frente:'Frente',atras:'Atrás',derecha:'Lateral Der.',izquierda
 
 // ÍCONOS
 const I={
+  save:`<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7l-4-4zm-5 16a3 3 0 1 1 0-6 3 3 0 0 1 0 6zm3-10H5V5h10v4z"/></svg>`,
   grid:`<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>`,
   car:`<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.85 7h10.29l1.08 3.11H5.77L6.85 7zM19 17H5v-5h14v5z"/><circle cx="7.5" cy="14.5" r="1.5"/><circle cx="16.5" cy="14.5" r="1.5"/></svg>`,
   truck:`<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M20 8h-3V4H3c-1.1 0-2 .9-2 2v11h2c0 1.66 1.34 3 3 3s3-1.34 3-3h6c0 1.66 1.34 3 3 3s3-1.34 3-3h2v-5l-3-4zM6 18.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm13.5-9l1.96 2.5H17V9.5h2.5zm-1.5 9c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>`,
@@ -1021,6 +1022,8 @@ function ldVehs(){
       _unsubVehs=fs.onSnapshot(fs.collection(db,C.VEHS),(s)=>{
         const docs=s.docs.map(d=>({id:d.id,...d.data()}));
         flV=docs.length?docs:CAT.map(v=>({id:'eco-'+v.eco,...v}));
+        // Deduplicar por id del documento (por si algo lo agregó también en memoria)
+        {const vistos=new Set();flV=flV.filter(v=>vistos.has(v.id)?false:(vistos.add(v.id),true));}
         resolve();
         // Tras la carga inicial, cada cambio en vivo refresca lo que esté visible
         if(window._flInitDone){
@@ -1494,6 +1497,7 @@ function rAdmin(){
           <div style="font-size:19px;font-weight:900;color:#fff;margin-top:4px">Flotilla vehicular</div>
         </div>
         <div id="adm-hdr-btns" style="display:flex;gap:8px">
+          ${hAdm()?`<button onclick="flRevisarDuplicados()" style="background:rgba(239,68,68,.18);color:#fff;border:none;border-radius:9px;padding:9px 14px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px">⚠ Revisar duplicados</button>`:``}
           <button onclick="admExportar()" style="background:rgba(255,255,255,.1);color:#fff;border:none;border-radius:9px;padding:9px 14px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px">${I.doc} Exportar CSV</button>
           <button class="fb acc" onclick="admGuardarTodo()" id="adm-btn-save" style="display:none;gap:5px">${I.save} Guardar cambios</button>
         </div>
@@ -1691,7 +1695,7 @@ function rAdmTabNuevo(){
         </div>
       </div>
       <div style="margin-top:20px;display:flex;gap:10px">
-        <button onclick="admNuevoGuardar()" class="fb acc" style="padding:10px 24px;font-size:13px">${I.save} Registrar vehículo</button>
+        <button onclick="admNuevoGuardar()" id="adm-nv-btn" class="fb acc" style="padding:10px 24px;font-size:13px">${I.save} Registrar vehículo</button>
         <button onclick="admNuevoLimpiar()" class="fb gho" style="padding:10px 24px;font-size:13px">Limpiar</button>
       </div>
       <div id="adm-nv-msg" style="margin-top:12px;font-size:12px;display:none"></div>
@@ -2504,35 +2508,56 @@ window.flReconciliarTaller=async function(){
 };
 
 // Guardar nuevo vehículo
+// Candado: evita que un doble clic (o Enter repetido) registre el mismo ECO
+// dos veces mientras la primera escritura sigue en camino.
+let _admNuevoGuardando=false;
 window.admNuevoGuardar=async function(){
+  if(_admNuevoGuardando)return;
   const g=id=>document.getElementById(id)?.value?.trim()||'';
   const eco=g('adm-nv-eco');
   if(!eco){document.getElementById('adm-nv-eco').style.borderColor='#EF4444';return;}
   if(!g('adm-nv-unidad')){document.getElementById('adm-nv-unidad').style.borderColor='#EF4444';return;}
   const msg=document.getElementById('adm-nv-msg');
+  const btn=document.getElementById('adm-nv-btn');
+  const txtBtn=btn?btn.innerHTML:'';
+  const liberar=()=>{_admNuevoGuardando=false;if(btn){btn.disabled=false;btn.innerHTML=txtBtn;}};
+  _admNuevoGuardando=true;
+  if(btn){btn.disabled=true;btn.textContent='Guardando…';}
   if(msg){msg.style.display='';msg.style.color='#2563EB';msg.textContent='Verificando...';}
-  // GUARD: evitar duplicados — si ya existe un doc con este ECO, actualizar en vez de crear
-  const existente=flV.find(x=>String(x.eco)===String(eco)&&!x.id.startsWith('eco-'));
-  if(existente){
-    if(msg){msg.style.color='#EF4444';msg.textContent='Ya existe un vehículo con ECO '+eco+' (ID: '+existente.id+'). Usa la tabla para editarlo.';}
-    document.getElementById('adm-nv-eco').style.borderColor='#EF4444';
-    return;
-  }
-  const doc={
-    eco,unidad:g('adm-nv-unidad'),año:Number(g('adm-nv-año'))||0,
-    placas:g('adm-nv-placas'),serie:g('adm-nv-serie'),
-    responsable:g('adm-nv-resp')||'—',plaza:g('adm-nv-plaza'),
-    color:g('adm-nv-color'),nip:g('adm-nv-nip'),pol:g('adm-nv-pol'),
-    pv:g('adm-nv-pv')||'—',rend:g('adm-nv-rend')||'—',
-    tipo:document.getElementById('adm-nv-tipo')?.value||'camioneta',
-    status:document.getElementById('adm-nv-status')?.value||'activo',
-    km:0,creadoEn:new Date().toISOString(),
-    creadoPor:window.auth?.currentUser?.email||'',
-  };
   try{
+    // GUARD 1: lista en memoria
+    const existenteLocal=flV.find(x=>String(x.eco)===String(eco)&&!String(x.id).startsWith('eco-'));
+    // GUARD 2: Firestore directo (la lista en memoria puede ir atrasada).
+    // Se busca como texto y como número porque hay ECOs guardados de ambas formas.
+    let existenteId=existenteLocal?existenteLocal.id:null;
+    if(!existenteId){
+      const consultas=[fs.getDocs(fs.query(fs.collection(db,C.VEHS),fs.where('eco','==',String(eco))))];
+      if(!isNaN(Number(eco)))consultas.push(fs.getDocs(fs.query(fs.collection(db,C.VEHS),fs.where('eco','==',Number(eco)))));
+      const res=await Promise.all(consultas);
+      const hit=res.map(r=>r.docs[0]).find(Boolean);
+      if(hit)existenteId=hit.id;
+    }
+    if(existenteId){
+      if(msg){msg.style.color='#EF4444';msg.textContent='Ya existe un vehículo con ECO '+eco+' (ID: '+existenteId+'). Usa la tabla para editarlo.';}
+      document.getElementById('adm-nv-eco').style.borderColor='#EF4444';
+      liberar();
+      return;
+    }
+    const doc={
+      eco,unidad:g('adm-nv-unidad'),año:Number(g('adm-nv-año'))||0,
+      placas:g('adm-nv-placas'),serie:g('adm-nv-serie'),
+      responsable:g('adm-nv-resp')||'—',plaza:g('adm-nv-plaza'),
+      color:g('adm-nv-color'),nip:g('adm-nv-nip'),pol:g('adm-nv-pol'),
+      pv:g('adm-nv-pv')||'—',rend:g('adm-nv-rend')||'—',
+      tipo:document.getElementById('adm-nv-tipo')?.value||'camioneta',
+      status:document.getElementById('adm-nv-status')?.value||'activo',
+      km:0,creadoEn:new Date().toISOString(),
+      creadoPor:window.auth?.currentUser?.email||'',
+    };
     if(msg)msg.textContent='Guardando...';
-    const ref=await fs.addDoc(fs.collection(db,C.VEHS),doc);
-    flV.push({id:ref.id,...doc});
+    await fs.addDoc(fs.collection(db,C.VEHS),doc);
+    // NO se hace flV.push aquí: el onSnapshot de ldVehs ya agrega el vehículo
+    // a flV. Antes se agregaba dos veces y se veía duplicado en la lista.
     renderSB();
     if(msg){msg.style.color='#16A34A';msg.textContent='Vehículo registrado. ECO '+eco+' agregado a la flotilla.';}
     if(window.mostrarPush)window.mostrarPush('Vehículo agregado','ECO '+eco+' registrado en flotilla','✓');
@@ -2540,6 +2565,8 @@ window.admNuevoGuardar=async function(){
   }catch(e){
     console.error('[ADMIN]',e);
     if(msg){msg.style.color='#EF4444';msg.textContent='Error: '+e.message;}
+  }finally{
+    liberar();
   }
 };
 window.admNuevoLimpiar=function(){
@@ -9987,43 +10014,55 @@ window.flEliminarTarea = async function(tareaId) {
   } catch(e){ flToast('Error: '+e.message,'err'); }
 };
 
-// ── UTILIDAD: Limpiar duplicados de flotilla_vehiculos ──────────
-// Ejecutar desde consola del portal (Admin): await window.flLimpiarDuplicados()
-window.flLimpiarDuplicados=async function(){
-  if(!window.flEsAdmin?.()){console.warn('[FL] flLimpiarDuplicados: requiere rol administrador.');if(typeof flToast==='function')flToast('Esta acción requiere rol de administrador.','err');return;}
+// ── UTILIDAD: Revisar duplicados de flotilla_vehiculos ──────────
+// Antes flLimpiarDuplicados borraba en automático y conservaba el MÁS RECIENTE,
+// que muchas veces era el registro vacío. Ahora se muestran los grupos de ECO
+// repetido, se marca cuál tiene más información, y el admin borra uno por uno
+// con el flujo normal de "Eliminar definitivamente" (que revisa historial).
+function flPuntajeVeh(d){
+  const campos=['unidad','placas','serie','responsable','plaza','color','nip','pol','rend','pv'];
+  let p=campos.filter(k=>d[k]&&d[k]!=='—').length;
+  if(Number(d.km)>0)p+=2;
+  if(d.kmUltimoServicio!=null)p+=1;
+  return p;
+}
+window.flRevisarDuplicados=async function(){
+  if(!window.flEsAdmin?.()){flToast('Esta acción requiere rol de administrador.','err');return;}
   const snap=await fs.getDocs(fs.collection(db,C.VEHS));
-  const docs=snap.docs.map(d=>({id:d.id,...d.data()}));
-  // Agrupar por ECO
   const porEco={};
-  docs.forEach(d=>{
-    const k=String(d.eco||'sin-eco');
-    if(!porEco[k])porEco[k]=[];
-    porEco[k].push(d);
+  snap.docs.forEach(x=>{
+    const d={id:x.id,...x.data()};
+    const k=String(d.eco??'sin-eco').trim();
+    (porEco[k]=porEco[k]||[]).push(d);
   });
-  let eliminados=0;
-  const resumen=[];
-  for(const [eco,grupo] of Object.entries(porEco)){
-    if(grupo.length<=1)continue;
-    // Mantener el más reciente (mayor creadoEn o último en la lista)
-    const ordenados=grupo.slice().sort((a,b)=>(b.creadoEn||'').localeCompare(a.creadoEn||''));
-    const mantener=ordenados[0];
-    const borrar=ordenados.slice(1);
-    for(const d of borrar){
-      await fs.deleteDoc(fs.doc(db,C.VEHS,d.id));
-      eliminados++;
-      resumen.push(`ECO ${eco}: eliminado doc ${d.id} (creado ${d.creadoEn||'?'}), conservado ${mantener.id}`);
-    }
-  }
-  console.log('[flLimpiarDuplicados] Eliminados:',eliminados);
-  resumen.forEach(r=>console.log(r));
-  if(eliminados>0){
-    await ldVehs();renderSB();
-    flToast('Limpieza completada: '+eliminados+' documento(s) duplicado(s) eliminado(s). Revisa la consola para el detalle.','ok');
-  } else {
-    flToast('Sin duplicados encontrados en flotilla_vehiculos.','info');
-  }
-  return {eliminados,resumen};
+  const grupos=Object.entries(porEco).filter(([,g])=>g.length>1)
+    .sort((a,b)=>Number(a[0])-Number(b[0]));
+  document.querySelector('.fl-ov')?.remove();
+  const ov=document.createElement('div');ov.className='fl-ov';ov.style.zIndex='3300';
+  const esc=t=>String(t??'').replace(/'/g,"\\'");
+  const filas=grupos.map(([eco,g])=>{
+    const mejor=g.slice().sort((a,b)=>flPuntajeVeh(b)-flPuntajeVeh(a)||(a.creadoEn||'').localeCompare(b.creadoEn||''))[0];
+    return `<div style="border:1px solid #E8EDF5;border-radius:10px;padding:10px 12px;margin-bottom:10px">
+      <div style="font-weight:800;font-size:13px;margin-bottom:6px">ECO ${eco} · ${g.length} registros</div>
+      ${g.map(d=>`<div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-top:1px solid #F1F5F9;font-size:11.5px">
+        <div style="flex:1">
+          <strong>${d.unidad||'—'}</strong> · ${flNombrePorCorreo(d.responsable)||'—'} · placas ${d.placas||'—'} · km ${d.km||0}
+          <div style="color:#94A3B8;font-size:10px">ID ${d.id} · creado ${d.creadoEn?d.creadoEn.slice(0,16).replace('T',' '):'?'}</div>
+        </div>
+        ${d.id===mejor.id?`<span style="font-size:10px;font-weight:800;color:#15803D;background:#DCFCE7;padding:3px 8px;border-radius:6px">Conservar (más completo)</span>`
+          :`<button class="fb gho" style="color:#B91C1C;border-color:#FCA5A5;padding:5px 10px;font-size:11px" onclick="flConfirmarEliminarVeh('${d.id}','${esc(d.eco)}','${esc(d.unidad)}')">🗑 Eliminar este</button>`}
+      </div>`).join('')}
+    </div>`;
+  }).join('');
+  ov.innerHTML=`<div class="fl-modal" style="max-width:640px"><div class="fl-mh"><h3>ECOs duplicados en flotilla</h3><button class="fl-mx" onclick="this.closest('.fl-ov').remove()">✕</button></div>
+    <div class="fl-mb" style="max-height:70vh;overflow:auto">
+      ${grupos.length?`<div style="font-size:12px;color:#475569;margin-bottom:10px">Se sugiere conservar el registro con más información. Si dos registros son vehículos distintos con el mismo ECO, no borres: corrige el ECO de uno desde Editar.</div>${filas}`
+        :`<div style="font-size:13px;color:#15803D">Sin duplicados en flotilla_vehiculos. ✓</div>`}
+    </div></div>`;
+  document.body.appendChild(ov);ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
 };
+// Compatibilidad: el nombre viejo ahora solo abre la revisión, ya no borra solo.
+window.flLimpiarDuplicados=window.flRevisarDuplicados;
 
 console.log('[FLOTILLA v16] Taller único + presupuesto mes + flReconciliarTaller · '+CAT.length+' unidades');
 })();
