@@ -18,7 +18,7 @@ const SVG_TROCA={
 };
 
 
-const FL_COLABORADORES = ["Aceves Ivan Argenis","Acosta Bustillos Francisca","Acosta Chavira Carlos","Acosta Contreras Cristina Judith","Barraza Luya Saúl Ismael","Calixto Sánchez Rafael","Carmona Lagunas Sergio","Castro Muñoz Saúl","Chacón Terrazas Lucero","Chávez Alvarez Ruth Yadira","Chávez Barraza Oscar Iván","Chávez Chávez Iván","Contreras Morales Elva Nidia","Coronado Valenzuela Socorro Annet","De La Cruz Emilio Julio César","De La O Maese Martín","Durstewitz Maese Guillermo","Enríquez Gallardo Jorge Alberto","Escalante Jaramillo Ana Karen","Estrada Gómez Alan Alberto","García Ledezma Jesús Alvaro","García Montemayor Veronica Janeth","Garza González Luis Enrique","González Babonoyaba Ricardo Antonio","González Delgado Ericka Idaly","Guerrero Gómez Jorge","Gutiérrez Alvarado Nayra Didi","Gutiérrez Villarreal Denisse","Guzmán Morales Flor Idalia","Guzmán Neave Kenia Yadira","Hernández Pérez Rubén Alberto","Hernández Prieto Josué","Hernández Ríos Jesús Ramón","Leal Martínez Roque Manuel","López Ávila Sandra Lucero","Lopez Chavez Guillermo","López Delgado Luis Humberto","Luna Espinoza Jaime Roel","Medina Contreras Giovanni Israel","Mendoza Becerra Sergio","Minjarez Ochoa Alberto Alan","Montellano Pasillas Miguel Ángel","Morales Cruz Gabriel Gael","Morales Mendoza Tomás","Moreno Molina Reyes","Moriel Sáenz Ricardo Salvador","Muñoz Avila Roberto","Muñoz Blanco Lizeth Cristina","Nuñez Alatorre Ulises","Orozco Miranda Ana Cristina","Parra Blanco Zaira Sibel","Pérez Espíndola Rita Isabel","Perez Garcia Martha Aracely","Pinedo Paloma","Portillo Portillo José Luis","Preciado Grijalva Glen Iván","Reyes González Pedro","Ríos Salcido Joon Omaira","Ruiz Olmedo Norma Idaly","Salcedo Gardea Filiberto Isai","Salmon Rivas Fabricio Abundio","Saucedo Martínez Irving Abraham","Sauzameda Ochoa Fátima Anahí","Sepúlveda Mendoza Iván Roberto","Soto González Benito","Terrazas Serrano Fernando","Uribe Maese Jorge Alberto","Valencia Barraza Jesus Bersain","Valencia Meza Luis Miguel","Valenzuela López José Luis","Nicolas","Luis Lopez","Cano Corral Adrian"];
+const FL_COLABORADORES = ["Aceves Ivan Argenis","Acosta Bustillos Francisca","Acosta Chavira Carlos","Acosta Contreras Cristina Judith","Barraza Luya Saúl Ismael","Calixto Sánchez Rafael","Carmona Lagunas Sergio","Castro Muñoz Saúl","Chacón Terrazas Lucero","Chávez Alvarez Ruth Yadira","Chávez Barraza Oscar Iván","Chávez Chávez Iván","Contreras Morales Elva Nidia","Coronado Valenzuela Socorro Annet","De La Cruz Emilio Julio César","De La O Maese Martín","Durstewitz Maese Guillermo","Enríquez Gallardo Jorge Alberto","Escalante Jaramillo Ana Karen","Estrada Gómez Alan Alberto","García Ledezma Jesús Alvaro","García Montemayor Veronica Janeth","Garza González Luis Enrique","González Babonoyaba Ricardo Antonio","González Delgado Ericka Idaly","Guerrero Gómez Jorge","Gutiérrez Alvarado Nayra Didi","Gutiérrez Villarreal Denisse","Guzmán Morales Flor Idalia","Guzmán Neave Kenia Yadira","Hernández Pérez Rubén Alberto","Hernández Prieto Josué","Hernández Ríos Jesús Ramón","Leal Martínez Roque Manuel","López Ávila Sandra Lucero","Lopez Chavez Guillermo","López Delgado Luis Humberto","Luna Espinoza Jaime Roel","Medina Contreras Giovanni Israel","Mendoza Becerra Sergio","Minjarez Ochoa Alberto Alan","Montellano Pasillas Miguel Ángel","Morales Cruz Gabriel Gael","Morales Mendoza Tomás","Moreno Molina Reyes","Moriel Sáenz Ricardo Salvador","Muñoz Avila Roberto","Muñoz Blanco Lizeth Cristina","Nuñez Alatorre Ulises","Orozco Miranda Ana Cristina","Parra Blanco Zaira Sibel","Pérez Espíndola Rita Isabel","Perez Garcia Martha Aracely","Pinedo Paloma","Portillo Portillo José Luis","Preciado Grijalva Glen Iván","Reyes González Pedro","Ríos Salcido Joon Omaira","Ruiz Olmedo Norma Idaly","Salcedo Gardea Filiberto Isai","Salmon Rivas Fabricio Abundio","Saucedo Martínez Irving Abraham","Sepúlveda Mendoza Iván Roberto","Soto González Benito","Terrazas Serrano Fernando","Uribe Maese Jorge Alberto","Valencia Barraza Jesus Bersain","Valencia Meza Luis Miguel","Valenzuela López José Luis","Nicolas","Luis Lopez","Cano Corral Adrian"];
 let _flColabCache = null;
 async function cargarColaboradores(){
   if(_flColabCache) return _flColabCache;
@@ -56,7 +56,7 @@ const FLOTILLA_ADMINS=[
   'i.saucedo@tecnocontrol.com.mx',
   'v.garcia@tecnocontrol.com.mx',
   'nicolas@tecnocontrol.com.mx',
-  'fatima@tecnocontrol.com.mx',
+  'flotilla@tecnocontrol.com.mx',
 ];
 
 // ══════════════════════════════════════════════════════════════
@@ -4920,7 +4920,7 @@ window.flVerSol=async function(id){
       ${s.comentarioRechazo?`<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:7px;padding:8px 11px;font-size:11px;color:#991B1B;margin-bottom:9px"><strong>Rechazo:</strong> ${s.comentarioRechazo}</div>`:''}
       ${(()=>{
         const userEmail=(window.auth?.currentUser?.email||'').toLowerCase();
-        const esFatima=userEmail==='fatima@tecnocontrol.com.mx';
+        const esFatima=userEmail==='flotilla@tecnocontrol.com.mx';
         const esAdmin=hP('validar')||hP('aprobar');
         const puedeAgregarDocs=esAdmin&&['Cerrada','Rechazada'].includes(s.estatus);
         if(!puedeAgregarDocs)return'';
@@ -7021,7 +7021,7 @@ const PRESUPUESTO_ADMINS=[
   'mercadotecniatecnocontrol@gmail.com',
   'mercadotecnia@tecnocontrol.com.mx',
   'glen@tecnocontrol.com.mx',
-  'fatima@tecnocontrol.com.mx',
+  'flotilla@tecnocontrol.com.mx',
 ];
 const puedeEditarPresupuesto=()=>PRESUPUESTO_ADMINS.includes((window.auth?.currentUser?.email||'').toLowerCase());
 
@@ -8114,7 +8114,7 @@ window.flPipelineModal = function(estInicial) {
 
   const eml = () => (window.auth?.currentUser?.email || '').toLowerCase();
   const hPerm = a => typeof window.flTienePermiso === 'function' ? window.flTienePermiso(a) : hAdm();
-  const esFatima = () => eml() === 'fatima@tecnocontrol.com.mx' || hAdm();
+  const esFatima = () => eml() === 'flotilla@tecnocontrol.com.mx' || hAdm();
   const esContraloria = () => ['p.pinedo@tecnocontrol.com.mx','c.acosta@tecnocontrol.com.mx'].includes(eml());
   const esPagos = () => eml() === 'pagos@tecnocontrol.com.mx' || hAdm();
 
