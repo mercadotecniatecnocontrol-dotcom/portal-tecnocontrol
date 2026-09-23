@@ -69,6 +69,29 @@
     const COL_AUSENCIAS = "ops_tecnico_ausencias"; // calendario propio de vacaciones/incapacidad/permiso por técnico (sep-2026, a petición de Glen)
     const MIGUEL_EMAIL = "miguel@tecnocontrol.com.mx"; // dueño del seguimiento interno (fecha de atención / compromiso)
 
+    // ════════════ FASE 5 (sep-2026): Gestión de servicios — calendario, ════════════
+    // habilidades de personal, sugerencia de técnico, y campos comerciales/contables
+    // del folio. Mismos nombres de rol que ya usan las recetas del catálogo de
+    // servicios (lider/tecnico/obra_civil) — así la sugerencia cruza directo, sin
+    // tabla de traducción.
+    const OPS_HABILIDADES = [
+        { clave: "lider", nombre: "Líder de servicio" },
+        { clave: "tecnico", nombre: "Técnico" },
+        { clave: "obra_civil", nombre: "Obra civil" },
+        { clave: "laboratorio", nombre: "Laboratorio / calibración" },
+        { clave: "electrico", nombre: "Eléctrico" },
+    ];
+    const OPS_TIPOS_FOLIO = [
+        { clave: "servicio", nombre: "Servicio técnico" },
+        { clave: "laboratorio", nombre: "Laboratorio" },
+    ];
+    // Notificación automática para folios de Laboratorio (Glen, sep-2026).
+    // Alan Minjárez (MINJAREZ OCHOA ALBERTO ALAN) todavía no tiene correo real
+    // capturado en Colaboradores (queda como "sincorreo_...") — en cuanto se le
+    // dé de alta un correo real ahí, agrégalo a esta lista.
+    const OPS_NOTIF_LABORATORIO = ["d.gutierrez@tecnocontrol.com.mx", "p.pinedo@tecnocontrol.com.mx"];
+    const OPS_DIAS_ALERTA_EVIDENCIA = 3; // días sin evidencia antes de la alerta de acta administrativa
+
     // Administradores del departamento de Operaciones: acceso total DENTRO de este módulo
     // (subir/editar/cambiar todo). No son esAdminTotal, así que NO obtienen acceso a otros
     // departamentos del portal — el alcance queda limitado a operaciones.js.
@@ -1427,13 +1450,14 @@
         folios: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><circle cx="8" cy="15" r="1.5" fill="currentColor" stroke="none"/></svg>',
         clientes: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21V7l9-4 9 4v14"/><path d="M9 21V12h6v9"/><path d="M9 8h.01M15 8h.01M12 8h.01"/></svg>',
         catalogo: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>',
+        calendario: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
     };
 
     function opsRenderShell() {
         const rol = opsRolActual();
         const rolLabel = { administrador: "Administrador", almacen: "Almacén", consulta: "Consulta" }[rol];
         const items = ["resumen:Resumen", "dashboard:Herramientas", "guardias:Guardias", "tecnicos:Técnicos", "servicios:Servicios",
-            "folios:Folios", "clientes:Clientes",
+            "folios:Folios", "calendario:Calendario", "clientes:Clientes",
             ...(opsPuedeHacer("autorizar_material") ? ["solicitudes:Solicitudes"] : []),
             "alertas:Alertas", "movimientos:Movimientos"];
         return `
@@ -1481,6 +1505,7 @@
         else if (tab === "tecnicos") opsRenderTecnicos();
         else if (tab === "servicios") opsRenderServicios();
         else if (tab === "folios") opsRenderFolios();
+        else if (tab === "calendario") opsRenderCalendario();
         else if (tab === "clientes") opsRenderClientes();
         else if (tab === "solicitudes") opsRenderSolicitudes();
         else if (tab === "alertas") opsRenderAlertas();
@@ -3148,6 +3173,7 @@
             supervisor: null, telefono: null, correo: null, observaciones: null,
             // Identificadores para hacer match confiable con RH/Flotilla/Firebase (no solo por nombre).
             employeeId: null, fleetUserId: null, firebaseUid: null,
+            habilidades: [], // claves de OPS_HABILIDADES — se editan en la ficha, pestaña "Habilidades"
         });
         await opsCrearAlmacenTecnico(db, fs, refTecNuevo.id, nombrePersona);
         // Abre el primer periodo en el historial de puesto de esta persona.
@@ -3157,6 +3183,14 @@
         document.getElementById("ops-modal-wrap").innerHTML = "";
     };
 
+    window.opsGuardarHabilidadesTecnico = async function (idInterno) {
+        const marcadas = Array.from(document.querySelectorAll("#ops-hab-checks input[type=checkbox]:checked")).map(c => c.value);
+        const { db, fs } = await opsGetFB();
+        await fs.updateDoc(fs.doc(db, COL_TECNICOS, idInterno), { habilidades: marcadas });
+        const t = cacheTec.find(x => x.id === idInterno);
+        if (t) t.habilidades = marcadas;
+        if (window.mostrarPush) window.mostrarPush("Operaciones", "Habilidades actualizadas", "✅");
+    };
 
     window.opsAbrirFichaTecnico = async function (idInterno, tabInicial) {
         fichaTecActual = idInterno;
@@ -3203,7 +3237,7 @@
                 </div>
 
                 <div style="display:flex;gap:4px;margin:14px 0;overflow-x:auto;border-bottom:1px solid #e2e8f0;">
-                    ${["resumen:Resumen", "rh:RH", "vehiculo:Vehículo", "herramientas:Herramientas", "ausencias:Ausencias", "auditoria:Auditoría", "historial:Historial"].map(x => {
+                    ${["resumen:Resumen", "rh:RH", "habilidades:Habilidades", "vehiculo:Vehículo", "herramientas:Herramientas", "ausencias:Ausencias", "auditoria:Auditoría", "historial:Historial"].map(x => {
                         const [id, label] = x.split(":");
                         const on = fichaTecTabActual === id;
                         return `<button onclick="opsFichaTecCambiarTab('${idInterno}','${id}')" style="background:none;border:none;padding:8px 10px;font-size:11.5px;font-weight:600;white-space:nowrap;color:${on ? "#1D2E73" : "#64748b"};border-bottom:2px solid ${on ? "#1D2E73" : "transparent"};cursor:pointer;">${label}</button>`;
@@ -3261,6 +3295,20 @@
                         <div><strong>Firebase UID:</strong> ${opsEsc(t.firebaseUid || "—")}</div>
                     </div>
                     <div style="font-size:10.5px;color:#94a3b8;margin-top:10px;">Estos identificadores permiten el match con RH/Flotilla por ID, no por nombre. Hoy no hay sincronización real conectada — se completan editando el perfil manualmente.</div>
+                </div>`;
+        } else if (fichaTecTabActual === "habilidades") {
+            const habActuales = new Set(t.habilidades || []);
+            el.innerHTML = `
+                <div style="background:#fff;border-radius:14px;padding:16px 18px;">
+                    <div style="font-size:11.5px;color:#64748b;margin-bottom:12px;">Qué sabe hacer este técnico — se usa para sugerirlo automáticamente al programar un folio que requiera ese rol/habilidad (mismos nombres que usan las recetas del catálogo de servicios).</div>
+                    <div id="ops-hab-checks" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
+                        ${OPS_HABILIDADES.map(h => `
+                            <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:#334155;cursor:${opsPuedeGestionar() ? "pointer" : "default"};">
+                                <input type="checkbox" value="${h.clave}" ${habActuales.has(h.clave) ? "checked" : ""} ${opsPuedeGestionar() ? "" : "disabled"} style="width:15px;height:15px;">
+                                ${opsEsc(h.nombre)}
+                            </label>`).join("")}
+                    </div>
+                    ${opsPuedeGestionar() ? `<button onclick="opsGuardarHabilidadesTecnico('${idInterno}')" class="mkt-add-btn" style="background:#1D2E73;">Guardar habilidades</button>` : ""}
                 </div>`;
         } else if (fichaTecTabActual === "vehiculo") {
             el.innerHTML = `<div style="text-align:center;padding:20px;color:#94a3b8;font-size:12px;">Consultando Flotilla…</div>`;
@@ -4292,13 +4340,36 @@
     }
     function opsIniciarVigilanciaFolios() {
         opsVigilarFoliosSeveridad(); // primera pasada: solo establece la base, no alerta
+        opsVigilarEvidenciasFolios();
         if (opsFoliosVigilanciaTimer) clearInterval(opsFoliosVigilanciaTimer);
-        opsFoliosVigilanciaTimer = setInterval(opsVigilarFoliosSeveridad, 60000); // recheck cada minuto (el reloj avanza aunque no cambien datos)
+        opsFoliosVigilanciaTimer = setInterval(() => { opsVigilarFoliosSeveridad(); opsVigilarEvidenciasFolios(); }, 60000); // recheck cada minuto (el reloj avanza aunque no cambien datos)
     }
     function opsDetenerVigilanciaFolios() {
         if (opsFoliosVigilanciaTimer) { clearInterval(opsFoliosVigilanciaTimer); opsFoliosVigilanciaTimer = null; }
         opsFoliosVigilanciaBase = false;
         opsFoliosAlertaState.clear();
+        opsFoliosEvidenciaAlertados.clear();
+    }
+
+    // ── Alerta de acta administrativa: 3 días sin evidencia (comentario) en un
+    // folio que sigue abierto. Se avisa UNA sola vez por folio por sesión (no cada
+    // minuto) — igual de "imposible de ignorar" que la alarma de SLA, pero sin
+    // sonido repetido para no confundir las dos alarmas entre sí. ──
+    let opsFoliosEvidenciaAlertados = new Set();
+    function opsVigilarEvidenciasFolios() {
+        const ahora = Date.now();
+        for (const f of cacheFolios) {
+            if (f.fechaSolucion) continue; // folio cerrado, no aplica
+            const base = f.ultimaEvidenciaEn || f.creadoEn || f.fechaSolicitud;
+            if (!base) continue;
+            const dias = (ahora - new Date(base).getTime()) / 86400000;
+            if (dias >= OPS_DIAS_ALERTA_EVIDENCIA && !opsFoliosEvidenciaAlertados.has(f.id)) {
+                opsFoliosEvidenciaAlertados.add(f.id);
+                if (opsFoliosVigilanciaBase) { // no avalancha al cargar folios viejos por primera vez
+                    opsMostrarFlotanteGenerica(`📋 Folio ${f.folioOS ? "O.S. " + f.folioOS + " — " : ""}${f.estacion}: ${Math.floor(dias)} días sin evidencia. Se sugiere acta administrativa.`, "#E7402B");
+                }
+            }
+        }
     }
 
     function opsRenderFolios() {
@@ -4435,6 +4506,70 @@
     };
 
     // ── Alta / edición manual de folio ──────────────────────────────
+    // ═══════════════════════ TAB: CALENDARIO (Fase 5) ═══════════════════════
+    // Vista de agenda (no grid mensual — más confiable de sacar bien a la primera
+    // que un calendario visual completo). Agrupa por fecha programada, próximos
+    // 30 días, más una sección aparte para folios sin fecha capturada todavía.
+    function opsRenderCalendario() {
+        const el = document.getElementById("ops-tab-content");
+        if (!el) return;
+        const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+        const limite = new Date(hoy.getTime() + 30 * 86400000);
+
+        const conFecha = cacheFolios.filter(f => f.fechaProgramada && !f.fechaSolucion);
+        const sinFecha = cacheFolios.filter(f => !f.fechaProgramada && !f.fechaSolucion);
+
+        const porDia = new Map();
+        conFecha.forEach(f => {
+            const dia = f.fechaProgramada.slice(0, 10);
+            if (!porDia.has(dia)) porDia.set(dia, []);
+            porDia.get(dia).push(f);
+        });
+        const dias = Array.from(porDia.keys()).sort();
+
+        function filaFolio(f) {
+            const receta = f.servicioCatalogoId ? cacheServiciosCatalogo.find(s => s.id === f.servicioCatalogoId) : null;
+            const rolesReq = receta ? (receta.personal || []).reduce((n, p) => n + (p.cantidad || 1), 0) : null;
+            const asignados = (f.tecnicosAsignadosIds || []).length;
+            const faltaGente = rolesReq !== null && asignados < rolesReq;
+            const hora = f.fechaProgramada.slice(11, 16) || "";
+            return `
+                <div onclick="opsAbrirModalFolio('${f.id}')" style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#fff;border-radius:10px;margin-bottom:6px;cursor:pointer;border-left:4px solid ${faltaGente ? "#E7402B" : "#15803D"};">
+                    <div style="font-size:12px;font-weight:700;color:#1D2E73;width:44px;flex-shrink:0;">${hora || "—"}</div>
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-size:12.5px;font-weight:700;color:#1e293b;">${opsEsc(f.estacion)}${f.folioOS ? " · O.S. " + opsEsc(f.folioOS) : ""}</div>
+                        <div style="font-size:10.5px;color:#94a3b8;">${f.tipoFolio === "laboratorio" ? "🧪 Laboratorio" : "Servicio"}${receta ? " · " + opsEsc(receta.nombre) : ""}${f.clienteNombre ? " · " + opsEsc(f.clienteNombre) : ""}</div>
+                    </div>
+                    <div style="font-size:10.5px;color:${faltaGente ? "#E7402B" : "#166534"};font-weight:600;text-align:right;flex-shrink:0;">
+                        ${asignados}${rolsReqTexto(rolesReq)} técnico(s)
+                    </div>
+                </div>`;
+            function rolsReqTexto(n) { return n !== null ? ` / ${n}` : ""; }
+        }
+
+        el.innerHTML = `
+            <div style="font-size:11.5px;color:#64748b;margin-bottom:16px;">Folios con fecha de trabajo programada, próximos 30 días. El borde rojo significa que le falta personal asignado contra lo que pide la receta del servicio.</div>
+            ${dias.length ? dias.map(dia => {
+                const d = new Date(dia + "T00:00:00");
+                const fuera = d < hoy || d > limite;
+                const etiqueta = d.toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long" });
+                return `<div style="margin-bottom:18px;${fuera ? "opacity:.6;" : ""}">
+                    <div style="font-size:11.5px;font-weight:700;color:#1D2E73;text-transform:capitalize;margin-bottom:6px;">${etiqueta}${d < hoy ? " (atrasado)" : ""}</div>
+                    ${porDia.get(dia).sort((a, b) => (a.fechaProgramada > b.fechaProgramada ? 1 : -1)).map(filaFolio).join("")}
+                </div>`;
+            }).join("") : `<div style="text-align:center;padding:40px;color:#94a3b8;background:#fff;border-radius:14px;">Ningún folio tiene fecha programada todavía.</div>`}
+
+            ${sinFecha.length ? `
+            <div style="border-top:1px solid #e2e8f0;margin-top:10px;padding-top:14px;">
+                <div style="font-size:11.5px;font-weight:700;color:#b45309;margin-bottom:6px;">⚠ Sin fecha programada (${sinFecha.length})</div>
+                ${sinFecha.map(f => `
+                    <div onclick="opsAbrirModalFolio('${f.id}')" style="padding:9px 12px;background:#fff;border-radius:10px;margin-bottom:6px;cursor:pointer;font-size:12px;color:#334155;">
+                        ${opsEsc(f.estacion)}${f.folioOS ? " · O.S. " + opsEsc(f.folioOS) : ""} — <span style="color:#94a3b8;">clic para programar</span>
+                    </div>`).join("")}
+            </div>` : ""}
+        `;
+    }
+
     window.opsAbrirModalFolio = function (id) {
         const f = id ? cacheFolios.find(x => x.id === id) : null;
         const wrap = document.getElementById("ops-modal-wrap");
@@ -4497,6 +4632,72 @@
                 </select>
                 <input id="ops-fol-responsable-texto" placeholder="Nombre libre (solo si no está en Técnicos)" value="${opsEsc(!f?.tecnicoResponsableId ? (f?.responsable || "") : "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 16px;">
 
+                <div style="border-top:1px solid #e2e8f0;margin:4px 0 14px;padding-top:14px;font-size:11.5px;font-weight:700;color:#1D2E73;">Programación y equipo</div>
+
+                <div style="display:flex;gap:8px;">
+                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Tipo de folio</label>
+                    <select id="ops-fol-tipo" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                        ${OPS_TIPOS_FOLIO.map(t => `<option value="${t.clave}" ${(f?.tipoFolio || "servicio") === t.clave ? "selected" : ""}>${opsEsc(t.nombre)}</option>`).join("")}
+                    </select></div>
+                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Servicio (catálogo)</label>
+                    <select id="ops-fol-servicio" onchange="window.opsFolioSugerirTecnicos('${id || ""}')" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                        <option value="">— Sin ligar —</option>
+                        ${cacheServiciosCatalogo.map(s => `<option value="${s.id}" ${f?.servicioCatalogoId === s.id ? "selected" : ""}>${opsEsc(s.nombre)}</option>`).join("")}
+                    </select></div>
+                </div>
+
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Fecha y hora programada del trabajo</label>
+                <input type="datetime-local" id="ops-fol-programada" value="${opsEsc(f?.fechaProgramada || "")}" onchange="window.opsFolioSugerirTecnicos('${id || ""}')" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                <div style="font-size:10px;color:#94a3b8;margin:-6px 0 10px;">Esta es la fecha que se ve en el Calendario — distinta de la fecha de solicitud.</div>
+
+                <div style="display:flex;gap:8px;">
+                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Tiempo de ejecución (hrs)</label>
+                    <input type="number" min="0" step="0.5" id="ops-fol-tiempo-ejec" value="${f?.tiempoEjecucionHrs ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
+                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Tiempo de traslado (hrs)</label>
+                    <input type="number" min="0" step="0.5" id="ops-fol-tiempo-trasl" value="${f?.tiempoTrasladoHrs ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
+                </div>
+
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                    <label style="font-size:11.5px;color:#64748b;font-weight:600;">Técnicos asignados (equipo del servicio)</label>
+                    <button type="button" onclick="window.opsFolioSugerirTecnicos('${id || ""}', true)" style="background:#eef2f7;border:none;color:#1D2E73;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:10.5px;font-weight:600;">✨ Sugerir</button>
+                </div>
+                <div id="ops-fol-sugerencia-nota" style="font-size:10px;color:#94a3b8;margin-bottom:6px;"></div>
+                <div id="ops-fol-tecnicos-check" style="max-height:140px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;margin-bottom:14px;">
+                    ${cacheTec.filter(t => t.estatus === "activo").map(t => `
+                        <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#334155;padding:3px 0;">
+                            <input type="checkbox" class="ops-fol-tec-check" value="${t.id}" data-nombre="${opsEsc(t.nombre)}" ${(f?.tecnicosAsignadosIds || []).includes(t.id) ? "checked" : ""} style="width:14px;height:14px;">
+                            ${opsEsc(t.nombre)}${t.puesto ? ` — <span style="color:#94a3b8;">${opsEsc(t.puesto)}</span>` : ""}
+                        </label>`).join("")}
+                </div>
+
+                <div style="border-top:1px solid #e2e8f0;margin:4px 0 14px;padding-top:14px;font-size:11.5px;font-weight:700;color:#1D2E73;">Cliente / facturación / Contabilidad</div>
+
+                <div style="display:flex;gap:8px;">
+                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Contacto que solicita</label>
+                    <input id="ops-fol-contacto-nombre" value="${opsEsc(f?.contactoNombre || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
+                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Teléfono de contacto</label>
+                    <input id="ops-fol-contacto-tel" value="${opsEsc(f?.contactoTelefono || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
+                </div>
+
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Encargado interno de gestionar requisitos</label>
+                <input id="ops-fol-encargado" value="${opsEsc(f?.encargadoInterno || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">A quién se factura</label>
+                <input id="ops-fol-facturar-a" value="${opsEsc(f?.facturarA || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+
+                <div style="display:flex;gap:8px;">
+                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Proyecto</label>
+                    <input id="ops-fol-proyecto" value="${opsEsc(f?.proyecto || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
+                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Gasto estimado ($)</label>
+                    <input type="number" min="0" step="0.01" id="ops-fol-gasto" value="${f?.gastoEstimado ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
+                </div>
+
+                <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:#334155;margin-bottom:8px;">
+                    <input type="checkbox" id="ops-fol-viaticos-pend" ${f?.viaticosPendientes ? "checked" : ""} style="width:15px;height:15px;"> Viáticos pendientes de pago
+                </label>
+                <input type="number" min="0" step="0.01" id="ops-fol-viaticos-monto" placeholder="Monto de viáticos ($)" value="${f?.viaticosMonto ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 16px;">
+                <div style="font-size:10px;color:#94a3b8;margin:-12px 0 16px;">Contabilidad/Pagos siguen siendo quienes marcan el pago real — esto aquí es solo la bandera de "está pendiente" ligada al folio.</div>
+
                 <div style="display:flex;justify-content:space-between;gap:8px;">
                     ${f ? `<button onclick="opsEliminarFolio('${f.id}')" style="background:#fef2f2;border:none;color:#E7402B;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Eliminar</button>` : "<span></span>"}
                     <div style="display:flex;gap:8px;">
@@ -4507,6 +4708,41 @@
             </div>
         </div>`;
         window.opsFolioActualizarVencimientoPreview();
+    };
+
+    // ── Sugerencia de técnicos: cruza rol requerido por la receta del servicio
+    // contra habilidades del técnico, y descarta a quien tenga ausencia registrada
+    // ese día o ya esté asignado a OTRO folio con la misma fecha programada. ──
+    window.opsFolioSugerirTecnicos = function (folioIdActual, marcar) {
+        const nota = document.getElementById("ops-fol-sugerencia-nota");
+        const servicioId = document.getElementById("ops-fol-servicio")?.value;
+        const fechaProg = document.getElementById("ops-fol-programada")?.value;
+        if (!nota) return;
+        if (!servicioId) { nota.textContent = "Elige un servicio del catálogo para poder sugerir técnicos."; return; }
+        const receta = cacheServiciosCatalogo.find(s => s.id === servicioId);
+        const rolesReq = (receta?.personal || []).map(p => p.rol);
+        if (!rolesReq.length) { nota.textContent = "Esa receta todavía no tiene roles de personal capturados."; return; }
+
+        const fechaDia = fechaProg ? fechaProg.slice(0, 10) : null;
+        const ausentesHoy = new Set(
+            fechaDia ? cacheAusencias.filter(a => a.fechaInicio <= fechaDia && a.fechaFin >= fechaDia).map(a => a.tecnicoId) : []
+        );
+        const ocupadosHoy = new Set(
+            fechaDia ? cacheFolios.filter(f => f.id !== folioIdActual && (f.fechaProgramada || "").slice(0, 10) === fechaDia)
+                .flatMap(f => f.tecnicosAsignadosIds || []) : []
+        );
+
+        const candidatos = cacheTec.filter(t => t.estatus === "activo" && (t.habilidades || []).some(h => rolesReq.includes(h)));
+        const disponibles = candidatos.filter(t => !ausentesHoy.has(t.id) && !ocupadosHoy.has(t.id));
+        const noDisponibles = candidatos.filter(t => ausentesHoy.has(t.id) || ocupadosHoy.has(t.id));
+
+        nota.innerHTML = `Roles que pide la receta: <strong>${rolesReq.join(", ")}</strong>. `
+            + `${disponibles.length} técnico(s) con esa habilidad y disponibles${fechaDia ? " ese día" : " (sin fecha capturada, no se valida disponibilidad)"}.`
+            + (noDisponibles.length ? ` ${noDisponibles.length} más tienen la habilidad pero están ausentes u ocupados ese día.` : "");
+
+        if (marcar) {
+            document.querySelectorAll(".ops-fol-tec-check").forEach(chk => { chk.checked = disponibles.some(t => t.id === chk.value); });
+        }
     };
 
     window.opsGuardarFolio = async function (id) {
@@ -4524,6 +4760,13 @@
         const tecnicoResponsableId = document.getElementById("ops-fol-tecnico").value || null;
         const tec = tecnicoResponsableId ? cacheTec.find(t => t.id === tecnicoResponsableId) : null;
 
+        const cliente = clienteId ? cacheClientes.find(c => c.id === clienteId) : null;
+        const tecnicosAsignadosIds = Array.from(document.querySelectorAll(".ops-fol-tec-check:checked")).map(c => c.value);
+        const tecnicosAsignadosNombres = Array.from(document.querySelectorAll(".ops-fol-tec-check:checked")).map(c => c.dataset.nombre);
+        const tipoFolioNuevo = document.getElementById("ops-fol-tipo").value || "servicio";
+        const folioAnterior = id ? cacheFolios.find(x => x.id === id) : null;
+        const eraLaboratorioAntes = folioAnterior?.tipoFolio === "laboratorio";
+
         const datos = {
             folioOS: document.getElementById("ops-fol-os").value.trim(),
             estacion,
@@ -4536,9 +4779,25 @@
             tecnicoResponsableNombre: tec?.nombre || null,
             tecnicoResponsableCorreo: tec?.correo || null,
             responsable: tec?.nombre || document.getElementById("ops-fol-responsable-texto").value.trim() || null,
+            // ── Fase 5: programación / equipo / comercial ──
+            tipoFolio: tipoFolioNuevo,
+            servicioCatalogoId: document.getElementById("ops-fol-servicio").value || null,
+            fechaProgramada: document.getElementById("ops-fol-programada").value || null,
+            tiempoEjecucionHrs: document.getElementById("ops-fol-tiempo-ejec").value ? Number(document.getElementById("ops-fol-tiempo-ejec").value) : null,
+            tiempoTrasladoHrs: document.getElementById("ops-fol-tiempo-trasl").value ? Number(document.getElementById("ops-fol-tiempo-trasl").value) : null,
+            tecnicosAsignadosIds, tecnicosAsignadosNombres,
+            contactoNombre: document.getElementById("ops-fol-contacto-nombre").value.trim() || (cliente?.contactoNombre || null),
+            contactoTelefono: document.getElementById("ops-fol-contacto-tel").value.trim() || (cliente?.contactoTelefono || null),
+            encargadoInterno: document.getElementById("ops-fol-encargado").value.trim() || null,
+            facturarA: document.getElementById("ops-fol-facturar-a").value.trim() || (cliente?.facturarA || null),
+            proyecto: document.getElementById("ops-fol-proyecto").value.trim() || null,
+            gastoEstimado: document.getElementById("ops-fol-gasto").value ? Number(document.getElementById("ops-fol-gasto").value) : null,
+            viaticosPendientes: document.getElementById("ops-fol-viaticos-pend").checked,
+            viaticosMonto: document.getElementById("ops-fol-viaticos-monto").value ? Number(document.getElementById("ops-fol-viaticos-monto").value) : null,
         };
         if (id) {
             await fs.updateDoc(fs.doc(db, COL_FOLIOS, id), datos);
+            if (tipoFolioNuevo === "laboratorio" && !eraLaboratorioAntes) await opsNotificarFolioLaboratorio({ id, ...datos });
         } else {
             const nuevo = await fs.addDoc(fs.collection(db, COL_FOLIOS), { ...datos, origen: "manual", creadoPor: opsUsuarioActual(), creadoEn: opsFechaHora() });
             // Primer comentario automático: deja registrado quién capturó el folio y con qué datos,
@@ -4556,10 +4815,30 @@
                 texto: notaCaptura, autor: opsNombreActual(), autorEmail: opsUsuarioActual(),
                 tipo: "captura", createdAt: fs.serverTimestamp ? fs.serverTimestamp() : opsFechaHora(),
             });
+            if (tipoFolioNuevo === "laboratorio") await opsNotificarFolioLaboratorio({ id: nuevo.id, ...datos });
         }
         document.getElementById("ops-modal-wrap").innerHTML = "";
         if (window.mostrarPush) mostrarPush("Operaciones", "Folio guardado.", "📋"); else alert("Folio guardado.");
     };
+
+    // Notificación automática para folios de Laboratorio — misma colección que ya
+    // usa el resto del módulo (ops_notificaciones), mismo nombre de campo de fecha
+    // ("fecha", no "creadaEn") para que la campanita la lea igual que las demás.
+    // OJO — límite real: esto es la campanita DENTRO de Operaciones, no un correo o
+    // push externo. Si Denisse/Paloma no tienen Operaciones abierto, no la ven aquí;
+    // el portal no tiene envío de correo real todavía.
+    async function opsNotificarFolioLaboratorio(f) {
+        try {
+            const { db, fs } = await opsGetFB();
+            const mensaje = `🧪 Nuevo folio de Laboratorio: ${f.folioOS ? "O.S. " + f.folioOS + " — " : ""}${f.estacion}${f.clienteNombre ? " (" + f.clienteNombre + ")" : ""}.`;
+            for (const correo of OPS_NOTIF_LABORATORIO) {
+                await fs.addDoc(fs.collection(db, COL_NOTIFICACIONES), {
+                    tipo: "ops_folio_laboratorio", para: correo, mensaje, folioId: f.id,
+                    leida: false, fecha: opsFechaHora(),
+                });
+            }
+        } catch (e) { console.warn("[Folios] No se pudo notificar Laboratorio:", e.message); }
+    }
 
     window.opsEliminarFolio = async function (id) {
         if (!confirm("¿Eliminar este folio? Esta acción no se puede deshacer.")) return;
@@ -4643,8 +4922,13 @@
             texto, autor: opsNombreActual(), autorEmail: opsUsuarioActual(),
             tipo: "feedback", createdAt: fs.serverTimestamp ? fs.serverTimestamp() : opsFechaHora(),
         });
+        // Cuenta como "evidencia" para la alerta de 3 días — cualquier comentario
+        // nuevo reinicia el conteo, no solo fotos (hoy los folios no tienen un
+        // campo de evidencia separado; esto es lo más cercano que existe).
+        await fs.updateDoc(fs.doc(db, COL_FOLIOS, folioId), { ultimaEvidenciaEn: opsFechaHora() });
         if (ta) ta.value = "";
         const f = cacheFolios.find(x => x.id === folioId);
+        if (f) f.ultimaEvidenciaEn = opsFechaHora();
         opsRenderComentariosFolio(folioId, f ? f.fechaAtencion : null);
     };
 
@@ -4804,6 +5088,14 @@
                 <input id="ops-cli-nombre" value="${opsEsc(c?.nombre || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
                 <label style="font-size:11.5px;color:#64748b;font-weight:600;">Palabras clave para detectar por nombre de estación (separadas por coma)</label>
                 <input id="ops-cli-palabras" value="${opsEsc((c?.palabrasClave || []).join(", "))}" placeholder="ej. oxxo" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 12px;">
+                <div style="display:flex;gap:8px;">
+                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Contacto (quién solicita)</label>
+                    <input id="ops-cli-contacto-nombre" value="${opsEsc(c?.contactoNombre || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
+                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Teléfono de contacto</label>
+                    <input id="ops-cli-contacto-tel" value="${opsEsc(c?.contactoTelefono || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
+                </div>
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">A quién se factura (por defecto para folios de este cliente)</label>
+                <input id="ops-cli-facturar-a" value="${opsEsc(c?.facturarA || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 12px;">
                 <div style="font-size:11.5px;color:#64748b;font-weight:600;margin-bottom:6px;">Horas de SLA por prioridad</div>
                 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px;">
                     ${OPS_PRIORIDADES.map(p => `
@@ -4834,6 +5126,9 @@
             nombre,
             palabrasClave: document.getElementById("ops-cli-palabras").value.split(",").map(s => s.trim().toLowerCase()).filter(Boolean),
             horasSLA,
+            contactoNombre: document.getElementById("ops-cli-contacto-nombre").value.trim() || null,
+            contactoTelefono: document.getElementById("ops-cli-contacto-tel").value.trim() || null,
+            facturarA: document.getElementById("ops-cli-facturar-a").value.trim() || null,
         };
         if (id) await fs.updateDoc(fs.doc(db, COL_CLIENTES, id), datos);
         else await fs.addDoc(fs.collection(db, COL_CLIENTES), datos);
