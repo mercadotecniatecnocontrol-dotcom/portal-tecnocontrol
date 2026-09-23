@@ -4624,6 +4624,7 @@
                     <button onclick="opsCalHoy()" style="background:#eef2f7;border:none;color:#1D2E73;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:600;">Hoy</button>
                 </div>
                 <input id="ops-cal-filtro" value="${opsEsc(opsCalFiltroTexto)}" oninput="opsCalFiltrar(this.value)" placeholder="Buscar técnico..." style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 12px;font-size:12.5px;min-width:180px;">
+                <button onclick="opsAbrirModalFolio(null, opsCalFecha)" style="background:#1D2E73;border:none;color:#fff;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;">+ Nuevo servicio</button>
             </div>
 
             <div id="ops-cal-body"></div>
@@ -4706,7 +4707,7 @@
                 const faltaGente = rolesReq !== null && (f.tecnicosAsignadosIds || []).length < rolesReq;
                 const conProblema = choqueSet.has(f.id) || faltaGente;
                 const colorBase = f.tipoFolio === "laboratorio" ? "#7c3aed" : "#1D2E73";
-                return `<div onclick="event.stopPropagation();opsAbrirModalFolio('${f.id}')" title="${opsEsc(f.estacion)}" style="position:absolute;top:4px;bottom:4px;left:${inicioPct}%;width:${anchoTotalPct}%;border-radius:6px;border:${conProblema ? "2px solid #E7402B" : "1px solid rgba(0,0,0,.08)"};overflow:hidden;cursor:pointer;display:flex;">
+                return `<div onclick="event.stopPropagation();opsAbrirPanelFolio('${f.id}')" title="${opsEsc(f.estacion)}" style="position:absolute;top:4px;bottom:4px;left:${inicioPct}%;width:${anchoTotalPct}%;border-radius:6px;border:${conProblema ? "2px solid #E7402B" : "1px solid rgba(0,0,0,.08)"};overflow:hidden;cursor:pointer;display:flex;">
                     ${d.traslado ? `<div style="width:${propTraslado}%;background:repeating-linear-gradient(45deg,${colorBase}55,${colorBase}55 4px,${colorBase}88 4px,${colorBase}88 8px);"></div>` : ""}
                     <div style="flex:1;background:${colorBase};display:flex;align-items:center;padding:0 6px;overflow:hidden;">
                         <span style="color:#fff;font-size:10px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${opsEsc(f.estacion)}</span>
@@ -4815,8 +4816,107 @@
         </div>`;
     }
 
-    window.opsAbrirModalFolio = function (id) {
+    // ═══════════════════════ FASE B — Panel de detalle del folio ═══════════════════════
+    // Panel lateral flotante (no modal, no tapa el Calendario de fondo). Reutiliza
+    // datos que ya existen — comentarios (subcolección), receta del catálogo, y
+    // opsFlotillaProvider para el vehículo de cada técnico — nada nuevo que
+    // duplique lo que ya hay. El botón "Editar" abre el modal completo de siempre.
+    window.opsCerrarPanelFolio = function () {
+        const p = document.getElementById("ops-panel-folio");
+        if (p) p.remove();
+    };
+
+    window.opsAbrirPanelFolio = async function (folioId) {
+        const f = cacheFolios.find(x => x.id === folioId);
+        if (!f) return;
+        let panel = document.getElementById("ops-panel-folio");
+        if (!panel) {
+            panel = document.createElement("div");
+            panel.id = "ops-panel-folio";
+            panel.style.cssText = "position:fixed;top:0;right:0;bottom:0;width:min(440px,92vw);background:#fff;box-shadow:-4px 0 24px rgba(0,0,0,.15);z-index:9000;overflow-y:auto;";
+            document.body.appendChild(panel);
+        }
+
+        const semaforo = opsCalcularSemaforoFolio(f);
+        const receta = f.servicioCatalogoId ? cacheServiciosCatalogo.find(s => s.id === f.servicioCatalogoId) : null;
+        const rolesReq = receta ? (receta.personal || []).reduce((n, p) => n + (p.cantidad || 1), 0) : null;
+        const tecnicos = (f.tecnicosAsignadosIds || []).map(id => cacheTec.find(t => t.id === id)).filter(Boolean);
+
+        panel.innerHTML = `
+            <div style="position:sticky;top:0;background:#1D2E73;color:#fff;padding:16px 18px;display:flex;justify-content:space-between;align-items:flex-start;z-index:1;">
+                <div>
+                    <div style="font-size:10px;opacity:.75;text-transform:uppercase;letter-spacing:.4px;">${f.tipoFolio === "laboratorio" ? "Laboratorio" : "Servicio"}${f.folioOS ? " · O.S. " + opsEsc(f.folioOS) : ""}</div>
+                    <div style="font-size:15px;font-weight:700;margin-top:2px;">${opsEsc(f.estacion)}</div>
+                </div>
+                <button onclick="opsCerrarPanelFolio()" style="background:rgba(255,255,255,.15);border:none;color:#fff;width:28px;height:28px;border-radius:8px;cursor:pointer;font-size:16px;">×</button>
+            </div>
+            <div style="padding:18px;">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+                    <div><div style="font-size:10px;color:#94a3b8;font-weight:600;">CLIENTE</div><div style="font-size:12.5px;color:#1e293b;font-weight:600;">${opsEsc(f.clienteNombre || "—")}</div></div>
+                    <div><div style="font-size:10px;color:#94a3b8;font-weight:600;">PRIORIDAD</div><div style="font-size:12.5px;color:#1e293b;font-weight:600;">${opsEsc(f.prioridad || "—")}</div></div>
+                    <div><div style="font-size:10px;color:#94a3b8;font-weight:600;">VENCIMIENTO SLA</div><div style="font-size:12.5px;font-weight:700;color:${{ verde: "#15803D", rojo: "#E7402B", naranja: "#b45309", gris: "#64748b" }[semaforo.semaforo] || "#1e293b"};">${f.vencimiento ? new Date(f.vencimiento).toLocaleString("es-MX", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"}</div></div>
+                    <div><div style="font-size:10px;color:#94a3b8;font-weight:600;">ESTADO</div><div style="font-size:12.5px;font-weight:600;color:#1e293b;">${f.fechaSolucion ? "Cerrado" : f.fechaAtencion ? "En atención" : "Abierto"}</div></div>
+                </div>
+
+                <div style="border-top:1px solid #e2e8f0;padding-top:12px;margin-bottom:16px;">
+                    <div style="font-size:11px;font-weight:700;color:#1D2E73;margin-bottom:8px;">Equipo asignado${rolesReq !== null ? ` (${tecnicos.length}/${rolesReq})` : ""}</div>
+                    <div id="ops-panel-equipo" style="display:flex;flex-direction:column;gap:8px;">
+                        ${tecnicos.length ? tecnicos.map(t => `<div id="ops-panel-eq-${t.id}" style="background:#f8fafc;border-radius:8px;padding:8px 10px;font-size:12px;color:#334155;">${opsEsc(t.nombre)} <span style="color:#94a3b8;">— cargando vehículo…</span></div>`).join("") : `<div style="font-size:11.5px;color:#94a3b8;">Sin técnicos asignados todavía.</div>`}
+                    </div>
+                    ${rolesReq !== null && tecnicos.length < rolesReq ? `<div style="margin-top:6px;font-size:10.5px;color:#E7402B;font-weight:600;">Falta personal contra lo que pide la receta.</div>` : ""}
+                </div>
+
+                <div style="border-top:1px solid #e2e8f0;padding-top:12px;margin-bottom:16px;">
+                    <div style="font-size:11px;font-weight:700;color:#1D2E73;margin-bottom:8px;">Traslado</div>
+                    <div style="font-size:12px;color:#334155;line-height:1.7;">
+                        Origen: ${opsEsc(f.origen || "No capturado")}<br>
+                        Destino: ${opsEsc(f.destino || "No capturado")}<br>
+                        Distancia: ${f.distanciaKm ? f.distanciaKm + " km" : "No capturado"} · Casetas: ${f.casetasMonto ? "$" + f.casetasMonto : "No capturado"}<br>
+                        Hora de salida: ${opsEsc(f.horaSalida || "No capturada")}
+                    </div>
+                    <div style="font-size:10px;color:#94a3b8;margin-top:4px;">Estos campos todavía se capturan a mano (la integración con GPS es la Fase D).</div>
+                </div>
+
+                <div style="border-top:1px solid #e2e8f0;padding-top:12px;margin-bottom:16px;">
+                    <div style="font-size:11px;font-weight:700;color:#1D2E73;margin-bottom:8px;">Historial</div>
+                    <div id="ops-panel-historial" style="font-size:11.5px;color:#94a3b8;">Cargando…</div>
+                </div>
+
+                <button onclick="opsAbrirModalFolio('${f.id}')" class="mkt-add-btn" style="background:#1D2E73;width:100%;">Editar folio</button>
+            </div>`;
+
+        // ── Vehículo de cada técnico (async, no bloquea el resto del panel) ──
+        tecnicos.forEach(async t => {
+            const veh = await window.opsFlotillaProvider.obtenerVehiculoActual(t.id);
+            const el = document.getElementById(`ops-panel-eq-${t.id}`);
+            if (el) el.innerHTML = `${opsEsc(t.nombre)} <span style="color:#94a3b8;">— ${veh ? opsEsc(veh.unidad) + (veh.modelo ? " (" + opsEsc(veh.modelo) + ")" : "") : "sin vehículo asignado"}</span>`;
+        });
+
+        // ── Historial (subcolección comentarios) ──
+        try {
+            const { db, fs } = await opsGetFB();
+            const snap = await fs.getDocs(fs.query(fs.collection(db, COL_FOLIOS, f.id, "comentarios"), fs.orderBy("createdAt", "asc")));
+            const hist = document.getElementById("ops-panel-historial");
+            if (!hist) return; // el panel ya se cerró o cambió de folio mientras cargaba
+            if (snap.empty) { hist.innerHTML = `<div style="font-size:11.5px;color:#94a3b8;">Sin comentarios todavía.</div>`; return; }
+            hist.innerHTML = `<div style="display:flex;flex-direction:column;gap:10px;">` + snap.docs.map(d => {
+                const c = d.data();
+                const fecha = c.createdAt?.toDate ? c.createdAt.toDate() : (c.createdAt ? new Date(c.createdAt) : null);
+                return `<div style="border-left:2px solid #dbe3f0;padding-left:10px;">
+                    <div style="font-size:10px;color:#94a3b8;">${opsEsc(c.autor || c.autorEmail || "—")} · ${fecha ? fecha.toLocaleString("es-MX", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : ""}</div>
+                    <div style="font-size:12px;color:#334155;margin-top:2px;">${opsEsc(c.texto || "")}</div>
+                </div>`;
+            }).join("") + `</div>`;
+        } catch (e) {
+            const hist = document.getElementById("ops-panel-historial");
+            if (hist) hist.innerHTML = `<div style="font-size:11px;color:#E7402B;">No se pudo cargar el historial.</div>`;
+            console.warn("[Panel folio] historial:", e.message);
+        }
+    };
+
+    window.opsAbrirModalFolio = function (id, fechaSugerida) {
         const f = id ? cacheFolios.find(x => x.id === id) : null;
+        const programadaDefault = f?.fechaProgramada || (fechaSugerida ? opsCalFechaISO(fechaSugerida) + "T08:00" : "");
         const wrap = document.getElementById("ops-modal-wrap");
         const solicitudDefault = f?.fechaSolicitud || (() => {
             const n = new Date(); const pad = x => String(x).padStart(2, "0");
@@ -4892,7 +4992,7 @@
                 </div>
 
                 <label style="font-size:11.5px;color:#64748b;font-weight:600;">Fecha y hora programada del trabajo</label>
-                <input type="datetime-local" id="ops-fol-programada" value="${opsEsc(f?.fechaProgramada || "")}" onchange="window.opsFolioSugerirTecnicos('${id || ""}')" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                <input type="datetime-local" id="ops-fol-programada" value="${opsEsc(programadaDefault)}" onchange="window.opsFolioSugerirTecnicos('${id || ""}')" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
                 <div style="font-size:10px;color:#94a3b8;margin:-6px 0 10px;">Esta es la fecha que se ve en el Calendario — distinta de la fecha de solicitud.</div>
 
                 <div style="display:flex;gap:8px;">
