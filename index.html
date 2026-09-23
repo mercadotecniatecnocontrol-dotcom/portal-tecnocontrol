@@ -1422,6 +1422,7 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
                             <option value="MIGUEL MONTELLANO">Miguel Montellano</option>
                             <option value="GUILLERMO DURSTEWITZ">Guillermo Durstewitz</option>
                             <option value="MARTIN ROBERTO DE LA O MAESE">Martín De la O</option>
+                            <option value="FATIMA SAUZAMEDA">Fátima Sauzameda</option>
                             <option value="MONTERREY">Monterrey</option>
                             <option value="SERVICIO">Servicio</option>
                         </select>
@@ -2179,6 +2180,7 @@ const NOMBRE_MAP = {
     // ── Operaciones internas ──
     'c.acosta@tecnocontrol.com.mx':        'C. Acosta',
     'rh@tecnocontrol.com.mx':              'RH',
+    'irvinjulian05@tecnocontrol.com.mx':   'Flotilla',
     'flotillatecnocontrol@gmail.com':      'Flotilla',
     'facturacion@tecnocontrol.com.mx':     'Facturación',
     'miguel@tecnocontrol.com.mx':          'operaciones',
@@ -2205,7 +2207,7 @@ window.NOMBRE_MAP    = NOMBRE_MAP;
 if(!window.esAdmin) window.esAdmin = esAdminTotal; // alias de compatibilidad
 
 // ── Usuarios disponibles para asignar tareas (por área) ──────
-const EMPLEADOS_TECNOCONTROL = ['ACEVES MOLINA IVAN ARGENIS', 'ACOSTA CHAVIRA CARLOS', 'ACOSTA CONTRERAS CRISTINA JUDITH', 'BARRAZA LUYA SAUL ISMAEL', 'CALIXTO SANCHEZ RAFAEL', 'CAMPOS GOMEZ ADA JAQUELINE', 'CARMONA LAGUNAS SERGIO', 'CASTRO MUÑOZ SAUL', 'CHACON TERRAZAS LUCERO', 'CHAVEZ ALVAREZ RUTH YADIRA', 'CHAVEZ BARRAZA OSCAR IVAN', 'CHAVEZ CHAVEZ IVAN', 'CONTRERAS MORALES ELVA NIDIA', 'CORONADO VALENZUELA SOCORRO ANNET', 'DE LA CRUZ EMILIO JULIO CESAR', 'DE LA O MAESE MARTIN', 'DURSTEWITZ MAESE GUILLERMO', 'ENRIQUEZ GALLARDO JORGE ALBERTO', 'ESCALANTE JARAMILLO ANA KAREN', 'ESTRADA GOMEZ ALAN ALBERTO', 'GARCIA LEDEZMA JESUS ALVARO', 'GARCIA MONTEMAYOR VERONICA JANETH', 'GONZALEZ BABONOYABA RICARDO ANTONIO', 'GONZALEZ DELGADO ERICKA IDALY', 'GUERRERO GOMEZ JORGE', 'GUTIERREZ ALVARADO NAYRA DIDI', 'GUTIERREZ VILLARREAL DENISSE', 'GUZMAN MORALES FLOR IDALIA', 'GUZMAN NEAVE KENIA YADIRA', 'HERNANDEZ PEREZ RUBEN ALBERTO', 'HERNANDEZ PRIETO JOSUE', 'HERNANDEZ RIOS JESUS RAMON', 'LEAL MARTINEZ ROQUE MANUEL', 'LOPEZ AVILA SANDRA LUCERO', 'LOPEZ DELGADO LUIS HUMBERTO', 'LUNA ESPINOZA JAIME ROEL', 'MEDINA CONTRERAS GIOVANNI ISRAEL', 'MENDOZA BECERRA SERGIO', 'MINJAREZ OCHOA ALBERTO ALAN', 'MONTELLANO PASILLAS MIGUEL ANGEL', 'MORALES CRUZ GABRIEL GAEL', 'MORALES MENDOZA TOMAS', 'MORENO MOLINA REYES', 'MORIEL SAENZ RICARDO SALVADOR', 'MUÑOZ AVILA ROBERTO', 'MUÑOZ BLANCO LIZETH CRISTINA', 'NUÑEZ ALATORRE ULISES', 'OROZCO MIRANDA ANA CRISTINA', 'PARRA BLANCO ZAIRA SIBEL', 'PEREZ GARCIA MARTHA ARACELY', 'PINEDO PALOMA', 'PORTILLO PORTILLO JOSE LUIS', 'PRECIADO GRIJALVA GLEN IVAN', 'REYES GONZALEZ PEDRO', 'RIOS SALCIDO JOON OMAIRA', 'RUIZ OLMEDO NORMA IDALY', 'SALCEDO GARDEA FILIBERTO ISAI', 'SALMON RIVAS FABRICIO ABUNDIO', 'SAUCEDO MARTINEZ IRVING ABRAHAM', 'SEPULVEDA MENDOZA IVAN ROBERTO', 'SOTO GONZALEZ BENITO', 'TERRAZAS SERRANO FERNANDO', 'URIBE MAESE JORGE ALBERTO', 'VALENCIA BARRAZA JESUS BERSAIN', 'VALENCIA MEZA LUIS MIGUEL', 'VALENZUELA LOPEZ JOSE LUIS'];
+const EMPLEADOS_TECNOCONTROL = ['ACEVES MOLINA IVAN ARGENIS', 'ACOSTA CHAVIRA CARLOS', 'ACOSTA CONTRERAS CRISTINA JUDITH', 'BARRAZA LUYA SAUL ISMAEL', 'CALIXTO SANCHEZ RAFAEL', 'CAMPOS GOMEZ ADA JAQUELINE', 'CARMONA LAGUNAS SERGIO', 'CASTRO MUÑOZ SAUL', 'CHACON TERRAZAS LUCERO', 'CHAVEZ ALVAREZ RUTH YADIRA', 'CHAVEZ BARRAZA OSCAR IVAN', 'CHAVEZ CHAVEZ IVAN', 'CONTRERAS MORALES ELVA NIDIA', 'CORONADO VALENZUELA SOCORRO ANNET', 'DE LA CRUZ EMILIO JULIO CESAR', 'DE LA O MAESE MARTIN', 'DURSTEWITZ MAESE GUILLERMO', 'ENRIQUEZ GALLARDO JORGE ALBERTO', 'ESCALANTE JARAMILLO ANA KAREN', 'ESTRADA GOMEZ ALAN ALBERTO', 'GARCIA LEDEZMA JESUS ALVARO', 'GARCIA MONTEMAYOR VERONICA JANETH', 'GONZALEZ BABONOYABA RICARDO ANTONIO', 'GONZALEZ DELGADO ERICKA IDALY', 'GUERRERO GOMEZ JORGE', 'GUTIERREZ ALVARADO NAYRA DIDI', 'GUTIERREZ VILLARREAL DENISSE', 'GUZMAN MORALES FLOR IDALIA', 'GUZMAN NEAVE KENIA YADIRA', 'HERNANDEZ PEREZ RUBEN ALBERTO', 'HERNANDEZ PRIETO JOSUE', 'HERNANDEZ RIOS JESUS RAMON', 'LEAL MARTINEZ ROQUE MANUEL', 'LOPEZ AVILA SANDRA LUCERO', 'LOPEZ DELGADO LUIS HUMBERTO', 'LUNA ESPINOZA JAIME ROEL', 'MEDINA CONTRERAS GIOVANNI ISRAEL', 'MENDOZA BECERRA SERGIO', 'MINJAREZ OCHOA ALBERTO ALAN', 'MONTELLANO PASILLAS MIGUEL ANGEL', 'MORALES CRUZ GABRIEL GAEL', 'MORALES MENDOZA TOMAS', 'MORENO MOLINA REYES', 'MORIEL SAENZ RICARDO SALVADOR', 'MUÑOZ AVILA ROBERTO', 'MUÑOZ BLANCO LIZETH CRISTINA', 'NUÑEZ ALATORRE ULISES', 'OROZCO MIRANDA ANA CRISTINA', 'PARRA BLANCO ZAIRA SIBEL', 'PEREZ GARCIA MARTHA ARACELY', 'PINEDO PALOMA', 'PORTILLO PORTILLO JOSE LUIS', 'PRECIADO GRIJALVA GLEN IVAN', 'REYES GONZALEZ PEDRO', 'RIOS SALCIDO JOON OMAIRA', 'RUIZ OLMEDO NORMA IDALY', 'SALCEDO GARDEA FILIBERTO ISAI', 'SALMON RIVAS FABRICIO ABUNDIO', 'SAUCEDO MARTINEZ IRVING ABRAHAM', 'SAUZAMEDA OCHOA FATIMA ANAHI', 'SEPULVEDA MENDOZA IVAN ROBERTO', 'SOTO GONZALEZ BENITO', 'TERRAZAS SERRANO FERNANDO', 'URIBE MAESE JORGE ALBERTO', 'VALENCIA BARRAZA JESUS BERSAIN', 'VALENCIA MEZA LUIS MIGUEL', 'VALENZUELA LOPEZ JOSE LUIS'];
 const USUARIOS_AREA = {
     'Ingresos':        ['facturacion@tecnocontrol.com.mx'],
     'Egresos':         ['aux.contable@tecnocontrol.com.mx'],
@@ -3001,9 +3003,10 @@ const EMAIL_AREA_MAP = {
     'mercadotecniatecnocontrol@gmail.com':  'Marketing',
     'contabilidad@tecnocontrol.com.mx':     'Contabilidad',
     // ── Flotilla ──
-    'flotilla@tecnocontrol.com.mx':         'Flotilla',
+    'fatima@tecnocontrol.com.mx':           'Flotilla',
     'pagos@tecnocontrol.com.mx':            'Flotilla',
     'flotillatecnocontrol@gmail.com':          'Flotilla',
+    'irvinjulian05@gmail.com':              'Flotilla',
     // ── Vendedores ──
     'guillermo.d@tecnocontrol.com.mx':      'Ventas',
     'antonio@tecnocontrol.com.mx':          'Ventas', 
@@ -5804,15 +5807,18 @@ window.irAlmacen = function(btn){
     }
 };
 </script>
-<script src="flotilla-reglas.js?v=5"></script>
+<script src="flotilla-reglas.js"></script>
 <script src="roles-modulos.js"></script>
 <script src="pagos.js"></script>
 <script src="material-pdf.js"></script>
-<script src="ventas.js?v=20260922"></script>
+<script src="ventas.js"></script>
+<script src="contabilidad.js"></script>
+<script src="egresos.js"></script>
+<script src="rh-indicadores.js"></script>
 <script>document.write('<script src="flotilla.js?v='+Date.now()+'"><\/script>');</script>
 <script src="vehiculos.js"></script>
 <script src="rh.js"></script>
-<script src="surtidos-supabase.js?v=3"></script>
+<script src="surtidos-supabase.js"></script>
 <script src="almacen.js"></script>
 <script src="almacen-pdf.js"></script>
 <script src="compras.js"></script>
