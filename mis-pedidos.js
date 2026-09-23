@@ -221,7 +221,7 @@
       detalle += (_histCache[p.id] ? renderSeguimiento(p) : '<div style="font-size:11.5px;color:#94a3b8;margin:8px 0;">Cargando seguimiento\u2026</div>');
       var prods = Array.isArray(p.productos)?p.productos:[];
       detalle += '<div style="margin-top:8px;border-top:1px dashed #e6ebf2;padding-top:8px;font-size:12px;color:#334155;">'
-        + (prods.length ? prods.map(function(it){ return '<div>'+(Number(it.cant)||0)+'\u00d7 '+esc(it.desc||'')+'</div>'; }).join('') : 'Sin productos capturados.')
+        + (prods.length ? prods.map(function(it){ return '<div>'+(it.unidad ? ((Number(it.cant)||0)+' '+esc(it.unidad)+' ') : ((Number(it.cant)||0)+'\u00d7 '))+esc(it.desc||'')+'</div>'; }).join('') : 'Sin productos capturados.')
         + '</div>';
       if (p.firma){
         detalle += '<div class="mp-firma-mini"><div style="font-size:10.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Firma de la solicitud</div><img src="'+esc(p.firma)+'" onclick="window.__mpVerImagen(\''+esc(p.firma)+'\')"></div>';

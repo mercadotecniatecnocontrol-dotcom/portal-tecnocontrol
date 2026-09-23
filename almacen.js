@@ -1157,7 +1157,7 @@
     if (p.tipo==='material' && prods.length){
       prodHtml += '<div class="alm-mat-lista"><span class="lbl">Artículos solicitados ('+total+')</span>'
         + prods.map(function(it){
-            return '<div class="alm-mat-item"><span class="d">'+esc(it.desc||'—')+(it.clave?(' <span style="color:#94a3b8;">('+esc(it.clave)+')</span>'):'')+'</span><span class="c">×'+esc(it.cant||0)+'</span></div>';
+            return '<div class="alm-mat-item"><span class="d">'+esc(it.desc||'—')+(it.clave?(' <span style="color:#94a3b8;">('+esc(it.clave)+')</span>'):'')+'</span><span class="c">'+esc((it.unidad ? ((Number(it.cant)||0)+' '+it.unidad) : ('×'+(it.cant||0))))+'</span></div>';
           }).join('')
         + '</div>';
     }
@@ -1915,7 +1915,7 @@
       + '<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#94a3b8;margin-bottom:6px;">Artículos ('+e.piezas+' pzas)</div>'
       + '<div style="margin-bottom:14px;">'
       +   (e.productos.length ? e.productos.map(function(it){
-            return '<div style="display:flex;justify-content:space-between;font-size:12.5px;color:#1e293b;padding:3px 0;border-bottom:1px solid #f1f5f9;"><span>'+esc(it.desc||'—')+(it.clave?(' <span style="color:#94a3b8;">('+esc(it.clave)+')</span>'):'')+'</span><span style="font-weight:700;">×'+esc(it.cant||0)+'</span></div>';
+            return '<div style="display:flex;justify-content:space-between;font-size:12.5px;color:#1e293b;padding:3px 0;border-bottom:1px solid #f1f5f9;"><span>'+esc(it.desc||'—')+(it.clave?(' <span style="color:#94a3b8;">('+esc(it.clave)+')</span>'):'')+'</span><span style="font-weight:700;">'+esc((it.unidad ? ((Number(it.cant)||0)+' '+it.unidad) : ('×'+(it.cant||0))))+'</span></div>';
           }).join('') : '<div style="color:#94a3b8;font-size:12px;">Sin artículos capturados.</div>')
       + '</div>'
       + (e.firma ? '<div style="margin-bottom:10px;"><div style="font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:4px;">FIRMA DEL SOLICITANTE</div><img src="'+esc(e.firma)+'" style="max-width:220px;border:1px solid #e2e8f0;border-radius:8px;cursor:pointer;" onclick="window.__almVerFirmaId(\''+e.id+'\',\'sol\')"></div>' : '')
@@ -2339,7 +2339,7 @@
       '',
       'Artículos:'
     ].filter(Boolean);
-    prods.forEach(function(it){ lineas.push('• '+(it.desc||'—')+' ×'+(it.cant||0)+(it.clave?(' ('+it.clave+')'):'')); });
+    prods.forEach(function(it){ lineas.push('• '+(it.desc||'—')+' '+(it.unidad ? ((Number(it.cant)||0)+' '+it.unidad) : ('×'+(it.cant||0)))+(it.clave?(' ('+it.clave+')'):'')); });
     if(p.uso) lineas.push('', 'Uso: '+p.uso);
     return lineas.join('\n');
   }
@@ -2435,7 +2435,7 @@
       docu.setTextColor(15,23,42);
       docu.text(String(it.clave||'—'), ML+2, y);
       docu.text(lns, ML+32, y);
-      docu.text('×'+String(it.cant||0), PW-MR-2, y, {align:'right'});
+      docu.text((it.unidad ? ((Number(it.cant)||0)+' '+it.unidad) : ('×'+(it.cant||0))), PW-MR-2, y, {align:'right'});
       y += Math.max(6, lns.length*5+1.5);
     });
     if(!prods.length){ docu.text('Sin artículos capturados.', ML+2, y); y+=6; }
@@ -2523,7 +2523,7 @@
     docu.setFont('helvetica','normal'); docu.setFontSize(9); docu.setTextColor(15,23,42);
     prods.forEach(function(it){
       if(y > PH-18){ docu.addPage(); y=16; }
-      var linea = (it.cant||0)+'x  '+(it.desc||'')+(it.clave?(' ('+it.clave+')'):'');
+      var linea = (it.unidad ? ((Number(it.cant)||0)+' '+it.unidad+'  ') : ((it.cant||0)+'x  '))+(it.desc||'')+(it.clave?(' ('+it.clave+')'):'');
       var lns = docu.splitTextToSize(linea, PW-ML-MR);
       docu.text(lns, ML, y); y += lns.length*5.2+1.5;
     });
@@ -2663,7 +2663,7 @@
           docu.setFont('helvetica','normal'); docu.setFontSize(8.5);
           e.productos.forEach(function(p){
             if (y > PH-30) return; // no seguimos empujando la página aquí, la evidencia va después de todos modos
-            docu.text('• '+String(p.desc||'—')+' ×'+String(p.cant||0), ML, y); y+=5;
+            docu.text('• '+String(p.desc||'—')+' '+(p.unidad ? ((Number(p.cant)||0)+' '+p.unidad) : ('×'+(p.cant||0))), ML, y); y+=5;
           });
           y += 3;
         }

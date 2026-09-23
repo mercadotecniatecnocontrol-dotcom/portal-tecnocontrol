@@ -599,7 +599,7 @@
     tb.innerHTML = estado.productos.map(function (p, i) {
       return '<tr>'
         + '<td class="cclave"><input value="' + esc(p.clave) + '" oninput="window.__almPdfEdit(' + i + ',\'clave\',this.value)"></td>'
-        + '<td class="ccant"><input type="number" min="1" value="' + (p.cant || '') + '" oninput="window.__almPdfEdit(' + i + ',\'cant\',this.value)"></td>'
+        + '<td class="ccant"><input type="number" min="0" step="any" inputmode="decimal" value="' + (p.cant || '') + '" oninput="window.__almPdfEdit(' + i + ',\'cant\',this.value)"></td>'
         + '<td><input value="' + esc(p.desc) + '" oninput="window.__almPdfEdit(' + i + ',\'desc\',this.value)"></td>'
         + '<td class="cdel"><button class="alm-del" title="Quitar" onclick="window.__almPdfDelRow(' + i + ')">&times;</button></td>'
         + '</tr>';
@@ -1213,7 +1213,7 @@
   // =====================================================================
   window.__almPdfEdit = function (i, campo, val) {
     if (!estado.productos[i]) return;
-    if (campo === 'cant') estado.productos[i].cant = parseInt(val, 10) || 0;
+    if (campo === 'cant') estado.productos[i].cant = parseFloat(String(val).replace(',', '.')) || 0;
     else estado.productos[i][campo] = val;
   };
   window.__almPdfDelRow = function (i) { estado.productos.splice(i, 1); renderRows(); };
@@ -1233,7 +1233,7 @@
     var fechaEntrega = (document.getElementById('alm-fecha-entrega').value || '').trim();
     var prioridad = document.getElementById('alm-prio').value || 'normal';
     var productos = estado.productos
-      .map(function (p) { return { clave: (p.clave || '').trim(), cant: parseInt(p.cant, 10) || 0, desc: (p.desc || '').trim(), pu: p.pu || '', importe: p.importe || '' }; })
+      .map(function (p) { var o = { clave: (p.clave || '').trim(), cant: parseFloat(p.cant) || 0, desc: (p.desc || '').trim(), pu: p.pu || '', importe: p.importe || '' }; if (p.unidad) o.unidad = p.unidad; return o; })
       .filter(function (p) { return p.cant > 0 && p.desc.length > 0; });
  
     // Destino de entrega (opcional, pero si se elige un tipo se guardan sus datos)

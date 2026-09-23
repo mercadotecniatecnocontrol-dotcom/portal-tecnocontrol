@@ -229,7 +229,7 @@
       docu.setTextColor(15,23,42);
       docu.text(String(it.clave||'—'), ML+2, y);
       docu.text(lns, ML+32, y);
-      docu.text('×'+String(it.cant||0), PW-MR-2, y, {align:'right'});
+      docu.text(it.unidad ? ((Number(it.cant)||0)+' '+it.unidad) : ('×'+String(it.cant||0)), PW-MR-2, y, {align:'right'});
       y += Math.max(6, lns.length*5+1.5);
     });
 
@@ -262,7 +262,7 @@
     var url = docu.output('bloburl');
     var ov=document.getElementById('tc-preview-ov');
     if(!ov){ ov=document.createElement('div'); ov.id='tc-preview-ov'; document.body.appendChild(ov); }
-    ov.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.75);z-index:1000001;display:flex;flex-direction:column;padding:14px';
+    ov.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.75);z-index:1000001;display:flex;flex-direction:column;padding:calc(14px + env(safe-area-inset-top,0px)) 14px calc(14px + env(safe-area-inset-bottom,0px))';
     ov.innerHTML=
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'+
         '<div style="color:#fff;font-weight:700;font-size:13.5px">Vista previa · '+esc(folio||'')+'</div>'+

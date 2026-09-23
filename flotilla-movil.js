@@ -699,6 +699,8 @@ body{margin:0;padding:0;background:#F0F2F7;font-family:'Plus Jakarta Sans',-appl
 .fm-fld{margin-bottom:12px;}
 .fm-fld label{display:block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#1E3A5F;margin-bottom:6px;}
 .fm-fld input,.fm-fld select,.fm-fld textarea{width:100%;padding:12px 14px;border:2px solid #CBD5E1;border-radius:10px;font-family:inherit;font-size:14px;color:#0A0F1E;background:#fff;outline:none;-webkit-appearance:none;appearance:none;font-weight:500;}
+.fm-fld input[type=checkbox]{width:24px;height:24px;min-width:24px;padding:0;border:2px solid #94A3B8;border-radius:6px;background:#fff center/16px 16px no-repeat;cursor:pointer;transition:all .12s;}
+.fm-fld input[type=checkbox]:checked{background-color:#15803D;border-color:#15803D;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E");}
 .fm-fld input:focus,.fm-fld select:focus,.fm-fld textarea:focus{border-color:#2563EB;background:#fff;}
 .fm-fld textarea{min-height:80px;resize:none;}
 .fm-select-wrap{position:relative;}
@@ -3364,9 +3366,33 @@ window.fmGenerarPDF=function(id){
   <div class="footer">Portal Flotilla Tecnocontrol · ${new Date().toLocaleString('es-MX')} · ${id}</div>
   <div style="margin-top:12px;text-align:center"><button onclick="window.print()" style="padding:10px 24px;background:#0A1628;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">Imprimir / Guardar PDF</button></div>
   </body></html>`;
-  const win=window.open('','_blank');
-  if(win){win.document.write(html);win.document.close();}
-  else toast('Activa ventanas emergentes para PDF','warn');
+  fmVisorHTML(html, 'Solicitud '+id.slice(0,8).toUpperCase());
+};
+
+// Visor a pantalla completa dentro de la app, con Regresar (también responde
+// al botón "atrás" de Android). Sustituye window.open, que en la app nativa
+// dejaba la vista sin forma de volver.
+window.fmVisorHTML=function(html, titulo){
+  let ov=document.getElementById('fm-visor-ov');
+  if(ov) ov.remove();
+  ov=document.createElement('div');
+  ov.id='fm-visor-ov';
+  ov.style.cssText='position:fixed;inset:0;z-index:1000002;background:#fff;display:flex;flex-direction:column;padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)';
+  ov.innerHTML=`
+    <div style="background:#0A1628;color:#fff;padding:10px 12px;display:flex;align-items:center;gap:10px;flex-shrink:0">
+      <button id="fm-visor-back" style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.12);border:none;border-radius:8px;padding:8px 12px;color:#fff;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>Regresar
+      </button>
+      <div style="flex:1;font-size:13px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(titulo||'')}</div>
+    </div>
+    <iframe id="fm-visor-if" style="flex:1;width:100%;border:none;background:#fff"></iframe>`;
+  document.body.appendChild(ov);
+  document.getElementById('fm-visor-if').srcdoc=html;
+  const cerrar=()=>{ window.removeEventListener('popstate',onPop); const o=document.getElementById('fm-visor-ov'); if(o) o.remove(); };
+  const onPop=()=>cerrar();
+  try{ history.pushState({fmVisor:1},''); }catch(e){}
+  window.addEventListener('popstate',onPop);
+  document.getElementById('fm-visor-back').onclick=()=>{ if(history.state&&history.state.fmVisor) history.back(); else cerrar(); };
 };
 
 // ── COMPARTIR WHATSAPP (MÓVIL) ──
@@ -5032,12 +5058,12 @@ window.fmAbrirFlotante=function(tipo){
     ov.id='fm-flotante';
     ov.style.cssText='position:fixed;inset:0;z-index:5000;background:rgba(10,22,40,.55);display:flex;align-items:flex-end;justify-content:center';
     ov.innerHTML=`
-      <div id="fm-flot-panel" style="background:#F8FAFD;width:100%;max-width:480px;height:92vh;border-radius:18px 18px 0 0;display:flex;flex-direction:column;overflow:hidden">
+      <div id="fm-flot-panel" style="background:#F8FAFD;width:100%;max-width:480px;height:calc(100% - 24px - env(safe-area-inset-top,0px));border-radius:18px 18px 0 0;display:flex;flex-direction:column;overflow:hidden">
         <div style="background:#0A1628;color:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
           <div id="fm-flot-title" style="font-size:14px;font-weight:800"></div>
           <button onclick="fmCerrarFlotante()" style="background:rgba(255,255,255,.12);border:none;border-radius:8px;width:30px;height:30px;color:#fff;font-size:16px;cursor:pointer">✕</button>
         </div>
-        <div id="fm-flot-body" style="flex:1;overflow-y:auto;padding:14px 16px 24px"></div>
+        <div id="fm-flot-body" style="flex:1;overflow-y:auto;padding:14px 16px calc(40px + env(safe-area-inset-bottom,0px))"></div>
       </div>`;
     document.body.appendChild(ov);
   }
@@ -5063,6 +5089,17 @@ window.fmCerrarFlotante=function(){
    logueado en vez de pedir sesión aparte. ── */
 const MAT_AREAS=['Operaciones','Almacén','Logística','Mantenimiento','Administración'];
 window.matState={area:'',destino:'',uso:'',prioridad:'urgente',carrito:{},firma:null,razonSocial:'',ubicacion:null};
+const MAT_UNIDADES=['pza','m','cm','ft','in','kg','L','rollo','caja','juego','par'];
+function _matUnidadSugerida(desc){
+  const d=String(desc||'').toUpperCase();
+  if(/\(FT\)|X PIE|POR PIE|\bPIES?\b/.test(d))return 'ft';
+  if(/\(M\)|X METRO|POR METRO|\bMTS?\b|\bMETROS?\b/.test(d))return 'm';
+  if(/\bKG\b|\bKILOS?\b/.test(d))return 'kg';
+  if(/\bLITROS?\b|\bLTS?\b|\(L\)/.test(d))return 'L';
+  if(/\bROLLOS?\b/.test(d))return 'rollo';
+  return 'pza';
+}
+function _matParseCant(v){ const n=parseFloat(String(v==null?'':v).replace(',','.')); return isFinite(n)&&n>0?Math.round(n*1000)/1000:0; }
 let _matCatalogo=null; // se carga una sola vez por sesión de la app — sin volver a pedirlo por cada tecla
 let _matTecnicoResuelto=undefined; // undefined=sin resolver, null=no encontrado, obj=encontrado
 
@@ -5123,7 +5160,9 @@ window.renderFlotMaterial=async function(){
     <div id="mat-carrito" style="margin-bottom:14px">
       ${carritoArr.length?carritoArr.map(it=>`
         <div style="display:flex;align-items:center;justify-content:space-between;background:#fff;border:1px solid #E2E8F0;border-radius:9px;padding:8px 10px;margin-bottom:6px">
-          <div style="font-size:12.5px;flex:1"><b>×${it.cant}</b> ${esc(it.desc)}</div>
+          <div style="font-size:12.5px;flex:1;min-width:0">${esc(it.desc)}</div>
+          <input type="text" inputmode="decimal" value="${esc(String(it.cant))}" onfocus="this.select()" onchange="matSetCant('${esc(it.clave||it.desc)}',this.value)" style="width:58px;padding:7px 4px;border:1.5px solid #CBD5E1;border-radius:8px;font-size:14px;font-weight:800;text-align:center;margin-left:6px">
+          <select onchange="matSetUnidad('${esc(it.clave||it.desc)}',this.value)" style="padding:7px 2px;border:1.5px solid #CBD5E1;border-radius:8px;font-size:12.5px;font-weight:700;background:#fff;margin-left:4px">${MAT_UNIDADES.map(u=>`<option value="${u}" ${(it.unidad||'pza')===u?'selected':''}>${u}</option>`).join('')}</select>
           <button onclick="matQuitar('${esc(it.clave||it.desc)}')" style="background:none;border:none;color:#B91C1C;font-size:16px;cursor:pointer;padding:0 6px">✕</button>
         </div>`).join(''):'<div style="font-size:12px;color:#94A3B8">Sin artículos agregados todavía.</div>'}
     </div>
@@ -5167,22 +5206,35 @@ window.matBuscarProductos=function(){
     return `<div style="display:flex;align-items:center;justify-content:space-between;background:#fff;border:1px solid #E2E8F0;border-radius:9px;padding:8px 10px">
       <div style="font-size:12.5px;flex:1">${esc(it.desc||'—')}${it.clave?`<div style="font-size:10.5px;color:#94A3B8">Clave ${esc(it.clave)}</div>`:''}</div>
       ${enCarrito
-        ? `<div style="display:flex;align-items:center;gap:8px"><button onclick="matCant('${esc(k)}',-1)" style="width:26px;height:26px;border-radius:7px;border:1px solid #E2E8F0;background:#F8FAFD;cursor:pointer">−</button><span style="font-weight:800;font-size:13px;min-width:16px;text-align:center">${enCarrito.cant}</span><button onclick="matCant('${esc(k)}',1)" style="width:26px;height:26px;border-radius:7px;border:1px solid #E2E8F0;background:#F8FAFD;cursor:pointer">+</button></div>`
+        ? `<div style="display:flex;align-items:center;gap:8px"><button onclick="matCant('${esc(k)}',-1)" style="width:26px;height:26px;border-radius:7px;border:1px solid #E2E8F0;background:#F8FAFD;cursor:pointer">−</button><span style="font-weight:800;font-size:13px;min-width:16px;text-align:center">${enCarrito.cant} ${esc(enCarrito.unidad||'pza')}</span><button onclick="matCant('${esc(k)}',1)" style="width:26px;height:26px;border-radius:7px;border:1px solid #E2E8F0;background:#F8FAFD;cursor:pointer">+</button></div>`
         : `<button onclick='matAgregar(${JSON.stringify(it)})' style="padding:6px 10px;background:#2563EB;color:#fff;border:none;border-radius:7px;font-size:11.5px;font-weight:700;cursor:pointer">+ Agregar</button>`}
     </div>`;
   }).join(''):'<div style="font-size:12px;color:#94A3B8;padding:6px 2px">Sin resultados para "'+esc(document.getElementById('mat-search').value)+'".</div>';
 };
 window.matAgregar=function(it){
   const k=it.clave||it.desc;
-  window.matState.carrito[k]={clave:it.clave||'',desc:it.desc,cant:1};
+  window.matState.carrito[k]={clave:it.clave||'',desc:it.desc,cant:1,unidad:_matUnidadSugerida(it.desc)};
   _draftSave(_DRAFT.MAT,window.matState);
   window.renderFlotMaterial();
 };
 window.matCant=function(k,delta){
   const it=window.matState.carrito[k]; if(!it)return;
-  it.cant=Math.max(1,it.cant+delta);
+  it.cant=Math.max(1,Math.round(((Number(it.cant)||0)+delta)*1000)/1000);
   _draftSave(_DRAFT.MAT,window.matState);
   window.renderFlotMaterial();
+};
+// Cantidad escrita a mano (acepta decimales: 2.5 m, 57 ft…). No re-renderiza para no perder firma/búsqueda.
+window.matSetCant=function(k,val){
+  const it=window.matState.carrito[k]; if(!it)return;
+  const n=_matParseCant(val);
+  if(n<=0){ window.matQuitar(k); return; }
+  it.cant=n;
+  _draftSave(_DRAFT.MAT,window.matState);
+};
+window.matSetUnidad=function(k,u){
+  const it=window.matState.carrito[k]; if(!it)return;
+  it.unidad=u;
+  _draftSave(_DRAFT.MAT,window.matState);
 };
 window.matQuitar=function(k){
   delete window.matState.carrito[k];
@@ -5223,7 +5275,7 @@ async function _matSiguienteFolio(){
 
 window.matEnviar=async function(){
   const msg=document.getElementById('mat-msg');
-  const productos=Object.values(window.matState.carrito).map(v=>({clave:v.clave,cant:v.cant,desc:v.desc}));
+  const productos=Object.values(window.matState.carrito).map(v=>({clave:v.clave,cant:Number(v.cant)||0,unidad:v.unidad||'pza',desc:v.desc})).filter(p=>p.cant>0);
   if(!window.matState.area){ msg.textContent='Elige el área.'; return; }
   if(!window.matState.razonSocial){ msg.textContent='Escribe la razón social.'; return; }
   if(!window.matState.ubicacion){ msg.textContent='Elige la estación, dirección o ubicación en el mapa.'; return; }
@@ -5256,7 +5308,7 @@ window.matEnviar=async function(){
       origen:'flotilla',
     };
     const pdf=window.tcConstruirPDFSolicitud(surtidoData,null);
-    const resumen='📦 Solicitud de Material — '+folioInfo.folio+'\nRazón social: '+surtidoData.razonSocial+'\nÁrea: '+surtidoData.area+'\nDestino: '+surtidoData.destino+'\n\nArtículos:\n'+productos.map(p=>'• '+p.desc+' ×'+p.cant).join('\n');
+    const resumen='📦 Solicitud de Material — '+folioInfo.folio+'\nRazón social: '+surtidoData.razonSocial+'\nÁrea: '+surtidoData.area+'\nDestino: '+surtidoData.destino+'\n\nArtículos:\n'+productos.map(p=>'• '+p.desc+' '+p.cant+' '+(p.unidad||'pza')).join('\n');
     btn.disabled=false; btn.textContent='Enviar solicitud';
     window.tcPrevisualizarPDF(pdf, folioInfo.folio, async function(){
       btn.disabled=true; btn.textContent='Enviando…';

@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Solicitud de Material · Almacén Tecnocontrol</title>
-<link rel="stylesheet" href="CSS/solicitud-material.css">
+<link rel="stylesheet" href="CSS/solicitud-material.css?v=2">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="material-pdf.js"></script>
+<script src="material-pdf.js?v=2"></script>
 <!-- surtidos ya vive en Supabase — este adaptador expone window.tcSb... -->
 <script src="surtidos-supabase.js"></script>
 </head>
@@ -434,7 +434,34 @@ const cartPanel  = $('cart-panel');
 const cartList   = $('cart-list');
 const cartCount  = $('cart-count');
 
-let carrito = {};   // key -> { clave, desc, cant }
+let carrito = {};   // key -> { clave, desc, cant, unidad }
+/* Unidades de medida: cantidad libre (decimales) + unidad por artículo */
+const UNIDADES = ['pza','m','cm','ft','in','kg','L','rollo','caja','juego','par'];
+function unidadSugerida(desc){
+  const d = String(desc||'').toUpperCase();
+  if(/\(FT\)|X PIE|POR PIE|\bPIES?\b/.test(d)) return 'ft';
+  if(/\(M\)|X METRO|POR METRO|\bMTS?\b|\bMETROS?\b/.test(d)) return 'm';
+  if(/\bKG\b|\bKILOS?\b/.test(d)) return 'kg';
+  if(/\bLITROS?\b|\bLTS?\b|\(L\)/.test(d)) return 'L';
+  if(/\bROLLOS?\b/.test(d)) return 'rollo';
+  return 'pza';
+}
+function parseCant(v){ const n = parseFloat(String(v==null?'':v).replace(',','.')); return isFinite(n) && n>0 ? Math.round(n*1000)/1000 : 0; }
+function fmtCant(it){ const n = Number(it.cant)||0; return it.unidad ? (n+' '+it.unidad) : ('×'+n); }
+function qtyInputHtml(v){ return '<input class="qn-in" type="text" inputmode="decimal" autocomplete="off" value="'+esc(String(v.cant))+'">'; }
+function unidadSelHtml(v){ const u = v.unidad||'pza'; return '<select class="un-sel">'+UNIDADES.map(x=>'<option value="'+x+'"'+(x===u?' selected':'')+'>'+x+'</option>').join('')+'</select>'; }
+/* Edición directa de cantidad: actualiza estado sin re-render (no pierde el foco) */
+function bindQtyInput(root, k){
+  const inp = root.querySelector('.qn-in');
+  if(inp){
+    inp.onclick = e=>e.stopPropagation();
+    inp.onfocus = ()=>inp.select();
+    inp.oninput = ()=>{ const n = parseCant(inp.value); if(carrito[k] && n>0){ carrito[k].cant = n; cartCount.textContent = '('+Object.keys(carrito).length+')'; } };
+    inp.onchange = ()=>{ if(!carrito[k]) return; if(parseCant(inp.value)<=0) delete carrito[k]; renderGrid(); renderCarrito(); };
+  }
+  const sel = root.querySelector('.un-sel');
+  if(sel){ sel.onclick = e=>e.stopPropagation(); sel.onchange = ()=>{ if(carrito[k]){ carrito[k].unidad = sel.value; renderGrid(); renderCarrito(); } }; }
+}
 let _imgCache = {};  // key -> dataURL | null (null = ya se buscó, no hay foto)
 function keyDe(it){ return ((it.clave||'')+'|'+(it.desc||'')).toLowerCase(); }
 /* Firestore no permite "/" dentro de un solo segmento de ruta (lo interpreta como sub-ruta) */
@@ -467,7 +494,7 @@ function renderGrid(){
       + '<div class="d">'+esc(it.desc||'Sin descripción')+'</div>'
       + '<div class="k">'+(it.clave?('Clave '+esc(it.clave)):'Sin clave')+'</div>'
       + (enCarrito
-          ? '<div class="prod-stepper"><button class="dec" type="button">−</button><span class="qn">'+enCarrito.cant+'</span><button class="inc" type="button">+</button></div>'
+          ? '<div class="prod-stepper"><button class="dec" type="button">−</button>'+qtyInputHtml(enCarrito)+'<span class="un">'+esc(enCarrito.unidad||'pza')+'</span><button class="inc" type="button">+</button></div>'
           : '<button class="prod-add" type="button">+ Agregar</button>')
       + '</div>';
   }).join('');
@@ -479,6 +506,7 @@ function renderGrid(){
     if(addBtn) addBtn.onclick = ()=>{ agregarAlCarrito(item); };
     const inc = card.querySelector('.inc'); if(inc) inc.onclick = ()=>{ cambiarCant(k, +1); };
     const dec = card.querySelector('.dec'); if(dec) dec.onclick = ()=>{ cambiarCant(k, -1); };
+    bindQtyInput(card, k);
     if(!(k in _imgCache)) buscarFotoProducto(k, card);
   });
 }
@@ -497,14 +525,14 @@ function buscarFotoProducto(k, card){
 function agregarAlCarrito(it){
   const k = keyDe(it);
   const eraVacio = !Object.keys(carrito).length;
-  if(!carrito[k]) carrito[k] = { clave: it.clave||'', desc: it.desc||'', cant: 0 };
+  if(!carrito[k]) carrito[k] = { clave: it.clave||'', desc: it.desc||'', cant: 0, unidad: unidadSugerida(it.desc) };
   carrito[k].cant += 1;
   renderGrid(); renderCarrito();
   if(eraVacio) setTimeout(()=>cartPanel.scrollIntoView({behavior:'smooth', block:'nearest'}), 80);
 }
 function cambiarCant(k, delta){
   if(!carrito[k]) return;
-  carrito[k].cant += delta;
+  carrito[k].cant = Math.round(((Number(carrito[k].cant)||0) + delta)*1000)/1000;
   if(carrito[k].cant <= 0) delete carrito[k];
   renderGrid(); renderCarrito();
 }
@@ -512,14 +540,14 @@ function quitarDelCarrito(k){ delete carrito[k]; renderGrid(); renderCarrito(); 
 
 function renderCarrito(){
   const items = Object.entries(carrito);
-  cartCount.textContent = '('+items.reduce((a,[,v])=>a+v.cant,0)+')';
+  cartCount.textContent = '('+items.length+')';
   if(!items.length){ cartPanel.style.display='none'; return; }
   cartPanel.style.display = 'block';
   cartList.innerHTML = items.map(([k,v])=>
     '<div class="cart-row">'
     + '<div class="icn">'+(_imgCache[k] ? '<img src="'+esc(_imgCache[k])+'">' : ICONO_PROD)+'</div>'
     + '<div class="info"><div class="d">'+esc(v.desc)+'</div><div class="k">'+(v.clave?('Clave '+esc(v.clave)):'Sin clave')+'</div></div>'
-    + '<div class="qty"><button class="dec" type="button">−</button><span class="qn">'+v.cant+'</span><button class="inc" type="button">+</button></div>'
+    + '<div class="qty"><button class="dec" type="button">−</button>'+qtyInputHtml(v)+unidadSelHtml(v)+'<button class="inc" type="button">+</button></div>'
     + '<button class="rm" type="button" title="Quitar">×</button>'
     + '</div>'
   ).join('');
@@ -528,6 +556,7 @@ function renderCarrito(){
     row.querySelector('.inc').onclick = ()=> cambiarCant(k, +1);
     row.querySelector('.dec').onclick = ()=> cambiarCant(k, -1);
     row.querySelector('.rm').onclick  = ()=> quitarDelCarrito(k);
+    bindQtyInput(row, k);
   });
 }
 
@@ -617,7 +646,7 @@ $('submit').onclick = async ()=>{
   const area = $('f-area').value.trim();
   const razonSocial = $('f-razon').value.trim();
   const uso = $('f-uso').value.trim();
-  const productos = Object.values(carrito).map(v=>({ clave: v.clave, cant: v.cant, desc: v.desc }));
+  const productos = Object.values(carrito).map(v=>({ clave: v.clave, cant: v.cant, unidad: v.unidad||'pza', desc: v.desc })).filter(p=>p.cant>0);
   const tecnicoInfo = mapaTecnicos[tecnicoNombre.toLowerCase()] || null;
   // Solicitante YA NO es texto libre: siempre la identidad verificada de la sesión.
   const solicitante = miTecnico ? miTecnico.nombre : (auth.currentUser ? auth.currentUser.email : '');
@@ -735,7 +764,7 @@ function resumenTextoSolicitud(d){
     '',
     'Artículos:'
   ];
-  (d.productos||[]).forEach(it=> lineas.push('• '+(it.desc||'—')+' ×'+(it.cant||0)+(it.clave?(' ('+it.clave+')'):'')));
+  (d.productos||[]).forEach(it=> lineas.push('• '+(it.desc||'—')+' '+fmtCant(it)+(it.clave?(' ('+it.clave+')'):'')));
   if(d.uso) lineas.push('', 'Uso: '+d.uso);
   return lineas.join('\n');
 }
@@ -796,7 +825,7 @@ function construirPDFSolicitud(d){
     docu.setTextColor(15,23,42);
     docu.text(String(it.clave||'—'), ML+2, y);
     docu.text(lns, ML+32, y);
-    docu.text('×'+String(it.cant||0), PW-MR-2, y, {align:'right'});
+    docu.text(fmtCant(it), PW-MR-2, y, {align:'right'});
     y += Math.max(6, lns.length*5+1.5);
   });
 
@@ -913,7 +942,7 @@ function mostrarSiguienteEntrega(){
   $('entrega-folio').textContent = p.folio || '—';
   $('entrega-cliente').textContent = p.cliente || 'Sin cliente';
   const piezas = (Array.isArray(p.productos)?p.productos:[]).reduce((a,x)=>a+(Number(x.cant)||0),0);
-  $('entrega-piezas').textContent = piezas + ' piezas · ' + (Array.isArray(p.productos)?p.productos.length:0) + ' artículos';
+  $('entrega-piezas').textContent = (Array.isArray(p.productos)&&p.productos.some(x=>x.unidad&&x.unidad!=='pza')) ? ((p.productos.length) + ' artículos') : (piezas + ' piezas · ' + (Array.isArray(p.productos)?p.productos.length:0) + ' artículos');
   const colaEl = $('entrega-cola');
   if(colaEntregas.length > 1){ colaEl.style.display='inline-block'; colaEl.textContent = 'Hay ' + (colaEntregas.length-1) + ' más en espera'; }
   else colaEl.style.display = 'none';

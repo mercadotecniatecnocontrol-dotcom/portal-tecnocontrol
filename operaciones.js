@@ -5701,7 +5701,7 @@
             <td style="padding:7px 10px;font-weight:600;color:#334155;">${opsEsc(s.folio)}</td>
             <td style="padding:7px 10px;color:#64748b;white-space:nowrap;">${fecha}</td>
             <td style="padding:7px 10px;color:#334155;">${opsEsc(s.tecnicoNombre || s.solicitante || "—")}</td>
-            <td style="padding:7px 10px;color:#334155;">${opsEsc(prod.desc)}${prod.cant ? ` × ${opsEsc(prod.cant)}` : ""}${otros > 0 ? ` (+${otros})` : ""}</td>
+            <td style="padding:7px 10px;color:#334155;">${opsEsc(prod.desc)}${prod.cant ? ` ${prod.unidad ? opsEsc(prod.cant+' '+prod.unidad) : '× '+opsEsc(prod.cant)}` : ""}${otros > 0 ? ` (+${otros})` : ""}</td>
             <td style="padding:7px 10px;">${prio}</td>
             <td style="padding:7px 10px;"><span style="background:${e.bg};color:${e.fg};font-size:10.5px;font-weight:600;padding:3px 8px;border-radius:999px;">${e.label}</span></td>
             <td style="padding:7px 10px;text-align:right;white-space:nowrap;" onclick="event.stopPropagation()">
@@ -5793,7 +5793,7 @@
                 <div style="margin-top:12px;">
                     <div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#94a3b8;margin-bottom:6px;">Artículos solicitados (${listaArticulos.length})</div>
                     ${listaArticulos.length
-                        ? listaArticulos.map(it => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:12.5px;color:#1e293b;padding:3px 0;border-bottom:1px solid #f1f5f9;"><span>${opsEsc(it.desc || "—")}${it.clave ? ` <span style="color:#94a3b8;">(${opsEsc(it.clave)})</span>` : ""}</span><span style="font-weight:700;white-space:nowrap;">×${opsEsc(it.cant || 0)}</span></div>`).join("")
+                        ? listaArticulos.map(it => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:12.5px;color:#1e293b;padding:3px 0;border-bottom:1px solid #f1f5f9;"><span>${opsEsc(it.desc || "—")}${it.clave ? ` <span style="color:#94a3b8;">(${opsEsc(it.clave)})</span>` : ""}</span><span style="font-weight:700;white-space:nowrap;">${opsEsc(it.unidad ? ((Number(it.cant)||0)+' '+it.unidad) : ('×'+(it.cant||0)))}</span></div>`).join("")
                         : '<div style="color:#94a3b8;font-size:12px;">Sin artículos capturados.</div>'}
                 </div>
                 <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;">
