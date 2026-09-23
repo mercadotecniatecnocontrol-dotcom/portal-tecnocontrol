@@ -43,6 +43,10 @@
     const COL_GUARDIAS = "ops_guardias"; // herramienta de guardia: distinta de la asignación permanente
     const COL_VEHICULOS_ASIG = "ops_vehiculo_asignaciones"; // historial real de vehículo por técnico (dato propio de Operaciones, no inventa GPS de Flotilla)
     const COL_FOLIOS = "ops_folios"; // Folios de servicio (Connecteam) con seguimiento de vencimiento/atención/solución
+    // Campos planeados para Fase A/B del Calendario (sep-2026) — todavía NO se leen
+    // ni escriben en ningún lado, es solo la reserva de nombres para cuando se
+    // construya esa parte: vehiculoId, origen, destino, distanciaKm, casetasMonto,
+    // horaSalida. Ninguno rompe folios existentes (todos opcionales).
     const COL_CLIENTES = "ops_clientes"; // Catálogo de clientes con su tabla de SLA por prioridad (P1-P6, en horas)
     const COL_REVISIONES = "ops_revisiones_herramienta"; // Bitácora de auditorías físicas de herramienta por técnico (distinta de COL_AUDITORIA, que es el log de cambios de campos)
     const COL_HERR_TRASPASOS = "ops_herramienta_traspasos"; // Solicitudes de traspaso técnico-a-técnico que requieren aceptación (mismo patrón que flotilla_transferencias)
@@ -169,6 +173,34 @@
             }
         },
     };
+
+    // ════════════ FASE 0 — Preparación GPS (sep-2026, a petición de Glen) ════════════
+    // Adaptador vacío, mismo patrón que opsHRProvider: placeholder documentado, se
+    // reemplaza el interior el día que se conecte de verdad. NO se llama desde
+    // ningún lado todavía — solo existe para que el código de las fases
+    // siguientes (Calendario, panel de detalle) ya sepa contra qué función
+    // programar, sin bloquear el resto mientras se decide el proveedor real.
+    //
+    // OJO — esto es DISTINTO de opsFlotillaProvider.obtenerUbicacionesEnCampo():
+    // eso ya funciona hoy y da la posición actual de cada ECO (flotilla_ubicaciones,
+    // sin rastreo continuo en segundo plano). opsGpsProvider es para lo que Flotilla
+    // no hace: calcular una RUTA entre dos puntos (distancia, tiempo, casetas) —
+    // necesita un proveedor de ruteo aparte, sea tu propia plataforma GPS u otro.
+    window.opsGpsProvider = {
+        // origen/destino: { lat, lng } o direcciones en texto (a definir cuando se conecte).
+        // Debe regresar { distanciaKm, tiempoHrs, casetasMonto, rutaPuntos } o null si no se pudo calcular.
+        async calcularRuta(origen, destino) {
+            console.warn("[opsGpsProvider] calcularRuta es un placeholder — todavía no está conectado a ningún proveedor.", origen, destino);
+            return null;
+        },
+        // Para cuando se decida si las casetas salen de tu propia plataforma GPS o de
+        // un proveedor de ruteo aparte (ver la respuesta de opciones que te di en el chat).
+        async calcularCasetas(rutaPuntos) {
+            console.warn("[opsGpsProvider] calcularCasetas es un placeholder — todavía no está conectado a ningún proveedor.", rutaPuntos);
+            return null;
+        },
+    };
+
     async function opsAuditar(entidad, entidadId, campo, valorAnterior, valorNuevo) {
         const { db, fs } = await opsGetFB();
         await fs.addDoc(fs.collection(db, COL_AUDITORIA), {
