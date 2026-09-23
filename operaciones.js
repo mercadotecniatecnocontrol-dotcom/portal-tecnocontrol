@@ -1453,7 +1453,7 @@
         await opsSembrarClientesSiNecesario();
         await opsSuscribirTodo();
         opsIniciarVigilanciaFolios();
-        opsCambiarTab("resumen");
+        opsCambiarTab("calendario");
     };
 
     window.opsCerrarHerramientas = function () {
@@ -1488,8 +1488,8 @@
     function opsRenderShell() {
         const rol = opsRolActual();
         const rolLabel = { administrador: "Administrador", almacen: "Almacén", consulta: "Consulta" }[rol];
-        const items = ["resumen:Resumen", "dashboard:Herramientas", "guardias:Guardias", "tecnicos:Técnicos", "servicios:Servicios",
-            "folios:Folios", "calendario:Calendario", "clientes:Clientes",
+        const items = ["calendario:Calendario", "resumen:Resumen", "dashboard:Herramientas", "guardias:Guardias", "tecnicos:Técnicos", "servicios:Servicios",
+            "folios:Folios", "clientes:Clientes",
             ...(opsPuedeHacer("autorizar_material") ? ["solicitudes:Solicitudes"] : []),
             "alertas:Alertas", "movimientos:Movimientos"];
         return `
@@ -4538,68 +4538,281 @@
     };
 
     // ── Alta / edición manual de folio ──────────────────────────────
-    // ═══════════════════════ TAB: CALENDARIO (Fase 5) ═══════════════════════
-    // Vista de agenda (no grid mensual — más confiable de sacar bien a la primera
-    // que un calendario visual completo). Agrupa por fecha programada, próximos
-    // 30 días, más una sección aparte para folios sin fecha capturada todavía.
+    // ═══════════════════════ TAB: CALENDARIO — Fase A (línea de tiempo) ═══════════════════════
+    let opsCalVista = "dia"; // dia | semana | mes
+    let opsCalFecha = new Date(); opsCalFecha.setHours(0, 0, 0, 0);
+    let opsCalFiltroTexto = "";
+    const OPS_CAL_HORA_INICIO = 6, OPS_CAL_HORA_FIN = 20; // ventana visible del día (6:00–20:00)
+
+    function opsCalFechaISO(d) { const p = x => String(x).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; }
+    function opsCalSumarDias(d, n) { const r = new Date(d); r.setDate(r.getDate() + n); return r; }
+    function opsCalInicioSemana(d) { const r = new Date(d); const dia = r.getDay(); const offset = dia === 0 ? -6 : 1 - dia; return opsCalSumarDias(r, offset); }
+
+    // {fecha, horaDecimal, traslado, ejecucion} a partir de fechaProgramada — o null si no tiene.
+    function opsCalDatosFolio(f) {
+        if (!f.fechaProgramada) return null;
+        const [fecha, hora] = f.fechaProgramada.split("T");
+        const [hh, mm] = (hora || "00:00").split(":").map(Number);
+        return { fecha, horaDecimal: hh + (mm || 0) / 60, traslado: f.tiempoTrasladoHrs || 0, ejecucion: f.tiempoEjecucionHrs || 1 };
+    }
+
+    // Cuenta choques reales: mismo técnico con dos folios cuyo horario se traslapa el mismo día.
+    function opsCalDetectarChoques() {
+        const porTecnicoDia = new Map();
+        let choques = 0;
+        cacheFolios.forEach(f => {
+            const d = opsCalDatosFolio(f);
+            if (!d) return;
+            const inicio = d.horaDecimal, fin = inicio + d.traslado + d.ejecucion;
+            (f.tecnicosAsignadosIds || []).forEach(tecId => {
+                const key = tecId + "|" + d.fecha;
+                if (!porTecnicoDia.has(key)) porTecnicoDia.set(key, []);
+                const lista = porTecnicoDia.get(key);
+                if (lista.some(o => inicio < o.fin && fin > o.inicio)) choques++;
+                lista.push({ inicio, fin });
+            });
+        });
+        return choques;
+    }
+
+    function opsCalTecnicoDisponible(tecnicoId, fechaISO) {
+        return !cacheAusencias.some(a => a.tecnicoId === tecnicoId && a.fechaInicio <= fechaISO && a.fechaFin >= fechaISO);
+    }
+
     function opsRenderCalendario() {
         const el = document.getElementById("ops-tab-content");
         if (!el) return;
-        const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
-        const limite = new Date(hoy.getTime() + 30 * 86400000);
 
-        const conFecha = cacheFolios.filter(f => f.fechaProgramada && !f.fechaSolucion);
+        const hoyISO = opsCalFechaISO(new Date());
+        const inicioSemana = opsCalInicioSemana(new Date());
+        const finSemana = opsCalSumarDias(inicioSemana, 6);
+        const enEjecucionHoy = cacheFolios.filter(f => opsCalDatosFolio(f)?.fecha === hoyISO).length;
+        const programadosSemana = cacheFolios.filter(f => { const d = opsCalDatosFolio(f); if (!d) return false; const fd = new Date(d.fecha + "T00:00:00"); return fd >= inicioSemana && fd <= finSemana; }).length;
         const sinFecha = cacheFolios.filter(f => !f.fechaProgramada && !f.fechaSolucion);
+        const atrasados = cacheFolios.filter(f => ["naranja", "rojo"].includes(opsCalcularSemaforoFolio(f).semaforo)).length;
+        const tecActivos = cacheTec.filter(t => t.estatus === "activo");
+        const disponiblesHoy = tecActivos.filter(t => opsCalTecnicoDisponible(t.id, hoyISO)).length;
+        const choques = opsCalDetectarChoques();
 
-        const porDia = new Map();
-        conFecha.forEach(f => {
-            const dia = f.fechaProgramada.slice(0, 10);
-            if (!porDia.has(dia)) porDia.set(dia, []);
-            porDia.get(dia).push(f);
-        });
-        const dias = Array.from(porDia.keys()).sort();
-
-        function filaFolio(f) {
-            const receta = f.servicioCatalogoId ? cacheServiciosCatalogo.find(s => s.id === f.servicioCatalogoId) : null;
-            const rolesReq = receta ? (receta.personal || []).reduce((n, p) => n + (p.cantidad || 1), 0) : null;
-            const asignados = (f.tecnicosAsignadosIds || []).length;
-            const faltaGente = rolesReq !== null && asignados < rolesReq;
-            const hora = f.fechaProgramada.slice(11, 16) || "";
-            return `
-                <div onclick="opsAbrirModalFolio('${f.id}')" style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#fff;border-radius:10px;margin-bottom:6px;cursor:pointer;border-left:4px solid ${faltaGente ? "#E7402B" : "#15803D"};">
-                    <div style="font-size:12px;font-weight:700;color:#1D2E73;width:44px;flex-shrink:0;">${hora || "—"}</div>
-                    <div style="flex:1;min-width:0;">
-                        <div style="font-size:12.5px;font-weight:700;color:#1e293b;">${opsEsc(f.estacion)}${f.folioOS ? " · O.S. " + opsEsc(f.folioOS) : ""}</div>
-                        <div style="font-size:10.5px;color:#94a3b8;">${f.tipoFolio === "laboratorio" ? "🧪 Laboratorio" : "Servicio"}${receta ? " · " + opsEsc(receta.nombre) : ""}${f.clienteNombre ? " · " + opsEsc(f.clienteNombre) : ""}</div>
-                    </div>
-                    <div style="font-size:10.5px;color:${faltaGente ? "#E7402B" : "#166534"};font-weight:600;text-align:right;flex-shrink:0;">
-                        ${asignados}${rolsReqTexto(rolesReq)} técnico(s)
-                    </div>
-                </div>`;
-            function rolsReqTexto(n) { return n !== null ? ` / ${n}` : ""; }
+        function tarjeta(valor, label, color) {
+            return `<div style="background:#fff;border-radius:12px;padding:14px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.06);">
+                <div style="font-size:21px;font-weight:800;color:${color || "#1e293b"};">${valor}</div>
+                <div style="font-size:9.5px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:.3px;margin-top:2px;">${label}</div>
+            </div>`;
         }
 
         el.innerHTML = `
-            <div style="font-size:11.5px;color:#64748b;margin-bottom:16px;">Folios con fecha de trabajo programada, próximos 30 días. El borde rojo significa que le falta personal asignado contra lo que pide la receta del servicio.</div>
-            ${dias.length ? dias.map(dia => {
-                const d = new Date(dia + "T00:00:00");
-                const fuera = d < hoy || d > limite;
-                const etiqueta = d.toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long" });
-                return `<div style="margin-bottom:18px;${fuera ? "opacity:.6;" : ""}">
-                    <div style="font-size:11.5px;font-weight:700;color:#1D2E73;text-transform:capitalize;margin-bottom:6px;">${etiqueta}${d < hoy ? " (atrasado)" : ""}</div>
-                    ${porDia.get(dia).sort((a, b) => (a.fechaProgramada > b.fechaProgramada ? 1 : -1)).map(filaFolio).join("")}
-                </div>`;
-            }).join("") : `<div style="text-align:center;padding:40px;color:#94a3b8;background:#fff;border-radius:14px;">Ningún folio tiene fecha programada todavía.</div>`}
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:16px;">
+                ${tarjeta(enEjecucionHoy, "En ejecución hoy", "#1D2E73")}
+                ${tarjeta(programadosSemana, "Programados esta semana", "#1D2E73")}
+                ${tarjeta(sinFecha.length, "Sin fecha programada", "#b45309")}
+                ${tarjeta(atrasados, "Atrasados / por vencer", "#E7402B")}
+                ${tarjeta(disponiblesHoy + "/" + tecActivos.length, "Técnicos disponibles hoy", "#15803D")}
+                ${tarjeta(choques, "Choques detectados", choques ? "#E7402B" : "#15803D")}
+            </div>
+
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+                <div style="display:flex;gap:6px;">
+                    ${["dia:Día", "semana:Semana", "mes:Mes"].map(v => { const [id, label] = v.split(":"); const on = opsCalVista === id;
+                        return `<button onclick="opsCalCambiarVista('${id}')" style="border:none;background:${on ? "#1D2E73" : "#fff"};color:${on ? "#fff" : "#475569"};padding:7px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.05);">${label}</button>`;
+                    }).join("")}
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <button onclick="opsCalMover(-1)" style="background:#fff;border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.05);">‹</button>
+                    <div style="font-size:12.5px;font-weight:700;color:#1e293b;min-width:170px;text-align:center;text-transform:capitalize;">${opsCalEtiquetaFecha()}</div>
+                    <button onclick="opsCalMover(1)" style="background:#fff;border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.05);">›</button>
+                    <button onclick="opsCalHoy()" style="background:#eef2f7;border:none;color:#1D2E73;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:600;">Hoy</button>
+                </div>
+                <input id="ops-cal-filtro" value="${opsEsc(opsCalFiltroTexto)}" oninput="opsCalFiltrar(this.value)" placeholder="Buscar técnico..." style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 12px;font-size:12.5px;min-width:180px;">
+            </div>
+
+            <div id="ops-cal-body"></div>
 
             ${sinFecha.length ? `
-            <div style="border-top:1px solid #e2e8f0;margin-top:10px;padding-top:14px;">
-                <div style="font-size:11.5px;font-weight:700;color:#b45309;margin-bottom:6px;">⚠ Sin fecha programada (${sinFecha.length})</div>
-                ${sinFecha.map(f => `
-                    <div onclick="opsAbrirModalFolio('${f.id}')" style="padding:9px 12px;background:#fff;border-radius:10px;margin-bottom:6px;cursor:pointer;font-size:12px;color:#334155;">
-                        ${opsEsc(f.estacion)}${f.folioOS ? " · O.S. " + opsEsc(f.folioOS) : ""} — <span style="color:#94a3b8;">clic para programar</span>
-                    </div>`).join("")}
+            <div style="border-top:1px solid #e2e8f0;margin-top:16px;padding-top:14px;">
+                <div style="font-size:11.5px;font-weight:700;color:#b45309;margin-bottom:6px;">Sin fecha programada (${sinFecha.length})</div>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                    ${sinFecha.map(f => `
+                        <div onclick="opsAbrirModalFolio('${f.id}')" style="padding:8px 12px;background:#fff;border-radius:10px;cursor:pointer;font-size:11.5px;color:#334155;box-shadow:0 1px 2px rgba(0,0,0,.05);">
+                            ${opsEsc(f.estacion)}${f.folioOS ? " · O.S. " + opsEsc(f.folioOS) : ""} — <span style="color:#94a3b8;">clic para programar</span>
+                        </div>`).join("")}
+                </div>
             </div>` : ""}
         `;
+        opsCalRenderBody();
+    }
+
+    window.opsCalCambiarVista = function (v) { opsCalVista = v; opsRenderCalendario(); };
+    window.opsCalMover = function (dir) {
+        const dias = opsCalVista === "dia" ? 1 : opsCalVista === "semana" ? 7 : 30;
+        opsCalFecha = opsCalSumarDias(opsCalFecha, dir * dias);
+        opsRenderCalendario();
+    };
+    window.opsCalHoy = function () { opsCalFecha = new Date(); opsCalFecha.setHours(0, 0, 0, 0); opsRenderCalendario(); };
+    window.opsCalFiltrar = function (v) { opsCalFiltroTexto = v; opsCalRenderBody(); };
+    window.opsCalIrADia = function (fechaISO) { opsCalFecha = new Date(fechaISO + "T00:00:00"); opsCalVista = "dia"; opsRenderCalendario(); };
+
+    function opsCalEtiquetaFecha() {
+        if (opsCalVista === "dia") return opsCalFecha.toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+        if (opsCalVista === "semana") { const ini = opsCalInicioSemana(opsCalFecha), fin = opsCalSumarDias(ini, 6);
+            return `${ini.toLocaleDateString("es-MX", { day: "numeric", month: "short" })} – ${fin.toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" })}`; }
+        return opsCalFecha.toLocaleDateString("es-MX", { month: "long", year: "numeric" });
+    }
+
+    function opsCalTecnicosFiltrados() {
+        const activos = cacheTec.filter(t => t.estatus === "activo");
+        if (!opsCalFiltroTexto.trim()) return activos;
+        const q = opsCalFiltroTexto.toLowerCase();
+        return activos.filter(t => (t.nombre || "").toLowerCase().includes(q) || (t.puesto || "").toLowerCase().includes(q));
+    }
+
+    function opsCalRenderBody() {
+        const cont = document.getElementById("ops-cal-body");
+        if (!cont) return;
+        if (opsCalVista === "dia") cont.innerHTML = opsCalRenderDia();
+        else if (opsCalVista === "semana") cont.innerHTML = opsCalRenderSemana();
+        else cont.innerHTML = opsCalRenderMes();
+    }
+
+    // ── Vista Día: línea de tiempo horizontal por técnico ──
+    function opsCalRenderDia() {
+        const fechaISO = opsCalFechaISO(opsCalFecha);
+        const tecnicos = opsCalTecnicosFiltrados();
+        const totalHrs = OPS_CAL_HORA_FIN - OPS_CAL_HORA_INICIO;
+        const horas = Array.from({ length: totalHrs + 1 }, (_, i) => OPS_CAL_HORA_INICIO + i);
+        const esHoy = fechaISO === opsCalFechaISO(new Date());
+        const ahora = new Date();
+        const ahoraPct = ((ahora.getHours() + ahora.getMinutes() / 60 - OPS_CAL_HORA_INICIO) / totalHrs) * 100;
+
+        function barrasDe(t) {
+            const ausente = cacheAusencias.find(a => a.tecnicoId === t.id && a.fechaInicio <= fechaISO && a.fechaFin >= fechaISO);
+            if (ausente) return `<div style="position:absolute;inset:2px 0;background:repeating-linear-gradient(45deg,#e2e8f0,#e2e8f0 6px,#f1f5f9 6px,#f1f5f9 12px);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#64748b;font-weight:600;">${opsEsc(ausente.tipo)}</div>`;
+
+            const guardia = cacheGuardias.find(g => g.tecnicoId === t.id && g.estado === "activa" && g.fechaInicio <= fechaISO && (!g.fechaFin || g.fechaFin >= fechaISO));
+            const ocupados = cacheFolios.filter(f => (f.tecnicosAsignadosIds || []).includes(t.id)).map(f => ({ f, d: opsCalDatosFolio(f) })).filter(o => o.d && o.d.fecha === fechaISO);
+            const choqueSet = new Set();
+            ocupados.forEach((o, i) => ocupados.forEach((o2, j) => {
+                if (i === j) return;
+                const ini1 = o.d.horaDecimal, fin1 = ini1 + o.d.traslado + o.d.ejecucion, ini2 = o2.d.horaDecimal, fin2 = ini2 + o2.d.traslado + o2.d.ejecucion;
+                if (ini1 < fin2 && fin1 > ini2) choqueSet.add(o.f.id);
+            }));
+
+            const barras = ocupados.map(({ f, d }) => {
+                const inicioPct = Math.max(0, ((d.horaDecimal - OPS_CAL_HORA_INICIO) / totalHrs) * 100);
+                const anchoTotalPct = Math.max(((d.traslado + d.ejecucion) / totalHrs) * 100, 1.5);
+                const propTraslado = d.traslado ? (d.traslado / (d.traslado + d.ejecucion || 1)) * 100 : 0;
+                const receta = f.servicioCatalogoId ? cacheServiciosCatalogo.find(s => s.id === f.servicioCatalogoId) : null;
+                const rolesReq = receta ? (receta.personal || []).reduce((n, p) => n + (p.cantidad || 1), 0) : null;
+                const faltaGente = rolesReq !== null && (f.tecnicosAsignadosIds || []).length < rolesReq;
+                const conProblema = choqueSet.has(f.id) || faltaGente;
+                const colorBase = f.tipoFolio === "laboratorio" ? "#7c3aed" : "#1D2E73";
+                return `<div onclick="event.stopPropagation();opsAbrirModalFolio('${f.id}')" title="${opsEsc(f.estacion)}" style="position:absolute;top:4px;bottom:4px;left:${inicioPct}%;width:${anchoTotalPct}%;border-radius:6px;border:${conProblema ? "2px solid #E7402B" : "1px solid rgba(0,0,0,.08)"};overflow:hidden;cursor:pointer;display:flex;">
+                    ${d.traslado ? `<div style="width:${propTraslado}%;background:repeating-linear-gradient(45deg,${colorBase}55,${colorBase}55 4px,${colorBase}88 4px,${colorBase}88 8px);"></div>` : ""}
+                    <div style="flex:1;background:${colorBase};display:flex;align-items:center;padding:0 6px;overflow:hidden;">
+                        <span style="color:#fff;font-size:10px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${opsEsc(f.estacion)}</span>
+                    </div>
+                </div>`;
+            }).join("");
+
+            const guardiaMarca = guardia ? `<div style="position:absolute;top:2px;right:2px;width:8px;height:8px;border-radius:50%;background:#7c3aed;" title="En guardia"></div>` : "";
+            return barras + guardiaMarca;
+        }
+
+        return `
+        <div style="background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06);">
+            <div style="display:flex;border-bottom:1px solid #e2e8f0;">
+                <div style="width:170px;flex-shrink:0;padding:8px 12px;font-size:10.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Técnico</div>
+                <div style="flex:1;display:flex;">
+                    ${horas.map(h => `<div style="flex:1;text-align:center;font-size:10px;color:#94a3b8;padding:8px 0;border-left:1px solid #f1f5f9;">${h}:00</div>`).join("")}
+                </div>
+            </div>
+            <div style="max-height:65vh;overflow-y:auto;">
+                ${tecnicos.length ? tecnicos.map(t => `
+                    <div style="display:flex;border-bottom:1px solid #f8fafc;">
+                        <div style="width:170px;flex-shrink:0;padding:8px 12px;font-size:11.5px;color:#334155;font-weight:600;display:flex;align-items:center;gap:6px;cursor:pointer;overflow:hidden;" onclick="opsAbrirFichaTecnico('${t.id}')">
+                            <span style="width:22px;height:22px;border-radius:50%;background:#1D2E73;color:#fff;font-size:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${(t.nombre || "?").split(" ").filter(Boolean).slice(0, 2).map(s => s[0]).join("").toUpperCase()}</span>
+                            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${opsEsc(t.nombre)}</span>
+                        </div>
+                        <div style="flex:1;position:relative;height:38px;">
+                            ${esHoy && ahoraPct >= 0 && ahoraPct <= 100 ? `<div style="position:absolute;top:0;bottom:0;left:${ahoraPct}%;width:2px;background:#E7402B;z-index:3;"></div>` : ""}
+                            ${barrasDe(t)}
+                        </div>
+                    </div>`).join("") : `<div style="padding:40px;text-align:center;color:#94a3b8;">Ningún técnico coincide con la búsqueda.</div>`}
+            </div>
+        </div>
+        <div style="display:flex;gap:16px;margin-top:10px;font-size:10.5px;color:#64748b;flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:3px;background:#1D2E73;display:inline-block;"></span> Servicio (ejecución)</div>
+            <div style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:3px;background:repeating-linear-gradient(45deg,#1D2E7355,#1D2E7355 3px,#1D2E7388 3px,#1D2E7388 6px);display:inline-block;"></span> Traslado</div>
+            <div style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:3px;background:#7c3aed;display:inline-block;"></span> Laboratorio / guardia</div>
+            <div style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:3px;background:repeating-linear-gradient(45deg,#e2e8f0,#e2e8f0 6px,#f1f5f9 6px,#f1f5f9 12px);display:inline-block;"></span> Ausente</div>
+            <div style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:2px;background:#E7402B;display:inline-block;"></span> Hora actual</div>
+            <div style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:3px;border:2px solid #E7402B;display:inline-block;"></span> Choque / falta personal</div>
+        </div>`;
+    }
+
+    // ── Vista Semana: resumen compacto por día (expande a Día al hacer clic) ──
+    function opsCalRenderSemana() {
+        const inicio = opsCalInicioSemana(opsCalFecha);
+        const dias = Array.from({ length: 7 }, (_, i) => opsCalSumarDias(inicio, i));
+        const tecnicos = opsCalTecnicosFiltrados();
+
+        function celda(t, dia) {
+            const fechaISO = opsCalFechaISO(dia);
+            const folios = cacheFolios.filter(f => (f.tecnicosAsignadosIds || []).includes(t.id) && opsCalDatosFolio(f)?.fecha === fechaISO);
+            const ausente = cacheAusencias.some(a => a.tecnicoId === t.id && a.fechaInicio <= fechaISO && a.fechaFin >= fechaISO);
+            if (ausente) return `<div style="background:#f1f5f9;border-radius:6px;padding:4px;text-align:center;font-size:9.5px;color:#94a3b8;">Ausente</div>`;
+            if (!folios.length) return `<div style="padding:4px;"></div>`;
+            const conChoque = folios.length > 1;
+            return `<div onclick="opsCalIrADia('${fechaISO}')" style="background:${conChoque ? "#fef2f2" : "#eef2f7"};border:1px solid ${conChoque ? "#fecaca" : "#dbe3f0"};border-radius:6px;padding:4px 6px;text-align:center;font-size:10.5px;font-weight:700;color:${conChoque ? "#E7402B" : "#1D2E73"};cursor:pointer;">${folios.length} servicio${folios.length > 1 ? "s" : ""}</div>`;
+        }
+
+        return `
+        <div style="background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06);">
+            <div style="display:grid;grid-template-columns:170px repeat(7,1fr);border-bottom:1px solid #e2e8f0;">
+                <div style="padding:8px 12px;font-size:10.5px;font-weight:700;color:#94a3b8;">Técnico</div>
+                ${dias.map(d => `<div style="padding:8px 4px;text-align:center;font-size:10px;font-weight:700;color:#475569;text-transform:capitalize;">${d.toLocaleDateString("es-MX", { weekday: "short", day: "numeric" })}</div>`).join("")}
+            </div>
+            <div style="max-height:65vh;overflow-y:auto;">
+                ${tecnicos.length ? tecnicos.map(t => `
+                    <div style="display:grid;grid-template-columns:170px repeat(7,1fr);border-bottom:1px solid #f8fafc;align-items:center;">
+                        <div style="padding:6px 12px;font-size:11px;color:#334155;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${opsEsc(t.nombre)}</div>
+                        ${dias.map(d => `<div style="padding:3px;">${celda(t, d)}</div>`).join("")}
+                    </div>`).join("") : `<div style="padding:40px;text-align:center;color:#94a3b8;">Ningún técnico coincide con la búsqueda.</div>`}
+            </div>
+        </div>`;
+    }
+
+    // ── Vista Mes: un punto por día con folios, clic salta a Día ──
+    function opsCalRenderMes() {
+        const primerDia = new Date(opsCalFecha.getFullYear(), opsCalFecha.getMonth(), 1);
+        const ultimoDia = new Date(opsCalFecha.getFullYear(), opsCalFecha.getMonth() + 1, 0);
+        const inicioGrid = opsCalInicioSemana(primerDia);
+        const dias = [];
+        let cursor = inicioGrid;
+        while (cursor <= ultimoDia || dias.length % 7 !== 0) { dias.push(new Date(cursor)); cursor = opsCalSumarDias(cursor, 1); if (dias.length > 42) break; }
+
+        function contarDia(d) {
+            const fechaISO = opsCalFechaISO(d);
+            return cacheFolios.filter(f => opsCalDatosFolio(f)?.fecha === fechaISO).length;
+        }
+
+        return `
+        <div style="background:#fff;border-radius:14px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.06);">
+            <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px;">
+                ${["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map(d => `<div style="text-align:center;font-size:10px;font-weight:700;color:#94a3b8;">${d}</div>`).join("")}
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;">
+                ${dias.map(d => {
+                    const fueraDeMes = d.getMonth() !== opsCalFecha.getMonth();
+                    const n = contarDia(d);
+                    const esHoy = opsCalFechaISO(d) === opsCalFechaISO(new Date());
+                    return `<div onclick="opsCalIrADia('${opsCalFechaISO(d)}')" style="min-height:56px;border-radius:8px;padding:6px;cursor:pointer;background:${esHoy ? "#eef2f7" : "#f8fafc"};border:1px solid ${esHoy ? "#1D2E73" : "#f1f5f9"};opacity:${fueraDeMes ? 0.4 : 1};">
+                        <div style="font-size:10.5px;font-weight:700;color:#334155;">${d.getDate()}</div>
+                        ${n ? `<div style="margin-top:4px;font-size:9.5px;font-weight:700;color:#1D2E73;background:#dbe3f0;border-radius:5px;padding:1px 5px;display:inline-block;">${n}</div>` : ""}
+                    </div>`;
+                }).join("")}
+            </div>
+        </div>`;
     }
 
     window.opsAbrirModalFolio = function (id) {
