@@ -4600,37 +4600,48 @@
         const disponiblesHoy = tecActivos.filter(t => opsCalTecnicoDisponible(t.id, hoyISO)).length;
         const choques = opsCalDetectarChoques();
 
-        function tarjeta(valor, label, color) {
-            return `<div style="background:#fff;border-radius:12px;padding:14px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.06);">
-                <div style="font-size:21px;font-weight:800;color:${color || "#1e293b"};">${valor}</div>
-                <div style="font-size:9.5px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:.3px;margin-top:2px;">${label}</div>
+        const ICONOS_TARJETA = {
+            play: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>',
+            calendario: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
+            reloj: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+            alerta: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+            equipo: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+            choque: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m13 2-2 2.5h3L12 7"/><path d="M6.5 12 3 15l3.5 3"/><path d="M17.5 12 21 15l-3.5 3"/><path d="M9 12h6"/></svg>',
+        };
+        function tarjeta(valor, label, color, icono) {
+            return `<div style="background:linear-gradient(180deg,#fff 0%,#fbfcfe 100%);border-radius:14px;padding:16px 16px 14px;box-shadow:0 1px 2px rgba(15,23,42,.04),0 4px 12px rgba(15,23,42,.05);border-top:3px solid ${color};position:relative;overflow:hidden;">
+                <div style="width:34px;height:34px;border-radius:9px;background:${color}14;color:${color};display:flex;align-items:center;justify-content:center;margin-bottom:10px;">${icono}</div>
+                <div style="font-size:24px;font-weight:800;color:#1e293b;letter-spacing:-.3px;line-height:1;">${valor}</div>
+                <div style="font-size:10px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-top:5px;">${label}</div>
             </div>`;
         }
 
         el.innerHTML = `
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:16px;">
-                ${tarjeta(enEjecucionHoy, "En ejecución hoy", "#1D2E73")}
-                ${tarjeta(programadosSemana, "Programados esta semana", "#1D2E73")}
-                ${tarjeta(sinFecha.length, "Sin fecha programada", "#b45309")}
-                ${tarjeta(atrasados, "Atrasados / por vencer", "#E7402B")}
-                ${tarjeta(disponiblesHoy + "/" + tecActivos.length, "Técnicos disponibles hoy", "#15803D")}
-                ${tarjeta(choques, "Choques detectados", choques ? "#E7402B" : "#15803D")}
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px;">
+                ${tarjeta(enEjecucionHoy, "En ejecución hoy", "#1D2E73", ICONOS_TARJETA.play)}
+                ${tarjeta(programadosSemana, "Programados esta semana", "#1D2E73", ICONOS_TARJETA.calendario)}
+                ${tarjeta(sinFecha.length, "Sin fecha programada", "#b45309", ICONOS_TARJETA.reloj)}
+                ${tarjeta(atrasados, "Atrasados / por vencer", "#E7402B", ICONOS_TARJETA.alerta)}
+                ${tarjeta(disponiblesHoy + "/" + tecActivos.length, "Técnicos disponibles hoy", "#15803D", ICONOS_TARJETA.equipo)}
+                ${tarjeta(choques, "Choques detectados", choques ? "#E7402B" : "#15803D", ICONOS_TARJETA.choque)}
             </div>
 
-            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
-                <div style="display:flex;gap:6px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px;background:#fff;border-radius:14px;padding:10px 14px;box-shadow:0 1px 2px rgba(15,23,42,.04),0 2px 8px rgba(15,23,42,.04);">
+                <div style="display:flex;gap:4px;background:#f1f5f9;padding:3px;border-radius:10px;">
                     ${["dia:Día", "semana:Semana", "mes:Mes"].map(v => { const [id, label] = v.split(":"); const on = opsCalVista === id;
-                        return `<button onclick="opsCalCambiarVista('${id}')" style="border:none;background:${on ? "#1D2E73" : "#fff"};color:${on ? "#fff" : "#475569"};padding:7px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.05);">${label}</button>`;
+                        return `<button onclick="opsCalCambiarVista('${id}')" style="border:none;background:${on ? "#1D2E73" : "transparent"};color:${on ? "#fff" : "#475569"};padding:7px 16px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;transition:background .15s;box-shadow:${on ? "0 1px 3px rgba(29,46,115,.3)" : "none"};">${label}</button>`;
                     }).join("")}
                 </div>
-                <div style="display:flex;align-items:center;gap:8px;">
-                    <button onclick="opsCalMover(-1)" style="background:#fff;border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.05);">‹</button>
-                    <div style="font-size:12.5px;font-weight:700;color:#1e293b;min-width:170px;text-align:center;text-transform:capitalize;">${opsCalEtiquetaFecha()}</div>
-                    <button onclick="opsCalMover(1)" style="background:#fff;border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.05);">›</button>
-                    <button onclick="opsCalHoy()" style="background:#eef2f7;border:none;color:#1D2E73;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:600;">Hoy</button>
+                <div style="display:flex;align-items:center;gap:6px;">
+                    <button onclick="opsCalMover(-1)" style="background:#f8fafc;border:1px solid #e2e8f0;width:30px;height:30px;border-radius:8px;cursor:pointer;color:#475569;">‹</button>
+                    <div style="font-size:12.5px;font-weight:700;color:#1e293b;min-width:180px;text-align:center;text-transform:capitalize;">${opsCalEtiquetaFecha()}</div>
+                    <button onclick="opsCalMover(1)" style="background:#f8fafc;border:1px solid #e2e8f0;width:30px;height:30px;border-radius:8px;cursor:pointer;color:#475569;">›</button>
+                    <button onclick="opsCalHoy()" style="background:#eef2f7;border:1px solid #dbe3f0;color:#1D2E73;padding:6px 13px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:700;margin-left:4px;">Hoy</button>
                 </div>
-                <input id="ops-cal-filtro" value="${opsEsc(opsCalFiltroTexto)}" oninput="opsCalFiltrar(this.value)" placeholder="Buscar técnico..." style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 12px;font-size:12.5px;min-width:180px;">
-                <button onclick="opsAbrirModalFolio(null, '${opsCalFechaISO(opsCalFecha)}')" style="background:#1D2E73;border:none;color:#fff;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;">+ Nuevo servicio</button>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <input id="ops-cal-filtro" value="${opsEsc(opsCalFiltroTexto)}" oninput="opsCalFiltrar(this.value)" placeholder="Buscar técnico..." style="border:1px solid #e2e8f0;background:#f8fafc;border-radius:8px;padding:8px 12px;font-size:12.5px;min-width:170px;">
+                    <button onclick="opsAbrirModalFolio(null, '${opsCalFechaISO(opsCalFecha)}')" style="background:#1D2E73;border:none;color:#fff;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;box-shadow:0 2px 6px rgba(29,46,115,.25);">+ Nuevo servicio</button>
+                </div>
             </div>
 
             <div id="ops-cal-body"></div>
@@ -4713,7 +4724,7 @@
                 const faltaGente = rolesReq !== null && (f.tecnicosAsignadosIds || []).length < rolesReq;
                 const conProblema = choqueSet.has(f.id) || faltaGente;
                 const colorBase = f.tipoFolio === "laboratorio" ? "#7c3aed" : "#1D2E73";
-                return `<div onclick="event.stopPropagation();opsAbrirPanelFolio('${f.id}')" title="${opsEsc(f.estacion)}" style="position:absolute;top:4px;bottom:4px;left:${inicioPct}%;width:${anchoTotalPct}%;border-radius:6px;border:${conProblema ? "2px solid #E7402B" : "1px solid rgba(0,0,0,.08)"};overflow:hidden;cursor:pointer;display:flex;">
+                return `<div draggable="true" ondragstart="event.stopPropagation();opsCalArrastrarFolio(event,'${f.id}')" onclick="event.stopPropagation();opsAbrirPanelFolio('${f.id}')" title="${opsEsc(f.estacion)}" style="position:absolute;top:4px;bottom:4px;left:${inicioPct}%;width:${anchoTotalPct}%;border-radius:6px;border:${conProblema ? "2px solid #E7402B" : "1px solid rgba(0,0,0,.08)"};overflow:hidden;cursor:grab;display:flex;">
                     ${d.traslado ? `<div style="width:${propTraslado}%;background:repeating-linear-gradient(45deg,${colorBase}55,${colorBase}55 4px,${colorBase}88 4px,${colorBase}88 8px);"></div>` : ""}
                     <div style="flex:1;background:${colorBase};display:flex;align-items:center;padding:0 6px;overflow:hidden;">
                         <span style="color:#fff;font-size:10px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${opsEsc(f.estacion)}</span>
@@ -4946,11 +4957,20 @@
         const fechaISO = opsCalFechaISO(opsCalFecha);
         const fechaProgramada = `${fechaISO}T${hh}:${mm}`;
 
-        if (!confirm(`¿Programar "${f.estacion}"${f.folioOS ? " (O.S. " + f.folioOS + ")" : ""} para ${t.nombre} el ${opsCalFecha.toLocaleDateString("es-MX", { day: "numeric", month: "long" })} a las ${hh}:${mm}?`)) return;
-
         const yaAsignado = (f.tecnicosAsignadosIds || []).includes(tecnicoId);
-        const nuevosIds = yaAsignado ? f.tecnicosAsignadosIds : [...(f.tecnicosAsignadosIds || []), tecnicoId];
-        const nuevosNombres = yaAsignado ? f.tecnicosAsignadosNombres : [...(f.tecnicosAsignadosNombres || []), t.nombre];
+        const teniaOtroUnico = !yaAsignado && (f.tecnicosAsignadosIds || []).length === 1;
+        let nuevosIds, nuevosNombres, accionTexto;
+        if (yaAsignado) {
+            nuevosIds = f.tecnicosAsignadosIds; nuevosNombres = f.tecnicosAsignadosNombres;
+            accionTexto = `¿Reprogramar "${f.estacion}"${f.folioOS ? " (O.S. " + f.folioOS + ")" : ""} para el ${opsCalFecha.toLocaleDateString("es-MX", { day: "numeric", month: "long" })} a las ${hh}:${mm}?`;
+        } else if (teniaOtroUnico) {
+            nuevosIds = [tecnicoId]; nuevosNombres = [t.nombre];
+            accionTexto = `¿Mover "${f.estacion}"${f.folioOS ? " (O.S. " + f.folioOS + ")" : ""} de ${f.tecnicosAsignadosNombres[0]} a ${t.nombre}, el ${opsCalFecha.toLocaleDateString("es-MX", { day: "numeric", month: "long" })} a las ${hh}:${mm}?`;
+        } else {
+            nuevosIds = [...(f.tecnicosAsignadosIds || []), tecnicoId]; nuevosNombres = [...(f.tecnicosAsignadosNombres || []), t.nombre];
+            accionTexto = `¿Agregar a ${t.nombre} al equipo de "${f.estacion}"${f.folioOS ? " (O.S. " + f.folioOS + ")" : ""}, programado para el ${opsCalFecha.toLocaleDateString("es-MX", { day: "numeric", month: "long" })} a las ${hh}:${mm}?`;
+        }
+        if (!confirm(accionTexto)) return;
 
         try {
             const { db, fs } = await opsGetFB();
