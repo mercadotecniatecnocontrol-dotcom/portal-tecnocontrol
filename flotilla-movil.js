@@ -385,7 +385,7 @@ function chkSemPermitido(semana){
   // el portal — ya no hay excepción automática (antes cualquier lunes se
   // permitía aunque nadie lo hubiera activado).
   const cfg=window._cfgSem||{};
-  return !!(cfg.activo&&cfg.semana===semana&&esSabDomLun());
+  return !!(cfg.activo&&cfg.semana===semana&&(cfg.manualEstaSemana||esSabDomLun()));
 }
 
 // ── CHECK LIST SEMANAL — BANNER ──
