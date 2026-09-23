@@ -884,7 +884,7 @@ function buildVencHero(tk){
   heroEl.classList.remove('empty');
   heroEl.style.background='linear-gradient(115deg,#C62B2B,#FF6B6B)';
   const hprods=Array.isArray(p.productos)?p.productos:[];
-  const rowsHtml = hprods.length ? hprods.map(it=>`<div class="pitem"><div class="box"></div><div class="qty">${it.cant}${it.unidad&&it.unidad!=='pza'?`<span style="font-size:.55em;margin-left:2px">${it.unidad}</span>`:''}</div><div><div class="desc">${it.desc||''}</div><div class="clave">${it.clave?('Clave '+it.clave):''}</div></div></div>`).join('') : '<div class="pitem" style="opacity:.6">Sin productos</div>';
+  const rowsHtml = hprods.length ? hprods.map(it=>`<div class="pitem"><div class="box"></div><div class="qty">${it.cant}</div><div><div class="desc">${it.desc||''}</div><div class="clave">${it.clave?('Clave '+it.clave):''}</div></div></div>`).join('') : '<div class="pitem" style="opacity:.6">Sin productos</div>';
   const vencMeta = v ? `<div class="meta"><span class="k">ENTREGA${p.fechaEntrega?(' · '+p.fechaEntrega):''}</span><span class="venc-badge" style="background:${v.color}">${v.txt}</span></div>` : '';
   const destinoTxt=[p.area,(p.destino||p.uso)].filter(Boolean).join(' — ');
   const destinoMeta=(esMatPanel && destinoTxt)?`<div class="meta"><span class="k">ÁREA / DESTINO</span><span class="v" style="font-size:15px">${destinoTxt}</span></div>`:'';
@@ -959,7 +959,7 @@ function buildPanel(tk, list){
     const pages=[]; for(let i=0;i<hprods.length;i+=HERO_PER_PAGE) pages.push(hprods.slice(i,i+HERO_PER_PAGE));
     if(!pages.length) pages.push([]);
     heroState[tk].pages=pages; heroState[tk].idx=0;
-    const rowsOf = pg => pg.map(it=>`<div class="pitem"><div class="box"></div><div class="qty">${it.cant}${it.unidad&&it.unidad!=='pza'?`<span style="font-size:.55em;margin-left:2px">${it.unidad}</span>`:''}</div><div><div class="desc">${it.desc||''}</div><div class="clave">${it.clave?('Clave '+it.clave):''}</div></div></div>`).join('') || '<div class="pitem" style="opacity:.6">Sin productos</div>';
+    const rowsOf = pg => pg.map(it=>`<div class="pitem"><div class="box"></div><div class="qty">${it.cant}</div><div><div class="desc">${it.desc||''}</div><div class="clave">${it.clave?('Clave '+it.clave):''}</div></div></div>`).join('') || '<div class="pitem" style="opacity:.6">Sin productos</div>';
     const pagesHtml = pages.map((pg,pi)=>`<div class="hpick-page${pi===0?' on':''}">${rowsOf(pg)}</div>`).join('');
     const dots = pages.length>1 ? `<div class="hpick-dots">${pages.map((_,pi)=>`<span class="hd${pi===0?' on':''}"></span>`).join('')}</div>` : '';
     const baseTxt = `POR SURTIR · ${hprods.length} PRODUCTOS · ${piezas(hero)} PIEZAS`;
@@ -1012,7 +1012,7 @@ function cardHtml(p, isNew){
   const v=venc(p), persona=p.solicitante||p.vendedor||'';
   const prods=Array.isArray(p.productos)?p.productos:[];
   const first=prods[0]||{cant:'',desc:'\u2014'}, extra=prods.length-1;
-  const items=`${first.cant}${first.unidad&&first.unidad!=='pza'?' '+first.unidad:'\u00d7'} ${first.desc||''}${extra>0?'  +'+extra+' m\u00e1s':''}`;
+  const items=`${first.cant}\u00d7 ${first.desc||''}${extra>0?'  +'+extra+' m\u00e1s':''}`;
   const vb = v ? `<span class="cvenc" style="background:${v.color}">${v.txt}</span>` : '';
   const ribbon = p._recoleccion ? `<div style="background:${COLORS.rosa};color:#fff;font-size:10.5px;font-weight:900;letter-spacing:.6px;border-radius:6px;padding:2px 8px;display:inline-block;margin-bottom:3px;">\u{1F69A} RECOLECCI\u00d3N EXTERNA</div>` : '';
   return `<div class="card ${isNew?'is-new':''}" data-folio="${p.folio}">
@@ -1447,7 +1447,6 @@ function iniciarEscucha(){
         productos: Array.isArray(d.productos) ? d.productos.map(it=>({
           clave: it.clave || '',
           cant: Number(it.cant)||0,
-          unidad: it.unidad || '',
           desc: it.desc || it.descripcion || ''
         })) : []
       };
