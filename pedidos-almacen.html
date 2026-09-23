@@ -1103,26 +1103,30 @@ function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t
 // tocar el botón de modo nocturno) para "despertar" el audio del resto de
 // la sesión. Esto es un refuerzo: el arreglo real es dar permiso de Sonido
 // permanente al sitio en la configuración de Chrome de la TV.
+// Un solo AudioContext para toda la sesión: el que se desbloquea con la
+// primera interacción es el MISMO que usan beep/pitidos/cumple.
+let _ac=null;
+function AC(){
+  if(!_ac) _ac=new(window.AudioContext||window.webkitAudioContext)();
+  if(_ac.state==='suspended') _ac.resume().catch(()=>{});
+  return _ac;
+}
 (function(){
-  let desbloqueado=false;
   function desbloquear(){
-    if(desbloqueado) return; desbloqueado=true;
-    try{
-      const ac=new(window.AudioContext||window.webkitAudioContext)();
-      if(ac.state==='suspended') ac.resume();
-    }catch(e){}
-    ['click','touchstart','keydown'].forEach(ev=>document.removeEventListener(ev,desbloquear));
+    try{ AC(); }catch(e){}
+    if(_ac && _ac.state==='running')
+      ['click','touchstart','keydown'].forEach(ev=>document.removeEventListener(ev,desbloquear));
   }
   ['click','touchstart','keydown'].forEach(ev=>document.addEventListener(ev,desbloquear,{passive:true}));
 })();
-function beep(){try{const ac=new(window.AudioContext||window.webkitAudioContext)();[880,1320].forEach((f,i)=>{const o=ac.createOscillator(),g=ac.createGain();o.type='sine';o.frequency.value=f;o.connect(g);g.connect(ac.destination);const t=ac.currentTime+i*0.16;g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(0.2,t+0.02);g.gain.exponentialRampToValueAtTime(0.001,t+0.15);o.start(t);o.stop(t+0.16)})}catch(e){}}
+function beep(){try{const ac=AC();[880,1320].forEach((f,i)=>{const o=ac.createOscillator(),g=ac.createGain();o.type='sine';o.frequency.value=f;o.connect(g);g.connect(ac.destination);const t=ac.currentTime+i*0.16;g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(0.2,t+0.02);g.gain.exponentialRampToValueAtTime(0.001,t+0.15);o.start(t);o.stop(t+0.16)})}catch(e){}}
 
 /* ===== Tanda de pitidos finos de fondo (para el aviso central de pedido
    nuevo): varios tonos agudos y cortos, tipo "beep-beep-beep" de radar,
    NO reemplaza el beep de 2 notas del banner de esquina, es aparte. ===== */
 function pitidosFinos(){
   try{
-    const ac=new(window.AudioContext||window.webkitAudioContext)();
+    const ac=AC();
     const n=6, gap=0.22;
     for(let i=0;i<n;i++){
       const o=ac.createOscillator(),g=ac.createGain();
@@ -1175,7 +1179,7 @@ window.__flashNuevo = flashNuevo;
 /* ===== Cumpleaños: banner grande + confeti (a propósito muy notorio, para que nadie lo ignore) ===== */
 function beepCumple(){
   try{
-    const ac=new(window.AudioContext||window.webkitAudioContext)();
+    const ac=AC();
     [523,659,784,1046].forEach((f,i)=>{
       const o=ac.createOscillator(),g=ac.createGain();
       o.type='triangle'; o.frequency.value=f; o.connect(g); g.connect(ac.destination);
