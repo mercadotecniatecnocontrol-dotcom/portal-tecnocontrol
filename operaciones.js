@@ -4647,12 +4647,12 @@
             <div id="ops-cal-body"></div>
 
             ${sinFecha.length ? `
-            <div style="border-top:1px solid #e2e8f0;margin-top:16px;padding-top:14px;">
-                <div style="font-size:11.5px;font-weight:700;color:#b45309;margin-bottom:6px;">Sin fecha programada (${sinFecha.length})${opsCalVista === "dia" ? " — arrástralos a la fila de un técnico" : ""}</div>
+            <div style="margin-top:18px;background:#fff;border-radius:14px;padding:16px;box-shadow:0 1px 2px rgba(15,23,42,.04),0 4px 14px rgba(15,23,42,.06);border-top:3px solid #b45309;">
+                <div style="font-size:11px;font-weight:800;color:#b45309;text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px;">Sin fecha programada (${sinFecha.length})${opsCalVista === "dia" ? " — arrástralos a la fila de un técnico" : ""}</div>
                 <div style="display:flex;flex-wrap:wrap;gap:8px;">
                     ${sinFecha.map(f => `
-                        <div onclick="opsAbrirModalFolio('${f.id}')" draggable="true" ondragstart="opsCalArrastrarFolio(event,'${f.id}')" style="padding:8px 12px;background:#fff;border-radius:10px;cursor:${opsCalVista === "dia" ? "grab" : "pointer"};font-size:11.5px;color:#334155;box-shadow:0 1px 2px rgba(0,0,0,.05);">
-                            ${opsEsc(f.estacion)}${f.folioOS ? " · O.S. " + opsEsc(f.folioOS) : ""} — <span style="color:#94a3b8;">${opsCalVista === "dia" ? "arrastra o da clic" : "clic para programar"}</span>
+                        <div onclick="opsAbrirModalFolio('${f.id}')" draggable="true" ondragstart="opsCalArrastrarFolio(event,'${f.id}')" style="padding:9px 13px;background:#fffbeb;border:1px solid #fde8c8;border-radius:10px;cursor:${opsCalVista === "dia" ? "grab" : "pointer"};font-size:11.5px;color:#334155;font-weight:600;transition:box-shadow .12s;">
+                            ${opsEsc(f.estacion)}${f.folioOS ? " · O.S. " + opsEsc(f.folioOS) : ""} — <span style="color:#b45309;font-weight:500;">${opsCalVista === "dia" ? "arrastra o da clic" : "clic para programar"}</span>
                         </div>`).join("")}
                 </div>
             </div>` : ""}
@@ -4724,7 +4724,10 @@
                 const faltaGente = rolesReq !== null && (f.tecnicosAsignadosIds || []).length < rolesReq;
                 const conProblema = choqueSet.has(f.id) || faltaGente;
                 const colorBase = f.tipoFolio === "laboratorio" ? "#7c3aed" : "#1D2E73";
-                return `<div draggable="true" ondragstart="event.stopPropagation();opsCalArrastrarFolio(event,'${f.id}')" onclick="event.stopPropagation();opsAbrirPanelFolio('${f.id}')" title="${opsEsc(f.estacion)}" style="position:absolute;top:4px;bottom:4px;left:${inicioPct}%;width:${anchoTotalPct}%;border-radius:6px;border:${conProblema ? "2px solid #E7402B" : "1px solid rgba(0,0,0,.08)"};overflow:hidden;cursor:grab;display:flex;">
+                return `<div onclick="opsAbrirPanelFolio('${f.id}')" title="${opsEsc(f.estacion)}" style="position:absolute;top:4px;bottom:4px;left:${inicioPct}%;width:${anchoTotalPct}%;border-radius:6px;border:${conProblema ? "2px solid #E7402B" : "1px solid rgba(0,0,0,.08)"};overflow:hidden;cursor:pointer;display:flex;">
+                    <div draggable="true" ondragstart="event.stopPropagation();opsCalArrastrarFolio(event,'${f.id}')" onclick="event.stopPropagation();" title="Arrastrar para reprogramar" style="width:9px;flex-shrink:0;cursor:grab;background:rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center;">
+                        <div style="width:3px;height:60%;background:rgba(255,255,255,.7);border-radius:2px;"></div>
+                    </div>
                     ${d.traslado ? `<div style="width:${propTraslado}%;background:repeating-linear-gradient(45deg,${colorBase}55,${colorBase}55 4px,${colorBase}88 4px,${colorBase}88 8px);"></div>` : ""}
                     <div style="flex:1;background:${colorBase};display:flex;align-items:center;padding:0 6px;overflow:hidden;">
                         <span style="color:#fff;font-size:10px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${opsEsc(f.estacion)}</span>
@@ -4737,28 +4740,28 @@
         }
 
         return `
-        <div style="background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06);">
-            <div style="display:flex;border-bottom:1px solid #e2e8f0;">
-                <div style="width:170px;flex-shrink:0;padding:8px 12px;font-size:10.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Técnico</div>
+        <div style="background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 1px 2px rgba(15,23,42,.04),0 4px 14px rgba(15,23,42,.06);">
+            <div style="display:flex;background:linear-gradient(180deg,#f8fafc 0%,#f1f5f9 100%);border-bottom:1px solid #e2e8f0;">
+                <div style="width:180px;flex-shrink:0;padding:11px 14px;font-size:10px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.5px;">Técnico</div>
                 <div style="flex:1;display:flex;">
-                    ${horas.map(h => `<div style="flex:1;text-align:center;font-size:10px;color:#94a3b8;padding:8px 0;border-left:1px solid #f1f5f9;">${h}:00</div>`).join("")}
+                    ${horas.map(h => `<div style="flex:1;text-align:center;font-size:10.5px;font-weight:600;color:#94a3b8;padding:11px 0;border-left:1px solid #e8edf3;">${h}:00</div>`).join("")}
                 </div>
             </div>
             <div style="max-height:65vh;overflow-y:auto;">
                 ${tecnicos.length ? tecnicos.map(t => `
-                    <div style="display:flex;border-bottom:1px solid #f8fafc;">
-                        <div style="width:170px;flex-shrink:0;padding:8px 12px;font-size:11.5px;color:#334155;font-weight:600;display:flex;align-items:center;gap:6px;cursor:pointer;overflow:hidden;" onclick="opsAbrirFichaTecnico('${t.id}')">
-                            <span style="width:22px;height:22px;border-radius:50%;background:#1D2E73;color:#fff;font-size:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${(t.nombre || "?").split(" ").filter(Boolean).slice(0, 2).map(s => s[0]).join("").toUpperCase()}</span>
+                    <div style="display:flex;border-bottom:1px solid #f1f5f9;transition:background .12s;" onmouseover="this.style.background='#fafbfd'" onmouseout="this.style.background=''">
+                        <div style="width:180px;flex-shrink:0;padding:9px 14px;font-size:11.5px;color:#334155;font-weight:600;display:flex;align-items:center;gap:8px;cursor:pointer;overflow:hidden;" onclick="opsAbrirFichaTecnico('${t.id}')">
+                            <span style="width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#1D2E73,#2d4494);color:#fff;font-size:9.5px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 1px 3px rgba(29,46,115,.35);">${(t.nombre || "?").split(" ").filter(Boolean).slice(0, 2).map(s => s[0]).join("").toUpperCase()}</span>
                             <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${opsEsc(t.nombre)}</span>
                         </div>
-                        <div ondragover="event.preventDefault();this.style.background='#eef2f7';" ondragleave="this.style.background='';" ondrop="opsCalSoltarFolio(event,'${t.id}')" style="flex:1;position:relative;height:38px;">
-                            ${esHoy && ahoraPct >= 0 && ahoraPct <= 100 ? `<div style="position:absolute;top:0;bottom:0;left:${ahoraPct}%;width:2px;background:#E7402B;z-index:3;"></div>` : ""}
+                        <div ondragover="event.preventDefault();this.style.background='#eef2f7';" ondragleave="this.style.background='';" ondrop="opsCalSoltarFolio(event,'${t.id}')" style="flex:1;position:relative;height:40px;">
+                            ${esHoy && ahoraPct >= 0 && ahoraPct <= 100 ? `<div style="position:absolute;top:0;bottom:0;left:${ahoraPct}%;width:2px;background:#E7402B;z-index:3;box-shadow:0 0 4px rgba(231,64,43,.5);"></div>` : ""}
                             ${barrasDe(t)}
                         </div>
                     </div>`).join("") : `<div style="padding:40px;text-align:center;color:#94a3b8;">Ningún técnico coincide con la búsqueda.</div>`}
             </div>
         </div>
-        <div style="display:flex;gap:16px;margin-top:10px;font-size:10.5px;color:#64748b;flex-wrap:wrap;">
+        <div style="display:flex;gap:16px;margin-top:12px;padding:10px 14px;background:#fff;border-radius:10px;box-shadow:0 1px 2px rgba(15,23,42,.04);font-size:10.5px;color:#64748b;flex-wrap:wrap;">
             <div style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:3px;background:#1D2E73;display:inline-block;"></span> Servicio (ejecución)</div>
             <div style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:3px;background:repeating-linear-gradient(45deg,#1D2E7355,#1D2E7355 3px,#1D2E7388 3px,#1D2E7388 6px);display:inline-block;"></span> Traslado</div>
             <div style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:3px;background:#7c3aed;display:inline-block;"></span> Laboratorio / guardia</div>
@@ -4781,7 +4784,8 @@
             if (ausente) return `<div style="background:#f1f5f9;border-radius:6px;padding:4px;text-align:center;font-size:9.5px;color:#94a3b8;">Ausente</div>`;
             if (!folios.length) return `<div style="padding:4px;"></div>`;
             const conChoque = folios.length > 1;
-            return `<div onclick="opsCalIrADia('${fechaISO}')" style="background:${conChoque ? "#fef2f2" : "#eef2f7"};border:1px solid ${conChoque ? "#fecaca" : "#dbe3f0"};border-radius:6px;padding:4px 6px;text-align:center;font-size:10.5px;font-weight:700;color:${conChoque ? "#E7402B" : "#1D2E73"};cursor:pointer;">${folios.length} servicio${folios.length > 1 ? "s" : ""}</div>`;
+            const accion = folios.length === 1 ? `opsAbrirPanelFolio('${folios[0].id}')` : `opsCalIrADia('${fechaISO}')`;
+            return `<div onclick="${accion}" style="background:${conChoque ? "#fef2f2" : "#eef2f7"};border:1px solid ${conChoque ? "#fecaca" : "#dbe3f0"};border-radius:6px;padding:4px 6px;text-align:center;font-size:10.5px;font-weight:700;color:${conChoque ? "#E7402B" : "#1D2E73"};cursor:pointer;">${folios.length} servicio${folios.length > 1 ? "s" : ""}</div>`;
         }
 
         return `
@@ -4811,7 +4815,7 @@
 
         function contarDia(d) {
             const fechaISO = opsCalFechaISO(d);
-            return cacheFolios.filter(f => opsCalDatosFolio(f)?.fecha === fechaISO).length;
+            return cacheFolios.filter(f => opsCalDatosFolio(f)?.fecha === fechaISO);
         }
 
         return `
@@ -4822,11 +4826,12 @@
             <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;">
                 ${dias.map(d => {
                     const fueraDeMes = d.getMonth() !== opsCalFecha.getMonth();
-                    const n = contarDia(d);
+                    const folios = contarDia(d);
                     const esHoy = opsCalFechaISO(d) === opsCalFechaISO(new Date());
-                    return `<div onclick="opsCalIrADia('${opsCalFechaISO(d)}')" style="min-height:56px;border-radius:8px;padding:6px;cursor:pointer;background:${esHoy ? "#eef2f7" : "#f8fafc"};border:1px solid ${esHoy ? "#1D2E73" : "#f1f5f9"};opacity:${fueraDeMes ? 0.4 : 1};">
+                    const accion = folios.length === 1 ? `opsAbrirPanelFolio('${folios[0].id}')` : `opsCalIrADia('${opsCalFechaISO(d)}')`;
+                    return `<div onclick="${accion}" style="min-height:56px;border-radius:8px;padding:6px;cursor:pointer;background:${esHoy ? "#eef2f7" : "#f8fafc"};border:1px solid ${esHoy ? "#1D2E73" : "#f1f5f9"};opacity:${fueraDeMes ? 0.4 : 1};">
                         <div style="font-size:10.5px;font-weight:700;color:#334155;">${d.getDate()}</div>
-                        ${n ? `<div style="margin-top:4px;font-size:9.5px;font-weight:700;color:#1D2E73;background:#dbe3f0;border-radius:5px;padding:1px 5px;display:inline-block;">${n}</div>` : ""}
+                        ${folios.length ? `<div style="margin-top:4px;font-size:9.5px;font-weight:700;color:#1D2E73;background:#dbe3f0;border-radius:5px;padding:1px 5px;display:inline-block;">${folios.length}</div>` : ""}
                     </div>`;
                 }).join("")}
             </div>
@@ -4844,8 +4849,9 @@
     };
 
     window.opsAbrirPanelFolio = async function (folioId) {
+      try {
         const f = cacheFolios.find(x => x.id === folioId);
-        if (!f) return;
+        if (!f) { alert("No se encontró ese folio en memoria — recarga la página e intenta otra vez."); return; }
         let panel = document.getElementById("ops-panel-folio");
         if (!panel) {
             panel = document.createElement("div");
@@ -4929,6 +4935,10 @@
             if (hist) hist.innerHTML = `<div style="font-size:11px;color:#E7402B;">No se pudo cargar el historial.</div>`;
             console.warn("[Panel folio] historial:", e.message);
         }
+      } catch (eGeneral) {
+          console.error("[opsAbrirPanelFolio]", eGeneral);
+          alert("No se pudo abrir el detalle del folio: " + eGeneral.message);
+      }
     };
 
     // ═══════════════════════ FASE C — Arrastrar y soltar ═══════════════════════
@@ -5701,7 +5711,7 @@
             <td style="padding:7px 10px;font-weight:600;color:#334155;">${opsEsc(s.folio)}</td>
             <td style="padding:7px 10px;color:#64748b;white-space:nowrap;">${fecha}</td>
             <td style="padding:7px 10px;color:#334155;">${opsEsc(s.tecnicoNombre || s.solicitante || "—")}</td>
-            <td style="padding:7px 10px;color:#334155;">${opsEsc(prod.desc)}${prod.cant ? ` ${prod.unidad ? opsEsc(prod.cant+' '+prod.unidad) : '× '+opsEsc(prod.cant)}` : ""}${otros > 0 ? ` (+${otros})` : ""}</td>
+            <td style="padding:7px 10px;color:#334155;">${opsEsc(prod.desc)}${prod.cant ? ` × ${opsEsc(prod.cant)}` : ""}${otros > 0 ? ` (+${otros})` : ""}</td>
             <td style="padding:7px 10px;">${prio}</td>
             <td style="padding:7px 10px;"><span style="background:${e.bg};color:${e.fg};font-size:10.5px;font-weight:600;padding:3px 8px;border-radius:999px;">${e.label}</span></td>
             <td style="padding:7px 10px;text-align:right;white-space:nowrap;" onclick="event.stopPropagation()">
@@ -5793,7 +5803,7 @@
                 <div style="margin-top:12px;">
                     <div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#94a3b8;margin-bottom:6px;">Artículos solicitados (${listaArticulos.length})</div>
                     ${listaArticulos.length
-                        ? listaArticulos.map(it => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:12.5px;color:#1e293b;padding:3px 0;border-bottom:1px solid #f1f5f9;"><span>${opsEsc(it.desc || "—")}${it.clave ? ` <span style="color:#94a3b8;">(${opsEsc(it.clave)})</span>` : ""}</span><span style="font-weight:700;white-space:nowrap;">${opsEsc(it.unidad ? ((Number(it.cant)||0)+' '+it.unidad) : ('×'+(it.cant||0)))}</span></div>`).join("")
+                        ? listaArticulos.map(it => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:12.5px;color:#1e293b;padding:3px 0;border-bottom:1px solid #f1f5f9;"><span>${opsEsc(it.desc || "—")}${it.clave ? ` <span style="color:#94a3b8;">(${opsEsc(it.clave)})</span>` : ""}</span><span style="font-weight:700;white-space:nowrap;">×${opsEsc(it.cant || 0)}</span></div>`).join("")
                         : '<div style="color:#94a3b8;font-size:12px;">Sin artículos capturados.</div>'}
                 </div>
                 <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;">
