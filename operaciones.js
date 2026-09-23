@@ -3216,12 +3216,18 @@
     };
 
     window.opsGuardarHabilidadesTecnico = async function (idInterno) {
-        const marcadas = Array.from(document.querySelectorAll("#ops-hab-checks input[type=checkbox]:checked")).map(c => c.value);
-        const { db, fs } = await opsGetFB();
-        await fs.updateDoc(fs.doc(db, COL_TECNICOS, idInterno), { habilidades: marcadas });
-        const t = cacheTec.find(x => x.id === idInterno);
-        if (t) t.habilidades = marcadas;
-        if (window.mostrarPush) window.mostrarPush("Operaciones", "Habilidades actualizadas", "✅");
+        try {
+            const marcadas = Array.from(document.querySelectorAll("#ops-hab-checks input[type=checkbox]:checked")).map(c => c.value);
+            const { db, fs } = await opsGetFB();
+            await fs.updateDoc(fs.doc(db, COL_TECNICOS, idInterno), { habilidades: marcadas });
+            const t = cacheTec.find(x => x.id === idInterno);
+            if (t) t.habilidades = marcadas;
+            if (window.mostrarPush) window.mostrarPush("Operaciones", "Habilidades actualizadas", "✅");
+            else alert("Habilidades guardadas.");
+        } catch (e) {
+            console.error("[opsGuardarHabilidadesTecnico]", e);
+            alert("No se pudieron guardar las habilidades: " + e.message);
+        }
     };
 
     window.opsAbrirFichaTecnico = async function (idInterno, tabInicial) {
@@ -4624,18 +4630,18 @@
                     <button onclick="opsCalHoy()" style="background:#eef2f7;border:none;color:#1D2E73;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:600;">Hoy</button>
                 </div>
                 <input id="ops-cal-filtro" value="${opsEsc(opsCalFiltroTexto)}" oninput="opsCalFiltrar(this.value)" placeholder="Buscar técnico..." style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 12px;font-size:12.5px;min-width:180px;">
-                <button onclick="opsAbrirModalFolio(null, opsCalFecha)" style="background:#1D2E73;border:none;color:#fff;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;">+ Nuevo servicio</button>
+                <button onclick="opsAbrirModalFolio(null, '${opsCalFechaISO(opsCalFecha)}')" style="background:#1D2E73;border:none;color:#fff;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;">+ Nuevo servicio</button>
             </div>
 
             <div id="ops-cal-body"></div>
 
             ${sinFecha.length ? `
             <div style="border-top:1px solid #e2e8f0;margin-top:16px;padding-top:14px;">
-                <div style="font-size:11.5px;font-weight:700;color:#b45309;margin-bottom:6px;">Sin fecha programada (${sinFecha.length})</div>
+                <div style="font-size:11.5px;font-weight:700;color:#b45309;margin-bottom:6px;">Sin fecha programada (${sinFecha.length})${opsCalVista === "dia" ? " — arrástralos a la fila de un técnico" : ""}</div>
                 <div style="display:flex;flex-wrap:wrap;gap:8px;">
                     ${sinFecha.map(f => `
-                        <div onclick="opsAbrirModalFolio('${f.id}')" style="padding:8px 12px;background:#fff;border-radius:10px;cursor:pointer;font-size:11.5px;color:#334155;box-shadow:0 1px 2px rgba(0,0,0,.05);">
-                            ${opsEsc(f.estacion)}${f.folioOS ? " · O.S. " + opsEsc(f.folioOS) : ""} — <span style="color:#94a3b8;">clic para programar</span>
+                        <div onclick="opsAbrirModalFolio('${f.id}')" draggable="true" ondragstart="opsCalArrastrarFolio(event,'${f.id}')" style="padding:8px 12px;background:#fff;border-radius:10px;cursor:${opsCalVista === "dia" ? "grab" : "pointer"};font-size:11.5px;color:#334155;box-shadow:0 1px 2px rgba(0,0,0,.05);">
+                            ${opsEsc(f.estacion)}${f.folioOS ? " · O.S. " + opsEsc(f.folioOS) : ""} — <span style="color:#94a3b8;">${opsCalVista === "dia" ? "arrastra o da clic" : "clic para programar"}</span>
                         </div>`).join("")}
                 </div>
             </div>` : ""}
@@ -4734,7 +4740,7 @@
                             <span style="width:22px;height:22px;border-radius:50%;background:#1D2E73;color:#fff;font-size:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${(t.nombre || "?").split(" ").filter(Boolean).slice(0, 2).map(s => s[0]).join("").toUpperCase()}</span>
                             <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${opsEsc(t.nombre)}</span>
                         </div>
-                        <div style="flex:1;position:relative;height:38px;">
+                        <div ondragover="event.preventDefault();this.style.background='#eef2f7';" ondragleave="this.style.background='';" ondrop="opsCalSoltarFolio(event,'${t.id}')" style="flex:1;position:relative;height:38px;">
                             ${esHoy && ahoraPct >= 0 && ahoraPct <= 100 ? `<div style="position:absolute;top:0;bottom:0;left:${ahoraPct}%;width:2px;background:#E7402B;z-index:3;"></div>` : ""}
                             ${barrasDe(t)}
                         </div>
@@ -4914,9 +4920,55 @@
         }
     };
 
+    // ═══════════════════════ FASE C — Arrastrar y soltar ═══════════════════════
+    window.opsCalArrastrarFolio = function (event, folioId) {
+        event.dataTransfer.setData("text/plain", folioId);
+        event.dataTransfer.effectAllowed = "move";
+    };
+
+    window.opsCalSoltarFolio = async function (event, tecnicoId) {
+        event.preventDefault();
+        event.currentTarget.style.background = "";
+        const folioId = event.dataTransfer.getData("text/plain");
+        if (!folioId) return;
+        const f = cacheFolios.find(x => x.id === folioId);
+        const t = cacheTec.find(x => x.id === tecnicoId);
+        if (!f || !t) return;
+
+        // Hora aproximada según dónde soltaste dentro de la fila, redondeada a 30 min.
+        const rect = event.currentTarget.getBoundingClientRect();
+        const pct = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+        const totalHrs = OPS_CAL_HORA_FIN - OPS_CAL_HORA_INICIO;
+        let horaDecimal = OPS_CAL_HORA_INICIO + pct * totalHrs;
+        horaDecimal = Math.round(horaDecimal * 2) / 2; // redondeo a media hora
+        const hh = String(Math.floor(horaDecimal)).padStart(2, "0");
+        const mm = horaDecimal % 1 ? "30" : "00";
+        const fechaISO = opsCalFechaISO(opsCalFecha);
+        const fechaProgramada = `${fechaISO}T${hh}:${mm}`;
+
+        if (!confirm(`¿Programar "${f.estacion}"${f.folioOS ? " (O.S. " + f.folioOS + ")" : ""} para ${t.nombre} el ${opsCalFecha.toLocaleDateString("es-MX", { day: "numeric", month: "long" })} a las ${hh}:${mm}?`)) return;
+
+        const yaAsignado = (f.tecnicosAsignadosIds || []).includes(tecnicoId);
+        const nuevosIds = yaAsignado ? f.tecnicosAsignadosIds : [...(f.tecnicosAsignadosIds || []), tecnicoId];
+        const nuevosNombres = yaAsignado ? f.tecnicosAsignadosNombres : [...(f.tecnicosAsignadosNombres || []), t.nombre];
+
+        try {
+            const { db, fs } = await opsGetFB();
+            await fs.updateDoc(fs.doc(db, COL_FOLIOS, folioId), {
+                fechaProgramada, tecnicosAsignadosIds: nuevosIds, tecnicosAsignadosNombres: nuevosNombres,
+            });
+            f.fechaProgramada = fechaProgramada; f.tecnicosAsignadosIds = nuevosIds; f.tecnicosAsignadosNombres = nuevosNombres;
+            opsRenderCalendario();
+            if (window.mostrarPush) window.mostrarPush("Operaciones", "Folio programado.", "✅");
+        } catch (e) {
+            console.error("[opsCalSoltarFolio]", e);
+            alert("No se pudo programar el folio: " + e.message);
+        }
+    };
+
     window.opsAbrirModalFolio = function (id, fechaSugerida) {
         const f = id ? cacheFolios.find(x => x.id === id) : null;
-        const programadaDefault = f?.fechaProgramada || (fechaSugerida ? opsCalFechaISO(fechaSugerida) + "T08:00" : "");
+        const programadaDefault = f?.fechaProgramada || (fechaSugerida ? fechaSugerida + "T08:00" : "");
         const wrap = document.getElementById("ops-modal-wrap");
         const solicitudDefault = f?.fechaSolicitud || (() => {
             const n = new Date(); const pad = x => String(x).padStart(2, "0");
