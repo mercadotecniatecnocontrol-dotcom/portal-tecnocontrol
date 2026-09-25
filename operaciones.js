@@ -3058,6 +3058,7 @@
                         ${gestion ? `<button onclick="opsExportarInventarioPDF()" title="PDF de herramienta por técnico, para auditoría" style="background:#eef2f7;border:none;color:#1f2937;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:600;display:inline-flex;align-items:center;gap:6px;">${ICON.printer} PDF auditoría</button>` : ""}
                         ${gestion ? `<button onclick="opsExportarInventarioExcel()" title="Excel de herramienta por técnico, para auditoría" style="background:#eef2f7;border:none;color:#1f2937;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:600;display:inline-flex;align-items:center;gap:6px;">${ICON.file} Excel auditoría</button>` : ""}
                         ${gestion ? `<button onclick="opsAbrirModalTecnico()" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Nuevo técnico</button>` : ""}
+                        ${opsPuedeHacer("admin_operaciones") ? `<button onclick="opsAbrirModalAccesos()" class="mkt-add-btn" style="background:#7c3aed;">${ICON.key} Accesos a Operaciones</button>` : ""}
                     </div>
                 </div>
                 <div style="overflow-x:auto;">
@@ -3180,6 +3181,122 @@
         opsAbrirFichaTecnico(idInterno);
     };
 
+
+    // ═══════════════════ Accesos a Operaciones (varios usuarios, con privilegios) ═══════════════════
+    // Reutiliza el sistema de puestos/permisos que ya existe (ops_puestos), sin inventar uno nuevo.
+    // Dar acceso = crear/actualizar una entrada en ops_tecnicos con el puesto correcto — así
+    // opsPermisosPorPuestoDeCorreo() ya lo reconoce automáticamente, sin tocar nada más del código.
+    window.opsAbrirModalAccesos = function () {
+        const puestosOps = (cachePuestos.length ? cachePuestos : PUESTOS_SEED).filter(p => p.departamento === "Operaciones");
+        const conAcceso = cacheTec.filter(t => t.estatus === "activo" && puestosOps.some(p => (p.id && p.id === t.puestoId) || p.nombre === t.puesto));
+        const wrap = document.getElementById("ops-modal-wrap");
+        wrap.innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;">
+            <div style="background:#fff;border-radius:14px;width:520px;max-width:94vw;max-height:88vh;overflow-y:auto;padding:22px;">
+                <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:4px;">Accesos a Operaciones</div>
+                <div style="font-size:11.5px;color:#64748b;margin-bottom:6px;">Esto controla qué puede <b>hacer</b> alguien dentro de Operaciones. Para que además <b>vea</b> el módulo en su menú, su departamento en Recursos Humanos debe estar puesto como "Operaciones" — eso se ajusta desde RH, no desde aquí.</div>
+
+                <div style="font-size:11.5px;font-weight:700;color:#1e293b;margin:14px 0 6px;">Quién tiene acceso hoy (${conAcceso.length})</div>
+                <div style="border:1px solid #e2e8f0;border-radius:10px;max-height:200px;overflow-y:auto;margin-bottom:16px;">
+                    ${conAcceso.length ? conAcceso.map(t => `
+                        <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid #f1f5f9;font-size:12px;">
+                            <div style="flex:1;">
+                                <div style="font-weight:600;color:#1e293b;">${opsEsc(t.nombre)}</div>
+                                <div style="font-size:10.5px;color:#94a3b8;">${opsEsc(t.correo || "sin correo")}</div>
+                            </div>
+                            <select onchange="opsCambiarPuestoAcceso('${t.id}', this.value)" style="border:1px solid #cbd5e1;border-radius:7px;padding:4px 6px;font-size:11px;">
+                                ${puestosOps.map(p => `<option value="${p.id || p.nombre}" ${(p.id === t.puestoId || p.nombre === t.puesto) ? "selected" : ""}>${opsEsc(p.nombre)}</option>`).join("")}
+                            </select>
+                            <button onclick="opsRevocarAcceso('${t.id}')" title="Revocar acceso" style="background:#fef2f2;border:none;color:#E7402B;width:26px;height:26px;border-radius:7px;cursor:pointer;">${ICON.trash}</button>
+                        </div>`).join("") : `<div style="padding:12px;color:#94a3b8;font-size:12px;">Nadie tiene un puesto de Operaciones asignado todavía.</div>`}
+                </div>
+
+                <div style="border-top:1px dashed #e2e8f0;padding-top:14px;">
+                    <div style="font-size:11.5px;font-weight:700;color:#1e293b;margin-bottom:8px;">Dar acceso nuevo</div>
+                    <label style="font-size:11.5px;color:#64748b;font-weight:600;">Nombre</label>
+                    <input id="ops-acc-nombre" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                    <label style="font-size:11.5px;color:#64748b;font-weight:600;">Correo (con este inicia sesión en el portal)</label>
+                    <input id="ops-acc-correo" type="email" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                    <label style="font-size:11.5px;color:#64748b;font-weight:600;">Privilegios (puesto)</label>
+                    <select id="ops-acc-puesto" onchange="opsMostrarDescPuesto(this.value)" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 4px;">
+                        ${puestosOps.map(p => `<option value="${p.id || p.nombre}" data-permisos="${opsEsc((p.permisos || []).join(", "))}">${opsEsc(p.nombre)}</option>`).join("")}
+                    </select>
+                    <div id="ops-acc-desc" style="font-size:10.5px;color:#94a3b8;margin-bottom:14px;">${opsEsc((puestosOps[0]?.permisos || []).join(", "))}</div>
+                    <div style="display:flex;gap:8px;justify-content:flex-end;">
+                        <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cerrar</button>
+                        <button onclick="opsGuardarAcceso()" class="mkt-add-btn" style="background:#7c3aed;">Dar acceso</button>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    };
+
+    window.opsMostrarDescPuesto = function (valor) {
+        const opt = document.querySelector(`#ops-acc-puesto option[value="${CSS.escape(valor)}"]`);
+        const desc = document.getElementById("ops-acc-desc");
+        if (opt && desc) desc.textContent = opt.dataset.permisos || "";
+    };
+
+    window.opsGuardarAcceso = async function () {
+        const nombre = document.getElementById("ops-acc-nombre").value.trim();
+        const correo = document.getElementById("ops-acc-correo").value.trim().toLowerCase();
+        const puestoValor = document.getElementById("ops-acc-puesto").value;
+        if (!nombre || !correo) { alert("Nombre y correo son obligatorios."); return; }
+        const puestosOps = (cachePuestos.length ? cachePuestos : PUESTOS_SEED).filter(p => p.departamento === "Operaciones");
+        const puesto = puestosOps.find(p => (p.id || p.nombre) === puestoValor);
+        if (!puesto) { alert("Selecciona un puesto válido."); return; }
+        const yaExiste = cacheTec.find(t => (t.correo || "").toLowerCase().trim() === correo);
+        try {
+            const { db, fs } = await opsGetFB();
+            if (yaExiste) {
+                await fs.updateDoc(fs.doc(db, COL_TECNICOS, yaExiste.id), { puestoId: puesto.id || null, puesto: puesto.nombre, departamento: "Operaciones" });
+            } else {
+                await fs.addDoc(fs.collection(db, COL_TECNICOS), {
+                    nombre, correo, puestoId: puesto.id || null, puesto: puesto.nombre, departamento: "Operaciones",
+                    estatus: "activo", fechaIngreso: opsHoy(), fechaBaja: null, numeroOperativo: null,
+                    esPersonalOficina: puesto.nombre !== "Técnico de Operaciones",
+                    habilidades: [], observaciones: "Alta desde \"Accesos a Operaciones\" — sin ficha completa de técnico de campo.",
+                });
+            }
+            const snap = await fs.getDocs(fs.collection(db, COL_TECNICOS));
+            cacheTec = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            if (window.mostrarPush) window.mostrarPush("Operaciones", "Acceso otorgado.", "✅");
+            window.opsAbrirModalAccesos();
+        } catch (e) {
+            console.error("[opsGuardarAcceso]", e);
+            alert("No se pudo dar el acceso: " + e.message);
+        }
+    };
+
+    window.opsCambiarPuestoAcceso = async function (tecnicoId, puestoValor) {
+        const puestosOps = (cachePuestos.length ? cachePuestos : PUESTOS_SEED).filter(p => p.departamento === "Operaciones");
+        const puesto = puestosOps.find(p => (p.id || p.nombre) === puestoValor);
+        if (!puesto) return;
+        try {
+            const { db, fs } = await opsGetFB();
+            await fs.updateDoc(fs.doc(db, COL_TECNICOS, tecnicoId), { puestoId: puesto.id || null, puesto: puesto.nombre });
+            const t = cacheTec.find(x => x.id === tecnicoId);
+            if (t) { t.puestoId = puesto.id || null; t.puesto = puesto.nombre; }
+        } catch (e) {
+            console.error("[opsCambiarPuestoAcceso]", e);
+            alert("No se pudo cambiar: " + e.message);
+        }
+    };
+
+    window.opsRevocarAcceso = async function (tecnicoId) {
+        const t = cacheTec.find(x => x.id === tecnicoId);
+        if (!t) return;
+        if (!confirm(`¿Revocar el acceso de ${t.nombre} a Operaciones? (deja de contar como personal activo del departamento)`)) return;
+        try {
+            const { db, fs } = await opsGetFB();
+            await fs.updateDoc(fs.doc(db, COL_TECNICOS, tecnicoId), { estatus: "baja", fechaBaja: opsHoy() });
+            t.estatus = "baja"; t.fechaBaja = opsHoy();
+            window.opsAbrirModalAccesos();
+        } catch (e) {
+            console.error("[opsRevocarAcceso]", e);
+            alert("No se pudo revocar: " + e.message);
+        }
+    };
 
     window.opsAbrirModalTecnico = function () {
         const personasActivas = cachePersonas.filter(p => p.estatus !== "baja");
