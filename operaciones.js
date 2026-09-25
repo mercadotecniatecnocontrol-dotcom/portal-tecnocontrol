@@ -264,14 +264,14 @@
     window.opsAbrirModalAccesoKiosco = function (idInterno) {
         const t = cacheTec.find(x => x.id === idInterno);
         if (!t) return;
-        if (!t.correo) { alert("Primero captura el correo del técnico (✏️ Editar perfil) — sin correo no se puede crear el acceso al kiosco."); return; }
+        if (!t.correo) { alert("Primero captura el correo del técnico (botón Editar perfil) — sin correo no se puede crear el acceso al kiosco."); return; }
         if (t.firebaseUid) { alert("Este técnico ya tiene acceso al kiosco.\nCorreo: " + t.correo); return; }
         const wrap = document.getElementById("ops-modal-wrap");
         const passSugerida = opsPasswordSugerida(t);
         wrap.innerHTML = `
         <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;">
             <div style="background:#fff;border-radius:14px;width:380px;max-width:92vw;padding:22px;">
-                <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:4px;">🔑 Crear acceso al kiosco</div>
+                <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:4px;display:flex;align-items:center;gap:6px;">${ICON.key} Crear acceso al kiosco</div>
                 <div style="font-size:11px;color:#94a3b8;margin-bottom:14px;">Esta cuenta solo sirve para iniciar sesión en el kiosco de Solicitud de Material — no da acceso al portal.</div>
                 <div style="background:#f8fafc;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:12.5px;color:#334155;">
                     <div><strong>${opsEsc(t.nombre)}</strong></div>
@@ -380,6 +380,14 @@
         camera: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2Z"/><circle cx="12" cy="13" r="4"/></svg>',
         file:   '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>',
         xCircle:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m15 9-6 6M9 9l6 6"/></svg>',
+        key:    '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6M15.5 7.5 18 10M14 10l2 2"/></svg>',
+        pencil: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>',
+        shield: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg>',
+        truck:  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M1 3h15v13H1z"/><path d="M16 8h4l3 3v5h-7V8Z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>',
+        printer:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v8H6Z"/></svg>',
+        chat:   '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5Z"/></svg>',
+        download:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/></svg>',
+        sparkle:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M18.4 5.6l-2.8 2.8M8.4 15.6l-2.8 2.8"/></svg>',
     };
 
     // Catálogo base (mismo listado de "AYUDA VISUAL / HERRAMIENTA BÁSICA PARA SERVICIOS")
@@ -1733,9 +1741,11 @@
 
         const actividad = cacheMov.slice(0, 5).map(m => {
             const color = { asignacion: "#0891b2", transferencia: "#0891b2", devolucion: "#059669", baja: "#E7402B", danio: "#E7402B", perdida: "#E7402B", reparacion: "#b45309" }[m.tipo] || "#64748b";
+            const h = cacheHerr.find(x => x.id === m.herramientaId);
+            const etiquetaHerr = h ? `${h.folio || ""}${h.folio && h.descripcion ? " — " : ""}${h.descripcion || ""}` : "(herramienta ya no existe)";
             return `<div style="margin-bottom:10px;position:relative;">
                 <div style="position:absolute;left:-17px;top:3px;width:7px;height:7px;border-radius:50%;background:${color};"></div>
-                <div style="font-size:11.5px;color:#334155;">${opsEsc(m.tipo)} · ${opsEsc(m.herramientaId)}</div>
+                <div style="font-size:11.5px;color:#334155;">${opsEsc(m.tipo)} · ${opsEsc(etiquetaHerr)}</div>
                 <div style="font-size:10px;color:#94a3b8;">${opsEsc((m.fecha || "").slice(0, 16).replace("T", " "))}</div>
             </div>`;
         }).join("") || '<div style="color:#94a3b8;font-size:12px;">Sin actividad reciente.</div>';
@@ -1745,7 +1755,7 @@
         el.innerHTML = `
             <div style="background:#fff;border-radius:14px;padding:16px 18px;margin-bottom:16px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-                    <div style="font-size:12.5px;font-weight:700;color:#1e293b;">📍 Técnicos en campo — mapa en vivo</div>
+                    <div style="font-size:12.5px;font-weight:700;color:#1e293b;display:flex;align-items:center;gap:6px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0Z"/><circle cx="12" cy="10" r="3"/></svg> Técnicos en campo — mapa en vivo</div>
                     <span style="font-size:10px;color:#94a3b8;">Fuente: Flotilla</span>
                 </div>
                 <div id="ops-mapa-resumen" style="height:220px;border-radius:10px;overflow:hidden;background:#e2e8f0;"></div>
@@ -2406,7 +2416,7 @@
             const d = snap.docs[0];
             const data = d.data();
             opsRequisicionSeleccionada = { id: d.id, folio: data.folio || folio };
-            resEl.innerHTML = `<span style="color:#166534;">✓ Vinculada a requisición ${opsEsc(opsRequisicionSeleccionada.folio)}${data.proveedor ? " · " + opsEsc(data.proveedor) : ""}</span>`;
+            resEl.innerHTML = `<span style="color:#166534;display:flex;align-items:center;gap:5px;">${ICON.check} Vinculada a requisición ${opsEsc(opsRequisicionSeleccionada.folio)}${data.proveedor ? " · " + opsEsc(data.proveedor) : ""}</span>`;
         } catch (err) {
             console.error("[operaciones.js] error al buscar requisición de compra:", err);
             resEl.innerHTML = `<span style="color:#E7402B;">Error al buscar. Revisa el nombre del campo "folio" en Compras.</span>`;
@@ -3004,8 +3014,8 @@
                 <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;">
                     <input type="text" id="ops-tec-buscar" value="${opsEsc(filtroTec)}" placeholder="Buscar técnico..." oninput="opsFiltrarTec(this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 11px;font-size:12.5px;width:260px;outline:none;">
                     <div style="display:flex;gap:6px;flex-wrap:wrap;">
-                        ${gestion ? `<button onclick="opsExportarInventarioPDF()" title="PDF de herramienta por técnico, para auditoría" style="background:#eef2f7;border:none;color:#1f2937;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:600;">🖨️ PDF auditoría</button>` : ""}
-                        ${gestion ? `<button onclick="opsExportarInventarioExcel()" title="Excel de herramienta por técnico, para auditoría" style="background:#eef2f7;border:none;color:#1f2937;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:600;">📊 Excel auditoría</button>` : ""}
+                        ${gestion ? `<button onclick="opsExportarInventarioPDF()" title="PDF de herramienta por técnico, para auditoría" style="background:#eef2f7;border:none;color:#1f2937;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:600;display:inline-flex;align-items:center;gap:6px;">${ICON.printer} PDF auditoría</button>` : ""}
+                        ${gestion ? `<button onclick="opsExportarInventarioExcel()" title="Excel de herramienta por técnico, para auditoría" style="background:#eef2f7;border:none;color:#1f2937;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:600;display:inline-flex;align-items:center;gap:6px;">${ICON.file} Excel auditoría</button>` : ""}
                         ${gestion ? `<button onclick="opsAbrirModalTecnico()" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Nuevo técnico</button>` : ""}
                     </div>
                 </div>
@@ -3060,7 +3070,7 @@
         wrap.innerHTML = `
         <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;">
             <div style="background:#fff;border-radius:14px;width:400px;max-width:92vw;padding:22px;max-height:88vh;overflow-y:auto;">
-                <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:4px;">✏️ Editar perfil</div>
+                <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:4px;display:flex;align-items:center;gap:6px;">${ICON.pencil} Editar perfil</div>
                 <div style="font-size:11px;color:#94a3b8;margin-bottom:14px;">Cada cambio queda registrado en la auditoría (usuario, fecha, valor anterior/nuevo).</div>
                 <label style="font-size:11.5px;color:#64748b;font-weight:600;">Nombre</label>
                 <input id="ops-edit-nombre" value="${opsEsc(t.nombre)}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
@@ -3249,7 +3259,7 @@
                 <div style="display:flex;justify-content:flex-end;">
                     <button onclick="document.getElementById('ops-panel-wrap').innerHTML=''" style="background:#fff;border:1px solid #e2e8f0;width:28px;height:28px;border-radius:7px;cursor:pointer;">${ICON.close}</button>
                 </div>
-                ${guardiaActiva ? `<div style="background:#5b21b6;border-radius:12px;padding:10px 14px;margin-bottom:8px;color:#fff;font-size:11.5px;font-weight:700;">🛡 En guardia — herramienta ${opsEsc(guardiaActiva.herramientaId)}</div>` : ""}
+                ${guardiaActiva ? `<div style="background:#5b21b6;border-radius:12px;padding:10px 14px;margin-bottom:8px;color:#fff;font-size:11.5px;font-weight:700;display:flex;align-items:center;gap:6px;">${ICON.shield} En guardia — herramienta ${opsEsc(guardiaActiva.herramientaId)}</div>` : ""}
 
                 <div style="background:#fff;border-radius:14px;padding:18px;display:flex;align-items:center;gap:14px;margin-top:8px;">
                     <div style="width:52px;height:52px;border-radius:50%;background:#1D2E73;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;flex-shrink:0;">${opsEsc(iniciales)}</div>
@@ -3262,7 +3272,7 @@
                     <div style="position:relative;">
                         <button onclick="opsToggleMenuTecnico(event)" title="Configuración" style="background:#f1f5f9;border:none;width:32px;height:32px;border-radius:8px;cursor:pointer;color:#475569;display:flex;align-items:center;justify-content:center;">${ICON.gear}</button>
                         <div id="ops-menu-tecnico" style="display:none;position:absolute;right:0;top:38px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.12);min-width:190px;z-index:10;overflow:hidden;">
-                            <button onclick="opsAbrirModalEditarTecnico('${idInterno}')" style="width:100%;text-align:left;background:none;border:none;padding:10px 14px;font-size:12.5px;color:#334155;cursor:pointer;">✏️ Editar perfil</button>
+                            <button onclick="opsAbrirModalEditarTecnico('${idInterno}')" style="width:100%;text-align:left;background:none;border:none;padding:10px 14px;font-size:12.5px;color:#334155;cursor:pointer;display:flex;align-items:center;gap:8px;">${ICON.pencil} Editar perfil</button>
                             ${activo ? `<button onclick="document.getElementById('ops-menu-tecnico').style.display='none';opsIniciarBajaTecnico('${idInterno}')" style="width:100%;text-align:left;background:none;border-top:1px solid #f1f5f9;border-bottom:none;border-left:none;border-right:none;padding:10px 14px;font-size:12.5px;color:#E7402B;cursor:pointer;">${ICON.trash} Dar de baja al técnico</button>` : ""}
                         </div>
                     </div>` : ""}
@@ -3317,14 +3327,14 @@
             el.innerHTML = `
                 <div style="background:#fff;border-radius:14px;padding:16px 18px;margin-bottom:12px;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                        <span style="font-size:11.5px;font-weight:700;color:${t.firebaseUid ? "#166534" : "#b45309"};">${t.firebaseUid ? "🟢 Tiene acceso al kiosco" : "🟠 Sin acceso al kiosco"}</span>
-                        ${!t.firebaseUid && opsPuedeGestionar() ? `<button onclick="opsAbrirModalAccesoKiosco('${idInterno}')" style="background:#eef2f7;border:none;color:#1D2E73;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">🔑 Crear acceso</button>` : ""}
+                        <span style="font-size:11.5px;font-weight:700;color:${t.firebaseUid ? "#166534" : "#b45309"};display:inline-flex;align-items:center;gap:5px;">${t.firebaseUid ? `<span style="width:7px;height:7px;border-radius:50%;background:#22c55e;display:inline-block;"></span> Tiene acceso al kiosco` : `<span style="width:7px;height:7px;border-radius:50%;background:#f97316;display:inline-block;"></span> Sin acceso al kiosco`}</span>
+                        ${!t.firebaseUid && opsPuedeGestionar() ? `<button onclick="opsAbrirModalAccesoKiosco('${idInterno}')" style="background:#eef2f7;border:none;color:#1D2E73;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;display:inline-flex;align-items:center;gap:5px;">${ICON.key} Crear acceso</button>` : ""}
                     </div>
                     <div style="font-size:10.5px;color:#94a3b8;">El kiosco de Solicitud de Material (solicitud-material.html) ahora exige inicio de sesión real — sin esta cuenta el técnico no puede pedir material desde ahí.</div>
                 </div>
                 <div style="background:#fff;border-radius:14px;padding:16px 18px;">
                     <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">
-                        <span style="font-size:11.5px;font-weight:700;color:${sincronizado ? "#166534" : "#b45309"};">${sincronizado ? "🟢 Sincronizado con RH" : "🟠 Pendiente de sincronización"}</span>
+                        <span style="font-size:11.5px;font-weight:700;color:${sincronizado ? "#166534" : "#b45309"};display:inline-flex;align-items:center;gap:5px;">${sincronizado ? `<span style="width:7px;height:7px;border-radius:50%;background:#22c55e;display:inline-block;"></span> Sincronizado con RH` : `<span style="width:7px;height:7px;border-radius:50%;background:#f97316;display:inline-block;"></span> Pendiente de sincronización`}</span>
                     </div>
                     <div style="font-size:12.5px;color:#334155;line-height:1.9;">
                         <div><strong>Empleado:</strong> ${opsEsc(t.employeeId || "—")}</div>
@@ -3353,9 +3363,9 @@
             const vehFlotilla = await window.opsFlotillaProvider.obtenerVehiculoActual(idInterno);
             el.innerHTML = `
                 <div style="background:#1D2E73;border-radius:14px;padding:16px 18px;margin-bottom:12px;color:#fff;">
-                    <div style="font-size:10.5px;font-weight:700;opacity:0.85;">🚐 VEHÍCULO EN FLOTILLA (en vivo)</div>
+                    <div style="font-size:10.5px;font-weight:700;opacity:0.85;display:flex;align-items:center;gap:6px;">${ICON.truck} VEHÍCULO EN FLOTILLA (en vivo)</div>
                     ${vehFlotilla ? `<div style="font-size:14px;font-weight:700;margin-top:4px;">${opsEsc(vehFlotilla.unidad)} ${vehFlotilla.marca ? "— " + opsEsc(vehFlotilla.marca) + " " + opsEsc(vehFlotilla.modelo) : ""}</div><div style="font-size:11px;color:#C7CEE0;margin-top:2px;">Estado: ${opsEsc(vehFlotilla.estado)}</div>`
-                        : `<div style="font-size:11.5px;color:#C7CEE0;margin-top:4px;">${t.correo ? "Sin vehículo vinculado en Flotilla para este correo." : "Captura el correo del técnico (⚙ Editar perfil) para hacer match con Flotilla."}</div>`}
+                        : `<div style="font-size:11.5px;color:#C7CEE0;margin-top:4px;">${t.correo ? "Sin vehículo vinculado en Flotilla para este correo." : "Captura el correo del técnico (botón Editar perfil) para hacer match con Flotilla."}</div>`}
                 </div>
                 <div style="background:#fff;border-radius:14px;padding:16px 18px;margin-bottom:12px;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
@@ -3376,7 +3386,7 @@
                 <div style="background:#fff;border-radius:14px;padding:16px 18px;margin-bottom:12px;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                         <div style="font-size:12.5px;font-weight:700;color:#1e293b;">Herramientas asignadas (${asignadas.length})</div>
-                        ${asignadas.length && opsPuedeGestionar() ? `<button onclick="opsAbrirModalRevision('${idInterno}')" style="background:#eef2f7;border:none;color:#1D2E73;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">🔍 Registrar revisión</button>` : ""}
+                        ${asignadas.length && opsPuedeGestionar() ? `<button onclick="opsAbrirModalRevision('${idInterno}')" style="background:#eef2f7;border:none;color:#1D2E73;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;display:inline-flex;align-items:center;gap:5px;">${ICON.search} Registrar revisión</button>` : ""}
                     </div>
                     ${asignadas.length ? asignadas.map(h => `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #eef1f5;font-size:12px;"><span style="color:#059669;">${ICON.check}</span><strong>${opsEsc(h.folio)}</strong> — ${opsEsc(h.descripcion)}</div>`).join("") : '<div style="color:#94a3b8;font-size:12px;">Ninguna.</div>'}
                 </div>
@@ -3396,7 +3406,7 @@
             el.innerHTML = `
                 <div style="background:#fff;border-radius:14px;padding:16px 18px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
                     <div style="font-size:12.5px;font-weight:700;color:#1e293b;">Auditorías de herramienta (${revisiones.length})</div>
-                    ${asignadas.length && opsPuedeGestionar() ? `<button onclick="opsAbrirModalRevision('${idInterno}')" class="mkt-add-btn" style="background:#1D2E73;">🔍 Nueva revisión</button>` : ""}
+                    ${asignadas.length && opsPuedeGestionar() ? `<button onclick="opsAbrirModalRevision('${idInterno}')" class="mkt-add-btn" style="background:#1D2E73;display:inline-flex;align-items:center;gap:6px;">${ICON.search} Nueva revisión</button>` : ""}
                 </div>
                 ${revisiones.length ? revisiones.map(r => {
                     const faltantes = (r.herramientas || []).filter(h => h.estado !== "conforme");
@@ -4300,7 +4310,7 @@
         div.innerHTML = `
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
                 <div style="font-size:11px;font-weight:700;color:${c.fg};text-transform:uppercase;letter-spacing:.4px;">${opsEsc(info.estado)}${info.enAtencion ? " · Seguimiento" : ""}</div>
-                <button onclick="document.getElementById('${idFlot}').remove()" style="background:none;border:none;cursor:pointer;color:#94a3b8;font-size:14px;line-height:1;">✕</button>
+                <button onclick="document.getElementById('${idFlot}').remove()" style="background:none;border:none;cursor:pointer;color:#94a3b8;display:inline-flex;">${ICON.close}</button>
             </div>
             <div style="font-size:13.5px;font-weight:700;color:#1e293b;margin-top:4px;">${opsEsc(f.estacion)}</div>
             <div style="font-size:11.5px;color:#64748b;margin-top:2px;">${f.folioOS ? "O.S. " + opsEsc(f.folioOS) + " · " : ""}${opsEsc(info.diasTexto)}</div>
@@ -4328,8 +4338,8 @@
         div.style.cssText = `background:#fff;border-left:5px solid ${colorHex};border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,0.25);padding:14px 16px;animation:opsFlotIn .25s ease;`;
         div.innerHTML = `
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
-                <div style="font-size:11px;font-weight:700;color:${colorHex};text-transform:uppercase;letter-spacing:.4px;">🔔 Operaciones</div>
-                <button onclick="document.getElementById('${idFlot}').remove()" style="background:none;border:none;cursor:pointer;color:#94a3b8;font-size:14px;line-height:1;">✕</button>
+                <div style="font-size:11px;font-weight:700;color:${colorHex};text-transform:uppercase;letter-spacing:.4px;display:flex;align-items:center;gap:5px;">${ICON.bell} Operaciones</div>
+                <button onclick="document.getElementById('${idFlot}').remove()" style="background:none;border:none;cursor:pointer;color:#94a3b8;display:inline-flex;">${ICON.close}</button>
             </div>
             <div style="font-size:13px;color:#1e293b;margin-top:4px;">${opsEsc(mensaje)}</div>
         `;
@@ -4349,7 +4359,7 @@
                 tipo: "ops_folio_alerta",
                 codigo: f.folioOS || f.estacion,
                 para: paraEmail.toLowerCase(),
-                mensaje: `⚠ Folio ${f.folioOS ? "O.S. " + f.folioOS + " — " : ""}${f.estacion}: ${info.estado}${info.enAtencion ? " (fecha de atención / compromiso)" : ""}. ${info.diasTexto}.`,
+                mensaje: `Folio ${f.folioOS ? "O.S. " + f.folioOS + " — " : ""}${f.estacion}: ${info.estado}${info.enAtencion ? " (fecha de atención / compromiso)" : ""}. ${info.diasTexto}.`,
                 creadaEn: new Date().toISOString(),
             });
         } catch (e) { console.warn("[Folios] No se pudo notificar a Flotilla:", e.message); }
@@ -4404,7 +4414,7 @@
             if (dias >= OPS_DIAS_ALERTA_EVIDENCIA && !opsFoliosEvidenciaAlertados.has(f.id)) {
                 opsFoliosEvidenciaAlertados.add(f.id);
                 if (opsFoliosVigilanciaBase) { // no avalancha al cargar folios viejos por primera vez
-                    opsMostrarFlotanteGenerica(`📋 Folio ${f.folioOS ? "O.S. " + f.folioOS + " — " : ""}${f.estacion}: ${Math.floor(dias)} días sin evidencia. Se sugiere acta administrativa.`, "#E7402B");
+                    opsMostrarFlotanteGenerica(`Folio ${f.folioOS ? "O.S. " + f.folioOS + " — " : ""}${f.estacion}: ${Math.floor(dias)} días sin evidencia. Se sugiere acta administrativa.`, "#E7402B");
                 }
             }
         }
@@ -4459,7 +4469,7 @@
                     ${gestion ? `
                     <div style="display:flex;gap:8px;">
                         <button onclick="opsAbrirModalFolio()" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Nuevo folio</button>
-                        <button onclick="document.getElementById('ops-folios-import-input').click()" class="mkt-add-btn" style="background:#15803D;">📥 Importar Excel</button>
+                        <button onclick="document.getElementById('ops-folios-import-input').click()" class="mkt-add-btn" style="background:#15803D;display:inline-flex;align-items:center;gap:6px;">${ICON.download} Importar Excel</button>
                         <input type="file" id="ops-folios-import-input" accept=".xlsx,.xls" style="display:none" onchange="opsImportarExcelFolios(this.files[0])">
                     </div>` : ""}
                 </div>
@@ -4856,7 +4866,7 @@
         if (!panel) {
             panel = document.createElement("div");
             panel.id = "ops-panel-folio";
-            panel.style.cssText = "position:fixed;top:0;right:0;bottom:0;width:min(440px,92vw);background:#fff;box-shadow:-4px 0 24px rgba(0,0,0,.15);z-index:9000;overflow-y:auto;";
+            panel.style.cssText = "position:fixed;top:0;right:0;bottom:0;width:min(440px,92vw);background:#fff;box-shadow:-4px 0 24px rgba(0,0,0,.15);z-index:99998;overflow-y:auto;";
             document.body.appendChild(panel);
         }
 
@@ -4888,6 +4898,17 @@
                     </div>
                     ${rolesReq !== null && tecnicos.length < rolesReq ? `<div style="margin-top:6px;font-size:10.5px;color:#E7402B;font-weight:600;">Falta personal contra lo que pide la receta.</div>` : ""}
                 </div>
+
+                ${f.estacionCatalogoId ? `
+                <div style="border-top:1px solid #e2e8f0;padding-top:12px;margin-bottom:16px;">
+                    <div style="font-size:11px;font-weight:700;color:#1D2E73;margin-bottom:8px;">Estación (del catálogo)</div>
+                    <div style="font-size:12px;color:#334155;line-height:1.7;">
+                        ${f.estacionEncargado ? `Encargado: ${opsEsc(f.estacionEncargado)}<br>` : ""}
+                        ${f.estacionZona ? `Zona: ${opsEsc(f.estacionZona)}<br>` : ""}
+                        ${f.estacionDireccion ? `Dirección: ${opsEsc(f.estacionDireccion)}<br>` : ""}
+                        ${(f.estacionNumeroTanques || f.estacionNumeroDispensarios || f.estacionNumeroSondas) ? `Equipo: ${[f.estacionNumeroTanques ? f.estacionNumeroTanques + " tanque(s)" : "", f.estacionNumeroDispensarios ? f.estacionNumeroDispensarios + " dispensario(s)" : "", f.estacionNumeroSondas ? f.estacionNumeroSondas + " sonda(s)" : ""].filter(Boolean).join(" · ")}` : ""}
+                    </div>
+                </div>` : ""}
 
                 <div style="border-top:1px solid #e2e8f0;padding-top:12px;margin-bottom:16px;">
                     <div style="font-size:11px;font-weight:700;color:#1D2E73;margin-bottom:8px;">Traslado</div>
@@ -5013,8 +5034,10 @@
                 <div style="display:flex;gap:8px;">
                     <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">O.S. (Orden de Servicio)</label>
                     <input id="ops-fol-os" value="${opsEsc(f?.folioOS || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
-                    <div style="flex:2;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Estación</label>
-                    <input id="ops-fol-estacion" value="${opsEsc(f?.estacion || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
+                    <div style="flex:2;position:relative;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Estación</label>
+                    <input id="ops-fol-estacion" value="${opsEsc(f?.estacion || "")}" placeholder="Escribe o busca en el catálogo…" oninput="window.opsFolioBuscarEstacion(this.value)" onblur="setTimeout(()=>{const b=document.getElementById('ops-fol-estacion-results');if(b)b.style.display='none';},150)" autocomplete="off" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 2px;">
+                    <div id="ops-fol-estacion-results" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #cbd5e1;border-radius:8px;max-height:200px;overflow-y:auto;z-index:20;box-shadow:0 8px 24px rgba(2,20,50,.14);"></div>
+                    <div id="ops-fol-estacion-info" style="font-size:10px;color:#15803D;font-weight:600;min-height:14px;margin-bottom:6px;">${f?.estacionCatalogoId ? `Del catálogo${f.estacionEncargado ? " · Encargado: " + opsEsc(f.estacionEncargado) : ""}${f.estacionZona ? " · Zona " + opsEsc(f.estacionZona) : ""}` : ""}</div></div>
                 </div>
 
                 <label style="font-size:11.5px;color:#64748b;font-weight:600;">Comentarios</label>
@@ -5086,7 +5109,7 @@
 
                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
                     <label style="font-size:11.5px;color:#64748b;font-weight:600;">Técnicos asignados (equipo del servicio)</label>
-                    <button type="button" onclick="window.opsFolioSugerirTecnicos('${id || ""}', true)" style="background:#eef2f7;border:none;color:#1D2E73;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:10.5px;font-weight:600;">✨ Sugerir</button>
+                    <button type="button" onclick="window.opsFolioSugerirTecnicos('${id || ""}', true)" style="background:#eef2f7;border:none;color:#1D2E73;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:10.5px;font-weight:600;display:inline-flex;align-items:center;gap:5px;">${ICON.sparkle} Sugerir</button>
                 </div>
                 <div id="ops-fol-sugerencia-nota" style="font-size:10px;color:#94a3b8;margin-bottom:6px;"></div>
                 <div id="ops-fol-tecnicos-check" style="max-height:140px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;margin-bottom:14px;">
@@ -5135,6 +5158,11 @@
             </div>
         </div>`;
         window.opsFolioActualizarVencimientoPreview();
+        window.__opsFolioEstMeta = f?.estacionCatalogoId ? {
+            catalogoId: f.estacionCatalogoId, encargado: f.estacionEncargado || null, zona: f.estacionZona || null,
+            numeroTanques: f.estacionNumeroTanques || null, numeroDispensarios: f.estacionNumeroDispensarios || null,
+            numeroSondas: f.estacionNumeroSondas || null, direccion: f.estacionDireccion || null,
+        } : null;
     };
 
     // ── Sugerencia de técnicos: cruza rol requerido por la receta del servicio
@@ -5172,6 +5200,46 @@
         }
     };
 
+    // ── Buscador en vivo del catálogo de estaciones (reutiliza el mismo catálogo
+    // que ya carga Almacén — window.tcCargarCatalogoEstaciones, colección
+    // estaciones_servicio) para autocompletar encargado/zona/equipo al crear un folio. ──
+    window.opsFolioBuscarEstacion = function (valor) {
+        window.__opsFolioEstMeta = null; // cualquier tecleo posterior invalida la selección previa
+        const info = document.getElementById("ops-fol-estacion-info");
+        if (info) info.innerHTML = "";
+        const box = document.getElementById("ops-fol-estacion-results");
+        if (!box) return;
+        if (!valor || valor.trim().length < 2 || !window.tcCargarCatalogoEstaciones) { box.style.display = "none"; return; }
+        window.tcCargarCatalogoEstaciones().then(lista => {
+            const q = valor.toLowerCase();
+            const filtradas = (lista || []).filter(e => [e.razonSocial, e.nombreComercial, e.municipio, e.permiso, e.zona].filter(Boolean).join(" ").toLowerCase().includes(q)).slice(0, 8);
+            window.__opsFolioEstListaTmp = filtradas;
+            if (!filtradas.length) { box.innerHTML = '<div style="padding:9px 11px;color:#94a3b8;font-size:11.5px;">Sin resultados en el catálogo — puedes dejarlo como texto libre.</div>'; box.style.display = "block"; return; }
+            box.innerHTML = filtradas.map(e => `
+                <div onmousedown="window.opsFolioSeleccionarEstacion('${e.id}')" style="padding:8px 10px;cursor:pointer;border-bottom:1px solid #eef2f7;">
+                    <div style="font-size:12px;font-weight:700;color:#0f172a;">${opsEsc(e.nombreComercial || e.razonSocial)}</div>
+                    <div style="font-size:10.5px;color:#64748b;">${opsEsc(e.municipio || "")}${e.encargado ? " · " + opsEsc(e.encargado) : ""}${e.zona ? " · Zona " + opsEsc(e.zona) : ""}</div>
+                </div>`).join("");
+            box.style.display = "block";
+        });
+    };
+
+    window.opsFolioSeleccionarEstacion = function (catalogoId) {
+        const e = (window.__opsFolioEstListaTmp || []).find(x => x.id === catalogoId);
+        if (!e) return;
+        const input = document.getElementById("ops-fol-estacion");
+        if (input) input.value = e.nombreComercial || e.razonSocial || "";
+        window.__opsFolioEstMeta = {
+            catalogoId: e.id, encargado: e.encargado || null, zona: e.zona || null,
+            numeroTanques: e.numeroTanques || null, numeroDispensarios: e.numeroDispensarios || null,
+            numeroSondas: e.numeroSondas || null, direccion: e.direccionNormalizada || null,
+        };
+        const info = document.getElementById("ops-fol-estacion-info");
+        if (info) info.innerHTML = `Del catálogo${e.encargado ? " · Encargado: " + opsEsc(e.encargado) : ""}${e.zona ? " · Zona " + opsEsc(e.zona) : ""}${e.numeroTanques ? " · " + e.numeroTanques + " tanque(s)" : ""}`;
+        const box = document.getElementById("ops-fol-estacion-results");
+        if (box) box.style.display = "none";
+    };
+
     window.opsGuardarFolio = async function (id) {
         const estacion = document.getElementById("ops-fol-estacion").value.trim();
         if (!estacion) { alert("La estación es obligatoria"); return; }
@@ -5197,6 +5265,13 @@
         const datos = {
             folioOS: document.getElementById("ops-fol-os").value.trim(),
             estacion,
+            estacionCatalogoId: window.__opsFolioEstMeta?.catalogoId || null,
+            estacionEncargado: window.__opsFolioEstMeta?.encargado || null,
+            estacionZona: window.__opsFolioEstMeta?.zona || null,
+            estacionNumeroTanques: window.__opsFolioEstMeta?.numeroTanques || null,
+            estacionNumeroDispensarios: window.__opsFolioEstMeta?.numeroDispensarios || null,
+            estacionNumeroSondas: window.__opsFolioEstMeta?.numeroSondas || null,
+            estacionDireccion: window.__opsFolioEstMeta?.direccion || null,
             comentarios: document.getElementById("ops-fol-comentarios").value.trim(),
             clienteId, clienteNombre, prioridad,
             fechaSolicitud, vencimiento,
@@ -5257,7 +5332,7 @@
     async function opsNotificarFolioLaboratorio(f) {
         try {
             const { db, fs } = await opsGetFB();
-            const mensaje = `🧪 Nuevo folio de Laboratorio: ${f.folioOS ? "O.S. " + f.folioOS + " — " : ""}${f.estacion}${f.clienteNombre ? " (" + f.clienteNombre + ")" : ""}.`;
+            const mensaje = `Nuevo folio de Laboratorio: ${f.folioOS ? "O.S. " + f.folioOS + " — " : ""}${f.estacion}${f.clienteNombre ? " (" + f.clienteNombre + ")" : ""}.`;
             for (const correo of OPS_NOTIF_LABORATORIO) {
                 await fs.addDoc(fs.collection(db, COL_NOTIFICACIONES), {
                     tipo: "ops_folio_laboratorio", para: correo, mensaje, folioId: f.id,
@@ -5333,8 +5408,8 @@
                     <span style="font-size:11.5px;font-weight:700;color:#1e293b;">${opsEsc(c.autor || "—")}</span>
                     <span style="font-size:10px;color:#94a3b8;white-space:nowrap;">${ts ? ts.toLocaleString("es-MX") : "—"}</span>
                 </div>
-                ${esPosteriorCompromiso ? `<div style="font-size:9.5px;font-weight:700;color:#E7402B;text-transform:uppercase;letter-spacing:.3px;margin:2px 0;">⚠ Posterior a la fecha de atención comprometida</div>` : ""}
-                ${c.tipo === "captura" ? `<div style="font-size:9.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;margin:2px 0;">📋 Captura inicial</div>` : ""}
+                ${esPosteriorCompromiso ? `<div style="font-size:9.5px;font-weight:700;color:#E7402B;text-transform:uppercase;letter-spacing:.3px;margin:2px 0;display:flex;align-items:center;gap:4px;">${ICON.alert} Posterior a la fecha de atención comprometida</div>` : ""}
+                ${c.tipo === "captura" ? `<div style="font-size:9.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;margin:2px 0;display:flex;align-items:center;gap:4px;">${ICON.file} Captura inicial</div>` : ""}
                 <div style="font-size:12.5px;color:#334155;margin-top:2px;">${opsEsc(c.texto)}</div>
             </div>`;
         }).join("") : '<div style="color:#94a3b8;font-size:12px;">Sin comentarios todavía.</div>';
@@ -5717,8 +5792,8 @@
             <td style="padding:7px 10px;text-align:right;white-space:nowrap;" onclick="event.stopPropagation()">
                 ${s.eliminada
                     ? (puedeEliminar ? `<button onclick="opsRestaurarSolicitud('${s.id}')" style="background:#dcfce715;border:1px solid #bbf7d0;color:#166534;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:10.5px;font-weight:600;">Restaurar</button>` : "")
-                    : `<button onclick="opsImprimirSolicitud('${s.id}')" title="Imprimir PDF" style="background:#f1f5f9;border:none;color:#334155;width:26px;height:26px;border-radius:7px;cursor:pointer;margin-right:4px;">🖨️</button>
-                       <button onclick="opsWhatsAppSolicitud('${s.id}')" title="Enviar por WhatsApp" style="background:#f0fdf4;border:none;color:#16a34a;width:26px;height:26px;border-radius:7px;cursor:pointer;margin-right:4px;">💬</button>
+                    : `<button onclick="opsImprimirSolicitud('${s.id}')" title="Imprimir PDF" style="background:#f1f5f9;border:none;color:#334155;width:26px;height:26px;border-radius:7px;cursor:pointer;margin-right:4px;display:inline-flex;align-items:center;justify-content:center;">${ICON.printer}</button>
+                       <button onclick="opsWhatsAppSolicitud('${s.id}')" title="Enviar por WhatsApp" style="background:#f0fdf4;border:none;color:#16a34a;width:26px;height:26px;border-radius:7px;cursor:pointer;margin-right:4px;display:inline-flex;align-items:center;justify-content:center;">${ICON.chat}</button>
                        ${puedeEliminar ? `<button onclick="opsEnviarPapeleraSolicitud('${s.id}')" title="Enviar a papelera" style="background:#fef2f2;border:none;color:#E7402B;width:26px;height:26px;border-radius:7px;cursor:pointer;">${ICON.trash}</button>` : ""}`}
             </td>
         </tr>`;
@@ -5807,8 +5882,8 @@
                         : '<div style="color:#94a3b8;font-size:12px;">Sin artículos capturados.</div>'}
                 </div>
                 <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;">
-                    <button onclick="opsImprimirSolicitud('${s.id}')" style="background:#f1f5f9;border:none;color:#334155;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">🖨️ Imprimir PDF</button>
-                    <button onclick="opsWhatsAppSolicitud('${s.id}')" style="background:#f0fdf4;border:none;color:#16a34a;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">💬 Enviar por WhatsApp</button>
+                    <button onclick="opsImprimirSolicitud('${s.id}')" style="background:#f1f5f9;border:none;color:#334155;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;display:inline-flex;align-items:center;gap:6px;">${ICON.printer} Imprimir PDF</button>
+                    <button onclick="opsWhatsAppSolicitud('${s.id}')" style="background:#f0fdf4;border:none;color:#16a34a;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;display:inline-flex;align-items:center;gap:6px;">${ICON.chat} Enviar por WhatsApp</button>
                 </div>
                 <div style="margin-top:20px;font-size:12.5px;font-weight:700;color:#1e293b;display:flex;align-items:center;gap:6px;">${ICON.clock} Línea de tiempo</div>
                 <div style="margin-top:10px;border-left:2px solid #e2e8f0;padding-left:14px;">
@@ -5892,8 +5967,8 @@
 
         el.innerHTML = `
             <div style="background:#fff;border-radius:12px;padding:14px 16px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-                <div style="font-size:11.5px;color:#64748b;max-width:520px;">🔔 Prueba el sistema de alertas: genera una notificación real que suena (~10s) y aparece como ventana flotante en <b>todas</b> las sesiones de Operaciones abiertas ahora mismo.</div>
-                <button onclick="opsProbarAlerta()" style="background:#6d28d9;border:none;color:#fff;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700;white-space:nowrap;">🔔 Probar alerta</button>
+                <div style="font-size:11.5px;color:#64748b;max-width:520px;display:flex;align-items:center;gap:6px;">${ICON.bell} Prueba el sistema de alertas: genera una notificación real que suena (~10s) y aparece como ventana flotante en <b>todas</b> las sesiones de Operaciones abiertas ahora mismo.</div>
+                <button onclick="opsProbarAlerta()" style="background:#6d28d9;border:none;color:#fff;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;">${ICON.bell} Probar alerta</button>
             </div>`
             + bloque("Críticas", "#E7402B", "#fee2e2", criticas)
             + bloque("Pendientes", "#b45309", "#fef3c7", pendientes)
@@ -6116,6 +6191,105 @@
         }
     };
 
+    // ════════════ Contactos de terceros / material — Excel SERVICIOS_SISTEMA.xls ════════════
+    // (Glen, sep-2026). Completa recetas ya existentes (Integridad Mecánica, Retank) sin
+    // tocar su personal/herramienta/vehículos, y da de alta 10 servicios de laboratorio/
+    // calibración que no existían. Las claves SERCIV/SERVEX/GST/SERV/PCRE/IMPSGM venían casi
+    // vacías en el Excel (solo nombre, sin contacto ni material) — se dejaron fuera a propósito,
+    // pendiente confirmar con Glen si son solo códigos de facturación o necesitan receta propia.
+    function _datosTercerosServicios() {
+        return [
+            // ── Ya existen como receta (Paloma) — solo se completa contacto/material ──
+            { recetaExistente: "Integridad Mecánica", claveServicio: "INTEGRIDAD", interaccionTercero: true,
+              terceroEmpresa: "Temesa", terceroContacto: "Mariana Barba", terceroTelefono: "614 196 3913",
+              terceroParaQue: "Recolección y manifiesto de residuos peligrosos",
+              materialExternoNota: "Pendiente definir con Sergio" },
+            { recetaExistente: "Retank", clavesVariantes: ["RETANK-S-50,000", "RETANK-S-60,000", "RETANK-S-70,000", "RETANK-S-80,000", "RETANK-S-90,000", "RETANK-S-100,000", "RETANK-D-50,000", "RETANK-D-60,000", "RETANK-D-70,000", "RETANK-D-80,000", "RETANK-D-90,000", "RETANK-D-100,000"],
+              interaccionTercero: true, terceroEmpresa: "Temesa", terceroContacto: "Mariana Barba", terceroTelefono: "614 196 3913",
+              terceroParaQue: "Recolección y manifiesto de residuos peligrosos",
+              materialExternoNota: "Pendiente definir con Sergio. Variantes por tamaño de tanque: pared sencilla y doble pared, de 50,000 a 100,000 (ver clavesVariantes)." },
+
+            // ── Servicios nuevos (no existían en el catálogo) ──
+            { nombre: "Prueba de Hermeticidad en Línea y Tanque", claveServicio: "PH",
+              interaccionTercero: true, terceroEmpresa: "Laboratorio Roberto Alba Peña", terceroContacto: "Viridiana Tapia", terceroTelefono: "6121614561",
+              terceroParaQue: "Aportación de información en sistema", materialExternoNota: "Equipo completo de PH" },
+            { nombre: "Cubicación de Tanque Sonda y Termistor P", claveServicio: "CUBICA",
+              interaccionOtroDepto: true, otroDeptoNombre: "Gestoria", otroDeptoContacto: "Alan Estrada", otroDeptoTelefono: "6275174038",
+              interaccionTercero: true, terceroEmpresa: "Laboratorio Aprotec", terceroContacto: "Dallany Chavez", terceroTelefono: "55 8425 7747",
+              terceroParaQue: "Firma y entrega de certificado", materialExternoNota: "Medidor coriolis, mangueras c/ conexiones, cinta plomada, TP-7, pasta de gasolina" },
+            { nombre: "Cubicación de Tanque Sonda y Termistor P (Láser)", claveServicio: "CUBICA LASER",
+              interaccionOtroDepto: true, otroDeptoNombre: "Gestoria", otroDeptoContacto: "Alan Estrada", otroDeptoTelefono: "6275174038",
+              interaccionTercero: true, terceroEmpresa: "Laboratorio Aprotec", terceroContacto: "Dallany Chavez", terceroTelefono: "55 8425 7747",
+              terceroParaQue: "Firma y entrega de certificado", materialExternoNota: "Calibex, cinta plomada, TP-7, pasta de gasolina",
+              observaciones: "Descargar las tablas Excel y mandar a Alan" },
+            { nombre: "Informe de Resultado de Petrolíferos", claveServicio: "INFLAB",
+              interaccionOtroDepto: true, otroDeptoNombre: "Gestoria", otroDeptoContacto: "Denisse Gtz", otroDeptoTelefono: "6566422576",
+              interaccionTercero: true, terceroEmpresa: "Laboratorio Mexcom", terceroContacto: "Carlos García", terceroTelefono: "664 387 3587",
+              terceroParaQue: "Entrega de certificado original" },
+            { nombre: "Calibración de Cinta Petrolera", claveServicio: "CALCP",
+              interaccionOtroDepto: true, otroDeptoNombre: "Gestoria", otroDeptoContacto: "Denisse Gtz", otroDeptoTelefono: "6566422576",
+              interaccionTercero: true, terceroEmpresa: "Laboratorio Aprotec", terceroContacto: "Dallany Chavez", terceroTelefono: "55 8425 7747",
+              terceroParaQue: "Firma y entrega de certificado" },
+            { nombre: "Calibración Termómetro TP7", claveServicio: "CALTP7",
+              interaccionOtroDepto: true, otroDeptoNombre: "Gestoria", otroDeptoContacto: "Denisse Gtz", otroDeptoTelefono: "6566422576",
+              interaccionTercero: true, terceroEmpresa: "Laboratorio Aprotec", terceroContacto: "Dallany Chavez", terceroTelefono: "55 8425 7747",
+              terceroParaQue: "Firma y entrega de certificado" },
+            { nombre: "Calibración de Medidor de Alto Flujo", claveServicio: "CALMEDAF",
+              interaccionOtroDepto: true, otroDeptoNombre: "Gestoria", otroDeptoContacto: "Alan Estrada", otroDeptoTelefono: "6275174038",
+              interaccionTercero: true, terceroEmpresa: "Laboratorio Aprotec", terceroContacto: "Dallany Chavez", terceroTelefono: "55 8425 7747",
+              terceroParaQue: "Firma y entrega de certificado" },
+            { nombre: "Limpieza de Tanque (Ingreso de Personal)", claveServicio: "LIMPIEZATANQUE",
+              interaccionTercero: true, terceroEmpresa: "Temesa", terceroContacto: "Mariana Barba", terceroTelefono: "614 196 3913",
+              terceroParaQue: "Recolección y manifiesto de residuos peligrosos", materialExternoNota: "Pendiente definir con Ulises o Sergio" },
+            { nombre: "Calibración de Medida Volumétrica", claveServicio: "CALMV",
+              interaccionTercero: true, terceroEmpresa: "Error Permitido", terceroContacto: "David Ontiveros", terceroTelefono: "55 2965 1500",
+              terceroParaQue: "Recolección y manifiesto de residuos peligrosos", materialExternoNota: "Equipo Calibración de jarra" },
+            { nombre: "Calibración de Sonda y Termistor", claveServicio: "CALST",
+              interaccionOtroDepto: true, otroDeptoNombre: "Gestoria", otroDeptoContacto: "Alan Estrada", otroDeptoTelefono: "6275174038",
+              interaccionTercero: true, terceroEmpresa: "Laboratorio Aprotec", terceroContacto: "Dallany Chavez", terceroTelefono: "55 8425 7747",
+              terceroParaQue: "Firma y entrega de certificado", materialExternoNota: "Cinta plomada, TP-7, pasta de gasolina" },
+        ];
+    }
+
+    window.opsImportarDatosTercerosServicios = async function () {
+        const datos = _datosTercerosServicios();
+        const nuevas = datos.filter(d => !d.recetaExistente).length;
+        const completadas = datos.filter(d => d.recetaExistente).length;
+        if (!confirm(`Esto completa ${completadas} receta(s) que ya existen con su contacto/material, y da de alta ${nuevas} servicio(s) nuevos de laboratorio/calibración. ¿Continuar?`)) return;
+        try {
+            const { db, fs } = await opsGetFB();
+            let ok = 0;
+            for (const d of datos) {
+                let id;
+                if (d.recetaExistente) {
+                    id = d.recetaExistente.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+                    const { recetaExistente, ...campos } = d;
+                    await fs.setDoc(fs.doc(db, COL_SERVICIOS_CATALOGO, id), campos, { merge: true }); // merge:true — NO toca personal/herramienta/vehículos ya cargados
+                } else {
+                    id = d.nombre.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+                    const yaExiste = cacheServiciosCatalogo.some(s => s.id === id);
+                    const base = yaExiste ? {} : {
+                        categoria: "Laboratorio y calibraciones", tipoServicio: "externo", activo: true,
+                        requiereObraCivil: false, requiereVehiculo: true, requiereRemolque: false,
+                        personal: [{ rol: "tecnico", cantidad: 1 }],
+                        materiales: [], herramientaRequerida: [], equipoSeguridad: [],
+                        vehiculos: { sugerido: { nombre: "", razon: "" }, alternos: [] },
+                        notaImportacion: "Personal/herramienta puesto por defecto (1 técnico) — no venía en el Excel de contactos, revisar y ajustar.",
+                    };
+                    await fs.setDoc(fs.doc(db, COL_SERVICIOS_CATALOGO, id), {
+                        ...base, ...d, fechaAlta: opsHoy(), creadoPor: opsNombreActual(),
+                        origenImportacion: "Excel SERVICIOS_SISTEMA.xls (Glen, sep-2026)",
+                    }, { merge: true });
+                }
+                ok++;
+            }
+            alert(`Listo — ${ok} servicio(s) actualizados/creados con su contacto de terceros y material.`);
+        } catch (err) {
+            console.error("[operaciones.js] error al importar contactos de terceros:", err);
+            alert("No se pudo importar: " + err.message);
+        }
+    };
+
     function opsRenderCatalogoRecetas() {
         const el = document.getElementById("ops-catalogo-recetas-contenido");
         if (!el) return;
@@ -6126,7 +6300,7 @@
                     <div style="font-size:12.5px;font-weight:700;color:#1e293b;">Catálogo de servicios (recetas)</div>
                     <div style="font-size:11px;color:#94a3b8;">Fase 1 — modelo de datos y recetas. El cálculo automático por cantidad, el calendario y la disponibilidad son las siguientes fases.</div>
                 </div>
-                ${gestion ? `<div style="display:flex;gap:8px;"><button onclick="opsAbrirModalNuevoServicio()" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Nuevo servicio</button><button onclick="opsImportarRecetasReales()" class="mkt-add-btn" style="background:#15803D;">${ICON.file} Importar recetas reales (9 servicios)</button></div>` : ""}
+                ${gestion ? `<div style="display:flex;gap:8px;"><button onclick="opsAbrirModalNuevoServicio()" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Nuevo servicio</button><button onclick="opsImportarRecetasReales()" class="mkt-add-btn" style="background:#15803D;">${ICON.file} Importar recetas reales (9 servicios)</button><button onclick="opsImportarDatosTercerosServicios()" class="mkt-add-btn" style="background:#7c3aed;">${ICON.file} Importar contactos/material (Excel)</button></div>` : ""}
             </div>
             ${Object.keys(cacheTarifasPersonal).length ? `
             <div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:13px 16px;margin-bottom:16px;">
