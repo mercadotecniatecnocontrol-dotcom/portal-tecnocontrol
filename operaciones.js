@@ -41,6 +41,7 @@
     const COL_AUDITORIA    = "ops_auditoria";     // bitácora: quién, qué, cuándo, valor anterior/nuevo
     const COL_NOTIFICACIONES = "ops_notificaciones"; // ej. "solicitud lista para surtir"
     const COL_GUARDIAS = "ops_guardias"; // herramienta de guardia: distinta de la asignación permanente
+    const COL_GUARDIAS_PROGRAMADAS = "ops_guardias_programadas"; // calendario de ROTACIÓN de guardia (quién está de guardia cada semana), distinto de la herramienta de guardia de arriba
     const COL_VEHICULOS_ASIG = "ops_vehiculo_asignaciones"; // historial real de vehículo por técnico (dato propio de Operaciones, no inventa GPS de Flotilla)
     const COL_FOLIOS = "ops_folios"; // Folios de servicio (Connecteam) con seguimiento de vencimiento/atención/solución
     // Campos planeados para Fase A/B del Calendario (sep-2026) — todavía NO se leen
@@ -64,6 +65,7 @@
     // (no solo el propio) — lista editable, a petición explícita de Glen (sep-2026):
     // administrativos de Operaciones + administrativos de la plataforma juntos.
     const COL_CONFIG_REVISION = "ops_config_revision";
+    const COL_CONFIG_ALERTAS = "ops_config_alertas"; // doc "general": cuántos días de anticipación quiere Glen para cada tipo de aviso — editable desde la pestaña Alertas
     // Catálogo de servicios / Planeación Operativa (sep-2026): recetas parametrizadas
     // por tipo de servicio (materiales, personal por rol, vehículos, herramienta,
     // seguridad, costo). Fase 1 — modelo de datos + import real del Excel de Paloma;
@@ -802,12 +804,20 @@
     ];
 
     let opsFB = null;
-    let unsubHerr = null, unsubTec = null, unsubMov = null, unsubSurt = null, unsubSurtPoll = null, unsubFolios = null, unsubNotif = null, unsubTraspasos = null, unsubConfigCalibracion = null, unsubServiciosCatalogo = null, unsubTarifasPersonal = null, unsubAusencias = null, unsubAlmacenes = null, unsubConfigRevision = null, unsubRevisiones = null;
+    let unsubHerr = null, unsubTec = null, unsubMov = null, unsubSurt = null, unsubSurtPoll = null, unsubFolios = null, unsubNotif = null, unsubTraspasos = null, unsubConfigCalibracion = null, unsubServiciosCatalogo = null, unsubTarifasPersonal = null, unsubAusencias = null, unsubAlmacenes = null, unsubConfigRevision = null, unsubRevisiones = null, unsubConfigAlertas = null;
     let cacheHerr = [], cacheTec = [], cacheMov = [], cacheSurtidos = [], cacheFolios = [];
     let cacheServiciosCatalogo = [], cacheTarifasPersonal = {};
     let cacheAusencias = [];
     let cacheAlmacenes = []; // TODOS los almacenes (general/técnico/ubicación) — para las ubicaciones físicas tipo "Banco de trabajo Saltillo"
     let cacheRevisoresHerramienta = []; // [{email,nombre}] — quién puede revisar CUALQUIER almacén desde Flotilla móvil
+    // Días de anticipación por tipo de aviso — editable desde la pestaña Alertas (ops_config_alertas/general).
+    const CONFIG_ALERTAS_DEFAULT = {
+        anticipacionGuardiaDias: 3,      // avisar que a alguien le toca guardia en N días
+        anticipacionAusenciaDias: 5,     // avisar que un técnico se ausenta en N días (para repartir su carga a tiempo)
+        anticipacionFolioDias: 2,        // avisar que un folio se acerca a su fecha de atención comprometida
+        anticipacionRevisionHerrDias: 30, // avisar que una herramienta lleva N días sin revisión física
+    };
+    let cacheConfigAlertas = { ...CONFIG_ALERTAS_DEFAULT };
     let cacheRevisionesHerr = []; // últimas revisiones/checklists de herramienta, de cualquier origen (Portal o Flotilla)
     let cacheTraspasosPend = []; // ops_herramienta_traspasos con estatus "Pendiente recepción" — bloquea la pieza hasta que el receptor acepte/rechace/venza
     let cacheAutorizadoresCalibracion = []; // [{email,nombre}] — quién puede aprobar mover equipo con requiereAutorizacion=true
@@ -921,6 +931,7 @@
     let cacheHistPuesto = [];
     let cacheAlmacenTec = [];
     let cacheGuardias = [];
+    let cacheGuardiasProgramadas = []; // calendario de rotación (quién está de guardia cada semana)
     let cacheVehiculosAsig = [];
     let cacheClientes = [];
     let fichaTecTabActual = "resumen";
@@ -1654,6 +1665,12 @@
                 if (tabActual === "dashboard") opsRenderDashboard();
             }, () => { cacheRevisoresHerramienta = []; });
         }
+        if (!unsubConfigAlertas) {
+            unsubConfigAlertas = fs.onSnapshot(fs.doc(db, COL_CONFIG_ALERTAS, "general"), snap => {
+                cacheConfigAlertas = snap.exists() ? { ...CONFIG_ALERTAS_DEFAULT, ...snap.data() } : { ...CONFIG_ALERTAS_DEFAULT };
+                if (tabActual === "alertas") opsRenderAlertas();
+            }, () => { cacheConfigAlertas = { ...CONFIG_ALERTAS_DEFAULT }; });
+        }
         if (!unsubRevisiones) {
             unsubRevisiones = fs.onSnapshot(fs.query(fs.collection(db, COL_REVISIONES), fs.orderBy("fecha", "desc"), fs.limit(150)), snap => {
                 cacheRevisionesHerr = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -1694,6 +1711,8 @@
         cacheAlmacenTec = snapAlmTec.docs.map(d => ({ id: d.id, ...d.data() }));
         const snapGuardias = await fs.getDocs(fs.collection(db, COL_GUARDIAS));
         cacheGuardias = snapGuardias.docs.map(d => ({ id: d.id, ...d.data() }));
+        const snapGuardiasProg = await fs.getDocs(fs.collection(db, COL_GUARDIAS_PROGRAMADAS));
+        cacheGuardiasProgramadas = snapGuardiasProg.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.semanaInicio < b.semanaInicio ? -1 : 1);
         const snapVeh = await fs.getDocs(fs.collection(db, COL_VEHICULOS_ASIG));
         cacheVehiculosAsig = snapVeh.docs.map(d => ({ id: d.id, ...d.data() }));
         const snapClientes = await fs.getDocs(fs.collection(db, COL_CLIENTES));
@@ -2264,6 +2283,7 @@
 
                 ${gestion && h.estado !== "baja" ? `
                 <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;">
+                    <button onclick="opsAbrirModalPieza('${id}')" class="mkt-add-btn" style="background:#475569;">${ICON.pencil} Editar datos</button>
                     <button onclick="opsAbrirModalMovimiento('${id}')" class="mkt-add-btn" style="background:#1D2E73;">${opsTraspasoPendientePara(id) ? `${ICON.lock} Ver traspaso pendiente` : "Registrar movimiento"}</button>
                     ${h.estado === "asignada" ? `<button onclick="opsGenerarResponsivaPDF('${id}')" class="mkt-add-btn" style="background:#334155;">Regenerar responsiva PDF</button>` : ""}
                     <button onclick="opsAbrirModalBaja('${id}')" class="mkt-add-btn" style="background:#E7402B;">${ICON.trash} Dar de baja</button>
@@ -2320,55 +2340,63 @@
     // solo mientras el modal está abierto (igual que opsRevisionFotos).
     let opsRequisicionSeleccionada = null;
 
-    window.opsAbrirModalPieza = function () {
+    window.opsAbrirModalPieza = function (id) {
+        const h = id ? cacheHerr.find(x => x.id === id) : null;
         opsRequisicionSeleccionada = null;
         const tecnicosActivos = cacheTec.filter(t => t.estatus === "activo");
         const wrap = document.getElementById("ops-modal-wrap");
         wrap.innerHTML = `
         <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;">
             <div style="background:#fff;border-radius:14px;width:400px;max-width:92vw;max-height:90vh;overflow-y:auto;padding:22px;">
-                <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:14px;">Nueva pieza de herramienta</div>
+                <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:14px;">${h ? "Editar pieza de herramienta" : "Nueva pieza de herramienta"}</div>
                 <label style="font-size:11.5px;color:#64748b;font-weight:600;">Descripción</label>
-                <input id="ops-in-desc" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                <input id="ops-in-desc" value="${opsEsc(h?.descripcion || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
                 <div style="display:flex;gap:8px;">
                     <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Marca</label>
-                    <input id="ops-in-marca" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
+                    <input id="ops-in-marca" value="${opsEsc(h?.marca || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
                     <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Modelo</label>
-                    <input id="ops-in-modelo" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
+                    <input id="ops-in-modelo" value="${opsEsc(h?.modelo || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
                 </div>
                 <label style="font-size:11.5px;color:#64748b;font-weight:600;">Categoría</label>
-                <input id="ops-in-cat" placeholder="Ej. Herramienta eléctrica" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                <input id="ops-in-cat" value="${opsEsc(h?.categoria || "")}" placeholder="Ej. Herramienta eléctrica" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
                 <label style="font-size:11.5px;color:#64748b;font-weight:600;">N.° de serie (opcional)</label>
-                <input id="ops-in-serie" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                <input id="ops-in-serie" value="${opsEsc(h?.numeroSerie || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
 
                 <div style="display:flex;gap:8px;">
                     <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Departamento</label>
                     <select id="ops-in-depto" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
                         <option value="">— Selecciona —</option>
-                        ${DEPARTAMENTOS_HERRAMIENTA.map(d => `<option value="${opsEsc(d)}">${opsEsc(d)}</option>`).join("")}
+                        ${DEPARTAMENTOS_HERRAMIENTA.map(d => `<option value="${opsEsc(d)}" ${h?.departamento === d ? "selected" : ""}>${opsEsc(d)}</option>`).join("")}
                     </select></div>
                     <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Condición</label>
                     <select id="ops-in-cond" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
-                        ${Object.keys(CONDICIONES_HERRAMIENTA).map(k => `<option value="${k}">${CONDICIONES_HERRAMIENTA[k].label}</option>`).join("")}
+                        ${Object.keys(CONDICIONES_HERRAMIENTA).map(k => `<option value="${k}" ${h?.condicion === k ? "selected" : ""}>${CONDICIONES_HERRAMIENTA[k].label}</option>`).join("")}
                     </select></div>
                 </div>
 
                 <label style="font-size:11.5px;color:#64748b;font-weight:600;">Uso / para qué sirve (opcional)</label>
-                <input id="ops-in-uso" placeholder="Ej. Apriete de tuercas hidráulicas" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                <input id="ops-in-uso" value="${opsEsc(h?.uso || "")}" placeholder="Ej. Apriete de tuercas hidráulicas" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
 
                 <div style="display:flex;gap:8px;">
                     <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Peso (opcional)</label>
                         <div style="display:flex;gap:6px;">
-                            <input id="ops-in-peso" type="number" step="0.01" min="0" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                            <input id="ops-in-peso" type="number" step="0.01" min="0" value="${h?.peso ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
                             <select id="ops-in-peso-unidad" style="border:1px solid #cbd5e1;border-radius:8px;padding:8px 6px;font-size:13px;margin:4px 0 10px;">
-                                ${UNIDADES_PESO.map(u => `<option value="${u}">${u}</option>`).join("")}
+                                ${UNIDADES_PESO.map(u => `<option value="${u}" ${h?.pesoUnidad === u ? "selected" : ""}>${u}</option>`).join("")}
                             </select>
                         </div>
                     </div>
                     <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Medida (opcional)</label>
-                    <input id="ops-in-medida" placeholder="Ej. 45 x 12 x 8 cm" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
+                    <input id="ops-in-medida" value="${opsEsc(h?.medida || "")}" placeholder="Ej. 45 x 12 x 8 cm" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
                 </div>
 
+                ${h ? `
+                <label style="display:flex;align-items:center;gap:7px;margin-top:4px;font-size:12px;color:#334155;cursor:pointer;">
+                    <input type="checkbox" id="ops-in-requiere-autorizacion" ${h.requiereAutorizacion ? "checked" : ""} style="width:15px;height:15px;">
+                    Requiere autorización previa para asignarse/traspasarse (ej. equipo de calibración)
+                </label>
+                <div style="font-size:10.5px;color:#94a3b8;margin-top:10px;">Para reasignar a otro técnico o cambiar su ubicación, usa "Registrar movimiento" en la ficha — aquí solo se editan los datos de la pieza.</div>
+                ` : `
                 <div style="border-top:1px dashed #e2e8f0;margin:12px 0 10px;padding-top:10px;">
                     <label style="font-size:11.5px;color:#64748b;font-weight:600;">Requisición de compra de origen (opcional)</label>
                     <div style="display:flex;gap:6px;margin:4px 0 4px;">
@@ -2387,11 +2415,11 @@
                         <input type="checkbox" id="ops-in-requiere-autorizacion" style="width:15px;height:15px;">
                         Requiere autorización previa para asignarse/traspasarse (ej. equipo de calibración)
                     </label>
-                </div>
+                </div>`}
 
                 <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px;">
                     <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
-                    <button id="ops-pieza-btn-guardar" onclick="opsGuardarPieza()" class="mkt-add-btn" style="background:#1D2E73;">Generar folio y guardar</button>
+                    <button id="ops-pieza-btn-guardar" onclick="opsGuardarPieza('${id || ""}')" class="mkt-add-btn" style="background:#1D2E73;">${h ? "Guardar cambios" : "Generar folio y guardar"}</button>
                 </div>
             </div>
         </div>`;
@@ -2423,7 +2451,7 @@
         }
     };
 
-    window.opsGuardarPieza = async function () {
+    window.opsGuardarPieza = async function (id) {
         const descripcion = document.getElementById("ops-in-desc").value.trim();
         if (!descripcion) { alert("La descripción es obligatoria"); return; }
         const btnGuardar = document.getElementById("ops-pieza-btn-guardar");
@@ -2440,9 +2468,22 @@
             const peso = pesoVal ? Number(pesoVal) : null;
             const pesoUnidad = peso !== null ? document.getElementById("ops-in-peso-unidad").value : null;
             const medida = document.getElementById("ops-in-medida").value.trim() || null;
-            const tecnicoDestinoId = document.getElementById("ops-in-tecnico-destino").value || null;
             const requiereAutorizacion = document.getElementById("ops-in-requiere-autorizacion").checked;
             const { db, fs } = await opsGetFB();
+
+            if (id) {
+                // Edición: solo los datos propios de la pieza — estado, técnico y
+                // ubicación se manejan por separado con "Registrar movimiento"/"Dar de baja".
+                const datos = { descripcion, marca, modelo, categoria, numeroSerie, departamento, condicion, uso, peso, pesoUnidad, medida, requiereAutorizacion };
+                await fs.updateDoc(fs.doc(db, COL_HERRAMIENTAS, id), datos);
+                const idx = cacheHerr.findIndex(x => x.id === id);
+                if (idx >= 0) cacheHerr[idx] = { ...cacheHerr[idx], ...datos };
+                document.getElementById("ops-modal-wrap").innerHTML = "";
+                if (document.getElementById("ops-panel-wrap")?.innerHTML) window.opsAbrirFichaHerramienta(id);
+                return;
+            }
+
+            const tecnicoDestinoId = document.getElementById("ops-in-tecnico-destino").value || null;
             const folio = await opsSiguienteFolioHerramienta();
 
             await fs.setDoc(fs.doc(db, COL_HERRAMIENTAS, folio), {
@@ -4025,7 +4066,38 @@
 
                 <div style="font-size:11.5px;font-weight:700;color:#64748b;margin:18px 0 8px;">Historial de guardias (${cerradas.length})</div>
                 ${cerradas.length ? cerradas.slice(0, 15).map(g => opsFilaGuardia(g, false, gestion)).join("") : '<div style="color:#94a3b8;font-size:12px;padding:8px 0;">Sin guardias cerradas todavía.</div>'}
+
+                <div style="border-top:1px solid #e2e8f0;margin-top:20px;padding-top:16px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:8px;">
+                        <div style="font-size:12.5px;font-weight:700;color:#1e293b;">Calendario de rotación — quién está de guardia cada semana</div>
+                        ${gestion ? `<button onclick="opsAbrirModalSugerirGuardias()" class="mkt-add-btn" style="background:#7c3aed;">${ICON.sparkle} Sugerir próximas semanas</button>` : ""}
+                    </div>
+                    <div style="font-size:11px;color:#94a3b8;margin-bottom:12px;">Rota parejo entre los técnicos que elijas — a quien menos semanas lleva le toca primero, y se salta a quien tenga una ausencia programada esa semana. Puedes editar cualquier semana a mano.</div>
+                    ${opsRenderCalendarioGuardias(gestion)}
+                </div>
             </div>`;
+    }
+
+    function opsRenderCalendarioGuardias(gestion) {
+        const hoyLunes = opsLunesDe(new Date());
+        const proximas = cacheGuardiasProgramadas.filter(g => g.semanaInicio >= hoyLunes).slice(0, 16);
+        if (!proximas.length) return `<div style="color:#94a3b8;font-size:12px;padding:8px 0;">Todavía no hay semanas programadas. Usa "Sugerir próximas semanas" para generarlas.</div>`;
+        const tecnicosActivos = cacheTec.filter(t => t.estatus === "activo");
+        return `<div style="display:flex;flex-direction:column;gap:0;">
+            ${proximas.map(g => {
+                const esEstaSemanaActual = g.semanaInicio === hoyLunes;
+                const fechaFin = opsSumarDias(g.semanaInicio, 6);
+                return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #eef1f5;font-size:12px;${esEstaSemanaActual ? "background:#fffbeb;" : ""}">
+                    <div style="width:130px;flex-shrink:0;font-size:11px;color:#64748b;font-weight:600;">${opsEsc(opsFechaCorta(g.semanaInicio))} – ${opsEsc(opsFechaCorta(fechaFin))}${esEstaSemanaActual ? ` <span style="color:#b45309;font-weight:700;">· hoy</span>` : ""}</div>
+                    <div style="flex:1;">
+                        ${gestion ? `<select onchange="opsCambiarGuardiaProgramada('${g.id}', this.value)" style="border:1px solid #cbd5e1;border-radius:7px;padding:5px 8px;font-size:12px;">
+                            ${tecnicosActivos.map(t => `<option value="${t.id}" ${t.id === g.tecnicoId ? "selected" : ""}>${opsEsc(t.nombre)}</option>`).join("")}
+                        </select>` : `<strong>${opsEsc(opsNombreTecnico(g.tecnicoId))}</strong>`}
+                        ${g.generadoPor === "sugerido" ? `<span style="font-size:10px;color:#94a3b8;margin-left:6px;">(sugerido)</span>` : ""}
+                    </div>
+                </div>`;
+            }).join("")}
+        </div>`;
     }
 
     function opsFilaGuardia(g, activa, gestion) {
@@ -4107,6 +4179,114 @@
         const snapGuardias = await fs.getDocs(fs.collection(db, COL_GUARDIAS));
         cacheGuardias = snapGuardias.docs.map(d => ({ id: d.id, ...d.data() }));
         opsRenderGuardias();
+    };
+
+    // ═══════════════════ Calendario de rotación de guardias ═══════════════════
+    function opsLunesDe(fechaOStr) {
+        const d = typeof fechaOStr === "string" ? new Date(fechaOStr + "T12:00:00") : new Date(fechaOStr);
+        const dia = d.getDay(); // 0=domingo..6=sábado
+        const diff = dia === 0 ? -6 : 1 - dia; // retrocede hasta el lunes
+        d.setDate(d.getDate() + diff);
+        return d.toISOString().slice(0, 10);
+    }
+    function opsSumarDias(fechaISO, n) {
+        const d = new Date(fechaISO + "T12:00:00");
+        d.setDate(d.getDate() + n);
+        return d.toISOString().slice(0, 10);
+    }
+    function opsFechaCorta(fechaISO) {
+        const d = new Date(fechaISO + "T12:00:00");
+        return d.toLocaleDateString("es-MX", { day: "numeric", month: "short" });
+    }
+    function opsTecnicoAusenteEnSemana(tecnicoId, semanaInicio) {
+        const semanaFin = opsSumarDias(semanaInicio, 6);
+        return cacheAusencias.some(a => a.tecnicoId === tecnicoId && a.fechaInicio <= semanaFin && a.fechaFin >= semanaInicio);
+    }
+
+    window.opsAbrirModalSugerirGuardias = function () {
+        const tecnicosActivos = cacheTec.filter(t => t.estatus === "activo");
+        const wrap = document.getElementById("ops-modal-wrap");
+        wrap.innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;">
+            <div style="background:#fff;border-radius:14px;width:440px;max-width:92vw;max-height:88vh;overflow-y:auto;padding:22px;">
+                <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:6px;">Sugerir próximas guardias</div>
+                <div style="font-size:11.5px;color:#64748b;margin-bottom:14px;">Rota entre los técnicos que marques abajo — el que menos guardias lleva hecha entra primero, y se salta automáticamente a quien tenga una ausencia esa semana.</div>
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">¿Cuántas semanas quieres programar?</label>
+                <input id="ops-in-guardias-semanas" type="number" min="1" max="52" value="12" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 14px;">
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Técnicos elegibles para guardia</label>
+                <div style="max-height:220px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;margin:4px 0 16px;">
+                    ${tecnicosActivos.map(t => `<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12.5px;color:#334155;cursor:pointer;">
+                        <input type="checkbox" class="ops-guardia-elegible" value="${t.id}" checked style="width:14px;height:14px;"> ${opsEsc(t.nombre)}
+                    </label>`).join("")}
+                </div>
+                <div style="display:flex;gap:8px;justify-content:flex-end;">
+                    <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
+                    <button onclick="opsGenerarSugerenciaGuardias()" class="mkt-add-btn" style="background:#7c3aed;">Generar sugerencia</button>
+                </div>
+            </div>
+        </div>`;
+    };
+
+    window.opsGenerarSugerenciaGuardias = async function () {
+        const numSemanas = Number(document.getElementById("ops-in-guardias-semanas").value) || 12;
+        const elegiblesIds = Array.from(document.querySelectorAll(".ops-guardia-elegible:checked")).map(c => c.value);
+        if (!elegiblesIds.length) { alert("Marca al menos un técnico elegible."); return; }
+
+        // Cuenta cuántas veces ya le ha tocado a cada quien (histórico completo, no solo futuro)
+        // para que la rotación sea justa desde ahora, no solo dentro de este lote.
+        const conteo = {};
+        elegiblesIds.forEach(id => conteo[id] = 0);
+        cacheGuardiasProgramadas.forEach(g => { if (conteo[g.tecnicoId] !== undefined) conteo[g.tecnicoId]++; });
+
+        const yaProgramadas = new Set(cacheGuardiasProgramadas.map(g => g.semanaInicio));
+        let semana = opsLunesDe(new Date());
+        // Si la semana actual ya está programada, arranca desde la siguiente libre.
+        while (yaProgramadas.has(semana)) semana = opsSumarDias(semana, 7);
+
+        const propuesta = [];
+        for (let i = 0; i < numSemanas; i++) {
+            const candidatos = elegiblesIds.filter(id => !opsTecnicoAusenteEnSemana(id, semana));
+            if (!candidatos.length) { propuesta.push({ semanaInicio: semana, tecnicoId: null }); semana = opsSumarDias(semana, 7); continue; }
+            candidatos.sort((a, b) => conteo[a] - conteo[b]);
+            const elegido = candidatos[0];
+            conteo[elegido]++;
+            propuesta.push({ semanaInicio: semana, tecnicoId: elegido });
+            semana = opsSumarDias(semana, 7);
+        }
+
+        const resumen = propuesta.map(p => `${opsFechaCorta(p.semanaInicio)}: ${p.tecnicoId ? opsNombreTecnico(p.tecnicoId) : "— nadie disponible esa semana —"}`).join("\n");
+        if (!confirm(`Esto va a programar ${propuesta.length} semana(s):\n\n${resumen}\n\n¿Guardar?`)) return;
+
+        try {
+            const { db, fs } = await opsGetFB();
+            for (const p of propuesta) {
+                if (!p.tecnicoId) continue; // no se guarda una semana sin nadie disponible — Glen la llena a mano después
+                await fs.addDoc(fs.collection(db, COL_GUARDIAS_PROGRAMADAS), {
+                    semanaInicio: p.semanaInicio, tecnicoId: p.tecnicoId, generadoPor: "sugerido",
+                    creadoPor: opsNombreActual(), creadoEn: opsFechaHora(),
+                });
+            }
+            const snap = await fs.getDocs(fs.collection(db, COL_GUARDIAS_PROGRAMADAS));
+            cacheGuardiasProgramadas = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.semanaInicio < b.semanaInicio ? -1 : 1);
+            document.getElementById("ops-modal-wrap").innerHTML = "";
+            opsRenderGuardias();
+            if (window.mostrarPush) window.mostrarPush("Operaciones", "Guardias programadas.", "✅");
+        } catch (e) {
+            console.error("[opsGenerarSugerenciaGuardias]", e);
+            alert("No se pudo guardar la sugerencia: " + e.message);
+        }
+    };
+
+    window.opsCambiarGuardiaProgramada = async function (id, nuevoTecnicoId) {
+        try {
+            const { db, fs } = await opsGetFB();
+            await fs.updateDoc(fs.doc(db, COL_GUARDIAS_PROGRAMADAS, id), { tecnicoId: nuevoTecnicoId, generadoPor: "manual" });
+            const g = cacheGuardiasProgramadas.find(x => x.id === id);
+            if (g) { g.tecnicoId = nuevoTecnicoId; g.generadoPor = "manual"; }
+        } catch (e) {
+            console.error("[opsCambiarGuardiaProgramada]", e);
+            alert("No se pudo cambiar: " + e.message);
+        }
     };
 
     // ═══════════════════════ TAB: SERVICIOS (módulo padre, launcher) ═══════════════════════
@@ -5663,7 +5843,7 @@
         rechazada:  { label: "Rechazada",  bg: "#fee2e2", fg: "#E7402B", siguiente: null },
         cancelada:  { label: "Cancelada",  bg: "#e5e7eb", fg: "#374151", siguiente: null },
     };
-    let filtroSolic = "todas";
+    let filtroSolic = "operaciones"; // por defecto solo lo que se solicitó desde Operaciones — "Todas" sigue disponible como botón si algún día hace falta ver también lo de otros departamentos
     let solicBusqueda = "";
     let solicFechaDesde = "";
     let solicFechaHasta = "";
@@ -5934,6 +6114,51 @@
     function opsRenderAlertas() {
         const el = document.getElementById("ops-tab-content");
         if (!el) return;
+        const gestion = opsPuedeGestionar();
+        const cfg = cacheConfigAlertas;
+        const hoy = new Date();
+        const enDias = (fecha) => { if (!fecha) return null; const d = new Date(fecha); return (d - hoy) / 86400000; };
+
+        // ── Anticipación (avisa ANTES de que sea crítico, no cuando ya lo es) ──
+        const proximaGuardia = [];
+        cacheGuardiasProgramadas.filter(g => g.semanaInicio >= opsLunesDe(hoy)).forEach(g => {
+            const dias = enDias(g.semanaInicio + "T00:00:00");
+            if (dias !== null && dias >= 0 && dias <= cfg.anticipacionGuardiaDias) proximaGuardia.push(`${opsNombreTecnico(g.tecnicoId)} entra de guardia el ${opsFechaCorta(g.semanaInicio)} (en ${Math.ceil(dias)} día(s)).`);
+        });
+        const proximaAusencia = [];
+        cacheAusencias.filter(a => a.fechaInicio >= opsHoy()).forEach(a => {
+            const dias = enDias(a.fechaInicio + "T00:00:00");
+            if (dias !== null && dias >= 0 && dias <= cfg.anticipacionAusenciaDias) proximaAusencia.push(`${opsNombreTecnico(a.tecnicoId)} se ausenta desde el ${opsFechaCorta(a.fechaInicio)} (en ${Math.ceil(dias)} día(s)) — repartir su carga a tiempo.`);
+        });
+        const proximoFolio = [];
+        cacheFolios.filter(f => f.estado !== "cerrado" && f.estado !== "cancelado").forEach(f => {
+            const fechaLimite = f.fechaAtencion || f.vencimiento;
+            const dias = enDias(fechaLimite);
+            if (dias !== null && dias >= 0 && dias <= cfg.anticipacionFolioDias) proximoFolio.push(`Folio ${f.folioOS ? "O.S. " + f.folioOS + " — " : ""}${f.estacion}: vence en ${dias < 1 ? "menos de 1 día" : Math.ceil(dias) + " día(s)"}.`);
+        });
+        const revisionVencida = [];
+        cacheHerr.filter(h => h.estado === "asignada").forEach(h => {
+            const ultimaRev = cacheRevisionesHerr.filter(r => r.herramientaId === h.id).sort((a, b) => (a.fecha < b.fecha ? 1 : -1))[0];
+            const fechaBase = ultimaRev?.fecha || h.fechaAsignacion || h.fechaAlta;
+            if (!fechaBase) return;
+            const diasSinRevisar = (hoy - new Date(fechaBase)) / 86400000;
+            if (diasSinRevisar >= cfg.anticipacionRevisionHerrDias) revisionVencida.push(`${h.folio} (${h.descripcion}) — ${Math.floor(diasSinRevisar)} días sin revisión física.`);
+        });
+
+        function bloqueAnticipacion(titulo, items, color) {
+            if (!items.length) return "";
+            return `<div style="background:#fff;border-radius:12px;padding:14px 16px;margin-bottom:10px;border-left:3px solid ${color};">
+                <div style="font-size:12px;font-weight:700;color:${color};margin-bottom:8px;">${titulo} (${items.length})</div>
+                ${items.map(txt => `<div style="font-size:12px;color:#334155;padding:5px 0;border-bottom:1px solid #f8fafc;">${opsEsc(txt)}</div>`).join("")}
+            </div>`;
+        }
+        const anticipacionHtml = [
+            bloqueAnticipacion("Guardia próxima", proximaGuardia, "#7c3aed"),
+            bloqueAnticipacion("Ausencia próxima — repartir carga", proximaAusencia, "#0891b2"),
+            bloqueAnticipacion("Folio por vencer pronto", proximoFolio, "#b45309"),
+            bloqueAnticipacion("Herramienta sin revisar hace tiempo", revisionVencida, "#64748b"),
+        ].join("");
+        const totalAnticipacion = proximaGuardia.length + proximaAusencia.length + proximoFolio.length + revisionVencida.length;
 
         const criticas = [];
         const pendientes = [];
@@ -5968,8 +6193,14 @@
         el.innerHTML = `
             <div style="background:#fff;border-radius:12px;padding:14px 16px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
                 <div style="font-size:11.5px;color:#64748b;max-width:520px;display:flex;align-items:center;gap:6px;">${ICON.bell} Prueba el sistema de alertas: genera una notificación real que suena (~10s) y aparece como ventana flotante en <b>todas</b> las sesiones de Operaciones abiertas ahora mismo.</div>
-                <button onclick="opsProbarAlerta()" style="background:#6d28d9;border:none;color:#fff;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;">${ICON.bell} Probar alerta</button>
-            </div>`
+                <div style="display:flex;gap:8px;">
+                    ${gestion ? `<button onclick="opsAbrirModalConfigAlertas()" style="background:#f1f5f9;border:none;color:#334155;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:6px;">${ICON.gear} Ajustar anticipación</button>` : ""}
+                    <button onclick="opsProbarAlerta()" style="background:#6d28d9;border:none;color:#fff;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;">${ICON.bell} Probar alerta</button>
+                </div>
+            </div>
+            <div style="font-size:11.5px;font-weight:700;color:#1e293b;margin-bottom:8px;">Próximamente (${totalAnticipacion}) — antes de que se vuelva crítico</div>
+            ${totalAnticipacion ? anticipacionHtml : `<div style="background:#fff;border-radius:12px;padding:14px 16px;margin-bottom:14px;color:#94a3b8;font-size:12px;">Nada próximo dentro de la ventana de anticipación configurada.</div>`}
+            <div style="font-size:11.5px;font-weight:700;color:#1e293b;margin:16px 0 8px;">Ya requiere atención</div>`
             + bloque("Críticas", "#E7402B", "#fee2e2", criticas)
             + bloque("Pendientes", "#b45309", "#fef3c7", pendientes)
             + bloque("Preventivas", "#854d0e", "#fef9c3", preventivas)
@@ -5993,6 +6224,49 @@
         // de notificaciones — el listener ya alcanzó a dispararse con leida:false antes de esto.
         setTimeout(() => { fs.updateDoc(ref, { leida: true }).catch(() => {}); }, 2000);
         window.mostrarPush ? mostrarPush("Operaciones", "Alerta de prueba enviada — deberías verla y escucharla en unos segundos.", "🔔") : null;
+    };
+
+    window.opsAbrirModalConfigAlertas = function () {
+        const cfg = cacheConfigAlertas;
+        const wrap = document.getElementById("ops-modal-wrap");
+        wrap.innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;">
+            <div style="background:#fff;border-radius:14px;width:420px;max-width:92vw;padding:22px;">
+                <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:6px;">Ajustar anticipación de alertas</div>
+                <div style="font-size:11.5px;color:#64748b;margin-bottom:16px;">Cuántos días antes quieres que te avise de cada cosa, antes de que se vuelva crítico.</div>
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Guardia próxima (días antes de que empiece)</label>
+                <input id="ops-cfg-al-guardia" type="number" min="0" max="60" value="${cfg.anticipacionGuardiaDias}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 12px;">
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Ausencia próxima (días antes de que se ausente)</label>
+                <input id="ops-cfg-al-ausencia" type="number" min="0" max="60" value="${cfg.anticipacionAusenciaDias}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 12px;">
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Folio por vencer (días antes de la fecha comprometida)</label>
+                <input id="ops-cfg-al-folio" type="number" min="0" max="30" value="${cfg.anticipacionFolioDias}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 12px;">
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Herramienta sin revisar (días sin revisión física)</label>
+                <input id="ops-cfg-al-revision" type="number" min="0" max="365" value="${cfg.anticipacionRevisionHerrDias}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 16px;">
+                <div style="display:flex;gap:8px;justify-content:flex-end;">
+                    <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
+                    <button onclick="opsGuardarConfigAlertas()" class="mkt-add-btn" style="background:#1D2E73;">Guardar</button>
+                </div>
+            </div>
+        </div>`;
+    };
+
+    window.opsGuardarConfigAlertas = async function () {
+        const datos = {
+            anticipacionGuardiaDias: Number(document.getElementById("ops-cfg-al-guardia").value) || 0,
+            anticipacionAusenciaDias: Number(document.getElementById("ops-cfg-al-ausencia").value) || 0,
+            anticipacionFolioDias: Number(document.getElementById("ops-cfg-al-folio").value) || 0,
+            anticipacionRevisionHerrDias: Number(document.getElementById("ops-cfg-al-revision").value) || 0,
+        };
+        try {
+            const { db, fs } = await opsGetFB();
+            await fs.setDoc(fs.doc(db, COL_CONFIG_ALERTAS, "general"), datos, { merge: true });
+            cacheConfigAlertas = { ...cacheConfigAlertas, ...datos };
+            document.getElementById("ops-modal-wrap").innerHTML = "";
+            opsRenderAlertas();
+        } catch (e) {
+            console.error("[opsGuardarConfigAlertas]", e);
+            alert("No se pudo guardar: " + e.message);
+        }
     };
 
     // ══════════════════════════════════════════════════════════
