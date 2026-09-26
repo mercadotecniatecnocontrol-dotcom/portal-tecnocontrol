@@ -3204,8 +3204,8 @@
                                 <div style="font-weight:600;color:#1e293b;">${opsEsc(t.nombre)}</div>
                                 <div style="font-size:10.5px;color:#94a3b8;">${opsEsc(t.correo || "sin correo")}</div>
                             </div>
-                            <select onchange="opsCambiarPuestoAcceso('${t.id}', this.value)" style="border:1px solid #cbd5e1;border-radius:7px;padding:4px 6px;font-size:11px;">
-                                ${puestosOps.map(p => `<option value="${p.id || p.nombre}" ${(p.id === t.puestoId || p.nombre === t.puesto) ? "selected" : ""}>${opsEsc(p.nombre)}</option>`).join("")}
+                            <select onchange="opsCambiarPuestoAcceso('${t.id}', this.options[this.selectedIndex].dataset.nombre)" style="border:1px solid #cbd5e1;border-radius:7px;padding:4px 6px;font-size:11px;">
+                                ${puestosOps.map(p => `<option value="${p.id || p.nombre}" data-nombre="${opsEsc(p.nombre)}" ${(p.id === t.puestoId || p.nombre === t.puesto) ? "selected" : ""}>${opsEsc(p.nombre)}</option>`).join("")}
                             </select>
                             <button onclick="opsRevocarAcceso('${t.id}')" title="Revocar acceso" style="background:#fef2f2;border:none;color:#E7402B;width:26px;height:26px;border-radius:7px;cursor:pointer;">${ICON.trash}</button>
                         </div>`).join("") : `<div style="padding:12px;color:#94a3b8;font-size:12px;">Nadie tiene un puesto de Operaciones asignado todavía.</div>`}
@@ -3219,7 +3219,7 @@
                     <input id="ops-acc-correo" type="email" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
                     <label style="font-size:11.5px;color:#64748b;font-weight:600;">Privilegios (puesto)</label>
                     <select id="ops-acc-puesto" onchange="opsMostrarDescPuesto(this.value)" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 4px;">
-                        ${puestosOps.map(p => `<option value="${p.id || p.nombre}" data-permisos="${opsEsc((p.permisos || []).join(", "))}">${opsEsc(p.nombre)}</option>`).join("")}
+                        ${puestosOps.map(p => `<option value="${p.id || p.nombre}" data-nombre="${opsEsc(p.nombre)}" data-permisos="${opsEsc((p.permisos || []).join(", "))}">${opsEsc(p.nombre)}</option>`).join("")}
                     </select>
                     <div id="ops-acc-desc" style="font-size:10.5px;color:#94a3b8;margin-bottom:14px;">${opsEsc((puestosOps[0]?.permisos || []).join(", "))}</div>
                     <div style="display:flex;gap:8px;justify-content:flex-end;">
@@ -3240,21 +3240,24 @@
     window.opsGuardarAcceso = async function () {
         const nombre = document.getElementById("ops-acc-nombre").value.trim();
         const correo = document.getElementById("ops-acc-correo").value.trim().toLowerCase();
-        const puestoValor = document.getElementById("ops-acc-puesto").value;
+        const selectPuesto = document.getElementById("ops-acc-puesto");
+        const nombrePuesto = selectPuesto.options[selectPuesto.selectedIndex]?.dataset.nombre;
         if (!nombre || !correo) { alert("Nombre y correo son obligatorios."); return; }
-        const puestosOps = (cachePuestos.length ? cachePuestos : PUESTOS_SEED).filter(p => p.departamento === "Operaciones");
-        const puesto = puestosOps.find(p => (p.id || p.nombre) === puestoValor);
-        if (!puesto) { alert("Selecciona un puesto válido."); return; }
+        if (!nombrePuesto) { alert("Selecciona un puesto válido."); return; }
+        // El id real (si ya existe en Firestore) se busca por nombre en este momento — pero aunque
+        // no se encuentre, se guarda igual con el nombre: el motor de permisos empareja por nombre
+        // como respaldo, así que nunca se queda sin acceso por un id desincronizado.
+        const puestoIdReal = cachePuestos.find(p => p.nombre === nombrePuesto)?.id || null;
         const yaExiste = cacheTec.find(t => (t.correo || "").toLowerCase().trim() === correo);
         try {
             const { db, fs } = await opsGetFB();
             if (yaExiste) {
-                await fs.updateDoc(fs.doc(db, COL_TECNICOS, yaExiste.id), { puestoId: puesto.id || null, puesto: puesto.nombre, departamento: "Operaciones" });
+                await fs.updateDoc(fs.doc(db, COL_TECNICOS, yaExiste.id), { puestoId: puestoIdReal, puesto: nombrePuesto, departamento: "Operaciones" });
             } else {
                 await fs.addDoc(fs.collection(db, COL_TECNICOS), {
-                    nombre, correo, puestoId: puesto.id || null, puesto: puesto.nombre, departamento: "Operaciones",
+                    nombre, correo, puestoId: puestoIdReal, puesto: nombrePuesto, departamento: "Operaciones",
                     estatus: "activo", fechaIngreso: opsHoy(), fechaBaja: null, numeroOperativo: null,
-                    esPersonalOficina: puesto.nombre !== "Técnico de Operaciones",
+                    esPersonalOficina: nombrePuesto !== "Técnico de Operaciones",
                     habilidades: [], observaciones: "Alta desde \"Accesos a Operaciones\" — sin ficha completa de técnico de campo.",
                 });
             }
@@ -3268,15 +3271,14 @@
         }
     };
 
-    window.opsCambiarPuestoAcceso = async function (tecnicoId, puestoValor) {
-        const puestosOps = (cachePuestos.length ? cachePuestos : PUESTOS_SEED).filter(p => p.departamento === "Operaciones");
-        const puesto = puestosOps.find(p => (p.id || p.nombre) === puestoValor);
-        if (!puesto) return;
+    window.opsCambiarPuestoAcceso = async function (tecnicoId, nombrePuesto) {
+        if (!nombrePuesto) return;
+        const puestoIdReal = cachePuestos.find(p => p.nombre === nombrePuesto)?.id || null;
         try {
             const { db, fs } = await opsGetFB();
-            await fs.updateDoc(fs.doc(db, COL_TECNICOS, tecnicoId), { puestoId: puesto.id || null, puesto: puesto.nombre });
+            await fs.updateDoc(fs.doc(db, COL_TECNICOS, tecnicoId), { puestoId: puestoIdReal, puesto: nombrePuesto });
             const t = cacheTec.find(x => x.id === tecnicoId);
-            if (t) { t.puestoId = puesto.id || null; t.puesto = puesto.nombre; }
+            if (t) { t.puestoId = puestoIdReal; t.puesto = nombrePuesto; }
         } catch (e) {
             console.error("[opsCambiarPuestoAcceso]", e);
             alert("No se pudo cambiar: " + e.message);
