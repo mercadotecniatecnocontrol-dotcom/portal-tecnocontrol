@@ -66,6 +66,7 @@
     // administrativos de Operaciones + administrativos de la plataforma juntos.
     const COL_CONFIG_REVISION = "ops_config_revision";
     const COL_CONFIG_ALERTAS = "ops_config_alertas"; // doc "general": cuántos días de anticipación quiere Glen para cada tipo de aviso — editable desde la pestaña Alertas
+    const COL_CONFIG_VIATICOS = "ops_config_viaticos"; // doc "general": tarifas para la calculadora automática de viáticos/hospedaje/casetas
     // Catálogo de servicios / Planeación Operativa (sep-2026): recetas parametrizadas
     // por tipo de servicio (materiales, personal por rol, vehículos, herramienta,
     // seguridad, costo). Fase 1 — modelo de datos + import real del Excel de Paloma;
@@ -809,7 +810,7 @@
     ];
 
     let opsFB = null;
-    let unsubHerr = null, unsubTec = null, unsubMov = null, unsubSurt = null, unsubSurtPoll = null, unsubFolios = null, unsubNotif = null, unsubTraspasos = null, unsubConfigCalibracion = null, unsubServiciosCatalogo = null, unsubTarifasPersonal = null, unsubAusencias = null, unsubAlmacenes = null, unsubConfigRevision = null, unsubRevisiones = null, unsubConfigAlertas = null;
+    let unsubHerr = null, unsubTec = null, unsubMov = null, unsubSurt = null, unsubSurtPoll = null, unsubFolios = null, unsubNotif = null, unsubTraspasos = null, unsubConfigCalibracion = null, unsubServiciosCatalogo = null, unsubTarifasPersonal = null, unsubAusencias = null, unsubAlmacenes = null, unsubConfigRevision = null, unsubRevisiones = null, unsubConfigAlertas = null, unsubConfigViaticos = null;
     let cacheHerr = [], cacheTec = [], cacheMov = [], cacheSurtidos = [], cacheFolios = [];
     let cacheServiciosCatalogo = [], cacheTarifasPersonal = {};
     let cacheAusencias = [];
@@ -823,6 +824,14 @@
         anticipacionRevisionHerrDias: 30, // avisar que una herramienta lleva N días sin revisión física
     };
     let cacheConfigAlertas = { ...CONFIG_ALERTAS_DEFAULT };
+    // Tarifas para la calculadora automática de viáticos (Glen, sep-2026) — editables desde el folio.
+    const CONFIG_VIATICOS_DEFAULT = {
+        viaticoDiario: 350,       // $ por día de viaje (comida, etc.)
+        hospedajePorNoche: 900,   // $ por noche de hotel
+        costoPorKm: 4.5,          // $ por km recorrido (gasolina) — estimado, no viene de GPS real todavía
+        casetaPromedioPorTrayecto: 250, // $ estimado de casetas por trayecto (ida) — Fase D (GPS real) lo reemplazará
+    };
+    let cacheConfigViaticos = { ...CONFIG_VIATICOS_DEFAULT };
     let cacheRevisionesHerr = []; // últimas revisiones/checklists de herramienta, de cualquier origen (Portal o Flotilla)
     let cacheTraspasosPend = []; // ops_herramienta_traspasos con estatus "Pendiente recepción" — bloquea la pieza hasta que el receptor acepte/rechace/venza
     let cacheAutorizadoresCalibracion = []; // [{email,nombre}] — quién puede aprobar mover equipo con requiereAutorizacion=true
@@ -1675,6 +1684,11 @@
                 cacheConfigAlertas = snap.exists() ? { ...CONFIG_ALERTAS_DEFAULT, ...snap.data() } : { ...CONFIG_ALERTAS_DEFAULT };
                 if (tabActual === "alertas") opsRenderAlertas();
             }, () => { cacheConfigAlertas = { ...CONFIG_ALERTAS_DEFAULT }; });
+        }
+        if (!unsubConfigViaticos) {
+            unsubConfigViaticos = fs.onSnapshot(fs.doc(db, COL_CONFIG_VIATICOS, "general"), snap => {
+                cacheConfigViaticos = snap.exists() ? { ...CONFIG_VIATICOS_DEFAULT, ...snap.data() } : { ...CONFIG_VIATICOS_DEFAULT };
+            }, () => { cacheConfigViaticos = { ...CONFIG_VIATICOS_DEFAULT }; });
         }
         if (!unsubRevisiones) {
             unsubRevisiones = fs.onSnapshot(fs.query(fs.collection(db, COL_REVISIONES), fs.orderBy("fecha", "desc"), fs.limit(150)), snap => {
@@ -5241,6 +5255,7 @@
                     <div style="font-size:12px;color:#334155;line-height:1.7;">
                         ${f.estacionRazonSocial ? `Razón social: ${opsEsc(f.estacionRazonSocial)}<br>` : ""}
                         ${f.estacionPermiso ? `Permiso (PL): ${opsEsc(f.estacionPermiso)}<br>` : ""}
+                        ${f.estacionCR ? `CR (OXXO): ${opsEsc(f.estacionCR)}<br>` : ""}
                         ${f.estacionEncargado ? `Encargado: ${opsEsc(f.estacionEncargado)}<br>` : ""}
                         ${f.estacionZona ? `Zona: ${opsEsc(f.estacionZona)}<br>` : ""}
                         ${f.estacionDireccion ? `Dirección: ${opsEsc(f.estacionDireccion)}<br>` : ""}
@@ -5253,6 +5268,18 @@
                     <div style="font-size:11px;font-weight:700;color:#7c3aed;margin-bottom:8px;">Servicio SCFI</div>
                     <div style="font-size:12px;color:#334155;line-height:1.7;">
                         ${[f.hologramas != null ? f.hologramas + " holograma(s)" : "", f.precintos != null ? f.precintos + " precinto(s)" : "", f.distintivos != null ? f.distintivos + " distintivo(s)" : "", f.viaticos != null ? f.viaticos + " viático(s)" : ""].filter(Boolean).join(" · ") || "Sin cantidades capturadas."}
+                    </div>
+                </div>` : ""}
+
+                ${(f.gastoEstimado || f.viaticosMonto || f.hospedajeMonto || f.casetasMonto) ? `
+                <div style="border-top:1px solid #e2e8f0;padding-top:12px;margin-bottom:16px;">
+                    <div style="font-size:11px;font-weight:700;color:#0e7490;margin-bottom:8px;">Gastos de viaje (estimado)</div>
+                    <div style="font-size:12px;color:#334155;line-height:1.7;">
+                        ${f.diasTrabajo ? `Días de viaje: ${f.diasTrabajo}<br>` : ""}
+                        ${f.viaticosMonto ? `Viáticos: $${f.viaticosMonto.toLocaleString("es-MX")}<br>` : ""}
+                        ${f.hospedajeMonto ? `Hospedaje: $${f.hospedajeMonto.toLocaleString("es-MX")}<br>` : ""}
+                        ${f.casetasMonto ? `Casetas/gasolina: $${f.casetasMonto.toLocaleString("es-MX")}<br>` : ""}
+                        ${f.gastoEstimado ? `<b>Total estimado: $${f.gastoEstimado.toLocaleString("es-MX")}</b>` : ""}
                     </div>
                 </div>` : ""}
 
@@ -5484,12 +5511,19 @@
                 </div>
                 <div id="ops-fol-sugerencia-nota" style="font-size:10px;color:#94a3b8;margin-bottom:6px;"></div>
                 <div id="ops-fol-tecnicos-check" style="max-height:140px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;margin-bottom:14px;">
-                    ${cacheTec.filter(t => t.estatus === "activo").map(t => `
-                        <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#334155;padding:3px 0;">
-                            <input type="checkbox" class="ops-fol-tec-check" value="${t.id}" data-nombre="${opsEsc(t.nombre)}" ${(f?.tecnicosAsignadosIds || []).includes(t.id) ? "checked" : ""} style="width:14px;height:14px;">
+                    ${cacheTec.filter(t => t.estatus === "activo").map(t => {
+                        const fechaFolio = (programadaDefault || "").slice(0, 10);
+                        const ausencia = fechaFolio ? cacheAusencias.find(a => a.tecnicoId === t.id && a.fechaInicio <= fechaFolio && a.fechaFin >= fechaFolio) : null;
+                        const yaEstaba = (f?.tecnicosAsignadosIds || []).includes(t.id);
+                        return `
+                        <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:${ausencia ? "#cbd5e1" : "#334155"};padding:3px 0;${ausencia ? "cursor:not-allowed;" : ""}">
+                            <input type="checkbox" class="ops-fol-tec-check" value="${t.id}" data-nombre="${opsEsc(t.nombre)}" ${yaEstaba ? "checked" : ""} ${ausencia && !yaEstaba ? "disabled" : ""} style="width:14px;height:14px;">
                             ${opsEsc(t.nombre)}${t.puesto ? ` — <span style="color:#94a3b8;">${opsEsc(t.puesto)}</span>` : ""}
-                        </label>`).join("")}
+                            ${ausencia ? `<span style="color:#E7402B;font-weight:600;">— ${opsEsc(ausencia.tipo || "ausente")} hasta ${opsEsc(ausencia.fechaFin)}</span>` : ""}
+                        </label>`;
+                    }).join("")}
                 </div>
+                <div style="font-size:10px;color:#94a3b8;margin:-10px 0 14px;">Los técnicos en gris están de vacaciones/permiso en la fecha del folio — no se pueden marcar.</div>
 
                 <div style="border-top:1px solid #e2e8f0;margin:4px 0 14px;padding-top:14px;font-size:11.5px;font-weight:700;color:#1D2E73;">Cliente / facturación / Contabilidad</div>
 
@@ -5509,15 +5543,37 @@
                 <div style="display:flex;gap:8px;">
                     <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Proyecto</label>
                     <input id="ops-fol-proyecto" value="${opsEsc(f?.proyecto || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
-                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Gasto estimado ($)</label>
-                    <input type="number" min="0" step="0.01" id="ops-fol-gasto" value="${f?.gastoEstimado ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
                 </div>
 
-                <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:#334155;margin-bottom:8px;">
+                <div style="border-top:1px dashed #e2e8f0;margin:6px 0 10px;padding-top:12px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                        <div style="font-size:11.5px;font-weight:700;color:#1D2E73;">Calculadora de viáticos / hospedaje / casetas</div>
+                        ${opsPuedeGestionar() ? `<button type="button" onclick="opsAbrirModalConfigViaticos()" style="background:none;border:none;color:#94a3b8;cursor:pointer;padding:2px;" title="Ajustar tarifas">${ICON.gear}</button>` : ""}
+                    </div>
+                    <div style="display:flex;gap:8px;">
+                        <div style="flex:1;"><label style="font-size:11px;color:#64748b;font-weight:600;">Días de viaje</label>
+                        <input type="number" min="0" step="1" id="ops-fol-dias-viaje" value="${f?.diasTrabajo ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin:3px 0;"></div>
+                        <div style="flex:1;"><label style="font-size:11px;color:#64748b;font-weight:600;">Km estimados (opcional)</label>
+                        <input type="number" min="0" step="1" id="ops-fol-km" value="${f?.kmEstimados ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin:3px 0;"></div>
+                    </div>
+                    <button type="button" onclick="opsCalcularViaticos()" class="mkt-add-btn" style="background:#0e7490;width:100%;margin:8px 0 10px;">${ICON.sparkle} Calcular automático</button>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                        <div><label style="font-size:11px;color:#64748b;font-weight:600;">Viáticos ($)</label>
+                        <input type="number" min="0" step="0.01" id="ops-fol-viaticos-monto" value="${f?.viaticosMonto ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin:3px 0;"></div>
+                        <div><label style="font-size:11px;color:#64748b;font-weight:600;">Hospedaje ($)</label>
+                        <input type="number" min="0" step="0.01" id="ops-fol-hospedaje-monto" value="${f?.hospedajeMonto ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin:3px 0;"></div>
+                        <div><label style="font-size:11px;color:#64748b;font-weight:600;">Casetas/gasolina ($, estimado)</label>
+                        <input type="number" min="0" step="0.01" id="ops-fol-casetas-monto" value="${f?.casetasMonto ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin:3px 0;"></div>
+                        <div><label style="font-size:11px;color:#64748b;font-weight:600;">Gasto total estimado ($)</label>
+                        <input type="number" min="0" step="0.01" id="ops-fol-gasto" value="${f?.gastoEstimado ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin:3px 0;font-weight:700;"></div>
+                    </div>
+                    <div style="font-size:10px;color:#94a3b8;margin-top:6px;">Casetas/gasolina es un estimado por tarifa fija — todavía no viene de una ruta real (eso es la Fase D, pendiente de que elijas proveedor de GPS/casetas). Todo aquí se puede editar a mano después de calcular.</div>
+                </div>
+
+                <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:#334155;margin:10px 0 8px;">
                     <input type="checkbox" id="ops-fol-viaticos-pend" ${f?.viaticosPendientes ? "checked" : ""} style="width:15px;height:15px;"> Viáticos pendientes de pago
                 </label>
-                <input type="number" min="0" step="0.01" id="ops-fol-viaticos-monto" placeholder="Monto de viáticos ($)" value="${f?.viaticosMonto ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 16px;">
-                <div style="font-size:10px;color:#94a3b8;margin:-12px 0 16px;">Contabilidad/Pagos siguen siendo quienes marcan el pago real — esto aquí es solo la bandera de "está pendiente" ligada al folio.</div>
+                <div style="font-size:10px;color:#94a3b8;margin:-4px 0 16px;">Contabilidad/Pagos siguen siendo quienes marcan el pago real — esto aquí es solo la bandera de "está pendiente" ligada al folio.</div>
 
                 <div style="display:flex;justify-content:space-between;gap:8px;">
                     ${f ? `<button onclick="opsEliminarFolio('${f.id}')" style="background:#fef2f2;border:none;color:#E7402B;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Eliminar</button>` : "<span></span>"}
@@ -5533,7 +5589,7 @@
             catalogoId: f.estacionCatalogoId, encargado: f.estacionEncargado || null, zona: f.estacionZona || null,
             numeroTanques: f.estacionNumeroTanques || null, numeroDispensarios: f.estacionNumeroDispensarios || null,
             numeroSondas: f.estacionNumeroSondas || null, direccion: f.estacionDireccion || null,
-            razonSocial: f.estacionRazonSocial || null, permiso: f.estacionPermiso || null,
+            razonSocial: f.estacionRazonSocial || null, permiso: f.estacionPermiso || null, cr: f.estacionCR || null,
         } : null;
     };
 
@@ -5605,7 +5661,7 @@
             catalogoId: e.id, encargado: e.encargado || null, zona: e.zona || null,
             numeroTanques: e.numeroTanques || null, numeroDispensarios: e.numeroDispensarios || null,
             numeroSondas: e.numeroSondas || null, direccion: e.direccionNormalizada || null,
-            razonSocial: e.razonSocial || null, permiso: e.permiso || null,
+            razonSocial: e.razonSocial || null, permiso: e.permiso || null, cr: e.cr || null,
         };
         const info = document.getElementById("ops-fol-estacion-info");
         if (info) info.innerHTML = `Del catálogo${e.encargado ? " · Encargado: " + opsEsc(e.encargado) : ""}${e.zona ? " · Zona " + opsEsc(e.zona) : ""}${e.numeroTanques ? " · " + e.numeroTanques + " tanque(s)" : ""}`;
@@ -5724,7 +5780,7 @@
                     estacionCatalogoId: e.id, estacionEncargado: e.encargado || null, estacionZona: e.zona || null,
                     estacionNumeroTanques: e.numeroTanques || null, estacionNumeroDispensarios: e.numeroDispensarios || null,
                     estacionNumeroSondas: e.numeroSondas || null, estacionDireccion: e.direccionNormalizada || null,
-                    estacionRazonSocial: e.razonSocial || null, estacionPermiso: e.permiso || null,
+                    estacionRazonSocial: e.razonSocial || null, estacionPermiso: e.permiso || null, estacionCR: e.cr || null,
                     esSCFI, hologramas: null, precintos: null, distintivos: null, viaticos: null,
                     comentarios: null, clienteId: null, clienteNombre: null, prioridad: null,
                     fechaSolicitud: opsFechaHora(), vencimiento: null, fechaAtencion: null, fechaSolucion: null,
@@ -5789,6 +5845,7 @@
             estacionDireccion: window.__opsFolioEstMeta?.direccion || null,
             estacionRazonSocial: window.__opsFolioEstMeta?.razonSocial || null,
             estacionPermiso: window.__opsFolioEstMeta?.permiso || null,
+            estacionCR: window.__opsFolioEstMeta?.cr || null,
             esSCFI: document.getElementById("ops-fol-es-scfi").checked,
             hologramas: document.getElementById("ops-fol-hologramas").value ? Number(document.getElementById("ops-fol-hologramas").value) : null,
             precintos: document.getElementById("ops-fol-precintos").value ? Number(document.getElementById("ops-fol-precintos").value) : null,
@@ -5817,6 +5874,10 @@
             facturarA: document.getElementById("ops-fol-facturar-a").value.trim() || (cliente?.facturarA || null),
             proyecto: document.getElementById("ops-fol-proyecto").value.trim() || null,
             gastoEstimado: document.getElementById("ops-fol-gasto").value ? Number(document.getElementById("ops-fol-gasto").value) : null,
+            diasTrabajo: document.getElementById("ops-fol-dias-viaje").value ? Number(document.getElementById("ops-fol-dias-viaje").value) : null,
+            kmEstimados: document.getElementById("ops-fol-km").value ? Number(document.getElementById("ops-fol-km").value) : null,
+            hospedajeMonto: document.getElementById("ops-fol-hospedaje-monto").value ? Number(document.getElementById("ops-fol-hospedaje-monto").value) : null,
+            casetasMonto: document.getElementById("ops-fol-casetas-monto").value ? Number(document.getElementById("ops-fol-casetas-monto").value) : null,
             viaticosPendientes: document.getElementById("ops-fol-viaticos-pend").checked,
             viaticosMonto: document.getElementById("ops-fol-viaticos-monto").value ? Number(document.getElementById("ops-fol-viaticos-monto").value) : null,
         };
@@ -6608,6 +6669,67 @@
             opsRenderAlertas();
         } catch (e) {
             console.error("[opsGuardarConfigAlertas]", e);
+            alert("No se pudo guardar: " + e.message);
+        }
+    };
+
+    // ══════════════════ Calculadora de viáticos/hospedaje/casetas ══════════════════
+    window.opsCalcularViaticos = function () {
+        const dias = Number(document.getElementById("ops-fol-dias-viaje").value) || 0;
+        const km = Number(document.getElementById("ops-fol-km").value) || 0;
+        if (!dias) { alert("Captura cuántos días de viaje son para poder calcular."); return; }
+        const cfg = cacheConfigViaticos;
+        const noches = Math.max(0, dias - 1);
+        const viaticos = dias * cfg.viaticoDiario;
+        const hospedaje = noches * cfg.hospedajePorNoche;
+        const casetas = km > 0 ? Math.round((km / 100) * cfg.casetaPromedioPorTrayecto) : cfg.casetaPromedioPorTrayecto;
+        const total = viaticos + hospedaje + casetas;
+        document.getElementById("ops-fol-viaticos-monto").value = viaticos;
+        document.getElementById("ops-fol-hospedaje-monto").value = hospedaje;
+        document.getElementById("ops-fol-casetas-monto").value = casetas;
+        document.getElementById("ops-fol-gasto").value = total;
+    };
+
+    window.opsAbrirModalConfigViaticos = function () {
+        const cfg = cacheConfigViaticos;
+        const wrap = document.getElementById("ops-modal-wrap");
+        wrap.innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:999999;display:flex;align-items:center;justify-content:center;">
+            <div style="background:#fff;border-radius:14px;width:400px;max-width:92vw;padding:22px;">
+                <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:6px;">Tarifas de la calculadora</div>
+                <div style="font-size:11.5px;color:#64748b;margin-bottom:16px;">Se usan para calcular viáticos/hospedaje/casetas en cualquier folio. Cámbialas aquí y aplican para todos.</div>
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Viático diario ($ por día)</label>
+                <input id="ops-cfg-vi-viatico" type="number" min="0" step="0.01" value="${cfg.viaticoDiario}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 12px;">
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Hospedaje ($ por noche)</label>
+                <input id="ops-cfg-vi-hospedaje" type="number" min="0" step="0.01" value="${cfg.hospedajePorNoche}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 12px;">
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Costo por km ($ — gasolina)</label>
+                <input id="ops-cfg-vi-km" type="number" min="0" step="0.01" value="${cfg.costoPorKm}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 12px;">
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Casetas estimadas ($ por cada 100 km, ida)</label>
+                <input id="ops-cfg-vi-caseta" type="number" min="0" step="0.01" value="${cfg.casetaPromedioPorTrayecto}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 16px;">
+                <div style="font-size:10px;color:#94a3b8;margin:-10px 0 16px;">Esto es un estimado por tarifa fija mientras no haya una ruta real conectada (Fase D, GPS/casetas).</div>
+                <div style="display:flex;gap:8px;justify-content:flex-end;">
+                    <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
+                    <button onclick="opsGuardarConfigViaticos()" class="mkt-add-btn" style="background:#0e7490;">Guardar</button>
+                </div>
+            </div>
+        </div>`;
+    };
+
+    window.opsGuardarConfigViaticos = async function () {
+        const datos = {
+            viaticoDiario: Number(document.getElementById("ops-cfg-vi-viatico").value) || 0,
+            hospedajePorNoche: Number(document.getElementById("ops-cfg-vi-hospedaje").value) || 0,
+            costoPorKm: Number(document.getElementById("ops-cfg-vi-km").value) || 0,
+            casetaPromedioPorTrayecto: Number(document.getElementById("ops-cfg-vi-caseta").value) || 0,
+        };
+        try {
+            const { db, fs } = await opsGetFB();
+            await fs.setDoc(fs.doc(db, COL_CONFIG_VIATICOS, "general"), datos, { merge: true });
+            cacheConfigViaticos = { ...cacheConfigViaticos, ...datos };
+            document.getElementById("ops-modal-wrap").innerHTML = "";
+            if (window.mostrarPush) window.mostrarPush("Operaciones", "Tarifas actualizadas.", "✅");
+        } catch (e) {
+            console.error("[opsGuardarConfigViaticos]", e);
             alert("No se pudo guardar: " + e.message);
         }
     };
