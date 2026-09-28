@@ -90,7 +90,12 @@
     const OPS_TIPOS_FOLIO = [
         { clave: "servicio", nombre: "Servicio técnico" },
         { clave: "laboratorio", nombre: "Laboratorio" },
+        { clave: "inspeccion", nombre: "Visita de inspección" },
     ];
+    // Programa de inspectores (Glen, sep-2026): visitas normativas — cada una liga a
+    // una Norma/servicio específico. "SCFI" es la que además pide hologramas/precintos/
+    // distintivos/viáticos (ver esSCFI en el folio).
+    const OPS_NORMAS_INSPECCION = ["Anexo 21", "Anexo 22", "Anexo 21 y 22", "ASEA", "SCFI", "Calibración Medida Volumétrica", "Alto Flujo", "Laboratorio"];
     // Notificación automática para folios de Laboratorio (Glen, sep-2026).
     // Alan Minjárez (MINJAREZ OCHOA ALBERTO ALAN) todavía no tiene correo real
     // capturado en Colaboradores (queda como "sincorreo_...") — en cuanto se le
@@ -2343,12 +2348,23 @@
     window.opsAbrirModalPieza = function (id) {
         const h = id ? cacheHerr.find(x => x.id === id) : null;
         opsRequisicionSeleccionada = null;
+        window.__opsFotoPiezaTmp = null; // se resetea cada vez que se abre el modal — no arrastra foto de una apertura anterior
         const tecnicosActivos = cacheTec.filter(t => t.estatus === "activo");
         const wrap = document.getElementById("ops-modal-wrap");
         wrap.innerHTML = `
         <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;">
             <div style="background:#fff;border-radius:14px;width:400px;max-width:92vw;max-height:90vh;overflow-y:auto;padding:22px;">
                 <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:14px;">${h ? "Editar pieza de herramienta" : "Nueva pieza de herramienta"}</div>
+
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Foto (opcional)</label>
+                <div style="display:flex;align-items:center;gap:10px;margin:4px 0 12px;">
+                    <img id="ops-in-foto-preview" src="${h?.fotoBase64 || ""}" style="width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0;background:#f8fafc;${h?.fotoBase64 ? "" : "display:none;"}">
+                    <div style="flex:1;">
+                        <input type="file" accept="image/*" capture="environment" id="ops-in-foto" onchange="opsPreviewFotoPieza(this)" style="font-size:11.5px;">
+                        <div id="ops-in-foto-estado" style="font-size:10.5px;color:#94a3b8;margin-top:2px;"></div>
+                    </div>
+                </div>
+
                 <label style="font-size:11.5px;color:#64748b;font-weight:600;">Descripción</label>
                 <input id="ops-in-desc" value="${opsEsc(h?.descripcion || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
                 <div style="display:flex;gap:8px;">
@@ -2451,6 +2467,23 @@
         }
     };
 
+    window.opsPreviewFotoPieza = async function (inputEl) {
+        const file = inputEl.files && inputEl.files[0];
+        if (!file) return;
+        const estadoEl = document.getElementById("ops-in-foto-estado");
+        if (estadoEl) estadoEl.textContent = "Procesando...";
+        try {
+            const dataUrl = await opsComprimirImagenBase64(file, 700, 0.6);
+            window.__opsFotoPiezaTmp = dataUrl;
+            const img = document.getElementById("ops-in-foto-preview");
+            if (img) { img.src = dataUrl; img.style.display = ""; }
+            if (estadoEl) estadoEl.textContent = "Lista — se guarda junto con el resto del formulario.";
+        } catch (err) {
+            console.error("[opsPreviewFotoPieza]", err);
+            if (estadoEl) estadoEl.textContent = "Error al procesar la foto (revisa que no sea muy pesada).";
+        }
+    };
+
     window.opsGuardarPieza = async function (id) {
         const descripcion = document.getElementById("ops-in-desc").value.trim();
         if (!descripcion) { alert("La descripción es obligatoria"); return; }
@@ -2475,6 +2508,7 @@
                 // Edición: solo los datos propios de la pieza — estado, técnico y
                 // ubicación se manejan por separado con "Registrar movimiento"/"Dar de baja".
                 const datos = { descripcion, marca, modelo, categoria, numeroSerie, departamento, condicion, uso, peso, pesoUnidad, medida, requiereAutorizacion };
+                if (window.__opsFotoPiezaTmp) datos.fotoBase64 = window.__opsFotoPiezaTmp;
                 await fs.updateDoc(fs.doc(db, COL_HERRAMIENTAS, id), datos);
                 const idx = cacheHerr.findIndex(x => x.id === id);
                 if (idx >= 0) cacheHerr[idx] = { ...cacheHerr[idx], ...datos };
@@ -2489,6 +2523,7 @@
             await fs.setDoc(fs.doc(db, COL_HERRAMIENTAS, folio), {
                 folio, descripcion, marca, modelo, categoria, numeroSerie,
                 departamento, condicion, uso, peso, pesoUnidad, medida,
+                fotoBase64: window.__opsFotoPiezaTmp || null,
                 estado: tecnicoDestinoId ? "asignada" : "disponible",
                 ubicacionActual: UBICACIONES[0],
                 tecnicoActualId: tecnicoDestinoId,
@@ -4950,6 +4985,7 @@
                 <div style="display:flex;align-items:center;gap:8px;">
                     <input id="ops-cal-filtro" value="${opsEsc(opsCalFiltroTexto)}" oninput="opsCalFiltrar(this.value)" placeholder="Buscar técnico..." style="border:1px solid #e2e8f0;background:#f8fafc;border-radius:8px;padding:8px 12px;font-size:12.5px;min-width:170px;">
                     <button onclick="opsAbrirModalFolio(null, '${opsCalFechaISO(opsCalFecha)}')" style="background:#1D2E73;border:none;color:#fff;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;box-shadow:0 2px 6px rgba(29,46,115,.25);">+ Nuevo servicio</button>
+                    ${opsPuedeGestionar() ? `<button onclick="opsAbrirModalVisitaInspeccion()" style="background:#0e7490;border:none;color:#fff;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;box-shadow:0 2px 6px rgba(14,116,144,.25);">+ Visita de inspección</button>` : ""}
                 </div>
             </div>
 
@@ -5032,7 +5068,7 @@
                 const rolesReq = receta ? (receta.personal || []).reduce((n, p) => n + (p.cantidad || 1), 0) : null;
                 const faltaGente = rolesReq !== null && (f.tecnicosAsignadosIds || []).length < rolesReq;
                 const conProblema = choqueSet.has(f.id) || faltaGente;
-                const colorBase = f.tipoFolio === "laboratorio" ? "#7c3aed" : "#1D2E73";
+                const colorBase = f.tipoFolio === "laboratorio" ? "#7c3aed" : f.tipoFolio === "inspeccion" ? "#0e7490" : "#1D2E73";
                 return `<div onclick="opsAbrirPanelFolio('${f.id}')" title="${opsEsc(f.estacion)}" style="position:absolute;top:4px;bottom:4px;left:${inicioPct}%;width:${anchoTotalPct}%;border-radius:6px;border:${conProblema ? "2px solid #E7402B" : "1px solid rgba(0,0,0,.08)"};overflow:hidden;cursor:pointer;display:flex;">
                     <div draggable="true" ondragstart="event.stopPropagation();opsCalArrastrarFolio(event,'${f.id}')" onclick="event.stopPropagation();" title="Arrastrar para reprogramar" style="width:9px;flex-shrink:0;cursor:grab;background:rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center;">
                         <div style="width:3px;height:60%;background:rgba(255,255,255,.7);border-radius:2px;"></div>
@@ -5074,6 +5110,7 @@
             <div style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:3px;background:#1D2E73;display:inline-block;"></span> Servicio (ejecución)</div>
             <div style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:3px;background:repeating-linear-gradient(45deg,#1D2E7355,#1D2E7355 3px,#1D2E7388 3px,#1D2E7388 6px);display:inline-block;"></span> Traslado</div>
             <div style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:3px;background:#7c3aed;display:inline-block;"></span> Laboratorio / guardia</div>
+            <div style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:3px;background:#0e7490;display:inline-block;"></span> Visita de inspección</div>
             <div style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:3px;background:repeating-linear-gradient(45deg,#e2e8f0,#e2e8f0 6px,#f1f5f9 6px,#f1f5f9 12px);display:inline-block;"></span> Ausente</div>
             <div style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:2px;background:#E7402B;display:inline-block;"></span> Hora actual</div>
             <div style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:3px;border:2px solid #E7402B;display:inline-block;"></span> Choque / falta personal</div>
@@ -5202,10 +5239,20 @@
                 <div style="border-top:1px solid #e2e8f0;padding-top:12px;margin-bottom:16px;">
                     <div style="font-size:11px;font-weight:700;color:#1D2E73;margin-bottom:8px;">Estación (del catálogo)</div>
                     <div style="font-size:12px;color:#334155;line-height:1.7;">
+                        ${f.estacionRazonSocial ? `Razón social: ${opsEsc(f.estacionRazonSocial)}<br>` : ""}
+                        ${f.estacionPermiso ? `Permiso (PL): ${opsEsc(f.estacionPermiso)}<br>` : ""}
                         ${f.estacionEncargado ? `Encargado: ${opsEsc(f.estacionEncargado)}<br>` : ""}
                         ${f.estacionZona ? `Zona: ${opsEsc(f.estacionZona)}<br>` : ""}
                         ${f.estacionDireccion ? `Dirección: ${opsEsc(f.estacionDireccion)}<br>` : ""}
                         ${(f.estacionNumeroTanques || f.estacionNumeroDispensarios || f.estacionNumeroSondas) ? `Equipo: ${[f.estacionNumeroTanques ? f.estacionNumeroTanques + " tanque(s)" : "", f.estacionNumeroDispensarios ? f.estacionNumeroDispensarios + " dispensario(s)" : "", f.estacionNumeroSondas ? f.estacionNumeroSondas + " sonda(s)" : ""].filter(Boolean).join(" · ")}` : ""}
+                    </div>
+                </div>` : ""}
+
+                ${f.esSCFI ? `
+                <div style="border-top:1px solid #e2e8f0;padding-top:12px;margin-bottom:16px;">
+                    <div style="font-size:11px;font-weight:700;color:#7c3aed;margin-bottom:8px;">Servicio SCFI</div>
+                    <div style="font-size:12px;color:#334155;line-height:1.7;">
+                        ${[f.hologramas != null ? f.hologramas + " holograma(s)" : "", f.precintos != null ? f.precintos + " precinto(s)" : "", f.distintivos != null ? f.distintivos + " distintivo(s)" : "", f.viaticos != null ? f.viaticos + " viático(s)" : ""].filter(Boolean).join(" · ") || "Sin cantidades capturadas."}
                     </div>
                 </div>` : ""}
 
@@ -5339,6 +5386,24 @@
                     <div id="ops-fol-estacion-info" style="font-size:10px;color:#15803D;font-weight:600;min-height:14px;margin-bottom:6px;">${f?.estacionCatalogoId ? `Del catálogo${f.estacionEncargado ? " · Encargado: " + opsEsc(f.estacionEncargado) : ""}${f.estacionZona ? " · Zona " + opsEsc(f.estacionZona) : ""}` : ""}</div></div>
                 </div>
 
+                <label style="display:flex;align-items:center;gap:7px;margin:2px 0 8px;font-size:12.5px;color:#334155;cursor:pointer;">
+                    <input type="checkbox" id="ops-fol-es-scfi" ${f?.esSCFI ? "checked" : ""} onchange="document.getElementById('ops-fol-scfi-campos').style.display=this.checked?'block':'none';" style="width:15px;height:15px;">
+                    Es servicio de SCFI (necesita hologramas/precintos/distintivos/viáticos)
+                </label>
+                <div id="ops-fol-scfi-campos" style="display:${f?.esSCFI ? "block" : "none"};background:#f8fafc;border-radius:10px;padding:12px;margin-bottom:10px;">
+                    <div style="font-size:10px;color:#64748b;margin-bottom:8px;">Razón social y permiso se toman solos del catálogo de la estación de arriba. Aquí solo captura cuántos va a usar el técnico.</div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                        <div><label style="font-size:11px;color:#64748b;font-weight:600;">Hologramas</label>
+                        <input id="ops-fol-hologramas" type="number" min="0" value="${f?.hologramas ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin:3px 0;"></div>
+                        <div><label style="font-size:11px;color:#64748b;font-weight:600;">Precintos</label>
+                        <input id="ops-fol-precintos" type="number" min="0" value="${f?.precintos ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin:3px 0;"></div>
+                        <div><label style="font-size:11px;color:#64748b;font-weight:600;">Distintivos</label>
+                        <input id="ops-fol-distintivos" type="number" min="0" value="${f?.distintivos ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin:3px 0;"></div>
+                        <div><label style="font-size:11px;color:#64748b;font-weight:600;">Viáticos</label>
+                        <input id="ops-fol-viaticos" type="number" min="0" value="${f?.viaticos ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin:3px 0;"></div>
+                    </div>
+                </div>
+
                 <label style="font-size:11.5px;color:#64748b;font-weight:600;">Comentarios</label>
                 <textarea id="ops-fol-comentarios" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;min-height:50px;">${opsEsc(f?.comentarios || "")}</textarea>
 
@@ -5385,7 +5450,7 @@
 
                 <div style="display:flex;gap:8px;">
                     <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Tipo de folio</label>
-                    <select id="ops-fol-tipo" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                    <select id="ops-fol-tipo" onchange="document.getElementById('ops-fol-norma-wrap').style.display=this.value==='inspeccion'?'block':'none';" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
                         ${OPS_TIPOS_FOLIO.map(t => `<option value="${t.clave}" ${(f?.tipoFolio || "servicio") === t.clave ? "selected" : ""}>${opsEsc(t.nombre)}</option>`).join("")}
                     </select></div>
                     <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Servicio (catálogo)</label>
@@ -5393,6 +5458,13 @@
                         <option value="">— Sin ligar —</option>
                         ${cacheServiciosCatalogo.map(s => `<option value="${s.id}" ${f?.servicioCatalogoId === s.id ? "selected" : ""}>${opsEsc(s.nombre)}</option>`).join("")}
                     </select></div>
+                </div>
+
+                <div id="ops-fol-norma-wrap" style="display:${(f?.tipoFolio === "inspeccion") ? "block" : "none"};margin-bottom:10px;">
+                    <label style="font-size:11.5px;color:#64748b;font-weight:600;">Norma / tipo de visita</label>
+                    <select id="ops-fol-norma" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0;">
+                        ${OPS_NORMAS_INSPECCION.map(n => `<option value="${opsEsc(n)}" ${f?.normaInspeccion === n ? "selected" : ""}>${opsEsc(n)}</option>`).join("")}
+                    </select>
                 </div>
 
                 <label style="font-size:11.5px;color:#64748b;font-weight:600;">Fecha y hora programada del trabajo</label>
@@ -5461,6 +5533,7 @@
             catalogoId: f.estacionCatalogoId, encargado: f.estacionEncargado || null, zona: f.estacionZona || null,
             numeroTanques: f.estacionNumeroTanques || null, numeroDispensarios: f.estacionNumeroDispensarios || null,
             numeroSondas: f.estacionNumeroSondas || null, direccion: f.estacionDireccion || null,
+            razonSocial: f.estacionRazonSocial || null, permiso: f.estacionPermiso || null,
         } : null;
     };
 
@@ -5532,11 +5605,154 @@
             catalogoId: e.id, encargado: e.encargado || null, zona: e.zona || null,
             numeroTanques: e.numeroTanques || null, numeroDispensarios: e.numeroDispensarios || null,
             numeroSondas: e.numeroSondas || null, direccion: e.direccionNormalizada || null,
+            razonSocial: e.razonSocial || null, permiso: e.permiso || null,
         };
         const info = document.getElementById("ops-fol-estacion-info");
         if (info) info.innerHTML = `Del catálogo${e.encargado ? " · Encargado: " + opsEsc(e.encargado) : ""}${e.zona ? " · Zona " + opsEsc(e.zona) : ""}${e.numeroTanques ? " · " + e.numeroTanques + " tanque(s)" : ""}`;
         const box = document.getElementById("ops-fol-estacion-results");
         if (box) box.style.display = "none";
+    };
+
+    // ═══════════════════ Programa de inspectores — alta rápida multi-estación ═══════════════════
+    // Reemplaza el Excel manual (INSPECTOR, SERVICIO, ESTACIÓN, PERMISO, FECHA) que Glen ya
+    // usaba: se arma la lista de estaciones a visitar ese día y se crea UN folio por estación,
+    // todos con el mismo técnico/fecha/Norma — así ya funcionan sugerencias, SLA y arrastrar/soltar.
+    let opsVisitaInspeccionEstaciones = []; // lista temporal mientras se arma el alta
+
+    window.opsAbrirModalVisitaInspeccion = function () {
+        opsVisitaInspeccionEstaciones = [];
+        const tecnicosActivos = cacheTec.filter(t => t.estatus === "activo");
+        const wrap = document.getElementById("ops-modal-wrap");
+        wrap.innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;">
+            <div style="background:#fff;border-radius:14px;width:480px;max-width:94vw;max-height:90vh;overflow-y:auto;padding:22px;">
+                <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:4px;">Programar visita de inspección</div>
+                <div style="font-size:11.5px;color:#64748b;margin-bottom:14px;">Arma la lista de estaciones que va a visitar ese día — se crea un folio por cada una, con la misma fecha, técnico y Norma.</div>
+
+                <div style="display:flex;gap:8px;">
+                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Inspector (técnico)</label>
+                    <select id="ops-vi-tecnico" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                        ${tecnicosActivos.map(t => `<option value="${t.id}">${opsEsc(t.nombre)}</option>`).join("")}
+                    </select></div>
+                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Norma / servicio</label>
+                    <select id="ops-vi-norma" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                        ${OPS_NORMAS_INSPECCION.map(n => `<option value="${opsEsc(n)}">${opsEsc(n)}</option>`).join("")}
+                    </select></div>
+                </div>
+                <div style="display:flex;gap:8px;">
+                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Fecha</label>
+                    <input type="date" id="ops-vi-fecha" value="${opsHoy()}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
+                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Hora de inicio</label>
+                    <input type="time" id="ops-vi-hora" value="08:00" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
+                </div>
+
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Agregar estaciones a visitar</label>
+                <div style="position:relative;">
+                    <input id="ops-vi-buscar" placeholder="Busca en el catálogo…" oninput="window.opsViBuscarEstacion(this.value)" onblur="setTimeout(()=>{const b=document.getElementById('ops-vi-resultados');if(b)b.style.display='none';},150)" autocomplete="off" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 6px;">
+                    <div id="ops-vi-resultados" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #cbd5e1;border-radius:8px;max-height:180px;overflow-y:auto;z-index:20;box-shadow:0 8px 24px rgba(2,20,50,.14);"></div>
+                </div>
+                <div id="ops-vi-lista" style="display:flex;flex-direction:column;gap:6px;margin:8px 0 16px;"></div>
+
+                <div style="display:flex;gap:8px;justify-content:flex-end;">
+                    <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
+                    <button onclick="opsGuardarVisitaInspeccion()" class="mkt-add-btn" style="background:#0e7490;">Crear folios</button>
+                </div>
+            </div>
+        </div>`;
+    };
+
+    window.opsViBuscarEstacion = function (valor) {
+        const box = document.getElementById("ops-vi-resultados");
+        if (!box) return;
+        if (!valor || valor.trim().length < 2 || !window.tcCargarCatalogoEstaciones) { box.style.display = "none"; return; }
+        window.tcCargarCatalogoEstaciones().then(lista => {
+            const q = valor.toLowerCase();
+            const yaAgregadas = new Set(opsVisitaInspeccionEstaciones.map(e => e.id));
+            const filtradas = (lista || []).filter(e => !yaAgregadas.has(e.id) && [e.razonSocial, e.nombreComercial, e.municipio, e.permiso, e.zona].filter(Boolean).join(" ").toLowerCase().includes(q)).slice(0, 8);
+            window.__opsViListaTmp = filtradas;
+            if (!filtradas.length) { box.innerHTML = '<div style="padding:9px 11px;color:#94a3b8;font-size:11.5px;">Sin resultados.</div>'; box.style.display = "block"; return; }
+            box.innerHTML = filtradas.map(e => `
+                <div onmousedown="window.opsViAgregarEstacion('${e.id}')" style="padding:8px 10px;cursor:pointer;border-bottom:1px solid #eef2f7;">
+                    <div style="font-size:12px;font-weight:700;color:#0f172a;">${opsEsc(e.nombreComercial || e.razonSocial)}</div>
+                    <div style="font-size:10.5px;color:#64748b;">${opsEsc(e.municipio || "")}${e.permiso ? " · " + opsEsc(e.permiso) : ""}</div>
+                </div>`).join("");
+            box.style.display = "block";
+        });
+    };
+
+    window.opsViAgregarEstacion = function (catalogoId) {
+        const e = (window.__opsViListaTmp || []).find(x => x.id === catalogoId);
+        if (!e || opsVisitaInspeccionEstaciones.some(x => x.id === e.id)) return;
+        opsVisitaInspeccionEstaciones.push(e);
+        document.getElementById("ops-vi-buscar").value = "";
+        document.getElementById("ops-vi-resultados").style.display = "none";
+        opsViRenderLista();
+    };
+
+    window.opsViQuitarEstacion = function (catalogoId) {
+        opsVisitaInspeccionEstaciones = opsVisitaInspeccionEstaciones.filter(e => e.id !== catalogoId);
+        opsViRenderLista();
+    };
+
+    function opsViRenderLista() {
+        const el = document.getElementById("ops-vi-lista");
+        if (!el) return;
+        el.innerHTML = opsVisitaInspeccionEstaciones.map(e => `
+            <div style="display:flex;align-items:center;gap:8px;background:#f0f9ff;border-radius:8px;padding:6px 10px;">
+                <div style="flex:1;font-size:12px;color:#0e7490;font-weight:600;">${opsEsc(e.nombreComercial || e.razonSocial)}${e.permiso ? ` <span style="color:#64748b;font-weight:400;">· ${opsEsc(e.permiso)}</span>` : ""}</div>
+                <button onclick="opsViQuitarEstacion('${e.id}')" style="background:none;border:none;color:#0e7490;cursor:pointer;">${ICON.close}</button>
+            </div>`).join("") || `<div style="color:#94a3b8;font-size:11.5px;">Todavía no agregas ninguna estación.</div>`;
+    }
+
+    window.opsGuardarVisitaInspeccion = async function () {
+        if (!opsVisitaInspeccionEstaciones.length) { alert("Agrega al menos una estación."); return; }
+        const tecnicoId = document.getElementById("ops-vi-tecnico").value;
+        const tec = cacheTec.find(t => t.id === tecnicoId);
+        if (!tec) { alert("Selecciona un inspector."); return; }
+        const norma = document.getElementById("ops-vi-norma").value;
+        const fecha = document.getElementById("ops-vi-fecha").value;
+        const hora = document.getElementById("ops-vi-hora").value || "08:00";
+        if (!fecha) { alert("Selecciona una fecha."); return; }
+        const fechaProgramada = `${fecha}T${hora}`;
+        const esSCFI = norma === "SCFI";
+
+        try {
+            const { db, fs } = await opsGetFB();
+            for (const e of opsVisitaInspeccionEstaciones) {
+                const datos = {
+                    folioOS: "", estacion: e.nombreComercial || e.razonSocial || "",
+                    estacionCatalogoId: e.id, estacionEncargado: e.encargado || null, estacionZona: e.zona || null,
+                    estacionNumeroTanques: e.numeroTanques || null, estacionNumeroDispensarios: e.numeroDispensarios || null,
+                    estacionNumeroSondas: e.numeroSondas || null, estacionDireccion: e.direccionNormalizada || null,
+                    estacionRazonSocial: e.razonSocial || null, estacionPermiso: e.permiso || null,
+                    esSCFI, hologramas: null, precintos: null, distintivos: null, viaticos: null,
+                    comentarios: null, clienteId: null, clienteNombre: null, prioridad: null,
+                    fechaSolicitud: opsFechaHora(), vencimiento: null, fechaAtencion: null, fechaSolucion: null,
+                    tecnicoResponsableId: tecnicoId, tecnicoResponsableNombre: tec.nombre, tecnicoResponsableCorreo: tec.correo || null,
+                    responsable: tec.nombre,
+                    tipoFolio: "inspeccion", normaInspeccion: norma, servicioCatalogoId: null,
+                    fechaProgramada, tiempoEjecucionHrs: null, tiempoTrasladoHrs: null,
+                    tecnicosAsignadosIds: [tecnicoId], tecnicosAsignadosNombres: [tec.nombre],
+                    contactoNombre: null, contactoTelefono: null, encargadoInterno: null, facturarA: null,
+                    proyecto: null, gastoEstimado: null, viaticosPendientes: false, viaticosMonto: null,
+                    origen: "programa_inspectores", creadoPor: opsNombreActual(), creadoEn: opsFechaHora(),
+                };
+                const nuevo = await fs.addDoc(fs.collection(db, COL_FOLIOS), datos);
+                await fs.addDoc(fs.collection(db, COL_FOLIOS, nuevo.id, "comentarios"), {
+                    texto: `Folio de inspección (${norma}) capturado por ${opsNombreActual()} para ${tec.nombre}, programado el ${opsFmtFechaCorta(fechaProgramada)}.`,
+                    autor: opsNombreActual(), autorEmail: opsUsuarioActual(), tipo: "captura",
+                    createdAt: fs.serverTimestamp ? fs.serverTimestamp() : opsFechaHora(),
+                });
+            }
+            const snap = await fs.getDocs(fs.collection(db, COL_FOLIOS));
+            cacheFolios = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            document.getElementById("ops-modal-wrap").innerHTML = "";
+            opsRenderCalendario();
+            if (window.mostrarPush) window.mostrarPush("Operaciones", `${opsVisitaInspeccionEstaciones.length} folio(s) de inspección creados.`, "✅");
+        } catch (e) {
+            console.error("[opsGuardarVisitaInspeccion]", e);
+            alert("No se pudo guardar: " + e.message);
+        }
     };
 
     window.opsGuardarFolio = async function (id) {
@@ -5571,6 +5787,13 @@
             estacionNumeroDispensarios: window.__opsFolioEstMeta?.numeroDispensarios || null,
             estacionNumeroSondas: window.__opsFolioEstMeta?.numeroSondas || null,
             estacionDireccion: window.__opsFolioEstMeta?.direccion || null,
+            estacionRazonSocial: window.__opsFolioEstMeta?.razonSocial || null,
+            estacionPermiso: window.__opsFolioEstMeta?.permiso || null,
+            esSCFI: document.getElementById("ops-fol-es-scfi").checked,
+            hologramas: document.getElementById("ops-fol-hologramas").value ? Number(document.getElementById("ops-fol-hologramas").value) : null,
+            precintos: document.getElementById("ops-fol-precintos").value ? Number(document.getElementById("ops-fol-precintos").value) : null,
+            distintivos: document.getElementById("ops-fol-distintivos").value ? Number(document.getElementById("ops-fol-distintivos").value) : null,
+            viaticos: document.getElementById("ops-fol-viaticos").value ? Number(document.getElementById("ops-fol-viaticos").value) : null,
             comentarios: document.getElementById("ops-fol-comentarios").value.trim(),
             clienteId, clienteNombre, prioridad,
             fechaSolicitud, vencimiento,
@@ -5582,6 +5805,7 @@
             responsable: tec?.nombre || document.getElementById("ops-fol-responsable-texto").value.trim() || null,
             // ── Fase 5: programación / equipo / comercial ──
             tipoFolio: tipoFolioNuevo,
+            normaInspeccion: tipoFolioNuevo === "inspeccion" ? (document.getElementById("ops-fol-norma")?.value || null) : null,
             servicioCatalogoId: document.getElementById("ops-fol-servicio").value || null,
             fechaProgramada: document.getElementById("ops-fol-programada").value || null,
             tiempoEjecucionHrs: document.getElementById("ops-fol-tiempo-ejec").value ? Number(document.getElementById("ops-fol-tiempo-ejec").value) : null,
