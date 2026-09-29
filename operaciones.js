@@ -97,6 +97,18 @@
     // una Norma/servicio específico. "SCFI" es la que además pide hologramas/precintos/
     // distintivos/viáticos (ver esSCFI en el folio).
     const OPS_NORMAS_INSPECCION = ["Anexo 21", "Anexo 22", "Anexo 21 y 22", "ASEA", "SCFI", "Calibración Medida Volumétrica", "Alto Flujo", "Laboratorio"];
+    // Paleta vívida por tipo/Norma (Glen, sep-2026) — para identificar cada categoría de un
+    // vistazo en el Calendario, sin perder el azul institucional para el servicio normal.
+    const OPS_COLOR_NORMA = {
+        "Anexo 21": "#f97316", "Anexo 22": "#ea580c", "Anexo 21 y 22": "#fb923c",
+        "ASEA": "#db2777", "SCFI": "#059669", "Calibración Medida Volumétrica": "#0284c7",
+        "Alto Flujo": "#0891b2", "Laboratorio": "#7c3aed",
+    };
+    function opsColorFolio(f) {
+        if (f.tipoFolio === "laboratorio") return "#7c3aed";
+        if (f.tipoFolio === "inspeccion") return OPS_COLOR_NORMA[f.normaInspeccion] || "#0e7490";
+        return "#1D2E73";
+    }
     // Notificación automática para folios de Laboratorio (Glen, sep-2026).
     // Alan Minjárez (MINJAREZ OCHOA ALBERTO ALAN) todavía no tiene correo real
     // capturado en Colaboradores (queda como "sincorreo_...") — en cuanto se le
@@ -5149,14 +5161,14 @@
                 const rolesReq = receta ? (receta.personal || []).reduce((n, p) => n + (p.cantidad || 1), 0) : null;
                 const faltaGente = rolesReq !== null && (f.tecnicosAsignadosIds || []).length < rolesReq;
                 const conProblema = choqueSet.has(f.id) || faltaGente;
-                const colorBase = f.tipoFolio === "laboratorio" ? "#7c3aed" : f.tipoFolio === "inspeccion" ? "#0e7490" : "#1D2E73";
-                return `<div onclick="opsAbrirPanelFolio('${f.id}')" title="${opsEsc(f.estacion)}" style="position:absolute;top:4px;bottom:4px;left:${inicioPct}%;width:${anchoTotalPct}%;border-radius:6px;border:${conProblema ? "2px solid #E7402B" : "1px solid rgba(0,0,0,.08)"};overflow:hidden;cursor:pointer;display:flex;">
+                const colorBase = opsColorFolio(f);
+                return `<div onclick="opsAbrirPanelFolio('${f.id}')" title="${opsEsc(f.estacion)}" style="position:absolute;top:3px;bottom:3px;left:${inicioPct}%;width:${anchoTotalPct}%;border-radius:9px;border:${conProblema ? "2px solid #E7402B" : "1px solid rgba(0,0,0,.06)"};overflow:hidden;cursor:pointer;display:flex;box-shadow:0 1px 3px rgba(15,23,42,.15);">
                     <div draggable="true" ondragstart="event.stopPropagation();opsCalArrastrarFolio(event,'${f.id}')" onclick="event.stopPropagation();" title="Arrastrar para reprogramar" style="width:9px;flex-shrink:0;cursor:grab;background:rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center;">
                         <div style="width:3px;height:60%;background:rgba(255,255,255,.7);border-radius:2px;"></div>
                     </div>
                     ${d.traslado ? `<div style="width:${propTraslado}%;background:repeating-linear-gradient(45deg,${colorBase}55,${colorBase}55 4px,${colorBase}88 4px,${colorBase}88 8px);"></div>` : ""}
-                    <div style="flex:1;background:${colorBase};display:flex;align-items:center;padding:0 6px;overflow:hidden;">
-                        <span style="color:#fff;font-size:10px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${opsEsc(f.estacion)}</span>
+                    <div style="flex:1;background:linear-gradient(180deg,${colorBase}f2,${colorBase});display:flex;align-items:center;padding:0 7px;overflow:hidden;">
+                        <span style="color:#fff;font-size:10px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.1px;">${opsEsc(f.estacion)}</span>
                     </div>
                 </div>`;
             }).join("");
@@ -5187,14 +5199,15 @@
                     </div>`).join("") : `<div style="padding:40px;text-align:center;color:#94a3b8;">Ningún técnico coincide con la búsqueda.</div>`}
             </div>
         </div>
-        <div style="display:flex;gap:16px;margin-top:12px;padding:10px 14px;background:#fff;border-radius:10px;box-shadow:0 1px 2px rgba(15,23,42,.04);font-size:10.5px;color:#64748b;flex-wrap:wrap;">
-            <div style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:3px;background:#1D2E73;display:inline-block;"></span> Servicio (ejecución)</div>
-            <div style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:3px;background:repeating-linear-gradient(45deg,#1D2E7355,#1D2E7355 3px,#1D2E7388 3px,#1D2E7388 6px);display:inline-block;"></span> Traslado</div>
-            <div style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:3px;background:#7c3aed;display:inline-block;"></span> Laboratorio / guardia</div>
-            <div style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:3px;background:#0e7490;display:inline-block;"></span> Visita de inspección</div>
-            <div style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:3px;background:repeating-linear-gradient(45deg,#e2e8f0,#e2e8f0 6px,#f1f5f9 6px,#f1f5f9 12px);display:inline-block;"></span> Ausente</div>
+        <div style="display:flex;gap:14px;margin-top:12px;padding:12px 14px;background:#fff;border-radius:10px;box-shadow:0 1px 2px rgba(15,23,42,.04);font-size:10.5px;color:#64748b;flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:4px;background:#1D2E73;display:inline-block;"></span> Servicio</div>
+            <div style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:4px;background:repeating-linear-gradient(45deg,#1D2E7355,#1D2E7355 3px,#1D2E7388 3px,#1D2E7388 6px);display:inline-block;"></span> Traslado</div>
+            <div style="width:1px;height:14px;background:#e2e8f0;"></div>
+            ${OPS_NORMAS_INSPECCION.map(n => `<div style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:4px;background:${OPS_COLOR_NORMA[n]};display:inline-block;"></span> ${opsEsc(n)}</div>`).join("")}
+            <div style="width:1px;height:14px;background:#e2e8f0;"></div>
+            <div style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:4px;background:repeating-linear-gradient(45deg,#e2e8f0,#e2e8f0 6px,#f1f5f9 6px,#f1f5f9 12px);display:inline-block;"></span> Ausente</div>
             <div style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:2px;background:#E7402B;display:inline-block;"></span> Hora actual</div>
-            <div style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:3px;border:2px solid #E7402B;display:inline-block;"></span> Choque / falta personal</div>
+            <div style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:4px;border:2px solid #E7402B;display:inline-block;"></span> Choque / falta personal</div>
         </div>`;
     }
 
@@ -5210,9 +5223,13 @@
             const ausente = cacheAusencias.some(a => a.tecnicoId === t.id && a.fechaInicio <= fechaISO && a.fechaFin >= fechaISO);
             if (ausente) return `<div style="background:#f1f5f9;border-radius:6px;padding:4px;text-align:center;font-size:9.5px;color:#94a3b8;">Ausente</div>`;
             if (!folios.length) return `<div style="padding:4px;"></div>`;
-            const conChoque = folios.length > 1;
+            // choque real: mismo criterio que la vista Día — dos horarios capturados que sí se encima (no solo "hay 2 folios").
+            const datos = folios.map(f => opsCalDatosFolio(f));
+            const conChoque = datos.some((d1, i) => datos.some((d2, j) => i !== j && d1.horaDecimal < (d2.horaDecimal + d2.traslado + d2.ejecucion) && (d1.horaDecimal + d1.traslado + d1.ejecucion) > d2.horaDecimal));
+            const colores = new Set(folios.map(f => opsColorFolio(f)));
+            const colorBadge = conChoque ? "#E7402B" : (colores.size === 1 ? [...colores][0] : "#64748b");
             const accion = folios.length === 1 ? `opsAbrirPanelFolio('${folios[0].id}')` : `opsCalIrADia('${fechaISO}')`;
-            return `<div onclick="${accion}" style="background:${conChoque ? "#fef2f2" : "#eef2f7"};border:1px solid ${conChoque ? "#fecaca" : "#dbe3f0"};border-radius:6px;padding:4px 6px;text-align:center;font-size:10.5px;font-weight:700;color:${conChoque ? "#E7402B" : "#1D2E73"};cursor:pointer;">${folios.length} servicio${folios.length > 1 ? "s" : ""}</div>`;
+            return `<div onclick="${accion}" style="background:${colorBadge}18;border:1px solid ${colorBadge}45;border-radius:7px;padding:4px 6px;text-align:center;font-size:10.5px;font-weight:700;color:${colorBadge};cursor:pointer;">${folios.length} servicio${folios.length > 1 ? "s" : ""}</div>`;
         }
 
         return `
@@ -5256,9 +5273,13 @@
                     const folios = contarDia(d);
                     const esHoy = opsCalFechaISO(d) === opsCalFechaISO(new Date());
                     const accion = folios.length === 1 ? `opsAbrirPanelFolio('${folios[0].id}')` : `opsCalIrADia('${opsCalFechaISO(d)}')`;
+                    const coloresDia = [...new Set(folios.map(f => opsColorFolio(f)))].slice(0, 4);
                     return `<div onclick="${accion}" style="min-height:56px;border-radius:8px;padding:6px;cursor:pointer;background:${esHoy ? "#eef2f7" : "#f8fafc"};border:1px solid ${esHoy ? "#1D2E73" : "#f1f5f9"};opacity:${fueraDeMes ? 0.4 : 1};">
                         <div style="font-size:10.5px;font-weight:700;color:#334155;">${d.getDate()}</div>
-                        ${folios.length ? `<div style="margin-top:4px;font-size:9.5px;font-weight:700;color:#1D2E73;background:#dbe3f0;border-radius:5px;padding:1px 5px;display:inline-block;">${folios.length}</div>` : ""}
+                        ${folios.length ? `<div style="margin-top:4px;display:flex;align-items:center;gap:3px;flex-wrap:wrap;">
+                            ${coloresDia.map(c => `<span style="width:6px;height:6px;border-radius:50%;background:${c};display:inline-block;"></span>`).join("")}
+                            <span style="font-size:9.5px;font-weight:700;color:#475569;margin-left:2px;">${folios.length}</span>
+                        </div>` : ""}
                     </div>`;
                 }).join("")}
             </div>
