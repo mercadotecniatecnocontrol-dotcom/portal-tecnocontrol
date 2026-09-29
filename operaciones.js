@@ -194,18 +194,52 @@
     // sin rastreo continuo en segundo plano). opsGpsProvider es para lo que Flotilla
     // no hace: calcular una RUTA entre dos puntos (distancia, tiempo, casetas) —
     // necesita un proveedor de ruteo aparte, sea tu propia plataforma GPS u otro.
+    // Elegido (Glen, sep-2026): OSRM (motor de ruteo de código abierto, gratis, sin
+    // llave ni tarjeta) para distancia/tiempo REAL. Las casetas siguen siendo un
+    // estimado por tarifa fija — ningún servicio gratuito trae datos reales de
+    // casetas mexicanas, eso solo lo tienen los proveedores de paga (Google Routes).
+    // Traccar (tu propio GPS) es para verificar el kilometraje YA recorrido después
+    // del viaje — no sirve para planear antes, así que no se usa aquí.
+    async function opsGeocodificarNominatim(direccion) {
+        try {
+            const resp = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(direccion)}`);
+            const data = await resp.json();
+            if (!data || !data[0]) return null;
+            return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+        } catch (e) {
+            console.error("[opsGeocodificarNominatim]", e);
+            return null;
+        }
+    }
     window.opsGpsProvider = {
-        // origen/destino: { lat, lng } o direcciones en texto (a definir cuando se conecte).
-        // Debe regresar { distanciaKm, tiempoHrs, casetasMonto, rutaPuntos } o null si no se pudo calcular.
+        // origen/destino: {lat,lng} o texto de dirección (se geocodifica solo, gratis,
+        // vía Nominatim/OpenStreetMap). Regresa { distanciaKm, tiempoHrs, casetasMonto:
+        // null, rutaPuntos } o null si no se pudo calcular — quien llama debe caer de
+        // vuelta al estimado por tarifa fija en ese caso (casetas siempre, porque OSRM
+        // no las conoce).
         async calcularRuta(origen, destino) {
-            console.warn("[opsGpsProvider] calcularRuta es un placeholder — todavía no está conectado a ningún proveedor.", origen, destino);
-            return null;
+            if (!origen || !destino) return null;
+            try {
+                const puntoA = typeof origen === "string" ? await opsGeocodificarNominatim(origen) : origen;
+                const puntoB = typeof destino === "string" ? await opsGeocodificarNominatim(destino) : destino;
+                if (!puntoA || !puntoB) { console.warn("[opsGpsProvider] No se pudo ubicar origen o destino."); return null; }
+                const resp = await fetch(`https://router.project-osrm.org/route/v1/driving/${puntoA.lng},${puntoA.lat};${puntoB.lng},${puntoB.lat}?overview=false`);
+                const data = await resp.json();
+                const ruta = data.routes && data.routes[0];
+                if (!ruta) { console.warn("[opsGpsProvider] OSRM no regresó ninguna ruta.", data); return null; }
+                const distanciaKm = Math.round((ruta.distance || 0) / 100) / 10;
+                const tiempoHrs = ruta.duration ? Math.round((ruta.duration / 3600) * 100) / 100 : null;
+                return { distanciaKm, tiempoHrs, casetasMonto: null, rutaPuntos: null };
+            } catch (e) {
+                console.error("[opsGpsProvider] Error consultando OSRM:", e);
+                return null;
+            }
         },
-        // Para cuando se decida si las casetas salen de tu propia plataforma GPS o de
-        // un proveedor de ruteo aparte (ver la respuesta de opciones que te di en el chat).
+        // Ningún servicio gratuito trae casetas reales de México — se queda como
+        // estimado por tarifa fija, calculado en opsCalcularViaticos().
         async calcularCasetas(rutaPuntos) {
-            console.warn("[opsGpsProvider] calcularCasetas es un placeholder — todavía no está conectado a ningún proveedor.", rutaPuntos);
             return null;
+
         },
     };
 
@@ -829,7 +863,8 @@
         viaticoDiario: 350,       // $ por día de viaje (comida, etc.)
         hospedajePorNoche: 900,   // $ por noche de hotel
         costoPorKm: 4.5,          // $ por km recorrido (gasolina) — estimado, no viene de GPS real todavía
-        casetaPromedioPorTrayecto: 250, // $ estimado de casetas por trayecto (ida) — Fase D (GPS real) lo reemplazará
+        casetaPromedioPorTrayecto: 250, // $ estimado de casetas por trayecto (ida) — se usa solo si no hay ruta real (Google Routes)
+        origenBaseDireccion: "Chihuahua, Chihuahua, México", // punto de partida para calcular ruta real — ajústalo a tu oficina real
     };
     let cacheConfigViaticos = { ...CONFIG_VIATICOS_DEFAULT };
     let cacheRevisionesHerr = []; // últimas revisiones/checklists de herramienta, de cualquier origen (Portal o Flotilla)
@@ -5400,182 +5435,192 @@
         })();
         const vencAuto = f ? opsCalcularVencimientoAutomatico(f.fechaSolicitud, f.clienteId, f.prioridad) : null;
         wrap.innerHTML = `
-        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;">
-            <div style="background:#fff;border-radius:14px;width:480px;max-width:92vw;max-height:90vh;overflow-y:auto;padding:22px;">
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;">
+            <div style="background:#fff;border-radius:14px;width:1120px;max-width:98vw;max-height:92vh;overflow-y:auto;padding:22px;">
                 <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:14px;">${f ? "Editar folio" : "Nuevo folio"}</div>
 
-                <div style="display:flex;gap:8px;">
-                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">O.S. (Orden de Servicio)</label>
-                    <input id="ops-fol-os" value="${opsEsc(f?.folioOS || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
-                    <div style="flex:2;position:relative;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Estación</label>
+                <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start;">
+
+                <div style="flex:1;min-width:320px;">
+                    <div style="font-size:11px;font-weight:700;color:#1D2E73;text-transform:uppercase;letter-spacing:.3px;margin-bottom:10px;">Servicio</div>
+                    <div style="display:flex;gap:8px;">
+                        <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">O.S. (Orden de Servicio)</label>
+                        <input id="ops-fol-os" value="${opsEsc(f?.folioOS || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
+                    </div>
+                    <div style="position:relative;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Estación</label>
                     <input id="ops-fol-estacion" value="${opsEsc(f?.estacion || "")}" placeholder="Escribe o busca en el catálogo…" oninput="window.opsFolioBuscarEstacion(this.value)" onblur="setTimeout(()=>{const b=document.getElementById('ops-fol-estacion-results');if(b)b.style.display='none';},150)" autocomplete="off" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 2px;">
                     <div id="ops-fol-estacion-results" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #cbd5e1;border-radius:8px;max-height:200px;overflow-y:auto;z-index:20;box-shadow:0 8px 24px rgba(2,20,50,.14);"></div>
                     <div id="ops-fol-estacion-info" style="font-size:10px;color:#15803D;font-weight:600;min-height:14px;margin-bottom:6px;">${f?.estacionCatalogoId ? `Del catálogo${f.estacionEncargado ? " · Encargado: " + opsEsc(f.estacionEncargado) : ""}${f.estacionZona ? " · Zona " + opsEsc(f.estacionZona) : ""}` : ""}</div></div>
-                </div>
 
-                <label style="display:flex;align-items:center;gap:7px;margin:2px 0 8px;font-size:12.5px;color:#334155;cursor:pointer;">
-                    <input type="checkbox" id="ops-fol-es-scfi" ${f?.esSCFI ? "checked" : ""} onchange="document.getElementById('ops-fol-scfi-campos').style.display=this.checked?'block':'none';" style="width:15px;height:15px;">
-                    Es servicio de SCFI (necesita hologramas/precintos/distintivos/viáticos)
-                </label>
-                <div id="ops-fol-scfi-campos" style="display:${f?.esSCFI ? "block" : "none"};background:#f8fafc;border-radius:10px;padding:12px;margin-bottom:10px;">
-                    <div style="font-size:10px;color:#64748b;margin-bottom:8px;">Razón social y permiso se toman solos del catálogo de la estación de arriba. Aquí solo captura cuántos va a usar el técnico.</div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                        <div><label style="font-size:11px;color:#64748b;font-weight:600;">Hologramas</label>
-                        <input id="ops-fol-hologramas" type="number" min="0" value="${f?.hologramas ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin:3px 0;"></div>
-                        <div><label style="font-size:11px;color:#64748b;font-weight:600;">Precintos</label>
-                        <input id="ops-fol-precintos" type="number" min="0" value="${f?.precintos ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin:3px 0;"></div>
-                        <div><label style="font-size:11px;color:#64748b;font-weight:600;">Distintivos</label>
-                        <input id="ops-fol-distintivos" type="number" min="0" value="${f?.distintivos ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin:3px 0;"></div>
-                        <div><label style="font-size:11px;color:#64748b;font-weight:600;">Viáticos</label>
-                        <input id="ops-fol-viaticos" type="number" min="0" value="${f?.viaticos ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin:3px 0;"></div>
+                    <label style="display:flex;align-items:center;gap:7px;margin:2px 0 8px;font-size:12.5px;color:#334155;cursor:pointer;">
+                        <input type="checkbox" id="ops-fol-es-scfi" ${f?.esSCFI ? "checked" : ""} onchange="document.getElementById('ops-fol-scfi-campos').style.display=this.checked?'block':'none';" style="width:15px;height:15px;">
+                        Es servicio de SCFI (necesita hologramas/precintos/distintivos/viáticos)
+                    </label>
+                    <div id="ops-fol-scfi-campos" style="display:${f?.esSCFI ? "block" : "none"};background:#f8fafc;border-radius:10px;padding:12px;margin-bottom:10px;">
+                        <div style="font-size:10px;color:#64748b;margin-bottom:8px;">Razón social y permiso se toman solos del catálogo de la estación de arriba. Aquí solo captura cuántos va a usar el técnico.</div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                            <div><label style="font-size:11px;color:#64748b;font-weight:600;">Hologramas</label>
+                            <input id="ops-fol-hologramas" type="number" min="0" value="${f?.hologramas ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin:3px 0;"></div>
+                            <div><label style="font-size:11px;color:#64748b;font-weight:600;">Precintos</label>
+                            <input id="ops-fol-precintos" type="number" min="0" value="${f?.precintos ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin:3px 0;"></div>
+                            <div><label style="font-size:11px;color:#64748b;font-weight:600;">Distintivos</label>
+                            <input id="ops-fol-distintivos" type="number" min="0" value="${f?.distintivos ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin:3px 0;"></div>
+                            <div><label style="font-size:11px;color:#64748b;font-weight:600;">Viáticos</label>
+                            <input id="ops-fol-viaticos" type="number" min="0" value="${f?.viaticos ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin:3px 0;"></div>
+                        </div>
                     </div>
-                </div>
 
-                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Comentarios</label>
-                <textarea id="ops-fol-comentarios" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;min-height:50px;">${opsEsc(f?.comentarios || "")}</textarea>
+                    <label style="font-size:11.5px;color:#64748b;font-weight:600;">Comentarios</label>
+                    <textarea id="ops-fol-comentarios" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;min-height:50px;">${opsEsc(f?.comentarios || "")}</textarea>
 
-                <div style="display:flex;gap:8px;align-items:flex-end;">
-                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Cliente</label>
-                    <select id="ops-fol-cliente" onchange="window.opsFolioActualizarVencimientoPreview()" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
-                        <option value="">— Sin clasificar —</option>
-                        ${cacheClientes.map(c => `<option value="${c.id}" ${f?.clienteId === c.id ? "selected" : ""}>${opsEsc(c.nombre)}</option>`).join("")}
-                    </select></div>
-                    <button type="button" onclick="window.opsDetectarClienteFolio()" style="background:#eef2f7;border:none;color:#1f2937;padding:9px 12px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:600;margin-bottom:10px;">Detectar</button>
-                </div>
-
-                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Prioridad</label>
-                <select id="ops-fol-prioridad" onchange="window.opsFolioActualizarVencimientoPreview()" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
-                    <option value="">— Sin prioridad —</option>
-                    ${OPS_PRIORIDADES.map(p => `<option value="${p}" ${f?.prioridad === p ? "selected" : ""}>${p}</option>`).join("")}
-                </select>
-
-                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Fecha y hora de solicitud</label>
-                <input type="datetime-local" id="ops-fol-solicitud" value="${solicitudDefault}" oninput="window.opsFolioActualizarVencimientoPreview()" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
-
-                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Vencimiento original (SLA)</label>
-                <div id="ops-fol-vencimiento-preview" style="display:none;background:#eef2ff;border:1px solid #c7d2fe;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;color:#3730a3;"></div>
-                <div id="ops-fol-vencimiento-manual-wrap" style="display:none;">
-                    <input type="datetime-local" id="ops-fol-vencimiento" value="${f?.vencimiento && !vencAuto ? f.vencimiento : ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
-                    <div style="font-size:10px;color:#94a3b8;margin:-6px 0 10px;">Sin Cliente + Prioridad no se puede calcular automático — captúralo manual (folios legacy/importados).</div>
-                </div>
-
-                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Fecha de atención (compromiso interno de seguimiento)</label>
-                <input type="date" id="ops-fol-atencion" value="${f?.fechaAtencion || ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 4px;">
-                <div style="font-size:10px;color:#94a3b8;margin:0 0 10px;">Solo si el folio se cerró en tiempo pero quedó un pendiente. No usa la tabla de SLA del cliente.</div>
-
-                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Fecha de solución (folio 100% cerrado)</label>
-                <input type="date" id="ops-fol-solucion" value="${f?.fechaSolucion || ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
-
-                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Responsable (ligado a Técnicos)</label>
-                <select id="ops-fol-tecnico" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
-                    <option value="">— Sin ligar / texto libre —</option>
-                    ${cacheTec.map(t => `<option value="${t.id}" ${f?.tecnicoResponsableId === t.id ? "selected" : ""}>${opsEsc(t.nombre)}${t.correo ? " (" + opsEsc(t.correo) + ")" : ""}</option>`).join("")}
-                </select>
-                <input id="ops-fol-responsable-texto" placeholder="Nombre libre (solo si no está en Técnicos)" value="${opsEsc(!f?.tecnicoResponsableId ? (f?.responsable || "") : "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 16px;">
-
-                <div style="border-top:1px solid #e2e8f0;margin:4px 0 14px;padding-top:14px;font-size:11.5px;font-weight:700;color:#1D2E73;">Programación y equipo</div>
-
-                <div style="display:flex;gap:8px;">
-                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Tipo de folio</label>
-                    <select id="ops-fol-tipo" onchange="document.getElementById('ops-fol-norma-wrap').style.display=this.value==='inspeccion'?'block':'none';" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
-                        ${OPS_TIPOS_FOLIO.map(t => `<option value="${t.clave}" ${(f?.tipoFolio || "servicio") === t.clave ? "selected" : ""}>${opsEsc(t.nombre)}</option>`).join("")}
-                    </select></div>
-                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Servicio (catálogo)</label>
-                    <select id="ops-fol-servicio" onchange="window.opsFolioSugerirTecnicos('${id || ""}')" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
-                        <option value="">— Sin ligar —</option>
-                        ${cacheServiciosCatalogo.map(s => `<option value="${s.id}" ${f?.servicioCatalogoId === s.id ? "selected" : ""}>${opsEsc(s.nombre)}</option>`).join("")}
-                    </select></div>
-                </div>
-
-                <div id="ops-fol-norma-wrap" style="display:${(f?.tipoFolio === "inspeccion") ? "block" : "none"};margin-bottom:10px;">
-                    <label style="font-size:11.5px;color:#64748b;font-weight:600;">Norma / tipo de visita</label>
-                    <select id="ops-fol-norma" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0;">
-                        ${OPS_NORMAS_INSPECCION.map(n => `<option value="${opsEsc(n)}" ${f?.normaInspeccion === n ? "selected" : ""}>${opsEsc(n)}</option>`).join("")}
-                    </select>
-                </div>
-
-                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Fecha y hora programada del trabajo</label>
-                <input type="datetime-local" id="ops-fol-programada" value="${opsEsc(programadaDefault)}" onchange="window.opsFolioSugerirTecnicos('${id || ""}')" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
-                <div style="font-size:10px;color:#94a3b8;margin:-6px 0 10px;">Esta es la fecha que se ve en el Calendario — distinta de la fecha de solicitud.</div>
-
-                <div style="display:flex;gap:8px;">
-                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Tiempo de ejecución (hrs)</label>
-                    <input type="number" min="0" step="0.5" id="ops-fol-tiempo-ejec" value="${f?.tiempoEjecucionHrs ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
-                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Tiempo de traslado (hrs)</label>
-                    <input type="number" min="0" step="0.5" id="ops-fol-tiempo-trasl" value="${f?.tiempoTrasladoHrs ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
-                </div>
-
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-                    <label style="font-size:11.5px;color:#64748b;font-weight:600;">Técnicos asignados (equipo del servicio)</label>
-                    <button type="button" onclick="window.opsFolioSugerirTecnicos('${id || ""}', true)" style="background:#eef2f7;border:none;color:#1D2E73;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:10.5px;font-weight:600;display:inline-flex;align-items:center;gap:5px;">${ICON.sparkle} Sugerir</button>
-                </div>
-                <div id="ops-fol-sugerencia-nota" style="font-size:10px;color:#94a3b8;margin-bottom:6px;"></div>
-                <div id="ops-fol-tecnicos-check" style="max-height:140px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;margin-bottom:14px;">
-                    ${cacheTec.filter(t => t.estatus === "activo").map(t => {
-                        const fechaFolio = (programadaDefault || "").slice(0, 10);
-                        const ausencia = fechaFolio ? cacheAusencias.find(a => a.tecnicoId === t.id && a.fechaInicio <= fechaFolio && a.fechaFin >= fechaFolio) : null;
-                        const yaEstaba = (f?.tecnicosAsignadosIds || []).includes(t.id);
-                        return `
-                        <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:${ausencia ? "#cbd5e1" : "#334155"};padding:3px 0;${ausencia ? "cursor:not-allowed;" : ""}">
-                            <input type="checkbox" class="ops-fol-tec-check" value="${t.id}" data-nombre="${opsEsc(t.nombre)}" ${yaEstaba ? "checked" : ""} ${ausencia && !yaEstaba ? "disabled" : ""} style="width:14px;height:14px;">
-                            ${opsEsc(t.nombre)}${t.puesto ? ` — <span style="color:#94a3b8;">${opsEsc(t.puesto)}</span>` : ""}
-                            ${ausencia ? `<span style="color:#E7402B;font-weight:600;">— ${opsEsc(ausencia.tipo || "ausente")} hasta ${opsEsc(ausencia.fechaFin)}</span>` : ""}
-                        </label>`;
-                    }).join("")}
-                </div>
-                <div style="font-size:10px;color:#94a3b8;margin:-10px 0 14px;">Los técnicos en gris están de vacaciones/permiso en la fecha del folio — no se pueden marcar.</div>
-
-                <div style="border-top:1px solid #e2e8f0;margin:4px 0 14px;padding-top:14px;font-size:11.5px;font-weight:700;color:#1D2E73;">Cliente / facturación / Contabilidad</div>
-
-                <div style="display:flex;gap:8px;">
-                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Contacto que solicita</label>
-                    <input id="ops-fol-contacto-nombre" value="${opsEsc(f?.contactoNombre || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
-                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Teléfono de contacto</label>
-                    <input id="ops-fol-contacto-tel" value="${opsEsc(f?.contactoTelefono || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
-                </div>
-
-                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Encargado interno de gestionar requisitos</label>
-                <input id="ops-fol-encargado" value="${opsEsc(f?.encargadoInterno || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
-
-                <label style="font-size:11.5px;color:#64748b;font-weight:600;">A quién se factura</label>
-                <input id="ops-fol-facturar-a" value="${opsEsc(f?.facturarA || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
-
-                <div style="display:flex;gap:8px;">
-                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Proyecto</label>
-                    <input id="ops-fol-proyecto" value="${opsEsc(f?.proyecto || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
-                </div>
-
-                <div style="border-top:1px dashed #e2e8f0;margin:6px 0 10px;padding-top:12px;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                        <div style="font-size:11.5px;font-weight:700;color:#1D2E73;">Calculadora de viáticos / hospedaje / casetas</div>
-                        ${opsPuedeGestionar() ? `<button type="button" onclick="opsAbrirModalConfigViaticos()" style="background:none;border:none;color:#94a3b8;cursor:pointer;padding:2px;" title="Ajustar tarifas">${ICON.gear}</button>` : ""}
-                    </div>
                     <div style="display:flex;gap:8px;">
-                        <div style="flex:1;"><label style="font-size:11px;color:#64748b;font-weight:600;">Días de viaje</label>
-                        <input type="number" min="0" step="1" id="ops-fol-dias-viaje" value="${f?.diasTrabajo ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin:3px 0;"></div>
-                        <div style="flex:1;"><label style="font-size:11px;color:#64748b;font-weight:600;">Km estimados (opcional)</label>
-                        <input type="number" min="0" step="1" id="ops-fol-km" value="${f?.kmEstimados ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin:3px 0;"></div>
+                        <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Tipo de folio</label>
+                        <select id="ops-fol-tipo" onchange="document.getElementById('ops-fol-norma-wrap').style.display=this.value==='inspeccion'?'block':'none';" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                            ${OPS_TIPOS_FOLIO.map(t => `<option value="${t.clave}" ${(f?.tipoFolio || "servicio") === t.clave ? "selected" : ""}>${opsEsc(t.nombre)}</option>`).join("")}
+                        </select></div>
+                        <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Servicio (catálogo)</label>
+                        <select id="ops-fol-servicio" onchange="window.opsFolioSugerirTecnicos('${id || ""}')" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                            <option value="">— Sin ligar —</option>
+                            ${cacheServiciosCatalogo.map(s => `<option value="${s.id}" ${f?.servicioCatalogoId === s.id ? "selected" : ""}>${opsEsc(s.nombre)}</option>`).join("")}
+                        </select></div>
                     </div>
-                    <button type="button" onclick="opsCalcularViaticos()" class="mkt-add-btn" style="background:#0e7490;width:100%;margin:8px 0 10px;">${ICON.sparkle} Calcular automático</button>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                        <div><label style="font-size:11px;color:#64748b;font-weight:600;">Viáticos ($)</label>
-                        <input type="number" min="0" step="0.01" id="ops-fol-viaticos-monto" value="${f?.viaticosMonto ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin:3px 0;"></div>
-                        <div><label style="font-size:11px;color:#64748b;font-weight:600;">Hospedaje ($)</label>
-                        <input type="number" min="0" step="0.01" id="ops-fol-hospedaje-monto" value="${f?.hospedajeMonto ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin:3px 0;"></div>
-                        <div><label style="font-size:11px;color:#64748b;font-weight:600;">Casetas/gasolina ($, estimado)</label>
-                        <input type="number" min="0" step="0.01" id="ops-fol-casetas-monto" value="${f?.casetasMonto ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin:3px 0;"></div>
-                        <div><label style="font-size:11px;color:#64748b;font-weight:600;">Gasto total estimado ($)</label>
-                        <input type="number" min="0" step="0.01" id="ops-fol-gasto" value="${f?.gastoEstimado ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin:3px 0;font-weight:700;"></div>
+
+                    <div id="ops-fol-norma-wrap" style="display:${(f?.tipoFolio === "inspeccion") ? "block" : "none"};margin-bottom:10px;">
+                        <label style="font-size:11.5px;color:#64748b;font-weight:600;">Norma / tipo de visita</label>
+                        <select id="ops-fol-norma" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0;">
+                            ${OPS_NORMAS_INSPECCION.map(n => `<option value="${opsEsc(n)}" ${f?.normaInspeccion === n ? "selected" : ""}>${opsEsc(n)}</option>`).join("")}
+                        </select>
                     </div>
-                    <div style="font-size:10px;color:#94a3b8;margin-top:6px;">Casetas/gasolina es un estimado por tarifa fija — todavía no viene de una ruta real (eso es la Fase D, pendiente de que elijas proveedor de GPS/casetas). Todo aquí se puede editar a mano después de calcular.</div>
+
+                    <label style="font-size:11.5px;color:#64748b;font-weight:600;">Fecha y hora programada del trabajo</label>
+                    <input type="datetime-local" id="ops-fol-programada" value="${opsEsc(programadaDefault)}" onchange="window.opsFolioSugerirTecnicos('${id || ""}')" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                    <div style="font-size:10px;color:#94a3b8;margin:-6px 0 10px;">Esta es la fecha que se ve en el Calendario — distinta de la fecha de solicitud.</div>
+
+                    <div style="display:flex;gap:8px;">
+                        <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Tiempo de ejecución (hrs)</label>
+                        <input type="number" min="0" step="0.5" id="ops-fol-tiempo-ejec" value="${f?.tiempoEjecucionHrs ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
+                        <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Tiempo de traslado (hrs)</label>
+                        <input type="number" min="0" step="0.5" id="ops-fol-tiempo-trasl" value="${f?.tiempoTrasladoHrs ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
+                    </div>
                 </div>
 
-                <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:#334155;margin:10px 0 8px;">
-                    <input type="checkbox" id="ops-fol-viaticos-pend" ${f?.viaticosPendientes ? "checked" : ""} style="width:15px;height:15px;"> Viáticos pendientes de pago
-                </label>
-                <div style="font-size:10px;color:#94a3b8;margin:-4px 0 16px;">Contabilidad/Pagos siguen siendo quienes marcan el pago real — esto aquí es solo la bandera de "está pendiente" ligada al folio.</div>
+                <div style="flex:1;min-width:320px;">
+                    <div style="font-size:11px;font-weight:700;color:#1D2E73;text-transform:uppercase;letter-spacing:.3px;margin-bottom:10px;">Seguimiento y equipo</div>
+                    <div style="display:flex;gap:8px;align-items:flex-end;">
+                        <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Cliente</label>
+                        <select id="ops-fol-cliente" onchange="window.opsFolioActualizarVencimientoPreview()" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                            <option value="">— Sin clasificar —</option>
+                            ${cacheClientes.map(c => `<option value="${c.id}" ${f?.clienteId === c.id ? "selected" : ""}>${opsEsc(c.nombre)}</option>`).join("")}
+                        </select></div>
+                        <button type="button" onclick="window.opsDetectarClienteFolio()" style="background:#eef2f7;border:none;color:#1f2937;padding:9px 12px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:600;margin-bottom:10px;">Detectar</button>
+                    </div>
 
-                <div style="display:flex;justify-content:space-between;gap:8px;">
+                    <label style="font-size:11.5px;color:#64748b;font-weight:600;">Prioridad</label>
+                    <select id="ops-fol-prioridad" onchange="window.opsFolioActualizarVencimientoPreview()" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                        <option value="">— Sin prioridad —</option>
+                        ${OPS_PRIORIDADES.map(p => `<option value="${p}" ${f?.prioridad === p ? "selected" : ""}>${p}</option>`).join("")}
+                    </select>
+
+                    <label style="font-size:11.5px;color:#64748b;font-weight:600;">Fecha y hora de solicitud</label>
+                    <input type="datetime-local" id="ops-fol-solicitud" value="${solicitudDefault}" oninput="window.opsFolioActualizarVencimientoPreview()" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+
+                    <label style="font-size:11.5px;color:#64748b;font-weight:600;">Vencimiento original (SLA)</label>
+                    <div id="ops-fol-vencimiento-preview" style="display:none;background:#eef2ff;border:1px solid #c7d2fe;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;color:#3730a3;"></div>
+                    <div id="ops-fol-vencimiento-manual-wrap" style="display:none;">
+                        <input type="datetime-local" id="ops-fol-vencimiento" value="${f?.vencimiento && !vencAuto ? f.vencimiento : ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                        <div style="font-size:10px;color:#94a3b8;margin:-6px 0 10px;">Sin Cliente + Prioridad no se puede calcular automático — captúralo manual (folios legacy/importados).</div>
+                    </div>
+
+                    <div style="display:flex;gap:8px;">
+                        <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Fecha de atención</label>
+                        <input type="date" id="ops-fol-atencion" value="${f?.fechaAtencion || ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 4px;"></div>
+                        <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Fecha de solución</label>
+                        <input type="date" id="ops-fol-solucion" value="${f?.fechaSolucion || ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 4px;"></div>
+                    </div>
+                    <div style="font-size:10px;color:#94a3b8;margin:0 0 10px;">Atención: solo si cerró en tiempo pero quedó un pendiente (no usa la tabla de SLA). Solución: folio 100% cerrado.</div>
+
+                    <label style="font-size:11.5px;color:#64748b;font-weight:600;">Responsable (ligado a Técnicos)</label>
+                    <select id="ops-fol-tecnico" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                        <option value="">— Sin ligar / texto libre —</option>
+                        ${cacheTec.map(t => `<option value="${t.id}" ${f?.tecnicoResponsableId === t.id ? "selected" : ""}>${opsEsc(t.nombre)}${t.correo ? " (" + opsEsc(t.correo) + ")" : ""}</option>`).join("")}
+                    </select>
+                    <input id="ops-fol-responsable-texto" placeholder="Nombre libre (solo si no está en Técnicos)" value="${opsEsc(!f?.tecnicoResponsableId ? (f?.responsable || "") : "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 16px;">
+
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                        <label style="font-size:11.5px;color:#64748b;font-weight:600;">Técnicos asignados (equipo del servicio)</label>
+                        <button type="button" onclick="window.opsFolioSugerirTecnicos('${id || ""}', true)" style="background:#eef2f7;border:none;color:#1D2E73;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:10.5px;font-weight:600;display:inline-flex;align-items:center;gap:5px;">${ICON.sparkle} Sugerir</button>
+                    </div>
+                    <div id="ops-fol-sugerencia-nota" style="font-size:10px;color:#94a3b8;margin-bottom:6px;"></div>
+                    <div id="ops-fol-tecnicos-check" style="max-height:180px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;margin-bottom:6px;">
+                        ${cacheTec.filter(t => t.estatus === "activo").map(t => {
+                            const fechaFolio = (programadaDefault || "").slice(0, 10);
+                            const ausencia = fechaFolio ? cacheAusencias.find(a => a.tecnicoId === t.id && a.fechaInicio <= fechaFolio && a.fechaFin >= fechaFolio) : null;
+                            const yaEstaba = (f?.tecnicosAsignadosIds || []).includes(t.id);
+                            return `
+                            <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:${ausencia ? "#cbd5e1" : "#334155"};padding:3px 0;${ausencia ? "cursor:not-allowed;" : ""}">
+                                <input type="checkbox" class="ops-fol-tec-check" value="${t.id}" data-nombre="${opsEsc(t.nombre)}" ${yaEstaba ? "checked" : ""} ${ausencia && !yaEstaba ? "disabled" : ""} style="width:14px;height:14px;">
+                                ${opsEsc(t.nombre)}${t.puesto ? ` — <span style="color:#94a3b8;">${opsEsc(t.puesto)}</span>` : ""}
+                                ${ausencia ? `<span style="color:#E7402B;font-weight:600;">— ${opsEsc(ausencia.tipo || "ausente")} hasta ${opsEsc(ausencia.fechaFin)}</span>` : ""}
+                            </label>`;
+                        }).join("")}
+                    </div>
+                    <div style="font-size:10px;color:#94a3b8;margin:0 0 14px;">Los técnicos en gris están de vacaciones/permiso en la fecha del folio — no se pueden marcar.</div>
+                </div>
+
+                <div style="flex:1;min-width:320px;">
+                    <div style="font-size:11px;font-weight:700;color:#1D2E73;text-transform:uppercase;letter-spacing:.3px;margin-bottom:10px;">Cliente / facturación / Contabilidad</div>
+                    <div style="display:flex;gap:8px;">
+                        <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Contacto que solicita</label>
+                        <input id="ops-fol-contacto-nombre" value="${opsEsc(f?.contactoNombre || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
+                        <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Teléfono de contacto</label>
+                        <input id="ops-fol-contacto-tel" value="${opsEsc(f?.contactoTelefono || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
+                    </div>
+
+                    <label style="font-size:11.5px;color:#64748b;font-weight:600;">Encargado interno de gestionar requisitos</label>
+                    <input id="ops-fol-encargado" value="${opsEsc(f?.encargadoInterno || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+
+                    <div style="display:flex;gap:8px;">
+                        <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">A quién se factura</label>
+                        <input id="ops-fol-facturar-a" value="${opsEsc(f?.facturarA || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
+                        <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Proyecto</label>
+                        <input id="ops-fol-proyecto" value="${opsEsc(f?.proyecto || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
+                    </div>
+
+                    <div style="border-top:1px dashed #e2e8f0;margin:6px 0 10px;padding-top:12px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                            <div style="font-size:11.5px;font-weight:700;color:#1D2E73;">Calculadora de viáticos / hospedaje / casetas</div>
+                            ${opsPuedeGestionar() ? `<button type="button" onclick="opsAbrirModalConfigViaticos()" style="background:none;border:none;color:#94a3b8;cursor:pointer;padding:2px;" title="Ajustar tarifas">${ICON.gear}</button>` : ""}
+                        </div>
+                        <div style="display:flex;gap:8px;">
+                            <div style="flex:1;"><label style="font-size:11px;color:#64748b;font-weight:600;">Días de viaje</label>
+                            <input type="number" min="0" step="1" id="ops-fol-dias-viaje" value="${f?.diasTrabajo ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin:3px 0;"></div>
+                            <div style="flex:1;"><label style="font-size:11px;color:#64748b;font-weight:600;">Km estimados (opcional)</label>
+                            <input type="number" min="0" step="1" id="ops-fol-km" value="${f?.kmEstimados ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin:3px 0;"></div>
+                        </div>
+                        <button type="button" onclick="opsCalcularViaticos()" class="mkt-add-btn" style="background:#0e7490;width:100%;margin:8px 0 4px;">${ICON.sparkle} Calcular automático</button>
+                        <div id="ops-fol-viaticos-fuente" style="font-size:10px;color:#94a3b8;margin-bottom:8px;min-height:12px;"></div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                            <div><label style="font-size:11px;color:#64748b;font-weight:600;">Viáticos ($)</label>
+                            <input type="number" min="0" step="0.01" id="ops-fol-viaticos-monto" value="${f?.viaticosMonto ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin:3px 0;"></div>
+                            <div><label style="font-size:11px;color:#64748b;font-weight:600;">Hospedaje ($)</label>
+                            <input type="number" min="0" step="0.01" id="ops-fol-hospedaje-monto" value="${f?.hospedajeMonto ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin:3px 0;"></div>
+                            <div><label style="font-size:11px;color:#64748b;font-weight:600;">Casetas/gasolina ($, estimado)</label>
+                            <input type="number" min="0" step="0.01" id="ops-fol-casetas-monto" value="${f?.casetasMonto ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin:3px 0;"></div>
+                            <div><label style="font-size:11px;color:#64748b;font-weight:600;">Gasto total estimado ($)</label>
+                            <input type="number" min="0" step="0.01" id="ops-fol-gasto" value="${f?.gastoEstimado ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin:3px 0;font-weight:700;"></div>
+                        </div>
+                        <div style="font-size:10px;color:#94a3b8;margin-top:6px;">El kilometraje ya es real (gratis, vía OSRM) cuando la estación viene del catálogo. Casetas siguen siendo un estimado por tarifa fija — ningún servicio gratuito las conoce en México. Todo aquí se puede editar a mano después de calcular.</div>
+                    </div>
+
+                    <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:#334155;margin:10px 0 8px;">
+                        <input type="checkbox" id="ops-fol-viaticos-pend" ${f?.viaticosPendientes ? "checked" : ""} style="width:15px;height:15px;"> Viáticos pendientes de pago
+                    </label>
+                    <div style="font-size:10px;color:#94a3b8;margin:-4px 0 16px;">Contabilidad/Pagos siguen siendo quienes marcan el pago real — esto aquí es solo la bandera de "está pendiente" ligada al folio.</div>
+                </div>
+
+                </div>
+
+                <div style="display:flex;justify-content:space-between;gap:8px;border-top:1px solid #e2e8f0;padding-top:16px;margin-top:6px;">
                     ${f ? `<button onclick="opsEliminarFolio('${f.id}')" style="background:#fef2f2;border:none;color:#E7402B;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Eliminar</button>` : "<span></span>"}
                     <div style="display:flex;gap:8px;">
                         <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
@@ -5590,6 +5635,7 @@
             numeroTanques: f.estacionNumeroTanques || null, numeroDispensarios: f.estacionNumeroDispensarios || null,
             numeroSondas: f.estacionNumeroSondas || null, direccion: f.estacionDireccion || null,
             razonSocial: f.estacionRazonSocial || null, permiso: f.estacionPermiso || null, cr: f.estacionCR || null,
+            lat: f.estacionLat ?? null, lng: f.estacionLng ?? null,
         } : null;
     };
 
@@ -5662,6 +5708,7 @@
             numeroTanques: e.numeroTanques || null, numeroDispensarios: e.numeroDispensarios || null,
             numeroSondas: e.numeroSondas || null, direccion: e.direccionNormalizada || null,
             razonSocial: e.razonSocial || null, permiso: e.permiso || null, cr: e.cr || null,
+            lat: e.lat ?? null, lng: e.lng ?? null,
         };
         const info = document.getElementById("ops-fol-estacion-info");
         if (info) info.innerHTML = `Del catálogo${e.encargado ? " · Encargado: " + opsEsc(e.encargado) : ""}${e.zona ? " · Zona " + opsEsc(e.zona) : ""}${e.numeroTanques ? " · " + e.numeroTanques + " tanque(s)" : ""}`;
@@ -5846,6 +5893,8 @@
             estacionRazonSocial: window.__opsFolioEstMeta?.razonSocial || null,
             estacionPermiso: window.__opsFolioEstMeta?.permiso || null,
             estacionCR: window.__opsFolioEstMeta?.cr || null,
+            estacionLat: window.__opsFolioEstMeta?.lat ?? null,
+            estacionLng: window.__opsFolioEstMeta?.lng ?? null,
             esSCFI: document.getElementById("ops-fol-es-scfi").checked,
             hologramas: document.getElementById("ops-fol-hologramas").value ? Number(document.getElementById("ops-fol-hologramas").value) : null,
             precintos: document.getElementById("ops-fol-precintos").value ? Number(document.getElementById("ops-fol-precintos").value) : null,
@@ -6535,7 +6584,7 @@
             if (dias !== null && dias >= 0 && dias <= cfg.anticipacionAusenciaDias) proximaAusencia.push(`${opsNombreTecnico(a.tecnicoId)} se ausenta desde el ${opsFechaCorta(a.fechaInicio)} (en ${Math.ceil(dias)} día(s)) — repartir su carga a tiempo.`);
         });
         const proximoFolio = [];
-        cacheFolios.filter(f => f.estado !== "cerrado" && f.estado !== "cancelado").forEach(f => {
+        cacheFolios.filter(f => !f.fechaSolucion).forEach(f => {
             const fechaLimite = f.fechaAtencion || f.vencimiento;
             const dias = enDias(fechaLimite);
             if (dias !== null && dias >= 0 && dias <= cfg.anticipacionFolioDias) proximoFolio.push(`Folio ${f.folioOS ? "O.S. " + f.folioOS + " — " : ""}${f.estacion}: vence en ${dias < 1 ? "menos de 1 día" : Math.ceil(dias) + " día(s)"}.`);
@@ -6674,20 +6723,37 @@
     };
 
     // ══════════════════ Calculadora de viáticos/hospedaje/casetas ══════════════════
-    window.opsCalcularViaticos = function () {
+    window.opsCalcularViaticos = async function () {
         const dias = Number(document.getElementById("ops-fol-dias-viaje").value) || 0;
-        const km = Number(document.getElementById("ops-fol-km").value) || 0;
+        let km = Number(document.getElementById("ops-fol-km").value) || 0;
         if (!dias) { alert("Captura cuántos días de viaje son para poder calcular."); return; }
         const cfg = cacheConfigViaticos;
         const noches = Math.max(0, dias - 1);
         const viaticos = dias * cfg.viaticoDiario;
         const hospedaje = noches * cfg.hospedajePorNoche;
+
+        let kmReal = false;
+        let fuenteNota = "Estimado por tarifa fija (km capturados a mano).";
+        const destino = window.__opsFolioEstMeta?.lat != null ? { lat: window.__opsFolioEstMeta.lat, lng: window.__opsFolioEstMeta.lng } : null;
+        if (destino && cfg.origenBaseDireccion) {
+            const ruta = await window.opsGpsProvider.calcularRuta(cfg.origenBaseDireccion, destino);
+            if (ruta) {
+                km = ruta.distanciaKm;
+                kmReal = true;
+                fuenteNota = `Distancia real (OSRM) — ${ruta.distanciaKm} km. Casetas siguen siendo estimado por tarifa (ningún servicio gratuito las conoce en México).`;
+                document.getElementById("ops-fol-km").value = km;
+            }
+        }
         const casetas = km > 0 ? Math.round((km / 100) * cfg.casetaPromedioPorTrayecto) : cfg.casetaPromedioPorTrayecto;
-        const total = viaticos + hospedaje + casetas;
+
+        const gasolina = Math.round(km * cfg.costoPorKm);
+        const total = viaticos + hospedaje + casetas + (km > 0 ? gasolina : 0);
         document.getElementById("ops-fol-viaticos-monto").value = viaticos;
         document.getElementById("ops-fol-hospedaje-monto").value = hospedaje;
-        document.getElementById("ops-fol-casetas-monto").value = casetas;
+        document.getElementById("ops-fol-casetas-monto").value = casetas + (km > 0 ? gasolina : 0);
         document.getElementById("ops-fol-gasto").value = total;
+        const nota = document.getElementById("ops-fol-viaticos-fuente");
+        if (nota) nota.textContent = fuenteNota;
     };
 
     window.opsAbrirModalConfigViaticos = function () {
@@ -6705,8 +6771,10 @@
                 <label style="font-size:11.5px;color:#64748b;font-weight:600;">Costo por km ($ — gasolina)</label>
                 <input id="ops-cfg-vi-km" type="number" min="0" step="0.01" value="${cfg.costoPorKm}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 12px;">
                 <label style="font-size:11.5px;color:#64748b;font-weight:600;">Casetas estimadas ($ por cada 100 km, ida)</label>
-                <input id="ops-cfg-vi-caseta" type="number" min="0" step="0.01" value="${cfg.casetaPromedioPorTrayecto}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 16px;">
-                <div style="font-size:10px;color:#94a3b8;margin:-10px 0 16px;">Esto es un estimado por tarifa fija mientras no haya una ruta real conectada (Fase D, GPS/casetas).</div>
+                <input id="ops-cfg-vi-caseta" type="number" min="0" step="0.01" value="${cfg.casetaPromedioPorTrayecto}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 12px;">
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Origen base (para calcular ruta real)</label>
+                <input id="ops-cfg-vi-origen" value="${opsEsc(cfg.origenBaseDireccion || "")}" placeholder="Ej. tu oficina, Chihuahua, Chih." style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 4px;">
+                <div style="font-size:10px;color:#94a3b8;margin:0 0 16px;">Con esto, la calculadora obtiene la distancia real (gratis, vía OSRM) en vez de que captures los km a mano. Las casetas siguen siendo estimado por tarifa fija.</div>
                 <div style="display:flex;gap:8px;justify-content:flex-end;">
                     <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
                     <button onclick="opsGuardarConfigViaticos()" class="mkt-add-btn" style="background:#0e7490;">Guardar</button>
@@ -6721,6 +6789,7 @@
             hospedajePorNoche: Number(document.getElementById("ops-cfg-vi-hospedaje").value) || 0,
             costoPorKm: Number(document.getElementById("ops-cfg-vi-km").value) || 0,
             casetaPromedioPorTrayecto: Number(document.getElementById("ops-cfg-vi-caseta").value) || 0,
+            origenBaseDireccion: document.getElementById("ops-cfg-vi-origen").value.trim() || null,
         };
         try {
             const { db, fs } = await opsGetFB();
