@@ -870,7 +870,7 @@
     let cacheRevisionesHerr = []; // últimas revisiones/checklists de herramienta, de cualquier origen (Portal o Flotilla)
     let cacheTraspasosPend = []; // ops_herramienta_traspasos con estatus "Pendiente recepción" — bloquea la pieza hasta que el receptor acepte/rechace/venza
     let cacheAutorizadoresCalibracion = []; // [{email,nombre}] — quién puede aprobar mover equipo con requiereAutorizacion=true
-    let filtroFolios = "", filtroFolioSemaforo = "todos";
+    let filtroFolios = "", filtroFolioSemaforo = "todos", filtroFolioTipo = "servicio"; // servicio = folios normales (servicio+laboratorio); inspeccion = visitas de inspección — separados a propósito para no revolver a las personas
     let tabActual = "dashboard";
     let filtroHerr = "", filtroTec = "";
     let filtroCat = { busca: "", categoria: "", departamento: "", estado: "", condicion: "" };
@@ -4808,7 +4808,10 @@
         if (!el) return;
         const gestion = opsPuedeHacer("gestionar_herramientas");
 
-        const calc = cacheFolios.map(f => ({ f, info: opsCalcularSemaforoFolio(f) }));
+        const calcTodos = cacheFolios.map(f => ({ f, info: opsCalcularSemaforoFolio(f) }));
+        const numInspeccion = calcTodos.filter(x => x.f.tipoFolio === "inspeccion").length;
+        const numServicio = calcTodos.length - numInspeccion;
+        const calc = calcTodos.filter(x => filtroFolioTipo === "inspeccion" ? x.f.tipoFolio === "inspeccion" : x.f.tipoFolio !== "inspeccion");
         const kpis = [
             { label: "Total de folios", valor: calc.length, color: "#1f2937" },
             { label: "Solucionados", valor: calc.filter(x => x.info.estado === "SOLUCIONADO").length, color: OPS_SEMAFORO.verde.dot },
@@ -4828,6 +4831,12 @@
         filtrados.sort((a, b) => orden[a.info.semaforo] - orden[b.info.semaforo]);
 
         el.innerHTML = `
+            <div style="display:flex;gap:4px;background:#f1f5f9;padding:3px;border-radius:10px;width:fit-content;margin-bottom:14px;">
+                ${[["servicio", `Folios de servicio (${numServicio})`], ["inspeccion", `Visitas de inspección (${numInspeccion})`]].map(([val, label]) => {
+                    const on = filtroFolioTipo === val;
+                    return `<button onclick="opsFiltrarFolioTipo('${val}')" style="border:none;background:${on ? "#1D2E73" : "transparent"};color:${on ? "#fff" : "#475569"};padding:8px 16px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700;">${label}</button>`;
+                }).join("")}
+            </div>
             <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:18px;">
                 ${kpis.map(k => `
                     <div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;border-top:3px solid ${k.color};padding:12px 14px;">
@@ -4908,6 +4917,7 @@
 
     window.opsFiltrarFolios = function (v) { filtroFolios = v || ""; opsRenderFolios(); };
     window.opsFiltrarFolioSemaforo = function (v) { filtroFolioSemaforo = v || "todos"; opsRenderFolios(); };
+    window.opsFiltrarFolioTipo = function (v) { filtroFolioTipo = v || "servicio"; opsRenderFolios(); };
 
     // Recalcula y refresca en vivo el preview de "Vencimiento (automático)" dentro del modal,
     // cada vez que cambia Cliente, Prioridad o Fecha/hora de solicitud.
@@ -4943,6 +4953,7 @@
     let opsCalVista = "semana"; // dia | semana | mes — por default abre en semana (Glen, sep-2026)
     let opsCalFecha = new Date(); opsCalFecha.setHours(0, 0, 0, 0);
     let opsCalFiltroTexto = "";
+    let opsCalFiltroTipo = "todos"; // todos | servicio | inspeccion — para separar las visitas de inspección del resto en el Calendario
     const OPS_CAL_HORA_INICIO = 6, OPS_CAL_HORA_FIN = 20; // ventana visible del día (6:00–20:00)
 
     function opsCalFechaISO(d) { const p = x => String(x).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; }
@@ -4954,14 +4965,26 @@
         if (!f.fechaProgramada) return null;
         const [fecha, hora] = f.fechaProgramada.split("T");
         const [hh, mm] = (hora || "00:00").split(":").map(Number);
-        return { fecha, horaDecimal: hh + (mm || 0) / 60, traslado: f.tiempoTrasladoHrs || 0, ejecucion: f.tiempoEjecucionHrs || 1 };
+        // ejecución en 0 (no 1) cuando no se capturó: un folio sin duración real no debe
+        // "inventarse" una hora completa y aparentar choque contra otro folio del mismo
+        // técnico ese día — pasa mucho con las visitas de inspección importadas, que traen
+        // fecha pero no hora de ejecución capturada.
+        return { fecha, horaDecimal: hh + (mm || 0) / 60, traslado: f.tiempoTrasladoHrs || 0, ejecucion: f.tiempoEjecucionHrs || 0 };
+    }
+
+    // Folios visibles según el filtro de tipo del Calendario (todos/servicio/inspección) —
+    // separa las visitas de inspección del resto para no revolver a las personas.
+    function opsCalFoliosFiltrados() {
+        if (opsCalFiltroTipo === "todos") return cacheFolios;
+        if (opsCalFiltroTipo === "inspeccion") return cacheFolios.filter(f => f.tipoFolio === "inspeccion");
+        return cacheFolios.filter(f => f.tipoFolio !== "inspeccion");
     }
 
     // Cuenta choques reales: mismo técnico con dos folios cuyo horario se traslapa el mismo día.
     function opsCalDetectarChoques() {
         const porTecnicoDia = new Map();
         let choques = 0;
-        cacheFolios.forEach(f => {
+        opsCalFoliosFiltrados().forEach(f => {
             const d = opsCalDatosFolio(f);
             if (!d) return;
             const inicio = d.horaDecimal, fin = inicio + d.traslado + d.ejecucion;
@@ -4987,10 +5010,11 @@
         const hoyISO = opsCalFechaISO(new Date());
         const inicioSemana = opsCalInicioSemana(new Date());
         const finSemana = opsCalSumarDias(inicioSemana, 6);
-        const enEjecucionHoy = cacheFolios.filter(f => opsCalDatosFolio(f)?.fecha === hoyISO).length;
-        const programadosSemana = cacheFolios.filter(f => { const d = opsCalDatosFolio(f); if (!d) return false; const fd = new Date(d.fecha + "T00:00:00"); return fd >= inicioSemana && fd <= finSemana; }).length;
-        const sinFecha = cacheFolios.filter(f => !f.fechaProgramada && !f.fechaSolucion);
-        const atrasados = cacheFolios.filter(f => ["naranja", "rojo"].includes(opsCalcularSemaforoFolio(f).semaforo)).length;
+        const foliosVista = opsCalFoliosFiltrados();
+        const enEjecucionHoy = foliosVista.filter(f => opsCalDatosFolio(f)?.fecha === hoyISO).length;
+        const programadosSemana = foliosVista.filter(f => { const d = opsCalDatosFolio(f); if (!d) return false; const fd = new Date(d.fecha + "T00:00:00"); return fd >= inicioSemana && fd <= finSemana; }).length;
+        const sinFecha = foliosVista.filter(f => !f.fechaProgramada && !f.fechaSolucion);
+        const atrasados = foliosVista.filter(f => ["naranja", "rojo"].includes(opsCalcularSemaforoFolio(f).semaforo)).length;
         const tecActivos = cacheTec.filter(t => t.estatus === "activo");
         const disponiblesHoy = tecActivos.filter(t => opsCalTecnicoDisponible(t.id, hoyISO)).length;
         const choques = opsCalDetectarChoques();
@@ -5034,6 +5058,11 @@
                     <button onclick="opsCalHoy()" style="background:#eef2f7;border:1px solid #dbe3f0;color:#1D2E73;padding:6px 13px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:700;margin-left:4px;">Hoy</button>
                 </div>
                 <div style="display:flex;align-items:center;gap:8px;">
+                    <select onchange="opsCalFiltrarTipo(this.value)" style="border:1px solid #e2e8f0;background:#f8fafc;border-radius:8px;padding:8px 10px;font-size:12px;font-weight:600;color:#334155;">
+                        <option value="todos" ${opsCalFiltroTipo === "todos" ? "selected" : ""}>Todo</option>
+                        <option value="servicio" ${opsCalFiltroTipo === "servicio" ? "selected" : ""}>Solo servicio</option>
+                        <option value="inspeccion" ${opsCalFiltroTipo === "inspeccion" ? "selected" : ""}>Solo inspección</option>
+                    </select>
                     <input id="ops-cal-filtro" value="${opsEsc(opsCalFiltroTexto)}" oninput="opsCalFiltrar(this.value)" placeholder="Buscar técnico..." style="border:1px solid #e2e8f0;background:#f8fafc;border-radius:8px;padding:8px 12px;font-size:12.5px;min-width:170px;">
                     <button onclick="opsAbrirModalFolio(null, '${opsCalFechaISO(opsCalFecha)}')" style="background:#1D2E73;border:none;color:#fff;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;box-shadow:0 2px 6px rgba(29,46,115,.25);">+ Nuevo servicio</button>
                     ${opsPuedeGestionar() ? `<button onclick="opsAbrirModalVisitaInspeccion()" style="background:#0e7490;border:none;color:#fff;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;box-shadow:0 2px 6px rgba(14,116,144,.25);">+ Visita de inspección</button>` : ""}
@@ -5064,6 +5093,7 @@
     };
     window.opsCalHoy = function () { opsCalFecha = new Date(); opsCalFecha.setHours(0, 0, 0, 0); opsRenderCalendario(); };
     window.opsCalFiltrar = function (v) { opsCalFiltroTexto = v; opsCalRenderBody(); };
+    window.opsCalFiltrarTipo = function (v) { opsCalFiltroTipo = v || "todos"; opsRenderCalendario(); };
     window.opsCalIrADia = function (fechaISO) { opsCalFecha = new Date(fechaISO + "T00:00:00"); opsCalVista = "dia"; opsRenderCalendario(); };
 
     function opsCalEtiquetaFecha() {
@@ -5103,7 +5133,7 @@
             if (ausente) return `<div style="position:absolute;inset:2px 0;background:repeating-linear-gradient(45deg,#e2e8f0,#e2e8f0 6px,#f1f5f9 6px,#f1f5f9 12px);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#64748b;font-weight:600;">${opsEsc(ausente.tipo)}</div>`;
 
             const guardia = cacheGuardias.find(g => g.tecnicoId === t.id && g.estado === "activa" && g.fechaInicio <= fechaISO && (!g.fechaFin || g.fechaFin >= fechaISO));
-            const ocupados = cacheFolios.filter(f => (f.tecnicosAsignadosIds || []).includes(t.id)).map(f => ({ f, d: opsCalDatosFolio(f) })).filter(o => o.d && o.d.fecha === fechaISO);
+            const ocupados = opsCalFoliosFiltrados().filter(f => (f.tecnicosAsignadosIds || []).includes(t.id)).map(f => ({ f, d: opsCalDatosFolio(f) })).filter(o => o.d && o.d.fecha === fechaISO);
             const choqueSet = new Set();
             ocupados.forEach((o, i) => ocupados.forEach((o2, j) => {
                 if (i === j) return;
@@ -5176,7 +5206,7 @@
 
         function celda(t, dia) {
             const fechaISO = opsCalFechaISO(dia);
-            const folios = cacheFolios.filter(f => (f.tecnicosAsignadosIds || []).includes(t.id) && opsCalDatosFolio(f)?.fecha === fechaISO);
+            const folios = opsCalFoliosFiltrados().filter(f => (f.tecnicosAsignadosIds || []).includes(t.id) && opsCalDatosFolio(f)?.fecha === fechaISO);
             const ausente = cacheAusencias.some(a => a.tecnicoId === t.id && a.fechaInicio <= fechaISO && a.fechaFin >= fechaISO);
             if (ausente) return `<div style="background:#f1f5f9;border-radius:6px;padding:4px;text-align:center;font-size:9.5px;color:#94a3b8;">Ausente</div>`;
             if (!folios.length) return `<div style="padding:4px;"></div>`;
@@ -5212,7 +5242,7 @@
 
         function contarDia(d) {
             const fechaISO = opsCalFechaISO(d);
-            return cacheFolios.filter(f => opsCalDatosFolio(f)?.fecha === fechaISO);
+            return opsCalFoliosFiltrados().filter(f => opsCalDatosFolio(f)?.fecha === fechaISO);
         }
 
         return `
