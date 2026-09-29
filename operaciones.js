@@ -5435,14 +5435,17 @@
         })();
         const vencAuto = f ? opsCalcularVencimientoAutomatico(f.fechaSolicitud, f.clienteId, f.prioridad) : null;
         wrap.innerHTML = `
-        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;">
-            <div style="background:#fff;border-radius:14px;width:1120px;max-width:98vw;max-height:92vh;overflow-y:auto;padding:22px;">
-                <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:14px;">${f ? "Editar folio" : "Nuevo folio"}</div>
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;padding:24px;">
+            <div style="background:#f4f6f9;border-radius:16px;width:1180px;max-width:98vw;max-height:92vh;overflow-y:auto;padding:24px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+                    <div style="font-weight:700;font-size:17px;color:#1e293b;">${f ? "Editar folio" : "Nuevo folio"}</div>
+                    ${f ? `<div style="font-size:11.5px;color:#94a3b8;">${opsEsc(f.folioOS ? "O.S. " + f.folioOS : f.id)}</div>` : ""}
+                </div>
 
-                <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start;">
+                <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">
 
-                <div style="flex:1;min-width:320px;">
-                    <div style="font-size:11px;font-weight:700;color:#1D2E73;text-transform:uppercase;letter-spacing:.3px;margin-bottom:10px;">Servicio</div>
+                <div style="flex:1;min-width:340px;background:#fff;border-radius:12px;border-top:3px solid #1D2E73;box-shadow:0 1px 2px rgba(15,23,42,.04),0 4px 14px rgba(15,23,42,.06);padding:20px;">
+                    <div style="font-size:13px;font-weight:700;color:#1D2E73;margin-bottom:16px;display:flex;align-items:center;gap:7px;">${ICON.file} Servicio</div>
                     <div style="display:flex;gap:8px;">
                         <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">O.S. (Orden de Servicio)</label>
                         <input id="ops-fol-os" value="${opsEsc(f?.folioOS || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
@@ -5456,8 +5459,8 @@
                         <input type="checkbox" id="ops-fol-es-scfi" ${f?.esSCFI ? "checked" : ""} onchange="document.getElementById('ops-fol-scfi-campos').style.display=this.checked?'block':'none';" style="width:15px;height:15px;">
                         Es servicio de SCFI (necesita hologramas/precintos/distintivos/viáticos)
                     </label>
-                    <div id="ops-fol-scfi-campos" style="display:${f?.esSCFI ? "block" : "none"};background:#f8fafc;border-radius:10px;padding:12px;margin-bottom:10px;">
-                        <div style="font-size:10px;color:#64748b;margin-bottom:8px;">Razón social y permiso se toman solos del catálogo de la estación de arriba. Aquí solo captura cuántos va a usar el técnico.</div>
+                    <div id="ops-fol-scfi-campos" style="display:${f?.esSCFI ? "block" : "none"};background:#faf5ff;border:1px solid #ede4fb;border-radius:10px;padding:14px;margin-bottom:14px;">
+                        <div style="font-size:10.5px;color:#7c3aed;margin-bottom:10px;font-weight:600;">Razón social y permiso se toman solos del catálogo de la estación de arriba. Aquí solo captura cuántos va a usar el técnico.</div>
                         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
                             <div><label style="font-size:11px;color:#64748b;font-weight:600;">Hologramas</label>
                             <input id="ops-fol-hologramas" type="number" min="0" value="${f?.hologramas ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin:3px 0;"></div>
@@ -5504,8 +5507,8 @@
                     </div>
                 </div>
 
-                <div style="flex:1;min-width:320px;">
-                    <div style="font-size:11px;font-weight:700;color:#1D2E73;text-transform:uppercase;letter-spacing:.3px;margin-bottom:10px;">Seguimiento y equipo</div>
+                <div style="flex:1;min-width:340px;background:#fff;border-radius:12px;border-top:3px solid #0891b2;box-shadow:0 1px 2px rgba(15,23,42,.04),0 4px 14px rgba(15,23,42,.06);padding:20px;">
+                    <div style="font-size:13px;font-weight:700;color:#0891b2;margin-bottom:16px;display:flex;align-items:center;gap:7px;">${ICON.user} Seguimiento y equipo</div>
                     <div style="display:flex;gap:8px;align-items:flex-end;">
                         <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Cliente</label>
                         <select id="ops-fol-cliente" onchange="window.opsFolioActualizarVencimientoPreview()" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
@@ -5567,8 +5570,8 @@
                     <div style="font-size:10px;color:#94a3b8;margin:0 0 14px;">Los técnicos en gris están de vacaciones/permiso en la fecha del folio — no se pueden marcar.</div>
                 </div>
 
-                <div style="flex:1;min-width:320px;">
-                    <div style="font-size:11px;font-weight:700;color:#1D2E73;text-transform:uppercase;letter-spacing:.3px;margin-bottom:10px;">Cliente / facturación / Contabilidad</div>
+                <div style="flex:1;min-width:340px;background:#fff;border-radius:12px;border-top:3px solid #15803D;box-shadow:0 1px 2px rgba(15,23,42,.04),0 4px 14px rgba(15,23,42,.06);padding:20px;">
+                    <div style="font-size:13px;font-weight:700;color:#15803D;margin-bottom:16px;display:flex;align-items:center;gap:7px;">${ICON.check} Cliente, facturación y gastos</div>
                     <div style="display:flex;gap:8px;">
                         <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Contacto que solicita</label>
                         <input id="ops-fol-contacto-nombre" value="${opsEsc(f?.contactoNombre || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
@@ -5586,7 +5589,7 @@
                         <input id="ops-fol-proyecto" value="${opsEsc(f?.proyecto || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
                     </div>
 
-                    <div style="border-top:1px dashed #e2e8f0;margin:6px 0 10px;padding-top:12px;">
+                    <div style="background:#f0f9ff;border:1px solid #dbeefb;border-radius:10px;margin:16px 0 0;padding:14px;">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                             <div style="font-size:11.5px;font-weight:700;color:#1D2E73;">Calculadora de viáticos / hospedaje / casetas</div>
                             ${opsPuedeGestionar() ? `<button type="button" onclick="opsAbrirModalConfigViaticos()" style="background:none;border:none;color:#94a3b8;cursor:pointer;padding:2px;" title="Ajustar tarifas">${ICON.gear}</button>` : ""}
@@ -5620,7 +5623,7 @@
 
                 </div>
 
-                <div style="display:flex;justify-content:space-between;gap:8px;border-top:1px solid #e2e8f0;padding-top:16px;margin-top:6px;">
+                <div style="display:flex;justify-content:space-between;gap:8px;padding-top:20px;margin-top:4px;">
                     ${f ? `<button onclick="opsEliminarFolio('${f.id}')" style="background:#fef2f2;border:none;color:#E7402B;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Eliminar</button>` : "<span></span>"}
                     <div style="display:flex;gap:8px;">
                         <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
