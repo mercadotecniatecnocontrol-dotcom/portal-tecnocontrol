@@ -4850,10 +4850,12 @@
                         </select>
                     </div>
                     ${gestion ? `
-                    <div style="display:flex;gap:8px;">
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
                         <button onclick="opsAbrirModalFolio()" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Nuevo folio</button>
                         <button onclick="document.getElementById('ops-folios-import-input').click()" class="mkt-add-btn" style="background:#15803D;display:inline-flex;align-items:center;gap:6px;">${ICON.download} Importar Excel</button>
                         <input type="file" id="ops-folios-import-input" accept=".xlsx,.xls" style="display:none" onchange="opsImportarExcelFolios(this.files[0])">
+                        <button onclick="opsExportarFoliosPDF()" title="Tabla de seguimiento en PDF, para imprimir o revisar rápido" style="background:#eef2f7;border:none;color:#1f2937;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:6px;">${ICON.printer} PDF seguimiento</button>
+                        <button onclick="opsExportarFoliosExcel()" title="Todos los campos de todos los folios, sin excepción" style="background:#eef2f7;border:none;color:#1f2937;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:6px;">${ICON.file} Excel completo</button>
                     </div>` : ""}
                 </div>
                 <div style="overflow-x:auto;">
@@ -4938,7 +4940,7 @@
 
     // ── Alta / edición manual de folio ──────────────────────────────
     // ═══════════════════════ TAB: CALENDARIO — Fase A (línea de tiempo) ═══════════════════════
-    let opsCalVista = "dia"; // dia | semana | mes
+    let opsCalVista = "semana"; // dia | semana | mes — por default abre en semana (Glen, sep-2026)
     let opsCalFecha = new Date(); opsCalFecha.setHours(0, 0, 0, 0);
     let opsCalFiltroTexto = "";
     const OPS_CAL_HORA_INICIO = 6, OPS_CAL_HORA_FIN = 20; // ventana visible del día (6:00–20:00)
@@ -5423,6 +5425,87 @@
             console.error("[opsCalSoltarFolio]", e);
             alert("No se pudo programar el folio: " + e.message);
         }
+    };
+
+    window.opsExportarFoliosExcel = function () {
+        if (typeof XLSX === "undefined") { alert("Falta cargar SheetJS (XLSX) en index.html."); return; }
+        const filas = cacheFolios.map(f => {
+            const info = opsCalcularSemaforoFolio(f);
+            return {
+                "O.S.": f.folioOS || "", "Estación": f.estacion || "", "Razón social": f.estacionRazonSocial || "",
+                "Permiso (PL)": f.estacionPermiso || "", "CR (OXXO)": f.estacionCR || "", "Zona": f.estacionZona || "",
+                "Encargado estación": f.estacionEncargado || "", "Cliente": f.clienteNombre || "", "Prioridad": f.prioridad || "",
+                "Tipo de folio": (OPS_TIPOS_FOLIO.find(t => t.clave === f.tipoFolio)?.nombre) || f.tipoFolio || "",
+                "Norma (inspección)": f.normaInspeccion || "", "Es SCFI": f.esSCFI ? "Sí" : "No",
+                "Hologramas": f.hologramas ?? "", "Precintos": f.precintos ?? "", "Distintivos": f.distintivos ?? "", "Viáticos (cant.)": f.viaticos ?? "",
+                "Fecha de solicitud": f.fechaSolicitud || "", "Vencimiento (SLA)": f.vencimiento || "",
+                "Fecha de atención": f.fechaAtencion || "", "Fecha de solución": f.fechaSolucion || "",
+                "Fecha programada": f.fechaProgramada || "", "Tiempo ejecución (hrs)": f.tiempoEjecucionHrs ?? "", "Tiempo traslado (hrs)": f.tiempoTrasladoHrs ?? "",
+                "Responsable": opsResponsableFolio(f), "Correo responsable": f.tecnicoResponsableCorreo || "",
+                "Técnicos asignados": (f.tecnicosAsignadosNombres || []).join(", "),
+                "Contacto que solicita": f.contactoNombre || "", "Teléfono de contacto": f.contactoTelefono || "",
+                "Encargado interno": f.encargadoInterno || "", "A quién se factura": f.facturarA || "", "Proyecto": f.proyecto || "",
+                "Días de viaje": f.diasTrabajo ?? "", "Km estimados": f.kmEstimados ?? "",
+                "Viáticos ($)": f.viaticosMonto ?? "", "Hospedaje ($)": f.hospedajeMonto ?? "", "Casetas/gasolina ($)": f.casetasMonto ?? "",
+                "Gasto total estimado ($)": f.gastoEstimado ?? "", "Viáticos pendientes de pago": f.viaticosPendientes ? "Sí" : "No",
+                "Comentarios": f.comentarios || "", "Estado (semáforo)": info.semaforo || "", "Días (texto)": info.diasTexto || "",
+                "Motivo del semáforo": info.motivo || "", "Origen": f.origen || "", "Creado por": f.creadoPor || "", "Creado en": f.creadoEn || "",
+                "ID interno (no editar)": f.id,
+            };
+        });
+        const ws = XLSX.utils.json_to_sheet(filas);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Folios");
+        XLSX.writeFile(wb, "Folios_seguimiento_completo_" + opsFechaHora().slice(0, 10) + ".xlsx");
+    };
+
+    window.opsExportarFoliosPDF = function () {
+        if (!window.jspdf) { alert("Librería PDF no cargada."); return; }
+        const { jsPDF } = window.jspdf;
+        const docu = new jsPDF({ orientation: "landscape", unit: "mm", format: "letter" });
+        const PW = 279.4, PH = 215.9, ML = 12, MR = 12;
+        const AZUL = { r: 29, g: 46, b: 115 };
+        let y = 20;
+
+        function encabezado(esPrimera) {
+            docu.setFillColor(AZUL.r, AZUL.g, AZUL.b); docu.rect(0, 0, PW, 2.2, "F");
+            try { if (window.LOGO_TECNOCONTROL_B64) docu.addImage("data:image/png;base64," + window.LOGO_TECNOCONTROL_B64, "PNG", ML, 6, 24, 7.14); } catch (e) {}
+            docu.setTextColor(AZUL.r, AZUL.g, AZUL.b); docu.setFont("helvetica", "bold"); docu.setFontSize(9);
+            docu.text(esPrimera ? "Folios · Seguimiento puntual" : "Folios · Seguimiento puntual (continuación)", ML + 28, 10.5);
+            docu.setTextColor(120, 120, 120); docu.setFont("helvetica", "normal"); docu.setFontSize(7);
+            docu.text("Generado: " + new Date().toLocaleString("es-MX") + " · " + cacheFolios.length + " folio(s)", PW - MR, 10.5, { align: "right" });
+            docu.setDrawColor(226, 232, 240); docu.line(ML, 17, PW - MR, 17);
+            docu.setFillColor(241, 245, 249); docu.rect(ML, 20, PW - ML - MR, 6, "F");
+            docu.setFont("helvetica", "bold"); docu.setFontSize(7.5); docu.setTextColor(51, 65, 85);
+            const cols = ["O.S.", "Estación", "Cliente/Prioridad", "Solicitud", "Vencimiento", "Atención", "Solución", "Responsable", "Estado"];
+            const anchos = [16, 46, 34, 22, 22, 20, 20, 38, 24];
+            let x = ML + 1;
+            cols.forEach((c, i) => { docu.text(c, x, 24); x += anchos[i]; });
+            return { y: 30, anchos };
+        }
+        let pos = encabezado(true);
+        y = pos.y;
+        const anchos = pos.anchos;
+
+        cacheFolios.forEach((f, idx) => {
+            if (y > PH - 15) { pos = encabezado(false); y = pos.y; }
+            const info = opsCalcularSemaforoFolio(f);
+            if (idx % 2 === 1) { docu.setFillColor(248, 250, 252); docu.rect(ML, y - 4, PW - ML - MR, 6, "F"); }
+            docu.setFont("helvetica", "normal"); docu.setFontSize(7); docu.setTextColor(30, 41, 59);
+            const cp = [f.clienteNombre, f.prioridad].filter(Boolean).join(" · ") || "—";
+            const valores = [
+                f.folioOS || "—", (f.estacion || "").slice(0, 32), cp.slice(0, 22),
+                opsFmtFechaCorta(f.fechaSolicitud) || "—", opsFmtFechaCorta(f.vencimiento) || "—",
+                f.fechaAtencion ? opsFmtFechaCorta(f.fechaAtencion) : "—", f.fechaSolucion ? opsFmtFechaCorta(f.fechaSolucion) : "—",
+                opsResponsableFolio(f).slice(0, 24), info.semaforo || "—",
+            ];
+            let x = ML + 1;
+            valores.forEach((v, i) => { docu.text(String(v), x, y); x += anchos[i]; });
+            y += 6;
+        });
+
+        try { window.open(docu.output("bloburl"), "_blank"); }
+        catch (e) { docu.save("Folios_seguimiento_" + opsFechaHora().slice(0, 10) + ".pdf"); }
     };
 
     window.opsAbrirModalFolio = function (id, fechaSugerida) {
