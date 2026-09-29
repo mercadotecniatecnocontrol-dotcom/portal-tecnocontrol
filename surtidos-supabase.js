@@ -438,16 +438,114 @@
   };
 
   // ── Crear un pedido nuevo ────────────────────────────────────────────
+  // Envío directo a Supabase. Un reintento con el mismo id NO crea duplicado
+  // (ON CONFLICT DO NOTHING). Si la red no responde en 12 s se considera falla de red.
+  function _enviarSurtido(id, datosSinId) {
+    var columnas = aColumnas(datosSinId);
+    columnas.id = id;
+    var envio = cargarSupabase().then(function (sb) {
+      return sb.from('surtidos').upsert(columnas, { onConflict: 'id', ignoreDuplicates: true });
+    }).then(function (r) {
+      if (r.error) { var e = r.error; e.status = r.status; throw e; }
+      return id;
+    });
+    var limite = new Promise(function (_, rej) {
+      setTimeout(function () { var e = new Error('Guardado tardó más de 12 s'); e.__tcTimeout = true; rej(e); }, 12000);
+    });
+    return Promise.race([envio, limite]);
+  }
+
+  // ¿La falla es de conexión (se puede reintentar) o un error real de datos?
+  // Errores de datos de PostgREST traen code (ej. '22003', '23502') → NO se encolan.
+  function _esFallaDeRed(err) {
+    if (!err) return false;
+    if (err.__tcTimeout) return true;
+    if (err instanceof TypeError) return true;
+    if (err.code === '57014') return true;                 // statement timeout
+    if (typeof err.status === 'number' && (err.status === 0 || err.status >= 500)) return true;
+    return !err.code;                                       // sin código = no llegó a la base
+  }
+
+  // ── Cola local de respaldo (29-sep-2026) ─────────────────────────────
+  // Si una SOLICITUD DE MATERIAL no se puede enviar por conexión, se guarda en
+  // este equipo y se reenvía sola (al volver la red, cada 60 s y al abrir la
+  // página). Aplica a Kiosco, Ventas, Flotilla y Operaciones. Los surtidos de
+  // Almacén (tipo 'venta', con PDF/documentos adjuntos) NO se encolan: siguen
+  // mostrando error para que se reintenten en el momento.
+  var COLA_KEY = 'tc_surtidos_pendientes';
+  var FALLIDOS_KEY = 'tc_surtidos_fallidos';
+  function _leer(k) { try { return JSON.parse(localStorage.getItem(k) || '[]'); } catch (e) { return []; } }
+  function _guardar(k, a) { try { localStorage.setItem(k, JSON.stringify(a)); } catch (e) { console.error('[surtidos] no se pudo guardar respaldo local', e); } }
+
+  function _pintarAviso() {
+    if (!document.body) return;
+    var pend = _leer(COLA_KEY).length, fall = _leer(FALLIDOS_KEY).length;
+    var el = document.getElementById('tc-aviso-cola-surtidos');
+    if (!pend && !fall) { if (el) el.remove(); return; }
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'tc-aviso-cola-surtidos';
+      el.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom,0px));z-index:99999;max-width:92vw;display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:12px;font:600 12.5px/1.35 system-ui,-apple-system,sans-serif;color:#fff;box-shadow:0 6px 20px rgba(0,0,0,.25);';
+      document.body.appendChild(el);
+    }
+    var icono = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M12 9v4"/><path d="M12 17h.01"/><circle cx="12" cy="12" r="10"/></svg>';
+    if (fall) {
+      el.style.background = '#E7402B';
+      el.innerHTML = icono + '<span>' + fall + ' solicitud(es) de material no se pudieron registrar. Avisa a Sistemas antes de borrar datos de este equipo.</span>';
+    } else {
+      el.style.background = '#1D2E73';
+      el.innerHTML = icono + '<span>' + pend + ' solicitud(es) de material guardada(s) en este equipo. Se enviarán solas al volver la conexión — no las captures de nuevo.</span>';
+    }
+  }
+
+  var _reintentando = false;
+  function _reintentarCola() {
+    if (_reintentando) return Promise.resolve();
+    var pend = _leer(COLA_KEY);
+    if (!pend.length) { _pintarAviso(); return Promise.resolve(); }
+    _reintentando = true;
+    var quedan = [], fallidos = _leer(FALLIDOS_KEY);
+    return pend.reduce(function (cadena, item) {
+      return cadena.then(function () {
+        return _enviarSurtido(item.id, item.datos).then(function () {
+          console.info('[surtidos] respaldo enviado a Supabase:', item.datos && item.datos.folio);
+        }).catch(function (err) {
+          if (_esFallaDeRed(err)) quedan.push(item);
+          else { console.error('[surtidos] respaldo rechazado por la base:', err); item.error = String(err.message || err.code || err); fallidos.push(item); }
+        });
+      });
+    }, Promise.resolve()).then(function () {
+      // Por si se encoló algo nuevo mientras se reintentaba
+      var ids = pend.map(function (x) { return x.id; });
+      var nuevos = _leer(COLA_KEY).filter(function (x) { return ids.indexOf(x.id) < 0; });
+      _guardar(COLA_KEY, quedan.concat(nuevos));
+      _guardar(FALLIDOS_KEY, fallidos);
+      _reintentando = false;
+      _pintarAviso();
+    });
+  }
+  window.tcSbReintentarColaSurtidos = _reintentarCola;
+  window.addEventListener('online', function () { _reintentarCola(); });
+  setInterval(_reintentarCola, 60000);
+  setTimeout(_reintentarCola, 5000);
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _pintarAviso); else _pintarAviso();
+
   window.tcSbCrearSurtido = function (datosCamelCase) {
-    // Si quien llama manda su propio id (kiosco), un reintento con el mismo id
-    // NO crea un duplicado: ON CONFLICT DO NOTHING.
     var datos = Object.assign({}, datosCamelCase);
     var id = datos.id || ((window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2));
     delete datos.id;
-    var columnas = aColumnas(datos);
-    columnas.id = id;
-    return cargarSupabase().then(function (sb) {
-      return sb.from('surtidos').upsert(columnas, { onConflict: 'id', ignoreDuplicates: true });
-    }).then(function (r) { if (r.error) throw r.error; return id; });
+    window.tcSbUltimoEnCola = false;
+    return _enviarSurtido(id, datos).catch(function (err) {
+      if (datos.tipo === 'material' && _esFallaDeRed(err)) {
+        console.warn('[surtidos] sin conexión — solicitud guardada en este equipo:', datos.folio, err);
+        var cola = _leer(COLA_KEY).filter(function (x) { return x.id !== id; });
+        cola.push({ id: id, datos: datos, encoladoEn: new Date().toISOString() });
+        _guardar(COLA_KEY, cola);
+        window.tcSbUltimoEnCola = true;
+        _pintarAviso();
+        return id;
+      }
+      throw err;
+    });
   };
 })();
