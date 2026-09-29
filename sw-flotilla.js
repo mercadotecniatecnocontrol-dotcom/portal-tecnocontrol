@@ -1,6 +1,6 @@
 // sw-flotilla.js — Service Worker Tecnocontrol PWA Móvil
 // v6 — Network-first (con fallback a cache) + notificaciones push nativas
-const CACHE = 'tcn-movil-v8'; // ⬅️ v7→v8: app shell más completa para arranque offline (+manifest); precache resiliente a 404 individuales
+const CACHE = 'tcn-movil-v9'; // ⬅️ v7→v8: app shell más completa para arranque offline (+manifest); precache resiliente a 404 individuales
 const PRECACHE = [
   './flotilla-app.html',
   './flotilla-movil.js',
@@ -50,10 +50,9 @@ self.addEventListener('fetch', e => {
   // La API de caché del navegador SOLO admite peticiones GET — intentar
   // guardar un POST/PUT/etc. lanza un TypeError. Nunca debemos cachear nada
   // que no sea GET, sin importar qué tan "propio" sea el archivo.
-  if (e.request.method !== 'GET') {
-    e.respondWith(fetch(e.request));
-    return;
-  }
+  if (e.request.method !== 'GET') return;
+  // Supabase / esm.sh: NUNCA interceptar ni cachear (un GET de folio en caché causó folios 9111… el 29-sep-2026)
+  if (url.hostname.endsWith('supabase.co') || url.hostname === 'esm.sh') return;
 
   // Solo interceptamos peticiones dentro del scope de flotilla (HTML/JS propios).
   // Si este SW se registró con scope raíz, esto evita que "secuestre" al Portal.
@@ -75,7 +74,8 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // Todo lo demás (fuentes, íconos, assets estáticos) → cache-first normal
+  // Solo fuentes e íconos/manifest de Flotilla van cache-first; el portal y el kiosco van directo a red
+  if (!/fonts\.gstatic\.com$/.test(url.hostname) && !/\/icons\/|manifest-flotilla\.json$/.test(url.pathname)) return;
   e.respondWith(
     caches.match(e.request).then(cached => {
       if (cached) return cached;
