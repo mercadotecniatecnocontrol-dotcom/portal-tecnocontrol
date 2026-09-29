@@ -691,7 +691,17 @@ $('submit').onclick = async ()=>{
   if(!hayFirma){ setMsg('Falta la firma del solicitante.'); return; }
 
   const btn = $('submit'); btn.disabled=true; setMsg('Generando vista previa…','var(--teal)');
-  const folioInfo = await siguienteFolioMaterial();
+  // Un id y un folio por solicitud: si se reintenta, se reusan → no hay duplicados.
+  if(!solicitudIdActual) solicitudIdActual = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : (String(Date.now())+Math.random().toString(36).slice(2));
+  let folioInfo = folioActual;
+  if(!folioInfo){
+    try{ folioInfo = await conTimeout(siguienteFolioMaterial(), 8000, 'Folio'); }
+    catch(e){
+      console.warn('[kiosco] folio no respondió, se usa respaldo:', e && e.message);
+      folioInfo = { folio:'OPERACIONES '+String(Date.now()%10000).padStart(4,'0')+'-R', folioNum:null, folioPrefijo:'OPERACIONES' };
+    }
+    folioActual = folioInfo;
+  }
   const firma = firmaBase64();
   const docPrevio = {
     folio: folioInfo.folio, solicitante, area, razonSocial,
@@ -699,51 +709,88 @@ $('submit').onclick = async ()=>{
     lat: ubicacionKiosco.lat, lng: ubicacionKiosco.lng,
     destino: destino || 'Almacén · Operaciones', uso, prioridad, productos, firma,
   };
-  const pdfPrevio = window.tcConstruirPDFSolicitud(docPrevio, (document.querySelector('.hero-logo')||{}).src||null);
+  let pdfPrevio = null;
+  try{
+    pdfPrevio = window.tcConstruirPDFSolicitud ? window.tcConstruirPDFSolicitud(docPrevio, (document.querySelector('.hero-logo')||{}).src||null) : null;
+  }catch(e){ console.error('[kiosco] no se pudo generar el PDF:', e); pdfPrevio = null; }
   btn.disabled=false; setMsg('');
-  window.tcPrevisualizarPDF(pdfPrevio, folioInfo.folio, async ()=>{
+
+  const enviar = async ()=>{
     btn.disabled=true; setMsg('Enviando…','var(--teal)');
+    const datos = {
+      id: solicitudIdActual,
+      tipo: 'material',
+      folio: folioInfo.folio,
+      folioNum: folioInfo.folioNum,
+      folioPrefijo: folioInfo.folioPrefijo,
+      cliente: razonSocial, razonSocial,
+      estacionId: ubicacionKiosco.estacionId||null, estacionNombre: ubicacionKiosco.estacionNombre||null,
+      direccion: ubicacionKiosco.direccion||null, lat: ubicacionKiosco.lat!=null?ubicacionKiosco.lat:null, lng: ubicacionKiosco.lng!=null?ubicacionKiosco.lng:null,
+      solicitante,
+      vendedor: solicitante,
+      solicitanteEmail: auth.currentUser.email,
+      solicitanteTecnicoId: miTecnico ? miTecnico.id : null,
+      tecnicoId: tecnicoInfo ? tecnicoInfo.id : null,
+      tecnicoNombre,
+      tecnicoCorreo: tecnicoInfo ? tecnicoInfo.correo : null,
+      solicitaParaSiMismo: modoSolicitud==='propio',
+      area,
+      destino,
+      destinoTipo: destinoTipo || null,
+      destinoAlmacenOrigen: destinoAlmacenOrigen || null,
+      destinoAlmacenDestino: destinoAlmacenDestino || null,
+      uso,
+      prioridad,
+      estado: 'pendiente',
+      productos,
+      firma,
+      origen: 'kiosco',
+      createdAt: new Date().toISOString()
+    };
+    let enCola = false;
     try{
-      await window.tcSbCrearSurtido({
-        tipo: 'material',
-        folio: folioInfo.folio,
-        folioNum: folioInfo.folioNum,
-        folioPrefijo: folioInfo.folioPrefijo,
-        cliente: razonSocial, razonSocial,
-        estacionId: ubicacionKiosco.estacionId||null, estacionNombre: ubicacionKiosco.estacionNombre||null,
-        direccion: ubicacionKiosco.direccion||null, lat: ubicacionKiosco.lat!=null?ubicacionKiosco.lat:null, lng: ubicacionKiosco.lng!=null?ubicacionKiosco.lng:null,
-        solicitante,
-        vendedor: solicitante,
-        solicitanteEmail: auth.currentUser.email,
-        solicitanteTecnicoId: miTecnico ? miTecnico.id : null,
-        tecnicoId: tecnicoInfo ? tecnicoInfo.id : null,
-        tecnicoNombre,
-        tecnicoCorreo: tecnicoInfo ? tecnicoInfo.correo : null,
-        solicitaParaSiMismo: modoSolicitud==='propio',
-        area,
-        destino,
-        destinoTipo: destinoTipo || null,
-        destinoAlmacenOrigen: destinoAlmacenOrigen || null,
-        destinoAlmacenDestino: destinoAlmacenDestino || null,
-        uso,
-        prioridad,                     // urgente / alta / normal / programado (mismas que Logística)
-        estado: 'pendiente',
-        productos,
-        firma,
-        origen: 'kiosco',
-        createdAt: new Date().toISOString()
-      });
-      ultimaSolicitudEnviada = { folio: folioInfo.folio, solicitante, area, razonSocial, destino, uso, productos, firma, prioridad, estacionNombre: ubicacionKiosco.estacionNombre, direccion: ubicacionKiosco.direccion, lat: ubicacionKiosco.lat, lng: ubicacionKiosco.lng };
-      $('done-folio').textContent = folioInfo.folio;
-      $('done').classList.add('on');
-      setMsg('');
-      window.tcCompartirPDFWhatsApp(pdfPrevio, folioInfo.folio, resumenTextoSolicitud(ultimaSolicitudEnviada));
+      await conTimeout(window.tcSbCrearSurtido(datos), 15000, 'Guardado');
     }catch(e){
-      console.error('[kiosco] error al enviar:', e);
-      setMsg('No se pudo enviar (' + (e.code||e.message||'error') + '). Revisa tu conexión.');
-    }finally{ btn.disabled=false; }
-  });
+      // No se pierde: queda en este equipo y se reintenta sola (mismo id → sin duplicar).
+      console.error('[kiosco] no se pudo guardar, queda en cola local:', e);
+      const cola = colaLeer().filter(x=>x.id!==datos.id); cola.push(datos); colaGuardar(cola);
+      enCola = true;
+    }
+    ultimaSolicitudEnviada = { folio: folioInfo.folio, solicitante, area, razonSocial, destino, uso, productos, firma, prioridad, estacionNombre: ubicacionKiosco.estacionNombre, direccion: ubicacionKiosco.direccion, lat: ubicacionKiosco.lat, lng: ubicacionKiosco.lng };
+    $('done-folio').textContent = folioInfo.folio + (enCola ? ' · guardada en este equipo, se enviará sola al volver la conexión (NO la captures de nuevo)' : '');
+    $('done').classList.add('on');
+    setMsg('');
+    btn.disabled=false;
+    if(pdfPrevio) window.tcCompartirPDFWhatsApp(pdfPrevio, folioInfo.folio, resumenTextoSolicitud(ultimaSolicitudEnviada));
+    else window.open('https://wa.me/?text='+encodeURIComponent(resumenTextoSolicitud(ultimaSolicitudEnviada)), '_blank');
+  };
+
+  if(pdfPrevio) window.tcPrevisualizarPDF(pdfPrevio, folioInfo.folio, enviar);
+  else if(confirm('No se pudo generar la vista previa del PDF, pero la solicitud sí se puede registrar. ¿Enviar de todos modos?')) enviar();
 };
+
+/* ── Blindaje del envío: timeout, id estable por solicitud y cola local ── */
+let solicitudIdActual = null;   // se limpia solo en "Nueva solicitud"
+let folioActual = null;
+function conTimeout(p, ms, etiqueta){
+  return Promise.race([p, new Promise((_,rej)=>setTimeout(()=>rej(new Error((etiqueta||'Operación')+' tardó más de '+Math.round(ms/1000)+' s')), ms))]);
+}
+const COLA_KIOSCO = 'tc_kiosco_pendientes';
+function colaLeer(){ try{ return JSON.parse(localStorage.getItem(COLA_KIOSCO)||'[]'); }catch(e){ return []; } }
+function colaGuardar(a){ try{ localStorage.setItem(COLA_KIOSCO, JSON.stringify(a)); }catch(e){ console.error('[kiosco] no se pudo guardar la cola local', e); } }
+async function colaReintentar(){
+  const pend = colaLeer(); if(!pend.length) return;
+  const quedan = [];
+  for(const d of pend){
+    try{ await conTimeout(window.tcSbCrearSurtido(d), 15000, 'Reintento'); }
+    catch(e){ quedan.push(d); }
+  }
+  colaGuardar(quedan);
+  console.info('[kiosco] cola local: enviadas '+(pend.length-quedan.length)+', pendientes '+quedan.length);
+}
+window.addEventListener('online', colaReintentar);
+setTimeout(colaReintentar, 4000);
+setInterval(colaReintentar, 60000);
 
 /* ============ WhatsApp: mismo espíritu que el botón de Ventas (almacen-pdf.js) ============
    Genera el mismo PDF profesional (logo + colores de marca) que usa Almacén, e intenta
@@ -884,6 +931,7 @@ $('done-new').onclick = ()=>{
   carrito = {}; prodSearch.value=''; renderGrid(); renderCarrito();
   ctx.clearRect(0,0,cv.width,cv.height); hayFirma=false; $('sign-hint').style.display='flex';
   ultimaSolicitudEnviada = null;
+  solicitudIdActual = null; folioActual = null;
   setMsg(''); window.scrollTo({top:0,behavior:'smooth'});
 };
 
