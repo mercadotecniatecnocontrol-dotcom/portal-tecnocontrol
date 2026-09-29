@@ -6,7 +6,7 @@
 <title>Solicitud de Material · Almacén Tecnocontrol</title>
 <link rel="stylesheet" href="CSS/solicitud-material.css?v=2">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="material-pdf.js?v=2"></script>
+<script src="material-pdf.js?v=3"></script>
 <!-- surtidos ya vive en Supabase — este adaptador expone window.tcSb... -->
 <script src="surtidos-supabase.js"></script>
 </head>
@@ -769,7 +769,7 @@ $('submit').onclick = async ()=>{
     setMsg('');
     btn.disabled=false;
     if(pdfPrevio) window.tcCompartirPDFWhatsApp(pdfPrevio, folioInfo.folio, resumenTextoSolicitud(ultimaSolicitudEnviada));
-    else window.open('https://wa.me/?text='+encodeURIComponent(resumenTextoSolicitud(ultimaSolicitudEnviada)), '_blank');
+    else window.tcAbrirPanelEnvio(null, folioInfo.folio, resumenTextoSolicitud(ultimaSolicitudEnviada));
   };
 
   if(pdfPrevio) window.tcPrevisualizarPDF(pdfPrevio, folioInfo.folio, enviar);
@@ -903,25 +903,14 @@ function construirPDFSolicitud(d){
   return docu;
 }
 
-$('done-whatsapp').onclick = async ()=>{
+$('done-whatsapp').onclick = ()=>{
   if(!ultimaSolicitudEnviada) return;
   const d = ultimaSolicitudEnviada;
   const resumen = resumenTextoSolicitud(d);
-  const docu = construirPDFSolicitud(d);
-  if(!docu){ window.open('https://wa.me/?text='+encodeURIComponent(resumen), '_blank'); return; }
-  let compartioNativo = false;
-  try{
-    const blob = docu.output('blob');
-    const file = new File([blob], 'Solicitud_'+String(d.folio).replace(/\s+/g,'_')+'.pdf', {type:'application/pdf'});
-    if(navigator.canShare && navigator.canShare({files:[file]})){
-      compartioNativo = true;
-      await navigator.share({ files:[file], title:'Solicitud '+d.folio, text: resumen });
-    }
-  }catch(e){ /* Web Share con archivos no soportado — se usa el respaldo abajo */ }
-  if(!compartioNativo){
-    try{ window.open(docu.output('bloburl'), '_blank'); }catch(e){}
-    window.open('https://wa.me/?text='+encodeURIComponent(resumen), '_blank');
-  }
+  let docu = null;
+  try{ docu = construirPDFSolicitud(d); }catch(e){ console.error('[kiosco] PDF', e); }
+  // Panel universal (material-pdf.js): compartir, WhatsApp escritorio/web, ver, descargar, copiar
+  window.tcAbrirPanelEnvio(docu, d.folio, resumen);
 };
 
 /* Reiniciar para el siguiente */

@@ -1409,6 +1409,7 @@
     ];
     if (g.destinoTipo) lineas.push('Destino: ' + (DESTINO_TIPOS[g.destinoTipo] || g.destinoTipo));
     var texto = lineas.join('\n');
+    if (window.tcAbrirPanelEnvio) { window.tcAbrirPanelEnvio(null, g.folio, texto); return; }
     window.open('https://wa.me/?text=' + encodeURIComponent(texto), '_blank');
   };
  

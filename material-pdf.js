@@ -272,7 +272,7 @@
       '<a href="'+url+'" target="_blank" style="text-align:center;color:#fff;font-size:11.5px;font-weight:700;text-decoration:underline;margin-top:8px">Abrir en pantalla completa (con zoom) ↗</a>'+
       '<div style="display:flex;gap:8px;margin-top:10px">'+
         '<button onclick="document.getElementById(\'tc-preview-ov\').remove()" style="flex:1;padding:12px;background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:9px;font-weight:700;cursor:pointer">Seguir editando</button>'+
-        '<button id="tc-preview-enviar" style="flex:2;padding:12px;background:#25D366;color:#fff;border:none;border-radius:9px;font-weight:700;cursor:pointer">Confirmar y enviar por WhatsApp</button>'+
+        '<button id="tc-preview-enviar" style="flex:2;padding:12px;background:#25D366;color:#fff;border:none;border-radius:9px;font-weight:700;cursor:pointer">Confirmar y enviar</button>'+
       '</div>';
     document.getElementById('tc-preview-enviar').onclick=function(){
       document.getElementById('tc-preview-ov').remove();
@@ -280,22 +280,119 @@
     };
   };
 
-  /* ── ENVÍO POR WHATSAPP — mismo patrón probado en el kiosco: Web Share
-     API con archivo (WhatsApp aparece como destino con el PDF adjunto en
-     Android/iOS); en escritorio abre el PDF + WhatsApp con texto. ── */
-  window.tcCompartirPDFWhatsApp = function(docu, folio, resumenTexto){
-    if(!docu){ if(resumenTexto) window.open('https://wa.me/?text='+encodeURIComponent(resumenTexto),'_blank'); return Promise.resolve(); }
-    var blob = docu.output('blob');
-    var file = new File([blob], 'Solicitud_'+String(folio||'material').replace(/\s+/g,'_')+'.pdf', {type:'application/pdf'});
-    if(navigator.canShare && navigator.canShare({files:[file]})){
-      return navigator.share({files:[file], title:'Solicitud '+(folio||''), text:resumenTexto||''}).catch(function(){
-        window.open(docu.output('bloburl'),'_blank');
-        if(resumenTexto) window.open('https://wa.me/?text='+encodeURIComponent(resumenTexto),'_blank');
-      });
+  /* ── ENVÍO / COMPARTIR (29-sep-2026) ──────────────────────────────────
+     Antes: en escritorio abría wa.me + el PDF en otra pestaña (los navegadores
+     bloqueaban esas ventanas porque se abrían después de guardar, sin clic),
+     y en Mac el cuadro nativo de compartir no trae WhatsApp → el PDF se perdía.
+     Ahora SIEMPRE aparece un panel con todas las opciones (cada una es un clic
+     real del usuario, así que el navegador no la bloquea) y en computadora el
+     PDF además se DESCARGA automáticamente para que nunca se pierda.
+     El panel se puede volver a abrir con el botón "Enviar por WhatsApp". ── */
+  function _esMovil(){
+    var ua = navigator.userAgent || '';
+    return /Android|iPhone|iPad|iPod|Mobile/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  }
+  function _descargarBlob(blob, nombre){
+    try{
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = nombre; a.rel = 'noopener'; a.style.display = 'none';
+      document.body.appendChild(a); a.click();
+      setTimeout(function(){ a.remove(); URL.revokeObjectURL(url); }, 60000);
+      return true;
+    }catch(e){ console.warn('[compartir] no se pudo descargar', e); return false; }
+  }
+  var ICO = {
+    share: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>',
+    chat: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-12.5 7.4L3 21l2.1-5.3A8.4 8.4 0 1 1 21 11.5z"/></svg>',
+    monitor: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>',
+    globe: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg>',
+    down: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>',
+    eye: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>',
+    copy: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>'
+  };
+
+  // Panel universal de envío. docu (jsPDF) es opcional: sin él, solo ofrece texto.
+  window.tcAbrirPanelEnvio = function(docu, folio, resumenTexto){
+    var texto = resumenTexto || '';
+    var nombre = 'Solicitud_' + String(folio || 'material').replace(/\s+/g, '_') + '.pdf';
+    var blob = null, file = null;
+    if (docu) {
+      try { blob = docu.output('blob'); file = new File([blob], nombre, { type: 'application/pdf' }); }
+      catch (e) { console.error('[compartir] no se pudo generar el PDF', e); }
     }
-    window.open(docu.output('bloburl'),'_blank');
-    if(resumenTexto) window.open('https://wa.me/?text='+encodeURIComponent(resumenTexto),'_blank');
+    var movil = _esMovil();
+    var puedeCompartirArchivo = !!(file && navigator.canShare && (function(){ try { return navigator.canShare({ files: [file] }); } catch (e) { return false; } })());
+
+    // En computadora: descarga automática para que el PDF nunca se pierda
+    var descargado = false;
+    if (blob && !movil) descargado = _descargarBlob(blob, nombre);
+
+    var ov = document.getElementById('tc-envio-ov');
+    if (ov) ov.remove();
+    ov = document.createElement('div');
+    ov.id = 'tc-envio-ov';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.6);z-index:1000002;display:flex;align-items:flex-end;justify-content:center;padding:14px 14px calc(14px + env(safe-area-inset-bottom,0px));font-family:system-ui,-apple-system,sans-serif';
+    if (!movil) ov.style.alignItems = 'center';
+
+    var btn = function(id, ico, titulo, sub, color){
+      return '<button id="' + id + '" type="button" style="display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:12px 14px;border:1px solid #e2e8f0;border-radius:11px;background:' + (color || '#fff') + ';color:' + (color ? '#fff' : '#0f172a') + ';cursor:pointer;font:inherit">' +
+        '<span style="flex:none;display:flex">' + ico + '</span>' +
+        '<span style="display:flex;flex-direction:column;gap:1px"><b style="font-size:14px">' + titulo + '</b>' + (sub ? '<span style="font-size:11.5px;opacity:.75">' + sub + '</span>' : '') + '</span></button>';
+    };
+
+    var html = '<div style="background:#fff;border-radius:16px;width:100%;max-width:420px;max-height:90vh;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:8px;box-shadow:0 20px 50px rgba(0,0,0,.3)">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">' +
+        '<b style="font-size:15px;color:#1D2E73">Enviar ' + esc(folio || '') + '</b>' +
+        '<button id="tc-envio-x" type="button" aria-label="Cerrar" style="background:#f1f5f9;border:none;border-radius:8px;width:30px;height:30px;cursor:pointer;display:flex;align-items:center;justify-content:center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>' +
+      '</div>';
+    if (descargado) html += '<div style="font-size:12px;color:#047857;background:#ecfdf5;border-radius:9px;padding:8px 10px">El PDF ya se descargó en esta computadora (' + esc(nombre) + '). Adjúntalo en el chat de WhatsApp.</div>';
+    if (puedeCompartirArchivo) html += btn('tc-envio-share', ICO.share, 'Compartir PDF', movil ? 'Elige WhatsApp en la lista — va con el PDF adjunto' : 'Cuadro de compartir del sistema', '#25D366');
+    if (texto) {
+      if (movil) {
+        html += btn('tc-envio-wa', ICO.chat, puedeCompartirArchivo ? 'Enviar también el resumen en texto' : 'WhatsApp', 'Abre WhatsApp con el resumen escrito', puedeCompartirArchivo ? null : '#25D366');
+      } else {
+        html += btn('tc-envio-wadesk', ICO.monitor, 'WhatsApp de escritorio', 'Abre la app instalada con el resumen escrito', '#25D366');
+        html += btn('tc-envio-waweb', ICO.globe, 'WhatsApp Web', 'Abre web.whatsapp.com con el resumen escrito');
+      }
+    }
+    if (blob) {
+      html += btn('tc-envio-ver', ICO.eye, 'Ver PDF', 'Abrir en una pestaña nueva');
+      html += btn('tc-envio-desc', ICO.down, descargado ? 'Descargar de nuevo' : 'Descargar PDF', nombre);
+    }
+    if (texto) html += btn('tc-envio-copiar', ICO.copy, 'Copiar resumen', 'Para pegarlo en cualquier chat');
+    html += '</div>';
+    ov.innerHTML = html;
+    document.body.appendChild(ov);
+
+    var $e = function(id){ return document.getElementById(id); };
+    var cerrar = function(){ var o = $e('tc-envio-ov'); if (o) o.remove(); };
+    ov.addEventListener('click', function(ev){ if (ev.target === ov) cerrar(); });
+    $e('tc-envio-x').onclick = cerrar;
+    var abrir = function(url){ var w = window.open(url, '_blank'); if (!w) location.href = url; };
+    if ($e('tc-envio-share')) $e('tc-envio-share').onclick = function(){
+      navigator.share({ files: [file], title: 'Solicitud ' + (folio || '') }).catch(function(e){
+        if (e && e.name === 'AbortError') return;
+        console.warn('[compartir] share falló, se descarga', e); _descargarBlob(blob, nombre);
+      });
+    };
+    if ($e('tc-envio-wa')) $e('tc-envio-wa').onclick = function(){ abrir('https://wa.me/?text=' + encodeURIComponent(texto)); };
+    if ($e('tc-envio-wadesk')) $e('tc-envio-wadesk').onclick = function(){ location.href = 'whatsapp://send?text=' + encodeURIComponent(texto); };
+    if ($e('tc-envio-waweb')) $e('tc-envio-waweb').onclick = function(){ abrir('https://web.whatsapp.com/send?text=' + encodeURIComponent(texto)); };
+    if ($e('tc-envio-ver')) $e('tc-envio-ver').onclick = function(){ abrir(URL.createObjectURL(blob)); };
+    if ($e('tc-envio-desc')) $e('tc-envio-desc').onclick = function(){ _descargarBlob(blob, nombre); };
+    if ($e('tc-envio-copiar')) $e('tc-envio-copiar').onclick = function(){
+      var b = $e('tc-envio-copiar');
+      var ok = function(){ b.querySelector('b').textContent = 'Resumen copiado'; };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(texto).then(ok).catch(function(){ window.prompt('Copia el resumen:', texto); });
+      else window.prompt('Copia el resumen:', texto);
+    };
     return Promise.resolve();
+  };
+
+  // Compatibilidad: todos los módulos siguen llamando a esta función
+  window.tcCompartirPDFWhatsApp = function(docu, folio, resumenTexto){
+    return window.tcAbrirPanelEnvio(docu, folio, resumenTexto);
   };
 
 })();

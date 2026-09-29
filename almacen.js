@@ -2298,32 +2298,13 @@
   window.__almWhatsAppSolicitudMaterial = function(id){
     _almResolverPedido(id, function(p){
       var resumen = _almResumenTextoSolicitud(p);
-
-      // 1) SIEMPRE se abre primero el resumen en WhatsApp vía wa.me/?text= — es la
-      //    única vía 100% confiable para el texto. WhatsApp (Android/iOS) normalmente
-      //    IGNORA el "text" de Web Share cuando también recibe un archivo, así que no
-      //    podemos depender de mandar archivo+texto juntos en un solo navigator.share.
+      var docu = null;
+      try{ if(window.jspdf) docu = _almConstruirPDFSolicitudMaterial(p); }catch(e){ console.error('[almacen] PDF', e); }
+      // 29-sep-2026: panel universal de envío (material-pdf.js) — descarga el PDF en
+      // computadora y ofrece compartir / WhatsApp escritorio / WhatsApp Web / ver / copiar.
+      if(window.tcAbrirPanelEnvio){ window.tcAbrirPanelEnvio(docu, p.folio, resumen); return; }
       window.open('https://wa.me/?text='+encodeURIComponent(resumen), '_blank');
-
-      if(!window.jspdf) return;
-      var docu = _almConstruirPDFSolicitudMaterial(p);
-      if(!docu) return;
-      var archivoNombre = 'Solicitud_'+(p.folio||'material').replace(/\s+/g,'_')+'.pdf';
-
-      // 2) El PDF se comparte/abre por separado — el resumen de texto ya quedó
-      //    garantizado en el paso anterior, así que aquí NO se manda "text" de nuevo.
-      try{
-        var blob = docu.output('blob');
-        var file = new File([blob], archivoNombre, {type:'application/pdf'});
-        if(navigator.canShare && navigator.canShare({files:[file]})){
-          navigator.share({ files:[file], title:'Solicitud '+(p.folio||'') }).catch(function(){});
-          if(window.mostrarPush) window.mostrarPush('WhatsApp','Se abrió el resumen en WhatsApp y el cuadro para compartir el PDF — elige WhatsApp otra vez ahí para adjuntarlo a la misma conversación.', 'ℹ️');
-          return;
-        }
-      }catch(e){ /* Web Share con archivos no soportado — se usa el respaldo abajo */ }
-
-      try{ window.open(docu.output('bloburl'), '_blank'); }catch(e){}
-      if(window.mostrarPush) window.mostrarPush('WhatsApp','Se abrió el resumen en WhatsApp y el PDF en otra pestaña — adjunta el PDF manualmente, WhatsApp no permite adjuntarlo automático desde un enlace web.', 'ℹ️');
+      if(docu){ try{ window.open(docu.output('bloburl'), '_blank'); }catch(e){} }
     });
   };
 
