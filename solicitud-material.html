@@ -201,7 +201,7 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getFirestore, collection, addDoc, doc, getDoc, getDocs, updateDoc, onSnapshot, query, where, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, setPersistence, browserSessionPersistence } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 const config = { apiKey:"AIzaSyBXh-P0oMtMiDjyz9PObuJ8DNfROlXvhLE", authDomain:"tecnocontrol-1c42f.firebaseapp.com", projectId:"tecnocontrol-1c42f", storageBucket:"tecnocontrol-1c42f.firebasestorage.app", appId:"1:27642771956:web:54225af9e386afded8a1a1" };
 const app = initializeApp(config, 'kiosco-material');
@@ -229,7 +229,8 @@ let authReadyResolve;
 const authReady = new Promise(res => { authReadyResolve = res; });
 let miTecnico = null; // {id,nombre,correo} si el correo de sesión coincide con un técnico activo
 
-await setPersistence(auth, browserSessionPersistence).catch(e => console.warn('[kiosco auth] setPersistence:', e.message));
+// 29-sep-2026: sesión PERSISTENTE (local) — el kiosco/liga recuerda al usuario hasta que pulse "Cerrar sesión".
+await setPersistence(auth, browserLocalPersistence).catch(e => console.warn('[kiosco auth] setPersistence:', e.message));
 
 onAuthStateChanged(auth, user => {
   if (user) {
@@ -277,10 +278,11 @@ $('login-pass').addEventListener('keydown', e => { if(e.key==='Enter') iniciarSe
    para quien pase después. Cualquier interacción reinicia el conteo. */
 const IDLE_LIMIT_MS = 4*60*1000;
 let idleTimer = null;
+// 29-sep-2026: DESACTIVADO el cierre automático por inactividad — la sesión solo se
+// cierra con el botón manual "Cerrar sesión". (Se deja la función como no-op porque
+// se llama desde onAuthStateChanged.)
 function reiniciarIdleTimer(){
   clearTimeout(idleTimer);
-  if(!auth.currentUser) return;
-  idleTimer = setTimeout(()=>{ signOut(auth).catch(()=>{}); }, IDLE_LIMIT_MS);
 }
 ['click','keydown','touchstart','mousedown'].forEach(ev => document.addEventListener(ev, reiniciarIdleTimer, {passive:true}));
 window.cerrarSesionKiosco = function(){ signOut(auth).catch(()=>{}); };
