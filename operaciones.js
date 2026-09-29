@@ -124,6 +124,27 @@
     const OPS_CAL_ORDEN_CATEGORIAS = ["jomar", "servicio", "visita", "seguimiento", "vencido", "facturar"];
     const OPS_DEMO_SOURCE = "DEMO_CALENDAR"; // marca de los folios de prueba (ver seedDemoCalendar / clearDemoCalendar)
 
+    // ── Color por TIPO de servicio (Glen, sep-2026) ──────────────────────────────
+    // Cuando un folio de servicio SÍ está ligado a una receta del catálogo (Retank,
+    // Póliza, Supervisión, Calibración, etc.), se pinta con un color propio de esa
+    // categoría — así ya no todo el "servicio normal" se ve igual de azul. El color
+    // sale de un hash del nombre de la categoría contra esta paleta fija: cualquier
+    // categoría nueva que agregues al catálogo consigue color automático, sin tener
+    // que venir aquí a agregarla a mano.
+    const OPS_PALETA_CATEGORIAS_SERVICIO = [
+        "#0891b2", "#059669", "#d97706", "#be185d", "#7c3aed", "#0284c7",
+        "#65a30d", "#c2410c", "#4f46e5", "#0d9488", "#9333ea", "#ca8a04",
+    ];
+    function opsHashTexto(s) {
+        let h = 0;
+        for (let i = 0; i < s.length; i++) { h = (h * 31 + s.charCodeAt(i)) | 0; }
+        return Math.abs(h);
+    }
+    function opsColorCategoriaServicio(categoria) {
+        const color = OPS_PALETA_CATEGORIAS_SERVICIO[opsHashTexto(categoria) % OPS_PALETA_CATEGORIAS_SERVICIO.length];
+        return { nombre: categoria, color, fondo: color + "14", texto: color };
+    }
+
     // ¿El folio viene de JOMAR? Los folios que se cargan por Excel se guardan con origen "connecteam"
     // (opsImportarExcelFolios). También se reconoce por nombre de cliente o por la marca esJomar.
     function opsEsFolioJomar(f) {
@@ -135,6 +156,8 @@
         return !!f.fechaSolucion && !!(f.facturarA && String(f.facturarA).trim()) && !f.facturado;
     }
     // Categoría única (una sola por folio) — el orden de las reglas es la prioridad visual.
+    // Nota: para "servicio" con categoriaServicio capturada, la categoría real es dinámica
+    // ("srv:<categoría>") — opsCalColorFolio() sabe resolverla, ver más abajo.
     function opsCalCategoriaFolio(f) {
         if (opsFolioListoFacturar(f)) return "facturar";
         const info = opsCalcularSemaforoFolio(f);
@@ -142,9 +165,14 @@
         if (info.enAtencion && !f.fechaSolucion) return "seguimiento";
         if (f.tipoFolio === "inspeccion") return "visita";
         if (opsEsFolioJomar(f)) return "jomar";
+        if (f.tipoFolio === "servicio" && f.categoriaServicio) return "srv:" + f.categoriaServicio;
         return "servicio";
     }
-    function opsCalColorFolio(f) { return OPS_CAL_CATEGORIAS[opsCalCategoriaFolio(f)]; }
+    function opsCalColorFolio(f) {
+        const cat = opsCalCategoriaFolio(f);
+        if (cat.startsWith("srv:")) return opsColorCategoriaServicio(cat.slice(4));
+        return OPS_CAL_CATEGORIAS[cat];
+    }
 
     // Tipo de técnico (badge chico junto al nombre) — sale de las habilidades ya capturadas en su ficha.
     const OPS_TIPO_TECNICO = {
@@ -333,6 +361,7 @@
         { nombre: "Subgerente / Coordinador de Operaciones", departamento: "Operaciones", permisos: ["gestionar_herramientas", "gestionar_tecnicos", "autorizar_material", "eliminar_solicitudes"] },
         { nombre: "Auxiliar Administrativa",             departamento: "Operaciones", permisos: ["gestionar_herramientas", "solicitar_material"] },
         { nombre: "Auxiliar de Subgerencia/Coordinación", departamento: "Operaciones", permisos: ["solicitar_material", "consulta"] },
+        { nombre: "Consulta de Operaciones", departamento: "Operaciones", permisos: ["consulta"] },
         { nombre: "Técnico de Operaciones",               departamento: "Operaciones", permisos: ["consulta_propia"] },
         // Departamentos ya existentes en el portal (index.html) — puesto genérico por si se liga una persona de otro depto.
         ...["Ingresos","Egresos","Contabilidad","Recursos Humanos","Marketing","Administración","Ventas","Pagos","Gestoría","Almacén","Compras","Flotilla","Contraloría"]
@@ -2004,8 +2033,10 @@
                     <div style="display:flex;background:#eef2f7;border-radius:9px;padding:3px;">
                         <button onclick="opsCambiarVistaHerr('almacen')" style="border:none;background:${vistaHerr === "almacen" ? "#1D2E73" : "transparent"};color:${vistaHerr === "almacen" ? "#fff" : "#475569"};padding:6px 12px;border-radius:7px;cursor:pointer;font-size:11.5px;font-weight:600;">Por almacén</button>
                         <button onclick="opsCambiarVistaHerr('tipo')" style="border:none;background:${vistaHerr === "tipo" ? "#1D2E73" : "transparent"};color:${vistaHerr === "tipo" ? "#fff" : "#475569"};padding:6px 12px;border-radius:7px;cursor:pointer;font-size:11.5px;font-weight:600;">Por tipo de artículo</button>
+                        <button onclick="opsCambiarVistaHerr('galeria')" style="border:none;background:${vistaHerr === "galeria" ? "#1D2E73" : "transparent"};color:${vistaHerr === "galeria" ? "#fff" : "#475569"};padding:6px 12px;border-radius:7px;cursor:pointer;font-size:11.5px;font-weight:600;">Galería</button>
                         <button onclick="opsCambiarVistaHerr('revisiones')" style="border:none;background:${vistaHerr === "revisiones" ? "#1D2E73" : "transparent"};color:${vistaHerr === "revisiones" ? "#fff" : "#475569"};padding:6px 12px;border-radius:7px;cursor:pointer;font-size:11.5px;font-weight:600;">Revisiones</button>
                     </div>
+                    ${gestion ? `<button onclick="opsAbrirModalCargaFotos()" title="Cargar varias fotos de golpe y emparejarlas con tu herramienta ya dada de alta" style="background:#0e7490;border:none;color:#fff;padding:0 13px;height:32px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:600;display:inline-flex;align-items:center;gap:6px;">${ICON.camera} Cargar fotos</button>` : ""}
                     ${gestion ? `<button onclick="opsAbrirConfigCalibracion()" title="Configurar quién autoriza equipo especializado" style="background:#eef2f7;border:none;color:#475569;width:32px;height:32px;border-radius:8px;cursor:pointer;">${ICON.lock}</button>` : ""}
                     ${gestion ? `<button onclick="opsAbrirConfigRevision()" title="Configurar quién puede revisar herramienta desde Flotilla" style="background:#eef2f7;border:none;color:#475569;width:32px;height:32px;border-radius:8px;cursor:pointer;">${ICON.search}</button>` : ""}
                     ${gestion ? `
@@ -2014,7 +2045,7 @@
                     <button onclick="opsImportarExcelReal()" class="mkt-add-btn" style="background:#15803D;">${ICON.file} Importar Excel real (12 técnicos)</button>` : ""}
                 </div>
             </div>
-            ${vistaHerr === "almacen" ? opsFragmentoVistaAlmacen() : (vistaHerr === "revisiones" ? opsFragmentoVistaRevisiones() : opsFragmentoVistaTipo(lista))}
+            ${vistaHerr === "almacen" ? opsFragmentoVistaAlmacen() : (vistaHerr === "revisiones" ? opsFragmentoVistaRevisiones() : (vistaHerr === "galeria" ? opsFragmentoVistaGaleria(lista) : opsFragmentoVistaTipo(lista)))}
         `;
     }
 
@@ -2243,6 +2274,138 @@
     window.opsLimpiarFiltrosCatalogo = function () {
         filtroCat = { busca: filtroCat.busca, categoria: "", departamento: "", estado: "", condicion: "" };
         opsRenderDashboard();
+    };
+
+    // Vista Galería — tarjetas con foto, al estilo "Panorama de vehículos" de Flotilla.
+    function opsFragmentoVistaGaleria(lista) {
+        if (!lista.length) return `<div style="padding:40px;text-align:center;color:#94a3b8;">Ninguna herramienta coincide con el filtro.</div>`;
+        return `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px;">
+            ${lista.map(h => {
+                const e = ESTADOS_HERRAMIENTA[h.estado] || ESTADOS_HERRAMIENTA.disponible;
+                return `<div onclick="opsAbrirFichaHerramienta('${h.id}')" style="background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0;cursor:pointer;box-shadow:0 1px 2px rgba(15,23,42,.04);transition:box-shadow .15s;">
+                    <div style="position:relative;width:100%;height:120px;background:#f1f5f9;">
+                        ${h.fotoBase64
+                            ? `<img src="${h.fotoBase64}" style="width:100%;height:100%;object-fit:cover;display:block;">`
+                            : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8;">${ICON.wrench}</div>`}
+                        <span style="position:absolute;top:6px;left:6px;background:rgba(15,23,42,.75);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;padding:2px 7px;border-radius:999px;">${opsEsc(h.categoria || "Sin categoría")}</span>
+                    </div>
+                    <div style="padding:9px 11px;">
+                        <div style="font-size:9.5px;color:#94a3b8;font-weight:600;">${opsEsc(h.folio)}</div>
+                        <div style="font-size:12px;font-weight:700;color:#1e293b;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${opsEsc(h.descripcion)}</div>
+                        <div style="font-size:10.5px;color:#64748b;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${h.tecnicoActualId ? opsEsc(opsNombreTecnico(h.tecnicoActualId)) : "Sin asignar"}</div>
+                        <span style="display:inline-block;margin-top:6px;background:${e.bg};color:${e.fg};font-size:9.5px;font-weight:700;padding:2px 8px;border-radius:999px;">${e.label}</span>
+                    </div>
+                </div>`;
+            }).join("")}
+        </div>`;
+    }
+
+    // ══════════════ Carga masiva de fotos (Glen, sep-2026) ══════════════
+    // Selecciona muchas fotos de golpe (el nombre del archivo ya suele ser el nombre real
+    // de la herramienta), intenta emparejar cada una con una herramienta ya dada de alta
+    // por nombre, y deja revisar/corregir antes de guardar todo junto.
+    let opsCargaFotosItems = [];
+
+    function opsNormalizaTexto(s) {
+        return (s || "").toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
+    }
+
+    window.opsAbrirModalCargaFotos = function () {
+        opsCargaFotosItems = [];
+        const wrap = document.getElementById("ops-modal-wrap");
+        wrap.innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;">
+            <div style="background:#fff;border-radius:14px;width:720px;max-width:96vw;max-height:90vh;overflow-y:auto;padding:22px;">
+                <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:4px;">Carga masiva de fotos</div>
+                <div style="font-size:11.5px;color:#64748b;margin-bottom:14px;">Selecciona todas las fotos de la carpeta de una vez. El nombre del archivo se usa para proponer con cuál herramienta ya dada de alta va cada una — revisa y corrige antes de guardar.</div>
+                <label style="display:flex;align-items:center;justify-content:center;gap:8px;border:2px dashed #cbd5e1;border-radius:10px;padding:22px;cursor:pointer;color:#475569;font-size:12.5px;font-weight:600;margin-bottom:16px;">
+                    ${ICON.camera} Elegir fotos (puedes seleccionar varias a la vez)
+                    <input type="file" accept="image/*" multiple style="display:none;" onchange="opsProcesarCargaFotos(this.files)">
+                </label>
+                <div id="ops-carga-fotos-lista"></div>
+                <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+                    <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cerrar</button>
+                    <button id="ops-carga-fotos-guardar" onclick="opsGuardarCargaFotos()" class="mkt-add-btn" style="background:#0e7490;" disabled>Guardar todas</button>
+                </div>
+            </div>
+        </div>`;
+    };
+
+    window.opsProcesarCargaFotos = function (files) {
+        const activas = cacheHerr.filter(h => h.estado !== "baja");
+        Array.from(files).forEach(file => {
+            const nombreArchivo = file.name.replace(/\.[a-zA-Z0-9]+$/, "");
+            const nq = opsNormalizaTexto(nombreArchivo);
+            const partes = nq.split(" ").filter(Boolean);
+            // mejor match: la herramienta cuya descripción comparte más palabras con el nombre del archivo
+            let mejor = null, mejorPuntaje = 0;
+            activas.forEach(h => {
+                const nd = opsNormalizaTexto(h.descripcion);
+                const puntaje = partes.filter(p => nd.includes(p)).length;
+                if (puntaje > mejorPuntaje) { mejorPuntaje = puntaje; mejor = h; }
+            });
+            const reader = new FileReader();
+            reader.onload = () => {
+                opsCargaFotosItems.push({ file, nombreArchivo, previewUrl: reader.result, matchId: mejorPuntaje > 0 ? mejor.id : null });
+                opsRenderCargaFotosLista();
+            };
+            reader.readAsDataURL(file);
+        });
+    };
+
+    function opsRenderCargaFotosLista() {
+        const el = document.getElementById("ops-carga-fotos-lista");
+        if (!el) return;
+        const activas = cacheHerr.filter(h => h.estado !== "baja");
+        el.innerHTML = opsCargaFotosItems.map((it, i) => `
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f1f5f9;">
+                <img src="${it.previewUrl}" style="width:44px;height:44px;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0;flex-shrink:0;">
+                <div style="font-size:11px;color:#64748b;width:150px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${opsEsc(it.nombreArchivo)}">${opsEsc(it.nombreArchivo)}</div>
+                <select onchange="opsCargaFotosCambiarMatch(${i}, this.value)" style="flex:1;border:1px solid ${it.matchId ? "#cbd5e1" : "#fca5a5"};border-radius:8px;padding:6px 8px;font-size:12px;">
+                    <option value="">— No asignar / omitir —</option>
+                    ${activas.map(h => `<option value="${h.id}" ${it.matchId === h.id ? "selected" : ""}>${opsEsc(h.folio)} — ${opsEsc(h.descripcion)}</option>`).join("")}
+                </select>
+                <button onclick="opsCargaFotosQuitar(${i})" style="background:#fef2f2;border:none;color:#E7402B;width:26px;height:26px;border-radius:7px;cursor:pointer;flex-shrink:0;">${ICON.trash}</button>
+            </div>`).join("") || `<div style="color:#94a3b8;font-size:12px;padding:10px 0;">Todavía no eliges ninguna foto.</div>`;
+        const btn = document.getElementById("ops-carga-fotos-guardar");
+        if (btn) btn.disabled = !opsCargaFotosItems.some(it => it.matchId);
+    }
+
+    window.opsCargaFotosCambiarMatch = function (i, herramientaId) {
+        if (opsCargaFotosItems[i]) opsCargaFotosItems[i].matchId = herramientaId || null;
+        const btn = document.getElementById("ops-carga-fotos-guardar");
+        if (btn) btn.disabled = !opsCargaFotosItems.some(it => it.matchId);
+    };
+
+    window.opsCargaFotosQuitar = function (i) {
+        opsCargaFotosItems.splice(i, 1);
+        opsRenderCargaFotosLista();
+    };
+
+    window.opsGuardarCargaFotos = async function () {
+        const aplicar = opsCargaFotosItems.filter(it => it.matchId);
+        if (!aplicar.length) return;
+        const btn = document.getElementById("ops-carga-fotos-guardar");
+        if (btn) { btn.disabled = true; btn.textContent = "Guardando…"; }
+        try {
+            const { db, fs } = await opsGetFB();
+            let ok = 0, errores = 0;
+            for (const it of aplicar) {
+                try {
+                    const comprimida = await opsComprimirImagenBase64(it.file, 700, 0.6);
+                    await fs.updateDoc(fs.doc(db, COL_HERRAMIENTAS, it.matchId), { fotoBase64: comprimida });
+                    const h = cacheHerr.find(x => x.id === it.matchId);
+                    if (h) h.fotoBase64 = comprimida;
+                    ok++;
+                } catch (e) { console.error("[opsGuardarCargaFotos]", it.nombreArchivo, e); errores++; }
+            }
+            document.getElementById("ops-modal-wrap").innerHTML = "";
+            opsRenderDashboard();
+            if (window.mostrarPush) window.mostrarPush("Operaciones", `${ok} foto(s) guardadas${errores ? `, ${errores} con error` : ""}.`, "✅");
+        } catch (e) {
+            console.error("[opsGuardarCargaFotos]", e);
+            alert("No se pudo guardar: " + e.message);
+        }
     };
 
     function opsFragmentoVistaTipo(lista) {
@@ -5223,7 +5386,7 @@
                         <option value="laboratorio" ${opsCalFiltroTipo === "laboratorio" ? "selected" : ""}>Solo laboratorio</option>
                     </select>
                     <input id="ops-cal-filtro" value="${opsEsc(opsCalFiltroTexto)}" oninput="opsCalFiltrar(this.value)" placeholder="Buscar técnico..." style="border:1px solid #e2e8f0;background:#f8fafc;border-radius:8px;padding:8px 12px;font-size:12.5px;min-width:170px;">
-                    <button onclick="opsAbrirModalFolio(null, '${opsCalFechaISO(opsCalFecha)}')" style="background:#1D2E73;border:none;color:#fff;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;box-shadow:0 2px 6px rgba(29,46,115,.25);">+ Nuevo servicio</button>
+                    ${opsPuedeGestionar() ? `<button onclick="opsAbrirModalFolio(null, '${opsCalFechaISO(opsCalFecha)}')" style="background:#1D2E73;border:none;color:#fff;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;box-shadow:0 2px 6px rgba(29,46,115,.25);">+ Nuevo servicio</button>` : ""}
                     ${opsPuedeGestionar() ? `<button onclick="opsAbrirModalVisitaInspeccion()" style="background:#0e7490;border:none;color:#fff;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;box-shadow:0 2px 6px rgba(14,116,144,.25);">+ Visita de inspección</button>` : ""}
                 </div>
             </div>
@@ -5237,8 +5400,8 @@
                 <div style="font-size:11px;font-weight:800;color:#b45309;text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px;">Sin fecha programada (${sinFecha.length})${opsCalVista === "dia" ? " — arrástralos a la fila de un técnico" : ""}</div>
                 <div style="display:flex;flex-wrap:wrap;gap:8px;">
                     ${sinFecha.map(f => `
-                        <div onclick="opsAbrirModalFolio('${f.id}')" draggable="true" ondragstart="opsCalArrastrarFolio(event,'${f.id}')" style="padding:9px 13px;background:#fffbeb;border:1px solid #fde8c8;border-radius:10px;cursor:${opsCalVista === "dia" ? "grab" : "pointer"};font-size:11.5px;color:#334155;font-weight:600;transition:box-shadow .12s;">
-                            ${opsEsc(f.estacion)}${f.folioOS ? " · O.S. " + opsEsc(f.folioOS) : ""} — <span style="color:#b45309;font-weight:500;">${opsCalVista === "dia" ? "arrastra o da clic" : "clic para programar"}</span>
+                        <div onclick="${opsPuedeGestionar() ? `opsAbrirModalFolio('${f.id}')` : `opsAbrirPanelFolio('${f.id}')`}" ${opsPuedeGestionar() ? `draggable="true" ondragstart="opsCalArrastrarFolio(event,'${f.id}')"` : ""} style="padding:9px 13px;background:#fffbeb;border:1px solid #fde8c8;border-radius:10px;cursor:${opsPuedeGestionar() && opsCalVista === "dia" ? "grab" : "pointer"};font-size:11.5px;color:#334155;font-weight:600;transition:box-shadow .12s;">
+                            ${opsEsc(f.estacion)}${f.folioOS ? " · O.S. " + opsEsc(f.folioOS) : ""}${opsPuedeGestionar() ? ` — <span style="color:#b45309;font-weight:500;">${opsCalVista === "dia" ? "arrastra o da clic" : "clic para programar"}</span>` : ""}
                         </div>`).join("")}
                 </div>
             </div>` : ""}
@@ -5371,7 +5534,14 @@
             return `<button onclick="opsCalToggleCategoria('${k}')" title="Clic para ver solo esta categoría" style="display:inline-flex;align-items:center;gap:6px;background:${on ? c.fondo : "#fff"};border:1px solid ${on ? c.color : "#e2e8f0"};color:${on ? c.texto : "#475569"};padding:4px 10px;border-radius:999px;font-size:10.5px;font-weight:600;cursor:pointer;">
                 <span style="width:9px;height:9px;border-radius:3px;background:${c.color};"></span>${opsEsc(c.nombre)}</button>`;
         }).join("");
-        return `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">${chips}</div>`;
+        // categorías de servicio dinámicas (Retank, Pólizas, etc.) presentes en los folios actuales
+        const categoriasServicioPresentes = [...new Set(cacheFolios.filter(f => f.tipoFolio === "servicio" && f.categoriaServicio).map(f => f.categoriaServicio))].sort();
+        const chipsServicio = categoriasServicioPresentes.map(cat => {
+            const c = opsColorCategoriaServicio(cat), on = opsCalFiltroCategoria === "srv:" + cat;
+            return `<button onclick="opsCalToggleCategoria('srv:${opsEsc(cat)}')" title="Clic para ver solo esta categoría" style="display:inline-flex;align-items:center;gap:6px;background:${on ? c.fondo : "#fff"};border:1px solid ${on ? c.color : "#e2e8f0"};color:${on ? c.texto : "#475569"};padding:4px 10px;border-radius:999px;font-size:10.5px;font-weight:600;cursor:pointer;">
+                <span style="width:9px;height:9px;border-radius:3px;background:${c.color};"></span>${opsEsc(c.nombre)}</button>`;
+        }).join("");
+        return `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">${chips}${chipsServicio}</div>`;
     }
 
     // Leyenda de símbolos (pie de la vista Día)
@@ -5440,7 +5610,7 @@
                     const horaTxt = sinHora ? "Sin hora" : (d.traslado + d.ejecucion > 0 ? `${opsCalFmtHora(d.horaDecimal)}–${opsCalFmtHora(finDec)}` : opsCalFmtHora(d.horaDecimal));
                     const propTraslado = d.traslado ? (d.traslado / ((d.traslado + d.ejecucion) || 1)) * 100 : 0;
                     const tip = `${f.estacion}${f.folioOS ? " · O.S. " + f.folioOS : ""}\n${f.clienteNombre || "Sin cliente"} · ${opsCalTipoTexto(f)}\n${horaTxt} · ${cat.nombre} · ${info.estado}${choqueSet.has(f.id) ? "\n⚠ Choque de horario" : ""}${faltaGente ? "\n⚠ Falta personal contra la receta" : ""}`;
-                    return `<div class="ops-cal-card" draggable="true" ondragstart="opsCalArrastrarFolio(event,'${f.id}')" onclick="opsAbrirPanelFolio('${f.id}')" title="${opsEsc(tip)}"
+                    return `<div class="ops-cal-card" ${opsPuedeGestionar() ? `draggable="true" ondragstart="opsCalArrastrarFolio(event,'${f.id}')"` : ""} onclick="opsAbrirPanelFolio('${f.id}')" title="${opsEsc(tip)}"
                         style="position:absolute;top:${carril * OPS_CAL_ALTO_CARRIL + 5}px;height:${OPS_CAL_ALTO_CARRIL - 6}px;left:${izqPct}%;width:calc(${anchoPct}% - 3px);box-sizing:border-box;background:${cat.fondo};border:1px solid ${cat.color}40;border-left:4px solid ${cat.color};border-radius:10px;${problema ? "outline:2px solid #E7402B;outline-offset:1px;" : ""}box-shadow:0 1px 3px rgba(15,23,42,.10);padding:5px 8px 7px 8px;overflow:hidden;cursor:pointer;z-index:2;display:flex;flex-direction:column;justify-content:space-between;">
                         <div style="display:flex;align-items:center;gap:5px;min-width:0;">
                             <span style="font-size:9px;font-weight:800;color:${cat.texto};background:${cat.color}26;padding:1px 5px;border-radius:5px;white-space:nowrap;flex-shrink:0;">${f.folioOS ? "O.S. " + opsEsc(f.folioOS) : "S/F"}</span>
@@ -5848,7 +6018,7 @@
                     <div id="ops-panel-historial" style="font-size:11.5px;color:#94a3b8;">Cargando…</div>
                 </div>
 
-                <button onclick="opsAbrirModalFolio('${f.id}')" class="mkt-add-btn" style="background:#1D2E73;width:100%;">Editar folio</button>
+                ${opsPuedeGestionar() ? `<button onclick="opsAbrirModalFolio('${f.id}')" class="mkt-add-btn" style="background:#1D2E73;width:100%;">Editar folio</button>` : ""}
             </div>`;
 
         // ── Vehículo de cada técnico (async, no bloquea el resto del panel) ──
@@ -5893,6 +6063,7 @@
     window.opsCalSoltarFolio = async function (event, tecnicoId) {
         event.preventDefault();
         event.currentTarget.style.background = "";
+        if (!opsPuedeGestionar()) return; // defensa extra — el drag ya está deshabilitado en el HTML para consulta
         const folioId = event.dataTransfer.getData("text/plain");
         if (!folioId) return;
         const f = cacheFolios.find(x => x.id === folioId);
@@ -6079,7 +6250,7 @@
                         <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Servicio (catálogo)</label>
                         <select id="ops-fol-servicio" onchange="window.opsFolioSugerirTecnicos('${id || ""}')" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
                             <option value="">— Sin ligar —</option>
-                            ${cacheServiciosCatalogo.map(s => `<option value="${s.id}" ${f?.servicioCatalogoId === s.id ? "selected" : ""}>${opsEsc(s.nombre)}</option>`).join("")}
+                            ${cacheServiciosCatalogo.map(s => `<option value="${s.id}" data-categoria="${opsEsc(s.categoria || "")}" ${f?.servicioCatalogoId === s.id ? "selected" : ""}>${opsEsc(s.nombre)}</option>`).join("")}
                         </select></div>
                     </div>
 
@@ -6511,6 +6682,7 @@
             tipoFolio: tipoFolioNuevo,
             normaInspeccion: tipoFolioNuevo === "inspeccion" ? (document.getElementById("ops-fol-norma")?.value || null) : null,
             servicioCatalogoId: document.getElementById("ops-fol-servicio").value || null,
+            categoriaServicio: (() => { const sel = document.getElementById("ops-fol-servicio"); return sel.selectedOptions[0]?.dataset.categoria || null; })(),
             fechaProgramada: document.getElementById("ops-fol-programada").value || null,
             tiempoEjecucionHrs: document.getElementById("ops-fol-tiempo-ejec").value ? Number(document.getElementById("ops-fol-tiempo-ejec").value) : null,
             tiempoTrasladoHrs: document.getElementById("ops-fol-tiempo-trasl").value ? Number(document.getElementById("ops-fol-tiempo-trasl").value) : null,
