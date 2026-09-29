@@ -42,6 +42,11 @@
       // hasta diagnosticar la causa exacta con calma (probablemente la
       // validación del JWT de Firebase contra el JWKS es lenta o se
       // reintenta en cada request, no algo puntual de una tabla).
+    }).catch(function (err) {
+      // Si falla la carga (red/CDN), NO dejar la promesa rechazada en caché:
+      // el siguiente intento vuelve a probar en vez de fallar para siempre.
+      _clientePromesa = null;
+      throw err;
     });
     return _clientePromesa;
   }
@@ -434,11 +439,15 @@
 
   // ── Crear un pedido nuevo ────────────────────────────────────────────
   window.tcSbCrearSurtido = function (datosCamelCase) {
-    var id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2);
-    var columnas = aColumnas(datosCamelCase);
+    // Si quien llama manda su propio id (kiosco), un reintento con el mismo id
+    // NO crea un duplicado: ON CONFLICT DO NOTHING.
+    var datos = Object.assign({}, datosCamelCase);
+    var id = datos.id || ((window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2));
+    delete datos.id;
+    var columnas = aColumnas(datos);
     columnas.id = id;
     return cargarSupabase().then(function (sb) {
-      return sb.from('surtidos').insert(columnas);
+      return sb.from('surtidos').upsert(columnas, { onConflict: 'id', ignoreDuplicates: true });
     }).then(function (r) { if (r.error) throw r.error; return id; });
   };
 })();
