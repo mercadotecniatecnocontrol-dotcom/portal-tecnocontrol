@@ -148,7 +148,7 @@
     // ¿El folio viene de JOMAR? Los folios que se cargan por Excel se guardan con origen "connecteam"
     // (opsImportarExcelFolios). También se reconoce por nombre de cliente o por la marca esJomar.
     function opsEsFolioJomar(f) {
-        return f.origen === "connecteam" || f.esJomar === true || /jo\s?mar/i.test(f.clienteNombre || "");
+        return f.tipoFolio === "inspeccion" || f.origen === "connecteam" || f.esJomar === true || /jo\s?mar/i.test(f.clienteNombre || "");
     }
     // "Listo para facturar": el folio ya está solucionado, tiene a quién facturarle y no está marcado como facturado.
     // (Hoy no existe un campo de estatus de factura; si algún día se agrega f.facturado, aquí se respeta.)
@@ -174,32 +174,80 @@
     // TRAZO (borde izquierdo grueso) = estatus del folio. Vencido además va punteado.
     // opsCalCategoriaFolio() se conserva igual para el filtro legacy y el import.
     const OPS_CAL_ESTATUS = {
-        programado: { nombre: "Programado",           color: "#64748b" },
-        atencion:   { nombre: "En atención",          color: "#f97316" },
+        programado: { nombre: "Programado",           color: "#334155" },
+        atencion:   { nombre: "En atención",          color: "#f59e0b" },
         vencido:    { nombre: "Vencido / urgente",    color: "#dc2626", punteado: true },
         cerrado:    { nombre: "Cerrado",              color: "#16a34a" },
-        facturar:   { nombre: "Listo para facturar",  color: "#0d9488" },
+        facturar:   { nombre: "Listo para facturar",  color: "#0891b2" },
     };
     const OPS_CAL_ORDEN_ESTATUS = ["programado", "atencion", "vencido", "cerrado", "facturar"];
     function opsCalRecetaFolio(f) {
         return f.servicioCatalogoId ? (cacheServiciosCatalogo.find(x => x.id === f.servicioCatalogoId) || null) : null;
     }
-    function opsCalMkColor(clave, nombre, color) {
-        return { clave, nombre, color, fondo: color + "1f", texto: color };
+    // ═══ Familias de servicio con color SÓLIDO fijo (Glen, sep-2026, estilo monday.com) ═══
+    // Cada familia tiene su propio color — sin hash, sin colores repetidos. El texto
+    // libre de los imports ("Visita CALIBRACIONES Y BAJADO DE BITACORAS…") se agrupa
+    // por palabra clave, así la leyenda muestra ~20 familias y no 80 variantes.
+    // Tecnocontrol = servicios; JOMAR Verificaciones = todas las visitas de inspección.
+    const OPS_FAM_TECNO = [
+        { k: "botas",        nombre: "Cambio de botas",           color: "#ff642e", t: x => /bota/.test(x) },
+        { k: "contenedor",   nombre: "Cambio de contenedor",      color: "#fdab3d", t: x => /contenedor/.test(x) },
+        { k: "retank",       nombre: "Retank",                    color: "#e2445c", t: x => /re-?\s?tank/.test(x) },
+        { k: "integridad",   nombre: "Integridad mecánica",       color: "#a25ddc", t: x => /integridad/.test(x) },
+        { k: "hermeticidad", nombre: "Hermeticidad",              color: "#784bd1", t: x => /hermetic/.test(x) },
+        { k: "cableado",     nombre: "Cableado y canalización",   color: "#579bfc", t: x => /cablead|canaliz|conexi/.test(x) },
+        { k: "sonda",        nombre: "Sondas y consolas",         color: "#00a8b5", t: x => /sonda|consola|termistor/.test(x) },
+        { k: "calibracion",  nombre: "Calibración",               color: "#037f4c", t: x => /calibra/.test(x) },
+        { k: "dispensario",  nombre: "Dispensarios y mangueras",  color: "#0073ea", t: x => /dispens|manguer/.test(x) },
+        { k: "electrico",    nombre: "Eléctrico",                 color: "#ffcb00", t: x => /el[eé]ctric/.test(x) },
+        { k: "mantenimiento",nombre: "Mantenimiento",             color: "#00c875", t: x => /manten|mtto/.test(x) },
+        { k: "poliza",       nombre: "Pólizas",                   color: "#ff158a", t: x => /p[oó]liza/.test(x) },
+        { k: "obra",         nombre: "Obra civil",                color: "#7f5347", t: x => /obra civil|pintura|losa|concreto/.test(x) },
+        { k: "totem",        nombre: "Tótem e imagen",            color: "#bb3354", t: x => /t[oó]tem|imagen|anuncio/.test(x) },
+        { k: "supervision",  nombre: "Supervisión",               color: "#175a63", t: x => /supervis/.test(x) },
+    ];
+    const OPS_FAM_TECNO_GENERAL = { k: "general", nombre: "Servicio técnico general", color: "#401694" };
+    const OPS_FAM_JOMAR = [
+        { k: "sinact",      nombre: "Sin actividad / cancelado", color: "#9aa1ad", t: x => /cancel|vacacion|d[ií]a libre|inh[aá]bil|incapac/.test(x) },
+        { k: "altoflujo",   nombre: "Alto flujo",                color: "#225091", t: x => /alto flujo/.test(x) },
+        { k: "calibracion", nombre: "Calibraciones",             color: "#4eccc6", t: x => /calib|cali+bra/.test(x) },
+        { k: "scfi",        nombre: "SCFI",                      color: "#9cd326", t: x => /scfi/.test(x) },
+        { k: "sasisopa",    nombre: "SASISOPA",                  color: "#5559df", t: x => /sasisopa/.test(x) },
+        { k: "aseaanexo",   nombre: "ASEA + Anexo 21/22",        color: "#cab641", t: x => /asea/.test(x) && /an?e?n?xo|aenxo|aneo/.test(x) },
+        { k: "anexo",       nombre: "Anexo 21 / 22",             color: "#ff7575", t: x => /an?e?n?xo|aenxo|aneo/.test(x) },
+        { k: "asea",        nombre: "ASEA / OP y MTTO",          color: "#d974b0", t: x => /asea|op y mtto|op y mto/.test(x) },
+        { k: "tanques",     nombre: "Bajada de tanques",         color: "#ff9a52", t: x => /tanque/.test(x) },
+        { k: "supervision", nombre: "Supervisión / revisión",    color: "#2b76e5", t: x => /supervis|revisi/.test(x) },
+    ];
+    const OPS_FAM_JOMAR_GENERAL = { k: "general", nombre: "Visita de inspección", color: "#ff5ac4" };
+    // Texto legible sobre relleno sólido: blanco u oscuro según la luminosidad del color.
+    function opsCalTextoSobre(hex) {
+        const h = hex.replace("#", "");
+        const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+        return (0.299 * r + 0.587 * g + 0.114 * b) > 160 ? "#1f2937" : "#ffffff";
+    }
+    function opsCalMkColor(clave, nombre, color, empresa) {
+        const on = opsCalTextoSobre(color);
+        return { clave, nombre, color, fondo: color, texto: on, suave: on === "#ffffff" ? "rgba(255,255,255,.82)" : "rgba(31,41,55,.72)", empresa: empresa || "tecno" };
+    }
+    function opsCalNorm(x) { return String(x || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase(); }
+    function opsCalFamiliaDeTexto(texto, jomar) {
+        const x = opsCalNorm(texto);
+        const lista = jomar ? OPS_FAM_JOMAR : OPS_FAM_TECNO;
+        return lista.find(fm => fm.t(x)) || (jomar ? OPS_FAM_JOMAR_GENERAL : OPS_FAM_TECNO_GENERAL);
     }
     function opsCalServicioFolio(f) {
-        if (f.tipoFolio === "inspeccion") return opsCalMkColor("srv:insp:" + (f.normaInspeccion || ""), f.normaInspeccion ? "Visita " + f.normaInspeccion : "Visita de inspección", OPS_COLOR_NORMA[f.normaInspeccion] || "#0e7490");
-        if (f.tipoFolio === "laboratorio") return opsCalMkColor("srv:laboratorio", "Laboratorio", "#7c3aed");
         const receta = opsCalRecetaFolio(f);
-        if (receta) {
-            if (receta.colorCalendario) return opsCalMkColor("srv:rec:" + receta.id, receta.nombre, receta.colorCalendario);
-            const c = opsColorCategoriaServicio(receta.nombre || receta.id);
-            return opsCalMkColor("srv:rec:" + receta.id, receta.nombre || "Servicio", c.color);
+        const jomar = opsEsFolioJomar(f);
+        if (receta && receta.colorCalendario) return opsCalMkColor("srv:rec:" + receta.id, receta.nombre || "Servicio", receta.colorCalendario, jomar ? "jomar" : "tecno");
+        if (f.tipoFolio === "laboratorio") return opsCalMkColor("srv:tecno:laboratorio", "Laboratorio", "#9d50dd", "tecno");
+        // La receta manda: primero se clasifica solo por su nombre; si no cae en ninguna familia, se usa el texto del folio.
+        let fam = receta ? opsCalFamiliaDeTexto(receta.nombre || "", jomar) : null;
+        if (!fam || fam.k === "general") {
+            const texto = [receta?.nombre, f.normaInspeccion, f.categoriaServicio, f.tipoServicioDemo, f.estacion, f.comentarios].filter(Boolean).join(" ");
+            fam = opsCalFamiliaDeTexto(texto, jomar);
         }
-        if (opsEsFolioJomar(f)) return opsCalMkColor("srv:jomar", "JOMAR", OPS_CAL_CATEGORIAS.jomar.color);
-        const nombreLibre = f.categoriaServicio || f.tipoServicioDemo;
-        if (nombreLibre) return opsCalMkColor("srv:txt:" + nombreLibre, nombreLibre, opsColorCategoriaServicio(nombreLibre).color);
-        return opsCalMkColor("srv:base", "Servicio sin receta", "#1d4ed8");
+        return opsCalMkColor("srv:" + (jomar ? "jomar:" : "tecno:") + fam.k, fam.nombre, fam.color, jomar ? "jomar" : "tecno");
     }
     function opsCalEstatusFolio(f) {
         let k = "programado";
@@ -5581,17 +5629,20 @@
         const chip = (k, nombre, color, fondo, trazo, punteado) => {
             const on = opsCalFiltroCategoria === k;
             const muestra = trazo
-                ? `<span style="width:12px;height:10px;border-radius:2px;background:#f8fafc;border:1px ${punteado ? "dashed" : "solid"} ${color};border-left:4px solid ${color};"></span>`
+                ? `<span style="width:12px;height:10px;border-radius:2px;background:#e2e8f0;box-shadow:inset 4px 0 0 ${color};${punteado ? "outline:1.5px dashed " + color + ";outline-offset:1px;" : ""}"></span>`
                 : `<span style="width:12px;height:10px;border-radius:3px;background:${color};"></span>`;
             return `<button data-k="${opsEsc(k)}" onclick="opsCalToggleCategoria(this.dataset.k)" title="Clic para ver solo esta categoría" style="display:inline-flex;align-items:center;gap:6px;background:${on ? fondo : "#fff"};border:1px solid ${on ? color : "#e2e8f0"};color:${on ? color : "#475569"};padding:4px 10px;border-radius:999px;font-size:10.5px;font-weight:600;cursor:pointer;">${muestra}${opsEsc(nombre)}</button>`;
         };
         const vistos = new Map();
         cacheFolios.forEach(f => { const c = opsCalServicioFolio(f); if (!vistos.has(c.clave)) vistos.set(c.clave, c); });
-        const servicios = [...vistos.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
-        const fila = (titulo, html) => `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;"><span style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.4px;min-width:118px;">${titulo}</span>${html}</div>`;
+        const orden = (a, b) => a.nombre.localeCompare(b.nombre, "es");
+        const tecno = [...vistos.values()].filter(c => c.empresa !== "jomar").sort(orden);
+        const jomar = [...vistos.values()].filter(c => c.empresa === "jomar").sort(orden);
+        const fila = (titulo, html) => html ? `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;"><span style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.4px;min-width:150px;">${titulo}</span>${html}</div>` : "";
         return `<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px;">
-            ${fila("Relleno · servicio", servicios.map(c => chip(c.clave, c.nombre, c.color, c.fondo, false)).join(""))}
-            ${fila("Trazo · estatus", OPS_CAL_ORDEN_ESTATUS.map(k => { const e = OPS_CAL_ESTATUS[k]; return chip("est:" + k, e.nombre, e.color, e.color + "14", true, e.punteado); }).join(""))}
+            ${fila("Tecnocontrol · servicios", tecno.map(c => chip(c.clave, c.nombre, c.color, c.color + "1a", false)).join(""))}
+            ${fila("JOMAR Verificaciones · visitas", jomar.map(c => chip(c.clave, c.nombre, c.color, c.color + "1a", false)).join(""))}
+            ${fila("Estatus (franja izquierda)", OPS_CAL_ORDEN_ESTATUS.map(k => { const e = OPS_CAL_ESTATUS[k]; return chip("est:" + k, e.nombre, e.color, e.color + "14", true, e.punteado); }).join(""))}
         </div>`;
     }
 
@@ -5662,19 +5713,20 @@
                     const propTraslado = d.traslado ? (d.traslado / ((d.traslado + d.ejecucion) || 1)) * 100 : 0;
                     const tip = `${f.estacion}${f.folioOS ? " · O.S. " + f.folioOS : ""}\n${f.clienteNombre || "Sin cliente"} · ${opsCalTipoTexto(f)}\n${horaTxt} · ${cat.nombre} · ${cat.estNombre} (${info.estado})${choqueSet.has(f.id) ? "\n⚠ Choque de horario" : ""}${faltaGente ? "\n⚠ Falta personal contra la receta" : ""}`;
                     return `<div class="ops-cal-card" ${opsPuedeGestionar() ? `draggable="true" ondragstart="opsCalArrastrarFolio(event,'${f.id}')"` : ""} onclick="opsAbrirPanelFolio('${f.id}')" title="${opsEsc(tip)}"
-                        style="position:absolute;top:${carril * OPS_CAL_ALTO_CARRIL + 5}px;height:${OPS_CAL_ALTO_CARRIL - 6}px;left:${izqPct}%;width:calc(${anchoPct}% - 3px);box-sizing:border-box;background:${cat.fondo};border:1px ${cat.punteado ? "dashed" : "solid"} ${cat.punteado ? cat.estColor : cat.color + "55"};border-left:5px solid ${cat.estColor};border-radius:10px;${choqueSet.has(f.id) ? "outline:2px solid #E7402B;outline-offset:1px;" : ""}box-shadow:0 1px 3px rgba(15,23,42,.10);padding:5px 8px 7px 8px;overflow:hidden;cursor:pointer;z-index:2;display:flex;flex-direction:column;justify-content:space-between;">
+                        style="position:absolute;top:${carril * OPS_CAL_ALTO_CARRIL + 5}px;height:${OPS_CAL_ALTO_CARRIL - 6}px;left:${izqPct}%;width:calc(${anchoPct}% - 3px);box-sizing:border-box;background:${cat.fondo};border:none;border-radius:8px;${choqueSet.has(f.id) ? "outline:2px solid #E7402B;outline-offset:1px;" : (cat.punteado ? "outline:2px dashed " + cat.estColor + ";outline-offset:1px;" : "")}box-shadow:inset 6px 0 0 ${cat.estColor},inset 8px 0 0 #fff,0 1px 2px rgba(15,23,42,.18);padding:5px 8px 7px 14px;overflow:hidden;cursor:pointer;z-index:2;display:flex;flex-direction:column;justify-content:space-between;">
                         <div style="display:flex;align-items:center;gap:5px;min-width:0;">
-                            <span style="font-size:9px;font-weight:800;color:${cat.texto};background:${cat.color}26;padding:1px 5px;border-radius:5px;white-space:nowrap;flex-shrink:0;">${f.folioOS ? "O.S. " + opsEsc(f.folioOS) : "S/F"}</span>
-                            <span style="font-size:11px;font-weight:700;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${opsEsc(f.estacion)}</span>
-                            ${faltaGente ? `<span title="Falta personal contra la receta" style="margin-left:auto;color:#E7402B;display:inline-flex;flex-shrink:0;">${ICON.alert}</span>` : ""}
+                            ${cat.empresa === "jomar" ? `<span title="JOMAR Verificaciones" style="font-size:8.5px;font-weight:800;color:${cat.color};background:#fff;padding:1px 4px;border-radius:4px;flex-shrink:0;">JOMAR</span>` : ""}
+                            <span style="font-size:9px;font-weight:800;color:${cat.texto};background:${cat.texto === "#ffffff" ? "rgba(255,255,255,.22)" : "rgba(0,0,0,.08)"};padding:1px 5px;border-radius:5px;white-space:nowrap;flex-shrink:0;">${f.folioOS ? "O.S. " + opsEsc(f.folioOS) : "S/F"}</span>
+                            <span style="font-size:11px;font-weight:700;color:${cat.texto};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${opsEsc(f.estacion)}</span>
+                            ${faltaGente ? `<span title="Falta personal contra la receta" style="margin-left:auto;color:#E7402B;background:#fff;border-radius:50%;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">${ICON.alert}</span>` : ""}
                         </div>
-                        <div style="font-size:10px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${opsEsc(f.clienteNombre || "Sin cliente")} · ${opsEsc(opsCalTipoTexto(f))}</div>
+                        <div style="font-size:10px;color:${cat.suave};font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${opsEsc(cat.nombre)} · ${opsEsc(f.clienteNombre || "Sin cliente")}</div>
                         <div style="display:flex;align-items:center;gap:6px;min-width:0;">
-                            <span style="font-size:10px;font-weight:600;color:#334155;white-space:nowrap;">${horaTxt}</span>
-                            <span style="font-size:9px;font-weight:700;color:#fff;background:${cat.estColor};padding:0 6px;border-radius:999px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${opsEsc(opsCalEstadoCorto(f, info))}</span>
+                            <span style="font-size:10px;font-weight:600;color:${cat.texto};white-space:nowrap;">${horaTxt}</span>
+                            <span style="font-size:9px;font-weight:800;color:${cat.estColor};background:#fff;padding:0 6px;border-radius:999px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${opsEsc(opsCalEstadoCorto(f, info))}</span>
                             ${opsCalMiniAvatares(f)}
                         </div>
-                        ${d.traslado ? `<div style="position:absolute;left:0;right:0;bottom:0;height:3px;display:flex;"><div style="width:${propTraslado}%;background:repeating-linear-gradient(45deg,${cat.color}70,${cat.color}70 3px,${cat.color}30 3px,${cat.color}30 6px);"></div><div style="flex:1;background:${cat.color};"></div></div>` : `<div style="position:absolute;left:0;right:0;bottom:0;height:3px;background:${cat.color};"></div>`}
+                        ${d.traslado ? `<div style="position:absolute;left:8px;right:0;bottom:0;height:3px;display:flex;"><div style="width:${propTraslado}%;background:repeating-linear-gradient(45deg,rgba(255,255,255,.85),rgba(255,255,255,.85) 3px,rgba(255,255,255,.3) 3px,rgba(255,255,255,.3) 6px);"></div><div style="flex:1;"></div></div>` : ""}
                     </div>`;
                 }).join("");
             }
@@ -5730,9 +5782,9 @@
                 ${vis.map(f => {
                     const cat = opsCalColorFolio(f), d = opsCalDatosFolio(f);
                     const sinHora = !(f.fechaProgramada || "").includes("T");
-                    return `<div class="ops-cal-chip" onclick="opsAbrirPanelFolio('${f.id}')" title="${opsEsc((f.folioOS ? "O.S. " + f.folioOS + " · " : "") + f.estacion + " · " + (f.clienteNombre || "Sin cliente") + " · " + cat.nombre + " · " + cat.estNombre)}" style="background:${cat.fondo};border:1px ${cat.punteado ? "dashed" : "solid"} ${cat.punteado ? cat.estColor : cat.color + "55"};border-left:4px solid ${cat.estColor};border-radius:7px;padding:3px 6px;margin-bottom:3px;cursor:pointer;overflow:hidden;">
-                        <div style="font-size:10.5px;font-weight:700;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${opsEsc(f.estacion)}</div>
-                        <div style="font-size:9.5px;color:${cat.texto};font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${sinHora ? "Sin hora" : opsCalFmtHora(d.horaDecimal)} · ${opsEsc(opsCalTipoTexto(f))}</div>
+                    return `<div class="ops-cal-chip" onclick="opsAbrirPanelFolio('${f.id}')" title="${opsEsc((f.folioOS ? "O.S. " + f.folioOS + " · " : "") + f.estacion + " · " + (f.clienteNombre || "Sin cliente") + " · " + cat.nombre + " · " + cat.estNombre)}" style="background:${cat.fondo};border:none;box-shadow:inset 5px 0 0 ${cat.estColor},inset 7px 0 0 #fff;${cat.punteado ? "outline:2px dashed " + cat.estColor + ";outline-offset:1px;" : ""}border-radius:6px;padding:4px 7px 4px 12px;margin-bottom:4px;cursor:pointer;overflow:hidden;">
+                        <div style="font-size:10.5px;font-weight:700;color:${cat.texto};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${cat.empresa === "jomar" ? `<span style="font-size:8px;font-weight:800;color:${cat.color};background:#fff;padding:0 3px;border-radius:3px;margin-right:4px;">J</span>` : ""}${opsEsc(f.estacion)}</div>
+                        <div style="font-size:9.5px;color:${cat.suave};font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${sinHora ? "Sin hora" : opsCalFmtHora(d.horaDecimal)} · ${opsEsc(cat.nombre)} · ${opsEsc(cat.estNombre)}</div>
                     </div>`;
                 }).join("")}
                 ${resto > 0 ? `<div onclick="opsCalIrADia('${fechaISO}')" style="font-size:10px;font-weight:700;color:#1D2E73;background:#eef2f7;border-radius:6px;padding:2px 6px;text-align:center;cursor:pointer;">+${resto} más</div>` : ""}
@@ -5791,7 +5843,7 @@
                     return `<div onclick="${accion}" style="min-height:56px;border-radius:8px;padding:6px;cursor:pointer;background:${esHoy ? "#eef2f7" : "#f8fafc"};border:1px solid ${esHoy ? "#1D2E73" : "#f1f5f9"};opacity:${fueraDeMes ? 0.4 : 1};">
                         <div style="font-size:10.5px;font-weight:700;color:#334155;">${d.getDate()}</div>
                         ${folios.length ? `<div style="margin-top:4px;display:flex;align-items:center;gap:3px;flex-wrap:wrap;">
-                            ${coloresDia.map(c => `<span style="width:6px;height:6px;border-radius:50%;background:${c};display:inline-block;"></span>`).join("")}
+                            ${coloresDia.map(c => `<span style="width:8px;height:8px;border-radius:50%;background:${c};display:inline-block;"></span>`).join("")}
                             <span style="font-size:9.5px;font-weight:700;color:#475569;margin-left:2px;">${folios.length}</span>
                         </div>` : ""}
                     </div>`;
@@ -8042,7 +8094,7 @@
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;">
                 ${cacheServiciosCatalogo.length ? cacheServiciosCatalogo.map(s => `
                     <div onclick="opsAbrirFichaServicio('${s.id}')" style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:15px 16px;cursor:pointer;transition:border-color .15s;" onmouseover="this.style.borderColor='#1D2E73'" onmouseout="this.style.borderColor='#e2e8f0'">
-                        <div style="font-size:13.5px;font-weight:700;color:#1e293b;line-height:1.3;display:flex;align-items:center;gap:7px;"><span style="width:10px;height:10px;border-radius:3px;flex-shrink:0;background:${s.colorCalendario || opsColorCategoriaServicio(s.nombre || s.id || "").color};"></span>${opsEsc(s.nombre)}</div>
+                        <div style="font-size:13.5px;font-weight:700;color:#1e293b;line-height:1.3;display:flex;align-items:center;gap:7px;"><span style="width:10px;height:10px;border-radius:3px;flex-shrink:0;background:${s.colorCalendario || opsCalFamiliaDeTexto(s.nombre || "", false).color};"></span>${opsEsc(s.nombre)}</div>
                         <div style="font-size:11px;color:#94a3b8;margin:2px 0 10px;">${opsEsc(s.categoria || "Sin categoría")} · ${s.tipoServicio === "externo" ? "Externo" : (s.tipoServicio === "interno" ? "Interno" : "Interno/Externo")}</div>
                         <div style="font-size:11px;color:#334155;">${(s.personal || []).map(p => `${p.cantidad} ${p.rol.replace("_", " ")}`).join(" · ")}</div>
                         <div style="font-size:11px;color:#334155;margin-top:3px;">${(s.materiales || []).length} materiales · ${(s.herramientaRequerida || []).length} herramientas</div>
@@ -8322,7 +8374,7 @@
 
         const calculo = opsCalcularCostoServicio(s, calculoActual.cantidad, calculoActual.dias);
 
-        const colorRecAuto = opsColorCategoriaServicio(s.nombre || s.id || "").color;
+        const colorRecAuto = opsCalFamiliaDeTexto(s.nombre || "", false).color;
         const tabResumen = `
                 <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;margin-bottom:10px;">
                     <div>
