@@ -9199,6 +9199,10 @@
     let opsViaEstaciones = null; // catálogo de Ventas, se carga una vez
     let opsViaFoliosSb = null;
     let opsViaForm = null;
+    // Los botones y campos del formulario usan onclick/onchange en el HTML, que solo ven
+    // variables globales: sin esto, "opsViaForm.nochesManual = true" fallaba en silencio y
+    // las noches de hotel, comidas, regreso, salida y notas editadas a mano no se aplicaban.
+    Object.defineProperty(window, "opsViaForm", { get: () => opsViaForm, configurable: true });
     let opsViaMapa = null, opsViaCapas = [];
     const OPS_VIA_ESTATUS = { "Pendiente": "#b45309", "Aprobada": "#1D2E73", "Pagada": "#15803d", "Rechazada": "#E7402B" };
 
@@ -9278,6 +9282,7 @@
                 </td>
                 <td style="padding:9px 8px;white-space:nowrap;">
                     <button onclick="opsViaVerDetalle(${s.id})" style="background:#E9ECF5;border:none;color:#1D2E73;padding:5px 9px;border-radius:7px;cursor:pointer;font-size:11.5px;font-weight:600;">Ver</button>
+                    <button onclick="opsViaVerDetalle(${s.id}); opsViaCompartirPDF('descargar')" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:5px 9px;border-radius:7px;cursor:pointer;font-size:11.5px;font-weight:600;">PDF</button>
                 </td>
             </tr>`).join("");
         el.innerHTML = `
@@ -9407,11 +9412,15 @@
         const folios = () => (cacheFolios && cacheFolios.length ? cacheFolios : (opsViaFoliosSb || []));
         opsViaCombos["via-folio"] = {
             vacio: "No hay folios con ese texto.",
-            items: () => folios().filter(x => x.estado !== "cerrado" && x.estatus !== "Cerrado").map(x => {
+            items: () => {
+                const hoy = opsViaLocalISO(new Date()).slice(0, 10);
+                const clave = x => { const d = (x.fechaProgramada || "").slice(0, 10); return d ? (d >= hoy ? "0" + d : "1" + (99999999 - Number(d.replace(/-/g, "")))) : "2"; };
+                return folios().filter(x => x.estado !== "cerrado" && x.estatus !== "Cerrado").sort((a, b) => clave(a).localeCompare(clave(b))).map(x => {
                 const tecs = (x.tecnicosAsignadosIds || []).map(id => (cacheTec.find(t => t.id === id) || {}).nombre).filter(Boolean).join(", ");
                 const fecha = (x.fechaProgramada || "").replace("T", " ");
                 return { etiqueta: `${x.folioOS || x.id} — ${x.estacion || x.clienteNombre || ""}`, sub: [fecha, tecs].filter(Boolean).join(" · "), buscar: [x.folioOS, x.id, x.estacion, x.clienteNombre, tecs, fecha].join(" "), valor: x.id };
-            }),
+            });
+            },
             elegir: id => window.opsViaElegirFolio(id),
         };
         opsViaCombos["via-est-buscar"] = {
@@ -9656,7 +9665,7 @@
                             <div>${opsViaComboHTML("via-vehiculo", "Vehículo (Flotilla)", f.vehiculo, "ECO, unidad, placas o responsable…")}
                                 <div style="font-size:10.5px;color:#94a3b8;margin:0 0 8px;">${f.rendimientoReal ? `Rendimiento real de la unidad: ${f.rendimientoReal} km/l` : "&nbsp;"}</div></div>
                             <label style="display:block;font-size:11.5px;font-weight:600;color:#475569;">Tipo de vehículo (política)
-                                <select onchange="opsViaCampo('tipoVehiculo', this.value); opsViaForm.rendimiento=null; opsViaRecalcular(); opsViaPintarFormulario();" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                                <select onchange="opsViaCambiarTipo(this.value)" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
                                     ${(cfg.vehiculos || []).map(v => `<option value="${opsEsc(v.tipo)}" ${v.tipo === f.tipoVehiculo ? "selected" : ""}>${opsEsc(v.nombre)} — ${v.rendimiento} km/l</option>`).join("")}
                                 </select></label>
                             ${opsViaInput("Salida" + (f.llegadaObjetivo && !f.salidaManual ? " (para llegar a la hora del folio)" : ""), "via-salida", f.salida, `onchange="opsViaForm.salidaManual=true; opsViaCampo('salida', this.value, true)"`, "datetime-local")}
@@ -9731,6 +9740,13 @@
         if (!t) return;
         opsViaForm.tecnicos = opsViaForm.tecnicos.filter(x => x.id !== id);
         if (marcado) opsViaForm.tecnicos.push({ id: t.id, nombre: t.nombre, correo: t.correo || null });
+        opsViaRecalcular();
+        opsViaPintarFormulario();
+    };
+    window.opsViaCambiarTipo = function (tipo) {
+        if (!opsViaForm) return;
+        opsViaForm.tipoVehiculo = tipo;
+        opsViaForm.rendimiento = null; // vuelve al rendimiento de la política de ese tipo
         opsViaRecalcular();
         opsViaPintarFormulario();
     };
@@ -9902,7 +9918,10 @@
                 const c = d.catalogoId && cat.find(x => x.id === d.catalogoId);
                 if (c && !c.lat) opsSb().then(sb => sb.from("ops_casetas").update({ lat: d.lat, lng: d.lng, osm_ids: [...new Set([...(c.osm_ids || []), ...d.osmIds])] }).eq("id", c.id)).then(() => { c.lat = d.lat; c.lng = d.lng; }).catch(() => {});
             });
-            f.casetas = detectadas.concat(manuales.filter(m => !detectadas.some(d => d.catalogoId && d.catalogoId === m.catalogoId)));
+            // Una misma plaza puede venir en dos grupos (una por sentido): se deja una sola.
+            const vistas = new Set();
+            const unicas = detectadas.filter(d => { if (!d.catalogoId) return true; if (vistas.has(d.catalogoId)) return false; vistas.add(d.catalogoId); return true; });
+            f.casetas = unicas.concat(manuales.filter(m => !unicas.some(d => d.catalogoId && d.catalogoId === m.catalogoId)));
             f.aplicaCasetas = f.casetas.length > 0;
             f.casetasEstado = "listo";
         } catch (e) {
@@ -10016,7 +10035,153 @@
             + `TOTAL: ${opsViaDinero(s.total)}\n`
             + (s.notas ? `\nNotas: ${s.notas}\n` : "");
     }
+    // ── PDF profesional de la solicitud (jsPDF, mismo diseño que la responsiva) ──
+    let opsViaUltima = null;
+    function opsViaGenerarPDF(s) {
+        if (!window.jspdf || !window.jspdf.jsPDF) throw new Error("La librería de PDF no está cargada. Recarga la página.");
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ unit: "pt", format: "letter" });
+        const t = s.tarifas || {};
+        const W = 612, H = 792, M = 42;
+        const din = n => "$" + (Number(n) || 0).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const fecha = x => { if (!x) return "—"; const d = new Date(String(x).length <= 10 ? x + "T12:00" : x); return isNaN(d) ? String(x) : d.toLocaleString("es-MX", { day: "2-digit", month: "short", year: "numeric", ...(String(x).length > 10 ? { hour: "2-digit", minute: "2-digit" } : {}) }); };
+        let y;
+        const encabezado = () => {
+            doc.setFillColor(...PDF_AZUL); doc.rect(0, 0, W, 66, "F");
+            doc.setFillColor(...PDF_ROJO); doc.rect(0, 66, W, 3, "F");
+            doc.setTextColor(255, 255, 255);
+            doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.text("HEDMA TECNOCONTROL", M, 30);
+            doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); doc.text("S.A. DE C.V.  ·  Chihuahua, Chihuahua, México", M, 45);
+            doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.text("Folio: " + (s.folio || s.id), W - M, 27, { align: "right" });
+            doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
+            doc.text("Fecha de solicitud: " + fecha(s.creado_en || new Date().toISOString()), W - M, 41, { align: "right" });
+            doc.text("Estatus: " + (s.estatus || "Pendiente"), W - M, 54, { align: "right" });
+        };
+        const nuevaPaginaSiHaceFalta = alto => { if (y + alto > H - 70) { doc.addPage(); encabezado(); y = 96; } };
+        const seccion = titulo => {
+            nuevaPaginaSiHaceFalta(40);
+            y += 16;
+            doc.setFillColor(...PDF_AZUL); doc.rect(M, y - 12, W - 2 * M, 19, "F");
+            doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+            doc.text(titulo, M + 8, y + 1.5);
+            y += 20;
+        };
+        const campo = (label, valor, x = M, ancho = W - 2 * M) => {
+            doc.setTextColor(...PDF_GRIS); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5);
+            doc.text(label, x, y);
+            doc.setTextColor(25, 25, 25); doc.setFont("helvetica", "normal"); doc.setFontSize(9.5);
+            const lineas = doc.splitTextToSize(String(valor || "—"), ancho - 118);
+            doc.text(lineas, x + 118, y);
+            y += Math.max(14, lineas.length * 12);
+        };
+        encabezado();
+        y = 98;
+        doc.setTextColor(...PDF_ROJO); doc.setFont("helvetica", "bold"); doc.setFontSize(16);
+        doc.text("SOLICITUD DE VIÁTICOS", W / 2, y, { align: "center" });
+        y += 15;
+        doc.setTextColor(...PDF_GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(9);
+        doc.text("Departamento de Operaciones  |  Para autorización de Gerencia Administrativa y Pagos", W / 2, y, { align: "center" });
+
+        seccion("1  ·  DATOS DEL VIAJE");
+        campo("Solicita:", s.solicitante_nombre || s.solicitante_email);
+        campo("Destino:", s.destino);
+        if (s.cliente) campo("Cliente:", s.cliente);
+        if (s.folio_servicio) campo("Folio de servicio:", s.folio_servicio);
+        campo("Salida:", fecha(t.salida || s.fecha_salida));
+        campo("Regreso estimado:", fecha(t.regreso || s.fecha_regreso));
+        campo("Distancia:", `${(Number(s.km_sencillo) || 0).toFixed(1)} km sencillo (${((Number(s.km_sencillo) || 0) * 2).toFixed(1)} km ida y vuelta)${t.horasIda ? " · " + Math.floor(t.horasIda) + " h " + Math.round((t.horasIda % 1) * 60) + " min de manejo por trayecto" : ""}`);
+        campo("Vehículo:", [s.vehiculo, s.tipo_vehiculo].filter(Boolean).join(" · "));
+        campo("¿Requiere viáticos?:", t.requiereViaticos === false ? "No (solo gasolina)" : "Sí");
+
+        seccion(`2  ·  PERSONAL QUE VIAJA (${s.personas || 1})`);
+        doc.setTextColor(25, 25, 25); doc.setFont("helvetica", "normal"); doc.setFontSize(9.5);
+        const personal = doc.splitTextToSize(s.integrantes || "—", W - 2 * M);
+        doc.text(personal, M, y); y += personal.length * 12 + 2;
+
+        seccion("3  ·  DESGLOSE DEL MONTO SOLICITADO");
+        const filas = [
+            ["Gasolina", `${s.km_sencillo} km × 2 ÷ ${s.rendimiento} km/l × $${s.precio_litro}/l × factor ${s.factor}`, s.gasolina],
+            ["Alimentos", `${s.desayunos} desayuno(s) × ${din(t.desayuno)} + ${s.comidas} comida(s) × ${din(t.comida)} + ${s.cenas} cena(s) × ${din(t.cena)}, × ${s.personas} persona(s)`, s.alimentos],
+            ["Hospedaje", `${t.noches || 0} noche(s) × ${din(t.hospedajePorNoche)} × ${s.personas} persona(s)`, s.hospedaje],
+        ];
+        const casetas = t.casetasDetalle || [];
+        if (t.aplicaCasetas === false || !casetas.length) filas.push(["Casetas", t.aplicaCasetas === false ? "No aplica" : "Sin casetas en la ruta", s.casetas]);
+        else casetas.forEach((c, i) => filas.push([i === 0 ? "Casetas" : "", `${c.nombre}: ${din(c.costo)} × ${c.cruces} cruce(s)`, c.subtotal]));
+        if (Number(s.otros)) filas.push(["Otros", "Gastos adicionales", s.otros]);
+        const c1 = M, c2 = M + 88, c3 = W - M;
+        doc.setFillColor(233, 236, 245); doc.rect(M, y - 10, W - 2 * M, 16, "F");
+        doc.setTextColor(...PDF_AZUL); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5);
+        doc.text("CONCEPTO", c1 + 6, y); doc.text("CÁLCULO", c2, y); doc.text("IMPORTE", c3 - 6, y, { align: "right" });
+        y += 16;
+        filas.forEach((r, i) => {
+            const det = doc.splitTextToSize(r[1], c3 - c2 - 90);
+            const alto = Math.max(16, det.length * 11 + 5);
+            nuevaPaginaSiHaceFalta(alto);
+            if (i % 2 === 1) { doc.setFillColor(248, 250, 252); doc.rect(M, y - 10, W - 2 * M, alto, "F"); }
+            doc.setTextColor(25, 25, 25); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text(r[0], c1 + 6, y);
+            doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); doc.setTextColor(70, 70, 70); doc.text(det, c2, y);
+            doc.setFont("helvetica", "bold"); doc.setFontSize(9.5); doc.setTextColor(25, 25, 25); doc.text(din(r[2]), c3 - 6, y, { align: "right" });
+            y += alto;
+        });
+        nuevaPaginaSiHaceFalta(30);
+        doc.setFillColor(...PDF_AZUL); doc.rect(M, y - 8, W - 2 * M, 24, "F");
+        doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(11);
+        doc.text("TOTAL SOLICITADO", c1 + 8, y + 8);
+        doc.setFontSize(13); doc.text(din(s.total), c3 - 8, y + 8, { align: "right" });
+        y += 30;
+
+        if (s.notas || s.comentario_pagos) {
+            seccion("4  ·  NOTAS");
+            doc.setTextColor(25, 25, 25); doc.setFont("helvetica", "normal"); doc.setFontSize(9.5);
+            const n = doc.splitTextToSize([s.notas, s.comentario_pagos ? "Pagos: " + s.comentario_pagos : ""].filter(Boolean).join("\n"), W - 2 * M);
+            nuevaPaginaSiHaceFalta(n.length * 12);
+            doc.text(n, M, y); y += n.length * 12;
+        }
+
+        // Firmas
+        nuevaPaginaSiHaceFalta(110);
+        y = Math.max(y + 50, H - 150);
+        const anchoF = (W - 2 * M - 40) / 3;
+        [["Solicita", s.solicitante_nombre || ""], ["Autoriza", "Gerencia Administrativa"], ["Recibe / Paga", "Departamento de Pagos"]].forEach((f, i) => {
+            const x = M + i * (anchoF + 20);
+            doc.setDrawColor(150, 150, 150); doc.line(x, y, x + anchoF, y);
+            doc.setTextColor(25, 25, 25); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text(f[0], x + anchoF / 2, y + 13, { align: "center" });
+            doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(...PDF_GRIS); doc.text(doc.splitTextToSize(f[1], anchoF), x + anchoF / 2, y + 25, { align: "center" });
+        });
+        const paginas = doc.getNumberOfPages();
+        for (let p = 1; p <= paginas; p++) {
+            doc.setPage(p);
+            doc.setFontSize(7.5); doc.setTextColor(...PDF_GRIS); doc.setFont("helvetica", "normal");
+            doc.text(`Generado desde el Portal Operativo Tecnocontrol · ${new Date().toLocaleString("es-MX")}`, M, H - 24);
+            doc.text(`Página ${p} de ${paginas}`, W - M, H - 24, { align: "right" });
+        }
+        return doc;
+    }
+    window.opsViaCompartirPDF = function (modo) {
+        const s = opsViaUltima;
+        if (!s) return;
+        let doc;
+        try { doc = opsViaGenerarPDF(s); } catch (e) { alert(e.message || e); return; }
+        const nombre = `Solicitud de viaticos ${s.folio || s.id}.pdf`;
+        if (modo === "descargar") { doc.save(nombre); return; }
+        const textoCorto = `Solicitud de viáticos ${s.folio} — ${s.destino || ""} — Total ${opsViaDinero(s.total)}`;
+        let archivo = null;
+        try { archivo = new File([doc.output("blob")], nombre, { type: "application/pdf" }); } catch (e) {}
+        // Celular (y Chrome/Safari que lo permitan): se abre el menú de compartir con el PDF
+        // adjunto, donde se elige WhatsApp. Sin esa opción: se descarga el PDF y se abre
+        // WhatsApp con el mensaje para adjuntarlo.
+        if (archivo && navigator.canShare && navigator.canShare({ files: [archivo] })) {
+            navigator.share({ files: [archivo], title: textoCorto, text: textoCorto }).catch(err => {
+                if (err && err.name !== "AbortError") { doc.save(nombre); window.open(`https://wa.me/?text=${encodeURIComponent(textoCorto + "\n(Adjunto el PDF de la solicitud)")}`, "_blank"); }
+            });
+            return;
+        }
+        doc.save(nombre);
+        window.open(`https://wa.me/?text=${encodeURIComponent(textoCorto + "\n(Adjunto el PDF de la solicitud)")}`, "_blank");
+        if (window.mostrarPush) window.mostrarPush("Viáticos", "Se descargó el PDF: adjúntalo en el chat de WhatsApp que se abrió.", "📎");
+    };
     function opsViaMostrarEnviada(s, resumen) {
+        opsViaUltima = s;
         const correos = (opsViaCfg.correosNotificar || []).join(",");
         const mailto = `mailto:${correos}?subject=${encodeURIComponent("Solicitud de viáticos " + s.folio + " — " + (s.destino || ""))}&body=${encodeURIComponent(resumen)}`;
         const wa = `https://wa.me/?text=${encodeURIComponent(resumen)}`;
@@ -10028,7 +10193,9 @@
                 <pre style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px;font-size:11.5px;white-space:pre-wrap;max-height:260px;overflow-y:auto;">${opsEsc(resumen)}</pre>
                 <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:12px;">
                     <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cerrar</button>
-                    <a href="${wa}" target="_blank" rel="noopener" class="mkt-add-btn" style="background:#15803d;text-decoration:none;">WhatsApp</a>
+                    <button onclick="opsViaCompartirPDF('descargar')" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Descargar PDF</button>
+                    <button onclick="opsViaCompartirPDF('whatsapp')" class="mkt-add-btn" style="background:#15803d;">WhatsApp (PDF)</button>
+                    <a href="${wa}" target="_blank" rel="noopener" style="background:#fff;border:1px solid #15803d;color:#15803d;padding:9px 14px;border-radius:8px;font-size:12.5px;font-weight:600;text-decoration:none;">WhatsApp (texto)</a>
                     <a href="${mailto}" class="mkt-add-btn" style="background:#1D2E73;text-decoration:none;">Enviar por correo</a>
                 </div>
             </div>
