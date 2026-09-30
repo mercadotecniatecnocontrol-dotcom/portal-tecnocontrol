@@ -704,6 +704,7 @@
       '<p style="font-size:10.5px;color:#64748B;margin:1px 0 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(nombrePorCorreo(d.solicitante)||'—')+'</p>' +
       '</div>' +
       (monto?'<span style="font-size:11px;font-weight:700;color:#12A150;flex-shrink:0">'+monto+'</span>':'<span style="font-size:8.5px;font-weight:800;color:'+urgColor+';flex-shrink:0">'+esc((d.urgencia||'').toUpperCase())+'</span>') +
+      '<button title="Descargar requisición en PDF" onclick="event.stopPropagation();window.__cpDescargarRequisicion(\''+d.id+'\')" style="flex-shrink:0;width:24px;height:24px;border:1px solid #E2E8F0;background:#fff;color:#1D2E73;border-radius:7px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>' +
       '</div>';
   }
 
@@ -721,7 +722,9 @@
     html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">';
     html += '<div><h2 style="font-size:18px;margin:0">'+esc(d.folio||d.id)+' · '+esc(d.empresa||'—')+'</h2>';
     html += '<p style="font-size:12px;color:#5C7089;margin:4px 0 0">'+esc(nombrePorCorreo(d.solicitante)||'—')+' · '+esc(d.origen||'—')+'</p></div>';
-    html += '<button onclick="window.__cpCerrarDetalle()" style="background:#F1F5F9;border:none;border-radius:8px;width:30px;height:30px;cursor:pointer">✕</button></div>';
+    html += '<div style="display:flex;gap:8px;align-items:center;flex-shrink:0">' +
+      '<button onclick="window.__cpDescargarRequisicion(\''+d.id+'\')" style="display:flex;align-items:center;gap:6px;padding:0 12px;height:30px;background:#1D2E73;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Descargar PDF</button>' +
+      '<button onclick="window.__cpCerrarDetalle()" style="background:#F1F5F9;border:none;border-radius:8px;width:30px;height:30px;cursor:pointer">✕</button></div></div>';
 
     // ── Barra de progreso general (5 etapas del documento completo) ──
     var ETAPAS_CP = [
@@ -1171,7 +1174,24 @@
     }).catch(function(e){ console.error('[compras] error al generar OC:', e); alert('No se pudo generar el PDF: '+(e.message||e)); });
   };
 
-  function _cpConstruirYDescargarOC(d, fotos, fotoDim, logo){
+  // ── REQUISICIÓN EN PDF (cualquier etapa) ─────────────────────────
+  // Documento distinto de la OC: mismo generador/paginación, pero con
+  // título, folio y nombre de archivo de requisición.
+  window.__cpDescargarRequisicion = function(id){
+    var d = docs.find(function(x){ return x.id===id; });
+    if(!d) return;
+    if(!window.jspdf){ alert('No se cargó la librería de PDF. Recarga la página.'); return; }
+    toast('Generando PDF de '+(d.folio||'requisición')+'…');
+    Promise.all([cargarFotos(id), cargarColaboradores(), cargarLogoEmpresa(d.empresa)]).then(function(res){
+      var fotos = res[0], logo = res[2];
+      return _cpPrecargarDimensiones(fotos).then(function(fotoDim){
+        _cpConstruirYDescargarOC(d, fotos, fotoDim, logo, 'requisicion');
+      });
+    }).catch(function(e){ console.error('[compras] error al generar requisición:', e); alert('No se pudo generar el PDF: '+(e.message||e)); });
+  };
+
+  function _cpConstruirYDescargarOC(d, fotos, fotoDim, logo, modo){
+    var esReq = modo==='requisicion';
     var jsPDF = window.jspdf.jsPDF;
     var docu = new jsPDF({orientation:'portrait',unit:'mm',format:'letter'});
     var PW=215.9, PH=279.4, ML=14, MR=14;
@@ -1194,11 +1214,14 @@
       }catch(e){}
     }
     docu.setTextColor(255,255,255); docu.setFont('helvetica','bold'); docu.setFontSize(11);
-    docu.text('Orden de compra', xTexto, 15);
+    docu.text(esReq ? 'Requisición de compra' : 'Orden de compra', xTexto, 15);
     docu.setFont('helvetica','normal'); docu.setFontSize(8);
-    docu.text((d.empresa||'TECNOCONTROL')+' · Requisición '+(d.folio||''), xTexto, 20.5);
-    docu.text(String(d.ocFolio||'OC'), PW-MR, 15, {align:'right'});
-    docu.text(new Date().toLocaleDateString('es-MX'), PW-MR, 20.5, {align:'right'});
+    var fSol = _cpFechaDoc(d);
+    docu.text(esReq
+      ? (d.empresa||'TECNOCONTROL')+(fSol?' · Solicitada '+fSol.toLocaleDateString('es-MX'):'')+(d.origen?' · '+d.origen:'')
+      : (d.empresa||'TECNOCONTROL')+' · Requisición '+(d.folio||''), xTexto, 20.5);
+    docu.text(String(esReq ? (d.folio||d.id) : (d.ocFolio||'OC')), PW-MR, 15, {align:'right'});
+    docu.text((esReq?'Impreso ':'')+new Date().toLocaleDateString('es-MX'), PW-MR, 20.5, {align:'right'});
 
     var y=36;
     // ── Badges de urgencia / tipo de compra / estatus ──
@@ -1239,6 +1262,7 @@
     var nProveedor = campo(ML,'Proveedor ganador', (d.cotizacionGanadora&&d.cotizacionGanadora.proveedor));
     var nMonto = campo(xMid,'Monto', d.cotizacionGanadora&&d.cotizacionGanadora.monto!=null ? ('$'+d.cotizacionGanadora.monto) : null);
     y += Math.max(nProveedor,nMonto)*5 + 10;
+    if(esReq && d.ocFolio){ campoAncho('Folio OC', d.ocFolio); y += 2; }
 
     // ── Tabla de partidas (salto de página automático) ──
     if(y>PH-70){ y=nuevaPagina(); }
@@ -1340,10 +1364,10 @@
       docu.setPage(p);
       docu.setFillColor(AZUL.r,AZUL.g,AZUL.b); docu.rect(0,PH-10,PW,10,'F');
       docu.setTextColor(255,255,255); docu.setFontSize(7);
-      docu.text(String(d.empresa||'')+' · '+String(d.ocFolio||d.folio||''), ML, PH-4);
+      docu.text(String(d.empresa||'')+' · '+String(esReq ? (d.folio||d.id) : (d.ocFolio||d.folio||'')), ML, PH-4);
       docu.text('Página '+p+' de '+totalPaginas, PW-MR, PH-4, {align:'right'});
     }
-    docu.save((d.ocFolio||d.folio||'OC')+'.pdf');
+    docu.save(esReq ? ('Requisicion_'+(d.folio||d.id)+'.pdf') : ((d.ocFolio||d.folio||'OC')+'.pdf'));
   }
 
   // ── EXPORT PREVIEW PARA ASPEL (Fase 2) ─────────────────────────
