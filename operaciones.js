@@ -1300,16 +1300,17 @@
 
     // ── Contadores atómicos para folios permanentes ──────────────────
     async function opsSiguienteFolioHerramienta() {
-        const { db, fs } = await opsGetFB();
-        const ref = fs.doc(db, COL_CONTADORES, "herramientas");
-        const n = await fs.runTransaction(db, async (tx) => {
-            const snap = await tx.get(ref);
-            const actual = snap.exists() ? (snap.data().valor || 0) : 0;
-            const siguiente = actual + 1;
-            tx.set(ref, { valor: siguiente }, { merge: true });
-            return siguiente;
-        });
-        return "HT-" + String(n).padStart(6, "0");
+        // Contador atómico en Supabase (ops_contadores). "minimo" = el HT más alto que
+        // ya existe, para que nunca se repita un folio aunque el contador se haya quedado atrás.
+        const sb = await opsSb();
+        const maxLocal = cacheHerr.reduce((m, h) => { const r = /^HT-(\d+)$/.exec(h.folio || h.id || ""); return r ? Math.max(m, Number(r[1])) : m; }, 0);
+        for (let intento = 0; intento < 5; intento++) {
+            const { data, error } = await sb.rpc("ops_siguiente_contador_min", { nombre_contador: "herramientas", minimo: maxLocal });
+            if (error) throw new Error("Supabase (folio): " + error.message);
+            const folio = "HT-" + String(data).padStart(6, "0");
+            if (!cacheHerr.some(h => h.id === folio)) return folio;
+        }
+        throw new Error("No se pudo generar un folio HT libre.");
     }
     // Folio consecutivo de Solicitud de Material: "OPERACIONES 0001", "OPERACIONES 0002"...
     // OJO: el kiosco público (solicitud-material.html) escribe con auth ANÓNIMA a Firestore,
@@ -1348,8 +1349,7 @@
 
     // ── Registrar un movimiento (nunca se edita ni se borra) ──────────
     async function opsRegistrarMovimiento(datos) {
-        const { db, fs } = await opsGetFB();
-        await fs.addDoc(fs.collection(db, COL_MOVIMIENTOS), {
+        const mov = {
             herramientaId: datos.herramientaId,
             tecnicoAnteriorId: datos.tecnicoAnteriorId || null,
             tecnicoNuevoId: datos.tecnicoNuevoId || null,
@@ -1366,7 +1366,14 @@
             usuarioEmail: opsUsuarioActual(),
             usuarioNombre: opsNombreActual(),
             fecha: opsFechaHora(),
-        });
+        };
+        const sb = await opsSb();
+        const fila = {};
+        Object.keys(mov).forEach(k => { fila[opsSnake(k)] = mov[k] === undefined ? null : mov[k]; });
+        const { error } = await sb.from("ops_movimientos").insert(fila);
+        if (error) throw new Error("Supabase (movimiento): " + error.message);
+        cacheMov.unshift(mov);
+        opsCopiaFirestore((db, fs) => fs.addDoc(fs.collection(db, COL_MOVIMIENTOS), mov).catch(() => {}));
     }
 
     // ═══════════════ RESPONSIVA PDF INDIVIDUAL (jsPDF) ═══════════════
@@ -1704,7 +1711,7 @@
             let n = 0;
             for (const nombre of saltillo) {
                 const folio = await opsSiguienteFolioHerramienta();
-                await fs.setDoc(fs.doc(db, COL_HERRAMIENTAS, folio), {
+                await opsSbHerrGuardar(folio, {
                     folio, descripcion: nombre, marca: "", modelo: "", categoria: "Equipo especializado",
                     numeroSerie: "", departamento: null, condicion: null, uso: null, peso: null, pesoUnidad: null, medida: null,
                     estado: "disponible", ubicacionActual: "Banco de trabajo 1 (Saltillo)", almacenId: "banco-trabajo-1-saltillo",
@@ -1716,7 +1723,7 @@
             }
             for (const [tecId, nombre, marca, modelo, serie] of tecnolab) {
                 const folio = await opsSiguienteFolioHerramienta();
-                await fs.setDoc(fs.doc(db, COL_HERRAMIENTAS, folio), {
+                await opsSbHerrGuardar(folio, {
                     folio, descripcion: nombre, marca, modelo, categoria: "Calibración TecnoLab",
                     numeroSerie: serie, departamento: null, condicion: null, uso: null, peso: null, pesoUnidad: null, medida: null,
                     estado: "disponible", ubicacionActual: "TecnoLab — Cuarto de Control de Equipos", almacenId: "tecnolab-cuarto-control",
@@ -1751,6 +1758,7 @@
         cont.innerHTML = opsRenderShell();
         cont.style.display = "block";
         document.body.style.overflow = "hidden";
+        try { opsIniciarReintentoPendientes(); } catch (e) { console.warn("[operaciones.js] cola de pendientes:", e); }
         await opsSembrarPuestosSiNecesario();
         await opsSembrarClientesSiNecesario();
         await opsSuscribirTodo();
@@ -1773,6 +1781,7 @@
     };
 
     const NAV_ICONS = {
+        viaticos: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/></svg>',
         resumen: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>',
         dashboard: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>',
         guardias: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3Z"/></svg>',
@@ -1793,7 +1802,7 @@
         const items = ["calendario:Calendario", "resumen:Resumen", "dashboard:Herramientas", "guardias:Guardias", "tecnicos:Técnicos", "servicios:Servicios",
             "folios:Folios", "clientes:Clientes",
             ...(opsPuedeHacer("autorizar_material") ? ["solicitudes:Solicitudes"] : []),
-            "alertas:Alertas", "movimientos:Movimientos"];
+            "viaticos:Viáticos", "alertas:Alertas", "movimientos:Movimientos"];
         return `
         <div style="position:fixed;inset:0;z-index:99997;background:#f1f5f9;font-family:'Inter',sans-serif;display:flex;flex-direction:column;">
             <div style="background:#1D2E73;border-bottom:3px solid #062F73;padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
@@ -1844,6 +1853,7 @@
         else if (tab === "solicitudes") opsRenderSolicitudes();
         else if (tab === "alertas") opsRenderAlertas();
         else if (tab === "movimientos") opsRenderMovimientos();
+        else if (tab === "viaticos") opsRenderViaticos();
     };
 
     // ── Suscripciones en tiempo real ──────────────────────────────
@@ -1851,11 +1861,8 @@
         const { db, fs } = await opsGetFB();
         opsAsegurarAlmacenGeneral(db, fs).catch(err => console.warn("[operaciones.js] no se pudo asegurar el Almacén General:", err));
         if (!unsubHerr) {
-            unsubHerr = fs.onSnapshot(fs.query(fs.collection(db, COL_HERRAMIENTAS), fs.orderBy("folio")), snap => {
-                cacheHerr = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                if (tabActual === "dashboard") opsRenderDashboard();
-                if (tabActual === "resumen") opsRenderResumen();
-            });
+            unsubHerr = opsSbSuscribirHerr(); // Supabase (antes onSnapshot de Firestore)
+            setTimeout(opsSbRespaldoTecAlm, 4000); // si Firestore no responde, técnicos/almacenes desde Supabase
         }
         if (!unsubTec) {
             unsubTec = fs.onSnapshot(fs.query(fs.collection(db, COL_TECNICOS), fs.orderBy("numeroOperativo")), snap => {
@@ -1866,11 +1873,7 @@
             });
         }
         if (!unsubMov) {
-            unsubMov = fs.onSnapshot(fs.query(fs.collection(db, COL_MOVIMIENTOS), fs.orderBy("fecha", "desc"), fs.limit(200)), snap => {
-                cacheMov = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                if (tabActual === "movimientos") opsRenderMovimientos();
-                if (tabActual === "resumen") opsRenderResumen();
-            });
+            unsubMov = opsSbSuscribirMov(); // Supabase (antes onSnapshot de Firestore)
         }
         if (!unsubSurt) {
             // Antes escuchaba Firestore directo; `surtidos` ya vive en Supabase desde
@@ -2525,7 +2528,7 @@
             for (const it of aplicar) {
                 try {
                     const comprimida = await opsComprimirImagenBase64(it.file, 700, 0.6);
-                    await fs.updateDoc(fs.doc(db, COL_HERRAMIENTAS, it.matchId), { fotoBase64: comprimida });
+                    await opsSbHerrActualizar(it.matchId, { fotoBase64: comprimida });
                     const h = cacheHerr.find(x => x.id === it.matchId);
                     if (h) h.fotoBase64 = comprimida;
                     ok++;
@@ -2727,7 +2730,7 @@
         try {
             const dataUrl = await opsComprimirImagenBase64(file, 700, 0.6);
             const { db, fs } = await opsGetFB();
-            await fs.updateDoc(fs.doc(db, COL_HERRAMIENTAS, id), { fotoBase64: dataUrl });
+            await opsSbHerrActualizar(id, { fotoBase64: dataUrl });
             const idx = cacheHerr.findIndex(x => x.id === id);
             if (idx >= 0) cacheHerr[idx].fotoBase64 = dataUrl;
             const img = document.getElementById("ops-ficha-foto-img");
@@ -2926,7 +2929,7 @@
                 // ubicación se manejan por separado con "Registrar movimiento"/"Dar de baja".
                 const datos = { descripcion, marca, modelo, categoria, numeroSerie, departamento, condicion, uso, peso, pesoUnidad, medida, requiereAutorizacion };
                 if (window.__opsFotoPiezaTmp) datos.fotoBase64 = window.__opsFotoPiezaTmp;
-                await fs.updateDoc(fs.doc(db, COL_HERRAMIENTAS, id), datos);
+                await opsSbHerrActualizar(id, datos);
                 const idx = cacheHerr.findIndex(x => x.id === id);
                 if (idx >= 0) cacheHerr[idx] = { ...cacheHerr[idx], ...datos };
                 document.getElementById("ops-modal-wrap").innerHTML = "";
@@ -2935,65 +2938,180 @@
             }
 
             const tecnicoDestinoId = document.getElementById("ops-in-tecnico-destino").value || null;
-            const folio = await opsSiguienteFolioHerramienta();
-
-            await fs.setDoc(fs.doc(db, COL_HERRAMIENTAS, folio), {
-                folio, descripcion, marca, modelo, categoria, numeroSerie,
+            const req = opsRequisicionSeleccionada ? { id: opsRequisicionSeleccionada.id, folio: opsRequisicionSeleccionada.folio } : null;
+            const pieza = {
+                descripcion, marca, modelo, categoria, numeroSerie,
                 departamento, condicion, uso, peso, pesoUnidad, medida,
                 fotoBase64: window.__opsFotoPiezaTmp || null,
-                estado: tecnicoDestinoId ? "asignada" : "disponible",
-                ubicacionActual: UBICACIONES[0],
-                tecnicoActualId: tecnicoDestinoId,
-                fechaAsignacion: tecnicoDestinoId ? opsHoy() : null,
-                folioLegado: null, observaciones: null,
-                fechaAlta: opsHoy(),
-                origenRequisicionId: opsRequisicionSeleccionada ? opsRequisicionSeleccionada.id : null,
-                origenRequisicionFolio: opsRequisicionSeleccionada ? opsRequisicionSeleccionada.folio : null,
-                requiereAutorizacion,
-                externalId: null, sourceSystem: "manual", lastSync: null, syncStatus: "no_sincronizado",
-            });
-            await opsRegistrarMovimiento({
-                herramientaId: folio, tipo: "alta", ubicacionNueva: UBICACIONES[0],
-                tecnicoNuevoId: tecnicoDestinoId || null,
-                observaciones: opsRequisicionSeleccionada ? `Origen: requisición de compra ${opsRequisicionSeleccionada.folio}` : null,
-            });
+                requiereAutorizacion, tecnicoDestinoId, requisicion: req,
+                fechaAlta: opsHoy(), capturadoPor: (typeof opsUsuarioActual === "function" ? opsUsuarioActual() : null),
+            };
 
-            // Cierra el círculo del lado de Compras: la requisición queda marcada
-            // con la pieza (folio) que resultó de ella y a quién se le entregó.
-            // Solo escribe campos NUEVOS — no toca nada que ya use compras.js.
-            if (opsRequisicionSeleccionada) {
-                try {
-                    await fs.updateDoc(fs.doc(db, "requisiciones_compra", opsRequisicionSeleccionada.id), {
-                        herramientaId: folio,
-                        herramientaDescripcion: descripcion,
-                        herramientaAltaFecha: opsHoy(),
-                        herramientaTecnicoDestinoId: tecnicoDestinoId || null,
-                    });
-                } catch (err) {
-                    console.error("[operaciones.js] no se pudo actualizar la requisición de origen:", err);
+            try {
+                const folio = await opsCrearPiezaNueva(pieza);
+                if (tecnicoDestinoId) {
+                    try { opsGenerarResponsivaPDF(folio, true); }
+                    catch (err) { console.error("[operaciones.js] la pieza se guardó, pero falló la responsiva PDF:", err); }
                 }
-            }
-
-            if (tecnicoDestinoId) {
-                // opsGenerarResponsivaPDF lee de cacheHerr, que aún no tiene esta pieza
-                // recién creada (el onSnapshot tarda unos ms) — se agrega en caliente,
-                // igual que ya hace opsConfirmarMovimiento antes de generar el PDF.
-                cacheHerr.push({
-                    id: folio, folio, descripcion, marca, modelo, categoria, numeroSerie,
-                    estado: "asignada", ubicacionActual: UBICACIONES[0],
-                    tecnicoActualId: tecnicoDestinoId, fechaAsignacion: opsHoy(),
-                });
-                try { opsGenerarResponsivaPDF(folio, true); }
-                catch (err) { console.error("[operaciones.js] la pieza se guardó, pero falló la responsiva PDF:", err); }
+            } catch (err) {
+                if (!opsEsErrorDeCuota(err)) throw err;
+                // Firestore sin cuota (plan Spark): la pieza NO se pierde — se guarda en
+                // este navegador y se sube sola en cuanto Firebase vuelva a aceptar escrituras.
+                const guardada = opsGuardarPiezaPendiente(pieza);
+                if (!guardada) throw new Error("Firebase sin cuota y no hubo espacio en el navegador para guardarla temporalmente (quita la foto e intenta de nuevo).");
+                alert("Firebase está sin cuota por hoy, así que la pieza \"" + descripcion + "\" quedó guardada TEMPORALMENTE en este navegador.\n\n"
+                    + "Se subirá sola (con su folio HT definitivo) en cuanto Firebase se reinicie (aprox. 1:00 a.m.). "
+                    + "Solo abre Operaciones en ESTA misma computadora y navegador después de esa hora.\n\n"
+                    + "No borres el historial/caché del navegador mientras tanto.");
+                opsPintarAvisoPendientes();
             }
             opsRequisicionSeleccionada = null;
             document.getElementById("ops-modal-wrap").innerHTML = "";
         } catch (err) {
             console.error("[operaciones.js] error al guardar la pieza:", err);
-            alert("No se pudo guardar la pieza: " + (err && err.message ? err.message : err) + "\n\nRevisa la consola del navegador (F12) para más detalle — probablemente sea un problema de permisos en Firestore.");
+            alert("No se pudo guardar la pieza: " + (err && err.message ? err.message : err) + "\n\nRevisa la consola del navegador (F12) para más detalle.");
             if (btnGuardar) { btnGuardar.disabled = false; btnGuardar.textContent = "Generar folio y guardar"; }
         }
     };
+
+    // ── Alta de pieza (compartida por el guardado normal y la cola de pendientes) ──
+    async function opsCrearPiezaNueva(p) {
+        const { db, fs } = await opsGetFB();
+        const folio = await opsSiguienteFolioHerramienta();
+        await opsSbHerrGuardar(folio, {
+            folio, descripcion: p.descripcion, marca: p.marca, modelo: p.modelo, categoria: p.categoria, numeroSerie: p.numeroSerie,
+            departamento: p.departamento, condicion: p.condicion, uso: p.uso, peso: p.peso, pesoUnidad: p.pesoUnidad, medida: p.medida,
+            fotoBase64: p.fotoBase64 || null,
+            estado: p.tecnicoDestinoId ? "asignada" : "disponible",
+            ubicacionActual: UBICACIONES[0],
+            tecnicoActualId: p.tecnicoDestinoId || null,
+            fechaAsignacion: p.tecnicoDestinoId ? opsHoy() : null,
+            folioLegado: null, observaciones: null,
+            fechaAlta: p.fechaAlta || opsHoy(),
+            origenRequisicionId: p.requisicion ? p.requisicion.id : null,
+            origenRequisicionFolio: p.requisicion ? p.requisicion.folio : null,
+            requiereAutorizacion: !!p.requiereAutorizacion,
+            externalId: null, sourceSystem: "manual", lastSync: null, syncStatus: "no_sincronizado",
+        });
+        await opsRegistrarMovimiento({
+            herramientaId: folio, tipo: "alta", ubicacionNueva: UBICACIONES[0],
+            tecnicoNuevoId: p.tecnicoDestinoId || null,
+            observaciones: p.requisicion ? `Origen: requisición de compra ${p.requisicion.folio}` : null,
+        });
+        // Cierra el círculo del lado de Compras: la requisición queda marcada
+        // con la pieza (folio) que resultó de ella y a quién se le entregó.
+        // Solo escribe campos NUEVOS — no toca nada que ya use compras.js.
+        if (p.requisicion) {
+            try {
+                await fs.updateDoc(fs.doc(db, "requisiciones_compra", p.requisicion.id), {
+                    herramientaId: folio,
+                    herramientaDescripcion: p.descripcion,
+                    herramientaAltaFecha: opsHoy(),
+                    herramientaTecnicoDestinoId: p.tecnicoDestinoId || null,
+                });
+            } catch (err) {
+                console.error("[operaciones.js] no se pudo actualizar la requisición de origen:", err);
+            }
+        }
+        if (p.tecnicoDestinoId && !cacheHerr.some(x => x.id === folio)) {
+            // opsGenerarResponsivaPDF lee de cacheHerr, que aún no tiene esta pieza
+            // recién creada (el onSnapshot tarda unos ms) — se agrega en caliente.
+            cacheHerr.push({
+                id: folio, folio, descripcion: p.descripcion, marca: p.marca, modelo: p.modelo, categoria: p.categoria, numeroSerie: p.numeroSerie,
+                estado: "asignada", ubicacionActual: UBICACIONES[0],
+                tecnicoActualId: p.tecnicoDestinoId, fechaAsignacion: opsHoy(),
+            });
+        }
+        return folio;
+    }
+
+    // ── Cola local de piezas pendientes (cuando Firestore se queda sin cuota) ──
+    const OPS_LS_PENDIENTES = "ops_herr_pendientes_v1";
+    let opsSincronizandoPendientes = false;
+    let opsPendientesTimer = null;
+
+    function opsEsErrorDeCuota(err) {
+        const code = String((err && err.code) || "").toLowerCase();
+        const msg = String((err && err.message) || err || "").toLowerCase();
+        return code === "resource-exhausted" || code === "unavailable"
+            || msg.includes("quota") || msg.includes("resource-exhausted") || msg.includes("too many requests");
+    }
+    function opsLeerPendientes() {
+        try { return JSON.parse(localStorage.getItem(OPS_LS_PENDIENTES) || "[]") || []; } catch (e) { return []; }
+    }
+    function opsEscribirPendientes(lista) {
+        try {
+            if (lista.length) localStorage.setItem(OPS_LS_PENDIENTES, JSON.stringify(lista));
+            else localStorage.removeItem(OPS_LS_PENDIENTES);
+            return true;
+        } catch (e) {
+            console.error("[operaciones.js] no se pudo escribir la cola local de pendientes:", e);
+            return false;
+        }
+    }
+    function opsGuardarPiezaPendiente(pieza) {
+        const lista = opsLeerPendientes();
+        lista.push({ ...pieza, pendienteId: "PEND-" + Date.now() + "-" + Math.floor(Math.random() * 1000), encoladaEn: new Date().toISOString() });
+        if (opsEscribirPendientes(lista)) return true;
+        // Sin espacio: se reintenta sin la foto antes de rendirse.
+        lista[lista.length - 1].fotoBase64 = null;
+        return opsEscribirPendientes(lista);
+    }
+    function opsPintarAvisoPendientes() {
+        const lista = opsLeerPendientes();
+        let el = document.getElementById("ops-aviso-pendientes");
+        if (!lista.length) { if (el) el.remove(); return; }
+        if (!el) {
+            el = document.createElement("div");
+            el.id = "ops-aviso-pendientes";
+            el.style.cssText = "position:fixed;left:16px;bottom:16px;z-index:99999;background:#1D2E73;color:#fff;border-radius:10px;padding:10px 14px;font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,.25);display:flex;gap:10px;align-items:center;max-width:420px;";
+            document.body.appendChild(el);
+        }
+        el.innerHTML = `<span>⏳ ${lista.length} pieza(s) guardada(s) en este navegador, pendientes de subir a Firebase.</span>
+            <button onclick="opsSincronizarPiezasPendientes(true)" style="background:#E7402B;color:#fff;border:0;border-radius:8px;padding:6px 10px;font-weight:600;cursor:pointer;white-space:nowrap;">Reintentar</button>`;
+    }
+    window.opsSincronizarPiezasPendientes = async function (manual) {
+        if (opsSincronizandoPendientes) return;
+        const lista = opsLeerPendientes();
+        if (!lista.length) { opsPintarAvisoPendientes(); return; }
+        opsSincronizandoPendientes = true;
+        const subidas = [];
+        let restantes = lista.slice();
+        try {
+            for (const p of lista) {
+                try {
+                    const folio = await opsCrearPiezaNueva(p);
+                    subidas.push({ folio, descripcion: p.descripcion, asignada: !!p.tecnicoDestinoId });
+                    restantes = restantes.filter(x => x.pendienteId !== p.pendienteId);
+                    opsEscribirPendientes(restantes);
+                } catch (err) {
+                    console.warn("[operaciones.js] pieza pendiente aún no se pudo subir:", err && err.message);
+                    break; // si Firebase sigue sin cuota, no tiene caso intentar las demás
+                }
+            }
+        } finally {
+            opsSincronizandoPendientes = false;
+            opsPintarAvisoPendientes();
+        }
+        if (subidas.length) {
+            const conResponsiva = subidas.filter(x => x.asignada);
+            alert("Se subieron " + subidas.length + " pieza(s) pendientes:\n\n"
+                + subidas.map(x => "• " + x.folio + " — " + x.descripcion).join("\n")
+                + (conResponsiva.length ? "\n\nLas que se asignaron a técnico: abre su ficha y usa \"Regenerar responsiva PDF\"." : "")
+                + (restantes.length ? "\n\nQuedan " + restantes.length + " pendiente(s); se reintentará en unos minutos." : ""));
+        } else if (manual) {
+            alert("Firebase todavía no acepta escrituras (sin cuota). Se reintentará solo cada 10 minutos mientras Operaciones esté abierto.");
+        }
+    };
+    function opsIniciarReintentoPendientes() {
+        opsPintarAvisoPendientes();
+        if (!opsLeerPendientes().length) return;
+        window.opsSincronizarPiezasPendientes(false);
+        if (!opsPendientesTimer) opsPendientesTimer = setInterval(() => {
+            if (!opsLeerPendientes().length) { clearInterval(opsPendientesTimer); opsPendientesTimer = null; return; }
+            window.opsSincronizarPiezasPendientes(false);
+        }, 10 * 60 * 1000);
+    }
 
     // ── Sembrado del catálogo base (folios HT-XXXXXX reales) ──────
     // ── Importación REAL desde el Excel (folios exactos #01-001, permanentes) ──
@@ -3034,7 +3152,7 @@
 
             for (const [folio, descripcion, cantidad, observaciones] of tec.items) {
                 if (foliosExistentes.has(folio)) { piezasOmitidas++; continue; }
-                await fs.setDoc(fs.doc(db, COL_HERRAMIENTAS, folio), {
+                await opsSbHerrGuardar(folio, {
                     folio, descripcion, cantidad, categoria: null, marca: "", modelo: "", numeroSerie: "",
                     condicionFisica: observaciones || null,
                     estado: "asignada", ubicacionActual: UBICACIONES[0],
@@ -3051,8 +3169,7 @@
         // Refrescar cachés locales tras la importación masiva.
         const snapTec = await fs.getDocs(fs.collection(db, COL_TECNICOS));
         cacheTec = snapTec.docs.map(d => ({ id: d.id, ...d.data() }));
-        const snapHerr = await fs.getDocs(fs.query(fs.collection(db, COL_HERRAMIENTAS), fs.orderBy("folio")));
-        cacheHerr = snapHerr.docs.map(d => ({ id: d.id, ...d.data() }));
+        cacheHerr = await opsSbHerrListar();
 
         const msg = `Importación completa: ${tecnicosCreados} técnico(s) nuevo(s), ${piezasCreadas} pieza(s) creada(s)${piezasOmitidas ? `, ${piezasOmitidas} omitida(s) por ya existir` : ""}.`;
         window.mostrarPush ? mostrarPush("Herramientas", msg, "📥") : alert(msg);
@@ -3064,7 +3181,7 @@
         const { db, fs } = await opsGetFB();
         for (const [descripcion, categoria, subcategoria] of CATALOGO_BASE) {
             const folio = await opsSiguienteFolioHerramienta();
-            await fs.setDoc(fs.doc(db, COL_HERRAMIENTAS, folio), {
+            await opsSbHerrGuardar(folio, {
                 folio, descripcion, categoria, subcategoria, marca: "", modelo: "", numeroSerie: "",
                 estado: "disponible", ubicacionActual: UBICACIONES[0],
                 tecnicoActualId: null, fechaAsignacion: null,
@@ -3258,7 +3375,6 @@
         if (btn) { btn.disabled = true; btn.textContent = "Guardando..."; }
         try {
             const { db, fs } = await opsGetFB();
-            const ref = fs.doc(db, COL_HERRAMIENTAS, herramientaId);
 
             const mapaEstado = {
                 asignacion: "asignada", devolucion: "disponible",
@@ -3281,7 +3397,7 @@
                 update.ubicacionActual = document.getElementById("ops-in-ubicacion").value;
             }
 
-            await fs.updateDoc(ref, update);
+            await opsSbHerrActualizar(herramientaId, update);
             await opsRegistrarMovimiento({
                 herramientaId, tipo,
                 tecnicoAnteriorId: h.tecnicoActualId,
@@ -3399,7 +3515,7 @@
         const motivo = document.getElementById("ops-in-motivobaja").value;
         const obs = document.getElementById("ops-in-obsbaja").value.trim();
         const { db, fs } = await opsGetFB();
-        await fs.updateDoc(fs.doc(db, COL_HERRAMIENTAS, herramientaId), {
+        await opsSbHerrActualizar(herramientaId, {
             estado: "baja", tecnicoActualId: null, fechaAsignacion: null,
         });
         await opsRegistrarMovimiento({ herramientaId, tipo: "baja", tecnicoAnteriorId: h.tecnicoActualId, motivo, observaciones: obs });
@@ -8833,6 +8949,803 @@
                 </div>
             </div>
         </div>`;
+    };
+
+
+    // ══════════════════════════════════════════════════════════════════
+    // PUENTE SUPABASE — Herramientas y Movimientos (sep-2026)
+    // Los datos de ops_herramientas / ops_movimientos / ops_contadores ya
+    // estaban migrados a Supabase, pero este archivo seguía leyendo y
+    // escribiendo en Firestore (plan Spark sin cuota). Desde esta versión
+    // Supabase es la fuente de verdad para piezas, fotos, folios HT y
+    // movimientos. Se sigue escribiendo una COPIA en Firestore (sin esperar
+    // y sin fallar si no hay cuota) mientras Flotilla móvil siga leyendo de ahí.
+    // ══════════════════════════════════════════════════════════════════
+    const OPS_SB_URL = "https://vlbyjoqessxcmkejcujp.supabase.co";
+    const OPS_SB_KEY = "sb_publishable_18A7j06AwZqdw3gmqUDJHQ_Twu0t2a8";
+    let _opsSbPromesa = null;
+    function opsSb() {
+        if (window.tcSupabase) return Promise.resolve(window.tcSupabase);
+        if (_opsSbPromesa) return _opsSbPromesa;
+        _opsSbPromesa = import("https://esm.sh/@supabase/supabase-js@2").then(mod => {
+            if (window.tcSupabase) return window.tcSupabase;
+            const c = mod.createClient(OPS_SB_URL, OPS_SB_KEY);
+            window.tcSupabase = c;
+            return c;
+        }).catch(e => { _opsSbPromesa = null; throw e; });
+        return _opsSbPromesa;
+    }
+    const opsSnake = k => k.replace(/[A-Z]/g, m => "_" + m.toLowerCase());
+    const opsCamel = k => k.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
+    function opsFilaACamel(row) {
+        if (!row) return row;
+        const o = {};
+        Object.keys(row).forEach(k => { if (k !== "extra") o[opsCamel(k)] = row[k]; });
+        if (row.extra && typeof row.extra === "object") Object.keys(row.extra).forEach(k => { if (o[k] === undefined || o[k] === null) o[k] = row.extra[k]; });
+        return o;
+    }
+
+    const OPS_HERR_COLS = new Set(["id", "folio", "descripcion", "marca", "modelo", "categoria", "subcategoria", "numero_serie", "departamento", "condicion", "uso", "peso", "peso_unidad", "medida", "foto_base64", "estado", "ubicacion_actual", "almacen_id", "tecnico_actual_id", "fecha_asignacion", "folio_legado", "observaciones", "fecha_alta", "origen_requisicion_id", "origen_requisicion_folio", "requiere_autorizacion", "external_id", "source_system", "last_sync", "sync_status", "cantidad", "condicion_fisica"]);
+    const OPS_HERR_NUM = new Set(["peso", "cantidad"]);
+    // Convierte un objeto camelCase completo (tal como lo usa el resto del
+    // archivo) a fila de Supabase; lo que no tiene columna va a `extra`.
+    function opsHerrAFila(id, obj) {
+        const fila = { id, extra: {} };
+        Object.keys(obj).forEach(k => {
+            if (k === "id" || k === "extra" || k === "creadoEn" || k === "actualizadoEn") return;
+            const s = opsSnake(k);
+            let v = obj[k];
+            if (v === undefined) return;
+            if (OPS_HERR_COLS.has(s)) {
+                if (OPS_HERR_NUM.has(s) && v !== null && v !== "") {
+                    const n = Number(v);
+                    if (isNaN(n)) { fila.extra[k] = v; v = null; } else v = n;
+                }
+                if (v === "" && OPS_HERR_NUM.has(s)) v = null;
+                fila[s] = v;
+            } else {
+                fila.extra[k] = v;
+            }
+        });
+        if (!Object.keys(fila.extra).length) fila.extra = null;
+        fila.actualizado_en = new Date().toISOString();
+        return fila;
+    }
+    function opsMezclarEnCacheHerr(id, obj) {
+        const idx = cacheHerr.findIndex(x => x.id === id);
+        if (idx >= 0) cacheHerr[idx] = { ...cacheHerr[idx], ...obj, id };
+        else { cacheHerr.push({ ...obj, id }); cacheHerr.sort((a, b) => String(a.folio || a.id).localeCompare(String(b.folio || b.id))); }
+    }
+    function opsCopiaFirestore(fn) {
+        // Copia "de cortesía" para Flotilla móvil — nunca bloquea ni truena.
+        try { opsGetFB().then(({ db, fs }) => fn(db, fs)).catch(() => {}); } catch (e) {}
+    }
+    async function opsSbHerrGuardar(id, obj) {
+        const sb = await opsSb();
+        const previo = cacheHerr.find(x => x.id === id) || {};
+        const completo = { ...previo, ...obj };
+        delete completo.id;
+        const { error } = await sb.from("ops_herramientas").upsert(opsHerrAFila(id, completo), { onConflict: "id" });
+        if (error) throw new Error("Supabase: " + error.message);
+        opsMezclarEnCacheHerr(id, obj);
+        opsCopiaFirestore((db, fs) => fs.setDoc(fs.doc(db, COL_HERRAMIENTAS, id), obj, { merge: true }).catch(() => {}));
+        opsRefrescarVistasHerr();
+    }
+    async function opsSbHerrActualizar(id, parcial) { return opsSbHerrGuardar(id, parcial); }
+    async function opsSbHerrListar() {
+        const sb = await opsSb();
+        let todos = [], desde = 0;
+        while (true) {
+            const { data, error } = await sb.from("ops_herramientas").select("*").order("folio", { ascending: true }).range(desde, desde + 999);
+            if (error) throw new Error("Supabase: " + error.message);
+            todos = todos.concat(data || []);
+            if (!data || data.length < 1000) break;
+            desde += 1000;
+        }
+        return todos.map(opsFilaACamel);
+    }
+    function opsRefrescarVistasHerr() {
+        try {
+            if (tabActual === "dashboard") opsRenderDashboard();
+            if (tabActual === "resumen") opsRenderResumen();
+        } catch (e) {}
+    }
+    // Carga inicial + cambios en vivo (Realtime) + chequeo ligero cada 3 min
+    // de solo lo que cambió (actualizado_en), para no bajar todas las fotos otra vez.
+    function opsSbSuscribirHerr() {
+        let vivo = true, canal = null, timer = null, ultimo = new Date().toISOString();
+        const aplicarFila = row => { if (row && row.id) opsMezclarEnCacheHerr(row.id, opsFilaACamel(row)); };
+        opsSbHerrListar().then(lista => {
+            if (!vivo) return;
+            cacheHerr = lista;
+            opsRefrescarVistasHerr();
+        }).catch(err => {
+            console.error("[operaciones.js] no se pudieron cargar herramientas de Supabase:", err);
+            if (window.mostrarPush) window.mostrarPush("Operaciones", "No se pudieron cargar las herramientas (Supabase). Revisa tu conexión.", "⚠️");
+        });
+        opsSb().then(sb => {
+            if (!vivo) return;
+            canal = sb.channel("ops-herramientas-" + Date.now())
+                .on("postgres_changes", { event: "*", schema: "public", table: "ops_herramientas" }, p => {
+                    if (p.eventType === "DELETE") { cacheHerr = cacheHerr.filter(x => x.id !== (p.old && p.old.id)); }
+                    else aplicarFila(p.new);
+                    opsRefrescarVistasHerr();
+                }).subscribe();
+            timer = setInterval(async () => {
+                try {
+                    const desde = ultimo; ultimo = new Date().toISOString();
+                    const { data } = await sb.from("ops_herramientas").select("*").gt("actualizado_en", desde);
+                    if (data && data.length) { data.forEach(aplicarFila); opsRefrescarVistasHerr(); }
+                } catch (e) {}
+            }, 180000);
+        }).catch(() => {});
+        return () => { vivo = false; if (timer) clearInterval(timer); if (canal) { try { canal.unsubscribe(); } catch (e) {} } };
+    }
+
+    // ── Movimientos ──
+    async function opsSbMovListar() {
+        const sb = await opsSb();
+        const { data, error } = await sb.from("ops_movimientos").select("*").order("fecha", { ascending: false }).limit(200);
+        if (error) throw new Error("Supabase: " + error.message);
+        return (data || []).map(opsFilaACamel);
+    }
+    function opsSbSuscribirMov() {
+        let vivo = true, canal = null;
+        const refrescar = () => opsSbMovListar().then(l => {
+            if (!vivo) return;
+            cacheMov = l;
+            if (tabActual === "movimientos") opsRenderMovimientos();
+            if (tabActual === "dashboard") opsRenderDashboard();
+        }).catch(e => console.warn("[operaciones.js] movimientos (Supabase):", e.message));
+        refrescar();
+        opsSb().then(sb => {
+            if (!vivo) return;
+            canal = sb.channel("ops-movimientos-" + Date.now())
+                .on("postgres_changes", { event: "INSERT", schema: "public", table: "ops_movimientos" }, () => refrescar())
+                .subscribe();
+        }).catch(() => {});
+        return () => { vivo = false; if (canal) { try { canal.unsubscribe(); } catch (e) {} } };
+    }
+
+    // ── Respaldo de técnicos y almacenes desde Supabase ──
+    // Siguen leyéndose de Firestore (sus altas/ediciones aún viven ahí), pero si
+    // Firestore no responde (sin cuota) se usan las copias ya migradas a Supabase
+    // para que los combos de técnico y las tarjetas por almacén no salgan vacíos.
+    async function opsSbRespaldoTecAlm() {
+        try {
+            const sb = await opsSb();
+            if (!cacheTec.length) {
+                const { data } = await sb.from("ops_tecnicos").select("*").order("numero_operativo");
+                if (data && data.length && !cacheTec.length) cacheTec = data.map(opsFilaACamel);
+            }
+            if (!cacheAlmacenes.length) {
+                const { data } = await sb.from("ops_almacenes").select("*");
+                if (data && data.length && !cacheAlmacenes.length) cacheAlmacenes = data.map(opsFilaACamel);
+            }
+            opsRefrescarVistasHerr();
+        } catch (e) { console.warn("[operaciones.js] respaldo técnicos/almacenes:", e.message); }
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // SOLICITUD DE VIÁTICOS (sep-2026)
+    // Estación destino desde el catálogo de Ventas (estaciones_servicio en
+    // Supabase) → ubicación en mapa → distancia y tiempo reales (OSRM) →
+    // ¿requiere viáticos? → gasolina, alimentos y hospedaje calculados solos.
+    // Todo queda editable. Notifica a Cristina Acosta y a Pagos.
+    // Tarifas editables en la tabla ops_config_viaticos_solicitud (botón "Tarifas").
+    // ══════════════════════════════════════════════════════════════════
+    const OPS_VIA_CFG_DEFAULT = {
+        desayuno: 150, desayunoRegla: "Salida antes de las 7:15", horaDesayuno: "07:15",
+        comida: 200, comidaRegla: "Medio día (2:00 p.m.)", horaComida: "14:00",
+        cena: 130, cenaRegla: "Pasadas las 7:00 p.m.", horaCena: "19:00",
+        topeDiario: 500, precioLitro: 25, factor: 1.20, multiplicadorKm: 2,
+        kmMinimoViaticos: 40, hospedajePorNoche: 900, horasServicioDefault: 4,
+        origen: { nombre: "Oficina Tecnocontrol (Chihuahua)", lat: 28.6353, lng: -106.0889 },
+        vehiculos: [
+            { tipo: "chico", nombre: "Chico (March / Attitude / Ram)", rendimiento: 10 },
+            { tipo: "mediano", nombre: "Mediano (L200 / Changan)", rendimiento: 9 },
+            { tipo: "grande", nombre: "Grande (camiones)", rendimiento: 8 },
+        ],
+        correosNotificar: ["c.acosta@tecnocontrol.com.mx", "pagos@tecnocontrol.com.mx"],
+    };
+    let opsViaCfg = { ...OPS_VIA_CFG_DEFAULT };
+    let opsViaLista = [];
+    let opsViaEstaciones = null; // catálogo de Ventas, se carga una vez
+    let opsViaFoliosSb = null;
+    let opsViaForm = null;
+    let opsViaMapa = null, opsViaCapas = [];
+    const OPS_VIA_ESTATUS = { "Pendiente": "#b45309", "Aprobada": "#1D2E73", "Pagada": "#15803d", "Rechazada": "#E7402B" };
+
+    const opsViaDinero = n => "$" + (Number(n) || 0).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const opsViaNum = v => { const n = Number(v); return isNaN(n) ? 0 : n; };
+    function opsViaPuedeAutorizar() {
+        const yo = (opsUsuarioActual() || "").toLowerCase();
+        return opsRolActual() === "administrador" || (opsViaCfg.correosNotificar || []).map(x => x.toLowerCase()).includes(yo) || yo === "c.acosta@tecnocontrol.com.mx";
+    }
+    async function opsViaCargarCfg() {
+        try {
+            const sb = await opsSb();
+            const { data } = await sb.from("ops_config_viaticos_solicitud").select("datos").eq("id", "general").maybeSingle();
+            if (data && data.datos) opsViaCfg = { ...OPS_VIA_CFG_DEFAULT, ...data.datos, origen: { ...OPS_VIA_CFG_DEFAULT.origen, ...(data.datos.origen || {}) } };
+        } catch (e) { console.warn("[viáticos] config:", e.message); }
+    }
+    async function opsViaCargarLista() {
+        const sb = await opsSb();
+        const { data, error } = await sb.from("ops_solicitudes_viaticos").select("*").order("creado_en", { ascending: false }).limit(200);
+        if (error) throw error;
+        opsViaLista = data || [];
+    }
+    async function opsViaCargarEstaciones() {
+        if (opsViaEstaciones) return opsViaEstaciones;
+        const sb = await opsSb();
+        let todos = [], desde = 0;
+        while (true) {
+            const { data, error } = await sb.from("estaciones_servicio")
+                .select("id,razon_social,nombre_comercial,codigo_estacion_cre,permiso,direccion_normalizada,domicilio_raw,municipio,estado,lat,lng,encargado,zona,activo")
+                .order("id").range(desde, desde + 999);
+            if (error) throw error;
+            todos = todos.concat(data || []);
+            if (!data || data.length < 1000) break;
+            desde += 1000;
+        }
+        opsViaEstaciones = todos.filter(e => e.activo !== false);
+        return opsViaEstaciones;
+    }
+    async function opsViaCargarFolios() {
+        if (cacheFolios && cacheFolios.length) return cacheFolios;
+        if (opsViaFoliosSb) return opsViaFoliosSb;
+        try {
+            const sb = await opsSb();
+            const { data } = await sb.from("ops_folios").select("*").limit(500);
+            opsViaFoliosSb = (data || []).map(opsFilaACamel);
+        } catch (e) { opsViaFoliosSb = []; }
+        return opsViaFoliosSb;
+    }
+    async function opsViaTecnicos() {
+        if (!cacheTec.length) await opsSbRespaldoTecAlm();
+        return cacheTec.filter(t => (t.estatus || "activo") !== "baja");
+    }
+    function opsViaNombreEstacion(e) {
+        return [e.nombre_comercial || e.razon_social, e.codigo_estacion_cre, e.municipio].filter(Boolean).join(" · ");
+    }
+
+    // ── Pestaña ──
+    async function opsRenderViaticos() {
+        const el = document.getElementById("ops-tab-content");
+        if (!el) return;
+        el.innerHTML = `<div style="padding:30px;color:#64748b;font-size:13px;">Cargando solicitudes de viáticos…</div>`;
+        try { await Promise.all([opsViaCargarCfg(), opsViaCargarLista()]); }
+        catch (e) { el.innerHTML = `<div style="padding:30px;color:#E7402B;">No se pudieron cargar los viáticos: ${opsEsc(e.message || e)}</div>`; return; }
+        if (tabActual !== "viaticos") return;
+        const autoriza = opsViaPuedeAutorizar();
+        const filas = opsViaLista.map(s => `
+            <tr style="border-bottom:1px solid #f1f5f9;">
+                <td style="padding:9px 8px;font-weight:700;color:#1D2E73;white-space:nowrap;">${opsEsc(s.folio || s.id)}</td>
+                <td style="padding:9px 8px;">${opsEsc(s.destino || "")}<div style="font-size:10.5px;color:#94a3b8;">${opsEsc(s.folio_servicio ? "Servicio " + s.folio_servicio : "")}</div></td>
+                <td style="padding:9px 8px;font-size:11.5px;">${opsEsc(s.integrantes || "")}</td>
+                <td style="padding:9px 8px;white-space:nowrap;font-size:11.5px;">${opsEsc(s.fecha_salida || "")}${s.fecha_regreso && s.fecha_regreso !== s.fecha_salida ? " → " + opsEsc(s.fecha_regreso) : ""}</td>
+                <td style="padding:9px 8px;text-align:right;font-weight:700;">${opsViaDinero(s.total)}</td>
+                <td style="padding:9px 8px;">
+                    ${autoriza ? `<select onchange="opsViaCambiarEstatus(${s.id}, this.value)" style="border:1px solid #cbd5e1;border-radius:7px;padding:4px 6px;font-size:11.5px;color:${OPS_VIA_ESTATUS[s.estatus] || "#334155"};font-weight:700;">
+                        ${Object.keys(OPS_VIA_ESTATUS).map(k => `<option ${k === s.estatus ? "selected" : ""}>${k}</option>`).join("")}</select>`
+                    : `<span style="font-weight:700;font-size:11.5px;color:${OPS_VIA_ESTATUS[s.estatus] || "#334155"};">${opsEsc(s.estatus)}</span>`}
+                </td>
+                <td style="padding:9px 8px;white-space:nowrap;">
+                    <button onclick="opsViaVerDetalle(${s.id})" style="background:#E9ECF5;border:none;color:#1D2E73;padding:5px 9px;border-radius:7px;cursor:pointer;font-size:11.5px;font-weight:600;">Ver</button>
+                </td>
+            </tr>`).join("");
+        el.innerHTML = `
+        <div style="padding:22px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:16px;">
+                <div>
+                    <div style="font-family:'Space Grotesk',sans-serif;font-size:19px;font-weight:700;color:#1D2E73;">Solicitudes de viáticos</div>
+                    <div style="font-size:12px;color:#64748b;">Se notifica a Cristina Acosta (Gerente Administrativa) y a Pagos.</div>
+                </div>
+                <div style="display:flex;gap:8px;">
+                    ${opsRolActual() === "administrador" || autoriza ? `<button onclick="opsViaAbrirTarifas()" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Tarifas</button>` : ""}
+                    <button onclick="opsViaAbrirFormulario()" class="mkt-add-btn" style="background:#E7402B;">+ Nueva solicitud de viáticos</button>
+                </div>
+            </div>
+            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow-x:auto;">
+                <table style="width:100%;border-collapse:collapse;font-size:12.5px;color:#334155;">
+                    <thead><tr style="background:#f8fafc;text-align:left;color:#64748b;font-size:11px;text-transform:uppercase;">
+                        <th style="padding:9px 8px;">Folio</th><th style="padding:9px 8px;">Destino</th><th style="padding:9px 8px;">Personal</th>
+                        <th style="padding:9px 8px;">Fechas</th><th style="padding:9px 8px;text-align:right;">Total</th><th style="padding:9px 8px;">Estatus</th><th></th>
+                    </tr></thead>
+                    <tbody>${filas || `<tr><td colspan="7" style="padding:24px;text-align:center;color:#94a3b8;">Todavía no hay solicitudes.</td></tr>`}</tbody>
+                </table>
+            </div>
+        </div>`;
+    }
+
+    window.opsViaCambiarEstatus = async function (id, estatus) {
+        try {
+            const sb = await opsSb();
+            const { error } = await sb.from("ops_solicitudes_viaticos").update({ estatus, actualizado_en: new Date().toISOString(), actualizado_por: opsUsuarioActual() }).eq("id", id);
+            if (error) throw error;
+            const s = opsViaLista.find(x => x.id === id);
+            if (s) {
+                s.estatus = estatus;
+                // Aviso al solicitante (best effort vía Firestore, como el resto del portal).
+                if (s.solicitante_email) opsCopiaFirestore((db, fs) => fs.addDoc(fs.collection(db, "flotilla_notificaciones"), {
+                    tipo: "viaticos_" + estatus.toLowerCase(), para: s.solicitante_email,
+                    mensaje: `Tu solicitud de viáticos ${s.folio} (${s.destino || ""}) cambió a: ${estatus}.`, leido: false, creadaEn: new Date().toISOString(),
+                }).catch(() => {}));
+            }
+            if (window.mostrarPush) window.mostrarPush("Viáticos", `Solicitud marcada como ${estatus}.`, "✅");
+            opsRenderViaticos();
+        } catch (e) { alert("No se pudo cambiar el estatus: " + (e.message || e)); }
+    };
+
+    // ── Formulario ──
+    window.opsViaAbrirFormulario = async function () {
+        const wrap = document.getElementById("ops-modal-wrap");
+        wrap.innerHTML = `<div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;"><div style="background:#fff;border-radius:14px;padding:26px;font-size:13px;color:#475569;">Cargando estaciones y técnicos…</div></div>`;
+        try { await Promise.all([opsViaCargarCfg(), opsViaCargarEstaciones(), opsViaCargarFolios(), opsViaTecnicos()]); }
+        catch (e) { wrap.innerHTML = ""; alert("No se pudo abrir el formulario: " + (e.message || e)); return; }
+        const ahora = new Date(); ahora.setDate(ahora.getDate() + 1); ahora.setHours(7, 0, 0, 0);
+        opsViaForm = {
+            estacion: null, folioServicio: "", cliente: "", motivo: "",
+            destinoTexto: "", lat: null, lng: null, coordAprox: false,
+            kmSencillo: 0, horasIda: 0, calculando: false,
+            tecnicos: [], tipoVehiculo: "mediano", vehiculo: "",
+            salida: opsViaLocalISO(ahora), horasServicio: opsViaCfg.horasServicioDefault || 4,
+            regreso: "", regresoManual: false,
+            requiere: null, requiereManual: false,
+            desayunos: 0, comidas: 0, cenas: 0, comidasManual: false,
+            noches: 0, nochesManual: false, hospedajePorNoche: opsViaCfg.hospedajePorNoche || 900,
+            casetas: 0, otros: 0, notas: "",
+            rendimiento: null, precioLitro: opsViaCfg.precioLitro, factor: opsViaCfg.factor,
+        };
+        opsViaRecalcular();
+        opsViaPintarFormulario();
+    };
+    function opsViaLocalISO(d) {
+        const p = n => String(n).padStart(2, "0");
+        return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+    }
+    function opsViaVehiculoCfg(tipo) { return (opsViaCfg.vehiculos || []).find(v => v.tipo === tipo) || (opsViaCfg.vehiculos || [])[0] || { rendimiento: 9 }; }
+
+    // Todo el cálculo en un solo lugar: lo que el usuario sobrescribió a mano se respeta.
+    function opsViaRecalcular() {
+        const f = opsViaForm; if (!f) return;
+        const cfg = opsViaCfg;
+        if (!f.regresoManual && f.salida) {
+            const s = new Date(f.salida);
+            const horas = (opsViaNum(f.horasIda) * 2) + opsViaNum(f.horasServicio);
+            f.regreso = opsViaLocalISO(new Date(s.getTime() + horas * 3600000));
+        }
+        if (!f.requiereManual) f.requiere = opsViaNum(f.kmSencillo) >= opsViaNum(cfg.kmMinimoViaticos);
+        if (f.rendimiento === null || f.rendimiento === undefined || f.rendimiento === "") f.rendimiento = opsViaVehiculoCfg(f.tipoVehiculo).rendimiento;
+        // Comidas por persona según horarios (reglas de Idaly: desayuno si sale antes de 7:15,
+        // comida si está fuera a las 2:00, cena si regresa pasadas las 7:00).
+        if (!f.comidasManual) {
+            let d = 0, c = 0, n = 0;
+            if (f.requiere && f.salida && f.regreso) {
+                const s = new Date(f.salida), r = new Date(f.regreso);
+                const minutos = hhmm => { const [h, m] = String(hhmm || "00:00").split(":").map(Number); return h * 60 + (m || 0); };
+                const mD = minutos(cfg.horaDesayuno), mC = minutos(cfg.horaComida), mN = minutos(cfg.horaCena);
+                const dia0 = new Date(s.getFullYear(), s.getMonth(), s.getDate());
+                const diaF = new Date(r.getFullYear(), r.getMonth(), r.getDate());
+                for (let x = new Date(dia0); x <= diaF; x.setDate(x.getDate() + 1)) {
+                    const esPrimero = x.getTime() === dia0.getTime(), esUltimo = x.getTime() === diaF.getTime();
+                    const ini = esPrimero ? s.getHours() * 60 + s.getMinutes() : 0;
+                    const fin = esUltimo ? r.getHours() * 60 + r.getMinutes() : 24 * 60;
+                    if ((esPrimero ? ini < mD : true) && fin >= mD) d++;
+                    if (ini <= mC && fin >= mC) c++;
+                    if (fin >= mN) n++;
+                }
+            }
+            f.desayunos = d; f.comidas = c; f.cenas = n;
+        }
+        if (!f.nochesManual) {
+            let noches = 0;
+            if (f.requiere && f.salida && f.regreso) {
+                const s = new Date(f.salida), r = new Date(f.regreso);
+                noches = Math.max(0, Math.round((new Date(r.getFullYear(), r.getMonth(), r.getDate()) - new Date(s.getFullYear(), s.getMonth(), s.getDate())) / 86400000));
+            }
+            f.noches = noches;
+        }
+        const personas = Math.max(1, f.tecnicos.length);
+        const rend = opsViaNum(f.rendimiento) || 1;
+        f.gasolina = Math.round((opsViaNum(f.kmSencillo) * opsViaNum(cfg.multiplicadorKm || 2) / rend) * opsViaNum(f.precioLitro) * opsViaNum(f.factor) * 100) / 100;
+        f.alimentosPorPersona = f.desayunos * opsViaNum(cfg.desayuno) + f.comidas * opsViaNum(cfg.comida) + f.cenas * opsViaNum(cfg.cena);
+        f.alimentos = f.requiere ? f.alimentosPorPersona * personas : 0;
+        f.hospedaje = f.requiere ? opsViaNum(f.noches) * opsViaNum(f.hospedajePorNoche) * personas : 0;
+        f.total = Math.round((f.gasolina + f.alimentos + f.hospedaje + opsViaNum(f.casetas) + opsViaNum(f.otros)) * 100) / 100;
+        f.personas = personas;
+    }
+
+    function opsViaInput(label, id, valor, extra = "", tipo = "text") {
+        return `<label style="display:block;font-size:11.5px;font-weight:600;color:#475569;">${label}
+            <input id="${id}" type="${tipo}" value="${opsEsc(valor ?? "")}" ${extra} style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;box-sizing:border-box;"></label>`;
+    }
+    function opsViaPintarFormulario() {
+        const f = opsViaForm, cfg = opsViaCfg;
+        const wrap = document.getElementById("ops-modal-wrap");
+        const tecnicos = cacheTec.filter(t => (t.estatus || "activo") !== "baja");
+        const folios = (cacheFolios && cacheFolios.length ? cacheFolios : (opsViaFoliosSb || []))
+            .filter(x => x.estado !== "cerrado" && x.estatus !== "Cerrado")
+            .slice(0, 300);
+        wrap.innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:14px;">
+            <div style="background:#fff;border-radius:14px;width:1040px;max-width:98vw;max-height:94vh;overflow-y:auto;padding:22px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                    <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:17px;color:#1D2E73;">Nueva solicitud de viáticos</div>
+                    <button onclick="opsViaCerrar()" style="background:#f1f5f9;border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:16px;">×</button>
+                </div>
+                <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;">
+                    <div>
+                        <label style="display:block;font-size:11.5px;font-weight:600;color:#475569;">Folio de servicio (opcional — si lo eliges, jala la estación sola)
+                            <select id="via-folio" onchange="opsViaElegirFolio(this.value)" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                                <option value="">— Sin folio —</option>
+                                ${folios.map(x => `<option value="${opsEsc(x.id)}" ${f.folioServicio && (x.folioOS === f.folioServicio || x.id === f.folioServicio) ? "selected" : ""}>${opsEsc(x.folioOS || x.id)} — ${opsEsc(x.estacion || x.clienteNombre || "")}</option>`).join("")}
+                            </select></label>
+                        <label style="display:block;font-size:11.5px;font-weight:600;color:#475569;">Estación destino (catálogo de Ventas)
+                            <input id="via-est-buscar" placeholder="Escribe nombre, CRE, razón social o municipio…" value="${opsEsc(f.estacion ? opsViaNombreEstacion(f.estacion) : "")}" oninput="opsViaBuscarEstacion(this.value)" autocomplete="off"
+                                style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 2px;box-sizing:border-box;"></label>
+                        <div id="via-est-resultados" style="position:relative;"></div>
+                        <div style="font-size:11px;color:#64748b;margin:2px 0 10px;">${f.estacion ? opsEsc(f.estacion.direccion_normalizada || f.estacion.domicilio_raw || "") : "¿No está en el catálogo? Escribe la dirección y presiona <b>Enter</b>."}</div>
+                        <div id="via-mapa" style="height:250px;border-radius:10px;border:1px solid #e2e8f0;background:#f8fafc;margin-bottom:6px;"></div>
+                        <div id="via-ruta-info" style="font-size:12px;color:#334155;margin-bottom:12px;">${opsViaTextoRuta()}</div>
+
+                        <div style="font-size:11.5px;font-weight:600;color:#475569;margin-bottom:4px;">Personal que viaja (${f.tecnicos.length})</div>
+                        <div style="max-height:130px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px;padding:6px 8px;margin-bottom:10px;">
+                            ${tecnicos.map(t => `<label style="display:flex;gap:6px;align-items:center;font-size:12px;padding:2px 0;cursor:pointer;">
+                                <input type="checkbox" ${f.tecnicos.some(x => x.id === t.id) ? "checked" : ""} onchange="opsViaToggleTecnico('${opsEsc(t.id)}', this.checked)">
+                                ${opsEsc(t.nombre || "")} <span style="color:#94a3b8;">${opsEsc(t.numeroOperativo || "")}</span></label>`).join("") || `<div style="color:#94a3b8;font-size:12px;">No se pudieron cargar técnicos.</div>`}
+                        </div>
+                    </div>
+                    <div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 10px;">
+                            <label style="display:block;font-size:11.5px;font-weight:600;color:#475569;">Tipo de vehículo
+                                <select onchange="opsViaCampo('tipoVehiculo', this.value); opsViaForm.rendimiento=null; opsViaRecalcular(); opsViaPintarFormulario();" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                                    ${(cfg.vehiculos || []).map(v => `<option value="${opsEsc(v.tipo)}" ${v.tipo === f.tipoVehiculo ? "selected" : ""}>${opsEsc(v.nombre)} — ${v.rendimiento} km/l</option>`).join("")}
+                                </select></label>
+                            ${opsViaInput("Vehículo / ECO (opcional)", "via-vehiculo", f.vehiculo, `oninput="opsViaForm.vehiculo=this.value"`)}
+                            ${opsViaInput("Salida", "via-salida", f.salida, `onchange="opsViaCampo('salida', this.value, true)"`, "datetime-local")}
+                            ${opsViaInput("Horas de servicio en sitio", "via-horas", f.horasServicio, `onchange="opsViaCampo('horasServicio', this.value, true)" step="0.5" min="0"`, "number")}
+                            ${opsViaInput("Regreso estimado " + (f.regresoManual ? "(editado)" : "(automático)"), "via-regreso", f.regreso, `onchange="opsViaForm.regresoManual=true; opsViaCampo('regreso', this.value, true)"`, "datetime-local")}
+                            <label style="display:block;font-size:11.5px;font-weight:600;color:#475569;">¿Requiere viáticos?
+                                <select onchange="opsViaForm.requiereManual=true; opsViaCampo('requiere', this.value==='1', true)" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;font-weight:700;color:${f.requiere ? "#15803d" : "#64748b"};">
+                                    <option value="1" ${f.requiere ? "selected" : ""}>Sí${f.requiereManual ? "" : " (automático)"}</option>
+                                    <option value="0" ${!f.requiere ? "selected" : ""}>No — solo gasolina${f.requiereManual ? "" : " (automático)"}</option>
+                                </select></label>
+                        </div>
+                        <div style="font-size:10.5px;color:#94a3b8;margin:-4px 0 10px;">Regla: requiere viáticos si la estación está a ${cfg.kmMinimoViaticos} km o más (sencillo). Puedes cambiarlo.</div>
+
+                        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px;">
+                            <div style="font-weight:700;font-size:12.5px;color:#1D2E73;margin-bottom:8px;">Gasolina — km × ${cfg.multiplicadorKm} ÷ rendimiento × precio × factor</div>
+                            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0 8px;">
+                                ${opsViaInput("Km sencillo", "via-km", f.kmSencillo, `onchange="opsViaCampo('kmSencillo', this.value, true)" step="0.1" min="0"`, "number")}
+                                ${opsViaInput("Km/l", "via-rend", f.rendimiento, `onchange="opsViaCampo('rendimiento', this.value, true)" step="0.1" min="1"`, "number")}
+                                ${opsViaInput("$/litro", "via-precio", f.precioLitro, `onchange="opsViaCampo('precioLitro', this.value, true)" step="0.01"`, "number")}
+                                ${opsViaInput("Factor", "via-factor", f.factor, `onchange="opsViaCampo('factor', this.value, true)" step="0.01"`, "number")}
+                            </div>
+                            <div style="text-align:right;font-weight:700;color:#334155;">Gasolina: ${opsViaDinero(f.gasolina)}</div>
+
+                            <div style="font-weight:700;font-size:12.5px;color:#1D2E73;margin:12px 0 8px;">Alimentos por persona ${f.comidasManual ? "(editado)" : "(automático por horario)"}</div>
+                            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0 8px;">
+                                ${opsViaInput(`Desayunos × ${opsViaDinero(cfg.desayuno)}`, "via-des", f.desayunos, `onchange="opsViaForm.comidasManual=true; opsViaCampo('desayunos', Number(this.value), true)" min="0"`, "number")}
+                                ${opsViaInput(`Comidas × ${opsViaDinero(cfg.comida)}`, "via-com", f.comidas, `onchange="opsViaForm.comidasManual=true; opsViaCampo('comidas', Number(this.value), true)" min="0"`, "number")}
+                                ${opsViaInput(`Cenas × ${opsViaDinero(cfg.cena)}`, "via-cen", f.cenas, `onchange="opsViaForm.comidasManual=true; opsViaCampo('cenas', Number(this.value), true)" min="0"`, "number")}
+                            </div>
+                            <div style="font-size:10.5px;color:#94a3b8;margin-top:-4px;">${opsEsc(cfg.desayunoRegla)} · ${opsEsc(cfg.comidaRegla)} · ${opsEsc(cfg.cenaRegla)} · Tope diario ${opsViaDinero(cfg.topeDiario)}</div>
+                            <div style="text-align:right;font-weight:700;color:#334155;">Alimentos: ${opsViaDinero(f.alimentosPorPersona)} × ${f.personas} persona(s) = ${opsViaDinero(f.alimentos)}</div>
+
+                            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0 8px;margin-top:12px;">
+                                ${opsViaInput("Noches hotel", "via-noches", f.noches, `onchange="opsViaForm.nochesManual=true; opsViaCampo('noches', Number(this.value), true)" min="0"`, "number")}
+                                ${opsViaInput("$/noche", "via-hotel", f.hospedajePorNoche, `onchange="opsViaCampo('hospedajePorNoche', this.value, true)"`, "number")}
+                                ${opsViaInput("Casetas $", "via-casetas", f.casetas, `onchange="opsViaCampo('casetas', this.value, true)"`, "number")}
+                                ${opsViaInput("Otros $", "via-otros", f.otros, `onchange="opsViaCampo('otros', this.value, true)"`, "number")}
+                            </div>
+                            <div style="text-align:right;font-weight:700;color:#334155;">Hospedaje: ${opsViaDinero(f.hospedaje)}</div>
+                            <div style="border-top:2px solid #1D2E73;margin-top:10px;padding-top:8px;display:flex;justify-content:space-between;align-items:center;">
+                                <span style="font-weight:700;color:#1D2E73;">TOTAL SOLICITADO</span>
+                                <span style="font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:700;color:#E7402B;">${opsViaDinero(f.total)}</span>
+                            </div>
+                        </div>
+                        <label style="display:block;font-size:11.5px;font-weight:600;color:#475569;margin-top:10px;">Motivo / notas
+                            <textarea id="via-notas" oninput="opsViaForm.notas=this.value" rows="2" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin-top:4px;box-sizing:border-box;">${opsEsc(f.notas)}</textarea></label>
+                        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
+                            <button onclick="opsViaCerrar()" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
+                            <button id="via-btn-guardar" onclick="opsViaGuardar()" class="mkt-add-btn" style="background:#1D2E73;">Enviar solicitud</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+        const buscar = document.getElementById("via-est-buscar");
+        if (buscar) buscar.addEventListener("keydown", ev => { if (ev.key === "Enter") { ev.preventDefault(); opsViaDireccionLibre(buscar.value); } });
+        opsViaPintarMapa();
+    }
+    window.opsViaCerrar = function () {
+        if (opsViaMapa) { try { opsViaMapa.remove(); } catch (e) {} opsViaMapa = null; }
+        document.getElementById("ops-modal-wrap").innerHTML = "";
+        opsViaForm = null;
+    };
+    window.opsViaCampo = function (campo, valor, repintar) {
+        if (!opsViaForm) return;
+        opsViaForm[campo] = valor;
+        opsViaRecalcular();
+        if (repintar) opsViaPintarFormulario();
+    };
+    window.opsViaToggleTecnico = function (id, marcado) {
+        const t = cacheTec.find(x => x.id === id);
+        if (!t) return;
+        opsViaForm.tecnicos = opsViaForm.tecnicos.filter(x => x.id !== id);
+        if (marcado) opsViaForm.tecnicos.push({ id: t.id, nombre: t.nombre, correo: t.correo || null });
+        opsViaRecalcular();
+        opsViaPintarFormulario();
+    };
+    function opsViaTextoRuta() {
+        const f = opsViaForm;
+        if (!f) return "";
+        if (f.calculando) return "Calculando distancia y tiempo…";
+        if (!f.lat) return "Elige una estación para ver la ruta.";
+        const h = opsViaNum(f.horasIda);
+        const txtT = h ? `${Math.floor(h)} h ${Math.round((h % 1) * 60)} min` : "—";
+        return `<b>${opsViaNum(f.kmSencillo).toFixed(1)} km</b> sencillo · <b>${txtT}</b> de manejo (ida) desde ${opsEsc(opsViaCfg.origen.nombre)}`
+            + (f.coordAprox ? `<div style="color:#b45309;font-size:11px;">Ubicación aproximada (por dirección). Arrastra el pin rojo al lugar exacto y se guarda en el catálogo de estaciones.</div>` : "");
+    }
+
+    window.opsViaBuscarEstacion = function (texto) {
+        const cont = document.getElementById("via-est-resultados");
+        if (!cont) return;
+        const q = opsNormalizaTexto(texto || "");
+        if (q.length < 2) { cont.innerHTML = ""; return; }
+        const partes = q.split(" ").filter(Boolean);
+        const res = (opsViaEstaciones || []).filter(e => {
+            const hay = opsNormalizaTexto([e.id, e.nombre_comercial, e.razon_social, e.codigo_estacion_cre, e.permiso, e.municipio, e.direccion_normalizada].filter(Boolean).join(" "));
+            return partes.every(p => hay.includes(p));
+        }).slice(0, 12);
+        cont.innerHTML = `<div style="position:absolute;left:0;right:0;top:0;z-index:1000;background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 8px 20px rgba(0,0,0,.12);max-height:260px;overflow-y:auto;">
+            ${res.map(e => `<div onclick="opsViaElegirEstacion('${opsEsc(e.id)}')" style="padding:7px 10px;cursor:pointer;border-bottom:1px solid #f1f5f9;font-size:12px;" onmouseover="this.style.background='#E9ECF5'" onmouseout="this.style.background=''">
+                <b>${opsEsc(e.nombre_comercial || e.razon_social || e.id)}</b> <span style="color:#94a3b8;">${opsEsc(e.codigo_estacion_cre || "")}</span>
+                <div style="color:#64748b;font-size:11px;">${opsEsc(e.direccion_normalizada || e.domicilio_raw || e.municipio || "")}</div></div>`).join("")
+            || `<div style="padding:9px 10px;font-size:12px;color:#94a3b8;">Sin coincidencias. Presiona Enter para buscar como dirección.</div>`}</div>`;
+    };
+    window.opsViaElegirFolio = function (id) {
+        const lista = (cacheFolios && cacheFolios.length ? cacheFolios : (opsViaFoliosSb || []));
+        const fo = lista.find(x => x.id === id);
+        if (!fo) { opsViaForm.folioServicio = ""; return; }
+        opsViaForm.folioServicio = fo.folioOS || fo.id;
+        opsViaForm.cliente = fo.clienteNombre || "";
+        let est = null;
+        if (fo.estacionCatalogoId) est = (opsViaEstaciones || []).find(e => e.id === fo.estacionCatalogoId);
+        if (!est && fo.estacion) {
+            const q = opsNormalizaTexto(fo.estacion);
+            est = (opsViaEstaciones || []).find(e => opsNormalizaTexto([e.nombre_comercial, e.razon_social, e.codigo_estacion_cre].join(" ")).includes(q));
+        }
+        if (est) return opsViaElegirEstacion(est.id, fo);
+        if (fo.estacionLat && fo.estacionLng) {
+            opsViaForm.estacion = null;
+            opsViaForm.destinoTexto = fo.estacion || fo.estacionDireccion || "";
+            opsViaForm.lat = Number(fo.estacionLat); opsViaForm.lng = Number(fo.estacionLng); opsViaForm.coordAprox = false;
+            return opsViaCalcularRuta();
+        }
+        if (fo.estacionDireccion || fo.estacion) return opsViaDireccionLibre(fo.estacionDireccion || fo.estacion);
+        opsViaPintarFormulario();
+    };
+    window.opsViaElegirEstacion = async function (id) {
+        const e = (opsViaEstaciones || []).find(x => x.id === id);
+        if (!e || !opsViaForm) return;
+        opsViaForm.estacion = e;
+        opsViaForm.destinoTexto = opsViaNombreEstacion(e);
+        opsViaForm.coordAprox = false;
+        if (e.lat && e.lng) { opsViaForm.lat = e.lat; opsViaForm.lng = e.lng; }
+        else {
+            opsViaForm.calculando = true; opsViaPintarFormulario();
+            // Sin coordenadas en el catálogo: se ubica por dirección (gratis, OpenStreetMap)
+            // y se guarda en estaciones_servicio para que la próxima vez ya esté.
+            let p = await opsGeocodificarNominatim(`${e.direccion_normalizada || e.domicilio_raw || ""}, México`);
+            if (!p) p = await opsGeocodificarNominatim(`${e.municipio || ""}, ${e.estado || "Chihuahua"}, México`);
+            if (!p) { opsViaForm.calculando = false; opsViaPintarFormulario(); alert("No se pudo ubicar la estación en el mapa. Arrastra el pin o escribe la dirección."); return; }
+            opsViaForm.lat = p.lat; opsViaForm.lng = p.lng; opsViaForm.coordAprox = true;
+            opsViaGuardarCoordEstacion(e, p.lat, p.lng);
+        }
+        return opsViaCalcularRuta();
+    };
+    window.opsViaDireccionLibre = async function (texto) {
+        if (!texto || !opsViaForm) return;
+        opsViaForm.estacion = null; opsViaForm.destinoTexto = texto; opsViaForm.calculando = true;
+        opsViaPintarFormulario();
+        const p = await opsGeocodificarNominatim(/méxico|mexico/i.test(texto) ? texto : texto + ", Chihuahua, México");
+        if (!p) { opsViaForm.calculando = false; opsViaPintarFormulario(); alert("No se encontró esa dirección."); return; }
+        opsViaForm.lat = p.lat; opsViaForm.lng = p.lng; opsViaForm.coordAprox = true;
+        return opsViaCalcularRuta();
+    };
+    async function opsViaGuardarCoordEstacion(e, lat, lng) {
+        e.lat = lat; e.lng = lng;
+        try {
+            const sb = await opsSb();
+            await sb.from("estaciones_servicio").update({ lat, lng, actualizado_en: new Date().toISOString() }).eq("id", e.id);
+        } catch (err) { console.warn("[viáticos] no se pudo guardar la ubicación de la estación:", err && err.message); }
+    }
+    async function opsViaCalcularRuta() {
+        const f = opsViaForm; if (!f || !f.lat) return;
+        f.calculando = true; opsViaPintarFormulario();
+        const o = opsViaCfg.origen;
+        f.rutaGeo = null;
+        try {
+            const resp = await fetch(`https://router.project-osrm.org/route/v1/driving/${o.lng},${o.lat};${f.lng},${f.lat}?overview=simplified&geometries=geojson`);
+            const data = await resp.json();
+            const r = data.routes && data.routes[0];
+            if (r) {
+                f.kmSencillo = Math.round(r.distance / 100) / 10;
+                f.horasIda = Math.round((r.duration / 3600) * 100) / 100;
+                f.rutaGeo = r.geometry && r.geometry.coordinates ? r.geometry.coordinates.map(c => [c[1], c[0]]) : null;
+            }
+        } catch (e) { console.warn("[viáticos] OSRM:", e); }
+        if (!f.rutaGeo) {
+            // Respaldo: línea recta × 1.3 (factor típico de carretera) para no dejar el cálculo en cero.
+            const R = 6371, rad = x => x * Math.PI / 180;
+            const dLat = rad(f.lat - o.lat), dLng = rad(f.lng - o.lng);
+            const a = Math.sin(dLat / 2) ** 2 + Math.cos(rad(o.lat)) * Math.cos(rad(f.lat)) * Math.sin(dLng / 2) ** 2;
+            f.kmSencillo = Math.round(2 * R * Math.asin(Math.sqrt(a)) * 1.3 * 10) / 10;
+            f.horasIda = Math.round((f.kmSencillo / 80) * 100) / 100;
+        }
+        f.calculando = false;
+        opsViaRecalcular();
+        opsViaPintarFormulario();
+    }
+    function opsViaPintarMapa() {
+        const el = document.getElementById("via-mapa");
+        if (!el || typeof L === "undefined") return;
+        if (opsViaMapa) { try { opsViaMapa.remove(); } catch (e) {} opsViaMapa = null; }
+        const f = opsViaForm, o = opsViaCfg.origen;
+        opsViaMapa = L.map(el, { attributionControl: false }).setView([o.lat, o.lng], 10);
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18 }).addTo(opsViaMapa);
+        const icono = color => L.divIcon({ className: "", html: `<div style="width:16px;height:16px;border-radius:50%;background:${color};border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);"></div>`, iconSize: [16, 16], iconAnchor: [8, 8] });
+        L.marker([o.lat, o.lng], { icon: icono("#1D2E73") }).addTo(opsViaMapa).bindTooltip(o.nombre);
+        if (f && f.lat) {
+            const m = L.marker([f.lat, f.lng], { icon: icono("#E7402B"), draggable: true }).addTo(opsViaMapa).bindTooltip(f.destinoTexto || "Destino");
+            m.on("dragend", () => {
+                const p = m.getLatLng();
+                f.lat = p.lat; f.lng = p.lng; f.coordAprox = false;
+                if (f.estacion) opsViaGuardarCoordEstacion(f.estacion, p.lat, p.lng);
+                opsViaCalcularRuta();
+            });
+            if (f.rutaGeo) L.polyline(f.rutaGeo, { color: "#1D2E73", weight: 4, opacity: 0.8 }).addTo(opsViaMapa);
+            opsViaMapa.fitBounds(L.latLngBounds([[o.lat, o.lng], [f.lat, f.lng]]).pad(0.25));
+        }
+        setTimeout(() => { try { opsViaMapa && opsViaMapa.invalidateSize(); } catch (e) {} }, 60);
+    }
+
+    window.opsViaGuardar = async function () {
+        const f = opsViaForm; if (!f) return;
+        if (!f.lat) { alert("Elige la estación o dirección destino."); return; }
+        if (!f.tecnicos.length) { alert("Marca al menos a una persona que viaja."); return; }
+        if (!f.salida) { alert("Indica la fecha y hora de salida."); return; }
+        const btn = document.getElementById("via-btn-guardar");
+        if (btn) { btn.disabled = true; btn.textContent = "Enviando…"; }
+        const veh = opsViaVehiculoCfg(f.tipoVehiculo);
+        const fila = {
+            estatus: "Pendiente",
+            solicitante_email: opsUsuarioActual(), solicitante_nombre: opsNombreActual(),
+            folio_servicio: f.folioServicio || null, cliente: f.cliente || (f.estacion ? f.estacion.razon_social : null),
+            destino: f.destinoTexto, motivo: null,
+            fecha_salida: f.salida.slice(0, 10), fecha_regreso: (f.regreso || f.salida).slice(0, 10),
+            dias: Math.max(1, opsViaNum(f.noches) + 1), personas: f.personas,
+            integrantes: f.tecnicos.map(t => t.nombre).join(", "),
+            km_sencillo: opsViaNum(f.kmSencillo), tipo_vehiculo: veh.nombre || f.tipoVehiculo, vehiculo: f.vehiculo || null,
+            rendimiento: opsViaNum(f.rendimiento), precio_litro: opsViaNum(f.precioLitro), factor: opsViaNum(f.factor), gasolina: f.gasolina,
+            desayunos: f.desayunos, comidas: f.comidas, cenas: f.cenas, alimentos: f.alimentos,
+            hospedaje: f.hospedaje, casetas: opsViaNum(f.casetas), otros: opsViaNum(f.otros), total: f.total,
+            notas: f.notas || null,
+            tarifas: {
+                requiereViaticos: !!f.requiere, salida: f.salida, regreso: f.regreso, horasServicio: opsViaNum(f.horasServicio), horasIda: opsViaNum(f.horasIda),
+                noches: opsViaNum(f.noches), hospedajePorNoche: opsViaNum(f.hospedajePorNoche), desayuno: opsViaCfg.desayuno, comida: opsViaCfg.comida, cena: opsViaCfg.cena,
+                estacionId: f.estacion ? f.estacion.id : null, lat: f.lat, lng: f.lng, tecnicos: f.tecnicos,
+            },
+        };
+        try {
+            const sb = await opsSb();
+            const { data, error } = await sb.from("ops_solicitudes_viaticos").insert(fila).select().single();
+            if (error) throw error;
+            const folio = "VIA-" + String(data.id).padStart(5, "0");
+            await sb.from("ops_solicitudes_viaticos").update({ folio }).eq("id", data.id);
+            data.folio = folio;
+            const resumen = opsViaResumenTexto(data);
+            (opsViaCfg.correosNotificar || []).forEach(correo => opsCopiaFirestore((db, fs) => fs.addDoc(fs.collection(db, "flotilla_notificaciones"), {
+                tipo: "viaticos_solicitud", para: correo, mensaje: `${opsNombreActual()} solicita viáticos ${folio}: ${data.destino} · ${opsViaDinero(data.total)}.`,
+                leido: false, creadaEn: new Date().toISOString(),
+            }).catch(() => {})));
+            opsViaCerrar();
+            opsViaMostrarEnviada(data, resumen);
+            if (tabActual === "viaticos") opsRenderViaticos();
+        } catch (e) {
+            console.error("[viáticos] error al guardar:", e);
+            alert("No se pudo guardar la solicitud: " + (e.message || e));
+            if (btn) { btn.disabled = false; btn.textContent = "Enviar solicitud"; }
+        }
+    };
+    function opsViaResumenTexto(s) {
+        const t = s.tarifas || {};
+        return `SOLICITUD DE VIÁTICOS ${s.folio}\n`
+            + `Solicita: ${s.solicitante_nombre || s.solicitante_email || ""}\n`
+            + `Destino: ${s.destino || ""}${s.folio_servicio ? " (servicio " + s.folio_servicio + ")" : ""}\n`
+            + `Personal (${s.personas}): ${s.integrantes || ""}\n`
+            + `Salida: ${(t.salida || s.fecha_salida || "").replace("T", " ")} · Regreso: ${(t.regreso || s.fecha_regreso || "").replace("T", " ")}\n`
+            + `Distancia: ${opsViaNum(s.km_sencillo).toFixed(1)} km sencillo · Vehículo: ${s.tipo_vehiculo || ""} ${s.vehiculo || ""}\n\n`
+            + `Gasolina: ${opsViaDinero(s.gasolina)} (${s.km_sencillo} km × 2 ÷ ${s.rendimiento} km/l × $${s.precio_litro} × ${s.factor})\n`
+            + `Alimentos: ${opsViaDinero(s.alimentos)} (${s.desayunos} desayuno(s), ${s.comidas} comida(s), ${s.cenas} cena(s) por persona)\n`
+            + `Hospedaje: ${opsViaDinero(s.hospedaje)}${t.noches ? " (" + t.noches + " noche(s))" : ""}\n`
+            + `Casetas: ${opsViaDinero(s.casetas)} · Otros: ${opsViaDinero(s.otros)}\n`
+            + `TOTAL: ${opsViaDinero(s.total)}\n`
+            + (s.notas ? `\nNotas: ${s.notas}\n` : "");
+    }
+    function opsViaMostrarEnviada(s, resumen) {
+        const correos = (opsViaCfg.correosNotificar || []).join(",");
+        const mailto = `mailto:${correos}?subject=${encodeURIComponent("Solicitud de viáticos " + s.folio + " — " + (s.destino || ""))}&body=${encodeURIComponent(resumen)}`;
+        const wa = `https://wa.me/?text=${encodeURIComponent(resumen)}`;
+        document.getElementById("ops-modal-wrap").innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;">
+            <div style="background:#fff;border-radius:14px;width:520px;max-width:96vw;padding:22px;">
+                <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:17px;color:#15803d;margin-bottom:6px;">✅ Solicitud ${opsEsc(s.folio)} registrada</div>
+                <div style="font-size:12.5px;color:#475569;margin-bottom:12px;">Quedó en la lista de Viáticos con estatus <b>Pendiente</b> y se avisó en el portal a Cristina Acosta y a Pagos. Para asegurarte de que la vean hoy, mándala también por correo o WhatsApp:</div>
+                <pre style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px;font-size:11.5px;white-space:pre-wrap;max-height:240px;overflow-y:auto;">${opsEsc(resumen)}</pre>
+                <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:12px;">
+                    <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cerrar</button>
+                    <a href="${wa}" target="_blank" rel="noopener" class="mkt-add-btn" style="background:#15803d;text-decoration:none;">WhatsApp</a>
+                    <a href="${mailto}" class="mkt-add-btn" style="background:#1D2E73;text-decoration:none;">Enviar por correo</a>
+                </div>
+            </div>
+        </div>`;
+    }
+    window.opsViaVerDetalle = function (id) {
+        const s = opsViaLista.find(x => x.id === id);
+        if (s) opsViaMostrarEnviada(s, opsViaResumenTexto(s));
+    };
+
+    // ── Tarifas editables ──
+    window.opsViaAbrirTarifas = async function () {
+        await opsViaCargarCfg();
+        const c = opsViaCfg;
+        const campo = (label, key, valor, tipo = "number") => opsViaInput(label, "via-cfg-" + key, valor, `data-key="${key}"`, tipo);
+        document.getElementById("ops-modal-wrap").innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;">
+            <div style="background:#fff;border-radius:14px;width:640px;max-width:96vw;max-height:92vh;overflow-y:auto;padding:22px;">
+                <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:16px;color:#1D2E73;margin-bottom:12px;">Tarifas de viáticos (editables)</div>
+                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0 10px;">
+                    ${campo("Desayuno $", "desayuno", c.desayuno)}${campo("Comida $", "comida", c.comida)}${campo("Cena $", "cena", c.cena)}
+                    ${campo("Hora límite desayuno", "horaDesayuno", c.horaDesayuno, "time")}${campo("Hora comida", "horaComida", c.horaComida, "time")}${campo("Hora cena", "horaCena", c.horaCena, "time")}
+                    ${campo("Tope diario $", "topeDiario", c.topeDiario)}${campo("Precio litro $", "precioLitro", c.precioLitro)}${campo("Factor gasolina", "factor", c.factor)}
+                    ${campo("Km × (ida y vuelta)", "multiplicadorKm", c.multiplicadorKm)}${campo("Km mínimos p/ viáticos", "kmMinimoViaticos", c.kmMinimoViaticos)}${campo("Hotel $/noche", "hospedajePorNoche", c.hospedajePorNoche)}
+                </div>
+                <div style="font-weight:700;font-size:12.5px;color:#1D2E73;margin:6px 0 6px;">Rendimiento por tipo de vehículo (km/l)</div>
+                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0 10px;">
+                    ${(c.vehiculos || []).map((v, i) => opsViaInput(opsEsc(v.nombre), "via-cfg-veh-" + i, v.rendimiento, `data-veh="${i}"`, "number")).join("")}
+                </div>
+                <div style="font-weight:700;font-size:12.5px;color:#1D2E73;margin:6px 0 6px;">Punto de partida</div>
+                <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:0 10px;">
+                    ${opsViaInput("Nombre", "via-cfg-onombre", c.origen.nombre)}${opsViaInput("Latitud", "via-cfg-olat", c.origen.lat, "", "number")}${opsViaInput("Longitud", "via-cfg-olng", c.origen.lng, "", "number")}
+                </div>
+                ${opsViaInput("Correos a notificar (separados por coma)", "via-cfg-correos", (c.correosNotificar || []).join(", "))}
+                <div style="display:flex;gap:8px;justify-content:flex-end;">
+                    <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
+                    <button onclick="opsViaGuardarTarifas()" class="mkt-add-btn" style="background:#1D2E73;">Guardar tarifas</button>
+                </div>
+            </div>
+        </div>`;
+    };
+    window.opsViaGuardarTarifas = async function () {
+        const nuevo = JSON.parse(JSON.stringify(opsViaCfg));
+        document.querySelectorAll("[data-key]").forEach(inp => {
+            const k = inp.getAttribute("data-key");
+            nuevo[k] = inp.type === "number" ? Number(inp.value) : inp.value;
+        });
+        document.querySelectorAll("[data-veh]").forEach(inp => { const i = Number(inp.getAttribute("data-veh")); if (nuevo.vehiculos[i]) nuevo.vehiculos[i].rendimiento = Number(inp.value) || nuevo.vehiculos[i].rendimiento; });
+        nuevo.origen = { nombre: document.getElementById("via-cfg-onombre").value, lat: Number(document.getElementById("via-cfg-olat").value), lng: Number(document.getElementById("via-cfg-olng").value) };
+        nuevo.correosNotificar = document.getElementById("via-cfg-correos").value.split(",").map(x => x.trim()).filter(Boolean);
+        try {
+            const sb = await opsSb();
+            const { error } = await sb.from("ops_config_viaticos_solicitud").upsert({ id: "general", datos: nuevo, actualizado_en: new Date().toISOString(), actualizado_por: opsUsuarioActual() });
+            if (error) throw error;
+            opsViaCfg = nuevo;
+            document.getElementById("ops-modal-wrap").innerHTML = "";
+            if (window.mostrarPush) window.mostrarPush("Viáticos", "Tarifas actualizadas.", "✅");
+        } catch (e) { alert("No se pudieron guardar las tarifas: " + (e.message || e)); }
     };
 
 })();
