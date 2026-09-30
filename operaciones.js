@@ -168,10 +168,59 @@
         if (f.tipoFolio === "servicio" && f.categoriaServicio) return "srv:" + f.categoriaServicio;
         return "servicio";
     }
+    // ═══ Dos canales de color (Glen, sep-2026) ═══
+    // RELLENO = tipo de servicio (sale de la receta del catálogo; la receta puede
+    // traer colorCalendario propio, si no se usa el hash del nombre de la receta).
+    // TRAZO (borde izquierdo grueso) = estatus del folio. Vencido además va punteado.
+    // opsCalCategoriaFolio() se conserva igual para el filtro legacy y el import.
+    const OPS_CAL_ESTATUS = {
+        programado: { nombre: "Programado",           color: "#64748b" },
+        atencion:   { nombre: "En atención",          color: "#f97316" },
+        vencido:    { nombre: "Vencido / urgente",    color: "#dc2626", punteado: true },
+        cerrado:    { nombre: "Cerrado",              color: "#16a34a" },
+        facturar:   { nombre: "Listo para facturar",  color: "#0d9488" },
+    };
+    const OPS_CAL_ORDEN_ESTATUS = ["programado", "atencion", "vencido", "cerrado", "facturar"];
+    function opsCalRecetaFolio(f) {
+        return f.servicioCatalogoId ? (cacheServiciosCatalogo.find(x => x.id === f.servicioCatalogoId) || null) : null;
+    }
+    function opsCalMkColor(clave, nombre, color) {
+        return { clave, nombre, color, fondo: color + "1f", texto: color };
+    }
+    function opsCalServicioFolio(f) {
+        if (f.tipoFolio === "inspeccion") return opsCalMkColor("srv:insp:" + (f.normaInspeccion || ""), f.normaInspeccion ? "Visita " + f.normaInspeccion : "Visita de inspección", OPS_COLOR_NORMA[f.normaInspeccion] || "#0e7490");
+        if (f.tipoFolio === "laboratorio") return opsCalMkColor("srv:laboratorio", "Laboratorio", "#7c3aed");
+        const receta = opsCalRecetaFolio(f);
+        if (receta) {
+            if (receta.colorCalendario) return opsCalMkColor("srv:rec:" + receta.id, receta.nombre, receta.colorCalendario);
+            const c = opsColorCategoriaServicio(receta.nombre || receta.id);
+            return opsCalMkColor("srv:rec:" + receta.id, receta.nombre || "Servicio", c.color);
+        }
+        if (opsEsFolioJomar(f)) return opsCalMkColor("srv:jomar", "JOMAR", OPS_CAL_CATEGORIAS.jomar.color);
+        const nombreLibre = f.categoriaServicio || f.tipoServicioDemo;
+        if (nombreLibre) return opsCalMkColor("srv:txt:" + nombreLibre, nombreLibre, opsColorCategoriaServicio(nombreLibre).color);
+        return opsCalMkColor("srv:base", "Servicio sin receta", "#1d4ed8");
+    }
+    function opsCalEstatusFolio(f) {
+        let k = "programado";
+        if (opsFolioListoFacturar(f)) k = "facturar";
+        else if (f.fechaSolucion) k = "cerrado";
+        else {
+            const info = opsCalcularSemaforoFolio(f);
+            if (info.semaforo === "rojo" || info.semaforo === "naranja") k = "vencido";
+            else if (info.enAtencion) k = "atencion";
+        }
+        return { clave: k, ...OPS_CAL_ESTATUS[k] };
+    }
     function opsCalColorFolio(f) {
-        const cat = opsCalCategoriaFolio(f);
-        if (cat.startsWith("srv:")) return opsColorCategoriaServicio(cat.slice(4));
-        return OPS_CAL_CATEGORIAS[cat];
+        const srv = opsCalServicioFolio(f), est = opsCalEstatusFolio(f);
+        return { ...srv, estClave: est.clave, estNombre: est.nombre, estColor: est.color, punteado: !!est.punteado };
+    }
+    // Filtro por chip de leyenda: "srv:..." = tipo de servicio, "est:..." = estatus, lo demás = categoría legacy.
+    function opsCalCoincideCategoria(f, k) {
+        if (k.startsWith("est:")) return opsCalEstatusFolio(f).clave === k.slice(4);
+        if (k.startsWith("srv:")) return opsCalServicioFolio(f).clave === k;
+        return opsCalCategoriaFolio(f) === k;
     }
 
     // Tipo de técnico (badge chico junto al nombre) — sale de las habilidades ya capturadas en su ficha.
@@ -5297,7 +5346,7 @@
         if (opsCalFiltroEstado === "cerrado") l = l.filter(f => !!f.fechaSolucion);
         else if (opsCalFiltroEstado === "atencion") l = l.filter(f => !f.fechaSolucion && !!f.fechaAtencion);
         else if (opsCalFiltroEstado === "abierto") l = l.filter(f => !f.fechaSolucion && !f.fechaAtencion);
-        if (opsCalFiltroCategoria !== "todas") l = l.filter(f => opsCalCategoriaFolio(f) === opsCalFiltroCategoria);
+        if (opsCalFiltroCategoria !== "todas") l = l.filter(f => opsCalCoincideCategoria(f, opsCalFiltroCategoria));
         return l;
     }
 
@@ -5529,19 +5578,21 @@
 
     // ── Leyenda discreta (los chips también sirven para filtrar con un clic) ──
     function opsCalHTMLLeyenda() {
-        const chips = OPS_CAL_ORDEN_CATEGORIAS.map(k => {
-            const c = OPS_CAL_CATEGORIAS[k], on = opsCalFiltroCategoria === k;
-            return `<button onclick="opsCalToggleCategoria('${k}')" title="Clic para ver solo esta categoría" style="display:inline-flex;align-items:center;gap:6px;background:${on ? c.fondo : "#fff"};border:1px solid ${on ? c.color : "#e2e8f0"};color:${on ? c.texto : "#475569"};padding:4px 10px;border-radius:999px;font-size:10.5px;font-weight:600;cursor:pointer;">
-                <span style="width:9px;height:9px;border-radius:3px;background:${c.color};"></span>${opsEsc(c.nombre)}</button>`;
-        }).join("");
-        // categorías de servicio dinámicas (Retank, Pólizas, etc.) presentes en los folios actuales
-        const categoriasServicioPresentes = [...new Set(cacheFolios.filter(f => f.tipoFolio === "servicio" && f.categoriaServicio).map(f => f.categoriaServicio))].sort();
-        const chipsServicio = categoriasServicioPresentes.map(cat => {
-            const c = opsColorCategoriaServicio(cat), on = opsCalFiltroCategoria === "srv:" + cat;
-            return `<button onclick="opsCalToggleCategoria('srv:${opsEsc(cat)}')" title="Clic para ver solo esta categoría" style="display:inline-flex;align-items:center;gap:6px;background:${on ? c.fondo : "#fff"};border:1px solid ${on ? c.color : "#e2e8f0"};color:${on ? c.texto : "#475569"};padding:4px 10px;border-radius:999px;font-size:10.5px;font-weight:600;cursor:pointer;">
-                <span style="width:9px;height:9px;border-radius:3px;background:${c.color};"></span>${opsEsc(c.nombre)}</button>`;
-        }).join("");
-        return `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">${chips}${chipsServicio}</div>`;
+        const chip = (k, nombre, color, fondo, trazo, punteado) => {
+            const on = opsCalFiltroCategoria === k;
+            const muestra = trazo
+                ? `<span style="width:12px;height:10px;border-radius:2px;background:#f8fafc;border:1px ${punteado ? "dashed" : "solid"} ${color};border-left:4px solid ${color};"></span>`
+                : `<span style="width:12px;height:10px;border-radius:3px;background:${color};"></span>`;
+            return `<button data-k="${opsEsc(k)}" onclick="opsCalToggleCategoria(this.dataset.k)" title="Clic para ver solo esta categoría" style="display:inline-flex;align-items:center;gap:6px;background:${on ? fondo : "#fff"};border:1px solid ${on ? color : "#e2e8f0"};color:${on ? color : "#475569"};padding:4px 10px;border-radius:999px;font-size:10.5px;font-weight:600;cursor:pointer;">${muestra}${opsEsc(nombre)}</button>`;
+        };
+        const vistos = new Map();
+        cacheFolios.forEach(f => { const c = opsCalServicioFolio(f); if (!vistos.has(c.clave)) vistos.set(c.clave, c); });
+        const servicios = [...vistos.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+        const fila = (titulo, html) => `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;"><span style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.4px;min-width:118px;">${titulo}</span>${html}</div>`;
+        return `<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px;">
+            ${fila("Relleno · servicio", servicios.map(c => chip(c.clave, c.nombre, c.color, c.fondo, false)).join(""))}
+            ${fila("Trazo · estatus", OPS_CAL_ORDEN_ESTATUS.map(k => { const e = OPS_CAL_ESTATUS[k]; return chip("est:" + k, e.nombre, e.color, e.color + "14", true, e.punteado); }).join(""))}
+        </div>`;
     }
 
     // Leyenda de símbolos (pie de la vista Día)
@@ -5550,7 +5601,8 @@
             <div style="display:flex;align-items:center;gap:5px;"><span style="width:16px;height:5px;border-radius:3px;background:repeating-linear-gradient(45deg,#94a3b8,#94a3b8 3px,#cbd5e1 3px,#cbd5e1 6px);display:inline-block;"></span> Traslado (franja inferior de la tarjeta)</div>
             <div style="display:flex;align-items:center;gap:5px;"><span style="width:14px;height:12px;border-radius:3px;background:repeating-linear-gradient(45deg,#e2e8f0,#e2e8f0 4px,#f1f5f9 4px,#f1f5f9 8px);display:inline-block;"></span> Ausente</div>
             <div style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:2px;background:#E7402B;display:inline-block;"></span> Hora actual</div>
-            <div style="display:flex;align-items:center;gap:5px;"><span style="width:14px;height:12px;border-radius:4px;border:2px solid #E7402B;display:inline-block;"></span> Choque de horario / falta personal</div>
+            <div style="display:flex;align-items:center;gap:5px;"><span style="width:14px;height:12px;border-radius:4px;border:2px solid #E7402B;display:inline-block;"></span> Choque de horario</div>
+            <div style="display:flex;align-items:center;gap:5px;"><span style="color:#E7402B;display:inline-flex;">${ICON.alert}</span> Falta personal contra la receta</div>
             <div style="display:flex;align-items:center;gap:5px;"><span style="color:#94a3b8;">Arrastra una tarjeta a otra fila u hora para reprogramar</span></div>
         </div>`;
     }
@@ -5602,24 +5654,24 @@
                     const receta = f.servicioCatalogoId ? cacheServiciosCatalogo.find(x => x.id === f.servicioCatalogoId) : null;
                     const rolesReq = receta ? (receta.personal || []).reduce((n, p) => n + (p.cantidad || 1), 0) : null;
                     const faltaGente = rolesReq !== null && (f.tecnicosAsignadosIds || []).length < rolesReq;
-                    const problema = choqueSet.has(f.id) || faltaGente;
                     const anchoPct = Math.min((dur / totalHrs) * 100, 100);
                     const izqPct = Math.min(((ini - OPS_CAL_HORA_INICIO) / totalHrs) * 100, 100 - anchoPct);
                     const sinHora = !(f.fechaProgramada || "").includes("T");
                     const finDec = d.horaDecimal + d.traslado + d.ejecucion;
                     const horaTxt = sinHora ? "Sin hora" : (d.traslado + d.ejecucion > 0 ? `${opsCalFmtHora(d.horaDecimal)}–${opsCalFmtHora(finDec)}` : opsCalFmtHora(d.horaDecimal));
                     const propTraslado = d.traslado ? (d.traslado / ((d.traslado + d.ejecucion) || 1)) * 100 : 0;
-                    const tip = `${f.estacion}${f.folioOS ? " · O.S. " + f.folioOS : ""}\n${f.clienteNombre || "Sin cliente"} · ${opsCalTipoTexto(f)}\n${horaTxt} · ${cat.nombre} · ${info.estado}${choqueSet.has(f.id) ? "\n⚠ Choque de horario" : ""}${faltaGente ? "\n⚠ Falta personal contra la receta" : ""}`;
+                    const tip = `${f.estacion}${f.folioOS ? " · O.S. " + f.folioOS : ""}\n${f.clienteNombre || "Sin cliente"} · ${opsCalTipoTexto(f)}\n${horaTxt} · ${cat.nombre} · ${cat.estNombre} (${info.estado})${choqueSet.has(f.id) ? "\n⚠ Choque de horario" : ""}${faltaGente ? "\n⚠ Falta personal contra la receta" : ""}`;
                     return `<div class="ops-cal-card" ${opsPuedeGestionar() ? `draggable="true" ondragstart="opsCalArrastrarFolio(event,'${f.id}')"` : ""} onclick="opsAbrirPanelFolio('${f.id}')" title="${opsEsc(tip)}"
-                        style="position:absolute;top:${carril * OPS_CAL_ALTO_CARRIL + 5}px;height:${OPS_CAL_ALTO_CARRIL - 6}px;left:${izqPct}%;width:calc(${anchoPct}% - 3px);box-sizing:border-box;background:${cat.fondo};border:1px solid ${cat.color}40;border-left:4px solid ${cat.color};border-radius:10px;${problema ? "outline:2px solid #E7402B;outline-offset:1px;" : ""}box-shadow:0 1px 3px rgba(15,23,42,.10);padding:5px 8px 7px 8px;overflow:hidden;cursor:pointer;z-index:2;display:flex;flex-direction:column;justify-content:space-between;">
+                        style="position:absolute;top:${carril * OPS_CAL_ALTO_CARRIL + 5}px;height:${OPS_CAL_ALTO_CARRIL - 6}px;left:${izqPct}%;width:calc(${anchoPct}% - 3px);box-sizing:border-box;background:${cat.fondo};border:1px ${cat.punteado ? "dashed" : "solid"} ${cat.punteado ? cat.estColor : cat.color + "55"};border-left:5px solid ${cat.estColor};border-radius:10px;${choqueSet.has(f.id) ? "outline:2px solid #E7402B;outline-offset:1px;" : ""}box-shadow:0 1px 3px rgba(15,23,42,.10);padding:5px 8px 7px 8px;overflow:hidden;cursor:pointer;z-index:2;display:flex;flex-direction:column;justify-content:space-between;">
                         <div style="display:flex;align-items:center;gap:5px;min-width:0;">
                             <span style="font-size:9px;font-weight:800;color:${cat.texto};background:${cat.color}26;padding:1px 5px;border-radius:5px;white-space:nowrap;flex-shrink:0;">${f.folioOS ? "O.S. " + opsEsc(f.folioOS) : "S/F"}</span>
                             <span style="font-size:11px;font-weight:700;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${opsEsc(f.estacion)}</span>
+                            ${faltaGente ? `<span title="Falta personal contra la receta" style="margin-left:auto;color:#E7402B;display:inline-flex;flex-shrink:0;">${ICON.alert}</span>` : ""}
                         </div>
                         <div style="font-size:10px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${opsEsc(f.clienteNombre || "Sin cliente")} · ${opsEsc(opsCalTipoTexto(f))}</div>
                         <div style="display:flex;align-items:center;gap:6px;min-width:0;">
                             <span style="font-size:10px;font-weight:600;color:#334155;white-space:nowrap;">${horaTxt}</span>
-                            <span style="font-size:9px;font-weight:700;color:${cat.texto};background:${cat.color}22;padding:0 6px;border-radius:999px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${opsEsc(opsCalEstadoCorto(f, info))}</span>
+                            <span style="font-size:9px;font-weight:700;color:#fff;background:${cat.estColor};padding:0 6px;border-radius:999px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${opsEsc(opsCalEstadoCorto(f, info))}</span>
                             ${opsCalMiniAvatares(f)}
                         </div>
                         ${d.traslado ? `<div style="position:absolute;left:0;right:0;bottom:0;height:3px;display:flex;"><div style="width:${propTraslado}%;background:repeating-linear-gradient(45deg,${cat.color}70,${cat.color}70 3px,${cat.color}30 3px,${cat.color}30 6px);"></div><div style="flex:1;background:${cat.color};"></div></div>` : `<div style="position:absolute;left:0;right:0;bottom:0;height:3px;background:${cat.color};"></div>`}
@@ -5678,7 +5730,7 @@
                 ${vis.map(f => {
                     const cat = opsCalColorFolio(f), d = opsCalDatosFolio(f);
                     const sinHora = !(f.fechaProgramada || "").includes("T");
-                    return `<div class="ops-cal-chip" onclick="opsAbrirPanelFolio('${f.id}')" title="${opsEsc((f.folioOS ? "O.S. " + f.folioOS + " · " : "") + f.estacion + " · " + (f.clienteNombre || "Sin cliente") + " · " + cat.nombre)}" style="background:${cat.fondo};border:1px solid ${cat.color}40;border-left:3px solid ${cat.color};border-radius:7px;padding:3px 6px;margin-bottom:3px;cursor:pointer;overflow:hidden;">
+                    return `<div class="ops-cal-chip" onclick="opsAbrirPanelFolio('${f.id}')" title="${opsEsc((f.folioOS ? "O.S. " + f.folioOS + " · " : "") + f.estacion + " · " + (f.clienteNombre || "Sin cliente") + " · " + cat.nombre + " · " + cat.estNombre)}" style="background:${cat.fondo};border:1px ${cat.punteado ? "dashed" : "solid"} ${cat.punteado ? cat.estColor : cat.color + "55"};border-left:4px solid ${cat.estColor};border-radius:7px;padding:3px 6px;margin-bottom:3px;cursor:pointer;overflow:hidden;">
                         <div style="font-size:10.5px;font-weight:700;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${opsEsc(f.estacion)}</div>
                         <div style="font-size:9.5px;color:${cat.texto};font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${sinHora ? "Sin hora" : opsCalFmtHora(d.horaDecimal)} · ${opsEsc(opsCalTipoTexto(f))}</div>
                     </div>`;
@@ -6191,8 +6243,89 @@
         catch (e) { docu.save("Folios_seguimiento_" + opsFechaHora().slice(0, 10) + ".pdf"); }
     };
 
+    // ═══ Secciones "Aplica / No aplica" del folio (Glen, sep-2026) ═══
+    // El tipo de folio decide qué bloques se ven por defecto; el usuario puede
+    // prender/apagar cada uno. Se guarda en f.seccionesAplica. Los campos de un bloque
+    // apagado NO se borran — solo se ocultan (así no se pierde nada por un clic).
+    const OPS_FOLIO_SECCIONES = {
+        sla:      { nombre: "SLA y prioridad" },
+        contacto: { nombre: "Contacto y encargado" },
+        fac:      { nombre: "Facturación y proyecto" },
+        via:      { nombre: "Viáticos y traslado" },
+        scfi:     { nombre: "SCFI (hologramas, precintos, distintivos)" },
+    };
+    const OPS_FOLIO_PRESETS = {
+        servicio:    ["sla", "contacto", "fac", "via"],
+        inspeccion:  ["contacto", "via"],
+        laboratorio: ["sla", "contacto", "fac"],
+    };
+    function opsFolioSeccionesIniciales(f) {
+        if (f && Array.isArray(f.seccionesAplica)) return f.seccionesAplica.slice();
+        const set = new Set(OPS_FOLIO_PRESETS[f?.tipoFolio || "servicio"] || OPS_FOLIO_PRESETS.servicio);
+        if (!f) return [...set];
+        // Folio anterior a este cambio: además se prenden los bloques que ya traen datos, para no esconder nada capturado.
+        if (f.esSCFI || f.normaInspeccion === "SCFI") set.add("scfi");
+        if (f.prioridad) set.add("sla");
+        if (f.contactoNombre || f.contactoTelefono || f.encargadoInterno) set.add("contacto");
+        if (f.facturarA || f.proyecto) set.add("fac");
+        if (f.viaticosMonto || f.hospedajeMonto || f.casetasMonto || f.gastoEstimado || f.diasTrabajo || f.kmEstimados || f.viaticosPendientes) set.add("via");
+        return [...set];
+    }
+    function opsFolioChipsHTML() {
+        const s = window.__opsFolioSecciones || new Set();
+        return Object.keys(OPS_FOLIO_SECCIONES).map(k => {
+            const on = s.has(k);
+            return `<button type="button" onclick="opsFolioToggleSec('${k}')" style="display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;font-size:11.5px;font-weight:600;cursor:pointer;border:1px solid ${on ? "#1D2E73" : "#cbd5e1"};background:${on ? "#E9ECF5" : "#fff"};color:${on ? "#1D2E73" : "#64748b"};">${on ? ICON.check : ICON.plus} ${opsEsc(OPS_FOLIO_SECCIONES[k].nombre)}</button>`;
+        }).join("");
+    }
+    function opsFolioSecOffHTML(k, visible) {
+        return `<div data-ops-sec-off="${k}" onclick="opsFolioToggleSec('${k}')" style="display:${visible ? "flex" : "none"};align-items:center;justify-content:space-between;gap:8px;border:1px dashed #cbd5e1;border-radius:8px;padding:8px 12px;margin:0 0 10px;font-size:11.5px;color:#94a3b8;cursor:pointer;background:#f8fafc;"><span>${opsEsc(OPS_FOLIO_SECCIONES[k].nombre)} · No aplica</span><span style="color:#1D2E73;font-weight:700;">Activar</span></div>`;
+    }
+    function opsFolioAplicarSecciones() {
+        const s = window.__opsFolioSecciones || new Set();
+        document.querySelectorAll("#ops-modal-wrap [data-ops-sec]").forEach(el => { el.style.display = s.has(el.dataset.opsSec) ? "block" : "none"; });
+        document.querySelectorAll("#ops-modal-wrap [data-ops-sec-off]").forEach(el => { el.style.display = s.has(el.dataset.opsSecOff) ? "none" : "flex"; });
+        const scfi = document.getElementById("ops-fol-es-scfi");
+        if (scfi) scfi.checked = s.has("scfi");
+        const chips = document.getElementById("ops-fol-chips");
+        if (chips) chips.innerHTML = opsFolioChipsHTML();
+    }
+    window.opsFolioToggleSec = function (k) {
+        const s = window.__opsFolioSecciones || (window.__opsFolioSecciones = new Set());
+        if (s.has(k)) s.delete(k); else s.add(k);
+        opsFolioAplicarSecciones();
+    };
+    // Cambiar el tipo aplica su preset de secciones (los datos ya capturados se conservan, solo se ocultan).
+    window.opsFolioSetTipo = function (tipo) {
+        document.getElementById("ops-fol-tipo").value = tipo;
+        document.getElementById("ops-fol-norma-wrap").style.display = tipo === "inspeccion" ? "block" : "none";
+        document.querySelectorAll("#ops-modal-wrap [data-ops-tipo-btn]").forEach(b => {
+            const on = b.dataset.opsTipoBtn === tipo;
+            b.style.background = on ? "#1D2E73" : "#fff"; b.style.color = on ? "#fff" : "#475569";
+        });
+        const set = new Set(OPS_FOLIO_PRESETS[tipo] || []);
+        if (tipo === "inspeccion" && document.getElementById("ops-fol-norma")?.value === "SCFI") set.add("scfi");
+        window.__opsFolioSecciones = set;
+        opsFolioAplicarSecciones();
+    };
+    window.opsFolioCambioNorma = function (norma) {
+        if (norma === "SCFI") { (window.__opsFolioSecciones || (window.__opsFolioSecciones = new Set())).add("scfi"); opsFolioAplicarSecciones(); }
+    };
+    // Al ligar una receta: si la receta trae horas de ejecución por defecto y el campo está vacío, se precarga.
+    window.opsFolioPrecargarReceta = function () {
+        const idRec = document.getElementById("ops-fol-servicio")?.value;
+        const receta = idRec ? cacheServiciosCatalogo.find(x => x.id === idRec) : null;
+        const ejec = document.getElementById("ops-fol-tiempo-ejec");
+        if (receta && receta.horasEjecucion && ejec && !ejec.value) ejec.value = receta.horasEjecucion;
+    };
+
     window.opsAbrirModalFolio = function (id, fechaSugerida) {
         const f = id ? cacheFolios.find(x => x.id === id) : null;
+        const secIni = opsFolioSeccionesIniciales(f);
+        window.__opsFolioSecciones = new Set(secIni);
+        const tipoIni = f?.tipoFolio || "servicio";
+        const secAbre = k => `<div data-ops-sec="${k}" style="display:${secIni.includes(k) ? "block" : "none"};">`;
+        const secCierra = k => `</div>${opsFolioSecOffHTML(k, !secIni.includes(k))}`;
         const programadaDefault = f?.fechaProgramada || (fechaSugerida ? fechaSugerida + "T08:00" : "");
         const wrap = document.getElementById("ops-modal-wrap");
         const solicitudDefault = f?.fechaSolicitud || (() => {
@@ -6203,9 +6336,18 @@
         wrap.innerHTML = `
         <div style="position:fixed;inset:0;background:rgba(15,23,42,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;padding:24px;">
             <div style="background:#f4f6f9;border-radius:16px;width:1180px;max-width:98vw;max-height:92vh;overflow-y:auto;padding:24px;">
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
-                    <div style="font-weight:700;font-size:17px;color:#1e293b;">${f ? "Editar folio" : "Nuevo folio"}</div>
-                    ${f ? `<div style="font-size:11.5px;color:#94a3b8;">${opsEsc(f.folioOS ? "O.S. " + f.folioOS : f.id)}</div>` : ""}
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+                    <div style="display:flex;align-items:baseline;gap:10px;">
+                        <div style="font-weight:700;font-size:17px;color:#1e293b;">${f ? "Editar folio" : "Nuevo folio"}</div>
+                        ${f ? `<div style="font-size:11.5px;color:#94a3b8;">${opsEsc(f.folioOS ? "O.S. " + f.folioOS : f.id)}</div>` : ""}
+                    </div>
+                    <div style="display:inline-flex;border:1px solid #cbd5e1;border-radius:9px;overflow:hidden;background:#fff;">
+                        ${OPS_TIPOS_FOLIO.map(t => `<button type="button" data-ops-tipo-btn="${t.clave}" onclick="opsFolioSetTipo('${t.clave}')" style="border:none;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;background:${tipoIni === t.clave ? "#1D2E73" : "#fff"};color:${tipoIni === t.clave ? "#fff" : "#475569"};">${opsEsc(t.nombre)}</button>`).join("")}
+                    </div>
+                </div>
+                <div style="background:#fff;border-radius:12px;padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                    <span style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Aplica a este folio</span>
+                    <div id="ops-fol-chips" style="display:flex;gap:6px;flex-wrap:wrap;">${opsFolioChipsHTML()}</div>
                 </div>
 
                 <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">
@@ -6221,11 +6363,9 @@
                     <div id="ops-fol-estacion-results" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #cbd5e1;border-radius:8px;max-height:200px;overflow-y:auto;z-index:20;box-shadow:0 8px 24px rgba(2,20,50,.14);"></div>
                     <div id="ops-fol-estacion-info" style="font-size:10px;color:#15803D;font-weight:600;min-height:14px;margin-bottom:6px;">${f?.estacionCatalogoId ? `Del catálogo${f.estacionEncargado ? " · Encargado: " + opsEsc(f.estacionEncargado) : ""}${f.estacionZona ? " · Zona " + opsEsc(f.estacionZona) : ""}` : ""}</div></div>
 
-                    <label style="display:flex;align-items:center;gap:7px;margin:2px 0 8px;font-size:12.5px;color:#334155;cursor:pointer;">
-                        <input type="checkbox" id="ops-fol-es-scfi" ${f?.esSCFI ? "checked" : ""} onchange="document.getElementById('ops-fol-scfi-campos').style.display=this.checked?'block':'none';" style="width:15px;height:15px;">
-                        Es servicio de SCFI (necesita hologramas/precintos/distintivos/viáticos)
-                    </label>
-                    <div id="ops-fol-scfi-campos" style="display:${f?.esSCFI ? "block" : "none"};background:#faf5ff;border:1px solid #ede4fb;border-radius:10px;padding:14px;margin-bottom:14px;">
+                    <input type="checkbox" id="ops-fol-es-scfi" ${secIni.includes("scfi") ? "checked" : ""} style="display:none;">
+                    ${secAbre("scfi")}
+                    <div id="ops-fol-scfi-campos" style="background:#faf5ff;border:1px solid #ede4fb;border-radius:10px;padding:14px;margin-bottom:14px;">
                         <div style="font-size:10.5px;color:#7c3aed;margin-bottom:10px;font-weight:600;">Razón social y permiso se toman solos del catálogo de la estación de arriba. Aquí solo captura cuántos va a usar el técnico.</div>
                         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
                             <div><label style="font-size:11px;color:#64748b;font-weight:600;">Hologramas</label>
@@ -6238,17 +6378,15 @@
                             <input id="ops-fol-viaticos" type="number" min="0" value="${f?.viaticos ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin:3px 0;"></div>
                         </div>
                     </div>
+                    ${secCierra("scfi")}
 
                     <label style="font-size:11.5px;color:#64748b;font-weight:600;">Comentarios</label>
                     <textarea id="ops-fol-comentarios" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;min-height:50px;">${opsEsc(f?.comentarios || "")}</textarea>
 
                     <div style="display:flex;gap:8px;">
-                        <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Tipo de folio</label>
-                        <select id="ops-fol-tipo" onchange="document.getElementById('ops-fol-norma-wrap').style.display=this.value==='inspeccion'?'block':'none';" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
-                            ${OPS_TIPOS_FOLIO.map(t => `<option value="${t.clave}" ${(f?.tipoFolio || "servicio") === t.clave ? "selected" : ""}>${opsEsc(t.nombre)}</option>`).join("")}
-                        </select></div>
+                        <input type="hidden" id="ops-fol-tipo" value="${opsEsc(tipoIni)}">
                         <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Servicio (catálogo)</label>
-                        <select id="ops-fol-servicio" onchange="window.opsFolioSugerirTecnicos('${id || ""}')" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                        <select id="ops-fol-servicio" onchange="window.opsFolioPrecargarReceta();window.opsFolioSugerirTecnicos('${id || ""}')" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
                             <option value="">— Sin ligar —</option>
                             ${cacheServiciosCatalogo.map(s => `<option value="${s.id}" data-categoria="${opsEsc(s.categoria || "")}" ${f?.servicioCatalogoId === s.id ? "selected" : ""}>${opsEsc(s.nombre)}</option>`).join("")}
                         </select></div>
@@ -6256,7 +6394,7 @@
 
                     <div id="ops-fol-norma-wrap" style="display:${(f?.tipoFolio === "inspeccion") ? "block" : "none"};margin-bottom:10px;">
                         <label style="font-size:11.5px;color:#64748b;font-weight:600;">Norma / tipo de visita</label>
-                        <select id="ops-fol-norma" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0;">
+                        <select id="ops-fol-norma" onchange="window.opsFolioCambioNorma(this.value)" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0;">
                             ${OPS_NORMAS_INSPECCION.map(n => `<option value="${opsEsc(n)}" ${f?.normaInspeccion === n ? "selected" : ""}>${opsEsc(n)}</option>`).join("")}
                         </select>
                     </div>
@@ -6284,6 +6422,7 @@
                         <button type="button" onclick="window.opsDetectarClienteFolio()" style="background:#eef2f7;border:none;color:#1f2937;padding:9px 12px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:600;margin-bottom:10px;">Detectar</button>
                     </div>
 
+                    ${secAbre("sla")}
                     <label style="font-size:11.5px;color:#64748b;font-weight:600;">Prioridad</label>
                     <select id="ops-fol-prioridad" onchange="window.opsFolioActualizarVencimientoPreview()" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
                         <option value="">— Sin prioridad —</option>
@@ -6299,6 +6438,7 @@
                         <input type="datetime-local" id="ops-fol-vencimiento" value="${f?.vencimiento && !vencAuto ? f.vencimiento : ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
                         <div style="font-size:10px;color:#94a3b8;margin:-6px 0 10px;">Sin Cliente + Prioridad no se puede calcular automático — captúralo manual (folios legacy/importados).</div>
                     </div>
+                    ${secCierra("sla")}
 
                     <div style="display:flex;gap:8px;">
                         <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Fecha de atención</label>
@@ -6338,6 +6478,7 @@
 
                 <div style="flex:1;min-width:340px;background:#fff;border-radius:12px;border-top:3px solid #15803D;box-shadow:0 1px 2px rgba(15,23,42,.04),0 4px 14px rgba(15,23,42,.06);padding:20px;">
                     <div style="font-size:13px;font-weight:700;color:#15803D;margin-bottom:16px;display:flex;align-items:center;gap:7px;">${ICON.check} Cliente, facturación y gastos</div>
+                    ${secAbre("contacto")}
                     <div style="display:flex;gap:8px;">
                         <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Contacto que solicita</label>
                         <input id="ops-fol-contacto-nombre" value="${opsEsc(f?.contactoNombre || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
@@ -6347,15 +6488,19 @@
 
                     <label style="font-size:11.5px;color:#64748b;font-weight:600;">Encargado interno de gestionar requisitos</label>
                     <input id="ops-fol-encargado" value="${opsEsc(f?.encargadoInterno || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                    ${secCierra("contacto")}
 
+                    ${secAbre("fac")}
                     <div style="display:flex;gap:8px;">
                         <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">A quién se factura</label>
                         <input id="ops-fol-facturar-a" value="${opsEsc(f?.facturarA || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
                         <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Proyecto</label>
                         <input id="ops-fol-proyecto" value="${opsEsc(f?.proyecto || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"></div>
                     </div>
+                    ${secCierra("fac")}
 
-                    <div style="background:#f0f9ff;border:1px solid #dbeefb;border-radius:10px;margin:16px 0 0;padding:14px;">
+                    ${secAbre("via")}
+                    <div style="background:#f0f9ff;border:1px solid #dbeefb;border-radius:10px;margin:6px 0 0;padding:14px;">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                             <div style="font-size:11.5px;font-weight:700;color:#1D2E73;">Calculadora de viáticos / hospedaje / casetas</div>
                             ${opsPuedeGestionar() ? `<button type="button" onclick="opsAbrirModalConfigViaticos()" style="background:none;border:none;color:#94a3b8;cursor:pointer;padding:2px;" title="Ajustar tarifas">${ICON.gear}</button>` : ""}
@@ -6385,6 +6530,7 @@
                         <input type="checkbox" id="ops-fol-viaticos-pend" ${f?.viaticosPendientes ? "checked" : ""} style="width:15px;height:15px;"> Viáticos pendientes de pago
                     </label>
                     <div style="font-size:10px;color:#94a3b8;margin:-4px 0 16px;">Contabilidad/Pagos siguen siendo quienes marcan el pago real — esto aquí es solo la bandera de "está pendiente" ligada al folio.</div>
+                    ${secCierra("via")}
                 </div>
 
                 </div>
@@ -6665,6 +6811,7 @@
             estacionLat: window.__opsFolioEstMeta?.lat ?? null,
             estacionLng: window.__opsFolioEstMeta?.lng ?? null,
             esSCFI: document.getElementById("ops-fol-es-scfi").checked,
+            seccionesAplica: [...(window.__opsFolioSecciones || [])],
             hologramas: document.getElementById("ops-fol-hologramas").value ? Number(document.getElementById("ops-fol-hologramas").value) : null,
             precintos: document.getElementById("ops-fol-precintos").value ? Number(document.getElementById("ops-fol-precintos").value) : null,
             distintivos: document.getElementById("ops-fol-distintivos").value ? Number(document.getElementById("ops-fol-distintivos").value) : null,
@@ -7895,7 +8042,7 @@
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;">
                 ${cacheServiciosCatalogo.length ? cacheServiciosCatalogo.map(s => `
                     <div onclick="opsAbrirFichaServicio('${s.id}')" style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:15px 16px;cursor:pointer;transition:border-color .15s;" onmouseover="this.style.borderColor='#1D2E73'" onmouseout="this.style.borderColor='#e2e8f0'">
-                        <div style="font-size:13.5px;font-weight:700;color:#1e293b;line-height:1.3;">${opsEsc(s.nombre)}</div>
+                        <div style="font-size:13.5px;font-weight:700;color:#1e293b;line-height:1.3;display:flex;align-items:center;gap:7px;"><span style="width:10px;height:10px;border-radius:3px;flex-shrink:0;background:${s.colorCalendario || opsColorCategoriaServicio(s.nombre || s.id || "").color};"></span>${opsEsc(s.nombre)}</div>
                         <div style="font-size:11px;color:#94a3b8;margin:2px 0 10px;">${opsEsc(s.categoria || "Sin categoría")} · ${s.tipoServicio === "externo" ? "Externo" : (s.tipoServicio === "interno" ? "Interno" : "Interno/Externo")}</div>
                         <div style="font-size:11px;color:#334155;">${(s.personal || []).map(p => `${p.cantidad} ${p.rol.replace("_", " ")}`).join(" · ")}</div>
                         <div style="font-size:11px;color:#334155;margin-top:3px;">${(s.materiales || []).length} materiales · ${(s.herramientaRequerida || []).length} herramientas</div>
@@ -8002,6 +8149,7 @@
         obj[partes[partes.length - 1]] = valor;
     }
     window.opsServCampo = function (ruta, valor, esNumero) { opsServSet(ruta, esNumero ? Number(valor) || 0 : valor); };
+    window.opsServColorAuto = function () { if (!servicioEditDraft) return; delete servicioEditDraft.colorCalendario; opsRenderFichaServicio(); };
 
     window.opsServAgregarFila = function (lista, plantilla) {
         if (!servicioEditDraft[lista]) servicioEditDraft[lista] = [];
@@ -8174,7 +8322,23 @@
 
         const calculo = opsCalcularCostoServicio(s, calculoActual.cantidad, calculoActual.dias);
 
+        const colorRecAuto = opsColorCategoriaServicio(s.nombre || s.id || "").color;
         const tabResumen = `
+                <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;margin-bottom:10px;">
+                    <div>
+                        <div style="font-size:10.5px;color:#475569;font-weight:600;margin-bottom:4px;">Color en el Calendario</div>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <input type="color" value="${opsEsc(s.colorCalendario || colorRecAuto)}" oninput="opsServCampo('colorCalendario', this.value);this.nextElementSibling.textContent='Personalizado'" ${gestion ? "" : "disabled"} style="width:38px;height:30px;border:1px solid #cbd5e1;border-radius:6px;padding:0;background:#fff;cursor:pointer;">
+                            <span style="font-size:10.5px;color:#94a3b8;">${s.colorCalendario ? "Personalizado" : "Automático"}</span>
+                            ${gestion && s.colorCalendario ? `<button type="button" onclick="opsServColorAuto()" style="background:none;border:none;color:#1D2E73;font-size:10.5px;font-weight:600;cursor:pointer;">Usar automático</button>` : ""}
+                        </div>
+                    </div>
+                    <div style="width:170px;">
+                        <div style="font-size:10.5px;color:#475569;font-weight:600;margin-bottom:4px;">Horas de ejecución por defecto</div>
+                        ${inp(s.horasEjecucion, "horasEjecucion", true, "Ej. 6", "100%")}
+                    </div>
+                    <div style="flex:1;min-width:180px;font-size:10px;color:#94a3b8;">Relleno de las tarjetas del Calendario para todos los folios ligados a esta receta. Las horas se precargan al ligar un folio si el campo está vacío.</div>
+                </div>
                 <div style="background:#E9ECF5;border-radius:12px;padding:14px 16px;margin-bottom:6px;">
                     <div style="font-size:11px;font-weight:700;color:#1D2E73;text-transform:uppercase;margin-bottom:8px;">Calculadora — este trabajo</div>
                     <div style="display:flex;gap:10px;margin-bottom:10px;">
