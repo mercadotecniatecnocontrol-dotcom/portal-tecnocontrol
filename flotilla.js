@@ -1144,7 +1144,7 @@ async function flRevisarTransferenciasPendientes(){
       await fs.updateDoc(fs.doc(db,C.TRANS,t.id),{avisadoPendiente:true});
       const destinatarios=new Set(FLOTILLA_ADMINS);
       if(t.receptorEmail)destinatarios.add(t.receptorEmail);
-      await Promise.all([...destinatarios].map(admEmail=>fs.addDoc(fs.collection(db,'flotilla_notificaciones'),{
+      await Promise.all([...destinatarios].map(admEmail=>window.tcNotificar2(fs, db,{
         tipo:'transferencia_pendiente_larga',codigo:t.codigo,vehiculoEco:t.vehiculoEco||'—',
         para:admEmail,
         mensaje:`Transferencia del ECO ${t.vehiculoEco||'—'} sigue "Pendiente recepción" desde hace más de 72h (código ${t.codigo}). Entregó: ${t.entregaNombre||'—'}.`,
@@ -1161,7 +1161,7 @@ async function flRevisarTransferenciasPendientes(){
       const destinatarios=new Set(FLOTILLA_ADMINS);
       if(t.entregaEmail)destinatarios.add(t.entregaEmail);
       if(t.receptorEmail)destinatarios.add(t.receptorEmail);
-      await Promise.all([...destinatarios].map(email=>fs.addDoc(fs.collection(db,'flotilla_notificaciones'),{
+      await Promise.all([...destinatarios].map(email=>window.tcNotificar2(fs, db,{
         tipo:'transferencia_por_vencer',codigo:t.codigo,vehiculoEco:t.vehiculoEco||'—',
         para:email,
         mensaje:`⚠ La transferencia del ECO ${t.vehiculoEco||'—'} (código ${t.codigo}) vence en menos de 4 horas si no se recibe. Entregó: ${t.entregaNombre||'—'}.`,
@@ -1185,7 +1185,7 @@ async function flRevisarTransferenciasPendientes(){
       }
       const destinatarios=new Set(FLOTILLA_ADMINS);
       if(t.entregaEmail)destinatarios.add(t.entregaEmail);
-      await Promise.all([...destinatarios].map(email=>fs.addDoc(fs.collection(db,'flotilla_notificaciones'),{
+      await Promise.all([...destinatarios].map(email=>window.tcNotificar2(fs, db,{
         tipo:'transferencia_vencida',codigo:t.codigo,vehiculoEco:t.vehiculoEco||'—',
         para:email,
         mensaje:`La transferencia del ECO ${t.vehiculoEco||'—'} (código ${t.codigo}) venció después de 24 horas sin ser recibida. El vehículo sigue asignado a ${t.entregaNombre||'—'}. Un administrador puede reactivarla o cancelarla desde el historial de transferencias.`,
@@ -1769,8 +1769,8 @@ let _flActCache={};
 async function flFetchActividadesMes(mes){
   if(_flActCache[mes])return _flActCache[mes];
   try{
-    const snap=await fs.getDocs(fs.query(fs.collection(db,'actividades'),fs.where('area','==','Flotilla')));
-    const arr=snap.docs.map(d=>({id:d.id,...d.data()})).filter(a=>(a.fechaLimite||a.fechaCreacion||'').slice(0,7)===mes);
+    // Supabase (Paso 1) — antes getDocs de Firestore
+    const arr=(await window.tcAct.cargar()).filter(a=>a.area==='Flotilla').filter(a=>(a.fechaLimite||a.fechaCreacion||'').slice(0,7)===mes);
     _flActCache[mes]=arr;
     return arr;
   }catch(e){console.error('[FL] fetch actividades',e);return[];}
@@ -2426,7 +2426,7 @@ async function flDesvincularEcoApp(eco,nuevoResponsable){
         motivoDesvinculacion:'Reasignado a '+(nuevoResponsable||'otro responsable')+' desde administración de flotilla',
       }));
       if(u.email){
-        ops.push(fs.addDoc(fs.collection(db,'flotilla_notificaciones'),{
+        ops.push(window.tcNotificar2(fs, db,{
           para:u.email,
           vehiculoEco:ecoStr,
           tipo:'eco_desvinculado',
@@ -4174,7 +4174,7 @@ window.flGuardarSiniestro=async function(){
     });
     // Notificar a todos los administradores
     const quien=window.auth?.currentUser?.displayName||window.auth?.currentUser?.email||'Alguien';
-    await Promise.all(FLOTILLA_ADMINS.map(admEmail=>fs.addDoc(fs.collection(db,'flotilla_notificaciones'),{
+    await Promise.all(FLOTILLA_ADMINS.map(admEmail=>window.tcNotificar2(fs, db,{
       para:admEmail,vehiculoEco:eco,tipo:'siniestro',
       mensaje:`${quien} reportó un siniestro en ECO ${eco}${v?.unidad?` (${v.unidad})`:''}: "${desc}"`,
       leido:false,creadaEn:new Date().toISOString(),
@@ -6832,7 +6832,7 @@ window.flGuardarRespuestaChkSem=async function(id){
     // volvía a entrar a "Mi vehículo" por su cuenta; ahora también le llega
     // como notificación normal (Avisos) igual que el resto del sistema.
     if(texto&&r.tecnico){
-      await fs.addDoc(fs.collection(db,'flotilla_notificaciones'),{
+      await window.tcNotificar2(fs, db,{
         tipo:'chksem_respuesta_admin',chkSemId:id,vehiculoEco:r.vehiculoEco||'—',
         para:String(r.tecnico).toLowerCase(),
         mensaje:`Recibiste una respuesta del admin sobre tu check list del ECO ${r.vehiculoEco||'—'} (semana ${r.semana||'—'}): "${texto}"`,
@@ -7329,7 +7329,7 @@ window.flAlertaCotizacion=async function(solicitudId,monto){
     const fmt=n=>n.toLocaleString('es-MX',{style:'currency',currency:'MXN',minimumFractionDigits:0});
     const msg=`ALERTA: Cotización de ${fmt(monto)} para ECO ${eco} (${tipo}) supera el límite autorizado de ${fmt(limite)}. Solicitud ID: ${solicitudId}. Se requiere autorización especial.`;
     // Notificación en Firestore
-    await fs.addDoc(fs.collection(db,'flotilla_notificaciones'),{
+    await window.tcNotificar2(fs, db,{
       tipo:'alerta_presupuesto',solicitudId,vehiculoEco:eco,
       para:'contraloria',
       mensaje:msg,
@@ -7847,7 +7847,7 @@ window.flEnviarNotif = async function(id, tipo, comentario) {
     };
     const msg = msgs[tipo];
     if (!msg) return;
-    await fs.addDoc(fs.collection(db,'flotilla_notificaciones'),{
+    await window.tcNotificar2(fs, db,{
       solicitudId: id,
       para: s.creadoPor || null,
       vehiculoEco: eco,
@@ -8547,7 +8547,7 @@ window.flModalEvaluacion = function(id) {
       });
       // Notificar al solicitante
       if(s.creadoPor){
-        await fs.addDoc(fs.collection(db,'flotilla_notificaciones'),{
+        await window.tcNotificar2(fs, db,{
           solicitudId:s.id,
           para:s.creadoPor,
           vehiculoEco:s.vehiculoEco||'—',
@@ -8858,7 +8858,7 @@ window.flGuardarPago=async function(id){
     if(solAct)solAct.pagoProgramado=pagoProgramado;
     if(s?.vehiculoEco)flSyncVehiculoServicio(s.vehiculoEco,'taller',id);
     // Notificación a Pagos
-    await fs.addDoc(fs.collection(db,'flotilla_notificaciones'),{
+    await window.tcNotificar2(fs, db,{
       tipo:'pago_programado',solicitudId:id,
       para:'pagos@tecnocontrol.com.mx',
       vehiculoEco:s.vehiculoEco,
@@ -9572,7 +9572,7 @@ window.flGuardarTarea=async function(solId,btn){
       actualizadoEn:new Date().toISOString(),
     });
     // Notificación push al técnico asignado
-    await fs.addDoc(fs.collection(db,'flotilla_notificaciones'),{
+    await window.tcNotificar2(fs, db,{
       solicitudId: solId,
       para:        tecnicoEmail,
       vehiculoEco: s?.vehiculoEco||'—',
@@ -9675,7 +9675,7 @@ window.flTareaAgregarComt=async function(tareaId,solId){
     await fs.updateDoc(fs.doc(db,C.TAREAS,tareaId),{comentarios,actualizadoEn:new Date().toISOString()});
     // Notificar al técnico asignado (si no es el mismo que comenta)
     if(t.asignadoA && t.asignadoA!==yo?.email){
-      await fs.addDoc(fs.collection(db,'flotilla_notificaciones'),{
+      await window.tcNotificar2(fs, db,{
         solicitudId: solId,
         para:        t.asignadoA,
         vehiculoEco: t.vehiculoEco||'—',
@@ -9767,7 +9767,7 @@ window.flTareaSetEstatus=async function(tareaId,solId,nuevoEst,btn){
       const t=snap.data();
       const s=flS.find(x=>x.id===solId);
       if(s?.creadoPor){
-        await fs.addDoc(fs.collection(db,'flotilla_notificaciones'),{
+        await window.tcNotificar2(fs, db,{
           solicitudId: solId,
           para:        s.creadoPor,
           vehiculoEco: t.vehiculoEco||'—',

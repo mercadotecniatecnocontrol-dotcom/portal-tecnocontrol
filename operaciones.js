@@ -1643,7 +1643,7 @@
         if (!cacheAutorizadoresCalibracion.length) { alert("No hay autorizadores configurados todavía — pide a un Administrador que los agregue."); return; }
         try {
             const { db, fs } = await opsGetFB();
-            await Promise.all(cacheAutorizadoresCalibracion.map(a => fs.addDoc(fs.collection(db, "flotilla_notificaciones"), {
+            await Promise.all(cacheAutorizadoresCalibracion.map(a => window.tcNotificar2(fs, db, {
                 tipo: "autorizacion_equipo_especializado", para: a.email,
                 mensaje: `${opsNombreActual()} solicita autorización para mover/asignar ${h.folio} — ${h.descripcion}.`,
                 leido: false, creadaEn: opsFechaHora(),
@@ -3469,7 +3469,7 @@
                 origen: "operaciones", creadoPorEmail: opsUsuarioActual(), creadoPorNombre: opsNombreActual(),
             });
 
-            await fs.addDoc(fs.collection(db, "flotilla_notificaciones"), {
+            await window.tcNotificar2(fs, db, {
                 tipo: "herramienta_traspaso_iniciada", traspasoId: traspasoRef.id, para: receptor.correo,
                 mensaje: `${opsNombreActual()} te está traspasando la herramienta ${h.folio || ""} (${h.descripcion || ""}). Acéptala antes del ${venceTxt} desde Flotilla, o el traspaso vencerá.`,
                 leido: false, creadaEn: now.toISOString(),
@@ -5384,7 +5384,7 @@
         if (!paraEmail) return; // sin correo confiable no se inventa destinatario
         try {
             const { db, fs } = await opsGetFB();
-            await fs.addDoc(fs.collection(db, "flotilla_notificaciones"), {
+            await window.tcNotificar2(fs, db, {
                 tipo: "ops_folio_alerta",
                 codigo: f.folioOS || f.estacion,
                 para: paraEmail.toLowerCase(),
@@ -9267,7 +9267,7 @@
             if (s) {
                 s.estatus = estatus;
                 // Aviso al solicitante (best effort vía Firestore, como el resto del portal).
-                if (s.solicitante_email) opsCopiaFirestore((db, fs) => fs.addDoc(fs.collection(db, "flotilla_notificaciones"), {
+                if (s.solicitante_email) opsCopiaFirestore((db, fs) => window.tcNotificar2(fs, db, {
                     tipo: "viaticos_" + estatus.toLowerCase(), para: s.solicitante_email,
                     mensaje: `Tu solicitud de viáticos ${s.folio} (${s.destino || ""}) cambió a: ${estatus}.`, leido: false, creadaEn: new Date().toISOString(),
                 }).catch(() => {}));
@@ -9647,7 +9647,7 @@
             await sb.from("ops_solicitudes_viaticos").update({ folio }).eq("id", data.id);
             data.folio = folio;
             const resumen = opsViaResumenTexto(data);
-            (opsViaCfg.correosNotificar || []).forEach(correo => opsCopiaFirestore((db, fs) => fs.addDoc(fs.collection(db, "flotilla_notificaciones"), {
+            (opsViaCfg.correosNotificar || []).forEach(correo => opsCopiaFirestore((db, fs) => window.tcNotificar2(fs, db, {
                 tipo: "viaticos_solicitud", para: correo, mensaje: `${opsNombreActual()} solicita viáticos ${folio}: ${data.destino} · ${opsViaDinero(data.total)}.`,
                 leido: false, creadaEn: new Date().toISOString(),
             }).catch(() => {})));

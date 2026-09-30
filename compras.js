@@ -975,7 +975,7 @@
   }
   function _cpNotificarPaso(fs, d, paso){
     _cpDestinatariosPaso(d, paso).forEach(function(persona){
-      fs.addDoc(fs.collection(window.db,'flotilla_notificaciones'), {
+      window.tcNotificar2(fs, window.db, {
         para:(persona.correo||'').toLowerCase().trim(), tipo:'requisicion_autorizar',
         mensaje:'Requisición '+(d.folio||d.id)+' espera tu autorización',
         link:'firmar.html?id='+d.id,
@@ -1012,7 +1012,7 @@
     cargarFirestore().then(function(fs){
       fs.updateDoc(fs.doc(window.db,'requisiciones_compra',id), {estatus:'rechazada', motivoRechazo:motivo}).then(function(){
         if(d.solicitanteEmail){
-          fs.addDoc(fs.collection(window.db,'flotilla_notificaciones'), {
+          window.tcNotificar2(fs, window.db, {
             para:d.solicitanteEmail, tipo:'requisicion_rechazada',
             mensaje:'Tu requisición '+(d.folio||id)+' fue rechazada: '+motivo,
             leido:false, creadaEn:new Date().toISOString(),

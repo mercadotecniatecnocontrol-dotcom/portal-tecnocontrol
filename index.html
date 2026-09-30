@@ -17,6 +17,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Paso 1 migración: actividades, calendario y notificaciones en Supabase (va antes de todo el código del portal) -->
+    <script src="portal-supabase.js?v=1"></script>
     <link rel="stylesheet" href="CSS/style.css">
 </head>
 <body>
@@ -2389,8 +2391,9 @@ function mergeEventos(){
 }
 
 function escucharEventosCal(){
-    onSnapshot(collection(db,'eventos_calendario'), snap => {
-        eventosCustom = snap.docs.map(d => ({...d.data(), firestoreId: d.id}));
+    // Supabase (Paso 1, sep-2026) — antes onSnapshot de Firestore
+    window.tcEventosCal.suscribir(lista => {
+        eventosCustom = lista;
         mergeEventos();
         if(document.getElementById('sec-cal360').classList.contains('active')) renderCal360();
     });
@@ -2408,7 +2411,7 @@ window.guardarEventoCal = async () => {
     const btn = document.querySelector('#modal-cal-add .btn-guardar-edit');
     if(btn){ btn.innerHTML='Guardando...'; btn.disabled=true; }
     try{
-        await addDoc(collection(db,'eventos_calendario'), {
+        await window.tcEventosCal.crear({
             f:fecha, n:nombre, t:tipo, p:prio, a:accion, r:resp,
             fuente:'Manual', creadoPor: auth.currentUser?.email || '',
             creadoEn: new Date().toISOString()
@@ -2687,7 +2690,9 @@ window.tc_debug = () => {
 };
 
 function escuchar(){
-    onSnapshot(query(collection(db,'actividades'),orderBy('fechaCreacion','desc')), s=>{
+    // Supabase (Paso 1, sep-2026) — antes onSnapshot de TODA la colección en Firestore
+    // (≈800 lecturas por cada recarga de cada usuario: era lo que agotaba la cuota).
+    window.tcAct.suscribir(s=>{
         const yo = auth.currentUser?.email || '';
 
         s.docs.forEach(d => {
@@ -2840,25 +2845,8 @@ function escucharFlotillaNotifs() {
     const soy_pagos = miDepto === 'Pagos' || yo.includes('pagos');
     const misDeptosSuscritos = flGetSubs(yo); // deptos adicionales que el admin suscribió
 
-    // Escuchar solo las últimas 50 notificaciones, ordenadas por fecha
-    const q = query(
-        collection(db, 'flotilla_notificaciones'),
-        orderBy('creadaEn', 'desc'),
-        limit(50)
-    );
-
-    onSnapshot(q, snap => {
-        if(!_flNotifIniciado) {
-            // Primera carga: solo guardar el timestamp más reciente, no notificar
-            const docs = snap.docs;
-            if(docs.length > 0) _flNotifUltimo = docs[0].data().creadaEn || '';
-            _flNotifIniciado = true;
-            return;
-        }
-
-        snap.docChanges().forEach(change => {
-            if(change.type !== 'added') return;
-            const d = change.doc.data();
+    // Procesa UNA notificación (venga de Supabase o de Firestore) — misma lógica de siempre.
+    const procesarNotif = (d) => {
             const creadaEn = d.creadaEn || '';
 
             // No procesar notificaciones anteriores a esta sesión
@@ -2937,10 +2925,37 @@ function escucharFlotillaNotifs() {
                 esMencion,
                 { area: 'Flotilla', esMencion, claseExtra }
             );
+    };
+    window._tcProcesarNotif = procesarNotif;
+
+    // Supabase (Paso 1, sep-2026): notificaciones nuevas escritas con window.tcNotificar().
+    try { window.tcSbNotifSuscribir(d => { if(_flNotifIniciado) procesarNotif(d); }); } catch(eSbN) { console.warn('[portal notif Supabase]', eSbN); }
+
+    // Firestore: se mantiene SOLO mientras Flotilla/Compras/Pagos/Almacén sigan
+    // escribiendo en flotilla_notificaciones — ahora con limit(1) (antes 50):
+    // 1 lectura por recarga en vez de 50.
+    const q = query(
+        collection(db, 'flotilla_notificaciones'),
+        orderBy('creadaEn', 'desc'),
+        limit(1)
+    );
+
+    onSnapshot(q, snap => {
+        if(!_flNotifIniciado) {
+            const docs = snap.docs;
+            if(docs.length > 0) _flNotifUltimo = docs[0].data().creadaEn || '';
+            _flNotifIniciado = true;
+            return;
+        }
+        snap.docChanges().forEach(change => {
+            if(change.type !== 'added') return;
+            procesarNotif(change.doc.data());
         });
     }, err => {
         console.warn('[FL portal notif]', err);
+        _flNotifIniciado = true; // aunque Firestore falle, Supabase sí debe notificar
     });
+    setTimeout(() => { _flNotifIniciado = true; }, 8000);
 }
 window.escucharFlotillaNotifs = escucharFlotillaNotifs;
 
@@ -3771,7 +3786,7 @@ window.guardarEdicion=async()=>{
     const prioridad=document.getElementById('edit-prioridad').value;
     const fechaInicio=document.getElementById('edit-inicio').value;
     const origen=document.getElementById('edit-origen').value.trim();
-    await updateDoc(doc(db,'actividades',id),{
+    await window.tcAct.actualizar(id,{
         actividad:desc,
         fechaLimite:document.getElementById('edit-fecha').value,
         fechaInicio, encargado, prioridad, origen,
@@ -3879,9 +3894,7 @@ window.enviarComentario=async()=>{
         comentData.adjNombre = window._chatAdjNombre;
     }
 
-    await updateDoc(doc(db,'actividades',tareaIdActiva),{
-        comentarios:arrayUnion(comentData)
-    });
+    await window.tcAct.agregarComentario(tareaIdActiva, comentData);
 
     // Si hay adjunto, buscar si esta tarea tiene un doc vinculado en la parrilla
     // y actualizarlo como imgUrl2 (documento actualizado/completado)
@@ -3930,7 +3943,7 @@ window.cerrarModal=()=>{
 // ══════════════════════════════════════════════════════════════
 // ACCIONES GENERALES
 // ══════════════════════════════════════════════════════════════
-window.borrarTarea=(id)=>confirm("¿Seguro que deseas eliminar esta actividad?")&&deleteDoc(doc(db,'actividades',id));
+window.borrarTarea=(id)=>confirm("¿Seguro que deseas eliminar esta actividad?")&&window.tcAct.borrar(id);
 window.actualizarEncargados = () => {
     const sel = document.getElementById('n-encargado');
     if(!sel) return;
@@ -3966,7 +3979,7 @@ window.guardarTarea=async()=>{
     const fechaInicio=document.getElementById('n-inicio')?.value || '';
     const fechaLimite=document.getElementById('n-date')?.value || '';
     const subtareas = typeof _formSubtareas !== 'undefined' ? [..._formSubtareas] : [];
-    await addDoc(collection(db,'actividades'),{
+    await window.tcAct.crear({
         actividad:d, area, fechaLimite, fechaInicio, prioridad, origen,
         tipo, descripcion, subtareas,
         estatus:'Sin Iniciar', fechaCreacion:new Date().toISOString(),
@@ -4842,11 +4855,10 @@ cargarModuloMarketing();
                         docId: docIdReal,
                         comentarios: []
                     };
-                    const { db: db2, fs: fs2 } = await getFirebaseAP();
-                    const tareaRef = await fs2.addDoc(fs2.collection(db2, 'actividades'), tareaData);
+                    const tareaIdNueva = await window.tcAct.crear(tareaData);
                     // Vínculo bidireccional: guardar tareaId en el doc de parrilla
-                    await fs.updateDoc(fs.doc(db,'area_parrilla',docIdReal), { tareaId: tareaRef.id });
-                    console.log('[AP] ✅ Tarea auto-creada:', desc, '— tareaId:', tareaRef.id);
+                    await fs.updateDoc(fs.doc(db,'area_parrilla',docIdReal), { tareaId: tareaIdNueva });
+                    console.log('[AP] ✅ Tarea auto-creada:', desc, '— tareaId:', tareaIdNueva);
                 } catch(e2){ console.warn('[AP] Error al crear tarea:', e2.message); }
             }
             
@@ -5812,9 +5824,9 @@ window.irAlmacen = function(btn){
 </script>
 <script src="flotilla-reglas.js"></script>
 <script src="roles-modulos.js"></script>
-<script src="pagos.js"></script>
+<script src="pagos.js?v=paso1"></script>
 <script src="material-pdf.js?v=3"></script>
-<script src="ventas.js"></script>
+<script src="ventas.js?v=paso1"></script>
 <script src="contabilidad.js"></script>
 <script src="egresos.js"></script>
 <script src="rh-indicadores.js"></script>
@@ -5824,7 +5836,7 @@ window.irAlmacen = function(btn){
 <script src="surtidos-supabase.js"></script>
 <script src="almacen.js"></script>
 <script src="almacen-pdf.js"></script>
-<script src="compras.js"></script>
+<script src="compras.js?v=paso1"></script>
 <script src="cobranza.js"></script>
 <script src="logistica.js"></script>
 <script src="mis-pedidos.js"></script>

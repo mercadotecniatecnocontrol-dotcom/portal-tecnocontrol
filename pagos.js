@@ -859,7 +859,7 @@ window._pflGuardarPago = async function(solId){
     // Notificar a Fátima y al solicitante
     const nots = [];
     if(s?.creadoPor){
-      nots.push(fs.addDoc(fs.collection(db,'flotilla_notificaciones'),{
+      nots.push(window.tcNotificar2(fs, db,{
         solicitudId: solId,
         para:        s.creadoPor,
         vehiculoEco: s.vehiculoEco||'—',
@@ -869,7 +869,7 @@ window._pflGuardarPago = async function(solId){
         creadaEn:    new Date().toISOString(),
       }));
     }
-    nots.push(fs.addDoc(fs.collection(db,'flotilla_notificaciones'),{
+    nots.push(window.tcNotificar2(fs, db,{
       solicitudId: solId,
       para:        'flotilla@tecnocontrol.com.mx',
       vehiculoEco: s?.vehiculoEco||'—',
@@ -967,7 +967,7 @@ window._pflEnviarComt = async function(solId){
     });
 
     // Notificar a Fátima (Flotilla) que Pagos comentó
-    await fs.addDoc(fs.collection(db,'flotilla_notificaciones'),{
+    await window.tcNotificar2(fs, db,{
       solicitudId: solId,
       para:        'flotilla@tecnocontrol.com.mx',
       vehiculoEco: s?.vehiculoEco||'—',

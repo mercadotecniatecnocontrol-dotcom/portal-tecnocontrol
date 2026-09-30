@@ -336,7 +336,8 @@ window.calcularAlertasClientes = async () => {
         const dbb = window.db; if(!dbb) return;
         const cache = {};
         try {
-            const snapT = await getDocs(query(collection(dbb,'actividades'), where('estatus','in',['Sin Iniciar','En Proceso'])));
+            // Supabase (Paso 1) — antes getDocs de Firestore
+            const snapT = (await window.tcAct.cargar()).filter(a => ['Sin Iniciar','En Proceso'].includes(a.estatus)).map(o => ({ id: o.id, data: () => o }));
             snapT.forEach(d => {
                 const r = d.data();
                 const txt = ((r.actividad||'')+(r.origen||'')+(r.descripcion||'')).toLowerCase();
@@ -1441,11 +1442,9 @@ window.guardarDatoRHInline = async () => {
             const nombre = typeof nombreUsuario === 'function' ? nombreUsuario(yo) : yo;
 
             // Leer tarea actual
-            const tareaRef = fs.doc(db, 'actividades', tareaId);
-            const tareaSnap = await fs.getDoc(tareaRef);
-            if(!tareaSnap.exists()){ alert('Tarea no encontrada'); return; }
+            const tareaData = await window.tcAct.obtener(tareaId); // Supabase (Paso 1)
+            if(!tareaData){ alert('Tarea no encontrada'); return; }
 
-            const tareaData = tareaSnap.data();
             const compartidoCon = tareaData.compartidoCon || [];
 
             // Agregar nuevo compartido
@@ -1461,7 +1460,7 @@ window.guardarDatoRHInline = async () => {
             });
 
             // Actualizar tarea en Firestore
-            await fs.updateDoc(tareaRef, { compartidoCon: compartidoCon });
+            await window.tcAct.actualizar(tareaId, { compartidoCon: compartidoCon });
 
             document.getElementById('modal-compartir').style.display = 'none';
             if(window.mostrarPush) window.mostrarPush('📤 Compartido exitosamente', destino, '📨');
@@ -1549,7 +1548,7 @@ window.guardarDatoRHInline = async () => {
             const miDepto = typeof obtenerDeptoUsuario === 'function' ? obtenerDeptoUsuario(yo) : '';
 
             // Obtener IDs de tareas compartidas conmigo
-            const snap = await fs.getDocs(fs.collection(db,'actividades'));
+            const snap = { docs: (await window.tcAct.cargar()).map(o => ({ id: o.id, data: () => o })) }; // Supabase (Paso 1)
             const idsCompartidas = new Set();
             snap.docs.forEach(d => {
                 const data = d.data();
@@ -3142,7 +3141,7 @@ window.cambiarEstatus = async (nuevoEstatus) => {
     if(!_detalleActId) return;
     try {
         const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-        await updateDoc(doc(window.db,'actividades',_detalleActId), {estatus: nuevoEstatus});
+        await window.tcAct.actualizar(_detalleActId, {estatus: nuevoEstatus});
         const idx = localDB.findIndex(x=>x.id===_detalleActId);
         if(idx>=0) localDB[idx].estatus = nuevoEstatus;
         // Actualizar botones
@@ -3191,7 +3190,7 @@ window.agregarSubtarea = async () => {
     const subtareas = [...(r.subtareas||[]), {texto, done:false, creadoEn:new Date().toISOString()}];
     try {
         const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-        await updateDoc(doc(window.db,'actividades',_detalleActId), {subtareas});
+        await window.tcAct.actualizar(_detalleActId, {subtareas});
         const idx = localDB.findIndex(x=>x.id===_detalleActId);
         if(idx>=0) localDB[idx].subtareas = subtareas;
         if(input) input.value = '';
@@ -3208,7 +3207,7 @@ window.toggleSubtarea = async (subt_idx) => {
     subtareas[subt_idx] = {...subtareas[subt_idx], done: !subtareas[subt_idx].done};
     try {
         const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-        await updateDoc(doc(window.db,'actividades',_detalleActId), {subtareas});
+        await window.tcAct.actualizar(_detalleActId, {subtareas});
         const idx = localDB.findIndex(x=>x.id===_detalleActId);
         if(idx>=0) localDB[idx].subtareas = subtareas;
         renderSubtareasDetalle(subtareas);
@@ -3223,7 +3222,7 @@ window.eliminarSubtarea = async (subt_idx) => {
     const subtareas = (r.subtareas||[]).filter((_,i)=>i!==subt_idx);
     try {
         const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-        await updateDoc(doc(window.db,'actividades',_detalleActId), {subtareas});
+        await window.tcAct.actualizar(_detalleActId, {subtareas});
         const idx = localDB.findIndex(x=>x.id===_detalleActId);
         if(idx>=0) localDB[idx].subtareas = subtareas;
         renderSubtareasDetalle(subtareas);
@@ -3242,7 +3241,7 @@ window.toggleDescEdit = async () => {
         const newDesc = descEdit.value.trim();
         if(_detalleActId) {
             const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-            updateDoc(doc(window.db,'actividades',_detalleActId), {descripcion: newDesc}).then(()=>{
+            window.tcAct.actualizar(_detalleActId, {descripcion: newDesc}).then(()=>{
                 const idx = localDB.findIndex(x=>x.id===_detalleActId);
                 if(idx>=0) localDB[idx].descripcion = newDesc;
                 descEl.textContent = newDesc || 'Sin descripción';
@@ -3294,7 +3293,7 @@ window.enviarComentarioDetalle = async () => {
     const comentarios = [...(r?.comentarios||[]), nuevo];
     try {
         const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-        await updateDoc(doc(window.db,'actividades',_detalleActId), {comentarios});
+        await window.tcAct.actualizar(_detalleActId, {comentarios});
         const idx = localDB.findIndex(x=>x.id===_detalleActId);
         if(idx>=0) localDB[idx].comentarios = comentarios;
         if(input) input.value = '';
@@ -3341,7 +3340,7 @@ window.guardarTarea = async () => {
     const subtareas = [..._formSubtareas];
 
     const { addDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-    await addDoc(collection(window.db,'actividades'),{
+    await window.tcAct.crear({
         actividad: d, area, fechaLimite, fechaInicio, prioridad, origen,
         tipo, descripcion, subtareas,
         estatus: 'Sin Iniciar',
@@ -5123,7 +5122,7 @@ window.guardarCpActividad = async function(clienteId, clienteNombre) {
             area: 'Ventas', creadoEn: new Date().toISOString(),
             creadoPor: auth?.currentUser?.email || ''
         };
-        await addDoc(collection(window.db, 'actividades'), actData);
+        await window.tcAct.crear(actData);
         document.getElementById('cp-act-modal').style.display = 'none';
         if(window.mostrarPush) window.mostrarPush('✅ Actividad creada', titulo, '📋');
         // Recargar actividades del perfil
@@ -6236,8 +6235,8 @@ window.vpRenderCalendarioActividades = async function() {
     let acts = [];
     try {
         const {getDocs,collection,query,orderBy,limit} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-        const snap = await getDocs(query(collection(window.db,'actividades'),orderBy('creadoEn','desc'),limit(200)));
-        acts = snap.docs.map(d=>({id:d.id,...d.data()}));
+        // Supabase (Paso 1) — mismas actividades que antes: las que traen creadoEn (Ventas), últimas 200
+        acts = (await window.tcAct.cargar()).filter(a => a.creadoEn).sort((a,b) => String(b.creadoEn).localeCompare(String(a.creadoEn))).slice(0, 200);
     } catch(e) { console.warn('Error cargando actividades:', e); }
 
     const EMPRESAS = ['Todas','TECNOCONTROL','JOMAR','VH','DESARROLLOS','AKURIS','TECNOLAB'];
@@ -6336,7 +6335,7 @@ window.vpRenderCalendarioActividades = async function() {
     window.vpCalCambiarEstatus = async function(id, estatus) {
         try {
             const {doc, updateDoc} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-            await updateDoc(doc(window.db,'actividades',id), { estatus });
+            await window.tcAct.actualizar(id, { estatus });
             const a = acts.find(x=>x.id===id);
             if(a) a.estatus = estatus;
             if(window.mostrarPush) mostrarPush('✅ Estatus actualizado', estatus, '📋');
