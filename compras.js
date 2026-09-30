@@ -95,6 +95,35 @@
     var col = (_colaboradoresCache||[]).find(function(x){ return (x.correo||x.id||'').toLowerCase()===(correo||'').toLowerCase(); });
     return col ? col.departamento : null;
   }
+  // Normaliza para comparar sin acentos/mayúsculas/espacios dobles.
+  function _cpNorm(t){ return String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim(); }
+  // Departamento del solicitante de una requisición. Las del kiosco guardan
+  // el NOMBRE en 'solicitante' y el correo en 'solicitanteEmail', así que se
+  // intenta en orden: campo explícito → solicitanteEmail → solicitante como
+  // correo → coincidencia por nombre en colaboradores. El resultado se ajusta
+  // a la llave exacta usada en config_flujo_compras.jefesPorDepto.
+  function deptoSolicitante(d){
+    if(!d) return null;
+    var depto = d.departamentoSolicitante || d.departamento || null;
+    if(!depto && d.solicitanteEmail) depto = departamentoPorCorreo(d.solicitanteEmail);
+    if(!depto && d.solicitante && String(d.solicitante).indexOf('@')>-1) depto = departamentoPorCorreo(d.solicitante);
+    if(!depto && d.solicitante){
+      var n = _cpNorm(d.solicitante);
+      var col = (_colaboradoresCache||[]).find(function(x){ return x.nombre && _cpNorm(x.nombre)===n; });
+      if(col) depto = col.departamento || null;
+    }
+    if(!depto) return null;
+    var cfg = _configFlujoCache || {};
+    var llaves = Object.keys(cfg.jefesPorDepto||{}).concat(DEPTOS_CP);
+    var exacta = llaves.find(function(k){ return _cpNorm(k)===_cpNorm(depto); });
+    return exacta || depto;
+  }
+  // Correo con el que se identificó al solicitante (para mensajes de ayuda).
+  function correoSolicitante(d){
+    if(d.solicitanteEmail) return d.solicitanteEmail;
+    if(d.solicitante && String(d.solicitante).indexOf('@')>-1) return d.solicitante;
+    return null;
+  }
   // ¿Puede ESTE usuario aprobar ESTE paso? Solicitante siempre puede (su propio
   // paso ya llega aprobado al crear la requisición). Jefe de área: debe ser el
   // asignado al departamento del solicitante. Compras: debe estar en la lista.
@@ -103,7 +132,7 @@
     if(paso.label==='Solicitante') return true;
     var cfg = _configFlujoCache || {jefesPorDepto:{}, aprobadoresCompras:[]};
     if(paso.label==='Jefe de área'){
-      var depto = departamentoPorCorreo(d.solicitante);
+      var depto = deptoSolicitante(d);
       var jefe = depto && cfg.jefesPorDepto ? cfg.jefesPorDepto[depto] : null;
       return !!(jefe && jefe.correo && jefe.correo.toLowerCase()===(miCorreo||'').toLowerCase());
     }
@@ -455,7 +484,7 @@
       if(d.estatus!=='orden_generada' && d.estatus!=='recibida') return;
       var f = _cpFechaDoc(d);
       if(!f || f.getMonth()!==ahora.getMonth() || f.getFullYear()!==ahora.getFullYear()) return;
-      var depto = departamentoPorCorreo(d.solicitante);
+      var depto = deptoSolicitante(d);
       if(!depto) return;
       var monto = d.cotizacionGanadora && d.cotizacionGanadora.monto!=null ? Number(d.cotizacionGanadora.monto) : 0;
       gastado[depto] = (gastado[depto]||0) + monto;
@@ -807,9 +836,9 @@
         var cfg2 = _configFlujoCache || {jefesPorDepto:{}, aprobadoresCompras:[]};
         var quien = '—';
         if(pasoActivo.label==='Jefe de área'){
-          var depto2 = departamentoPorCorreo(d.solicitante);
+          var depto2 = deptoSolicitante(d);
           var jefe2 = depto2 && cfg2.jefesPorDepto ? cfg2.jefesPorDepto[depto2] : null;
-          quien = jefe2 ? jefe2.nombre : (depto2 ? 'sin jefe de área asignado para '+depto2 : 'departamento del solicitante desconocido — revisa su ficha en colaboradores');
+          quien = jefe2 ? jefe2.nombre : (depto2 ? 'sin jefe de área asignado para '+depto2 : 'departamento del solicitante desconocido — revisa que la ficha de '+(correoSolicitante(d)||nombrePorCorreo(d.solicitante)||'el solicitante')+' en colaboradores tenga departamento');
         } else if(pasoActivo.label==='Compras'){
           quien = (cfg2.aprobadoresCompras||[]).map(function(a){return a.nombre||a.correo;}).join(', ') || 'sin aprobadores de Compras configurados';
         }
@@ -936,7 +965,7 @@
     var cfg = _configFlujoCache || {jefesPorDepto:{}, aprobadoresCompras:[]};
     var out = [];
     if(paso.label==='Jefe de área'){
-      var depto = departamentoPorCorreo(d.solicitante);
+      var depto = deptoSolicitante(d);
       var jefe = depto && cfg.jefesPorDepto ? cfg.jefesPorDepto[depto] : null;
       if(jefe && jefe.correo) out.push(jefe);
     } else if(paso.label==='Compras'){
