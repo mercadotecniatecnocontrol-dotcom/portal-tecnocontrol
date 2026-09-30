@@ -9324,25 +9324,136 @@
     };
 
     // ── Formulario ──
+    // Catálogos que alimentan los buscadores del formulario (se cargan una vez por sesión).
+    let opsViaFlota = null;        // flota_veihcular (Supabase) — vehículos reales de Flotilla
+    let opsViaCasetasCat = null;   // ops_casetas (Supabase) — casetas con tarifa por tipo de vehículo
+    const OPS_VIA_NO_VEHICULO = /REMOLQUE|SEMIRREMOLQUE|COMPRESOR|VIBROCOMPACTADOR|MORTOCONFORMADORA|DOLLY|PLANTA DE LUZ/i;
+
+    async function opsViaCargarFlota() {
+        if (opsViaFlota) return opsViaFlota;
+        try {
+            const sb = await opsSb();
+            const { data, error } = await sb.from("flota_veihcular").select("*").order("Eco");
+            if (error) throw error;
+            opsViaFlota = (data || []).filter(v => !OPS_VIA_NO_VEHICULO.test(v.Unidad || "") && (v.Status || "activo") !== "baja");
+        } catch (e) { console.warn("[viáticos] flota:", e.message || e); opsViaFlota = []; }
+        return opsViaFlota;
+    }
+    async function opsViaCargarCasetas(forzar) {
+        if (opsViaCasetasCat && !forzar) return opsViaCasetasCat;
+        try {
+            const sb = await opsSb();
+            const { data, error } = await sb.from("ops_casetas").select("*").order("nombre");
+            if (error) throw error;
+            opsViaCasetasCat = data || [];
+        } catch (e) { console.warn("[viáticos] casetas:", e.message || e); opsViaCasetasCat = opsViaCasetasCat || []; }
+        return opsViaCasetasCat;
+    }
+    // Tipo de vehículo (política de viáticos) a partir de la unidad real de Flotilla.
+    function opsViaTipoDeVehiculo(v) {
+        const u = String(v.Unidad || "").toUpperCase(), t = String(v.Tipo || "").toLowerCase();
+        if (/MARCH|ATTITUDE|\bRAM\b|RAM 700|RAM RAPID/.test(u)) return "chico";
+        if (/L200|CHANGAN/.test(u)) return "mediano";
+        if (/CAMION|CASCADIA|VOLVO|F-450|F-350|GRUA|ISUZU|CHASIS/.test(u) || t === "camion") return "grande";
+        if (t === "auto" || t === "car") return "chico";
+        return "mediano";
+    }
+    function opsViaRendimientoReal(v) {
+        const n = parseFloat(String(v.Rendimiento || "").replace(/[^0-9.]/g, ""));
+        return isNaN(n) || n <= 0 ? null : n;
+    }
+    function opsViaCostoCaseta(cat, tipo) {
+        if (!cat) return 0;
+        return opsViaNum(cat["costo_" + (tipo || "mediano")]);
+    }
+
+    // ── Buscador con relleno automático, reutilizable para cualquier catálogo ──
+    // Cada combo se registra con items() → [{ etiqueta, sub, buscar, valor }] y elegir(valor).
+    const opsViaCombos = {};
+    function opsViaComboHTML(id, label, valor, placeholder) {
+        return `<label style="display:block;font-size:11.5px;font-weight:600;color:#475569;">${label}
+            <input id="${id}" value="${opsEsc(valor || "")}" placeholder="${opsEsc(placeholder || "Escribe para buscar…")}" autocomplete="off"
+                oninput="opsViaComboFiltrar('${id}', this.value)" onfocus="opsViaComboFiltrar('${id}', this.value, true)"
+                onblur="setTimeout(() => { const r = document.getElementById('${id}-res'); if (r) r.innerHTML = ''; }, 180)"
+                onkeydown="if(event.key==='Enter'){ event.preventDefault(); opsViaComboEnter('${id}', this.value); }"
+                style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 2px;box-sizing:border-box;"></label>
+            <div id="${id}-res" style="position:relative;"></div>`;
+    }
+    window.opsViaComboFiltrar = function (id, texto, alEnfocar) {
+        const c = opsViaCombos[id], cont = document.getElementById(id + "-res");
+        if (!c || !cont) return;
+        const q = opsNormalizaTexto(texto || "");
+        const partes = q.split(" ").filter(Boolean);
+        let lista = c.items();
+        if (partes.length) lista = lista.filter(it => { const h = opsNormalizaTexto(it.buscar || it.etiqueta || ""); return partes.every(p => h.includes(p)); });
+        else if (!alEnfocar) { cont.innerHTML = ""; return; }
+        c._res = lista.slice(0, 15);
+        cont.innerHTML = `<div style="position:absolute;left:0;right:0;top:0;z-index:1000;background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 8px 20px rgba(0,0,0,.12);max-height:270px;overflow-y:auto;">
+            ${c._res.map((it, i) => `<div onmousedown="event.preventDefault(); opsViaComboElegir('${id}', ${i})" style="padding:7px 10px;cursor:pointer;border-bottom:1px solid #f1f5f9;font-size:12px;" onmouseover="this.style.background='#E9ECF5'" onmouseout="this.style.background=''">
+                <b>${opsEsc(it.etiqueta)}</b>${it.sub ? `<div style="color:#64748b;font-size:11px;">${opsEsc(it.sub)}</div>` : ""}</div>`).join("")
+            || `<div style="padding:9px 10px;font-size:12px;color:#94a3b8;">${opsEsc(c.vacio || "Sin coincidencias.")}</div>`}</div>`;
+    };
+    window.opsViaComboElegir = function (id, i) {
+        const c = opsViaCombos[id]; if (!c || !c._res || !c._res[i]) return;
+        const cont = document.getElementById(id + "-res"); if (cont) cont.innerHTML = "";
+        c.elegir(c._res[i].valor);
+    };
+    window.opsViaComboEnter = function (id, texto) {
+        const c = opsViaCombos[id]; if (!c) return;
+        if (c._res && c._res.length === 1) return window.opsViaComboElegir(id, 0);
+        if (c.libre) c.libre(texto);
+    };
+    function opsViaRegistrarCombos() {
+        const folios = () => (cacheFolios && cacheFolios.length ? cacheFolios : (opsViaFoliosSb || []));
+        opsViaCombos["via-folio"] = {
+            vacio: "No hay folios con ese texto.",
+            items: () => folios().filter(x => x.estado !== "cerrado" && x.estatus !== "Cerrado").map(x => {
+                const tecs = (x.tecnicosAsignadosIds || []).map(id => (cacheTec.find(t => t.id === id) || {}).nombre).filter(Boolean).join(", ");
+                const fecha = (x.fechaProgramada || "").replace("T", " ");
+                return { etiqueta: `${x.folioOS || x.id} — ${x.estacion || x.clienteNombre || ""}`, sub: [fecha, tecs].filter(Boolean).join(" · "), buscar: [x.folioOS, x.id, x.estacion, x.clienteNombre, tecs, fecha].join(" "), valor: x.id };
+            }),
+            elegir: id => window.opsViaElegirFolio(id),
+        };
+        opsViaCombos["via-est-buscar"] = {
+            vacio: "Sin coincidencias. Presiona Enter para buscarla como dirección.",
+            items: () => (opsViaEstaciones || []).map(e => ({ etiqueta: `${e.nombre_comercial || e.razon_social || e.id}${e.codigo_estacion_cre ? " · " + e.codigo_estacion_cre : ""}`, sub: e.direccion_normalizada || e.domicilio_raw || e.municipio || "", buscar: [e.id, e.nombre_comercial, e.razon_social, e.codigo_estacion_cre, e.permiso, e.municipio, e.direccion_normalizada].join(" "), valor: e.id })),
+            elegir: id => window.opsViaElegirEstacion(id),
+            libre: texto => window.opsViaDireccionLibre(texto),
+        };
+        opsViaCombos["via-vehiculo"] = {
+            vacio: "Sin coincidencias. Presiona Enter para dejarlo escrito así.",
+            items: () => (opsViaFlota || []).map(v => ({ etiqueta: `ECO ${v.Eco} · ${v.Unidad || ""}`, sub: [v.Placas, v.Responsable, v.Rendimiento && v.Rendimiento !== "—" ? v.Rendimiento : "", v.Status !== "activo" ? v.Status : ""].filter(Boolean).join(" · "), buscar: [v.Eco, "eco " + v.Eco, v.Unidad, v.Placas, v.Responsable, v.Tipo].join(" "), valor: v.Eco })),
+            elegir: eco => window.opsViaElegirVehiculo(eco),
+            libre: texto => { opsViaForm.vehiculo = texto; opsViaForm.vehiculoEco = null; opsViaPintarFormulario(); },
+        };
+        opsViaCombos["via-caseta-add"] = {
+            vacio: "No está en el catálogo.",
+            items: () => (opsViaCasetasCat || []).map(c => ({ etiqueta: c.nombre, sub: [c.carretera, opsViaDinero(opsViaCostoCaseta(c, opsViaForm.tipoVehiculo)) + " por cruce"].filter(Boolean).join(" · "), buscar: [c.nombre, c.carretera].join(" "), valor: c.id })),
+            elegir: id => { opsViaForm.casetas.push({ key: "man-" + Date.now(), catalogoId: id, aplica: true, cruces: 2, manual: true }); opsViaForm.aplicaCasetas = true; opsViaRecalcular(); opsViaPintarFormulario(); },
+        };
+    }
+
     window.opsViaAbrirFormulario = async function () {
         const wrap = document.getElementById("ops-modal-wrap");
-        wrap.innerHTML = `<div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;"><div style="background:#fff;border-radius:14px;padding:26px;font-size:13px;color:#475569;">Cargando estaciones y técnicos…</div></div>`;
-        try { await Promise.all([opsViaCargarCfg(), opsViaCargarEstaciones(), opsViaCargarFolios(), opsViaTecnicos()]); }
+        wrap.innerHTML = `<div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;"><div style="background:#fff;border-radius:14px;padding:26px;font-size:13px;color:#475569;">Cargando estaciones, folios, vehículos y técnicos…</div></div>`;
+        try { await Promise.all([opsViaCargarCfg(), opsViaCargarEstaciones(), opsViaCargarFolios(), opsViaTecnicos(), opsViaCargarFlota(), opsViaCargarCasetas()]); }
         catch (e) { wrap.innerHTML = ""; alert("No se pudo abrir el formulario: " + (e.message || e)); return; }
         const ahora = new Date(); ahora.setDate(ahora.getDate() + 1); ahora.setHours(7, 0, 0, 0);
         opsViaForm = {
-            estacion: null, folioServicio: "", cliente: "", motivo: "",
+            estacion: null, folioServicio: "", cliente: "", motivo: "", llegadaObjetivo: null,
             destinoTexto: "", lat: null, lng: null, coordAprox: false,
-            kmSencillo: 0, horasIda: 0, calculando: false,
-            tecnicos: [], tipoVehiculo: "mediano", vehiculo: "",
-            salida: opsViaLocalISO(ahora), horasServicio: opsViaCfg.horasServicioDefault || 4,
+            kmSencillo: 0, horasIda: 0, calculando: false, rutaGeo: null,
+            tecnicos: [], tecBuscar: "", tipoVehiculo: "mediano", vehiculo: "", vehiculoEco: null, rendimientoReal: null,
+            salida: opsViaLocalISO(ahora), salidaManual: false, horasServicio: opsViaCfg.horasServicioDefault || 4,
             regreso: "", regresoManual: false,
             requiere: null, requiereManual: false,
             desayunos: 0, comidas: 0, cenas: 0, comidasManual: false,
             noches: 0, nochesManual: false, hospedajePorNoche: opsViaCfg.hospedajePorNoche || 900,
-            casetas: 0, otros: 0, notas: "",
+            casetas: [], aplicaCasetas: false, casetasEstado: "", casetasTotal: 0,
+            otros: 0, notas: "",
             rendimiento: null, precioLitro: opsViaCfg.precioLitro, factor: opsViaCfg.factor,
         };
+        opsViaRegistrarCombos();
         opsViaRecalcular();
         opsViaPintarFormulario();
     };
@@ -9356,6 +9467,13 @@
     function opsViaRecalcular() {
         const f = opsViaForm; if (!f) return;
         const cfg = opsViaCfg;
+        // Si viene de un folio con hora de llegada, la salida se calcula restando el manejo.
+        if (f.llegadaObjetivo && !f.salidaManual && opsViaNum(f.horasIda) > 0) {
+            const lleg = new Date(f.llegadaObjetivo);
+            const s = new Date(lleg.getTime() - opsViaNum(f.horasIda) * 3600000);
+            s.setMinutes(Math.floor(s.getMinutes() / 5) * 5, 0, 0);
+            f.salida = opsViaLocalISO(s);
+        }
         if (!f.regresoManual && f.salida) {
             const s = new Date(f.salida);
             const horas = (opsViaNum(f.horasIda) * 2) + opsViaNum(f.horasServicio);
@@ -9363,8 +9481,8 @@
         }
         if (!f.requiereManual) f.requiere = opsViaNum(f.kmSencillo) >= opsViaNum(cfg.kmMinimoViaticos);
         if (f.rendimiento === null || f.rendimiento === undefined || f.rendimiento === "") f.rendimiento = opsViaVehiculoCfg(f.tipoVehiculo).rendimiento;
-        // Comidas por persona según horarios (reglas de Idaly: desayuno si sale antes de 7:15,
-        // comida si está fuera a las 2:00, cena si regresa pasadas las 7:00).
+        // Comidas por persona según horarios (desayuno si sale antes de la hora límite,
+        // comida si está fuera a la hora de comida, cena si regresa después de la hora de cena).
         if (!f.comidasManual) {
             let d = 0, c = 0, n = 0;
             if (f.requiere && f.salida && f.regreso) {
@@ -9392,13 +9510,23 @@
             }
             f.noches = noches;
         }
+        // Casetas: costo del catálogo según el tipo de vehículo × número de cruces.
+        f.casetasTotal = 0;
+        (f.casetas || []).forEach(c => {
+            const cat = c.catalogoId ? (opsViaCasetasCat || []).find(x => x.id === c.catalogoId) : null;
+            c.costo = cat ? opsViaCostoCaseta(cat, f.tipoVehiculo) : opsViaNum(c.costoManual);
+            c.nombre = cat ? cat.nombre : (c.nombreOsm || "Caseta sin identificar");
+            c.subtotal = c.aplica ? c.costo * opsViaNum(c.cruces) : 0;
+            f.casetasTotal += c.subtotal;
+        });
+        if (!f.aplicaCasetas) f.casetasTotal = 0;
         const personas = Math.max(1, f.tecnicos.length);
         const rend = opsViaNum(f.rendimiento) || 1;
         f.gasolina = Math.round((opsViaNum(f.kmSencillo) * opsViaNum(cfg.multiplicadorKm || 2) / rend) * opsViaNum(f.precioLitro) * opsViaNum(f.factor) * 100) / 100;
         f.alimentosPorPersona = f.desayunos * opsViaNum(cfg.desayuno) + f.comidas * opsViaNum(cfg.comida) + f.cenas * opsViaNum(cfg.cena);
         f.alimentos = f.requiere ? f.alimentosPorPersona * personas : 0;
         f.hospedaje = f.requiere ? opsViaNum(f.noches) * opsViaNum(f.hospedajePorNoche) * personas : 0;
-        f.total = Math.round((f.gasolina + f.alimentos + f.hospedaje + opsViaNum(f.casetas) + opsViaNum(f.otros)) * 100) / 100;
+        f.total = Math.round((f.gasolina + f.alimentos + f.hospedaje + f.casetasTotal + opsViaNum(f.otros)) * 100) / 100;
         f.personas = personas;
     }
 
@@ -9406,50 +9534,132 @@
         return `<label style="display:block;font-size:11.5px;font-weight:600;color:#475569;">${label}
             <input id="${id}" type="${tipo}" value="${opsEsc(valor ?? "")}" ${extra} style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;box-sizing:border-box;"></label>`;
     }
+
+    // Lista de personal con buscador (se repinta sola, sin perder el foco del buscador).
+    function opsViaHTMLListaTec() {
+        const f = opsViaForm;
+        const q = opsNormalizaTexto(f.tecBuscar || "");
+        const partes = q.split(" ").filter(Boolean);
+        const todos = cacheTec.filter(t => (t.estatus || "activo") !== "baja")
+            .map(t => ({ t, op: !opsEsAdministrativo(t) }))
+            .sort((a, b) => (b.op - a.op) || (a.t.nombre || "").localeCompare(b.t.nombre || "", "es", { sensitivity: "base" }));
+        const lista = todos.filter(({ t }) => !partes.length || partes.every(p => opsNormalizaTexto([t.nombre, t.puesto, t.numeroOperativo].join(" ")).includes(p)));
+        return lista.map(({ t, op }) => `<label style="display:flex;gap:6px;align-items:center;font-size:12px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" ${f.tecnicos.some(x => x.id === t.id) ? "checked" : ""} onchange="opsViaToggleTecnico('${opsEsc(t.id)}', this.checked)">
+                ${opsEsc(t.nombre || "")} <span style="color:#94a3b8;font-size:11px;">${opsEsc(op ? (t.puesto || "Técnico") : "Oficina")}</span></label>`).join("")
+            || `<div style="color:#94a3b8;font-size:12px;">${cacheTec.length ? "Nadie coincide con la búsqueda." : "No se pudieron cargar técnicos."}</div>`;
+    }
+    window.opsViaBuscarTec = function (texto) {
+        opsViaForm.tecBuscar = texto;
+        const el = document.getElementById("via-tec-lista");
+        if (el) el.innerHTML = opsViaHTMLListaTec();
+    };
+
+    function opsViaHTMLCasetas() {
+        const f = opsViaForm, puedeEditarCosto = opsPuedeGestionar() || opsViaPuedeAutorizar();
+        const estado = f.casetasEstado === "buscando" ? `<div style="font-size:11.5px;color:#64748b;">Buscando casetas sobre la ruta…</div>`
+            : f.casetasEstado === "error" ? `<div style="font-size:11.5px;color:#b45309;">No se pudieron detectar las casetas automáticamente (servicio de mapas ocupado). Agrégalas del catálogo abajo.</div>`
+            : (f.casetasEstado === "listo" && !f.casetas.length) ? `<div style="font-size:11.5px;color:#64748b;">No se detectaron casetas en esta ruta.</div>` : "";
+        const opcionesCat = (sel) => `<option value="">— ¿Cuál caseta es? —</option>` + (opsViaCasetasCat || []).map(c => `<option value="${opsEsc(c.id)}" ${c.id === sel ? "selected" : ""}>${opsEsc(c.nombre)}</option>`).join("");
+        const filas = f.casetas.map((c, i) => `
+            <div style="display:grid;grid-template-columns:22px minmax(0,1fr) 92px 62px 88px;gap:6px;align-items:center;padding:5px 0;border-bottom:1px solid #eef1f5;opacity:${c.aplica && f.aplicaCasetas ? 1 : .45};">
+                <input type="checkbox" ${c.aplica ? "checked" : ""} onchange="opsViaCasetaCampo(${i}, 'aplica', this.checked)" title="¿Aplica esta caseta?">
+                <div style="font-size:12px;min-width:0;">
+                    ${c.catalogoId ? `<b>${opsEsc(c.nombre)}</b>` : `<select onchange="opsViaCasetaIdentificar(${i}, this.value)" style="width:100%;border:1px solid #fbbf24;border-radius:6px;padding:3px 4px;font-size:11.5px;">${opcionesCat("")}</select>`}
+                    <div style="font-size:10.5px;color:#94a3b8;">${opsEsc(c.catalogoId ? ((opsViaCasetasCat.find(x => x.id === c.catalogoId) || {}).carretera || (c.manual ? "Agregada a mano" : "Detectada en la ruta")) : (c.nombreOsm ? "OpenStreetMap: " + c.nombreOsm : "Detectada en la ruta, sin nombre"))}</div>
+                </div>
+                <input type="number" min="0" step="1" value="${c.catalogoId ? c.costo : (c.costoManual ?? "")}" ${puedeEditarCosto ? "" : "readonly"} onchange="opsViaCasetaCosto(${i}, this.value)" title="Costo por cruce (${opsEsc(f.tipoVehiculo)})" style="border:1px solid #cbd5e1;border-radius:6px;padding:4px 6px;font-size:12px;width:100%;box-sizing:border-box;">
+                <input type="number" min="0" step="1" value="${c.cruces}" onchange="opsViaCasetaCampo(${i}, 'cruces', Number(this.value))" title="Cruces (2 = ida y vuelta)" style="border:1px solid #cbd5e1;border-radius:6px;padding:4px 6px;font-size:12px;width:100%;box-sizing:border-box;">
+                <div style="text-align:right;font-size:12px;font-weight:700;color:#334155;">${opsViaDinero(c.subtotal)}</div>
+            </div>`).join("");
+        return `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin:12px 0 6px;">
+                <label style="font-weight:700;font-size:12.5px;color:#1D2E73;display:flex;align-items:center;gap:6px;cursor:pointer;">
+                    <input type="checkbox" ${f.aplicaCasetas ? "checked" : ""} onchange="opsViaCampo('aplicaCasetas', this.checked, true)"> Aplica casetas
+                </label>
+                <span style="font-size:10.5px;color:#94a3b8;">Costo por cruce · Cruces · Subtotal</span>
+            </div>
+            ${estado}
+            ${filas}
+            <div style="margin-top:6px;">${opsViaComboHTML("via-caseta-add", "", "", "+ Agregar caseta del catálogo (escribe el nombre)…")}</div>
+            <div style="text-align:right;font-weight:700;color:#334155;">Casetas: ${opsViaDinero(f.casetasTotal)}</div>`;
+    }
+    window.opsViaCasetaCampo = function (i, campo, valor) {
+        const c = opsViaForm && opsViaForm.casetas[i]; if (!c) return;
+        c[campo] = valor;
+        if (campo === "aplica" && valor) opsViaForm.aplicaCasetas = true;
+        opsViaRecalcular(); opsViaPintarFormulario();
+    };
+    // Una caseta detectada sin nombre se liga a una del catálogo: el sistema aprende su
+    // ubicación para reconocerla sola la próxima vez.
+    window.opsViaCasetaIdentificar = async function (i, catId) {
+        const c = opsViaForm && opsViaForm.casetas[i]; if (!c || !catId) return;
+        c.catalogoId = catId;
+        const cat = opsViaCasetasCat.find(x => x.id === catId);
+        if (cat && c.lat) {
+            const osm = [...new Set([...(cat.osm_ids || []), ...(c.osmIds || [])])];
+            cat.lat = cat.lat || c.lat; cat.lng = cat.lng || c.lng; cat.osm_ids = osm;
+            try { const sb = await opsSb(); await sb.from("ops_casetas").update({ lat: cat.lat, lng: cat.lng, osm_ids: osm, actualizado_en: new Date().toISOString(), actualizado_por: opsUsuarioActual() }).eq("id", catId); } catch (e) {}
+        }
+        opsViaRecalcular(); opsViaPintarFormulario();
+    };
+    // Cambiar el costo lo guarda en el catálogo (para ese tipo de vehículo) — se captura una vez.
+    window.opsViaCasetaCosto = async function (i, valor) {
+        const f = opsViaForm, c = f && f.casetas[i]; if (!c) return;
+        const costo = opsViaNum(valor);
+        try {
+            const sb = await opsSb();
+            if (c.catalogoId) {
+                const cat = opsViaCasetasCat.find(x => x.id === c.catalogoId);
+                if (cat) cat["costo_" + f.tipoVehiculo] = costo;
+                await sb.from("ops_casetas").update({ ["costo_" + f.tipoVehiculo]: costo, actualizado_en: new Date().toISOString(), actualizado_por: opsUsuarioActual() }).eq("id", c.catalogoId);
+            } else {
+                const nueva = { nombre: c.nombreOsm || `Caseta ${String(c.lat || "").slice(0, 7)}, ${String(c.lng || "").slice(0, 8)}`, lat: c.lat || null, lng: c.lng || null, osm_ids: c.osmIds || null, ["costo_" + f.tipoVehiculo]: costo, fuente: "Capturada en Solicitud de viáticos", actualizado_por: opsUsuarioActual() };
+                const { data, error } = await sb.from("ops_casetas").insert(nueva).select().single();
+                if (error) throw error;
+                opsViaCasetasCat.push(data);
+                c.catalogoId = data.id;
+            }
+        } catch (e) { c.costoManual = costo; console.warn("[viáticos] costo de caseta:", e.message || e); }
+        opsViaRecalcular(); opsViaPintarFormulario();
+    };
+
     function opsViaPintarFormulario() {
         const f = opsViaForm, cfg = opsViaCfg;
         const wrap = document.getElementById("ops-modal-wrap");
-        const tecnicos = cacheTec.filter(t => (t.estatus || "activo") !== "baja");
-        const folios = (cacheFolios && cacheFolios.length ? cacheFolios : (opsViaFoliosSb || []))
-            .filter(x => x.estado !== "cerrado" && x.estatus !== "Cerrado")
-            .slice(0, 300);
+        const folioSel = (cacheFolios && cacheFolios.length ? cacheFolios : (opsViaFoliosSb || [])).find(x => x.folioOS === f.folioServicio || x.id === f.folioServicio);
         wrap.innerHTML = `
         <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:14px;">
-            <div style="background:#fff;border-radius:14px;width:1040px;max-width:98vw;max-height:94vh;overflow-y:auto;padding:22px;">
+            <div style="background:#fff;border-radius:14px;width:1080px;max-width:98vw;max-height:94vh;overflow-y:auto;padding:22px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
                     <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:17px;color:#1D2E73;">Nueva solicitud de viáticos</div>
                     <button onclick="opsViaCerrar()" style="background:#f1f5f9;border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:16px;">×</button>
                 </div>
                 <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;">
                     <div>
-                        <label style="display:block;font-size:11.5px;font-weight:600;color:#475569;">Folio de servicio (opcional — si lo eliges, jala la estación sola)
-                            <select id="via-folio" onchange="opsViaElegirFolio(this.value)" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
-                                <option value="">— Sin folio —</option>
-                                ${folios.map(x => `<option value="${opsEsc(x.id)}" ${f.folioServicio && (x.folioOS === f.folioServicio || x.id === f.folioServicio) ? "selected" : ""}>${opsEsc(x.folioOS || x.id)} — ${opsEsc(x.estacion || x.clienteNombre || "")}</option>`).join("")}
-                            </select></label>
-                        <label style="display:block;font-size:11.5px;font-weight:600;color:#475569;">Estación destino (catálogo de Ventas)
-                            <input id="via-est-buscar" placeholder="Escribe nombre, CRE, razón social o municipio…" value="${opsEsc(f.estacion ? opsViaNombreEstacion(f.estacion) : "")}" oninput="opsViaBuscarEstacion(this.value)" autocomplete="off"
-                                style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 2px;box-sizing:border-box;"></label>
-                        <div id="via-est-resultados" style="position:relative;"></div>
-                        <div style="font-size:11px;color:#64748b;margin:2px 0 10px;">${f.estacion ? opsEsc(f.estacion.direccion_normalizada || f.estacion.domicilio_raw || "") : "¿No está en el catálogo? Escribe la dirección y presiona <b>Enter</b>."}</div>
-                        <div id="via-mapa" style="height:250px;border-radius:10px;border:1px solid #e2e8f0;background:#f8fafc;margin-bottom:6px;"></div>
+                        ${opsViaComboHTML("via-folio", "Folio de servicio (opcional — rellena estación, personal y horario)", folioSel ? `${folioSel.folioOS || folioSel.id} — ${folioSel.estacion || folioSel.clienteNombre || ""}` : "", "Busca por folio, estación, cliente o técnico…")}
+                        <div style="height:8px;"></div>
+                        ${opsViaComboHTML("via-est-buscar", "Estación destino (catálogo de Ventas)", f.estacion ? opsViaNombreEstacion(f.estacion) : f.destinoTexto, "Nombre, CRE, razón social o municipio…")}
+                        <div style="font-size:11px;color:#64748b;margin:2px 0 10px;">${f.estacion ? opsEsc([f.estacion.direccion_normalizada || f.estacion.domicilio_raw || "", f.estacion.encargado ? "Encargado: " + f.estacion.encargado : ""].filter(Boolean).join(" · ")) : "¿No está en el catálogo? Escribe la dirección y presiona <b>Enter</b>."}</div>
+                        <div id="via-mapa" style="height:260px;border-radius:10px;border:1px solid #e2e8f0;background:#f8fafc;margin-bottom:6px;"></div>
                         <div id="via-ruta-info" style="font-size:12px;color:#334155;margin-bottom:12px;">${opsViaTextoRuta()}</div>
 
-                        <div style="font-size:11.5px;font-weight:600;color:#475569;margin-bottom:4px;">Personal que viaja (${f.tecnicos.length})</div>
-                        <div style="max-height:130px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px;padding:6px 8px;margin-bottom:10px;">
-                            ${tecnicos.map(t => `<label style="display:flex;gap:6px;align-items:center;font-size:12px;padding:2px 0;cursor:pointer;">
-                                <input type="checkbox" ${f.tecnicos.some(x => x.id === t.id) ? "checked" : ""} onchange="opsViaToggleTecnico('${opsEsc(t.id)}', this.checked)">
-                                ${opsEsc(t.nombre || "")} <span style="color:#94a3b8;">${opsEsc(t.numeroOperativo || "")}</span></label>`).join("") || `<div style="color:#94a3b8;font-size:12px;">No se pudieron cargar técnicos.</div>`}
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                            <span style="font-size:11.5px;font-weight:600;color:#475569;">Personal que viaja (${f.tecnicos.length})</span>
+                            <span style="font-size:11px;color:#1D2E73;">${opsEsc(f.tecnicos.map(t => t.nombre).join(", "))}</span>
                         </div>
+                        <input value="${opsEsc(f.tecBuscar)}" oninput="opsViaBuscarTec(this.value)" placeholder="Buscar persona…" autocomplete="off" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 10px;font-size:12.5px;margin-bottom:4px;box-sizing:border-box;">
+                        <div id="via-tec-lista" style="max-height:150px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px;padding:6px 8px;margin-bottom:10px;">${opsViaHTMLListaTec()}</div>
                     </div>
                     <div>
                         <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 10px;">
-                            <label style="display:block;font-size:11.5px;font-weight:600;color:#475569;">Tipo de vehículo
+                            <div>${opsViaComboHTML("via-vehiculo", "Vehículo (Flotilla)", f.vehiculo, "ECO, unidad, placas o responsable…")}
+                                <div style="font-size:10.5px;color:#94a3b8;margin:0 0 8px;">${f.rendimientoReal ? `Rendimiento real de la unidad: ${f.rendimientoReal} km/l` : "&nbsp;"}</div></div>
+                            <label style="display:block;font-size:11.5px;font-weight:600;color:#475569;">Tipo de vehículo (política)
                                 <select onchange="opsViaCampo('tipoVehiculo', this.value); opsViaForm.rendimiento=null; opsViaRecalcular(); opsViaPintarFormulario();" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
                                     ${(cfg.vehiculos || []).map(v => `<option value="${opsEsc(v.tipo)}" ${v.tipo === f.tipoVehiculo ? "selected" : ""}>${opsEsc(v.nombre)} — ${v.rendimiento} km/l</option>`).join("")}
                                 </select></label>
-                            ${opsViaInput("Vehículo / ECO (opcional)", "via-vehiculo", f.vehiculo, `oninput="opsViaForm.vehiculo=this.value"`)}
-                            ${opsViaInput("Salida", "via-salida", f.salida, `onchange="opsViaCampo('salida', this.value, true)"`, "datetime-local")}
+                            ${opsViaInput("Salida" + (f.llegadaObjetivo && !f.salidaManual ? " (para llegar a la hora del folio)" : ""), "via-salida", f.salida, `onchange="opsViaForm.salidaManual=true; opsViaCampo('salida', this.value, true)"`, "datetime-local")}
                             ${opsViaInput("Horas de servicio en sitio", "via-horas", f.horasServicio, `onchange="opsViaCampo('horasServicio', this.value, true)" step="0.5" min="0"`, "number")}
                             ${opsViaInput("Regreso estimado " + (f.regresoManual ? "(editado)" : "(automático)"), "via-regreso", f.regreso, `onchange="opsViaForm.regresoManual=true; opsViaCampo('regreso', this.value, true)"`, "datetime-local")}
                             <label style="display:block;font-size:11.5px;font-weight:600;color:#475569;">¿Requiere viáticos?
@@ -9479,13 +9689,15 @@
                             <div style="font-size:10.5px;color:#94a3b8;margin-top:-4px;">${opsEsc(cfg.desayunoRegla)} · ${opsEsc(cfg.comidaRegla)} · ${opsEsc(cfg.cenaRegla)} · Tope diario ${opsViaDinero(cfg.topeDiario)}</div>
                             <div style="text-align:right;font-weight:700;color:#334155;">Alimentos: ${opsViaDinero(f.alimentosPorPersona)} × ${f.personas} persona(s) = ${opsViaDinero(f.alimentos)}</div>
 
-                            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0 8px;margin-top:12px;">
+                            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0 8px;margin-top:12px;">
                                 ${opsViaInput("Noches hotel", "via-noches", f.noches, `onchange="opsViaForm.nochesManual=true; opsViaCampo('noches', Number(this.value), true)" min="0"`, "number")}
                                 ${opsViaInput("$/noche", "via-hotel", f.hospedajePorNoche, `onchange="opsViaCampo('hospedajePorNoche', this.value, true)"`, "number")}
-                                ${opsViaInput("Casetas $", "via-casetas", f.casetas, `onchange="opsViaCampo('casetas', this.value, true)"`, "number")}
                                 ${opsViaInput("Otros $", "via-otros", f.otros, `onchange="opsViaCampo('otros', this.value, true)"`, "number")}
                             </div>
                             <div style="text-align:right;font-weight:700;color:#334155;">Hospedaje: ${opsViaDinero(f.hospedaje)}</div>
+
+                            ${opsViaHTMLCasetas()}
+
                             <div style="border-top:2px solid #1D2E73;margin-top:10px;padding-top:8px;display:flex;justify-content:space-between;align-items:center;">
                                 <span style="font-weight:700;color:#1D2E73;">TOTAL SOLICITADO</span>
                                 <span style="font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:700;color:#E7402B;">${opsViaDinero(f.total)}</span>
@@ -9501,8 +9713,6 @@
                 </div>
             </div>
         </div>`;
-        const buscar = document.getElementById("via-est-buscar");
-        if (buscar) buscar.addEventListener("keydown", ev => { if (ev.key === "Enter") { ev.preventDefault(); opsViaDireccionLibre(buscar.value); } });
         opsViaPintarMapa();
     }
     window.opsViaCerrar = function () {
@@ -9524,6 +9734,18 @@
         opsViaRecalcular();
         opsViaPintarFormulario();
     };
+    window.opsViaElegirVehiculo = function (eco) {
+        const v = (opsViaFlota || []).find(x => String(x.Eco) === String(eco));
+        if (!v || !opsViaForm) return;
+        const f = opsViaForm;
+        f.vehiculoEco = v.Eco;
+        f.vehiculo = `ECO ${v.Eco} · ${v.Unidad || ""}${v.Placas ? " · " + v.Placas : ""}`;
+        f.tipoVehiculo = opsViaTipoDeVehiculo(v);
+        f.rendimientoReal = opsViaRendimientoReal(v);
+        f.rendimiento = null; // vuelve al rendimiento de la política para ese tipo
+        opsViaRecalcular();
+        opsViaPintarFormulario();
+    };
     function opsViaTextoRuta() {
         const f = opsViaForm;
         if (!f) return "";
@@ -9532,45 +9754,39 @@
         const h = opsViaNum(f.horasIda);
         const txtT = h ? `${Math.floor(h)} h ${Math.round((h % 1) * 60)} min` : "—";
         return `<b>${opsViaNum(f.kmSencillo).toFixed(1)} km</b> sencillo · <b>${txtT}</b> de manejo (ida) desde ${opsEsc(opsViaCfg.origen.nombre)}`
+            + (f.casetas.length ? ` · <b>${f.casetas.length}</b> caseta(s) en la ruta` : "")
             + (f.coordAprox ? `<div style="color:#b45309;font-size:11px;">Ubicación aproximada (por dirección). Arrastra el pin rojo al lugar exacto y se guarda en el catálogo de estaciones.</div>` : "");
     }
 
-    window.opsViaBuscarEstacion = function (texto) {
-        const cont = document.getElementById("via-est-resultados");
-        if (!cont) return;
-        const q = opsNormalizaTexto(texto || "");
-        if (q.length < 2) { cont.innerHTML = ""; return; }
-        const partes = q.split(" ").filter(Boolean);
-        const res = (opsViaEstaciones || []).filter(e => {
-            const hay = opsNormalizaTexto([e.id, e.nombre_comercial, e.razon_social, e.codigo_estacion_cre, e.permiso, e.municipio, e.direccion_normalizada].filter(Boolean).join(" "));
-            return partes.every(p => hay.includes(p));
-        }).slice(0, 12);
-        cont.innerHTML = `<div style="position:absolute;left:0;right:0;top:0;z-index:1000;background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 8px 20px rgba(0,0,0,.12);max-height:260px;overflow-y:auto;">
-            ${res.map(e => `<div onclick="opsViaElegirEstacion('${opsEsc(e.id)}')" style="padding:7px 10px;cursor:pointer;border-bottom:1px solid #f1f5f9;font-size:12px;" onmouseover="this.style.background='#E9ECF5'" onmouseout="this.style.background=''">
-                <b>${opsEsc(e.nombre_comercial || e.razon_social || e.id)}</b> <span style="color:#94a3b8;">${opsEsc(e.codigo_estacion_cre || "")}</span>
-                <div style="color:#64748b;font-size:11px;">${opsEsc(e.direccion_normalizada || e.domicilio_raw || e.municipio || "")}</div></div>`).join("")
-            || `<div style="padding:9px 10px;font-size:12px;color:#94a3b8;">Sin coincidencias. Presiona Enter para buscar como dirección.</div>`}</div>`;
-    };
     window.opsViaElegirFolio = function (id) {
         const lista = (cacheFolios && cacheFolios.length ? cacheFolios : (opsViaFoliosSb || []));
         const fo = lista.find(x => x.id === id);
-        if (!fo) { opsViaForm.folioServicio = ""; return; }
-        opsViaForm.folioServicio = fo.folioOS || fo.id;
-        opsViaForm.cliente = fo.clienteNombre || "";
+        const f = opsViaForm;
+        if (!fo || !f) return;
+        f.folioServicio = fo.folioOS || fo.id;
+        f.cliente = fo.clienteNombre || "";
+        // Personal asignado al folio
+        const ids = fo.tecnicosAsignadosIds || [];
+        if (ids.length) f.tecnicos = ids.map(tid => cacheTec.find(t => t.id === tid)).filter(Boolean).map(t => ({ id: t.id, nombre: t.nombre, correo: t.correo || null }));
+        // Horario del folio: se llega a la hora programada; la salida se calcula al tener la ruta
+        if (fo.fechaProgramada && /T\d{2}:\d{2}/.test(fo.fechaProgramada)) { f.llegadaObjetivo = fo.fechaProgramada.slice(0, 16); f.salidaManual = false; f.regresoManual = false; }
+        if (opsViaNum(fo.tiempoEjecucionHrs) > 0) f.horasServicio = opsViaNum(fo.tiempoEjecucionHrs);
+        if (!f.notas && (fo.descripcion || fo.tipoServicio)) f.notas = [fo.tipoServicio, fo.descripcion].filter(Boolean).join(" — ").slice(0, 300);
         let est = null;
         if (fo.estacionCatalogoId) est = (opsViaEstaciones || []).find(e => e.id === fo.estacionCatalogoId);
         if (!est && fo.estacion) {
             const q = opsNormalizaTexto(fo.estacion);
             est = (opsViaEstaciones || []).find(e => opsNormalizaTexto([e.nombre_comercial, e.razon_social, e.codigo_estacion_cre].join(" ")).includes(q));
         }
-        if (est) return opsViaElegirEstacion(est.id, fo);
+        if (est) return window.opsViaElegirEstacion(est.id);
         if (fo.estacionLat && fo.estacionLng) {
-            opsViaForm.estacion = null;
-            opsViaForm.destinoTexto = fo.estacion || fo.estacionDireccion || "";
-            opsViaForm.lat = Number(fo.estacionLat); opsViaForm.lng = Number(fo.estacionLng); opsViaForm.coordAprox = false;
+            f.estacion = null;
+            f.destinoTexto = fo.estacion || fo.estacionDireccion || "";
+            f.lat = Number(fo.estacionLat); f.lng = Number(fo.estacionLng); f.coordAprox = false;
             return opsViaCalcularRuta();
         }
-        if (fo.estacionDireccion || fo.estacion) return opsViaDireccionLibre(fo.estacionDireccion || fo.estacion);
+        if (fo.estacionDireccion || fo.estacion) return window.opsViaDireccionLibre(fo.estacionDireccion || fo.estacion);
+        opsViaRecalcular();
         opsViaPintarFormulario();
     };
     window.opsViaElegirEstacion = async function (id) {
@@ -9578,6 +9794,7 @@
         if (!e || !opsViaForm) return;
         opsViaForm.estacion = e;
         opsViaForm.destinoTexto = opsViaNombreEstacion(e);
+        opsViaForm.cliente = opsViaForm.cliente || e.razon_social || "";
         opsViaForm.coordAprox = false;
         if (e.lat && e.lng) { opsViaForm.lat = e.lat; opsViaForm.lng = e.lng; }
         else {
@@ -9614,7 +9831,7 @@
         const o = opsViaCfg.origen;
         f.rutaGeo = null;
         try {
-            const resp = await fetch(`https://router.project-osrm.org/route/v1/driving/${o.lng},${o.lat};${f.lng},${f.lat}?overview=simplified&geometries=geojson`);
+            const resp = await fetch(`https://router.project-osrm.org/route/v1/driving/${o.lng},${o.lat};${f.lng},${f.lat}?overview=full&geometries=geojson`);
             const data = await resp.json();
             const r = data.routes && data.routes[0];
             if (r) {
@@ -9634,7 +9851,70 @@
         f.calculando = false;
         opsViaRecalcular();
         opsViaPintarFormulario();
+        if (f.rutaGeo) opsViaDetectarCasetas();
     }
+
+    // ── Casetas sobre la ruta (OpenStreetMap / Overpass, gratis) ──
+    // Busca los puntos de cobro (barrier=toll_booth) a menos de 150 m de la ruta, los agrupa
+    // por plaza y los liga al catálogo ops_casetas (tarifas oficiales capturadas) por nombre,
+    // por ubicación aprendida o por el identificador de OpenStreetMap.
+    function opsViaDistKm(a, b) {
+        const R = 6371, rad = x => x * Math.PI / 180;
+        const dLat = rad(b[0] - a[0]), dLng = rad(b[1] - a[1]);
+        const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a[0])) * Math.cos(rad(b[0])) * Math.sin(dLng / 2) ** 2;
+        return 2 * R * Math.asin(Math.sqrt(h));
+    }
+    async function opsViaDetectarCasetas() {
+        const f = opsViaForm; if (!f || !f.rutaGeo) return;
+        const manuales = f.casetas.filter(c => c.manual);
+        f.casetasEstado = "buscando"; opsViaPintarFormulario();
+        try {
+            const geo = f.rutaGeo, paso = Math.max(1, Math.ceil(geo.length / 220));
+            const pts = geo.filter((_, i) => i % paso === 0 || i === geo.length - 1);
+            const around = pts.map(p => p[0].toFixed(5) + "," + p[1].toFixed(5)).join(",");
+            const q = `[out:json][timeout:25];node(around:150,${around})["barrier"="toll_booth"];out body;`;
+            const resp = await fetch("https://overpass-api.de/api/interpreter", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "data=" + encodeURIComponent(q) });
+            if (!resp.ok) throw new Error("Overpass " + resp.status);
+            const data = await resp.json();
+            if (opsViaForm !== f) return;
+            // Agrupar los carriles/nodos de una misma plaza (a menos de 1 km)
+            const grupos = [];
+            (data.elements || []).forEach(n => {
+                const p = [n.lat, n.lon];
+                const g = grupos.find(x => opsViaDistKm(x.p, p) < 1);
+                const nombre = (n.tags && (n.tags.name || n.tags["name:es"] || n.tags.operator)) || "";
+                if (g) { g.ids.push(String(n.id)); if (!g.nombre && nombre) g.nombre = nombre; }
+                else grupos.push({ p, ids: [String(n.id)], nombre });
+            });
+            // Orden a lo largo de la ruta
+            grupos.forEach(g => { let best = 0, bd = Infinity; geo.forEach((q2, i) => { const d = opsViaDistKm(g.p, q2); if (d < bd) { bd = d; best = i; } }); g.orden = best; });
+            grupos.sort((a, b) => a.orden - b.orden);
+            const cat = opsViaCasetasCat || [];
+            const detectadas = grupos.map((g, i) => {
+                const nom = opsNormalizaTexto(g.nombre || "");
+                let c = cat.find(x => (x.osm_ids || []).some(id => g.ids.includes(id)));
+                if (!c) c = cat.find(x => x.lat && x.lng && opsViaDistKm([x.lat, x.lng], g.p) < 3);
+                if (!c && nom) c = cat.find(x => { const cn = opsNormalizaTexto(x.nombre); return nom.includes(cn) || cn.includes(nom); });
+                return { key: "osm-" + g.ids[0], catalogoId: c ? c.id : null, nombreOsm: g.nombre, osmIds: g.ids, lat: g.p[0], lng: g.p[1], aplica: true, cruces: 2 };
+            });
+            // Aprender la ubicación de las que se reconocieron por nombre
+            detectadas.forEach(d => {
+                const c = d.catalogoId && cat.find(x => x.id === d.catalogoId);
+                if (c && !c.lat) opsSb().then(sb => sb.from("ops_casetas").update({ lat: d.lat, lng: d.lng, osm_ids: [...new Set([...(c.osm_ids || []), ...d.osmIds])] }).eq("id", c.id)).then(() => { c.lat = d.lat; c.lng = d.lng; }).catch(() => {});
+            });
+            f.casetas = detectadas.concat(manuales.filter(m => !detectadas.some(d => d.catalogoId && d.catalogoId === m.catalogoId)));
+            f.aplicaCasetas = f.casetas.length > 0;
+            f.casetasEstado = "listo";
+        } catch (e) {
+            console.warn("[viáticos] casetas (Overpass):", e.message || e);
+            if (opsViaForm !== f) return;
+            f.casetas = manuales;
+            f.casetasEstado = "error";
+        }
+        opsViaRecalcular();
+        opsViaPintarFormulario();
+    }
+
     function opsViaPintarMapa() {
         const el = document.getElementById("via-mapa");
         if (!el || typeof L === "undefined") return;
@@ -9643,6 +9923,7 @@
         opsViaMapa = L.map(el, { attributionControl: false }).setView([o.lat, o.lng], 10);
         L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18 }).addTo(opsViaMapa);
         const icono = color => L.divIcon({ className: "", html: `<div style="width:16px;height:16px;border-radius:50%;background:${color};border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);"></div>`, iconSize: [16, 16], iconAnchor: [8, 8] });
+        const iconoCaseta = activa => L.divIcon({ className: "", html: `<div style="width:20px;height:20px;border-radius:5px;background:${activa ? "#f59e0b" : "#cbd5e1"};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;">$</div>`, iconSize: [20, 20], iconAnchor: [10, 10] });
         L.marker([o.lat, o.lng], { icon: icono("#1D2E73") }).addTo(opsViaMapa).bindTooltip(o.nombre);
         if (f && f.lat) {
             const m = L.marker([f.lat, f.lng], { icon: icono("#E7402B"), draggable: true }).addTo(opsViaMapa).bindTooltip(f.destinoTexto || "Destino");
@@ -9653,6 +9934,13 @@
                 opsViaCalcularRuta();
             });
             if (f.rutaGeo) L.polyline(f.rutaGeo, { color: "#1D2E73", weight: 4, opacity: 0.8 }).addTo(opsViaMapa);
+            (f.casetas || []).forEach(c => {
+                const cat = c.catalogoId && (opsViaCasetasCat || []).find(x => x.id === c.catalogoId);
+                const lat = c.lat || (cat && cat.lat), lng = c.lng || (cat && cat.lng);
+                if (!lat || !lng) return;
+                L.marker([lat, lng], { icon: iconoCaseta(c.aplica && f.aplicaCasetas) }).addTo(opsViaMapa)
+                    .bindTooltip(`${opsEsc(c.nombre || "Caseta")} — ${opsViaDinero(c.costo)} por cruce`);
+            });
             opsViaMapa.fitBounds(L.latLngBounds([[o.lat, o.lng], [f.lat, f.lng]]).pad(0.25));
         }
         setTimeout(() => { try { opsViaMapa && opsViaMapa.invalidateSize(); } catch (e) {} }, 60);
@@ -9663,9 +9951,12 @@
         if (!f.lat) { alert("Elige la estación o dirección destino."); return; }
         if (!f.tecnicos.length) { alert("Marca al menos a una persona que viaja."); return; }
         if (!f.salida) { alert("Indica la fecha y hora de salida."); return; }
+        const sinCosto = f.aplicaCasetas ? f.casetas.filter(c => c.aplica && !c.costo) : [];
+        if (sinCosto.length && !confirm(`Hay ${sinCosto.length} caseta(s) marcadas sin costo. ¿Enviar así de todos modos?`)) return;
         const btn = document.getElementById("via-btn-guardar");
         if (btn) { btn.disabled = true; btn.textContent = "Enviando…"; }
         const veh = opsViaVehiculoCfg(f.tipoVehiculo);
+        const casetasDetalle = f.aplicaCasetas ? f.casetas.filter(c => c.aplica).map(c => ({ nombre: c.nombre, catalogoId: c.catalogoId || null, costo: c.costo, cruces: opsViaNum(c.cruces), subtotal: c.subtotal })) : [];
         const fila = {
             estatus: "Pendiente",
             solicitante_email: opsUsuarioActual(), solicitante_nombre: opsNombreActual(),
@@ -9677,12 +9968,14 @@
             km_sencillo: opsViaNum(f.kmSencillo), tipo_vehiculo: veh.nombre || f.tipoVehiculo, vehiculo: f.vehiculo || null,
             rendimiento: opsViaNum(f.rendimiento), precio_litro: opsViaNum(f.precioLitro), factor: opsViaNum(f.factor), gasolina: f.gasolina,
             desayunos: f.desayunos, comidas: f.comidas, cenas: f.cenas, alimentos: f.alimentos,
-            hospedaje: f.hospedaje, casetas: opsViaNum(f.casetas), otros: opsViaNum(f.otros), total: f.total,
+            hospedaje: f.hospedaje, casetas: f.casetasTotal, otros: opsViaNum(f.otros), total: f.total,
             notas: f.notas || null,
             tarifas: {
                 requiereViaticos: !!f.requiere, salida: f.salida, regreso: f.regreso, horasServicio: opsViaNum(f.horasServicio), horasIda: opsViaNum(f.horasIda),
                 noches: opsViaNum(f.noches), hospedajePorNoche: opsViaNum(f.hospedajePorNoche), desayuno: opsViaCfg.desayuno, comida: opsViaCfg.comida, cena: opsViaCfg.cena,
                 estacionId: f.estacion ? f.estacion.id : null, lat: f.lat, lng: f.lng, tecnicos: f.tecnicos,
+                vehiculoEco: f.vehiculoEco || null, rendimientoReal: f.rendimientoReal || null,
+                aplicaCasetas: !!f.aplicaCasetas, casetasDetalle,
             },
         };
         try {
@@ -9708,16 +10001,18 @@
     };
     function opsViaResumenTexto(s) {
         const t = s.tarifas || {};
+        const det = (t.casetasDetalle || []).map(c => `   · ${c.nombre}: ${opsViaDinero(c.costo)} × ${c.cruces} = ${opsViaDinero(c.subtotal)}`).join("\n");
         return `SOLICITUD DE VIÁTICOS ${s.folio}\n`
             + `Solicita: ${s.solicitante_nombre || s.solicitante_email || ""}\n`
             + `Destino: ${s.destino || ""}${s.folio_servicio ? " (servicio " + s.folio_servicio + ")" : ""}\n`
             + `Personal (${s.personas}): ${s.integrantes || ""}\n`
             + `Salida: ${(t.salida || s.fecha_salida || "").replace("T", " ")} · Regreso: ${(t.regreso || s.fecha_regreso || "").replace("T", " ")}\n`
-            + `Distancia: ${opsViaNum(s.km_sencillo).toFixed(1)} km sencillo · Vehículo: ${s.tipo_vehiculo || ""} ${s.vehiculo || ""}\n\n`
+            + `Distancia: ${opsViaNum(s.km_sencillo).toFixed(1)} km sencillo · Vehículo: ${s.vehiculo || ""} (${s.tipo_vehiculo || ""})\n\n`
             + `Gasolina: ${opsViaDinero(s.gasolina)} (${s.km_sencillo} km × 2 ÷ ${s.rendimiento} km/l × $${s.precio_litro} × ${s.factor})\n`
             + `Alimentos: ${opsViaDinero(s.alimentos)} (${s.desayunos} desayuno(s), ${s.comidas} comida(s), ${s.cenas} cena(s) por persona)\n`
             + `Hospedaje: ${opsViaDinero(s.hospedaje)}${t.noches ? " (" + t.noches + " noche(s))" : ""}\n`
-            + `Casetas: ${opsViaDinero(s.casetas)} · Otros: ${opsViaDinero(s.otros)}\n`
+            + `Casetas: ${opsViaDinero(s.casetas)}${t.aplicaCasetas === false ? " (no aplica)" : ""}${det ? "\n" + det : ""}\n`
+            + `Otros: ${opsViaDinero(s.otros)}\n`
             + `TOTAL: ${opsViaDinero(s.total)}\n`
             + (s.notas ? `\nNotas: ${s.notas}\n` : "");
     }
@@ -9729,8 +10024,8 @@
         <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;">
             <div style="background:#fff;border-radius:14px;width:520px;max-width:96vw;padding:22px;">
                 <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:17px;color:#15803d;margin-bottom:6px;">✅ Solicitud ${opsEsc(s.folio)} registrada</div>
-                <div style="font-size:12.5px;color:#475569;margin-bottom:12px;">Quedó en la lista de Viáticos con estatus <b>Pendiente</b> y se avisó en el portal a Cristina Acosta y a Pagos. Para asegurarte de que la vean hoy, mándala también por correo o WhatsApp:</div>
-                <pre style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px;font-size:11.5px;white-space:pre-wrap;max-height:240px;overflow-y:auto;">${opsEsc(resumen)}</pre>
+                <div style="font-size:12.5px;color:#475569;margin-bottom:12px;">Quedó en la lista de Viáticos con estatus <b>${opsEsc(s.estatus || "Pendiente")}</b> y se avisó en el portal a Cristina Acosta y a Pagos. Para asegurarte de que la vean hoy, mándala también por correo o WhatsApp:</div>
+                <pre style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px;font-size:11.5px;white-space:pre-wrap;max-height:260px;overflow-y:auto;">${opsEsc(resumen)}</pre>
                 <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:12px;">
                     <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cerrar</button>
                     <a href="${wa}" target="_blank" rel="noopener" class="mkt-add-btn" style="background:#15803d;text-decoration:none;">WhatsApp</a>
