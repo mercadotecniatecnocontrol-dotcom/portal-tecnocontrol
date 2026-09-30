@@ -3061,7 +3061,11 @@ const EMAIL_ACCESO_EXTRA = {
     'i.ruiz@jomarverifica.com.mx': ['Operaciones'], // Norma Idaly Ruiz Olmedo (JOMAR) — respaldo por si Firestore trae otro departamento
 };
 window.EMAIL_ACCESO_EXTRA = EMAIL_ACCESO_EXTRA;
+// Áreas que TODO usuario con sesión puede ver en solo lectura (oct-2026).
+// Dentro del módulo, operaciones.js decide quién edita (admins del portal y de Operaciones).
+const AREAS_LECTURA_PARA_TODOS = ['Operaciones'];
 function tieneAccesoExtra(email, area){
+    if(email && AREAS_LECTURA_PARA_TODOS.includes(area)) return true;
     const lista = EMAIL_ACCESO_EXTRA[(email||'').toLowerCase().trim()] || [];
     return lista.includes(area);
 }
@@ -5843,7 +5847,7 @@ window.irAlmacen = function(btn){
 <script src="gestoria.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
-<script src="operaciones.js?v=6"></script>
+<script src="operaciones.js?v=8"></script>
 <script>
 // ══════════════════════════════════════════════════════════
 // PANEL FLOTANTE UNIVERSAL — Parrilla de Documentos

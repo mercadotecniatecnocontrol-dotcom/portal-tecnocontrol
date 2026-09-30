@@ -290,6 +290,7 @@
     // Nombres que Paloma pidió ocultar — solo se usan para PRESELECCIONAR en la revisión; nada se oculta sin confirmar.
     const OPS_NOMBRES_ADMIN_SUGERIDOS = ["glen", "idaly", "kenia", "jaqueline", "paloma", "cristina acosta", "paola", "denisse", "martin", "ana", "ruth", "sandra", "magali", "miguel"];
     function opsEsAdministrativo(t) {
+        if (OPS_FORZAR_TECNICO[opsCorreoDe(t)]) return false;
         if (t.ocultarEnListas === true) return true;
         if (t.ocultarEnListas === false) return false;
         const p = t.puesto || "";
@@ -342,9 +343,26 @@
     const OPS_ADMINS = [
         "miguel@tecnocontrol.com.mx",
         "clientes@tecnocontrol.com.mx",
-        "u.nunez@tecnocontrol.com.mx",
         "magali@tecnocontrol.com.mx",
     ];
+    // Todo el portal ve Operaciones en SOLO LECTURA (oct-2026). Estos correos quedan
+    // forzados a consulta aunque su puesto en Técnicos traiga permisos de edición.
+    // (Solo editan: admins del portal — esAdminTotal — y OPS_ADMINS / puestos con permisos.)
+    const OPS_SOLO_LECTURA = [
+        "d.gutierrez@tecnocontrol.com.mx",   // Denisse Gutiérrez — Gestoría
+        "gestoria@tecnocontrol.com.mx",
+        "contabilidad@tecnocontrol.com.mx",
+        "compras@tecnocontrol.com.mx",        // Ana Orozco — Compras
+        "aux.compras@tecnocontrol.com.mx",    // Ruth Chávez — Compras
+        "calidad@tecnocontrol.com.mx",        // Jaqueline — Calidad
+        "pagos@tecnocontrol.com.mx",          // Paola — Pagos (sí puede cambiar el estatus de Viáticos)
+    ];
+    // Personas que son TÉCNICOS aunque su registro traiga un puesto administrativo:
+    // aparecen en el Calendario y no reciben permisos de administrador por puesto.
+    const OPS_FORZAR_TECNICO = {
+        "u.nunez@tecnocontrol.com.mx": { puesto: "Técnico de Operaciones", puestoId: "coKuizPDWkHK1DBNM04i" }, // Ulises Núñez
+    };
+    const opsCorreoDe = t => String((t && t.correo) || "").toLowerCase().trim();
 
     // Capa de integración con RH — mismo patrón que opsAspelAdapter: placeholder documentado.
     // Cuando exista sincronización real de personas/altas/bajas/puestos, solo se reemplaza el interior.
@@ -1253,6 +1271,7 @@
         // usado como respaldo cuando el usuario no tiene una Persona ligada todavía.
         const email = opsUsuarioActual();
         if (window.esAdminTotal && window.esAdminTotal(email)) return "administrador";
+        if (OPS_SOLO_LECTURA.includes((email || "").toLowerCase().trim())) return "consulta";
         if (OPS_ADMINS.includes((email || "").toLowerCase().trim())) return "administrador";
         const almacen = (window.USUARIOS_AREA && window.USUARIOS_AREA["Almacen"]) || [];
         if (almacen.map(e => e.toLowerCase()).includes(email.toLowerCase())) return "almacen";
@@ -1266,8 +1285,13 @@
     function opsPermisosPorPuestoDeCorreo(email) {
         if (!email) return [];
         const correo = String(email).toLowerCase().trim();
+        if (OPS_SOLO_LECTURA.includes(correo)) return [];
         const tec = cacheTec.find(t => t.estatus === "activo" && (t.correo || "").toLowerCase().trim() === correo);
         if (!tec || !tec.puestoId) return [];
+        if (OPS_FORZAR_TECNICO[correo]) {
+            const pt = (cachePuestos.length ? cachePuestos : PUESTOS_SEED).find(p => (p.id && p.id === OPS_FORZAR_TECNICO[correo].puestoId) || p.nombre === OPS_FORZAR_TECNICO[correo].puesto);
+            return pt ? (pt.permisos || []) : [];
+        }
         // Si cachePuestos aún no cargó (carrera de timing), se cae a PUESTOS_SEED emparejando
         // por nombre de puesto (PUESTOS_SEED no tiene id porque los ids los asigna Firestore).
         const puesto = (cachePuestos.length ? cachePuestos : PUESTOS_SEED)
@@ -1284,6 +1308,7 @@
         if (rolLegado === "administrador") {
             return PUESTOS_SEED.flatMap(p => p.permisos).concat(["admin_operaciones"]); // acceso total
         }
+        if (OPS_SOLO_LECTURA.includes((email || "").toLowerCase().trim())) return ["consulta"];
         const basePorRolLegado = rolLegado === "almacen" ? ["gestionar_herramientas", "autorizar_material", "solicitar_material"] : [];
         // Unión: respaldo legado (Almacén) + puesto real asignado al correo actual. Así cualquier
         // usuario con un puesto que incluya el permiso lo tiene, sin depender de listas fijas en código.
@@ -1867,6 +1892,7 @@
         if (!unsubTec) {
             unsubTec = fs.onSnapshot(fs.query(fs.collection(db, COL_TECNICOS), fs.orderBy("numeroOperativo")), snap => {
                 cacheTec = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                opsAjustarTecnicosForzados();
                 if (tabActual === "tecnicos") opsRenderTecnicos();
                 if (tabActual === "dashboard") opsRenderDashboard();
                 if (tabActual === "resumen") opsRenderResumen();
@@ -3003,12 +3029,14 @@
         // Solo escribe campos NUEVOS — no toca nada que ya use compras.js.
         if (p.requisicion) {
             try {
-                await fs.updateDoc(fs.doc(db, "requisiciones_compra", p.requisicion.id), {
+                // Sin await: Compras sigue en Firestore y, sin cuota, esta escritura
+                // podría quedarse colgada — la pieza ya quedó guardada en Supabase.
+                fs.updateDoc(fs.doc(db, "requisiciones_compra", p.requisicion.id), {
                     herramientaId: folio,
                     herramientaDescripcion: p.descripcion,
                     herramientaAltaFecha: opsHoy(),
                     herramientaTecnicoDestinoId: p.tecnicoDestinoId || null,
-                });
+                }).catch(err => console.warn("[operaciones.js] requisición de origen no actualizada (Firestore):", err && err.message));
             } catch (err) {
                 console.error("[operaciones.js] no se pudo actualizar la requisición de origen:", err);
             }
@@ -9108,6 +9136,23 @@
         return () => { vivo = false; if (canal) { try { canal.unsubscribe(); } catch (e) {} } };
     }
 
+    // ── Técnicos forzados (OPS_FORZAR_TECNICO) ──
+    // Corrige en memoria el puesto para que aparezcan en el Calendario como técnicos y,
+    // si quien tiene abierto el módulo es administrador, deja el cambio guardado en su
+    // ficha (Firestore, sin esperar) y en la copia de Supabase — una sola vez.
+    const _opsForzadosGuardados = new Set();
+    function opsAjustarTecnicosForzados() {
+        cacheTec.forEach(t => {
+            const f = OPS_FORZAR_TECNICO[opsCorreoDe(t)];
+            if (!f || (t.puesto === f.puesto && t.puestoId === f.puestoId)) return;
+            t.puesto = f.puesto; t.puestoId = f.puestoId;
+            if (opsRolActual() !== "administrador" || _opsForzadosGuardados.has(t.id)) return;
+            _opsForzadosGuardados.add(t.id);
+            opsCopiaFirestore((db, fs) => fs.updateDoc(fs.doc(db, COL_TECNICOS, t.id), { puesto: f.puesto, puestoId: f.puestoId }).catch(() => {}));
+            opsSb().then(sb => sb.from("ops_tecnicos").update({ puesto: f.puesto, puesto_id: f.puestoId, actualizado_en: new Date().toISOString() }).eq("id", t.id)).catch(() => {});
+        });
+    }
+
     // ── Respaldo de técnicos y almacenes desde Supabase ──
     // Siguen leyéndose de Firestore (sus altas/ediciones aún viven ahí), pero si
     // Firestore no responde (sin cuota) se usan las copias ya migradas a Supabase
@@ -9117,7 +9162,7 @@
             const sb = await opsSb();
             if (!cacheTec.length) {
                 const { data } = await sb.from("ops_tecnicos").select("*").order("numero_operativo");
-                if (data && data.length && !cacheTec.length) cacheTec = data.map(opsFilaACamel);
+                if (data && data.length && !cacheTec.length) { cacheTec = data.map(opsFilaACamel); opsAjustarTecnicosForzados(); }
             }
             if (!cacheAlmacenes.length) {
                 const { data } = await sb.from("ops_almacenes").select("*");
@@ -9244,7 +9289,7 @@
                 </div>
                 <div style="display:flex;gap:8px;">
                     ${opsRolActual() === "administrador" || autoriza ? `<button onclick="opsViaAbrirTarifas()" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Tarifas</button>` : ""}
-                    <button onclick="opsViaAbrirFormulario()" class="mkt-add-btn" style="background:#E7402B;">+ Nueva solicitud de viáticos</button>
+                    ${opsPuedeGestionar() || autoriza ? `<button onclick="opsViaAbrirFormulario()" class="mkt-add-btn" style="background:#E7402B;">+ Nueva solicitud de viáticos</button>` : `<span style="font-size:12px;color:#94a3b8;align-self:center;">Solo lectura</span>`}
                 </div>
             </div>
             <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow-x:auto;">
