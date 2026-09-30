@@ -5831,7 +5831,8 @@
     }
 
     function opsCalTecnicosFiltrados() {
-        let activos = opsTecOperativos();
+        // Orden alfabético por nombre (ignora acentos y mayúsculas) en Día, Semana y Mes.
+        let activos = opsTecOperativos().slice().sort((a, b) => (a.nombre || "").localeCompare(b.nombre || "", "es", { sensitivity: "base" }));
         if (opsCalFiltroTecnico) activos = activos.filter(t => t.id === opsCalFiltroTecnico);
         if (!opsCalFiltroTexto.trim()) return activos;
         const q = opsCalFiltroTexto.toLowerCase();
