@@ -173,14 +173,25 @@
     // traer colorCalendario propio, si no se usa el hash del nombre de la receta).
     // TRAZO (borde izquierdo grueso) = estatus del folio. Vencido además va punteado.
     // opsCalCategoriaFolio() se conserva igual para el filtro legacy y el import.
+    // SEMÁFORO (oct-2026): insignia blanca en la esquina de cada tarjeta, con color Y símbolo,
+    // independiente del relleno (que es el tipo de servicio). Vencido suma barra roja abajo;
+    // completado atenúa la tarjeta.
+    const OPS_SVG = (d, w) => `<svg width="${w || 12}" height="${w || 12}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
     const OPS_CAL_ESTATUS = {
-        programado: { nombre: "Programado",           color: "#334155" },
-        atencion:   { nombre: "En atención",          color: "#f59e0b" },
-        vencido:    { nombre: "Vencido / urgente",    color: "#dc2626", punteado: true },
-        cerrado:    { nombre: "Cerrado",              color: "#16a34a" },
-        facturar:   { nombre: "Listo para facturar",  color: "#0891b2" },
+        entiempo:     { nombre: "En tiempo",           color: "#16a34a", icono: '<path d="M5 12l5 5L20 7"/>' },
+        porvencer:    { nombre: "Por vencer",          color: "#ca8a04", icono: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>' },
+        retrasado:    { nombre: "Retrasado",           color: "#ea580c", icono: '<path d="M12 3l10 18H2z"/><path d="M12 10v4"/><path d="M12 17.5v.01"/>' },
+        vencido:      { nombre: "Vencido",             color: "#dc2626", icono: '<circle cx="12" cy="12" r="9"/><path d="M12 7v6"/><path d="M12 16.5v.01"/>' },
+        reprogramado: { nombre: "Reprogramado",        color: "#4f46e5", icono: '<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 5v6h-6"/>' },
+        completado:   { nombre: "Completado",          color: "#15803d", icono: '<circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/>' },
+        facturar:     { nombre: "Listo para facturar", color: "#b45309", icono: '<path d="M12 3v18"/><path d="M16.5 7.5c-.8-1.4-2.5-2-4.5-2-2.5 0-4 1.2-4 3s1.5 2.6 4 3.1 4.5 1.3 4.5 3.3-1.8 3.1-4.5 3.1c-2.2 0-3.9-.8-4.7-2.3"/>' },
+        programado:   { nombre: "Sin fecha límite",    color: "#64748b", icono: '<circle cx="12" cy="12" r="3.5"/>' },
     };
-    const OPS_CAL_ORDEN_ESTATUS = ["programado", "atencion", "vencido", "cerrado", "facturar"];
+    const OPS_CAL_ORDEN_ESTATUS = ["entiempo", "porvencer", "retrasado", "vencido", "reprogramado", "completado", "facturar", "programado"];
+    function opsCalBadgeEstatus(clave, tam) {
+        const e = OPS_CAL_ESTATUS[clave] || OPS_CAL_ESTATUS.programado, t = tam || 18;
+        return `<span title="${opsEsc(e.nombre)}" style="width:${t}px;height:${t}px;border-radius:50%;background:#fff;color:${e.color};display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 0 0 1px rgba(15,23,42,.12),0 1px 2px rgba(15,23,42,.18);">${OPS_SVG(e.icono, Math.round(t * 0.66))}</span>`;
+    }
     function opsCalRecetaFolio(f) {
         return f.servicioCatalogoId ? (cacheServiciosCatalogo.find(x => x.id === f.servicioCatalogoId) || null) : null;
     }
@@ -190,36 +201,36 @@
     // por palabra clave, así la leyenda muestra ~20 familias y no 80 variantes.
     // Tecnocontrol = servicios; JOMAR Verificaciones = todas las visitas de inspección.
     const OPS_FAM_TECNO = [
-        { k: "botas",        nombre: "Cambio de botas",           color: "#ff642e", t: x => /bota/.test(x) },
-        { k: "contenedor",   nombre: "Cambio de contenedor",      color: "#fdab3d", t: x => /contenedor/.test(x) },
-        { k: "retank",       nombre: "Retank",                    color: "#e2445c", t: x => /re-?\s?tank/.test(x) },
-        { k: "integridad",   nombre: "Integridad mecánica",       color: "#a25ddc", t: x => /integridad/.test(x) },
-        { k: "hermeticidad", nombre: "Hermeticidad",              color: "#784bd1", t: x => /hermetic/.test(x) },
-        { k: "cableado",     nombre: "Cableado y canalización",   color: "#579bfc", t: x => /cablead|canaliz|conexi/.test(x) },
-        { k: "sonda",        nombre: "Sondas y consolas",         color: "#00a8b5", t: x => /sonda|consola|termistor/.test(x) },
-        { k: "calibracion",  nombre: "Calibración",               color: "#037f4c", t: x => /calibra/.test(x) },
-        { k: "dispensario",  nombre: "Dispensarios y mangueras",  color: "#0073ea", t: x => /dispens|manguer/.test(x) },
-        { k: "electrico",    nombre: "Eléctrico",                 color: "#ffcb00", t: x => /el[eé]ctric/.test(x) },
-        { k: "mantenimiento",nombre: "Mantenimiento",             color: "#00c875", t: x => /manten|mtto/.test(x) },
-        { k: "poliza",       nombre: "Pólizas",                   color: "#ff158a", t: x => /p[oó]liza/.test(x) },
-        { k: "obra",         nombre: "Obra civil",                color: "#7f5347", t: x => /obra civil|pintura|losa|concreto/.test(x) },
-        { k: "totem",        nombre: "Tótem e imagen",            color: "#bb3354", t: x => /t[oó]tem|imagen|anuncio/.test(x) },
-        { k: "supervision",  nombre: "Supervisión",               color: "#175a63", t: x => /supervis/.test(x) },
+        { k: "botas",        nombre: "Cambio de botas",           color: "#FF6D00", t: x => /bota/.test(x) },
+        { k: "contenedor",   nombre: "Cambio de contenedor",      color: "#FFB300", t: x => /contenedor/.test(x) },
+        { k: "retank",       nombre: "Retank",                    color: "#E53935", t: x => /re-?\s?tank/.test(x) },
+        { k: "integridad",   nombre: "Integridad mecánica",       color: "#3949AB", t: x => /integridad/.test(x) },
+        { k: "hermeticidad", nombre: "Hermeticidad",              color: "#00897B", t: x => /hermetic/.test(x) },
+        { k: "cableado",     nombre: "Cableado y canalización",   color: "#1E88E5", t: x => /cablead|canaliz|conexi/.test(x) },
+        { k: "sonda",        nombre: "Sondas y consolas",         color: "#00B4D8", t: x => /sonda|consola|termistor/.test(x) },
+        { k: "calibracion",  nombre: "Calibración",               color: "#00A86B", t: x => /calibra/.test(x) },
+        { k: "dispensario",  nombre: "Dispensarios y mangueras",  color: "#0277BD", t: x => /dispens|manguer/.test(x) },
+        { k: "electrico",    nombre: "Eléctrico",                 color: "#FFD600", t: x => /el[eé]ctric/.test(x) },
+        { k: "mantenimiento",nombre: "Mantenimiento",             color: "#43A047", t: x => /manten|mtto/.test(x) },
+        { k: "poliza",       nombre: "Pólizas",                   color: "#7CB342", t: x => /p[oó]liza/.test(x) },
+        { k: "obra",         nombre: "Obra civil",                color: "#8D6E63", t: x => /obra civil|pintura|losa|concreto/.test(x) },
+        { k: "totem",        nombre: "Tótem e imagen",            color: "#EC4899", t: x => /t[oó]tem|imagen|anuncio/.test(x) },
+        { k: "supervision",  nombre: "Supervisión",               color: "#0097A7", t: x => /supervis/.test(x) },
     ];
-    const OPS_FAM_TECNO_GENERAL = { k: "general", nombre: "Servicio técnico general", color: "#401694" };
+    const OPS_FAM_TECNO_GENERAL = { k: "general", nombre: "Servicio técnico general", color: "#5C6BC0" };
     const OPS_FAM_JOMAR = [
         { k: "sinact",      nombre: "Sin actividad / cancelado", color: "#9aa1ad", t: x => /cancel|vacacion|d[ií]a libre|inh[aá]bil|incapac/.test(x) },
-        { k: "altoflujo",   nombre: "Alto flujo",                color: "#225091", t: x => /alto flujo/.test(x) },
-        { k: "calibracion", nombre: "Calibraciones",             color: "#4eccc6", t: x => /calib|cali+bra/.test(x) },
-        { k: "scfi",        nombre: "SCFI",                      color: "#9cd326", t: x => /scfi/.test(x) },
-        { k: "sasisopa",    nombre: "SASISOPA",                  color: "#5559df", t: x => /sasisopa/.test(x) },
-        { k: "aseaanexo",   nombre: "ASEA + Anexo 21/22",        color: "#cab641", t: x => /asea/.test(x) && /an?e?n?xo|aenxo|aneo/.test(x) },
-        { k: "anexo",       nombre: "Anexo 21 / 22",             color: "#ff7575", t: x => /an?e?n?xo|aenxo|aneo/.test(x) },
-        { k: "asea",        nombre: "ASEA / OP y MTTO",          color: "#d974b0", t: x => /asea|op y mtto|op y mto/.test(x) },
-        { k: "tanques",     nombre: "Bajada de tanques",         color: "#ff9a52", t: x => /tanque/.test(x) },
-        { k: "supervision", nombre: "Supervisión / revisión",    color: "#2b76e5", t: x => /supervis|revisi/.test(x) },
+        { k: "altoflujo",   nombre: "Alto flujo",                color: "#1565C0", t: x => /alto flujo/.test(x) },
+        { k: "calibracion", nombre: "Calibraciones",             color: "#26C6DA", t: x => /calib|cali+bra/.test(x) },
+        { k: "scfi",        nombre: "SCFI",                      color: "#9CCC65", t: x => /scfi/.test(x) },
+        { k: "sasisopa",    nombre: "SASISOPA",                  color: "#3D5AFE", t: x => /sasisopa/.test(x) },
+        { k: "aseaanexo",   nombre: "ASEA + Anexo 21/22",        color: "#FFC107", t: x => /asea/.test(x) && /an?e?n?xo|aenxo|aneo/.test(x) },
+        { k: "anexo",       nombre: "Anexo 21 / 22",             color: "#FF7043", t: x => /an?e?n?xo|aenxo|aneo/.test(x) },
+        { k: "asea",        nombre: "ASEA / OP y MTTO",          color: "#43A047", t: x => /asea|op y mtto|op y mto/.test(x) },
+        { k: "tanques",     nombre: "Bajada de tanques",         color: "#FB8C00", t: x => /tanque/.test(x) },
+        { k: "supervision", nombre: "Supervisión / revisión",    color: "#1E88E5", t: x => /supervis|revisi/.test(x) },
     ];
-    const OPS_FAM_JOMAR_GENERAL = { k: "general", nombre: "Visita de inspección", color: "#ff5ac4" };
+    const OPS_FAM_JOMAR_GENERAL = { k: "general", nombre: "Visita de inspección", color: "#26A69A" };
     // Texto legible sobre relleno sólido: blanco u oscuro según la luminosidad del color.
     function opsCalTextoSobre(hex) {
         const h = hex.replace("#", "");
@@ -236,9 +247,11 @@
     function opsTonoOscuro(color) { return opsMezclaColor(color, "#111827", 0.5); }
     // Tarjetas del calendario en PASTEL (Glen, sep-2026): relleno pastel sólido (no transparente),
     // texto en el mismo tono oscurecido, borde fino del tono medio. La franja de estatus sí va saturada.
+    // Relleno SÓLIDO y vivo (oct-2026, estilo Gantt): el tipo de servicio se ve de lejos.
+    // El texto se elige solo (blanco u oscuro) para que siempre se lea.
     function opsCalMkColor(clave, nombre, color, empresa) {
-        const texto = opsTonoOscuro(color);
-        return { clave, nombre, color, fondo: opsPastel(color), borde: opsMezclaColor(color, "#ffffff", 0.45), texto, suave: texto + "cc", empresa: empresa || "tecno" };
+        const texto = opsCalTextoSobre(color);
+        return { clave, nombre, color, fondo: color, borde: opsMezclaColor(color, "#111827", 0.25), texto, suave: texto === "#ffffff" ? "rgba(255,255,255,.88)" : "rgba(31,41,55,.78)", empresa: empresa || "tecno" };
     }
     function opsCalNorm(x) { return String(x || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase(); }
     function opsCalFamiliaDeTexto(texto, jomar) {
@@ -259,20 +272,37 @@
         }
         return opsCalMkColor("srv:" + (jomar ? "jomar:" : "tecno:") + fam.k, fam.nombre, fam.color, jomar ? "jomar" : "tecno");
     }
+    // Prioridad: facturar > completado > vencido > retrasado > por vencer > reprogramado > en tiempo.
+    //  · Vencido: pasó el vencimiento (o fecha de atención comprometida) sin solución.
+    //  · Retrasado: ya pasó la hora programada + su duración y sigue sin solución (el vencimiento aún no llega).
+    //  · Por vencer: 72 h o menos para el vencimiento.
+    //  · Reprogramado: se movió de fecha al menos una vez (se registra al arrastrar o editar).
+    const OPS_CAL_HORAS_POR_VENCER = 72;
     function opsCalEstatusFolio(f) {
-        let k = "programado";
+        let k;
         if (opsFolioListoFacturar(f)) k = "facturar";
-        else if (f.fechaSolucion) k = "cerrado";
+        else if (f.fechaSolucion) k = "completado";
         else {
             const info = opsCalcularSemaforoFolio(f);
-            if (info.semaforo === "rojo" || info.semaforo === "naranja") k = "vencido";
-            else if (info.enAtencion) k = "atencion";
+            const d = opsCalDatosFolio(f);
+            let finProg = null;
+            if (d && f.fechaProgramada) {
+                const ini = new Date((f.fechaProgramada.includes("T") ? f.fechaProgramada : f.fechaProgramada + "T23:59"));
+                const durHrs = (d.traslado || 0) + (d.ejecucion || 0);
+                // Sin duración capturada: se le da todo su día programado antes de marcarlo retrasado.
+                finProg = durHrs > 0 ? new Date(ini.getTime() + durHrs * 3600000) : new Date(ini.getFullYear(), ini.getMonth(), ini.getDate(), 23, 59);
+            }
+            if (info.horas !== null && info.horas < 0) k = "vencido";
+            else if (finProg && !isNaN(finProg) && finProg < new Date()) k = "retrasado";
+            else if (info.horas !== null && info.horas <= OPS_CAL_HORAS_POR_VENCER) k = "porvencer";
+            else if (Number(f.reprogramaciones) > 0) k = "reprogramado";
+            else k = info.horas !== null ? "entiempo" : "programado";
         }
         return { clave: k, ...OPS_CAL_ESTATUS[k] };
     }
     function opsCalColorFolio(f) {
         const srv = opsCalServicioFolio(f), est = opsCalEstatusFolio(f);
-        return { ...srv, estClave: est.clave, estNombre: est.nombre, estColor: est.color, punteado: !!est.punteado };
+        return { ...srv, estClave: est.clave, estNombre: est.nombre + (Number(f.reprogramaciones) > 0 && est.clave !== "reprogramado" ? ` · reprogramado ${f.reprogramaciones}×` : ""), estColor: est.color, punteado: false };
     }
     // Filtro por chip de leyenda: "srv:..." = tipo de servicio, "est:..." = estatus, lo demás = categoría legacy.
     function opsCalCoincideCategoria(f, k) {
@@ -5886,6 +5916,13 @@
         return `${h}:${String(m).padStart(2, "0")}`;
     }
     // Etiqueta corta del estado (el estado completo sigue en el panel de detalle).
+    // Si la fecha programada cambia de DÍA (no solo unos minutos), se cuenta como reprogramación
+    // y se guarda la fecha original — alimenta el estatus "Reprogramado" del semáforo.
+    function opsCamposReprogramacion(f, nuevaFecha) {
+        const antes = (f && f.fechaProgramada) || "";
+        if (!antes || !nuevaFecha || antes.slice(0, 10) === String(nuevaFecha).slice(0, 10)) return {};
+        return { reprogramaciones: (Number(f.reprogramaciones) || 0) + 1, fechaProgramadaOriginal: f.fechaProgramadaOriginal || antes, ultimaReprogramacion: opsFechaHora() };
+    }
     function opsCalEstadoCorto(f, info) {
         if (opsFolioListoFacturar(f)) return "Por facturar";
         return ({ "SOLUCIONADO": "Cerrado", "VENCIDO": "Vencido", "URGENTE": "Urgente", "PRÓXIMO A VENCER": "Por vencer",
@@ -5966,7 +6003,7 @@
         return `<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px;background:#fff;border-radius:12px;padding:10px 12px;">
             ${fila("Tecnocontrol · servicios", tecno.map(c => chip(c.clave, c.nombre, c.color, c.fondo, false, false, c.fondo)).join(""))}
             ${fila("JOMAR Verificaciones · visitas", jomar.map(c => chip(c.clave, c.nombre, c.color, c.fondo, false, false, c.fondo)).join(""))}
-            ${fila("Estatus (franja izquierda)", OPS_CAL_ORDEN_ESTATUS.map(k => { const e = OPS_CAL_ESTATUS[k]; return chip("est:" + k, e.nombre, e.color, e.color + "14", true, e.punteado); }).join(""))}
+            ${fila("Semáforo (insignia)", OPS_CAL_ORDEN_ESTATUS.map(k => { const e = OPS_CAL_ESTATUS[k]; const on = opsCalFiltroCategoria === "est:" + k; return `<button data-k="est:${k}" onclick="opsCalToggleCategoria(this.dataset.k)" title="Clic para ver solo este estatus" style="display:inline-flex;align-items:center;gap:6px;background:${on ? e.color + "14" : "#fff"};border:1px solid ${on ? e.color : "#e2e8f0"};color:${on ? e.color : "#475569"};padding:3px 10px 3px 4px;border-radius:999px;font-size:10.5px;font-weight:600;cursor:pointer;">${opsCalBadgeEstatus(k, 16)}${opsEsc(e.nombre)}</button>`; }).join(""))}
         </div>`;
     }
 
@@ -6038,7 +6075,9 @@
                     const propTraslado = d.traslado ? (d.traslado / ((d.traslado + d.ejecucion) || 1)) * 100 : 0;
                     const tip = `${f.estacion}${f.folioOS ? " · O.S. " + f.folioOS : ""}\n${f.clienteNombre || "Sin cliente"} · ${opsCalTipoTexto(f)}\n${horaTxt} · ${cat.nombre} · ${cat.estNombre} (${info.estado})${choqueSet.has(f.id) ? "\n⚠ Choque de horario" : ""}${faltaGente ? "\n⚠ Falta personal contra la receta" : ""}`;
                     return `<div class="ops-cal-card" ${opsPuedeGestionar() ? `draggable="true" ondragstart="opsCalArrastrarFolio(event,'${f.id}')"` : ""} onclick="opsAbrirPanelFolio('${f.id}')" title="${opsEsc(tip)}"
-                        style="position:absolute;top:${carril * OPS_CAL_ALTO_CARRIL + 5}px;height:${OPS_CAL_ALTO_CARRIL - 6}px;left:${izqPct}%;width:calc(${anchoPct}% - 3px);box-sizing:border-box;background:${cat.fondo};border:none;border-radius:8px;${choqueSet.has(f.id) ? "outline:2px solid #E7402B;outline-offset:1px;" : (cat.punteado ? "outline:2px dashed " + cat.estColor + ";outline-offset:1px;" : "")}box-shadow:inset 6px 0 0 ${cat.estColor},inset 8px 0 0 #fff,inset 0 0 0 1px ${cat.borde},0 1px 2px rgba(15,23,42,.10);padding:3px 7px 5px 13px;overflow:hidden;cursor:pointer;z-index:2;display:flex;flex-direction:column;justify-content:space-between;">
+                        style="position:absolute;top:${carril * OPS_CAL_ALTO_CARRIL + 5}px;height:${OPS_CAL_ALTO_CARRIL - 6}px;left:${izqPct}%;width:calc(${anchoPct}% - 3px);box-sizing:border-box;background:${cat.fondo};border:none;border-radius:8px;${choqueSet.has(f.id) ? "outline:2px solid #E7402B;outline-offset:1px;" : ""}${cat.estClave === "completado" ? "opacity:.55;" : ""}box-shadow:inset 0 0 0 1px ${cat.borde},0 1px 2px rgba(15,23,42,.14);padding:3px 28px 5px 9px;overflow:hidden;cursor:pointer;z-index:2;display:flex;flex-direction:column;justify-content:space-between;">
+                        <span style="position:absolute;top:4px;right:4px;">${opsCalBadgeEstatus(cat.estClave, 18)}</span>
+                        ${cat.estClave === "vencido" ? `<div style="position:absolute;left:0;right:0;bottom:0;height:4px;background:#dc2626;"></div>` : ""}
                         <div style="display:flex;align-items:center;gap:5px;min-width:0;">
                             ${cat.empresa === "jomar" ? `<span title="JOMAR Verificaciones" style="font-size:8.5px;font-weight:800;color:${cat.color};background:#fff;padding:1px 4px;border-radius:4px;flex-shrink:0;">JOMAR</span>` : ""}
                             <span style="font-size:9px;font-weight:800;color:${cat.texto};background:${cat.texto === "#ffffff" ? "rgba(255,255,255,.22)" : "rgba(0,0,0,.08)"};padding:1px 5px;border-radius:5px;white-space:nowrap;flex-shrink:0;">${f.folioOS ? "O.S. " + opsEsc(f.folioOS) : "S/F"}</span>
@@ -6048,10 +6087,10 @@
                         <div style="font-size:10px;color:${cat.suave};font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${opsEsc(cat.nombre)} · ${opsEsc(f.clienteNombre || "Sin cliente")}</div>
                         <div style="display:flex;align-items:center;gap:6px;min-width:0;">
                             <span style="font-size:10px;font-weight:600;color:${cat.texto};white-space:nowrap;">${horaTxt}</span>
-                            <span style="font-size:9px;font-weight:800;color:${cat.estColor};background:#fff;padding:0 6px;border-radius:999px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${opsEsc(opsCalEstadoCorto(f, info))}</span>
+                            <span style="font-size:9px;font-weight:800;color:${cat.estColor};background:#fff;padding:0 6px;border-radius:999px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${opsEsc(OPS_CAL_ESTATUS[cat.estClave].nombre)}</span>
                             ${opsCalMiniAvatares(f)}
                         </div>
-                        ${d.traslado ? `<div style="position:absolute;left:8px;right:0;bottom:0;height:3px;display:flex;"><div style="width:${propTraslado}%;background:repeating-linear-gradient(45deg,${cat.color}aa,${cat.color}aa 3px,${cat.color}33 3px,${cat.color}33 6px);"></div><div style="flex:1;"></div></div>` : ""}
+                        ${d.traslado ? `<div style="position:absolute;left:8px;right:0;bottom:0;height:3px;display:flex;"><div style="width:${propTraslado}%;background:repeating-linear-gradient(45deg,${cat.texto === "#ffffff" ? "rgba(255,255,255,.75)" : "rgba(31,41,55,.55)"},${cat.texto === "#ffffff" ? "rgba(255,255,255,.75)" : "rgba(31,41,55,.55)"} 3px,transparent 3px,transparent 6px);"></div><div style="flex:1;"></div></div>` : ""}
                     </div>`;
                 }).join("");
             }
@@ -6107,7 +6146,9 @@
                 ${vis.map(f => {
                     const cat = opsCalColorFolio(f), d = opsCalDatosFolio(f);
                     const sinHora = !(f.fechaProgramada || "").includes("T");
-                    return `<div class="ops-cal-chip" onclick="opsAbrirPanelFolio('${f.id}')" title="${opsEsc((f.folioOS ? "O.S. " + f.folioOS + " · " : "") + f.estacion + " · " + (f.clienteNombre || "Sin cliente") + " · " + cat.nombre + " · " + cat.estNombre)}" style="background:${cat.fondo};border:none;box-shadow:inset 5px 0 0 ${cat.estColor},inset 7px 0 0 #fff,inset 0 0 0 1px ${cat.borde};${cat.punteado ? "outline:2px dashed " + cat.estColor + ";outline-offset:1px;" : ""}border-radius:6px;padding:3px 6px 3px 11px;margin-bottom:3px;cursor:pointer;overflow:hidden;">
+                    return `<div class="ops-cal-chip" onclick="opsAbrirPanelFolio('${f.id}')" title="${opsEsc((f.folioOS ? "O.S. " + f.folioOS + " · " : "") + f.estacion + " · " + (f.clienteNombre || "Sin cliente") + " · " + cat.nombre + " · " + cat.estNombre)}" style="position:relative;background:${cat.fondo};border:none;box-shadow:inset 0 0 0 1px ${cat.borde};${cat.estClave === "completado" ? "opacity:.55;" : ""}border-radius:6px;padding:3px 24px 3px 7px;margin-bottom:3px;cursor:pointer;overflow:hidden;">
+                        <span style="position:absolute;top:3px;right:3px;">${opsCalBadgeEstatus(cat.estClave, 16)}</span>
+                        ${cat.estClave === "vencido" ? `<div style="position:absolute;left:0;right:0;bottom:0;height:3px;background:#dc2626;"></div>` : ""}
                         <div style="font-size:10.5px;font-weight:700;color:${cat.texto};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${cat.empresa === "jomar" ? `<span style="font-size:8px;font-weight:800;color:${cat.color};background:#fff;padding:0 3px;border-radius:3px;margin-right:4px;">J</span>` : ""}${opsEsc(f.estacion)}</div>
                         <div style="font-size:9.5px;color:${cat.suave};font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${sinHora ? "Sin hora" : opsCalFmtHora(d.horaDecimal)} · ${opsEsc(cat.nombre)} · ${opsEsc(cat.estNombre)}</div>
                     </div>`;
@@ -6170,6 +6211,7 @@
                         ${folios.length ? `<div style="margin-top:4px;display:flex;align-items:center;gap:3px;flex-wrap:wrap;">
                             ${coloresDia.map(c => `<span style="width:8px;height:8px;border-radius:50%;background:${c};display:inline-block;"></span>`).join("")}
                             <span style="font-size:9.5px;font-weight:700;color:#475569;margin-left:2px;">${folios.length}</span>
+                            ${(() => { const v = folios.filter(f => ["vencido", "retrasado"].includes(opsCalEstatusFolio(f).clave)).length; return v ? `<span title="${v} vencido(s) o retrasado(s)" style="margin-left:auto;background:#dc2626;color:#fff;font-size:9px;font-weight:800;border-radius:999px;padding:0 5px;">${v}</span>` : ""; })()}
                         </div>` : ""}
                     </div>`;
                 }).join("")}
@@ -6527,10 +6569,9 @@
 
         try {
             const { db, fs } = await opsGetFB();
-            await fs.updateDoc(fs.doc(db, COL_FOLIOS, folioId), {
-                fechaProgramada, tecnicosAsignadosIds: nuevosIds, tecnicosAsignadosNombres: nuevosNombres,
-            });
-            f.fechaProgramada = fechaProgramada; f.tecnicosAsignadosIds = nuevosIds; f.tecnicosAsignadosNombres = nuevosNombres;
+            const cambios = { fechaProgramada, tecnicosAsignadosIds: nuevosIds, tecnicosAsignadosNombres: nuevosNombres, ...opsCamposReprogramacion(f, fechaProgramada) };
+            await fs.updateDoc(fs.doc(db, COL_FOLIOS, folioId), cambios);
+            Object.assign(f, cambios);
             opsRenderCalendario();
             if (window.mostrarPush) window.mostrarPush("Operaciones", "Folio programado.", "✅");
         } catch (e) {
@@ -7225,6 +7266,8 @@
             viaticosMonto: document.getElementById("ops-fol-viaticos-monto").value ? Number(document.getElementById("ops-fol-viaticos-monto").value) : null,
         };
         if (id) {
+            const previo = cacheFolios.find(x => x.id === id);
+            if (previo) Object.assign(datos, opsCamposReprogramacion(previo, datos.fechaProgramada));
             await fs.updateDoc(fs.doc(db, COL_FOLIOS, id), datos);
             if (tipoFolioNuevo === "laboratorio" && !eraLaboratorioAntes) await opsNotificarFolioLaboratorio({ id, ...datos });
         } else {
@@ -9529,10 +9572,21 @@
             f.casetasTotal += c.subtotal;
         });
         if (!f.aplicaCasetas) f.casetasTotal = 0;
+        // Días del viaje (para validar comidas y aplicar el tope diario por persona).
+        f.dias = 1;
+        if (f.salida && f.regreso) {
+            const s0 = new Date(f.salida), r0 = new Date(f.regreso);
+            f.dias = Math.max(1, Math.round((new Date(r0.getFullYear(), r0.getMonth(), r0.getDate()) - new Date(s0.getFullYear(), s0.getMonth(), s0.getDate())) / 86400000) + 1);
+        }
+        ["desayunos", "comidas", "cenas"].forEach(k => { f[k] = Math.max(0, Math.min(Math.round(opsViaNum(f[k])), f.dias)); });
+        f.noches = Math.max(0, Math.round(opsViaNum(f.noches)));
         const personas = Math.max(1, f.tecnicos.length);
         const rend = opsViaNum(f.rendimiento) || 1;
         f.gasolina = Math.round((opsViaNum(f.kmSencillo) * opsViaNum(cfg.multiplicadorKm || 2) / rend) * opsViaNum(f.precioLitro) * opsViaNum(f.factor) * 100) / 100;
-        f.alimentosPorPersona = f.desayunos * opsViaNum(cfg.desayuno) + f.comidas * opsViaNum(cfg.comida) + f.cenas * opsViaNum(cfg.cena);
+        const sumaAlim = f.desayunos * opsViaNum(cfg.desayuno) + f.comidas * opsViaNum(cfg.comida) + f.cenas * opsViaNum(cfg.cena);
+        const topeViaje = opsViaNum(cfg.topeDiario) > 0 ? opsViaNum(cfg.topeDiario) * f.dias : Infinity;
+        f.alimentosTopados = sumaAlim > topeViaje;
+        f.alimentosPorPersona = Math.min(sumaAlim, topeViaje);
         f.alimentos = f.requiere ? f.alimentosPorPersona * personas : 0;
         f.hospedaje = f.requiere ? opsViaNum(f.noches) * opsViaNum(f.hospedajePorNoche) * personas : 0;
         f.total = Math.round((f.gasolina + f.alimentos + f.hospedaje + f.casetasTotal + opsViaNum(f.otros)) * 100) / 100;
@@ -9567,7 +9621,8 @@
     function opsViaHTMLCasetas() {
         const f = opsViaForm, puedeEditarCosto = opsPuedeGestionar() || opsViaPuedeAutorizar();
         const estado = f.casetasEstado === "buscando" ? `<div style="font-size:11.5px;color:#64748b;">Buscando casetas sobre la ruta…</div>`
-            : f.casetasEstado === "error" ? `<div style="font-size:11.5px;color:#b45309;">No se pudieron detectar las casetas automáticamente (servicio de mapas ocupado). Agrégalas del catálogo abajo.</div>`
+            : f.casetasEstado === "error" ? `<div style="font-size:11.5px;color:#b45309;">No se pudieron detectar las casetas automáticamente (servicio de mapas ocupado). <a href="#" onclick="event.preventDefault(); opsViaReintentarCasetas()" style="color:#1D2E73;font-weight:700;">Reintentar</a> o agrégalas del catálogo abajo.</div>`
+            : f.casetasEstado === "respaldo" ? `<div style="font-size:11.5px;color:#64748b;">El servicio de mapas no respondió; se usaron las casetas conocidas sobre esta ruta. Revisa y agrega las que falten.</div>`
             : (f.casetasEstado === "listo" && !f.casetas.length) ? `<div style="font-size:11.5px;color:#64748b;">No se detectaron casetas en esta ruta.</div>` : "";
         const opcionesCat = (sel) => `<option value="">— ¿Cuál caseta es? —</option>` + (opsViaCasetasCat || []).map(c => `<option value="${opsEsc(c.id)}" ${c.id === sel ? "selected" : ""}>${opsEsc(c.nombre)}</option>`).join("");
         const filas = f.casetas.map((c, i) => `
@@ -9593,6 +9648,7 @@
             <div style="margin-top:6px;">${opsViaComboHTML("via-caseta-add", "", "", "+ Agregar caseta del catálogo (escribe el nombre)…")}</div>
             <div style="text-align:right;font-weight:700;color:#334155;">Casetas: ${opsViaDinero(f.casetasTotal)}</div>`;
     }
+    window.opsViaReintentarCasetas = function () { if (opsViaForm && opsViaForm.rutaGeo) opsViaDetectarCasetas(); };
     window.opsViaCasetaCampo = function (i, campo, valor) {
         const c = opsViaForm && opsViaForm.casetas[i]; if (!c) return;
         c[campo] = valor;
@@ -9647,6 +9703,7 @@
                 <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;">
                     <div>
                         ${opsViaComboHTML("via-folio", "Folio de servicio (opcional — rellena estación, personal y horario)", folioSel ? `${folioSel.folioOS || folioSel.id} — ${folioSel.estacion || folioSel.clienteNombre || ""}` : "", "Busca por folio, estación, cliente o técnico…")}
+                        ${f.avisoFolio ? `<div style="font-size:11px;color:#b45309;margin:2px 0 4px;">${opsEsc(f.avisoFolio)}</div>` : ""}
                         <div style="height:8px;"></div>
                         ${opsViaComboHTML("via-est-buscar", "Estación destino (catálogo de Ventas)", f.estacion ? opsViaNombreEstacion(f.estacion) : f.destinoTexto, "Nombre, CRE, razón social o municipio…")}
                         <div style="font-size:11px;color:#64748b;margin:2px 0 10px;">${f.estacion ? opsEsc([f.estacion.direccion_normalizada || f.estacion.domicilio_raw || "", f.estacion.encargado ? "Encargado: " + f.estacion.encargado : ""].filter(Boolean).join(" · ")) : "¿No está en el catálogo? Escribe la dirección y presiona <b>Enter</b>."}</div>
@@ -9691,11 +9748,12 @@
 
                             <div style="font-weight:700;font-size:12.5px;color:#1D2E73;margin:12px 0 8px;">Alimentos por persona ${f.comidasManual ? "(editado)" : "(automático por horario)"}</div>
                             <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0 8px;">
-                                ${opsViaInput(`Desayunos × ${opsViaDinero(cfg.desayuno)}`, "via-des", f.desayunos, `onchange="opsViaForm.comidasManual=true; opsViaCampo('desayunos', Number(this.value), true)" min="0"`, "number")}
-                                ${opsViaInput(`Comidas × ${opsViaDinero(cfg.comida)}`, "via-com", f.comidas, `onchange="opsViaForm.comidasManual=true; opsViaCampo('comidas', Number(this.value), true)" min="0"`, "number")}
-                                ${opsViaInput(`Cenas × ${opsViaDinero(cfg.cena)}`, "via-cen", f.cenas, `onchange="opsViaForm.comidasManual=true; opsViaCampo('cenas', Number(this.value), true)" min="0"`, "number")}
+                                ${opsViaInput(`Desayunos × ${opsViaDinero(cfg.desayuno)}`, "via-des", f.desayunos, `onchange="opsViaForm.comidasManual=true; opsViaCampo('desayunos', Number(this.value), true)" min="0" max="${f.dias}" step="1"`, "number")}
+                                ${opsViaInput(`Comidas × ${opsViaDinero(cfg.comida)}`, "via-com", f.comidas, `onchange="opsViaForm.comidasManual=true; opsViaCampo('comidas', Number(this.value), true)" min="0" max="${f.dias}" step="1"`, "number")}
+                                ${opsViaInput(`Cenas × ${opsViaDinero(cfg.cena)}`, "via-cen", f.cenas, `onchange="opsViaForm.comidasManual=true; opsViaCampo('cenas', Number(this.value), true)" min="0" max="${f.dias}" step="1"`, "number")}
                             </div>
                             <div style="font-size:10.5px;color:#94a3b8;margin-top:-4px;">${opsEsc(cfg.desayunoRegla)} · ${opsEsc(cfg.comidaRegla)} · ${opsEsc(cfg.cenaRegla)} · Tope diario ${opsViaDinero(cfg.topeDiario)}</div>
+                            <div style="font-size:10.5px;color:#94a3b8;">Máximo por comida: ${f.dias} (días del viaje).${f.alimentosTopados ? ` <b style="color:#b45309;">Se aplicó el tope diario de ${opsViaDinero(cfg.topeDiario)} × ${f.dias} día(s).</b>` : ""}</div>
                             <div style="text-align:right;font-weight:700;color:#334155;">Alimentos: ${opsViaDinero(f.alimentosPorPersona)} × ${f.personas} persona(s) = ${opsViaDinero(f.alimentos)}</div>
 
                             <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0 8px;margin-top:12px;">
@@ -9785,7 +9843,11 @@
         const ids = fo.tecnicosAsignadosIds || [];
         if (ids.length) f.tecnicos = ids.map(tid => cacheTec.find(t => t.id === tid)).filter(Boolean).map(t => ({ id: t.id, nombre: t.nombre, correo: t.correo || null }));
         // Horario del folio: se llega a la hora programada; la salida se calcula al tener la ruta
-        if (fo.fechaProgramada && /T\d{2}:\d{2}/.test(fo.fechaProgramada)) { f.llegadaObjetivo = fo.fechaProgramada.slice(0, 16); f.salidaManual = false; f.regresoManual = false; }
+        f.avisoFolio = "";
+        if (fo.fechaProgramada && /T\d{2}:\d{2}/.test(fo.fechaProgramada)) {
+            if (new Date(fo.fechaProgramada) >= new Date(new Date().setHours(0, 0, 0, 0))) { f.llegadaObjetivo = fo.fechaProgramada.slice(0, 16); f.salidaManual = false; f.regresoManual = false; }
+            else { f.llegadaObjetivo = null; f.avisoFolio = `Este folio estaba programado para el ${fo.fechaProgramada.slice(0, 10)} (ya pasó): la salida no se tomó del folio, revísala.`; }
+        }
         if (opsViaNum(fo.tiempoEjecucionHrs) > 0) f.horasServicio = opsViaNum(fo.tiempoEjecucionHrs);
         if (!f.notas && (fo.descripcion || fo.tipoServicio)) f.notas = [fo.tipoServicio, fo.descripcion].filter(Boolean).join(" — ").slice(0, 300);
         let est = null;
@@ -9885,13 +9947,32 @@
         const manuales = f.casetas.filter(c => c.manual);
         f.casetasEstado = "buscando"; opsViaPintarFormulario();
         try {
-            const geo = f.rutaGeo, paso = Math.max(1, Math.ceil(geo.length / 220));
-            const pts = geo.filter((_, i) => i % paso === 0 || i === geo.length - 1);
-            const around = pts.map(p => p[0].toFixed(5) + "," + p[1].toFixed(5)).join(",");
-            const q = `[out:json][timeout:25];node(around:150,${around})["barrier"="toll_booth"];out body;`;
-            const resp = await fetch("https://overpass-api.de/api/interpreter", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "data=" + encodeURIComponent(q) });
-            if (!resp.ok) throw new Error("Overpass " + resp.status);
-            const data = await resp.json();
+            const geo = f.rutaGeo;
+            // Consulta ligera: TODOS los puntos de cobro dentro del rectángulo de la ruta (índice
+            // por etiqueta, rápido) y luego se filtran aquí los que están a <200 m del camino.
+            // La versión anterior pedía "alrededor de la línea" y el servidor tardaba demasiado (504).
+            const lats = geo.map(p => p[0]), lngs = geo.map(p => p[1]);
+            const m = 0.05;
+            const bbox = [Math.min(...lats) - m, Math.min(...lngs) - m, Math.max(...lats) + m, Math.max(...lngs) + m].map(x => x.toFixed(4)).join(",");
+            const q = `[out:json][timeout:20];node["barrier"="toll_booth"](${bbox});out body;`;
+            const servidores = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter"];
+            let data = null, ultimoError = null;
+            for (const url of servidores) {
+                try {
+                    const ctrl = new AbortController(); const to = setTimeout(() => ctrl.abort(), 15000);
+                    const resp = await fetch(url, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "data=" + encodeURIComponent(q), signal: ctrl.signal });
+                    clearTimeout(to);
+                    if (!resp.ok) throw new Error("Overpass " + resp.status);
+                    data = await resp.json();
+                    break;
+                } catch (e) { ultimoError = e; }
+            }
+            if (!data) throw ultimoError || new Error("Sin respuesta de Overpass");
+            // Distancia de un punto a la ruta (muestra de la geometría, suficiente a 200 m).
+            const paso = Math.max(1, Math.floor(geo.length / 1500));
+            const muestra = geo.filter((_, i) => i % paso === 0);
+            const cercaDeRuta = p => muestra.some(q2 => Math.abs(q2[0] - p[0]) < 0.01 && Math.abs(q2[1] - p[1]) < 0.012 && opsViaDistKm(p, q2) < 0.2);
+            data.elements = (data.elements || []).filter(n => cercaDeRuta([n.lat, n.lon]));
             if (opsViaForm !== f) return;
             // Agrupar los carriles/nodos de una misma plaza (a menos de 1 km)
             const grupos = [];
@@ -9927,8 +10008,13 @@
         } catch (e) {
             console.warn("[viáticos] casetas (Overpass):", e.message || e);
             if (opsViaForm !== f) return;
-            f.casetas = manuales;
-            f.casetasEstado = "error";
+            // Respaldo: las casetas del catálogo que ya tienen ubicación aprendida y quedan sobre la ruta.
+            const geo = f.rutaGeo || [];
+            const conocidas = (opsViaCasetasCat || []).filter(c => c.lat && c.lng && geo.some(q2 => opsViaDistKm([c.lat, c.lng], q2) < 1.5))
+                .map(c => ({ key: "cat-" + c.id, catalogoId: c.id, lat: c.lat, lng: c.lng, aplica: true, cruces: 2 }));
+            f.casetas = conocidas.concat(manuales.filter(mn => !conocidas.some(k => k.catalogoId === mn.catalogoId)));
+            f.aplicaCasetas = f.casetas.length > 0;
+            f.casetasEstado = conocidas.length ? "respaldo" : "error";
         }
         opsViaRecalcular();
         opsViaPintarFormulario();
@@ -9939,7 +10025,7 @@
         if (!el || typeof L === "undefined") return;
         if (opsViaMapa) { try { opsViaMapa.remove(); } catch (e) {} opsViaMapa = null; }
         const f = opsViaForm, o = opsViaCfg.origen;
-        opsViaMapa = L.map(el, { attributionControl: false }).setView([o.lat, o.lng], 10);
+        opsViaMapa = L.map(el, { attributionControl: false, zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false, inertia: false }).setView([o.lat, o.lng], 10, { animate: false });
         L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18 }).addTo(opsViaMapa);
         const icono = color => L.divIcon({ className: "", html: `<div style="width:16px;height:16px;border-radius:50%;background:${color};border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);"></div>`, iconSize: [16, 16], iconAnchor: [8, 8] });
         const iconoCaseta = activa => L.divIcon({ className: "", html: `<div style="width:20px;height:20px;border-radius:5px;background:${activa ? "#f59e0b" : "#cbd5e1"};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;">$</div>`, iconSize: [20, 20], iconAnchor: [10, 10] });
@@ -9960,7 +10046,7 @@
                 L.marker([lat, lng], { icon: iconoCaseta(c.aplica && f.aplicaCasetas) }).addTo(opsViaMapa)
                     .bindTooltip(`${opsEsc(c.nombre || "Caseta")} — ${opsViaDinero(c.costo)} por cruce`);
             });
-            opsViaMapa.fitBounds(L.latLngBounds([[o.lat, o.lng], [f.lat, f.lng]]).pad(0.25));
+            opsViaMapa.fitBounds(L.latLngBounds([[o.lat, o.lng], [f.lat, f.lng]].concat(f.rutaGeo ? [f.rutaGeo[Math.floor(f.rutaGeo.length / 2)]] : [])).pad(0.2), { animate: false });
         }
         setTimeout(() => { try { opsViaMapa && opsViaMapa.invalidateSize(); } catch (e) {} }, 60);
     }
