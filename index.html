@@ -3016,6 +3016,7 @@ const EMAIL_AREA_MAP = {
     'magali@tecnocontrol.com.mx':      'Operaciones',
     'clientes@tecnocontrol.com.mx':    'Operaciones',
     'u.nunez@tecnocontrol.com.mx':     'Operaciones',
+    'i.ruiz@jomarverifica.com.mx':     'Operaciones', // Norma Idaly Ruiz Olmedo (JOMAR) — admin en Operaciones
     // ── Directores (acceso admin, igual ven todo) ──
     'p.pinedo@tecnocontrol.com.mx':         'Administración',
     'm.delao@tecnocontrol.com.mx':          'Administración',
@@ -3042,6 +3043,7 @@ const EMAIL_AREA_MAP = {
 window.EMAIL_ACCESO_EXTRA = window.EMAIL_ACCESO_EXTRA || {};
 const EMAIL_ACCESO_EXTRA = {
     'miguel@tecnocontrol.com.mx': ['Flotilla', 'Operaciones'], // vista de solo lectura a Flotilla y Operaciones (por si Firestore trae otro departamento)
+    'i.ruiz@jomarverifica.com.mx': ['Operaciones'], // Norma Idaly Ruiz Olmedo (JOMAR) — respaldo por si Firestore trae otro departamento
 };
 window.EMAIL_ACCESO_EXTRA = EMAIL_ACCESO_EXTRA;
 function tieneAccesoExtra(email, area){
