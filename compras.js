@@ -159,7 +159,7 @@
             '<div id="cp-firmas-list">' + (pendientes.length ? pendientes.map(function(d){
               var paso = (d.flujoAutorizacion||[]).find(function(f){ return f.estatus==='pendiente'; });
               var destinos = _cpDestinatariosPaso(d, paso);
-              var quien = destinos.length ? destinos.map(function(p){return p.nombre||p.correo;}).join(', ') : 'sin asignar — configúralo en "⚙ Configurar flujo"';
+              var quien = destinos.length ? destinos.map(function(p){return p.nombre||p.correo;}).join(', ') : 'sin asignar — configúralo en "Configurar flujo"';
               return '<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #F1F5F9;padding:10px 4px">' +
                 '<div><p style="font-size:13px;font-weight:700;margin:0;color:#0A1628">'+esc(d.folio||d.id)+' · '+esc(paso.label)+'</p>' +
                 '<p style="font-size:11.5px;color:#5C7089;margin:2px 0 0">Solicitó: '+esc(nombrePorCorreo(d.solicitante)||'—')+' · Falta: <b>'+esc(quien)+'</b></p></div>' +
@@ -167,7 +167,7 @@
                 '<button onclick="window.__cpCopiarLigaFirma(\''+d.id+'\',this)" style="padding:7px 13px;background:#F1F5F9;color:#0A1628;border:none;border-radius:8px;font-size:11.5px;font-weight:700;cursor:pointer">Copiar liga</button>' +
                 '<button '+(destinos.length?'':'disabled')+' onclick="window.__cpReenviarFirma(\''+d.id+'\',this)" style="padding:7px 13px;background:'+(destinos.length?'#0A1628':'#E2E8F0')+';color:'+(destinos.length?'#fff':'#94A3B8')+';border:none;border-radius:8px;font-size:11.5px;font-weight:700;cursor:'+(destinos.length?'pointer':'default')+'">Reenviar aviso (in-app)</button>' +
                 '</div></div>';
-            }).join('') : '<p style="font-size:12.5px;color:#94a3b8;text-align:center;padding:20px 0">No hay firmas pendientes 🎉</p>') + '</div>' +
+            }).join('') : '<p style="font-size:12.5px;color:#94a3b8;text-align:center;padding:20px 0">No hay firmas pendientes. ¡Todo al día!</p>') + '</div>' +
           '</div>';
         document.body.appendChild(ov);
       });
@@ -210,7 +210,7 @@
           '</div>' +
           '<div style="display:flex;gap:8px;margin-bottom:14px">' +
             '<button onclick="window.__cpEjecutarBusqueda()" style="padding:8px 16px;background:#0A1628;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Buscar</button>' +
-            '<button onclick="window.__cpExportarCSV()" style="padding:8px 16px;background:#12A150;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">⬇ Exportar a Excel (CSV)</button>' +
+            '<button onclick="window.__cpExportarCSV()" style="padding:8px 16px;background:#12A150;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Exportar a Excel (CSV)</button>' +
           '</div>' +
           '<div id="cp-bq-resumen" style="font-size:11.5px;color:#5C7089;margin-bottom:8px"></div>' +
           '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">' +
@@ -384,29 +384,68 @@
         '</div>' +
 
         '<div id="cp-vista-req">' +
-        '<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">' +
-          '<div><h2 style="font-size:19px;font-weight:700;margin:0;color:#0A1628">Requisiciones de compra</h2>' +
-          '<p style="font-size:12px;color:#94A3B8;margin:3px 0 0">Mostrando el mes en curso · <a href="#" onclick="window.__cpAbrirBuscador();return false" style="color:#1473E6;font-weight:600">ver historial completo →</a></p></div>' +
+        '<style>' +
+          '#cp-vista-req .cp-btn{padding:9px 14px;border-radius:9px;border:1px solid #E2E8F0;background:#fff;color:#0A1628;font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-family:inherit}' +
+          '#cp-vista-req .cp-btn:hover{background:#F8FAFC}' +
+          '#cp-vista-req .cp-btn:focus-visible,#cp-vista-req .cp-kpi:focus-visible,#cp-vista-req .cp-card:focus-visible,#cp-vista-req .cp-in:focus-visible{outline:3px solid rgba(20,115,230,.35);outline-offset:1px}' +
+          '#cp-vista-req .cp-kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:16px}' +
+          '@media(max-width:900px){#cp-vista-req .cp-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}' +
+          '#cp-vista-req .cp-kpi{text-align:left;background:#F8FAFC;border:1.5px solid transparent;border-radius:12px;padding:12px 14px;cursor:pointer;font-family:inherit;transition:border-color .15s,background .15s}' +
+          '#cp-vista-req .cp-kpi:hover{border-color:#CBD5E1}' +
+          '#cp-vista-req .cp-kpi.on{border-color:#0A1628;background:#fff;box-shadow:0 1px 4px rgba(10,22,40,.1)}' +
+          '#cp-vista-req .cp-tool{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;align-items:center}' +
+          '#cp-vista-req .cp-in{padding:8px 10px;border:1px solid #E2E8F0;border-radius:8px;font-size:12.5px;background:#fff;color:#0A1628;font-family:inherit;min-height:36px;box-sizing:border-box}' +
+          '#cp-vista-req .cp-board{display:grid;grid-template-columns:repeat(4,minmax(240px,1fr));gap:14px;overflow-x:auto;padding-bottom:6px}' +
+          '#cp-vista-req .cp-col{background:#F8FAFC;border:1px solid #EEF2F7;border-radius:12px;padding:10px;min-height:140px;max-height:72vh;overflow-y:auto}' +
+          '#cp-vista-req .cp-card{background:#fff;border:1px solid #E5EAF1;border-left:4px solid var(--c);border-radius:10px;padding:10px 12px;margin-bottom:8px;cursor:pointer;transition:box-shadow .15s,transform .15s}' +
+          '#cp-vista-req .cp-card:hover{box-shadow:0 3px 10px rgba(10,22,40,.08);transform:translateY(-1px)}' +
+          '#cp-vista-req .cp-chip{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:6px;white-space:nowrap}' +
+          '#cp-vista-req .cp-tabla{width:100%;border-collapse:collapse;font-size:12.5px;min-width:820px}' +
+          '#cp-vista-req .cp-tabla th{padding:10px 12px;font-size:10.5px;color:#5C7089;text-transform:uppercase;text-align:left;background:#F8FAFC;letter-spacing:.3px}' +
+          '#cp-vista-req .cp-tabla td{padding:10px 12px;border-top:1px solid #EEF2F7;vertical-align:middle}' +
+          '#cp-vista-req .cp-tabla tr.cp-fila{cursor:pointer}#cp-vista-req .cp-tabla tr.cp-fila:hover td{background:#F8FAFC}' +
+          '@media (prefers-reduced-motion:reduce){#cp-vista-req .cp-card,#cp-vista-req .cp-kpi{transition:none}#cp-vista-req .cp-card:hover{transform:none}}' +
+        '</style>' +
+        '<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px">' +
+          '<div><h2 style="font-size:19px;font-weight:700;margin:0;color:#0A1628;display:flex;align-items:center;gap:8px">Requisiciones de compra' +
+            '<button onclick="window.__cpAyuda()" aria-label="¿Cómo funciona?" title="¿Cómo funciona?" style="width:22px;height:22px;border-radius:50%;border:1.5px solid #CBD5E1;background:#fff;color:#5C7089;font-size:12px;font-weight:800;cursor:pointer;line-height:1;padding:0">?</button></h2>' +
+          '<p style="font-size:12px;color:#5C7089;margin:4px 0 0">Aquí ves <b>todo lo que sigue abierto</b>, sin importar el mes en que se pidió. Lo ya recibido o rechazado se filtra por mes.</p></div>' +
           '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
-          '<button onclick="window.__cpAbrirFirmasPendientes()" style="padding:9px 14px;border-radius:9px;border:1px solid #EEF2F7;background:#fff;color:#0A1628;font-size:11.5px;font-weight:700;cursor:pointer">🖊 Firmas pendientes</button>' +
-          '<button onclick="window.__cpAbrirConfigFlujo()" style="padding:9px 14px;border-radius:9px;border:1px solid #EEF2F7;background:#fff;color:#0A1628;font-size:11.5px;font-weight:700;cursor:pointer">⚙ Configurar flujo</button>' +
-          '<button onclick="window.__cpAbrirBuscador()" style="padding:9px 14px;border-radius:9px;border:1px solid #EEF2F7;background:#fff;color:#0A1628;font-size:11.5px;font-weight:700;cursor:pointer">🔍 Buscar</button>' +
-          '<button onclick="window.__cpExportarAspel()" style="padding:9px 14px;border-radius:9px;border:1px solid #EEF2F7;background:#fff;color:#0A1628;font-size:11.5px;font-weight:700;cursor:pointer">Exportar Aspel</button>' +
+          '<button class="cp-btn" onclick="window.__cpAbrirFirmasPendientes()">'+_cpIco('firma')+'Firmas pendientes</button>' +
+          '<button class="cp-btn" onclick="window.__cpAbrirConfigFlujo()">'+_cpIco('engrane')+'Configurar flujo</button>' +
+          '<button class="cp-btn" onclick="window.__cpAbrirBuscador()">'+_cpIco('historial')+'Historial completo</button>' +
+          '<button class="cp-btn" onclick="window.__cpExportarAspel()">Exportar Aspel</button>' +
           '</div>' +
         '</div>' +
 
-        '<div style="background:#F8FAFC;border-radius:12px;padding:16px 20px;margin-bottom:20px;display:flex;flex-wrap:wrap;gap:0">' +
-          '<div style="flex:1;min-width:110px;padding-right:16px"><p style="font-size:11px;color:#94A3B8;margin:0 0 4px">En proceso</p><p style="font-size:22px;font-weight:700;margin:0;color:#0A1628" id="cp-kpi-proceso">0</p></div>' +
-          '<div style="flex:1;min-width:110px;padding:0 16px;border-left:1px solid #E2E8F0"><p style="font-size:11px;color:#94A3B8;margin:0 0 4px">Urgentes</p><p style="font-size:22px;font-weight:700;margin:0;color:#E23B2E" id="cp-kpi-urgentes">0</p></div>' +
-          '<div style="flex:1;min-width:110px;padding:0 16px;border-left:1px solid #E2E8F0"><p style="font-size:11px;color:#94A3B8;margin:0 0 4px">Por autorizar</p><p style="font-size:22px;font-weight:700;margin:0;color:#B45309" id="cp-kpi-autorizar">0</p></div>' +
-          '<div style="flex:1;min-width:110px;padding-left:16px;border-left:1px solid #E2E8F0"><p style="font-size:11px;color:#94A3B8;margin:0 0 4px">Cotizando</p><p style="font-size:22px;font-weight:700;margin:0;color:#1473E6" id="cp-kpi-cotizando">0</p></div>' +
+        '<div id="cp-alerta"></div>' +
+        '<div id="cp-kpis" class="cp-kpis"></div>' +
+
+        '<div class="cp-tool">' +
+          '<div style="position:relative;flex:1 1 240px;min-width:200px">' +
+            '<span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#94A3B8;display:flex">'+_cpIco('lupa')+'</span>' +
+            '<input id="cp-f-texto" class="cp-in" type="search" aria-label="Buscar requisición" placeholder="Buscar por folio, persona, producto o proveedor…" oninput="window.__cpFiltroTexto(this.value)" style="width:100%;padding-left:32px">' +
+          '</div>' +
+          '<select id="cp-f-empresa" class="cp-in" aria-label="Empresa" onchange="window.__cpFiltro(\'empresa\',this.value)"><option value="">Todas las empresas</option></select>' +
+          '<select id="cp-f-solicitante" class="cp-in" aria-label="Quién pidió" onchange="window.__cpFiltro(\'solicitante\',this.value)" style="max-width:210px"><option value="">Todas las personas</option></select>' +
+          '<select id="cp-f-prioridad" class="cp-in" aria-label="Prioridad" onchange="window.__cpFiltro(\'prioridad\',this.value)"><option value="">Cualquier prioridad</option><option value="alta">Marcada urgente</option><option value="media">Media</option><option value="baja">Baja</option></select>' +
+          '<label style="display:flex;align-items:center;gap:5px;font-size:11.5px;color:#5C7089;font-weight:600">Pedida desde <input id="cp-f-desde" class="cp-in" type="date" onchange="window.__cpFiltro(\'desde\',this.value)"></label>' +
+          '<label style="display:flex;align-items:center;gap:5px;font-size:11.5px;color:#5C7089;font-weight:600">hasta <input id="cp-f-hasta" class="cp-in" type="date" onchange="window.__cpFiltro(\'hasta\',this.value)"></label>' +
         '</div>' +
 
-        '<div style="display:flex;gap:6px;margin-bottom:16px">' +
-          '<button id="cp-tab-activas" onclick="window.__cpSetTab(false)" style="padding:7px 15px;border-radius:20px;border:none;background:#0A1628;color:#fff;font-size:12px;font-weight:700;cursor:pointer">Activas</button>' +
-          '<button id="cp-tab-rechazadas" onclick="window.__cpSetTab(true)" style="padding:7px 15px;border-radius:20px;border:none;background:#F8FAFC;color:#5C7089;font-size:12px;font-weight:700;cursor:pointer">Rechazadas</button>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px">' +
+          '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">' +
+            '<button id="cp-tab-activas" onclick="window.__cpSetTab(false)" style="padding:7px 15px;border-radius:20px;border:none;background:#0A1628;color:#fff;font-size:12px;font-weight:700;cursor:pointer">En curso</button>' +
+            '<button id="cp-tab-rechazadas" onclick="window.__cpSetTab(true)" style="padding:7px 15px;border-radius:20px;border:none;background:#F8FAFC;color:#5C7089;font-size:12px;font-weight:700;cursor:pointer">Rechazadas</button>' +
+            '<label style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:#5C7089;font-weight:600;margin-left:6px">Mes de lo ya terminado <input id="cp-f-mes" class="cp-in" type="month" onchange="window.__cpFiltro(\'mes\',this.value)"></label>' +
+          '</div>' +
+          '<div role="group" aria-label="Tipo de vista" style="display:flex;background:#F1F5F9;border-radius:9px;padding:3px">' +
+            '<button id="cp-v-tablero" onclick="window.__cpVista(\'tablero\')" style="padding:6px 12px;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px">'+_cpIco('tablero')+'Tablero</button>' +
+            '<button id="cp-v-lista" onclick="window.__cpVista(\'lista\')" style="padding:6px 12px;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px">'+_cpIco('lista')+'Lista</button>' +
+          '</div>' +
         '</div>' +
-        '<div id="cp-board" style="display:grid;grid-template-columns:repeat(5,1fr);gap:16px"></div>' +
+        '<div id="cp-filtro-activo"></div>' +
+        '<div id="cp-board"></div>' +
         '</div>' +
 
         '<div id="cp-vista-prov" style="display:none">' +
@@ -674,68 +713,376 @@
     });
   }
 
+  // ══════════════════════════════════════════════════════════════════
+  //  FASE 1 — Tablero que muestra TODO lo abierto (sin filtro de mes),
+  //  antigüedad visible, contadores = lo que se ve, buscador/filtros y
+  //  vista de lista. El filtro por mes solo aplica a lo ya terminado
+  //  (recibidas / rechazadas).
+  // ══════════════════════════════════════════════════════════════════
+  var DIAS_AMARILLO = 3;   // a partir de aquí: "esperando de más"
+  var DIAS_ROJO     = 7;   // a partir de aquí: "atrasada"
+  var _hoy0 = new Date();
+  var _cpF = {texto:'', empresa:'', solicitante:'', prioridad:'', desde:'', hasta:'', kpi:'',
+              mes: _hoy0.getFullYear()+'-'+String(_hoy0.getMonth()+1).padStart(2,'0'), vista:'tablero'};
+
+  // Columnas del tablero en lenguaje sencillo. 'autorizada' (casi no se usa:
+  // al aprobar el último paso se pasa directo a 'cotizando') vive junto con
+  // 'cotizando' para no tener una columna siempre vacía.
+  var COLS_CP = [
+    {id:'aprobacion', titulo:'Esperando aprobación', ayuda:'Su jefe o Compras deben dar el visto bueno', color:'#B45309', estatus:['pendiente']},
+    {id:'precios',    titulo:'Buscando precios',     ayuda:'Compras está pidiendo cotizaciones',          color:'#1473E6', estatus:['autorizada','cotizando']},
+    {id:'orden',      titulo:'Comprado, por llegar', ayuda:'Ya hay orden de compra; falta que llegue',    color:'#6D28D9', estatus:['orden_generada']},
+    {id:'recibida',   titulo:'Recibido',             ayuda:'Ya llegó (del mes elegido)',                  color:'#12A150', estatus:['recibida']},
+  ];
+  var CERRADOS_CP = ['recibida','rechazada','cancelada'];
+
+  function _cpIco(n){
+    var a = 'width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
+    var P = {
+      firma:'<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+      engrane:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/>',
+      historial:'<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/>',
+      lupa:'<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>',
+      tablero:'<rect x="3" y="3" width="7" height="18" rx="1.5"/><rect x="14" y="3" width="7" height="11" rx="1.5"/>',
+      lista:'<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
+      reloj:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+      alerta:'<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/>',
+      fuego:'<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.4-.5-2-1-3-1.1-2.1-.2-4 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.2.4-2.3 1-3.3.3 1.5 1.4 2.8 2.5 2.8Z"/>',
+      persona:'<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+      check:'<path d="M20 6 9 17l-5-5"/>',
+      camion:'<path d="M3 7h11v9H3zM14 10h4l3 3v3h-7"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/>',
+      bajar:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+    };
+    return '<svg '+a+'>'+(P[n]||'')+'</svg>';
+  }
+
+  function _cpColDe(d){
+    var st = d.estatus||'pendiente';
+    return COLS_CP.find(function(c){ return c.estatus.indexOf(st)>-1; }) || COLS_CP[0];
+  }
+  function _cpPasoActivo(d){ return (d.flujoAutorizacion||[]).find(function(f){ return f.estatus==='pendiente'; }) || null; }
+  // Desde cuándo espera: si está en aprobación, desde la última firma
+  // registrada (o desde que se creó); en cualquier otro caso, desde que se creó.
+  function _cpEsperaDesde(d){
+    var base = _cpFechaDoc(d);
+    if((d.estatus||'pendiente')==='pendiente'){
+      (d.flujoAutorizacion||[]).forEach(function(f){
+        if(f.estatus==='aprobado' && f.fecha){ var x=new Date(f.fecha); if(!isNaN(x) && (!base || x>base)) base=x; }
+      });
+    }
+    return base;
+  }
+  function _cpDias(fecha){ if(!fecha) return 0; return Math.max(0, Math.floor((Date.now()-fecha.getTime())/86400000)); }
+  function _cpTxtDias(n){ return n===1?'1 día':n+' días'; }
+  function _cpFechaCierre(d){
+    var f = d.recibidaEn || d.rechazadaEn || null;
+    if(f){ var x = f.toDate ? f.toDate() : new Date(f); if(!isNaN(x)) return x; }
+    return _cpFechaDoc(d);
+  }
+  function _cpEnMes(fecha){
+    if(!fecha || !_cpF.mes) return !!fecha;
+    var p = _cpF.mes.split('-');
+    return fecha.getFullYear()===Number(p[0]) && (fecha.getMonth()+1)===Number(p[1]);
+  }
+  function _cpNombreCorto(n){ n=String(n||'').trim(); if(n.indexOf('@')>-1) return n.split('@')[0]; var w=n.split(/\s+/); return w.slice(0,2).join(' '); }
+  function _cpTitulo(n){ return String(n||'').toLowerCase().replace(/(^|\s)\S/g,function(c){return c.toUpperCase();}); }
+
+  // ¿En qué paso va? — en palabras sencillas, con a quién le toca.
+  function _cpEstadoAmigable(d){
+    var st = d.estatus||'pendiente';
+    if(st==='pendiente'){
+      var paso = _cpPasoActivo(d);
+      if(!paso) return {txt:'Esperando aprobación', quien:'', falta:false};
+      var dest = _cpDestinatariosPaso(d, paso);
+      var quien = dest.map(function(p){ return _cpTitulo(_cpNombreCorto(p.nombre||p.correo)); }).join(', ');
+      var txt = paso.label==='Jefe de área' ? 'Esperando que su jefe la apruebe' : paso.label==='Compras' ? 'Esperando visto bueno de Compras' : 'Esperando: '+paso.label;
+      return {txt:txt, quien:quien, falta:!dest.length};
+    }
+    if(st==='autorizada' || st==='cotizando') return {txt:'Compras está buscando precios', quien:'', falta:false};
+    if(st==='orden_generada'){ var pv = d.cotizacionGanadora&&d.cotizacionGanadora.proveedor; return {txt:'Comprado, falta que llegue'+(pv?' · '+pv:''), quien:'', falta:false}; }
+    if(st==='recibida') return {txt:'Ya llegó', quien:'', falta:false};
+    if(st==='rechazada') return {txt:'Rechazada'+(d.motivoRechazo?': '+d.motivoRechazo:''), quien:'', falta:false};
+    return {txt:st, quien:'', falta:false};
+  }
+  function _cpQueSigue(d){
+    var st = d.estatus||'pendiente';
+    if(st==='pendiente'){ var p=_cpPasoActivo(d); return p&&p.label==='Jefe de área' ? 'Después la revisa Compras y empieza a buscar precios.' : 'Después Compras busca precios con proveedores.'; }
+    if(st==='autorizada'||st==='cotizando') return 'Cuando se elija la mejor cotización se genera la orden de compra.';
+    if(st==='orden_generada') return 'Cuando llegue, Compras la marca como recibida.';
+    if(st==='recibida') return 'Proceso terminado.';
+    return '';
+  }
+
+  // Chip de antigüedad — siempre con texto + ícono (nunca solo color).
+  function _cpChipEspera(d){
+    var st = d.estatus||'pendiente';
+    if(st==='recibida' || st==='rechazada'){
+      var fc = _cpFechaCierre(d);
+      return '<span class="cp-chip" style="background:#F1F5F9;color:#5C7089">'+_cpIco('check')+(st==='recibida'?'Recibida':'Rechazada')+(fc?' el '+fc.toLocaleDateString('es-MX',{day:'numeric',month:'short'}):'')+'</span>';
+    }
+    var n = _cpDias(_cpEsperaDesde(d));
+    var esperando = st==='pendiente';
+    var txt = n===0 ? (esperando?'Esperando desde hoy':'Abierta hoy') : (esperando?'Lleva '+_cpTxtDias(n)+' esperando':'Abierta hace '+_cpTxtDias(n));
+    if(n>=DIAS_ROJO)     return '<span class="cp-chip" style="background:#FCEBEB;color:#B91C1C">'+_cpIco('alerta')+txt+'</span>';
+    if(n>=DIAS_AMARILLO) return '<span class="cp-chip" style="background:#FEF3C7;color:#92400E">'+_cpIco('reloj')+txt+'</span>';
+    return '<span class="cp-chip" style="background:#F1F5F9;color:#5C7089">'+_cpIco('reloj')+txt+'</span>';
+  }
+
+  // ── Filtros ──
+  function _cpHayFiltros(){ return !!(_cpF.texto||_cpF.empresa||_cpF.solicitante||_cpF.prioridad||_cpF.desde||_cpF.hasta); }
+  function _cpPasaFiltros(d){
+    if(_cpF.empresa && (d.empresa||'')!==_cpF.empresa) return false;
+    if(_cpF.solicitante && (nombrePorCorreo(d.solicitante)||'')!==_cpF.solicitante) return false;
+    if(_cpF.prioridad && (d.urgencia||'')!==_cpF.prioridad) return false;
+    var f = _cpFechaDoc(d);
+    if(_cpF.desde && f && f < new Date(_cpF.desde+'T00:00:00')) return false;
+    if(_cpF.hasta && f && f > new Date(_cpF.hasta+'T23:59:59')) return false;
+    if(_cpF.texto){
+      var t = _cpNorm(_cpF.texto);
+      var prov = (d.cotizacionGanadora&&d.cotizacionGanadora.proveedor)||'';
+      var bolsa = _cpNorm([d.folio, d.ocFolio, nombrePorCorreo(d.solicitante), d.solicitante, d.empresa, d.ciudad, prov,
+        (d.items||[]).map(function(i){ return (i.desc||'')+' '+(i.proveedor||''); }).join(' ')].join(' '));
+      if(bolsa.indexOf(t)===-1) return false;
+    }
+    return true;
+  }
+  function _cpEsAtrasada(d){ return (d.estatus||'pendiente')==='pendiente' && _cpDias(_cpEsperaDesde(d))>=DIAS_ROJO; }
+  function _cpPasaKpi(d){
+    var k=_cpF.kpi; if(!k || k==='abiertas') return true;
+    if(k==='atrasadas') return _cpEsAtrasada(d);
+    return _cpColDe(d).id===k;
+  }
+  function _cpAbiertas(){ return docs.filter(function(d){ return CERRADOS_CP.indexOf(d.estatus||'pendiente')===-1; }); }
+
+  window.__cpFiltro = function(k,v){ _cpF[k]=v; renderKPIs(); renderBoard(); };
+  var _cpTimerTexto = null;
+  window.__cpFiltroTexto = function(v){ clearTimeout(_cpTimerTexto); _cpTimerTexto=setTimeout(function(){ window.__cpFiltro('texto', v); },180); };
+  window.__cpKpi = function(k){
+    _cpF.kpi = (_cpF.kpi===k ? '' : k);
+    if(verRechazadas){ window.__cpSetTab(false); }
+    renderKPIs(); renderBoard();
+  };
+  window.__cpVista = function(v){ _cpF.vista=v; renderBoard(); };
+  window.__cpLimpiarFiltros = function(){
+    ['texto','empresa','solicitante','prioridad','desde','hasta'].forEach(function(k){ _cpF[k]=''; var el=document.getElementById('cp-f-'+k); if(el) el.value=''; });
+    _cpF.kpi='';
+    renderKPIs(); renderBoard();
+  };
+
   window.__cpSetTab = function(rechazadas){
     verRechazadas = rechazadas;
     var a=document.getElementById('cp-tab-activas'), r=document.getElementById('cp-tab-rechazadas');
-    a.style.background = rechazadas?'#fff':'#0A1628'; a.style.color = rechazadas?'#5C7089':'#fff'; a.style.boxShadow = rechazadas?'none':'0 1px 3px rgba(10,22,40,.15)';
-    r.style.background = rechazadas?'#0A1628':'#fff'; r.style.color = rechazadas?'#fff':'#5C7089'; r.style.boxShadow = rechazadas?'0 1px 3px rgba(10,22,40,.15)':'none';
+    a.style.background = rechazadas?'#F8FAFC':'#0A1628'; a.style.color = rechazadas?'#5C7089':'#fff';
+    r.style.background = rechazadas?'#0A1628':'#F8FAFC'; r.style.color = rechazadas?'#fff':'#5C7089';
     renderBoard();
   };
 
+  // Llena empresa / solicitante con lo que existe en los datos, sin perder
+  // la selección actual (el listener se dispara en cada cambio).
+  function _cpLlenarOpciones(){
+    function llenar(id, valores, todos){
+      var el=document.getElementById(id); if(!el) return;
+      var actual = el.value;
+      var lista = valores.filter(function(v,i,arr){ return v && arr.indexOf(v)===i; }).sort(function(x,y){ return x.localeCompare(y,'es'); });
+      el.innerHTML = '<option value="">'+todos+'</option>' + lista.map(function(v){ return '<option value="'+esc(v)+'"'+(v===actual?' selected':'')+'>'+esc(v)+'</option>'; }).join('');
+    }
+    llenar('cp-f-empresa', docs.map(function(d){ return d.empresa||''; }), 'Todas las empresas');
+    llenar('cp-f-solicitante', docs.map(function(d){ return nombrePorCorreo(d.solicitante)||''; }), 'Todas las personas');
+    var m=document.getElementById('cp-f-mes'); if(m && !m.value) m.value=_cpF.mes;
+  }
+
+  // Aviso arriba: cuántas llevan mucho esperando y a quién le toca.
+  function _cpRenderAlerta(){
+    var el=document.getElementById('cp-alerta'); if(!el) return;
+    var pend = _cpAbiertas().filter(function(d){ return (d.estatus||'pendiente')==='pendiente'; });
+    var atras = pend.filter(_cpEsAtrasada);
+    var sinQuien = pend.filter(function(d){ var p=_cpPasoActivo(d); return p && !_cpDestinatariosPaso(d,p).length; });
+    var conteo = {};
+    atras.forEach(function(d){
+      var p=_cpPasoActivo(d); if(!p) return;
+      _cpDestinatariosPaso(d,p).forEach(function(x){ var k=_cpTitulo(x.nombre||x.correo); conteo[k]=(conteo[k]||0)+1; });
+    });
+    var top = Object.keys(conteo).sort(function(a,b){ return conteo[b]-conteo[a]; })[0];
+    var html='';
+    if(atras.length){
+      html += '<div role="status" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;background:#FEF2F2;border:1px solid #FECACA;border-radius:12px;padding:12px 14px;margin-bottom:12px;color:#7F1D1D">' +
+        '<span style="display:flex;color:#B91C1C">'+_cpIco('alerta')+'</span>' +
+        '<div style="flex:1;min-width:220px;font-size:12.5px"><b>'+atras.length+' '+(atras.length===1?'requisición lleva':'requisiciones llevan')+' '+DIAS_ROJO+' días o más esperando aprobación.</b>' +
+        (top?' La mayoría ('+conteo[top]+') espera a <b>'+esc(top)+'</b>.':'') + '</div>' +
+        '<button class="cp-btn" onclick="window.__cpKpi(\'atrasadas\')">Ver solo esas</button>' +
+        '<button class="cp-btn" onclick="window.__cpAbrirFirmasPendientes()">'+_cpIco('firma')+'Recordarles</button>' +
+      '</div>';
+    }
+    if(sinQuien.length){
+      html += '<div role="status" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;background:#FFFBEB;border:1px solid #FDE68A;border-radius:12px;padding:12px 14px;margin-bottom:12px;color:#78350F">' +
+        '<span style="display:flex">'+_cpIco('persona')+'</span>' +
+        '<div style="flex:1;min-width:220px;font-size:12.5px"><b>'+sinQuien.length+' '+(sinQuien.length===1?'requisición no tiene':'requisiciones no tienen')+' a nadie asignado para aprobarlas</b>, así que no pueden avanzar. Asigna al jefe de su departamento.</div>' +
+        '<button class="cp-btn" onclick="window.__cpAbrirConfigFlujo()">'+_cpIco('engrane')+'Asignar ahora</button>' +
+      '</div>';
+    }
+    el.innerHTML = html;
+  }
+
+  // Contadores = exactamente lo que se ve (respetan búsqueda y filtros);
+  // al dar clic filtran el tablero.
   function renderKPIs(){
-    var activas = docs.filter(function(d){ return d.estatus!=='rechazada' && d.estatus!=='recibida'; });
-    var urgentes = activas.filter(function(d){ return d.urgencia==='alta'; }).length;
-    var pendientes = docs.filter(function(d){ return (d.estatus||'pendiente')==='pendiente'; }).length;
-    var cotizando = docs.filter(function(d){ return d.estatus==='cotizando'; }).length;
-    var elP=document.getElementById('cp-kpi-proceso'); if(!elP) return;
-    elP.textContent = activas.length;
-    document.getElementById('cp-kpi-urgentes').textContent = urgentes;
-    document.getElementById('cp-kpi-autorizar').textContent = pendientes;
-    document.getElementById('cp-kpi-cotizando').textContent = cotizando;
+    var cont=document.getElementById('cp-kpis'); if(!cont) return;
+    _cpLlenarOpciones();
+    _cpRenderAlerta();
+    var base = _cpAbiertas().filter(_cpPasaFiltros);
+    var n = function(fn){ return base.filter(fn).length; };
+    var K = [
+      {id:'abiertas',   lbl:'Abiertas',                   val:base.length,                                         col:'#0A1628', ayuda:'Todo lo que aún no llega'},
+      {id:'aprobacion', lbl:'Esperando aprobación',       val:n(function(d){ return _cpColDe(d).id==='aprobacion'; }), col:'#B45309', ayuda:'Falta el visto bueno'},
+      {id:'atrasadas',  lbl:'Llevan '+DIAS_ROJO+'+ días esperando', val:n(_cpEsAtrasada),                         col:'#B91C1C', ayuda:'Necesitan atención'},
+      {id:'precios',    lbl:'Buscando precios',           val:n(function(d){ return _cpColDe(d).id==='precios'; }),    col:'#1473E6', ayuda:'Cotizando con proveedores'},
+      {id:'orden',      lbl:'Comprado, por llegar',       val:n(function(d){ return _cpColDe(d).id==='orden'; }),      col:'#6D28D9', ayuda:'Ya hay orden de compra'},
+    ];
+    cont.innerHTML = K.map(function(k){
+      var on = _cpF.kpi===k.id || (!_cpF.kpi && k.id==='abiertas' && !verRechazadas);
+      return '<button class="cp-kpi'+(on?' on':'')+'" aria-pressed="'+on+'" onclick="window.__cpKpi(\''+k.id+'\')" title="Clic para ver solo estas">' +
+        '<span style="display:block;font-size:11px;color:#5C7089;font-weight:600;margin-bottom:4px">'+esc(k.lbl)+'</span>' +
+        '<span style="display:block;font-size:24px;font-weight:800;color:'+k.col+';line-height:1.1">'+k.val+'</span>' +
+        '<span style="display:block;font-size:10.5px;color:#94A3B8;margin-top:3px">'+esc(k.ayuda)+'</span>' +
+      '</button>';
+    }).join('');
+  }
+
+  function _cpVacio(msg, conBoton){
+    return '<div style="text-align:center;padding:26px 10px;color:#94A3B8">' +
+      '<p style="font-size:12.5px;margin:0 0 '+(conBoton?'10px':'0')+';color:#64748B">'+msg+'</p>' +
+      (conBoton?'<button class="cp-btn" onclick="window.__cpLimpiarFiltros()">Quitar filtros</button>':'') + '</div>';
   }
 
   function renderBoard(){
     var board=document.getElementById('cp-board'); if(!board) return;
-    // Solo el mes en curso por default — el histórico completo vive en
-    // "🔍 Buscar / historial" para no saturar el tablero indefinidamente.
-    var ahora = new Date();
-    var fuente = docs.filter(function(d){
-      var f = _cpFechaDoc(d);
-      return f && f.getMonth()===ahora.getMonth() && f.getFullYear()===ahora.getFullYear();
-    });
-    fuente = verRechazadas ? fuente.filter(function(d){ return d.estatus==='rechazada'; }) : fuente.filter(function(d){ return d.estatus!=='rechazada'; });
+    // Botones de vista
+    var vt=document.getElementById('cp-v-tablero'), vl=document.getElementById('cp-v-lista');
+    if(vt&&vl){
+      vt.style.background = _cpF.vista==='tablero'?'#fff':'transparent'; vt.style.color = _cpF.vista==='tablero'?'#0A1628':'#5C7089'; vt.style.boxShadow=_cpF.vista==='tablero'?'0 1px 3px rgba(10,22,40,.12)':'none';
+      vl.style.background = _cpF.vista==='lista'?'#fff':'transparent';   vl.style.color = _cpF.vista==='lista'?'#0A1628':'#5C7089';   vl.style.boxShadow=_cpF.vista==='lista'?'0 1px 3px rgba(10,22,40,.12)':'none';
+    }
+    var filtrando = _cpHayFiltros() || (_cpF.kpi && _cpF.kpi!=='abiertas');
+
+    // ── Rechazadas (por mes) ──
     if(verRechazadas){
-      board.style.gridTemplateColumns='1fr';
-      board.innerHTML = fuente.length ? '<div style="background:#F8FAFC;border-radius:12px;overflow:hidden">'+fuente.map(cardHTML).join('')+'</div>' : '<div style="text-align:center;padding:30px;color:#94a3b8;font-size:13px">Sin requisiciones rechazadas este mes.</div>';
+      var rech = docs.filter(function(d){ return d.estatus==='rechazada' && _cpEnMes(_cpFechaCierre(d)) && _cpPasaFiltros(d); });
+      _cpBarraFiltro(rech.length, filtrando);
+      board.className=''; board.style.cssText='';
+      board.innerHTML = rech.length
+        ? (_cpF.vista==='lista' ? _cpTablaHTML(rech) : '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px">'+rech.map(cardHTML).join('')+'</div>')
+        : _cpVacio('No hay requisiciones rechazadas en el mes elegido.', _cpHayFiltros());
       return;
     }
-    board.style.gridTemplateColumns='repeat(5,minmax(0,1fr))';
-    board.innerHTML = ESTADOS.map(function(col){
-      var ds = fuente.filter(function(d){ return (d.estatus||'pendiente')===col.id; });
-      return '<div style="min-width:0">' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;padding:0 2px">' +
-        '<p style="font-size:10.5px;font-weight:700;color:#5C7089;margin:0;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+col.label+'</p>' +
-        '<span style="color:#94A3B8;font-size:11px;font-weight:700;flex-shrink:0;margin-left:4px">'+ds.length+'</span></div>' +
-        '<div style="background:#F8FAFC;border:1px solid #EEF2F7;border-radius:12px;min-height:60px;overflow:hidden">' +
-        (ds.length ? ds.map(cardHTML).join('') : '<p style="font-size:11px;color:#CBD5E1;margin:0;text-align:center;padding:24px 0">Vacío</p>') +
-        '</div></div>';
+
+    var abiertas = _cpAbiertas().filter(_cpPasaFiltros).filter(_cpPasaKpi);
+    var mostrarRecibidas = !_cpF.kpi || _cpF.kpi==='abiertas';
+    var recibidas = mostrarRecibidas ? docs.filter(function(d){ return d.estatus==='recibida' && _cpEnMes(_cpFechaCierre(d)) && _cpPasaFiltros(d); }) : [];
+    _cpBarraFiltro(abiertas.length, filtrando);
+
+    // Lo que lleva más tiempo esperando va primero.
+    var porEspera = function(a,b){ var fa=_cpEsperaDesde(a), fb=_cpEsperaDesde(b); return (fa?fa.getTime():0)-(fb?fb.getTime():0); };
+
+    if(_cpF.vista==='lista'){
+      board.className=''; board.style.cssText='';
+      var filas = abiertas.slice().sort(porEspera).concat(recibidas.slice().sort(function(a,b){ return _cpFechaCierre(b)-_cpFechaCierre(a); }));
+      board.innerHTML = filas.length ? _cpTablaHTML(filas) : _cpVacio(filtrando?'Ninguna requisición coincide con lo que buscas.':'No hay requisiciones abiertas. ¡Todo al día!', filtrando);
+      return;
+    }
+
+    board.className='cp-board'; board.style.cssText='';
+    var VACIOS = {
+      aprobacion:'Nada esperando aprobación. ¡Todo al día!',
+      precios:'Nadie está buscando precios ahora.',
+      orden:'No hay compras en camino.',
+      recibida: mostrarRecibidas ? 'Aún no llega nada en el mes elegido.' : 'Quita el filtro de arriba para ver lo recibido.',
+    };
+    board.innerHTML = COLS_CP.map(function(col){
+      var ds = col.id==='recibida'
+        ? recibidas.slice().sort(function(a,b){ return _cpFechaCierre(b)-_cpFechaCierre(a); })
+        : abiertas.filter(function(d){ return _cpColDe(d).id===col.id; }).sort(porEspera);
+      return '<section aria-label="'+esc(col.titulo)+'" style="min-width:0">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;padding:0 2px">' +
+          '<p style="font-size:12px;font-weight:800;color:#0A1628;margin:0;display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;background:'+col.color+';display:inline-block"></span>'+esc(col.titulo)+'</p>' +
+          '<span style="background:#F1F5F9;color:#475569;font-size:11px;font-weight:800;padding:2px 8px;border-radius:10px">'+ds.length+'</span></div>' +
+        '<p style="font-size:10.5px;color:#94A3B8;margin:0 2px 8px">'+esc(col.ayuda)+'</p>' +
+        '<div class="cp-col">' + (ds.length ? ds.map(cardHTML).join('') : _cpVacio(filtrando&&col.id!=='recibida'?'Ninguna coincide con tu búsqueda.':VACIOS[col.id], false)) + '</div>' +
+      '</section>';
     }).join('');
   }
 
-  function cardHTML(d){
-    var urgColor = d.urgencia==='alta'?'#E23B2E':d.urgencia==='media'?'#B45309':'#94A3B8';
-    var monto = d.cotizacionGanadora&&d.cotizacionGanadora.monto!=null ? ('$'+Number(d.cotizacionGanadora.monto).toLocaleString('es-MX')) : null;
-    var inicial = esc((d.folio||d.id||'?').replace(/[^0-9]/g,'').slice(-2) || '·');
-    return '<div onclick="window.__cpAbrirDetalle(\''+d.id+'\')" style="display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid #EEF2F7;cursor:pointer;transition:background .12s" onmouseover="this.style.background=\'#F1F5F9\'" onmouseout="this.style.background=\'transparent\'">' +
-      '<div style="width:32px;height:32px;border-radius:9px;background:#fff;color:'+urgColor+';display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:800;flex-shrink:0">'+inicial+'</div>' +
-      '<div style="flex:1;min-width:0">' +
-      '<p style="font-size:12px;font-weight:700;color:#0A1628;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(d.folio||d.id)+'</p>' +
-      '<p style="font-size:10.5px;color:#64748B;margin:1px 0 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(nombrePorCorreo(d.solicitante)||'—')+'</p>' +
-      '</div>' +
-      (monto?'<span style="font-size:11px;font-weight:700;color:#12A150;flex-shrink:0">'+monto+'</span>':'<span style="font-size:8.5px;font-weight:800;color:'+urgColor+';flex-shrink:0">'+esc((d.urgencia||'').toUpperCase())+'</span>') +
-      '<button title="Descargar requisición en PDF" onclick="event.stopPropagation();window.__cpDescargarRequisicion(\''+d.id+'\')" style="flex-shrink:0;width:24px;height:24px;border:1px solid #E2E8F0;background:#fff;color:#1D2E73;border-radius:7px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>' +
-      '</div>';
+  function _cpBarraFiltro(n, filtrando){
+    var el=document.getElementById('cp-filtro-activo'); if(!el) return;
+    if(!filtrando){ el.innerHTML=''; return; }
+    var nombresKpi = {aprobacion:'Esperando aprobación', atrasadas:'Llevan '+DIAS_ROJO+'+ días esperando', precios:'Buscando precios', orden:'Comprado, por llegar'};
+    el.innerHTML = '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#EFF6FF;border-radius:10px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#1E3A8A">' +
+      '<span>Mostrando <b>'+n+'</b> '+(n===1?'requisición':'requisiciones')+(_cpF.kpi&&nombresKpi[_cpF.kpi]?' · <b>'+esc(nombresKpi[_cpF.kpi])+'</b>':'')+(_cpHayFiltros()?' · con filtros':'')+'</span>' +
+      '<button class="cp-btn" style="padding:5px 10px;font-size:11.5px" onclick="window.__cpLimpiarFiltros()">Quitar filtros</button></div>';
   }
+
+  function _cpTablaHTML(lista){
+    return '<div style="overflow-x:auto;border:1px solid #EEF2F7;border-radius:12px"><table class="cp-tabla"><thead><tr>' +
+      '<th>Folio</th><th>Pedida</th><th>Quién pidió</th><th>Empresa</th><th>¿En qué paso va?</th><th>Tiempo</th><th>Prioridad</th><th>Monto</th><th></th></tr></thead><tbody>' +
+      lista.map(function(d){
+        var f=_cpFechaDoc(d), e=_cpEstadoAmigable(d), col=_cpColDe(d);
+        var monto = d.cotizacionGanadora&&d.cotizacionGanadora.monto!=null ? '$'+Number(d.cotizacionGanadora.monto).toLocaleString('es-MX') : '—';
+        return '<tr class="cp-fila" tabindex="0" onclick="window.__cpAbrirDetalle(\''+d.id+'\')" onkeydown="if(event.key===\'Enter\')window.__cpAbrirDetalle(\''+d.id+'\')">' +
+          '<td style="font-weight:800;color:#0A1628;white-space:nowrap"><span style="display:inline-block;width:4px;height:14px;border-radius:2px;background:'+(d.estatus==='rechazada'?'#E23B2E':col.color)+';vertical-align:middle;margin-right:7px"></span>'+esc(d.folio||d.id)+'</td>' +
+          '<td style="white-space:nowrap">'+(f?f.toLocaleDateString('es-MX'):'—')+'</td>' +
+          '<td>'+esc(_cpTitulo(nombrePorCorreo(d.solicitante)||'—'))+'</td>' +
+          '<td>'+esc(d.empresa||'—')+'</td>' +
+          '<td>'+esc(e.txt)+(e.quien?'<div style="font-size:11px;color:#5C7089">Le toca a: <b>'+esc(e.quien)+'</b></div>':'')+(e.falta?'<div style="font-size:11px;color:#B45309;font-weight:700">Nadie asignado para aprobar</div>':'')+'</td>' +
+          '<td>'+_cpChipEspera(d)+'</td>' +
+          '<td>'+(d.urgencia==='alta'?'<span class="cp-chip" style="background:#FCEBEB;color:#B91C1C">'+_cpIco('fuego')+'Urgente</span>':esc(d.urgencia?_cpTitulo(d.urgencia):'—'))+'</td>' +
+          '<td style="white-space:nowrap;font-weight:700;color:'+(monto==='—'?'#94A3B8':'#12A150')+'">'+monto+'</td>' +
+          '<td><span style="color:#1473E6;font-weight:700;font-size:12px">Ver</span></td></tr>';
+      }).join('') + '</tbody></table></div>';
+  }
+
+  function cardHTML(d){
+    var col = _cpColDe(d);
+    var color = d.estatus==='rechazada' ? '#E23B2E' : col.color;
+    var e = _cpEstadoAmigable(d);
+    var items = d.items||[];
+    var resumen = items.length ? (items[0].desc||'') + (items.length>1?' (+'+(items.length-1)+' más)':'') : '';
+    var monto = d.cotizacionGanadora&&d.cotizacionGanadora.monto!=null ? ('$'+Number(d.cotizacionGanadora.monto).toLocaleString('es-MX')) : null;
+    return '<div class="cp-card" style="--c:'+color+'" role="button" tabindex="0" aria-label="Abrir '+esc(d.folio||d.id)+'" onclick="window.__cpAbrirDetalle(\''+d.id+'\')" onkeydown="if(event.key===\'Enter\')window.__cpAbrirDetalle(\''+d.id+'\')">' +
+      '<div style="display:flex;align-items:center;gap:6px">' +
+        '<span style="font-size:12.5px;font-weight:800;color:#0A1628">'+esc(d.folio||d.id)+'</span>' +
+        (d.urgencia==='alta'?'<span class="cp-chip" style="background:#FCEBEB;color:#B91C1C" title="Marcada como urgente por quien la pidió">'+_cpIco('fuego')+'Urgente</span>':'') +
+        '<span style="flex:1"></span>' +
+        '<button title="Descargar requisición en PDF" aria-label="Descargar PDF" onclick="event.stopPropagation();window.__cpDescargarRequisicion(\''+d.id+'\')" style="flex-shrink:0;width:26px;height:26px;border:1px solid #E2E8F0;background:#fff;color:#1D2E73;border-radius:7px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0">'+_cpIco('bajar')+'</button>' +
+      '</div>' +
+      '<p style="font-size:11.5px;color:#334155;margin:4px 0 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(_cpTitulo(nombrePorCorreo(d.solicitante)||'—'))+(d.empresa?' · <span style="color:#94A3B8">'+esc(d.empresa)+'</span>':'')+'</p>' +
+      (resumen?'<p style="font-size:11px;color:#64748B;margin:2px 0 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+esc(resumen)+'">'+esc(resumen)+'</p>':'') +
+      '<p style="font-size:11px;color:#0A1628;margin:7px 0 0;font-weight:600">'+esc(e.txt)+'</p>' +
+      (e.quien?'<p style="font-size:10.5px;color:#5C7089;margin:1px 0 0;display:flex;align-items:center;gap:4px">'+_cpIco('persona')+'Le toca a: <b>'+esc(e.quien)+'</b></p>':'') +
+      (e.falta?'<p style="font-size:10.5px;color:#B45309;margin:1px 0 0;font-weight:700">Nadie asignado para aprobar</p>':'') +
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:8px;flex-wrap:wrap">'+_cpChipEspera(d)+(monto?'<span style="font-size:11.5px;font-weight:800;color:#12A150">'+monto+'</span>':'')+'</div>' +
+    '</div>';
+  }
+
+  // ── Ayuda "¿Cómo funciona?" ──
+  window.__cpAyuda = function(){
+    var ov=document.createElement('div'); ov.id='cp-ayuda-overlay';
+    ov.style.cssText='position:fixed;inset:0;background:rgba(10,22,40,.55);z-index:2100;display:flex;align-items:center;justify-content:center;padding:18px';
+    ov.onclick=function(e){ if(e.target===ov) ov.remove(); };
+    var pasos = [
+      ['#B45309','Esperando aprobación','Alguien pidió algo. Su jefe (y luego Compras) deben decir que sí.'],
+      ['#1473E6','Buscando precios','Compras pregunta a proveedores cuánto cuesta y elige la mejor opción.'],
+      ['#6D28D9','Comprado, por llegar','Ya se hizo la orden de compra. Ahora solo falta que llegue.'],
+      ['#12A150','Recibido','Ya llegó. ¡Listo!'],
+    ];
+    ov.innerHTML = '<div role="dialog" aria-modal="true" aria-label="Cómo funciona Compras" style="background:#fff;border-radius:14px;max-width:520px;width:100%;padding:22px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><h3 style="margin:0;font-size:16px;color:#0A1628">¿Cómo funciona?</h3><button aria-label="Cerrar" onclick="document.getElementById(\'cp-ayuda-overlay\').remove()" style="background:#F1F5F9;border:none;border-radius:8px;width:28px;height:28px;cursor:pointer">✕</button></div>' +
+      '<p style="font-size:12.5px;color:#5C7089;margin:0 0 14px">Cada pedido pasa por estos 4 pasos, de izquierda a derecha:</p>' +
+      pasos.map(function(p,i){ return '<div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:12px"><span style="flex-shrink:0;width:26px;height:26px;border-radius:50%;background:'+p[0]+';color:#fff;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center">'+(i+1)+'</span><div><p style="margin:0;font-size:13px;font-weight:700;color:#0A1628">'+p[1]+'</p><p style="margin:2px 0 0;font-size:12px;color:#5C7089">'+p[2]+'</p></div></div>'; }).join('') +
+      '<div style="background:#F8FAFC;border-radius:10px;padding:10px 12px;font-size:12px;color:#334155;margin-top:6px">' +
+        '<b>Colores del tiempo:</b> gris = va bien · <span style="color:#92400E;font-weight:700">amarillo</span> = lleva '+DIAS_AMARILLO+' días o más · <span style="color:#B91C1C;font-weight:700">rojo</span> = lleva '+DIAS_ROJO+' días o más y necesita atención.<br>' +
+        '<b>Tip:</b> da clic en cualquiera de los números de arriba para ver solo esas requisiciones.</div>' +
+    '</div>';
+    document.body.appendChild(ov);
+  };
 
   // ── DETALLE / AUTORIZAR / RECHAZAR ─────────────────────────────
   window.__cpAbrirDetalle = function(id){
@@ -774,6 +1121,11 @@
           '<div style="font-size:9.5px;font-weight:700;color:'+col+'">'+esc(e.label)+'</div>' +
         '</div>' + (i<ETAPAS_CP.length-1?'<div style="flex:0.6;height:0;border-top:2px dotted '+(i<etapaActualIdx?'#12A150':'#E2E8F0')+';margin-bottom:16px"></div>':'');
     }).join('') + '</div>';
+    (function(){ var e=_cpEstadoAmigable(d), sig=_cpQueSigue(d);
+      html += '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#F8FAFC;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:12.5px;color:#0A1628">' +
+        '<span><b>Ahora:</b> '+esc(e.txt)+(e.quien?' — le toca a <b>'+esc(e.quien)+'</b>':'')+'</span>' + _cpChipEspera(d) +
+        (sig?'<span style="color:#5C7089"><b>Sigue:</b> '+esc(sig)+'</span>':'') + '</div>';
+    })();
     if(d.estatus==='rechazada'){
       html += '<div style="background:#FCEBEB;border-radius:9px;padding:10px 12px;font-size:12px;color:#791F1F;margin-bottom:14px"><b>Rechazada:</b> '+esc(d.motivoRechazo||'Sin motivo registrado')+'</div>';
     }
@@ -842,7 +1194,7 @@
         } else if(pasoActivo.label==='Compras'){
           quien = (cfg2.aprobadoresCompras||[]).map(function(a){return a.nombre||a.correo;}).join(', ') || 'sin aprobadores de Compras configurados';
         }
-        htmlIzq += '<div style="background:#FFF7ED;border-radius:9px;padding:10px 12px;font-size:12px;color:#7C2D12">Este paso ("'+esc(pasoActivo.label)+'") solo lo puede autorizar: <b>'+esc(quien)+'</b>. Configúralo en "⚙ Configurar flujo" si falta.</div>';
+        htmlIzq += '<div style="background:#FFF7ED;border-radius:9px;padding:10px 12px;font-size:12px;color:#7C2D12">Este paso ("'+esc(pasoActivo.label)+'") solo lo puede autorizar: <b>'+esc(quien)+'</b>. Configúralo en "Configurar flujo" si falta.</div>';
       }
     }
 
@@ -1010,7 +1362,7 @@
     if(!motivo){ alert('Escribe el motivo del rechazo'); return; }
     var d = docs.find(function(x){ return x.id===id; }); if(!d) return;
     cargarFirestore().then(function(fs){
-      fs.updateDoc(fs.doc(window.db,'requisiciones_compra',id), {estatus:'rechazada', motivoRechazo:motivo}).then(function(){
+      fs.updateDoc(fs.doc(window.db,'requisiciones_compra',id), {estatus:'rechazada', motivoRechazo:motivo, rechazadaEn:new Date().toISOString()}).then(function(){
         if(d.solicitanteEmail){
           window.tcNotificar2(fs, window.db, {
             para:d.solicitanteEmail, tipo:'requisicion_rechazada',
@@ -1152,7 +1504,7 @@
 
   window.__cpMarcarRecibida = function(id){
     cargarFirestore().then(function(fs){
-      fs.updateDoc(fs.doc(window.db,'requisiciones_compra',id), {estatus:'recibida'}).then(function(){
+      fs.updateDoc(fs.doc(window.db,'requisiciones_compra',id), {estatus:'recibida', recibidaEn:new Date().toISOString()}).then(function(){
         toast('Marcada como recibida');
         var d = docs.find(function(x){ return x.id===id; });
         if(d) sincronizarCuentaPorPagar(Object.assign({},d,{estatus:'recibida'}), 'recibida');
