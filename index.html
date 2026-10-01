@@ -3720,7 +3720,12 @@ function renderTabla(){
     const total=filt.length;
     const yo=auth.currentUser.email, esAdmin=yo===ADMIN;
     const done=filt.filter(x=>x.estatus==='Completada').length;
-    document.getElementById('area-stats-mini').innerHTML=`${done} de ${total} completadas · ${total>0?Math.round(done/total*100):0}% cumplimiento`;
+    // Compras tiene su propio tablero (las "actividades" genéricas están
+    // ocultas ahí), y "0 de 0 · 0%" en cualquier área es un dato engañoso.
+    const _statsMini=document.getElementById('area-stats-mini');
+    if(areaActual==='Compras') _statsMini.innerHTML='';
+    else if(total===0) _statsMini.innerHTML='Sin actividades registradas';
+    else _statsMini.innerHTML=`${done} de ${total} completadas · ${Math.round(done/total*100)}% cumplimiento`;
     if(query){
         filt=filt.filter(r=>
             r.actividad?.toLowerCase().includes(query)||
@@ -5840,7 +5845,7 @@ window.irAlmacen = function(btn){
 <script src="surtidos-supabase.js"></script>
 <script src="almacen.js"></script>
 <script src="almacen-pdf.js"></script>
-<script src="compras.js?v=paso1"></script>
+<script src="compras.js?v=fase2"></script>
 <script src="cobranza.js"></script>
 <script src="logistica.js"></script>
 <script src="mis-pedidos.js"></script>

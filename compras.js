@@ -411,6 +411,7 @@
             '<button onclick="window.__cpAyuda()" aria-label="¿Cómo funciona?" title="¿Cómo funciona?" style="width:22px;height:22px;border-radius:50%;border:1.5px solid #CBD5E1;background:#fff;color:#5C7089;font-size:12px;font-weight:800;cursor:pointer;line-height:1;padding:0">?</button></h2>' +
           '<p style="font-size:12px;color:#5C7089;margin:4px 0 0">Aquí ves <b>todo lo que sigue abierto</b>, sin importar el mes en que se pidió. Lo ya recibido o rechazado se filtra por mes.</p></div>' +
           '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+          '<button class="cp-btn" onclick="window.__cpAbrirAutDirecta()" style="border-color:#C7D2FE;color:#3730A3">'+_cpIco('rayo')+'Autorización directa</button>' +
           '<button class="cp-btn" onclick="window.__cpAbrirFirmasPendientes()">'+_cpIco('firma')+'Firmas pendientes</button>' +
           '<button class="cp-btn" onclick="window.__cpAbrirConfigFlujo()">'+_cpIco('engrane')+'Configurar flujo</button>' +
           '<button class="cp-btn" onclick="window.__cpAbrirBuscador()">'+_cpIco('historial')+'Historial completo</button>' +
@@ -698,12 +699,14 @@
     cargarColaboradores();
     cargarConfigFlujo();
     cargarProveedores();
+    Promise.all([cargarColaboradores(), cargarConfigFlujo(), cargarAutDirecta()]).then(function(){ renderKPIs(); renderBoard(); _cpAutoDirectas(); });
     cargarFirestore().then(function(fs){
       var q = fs.query(fs.collection(window.db,'requisiciones_compra'), fs.orderBy('createdAt','desc'));
       _unsub = fs.onSnapshot(q, function(snap){
         docs = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
         renderKPIs();
         renderBoard();
+        _cpAutoDirectas();
         if(detalleId) window.__cpAbrirDetalle(detalleId);
       }, function(err){
         console.error('[compras] onSnapshot:', err);
@@ -751,6 +754,7 @@
       persona:'<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
       check:'<path d="M20 6 9 17l-5-5"/>',
       camion:'<path d="M3 7h11v9H3zM14 10h4l3 3v3h-7"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/>',
+      rayo:'<path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z"/>',
       bajar:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
     };
     return '<svg '+a+'>'+(P[n]||'')+'</svg>';
@@ -767,7 +771,7 @@
     var base = _cpFechaDoc(d);
     if((d.estatus||'pendiente')==='pendiente'){
       (d.flujoAutorizacion||[]).forEach(function(f){
-        if(f.estatus==='aprobado' && f.fecha){ var x=new Date(f.fecha); if(!isNaN(x) && (!base || x>base)) base=x; }
+        if(f.estatus==='aprobado' && f.fecha && f.via!=='autorizacion_directa'){ var x=new Date(f.fecha); if(!isNaN(x) && (!base || x>base)) base=x; }
       });
     }
     return base;
@@ -920,6 +924,11 @@
         '<button class="cp-btn" onclick="window.__cpAbrirConfigFlujo()">'+_cpIco('engrane')+'Asignar ahora</button>' +
       '</div>';
     }
+    var dir = _cpAbiertas().filter(_cpCandidataDirecta).length;
+    if(dir){
+      html += '<div role="status" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;background:#EEF2FF;border:1px solid #C7D2FE;border-radius:12px;padding:12px 14px;margin-bottom:12px;color:#312E81">' +
+        '<span style="display:flex">'+_cpIco('rayo')+'</span><div style="flex:1;min-width:220px;font-size:12.5px">Pasando <b>'+dir+'</b> '+(dir===1?'requisición':'requisiciones')+' directo a Compras (quien las pidió tiene autorización directa)…</div></div>';
+    }
     el.innerHTML = html;
   }
 
@@ -1031,7 +1040,7 @@
           '<td style="white-space:nowrap">'+(f?f.toLocaleDateString('es-MX'):'—')+'</td>' +
           '<td>'+esc(_cpTitulo(nombrePorCorreo(d.solicitante)||'—'))+'</td>' +
           '<td>'+esc(d.empresa||'—')+'</td>' +
-          '<td>'+esc(e.txt)+(e.quien?'<div style="font-size:11px;color:#5C7089">Le toca a: <b>'+esc(e.quien)+'</b></div>':'')+(e.falta?'<div style="font-size:11px;color:#B45309;font-weight:700">Nadie asignado para aprobar</div>':'')+'</td>' +
+          '<td>'+esc(e.txt)+(d.autorizacionDirecta?'<div style="margin-top:3px">'+_cpChipDirecto(d)+'</div>':'')+(e.quien?'<div style="font-size:11px;color:#5C7089">Le toca a: <b>'+esc(e.quien)+'</b></div>':'')+(e.falta?'<div style="font-size:11px;color:#B45309;font-weight:700">Nadie asignado para aprobar</div>':'')+'</td>' +
           '<td>'+_cpChipEspera(d)+'</td>' +
           '<td>'+(d.urgencia==='alta'?'<span class="cp-chip" style="background:#FCEBEB;color:#B91C1C">'+_cpIco('fuego')+'Urgente</span>':esc(d.urgencia?_cpTitulo(d.urgencia):'—'))+'</td>' +
           '<td style="white-space:nowrap;font-weight:700;color:'+(monto==='—'?'#94A3B8':'#12A150')+'">'+monto+'</td>' +
@@ -1058,6 +1067,7 @@
       '<p style="font-size:11px;color:#0A1628;margin:7px 0 0;font-weight:600">'+esc(e.txt)+'</p>' +
       (e.quien?'<p style="font-size:10.5px;color:#5C7089;margin:1px 0 0;display:flex;align-items:center;gap:4px">'+_cpIco('persona')+'Le toca a: <b>'+esc(e.quien)+'</b></p>':'') +
       (e.falta?'<p style="font-size:10.5px;color:#B45309;margin:1px 0 0;font-weight:700">Nadie asignado para aprobar</p>':'') +
+      (d.autorizacionDirecta?'<div style="margin-top:6px">'+_cpChipDirecto(d)+'</div>':'') +
       '<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:8px;flex-wrap:wrap">'+_cpChipEspera(d)+(monto?'<span style="font-size:11.5px;font-weight:800;color:#12A150">'+monto+'</span>':'')+'</div>' +
     '</div>';
   }
@@ -1082,6 +1092,376 @@
         '<b>Tip:</b> da clic en cualquiera de los números de arriba para ver solo esas requisiciones.</div>' +
     '</div>';
     document.body.appendChild(ov);
+  };
+
+  // ══════════════════════════════════════════════════════════════════
+  //  FASE 2 — AUTORIZACIÓN DIRECTA (sin esperar al jefe)
+  //  · Permisos por persona, por departamento o por rol ("todos los jefes
+  //    de área"), con límite de monto y categorías.
+  //  · Se aplica SOLO: si quien pide tiene permiso, el paso "Jefe de área"
+  //    se da por aprobado y la requisición pasa directo a Compras.
+  //  · Al momento de pedir casi nunca hay precio, así que el límite se revisa
+  //    cuando Compras elige la cotización: si el precio real pasa el límite,
+  //    la requisición REGRESA sola a que su jefe la apruebe.
+  //  · Todo queda en bitácora: dentro de cada requisición (campo bitacora) y
+  //    los cambios de permisos dentro de config_flujo_compras/autorizacion_directa
+  //    — sin colecciones nuevas, para no tocar reglas de Firestore.
+  //  · Compatible hacia atrás: el paso queda con estatus 'aprobado' (lo que
+  //    ya entienden firmar.html, el PDF y Flotilla) + marca via:'autorizacion_directa'.
+  // ══════════════════════════════════════════════════════════════════
+  var CATS_CP = [
+    {id:'insumo',   label:'Insumos y consumibles', ej:'papelería, limpieza, cafetería…'},
+    {id:'servicio', label:'Servicios',             ej:'mantenimiento, reparaciones, fletes…'},
+    {id:'stock',    label:'Mercancía para inventario', ej:'refacciones y piezas que entran al sistema'},
+  ];
+  var _autDirCache = null;
+  var _cpAutoEnCurso = {};
+  function cargarAutDirecta(forzar){
+    if(_autDirCache && !forzar) return Promise.resolve(_autDirCache);
+    return cargarFirestore().then(function(fs){
+      return fs.getDoc(fs.doc(window.db,'config_flujo_compras','autorizacion_directa')).then(function(snap){
+        _autDirCache = snap.exists() ? snap.data() : {permisos:[], historial:[]};
+        _autDirCache.permisos = _autDirCache.permisos || []; _autDirCache.historial = _autDirCache.historial || [];
+        return _autDirCache;
+      }).catch(function(e){ console.warn('[compras] autorizacion_directa:', e); _autDirCache = {permisos:[], historial:[]}; return _autDirCache; });
+    });
+  }
+  function _cpMiCorreo(){ return (window.auth && window.auth.currentUser && window.auth.currentUser.email || '').toLowerCase(); }
+  function _cpMiNombre(){ var c=_cpMiCorreo(); return nombrePorCorreo(c)||c; }
+  function _cpMoney(n){ return '$'+Number(n||0).toLocaleString('es-MX',{maximumFractionDigits:2}); }
+  function _cpCatLabel(id){ var c=CATS_CP.find(function(x){return x.id===id;}); return c?c.label:(id||'—'); }
+  // ¿Quién puede dar/quitar permisos? Admin total del portal o aprobadores de Compras.
+  function _cpPuedeAdministrar(){
+    var yo = _cpMiCorreo(); if(!yo) return false;
+    try{ if(typeof ADMIN_EMAILS!=='undefined' && ADMIN_EMAILS.map(function(x){return String(x).toLowerCase();}).indexOf(yo)>-1) return true; }catch(e){}
+    var cfg = _configFlujoCache || {};
+    return (cfg.aprobadoresCompras||[]).some(function(a){ return (a.correo||'').toLowerCase()===yo; });
+  }
+  // Correo de quien pidió (el kiosco guarda el NOMBRE en 'solicitante').
+  function _cpCorreoDe(d){
+    var c = correoSolicitante(d); if(c) return c.toLowerCase();
+    var n = _cpNorm(d.solicitante);
+    var col = (_colaboradoresCache||[]).find(function(x){ return x.nombre && _cpNorm(x.nombre)===n; });
+    return col ? String(col.correo||col.id||'').toLowerCase() : '';
+  }
+  function _cpEsJefeDeArea(correo){
+    var j = (_configFlujoCache||{}).jefesPorDepto || {};
+    return Object.keys(j).some(function(k){ return j[k] && (j[k].correo||'').toLowerCase()===correo; });
+  }
+  function _cpDescPermiso(p){
+    var quien = p.tipo==='persona' ? _cpTitulo(p.nombre||p.correo) : p.tipo==='rol' ? 'Todos los jefes de área' : 'Todo '+p.departamento;
+    var lim = Number(p.limite)>0 ? 'hasta '+_cpMoney(p.limite) : 'sin límite de monto';
+    var cats = (p.categorias||[]).indexOf('todas')>-1 || !(p.categorias||[]).length ? 'en todo' : 'en '+p.categorias.map(_cpCatLabel).join(', ').toLowerCase();
+    return {quien:quien, regla:lim+' '+cats};
+  }
+  // Permiso que cubre ESTA requisición (persona > rol > departamento; el de mayor límite).
+  function _cpPermisoPara(d){
+    var cache = _autDirCache; if(!cache) return null;
+    var correo = _cpCorreoDe(d), depto = deptoSolicitante(d), cat = d.tipoCompra || '';
+    var cand = cache.permisos.filter(function(p){
+      if(p.activo===false) return false;
+      var cats = p.categorias||[];
+      if(cats.length && cats.indexOf('todas')===-1 && cats.indexOf(cat)===-1) return false;
+      if(p.tipo==='persona') return !!correo && (p.correo||'').toLowerCase()===correo;
+      if(p.tipo==='rol' && p.rol==='jefes_area') return !!correo && _cpEsJefeDeArea(correo);
+      if(p.tipo==='departamento') return !!depto && _cpNorm(p.departamento)===_cpNorm(depto);
+      return false;
+    });
+    if(!cand.length) return null;
+    var peso = {persona:3, rol:2, departamento:1};
+    var lim = function(p){ return Number(p.limite)>0 ? Number(p.limite) : Infinity; };
+    cand.sort(function(a,b){ return (peso[b.tipo]-peso[a.tipo]) || (lim(b)-lim(a)); });
+    var p = cand[0];
+    // Si ya trae un monto estimado que pasa el límite, no aplica.
+    if(d.montoEstimado!=null && Number(p.limite)>0 && Number(d.montoEstimado)>Number(p.limite)) return null;
+    return p;
+  }
+  function _cpCandidataDirecta(d){
+    if((d.estatus||'pendiente')!=='pendiente' || d.autorizacionDirecta) return false;
+    var paso = _cpPasoActivo(d);
+    return !!(paso && paso.label==='Jefe de área' && _cpPermisoPara(d));
+  }
+
+  // ── Aplicación automática ──
+  // Corre cuando alguien tiene Compras abierto. Usa transacción: si dos
+  // personas lo tienen abierto a la vez, solo una escritura gana y no se
+  // duplican avisos.
+  function _cpAutoDirectas(){
+    if(!_autDirCache || !_configFlujoCache || !_colaboradoresCache || !window.auth || !window.auth.currentUser) return;
+    var cand = docs.filter(function(d){ return _cpCandidataDirecta(d) && !_cpAutoEnCurso[d.id]; });
+    if(!cand.length) return;
+    cargarFirestore().then(function(fs){
+      if(!fs.runTransaction) return;
+      var aplicadas = [];
+      Promise.all(cand.map(function(d){
+        _cpAutoEnCurso[d.id] = true;
+        var permiso = _cpPermisoPara(d); if(!permiso) return null;
+        var ref = fs.doc(window.db,'requisiciones_compra',d.id);
+        return fs.runTransaction(window.db, function(tx){
+          return tx.get(ref).then(function(snap){
+            if(!snap.exists()) return false;
+            var x = snap.data();
+            if((x.estatus||'pendiente')!=='pendiente' || x.autorizacionDirecta) return false;
+            var flujo = (x.flujoAutorizacion||[]).map(function(f){ return Object.assign({},f); });
+            var idx = flujo.findIndex(function(f){ return f.estatus==='pendiente'; });
+            if(idx===-1 || flujo[idx].label!=='Jefe de área') return false;
+            var ahora = new Date().toISOString();
+            var otorgo = permiso.otorgadoPor ? (permiso.otorgadoPor.nombre||permiso.otorgadoPor.correo) : '—';
+            flujo[idx].estatus = 'aprobado';
+            flujo[idx].via = 'autorizacion_directa';
+            flujo[idx].fecha = ahora;
+            flujo[idx].nota = 'Autorización directa — permiso otorgado por '+otorgo;
+            for(var i=idx+1;i<flujo.length;i++){ if(flujo[i].estatus!=='aprobado') flujo[i].estatus='pendiente'; }
+            var registro = {
+              permisoId:permiso.id, tipo:permiso.tipo, limite:Number(permiso.limite)||0, categorias:permiso.categorias||[],
+              descripcion:_cpDescPermiso(permiso).quien+' · '+_cpDescPermiso(permiso).regla,
+              otorgadoPor:permiso.otorgadoPor||null, otorgadoEn:permiso.otorgadoEn||null,
+              aplicadoEn:ahora, aplicadoPorSistema:true, sesion:_cpMiCorreo(),
+            };
+            tx.update(ref, {
+              flujoAutorizacion:flujo, autorizacionDirecta:registro,
+              bitacora: fs.arrayUnion({tipo:'autorizacion_directa', fecha:ahora, por:'sistema ('+_cpMiCorreo()+')',
+                detalle:'Pasó directo a Compras sin esperar al jefe. Permiso: '+registro.descripcion+'. Otorgado por: '+otorgo}),
+            });
+            return true;
+          });
+        }).then(function(ok){ if(ok) aplicadas.push(d); })
+          .catch(function(e){ console.warn('[compras] autorización directa', d.folio, e); })
+          .then(function(){ delete _cpAutoEnCurso[d.id]; });
+      })).then(function(){
+        if(!aplicadas.length || !window.tcNotificar2) return;
+        var aprob = ((_configFlujoCache||{}).aprobadoresCompras||[]).filter(function(a){ return a.correo; });
+        var aviso = function(para, mensaje, link){
+          window.tcNotificar2(fs, window.db, {para:para.toLowerCase().trim(), tipo:'requisicion_autorizar', mensaje:mensaje, link:link, leido:false, creadaEn:new Date().toISOString()})
+            .catch(function(e){ console.warn('[compras] aviso', e); });
+        };
+        if(aplicadas.length<=3){
+          aplicadas.forEach(function(d){ aprob.forEach(function(a){ aviso(a.correo, 'Requisición '+(d.folio||d.id)+' llegó directo a Compras (autorización directa)', 'firmar.html?id='+d.id); }); });
+        } else {
+          aprob.forEach(function(a){ aviso(a.correo, aplicadas.length+' requisiciones llegaron directo a Compras (autorización directa)', ''); });
+        }
+        toast(aplicadas.length===1 ? '1 requisición pasó directo a Compras' : aplicadas.length+' requisiciones pasaron directo a Compras');
+      });
+    });
+  }
+
+  // Si el precio real pasa el límite, regresa a su jefe. Devuelve true si regresó.
+  function _cpRevisarLimiteDirecto(fs, d, cot){
+    var ad = d.autorizacionDirecta;
+    if(!ad || ad.revertida || !(Number(ad.limite)>0) || !(Number(cot.monto)>Number(ad.limite))) return Promise.resolve(false);
+    var ahora = new Date().toISOString();
+    var flujo = (d.flujoAutorizacion||[]).map(function(f){ return Object.assign({},f); });
+    var jefeIdx = flujo.findIndex(function(f){ return f.label==='Jefe de área'; });
+    flujo.forEach(function(f,i){
+      if(i>=jefeIdx && jefeIdx>-1){ f.estatus='pendiente'; delete f.fecha; delete f.uid; delete f.via; delete f.nota; }
+    });
+    var revertida = {fecha:ahora, monto:Number(cot.monto), limite:Number(ad.limite), por:_cpMiCorreo()};
+    return fs.updateDoc(fs.doc(window.db,'requisiciones_compra',d.id), {
+      estatus:'pendiente', flujoAutorizacion:flujo,
+      'autorizacionDirecta.revertida': revertida,
+      cotizacionPropuesta: cot,
+      bitacora: fs.arrayUnion({tipo:'directo_revertido', fecha:ahora, por:_cpMiCorreo(),
+        detalle:'El precio elegido ('+_cpMoney(cot.monto)+', '+(cot.proveedor||'')+') pasa el límite del permiso ('+_cpMoney(ad.limite)+'). Regresó a que su jefe la apruebe.'}),
+    }).then(function(){
+      if(jefeIdx>-1) _cpNotificarPaso(fs, d, flujo[jefeIdx]);
+      alert('El precio ('+_cpMoney(cot.monto)+') pasa el límite de la autorización directa ('+_cpMoney(ad.limite)+').\n\nLa requisición regresó a que su jefe la apruebe. La cotización quedó guardada; cuando la aprueben, solo vuelve a elegirla.');
+      return true;
+    });
+  }
+
+  function _cpChipDirecto(d){
+    var ad = d.autorizacionDirecta; if(!ad) return '';
+    if(ad.revertida) return '<span class="cp-chip" style="background:#FEF3C7;color:#92400E" title="El precio pasó el límite del permiso">'+_cpIco('reloj')+'Regresó a su jefe</span>';
+    return '<span class="cp-chip" style="background:#EEF2FF;color:#3730A3" title="'+esc(ad.descripcion||'')+'">'+_cpIco('rayo')+'Autorización directa</span>';
+  }
+
+  // ── Panel: permisos + bitácora ──
+  var _cpAdTab = 'permisos';
+  window.__cpAbrirAutDirecta = function(tab){
+    if(tab) _cpAdTab = tab;
+    Promise.all([cargarAutDirecta(true), cargarConfigFlujo(), cargarColaboradores()]).then(function(){
+      var ov = document.getElementById('cp-ad-overlay');
+      if(!ov){
+        ov = document.createElement('div'); ov.id='cp-ad-overlay';
+        ov.style.cssText='position:fixed;inset:0;background:rgba(10,22,40,.55);z-index:2100;display:flex;align-items:center;justify-content:center;padding:18px';
+        ov.onclick=function(e){ if(e.target===ov) ov.remove(); };
+        document.body.appendChild(ov);
+      }
+      var admin = _cpPuedeAdministrar();
+      var tabBtn = function(id,lbl){ var on=_cpAdTab===id; return '<button onclick="window.__cpAbrirAutDirecta(\''+id+'\')" style="padding:9px 2px;border:none;background:none;font-size:13px;font-weight:700;cursor:pointer;color:'+(on?'#0A1628':'#94A3B8')+';border-bottom:2px solid '+(on?'#0A1628':'transparent')+'">'+lbl+'</button>'; };
+      var cuerpo = _cpAdTab==='bitacora' ? _cpAdBitacoraHTML() : _cpAdPermisosHTML(admin);
+      ov.innerHTML = '<div role="dialog" aria-modal="true" aria-label="Autorización directa" style="background:#fff;border-radius:14px;max-width:860px;width:100%;max-height:90vh;overflow-y:auto;padding:22px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:6px"><div><h3 style="margin:0;font-size:17px;color:#0A1628;display:flex;align-items:center;gap:8px">'+_cpIco('rayo')+'Autorización directa</h3>' +
+        '<p style="font-size:12.5px;color:#5C7089;margin:4px 0 0">Las personas de esta lista <b>no esperan a su jefe</b>: su requisición pasa sola a Compras. Si el precio final pasa su límite, regresa sola a que su jefe la apruebe.</p></div>' +
+        '<button aria-label="Cerrar" onclick="document.getElementById(\'cp-ad-overlay\').remove()" style="background:#F1F5F9;border:none;border-radius:8px;width:30px;height:30px;cursor:pointer;flex-shrink:0">✕</button></div>' +
+        '<div style="display:flex;gap:20px;border-bottom:1px solid #EEF2F7;margin:12px 0 16px">'+tabBtn('permisos','Quién tiene permiso')+tabBtn('bitacora','Bitácora')+'</div>' +
+        cuerpo + '</div>';
+    });
+  };
+
+  function _cpAdPermisosHTML(admin){
+    var c = _autDirCache;
+    var pend = docs.filter(_cpCandidataDirecta).length;
+    var html = '';
+    if(!admin) html += '<div style="background:#F8FAFC;border-radius:10px;padding:10px 12px;font-size:12px;color:#5C7089;margin-bottom:12px">Solo el administrador del portal o los aprobadores de Compras pueden dar o quitar permisos. Tú puedes consultarlos.</div>';
+    if(pend) html += '<div style="background:#EEF2FF;border-radius:10px;padding:10px 12px;font-size:12.5px;color:#3730A3;margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="flex:1"><b>'+pend+'</b> '+(pend===1?'requisición está esperando a su jefe pero ya puede':'requisiciones están esperando a su jefe pero ya pueden')+' pasar directo.</span><button class="cp-btn" onclick="window.__cpAplicarAhora()">Pasarlas ahora</button></div>';
+    html += c.permisos.length ? '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">' + c.permisos.map(function(p,i){
+      var t = _cpDescPermiso(p), on = p.activo!==false;
+      var otorgo = p.otorgadoPor ? _cpTitulo(p.otorgadoPor.nombre||p.otorgadoPor.correo) : '—';
+      var usos = docs.filter(function(d){ return d.autorizacionDirecta && d.autorizacionDirecta.permisoId===p.id; }).length;
+      return '<div style="border:1px solid #E5EAF1;border-left:4px solid '+(on?'#4F46E5':'#CBD5E1')+';border-radius:10px;padding:10px 12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;opacity:'+(on?1:.65)+'">' +
+        '<div style="flex:1;min-width:220px"><p style="margin:0;font-size:13px;font-weight:800;color:#0A1628">'+esc(t.quien)+(on?'':' <span class="cp-chip" style="background:#F1F5F9;color:#5C7089">En pausa</span>')+'</p>' +
+        '<p style="margin:2px 0 0;font-size:12px;color:#334155">Pasa directo '+esc(t.regla)+'</p>' +
+        '<p style="margin:2px 0 0;font-size:11px;color:#94A3B8">Lo dio: '+esc(otorgo)+(p.otorgadoEn?' · '+new Date(p.otorgadoEn).toLocaleDateString('es-MX'):'')+' · Usado '+usos+' '+(usos===1?'vez':'veces')+(p.nota?' · '+esc(p.nota):'')+'</p></div>' +
+        (admin ? '<div style="display:flex;gap:6px;flex-wrap:wrap"><button class="cp-btn" onclick="window.__cpAdForm('+i+')">Editar</button><button class="cp-btn" onclick="window.__cpAdPausar('+i+')">'+(on?'Pausar':'Reactivar')+'</button><button class="cp-btn" style="color:#B91C1C" onclick="window.__cpAdQuitar('+i+')">Quitar</button></div>' : '') +
+      '</div>';
+    }).join('') + '</div>'
+    : '<div style="text-align:center;padding:24px 10px;color:#64748B;font-size:12.5px;background:#F8FAFC;border-radius:12px;margin-bottom:16px">Todavía nadie tiene autorización directa.<br>Agrega a los gerentes o personas que no deben esperar firma de su jefe.</div>';
+    if(admin) html += '<div id="cp-ad-form"></div><button class="cp-btn" id="cp-ad-btn-nuevo" style="background:#0A1628;color:#fff;border-color:#0A1628" onclick="window.__cpAdForm(-1)">+ Dar permiso a alguien</button>';
+    return html;
+  }
+
+  window.__cpAdForm = function(idx){
+    var p = idx>-1 ? _autDirCache.permisos[idx] : {tipo:'persona', limite:'', categorias:['todas'], nota:''};
+    var opcColab = (_colaboradoresCache||[]).filter(function(c){ return c.correo||c.id; }).sort(function(a,b){ return String(a.nombre||'').localeCompare(String(b.nombre||''),'es'); })
+      .map(function(c){ var co=(c.correo||c.id).toLowerCase(); return '<option value="'+esc(co)+'"'+((p.correo||'').toLowerCase()===co?' selected':'')+'>'+esc(_cpTitulo(c.nombre||co))+(c.departamento?' · '+esc(c.departamento):'')+'</option>'; }).join('');
+    var opcDep = DEPTOS_CP.map(function(dp){ return '<option'+(p.departamento===dp?' selected':'')+'>'+esc(dp)+'</option>'; }).join('');
+    var cats = p.categorias||['todas'];
+    var chk = function(id,lbl,ej){ return '<label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;color:#0A1628;cursor:pointer"><input type="checkbox" class="cp-ad-cat" value="'+id+'"'+(cats.indexOf(id)>-1?' checked':'')+' onchange="window.__cpAdCatCambio(this)" style="margin-top:2px"><span><b>'+lbl+'</b>'+(ej?'<br><span style="color:#94A3B8;font-size:11px">'+ej+'</span>':'')+'</span></label>'; };
+    var lab = 'display:block;font-size:11.5px;font-weight:700;color:#5C7089;margin:0 0 5px';
+    var inp = 'width:100%;padding:9px;border:1px solid #E2E8F0;border-radius:8px;font-size:12.5px;box-sizing:border-box;font-family:inherit';
+    document.getElementById('cp-ad-form').innerHTML =
+      '<div style="border:1.5px solid #C7D2FE;background:#F8FAFF;border-radius:12px;padding:16px;margin-bottom:12px">' +
+      '<p style="margin:0 0 12px;font-size:13.5px;font-weight:800;color:#0A1628">'+(idx>-1?'Editar permiso':'Dar autorización directa')+'</p>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:12px">' +
+        '<div><label style="'+lab+'">¿A quién?</label><select id="cp-ad-tipo" style="'+inp+'" onchange="window.__cpAdTipoCambio(this.value)">' +
+          '<option value="persona"'+(p.tipo==='persona'?' selected':'')+'>A una persona</option>' +
+          '<option value="rol"'+(p.tipo==='rol'?' selected':'')+'>A todos los jefes de área</option>' +
+          '<option value="departamento"'+(p.tipo==='departamento'?' selected':'')+'>A todo un departamento</option></select></div>' +
+        '<div id="cp-ad-w-persona" style="display:'+(p.tipo==='persona'?'block':'none')+'"><label style="'+lab+'">Persona</label><select id="cp-ad-persona" style="'+inp+'"><option value="">Elegir…</option>'+opcColab+'</select></div>' +
+        '<div id="cp-ad-w-depto" style="display:'+(p.tipo==='departamento'?'block':'none')+'"><label style="'+lab+'">Departamento</label><select id="cp-ad-depto" style="'+inp+'"><option value="">Elegir…</option>'+opcDep+'</select></div>' +
+        '<div id="cp-ad-w-rol" style="display:'+(p.tipo==='rol'?'block':'none')+';font-size:11.5px;color:#5C7089;align-self:end;padding-bottom:6px">Aplica a quien esté registrado como jefe en "Configurar flujo".</div>' +
+        '<div><label style="'+lab+'">Límite por compra (pesos)</label><input id="cp-ad-limite" type="number" min="0" step="100" inputmode="decimal" placeholder="Vacío = sin límite" value="'+(Number(p.limite)>0?Number(p.limite):'')+'" style="'+inp+'">' +
+        '<span style="font-size:10.5px;color:#94A3B8">Si el precio final pasa esta cantidad, la requisición regresa a su jefe.</span></div>' +
+      '</div>' +
+      '<label style="'+lab+'">¿Para qué tipo de compras?</label>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin-bottom:12px">' +
+        chk('todas','Todo tipo de compra','') + CATS_CP.map(function(c){ return chk(c.id,c.label,c.ej); }).join('') +
+      '</div>' +
+      '<label style="'+lab+'">Nota (opcional)</label><input id="cp-ad-nota" value="'+esc(p.nota||'')+'" placeholder="Ej. Gerente de Flotilla — compras de taller" style="'+inp+';margin-bottom:12px">' +
+      '<p id="cp-ad-error" role="alert" style="display:none;color:#B91C1C;font-size:12px;font-weight:700;margin:0 0 10px"></p>' +
+      '<div style="display:flex;gap:8px"><button class="cp-btn" style="flex:1;justify-content:center;background:#12A150;color:#fff;border-color:#12A150" onclick="window.__cpAdGuardar('+idx+')">Guardar permiso</button>' +
+      '<button class="cp-btn" onclick="document.getElementById(\'cp-ad-form\').innerHTML=\'\';document.getElementById(\'cp-ad-btn-nuevo\').style.display=\'\'">Cancelar</button></div></div>';
+    document.getElementById('cp-ad-btn-nuevo').style.display='none';
+    var _f=document.getElementById('cp-ad-form'); if(_f.scrollIntoView) _f.scrollIntoView({behavior:'smooth', block:'nearest'});
+  };
+  window.__cpAdTipoCambio = function(t){
+    document.getElementById('cp-ad-w-persona').style.display = t==='persona'?'block':'none';
+    document.getElementById('cp-ad-w-depto').style.display = t==='departamento'?'block':'none';
+    document.getElementById('cp-ad-w-rol').style.display = t==='rol'?'block':'none';
+  };
+  window.__cpAdCatCambio = function(el){
+    var all = document.querySelectorAll('.cp-ad-cat');
+    if(el.value==='todas' && el.checked) all.forEach(function(x){ if(x.value!=='todas') x.checked=false; });
+    if(el.value!=='todas' && el.checked) all.forEach(function(x){ if(x.value==='todas') x.checked=false; });
+  };
+  function _cpAdGuardarDoc(cambio){
+    return cargarFirestore().then(function(fs){
+      var c = _autDirCache;
+      c.historial = (c.historial||[]).concat([Object.assign({fecha:new Date().toISOString(), por:{correo:_cpMiCorreo(), nombre:_cpMiNombre()}}, cambio)]).slice(-300);
+      return fs.setDoc(fs.doc(window.db,'config_flujo_compras','autorizacion_directa'), {permisos:c.permisos, historial:c.historial});
+    });
+  }
+  window.__cpAdGuardar = function(idx){
+    if(!_cpPuedeAdministrar()) return;
+    var err = function(m){ var e=document.getElementById('cp-ad-error'); e.textContent=m; e.style.display='block'; };
+    var tipo = document.getElementById('cp-ad-tipo').value;
+    var nuevo = {tipo:tipo};
+    if(tipo==='persona'){
+      var co = document.getElementById('cp-ad-persona').value; if(!co) return err('Elige a la persona.');
+      nuevo.correo = co; nuevo.nombre = nombrePorCorreo(co)||co; nuevo.departamento = departamentoPorCorreo(co)||'';
+    } else if(tipo==='departamento'){
+      var dp = document.getElementById('cp-ad-depto').value; if(!dp) return err('Elige el departamento.');
+      nuevo.departamento = dp;
+    } else { nuevo.rol = 'jefes_area'; }
+    var lim = document.getElementById('cp-ad-limite').value;
+    if(lim!=='' && !(Number(lim)>=0)) return err('El límite debe ser un número (o déjalo vacío para "sin límite").');
+    nuevo.limite = lim==='' ? 0 : Number(lim);
+    var cats = Array.prototype.map.call(document.querySelectorAll('.cp-ad-cat:checked'), function(x){ return x.value; });
+    if(!cats.length) return err('Elige al menos un tipo de compra.');
+    nuevo.categorias = cats;
+    nuevo.nota = (document.getElementById('cp-ad-nota').value||'').trim();
+    var c = _autDirCache, antes = idx>-1 ? c.permisos[idx] : null;
+    if(antes){
+      nuevo = Object.assign({}, antes, nuevo);
+    } else {
+      nuevo.id = 'p'+Date.now(); nuevo.activo = true;
+      nuevo.otorgadoPor = {correo:_cpMiCorreo(), nombre:_cpMiNombre()}; nuevo.otorgadoEn = new Date().toISOString();
+    }
+    if(antes) c.permisos[idx] = nuevo; else c.permisos.push(nuevo);
+    var t = _cpDescPermiso(nuevo);
+    _cpAdGuardarDoc({tipo:antes?'permiso_modificado':'permiso_otorgado', permisoId:nuevo.id, detalle:t.quien+' · '+t.regla}).then(function(){
+      toast(antes?'Permiso actualizado':'Permiso otorgado a '+t.quien);
+      window.__cpAbrirAutDirecta('permisos'); renderKPIs(); renderBoard(); _cpAutoDirectas();
+    }).catch(function(e){ cargarAutDirecta(true); err('No se pudo guardar: '+(e.message||e)+'. Si dice "permission", hay que permitir el documento config_flujo_compras/autorizacion_directa en las reglas de Firestore.'); });
+  };
+  window.__cpAdPausar = function(i){
+    if(!_cpPuedeAdministrar()) return;
+    var p = _autDirCache.permisos[i]; p.activo = p.activo===false;
+    var t = _cpDescPermiso(p);
+    _cpAdGuardarDoc({tipo:p.activo?'permiso_reactivado':'permiso_pausado', permisoId:p.id, detalle:t.quien+' · '+t.regla}).then(function(){ window.__cpAbrirAutDirecta('permisos'); renderKPIs(); renderBoard(); });
+  };
+  window.__cpAdQuitar = function(i){
+    if(!_cpPuedeAdministrar()) return;
+    var p = _autDirCache.permisos[i], t = _cpDescPermiso(p);
+    if(!confirm('¿Quitar la autorización directa de '+t.quien+'?\n\nSus próximas requisiciones volverán a esperar a su jefe. Lo que ya pasó no cambia y queda en la bitácora.')) return;
+    _autDirCache.permisos.splice(i,1);
+    _cpAdGuardarDoc({tipo:'permiso_retirado', permisoId:p.id, detalle:t.quien+' · '+t.regla}).then(function(){ window.__cpAbrirAutDirecta('permisos'); renderKPIs(); renderBoard(); });
+  };
+  window.__cpAplicarAhora = function(){ _cpAutoDirectas(); setTimeout(function(){ window.__cpAbrirAutDirecta('permisos'); }, 1500); };
+
+  // Bitácora unificada: cambios de permisos + cada vez que se usó o se revirtió.
+  function _cpBitacoraFilas(){
+    var TIP = {permiso_otorgado:'Dio permiso', permiso_modificado:'Cambió permiso', permiso_pausado:'Pausó permiso', permiso_reactivado:'Reactivó permiso', permiso_retirado:'Quitó permiso',
+               autorizacion_directa:'Pasó directo a Compras', directo_revertido:'Regresó a su jefe (pasó el límite)'};
+    var filas = (_autDirCache.historial||[]).map(function(h){
+      return {fecha:h.fecha, que:TIP[h.tipo]||h.tipo, folio:'', quien:(h.por&&(h.por.nombre||h.por.correo))||'—', detalle:h.detalle||'', otorgo:'', compro:''};
+    });
+    docs.forEach(function(d){
+      (d.bitacora||[]).forEach(function(b){
+        if(b.tipo!=='autorizacion_directa' && b.tipo!=='directo_revertido') return;
+        var ad = d.autorizacionDirecta||{};
+        filas.push({fecha:b.fecha, que:TIP[b.tipo], folio:d.folio||d.id, id:d.id, quien:_cpTitulo(nombrePorCorreo(d.solicitante)||'—'),
+          detalle:b.detalle||'', otorgo:ad.otorgadoPor?_cpTitulo(ad.otorgadoPor.nombre||ad.otorgadoPor.correo):'—',
+          compro:(d.items||[]).map(function(it){ return (it.cant||'')+' '+(it.unidad||'')+' '+(it.desc||''); }).join('; ')});
+      });
+    });
+    return filas.sort(function(a,b){ return String(b.fecha).localeCompare(String(a.fecha)); });
+  }
+  function _cpAdBitacoraHTML(){
+    var filas = _cpBitacoraFilas();
+    if(!filas.length) return '<div style="text-align:center;padding:24px;color:#64748B;font-size:12.5px;background:#F8FAFC;border-radius:12px">Aún no hay movimientos. Aquí aparecerá quién dio cada permiso y cada requisición que pasó directo.</div>';
+    return '<div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="cp-btn" onclick="window.__cpAdExportar()">'+_cpIco('bajar')+'Exportar a Excel (CSV)</button></div>' +
+      '<div style="overflow-x:auto;border:1px solid #EEF2F7;border-radius:12px"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:720px"><thead><tr style="background:#F8FAFC;text-align:left">' +
+      ['Cuándo','Qué pasó','Requisición','Quién','Permiso dado por','Qué se pidió'].map(function(h){ return '<th style="padding:9px 10px;font-size:10.5px;color:#5C7089;text-transform:uppercase">'+h+'</th>'; }).join('') + '</tr></thead><tbody>' +
+      filas.map(function(f){
+        return '<tr style="border-top:1px solid #EEF2F7"><td style="padding:8px 10px;white-space:nowrap">'+(f.fecha?new Date(f.fecha).toLocaleString('es-MX',{dateStyle:'short',timeStyle:'short'}):'—')+'</td>' +
+          '<td style="padding:8px 10px;font-weight:700">'+esc(f.que)+'<div style="font-weight:400;color:#64748B;font-size:11px">'+esc(f.detalle)+'</div></td>' +
+          '<td style="padding:8px 10px;white-space:nowrap">'+(f.id?'<a href="#" onclick="document.getElementById(\'cp-ad-overlay\').remove();window.__cpAbrirDetalle(\''+f.id+'\');return false" style="color:#1473E6;font-weight:700">'+esc(f.folio)+'</a>':'—')+'</td>' +
+          '<td style="padding:8px 10px">'+esc(f.quien)+'</td><td style="padding:8px 10px">'+esc(f.otorgo||'—')+'</td>' +
+          '<td style="padding:8px 10px;color:#334155;max-width:240px">'+esc(f.compro||'—')+'</td></tr>';
+      }).join('') + '</tbody></table></div>';
+  }
+  window.__cpAdExportar = function(){
+    var filas = _cpBitacoraFilas();
+    var lineas = [['Fecha','Qué pasó','Detalle','Requisición','Quién','Permiso dado por','Qué se pidió'].join(',')];
+    filas.forEach(function(f){
+      lineas.push([f.fecha?new Date(f.fecha).toLocaleString('es-MX'):'', f.que, f.detalle, f.folio, f.quien, f.otorgo, f.compro]
+        .map(function(v){ v=String(v==null?'':v).replace(/"/g,'""'); return /[,"\n]/.test(v)?'"'+v+'"':v; }).join(','));
+    });
+    var blob = new Blob(['\uFEFF'+lineas.join('\r\n')], {type:'text/csv;charset=utf-8'});
+    var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = 'bitacora_autorizacion_directa_'+new Date().toISOString().slice(0,10)+'.csv'; a.click();
   };
 
   // ── DETALLE / AUTORIZAR / RECHAZAR ─────────────────────────────
@@ -1125,6 +1505,13 @@
       html += '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#F8FAFC;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:12.5px;color:#0A1628">' +
         '<span><b>Ahora:</b> '+esc(e.txt)+(e.quien?' — le toca a <b>'+esc(e.quien)+'</b>':'')+'</span>' + _cpChipEspera(d) +
         (sig?'<span style="color:#5C7089"><b>Sigue:</b> '+esc(sig)+'</span>':'') + '</div>';
+      var ad = d.autorizacionDirecta;
+      if(ad){
+        var otg = ad.otorgadoPor ? _cpTitulo(ad.otorgadoPor.nombre||ad.otorgadoPor.correo) : '—';
+        html += ad.revertida
+          ? '<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:#78350F"><b>Regresó a su jefe.</b> Había pasado directo, pero el precio elegido ('+_cpMoney(ad.revertida.monto)+') pasa el límite del permiso ('+_cpMoney(ad.revertida.limite)+'). La cotización quedó guardada; cuando la aprueben, solo vuelve a elegirla.</div>'
+          : '<div style="background:#EEF2FF;border:1px solid #C7D2FE;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:#312E81;display:flex;gap:8px;align-items:flex-start">'+_cpIco('rayo')+'<span><b>Autorización directa:</b> no esperó a su jefe. Permiso: '+esc(ad.descripcion||'')+' · lo dio '+esc(otg)+'.'+(Number(ad.limite)>0?' Si el precio final pasa de '+_cpMoney(ad.limite)+', regresará a su jefe.':'')+'</span></div>';
+      }
     })();
     if(d.estatus==='rechazada'){
       html += '<div style="background:#FCEBEB;border-radius:9px;padding:10px 12px;font-size:12px;color:#791F1F;margin-bottom:14px"><b>Rechazada:</b> '+esc(d.motivoRechazo||'Sin motivo registrado')+'</div>';
@@ -1148,11 +1535,12 @@
 
     htmlIzq += '<p style="font-size:11px;font-weight:700;color:#5C7089;margin:0 0 8px">Flujo de autorización</p><div style="display:flex;gap:6px;margin-bottom:16px">';
     flujo.forEach(function(f){
-      var bg = f.estatus==='aprobado'?'#EAF3DE':(f===pasoActivo?'#FAEEDA':'#F1F5F9');
+      var dirF = f.via==='autorizacion_directa';
+      var bg = dirF?'#EEF2FF':f.estatus==='aprobado'?'#EAF3DE':(f===pasoActivo?'#FAEEDA':'#F1F5F9');
       var col = f.estatus==='aprobado'?'#3B6D11':(f===pasoActivo?'#633806':'#5C7089');
       htmlIzq += '<div style="flex:1;text-align:center;padding:8px 4px;border-radius:9px;background:'+bg+'">' +
         '<p style="font-size:10.5px;font-weight:700;margin:0;color:'+col+'">'+esc(f.label)+'</p>' +
-        '<p style="font-size:9.5px;margin:2px 0 0;color:#5C7089">'+(f.estatus==='aprobado'?'Aprobado':(f===pasoActivo?'Tu turno':'En espera'))+'</p></div>';
+        '<p style="font-size:9.5px;margin:2px 0 0;color:'+(dirF?'#3730A3':'#5C7089')+'">'+(dirF?'Autorización directa':f.estatus==='aprobado'?'Aprobado':(f===pasoActivo?'Tu turno':'En espera'))+'</p></div>';
     });
     htmlIzq += '</div>';
 
@@ -1433,6 +1821,8 @@
         if(!snap.exists()) return;
         var c=snap.data();
         var cotizacionGanadora={proveedor:c.proveedor,monto:c.monto,cotizacionId:cotId};
+        var dLim = docs.find(function(x){ return x.id===id; });
+        _cpRevisarLimiteDirecto(fs, dLim||{id:id}, cotizacionGanadora).then(function(regreso){ if(regreso) return;
         var ocFolio='OC-'+String(Date.now()).slice(-6);
         fs.updateDoc(fs.doc(window.db,'requisiciones_compra',id), {
           estatus:'orden_generada', cotizacionGanadora:cotizacionGanadora, ocFolio:ocFolio,
@@ -1441,6 +1831,7 @@
           var d = docs.find(function(x){ return x.id===id; });
           if(d) sincronizarCuentaPorPagar(Object.assign({},d,{estatus:'orden_generada',cotizacionGanadora:cotizacionGanadora,ocFolio:ocFolio}), 'orden_generada');
           _cpMostrarExito(ocFolio, id);
+        });
         });
       });
     });
@@ -1462,14 +1853,16 @@
           proveedor:proveedor, monto:Number(monto), archivoBase64:archivoBase64,
           creadaEn:new Date().toISOString(), porUid: window.auth&&window.auth.currentUser?window.auth.currentUser.uid:null,
         }).then(function(cotRef){
-          var ocFolio='OC-'+String(Date.now()).slice(-6);
           var cotizacionGanadora={proveedor:proveedor,monto:Number(monto),cotizacionId:cotRef.id};
+          return _cpRevisarLimiteDirecto(fs, d, cotizacionGanadora).then(function(regreso){ if(regreso) return;
+          var ocFolio='OC-'+String(Date.now()).slice(-6);
           fs.updateDoc(fs.doc(window.db,'requisiciones_compra',id), {
             estatus:'orden_generada', cotizacionGanadora:cotizacionGanadora, ocFolio:ocFolio,
           }).then(function(){
             var dActualizado = Object.assign({}, d, {estatus:'orden_generada', cotizacionGanadora:cotizacionGanadora, ocFolio:ocFolio});
             sincronizarCuentaPorPagar(dActualizado, 'orden_generada');
             _cpMostrarExito(ocFolio, id);
+          });
           });
         });
       });
@@ -1673,7 +2066,7 @@
       docu.text((p.orden+'. '+p.label+fechaTxt), ML+2, y);
       var col = p.estatus==='aprobado' ? [21,128,61] : [180,83,9];
       docu.setTextColor(col[0],col[1],col[2]); docu.setFont('helvetica','bold');
-      docu.text(p.estatus==='aprobado'?'Aprobado':'Pendiente', PW-MR-2, y, {align:'right'});
+      docu.text(p.via==='autorizacion_directa'?'Autorización directa':p.estatus==='aprobado'?'Aprobado':'Pendiente', PW-MR-2, y, {align:'right'});
       y+=6;
     });
 
