@@ -186,8 +186,12 @@
         completado:   { nombre: "Completado",          color: "#15803d", icono: '<circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/>' },
         facturar:     { nombre: "Listo para facturar", color: "#b45309", icono: '<path d="M12 3v18"/><path d="M16.5 7.5c-.8-1.4-2.5-2-4.5-2-2.5 0-4 1.2-4 3s1.5 2.6 4 3.1 4.5 1.3 4.5 3.3-1.8 3.1-4.5 3.1c-2.2 0-3.9-.8-4.7-2.3"/>' },
         programado:   { nombre: "Sin fecha límite",    color: "#64748b", icono: '<circle cx="12" cy="12" r="3.5"/>' },
+        enproceso:    { nombre: "En proceso",          color: "#0284c7", icono: '<path d="M8 5l11 7-11 7z"/>' },
+        facturado:    { nombre: "Facturado",           color: "#0f766e", icono: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6"/><path d="M9 12h6"/>' },
+        cancelado:    { nombre: "Cancelado",           color: "#475569", icono: '<path d="M6 6l12 12"/><path d="M18 6L6 18"/>' },
     };
-    const OPS_CAL_ORDEN_ESTATUS = ["entiempo", "porvencer", "retrasado", "vencido", "reprogramado", "completado", "facturar", "programado"];
+    const OPS_CAL_ORDEN_ESTATUS = ["entiempo", "enproceso", "porvencer", "retrasado", "vencido", "reprogramado", "completado", "facturar", "facturado", "cancelado", "programado"];
+    const OPS_CAL_ESTATUS_ATENUADO = ["completado", "facturado", "cancelado"];
     function opsCalBadgeEstatus(clave, tam) {
         const e = OPS_CAL_ESTATUS[clave] || OPS_CAL_ESTATUS.programado, t = tam || 18;
         return `<span title="${opsEsc(e.nombre)}" style="width:${t}px;height:${t}px;border-radius:50%;background:#fff;color:${e.color};display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 0 0 1px rgba(15,23,42,.12),0 1px 2px rgba(15,23,42,.18);">${OPS_SVG(e.icono, Math.round(t * 0.66))}</span>`;
@@ -280,7 +284,9 @@
     const OPS_CAL_HORAS_POR_VENCER = 72;
     function opsCalEstatusFolio(f) {
         let k;
-        if (opsFolioListoFacturar(f)) k = "facturar";
+        if (f.cancelado) k = "cancelado";
+        else if (f.facturado && f.fechaSolucion) k = "facturado";
+        else if (opsFolioListoFacturar(f)) k = "facturar";
         else if (f.fechaSolucion) k = "completado";
         else {
             const info = opsCalcularSemaforoFolio(f);
@@ -293,6 +299,7 @@
                 finProg = durHrs > 0 ? new Date(ini.getTime() + durHrs * 3600000) : new Date(ini.getFullYear(), ini.getMonth(), ini.getDate(), 23, 59);
             }
             if (info.horas !== null && info.horas < 0) k = "vencido";
+            else if (f.iniciadoEn) k = "enproceso";
             else if (finProg && !isNaN(finProg) && finProg < new Date()) k = "retrasado";
             else if (info.horas !== null && info.horas <= OPS_CAL_HORAS_POR_VENCER) k = "porvencer";
             else if (Number(f.reprogramaciones) > 0) k = "reprogramado";
@@ -5313,6 +5320,7 @@
         if (fVen && fSol && fVen < fSol) inc.push("Vencimiento anterior a la solicitud");
         if (inc.length) return { ...base, estado: "REVISAR DATOS", semaforo: "gris", motivo: inc.join("; ") };
 
+        if (f.cancelado) return { ...base, diasTexto: "Cancelado", estado: "CANCELADO", semaforo: "gris" };
         // 2) Solución existe → cierra el folio definitivamente, sin importar lo demás
         if (f.fechaSolucion) return { ...base, fechaLimite: f.fechaSolucion, diasTexto: "Solucionado", estado: "SOLUCIONADO", semaforo: "verde" };
 
@@ -6075,7 +6083,7 @@
                     const propTraslado = d.traslado ? (d.traslado / ((d.traslado + d.ejecucion) || 1)) * 100 : 0;
                     const tip = `${f.estacion}${f.folioOS ? " · O.S. " + f.folioOS : ""}\n${f.clienteNombre || "Sin cliente"} · ${opsCalTipoTexto(f)}\n${horaTxt} · ${cat.nombre} · ${cat.estNombre} (${info.estado})${choqueSet.has(f.id) ? "\n⚠ Choque de horario" : ""}${faltaGente ? "\n⚠ Falta personal contra la receta" : ""}`;
                     return `<div class="ops-cal-card" ${opsPuedeGestionar() ? `draggable="true" ondragstart="opsCalArrastrarFolio(event,'${f.id}')"` : ""} onclick="opsAbrirPanelFolio('${f.id}')" title="${opsEsc(tip)}"
-                        style="position:absolute;top:${carril * OPS_CAL_ALTO_CARRIL + 5}px;height:${OPS_CAL_ALTO_CARRIL - 6}px;left:${izqPct}%;width:calc(${anchoPct}% - 3px);box-sizing:border-box;background:${cat.fondo};border:none;border-radius:8px;${choqueSet.has(f.id) ? "outline:2px solid #E7402B;outline-offset:1px;" : ""}${cat.estClave === "completado" ? "opacity:.55;" : ""}box-shadow:inset 0 0 0 1px ${cat.borde},0 1px 2px rgba(15,23,42,.14);padding:3px 28px 5px 9px;overflow:hidden;cursor:pointer;z-index:2;display:flex;flex-direction:column;justify-content:space-between;">
+                        style="position:absolute;top:${carril * OPS_CAL_ALTO_CARRIL + 5}px;height:${OPS_CAL_ALTO_CARRIL - 6}px;left:${izqPct}%;width:calc(${anchoPct}% - 3px);box-sizing:border-box;background:${cat.fondo};border:none;border-radius:8px;${choqueSet.has(f.id) ? "outline:2px solid #E7402B;outline-offset:1px;" : ""}${OPS_CAL_ESTATUS_ATENUADO.includes(cat.estClave) ? "opacity:.55;" : ""}box-shadow:inset 0 0 0 1px ${cat.borde},0 1px 2px rgba(15,23,42,.14);padding:3px 28px 5px 9px;overflow:hidden;cursor:pointer;z-index:2;display:flex;flex-direction:column;justify-content:space-between;">
                         <span style="position:absolute;top:4px;right:4px;">${opsCalBadgeEstatus(cat.estClave, 18)}</span>
                         ${cat.estClave === "vencido" ? `<div style="position:absolute;left:0;right:0;bottom:0;height:4px;background:#dc2626;"></div>` : ""}
                         <div style="display:flex;align-items:center;gap:5px;min-width:0;">
@@ -6146,7 +6154,7 @@
                 ${vis.map(f => {
                     const cat = opsCalColorFolio(f), d = opsCalDatosFolio(f);
                     const sinHora = !(f.fechaProgramada || "").includes("T");
-                    return `<div class="ops-cal-chip" onclick="opsAbrirPanelFolio('${f.id}')" title="${opsEsc((f.folioOS ? "O.S. " + f.folioOS + " · " : "") + f.estacion + " · " + (f.clienteNombre || "Sin cliente") + " · " + cat.nombre + " · " + cat.estNombre)}" style="position:relative;background:${cat.fondo};border:none;box-shadow:inset 0 0 0 1px ${cat.borde};${cat.estClave === "completado" ? "opacity:.55;" : ""}border-radius:6px;padding:3px 24px 3px 7px;margin-bottom:3px;cursor:pointer;overflow:hidden;">
+                    return `<div class="ops-cal-chip" onclick="opsAbrirPanelFolio('${f.id}')" title="${opsEsc((f.folioOS ? "O.S. " + f.folioOS + " · " : "") + f.estacion + " · " + (f.clienteNombre || "Sin cliente") + " · " + cat.nombre + " · " + cat.estNombre)}" style="position:relative;background:${cat.fondo};border:none;box-shadow:inset 0 0 0 1px ${cat.borde};${OPS_CAL_ESTATUS_ATENUADO.includes(cat.estClave) ? "opacity:.55;" : ""}border-radius:6px;padding:3px 24px 3px 7px;margin-bottom:3px;cursor:pointer;overflow:hidden;">
                         <span style="position:absolute;top:3px;right:3px;">${opsCalBadgeEstatus(cat.estClave, 16)}</span>
                         ${cat.estClave === "vencido" ? `<div style="position:absolute;left:0;right:0;bottom:0;height:3px;background:#dc2626;"></div>` : ""}
                         <div style="font-size:10.5px;font-weight:700;color:${cat.texto};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${cat.empresa === "jomar" ? `<span style="font-size:8px;font-weight:800;color:${cat.color};background:#fff;padding:0 3px;border-radius:3px;margin-right:4px;">J</span>` : ""}${opsEsc(f.estacion)}</div>
@@ -6398,6 +6406,117 @@
         if (p) p.remove();
     };
 
+    // ══ Cambiar estatus desde el panel del folio (oct-2026) ══
+    // Cada botón escribe el campo que el semáforo ya entiende y deja constancia en el historial.
+    function opsHTMLAccionesFolio(f) {
+        if (!opsPuedeGestionar()) return "";
+        const est = opsCalEstatusFolio(f).clave;
+        const btn = (accion, texto, color, icono, solido) => `<button onclick="opsFolioAccion('${f.id}','${accion}')" style="display:inline-flex;align-items:center;gap:6px;justify-content:center;padding:8px 10px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;${solido ? `background:${color};color:#fff;border:1px solid ${color};` : `background:#fff;color:${color};border:1px solid ${color};`}">${OPS_SVG(icono, 13)}${texto}</button>`;
+        const I = OPS_CAL_ESTATUS;
+        let botones = [];
+        if (est === "cancelado") botones = [btn("reactivar", "Reactivar", "#1D2E73", I.reprogramado.icono, true)];
+        else if (est === "facturado") botones = [btn("desfacturar", "Quitar facturado", "#475569", I.reprogramado.icono)];
+        else if (est === "facturar") botones = [btn("facturado", "Marcar facturado", I.facturado.color, I.facturado.icono, true), btn("reabrir", "Reabrir", "#475569", I.reprogramado.icono)];
+        else if (est === "completado") botones = [btn("porfacturar", "Listo para facturar", I.facturar.color, I.facturar.icono, true), btn("reabrir", "Reabrir", "#475569", I.reprogramado.icono)];
+        else {
+            if (!f.iniciadoEn) botones.push(btn("iniciar", "Iniciar servicio", I.enproceso.color, I.enproceso.icono, true));
+            else botones.push(btn("pausar", "Quitar en proceso", "#475569", '<path d="M8 5v14"/><path d="M16 5v14"/>'));
+            botones.push(btn("completar", "Completado", I.completado.color, I.completado.icono, true));
+            botones.push(btn("reprogramar", "Reprogramar", I.reprogramado.color, I.reprogramado.icono));
+            botones.push(btn("cancelar", "Cancelar", "#dc2626", I.cancelado.icono));
+        }
+        const extra = [];
+        if (f.iniciadoEn) extra.push(`Iniciado: ${new Date(f.iniciadoEn).toLocaleString("es-MX", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`);
+        if (f.fechaSolucion) extra.push(`Completado: ${opsEsc(f.fechaSolucion)}`);
+        if (f.facturarA) extra.push(`Se factura a: ${opsEsc(f.facturarA)}`);
+        if (f.facturado) extra.push(`Factura: ${opsEsc(f.facturaNumero || "s/n")}`);
+        if (Number(f.reprogramaciones) > 0) extra.push(`Reprogramado ${f.reprogramaciones} vez/veces (original: ${opsEsc((f.fechaProgramadaOriginal || "").replace("T", " "))})`);
+        if (f.cancelado) extra.push(`Motivo de cancelación: ${opsEsc(f.motivoCancelacion || "—")}`);
+        return `<div style="border-top:1px solid #e2e8f0;padding-top:12px;margin-bottom:16px;">
+            <div style="font-size:11px;font-weight:700;color:#1D2E73;margin-bottom:8px;">Cambiar estatus</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">${botones.join("")}</div>
+            <div id="ops-folio-reprog-${f.id}" style="display:none;margin-top:10px;background:#f8fafc;border-radius:8px;padding:10px;">
+                <div style="font-size:11px;font-weight:600;color:#475569;margin-bottom:4px;">Nueva fecha y hora</div>
+                <div style="display:flex;gap:8px;">
+                    <input type="datetime-local" id="ops-folio-reprog-fecha-${f.id}" value="${opsEsc((f.fechaProgramada || "").slice(0, 16))}" style="flex:1;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:12.5px;">
+                    <button onclick="opsFolioAccion('${f.id}','guardarReprog')" class="mkt-add-btn" style="background:#4f46e5;">Guardar</button>
+                </div>
+                <input id="ops-folio-reprog-motivo-${f.id}" placeholder="Motivo (opcional)" style="width:100%;box-sizing:border-box;margin-top:6px;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:12.5px;">
+            </div>
+            ${extra.length ? `<div style="font-size:11px;color:#64748b;margin-top:8px;line-height:1.6;">${extra.join("<br>")}</div>` : ""}
+        </div>`;
+    }
+    window.opsFolioAccion = async function (id, accion) {
+        if (!opsPuedeGestionar()) { alert("Tu usuario es de solo lectura en Operaciones."); return; }
+        const f = cacheFolios.find(x => x.id === id);
+        if (!f) return;
+        if (accion === "reprogramar") {
+            const el = document.getElementById(`ops-folio-reprog-${id}`);
+            if (el) el.style.display = el.style.display === "none" ? "block" : "none";
+            return;
+        }
+        const hoyLocal = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); };
+        let cambios = {}, nota = "";
+        const quien = opsNombreActual();
+        if (accion === "iniciar") { cambios = { iniciadoEn: opsFechaHora(), iniciadoPor: quien }; nota = "Servicio iniciado (en proceso)."; }
+        else if (accion === "pausar") { cambios = { iniciadoEn: null, iniciadoPor: null }; nota = "Se quitó el estatus de en proceso."; }
+        else if (accion === "completar") {
+            const fa = prompt("Servicio completado.\n\n¿A quién se le factura? (déjalo vacío si todavía no se sabe o no se factura)", f.facturarA || f.clienteNombre || "");
+            if (fa === null) return;
+            cambios = { fechaSolucion: hoyLocal(), completadoEn: opsFechaHora(), completadoPor: quien, facturarA: fa.trim() || null };
+            nota = "Servicio marcado como COMPLETADO" + (fa.trim() ? ` · se factura a ${fa.trim()} (queda listo para facturar).` : ".");
+        }
+        else if (accion === "porfacturar") {
+            const fa = prompt("¿A quién se le factura?", f.facturarA || f.clienteNombre || "");
+            if (!fa || !fa.trim()) return;
+            cambios = { facturarA: fa.trim(), facturado: false }; nota = `Listo para facturar a ${fa.trim()}.`;
+        }
+        else if (accion === "facturado") {
+            const num = prompt("Número o folio de la factura (opcional):", f.facturaNumero || "");
+            if (num === null) return;
+            cambios = { facturado: true, facturaNumero: num.trim() || null, fechaFacturado: hoyLocal(), facturadoPor: quien };
+            nota = "Marcado como FACTURADO" + (num.trim() ? ` · factura ${num.trim()}.` : ".");
+        }
+        else if (accion === "desfacturar") { cambios = { facturado: false, facturaNumero: null, fechaFacturado: null }; nota = "Se quitó la marca de facturado."; }
+        else if (accion === "reabrir") {
+            if (!confirm("¿Reabrir este servicio? Se quitará la fecha de solución.")) return;
+            cambios = { fechaSolucion: null, completadoEn: null, facturado: false }; nota = "Servicio reabierto.";
+        }
+        else if (accion === "cancelar") {
+            const motivo = prompt("Motivo de la cancelación:");
+            if (motivo === null) return;
+            if (!motivo.trim()) { alert("Escribe el motivo para poder cancelarlo."); return; }
+            cambios = { cancelado: true, motivoCancelacion: motivo.trim(), canceladoEn: opsFechaHora(), canceladoPor: quien }; nota = `Servicio CANCELADO · motivo: ${motivo.trim()}.`;
+        }
+        else if (accion === "reactivar") { cambios = { cancelado: false, motivoCancelacion: null, canceladoEn: null }; nota = "Servicio reactivado."; }
+        else if (accion === "guardarReprog") {
+            const nueva = (document.getElementById(`ops-folio-reprog-fecha-${id}`) || {}).value;
+            const motivo = ((document.getElementById(`ops-folio-reprog-motivo-${id}`) || {}).value || "").trim();
+            if (!nueva) { alert("Elige la nueva fecha y hora."); return; }
+            cambios = { fechaProgramada: nueva, ...opsCamposReprogramacion(f, nueva) };
+            if (!cambios.reprogramaciones) cambios.ultimaReprogramacion = opsFechaHora(); // solo cambió la hora
+            nota = `Reprogramado de ${(f.fechaProgramada || "sin fecha").replace("T", " ")} a ${nueva.replace("T", " ")}${motivo ? " · motivo: " + motivo : ""}.`;
+        }
+        else return;
+        try {
+            const { db, fs } = await opsGetFB();
+            await fs.updateDoc(fs.doc(db, COL_FOLIOS, id), cambios);
+            Object.assign(f, cambios);
+            try {
+                await fs.addDoc(fs.collection(db, COL_FOLIOS, id, "comentarios"), {
+                    texto: nota, autor: quien, autorEmail: opsUsuarioActual(), tipo: "estatus",
+                    createdAt: fs.serverTimestamp ? fs.serverTimestamp() : opsFechaHora(),
+                });
+            } catch (e) { console.warn("[folio] no se guardó la nota del historial:", e.message); }
+            if (window.mostrarPush) window.mostrarPush("Operaciones", nota, "✅");
+            try { opsRenderCalendario(); } catch (e) {}
+            window.opsAbrirPanelFolio(id);
+        } catch (e) {
+            console.error("[folio] cambio de estatus:", e);
+            alert("No se pudo cambiar el estatus: " + (e.message || e));
+        }
+    };
+
     window.opsAbrirPanelFolio = async function (folioId) {
       try {
         const f = cacheFolios.find(x => x.id === folioId);
@@ -6428,8 +6547,9 @@
                     <div><div style="font-size:10px;color:#94a3b8;font-weight:600;">CLIENTE</div><div style="font-size:12.5px;color:#1e293b;font-weight:600;">${opsEsc(f.clienteNombre || "—")}</div></div>
                     <div><div style="font-size:10px;color:#94a3b8;font-weight:600;">PRIORIDAD</div><div style="font-size:12.5px;color:#1e293b;font-weight:600;">${opsEsc(f.prioridad || "—")}</div></div>
                     <div><div style="font-size:10px;color:#94a3b8;font-weight:600;">VENCIMIENTO SLA</div><div style="font-size:12.5px;font-weight:700;color:${{ verde: "#15803D", rojo: "#E7402B", naranja: "#b45309", gris: "#64748b" }[semaforo.semaforo] || "#1e293b"};">${f.vencimiento ? new Date(f.vencimiento).toLocaleString("es-MX", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"}</div></div>
-                    <div><div style="font-size:10px;color:#94a3b8;font-weight:600;">ESTADO</div><div style="font-size:12.5px;font-weight:600;color:#1e293b;">${f.fechaSolucion ? "Cerrado" : f.fechaAtencion ? "En atención" : "Abierto"}</div></div>
+                    <div><div style="font-size:10px;color:#94a3b8;font-weight:600;">ESTADO</div><div style="font-size:12.5px;font-weight:700;color:${opsCalEstatusFolio(f).color};display:flex;align-items:center;gap:6px;">${opsCalBadgeEstatus(opsCalEstatusFolio(f).clave, 18)}${opsEsc(opsCalEstatusFolio(f).nombre)}</div></div>
                 </div>
+                ${opsHTMLAccionesFolio(f)}
 
                 <div style="border-top:1px solid #e2e8f0;padding-top:12px;margin-bottom:16px;">
                     <div style="font-size:11px;font-weight:700;color:#1D2E73;margin-bottom:8px;">Equipo asignado${rolesReq !== null ? ` (${tecnicos.length}/${rolesReq})` : ""}</div>
@@ -6476,7 +6596,7 @@
                 <div style="border-top:1px solid #e2e8f0;padding-top:12px;margin-bottom:16px;">
                     <div style="font-size:11px;font-weight:700;color:#1D2E73;margin-bottom:8px;">Traslado</div>
                     <div style="font-size:12px;color:#334155;line-height:1.7;">
-                        Origen: ${opsEsc(f.origen || "No capturado")}<br>
+                        Origen: ${opsEsc(f.trasladoOrigen || "No capturado")}<br>
                         Destino: ${opsEsc(f.destino || "No capturado")}<br>
                         Distancia: ${f.distanciaKm ? f.distanciaKm + " km" : "No capturado"} · Casetas: ${f.casetasMonto ? "$" + f.casetasMonto : "No capturado"}<br>
                         Hora de salida: ${opsEsc(f.horaSalida || "No capturada")}
