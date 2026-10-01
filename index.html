@@ -195,8 +195,13 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
 
         <!-- ÁREA -->
         <div class="section" id="sec-area">
-            <div class="page-header">
+            <div class="page-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
                 <div><div class="page-title" id="area-title">-</div><div class="page-date" id="area-stats-mini" style="color:#64748b;"></div></div>
+                <!-- Botones de Compras en cada departamento (los maneja compras.js: window.cpAbrirPanelDepto) -->
+                <div id="cp-depto-botones" style="display:none;gap:8px;flex-wrap:wrap;">
+                    <button type="button" onclick="window.cpAbrirPanelDepto && window.cpAbrirPanelDepto('cotizaciones', areaActual)" style="display:inline-flex;align-items:center;gap:7px;padding:9px 14px;border-radius:10px;border:1.5px solid #1D2E73;background:#fff;color:#1D2E73;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Cotizaciones</button>
+                    <button type="button" onclick="window.cpAbrirPanelDepto && window.cpAbrirPanelDepto('requisiciones', areaActual)" style="display:inline-flex;align-items:center;gap:7px;padding:9px 14px;border-radius:10px;border:1.5px solid #1D2E73;background:#fff;color:#1D2E73;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg>Mis requisiciones</button>
+                </div>
             </div>
             <!-- ═══ CENTRO DE SURTIDO (solo departamento Almacén) ═══ -->
             <div id="vista-almacen-area" style="display:none;margin-bottom:24px;"></div>
@@ -5094,6 +5099,8 @@ cargarModuloMarketing();
             // solo ahí para no dejar espacio vacío; en las demás áreas sigue igual.
             const actWrap = document.getElementById('area-actividades-wrap');
             if(actWrap) actWrap.style.display = (area === 'Compras') ? 'none' : '';
+            const cpDeptoBtns = document.getElementById('cp-depto-botones');
+            if(cpDeptoBtns) cpDeptoBtns.style.display = (area === 'Compras') ? 'none' : 'flex';
             const comprasBox = document.getElementById('vista-compras-area');
             if(comprasBox){
                 if(area === 'Compras'){
@@ -5845,7 +5852,7 @@ window.irAlmacen = function(btn){
 <script src="surtidos-supabase.js"></script>
 <script src="almacen.js"></script>
 <script src="almacen-pdf.js"></script>
-<script src="compras.js?v=fase2"></script>
+<script src="compras.js?v=fase4-cuota"></script>
 <script src="cobranza.js"></script>
 <script src="logistica.js"></script>
 <script src="mis-pedidos.js"></script>
