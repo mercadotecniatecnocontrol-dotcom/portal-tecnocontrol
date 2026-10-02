@@ -6390,7 +6390,9 @@ async function ventasCargarCatalogoYTecnicos(){
     }
     if(!ventasTecnicosCache.length){
         try{
-            const snap = await getDocs(query(collection(window.db,'ops_tecnicos'), where('estatus','==','activo')));
+            // Operaciones vive en Supabase (operaciones-supabase.js, oct-2026)
+            const fsOps = await (window.tcOpsFS ? window.tcOpsFS(null) : new Promise(function(ok,ko){var s=document.createElement('script');s.src='operaciones-supabase.js?v=ops1';s.onload=function(){ok(window.tcOpsFS(null));};s.onerror=function(){ko(new Error('No se pudo cargar operaciones-supabase.js'));};document.head.appendChild(s);}));
+            const snap = await fsOps.getDocs(fsOps.query(fsOps.collection(window.db,'ops_tecnicos'), fsOps.where('estatus','==','activo')));
             ventasTecnicosCache = snap.docs.map(d=>({id:d.id,...d.data()}));
         }catch(e){ console.warn('[ventas] no se pudo leer ops_tecnicos:', e.message); }
     }

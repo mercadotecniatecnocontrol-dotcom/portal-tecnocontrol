@@ -96,6 +96,14 @@ const C={
   OPS_REVISIONES:'ops_revisiones_herramienta',
 };
 
+// Operaciones vive en Supabase (operaciones-supabase.js, cargado en flotilla-app.html):
+// todo lo "ops_*" (herramientas, movimientos, técnicos, traspasos, almacenes, revisiones)
+// pasa por este adaptador con la misma forma del SDK compat; lo demás sigue en db.
+function opsDb(){
+  if(!window.tcOpsCompat) return db;
+  return window.__opsDbCompat || (window.__opsDbCompat = window.tcOpsCompat(db));
+}
+
 const TIPOS_SOL=[
   'Mantenimiento preventivo','Mantenimiento correctivo','Siniestro / Accidente',
   'Batería','Motor','Llantas','Frenos','Suspensión','Dirección','Transmisión',
@@ -277,7 +285,7 @@ function esRolLibre(){
 let revisoresPermitidos=null; // null = todavía no se cargó
 async function revCargarPermisoRevision(){
   try{
-    const snap=await db.collection('ops_config_revision').doc('general').get();
+    const snap=await opsDb().collection('ops_config_revision').doc('general').get();
     revisoresPermitidos=snap.exists?(snap.data().revisores||[]):[];
   }catch(e){
     console.warn('[REV] no se pudo cargar la config de revisión',e);
@@ -3541,7 +3549,7 @@ async function herrResolverIdInterno(email,nombreFallback){
   const correo=(email||'').toLowerCase().trim();
   if(correo){
     try{
-      const snap=await db.collection(C.OPS_TEC).where('correo','==',correo).limit(1).get();
+      const snap=await opsDb().collection(C.OPS_TEC).where('correo','==',correo).limit(1).get();
       if(!snap.empty)return {id:snap.docs[0].id,...snap.docs[0].data()};
     }catch(e){console.warn('[HERR] no se pudo resolver idInterno por correo',correo,e);}
   }
@@ -3550,7 +3558,7 @@ async function herrResolverIdInterno(email,nombreFallback){
       const norm=s=>(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
       const objetivo=norm(nombreFallback);
       if(!objetivo)return null;
-      const snapTodos=await db.collection(C.OPS_TEC).get();
+      const snapTodos=await opsDb().collection(C.OPS_TEC).get();
       const candidatos=snapTodos.docs.map(d=>({id:d.id,...d.data()})).filter(t=>norm(t.nombre)===objetivo);
       if(candidatos.length===1)return candidatos[0];
       if(candidatos.length>1)console.warn('[HERR] varios técnicos con el mismo nombre, no se puede resolver sin correo:',nombreFallback);
@@ -3587,7 +3595,7 @@ window.herrAbrirTraspaso=async function(){
   }
   herrState.miIdInterno=tec.id;
   try{
-    const snap=await db.collection(C.OPS_HERR).where('tecnicoActualId','==',tec.id).where('estado','==','asignada').get();
+    const snap=await opsDb().collection(C.OPS_HERR).where('tecnicoActualId','==',tec.id).where('estado','==','asignada').get();
     herrState.misPiezas=snap.docs.map(d=>({id:d.id,...d.data()}));
   }catch(e){console.error('[HERR] error al cargar mis piezas',e);herrState.error='No se pudo cargar tu herramienta asignada. Intenta de nuevo.';}
   renderUtil();
@@ -3631,13 +3639,13 @@ window.herrVerMisHerramientas=async function(){
   }
   herrState.miIdInterno=tec.id;
   try{
-    const snap=await db.collection(C.OPS_HERR).where('tecnicoActualId','==',tec.id).where('estado','==','asignada').get();
+    const snap=await opsDb().collection(C.OPS_HERR).where('tecnicoActualId','==',tec.id).where('estado','==','asignada').get();
     const piezas=snap.docs.map(d=>({id:d.id,...d.data()}));
     // Por cada pieza, revisar su movimiento más reciente para saber si llegó
     // por un traspaso hacia este técnico (y no la tenía de origen).
     await Promise.all(piezas.map(async h=>{
       try{
-        const movSnap=await db.collection(C.OPS_MOV).where('herramientaId','==',h.id).orderBy('fecha','desc').limit(1).get();
+        const movSnap=await opsDb().collection(C.OPS_MOV).where('herramientaId','==',h.id).orderBy('fecha','desc').limit(1).get();
         if(!movSnap.empty){
           const m=movSnap.docs[0].data();
           h._ultimoMovimiento=m;
@@ -3813,7 +3821,7 @@ window.herrEnviarTraspaso=async function(){
     // Bloqueo: si ya hay un traspaso pendiente para esta misma pieza (lo haya
     // iniciado Almacén desde el Portal o el propio técnico antes), no se puede
     // iniciar otro — se avisa y se corta aquí.
-    const yaHayPend=await db.collection(C.OPS_TRASP)
+    const yaHayPend=await opsDb().collection(C.OPS_TRASP)
       .where('herramientaId','==',h.id).where('estatus','==','Pendiente recepción').limit(1).get();
     if(!yaHayPend.empty){
       toast('Esta pieza ya tiene un traspaso pendiente de aceptación. Espera a que se resuelva.','err');
@@ -3847,7 +3855,7 @@ window.herrEnviarTraspaso=async function(){
       lugarLat:ubicacion?ubicacion.lat:null, lugarLng:ubicacion?ubicacion.lng:null,
       origen:'flotilla_movil',
     };
-    const ref=await db.collection(C.OPS_TRASP).add(docObj);
+    const ref=await opsDb().collection(C.OPS_TRASP).add(docObj);
 
     await Promise.all([
       db.collection('flotilla_notificaciones').add({
@@ -3886,7 +3894,7 @@ window._herrModalVistos=window._herrModalVistos||new Set();
 function herrEscucharPendientes(){
   if(!miPerfil?.email||_unsubHerrPendiente)return;
   try{
-    _unsubHerrPendiente=db.collection(C.OPS_TRASP)
+    _unsubHerrPendiente=opsDb().collection(C.OPS_TRASP)
       .where('receptorEmail','==',miPerfil.email.toLowerCase())
       .where('estatus','==','Pendiente recepción')
       .onSnapshot(snap=>{
@@ -3924,11 +3932,11 @@ function herrMostrarModalPendiente(t){
 window.herrAceptarTraspaso=async function(traspasoId){
   document.getElementById('fm-modal-herr-pend')?.remove();
   try{
-    const doc=await db.collection(C.OPS_TRASP).doc(traspasoId).get();
+    const doc=await opsDb().collection(C.OPS_TRASP).doc(traspasoId).get();
     if(!doc.exists){toast('El traspaso ya no está disponible.','err');return;}
     const t=doc.data();
     if(t.venceEn&&new Date(t.venceEn).getTime()<Date.now()){
-      await db.collection(C.OPS_TRASP).doc(traspasoId).update({estatus:'Vencido'});
+      await opsDb().collection(C.OPS_TRASP).doc(traspasoId).update({estatus:'Vencido'});
       toast('Este traspaso ya venció.','err');
       return;
     }
@@ -3942,7 +3950,7 @@ window.herrAceptarTraspaso=async function(traspasoId){
     }
     const now=new Date().toISOString();
     const ubicacion=await herrObtenerUbicacion();
-    const herrRef=db.collection(C.OPS_HERR).doc(t.herramientaId);
+    const herrRef=opsDb().collection(C.OPS_HERR).doc(t.herramientaId);
     const herrSnap=await herrRef.get();
     const ubicacionActual=herrSnap.exists?(herrSnap.data().ubicacionActual||null):null;
 
@@ -3952,7 +3960,7 @@ window.herrAceptarTraspaso=async function(traspasoId){
     if(t.comentario)partesObs.push(`Comentario: "${t.comentario}"`);
     if(t.evidenciaBase64)partesObs.push('Con foto de evidencia (ver en Operaciones)');
     if(ubicacion)partesObs.push(`Lugar aprox. ${ubicacion.lat.toFixed(5)}, ${ubicacion.lng.toFixed(5)}`);
-    await db.collection(C.OPS_MOV).add({
+    await opsDb().collection(C.OPS_MOV).add({
       herramientaId:t.herramientaId, tipo:'transferencia',
       tecnicoAnteriorId:t.entregaTecnicoId||null, tecnicoNuevoId:receptorId,
       almacenOrigenId:(t.entregaTecnicoId||null)||'general',
@@ -3962,7 +3970,7 @@ window.herrAceptarTraspaso=async function(traspasoId){
       observaciones:partesObs.join(' · '),
       usuarioEmail:userEmail, usuarioNombre:userName, fecha:now,
     });
-    await db.collection(C.OPS_TRASP).doc(traspasoId).update({ estatus:'Completado', completadoEn:now, receptorTecnicoId:receptorId });
+    await opsDb().collection(C.OPS_TRASP).doc(traspasoId).update({ estatus:'Completado', completadoEn:now, receptorTecnicoId:receptorId });
     if(t.entregaEmail){
       db.collection('flotilla_notificaciones').add({
         tipo:'herramienta_traspaso_completada', traspasoId,
@@ -3983,10 +3991,10 @@ window.herrRechazarTraspaso=async function(traspasoId){
   document.getElementById('fm-modal-herr-pend')?.remove();
   const motivo=prompt('¿Por qué rechazas este traspaso? (opcional)')||'';
   try{
-    const doc=await db.collection(C.OPS_TRASP).doc(traspasoId).get();
+    const doc=await opsDb().collection(C.OPS_TRASP).doc(traspasoId).get();
     const t=doc.exists?doc.data():{};
     const now=new Date().toISOString();
-    await db.collection(C.OPS_TRASP).doc(traspasoId).update({ estatus:'Rechazado', motivoRechazo:motivo||null, rechazadoEn:now });
+    await opsDb().collection(C.OPS_TRASP).doc(traspasoId).update({ estatus:'Rechazado', motivoRechazo:motivo||null, rechazadoEn:now });
     if(t.entregaEmail){
       db.collection('flotilla_notificaciones').add({
         tipo:'herramienta_traspaso_rechazada', traspasoId,
@@ -4020,7 +4028,7 @@ window.revAbrirRevision=async function(){
   revFotos=new Map();
   renderUtil();
   try{
-    const snap=await db.collection(C.OPS_ALMACENES).get();
+    const snap=await opsDb().collection(C.OPS_ALMACENES).get();
     revState.almacenes=snap.docs.map(d=>({id:d.id,...d.data()})).filter(a=>a.activo!==false)
       .sort((a,b)=>(a.tipo==='general'?-1:1)-(b.tipo==='general'?-1:1)||(a.nombre||'').localeCompare(b.nombre||''));
   }catch(e){console.error('[REV] error cargando almacenes',e);toast('No se pudieron cargar los almacenes.','err');}
@@ -4042,8 +4050,8 @@ window.revElegirAlmacen=async function(almacenId){
   renderUtil();
   try{
     let q;
-    if(a.tipo==='tecnico') q=db.collection(C.OPS_HERR).where('tecnicoActualId','==',a.tecnicoId||a.id);
-    else q=db.collection(C.OPS_HERR).where('tecnicoActualId','==',null).where('almacenId','==',a.id===('general')?null:a.id);
+    if(a.tipo==='tecnico') q=opsDb().collection(C.OPS_HERR).where('tecnicoActualId','==',a.tecnicoId||a.id);
+    else q=opsDb().collection(C.OPS_HERR).where('tecnicoActualId','==',null).where('almacenId','==',a.id===('general')?null:a.id);
     const snap=await q.get();
     revState.piezas=snap.docs.map(d=>({id:d.id,...d.data()})).filter(h=>h.estado!=='baja');
   }catch(e){
@@ -4051,7 +4059,7 @@ window.revElegirAlmacen=async function(almacenId){
     // Respaldo: si la consulta con almacenId falla (campo nuevo, puede no existir
     // en piezas viejas) o el almacén es "general", se hace un segundo intento simple.
     try{
-      const snap2=await db.collection(C.OPS_HERR).where('tecnicoActualId','==',null).get();
+      const snap2=await opsDb().collection(C.OPS_HERR).where('tecnicoActualId','==',null).get();
       revState.piezas=snap2.docs.map(d=>({id:d.id,...d.data()})).filter(h=>h.estado!=='baja'&&(a.tipo!=='ubicacion'||h.almacenId===a.id)&&(a.tipo!=='general'||!h.almacenId));
     }catch(e2){console.error('[REV] respaldo también falló',e2);}
   }
@@ -4143,7 +4151,7 @@ window.revGuardar=async function(){
     // revState.almacenId ya ES el propio id de técnico en ese caso.
     const esAutorrevision=!revState.almacenes.length;
     const now=new Date().toISOString();
-    const revRef=db.collection(C.OPS_REVISIONES).doc();
+    const revRef=opsDb().collection(C.OPS_REVISIONES).doc();
 
     const filas=document.querySelectorAll('#rev-lista > div[data-herr-id]');
     const herramientas=[];
@@ -5107,7 +5115,7 @@ async function _matResolverTecnico(){
   if(_matTecnicoResuelto!==undefined)return _matTecnicoResuelto;
   try{
     const correo=(window.auth?.currentUser?.email||'').toLowerCase().trim();
-    const snap=await db.collection('ops_tecnicos').where('correo','==',correo).get();
+    const snap=await opsDb().collection('ops_tecnicos').where('correo','==',correo).get();
     _matTecnicoResuelto=snap.empty?null:{id:snap.docs[0].id,...snap.docs[0].data()};
   }catch(e){ _matTecnicoResuelto=null; }
   return _matTecnicoResuelto;

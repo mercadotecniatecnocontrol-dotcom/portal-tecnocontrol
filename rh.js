@@ -2019,10 +2019,12 @@ async function rhCargarActividadCruzada(correo){
     } catch(e){ console.warn('[RH] Flotilla cross-ref:', e.message); }
 
     try {
-        const tSnap = await fs.getDocs(fs.query(fs.collection(db,'ops_tecnicos'), fs.where('correo','==',correo)));
+        // Operaciones vive en Supabase (operaciones-supabase.js, oct-2026)
+        const fsOps = await (window.tcOpsFS ? window.tcOpsFS(fs) : new Promise(function(ok,ko){var s=document.createElement('script');s.src='operaciones-supabase.js?v=ops1';s.onload=function(){ok(window.tcOpsFS(fs));};s.onerror=function(){ko(new Error('No se pudo cargar operaciones-supabase.js'));};document.head.appendChild(s);}));
+        const tSnap = await fsOps.getDocs(fsOps.query(fsOps.collection(db,'ops_tecnicos'), fsOps.where('correo','==',correo)));
         if(!tSnap.empty){
             const idInterno = tSnap.docs[0].id;
-            const hSnap = await fs.getDocs(fs.query(fs.collection(db,'ops_herramientas'), fs.where('tecnicoActualId','==',idInterno)));
+            const hSnap = await fsOps.getDocs(fsOps.query(fsOps.collection(db,'ops_herramientas'), fsOps.where('tecnicoActualId','==',idInterno)));
             resultado.herramientas = hSnap.docs.map(d=>({id:d.id, ...d.data()}));
         }
     } catch(e){ console.warn('[RH] Operaciones cross-ref:', e.message); }

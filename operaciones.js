@@ -1169,9 +1169,28 @@
     let filtroHerr = "", filtroTec = "";
     let filtroCat = { busca: "", categoria: "", departamento: "", estado: "", condicion: "" };
 
+    // Desde oct-2026 Operaciones vive en Supabase. operaciones-supabase.js entrega un
+    // puente con la misma forma que Firestore: todo lo "ops_*" va a Supabase (tabla
+    // ops_docs + tablas tipadas de herramientas/movimientos); lo que no es de Operaciones
+    // (Flotilla, usuarios/login) se sigue pasando a Firestore hasta que se corte su módulo.
+    let _opsPuenteProm = null;
+    function opsCargarPuente() {
+        if (window.tcOpsFS) return Promise.resolve();
+        if (_opsPuenteProm) return _opsPuenteProm;
+        _opsPuenteProm = new Promise((ok, ko) => {
+            const s = document.createElement("script");
+            s.src = "operaciones-supabase.js?v=ops1";
+            s.onload = () => ok(); s.onerror = () => { _opsPuenteProm = null; ko(new Error("No se pudo cargar operaciones-supabase.js")); };
+            document.head.appendChild(s);
+        });
+        return _opsPuenteProm;
+    }
     async function opsGetFB() {
         if (opsFB) return opsFB;
-        const fs = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+        await opsCargarPuente();
+        let real = null;
+        try { real = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js"); } catch (e) { console.warn("[Operaciones] Firestore no cargó; solo se usará Supabase:", e.message); }
+        const fs = await window.tcOpsFS(real);
         opsFB = { db: window.db, fs };
         return opsFB;
     }
@@ -2942,8 +2961,11 @@
         if (!folio) { resEl.textContent = ""; return; }
         resEl.textContent = "Buscando...";
         try {
-            const { db, fs } = await opsGetFB();
-            const snap = await fs.getDocs(fs.query(fs.collection(db, "requisiciones_compra"), fs.where("folio", "==", folio)));
+            // Compras vive en Supabase (compras-supabase.js): se consulta por su propio puente.
+            if (!window.tcComprasFS) await new Promise((ok, ko) => { const sc = document.createElement("script"); sc.src = "compras-supabase.js?v=sb1"; sc.onload = ok; sc.onerror = () => ko(new Error("No se pudo cargar compras-supabase.js")); document.head.appendChild(sc); });
+            const fsC = await window.tcComprasFS(null);
+            const db = window.db;
+            const snap = await fsC.getDocs(fsC.query(fsC.collection(db, "requisiciones_compra"), fsC.where("folio", "==", folio)));
             if (snap.empty) {
                 resEl.innerHTML = `<span style="color:#E7402B;">No se encontró una requisición con ese folio.</span>`;
                 return;
@@ -4192,7 +4214,7 @@
             await fs.updateDoc(fs.doc(db, COL_TECNICOS, idInterno), { plaza });
             const t = cacheTec.find(x => x.id === idInterno);
             if (t) t.plaza = plaza;
-            opsSb().then(sb => sb.from("ops_tecnicos").update({ plaza, actualizado_en: new Date().toISOString() }).eq("id", idInterno)).catch(() => {});
+            
             if (window.mostrarPush) window.mostrarPush("Operaciones", "Plaza actualizada: " + plaza, "✅");
             if (window.opsAbrirFichaTecnico) window.opsAbrirFichaTecnico(idInterno, "habilidades");
         } catch (e) { alert("No se pudo guardar la plaza: " + e.message); }
@@ -7178,8 +7200,8 @@
         if (info) info.innerHTML = "";
         const box = document.getElementById("ops-fol-estacion-results");
         if (!box) return;
-        if (!valor || valor.trim().length < 2 || !window.tcCargarCatalogoEstaciones) { box.style.display = "none"; return; }
-        window.tcCargarCatalogoEstaciones().then(lista => {
+        if (!valor || valor.trim().length < 2 || false) { box.style.display = "none"; return; }
+        opsCatalogoEstaciones().then(lista => {
             const q = valor.toLowerCase();
             const filtradas = (lista || []).filter(e => [e.razonSocial, e.nombreComercial, e.municipio, e.permiso, e.zona].filter(Boolean).join(" ").toLowerCase().includes(q)).slice(0, 8);
             window.__opsFolioEstListaTmp = filtradas;
@@ -7262,8 +7284,8 @@
     window.opsViBuscarEstacion = function (valor) {
         const box = document.getElementById("ops-vi-resultados");
         if (!box) return;
-        if (!valor || valor.trim().length < 2 || !window.tcCargarCatalogoEstaciones) { box.style.display = "none"; return; }
-        window.tcCargarCatalogoEstaciones().then(lista => {
+        if (!valor || valor.trim().length < 2 || false) { box.style.display = "none"; return; }
+        opsCatalogoEstaciones().then(lista => {
             const q = valor.toLowerCase();
             const yaAgregadas = new Set(opsVisitaInspeccionEstaciones.map(e => e.id));
             const filtradas = (lista || []).filter(e => !yaAgregadas.has(e.id) && [e.razonSocial, e.nombreComercial, e.municipio, e.permiso, e.zona].filter(Boolean).join(" ").toLowerCase().includes(q)).slice(0, 8);
@@ -7512,9 +7534,9 @@
     }
     // El catálogo se carga una vez en segundo plano; al llegar, el calendario se vuelve a pintar.
     function opsAsegurarCatalogoPlazas() {
-        if (opsCatEstPorId || opsCatEstCargando || !window.tcCargarCatalogoEstaciones) return;
+        if (opsCatEstPorId || opsCatEstCargando || false) return;
         opsCatEstCargando = true;
-        window.tcCargarCatalogoEstaciones().then(lista => {
+        opsCatalogoEstaciones().then(lista => {
             opsCatEstPorId = new Map((lista || []).map(e => [e.id, e]));
             if (tabActual === "calendario") opsRenderCalendario();
         }).catch(() => { opsCatEstPorId = new Map(); }).finally(() => { opsCatEstCargando = false; });
@@ -7537,6 +7559,25 @@
     // Glen: "Anexo 21 y 22 siempre es junto, nunca por separado, en todo". Los folios viejos
     // que traen "Anexo 21" o "Anexo 22" solos se leen como "Anexo 21 y 22" al cargarse,
     // así todo el módulo (calendario, filtros, PDF, vencimientos) los ve igual.
+    // Catálogo de estaciones desde Supabase (586 estaciones) con los nombres de campo de siempre.
+    let _opsCatEstProm = null;
+    function opsCatalogoEstaciones() {
+        if (_opsCatEstProm) return _opsCatEstProm;
+        _opsCatEstProm = (async () => {
+            const sb = await opsSb();
+            let todos = [], desde = 0;
+            while (true) {
+                const { data, error } = await sb.from("estaciones_servicio").select("id,razon_social,nombre_comercial,codigo_estacion_cre,permiso,direccion_normalizada,domicilio_raw,colonia,municipio,estado,lat,lng,encargado,zona,numero_tanques,numero_dispensarios,numero_sondas,cr,activo").order("id").range(desde, desde + 999);
+                if (error) throw error;
+                todos = todos.concat(data || []);
+                if (!data || data.length < 1000) break;
+                desde += 1000;
+            }
+            return todos.filter(e => e.activo !== false).map(opsFilaACamel);
+        })().catch(e => { _opsCatEstProm = null; console.warn("[Operaciones] catálogo de estaciones:", e.message || e); return []; });
+        return _opsCatEstProm;
+    }
+
     function opsNormalizarFolio(f) {
         if (f && typeof f.normaInspeccion === "string" && /^\s*anexo\s*2[12]\s*$/i.test(f.normaInspeccion)) f.normaInspeccion = "Anexo 21 y 22";
         return f;
@@ -7758,8 +7799,8 @@
         window.opsAbrirAltaServicio(fecha);
         if (!opsAS) return;
         if (v.regla.norma) { opsAS.tipo = "inspeccion"; opsAS.norma = v.regla.norma; } else { opsAS.tipo = "programacion"; opsAS.comentarios = v.regla.nombre; }
-        if (v.estacionId && window.tcCargarCatalogoEstaciones) {
-            const lista = await window.tcCargarCatalogoEstaciones();
+        if (v.estacionId ) {
+            const lista = await opsCatalogoEstaciones();
             window.__opsAsEstCatalogo = lista || [];
             if ((lista || []).some(e => e.id === v.estacionId)) { window.opsAsElegirEstacion(v.estacionId); return; }
         }
@@ -8623,8 +8664,8 @@
         s.est = null; s.estTexto = valor; s.plNuevo = "";
         const box = document.getElementById("opsas-est-drop");
         if (!box) return;
-        if (!valor || valor.trim().length < 2 || !window.tcCargarCatalogoEstaciones) { box.style.display = "none"; return; }
-        window.tcCargarCatalogoEstaciones().then(lista => {
+        if (!valor || valor.trim().length < 2 || false) { box.style.display = "none"; return; }
+        opsCatalogoEstaciones().then(lista => {
             window.__opsAsEstCatalogo = lista || [];
             const q = opsAsNorm(valor);
             const f = (lista || []).filter(e => opsAsNorm([e.razonSocial, e.nombreComercial, e.municipio, e.permiso, e.zona].filter(Boolean).join(" ")).includes(q))
@@ -8859,7 +8900,7 @@
             if (datos.tipoFolio === "laboratorio") await opsNotificarFolioLaboratorio({ id: nuevo.id, ...datos });
             // PL capturado aquí → también al catálogo (si falla por permisos no detiene nada)
             if (e?.id && !e.permiso && s.plNuevo.trim()) {
-                try { await fs.updateDoc(fs.doc(db, "estaciones_servicio", e.id), { permiso: s.plNuevo.trim() }); }
+                try { const sbc = await opsSb(); const r = await sbc.from("estaciones_servicio").update({ permiso: s.plNuevo.trim(), actualizado_en: new Date().toISOString() }).eq("id", e.id); if (r.error) throw r.error; }
                 catch (err) { console.warn("[Alta servicio] no se pudo guardar el PL en el catálogo:", err.message); }
             }
             if (datos.precioServicio || (datos.comisiones || []).length) {
@@ -10692,8 +10733,9 @@
         else { cacheHerr.push({ ...obj, id }); cacheHerr.sort((a, b) => String(a.folio || a.id).localeCompare(String(b.folio || b.id))); }
     }
     function opsCopiaFirestore(fn) {
-        // Copia "de cortesía" para Flotilla móvil — nunca bloquea ni truena.
-        try { opsGetFB().then(({ db, fs }) => fn(db, fs)).catch(() => {}); } catch (e) {}
+        // Ya no se copia a Firestore: Flotilla móvil lee herramientas y movimientos de
+        // Supabase por el mismo puente (oct-2026). Se deja la función para no tocar a quien la llama.
+        void fn;
     }
     async function opsSbHerrGuardar(id, obj) {
         const sb = await opsSb();
@@ -10807,12 +10849,14 @@
         try {
             const sb = await opsSb();
             if (!cacheTec.length) {
-                const { data } = await sb.from("ops_tecnicos").select("*").order("numero_operativo");
-                if (data && data.length && !cacheTec.length) { cacheTec = data.map(opsFilaACamel); opsAjustarTecnicosForzados(); }
+                const { db, fs } = await opsGetFB();
+                const snap = await fs.getDocs(fs.collection(db, COL_TECNICOS));
+                if (snap.size && !cacheTec.length) { cacheTec = snap.docs.map(d => ({ id: d.id, ...d.data() })); opsAjustarTecnicosForzados(); }
             }
             if (!cacheAlmacenes.length) {
-                const { data } = await sb.from("ops_almacenes").select("*");
-                if (data && data.length && !cacheAlmacenes.length) cacheAlmacenes = data.map(opsFilaACamel);
+                const { db, fs } = await opsGetFB();
+                const snap = await fs.getDocs(fs.collection(db, COL_ALMACENES));
+                if (snap.size && !cacheAlmacenes.length) cacheAlmacenes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             }
             opsRefrescarVistasHerr();
         } catch (e) { console.warn("[operaciones.js] respaldo técnicos/almacenes:", e.message); }
@@ -10892,8 +10936,9 @@
         if (opsViaFoliosSb) return opsViaFoliosSb;
         try {
             const sb = await opsSb();
-            const { data } = await sb.from("ops_folios").select("*").limit(500);
-            opsViaFoliosSb = (data || []).map(opsFilaACamel);
+            const { db, fs } = await opsGetFB(); void sb;
+            const snap = await fs.getDocs(fs.collection(db, COL_FOLIOS));
+            opsViaFoliosSb = snap.docs.map(d => opsNormalizarFolio({ id: d.id, ...d.data() }));
         } catch (e) { opsViaFoliosSb = []; }
         return opsViaFoliosSb;
     }

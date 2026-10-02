@@ -9,6 +9,7 @@
 <script src="material-pdf.js?v=3"></script>
 <!-- surtidos ya vive en Supabase — este adaptador expone window.tcSb... -->
 <script src="surtidos-supabase.js"></script>
+<script src="operaciones-supabase.js?v=ops1"></script>
 </head>
 <body>
 
@@ -318,7 +319,8 @@ const mapaTecnicos = {}; // nombre (lower) -> {id, nombre, correo}
 const mapaTecnicosPorCorreo = {}; // correo (lower) -> {id, nombre, correo}
 let modoSolicitud = 'propio'; // 'propio' | 'terceros'
 
-authReady.then(() => getDocs(collection(db,'ops_tecnicos')).then(snap=>{
+// Técnicos desde Supabase (operaciones-supabase.js, oct-2026)
+authReady.then(() => window.tcOpsFS(null).then(f => f.getDocs(f.collection(db,'ops_tecnicos'))).then(snap=>{
   TECNICOS = [];
   snap.forEach(d=>{
     const t = d.data()||{};
