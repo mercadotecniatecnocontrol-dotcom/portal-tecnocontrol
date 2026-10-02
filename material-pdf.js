@@ -17,6 +17,14 @@
  *   window.tcConstruirPDFSolicitud(d)              → objeto jsPDF
  *   window.tcPrevisualizarPDF(docu, folio, onWhatsApp)
  *   window.tcCompartirPDFWhatsApp(docu, folio, resumenTexto)
+ *   window.tcSubirPDFCompartido(blob, nombre)      → Promise<liga pública>
+ *
+ * PDF por liga (oct-2026): WhatsApp no deja que una página web le adjunte
+ * archivos, así que el PDF se sube a Supabase Storage (espacio
+ * "pdfs-compartidos") y su liga va dentro del mensaje. Funciona en WhatsApp
+ * de escritorio, Web, celular, correo o cualquier chat. Los PDF se borran
+ * solos a los 90 días (ver pdfs_compartidos.sql). Si la subida falla, todo
+ * sigue funcionando como antes (PDF descargado + texto).
  * ==========================================================================*/
 (function(){
   'use strict';
@@ -312,9 +320,71 @@
     copy: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>'
   };
 
+  // ── PDF por liga (Supabase Storage) ──
+  var SB_URL = 'https://vlbyjoqessxcmkejcujp.supabase.co';
+  var SB_KEY = 'sb_publishable_18A7j06AwZqdw3gmqUDJHQ_Twu0t2a8';
+  var BUCKET = 'pdfs-compartidos';
+  var _sbProm = null;
+  function _sb(){
+    if (window.tcSupabase) return Promise.resolve(window.tcSupabase);
+    if (_sbProm) return _sbProm;
+    _sbProm = import('https://esm.sh/@supabase/supabase-js@2').then(function(mod){
+      if (!window.tcSupabase) window.tcSupabase = mod.createClient(SB_URL, SB_KEY);
+      return window.tcSupabase;
+    }).catch(function(e){ _sbProm = null; throw e; });
+    return _sbProm;
+  }
+  function _codigo(){
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, '');
+    var s = ''; for (var i = 0; i < 32; i++) s += Math.floor(Math.random() * 16).toString(16); return s;
+  }
+  // Sube el PDF y regresa su liga pública. La carpeta lleva un código largo al
+  // azar, así que la liga no se puede adivinar.
+  window.tcSubirPDFCompartido = function(blob, nombre){
+    var limpio = String(nombre || 'documento.pdf').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9._-]+/g, '_');
+    if (!/\.pdf$/i.test(limpio)) limpio += '.pdf';
+    var mes = new Date().toISOString().slice(0, 7);
+    var ruta = mes + '/' + _codigo() + '/' + limpio;
+    return _sb().then(function(c){
+      return c.storage.from(BUCKET).upload(ruta, blob, { contentType: 'application/pdf', cacheControl: '3600', upsert: false })
+        .then(function(r){
+          if (r.error) throw r.error;
+          _limpiarViejos(c);
+          return c.storage.from(BUCKET).getPublicUrl(ruta).data.publicUrl;
+        });
+    });
+  };
+  // Limpieza: una vez al día por equipo, borra los PDF de hace más de 90 días.
+  // (La base de datos solo permite borrar los que ya pasaron de 90 días.)
+  function _limpiarViejos(c){
+    try{
+      var hoy = new Date().toISOString().slice(0, 10);
+      if (localStorage.getItem('tc_pdfs_limpieza') === hoy) return;
+      localStorage.setItem('tc_pdfs_limpieza', hoy);
+    }catch(e){ return; }
+    var limite = Date.now() - 90 * 86400000;
+    var meses = [];
+    for (var i = 3; i <= 14; i++) { var d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i); meses.push(d.toISOString().slice(0, 7)); }
+    meses.reduce(function(p, mes){
+      return p.then(function(){
+        return c.storage.from(BUCKET).list(mes, { limit: 1000 }).then(function(r){
+          var carpetas = (r.data || []).map(function(x){ return mes + '/' + x.name; });
+          return Promise.all(carpetas.map(function(cp){
+            return c.storage.from(BUCKET).list(cp, { limit: 100 }).then(function(r2){
+              var viejos = (r2.data || []).filter(function(f){ return f.created_at && new Date(f.created_at).getTime() < limite; }).map(function(f){ return cp + '/' + f.name; });
+              if (viejos.length) return c.storage.from(BUCKET).remove(viejos);
+            });
+          }));
+        });
+      });
+    }, Promise.resolve()).catch(function(e){ console.warn('[compartir] limpieza de PDFs', e && e.message); });
+  }
+
   // Panel universal de envío. docu (jsPDF) es opcional: sin él, solo ofrece texto.
   window.tcAbrirPanelEnvio = function(docu, folio, resumenTexto){
-    var texto = resumenTexto || '';
+    var textoBase = resumenTexto || '';
+    var texto = textoBase;
+    var liga = null;
     var nombre = 'Solicitud_' + String(folio || 'material').replace(/\s+/g, '_') + '.pdf';
     var blob = null, file = null;
     if (docu) {
@@ -346,7 +416,8 @@
         '<b style="font-size:15px;color:#1D2E73">Enviar ' + esc(folio || '') + '</b>' +
         '<button id="tc-envio-x" type="button" aria-label="Cerrar" style="background:#f1f5f9;border:none;border-radius:8px;width:30px;height:30px;cursor:pointer;display:flex;align-items:center;justify-content:center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>' +
       '</div>';
-    if (descargado) html += '<div style="font-size:12px;color:#047857;background:#ecfdf5;border-radius:9px;padding:8px 10px">El PDF ya se descargó en esta computadora (' + esc(nombre) + '). Adjúntalo en el chat de WhatsApp.</div>';
+    if (blob) html += '<div id="tc-envio-liga" role="status" style="font-size:12px;color:#1e40af;background:#eff6ff;border-radius:9px;padding:8px 10px">Preparando la liga del PDF para que vaya dentro del mensaje…</div>';
+    if (descargado) html += '<div style="font-size:11.5px;color:#475569;background:#f8fafc;border-radius:9px;padding:7px 10px">Además se descargó una copia en esta computadora (' + esc(nombre) + ').</div>';
     if (puedeCompartirArchivo) html += btn('tc-envio-share', ICO.share, 'Compartir PDF', movil ? 'Elige WhatsApp en la lista — va con el PDF adjunto' : 'Cuadro de compartir del sistema', '#25D366');
     if (texto) {
       if (movil) {
@@ -361,6 +432,7 @@
       html += btn('tc-envio-desc', ICO.down, descargado ? 'Descargar de nuevo' : 'Descargar PDF', nombre);
     }
     if (texto) html += btn('tc-envio-copiar', ICO.copy, 'Copiar resumen', 'Para pegarlo en cualquier chat');
+    if (blob) html += btn('tc-envio-copliga', ICO.copy, 'Copiar liga del PDF', 'Para mandarla por correo u otro chat');
     html += '</div>';
     ov.innerHTML = html;
     document.body.appendChild(ov);
@@ -370,6 +442,31 @@
     ov.addEventListener('click', function(ev){ if (ev.target === ov) cerrar(); });
     $e('tc-envio-x').onclick = cerrar;
     var abrir = function(url){ var w = window.open(url, '_blank'); if (!w) location.href = url; };
+
+    // Mientras se sube el PDF, los botones de WhatsApp esperan (1–3 s) para que
+    // el mensaje ya lleve la liga. Si tarda o falla, se envía como antes.
+    var BOTONES_TEXTO = ['tc-envio-wa', 'tc-envio-wadesk', 'tc-envio-waweb', 'tc-envio-copiar'];
+    var pausar = function(si){
+      BOTONES_TEXTO.forEach(function(id){ var b = $e(id); if (!b) return; b.disabled = si; b.style.opacity = si ? '.55' : '1'; b.style.cursor = si ? 'wait' : 'pointer'; });
+      var cl = $e('tc-envio-copliga'); if (cl) { cl.disabled = !liga; cl.style.opacity = liga ? '1' : '.55'; if (!liga) cl.style.display = si ? '' : 'none'; }
+    };
+    if (blob && texto) pausar(true); else if (blob) pausar(false);
+    if (blob) {
+      var terminado = false;
+      var listo = function(url){
+        if (terminado) return; terminado = true;
+        liga = url || null;
+        if (liga) texto = (textoBase ? textoBase + '\n\n' : '') + '📄 Ver PDF: ' + liga;
+        var aviso = $e('tc-envio-liga');
+        if (aviso) {
+          if (liga) { aviso.style.color = '#047857'; aviso.style.background = '#ecfdf5'; aviso.textContent = 'Listo: el mensaje ya incluye la liga del PDF. Quien lo reciba solo la toca para verlo.'; }
+          else { aviso.style.color = '#92400e'; aviso.style.background = '#fffbeb'; aviso.textContent = 'No se pudo preparar la liga del PDF. Puedes enviar el resumen y adjuntar el PDF descargado.'; }
+        }
+        pausar(false);
+      };
+      window.tcSubirPDFCompartido(blob, nombre).then(listo).catch(function(e){ console.warn('[compartir] no se pudo subir el PDF', e && (e.message || e)); listo(null); });
+      setTimeout(function(){ listo(null); }, 12000); // sin internet o muy lento: no dejar los botones esperando
+    }
     if ($e('tc-envio-share')) $e('tc-envio-share').onclick = function(){
       navigator.share({ files: [file], title: 'Solicitud ' + (folio || '') }).catch(function(e){
         if (e && e.name === 'AbortError') return;
@@ -381,6 +478,13 @@
     if ($e('tc-envio-waweb')) $e('tc-envio-waweb').onclick = function(){ abrir('https://web.whatsapp.com/send?text=' + encodeURIComponent(texto)); };
     if ($e('tc-envio-ver')) $e('tc-envio-ver').onclick = function(){ abrir(URL.createObjectURL(blob)); };
     if ($e('tc-envio-desc')) $e('tc-envio-desc').onclick = function(){ _descargarBlob(blob, nombre); };
+    if ($e('tc-envio-copliga')) $e('tc-envio-copliga').onclick = function(){
+      if (!liga) return;
+      var b = $e('tc-envio-copliga');
+      var ok = function(){ b.querySelector('b').textContent = 'Liga copiada'; };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(liga).then(ok).catch(function(){ window.prompt('Copia la liga:', liga); });
+      else window.prompt('Copia la liga:', liga);
+    };
     if ($e('tc-envio-copiar')) $e('tc-envio-copiar').onclick = function(){
       var b = $e('tc-envio-copiar');
       var ok = function(){ b.querySelector('b').textContent = 'Resumen copiado'; };
