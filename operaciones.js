@@ -7077,7 +7077,7 @@
                     ${f ? `<button onclick="opsEliminarFolio('${f.id}')" style="background:#fef2f2;border:none;color:#E7402B;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Eliminar</button>` : "<span></span>"}
                     <div style="display:flex;gap:8px;">
                         <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
-                        <button onclick="opsGuardarFolio('${id || ""}')" class="mkt-add-btn" style="background:#1D2E73;">Guardar</button>
+                        <button id="ops-fol-btn-guardar" onclick="opsGuardarFolio('${id || ""}')" class="mkt-add-btn" style="background:#1D2E73;">Guardar</button>
                     </div>
                 </div>
             </div>
@@ -7311,7 +7311,30 @@
         }
     };
 
+    // Guardado blindado (oct-2026): antes cualquier error (permisos de Firestore, campo
+    // faltante, red) se tragaba en silencio — el modal se quedaba abierto sin decir nada
+    // (caso Idaly). Ahora: botón bloqueado mientras guarda, error visible con su causa,
+    // y al guardar el calendario salta a la fecha programada para que se vea dónde quedó.
     window.opsGuardarFolio = async function (id) {
+        const btn = document.getElementById("ops-fol-btn-guardar");
+        const txtOriginal = btn ? btn.textContent : "";
+        if (btn) { btn.disabled = true; btn.textContent = "Guardando…"; btn.style.opacity = ".6"; }
+        try {
+            await opsGuardarFolioInterno(id);
+        } catch (e) {
+            console.error("[Folios] Error al guardar:", e);
+            const cod = e && e.code ? e.code : "";
+            const causa = cod === "permission-denied"
+                ? "Tu usuario no tiene permiso de escritura en la base de datos (" + opsUsuarioActual() + "). Avisa a sistemas para darte de alta."
+                : (e && e.message ? e.message : String(e));
+            alert("No se pudo guardar el servicio.\n\nMotivo: " + causa + "\n\nNo se perdió lo capturado: el formulario sigue abierto.");
+        } finally {
+            const b = document.getElementById("ops-fol-btn-guardar");
+            if (b) { b.disabled = false; b.textContent = txtOriginal || "Guardar"; b.style.opacity = "1"; }
+        }
+    };
+
+    async function opsGuardarFolioInterno(id) {
         const estacion = document.getElementById("ops-fol-estacion").value.trim();
         if (!estacion) { alert("La estación es obligatoria"); return; }
         const { db, fs } = await opsGetFB();
@@ -7410,8 +7433,13 @@
             if (tipoFolioNuevo === "laboratorio") await opsNotificarFolioLaboratorio({ id: nuevo.id, ...datos });
         }
         document.getElementById("ops-modal-wrap").innerHTML = "";
-        if (window.mostrarPush) mostrarPush("Operaciones", "Folio guardado.", "📋"); else alert("Folio guardado.");
-    };
+        const fProg = (datos.fechaProgramada || "").slice(0, 10);
+        const avisoFecha = fProg ? " Programado para el " + opsFmtFechaCorta(datos.fechaProgramada) + "." : " Sin fecha programada: aparece en la lista \"Sin fecha programada\".";
+        if (window.mostrarPush) mostrarPush("Operaciones", "Servicio guardado." + avisoFecha, "📋"); else alert("Servicio guardado." + avisoFecha);
+        if (fProg && tabActual === "calendario" && typeof window.opsCalIrAFecha === "function") {
+            try { window.opsCalIrAFecha(fProg); } catch (e) { /* solo navegación */ }
+        }
+    }
 
     // Notificación automática para folios de Laboratorio — misma colección que ya
     // usa el resto del módulo (ops_notificaciones), mismo nombre de campo de fecha
