@@ -177,9 +177,12 @@
   </div>
 </div>
 
+<!-- Compras vive en Supabase (oct-2026): este puente decide qué va a Supabase y qué sigue en Firestore -->
+<script src="compras-supabase.js?v=sb1"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getFirestore, collection, addDoc, doc, getDoc, getDocs, updateDoc, query, where, orderBy, limit, writeBatch, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import * as fsMod from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, setPersistence, browserSessionPersistence } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 const config = { apiKey:"AIzaSyBXh-P0oMtMiDjyz9PObuJ8DNfROlXvhLE", authDomain:"tecnocontrol-1c42f.firebaseapp.com", projectId:"tecnocontrol-1c42f", storageBucket:"tecnocontrol-1c42f.firebasestorage.app", appId:"1:27642771956:web:54225af9e386afded8a1a1" };
@@ -190,6 +193,9 @@ const auth = getAuth(app);
 // igual patrón que usa el kiosco de Solicitud de Material.
 window.db = db;
 window.__tcModularFs = { collection, getDocs, addDoc };
+// Requisiciones y sus fotos van a Supabase por el puente (SF.*); lo demás
+// (colaboradores, empresas, organigrama, ubicaciones) sigue en Firestore.
+const SF = await window.tcComprasFS(fsMod);
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -310,10 +316,15 @@ window.onEmpresaChange = function(){
 };
 
 /* ============ Clientes (solo nombres, de ventas_clientes — sugerencias) ============ */
-authReady.then(() => getDocs(collection(db,'ventas_clientes')).then(snap=>{
-  const nombres = new Set();
-  snap.forEach(d=>{ const n=(d.data()||{}).nombre; if(n) nombres.add(n); });
+// Los clientes ya viven en Supabase (fase Catálogos): antes esta lista leía
+// los ~1,240 clientes de Firestore cada vez que se abría el kiosco.
+function pintarClientes(lista){
+  const nombres = new Set(lista.filter(Boolean));
   $('dl-clientes').innerHTML = Array.from(nombres).sort().map(n=>'<option value="'+esc(n)+'">').join('');
+}
+authReady.then(() => window.tcCpClientesNombres().then(pintarClientes).catch(e=>{
+  console.warn('[requisición] clientes desde Supabase falló, se usa Firestore:', e.message);
+  return getDocs(collection(db,'ventas_clientes')).then(snap=>{ const l=[]; snap.forEach(d=>l.push((d.data()||{}).nombre)); pintarClientes(l); });
 }).catch(e=>console.warn('[requisición] no se pudo cargar ventas_clientes:', e.message)));
 
 authReady.then(cargarEmpresas).catch(e=>console.warn('[requisición] no se pudieron cargar empresas:', e.message));
@@ -454,11 +465,9 @@ function setMsg(t,c){ $('msg').textContent = t||''; $('msg').style.color = c||'v
 /* ============ Folio consecutivo RC-XXXX (mismo criterio que Flotilla móvil) ============ */
 async function siguienteFolioRequisicion(){
   try{
-    const snap = await getDocs(query(collection(db,'requisiciones_compra'), where('folioPrefijo','==','RC')));
-    let max = 0;
-    snap.forEach(d=>{ const n=(d.data()||{}).folioNum; if(typeof n==='number' && n>max) max=n; });
-    const siguiente = max+1;
-    return { folio:'RC-'+String(siguiente).padStart(4,'0'), folioNum:siguiente, folioPrefijo:'RC' };
+    // Contador atómico en Supabase: nunca se repite aunque dos personas envíen a la vez.
+    const folio = await window.tcCpSiguienteFolio('RC');
+    return { folio, folioNum: parseInt(String(folio).split('-')[1],10), folioPrefijo:'RC' };
   }catch(e){
     console.warn('[requisición] no se pudo calcular el folio consecutivo, se usa respaldo temporal:', e.message);
     const respaldo = Date.now()%10000;
@@ -479,12 +488,14 @@ async function notificarJefeArea(idDoc, data){
     const depto = !colabSnap.empty ? colabSnap.docs[0].data().departamento : null;
     const jefe = depto ? cfg.jefesPorDepto[depto] : null;
     if(!jefe || !jefe.correo) return;
-    await addDoc(collection(db,'flotilla_notificaciones'), {
+    const aviso = {
       para: (jefe.correo||'').toLowerCase().trim(), tipo:'requisicion_autorizar',
       mensaje: 'Requisición '+(data.folio||idDoc)+' de '+(data.solicitante||'')+' espera tu autorización',
       link: 'firmar.html?id='+idDoc,
       leido: false, creadaEn: new Date().toISOString(),
-    });
+    };
+    // Al portal (Supabase) y a la app de Flotilla (Firestore).
+    await Promise.allSettled([ window.tcCpNotificar(aviso), addDoc(collection(db,'flotilla_notificaciones'), aviso) ]);
   }catch(e){ console.warn('[requisición] no se pudo notificar al jefe de área:', e.message); }
 }
 
@@ -709,14 +720,14 @@ $('submit').onclick = async ()=>{
       solicitanteEmail,
       flujoAutorizacion, estatus: 'pendiente',
       origen: 'kiosco_compras',
-      createdAt: serverTimestamp(),
+      createdAt: new Date().toISOString(),
     };
-    const ref = await addDoc(collection(db,'requisiciones_compra'), data);
+    const ref = await SF.addDoc(SF.collection(db,'requisiciones_compra'), data);
     notificarJefeArea(ref.id, data); // no se espera — no debe bloquear el envío si falla
 
     if(fotos.length){
-      const fotosRef = collection(db,'requisiciones_compra',ref.id,'fotos');
-      await Promise.all(fotos.map(f=>addDoc(fotosRef, {
+      const fotosRef = SF.collection(db,'requisiciones_compra',ref.id,'fotos');
+      await Promise.all(fotos.map(f=>SF.addDoc(fotosRef, {
         src: f.src, origen:'kiosco', autor: solicitante, autorEmail: solicitanteEmail,
         creadoEn: new Date().toISOString(),
       }))).catch(e=>console.warn('[requisición] fotos:', e.message));

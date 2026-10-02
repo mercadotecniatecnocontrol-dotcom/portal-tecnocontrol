@@ -5603,11 +5603,26 @@ window.reqLimpiarFirma=function(){
   _reqHayFirma=false; window.reqState.firma=null; _draftSave(_DRAFT.REQ,window.reqState);
 };
 
+// Compras vive en Supabase (oct-2026). compras-supabase.js es el puente
+// compartido con el portal, el kiosco y firmar.html; se carga solo la
+// primera vez que se usa una requisición (no hace falta tocar flotilla-app.html).
+let _reqPuentePromesa=null;
+function _reqPuenteCompras(){
+  if(_reqPuentePromesa) return _reqPuentePromesa;
+  _reqPuentePromesa=(window.tcComprasFS ? Promise.resolve() : new Promise((ok,ko)=>{
+    const s=document.createElement('script'); s.src='compras-supabase.js?v=sb1';
+    s.onload=()=>ok(); s.onerror=()=>ko(new Error('No se pudo cargar compras-supabase.js'));
+    document.head.appendChild(s);
+  })).then(()=>window.tcComprasFS(null)).catch(e=>{ _reqPuentePromesa=null; throw e; });
+  return _reqPuentePromesa;
+}
+
 async function _reqSiguienteFolio(){
   try{
-    const snap=await db.collection('requisiciones_compra').where('folioPrefijo','==','RC').get();
-    let max=0; snap.forEach(d=>{ const n=(d.data()||{}).folioNum; if(typeof n==='number'&&n>max)max=n; });
-    return {folio:'RC-'+String(max+1).padStart(4,'0'),folioNum:max+1,folioPrefijo:'RC'};
+    await _reqPuenteCompras();
+    // Contador atómico en Supabase: nunca se repite aunque dos personas envíen a la vez.
+    const folio=await window.tcCpSiguienteFolio('RC');
+    return {folio,folioNum:parseInt(String(folio).split('-')[1],10),folioPrefijo:'RC'};
   }catch(e){
     const resp=Date.now()%10000;
     return {folio:'RC-'+String(resp).padStart(4,'0')+'-R',folioNum:null,folioPrefijo:'RC'};
@@ -5666,12 +5681,17 @@ async function _reqNotificarJefeArea(idDoc, data){
     const depto = !colabSnap.empty ? colabSnap.docs[0].data().departamento : null;
     const jefe = depto ? cfg.jefesPorDepto[depto] : null;
     if(!jefe || !jefe.correo) return;
-    await db.collection('flotilla_notificaciones').add({
+    const aviso={
       para: (jefe.correo||'').toLowerCase().trim(), tipo:'requisicion_autorizar',
       mensaje:'Requisición '+(data.folio||idDoc)+' de '+(data.solicitante||'')+' espera tu autorización',
       link: 'firmar.html?id='+idDoc,
       leido:false, creadaEn:new Date().toISOString(),
-    });
+    };
+    // Al portal (Supabase) y a esta app (Firestore).
+    await Promise.allSettled([
+      _reqPuenteCompras().then(()=>window.tcCpNotificar(aviso)),
+      db.collection('flotilla_notificaciones').add(aviso),
+    ]);
   }catch(e){ console.warn('[requisicion] no se pudo notificar al jefe de área', e); }
 }
 
@@ -5877,17 +5897,18 @@ window.reqEnviar=async function(){
       solicitanteEmail:window.auth?.currentUser?.email||'',
       flujoAutorizacion, estatus:'pendiente',
       origen:'flotilla', vehiculoEco:miVeh?.eco||null,
-      createdAt:firebase.firestore.FieldValue.serverTimestamp(),
+      createdAt:new Date().toISOString(),
     };
     // Las fotos NO van en el documento principal (riesgo de exceder 1MB con
     // varias) — se suben aparte a requisiciones_compra/{id}/fotos, mismo
     // patrón que ya usa flotilla_checklist_semanal.
     const fotosParaSubir=(window.reqState.fotos||[]).slice();
-    const ref=await db.collection('requisiciones_compra').add(data);
+    const SF=await _reqPuenteCompras();
+    const ref=await SF.addDoc(SF.collection(null,'requisiciones_compra'), data);
     _reqNotificarJefeArea(ref.id, data); // no se espera — no debe bloquear el envío si falla
     if(fotosParaSubir.length){
-      const fotosRef=db.collection('requisiciones_compra').doc(ref.id).collection('fotos');
-      await Promise.all(fotosParaSubir.map(f=>fotosRef.add({
+      const fotosRef=SF.collection(null,'requisiciones_compra',ref.id,'fotos');
+      await Promise.all(fotosParaSubir.map(f=>SF.addDoc(fotosRef,{
         src:f.src, origen:'tecnico', autor:solicitante, autorEmail:window.auth?.currentUser?.email||'',
         creadoEn:new Date().toISOString(),
       }))).catch(e=>console.warn('[flotilla requisicion] fotos:',e));

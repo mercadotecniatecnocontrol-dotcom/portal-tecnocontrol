@@ -33,9 +33,32 @@
     insumo:  {entrada:'Mercancía que NO requiere entrada en Sistema', factura:'Factura debe salir como Gastos en general'},
   };
 
+  // ── Acceso a datos ──
+  // Desde oct-2026 Compras vive en Supabase. compras-supabase.js entrega un
+  // "puente" con la misma forma que Firestore (collection, getDocs,
+  // onSnapshot, updateDoc…): lo de Compras va a Supabase y lo demás
+  // (colaboradores, logos de empresas, cuentas por pagar, avisos de Flotilla)
+  // sigue yendo a Firestore sin cambios. Por eso el resto de este archivo
+  // casi no cambió.
+  var _fsPromesa = null;
+  function _cpCargarPuente(){
+    if(window.tcComprasFS) return Promise.resolve();
+    return new Promise(function(ok, ko){
+      var s=document.createElement('script'); s.src='compras-supabase.js?v=sb1';
+      s.onload=function(){ ok(); }; s.onerror=function(){ ko(new Error('No se pudo cargar compras-supabase.js')); };
+      document.head.appendChild(s);
+    });
+  }
   function cargarFirestore(){
     if(_fs) return Promise.resolve(_fs);
-    return import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js').then(function(m){ _fs=_cpEnvolverFS(m); return _fs; });
+    if(_fsPromesa) return _fsPromesa;
+    _fsPromesa = Promise.all([
+      import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'),
+      _cpCargarPuente(),
+    ]).then(function(r){ return window.tcComprasFS(r[0]); })
+      .then(function(puente){ _fs=_cpEnvolverFS(puente); return _fs; })
+      .catch(function(e){ _fsPromesa=null; throw e; });
+    return _fsPromesa;
   }
 
   function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
@@ -1620,7 +1643,7 @@
     _cpAdGuardarDoc({tipo:antes?'permiso_modificado':'permiso_otorgado', permisoId:nuevo.id, detalle:t.quien+' · '+t.regla}).then(function(){
       toast(antes?'Permiso actualizado':'Permiso otorgado a '+t.quien);
       window.__cpAbrirAutDirecta('permisos'); renderKPIs(); renderBoard(); _cpProgramarAutoDirectas();
-    }).catch(function(e){ cargarAutDirecta(true); err('No se pudo guardar: '+(e.message||e)+'. Si dice "permission", hay que permitir el documento config_flujo_compras/autorizacion_directa en las reglas de Firestore.'); });
+    }).catch(function(e){ cargarAutDirecta(true); err('No se pudo guardar: '+(e.message||e)+'. Si dice "permission" o "policy", revisa las reglas (RLS) de la tabla compras_config en Supabase.'); });
   };
   window.__cpAdPausar = function(i){
     if(!_cpPuedeAdministrar()) return;
@@ -1750,15 +1773,10 @@
   function _scAvisarSolicitante(sc, mensaje){ var c = sc.solicitante && sc.solicitante.correo; if(c && c.toLowerCase()!==_cpMiCorreo()) _cpAvisar(c, mensaje, ''); }
 
   // Folio consecutivo con transacción (mismo patrón de contador atómico del portal).
+  // Folio consecutivo atómico en Supabase (función compras_siguiente_folio):
+  // nunca se repite aunque dos personas guarden al mismo tiempo.
   function _cpSiguienteFolio(fs, docId, prefijo){
-    var ref = fs.doc(window.db,'config_flujo_compras',docId);
-    return fs.runTransaction(window.db, function(tx){
-      return tx.get(ref).then(function(s){
-        var n = ((s.exists() && s.data().n) || 0) + 1;
-        tx.set(ref, {n:n, actualizado:new Date().toISOString()}, {merge:true});
-        return prefijo+'-'+String(n).padStart(4,'0');
-      });
-    });
+    return window.tcCpSiguienteFolio(prefijo);
   }
 
   function escucharSC(){
@@ -1773,7 +1791,7 @@
       }, function(err){
         console.error('[compras] solicitudes_cotizacion:', err);
         var el=document.getElementById('cp-sc-lista');
-        if(el) el.innerHTML='<div style="padding:20px;text-align:center;color:#B91C1C;font-size:12.5px">'+esc(_cpMsgError(err,'leer las cotizaciones'))+(String(err.message||'').indexOf('ermission')>-1?'<br>Falta permitir la colección <b>solicitudes_cotizacion</b> en las reglas de Firestore.':'')+'</div>';
+        if(el) el.innerHTML='<div style="padding:20px;text-align:center;color:#B91C1C;font-size:12.5px">'+esc(_cpMsgError(err,'leer las cotizaciones'))+(String(err.message||'').indexOf('ermission')>-1?'<br>Revisa las reglas (RLS) de la tabla <b>compras_solicitudes</b> en Supabase.':'')+'</div>';
       });
       _scUnsub = _scCol.unsub;
     });
@@ -1970,7 +1988,7 @@
       });
     }).catch(function(e){
       btn.disabled=false; btn.textContent='Mandar a Compras';
-      err('No se pudo guardar: '+(e.message||e)+(String(e.message||e).indexOf('ermission')>-1?' — falta permitir "solicitudes_cotizacion" en las reglas de Firestore.':''));
+      err('No se pudo guardar: '+(e.message||e)+(String(e.message||e).indexOf('ermission')>-1?' — revisa las reglas (RLS) de compras_solicitudes en Supabase.':''));
     });
   };
 
