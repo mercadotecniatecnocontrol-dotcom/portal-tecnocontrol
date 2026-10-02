@@ -96,11 +96,12 @@
     // Programa de inspectores (Glen, sep-2026): visitas normativas — cada una liga a
     // una Norma/servicio específico. "SCFI" es la que además pide hologramas/precintos/
     // distintivos/viáticos (ver esSCFI en el folio).
-    const OPS_NORMAS_INSPECCION = ["Anexo 21", "Anexo 22", "Anexo 21 y 22", "ASEA", "SCFI", "Calibración Medida Volumétrica", "Alto Flujo", "Laboratorio"];
+    // Anexo 21 y 22 SIEMPRE juntos (Glen, oct-2026) — nunca por separado.
+    const OPS_NORMAS_INSPECCION = ["Anexo 21 y 22", "ASEA", "Calidad de los Petrolíferos", "SCFI", "Calibración Medida Volumétrica", "Alto Flujo", "Laboratorio"];
     // Paleta vívida por tipo/Norma (Glen, sep-2026) — para identificar cada categoría de un
     // vistazo en el Calendario, sin perder el azul institucional para el servicio normal.
     const OPS_COLOR_NORMA = {
-        "Anexo 21": "#f97316", "Anexo 22": "#ea580c", "Anexo 21 y 22": "#fb923c",
+        "Anexo 21": "#fb923c", "Anexo 22": "#fb923c", "Anexo 21 y 22": "#fb923c", "Calidad de los Petrolíferos": "#8e24aa",
         "ASEA": "#db2777", "SCFI": "#059669", "Calibración Medida Volumétrica": "#0284c7",
         "Alto Flujo": "#0891b2", "Laboratorio": "#7c3aed",
     };
@@ -228,8 +229,9 @@
         { k: "calibracion", nombre: "Calibraciones",             color: "#26C6DA", t: x => /calib|cali+bra/.test(x) },
         { k: "scfi",        nombre: "SCFI",                      color: "#9CCC65", t: x => /scfi/.test(x) },
         { k: "sasisopa",    nombre: "SASISOPA",                  color: "#3D5AFE", t: x => /sasisopa/.test(x) },
-        { k: "aseaanexo",   nombre: "ASEA + Anexo 21/22",        color: "#FFC107", t: x => /asea/.test(x) && /an?e?n?xo|aenxo|aneo/.test(x) },
-        { k: "anexo",       nombre: "Anexo 21 / 22",             color: "#FF7043", t: x => /an?e?n?xo|aenxo|aneo/.test(x) },
+        { k: "aseaanexo",   nombre: "ASEA + Anexo 21 y 22",        color: "#FFC107", t: x => /asea/.test(x) && /an?e?n?xo|aenxo|aneo/.test(x) },
+        { k: "anexo",       nombre: "Anexo 21 y 22",             color: "#FF7043", t: x => /an?e?n?xo|aenxo|aneo/.test(x) },
+        { k: "calidad",     nombre: "Calidad de los petrolíferos", color: "#8E24AA", t: x => /calidad/.test(x) },
         { k: "asea",        nombre: "ASEA / OP y MTTO",          color: "#43A047", t: x => /asea|op y mtto|op y mto/.test(x) },
         { k: "tanques",     nombre: "Bajada de tanques",         color: "#FB8C00", t: x => /tanque/.test(x) },
         { k: "supervision", nombre: "Supervisión / revisión",    color: "#1E88E5", t: x => /supervis|revisi/.test(x) },
@@ -1843,6 +1845,7 @@
     };
 
     const NAV_ICONS = {
+        vencimientos: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M12 14v3l2 1"/></svg>',
         viaticos: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/></svg>',
         resumen: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>',
         dashboard: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>',
@@ -1864,7 +1867,7 @@
         const items = ["calendario:Calendario", "resumen:Resumen", "dashboard:Herramientas", "guardias:Guardias", "tecnicos:Técnicos", "servicios:Servicios",
             "folios:Folios", "clientes:Clientes",
             ...(opsPuedeHacer("autorizar_material") ? ["solicitudes:Solicitudes"] : []),
-            "viaticos:Viáticos", "alertas:Alertas", "movimientos:Movimientos"];
+            "vencimientos:Vencimientos", "viaticos:Viáticos", "alertas:Alertas", "movimientos:Movimientos"];
         return `
         <div style="position:fixed;inset:0;z-index:99997;background:#f1f5f9;font-family:'Inter',sans-serif;display:flex;flex-direction:column;">
             <div style="background:#1D2E73;border-bottom:3px solid #062F73;padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
@@ -1916,6 +1919,7 @@
         else if (tab === "alertas") opsRenderAlertas();
         else if (tab === "movimientos") opsRenderMovimientos();
         else if (tab === "viaticos") opsRenderViaticos();
+        else if (tab === "vencimientos") opsRenderVencimientos();
     };
 
     // ── Suscripciones en tiempo real ──────────────────────────────
@@ -1963,9 +1967,10 @@
         }
         if (!unsubFolios) {
             unsubFolios = fs.onSnapshot(fs.collection(db, COL_FOLIOS), snap => {
-                cacheFolios = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                cacheFolios = snap.docs.map(d => opsNormalizarFolio({ id: d.id, ...d.data() }));
                 if (tabActual === "folios") opsRenderFolios();
                 if (tabActual === "resumen") opsRenderResumen();
+                if (tabActual === "vencimientos") opsPintarVencimientos();
                 if (opsFoliosVigilanciaBase) opsVigilarFoliosSeveridad();
             }, () => { /* si aún no existe la colección, Folios simplemente inicia vacío */ });
         }
@@ -6083,8 +6088,8 @@
                     const propTraslado = d.traslado ? (d.traslado / ((d.traslado + d.ejecucion) || 1)) * 100 : 0;
                     const tip = `${f.estacion}${f.folioOS ? " · O.S. " + f.folioOS : ""}\n${f.clienteNombre || "Sin cliente"} · ${opsCalTipoTexto(f)}\n${horaTxt} · ${cat.nombre} · ${cat.estNombre} (${info.estado})${choqueSet.has(f.id) ? "\n⚠ Choque de horario" : ""}${faltaGente ? "\n⚠ Falta personal contra la receta" : ""}`;
                     return `<div class="ops-cal-card" ${opsPuedeGestionar() ? `draggable="true" ondragstart="opsCalArrastrarFolio(event,'${f.id}')"` : ""} onclick="opsAbrirPanelFolio('${f.id}')" title="${opsEsc(tip)}"
-                        style="position:absolute;top:${carril * OPS_CAL_ALTO_CARRIL + 5}px;height:${OPS_CAL_ALTO_CARRIL - 6}px;left:${izqPct}%;width:calc(${anchoPct}% - 3px);box-sizing:border-box;background:${cat.fondo};border:none;border-radius:8px;${choqueSet.has(f.id) ? "outline:2px solid #E7402B;outline-offset:1px;" : ""}${OPS_CAL_ESTATUS_ATENUADO.includes(cat.estClave) ? "opacity:.55;" : ""}box-shadow:inset 0 0 0 1px ${cat.borde},0 1px 2px rgba(15,23,42,.14);padding:3px 28px 5px 9px;overflow:hidden;cursor:pointer;z-index:2;display:flex;flex-direction:column;justify-content:space-between;">
-                        <span style="position:absolute;top:4px;right:4px;">${opsCalBadgeEstatus(cat.estClave, 18)}</span>
+                        style="position:absolute;top:${carril * OPS_CAL_ALTO_CARRIL + 5}px;height:${OPS_CAL_ALTO_CARRIL - 6}px;left:${izqPct}%;width:calc(${anchoPct}% - 3px);box-sizing:border-box;background:${cat.fondo};border:none;border-radius:8px;${choqueSet.has(f.id) ? "outline:2px solid #E7402B;outline-offset:1px;" : ""}${cat.estClave === "cancelado" ? "opacity:.55;" : ""}box-shadow:inset 0 0 0 1px ${cat.borde},0 1px 2px rgba(15,23,42,.14);padding:3px 28px 5px 9px;overflow:hidden;cursor:pointer;z-index:2;display:flex;flex-direction:column;justify-content:space-between;">
+                        <span style="position:absolute;top:4px;right:4px;">${opsCalBadgeEstatus(cat.estClave, 18)}</span>${opsCalSelloFinal(cat.estClave, false)}
                         ${cat.estClave === "vencido" ? `<div style="position:absolute;left:0;right:0;bottom:0;height:4px;background:#dc2626;"></div>` : ""}
                         <div style="display:flex;align-items:center;gap:5px;min-width:0;">
                             ${cat.empresa === "jomar" ? `<span title="JOMAR Verificaciones" style="font-size:8.5px;font-weight:800;color:${cat.color};background:#fff;padding:1px 4px;border-radius:4px;flex-shrink:0;">JOMAR</span>` : ""}
@@ -6154,8 +6159,8 @@
                 ${vis.map(f => {
                     const cat = opsCalColorFolio(f), d = opsCalDatosFolio(f);
                     const sinHora = !(f.fechaProgramada || "").includes("T");
-                    return `<div class="ops-cal-chip" onclick="opsAbrirPanelFolio('${f.id}')" title="${opsEsc((f.folioOS ? "O.S. " + f.folioOS + " · " : "") + f.estacion + " · " + (f.clienteNombre || "Sin cliente") + " · " + cat.nombre + " · " + cat.estNombre)}" style="position:relative;background:${cat.fondo};border:none;box-shadow:inset 0 0 0 1px ${cat.borde};${OPS_CAL_ESTATUS_ATENUADO.includes(cat.estClave) ? "opacity:.55;" : ""}border-radius:6px;padding:3px 24px 3px 7px;margin-bottom:3px;cursor:pointer;overflow:hidden;">
-                        <span style="position:absolute;top:3px;right:3px;">${opsCalBadgeEstatus(cat.estClave, 16)}</span>
+                    return `<div class="ops-cal-chip" onclick="opsAbrirPanelFolio('${f.id}')" title="${opsEsc((f.folioOS ? "O.S. " + f.folioOS + " · " : "") + f.estacion + " · " + (f.clienteNombre || "Sin cliente") + " · " + cat.nombre + " · " + cat.estNombre)}" style="position:relative;background:${cat.fondo};border:none;box-shadow:inset 0 0 0 1px ${cat.borde};${cat.estClave === "cancelado" ? "opacity:.55;" : ""}border-radius:6px;padding:3px 24px 3px 7px;margin-bottom:3px;cursor:pointer;overflow:hidden;">
+                        <span style="position:absolute;top:3px;right:3px;">${opsCalBadgeEstatus(cat.estClave, 16)}</span>${opsCalSelloFinal(cat.estClave, true)}
                         ${cat.estClave === "vencido" ? `<div style="position:absolute;left:0;right:0;bottom:0;height:3px;background:#dc2626;"></div>` : ""}
                         <div style="font-size:10.5px;font-weight:700;color:${cat.texto};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${cat.empresa === "jomar" ? `<span style="font-size:8px;font-weight:800;color:${cat.color};background:#fff;padding:0 3px;border-radius:3px;margin-right:4px;">J</span>` : ""}${opsEsc(f.estacion)}</div>
                         <div style="font-size:9.5px;color:${cat.suave};font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${sinHora ? "Sin hora" : opsCalFmtHora(d.horaDecimal)} · ${opsEsc(cat.nombre)} · ${opsEsc(cat.estNombre)}</div>
@@ -6262,7 +6267,7 @@
             const CLIENTES = ["OXXO GAS", "Petro Siete", "Combu-Express", "Gasolineras del Norte", "Energéticos del Bravo", "Grupo Sierra Madre"];
             const ESTACIONES = ["Chihuahua Norte", "Juárez Pronaf", "Delicias Centro", "Parral Sur", "Cuauhtémoc Oriente", "Monterrey Apodaca", "Hermosillo Blvd.", "Guadalajara Zapopan", "Chihuahua Periférico", "Juárez Aeropuerto", "Nuevo Casas Grandes", "Camargo Carretera"];
             const TIPOS = ["Mantenimiento preventivo", "Calibración de dispensarios", "Instalación de sonda", "Prueba de hermeticidad", "Cambio de mangueras", "Revisión eléctrica", "Corrección de fugas"];
-            const NORMAS = ["Anexo 21", "Anexo 22", "ASEA", "SCFI", "Alto Flujo", "Calibración Medida Volumétrica"];
+            const NORMAS = ["Anexo 21 y 22", "ASEA", "Calidad de los Petrolíferos", "SCFI", "Alto Flujo", "Calibración Medida Volumétrica"];
             const CICLO = ["servicio", "jomar", "visita", "seguimiento", "servicio", "vencido", "jomar", "visita", "facturar", "servicio", "seguimiento", "jomar", "visita", "vencido"];
 
             const ocupacion = new Map(); // tecnicoId|dia -> [{ini,fin}]
@@ -6354,7 +6359,7 @@
             }
 
             const snap = await fs.getDocs(fs.collection(db, COL_FOLIOS));
-            cacheFolios = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            cacheFolios = snap.docs.map(d => opsNormalizarFolio({ id: d.id, ...d.data() }));
             opsCalFecha = new Date(); opsCalFecha.setHours(0, 0, 0, 0);
             if (tabActual === "calendario") opsRenderCalendario();
             const total = plan.length;
@@ -6384,7 +6389,7 @@
                 borrados++;
             }
             const todos = await fs.getDocs(fs.collection(db, COL_FOLIOS));
-            cacheFolios = todos.docs.map(d => ({ id: d.id, ...d.data() }));
+            cacheFolios = todos.docs.map(d => opsNormalizarFolio({ id: d.id, ...d.data() }));
             if (tabActual === "calendario") opsRenderCalendario();
             console.log(`[DEMO_CALENDAR] ${borrados} folios DEMO eliminados. Folios reales restantes: ${cacheFolios.length}`);
             if (!(opciones && opciones.silencioso) && window.mostrarPush) window.mostrarPush("Operaciones", `${borrados} folios DEMO eliminados. Los folios reales no se tocaron.`, "🧹");
@@ -6609,6 +6614,7 @@
                     <div id="ops-panel-historial" style="font-size:11.5px;color:#94a3b8;">Cargando…</div>
                 </div>
 
+                <button onclick="opsDescargarPdfFolio('${f.id}')" class="mkt-add-btn" style="background:#E7402B;width:100%;margin-bottom:8px;display:flex;align-items:center;justify-content:center;gap:7px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>Descargar PDF del servicio</button>
                 ${opsPuedeGestionar() ? `<button onclick="opsAbrirModalFolio('${f.id}')" class="mkt-add-btn" style="background:#1D2E73;width:100%;">Editar folio</button>` : ""}
             </div>`;
 
@@ -7301,7 +7307,7 @@
                 });
             }
             const snap = await fs.getDocs(fs.collection(db, COL_FOLIOS));
-            cacheFolios = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            cacheFolios = snap.docs.map(d => opsNormalizarFolio({ id: d.id, ...d.data() }));
             document.getElementById("ops-modal-wrap").innerHTML = "";
             opsRenderCalendario();
             if (window.mostrarPush) window.mostrarPush("Operaciones", `${opsVisitaInspeccionEstaciones.length} folio(s) de inspección creados.`, "✅");
@@ -7441,6 +7447,399 @@
         }
     }
 
+    // ═══════════════════ ANEXO 21 Y 22 SIEMPRE JUNTOS (oct-2026) ═══════════════════
+    // Glen: "Anexo 21 y 22 siempre es junto, nunca por separado, en todo". Los folios viejos
+    // que traen "Anexo 21" o "Anexo 22" solos se leen como "Anexo 21 y 22" al cargarse,
+    // así todo el módulo (calendario, filtros, PDF, vencimientos) los ve igual.
+    function opsNormalizarFolio(f) {
+        if (f && typeof f.normaInspeccion === "string" && /^\s*anexo\s*2[12]\s*$/i.test(f.normaInspeccion)) f.normaInspeccion = "Anexo 21 y 22";
+        return f;
+    }
+
+    // ═══════════════════ DIRECTORIO DE CONTACTOS DE ESTACIÓN (ops_contactos) ═══════════════════
+    // Encargados, gerentes y quien solicita: nombre, puesto, teléfono, WhatsApp y correo,
+    // ligados a una o varias estaciones. Se alimenta solo desde el alta de servicio y lo usan
+    // el autollenado y los avisos de vencimiento.
+    const COL_CONTACTOS = "ops_contactos";
+    const OPS_PUESTOS_CONTACTO = ["Encargado de estación", "Gerente", "Dueño", "Administración", "Otro"];
+    let cacheContactos = [];
+    async function opsCargarContactos() {
+        try {
+            const { db, fs } = await opsGetFB();
+            const snap = await fs.getDocs(fs.collection(db, COL_CONTACTOS));
+            cacheContactos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        } catch (e) { console.warn("[Contactos] no se pudo cargar:", e.message); }
+        return cacheContactos;
+    }
+    function opsContactosDeEstacion(estId, estNombre) {
+        const n = opsAsNorm(estNombre || "");
+        return cacheContactos.filter(c => (estId && (c.estacionesIds || []).includes(estId)) || (n && (c.estacionesNombres || []).some(x => opsAsNorm(x) === n)))
+            .sort((a, b) => (a.puesto === "Encargado de estación" ? -1 : 0) - (b.puesto === "Encargado de estación" ? -1 : 0) || opsAsAlfa(a.nombre, b.nombre));
+    }
+    async function opsGuardarContacto(datos, estacion) {
+        if (!datos.nombre) return null;
+        const { db, fs } = await opsGetFB();
+        const k = opsAsNorm(datos.nombre);
+        const existente = datos.id ? cacheContactos.find(c => c.id === datos.id) : cacheContactos.find(c => opsAsNorm(c.nombre) === k);
+        const ids = new Set(existente?.estacionesIds || []), nombres = new Set(existente?.estacionesNombres || []);
+        if (estacion?.id) ids.add(estacion.id);
+        if (estacion?.nombre) nombres.add(estacion.nombre);
+        const reg = {
+            nombre: datos.nombre, puesto: datos.puesto || existente?.puesto || null,
+            telefono: datos.telefono || existente?.telefono || null, whatsapp: datos.whatsapp || existente?.whatsapp || null,
+            correo: datos.correo || existente?.correo || null, razonSocial: estacion?.razonSocial || existente?.razonSocial || null,
+            estacionesIds: [...ids], estacionesNombres: [...nombres].sort(opsAsAlfa),
+            actualizadoEn: opsFechaHora(), actualizadoPor: opsUsuarioActual(),
+        };
+        if (existente) {
+            await fs.setDoc(fs.doc(db, COL_CONTACTOS, existente.id), reg, { merge: true });
+            Object.assign(existente, reg);
+            return existente.id;
+        }
+        const nuevo = await fs.addDoc(fs.collection(db, COL_CONTACTOS), { ...reg, creadoEn: opsFechaHora(), creadoPor: opsUsuarioActual() });
+        cacheContactos.push({ id: nuevo.id, ...reg });
+        return nuevo.id;
+    }
+
+    // ═══════════════════ VENCIMIENTOS POR ESTACIÓN Y AVISOS A CLIENTES ═══════════════════
+    // Periodicidad que dio Glen (oct-2026). Se calcula con el último servicio CERRADO de cada
+    // estación (fecha de solución; en visitas de inspección ya pasadas, su fecha programada).
+    // Para cambiar un plazo o agregar un servicio solo se toca esta tabla.
+    const OPS_VENC_REGLAS = [
+        { k: "scfi",    nombre: "SCFI · Calibración de dispensarios",        meses: 6,  norma: "SCFI",                        t: x => /scfi|calibraci[oó]n (de )?dispens|medida volum/.test(x) },
+        { k: "herm",    nombre: "Pruebas de hermeticidad",                    meses: 6,  norma: null,                          t: x => /hermetic/.test(x) },
+        { k: "asea",    nombre: "ASEA · Operación y mantenimiento",          meses: 6,  norma: "ASEA",                        t: x => /asea|op(eraci[oó]n)? y m(an)?t(enimien)?to/.test(x) },
+        { k: "anexo",   nombre: "Anexo 21 y 22 · VH (verif. hidrocarburos)", meses: 12, norma: "Anexo 21 y 22",               t: x => /anexo|\bvh\b|verificaci[oó]n de hidrocarb/.test(x) },
+        { k: "calidad", nombre: "Calidad de los petrolíferos",               meses: 12, norma: "Calidad de los Petrolíferos", t: x => /calidad/.test(x) },
+        { k: "sonda",   nombre: "Calibración de sonda y termistor",          meses: 24, norma: null,                          t: x => /sonda|termistor/.test(x) },
+        { k: "tanque",  nombre: "Calibración de tanque",                     meses: 60, norma: null,                          t: x => /calibraci[oó]n de tanque|aforo de tanque/.test(x) },
+    ];
+    const COL_AVISOS_CLIENTE = "ops_avisos_clientes";
+    let cacheAvisosCliente = [], opsVencFiltro = { q: "", estado: "pronto", regla: "" };
+
+    function opsVencTextoFolio(f) {
+        const receta = f.servicioCatalogoId ? cacheServiciosCatalogo.find(r => r.id === f.servicioCatalogoId) : null;
+        return opsAsNorm([f.normaInspeccion, receta?.nombre, f.categoriaServicio, f.tipoServicioDemo, f.comentarios].filter(Boolean).join(" "));
+    }
+    function opsVencFechaRealizado(f) {
+        if (f.cancelado) return null;
+        if (f.fechaSolucion) return String(f.fechaSolucion).slice(0, 10);
+        if (f.tipoFolio === "inspeccion" && f.fechaProgramada && f.fechaProgramada.slice(0, 10) < opsHoy()) return f.fechaProgramada.slice(0, 10);
+        return null;
+    }
+    function opsVencSumarMeses(iso, m) {
+        const d = new Date(iso + "T00:00:00"); const dia = d.getDate();
+        d.setMonth(d.getMonth() + m); if (d.getDate() < dia) d.setDate(0);
+        return opsCalFechaISO(d);
+    }
+    function opsVencCalcular() {
+        const hoy = opsHoy(), mapa = new Map();
+        cacheFolios.forEach(f => {
+            const hecho = opsVencFechaRealizado(f); if (!hecho) return;
+            const txt = opsVencTextoFolio(f);
+            OPS_VENC_REGLAS.forEach(r => {
+                if (!r.t(txt)) return;
+                const estKey = f.estacionCatalogoId || opsAsNorm(f.estacion);
+                if (!estKey) return;
+                const k = estKey + "|" + r.k;
+                const prev = mapa.get(k);
+                if (!prev || hecho > prev.ultimo) mapa.set(k, { regla: r, estKey, ultimo: hecho, folio: f });
+            });
+        });
+        // Si ya hay un servicio programado a futuro para esa estación/tipo, se marca "programado".
+        const futuros = cacheFolios.filter(f => !f.fechaSolucion && !f.cancelado && f.fechaProgramada && f.fechaProgramada.slice(0, 10) >= hoy);
+        return [...mapa.values()].map(v => {
+            const proximo = opsVencSumarMeses(v.ultimo, v.regla.meses);
+            const dias = Math.round((new Date(proximo + "T00:00:00") - new Date(hoy + "T00:00:00")) / 86400000);
+            const prog = futuros.find(f => (f.estacionCatalogoId || opsAsNorm(f.estacion)) === v.estKey && v.regla.t(opsVencTextoFolio(f)));
+            const estado = prog ? "programado" : dias < 0 ? "vencido" : dias <= 30 ? "30" : dias <= 60 ? "60" : "aldia";
+            const f = v.folio;
+            const contactos = opsContactosDeEstacion(f.estacionCatalogoId, f.estacion);
+            const contacto = contactos[0] || (f.contactoNombre ? { nombre: f.contactoNombre, telefono: f.contactoTelefono, whatsapp: f.contactoWhatsapp, correo: f.contactoCorreo } : null);
+            const avisos = cacheAvisosCliente.filter(a => a.estKey === v.estKey && a.regla === v.regla.k).sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
+            return { ...v, proximo, dias, estado, programado: prog || null, contacto, ultimoAviso: avisos[0] || null,
+                estacion: f.estacion, razonSocial: f.estacionRazonSocial || "", pl: f.estacionPermiso || "", estacionId: f.estacionCatalogoId || null };
+        }).sort((a, b) => a.dias - b.dias || opsAsAlfa(a.estacion, b.estacion));
+    }
+    const OPS_VENC_ESTADOS = {
+        vencido:    { n: "Vencido",        c: "#dc2626", b: "#fef2f2" },
+        "30":       { n: "Vence ≤ 30 días", c: "#ea580c", b: "#fff7ed" },
+        "60":       { n: "Vence ≤ 60 días", c: "#b45309", b: "#fffbeb" },
+        programado: { n: "Ya programado",  c: "#1d4ed8", b: "#eff6ff" },
+        aldia:      { n: "Al día",          c: "#15803d", b: "#ecfdf3" },
+    };
+
+    async function opsRenderVencimientos() {
+        const cont = document.getElementById("ops-tab-content"); if (!cont) return;
+        if (typeof opsAsCss === "function") opsAsCss();
+        cont.innerHTML = `<div style="padding:30px;text-align:center;color:#94a3b8;font-size:13px;">Calculando vencimientos…</div>`;
+        try {
+            await opsCargarContactos();
+            const { db, fs } = await opsGetFB();
+            const snap = await fs.getDocs(fs.collection(db, COL_AVISOS_CLIENTE));
+            cacheAvisosCliente = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        } catch (e) { console.warn("[Vencimientos] avisos:", e.message); }
+        opsPintarVencimientos();
+    }
+    function opsPintarVencimientos() {
+        const cont = document.getElementById("ops-tab-content"); if (!cont || tabActual !== "vencimientos") return;
+        const todos = opsVencCalcular();
+        const F = opsVencFiltro, q = opsAsNorm(F.q);
+        const lista = todos.filter(v =>
+            (!F.regla || v.regla.k === F.regla) &&
+            (F.estado === "todos" || (F.estado === "pronto" ? ["vencido", "30", "60"].includes(v.estado) : v.estado === F.estado)) &&
+            (!q || opsAsNorm([v.estacion, v.razonSocial, v.pl, v.regla.nombre, v.contacto?.nombre].join(" ")).includes(q)));
+        const cuenta = k => todos.filter(v => v.estado === k).length;
+        const fmt = iso => iso ? new Date(iso + "T00:00:00").toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" }) : "—";
+        cont.innerHTML = `
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+            <div><div style="font-family:'Space Grotesk',sans-serif;font-size:20px;font-weight:700;color:#1e293b;">Vencimientos de servicios</div>
+            <div style="font-size:12px;color:#64748b;margin-top:2px;">Próxima fecha por estación según el último servicio cerrado. Avisa al cliente por WhatsApp o correo y prográmalo con un clic.</div></div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+            ${["vencido", "30", "60", "programado"].map(k => `<button onclick="opsVencSet('estado','${k}')" style="border:1.5px solid ${F.estado === k ? OPS_VENC_ESTADOS[k].c : "#e2e8f0"};background:${OPS_VENC_ESTADOS[k].b};border-radius:12px;padding:10px 16px;cursor:pointer;text-align:left;min-width:130px;font-family:inherit;"><div style="font-size:22px;font-weight:800;color:${OPS_VENC_ESTADOS[k].c};">${cuenta(k)}</div><div style="font-size:11px;font-weight:700;color:#475569;">${OPS_VENC_ESTADOS[k].n}</div></button>`).join("")}
+        </div>
+        <div style="display:grid;grid-template-columns:minmax(200px,2fr) minmax(160px,1fr) minmax(160px,1fr);gap:10px;margin-bottom:12px;">
+            <input class="opsas-in" placeholder="Buscar estación, razón social, PL o contacto…" value="${opsEsc(F.q)}" oninput="opsVencFiltro.q=this.value;clearTimeout(window.__opsVencT);window.__opsVencT=setTimeout(opsPintarVencimientos,250)">
+            <select class="opsas-in" onchange="opsVencSet('regla',this.value)"><option value="">Todos los servicios</option>${OPS_VENC_REGLAS.slice().sort((a, b) => opsAsAlfa(a.nombre, b.nombre)).map(r => `<option value="${r.k}" ${F.regla === r.k ? "selected" : ""}>${opsEsc(r.nombre)} (cada ${r.meses >= 12 && r.meses % 12 === 0 ? (r.meses / 12) + " año" + (r.meses > 12 ? "s" : "") : r.meses + " meses"})</option>`).join("")}</select>
+            <select class="opsas-in" onchange="opsVencSet('estado',this.value)">${[["pronto", "Vencidos y próximos 60 días"], ["todos", "Todos"], ["vencido", "Vencidos"], ["30", "≤ 30 días"], ["60", "≤ 60 días"], ["programado", "Ya programados"], ["aldia", "Al día"]].map(([k, t]) => `<option value="${k}" ${F.estado === k ? "selected" : ""}>${t}</option>`).join("")}</select>
+        </div>
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:900px;">
+                <thead><tr style="background:#f8fafc;color:#64748b;text-align:left;">${["Estación", "Servicio", "Último", "Próximo", "Estado", "Contacto", ""].map(h => `<th style="padding:10px 12px;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;">${h}</th>`).join("")}</tr></thead>
+                <tbody>${lista.length ? lista.map((v, i) => {
+                    const st = OPS_VENC_ESTADOS[v.estado];
+                    const tieneWa = !!opsVencNumeroWa(v.contacto), tieneMail = !!v.contacto?.correo;
+                    return `<tr style="border-top:1px solid #f1f5f9;">
+                        <td style="padding:10px 12px;"><div style="font-weight:700;color:#1e293b;">${opsEsc(v.estacion)}</div><div style="font-size:10.5px;color:#94a3b8;">${opsEsc(v.razonSocial)}${v.pl ? " · " + opsEsc(v.pl) : ""}</div></td>
+                        <td style="padding:10px 12px;color:#334155;">${opsEsc(v.regla.nombre)}</td>
+                        <td style="padding:10px 12px;color:#64748b;white-space:nowrap;">${fmt(v.ultimo)}</td>
+                        <td style="padding:10px 12px;white-space:nowrap;font-weight:700;color:#1e293b;">${fmt(v.proximo)}<div style="font-size:10.5px;font-weight:600;color:${st.c};">${v.dias < 0 ? "hace " + Math.abs(v.dias) + " días" : "en " + v.dias + " días"}</div></td>
+                        <td style="padding:10px 12px;"><span style="font-size:10.5px;font-weight:800;color:${st.c};background:${st.b};padding:3px 9px;border-radius:999px;white-space:nowrap;">${st.n}</span>${v.programado ? `<div style="font-size:10.5px;color:#64748b;margin-top:3px;">${opsEsc(v.programado.fechaProgramada.slice(0, 10))}</div>` : ""}</td>
+                        <td style="padding:10px 12px;color:#334155;">${v.contacto ? `${opsEsc(v.contacto.nombre)}<div style="font-size:10.5px;color:#94a3b8;">${opsEsc([v.contacto.whatsapp || v.contacto.telefono, v.contacto.correo].filter(Boolean).join(" · ") || "sin datos")}</div>` : `<span style="color:#94a3b8;">Sin contacto</span>`}${v.ultimoAviso ? `<div style="font-size:10px;color:#15803d;margin-top:2px;">Avisado ${opsEsc(v.ultimoAviso.fecha.slice(0, 10))} por ${opsEsc(v.ultimoAviso.canal)}</div>` : ""}</td>
+                        <td style="padding:10px 12px;white-space:nowrap;text-align:right;">
+                            <button onclick="opsVencAvisar(${i},'whatsapp')" ${tieneWa ? "" : "disabled"} title="${tieneWa ? "Abrir WhatsApp con el mensaje listo" : "Este contacto no tiene WhatsApp/teléfono"}" style="background:${tieneWa ? "#16a34a" : "#e2e8f0"};color:#fff;border:none;border-radius:7px;padding:6px 10px;font-size:11px;font-weight:700;cursor:${tieneWa ? "pointer" : "not-allowed"};font-family:inherit;">WhatsApp</button>
+                            <button onclick="opsVencAvisar(${i},'correo')" ${tieneMail ? "" : "disabled"} title="${tieneMail ? "Abrir correo con el mensaje listo" : "Este contacto no tiene correo"}" style="background:${tieneMail ? "#0e7490" : "#e2e8f0"};color:#fff;border:none;border-radius:7px;padding:6px 10px;font-size:11px;font-weight:700;cursor:${tieneMail ? "pointer" : "not-allowed"};font-family:inherit;">Correo</button>
+                            ${opsPuedeGestionar() && !v.programado ? `<button onclick="opsVencProgramar(${i})" style="background:#1D2E73;color:#fff;border:none;border-radius:7px;padding:6px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">Programar</button>` : ""}
+                        </td></tr>`;
+                }).join("") : `<tr><td colspan="7" style="padding:26px;text-align:center;color:#94a3b8;">Sin vencimientos con estos filtros. Los vencimientos aparecen cuando una estación ya tiene un servicio cerrado de ese tipo.</td></tr>`}</tbody>
+            </table>
+        </div>
+        <div style="font-size:11px;color:#94a3b8;margin-top:10px;">Los avisos abren WhatsApp o tu correo con el mensaje ya escrito y quedan registrados aquí. El envío automático sin clic requiere un servicio de WhatsApp Business / correo en servidor.</div>`;
+        window.__opsVencLista = lista;
+    }
+    window.opsPintarVencimientos = opsPintarVencimientos;
+    if (!Object.getOwnPropertyDescriptor(window, "opsVencFiltro")) Object.defineProperty(window, "opsVencFiltro", { get() { return opsVencFiltro; }, configurable: true });
+    window.opsVencSet = function (k, v) { opsVencFiltro[k] = v; opsPintarVencimientos(); };
+    function opsVencNumeroWa(c) {
+        if (!c) return "";
+        let d = String(c.whatsapp || c.telefono || "").replace(/\D/g, "");
+        if (d.length === 10) d = "52" + d;
+        return d.length >= 11 ? d : "";
+    }
+    function opsVencMensaje(v) {
+        const fecha = new Date(v.proximo + "T00:00:00").toLocaleDateString("es-MX", { day: "numeric", month: "long", year: "numeric" });
+        const venc = v.dias < 0 ? `venció el ${fecha}` : `vence el ${fecha}`;
+        return `Hola${v.contacto?.nombre ? " " + v.contacto.nombre.split(" ")[0] : ""}, le saluda Hedma Tecnocontrol.\n\nLe recordamos que el servicio de ${v.regla.nombre} de su estación ${v.estacion}${v.pl ? " (" + v.pl + ")" : ""} ${venc}.\n\n¿Le agendamos la visita? Con gusto le proponemos fecha.\n\nGracias.`;
+    }
+    window.opsVencAvisar = async function (i, canal) {
+        const v = (window.__opsVencLista || [])[i]; if (!v) return;
+        const msg = opsVencMensaje(v);
+        if (canal === "whatsapp") {
+            const n = opsVencNumeroWa(v.contacto); if (!n) return;
+            window.open("https://wa.me/" + n + "?text=" + encodeURIComponent(msg), "_blank");
+        } else {
+            if (!v.contacto?.correo) return;
+            window.location.href = "mailto:" + encodeURIComponent(v.contacto.correo) + "?subject=" + encodeURIComponent(`Vencimiento de ${v.regla.nombre} — ${v.estacion}`) + "&body=" + encodeURIComponent(msg);
+        }
+        try {
+            const { db, fs } = await opsGetFB();
+            const aviso = { estKey: v.estKey, estacion: v.estacion, regla: v.regla.k, servicio: v.regla.nombre, proximo: v.proximo, canal, contacto: v.contacto?.nombre || null, fecha: opsFechaHora(), por: opsUsuarioActual() };
+            const r = await fs.addDoc(fs.collection(db, COL_AVISOS_CLIENTE), aviso);
+            cacheAvisosCliente.push({ id: r.id, ...aviso });
+            setTimeout(opsPintarVencimientos, 400);
+        } catch (e) { console.warn("[Vencimientos] no se pudo registrar el aviso:", e.message); }
+    };
+    window.opsVencProgramar = async function (i) {
+        const v = (window.__opsVencLista || [])[i]; if (!v) return;
+        const fecha = v.proximo < opsHoy() ? opsHoy() : v.proximo;
+        window.opsAbrirAltaServicio(fecha);
+        if (!opsAS) return;
+        if (v.regla.norma) { opsAS.tipo = "inspeccion"; opsAS.norma = v.regla.norma; } else { opsAS.tipo = "programacion"; opsAS.comentarios = v.regla.nombre; }
+        if (v.estacionId && window.tcCargarCatalogoEstaciones) {
+            const lista = await window.tcCargarCatalogoEstaciones();
+            window.__opsAsEstCatalogo = lista || [];
+            if ((lista || []).some(e => e.id === v.estacionId)) { window.opsAsElegirEstacion(v.estacionId); return; }
+        }
+        opsAS.estTexto = v.estacion || "";
+        opsAsPintar();
+    };
+
+    // ═══════════════════ PDF DE CADA SERVICIO (ficha + seguimiento) ═══════════════════
+    window.opsDescargarPdfFolio = async function (id) {
+        const f = cacheFolios.find(x => x.id === id);
+        if (!f) { alert("No se encontró el servicio."); return; }
+        if (!window.jspdf || !window.jspdf.jsPDF) { alert("La librería de PDF no está cargada. Recarga la página."); return; }
+        let comentarios = [];
+        try {
+            const { db, fs } = await opsGetFB();
+            const snap = await fs.getDocs(fs.query(fs.collection(db, COL_FOLIOS, f.id, "comentarios"), fs.orderBy("createdAt", "asc")));
+            comentarios = snap.docs.map(d => d.data());
+        } catch (e) { console.warn("[PDF] historial:", e.message); }
+
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ unit: "mm", format: "letter" });
+        const W = 215.9, M = 14, AN = W - M * 2, ALTO = 279.4;
+        const NAVY = [29, 46, 115], GRIS = [100, 116, 139], TINTA = [30, 41, 59], LINEA = [226, 232, 240];
+        let y = 0;
+        const limpio = s => String(s ?? "").replace(/[^\x20-\x7E\u00A0-\u00FF\u2014\u2013\u2022\u00B7\n]/g, "");
+        const fechaTxt = v => {
+            if (!v) return "—";
+            const d = v.toDate ? v.toDate() : new Date(String(v).length === 10 ? v + "T00:00:00" : v);
+            if (isNaN(d)) return String(v);
+            return d.toLocaleString("es-MX", { day: "numeric", month: "short", year: "numeric", ...(String(v).length > 10 ? { hour: "2-digit", minute: "2-digit" } : {}) });
+        };
+        const encabezado = () => {
+            doc.setFillColor(...NAVY); doc.rect(0, 0, W, 26, "F");
+            doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(14);
+            doc.text("HEDMA TECNOCONTROL", M, 11);
+            doc.setFont("helvetica", "normal"); doc.setFontSize(9);
+            doc.text("Operaciones · Ficha de servicio", M, 17);
+            doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+            doc.text(limpio(f.folioOS ? "O.S. " + f.folioOS : "Folio " + f.id.slice(0, 8).toUpperCase()), W - M, 11, { align: "right" });
+            doc.setFont("helvetica", "normal"); doc.setFontSize(8);
+            doc.text("Generado: " + new Date().toLocaleString("es-MX"), W - M, 17, { align: "right" });
+            y = 34;
+        };
+        const salto = h => { if (y + h > ALTO - 16) { doc.addPage(); encabezado(); } };
+        const seccion = t => {
+            salto(14); y += 2;
+            doc.setTextColor(...NAVY); doc.setFont("helvetica", "bold"); doc.setFontSize(10.5);
+            doc.text(limpio(t).toUpperCase(), M, y);
+            doc.setDrawColor(...LINEA); doc.setLineWidth(0.4); doc.line(M, y + 1.8, W - M, y + 1.8);
+            y += 7;
+        };
+        // Pares etiqueta/valor en 2 columnas
+        const pares = arr => {
+            const items = arr.filter(([, v]) => v !== null && v !== undefined && v !== "");
+            if (!items.length) { doc.setFont("helvetica", "italic"); doc.setFontSize(9); doc.setTextColor(...GRIS); doc.text("Sin datos capturados.", M, y); y += 6; return; }
+            const col = AN / 2;
+            for (let i = 0; i < items.length; i += 2) {
+                const fila = items.slice(i, i + 2);
+                const alturas = fila.map(([, v]) => doc.splitTextToSize(limpio(v), col - 4).length);
+                const h = 4 + Math.max(...alturas) * 4.4;
+                salto(h + 2);
+                fila.forEach(([k, v], j) => {
+                    const x = M + j * col;
+                    doc.setFont("helvetica", "bold"); doc.setFontSize(7.5); doc.setTextColor(...GRIS);
+                    doc.text(limpio(k).toUpperCase(), x, y);
+                    doc.setFont("helvetica", "normal"); doc.setFontSize(9.5); doc.setTextColor(...TINTA);
+                    doc.text(doc.splitTextToSize(limpio(v), col - 4), x, y + 4.4);
+                });
+                y += h + 1.5;
+            }
+        };
+        const parrafo = (t, opts = {}) => {
+            doc.setFont("helvetica", opts.bold ? "bold" : "normal"); doc.setFontSize(opts.size || 9.5); doc.setTextColor(...(opts.color || TINTA));
+            const lineas = doc.splitTextToSize(limpio(t), AN - (opts.indent || 0));
+            lineas.forEach(l => { salto(5); doc.text(l, M + (opts.indent || 0), y); y += 4.4; });
+        };
+
+        encabezado();
+        // Título + estado
+        const est = opsCalEstatusFolio(f);
+        doc.setTextColor(...TINTA); doc.setFont("helvetica", "bold"); doc.setFontSize(16);
+        doc.text(doc.splitTextToSize(limpio(f.estacion || "Servicio"), AN - 50), M, y + 2);
+        const estTxt = limpio(est.nombre || "").toUpperCase();
+        const rgb = hex => [1, 3, 5].map(i => parseInt((hex || "#64748b").slice(i, i + 2), 16));
+        doc.setFontSize(8); const anchoEst = doc.getTextWidth(estTxt) + 8;
+        doc.setFillColor(...rgb(est.color)); doc.roundedRect(W - M - anchoEst, y - 3, anchoEst, 7, 2, 2, "F");
+        doc.setTextColor(255, 255, 255); doc.text(estTxt, W - M - anchoEst / 2, y + 1.6, { align: "center" });
+        y += 9;
+        const receta = f.servicioCatalogoId ? cacheServiciosCatalogo.find(r => r.id === f.servicioCatalogoId) : null;
+        const tipoTxt = f.tipoFolio === "inspeccion" ? "Visita de inspección" + (f.normaInspeccion ? " · " + f.normaInspeccion : "") : f.tipoFolio === "laboratorio" ? "Laboratorio" : (receta ? receta.nombre : (f.tipoAlta === "programacion" ? "Programación" : "Servicio técnico"));
+        parrafo(tipoTxt, { color: GRIS, size: 10 });
+        y += 2;
+
+        seccion("Estación");
+        pares([["Razón social", f.estacionRazonSocial], ["PL / permiso CRE", f.estacionPermiso], ["Dirección", f.estacionDireccion], ["Zona", f.estacionZona], ["Encargado (catálogo)", f.estacionEncargado], ["CR", f.estacionCR]]);
+
+        seccion("Programación");
+        const durTxt = f.duracionValor ? `${f.duracionValor} ${({ min: "min", h: "h", dias: "día(s)" })[f.duracionUnidad] || "h"}` : (f.tiempoEjecucionHrs ? f.tiempoEjecucionHrs + " h" : null);
+        pares([["Fecha programada", fechaTxt(f.fechaProgramada)], ["Duración", durTxt], ["Traslado (por trayecto)", f.tiempoTrasladoHrs ? f.tiempoTrasladoHrs + " h" : null], ["Cantidad", f.cantidadUnidades], ["Capturado por", f.creadoPor], ["Fecha de captura", f.creadoEn ? fechaTxt(f.creadoEn) : null]]);
+
+        seccion("Equipo asignado");
+        const tecs = (f.tecnicosAsignadosNombres && f.tecnicosAsignadosNombres.length ? f.tecnicosAsignadosNombres : (f.tecnicosAsignadosIds || []).map(tid => cacheTec.find(t => t.id === tid)?.nombre).filter(Boolean));
+        pares([["Responsable", f.tecnicoResponsableNombre || f.responsable], [f.tipoFolio === "inspeccion" ? "Inspector(es)" : "Técnicos", tecs.slice().sort(opsAsAlfa).join(", ")], ["Vehículo", f.vehiculoPlaneado], ["Requiere viáticos", f.viaticosPendientes ? "Sí" : null]]);
+
+        if (f.clienteNombre || f.prioridad || f.vencimiento || f.fechaSolucion || f.fechaAtencion) {
+            seccion("Cliente y seguimiento");
+            pares([["Cliente", f.clienteNombre], ["Prioridad", f.prioridad], ["Fecha de solicitud", f.fechaSolicitud ? fechaTxt(f.fechaSolicitud) : null], ["Vencimiento SLA", f.vencimiento ? fechaTxt(f.vencimiento) : null], ["Fecha de atención", f.fechaAtencion ? fechaTxt(f.fechaAtencion) : null], ["Fecha de solución", f.fechaSolucion ? fechaTxt(f.fechaSolucion) : null], ["Completado por", f.completadoPor]]);
+        }
+        if (f.contactoNombre || f.contactoTelefono || f.contactoCorreo) {
+            seccion("Contacto que solicita");
+            pares([["Nombre", f.contactoNombre], ["Puesto", f.contactoPuesto], ["Teléfono", f.contactoTelefono], ["WhatsApp", f.contactoWhatsapp], ["Correo", f.contactoCorreo]]);
+        }
+        if (f.esSCFI || f.hologramas != null || f.precintos != null || f.distintivos != null || f.mangueras != null) {
+            seccion("Material de verificación");
+            pares([["Hologramas", f.hologramas], ["Precintos", f.precintos], ["Distintivos", f.distintivos], ["Mangueras", f.mangueras]]);
+        }
+        if ((f.herramientaChecklist || []).length) {
+            seccion("Herramienta");
+            f.herramientaChecklist.slice().sort((a, b) => opsAsAlfa(a.descripcion, b.descripcion)).forEach(h => parrafo(`${h.confirmada ? "[X]" : "[  ]"}  ${h.descripcion}${h.cantidad > 1 ? " × " + h.cantidad : ""}`));
+            y += 2;
+        }
+        if (receta && (receta.materiales || []).length) {
+            seccion(`Materiales (receta × ${f.cantidadUnidades || 1})`);
+            const cant = f.cantidadUnidades || 1;
+            receta.materiales.slice().sort((a, b) => opsAsAlfa(a.nombre, b.nombre)).forEach(m => {
+                const q = (Number(m.cantidadBase) || 0) * cant;
+                parrafo(`•  ${m.nombre}: ${m.unidad === "pza" || m.unidad === "lata" ? Math.ceil(q) : Math.round(q * 100) / 100} ${m.unidad || ""}`);
+            });
+            y += 2;
+        }
+        if (f.facturarA || f.proyecto || f.encargadoInterno || f.gastoEstimado) {
+            seccion("Facturación");
+            pares([["A quién se factura", f.facturarA], ["Proyecto", f.proyecto], ["Encargado interno", f.encargadoInterno], ["Gasto estimado", f.gastoEstimado ? "$" + Number(f.gastoEstimado).toLocaleString("es-MX") : null]]);
+        }
+        if (f.comentarios) { seccion("Comentarios"); parrafo(f.comentarios); y += 2; }
+
+        seccion("Seguimiento");
+        if (!comentarios.length) parrafo("Sin comentarios registrados.", { color: GRIS });
+        comentarios.forEach(c => {
+            salto(12);
+            const fc = c.createdAt?.toDate ? c.createdAt.toDate() : (c.createdAt ? new Date(c.createdAt) : null);
+            doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.6); doc.line(M + 1, y - 3, M + 1, y + 2);
+            parrafo(`${c.autor || c.autorEmail || "—"}  ·  ${fc && !isNaN(fc) ? fc.toLocaleString("es-MX", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : ""}`, { bold: true, size: 8.5, color: GRIS, indent: 4 });
+            parrafo(c.texto || "", { indent: 4 });
+            y += 2.5;
+        });
+
+        // Pie con paginación
+        const total = doc.getNumberOfPages();
+        for (let p = 1; p <= total; p++) {
+            doc.setPage(p);
+            doc.setDrawColor(...LINEA); doc.line(M, ALTO - 12, W - M, ALTO - 12);
+            doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.setTextColor(...GRIS);
+            doc.text("Hedma Tecnocontrol SA de CV · Portal Operativo", M, ALTO - 7);
+            doc.text(`Página ${p} de ${total}`, W - M, ALTO - 7, { align: "right" });
+        }
+        const nombre = ("Servicio_" + (f.folioOS || f.id.slice(0, 8)) + "_" + (f.estacion || "")).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9_-]+/g, "_").slice(0, 80);
+        doc.save(nombre + ".pdf");
+    };
+
+    // ═══════════════════ SELLO "FINALIZADO" EN EL CALENDARIO ═══════════════════
+    // El servicio completado se queda visible en su día con un sello encima (antes solo se
+    // atenuaba y parecía que había desaparecido).
+    function opsCalSelloFinal(clave, chico) {
+        const S = { completado: ["FINALIZADO", "#15803d"], facturar: ["FINALIZADO · POR FACTURAR", "#0d9488"], facturado: ["FINALIZADO · FACTURADO", "#0f766e"] }[clave];
+        if (!S) return "";
+        const [txt, col] = S;
+        return `<div style="position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:2;background:repeating-linear-gradient(135deg,rgba(255,255,255,.62) 0 7px,rgba(255,255,255,.42) 7px 14px);box-shadow:inset 3px 0 0 ${col};display:flex;align-items:center;justify-content:flex-end;padding-right:${chico ? 4 : 6}px;">
+            <span style="display:inline-flex;align-items:center;gap:${chico ? 3 : 4}px;background:${col};color:#fff;font-size:${chico ? 7.5 : 8.5}px;font-weight:800;letter-spacing:.6px;padding:${chico ? "2px 6px" : "3px 8px"};border-radius:999px;box-shadow:0 2px 6px ${col}55;white-space:nowrap;"><svg width="${chico ? 8 : 10}" height="${chico ? 8 : 10}" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>${chico && txt.length > 12 ? "FINALIZADO" : txt}</span>
+        </div>`;
+    }
+
     // ═══════════════════ ALTA DE SERVICIO DESDE EL CALENDARIO (oct-2026) ═══════════════════
     // Glen: "cada tipo de servicio requiere cierta información, cierta herramienta, ciertos
     // vehículos, ciertos técnicos — esas necesidades son lo que debe capturarse al dar de alta".
@@ -7456,7 +7855,7 @@
         { k: "programacion", n: "Solo programación", d: "Apartar fecha, lugar y técnico. Sin folio todavía.", c: "#64748b" },
         { k: "receta", n: "Servicio del catálogo", d: "Retank, integridad mecánica, cambio de botas… trae lo que pide su receta.", c: "#1D2E73" },
         { k: "poliza", n: "Folio de póliza (SLA)", d: "OXXO GAS / Petro Seven con prioridad y vencimiento.", c: "#7c3aed" },
-        { k: "inspeccion", n: "Visita de inspección", d: "JOMAR · Anexo 21/22, ASEA, SCFI, calibración.", c: "#0e7490" },
+        { k: "inspeccion", n: "Visita de inspección", d: "JOMAR · Anexo 21 y 22, ASEA, SCFI, calidad de petrolíferos, calibración.", c: "#0e7490" },
         { k: "laboratorio", n: "Laboratorio", d: "TecnoLab · avisa a Gestoría al guardar.", c: "#be185d" },
     ];
     const OPS_AS_NORMA_MATERIAL = ["SCFI", "Calibración Medida Volumétrica", "Alto Flujo"]; // siempre llevan hologramas/precintos/distintivos/mangueras
@@ -7522,11 +7921,12 @@
             vehiculo: "", herrOk: {},
             norma: OPS_NORMAS_INSPECCION[0], hologramas: "", precintos: "", distintivos: "", mangueras: "",
             clienteId: "", prioridad: "", fechaSolicitud: `${n.getFullYear()}-${p(n.getMonth() + 1)}-${p(n.getDate())}T${p(n.getHours())}:${p(n.getMinutes())}`,
-            contacto: "", telefono: "", os: "", comentarios: "",
+            contacto: "", telefono: "", whatsapp: "", correo: "", puesto: "Encargado de estación", contactoId: null, os: "", comentarios: "",
             viaticos: false, masFac: false, facturarA: "", proyecto: "", encargado: "",
         };
         // Flota real (Supabase) — la misma que usa Viáticos; se carga en segundo plano.
         if (typeof opsViaCargarFlota === "function") opsViaCargarFlota().then(() => { if (opsAS) opsAsPintar(); }).catch(() => {});
+        opsCargarContactos().catch(() => {});
         opsAsPintar();
     };
 
@@ -7543,11 +7943,19 @@
     // sin colección nueva. Los de la estación elegida salen primero.
     function opsAsDirectorio() {
         const m = new Map();
+        // Primero el directorio formal (ops_contactos), con todos sus datos de contacto
+        cacheContactos.forEach(c => {
+            if (!c.nombre) return;
+            m.set(opsAsNorm(c.nombre), { id: c.id, nombre: c.nombre, puesto: c.puesto || "", tel: c.telefono || "", whatsapp: c.whatsapp || "", correo: c.correo || "",
+                estaciones: new Set(c.estacionesNombres || []), ids: new Set(c.estacionesIds || []) });
+        });
         cacheFolios.forEach(f => {
             if (!f.contactoNombre) return;
             const k = opsAsNorm(f.contactoNombre);
-            const e = m.get(k) || { nombre: f.contactoNombre, tel: "", estaciones: new Set(), ids: new Set() };
+            const e = m.get(k) || { nombre: f.contactoNombre, tel: "", whatsapp: "", correo: "", puesto: "", estaciones: new Set(), ids: new Set() };
             if (f.contactoTelefono && !e.tel) e.tel = f.contactoTelefono;
+            if (f.contactoWhatsapp && !e.whatsapp) e.whatsapp = f.contactoWhatsapp;
+            if (f.contactoCorreo && !e.correo) e.correo = f.contactoCorreo;
             if (f.estacion) e.estaciones.add(f.estacion);
             if (f.estacionCatalogoId) e.ids.add(f.estacionCatalogoId);
             m.set(k, e);
@@ -7630,7 +8038,7 @@
         if (s.tipo === "receta" && receta) paso4 = opsAsRecetaHTML(receta, num(), lock(listo3));
         else if (s.tipo) paso4 = `
         <div class="opsas-sec ${lock(listo3)}">
-            <div class="opsas-sh"><div class="opsas-num">${num()}</div><div class="opsas-tt">Quién lo atiende</div><div class="opsas-hint">Orden alfabético · gris = no disponible ese día</div></div>
+            <div class="opsas-sh"><div class="opsas-num">${num()}</div><div class="opsas-tt">${s.tipo === "inspeccion" ? "Inspector" : "Quién lo atiende"}</div><div class="opsas-hint">Orden alfabético · gris = no disponible ese día</div></div>
             ${opsAsListaTecHTML("libre", null)}
         </div>`;
 
@@ -7670,14 +8078,18 @@
         // ── Contacto, O.S., comentarios ──
         const pasoContacto = s.tipo && s.tipo !== "programacion" ? `
         <div class="opsas-sec ${lock(listo3)}">
-            <div class="opsas-sh"><div class="opsas-num">${num()}</div><div class="opsas-tt">Quién lo solicita</div><div class="opsas-hint">Se autollena con contactos ya capturados</div></div>
+            <div class="opsas-sh"><div class="opsas-num">${num()}</div><div class="opsas-tt">Contacto / encargado de la estación</div><div class="opsas-hint">Se guarda en el directorio de contactos</div></div>
             <div class="opsas-grid">
-                <div style="position:relative;"><label class="opsas-lb">Contacto que solicita</label>
-                    <input class="opsas-in" value="${opsEsc(s.contacto)}" autocomplete="off" placeholder="Escribe un nombre…" oninput="opsAS.contacto=this.value;opsAsBuscarContacto(this.value)" onfocus="opsAsBuscarContacto(this.value)" onblur="setTimeout(()=>{const b=document.getElementById('opsas-con-drop');if(b)b.style.display='none';},180)">
+                <div style="position:relative;"><label class="opsas-lb">Nombre</label>
+                    <input class="opsas-in" value="${opsEsc(s.contacto)}" autocomplete="off" placeholder="Escribe un nombre…" oninput="opsAS.contacto=this.value;opsAS.contactoId=null;opsAsBuscarContacto(this.value)" onfocus="opsAsBuscarContacto(this.value)" onblur="setTimeout(()=>{const b=document.getElementById('opsas-con-drop');if(b)b.style.display='none';},180)">
                     <div id="opsas-con-drop" class="opsas-drop"></div></div>
-                <div><label class="opsas-lb">Teléfono</label><input id="opsas-tel" class="opsas-in" value="${opsEsc(s.telefono)}" oninput="opsAS.telefono=this.value"></div>
+                <div><label class="opsas-lb">Puesto</label><select class="opsas-in" onchange="opsAS.puesto=this.value">${OPS_PUESTOS_CONTACTO.map(p => `<option ${s.puesto === p ? "selected" : ""}>${p}</option>`).join("")}</select></div>
+                <div><label class="opsas-lb">Teléfono</label><input type="tel" class="opsas-in" value="${opsEsc(s.telefono)}" oninput="opsAS.telefono=this.value"></div>
+                <div><label class="opsas-lb">WhatsApp</label><input type="tel" class="opsas-in" value="${opsEsc(s.whatsapp)}" placeholder="10 dígitos" oninput="opsAS.whatsapp=this.value"></div>
+                <div><label class="opsas-lb">Correo</label><input type="email" class="opsas-in" value="${opsEsc(s.correo)}" placeholder="nombre@empresa.com" oninput="opsAS.correo=this.value"></div>
                 ${s.tipo !== "inspeccion" ? `<div><label class="opsas-lb">O.S. (si ya existe)</label><input class="opsas-in" value="${opsEsc(s.os)}" oninput="opsAS.os=this.value"></div>` : ""}
             </div>
+            <div class="opsas-note">Con WhatsApp y correo capturados, la pestaña Vencimientos puede avisarle al cliente cuando le toque su siguiente servicio.</div>
         </div>` : "";
 
         // ── Viáticos (mismo formulario del botón Viáticos) ──
@@ -7793,7 +8205,7 @@
         // Contacto sugerido de esa estación, si ya existe en folios previos
         if (!s.contacto) {
             const c = opsAsDirectorio().find(x => x.ids.has(e.id));
-            if (c) { s.contacto = c.nombre; s.telefono = c.tel || s.telefono; }
+            if (c) { s.contacto = c.nombre; s.telefono = c.tel || s.telefono; s.whatsapp = c.whatsapp || ""; s.correo = c.correo || ""; s.puesto = c.puesto || s.puesto; s.contactoId = c.id || null; }
         }
         opsAsPintar();
     };
@@ -7804,13 +8216,14 @@
         const lista = opsAsDirectorio().filter(c => !q || opsAsNorm(c.nombre).includes(q)).slice(0, 12);
         if (!lista.length) { box.style.display = "none"; return; }
         const estId = opsAS?.est?.id;
-        box.innerHTML = lista.map((c, i) => `<div class="opsas-opt" onmousedown="opsAsElegirContacto(${i},'${opsEsc(q).replace(/'/g, "")}')"><b>${opsEsc(c.nombre)}${estId && c.ids.has(estId) ? ' <span style="color:#15803d;font-size:10px;">· de esta estación</span>' : ""}</b><small>${opsEsc(c.tel || "sin teléfono")} · ${opsEsc([...c.estaciones].sort(opsAsAlfa).slice(0, 3).join(", "))}</small></div>`).join("");
+        box.innerHTML = lista.map((c, i) => `<div class="opsas-opt" onmousedown="opsAsElegirContacto(${i},'${opsEsc(q).replace(/'/g, "")}')"><b>${opsEsc(c.nombre)}${estId && c.ids.has(estId) ? ' <span style="color:#15803d;font-size:10px;">· de esta estación</span>' : ""}</b><small>${opsEsc([c.puesto, c.whatsapp || c.tel || "sin teléfono", c.correo].filter(Boolean).join(" · "))} · ${opsEsc([...c.estaciones].sort(opsAsAlfa).slice(0, 3).join(", "))}</small></div>`).join("");
         box.style.display = "block";
     };
     window.opsAsElegirContacto = function (i, q) {
         const lista = opsAsDirectorio().filter(c => !q || opsAsNorm(c.nombre).includes(q)).slice(0, 12);
         const c = lista[i]; if (!c || !opsAS) return;
-        opsAS.contacto = c.nombre; opsAS.telefono = c.tel || "";
+        opsAS.contacto = c.nombre; opsAS.telefono = c.tel || ""; opsAS.whatsapp = c.whatsapp || ""; opsAS.correo = c.correo || "";
+        opsAS.puesto = c.puesto || opsAS.puesto; opsAS.contactoId = c.id || null;
         opsAsPintar();
     };
 
@@ -7954,6 +8367,7 @@
                 fechaSolicitud: s.tipo === "poliza" ? s.fechaSolicitud : null, vencimiento,
                 fechaAtencion: null, fechaSolucion: null,
                 contactoNombre: s.contacto.trim() || null, contactoTelefono: s.telefono.trim() || null,
+                contactoWhatsapp: s.whatsapp.trim() || null, contactoCorreo: s.correo.trim() || null, contactoPuesto: s.contacto.trim() ? s.puesto : null,
                 encargadoInterno: s.encargado || null,
                 facturarA: s.masFac ? (s.facturarA.trim() || e?.razonSocial || null) : null,
                 proyecto: s.masFac ? (s.proyecto.trim() || null) : null,
@@ -7983,6 +8397,12 @@
             if (e?.id && !e.permiso && s.plNuevo.trim()) {
                 try { await fs.updateDoc(fs.doc(db, "estaciones_servicio", e.id), { permiso: s.plNuevo.trim() }); }
                 catch (err) { console.warn("[Alta servicio] no se pudo guardar el PL en el catálogo:", err.message); }
+            }
+            if (s.contacto.trim()) {
+                try {
+                    await opsGuardarContacto({ id: s.contactoId, nombre: s.contacto.trim(), puesto: s.puesto, telefono: s.telefono.trim(), whatsapp: s.whatsapp.trim(), correo: s.correo.trim() },
+                        { id: e?.id || null, nombre: datos.estacion, razonSocial: e?.razonSocial || null });
+                } catch (err) { console.warn("[Alta servicio] no se pudo guardar el contacto en el directorio:", err.message); }
             }
             if (!cacheFolios.some(x => x.id === nuevo.id)) cacheFolios.push({ id: nuevo.id, ...datos });
             const conViaticos = s.viaticos;
