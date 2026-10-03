@@ -6112,6 +6112,7 @@ function fmOpsServHTML(){
         (f.contactoNombre?'<div style="font-size:11.5px;color:#334155;margin-bottom:6px">Contacto: <b>'+opsSvEsc(f.contactoNombre)+'</b>'+(tel?' · <a href="tel:'+opsSvEsc(tel)+'" style="color:#1D4ED8;font-weight:700">'+opsSvEsc(tel)+'</a>':'')+'</div>':'')+
         (f.comentarios?'<div style="background:#F8FAFD;border:1px solid #E8EDF5;border-radius:8px;padding:7px 10px;font-size:11.5px;color:#334155;margin-bottom:8px">'+opsSvEsc(f.comentarios)+'</div>':'')+
         (enProc?'<div style="font-size:11px;color:#1E40AF;font-weight:700;margin-bottom:8px">Iniciado: '+opsSvEsc(opsSvFecha(f.iniciadoEn))+'</div>':'')+
+        '<button onclick="fmOpsServDetalle(\''+f.id+'\')" style="width:100%;padding:10px;margin-bottom:7px;background:#1D2E73;border:none;border-radius:8px;font-family:inherit;font-size:12px;font-weight:800;color:#fff;cursor:pointer">Ver todo: herramienta, material y datos</button>'+
         '<div style="display:grid;grid-template-columns:'+(mapa?'1fr 1fr 1fr':'1fr 1fr')+';gap:7px">'+
           (enProc
             ?'<button disabled style="padding:9px;background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:8px;font-family:inherit;font-size:11px;font-weight:800;color:#1E40AF">Iniciado</button>'
@@ -6190,6 +6191,103 @@ window.fmOpsServEnviarComentario=async function(id){
     if(msg)msg.textContent='No se pudo enviar. Revisa tu conexión e intenta de nuevo.';
     if(btn){btn.disabled=false;btn.textContent='Enviar';}
   }
+};
+
+// ── Detalle completo del servicio para el técnico (oct-2026) ──
+// Todo lo indispensable para hacer el trabajo: estación, contacto, equipo, vehículo,
+// herramienta, equipo de seguridad, material, requisitos e historial.
+// NUNCA muestra información delicada: precio, costos, comisiones, viáticos ni facturación.
+const _opsRecetasCache=new Map();
+async function opsSvReceta(id){
+  if(!id)return null;
+  if(_opsRecetasCache.has(id))return _opsRecetasCache.get(id);
+  try{const d=await opsDb().collection('ops_servicios_catalogo').doc(id).get();const r=d.exists?d.data():null;_opsRecetasCache.set(id,r);return r;}
+  catch(e){console.warn('[OPS receta]',e);return null;}
+}
+const OPS_SV_ROLES={lider:'Líder',tecnico:'Técnico',obra_civil:'Obra civil',ayudante:'Ayudante',electrico:'Eléctrico',soldador:'Soldador'};
+const OPS_SV_DELICADO=/comisi|precio|costo|utilidad|margen|factur|vi[aá]tico|\$\s?\d/i;
+window.fmOpsServDetalle=async function(id){
+  const f=misOpsServ.find(function(x){return x.id===id;}); if(!f)return;
+  document.getElementById('fm-ops-det')?.remove();
+  const ov=document.createElement('div'); ov.id='fm-ops-det';
+  ov.style.cssText='position:fixed;inset:0;background:#F4F6F9;z-index:99998;display:flex;flex-direction:column';
+  ov.innerHTML='<div style="background:#1D2E73;color:#fff;padding:calc(env(safe-area-inset-top,0px) + 14px) 16px 14px;display:flex;align-items:center;gap:10px">'+
+      '<button onclick="document.getElementById(\'fm-ops-det\').remove()" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:8px;padding:8px 12px;font-family:inherit;font-size:13px;font-weight:800">Cerrar</button>'+
+      '<div style="font-size:15px;font-weight:800;flex:1;line-height:1.2">'+opsSvEsc(f.estacion||'Servicio')+'</div></div>'+
+    '<div id="fm-ops-det-body" style="flex:1;overflow-y:auto;padding:14px 14px calc(env(safe-area-inset-bottom,0px) + 30px)"><div style="text-align:center;color:#94A3B8;font-size:13px;padding:30px">Cargando…</div></div>';
+  document.body.appendChild(ov);
+
+  const r=await opsSvReceta(f.servicioCatalogoId);
+  let coms=[];
+  try{
+    const sn=await opsDb().collection(OPS_COL_FOLIOS).doc(id).collection('comentarios').get();
+    coms=sn.docs.map(function(d){return d.data();}).filter(function(c){return c&&c.texto&&!OPS_SV_DELICADO.test(c.texto);})
+      .sort(function(a,b){return String(a.createdAt||'').localeCompare(String(b.createdAt||''));});
+  }catch(e){console.warn('[OPS comentarios]',e);}
+
+  const sec=function(t,h){return h?'<div style="background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:12px 14px;margin-bottom:10px"><div style="font-size:11px;font-weight:900;color:#1D2E73;letter-spacing:.5px;text-transform:uppercase;margin-bottom:8px">'+t+'</div>'+h+'</div>':'';};
+  const fila=function(k,v){return (v===0||v)?'<div style="display:flex;gap:10px;padding:5px 0;border-bottom:1px solid #F1F5F9;font-size:13px"><div style="width:112px;color:#64748B;flex-shrink:0">'+k+'</div><div style="color:#0A1628;font-weight:700;word-break:break-word">'+v+'</div></div>':'';};
+  const lista=function(items){return items.length?'<div>'+items.map(function(x){return '<div style="display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid #F1F5F9;font-size:13px"><div style="color:#0A1628">'+x[0]+'</div><div style="color:#1D2E73;font-weight:800;white-space:nowrap">'+(x[1]||'')+'</div></div>';}).join('')+'</div>':'';};
+  const e=opsSvEsc;
+  const cant=Math.max(1,Number(f.cantidadUnidades)||1);
+  const tel=f.contactoWhatsapp||f.contactoTelefono||'';
+  const wa=f.contactoWhatsapp?String(f.contactoWhatsapp).replace(/\D/g,''):'';
+  const mapa=(f.estacionLat!=null&&f.estacionLng!=null)?'https://www.google.com/maps/search/?api=1&query='+f.estacionLat+','+f.estacionLng:(f.estacionDireccion?'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(f.estacionDireccion):'');
+
+  // Herramienta: la confirmada en el alta (con palomita) o, si no hay, la de la receta
+  const herrFolio=(f.herramientaChecklist||[]);
+  const herr=(herrFolio.length?herrFolio:(r?.herramientaRequerida||[])).slice().sort(function(a,b){return String(a.descripcion||'').localeCompare(String(b.descripcion||''),'es');});
+  const herrHTML=herr.length?'<div>'+herr.map(function(h){
+    return '<div style="display:flex;gap:9px;align-items:flex-start;padding:7px 0;border-bottom:1px solid #F1F5F9;font-size:13px">'+
+      '<span style="flex-shrink:0;width:18px;height:18px;border-radius:5px;margin-top:1px;display:inline-flex;align-items:center;justify-content:center;'+(h.confirmada?'background:#DCFCE7;color:#15803D':'background:#F1F5F9;color:#94A3B8')+'">'+(h.confirmada?'<span style="width:12px;height:12px;display:inline-flex">'+IC.check+'</span>':'')+'</span>'+
+      '<div style="flex:1;color:#0A1628">'+e(h.descripcion)+(h.etapa?' <span style="color:#94A3B8;font-size:11px">· '+e(OPS_SV_ROLES[h.etapa]||h.etapa)+'</span>':'')+'</div>'+
+      '<div style="color:#1D2E73;font-weight:800">'+(h.cantidad>1?'× '+e(h.cantidad):'')+'</div></div>';
+  }).join('')+(herrFolio.length?'<div style="font-size:11px;color:#64748B;margin-top:6px">Con palomita: confirmada por Operaciones al programar.</div>':'')+'</div>':'';
+
+  const seg=(r?.equipoSeguridad||[]).slice().sort(function(a,b){return String(a.nombre||'').localeCompare(String(b.nombre||''),'es');}).map(function(x){return [e(x.nombre),e(x.cantidad)];});
+  const mat=(r?.materiales||[]).slice().sort(function(a,b){return String(a.nombre||'').localeCompare(String(b.nombre||''),'es');}).map(function(m){
+    const q=(Number(m.cantidadBase)||0)*(m.reglaConsumo==='fijo'?1:cant);
+    const qq=(m.unidad==='pza'||m.unidad==='lata')?Math.ceil(q):Math.round(q*100)/100;
+    return [e(m.nombre)+(m.nota?' <span style="color:#94A3B8;font-size:11px">· '+e(m.nota)+'</span>':''), qq?e(qq+' '+(m.unidad||'')):''];
+  });
+  const personal=(r?.personal||[]).map(function(p){return [e(OPS_SV_ROLES[p.rol]||p.rol),e(p.cantidad||1)];});
+  const requisitos=[r?.requiereObraCivil?'Requiere obra civil':'',r?.requiereRemolque?'Requiere remolque':'',r?.vehiculos?.duracionNota||''].filter(Boolean);
+  const scfi=[['Hologramas',f.hologramas],['Precintos',f.precintos],['Distintivos',f.distintivos],['Mangueras',f.mangueras]].filter(function(x){return x[1]!=null&&x[1]!=='';});
+
+  const body=document.getElementById('fm-ops-det-body'); if(!body)return;
+  body.innerHTML=
+    sec('Servicio',
+      fila('Tipo',e(opsSvTipo(f)))+fila('Servicio',r?e(r.nombre):'')+fila('Cantidad',r&&cant>1?e(cant+' unidades'):'')+
+      fila('Fecha',e(opsSvFecha(f.fechaProgramada)))+fila('Duración',f.tiempoEjecucionHrs?e(f.tiempoEjecucionHrs+' h'):'')+fila('Traslado',f.tiempoTrasladoHrs?e(f.tiempoTrasladoHrs+' h'):'')+
+      fila('Folio O.S.',e(f.folioOS||''))+fila('Folio cliente',e(f.folioClienteId||''))+fila('Cliente',e(f.clienteNombre||''))+fila('Prioridad',e(f.prioridad||''))+
+      fila('Vence',f.vencimiento?e(opsSvFecha(f.vencimiento)):''))+
+    sec('Indicaciones de Operaciones',f.comentarios?'<div style="font-size:13.5px;color:#0A1628;line-height:1.5;white-space:pre-wrap">'+e(f.comentarios)+'</div>':'')+
+    sec('Estación',
+      fila('Nombre',e(f.estacion||''))+fila('Razón social',e(f.estacionRazonSocial||''))+fila('Permiso (PL)',e(f.estacionPermiso||''))+fila('CR',e(f.estacionCR||''))+
+      fila('Dirección',e(f.estacionDireccion||''))+fila('Zona',e(f.estacionZona||f.plaza||''))+fila('Encargado',e(f.estacionEncargado||''))+
+      fila('Dispensarios',e(f.numeroDispensarios||f.estacionNumeroDispensarios||''))+fila('Tanques',e(f.estacionNumeroTanques||''))+fila('Sondas',e(f.estacionNumeroSondas||''))+
+      (mapa?'<a href="'+mapa+'" target="_blank" rel="noopener" style="display:block;text-align:center;margin-top:10px;padding:10px;border-radius:8px;background:#EEF2FF;color:#1D2E73;font-weight:800;font-size:13px;text-decoration:none">Abrir en el mapa</a>':''))+
+    sec('Contacto en la estación',f.contactoNombre||tel?
+      fila('Nombre',e(f.contactoNombre||''))+fila('Puesto',e(f.contactoPuesto||''))+
+      fila('Teléfono',tel?'<a href="tel:'+e(tel)+'" style="color:#1D4ED8">'+e(tel)+'</a>':'')+
+      fila('WhatsApp',wa?'<a href="https://wa.me/52'+e(wa.slice(-10))+'" target="_blank" rel="noopener" style="color:#15803D">Enviar mensaje</a>':'')+
+      fila('Correo',f.contactoCorreo?'<a href="mailto:'+e(f.contactoCorreo)+'" style="color:#1D4ED8">'+e(f.contactoCorreo)+'</a>':''):'')+
+    sec('Equipo',
+      fila('Técnicos',e((f.tecnicosAsignadosNombres||[]).join(', ')))+fila('Responsable',e(f.tecnicoResponsableNombre||f.responsable||''))+
+      fila('Encargado interno',e(f.encargadoInterno||''))+fila('Vehículo',e(f.vehiculoPlaneado||''))+
+      (personal.length?'<div style="font-size:11.5px;color:#64748B;margin:8px 0 2px">Personal que pide el servicio</div>'+lista(personal):''))+
+    sec('Inspección',f.tipoFolio==='inspeccion'?fila('Norma',e(f.normaInspeccion||''))+scfi.map(function(x){return fila(x[0],e(x[1]));}).join(''):'')+
+    sec('Herramienta ('+herr.length+')',herrHTML)+
+    sec('Equipo de seguridad',lista(seg))+
+    sec('Material'+(r&&cant>1?' para '+cant+' unidades':''),lista(mat))+
+    sec('Requisitos',requisitos.length?requisitos.map(function(t){return '<div style="font-size:13px;color:#92400E;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:7px 10px;margin-bottom:6px">'+e(t)+'</div>';}).join(''):'')+
+    sec('Seguimiento',coms.length?coms.map(function(c){return '<div style="padding:7px 0;border-bottom:1px solid #F1F5F9"><div style="font-size:10.5px;color:#64748B;font-weight:700">'+e(c.autor||'')+(c.createdAt?' · '+e(opsSvFecha(String(c.createdAt).slice(0,16))):'')+'</div><div style="font-size:12.5px;color:#0A1628;line-height:1.4">'+e(c.texto)+'</div></div>';}).join(''):'')+
+    (!herr.length&&!mat.length&&!seg.length?'<div style="font-size:12px;color:#64748B;text-align:center;padding:6px 10px 14px">Este servicio no tiene herramienta ni material capturados. Si te falta algo, usa "Comentar" para avisar a Operaciones.</div>':'')+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px">'+
+      (f.iniciadoEn?'<button disabled style="padding:12px;background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:10px;font-family:inherit;font-size:13px;font-weight:800;color:#1E40AF">Iniciado</button>'
+        :'<button onclick="document.getElementById(\'fm-ops-det\').remove();fmOpsServIniciar(\''+f.id+'\',null)" style="padding:12px;background:#15803D;border:none;border-radius:10px;font-family:inherit;font-size:13px;font-weight:800;color:#fff">Iniciar servicio</button>')+
+      '<button onclick="fmOpsServComentar(\''+f.id+'\')" style="padding:12px;background:#fff;border:1.5px solid #CBD5E1;border-radius:10px;font-family:inherit;font-size:13px;font-weight:800;color:#334155">Comentar</button>'+
+    '</div>';
 };
 
 })();
