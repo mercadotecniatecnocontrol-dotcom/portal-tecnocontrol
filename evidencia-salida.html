@@ -58,6 +58,10 @@ const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<'
 
 const params = new URLSearchParams(window.location.search);
 const pedidoId = params.get('id');
+// Tipo de evidencia que se sube con este enlace/QR: salida (por defecto), remision o general
+const CAT_VALIDAS = { salida:'Evidencia de salida de material', remision:'Evidencia de remisión', general:'Evidencia del pedido' };
+const categoriaEvid = CAT_VALIDAS[params.get('cat')] ? params.get('cat') : 'salida';
+(function(){ const h = document.querySelector('.hero h1'); if(h) h.textContent = CAT_VALIDAS[categoriaEvid]; document.title = CAT_VALIDAS[categoriaEvid] + ' · Tecnocontrol'; })();
 
 if(!pedidoId){
   $('info-card').innerHTML = '<div class="loading" style="color:var(--rojo);">Falta el identificador del pedido en el enlace. Pide un nuevo enlace/QR desde Almacén.</div>';
@@ -128,7 +132,7 @@ if(!pedidoId){
         // Foto: se comprime y se guarda incrustada en el propio registro — igual que siempre.
         const dataUrl = await comprimirImagen(file);
         await window.tcSbAgregarEvidencia(pedidoId, {
-          tipo:'imagen', imagen: dataUrl, subidoPor: nombre, categoria: 'salida'
+          tipo:'imagen', imagen: dataUrl, subidoPor: nombre, categoria: categoriaEvid
         });
       } else {
         // Documento (PDF/Word/etc.) — se guarda igual, como base64, dentro del propio registro.
@@ -139,7 +143,7 @@ if(!pedidoId){
           r.readAsDataURL(file);
         });
         await window.tcSbAgregarEvidencia(pedidoId, {
-          tipo:'archivo', nombre: file.name, url: dataUrl, categoria: 'salida'
+          tipo:'archivo', nombre: file.name, url: dataUrl, subidoPor: nombre, categoria: categoriaEvid
         });
       }
       setMsg('✓ Subido','var(--ok)');

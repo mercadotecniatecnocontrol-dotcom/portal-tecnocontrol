@@ -511,38 +511,81 @@
   //    para subir desde el celular) — antes el botón de escritorio dependía
   //    de un <input> oculto sin ninguna ventana visible, lo que en algunos
   //    casos se sentía como que "no pasaba nada". ──
-  window.__almAbrirModalEvidencia = function(id){
+  // catInicial: 'salida' | 'remision' | 'general' (opcional, preselecciona el tipo)
+  // origen: 'lista' | 'detalle' (opcional) — cuando se abre desde el Historial de
+  // entregas, muestra el botón para regresar sin perder lo que se estaba viendo.
+  var _evidModalTimer = null;
+  var ETIQ_CAT_EVID = { salida:'salida de almacén', remision:'remisión', general:'evidencia' };
+  function linkEvidenciaMovil(id, cat){
+    var base = window.location.href.replace(/[?#].*$/, '').replace(/[^/]*$/, '');
+    return base + 'evidencia-salida.html?id=' + encodeURIComponent(id) + '&cat=' + encodeURIComponent(cat||'salida');
+  }
+  function qrDeLink(link){ return 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(link); }
+  function waDeLink(link, cat){ return 'https://wa.me/?text=' + encodeURIComponent('Sube la evidencia de ' + (ETIQ_CAT_EVID[cat]||'salida de almacén') + ' aquí: ' + link); }
+
+  window.__almEvidCambiarCat = function(id, cat){
+    var link = linkEvidenciaMovil(id, cat);
+    var img = document.getElementById('alm-evid-qr-img'); if (img) img.src = qrDeLink(link);
+    var inp = document.getElementById('alm-link-evid-movil'); if (inp) inp.value = link;
+    var wa = document.getElementById('alm-evid-wa'); if (wa) wa.href = waDeLink(link, cat);
+    var et = document.getElementById('alm-evid-qr-etq'); if (et) et.textContent = ETIQ_CAT_EVID[cat] || 'salida de almacén';
+  };
+
+  window.__almVolverDesdeEvidencia = function(id, origen){
+    if (_evidModalTimer){ clearInterval(_evidModalTimer); _evidModalTimer = null; }
+    if (origen === 'detalle') window.__almVerDetalleHistorial(id);
+    else window.__almAbrirHistorialEntregas(true);
+  };
+
+  window.__almAbrirModalEvidencia = function(id, catInicial, origen){
     var p = buscarP(id) || (_repEntregas||[]).find(function(x){ return x.id===id; });
-    var base = window.location.href.replace(/[^/]*$/, '');
-    var link = base + 'evidencia-salida.html?id=' + encodeURIComponent(id);
-    var qrSrc = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(link);
+    var cat = (catInicial==='remision' || catInicial==='general') ? catInicial : 'salida';
+    if (origen === 'lista') guardarFiltrosReporte();
+    var link = linkEvidenciaMovil(id, cat);
+    function radio(valor, texto){
+      return '<label style="display:flex;align-items:center;gap:5px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:6px 12px;font-size:11.5px;font-weight:600;color:#334155;cursor:pointer;"><input type="radio" name="alm-evid-cat-'+id+'" value="'+valor+'"'+(cat===valor?' checked':'')+' onchange="window.__almEvidCambiarCat(\''+id+'\',this.value)"> '+texto+'</label>';
+    }
+    var svgVolver = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>';
     construirModalHistorial();
     var box=document.getElementById('alm-modal-hist-box');
     box.classList.remove('wide');
     box.innerHTML = '<h4>Subir evidencia'+(p?(' · '+esc(p.folio||'')):'')+'<button onclick="event.stopPropagation();window.__almCerrarModal()">&times;</button></h4>'
+      + (origen ? '<button type="button" onclick="event.stopPropagation();window.__almVolverDesdeEvidencia(\''+id+'\',\''+origen+'\')" style="display:inline-flex;align-items:center;gap:4px;margin:-4px 0 12px;background:#f1f5f9;border:none;color:#334155;padding:6px 11px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:700;">'+svgVolver+(origen==='detalle'?'Volver al detalle':'Volver al historial')+'</button>' : '')
+      + (p && p.cliente ? '<div style="font-size:12px;color:#64748b;margin:-4px 0 12px;">'+esc(p.cliente)+'</div>' : '')
       + '<div style="margin-bottom:12px;">'
       +   '<label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:6px;">¿Esta evidencia es de qué paso?</label>'
       +   '<div style="display:flex;gap:8px;flex-wrap:wrap;">'
-      +     '<label style="display:flex;align-items:center;gap:5px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:6px 12px;font-size:11.5px;font-weight:600;color:#334155;cursor:pointer;"><input type="radio" name="alm-evid-cat-'+id+'" value="salida" checked> Salida de almacén</label>'
-      +     '<label style="display:flex;align-items:center;gap:5px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:6px 12px;font-size:11.5px;font-weight:600;color:#334155;cursor:pointer;"><input type="radio" name="alm-evid-cat-'+id+'" value="remision"> Remisión</label>'
-      +     '<label style="display:flex;align-items:center;gap:5px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:6px 12px;font-size:11.5px;font-weight:600;color:#334155;cursor:pointer;"><input type="radio" name="alm-evid-cat-'+id+'" value="general"> Otra</label>'
+      +     radio('salida','Salida de almacén') + radio('remision','Remisión') + radio('general','Otra')
       +   '</div>'
       + '</div>'
       + '<button type="button" class="alm-evid-add" style="width:100%;margin-bottom:14px;box-sizing:border-box;" onclick="window.__almSubirEvidencia(\''+id+'\')">📎 Elegir foto o documento desde esta computadora</button>'
       + '<input type="file" accept="image/*,.pdf,.doc,.docx" id="alm-evid-file-'+id+'" style="display:none">'
       + '<div style="border-top:1px dashed #e2e8f0;padding-top:14px;text-align:center;">'
-      +   '<div style="font-size:11.5px;font-weight:700;color:#64748b;margin-bottom:10px;">O escanea con el celular para subirla desde ahí</div>'
-      +   '<img src="'+qrSrc+'" alt="Código QR" style="border:1px solid #e2e8f0;border-radius:12px;padding:8px;background:#fff;">'
+      +   '<div style="font-size:11.5px;font-weight:700;color:#64748b;margin-bottom:10px;">O escanea con el celular para subir la evidencia de <span id="alm-evid-qr-etq" style="color:#0e7490;">'+(ETIQ_CAT_EVID[cat])+'</span></div>'
+      +   '<img id="alm-evid-qr-img" src="'+qrDeLink(link)+'" alt="Código QR" style="border:1px solid #e2e8f0;border-radius:12px;padding:8px;background:#fff;">'
       +   '<div style="margin-top:12px;display:flex;gap:6px;">'
       +     '<input type="text" readonly value="'+esc(link)+'" id="alm-link-evid-movil" style="flex:1;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:11px;color:#475569;" onclick="this.select()">'
       +     '<button onclick="navigator.clipboard.writeText(document.getElementById(\'alm-link-evid-movil\').value).then(function(){ if(window.mostrarPush) window.mostrarPush(\'Enlace copiado\',\'\',\'📋\'); })" style="background:#f1f5f9;border:none;color:#334155;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap;">Copiar</button>'
       +   '</div>'
-      +   '<a href="https://wa.me/?text='+encodeURIComponent('📷 Sube la evidencia aquí: '+link)+'" target="_blank" style="display:inline-block;margin-top:10px;background:#25D366;color:#fff;padding:8px 14px;border-radius:8px;text-decoration:none;font-size:11.5px;font-weight:600;">💬 Enviar por WhatsApp</a>'
+      +   '<a id="alm-evid-wa" href="'+waDeLink(link, cat)+'" target="_blank" style="display:inline-block;margin-top:10px;background:#25D366;color:#fff;padding:8px 14px;border-radius:8px;text-decoration:none;font-size:11.5px;font-weight:600;">💬 Enviar por WhatsApp</a>'
       + '</div>'
-      + '<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#94a3b8;margin:16px 0 6px;">Evidencia ya subida</div>'
-      + '<div class="alm-evid-grid" id="alm-hist-evid-'+id+'"><div style="color:#94a3b8;font-size:12px;">Cargando…</div></div>';
+      + '<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#94a3b8;margin:16px 0 6px;">Evidencia de salida de almacén</div>'
+      + '<div class="alm-evid-grid" id="alm-hist-evid-salida-'+id+'"><div style="color:#94a3b8;font-size:12px;">Cargando…</div></div>'
+      + '<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#94a3b8;margin:14px 0 6px;">Evidencia de remisión</div>'
+      + '<div class="alm-evid-grid" id="alm-hist-evid-remision-'+id+'"><div style="color:#94a3b8;font-size:12px;">Cargando…</div></div>'
+      + '<div style="font-size:10.5px;color:#94a3b8;margin-top:8px;">Lo que se suba desde el celular aparece aquí solo en unos segundos.</div>';
     document.getElementById('alm-modal-hist').classList.add('show');
     window.__almRefrescarEvidHist(id);
+    // Refresco automático mientras esta ventana siga abierta, para ver lo que
+    // se sube desde el celular (QR) sin tener que cerrar y volver a abrir.
+    if (_evidModalTimer) clearInterval(_evidModalTimer);
+    _evidModalTimer = setInterval(function(){
+      var m = document.getElementById('alm-modal-hist');
+      if (!m || !m.classList.contains('show') || !document.getElementById('alm-evid-qr-img')){
+        clearInterval(_evidModalTimer); _evidModalTimer = null; return;
+      }
+      window.__almRefrescarEvidHist(id);
+    }, 5000);
   };
 
   // Abre un documento (PDF/Word/etc.) en pestaña nueva. Si viene como data:
@@ -1802,6 +1845,15 @@
     return { desde:desde, hasta:hasta, q:q };
   }
 
+  // Filtros del historial guardados al salir a otra ventana (evidencia/detalle),
+  // para que al regresar se vea exactamente lo mismo que antes.
+  var _repFiltrosGuardados = null;
+  function guardarFiltrosReporte(){
+    var dEl=document.getElementById('alm-rep-desde'), hEl=document.getElementById('alm-rep-hasta'), qEl=document.getElementById('alm-rep-q');
+    if (!dEl && !hEl && !qEl) return; // la lista no está en pantalla — se conserva lo ya guardado
+    _repFiltrosGuardados = { d: dEl?dEl.value:'', h: hEl?hEl.value:'', q: qEl?qEl.value:'' };
+  }
+
   function fmtFecha(ms){ return ms ? new Date(ms).toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}) : '—'; }
 
   function chipAdjunto(etiqueta, presente, onClickJS, colorOn){
@@ -1866,6 +1918,13 @@
         + chipAdjunto('Documento', e.numDocumentos>0, 'window.__almVerDetalleHistorial(\''+e.id+'\')')
         + chipAdjunto('PDF original', e.tienePdfOriginal, 'window.__almVerPDF(\''+e.id+'\')')
         + chipAdjunto('Carátula envío', !!e.caratulaEnvio, 'window.__almVerDetalleHistorial(\''+e.id+'\')');
+      // Botón para subir evidencia (archivo, QR o enlace) directo desde el historial.
+      // Preselecciona lo que falta: primero salida, luego remisión.
+      var catSugerida = !e.evidSalida ? 'salida' : (!e.evidRemision ? 'remision' : 'salida');
+      var btnSubir = esCancelado ? '' :
+        '<button type="button" title="Subir evidencia de salida o remisión (archivo o QR)" onclick="event.stopPropagation();window.__almAbrirModalEvidencia(\''+e.id+'\',\''+catSugerida+'\',\'lista\')" style="display:flex;align-items:center;gap:5px;background:#0e7490;border:1px solid #0e7490;border-radius:7px;padding:5px 10px;font-size:10.5px;font-weight:700;color:#fff;white-space:nowrap;cursor:pointer;">'
+        + '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3"/></svg>'
+        + 'Subir evidencia</button>';
 
       return '<div class="alm-rep-card" style="border-left-color:'+colorBorde+'" onclick="window.__almVerDetalleHistorial(\''+e.id+'\')">'
         + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px;">'
@@ -1884,7 +1943,7 @@
         +   '<div><span style="color:#94a3b8;">Piezas:</span> '+e.piezas+'</div>'
         +   '<div><span style="color:#94a3b8;">Folio remisión:</span> '+(e.remisionAspelFolio?('<b>'+esc(e.remisionAspelFolio)+'</b>'):'—')+'</div>'
         + '</div>'
-        + '<div style="display:flex;flex-wrap:wrap;gap:6px;">'+chips+'</div>'
+        + '<div style="display:flex;flex-wrap:wrap;gap:6px;">'+chips+btnSubir+'</div>'
         + '</div>';
     }).join('');
   }
@@ -1894,11 +1953,13 @@
   window.__almVerDetalleHistorial = function(id){
     var e = (_repEntregas||[]).find(function(x){ return x.id===id; });
     if(!e) return;
+    guardarFiltrosReporte();
     construirModalHistorial();
     var box=document.getElementById('alm-modal-hist-box');
     box.classList.add('wide');
     var esCancelado = e.estado==='cancelado';
     box.innerHTML = '<h4>'+esc(e.folio)+' · '+(e.tipo==='material'?'Material':'Venta')+'<button onclick="event.stopPropagation();window.__almCerrarModal()">&times;</button></h4>'
+      + '<button type="button" onclick="event.stopPropagation();window.__almAbrirHistorialEntregas(true)" style="display:inline-flex;align-items:center;gap:4px;margin:-4px 0 10px;background:#f1f5f9;border:none;color:#334155;padding:6px 11px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:700;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>Volver al historial</button>'
       + '<div style="font-size:13px;color:#334155;line-height:1.9;margin-bottom:12px;">'
       +   '<div><strong>Cliente:</strong> '+esc(e.cliente||'—')+'</div>'
       +   '<div><strong>Solicitó:</strong> '+esc(e.solicito||'—')+'</div>'
@@ -1921,10 +1982,10 @@
       + (e.firma ? '<div style="margin-bottom:10px;"><div style="font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:4px;">FIRMA DEL SOLICITANTE</div><img src="'+esc(e.firma)+'" style="max-width:220px;border:1px solid #e2e8f0;border-radius:8px;cursor:pointer;" onclick="window.__almVerFirmaId(\''+e.id+'\',\'sol\')"></div>' : '')
       + (e.firmaEntrega ? '<div style="margin-bottom:14px;"><div style="font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:4px;">FIRMA DE ENTREGA</div><img src="'+esc(e.firmaEntrega)+'" style="max-width:220px;border:1px solid #e2e8f0;border-radius:8px;cursor:pointer;" onclick="window.__almVerFirmaId(\''+e.id+'\',\'entrega\')"></div>' : '')
       + '<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#94a3b8;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;">Evidencia de salida de almacén'
-      +   '<button type="button" onclick="event.stopPropagation();window.__almSubirEvidencia(\''+e.id+'\',\'salida\')" style="text-transform:none;letter-spacing:normal;font-size:10.5px;font-weight:700;color:#0891b2;background:#fff;border:1px dashed #cbd5e1;border-radius:6px;padding:3px 9px;cursor:pointer;">+ Subir</button></div>'
+      +   '<button type="button" onclick="event.stopPropagation();window.__almAbrirModalEvidencia(\''+e.id+'\',\'salida\',\'detalle\')" style="text-transform:none;letter-spacing:normal;font-size:10.5px;font-weight:700;color:#0891b2;background:#fff;border:1px dashed #cbd5e1;border-radius:6px;padding:3px 9px;cursor:pointer;">+ Subir (archivo o QR)</button></div>'
       + '<div class="alm-evid-grid" id="alm-hist-evid-salida-'+e.id+'"><div style="color:#94a3b8;font-size:12px;">Cargando…</div></div>'
       + '<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#94a3b8;margin:14px 0 6px;display:flex;align-items:center;justify-content:space-between;"><span>Evidencia de remisión'+(e.remisionado?' · <span style="color:#16a34a;">✓ Remisionado</span>':'')+'</span>'
-      +   '<button type="button" onclick="event.stopPropagation();window.__almSubirEvidencia(\''+e.id+'\',\'remision\')" style="text-transform:none;letter-spacing:normal;font-size:10.5px;font-weight:700;color:#0891b2;background:#fff;border:1px dashed #cbd5e1;border-radius:6px;padding:3px 9px;cursor:pointer;">+ Subir</button></div>'
+      +   '<button type="button" onclick="event.stopPropagation();window.__almAbrirModalEvidencia(\''+e.id+'\',\'remision\',\'detalle\')" style="text-transform:none;letter-spacing:normal;font-size:10.5px;font-weight:700;color:#0891b2;background:#fff;border:1px dashed #cbd5e1;border-radius:6px;padding:3px 9px;cursor:pointer;">+ Subir (archivo o QR)</button></div>'
       + '<div class="alm-evid-grid" id="alm-hist-evid-remision-'+e.id+'"><div style="color:#94a3b8;font-size:12px;">Cargando…</div></div>'
       + '<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#94a3b8;margin:14px 0 6px;">Documentos adjuntos (órdenes de compra, etc.)</div>'
       + '<div id="alm-hist-docs-'+e.id+'" style="font-size:12px;color:#94a3b8;">Cargando…</div>'
@@ -1964,6 +2025,13 @@
       // en "general" — se muestra junto con "salida" para no perderla de vista.
       pintar('alm-hist-evid-salida-'+id, list.filter(function(ev){ return (ev.categoria||'general')!=='remision'; }));
       pintar('alm-hist-evid-remision-'+id, list.filter(function(ev){ return ev.categoria==='remision'; }));
+      // Mantiene al día las palomitas (Salida / Remisión) de la tarjeta del
+      // historial, para que al regresar a la lista ya se vea lo recién subido.
+      var eRep = (_repEntregas||[]).find(function(x){ return x.id===id; });
+      if (eRep){
+        eRep.evidSalida = list.filter(function(ev){ return (ev.categoria||'general')!=='remision'; })[0] || null;
+        eRep.evidRemision = list.filter(function(ev){ return ev.categoria==='remision'; })[0] || null;
+      }
     });
   };
 
@@ -1981,7 +2049,9 @@
     document.getElementById('alm-modal-hist').classList.add('show');
   };
 
-  window.__almAbrirHistorialEntregas = function(){
+  window.__almAbrirHistorialEntregas = function(conservar){
+    conservar = conservar === true;
+    if (_evidModalTimer){ clearInterval(_evidModalTimer); _evidModalTimer = null; }
     construirModalHistorial();
     var box = document.getElementById('alm-modal-hist-box');
     box.classList.add('wide');
@@ -2008,7 +2078,19 @@
         window.__almRepDeb = setTimeout(renderTablaReporte, 150);
       });
     });
-    window.__almRecargarReporte();
+    if (conservar && _repFiltrosGuardados){
+      document.getElementById('alm-rep-desde').value = _repFiltrosGuardados.d || '';
+      document.getElementById('alm-rep-hasta').value = _repFiltrosGuardados.h || '';
+      document.getElementById('alm-rep-q').value = _repFiltrosGuardados.q || '';
+    } else if (!conservar) {
+      _repFiltrosGuardados = null;
+    }
+    if (conservar && _repEntregas){
+      renderTablaReporte();
+      actualizarContadorSeleccion();
+    } else {
+      window.__almRecargarReporte();
+    }
   };
 
   window.__almRecargarReporte = function(){
