@@ -1914,19 +1914,34 @@ function renderNuevaSol(){
   // ── Regla de checklist según el día ──
   // Lunes/Martes/Miércoles + checklist semanal de esta semana ya hecho → confirmación + firma
   // Jueves..Domingo, o checklist semanal no hecho → checklist interno normal
-  const semCompletado=chkSemCompletadoActual(()=>{if(vistaAct==='solicitud')renderNuevaSol();});
-  const modoConfirmacion=!esMaquinaria(miVeh)&&esLunesAMiercoles()&&semCompletado===true;
+  // Nueva regla: la solicitud ya NO lleva check list ni confirmación semanal.
+  // Solo 4 fotos principales + fotos opcionales de un detalle.
+  const modoConfirmacion=false;
   solState.modoConfirmacion=modoConfirmacion;
   const _solDraft=_draftLoad(_DRAFT.SOL);
-  if(_solDraft&&Object.keys(_solDraft.chk||{}).length>0){
+  if(_solDraft&&((_solDraft.evFotos||[]).length>0||_solDraft.desc)){
     setTimeout(()=>_draftBanner('sol',
       ()=>{
         // Restaurar estado y re-renderizar el formulario completo
         Object.assign(solState,_solDraft);
         solState.modoConfirmacion=modoConfirmacion; // no confiar en el borrador para esta regla — depende del día/semana actual
-        // Re-pintar checklist con valores guardados
-        const chkList=document.getElementById('fm-chk-list');
-        if(chkList)chkList.innerHTML=renderChkMovil();
+        // Ya no hay check list en la solicitud: se descarta cualquier resto de borradores viejos
+        solState.chk={};solState.chkComt={};
+        if(!esMaquinaria(miVeh))solState.chkFotos={};
+        // Re-pintar las 4 fotos principales y las fotos de detalle
+        const grid=document.getElementById('fm-angulos-grid');
+        if(grid)grid.innerHTML=renderAngulosBasicosGrid(solState.evFotos,'sol');
+        const evWrap=document.getElementById('fm-ev-wrap');
+        if(evWrap){
+          evWrap.innerHTML='';
+          (solState.evFotos||[]).filter(f=>!f?.meta?.angulo).forEach(f=>{
+            const pill=document.createElement('div');
+            pill.className='fm-ev-pill';
+            pill.onclick=()=>fmVerFoto(f);
+            pill.innerHTML=`<img src="${f.src}"><span>${f.meta?.codigo||''}</span>`;
+            evWrap.appendChild(pill);
+          });
+        }
         // Re-pintar gasolina
         const gasWrap=document.getElementById('fm-gauge-wrap');
         if(gasWrap)gasWrap.innerHTML=renderGaugeSVG(solState.gasolina)+'<div class="fm-gauge-labels" style="width:200px"><span>VACÍO</span><span>2/4</span><span>MEDIO</span><span>3/4</span><span>LLENO</span></div>';
@@ -1938,11 +1953,7 @@ function renderNuevaSol(){
         // Re-pintar descripción
         const descInput=document.getElementById('fm-desc');
         if(descInput&&solState.desc)descInput.value=solState.desc;
-        // Re-pintar contador checklist
-        const total=Object.values(CHK_CATS).flat().length;
-        const rev=Object.values(solState.chk).filter(v=>v==='si'||v==='no').length;
-        const cnt=document.getElementById('fm-chk-cnt');
-        if(cnt)cnt.textContent=`${rev} de ${total} revisados`;
+        window._fmActualizarHint?.();
         // Re-pintar miniaturas de fotos guardadas en borrador
         Object.entries(solState.chkFotos||{}).forEach(([k,foto])=>{
           const src=typeof foto==='object'?foto.src:foto;
@@ -2007,38 +2018,24 @@ function renderNuevaSol(){
       <label>Fotos obligatorias del vehículo <span style="font-size:9px;font-weight:500;text-transform:none;color:#EF4444">(4 ángulos requeridos)</span></label>
       <div style="font-size:10px;color:#64748B;margin-bottom:10px;line-height:1.5">Toma cada ángulo requerido antes de continuar.</div>
       <div id="fm-angulos-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px">${renderAngulosBasicosGrid(solState.evFotos,'sol')}</div>
-      <label>Evidencias adicionales <span style="font-weight:500;text-transform:none;font-size:9px;color:#94A3B8">(opcional, cámara obligatoria)</span></label>
+      <label>¿Quieres mostrar un detalle en específico? <span style="font-weight:500;text-transform:none;font-size:9px;color:#94A3B8">(opcional)</span></label>
+      <div style="font-size:10px;color:#64748B;margin-bottom:8px;line-height:1.5">Si hay algo puntual que se deba ver (un golpe, una falla, una pieza), agrega las fotos que necesites.</div>
       <button onclick="fmCapturar('general')" class="fm-btn primary" style="margin-bottom:8px">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
-        Tomar foto con cámara
+        Agregar foto de un detalle
       </button>
       <div id="fm-ev-wrap" style="display:flex;flex-wrap:wrap;gap:6px"></div>
     </div>
 
-    <!-- CHECKLIST RÁPIDO / CONFIRMACIÓN SEMANAL -->
+    ${esMaquinaria(miVeh)?`
+    <!-- MAQUINARIA: sus 4 fotos propias (sin cambios) -->
     <div class="fm-fld">
-      ${modoConfirmacion?`
-        <div class="fm-card" style="background:#EFF6FF;border:1.5px solid #BFDBFE;padding:14px;border-radius:10px">
-          <div style="font-size:13px;font-weight:800;color:#1D4ED8;margin-bottom:4px">Check list semanal ya completado</div>
-          <div style="font-size:12px;color:#1E40AF;line-height:1.4;margin-bottom:10px">Confirmo que mi vehículo está en las mismas condiciones que mi checklist de esta semana.</div>
-          <label id="fm-confirm-lbl" style="display:flex;align-items:center;gap:8px;font-size:12px;color:#1E3A5F;cursor:pointer;margin-bottom:10px;padding:8px 10px;border-radius:8px;border:1.5px solid #BFDBFE;background:#fff;transition:all .12s">
-            <input type="checkbox" id="fm-confirm-chk" onchange="window._fmActualizarHint?.();document.getElementById('fm-confirm-lbl').style.background=this.checked?'#DCFCE7':'#fff';document.getElementById('fm-confirm-lbl').style.borderColor=this.checked?'#86EFAC':'#BFDBFE';" style="width:20px;height:20px;accent-color:#15803D;flex-shrink:0">
-            Confirmo la declaración anterior
-          </label>
-          <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:6px">Firma <span style="color:#DC2626">*</span></div>
-          <div style="border:1.5px solid #E2E8F0;border-radius:10px;overflow:hidden;background:#fff">
-            <canvas id="fm-sol-confirm-firma" width="320" height="180" style="display:block;width:100%;height:150px;touch-action:none;cursor:crosshair"></canvas>
-          </div>
-          <button type="button" class="fm-btn ghost fm-btn-sm" onclick="limpiarFirma('fm-sol-confirm-firma')" style="margin-top:8px">Limpiar firma</button>
-        </div>
-      `:`
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-          <label style="margin:0">${esMaquinaria(miVeh)?'Fotos de la unidad':'Check list'}</label>
-          <span id="fm-chk-cnt" style="font-size:10px;color:#64748B">${esMaquinaria(miVeh)?'4 fotos requeridas':`0 de ${Object.values(CHK_CATS).flat().length} revisados`}</span>
-        </div>
-        <div id="fm-chk-list">${esMaquinaria(miVeh)?renderMaqFotos('sol'):renderChkMovil()}</div>
-      `}
-    </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <label style="margin:0">Fotos de la unidad</label>
+        <span id="fm-chk-cnt" style="font-size:10px;color:#64748B">4 fotos requeridas</span>
+      </div>
+      <div id="fm-chk-list">${renderMaqFotos('sol')}</div>
+    </div>`:''}
 
     <!-- BOTÓN GUARDAR -->
     <button class="fm-btn primary" onclick="fmGuardar()" id="fm-btn-guardar" style="margin-top:8px">
@@ -2054,17 +2051,11 @@ function renderNuevaSol(){
     if(!document.getElementById('fm-tipo')?.value) faltantes.push('tipo');
     if(!document.getElementById('fm-desc')?.value?.trim()) faltantes.push('descripción');
     if(!document.getElementById('fm-km')?.value?.trim()) faltantes.push('kilometraje');
-    if(!solState.evFotos?.length) faltantes.push('al menos 1 foto de evidencia');
-    if(modoConfirmacion){
-      if(!document.getElementById('fm-confirm-chk')?.checked) faltantes.push('confirmación de condiciones');
-      if(!firmaTieneTrazo('fm-sol-confirm-firma')) faltantes.push('firma');
-    } else if(esMaquinaria(miVeh)){
+    const faltanAng=angulosBasicosFaltantes(solState.evFotos);
+    if(faltanAng.length) faltantes.push(`fotos: ${faltanAng.map(a=>a.label).join(', ')}`);
+    if(esMaquinaria(miVeh)){
       const nMaq=MAQ_FOTOS.filter((_,i)=>solState.chkFotos[`maq__${i}`]).length;
       if(nMaq<4) faltantes.push(`fotos de la unidad (${nMaq}/4)`);
-    } else {
-      const resp=Object.values(solState.chk).filter(v=>v==='si'||v==='no').length;
-      const tot=Object.values(CHK_CATS).flat().length;
-      if(resp<tot) faltantes.push(`checklist (${resp}/${tot})`);
     }
     const hint=document.getElementById('fm-val-hint');
     if(hint) hint.textContent=faltantes.length?`Pendiente: ${faltantes.join(' · ')}`:'✓ Formulario completo';
@@ -2816,9 +2807,6 @@ window.fmGuardar=async function(){
   const km=document.getElementById('fm-km')?.value?.trim();
 
   // ── VALIDACIONES OBLIGATORIAS ──
-  const totalChk=Object.values(CHK_CATS).flat().length;
-  const respondidos=Object.values(solState.chk).filter(v=>v==='si'||v==='no').length;
-
   const faltanAngulosSol=angulosBasicosFaltantes(solState.evFotos);
   if(faltanAngulosSol.length>0){
     toast(`⚠ Faltan ${faltanAngulosSol.length} fotos obligatorias: ${faltanAngulosSol.map(a=>a.label).join(', ')}`,'err');
@@ -2840,39 +2828,12 @@ window.fmGuardar=async function(){
     document.getElementById('fm-km')?.focus();
     return;
   }
-  if(!solState.evFotos||solState.evFotos.length===0){
-    toast('⚠ Sube al menos 1 foto de evidencia del problema','err');
-    return;
-  }
   let chkFirmaConfirmacion=null;
-  if(solState.modoConfirmacion){
-    if(!document.getElementById('fm-confirm-chk')?.checked){
-      toast('⚠ Confirma que tu vehículo está en las mismas condiciones','err');
-      return;
-    }
-    if(!firmaTieneTrazo('fm-sol-confirm-firma')){
-      toast('⚠ Falta la firma de confirmación','err');
-      return;
-    }
-    chkFirmaConfirmacion=firmaExportar('fm-sol-confirm-firma');
-  } else if(esMaquinaria(miVeh)){
-    // Maquinaria: exigir las 4 fotos en lugar del checklist
+  if(esMaquinaria(miVeh)){
+    // Maquinaria: sus 4 fotos propias
     const faltanMaq=MAQ_FOTOS.map((_,i)=>`maq__${i}`).filter(k=>!(solState.chkFotos||{})[k]);
     if(faltanMaq.length>0){
       toast(`⚠ Faltan ${faltanMaq.length} de 4 fotos requeridas de la unidad`,'err');
-      document.getElementById('fm-chk-list')?.scrollIntoView({behavior:'smooth',block:'center'});
-      return;
-    }
-  } else {
-    // Checklist de solicitud — foto obligatoria en ítems marcados SI
-    const chkSolItems=Object.entries(solState.chk||{});
-    const siSinFoto=chkSolItems.filter(([k,v])=>v==='si'&&!(solState.chkFotos||{})[k]);
-    if(siSinFoto.length>0){
-      toast(`⚠ Agrega foto en ${siSinFoto.length} ítem(s) del checklist marcados SI`,'err');
-      return;
-    }
-    if(respondidos<totalChk){
-      toast(`⚠ Completa el check list — faltan ${totalChk-respondidos} ítems por revisar`,'err');
       document.getElementById('fm-chk-list')?.scrollIntoView({behavior:'smooth',block:'center'});
       return;
     }
@@ -2893,10 +2854,10 @@ window.fmGuardar=async function(){
     creadoEn:new Date().toISOString(),
     evidencias:solState.evFotos.map(e=>typeof e==='string'?e:e.src),
     evidenciasMeta:solState.evFotos.map(e=>typeof e==='object'?e.meta:null).filter(Boolean),
-    checklist:solState.modoConfirmacion?{}:{...solState.chk},
-    chkFotos:solState.modoConfirmacion?{}:Object.fromEntries(Object.entries(solState.chkFotos).map(([k,v])=>[k,typeof v==='object'?v.src:v])),
-    confirmacionChecklistSemanal:!!solState.modoConfirmacion,
-    chkFirmaConfirmacion:chkFirmaConfirmacion,
+    checklist:{},   // la solicitud ya no lleva check list
+    chkFotos:esMaquinaria(miVeh)?Object.fromEntries(Object.entries(solState.chkFotos||{}).map(([k,v])=>[k,typeof v==='object'?v.src:v])):{},
+    confirmacionChecklistSemanal:false,
+    chkFirmaConfirmacion:null,
     origenApp:'movil',
   };
   if(!onlineStatus){
