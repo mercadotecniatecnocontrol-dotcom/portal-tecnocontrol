@@ -2067,11 +2067,12 @@
             let notifBase = false;
             // Nota: solo filtro de igualdad (leida==false), sin orderBy — así Firestore no exige
             // crear un índice compuesto a mano; aquí no necesitamos orden, solo detectar altas nuevas.
-            unsubNotif = fs.onSnapshot(fs.query(fs.collection(db, COL_NOTIFICACIONES), fs.where("leida", "==", false), fs.limit(30)), snap => {
+            unsubNotif = fs.onSnapshot(fs.query(fs.collection(db, COL_NOTIFICACIONES), fs.where("leida", "==", false)), snap => {
                 if (notifBase) {
                     snap.docChanges().forEach(ch => {
                         if (ch.type === "added") {
                             const n = { id: ch.doc.id, ...ch.doc.data() };
+                            if (n.tipo === "ops_servicio_asignado") return; // es para la app del técnico, no para el portal
                             opsReproducirAlarmaFolio();
                             opsMostrarFlotanteGenerica(n.mensaje || "Nueva notificación de Operaciones.", n.esPrueba ? "#8B4FD6" : "#1D2E73");
                         }
@@ -8612,10 +8613,14 @@
                 <div data-opsas-scroll style="overflow-y:auto;padding:16px 20px;">
                     ${paso1}${paso2}${paso3}${paso4}${paso5}${pasoContacto}${pasoViat}${pasoPrecio}${pasoComisiones}${pasoMas}
                 </div>
+                <div id="opsas-error" style="display:none;align-items:flex-start;gap:10px;padding:10px 20px;background:#FEF2F2;border-top:1px solid #FECACA;color:#991B1B;font-size:12.5px;line-height:1.45;"></div>
                 <div style="display:flex;align-items:center;gap:10px;padding:12px 20px;background:#fff;border-top:1px solid #e2e8f0;">
-                    <div style="font-size:12px;color:#94a3b8;margin-right:auto;">${faltan.length ? "Falta: " + opsEsc(faltan.join(", ")) : "Listo para guardar — lo demás es opcional."}</div>
-                    <button class="opsas-btn" style="background:#f1f5f9;color:#475569;" onclick="opsAsCerrar()">Cancelar</button>
-                    <button id="opsas-guardar" class="opsas-btn" style="background:#1D2E73;color:#fff;" onclick="opsAsGuardar()">${s.viaticos ? "Guardar y llenar viáticos" : "Guardar"}</button>
+                    <div style="display:flex;align-items:center;gap:7px;font-size:12px;margin-right:auto;color:${faltan.length ? "#B45309" : "#15803D"};font-weight:600;">
+                        <span style="display:inline-flex;width:16px;height:16px;">${faltan.length ? ICON.alert : ICON.check}</span>
+                        ${faltan.length ? "Falta: " + opsEsc(faltan.join(", ")) : "Todo listo. Lo demás es opcional."}
+                    </div>
+                    <button class="opsas-btn" style="background:#fff;color:#475569;border:1px solid #cbd5e1;" onclick="opsAsCerrar()">Descartar</button>
+                    <button id="opsas-guardar" class="opsas-btn" style="background:${faltan.length ? "#94a3b8" : "#15803D"};color:#fff;display:inline-flex;align-items:center;gap:7px;" onclick="opsAsGuardar()"><span style="display:inline-flex;width:15px;height:15px;">${ICON.check}</span>${s.viaticos ? "Guardar servicio y llenar viáticos" : "Guardar servicio"}</button>
                 </div>
             </div>
         </div>`;
@@ -8626,7 +8631,19 @@
     window.opsAsPintar = opsAsPintar;
     // Los onclick/oninput del HTML corren en el ámbito global: exponen el estado sin copiarlo.
     if (!Object.getOwnPropertyDescriptor(window, "opsAS")) Object.defineProperty(window, "opsAS", { get() { return opsAS; }, configurable: true });
-    window.opsAsCerrar = function () { opsAS = null; document.getElementById("ops-modal-wrap").innerHTML = ""; };
+    window.opsAsCerrar = function () {
+        // Si ya hay algo capturado, confirmar antes de perderlo (antes se cerraba sin avisar
+        // y no quedaba claro si se había guardado o no).
+        if (opsAS && opsAS.tipo && !confirm("¿Descartar este servicio?\n\nNo se ha guardado. Lo capturado se perderá.")) return;
+        opsAS = null; document.getElementById("ops-modal-wrap").innerHTML = "";
+    };
+    function opsAsMostrarError(msg) {
+        const el = document.getElementById("opsas-error");
+        if (!el) { alert(msg); return; }
+        el.style.display = "flex";
+        el.innerHTML = `<span style="display:inline-flex;width:18px;height:18px;flex-shrink:0;color:#DC2626;">${ICON.xCircle}</span><div><b>No se guardó el servicio.</b> ${opsEsc(msg)}<br><span style="color:#B91C1C;">Lo capturado sigue en pantalla; corrige y vuelve a intentar.</span></div>`;
+        el.scrollIntoView({ block: "nearest" });
+    }
 
     window.opsAsSet = function (campo, valor) {
         const s = opsAS; if (!s) return;
@@ -8810,13 +8827,14 @@
         if (!(s.est || s.estTexto.trim())) faltan.push("la estación");
         if (!s.fecha) faltan.push("la fecha");
         if (s.tipo === "poliza" && (!s.clienteId || !s.prioridad)) faltan.push("cliente y prioridad");
-        if (faltan.length) { alert("Falta: " + faltan.join(", ") + "."); return; }
+        if (faltan.length) { opsAsMostrarError("Falta: " + faltan.join(", ") + "."); return; }
         if (receta) {
             const corto = (receta.personal || []).filter(p => (s.porRol[p.rol] || []).length < (p.cantidad || 1));
             if (corto.length && !confirm("Falta personal contra la receta (" + corto.map(p => (OPS_TIPO_TECNICO[p.rol] || {}).nombre || p.rol).join(", ") + "). ¿Guardar de todos modos?")) return;
         }
         const btn = document.getElementById("opsas-guardar");
-        if (btn) { btn.disabled = true; btn.textContent = "Guardando…"; btn.style.opacity = ".6"; }
+        if (btn) { btn.disabled = true; btn.textContent = "Guardando… no cierres esta ventana"; btn.style.opacity = ".7"; btn.style.background = "#1D2E73"; }
+        const errBox = document.getElementById("opsas-error"); if (errBox) errBox.style.display = "none";
         try {
             const { db, fs } = await opsGetFB();
             const e = s.est;
@@ -8914,27 +8932,93 @@
                 } catch (err) { console.warn("[Alta servicio] no se pudo guardar el contacto en el directorio:", err.message); }
             }
             if (!cacheFolios.some(x => x.id === nuevo.id)) cacheFolios.push({ id: nuevo.id, ...datos });
+            // Aviso con alarma a cada técnico asignado en la app de Flotilla (ligado por correo).
+            const avisos = await opsAvisarTecnicosAsignados({ id: nuevo.id, ...datos }, tecs, tipoTxt);
             const conViaticos = s.viaticos;
             opsAS = null;
-            document.getElementById("ops-modal-wrap").innerHTML = "";
             const fProg = datos.fechaProgramada.slice(0, 10);
-            if (window.mostrarPush) mostrarPush("Operaciones", `Servicio guardado para el ${opsFmtFechaCorta(datos.fechaProgramada)}.`, "📋");
             if (opsCalFiltroPlaza !== "todas" && opsCalFiltroPlaza !== datos.plaza) opsCalFiltroPlaza = datos.plaza;
             if (tabActual === "calendario" && typeof window.opsCalIrAFecha === "function") { try { window.opsCalIrAFecha(fProg); } catch (x) { /* solo navegación */ } }
-            if (conViaticos) {
-                // Mismo formulario del botón "Nueva solicitud de viáticos", ya ligado al servicio
-                await window.opsViaAbrirFormulario();
-                if (opsViaForm) window.opsViaElegirFolio(nuevo.id);
-            }
+            opsAsPantallaGuardado({ id: nuevo.id, ...datos }, { tipoTxt, receta, tecs, avisos, conViaticos, durH });
         } catch (err) {
             console.error("[Alta servicio] Error al guardar:", err);
             const causa = err && err.code === "permission-denied"
                 ? "Tu usuario no tiene permiso de escritura en la base de datos (" + opsUsuarioActual() + "). Avisa a sistemas."
-                : (err && err.message ? err.message : String(err));
-            alert("No se pudo guardar el servicio.\n\nMotivo: " + causa + "\n\nLo capturado sigue en pantalla.");
+                : "Motivo: " + (err && err.message ? err.message : String(err));
+            opsAsMostrarError(causa);
             const b = document.getElementById("opsas-guardar");
-            if (b) { b.disabled = false; b.style.opacity = "1"; b.textContent = opsAS && opsAS.viaticos ? "Guardar y llenar viáticos" : "Guardar"; }
+            if (b) { b.disabled = false; b.style.opacity = "1"; b.style.background = "#15803D"; b.innerHTML = `<span style="display:inline-flex;width:15px;height:15px;">${ICON.check}</span>` + (opsAS && opsAS.viaticos ? "Reintentar guardar y llenar viáticos" : "Reintentar guardar"); }
         }
+    };
+
+    // Crea un aviso por técnico asignado en ops_notificaciones (tipo ops_servicio_asignado,
+    // para = correo). La app de Flotilla lo escucha y suena la alarma de 10 s hasta que el
+    // técnico da "Enterado". Devuelve a quién sí se avisó y a quién no (sin correo en su ficha).
+    async function opsAvisarTecnicosAsignados(f, tecs, tipoTxt) {
+        const res = { enviados: [], sinCorreo: [], fallidos: [] };
+        if (!tecs || !tecs.length) return res;
+        let fb;
+        try { fb = await opsGetFB(); } catch (e) { tecs.forEach(t => res.fallidos.push(t.nombre || "")); return res; }
+        const { db, fs } = fb;
+        for (const t of tecs) {
+            const correo = String(t.correo || "").toLowerCase().trim();
+            if (!correo) { res.sinCorreo.push(t.nombre || ""); continue; }
+            try {
+                await fs.addDoc(fs.collection(db, COL_NOTIFICACIONES), {
+                    tipo: "ops_servicio_asignado", para: correo, paraNombre: t.nombre || null, folioId: f.id,
+                    estacion: f.estacion || null, estacionDireccion: f.estacionDireccion || null,
+                    fechaProgramada: f.fechaProgramada || null, tipoServicio: tipoTxt || null,
+                    mensaje: `Nuevo servicio asignado: ${tipoTxt || "Servicio"} en ${f.estacion || "estación"} · ${opsFmtFechaCorta(f.fechaProgramada)}.`,
+                    creadoPor: opsNombreActual(), leida: false, fecha: opsFechaHora(),
+                });
+                res.enviados.push(t.nombre || correo);
+            } catch (e) { console.warn("[Alta servicio] aviso a técnico:", correo, e.message); res.fallidos.push(t.nombre || correo); }
+        }
+        return res;
+    }
+
+    // Pantalla de confirmación dentro del mismo modal: deja claro que SÍ se guardó, qué se
+    // guardó y a quién se le avisó, en lugar de cerrar la ventana sin decir nada.
+    function opsAsPantallaGuardado(f, info) {
+        const wrap = document.getElementById("ops-modal-wrap"); if (!wrap) return;
+        const fila = (k, v) => v ? `<div style="display:flex;gap:12px;padding:7px 0;border-bottom:1px solid #f1f5f9;font-size:13px;"><div style="width:120px;color:#64748b;flex-shrink:0;">${k}</div><div style="color:#1e293b;font-weight:600;">${v}</div></div>` : "";
+        const a = info.avisos || { enviados: [], sinCorreo: [], fallidos: [] };
+        const avisoHTML = !info.tecs.length
+            ? `<div style="background:#FFFBEB;border:1px solid #FDE68A;color:#92400E;border-radius:10px;padding:10px 12px;font-size:12.5px;">No asignaste técnicos, así que no se envió aviso a la app de Flotilla.</div>`
+            : `${a.enviados.length ? `<div style="background:#F0FDF4;border:1px solid #BBF7D0;color:#166534;border-radius:10px;padding:10px 12px;font-size:12.5px;margin-bottom:8px;display:flex;gap:8px;"><span style="display:inline-flex;width:16px;height:16px;flex-shrink:0;">${ICON.bell}</span><div>Aviso con alarma enviado a la app de Flotilla de: <b>${a.enviados.map(opsEsc).join(", ")}</b>.</div></div>` : ""}
+               ${a.sinCorreo.length ? `<div style="background:#FFFBEB;border:1px solid #FDE68A;color:#92400E;border-radius:10px;padding:10px 12px;font-size:12.5px;margin-bottom:8px;display:flex;gap:8px;"><span style="display:inline-flex;width:16px;height:16px;flex-shrink:0;">${ICON.alert}</span><div>Sin correo en su ficha, <b>no recibirán el aviso</b>: ${a.sinCorreo.map(opsEsc).join(", ")}. Captúralo en Técnicos.</div></div>` : ""}
+               ${a.fallidos.length ? `<div style="background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;border-radius:10px;padding:10px 12px;font-size:12.5px;display:flex;gap:8px;"><span style="display:inline-flex;width:16px;height:16px;flex-shrink:0;">${ICON.xCircle}</span><div>No se pudo enviar el aviso a: ${a.fallidos.map(opsEsc).join(", ")}. El servicio sí quedó guardado.</div></div>` : ""}`;
+        wrap.innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;">
+            <div style="background:#fff;border-radius:16px;width:520px;max-width:96vw;max-height:94vh;overflow-y:auto;box-shadow:0 20px 50px rgba(0,0,0,.25);">
+                <div style="text-align:center;padding:26px 24px 14px;">
+                    <div style="width:58px;height:58px;border-radius:50%;background:#DCFCE7;color:#15803D;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;"><span style="display:inline-flex;width:30px;height:30px;">${ICON.check}</span></div>
+                    <div style="font-size:19px;font-weight:800;color:#15803D;">Servicio guardado</div>
+                    <div style="font-size:12.5px;color:#64748b;margin-top:4px;">Ya está en el calendario de Operaciones.</div>
+                </div>
+                <div style="padding:0 24px 8px;">
+                    ${fila("Tipo", opsEsc(info.tipoTxt + (info.receta ? " · " + info.receta.nombre : "")))}
+                    ${fila("Estación", opsEsc(f.estacion || ""))}
+                    ${fila("Fecha", opsEsc(opsFmtFechaCorta(f.fechaProgramada)) + (info.durH ? " · " + opsEsc(opsAsTxtHoras(info.durH)) : ""))}
+                    ${fila("Plaza", opsEsc(f.plaza || ""))}
+                    ${fila("Equipo", info.tecs.length ? opsEsc(info.tecs.map(t => t.nombre).join(", ")) : `<span style="color:#B45309;">Sin técnicos asignados</span>`)}
+                </div>
+                <div style="padding:8px 24px 4px;">${avisoHTML}</div>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end;padding:16px 24px 20px;">
+                    <button class="opsas-btn" style="background:#fff;color:#475569;border:1px solid #cbd5e1;" onclick="opsAsOtroServicio('${opsEsc((f.fechaProgramada || "").slice(0, 10))}')">Registrar otro</button>
+                    ${info.conViaticos
+                        ? `<button class="opsas-btn" style="background:#1D2E73;color:#fff;" onclick="opsAsIrViaticos('${f.id}')">Continuar a viáticos</button>`
+                        : `<button class="opsas-btn" style="background:#1D2E73;color:#fff;" onclick="document.getElementById('ops-modal-wrap').innerHTML=''">Listo</button>`}
+                </div>
+            </div>
+        </div>`;
+    }
+    window.opsAsOtroServicio = function (fecha) { document.getElementById("ops-modal-wrap").innerHTML = ""; window.opsAbrirAltaServicio(fecha || undefined); };
+    window.opsAsIrViaticos = async function (folioId) {
+        document.getElementById("ops-modal-wrap").innerHTML = "";
+        // Mismo formulario del botón "Nueva solicitud de viáticos", ya ligado al servicio
+        await window.opsViaAbrirFormulario();
+        if (opsViaForm) window.opsViaElegirFolio(folioId);
     };
 
     // Notificación automática para folios de Laboratorio — misma colección que ya

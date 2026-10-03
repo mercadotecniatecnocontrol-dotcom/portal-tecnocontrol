@@ -177,6 +177,7 @@ const esMaquinaria=v=>!!v&&v.tipo==='maquinaria';
 
 // ── ESTADO ──
 let miVeh=null, misSols=[], misTareas=[], misNotif=[], misPipelineNotif=[];
+let misOpsServ=[], _opsServTecId=null, _unsubOpsServ=null, _unsubOpsAvisos=null; // servicios de Operaciones (ver bloque al final)
 let miPerfil=null; // {email, nombre, ecoVinculado, rol}
 let _unsubNotif=null; // listener en tiempo real de flotilla_notificaciones
 let _unsubRecibirPendiente=null; // listener en tiempo real: transferencias donde soy el receptor designado
@@ -935,6 +936,7 @@ window.initFlotillaMovil=async function(){
   dbg('Usuario: '+(window.auth?.currentUser?.email||'sin sesión'),'info');
   dbg('Online: '+navigator.onLine,'info');
   await Promise.all([cargarMiVeh(),cargarMisSols(),cargarMisTareas()]);
+  fmOpsServCargar().catch(e=>console.warn('[OPS servicios] arranque',e));
   dbg('Datos cargados. Vehículo: '+(miVeh?'ECO '+miVeh.eco:'ninguno'),'ok');
   if(miVeh)flReportarUbicacion(miVeh.eco);
   actualizarBadges();
@@ -1282,7 +1284,7 @@ function mostrarModalRespuestaChk(r){
 function actualizarBadges(){
   const bt=document.getElementById('fm-badge-tareas');
   const bn=document.getElementById('fm-badge-notif');
-  const pend=misTareas.filter(t=>t.estatus==='Pendiente'||t.estatus==='En proceso').length;
+  const pend=misTareas.filter(t=>t.estatus==='Pendiente'||t.estatus==='En proceso').length+misOpsServ.length;
   const notif=misPipelineNotif.filter(n=>!n.leido).length;
   if(bt){bt.textContent=pend;bt.style.display=pend?'flex':'none';}
   if(bn){bn.textContent=notif;bn.style.display=notif?'flex':'none';}
@@ -2934,9 +2936,10 @@ function renderTareas(){
   const pend=misTareas.filter(t=>t.estatus!=='Completada'&&t.estatus!=='Cancelada');
   const urg=pend.filter(t=>t.prioridad==='Urgente'||t.prioridad==='Alta');
   setContent(
-    '<div class="fm-sec-hd"><div><div class="fm-sec-t">Mis tareas</div><div class="fm-sec-s">'+pend.length+' pendiente(s)'+(urg.length?' · '+urg.length+' urgente(s)':'')+'</div></div></div>'+
+    fmOpsServHTML()+
+    '<div class="fm-sec-hd"><div><div class="fm-sec-t">'+(misOpsServ.length?'Tareas de Flotilla':'Mis tareas')+'</div><div class="fm-sec-s">'+pend.length+' pendiente(s)'+(urg.length?' · '+urg.length+' urgente(s)':'')+'</div></div></div>'+
     (!pend.length?
-      '<div class="fm-empty"><div class="fm-empty-ico" style="color:#15803D">'+IC.check+'</div><h3>Sin tareas pendientes</h3><p>No tienes tareas asignadas.</p></div>'
+      (misOpsServ.length?'<div style="font-size:12px;color:#94A3B8;padding:4px 2px 20px">Sin tareas de Flotilla pendientes.</div>':'<div class="fm-empty"><div class="fm-empty-ico" style="color:#15803D">'+IC.check+'</div><h3>Sin tareas pendientes</h3><p>No tienes tareas ni servicios asignados.</p></div>')
     :
       '<div style="display:flex;gap:8px;margin-bottom:14px;overflow-x:auto;padding-bottom:2px">'+
         '<div style="flex-shrink:0;background:#FEF3C7;border-radius:10px;padding:10px 14px;text-align:center;min-width:70px"><div style="font-size:20px;font-weight:900;color:#92400E">'+pend.filter(t=>t.estatus==='Pendiente').length+'</div><div style="font-size:9px;font-weight:700;color:#B45309">Pendientes</div></div>'+
@@ -5949,6 +5952,244 @@ window.reqEnviar=async function(){
     console.error('[flotilla requisicion]',e);
     msg.textContent='No se pudo enviar ('+(e.code||e.message)+').';
   }finally{ if(btn){btn.disabled=false; btn.textContent='Generar PDF y enviar a compras';} }
+};
+
+// ══════════════════════════════════════════════════════════════
+// SERVICIOS DE OPERACIONES en "Tareas" (oct-2026)
+// · Lista de servicios pendientes del técnico (ops_folios), ligada por su ficha de
+//   Operaciones (correo → id) y, de respaldo, por el correo del responsable.
+// · Aviso con alarma tipo sísmica de 10 s cuando Operaciones le da de alta un servicio
+//   (ops_notificaciones, tipo ops_servicio_asignado, para = su correo). Suena hasta 10 s
+//   y se repite al abrir la app mientras no dé "Enterado".
+// · Botones "Iniciar servicio" y "Comentar": escriben en el folio y avisan a los admins
+//   de Operaciones (campanita/alarma del portal).
+// ══════════════════════════════════════════════════════════════
+const _opsAvisosVistos=new Set();
+const OPS_COL_FOLIOS='ops_folios', OPS_COL_NOTIF='ops_notificaciones';
+
+function opsSvEsc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function opsSvMiCorreo(){return (window.auth?.currentUser?.email||miPerfil?.email||'').toLowerCase().trim();}
+function opsSvMiNombre(){return miPerfil?.nombre||window.auth?.currentUser?.displayName||opsSvMiCorreo();}
+function opsSvFecha(iso){
+  if(!iso)return 'Sin fecha';
+  const s=String(iso); const d=new Date(s.length<=10?s+'T00:00':s);
+  if(isNaN(d))return s;
+  const o={weekday:'short',day:'numeric',month:'short'}; if(s.includes('T')){o.hour='2-digit';o.minute='2-digit';}
+  return d.toLocaleString('es-MX',o);
+}
+function opsSvTipo(f){
+  if(f.tipoFolio==='inspeccion')return f.normaInspeccion?'Inspección '+f.normaInspeccion:'Visita de inspección';
+  if(f.tipoFolio==='laboratorio')return 'Laboratorio';
+  return f.categoriaServicio||'Servicio técnico';
+}
+function opsSvEsMio(f,correo){
+  if(f.fechaSolucion||f.cancelado===true)return false;
+  if(_opsServTecId&&((f.tecnicosAsignadosIds||[]).indexOf(_opsServTecId)>=0||f.tecnicoResponsableId===_opsServTecId))return true;
+  return !!correo&&String(f.tecnicoResponsableCorreo||'').toLowerCase().trim()===correo;
+}
+
+async function fmOpsServCargar(){
+  const correo=opsSvMiCorreo();
+  if(!correo||!window.tcOpsCompat)return;
+  if(!_opsServTecId){
+    try{const t=await herrResolverIdInterno(correo,opsSvMiNombre());_opsServTecId=t?t.id:null;}catch(e){}
+  }
+  if(!_unsubOpsServ){
+    _unsubOpsServ=opsDb().collection(OPS_COL_FOLIOS).onSnapshot(function(snap){
+      misOpsServ=snap.docs.map(function(d){return Object.assign({id:d.id},d.data());})
+        .filter(function(f){return opsSvEsMio(f,correo);})
+        .sort(function(a,b){return String(a.fechaProgramada||'').localeCompare(String(b.fechaProgramada||''));});
+      actualizarBadges();
+      if(vistaAct==='tareas')renderTareas();
+    },function(err){console.warn('[OPS servicios]',err);});
+  }
+  if(!_unsubOpsAvisos){
+    _unsubOpsAvisos=opsDb().collection(OPS_COL_NOTIF).where('para','==',correo).where('leida','==',false).onSnapshot(function(snap){
+      snap.docs.map(function(d){return Object.assign({id:d.id},d.data());})
+        .filter(function(n){return n.tipo==='ops_servicio_asignado'&&!_opsAvisosVistos.has(n.id);})
+        .sort(function(a,b){return String(a.fecha||'').localeCompare(String(b.fecha||''));})
+        .forEach(function(n){_opsAvisosVistos.add(n.id);fmOpsAvisoEncolar(n);});
+    },function(err){console.warn('[OPS avisos]',err);});
+  }
+}
+
+// ── Alarma tipo sísmica (Web Audio, sin archivos) ──
+let _opsAC=null, _opsAlarmaStop=null;
+function opsSvAudio(){
+  try{
+    if(!_opsAC){const A=window.AudioContext||window.webkitAudioContext;if(!A)return null;_opsAC=new A();}
+    if(_opsAC.state==='suspended')_opsAC.resume();
+    return _opsAC;
+  }catch(e){return null;}
+}
+// Los navegadores solo dejan sonar audio después de un toque: se "desbloquea" al primero.
+document.addEventListener('touchstart',function(){opsSvAudio();},{once:true,passive:true});
+document.addEventListener('click',function(){opsSvAudio();},{once:true});
+function fmOpsAlarma(seg){
+  fmOpsAlarmaParar();
+  seg=seg||10;
+  const ac=opsSvAudio(), nodos=[];
+  if(ac){
+    try{
+      const g=ac.createGain(); g.connect(ac.destination);
+      const o=ac.createOscillator(); o.type='square'; o.connect(g);
+      const t0=ac.currentTime+0.05;
+      for(let t=0;t<seg;t+=1){ // ciclo de 1 s: tono alto 0.5 s / tono bajo 0.5 s
+        o.frequency.setValueAtTime(1050,t0+t); o.frequency.setValueAtTime(780,t0+t+0.5);
+      }
+      g.gain.setValueAtTime(0.0001,t0); g.gain.exponentialRampToValueAtTime(0.35,t0+0.05);
+      g.gain.setValueAtTime(0.35,t0+seg-0.1); g.gain.exponentialRampToValueAtTime(0.0001,t0+seg);
+      o.start(t0); o.stop(t0+seg+0.05); nodos.push(o,g);
+    }catch(e){console.warn('[OPS alarma]',e);}
+  }
+  try{if(navigator.vibrate){const p=[];for(let i=0;i<seg;i++)p.push(600,400);navigator.vibrate(p);}}catch(e){}
+  _opsAlarmaStop=function(){
+    nodos.forEach(function(n){try{if(n.stop)n.stop();}catch(e){}try{n.disconnect();}catch(e){}});
+    try{if(navigator.vibrate)navigator.vibrate(0);}catch(e){}
+    _opsAlarmaStop=null;
+  };
+}
+function fmOpsAlarmaParar(){if(_opsAlarmaStop)_opsAlarmaStop();}
+
+// ── Ventana de "Nuevo servicio asignado" (una a la vez) ──
+const _opsAvisosCola=[]; let _opsAvisoAbierto=false;
+function fmOpsAvisoEncolar(n){_opsAvisosCola.push(n);if(!_opsAvisoAbierto)fmOpsAvisoSiguiente();}
+function fmOpsAvisoSiguiente(){
+  const n=_opsAvisosCola.shift();
+  if(!n){_opsAvisoAbierto=false;return;}
+  _opsAvisoAbierto=true;
+  const fila=function(k,v){return v?'<div style="display:flex;gap:10px;padding:6px 0;border-bottom:1px solid #F1F5F9;font-size:13px"><div style="width:78px;color:#64748B;flex-shrink:0">'+k+'</div><div style="color:#0A1628;font-weight:700">'+opsSvEsc(v)+'</div></div>':'';};
+  const ov=document.createElement('div'); ov.id='fm-ops-aviso';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(10,22,40,.8);z-index:100000;display:flex;align-items:center;justify-content:center;padding:18px';
+  ov.innerHTML=
+    '<div style="background:#fff;border-radius:16px;width:100%;max-width:400px;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.35)">'+
+      '<div style="background:#B91C1C;color:#fff;padding:16px 18px;display:flex;align-items:center;gap:10px">'+
+        '<span style="display:inline-flex;width:26px;height:26px">'+IC.bell+'</span>'+
+        '<div><div style="font-size:16px;font-weight:900;letter-spacing:.3px">NUEVO SERVICIO ASIGNADO</div><div style="font-size:11.5px;opacity:.85">Operaciones · '+opsSvEsc(n.creadoPor||'')+'</div></div>'+
+      '</div>'+
+      '<div style="padding:14px 18px 6px">'+
+        fila('Servicio',n.tipoServicio)+fila('Estación',n.estacion)+fila('Dirección',n.estacionDireccion)+fila('Fecha',opsSvFecha(n.fechaProgramada))+
+      '</div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:14px 18px 18px">'+
+        '<button onclick="fmOpsAvisoEnterado(\''+n.id+'\',false)" style="padding:13px;border-radius:10px;border:1.5px solid #CBD5E1;background:#fff;font-family:inherit;font-size:13px;font-weight:800;color:#334155;cursor:pointer">Enterado</button>'+
+        '<button onclick="fmOpsAvisoEnterado(\''+n.id+'\',true)" style="padding:13px;border-radius:10px;border:none;background:#1D2E73;font-family:inherit;font-size:13px;font-weight:800;color:#fff;cursor:pointer">Ver mis servicios</button>'+
+      '</div>'+
+    '</div>';
+  document.body.appendChild(ov);
+  fmOpsAlarma(10);
+}
+window.fmOpsAvisoEnterado=async function(id,ver){
+  fmOpsAlarmaParar();
+  const ov=document.getElementById('fm-ops-aviso'); if(ov)ov.remove();
+  try{await opsDb().collection(OPS_COL_NOTIF).doc(id).update({leida:true,leidaEn:new Date().toISOString(),acuseTecnico:opsSvMiNombre()});}
+  catch(e){console.warn('[OPS aviso] no se pudo marcar como leído',e);}
+  if(ver)fmVista('tareas');
+  fmOpsAvisoSiguiente();
+};
+
+// ── Tarjetas en la vista Tareas ──
+function fmOpsServHTML(){
+  if(!misOpsServ.length)return '';
+  const hoy=new Date(); hoy.setMinutes(hoy.getMinutes()-hoy.getTimezoneOffset());
+  const hoyISO=hoy.toISOString().slice(0,10);
+  return '<div class="fm-sec-hd"><div><div class="fm-sec-t">Servicios de Operaciones</div><div class="fm-sec-s">'+misOpsServ.length+' pendiente(s) · '+misOpsServ.filter(function(f){return f.iniciadoEn;}).length+' en proceso</div></div></div>'+
+    misOpsServ.map(function(f){
+      const enProc=!!f.iniciadoEn;
+      const dia=String(f.fechaProgramada||'').slice(0,10);
+      const esHoy=dia===hoyISO, atrasado=dia&&dia<hoyISO&&!enProc;
+      const borde=enProc?'#BFDBFE':atrasado?'#FCA5A5':esHoy?'#FDE68A':'#E2E8F0';
+      const mapa=(f.estacionLat!=null&&f.estacionLng!=null)?'https://www.google.com/maps/search/?api=1&query='+f.estacionLat+','+f.estacionLng:(f.estacionDireccion?'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(f.estacionDireccion):'');
+      const tel=f.contactoWhatsapp||f.contactoTelefono||'';
+      return '<div style="border:1.5px solid '+borde+';border-radius:12px;padding:13px;margin-bottom:10px;background:#fff">'+
+        '<div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:6px">'+
+          '<span style="font-size:10px;font-weight:800;color:#1D2E73;background:#EEF2FF;padding:2px 8px;border-radius:8px">'+opsSvEsc(opsSvTipo(f))+'</span>'+
+          '<span style="font-size:10px;font-weight:800;padding:2px 8px;border-radius:8px;'+(enProc?'background:#DBEAFE;color:#1E40AF':atrasado?'background:#FEE2E2;color:#B91C1C':esHoy?'background:#FEF3C7;color:#92400E':'background:#F1F5F9;color:#475569')+'">'+(enProc?'En proceso':atrasado?'Atrasado':esHoy?'Hoy':'Programado')+'</span>'+
+        '</div>'+
+        '<div style="font-size:14px;font-weight:800;color:#0A1628;line-height:1.3;margin-bottom:4px">'+opsSvEsc(f.estacion||'Estación sin nombre')+'</div>'+
+        '<div style="font-size:12px;color:#475569;margin-bottom:6px">'+opsSvEsc(opsSvFecha(f.fechaProgramada))+(f.tiempoEjecucionHrs?' · '+f.tiempoEjecucionHrs+' h':'')+'</div>'+
+        (f.estacionDireccion?'<div style="font-size:11.5px;color:#64748B;margin-bottom:6px">'+opsSvEsc(f.estacionDireccion)+'</div>':'')+
+        ((f.tecnicosAsignadosNombres||[]).length>1?'<div style="font-size:11px;color:#64748B;margin-bottom:6px">Equipo: '+opsSvEsc(f.tecnicosAsignadosNombres.join(', '))+'</div>':'')+
+        (f.contactoNombre?'<div style="font-size:11.5px;color:#334155;margin-bottom:6px">Contacto: <b>'+opsSvEsc(f.contactoNombre)+'</b>'+(tel?' · <a href="tel:'+opsSvEsc(tel)+'" style="color:#1D4ED8;font-weight:700">'+opsSvEsc(tel)+'</a>':'')+'</div>':'')+
+        (f.comentarios?'<div style="background:#F8FAFD;border:1px solid #E8EDF5;border-radius:8px;padding:7px 10px;font-size:11.5px;color:#334155;margin-bottom:8px">'+opsSvEsc(f.comentarios)+'</div>':'')+
+        (enProc?'<div style="font-size:11px;color:#1E40AF;font-weight:700;margin-bottom:8px">Iniciado: '+opsSvEsc(opsSvFecha(f.iniciadoEn))+'</div>':'')+
+        '<div style="display:grid;grid-template-columns:'+(mapa?'1fr 1fr 1fr':'1fr 1fr')+';gap:7px">'+
+          (enProc
+            ?'<button disabled style="padding:9px;background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:8px;font-family:inherit;font-size:11px;font-weight:800;color:#1E40AF">Iniciado</button>'
+            :'<button onclick="fmOpsServIniciar(\''+f.id+'\',this)" style="padding:9px;background:#15803D;border:none;border-radius:8px;font-family:inherit;font-size:11px;font-weight:800;color:#fff;cursor:pointer">Iniciar servicio</button>')+
+          '<button onclick="fmOpsServComentar(\''+f.id+'\')" style="padding:9px;background:#fff;border:1.5px solid #CBD5E1;border-radius:8px;font-family:inherit;font-size:11px;font-weight:800;color:#334155;cursor:pointer">Comentar</button>'+
+          (mapa?'<a href="'+mapa+'" target="_blank" rel="noopener" style="padding:9px;background:#EEF2FF;border:1.5px solid #C7D2FE;border-radius:8px;font-size:11px;font-weight:800;color:#1D2E73;text-align:center;text-decoration:none">Mapa</a>':'')+
+        '</div>'+
+      '</div>';
+    }).join('')+'<div style="height:10px"></div>';
+}
+
+async function opsSvComentario(folioId,texto,tipo){
+  await opsDb().collection(OPS_COL_FOLIOS).doc(folioId).collection('comentarios').add({
+    texto:texto, autor:opsSvMiNombre(), autorEmail:opsSvMiCorreo(), tipo:tipo||'tecnico', origen:'app_flotilla',
+    createdAt:new Date().toISOString(),
+  });
+}
+// Sin "para": la campanita del portal se la muestra (con alarma) a quien tenga Operaciones abierto.
+async function opsSvAvisarAdmins(tipo,mensaje,folioId){
+  try{
+    await opsDb().collection(OPS_COL_NOTIF).add({tipo:tipo,mensaje:mensaje,folioId:folioId,de:opsSvMiCorreo(),deNombre:opsSvMiNombre(),leida:false,fecha:new Date().toISOString()});
+  }catch(e){console.warn('[OPS] aviso a admins',e);}
+}
+
+window.fmOpsServIniciar=async function(id,btn){
+  const f=misOpsServ.find(function(x){return x.id===id;}); if(!f)return;
+  if(!confirm('¿Confirmas que ya iniciaste el servicio en '+(f.estacion||'la estación')+'?'))return;
+  if(btn){btn.disabled=true;btn.textContent='Guardando…';btn.style.opacity='.7';}
+  try{
+    const ahora=new Date().toISOString(), quien=opsSvMiNombre();
+    const ub=await herrObtenerUbicacion();
+    const cambios={iniciadoEn:ahora,iniciadoPor:quien,iniciadoDesde:'app_flotilla'};
+    if(ub)cambios.iniciadoUbicacion=ub;
+    await opsDb().collection(OPS_COL_FOLIOS).doc(id).update(cambios);
+    await opsSvComentario(id,'Servicio iniciado desde la app de Flotilla por '+quien+(ub?' · ubicación '+ub.lat.toFixed(5)+', '+ub.lng.toFixed(5):' · sin ubicación')+'.','inicio');
+    await opsSvAvisarAdmins('ops_tecnico_inicio',quien+' inició el servicio en '+(f.estacion||'estación')+'.',id);
+    toast('Inicio confirmado. Se avisó a Operaciones.','ok');
+  }catch(e){
+    console.error('[OPS iniciar]',e);
+    toast('No se pudo confirmar el inicio. Intenta de nuevo.','err');
+    if(btn){btn.disabled=false;btn.textContent='Iniciar servicio';btn.style.opacity='1';}
+  }
+};
+
+window.fmOpsServComentar=function(id){
+  const f=misOpsServ.find(function(x){return x.id===id;}); if(!f)return;
+  const ov=document.createElement('div'); ov.id='fm-ops-coment';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(10,22,40,.6);z-index:99999;display:flex;align-items:flex-end;justify-content:center';
+  ov.innerHTML=
+    '<div style="background:#fff;border-radius:16px 16px 0 0;width:100%;max-width:520px;padding:16px 16px 22px">'+
+      '<div style="font-size:15px;font-weight:800;color:#0A1628;margin-bottom:2px">Comentario para Operaciones</div>'+
+      '<div style="font-size:11.5px;color:#64748B;margin-bottom:10px">'+opsSvEsc(f.estacion||'')+' · '+opsSvEsc(opsSvFecha(f.fechaProgramada))+'</div>'+
+      '<textarea id="fm-ops-coment-txt" rows="4" placeholder="Ej. Falta material, el encargado no está, llegué a la estación…" style="width:100%;box-sizing:border-box;border:1.5px solid #CBD5E1;border-radius:10px;padding:10px;font-family:inherit;font-size:14px;resize:vertical"></textarea>'+
+      '<div id="fm-ops-coment-msg" style="font-size:12px;color:#B91C1C;min-height:16px;margin:6px 0"></div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
+        '<button onclick="document.getElementById(\'fm-ops-coment\').remove()" style="padding:12px;border-radius:10px;border:1.5px solid #CBD5E1;background:#fff;font-family:inherit;font-size:13px;font-weight:800;color:#334155">Cancelar</button>'+
+        '<button id="fm-ops-coment-btn" onclick="fmOpsServEnviarComentario(\''+id+'\')" style="padding:12px;border-radius:10px;border:none;background:#1D2E73;font-family:inherit;font-size:13px;font-weight:800;color:#fff">Enviar</button>'+
+      '</div>'+
+    '</div>';
+  document.body.appendChild(ov);
+  setTimeout(function(){const t=document.getElementById('fm-ops-coment-txt');if(t)t.focus();},50);
+};
+window.fmOpsServEnviarComentario=async function(id){
+  const f=misOpsServ.find(function(x){return x.id===id;})||{};
+  const txt=(document.getElementById('fm-ops-coment-txt')?.value||'').trim();
+  const msg=document.getElementById('fm-ops-coment-msg'), btn=document.getElementById('fm-ops-coment-btn');
+  if(!txt){if(msg)msg.textContent='Escribe el comentario.';return;}
+  if(btn){btn.disabled=true;btn.textContent='Enviando…';}
+  try{
+    await opsSvComentario(id,txt,'tecnico');
+    await opsSvAvisarAdmins('ops_tecnico_comentario',opsSvMiNombre()+' comentó en '+(f.estacion||'un servicio')+': '+(txt.length>120?txt.slice(0,120)+'…':txt),id);
+    document.getElementById('fm-ops-coment')?.remove();
+    toast('Comentario enviado a Operaciones.','ok');
+  }catch(e){
+    console.error('[OPS comentario]',e);
+    if(msg)msg.textContent='No se pudo enviar. Revisa tu conexión e intenta de nuevo.';
+    if(btn){btn.disabled=false;btn.textContent='Enviar';}
+  }
 };
 
 })();
