@@ -275,6 +275,10 @@
         if (f.tipoFolio === "laboratorio") return opsCalMkColor("srv:tecno:laboratorio", "Laboratorio", "#9d50dd", "tecno");
         // La receta manda: primero se clasifica solo por su nombre; si no cae en ninguna familia, se usa el texto del folio.
         let fam = receta ? opsCalFamiliaDeTexto(receta.nombre || "", jomar) : null;
+        // La norma elegida en el alta manda (oct-2026): antes se mezclaba con el nombre de la
+        // estación y los comentarios, y una visita ASEA podía caer en "Anexo 21 y 22".
+        if ((!fam || fam.k === "general") && f.normaInspeccion) fam = opsCalFamiliaDeTexto(f.normaInspeccion, jomar);
+        if ((!fam || fam.k === "general") && (f.serviciosProgramados || []).length) fam = opsCalFamiliaDeTexto(f.serviciosProgramados.map(x => x.nombre).join(" "), jomar);
         if (!fam || fam.k === "general") {
             const texto = [receta?.nombre, f.normaInspeccion, f.categoriaServicio, f.tipoServicioDemo, f.estacion, f.comentarios].filter(Boolean).join(" ");
             fam = opsCalFamiliaDeTexto(texto, jomar);
@@ -6571,6 +6575,141 @@
         }
     };
 
+    // ── Servicios de una programación ya hecha: ver, agregar y quitar (oct-2026) ──
+    function opsProgPanelHTML(f) {
+        const lista = f.serviciosProgramados || [];
+        const puede = opsPuedeGestionar();
+        return `<div style="border-top:1px solid #e2e8f0;padding-top:12px;margin-bottom:16px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;">
+                <div style="font-size:11px;font-weight:700;color:#1D2E73;">Servicios de esta programación (${lista.length})</div>
+                ${puede ? `<button onclick="opsProgAbrirAgregar('${f.id}')" style="display:inline-flex;align-items:center;gap:5px;background:#1D2E73;color:#fff;border:none;border-radius:7px;padding:6px 10px;font-size:11.5px;font-weight:700;cursor:pointer;">${OPS_SVG('<path d="M12 5v14M5 12h14"/>', 12)}Agregar servicio</button>` : ""}
+            </div>
+            ${lista.length ? `<div style="display:flex;flex-direction:column;gap:6px;">${lista.map((x, i) => `
+                <div style="display:flex;align-items:center;gap:8px;background:#f8fafc;border-radius:8px;padding:7px 10px;font-size:12px;color:#334155;">
+                    <div style="flex:1;min-width:0;"><b style="color:#1e293b;">${opsEsc(x.nombre)}</b>${Number(x.cantidad) > 1 ? ` × ${Number(x.cantidad)}` : ""}${x.horas ? ` <span style="color:#94a3b8;">· ${opsEsc(opsAsTxtHoras(x.horas))}</span>` : ""}</div>
+                    ${puede ? `<button onclick="opsProgQuitarServicio('${f.id}',${i})" title="Quitar de la programación" style="background:none;border:none;color:#E7402B;cursor:pointer;display:inline-flex;padding:2px;">${OPS_SVG('<path d="M18 6 6 18M6 6l12 12"/>', 13)}</button>` : ""}
+                </div>`).join("")}</div>` : `<div style="font-size:11.5px;color:#94a3b8;">Sin servicios todavía. ${puede ? "Agrégalos con el botón." : ""}</div>`}
+        </div>`;
+    }
+    let opsProgAdd = null;
+    window.opsProgAbrirAgregar = function (folioId) {
+        if (!opsPuedeGestionar()) { alert("Tu usuario es de solo lectura en Operaciones."); return; }
+        const f = cacheFolios.find(x => x.id === folioId); if (!f) return;
+        opsAsCss();
+        opsProgAdd = { folioId, sel: [], busca: "", sumarDur: true, avisar: (f.tecnicosAsignadosIds || []).length > 0 };
+        opsProgAddPintar();
+    };
+    function opsProgAddPintar() {
+        const st = opsProgAdd; if (!st) return;
+        const f = cacheFolios.find(x => x.id === st.folioId); if (!f) return;
+        let ov = document.getElementById("ops-prog-add");
+        if (!ov) { ov = document.createElement("div"); ov.id = "ops-prog-add"; ov.style.cssText = "position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:100001;display:flex;align-items:center;justify-content:center;padding:20px;"; document.body.appendChild(ov); }
+        const ya = (f.serviciosProgramados || []).filter(x => x.tipo !== "otro").map(x => x.clave);
+        const h = opsProgHoras(st.sel);
+        const nTec = (f.tecnicosAsignadosIds || []).length;
+        ov.innerHTML = `
+            <div style="background:#fff;border-radius:16px;width:620px;max-width:96vw;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.3);">
+                <div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;display:flex;align-items:flex-start;gap:10px;">
+                    <div style="flex:1;"><div style="font-size:16px;font-weight:800;color:#1e293b;">Agregar servicio a la programación</div>
+                    <div style="font-size:12px;color:#64748b;margin-top:2px;">${opsEsc(f.estacion || "")} · ${opsEsc(opsFmtFechaCorta(f.fechaProgramada))}</div></div>
+                    <button onclick="opsProgAddCerrar()" style="background:#f1f5f9;border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;">${ICON.close}</button>
+                </div>
+                <div style="overflow-y:auto;padding:14px 20px;">
+                    <input class="opsas-in" placeholder="Buscar servicio o norma…" value="${opsEsc(st.busca)}" oninput="opsProgAddBuscar(this.value)">
+                    <div id="ops-prog-add-chips" style="margin-top:8px;">${opsProgChipsHTML(st.sel, st.busca, "opsProgAddToggle", ya)}</div>
+                    <div style="display:flex;gap:6px;margin-top:8px;">
+                        <input id="ops-prog-add-otro" class="opsas-in" placeholder="¿No está en la lista? Escríbelo aquí…" onkeydown="if(event.key==='Enter'){event.preventDefault();opsProgAddOtro();}">
+                        <button type="button" class="opsas-ghost" style="white-space:nowrap;" onclick="opsProgAddOtro()">Agregar</button>
+                    </div>
+                    ${st.sel.length ? opsProgListaElegidosHTML(st.sel, "opsProgAddCant", "opsProgAddQuitar").replace(/<div class="opsas-note">Suma de duración[\s\S]*$/, "") : ""}
+                    ${h ? `<label class="opsas-chk" style="margin-top:10px;"><input type="checkbox" ${st.sumarDur ? "checked" : ""} onchange="opsProgAdd.sumarDur=this.checked"><span>Sumar su duración (<b>${opsEsc(opsAsTxtHoras(h))}</b>) al tiempo de la programación${f.tiempoEjecucionHrs ? ` (hoy: ${opsEsc(opsAsTxtHoras(Number(f.tiempoEjecucionHrs)))})` : ""}</span></label>` : ""}
+                    ${nTec ? `<label class="opsas-chk"><input type="checkbox" ${st.avisar ? "checked" : ""} onchange="opsProgAdd.avisar=this.checked"><span>Avisar a ${nTec === 1 ? "el técnico asignado" : "los " + nTec + " técnicos asignados"} en la app de Flotilla</span></label>` : ""}
+                </div>
+                <div style="display:flex;gap:10px;justify-content:flex-end;padding:12px 20px;border-top:1px solid #e2e8f0;">
+                    <button class="opsas-btn" style="background:#fff;color:#475569;border:1px solid #cbd5e1;" onclick="opsProgAddCerrar()">Cancelar</button>
+                    <button id="ops-prog-add-btn" class="opsas-btn" style="background:${st.sel.length ? "#15803D" : "#94a3b8"};color:#fff;display:inline-flex;align-items:center;gap:7px;" onclick="opsProgAddGuardar()"><span style="display:inline-flex;width:15px;height:15px;">${ICON.check}</span>Agregar ${st.sel.length || ""} ${st.sel.length === 1 ? "servicio" : "servicios"}</button>
+                </div>
+            </div>`;
+    }
+    Object.defineProperty(window, "opsProgAdd", { get: () => opsProgAdd, configurable: true });
+    window.opsProgAddCerrar = function () { opsProgAdd = null; document.getElementById("ops-prog-add")?.remove(); };
+    window.opsProgAddBuscar = function (v) {
+        const st = opsProgAdd; if (!st) return; st.busca = v;
+        const f = cacheFolios.find(x => x.id === st.folioId);
+        const ya = (f && f.serviciosProgramados || []).filter(x => x.tipo !== "otro").map(x => x.clave);
+        const el = document.getElementById("ops-prog-add-chips"); if (el) el.innerHTML = opsProgChipsHTML(st.sel, st.busca, "opsProgAddToggle", ya);
+    };
+    window.opsProgAddToggle = function (i) {
+        const st = opsProgAdd, o = (window.__opsProgOps || [])[i]; if (!st || !o) return;
+        const k = st.sel.findIndex(x => x.clave === o.clave);
+        if (k >= 0) st.sel.splice(k, 1); else st.sel.push({ ...o, cantidad: 1 });
+        opsProgAddPintar();
+    };
+    window.opsProgAddOtro = function () {
+        const st = opsProgAdd; const inp = document.getElementById("ops-prog-add-otro");
+        const t = (inp && inp.value || "").trim(); if (!st || !t) return;
+        st.sel.push({ clave: "otro:" + Date.now(), tipo: "otro", id: null, nombre: t, horas: 0, grupo: "Otro", cantidad: 1 });
+        opsProgAddPintar();
+    };
+    window.opsProgAddCant = function (i, v) { const x = opsProgAdd && opsProgAdd.sel[i]; if (x) x.cantidad = Math.max(1, Number(v) || 1); };
+    window.opsProgAddQuitar = function (i) { if (!opsProgAdd) return; opsProgAdd.sel.splice(i, 1); opsProgAddPintar(); };
+    window.opsProgAddGuardar = async function () {
+        const st = opsProgAdd; if (!st) return;
+        if (!st.sel.length) { alert("Elige al menos un servicio."); return; }
+        const f = cacheFolios.find(x => x.id === st.folioId); if (!f) return;
+        const btn = document.getElementById("ops-prog-add-btn"); if (btn) { btn.disabled = true; btn.textContent = "Guardando…"; }
+        const agregados = st.sel.map(opsProgLimpio);
+        const cambios = { serviciosProgramados: (f.serviciosProgramados || []).map(opsProgLimpio).concat(agregados) };
+        const h = opsProgHoras(agregados);
+        if (st.sumarDur && h > 0) {
+            const total = Math.round(((Number(f.tiempoEjecucionHrs) || 0) + h) * 100) / 100;
+            cambios.tiempoEjecucionHrs = total; cambios.duracionValor = total; cambios.duracionUnidad = "h";
+        }
+        const txt = opsProgServiciosTxt(agregados);
+        try {
+            const { db, fs } = await opsGetFB();
+            await fs.updateDoc(fs.doc(db, COL_FOLIOS, f.id), cambios);
+            Object.assign(f, cambios);
+            await fs.addDoc(fs.collection(db, COL_FOLIOS, f.id, "comentarios"), {
+                texto: `Se agregó a la programación: ${txt}.` + (cambios.tiempoEjecucionHrs ? ` Duración ahora: ${opsAsTxtHoras(cambios.tiempoEjecucionHrs)}.` : ""),
+                autor: opsNombreActual(), autorEmail: opsUsuarioActual(), tipo: "captura",
+                createdAt: fs.serverTimestamp ? fs.serverTimestamp() : opsFechaHora(),
+            }).catch(err => console.warn("[Programación] comentario:", err.message));
+            let avisoTxt = "";
+            if (st.avisar) {
+                const tecs = (f.tecnicosAsignadosIds || []).map(id => cacheTec.find(t => t.id === id)).filter(Boolean);
+                const r = await opsAvisarTecnicosAsignados(f, tecs, "Servicio agregado a tu programación: " + txt);
+                if (r.enviados.length) avisoTxt = " Se avisó a " + r.enviados.join(", ") + ".";
+            }
+            window.opsProgAddCerrar();
+            if (window.mostrarPush) window.mostrarPush("Operaciones", `Servicio agregado: ${txt}.${avisoTxt}`, "");
+            try { opsRenderCalendario(); } catch (e) {}
+            window.opsAbrirPanelFolio(f.id);
+        } catch (e) {
+            console.error("[Programación] agregar servicio:", e);
+            alert("No se pudo agregar el servicio: " + (e && e.code === "permission-denied" ? "tu usuario no tiene permiso de escritura." : (e.message || e)));
+            if (btn) { btn.disabled = false; btn.textContent = "Reintentar"; }
+        }
+    };
+    window.opsProgQuitarServicio = async function (folioId, i) {
+        if (!opsPuedeGestionar()) return;
+        const f = cacheFolios.find(x => x.id === folioId); if (!f) return;
+        const lista = (f.serviciosProgramados || []).map(opsProgLimpio);
+        const x = lista[i]; if (!x) return;
+        if (!confirm(`¿Quitar "${x.nombre}" de esta programación?\n\nLa duración no se modifica; ajústala en Editar folio si hace falta.`)) return;
+        lista.splice(i, 1);
+        try {
+            const { db, fs } = await opsGetFB();
+            await fs.updateDoc(fs.doc(db, COL_FOLIOS, folioId), { serviciosProgramados: lista });
+            f.serviciosProgramados = lista;
+            fs.addDoc(fs.collection(db, COL_FOLIOS, folioId, "comentarios"), {
+                texto: `Se quitó de la programación: ${x.nombre}.`, autor: opsNombreActual(), autorEmail: opsUsuarioActual(), tipo: "captura",
+                createdAt: fs.serverTimestamp ? fs.serverTimestamp() : opsFechaHora(),
+            }).catch(() => {});
+            window.opsAbrirPanelFolio(folioId);
+        } catch (e) { alert("No se pudo quitar el servicio: " + (e.message || e)); }
+    };
+
     window.opsAbrirPanelFolio = async function (folioId) {
       try {
         const f = cacheFolios.find(x => x.id === folioId);
@@ -6604,6 +6743,7 @@
                     <div><div style="font-size:10px;color:#94a3b8;font-weight:600;">ESTADO</div><div style="font-size:12.5px;font-weight:700;color:${opsCalEstatusFolio(f).color};display:flex;align-items:center;gap:6px;">${opsCalBadgeEstatus(opsCalEstatusFolio(f).clave, 18)}${opsEsc(opsCalEstatusFolio(f).nombre)}</div></div>
                 </div>
                 ${opsHTMLAccionesFolio(f)}
+                ${f.tipoAlta === "programacion" ? opsProgPanelHTML(f) : ""}
 
                 <div style="border-top:1px solid #e2e8f0;padding-top:12px;margin-bottom:16px;">
                     <div style="font-size:11px;font-weight:700;color:#1D2E73;margin-bottom:8px;">Equipo asignado${rolesReq !== null ? ` (${tecnicos.length}/${rolesReq})` : ""}</div>
@@ -7919,7 +8059,7 @@
         doc.setTextColor(255, 255, 255); doc.text(estTxt, W - M - anchoEst / 2, y + 1.6, { align: "center" });
         y += 9;
         const receta = f.servicioCatalogoId ? cacheServiciosCatalogo.find(r => r.id === f.servicioCatalogoId) : null;
-        const tipoTxt = f.tipoFolio === "inspeccion" ? "Visita de inspección" + (f.normaInspeccion ? " · " + f.normaInspeccion : "") : f.tipoFolio === "laboratorio" ? "Laboratorio" : (receta ? receta.nombre : (f.tipoAlta === "programacion" ? "Programación" : "Servicio técnico"));
+        const tipoTxt = f.tipoFolio === "inspeccion" ? "Visita de inspección" + (f.normaInspeccion ? " · " + f.normaInspeccion : "") : f.tipoFolio === "laboratorio" ? "Laboratorio" : (receta ? receta.nombre : (f.tipoAlta === "programacion" ? "Programación" + ((f.serviciosProgramados || []).length ? " · " + opsProgServiciosTxt(f.serviciosProgramados) : "") : "Servicio técnico"));
         parrafo(tipoTxt, { color: GRIS, size: 10 });
         y += 2;
 
@@ -8043,6 +8183,9 @@
     }
     function opsAsClaveServicio() {
         const s = opsAS; if (!s || !s.tipo) return null;
+        // Solo programación: no se le cobra al cliente (precio, materiales, gastos) — Glen oct-2026,
+        // esa parte se integra después. Sin clave no se pinta la sección de precio ni se sugiere precio.
+        if (s.tipo === "programacion") return null;
         if (s.tipo === "receta") { const r = opsAsReceta(); return r ? { clave: "rec:" + r.id, nombre: r.nombre } : null; }
         if (s.tipo === "inspeccion") return { clave: "norma:" + s.norma, nombre: "Inspección " + s.norma };
         const t = OPS_AS_TIPOS.find(x => x.k === s.tipo);
@@ -8408,6 +8551,7 @@
             precioSel: "", precioPers: "", precioSugerido: null, precioDeSugerido: false, precioEditor: false, precioEdit: { l1: "", l2: "", l3: "", unidad: "servicio", extras: [] },
             costoViaticos: "", costoHerr: "", costoOtros: "", cobrarGastos: true, comisiones: [], contacto: "", telefono: "", whatsapp: "", correo: "", puesto: "Encargado de estación", contactoId: null, os: "", comentarios: "",
             viaticos: false, masFac: false, facturarA: "", proyecto: "", encargado: "",
+            servicios: [], servBusca: "", // Solo programación: varios servicios en una misma programación
         };
         // Flota real (Supabase) — la misma que usa Viáticos; se carga en segundo plano.
         if (typeof opsViaCargarFlota === "function") opsViaCargarFlota().then(() => { if (opsAS) opsAsPintar(); }).catch(() => {});
@@ -8522,6 +8666,7 @@
                 <input class="opsas-in" placeholder="Buscar servicio…" value="${opsEsc(s.recetaBusca)}" oninput="opsAS.recetaBusca=this.value;opsAsPintarParcial('opsas-recetas',opsAsRecetasHTML())">
                 <div id="opsas-recetas" style="margin-top:8px;">${opsAsRecetasHTML()}</div>
             </div>` : ""}
+            ${s.tipo === "programacion" ? opsAsProgSeccionHTML() : ""}
         </div>`;
 
         // ── Paso 2: estación ──
@@ -8544,7 +8689,7 @@
                 </div>
                 ${e.permiso ? "" : `<div class="opsas-note opsas-warn">Esta estación no tiene PL en el catálogo. Si lo capturas, se guarda en el folio y en el catálogo.</div>`}
                 ${hermanas.length ? `<div class="opsas-note">Esta razón social tiene ${hermanas.length + 1} estaciones: ${[e, ...hermanas].map(x => opsEsc(x.nombreComercial || x.razonSocial)).join(", ")}.</div>` : ""}
-            </div>` : (s.estTexto.trim() ? `<div class="opsas-note">Se guardará como lugar escrito a mano (fuera del catálogo).</div>` : "")}
+            </div>` : `<div class="opsas-note" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">${s.estTexto.trim() ? "Se guardará como lugar escrito a mano (fuera del catálogo)." : "¿El cliente no está en el catálogo?"} <button type="button" class="opsas-ghost" style="padding:4px 10px;font-size:11.5px;border-color:#15803d;color:#15803d;" onclick="opsNeAbrir()">+ Dar de alta estación / cliente nuevo</button></div>`}
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;">
                 <span class="opsas-lb" style="margin:0;">Plaza</span>
                 ${OPS_PLAZAS.map(p => `<button type="button" onclick="opsAS.plazaManual=true;opsAsSet('plaza','${p}')" style="border:1.5px solid ${s.plaza === p ? "#1D2E73" : "#e2e8f0"};background:${s.plaza === p ? "#1D2E73" : "#fff"};color:${s.plaza === p ? "#fff" : "#334155"};border-radius:999px;padding:5px 12px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit;">${p}</button>`).join("")}
@@ -8639,7 +8784,7 @@
         </div>` : "";
 
         // ── Precio, gastos y comisiones ──
-        const pasoPrecio = s.tipo ? opsAsPrecioHTML(num(), lock(listo3)) : "";
+        const pasoPrecio = s.tipo && s.tipo !== "programacion" ? opsAsPrecioHTML(num(), lock(listo3)) : "";
         const pasoComisiones = s.tipo ? opsAsComisionesHTML(num(), lock(listo3)) : "";
 
         // ── Extras opcionales ──
@@ -8661,7 +8806,7 @@
             <div style="background:#f4f6f9;border-radius:16px;width:860px;max-width:98vw;max-height:94vh;display:flex;flex-direction:column;overflow:hidden;">
                 <div style="display:flex;align-items:center;gap:10px;padding:16px 20px;background:#fff;border-bottom:1px solid #e2e8f0;">
                     <div style="font-weight:700;font-size:17px;color:#1e293b;">Nuevo servicio</div>
-                    ${tipo ? `<span class="opsas-pill" style="background:${tipo.c}14;color:${tipo.c};">${opsEsc(tipo.n)}${receta ? " · " + opsEsc(receta.nombre) : ""}</span>` : ""}
+                    ${tipo ? `<span class="opsas-pill" style="background:${tipo.c}14;color:${tipo.c};">${opsEsc(tipo.n)}${receta ? " · " + opsEsc(receta.nombre) : ""}${s.tipo === "programacion" && s.servicios.length ? " · " + s.servicios.length + (s.servicios.length === 1 ? " servicio" : " servicios") : ""}</span>` : ""}
                     <button onclick="opsAsCerrar()" style="margin-left:auto;background:#f1f5f9;border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;">${ICON.close}</button>
                 </div>
                 <div data-opsas-scroll style="overflow-y:auto;padding:16px 20px;">
@@ -8722,6 +8867,79 @@
     }
     window.opsAsRecetasHTML = opsAsRecetasHTML;
 
+    // ── Solo programación: varios servicios en una misma programación (oct-2026) ──
+    // Glen: "poder elegir varios servicios desde una programación" y "agregar un servicio a una
+    // programación ya hecha". Se guardan en el folio como serviciosProgramados:
+    // [{ clave, tipo: receta|inspeccion|otro, id, nombre, cantidad, horas }].
+    // Opciones: servicios del catálogo (pestaña Servicios) + normas de inspección + texto libre.
+    function opsProgOpcionesServicio() {
+        const recs = cacheServiciosCatalogo.filter(r => r.activo !== false).map(r => ({ clave: "rec:" + r.id, tipo: "receta", id: r.id, nombre: r.nombre || "", horas: Number(r.horasEjecucion) || 0, grupo: r.categoria || "Catálogo de servicios" }));
+        const normas = OPS_NORMAS_INSPECCION.filter(n => n !== "Laboratorio").map(n => ({ clave: "norma:" + n, tipo: "inspeccion", id: null, nombre: "Inspección " + n, horas: 0, grupo: "Visitas de inspección" }));
+        return recs.concat(normas).sort((a, b) => opsAsAlfa(a.nombre, b.nombre));
+    }
+    function opsProgServiciosTxt(lista) { return (lista || []).map(x => x.nombre + (Number(x.cantidad) > 1 ? " ×" + x.cantidad : "")).join(", "); }
+    function opsProgHoras(lista) { return (lista || []).reduce((a, x) => a + (Number(x.horas) || 0), 0); }
+    function opsProgLimpio(x) { return { clave: x.clave, tipo: x.tipo, id: x.id || null, nombre: x.nombre, cantidad: Math.max(1, Number(x.cantidad) || 1), horas: Number(x.horas) || 0 }; }
+    // Chips con buscador. fnToggle recibe el índice dentro de la última lista pintada.
+    function opsProgChipsHTML(elegidos, busca, fnToggle, excluir) {
+        const q = opsAsNorm(busca || "");
+        const fuera = new Set(excluir || []);
+        const ops = opsProgOpcionesServicio().filter(o => !fuera.has(o.clave) && (!q || opsAsNorm(o.nombre + " " + o.grupo).includes(q)));
+        window.__opsProgOps = ops;
+        if (!ops.length) return `<div class="opsas-note">Sin coincidencias. Si no está en la lista, escríbelo abajo y presiona Agregar.</div>`;
+        const on = new Set((elegidos || []).map(x => x.clave));
+        return `<div style="display:flex;flex-wrap:wrap;gap:7px;max-height:190px;overflow-y:auto;padding:2px;">${ops.map((o, i) => {
+            const sel = on.has(o.clave);
+            return `<button type="button" onclick="${fnToggle}(${i})" title="${opsEsc(o.grupo)}" style="display:inline-flex;align-items:center;gap:5px;border:1.5px solid ${sel ? "#1D2E73" : "#e2e8f0"};background:${sel ? "#1D2E73" : "#fff"};color:${sel ? "#fff" : "#334155"};border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">${OPS_SVG(sel ? '<path d="M20 6 9 17l-5-5"/>' : '<path d="M12 5v14M5 12h14"/>', 12)}${opsEsc(o.nombre)}</button>`;
+        }).join("")}</div>`;
+    }
+    function opsProgListaElegidosHTML(lista, fnCant, fnQuitar) {
+        if (!(lista || []).length) return `<div class="opsas-note">Todavía no eliges servicios. Es opcional: puedes guardar la programación y agregarlos después desde el calendario.</div>`;
+        const h = opsProgHoras(lista);
+        return `<div class="opsas-list" style="margin-top:10px;padding:4px 10px;">${lista.map((x, i) => `
+            <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid #f1f5f9;">
+                <div style="flex:1;min-width:0;font-size:12.5px;color:#1e293b;font-weight:600;">${opsEsc(x.nombre)}${x.horas ? ` <small style="color:#94a3b8;font-weight:500;">· ${opsEsc(opsAsTxtHoras(x.horas))}</small>` : ""}${x.tipo === "otro" ? ` <small style="color:#94a3b8;font-weight:500;">· escrito a mano</small>` : ""}</div>
+                <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:#64748b;">Cant.<input type="number" min="1" value="${Math.max(1, Number(x.cantidad) || 1)}" onchange="${fnCant}(${i},this.value)" style="width:56px;border:1px solid #cbd5e1;border-radius:7px;padding:4px 6px;font-size:12px;"></label>
+                <button type="button" onclick="${fnQuitar}(${i})" title="Quitar" style="background:#fef2f2;border:none;color:#E7402B;width:26px;height:26px;border-radius:7px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;">${OPS_SVG('<path d="M18 6 6 18M6 6l12 12"/>', 12)}</button>
+            </div>`).join("")}</div>
+            ${h ? `<div class="opsas-note">Suma de duración de los servicios del catálogo: <strong>${opsEsc(opsAsTxtHoras(h))}</strong>${opsAS && opsAS.durManual ? " (capturaste la duración a mano)" : " (se pone sola en la duración)"}.</div>` : ""}`;
+    }
+    function opsAsProgSeccionHTML() {
+        const s = opsAS;
+        return `
+            <div style="margin-top:12px;">
+                <label class="opsas-lb">Servicios que incluye esta programación (puedes elegir varios · opcional)</label>
+                <input class="opsas-in" placeholder="Buscar servicio o norma…" value="${opsEsc(s.servBusca)}" oninput="opsAS.servBusca=this.value;opsAsPintarParcial('opsas-prog-chips',opsAsProgChipsHTML())">
+                <div id="opsas-prog-chips" style="margin-top:8px;">${opsAsProgChipsHTML()}</div>
+                <div style="display:flex;gap:6px;margin-top:8px;">
+                    <input id="opsas-prog-otro" class="opsas-in" placeholder="¿No está en la lista? Escríbelo aquí…" onkeydown="if(event.key==='Enter'){event.preventDefault();opsAsProgOtro();}">
+                    <button type="button" class="opsas-ghost" style="white-space:nowrap;" onclick="opsAsProgOtro()">Agregar</button>
+                </div>
+                ${opsProgListaElegidosHTML(s.servicios, "opsAsProgCant", "opsAsProgQuitar")}
+                <div class="opsas-note">En Solo programación no se captura precio ni se le cobran materiales o gastos al cliente.</div>
+            </div>`;
+    }
+    window.opsAsProgChipsHTML = function () { return opsAS ? opsProgChipsHTML(opsAS.servicios, opsAS.servBusca, "opsAsProgToggle") : ""; };
+    function opsAsProgAutoDur() {
+        const s = opsAS; if (!s || s.durManual) return;
+        const h = opsProgHoras(s.servicios);
+        if (h > 0) { s.dur = String(h); s.durU = "h"; }
+    }
+    window.opsAsProgToggle = function (i) {
+        const s = opsAS, o = (window.__opsProgOps || [])[i]; if (!s || !o) return;
+        const k = s.servicios.findIndex(x => x.clave === o.clave);
+        if (k >= 0) s.servicios.splice(k, 1); else s.servicios.push({ ...o, cantidad: 1 });
+        opsAsProgAutoDur(); opsAsPintar();
+    };
+    window.opsAsProgOtro = function () {
+        const s = opsAS; const inp = document.getElementById("opsas-prog-otro");
+        const t = (inp && inp.value || "").trim(); if (!s || !t) return;
+        s.servicios.push({ clave: "otro:" + Date.now(), tipo: "otro", id: null, nombre: t, horas: 0, grupo: "Otro", cantidad: 1 });
+        opsAsPintar();
+    };
+    window.opsAsProgCant = function (i, v) { const x = opsAS && opsAS.servicios[i]; if (x) x.cantidad = Math.max(1, Number(v) || 1); };
+    window.opsAsProgQuitar = function (i) { const s = opsAS; if (!s) return; s.servicios.splice(i, 1); opsAsProgAutoDur(); opsAsPintar(); };
+
     window.opsAsDurHTML = function () { return opsAsDurHTML(); };
     function opsAsDurHTML() {
         const s = opsAS; const d = opsAsHoras(s.dur, s.durU), t = opsAsHoras(s.tras, s.trasU);
@@ -8742,7 +8960,8 @@
             const q = opsAsNorm(valor);
             const f = (lista || []).filter(e => opsAsNorm([e.razonSocial, e.nombreComercial, e.municipio, e.permiso, e.zona].filter(Boolean).join(" ")).includes(q))
                 .sort((a, b) => opsAsAlfa(a.razonSocial, b.razonSocial) || opsAsAlfa(a.nombreComercial, b.nombreComercial)).slice(0, 40);
-            if (!f.length) { box.innerHTML = `<div class="opsas-opt"><small>Sin resultados — se guardará como lugar escrito a mano.</small></div>`; box.style.display = "block"; return; }
+            const optAlta = `<div class="opsas-opt" onmousedown="opsNeAbrir()" style="background:#f0fdf4;"><b style="color:#15803d;display:flex;align-items:center;gap:6px;">${OPS_SVG('<path d="M12 5v14M5 12h14"/>', 12)}Dar de alta estación / cliente nuevo</b><small>Con PL, ubicación en mapa y datos. Se guarda en el catálogo y en Clientes de Ventas.</small></div>`;
+            if (!f.length) { box.innerHTML = optAlta + `<div class="opsas-opt"><small>Sin resultados — o déjalo como lugar escrito a mano.</small></div>`; box.style.display = "block"; return; }
             // Agrupado por razón social: así se ve cuando una razón social tiene varias estaciones.
             let html = "", rsPrev = null;
             f.forEach(e => {
@@ -8753,7 +8972,7 @@
                 }
                 html += `<div class="opsas-opt" onmousedown="opsAsElegirEstacion('${e.id}')"><b>${opsEsc(e.nombreComercial || e.razonSocial)}</b><small>${opsEsc(e.municipio || "")}${e.permiso ? " · " + opsEsc(e.permiso) : " · sin PL"}${e.zona ? " · Zona " + opsEsc(e.zona) : ""}</small></div>`;
             });
-            box.innerHTML = html; box.style.display = "block";
+            box.innerHTML = html + optAlta; box.style.display = "block";
         });
     };
     window.opsAsElegirEstacion = function (id) {
@@ -8771,6 +8990,229 @@
             if (c) { s.contacto = c.nombre; s.telefono = c.tel || s.telefono; s.whatsapp = c.whatsapp || ""; s.correo = c.correo || ""; s.puesto = c.puesto || s.puesto; s.contactoId = c.id || null; }
         }
         opsAsPintar();
+    };
+
+    // ═══ Alta de estación / cliente nuevo desde Nuevo servicio (oct-2026) ═══
+    // Glen: "si el cliente no está en la lista poderlo dar de alta desde ahí mismo y se comunique
+    // con Ventas con ubicaciones y todo, con todos los datos (PL), y se vaya alimentando la base de
+    // datos con los clientes". Guarda en los tres lugares que usa el portal, ligados por el mismo id:
+    //   1) estaciones_servicio en Firestore (Ventas, Almacén, Logística — mismo formato que ventas.js)
+    //   2) estaciones_servicio en Supabase (lo que lee Operaciones y Viáticos)
+    //   3) ventas_clientes en Firestore (Clientes de Ventas, con estacionCatalogoId)
+    let opsNE = null, opsNeMapa = null;
+    Object.defineProperty(window, "opsNE", { get: () => opsNE, configurable: true });
+    const OPS_NE_SECTORES = ["Hidrocarburos", "Industria", "Comercial", "Gobierno", "Construcción", "Otro"];
+    window.opsNeAbrir = function () {
+        const s = opsAS; if (!s) return;
+        const texto = (s.estTexto || "").trim();
+        const plazaCentro = { "Chihuahua": [28.6353, -106.0889], "Juárez": [31.6904, -106.4245], "Parral": [26.9318, -105.6664], "Monterrey": [25.6866, -100.3161] }[s.plaza] || [28.6353, -106.0889];
+        opsNE = {
+            razonSocial: texto, nombreComercial: "", permiso: "", codigoCre: "",
+            direccion: "", colonia: "", cp: "", municipio: s.plaza === "Juárez" ? "Juárez" : s.plaza === "Parral" ? "Hidalgo del Parral" : s.plaza === "Monterrey" ? "Monterrey" : "Chihuahua",
+            estado: s.plaza === "Monterrey" ? "Nuevo León" : "Chihuahua",
+            lat: null, lng: null, centro: plazaCentro, ubicando: false,
+            encargado: "", telefono: "", correo: "", dispensarios: "", tanques: "", sondas: "", zona: "",
+            sector: "Hidrocarburos", notas: "", guardando: false,
+        };
+        opsCatalogoEstaciones().then(l => { window.__opsAsEstCatalogo = l || window.__opsAsEstCatalogo || []; }).catch(() => {});
+        opsNePintar();
+    };
+    function opsNePintar() {
+        const n = opsNE; if (!n) return;
+        let ov = document.getElementById("opsne-wrap");
+        if (!ov) { ov = document.createElement("div"); ov.id = "opsne-wrap"; ov.style.cssText = "position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:100002;display:flex;align-items:center;justify-content:center;padding:16px;"; document.body.appendChild(ov); }
+        const sc = ov.querySelector("[data-opsne-scroll]")?.scrollTop || 0;
+        const inp = (k, label, ph, tipo, extra) => `<div${extra || ""}><label class="opsas-lb">${label}</label><input class="opsas-in" type="${tipo || "text"}" value="${opsEsc(n[k] ?? "")}" placeholder="${opsEsc(ph || "")}" oninput="opsNE.${k}=this.value"></div>`;
+        const razones = [...new Set((window.__opsAsEstCatalogo || []).map(e => e.razonSocial).filter(Boolean))].sort(opsAsAlfa);
+        const dup = opsNeDuplicado();
+        ov.innerHTML = `
+        <div style="background:#f4f6f9;border-radius:16px;width:900px;max-width:98vw;max-height:94vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.3);">
+            <div style="display:flex;align-items:center;gap:10px;padding:14px 20px;background:#fff;border-bottom:1px solid #e2e8f0;">
+                <div><div style="font-weight:800;font-size:16px;color:#1e293b;">Alta de estación / cliente nuevo</div>
+                <div style="font-size:11.5px;color:#64748b;">Se guarda en el catálogo de estaciones y en Clientes de Ventas, con su ubicación.</div></div>
+                <button onclick="opsNeCerrar()" style="margin-left:auto;background:#f1f5f9;border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;">${ICON.close}</button>
+            </div>
+            <div data-opsne-scroll style="overflow-y:auto;padding:14px 20px;">
+                <div class="opsas-sec">
+                    <div class="opsas-sh"><div class="opsas-tt">Datos de la estación</div><div class="opsas-hint">* obligatorio</div></div>
+                    <div class="opsas-grid">
+                        <div><label class="opsas-lb">Razón social *</label><input class="opsas-in" list="opsne-razones" value="${opsEsc(n.razonSocial)}" placeholder="Ej. GASOLINERA EL CIMARRÓN SA DE CV" oninput="opsNE.razonSocial=this.value"><datalist id="opsne-razones">${razones.map(r => `<option value="${opsEsc(r)}">`).join("")}</datalist></div>
+                        ${inp("nombreComercial", "Nombre comercial / de la estación", "Ej. Cimarrón Nogales")}
+                        ${inp("permiso", "PL / permiso CRE", "PL/_____/EXP/ES/____")}
+                        ${inp("codigoCre", "Número de estación (opcional)", "Ej. E12345")}
+                        ${inp("zona", "Zona (opcional)", "")}
+                        <div><label class="opsas-lb">Sector</label><select class="opsas-in" onchange="opsNE.sector=this.value">${OPS_NE_SECTORES.map(x => `<option ${n.sector === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>
+                    </div>
+                    ${dup ? `<div class="opsas-note opsas-warn" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">Ya existe en el catálogo: <b>${opsEsc(dup.nombreComercial || dup.razonSocial)}</b>${dup.permiso ? " · " + opsEsc(dup.permiso) : ""}. <button type="button" class="opsas-ghost" style="padding:3px 9px;font-size:11px;" onclick="opsNeUsarExistente('${opsEsc(dup.id)}')">Usar esa</button></div>` : ""}
+                    <div class="opsas-grid" style="margin-top:10px;">
+                        ${inp("dispensarios", "Dispensarios", "", "number")}${inp("tanques", "Tanques", "", "number")}${inp("sondas", "Sondas", "", "number")}
+                    </div>
+                </div>
+                <div class="opsas-sec">
+                    <div class="opsas-sh"><div class="opsas-tt">Dirección y ubicación</div><div class="opsas-hint">Clic en el mapa o arrastra el pin</div></div>
+                    <div class="opsas-grid">
+                        ${inp("direccion", "Calle y número *", "Ej. Av. Tecnológico 4500")}${inp("colonia", "Colonia", "")}${inp("cp", "C.P.", "")}
+                        ${inp("municipio", "Municipio / ciudad *", "")}${inp("estado", "Estado", "")}
+                    </div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 8px;">
+                        <button type="button" class="opsas-ghost" onclick="opsNeUbicarDireccion()">${n.ubicando ? "Buscando…" : "Ubicar por dirección"}</button>
+                        <button type="button" class="opsas-ghost" onclick="opsNeMiUbicacion()">Usar mi ubicación actual</button>
+                        <span style="font-size:11.5px;align-self:center;color:${n.lat ? "#15803d" : "#b45309"};font-weight:600;">${n.lat ? `Ubicación: ${Number(n.lat).toFixed(5)}, ${Number(n.lng).toFixed(5)}` : "Sin ubicación todavía"}</span>
+                    </div>
+                    <div id="opsne-mapa" style="height:260px;border-radius:10px;border:1px solid #e2e8f0;background:#f8fafc;"></div>
+                </div>
+                <div class="opsas-sec">
+                    <div class="opsas-sh"><div class="opsas-tt">Encargado / contacto</div><div class="opsas-hint">Se pasa al servicio y al directorio</div></div>
+                    <div class="opsas-grid">${inp("encargado", "Nombre", "")}${inp("telefono", "Teléfono / WhatsApp", "10 dígitos", "tel")}${inp("correo", "Correo", "nombre@empresa.com", "email")}</div>
+                    <div style="margin-top:10px;"><label class="opsas-lb">Notas para Ventas (opcional)</label><textarea class="opsas-in" style="min-height:50px;resize:vertical;" oninput="opsNE.notas=this.value">${opsEsc(n.notas)}</textarea></div>
+                </div>
+            </div>
+            <div id="opsne-error" style="display:none;padding:10px 20px;background:#FEF2F2;border-top:1px solid #FECACA;color:#991B1B;font-size:12.5px;"></div>
+            <div style="display:flex;gap:10px;justify-content:flex-end;padding:12px 20px;background:#fff;border-top:1px solid #e2e8f0;">
+                <button class="opsas-btn" style="background:#fff;color:#475569;border:1px solid #cbd5e1;" onclick="opsNeCerrar()">Cancelar</button>
+                <button id="opsne-guardar" class="opsas-btn" style="background:#15803D;color:#fff;display:inline-flex;align-items:center;gap:7px;" onclick="opsNeGuardar()"><span style="display:inline-flex;width:15px;height:15px;">${ICON.check}</span>Dar de alta y usar en el servicio</button>
+            </div>
+        </div>`;
+        const scEl = ov.querySelector("[data-opsne-scroll]"); if (scEl) scEl.scrollTop = sc;
+        opsNePintarMapa();
+    }
+    function opsNePintarMapa() {
+        const el = document.getElementById("opsne-mapa"), n = opsNE;
+        if (!el || !n || typeof L === "undefined") return;
+        if (opsNeMapa) { try { opsNeMapa.remove(); } catch (e) {} opsNeMapa = null; }
+        const centro = n.lat ? [n.lat, n.lng] : n.centro;
+        opsNeMapa = L.map(el, { attributionControl: false, zoomAnimation: false, fadeAnimation: false }).setView(centro, n.lat ? 16 : 12);
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(opsNeMapa);
+        const icono = L.divIcon({ className: "", html: `<div style="width:18px;height:18px;border-radius:50%;background:#E7402B;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);"></div>`, iconSize: [18, 18], iconAnchor: [9, 9] });
+        if (n.lat) {
+            const m = L.marker([n.lat, n.lng], { icon: icono, draggable: true }).addTo(opsNeMapa);
+            m.on("dragend", () => { const p = m.getLatLng(); n.lat = p.lat; n.lng = p.lng; opsNePintar(); });
+        }
+        opsNeMapa.on("click", ev => { n.lat = ev.latlng.lat; n.lng = ev.latlng.lng; opsNePintar(); });
+        setTimeout(() => { try { opsNeMapa && opsNeMapa.invalidateSize(); } catch (e) {} }, 60);
+    }
+    function opsNeDuplicado() {
+        const n = opsNE; if (!n) return null;
+        const pl = opsAsNorm(n.permiso).replace(/[^a-z0-9]/g, "");
+        const cat = window.__opsAsEstCatalogo || [];
+        if (pl.length >= 6) { const d = cat.find(e => opsAsNorm(e.permiso).replace(/[^a-z0-9]/g, "") === pl); if (d) return d; }
+        const nc = opsAsNorm(n.nombreComercial).trim(), rs = opsAsNorm(n.razonSocial).trim();
+        if (nc && rs) return cat.find(e => opsAsNorm(e.nombreComercial).trim() === nc && opsAsNorm(e.razonSocial).trim() === rs) || null;
+        return null;
+    }
+    window.opsNeCerrar = function () {
+        if (opsNeMapa) { try { opsNeMapa.remove(); } catch (e) {} opsNeMapa = null; }
+        opsNE = null; document.getElementById("opsne-wrap")?.remove();
+    };
+    window.opsNeUsarExistente = function (id) { window.opsNeCerrar(); window.opsAsElegirEstacion(id); };
+    window.opsNeUbicarDireccion = async function () {
+        const n = opsNE; if (!n) return;
+        const dir = [n.direccion, n.colonia, n.cp, n.municipio, n.estado, "México"].filter(x => String(x || "").trim()).join(", ");
+        if (!n.direccion.trim() && !n.municipio.trim()) { alert("Escribe la dirección o el municipio primero."); return; }
+        n.ubicando = true; opsNePintar();
+        let p = await opsGeocodificarNominatim(dir);
+        if (!p) p = await opsGeocodificarNominatim([n.municipio, n.estado, "México"].filter(Boolean).join(", "));
+        if (opsNE !== n) return;
+        n.ubicando = false;
+        if (!p) { opsNePintar(); alert("No se encontró esa dirección. Marca el punto en el mapa con un clic."); return; }
+        n.lat = p.lat; n.lng = p.lng; opsNePintar();
+    };
+    window.opsNeMiUbicacion = function () {
+        const n = opsNE; if (!n) return;
+        if (!navigator.geolocation) { alert("Este navegador no permite obtener la ubicación."); return; }
+        navigator.geolocation.getCurrentPosition(pos => { if (opsNE !== n) return; n.lat = pos.coords.latitude; n.lng = pos.coords.longitude; opsNePintar(); },
+            err => alert("No se pudo obtener tu ubicación: " + err.message), { enableHighAccuracy: true, timeout: 15000 });
+    };
+    window.opsNeGuardar = async function () {
+        const n = opsNE; if (!n || n.guardando) return;
+        const err = msg => { const el = document.getElementById("opsne-error"); if (el) { el.style.display = "block"; el.innerHTML = msg; } else alert(msg); };
+        const falta = [];
+        if (!n.razonSocial.trim()) falta.push("razón social");
+        if (!n.direccion.trim()) falta.push("calle y número");
+        if (!n.municipio.trim()) falta.push("municipio");
+        if (falta.length) { err("Falta: " + falta.join(", ") + "."); return; }
+        const dup = opsNeDuplicado();
+        if (dup && !confirm(`Ya existe "${dup.nombreComercial || dup.razonSocial}"${dup.permiso ? " (" + dup.permiso + ")" : ""} en el catálogo.\n\n¿Dar de alta otra de todos modos?`)) return;
+        if (!n.lat && !confirm("La estación no tiene ubicación en el mapa. Sin ubicación no saldrá en los mapas ni se podrán calcular viáticos.\n\n¿Guardar así?")) return;
+        n.guardando = true;
+        const btn = document.getElementById("opsne-guardar"); if (btn) { btn.disabled = true; btn.textContent = "Guardando…"; }
+        const ahora = new Date().toISOString(), yo = opsUsuarioActual();
+        const num = v => (v === "" || v == null) ? null : Number(v);
+        const rs = n.razonSocial.trim().toUpperCase(), nc = n.nombreComercial.trim();
+        const dirCompleta = [n.direccion.trim(), n.colonia.trim() ? "Col. " + n.colonia.trim() : "", n.cp.trim() ? "C.P. " + n.cp.trim() : ""].filter(Boolean).join(", ");
+        const resultado = { firestore: false, supabase: false, ventas: false };
+        let id = null;
+        try {
+            const { db, fs } = await opsGetFB();
+            // 1) Catálogo maestro en Firestore (mismo formato que ventas.js)
+            const refEst = await fs.addDoc(fs.collection(db, "estaciones_servicio"), {
+                razonSocial: rs, nombreComercial: nc || null, permiso: n.permiso.trim() || "", codigoEstacionCre: n.codigoCre.trim() || null,
+                direccionNormalizada: dirCompleta, domicilioRaw: dirCompleta, colonia: n.colonia.trim() || null, codigoPostal: n.cp.trim() || "",
+                municipio: n.municipio.trim(), estado: n.estado.trim() || null, lat: n.lat, lng: n.lng, ubicacionVerificada: !!n.lat,
+                encargado: n.encargado.trim() || null, telefono: n.telefono.trim() || null, correo: n.correo.trim() || null, zona: n.zona.trim() || null,
+                numeroDispensarios: num(n.dispensarios), numeroTanques: num(n.tanques), numeroSondas: num(n.sondas),
+                activo: true, origen: "operaciones_alta", creadoPor: yo, creadoEn: ahora,
+            });
+            id = refEst.id; resultado.firestore = true;
+            // 2) Mismo registro en Supabase (lo que lee Operaciones), con el mismo id
+            const fila = {
+                razon_social: rs, nombre_comercial: nc || null, permiso: n.permiso.trim() || null, codigo_estacion_cre: n.codigoCre.trim() || null,
+                direccion_normalizada: dirCompleta, domicilio_raw: dirCompleta, colonia: n.colonia.trim() || null,
+                municipio: n.municipio.trim(), estado: n.estado.trim() || null, lat: n.lat, lng: n.lng,
+                encargado: n.encargado.trim() || null, zona: n.zona.trim() || null,
+                numero_dispensarios: num(n.dispensarios), numero_tanques: num(n.tanques), numero_sondas: num(n.sondas),
+                activo: true, actualizado_en: ahora,
+            };
+            try {
+                const sb = await opsSb();
+                let r = await sb.from("estaciones_servicio").insert({ id, ...fila }).select("id").single();
+                if (r.error) { console.warn("[Alta estación] Supabase con id de Firestore:", r.error.message); r = await sb.from("estaciones_servicio").insert(fila).select("id").single(); }
+                if (r.error) throw r.error;
+                if (r.data && r.data.id != null && String(r.data.id) !== String(id)) {
+                    // Supabase generó su propio id: se anota en Firestore para que queden ligados.
+                    fs.updateDoc(fs.doc(db, "estaciones_servicio", id), { supabaseId: r.data.id }).catch(() => {});
+                    id = String(r.data.id);
+                }
+                resultado.supabase = true;
+            } catch (e2) { console.error("[Alta estación] Supabase:", e2); }
+            // 3) Cliente en Ventas, ligado al catálogo
+            try {
+                await fs.addDoc(fs.collection(db, "ventas_clientes"), {
+                    nombre: `${rs} — ${[dirCompleta, n.municipio.trim()].filter(Boolean).join(", ")}`,
+                    lat: n.lat, lng: n.lng, ciudad: n.municipio.trim(), estado: n.estado.trim(), direccion: dirCompleta,
+                    contacto: n.encargado.trim(), tel: n.telefono.trim(), correo: n.correo.trim() || "", sector: n.sector, visitas: 0, producto: "",
+                    notas: [n.notas.trim(), nc ? "Estación: " + nc : "", n.permiso.trim() ? "PL: " + n.permiso.trim() : "", "Alta desde Operaciones por " + opsNombreActual()].filter(Boolean).join(" · "),
+                    vendedor: "", fotoUrl: "", permiso: n.permiso.trim() || "", estacionCatalogoId: refEst.id,
+                    origen: "operaciones", actualizadoEn: ahora, actualizadoPor: yo,
+                });
+                resultado.ventas = true;
+            } catch (e3) { console.error("[Alta estación] ventas_clientes:", e3); }
+        } catch (e) {
+            console.error("[Alta estación]", e);
+            n.guardando = false;
+            if (btn) { btn.disabled = false; btn.innerHTML = `<span style="display:inline-flex;width:15px;height:15px;">${ICON.check}</span>Reintentar`; }
+            err("No se dio de alta la estación. " + (e && e.code === "permission-denied" ? "Tu usuario no tiene permiso de escritura en el catálogo." : "Motivo: " + opsEsc(e.message || e)));
+            return;
+        }
+        // Al catálogo en memoria y al servicio que se está capturando
+        const nueva = {
+            id, razonSocial: rs, nombreComercial: nc || null, permiso: n.permiso.trim() || null, codigoEstacionCre: n.codigoCre.trim() || null,
+            direccionNormalizada: dirCompleta, domicilioRaw: dirCompleta, colonia: n.colonia.trim() || null, municipio: n.municipio.trim(), estado: n.estado.trim() || null,
+            lat: n.lat, lng: n.lng, encargado: n.encargado.trim() || null, zona: n.zona.trim() || null,
+            numeroDispensarios: num(n.dispensarios), numeroTanques: num(n.tanques), numeroSondas: num(n.sondas), activo: true,
+        };
+        window.__opsAsEstCatalogo = (window.__opsAsEstCatalogo || []).concat([nueva]);
+        _opsCatEstProm = null; opsViaEstaciones = null;
+        if (window.__almInvalidarCacheEstaciones) { try { window.__almInvalidarCacheEstaciones(); } catch (e) {} }
+        const contacto = { nombre: n.encargado.trim(), tel: n.telefono.trim(), correo: n.correo.trim() };
+        window.opsNeCerrar();
+        if (opsAS) {
+            window.opsAsElegirEstacion(id);
+            if (contacto.nombre && opsAS && !opsAS.contacto) { opsAS.contacto = contacto.nombre; opsAS.telefono = contacto.tel; opsAS.whatsapp = contacto.tel; opsAS.correo = contacto.correo; opsAsPintar(); }
+        }
+        const faltas = [!resultado.supabase ? "el catálogo de Operaciones (Supabase)" : "", !resultado.ventas ? "Clientes de Ventas" : ""].filter(Boolean);
+        if (faltas.length) alert("La estación se dio de alta, pero no se pudo guardar en: " + faltas.join(" y ") + ".\nAvisa a sistemas; el servicio sí la puede usar.");
+        else if (window.mostrarPush) window.mostrarPush("Operaciones", `Estación dada de alta: ${nc || rs}. Ya aparece en el catálogo y en Clientes de Ventas.`, "");
     };
 
     window.opsAsBuscarContacto = function (valor) {
@@ -8916,6 +9358,7 @@
                 estacionDireccion: e?.direccionNormalizada || (e ? null : s.estTexto.trim()), estacionRazonSocial: e?.razonSocial || null,
                 estacionPermiso: pl, estacionCR: e?.cr || null, estacionLat: e?.lat ?? null, estacionLng: e?.lng ?? null,
                 tipoAlta: s.tipo,
+                serviciosProgramados: s.tipo === "programacion" ? s.servicios.map(opsProgLimpio) : null,
                 tipoFolio: s.tipo === "inspeccion" ? "inspeccion" : s.tipo === "laboratorio" ? "laboratorio" : "servicio",
                 normaInspeccion: s.tipo === "inspeccion" ? s.norma : null,
                 esSCFI: conMat,
@@ -8951,7 +9394,7 @@
                     }).filter(c => c.monto > 0);
                     return {
                         precioServicio: s.precioSel ? { servicioClave: ks?.clave || null, servicioNombre: ks?.nombre || null, clienteClave: kc?.clave || null, listaClave: s.precioSel, lista: R.lista, precioUnitario: R.unit, multiplicador: R.mult, precio: R.precio } : null,
-                        costosServicio: { materiales: R.materiales, personal: R.personal, viaticos: R.viaticos, herramienta: R.herramienta, otros: R.otros, comisiones: coms.reduce((a, c) => a + c.monto, 0), costoTotal: R.costoTotal, cobrarGastos: !!s.cobrarGastos, totalCobrar: R.totalCobrar, utilidad: R.utilidad },
+                        costosServicio: s.tipo === "programacion" ? null : { materiales: R.materiales, personal: R.personal, viaticos: R.viaticos, herramienta: R.herramienta, otros: R.otros, comisiones: coms.reduce((a, c) => a + c.monto, 0), costoTotal: R.costoTotal, cobrarGastos: !!s.cobrarGastos, totalCobrar: R.totalCobrar, utilidad: R.utilidad },
                         comisiones: coms,
                     };
                 })(),
@@ -8964,6 +9407,7 @@
             const nota = [
                 `${tipoTxt} capturado por ${opsNombreActual()}.`,
                 receta ? `Servicio: ${receta.nombre} (${datos.cantidadUnidades}).` : null,
+                s.tipo === "programacion" && s.servicios.length ? `Servicios: ${opsProgServiciosTxt(s.servicios)}.` : null,
                 `Estación: ${datos.estacion}${pl ? " · " + pl : ""}.`,
                 `Programado: ${opsFmtFechaCorta(datos.fechaProgramada)}${durH ? " · " + opsAsTxtHoras(durH) : ""}.`,
                 tecs.length ? `Equipo: ${tecs.map(t => t.nombre).join(", ")}.` : null,
@@ -8993,7 +9437,7 @@
             }
             if (!cacheFolios.some(x => x.id === nuevo.id)) cacheFolios.push({ id: nuevo.id, ...datos });
             // Aviso con alarma a cada técnico asignado en la app de Flotilla (ligado por correo).
-            const avisos = await opsAvisarTecnicosAsignados({ id: nuevo.id, ...datos }, tecs, tipoTxt);
+            const avisos = await opsAvisarTecnicosAsignados({ id: nuevo.id, ...datos }, tecs, s.tipo === "programacion" && s.servicios.length ? tipoTxt + " (" + opsProgServiciosTxt(s.servicios) + ")" : tipoTxt);
             const conViaticos = s.viaticos;
             opsAS = null;
             const fProg = datos.fechaProgramada.slice(0, 10);
@@ -9047,6 +9491,7 @@
                 </div>
                 <div style="overflow-y:auto;padding:8px 22px 4px;">
                     ${fila("Tipo", opsEsc(tipoTxt + (receta ? " · " + receta.nombre : "") + (s.tipo === "inspeccion" ? " · " + s.norma : "")))}
+                    ${s.tipo === "programacion" ? fila("Servicios", s.servicios.length ? opsEsc(opsProgServiciosTxt(s.servicios)) : `<span style="color:#94a3b8;">Ninguno (se pueden agregar después)</span>`) : ""}
                     ${fila("Estación", opsEsc(e ? (e.nombreComercial || e.razonSocial) : s.estTexto), true)}
                     ${fila("Dirección", opsEsc(e?.direccionNormalizada || ""))}
                     ${fila("Razón social / PL", opsEsc([e?.razonSocial, e?.permiso || s.plNuevo].filter(Boolean).join(" · ")))}
@@ -11302,6 +11747,103 @@
         if (c._res && c._res.length === 1) return window.opsViaComboElegir(id, 0);
         if (c.libre) c.libre(texto);
     };
+    // ── Ubicación de inicio y final del viaje (oct-2026) ──
+    // Glen: antes todo se calculaba desde la oficina de Chihuahua, pero muchas veces los técnicos
+    // ya están en campo o en otra ciudad. Ahora se elige de dónde salen (oficina base, la última
+    // ubicación GPS de un vehículo en Flotilla, una estación del catálogo, una dirección o un punto
+    // en el mapa) y dónde terminan (regresan al inicio, o a otro lugar).
+    let opsViaGps = null;
+    async function opsViaCargarGps() {
+        try { opsViaGps = window.opsFlotillaProvider ? await window.opsFlotillaProvider.obtenerUbicacionesEnCampo() : []; }
+        catch (e) { opsViaGps = []; }
+        return opsViaGps;
+    }
+    function opsViaInicio() { return (opsViaForm && opsViaForm.inicio) || opsViaCfg.origen; }
+    function opsViaFinal() { return (opsViaForm && opsViaForm.final) || opsViaInicio(); }
+    function opsViaRegresaAlInicio() { return !(opsViaForm && opsViaForm.final); }
+    function opsViaItemsUbic() {
+        const base = [{ etiqueta: opsViaCfg.origen.nombre, sub: "Oficina base (se cambia en Tarifas)", buscar: "oficina base " + opsViaCfg.origen.nombre, valor: "base:" }];
+        const gps = (opsViaGps || []).slice().sort((a, b) => String(a.tecnicoNombre || "").localeCompare(String(b.tecnicoNombre || ""), "es", { sensitivity: "base" })).map(u => ({
+            etiqueta: `GPS · ECO ${u.eco} · ${u.tecnicoNombre || ""}`,
+            sub: u.actualizadoEn ? "Última ubicación en Flotilla: " + (typeof u.actualizadoEn.toDate === "function" ? opsViaLocalISO(u.actualizadoEn.toDate()) : String(u.actualizadoEn)).replace("T", " ").slice(0, 16) : "Última ubicación registrada en Flotilla",
+            buscar: ["gps", "eco " + u.eco, u.eco, u.tecnicoNombre].join(" "), valor: "gps:" + u.eco,
+        }));
+        const est = (opsViaEstaciones || []).map(e => ({ etiqueta: `${e.nombre_comercial || e.razon_social || e.id}${e.codigo_estacion_cre ? " · " + e.codigo_estacion_cre : ""}`, sub: e.direccion_normalizada || e.domicilio_raw || e.municipio || "", buscar: [e.nombre_comercial, e.razon_social, e.codigo_estacion_cre, e.permiso, e.municipio, e.direccion_normalizada].join(" "), valor: "est:" + e.id }));
+        return base.concat(gps, est);
+    }
+    async function opsViaResolverUbic(valor) {
+        const [tipo, id] = [String(valor).split(":")[0], String(valor).slice(String(valor).indexOf(":") + 1)];
+        if (tipo === "base") return { base: true };
+        if (tipo === "gps") {
+            const u = (opsViaGps || []).find(x => String(x.eco) === id);
+            return u ? { nombre: `ECO ${u.eco} · ${u.tecnicoNombre || ""} (GPS)`, lat: Number(u.lat), lng: Number(u.lng) } : null;
+        }
+        if (tipo === "est") {
+            const e = (opsViaEstaciones || []).find(x => String(x.id) === id); if (!e) return null;
+            const nombre = opsViaNombreEstacion(e);
+            if (e.lat && e.lng) return { nombre, lat: Number(e.lat), lng: Number(e.lng) };
+            let pnt = await opsGeocodificarNominatim(`${e.direccion_normalizada || e.domicilio_raw || ""}, México`);
+            if (!pnt) pnt = await opsGeocodificarNominatim(`${e.municipio || ""}, ${e.estado || "Chihuahua"}, México`);
+            if (!pnt) return null;
+            opsViaGuardarCoordEstacion(e, pnt.lat, pnt.lng);
+            return { nombre, lat: pnt.lat, lng: pnt.lng, aprox: true };
+        }
+        return null;
+    }
+    window.opsViaElegirPunto = async function (cual, valor) {
+        const f = opsViaForm; if (!f) return;
+        f.calculando = true; opsViaPintarFormulario();
+        const p = await opsViaResolverUbic(valor);
+        if (opsViaForm !== f) return;
+        if (!p) { f.calculando = false; opsViaPintarFormulario(); alert("No se pudo ubicar ese punto en el mapa."); return; }
+        if (cual === "inicio") f.inicio = p.base ? null : p;
+        else { f.final = p.base ? { ...opsViaCfg.origen } : p; f.finalAbierto = true; }
+        if (f.lat) return opsViaCalcularRuta();
+        f.calculando = false; opsViaRecalcular(); opsViaPintarFormulario();
+    };
+    window.opsViaPuntoLibre = async function (cual, texto) {
+        const f = opsViaForm; if (!f || !texto) return;
+        f.calculando = true; opsViaPintarFormulario();
+        const p = await opsGeocodificarNominatim(/méxico|mexico/i.test(texto) ? texto : texto + ", Chihuahua, México");
+        if (opsViaForm !== f) return;
+        if (!p) { f.calculando = false; opsViaPintarFormulario(); alert("No se encontró esa dirección."); return; }
+        const punto = { nombre: texto, lat: p.lat, lng: p.lng, aprox: true };
+        if (cual === "inicio") f.inicio = punto; else { f.final = punto; f.finalAbierto = true; }
+        if (f.lat) return opsViaCalcularRuta();
+        f.calculando = false; opsViaRecalcular(); opsViaPintarFormulario();
+    };
+    window.opsViaFinalModo = function (regresa) {
+        const f = opsViaForm; if (!f) return;
+        if (regresa) { f.final = null; f.finalAbierto = false; if (f.lat) return opsViaCalcularRuta(); }
+        else f.finalAbierto = true;
+        opsViaRecalcular(); opsViaPintarFormulario();
+    };
+    window.opsViaInicioBase = function () {
+        const f = opsViaForm; if (!f) return;
+        f.inicio = null;
+        if (f.lat) return opsViaCalcularRuta();
+        opsViaPintarFormulario();
+    };
+    function opsViaHTMLPuntos(cual) {
+        const f = opsViaForm;
+        if (cual === "inicio") {
+            const ini = opsViaInicio();
+            return `${opsViaComboHTML("via-inicio", "Ubicación de inicio (de dónde salen)", f.inicio ? f.inicio.nombre : "", "Oficina base, GPS de un vehículo, estación o dirección…")}
+                <div style="font-size:11px;color:#64748b;margin:2px 0 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                    <span><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#1D2E73;margin-right:4px;"></span>Sale de: <b>${opsEsc(ini.nombre || "Punto en el mapa")}</b>${f.inicio && f.inicio.aprox ? " (aprox.)" : ""}</span>
+                    ${f.inicio ? `<a href="#" onclick="event.preventDefault();opsViaInicioBase()" style="color:#1D2E73;font-weight:700;">Usar oficina base</a>` : `<span style="color:#94a3b8;">Puedes arrastrar el punto azul en el mapa.</span>`}
+                </div>`;
+        }
+        const regresa = opsViaRegresaAlInicio() && !f.finalAbierto;
+        const btn = (on, txt, fn) => `<button type="button" onclick="${fn}" style="border:1.5px solid ${on ? "#1D2E73" : "#e2e8f0"};background:${on ? "#1D2E73" : "#fff"};color:${on ? "#fff" : "#334155"};border-radius:999px;padding:5px 12px;font-size:11.5px;font-weight:700;cursor:pointer;">${txt}</button>`;
+        return `<div style="margin:2px 0 10px;">
+                <div style="font-size:11.5px;font-weight:600;color:#475569;margin-bottom:5px;">Ubicación final (dónde terminan)</div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;">${btn(regresa, "Regresan al inicio", "opsViaFinalModo(true)")}${btn(!regresa, "Terminan en otro lugar", "opsViaFinalModo(false)")}</div>
+                ${!regresa ? `<div style="margin-top:8px;">${opsViaComboHTML("via-final", "", f.final ? f.final.nombre : "", "Oficina base, estación, GPS o dirección…")}
+                    <div style="font-size:11px;color:#64748b;margin-top:2px;">${f.final ? `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#15803d;margin-right:4px;"></span>Terminan en: <b>${opsEsc(f.final.nombre || "Punto en el mapa")}</b>${f.final.aprox ? " (aprox.)" : ""} · puedes arrastrar el punto verde` : "Elige el lugar donde termina el viaje."}</div></div>` : ""}
+            </div>`;
+    }
+
     function opsViaRegistrarCombos() {
         const folios = () => (cacheFolios && cacheFolios.length ? cacheFolios : (opsViaFoliosSb || []));
         opsViaCombos["via-folio"] = {
@@ -11323,6 +11865,18 @@
             elegir: id => window.opsViaElegirEstacion(id),
             libre: texto => window.opsViaDireccionLibre(texto),
         };
+        opsViaCombos["via-inicio"] = {
+            vacio: "Sin coincidencias. Presiona Enter para buscarla como dirección.",
+            items: () => opsViaItemsUbic(),
+            elegir: v => window.opsViaElegirPunto("inicio", v),
+            libre: texto => window.opsViaPuntoLibre("inicio", texto),
+        };
+        opsViaCombos["via-final"] = {
+            vacio: "Sin coincidencias. Presiona Enter para buscarla como dirección.",
+            items: () => opsViaItemsUbic(),
+            elegir: v => window.opsViaElegirPunto("final", v),
+            libre: texto => window.opsViaPuntoLibre("final", texto),
+        };
         opsViaCombos["via-vehiculo"] = {
             vacio: "Sin coincidencias. Presiona Enter para dejarlo escrito así.",
             items: () => (opsViaFlota || []).map(v => ({ etiqueta: `ECO ${v.Eco} · ${v.Unidad || ""}`, sub: [v.Placas, v.Responsable, v.Rendimiento && v.Rendimiento !== "—" ? v.Rendimiento : "", v.Status !== "activo" ? v.Status : ""].filter(Boolean).join(" · "), buscar: [v.Eco, "eco " + v.Eco, v.Unidad, v.Placas, v.Responsable, v.Tipo].join(" "), valor: v.Eco })),
@@ -11339,13 +11893,15 @@
     window.opsViaAbrirFormulario = async function () {
         const wrap = document.getElementById("ops-modal-wrap");
         wrap.innerHTML = `<div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;"><div style="background:#fff;border-radius:14px;padding:26px;font-size:13px;color:#475569;">Cargando estaciones, folios, vehículos y técnicos…</div></div>`;
-        try { await Promise.all([opsViaCargarCfg(), opsViaCargarEstaciones(), opsViaCargarFolios(), opsViaTecnicos(), opsViaCargarFlota(), opsViaCargarCasetas()]); }
+        try { await Promise.all([opsViaCargarCfg(), opsViaCargarEstaciones(), opsViaCargarFolios(), opsViaTecnicos(), opsViaCargarFlota(), opsViaCargarCasetas(), opsViaCargarGps()]); }
         catch (e) { wrap.innerHTML = ""; alert("No se pudo abrir el formulario: " + (e.message || e)); return; }
         const ahora = new Date(); ahora.setDate(ahora.getDate() + 1); ahora.setHours(7, 0, 0, 0);
         opsViaForm = {
             estacion: null, folioServicio: "", cliente: "", motivo: "", llegadaObjetivo: null,
             destinoTexto: "", lat: null, lng: null, coordAprox: false,
             kmSencillo: 0, horasIda: 0, calculando: false, rutaGeo: null,
+            // Inicio y final del viaje (oct-2026): null = oficina base (inicio) / regresa al inicio (final).
+            inicio: null, final: null, finalAbierto: false, kmRegreso: 0, horasRegreso: 0,
             tecnicos: [], tecBuscar: "", tipoVehiculo: "mediano", vehiculo: "", vehiculoEco: null, rendimientoReal: null,
             salida: opsViaLocalISO(ahora), salidaManual: false, horasServicio: opsViaCfg.horasServicioDefault || 4,
             regreso: "", regresoManual: false,
@@ -11379,10 +11935,10 @@
         }
         if (!f.regresoManual && f.salida) {
             const s = new Date(f.salida);
-            const horas = (opsViaNum(f.horasIda) * 2) + opsViaNum(f.horasServicio);
+            const horas = opsViaNum(f.horasIda) + (opsViaRegresaAlInicio() ? opsViaNum(f.horasIda) : opsViaNum(f.horasRegreso)) + opsViaNum(f.horasServicio);
             f.regreso = opsViaLocalISO(new Date(s.getTime() + horas * 3600000));
         }
-        if (!f.requiereManual) f.requiere = opsViaNum(f.kmSencillo) >= opsViaNum(cfg.kmMinimoViaticos);
+        if (!f.requiereManual) f.requiere = Math.max(opsViaNum(f.kmSencillo), opsViaRegresaAlInicio() ? 0 : opsViaNum(f.kmRegreso)) >= opsViaNum(cfg.kmMinimoViaticos);
         if (f.rendimiento === null || f.rendimiento === undefined || f.rendimiento === "") f.rendimiento = opsViaVehiculoCfg(f.tipoVehiculo).rendimiento;
         // Comidas por persona según horarios (desayuno si sale antes de la hora límite,
         // comida si está fuera a la hora de comida, cena si regresa después de la hora de cena).
@@ -11433,7 +11989,10 @@
         f.noches = Math.max(0, Math.round(opsViaNum(f.noches)));
         const personas = Math.max(1, f.tecnicos.length);
         const rend = opsViaNum(f.rendimiento) || 1;
-        f.gasolina = Math.round((opsViaNum(f.kmSencillo) * opsViaNum(cfg.multiplicadorKm || 2) / rend) * opsViaNum(f.precioLitro) * opsViaNum(f.factor) * 100) / 100;
+        // Regresan al inicio: km sencillo × multiplicador (como siempre). Terminan en otro lugar:
+        // km de ida + km de regreso reales.
+        f.kmTotal = opsViaRegresaAlInicio() ? opsViaNum(f.kmSencillo) * opsViaNum(cfg.multiplicadorKm || 2) : opsViaNum(f.kmSencillo) + opsViaNum(f.kmRegreso);
+        f.gasolina = Math.round((f.kmTotal / rend) * opsViaNum(f.precioLitro) * opsViaNum(f.factor) * 100) / 100;
         const sumaAlim = f.desayunos * opsViaNum(cfg.desayuno) + f.comidas * opsViaNum(cfg.comida) + f.cenas * opsViaNum(cfg.cena);
         const topeViaje = opsViaNum(cfg.topeDiario) > 0 ? opsViaNum(cfg.topeDiario) * f.dias : Infinity;
         f.alimentosTopados = sumaAlim > topeViaje;
@@ -11556,10 +12115,12 @@
                         ${opsViaComboHTML("via-folio", "Folio de servicio (opcional — rellena estación, personal y horario)", folioSel ? `${folioSel.folioOS || folioSel.id} — ${folioSel.estacion || folioSel.clienteNombre || ""}` : "", "Busca por folio, estación, cliente o técnico…")}
                         ${f.avisoFolio ? `<div style="font-size:11px;color:#b45309;margin:2px 0 4px;">${opsEsc(f.avisoFolio)}</div>` : ""}
                         <div style="height:8px;"></div>
+                        ${opsViaHTMLPuntos("inicio")}
                         ${opsViaComboHTML("via-est-buscar", "Estación destino (catálogo de Ventas)", f.estacion ? opsViaNombreEstacion(f.estacion) : f.destinoTexto, "Nombre, CRE, razón social o municipio…")}
                         <div style="font-size:11px;color:#64748b;margin:2px 0 10px;">${f.estacion ? opsEsc([f.estacion.direccion_normalizada || f.estacion.domicilio_raw || "", f.estacion.encargado ? "Encargado: " + f.estacion.encargado : ""].filter(Boolean).join(" · ")) : "¿No está en el catálogo? Escribe la dirección y presiona <b>Enter</b>."}</div>
                         <div id="via-mapa" style="height:260px;border-radius:10px;border:1px solid #e2e8f0;background:#f8fafc;margin-bottom:6px;"></div>
-                        <div id="via-ruta-info" style="font-size:12px;color:#334155;margin-bottom:12px;">${opsViaTextoRuta()}</div>
+                        <div id="via-ruta-info" style="font-size:12px;color:#334155;margin-bottom:10px;">${opsViaTextoRuta()}</div>
+                        ${opsViaHTMLPuntos("final")}
 
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
                             <span style="font-size:11.5px;font-weight:600;color:#475569;">Personal que viaja (${f.tecnicos.length})</span>
@@ -11588,9 +12149,10 @@
                         <div style="font-size:10.5px;color:#94a3b8;margin:-4px 0 10px;">Regla: requiere viáticos si la estación está a ${cfg.kmMinimoViaticos} km o más (sencillo). Puedes cambiarlo.</div>
 
                         <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px;">
-                            <div style="font-weight:700;font-size:12.5px;color:#1D2E73;margin-bottom:8px;">Gasolina — km × ${cfg.multiplicadorKm} ÷ rendimiento × precio × factor</div>
-                            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0 8px;">
-                                ${opsViaInput("Km sencillo", "via-km", f.kmSencillo, `onchange="opsViaCampo('kmSencillo', this.value, true)" step="0.1" min="0"`, "number")}
+                            <div style="font-weight:700;font-size:12.5px;color:#1D2E73;margin-bottom:8px;">${opsViaRegresaAlInicio() ? `Gasolina — km × ${cfg.multiplicadorKm} ÷ rendimiento × precio × factor` : "Gasolina — (km ida + km regreso) ÷ rendimiento × precio × factor"}</div>
+                            <div style="display:grid;grid-template-columns:repeat(${opsViaRegresaAlInicio() ? 4 : 5},1fr);gap:0 8px;">
+                                ${opsViaInput(opsViaRegresaAlInicio() ? "Km sencillo" : "Km ida", "via-km", f.kmSencillo, `onchange="opsViaCampo('kmSencillo', this.value, true)" step="0.1" min="0"`, "number")}
+                                ${opsViaRegresaAlInicio() ? "" : opsViaInput("Km regreso", "via-km-reg", f.kmRegreso, `onchange="opsViaCampo('kmRegreso', this.value, true)" step="0.1" min="0"`, "number")}
                                 ${opsViaInput("Km/l", "via-rend", f.rendimiento, `onchange="opsViaCampo('rendimiento', this.value, true)" step="0.1" min="1"`, "number")}
                                 ${opsViaInput("$/litro", "via-precio", f.precioLitro, `onchange="opsViaCampo('precioLitro', this.value, true)" step="0.01"`, "number")}
                                 ${opsViaInput("Factor", "via-factor", f.factor, `onchange="opsViaCampo('factor', this.value, true)" step="0.01"`, "number")}
@@ -11678,7 +12240,10 @@
         if (!f.lat) return "Elige una estación para ver la ruta.";
         const h = opsViaNum(f.horasIda);
         const txtT = h ? `${Math.floor(h)} h ${Math.round((h % 1) * 60)} min` : "—";
-        return `<b>${opsViaNum(f.kmSencillo).toFixed(1)} km</b> sencillo · <b>${txtT}</b> de manejo (ida) desde ${opsEsc(opsViaCfg.origen.nombre)}`
+        const hR = opsViaNum(f.horasRegreso);
+        const txtR = hR ? `${Math.floor(hR)} h ${Math.round((hR % 1) * 60)} min` : "—";
+        return `<b>${opsViaNum(f.kmSencillo).toFixed(1)} km</b> ${opsViaRegresaAlInicio() ? "sencillo" : "de ida"} · <b>${txtT}</b> de manejo (ida) desde ${opsEsc(opsViaInicio().nombre || "el punto de inicio")}`
+            + (opsViaRegresaAlInicio() ? "" : ` · regreso <b>${opsViaNum(f.kmRegreso).toFixed(1)} km</b> (${txtR}) a ${opsEsc(opsViaFinal().nombre || "el punto final")}`)
             + (f.casetas.length ? ` · <b>${f.casetas.length}</b> caseta(s) en la ruta` : "")
             + (f.coordAprox ? `<div style="color:#b45309;font-size:11px;">Ubicación aproximada (por dirección). Arrastra el pin rojo al lugar exacto y se guarda en el catálogo de estaciones.</div>` : "");
     }
@@ -11757,26 +12322,30 @@
     async function opsViaCalcularRuta() {
         const f = opsViaForm; if (!f || !f.lat) return;
         f.calculando = true; opsViaPintarFormulario();
-        const o = opsViaCfg.origen;
+        const o = opsViaInicio(), fin = opsViaFinal(), regresa = opsViaRegresaAlInicio();
+        const puntos = [o, { lat: f.lat, lng: f.lng }].concat(regresa ? [] : [fin]);
         f.rutaGeo = null;
         try {
-            const resp = await fetch(`https://router.project-osrm.org/route/v1/driving/${o.lng},${o.lat};${f.lng},${f.lat}?overview=full&geometries=geojson`);
+            const coords = puntos.map(p => `${p.lng},${p.lat}`).join(";");
+            const resp = await fetch(`https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`);
             const data = await resp.json();
             const r = data.routes && data.routes[0];
             if (r) {
-                f.kmSencillo = Math.round(r.distance / 100) / 10;
-                f.horasIda = Math.round((r.duration / 3600) * 100) / 100;
+                const l0 = (r.legs && r.legs[0]) || r, l1 = r.legs && r.legs[1];
+                f.kmSencillo = Math.round(l0.distance / 100) / 10;
+                f.horasIda = Math.round((l0.duration / 3600) * 100) / 100;
+                if (!regresa && l1) { f.kmRegreso = Math.round(l1.distance / 100) / 10; f.horasRegreso = Math.round((l1.duration / 3600) * 100) / 100; }
                 f.rutaGeo = r.geometry && r.geometry.coordinates ? r.geometry.coordinates.map(c => [c[1], c[0]]) : null;
             }
         } catch (e) { console.warn("[viáticos] OSRM:", e); }
         if (!f.rutaGeo) {
             // Respaldo: línea recta × 1.3 (factor típico de carretera) para no dejar el cálculo en cero.
-            const R = 6371, rad = x => x * Math.PI / 180;
-            const dLat = rad(f.lat - o.lat), dLng = rad(f.lng - o.lng);
-            const a = Math.sin(dLat / 2) ** 2 + Math.cos(rad(o.lat)) * Math.cos(rad(f.lat)) * Math.sin(dLng / 2) ** 2;
-            f.kmSencillo = Math.round(2 * R * Math.asin(Math.sqrt(a)) * 1.3 * 10) / 10;
+            const recta = (a, b) => { const R = 6371, rad = x => x * Math.PI / 180; const dLat = rad(b.lat - a.lat), dLng = rad(b.lng - a.lng); const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2; return Math.round(2 * R * Math.asin(Math.sqrt(h)) * 1.3 * 10) / 10; };
+            f.kmSencillo = recta(o, { lat: f.lat, lng: f.lng });
             f.horasIda = Math.round((f.kmSencillo / 80) * 100) / 100;
+            if (!regresa) { f.kmRegreso = recta({ lat: f.lat, lng: f.lng }, fin); f.horasRegreso = Math.round((f.kmRegreso / 80) * 100) / 100; }
         }
+        if (regresa) { f.kmRegreso = f.kmSencillo; f.horasRegreso = f.horasIda; }
         f.calculando = false;
         opsViaRecalcular();
         opsViaPintarFormulario();
@@ -11843,7 +12412,7 @@
                 let c = cat.find(x => (x.osm_ids || []).some(id => g.ids.includes(id)));
                 if (!c) c = cat.find(x => x.lat && x.lng && opsViaDistKm([x.lat, x.lng], g.p) < 3);
                 if (!c && nom) c = cat.find(x => { const cn = opsNormalizaTexto(x.nombre); return nom.includes(cn) || cn.includes(nom); });
-                return { key: "osm-" + g.ids[0], catalogoId: c ? c.id : null, nombreOsm: g.nombre, osmIds: g.ids, lat: g.p[0], lng: g.p[1], aplica: true, cruces: 2 };
+                return { key: "osm-" + g.ids[0], catalogoId: c ? c.id : null, nombreOsm: g.nombre, osmIds: g.ids, lat: g.p[0], lng: g.p[1], aplica: true, cruces: opsViaRegresaAlInicio() ? 2 : 1 };
             });
             // Aprender la ubicación de las que se reconocieron por nombre
             detectadas.forEach(d => {
@@ -11862,7 +12431,7 @@
             // Respaldo: las casetas del catálogo que ya tienen ubicación aprendida y quedan sobre la ruta.
             const geo = f.rutaGeo || [];
             const conocidas = (opsViaCasetasCat || []).filter(c => c.lat && c.lng && geo.some(q2 => opsViaDistKm([c.lat, c.lng], q2) < 1.5))
-                .map(c => ({ key: "cat-" + c.id, catalogoId: c.id, lat: c.lat, lng: c.lng, aplica: true, cruces: 2 }));
+                .map(c => ({ key: "cat-" + c.id, catalogoId: c.id, lat: c.lat, lng: c.lng, aplica: true, cruces: opsViaRegresaAlInicio() ? 2 : 1 }));
             f.casetas = conocidas.concat(manuales.filter(mn => !conocidas.some(k => k.catalogoId === mn.catalogoId)));
             f.aplicaCasetas = f.casetas.length > 0;
             f.casetasEstado = conocidas.length ? "respaldo" : "error";
@@ -11875,12 +12444,18 @@
         const el = document.getElementById("via-mapa");
         if (!el || typeof L === "undefined") return;
         if (opsViaMapa) { try { opsViaMapa.remove(); } catch (e) {} opsViaMapa = null; }
-        const f = opsViaForm, o = opsViaCfg.origen;
+        const f = opsViaForm, o = opsViaInicio(), fin = opsViaRegresaAlInicio() ? null : opsViaFinal();
         opsViaMapa = L.map(el, { attributionControl: false, zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false, inertia: false }).setView([o.lat, o.lng], 10, { animate: false });
         L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18 }).addTo(opsViaMapa);
         const icono = color => L.divIcon({ className: "", html: `<div style="width:16px;height:16px;border-radius:50%;background:${color};border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);"></div>`, iconSize: [16, 16], iconAnchor: [8, 8] });
         const iconoCaseta = activa => L.divIcon({ className: "", html: `<div style="width:20px;height:20px;border-radius:5px;background:${activa ? "#f59e0b" : "#cbd5e1"};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;">$</div>`, iconSize: [20, 20], iconAnchor: [10, 10] });
-        L.marker([o.lat, o.lng], { icon: icono("#1D2E73") }).addTo(opsViaMapa).bindTooltip(o.nombre);
+        // Inicio (azul) y final (verde) se pueden arrastrar: queda como "punto en el mapa".
+        const mIni = L.marker([o.lat, o.lng], { icon: icono("#1D2E73"), draggable: true }).addTo(opsViaMapa).bindTooltip("Inicio: " + (o.nombre || ""));
+        mIni.on("dragend", () => { const p = mIni.getLatLng(); f.inicio = { nombre: "Punto en el mapa (inicio)", lat: p.lat, lng: p.lng }; if (f.lat) opsViaCalcularRuta(); else opsViaPintarFormulario(); });
+        if (fin) {
+            const mFin = L.marker([fin.lat, fin.lng], { icon: icono("#15803d"), draggable: true }).addTo(opsViaMapa).bindTooltip("Final: " + (fin.nombre || ""));
+            mFin.on("dragend", () => { const p = mFin.getLatLng(); f.final = { nombre: "Punto en el mapa (final)", lat: p.lat, lng: p.lng }; if (f.lat) opsViaCalcularRuta(); else opsViaPintarFormulario(); });
+        }
         if (f && f.lat) {
             const m = L.marker([f.lat, f.lng], { icon: icono("#E7402B"), draggable: true }).addTo(opsViaMapa).bindTooltip(f.destinoTexto || "Destino");
             m.on("dragend", () => {
@@ -11897,7 +12472,7 @@
                 L.marker([lat, lng], { icon: iconoCaseta(c.aplica && f.aplicaCasetas) }).addTo(opsViaMapa)
                     .bindTooltip(`${opsEsc(c.nombre || "Caseta")} — ${opsViaDinero(c.costo)} por cruce`);
             });
-            opsViaMapa.fitBounds(L.latLngBounds([[o.lat, o.lng], [f.lat, f.lng]].concat(f.rutaGeo ? [f.rutaGeo[Math.floor(f.rutaGeo.length / 2)]] : [])).pad(0.2), { animate: false });
+            opsViaMapa.fitBounds(L.latLngBounds([[o.lat, o.lng], [f.lat, f.lng]].concat(fin ? [[fin.lat, fin.lng]] : [], f.rutaGeo ? [f.rutaGeo[Math.floor(f.rutaGeo.length / 2)]] : [])).pad(0.2), { animate: false });
         }
         setTimeout(() => { try { opsViaMapa && opsViaMapa.invalidateSize(); } catch (e) {} }, 60);
     }
@@ -11932,6 +12507,9 @@
                 estacionId: f.estacion ? f.estacion.id : null, lat: f.lat, lng: f.lng, tecnicos: f.tecnicos,
                 vehiculoEco: f.vehiculoEco || null, rendimientoReal: f.rendimientoReal || null,
                 aplicaCasetas: !!f.aplicaCasetas, casetasDetalle,
+                inicio: { nombre: opsViaInicio().nombre || null, lat: opsViaInicio().lat, lng: opsViaInicio().lng },
+                final: { nombre: opsViaFinal().nombre || null, lat: opsViaFinal().lat, lng: opsViaFinal().lng },
+                regresaAlInicio: opsViaRegresaAlInicio(), kmRegreso: opsViaNum(f.kmRegreso), horasRegreso: opsViaNum(f.horasRegreso), kmTotal: opsViaNum(f.kmTotal),
             },
         };
         try {
@@ -11963,8 +12541,12 @@
             + `Destino: ${s.destino || ""}${s.folio_servicio ? " (servicio " + s.folio_servicio + ")" : ""}\n`
             + `Personal (${s.personas}): ${s.integrantes || ""}\n`
             + `Salida: ${(t.salida || s.fecha_salida || "").replace("T", " ")} · Regreso: ${(t.regreso || s.fecha_regreso || "").replace("T", " ")}\n`
-            + `Distancia: ${opsViaNum(s.km_sencillo).toFixed(1)} km sencillo · Vehículo: ${s.vehiculo || ""} (${s.tipo_vehiculo || ""})\n\n`
-            + `Gasolina: ${opsViaDinero(s.gasolina)} (${s.km_sencillo} km × 2 ÷ ${s.rendimiento} km/l × $${s.precio_litro} × ${s.factor})\n`
+            + (t.inicio && t.inicio.nombre ? `Inicio: ${t.inicio.nombre} · Final: ${t.regresaAlInicio === false && t.final ? t.final.nombre : "regresan al inicio"}\n` : "")
+            + (t.regresaAlInicio === false
+                ? `Distancia: ${opsViaNum(s.km_sencillo).toFixed(1)} km ida + ${opsViaNum(t.kmRegreso).toFixed(1)} km regreso · Vehículo: ${s.vehiculo || ""} (${s.tipo_vehiculo || ""})\n\n`
+                  + `Gasolina: ${opsViaDinero(s.gasolina)} ((${s.km_sencillo} + ${t.kmRegreso}) km ÷ ${s.rendimiento} km/l × $${s.precio_litro} × ${s.factor})\n`
+                : `Distancia: ${opsViaNum(s.km_sencillo).toFixed(1)} km sencillo · Vehículo: ${s.vehiculo || ""} (${s.tipo_vehiculo || ""})\n\n`
+                  + `Gasolina: ${opsViaDinero(s.gasolina)} (${s.km_sencillo} km × 2 ÷ ${s.rendimiento} km/l × $${s.precio_litro} × ${s.factor})\n`)
             + `Alimentos: ${opsViaDinero(s.alimentos)} (${s.desayunos} desayuno(s), ${s.comidas} comida(s), ${s.cenas} cena(s) por persona)\n`
             + `Hospedaje: ${opsViaDinero(s.hospedaje)}${t.noches ? " (" + t.noches + " noche(s))" : ""}\n`
             + `Casetas: ${opsViaDinero(s.casetas)}${t.aplicaCasetas === false ? " (no aplica)" : ""}${det ? "\n" + det : ""}\n`
@@ -12026,7 +12608,10 @@
         if (s.folio_servicio) campo("Folio de servicio:", s.folio_servicio);
         campo("Salida:", fecha(t.salida || s.fecha_salida));
         campo("Regreso estimado:", fecha(t.regreso || s.fecha_regreso));
-        campo("Distancia:", `${(Number(s.km_sencillo) || 0).toFixed(1)} km sencillo (${((Number(s.km_sencillo) || 0) * 2).toFixed(1)} km ida y vuelta)${t.horasIda ? " · " + Math.floor(t.horasIda) + " h " + Math.round((t.horasIda % 1) * 60) + " min de manejo por trayecto" : ""}`);
+        if (t.inicio && t.inicio.nombre) campo("Inicio:", t.inicio.nombre);
+        if (t.regresaAlInicio === false && t.final) campo("Final:", t.final.nombre || "Punto en el mapa");
+        if (t.regresaAlInicio === false) campo("Distancia:", `${(Number(s.km_sencillo) || 0).toFixed(1)} km de ida + ${(Number(t.kmRegreso) || 0).toFixed(1)} km de regreso (${((Number(s.km_sencillo) || 0) + (Number(t.kmRegreso) || 0)).toFixed(1)} km en total)`);
+        else campo("Distancia:", `${(Number(s.km_sencillo) || 0).toFixed(1)} km sencillo (${((Number(s.km_sencillo) || 0) * 2).toFixed(1)} km ida y vuelta)${t.horasIda ? " · " + Math.floor(t.horasIda) + " h " + Math.round((t.horasIda % 1) * 60) + " min de manejo por trayecto" : ""}`);
         campo("Vehículo:", [s.vehiculo, s.tipo_vehiculo].filter(Boolean).join(" · "));
         campo("¿Requiere viáticos?:", t.requiereViaticos === false ? "No (solo gasolina)" : "Sí");
 
@@ -12037,7 +12622,7 @@
 
         seccion("3  ·  DESGLOSE DEL MONTO SOLICITADO");
         const filas = [
-            ["Gasolina", `${s.km_sencillo} km × 2 ÷ ${s.rendimiento} km/l × $${s.precio_litro}/l × factor ${s.factor}`, s.gasolina],
+            ["Gasolina", t.regresaAlInicio === false ? `(${s.km_sencillo} + ${t.kmRegreso}) km ÷ ${s.rendimiento} km/l × $${s.precio_litro}/l × factor ${s.factor}` : `${s.km_sencillo} km × 2 ÷ ${s.rendimiento} km/l × $${s.precio_litro}/l × factor ${s.factor}`, s.gasolina],
             ["Alimentos", `${s.desayunos} desayuno(s) × ${din(t.desayuno)} + ${s.comidas} comida(s) × ${din(t.comida)} + ${s.cenas} cena(s) × ${din(t.cena)}, × ${s.personas} persona(s)`, s.alimentos],
             ["Hospedaje", `${t.noches || 0} noche(s) × ${din(t.hospedajePorNoche)} × ${s.personas} persona(s)`, s.hospedaje],
         ];
