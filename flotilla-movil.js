@@ -1117,31 +1117,16 @@ async function cargarMiVeh(){
 
 async function cargarMisSols(){
   if(!miVeh&&!miPerfil?.email){misSols=[];return;}
-  // Solicitudes nuevas → Supabase. Las anteriores siguen en Firestore (solo lectura).
-  let sbSols=[],fsSols=[];
-  const tareaSb=(async()=>{
-    try{
-      if(!window.tcFlSb)return;
-      sbSols=await window.tcFlSb.misSolicitudes(miVeh?.eco?{eco:miVeh.eco}:{email:miPerfil?.email||''});
-      miVehEstado=miVeh?.eco?await window.tcFlSb.estadoVehiculo(miVeh.eco).catch(()=>null):null;
-    }catch(e){console.warn('[FL] solicitudes Supabase',e);}
-  })();
-  const tareaFs=(async()=>{
-    try{
-      let q=miVeh?.eco
-        ? db.collection(C.SOLS).where('vehiculoEco','==',String(miVeh.eco)).orderBy('creadoEn','desc').limit(20)
-        : db.collection(C.SOLS).where('creadoPor','==',miPerfil?.email||'').orderBy('creadoEn','desc').limit(20);
-      const snap=await q.get();
-      fsSols=snap.docs.map(d=>({id:d.id,...d.data()}));
-    }catch{
-      try{
-        const snap=await db.collection(C.SOLS).where('creadoPor','==',miPerfil?.email||'').get();
-        fsSols=snap.docs.map(d=>({id:d.id,...d.data()}));
-      }catch{fsSols=[];}
-    }
-  })();
-  await Promise.all([tareaSb,tareaFs]);
-  misSols=[...sbSols,...fsSols].sort((a,b)=>String(b.creadoEn||'').localeCompare(String(a.creadoEn||''))).slice(0,30);
+  // Todas las solicitudes (nuevas e históricas) viven en Supabase.
+  try{
+    if(!window.tcFlSb){misSols=[];return;}
+    const [sols,est]=await Promise.all([
+      window.tcFlSb.misSolicitudes(miVeh?.eco?{eco:miVeh.eco,limit:30}:{email:miPerfil?.email||'',limit:30}),
+      miVeh?.eco?window.tcFlSb.estadoVehiculo(miVeh.eco).catch(()=>null):Promise.resolve(null),
+    ]);
+    misSols=(sols||[]).sort((a,b)=>String(b.creadoEn||'').localeCompare(String(a.creadoEn||'')));
+    miVehEstado=est;
+  }catch(e){console.warn('[FL] solicitudes Supabase',e);}
 }
 let miVehEstado=null; // {estado:'activo'|'en_taller', solicitud_id, desde} desde Supabase
 
@@ -1564,6 +1549,9 @@ function renderVehiculo(){
         </button>
         <button onclick="fmAbrirFlotante('material')" title="Solicitud de material" style="padding:7px 9px;border:1.5px solid #CBD5E1;border-radius:9px;background:#F1F5F9;color:#475569;cursor:pointer;display:inline-flex;align-items:center">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>
+        </button>
+        <button onclick="fmAbrirFlotante('cotizacion')" title="Cotizaciones a Compras" aria-label="Cotizaciones a Compras" style="padding:7px 9px;border:1.5px solid #CBD5E1;border-radius:9px;background:#F1F5F9;color:#475569;cursor:pointer;display:inline-flex;align-items:center">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
         </button>
         <button onclick="fmAbrirFlotante('requisicion')" title="Requisición de compra" style="padding:7px 9px;border:1.5px solid #CBD5E1;border-radius:9px;background:#F1F5F9;color:#475569;cursor:pointer;display:inline-flex;align-items:center">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>
@@ -3302,7 +3290,9 @@ async function cargarSolsServicio(){
 window.fmSrvFiltro=function(f){solsServicioFiltro=f;solsServicio=null;cargarSolsServicio();renderTareas();};
 window.fmSrvRecargar=function(){solsServicio=null;cargarSolsServicio();renderTareas();};
 
-function _fmSolCerrada(s){ return (window.tcFlSb?.ESTADOS_CERRADOS||['Cerrada','Completada','Finalizada','Liberada','Rechazada','Cancelada']).includes(s.estatus); }
+function _fmSolCerrada(s){ return (window.tcFlSb?.ESTADOS_CERRADOS||['Cerrada','Rechazada','Cancelada']).includes(s.estatus); }
+// Liberable: taller interno, en etapa de servicio y aún no liberado
+function _fmSolLiberable(s){ return !!s.tallerInterno&&(window.tcFlSb?.ESTADOS_TALLER||['Servicio','Pagos','Cierre']).includes(s.estatus)&&!s.liberadoEn; }
 
 function fmServicioFlotillaHTML(){
   if(!esRespServicio())return '';
@@ -3332,10 +3322,11 @@ function fmServicioFlotillaHTML(){
         <span style="font-size:9.5px;font-weight:800;background:${nServ?'#DCFCE7':'#F1F5F9'};color:${nServ?'#15803D':'#64748B'};padding:2px 8px;border-radius:8px">${nServ} evidencia(s) de servicio</span>
       </div>
       ${s.descripcion?`<div style="font-size:12px;color:#334155;background:#F8FAFD;border-radius:8px;padding:8px 10px;margin-bottom:10px;line-height:1.4">${esc(String(s.descripcion).slice(0,180))}${String(s.descripcion).length>180?'…':''}</div>`:''}
-      <div style="display:grid;grid-template-columns:${s.tallerInterno&&!cerrada?'1fr 1fr 1fr':'1fr 1fr'};gap:6px">
+      ${s.liberadoEn?`<div style="font-size:11px;font-weight:700;color:#15803D;margin-bottom:8px">Vehículo liberado ${hF(s.liberadoEn)}</div>`:''}
+      <div style="display:grid;grid-template-columns:${_fmSolLiberable(s)?'1fr 1fr 1fr':'1fr 1fr'};gap:6px">
         <button onclick="fmVerSol('${s.id}')" class="fm-btn ghost fm-btn-sm" style="margin:0">Ver</button>
         ${cerrada?'':`<button onclick="fmSrvAbrirEvidencia('${s.id}')" class="fm-btn primary fm-btn-sm" style="margin:0">Subir evidencia</button>`}
-        ${s.tallerInterno&&!cerrada?`<button onclick="fmSrvLiberar('${s.id}')" class="fm-btn fm-btn-sm" style="margin:0;background:#15803D;color:#fff;border:none">Liberar</button>`:''}
+        ${_fmSolLiberable(s)?`<button onclick="fmSrvLiberar('${s.id}')" class="fm-btn fm-btn-sm" style="margin:0;background:#15803D;color:#fff;border:none">Liberar</button>`:''}
       </div>
     </div>`;
   }).join('');
@@ -3482,13 +3473,15 @@ window.fmSrvEnviar=async function(){
 // ── Liberar vehículo (solo taller interno) ──
 window.fmSrvLiberar=async function(id){
   const s=_fmBuscarSol(id);if(!s)return;
-  if(!s.tallerInterno){toast('Solo se liberan desde aquí los servicios de taller interno','err');return;}
+  if(!_fmSolLiberable(s)){toast('Solo se liberan servicios de taller interno que estén en etapa de servicio','err');return;}
   const nota=prompt(`Liberar ECO ${s.eco||s.vehiculoEco} (${s.folio||''}).\nComentario de cierre (opcional):`,'');
   if(nota===null)return;
   try{
     const autor=window.auth?.currentUser?.email||'';
     const ahora=new Date().toISOString();
-    await window.tcFlSb.actualizarSolicitud(id,{estado:'Liberada',liberado_por:autor,liberado_en:ahora});
+    // La solicitud sigue su curso (pagos/cierre en el portal); solo el vehículo queda activo.
+    const fila=await window.tcFlSb.actualizarSolicitud(id,{liberado_por:autor,liberado_en:ahora});
+    if(fila&&fila.datos){ await window.tcFlSb.actualizarSolicitud(id,{datos:Object.assign({},fila.datos,{liberadoPor:autor,liberadoEn:ahora})}); }
     await window.tcFlSb.agregarSeguimiento({solicitud_id:id,tipo:'liberacion',texto:nota||'Vehículo liberado del taller interno',autor,autor_nombre:window.auth?.currentUser?.displayName||autor,datos:{}});
     toast(`ECO ${s.eco||''} liberado — vuelve a estar activo`,'ok');
     solsServicio=null;cargarSolsServicio();
@@ -5694,13 +5687,44 @@ window.fmAbrirFlotante=function(tipo){
   }
   ov.style.display='flex';
   const titleEl=document.getElementById('fm-flot-title');
-  if(tipo==='material'){
+  if(tipo==='cotizacion'){
+    titleEl.textContent='Mis cotizaciones';
+    window.renderFlotCotizaciones();
+  }else if(tipo==='material'){
     titleEl.textContent='Solicitud de material';
     window.renderFlotMaterial();
   }else{
     titleEl.textContent='Requisición de compra';
     window.renderFlotRequisicion();
   }
+};
+/* ── COTIZACIONES A COMPRAS (oct-2026) — formulario y "Mis cotizaciones"
+   viven en solicitud-cotizacion.js, el mismo del portal. Se carga solo la
+   primera vez; no hace falta tocar flotilla-app.html. Sin precios: el
+   técnico ve en qué paso va, comenta y recibe avisos. ── */
+let _cotModPromesa=null;
+function _cotModulo(){
+  if(window.tcScMisCotizaciones) return Promise.resolve();
+  if(_cotModPromesa) return _cotModPromesa;
+  _cotModPromesa=_reqPuenteCompras().then(()=>new Promise((ok,ko)=>{
+    const s=document.createElement('script'); s.src='solicitud-cotizacion.js?v=1';
+    s.onload=()=>ok(); s.onerror=()=>ko(new Error('No se pudo cargar solicitud-cotizacion.js'));
+    document.head.appendChild(s);
+  })).catch(e=>{ _cotModPromesa=null; throw e; });
+  return _cotModPromesa;
+}
+window.renderFlotCotizaciones=function(){
+  const body=document.getElementById('fm-flot-body'); if(!body) return;
+  body.innerHTML='<p style="text-align:center;color:#94A3B8;font-size:13px;padding:24px">Cargando…</p>';
+  _cotModulo().then(()=>{
+    const correo=(window.auth?.currentUser?.email||miPerfil?.email||'').toLowerCase();
+    window.tcScMisCotizaciones(body,{
+      correo, nombre:miPerfil?.nombre||correo,
+      departamento:miPerfil?.departamento||'Operaciones', zIndex:6000,
+    });
+  }).catch(e=>{
+    body.innerHTML='<p style="text-align:center;color:#B91C1C;font-size:13px;padding:24px">No se pudo abrir: '+(e&&e.message||e)+'. Revisa tu conexión.</p>';
+  });
 };
 window.fmCerrarFlotante=function(){
   const ov=document.getElementById('fm-flotante');
