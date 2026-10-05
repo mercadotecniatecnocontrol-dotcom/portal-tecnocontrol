@@ -6692,13 +6692,13 @@
         const hechas = grupo.filter(x => x.fechaSolucion).length;
         const dia = d => d ? new Date(d.length <= 10 ? d + "T12:00" : d).toLocaleDateString("es-MX", { weekday: "short", day: "numeric", month: "short" }) : "";
         return `<div style="border-top:1px solid #e2e8f0;padding-top:12px;margin-bottom:16px;">
-            <div style="font-size:11px;font-weight:700;color:#1D2E73;margin-bottom:4px;">Programación de la semana · ${grupo.length} estaciones · ${hechas} terminadas</div>
-            <div style="font-size:11px;color:#64748b;margin-bottom:8px;">Del ${opsEsc(dia(f.ventanaInicio))} al ${opsEsc(dia(f.ventanaFin))} · el técnico las atiende en el orden que quiera.</div>
+            <div style="font-size:11px;font-weight:700;color:#1D2E73;margin-bottom:4px;">${f.ordenLibre ? `Programación de varios días · ${grupo.length} servicios` : `Visita conjunta · ${grupo.length} servicios`} · ${hechas} terminados</div>
+            <div style="font-size:11px;color:#64748b;margin-bottom:8px;">${f.ordenLibre ? `Del ${opsEsc(dia(f.ventanaInicio))} al ${opsEsc(dia(f.ventanaFin))} · el técnico las atiende en el orden que quiera.` : `Misma visita: ${opsEsc((f.normasVisita || []).join(" + "))}.`}</div>
             <div style="display:flex;flex-direction:column;gap:5px;">${grupo.map(x => `
                 <div onclick="opsAbrirPanelFolio('${x.id}')" style="display:flex;align-items:center;gap:8px;background:${x.id === f.id ? "#E9ECF5" : "#f8fafc"};border-radius:8px;padding:7px 10px;font-size:12px;color:#334155;cursor:pointer;">
                     <span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${x.fechaSolucion ? "#15803d" : x.iniciadoEn ? "#b45309" : "#94a3b8"};"></span>
-                    <div style="flex:1;min-width:0;"><b style="color:#1e293b;">${opsEsc(x.estacion || "")}</b></div>
-                    <span style="color:#94a3b8;white-space:nowrap;">${opsEsc(dia(x.fechaProgramada))}</span>
+                    <div style="flex:1;min-width:0;"><b style="color:#1e293b;">${opsEsc(x.estacion || "")}</b>${x.normaInspeccion ? ` <span style="color:#64748b;">· ${opsEsc(x.normaInspeccion)}</span>` : ""}</div>
+                    <span style="color:#94a3b8;white-space:nowrap;">${opsEsc(dia(x.fechaProgramada))}${x.fechaProgramada && x.fechaProgramada.length > 10 ? " " + opsEsc(x.fechaProgramada.slice(11, 16)) : ""}</span>
                 </div>`).join("")}</div>
         </div>`;
     }
@@ -8678,7 +8678,8 @@
             costoViaticos: "", costoHerr: "", costoOtros: "", cobrarGastos: true, comisiones: [], contacto: "", telefono: "", whatsapp: "", correo: "", puesto: "Encargado de estación", contactoId: null, os: "", comentarios: "",
             viaticos: false, masFac: false, facturarA: "", proyecto: "", encargado: "",
             servicios: [], servBusca: "", // Solo programación: varios servicios en una misma programación
-            multiEst: false, estaciones: [], semFin: "", reparto: "dias", // Solo programación: varias estaciones en la semana
+            multiEst: false, estaciones: [], semFin: "", reparto: "dias", // varias estaciones · varios días
+            normasExtra: [], // Visita de inspección: otras normas en la misma visita (ej. ASEA + Anexo 21 y 22 + SCFI)
         };
         // Flota real (Supabase) — la misma que usa Viáticos; se carga en segundo plano.
         if (typeof opsViaCargarFlota === "function") opsViaCargarFlota().then(() => { if (opsAS) opsAsPintar(); }).catch(() => {});
@@ -8770,7 +8771,7 @@
         const tipo = OPS_AS_TIPOS.find(t => t.k === s.tipo);
         const receta = opsAsReceta();
         const listo1 = !!s.tipo && (s.tipo !== "receta" || !!receta);
-        const multiEst = s.tipo === "programacion" && s.multiEst;
+        const multiEst = !!s.tipo && s.multiEst;
         const listo2 = listo1 && (multiEst ? s.estaciones.length > 0 && !!s.semFin : !!(s.est || s.estTexto.trim()));
         const listo3 = listo2 && !!s.fecha;
         let n = 0; const num = () => ++n;
@@ -8827,7 +8828,7 @@
         </div>`;
 
         if (multiEst) paso2 = opsAsPaso2MultiHTML(n, lock(listo1));
-        else if (s.tipo === "programacion") paso2 = paso2.replace('<div style="position:relative;">', opsAsMultiSwitchHTML() + '<div style="position:relative;">');
+        else if (s.tipo) paso2 = paso2.replace('<div style="position:relative;">', opsAsMultiSwitchHTML() + '<div style="position:relative;">');
         // ── Paso 3: cuándo ──
         const durH = opsAsHoras(s.dur, s.durU), trasH = opsAsHoras(s.tras, s.trasU);
         const selU = (campo, val) => `<select class="opsas-in" style="width:105px;flex-shrink:0;" onchange="opsAS.${campo}=this.value;opsAsPintarParcial('opsas-dur-txt',opsAsDurHTML())">${[["min", "minutos"], ["h", "horas"], ["dias", "días"]].map(([k, t]) => `<option value="${k}" ${val === k ? "selected" : ""}>${t}</option>`).join("")}</select>`;
@@ -8878,6 +8879,7 @@
             <div class="opsas-sec ${lock(listo3)}">
                 <div class="opsas-sh"><div class="opsas-num">${num()}</div><div class="opsas-tt">Inspección</div></div>
                 <div style="max-width:320px;"><label class="opsas-lb">Norma / tipo de visita</label><select class="opsas-in" onchange="opsAsSet('norma',this.value)">${OPS_NORMAS_INSPECCION.map(x => `<option ${s.norma === x ? "selected" : ""}>${opsEsc(x)}</option>`).join("")}</select></div>
+                ${opsAsNormasExtraHTML()}
                 ${conMat ? `
                 <div class="opsas-box" style="margin-top:10px;background:#fefce8;border-color:#fde68a;">
                     <strong>Material que siempre va en ${opsEsc(s.norma)}:</strong>
@@ -8891,7 +8893,7 @@
         }
 
         // ── Contacto, O.S., comentarios ──
-        const pasoContacto = s.tipo && s.tipo !== "programacion" ? `
+        const pasoContacto = s.tipo && s.tipo !== "programacion" && !multiEst ? `
         <div class="opsas-sec ${lock(listo3)}">
             <div class="opsas-sh"><div class="opsas-num">${num()}</div><div class="opsas-tt">Contacto / encargado de la estación</div><div class="opsas-hint">Se guarda en el directorio de contactos</div></div>
             <div class="opsas-grid">
@@ -8982,8 +8984,7 @@
         s[campo] = valor;
         if (campo === "tipo") {
             s.recetaId = null; s.porRol = {}; s.herrOk = {};
-            // Varias estaciones solo existe en Solo programación: al cambiar de tipo se queda la primera.
-            if (valor !== "programacion" && s.multiEst) { s.multiEst = false; if (s.estaciones.length) { s.est = s.estaciones[0].est; s.estTexto = s.estaciones[0].texto; s.estaciones = []; } }
+            // "Varias estaciones" aplica a cualquier tipo: se conserva la lista al cambiar de tipo.
         }
         if (campo === "recetaId") {
             const r = opsAsReceta(); s.porRol = {}; s.herrOk = {};
@@ -9003,6 +9004,44 @@
     }
     window.opsAsRecetasHTML = opsAsRecetasHTML;
 
+    // ── Visita de inspección con VARIAS normas (oct-2026) ──
+    // Glen: al dar de alta una inspección (ej. ASEA) poder programarle en la misma visita otras
+    // normas (Anexo 21 y 22, SCFI, etc.). Se guarda un folio por norma (cada una lleva su propio
+    // reporte, estatus y precio), en la misma estación, uno tras otro el mismo día, ligados como
+    // grupo ("visita conjunta"). El precio que se captura es el de la norma principal.
+    function opsAsNormasDisponibles() { return OPS_NORMAS_INSPECCION.filter(n => n !== "Laboratorio"); }
+    function opsAsNormasVisita() {
+        const s = opsAS; if (!s || s.tipo !== "inspeccion") return [null];
+        return [s.norma].concat((s.normasExtra || []).filter(n => n && n !== s.norma));
+    }
+    function opsAsNormasExtraHTML() {
+        const s = opsAS; if (!s) return "";
+        const otras = opsAsNormasDisponibles().filter(n => n !== s.norma);
+        const extra = (s.normasExtra || []).filter(n => n !== s.norma);
+        return `<div style="margin-top:12px;">
+            <label class="opsas-lb">¿Programar también otras normas en la misma visita?</label>
+            <div style="display:flex;flex-wrap:wrap;gap:7px;">${otras.map(n => {
+                const on = extra.includes(n);
+                return `<button type="button" onclick="opsAsToggleNormaExtra('${opsEsc(n)}')" style="display:inline-flex;align-items:center;gap:5px;border:1.5px solid ${on ? "#1D2E73" : "#e2e8f0"};background:${on ? "#1D2E73" : "#fff"};color:${on ? "#fff" : "#334155"};border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">${OPS_SVG(on ? '<path d="M20 6 9 17l-5-5"/>' : '<path d="M12 5v14M5 12h14"/>', 12)}${opsEsc(n)}</button>`;
+            }).join("")}</div>
+            ${extra.length ? `<div class="opsas-note">Se crearán <strong>${extra.length + 1} servicios</strong> en la misma visita: ${opsEsc([s.norma].concat(extra).join(" + "))}. Van uno tras otro el mismo día; cada uno con su propio reporte y estatus. El precio de arriba es el de <strong>${opsEsc(s.norma)}</strong>; el de las demás se captura después en cada folio.</div>` : ""}
+        </div>`;
+    }
+    window.opsAsToggleNormaExtra = function (n) {
+        const s = opsAS; if (!s) return;
+        s.normasExtra = s.normasExtra || [];
+        const i = s.normasExtra.indexOf(n);
+        if (i >= 0) s.normasExtra.splice(i, 1); else s.normasExtra.push(n);
+        opsAsPintar();
+    };
+    // Suma horas a "YYYY-MM-DDTHH:MM" (sin cambiar de zona horaria).
+    function opsAsSumarHoras(fechaHora, horas) {
+        const d = new Date(fechaHora.length <= 10 ? fechaHora + "T08:00" : fechaHora);
+        d.setMinutes(d.getMinutes() + Math.round((Number(horas) || 0) * 60));
+        const p = x => String(x).padStart(2, "0");
+        return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+    }
+
     // ── Solo programación: varias estaciones en la semana (oct-2026) ──
     // Glen: poder seleccionar varias estaciones para toda una semana; el técnico las atiende en
     // el orden que quiera. Se guarda UN folio por estación (cada una con su PDF, evidencias,
@@ -9016,13 +9055,19 @@
         return out.length ? out : [ini];
     }
     // Fecha sugerida de cada estación según el reparto elegido.
+    // Duración (h) de una estación del grupo: en calibración de dispensarios sale de su catálogo.
+    function opsAsDurEstacion(x, base) {
+        const s = opsAS, b = base || s;
+        if (opsAsEsCalDispensarios() && !s.durManual && x && x.est && Number(x.est.numeroDispensarios) > 0) return Number(x.est.numeroDispensarios) * OPS_HORAS_POR_DISPENSARIO;
+        return opsAsHoras(b.dur, b.durU);
+    }
     function opsAsFechasGrupo() {
         const s = opsAS, dias = opsAsDiasVentana(), n = s.estaciones.length;
         const hora = (s.fecha.split("T")[1] || "08:00").slice(0, 5);
         const [hh, mm] = hora.split(":").map(Number); const h0 = (hh || 8) + (mm || 0) / 60;
-        const paso = Math.max(0.5, opsAsHoras(s.dur, s.durU) + opsAsHoras(s.tras, s.trasU)) || 1;
         const res = []; let di = 0, h = h0;
         for (let i = 0; i < n; i++) {
+            const paso = Math.max(0.5, opsAsDurEstacion(s.estaciones[i]) + opsAsHoras(s.tras, s.trasU)) || 1;
             if (s.reparto === "dias") { res.push(dias[i % dias.length] + "T" + hora); continue; }
             if (h > h0 && h + paso > 18 && di < dias.length - 1) { di++; h = h0; }
             res.push(dias[di] + "T" + opsAsHoraTxt(h)); h += paso;
@@ -9030,7 +9075,7 @@
         return res;
     }
     function opsAsMultiSwitchHTML() {
-        return `<div class="opsas-sw" style="margin-bottom:10px;" onclick="opsAsSetMulti(true)"><div class="opsas-tg"></div><div><div style="font-size:13px;font-weight:700;color:#1e293b;">Varias estaciones en la semana</div><div style="font-size:11.5px;color:#94a3b8;">Elige varias estaciones y un rango de días; el técnico las atiende en el orden que quiera</div></div></div>`;
+        return `<div class="opsas-sw" style="margin-bottom:10px;" onclick="opsAsSetMulti(true)"><div class="opsas-tg"></div><div><div style="font-size:13px;font-weight:700;color:#1e293b;">Varias estaciones · varios días</div><div style="font-size:11.5px;color:#94a3b8;">Elige varias estaciones (o todo un grupo / razón social) y un rango de fechas; el técnico las atiende en el orden que quiera</div></div></div>`;
     }
     window.opsAsSetMulti = function (on) {
         const s = opsAS; if (!s) return;
@@ -9065,8 +9110,8 @@
         const s = opsAS;
         return `
         <div class="opsas-sec ${cls}">
-            <div class="opsas-sh"><div class="opsas-num">${numero}</div><div class="opsas-tt">Estaciones de la semana (${s.estaciones.length})</div><div class="opsas-hint">Busca y agrega todas las que necesites</div></div>
-            <div class="opsas-sw on" style="margin-bottom:10px;" onclick="opsAsSetMulti(false)"><div class="opsas-tg"></div><div><div style="font-size:13px;font-weight:700;color:#1e293b;">Varias estaciones en la semana</div><div style="font-size:11.5px;color:#94a3b8;">Toca para volver a una sola estación</div></div></div>
+            <div class="opsas-sh"><div class="opsas-num">${numero}</div><div class="opsas-tt">Estaciones (${s.estaciones.length})</div><div class="opsas-hint">Busca y agrega todas, o "+ Agregar las N" de un grupo</div></div>
+            <div class="opsas-sw on" style="margin-bottom:10px;" onclick="opsAsSetMulti(false)"><div class="opsas-tg"></div><div><div style="font-size:13px;font-weight:700;color:#1e293b;">Varias estaciones · varios días</div><div style="font-size:11.5px;color:#94a3b8;">Toca para volver a una sola estación</div></div></div>
             <div style="position:relative;">
                 <input id="opsas-est" class="opsas-in" value="${opsEsc(s.estTexto)}" placeholder="Escribe para buscar y agregar otra estación…" autocomplete="off" oninput="opsAsBuscarEstacion(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();opsAsMultiTexto();}" onblur="setTimeout(()=>{const b=document.getElementById('opsas-est-drop');if(b)b.style.display='none';},180)">
                 <div id="opsas-est-drop" class="opsas-drop"></div>
@@ -9095,13 +9140,14 @@
         const rad = (k, t, d) => `<label class="opsas-chk" style="cursor:pointer;"><input type="radio" name="opsas-reparto" ${s.reparto === k ? "checked" : ""} onchange="opsAsSet('reparto','${k}')"><span><b>${t}</b><br><small style="color:#64748b;">${d}</small></span></label>`;
         return `
         <div class="opsas-sec ${cls}">
-            <div class="opsas-sh"><div class="opsas-num">${numero}</div><div class="opsas-tt">Semana y duración</div><div class="opsas-hint">${dias.length} día(s) hábiles · sin domingos</div></div>
+            <div class="opsas-sh"><div class="opsas-num">${numero}</div><div class="opsas-tt">Fechas y duración</div><div class="opsas-hint">${dias.length} día(s) hábiles · sin domingos</div></div>
             <div class="opsas-grid">
                 <div><label class="opsas-lb">Desde (día y hora de inicio)</label><input type="datetime-local" class="opsas-in" value="${opsEsc(s.fecha)}" onchange="opsAsSet('fecha',this.value)"></div>
                 <div><label class="opsas-lb">Hasta (último día)</label><input type="date" class="opsas-in" value="${opsEsc(s.semFin)}" min="${opsEsc((s.fecha || "").slice(0, 10))}" onchange="opsAsSet('semFin',this.value)"></div>
-                <div><label class="opsas-lb">Duración por estación</label><div style="display:flex;gap:6px;"><input type="number" min="0" step="0.5" class="opsas-in" value="${opsEsc(s.dur)}" onchange="opsAS.dur=this.value;opsAS.durManual=true;opsAsPintar()">${selU("durU", s.durU)}</div></div>
+                <div><label class="opsas-lb">Duración por estación${opsAsEsCalDispensarios() ? " (si la estación no trae dispensarios)" : ""}</label><div style="display:flex;gap:6px;"><input type="number" min="0" step="0.5" class="opsas-in" value="${opsEsc(s.dur)}" onchange="opsAS.dur=this.value;opsAS.durManual=true;opsAsPintar()">${selU("durU", s.durU)}</div></div>
                 <div><label class="opsas-lb">Traslado entre estaciones</label><div style="display:flex;gap:6px;"><input type="number" min="0" step="0.5" class="opsas-in" value="${opsEsc(s.tras)}" onchange="opsAS.tras=this.value;opsAsPintar()">${selU("trasU", s.trasU)}</div></div>
             </div>
+            ${opsAsEsCalDispensarios() && !s.durManual ? `<div class="opsas-note">Calibración de dispensarios: la duración de cada estación se calcula sola a ${OPS_HORAS_POR_DISPENSARIO} h por dispensario del catálogo.</div>` : ""}
             <div style="margin-top:10px;">${rad("dias", "Una por día", "Se reparten en los días de la semana, a la hora de inicio.")}${rad("seguidas", "Una tras otra", "Según la duración y el traslado; al pasar de las 6 p.m. sigue al día siguiente.")}</div>
             ${fechas.length ? `<div class="opsas-box" style="margin-top:8px;"><b>Así se verán en el calendario</b> <span style="color:#94a3b8;">(fechas sugeridas; el técnico decide el orden)</span>
                 <div style="margin-top:6px;line-height:1.7;">${s.estaciones.map((x, i) => `${i + 1}. ${opsEsc(x.texto)} — <b>${opsEsc(fmt(fechas[i]))}</b>`).join("<br>")}</div></div>` : ""}
@@ -9205,7 +9251,7 @@
             if (!f.length) { box.innerHTML = optAlta + `<div class="opsas-opt"><small>Sin resultados — o déjalo como lugar escrito a mano.</small></div>`; box.style.display = "block"; return; }
             // Agrupado por razón social: así se ve cuando una razón social tiene varias estaciones.
             let html = "", rsPrev = null;
-            const multi = s.tipo === "programacion" && s.multiEst;
+            const multi = !!s.tipo && s.multiEst;
             window.__opsAsRsLista = [];
             f.forEach(e => {
                 if (e.razonSocial !== rsPrev) {
@@ -9224,7 +9270,7 @@
         const s = opsAS; if (!s) return;
         const e = (window.__opsAsEstCatalogo || []).find(x => x.id === id);
         if (!e) return;
-        if (s.tipo === "programacion" && s.multiEst) {
+        if (s.tipo && s.multiEst) {
             if (!s.estaciones.some(x => x.est && x.est.id === e.id)) s.estaciones.push({ est: e, texto: e.nombreComercial || e.razonSocial || "" });
             s.est = null; s.estTexto = "";
             if (!s.plazaManual && s.estaciones.length === 1) s.plaza = opsPlazaDeTexto(e.municipio, true) || opsPlazaDeTexto([e.nombreComercial, e.direccionNormalizada, e.zona].join(" "), false) || "Chihuahua";
@@ -9603,6 +9649,76 @@
         opsAsPintar();
     };
 
+    // Arma el documento del folio con lo capturado en el alta (se usa para una estación y, en
+    // "Varias estaciones", una vez por cada estación con su propia estación/fecha/plaza).
+    function opsAsArmarDatos(receta) {
+        const s = opsAS;
+        const e = s.est;
+        const tecIds = opsAsTecsElegidos();
+        const tecs = tecIds.map(id => cacheTec.find(t => t.id === id)).filter(Boolean);
+        const lider = (s.porRol.lider || []).map(id => cacheTec.find(t => t.id === id)).find(Boolean) || tecs[0] || null;
+        const cliente = s.clienteId ? cacheClientes.find(c => c.id === s.clienteId) : null;
+        const vencimiento = s.tipo === "poliza" ? opsCalcularVencimientoAutomatico(s.fechaSolicitud, s.clienteId, s.prioridad) : null;
+        const pl = (e?.permiso || s.plNuevo.trim() || null);
+        const durH = opsAsHoras(s.dur, s.durU), trasH = opsAsHoras(s.tras, s.trasU);
+        const conMat = s.tipo === "inspeccion" && OPS_AS_NORMA_MATERIAL.includes(s.norma);
+        const num = v => (v === "" || v === null || v === undefined) ? null : Number(v);
+        const herrLista = receta ? (receta.herramientaRequerida || []).map(h => ({ descripcion: h.descripcion, cantidad: h.cantidad || 1, confirmada: !!s.herrOk[h.descripcion] })) : [];
+        const datos = {
+            folioOS: s.os.trim(),
+            estacion: e ? (e.nombreComercial || e.razonSocial) : s.estTexto.trim(),
+            estacionCatalogoId: e?.id || null, estacionEncargado: e?.encargado || null, estacionZona: e?.zona || null,
+            estacionNumeroTanques: e?.numeroTanques || null, estacionNumeroDispensarios: e?.numeroDispensarios || null, estacionNumeroSondas: e?.numeroSondas || null,
+            estacionDireccion: e?.direccionNormalizada || (e ? null : s.estTexto.trim()), estacionRazonSocial: e?.razonSocial || null,
+            estacionPermiso: pl, estacionCR: e?.cr || null, estacionLat: e?.lat ?? null, estacionLng: e?.lng ?? null,
+            tipoAlta: s.tipo,
+            serviciosProgramados: s.tipo === "programacion" ? s.servicios.map(opsProgLimpio) : null,
+            tipoFolio: s.tipo === "inspeccion" ? "inspeccion" : s.tipo === "laboratorio" ? "laboratorio" : "servicio",
+            normaInspeccion: s.tipo === "inspeccion" ? s.norma : null,
+            esSCFI: conMat,
+            hologramas: conMat ? num(s.hologramas) : null, precintos: conMat ? num(s.precintos) : null,
+            distintivos: conMat ? num(s.distintivos) : null, mangueras: conMat ? num(s.mangueras) : null,
+            servicioCatalogoId: receta?.id || null, categoriaServicio: receta?.categoria || null,
+            cantidadUnidades: receta ? Math.max(1, Number(s.cantidad) || 1) : null,
+            numeroDispensarios: opsAsEsCalDispensarios() && Number(s.dispensarios) > 0 ? Number(s.dispensarios) : null,
+            fechaProgramada: s.fecha, plaza: s.plaza || "Chihuahua",
+            estacionMunicipio: e?.municipio || null,
+            duracionValor: num(s.dur), duracionUnidad: s.durU,
+            tiempoEjecucionHrs: durH || null, tiempoTrasladoHrs: trasH || null,
+            tecnicosAsignadosIds: tecs.map(t => t.id), tecnicosAsignadosNombres: tecs.map(t => t.nombre || ""),
+            personalPorRol: receta ? Object.fromEntries(Object.entries(s.porRol).map(([k, v]) => [k, v || []])) : null,
+            tecnicoResponsableId: lider?.id || null, tecnicoResponsableNombre: lider?.nombre || null, tecnicoResponsableCorreo: lider?.correo || null,
+            responsable: lider?.nombre || null,
+            vehiculoPlaneado: s.vehiculo || null,
+            herramientaChecklist: herrLista,
+            clienteId: cliente?.id || null, clienteNombre: cliente?.nombre || null, prioridad: s.tipo === "poliza" ? s.prioridad : null,
+            fechaSolicitud: s.tipo === "poliza" ? s.fechaSolicitud : null, vencimiento,
+            fechaAtencion: null, fechaSolucion: null,
+            contactoNombre: s.contacto.trim() || null, contactoTelefono: s.telefono.trim() || null,
+            contactoWhatsapp: s.whatsapp.trim() || null, contactoCorreo: s.correo.trim() || null, contactoPuesto: s.contacto.trim() ? s.puesto : null,
+            encargadoInterno: s.encargado || null,
+            facturarA: s.masFac ? (s.facturarA.trim() || e?.razonSocial || null) : null,
+            proyecto: s.masFac ? (s.proyecto.trim() || null) : null,
+            viaticosPendientes: !!s.viaticos,
+            ...(() => {
+                const R = opsAsResumenPrecio(), ks = opsAsClaveServicio(), kc = opsAsClaveCliente();
+                const coms = (s.comisiones || []).filter(c => c.tecId).map(c => {
+                    const tt = cacheTec.find(x => x.id === c.tecId);
+                    return { tecnicoId: c.tecId, nombre: tt?.nombre || "", correo: tt?.correo || null, concepto: (c.concepto || "").trim() || null, tipo: c.tipo === "pct" ? "porcentaje" : "monto", valor: Number(c.valor) || 0, monto: opsAsComisionMonto(c, R.precio) };
+                }).filter(c => c.monto > 0);
+                return {
+                    precioServicio: s.precioSel ? { servicioClave: ks?.clave || null, servicioNombre: ks?.nombre || null, clienteClave: kc?.clave || null, listaClave: s.precioSel, lista: R.lista, precioUnitario: R.unit, multiplicador: R.mult, precio: R.precio } : null,
+                    costosServicio: s.tipo === "programacion" ? null : { materiales: R.materiales, personal: R.personal, viaticos: R.viaticos, herramienta: R.herramienta, otros: R.otros, comisiones: coms.reduce((a, c) => a + c.monto, 0), costoTotal: R.costoTotal, cobrarGastos: !!s.cobrarGastos, totalCobrar: R.totalCobrar, utilidad: R.utilidad },
+                    comisiones: coms,
+                };
+            })(),
+            comentarios: s.comentarios.trim(),
+            seccionesAplica: [],
+            origen: "alta_calendario", creadoPor: opsUsuarioActual(), creadoEn: opsFechaHora(),
+        };
+        return { datos, e, tecs, lider, pl, durH, trasH, herrLista };
+    }
+
     // ── Guardar ──
     window.opsAsGuardar = async function (confirmado) {
         const s = opsAS; if (!s) return;
@@ -9610,13 +9726,13 @@
         const faltan = [];
         if (!s.tipo) faltan.push("qué vas a registrar");
         if (s.tipo === "receta" && !receta) faltan.push("el servicio del catálogo");
-        const multiEst = s.tipo === "programacion" && s.multiEst;
+        const multiEst = !!s.tipo && s.multiEst;
         if (multiEst) { if (!s.estaciones.length) faltan.push("las estaciones"); if (!s.semFin) faltan.push("hasta qué día"); }
         else if (!(s.est || s.estTexto.trim())) faltan.push("la estación");
         if (!s.fecha) faltan.push("la fecha");
         if (s.tipo === "poliza" && (!s.clienteId || !s.prioridad)) faltan.push("cliente y prioridad");
         if (faltan.length) { opsAsMostrarError("Falta: " + faltan.join(", ") + "."); return; }
-        if (multiEst && confirmado === true) { document.getElementById("opsas-revision")?.remove(); return opsAsGuardarGrupo(); }
+        if ((multiEst || opsAsNormasVisita().length > 1) && confirmado === true) { document.getElementById("opsas-revision")?.remove(); return opsAsGuardarGrupo(); }
         // Antes de guardar: resumen para que quien gestiona revise que todo esté correcto
         // (estación, plaza, técnico, fecha…). Los avisos (choques, falta de personal, plaza
         // distinta a la del técnico) salen ahí mismo en lugar de en ventanas sueltas.
@@ -9627,69 +9743,7 @@
         const errBox = document.getElementById("opsas-error"); if (errBox) errBox.style.display = "none";
         try {
             const { db, fs } = await opsGetFB();
-            const e = s.est;
-            const tecIds = opsAsTecsElegidos();
-            const tecs = tecIds.map(id => cacheTec.find(t => t.id === id)).filter(Boolean);
-            const lider = (s.porRol.lider || []).map(id => cacheTec.find(t => t.id === id)).find(Boolean) || tecs[0] || null;
-            const cliente = s.clienteId ? cacheClientes.find(c => c.id === s.clienteId) : null;
-            const vencimiento = s.tipo === "poliza" ? opsCalcularVencimientoAutomatico(s.fechaSolicitud, s.clienteId, s.prioridad) : null;
-            const pl = (e?.permiso || s.plNuevo.trim() || null);
-            const durH = opsAsHoras(s.dur, s.durU), trasH = opsAsHoras(s.tras, s.trasU);
-            const conMat = s.tipo === "inspeccion" && OPS_AS_NORMA_MATERIAL.includes(s.norma);
-            const num = v => (v === "" || v === null || v === undefined) ? null : Number(v);
-            const herrLista = receta ? (receta.herramientaRequerida || []).map(h => ({ descripcion: h.descripcion, cantidad: h.cantidad || 1, confirmada: !!s.herrOk[h.descripcion] })) : [];
-            const datos = {
-                folioOS: s.os.trim(),
-                estacion: e ? (e.nombreComercial || e.razonSocial) : s.estTexto.trim(),
-                estacionCatalogoId: e?.id || null, estacionEncargado: e?.encargado || null, estacionZona: e?.zona || null,
-                estacionNumeroTanques: e?.numeroTanques || null, estacionNumeroDispensarios: e?.numeroDispensarios || null, estacionNumeroSondas: e?.numeroSondas || null,
-                estacionDireccion: e?.direccionNormalizada || (e ? null : s.estTexto.trim()), estacionRazonSocial: e?.razonSocial || null,
-                estacionPermiso: pl, estacionCR: e?.cr || null, estacionLat: e?.lat ?? null, estacionLng: e?.lng ?? null,
-                tipoAlta: s.tipo,
-                serviciosProgramados: s.tipo === "programacion" ? s.servicios.map(opsProgLimpio) : null,
-                tipoFolio: s.tipo === "inspeccion" ? "inspeccion" : s.tipo === "laboratorio" ? "laboratorio" : "servicio",
-                normaInspeccion: s.tipo === "inspeccion" ? s.norma : null,
-                esSCFI: conMat,
-                hologramas: conMat ? num(s.hologramas) : null, precintos: conMat ? num(s.precintos) : null,
-                distintivos: conMat ? num(s.distintivos) : null, mangueras: conMat ? num(s.mangueras) : null,
-                servicioCatalogoId: receta?.id || null, categoriaServicio: receta?.categoria || null,
-                cantidadUnidades: receta ? Math.max(1, Number(s.cantidad) || 1) : null,
-                numeroDispensarios: opsAsEsCalDispensarios() && Number(s.dispensarios) > 0 ? Number(s.dispensarios) : null,
-                fechaProgramada: s.fecha, plaza: s.plaza || "Chihuahua",
-                estacionMunicipio: e?.municipio || null,
-                duracionValor: num(s.dur), duracionUnidad: s.durU,
-                tiempoEjecucionHrs: durH || null, tiempoTrasladoHrs: trasH || null,
-                tecnicosAsignadosIds: tecs.map(t => t.id), tecnicosAsignadosNombres: tecs.map(t => t.nombre || ""),
-                personalPorRol: receta ? Object.fromEntries(Object.entries(s.porRol).map(([k, v]) => [k, v || []])) : null,
-                tecnicoResponsableId: lider?.id || null, tecnicoResponsableNombre: lider?.nombre || null, tecnicoResponsableCorreo: lider?.correo || null,
-                responsable: lider?.nombre || null,
-                vehiculoPlaneado: s.vehiculo || null,
-                herramientaChecklist: herrLista,
-                clienteId: cliente?.id || null, clienteNombre: cliente?.nombre || null, prioridad: s.tipo === "poliza" ? s.prioridad : null,
-                fechaSolicitud: s.tipo === "poliza" ? s.fechaSolicitud : null, vencimiento,
-                fechaAtencion: null, fechaSolucion: null,
-                contactoNombre: s.contacto.trim() || null, contactoTelefono: s.telefono.trim() || null,
-                contactoWhatsapp: s.whatsapp.trim() || null, contactoCorreo: s.correo.trim() || null, contactoPuesto: s.contacto.trim() ? s.puesto : null,
-                encargadoInterno: s.encargado || null,
-                facturarA: s.masFac ? (s.facturarA.trim() || e?.razonSocial || null) : null,
-                proyecto: s.masFac ? (s.proyecto.trim() || null) : null,
-                viaticosPendientes: !!s.viaticos,
-                ...(() => {
-                    const R = opsAsResumenPrecio(), ks = opsAsClaveServicio(), kc = opsAsClaveCliente();
-                    const coms = (s.comisiones || []).filter(c => c.tecId).map(c => {
-                        const tt = cacheTec.find(x => x.id === c.tecId);
-                        return { tecnicoId: c.tecId, nombre: tt?.nombre || "", correo: tt?.correo || null, concepto: (c.concepto || "").trim() || null, tipo: c.tipo === "pct" ? "porcentaje" : "monto", valor: Number(c.valor) || 0, monto: opsAsComisionMonto(c, R.precio) };
-                    }).filter(c => c.monto > 0);
-                    return {
-                        precioServicio: s.precioSel ? { servicioClave: ks?.clave || null, servicioNombre: ks?.nombre || null, clienteClave: kc?.clave || null, listaClave: s.precioSel, lista: R.lista, precioUnitario: R.unit, multiplicador: R.mult, precio: R.precio } : null,
-                        costosServicio: s.tipo === "programacion" ? null : { materiales: R.materiales, personal: R.personal, viaticos: R.viaticos, herramienta: R.herramienta, otros: R.otros, comisiones: coms.reduce((a, c) => a + c.monto, 0), costoTotal: R.costoTotal, cobrarGastos: !!s.cobrarGastos, totalCobrar: R.totalCobrar, utilidad: R.utilidad },
-                        comisiones: coms,
-                    };
-                })(),
-                comentarios: s.comentarios.trim(),
-                seccionesAplica: [],
-                origen: "alta_calendario", creadoPor: opsUsuarioActual(), creadoEn: opsFechaHora(),
-            };
+            const { datos, e, tecs, pl, durH, herrLista } = opsAsArmarDatos(receta);
             const nuevo = await fs.addDoc(fs.collection(db, COL_FOLIOS), datos);
             const tipoTxt = (OPS_AS_TIPOS.find(t => t.k === s.tipo) || {}).n || "Servicio";
             const nota = [
@@ -9743,78 +9797,102 @@
         }
     };
 
-    // Guarda una programación de varias estaciones: un folio por estación, ligados por grupo.
+    // Guarda varias estaciones (cualquier tipo de servicio): un folio por estación, ligados por
+    // grupoProgramacionId, cada uno armado igual que un alta normal (opsAsArmarDatos).
     async function opsAsGuardarGrupo() {
         const s = opsAS; if (!s) return;
+        const multi = !!s.multiEst;
+        const ests = multi ? s.estaciones.slice() : [{ est: s.est, texto: s.est ? (s.est.nombreComercial || s.est.razonSocial) : s.estTexto.trim() }];
+        const normas = opsAsNormasVisita();
+        const total = ests.length * normas.length;
         const btn = document.getElementById("opsas-guardar");
-        if (btn) { btn.disabled = true; btn.textContent = "Guardando " + s.estaciones.length + " estaciones… no cierres"; btn.style.background = "#1D2E73"; }
+        if (btn) { btn.disabled = true; btn.textContent = "Guardando " + total + " servicios… no cierres"; btn.style.background = "#1D2E73"; }
         const errBox = document.getElementById("opsas-error"); if (errBox) errBox.style.display = "none";
         const grupoId = "grp-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-        const fechas = opsAsFechasGrupo();
-        const tecs = opsAsTecsElegidos().map(id => cacheTec.find(t => t.id === id)).filter(Boolean);
-        const lider = tecs[0] || null;
-        const durH = opsAsHoras(s.dur, s.durU), trasH = opsAsHoras(s.tras, s.trasU);
-        const num = v => (v === "" || v === null || v === undefined) ? null : Number(v);
-        const servTxt = opsProgServiciosTxt(s.servicios);
+        const fechasEst = multi ? opsAsFechasGrupo() : [s.fecha];
+        const receta = opsAsReceta();
+        const tipoBase = (OPS_AS_TIPOS.find(t => t.k === s.tipo) || {}).n || "Servicio";
+        const tipoTxt = normas.length > 1 ? `${tipoBase} (${normas.join(" + ")})` : tipoBase;
+        const servTxt = s.tipo === "programacion" ? opsProgServiciosTxt(s.servicios) : (receta ? receta.nombre : s.tipo === "inspeccion" ? normas.join(" + ") : "");
+        const respaldo = { est: s.est, estTexto: s.estTexto, fecha: s.fecha, plaza: s.plaza, plNuevo: s.plNuevo, dur: s.dur, durU: s.durU, dispensarios: s.dispensarios,
+            contacto: s.contacto, telefono: s.telefono, whatsapp: s.whatsapp, correo: s.correo, puesto: s.puesto, contactoId: s.contactoId, facturarA: s.facturarA,
+            norma: s.norma, precioSel: s.precioSel, comisiones: s.comisiones };
+        const ventanaIni = (respaldo.fecha || "").slice(0, 10), ventanaFin = multi ? s.semFin : ventanaIni;
         const guardados = [];
+        let tecs = [], durH0 = 0, errorFinal = null, orden = 0;
         try {
             const { db, fs } = await opsGetFB();
-            for (let i = 0; i < s.estaciones.length; i++) {
-                const x = s.estaciones[i], e = x.est;
-                const plaza = s.plazaManual ? s.plaza : (e ? (opsPlazaDeTexto(e.municipio, true) || opsPlazaDeTexto([e.nombreComercial, e.direccionNormalizada, e.zona].join(" "), false)) : null) || s.plaza || "Chihuahua";
-                const c = e ? opsAsDirectorio().find(k => k.ids.has(e.id)) : null;
-                const datos = {
-                    folioOS: "",
-                    estacion: x.texto, estacionCatalogoId: e?.id || null, estacionEncargado: e?.encargado || null, estacionZona: e?.zona || null,
-                    estacionNumeroTanques: e?.numeroTanques || null, estacionNumeroDispensarios: e?.numeroDispensarios || null, estacionNumeroSondas: e?.numeroSondas || null,
-                    estacionDireccion: e?.direccionNormalizada || (e ? null : x.texto), estacionRazonSocial: e?.razonSocial || null,
-                    estacionPermiso: e?.permiso || null, estacionCR: e?.cr || null, estacionLat: e?.lat ?? null, estacionLng: e?.lng ?? null,
-                    estacionMunicipio: e?.municipio || null,
-                    tipoAlta: "programacion", tipoFolio: "servicio", normaInspeccion: null, esSCFI: false,
-                    serviciosProgramados: s.servicios.map(opsProgLimpio),
-                    servicioCatalogoId: null, categoriaServicio: null, cantidadUnidades: null,
-                    fechaProgramada: fechas[i], plaza,
-                    grupoProgramacionId: grupoId, grupoTotal: s.estaciones.length, grupoOrden: i + 1,
-                    ventanaInicio: (s.fecha || "").slice(0, 10), ventanaFin: s.semFin, ordenLibre: true,
-                    duracionValor: num(s.dur), duracionUnidad: s.durU, tiempoEjecucionHrs: durH || null, tiempoTrasladoHrs: trasH || null,
-                    tecnicosAsignadosIds: tecs.map(t => t.id), tecnicosAsignadosNombres: tecs.map(t => t.nombre || ""),
-                    tecnicoResponsableId: lider?.id || null, tecnicoResponsableNombre: lider?.nombre || null, tecnicoResponsableCorreo: lider?.correo || null,
-                    responsable: lider?.nombre || null, vehiculoPlaneado: null, herramientaChecklist: [],
-                    clienteId: null, clienteNombre: null, prioridad: null, fechaSolicitud: null, vencimiento: null, fechaAtencion: null, fechaSolucion: null,
-                    contactoNombre: c?.nombre || null, contactoTelefono: c?.tel || null, contactoWhatsapp: c?.whatsapp || null, contactoCorreo: c?.correo || null, contactoPuesto: c ? (c.puesto || null) : null,
-                    viaticosPendientes: !!s.viaticos, precioServicio: null, costosServicio: null, comisiones: [],
-                    comentarios: s.comentarios.trim(), seccionesAplica: [],
-                    origen: "alta_calendario", creadoPor: opsUsuarioActual(), creadoEn: opsFechaHora(),
-                };
-                const nuevo = await fs.addDoc(fs.collection(db, COL_FOLIOS), datos);
-                guardados.push({ id: nuevo.id, ...datos });
-                if (!cacheFolios.some(y => y.id === nuevo.id)) cacheFolios.push({ id: nuevo.id, ...datos });
-                fs.addDoc(fs.collection(db, COL_FOLIOS, nuevo.id, "comentarios"), {
-                    texto: [`Programación semanal capturada por ${opsNombreActual()}: estación ${i + 1} de ${s.estaciones.length} (${datos.estacion}).`,
-                        `Ventana: ${datos.ventanaInicio} al ${datos.ventanaFin}, orden libre.`, servTxt ? `Servicios: ${servTxt}.` : null,
-                        tecs.length ? `Equipo: ${tecs.map(t => t.nombre).join(", ")}.` : null, datos.comentarios ? `Comentario inicial: ${datos.comentarios}` : null].filter(Boolean).join(" "),
-                    autor: opsNombreActual(), autorEmail: opsUsuarioActual(), tipo: "captura",
-                    createdAt: fs.serverTimestamp ? fs.serverTimestamp() : opsFechaHora(),
-                }).catch(() => {});
+            for (let i = 0; i < ests.length; i++) {
+                const x = ests[i], e = x.est;
+                let cursor = fechasEst[i] || respaldo.fecha;
+                for (let j = 0; j < normas.length; j++) {
+                    orden++;
+                    // Mismo armado que un alta normal, con la estación / norma / fecha de esta vuelta
+                    if (normas[j]) s.norma = normas[j];
+                    s.est = e; s.estTexto = e ? "" : x.texto; s.fecha = cursor;
+                    s.plNuevo = multi ? "" : respaldo.plNuevo;
+                    s.plaza = s.plazaManual || !multi ? respaldo.plaza : (e ? (opsPlazaDeTexto(e.municipio, true) || opsPlazaDeTexto([e.nombreComercial, e.direccionNormalizada, e.zona].join(" "), false)) : null) || respaldo.plaza || "Chihuahua";
+                    s.dispensarios = e && e.numeroDispensarios ? String(e.numeroDispensarios) : (multi && opsAsEsCalDispensarios() ? "" : respaldo.dispensarios);
+                    const dH = multi ? opsAsDurEstacion(x, respaldo) : (opsAsEsCalDispensarios() && !s.durManual && Number(s.dispensarios) > 0 ? Number(s.dispensarios) * OPS_HORAS_POR_DISPENSARIO : opsAsHoras(respaldo.dur, respaldo.durU));
+                    s.dur = dH ? String(dH) : respaldo.dur; s.durU = dH ? "h" : respaldo.durU;
+                    if (multi) {
+                        const c = e ? opsAsDirectorio().find(k => k.ids.has(e.id)) : null;
+                        s.contacto = c ? c.nombre : ""; s.telefono = c ? (c.tel || "") : ""; s.whatsapp = c ? (c.whatsapp || "") : ""; s.correo = c ? (c.correo || "") : "";
+                        s.puesto = c ? (c.puesto || respaldo.puesto) : respaldo.puesto; s.contactoId = c ? (c.id || null) : null;
+                        s.facturarA = e ? (e.razonSocial || respaldo.facturarA) : respaldo.facturarA;
+                    }
+                    // El precio/comisiones capturados son de la norma principal; las demás quedan sin precio.
+                    s.precioSel = j === 0 ? respaldo.precioSel : ""; s.comisiones = j === 0 ? respaldo.comisiones : [];
+                    const r = opsAsArmarDatos(receta);
+                    tecs = r.tecs; if (orden === 1) durH0 = r.durH;
+                    const datos = { ...r.datos, estacion: e ? (e.nombreComercial || e.razonSocial) : x.texto,
+                        grupoProgramacionId: grupoId, grupoTotal: total, grupoOrden: orden,
+                        ventanaInicio: ventanaIni, ventanaFin, ordenLibre: multi,
+                        visitaConjunta: normas.length > 1, normasVisita: normas.length > 1 ? normas : null };
+                    const nuevo = await fs.addDoc(fs.collection(db, COL_FOLIOS), datos);
+                    guardados.push({ id: nuevo.id, ...datos });
+                    if (!cacheFolios.some(y => y.id === nuevo.id)) cacheFolios.push({ id: nuevo.id, ...datos });
+                    fs.addDoc(fs.collection(db, COL_FOLIOS, nuevo.id, "comentarios"), {
+                        texto: [`${tipoBase}${normas[j] ? " " + normas[j] : ""} capturado por ${opsNombreActual()} (${orden} de ${total}): ${datos.estacion}.`,
+                            normas.length > 1 ? `Visita conjunta: ${normas.join(" + ")}.` : null,
+                            multi ? `Del ${ventanaIni} al ${ventanaFin}, orden libre.` : null,
+                            s.tipo === "programacion" && servTxt ? `Servicios: ${servTxt}.` : (receta ? `Servicio: ${receta.nombre}.` : null),
+                            tecs.length ? `Equipo: ${tecs.map(t => t.nombre).join(", ")}.` : null, datos.comentarios ? `Comentario inicial: ${datos.comentarios}` : null].filter(Boolean).join(" "),
+                        autor: opsNombreActual(), autorEmail: opsUsuarioActual(), tipo: "captura",
+                        createdAt: fs.serverTimestamp ? fs.serverTimestamp() : opsFechaHora(),
+                    }).catch(() => {});
+                    if (datos.tipoFolio === "laboratorio") { try { await opsNotificarFolioLaboratorio({ id: nuevo.id, ...datos }); } catch (err) {} }
+                    if (datos.precioServicio || (datos.comisiones || []).length) {
+                        try { await opsAsGuardarPrecioYComisiones(nuevo.id, datos); } catch (err) { console.warn("[Alta grupo] precio/comisiones:", err.message || err); }
+                    }
+                    cursor = opsAsSumarHoras(cursor, dH || 1);
+                }
             }
-        } catch (err) {
-            console.error("[Alta grupo] Error:", err);
-            const msg = (guardados.length ? `Se guardaron ${guardados.length} de ${s.estaciones.length} estaciones (${guardados.map(g => g.estacion).join(", ")}); quita esas de la lista antes de reintentar. ` : "")
-                + (err && err.code === "permission-denied" ? "Tu usuario no tiene permiso de escritura." : "Motivo: " + (err && err.message ? err.message : String(err)));
+        } catch (err) { errorFinal = err; console.error("[Alta grupo] Error:", err); }
+        Object.assign(s, respaldo);
+        if (errorFinal) {
+            const msg = (guardados.length ? `Se guardaron ${guardados.length} de ${total} servicios (${guardados.map(g => g.estacion + (g.normaInspeccion ? " · " + g.normaInspeccion : "")).join(", ")}); quítalos antes de reintentar. ` : "")
+                + (errorFinal && errorFinal.code === "permission-denied" ? "Tu usuario no tiene permiso de escritura." : "Motivo: " + (errorFinal && errorFinal.message ? errorFinal.message : String(errorFinal)));
             opsAsMostrarError(msg);
-            const b = document.getElementById("opsas-guardar"); if (b) { b.disabled = false; b.style.background = "#15803D"; b.textContent = "Reintentar guardar"; }
+            const b2 = document.getElementById("opsas-guardar"); if (b2) { b2.disabled = false; b2.style.background = "#15803D"; b2.textContent = "Reintentar guardar"; }
             return;
         }
-        // Un solo aviso por técnico con toda la semana (no una alarma por estación).
+        // Contacto capturado a mano (una sola estación) → directorio, una vez
+        if (!multi && s.contacto.trim()) {
+            try { await opsGuardarContacto({ id: s.contactoId, nombre: s.contacto.trim(), puesto: s.puesto, telefono: s.telefono.trim(), whatsapp: s.whatsapp.trim(), correo: s.correo.trim() }, { id: s.est?.id || null, nombre: guardados[0].estacion, razonSocial: s.est?.razonSocial || null }); }
+            catch (err) { console.warn("[Alta grupo] contacto:", err.message); }
+        }
+        // Un solo aviso por técnico con todo (no una alarma por cada folio).
         const primero = guardados[0];
-        const lista = guardados.map(g => g.estacion).join(", ");
-        const avisos = await opsAvisarTecnicosAsignados({ ...primero, estacion: `${guardados.length} estaciones (${lista})` }, tecs,
-            `Programación de la semana ${primero.ventanaInicio} al ${primero.ventanaFin}, orden libre` + (servTxt ? ` · ${servTxt}` : ""));
+        const estTxt = [...new Set(guardados.map(g => g.estacion))];
+        const avisos = await opsAvisarTecnicosAsignados({ ...primero, estacion: estTxt.length > 1 ? `${estTxt.length} estaciones (${estTxt.join(", ")})` : estTxt[0] }, tecs,
+            tipoTxt + (multi ? ` del ${ventanaIni} al ${ventanaFin}, orden libre` : "") + (s.tipo === "programacion" && servTxt ? ` · ${servTxt}` : ""));
         const conViaticos = s.viaticos;
         opsAS = null;
         if (opsCalFiltroPlaza !== "todas" && opsCalFiltroPlaza !== primero.plaza) opsCalFiltroPlaza = primero.plaza;
         if (tabActual === "calendario" && typeof window.opsCalIrAFecha === "function") { try { window.opsCalIrAFecha(primero.fechaProgramada.slice(0, 10)); } catch (x) { /* solo navegación */ } }
-        opsAsPantallaGuardado({ ...primero, estacion: `${guardados.length} estaciones: ${lista}` }, { tipoTxt: "Programación de la semana (" + primero.ventanaInicio + " al " + primero.ventanaFin + ")", receta: null, tecs, avisos, conViaticos, durH });
+        opsAsPantallaGuardado({ ...primero, estacion: estTxt.length > 1 ? `${estTxt.length} estaciones: ${estTxt.join(", ")}` : estTxt[0] },
+            { tipoTxt: tipoTxt + (multi ? " · " + ventanaIni + " al " + ventanaFin : "") + (total > 1 ? ` · ${total} servicios` : ""), receta, tecs, avisos, conViaticos, durH: durH0 });
     }
 
     // ── Resumen previo a guardar ──
@@ -9854,7 +9932,8 @@
                 <div style="overflow-y:auto;padding:8px 22px 4px;">
                     ${fila("Tipo", opsEsc(tipoTxt + (receta ? " · " + receta.nombre : "") + (s.tipo === "inspeccion" ? " · " + s.norma : "")))}
                     ${s.tipo === "programacion" ? fila("Servicios", s.servicios.length ? opsEsc(opsProgServiciosTxt(s.servicios)) : `<span style="color:#94a3b8;">Ninguno (se pueden agregar después)</span>`) : ""}
-                    ${s.tipo === "programacion" && s.multiEst ? fila("Estaciones", s.estaciones.map((x, i) => `${i + 1}. ${opsEsc(x.texto)}`).join("<br>"), true) + fila("Semana", opsEsc(`del ${opsFmtFechaCorta(s.fecha)} al ${s.semFin} · ${s.reparto === "dias" ? "una por día" : "una tras otra"} · orden libre`)) : fila("Estación", opsEsc(e ? (e.nombreComercial || e.razonSocial) : s.estTexto), true)}
+                    ${opsAsNormasVisita().length > 1 ? fila("Normas en la visita", opsEsc(opsAsNormasVisita().join(" + ")) + ` <span style="color:#94a3b8;">(${opsAsNormasVisita().length} servicios, uno tras otro)</span>`, true) : ""}
+                    ${s.multiEst ? fila("Estaciones", s.estaciones.map((x, i) => `${i + 1}. ${opsEsc(x.texto)}`).join("<br>"), true) + fila("Semana", opsEsc(`del ${opsFmtFechaCorta(s.fecha)} al ${s.semFin} · ${s.reparto === "dias" ? "una por día" : "una tras otra"} · orden libre`)) : fila("Estación", opsEsc(e ? (e.nombreComercial || e.razonSocial) : s.estTexto), true)}
                     ${fila("Dirección", opsEsc(e?.direccionNormalizada || ""))}
                     ${fila("Razón social / PL", opsEsc([e?.razonSocial, e?.permiso || s.plNuevo].filter(Boolean).join(" · ")))}
                     ${fila("Plaza", opsEsc(s.plaza || "Chihuahua"), true)}
