@@ -3156,13 +3156,60 @@
   //  que index.html muestra en cada área (contrato: window.cpAbrirPanelDepto).
   // ══════════════════════════════════════════════════════════════════
   var _cpdArea='', _cpdTab='cotizaciones';
+  // ══ Accesos de Compras en cada departamento (oct-2026) ══
+  // Van en la barra vertical del departamento (#dept-rail-universal), no en la
+  // cabecera. La fila vieja de botones de index.html (#cp-depto-botones) se
+  // oculta donde hay barra y en Flotilla/Gestoría; solo queda en Ventas, que
+  // aún no usa esa barra. index.html no se toca.
+  function _cpArea(){ return window.apAreaActual || ''; }
+  var _CP_RAIL_ICO = {
+    pedir:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>',
+    cot:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
+    req:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg>',
+  };
   function _cpBotonPedirCot(){
-    var c=document.getElementById('cp-depto-botones'); if(!c || document.getElementById('cp-btn-pedir-cot')) return;
-    var b=document.createElement('button'); b.type='button'; b.id='cp-btn-pedir-cot';
-    b.style.cssText='display:inline-flex;align-items:center;gap:7px;padding:9px 14px;border-radius:10px;border:1.5px solid #1D2E73;background:#1D2E73;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit';
-    b.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Pedir cotización';
-    b.onclick=function(){ window.__scNueva(typeof areaActual!=='undefined'?areaActual:''); };
-    c.insertBefore(b, c.firstChild);
+    // 1) Barra vertical
+    var rail=document.getElementById('dept-rail-universal');
+    if(rail && !document.getElementById('cp-rail-compras')){
+      var g=document.createElement('div'); g.id='cp-rail-compras'; g.style.cssText='display:contents';
+      g.innerHTML='<div aria-hidden="true" style="width:24px;height:1px;background:rgba(255,255,255,.18);margin:6px auto"></div>' +
+        [['pedir','Pedir cotización a Compras'],['cot','Mis cotizaciones'],['req','Mis requisiciones']].map(function(x){
+          return '<button type="button" class="dr-btn" data-cp="'+x[0]+'" aria-label="'+x[1]+'">'+_CP_RAIL_ICO[x[0]]+'<span class="dr-tooltip">'+x[1]+'</span></button>';
+        }).join('');
+      rail.appendChild(g);
+      g.addEventListener('click', function(e){
+        var b=e.target.closest('[data-cp]'); if(!b) return;
+        var t=b.getAttribute('data-cp');
+        if(t==='pedir') window.__scNueva(_cpArea());
+        else if(window.cpAbrirPanelDepto) window.cpAbrirPanelDepto(t==='cot'?'cotizaciones':'requisiciones', _cpArea());
+      });
+    }
+    // 2) Fila vieja de la cabecera: arreglar sus clics (usaban una variable que
+    //    ya no es global) y ocultarla donde ya hay barra o no aplica.
+    var c=document.getElementById('cp-depto-botones');
+    if(c && !c.__cpListo){
+      c.__cpListo=true;
+      Array.prototype.forEach.call(c.querySelectorAll('button'), function(b){
+        var tab = /requisiciones/i.test(b.textContent) ? 'requisiciones' : 'cotizaciones';
+        b.removeAttribute('onclick');
+        b.addEventListener('click', function(){ if(window.cpAbrirPanelDepto) window.cpAbrirPanelDepto(tab, _cpArea()); });
+      });
+      var bp=document.createElement('button'); bp.type='button'; bp.id='cp-btn-pedir-cot';
+      bp.style.cssText='display:inline-flex;align-items:center;gap:7px;padding:9px 14px;border-radius:10px;border:1.5px solid #1D2E73;background:#1D2E73;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit';
+      bp.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Pedir cotización';
+      bp.addEventListener('click', function(){ window.__scNueva(_cpArea()); });
+      c.insertBefore(bp, c.firstChild);
+      var revisar=function(){
+        var conBarra=document.body.classList.contains('rail-activo');
+        var area=_cpArea();
+        var ocultar = conBarra || area==='Flotilla' || area==='Gestoría' || area==='Compras';
+        if(ocultar){ if(c.style.display!=='none') c.style.display='none'; }
+        else if(area && c.style.display==='none') c.style.display='flex';
+      };
+      new MutationObserver(revisar).observe(c, {attributes:true, attributeFilter:['style']});
+      new MutationObserver(revisar).observe(document.body, {attributes:true, attributeFilter:['class']});
+      revisar();
+    }
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', _cpBotonPedirCot); else _cpBotonPedirCot();
   window.cpAbrirPanelDepto = function(tab, area){
