@@ -216,6 +216,7 @@ function _draftSave(key,state){
     // se guardan; si no caben (cuota excedida), el catch de abajo las quita y
     // reintenta sin ellas, igual que ya protege a fotoKm/chkFotos/firma.
     if(key!==_DRAFT.UTIL)s.evFotos=[];
+    s.videos=[];
     try{
       localStorage.setItem(key,JSON.stringify(s));
     }catch(e){
@@ -493,32 +494,24 @@ function getGPS(){
   });
 }
 
-// ── SELLAR IMAGEN ──
-function sellarImg(src,meta){
+// ── PREPARAR IMAGEN DE EVIDENCIA ──
+// Antes se "sellaba" una franja con código/fecha/GPS encima de la foto, lo que
+// tapaba parte de la evidencia. Ahora la foto queda limpia y esos datos se
+// guardan en meta y se muestran en el visor DEBAJO de la imagen.
+// (Se conserva el nombre sellarImg para no tocar los demás formularios.)
+function sellarImg(src,meta,maxW,calidad){
+  maxW=maxW||1024;calidad=calidad||0.75;
   return new Promise(res=>{
     const img=new Image();
     img.onload=function(){
       const c=document.createElement('canvas');
-      c.width=Math.min(img.width,1024);
-      c.height=Math.round(img.height*(c.width/img.width));
-      const ctx=c.getContext('2d');
-      ctx.drawImage(img,0,0,c.width,c.height);
-      const sh=Math.round(c.height*0.20);
-      ctx.fillStyle='rgba(0,0,0,0.75)';
-      ctx.fillRect(0,c.height-sh,c.width,sh);
-      ctx.fillStyle='#3B82F6';ctx.fillRect(0,c.height-sh,c.width,4);
-      const fs=Math.max(12,Math.round(c.width*0.035));
-      ctx.fillStyle='#FCD34D';ctx.font=`bold ${fs}px monospace`;
-      ctx.fillText(meta.codigo,10,c.height-sh+fs+4);
-      ctx.fillStyle='#fff';ctx.font=`${fs}px monospace`;
-      ctx.fillText(`${meta.fecha} · ${meta.hora}`,10,c.height-sh+fs*2+8);
-      ctx.fillStyle='rgba(255,255,255,.65)';ctx.font=`${Math.round(fs*.85)}px monospace`;
-      ctx.fillText(meta.gps?`${meta.gps.lat}, ${meta.gps.lng}`:'Sin GPS',10,c.height-sh+fs*3+10);
-      ctx.textAlign='right';ctx.fillStyle='rgba(255,255,255,.6)';
-      ctx.fillText(meta.eco?`ECO ${meta.eco}`:'',c.width-8,c.height-sh+fs+4);
-      ctx.textAlign='left';
-      res(c.toDataURL('image/jpeg',0.75));
+      const ratio=Math.min(1,maxW/img.width);
+      c.width=Math.round(img.width*ratio);
+      c.height=Math.round(img.height*ratio);
+      c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+      res(c.toDataURL('image/jpeg',calidad));
     };
+    img.onerror=function(){res(src);};
     img.src=src;
   });
 }
@@ -539,22 +532,102 @@ function toast(txt,tipo='info'){
 }
 
 // ── OFFLINE QUEUE ──
+// Índice ligero en localStorage (tipo, ECO, fecha). Las fotos y videos de las
+// solicitudes nuevas se guardan en IndexedDB (sí acepta archivos grandes);
+// localStorage solo aguanta unos pocos MB y no puede guardar videos.
+const _FM_IDB='fl_sol_cola';
+function _idbAbrir(){
+  return new Promise((res,rej)=>{
+    if(!window.indexedDB){rej(new Error('Este teléfono no permite guardar archivos sin conexión'));return;}
+    const r=indexedDB.open(_FM_IDB,1);
+    r.onupgradeneeded=()=>{ if(!r.result.objectStoreNames.contains('items')) r.result.createObjectStore('items',{keyPath:'id'}); };
+    r.onsuccess=()=>res(r.result);
+    r.onerror=()=>rej(r.error||new Error('IndexedDB no disponible'));
+  });
+}
+async function _idbOp(modo,fn){
+  const db_=await _idbAbrir();
+  return new Promise((res,rej)=>{
+    const tx=db_.transaction('items',modo);
+    const st=tx.objectStore('items');
+    let out;
+    const req=fn(st);
+    if(req)req.onsuccess=()=>{out=req.result;};
+    tx.oncomplete=()=>{db_.close();res(out);};
+    tx.onerror=()=>{db_.close();rej(tx.error);};
+    tx.onabort=()=>{db_.close();rej(tx.error||new Error('Operación cancelada'));};
+  });
+}
+const _idbPut=(obj)=>_idbOp('readwrite',st=>st.put(obj));
+const _idbGet=(id)=>_idbOp('readonly',st=>st.get(id));
+const _idbDel=(id)=>_idbOp('readwrite',st=>st.delete(id));
+const _idbClear=()=>_idbOp('readwrite',st=>st.clear());
+
+// Encola una solicitud nueva (Supabase) para enviarla después
+async function _solEncolar(item){
+  const d=item.docObj;
+  // Las fotos se guardan como dataURL; los videos como archivo (Blob)
+  const limpio={
+    id:d.solicitudId,
+    docObj:d,
+    fotos:(item.fotos||[]).map(f=>{const c=Object.assign({},f);delete c._blob;return c;}),
+    videos:(item.videos||[]).map(v=>Object.assign({},v)),
+  };
+  await _idbPut(limpio);
+  const q=JSON.parse(localStorage.getItem(C.OFFLINE_KEY)||'[]');
+  if(!q.some(x=>x._idb===d.solicitudId)){
+    q.push({tipo:d.tipo,vehiculoEco:d.vehiculoEco,creadoEn:d.creadoEn,prioridad:d.prioridad,
+      numFotos:limpio.fotos.length,numVideos:limpio.videos.length,
+      _idb:d.solicitudId,_offlineId:Date.now(),_pendiente:true});
+    localStorage.setItem(C.OFFLINE_KEY,JSON.stringify(q));
+  }
+}
+
+// Envía a Supabase un elemento de la cola (nuevo o del formato anterior)
+async function _solSincronizarItem(doc){
+  if(doc._idb){
+    const item=await _idbGet(doc._idb);
+    if(!item)throw new Error('Los archivos de esta solicitud ya no están en el teléfono');
+    try{
+      await _solSubir(item);
+    }catch(e){
+      // Guardar lo que sí alcanzó a subir para no repetirlo
+      try{await _idbPut({id:item.id,docObj:item.docObj,fotos:(item.fotos||[]).map(f=>{const c=Object.assign({},f);delete c._blob;return c;}),videos:item.videos});}catch(e2){}
+      throw e;
+    }
+    await _idbDel(doc._idb).catch(()=>{});
+    return;
+  }
+  // Formato anterior (fotos base64 dentro del propio registro): se convierte
+  if(!doc.solicitudId)doc.solicitudId=_fmNuevoId(); // se conserva en la cola si falla → no se duplica
+  const {_offlineId,_pendiente,evidencias,evidenciasMeta,chkFotos,...resto}=doc;
+  const fotos=(evidencias||[]).map((src,i)=>{
+    const m=(evidenciasMeta||[])[i]||{};
+    const ang=m.angulo||null;
+    return {dataUrl:src,meta:m,nota:'',categoria:ang?'principal':'adicional',posicion:ang?_FM_POS_ANGULO[ang]||null:null};
+  });
+  Object.entries(chkFotos||{}).forEach(([k,src])=>{ if(src)fotos.push({dataUrl:src,meta:{codigo:_fmLimpiaNombre(k)},nota:k,categoria:'adicional',posicion:null}); });
+  const docObj=Object.assign({},resto,{solicitudId:doc.solicitudId,almacenamiento:'supabase',sincronizadoOffline:true,numFotos:fotos.length,numVideos:0});
+  await _solSubir({docObj,fotos,videos:[]});
+}
+
 function offlineGuardar(doc){
   const q=JSON.parse(localStorage.getItem(C.OFFLINE_KEY)||'[]');
   q.push({...doc,_offlineId:Date.now(),_pendiente:true});
   localStorage.setItem(C.OFFLINE_KEY,JSON.stringify(q));
   toast('Sin conexión — guardado localmente',  'info');
 }
+let _fmSincronizando=false;
 async function offlineSync(){
+  if(_fmSincronizando)return;
   const q=JSON.parse(localStorage.getItem(C.OFFLINE_KEY)||'[]');
   if(!q.length)return;
+  _fmSincronizando=true;
   let synced=0;
   const pendientes=[];
   for(const doc of q){
     try{
-      const {_offlineId,_pendiente,...clean}=doc;
-      await reducirTamanoSolicitud(clean);
-      await db.collection(C.SOLS).add({...clean,creadoEn:clean.creadoEn||new Date().toISOString(),sincronizadoOffline:true});
+      await _solSincronizarItem(doc);
       synced++;
     }catch(e){
       console.warn('[MOVIL offline]',doc.tipo,e.message||e);
@@ -562,6 +635,7 @@ async function offlineSync(){
     }
   }
   localStorage.setItem(C.OFFLINE_KEY,JSON.stringify(pendientes));
+  _fmSincronizando=false;
   if(synced>0){
     toast(`${synced} solicitud(es) sincronizada(s)`, 'ok');
     await cargarMisSols();
@@ -572,14 +646,14 @@ window.fmSyncOffline=async function(){
   const q=JSON.parse(localStorage.getItem(C.OFFLINE_KEY)||'[]');
   if(!q.length){toast('No hay solicitudes pendientes','info');return;}
   if(!onlineStatus){toast('Sin conexión — intenta más tarde','err');return;}
+  if(_fmSincronizando){toast('Ya se está sincronizando…','info');return;}
+  _fmSincronizando=true;
   toast('Sincronizando…','info');
   let ok=0,fail=0;
   const pendientes=[];
   for(const doc of q){
     try{
-      const {_offlineId,_pendiente,...clean}=doc;
-      await reducirTamanoSolicitud(clean);
-      await db.collection(C.SOLS).add({...clean,sincronizadoOffline:true});
+      await _solSincronizarItem(doc);
       ok++;
     }catch(e){
       console.warn('[MOVIL syncOffline]',doc.tipo,e.message||e);
@@ -588,6 +662,7 @@ window.fmSyncOffline=async function(){
     }
   }
   localStorage.setItem(C.OFFLINE_KEY,JSON.stringify(pendientes));
+  _fmSincronizando=false;
   toast(ok+' sincronizada(s)'+(fail?' · '+fail+' sin poder sincronizar — revisa "Ver / Borrar"':''),ok>0?'ok':'err');
   await cargarMisSols();
   if(vistaAct==='vehiculo')renderVehiculo();
@@ -620,7 +695,7 @@ window.fmVerOffline=function(){
   }
   const footer=document.createElement('div');footer.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px';
   const bS=document.createElement('button');bS.style.cssText='padding:10px;background:#0A1628;color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer';bS.textContent='Sincronizar todo';bS.onclick=function(){fmSyncOffline();cerrar();};
-  const bB=document.createElement('button');bB.style.cssText='padding:10px;background:#FEE2E2;color:#B91C1C;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer';bB.textContent='Borrar todas';bB.onclick=function(){if(confirm('Borrar todas las solicitudes pendientes?')){localStorage.setItem(C.OFFLINE_KEY,'[]');cerrar();renderVehiculo();}};
+  const bB=document.createElement('button');bB.style.cssText='padding:10px;background:#FEE2E2;color:#B91C1C;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer';bB.textContent='Borrar todas';bB.onclick=function(){if(confirm('Borrar todas las solicitudes pendientes?')){localStorage.setItem(C.OFFLINE_KEY,'[]');_idbClear().catch(()=>{});cerrar();renderVehiculo();}};
   footer.appendChild(bS);footer.appendChild(bB);panel.appendChild(footer);
   ov.appendChild(panel);ov.addEventListener('click',function(e){if(e.target===ov)cerrar();});
   document.body.appendChild(ov);
@@ -629,7 +704,8 @@ window.fmVerOffline=function(){
 window.fmBorrarOffline=function(idx,btn){
   if(!confirm('Borrar esta solicitud pendiente?'))return;
   const q=JSON.parse(localStorage.getItem(C.OFFLINE_KEY)||'[]');
-  q.splice(idx,1);
+  const quitado=q.splice(idx,1)[0];
+  if(quitado&&quitado._idb)_idbDel(quitado._idb).catch(()=>{});
   localStorage.setItem(C.OFFLINE_KEY,JSON.stringify(q));
   btn.closest('div').parentElement.remove();
   toast('Solicitud eliminada','ok');
@@ -1041,20 +1117,33 @@ async function cargarMiVeh(){
 
 async function cargarMisSols(){
   if(!miVeh&&!miPerfil?.email){misSols=[];return;}
-  try{
-    let q=miVeh?.eco
-      ? db.collection(C.SOLS).where('vehiculoEco','==',String(miVeh.eco)).orderBy('creadoEn','desc').limit(20)
-      : db.collection(C.SOLS).where('creadoPor','==',miPerfil?.email||'').orderBy('creadoEn','desc').limit(20);
-    const snap=await q.get();
-    misSols=snap.docs.map(d=>({id:d.id,...d.data()}));
-  }catch{
+  // Solicitudes nuevas → Supabase. Las anteriores siguen en Firestore (solo lectura).
+  let sbSols=[],fsSols=[];
+  const tareaSb=(async()=>{
     try{
-      const snap=await db.collection(C.SOLS).where('creadoPor','==',miPerfil?.email||'').get();
-      misSols=snap.docs.map(d=>({id:d.id,...d.data()}));
-      misSols.sort((a,b)=>(b.creadoEn||'').localeCompare(a.creadoEn||''));
-    }catch{misSols=[];}
-  }
+      if(!window.tcFlSb)return;
+      sbSols=await window.tcFlSb.misSolicitudes(miVeh?.eco?{eco:miVeh.eco}:{email:miPerfil?.email||''});
+      miVehEstado=miVeh?.eco?await window.tcFlSb.estadoVehiculo(miVeh.eco).catch(()=>null):null;
+    }catch(e){console.warn('[FL] solicitudes Supabase',e);}
+  })();
+  const tareaFs=(async()=>{
+    try{
+      let q=miVeh?.eco
+        ? db.collection(C.SOLS).where('vehiculoEco','==',String(miVeh.eco)).orderBy('creadoEn','desc').limit(20)
+        : db.collection(C.SOLS).where('creadoPor','==',miPerfil?.email||'').orderBy('creadoEn','desc').limit(20);
+      const snap=await q.get();
+      fsSols=snap.docs.map(d=>({id:d.id,...d.data()}));
+    }catch{
+      try{
+        const snap=await db.collection(C.SOLS).where('creadoPor','==',miPerfil?.email||'').get();
+        fsSols=snap.docs.map(d=>({id:d.id,...d.data()}));
+      }catch{fsSols=[];}
+    }
+  })();
+  await Promise.all([tareaSb,tareaFs]);
+  misSols=[...sbSols,...fsSols].sort((a,b)=>String(b.creadoEn||'').localeCompare(String(a.creadoEn||''))).slice(0,30);
 }
+let miVehEstado=null; // {estado:'activo'|'en_taller', solicitud_id, desde} desde Supabase
 
 let _unsubTareas=null; // listener en tiempo real de flotilla_tareas
 let _unsubVehs=null; // listener en tiempo real de flotilla_vehiculos (lista completa)
@@ -1484,6 +1573,11 @@ function renderVehiculo(){
 
     ${semChkBanner()}
 
+    ${miVehEstado&&miVehEstado.estado==='en_taller'&&String(miVehEstado.eco)===String(v.eco)?`<div style="background:#FEF9C3;border:1.5px solid #FACC15;border-radius:12px;padding:12px 14px;margin-bottom:12px">
+      <div style="font-size:13px;font-weight:900;color:#854D0E">Vehículo en taller</div>
+      <div style="font-size:12px;color:#854D0E;margin-top:2px">Desde ${hF(miVehEstado.desde)}${(()=>{const s=(misSols||[]).find(x=>x.id===miVehEstado.solicitud_id);return s?` · ${esc(s.folio||'')} ${esc(s.tipo||'')}`:'';})()}. Vuelve a quedar activo al cerrarse la solicitud.</div>
+    </div>`:''}
+
     ${offline.length?`<div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px;margin-bottom:12px">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
         <div style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:#B45309">${IC.wifi} ${offline.length} solicitud(es) sin sincronizar</div>
@@ -1909,62 +2003,40 @@ function renderNuevaSol(){
     setContent(`<div style="padding-top:20px"><div class="fm-vincular"><div class="fm-empty-ico" style="color:#1E3A5F">${IC.car}</div><h2>Sin vehículo vinculado</h2><p>Primero vincula tu vehículo asignado.</p><button class="fm-btn primary" onclick="fmVista('vehiculo')">Ir a Mi Vehículo</button></div></div>`);
     return;
   }
-  // Reset estado
-  solState={tipo:'',prior:'Normal',desc:'',km:'',gasolina:50,chk:{},chkFotos:{},evFotos:[]};
-  // ── Regla de checklist según el día ──
-  // Lunes/Martes/Miércoles + checklist semanal de esta semana ya hecho → confirmación + firma
-  // Jueves..Domingo, o checklist semanal no hecho → checklist interno normal
-  // Nueva regla: la solicitud ya NO lleva check list ni confirmación semanal.
-  // Solo 4 fotos principales + fotos opcionales de un detalle.
-  const modoConfirmacion=false;
-  solState.modoConfirmacion=modoConfirmacion;
+  // Reset estado — la solicitud ya no lleva check list: solo las 4 fotos
+  // principales y, si el técnico quiere, fotos y videos de un detalle o daño.
+  // chk/chkFotos se dejan vacíos solo por compatibilidad con código compartido.
+  solState={solId:_fmNuevoId(),tipo:'',tipoSel:'',tipoC:'',prior:'Normal',desc:'',km:'',gasolina:50,chk:{},chkFotos:{},evFotos:[],videos:[]};
   const _solDraft=_draftLoad(_DRAFT.SOL);
-  if(_solDraft&&((_solDraft.evFotos||[]).length>0||_solDraft.desc)){
+  if(_solDraft&&(_solDraft.desc||_solDraft.km||_solDraft.tipoSel)){
     setTimeout(()=>_draftBanner('sol',
       ()=>{
-        // Restaurar estado y re-renderizar el formulario completo
-        Object.assign(solState,_solDraft);
-        solState.modoConfirmacion=modoConfirmacion; // no confiar en el borrador para esta regla — depende del día/semana actual
-        // Ya no hay check list en la solicitud: se descarta cualquier resto de borradores viejos
-        solState.chk={};solState.chkComt={};
-        if(!esMaquinaria(miVeh))solState.chkFotos={};
-        // Re-pintar las 4 fotos principales y las fotos de detalle
-        const grid=document.getElementById('fm-angulos-grid');
-        if(grid)grid.innerHTML=renderAngulosBasicosGrid(solState.evFotos,'sol');
-        const evWrap=document.getElementById('fm-ev-wrap');
-        if(evWrap){
-          evWrap.innerHTML='';
-          (solState.evFotos||[]).filter(f=>!f?.meta?.angulo).forEach(f=>{
-            const pill=document.createElement('div');
-            pill.className='fm-ev-pill';
-            pill.onclick=()=>fmVerFoto(f);
-            pill.innerHTML=`<img src="${f.src}"><span>${f.meta?.codigo||''}</span>`;
-            evWrap.appendChild(pill);
-          });
-        }
-        // Re-pintar gasolina
-        const gasWrap=document.getElementById('fm-gauge-wrap');
-        if(gasWrap)gasWrap.innerHTML=renderGaugeSVG(solState.gasolina)+'<div class="fm-gauge-labels" style="width:200px"><span>VACÍO</span><span>2/4</span><span>MEDIO</span><span>3/4</span><span>LLENO</span></div>';
+        solState.desc=_solDraft.desc||'';
+        solState.km=_solDraft.km||'';
+        solState.tipoSel=_solDraft.tipoSel||'';
+        solState.tipoC=_solDraft.tipoC||'';
+        solState.prior=_solDraft.prior||'Normal';
+        solState.gasolina=_solDraft.gasolina!=null?_solDraft.gasolina:50;
+        const tipoSel=document.getElementById('fm-tipo');
+        if(tipoSel&&solState.tipoSel){tipoSel.value=solState.tipoSel;const tc=document.getElementById('fm-tipo-c');if(tc){tc.style.display=solState.tipoSel==='__c'?'block':'none';tc.value=solState.tipoC;}}
+        const descInput=document.getElementById('fm-desc');
+        if(descInput)descInput.value=solState.desc;
+        const kmInput=document.getElementById('fm-km');
+        if(kmInput)kmInput.value=solState.km;
         const gasRange=document.getElementById('fm-gas');
         if(gasRange)gasRange.value=solState.gasolina;
-        // Re-pintar km si existe
-        const kmInput=document.getElementById('fm-km');
-        if(kmInput&&solState.km)kmInput.value=solState.km;
-        // Re-pintar descripción
-        const descInput=document.getElementById('fm-desc');
-        if(descInput&&solState.desc)descInput.value=solState.desc;
+        const gasWrap=document.getElementById('fm-gauge-wrap');
+        if(gasWrap)gasWrap.innerHTML=renderGaugeSVG(solState.gasolina)+'<div class="fm-gauge-labels" style="width:200px"><span>VACÍO</span><span>2/4</span><span>MEDIO</span><span>3/4</span><span>LLENO</span></div>';
+        const pb=document.getElementById('fm-prior-'+solState.prior);
+        if(pb)window.fmSetPrior(pb,solState.prior);
         window._fmActualizarHint?.();
-        // Re-pintar miniaturas de fotos guardadas en borrador
-        Object.entries(solState.chkFotos||{}).forEach(([k,foto])=>{
-          const src=typeof foto==='object'?foto.src:foto;
-          const cam=document.getElementById('fm-cam-'+k);
-          if(cam&&src)cam.innerHTML=`<img src="${src}" style="width:26px;height:26px;object-fit:cover;border-radius:5px">`;
-        });
-        toast('Borrador restaurado ✓','ok');
+        toast('Borrador restaurado','ok');
       },
       ()=>{ _draftClear(_DRAFT.SOL); }
     ),400);
   }
+  const icoCam='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>';
+  const icoVid='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="M16 10l6-3v10l-6-3z"/></svg>';
   setContent(`
     <div class="fm-sec-hd">
       <div>
@@ -1977,7 +2049,7 @@ function renderNuevaSol(){
     <div class="fm-fld">
       <label>Tipo de solicitud</label>
       <div class="fm-select-wrap">
-        <select id="fm-tipo" onchange="if(this.value==='__c')document.getElementById('fm-tipo-c').style.display='block';else document.getElementById('fm-tipo-c').style.display='none'">
+        <select id="fm-tipo" onchange="document.getElementById('fm-tipo-c').style.display=this.value==='__c'?'block':'none';window._fmGuardarCamposSol?.()">
           <option value="">— Selecciona —</option>
           ${TIPOS_SOL.map(t=>`<option>${t}</option>`).join('')}
           <option value="__c">Personalizado…</option>
@@ -2013,29 +2085,23 @@ function renderNuevaSol(){
       <input type="range" min="0" max="100" value="50" id="fm-gas" oninput="fmGas(this.value)" style="width:100%;margin-top:6px;accent-color:#2563EB">
     </div>
 
-    <!-- EVIDENCIAS — CÁMARA FORZADA -->
+    <!-- FOTOS PRINCIPALES — CÁMARA FORZADA -->
     <div class="fm-fld">
-      <label>Fotos obligatorias del vehículo <span style="font-size:9px;font-weight:500;text-transform:none;color:#EF4444">(4 ángulos requeridos)</span></label>
-      <div style="font-size:10px;color:#64748B;margin-bottom:10px;line-height:1.5">Toma cada ángulo requerido antes de continuar.</div>
-      <div id="fm-angulos-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px">${renderAngulosBasicosGrid(solState.evFotos,'sol')}</div>
-      <label>¿Quieres mostrar un detalle en específico? <span style="font-weight:500;text-transform:none;font-size:9px;color:#94A3B8">(opcional)</span></label>
-      <div style="font-size:10px;color:#64748B;margin-bottom:8px;line-height:1.5">Si hay algo puntual que se deba ver (un golpe, una falla, una pieza), agrega las fotos que necesites.</div>
-      <button onclick="fmCapturar('general')" class="fm-btn primary" style="margin-bottom:8px">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
-        Agregar foto de un detalle
-      </button>
-      <div id="fm-ev-wrap" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+      <label>Fotos principales del vehículo <span style="font-size:9px;font-weight:500;text-transform:none;color:#EF4444">(4 obligatorias)</span></label>
+      <div style="font-size:10px;color:#64748B;margin-bottom:10px;line-height:1.5">Toma frente, atrás, lado derecho y lado izquierdo.</div>
+      <div id="fm-angulos-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">${renderAngulosBasicosGrid(solState.evFotos,'sol')}</div>
     </div>
 
-    ${esMaquinaria(miVeh)?`
-    <!-- MAQUINARIA: sus 4 fotos propias (sin cambios) -->
+    <!-- DETALLES / DAÑOS — OPCIONAL -->
     <div class="fm-fld">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-        <label style="margin:0">Fotos de la unidad</label>
-        <span id="fm-chk-cnt" style="font-size:10px;color:#64748B">4 fotos requeridas</span>
+      <label>Detalles o daños <span style="font-weight:500;text-transform:none;font-size:9px;color:#94A3B8">(opcional)</span></label>
+      <div style="font-size:10px;color:#64748B;margin-bottom:10px;line-height:1.5">Si hay algo específico que mostrar, agrega fotos o videos y describe cada uno. Los videos se suben en su calidad original.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+        <button onclick="fmCapturar('general')" class="fm-btn ghost" style="margin:0">${icoCam} Foto</button>
+        <button onclick="fmCapturarVideoSol()" class="fm-btn ghost" style="margin:0">${icoVid} Video</button>
       </div>
-      <div id="fm-chk-list">${renderMaqFotos('sol')}</div>
-    </div>`:''}
+      <div id="fm-ev-wrap">${renderAdicionalesSol()}</div>
+    </div>
 
     <!-- BOTÓN GUARDAR -->
     <button class="fm-btn primary" onclick="fmGuardar()" id="fm-btn-guardar" style="margin-top:8px">
@@ -2051,28 +2117,148 @@ function renderNuevaSol(){
     if(!document.getElementById('fm-tipo')?.value) faltantes.push('tipo');
     if(!document.getElementById('fm-desc')?.value?.trim()) faltantes.push('descripción');
     if(!document.getElementById('fm-km')?.value?.trim()) faltantes.push('kilometraje');
-    const faltanAng=angulosBasicosFaltantes(solState.evFotos);
-    if(faltanAng.length) faltantes.push(`fotos: ${faltanAng.map(a=>a.label).join(', ')}`);
-    if(esMaquinaria(miVeh)){
-      const nMaq=MAQ_FOTOS.filter((_,i)=>solState.chkFotos[`maq__${i}`]).length;
-      if(nMaq<4) faltantes.push(`fotos de la unidad (${nMaq}/4)`);
-    }
+    const faltan=angulosBasicosFaltantes(solState.evFotos).length;
+    if(faltan) faltantes.push(`fotos principales (${4-faltan}/4)`);
     const hint=document.getElementById('fm-val-hint');
-    if(hint) hint.textContent=faltantes.length?`Pendiente: ${faltantes.join(' · ')}`:'✓ Formulario completo';
+    if(hint) hint.textContent=faltantes.length?`Pendiente: ${faltantes.join(' · ')}`:'Formulario completo';
     if(hint) hint.style.color=faltantes.length?'#94A3B8':'#15803D';
   }
-  // Attach listeners
+  // Borrador ligero: solo campos de texto (las fotos y videos no caben en localStorage)
+  function fmGuardarCamposSol(){
+    solState.tipoSel=document.getElementById('fm-tipo')?.value||'';
+    solState.tipoC=document.getElementById('fm-tipo-c')?.value||'';
+    solState.desc=document.getElementById('fm-desc')?.value||'';
+    solState.km=document.getElementById('fm-km')?.value||'';
+    _draftSave(_DRAFT.SOL,solState);
+    fmActualizarHint();
+  }
   setTimeout(()=>{
-    ['fm-tipo','fm-desc','fm-km'].forEach(id=>{
-      document.getElementById(id)?.addEventListener('input',fmActualizarHint);
-      document.getElementById(id)?.addEventListener('change',fmActualizarHint);
+    ['fm-tipo','fm-tipo-c','fm-desc','fm-km'].forEach(id=>{
+      document.getElementById(id)?.addEventListener('input',fmGuardarCamposSol);
+      document.getElementById(id)?.addEventListener('change',fmGuardarCamposSol);
     });
-    if(modoConfirmacion) initFirmaCanvas('fm-sol-confirm-firma');
-    // Expose so chk/photo updates can trigger it
     window._fmActualizarHint=fmActualizarHint;
+    window._fmGuardarCamposSol=fmGuardarCamposSol;
     fmActualizarHint();
   },100);
 }
+
+// ── Id de solicitud generado en el teléfono (permite reintentar sin duplicar) ──
+function _fmNuevoId(){
+  try{ if(window.crypto&&crypto.randomUUID) return crypto.randomUUID(); }catch(e){}
+  const h=[];for(let i=0;i<16;i++)h.push(Math.floor(Math.random()*256));
+  h[6]=(h[6]&0x0f)|0x40;h[8]=(h[8]&0x3f)|0x80;
+  const x=h.map(b=>b.toString(16).padStart(2,'0')).join('');
+  return `${x.slice(0,8)}-${x.slice(8,12)}-${x.slice(12,16)}-${x.slice(16,20)}-${x.slice(20)}`;
+}
+
+function _fmTamTxt(b){
+  b=Number(b)||0;
+  if(b>=1024*1024*1024) return (b/1024/1024/1024).toFixed(2)+' GB';
+  if(b>=1024*1024) return (b/1024/1024).toFixed(1)+' MB';
+  return Math.max(1,Math.round(b/1024))+' KB';
+}
+
+// Lista de fotos/videos adicionales de la solicitud, cada uno con su nota
+function renderAdicionalesSol(){
+  const fotos=(solState.evFotos||[]).map((f,i)=>({f,i})).filter(x=>!x.f?.meta?.angulo);
+  const vids=(solState.videos||[]).map((v,i)=>({v,i}));
+  if(!fotos.length&&!vids.length) return '<div style="font-size:11px;color:#94A3B8;padding:4px 2px">Sin detalles agregados.</div>';
+  const fila=(thumb,titulo,sub,kind,idx,nota,onVer)=>`
+    <div style="border:1.5px solid #E2E8F0;border-radius:10px;padding:8px;margin-bottom:8px;background:#fff">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div onclick="${onVer}" style="width:54px;height:54px;border-radius:8px;overflow:hidden;flex-shrink:0;background:#0A1628;display:flex;align-items:center;justify-content:center;cursor:pointer">${thumb}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:800;color:#0A1628">${titulo}</div>
+          <div style="font-size:10.5px;color:#64748B">${sub}</div>
+        </div>
+        <button onclick="fmQuitarAdicionalSol('${kind}',${idx})" style="padding:6px 10px;background:#FEE2E2;color:#B91C1C;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Quitar</button>
+      </div>
+      <input type="text" value="${esc(nota||'')}" placeholder="¿Qué se ve aquí? (opcional)" oninput="fmNotaAdicionalSol('${kind}',${idx},this.value)" style="width:100%;margin-top:8px;padding:8px 10px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:12px;font-family:inherit;outline:none;box-sizing:border-box">
+    </div>`;
+  let h='';
+  fotos.forEach(({f,i})=>{
+    h+=fila(`<img src="${f.src}" style="width:100%;height:100%;object-fit:cover">`,'Foto',esc(f.meta?.codigo||''),'foto',i,f.nota,`fmVerFotoAdicionalSol(${i})`);
+  });
+  vids.forEach(({v,i})=>{
+    h+=fila(`<svg width="22" height="22" viewBox="0 0 24 24" fill="#fff"><path d="M8 5v14l11-7z"/></svg>`,'Video',`${_fmTamTxt(v.file?.size)} · ${esc(v.meta?.codigo||'')}`,'video',i,v.nota,`fmVerVideoLocalSol(${i})`);
+  });
+  return h;
+}
+function _fmRepintarAdicionalesSol(){
+  const w=document.getElementById('fm-ev-wrap');
+  if(w)w.innerHTML=renderAdicionalesSol();
+}
+window.fmNotaAdicionalSol=function(kind,idx,val){
+  const arr=kind==='video'?solState.videos:solState.evFotos;
+  if(arr&&arr[idx])arr[idx].nota=String(val||'').slice(0,300);
+};
+window.fmQuitarAdicionalSol=function(kind,idx){
+  if(!confirm(kind==='video'?'¿Quitar este video?':'¿Quitar esta foto?'))return;
+  if(kind==='video'){
+    const v=solState.videos[idx];
+    try{ if(v?.url)URL.revokeObjectURL(v.url); }catch(e){}
+    solState.videos.splice(idx,1);
+  } else {
+    solState.evFotos.splice(idx,1);
+  }
+  _fmRepintarAdicionalesSol();
+};
+// Visor con todas las evidencias de la solicitud en curso (principales + detalles)
+function _fmGaleriaSolActual(){
+  return [
+    ...(solState.evFotos||[]).map(f=>({src:f.src,meta:f.meta||{},nota:f.nota||''})),
+    ...(solState.videos||[]).map(v=>({video:v.url,meta:v.meta||{},nota:v.nota||'',tamano:v.file?.size})),
+  ];
+}
+window.fmVerFotoAdicionalSol=function(idx){
+  fmGaleria(_fmGaleriaSolActual(),idx);
+};
+window.fmVerVideoLocalSol=function(idx){
+  fmGaleria(_fmGaleriaSolActual(),(solState.evFotos||[]).length+idx);
+};
+
+// ── CAPTURAR VIDEO (cámara forzada, archivo original sin comprimir) ──
+const VIDEO_MAX_BYTES=1024*1024*1024; // límite del espacio flotilla-videos (1 GB)
+window.fmCapturarVideoSol=function(){
+  const inp=document.createElement('input');
+  inp.type='file';inp.accept='video/*';
+  inp.capture='environment';
+  inp.style.display='none';
+  document.body.appendChild(inp);
+  inp.onchange=async function(){
+    const file=this.files&&this.files[0];
+    document.body.removeChild(inp);
+    if(!file)return;
+    if(file.size>VIDEO_MAX_BYTES){
+      toast(`El video pesa ${_fmTamTxt(file.size)} — el máximo es 1 GB. Graba uno más corto.`,'err');
+      return;
+    }
+    toast('Obteniendo GPS…','info');
+    const gps=await getGPS();
+    const now=new Date();
+    const meta={
+      codigo:genCod(),
+      fecha:now.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}),
+      hora:now.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',second:'2-digit'}),
+      timestamp:now.toISOString(),
+      gps,eco:miVeh?.eco||'—',unidad:miVeh?.unidad||'—',
+      usuario:window.auth?.currentUser?.displayName||window.auth?.currentUser?.email||'—',
+      tipo:'video',
+    };
+    solState.videos=solState.videos||[];
+    solState.videos.push({file,meta,nota:'',url:URL.createObjectURL(file)});
+    _fmRepintarAdicionalesSol();
+    toast(`Video agregado · ${_fmTamTxt(file.size)}`,'ok');
+  };
+  inp.click();
+};
+
+// Visor de video (local o desde Supabase)
+window.fmVerVideo=function(v){
+  if(!v||!v.url){toast('Video no disponible','err');return;}
+  fmGaleria([{video:v.url,meta:v.meta||{},nota:v.nota||'',tamano:v.tamano}],0);
+};
 
 function renderGaugeSVG(pct100){
   const pct=pct100/100;
@@ -2103,6 +2289,7 @@ window.fmGas=function(v){
 
 window.fmSetPrior=function(btn,p){
   solState.prior=p;
+  _draftSave(_DRAFT.SOL,solState);
   document.querySelectorAll('[id^="fm-prior-"]').forEach(b=>{b.style.background='';b.style.color='';b.className='fm-btn ghost fm-btn-sm';b.style.flex='1';});
   btn.style.background='#1E3A5F';btn.style.color='#fff';
 };
@@ -2691,8 +2878,10 @@ window.fmCapturar=async function(tipo,key,targetTag){
       // Comprimir ANTES de sellar para reducir el tamaño del documento Firestore
       // Para fotos de checklist usar 400px (menor peso para Firestore)
       // Para fotos generales usar 700px
-      const maxW=tipo==='chk'?400:700;
-      const raw=await comprimirBase64(e.target.result,maxW,0.65);
+      // Solicitud: va a Supabase Storage (sin límite de 1MB) → alta calidad.
+      const esSol=targetTag!=='sem';
+      const maxW=esSol?2048:(tipo==='chk'?400:700);
+      const raw=await comprimirBase64(e.target.result,maxW,esSol?0.92:0.65);
       const now=new Date();
       const meta={
         codigo:genCod(),
@@ -2703,7 +2892,7 @@ window.fmCapturar=async function(tipo,key,targetTag){
         usuario:window.auth?.currentUser?.displayName||window.auth?.currentUser?.email||'—',
         tipo,key:key||null,
       };
-      const sellada=await sellarImg(raw,meta);
+      const sellada=esSol?await sellarImg(raw,meta,2048,0.9):await sellarImg(raw,meta);
       if(tipo==='chk'&&key){
         target.chkFotos[key]={src:sellada,meta};
         const cam=document.getElementById(`fm-cam-${key}`);
@@ -2713,12 +2902,18 @@ window.fmCapturar=async function(tipo,key,targetTag){
         else _draftSave(_DRAFT.SOL,solState);
       } else if(tipo==='angulo'&&key){
         meta.angulo=key;
+        // Si se vuelve a tomar el mismo ángulo, se reemplaza la foto anterior
+        const prev=target.evFotos.findIndex(f=>f?.meta?.angulo===key);
+        if(prev>=0)target.evFotos.splice(prev,1);
         target.evFotos.push({src:sellada,meta});
         const gridId=targetTag==='sem'?'fm-sem-angulos-grid':'fm-angulos-grid';
         const grid=document.getElementById(gridId);
         if(grid)grid.innerHTML=renderAngulosBasicosGrid(target.evFotos,targetTag);
         if(targetTag==='sem') _draftSave(_DRAFT.SEM,semState);
         else _draftSave(_DRAFT.SOL,solState);
+      } else if(esSol){
+        target.evFotos.push({src:sellada,meta,nota:''});
+        _fmRepintarAdicionalesSol();
       } else {
         target.evFotos.push({src:sellada,meta});
         const wrap=document.getElementById(targetTag==='sem'?'fm-sem-ev-wrap':'fm-ev-wrap');
@@ -2741,7 +2936,7 @@ window.fmCapturar=async function(tipo,key,targetTag){
 
 // Array global para evidencias — evita base64 inline en onclick
 window._fmEvCache=[];
-window.fmVerEvIdx=function(idx){const ev=window._fmEvCache[idx];if(ev)window.fmVerFoto(ev);};
+window.fmVerEvIdx=function(idx){if(window._fmEvCache[idx])window.fmGaleria(window._fmEvCache,idx);};
 
 window.fmVerFotoChk=function(key){
   const ev=solState.chkFotos[key];
@@ -2753,27 +2948,85 @@ window.fmVerFotoChkSem=function(key){
   if(ev)fmVerFoto(ev);
 };
 
-window.fmVerFoto=function(ev){
-  const src=typeof ev==='string'?ev:ev.src;
-  const meta=typeof ev==='object'?ev.meta:null;
-  const ov=document.createElement('div');ov.className='fm-ov';
-  ov.innerHTML=`<div class="fm-sheet">
-    <div class="fm-sheet-hd"><h3>Evidencia</h3><button class="fm-sheet-x" onclick="this.closest('.fm-ov').remove()">✕</button></div>
-    <div class="fm-sheet-body">
-      <img src="${src}" style="width:100%;border-radius:12px;margin-bottom:14px;display:block">
-      ${meta?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        ${[['Código',meta.codigo||'—'],['Fecha',meta.fecha||'—'],['Hora',meta.hora||'—'],['GPS',meta.gps?`${meta.gps.lat}, ${meta.gps.lng}`:'Sin GPS'],['Vehículo',`ECO ${meta.eco}`],['Usuario',meta.usuario||'—'],['Modo',(meta.modo||'—').toUpperCase()],['Precisión',meta.gps?`±${meta.gps.acc}m`:'—']].map(([l,v])=>`
-        <div style="background:#F8FAFD;border-radius:9px;padding:9px 11px">
-          <div style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:2px">${l}</div>
-          <div style="font-size:12px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#0A0F1E;word-break:break-all">${v}</div>
-        </div>`).join('')}
-      </div>
-      ${meta.gps?`<button onclick="window.open('https://maps.google.com/?q=${meta.gps.lat},${meta.gps.lng}','_blank')" class="fm-btn primary" style="margin-top:12px">Ver en Google Maps</button>`:''}
-      `:''}
+window.fmVerFoto=function(ev){ fmGaleria([ev],0); };
+
+// ── VISOR DE EVIDENCIAS A PANTALLA COMPLETA ──
+// Cerrar, anterior/siguiente (botones, flechas o deslizando), y los datos de
+// la evidencia en una franja DEBAJO de la imagen, sin taparla.
+// Cada elemento: {src, meta} para fotos o {video:url, meta, nota} para videos.
+window.fmGaleria=function(lista,idx){
+  const items=(lista||[]).filter(x=>x&&(typeof x==='string'||x.src||x.video));
+  if(!items.length)return;
+  let i=Math.max(0,Math.min(items.length-1,idx||0));
+  const prev=document.getElementById('fm-gal');if(prev)prev.remove();
+  const ov=document.createElement('div');
+  ov.id='fm-gal';
+  ov.style.cssText='position:fixed;inset:0;z-index:1000004;background:#000;display:flex;flex-direction:column;padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px);font-family:inherit';
+  const btnCss='background:rgba(255,255,255,.14);border:none;color:#fff;border-radius:10px;font-family:inherit;font-weight:800;cursor:pointer';
+  ov.innerHTML=`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;flex-shrink:0">
+      <div id="fm-gal-cnt" style="color:#fff;font-size:13px;font-weight:800"></div>
+      <button id="fm-gal-x" style="${btnCss};padding:8px 14px;font-size:13px">Cerrar ✕</button>
     </div>
-  </div>`;
+    <div id="fm-gal-stage" style="flex:1;min-height:0;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:pan-y"></div>
+    <div style="display:flex;gap:8px;padding:10px 12px;flex-shrink:0">
+      <button id="fm-gal-prev" style="${btnCss};flex:1;padding:12px;font-size:14px">‹ Anterior</button>
+      <button id="fm-gal-next" style="${btnCss};flex:1;padding:12px;font-size:14px">Siguiente ›</button>
+    </div>
+    <div id="fm-gal-info" style="flex-shrink:0;max-height:28vh;overflow-y:auto;background:#0A1628;padding:10px 12px 14px"></div>`;
   document.body.appendChild(ov);
-  ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+  const stage=ov.querySelector('#fm-gal-stage');
+  const info=ov.querySelector('#fm-gal-info');
+  const cnt=ov.querySelector('#fm-gal-cnt');
+  const bPrev=ov.querySelector('#fm-gal-prev');
+  const bNext=ov.querySelector('#fm-gal-next');
+  const POS={frente:'Frente',trasera:'Atrás',derecho:'Lado derecho',izquierdo:'Lado izquierdo',atras:'Atrás',derecha:'Lado derecho',izquierda:'Lado izquierdo'};
+  function pintar(){
+    const it=items[i];
+    const src=typeof it==='string'?it:it.src;
+    const meta=(typeof it==='object'&&it.meta)||{};
+    const nota=(typeof it==='object'&&(it.nota||meta.nota))||'';
+    stage.querySelectorAll('video').forEach(v=>{try{v.pause();}catch(e){}});
+    stage.innerHTML=it.video
+      ?`<video src="${it.video}" controls playsinline preload="metadata" style="max-width:100%;max-height:100%;background:#000"></video>`
+      :`<img src="${src}" style="max-width:100%;max-height:100%;object-fit:contain;user-select:none;-webkit-user-drag:none">`;
+    cnt.textContent=items.length>1?`${i+1} de ${items.length}`:'Evidencia';
+    bPrev.disabled=i===0;bNext.disabled=i===items.length-1;
+    bPrev.style.opacity=i===0?'.35':'1';bNext.style.opacity=i===items.length-1?'.35':'1';
+    if(items.length<2){bPrev.style.display='none';bNext.style.display='none';}
+    const datos=[
+      ['Qué es',POS[meta.posicion]||POS[meta.angulo]||(it.video?'Video':(meta.tipo==='checklist'?'Check list':''))],
+      ['Código',meta.codigo],['Fecha',meta.fecha],['Hora',meta.hora],
+      ['Vehículo',meta.eco&&meta.eco!=='—'?`ECO ${meta.eco}`:''],['Usuario',meta.usuario&&meta.usuario!=='—'?meta.usuario:''],
+      ['GPS',meta.gps?`${meta.gps.lat}, ${meta.gps.lng}${meta.gps.acc?' (±'+meta.gps.acc+'m)':''}`:''],
+      ['Tamaño',it.tamano?_fmTamTxt(it.tamano):''],
+    ].filter(([,v])=>v);
+    info.innerHTML=`
+      ${nota?`<div style="background:rgba(255,255,255,.08);border-radius:8px;padding:8px 10px;color:#fff;font-size:13px;margin-bottom:8px;line-height:1.4">${esc(nota)}</div>`:''}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">${datos.map(([l,v])=>`
+        <div><div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#64748B">${l}</div>
+        <div style="font-size:11.5px;font-weight:700;color:#E2E8F0;font-family:'JetBrains Mono',monospace;word-break:break-all">${esc(v)}</div></div>`).join('')}</div>
+      ${meta.gps?`<button onclick="window.open('https://maps.google.com/?q=${meta.gps.lat},${meta.gps.lng}','_blank')" style="${btnCss};width:100%;margin-top:10px;padding:10px;font-size:12px">Ver ubicación en Google Maps</button>`:''}`;
+    if(!datos.length&&!nota)info.style.display='none';else info.style.display='';
+  }
+  const ir=(d)=>{const n=i+d;if(n<0||n>=items.length)return;i=n;pintar();};
+  bPrev.onclick=()=>ir(-1);bNext.onclick=()=>ir(1);
+  let x0=null;
+  stage.addEventListener('touchstart',e=>{x0=e.touches[0].clientX;},{passive:true});
+  stage.addEventListener('touchend',e=>{if(x0==null)return;const dx=e.changedTouches[0].clientX-x0;x0=null;if(Math.abs(dx)>50)ir(dx<0?1:-1);});
+  const onKey=(e)=>{if(e.key==='ArrowLeft')ir(-1);else if(e.key==='ArrowRight')ir(1);else if(e.key==='Escape')cerrar();};
+  const onPop=()=>cerrar(true);
+  function cerrar(desdePop){
+    window.removeEventListener('keydown',onKey);window.removeEventListener('popstate',onPop);
+    stage.querySelectorAll('video').forEach(v=>{try{v.pause();}catch(e){}});
+    ov.remove();
+    if(!desdePop&&history.state&&history.state.fmGal){try{history.back();}catch(e){}}
+  }
+  ov.querySelector('#fm-gal-x').onclick=()=>cerrar();
+  window.addEventListener('keydown',onKey);
+  try{history.pushState({fmGal:1},'');}catch(e){}
+  window.addEventListener('popstate',onPop); // botón "atrás" de Android cierra el visor
+  pintar();
 };
 
 // ── GUARDAR SOLICITUD ──
@@ -2809,41 +3062,34 @@ window.fmGuardar=async function(){
   // ── VALIDACIONES OBLIGATORIAS ──
   const faltanAngulosSol=angulosBasicosFaltantes(solState.evFotos);
   if(faltanAngulosSol.length>0){
-    toast(`⚠ Faltan ${faltanAngulosSol.length} fotos obligatorias: ${faltanAngulosSol.map(a=>a.label).join(', ')}`,'err');
+    toast(`Faltan ${faltanAngulosSol.length} fotos principales: ${faltanAngulosSol.map(a=>a.label).join(', ')}`,'err');
+    document.getElementById('fm-angulos-grid')?.scrollIntoView({behavior:'smooth',block:'center'});
     return;
   }
-
   if(!tipo){
-    toast('⚠ Selecciona el tipo de solicitud','err');
+    toast('Selecciona el tipo de solicitud','err');
     document.getElementById('fm-tipo')?.focus();
     return;
   }
   if(!desc){
-    toast('⚠ Describe el problema o servicio','err');
+    toast('Describe el problema o servicio','err');
     document.getElementById('fm-desc')?.focus();
     return;
   }
   if(!km||isNaN(Number(km))||Number(km)<0){
-    toast('⚠ El kilometraje actual es obligatorio','err');
+    toast('El kilometraje actual es obligatorio','err');
     document.getElementById('fm-km')?.focus();
     return;
-  }
-  let chkFirmaConfirmacion=null;
-  if(esMaquinaria(miVeh)){
-    // Maquinaria: sus 4 fotos propias
-    const faltanMaq=MAQ_FOTOS.map((_,i)=>`maq__${i}`).filter(k=>!(solState.chkFotos||{})[k]);
-    if(faltanMaq.length>0){
-      toast(`⚠ Faltan ${faltanMaq.length} de 4 fotos requeridas de la unidad`,'err');
-      document.getElementById('fm-chk-list')?.scrollIntoView({behavior:'smooth',block:'center'});
-      return;
-    }
   }
 
   const btn=document.getElementById('fm-btn-guardar');
   if(btn){btn.disabled=true;btn.textContent='Guardando…';}
+  const solId=solState.solId||(solState.solId=_fmNuevoId());
   const docObj={
+    solicitudId:solId,
     vehiculoId:miVeh?.id||'',vehiculoEco:miVeh?.eco||'',
     vehiculo:`${miVeh?.eco} · ${miVeh?.unidad||''}`,
+    placas:miVeh?.placas||'',
     tipo,prioridad:solState.prior,descripcion:desc,
     kilometrajeReportado:km||'',
     gasolina:solState.gasolina,
@@ -2852,51 +3098,410 @@ window.fmGuardar=async function(){
     solicitante:window.auth?.currentUser?.displayName||window.auth?.currentUser?.email||'—',
     creadoPor:window.auth?.currentUser?.email||'',
     creadoEn:new Date().toISOString(),
-    evidencias:solState.evFotos.map(e=>typeof e==='string'?e:e.src),
-    evidenciasMeta:solState.evFotos.map(e=>typeof e==='object'?e.meta:null).filter(Boolean),
-    checklist:{},   // la solicitud ya no lleva check list
-    chkFotos:esMaquinaria(miVeh)?Object.fromEntries(Object.entries(solState.chkFotos||{}).map(([k,v])=>[k,typeof v==='object'?v.src:v])):{},
-    confirmacionChecklistSemanal:false,
-    chkFirmaConfirmacion:null,
+    numFotos:(solState.evFotos||[]).length,
+    numVideos:(solState.videos||[]).length,
+    sinChecklist:true,
     origenApp:'movil',
+    almacenamiento:'supabase',
   };
+  const fotos=(solState.evFotos||[]).map(f=>{
+    const ang=f?.meta?.angulo||null;
+    return {dataUrl:f.src,meta:f.meta||{},nota:f.nota||'',categoria:ang?'principal':'adicional',posicion:ang?_FM_POS_ANGULO[ang]||null:null};
+  });
+  const videos=(solState.videos||[]).map(v=>({blob:v.file,nombre:v.file?.name||'',mime:v.file?.type||'',tamano:v.file?.size||0,meta:v.meta||{},nota:v.nota||''}));
+  const item={docObj,fotos,videos};
+
+  const terminar=async(okMsg,tipoToast)=>{
+    (solState.videos||[]).forEach(v=>{try{if(v.url)URL.revokeObjectURL(v.url);}catch(e){}});
+    _draftClear(_DRAFT.SOL);
+    toast(okMsg,tipoToast);
+    setTimeout(()=>fmVista('vehiculo'),1200);
+  };
+
   if(!onlineStatus){
-    await reducirTamanoSolicitud(docObj);
-    if(docObj._evidenciasRecortadas)toast('Fotos muy pesadas sin conexión — se guardaron comprimidas','warn');
-    if(typeof offlineGuardar==='function')offlineGuardar(docObj);
-    if(btn){btn.disabled=false;btn.textContent='Crear solicitud';}
+    try{
+      await _solEncolar(item);
+      await terminar('Sin conexión — guardada en el teléfono, se enviará al recuperar señal','warn');
+    }catch(e){
+      toast(e.message||'No se pudo guardar en el teléfono','err');
+      if(btn){btn.disabled=false;btn.textContent='Crear solicitud';}
+    }
     return;
   }
-  // Estimar tamaño del documento — Firestore limite 1MB
-  await reducirTamanoSolicitud(docObj);
-  if(docObj._evidenciasRecortadas)toast('Fotos muy pesadas — se guardaron comprimidas para poder sincronizar','warn');
+  const prog=_fmProgresoAbrir();
   try{
-    const timeout=new Promise((_,rej)=>setTimeout(()=>rej(new Error('Timeout: conexión lenta. Intenta de nuevo.')),20000));
-    await Promise.race([db.collection(C.SOLS).add(docObj), timeout]);
-    if(km&&miVeh&&!miVeh.id.startsWith('eco-')){
-      await db.collection(C.VEHS).doc(miVeh.id).update({km:Number(km)}).catch(()=>{});
+    const creada=await _solSubir(item,prog.actualizar);
+    prog.cerrar();
+    if(km&&miVeh&&miVeh.id&&!String(miVeh.id).startsWith('eco-')){
+      // El catálogo de vehículos sigue en Firestore: solo se actualiza el KM.
+      try{await db.collection(C.VEHS).doc(miVeh.id).update({km:Number(km)});}catch(e){}
     }
     await cargarMisSols();
-    _draftClear(_DRAFT.SOL);
-    toast('Solicitud creada correctamente','ok');
-    setTimeout(()=>fmVista('vehiculo'),1200);
+    await terminar(`Solicitud ${creada?.folio||''} creada correctamente`.replace('  ',' '),'ok');
   }catch(e){
-    console.error('[MOVIL guardar]',e.message);
-    await reducirTamanoSolicitud(docObj);
-    offlineGuardar(docObj);
-    toast('Sin conexión — guardado localmente para sincronizar después','warn');
-    if(btn){btn.disabled=false;btn.textContent='Crear solicitud';}
-    setTimeout(()=>fmVista('vehiculo'),1500);
+    prog.cerrar();
+    console.error('[MOVIL guardar]',e);
+    try{
+      await _solEncolar(item);
+      await terminar('No se pudo enviar — quedó guardada en el teléfono para reintentar','warn');
+    }catch(e2){
+      toast('Error al guardar: '+(e2.message||e.message||e),'err');
+      if(btn){btn.disabled=false;btn.textContent='Crear solicitud';}
+    }
   }
 };
+
+// Ángulo de la app → posición en Supabase
+const _FM_POS_ANGULO={frente:'frente',atras:'trasera',derecha:'derecho',izquierda:'izquierdo'};
+
+// ── Pantalla de progreso de subida ──
+function _fmProgresoAbrir(titulo){
+  const ov=document.createElement('div');
+  ov.id='fm-subida-ov';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(10,22,40,.75);z-index:1000003;display:flex;align-items:center;justify-content:center;padding:24px';
+  ov.innerHTML=`<div style="background:#fff;border-radius:16px;padding:22px;width:100%;max-width:340px;text-align:center;font-family:inherit">
+    <div style="font-size:15px;font-weight:900;color:#0A1628;margin-bottom:4px">${titulo||'Enviando solicitud'}</div>
+    <div id="fm-subida-txt" style="font-size:12px;color:#64748B;margin-bottom:14px;min-height:16px">Preparando…</div>
+    <div style="height:10px;background:#E2E8F0;border-radius:100px;overflow:hidden"><div id="fm-subida-bar" style="height:100%;width:0%;background:#2563EB;transition:width .2s"></div></div>
+    <div id="fm-subida-pct" style="font-size:20px;font-weight:900;color:#1E3A5F;margin-top:10px">0%</div>
+    <div style="font-size:10.5px;color:#94A3B8;margin-top:8px;line-height:1.4">No cierres la app. Si la señal se cae, la subida continúa sola.</div>
+  </div>`;
+  document.body.appendChild(ov);
+  return {
+    actualizar(txt,pct){
+      const t=document.getElementById('fm-subida-txt');if(t&&txt)t.textContent=txt;
+      const p=Math.max(0,Math.min(100,Math.round(pct||0)));
+      const b=document.getElementById('fm-subida-bar');if(b)b.style.width=p+'%';
+      const n=document.getElementById('fm-subida-pct');if(n)n.textContent=p+'%';
+    },
+    cerrar(){ const o=document.getElementById('fm-subida-ov'); if(o)o.remove(); },
+  };
+}
+
+function _fmLimpiaNombre(x){ return String(x||'').replace(/[^A-Za-z0-9_-]/g,'').slice(0,40)||'x'; }
+function _fmExtVideo(v){
+  const n=String(v.nombre||'');const m=n.match(/\.([A-Za-z0-9]{2,5})$/);
+  if(m)return m[1].toLowerCase();
+  const t=String(v.mime||'');
+  if(t.includes('quicktime'))return 'mov';
+  if(t.includes('webm'))return 'webm';
+  if(t.includes('3gpp'))return '3gp';
+  if(t.includes('matroska'))return 'mkv';
+  return 'mp4';
+}
+function _fmMimeVideo(v){
+  if(v.mime)return v.mime;
+  const e=_fmExtVideo(v);
+  return {mov:'video/quicktime',webm:'video/webm','3gp':'video/3gpp',mkv:'video/x-matroska'}[e]||'video/mp4';
+}
+
+// ── Sube una solicitud completa a Supabase ──
+// item={docObj,fotos:[{dataUrl,meta,nota,categoria,posicion,ruta?,tamano?}],videos:[{blob,nombre,mime,tamano,meta,nota,ruta?}]}
+// Marca ruta en cada archivo ya subido, así un reintento no los vuelve a subir.
+async function _solSubir(item,onProg){
+  const tc=window.tcFlSb;
+  if(!tc)throw new Error('Falta flotilla-supabase.js en la página');
+  const d=item.docObj;
+  const solId=d.solicitudId;
+  const eco=_fmLimpiaNombre(d.vehiculoEco||'sin-eco');
+  const base=`solicitudes/${eco}/${solId}`;
+  const fotos=item.fotos||[];
+  const videos=item.videos||[];
+  const subidor=d.creadoPor||'';
+
+  // Preparar blobs de fotos para conocer el total de bytes
+  for(const f of fotos){
+    if(!f.ruta&&!f._blob&&f.dataUrl){ f._blob=await (await fetch(f.dataUrl)).blob(); }
+  }
+  const pend=[
+    ...fotos.filter(f=>!f.ruta).map(f=>({k:'foto',x:f,size:f._blob?.size||0})),
+    ...videos.filter(v=>!v.ruta).map(v=>({k:'video',x:v,size:v.blob?.size||v.tamano||0})),
+  ];
+  const total=pend.reduce((a,p)=>a+p.size,0)||1;
+  let hecho=0;
+  const nVid=videos.length;
+  let iFoto=0,iVid=0,nAdic=0;
+
+  for(const p of pend){
+    const enviar=(env)=>onProg&&onProg(
+      p.k==='video'?`Subiendo video ${iVid} de ${nVid} · ${_fmTamTxt(p.size)}`:`Subiendo fotos (${iFoto} de ${fotos.length})`,
+      ((hecho+Math.min(env,p.size))/total)*100);
+    if(p.k==='foto'){
+      iFoto++;
+      const f=p.x;
+      const nombre=f.categoria==='principal'
+        ?`principal-${f.posicion||'x'}.jpg`
+        :`adicional-${++nAdic}-${_fmLimpiaNombre(f.meta?.codigo)}.jpg`;
+      const ruta=`${base}/${nombre}`;
+      await tc.subirArchivo(tc.BUCKET_FOTOS,ruta,f._blob,'image/jpeg',(e)=>enviar(e));
+      f.ruta=ruta;f.tamano=f._blob.size;
+    } else {
+      iVid++;
+      const v=p.x;
+      if(!v.blob)throw new Error('El video ya no está disponible en el teléfono');
+      const ruta=`${base}/video-${iVid}-${_fmLimpiaNombre(v.meta?.codigo)}.${_fmExtVideo(v)}`;
+      await tc.subirArchivo(tc.BUCKET_VIDEOS,ruta,v.blob,_fmMimeVideo(v),(e)=>enviar(e));
+      v.ruta=ruta;v.tamano=v.blob.size;
+    }
+    hecho+=p.size;
+  }
+  onProg&&onProg('Registrando solicitud…',100);
+
+  const datos=Object.assign({},d);
+  const row={
+    id:solId,
+    vehiculo_id:d.vehiculoId||null,
+    eco:String(d.vehiculoEco||''),
+    placas:d.placas||null,
+    km:Number(d.kilometrajeReportado)||null,
+    tipo:d.tipo||null,
+    descripcion:d.descripcion||null,
+    estado:d.estatus||'Solicitud',
+    creado_por:d.creadoPor||null,
+    creado_por_nombre:d.solicitante||null,
+    datos,
+    creado_en:d.creadoEn||new Date().toISOString(),
+  };
+  const creada=await tc.crearSolicitud(row);
+  const evRows=[
+    ...fotos.map(f=>({solicitud_id:solId,categoria:f.categoria,posicion:f.categoria==='principal'?f.posicion:null,medio:'foto',bucket:tc.BUCKET_FOTOS,ruta:f.ruta,mime:'image/jpeg',tamano_bytes:f.tamano||null,nota:f.nota||null,subido_por:subidor,meta:f.meta||{}})),
+    ...videos.map(v=>({solicitud_id:solId,categoria:'adicional',posicion:null,medio:'video',bucket:tc.BUCKET_VIDEOS,ruta:v.ruta,mime:_fmMimeVideo(v),tamano_bytes:v.tamano||null,nota:v.nota||null,subido_por:subidor,meta:v.meta||{}})),
+  ];
+  await tc.registrarEvidencias(evRows);
+  fotos.forEach(f=>{delete f._blob;});
+  return creada;
+}
 
 // ══════════════════════════════════════════
 // VISTA 3 — MIS TAREAS
 // ══════════════════════════════════════════
+// ══════════════════════════════════════════
+// SEGUIMIENTO DE SERVICIOS (Tareas) — solo el responsable de servicio
+// ══════════════════════════════════════════
+// Alejandro ve todas las solicitudes, sube evidencias del trabajo realizado
+// (ligadas a cada solicitud) y, si fue taller interno, libera el vehículo.
+const RESP_SERVICIO_FLOTILLA=['flotillatecnocontrol@gmail.com'];
+function esRespServicio(){
+  const email=(window.auth?.currentUser?.email||miPerfil?.email||'').toLowerCase();
+  return RESP_SERVICIO_FLOTILLA.includes(email);
+}
+let solsServicio=null, solsServicioFiltro='abiertas', solsServicioCargando=false;
+async function cargarSolsServicio(){
+  if(!window.tcFlSb||solsServicioCargando)return;
+  solsServicioCargando=true;
+  try{
+    solsServicio=await window.tcFlSb.listarSolicitudes({abiertas:solsServicioFiltro==='abiertas',limit:150});
+  }catch(e){
+    console.warn('[FL servicio]',e);
+    if(solsServicio===null)solsServicio=[];
+    toast('No se pudieron cargar las solicitudes','err');
+  }
+  solsServicioCargando=false;
+  if(vistaAct==='tareas')renderTareas();
+}
+window.fmSrvFiltro=function(f){solsServicioFiltro=f;solsServicio=null;cargarSolsServicio();renderTareas();};
+window.fmSrvRecargar=function(){solsServicio=null;cargarSolsServicio();renderTareas();};
+
+function _fmSolCerrada(s){ return (window.tcFlSb?.ESTADOS_CERRADOS||['Cerrada','Completada','Finalizada','Liberada','Rechazada','Cancelada']).includes(s.estatus); }
+
+function fmServicioFlotillaHTML(){
+  if(!esRespServicio())return '';
+  if(solsServicio===null&&!solsServicioCargando)setTimeout(cargarSolsServicio,0);
+  const lista=solsServicio||[];
+  const chip=(k,t)=>`<button onclick="fmSrvFiltro('${k}')" style="padding:6px 12px;border-radius:100px;border:1.5px solid ${solsServicioFiltro===k?'#1E3A5F':'#E2E8F0'};background:${solsServicioFiltro===k?'#1E3A5F':'#fff'};color:${solsServicioFiltro===k?'#fff':'#475569'};font-size:11px;font-weight:800;font-family:inherit;cursor:pointer">${t}</button>`;
+  let h=`<div class="fm-sec-hd"><div><div class="fm-sec-t">Seguimiento de solicitudes</div><div class="fm-sec-s">${solsServicio===null?'Cargando…':lista.length+' solicitud(es)'}</div></div>
+    <button onclick="fmSrvRecargar()" class="fm-btn ghost fm-btn-sm" style="width:auto;margin:0;padding:6px 12px">Actualizar</button></div>
+    <div style="display:flex;gap:6px;margin-bottom:12px">${chip('abiertas','Abiertas')}${chip('todas','Todas')}</div>`;
+  if(solsServicio===null)return h+'<div style="font-size:12px;color:#94A3B8;padding:4px 2px 20px">Cargando solicitudes…</div>';
+  if(!lista.length)return h+'<div style="font-size:12px;color:#94A3B8;padding:4px 2px 20px">No hay solicitudes en este filtro.</div>';
+  h+=lista.map(s=>{
+    const cerrada=_fmSolCerrada(s);
+    const nServ=(s.evidenciasServicio||[]).length;
+    const urg=s.prioridad==='Urgente'||s.prioridad==='Alta';
+    const borde=cerrada?'#E2E8F0':urg?'#FCA5A5':(s.tallerInterno||s.tallerExterno)?'#FDE68A':'#BFDBFE';
+    return `<div style="border:1.5px solid ${borde};border-radius:12px;padding:13px;margin-bottom:10px;background:#fff">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px">
+        <span style="font-size:11px;font-weight:900;color:#1E3A5F;font-family:'JetBrains Mono',monospace">${esc(s.folio||'—')}</span>
+        ${badge(s.estatus)}
+      </div>
+      <div style="font-size:14px;font-weight:800;color:#0A1628;line-height:1.3">ECO ${esc(s.eco||s.vehiculoEco||'—')} · ${esc(s.tipo||'—')}</div>
+      <div style="font-size:11.5px;color:#64748B;margin:3px 0 6px">${hF(s.creadoEn)} · ${esc(s.prioridad||'Normal')} · ${esc(s.solicitante||'')}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+        ${s.tallerInterno?'<span style="font-size:9.5px;font-weight:800;background:#DBEAFE;color:#1E40AF;padding:2px 8px;border-radius:8px">TALLER INTERNO</span>':''}
+        ${s.tallerExterno?'<span style="font-size:9.5px;font-weight:800;background:#FEF3C7;color:#92400E;padding:2px 8px;border-radius:8px">TALLER EXTERNO</span>':''}
+        <span style="font-size:9.5px;font-weight:800;background:${nServ?'#DCFCE7':'#F1F5F9'};color:${nServ?'#15803D':'#64748B'};padding:2px 8px;border-radius:8px">${nServ} evidencia(s) de servicio</span>
+      </div>
+      ${s.descripcion?`<div style="font-size:12px;color:#334155;background:#F8FAFD;border-radius:8px;padding:8px 10px;margin-bottom:10px;line-height:1.4">${esc(String(s.descripcion).slice(0,180))}${String(s.descripcion).length>180?'…':''}</div>`:''}
+      <div style="display:grid;grid-template-columns:${s.tallerInterno&&!cerrada?'1fr 1fr 1fr':'1fr 1fr'};gap:6px">
+        <button onclick="fmVerSol('${s.id}')" class="fm-btn ghost fm-btn-sm" style="margin:0">Ver</button>
+        ${cerrada?'':`<button onclick="fmSrvAbrirEvidencia('${s.id}')" class="fm-btn primary fm-btn-sm" style="margin:0">Subir evidencia</button>`}
+        ${s.tallerInterno&&!cerrada?`<button onclick="fmSrvLiberar('${s.id}')" class="fm-btn fm-btn-sm" style="margin:0;background:#15803D;color:#fff;border:none">Liberar</button>`:''}
+      </div>
+    </div>`;
+  }).join('');
+  return h+'<div style="height:6px"></div>';
+}
+
+// Técnicos: sus folios pendientes (solicitudes que no se han cerrado)
+function fmMisFoliosHTML(){
+  if(esRespServicio())return '';
+  const pend=(misSols||[]).filter(s=>!_fmSolCerrada(s));
+  if(!pend.length)return '';
+  return `<div class="fm-sec-hd"><div><div class="fm-sec-t">Mis folios pendientes</div><div class="fm-sec-s">${pend.length} solicitud(es) en proceso</div></div></div>
+    ${pend.map(s=>`<div class="fm-sol-card" onclick="fmVerSol('${s.id}')">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <div class="fm-sol-tipo">${s.folio?esc(s.folio)+' · ':''}${esc(s.tipo||'—')}</div>
+        ${badge(s.estatus)}
+      </div>
+      <div class="fm-sol-meta">${hF(s.creadoEn)} · ${esc(s.prioridad||'Normal')}${s.tallerInterno?' · Taller interno':''}${s.tallerExterno?' · Taller externo':''}</div>
+    </div>`).join('')}
+    <div style="height:10px"></div>`;
+}
+
+function _fmBuscarSol(id){
+  return (misSols||[]).find(x=>x.id===id)||(solsServicio||[]).find(x=>x.id===id)||null;
+}
+
+// ── Subir evidencia del servicio realizado ──
+let srvState={solId:'',fotos:[],videos:[]};
+window.fmSrvAbrirEvidencia=function(id){
+  const s=_fmBuscarSol(id);if(!s)return;
+  srvState={solId:id,fotos:[],videos:[]};
+  const ov=document.createElement('div');ov.className='fm-ov';ov.id='fm-srv-ov';
+  ov.innerHTML=`<div class="fm-sheet">
+    <div class="fm-sheet-hd"><h3>Evidencia del servicio · ${esc(s.folio||'')}</h3><button class="fm-sheet-x" onclick="fmSrvCerrar()">✕</button></div>
+    <div class="fm-sheet-body">
+      <div style="font-size:12px;color:#64748B;margin-bottom:10px">ECO ${esc(s.eco||s.vehiculoEco||'')} · ${esc(s.tipo||'')}</div>
+      <div class="fm-fld"><label>¿Qué se hizo? <span style="color:#DC2626">*</span></label>
+        <textarea id="fm-srv-txt" placeholder="Describe el trabajo realizado, refacciones, pendientes…"></textarea></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+        <button onclick="fmSrvCapturar('foto')" class="fm-btn ghost" style="margin:0">Foto</button>
+        <button onclick="fmSrvCapturar('video')" class="fm-btn ghost" style="margin:0">Video</button>
+      </div>
+      <div id="fm-srv-lista"></div>
+      <button onclick="fmSrvEnviar()" id="fm-srv-btn" class="fm-btn primary" style="margin-top:8px">Guardar evidencia</button>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  _fmSrvPintar();
+};
+window.fmSrvCerrar=function(){
+  srvState.videos.forEach(v=>{try{URL.revokeObjectURL(v.url);}catch(e){}});
+  document.getElementById('fm-srv-ov')?.remove();
+};
+function _fmSrvGaleria(){
+  return [...srvState.fotos.map(f=>({src:f.dataUrl,meta:f.meta,nota:f.nota})),...srvState.videos.map(v=>({video:v.url,meta:v.meta,nota:v.nota,tamano:v.blob.size}))];
+}
+window.fmSrvVer=function(i){fmGaleria(_fmSrvGaleria(),i);};
+function _fmSrvPintar(){
+  const w=document.getElementById('fm-srv-lista');if(!w)return;
+  const items=[...srvState.fotos.map((f,i)=>({k:'foto',i,f})),...srvState.videos.map((v,i)=>({k:'video',i,f:v}))];
+  if(!items.length){w.innerHTML='<div style="font-size:11px;color:#94A3B8;padding:4px 2px">Agrega al menos una foto o video del trabajo.</div>';return;}
+  w.innerHTML=items.map((x,gi)=>`<div style="border:1.5px solid #E2E8F0;border-radius:10px;padding:8px;margin-bottom:8px">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div onclick="fmSrvVer(${gi})" style="width:50px;height:50px;border-radius:8px;overflow:hidden;background:#0A1628;display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer">
+        ${x.k==='foto'?`<img src="${x.f.dataUrl}" style="width:100%;height:100%;object-fit:cover">`:'<svg width="20" height="20" viewBox="0 0 24 24" fill="#fff"><path d="M8 5v14l11-7z"/></svg>'}
+      </div>
+      <div style="flex:1;font-size:12px;font-weight:700">${x.k==='foto'?'Foto':'Video · '+_fmTamTxt(x.f.blob.size)}</div>
+      <button onclick="fmSrvQuitar('${x.k}',${x.i})" style="padding:6px 10px;background:#FEE2E2;color:#B91C1C;border:none;border-radius:8px;font-size:11px;font-weight:700;font-family:inherit">Quitar</button>
+    </div>
+    <input type="text" value="${esc(x.f.nota||'')}" placeholder="Nota (opcional)" oninput="fmSrvNota('${x.k}',${x.i},this.value)" style="width:100%;margin-top:8px;padding:8px 10px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:12px;font-family:inherit;box-sizing:border-box">
+  </div>`).join('');
+}
+window.fmSrvNota=function(k,i,v){const a=k==='video'?srvState.videos:srvState.fotos;if(a[i])a[i].nota=String(v||'').slice(0,300);};
+window.fmSrvQuitar=function(k,i){
+  if(k==='video'){try{URL.revokeObjectURL(srvState.videos[i].url);}catch(e){}srvState.videos.splice(i,1);}else srvState.fotos.splice(i,1);
+  _fmSrvPintar();
+};
+window.fmSrvCapturar=function(kind){
+  const inp=document.createElement('input');
+  inp.type='file';inp.accept=kind==='video'?'video/*':'image/*';inp.capture='environment';inp.style.display='none';
+  document.body.appendChild(inp);
+  inp.onchange=async function(){
+    const file=this.files&&this.files[0];document.body.removeChild(inp);if(!file)return;
+    if(kind==='video'&&file.size>VIDEO_MAX_BYTES){toast('El video supera 1 GB — graba uno más corto','err');return;}
+    const s=_fmBuscarSol(srvState.solId)||{};
+    const gps=await getGPS();
+    const now=new Date();
+    const meta={codigo:genCod(),fecha:now.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}),
+      hora:now.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',second:'2-digit'}),timestamp:now.toISOString(),
+      gps,eco:s.eco||s.vehiculoEco||'—',usuario:window.auth?.currentUser?.displayName||window.auth?.currentUser?.email||'—',tipo:'servicio'};
+    if(kind==='video'){
+      srvState.videos.push({blob:file,nombre:file.name,mime:file.type,meta,nota:'',url:URL.createObjectURL(file)});
+    } else {
+      const rd=new FileReader();
+      const dataUrl=await new Promise(r=>{rd.onload=e=>r(e.target.result);rd.readAsDataURL(file);});
+      srvState.fotos.push({dataUrl:await comprimirBase64(dataUrl,2048,0.92),meta,nota:''});
+    }
+    _fmSrvPintar();
+  };
+  inp.click();
+};
+window.fmSrvEnviar=async function(){
+  const txt=document.getElementById('fm-srv-txt')?.value?.trim();
+  if(!txt){toast('Describe qué se hizo','err');return;}
+  if(!srvState.fotos.length&&!srvState.videos.length){toast('Agrega al menos una foto o video','err');return;}
+  if(!onlineStatus){toast('Necesitas conexión para subir la evidencia','err');return;}
+  const tc=window.tcFlSb;const s=_fmBuscarSol(srvState.solId);if(!tc||!s)return;
+  const btn=document.getElementById('fm-srv-btn');if(btn){btn.disabled=true;btn.textContent='Subiendo…';}
+  const prog=_fmProgresoAbrir('Subiendo evidencia');
+  try{
+    const autor=window.auth?.currentUser?.email||'';
+    const autorNombre=window.auth?.currentUser?.displayName||autor;
+    const seg=await tc.agregarSeguimiento({solicitud_id:s.id,tipo:'evidencia_servicio',texto:txt,autor,autor_nombre:autorNombre,
+      datos:{fotos:srvState.fotos.length,videos:srvState.videos.length}});
+    const base=`solicitudes/${_fmLimpiaNombre(s.eco||s.vehiculoEco)}/${s.id}/servicio`;
+    const arch=[...srvState.fotos.map(f=>({k:'foto',f})),...srvState.videos.map(v=>({k:'video',f:v}))];
+    const blobs=await Promise.all(arch.map(async a=>a.k==='foto'?(await fetch(a.f.dataUrl)).blob():a.f.blob));
+    const total=blobs.reduce((x,b)=>x+b.size,0)||1;let hecho=0;
+    const rows=[];
+    for(let n=0;n<arch.length;n++){
+      const a=arch[n],b=blobs[n];
+      const esVid=a.k==='video';
+      const ext=esVid?_fmExtVideo(a.f):'jpg';
+      const mime=esVid?_fmMimeVideo(a.f):'image/jpeg';
+      const ruta=`${base}/${seg.id}-${n+1}-${_fmLimpiaNombre(a.f.meta?.codigo)}.${ext}`;
+      const bucket=esVid?tc.BUCKET_VIDEOS:tc.BUCKET_FOTOS;
+      await tc.subirArchivo(bucket,ruta,b,mime,(e)=>prog.actualizar(`Archivo ${n+1} de ${arch.length}`,((hecho+e)/total)*100));
+      hecho+=b.size;
+      rows.push({solicitud_id:s.id,categoria:'servicio',posicion:null,medio:esVid?'video':'foto',bucket,ruta,mime,tamano_bytes:b.size,nota:a.f.nota||null,subido_por:autor,meta:a.f.meta||{},seguimiento_id:seg.id});
+    }
+    await tc.registrarEvidencias(rows);
+    prog.cerrar();
+    fmSrvCerrar();
+    toast('Evidencia guardada','ok');
+    solsServicio=null;cargarSolsServicio();
+  }catch(e){
+    prog.cerrar();
+    console.error('[FL srv evidencia]',e);
+    toast('Error al subir: '+(e.message||e),'err');
+    if(btn){btn.disabled=false;btn.textContent='Guardar evidencia';}
+  }
+};
+
+// ── Liberar vehículo (solo taller interno) ──
+window.fmSrvLiberar=async function(id){
+  const s=_fmBuscarSol(id);if(!s)return;
+  if(!s.tallerInterno){toast('Solo se liberan desde aquí los servicios de taller interno','err');return;}
+  const nota=prompt(`Liberar ECO ${s.eco||s.vehiculoEco} (${s.folio||''}).\nComentario de cierre (opcional):`,'');
+  if(nota===null)return;
+  try{
+    const autor=window.auth?.currentUser?.email||'';
+    const ahora=new Date().toISOString();
+    await window.tcFlSb.actualizarSolicitud(id,{estado:'Liberada',liberado_por:autor,liberado_en:ahora});
+    await window.tcFlSb.agregarSeguimiento({solicitud_id:id,tipo:'liberacion',texto:nota||'Vehículo liberado del taller interno',autor,autor_nombre:window.auth?.currentUser?.displayName||autor,datos:{}});
+    toast(`ECO ${s.eco||''} liberado — vuelve a estar activo`,'ok');
+    solsServicio=null;cargarSolsServicio();
+    cargarMisSols().then(()=>{if(vistaAct==='vehiculo')renderVehiculo();});
+  }catch(e){toast('No se pudo liberar: '+(e.message||e),'err');}
+};
+
 function renderTareas(){
   const pend=misTareas.filter(t=>t.estatus!=='Completada'&&t.estatus!=='Cancelada');
   const urg=pend.filter(t=>t.prioridad==='Urgente'||t.prioridad==='Alta');
   setContent(
+    fmServicioFlotillaHTML()+
+    fmMisFoliosHTML()+
     fmOpsServHTML()+
     '<div class="fm-sec-hd"><div><div class="fm-sec-t">'+(misOpsServ.length?'Tareas de Flotilla':'Mis tareas')+'</div><div class="fm-sec-s">'+pend.length+' pendiente(s)'+(urg.length?' · '+urg.length+' urgente(s)':'')+'</div></div></div>'+
     (!pend.length?
@@ -3147,18 +3752,58 @@ window.fmAbrirLigaNotif=function(link){
   window.open(new URL(link, base).href, '_blank');
 };
 
+// Videos, evidencias del servicio realizado y bitácora de seguimiento (Supabase)
+function fmSolExtrasHTML(s){
+  let h='';
+  const thumb=(el,i,borde)=>`<div onclick="fmVerEvIdx(${i})" class="fm-ev-pill" style="flex-direction:column;width:70px;height:80px;justify-content:center;padding:4px;${borde}">${el}</div>`;
+  const icoPlay='<svg width="24" height="24" viewBox="0 0 24 24" fill="#1E3A5F"><path d="M8 5v14l11-7z"/></svg>';
+  if((s.videos||[]).length){
+    const base=window._fmEvCache.length;
+    s.videos.forEach(v=>window._fmEvCache.push({video:v.url,meta:v.meta||{},nota:v.nota||'',tamano:v.tamano}));
+    h+=`<div style="margin-top:10px">
+      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:8px">Videos (${s.videos.length})</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">${s.videos.map((v,i)=>thumb(icoPlay+`<span style="font-size:9px;color:#64748B;margin-top:4px">${_fmTamTxt(v.tamano)}</span>`,base+i,'')).join('')}</div>
+    </div>`;
+  }
+  const serv=s.evidenciasServicio||[];
+  if(serv.length){
+    const base=window._fmEvCache.length;
+    serv.forEach(e=>window._fmEvCache.push(e.medio==='video'?{video:e.url,meta:e.meta||{},nota:e.nota,tamano:e.tamano}:{src:e.url,meta:e.meta||{},nota:e.nota}));
+    h+=`<div style="margin-top:10px">
+      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#15803D;margin-bottom:8px">Evidencias del servicio realizado (${serv.length})</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">${serv.map((e,i)=>thumb(e.medio==='video'?icoPlay:`<img src="${e.url}" style="width:62px;height:62px;object-fit:cover;border-radius:6px">`,base+i,'background:#F0FDF4;border-color:#BBF7D0')).join('')}</div>
+    </div>`;
+  }
+  const seg=s.seguimiento||[];
+  if(seg.length){
+    const ETQ={evidencia_servicio:'Evidencia de servicio',comentario:'Comentario',cambio_estado:'Cambio de estado',liberacion:'Vehículo liberado',modificacion:'Modificación'};
+    h+=`<div style="margin-top:12px">
+      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:6px">Seguimiento</div>
+      ${seg.map(x=>`<div style="border-left:3px solid #BFDBFE;padding:4px 0 8px 10px;margin-bottom:4px">
+        <div style="font-size:11px;font-weight:800;color:#1E3A5F">${ETQ[x.tipo]||x.tipo} <span style="font-weight:600;color:#94A3B8">· ${hF(x.creado_en)}</span></div>
+        ${x.texto?`<div style="font-size:12px;color:#0A0F1E;line-height:1.4">${esc(x.texto)}</div>`:''}
+        <div style="font-size:10.5px;color:#64748B">${esc(x.autor_nombre||x.autor||'')}</div>
+      </div>`).join('')}
+    </div>`;
+  }
+  if(s.costoTotal>0){
+    h+=`<div style="margin-top:10px;display:flex;justify-content:space-between;padding:10px 12px;background:#F8FAFD;border-radius:10px"><span style="font-size:12px;font-weight:700;color:#64748B">Costo total</span><span style="font-size:14px;font-weight:900;color:#0A1628">$${Number(s.costoTotal).toLocaleString('es-MX',{minimumFractionDigits:2})}</span></div>`;
+  }
+  return h;
+}
+
 // ── VER SOLICITUD EXISTENTE ──
 window.fmVerSol=function(id){
   window._fmEvCache=[];
-  const s=misSols.find(x=>x.id===id);if(!s)return;
+  const s=_fmBuscarSol(id);if(!s)return;
   const ov=document.createElement('div');ov.className='fm-ov';
   ov.innerHTML=`<div class="fm-sheet">
     <div class="fm-sheet-hd">
-      <h3>${s.tipo||'Solicitud'}</h3>
+      <h3>${s.folio?esc(s.folio)+' · ':''}${s.tipo||'Solicitud'}</h3>
       <button class="fm-sheet-x" onclick="this.closest('.fm-ov').remove()">✕</button>
     </div>
     <div class="fm-sheet-body">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">${badge(s.estatus)}<span style="font-size:12px;color:#64748B">${hF(s.creadoEn)}</span></div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap">${badge(s.estatus)}<span style="font-size:12px;color:#64748B">${hF(s.creadoEn)}</span>${s.tallerInterno?'<span style="font-size:10px;font-weight:800;background:#DBEAFE;color:#1E40AF;padding:2px 8px;border-radius:8px">TALLER INTERNO</span>':''}${s.tallerExterno?'<span style="font-size:10px;font-weight:800;background:#FEF3C7;color:#92400E;padding:2px 8px;border-radius:8px">TALLER EXTERNO</span>':''}</div>
       ${[['Vehículo',s.vehiculo||'—'],['Prioridad',s.prioridad||'Normal'],['KM',s.kilometrajeReportado||'—'],['Gasolina',s.gasolina!=null?s.gasolina+'%':'—'],['Taller',s.taller||'Sin especificar']].map(([l,v])=>`
       <div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #F1F5F9">
         <span style="font-size:12.5px;color:#64748B;font-weight:600">${l}</span>
@@ -3204,6 +3849,7 @@ window.fmVerSol=function(id){
           ${noItems.map(([k])=>`<div style="font-size:11px;font-weight:600;color:#991B1B;padding:2px 0">• ${getL(k)}</div>`).join('')}
         </div>`;
       })()}
+      ${fmSolExtrasHTML(s)}
       <div style="display:flex;gap:8px;margin-top:16px">
         <button onclick="fmGenerarPDF('${s.id}')" style="flex:1;padding:10px;background:#0A1628;border:none;border-radius:9px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;color:#fff;display:flex;align-items:center;justify-content:center;gap:6px">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
@@ -3299,7 +3945,7 @@ window._desvinc=async function(){
 
 // ── PDF SOLICITUD (MÓVIL) ──
 window.fmGenerarPDF=function(id){
-  const s=misSols.find(x=>x.id===id);if(!s){toast('No encontrada','err');return;}
+  const s=_fmBuscarSol(id);if(!s){toast('No encontrada','err');return;}
   const CHK={Cristales:['Medallón delantero','Vidrio trasero','Lat. der. delantero','Lat. der. trasero','Lat. izq. delantero','Lat. izq. trasero'],Espejos:['Retrovisor izquierdo','Retrovisor derecho','Espejo central'],Neumáticos:['Llanta del. der.','Llanta del. izq.','Llanta tra. der.','Llanta tra. izq.','Refacción'],Interiores:['Póliza / Manual','Radio','Pantallas','Asientos','Tablero','Tapetes'],Motor:['Batería','Tapón agua','Tapón radiador','Tapón dirección','Limpiaparabrisas en buen estado'],Cajuela:['Herramienta','Cables arranque','Extintor','Llave L','Llave cruz'],Legal:['Tarjeta circulación']};
   const getL=k=>{for(const items of Object.values(CHK)){const f=items.find(it=>it.toLowerCase().replace(/[^a-z0-9]/g,'')===k.toLowerCase().replace(/[^a-z0-9]/g,''));if(f)return f;}return k;};
   const noItems=Object.entries(s.checklist||{}).filter(([k,v])=>v==='no');
@@ -3313,13 +3959,14 @@ window.fmGenerarPDF=function(id){
   <text x="50" y="48" text-anchor="middle" font-size="14" font-weight="800" fill="${gasColor}" font-family="system-ui">${gasPct}%</text></svg>`;
   const evThumbs=(s.evidencias||[]).slice(0,6).map((src,i)=>`<div style="display:inline-block;margin:3px;text-align:center"><img src="${src}" style="width:80px;height:60px;object-fit:cover;border-radius:5px;display:block;border:1px solid #E2E8F0"><div style="font-size:8px;color:#64748B;margin-top:1px">${(s.evidenciasMeta||[])[i]?.codigo||'Foto '+(i+1)}</div></div>`).join('');
   const chkThumbs=chkF.slice(0,6).map(([k,src])=>`<div style="display:inline-block;margin:3px;text-align:center"><img src="${src}" style="width:70px;height:52px;object-fit:cover;border-radius:5px;display:block;border:1px solid #BFDBFE"><div style="font-size:7px;color:#1D4ED8;margin-top:1px;max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${getL(k)}</div></div>`).join('');
-  const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>TCN-${id.slice(0,8).toUpperCase()}</title>
+  const folioTxt=s.folio||id.slice(0,8).toUpperCase();
+  const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${s.folio||'TCN-'+id.slice(0,8).toUpperCase()}</title>
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui,Arial,sans-serif;font-size:11px;color:#0A0F1E;padding:16px;background:#fff}.logo{font-size:18px;font-weight:900;letter-spacing:-1px}.logo em{color:#2563EB;font-style:normal}.field{background:#F8FAFD;border-radius:6px;padding:7px 10px;border:1px solid #E8EDF5;margin-bottom:6px}.field label{font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:1px}.field span{font-size:12px;font-weight:700}.sec{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94A3B8;margin:12px 0 5px;border-top:1px solid #E8EDF5;padding-top:7px}.gas{display:flex;align-items:center;gap:10px;background:#F8FAFD;border-radius:8px;padding:8px 12px;border:1px solid #E8EDF5;margin:6px 0}.obs{background:#FEF2F2;border:1px solid #FECACA;border-radius:6px;padding:8px 10px}.obs li{font-size:11px;font-weight:600;color:#991B1B;padding:1px 0}.ok{background:#F0FDF4;border:1px solid #BBF7D0;border-radius:6px;padding:8px 10px;font-size:11px;font-weight:700;color:#15803D}.photos{display:flex;flex-wrap:wrap;gap:3px;margin-top:3px}.footer{margin-top:16px;padding-top:8px;border-top:1px solid #E8EDF5;font-size:9px;color:#94A3B8;text-align:center}@media print{button{display:none}}</style></head>
   <body>
   <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #0A1628;padding-bottom:10px;margin-bottom:12px">
     <div><div class="logo">TECNO<em>CONTROL</em></div><div style="font-size:10px;color:#64748B;margin-top:2px">Solicitud vehicular</div></div>
-    <div style="text-align:right"><div style="font-size:15px;font-weight:900;font-family:monospace">${id.slice(0,8).toUpperCase()}</div><div style="font-size:10px;color:#64748B">${s.creadoEn?s.creadoEn.substring(0,10):'—'} · ${s.estatus||'Solicitud'}</div></div>
+    <div style="text-align:right"><div style="font-size:15px;font-weight:900;font-family:monospace">${folioTxt}</div><div style="font-size:10px;color:#64748B">${s.creadoEn?s.creadoEn.substring(0,10):'—'} · ${s.estatus||'Solicitud'}</div></div>
   </div>
   <div style="background:#0A1628;color:#fff;border-radius:7px;padding:9px 12px;margin-bottom:10px">
     <div style="font-size:13px;font-weight:800">${s.vehiculo||'—'}</div>
@@ -3334,11 +3981,15 @@ window.fmGenerarPDF=function(id){
     :Object.keys(s.checklist||{}).length?`<div class="ok" style="margin-top:5px">Checklist: todos los puntos sin novedad</div>`:''}
   ${evThumbs?`<div class="sec">Evidencias generales (${(s.evidencias||[]).length})</div><div class="photos">${evThumbs}</div>`:''}
   ${chkThumbs?`<div class="sec">Fotos de checklist (${chkF.length})</div><div class="photos">${chkThumbs}</div>`:''}
+  ${(s.videos||[]).length?`<div class="sec">Videos (${s.videos.length})</div><div style="font-size:10px;color:#64748B">${s.videos.map(v=>(v.nota?esc(v.nota)+' · ':'')+_fmTamTxt(v.tamano)).join('<br>')}</div>`:''}
+  ${(s.evidenciasServicio||[]).filter(e=>e.medio==='foto').length?`<div class="sec">Evidencias del servicio realizado</div><div class="photos">${s.evidenciasServicio.filter(e=>e.medio==='foto').slice(0,9).map(e=>`<div style="display:inline-block;margin:3px;text-align:center"><img src="${e.url}" style="width:80px;height:60px;object-fit:cover;border-radius:5px;display:block;border:1px solid #BBF7D0"><div style="font-size:7px;color:#15803D;max-width:80px;overflow:hidden">${esc(e.nota||'')}</div></div>`).join('')}</div>`:''}
+  ${(s.seguimiento||[]).length?`<div class="sec">Seguimiento</div>${s.seguimiento.map(x=>`<div style="font-size:10px;padding:3px 0;border-bottom:1px solid #F1F5F9"><b>${(x.creado_en||'').substring(0,10)}</b> · ${esc(x.autor_nombre||x.autor||'')}: ${esc(x.texto||x.tipo)}</div>`).join('')}`:''}
+  ${s.costoTotal>0?`<div class="field" style="margin-top:8px"><label>Costo total</label><span>$${Number(s.costoTotal).toLocaleString('es-MX',{minimumFractionDigits:2})}</span></div>`:''}
   ${s.comentarioRechazo?`<div class="obs" style="margin-top:8px"><div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#B91C1C;margin-bottom:3px">Motivo de rechazo</div>${s.comentarioRechazo}</div>`:''}
   <div class="footer">Portal Flotilla Tecnocontrol · ${new Date().toLocaleString('es-MX')} · ${id}</div>
   <div style="margin-top:12px;text-align:center"><button onclick="window.print()" style="padding:10px 24px;background:#0A1628;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">Imprimir / Guardar PDF</button></div>
   </body></html>`;
-  fmVisorHTML(html, 'Solicitud '+id.slice(0,8).toUpperCase());
+  fmVisorHTML(html, 'Solicitud '+folioTxt);
 };
 
 // Visor a pantalla completa dentro de la app, con Regresar (también responde
@@ -3369,13 +4020,13 @@ window.fmVisorHTML=function(html, titulo){
 
 // ── COMPARTIR WHATSAPP (MÓVIL) ──
 window.fmCompartirWA=function(id){
-  const s=misSols.find(x=>x.id===id);if(!s)return;
+  const s=_fmBuscarSol(id);if(!s)return;
   const CHK={Cristales:['Medallón delantero','Vidrio trasero','Lat. der. delantero','Lat. der. trasero','Lat. izq. delantero','Lat. izq. trasero'],Espejos:['Retrovisor izquierdo','Retrovisor derecho','Espejo central'],Neumáticos:['Llanta del. der.','Llanta del. izq.','Llanta tra. der.','Llanta tra. izq.','Refacción'],Interiores:['Póliza / Manual','Radio','Pantallas','Asientos','Tablero','Tapetes'],Motor:['Batería','Tapón agua','Tapón radiador','Tapón dirección','Limpiaparabrisas en buen estado'],Cajuela:['Herramienta','Cables arranque','Extintor','Llave L','Llave cruz'],Legal:['Tarjeta circulación']};
   const getL=k=>{for(const items of Object.values(CHK)){const f=items.find(it=>it.toLowerCase().replace(/[^a-z0-9]/g,'')===k.toLowerCase().replace(/[^a-z0-9]/g,''));if(f)return f;}return k;};
   const noItems=Object.entries(s.checklist||{}).filter(([k,v])=>v==='no');
   const txt=[
     '*TECNOCONTROL — Solicitud Vehicular*',
-    `ID: ${id.slice(0,8).toUpperCase()} | ${s.estatus||'Solicitud'}`,
+    `Folio: ${s.folio||id.slice(0,8).toUpperCase()} | ${s.estatus||'Solicitud'}`,
     `Fecha: ${s.creadoEn?s.creadoEn.substring(0,10):'—'}`,
     '',
     `*Vehículo:* ${s.vehiculo||'—'}`,
@@ -3389,6 +4040,7 @@ window.fmCompartirWA=function(id){
     '*Descripción:*',
     s.descripcion||'—',
     noItems.length?'*Observaciones checklist:*\n'+noItems.map(([k])=>'\u2022 '+getL(k)).join('\n'):'',
+    (s.videos||[]).length?'*Videos:* '+s.videos.length:'',
     s.comentarioRechazo?'*Motivo rechazo:* '+s.comentarioRechazo:'',
   ].filter(x=>x!==undefined&&x!=='').join('\n');
   window.open('https://wa.me/?text='+encodeURIComponent(txt),'_blank');
@@ -3414,6 +4066,7 @@ function renderUtilRevisionEntrega(){
   const t=utilState.transferenciaData||{};
   const d=utilState.datosEntrega||{};
   const fotos=t.entregaFotos||[];
+  window._fmTransfFotos=fotos.map((src,i)=>({src,meta:(t.entregaFotosMeta||[])[i]||{}}));
   const chk=t.entregaChk||{};
   const totalChk=Object.keys(chk).length;
   const okChk=Object.values(chk).filter(Boolean).length;
@@ -3451,7 +4104,7 @@ function renderUtilRevisionEntrega(){
       ${fotos.length?`
       <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:8px">Fotos tomadas por quien entrega (${fotos.length})</div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px">
-        ${fotos.map(f=>`<img src="${f}" onclick="window.open(this.src)" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;border:1px solid #E2E8F0;background:#F1F5F9">`).join('')}
+        ${fotos.map((f,fi)=>`<img src="${f}" onclick="fmGaleria(window._fmTransfFotos,${fi})" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;border:1px solid #E2E8F0;background:#F1F5F9">`).join('')}
       </div>`:`<div style="font-size:12px;color:#94A3B8;margin-bottom:16px">Sin fotos adjuntas por quien entrega.</div>`}
 
       ${t.comentarioEntrega?`<div style="background:#EFF6FF;border-radius:10px;padding:10px 12px;margin-bottom:16px;font-size:12px;color:#1E40AF"><strong>Comentario de entrega:</strong> ${t.comentarioEntrega}</div>`:''}
