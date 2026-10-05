@@ -66,7 +66,29 @@ const FLOTILLA_ADMINS=[
 // a Servicio y cuando se cierra (ver flSyncVehiculoServicio).
 // Todos los conteos (sidebar, KPIs, Resumen) leen de aquí.
 // ══════════════════════════════════════════════════════════════
-const flEnTaller=v=>v&&v.status==='taller';
+// Oct-2026: el estado "en taller" lo calcula Supabase (flotilla_vehiculo_estado)
+// a partir de las solicitudes; si aún no hay dato para ese ECO se usa el status viejo.
+const flEnTaller=v=>{
+  if(!v)return false;
+  const e=(window.flSbVehEstado||{})[String(v.eco)];
+  if(e)return e.estado==='en_taller';
+  return v.status==='taller';
+};
+
+// Las solicitudes de Flotilla viven en Supabase: el módulo de Firestore se
+// envuelve con el adaptador de flotilla-supabase.js (todo lo demás sigue igual).
+async function flImportFs(){
+  const m=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+  return window.tcFlSbShim?window.tcFlSbShim(m,{SOLS:'flotilla_solicitudes'}):m;
+}
+
+// Cristina Acosta: edita absolutamente todo en Flotilla.
+const FL_SUPER_ADMINS=['c.acosta@tecnocontrol.com.mx'];
+// Proveedores, facturas y costos por solicitud: solo ella.
+const FL_EDITORES_COSTOS=['c.acosta@tecnocontrol.com.mx'];
+const flEmailActual=()=>(window.auth?.currentUser?.email||'').toLowerCase();
+const flEsSuper=()=>FL_SUPER_ADMINS.includes(flEmailActual());
+const flPuedeEditarCostos=()=>FL_EDITORES_COSTOS.includes(flEmailActual());
 const flContarTaller=(arr)=>((arr||(typeof flV!=='undefined'?flV:[]))).filter(flEnTaller).length;
 
 const CAT=[
@@ -424,8 +446,8 @@ function flSolsDeVehiculo(v){
 // v3: ya no hay lista de correos aquí. El rol de administrador viene de
 // window.flEsAdmin(), que a su vez lee el campo `rolFlotilla` guardado en
 // la colección `usuarios` de Firestore (ver flotilla-reglas.js v3).
-const hAdm=()=>window.flEsAdmin?window.flEsAdmin():false;
-const hP=a=>window.flTienePermiso?window.flTienePermiso(a):hAdm();
+const hAdm=()=>flEsSuper()||(window.flEsAdmin?window.flEsAdmin():false);
+const hP=a=>flEsSuper()||(window.flTienePermiso?window.flTienePermiso(a):hAdm());
 const SVG_CAM=`<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13" rx="1"/><path d="M16 8h4l3 5v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>`;
 const SVG_CMT=`<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17H3a2 2 0 01-2-2V5a2 2 0 012-2h11a2 2 0 012 2v3"/><rect x="9" y="11" width="14" height="10" rx="1"/><circle cx="12" cy="21" r="1"/><circle cx="20" cy="21" r="1"/></svg>`;
 const SVG_AUTO=`<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17H3a2 2 0 01-2-2V9a2 2 0 012-2h11a2 2 0 012 2v6h-2"/><path d="M7 9l2-4h6l2 4"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>`;
@@ -829,8 +851,8 @@ function buildHTML(){
       <button class="fl-tab-btn" id="fl-tb-comis" onclick="flVista('comis')" title="Utilitarios">${I.truck}</button>
     </div>
     <div style="position:relative">
-      <button class="fl-tab-btn" id="fl-tb-compar" onclick="flVista('compar')" title="Comparativa semanal">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      <button class="fl-tab-btn" id="fl-tb-reportes" onclick="flAbrirReportes()" title="Reportes de servicio (día, semana, mes · taller interno / externo)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>
       </button>
     </div>
     <div style="position:relative">
@@ -901,6 +923,7 @@ function buildHTML(){
           <button class="fl-sb-tipo"    id="fl-sbt-maq"    onclick="flSbTipo('maq')">Maquinaria</button>
           <button class="fl-sb-tipo"    id="fl-sbt-taller" onclick="flSbTipo('taller')" style="border-color:#F59E0B;color:#B45309">Taller</button>
         </div>
+        <button onclick="flExcelVehiculos()" title="Descargar la lista de vehículos en Excel" style="width:100%;margin-top:6px;padding:6px 8px;border:1.5px solid #BBF7D0;background:#F0FDF4;color:#15803D;border-radius:8px;font-family:inherit;font-size:11px;font-weight:800;cursor:pointer">Excel de vehículos</button>
       </div>
       <div class="fl-sb-list" id="fl-sb-list"></div>
       <div class="fl-sb-footer" id="fl-sb-footer"></div>
@@ -959,7 +982,7 @@ window.cargarFlotilla=async function(){
   if(!db){console.error('[FLOTILLA] window.db no disponible después de 5s');return;}
   // Actualizar header con el usuario real tan pronto como esté disponible
   actualizarHeaderUsuario();
-  fs=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+  fs=await flImportFs();
   if(!window._flErrHandlersInstalados){
     window._flErrHandlersInstalados=true;
     window.addEventListener('error',(e)=>{
@@ -1345,8 +1368,8 @@ function renderSB(){
   lista.innerHTML=filtrado.map(v=>{
     const enTallerSol=flEnTaller(v);
     const usuarioApp=(window._flUsuariosMap||{})[String(v.eco)];
-    const dot=v.status==='taller'||enTallerSol?'#F59E0B':v.status==='comision'?'#8B5CF6':v.asignadoSinCambios?'#2563EB':usuarioApp?'#EF4444':'#22C55E';
-    const bgTaller=(v.status==='taller'||enTallerSol)?'background:rgba(245,158,11,.08);border-left:3px solid #F59E0B;'
+    const dot=enTallerSol?'#F59E0B':v.status==='comision'?'#8B5CF6':v.asignadoSinCambios?'#2563EB':usuarioApp?'#EF4444':'#22C55E';
+    const bgTaller=enTallerSol?'background:rgba(245,158,11,.08);border-left:3px solid #F59E0B;'
       :v.asignadoSinCambios?'background:rgba(37,99,235,.08);border-left:3px solid #2563EB;':'';
     const comAct=v.status==='comision'?flCom.find(c=>c.estatus==='En préstamo'&&(c.vehiculoId===v.id||String(c.vehiculoEco)===String(v.eco))):null;
     const bloqueado=!!comAct||!!usuarioApp;
@@ -1357,7 +1380,7 @@ function renderSB(){
       :enTallerSol?`<div class="fl-sb-bloq-info"><span style="color:#B45309;font-size:9px;font-weight:800">EN TALLER</span></div>`:'';
     return`<div class="fl-sb-item${bloqueado?' fl-sb-bloq':''}" id="fl-sbi-${v.id}" onclick="flSbSel('${v.id}')" style="${bgTaller}" ${tip?`title="${tip.replace(/"/g,'&quot;')}"`:''}>
       <div class="fl-sb-eco">${v.eco}</div>
-      <div class="fl-sb-name">${v.unidad||'—'}</div>
+      <div class="fl-sb-name">${v.unidad||'—'}${(window.flSbVehExtra||{})[String(v.eco)]?.caseta_qr?' <span title="Caseta con QR" style="font-size:8.5px;font-weight:900;color:#0369A1;background:#E0F2FE;border-radius:4px;padding:0 4px">QR</span>':''}</div>
       ${etiquetaExtra}
       <div class="fl-sb-dot" style="background:${dot}"></div>
     </div>`;
@@ -1711,7 +1734,20 @@ function rAdmTabSols(){
     const grupo={'Evaluación':['Evaluación','Validación','Validada','Cotización','Aprobación','Aprobada'],'Servicio':['Servicio','Pagos','Cierre']}[solFiltro];
     lista=lista.filter(s=>grupo?grupo.includes(s.estatus):s.estatus===solFiltro);
   }
-  if(solQ){const q=solQ.toLowerCase();lista=lista.filter(s=>(s.vehiculoEco+s.solicitante+s.tipoSol+s.id+'').toLowerCase().includes(q));}
+  if(solQ){const q=solQ.toLowerCase();lista=lista.filter(s=>(s.vehiculoEco+s.solicitante+s.creadoPor+s.tipoSol+s.tipo+s.folio+s.id+'').toLowerCase().includes(q));}
+  // Filtros por fecha, vehículo, solicitante, tipo y taller
+  const F=window._admSolF||{};
+  if(F.desde)lista=lista.filter(s=>String(s.creadoEn||'').slice(0,10)>=F.desde);
+  if(F.hasta)lista=lista.filter(s=>String(s.creadoEn||'').slice(0,10)<=F.hasta);
+  if(F.eco)lista=lista.filter(s=>String(s.vehiculoEco)===F.eco);
+  if(F.sol)lista=lista.filter(s=>(s.creadoPor||s.solicitante)===F.sol);
+  if(F.tipo)lista=lista.filter(s=>(s.tipo||s.tipoSol)===F.tipo);
+  if(F.taller==='interno')lista=lista.filter(s=>s.tallerInterno);
+  else if(F.taller==='externo')lista=lista.filter(s=>s.tallerExterno);
+  else if(F.taller==='sin')lista=lista.filter(s=>!s.tallerInterno&&!s.tallerExterno);
+  const ecosF=[...new Set(flS.map(s=>String(s.vehiculoEco||'')).filter(Boolean))].sort((a,b)=>Number(a)-Number(b));
+  const solsF=[...new Set(flS.map(s=>s.creadoPor||s.solicitante).filter(Boolean))].sort();
+  const tiposF=[...new Set(flS.map(s=>s.tipo||s.tipoSol).filter(Boolean))].sort();
   const filtros=['Solicitud','Evaluación','Servicio','Rechazada','Cerrada'];
   const viejas=flS.filter(s=>s.evidencias!==undefined).length;
   return`
@@ -1728,22 +1764,30 @@ function rAdmTabSols(){
       <button class="fb gho sm" onclick="admSolLimpiar()">&#x2715; Limpiar</button>
       <span style="font-size:11px;color:#94A3B8;margin-left:auto">${lista.length} solicitudes</span>
     </div>
+    <div style="display:flex;gap:8px;margin:-6px 0 14px;flex-wrap:wrap;align-items:center">
+      <label style="font-size:11px;color:#64748B">Desde <input type="date" id="adms-desde" value="${F.desde||''}" onchange="admSolFiltrar()" class="fl-adm-fsel"></label>
+      <label style="font-size:11px;color:#64748B">Hasta <input type="date" id="adms-hasta" value="${F.hasta||''}" onchange="admSolFiltrar()" class="fl-adm-fsel"></label>
+      <select id="adms-eco" onchange="admSolFiltrar()" class="fl-adm-fsel"><option value="">Todos los vehículos</option>${ecosF.map(e=>`<option value="${e}" ${F.eco===e?'selected':''}>ECO ${e}</option>`).join('')}</select>
+      <select id="adms-sol" onchange="admSolFiltrar()" class="fl-adm-fsel"><option value="">Todos los solicitantes</option>${solsF.map(e=>`<option value="${e}" ${F.sol===e?'selected':''}>${flNombrePorCorreo(e)||e}</option>`).join('')}</select>
+      <select id="adms-tipo" onchange="admSolFiltrar()" class="fl-adm-fsel"><option value="">Todos los tipos</option>${tiposF.map(e=>`<option ${F.tipo===e?'selected':''}>${e}</option>`).join('')}</select>
+      <select id="adms-taller" onchange="admSolFiltrar()" class="fl-adm-fsel"><option value="">Cualquier taller</option><option value="interno" ${F.taller==='interno'?'selected':''}>Taller interno</option><option value="externo" ${F.taller==='externo'?'selected':''}>Taller externo</option><option value="sin" ${F.taller==='sin'?'selected':''}>Sin definir</option></select>
+    </div>
     <div class="fl-tw" style="overflow:auto;max-height:calc(100vh - 420px)">
       <table class="fl-adm-table">
-        <thead><tr><th>ID</th><th>Fecha</th><th>ECO</th><th>Tipo</th><th>Solicitante</th><th>Estatus</th><th>KM</th><th style="text-align:center">Acciones</th></tr></thead>
+        <thead><tr><th>Folio</th><th>Fecha</th><th>ECO</th><th>Tipo</th><th>Solicitante</th><th>Estatus</th><th>Taller</th><th style="text-align:center">Acciones</th></tr></thead>
         <tbody>
           ${lista.length?lista.map(s=>{
             const normEst2={'Validación':'Evaluación','Validada':'Evaluación','Cotización':'Evaluación','Aprobación':'Evaluación','Aprobada':'Evaluación','Pagos':'Servicio','Cierre':'Servicio'};
             const statCls={Solicitud:'fl-adm-stat-taller',Evaluación:'fl-adm-stat-activo',Servicio:'fl-adm-stat-comision',Rechazada:'fl-adm-stat-baja',Cerrada:'fl-adm-stat-baja'}[normEst2[s.estatus]||s.estatus]||'fl-adm-stat-activo';
             const fecha=s.creadoEn?s.creadoEn.slice(0,10):'—';
             return`<tr>
-              <td style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#64748B">${(s.id||'').slice(-6)}</td>
+              <td style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#64748B">${s.folio||(s.id||'').slice(-6)}</td>
               <td style="font-size:11px">${fecha}</td>
               <td style="font-weight:700;font-family:'JetBrains Mono',monospace">${s.vehiculoEco||'—'}</td>
               <td style="font-size:11px">${s.tipoSol||s.tipo||'—'}</td>
               <td style="font-size:11px">${flNombrePorCorreo(s.solicitante||s.creadoPor)||'—'}</td>
               <td><span class="fl-adm-badge ${statCls}">${s.estatus||'—'}</span></td>
-              <td style="font-size:11px">${s.km||'—'}</td>
+              <td style="font-size:11px">${flTallerTxt(s)}</td>
               <td style="text-align:center">
                 <div style="display:flex;gap:4px;justify-content:center">
                   <button class="fb gho sm" onclick="flVerSol('${s.id}')" title="Ver detalle">${I.eye||'Ver'}</button>
@@ -2372,11 +2416,13 @@ window.admExportar=function(){
 window.admSolFiltrar=function(){
   window._admSolFiltro=document.getElementById('adms-est')?.value||'';
   window._admSolQ=document.getElementById('adms-q')?.value||'';
+  const gv=id=>document.getElementById(id)?.value||'';
+  window._admSolF={desde:gv('adms-desde'),hasta:gv('adms-hasta'),eco:gv('adms-eco'),sol:gv('adms-sol'),tipo:gv('adms-tipo'),taller:gv('adms-taller')};
   const content=document.getElementById('adm-tab-content');
   if(content)content.innerHTML=rAdmTabSols();
 };
 window.admSolLimpiar=function(){
-  window._admSolFiltro='';window._admSolQ='';
+  window._admSolFiltro='';window._admSolQ='';window._admSolF={};
   const content=document.getElementById('adm-tab-content');
   if(content)content.innerHTML=rAdmTabSols();
 };
@@ -2385,7 +2431,7 @@ window.admSolLimpiar=function(){
 window.admElimSol=async function(id){
   if(!(await flConfirmar('¿Eliminar esta solicitud permanentemente? Esta acción no se puede deshacer.',{peligroso:true})))return;
   try{
-    if(!fs){const m=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');fs=m;}
+    if(!fs){fs=await flImportFs();}
     await fs.deleteDoc(fs.doc(db,C.SOLS,id));
     const idx=flS.findIndex(s=>s.id===id);
     if(idx>=0)flS.splice(idx,1);
@@ -2404,7 +2450,7 @@ window.admElimSol=async function(id){
 async function flDesvincularEcoApp(eco,nuevoResponsable){
   if(!eco)return;
   try{
-    if(!fs){const m=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');fs=m;}
+    if(!fs){fs=await flImportFs();}
     const ecoStr=String(eco);
     const ahora=new Date().toISOString();
     const porEmail=window.auth?.currentUser?.email||'';
@@ -2444,7 +2490,7 @@ async function flDesvincularEcoApp(eco,nuevoResponsable){
 // Se usa cuando el admin reasigna el responsable desde el portal.
 async function flCerrarUsoAbierto(eco,motivo,porEmail){
   try{
-    if(!fs){const m=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');fs=m;}
+    if(!fs){fs=await flImportFs();}
     const q=fs.query(fs.collection(db,C.USOS),fs.where('eco','==',String(eco)),fs.where('activo','==',true));
     const snap=await fs.getDocs(q);
     if(snap.empty)return;
@@ -2463,7 +2509,7 @@ async function flCerrarUsoAbierto(eco,motivo,porEmail){
 async function flSyncVehiculoServicio(eco,nuevoStatus,solicitudIdExcluir){
   if(!eco)return;
   try{
-    if(!fs){const m=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');fs=m;}
+    if(!fs){fs=await flImportFs();}
     const snap=await fs.getDocs(fs.query(fs.collection(db,C.VEHS),fs.where('eco','==',String(eco))));
     if(snap.empty)return;
     const d=snap.docs[0];
@@ -2493,7 +2539,7 @@ async function flSyncVehiculoServicio(eco,nuevoStatus,solicitudIdExcluir){
 // Uso: flReconciliarTaller()
 window.flReconciliarTaller=async function(){
   if(!window.flEsAdmin?.()){console.warn('[FL] flReconciliarTaller: requiere rol administrador.');if(typeof flToast==='function')flToast('Esta acción requiere rol de administrador.','err');return;}
-  if(!fs){const m=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');fs=m;}
+  if(!fs){fs=await flImportFs();}
   const ecosConServicio=new Set(flS.filter(s=>['Servicio','Pagos','Cierre'].includes(s.estatus)).map(s=>String(s.vehiculoEco)));
   let aTaller=0,aActivo=0;
   for(const v of flV){
@@ -2710,7 +2756,7 @@ window.admReasignarEco=async function(){
   if(plaza)upd.plaza=plaza;
   Object.assign(v,upd);
   try{
-    if(!fs){const m=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');fs=m;}
+    if(!fs){fs=await flImportFs();}
     if(!v.id.startsWith('eco-')){
       await fs.updateDoc(fs.doc(db,C.VEHS,v.id),{...upd,actualizadoEn:new Date().toISOString()});
     } else {
@@ -4673,6 +4719,16 @@ window.flEditarVeh=function(id){
           </div>
         </div>
 
+        ${(()=>{const x=(window.flSbVehExtra||{})[String(v.eco)]||{};const st='width:100%;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;outline:none;box-sizing:border-box';const lb='font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px';
+        return `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:10px">
+          <div><label style="${lb}">No. de SIM del GPS</label><input id="ve-x-sim" value="${flEsc(x.gps_sim||'')}" style="${st}"></div>
+          <div><label style="${lb}">Teléfono del GPS</label><input id="ve-x-tel" value="${flEsc(x.gps_telefono||'')}" inputmode="tel" style="${st}"></div>
+          <div><label style="${lb}">Compañía</label><select id="ve-x-cia" style="${st};background:#fff">${['','Telcel','AT&T','Movistar','Bait','Otra'].map(c=>`<option value="${c}" ${(x.gps_compania||'')===c?'selected':''}>${c||'— Selecciona —'}</option>`).join('')}</select></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 2fr;gap:10px;margin-top:10px">
+          <div><label style="${lb}">Caseta de pago con QR</label><select id="ve-x-qr" style="${st};background:#fff"><option value="no" ${x.caseta_qr?'':'selected'}>No</option><option value="si" ${x.caseta_qr?'selected':''}>Sí</option></select></div>
+          <div><label style="${lb}">TAG / identificador de caseta</label><input id="ve-x-tag" value="${flEsc(x.caseta_tag||'')}" style="${st}"></div>
+        </div>`;})()}
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
           <div>
             <label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">Dashcam instalado</label>
@@ -4834,6 +4890,12 @@ window.flGuardarEditVeh=async function(id){
     if(!id.startsWith('eco-')){
       await fs.updateDoc(fs.doc(db,C.VEHS,id),data);
     }
+    // Casetas con QR y SIM del GPS → Supabase
+    if(ecoVeh&&window.tcFlSb?.guardarVehiculoExtra){
+      const gx=f=>document.getElementById('ve-x-'+f)?.value?.trim()||'';
+      try{await window.tcFlSb.guardarVehiculoExtra(ecoVeh,{caseta_qr:gx('qr')==='si',caseta_tag:gx('tag')||null,gps_sim:gx('sim')||null,gps_telefono:gx('tel')||null,gps_compania:gx('cia')||null,actualizado_por:flEmailActual()});}
+      catch(e){console.warn('[FL] datos extra vehículo',e);}
+    }
     // Actualizar objeto local
     const v=flV.find(x=>x.id===id);
     if(v) Object.assign(v,data);
@@ -4924,6 +4986,7 @@ window.flCompararEvidencias=async function(vehId){
 // VER SOLICITUD EXISTENTE
 window.flVerSol=async function(id){
   const s=flS.find(x=>x.id===id);if(!s)return;
+  window._flEvCache=[]; // el visor navega solo entre las evidencias de esta solicitud
   // Cargar archivos de subcolecciones en paralelo
   const [archEval, archServ] = await Promise.all([
     flCargarArchivosSubcol(id,'archivos_evaluacion'),
@@ -4937,7 +5000,7 @@ window.flVerSol=async function(id){
   const dan=s.danos||{};const hasDan=Object.values(dan).some(a=>a?.length>0);
   const ov=document.createElement('div');ov.className='fl-ov';ov.style.zIndex='3300';
   ov.innerHTML=`<div class="fl-modal" style="max-width:600px">
-    <div class="fl-mh"><h3>${I.doc} ${id.slice(0,8).toUpperCase()}</h3><button class="fl-mx" onclick="this.closest('.fl-ov').remove()">✕</button></div>
+    <div class="fl-mh"><h3>${I.doc} ${s.folio||id.slice(0,8).toUpperCase()}</h3><button class="fl-mx" onclick="this.closest('.fl-ov').remove()">✕</button></div>
     <div class="fl-mb">
       ${v?`<div style="background:#0A1628;color:#fff;border-radius:9px;padding:11px 14px;margin-bottom:12px;display:flex;align-items:center;gap:12px"><span style="display:flex;align-items:center">${hEmo(v.tipo).split('stroke="currentColor"').join('stroke="#fff"')}</span><div><div style="font-size:13px;font-weight:800">${v.unidad||'—'} ${v.año||''}</div><div style="font-size:10px;color:rgba(255,255,255,.4);font-family:'JetBrains Mono',monospace;margin-top:2px">ECO ${v.eco} · ${v.placas||'—'} · ${flNombrePorCorreo(v.responsable)||'—'}</div></div></div>`:''}
       <div style="display:grid;grid-template-columns:1fr 1fr;background:#F8FAFD;border-radius:9px;overflow:hidden;border:1px solid #E8EDF5;margin-bottom:10px">
@@ -5086,6 +5149,7 @@ window.flVerSol=async function(id){
           ${noItems.map(([k])=>`<div style="font-size:11px;font-weight:600;color:#991B1B;padding:2px 0">• ${getLabel(k)}</div>`).join('')}
         </div>`;
       })()}
+      ${flSolExtrasPortalHTML(s)}
       <div class="fl-sep"></div>
       <div style="display:flex;flex-wrap:wrap;gap:7px">
         ${pV&&s.estatus==='Solicitud'?`<button class="fb acc" onclick="this.closest('.fl-ov').remove();flModalEvaluacion('${s.id}')">${I.check} Evaluar →</button>`:''}
@@ -5113,6 +5177,7 @@ window.flVerSol=async function(id){
     </div>
   </div>`;
   document.body.appendChild(ov);ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+  flCargarProveedoresBox(s.id);
 };
 
 // ── COMISIONES ──
@@ -7050,7 +7115,7 @@ const PRESUPUESTO_ADMINS=[
   'glen@tecnocontrol.com.mx',
   'flotilla@tecnocontrol.com.mx',
 ];
-const puedeEditarPresupuesto=()=>PRESUPUESTO_ADMINS.includes((window.auth?.currentUser?.email||'').toLowerCase());
+const puedeEditarPresupuesto=()=>flEsSuper()||PRESUPUESTO_ADMINS.includes((window.auth?.currentUser?.email||'').toLowerCase());
 
 // Cache del presupuesto cargado desde Firestore
 let _presupuestoData=null;
@@ -8140,7 +8205,7 @@ window.flPipelineModal = function(estInicial) {
   };
 
   const eml = () => (window.auth?.currentUser?.email || '').toLowerCase();
-  const hPerm = a => typeof window.flTienePermiso === 'function' ? window.flTienePermiso(a) : hAdm();
+  const hPerm = a => flEsSuper() || (typeof window.flTienePermiso === 'function' ? window.flTienePermiso(a) : hAdm());
   const esFatima = () => eml() === 'flotilla@tecnocontrol.com.mx' || hAdm();
   const esContraloria = () => ['p.pinedo@tecnocontrol.com.mx','c.acosta@tecnocontrol.com.mx'].includes(eml());
   const esPagos = () => eml() === 'pagos@tecnocontrol.com.mx' || hAdm();
@@ -8588,6 +8653,14 @@ window.flModalEvaluacion = function(id) {
             <div><label style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8;display:block;margin-bottom:4px">Fecha entrega estimada</label>
               <input id="ev-fecha-salida" type="date" value="${s.fechaEntregaEstimada||''}" style="width:100%"></div>
           </div>
+          <!-- Tipo de taller (se puede marcar uno o los dos) -->
+          <div style="background:#F8FAFC;border:1.5px solid #E2E8F0;border-radius:10px;padding:10px 12px">
+            <div style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8;margin-bottom:8px">Tipo de taller <span style="color:#DC2626">*</span></div>
+            <div style="display:flex;gap:18px;flex-wrap:wrap">
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;cursor:pointer"><input type="checkbox" id="ev-taller-int" ${s.tallerInterno?'checked':''} style="width:18px;height:18px;accent-color:#1D4ED8"> Taller interno</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;cursor:pointer"><input type="checkbox" id="ev-taller-ext" ${s.tallerExterno?'checked':''} style="width:18px;height:18px;accent-color:#B45309"> Taller externo</label>
+            </div>
+          </div>
           <!-- Documentos: cotizaciones, fotos, PDFs -->
           <div>
             <div style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8;margin-bottom:6px">📎 Documentos (cotizaciones, órdenes, evidencias)</div>
@@ -8624,12 +8697,17 @@ window.flGuardarEvaluacion = async function(id) {
   const err=document.getElementById('eval-err');
   const taller=document.getElementById('ev-taller')?.value?.trim();
   const monto=document.getElementById('ev-monto')?.value;
+  const tInt=!!document.getElementById('ev-taller-int')?.checked;
+  const tExt=!!document.getElementById('ev-taller-ext')?.checked;
   if(!taller){err.textContent='El taller es obligatorio.';err.style.display='block';return;}
+  if(!tInt&&!tExt){err.textContent='Marca si es taller interno, externo o ambos.';err.style.display='block';return;}
   btn.textContent='Guardando…';btn.disabled=true;err.style.display='none';
   try{
     await fs.updateDoc(fs.doc(db,C.SOLS,id),{
       estatus:'Evaluación',
       tallerNombre:taller,
+      tallerInterno:tInt,
+      tallerExterno:tExt,
       montoCotizacion:monto?Number(monto):null,
       fechaIngresoTaller:document.getElementById('ev-fecha-ingreso')?.value||null,
       fechaEntregaEstimada:document.getElementById('ev-fecha-salida')?.value||null,
@@ -9309,8 +9387,8 @@ function rFlCalendario() {
 }
 
 // ── GENERAR PDF de solicitud ──
-window.flGenerarPDF=function(id){
-  const s=flS.find(x=>x.id===id);if(!s){return;}
+function flPDFSolHTML(id,extra){
+  const s=flS.find(x=>x.id===id);if(!s){return '';}
   const v=flV.find(x=>x.eco===s.vehiculoEco||x.id===s.vehiculoId);
   const chkF=s.chkFotos||{};
   const chkFEntries=Object.entries(chkF).filter(([k,v])=>v);
@@ -9335,10 +9413,9 @@ window.flGenerarPDF=function(id){
   if(!chkFullHTML){const allSi=Object.values(chkResp).filter(v=>v==='si').length;chkFullHTML=allSi>0?`<div style="padding:10px 14px;background:#F0FDF4;border-radius:8px;border:1px solid #BBF7D0;font-size:11.5px;font-weight:700;color:#15803D">Todos los ${allSi} puntos revisados en buen estado</div>`:'<div style="font-size:11px;color:#94A3B8;padding:8px">Sin checklist registrado</div>';}
   const chkPhotosHTML=chkFEntries.length?chkFEntries.map(([k,src])=>`<div style="display:inline-block;margin:4px;text-align:center;vertical-align:top"><img src="${src}" style="width:90px;height:68px;object-fit:cover;border-radius:5px;border:1px solid #BFDBFE;display:block"><div style="font-size:7.5px;color:#1D4ED8;margin-top:2px;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${getLabel(k)}</div></div>`).join(''):'';
   const fecha=s.creadoEn?s.creadoEn.substring(0,10):'—';
-  const html=`<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Solicitud ${id.slice(0,8).toUpperCase()} — Tecnocontrol</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui,Arial,sans-serif;font-size:11px;color:#0A0F1E;background:#fff;padding:28px 32px}.logo{font-size:20px;font-weight:900;letter-spacing:-1px}.logo em{color:#2563EB;font-style:normal}.hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #0A1628;padding-bottom:14px;margin-bottom:18px}.veh-bar{background:#0A1628;color:#fff;border-radius:9px;padding:11px 16px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px}.field{background:#F8FAFD;border-radius:7px;padding:8px 11px;border:1px solid #E8EDF5}.field label{font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:2px}.field span{font-size:12px;font-weight:700;line-height:1.4}.sec{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:#64748B;margin:16px 0 8px;padding-top:12px;border-top:1px solid #E8EDF5}.gas-box{display:flex;align-items:center;gap:16px;background:#F8FAFD;border-radius:9px;padding:12px 16px;border:1px solid #E8EDF5;margin-bottom:12px}.footer{margin-top:24px;padding-top:10px;border-top:1px solid #E8EDF5;font-size:9px;color:#94A3B8;text-align:center}@media print{body{padding:14px 16px;font-size:10.5px}button{display:none!important}}</style></head><body><div class="hdr"><div><div class="logo">TECNO<em>CONTROL</em></div><div style="font-size:10.5px;color:#64748B;margin-top:3px">Reporte de solicitud vehicular</div></div><div style="text-align:right"><div style="font-size:18px;font-weight:900;font-family:monospace;letter-spacing:1px">${id.slice(0,8).toUpperCase()}</div><div style="margin-top:5px"><span style="padding:3px 12px;border-radius:20px;font-size:10px;font-weight:800;background:#0A1628;color:#fff">${s.estatus||'Solicitud'}</span></div><div style="font-size:10px;color:#64748B;margin-top:4px">${fecha}</div></div></div>${v?`<div class="veh-bar"><div><div style="font-size:14px;font-weight:800">${v.unidad||'—'} ${v.año||''}</div><div style="font-size:10px;color:rgba(255,255,255,.5);margin-top:2px;font-family:monospace">ECO ${v.eco} · ${v.placas||'—'} · ${flNombrePorCorreo(v.responsable)||'—'}</div></div></div>`:''}<div class="grid3"><div class="field"><label>Tipo</label><span>${s.tipo||'—'}</span></div><div class="field"><label>Prioridad</label><span>${s.prioridad||'Normal'}</span></div><div class="field"><label>KM</label><span>${s.kilometrajeReportado||'—'}</span></div></div><div class="grid2"><div class="field"><label>Solicitante</label><span>${flNombrePorCorreo(s.solicitante)||'—'}</span></div><div class="field"><label>Taller</label><span>${s.tallerNombre||s.taller||'Sin especificar'}</span></div></div><div class="field" style="margin-bottom:12px"><label>Descripción</label><span style="font-size:12px;font-weight:500;line-height:1.6">${s.descripcion||'—'}</span></div><div class="gas-box"><div>${gasSVG}</div><div><div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:4px">Nivel de combustible</div><div style="font-size:28px;font-weight:900;color:${gasColor};line-height:1">${gasPct}%</div></div></div>${s.comentarioRechazo?`<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:7px;padding:10px 12px;margin-bottom:10px"><div style="font-size:8.5px;font-weight:800;text-transform:uppercase;color:#B91C1C;margin-bottom:4px">Motivo de rechazo</div><div style="font-size:12px;color:#991B1B">${s.comentarioRechazo}</div></div>`:''}<div class="sec">Evidencias fotográficas (${evGen.length})</div><div style="margin-bottom:12px">${evThumbsHTML}</div><div class="sec">Checklist de revisión</div>${chkFullHTML}${chkPhotosHTML?`<div class="sec">Galería de fotos del checklist (${chkFEntries.length})</div><div style="margin-bottom:12px">${chkPhotosHTML}</div>`:''}<div class="footer">Generado por Portal Flotilla Tecnocontrol · ${new Date().toLocaleString('es-MX')} · ID: ${id}</div><div style="margin-top:16px;display:flex;gap:10px;justify-content:flex-end"><button onclick="window.print()" style="padding:11px 28px;background:#0A1628;color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer">Imprimir / Guardar PDF</button></div></body></html>`;
-  const win=window.open('','_blank','width=860,height=960');
-  if(win){win.document.write(html);win.document.close();}
-};
+  const html=`<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Solicitud ${s.folio||id.slice(0,8).toUpperCase()} — Tecnocontrol</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui,Arial,sans-serif;font-size:11px;color:#0A0F1E;background:#fff;padding:28px 32px}.logo{font-size:20px;font-weight:900;letter-spacing:-1px}.logo em{color:#2563EB;font-style:normal}.hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #0A1628;padding-bottom:14px;margin-bottom:18px}.veh-bar{background:#0A1628;color:#fff;border-radius:9px;padding:11px 16px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px}.field{background:#F8FAFD;border-radius:7px;padding:8px 11px;border:1px solid #E8EDF5}.field label{font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:2px}.field span{font-size:12px;font-weight:700;line-height:1.4}.sec{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:#64748B;margin:16px 0 8px;padding-top:12px;border-top:1px solid #E8EDF5}.gas-box{display:flex;align-items:center;gap:16px;background:#F8FAFD;border-radius:9px;padding:12px 16px;border:1px solid #E8EDF5;margin-bottom:12px}.footer{margin-top:24px;padding-top:10px;border-top:1px solid #E8EDF5;font-size:9px;color:#94A3B8;text-align:center}@media print{body{padding:14px 16px;font-size:10.5px}button{display:none!important}}</style></head><body><div class="hdr"><div><div class="logo">TECNO<em>CONTROL</em></div><div style="font-size:10.5px;color:#64748B;margin-top:3px">Reporte de solicitud vehicular</div></div><div style="text-align:right"><div style="font-size:18px;font-weight:900;font-family:monospace;letter-spacing:1px">${s.folio||id.slice(0,8).toUpperCase()}</div><div style="margin-top:5px"><span style="padding:3px 12px;border-radius:20px;font-size:10px;font-weight:800;background:#0A1628;color:#fff">${s.estatus||'Solicitud'}</span></div><div style="font-size:10px;color:#64748B;margin-top:4px">${fecha}</div></div></div>${v?`<div class="veh-bar"><div><div style="font-size:14px;font-weight:800">${v.unidad||'—'} ${v.año||''}</div><div style="font-size:10px;color:rgba(255,255,255,.5);margin-top:2px;font-family:monospace">ECO ${v.eco} · ${v.placas||'—'} · ${flNombrePorCorreo(v.responsable)||'—'}</div></div></div>`:''}<div class="grid3"><div class="field"><label>Tipo</label><span>${s.tipo||'—'}</span></div><div class="field"><label>Prioridad</label><span>${s.prioridad||'Normal'}</span></div><div class="field"><label>KM</label><span>${s.kilometrajeReportado||'—'}</span></div></div><div class="grid2"><div class="field"><label>Solicitante</label><span>${flNombrePorCorreo(s.solicitante)||'—'}</span></div><div class="field"><label>Taller</label><span>${s.tallerNombre||s.taller||'Sin especificar'}</span></div></div><div class="field" style="margin-bottom:12px"><label>Descripción</label><span style="font-size:12px;font-weight:500;line-height:1.6">${s.descripcion||'—'}</span></div><div class="gas-box"><div>${gasSVG}</div><div><div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:4px">Nivel de combustible</div><div style="font-size:28px;font-weight:900;color:${gasColor};line-height:1">${gasPct}%</div></div></div>${s.comentarioRechazo?`<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:7px;padding:10px 12px;margin-bottom:10px"><div style="font-size:8.5px;font-weight:800;text-transform:uppercase;color:#B91C1C;margin-bottom:4px">Motivo de rechazo</div><div style="font-size:12px;color:#991B1B">${s.comentarioRechazo}</div></div>`:''}<div class="sec">Evidencias fotográficas (${evGen.length})</div><div style="margin-bottom:12px">${evThumbsHTML}</div><div class="sec">Checklist de revisión</div>${chkFullHTML}${chkPhotosHTML?`<div class="sec">Galería de fotos del checklist (${chkFEntries.length})</div><div style="margin-bottom:12px">${chkPhotosHTML}</div>`:''}<div class="footer">Generado por Portal Flotilla Tecnocontrol · ${new Date().toLocaleString('es-MX')} · ID: ${id}</div><div style="margin-top:16px;display:flex;gap:10px;justify-content:flex-end"><button onclick="window.print()" style="padding:11px 28px;background:#0A1628;color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer">Imprimir / Guardar PDF</button></div></body></html>`;
+  return html.replace('<div class="footer">',(extra||'')+'<div class="footer">');
+}
 
 // ── COMPARTIR POR WHATSAPP ──
 window.flCompartirWA=function(id){
@@ -9348,7 +9425,7 @@ window.flCompartirWA=function(id){
   const getLabel=k=>{for(const items of Object.values(CHK_CATS)){const f=items.find(it=>it.toLowerCase().replace(/[^a-z0-9]/g,'')===k.toLowerCase().replace(/[^a-z0-9]/g,''));if(f)return f;}return k;};
   const txt=[
     `*TECNOCONTROL — Solicitud Vehicular*`,
-    `ID: ${id.slice(0,8).toUpperCase()} | ${s.estatus||'Solicitud'}`,
+    `Folio: ${s.folio||id.slice(0,8).toUpperCase()} | ${s.estatus||'Solicitud'} | Taller ${flTallerTxt(s)}`,
     `Fecha: ${s.creadoEn?s.creadoEn.substring(0,10):'—'}`,
     ``,
     `*Vehículo:* ${v?v.unidad+' '+v.año:'—'} (ECO ${s.vehiculoEco||'—'})`,
@@ -9418,7 +9495,7 @@ function hTareaBadge(est){
 
 // Modal principal — lista de tareas de una solicitud
 window.flModalTareas=async function(solId){
-  if(!fs){const m=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');fs=m;}
+  if(!fs){fs=await flImportFs();}
   const s=flS.find(x=>x.id===solId);
   if(!s)return;
   const v=flV.find(x=>x.eco===s.vehiculoEco||x.id===s.vehiculoId);
@@ -9540,7 +9617,7 @@ window.flNuevaTarea=async function(solId){
 
 // Guardar nueva tarea en Firestore + notificar al técnico
 window.flGuardarTarea=async function(solId,btn){
-  if(!fs){const m=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');fs=m;}
+  if(!fs){fs=await flImportFs();}
   const titulo=document.getElementById('nt-titulo')?.value?.trim();
   const desc=document.getElementById('nt-desc')?.value?.trim();
   const prior=document.getElementById('nt-prior')?.value||'Normal';
@@ -9593,7 +9670,7 @@ window.flGuardarTarea=async function(solId,btn){
 
 // Modal — ver detalle y editar tarea (comentarios, evidencias, fecha compromiso)
 window.flTareaDetalle=async function(tareaId,solId){
-  if(!fs){const m=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');fs=m;}
+  if(!fs){fs=await flImportFs();}
   let t;
   try{const snap=await fs.getDoc(fs.doc(db,C.TAREAS,tareaId));t={id:snap.id,...snap.data()};}
   catch(e){flToast('Error al cargar tarea','err');return;}
@@ -9797,7 +9874,7 @@ let _flTareasFiltro = {          // filtros activos
 };
 
 async function _flCargarTareasAll() {
-  if(!fs){const m=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');fs=m;}
+  if(!fs){fs=await flImportFs();}
   try {
     const snap = await fs.getDocs(fs.collection(db, C.TAREAS));
     _flTareasAll = snap.docs.map(d=>({id:d.id,...d.data()}))
@@ -10063,6 +10140,394 @@ window.flRevisarDuplicados=async function(){
 };
 // Compatibilidad: el nombre viejo ahora solo abre la revisión, ya no borra solo.
 window.flLimpiarDuplicados=window.flRevisarDuplicados;
+
+
+// ════════════════════════════════════════════════════════════════════
+// OCT-2026 — SERVICIO, PROVEEDORES, REPORTES Y EXCEL (Supabase)
+// ════════════════════════════════════════════════════════════════════
+const flEsc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const flMoneda=n=>(Number(n)||0).toLocaleString('es-MX',{style:'currency',currency:'MXN',minimumFractionDigits:2});
+const flTamTxt=b=>{b=Number(b)||0;if(b>=1073741824)return(b/1073741824).toFixed(2)+' GB';if(b>=1048576)return(b/1048576).toFixed(1)+' MB';return Math.max(1,Math.round(b/1024))+' KB';};
+const flTallerTxt=s=>[s.tallerInterno?'Interno':'',s.tallerExterno?'Externo':''].filter(Boolean).join(' + ')||'—';
+
+// ── Visor de evidencias a pantalla completa: cerrar, anterior/siguiente, datos abajo ──
+window.flGaleria=function(lista,idx){
+  const items=(lista||[]).filter(x=>x&&(typeof x==='string'||x.src||x.video));
+  if(!items.length)return;
+  let i=Math.max(0,Math.min(items.length-1,idx||0));
+  document.getElementById('fl-gal')?.remove();
+  const ov=document.createElement('div');ov.id='fl-gal';
+  ov.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.94);display:flex;flex-direction:column;font-family:inherit';
+  const bt='background:rgba(255,255,255,.14);border:none;color:#fff;border-radius:10px;font-family:inherit;font-weight:800;cursor:pointer';
+  ov.innerHTML=`<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px">
+      <div id="fl-gal-cnt" style="color:#fff;font-size:13px;font-weight:800"></div>
+      <button id="fl-gal-x" style="${bt};padding:8px 16px;font-size:13px">Cerrar ✕</button></div>
+    <div style="flex:1;min-height:0;display:flex;align-items:center;gap:10px;padding:0 12px">
+      <button id="fl-gal-prev" style="${bt};width:52px;height:52px;font-size:26px;flex-shrink:0">‹</button>
+      <div id="fl-gal-stage" style="flex:1;height:100%;display:flex;align-items:center;justify-content:center;min-width:0"></div>
+      <button id="fl-gal-next" style="${bt};width:52px;height:52px;font-size:26px;flex-shrink:0">›</button></div>
+    <div id="fl-gal-info" style="background:#0A1628;color:#E2E8F0;padding:10px 16px;max-height:24vh;overflow:auto;font-size:12px"></div>`;
+  document.body.appendChild(ov);
+  const st=ov.querySelector('#fl-gal-stage'),info=ov.querySelector('#fl-gal-info'),cnt=ov.querySelector('#fl-gal-cnt');
+  const bP=ov.querySelector('#fl-gal-prev'),bN=ov.querySelector('#fl-gal-next');
+  function pintar(){
+    const it=items[i];const src=typeof it==='string'?it:it.src;const m=(typeof it==='object'&&it.meta)||{};
+    st.querySelectorAll('video').forEach(v=>{try{v.pause();}catch(e){}});
+    st.innerHTML=it.video?`<video src="${it.video}" controls style="max-width:100%;max-height:100%"></video>`:`<img src="${src}" style="max-width:100%;max-height:100%;object-fit:contain">`;
+    cnt.textContent=items.length>1?`${i+1} de ${items.length}`:'Evidencia';
+    bP.style.visibility=i>0?'visible':'hidden';bN.style.visibility=i<items.length-1?'visible':'hidden';
+    const nota=(typeof it==='object'&&(it.nota||m.nota))||'';
+    const datos=[['Código',m.codigo],['Fecha',m.fecha],['Hora',m.hora],['Vehículo',m.eco&&m.eco!=='—'?'ECO '+m.eco:''],['Usuario',m.usuario&&m.usuario!=='—'?m.usuario:''],['GPS',m.gps?`${m.gps.lat}, ${m.gps.lng}`:''],['Tamaño',it.tamano?flTamTxt(it.tamano):'']].filter(([,v])=>v);
+    info.style.display=(datos.length||nota)?'':'none';
+    info.innerHTML=(nota?`<div style="font-size:13px;color:#fff;margin-bottom:6px">${flEsc(nota)}</div>`:'')+
+      `<div style="display:flex;flex-wrap:wrap;gap:6px 18px">${datos.map(([l,v])=>`<span><b style="color:#64748B;font-size:10px;text-transform:uppercase">${l}</b> ${flEsc(v)}</span>`).join('')}
+      ${m.gps?`<a href="https://maps.google.com/?q=${m.gps.lat},${m.gps.lng}" target="_blank" style="color:#93C5FD">Ver en mapa</a>`:''}</div>`;
+  }
+  const ir=d=>{const n=i+d;if(n<0||n>=items.length)return;i=n;pintar();};
+  bP.onclick=()=>ir(-1);bN.onclick=()=>ir(1);
+  const key=e=>{if(e.key==='ArrowLeft')ir(-1);else if(e.key==='ArrowRight')ir(1);else if(e.key==='Escape')cerrar();};
+  function cerrar(){window.removeEventListener('keydown',key);st.querySelectorAll('video').forEach(v=>{try{v.pause();}catch(e){}});ov.remove();}
+  ov.querySelector('#fl-gal-x').onclick=cerrar;
+  ov.addEventListener('click',e=>{if(e.target===ov)cerrar();});
+  window.addEventListener('keydown',key);
+  pintar();
+};
+window.flVerEvIdx=function(idx){if((window._flEvCache||[])[idx])window.flGaleria(window._flEvCache,idx);};
+
+// ── Detalle de solicitud: taller, videos, evidencias del servicio, seguimiento, proveedores ──
+function flSolExtrasPortalHTML(s){
+  if(!window._flEvCache)window._flEvCache=[];
+  const puedeTaller=hP('validar')||flEsSuper();
+  let h=`<div style="background:#F8FAFD;border:1px solid #E8EDF5;border-radius:9px;padding:10px 12px;margin-bottom:10px">
+    <div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:6px">Taller</div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700"><input type="checkbox" ${s.tallerInterno?'checked':''} ${puedeTaller?'':'disabled'} onchange="flSetTaller('${s.id}','interno',this.checked)" style="width:16px;height:16px;accent-color:#1D4ED8"> Interno</label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700"><input type="checkbox" ${s.tallerExterno?'checked':''} ${puedeTaller?'':'disabled'} onchange="flSetTaller('${s.id}','externo',this.checked)" style="width:16px;height:16px;accent-color:#B45309"> Externo</label>
+      ${s.liberadoEn?`<span style="font-size:10.5px;font-weight:800;color:#15803D;background:#DCFCE7;padding:3px 9px;border-radius:8px">Vehículo liberado ${flEsc(String(s.liberadoEn).slice(0,10))} · ${flEsc(flNombrePorCorreo(s.liberadoPor)||s.liberadoPor)}</span>`:''}
+    </div></div>`;
+  const vids=s.videos||[];
+  if(vids.length){
+    const b=window._flEvCache.length;vids.forEach(v=>window._flEvCache.push({video:v.url,meta:v.meta||{},nota:v.nota,tamano:v.tamano}));
+    h+=`<div style="margin-bottom:10px"><div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;margin-bottom:6px">Videos (${vids.length})</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">${vids.map((v,i)=>`<button onclick="flVerEvIdx(${b+i})" style="width:84px;height:64px;border-radius:8px;border:1px solid #E2E8F0;background:#0A1628;color:#fff;cursor:pointer;font-family:inherit;font-size:10px">▶<br>${flTamTxt(v.tamano)}</button>`).join('')}</div></div>`;
+  }
+  const serv=s.evidenciasServicio||[];
+  if(serv.length){
+    const b=window._flEvCache.length;serv.forEach(e=>window._flEvCache.push(e.medio==='video'?{video:e.url,meta:e.meta||{},nota:e.nota,tamano:e.tamano}:{src:e.url,meta:e.meta||{},nota:e.nota}));
+    h+=`<div style="margin-bottom:10px"><div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#15803D;margin-bottom:6px">Evidencias del servicio realizado (${serv.length})</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">${serv.map((e,i)=>e.medio==='video'
+        ?`<button onclick="flVerEvIdx(${b+i})" style="width:84px;height:64px;border-radius:8px;border:1px solid #BBF7D0;background:#0A1628;color:#fff;cursor:pointer">▶</button>`
+        :`<img src="${e.url}" onclick="flVerEvIdx(${b+i})" title="${flEsc(e.nota||'')}" style="width:84px;height:64px;object-fit:cover;border-radius:8px;border:1px solid #BBF7D0;cursor:pointer">`).join('')}</div></div>`;
+  }
+  const seg=s.seguimiento||[];
+  if(seg.length){
+    const ETQ={evidencia_servicio:'Evidencia de servicio',comentario:'Comentario',cambio_estado:'Cambio de estado',liberacion:'Vehículo liberado',modificacion:'Modificación'};
+    h+=`<details style="margin-bottom:10px"><summary style="font-size:11px;font-weight:800;color:#1E3A5F;cursor:pointer">Seguimiento y modificaciones (${seg.length})</summary>
+      <div style="max-height:220px;overflow:auto;margin-top:6px">${seg.slice().reverse().map(x=>`<div style="border-left:3px solid ${x.tipo==='modificacion'?'#E2E8F0':'#BFDBFE'};padding:3px 0 6px 9px;margin-bottom:3px">
+        <div style="font-size:10.5px;font-weight:800;color:#1E3A5F">${ETQ[x.tipo]||x.tipo} <span style="font-weight:600;color:#94A3B8">· ${flEsc(String(x.creado_en||'').slice(0,16).replace('T',' '))} · ${flEsc(flNombrePorCorreo(x.autor)||x.autor_nombre||x.autor||'')}</span></div>
+        ${x.texto?`<div style="font-size:11.5px;color:#334155">${flEsc(x.texto)}</div>`:''}</div>`).join('')}</div></details>`;
+  }
+  h+=`<div id="fl-prov-box-${s.id}" style="margin-bottom:10px"><div style="font-size:11px;color:#94A3B8">Cargando proveedores…</div></div>`;
+  return h;
+}
+
+window.flSetTaller=async function(id,cual,valor){
+  const s=flS.find(x=>x.id===id);if(!s)return;
+  const upd=cual==='interno'?{tallerInterno:!!valor}:{tallerExterno:!!valor};
+  try{await fs.updateDoc(fs.doc(db,C.SOLS,id),{...upd,actualizadoEn:new Date().toISOString()});Object.assign(s,upd);flToast('Taller actualizado','ok');}
+  catch(e){flToast('Error: '+e.message,'err');}
+};
+
+// ── Proveedores con factura y costo (una solicitud puede tener varios) ──
+async function flCargarProveedoresBox(id){
+  const box=document.getElementById('fl-prov-box-'+id);if(!box)return;
+  let provs=[];
+  try{provs=await window.tcFlSb.listarProveedores(id);}catch(e){box.innerHTML='<div style="font-size:11px;color:#B91C1C">No se pudieron cargar los proveedores</div>';return;}
+  const s=flS.find(x=>x.id===id)||{};
+  const editar=flPuedeEditarCostos();
+  const total=provs.reduce((a,p)=>a+(Number(p.total)||0),0);
+  window._flProvCache=window._flProvCache||{};window._flProvCache[id]=provs;
+  box.innerHTML=`<div style="border:1.5px solid #E2E8F0;border-radius:10px;overflow:hidden">
+    <div style="display:flex;align-items:center;justify-content:space-between;background:#F8FAFD;padding:8px 12px">
+      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#64748B">Proveedores y facturación</div>
+      ${editar?`<button onclick="flEditarProveedor('${id}')" style="padding:5px 11px;background:#1E3A5F;color:#fff;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">+ Proveedor</button>`:''}
+    </div>
+    ${provs.length?`<table style="width:100%;border-collapse:collapse;font-size:11.5px">
+      <thead><tr style="background:#fff;color:#94A3B8;font-size:9px;text-transform:uppercase"><th style="text-align:left;padding:6px 10px">Proveedor</th><th style="text-align:left">Taller</th><th style="text-align:left">Factura</th><th style="text-align:right;padding-right:10px">Total</th>${editar?'<th></th>':''}</tr></thead>
+      <tbody>${provs.map(p=>`<tr style="border-top:1px solid #F1F5F9">
+        <td style="padding:6px 10px"><b>${flEsc(p.proveedor)}</b>${p.concepto?`<div style="font-size:10.5px;color:#64748B">${flEsc(p.concepto)}</div>`:''}</td>
+        <td>${p.taller==='interno'?'Interno':'Externo'}</td>
+        <td style="font-size:10.5px">${flEsc(p.factura_folio||'—')}${p.fecha_factura?`<div style="color:#94A3B8">${flEsc(p.fecha_factura)}</div>`:''}</td>
+        <td style="text-align:right;padding-right:10px;font-weight:800">${flMoneda(p.total)}</td>
+        ${editar?`<td style="white-space:nowrap;padding-right:6px"><button onclick="flEditarProveedor('${id}','${p.id}')" style="border:none;background:#EFF6FF;color:#1D4ED8;border-radius:6px;padding:3px 7px;cursor:pointer;font-size:10.5px">Editar</button>
+          <button onclick="flBorrarProveedor('${id}','${p.id}')" style="border:none;background:#FEE2E2;color:#B91C1C;border-radius:6px;padding:3px 7px;cursor:pointer;font-size:10.5px">✕</button></td>`:''}
+      </tr>`).join('')}</tbody></table>`:`<div style="padding:10px 12px;font-size:11.5px;color:#94A3B8">${editar?'Agrega uno o varios proveedores con su factura y costo.':'Sin proveedores registrados.'}</div>`}
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;background:#0A1628;color:#fff">
+      <span style="font-size:11px;font-weight:700">Costo total del servicio</span><span style="font-size:15px;font-weight:900">${flMoneda(total)}</span></div>
+    ${s.montoCotizacion?`<div style="padding:6px 12px;font-size:10.5px;color:#64748B;background:#F8FAFD">Cotizado: ${flMoneda(s.montoCotizacion)}${total&&s.montoCotizacion?` · Diferencia: ${flMoneda(total-s.montoCotizacion)}`:''}</div>`:''}
+  </div>`;
+}
+window.flEditarProveedor=function(solId,provId){
+  if(!flPuedeEditarCostos()){flToast('Solo Cristina Acosta puede editar proveedores y costos','err');return;}
+  const p=((window._flProvCache||{})[solId]||[]).find(x=>x.id===provId)||{};
+  const s=flS.find(x=>x.id===solId)||{};
+  const inp=(id,lbl,val,type='text',extra='')=>`<div><label style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8;display:block;margin-bottom:4px">${lbl}</label><input id="${id}" type="${type}" value="${flEsc(val??'')}" ${extra} style="width:100%;padding:8px 10px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12.5px;box-sizing:border-box"></div>`;
+  const ov=document.createElement('div');ov.className='fl-ov';ov.style.zIndex='3600';ov.id='fl-prov-ov';
+  ov.innerHTML=`<div class="fl-modal" style="max-width:520px">
+    <div class="fl-mh"><h3>${provId?'Editar':'Agregar'} proveedor · ${flEsc(s.folio||'')}</h3><button class="fl-mx" onclick="this.closest('.fl-ov').remove()">✕</button></div>
+    <div class="fl-mb" style="display:flex;flex-direction:column;gap:10px">
+      ${inp('pv-prov','Proveedor / taller *',p.proveedor||'')}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div><label style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8;display:block;margin-bottom:4px">Taller</label>
+          <select id="pv-taller" style="width:100%;padding:8px 10px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12.5px"><option value="externo" ${p.taller!=='interno'?'selected':''}>Externo</option><option value="interno" ${p.taller==='interno'?'selected':''}>Interno</option></select></div>
+        ${inp('pv-fecha','Fecha factura',p.fecha_factura||'','date')}
+      </div>
+      ${inp('pv-concepto','Concepto (qué se hizo)',p.concepto||'')}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${inp('pv-folio','Folio factura',p.factura_folio||'')}${inp('pv-uuid','UUID (CFDI)',p.factura_uuid||'')}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+        ${inp('pv-sub','Subtotal',p.subtotal??'','number','step="0.01" oninput="flProvCalc()"')}
+        ${inp('pv-iva','IVA',p.iva??'','number','step="0.01" oninput="flProvCalc(true)"')}
+        ${inp('pv-total','Total *',p.total??'','number','step="0.01"')}
+      </div>
+      ${inp('pv-notas','Notas',p.notas||'')}
+      <div style="display:flex;gap:8px;margin-top:4px"><button class="fb gho" onclick="this.closest('.fl-ov').remove()">Cancelar</button>
+        <button class="fb acc" style="flex:1" onclick="flGuardarProveedor('${solId}','${provId||''}')">Guardar</button></div>
+    </div></div>`;
+  document.body.appendChild(ov);
+};
+window.flProvCalc=function(desdeIva){
+  const sub=Number(document.getElementById('pv-sub')?.value)||0;
+  const iva=document.getElementById('pv-iva');const tot=document.getElementById('pv-total');
+  if(!desdeIva&&iva)iva.value=(sub*0.16).toFixed(2);
+  if(tot)tot.value=(sub+(Number(iva?.value)||0)).toFixed(2);
+};
+window.flGuardarProveedor=async function(solId,provId){
+  if(!flPuedeEditarCostos())return;
+  const g=id=>document.getElementById(id)?.value?.trim()||'';
+  const proveedor=g('pv-prov');const total=Number(g('pv-total'));
+  if(!proveedor){flToast('El proveedor es obligatorio','err');return;}
+  if(!(total>=0)||g('pv-total')===''){flToast('Captura el total','err');return;}
+  try{
+    await window.tcFlSb.guardarProveedor({id:provId||undefined,solicitud_id:solId,proveedor,taller:g('pv-taller')||'externo',concepto:g('pv-concepto')||null,
+      factura_folio:g('pv-folio')||null,factura_uuid:g('pv-uuid')||null,fecha_factura:g('pv-fecha')||null,
+      subtotal:Number(g('pv-sub'))||0,iva:Number(g('pv-iva'))||0,total,notas:g('pv-notas')||null,creado_por:flEmailActual()});
+    await window.tcFlSb.agregarSeguimiento({solicitud_id:solId,tipo:'modificacion',texto:`${provId?'Editó':'Agregó'} proveedor ${proveedor}: ${flMoneda(total)}`,autor:flEmailActual(),autor_nombre:window.auth?.currentUser?.displayName||flEmailActual(),datos:{}});
+    document.getElementById('fl-prov-ov')?.remove();
+    flToast('Proveedor guardado','ok');
+    flCargarProveedoresBox(solId);
+  }catch(e){flToast('Error: '+e.message,'err');}
+};
+window.flBorrarProveedor=async function(solId,provId){
+  if(!flPuedeEditarCostos())return;
+  if(!(await flConfirmar('¿Quitar este proveedor de la solicitud?',{peligroso:true})))return;
+  try{
+    const p=((window._flProvCache||{})[solId]||[]).find(x=>x.id===provId)||{};
+    await window.tcFlSb.borrarProveedor(provId);
+    await window.tcFlSb.agregarSeguimiento({solicitud_id:solId,tipo:'modificacion',texto:`Quitó proveedor ${p.proveedor||''} (${flMoneda(p.total)})`,autor:flEmailActual(),autor_nombre:window.auth?.currentUser?.displayName||flEmailActual(),datos:{}});
+    flCargarProveedoresBox(solId);
+  }catch(e){flToast('Error: '+e.message,'err');}
+};
+
+// ── PDF de la solicitud: comentarios, modificaciones, facturación y costo total ──
+function flPDFExtrasHTML(s,provs){
+  const total=(provs||[]).reduce((a,p)=>a+(Number(p.total)||0),0);
+  const sec=t=>`<div style="font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.6px;color:#1E3A5F;border-bottom:2px solid #1E3A5F;padding-bottom:4px;margin:18px 0 8px">${t}</div>`;
+  const coms=[...(s.comentariosEvaluacion||[]).map(c=>({...c,_e:'Evaluación'})),...(s.comentariosServicio||[]).map(c=>({...c,_e:'Servicio'}))];
+  let h=`<div style="page-break-before:auto;font-family:system-ui,Arial,sans-serif;font-size:11px;color:#0A0F1E;padding:0 4px">`;
+  h+=sec('Servicio y taller')+`<table style="width:100%;font-size:11px;border-collapse:collapse">
+    ${[['Folio',s.folio||'—'],['Tipo de taller',flTallerTxt(s)],['Taller / proveedor principal',s.tallerNombre||'—'],['Monto cotizado',s.montoCotizacion?flMoneda(s.montoCotizacion):'—'],
+      ['Ingreso a taller',s.fechaIngresoTaller||'—'],['Entrega estimada',s.fechaEntregaEstimada||'—'],['Entrega real',s.fechaEntregaReal||'—'],['Liberado',s.liberadoEn?String(s.liberadoEn).slice(0,10)+' · '+(flNombrePorCorreo(s.liberadoPor)||s.liberadoPor||''):'—']]
+      .map(([l,v])=>`<tr><td style="padding:3px 6px;color:#64748B;width:40%">${l}</td><td style="padding:3px 6px;font-weight:700">${flEsc(v)}</td></tr>`).join('')}</table>`;
+  h+=sec('Facturación y costos');
+  h+=(provs||[]).length?`<table style="width:100%;border-collapse:collapse;font-size:10.5px"><thead><tr style="background:#F1F5F9">
+      <th style="text-align:left;padding:5px">Proveedor</th><th style="text-align:left">Concepto</th><th>Taller</th><th style="text-align:left">Factura</th><th style="text-align:right">Subtotal</th><th style="text-align:right">IVA</th><th style="text-align:right;padding-right:5px">Total</th></tr></thead>
+      <tbody>${provs.map(p=>`<tr style="border-bottom:1px solid #E2E8F0"><td style="padding:5px;font-weight:700">${flEsc(p.proveedor)}</td><td>${flEsc(p.concepto||'')}</td><td style="text-align:center">${p.taller==='interno'?'Interno':'Externo'}</td>
+        <td>${flEsc(p.factura_folio||'—')}${p.factura_uuid?`<div style="font-size:8.5px;color:#64748B">${flEsc(p.factura_uuid)}</div>`:''}${p.fecha_factura?`<div style="font-size:8.5px;color:#64748B">${flEsc(p.fecha_factura)}</div>`:''}</td>
+        <td style="text-align:right">${flMoneda(p.subtotal)}</td><td style="text-align:right">${flMoneda(p.iva)}</td><td style="text-align:right;padding-right:5px;font-weight:800">${flMoneda(p.total)}</td></tr>`).join('')}</tbody></table>`
+    :'<div style="color:#94A3B8">Sin proveedores registrados.</div>';
+  if((s.facturas||[]).length)h+=`<div style="margin-top:6px;font-size:10.5px;color:#334155">Archivos de factura adjuntos: ${s.facturas.map(f=>flEsc(f.nombre||'factura')+(f.fecha?' ('+String(f.fecha).slice(0,10)+')':'')).join(' · ')}</div>`;
+  if(s.pagoProgramado)h+=`<div style="margin-top:6px;font-size:10.5px;color:#334155">Pago programado: ${flEsc(s.pagoProgramado.proveedor||'')} · ${flMoneda(s.pagoProgramado.monto)} · ${flEsc(s.pagoProgramado.fechaEsperada||'')} · ${flEsc(s.pagoProgramado.forma||'')} · Ref ${flEsc(s.pagoProgramado.referencia||'')}</div>`;
+  h+=`<div style="display:flex;justify-content:space-between;align-items:center;background:#0A1628;color:#fff;border-radius:8px;padding:10px 14px;margin-top:10px"><span style="font-weight:800">COSTO TOTAL DEL SERVICIO</span><span style="font-size:17px;font-weight:900">${flMoneda(total)}</span></div>`;
+  if(coms.length){
+    h+=sec('Comentarios');
+    h+=coms.map(c=>`<div style="padding:4px 0;border-bottom:1px solid #F1F5F9"><b>${flEsc(c._e)}</b> · ${flEsc(String(c.fecha||c.creadoEn||'').slice(0,16).replace('T',' '))} · ${flEsc(flNombrePorCorreo(c.autor||c.por)||c.autor||c.por||'')}<div>${flEsc(c.texto||c.comentario||'')}</div></div>`).join('');
+  }
+  const seg=s.seguimiento||[];
+  if(seg.length){
+    h+=sec('Seguimiento y modificaciones');
+    h+=seg.map(x=>`<div style="padding:3px 0;border-bottom:1px solid #F1F5F9;font-size:10.5px"><b>${flEsc(String(x.creado_en||'').slice(0,16).replace('T',' '))}</b> · ${flEsc(flNombrePorCorreo(x.autor)||x.autor_nombre||x.autor||'')} — ${flEsc(x.texto||x.tipo)}</div>`).join('');
+  }
+  const serv=(s.evidenciasServicio||[]).filter(e=>e.medio==='foto');
+  if(serv.length){
+    h+=sec('Evidencias del servicio realizado');
+    h+=serv.map(e=>`<div style="display:inline-block;margin:4px;text-align:center;vertical-align:top"><img src="${e.url}" style="width:150px;height:112px;object-fit:cover;border-radius:6px;border:1px solid #BBF7D0"><div style="font-size:8.5px;color:#15803D;max-width:150px">${flEsc(e.nota||'')}</div></div>`).join('');
+  }
+  if((s.videos||[]).length||(s.evidenciasServicio||[]).some(e=>e.medio==='video'))h+=`<div style="margin-top:6px;font-size:10px;color:#64748B">Esta solicitud tiene videos; se consultan en el portal.</div>`;
+  return h+'</div>';
+}
+window.flGenerarPDF=async function(id){
+  const s=flS.find(x=>x.id===id);if(!s)return;
+  const win=window.open('','_blank','width=860,height=960');
+  if(win)win.document.write('<p style="font-family:system-ui;padding:20px">Generando PDF…</p>');
+  let provs=[];
+  try{await flCargarEvidenciasSol(s);}catch(e){}
+  try{provs=await window.tcFlSb.listarProveedores(id);}catch(e){}
+  const html=flPDFSolHTML(id,flPDFExtrasHTML(s,provs));
+  if(win&&html){win.document.open();win.document.write(html);win.document.close();}
+};
+
+// ── REPORTES: día / semana / mes / rango, taller interno y externo ──
+window.flAbrirReportes=function(){
+  const hoy=new Date().toISOString().slice(0,10);
+  const ecos=[...new Set(flS.map(s=>String(s.vehiculoEco||'')).filter(Boolean))].sort((a,b)=>Number(a)-Number(b));
+  const solic=[...new Set(flS.map(s=>s.creadoPor||s.solicitante).filter(Boolean))].sort();
+  const tipos=[...new Set(flS.map(s=>s.tipo).filter(Boolean))].sort();
+  const sel=(id,lbl,ops)=>`<div><label style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8;display:block;margin-bottom:4px">${lbl}</label><select id="${id}" onchange="flRepAplicar()" style="width:100%;padding:7px 9px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px"><option value="">Todos</option>${ops}</select></div>`;
+  const ov=document.createElement('div');ov.className='fl-ov';ov.style.zIndex='3400';ov.id='fl-rep-ov';
+  ov.innerHTML=`<div class="fl-modal" style="max-width:1100px;width:96vw;max-height:94vh;display:flex;flex-direction:column">
+    <div class="fl-mh"><h3>Reportes de servicio</h3><button class="fl-mx" onclick="this.closest('.fl-ov').remove()">✕</button></div>
+    <div class="fl-mb" style="overflow:auto">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+        ${[['dia','Hoy'],['semana','Esta semana'],['mes','Este mes'],['mesant','Mes anterior'],['todo','Todo']].map(([k,t])=>`<button class="fb gho sm" onclick="flRepPeriodo('${k}')">${t}</button>`).join('')}
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px">
+        <div><label style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8;display:block;margin-bottom:4px">Desde</label><input type="date" id="rep-desde" value="${hoy.slice(0,8)}01" onchange="flRepAplicar()" style="width:100%;padding:7px 9px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px"></div>
+        <div><label style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8;display:block;margin-bottom:4px">Hasta</label><input type="date" id="rep-hasta" value="${hoy}" onchange="flRepAplicar()" style="width:100%;padding:7px 9px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px"></div>
+        ${sel('rep-eco','Vehículo',ecos.map(e=>`<option value="${flEsc(e)}">ECO ${flEsc(e)}</option>`).join(''))}
+        ${sel('rep-sol','Solicitante',solic.map(e=>`<option value="${flEsc(e)}">${flEsc(flNombrePorCorreo(e)||e)}</option>`).join(''))}
+        ${sel('rep-tipo','Tipo de servicio',tipos.map(e=>`<option>${flEsc(e)}</option>`).join(''))}
+        ${sel('rep-taller','Taller','<option value="interno">Taller interno</option><option value="externo">Taller externo</option><option value="sin">Sin definir</option>')}
+        ${sel('rep-est','Estatus',['Solicitud','Evaluación','Servicio','Pagos','Cierre','Cerrada','Rechazada'].map(e=>`<option>${e}</option>`).join(''))}
+      </div>
+      <div id="rep-res"></div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;padding:12px 18px;border-top:1px solid #E2E8F0">
+      <button class="fb acc" onclick="flRepPDF('')">PDF del filtro</button>
+      <button class="fb" style="background:#1D4ED8;color:#fff;border:none" onclick="flRepPDF('interno')">Reporte taller interno</button>
+      <button class="fb" style="background:#B45309;color:#fff;border:none" onclick="flRepPDF('externo')">Reporte taller externo</button>
+      <button class="fb gho" onclick="flRepExcel()">Excel</button>
+    </div></div>`;
+  document.body.appendChild(ov);
+  flRepAplicar();
+};
+window.flRepPeriodo=function(k){
+  const d=new Date(),f=x=>x.toISOString().slice(0,10);
+  let a=new Date(d),b=new Date(d);
+  if(k==='semana'){const dw=(d.getDay()+6)%7;a.setDate(d.getDate()-dw);}
+  else if(k==='mes'){a=new Date(d.getFullYear(),d.getMonth(),1);}
+  else if(k==='mesant'){a=new Date(d.getFullYear(),d.getMonth()-1,1);b=new Date(d.getFullYear(),d.getMonth(),0);}
+  else if(k==='todo'){a=new Date(2020,0,1);}
+  document.getElementById('rep-desde').value=f(a);document.getElementById('rep-hasta').value=f(b);
+  flRepAplicar();
+};
+function flRepFiltrar(forzarTaller){
+  const g=id=>document.getElementById(id)?.value||'';
+  const desde=g('rep-desde'),hasta=g('rep-hasta'),eco=g('rep-eco'),sol=g('rep-sol'),tipo=g('rep-tipo'),est=g('rep-est');
+  const taller=forzarTaller!==undefined&&forzarTaller!==''?forzarTaller:g('rep-taller');
+  const grupos={Evaluación:['Evaluación','Validación','Validada','Cotización','Aprobación','Aprobada']};
+  return flS.filter(s=>{
+    const f=String(s.creadoEn||'').slice(0,10);
+    if(desde&&f<desde)return false;if(hasta&&f>hasta)return false;
+    if(eco&&String(s.vehiculoEco)!==eco)return false;
+    if(sol&&(s.creadoPor||s.solicitante)!==sol)return false;
+    if(tipo&&s.tipo!==tipo)return false;
+    if(est&&!(grupos[est]||[est]).includes(s.estatus))return false;
+    if(taller==='interno'&&!s.tallerInterno)return false;
+    if(taller==='externo'&&!s.tallerExterno)return false;
+    if(taller==='sin'&&(s.tallerInterno||s.tallerExterno))return false;
+    return true;
+  });
+}
+window.flRepAplicar=async function(){
+  const res=document.getElementById('rep-res');if(!res)return;
+  const lista=flRepFiltrar();
+  let provs=[];try{provs=await window.tcFlSb.proveedoresDe(lista.map(s=>s.id));}catch(e){}
+  window._flRepProvs=provs;
+  const porSol={};provs.forEach(p=>{(porSol[p.solicitud_id]=porSol[p.solicitud_id]||[]).push(p);});
+  const tot=id=>(porSol[id]||[]).reduce((a,p)=>a+(Number(p.total)||0),0);
+  const gran=lista.reduce((a,s)=>a+tot(s.id),0);
+  const tInt=lista.filter(s=>s.tallerInterno).reduce((a,s)=>a+(porSol[s.id]||[]).filter(p=>p.taller==='interno').reduce((x,p)=>x+(Number(p.total)||0),0),0);
+  const tExt=lista.filter(s=>s.tallerExterno).reduce((a,s)=>a+(porSol[s.id]||[]).filter(p=>p.taller!=='interno').reduce((x,p)=>x+(Number(p.total)||0),0),0);
+  const kpi=(t,v,c)=>`<div style="background:#F8FAFD;border-radius:10px;padding:10px 12px"><div style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94A3B8">${t}</div><div style="font-size:17px;font-weight:900;color:${c}">${v}</div></div>`;
+  res.innerHTML=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:12px">
+      ${kpi('Solicitudes',lista.length,'#0A1628')}${kpi('Taller interno',lista.filter(s=>s.tallerInterno).length,'#1D4ED8')}${kpi('Taller externo',lista.filter(s=>s.tallerExterno).length,'#B45309')}
+      ${kpi('Costo total',flMoneda(gran),'#0A1628')}${kpi('Costo interno',flMoneda(tInt),'#1D4ED8')}${kpi('Costo externo',flMoneda(tExt),'#B45309')}</div>
+    <div style="overflow:auto;border:1px solid #E2E8F0;border-radius:10px"><table class="fl-adm-table" style="width:100%">
+      <thead><tr><th>Folio</th><th>Fecha</th><th>ECO</th><th>Tipo</th><th>Solicitante</th><th>Estatus</th><th>Taller</th><th>Evid. servicio</th><th style="text-align:right">Costo</th></tr></thead>
+      <tbody>${lista.length?lista.map(s=>`<tr style="cursor:pointer" onclick="flVerSol('${s.id}')">
+        <td style="font-family:'JetBrains Mono',monospace;font-size:10.5px">${flEsc(s.folio||s.id.slice(-6))}</td><td style="font-size:11px">${flEsc(String(s.creadoEn||'').slice(0,10))}</td>
+        <td style="font-weight:700">${flEsc(s.vehiculoEco||'—')}</td><td style="font-size:11px">${flEsc(s.tipo||'—')}</td><td style="font-size:11px">${flEsc(flNombrePorCorreo(s.creadoPor||s.solicitante)||s.solicitante||'—')}</td>
+        <td>${hBadge(s.estatus)}</td><td style="font-size:11px">${flTallerTxt(s)}</td><td style="text-align:center">${(s.evidenciasServicio||[]).length}</td><td style="text-align:right;font-weight:800">${flMoneda(tot(s.id))}</td></tr>`).join('')
+        :'<tr><td colspan="9" style="text-align:center;padding:20px;color:#94A3B8">Sin solicitudes con este filtro</td></tr>'}</tbody></table></div>`;
+};
+window.flRepPDF=async function(taller){
+  const win=window.open('','_blank','width=1000,height=960');
+  if(win)win.document.write('<p style="font-family:system-ui;padding:20px">Generando reporte…</p>');
+  const lista=flRepFiltrar(taller);
+  let provs=[];try{provs=await window.tcFlSb.proveedoresDe(lista.map(s=>s.id));}catch(e){}
+  const porSol={};provs.forEach(p=>{(porSol[p.solicitud_id]=porSol[p.solicitud_id]||[]).push(p);});
+  const desde=document.getElementById('rep-desde')?.value||'',hasta=document.getElementById('rep-hasta')?.value||'';
+  const titulo=taller==='interno'?'Reporte de taller interno':taller==='externo'?'Reporte de taller externo':'Reporte de servicios de Flotilla';
+  let gran=0;
+  const bloques=lista.map(s=>{
+    const ps=(porSol[s.id]||[]).filter(p=>!taller||(taller==='interno'?p.taller==='interno':p.taller!=='interno'));
+    const t=ps.reduce((a,p)=>a+(Number(p.total)||0),0);gran+=t;
+    const v=flV.find(x=>String(x.eco)===String(s.vehiculoEco));
+    const serv=(s.evidenciasServicio||[]).filter(e=>e.medio==='foto').slice(0,8);
+    const seg=(s.seguimiento||[]).filter(x=>x.tipo!=='modificacion');
+    return `<div style="border:1px solid #CBD5E1;border-radius:10px;padding:12px 14px;margin-bottom:12px;page-break-inside:avoid">
+      <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
+        <div><b style="font-size:14px">${flEsc(s.folio||s.id.slice(-6))}</b> · ECO ${flEsc(s.vehiculoEco||'—')} ${v?'· '+flEsc(v.unidad||'')+' · '+flEsc(v.placas||''):''}</div>
+        <div style="font-size:11px;color:#475569">${flEsc(String(s.creadoEn||'').slice(0,10))} · ${flEsc(s.estatus||'')} · Taller ${flTallerTxt(s)}</div></div>
+      <div style="font-size:11.5px;margin:6px 0"><b>${flEsc(s.tipo||'—')}</b> · Solicitó ${flEsc(flNombrePorCorreo(s.creadoPor||s.solicitante)||s.solicitante||'—')}<br>${flEsc(s.descripcion||s.desc||'')}</div>
+      ${ps.length?`<table style="width:100%;border-collapse:collapse;font-size:10.5px;margin-top:4px"><tr style="background:#F1F5F9"><th style="text-align:left;padding:4px">Proveedor</th><th style="text-align:left">Concepto</th><th style="text-align:left">Factura</th><th style="text-align:right;padding-right:4px">Total</th></tr>
+        ${ps.map(p=>`<tr><td style="padding:3px 4px">${flEsc(p.proveedor)}</td><td>${flEsc(p.concepto||'')}</td><td>${flEsc(p.factura_folio||'—')}</td><td style="text-align:right;padding-right:4px">${flMoneda(p.total)}</td></tr>`).join('')}
+        <tr><td colspan="3" style="text-align:right;font-weight:800;padding:4px">Total</td><td style="text-align:right;font-weight:900;padding-right:4px">${flMoneda(t)}</td></tr></table>`:'<div style="font-size:10.5px;color:#94A3B8">Sin proveedores / costos registrados</div>'}
+      ${seg.length?`<div style="margin-top:6px;font-size:10.5px">${seg.map(x=>`<div>• <b>${flEsc(String(x.creado_en||'').slice(0,10))}</b> ${flEsc(flNombrePorCorreo(x.autor)||x.autor_nombre||'')}: ${flEsc(x.texto||'')}</div>`).join('')}</div>`:''}
+      ${serv.length?`<div style="margin-top:6px">${serv.map(e=>`<img src="${e.url}" style="width:120px;height:90px;object-fit:cover;border-radius:6px;margin:2px;border:1px solid #BBF7D0">`).join('')}</div>`:''}
+    </div>`;
+  }).join('');
+  const html=`<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>${titulo}</title><style>body{font-family:system-ui,Arial,sans-serif;color:#0A0F1E;padding:22px}@media print{.np{display:none}}</style></head><body>
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #0A1628;padding-bottom:10px;margin-bottom:14px">
+      <div><div style="font-size:20px;font-weight:900">TECNO<span style="color:#2563EB">CONTROL</span></div><div style="font-size:15px;font-weight:800;margin-top:4px">${titulo}</div></div>
+      <div style="text-align:right;font-size:11px;color:#475569">Periodo: ${flEsc(desde||'—')} a ${flEsc(hasta||'—')}<br>${lista.length} solicitud(es) · Generado ${new Date().toLocaleString('es-MX')}</div></div>
+    ${bloques||'<p>Sin solicitudes en este periodo.</p>'}
+    <div style="display:flex;justify-content:space-between;background:#0A1628;color:#fff;border-radius:8px;padding:12px 16px;font-weight:900;margin-top:10px"><span>TOTAL ${taller?('TALLER '+taller.toUpperCase()):'GENERAL'}</span><span>${flMoneda(gran)}</span></div>
+    <div class="np" style="text-align:center;margin-top:16px"><button onclick="window.print()" style="padding:10px 24px;background:#0A1628;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">Imprimir / Guardar PDF</button></div>
+  </body></html>`;
+  if(win){win.document.open();win.document.write(html);win.document.close();}
+};
+window.flRepExcel=function(){
+  if(!window.XLSX){flToast('Excel no disponible','err');return;}
+  const lista=flRepFiltrar();const provs=window._flRepProvs||[];
+  const porSol={};provs.forEach(p=>{(porSol[p.solicitud_id]=porSol[p.solicitud_id]||[]).push(p);});
+  const filas=lista.map(s=>({Folio:s.folio||s.id,Fecha:String(s.creadoEn||'').slice(0,10),ECO:s.vehiculoEco||'',Tipo:s.tipo||'',Solicitante:flNombrePorCorreo(s.creadoPor||s.solicitante)||s.solicitante||'',
+    Estatus:s.estatus||'',Taller:flTallerTxt(s),'Taller / proveedor':s.tallerNombre||'',Proveedores:(porSol[s.id]||[]).map(p=>p.proveedor).join(', '),
+    Facturas:(porSol[s.id]||[]).map(p=>p.factura_folio).filter(Boolean).join(', '),'Costo total':(porSol[s.id]||[]).reduce((a,p)=>a+(Number(p.total)||0),0),
+    'Evidencias servicio':(s.evidenciasServicio||[]).length,Descripción:s.descripcion||s.desc||''}));
+  const wb=window.XLSX.utils.book_new();
+  window.XLSX.utils.book_append_sheet(wb,window.XLSX.utils.json_to_sheet(filas),'Servicios');
+  if(provs.length)window.XLSX.utils.book_append_sheet(wb,window.XLSX.utils.json_to_sheet(provs.map(p=>({Solicitud:(flS.find(s=>s.id===p.solicitud_id)||{}).folio||p.solicitud_id,Proveedor:p.proveedor,Taller:p.taller,Concepto:p.concepto||'',Factura:p.factura_folio||'',UUID:p.factura_uuid||'',Fecha:p.fecha_factura||'',Subtotal:Number(p.subtotal)||0,IVA:Number(p.iva)||0,Total:Number(p.total)||0}))),'Proveedores');
+  window.XLSX.writeFile(wb,`Reporte_servicios_flotilla_${new Date().toISOString().slice(0,10)}.xlsx`);
+};
+
+// ── Excel de la lista principal de vehículos ──
+window.flExcelVehiculos=function(){
+  if(!window.XLSX){flToast('Excel no disponible','err');return;}
+  const ex=window.flSbVehExtra||{};
+  const filas=flV.slice().sort((a,b)=>Number(a.eco)-Number(b.eco)).map(v=>{
+    const e=ex[String(v.eco)]||{};const est=(window.flSbVehEstado||{})[String(v.eco)];
+    const sol=est&&est.solicitud_id?flS.find(s=>s.id===est.solicitud_id):null;
+    const usuarioApp=(window._flUsuariosMap||{})[String(v.eco)];
+    const disp=v.status==='baja'?'Baja':flEnTaller(v)?'En taller':v.status==='comision'?'Utilitario / préstamo':usuarioApp?'En uso':'Disponible';
+    return {ECO:v.eco,Unidad:v.unidad||'',Año:v.año||'',Tipo:v.tipo||'',Placa:v.placas||'','No. de serie':v.serie||'',Responsable:v.responsable||'','Usuario en app':usuarioApp||'',
+      Plaza:v.plaza||'',Disponibilidad:disp,'En taller (folio)':sol?(sol.folio||sol.id):'',KM:v.km||0,Póliza:v.pol||'','Vence póliza':v.pv||'',
+      'Caseta con QR':e.caseta_qr?'Sí':'No','TAG / caseta':e.caseta_tag||'','GPS instalado':v.gpsInstalado||'','GPS SIM':e.gps_sim||'','GPS teléfono':e.gps_telefono||'','GPS compañía':e.gps_compania||''};
+  });
+  const wb=window.XLSX.utils.book_new();
+  window.XLSX.utils.book_append_sheet(wb,window.XLSX.utils.json_to_sheet(filas),'Vehículos');
+  window.XLSX.writeFile(wb,`Flotilla_vehiculos_${new Date().toISOString().slice(0,10)}.xlsx`);
+};
 
 console.log('[FLOTILLA v16] Taller único + presupuesto mes + flReconciliarTaller · '+CAT.length+' unidades');
 })();

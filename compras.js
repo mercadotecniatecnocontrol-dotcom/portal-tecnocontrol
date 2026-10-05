@@ -1750,11 +1750,34 @@
     convertida: {lbl:'Ya es requisición',                     corto:'Convertida',           col:'#12A150'},
     cancelada:  {lbl:'Cancelada',                             corto:'Cancelada',            col:'#94A3B8'},
   };
-  var SC_PASOS = ['Pedida','Buscando precios','Precio listo','Requisición','Comprada','En camino','Recibida'];
+  var SC_PASOS = ['Enviada','En cotización','Cotizada','Aprobación','Comprada','En camino','Recibida'];
 
   function _scFecha(x){ if(!x) return null; if(x.toDate) return x.toDate(); var f=new Date(x); return isNaN(f)?null:f; }
   function _scFmt(x, conHora){ var f=_scFecha(x); if(!f) return '—'; return conHora ? f.toLocaleString('es-MX',{dateStyle:'short',timeStyle:'short'}) : f.toLocaleDateString('es-MX'); }
   function _scAbierta(sc){ return sc.estatus!=='convertida' && sc.estatus!=='cancelada'; }
+  // Precios y proveedores: Compras siempre; Ventas solo en lo que Ventas pidió; nadie más (oct-2026).
+  function _scEsVentas(sc){ return _cpNorm(sc&&sc.departamento)==='ventas'; }
+  function _scVePrecios(sc){ return _scDetalleModo==='compras' || _scEsVentas(sc); }
+  // Historial sin precios ni nombres de proveedor para quien no debe verlos.
+  function _scHistSeguro(e, ve){
+    if(ve) return e.texto||'';
+    switch(e.tipo){
+      case 'creada': case 'comentario': case 'cancelada': case 'comprada': return e.texto||'';
+      case 'enviada': return 'Compras pidió precio a un proveedor';
+      case 'respuesta': return 'Compras recibió una cotización';
+      case 'aceptada': case 'compartida': return 'Compras ya tiene precio';
+      case 'convertida': { var m=String(e.texto||'').match(/requisici[oó]n\s+(\S+)/i); return 'Se convirtió en requisición'+(m?' '+m[1]:''); }
+      default: return null;
+    }
+  }
+  // Datos de referencia que trajo el solicitante (link, tienda, precio visto en la tienda).
+  function _scRefPartida(pt){
+    var r=[];
+    if(pt.tiendaRef) r.push('<span class="cp-chip" style="background:#F1F5F9;color:#334155">'+esc(pt.tiendaRef)+'</span>');
+    if(pt.precioRef) r.push('<span class="cp-chip" style="background:#F1F5F9;color:#334155">Precio visto: '+_cpMoney(pt.precioRef)+'</span>');
+    if(pt.link) r.push('<a href="'+esc(pt.link)+'" target="_blank" rel="noopener" style="font-size:11.5px;color:#1473E6;font-weight:700;text-decoration:none">Ver producto</a>');
+    return r.length?'<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:5px">'+r.join('')+'</div>':'';
+  }
   function _scReq(sc){ return sc.requisicionId ? docs.find(function(d){ return d.id===sc.requisicionId; }) : null; }
   function _scMejor(sc){
     var rs = (sc.respuestas||[]).filter(function(r){ return r.estado!=='rechazada' && Number(r.precioTotal)>0; });
@@ -1824,7 +1847,7 @@
       if(req.estatus==='orden_generada') return 4;
       return 3;
     }
-    return {nueva:0, preguntando:1, con_precios:1, lista:2, convertida:3}[sc.estatus] || 0;
+    return {nueva:0, preguntando:1, con_precios:2, lista:2, convertida:3}[sc.estatus] || 0;
   }
   function _scEstadoTexto(sc){
     var req = sc.estatus==='convertida' ? _scReq(sc) : null;
@@ -1862,9 +1885,29 @@
     });
   }
 
-  // ══ FORMULARIO: pedir una cotización (departamentos y Compras) ══
-  var _scFormFotos = [];
+  // ══ FORMULARIO NUEVO (oct-2026): solicitud-cotizacion.js, compartido con la app
+  //    de técnicos. Link de producto, foto/captura y PDF. Si no carga, se usa el clásico. ══
+  var _scModPromesa=null;
+  function _scCargarModulo(){
+    if(window.tcScAbrirFormulario) return Promise.resolve();
+    if(_scModPromesa) return _scModPromesa;
+    _scModPromesa=new Promise(function(ok,ko){
+      var s=document.createElement('script'); s.src='solicitud-cotizacion.js?v=1';
+      s.onload=function(){ ok(); }; s.onerror=function(){ _scModPromesa=null; ko(new Error('No se pudo cargar solicitud-cotizacion.js')); };
+      document.head.appendChild(s);
+    });
+    return _scModPromesa;
+  }
   window.__scNueva = function(depto, desdeReqId){
+    _scCargarModulo().then(function(){
+      window.tcScAbrirFormulario({departamento:depto||'', fijarDepto:!!(depto && depto!=='Compras'), deptos:DEPTOS_CP, empresas:EMPRESAS_CP, categorias:CATS_CP,
+        correo:_cpMiCorreo(), nombre:_cpMiNombre(), zIndex:2400,
+        alGuardar:function(id){ escucharSC(); setTimeout(function(){ window.__scAbrirDetalle(id, depto==='Compras'?'compras':'solicitante'); }, 500); }});
+    }).catch(function(e){ console.warn('[compras] formulario nuevo no disponible, uso el clásico:', e); _scNuevaClasica(depto, desdeReqId); });
+  };
+  // ══ FORMULARIO CLÁSICO (respaldo): pedir una cotización ══
+  var _scFormFotos = [];
+  function _scNuevaClasica(depto, desdeReqId){
     _scFormFotos = [];
     var ov=document.createElement('div'); ov.id='sc-form-overlay';
     ov.style.cssText='position:fixed;inset:0;background:rgba(10,22,40,.55);z-index:2200;display:flex;align-items:flex-start;justify-content:center;padding:18px;overflow-y:auto';
@@ -2467,7 +2510,7 @@
     izq += '<p style="font-size:11px;font-weight:700;color:#5C7089;margin:0 0 8px;text-transform:uppercase">Qué se pide</p>';
     izq += (sc.partidas||[]).map(function(pt){
       var x=[pt.numeroParte?'No. parte: '+pt.numeroParte:'', pt.marca?'Marca: '+pt.marca:'', pt.modelo?'Modelo: '+pt.modelo:''].filter(Boolean).join(' · ');
-      return '<div style="border:1px solid #E2E8F0;border-radius:10px;padding:10px 12px;margin-bottom:8px;display:flex;justify-content:space-between;gap:10px"><div style="min-width:0"><p style="margin:0;font-size:13px;font-weight:700;color:#0A1628">'+esc(pt.desc)+'</p>'+(x?'<p style="margin:2px 0 0;font-size:11.5px;color:#5C7089">'+esc(x)+'</p>':'')+(pt.especificaciones?'<p style="margin:2px 0 0;font-size:11.5px;color:#64748B">'+esc(pt.especificaciones)+'</p>':'')+'</div>' +
+      return '<div style="border:1px solid #E2E8F0;border-radius:10px;padding:10px 12px;margin-bottom:8px;display:flex;justify-content:space-between;gap:10px">'+(pt.miniatura?'<img src="'+pt.miniatura+'" alt="" style="width:54px;height:54px;object-fit:cover;border-radius:8px;flex-shrink:0">':'')+'<div style="min-width:0;flex:1"><p style="margin:0;font-size:13px;font-weight:700;color:#0A1628">'+esc(pt.desc)+'</p>'+(x?'<p style="margin:2px 0 0;font-size:11.5px;color:#5C7089">'+esc(x)+'</p>':'')+(pt.especificaciones?'<p style="margin:2px 0 0;font-size:11.5px;color:#64748B">'+esc(pt.especificaciones)+'</p>':'')+_scRefPartida(pt)+'</div>' +
         '<span style="flex-shrink:0;background:#F1F5F9;font-size:12px;font-weight:800;padding:5px 10px;border-radius:8px;height:fit-content">×'+esc(pt.cant)+' '+esc(pt.unidad||'')+'</span></div>';
     }).join('');
     if(sc.notas) izq += '<p style="font-size:12px;color:#334155;margin:4px 0 12px"><b>Notas:</b> '+esc(sc.notas)+'</p>';
@@ -2483,7 +2526,7 @@
 
     // Columna derecha
     der += '<div style="background:#F8FAFD;border-radius:12px;padding:14px;position:sticky;top:0">';
-    [['Empresa',sc.empresa],['Departamento',sc.departamento],['Tipo',_cpCatLabel(sc.tipoCompra)],['Para cuándo',sc.fechaRequerida?_scFmt(sc.fechaRequerida+'T12:00:00'):'—'],['Cliente / estación',sc.cliente||'—'],['Requisición',sc.requisicionFolio||(req&&req.folio)||'—']]
+    [['Empresa',sc.empresa],['Departamento',sc.departamento],['Tipo',_cpCatLabel(sc.tipoCompra)],['Para cuándo',sc.fechaRequerida?_scFmt(sc.fechaRequerida+'T12:00:00'):'—'],['Para qué / cliente',sc.cliente||'—'],['Requisición',sc.requisicionFolio||(req&&req.folio)||'—']]
       .concat(esCompras?[['Proveedores',(sc.proveedoresInvitados||[]).length+' preguntados · '+(sc.respuestas||[]).length+' respondieron'],['Mejor precio',mejor?_cpMoney(mejor.precioTotal)+' '+(mejor.moneda||''):'—']]:[])
       .forEach(function(r){ der += '<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;font-size:12px;border-bottom:1px solid #EEF2F7"><span style="color:#5C7089">'+esc(r[0])+'</span><span style="font-weight:700;color:#0A1628;text-align:right">'+esc(r[1])+'</span></div>'; });
     if(esCompras && _scAbierta(sc)){
@@ -2589,11 +2632,16 @@
 
   function _scSeccionCompartir(sc){
     var id=sc.id, rs=(sc.respuestas||[]).filter(function(r){ return r.estado!=='rechazada'; });
-    var h='<div class="cp-sec"><h4><span class="cp-num">3</span>'+(sc.origen==='compras'?'Comprar':'Mandar opciones a quien pidió')+'</h4>';
+    var h='<div class="cp-sec"><h4><span class="cp-num">3</span>'+(sc.origen==='compras'?'Comprar':_scEsVentas(sc)?'Mandar opciones a quien pidió':'Elegir la ganadora')+'</h4>';
     if(!rs.length) return h+'<p class="cp-ayuda">Primero registra al menos un precio.</p></div>';
     if(sc.origen==='compras'){
       h += '<p class="cp-ayuda">Elige la opción para crear la requisición directamente.</p>';
       h += rs.map(function(r){ return '<button class="cp-btn" style="margin:0 6px 6px 0" onclick="window.__scConvertir(\''+id+'\',\''+r.id+'\')">Comprar a '+esc(r.proveedor)+' · '+_cpMoney(r.precioTotal)+'</button>'; }).join('');
+      return h+'</div>';
+    }
+    if(!_scEsVentas(sc)){
+      h += '<p class="cp-ayuda">La pidió <b>'+esc(sc.departamento||'otro departamento')+'</b>: quien la pidió no ve precios ni proveedores. Elige tú la ganadora y se convierte sola en requisición; al solicitante solo le avisamos que avanzó.</p>';
+      h += rs.map(function(r){ return '<button class="cp-btn" style="margin:0 6px 6px 0" onclick="window.__scConvertir(\''+id+'\',\''+r.id+'\')">'+_cpIco('check')+'Elegir '+esc(r.proveedor)+' · '+_cpMoney(r.precioTotal)+(r.tiempoEntregaDias!=null?' · '+r.tiempoEntregaDias+' días':'')+'</button>'; }).join('');
       return h+'</div>';
     }
     var pre = (sc.compartidas&&sc.compartidas.length) ? sc.compartidas : rs.filter(function(r){ return r.estado==='elegida'; }).map(function(r){ return r.id; });
@@ -2608,7 +2656,7 @@
 
   function _scSeccionSolicitante(sc){
     var id=sc.id, h='';
-    if(sc.estatus==='lista'){
+    if(sc.estatus==='lista' && _scEsVentas(sc)){
       var ops=(sc.respuestas||[]).filter(function(r){ return (sc.compartidas||[]).indexOf(r.id)>-1 && r.estado!=='rechazada'; });
       h += '<div class="cp-sec" style="border-color:#C4B5FD;background:#FAF5FF"><h4>'+_cpIco('check')+'Ya hay precio. ¿Cuál quieres?</h4>' +
         (sc.notaCompras?'<p class="cp-ayuda"><b>Compras dice:</b> '+esc(sc.notaCompras)+'</p>':'<p class="cp-ayuda">Elige una opción y se convierte en requisición.</p>');
@@ -2620,6 +2668,8 @@
           '<button class="cp-btn ok" style="padding:11px 16px" onclick="window.__scConvertir(\''+id+'\',\''+r.id+'\')">Elegir esta y comprar</button></div>';
       }).join('');
       h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><button class="cp-btn" onclick="window.__scPedirOtra(\''+id+'\')">Pedir otra opción</button><button class="cp-btn peligro" onclick="window.__scCancelar(\''+id+'\')">Ya no se necesita</button></div></div>';
+    } else if(sc.estatus==='lista' || sc.estatus==='con_precios'){
+      h += '<div class="cp-sec"><p style="margin:0;font-size:12.5px;color:#334155">'+_cpIco('check')+' Compras ya tiene precio y está eligiendo la mejor opción. Te avisaremos cuando se convierta en requisición. Puedes escribirles abajo.</p></div>';
     } else if(_scAbierta(sc)){
       h += '<div class="cp-sec"><p style="margin:0;font-size:12.5px;color:#334155">'+_cpIco('reloj')+' Compras está trabajando en tu cotización. Te llegará un aviso en cuanto haya precio. Puedes escribirles abajo.</p></div>';
     }
@@ -2627,26 +2677,27 @@
   }
 
   function _scSeccionRequisicion(sc, req, esCompras){
-    var e=_cpEstadoAmigable(req), env=req.envio;
+    var e=_cpEstadoAmigable(req), env=req.envio, ve=esCompras||_scEsVentas(sc);
     var h='<div class="cp-sec" style="border-color:#BBF7D0;background:#F7FEF9"><h4>'+_cpIco('check')+'Requisición '+esc(req.folio||'')+'</h4>' +
       '<p style="margin:0 0 6px;font-size:12.5px;color:#0A1628"><b>'+esc(e.txt)+'</b>'+(e.quien?' — le toca a '+esc(e.quien):'')+'</p>' + _cpChipEspera(req);
-    if(req.cotizacionGanadora) h += '<p style="margin:8px 0 0;font-size:12px;color:#334155">Comprado a <b>'+esc(req.cotizacionGanadora.proveedor||'')+'</b> por <b>'+_cpMoney(req.cotizacionGanadora.monto)+'</b>'+(req.ocFolio?' · Orden '+esc(req.ocFolio):'')+'</p>';
-    else if(req.cotizacionPropuesta) h += '<p style="margin:8px 0 0;font-size:12px;color:#334155">Opción elegida: '+(esCompras||sc.mostrarProveedor?'<b>'+esc(req.cotizacionPropuesta.proveedor)+'</b> · ':'')+'<b>'+_cpMoney(req.cotizacionPropuesta.monto)+'</b>. En cuanto se autorice, se compra sola.</p>';
+    if(ve && req.cotizacionGanadora) h += '<p style="margin:8px 0 0;font-size:12px;color:#334155">Comprado a <b>'+esc(req.cotizacionGanadora.proveedor||'')+'</b> por <b>'+_cpMoney(req.cotizacionGanadora.monto)+'</b>'+(req.ocFolio?' · Orden '+esc(req.ocFolio):'')+'</p>';
+    else if(ve && req.cotizacionPropuesta) h += '<p style="margin:8px 0 0;font-size:12px;color:#334155">Opción elegida: '+(esCompras||sc.mostrarProveedor?'<b>'+esc(req.cotizacionPropuesta.proveedor)+'</b> · ':'')+'<b>'+_cpMoney(req.cotizacionPropuesta.monto)+'</b>. En cuanto se autorice, se compra sola.</p>';
     if(env) h += '<div style="margin-top:10px">'+_envResumenHTML(req, false)+'</div>';
     h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">' +
       (esCompras?'<button class="cp-btn" onclick="document.getElementById(\'sc-overlay\').remove();window.__scCerrar();window.__cpAbrirDetalle(\''+req.id+'\')">Abrir requisición</button>':'<button class="cp-btn" onclick="window.__cpdVerReq(\''+req.id+'\')">Ver seguimiento</button>') +
-      '<button class="cp-btn" onclick="window.__cpDescargarRequisicion(\''+req.id+'\')">'+_cpIco('bajar')+'PDF de la requisición</button></div></div>';
+      (ve?'<button class="cp-btn" onclick="window.__cpDescargarRequisicion(\''+req.id+'\')">'+_cpIco('bajar')+'PDF de la requisición</button>':'')+'</div></div>';
     return h;
   }
 
   function _scSeccionConversacion(sc){
     var ICO={creada:'persona', enviada:'firma', respuesta:'check', ajuste:'reloj', seguimiento:'reloj', comentario:'persona', compartida:'check', convertida:'check', aceptada:'check', comprada:'camion', cancelada:'alerta', proveedor:'persona'};
-    var hist=(sc.historial||[]).slice().sort(function(a,b){ return String(a.fecha).localeCompare(String(b.fecha)); });
+    var hist=(sc.historial||[]).slice().sort(function(a,b){ return String(a.fecha).localeCompare(String(b.fecha)); }), ve=_scVePrecios(sc);
     var h='<div class="cp-sec"><h4>'+_cpIco('historial')+'Conversación e historial</h4><div style="max-height:260px;overflow-y:auto;margin-bottom:10px">';
     h += hist.map(function(e){
-      var com=e.tipo==='comentario';
+      var com=e.tipo==='comentario', txt=_scHistSeguro(e, ve);
+      if(txt===null) return '';
       return '<div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid #F1F5F9"><span style="color:'+(com?'#1473E6':'#94A3B8')+';display:flex;padding-top:2px">'+_cpIco(ICO[e.tipo]||'reloj')+'</span>' +
-        '<div style="font-size:12px;color:#0A1628;flex:1"><b>'+esc(_cpTitulo(e.por||''))+'</b> <span style="color:#94A3B8;font-size:10.5px">'+_scFmt(e.fecha,true)+'</span><div style="color:'+(com?'#0A1628':'#5C7089')+'">'+esc(e.texto||'')+'</div></div></div>';
+        '<div style="font-size:12px;color:#0A1628;flex:1"><b>'+esc(_cpTitulo(e.por||''))+'</b> <span style="color:#94A3B8;font-size:10.5px">'+_scFmt(e.fecha,true)+'</span><div style="color:'+(com?'#0A1628':'#5C7089')+'">'+esc(txt||'')+'</div></div></div>';
     }).join('') || '<p style="font-size:12px;color:#94A3B8">Sin movimientos.</p>';
     h += '</div><div style="display:flex;gap:6px"><input id="sc-com-txt" class="cp-in" style="flex:1" placeholder="Escribe un mensaje…" onkeydown="if(event.key===\'Enter\')window.__scComentar(\''+sc.id+'\')"><button class="cp-btn prim" onclick="window.__scComentar(\''+sc.id+'\')">Enviar</button></div></div>';
     return h;
@@ -3105,6 +3156,15 @@
   //  que index.html muestra en cada área (contrato: window.cpAbrirPanelDepto).
   // ══════════════════════════════════════════════════════════════════
   var _cpdArea='', _cpdTab='cotizaciones';
+  function _cpBotonPedirCot(){
+    var c=document.getElementById('cp-depto-botones'); if(!c || document.getElementById('cp-btn-pedir-cot')) return;
+    var b=document.createElement('button'); b.type='button'; b.id='cp-btn-pedir-cot';
+    b.style.cssText='display:inline-flex;align-items:center;gap:7px;padding:9px 14px;border-radius:10px;border:1.5px solid #1D2E73;background:#1D2E73;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit';
+    b.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Pedir cotización';
+    b.onclick=function(){ window.__scNueva(typeof areaActual!=='undefined'?areaActual:''); };
+    c.insertBefore(b, c.firstChild);
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', _cpBotonPedirCot); else _cpBotonPedirCot();
   window.cpAbrirPanelDepto = function(tab, area){
     if(!window.db) return;
     _cpdArea = area || _cpdArea; _cpdTab = tab || _cpdTab;
@@ -3113,11 +3173,11 @@
     p.innerHTML='<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:10px"><div><h2 style="margin:0;font-size:19px;color:#0A1628">Compras para '+esc(_cpdArea)+'</h2><p style="margin:3px 0 0;font-size:12.5px;color:#5C7089">Pide precios, sigue tus requisiciones y mira dónde viene lo que se compró.</p></div>' +
       '<button aria-label="Cerrar" onclick="document.getElementById(\'cpd-overlay\').remove()" style="background:#F1F5F9;border:none;border-radius:8px;width:32px;height:32px;cursor:pointer;flex-shrink:0">✕</button></div>' +
       '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;border-bottom:1px solid #EEF2F7;margin-bottom:14px">' +
-        '<div style="display:flex;gap:20px"><button id="cpd-t-cotizaciones" onclick="window.cpAbrirPanelDepto(\'cotizaciones\')" style="padding:10px 2px;border:none;background:none;font-size:13.5px;font-weight:700;cursor:pointer">Mis cotizaciones</button><button id="cpd-t-requisiciones" onclick="window.cpAbrirPanelDepto(\'requisiciones\')" style="padding:10px 2px;border:none;background:none;font-size:13.5px;font-weight:700;cursor:pointer">Mis requisiciones</button></div>' +
+        '<div style="display:flex;gap:20px"><button id="cpd-t-cotizaciones" onclick="window.cpAbrirPanelDepto(\'cotizaciones\')" style="padding:10px 2px;border:none;background:none;font-size:13.5px;font-weight:700;cursor:pointer">Mis cotizaciones</button><button id="cpd-t-requisiciones" onclick="window.cpAbrirPanelDepto(\'requisiciones\')" style="padding:10px 2px;border:none;background:none;font-size:13.5px;font-weight:700;cursor:pointer">Mis requisiciones</button><button id="cpd-t-camino" onclick="window.cpAbrirPanelDepto(\'camino\')" style="padding:10px 2px;border:none;background:none;font-size:13.5px;font-weight:700;cursor:pointer">En camino</button></div>' +
         '<button class="cp-btn prim" style="margin-bottom:8px" onclick="window.__scNueva(\''+esc(_cpdArea).replace(/'/g,"\\'")+'\')">+ Pedir una cotización</button></div>' +
       '<input class="cp-in" style="width:100%;margin-bottom:12px" placeholder="Buscar por folio o pieza…" oninput="window.__cpdBuscar(this.value)" id="cpd-buscar">' +
       '<div id="cpd-lista"><p style="text-align:center;color:#94A3B8;font-size:12.5px;padding:20px">Cargando…</p></div>';
-    ['cotizaciones','requisiciones'].forEach(function(t){ var b=document.getElementById('cpd-t-'+t); b.style.color=t===_cpdTab?'#0A1628':'#94A3B8'; b.style.borderBottom='2px solid '+(t===_cpdTab?'#0A1628':'transparent'); });
+    ['cotizaciones','requisiciones','camino'].forEach(function(t){ var b=document.getElementById('cpd-t-'+t); b.style.color=t===_cpdTab?'#0A1628':'#94A3B8'; b.style.borderBottom='2px solid '+(t===_cpdTab?'#0A1628':'transparent'); });
     _cpdRender();
   };
   var _cpdTexto='';
@@ -3134,7 +3194,7 @@
       cont.innerHTML = mias.slice().sort(function(a,b){ return orden(a)-orden(b); }).map(function(s){
         var pt=(s.partidas||[])[0]||{}, req=s.estatus==='convertida'?_scReq(s):null, col=s.estatus==='lista'?'#6D28D9':(SC_EST[s.estatus]||{}).col||'#94A3B8';
         return '<div class="cp-card" style="--c:'+col+'" role="button" tabindex="0" onclick="window.__scAbrirDetalle(\''+s.id+'\',\'solicitante\')" onkeydown="if(event.key===\'Enter\')window.__scAbrirDetalle(\''+s.id+'\',\'solicitante\')">' +
-          '<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><div style="min-width:0"><b style="font-size:13px">'+esc(s.folio||'')+'</b> '+(s.estatus==='lista'?'<span class="cp-chip" style="background:#EDE9FE;color:#5B21B6">'+_cpIco('check')+'Te toca decidir</span>':'')+
+          (pt.miniatura?'<img src="'+pt.miniatura+'" alt="" style="float:left;width:48px;height:48px;object-fit:cover;border-radius:8px;margin-right:10px">':'')+'<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><div style="min-width:0"><b style="font-size:13px">'+esc(s.folio||'')+'</b> '+(s.estatus==='lista'?'<span class="cp-chip" style="background:#EDE9FE;color:#5B21B6">'+_cpIco('check')+'Te toca decidir</span>':'')+
           '<div style="font-size:12px;color:#334155;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(pt.desc||'')+((s.partidas||[]).length>1?' (+'+((s.partidas||[]).length-1)+')':'')+'</div>' +
           '<div style="font-size:11.5px;color:#5C7089;margin-top:3px"><b>'+esc(_scEstadoTexto(s))+'</b></div></div>' +
           '<div style="text-align:right;font-size:11px;color:#94A3B8">'+_scFmt(s.createdAt)+(req&&req.envio&&req.estatus!=='recibida'?'<div>'+_envCuentaSpan(req.envio)+'</div>':'')+'</div></div>' +
@@ -3142,8 +3202,9 @@
       }).join('');
     } else {
       var reqs=docs.filter(function(d){ return _cpdEsMio(deptoSolicitante(d), _cpCorreoDe(d)); })
+        .filter(function(d){ return _cpdTab!=='camino' || (d.envio && d.estatus!=='recibida' && d.estatus!=='rechazada'); })
         .filter(function(d){ return !t || _cpNorm([d.folio, d.ocFolio, (d.items||[]).map(function(i){return i.desc;}).join(' ')].join(' ')).indexOf(t)>-1; });
-      if(!reqs.length){ cont.innerHTML='<div style="text-align:center;padding:30px 10px;background:#F8FAFC;border-radius:12px;font-size:13px;color:#334155">No hay requisiciones de '+esc(_cpdArea)+' todavía.</div>'; return; }
+      if(!reqs.length){ cont.innerHTML='<div style="text-align:center;padding:30px 10px;background:#F8FAFC;border-radius:12px;font-size:13px;color:#334155">'+(_cpdTab==='camino'?'No hay nada en camino para '+esc(_cpdArea)+' ahorita.':'No hay requisiciones de '+esc(_cpdArea)+' todavía.')+'</div>'; return; }
       var ord=function(d){ return d.estatus==='recibida'||d.estatus==='rechazada'?1:0; };
       cont.innerHTML = reqs.slice().sort(function(a,b){ return ord(a)-ord(b) || ((_cpFechaDoc(b)||0)-(_cpFechaDoc(a)||0)); }).slice(0,80).map(function(d){
         var e=_cpEstadoAmigable(d), col=d.estatus==='rechazada'?'#E23B2E':_cpColDe(d).color, item=(d.items||[])[0]||{};
@@ -3171,7 +3232,7 @@
       (d.items||[]).map(function(it){ return '<div style="border:1px solid #E2E8F0;border-radius:10px;padding:9px 12px;margin-bottom:6px;display:flex;justify-content:space-between;gap:8px;font-size:12.5px"><span>'+esc(it.desc||'')+'</span><b>×'+esc(it.cant||'')+' '+esc(it.unidad||'')+'</b></div>'; }).join('') +
       (d.envio?'<p style="font-size:11px;font-weight:700;color:#5C7089;margin:14px 0 8px;text-transform:uppercase">¿Dónde viene?</p>'+_envResumenHTML(d, false, 'cpd-env-mapa'):(d.estatus==='orden_generada'?'<p style="font-size:12px;color:#5C7089;margin:12px 0">Ya se compró. Compras capturará los datos del envío pronto.</p>':'')) +
       (d.recepcion?'<div style="background:#F0FDF4;border-radius:10px;padding:10px 12px;margin-top:12px;font-size:12px;color:#14532D"><b>Recibido</b> el '+_scFmt(d.recepcion.fecha,true)+' por '+esc(_cpTitulo(d.recepcion.nombre||''))+(d.recepcion.observaciones?' — '+esc(d.recepcion.observaciones):'')+'</div>':'') +
-      '<div style="display:flex;gap:6px;margin-top:14px"><button class="cp-btn" onclick="window.__cpDescargarRequisicion(\''+d.id+'\')">'+_cpIco('bajar')+'PDF</button></div>';
+      ((d.origen==='cotizacion' && _cpNorm(deptoSolicitante(d))!=='ventas')?'':'<div style="display:flex;gap:6px;margin-top:14px"><button class="cp-btn" onclick="window.__cpDescargarRequisicion(\''+d.id+'\')">'+_cpIco('bajar')+'PDF</button></div>');
     if(d.envio) setTimeout(function(){ _envMapa('cpd-env-mapa', d.envio); }, 40);
   };
 
