@@ -1871,6 +1871,7 @@
     };
 
     const NAV_ICONS = {
+        externos: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>',
         vencimientos: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M12 14v3l2 1"/></svg>',
         viaticos: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/></svg>',
         resumen: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>',
@@ -1893,7 +1894,7 @@
         const items = ["calendario:Calendario", "resumen:Resumen", "dashboard:Herramientas", "guardias:Guardias", "tecnicos:Técnicos", "servicios:Servicios",
             "folios:Folios", "clientes:Clientes",
             ...(opsPuedeHacer("autorizar_material") ? ["solicitudes:Solicitudes"] : []),
-            "vencimientos:Vencimientos", "viaticos:Viáticos", "alertas:Alertas", "movimientos:Movimientos"];
+            "vencimientos:Vencimientos", "viaticos:Viáticos", "externos:Externos", "alertas:Alertas", "movimientos:Movimientos"];
         return `
         <div style="position:fixed;inset:0;z-index:99997;background:#f1f5f9;font-family:'Inter',sans-serif;display:flex;flex-direction:column;">
             <div style="background:#1D2E73;border-bottom:3px solid #062F73;padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
@@ -1945,6 +1946,7 @@
         else if (tab === "alertas") opsRenderAlertas();
         else if (tab === "movimientos") opsRenderMovimientos();
         else if (tab === "viaticos") opsRenderViaticos();
+        else if (tab === "externos") opsRenderExternos();
         else if (tab === "vencimientos") opsRenderVencimientos();
     };
 
@@ -13779,6 +13781,725 @@
         <div class="firmas"><div>Técnico<br>${opsEsc(s.responsable_nombre || "")}</div><div>Jefe inmediato</div><div>Pagos</div></div>
         <button onclick="print()" style="margin-top:20px;padding:8px 16px;">Imprimir</button></body></html>`);
         w.document.close();
+    };
+
+
+    // ══════════════════════════════════════════════════════════════════
+    // SERVICIOS EXTERNOS (oct-2026)
+    // Trabajos que ejecuta un proveedor externo y que se facturan aparte. Reemplaza el
+    // Excel "BASE DE DATOS FACTURAS" (ya importado: ago-oct 2026, 90 servicios, 24 proveedores).
+    // Ciclo: Por autorizar → Autorizado → Ejecutado → Factura recibida (XML del proveedor)
+    //        → Entregada → Facturada al cliente (XML/PDF de la factura emitida) → Cobrada.
+    // Aparte: "Pagado al proveedor". Precio al cliente = total del proveedor × (1 + margen%),
+    // igual que el "SALDO A COBRAR" del Excel (40% por defecto, editable por cliente).
+    // Tablas (Supabase): ops_servicios_externos, ops_proveedores_externos, ops_config_externos.
+    // Archivos: bucket privado ops-externos.
+    // ══════════════════════════════════════════════════════════════════
+    const OPS_EXT_BUCKET = "ops-externos";
+    const OPS_EXT_PASOS = ["Por autorizar", "Autorizado", "Ejecutado", "Factura recibida", "Entregada", "Facturada al cliente", "Cobrada"];
+    const OPS_EXT_COL = {
+        "Por autorizar": { c: "#b45309", bg: "#fef3c7" }, "Autorizado": { c: "#0e7490", bg: "#cffafe" }, "Ejecutado": { c: "#1d4ed8", bg: "#dbeafe" },
+        "Factura recibida": { c: "#6d28d9", bg: "#ede9fe" }, "Entregada": { c: "#1D2E73", bg: "#E9ECF5" }, "Facturada al cliente": { c: "#15803d", bg: "#dcfce7" },
+        "Cobrada": { c: "#166534", bg: "#bbf7d0" }, "Cancelado": { c: "#64748b", bg: "#f1f5f9" },
+    };
+    const OPS_EXT_CFG_DEF = { margenDefault: 40, margenPorCliente: { "PETRO SEVEN": 40 }, diasAlerta: { autorizacion: 3, facturaProveedor: 5, entrega: 3 }, vobo: {} };
+    let opsExt = [], opsExtProv = [], opsExtCfg = { ...OPS_EXT_CFG_DEF };
+    let opsExtVista = "seguimiento", opsExtFiltro = "abiertos", opsExtBusca = "", opsExtOrden = "proveedor", opsExtProvFiltro = "", opsExtMes = "";
+    let opsExtForm = null;
+
+    const opsExtNum = v => { const n = Number(v); return isNaN(n) ? 0 : n; };
+    const opsExtDin = n => "$" + opsExtNum(n).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    function opsExtHoy() { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+    function opsExtFecha(iso) { if (!iso) return "—"; const d = new Date(String(iso).slice(0, 10) + "T12:00:00"); return isNaN(d) ? iso : d.toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" }); }
+    function opsExtMesTxt(m) { if (!m) return "Sin mes"; const d = new Date(m + "-15T12:00:00"); return isNaN(d) ? m : d.toLocaleDateString("es-MX", { month: "long", year: "numeric" }).replace(/^./, c => c.toUpperCase()); }
+    function opsExtDias(iso) { if (!iso) return null; return Math.round((new Date(opsExtHoy() + "T12:00:00") - new Date(String(iso).slice(0, 10) + "T12:00:00")) / 86400000); }
+    function opsExtChip(t) { const m = OPS_EXT_COL[t] || { c: "#334155", bg: "#f1f5f9" }; return `<span style="display:inline-block;background:${m.bg};color:${m.c};font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;white-space:nowrap;">${opsEsc(t)}</span>`; }
+    function opsExtPuedeEditar() { return opsPuedeGestionar() || opsViaPuedeAutorizar(); }
+    function opsExtMargen(cliente) { const m = (opsExtCfg.margenPorCliente || {})[String(cliente || "").toUpperCase().trim()]; return m != null ? opsExtNum(m) : opsExtNum(opsExtCfg.margenDefault ?? 40); }
+
+    async function opsExtCargar() {
+        const sb = await opsSb();
+        const [s, p, c] = await Promise.all([
+            sb.from("ops_servicios_externos").select("*").order("id", { ascending: false }).limit(3000),
+            sb.from("ops_proveedores_externos").select("*").order("nombre"),
+            sb.from("ops_config_externos").select("datos").eq("id", "general").maybeSingle(),
+        ]);
+        if (s.error) throw s.error;
+        if (p.error) throw p.error;
+        opsExt = s.data || [];
+        opsExtProv = (p.data || []).slice().sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+        opsExtCfg = { ...OPS_EXT_CFG_DEF, ...((c.data && c.data.datos) || {}) };
+    }
+    function opsExtProvNombre(p) { return p ? (p.empresa ? p.empresa + " (" + p.nombre + ")" : p.nombre) : ""; }
+
+    // Alertas: lo que está atorado más días de lo configurado.
+    function opsExtAlerta(s) {
+        const d = opsExtCfg.diasAlerta || {};
+        if (s.estado === "Por autorizar") { const n = opsExtDias(s.fecha_solicitud || s.creado_en); if (n !== null && n > (d.autorizacion ?? 3)) return `${n} días esperando autorización`; }
+        if (s.estado === "Ejecutado" || s.estado === "Autorizado") { const n = opsExtDias(s.fecha_ejecucion); if (s.estado === "Ejecutado" && n !== null && n > (d.facturaProveedor ?? 5)) return `${n} días sin factura del proveedor`; }
+        if (s.estado === "Factura recibida") { const n = opsExtDias(s.factura_fecha || s.fecha_ejecucion); if (n !== null && n > (d.entrega ?? 3)) return `${n} días sin entregar`; }
+        if (s.estado === "Entregada" && s.poliza_mes && s.poliza_mes < opsExtHoy().slice(0, 7)) return `Su mes (${opsExtMesTxt(s.poliza_mes)}) ya cerró y no está facturado al cliente`;
+        return "";
+    }
+
+    // ── Pestaña ──
+    async function opsRenderExternos() {
+        const el = document.getElementById("ops-tab-content"); if (!el) return;
+        if (!opsExt.length) el.innerHTML = `<div style="padding:30px;color:#64748b;font-size:13px;">Cargando servicios externos…</div>`;
+        try { await opsExtCargar(); }
+        catch (e) { el.innerHTML = `<div style="padding:30px;color:#E7402B;">No se pudieron cargar los servicios externos: ${opsEsc(e.message || e)}</div>`; return; }
+        if (tabActual !== "externos") return;
+        const tabs = [["seguimiento", "Seguimiento"], ["mensual", "Resumen mensual"], ["proveedores", "Proveedores"]];
+        const cab = `<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+            <div>
+                <div style="font-family:'Space Grotesk',sans-serif;font-size:19px;font-weight:700;color:#1D2E73;">Servicios externos</div>
+                <div style="font-size:12px;color:#64748b;">Trabajos de proveedores que se facturan aparte: autorización, factura del proveedor, entrega, factura al cliente y cobro.</div>
+                <div style="display:inline-flex;gap:2px;background:#e2e8f0;padding:3px;border-radius:10px;margin-top:10px;">${tabs.map(([v, t]) => `<button onclick="opsExtSetVista('${v}')" style="border:none;padding:7px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700;background:${opsExtVista === v ? "#1D2E73" : "transparent"};color:${opsExtVista === v ? "#fff" : "#475569"};">${t}</button>`).join("")}</div>
+            </div>
+            <div style="display:flex;gap:8px;">
+                ${opsExtPuedeEditar() ? `<button onclick="opsExtAbrirConfig()" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Márgenes y alertas</button>` : ""}
+                ${opsExtPuedeEditar() ? (opsExtVista === "proveedores"
+                    ? `<button onclick="opsExtEditarProv(null)" class="mkt-add-btn" style="background:#E7402B;">+ Nuevo proveedor</button>`
+                    : `<button onclick="opsExtAbrirForm(null)" class="mkt-add-btn" style="background:#E7402B;">+ Nuevo servicio externo</button>`) : `<span style="font-size:12px;color:#94a3b8;align-self:center;">Solo lectura</span>`}
+            </div>
+        </div>`;
+        let cuerpo = "";
+        if (opsExtVista === "mensual") cuerpo = opsExtHTMLMensual();
+        else if (opsExtVista === "proveedores") cuerpo = opsExtHTMLProveedores();
+        else cuerpo = opsExtHTMLSeguimiento();
+        el.innerHTML = `<div style="padding:22px;">${cab}${cuerpo}</div>`;
+    }
+    window.opsExtSetVista = function (v) { opsExtVista = v; opsRenderExternos(); };
+    window.opsExtSetFiltro = function (v) { opsExtFiltro = v; opsRenderExternos(); };
+    window.opsExtSetOrden = function (v) { opsExtOrden = v; opsRenderExternos(); };
+    window.opsExtSetProvFiltro = function (v) { opsExtProvFiltro = v; opsRenderExternos(); };
+    window.opsExtSetMes = function (v) { opsExtMes = v; opsRenderExternos(); };
+    window.opsExtSetBusca = function (v) {
+        opsExtBusca = v; clearTimeout(window.__opsExtBT);
+        window.__opsExtBT = setTimeout(() => Promise.resolve(opsRenderExternos()).then(() => { const i = document.getElementById("ext-busca"); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }), 300);
+    };
+
+    function opsExtHTMLSeguimiento() {
+        const abiertos = opsExt.filter(s => !["Cobrada", "Cancelado"].includes(s.estado));
+        const cuenta = e => opsExt.filter(s => s.estado === e).length;
+        const alertas = abiertos.filter(s => opsExtAlerta(s));
+        const porCobrar = opsExt.filter(s => ["Entregada", "Facturada al cliente"].includes(s.estado)).reduce((a, s) => a + opsExtNum(s.precio_cliente), 0);
+        const porPagarProv = opsExt.filter(s => s.estado !== "Cancelado" && !s.pagado_proveedor_en && ["Factura recibida", "Entregada", "Facturada al cliente", "Cobrada"].includes(s.estado)).reduce((a, s) => a + opsExtNum(s.total), 0);
+        const filtros = {
+            abiertos: ["Abiertos", s => !["Cobrada", "Cancelado"].includes(s.estado)],
+            alertas: ["Con alerta", s => !!opsExtAlerta(s)],
+            ...Object.fromEntries(OPS_EXT_PASOS.map(p => [p, [p, s => s.estado === p]])),
+            sinpagar: ["Sin pagar al proveedor", s => s.estado !== "Cancelado" && !s.pagado_proveedor_en && ["Factura recibida", "Entregada", "Facturada al cliente", "Cobrada"].includes(s.estado)],
+            cancelados: ["Cancelados", s => s.estado === "Cancelado"],
+            todos: ["Todos", () => true],
+        };
+        if (!filtros[opsExtFiltro]) opsExtFiltro = "abiertos";
+        const q = opsExtBusca.toLowerCase().trim();
+        let lista = opsExt.filter(filtros[opsExtFiltro][1])
+            .filter(s => !opsExtProvFiltro || String(s.proveedor_id) === String(opsExtProvFiltro))
+            .filter(s => !q || [s.folio, s.proveedor_nombre, s.cliente, s.estacion, s.concepto, s.folio_cliente, s.folio_aspel, s.factura_proveedor, s.factura_cliente].join(" ").toLowerCase().includes(q));
+        const cmp = {
+            proveedor: (a, b) => String(a.proveedor_nombre || "").localeCompare(String(b.proveedor_nombre || ""), "es") || String(b.fecha_ejecucion || "").localeCompare(String(a.fecha_ejecucion || "")),
+            estacion: (a, b) => String(a.estacion || "").localeCompare(String(b.estacion || ""), "es"),
+            recientes: (a, b) => String(b.fecha_ejecucion || b.creado_en || "").localeCompare(String(a.fecha_ejecucion || a.creado_en || "")) || b.id - a.id,
+        };
+        lista.sort(cmp[opsExtOrden] || cmp.proveedor);
+        const total = lista.reduce((a, s) => a + opsExtNum(s.total), 0), venta = lista.reduce((a, s) => a + opsExtNum(s.precio_cliente), 0);
+        const contador = (e, t) => `<button onclick="opsExtSetFiltro('${e}')" style="border:1px solid ${opsExtFiltro === e ? "#1D2E73" : "#e2e8f0"};background:${opsExtFiltro === e ? "#E9ECF5" : "#fff"};border-radius:10px;padding:8px 10px;cursor:pointer;text-align:left;min-width:108px;">
+            <div style="font-size:18px;font-weight:800;color:${(OPS_EXT_COL[e] || {}).c || "#1D2E73"};">${t}</div><div style="font-size:10.5px;color:#64748b;font-weight:600;">${opsEsc(e)}</div></button>`;
+        const filas = lista.map(s => {
+            const al = opsExtAlerta(s);
+            return `<tr style="border-bottom:1px solid #f1f5f9;cursor:pointer;" onclick="opsExtVer(${s.id})">
+                <td style="padding:9px 8px;font-weight:700;color:#1D2E73;white-space:nowrap;">${opsEsc(s.folio || s.id)}<div style="font-size:10.5px;color:#94a3b8;font-weight:500;">${opsEsc(s.folio_aspel || s.folio_cliente || "")}</div></td>
+                <td style="padding:9px 8px;">${opsEsc(s.proveedor_nombre || "—")}</td>
+                <td style="padding:9px 8px;">${opsEsc(s.estacion || "")}<div style="font-size:10.5px;color:#94a3b8;">${opsEsc(s.cliente || "")}</div></td>
+                <td style="padding:9px 8px;font-size:11.5px;max-width:260px;"><div style="overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">${opsEsc(s.concepto || "")}</div></td>
+                <td style="padding:9px 8px;white-space:nowrap;font-size:11.5px;">${opsExtFecha(s.fecha_ejecucion)}</td>
+                <td style="padding:9px 8px;text-align:right;white-space:nowrap;">${opsExtDin(s.total)}<div style="font-size:10.5px;color:#15803d;">${s.precio_cliente ? "cobrar " + opsExtDin(s.precio_cliente) : ""}</div></td>
+                <td style="padding:9px 8px;">${opsExtChip(s.estado)}${s.pagado_proveedor_en ? `<div style="font-size:10px;color:#15803d;margin-top:3px;font-weight:600;">Pagado al proveedor</div>` : ""}${al ? `<div style="font-size:10.5px;color:#b91c1c;margin-top:3px;font-weight:600;">${opsEsc(al)}</div>` : ""}</td>
+            </tr>`;
+        }).join("");
+        return `
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:12px;">
+                <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;"><div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;">Abiertos</div><div style="font-size:20px;font-weight:800;color:#1D2E73;">${abiertos.length}</div><div style="font-size:11px;color:#94a3b8;">sin cobrar todavía</div></div>
+                <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;"><div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;">Por cobrar al cliente</div><div style="font-size:20px;font-weight:800;color:#15803d;">${opsExtDin(porCobrar)}</div><div style="font-size:11px;color:#94a3b8;">entregados y facturados</div></div>
+                <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;"><div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;">Por pagar a proveedores</div><div style="font-size:20px;font-weight:800;color:#b45309;">${opsExtDin(porPagarProv)}</div><div style="font-size:11px;color:#94a3b8;">con factura recibida</div></div>
+                <button onclick="opsExtSetFiltro('alertas')" style="text-align:left;background:${alertas.length ? "#fef2f2" : "#fff"};border:1px solid ${alertas.length ? "#fecaca" : "#e2e8f0"};border-radius:12px;padding:12px 14px;cursor:pointer;"><div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;">Atorados</div><div style="font-size:20px;font-weight:800;color:${alertas.length ? "#b91c1c" : "#1D2E73"};">${alertas.length}</div><div style="font-size:11px;color:#94a3b8;">más días de lo normal</div></button>
+            </div>
+            <div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;margin-bottom:12px;">${OPS_EXT_PASOS.map(p => contador(p, cuenta(p))).join("")}</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+                <select onchange="opsExtSetFiltro(this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:12.5px;">${Object.keys(filtros).map(k => `<option value="${opsEsc(k)}" ${k === opsExtFiltro ? "selected" : ""}>${opsEsc(filtros[k][0])}</option>`).join("")}</select>
+                <select onchange="opsExtSetProvFiltro(this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:12.5px;max-width:240px;"><option value="">Todos los proveedores</option>${opsExtProv.map(p => `<option value="${p.id}" ${String(p.id) === String(opsExtProvFiltro) ? "selected" : ""}>${opsEsc(opsExtProvNombre(p))}</option>`).join("")}</select>
+                <select onchange="opsExtSetOrden(this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:12.5px;">
+                    <option value="proveedor" ${opsExtOrden === "proveedor" ? "selected" : ""}>Orden: proveedor (A-Z)</option>
+                    <option value="estacion" ${opsExtOrden === "estacion" ? "selected" : ""}>Orden: estación (A-Z)</option>
+                    <option value="recientes" ${opsExtOrden === "recientes" ? "selected" : ""}>Orden: más recientes</option></select>
+                <input id="ext-busca" value="${opsEsc(opsExtBusca)}" oninput="opsExtSetBusca(this.value)" placeholder="Buscar folio, estación, concepto, factura, SER…" style="flex:1;min-width:220px;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:12.5px;">
+            </div>
+            <div style="font-size:11.5px;color:#64748b;margin-bottom:6px;">${lista.length} servicio(s) · costo ${opsExtDin(total)} · a cobrar ${opsExtDin(venta)}</div>
+            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow-x:auto;">
+                <table style="width:100%;border-collapse:collapse;font-size:12.5px;color:#334155;">
+                    <thead><tr style="background:#f8fafc;text-align:left;color:#64748b;font-size:11px;text-transform:uppercase;">
+                        <th style="padding:9px 8px;">Folio</th><th style="padding:9px 8px;">Proveedor</th><th style="padding:9px 8px;">Estación</th><th style="padding:9px 8px;">Concepto</th>
+                        <th style="padding:9px 8px;">Ejecución</th><th style="padding:9px 8px;text-align:right;">Monto</th><th style="padding:9px 8px;">Estado</th></tr></thead>
+                    <tbody>${filas || `<tr><td colspan="7" style="padding:24px;text-align:center;color:#94a3b8;">Nada en este filtro.</td></tr>`}</tbody>
+                </table>
+            </div>`;
+    }
+
+    // ── Resumen mensual (como la hoja INDICE del Excel) ──
+    function opsExtHTMLMensual() {
+        const meses = [...new Set(opsExt.map(s => s.poliza_mes).filter(Boolean))].sort().reverse();
+        if (!opsExtMes || !meses.includes(opsExtMes)) opsExtMes = meses[0] || opsExtHoy().slice(0, 7);
+        const delMes = opsExt.filter(s => s.poliza_mes === opsExtMes && s.estado !== "Cancelado");
+        const porCliente = {};
+        delMes.forEach(s => {
+            const k = s.cliente || "Sin cliente";
+            const g = porCliente[k] || (porCliente[k] = { cliente: k, n: 0, total: 0, iva: 0, venta: 0, cobrado: 0, facturado: 0, pendFact: 0 });
+            g.n++; g.total += opsExtNum(s.total); g.iva += opsExtNum(s.iva); g.venta += opsExtNum(s.precio_cliente);
+            if (s.estado === "Cobrada") g.cobrado += opsExtNum(s.precio_cliente);
+            if (["Facturada al cliente", "Cobrada"].includes(s.estado)) g.facturado += opsExtNum(s.precio_cliente); else g.pendFact++;
+        });
+        const grupos = Object.values(porCliente).sort((a, b) => a.cliente.localeCompare(b.cliente, "es"));
+        const tot = grupos.reduce((a, g) => ({ n: a.n + g.n, total: a.total + g.total, iva: a.iva + g.iva, venta: a.venta + g.venta }), { n: 0, total: 0, iva: 0, venta: 0 });
+        const vobo = (opsExtCfg.vobo || {})[opsExtMes];
+        const filas = grupos.map((g, i) => `<tr style="border-bottom:1px solid #f1f5f9;">
+            <td style="padding:9px 8px;font-weight:700;color:#1e293b;">${opsEsc(g.cliente)}</td><td style="padding:9px 8px;text-align:right;">${g.n}</td>
+            <td style="padding:9px 8px;text-align:right;">${opsExtDin(g.total)}</td><td style="padding:9px 8px;text-align:right;color:#64748b;">${opsExtDin(g.iva)}</td>
+            <td style="padding:9px 8px;text-align:right;font-weight:700;color:#15803d;">${opsExtDin(g.venta)}</td><td style="padding:9px 8px;text-align:right;color:#1D2E73;">${opsExtDin(g.venta - g.total)}</td>
+            <td style="padding:9px 8px;font-size:11.5px;">${g.pendFact ? `<span style="color:#b45309;font-weight:700;">${g.pendFact} sin facturar</span>` : `<span style="color:#15803d;font-weight:700;">Todo facturado</span>`}${g.cobrado ? `<div style="color:#64748b;">Cobrado ${opsExtDin(g.cobrado)}</div>` : ""}
+                ${opsExtPuedeEditar() && g.pendFact ? `<button onclick="opsExtMarcarMes(${i},'Facturada al cliente')" style="margin-top:4px;background:#fff;border:1px solid #cbd5e1;color:#334155;padding:3px 8px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">Marcar facturado</button>` : ""}
+                ${opsExtPuedeEditar() && !g.pendFact && g.cobrado < g.venta - 0.5 ? `<button onclick="opsExtMarcarMes(${i},'Cobrada')" style="margin-top:4px;background:#fff;border:1px solid #cbd5e1;color:#334155;padding:3px 8px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">Marcar cobrado</button>` : ""}</td></tr>`).join("");
+        window.__opsExtGrupos = grupos.map(g => g.cliente);
+        return `
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
+                <select onchange="opsExtSetMes(this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;font-weight:600;">${meses.map(m => `<option value="${m}" ${m === opsExtMes ? "selected" : ""}>${opsExtMesTxt(m)}</option>`).join("") || `<option>${opsExtMesTxt(opsExtMes)}</option>`}</select>
+                <button onclick="opsExtExcelMes()" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;display:inline-flex;gap:6px;align-items:center;"><span style="display:inline-flex;width:15px;height:15px;">${ICON.download}</span>Excel del mes</button>
+                <div style="flex:1;"></div>
+                ${vobo ? `<div style="background:#dcfce7;color:#166534;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;">VoBo de ${opsEsc(vobo.porNombre || vobo.por)} · ${opsExtFecha(vobo.en)}</div>${opsExtPuedeEditar() ? `<button onclick="opsExtVoBo(false)" style="background:none;border:none;color:#64748b;font-size:11.5px;cursor:pointer;text-decoration:underline;">Quitar</button>` : ""}`
+                    : opsExtPuedeEditar() ? `<button onclick="opsExtVoBo(true)" class="mkt-add-btn" style="background:#15803d;">Dar VoBo del mes</button>` : `<span style="font-size:12px;color:#b45309;font-weight:600;">Sin VoBo</span>`}
+            </div>
+            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow-x:auto;margin-bottom:14px;">
+                <table style="width:100%;border-collapse:collapse;font-size:12.5px;color:#334155;">
+                    <thead><tr style="background:#f8fafc;text-align:left;color:#64748b;font-size:11px;text-transform:uppercase;">
+                        <th style="padding:9px 8px;">Cliente</th><th style="padding:9px 8px;text-align:right;">Servicios</th><th style="padding:9px 8px;text-align:right;">Monto proveedor</th><th style="padding:9px 8px;text-align:right;">IVA</th>
+                        <th style="padding:9px 8px;text-align:right;">Saldo a cobrar</th><th style="padding:9px 8px;text-align:right;">Ganancia</th><th style="padding:9px 8px;">Facturación</th></tr></thead>
+                    <tbody>${filas || `<tr><td colspan="7" style="padding:24px;text-align:center;color:#94a3b8;">Sin servicios en este mes.</td></tr>`}</tbody>
+                    ${grupos.length ? `<tfoot><tr style="background:#f8fafc;font-weight:800;"><td style="padding:9px 8px;">Total</td><td style="padding:9px 8px;text-align:right;">${tot.n}</td><td style="padding:9px 8px;text-align:right;">${opsExtDin(tot.total)}</td><td style="padding:9px 8px;text-align:right;">${opsExtDin(tot.iva)}</td><td style="padding:9px 8px;text-align:right;color:#15803d;">${opsExtDin(tot.venta)}</td><td style="padding:9px 8px;text-align:right;color:#1D2E73;">${opsExtDin(tot.venta - tot.total)}</td><td></td></tr></tfoot>` : ""}
+                </table>
+            </div>
+            <div style="font-size:11.5px;color:#64748b;">Saldo a cobrar = monto del proveedor × (1 + margen). Ganancia = saldo − monto. Para ver el detalle de un cliente, usa Seguimiento → buscar por cliente.</div>`;
+    }
+    window.opsExtVoBo = async function (dar) {
+        const datos = JSON.parse(JSON.stringify(opsExtCfg)); datos.vobo = datos.vobo || {};
+        if (dar) datos.vobo[opsExtMes] = { por: opsUsuarioActual(), porNombre: opsNombreActual(), en: new Date().toISOString() };
+        else { if (!confirm("¿Quitar el VoBo de este mes?")) return; delete datos.vobo[opsExtMes]; }
+        try { await opsExtGuardarCfg(datos); opsRenderExternos(); } catch (e) { alert("No se pudo guardar: " + (e.message || e)); }
+    };
+    // Cierre masivo del mes por cliente (la póliza mensual se factura y cobra en una sola factura).
+    window.opsExtMarcarMes = async function (i, estado) {
+        const cliente = (window.__opsExtGrupos || [])[i]; if (!cliente) return;
+        const origen = estado === "Cobrada" ? ["Facturada al cliente"] : ["Por autorizar", "Autorizado", "Ejecutado", "Factura recibida", "Entregada"];
+        const lista = opsExt.filter(s => s.poliza_mes === opsExtMes && (s.cliente || "Sin cliente") === cliente && origen.includes(s.estado));
+        if (!lista.length) return;
+        const antes = lista.filter(s => !["Factura recibida", "Entregada"].includes(s.estado)).length;
+        if (estado !== "Cobrada" && antes && !confirm(`${antes} de ${lista.length} servicio(s) todavía no tienen factura del proveedor. ¿Marcarlos de todos modos?`)) return;
+        const folio = estado === "Cobrada" ? null : prompt(`Folio de la factura con que se cobró ${opsExtMesTxt(opsExtMes)} a ${cliente} (opcional):`, "");
+        if (folio === null && estado !== "Cobrada") return;
+        const fecha = prompt(estado === "Cobrada" ? "Fecha de cobro (AAAA-MM-DD):" : "Fecha de la factura (AAAA-MM-DD):", opsExtHoy());
+        if (!fecha || !/^\d{4}-\d{2}-\d{2}$/.test(fecha.trim())) return;
+        try {
+            const sb = await opsSb();
+            for (const s of lista) {
+                const c = { estado, actualizado_en: new Date().toISOString(), actualizado_por: opsUsuarioActual(), historial: opsExtHist(s, estado, "Cierre del mes " + opsExtMes) };
+                if (estado === "Cobrada") c.cobrado_en = fecha.trim();
+                else { c.factura_cliente = (folio || "").trim() || s.factura_cliente || null; c.factura_cliente_fecha = fecha.trim(); if (!s.fecha_entrega && s.estado === "Entregada") c.fecha_entrega = fecha.trim(); }
+                const { error } = await sb.from("ops_servicios_externos").update(c).eq("id", s.id);
+                if (error) throw error;
+                Object.assign(s, c);
+            }
+            opsViaToast(`${lista.length} servicio(s) de ${cliente} marcados como ${estado}.`, "#15803d");
+            opsRenderExternos();
+        } catch (e) { alert("No se pudo completar: " + (e.message || e)); opsRenderExternos(); }
+    };
+    async function opsExtGuardarCfg(datos) {
+        const sb = await opsSb();
+        const { error } = await sb.from("ops_config_externos").upsert({ id: "general", datos, actualizado_en: new Date().toISOString(), actualizado_por: opsUsuarioActual() });
+        if (error) throw error;
+        opsExtCfg = datos;
+    }
+    window.opsExtExcelMes = function () {
+        if (typeof XLSX === "undefined") { alert("Falta cargar SheetJS (XLSX) en index.html."); return; }
+        const delMes = opsExt.filter(s => s.poliza_mes === opsExtMes && s.estado !== "Cancelado")
+            .sort((a, b) => String(a.cliente || "").localeCompare(String(b.cliente || ""), "es") || String(a.fecha_ejecucion || "").localeCompare(String(b.fecha_ejecucion || "")));
+        const filas = delMes.map((s, i) => ({
+            "No.": i + 1, "Fecha": s.fecha_ejecucion || "", "No. factura": s.factura_proveedor || "", "Razón social": s.proveedor_nombre || "", "Concepto": s.concepto || "",
+            "Cliente": s.cliente || "", "Estación": s.estacion || "", "Cantidad": opsExtNum(s.total), "IVA": opsExtNum(s.iva), "Margen %": opsExtNum(s.margen),
+            "Saldo a cobrar": opsExtNum(s.precio_cliente), "Ganancia": opsExtNum(s.precio_cliente) - opsExtNum(s.total), "Entregado": s.fecha_entrega ? "Sí" : "No",
+            "Fecha de entrega": s.fecha_entrega || "", "Cotización / folio": s.folio_aspel || "", "Folio cliente": s.folio_cliente || "", "Factura al cliente": s.factura_cliente || "",
+            "Estado": s.estado, "Pagado al proveedor": s.pagado_proveedor_en || "", "Folio portal": s.folio || "",
+        }));
+        const ws = XLSX.utils.json_to_sheet(filas);
+        ws["!cols"] = [{ wch: 5 }, { wch: 11 }, { wch: 12 }, { wch: 30 }, { wch: 50 }, { wch: 14 }, { wch: 22 }, { wch: 12 }, { wch: 10 }, { wch: 8 }, { wch: 13 }, { wch: 11 }, { wch: 9 }, { wch: 12 }, { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 18 }, { wch: 12 }, { wch: 11 }];
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, opsExtMesTxt(opsExtMes).slice(0, 30));
+        XLSX.writeFile(wb, "Servicios_externos_" + opsExtMes + ".xlsx");
+    };
+
+    // ── Proveedores ──
+    function opsExtHTMLProveedores() {
+        const q = opsExtBusca.toLowerCase().trim();
+        const anio = opsExtHoy().slice(0, 4);
+        const lista = opsExtProv.filter(p => !q || [p.nombre, p.empresa, p.contacto, p.especialidades, p.rfc, (p.alias || []).join(" ")].join(" ").toLowerCase().includes(q));
+        const filas = lista.map(p => {
+            const sus = opsExt.filter(s => s.proveedor_id === p.id && s.estado !== "Cancelado");
+            const anual = sus.filter(s => String(s.fecha_ejecucion || "").startsWith(anio)).reduce((a, s) => a + opsExtNum(s.total), 0);
+            const pend = sus.filter(s => !s.pagado_proveedor_en && ["Factura recibida", "Entregada", "Facturada al cliente", "Cobrada"].includes(s.estado));
+            const wa = String(p.whatsapp || p.telefono || "").replace(/\D/g, "").slice(-10);
+            return `<tr style="border-bottom:1px solid #f1f5f9;${p.activo === false ? "opacity:.55;" : ""}">
+                <td style="padding:9px 8px;"><div style="font-weight:700;color:#1e293b;">${opsEsc(p.empresa || p.nombre)}</div><div style="font-size:10.5px;color:#94a3b8;">${opsEsc(p.empresa ? p.nombre : "")}${p.rfc ? " · " + opsEsc(p.rfc) : ""}</div></td>
+                <td style="padding:9px 8px;font-size:11.5px;">${opsEsc(p.especialidades || "")}${p.certificado ? `<div style="color:#94a3b8;">${opsEsc(p.certificado)}</div>` : ""}</td>
+                <td style="padding:9px 8px;font-size:11.5px;white-space:nowrap;">${opsEsc(p.contacto || "")}${wa ? `<div><a href="https://wa.me/52${wa}" target="_blank" rel="noopener" style="color:#15803d;font-weight:600;text-decoration:none;">WhatsApp ${opsEsc(wa)}</a></div>` : ""}</td>
+                <td style="padding:9px 8px;text-align:right;">${sus.length}</td><td style="padding:9px 8px;text-align:right;">${opsExtDin(anual)}</td>
+                <td style="padding:9px 8px;text-align:right;color:${pend.length ? "#b45309" : "#94a3b8"};font-weight:${pend.length ? 700 : 400};">${pend.length ? opsExtDin(pend.reduce((a, s) => a + opsExtNum(s.total), 0)) : "—"}</td>
+                <td style="padding:9px 8px;white-space:nowrap;">
+                    <button onclick="opsExtVerProveedor(${p.id})" style="background:#E9ECF5;border:none;color:#1D2E73;padding:5px 9px;border-radius:7px;cursor:pointer;font-size:11.5px;font-weight:600;">Servicios</button>
+                    ${opsExtPuedeEditar() ? `<button onclick="opsExtEditarProv(${p.id})" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:5px 9px;border-radius:7px;cursor:pointer;font-size:11.5px;font-weight:600;">Editar</button>` : ""}</td></tr>`;
+        }).join("");
+        return `
+            <input id="ext-busca" value="${opsEsc(opsExtBusca)}" oninput="opsExtSetBusca(this.value)" placeholder="Buscar proveedor, especialidad, RFC…" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:12.5px;margin-bottom:10px;">
+            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow-x:auto;">
+                <table style="width:100%;border-collapse:collapse;font-size:12.5px;color:#334155;">
+                    <thead><tr style="background:#f8fafc;text-align:left;color:#64748b;font-size:11px;text-transform:uppercase;">
+                        <th style="padding:9px 8px;">Proveedor</th><th style="padding:9px 8px;">Especialidad</th><th style="padding:9px 8px;">Contacto</th><th style="padding:9px 8px;text-align:right;">Servicios</th>
+                        <th style="padding:9px 8px;text-align:right;">Facturado ${anio}</th><th style="padding:9px 8px;text-align:right;">Por pagarle</th><th></th></tr></thead>
+                    <tbody>${filas || `<tr><td colspan="7" style="padding:24px;text-align:center;color:#94a3b8;">Sin proveedores.</td></tr>`}</tbody>
+                </table>
+            </div>`;
+    }
+    window.opsExtVerProveedor = function (id) { opsExtProvFiltro = String(id); opsExtFiltro = "todos"; opsExtBusca = ""; opsExtVista = "seguimiento"; opsRenderExternos(); };
+    window.opsExtEditarProv = function (id) {
+        const p = id ? opsExtProv.find(x => x.id === id) : { nombre: "", alias: [], activo: true };
+        if (!p) return;
+        const campo = (l, k, v, t) => opsViaInput(l, "ext-p-" + k, v ?? "", "", t || "text");
+        document.getElementById("ops-modal-wrap").innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;">
+            <div style="background:#fff;border-radius:14px;width:620px;max-width:96vw;max-height:92vh;overflow-y:auto;padding:22px;">
+                <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:16px;color:#1D2E73;margin-bottom:12px;">${id ? "Editar proveedor" : "Nuevo proveedor"}</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 10px;">
+                    ${campo("Nombre fiscal (como viene en su factura) *", "nombre", p.nombre)}${campo("Nombre comercial", "empresa", p.empresa)}
+                    ${campo("Contacto", "contacto", p.contacto)}${campo("RFC", "rfc", p.rfc)}
+                    ${campo("Teléfono", "telefono", p.telefono)}${campo("WhatsApp", "whatsapp", p.whatsapp)}
+                    ${campo("Correo", "correo", p.correo)}${campo("Especialidades", "especialidades", p.especialidades)}
+                    ${campo("Certificado / manifiesto", "certificado", p.certificado)}${campo("Otros nombres con que aparece (coma)", "alias", (p.alias || []).join(", "))}
+                </div>
+                ${campo("Notas", "notas", p.notas)}
+                <label style="font-size:12.5px;color:#334155;display:flex;gap:6px;align-items:center;margin-bottom:12px;"><input type="checkbox" id="ext-p-activo" ${p.activo !== false ? "checked" : ""}> Activo</label>
+                <div style="display:flex;gap:8px;justify-content:flex-end;">
+                    <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
+                    <button onclick="opsExtGuardarProv(${id || "null"})" class="mkt-add-btn" style="background:#1D2E73;">Guardar</button>
+                </div>
+            </div>
+        </div>`;
+    };
+    window.opsExtGuardarProv = async function (id) {
+        const v = k => (document.getElementById("ext-p-" + k).value || "").trim();
+        const datos = {
+            nombre: v("nombre").toUpperCase(), empresa: v("empresa") || null, contacto: v("contacto") || null, rfc: v("rfc").toUpperCase() || null,
+            telefono: v("telefono") || null, whatsapp: v("whatsapp") || null, correo: v("correo") || null, especialidades: v("especialidades") || null,
+            certificado: v("certificado") || null, notas: v("notas") || null, alias: v("alias").split(",").map(x => x.trim().toUpperCase()).filter(Boolean),
+            activo: document.getElementById("ext-p-activo").checked, actualizado_en: new Date().toISOString(),
+        };
+        if (!datos.nombre) { alert("Captura el nombre fiscal."); return; }
+        try {
+            const sb = await opsSb();
+            const r = id ? await sb.from("ops_proveedores_externos").update(datos).eq("id", id) : await sb.from("ops_proveedores_externos").insert(datos);
+            if (r.error) throw r.error;
+            if (id) { const sbr = await sb.from("ops_servicios_externos").update({ proveedor_nombre: datos.nombre }).eq("proveedor_id", id); void sbr; }
+            document.getElementById("ops-modal-wrap").innerHTML = "";
+            opsViaToast("Proveedor guardado.", "#15803d");
+            opsRenderExternos();
+        } catch (e) { alert("No se pudo guardar: " + (e.message || e)); }
+    };
+
+    // ── Márgenes y alertas ──
+    window.opsExtAbrirConfig = function () {
+        const c = opsExtCfg, d = c.diasAlerta || {};
+        const clientes = [...new Set(opsExt.map(s => String(s.cliente || "").toUpperCase().trim()).filter(Boolean).concat(Object.keys(c.margenPorCliente || {})))].sort((a, b) => a.localeCompare(b, "es"));
+        document.getElementById("ops-modal-wrap").innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;">
+            <div style="background:#fff;border-radius:14px;width:560px;max-width:96vw;max-height:92vh;overflow-y:auto;padding:22px;">
+                <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:16px;color:#1D2E73;margin-bottom:12px;">Márgenes y alertas</div>
+                ${opsViaInput("Margen por defecto %", "ext-c-margen", c.margenDefault ?? 40, "", "number")}
+                <div style="font-weight:700;font-size:12.5px;color:#1D2E73;margin:4px 0 6px;">Margen por cliente %</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 10px;">${clientes.map((cl, i) => opsViaInput(opsEsc(cl), "ext-c-mc-" + i, (c.margenPorCliente || {})[cl] ?? "", `data-cliente="${opsEsc(cl)}" placeholder="${c.margenDefault ?? 40}"`, "number")).join("")}</div>
+                <div style="font-weight:700;font-size:12.5px;color:#1D2E73;margin:4px 0 6px;">Alertar cuando pasen más de (días)</div>
+                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0 10px;">
+                    ${opsViaInput("Esperando autorización", "ext-c-d1", d.autorizacion ?? 3, "", "number")}${opsViaInput("Sin factura del proveedor", "ext-c-d2", d.facturaProveedor ?? 5, "", "number")}${opsViaInput("Factura sin entregar", "ext-c-d3", d.entrega ?? 3, "", "number")}
+                </div>
+                <div style="display:flex;gap:8px;justify-content:flex-end;">
+                    <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
+                    <button onclick="opsExtGuardarConfig()" class="mkt-add-btn" style="background:#1D2E73;">Guardar</button>
+                </div>
+            </div>
+        </div>`;
+    };
+    window.opsExtGuardarConfig = async function () {
+        const datos = JSON.parse(JSON.stringify(opsExtCfg));
+        datos.margenDefault = opsExtNum(document.getElementById("ext-c-margen").value);
+        datos.margenPorCliente = {};
+        document.querySelectorAll("[data-cliente]").forEach(i => { if (i.value !== "") datos.margenPorCliente[i.getAttribute("data-cliente")] = opsExtNum(i.value); });
+        datos.diasAlerta = { autorizacion: opsExtNum(document.getElementById("ext-c-d1").value), facturaProveedor: opsExtNum(document.getElementById("ext-c-d2").value), entrega: opsExtNum(document.getElementById("ext-c-d3").value) };
+        try { await opsExtGuardarCfg(datos); document.getElementById("ops-modal-wrap").innerHTML = ""; opsViaToast("Configuración guardada.", "#15803d"); opsRenderExternos(); }
+        catch (e) { alert("No se pudo guardar: " + (e.message || e)); }
+    };
+
+    // ── Alta / edición de servicio externo ──
+    function opsExtFoliosOps() {
+        return (cacheFolios || []).filter(f => !f.cancelado).map(f => ({ id: f.id, txt: [f.folioOS ? "O.S. " + f.folioOS : "", f.folioClienteId || "", f.estacion || "", f.clienteNombre || ""].filter(Boolean).join(" · ") }))
+            .sort((a, b) => a.txt.localeCompare(b.txt, "es"));
+    }
+    window.opsExtAbrirForm = function (id) {
+        const s = id ? opsExt.find(x => x.id === id) : null;
+        if (id && !s) return;
+        opsExtForm = s ? { ...s } : { estado: "Por autorizar", fecha_solicitud: opsExtHoy(), margen: null, cliente: "PETRO SEVEN", poliza_mes: opsExtHoy().slice(0, 7) };
+        const f = opsExtForm;
+        const clientes = [...new Set(opsExt.map(x => x.cliente).filter(Boolean).concat((cacheFolios || []).map(x => x.clienteNombre).filter(Boolean)))].sort((a, b) => a.localeCompare(b, "es"));
+        const estaciones = [...new Set(opsExt.map(x => x.estacion).filter(Boolean).concat((cacheFolios || []).map(x => x.estacion).filter(Boolean)))].sort((a, b) => a.localeCompare(b, "es"));
+        const folios = opsExtFoliosOps();
+        const folioTxt = f.folio_ops_id ? ((folios.find(x => x.id === f.folio_ops_id) || {}).txt || f.folio_ops_id) : "";
+        const inp = (l, k, v, t, extra) => opsViaInput(l, "ext-f-" + k, v ?? "", extra || "", t || "text");
+        document.getElementById("ops-modal-wrap").innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;">
+            <div style="background:#fff;border-radius:14px;width:720px;max-width:96vw;max-height:94vh;overflow-y:auto;padding:22px;">
+                <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:16px;color:#1D2E73;margin-bottom:4px;">${s ? "Editar " + opsEsc(s.folio) : "Nuevo servicio externo"}</div>
+                <div style="font-size:12px;color:#64748b;margin-bottom:14px;">Lo mínimo: proveedor, estación y concepto. Factura y montos se pueden agregar después al avanzar el estado.</div>
+                <datalist id="ext-dl-clientes">${clientes.map(c => `<option value="${opsEsc(c)}">`).join("")}</datalist>
+                <datalist id="ext-dl-est">${estaciones.map(c => `<option value="${opsEsc(c)}">`).join("")}</datalist>
+                <datalist id="ext-dl-folios">${folios.map(c => `<option value="${opsEsc(c.txt)}">`).join("")}</datalist>
+                <label style="display:block;font-size:11.5px;font-weight:600;color:#475569;">Proveedor *
+                    <select id="ext-f-proveedor" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                        <option value="">Elige…</option>${opsExtProv.filter(p => p.activo !== false || p.id === f.proveedor_id).map(p => `<option value="${p.id}" ${p.id === f.proveedor_id ? "selected" : ""}>${opsEsc(opsExtProvNombre(p))}${p.especialidades ? " — " + opsEsc(p.especialidades) : ""}</option>`).join("")}
+                    </select></label>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 10px;">
+                    ${inp("Cliente *", "cliente", f.cliente, "text", 'list="ext-dl-clientes" onchange="opsExtSugerirMargen()"')}${inp("Estación *", "estacion", f.estacion, "text", 'list="ext-dl-est"')}
+                </div>
+                <label style="display:block;font-size:11.5px;font-weight:600;color:#475569;">Concepto / trabajo *
+                    <textarea id="ext-f-concepto" rows="2" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;font-family:inherit;">${opsEsc(f.concepto || "")}</textarea></label>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0 10px;">
+                    ${inp("Folio del cliente (ServiceNow…)", "folio_cliente", f.folio_cliente)}${inp("Cotización / folio (SER…, CHH…)", "folio_aspel", f.folio_aspel)}${inp("Folio de Operaciones", "folio_ops", folioTxt, "text", 'list="ext-dl-folios" placeholder="Busca por O.S. o estación"')}
+                    ${inp("Fecha de solicitud", "fecha_solicitud", f.fecha_solicitud, "date")}${inp("Fecha de autorización", "fecha_autorizacion", f.fecha_autorizacion, "date")}${inp("Fecha de ejecución", "fecha_ejecucion", f.fecha_ejecucion, "date")}
+                    ${inp("Total del proveedor (con IVA) $", "total", f.total, "number", 'min="0" step="0.01" oninput="opsExtCalcForm()"')}${inp("IVA $", "iva", f.iva, "number", 'min="0" step="0.01" oninput="opsExtCalcForm(true)"')}${inp("Margen %", "margen", f.margen ?? opsExtMargen(f.cliente), "number", 'step="0.1" oninput="opsExtCalcForm()"')}
+                    ${inp("Mes en que se cobra al cliente", "poliza_mes", f.poliza_mes, "month")}
+                </div>
+                <div id="ext-f-calc" style="font-size:12px;color:#334155;background:#f8fafc;border-radius:8px;padding:8px 10px;margin:-2px 0 10px;"></div>
+                <label style="display:block;font-size:11.5px;font-weight:600;color:#475569;">Notas
+                    <textarea id="ext-f-notas" rows="2" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;font-family:inherit;">${opsEsc(f.notas || "")}</textarea></label>
+                <div style="display:flex;gap:8px;justify-content:flex-end;">
+                    <button onclick="${s ? `opsExtVer(${s.id})` : "document.getElementById('ops-modal-wrap').innerHTML=''"}" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
+                    <button id="ext-f-btn" onclick="opsExtGuardarForm()" class="mkt-add-btn" style="background:#1D2E73;">Guardar</button>
+                </div>
+            </div>
+        </div>`;
+        opsExtCalcForm(f.iva != null && f.iva !== "");
+    };
+    window.opsExtSugerirMargen = function () {
+        const c = document.getElementById("ext-f-cliente").value;
+        const m = document.getElementById("ext-f-margen"); if (m) m.value = opsExtMargen(c);
+        opsExtCalcForm();
+    };
+    window.opsExtCalcForm = function (ivaManual) {
+        const t = opsExtNum((document.getElementById("ext-f-total") || {}).value);
+        const ivaEl = document.getElementById("ext-f-iva");
+        if (!ivaManual && ivaEl && t > 0) ivaEl.value = (Math.round(t / 1.16 * 0.16 * 100) / 100).toFixed(2);
+        const m = opsExtNum((document.getElementById("ext-f-margen") || {}).value);
+        const el = document.getElementById("ext-f-calc");
+        if (el) el.innerHTML = t > 0 ? `Subtotal ${opsExtDin(t - opsExtNum(ivaEl && ivaEl.value))} · <b style="color:#15803d;">Se cobra al cliente ${opsExtDin(t * (1 + m / 100))}</b> · Ganancia ${opsExtDin(t * m / 100)}` : "Captura el total para calcular lo que se cobra al cliente.";
+    };
+    function opsExtHist(s, estado, nota) {
+        return (s.historial || []).concat([{ estado, en: new Date().toISOString(), por: opsNombreActual() || opsUsuarioActual(), nota: nota || null }]);
+    }
+    window.opsExtGuardarForm = async function () {
+        const g = k => (document.getElementById("ext-f-" + k).value || "").trim();
+        const provId = Number(g("proveedor")) || null;
+        const prov = opsExtProv.find(p => p.id === provId);
+        const folTxt = g("folio_ops");
+        const fol = folTxt ? opsExtFoliosOps().find(x => x.txt === folTxt) : null;
+        const total = g("total") === "" ? null : opsExtNum(g("total"));
+        const margen = g("margen") === "" ? opsExtMargen(g("cliente")) : opsExtNum(g("margen"));
+        const datos = {
+            proveedor_id: provId, proveedor_nombre: prov ? prov.nombre : null, cliente: g("cliente").toUpperCase() || null, estacion: g("estacion") || null,
+            concepto: g("concepto") || null, folio_cliente: g("folio_cliente") || null, folio_aspel: g("folio_aspel").toUpperCase() || null,
+            folio_ops_id: fol ? fol.id : (opsExtForm && opsExtForm.folio_ops_id && folTxt ? opsExtForm.folio_ops_id : null),
+            fecha_solicitud: g("fecha_solicitud") || null, fecha_autorizacion: g("fecha_autorizacion") || null, fecha_ejecucion: g("fecha_ejecucion") || null,
+            total, iva: g("iva") === "" ? null : opsExtNum(g("iva")), subtotal: total != null ? Math.round((total - opsExtNum(g("iva"))) * 100) / 100 : null,
+            margen, precio_cliente: total != null ? Math.round(total * (1 + margen / 100) * 100) / 100 : null, poliza_mes: g("poliza_mes") || null, notas: g("notas") || null,
+            actualizado_en: new Date().toISOString(), actualizado_por: opsUsuarioActual(),
+        };
+        if (!provId) { alert("Elige el proveedor."); return; }
+        if (!datos.cliente || !datos.estacion || !datos.concepto) { alert("Faltan cliente, estación o concepto."); return; }
+        const btn = document.getElementById("ext-f-btn"); if (btn) { btn.disabled = true; btn.textContent = "Guardando…"; }
+        try {
+            const sb = await opsSb();
+            const id = opsExtForm && opsExtForm.id;
+            if (id) {
+                const { error } = await sb.from("ops_servicios_externos").update({ ...datos, historial: opsExtHist(opsExtForm, opsExtForm.estado, "Datos editados") }).eq("id", id);
+                if (error) throw error;
+                await opsExtCargar(); opsExtVer(id);
+            } else {
+                // Si ya trae fecha de ejecución, nace como Ejecutado; si ya trae autorización, como Autorizado.
+                const estado = datos.fecha_ejecucion ? "Ejecutado" : datos.fecha_autorizacion ? "Autorizado" : "Por autorizar";
+                const { data, error } = await sb.from("ops_servicios_externos").insert({ ...datos, estado, origen: "portal", creado_por: opsUsuarioActual(), historial: opsExtHist({ historial: [] }, estado, "Alta") }).select().single();
+                if (error) throw error;
+                const folio = "EXT-" + String(data.id).padStart(5, "0");
+                await sb.from("ops_servicios_externos").update({ folio }).eq("id", data.id);
+                await opsExtCargar(); opsExtVer(data.id);
+                opsViaToast("Servicio externo " + folio + " registrado.", "#15803d");
+            }
+            if (tabActual === "externos") opsRenderExternos();
+        } catch (e) {
+            alert("No se pudo guardar: " + (e.message || e));
+            if (btn) { btn.disabled = false; btn.textContent = "Guardar"; }
+        }
+    };
+
+    // ── Detalle ──
+    window.opsExtVer = function (id) {
+        const s = opsExt.find(x => x.id === id); if (!s) return;
+        const prov = opsExtProv.find(p => p.id === s.proveedor_id);
+        const edita = opsExtPuedeEditar();
+        const idx = OPS_EXT_PASOS.indexOf(s.estado);
+        const sig = s.estado !== "Cancelado" && idx >= 0 && idx < OPS_EXT_PASOS.length - 1 ? OPS_EXT_PASOS[idx + 1] : null;
+        const stepper = OPS_EXT_PASOS.map((p, i) => {
+            const hecho = s.estado !== "Cancelado" && i <= idx;
+            return `<div style="flex:1;min-width:84px;text-align:center;">
+                <div style="height:6px;border-radius:9px;background:${hecho ? "#15803d" : "#e2e8f0"};margin-bottom:5px;"></div>
+                <div style="font-size:10.5px;font-weight:${i === idx ? 800 : 600};color:${hecho ? "#166534" : "#94a3b8"};">${opsEsc(p)}</div></div>`;
+        }).join("");
+        const fila = (k, v) => v ? `<div style="display:flex;gap:12px;padding:6px 0;border-bottom:1px solid #f1f5f9;font-size:12.5px;"><div style="width:170px;color:#64748b;flex-shrink:0;">${k}</div><div style="color:#1e293b;font-weight:600;">${v}</div></div>` : "";
+        const bArch = (ruta, txt) => ruta ? `<button onclick="opsExtAbrirArchivo('${opsEsc(ruta)}')" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:5px 9px;border-radius:7px;cursor:pointer;font-size:11.5px;font-weight:600;">${txt}</button>` : "";
+        const evid = (s.evidencias || []).map((e, i) => bArch(e.ruta, "Evidencia " + (i + 1))).join(" ");
+        const folOps = s.folio_ops_id ? (cacheFolios || []).find(f => f.id === s.folio_ops_id) : null;
+        const hist = (s.historial || []).slice().reverse().map(h => `<div style="font-size:11.5px;color:#475569;padding:4px 0;border-bottom:1px dashed #f1f5f9;"><b>${opsEsc(h.estado || "")}</b> · ${opsExtFecha(h.en)} · ${opsEsc(h.por || "")}${h.nota ? " — " + opsEsc(h.nota) : ""}</div>`).join("");
+        const al = opsExtAlerta(s);
+        document.getElementById("ops-modal-wrap").innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;">
+            <div style="background:#fff;border-radius:14px;width:760px;max-width:96vw;max-height:94vh;overflow-y:auto;padding:22px;">
+                <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">
+                    <div><div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:17px;color:#1D2E73;">${opsEsc(s.folio || "")} · ${opsEsc(s.estacion || "")}</div>
+                        <div style="font-size:12px;color:#64748b;">${opsEsc(s.cliente || "")} · ${opsEsc(prov ? opsExtProvNombre(prov) : s.proveedor_nombre || "")}</div></div>
+                    <div style="display:flex;gap:8px;align-items:center;">${opsExtChip(s.estado)}
+                        <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;border-radius:8px;width:30px;height:30px;cursor:pointer;color:#475569;display:inline-flex;align-items:center;justify-content:center;">${ICON.close}</button></div>
+                </div>
+                ${s.estado !== "Cancelado" ? `<div style="display:flex;gap:4px;margin:16px 0 12px;overflow-x:auto;">${stepper}</div>` : ""}
+                ${al ? `<div style="background:#fef2f2;color:#b91c1c;border-radius:8px;padding:8px 10px;font-size:12px;font-weight:600;margin-bottom:10px;">${opsEsc(al)}</div>` : ""}
+                <div style="font-size:13px;color:#1e293b;background:#f8fafc;border-radius:10px;padding:10px 12px;margin-bottom:10px;line-height:1.45;">${opsEsc(s.concepto || "")}</div>
+                ${fila("Folio del cliente", opsEsc(s.folio_cliente || ""))}${fila("Cotización / folio", opsEsc(s.folio_aspel || ""))}
+                ${fila("Folio de Operaciones", folOps ? `<a href="#" onclick="event.preventDefault();window.opsAbrirFichaFolio && opsAbrirFichaFolio('${opsEsc(folOps.id)}')" style="color:#1D2E73;">${opsEsc([folOps.folioOS ? "O.S. " + folOps.folioOS : "", folOps.estacion].filter(Boolean).join(" · "))}</a>` : opsEsc(s.folio_ops_id || ""))}
+                ${fila("Solicitud / autorización", [s.fecha_solicitud ? "Solicitado " + opsExtFecha(s.fecha_solicitud) : "", s.fecha_autorizacion ? "autorizado " + opsExtFecha(s.fecha_autorizacion) : ""].filter(Boolean).join(" · "))}
+                ${fila("Ejecución", opsExtFecha(s.fecha_ejecucion) !== "—" ? opsExtFecha(s.fecha_ejecucion) : "")}
+                ${fila("Factura del proveedor", s.factura_proveedor || s.factura_uuid ? `${opsEsc(s.factura_proveedor || "")}${s.factura_fecha ? " · " + opsExtFecha(s.factura_fecha) : ""}${s.factura_uuid ? " · UUID …" + opsEsc(s.factura_uuid.slice(-8)) : ""} ${bArch(s.factura_xml_path, "XML")} ${bArch(s.factura_pdf_path, "PDF")}` : "")}
+                ${fila("Montos", s.total != null ? `${opsExtDin(s.total)} (IVA ${opsExtDin(s.iva)}) · margen ${opsExtNum(s.margen)}% · <span style="color:#15803d;">cobrar ${opsExtDin(s.precio_cliente)}</span> · ganancia ${opsExtDin(opsExtNum(s.precio_cliente) - opsExtNum(s.total))}` : "")}
+                ${fila("Entregada", s.fecha_entrega ? opsExtFecha(s.fecha_entrega) : "")}
+                ${fila("Mes de cobro", s.poliza_mes ? opsExtMesTxt(s.poliza_mes) : "")}
+                ${fila("Factura al cliente", s.factura_cliente || s.factura_cliente_uuid ? `${opsEsc(s.factura_cliente || "")}${s.factura_cliente_fecha ? " · " + opsExtFecha(s.factura_cliente_fecha) : ""} ${bArch(s.factura_cliente_xml_path, "XML")} ${bArch(s.factura_cliente_pdf_path, "PDF")}` : "")}
+                ${fila("Cobrada", s.cobrado_en ? opsExtFecha(s.cobrado_en) : "")}
+                ${fila("Pagado al proveedor", s.pagado_proveedor_en ? opsExtFecha(s.pagado_proveedor_en) : "")}
+                ${fila("Evidencias", evid)}
+                ${fila("Notas", opsEsc(s.notas || ""))}
+                ${hist ? `<div style="font-size:12px;font-weight:700;color:#1D2E73;margin:14px 0 4px;">Historial</div>${hist}` : ""}
+                ${edita ? `<div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:16px;">
+                    ${s.estado !== "Cancelado" && s.estado !== "Cobrada" ? `<button onclick="opsExtCancelar(${s.id})" style="background:#fff;border:1px solid #fecaca;color:#b91c1c;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar servicio</button>` : ""}
+                    <button onclick="opsExtSubirEvidencia(${s.id})" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">+ Evidencia</button>
+                    ${s.estado !== "Cancelado" && !s.pagado_proveedor_en && ["Factura recibida", "Entregada", "Facturada al cliente", "Cobrada"].includes(s.estado) ? `<button onclick="opsExtPagadoProveedor(${s.id})" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Marcar pagado al proveedor</button>` : ""}
+                    <button onclick="opsExtAbrirForm(${s.id})" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Editar datos</button>
+                    ${sig ? `<button onclick="opsExtAvanzar(${s.id})" class="mkt-add-btn" style="background:#15803d;">Pasar a: ${opsEsc(sig)}</button>` : ""}
+                    ${s.estado === "Cancelado" ? `<button onclick="opsExtReactivar(${s.id})" class="mkt-add-btn" style="background:#1D2E73;">Reactivar</button>` : ""}
+                </div>` : ""}
+            </div>
+        </div>`;
+    };
+    window.opsExtAbrirArchivo = async function (ruta) {
+        const w = window.open("", "_blank");
+        try {
+            const sb = await opsSb();
+            const { data, error } = await sb.storage.from(OPS_EXT_BUCKET).createSignedUrl(ruta, 600);
+            if (error) throw error;
+            if (w) w.location.href = data.signedUrl; else window.open(data.signedUrl, "_blank");
+        } catch (e) { if (w) w.close(); alert("No se pudo abrir el archivo: " + (e.message || e)); }
+    };
+    async function opsExtSubir(sb, id, file, etiqueta) {
+        const ext = (String(file.name || "").split(".").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 5) || "bin";
+        const ruta = "externos/" + id + "/" + Date.now() + "_" + etiqueta + "." + ext;
+        const { error } = await sb.storage.from(OPS_EXT_BUCKET).upload(ruta, file, { contentType: file.type || (ext === "xml" ? "application/xml" : undefined), upsert: false });
+        if (error) throw error;
+        return ruta;
+    }
+    // Lectura de CFDI (3.3 / 4.0) para las facturas del proveedor y al cliente.
+    function opsExtParseCFDI(texto) {
+        const doc = new DOMParser().parseFromString(texto, "application/xml");
+        if (doc.getElementsByTagName("parsererror").length) throw new Error("El archivo no es un XML válido.");
+        const by = n => { const l = doc.getElementsByTagNameNS("*", n); return l && l.length ? l[0] : null; };
+        const comp = by("Comprobante"); if (!comp) throw new Error("El XML no es una factura (CFDI).");
+        const a = (el, k) => el ? (el.getAttribute(k) || "") : "";
+        const em = by("Emisor"), re = by("Receptor"), tfd = by("TimbreFiscalDigital");
+        let iva = 0; Array.from(comp.childNodes).forEach(n => { if (n.localName === "Impuestos") iva = Number(a(n, "TotalImpuestosTrasladados")) || 0; });
+        return {
+            tipo: a(comp, "TipoDeComprobante"), fecha: a(comp, "Fecha").slice(0, 10), serieFolio: [a(comp, "Serie"), a(comp, "Folio")].filter(Boolean).join("-"),
+            subtotal: Number(a(comp, "SubTotal")) || 0, total: Number(a(comp, "Total")) || 0, iva,
+            emisorRfc: a(em, "Rfc").toUpperCase(), emisorNombre: a(em, "Nombre"), receptorRfc: a(re, "Rfc").toUpperCase(), receptorNombre: a(re, "Nombre"), uuid: a(tfd, "UUID").toUpperCase(),
+        };
+    }
+    function opsExtLeerArchivo(file) { return new Promise((ok, ko) => { const r = new FileReader(); r.onload = () => ok(String(r.result || "")); r.onerror = ko; r.readAsText(file); }); }
+
+    // ── Avanzar al siguiente paso: cada paso pide solo lo que le corresponde ──
+    window.opsExtAvanzar = function (id) {
+        const s = opsExt.find(x => x.id === id); if (!s) return;
+        const sig = OPS_EXT_PASOS[OPS_EXT_PASOS.indexOf(s.estado) + 1]; if (!sig) return;
+        const inp = (l, k, v, t, extra) => opsViaInput(l, "ext-a-" + k, v ?? "", extra || "", t || "text");
+        const archivo = (l, k, acc) => `<label style="display:block;font-size:11.5px;font-weight:600;color:#475569;margin-bottom:10px;">${l}<input type="file" id="ext-a-${k}" accept="${acc}" style="display:block;margin-top:4px;font-size:12px;" ${k.endsWith("xml") ? `onchange="opsExtLeerXML(this,'${k}',${id})"` : ""}></label>`;
+        let cuerpo = "";
+        if (sig === "Autorizado") cuerpo = inp("Fecha de autorización", "fecha", s.fecha_autorizacion || opsExtHoy(), "date") + inp("¿Quién autorizó? (opcional)", "nota", "");
+        else if (sig === "Ejecutado") cuerpo = inp("Fecha de ejecución", "fecha", s.fecha_ejecucion || opsExtHoy(), "date") + archivo("Evidencia (fotos o PDF, opcional)", "evid", "image/*,application/pdf");
+        else if (sig === "Factura recibida") cuerpo = `
+            ${archivo("XML de la factura del proveedor (recomendado: llena todo solo)", "pxml", ".xml,text/xml,application/xml")}
+            <div id="ext-a-pxml-info" style="font-size:12px;margin:-4px 0 10px;"></div>
+            ${archivo("PDF de la factura (opcional)", "ppdf", "application/pdf,image/*")}
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 10px;">
+                ${inp("No. de factura", "num", s.factura_proveedor)}${inp("Fecha de factura", "fecha", s.factura_fecha || opsExtHoy(), "date")}
+                ${inp("Total con IVA $", "total", s.total, "number", 'min="0" step="0.01"')}${inp("IVA $", "iva", s.iva, "number", 'min="0" step="0.01"')}
+            </div><input type="hidden" id="ext-a-uuid" value="">`;
+        else if (sig === "Entregada") cuerpo = inp("Fecha de entrega", "fecha", s.fecha_entrega || opsExtHoy(), "date") + inp("Mes en que se cobra al cliente", "mes", s.poliza_mes || opsExtHoy().slice(0, 7), "month");
+        else if (sig === "Facturada al cliente") cuerpo = `
+            ${archivo("XML de la factura emitida al cliente (recomendado)", "cxml", ".xml,text/xml,application/xml")}
+            <div id="ext-a-cxml-info" style="font-size:12px;margin:-4px 0 10px;"></div>
+            ${archivo("PDF de la factura al cliente", "cpdf", "application/pdf")}
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 10px;">
+                ${inp("Folio de la factura al cliente", "num", s.factura_cliente)}${inp("Fecha", "fecha", s.factura_cliente_fecha || opsExtHoy(), "date")}
+                ${inp("Monto cobrado al cliente $", "precio", s.precio_cliente, "number", 'min="0" step="0.01"')}${inp("Mes de cobro", "mes", s.poliza_mes || opsExtHoy().slice(0, 7), "month")}
+            </div><input type="hidden" id="ext-a-uuid" value="">`;
+        else if (sig === "Cobrada") cuerpo = inp("Fecha de cobro", "fecha", s.cobrado_en || opsExtHoy(), "date");
+        document.getElementById("ops-modal-wrap").innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;">
+            <div style="background:#fff;border-radius:14px;width:560px;max-width:96vw;max-height:92vh;overflow-y:auto;padding:22px;">
+                <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:16px;color:#1D2E73;">${opsEsc(s.folio)} → ${opsEsc(sig)}</div>
+                <div style="font-size:12px;color:#64748b;margin:2px 0 14px;">${opsEsc(s.estacion || "")} · ${opsEsc(s.proveedor_nombre || "")}</div>
+                ${cuerpo}
+                <div style="display:flex;gap:8px;justify-content:flex-end;">
+                    <button onclick="opsExtVer(${s.id})" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Volver</button>
+                    <button id="ext-a-btn" onclick="opsExtGuardarAvance(${s.id},'${sig}')" class="mkt-add-btn" style="background:#15803d;">Guardar</button>
+                </div>
+            </div>
+        </div>`;
+    };
+    window.opsExtLeerXML = async function (input, k, id) {
+        const s = opsExt.find(x => x.id === id);
+        const info = document.getElementById("ext-a-" + k + "-info");
+        const f = input.files && input.files[0]; if (!f || !info) return;
+        try {
+            const d = opsExtParseCFDI(await opsExtLeerArchivo(f));
+            const set = (campo, v) => { const el = document.getElementById("ext-a-" + campo); if (el && v !== "" && v != null) el.value = v; };
+            set("num", d.serieFolio); set("fecha", d.fecha); set("uuid", d.uuid);
+            const avisos = [];
+            if (!d.uuid) avisos.push("No tiene UUID (no está timbrada).");
+            if (k === "pxml") {
+                set("total", d.total.toFixed(2)); set("iva", d.iva.toFixed(2));
+                const prov = opsExtProv.find(p => p.id === (s && s.proveedor_id));
+                if (prov && prov.rfc && prov.rfc !== d.emisorRfc) avisos.push(`El RFC del emisor (${d.emisorRfc}) no es el del proveedor (${prov.rfc}).`);
+                if (s && s.total && Math.abs(opsExtNum(s.total) - d.total) > 1) avisos.push(`El total de la factura (${opsExtDin(d.total)}) es distinto al capturado (${opsExtDin(s.total)}); se usará el de la factura.`);
+            } else {
+                set("precio", d.total.toFixed(2));
+                if (s && s.precio_cliente && Math.abs(opsExtNum(s.precio_cliente) - d.total) > 1) avisos.push(`La factura al cliente es por ${opsExtDin(d.total)}; el cálculo con margen daba ${opsExtDin(s.precio_cliente)}.`);
+            }
+            info.innerHTML = `<div style="background:#f0fdf4;color:#166534;border-radius:8px;padding:7px 10px;">${opsEsc(d.emisorNombre || d.emisorRfc)} → ${opsEsc(d.receptorNombre || d.receptorRfc)} · ${opsExtDin(d.total)} · ${opsExtFecha(d.fecha)}${d.uuid ? " · UUID …" + opsEsc(d.uuid.slice(-8)) : ""}</div>` +
+                avisos.map(a => `<div style="background:#fef3c7;color:#92400e;border-radius:8px;padding:6px 10px;margin-top:4px;">${opsEsc(a)}</div>`).join("");
+            input.dataset.emisorRfc = d.emisorRfc;
+        } catch (e) { info.innerHTML = `<div style="background:#fef2f2;color:#b91c1c;border-radius:8px;padding:7px 10px;">${opsEsc(e.message || e)}</div>`; }
+    };
+    window.opsExtGuardarAvance = async function (id, sig) {
+        const s = opsExt.find(x => x.id === id); if (!s) return;
+        const g = k => { const el = document.getElementById("ext-a-" + k); return el ? (el.value || "").trim() : ""; };
+        const archivoDe = k => { const el = document.getElementById("ext-a-" + k); return el && el.files && el.files[0] ? el.files[0] : null; };
+        const btn = document.getElementById("ext-a-btn"); if (btn) { btn.disabled = true; btn.textContent = "Guardando…"; }
+        try {
+            const sb = await opsSb();
+            const c = { estado: sig, actualizado_en: new Date().toISOString(), actualizado_por: opsUsuarioActual() };
+            let nota = null;
+            if (sig === "Autorizado") { c.fecha_autorizacion = g("fecha") || opsExtHoy(); nota = g("nota") ? "Autorizó: " + g("nota") : null; }
+            else if (sig === "Ejecutado") {
+                c.fecha_ejecucion = g("fecha") || opsExtHoy();
+                const ev = archivoDe("evid"); if (ev) c.evidencias = (s.evidencias || []).concat([{ ruta: await opsExtSubir(sb, id, ev, "evidencia"), nombre: ev.name, en: new Date().toISOString() }]);
+            } else if (sig === "Factura recibida") {
+                if (!g("num") && !archivoDe("pxml")) throw new Error("Captura el número de factura o sube el XML.");
+                const total = opsExtNum(g("total")); if (!(total > 0)) throw new Error("Captura el total de la factura.");
+                const iva = g("iva") === "" ? Math.round(total / 1.16 * 0.16 * 100) / 100 : opsExtNum(g("iva"));
+                Object.assign(c, { factura_proveedor: g("num") || null, factura_fecha: g("fecha") || null, factura_uuid: g("uuid") || null, total, iva, subtotal: Math.round((total - iva) * 100) / 100,
+                    precio_cliente: Math.round(total * (1 + opsExtNum(s.margen) / 100) * 100) / 100 });
+                const x = archivoDe("pxml"), p = archivoDe("ppdf");
+                if (x) c.factura_xml_path = await opsExtSubir(sb, id, x, "factura_proveedor");
+                if (p) c.factura_pdf_path = await opsExtSubir(sb, id, p, "factura_proveedor");
+                // Aprende el RFC del proveedor la primera vez que llega su XML.
+                const rfc = (document.getElementById("ext-a-pxml") || {}).dataset ? document.getElementById("ext-a-pxml").dataset.emisorRfc : "";
+                const prov = opsExtProv.find(pp => pp.id === s.proveedor_id);
+                if (rfc && prov && !prov.rfc) { await sb.from("ops_proveedores_externos").update({ rfc }).eq("id", prov.id); prov.rfc = rfc; }
+            } else if (sig === "Entregada") { c.fecha_entrega = g("fecha") || opsExtHoy(); c.poliza_mes = g("mes") || s.poliza_mes || null; }
+            else if (sig === "Facturada al cliente") {
+                if (!g("num") && !archivoDe("cxml")) throw new Error("Captura el folio de la factura al cliente o sube el XML.");
+                Object.assign(c, { factura_cliente: g("num") || null, factura_cliente_fecha: g("fecha") || null, factura_cliente_uuid: g("uuid") || null, poliza_mes: g("mes") || s.poliza_mes || null });
+                if (g("precio") !== "") c.precio_cliente = opsExtNum(g("precio"));
+                const x = archivoDe("cxml"), p = archivoDe("cpdf");
+                if (x) c.factura_cliente_xml_path = await opsExtSubir(sb, id, x, "factura_cliente");
+                if (p) c.factura_cliente_pdf_path = await opsExtSubir(sb, id, p, "factura_cliente");
+            } else if (sig === "Cobrada") c.cobrado_en = g("fecha") || opsExtHoy();
+            c.historial = opsExtHist(s, sig, nota);
+            const { error } = await sb.from("ops_servicios_externos").update(c).eq("id", id);
+            if (error) { if (String(error.code) === "23505") throw new Error("Esa factura (UUID) ya está registrada en otro servicio externo."); throw error; }
+            Object.assign(s, c);
+            opsExtVer(id);
+            opsRenderExternos();
+        } catch (e) {
+            alert(e.message || String(e));
+            if (btn) { btn.disabled = false; btn.textContent = "Guardar"; }
+        }
+    };
+    window.opsExtSubirEvidencia = function (id) {
+        const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*,application/pdf"; inp.multiple = true;
+        inp.onchange = async () => {
+            const s = opsExt.find(x => x.id === id); if (!s || !inp.files.length) return;
+            try {
+                const sb = await opsSb(); const nuevas = [];
+                for (const f of inp.files) nuevas.push({ ruta: await opsExtSubir(sb, id, f, "evidencia"), nombre: f.name, en: new Date().toISOString() });
+                const evidencias = (s.evidencias || []).concat(nuevas);
+                const { error } = await sb.from("ops_servicios_externos").update({ evidencias, historial: opsExtHist(s, s.estado, nuevas.length + " evidencia(s) agregada(s)") }).eq("id", id);
+                if (error) throw error;
+                s.evidencias = evidencias; s.historial = opsExtHist(s, s.estado, nuevas.length + " evidencia(s) agregada(s)");
+                opsExtVer(id);
+            } catch (e) { alert("No se pudo subir: " + (e.message || e)); }
+        };
+        inp.click();
+    };
+    async function opsExtActualizarSimple(id, cambios, nota) {
+        const s = opsExt.find(x => x.id === id); if (!s) return;
+        const c = { ...cambios, historial: opsExtHist(s, cambios.estado || s.estado, nota), actualizado_en: new Date().toISOString(), actualizado_por: opsUsuarioActual() };
+        const sb = await opsSb();
+        const { error } = await sb.from("ops_servicios_externos").update(c).eq("id", id);
+        if (error) throw error;
+        Object.assign(s, c);
+        opsExtVer(id); opsRenderExternos();
+    }
+    window.opsExtPagadoProveedor = async function (id) {
+        const f = prompt("Fecha de pago al proveedor (AAAA-MM-DD):", opsExtHoy()); if (!f) return;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(f.trim())) { alert("Usa el formato AAAA-MM-DD."); return; }
+        try { await opsExtActualizarSimple(id, { pagado_proveedor_en: f.trim() }, "Pagado al proveedor"); } catch (e) { alert(e.message || e); }
+    };
+    window.opsExtCancelar = async function (id) {
+        const m = prompt("Motivo de la cancelación:", ""); if (m === null) return;
+        try { await opsExtActualizarSimple(id, { estado: "Cancelado" }, m.trim() || "Sin motivo"); } catch (e) { alert(e.message || e); }
+    };
+    window.opsExtReactivar = async function (id) {
+        const s = opsExt.find(x => x.id === id); if (!s) return;
+        const previo = (s.historial || []).slice().reverse().find(h => h.estado && h.estado !== "Cancelado");
+        try { await opsExtActualizarSimple(id, { estado: previo ? previo.estado : "Por autorizar" }, "Reactivado"); } catch (e) { alert(e.message || e); }
     };
 
 })();
