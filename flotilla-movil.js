@@ -1013,6 +1013,7 @@ window.initFlotillaMovil=async function(){
   dbg('Online: '+navigator.onLine,'info');
   await Promise.all([cargarMiVeh(),cargarMisSols(),cargarMisTareas()]);
   fmOpsServCargar().catch(e=>console.warn('[OPS servicios] arranque',e));
+  fmViaArranque();
   dbg('Datos cargados. Vehículo: '+(miVeh?'ECO '+miVeh.eco:'ninguno'),'ok');
   if(miVeh)flReportarUbicacion(miVeh.eco);
   actualizarBadges();
@@ -1359,7 +1360,7 @@ function actualizarBadges(){
   const bt=document.getElementById('fm-badge-tareas');
   const bn=document.getElementById('fm-badge-notif');
   const pend=misTareas.filter(t=>t.estatus==='Pendiente'||t.estatus==='En proceso').length+misOpsServ.length;
-  const notif=misPipelineNotif.filter(n=>!n.leido).length;
+  const notif=misPipelineNotif.filter(n=>!n.leido).length+(window.fmViaNumAvisos?window.fmViaNumAvisos():0);
   if(bt){bt.textContent=pend;bt.style.display=pend?'flex':'none';}
   if(bn){bn.textContent=notif;bn.style.display=notif?'flex':'none';}
 }
@@ -1552,6 +1553,9 @@ function renderVehiculo(){
         </button>
         <button onclick="fmAbrirFlotante('cotizacion')" title="Cotizaciones a Compras" aria-label="Cotizaciones a Compras" style="padding:7px 9px;border:1.5px solid #CBD5E1;border-radius:9px;background:#F1F5F9;color:#475569;cursor:pointer;display:inline-flex;align-items:center">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        </button>
+        <button onclick="fmAbrirFlotante('viaticos')" title="Comprobar viáticos" aria-label="Comprobar viáticos" style="padding:7px 9px;border:1.5px solid #CBD5E1;border-radius:9px;background:#F1F5F9;color:#475569;cursor:pointer;display:inline-flex;align-items:center">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/></svg>
         </button>
         <button onclick="fmAbrirFlotante('requisicion')" title="Requisición de compra" style="padding:7px 9px;border:1.5px solid #CBD5E1;border-radius:9px;background:#F1F5F9;color:#475569;cursor:pointer;display:inline-flex;align-items:center">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>
@@ -3493,6 +3497,7 @@ function renderTareas(){
   const pend=misTareas.filter(t=>t.estatus!=='Completada'&&t.estatus!=='Cancelada');
   const urg=pend.filter(t=>t.prioridad==='Urgente'||t.prioridad==='Alta');
   setContent(
+    fmViaticosHTML()+
     fmServicioFlotillaHTML()+
     fmMisFoliosHTML()+
     fmOpsServHTML()+
@@ -3685,6 +3690,7 @@ window.fmTareaSetFcomp=async function(tareaId){
 
 // Marcar todas las notificaciones como leídas en Firestore
 window.fmMarcarNotifLeidas = async function(){
+  if(window.fmViaMarcarLeidas) window.fmViaMarcarLeidas();
   const sinLeer = (misPipelineNotif||[]).filter(n=>!n.leido);
   if(!sinLeer.length) return;
   try {
@@ -3712,7 +3718,7 @@ function renderNotif(){
       link:n.link||null,
     };
   });
-  const items=[...pipelineItems];
+  const items=[...(window.fmViaItemsNotif?window.fmViaItemsNotif():[]),...pipelineItems];
   const dv=hD(miVeh?.pv);
   if(dv!==null&&dv<90)items.unshift({ico:'warn',bg:'#FEF3C7',icoSvg:IC.alert,t:'Póliza de seguro',s:dv<0?'Póliza VENCIDA — renovar urgente':`Vence en ${dv} días`,time:'Hoy',unread:dv<0});
 
@@ -3722,7 +3728,7 @@ function renderNotif(){
         <div class="fm-sec-t">Avisos</div>
         <div class="fm-sec-s">${items.length} notificacion(es)</div>
       </div>
-      ${(misPipelineNotif||[]).some(n=>!n.leido)?`<button onclick="fmMarcarNotifLeidas()" style="padding:6px 12px;background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:8px;font-size:11px;font-weight:700;color:#1D4ED8;cursor:pointer">Marcar leídas</button>`:''}
+      ${(misPipelineNotif||[]).some(n=>!n.leido)||(window.fmViaNumAvisos&&window.fmViaNumAvisos())?`<button onclick="fmMarcarNotifLeidas()" style="padding:6px 12px;background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:8px;font-size:11px;font-weight:700;color:#1D4ED8;cursor:pointer">Marcar leídas</button>`:''}
     </div>
     ${!items.length?`<div class="fm-empty"><div class="fm-empty-ico" style="color:var(--color-text-secondary,#94A3B8)">${IC.bell}</div><h3>Sin avisos</h3><p>No hay notificaciones nuevas.</p></div>`:
     items.map(n=>`<div class="fm-notif ${n.unread?'unread':''}" ${n.link?`onclick="window.fmAbrirLigaNotif('${n.link.replace(/'/g,"\\'")}')" style="cursor:pointer"`:''}>
@@ -3738,6 +3744,7 @@ function renderNotif(){
   `);
 }
 window.fmAbrirLigaNotif=function(link){
+  if(link==='#viaticos'){ fmAbrirFlotante('viaticos'); return; }
   // El link ya es relativo a la carpeta del portal (firmar.html?id=...) —
   // se resuelve contra la raíz del sitio (misma carpeta que flotilla-app.html)
   // y se abre en pestaña aparte, ya que Flotilla móvil es una PWA distinta.
@@ -5693,6 +5700,10 @@ window.fmAbrirFlotante=function(tipo){
   }else if(tipo==='material'){
     titleEl.textContent='Solicitud de material';
     window.renderFlotMaterial();
+  }else if(tipo==='viaticos'){
+    titleEl.textContent='Comprobar viáticos';
+    fmvUI={modo:'lista'};
+    window.renderFlotViaticos();
   }else{
     titleEl.textContent='Requisición de compra';
     window.renderFlotRequisicion();
@@ -6927,5 +6938,442 @@ window.fmOpsServDetalle=async function(id){
       '<button onclick="fmOpsServComentar(\''+f.id+'\')" style="padding:12px;background:#fff;border:1.5px solid #CBD5E1;border-radius:10px;font-family:inherit;font-size:13px;font-weight:800;color:#334155">Comentar</button>'+
     '</div>';
 };
+
+
+// ══════════════════════════════════════════════════════════════
+// VIÁTICOS — COMPROBACIÓN DESDE LA APP (oct-2026)
+// · El técnico ve sus viáticos entregados: cuánto recibió, cuánto lleva comprobado,
+//   cuánto le falta y su fecha límite. La app le sugiere el viático (y folio) pendiente.
+// · Sube el XML de cada factura (más PDF o foto opcional). La app lee el XML y aplica el
+//   candado: viático por tarjeta de nómina = forma de pago 28 (débito); en efectivo = 01.
+//   La base de datos repite la misma revisión (trigger), así que no hay forma de saltarla.
+// · Sin factura: vale no deducible con foto del ticket, queda pendiente de autorización.
+// · Alertas en Avisos y en Tareas: por vencer, vencido, por comprobar, rechazado, comprobado.
+// Tablas: ops_solicitudes_viaticos, ops_viaticos_comprobantes, ops_viaticos_formas
+// (Supabase). Archivos: bucket privado viaticos-comprobantes.
+// ══════════════════════════════════════════════════════════════
+const FMV_SB_URL='https://vlbyjoqessxcmkejcujp.supabase.co';
+const FMV_SB_KEY='sb_publishable_18A7j06AwZqdw3gmqUDJHQ_Twu0t2a8';
+const FMV_BUCKET='viaticos-comprobantes';
+const FMV_CATS={alimentos:'Alimentos',hospedaje:'Hospedaje',gasolina:'Gasolina',casetas:'Casetas',otros:'Otros'};
+const FMV_SAT={'01':'Efectivo','02':'Cheque','03':'Transferencia','04':'Tarjeta de crédito','05':'Monedero electrónico','28':'Tarjeta de débito','29':'Tarjeta de servicios','99':'Por definir'};
+const FMV_FORMAS_DEF=[{forma_entrega:'tarjeta_nomina',etiqueta:'Tarjeta de nómina (débito)',formas_pago:['28']},{forma_entrega:'efectivo',etiqueta:'Efectivo',formas_pago:['01']}];
+let _fmvSbP=null, _fmvCli=null;
+let fmvLista=[], fmvComps=[], fmvFormas=FMV_FORMAS_DEF, fmvCfg={}, fmvNotifs=[], _fmvUnsubNotif=null, _fmvCargando=null;
+let fmvUI={modo:'lista'};
+
+function fmvSb(){
+  if(_fmvCli) return Promise.resolve(_fmvCli);
+  if(_fmvSbP) return _fmvSbP;
+  _fmvSbP=import('https://esm.sh/@supabase/supabase-js@2').then(function(m){_fmvCli=m.createClient(FMV_SB_URL,FMV_SB_KEY);return _fmvCli;})
+    .catch(function(e){_fmvSbP=null;throw e;});
+  return _fmvSbP;
+}
+function fmvNum(v){const n=Number(v);return isNaN(n)?0:n;}
+function fmvDin(n){return '$'+fmvNum(n).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});}
+function fmvHoy(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function fmvFecha(iso){if(!iso)return '—';const d=new Date(String(iso).slice(0,10)+'T12:00:00');return isNaN(d)?iso:d.toLocaleDateString('es-MX',{day:'numeric',month:'short'});}
+function fmvForma(clave){return fmvFormas.find(function(f){return f.forma_entrega===clave;})||null;}
+function fmvPermitidas(clave){const f=fmvForma(clave);return f?(f.formas_pago||[]):[];}
+function fmvFormaTxt(clave){
+  const f=fmvForma(clave); if(!f) return '';
+  return f.etiqueta+': solo facturas con forma de pago '+(f.formas_pago||[]).map(function(c){return c+' ('+(FMV_SAT[c]||'')+')';}).join(' o ');
+}
+
+function fmvEstado(s){
+  const comps=fmvComps.filter(function(c){return c.viatico_id===s.id;});
+  const sum=function(st){return comps.filter(function(c){return c.estatus===st;}).reduce(function(a,c){return a+fmvNum(c.total);},0);};
+  const ent=fmvNum(s.monto_entregado), acept=sum('Aceptado'), rev=sum('Por revisar');
+  const falta=Math.max(0,ent-acept-rev);
+  const lim=s.fecha_limite_comprobacion;
+  const dias=lim?Math.round((new Date(lim+'T12:00:00')-new Date(fmvHoy()+'T12:00:00'))/86400000):null;
+  let estado;
+  if(s.cierre)estado='Cerrada';
+  else if(!s.entregado_en)estado='En trámite';
+  else if(ent>0&&acept>=ent-0.5)estado='Comprobada';
+  else if(falta<=0.5&&rev>0)estado='En revisión';
+  else if(dias!==null&&dias<0)estado='Vencida';
+  else if(acept+rev>0)estado='Parcial';
+  else estado='Por comprobar';
+  return {comps:comps,ent:ent,acept:acept,rev:rev,falta:falta,dias:dias,estado:estado};
+}
+const FMV_COL={'En trámite':['#64748B','#F1F5F9'],'Por comprobar':['#B45309','#FEF3C7'],'Parcial':['#1D4ED8','#DBEAFE'],'En revisión':['#6D28D9','#EDE9FE'],'Vencida':['#B91C1C','#FEE2E2'],'Comprobada':['#15803D','#DCFCE7'],'Cerrada':['#334155','#E2E8F0'],'Por revisar':['#6D28D9','#EDE9FE'],'Aceptado':['#15803D','#DCFCE7'],'Rechazado':['#B91C1C','#FEE2E2']};
+function fmvChip(t){const c=FMV_COL[t]||['#334155','#F1F5F9'];return '<span style="background:'+c[1]+';color:'+c[0]+';font-size:10px;font-weight:800;padding:2px 8px;border-radius:999px;white-space:nowrap">'+esc(t)+'</span>';}
+function fmvActivos(){return fmvLista.filter(function(s){return s.entregado_en&&!s.cierre&&fmvEstado(s).estado!=='Comprobada';});}
+
+// Carga lo del técnico: viáticos donde es responsable o va en la solicitud.
+async function fmViaCargar(){
+  const correo=opsSvMiCorreo(); if(!correo) return;
+  if(_fmvCargando) return _fmvCargando;
+  _fmvCargando=(async function(){
+    try{
+      const sb=await fmvSb();
+      const r=await Promise.all([
+        sb.from('ops_solicitudes_viaticos').select('*').eq('responsable_email',correo).order('id',{ascending:false}).limit(60),
+        sb.from('ops_solicitudes_viaticos').select('*').contains('tarifas',{tecnicos:[{correo:correo}]}).order('id',{ascending:false}).limit(60),
+        sb.from('ops_viaticos_formas').select('*'),
+        sb.from('ops_config_viaticos_solicitud').select('datos').eq('id','general').maybeSingle(),
+      ]);
+      const mapa={};
+      (r[0].data||[]).concat(r[1].data||[]).forEach(function(s){mapa[s.id]=s;});
+      fmvLista=Object.values(mapa).filter(function(s){return s.estatus!=='Rechazada';});
+      if(!r[2].error&&r[2].data&&r[2].data.length) fmvFormas=r[2].data;
+      fmvCfg=(r[3].data&&r[3].data.datos)||{};
+      const ids=fmvLista.map(function(s){return s.id;});
+      if(ids.length){
+        const c=await sb.from('ops_viaticos_comprobantes').select('*').in('viatico_id',ids).order('creado_en',{ascending:false});
+        fmvComps=c.data||[];
+      }else fmvComps=[];
+    }catch(e){console.warn('[Viáticos app] carga',e);}
+    finally{_fmvCargando=null;}
+    actualizarBadges();
+    if(vistaAct==='tareas')renderTareas();
+    if(vistaAct==='notif')renderNotif();
+  })();
+  fmvEscucharAvisos(correo);
+  return _fmvCargando;
+}
+// Avisos que manda el portal (entrega registrada, rechazo, comprobada, cierre).
+function fmvEscucharAvisos(correo){
+  if(_fmvUnsubNotif||!window.tcOpsCompat) return;
+  try{
+    _fmvUnsubNotif=opsDb().collection('ops_notificaciones').where('para','==',correo).where('leida','==',false).onSnapshot(function(snap){
+      const antes=new Set(fmvNotifs.map(function(n){return n.id;}));
+      fmvNotifs=snap.docs.map(function(d){return Object.assign({id:d.id},d.data());})
+        .filter(function(n){return String(n.tipo||'').indexOf('viat_tec_')===0;})
+        .sort(function(a,b){return String(b.fecha||'').localeCompare(String(a.fecha||''));});
+      // Solo tras la primera carga: un aviso nuevo muestra toast y refresca montos/estatus.
+      const nuevo=fmvNotifs.find(function(n){return !antes.has(n.id);});
+      if(_fmvBaseNotif&&nuevo){ toast('Viáticos: '+(nuevo.mensaje||'nuevo aviso').slice(0,70),'info'); fmViaCargar(); }
+      _fmvBaseNotif=true;
+      actualizarBadges();
+      if(vistaAct==='notif')renderNotif();
+    },function(err){console.warn('[Viáticos app] avisos',err);});
+  }catch(e){console.warn('[Viáticos app] avisos',e);}
+}
+let _fmvBaseNotif=false;
+window.fmViaMarcarLeidas=async function(){
+  const ls=fmvNotifs.slice();
+  for(const n of ls){ try{ await opsDb().collection('ops_notificaciones').doc(n.id).update({leida:true}); }catch(e){} }
+};
+window.fmViaNumAvisos=function(){
+  const urg=fmvActivos().filter(function(s){const E=fmvEstado(s);return E.estado==='Vencida'||(E.dias!==null&&E.dias<=1);}).length;
+  return urg+fmvNotifs.length;
+};
+// Elementos para la pestaña Avisos (mismo formato que renderNotif).
+window.fmViaItemsNotif=function(){
+  const it=[];
+  const ICV='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/></svg>';
+  fmvActivos().forEach(function(s){
+    const E=fmvEstado(s);
+    if(E.estado==='Vencida') it.push({ico:'err',bg:'#FEE2E2',icoSvg:ICV,t:'Comprobación VENCIDA · '+s.folio,s:'Faltan '+fmvDin(E.falta)+' por facturar · venció el '+fmvFecha(s.fecha_limite_comprobacion),time:'Viáticos',unread:true,link:'#viaticos'});
+    else if(E.dias!==null&&E.dias<=1&&E.falta>0.5) it.push({ico:'warn',bg:'#FEF3C7',icoSvg:ICV,t:(E.dias===0?'Hoy vence':'Mañana vence')+' la comprobación de '+s.folio,s:'Faltan '+fmvDin(E.falta)+' por facturar',time:'Viáticos',unread:true,link:'#viaticos'});
+    else if(E.falta>0.5) it.push({ico:'msg',bg:'#EDE9FE',icoSvg:ICV,t:'Viáticos por facturar · '+s.folio,s:fmvDin(E.falta)+' pendientes · límite '+fmvFecha(s.fecha_limite_comprobacion),time:'Viáticos',unread:false,link:'#viaticos'});
+    else if(E.estado==='En revisión') it.push({ico:'msg',bg:'#EDE9FE',icoSvg:ICV,t:s.folio+' en revisión',s:'Ya subiste todo; Pagos lo está revisando',time:'Viáticos',unread:false,link:'#viaticos'});
+  });
+  fmvNotifs.forEach(function(n){
+    const t=n.tipo==='viat_tec_rechazado'?'err':(n.tipo==='viat_tec_comprobada'||n.tipo==='viat_tec_cerrada')?'ok':'msg';
+    it.push({ico:t,bg:t==='err'?'#FEE2E2':t==='ok'?'#DCFCE7':'#EDE9FE',icoSvg:ICV,t:n.mensaje||'Aviso de viáticos',s:'Viáticos'+(n.folio?' · '+n.folio:''),time:typeof hF==='function'?hF(n.fecha):'',unread:true,link:'#viaticos'});
+  });
+  return it;
+};
+
+// Tarjeta en Tareas
+window.fmViaticosHTML=function(){
+  const act=fmvActivos();
+  const tram=fmvLista.filter(function(s){return !s.entregado_en&&!s.cierre;});
+  if(!act.length&&!tram.length) return '';
+  const venc=act.filter(function(s){return fmvEstado(s).estado==='Vencida';});
+  const falta=act.reduce(function(a,s){return a+fmvEstado(s).falta;},0);
+  const borde=venc.length?'#FCA5A5':'#C7D2FE', fondo=venc.length?'#FFF7F7':'#F5F7FF';
+  return '<div style="border:1.5px solid '+borde+';background:'+fondo+';border-radius:14px;padding:13px;margin-bottom:14px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">'+
+      '<div><div style="font-size:14px;font-weight:800;color:#0A1628">Mis viáticos</div>'+
+      '<div style="font-size:11.5px;color:'+(venc.length?'#B91C1C':'#475569')+';font-weight:700">'+
+        (act.length?fmvDin(falta)+' por facturar'+(venc.length?' · '+venc.length+' vencido(s)':''):'')+(tram.length?(act.length?' · ':'')+tram.length+' en trámite':'')+'</div></div>'+
+      '<button onclick="fmAbrirFlotante(\'viaticos\')" style="padding:9px 12px;background:#1D2E73;border:none;border-radius:10px;color:#fff;font-family:inherit;font-size:12px;font-weight:800;cursor:pointer;flex-shrink:0">Comprobar</button>'+
+    '</div>'+
+    act.slice().sort(function(a,b){return String(a.fecha_limite_comprobacion||'9').localeCompare(String(b.fecha_limite_comprobacion||'9'));}).slice(0,3).map(function(s){
+      const E=fmvEstado(s);
+      return '<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid rgba(0,0,0,.05);font-size:12px">'+
+        '<div style="min-width:0"><b style="color:#1D2E73">'+esc(s.folio)+'</b> <span style="color:#64748B">'+esc((s.destino||'').slice(0,28))+'</span></div>'+
+        '<div style="flex-shrink:0">'+fmvChip(E.estado)+'</div></div>';
+    }).join('')+
+  '</div>';
+};
+
+// ── Flotante: lista y alta de comprobantes ──
+window.renderFlotViaticos=function(){
+  const body=document.getElementById('fm-flot-body'); if(!body) return;
+  if(fmvUI.modo==='nuevo') return fmvRenderNuevo(body);
+  body.innerHTML='<p style="text-align:center;color:#94A3B8;font-size:13px;padding:24px">Cargando tus viáticos…</p>';
+  fmViaCargar().then(function(){ if(fmvUI.modo==='lista') fmvRenderLista(body); });
+};
+function fmvRenderLista(body){
+  const orden=function(a,b){return String(a.fecha_limite_comprobacion||'9').localeCompare(String(b.fecha_limite_comprobacion||'9'));};
+  const act=fmvLista.filter(function(s){return s.entregado_en&&!s.cierre;}).sort(orden);
+  const tram=fmvLista.filter(function(s){return !s.entregado_en&&!s.cierre;});
+  const cerr=fmvLista.filter(function(s){return s.cierre;}).slice(0,5);
+  const card=function(s){
+    const E=fmvEstado(s);
+    const pct=E.ent>0?Math.min(100,Math.round(E.acept/E.ent*100)):0, pctR=E.ent>0?Math.min(100-pct,Math.round(E.rev/E.ent*100)):0;
+    const lim=E.dias===null?'':E.dias<0?'<span style="color:#B91C1C;font-weight:800">Venció hace '+(-E.dias)+' día(s)</span>':E.dias===0?'<span style="color:#B45309;font-weight:800">Vence hoy</span>':'Límite '+fmvFecha(s.fecha_limite_comprobacion)+' ('+E.dias+' día(s))';
+    const docs=E.comps.map(function(c){
+      return '<div style="display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-top:1px solid #F1F5F9">'+
+        '<div style="min-width:0"><div style="font-size:12px;font-weight:700;color:#0A1628">'+esc(FMV_CATS[c.categoria]||'Gasto')+' · '+fmvDin(c.total)+'</div>'+
+        '<div style="font-size:10.5px;color:#64748B;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(c.tipo==='cfdi'?(c.emisor_nombre||'Factura'):'No deducible: '+(c.concepto||''))+'</div>'+
+        (c.estatus==='Rechazado'&&c.motivo_rechazo?'<div style="font-size:10.5px;color:#B91C1C;font-weight:700">Motivo: '+esc(c.motivo_rechazo)+'</div>':'')+'</div>'+
+        '<div style="flex-shrink:0">'+fmvChip(c.estatus)+'</div></div>';
+    }).join('');
+    return '<div style="background:#fff;border:1.5px solid '+(E.estado==='Vencida'?'#FCA5A5':'#E2E8F0')+';border-radius:14px;padding:13px;margin-bottom:12px">'+
+      '<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">'+
+        '<div><div style="font-size:14px;font-weight:900;color:#1D2E73">'+esc(s.folio)+'</div>'+
+        '<div style="font-size:11.5px;color:#475569">'+esc(s.destino||'')+(s.folio_servicio?' · Servicio '+esc(s.folio_servicio):'')+'</div>'+
+        '<div style="font-size:10.5px;color:#94A3B8">'+fmvFecha(s.fecha_salida)+' → '+fmvFecha(s.fecha_regreso)+'</div></div>'+fmvChip(E.estado)+'</div>'+
+      (s.forma_entrega?'<div style="font-size:11px;color:#1D2E73;background:#EEF2FF;border-radius:8px;padding:6px 9px;margin:9px 0;font-weight:600">'+esc(fmvFormaTxt(s.forma_entrega))+'</div>':'')+
+      '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;text-align:center;margin:8px 0">'+
+        '<div style="background:#F8FAFD;border-radius:9px;padding:7px"><div style="font-size:9.5px;color:#64748B;font-weight:700">RECIBISTE</div><div style="font-size:13px;font-weight:900;color:#0A1628">'+fmvDin(E.ent)+'</div></div>'+
+        '<div style="background:#F0FDF4;border-radius:9px;padding:7px"><div style="font-size:9.5px;color:#15803D;font-weight:700">COMPROBADO</div><div style="font-size:13px;font-weight:900;color:#15803D">'+fmvDin(E.acept+E.rev)+'</div></div>'+
+        '<div style="background:'+(E.falta>0.5?'#FEF2F2':'#F8FAFD')+';border-radius:9px;padding:7px"><div style="font-size:9.5px;color:#B91C1C;font-weight:700">FALTA</div><div style="font-size:13px;font-weight:900;color:'+(E.falta>0.5?'#B91C1C':'#64748B')+'">'+fmvDin(E.falta)+'</div></div>'+
+      '</div>'+
+      '<div style="height:7px;background:#F1F5F9;border-radius:9px;overflow:hidden;display:flex"><div style="width:'+pct+'%;background:#15803D"></div><div style="width:'+pctR+'%;background:#A78BFA"></div></div>'+
+      '<div style="font-size:10.5px;color:#64748B;margin:5px 0 4px">'+lim+(E.rev?' · '+fmvDin(E.rev)+' en revisión':'')+'</div>'+
+      docs+
+      (!s.cierre&&E.estado!=='Comprobada'?'<button onclick="fmViaNuevo('+s.id+')" style="width:100%;margin-top:10px;padding:11px;background:#15803D;border:none;border-radius:10px;color:#fff;font-family:inherit;font-size:13px;font-weight:800;cursor:pointer">+ Agregar comprobante</button>':'')+
+    '</div>';
+  };
+  body.innerHTML=
+    '<div style="font-size:12px;color:#475569;line-height:1.45;margin-bottom:12px">Sube el <b>XML</b> de cada factura (y el PDF o una foto si lo tienes). La app revisa sola que la forma de pago corresponda a cómo recibiste el dinero.</div>'+
+    (act.length?act.map(card).join(''):'<div style="text-align:center;color:#94A3B8;font-size:13px;padding:18px 10px;background:#fff;border-radius:12px;margin-bottom:12px">No tienes viáticos pendientes de comprobar.</div>')+
+    (tram.length?'<div style="font-size:12px;font-weight:800;color:#64748B;margin:14px 0 6px">EN TRÁMITE (aún no se registra la entrega)</div>'+tram.map(function(s){return '<div style="background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:10px 12px;margin-bottom:8px;font-size:12px"><b style="color:#1D2E73">'+esc(s.folio)+'</b> · '+esc(s.destino||'')+' · '+fmvDin(s.total)+' <span style="float:right">'+fmvChip(s.estatus==='Aprobada'?'En trámite':s.estatus)+'</span></div>';}).join(''):'')+
+    (cerr.length?'<div style="font-size:12px;font-weight:800;color:#64748B;margin:14px 0 6px">CERRADOS RECIENTES</div>'+cerr.map(function(s){return '<div style="background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:10px 12px;margin-bottom:8px;font-size:12px"><b style="color:#1D2E73">'+esc(s.folio)+'</b> · '+esc((s.cierre&&s.cierre.resultadoTxt)||'Cerrado')+'</div>';}).join(''):'')+
+    '<button onclick="fmvRecargar()" style="width:100%;margin-top:6px;padding:10px;background:#fff;border:1.5px solid #CBD5E1;border-radius:10px;font-family:inherit;font-size:12px;font-weight:700;color:#475569;cursor:pointer">Actualizar</button>';
+}
+window.fmvRecargar=function(){fmViaCargar().then(function(){renderFlotViaticos();});};
+
+// Sugerencia: el viático con la fecha límite más próxima que aún tenga saldo por comprobar.
+function fmvSugerido(){
+  const c=fmvActivos().filter(function(s){return fmvEstado(s).falta>0.5;}).sort(function(a,b){return String(a.fecha_limite_comprobacion||'9').localeCompare(String(b.fecha_limite_comprobacion||'9'));});
+  return c[0]||fmvActivos()[0]||null;
+}
+window.fmViaNuevo=function(id){
+  const sug=id?fmvLista.find(function(s){return s.id===id;}):fmvSugerido();
+  fmvUI={modo:'nuevo',viaticoId:sug?sug.id:null,sugeridoAuto:!id,tipo:'cfdi',xml:null,xmlData:null,val:null,pdf:null,foto:null,categoria:'',nd:{monto:'',fecha:fmvHoy(),concepto:'',motivo:''},enviando:false,error:''};
+  const t=document.getElementById('fm-flot-title'); if(t)t.textContent='Nuevo comprobante';
+  renderFlotViaticos();
+};
+window.fmvVolver=function(){fmvUI={modo:'lista'};const t=document.getElementById('fm-flot-title');if(t)t.textContent='Comprobar viáticos';renderFlotViaticos();};
+window.fmvSet=function(k,v){fmvUI[k]=v; if(k==='viaticoId'){fmvUI.viaticoId=Number(v); fmvUI.sugeridoAuto=false; if(fmvUI.xmlData) fmvRevalidar();} renderFlotViaticos();};
+window.fmvSetND=function(k,v){fmvUI.nd[k]=v;};
+
+function fmvRenderNuevo(body){
+  const u=fmvUI;
+  const opciones=fmvActivos().sort(function(a,b){return String(a.fecha_limite_comprobacion||'9').localeCompare(String(b.fecha_limite_comprobacion||'9'));});
+  const s=fmvLista.find(function(x){return x.id===u.viaticoId;});
+  if(!opciones.length||!s){ body.innerHTML='<p style="text-align:center;color:#94A3B8;padding:24px">No tienes viáticos entregados pendientes de comprobar.</p><button onclick="fmvVolver()" class="fm-btn" style="width:100%">Volver</button>'; return; }
+  const E=fmvEstado(s);
+  const lbl=function(t){return '<div style="font-size:11px;font-weight:800;color:#475569;margin:12px 0 5px;text-transform:uppercase">'+t+'</div>';};
+  const inp='width:100%;box-sizing:border-box;border:1.5px solid #CBD5E1;border-radius:10px;padding:10px;font-family:inherit;font-size:14px;background:#fff';
+  const tabB=function(v,t){return '<button onclick="fmvSet(\'tipo\',\''+v+'\')" style="flex:1;padding:10px;border:none;border-radius:9px;font-family:inherit;font-size:12.5px;font-weight:800;cursor:pointer;background:'+(u.tipo===v?'#1D2E73':'transparent')+';color:'+(u.tipo===v?'#fff':'#475569')+'">'+t+'</button>';};
+  const cats='<div style="display:flex;flex-wrap:wrap;gap:6px">'+Object.keys(FMV_CATS).map(function(k){return '<button onclick="fmvSet(\'categoria\',\''+k+'\')" style="padding:8px 12px;border-radius:999px;border:1.5px solid '+(u.categoria===k?'#1D2E73':'#CBD5E1')+';background:'+(u.categoria===k?'#1D2E73':'#fff')+';color:'+(u.categoria===k?'#fff':'#334155')+';font-family:inherit;font-size:12px;font-weight:700;cursor:pointer">'+FMV_CATS[k]+'</button>';}).join('')+'</div>';
+  let h='<button onclick="fmvVolver()" style="background:none;border:none;color:#1D4ED8;font-family:inherit;font-size:12.5px;font-weight:700;padding:0;margin-bottom:8px;cursor:pointer">← Mis viáticos</button>';
+  h+=lbl('¿A qué viático corresponde?')+'<select onchange="fmvSet(\'viaticoId\',this.value)" style="'+inp+'">'+opciones.map(function(o){const Eo=fmvEstado(o);return '<option value="'+o.id+'" '+(o.id===u.viaticoId?'selected':'')+'>'+esc(o.folio+' · '+(o.destino||'').slice(0,26)+' · falta '+fmvDin(Eo.falta))+'</option>';}).join('')+'</select>';
+  if(u.sugeridoAuto) h+='<div style="font-size:11px;color:#15803D;font-weight:700;margin-top:4px">Sugerido: es el que vence primero'+(s.folio_servicio?' (servicio '+esc(s.folio_servicio)+')':'')+'.</div>';
+  h+='<div style="font-size:11px;color:#1D2E73;background:#EEF2FF;border-radius:8px;padding:7px 9px;margin-top:8px;font-weight:600">'+esc(fmvFormaTxt(s.forma_entrega)||'Aún no se registra cómo se entregó.')+' · Falta '+fmvDin(E.falta)+'</div>';
+  h+=lbl('Tipo de comprobante')+'<div style="display:flex;gap:4px;background:#E2E8F0;padding:3px;border-radius:11px">'+tabB('cfdi','Factura (XML)')+tabB('no_deducible','Sin factura')+'</div>';
+  if(u.tipo==='cfdi'){
+    h+=lbl('XML de la factura (obligatorio)')+'<label style="display:block;border:2px dashed '+(u.xml?'#86EFAC':'#CBD5E1')+';background:'+(u.xml?'#F0FDF4':'#fff')+';border-radius:12px;padding:14px;text-align:center;cursor:pointer;font-size:12.5px;font-weight:700;color:#334155">'+
+      (u.xml?esc(u.xml.name):'Toca para elegir el archivo .xml')+'<input type="file" accept=".xml,text/xml,application/xml" style="display:none" onchange="fmvElegirXML(this)"></label>'+
+      '<div style="font-size:10.5px;color:#94A3B8;margin-top:4px">Viene junto con el PDF en el correo de la factura. Si solo tienes el PDF, pídele el XML al negocio.</div>';
+    if(u.xmlData) h+=fmvTarjetaXML(u.xmlData,u.val);
+    h+=lbl('PDF o foto de la factura (opcional)')+'<label style="display:block;border:1.5px solid #CBD5E1;border-radius:12px;padding:11px;text-align:center;cursor:pointer;font-size:12.5px;font-weight:700;color:#334155;background:#fff">'+(u.pdf?esc(u.pdf.name):'Adjuntar PDF o tomar foto')+'<input type="file" accept="application/pdf,image/*" style="display:none" onchange="fmvElegirArchivo(this,\'pdf\')"></label>';
+  }else{
+    h+='<div style="font-size:11.5px;color:#92400E;background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:9px 11px;margin-top:10px;line-height:1.4">Solo para gastos donde no se pudo facturar. Queda como <b>vale no deducible</b> y Pagos decide si lo acepta.</div>';
+    h+=lbl('Monto')+'<input type="number" inputmode="decimal" min="0" step="0.01" value="'+esc(u.nd.monto)+'" oninput="fmvSetND(\'monto\',this.value)" style="'+inp+'">';
+    h+=lbl('Fecha del gasto')+'<input type="date" value="'+esc(u.nd.fecha)+'" onchange="fmvSetND(\'fecha\',this.value)" style="'+inp+'">';
+    h+=lbl('¿En qué se gastó?')+'<input type="text" value="'+esc(u.nd.concepto)+'" oninput="fmvSetND(\'concepto\',this.value)" placeholder="Ej. comida en fonda carretera" style="'+inp+'">';
+    h+=lbl('¿Por qué no hay factura?')+'<input type="text" value="'+esc(u.nd.motivo)+'" oninput="fmvSetND(\'motivo\',this.value)" placeholder="Ej. el negocio no factura" style="'+inp+'">';
+    h+=lbl('Foto del ticket o nota (obligatoria)')+'<label style="display:block;border:2px dashed '+(u.foto?'#86EFAC':'#CBD5E1')+';background:'+(u.foto?'#F0FDF4':'#fff')+';border-radius:12px;padding:14px;text-align:center;cursor:pointer;font-size:12.5px;font-weight:700;color:#334155">'+(u.foto?esc(u.foto.name||'Foto lista'):'Tomar o elegir foto')+'<input type="file" accept="image/*" capture="environment" style="display:none" onchange="fmvElegirArchivo(this,\'foto\')"></label>';
+  }
+  h+=lbl('Concepto del gasto')+cats;
+  const bloq=u.tipo==='cfdi'&&(!u.xmlData||(u.val&&u.val.bloq.length)||!u.val);
+  h+=(u.error?'<div style="font-size:12px;color:#B91C1C;background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:9px 11px;margin-top:12px">'+esc(u.error)+'</div>':'');
+  h+='<button onclick="fmvEnviar()" '+(bloq||u.enviando?'disabled':'')+' style="width:100%;margin-top:16px;padding:14px;background:'+(bloq?'#94A3B8':'#15803D')+';border:none;border-radius:12px;color:#fff;font-family:inherit;font-size:14px;font-weight:900;cursor:'+(bloq?'not-allowed':'pointer')+'">'+(u.enviando?'Enviando…':u.tipo==='cfdi'&&u.val&&u.val.bloq.length?'No se puede enviar esta factura':'Enviar comprobante')+'</button>';
+  body.innerHTML=h;
+}
+function fmvTarjetaXML(d,v){
+  const fila=function(k,val){return '<div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;padding:3px 0"><span style="color:#64748B">'+k+'</span><span style="color:#0A1628;font-weight:700;text-align:right">'+esc(val)+'</span></div>';};
+  let h='<div style="background:#fff;border:1.5px solid #E2E8F0;border-radius:12px;padding:11px 12px;margin-top:10px">'+
+    fila('Emisor',d.emisorNombre||d.emisorRfc)+fila('RFC emisor',d.emisorRfc)+fila('A nombre de',d.receptorRfc)+fila('Fecha',fmvFecha(d.fecha))+
+    fila('Forma de pago',(d.formaPago||'—')+' '+(FMV_SAT[d.formaPago]||''))+fila('Total',fmvDin(d.total)+(d.moneda&&d.moneda!=='MXN'?' '+d.moneda:''));
+  if(!v) h+='<div style="font-size:12px;color:#64748B;margin-top:6px">Revisando…</div>';
+  else{
+    const ico=function(c,d){return '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="'+c+'" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:1px">'+d+'</svg>';};
+    v.ok.forEach(function(t){h+='<div style="display:flex;gap:6px;font-size:12px;color:#15803D;font-weight:700;margin-top:4px">'+ico('#15803D','<polyline points="20 6 9 17 4 12"/>')+'<span>'+esc(t)+'</span></div>';});
+    v.avisos.forEach(function(t){h+='<div style="display:flex;gap:6px;font-size:12px;color:#B45309;font-weight:600;margin-top:4px">'+ico('#B45309','<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>')+'<span>'+esc(t)+'</span></div>';});
+    v.bloq.forEach(function(t){h+='<div style="font-size:12px;color:#B91C1C;font-weight:800;margin-top:6px;background:#FEF2F2;border-radius:8px;padding:7px 9px">'+esc(t)+'</div>';});
+  }
+  return h+'</div>';
+}
+
+// Lectura del CFDI (3.3 y 4.0) directo en el teléfono.
+function fmvParseCFDI(texto){
+  const doc=new DOMParser().parseFromString(texto,'application/xml');
+  if(doc.getElementsByTagName('parsererror').length) throw new Error('El archivo no es un XML válido.');
+  const by=function(n){const l=doc.getElementsByTagNameNS('*',n);return l&&l.length?l[0]:null;};
+  const comp=by('Comprobante'); if(!comp) throw new Error('El XML no es una factura (CFDI).');
+  const a=function(el,k){return el?(el.getAttribute(k)||''):'';};
+  const em=by('Emisor'), re=by('Receptor'), tfd=by('TimbreFiscalDigital');
+  let iva=0; for(let i=0;i<comp.childNodes.length;i++){const n=comp.childNodes[i]; if(n.localName==='Impuestos'){iva=Number(a(n,'TotalImpuestosTrasladados'))||0;}}
+  const conceptos=Array.prototype.map.call(doc.getElementsByTagNameNS('*','Concepto'),function(c){return a(c,'Descripcion');}).filter(Boolean);
+  return {version:a(comp,'Version'),tipo:a(comp,'TipoDeComprobante'),formaPago:a(comp,'FormaPago'),metodoPago:a(comp,'MetodoPago'),
+    fecha:a(comp,'Fecha').slice(0,10),serieFolio:[a(comp,'Serie'),a(comp,'Folio')].filter(Boolean).join('-'),subtotal:Number(a(comp,'SubTotal'))||0,
+    total:Number(a(comp,'Total'))||0,moneda:a(comp,'Moneda'),emisorRfc:a(em,'Rfc').toUpperCase(),emisorNombre:a(em,'Nombre'),
+    receptorRfc:a(re,'Rfc').toUpperCase(),uuid:a(tfd,'UUID').toUpperCase(),iva:iva,conceptos:conceptos};
+}
+function fmvSugerirCat(d){
+  const t=((d.emisorNombre||'')+' '+(d.conceptos||[]).join(' ')).toUpperCase();
+  if(/HOTEL|HOSPEDAJE|MOTEL|SUITES|POSADA|\bINN\b|HABITACI/.test(t))return 'hospedaje';
+  if(/CASETA|PEAJE|CAPUFE|AUTOPISTA|CUOTA/.test(t))return 'casetas';
+  if(/GASOLIN|COMBUSTIBLE|MAGNA|PREMIUM|DIESEL|PEMEX|LITROS?\b/.test(t))return 'gasolina';
+  if(/RESTAUR|ALIMENTO|COMIDA|CONSUMO|BEBIDA|CAFE|TACO|BURGER|POLLO|PIZZA|BUFFET|DESAYUNO|CENA/.test(t))return 'alimentos';
+  return '';
+}
+async function fmvValidar(d,s){
+  const bloq=[],avisos=[],ok=[];
+  if(d.tipo&&d.tipo!=='I') bloq.push('Es un comprobante tipo "'+d.tipo+'"; tiene que ser una factura de ingreso (tipo I).');
+  if(!d.uuid) bloq.push('No tiene UUID: la factura no está timbrada.');
+  const perm=fmvPermitidas(s.forma_entrega);
+  if(!s.forma_entrega) avisos.push('Todavía no se registra cómo te entregaron este viático; Pagos revisará la forma de pago.');
+  else if(perm.indexOf(d.formaPago)<0) bloq.push('Forma de pago '+(d.formaPago||'vacía')+' ('+(FMV_SAT[d.formaPago]||'desconocida')+'). Como este viático fue '+((fmvForma(s.forma_entrega)||{}).etiqueta||s.forma_entrega).toLowerCase()+', la factura debe decir forma de pago '+perm.map(function(c){return c+' ('+(FMV_SAT[c]||'')+')';}).join(' o ')+'. Pide al negocio que la corrija.');
+  else ok.push('Forma de pago correcta: '+d.formaPago+' '+(FMV_SAT[d.formaPago]||''));
+  if(d.metodoPago==='PPD') avisos.push('Método de pago PPD (en parcialidades); normalmente debe ser PUE.');
+  const rfcs=(fmvCfg.rfcsReceptor||[]).map(function(x){return String(x).toUpperCase();});
+  if(rfcs.length){ if(rfcs.indexOf(d.receptorRfc)<0) bloq.push('La factura está a nombre de '+(d.receptorRfc||'—')+'; debe venir a nombre de '+rfcs.join(' o ')+'.'); else ok.push('A nombre de la empresa correcta'); }
+  if(d.moneda&&d.moneda!=='MXN') avisos.push('La factura está en '+d.moneda+'.');
+  const ini=s.fecha_salida?new Date(s.fecha_salida+'T12:00:00'):null, fin=new Date(((s.fecha_limite_comprobacion||s.fecha_regreso||fmvHoy()))+'T12:00:00');
+  const fd=d.fecha?new Date(d.fecha+'T12:00:00'):null;
+  if(fd&&ini&&(fd<new Date(ini.getTime()-2*86400000)||fd>fin)) avisos.push('La fecha de la factura ('+fmvFecha(d.fecha)+') no cae dentro del viaje.');
+  const E=fmvEstado(s); if(d.total>E.falta+0.5&&E.falta>0) avisos.push('Es más de lo que te falta comprobar ('+fmvDin(E.falta)+'); el excedente se revisa como reembolso.');
+  if(d.uuid){
+    try{
+      const sb=await fmvSb();
+      const r=await sb.from('ops_viaticos_comprobantes').select('id,viatico_folio,estatus').eq('uuid',d.uuid).neq('estatus','Rechazado').limit(1);
+      if(r.data&&r.data.length) bloq.push('Esta factura ya se usó en '+(r.data[0].viatico_folio||'otro viático')+'. No se puede comprobar dos veces.');
+    }catch(e){}
+  }
+  return {bloq:bloq,avisos:avisos,ok:ok};
+}
+async function fmvRevalidar(){
+  const s=fmvLista.find(function(x){return x.id===fmvUI.viaticoId;}); if(!s||!fmvUI.xmlData) return;
+  fmvUI.val=null; renderFlotViaticos();
+  fmvUI.val=await fmvValidar(fmvUI.xmlData,s);
+  if(fmvUI.modo==='nuevo') renderFlotViaticos();
+}
+window.fmvElegirXML=function(input){
+  const f=input.files&&input.files[0]; if(!f) return;
+  fmvUI.error=''; fmvUI.xml=f; fmvUI.xmlData=null; fmvUI.val=null;
+  const rd=new FileReader();
+  rd.onload=function(){
+    try{
+      fmvUI.xmlData=fmvParseCFDI(String(rd.result||''));
+      if(!fmvUI.categoria) fmvUI.categoria=fmvSugerirCat(fmvUI.xmlData);
+      fmvRevalidar();
+    }catch(e){ fmvUI.xml=null; fmvUI.error=e.message||String(e); renderFlotViaticos(); }
+  };
+  rd.onerror=function(){fmvUI.error='No se pudo leer el archivo.';renderFlotViaticos();};
+  rd.readAsText(f);
+};
+window.fmvElegirArchivo=async function(input,campo){
+  let f=input.files&&input.files[0]; if(!f) return;
+  // Fotos: se reducen para que suban rápido con señal débil (los PDF van tal cual).
+  if(/^image\//.test(f.type)){
+    try{
+      const url=await new Promise(function(ok,ko){const r=new FileReader();r.onload=function(){ok(r.result);};r.onerror=ko;r.readAsDataURL(f);});
+      const red=await comprimirBase64(url,1600,0.8);
+      const blob=await (await fetch(red)).blob();
+      f=new File([blob],(f.name||'foto').replace(/\.[^.]+$/,'')+'.jpg',{type:'image/jpeg'});
+    }catch(e){}
+  }
+  fmvUI[campo]=f; renderFlotViaticos();
+};
+async function fmvSubirArchivo(sb,viaticoId,file,etiqueta){
+  const ext=(String(file.name||'').split('.').pop()||'bin').toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,5)||'bin';
+  const ruta='viaticos/'+viaticoId+'/'+Date.now()+'_'+etiqueta+'.'+ext;
+  const r=await sb.storage.from(FMV_BUCKET).upload(ruta,file,{contentType:file.type||(ext==='xml'?'application/xml':undefined),upsert:false});
+  if(r.error) throw r.error;
+  return ruta;
+}
+window.fmvEnviar=async function(){
+  const u=fmvUI; if(u.enviando) return;
+  const s=fmvLista.find(function(x){return x.id===u.viaticoId;}); if(!s) return;
+  u.error='';
+  if(!u.categoria){u.error='Elige el concepto del gasto (alimentos, hospedaje, gasolina…).';renderFlotViaticos();return;}
+  if(u.tipo==='cfdi'){
+    if(!u.xmlData||!u.val||u.val.bloq.length) return;
+  }else{
+    if(!(fmvNum(u.nd.monto)>0)){u.error='Captura el monto.';renderFlotViaticos();return;}
+    if(!u.nd.concepto.trim()||!u.nd.motivo.trim()){u.error='Escribe en qué se gastó y por qué no hay factura.';renderFlotViaticos();return;}
+    if(!u.foto){u.error='La foto del ticket es obligatoria.';renderFlotViaticos();return;}
+  }
+  if(!navigator.onLine){u.error='Sin conexión. Intenta cuando tengas señal; no se pierde nada de lo que ya tienes en el teléfono.';renderFlotViaticos();return;}
+  u.enviando=true; renderFlotViaticos();
+  try{
+    const sb=await fmvSb();
+    const fila={viatico_id:s.id,viatico_folio:s.folio,folio_servicio:s.folio_servicio||null,tecnico_email:opsSvMiCorreo(),tecnico_nombre:opsSvMiNombre(),categoria:u.categoria,tipo:u.tipo,estatus:'Por revisar'};
+    if(u.tipo==='cfdi'){
+      const d=u.xmlData;
+      fila.xml_path=await fmvSubirArchivo(sb,s.id,u.xml,'xml');
+      if(u.pdf) fila[/^image\//.test(u.pdf.type)?'foto_path':'pdf_path']=await fmvSubirArchivo(sb,s.id,u.pdf,'factura');
+      Object.assign(fila,{uuid:d.uuid,serie_folio:d.serieFolio||null,emisor_rfc:d.emisorRfc,emisor_nombre:d.emisorNombre,receptor_rfc:d.receptorRfc,forma_pago:d.formaPago,metodo_pago:d.metodoPago,
+        fecha_comprobante:d.fecha||null,subtotal:d.subtotal,iva:d.iva,total:d.total,concepto:(d.conceptos||[]).slice(0,3).join(' | ').slice(0,300),
+        validacion:{avisos:u.val.avisos,ok:u.val.ok,version:d.version}});
+    }else{
+      fila.foto_path=await fmvSubirArchivo(sb,s.id,u.foto,'ticket');
+      Object.assign(fila,{total:fmvNum(u.nd.monto),fecha_comprobante:u.nd.fecha||null,concepto:u.nd.concepto.trim(),validacion:{avisos:['Sin factura: '+u.nd.motivo.trim()],ok:[]}});
+    }
+    const r=await sb.from('ops_viaticos_comprobantes').insert(fila).select().single();
+    if(r.error){
+      const m=String(r.error.message||'');
+      if(String(r.error.code)==='23505') throw new Error('Esta factura ya se había subido. No se puede comprobar dos veces.');
+      if(m.indexOf('VIAT_FORMA_PAGO')>=0) throw new Error('La forma de pago de la factura no corresponde a cómo recibiste el viático.');
+      if(m.indexOf('VIAT_SIN_UUID')>=0) throw new Error('La factura no está timbrada (sin UUID).');
+      throw r.error;
+    }
+    fmvComps.unshift(r.data);
+    // Aviso a quien autoriza y a Pagos (campanita del portal).
+    const correos=(fmvCfg.correosNotificar&&fmvCfg.correosNotificar.length)?fmvCfg.correosNotificar:['c.acosta@tecnocontrol.com.mx','pagos@tecnocontrol.com.mx'];
+    const msg=opsSvMiNombre()+' subió un comprobante de '+(FMV_CATS[u.categoria]||'gasto')+' por '+fmvDin(fila.total)+' ('+(u.tipo==='cfdi'?'factura':'sin factura')+') a '+s.folio+'.';
+    correos.forEach(function(para){ sb.from('portal_notificaciones').insert({tipo:'viaticos_comprobante',para:para,mensaje:msg,datos:{modulo:'Operaciones',viaticoId:s.id}}).then(function(){},function(){}); });
+    toast('Comprobante enviado','ok');
+    fmvUI={modo:'lista'};
+    const t=document.getElementById('fm-flot-title'); if(t)t.textContent='Comprobar viáticos';
+    fmViaCargar().then(function(){renderFlotViaticos();});
+  }catch(e){
+    console.error('[Viáticos app] enviar',e);
+    u.enviando=false; u.error=e.message||String(e); renderFlotViaticos();
+  }
+};
+
+// Aviso grande al abrir la app si hay comprobaciones vencidas o que vencen hoy (una vez por sesión).
+function fmvAlertaInicio(){
+  try{ if(sessionStorage.getItem('fmv_alerta_vista')) return; }catch(e){}
+  const urg=fmvActivos().filter(function(s){const E=fmvEstado(s);return E.falta>0.5&&(E.estado==='Vencida'||(E.dias!==null&&E.dias<=0));});
+  if(!urg.length) return;
+  try{ sessionStorage.setItem('fmv_alerta_vista','1'); }catch(e){}
+  const venc=urg.filter(function(s){return fmvEstado(s).estado==='Vencida';}).length;
+  const falta=urg.reduce(function(a,s){return a+fmvEstado(s).falta;},0);
+  const ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;z-index:5500;background:rgba(10,22,40,.55);display:flex;align-items:flex-end;justify-content:center';
+  ov.innerHTML='<div style="background:#fff;width:100%;max-width:480px;border-radius:18px 18px 0 0;padding:20px 18px calc(22px + env(safe-area-inset-bottom,0px))">'+
+    '<div style="font-size:16px;font-weight:900;color:#B91C1C;margin-bottom:6px">'+(venc?'Tienes viáticos con la comprobación vencida':'Hoy vence la comprobación de tus viáticos')+'</div>'+
+    '<div style="font-size:13px;color:#334155;line-height:1.45;margin-bottom:14px">Faltan <b>'+fmvDin(falta)+'</b> por facturar en '+urg.map(function(s){return esc(s.folio);}).join(', ')+'.</div>'+
+    '<button id="fmv-al-ok" style="width:100%;padding:13px;background:#1D2E73;border:none;border-radius:12px;color:#fff;font-family:inherit;font-size:14px;font-weight:900;margin-bottom:8px">Comprobar ahora</button>'+
+    '<button id="fmv-al-luego" style="width:100%;padding:11px;background:#fff;border:1.5px solid #CBD5E1;border-radius:12px;color:#475569;font-family:inherit;font-size:13px;font-weight:700">Después</button></div>';
+  document.body.appendChild(ov);
+  ov.querySelector('#fmv-al-ok').onclick=function(){ov.remove();fmAbrirFlotante('viaticos');};
+  ov.querySelector('#fmv-al-luego').onclick=function(){ov.remove();};
+}
+window.fmViaArranque=function(){ fmViaCargar().then(fmvAlertaInicio).catch(function(e){console.warn('[Viáticos app] arranque',e);}); };
 
 })();
