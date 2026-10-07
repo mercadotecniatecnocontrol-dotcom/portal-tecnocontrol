@@ -2077,6 +2077,7 @@
                         if (ch.type === "added") {
                             const n = { id: ch.doc.id, ...ch.doc.data() };
                             if (n.tipo === "ops_servicio_asignado") return; // es para la app del técnico, no para el portal
+                            if (String(n.tipo || "").startsWith("viat_tec_")) return; // avisos de viáticos para la app del técnico
                             opsReproducirAlarmaFolio();
                             opsMostrarFlotanteGenerica(n.mensaje || "Nueva notificación de Operaciones.", n.esPrueba ? "#8B4FD6" : "#1D2E73");
                         }
@@ -11972,6 +11973,9 @@
             { tipo: "grande", nombre: "Grande (camiones)", rendimiento: 8 },
         ],
         correosNotificar: ["c.acosta@tecnocontrol.com.mx", "pagos@tecnocontrol.com.mx"],
+        // Comprobación (oct-2026): días naturales después del regreso para comprobar, y
+        // RFC(s) a cuyo nombre deben venir las facturas (vacío = no se revisa el receptor).
+        diasComprobacion: 3, rfcsReceptor: [],
     };
     let opsViaCfg = { ...OPS_VIA_CFG_DEFAULT };
     let opsViaLista = [];
@@ -12048,6 +12052,7 @@
         catch (e) { el.innerHTML = `<div style="padding:30px;color:#E7402B;">No se pudieron cargar los viáticos: ${opsEsc(e.message || e)}</div>`; return; }
         if (tabActual !== "viaticos") return;
         const autoriza = opsViaPuedeAutorizar();
+        if (opsViaVista === "comprobacion") return opsRenderViaComprobacion(el, autoriza);
         const filas = opsViaLista.map(s => `
             <tr style="border-bottom:1px solid #f1f5f9;">
                 <td style="padding:9px 8px;font-weight:700;color:#1D2E73;white-space:nowrap;">${opsEsc(s.folio || s.id)}</td>
@@ -12071,6 +12076,7 @@
                 <div>
                     <div style="font-family:'Space Grotesk',sans-serif;font-size:19px;font-weight:700;color:#1D2E73;">Solicitudes de viáticos</div>
                     <div style="font-size:12px;color:#64748b;">Se notifica a Cristina Acosta (Gerente Administrativa) y a Pagos.</div>
+                    ${opsViaTabsHTML()}
                 </div>
                 <div style="display:flex;gap:8px;">
                     ${opsRolActual() === "administrador" || autoriza ? `<button onclick="opsViaAbrirTarifas()" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Tarifas</button>` : ""}
@@ -12090,6 +12096,10 @@
     }
 
     window.opsViaCambiarEstatus = async function (id, estatus) {
+        // Marcar como Pagada = registrar la entrega (forma, monto, responsable, plazo):
+        // es lo que arranca el seguimiento de la comprobación.
+        const previa = opsViaLista.find(x => x.id === id);
+        if (estatus === "Pagada" && previa && !previa.entregado_en) { opsRenderViaticos(); opsViaAbrirEntrega(id); return; }
         try {
             const sb = await opsSb();
             const { error } = await sb.from("ops_solicitudes_viaticos").update({ estatus, actualizado_en: new Date().toISOString(), actualizado_por: opsUsuarioActual() }).eq("id", id);
@@ -12097,13 +12107,12 @@
             const s = opsViaLista.find(x => x.id === id);
             if (s) {
                 s.estatus = estatus;
-                // Aviso al solicitante (best effort vía Firestore, como el resto del portal).
-                if (s.solicitante_email) opsCopiaFirestore((db, fs) => window.tcNotificar2(fs, db, {
-                    tipo: "viaticos_" + estatus.toLowerCase(), para: s.solicitante_email,
-                    mensaje: `Tu solicitud de viáticos ${s.folio} (${s.destino || ""}) cambió a: ${estatus}.`, leido: false, creadaEn: new Date().toISOString(),
-                }).catch(() => {}));
+                // Aviso al solicitante. Antes pasaba por opsCopiaFirestore, que ya no hace nada
+                // desde la migración a Supabase, así que este aviso nunca llegaba (corregido oct-2026).
+                if (s.solicitante_email) opsViaAvisoPortal(s.solicitante_email, "viaticos_" + estatus.toLowerCase(),
+                    `Tu solicitud de viáticos ${s.folio} (${s.destino || ""}) cambió a: ${estatus}.`, { viaticoId: s.id });
             }
-            if (window.mostrarPush) window.mostrarPush("Viáticos", `Solicitud marcada como ${estatus}.`, "✅");
+            opsViaToast(`Solicitud marcada como ${estatus}.`);
             opsRenderViaticos();
         } catch (e) { alert("No se pudo cambiar el estatus: " + (e.message || e)); }
     };
@@ -13001,10 +13010,9 @@
             await sb.from("ops_solicitudes_viaticos").update({ folio }).eq("id", data.id);
             data.folio = folio;
             const resumen = opsViaResumenTexto(data);
-            (opsViaCfg.correosNotificar || []).forEach(correo => opsCopiaFirestore((db, fs) => window.tcNotificar2(fs, db, {
-                tipo: "viaticos_solicitud", para: correo, mensaje: `${opsNombreActual()} solicita viáticos ${folio}: ${data.destino} · ${opsViaDinero(data.total)}.`,
-                leido: false, creadaEn: new Date().toISOString(),
-            }).catch(() => {})));
+            // Aviso real a quien autoriza y a Pagos (antes no salía: opsCopiaFirestore ya no hace nada).
+            (opsViaCfg.correosNotificar || []).forEach(correo => opsViaAvisoPortal(correo, "viaticos_solicitud",
+                `${opsNombreActual()} solicita viáticos ${folio}: ${data.destino} · ${opsViaDinero(data.total)}.`, { viaticoId: data.id }));
             opsViaCerrar();
             opsViaMostrarEnviada(data, resumen);
             if (tabActual === "viaticos") opsRenderViaticos();
@@ -13233,6 +13241,11 @@
                     ${opsViaInput("Nombre", "via-cfg-onombre", c.origen.nombre)}${opsViaInput("Latitud", "via-cfg-olat", c.origen.lat, "", "number")}${opsViaInput("Longitud", "via-cfg-olng", c.origen.lng, "", "number")}
                 </div>
                 ${opsViaInput("Correos a notificar (separados por coma)", "via-cfg-correos", (c.correosNotificar || []).join(", "))}
+                <div style="font-weight:700;font-size:12.5px;color:#1D2E73;margin:6px 0 6px;">Comprobación de viáticos</div>
+                <div style="display:grid;grid-template-columns:1fr 2fr;gap:0 10px;">
+                    ${opsViaInput("Días para comprobar (después del regreso)", "via-cfg-diascomp", c.diasComprobacion ?? 3, "", "number")}
+                    ${opsViaInput("RFC(s) a nombre de quien deben venir las facturas (coma)", "via-cfg-rfcs", (c.rfcsReceptor || []).join(", "))}
+                </div>
                 <div style="display:flex;gap:8px;justify-content:flex-end;">
                     <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
                     <button onclick="opsViaGuardarTarifas()" class="mkt-add-btn" style="background:#1D2E73;">Guardar tarifas</button>
@@ -13249,14 +13262,523 @@
         document.querySelectorAll("[data-veh]").forEach(inp => { const i = Number(inp.getAttribute("data-veh")); if (nuevo.vehiculos[i]) nuevo.vehiculos[i].rendimiento = Number(inp.value) || nuevo.vehiculos[i].rendimiento; });
         nuevo.origen = { nombre: document.getElementById("via-cfg-onombre").value, lat: Number(document.getElementById("via-cfg-olat").value), lng: Number(document.getElementById("via-cfg-olng").value) };
         nuevo.correosNotificar = document.getElementById("via-cfg-correos").value.split(",").map(x => x.trim()).filter(Boolean);
+        nuevo.diasComprobacion = Math.max(0, Number(document.getElementById("via-cfg-diascomp").value) || 0);
+        nuevo.rfcsReceptor = document.getElementById("via-cfg-rfcs").value.split(",").map(x => x.trim().toUpperCase()).filter(Boolean);
         try {
             const sb = await opsSb();
             const { error } = await sb.from("ops_config_viaticos_solicitud").upsert({ id: "general", datos: nuevo, actualizado_en: new Date().toISOString(), actualizado_por: opsUsuarioActual() });
             if (error) throw error;
             opsViaCfg = nuevo;
             document.getElementById("ops-modal-wrap").innerHTML = "";
-            if (window.mostrarPush) window.mostrarPush("Viáticos", "Tarifas actualizadas.", "✅");
+            opsViaToast("Tarifas actualizadas.");
         } catch (e) { alert("No se pudieron guardar las tarifas: " + (e.message || e)); }
+    };
+
+
+    // ══════════════════════════════════════════════════════════════════
+    // COMPROBACIÓN DE VIÁTICOS (oct-2026)
+    // Seguimiento de los viáticos ya entregados, en la misma pestaña donde se solicitan:
+    // quién debe, cuánto falta, qué se facturó, qué evidencia se subió y qué está vencido.
+    //  · Al marcar una solicitud como "Pagada" se registra la ENTREGA: forma (tarjeta de
+    //    nómina o efectivo), monto, responsable de comprobar y fecha límite.
+    //  · El técnico sube el XML de cada factura desde la app de Flotilla. Candado: tarjeta de
+    //    nómina solo acepta forma de pago SAT 28 (débito) y efectivo solo 01; además lo
+    //    revisa la base de datos (trigger), así que no se puede saltar desde ninguna pantalla.
+    //  · Pagos acepta o rechaza cada comprobante y cierra con devolución, descuento o reembolso.
+    // Tablas (Supabase): ops_solicitudes_viaticos (columnas de entrega/cierre),
+    // ops_viaticos_comprobantes, ops_viaticos_formas. Archivos: bucket privado viaticos-comprobantes.
+    // ══════════════════════════════════════════════════════════════════
+    const OPS_VIA_BUCKET = "viaticos-comprobantes";
+    const OPS_VIA_CATS = { alimentos: "Alimentos", hospedaje: "Hospedaje", gasolina: "Gasolina", casetas: "Casetas", otros: "Otros" };
+    const OPS_VIA_FORMAS_DEFAULT = [
+        { forma_entrega: "efectivo", etiqueta: "Efectivo", formas_pago: ["01"] },
+        { forma_entrega: "tarjeta_nomina", etiqueta: "Tarjeta de nómina (débito)", formas_pago: ["28"] },
+    ];
+    const OPS_SAT_FORMAS = { "01": "Efectivo", "02": "Cheque nominativo", "03": "Transferencia", "04": "Tarjeta de crédito", "05": "Monedero electrónico", "28": "Tarjeta de débito", "29": "Tarjeta de servicios", "99": "Por definir" };
+    const OPS_VIA_EST_COMP = {
+        "Por entregar": { c: "#64748b", bg: "#f1f5f9" }, "Por comprobar": { c: "#b45309", bg: "#fef3c7" },
+        "Parcial": { c: "#1d4ed8", bg: "#dbeafe" }, "En revisión": { c: "#6d28d9", bg: "#ede9fe" },
+        "Vencida": { c: "#b91c1c", bg: "#fee2e2" }, "Comprobada": { c: "#15803d", bg: "#dcfce7" }, "Cerrada": { c: "#334155", bg: "#e2e8f0" },
+    };
+    const OPS_VIA_EST_DOC = { "Por revisar": { c: "#6d28d9", bg: "#ede9fe" }, "Aceptado": { c: "#15803d", bg: "#dcfce7" }, "Rechazado": { c: "#b91c1c", bg: "#fee2e2" } };
+    let opsViaVista = "solicitudes";
+    let opsViaComp = [];
+    let opsViaFormas = OPS_VIA_FORMAS_DEFAULT;
+    let opsViaFiltroComp = "activas", opsViaBuscaComp = "", opsViaOrdenComp = "alfabetico";
+
+    function opsViaToast(msg, color) {
+        const t = document.createElement("div");
+        t.style.cssText = `position:fixed;bottom:26px;left:50%;transform:translateX(-50%);background:${color || "#1D2E73"};color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;font-weight:600;z-index:100001;box-shadow:0 10px 30px rgba(0,0,0,.25);max-width:90vw;`;
+        t.textContent = msg; document.body.appendChild(t);
+        setTimeout(() => { t.style.transition = "opacity .3s"; t.style.opacity = "0"; setTimeout(() => t.remove(), 320); }, 2800);
+    }
+    // Aviso a la campanita del portal (personas con acceso al portal).
+    async function opsViaAvisoPortal(para, tipo, mensaje, datos) {
+        if (!para) return;
+        try {
+            if (window.tcNotificar) await window.tcNotificar({ tipo, para, mensaje, modulo: "Operaciones", ...(datos || {}) });
+            else { const sb = await opsSb(); await sb.from("portal_notificaciones").insert({ tipo, para, mensaje, datos: { modulo: "Operaciones", ...(datos || {}) } }); }
+        } catch (e) { console.warn("[viáticos] aviso portal a " + para + ":", e.message || e); }
+    }
+    // Aviso a la app de Flotilla del técnico (ops_notificaciones, tipo viat_tec_*). El portal
+    // ignora estos tipos en su alarma, son solo para el técnico.
+    async function opsViaAvisoTecnico(correo, tipo, mensaje, s) {
+        correo = String(correo || "").toLowerCase().trim();
+        if (!correo) return false;
+        try {
+            const { db, fs } = await opsGetFB();
+            await fs.addDoc(fs.collection(db, COL_NOTIFICACIONES), {
+                tipo, para: correo, mensaje, folio: s.folio || null, solicitudId: String(s.id), leida: false, fecha: opsFechaHora(),
+            });
+            return true;
+        } catch (e) { console.warn("[viáticos] aviso a técnico " + correo + ":", e.message || e); return false; }
+    }
+
+    function opsViaTabsHTML() {
+        const b = (v, txt) => `<button onclick="opsViaSetVista('${v}')" style="border:none;padding:7px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700;background:${opsViaVista === v ? "#1D2E73" : "transparent"};color:${opsViaVista === v ? "#fff" : "#475569"};">${txt}</button>`;
+        return `<div style="display:inline-flex;gap:2px;background:#e2e8f0;padding:3px;border-radius:10px;margin-top:10px;">${b("solicitudes", "Solicitudes")}${b("comprobacion", "Comprobación y seguimiento")}</div>`;
+    }
+    window.opsViaSetVista = function (v) { opsViaVista = v; opsRenderViaticos(); };
+
+    async function opsViaCargarComprobantes() {
+        const sb = await opsSb();
+        const [c, f] = await Promise.all([
+            sb.from("ops_viaticos_comprobantes").select("*").order("creado_en", { ascending: false }).limit(2000),
+            sb.from("ops_viaticos_formas").select("*"),
+        ]);
+        if (c.error) throw c.error;
+        opsViaComp = c.data || [];
+        if (!f.error && f.data && f.data.length) opsViaFormas = f.data.slice().sort((a, b) => a.etiqueta.localeCompare(b.etiqueta, "es"));
+    }
+    function opsViaForma(clave) { return opsViaFormas.find(x => x.forma_entrega === clave) || null; }
+    function opsViaFormaTxt(clave) {
+        const f = opsViaForma(clave); if (!f) return "Sin registrar";
+        return f.etiqueta + " · facturas con forma de pago " + (f.formas_pago || []).map(c => c + " " + (OPS_SAT_FORMAS[c] || "")).join(" o ");
+    }
+    function opsViaHoyISO() { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+    function opsViaSumarDias(iso, n) { const d = new Date((iso || opsViaHoyISO()) + "T12:00:00"); d.setDate(d.getDate() + (Number(n) || 0)); return d.toISOString().slice(0, 10); }
+    function opsViaFechaCorta(iso) { if (!iso) return "—"; const d = new Date(String(iso).slice(0, 10) + "T12:00:00"); return isNaN(d) ? iso : d.toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" }); }
+
+    // Estado calculado de la comprobación de una solicitud (nunca se guarda: siempre cuadra).
+    function opsViaEstadoComp(s) {
+        const comps = opsViaComp.filter(c => c.viatico_id === s.id);
+        const sum = st => comps.filter(c => c.estatus === st).reduce((a, c) => a + opsViaNum(c.total), 0);
+        const ent = opsViaNum(s.monto_entregado);
+        const acept = sum("Aceptado"), rev = sum("Por revisar");
+        const rech = comps.filter(c => c.estatus === "Rechazado").length;
+        const falta = Math.max(0, ent - acept - rev);
+        const lim = s.fecha_limite_comprobacion;
+        const dias = lim ? Math.round((new Date(lim + "T12:00:00") - new Date(opsViaHoyISO() + "T12:00:00")) / 86400000) : null;
+        let estado;
+        if (s.cierre) estado = "Cerrada";
+        else if (!s.entregado_en) estado = "Por entregar";
+        else if (ent > 0 && acept >= ent - 0.5) estado = "Comprobada";
+        else if (falta <= 0.5 && rev > 0) estado = "En revisión";
+        else if (dias !== null && dias < 0) estado = "Vencida";
+        else if (acept + rev > 0) estado = "Parcial";
+        else estado = "Por comprobar";
+        return { comps, ent, acept, rev, rech, falta, dias, estado, diferencia: acept - ent };
+    }
+    function opsViaChip(txt, mapa) {
+        const m = mapa[txt] || { c: "#334155", bg: "#f1f5f9" };
+        return `<span style="display:inline-block;background:${m.bg};color:${m.c};font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;white-space:nowrap;">${opsEsc(txt)}</span>`;
+    }
+    function opsViaLimiteTxt(E) {
+        if (E.dias === null) return "";
+        if (E.estado === "Comprobada" || E.estado === "Cerrada") return "";
+        if (E.dias < 0) return `<div style="font-size:10.5px;color:#b91c1c;font-weight:700;">Vencida hace ${-E.dias} día(s)</div>`;
+        if (E.dias === 0) return `<div style="font-size:10.5px;color:#b45309;font-weight:700;">Vence hoy</div>`;
+        return `<div style="font-size:10.5px;color:${E.dias <= 1 ? "#b45309" : "#94a3b8"};">Faltan ${E.dias} día(s)</div>`;
+    }
+
+    // ── Vista: Comprobación y seguimiento ──
+    async function opsRenderViaComprobacion(el, autoriza) {
+        try { await opsViaCargarComprobantes(); }
+        catch (e) { el.innerHTML = `<div style="padding:30px;color:#E7402B;">No se pudieron cargar los comprobantes: ${opsEsc(e.message || e)}</div>`; return; }
+        if (tabActual !== "viaticos" || opsViaVista !== "comprobacion") return;
+        const base = opsViaLista.filter(s => s.estatus !== "Rechazada").map(s => ({ s, E: opsViaEstadoComp(s) }));
+        const entregadas = base.filter(x => x.s.entregado_en);
+        const activas = entregadas.filter(x => !["Comprobada", "Cerrada"].includes(x.E.estado));
+        const kpi = (t, v, sub, c) => `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;"><div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;">${t}</div><div style="font-size:20px;font-weight:800;color:${c || "#1D2E73"};margin-top:2px;">${v}</div><div style="font-size:11px;color:#94a3b8;">${sub}</div></div>`;
+        const totEnt = activas.reduce((a, x) => a + x.E.ent, 0), totAc = activas.reduce((a, x) => a + x.E.acept, 0);
+        const totRev = activas.reduce((a, x) => a + x.E.rev, 0), totFalta = activas.reduce((a, x) => a + x.E.falta, 0);
+        const vencidas = activas.filter(x => x.E.estado === "Vencida");
+        const porCerrar = entregadas.filter(x => x.E.estado === "Comprobada");
+
+        // Saldos por persona ("quién debe"), alfabético.
+        const porPersona = {};
+        activas.forEach(x => {
+            const k = x.s.responsable_nombre || x.s.responsable_email || "Sin responsable";
+            const p = porPersona[k] || (porPersona[k] = { nombre: k, falta: 0, n: 0, venc: 0 });
+            p.falta += x.E.falta; p.n++; if (x.E.estado === "Vencida") p.venc++;
+        });
+        const personas = Object.values(porPersona).filter(p => p.falta > 0.5).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+        window.__opsViaPersonas = personas;
+
+        const filtros = {
+            activas: ["Activas", x => x.s.entregado_en && !["Comprobada", "Cerrada"].includes(x.E.estado)],
+            vencidas: ["Vencidas", x => x.E.estado === "Vencida"],
+            revision: ["Con comprobantes por revisar", x => x.E.comps.some(c => c.estatus === "Por revisar")],
+            porcerrar: ["Comprobadas (por cerrar)", x => x.E.estado === "Comprobada"],
+            cerradas: ["Cerradas", x => x.E.estado === "Cerrada"],
+            porentregar: ["Aprobadas por entregar", x => !x.s.entregado_en],
+            todas: ["Todas", () => true],
+        };
+        const q = (opsViaBuscaComp || "").toLowerCase().trim();
+        let lista = base.filter(filtros[opsViaFiltroComp][1]).filter(x => !q || [x.s.folio, x.s.destino, x.s.folio_servicio, x.s.responsable_nombre, x.s.integrantes, x.s.cliente].join(" ").toLowerCase().includes(q));
+        lista.sort(opsViaOrdenComp === "vencimiento"
+            ? (a, b) => String(a.s.fecha_limite_comprobacion || "9999").localeCompare(String(b.s.fecha_limite_comprobacion || "9999"))
+            : (a, b) => String(a.s.responsable_nombre || a.s.integrantes || "").localeCompare(String(b.s.responsable_nombre || b.s.integrantes || ""), "es") || String(a.s.folio).localeCompare(String(b.s.folio)));
+
+        const filas = lista.map(({ s, E }) => {
+            const pct = E.ent > 0 ? Math.min(100, Math.round((E.acept / E.ent) * 100)) : 0;
+            const pctR = E.ent > 0 ? Math.min(100 - pct, Math.round((E.rev / E.ent) * 100)) : 0;
+            const pend = E.comps.filter(c => c.estatus === "Por revisar").length;
+            return `<tr style="border-bottom:1px solid #f1f5f9;cursor:pointer;" onclick="opsViaVerComprobacion(${s.id})">
+                <td style="padding:9px 8px;font-weight:700;color:#1D2E73;white-space:nowrap;">${opsEsc(s.folio || s.id)}<div style="font-size:10.5px;color:#94a3b8;font-weight:500;">${opsEsc(s.folio_servicio ? "Servicio " + s.folio_servicio : "")}</div></td>
+                <td style="padding:9px 8px;">${opsEsc(s.responsable_nombre || s.integrantes || "—")}<div style="font-size:10.5px;color:#94a3b8;">${opsEsc(s.destino || "")}</div></td>
+                <td style="padding:9px 8px;font-size:11.5px;">${s.forma_entrega ? opsEsc((opsViaForma(s.forma_entrega) || {}).etiqueta || s.forma_entrega) : "—"}</td>
+                <td style="padding:9px 8px;text-align:right;">${s.entregado_en ? opsViaDinero(E.ent) : `<span style="color:#94a3b8;">${opsViaDinero(s.total)}</span>`}</td>
+                <td style="padding:9px 8px;min-width:150px;">
+                    <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:#15803d;font-weight:700;">${opsViaDinero(E.acept)}</span><span style="color:#b91c1c;font-weight:700;">${E.falta > 0.5 ? "Falta " + opsViaDinero(E.falta) : ""}</span></div>
+                    <div style="height:6px;background:#f1f5f9;border-radius:9px;overflow:hidden;margin-top:4px;display:flex;"><div style="width:${pct}%;background:#15803d;"></div><div style="width:${pctR}%;background:#a78bfa;"></div></div>
+                    ${pend ? `<div style="font-size:10.5px;color:#6d28d9;margin-top:3px;font-weight:600;">${pend} por revisar</div>` : ""}
+                </td>
+                <td style="padding:9px 8px;white-space:nowrap;font-size:11.5px;">${opsViaFechaCorta(s.fecha_limite_comprobacion)}${opsViaLimiteTxt(E)}</td>
+                <td style="padding:9px 8px;">${opsViaChip(E.estado, OPS_VIA_EST_COMP)}</td>
+                <td style="padding:9px 8px;white-space:nowrap;" onclick="event.stopPropagation()">
+                    ${!s.entregado_en && autoriza ? `<button onclick="opsViaAbrirEntrega(${s.id})" style="background:#1D2E73;border:none;color:#fff;padding:5px 9px;border-radius:7px;cursor:pointer;font-size:11.5px;font-weight:600;">Registrar entrega</button>`
+                    : `<button onclick="opsViaVerComprobacion(${s.id})" style="background:#E9ECF5;border:none;color:#1D2E73;padding:5px 9px;border-radius:7px;cursor:pointer;font-size:11.5px;font-weight:600;">Ver</button>`}
+                </td>
+            </tr>`;
+        }).join("");
+
+        el.innerHTML = `
+        <div style="padding:22px;">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+                <div>
+                    <div style="font-family:'Space Grotesk',sans-serif;font-size:19px;font-weight:700;color:#1D2E73;">Comprobación de viáticos</div>
+                    <div style="font-size:12px;color:#64748b;">Los técnicos suben el XML de cada factura desde la app de Flotilla; la forma de pago se valida sola.</div>
+                    ${opsViaTabsHTML()}
+                </div>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px;">
+                ${kpi("Entregado (abierto)", opsViaDinero(totEnt), activas.length + " viático(s) en seguimiento")}
+                ${kpi("Comprobado", opsViaDinero(totAc), "facturas aceptadas", "#15803d")}
+                ${kpi("En revisión", opsViaDinero(totRev), "subido, falta revisar", "#6d28d9")}
+                ${kpi("Falta comprobar", opsViaDinero(totFalta), "sin factura todavía", "#b45309")}
+                ${kpi("Vencidas", String(vencidas.length), porCerrar.length + " comprobada(s) por cerrar", vencidas.length ? "#b91c1c" : "#1D2E73")}
+            </div>
+            ${personas.length ? `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;margin-bottom:14px;">
+                <div style="font-size:12px;font-weight:700;color:#1D2E73;margin-bottom:8px;">Quién debe comprobar</div>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;">${personas.map((p, i) => `<button onclick="opsViaBuscarCompIdx(${i})" style="border:1px solid ${p.venc ? "#fecaca" : "#e2e8f0"};background:${p.venc ? "#fef2f2" : "#f8fafc"};border-radius:10px;padding:7px 10px;cursor:pointer;text-align:left;">
+                    <div style="font-size:12px;font-weight:700;color:#1e293b;">${opsEsc(p.nombre)}</div>
+                    <div style="font-size:11px;color:${p.venc ? "#b91c1c" : "#64748b"};">${opsViaDinero(p.falta)} · ${p.n} viático(s)${p.venc ? " · " + p.venc + " vencido(s)" : ""}</div></button>`).join("")}</div>
+            </div>` : ""}
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+                <select onchange="opsViaSetFiltroComp(this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:12.5px;">
+                    ${Object.keys(filtros).map(k => `<option value="${k}" ${k === opsViaFiltroComp ? "selected" : ""}>${filtros[k][0]}</option>`).join("")}
+                </select>
+                <select onchange="opsViaSetOrdenComp(this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:12.5px;">
+                    <option value="alfabetico" ${opsViaOrdenComp === "alfabetico" ? "selected" : ""}>Orden: responsable (A-Z)</option>
+                    <option value="vencimiento" ${opsViaOrdenComp === "vencimiento" ? "selected" : ""}>Orden: fecha límite</option>
+                </select>
+                <input id="via-comp-busca" placeholder="Buscar folio, persona, destino, servicio…" value="${opsEsc(opsViaBuscaComp)}" oninput="opsViaSetBuscaComp(this.value)" style="flex:1;min-width:220px;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:12.5px;">
+            </div>
+            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow-x:auto;">
+                <table style="width:100%;border-collapse:collapse;font-size:12.5px;color:#334155;">
+                    <thead><tr style="background:#f8fafc;text-align:left;color:#64748b;font-size:11px;text-transform:uppercase;">
+                        <th style="padding:9px 8px;">Folio</th><th style="padding:9px 8px;">Responsable / destino</th><th style="padding:9px 8px;">Entrega</th>
+                        <th style="padding:9px 8px;text-align:right;">Entregado</th><th style="padding:9px 8px;">Comprobado</th><th style="padding:9px 8px;">Límite</th><th style="padding:9px 8px;">Estado</th><th></th>
+                    </tr></thead>
+                    <tbody>${filas || `<tr><td colspan="8" style="padding:24px;text-align:center;color:#94a3b8;">Nada en este filtro.</td></tr>`}</tbody>
+                </table>
+            </div>
+        </div>`;
+    }
+    // Los onchange/oninput del HTML solo ven globales: por eso estos setters (asignar
+    // opsViaFiltroComp=... desde el HTML crearía otra variable y no filtraría).
+    window.opsViaSetFiltroComp = function (v) { opsViaFiltroComp = v; opsRenderViaticos(); };
+    window.opsViaSetOrdenComp = function (v) { opsViaOrdenComp = v; opsRenderViaticos(); };
+    window.opsViaSetBuscaComp = function (v) {
+        opsViaBuscaComp = v;
+        clearTimeout(window.__opsViaBT);
+        window.__opsViaBT = setTimeout(() => {
+            Promise.resolve(opsRenderViaticos()).then(() => { const i = document.getElementById("via-comp-busca"); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } });
+        }, 300);
+    };
+    window.opsViaBuscarCompIdx = function (i) { const p = (window.__opsViaPersonas || [])[i]; if (!p) return; opsViaBuscaComp = p.nombre === "Sin responsable" ? "" : p.nombre; opsViaFiltroComp = "activas"; opsRenderViaticos(); };
+
+    // ── Registrar entrega (al pasar a "Pagada") ──
+    window.opsViaAbrirEntrega = async function (id) {
+        const s = opsViaLista.find(x => x.id === id); if (!s) return;
+        if (!opsViaFormas || opsViaFormas === OPS_VIA_FORMAS_DEFAULT) { try { await opsViaCargarComprobantes(); } catch (e) {} }
+        const tecs = ((s.tarifas || {}).tecnicos || []).filter(t => t && (t.correo || t.nombre)).slice().sort((a, b) => String(a.nombre || "").localeCompare(String(b.nombre || ""), "es"));
+        const resp = (s.responsable_email || (tecs[0] && tecs[0].correo) || "").toLowerCase();
+        const lim = s.fecha_limite_comprobacion || opsViaSumarDias(s.fecha_regreso || s.fecha_salida, opsViaCfg.diasComprobacion ?? 3);
+        document.getElementById("ops-modal-wrap").innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;">
+            <div style="background:#fff;border-radius:14px;width:520px;max-width:96vw;max-height:92vh;overflow-y:auto;padding:22px;">
+                <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:16px;color:#1D2E73;">Registrar entrega · ${opsEsc(s.folio)}</div>
+                <div style="font-size:12px;color:#64748b;margin:2px 0 14px;">${opsEsc(s.destino || "")} · solicitado ${opsViaDinero(s.total)}. Desde aquí empieza el seguimiento de la comprobación.</div>
+                <div style="font-size:11.5px;font-weight:600;color:#475569;margin-bottom:6px;">¿Cómo se entregó?</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+                    ${opsViaFormas.map((f, i) => `<label style="border:1.5px solid #cbd5e1;border-radius:10px;padding:10px;cursor:pointer;display:block;">
+                        <input type="radio" name="via-ent-forma" value="${opsEsc(f.forma_entrega)}" ${(s.forma_entrega ? s.forma_entrega === f.forma_entrega : i === 0) ? "checked" : ""}>
+                        <span style="font-size:13px;font-weight:700;color:#1e293b;">${opsEsc(f.etiqueta)}</span>
+                        <div style="font-size:11px;color:#64748b;margin-top:3px;">Solo acepta facturas con forma de pago ${(f.formas_pago || []).map(c => c + " (" + (OPS_SAT_FORMAS[c] || "") + ")").join(" o ")}</div></label>`).join("")}
+                </div>
+                ${opsViaInput("Monto entregado $", "via-ent-monto", s.monto_entregado ?? s.total, 'min="0" step="0.01"', "number")}
+                <label style="display:block;font-size:11.5px;font-weight:600;color:#475569;">Responsable de comprobar
+                    <select id="via-ent-resp" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                        ${tecs.map(t => `<option value="${opsEsc(String(t.correo || "").toLowerCase())}" data-nombre="${opsEsc(t.nombre || "")}" ${String(t.correo || "").toLowerCase() === resp ? "selected" : ""}>${opsEsc(t.nombre || t.correo)}${t.correo ? "" : " (sin correo: no recibirá aviso)"}</option>`).join("") || `<option value="">Sin personal en la solicitud</option>`}
+                    </select></label>
+                ${opsViaInput("Fecha límite para comprobar", "via-ent-limite", lim, "", "date")}
+                <div style="font-size:11px;color:#94a3b8;margin:-4px 0 12px;">Por defecto: regreso + ${opsViaCfg.diasComprobacion ?? 3} día(s) (se ajusta en Tarifas).</div>
+                <div style="display:flex;gap:8px;justify-content:flex-end;">
+                    <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
+                    <button id="via-ent-btn" onclick="opsViaGuardarEntrega(${s.id})" class="mkt-add-btn" style="background:#15803d;">Guardar entrega y avisar</button>
+                </div>
+            </div>
+        </div>`;
+    };
+    window.opsViaGuardarEntrega = async function (id) {
+        const s = opsViaLista.find(x => x.id === id); if (!s) return;
+        const forma = (document.querySelector('input[name="via-ent-forma"]:checked') || {}).value;
+        const monto = opsViaNum(document.getElementById("via-ent-monto").value);
+        const sel = document.getElementById("via-ent-resp");
+        const respEmail = sel.value || null;
+        const respNombre = sel.selectedOptions[0] ? (sel.selectedOptions[0].getAttribute("data-nombre") || null) : null;
+        const limite = document.getElementById("via-ent-limite").value || null;
+        if (!forma) { alert("Elige cómo se entregó."); return; }
+        if (!(monto > 0)) { alert("Captura el monto entregado."); return; }
+        const btn = document.getElementById("via-ent-btn"); if (btn) { btn.disabled = true; btn.textContent = "Guardando…"; }
+        const cambios = {
+            estatus: "Pagada", forma_entrega: forma, monto_entregado: monto, entregado_en: s.entregado_en || new Date().toISOString(),
+            entregado_por: opsUsuarioActual(), responsable_email: respEmail, responsable_nombre: respNombre,
+            fecha_limite_comprobacion: limite, actualizado_en: new Date().toISOString(), actualizado_por: opsUsuarioActual(),
+        };
+        try {
+            const sb = await opsSb();
+            const { error } = await sb.from("ops_solicitudes_viaticos").update(cambios).eq("id", id);
+            if (error) throw error;
+            Object.assign(s, cambios);
+            const f = opsViaForma(forma);
+            const msg = `Recibiste viáticos ${s.folio} por ${opsViaDinero(monto)} (${f ? f.etiqueta : forma}). Comprueba con facturas forma de pago ${(f ? f.formas_pago : []).join(" o ")} antes del ${opsViaFechaCorta(limite)} desde la app: Tareas > Comprobar viáticos.`;
+            const ok = await opsViaAvisoTecnico(respEmail, "viat_tec_entregado", msg, s);
+            if (respEmail) opsViaAvisoPortal(respEmail, "viaticos_entregados", msg, { viaticoId: s.id });
+            if (s.solicitante_email && s.solicitante_email !== respEmail) opsViaAvisoPortal(s.solicitante_email, "viaticos_pagada", `Viáticos ${s.folio} entregados a ${respNombre || "el técnico"}.`, { viaticoId: s.id });
+            document.getElementById("ops-modal-wrap").innerHTML = "";
+            opsViaToast(ok ? "Entrega registrada. Se avisó al técnico en la app." : "Entrega registrada. El técnico no tiene correo: avísale por otro medio.", ok ? "#15803d" : "#b45309");
+            opsRenderViaticos();
+        } catch (e) {
+            alert("No se pudo registrar la entrega: " + (e.message || e));
+            if (btn) { btn.disabled = false; btn.textContent = "Guardar entrega y avisar"; }
+        }
+    };
+
+    // ── Detalle de comprobación ──
+    window.opsViaVerComprobacion = async function (id) {
+        const s = opsViaLista.find(x => x.id === id); if (!s) return;
+        const autoriza = opsViaPuedeAutorizar();
+        const E = opsViaEstadoComp(s);
+        const presup = { alimentos: s.alimentos, hospedaje: s.hospedaje, gasolina: s.gasolina, casetas: s.casetas, otros: s.otros };
+        const filasCat = Object.keys(OPS_VIA_CATS).map(k => {
+            const ac = E.comps.filter(c => c.categoria === k && c.estatus === "Aceptado").reduce((a, c) => a + opsViaNum(c.total), 0);
+            const rv = E.comps.filter(c => c.categoria === k && c.estatus === "Por revisar").reduce((a, c) => a + opsViaNum(c.total), 0);
+            if (!opsViaNum(presup[k]) && !ac && !rv) return "";
+            return `<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:6px 8px;">${OPS_VIA_CATS[k]}</td><td style="padding:6px 8px;text-align:right;color:#64748b;">${opsViaDinero(presup[k])}</td><td style="padding:6px 8px;text-align:right;color:#15803d;font-weight:700;">${opsViaDinero(ac)}</td><td style="padding:6px 8px;text-align:right;color:#6d28d9;">${rv ? opsViaDinero(rv) : "—"}</td></tr>`;
+        }).join("");
+        const docs = E.comps.slice().sort((a, b) => String(a.fecha_comprobante || a.creado_en).localeCompare(String(b.fecha_comprobante || b.creado_en))).map(c => {
+            const v = c.validacion || {};
+            const avisos = (v.avisos || []).map(a => `<div style="font-size:11px;color:#b45309;">• ${opsEsc(a)}</div>`).join("");
+            const bArch = (ruta, txt) => ruta ? `<button onclick="opsViaAbrirArchivo('${opsEsc(ruta)}')" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:4px 8px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">${txt}</button>` : "";
+            return `<div style="border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;margin-bottom:8px;background:${c.estatus === "Rechazado" ? "#fffafa" : "#fff"};">
+                <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">
+                    <div style="min-width:0;">
+                        <div style="font-size:13px;font-weight:700;color:#1e293b;">${opsEsc(OPS_VIA_CATS[c.categoria] || c.categoria || "Sin categoría")} · ${opsViaDinero(c.total)}
+                            <span style="font-size:10.5px;font-weight:700;color:${c.tipo === "cfdi" ? "#1D2E73" : "#b45309"};background:${c.tipo === "cfdi" ? "#E9ECF5" : "#fef3c7"};padding:2px 6px;border-radius:6px;margin-left:4px;">${c.tipo === "cfdi" ? "FACTURA" : "NO DEDUCIBLE"}</span></div>
+                        <div style="font-size:11.5px;color:#475569;">${opsEsc(c.tipo === "cfdi" ? (c.emisor_nombre || "") + " · " + (c.emisor_rfc || "") : (c.concepto || ""))}</div>
+                        <div style="font-size:11px;color:#94a3b8;">${opsViaFechaCorta(c.fecha_comprobante)}${c.tipo === "cfdi" ? " · Forma de pago " + opsEsc(c.forma_pago || "—") + " " + opsEsc(OPS_SAT_FORMAS[c.forma_pago] || "") + " · UUID …" + opsEsc(String(c.uuid || "").slice(-8)) : ""} · subió ${opsEsc(c.tecnico_nombre || c.tecnico_email || "")}</div>
+                        ${avisos}
+                        ${c.estatus === "Rechazado" && c.motivo_rechazo ? `<div style="font-size:11px;color:#b91c1c;margin-top:3px;">Rechazado: ${opsEsc(c.motivo_rechazo)}</div>` : ""}
+                    </div>
+                    <div style="text-align:right;flex-shrink:0;">${opsViaChip(c.estatus, OPS_VIA_EST_DOC)}</div>
+                </div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
+                    ${bArch(c.xml_path, "XML")}${bArch(c.pdf_path, "PDF")}${bArch(c.foto_path, "Foto")}
+                    ${autoriza && !s.cierre && c.estatus !== "Aceptado" ? `<button onclick="opsViaRevisarComp(${c.id},'Aceptado')" style="background:#15803d;border:none;color:#fff;padding:4px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:700;">Aceptar</button>` : ""}
+                    ${autoriza && !s.cierre && c.estatus !== "Rechazado" ? `<button onclick="opsViaRevisarComp(${c.id},'Rechazado')" style="background:#fff;border:1px solid #fecaca;color:#b91c1c;padding:4px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:700;">Rechazar</button>` : ""}
+                </div>
+            </div>`;
+        }).join("");
+        const pct = E.ent > 0 ? Math.min(100, Math.round((E.acept / E.ent) * 100)) : 0;
+        const pctR = E.ent > 0 ? Math.min(100 - pct, Math.round((E.rev / E.ent) * 100)) : 0;
+        const cierre = s.cierre ? `<div style="background:#f1f5f9;border-radius:10px;padding:10px 12px;font-size:12.5px;color:#334155;margin-bottom:12px;">
+            <b>Cerrada</b> el ${opsViaFechaCorta(s.cierre.en)} por ${opsEsc(s.cierre.porNombre || s.cierre.por || "")}: ${opsEsc(s.cierre.resultadoTxt || s.cierre.resultado || "")}${s.cierre.monto ? " · " + opsViaDinero(s.cierre.monto) : ""}${s.cierre.nota ? "<br><span style='color:#64748b;'>" + opsEsc(s.cierre.nota) + "</span>" : ""}</div>` : "";
+        document.getElementById("ops-modal-wrap").innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;">
+            <div style="background:#fff;border-radius:14px;width:760px;max-width:96vw;max-height:94vh;overflow-y:auto;padding:22px;">
+                <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">
+                    <div>
+                        <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:17px;color:#1D2E73;">${opsEsc(s.folio)} · ${opsEsc(s.destino || "")}</div>
+                        <div style="font-size:12px;color:#64748b;">${opsEsc(s.folio_servicio ? "Servicio " + s.folio_servicio + " · " : "")}${opsViaFechaCorta(s.fecha_salida)} → ${opsViaFechaCorta(s.fecha_regreso)} · ${opsEsc(s.integrantes || "")}</div>
+                    </div>
+                    <div style="display:flex;gap:8px;align-items:center;">${opsViaChip(E.estado, OPS_VIA_EST_COMP)}
+                        <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;border-radius:8px;width:30px;height:30px;cursor:pointer;color:#475569;display:inline-flex;align-items:center;justify-content:center;">${ICON.close}</button></div>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin:14px 0 10px;font-size:12px;">
+                    <div style="background:#f8fafc;border-radius:10px;padding:9px 11px;"><div style="color:#64748b;">Responsable</div><div style="font-weight:700;color:#1e293b;">${opsEsc(s.responsable_nombre || s.responsable_email || "—")}</div></div>
+                    <div style="background:#f8fafc;border-radius:10px;padding:9px 11px;"><div style="color:#64748b;">Entrega</div><div style="font-weight:700;color:#1e293b;">${opsEsc(s.forma_entrega ? (opsViaForma(s.forma_entrega) || {}).etiqueta || s.forma_entrega : "Sin registrar")}</div></div>
+                    <div style="background:#f8fafc;border-radius:10px;padding:9px 11px;"><div style="color:#64748b;">Entregado</div><div style="font-weight:700;color:#1e293b;">${opsViaDinero(E.ent)}</div></div>
+                    <div style="background:#f8fafc;border-radius:10px;padding:9px 11px;"><div style="color:#64748b;">Límite</div><div style="font-weight:700;color:#1e293b;">${opsViaFechaCorta(s.fecha_limite_comprobacion)}</div>${opsViaLimiteTxt(E)}</div>
+                </div>
+                ${s.forma_entrega ? `<div style="font-size:11.5px;color:#1D2E73;background:#E9ECF5;border-radius:8px;padding:7px 10px;margin-bottom:10px;">Candado: ${opsEsc(opsViaFormaTxt(s.forma_entrega))}.</div>` : ""}
+                <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;"><span><b style="color:#15803d;">${opsViaDinero(E.acept)}</b> aceptado · <b style="color:#6d28d9;">${opsViaDinero(E.rev)}</b> en revisión</span><span style="color:${E.falta > 0.5 ? "#b91c1c" : "#15803d"};font-weight:700;">${E.falta > 0.5 ? "Falta " + opsViaDinero(E.falta) : E.diferencia > 0.5 ? "Excede por " + opsViaDinero(E.diferencia) : "Completo"}</span></div>
+                <div style="height:8px;background:#f1f5f9;border-radius:9px;overflow:hidden;display:flex;margin-bottom:14px;"><div style="width:${pct}%;background:#15803d;"></div><div style="width:${pctR}%;background:#a78bfa;"></div></div>
+                ${cierre}
+                ${filasCat ? `<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px;"><thead><tr style="color:#64748b;font-size:10.5px;text-transform:uppercase;text-align:left;"><th style="padding:6px 8px;">Concepto</th><th style="padding:6px 8px;text-align:right;">Solicitado</th><th style="padding:6px 8px;text-align:right;">Aceptado</th><th style="padding:6px 8px;text-align:right;">En revisión</th></tr></thead><tbody>${filasCat}</tbody></table>` : ""}
+                <div style="font-size:12.5px;font-weight:700;color:#1D2E73;margin-bottom:8px;">Comprobantes (${E.comps.length})</div>
+                ${docs || `<div style="font-size:12px;color:#94a3b8;padding:12px;text-align:center;border:1px dashed #cbd5e1;border-radius:10px;">El técnico aún no sube comprobantes.</div>`}
+                <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:14px;">
+                    <button onclick="opsViaRelacionGastos(${s.id})" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;display:inline-flex;gap:6px;align-items:center;"><span style="display:inline-flex;width:15px;height:15px;">${ICON.printer}</span>Relación de gastos</button>
+                    ${autoriza ? `<button onclick="opsViaAbrirEntrega(${s.id})" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">${s.entregado_en ? "Editar entrega" : "Registrar entrega"}</button>` : ""}
+                    ${autoriza && s.entregado_en && !s.cierre ? `<button onclick="opsViaAbrirCierre(${s.id})" class="mkt-add-btn" style="background:#1D2E73;">Cerrar comprobación</button>` : ""}
+                    ${autoriza && s.cierre ? `<button onclick="opsViaReabrir(${s.id})" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Reabrir</button>` : ""}
+                </div>
+            </div>
+        </div>`;
+    };
+
+    window.opsViaAbrirArchivo = async function (ruta) {
+        const w = window.open("", "_blank");
+        try {
+            const sb = await opsSb();
+            const { data, error } = await sb.storage.from(OPS_VIA_BUCKET).createSignedUrl(ruta, 600);
+            if (error) throw error;
+            if (w) w.location.href = data.signedUrl; else window.open(data.signedUrl, "_blank");
+        } catch (e) { if (w) w.close(); alert("No se pudo abrir el archivo: " + (e.message || e)); }
+    };
+
+    window.opsViaRevisarComp = async function (compId, estatus) {
+        const c = opsViaComp.find(x => x.id === compId); if (!c) return;
+        let motivo = null;
+        if (estatus === "Rechazado") {
+            motivo = prompt("Motivo del rechazo (le llega al técnico):", "");
+            if (motivo === null) return;
+            motivo = motivo.trim() || "Sin motivo capturado";
+        }
+        try {
+            const sb = await opsSb();
+            const cambios = { estatus, motivo_rechazo: motivo, revisado_por: opsUsuarioActual(), revisado_en: new Date().toISOString() };
+            const { error } = await sb.from("ops_viaticos_comprobantes").update(cambios).eq("id", compId);
+            if (error) {
+                if (String(error.code) === "23505") throw new Error("Esa factura (UUID) ya está registrada y vigente en otro comprobante.");
+                throw error;
+            }
+            Object.assign(c, cambios);
+            const s = opsViaLista.find(x => x.id === c.viatico_id) || { id: c.viatico_id, folio: c.viatico_folio };
+            if (estatus === "Rechazado") opsViaAvisoTecnico(c.tecnico_email, "viat_tec_rechazado", `Rechazaron tu comprobante de ${OPS_VIA_CATS[c.categoria] || "gasto"} por ${opsViaDinero(c.total)} (${s.folio}). Motivo: ${motivo}. Sube uno correcto desde la app.`, s);
+            else if (s.id) {
+                const E = opsViaEstadoComp(s);
+                if (E.estado === "Comprobada") opsViaAvisoTecnico(s.responsable_email || c.tecnico_email, "viat_tec_comprobada", `Tus viáticos ${s.folio} quedaron comprobados completos (${opsViaDinero(E.acept)}).`, s);
+            }
+            opsViaVerComprobacion(c.viatico_id);
+        } catch (e) { alert("No se pudo actualizar: " + (e.message || e)); }
+    };
+
+    window.opsViaAbrirCierre = function (id) {
+        const s = opsViaLista.find(x => x.id === id); if (!s) return;
+        const E = opsViaEstadoComp(s);
+        const pend = E.comps.filter(c => c.estatus === "Por revisar").length;
+        const dif = Math.round(E.diferencia * 100) / 100;
+        const opciones = dif < -0.5
+            ? [["devolucion", `El técnico devuelve ${opsViaDinero(-dif)}`], ["descuento_nomina", `Se descuenta ${opsViaDinero(-dif)} vía nómina`], ["absorbe_empresa", "La empresa absorbe la diferencia (autorizado)"]]
+            : dif > 0.5 ? [["reembolso", `Se reembolsa ${opsViaDinero(dif)} al técnico`], ["sin_reembolso", "No se reembolsa el excedente"]]
+            : [["saldada", "Saldada, sin diferencia"]];
+        document.getElementById("ops-modal-wrap").innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;">
+            <div style="background:#fff;border-radius:14px;width:500px;max-width:96vw;padding:22px;">
+                <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:16px;color:#1D2E73;">Cerrar comprobación · ${opsEsc(s.folio)}</div>
+                <div style="font-size:12.5px;color:#334155;margin:10px 0;line-height:1.6;">Entregado <b>${opsViaDinero(E.ent)}</b> · Aceptado <b>${opsViaDinero(E.acept)}</b> · Diferencia <b style="color:${dif < -0.5 ? "#b91c1c" : dif > 0.5 ? "#1d4ed8" : "#15803d"};">${opsViaDinero(dif)}</b></div>
+                ${pend ? `<div style="background:#fef3c7;color:#92400e;border-radius:8px;padding:8px 10px;font-size:12px;margin-bottom:10px;">Hay ${pend} comprobante(s) sin revisar; no cuentan en el cálculo.</div>` : ""}
+                ${opciones.map((o, i) => `<label style="display:block;border:1px solid #e2e8f0;border-radius:9px;padding:9px 10px;margin-bottom:6px;cursor:pointer;font-size:13px;"><input type="radio" name="via-cierre" value="${o[0]}" data-txt="${opsEsc(o[1])}" ${i === 0 ? "checked" : ""}> ${o[1]}</label>`).join("")}
+                ${opsViaInput("Nota (medio, referencia, quién autorizó…)", "via-cierre-nota", "")}
+                <div style="display:flex;gap:8px;justify-content:flex-end;">
+                    <button onclick="opsViaVerComprobacion(${s.id})" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Volver</button>
+                    <button onclick="opsViaGuardarCierre(${s.id}, ${dif})" class="mkt-add-btn" style="background:#1D2E73;">Cerrar</button>
+                </div>
+            </div>
+        </div>`;
+    };
+    window.opsViaGuardarCierre = async function (id, dif) {
+        const s = opsViaLista.find(x => x.id === id); if (!s) return;
+        const r = document.querySelector('input[name="via-cierre"]:checked'); if (!r) return;
+        const cierre = { resultado: r.value, resultadoTxt: r.getAttribute("data-txt"), monto: Math.abs(dif) || 0, nota: document.getElementById("via-cierre-nota").value.trim() || null, por: opsUsuarioActual(), porNombre: opsNombreActual(), en: new Date().toISOString() };
+        try {
+            const sb = await opsSb();
+            const { error } = await sb.from("ops_solicitudes_viaticos").update({ cierre, actualizado_en: new Date().toISOString(), actualizado_por: opsUsuarioActual() }).eq("id", id);
+            if (error) throw error;
+            s.cierre = cierre;
+            opsViaAvisoTecnico(s.responsable_email, "viat_tec_cerrada", `Se cerró la comprobación de ${s.folio}: ${cierre.resultadoTxt}.`, s);
+            opsViaToast("Comprobación cerrada.", "#15803d");
+            opsViaVerComprobacion(id);
+            opsRenderViaticos();
+        } catch (e) { alert("No se pudo cerrar: " + (e.message || e)); }
+    };
+    window.opsViaReabrir = async function (id) {
+        if (!confirm("¿Reabrir esta comprobación?")) return;
+        try {
+            const sb = await opsSb();
+            const { error } = await sb.from("ops_solicitudes_viaticos").update({ cierre: null, actualizado_en: new Date().toISOString(), actualizado_por: opsUsuarioActual() }).eq("id", id);
+            if (error) throw error;
+            const s = opsViaLista.find(x => x.id === id); if (s) s.cierre = null;
+            opsViaVerComprobacion(id); opsRenderViaticos();
+        } catch (e) { alert("No se pudo reabrir: " + (e.message || e)); }
+    };
+
+    // ── Relación de gastos de viaje (mismo formato que el Excel FORMATO_VIATICOS) ──
+    window.opsViaRelacionGastos = function (id) {
+        const s = opsViaLista.find(x => x.id === id); if (!s) return;
+        const E = opsViaEstadoComp(s);
+        const t = s.tarifas || {};
+        const ok = E.comps.filter(c => c.estatus === "Aceptado").sort((a, b) => String(a.fecha_comprobante || "").localeCompare(String(b.fecha_comprobante || "")));
+        const cols = ["alimentos", "hospedaje", "gasolina", "casetas", "otros"];
+        const dias = {};
+        ok.forEach(c => { const d = c.fecha_comprobante || "—"; (dias[d] = dias[d] || []).push(c); });
+        const tot = {}; cols.forEach(k => tot[k] = 0);
+        const filas = Object.keys(dias).sort().map(d => {
+            const fila = {}; cols.forEach(k => fila[k] = []);
+            dias[d].forEach(c => { const k = cols.includes(c.categoria) ? c.categoria : "otros"; fila[k].push(c); tot[k] += opsViaNum(c.total); });
+            const celda = arr => arr.length ? arr.map(c => `${opsViaDinero(c.total)}<div class="f">${c.tipo === "cfdi" ? "Fact. …" + opsEsc(String(c.uuid || "").slice(-6)) : "No deducible"}</div>`).join("") : "";
+            const total = dias[d].reduce((a, c) => a + opsViaNum(c.total), 0);
+            return `<tr><td>${opsViaFechaCorta(d)}</td>${cols.map(k => `<td class="n">${celda(fila[k])}</td>`).join("")}<td class="n"><b>${opsViaDinero(total)}</b></td></tr>`;
+        }).join("");
+        const totalGen = cols.reduce((a, k) => a + tot[k], 0);
+        const w = window.open("", "_blank");
+        if (!w) { alert("Permite ventanas emergentes para imprimir."); return; }
+        w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Relación de gastos ${opsEsc(s.folio)}</title>
+        <style>body{font-family:Arial,sans-serif;color:#111;margin:28px;font-size:12px}h1{font-size:16px;text-align:center;margin:6px 0 14px;letter-spacing:.5px}
+        .hd{display:flex;justify-content:space-between;font-size:10.5px;color:#444}.g{display:grid;grid-template-columns:1fr 1fr;gap:4px 18px;margin-bottom:14px}
+        .g div{border-bottom:1px solid #999;padding:3px 0}.g b{display:inline-block;min-width:150px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #777;padding:5px;vertical-align:top}
+        th{background:#1D2E73;color:#fff;font-size:11px}.n{text-align:right}.f{font-size:9px;color:#555}.firmas{display:flex;justify-content:space-around;margin-top:60px}
+        .firmas div{border-top:1px solid #111;width:30%;text-align:center;padding-top:4px}@media print{button{display:none}}</style></head><body>
+        <div class="hd"><div><b>HEDMA TECNOCONTROL SA DE CV</b><br>Av Fuerza Aérea #7030 Int. B3 Col Tabalaopa, Chihuahua, Chih. C.P. 31376</div><div>${opsEsc(s.folio)}<br>${new Date().toLocaleDateString("es-MX")}</div></div>
+        <h1>RELACIÓN DE GASTOS DE VIAJE</h1>
+        <div class="g">
+            <div><b>Fecha y hora salida</b>${opsEsc(String(t.salida || s.fecha_salida || "").replace("T", " "))}</div><div><b>Destino</b>${opsEsc(s.destino || "")}</div>
+            <div><b>Fecha y hora entrada</b>${opsEsc(String(t.regreso || s.fecha_regreso || "").replace("T", " "))}</div><div><b>Viáticos recibidos</b>${opsViaDinero(E.ent)} (${opsEsc((opsViaForma(s.forma_entrega) || {}).etiqueta || "")})</div>
+            <div><b>O. serv.</b>${opsEsc(s.folio_servicio || "")}</div><div><b>Clientes</b>${opsEsc(s.cliente || "")}</div>
+            <div><b>Vehículo</b>${opsEsc(s.vehiculo || "")}</div><div><b>Personal</b>${opsEsc(s.integrantes || "")}</div>
+        </div>
+        <table><thead><tr><th>Día</th><th>Alimentos</th><th>Hotel</th><th>Gasolina contado</th><th>Casetas</th><th>Otros</th><th>Total</th></tr></thead>
+        <tbody>${filas || `<tr><td colspan="7" style="text-align:center;color:#777;">Sin comprobantes aceptados</td></tr>`}</tbody>
+        <tfoot><tr><th>Totales</th>${cols.map(k => `<th class="n">${opsViaDinero(tot[k])}</th>`).join("")}<th class="n">${opsViaDinero(totalGen)}</th></tr></tfoot></table>
+        <div class="g" style="margin-top:14px;"><div><b>Viáticos recibidos</b>${opsViaDinero(E.ent)}</div><div><b>Total comprobado</b>${opsViaDinero(totalGen)}</div>
+        <div><b>${totalGen < E.ent ? "Devolución" : "Reembolso"}</b>${opsViaDinero(Math.abs(E.ent - totalGen))}</div><div><b>Estado</b>${opsEsc(E.estado)}</div></div>
+        <div class="firmas"><div>Técnico<br>${opsEsc(s.responsable_nombre || "")}</div><div>Jefe inmediato</div><div>Pagos</div></div>
+        <button onclick="print()" style="margin-top:20px;padding:8px 16px;">Imprimir</button></body></html>`);
+        w.document.close();
     };
 
 })();
