@@ -1065,12 +1065,10 @@
     })();
     coordPromesa.then(function(coord){
       if (!coord){ if (msgEl && msgEl.textContent.indexOf('Falta')===-1){ msgEl.textContent = 'No se encontró la dirección — revísala o marca el punto en el mapa.'; msgEl.style.color = '#dc2626'; } return; }
-      return cargarFirestore().then(function(fs){
-        if (!window.db) throw new Error('Firestore no disponible');
-        return fs.addDoc(fs.collection(window.db,'puntos_referencia'), {
-          nombre: nombre, tipo: 'paqueteria', direccion: direccion, lat: coord.lat, lng: coord.lng,
-          creadoPor: String(yoNombre()||''), creadoEn: new Date().toISOString()
-        });
+      // puntos_referencia ya vive en Supabase (oct-2026)
+      return window.tcSbDocs.addDoc('puntos_referencia', {
+        nombre: nombre, tipo: 'paqueteria', direccion: direccion, lat: coord.lat, lng: coord.lng,
+        creadoPor: String(yoNombre()||''), creadoEn: new Date().toISOString()
       }).then(function(){
         if (window.__almInvalidarCachePuntos) window.__almInvalidarCachePuntos();
         _almPaqCoordManual = null;
@@ -1089,10 +1087,7 @@
 
   window.__almPaqEliminar = function(id, desdePerfil){
     if (!confirm('¿Eliminar esta paquetería del catálogo?')) return;
-    cargarFirestore().then(function(fs){
-      if (!window.db) throw new Error('Firestore no disponible');
-      return fs.deleteDoc(fs.doc(window.db,'puntos_referencia',id));
-    }).then(function(){
+    window.tcSbDocs.deleteDoc('puntos_referencia', id).then(function(){
       if (window.__almInvalidarCachePuntos) window.__almInvalidarCachePuntos();
       if (desdePerfil) window.__almAbrirPaqueterias(); else __almPaqRenderLista();
     }).catch(function(err){

@@ -1377,21 +1377,14 @@ render(true); setInterval(()=>render(false),1000);
 </script>
 
 <!-- surtidos ya vive en Supabase — este adaptador expone window.tcSb... -->
-<script src="surtidos-supabase.js?v=3"></script>
+<script src="surtidos-supabase.js?v=5"></script>
 
-<!-- ===== DATOS EN VIVO · Firestore (colección `surtidos`) · SOLO LECTURA ===== -->
-<script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, collection, onSnapshot, query, where } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-
-const config = { apiKey:"AIzaSyBXh-P0oMtMiDjyz9PObuJ8DNfROlXvhLE", authDomain:"tecnocontrol-1c42f.firebaseapp.com", projectId:"tecnocontrol-1c42f", storageBucket:"tecnocontrol-1c42f.firebasestorage.app", appId:"1:27642771956:web:54225af9e386afded8a1a1" };
-const app = initializeApp(config, 'tv-almacen');
-const db  = getFirestore(app);
-const auth = getAuth(app);
-window.db = db; // para que otras partes de la página (fuera de este módulo) puedan leer configuración
-
-// Normaliza createdAt: Timestamp | número(ms) | ISO | {seconds} → ms
+<!-- ===== DATOS EN VIVO · Supabase · SOLO LECTURA (oct-2026: sin Firebase) =====
+     surtidos, recolecciones_locales, puntos_referencia y tv_avisos viven en
+     Supabase. Esta pantalla ya no carga Firebase ni inicia sesión anónima. -->
+<script>
+(function(){
+// Normaliza createdAt: número(ms) | ISO | {seconds} → ms
 function toMs(v){
   if(v==null) return Date.now();
   if(typeof v==='number') return v;
@@ -1460,30 +1453,29 @@ function iniciarEscucha(){
     }
     primeraCarga = false;
   }, (err)=>{
-    console.error('[TV surtidos] onSnapshot error:', err);
-    if(err && (err.code === 'permission-denied' || /permission/i.test(err.message||''))){
-      avisoTV('Sin permisos para leer los pedidos',
-        'Firestore rechaz\u00f3 la lectura de <b>surtidos</b>. Permite lectura p\u00fablica de esa colecci\u00f3n en las Reglas, o activa el proveedor <b>An\u00f3nimo</b> en Authentication.');
-    } else {
-      avisoTV('Error de conexi\u00f3n con Firestore', (err && (err.message||err.code)) || 'Error desconocido');
+    console.error('[TV surtidos] error Supabase:', err);
+    // Solo se muestra el aviso si nunca se pudo cargar; si ya había datos, el
+    // tablero se queda con lo último y se reintenta solo al reconectar.
+    if(primeraCarga){
+      avisoTV('Sin conexi\u00f3n con la base de datos de pedidos',
+        'No se pudo leer la lista de pedidos (Supabase): ' + ((err && (err.message||err.code)) || 'error desconocido')
+        + '.<br>Revisa el internet de este equipo; la pantalla se recarga sola en 60 segundos.');
+      setTimeout(()=>location.reload(), 60000);
     }
   });
 }
 
-// ── Recolecciones locales (logistica.js) — SOLO LECTURA, igual que `surtidos`.
+// ── Recolecciones locales (logistica.js) — SOLO LECTURA.
 //   Se muestran mezcladas en el panel de Material con etiqueta/color propios
-//   (rosa) y "folio" sintético REC-xxxxx, ya que no son pedidos de venta ni
-//   solicitudes de material: son un pedido para RECOGER. Se marcan como
-//   recogidas/entregadas desde el portal (logistica.js), no desde esta TV.
-let escuchandoRecol = false;
+//   (rosa) y "folio" sintético REC-xxxxx. Se marcan como recogidas/entregadas
+//   desde el portal (logistica.js), no desde esta TV.
 function iniciarEscuchaRecolecciones(){
-  if(escuchandoRecol) return; escuchandoRecol = true;
-  onSnapshot(collection(db,'recolecciones_locales'), (snap)=>{
+  window.tcSbDocs.onSnapshot('recolecciones_locales', { estado: ['pendiente','recogido'] }, (snap)=>{
     const lista = [];
     snap.forEach(docu=>{
       const d = docu.data() || {};
       const est = d.estado || 'pendiente';
-      if(est !== 'pendiente' && est !== 'recogido') return; // ya entregada o cancelada: fuera del tablero
+      if(est !== 'pendiente' && est !== 'recogido') return;
       lista.push({
         id: docu.id,
         _recoleccion: true,
@@ -1500,41 +1492,25 @@ function iniciarEscuchaRecolecciones(){
       });
     });
     if(window.__setRecolecciones) window.__setRecolecciones(lista);
-  }, (err)=>{
-    // No interrumpe el tablero de surtidos si esta colección aún no tiene permiso de lectura pública.
-    console.error('[TV recolecciones_locales] onSnapshot error:', err);
-  });
+  }, (err)=>{ console.error('[TV recolecciones_locales] error Supabase:', err); });
 }
 
-// ── Catálogo de paqueterías (puntos_referencia, tipo:'paqueteria') — SOLO
-//   LECTURA, capa fija del mini-mapa independiente de si hay pedidos activos.
-//   Se da de alta/edita desde Almacén (almacen.js) o desde el flujo de envío
-//   (almacen-pdf.js); aquí solo se refleja en tiempo real.
-let escuchandoPaqueterias = false;
+// ── Catálogo de paqueterías (puntos_referencia, tipo:'paqueteria') — capa fija del mini-mapa.
 function iniciarEscuchaPaqueterias(){
-  if(escuchandoPaqueterias) return; escuchandoPaqueterias = true;
-  onSnapshot(query(collection(db,'puntos_referencia'), where('tipo','==','paqueteria')), (snap)=>{
+  window.tcSbDocs.onSnapshot('puntos_referencia', { tipo: 'paqueteria' }, (snap)=>{
     const lista = [];
     snap.forEach(docu=>{
       const d = docu.data() || {};
       if(d.lat==null || d.lng==null) return;
-      lista.push({ id:docu.id, nombre:d.nombre||'', direccion:d.direccion||'', telefono:d.telefono||'', lat:d.lat, lng:d.lng });
+      lista.push({ id:docu.id, nombre:d.nombre||'', direccion:d.direccion||'', telefono:d.telefono||'', lat:Number(d.lat), lng:Number(d.lng) });
     });
     if(window.__setPuntosCatalogoPaqueterias) window.__setPuntosCatalogoPaqueterias(lista);
-  }, (err)=>{
-    // No interrumpe el tablero si esta colección aún no tiene permiso de lectura pública.
-    console.error('[TV puntos_referencia] onSnapshot error:', err);
-  });
+  }, (err)=>{ console.error('[TV puntos_referencia] error Supabase:', err); });
 }
 
-// ── Avisos TV (`tv_avisos`) — SOLO LECTURA. Se dan de alta/baja desde el
-//   panel "📢 Avisos TV" del módulo de RH (rh.js); aquí solo se reflejan en
-//   tiempo real, alimentando el carrusel de publicidad interna y el banner
-//   de cumpleaños de hoy (ver window.__setAvisosTV en el script de arriba).
-let escuchandoAvisos = false;
+// ── Avisos TV (`tv_avisos`) — se administran desde el panel "📢 Avisos TV" de RH (rh.js).
 function iniciarEscuchaAvisos(){
-  if(escuchandoAvisos) return; escuchandoAvisos = true;
-  onSnapshot(collection(db,'tv_avisos'), (snap)=>{
+  window.tcSbDocs.onSnapshot('tv_avisos', null, (snap)=>{
     const lista = [];
     snap.forEach(docu=>{
       const d = docu.data() || {};
@@ -1542,26 +1518,18 @@ function iniciarEscuchaAvisos(){
       lista.push({ id:docu.id, ...d });
     });
     if(window.__setAvisosTV) window.__setAvisosTV(lista);
-  }, (err)=>{
-    // No interrumpe el tablero si esta colección aún no tiene permiso de lectura pública.
-    console.error('[TV tv_avisos] onSnapshot error:', err);
-  });
+  }, (err)=>{ console.error('[TV tv_avisos] error Supabase:', err); });
 }
 
-// Sesi\u00f3n an\u00f3nima para poder leer aun sin usuario logueado.
-onAuthStateChanged(auth, (user)=>{ if(user){ iniciarEscucha(); iniciarEscuchaRecolecciones(); iniciarEscuchaPaqueterias(); iniciarEscuchaAvisos(); } });
-signInAnonymously(auth).catch((err)=>{
-  console.error('[TV auth] signInAnonymously:', err);
-  if(err && err.code === 'auth/operation-not-allowed'){
-    avisoTV('Falta activar el acceso an\u00f3nimo',
-      'En Firebase \u2192 Authentication \u2192 Sign-in method, activa el proveedor <b>An\u00f3nimo</b>. (Alternativa: permitir lectura p\u00fablica de <b>surtidos</b> y <b>recolecciones_locales</b> en las Reglas.)');
-  }
-  // Aun as\u00ed intenta leer, por si las Reglas permiten lectura p\u00fablica:
-  iniciarEscucha();
-  iniciarEscuchaRecolecciones();
-  iniciarEscuchaPaqueterias();
-  iniciarEscuchaAvisos();
-});
+if(!window.tcSbSuscribirSurtidos || !window.tcSbDocs){
+  avisoTV('No carg\u00f3 el m\u00f3dulo de datos', 'No se pudo cargar <b>surtidos-supabase.js</b>. Recarga la pantalla (Ctrl+Shift+R).');
+  return;
+}
+iniciarEscucha();
+iniciarEscuchaRecolecciones();
+iniciarEscuchaPaqueterias();
+iniciarEscuchaAvisos();
+})();
 </script>
 </body>
 </html>

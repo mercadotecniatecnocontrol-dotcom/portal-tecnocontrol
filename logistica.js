@@ -164,19 +164,23 @@
       // surtidos ya vive en Supabase — el resto de estas colecciones sigue en
       // Firestore por ahora, se combinan abajo.
       window.tcSbListarTodosSurtidos().catch(function () { return []; }),
-      cargarFirestore().then(function (fs) {
-        if (!window.db) return [{ forEach: function () {} }, { forEach: function () {} }, { forEach: function () {} }, { forEach: function () {} }];
-        return Promise.all([
-          fs.getDocs(fs.collection(window.db, 'estaciones_servicio')).catch(function () { return { forEach: function () {} }; }),
-          fs.getDocs(fs.query(fs.collection(window.db, 'recolecciones_locales'), fs.where('estado', 'in', ['pendiente', 'recogido']))),
-          incluirClientes
-            ? fs.getDocs(fs.collection(window.db, 'ventas_clientes')).catch(function () { return { forEach: function () {} }; })
-            : Promise.resolve({ forEach: function () {} }),
-          incluirPaqueterias
-            ? fs.getDocs(fs.query(fs.collection(window.db, 'puntos_referencia'), fs.where('tipo', '==', 'paqueteria'))).catch(function () { return { forEach: function () {} }; })
-            : Promise.resolve({ forEach: function () {} })
-        ]);
-      })
+      // recolecciones_locales y puntos_referencia ya viven en Supabase (oct-2026);
+      // estaciones_servicio y ventas_clientes siguen en Firestore por ahora.
+      Promise.all([
+        cargarFirestore().then(function (fs) {
+          if (!window.db) return [{ forEach: function () {} }, { forEach: function () {} }];
+          return Promise.all([
+            fs.getDocs(fs.collection(window.db, 'estaciones_servicio')).catch(function () { return { forEach: function () {} }; }),
+            incluirClientes
+              ? fs.getDocs(fs.collection(window.db, 'ventas_clientes')).catch(function () { return { forEach: function () {} }; })
+              : Promise.resolve({ forEach: function () {} })
+          ]);
+        }).catch(function () { return [{ forEach: function () {} }, { forEach: function () {} }]; }),
+        window.tcSbDocs.getDocs('recolecciones_locales', { estado: ['pendiente', 'recogido'] }).catch(function (e) { console.warn('[logistica] recolecciones:', e); return { forEach: function () {}, docs: [] }; }),
+        incluirPaqueterias
+          ? window.tcSbDocs.getDocs('puntos_referencia', { tipo: 'paqueteria' }).catch(function () { return { forEach: function () {}, docs: [] }; })
+          : Promise.resolve({ forEach: function () {}, docs: [] })
+      ]).then(function (r) { return [r[0][0], r[1], r[0][1], r[2]]; })
     ]).then(function (resultados) {
         var listaSurtidos = resultados[0];
         var snapEst = resultados[1][0], snapRecol = resultados[1][1], snapClientes = resultados[1][2], snapPaqueterias = resultados[1][3];
@@ -472,17 +476,14 @@
   function cargarDatos() {
     return Promise.all([
       window.tcSbListarTodosSurtidos().catch(function () { return []; }),
-      cargarFirestore().then(function (fs) {
-        if (!window.db) return [{ docs: [] }, { forEach: function () {} }];
-        var qRecolecciones = fs.query(
-          fs.collection(window.db, 'recolecciones_locales'),
-          fs.where('estado', 'in', ['pendiente', 'recogido'])
-        );
-        return Promise.all([
-          fs.getDocs(fs.collection(window.db, 'estaciones_servicio')),
-          fs.getDocs(qRecolecciones)
-        ]);
-      })
+      Promise.all([
+        cargarFirestore().then(function (fs) {
+          if (!window.db) return { forEach: function () {} };
+          return fs.getDocs(fs.collection(window.db, 'estaciones_servicio'));
+        }).catch(function (e) { console.warn('[logistica] estaciones:', e); return { forEach: function () {} }; }),
+        // recolecciones_locales ya vive en Supabase (oct-2026)
+        window.tcSbDocs.getDocs('recolecciones_locales', { estado: ['pendiente', 'recogido'] })
+      ])
     ]).then(function (resultados) {
         var listaSurtidos = resultados[0];
         var snapEst = resultados[1][0], snapRecol = resultados[1][1];
@@ -674,8 +675,8 @@
 
   // Etapa 1: se recogió el material en el origen — todavía falta entregarlo.
   window.__logMarcarRecogidaRecoleccion = function (id) {
-    cargarFirestore().then(function (fs) {
-      return fs.updateDoc(fs.doc(window.db, 'recolecciones_locales', id), {
+    Promise.resolve().then(function () {
+      return window.tcSbDocs.updateDoc('recolecciones_locales', id, {
         estado: 'recogido',
         recogidoPor: (window.auth && window.auth.currentUser && window.auth.currentUser.email) || '',
         recogidoEn: new Date().toISOString()
@@ -693,8 +694,8 @@
 
   // Etapa 2 (final): se entregó el material en destino — sale de la cola activa.
   window.__logMarcarEntregadaRecoleccion = function (id) {
-    cargarFirestore().then(function (fs) {
-      return fs.updateDoc(fs.doc(window.db, 'recolecciones_locales', id), {
+    Promise.resolve().then(function () {
+      return window.tcSbDocs.updateDoc('recolecciones_locales', id, {
         estado: 'entregado',
         entregadoPor: (window.auth && window.auth.currentUser && window.auth.currentUser.email) || '',
         entregadoEn: new Date().toISOString()
@@ -906,7 +907,9 @@
 
     var guardarPromesa = (coleccion === 'surtidos')
       ? window.tcSbActualizarSurtido(id, datosGuardar)
-      : cargarFirestore().then(function (fs) { return fs.updateDoc(fs.doc(window.db, coleccion, id), datosGuardar); });
+      : (coleccion === 'recolecciones_locales')
+        ? window.tcSbDocs.updateDoc('recolecciones_locales', id, datosGuardar)
+        : cargarFirestore().then(function (fs) { return fs.updateDoc(fs.doc(window.db, coleccion, id), datosGuardar); });
 
     guardarPromesa.then(function () {
       // Refleja el cambio también en la caché en memoria de este módulo — usando
@@ -1232,9 +1235,7 @@
     msg.style.color = '#0e7490';
     msg.textContent = 'Guardando…';
 
-    cargarFirestore().then(function (fs) {
-      return fs.addDoc(fs.collection(window.db, 'recolecciones_locales'), data);
-    }).then(function (ref) {
+    window.tcSbDocs.addDoc('recolecciones_locales', data).then(function (ref) {
       msg.style.color = '#059669';
       msg.textContent = '✔ Recolección registrada.';
       if (window.mostrarPush) window.mostrarPush('📦 Recolección local registrada', lugar, '✅');
@@ -1253,11 +1254,9 @@
       if (data.lugarEntrega) {
         geocodificarDireccion(data.lugarEntrega).then(function (resultado) {
           if (!resultado.encontrado) return;
-          return cargarFirestore().then(function (fs) {
-            return fs.updateDoc(fs.doc(window.db, 'recolecciones_locales', ref.id), {
-              entregaLat: resultado.lat,
-              entregaLng: resultado.lng
-            });
+          return window.tcSbDocs.updateDoc('recolecciones_locales', ref.id, {
+            entregaLat: resultado.lat,
+            entregaLng: resultado.lng
           }).then(function () {
             var idx = estado.recolecciones.findIndex(function (r) { return r.id === ref.id; });
             if (idx >= 0) { estado.recolecciones[idx].entregaLat = resultado.lat; estado.recolecciones[idx].entregaLng = resultado.lng; }

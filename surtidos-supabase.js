@@ -548,4 +548,106 @@
       throw err;
     });
   };
+  // ═══════════════════════════════════════════════════════════════════════
+  //  COLECCIONES QUE ANTES VIVÍAN EN FIRESTORE (oct-2026):
+  //    puntos_referencia · recolecciones_locales · tv_avisos
+  //  Mismo "estilo Firestore" (doc.id, doc.data(), snap.forEach, onSnapshot)
+  //  para que los módulos cambien lo mínimo. Cada fila guarda el documento
+  //  completo en `datos` (jsonb) y su id en `ref` (texto, conserva los ids
+  //  originales de Firestore, que ya están congelados dentro de los pedidos).
+  // ═══════════════════════════════════════════════════════════════════════
+  var TABLAS_DOCS = { puntos_referencia: 1, recolecciones_locales: 1, tv_avisos: 1 };
+  function _chkTabla(t) { if (!TABLAS_DOCS[t]) throw new Error('Colección no migrada a Supabase: ' + t); }
+  function _nuevoIdDoc() {
+    var c = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789', s = '', a = new Uint8Array(20);
+    if (window.crypto && crypto.getRandomValues) crypto.getRandomValues(a); else for (var i = 0; i < 20; i++) a[i] = Math.floor(Math.random() * 256);
+    for (var j = 0; j < 20; j++) s += c[a[j] % 62];
+    return s;
+  }
+  function _limpiarDoc(o) { return JSON.parse(JSON.stringify(o || {})); }
+  function _docSnap(row) {
+    var datos = row ? Object.assign({}, row.datos || {}) : null;
+    return { id: row ? row.ref : null, exists: function () { return !!row; }, data: function () { return datos ? Object.assign({}, datos) : undefined; } };
+  }
+  function _querySnap(rows) {
+    var docs = (rows || []).map(_docSnap);
+    return { docs: docs, size: docs.length, empty: !docs.length, forEach: function (fn) { docs.forEach(fn); } };
+  }
+  // filtro: { campo: valor } o { campo: [valores] } — compara contra datos->>campo
+  function _aplicarFiltroDocs(q, filtro) {
+    Object.keys(filtro || {}).forEach(function (k) {
+      var v = filtro[k], col = 'datos->>' + k;
+      q = Array.isArray(v) ? q.in(col, v.map(String)) : q.eq(col, String(v));
+    });
+    return q;
+  }
+  function _conTiempo(p, ms, que) {
+    return Promise.race([p, new Promise(function (_, rej) { setTimeout(function () { rej(new Error((que || 'Supabase') + ' tardó más de ' + Math.round(ms / 1000) + ' s')); }, ms); })]);
+  }
+
+  window.tcSbDocs = {
+    getDocs: function (tabla, filtro) {
+      _chkTabla(tabla);
+      return _conTiempo(cargarSupabase().then(function (sb) {
+        return _aplicarFiltroDocs(sb.from(tabla).select('ref,datos'), filtro).order('creado_en', { ascending: true });
+      }), 20000, 'Leer ' + tabla).then(function (r) { if (r.error) throw r.error; return _querySnap(r.data); });
+    },
+    getDoc: function (tabla, id) {
+      _chkTabla(tabla);
+      return _conTiempo(cargarSupabase().then(function (sb) {
+        return sb.from(tabla).select('ref,datos').eq('ref', id).maybeSingle();
+      }), 20000, 'Leer ' + tabla).then(function (r) { if (r.error) throw r.error; return _docSnap(r.data); });
+    },
+    addDoc: function (tabla, datos) {
+      _chkTabla(tabla);
+      var ref = _nuevoIdDoc();
+      return _conTiempo(cargarSupabase().then(function (sb) {
+        return sb.from(tabla).insert({ ref: ref, datos: _limpiarDoc(datos) });
+      }), 20000, 'Guardar en ' + tabla).then(function (r) { if (r.error) throw r.error; return { id: ref }; });
+    },
+    // Igual que updateDoc de Firestore: mezcla campos; falla si el documento no existe.
+    updateDoc: function (tabla, id, cambios) {
+      _chkTabla(tabla);
+      return _conTiempo(cargarSupabase().then(function (sb) {
+        return sb.rpc('tc_doc_merge', { p_tabla: tabla, p_ref: id, p_patch: _limpiarDoc(cambios), p_borrar: [] });
+      }), 20000, 'Actualizar ' + tabla).then(function (r) { if (r.error) throw r.error; });
+    },
+    deleteDoc: function (tabla, id) {
+      _chkTabla(tabla);
+      return _conTiempo(cargarSupabase().then(function (sb) {
+        return sb.from(tabla).delete().eq('ref', id);
+      }), 20000, 'Borrar en ' + tabla).then(function (r) { if (r.error) throw r.error; });
+    },
+    // Reemplaza onSnapshot: carga inicial + recarga (agrupada) en cada cambio
+    // de Realtime, al reconectar y al volver la pestaña a primer plano.
+    onSnapshot: function (tabla, filtro, onChange, onError) {
+      _chkTabla(tabla);
+      var canal = null, timer = null, activo = true, yaConectado = false;
+      function recargar() {
+        if (!activo) return;
+        window.tcSbDocs.getDocs(tabla, filtro).then(function (snap) { if (activo) onChange(snap); })
+          .catch(function (err) { if (onError) onError(err); });
+      }
+      function programar() { if (!timer) timer = setTimeout(function () { timer = null; recargar(); }, 300); }
+      function alVolver() { if (document.visibilityState === 'visible') recargar(); }
+      cargarSupabase().then(function (sb) {
+        if (!activo) return;
+        recargar();
+        canal = sb.channel(tabla + '-cambios-' + Math.random().toString(36).slice(2, 8))
+          .on('postgres_changes', { event: '*', schema: 'public', table: tabla }, programar)
+          .subscribe(function (status) {
+            if (status === 'SUBSCRIBED') { if (yaConectado) recargar(); yaConectado = true; }
+          });
+        document.addEventListener('visibilitychange', alVolver);
+        window.addEventListener('online', recargar);
+      }).catch(function (err) { if (onError) onError(err); });
+      return function detener() {
+        activo = false;
+        if (timer) clearTimeout(timer);
+        document.removeEventListener('visibilitychange', alVolver);
+        window.removeEventListener('online', recargar);
+        if (canal) cargarSupabase().then(function (sb) { sb.removeChannel(canal); });
+      };
+    }
+  };
 })();

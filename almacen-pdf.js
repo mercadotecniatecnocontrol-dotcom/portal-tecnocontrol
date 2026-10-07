@@ -106,31 +106,26 @@
   window.tcCargarLeaflet = function(){ return cargarLeafletPunto(); };
   function cargarCatalogoPuntos(){
     if (_puntosCache) return Promise.resolve(_puntosCache);
-    return cargarFirestore().then(function(fs){
-      if (!window.db) return [];
-      return fs.getDocs(fs.collection(window.db,'puntos_referencia')).then(function(snap){
-        var lista = [];
-        snap.forEach(function(d){ lista.push(Object.assign({ id: d.id }, d.data())); });
-        _puntosCache = lista;
-        return lista;
-      }).catch(function(err){
-        console.warn('[almacen-pdf] no se pudo cargar el catálogo de puntos:', err);
-        return [];
-      });
+    // puntos_referencia ya vive en Supabase (oct-2026)
+    return window.tcSbDocs.getDocs('puntos_referencia').then(function(snap){
+      var lista = [];
+      snap.forEach(function(d){ lista.push(Object.assign({ id: d.id }, d.data())); });
+      _puntosCache = lista;
+      return lista;
+    }).catch(function(err){
+      console.warn('[almacen-pdf] no se pudo cargar el catálogo de puntos:', err);
+      return [];
     });
   }
   function guardarPuntoNuevo(punto){
-    return cargarFirestore().then(function(fs){
-      if (!window.db) return Promise.reject(new Error('Firestore no disponible'));
-      var yo = (window.auth && window.auth.currentUser && window.auth.currentUser.email) || '';
-      var nombreQuienGuarda = (window.nombreUsuario ? window.nombreUsuario(yo) : '') || yo || '—';
-      return fs.addDoc(fs.collection(window.db,'puntos_referencia'), Object.assign({
-        creadoPor: String(nombreQuienGuarda||''),
-        creadoEn: new Date().toISOString()
-      }, punto)).then(function(ref){
-        _puntosCache = null; // fuerza recarga la próxima vez que se abra el buscador
-        return ref.id;
-      });
+    var yo = (window.auth && window.auth.currentUser && window.auth.currentUser.email) || '';
+    var nombreQuienGuarda = (window.nombreUsuario ? window.nombreUsuario(yo) : '') || yo || '—';
+    return window.tcSbDocs.addDoc('puntos_referencia', Object.assign({
+      creadoPor: String(nombreQuienGuarda||''),
+      creadoEn: new Date().toISOString()
+    }, punto)).then(function(ref){
+      _puntosCache = null; // fuerza recarga la próxima vez que se abra el buscador
+      return ref.id;
     });
   }
   function tipoPuntoLabel(t){
@@ -139,16 +134,13 @@
   // Edita un punto ya existente del catálogo (perfil completo: teléfono, correo,
   // notas, fotos...), a diferencia de guardarPuntoNuevo que solo da de alta.
   function actualizarPunto(id, datos){
-    return cargarFirestore().then(function(fs){
-      if (!window.db) return Promise.reject(new Error('Firestore no disponible'));
-      var yo = (window.auth && window.auth.currentUser && window.auth.currentUser.email) || '';
-      var nombreQuienGuarda = (window.nombreUsuario ? window.nombreUsuario(yo) : '') || yo || '—';
-      return fs.updateDoc(fs.doc(window.db,'puntos_referencia', id), Object.assign({
-        actualizadoPor: String(nombreQuienGuarda||''),
-        actualizadoEn: new Date().toISOString()
-      }, datos)).then(function(){
-        _puntosCache = null;
-      });
+    var yo = (window.auth && window.auth.currentUser && window.auth.currentUser.email) || '';
+    var nombreQuienGuarda = (window.nombreUsuario ? window.nombreUsuario(yo) : '') || yo || '—';
+    return window.tcSbDocs.updateDoc('puntos_referencia', id, Object.assign({
+      actualizadoPor: String(nombreQuienGuarda||''),
+      actualizadoEn: new Date().toISOString()
+    }, datos)).then(function(){
+      _puntosCache = null;
     });
   }
   window.tcActualizarPunto = function(id, datos){ return actualizarPunto(id, datos); };

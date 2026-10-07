@@ -2164,8 +2164,8 @@ async function rhCargarSupabaseTV(){
 async function rhCargarAvisosTV(forzar){
     if (rhAvisosCache && !forzar) return rhAvisosCache;
     try {
-        const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-        const snap = await fs.getDocs(fs.collection(db,'tv_avisos'));
+        // tv_avisos ya vive en Supabase (oct-2026)
+        const snap = await window.tcSbDocs.getDocs('tv_avisos');
         rhAvisosCache = snap.docs.map(d=>({id:d.id, ...d.data()}));
     } catch(e){
         console.error('[RH] cargarAvisosTV:', e.message);
@@ -2329,8 +2329,7 @@ window.rhAvisosGuardarNuevo = async function(){
 
     if (btn){ btn.textContent='Guardando…'; btn.disabled=true; }
     try {
-        const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-        await fs.addDoc(fs.collection(db,'tv_avisos'), docData);
+        await window.tcSbDocs.addDoc('tv_avisos', docData);
         if (window.mostrarPush) window.mostrarPush('📢 Aviso agregado', RH_AVISOS_TIPOS[t].label, '✅');
         await rhCargarAvisosTV(true);
         rhRenderAvisosModal();
@@ -2344,8 +2343,7 @@ window.rhAvisosGuardarNuevo = async function(){
 window.rhAvisosQuitar = async function(id){
     if (!confirm('¿Quitar este aviso de la TV?')) return;
     try {
-        const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-        await fs.deleteDoc(fs.doc(db,'tv_avisos',id));
+        await window.tcSbDocs.deleteDoc('tv_avisos', id);
         await rhCargarAvisosTV(true);
         rhRenderAvisosModal();
     } catch(e){
