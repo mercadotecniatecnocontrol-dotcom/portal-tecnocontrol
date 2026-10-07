@@ -1157,6 +1157,7 @@ function rhRenderRoot(){
     }
     root.innerHTML = rhHTMLTopbar() + '<div id="rh-vista">' + rhHTMLVistaActual() + '</div>';
     if(rhVista==='directorio') rhRenderDirectorioGrid();
+    if(rhVista==='permisos') rhMontarPermisos();
 }
 
 window.rhSetVista = function(v){ rhVista=v; rhPerfilId=null; rhRenderRoot(); };
@@ -1164,7 +1165,7 @@ window.rhAbrirPerfil = function(id){ rhPerfilId=id; rhModoEdicion=false; rhRende
 window.rhVolverDirectorio = function(){ rhPerfilId=null; rhVista='directorio'; rhRenderRoot(); };
 
 function rhHTMLTopbar(){
-    const labels = {directorio:'Directorio', organigrama:'Organigrama', alertas:'Alertas'};
+    const labels = {directorio:'Directorio', organigrama:'Organigrama', alertas:'Alertas', permisos:'Permisos y vacaciones'};
     return '<div class="rhd-topbar">'+
         Object.keys(labels).map(v=>'<button class="rhd-tab'+(rhVista===v?' on':'')+'" onclick="rhSetVista(\''+v+'\')">'+labels[v]+'</button>').join('')+
         (rhVista==='directorio' ? (
@@ -1181,6 +1182,30 @@ function rhHTMLTopbar(){
     '</div>';
 }
 
+// ── Permisos, vacaciones y ausencias (oct-2026) ─────────────────
+// Mismo módulo que usan Operaciones y la app de Flotilla (permisos.js): RH ve todo,
+// aprueba/rechaza con historial y recibe en su campanita cada solicitud nueva.
+let rhPermisosP = null;
+function rhCargarPermisosJS(){
+    if (window.tcPermisos) return Promise.resolve();
+    if (rhPermisosP) return rhPermisosP;
+    rhPermisosP = new Promise((ok, ko) => {
+        const s = document.createElement('script'); s.src = 'permisos.js?v=1';
+        s.onload = () => ok(); s.onerror = () => { rhPermisosP = null; ko(new Error('No se pudo cargar permisos.js')); };
+        document.head.appendChild(s);
+    });
+    return rhPermisosP;
+}
+async function rhMontarPermisos(){
+    const cont = document.getElementById('rh-permisos-root');
+    if (!cont) return;
+    try { await rhCargarPermisosJS(); }
+    catch(e){ cont.innerHTML = '<div style="color:#B91C1C;font-size:13px">'+rh360Escape(e.message)+'. Revisa que permisos.js esté subido junto a rh.js.</div>'; return; }
+    const correo = ((window.auth && window.auth.currentUser && window.auth.currentUser.email) || '').toLowerCase();
+    const nombre = (window.auth && window.auth.currentUser && window.auth.currentUser.displayName) || correo;
+    window.tcPermisos.panel(cont, { puedeAprobar: puedeVerRH(correo), usuario: { correo, nombre }, titulo: 'Permisos, vacaciones y ausencias' });
+}
+
 function rhHTMLFiltroDepto(){
     const deptos = [...new Set(rhColabs.map(c=>c.departamento).filter(Boolean))].sort();
     return '<select class="rhd-filtro" onchange="rhFiltrarDepto(this.value)">'+
@@ -1195,6 +1220,7 @@ window.rhFiltrarEstatus = function(v){ rhFiltroEstatus = v; rhRenderDirectorioGr
 function rhHTMLVistaActual(){
     if(rhVista==='organigrama') return rhHTMLOrganigrama();
     if(rhVista==='alertas') return rhHTMLAlertas();
+    if(rhVista==='permisos') return '<div id="rh-permisos-root" style="background:#fff;border-radius:14px;padding:18px;margin-top:10px"><div style="color:#94A3B8;font-size:13px">Cargando permisos…</div></div>';
     return '<div class="rhd-hint" id="rh-dir-hint"></div><div class="rhd-list" id="rh-dir-grid"></div>';
 }
 

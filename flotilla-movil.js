@@ -3497,7 +3497,9 @@ function renderTareas(){
   const pend=misTareas.filter(t=>t.estatus!=='Completada'&&t.estatus!=='Cancelada');
   const urg=pend.filter(t=>t.prioridad==='Urgente'||t.prioridad==='Alta');
   setContent(
+    fmGuardiaHTML()+
     fmViaticosHTML()+
+    fmPermisosHTML()+
     fmServicioFlotillaHTML()+
     fmMisFoliosHTML()+
     fmOpsServHTML()+
@@ -3745,6 +3747,7 @@ function renderNotif(){
 }
 window.fmAbrirLigaNotif=function(link){
   if(link==='#viaticos'){ fmAbrirFlotante('viaticos'); return; }
+  if(link==='#permisos'){ fmAbrirFlotante('permisos'); return; }
   // El link ya es relativo a la carpeta del portal (firmar.html?id=...) —
   // se resuelve contra la raíz del sitio (misma carpeta que flotilla-app.html)
   // y se abre en pestaña aparte, ya que Flotilla móvil es una PWA distinta.
@@ -5704,6 +5707,12 @@ window.fmAbrirFlotante=function(tipo){
     titleEl.textContent='Comprobar viáticos';
     fmvUI={modo:'lista'};
     window.renderFlotViaticos();
+  }else if(tipo==='permisos'){
+    titleEl.textContent='Permisos y vacaciones';
+    window.renderFlotPermisos();
+  }else if(tipo==='guardia'){
+    titleEl.textContent='Guardia telefónica';
+    window.renderFlotGuardia();
   }else{
     titleEl.textContent='Requisición de compra';
     window.renderFlotRequisicion();
@@ -7040,11 +7049,11 @@ function fmvEscucharAvisos(correo){
     _fmvUnsubNotif=opsDb().collection('ops_notificaciones').where('para','==',correo).where('leida','==',false).onSnapshot(function(snap){
       const antes=new Set(fmvNotifs.map(function(n){return n.id;}));
       fmvNotifs=snap.docs.map(function(d){return Object.assign({id:d.id},d.data());})
-        .filter(function(n){return String(n.tipo||'').indexOf('viat_tec_')===0;})
+        .filter(function(n){return /^(viat|perm)_tec_/.test(String(n.tipo||''));})
         .sort(function(a,b){return String(b.fecha||'').localeCompare(String(a.fecha||''));});
       // Solo tras la primera carga: un aviso nuevo muestra toast y refresca montos/estatus.
       const nuevo=fmvNotifs.find(function(n){return !antes.has(n.id);});
-      if(_fmvBaseNotif&&nuevo){ toast('Viáticos: '+(nuevo.mensaje||'nuevo aviso').slice(0,70),'info'); fmViaCargar(); }
+      if(_fmvBaseNotif&&nuevo){ const esPerm=/^perm_/.test(String(nuevo.tipo||'')); toast((esPerm?'Permisos: ':'Viáticos: ')+(nuevo.mensaje||'nuevo aviso').slice(0,70),esPerm&&/rechaz/.test(nuevo.tipo)?'err':'info'); if(!esPerm) fmViaCargar(); }
       _fmvBaseNotif=true;
       actualizarBadges();
       if(vistaAct==='notif')renderNotif();
@@ -7071,9 +7080,11 @@ window.fmViaItemsNotif=function(){
     else if(E.falta>0.5) it.push({ico:'msg',bg:'#EDE9FE',icoSvg:ICV,t:'Viáticos por facturar · '+s.folio,s:fmvDin(E.falta)+' pendientes · límite '+fmvFecha(s.fecha_limite_comprobacion),time:'Viáticos',unread:false,link:'#viaticos'});
     else if(E.estado==='En revisión') it.push({ico:'msg',bg:'#EDE9FE',icoSvg:ICV,t:s.folio+' en revisión',s:'Ya subiste todo; Pagos lo está revisando',time:'Viáticos',unread:false,link:'#viaticos'});
   });
+  const ICP='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>';
   fmvNotifs.forEach(function(n){
-    const t=n.tipo==='viat_tec_rechazado'?'err':(n.tipo==='viat_tec_comprobada'||n.tipo==='viat_tec_cerrada')?'ok':'msg';
-    it.push({ico:t,bg:t==='err'?'#FEE2E2':t==='ok'?'#DCFCE7':'#EDE9FE',icoSvg:ICV,t:n.mensaje||'Aviso de viáticos',s:'Viáticos'+(n.folio?' · '+n.folio:''),time:typeof hF==='function'?hF(n.fecha):'',unread:true,link:'#viaticos'});
+    const esPerm=/^perm_/.test(String(n.tipo||''));
+    const t=/rechaz/.test(n.tipo)?'err':/(comprobada|cerrada|aprobada)$/.test(n.tipo)?'ok':'msg';
+    it.push({ico:t,bg:t==='err'?'#FEE2E2':t==='ok'?'#DCFCE7':'#EDE9FE',icoSvg:esPerm?ICP:ICV,t:n.mensaje||'Aviso',s:(esPerm?'Permisos':'Viáticos')+(n.folio?' · '+n.folio:''),time:typeof hF==='function'?hF(n.fecha):'',unread:true,link:esPerm?'#permisos':'#viaticos'});
   });
   return it;
 };
@@ -7374,6 +7385,114 @@ function fmvAlertaInicio(){
   ov.querySelector('#fmv-al-ok').onclick=function(){ov.remove();fmAbrirFlotante('viaticos');};
   ov.querySelector('#fmv-al-luego').onclick=function(){ov.remove();};
 }
-window.fmViaArranque=function(){ fmViaCargar().then(fmvAlertaInicio).catch(function(e){console.warn('[Viáticos app] arranque',e);}); };
+window.fmViaArranque=function(){ fmViaCargar().then(fmvAlertaInicio).catch(function(e){console.warn('[Viáticos app] arranque',e);}); fmGtelCargar(); };
+
+
+// ══════════════════════════════════════════════════════════════
+// PERMISOS, VACACIONES Y AUSENCIAS (oct-2026)
+// El formulario y las reglas viven en permisos.js (el mismo que usan Operaciones y RH):
+// bloqueo si alguien del área ya pidió esas fechas (solo pasa como urgente), aviso a RH y
+// aprobadores, y respuesta del aprobador como aviso en esta app.
+// ══════════════════════════════════════════════════════════════
+let _permModP=null;
+function _permModulo(){
+  if(window.tcPermisos) return Promise.resolve();
+  if(_permModP) return _permModP;
+  _permModP=new Promise(function(ok,ko){
+    const s=document.createElement('script'); s.src='permisos.js?v=1';
+    s.onload=function(){ok();}; s.onerror=function(){_permModP=null;ko(new Error('No se pudo cargar permisos.js'));};
+    document.head.appendChild(s);
+  });
+  return _permModP;
+}
+window.renderFlotPermisos=function(){
+  const body=document.getElementById('fm-flot-body'); if(!body) return;
+  body.innerHTML='<p style="text-align:center;color:#94A3B8;font-size:13px;padding:24px">Cargando…</p>';
+  _permModulo().then(function(){
+    window.tcPermisos.movil(body,{correo:opsSvMiCorreo(),nombre:opsSvMiNombre(),departamento:miPerfil&&miPerfil.departamento||'',toast:toast});
+  }).catch(function(e){
+    body.innerHTML='<p style="text-align:center;color:#B91C1C;font-size:13px;padding:24px">No se pudo abrir: '+esc(e&&e.message||e)+'. Revisa tu conexión.</p>';
+  });
+};
+window.fmPermisosHTML=function(){
+  return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;border:1.5px solid #E2E8F0;background:#fff;border-radius:14px;padding:11px 13px;margin-bottom:14px">'+
+    '<div style="display:flex;gap:10px;align-items:center;min-width:0"><div style="width:34px;height:34px;border-radius:10px;background:#EEF2FF;color:#1D2E73;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="m9 16 2 2 4-4"/></svg></div>'+
+    '<div><div style="font-size:13.5px;font-weight:800;color:#0A1628">Permisos y vacaciones</div><div style="font-size:11px;color:#64748B">Pide días y revisa si ya te los aprobaron</div></div></div>'+
+    '<button onclick="fmAbrirFlotante(\'permisos\')" style="padding:9px 12px;background:#1D2E73;border:none;border-radius:10px;color:#fff;font-family:inherit;font-size:12px;font-weight:800;cursor:pointer;flex-shrink:0">Solicitar</button></div>';
+};
+
+
+// ══════════════════════════════════════════════════════════════
+// GUARDIA TELEFÓNICA (oct-2026)
+// Si la persona está de guardia esta semana (calendario de rotación de Operaciones), en
+// Tareas le sale una tarjeta para anotar cada llamada o mensaje atendido. Lo anotado aparece
+// en Operaciones > Guardias, donde también se generan sus vales de pago.
+// ══════════════════════════════════════════════════════════════
+let fmGtel={deGuardia:false,semana:null,tecId:null,nombre:'',lista:[]};
+function _gtelLunes(){const d=new Date();const dia=d.getDay();d.setDate(d.getDate()+(dia===0?-6:1-dia));return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+async function fmGtelCargar(){
+  const correo=opsSvMiCorreo(); if(!correo) return;
+  try{
+    const sb=await fmvSb();
+    const t=await sb.from('ops_tecnicos').select('id,nombre,estatus').ilike('correo',correo).limit(3);
+    const tec=(t.data||[]).find(function(x){return x.estatus!=='baja';})||(t.data||[])[0];
+    if(!tec) return;
+    const lunes=_gtelLunes();
+    const g=await sb.from('ops_guardias_programadas').select('semana_inicio').eq('tecnico_id',tec.id).eq('semana_inicio',lunes).limit(1);
+    fmGtel={deGuardia:!!(g.data&&g.data.length),semana:lunes,tecId:tec.id,nombre:tec.nombre,lista:fmGtel.lista};
+    if(vistaAct==='tareas')renderTareas();
+  }catch(e){console.warn('[Guardia app]',e);}
+}
+window.fmGuardiaHTML=function(){
+  if(!fmGtel.deGuardia) return '';
+  return '<div style="border:1.5px solid #FDE68A;background:#FFFBEB;border-radius:14px;padding:12px 13px;margin-bottom:14px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px">'+
+      '<div><div style="font-size:14px;font-weight:900;color:#92400E">Estás de guardia telefónica</div>'+
+      '<div style="font-size:11.5px;color:#92400E">Semana del '+esc(opsSvFecha(fmGtel.semana))+'. Anota cada llamada o mensaje que atiendas.</div></div>'+
+      '<button onclick="fmAbrirFlotante(\'guardia\')" style="padding:9px 12px;background:#B45309;border:none;border-radius:10px;color:#fff;font-family:inherit;font-size:12px;font-weight:800;cursor:pointer;flex-shrink:0">Anotar</button>'+
+    '</div></div>';
+};
+const _GTEL_ACC={resuelto_telefono:'Se resolvió por teléfono',se_genero_folio:'Se generó folio',se_envio_tecnico:'Se envió técnico',pendiente:'Queda pendiente'};
+window.renderFlotGuardia=async function(){
+  const body=document.getElementById('fm-flot-body'); if(!body) return;
+  body.innerHTML='<p style="text-align:center;color:#94A3B8;font-size:13px;padding:24px">Cargando…</p>';
+  try{
+    const sb=await fmvSb();
+    const r=await sb.from('ops_guardia_tel_bitacora').select('*').eq('tecnico_id',fmGtel.tecId).gte('fecha',fmGtel.semana||_gtelLunes()).order('creado_en',{ascending:false}).limit(50);
+    fmGtel.lista=r.data||[];
+  }catch(e){fmGtel.lista=[];}
+  const inp='width:100%;box-sizing:border-box;border:1.5px solid #CBD5E1;border-radius:10px;padding:10px;font-family:inherit;font-size:14px;background:#fff;margin-bottom:10px';
+  const lbl=function(t){return '<div style="font-size:11px;font-weight:800;color:#475569;margin:2px 0 5px;text-transform:uppercase">'+t+'</div>';};
+  body.innerHTML=
+    '<div style="background:#fff;border:1.5px solid #E2E8F0;border-radius:14px;padding:13px;margin-bottom:14px">'+
+      '<div style="font-size:14px;font-weight:900;color:#0A1628;margin-bottom:10px">Nueva atención</div>'+
+      lbl('Canal')+'<select id="gt-canal" style="'+inp+'"><option>Llamada</option><option>WhatsApp</option><option>Mensaje</option></select>'+
+      lbl('Estación')+'<input id="gt-est" style="'+inp+'" placeholder="Ej. Santa Rita">'+
+      lbl('Cliente / quién reportó')+'<input id="gt-cli" style="'+inp+'" placeholder="Ej. encargado de turno, OXXO GAS">'+
+      lbl('¿Qué reportaron y qué hiciste?')+'<textarea id="gt-desc" rows="3" style="'+inp+'"></textarea>'+
+      lbl('Resultado')+'<select id="gt-acc" style="'+inp+'">'+Object.keys(_GTEL_ACC).map(function(k){return '<option value="'+k+'">'+_GTEL_ACC[k]+'</option>';}).join('')+'</select>'+
+      lbl('Folio (si se generó)')+'<input id="gt-fol" style="'+inp+'">'+
+      '<button id="gt-btn" onclick="fmGtelGuardar()" style="width:100%;padding:13px;background:#B45309;border:none;border-radius:12px;color:#fff;font-family:inherit;font-size:14px;font-weight:900;cursor:pointer">Guardar</button>'+
+    '</div>'+
+    '<div style="font-size:12px;font-weight:800;color:#64748B;margin:0 0 6px">LO QUE LLEVAS ESTA SEMANA ('+fmGtel.lista.length+')</div>'+
+    (fmGtel.lista.map(function(b){return '<div style="background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:10px 12px;margin-bottom:8px;font-size:12px">'+
+      '<div style="display:flex;justify-content:space-between;gap:8px"><b>'+esc(b.estacion||b.cliente||'Sin estación')+'</b><span style="color:#94A3B8">'+esc(opsSvFecha(b.fecha))+' '+esc(b.hora||'')+'</span></div>'+
+      '<div style="color:#334155;margin-top:3px">'+esc(b.descripcion)+'</div><div style="color:#64748B;font-size:11px;margin-top:2px">'+esc(_GTEL_ACC[b.accion]||'')+(b.folio_ref?' · '+esc(b.folio_ref):'')+' · '+esc(b.canal||'')+'</div></div>';}).join('')||'<div style="text-align:center;color:#94A3B8;font-size:13px;padding:12px">Todavía no anotas nada esta semana.</div>');
+};
+window.fmGtelGuardar=async function(){
+  const g=function(id){return (document.getElementById(id).value||'').trim();};
+  if(!g('gt-desc')){toast('Escribe qué reportaron','err');return;}
+  const btn=document.getElementById('gt-btn'); if(btn){btn.disabled=true;btn.textContent='Guardando…';}
+  const d=new Date();
+  try{
+    const sb=await fmvSb();
+    const r=await sb.from('ops_guardia_tel_bitacora').insert({fecha:d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'),hora:d.toTimeString().slice(0,5),
+      tecnico_id:fmGtel.tecId,tecnico_nombre:fmGtel.nombre||opsSvMiNombre(),tecnico_email:opsSvMiCorreo(),canal:g('gt-canal'),estacion:g('gt-est')||null,cliente:g('gt-cli')||null,
+      descripcion:g('gt-desc'),accion:g('gt-acc'),folio_ref:g('gt-fol')||null,origen:'app'});
+    if(r.error) throw r.error;
+    toast('Atención guardada','ok');
+    window.renderFlotGuardia();
+  }catch(e){toast('No se pudo guardar','err');if(btn){btn.disabled=false;btn.textContent='Guardar';}}
+};
 
 })();

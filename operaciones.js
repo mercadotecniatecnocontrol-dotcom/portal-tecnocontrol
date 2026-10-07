@@ -1857,6 +1857,7 @@
     };
 
     window.opsCerrarHerramientas = function () {
+        if (window.opsNotifToggle) window.opsNotifToggle(false);
         const cont = document.getElementById("ops-herramientas-overlay");
         if (cont) cont.style.display = "none";
         document.body.style.overflow = "";
@@ -1871,6 +1872,7 @@
     };
 
     const NAV_ICONS = {
+        permisos: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="m9 16 2 2 4-4"/></svg>',
         externos: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>',
         vencimientos: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M12 14v3l2 1"/></svg>',
         viaticos: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/></svg>',
@@ -1894,7 +1896,7 @@
         const items = ["calendario:Calendario", "resumen:Resumen", "dashboard:Herramientas", "guardias:Guardias", "tecnicos:Técnicos", "servicios:Servicios",
             "folios:Folios", "clientes:Clientes",
             ...(opsPuedeHacer("autorizar_material") ? ["solicitudes:Solicitudes"] : []),
-            "vencimientos:Vencimientos", "viaticos:Viáticos", "externos:Externos", "alertas:Alertas", "movimientos:Movimientos"];
+            "vencimientos:Vencimientos", "viaticos:Viáticos", "externos:Externos", "permisos:Permisos", "alertas:Alertas", "movimientos:Movimientos"];
         return `
         <div style="position:fixed;inset:0;z-index:99997;background:#f1f5f9;font-family:'Inter',sans-serif;display:flex;flex-direction:column;">
             <div style="background:#1D2E73;border-bottom:3px solid #062F73;padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
@@ -1905,7 +1907,7 @@
                         <div style="font-size:10.5px;color:#C7CEE0;">Hedma Tecnocontrol · Rol: ${rolLabel}</div>
                     </div>
                 </div>
-                <button onclick="opsCerrarHerramientas()" style="background:rgba(255,255,255,0.08);border:none;color:#fff;width:30px;height:30px;border-radius:9px;cursor:pointer;">${ICON.close}</button>
+                <div style="display:flex;align-items:center;">${opsNotifBotonHTML()}<button onclick="opsCerrarHerramientas()" style="background:rgba(255,255,255,0.08);border:none;color:#fff;width:30px;height:30px;border-radius:9px;cursor:pointer;">${ICON.close}</button></div>
             </div>
 
             <div style="flex:1;display:flex;overflow:hidden;">
@@ -1947,6 +1949,7 @@
         else if (tab === "movimientos") opsRenderMovimientos();
         else if (tab === "viaticos") opsRenderViaticos();
         else if (tab === "externos") opsRenderExternos();
+        else if (tab === "permisos") opsRenderPermisos();
         else if (tab === "vencimientos") opsRenderVencimientos();
     };
 
@@ -2079,7 +2082,7 @@
                         if (ch.type === "added") {
                             const n = { id: ch.doc.id, ...ch.doc.data() };
                             if (n.tipo === "ops_servicio_asignado") return; // es para la app del técnico, no para el portal
-                            if (String(n.tipo || "").startsWith("viat_tec_")) return; // avisos de viáticos para la app del técnico
+                            if (/^(viat|perm)_tec_/.test(String(n.tipo || ""))) return; // avisos de viáticos/permisos para la app del técnico
                             opsReproducirAlarmaFolio();
                             opsMostrarFlotanteGenerica(n.mensaje || "Nueva notificación de Operaciones.", n.esPrueba ? "#8B4FD6" : "#1D2E73");
                         }
@@ -5023,6 +5026,7 @@
         const cerradas = cacheGuardias.filter(g => g.estado === "cerrada").sort((a, b) => (a.fechaInicio < b.fechaInicio ? 1 : -1));
 
         el.innerHTML = `
+            <div id="ops-gtel-root" style="margin-bottom:14px;"></div>
             <div style="background:#fff;border-radius:14px;padding:16px 18px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
                     <div style="font-size:12.5px;font-weight:700;color:#1e293b;">Herramienta de guardia</div>
@@ -5045,6 +5049,7 @@
                     ${opsRenderCalendarioGuardias(gestion)}
                 </div>
             </div>`;
+        opsGtelPintar();
     }
 
     function opsRenderCalendarioGuardias(gestion) {
@@ -5445,56 +5450,18 @@
 
     // ── Ventana flotante imposible de ignorar (apilable, varias a la vez) ──
     function opsMostrarFlotanteFolio(f, info) {
-        let cont = document.getElementById("ops-alertas-flotantes");
-        if (!cont) {
-            cont = document.createElement("div");
-            cont.id = "ops-alertas-flotantes";
-            cont.style.cssText = "position:fixed;top:16px;right:16px;z-index:2147483000;display:flex;flex-direction:column;gap:10px;max-width:340px;";
-            document.body.appendChild(cont);
-        }
         const c = OPS_SEMAFORO[info.semaforo] || OPS_SEMAFORO.rojo;
-        const idFlot = "ops-flot-" + f.id + "-" + Date.now();
-        const div = document.createElement("div");
-        div.id = idFlot;
-        div.style.cssText = `background:#fff;border-left:5px solid ${c.dot};border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,0.25);padding:14px 16px;animation:opsFlotIn .25s ease;`;
-        div.innerHTML = `
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
-                <div style="font-size:11px;font-weight:700;color:${c.fg};text-transform:uppercase;letter-spacing:.4px;">${opsEsc(info.estado)}${info.enAtencion ? " · Seguimiento" : ""}</div>
-                <button onclick="document.getElementById('${idFlot}').remove()" style="background:none;border:none;cursor:pointer;color:#94a3b8;display:inline-flex;">${ICON.close}</button>
-            </div>
-            <div style="font-size:13.5px;font-weight:700;color:#1e293b;margin-top:4px;">${opsEsc(f.estacion)}</div>
-            <div style="font-size:11.5px;color:#64748b;margin-top:2px;">${f.folioOS ? "O.S. " + opsEsc(f.folioOS) + " · " : ""}${opsEsc(info.diasTexto)}</div>
-            <div style="font-size:11px;color:#94a3b8;margin-top:2px;">Responsable: ${opsEsc(opsResponsableFolio(f))}</div>
-            <button onclick="window.opsCambiarTab('folios');document.getElementById('${idFlot}').remove();" style="margin-top:10px;background:${c.dot};border:none;color:#fff;padding:6px 12px;border-radius:7px;cursor:pointer;font-size:11.5px;font-weight:600;">Ver folio</button>
-        `;
-        cont.appendChild(div);
-        setTimeout(() => { const el = document.getElementById(idFlot); if (el) el.remove(); }, 30000);
+        opsNotifAgregar({
+            titulo: info.estado + (info.enAtencion ? " · Seguimiento" : ""), color: c.dot, accion: "folios", accionTxt: "Ir a Folios",
+            texto: `${f.estacion}${f.folioOS ? " · O.S. " + f.folioOS : ""} · ${info.diasTexto} · Responsable: ${opsResponsableFolio(f)}`,
+        });
     }
 
     // ── Ventana flotante genérica (notificaciones de ops_notificaciones: "solicitud
     // lista para surtir", etc.) — mismo estilo/comportamiento que la de folios pero
     // sin datos de folio específicos, para cualquier mensaje de texto simple. ──
     function opsMostrarFlotanteGenerica(mensaje, colorHex) {
-        let cont = document.getElementById("ops-alertas-flotantes");
-        if (!cont) {
-            cont = document.createElement("div");
-            cont.id = "ops-alertas-flotantes";
-            cont.style.cssText = "position:fixed;top:16px;right:16px;z-index:2147483000;display:flex;flex-direction:column;gap:10px;max-width:340px;";
-            document.body.appendChild(cont);
-        }
-        const idFlot = "ops-flot-gen-" + Date.now() + "-" + Math.floor(Math.random() * 1000);
-        const div = document.createElement("div");
-        div.id = idFlot;
-        div.style.cssText = `background:#fff;border-left:5px solid ${colorHex};border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,0.25);padding:14px 16px;animation:opsFlotIn .25s ease;`;
-        div.innerHTML = `
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
-                <div style="font-size:11px;font-weight:700;color:${colorHex};text-transform:uppercase;letter-spacing:.4px;display:flex;align-items:center;gap:5px;">${ICON.bell} Operaciones</div>
-                <button onclick="document.getElementById('${idFlot}').remove()" style="background:none;border:none;cursor:pointer;color:#94a3b8;display:inline-flex;">${ICON.close}</button>
-            </div>
-            <div style="font-size:13px;color:#1e293b;margin-top:4px;">${opsEsc(mensaje)}</div>
-        `;
-        cont.appendChild(div);
-        setTimeout(() => { const el = document.getElementById(idFlot); if (el) el.remove(); }, 30000);
+        opsNotifAgregar({ titulo: "Operaciones", texto: mensaje, color: colorHex || "#1D2E73" });
     }
 
 
@@ -14500,6 +14467,324 @@
         const s = opsExt.find(x => x.id === id); if (!s) return;
         const previo = (s.historial || []).slice().reverse().find(h => h.estado && h.estado !== "Cancelado");
         try { await opsExtActualizarSimple(id, { estado: previo ? previo.estado : "Por autorizar" }, "Reactivado"); } catch (e) { alert(e.message || e); }
+    };
+
+
+    // ══════════════════════════════════════════════════════════════════
+    // CENTRO DE NOTIFICACIONES DE OPERACIONES (oct-2026)
+    // Antes cada aviso abría su propia ventanita apilada arriba a la derecha (cada una con
+    // su X), tapando el trabajo. Ahora todo entra a un solo lugar: la campana del encabezado
+    // con su contador. Al llegar algo nuevo sale UN solo aviso pequeño abajo a la derecha
+    // (se reemplaza, no se apila) que se quita solo. En el panel se cierran una por una o
+    // todas de golpe. La alarma sonora de folios sigue igual.
+    // ══════════════════════════════════════════════════════════════════
+    const OPS_NOTIF_KEY = "ops_centro_notif_v1";
+    let opsNotifs = (() => { try { return JSON.parse(sessionStorage.getItem(OPS_NOTIF_KEY) || "[]"); } catch (e) { return []; } })();
+    let opsNotifAbierto = false, opsNotifToastT = null, opsNotifToastN = 0;
+    function opsNotifGuardar() { try { sessionStorage.setItem(OPS_NOTIF_KEY, JSON.stringify(opsNotifs.slice(0, 80))); } catch (e) {} }
+    function opsNotifSinLeer() { return opsNotifs.filter(n => !n.leida).length; }
+    function opsNotifHace(iso) {
+        const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+        if (m < 1) return "ahora"; if (m < 60) return "hace " + m + " min";
+        const h = Math.round(m / 60); if (h < 24) return "hace " + h + " h";
+        return new Date(iso).toLocaleDateString("es-MX", { day: "numeric", month: "short" });
+    }
+    function opsNotifBotonHTML() {
+        const n = opsNotifSinLeer();
+        return `<button id="ops-notif-btn" onclick="opsNotifToggle()" title="Notificaciones" style="position:relative;background:rgba(255,255,255,0.08);border:none;color:#fff;width:30px;height:30px;border-radius:9px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;margin-right:8px;">${ICON.bell}<span id="ops-notif-badge" style="position:absolute;top:-5px;right:-5px;background:#E7402B;color:#fff;font-size:10px;font-weight:800;min-width:17px;height:17px;border-radius:9px;display:${n ? "flex" : "none"};align-items:center;justify-content:center;padding:0 4px;box-sizing:border-box;">${n > 99 ? "99+" : n}</span></button>`;
+    }
+    function opsNotifPintarBoton() {
+        const b = document.getElementById("ops-notif-badge"); if (!b) return;
+        const n = opsNotifSinLeer(); b.textContent = n > 99 ? "99+" : n; b.style.display = n ? "flex" : "none";
+    }
+    function opsNotifAgregar(n) {
+        n.id = "n" + Date.now() + Math.floor(Math.random() * 1000); n.en = new Date().toISOString(); n.leida = false;
+        opsNotifs.unshift(n); opsNotifs = opsNotifs.slice(0, 80); opsNotifGuardar(); opsNotifPintarBoton();
+        if (opsNotifAbierto) opsNotifPintarPanel(); else opsNotifToast(n);
+    }
+    function opsNotifToast(n) {
+        let t = document.getElementById("ops-notif-toast");
+        if (!t) { t = document.createElement("div"); t.id = "ops-notif-toast"; document.body.appendChild(t); opsNotifToastN = 0; }
+        opsNotifToastN++;
+        t.style.cssText = `position:fixed;bottom:18px;right:18px;z-index:2147483000;width:320px;max-width:calc(100vw - 36px);background:#fff;border-left:4px solid ${n.color || "#1D2E73"};border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.22);padding:11px 12px;font-family:'Inter',sans-serif;animation:opsFlotIn .2s ease;`;
+        t.innerHTML = `<div style="display:flex;gap:8px;align-items:flex-start;">
+                <div style="flex:1;min-width:0;cursor:pointer;" onclick="opsNotifToggle(true)">
+                    <div style="font-size:11px;font-weight:800;color:${n.color || "#1D2E73"};text-transform:uppercase;letter-spacing:.3px;">${opsEsc(n.titulo || "Operaciones")}${opsNotifToastN > 1 ? ` <span style="color:#64748b;font-weight:700;text-transform:none;">· ${opsNotifToastN} nuevas</span>` : ""}</div>
+                    <div style="font-size:12.5px;color:#1e293b;margin-top:2px;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">${opsEsc(n.texto || "")}</div>
+                    <div style="font-size:11px;color:#1D2E73;font-weight:700;margin-top:4px;">Ver todas</div>
+                </div>
+                <button onclick="opsNotifQuitarToast()" title="Ocultar" style="background:none;border:none;cursor:pointer;color:#94a3b8;display:inline-flex;padding:0;">${ICON.close}</button></div>`;
+        clearTimeout(opsNotifToastT);
+        opsNotifToastT = setTimeout(opsNotifQuitarToast, 8000);
+    }
+    window.opsNotifQuitarToast = function () { const t = document.getElementById("ops-notif-toast"); if (t) t.remove(); opsNotifToastN = 0; clearTimeout(opsNotifToastT); };
+    window.opsNotifToggle = function (abrir) {
+        opsNotifAbierto = abrir === true ? true : !opsNotifAbierto;
+        opsNotifQuitarToast();
+        let p = document.getElementById("ops-notif-panel");
+        if (!opsNotifAbierto) { if (p) p.remove(); return; }
+        if (!p) { p = document.createElement("div"); p.id = "ops-notif-panel"; document.body.appendChild(p); }
+        opsNotifPintarPanel();
+    };
+    function opsNotifPintarPanel() {
+        const p = document.getElementById("ops-notif-panel"); if (!p) return;
+        p.style.cssText = "position:fixed;top:60px;right:14px;z-index:99998;width:380px;max-width:calc(100vw - 28px);max-height:calc(100vh - 80px);background:#fff;border:1px solid #e2e8f0;border-radius:14px;box-shadow:0 18px 50px rgba(15,23,42,.25);display:flex;flex-direction:column;font-family:'Inter',sans-serif;";
+        const items = opsNotifs.map(n => `
+            <div style="display:flex;gap:10px;padding:10px 12px;border-bottom:1px solid #f1f5f9;background:${n.leida ? "#fff" : "#f8faff"};">
+                <div style="width:4px;border-radius:4px;background:${n.color || "#1D2E73"};flex-shrink:0;"></div>
+                <div style="flex:1;min-width:0;">
+                    <div style="display:flex;justify-content:space-between;gap:8px;"><div style="font-size:11px;font-weight:800;color:${n.color || "#1D2E73"};text-transform:uppercase;letter-spacing:.3px;">${opsEsc(n.titulo || "Operaciones")}</div><div style="font-size:10.5px;color:#94a3b8;white-space:nowrap;">${opsNotifHace(n.en)}</div></div>
+                    <div style="font-size:12.5px;color:#1e293b;margin-top:2px;line-height:1.35;">${opsEsc(n.texto || "")}</div>
+                    ${n.accion ? `<button onclick="opsNotifAccion('${n.id}')" style="margin-top:6px;background:#E9ECF5;border:none;color:#1D2E73;padding:4px 10px;border-radius:7px;cursor:pointer;font-size:11.5px;font-weight:700;">${opsEsc(n.accionTxt || "Ver")}</button>` : ""}
+                </div>
+                <button onclick="opsNotifQuitar('${n.id}')" title="Quitar" style="background:none;border:none;cursor:pointer;color:#cbd5e1;display:inline-flex;align-self:flex-start;padding:0;">${ICON.close}</button>
+            </div>`).join("");
+        p.innerHTML = `
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #e2e8f0;">
+                <div style="font-size:14px;font-weight:800;color:#1D2E73;">Notificaciones <span style="color:#94a3b8;font-weight:600;">(${opsNotifs.length})</span></div>
+                <div style="display:flex;gap:6px;align-items:center;">
+                    ${opsNotifs.length ? `<button onclick="opsNotifLimpiar()" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:11.5px;font-weight:700;">Cerrar todas</button>` : ""}
+                    <button onclick="opsNotifToggle(false)" title="Cerrar panel" style="background:#f1f5f9;border:none;border-radius:8px;width:28px;height:28px;cursor:pointer;color:#475569;display:inline-flex;align-items:center;justify-content:center;">${ICON.close}</button>
+                </div>
+            </div>
+            <div style="overflow-y:auto;flex:1;">${items || `<div style="padding:30px 16px;text-align:center;color:#94a3b8;font-size:12.5px;">Sin notificaciones.</div>`}</div>`;
+        // Al abrir el panel se dan por vistas (el contador baja a cero), pero siguen en la lista.
+        if (opsNotifs.some(n => !n.leida)) { opsNotifs.forEach(n => n.leida = true); opsNotifGuardar(); opsNotifPintarBoton(); }
+    }
+    window.opsNotifQuitar = function (id) { opsNotifs = opsNotifs.filter(n => n.id !== id); opsNotifGuardar(); opsNotifPintarBoton(); opsNotifPintarPanel(); };
+    window.opsNotifLimpiar = function () { opsNotifs = []; opsNotifGuardar(); opsNotifPintarBoton(); opsNotifPintarPanel(); };
+    window.opsNotifAccion = function (id) {
+        const n = opsNotifs.find(x => x.id === id); if (!n) return;
+        opsNotifToggle(false);
+        if (n.accion === "folios") window.opsCambiarTab("folios");
+        else if (n.accion === "permisos") window.opsCambiarTab("permisos");
+    };
+
+    // ── Permisos y vacaciones (módulo compartido permisos.js) ──
+    let opsPermisosP = null;
+    function opsCargarPermisosJS() {
+        if (window.tcPermisos) return Promise.resolve();
+        if (opsPermisosP) return opsPermisosP;
+        opsPermisosP = new Promise((ok, ko) => {
+            const s = document.createElement("script"); s.src = "permisos.js?v=1";
+            s.onload = () => ok(); s.onerror = () => { opsPermisosP = null; ko(new Error("No se pudo cargar permisos.js")); };
+            document.head.appendChild(s);
+        });
+        return opsPermisosP;
+    }
+    async function opsRenderPermisos() {
+        const el = document.getElementById("ops-tab-content"); if (!el) return;
+        el.innerHTML = `<div style="padding:30px;color:#64748b;font-size:13px;">Cargando permisos…</div>`;
+        try { await opsSb(); await opsCargarPermisosJS(); }
+        catch (e) { el.innerHTML = `<div style="padding:30px;color:#E7402B;">${opsEsc(e.message || e)}. Revisa que permisos.js esté subido junto a operaciones.js.</div>`; return; }
+        if (tabActual !== "permisos") return;
+        const wrap = document.createElement("div"); wrap.style.padding = "22px"; el.innerHTML = ""; el.appendChild(wrap);
+        window.tcPermisos.panel(wrap, { puedeAprobar: opsPuedeGestionar(), usuario: { correo: opsUsuarioActual(), nombre: opsNombreActual() }, titulo: "Permisos, vacaciones y ausencias" });
+    }
+
+
+    // ══════════════════════════════════════════════════════════════════
+    // GUARDIA TELEFÓNICA (oct-2026)
+    // Quien está de guardia (según el calendario de rotación de abajo) queda pendiente de
+    // llamadas y mensajes de clientes. Aquí: bitácora de lo que se atendió (también se
+    // captura desde la app de Flotilla) y los vales "NO DEDUCIBLE" de pago por día de guardia,
+    // con su seguimiento (Generado → Entregado → Pagado).
+    // Tablas: ops_guardia_tel_bitacora, ops_guardia_tel_vales, ops_config_guardia_tel.
+    // ══════════════════════════════════════════════════════════════════
+    const OPS_GTEL_ACC = { resuelto_telefono: "Se resolvió por teléfono", se_genero_folio: "Se generó folio", se_envio_tecnico: "Se envió técnico", pendiente: "Queda pendiente" };
+    const OPS_GTEL_EST = { Generado: ["#b45309", "#fef3c7"], Entregado: ["#1d4ed8", "#dbeafe"], Pagado: ["#15803d", "#dcfce7"], Cancelado: ["#64748b", "#f1f5f9"] };
+    let opsGtelBit = [], opsGtelVales = [], opsGtelCfg = { montoDia: 142.85, autoriza: "MIGUEL MONTELLANO", proyecto: "PUBLICACIÓN DE FOLIOS Y GUARDIA TÉCNICA" };
+    let opsGtelSemana = null;
+    async function opsGtelCargar() {
+        const sb = await opsSb();
+        const [b, v, c] = await Promise.all([
+            sb.from("ops_guardia_tel_bitacora").select("*").order("fecha", { ascending: false }).order("creado_en", { ascending: false }).limit(300),
+            sb.from("ops_guardia_tel_vales").select("*").order("fecha_guardia", { ascending: false }).limit(300),
+            sb.from("ops_config_guardia_tel").select("datos").eq("id", "general").maybeSingle(),
+        ]);
+        opsGtelBit = b.data || []; opsGtelVales = v.data || [];
+        if (c.data && c.data.datos) opsGtelCfg = { ...opsGtelCfg, ...c.data.datos };
+    }
+    function opsGtelDeGuardia(lunes) {
+        const g = cacheGuardiasProgramadas.find(x => x.semanaInicio === lunes);
+        return g ? { id: g.tecnicoId, nombre: opsNombreTecnico(g.tecnicoId) } : null;
+    }
+    async function opsGtelPintar() {
+        const el = document.getElementById("ops-gtel-root"); if (!el) return;
+        el.innerHTML = `<div style="background:#fff;border-radius:14px;padding:16px 18px;color:#94a3b8;font-size:12.5px;">Cargando guardia telefónica…</div>`;
+        try { await opsGtelCargar(); } catch (e) { el.innerHTML = `<div style="background:#fff;border-radius:14px;padding:16px 18px;color:#E7402B;font-size:12.5px;">No se pudo cargar la guardia telefónica: ${opsEsc(e.message || e)}</div>`; return; }
+        if (!document.getElementById("ops-gtel-root")) return;
+        const gestion = opsPuedeGestionar();
+        const lunes = opsGtelSemana || opsLunesDe(new Date());
+        const fin = opsSumarDias(lunes, 6);
+        const quien = opsGtelDeGuardia(lunes);
+        const bit = opsGtelBit.filter(b => b.fecha >= lunes && b.fecha <= fin);
+        const vales = opsGtelVales.filter(v => v.estatus !== "Cancelado").sort((a, b) => String(a.tecnico_nombre).localeCompare(String(b.tecnico_nombre), "es") || String(b.fecha_guardia).localeCompare(String(a.fecha_guardia)));
+        const porPagar = vales.filter(v => v.estatus !== "Pagado");
+        const chipV = e => { const m = OPS_GTEL_EST[e] || ["#334155", "#f1f5f9"]; return `<span style="background:${m[1]};color:${m[0]};font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px;">${opsEsc(e)}</span>`; };
+        el.innerHTML = `
+        <div style="background:#fff;border-radius:14px;padding:16px 18px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+                <div>
+                    <div style="font-size:12.5px;font-weight:700;color:#1e293b;">Guardia telefónica</div>
+                    <div style="font-size:11px;color:#94a3b8;">Quien está de guardia atiende llamadas y mensajes de clientes. Lo atendido se anota aquí o desde la app de Flotilla.</div>
+                </div>
+                <div style="display:flex;gap:6px;align-items:center;">
+                    <button onclick="opsGtelMoverSemana(-7)" style="background:#f1f5f9;border:none;color:#334155;padding:6px 10px;border-radius:7px;cursor:pointer;font-size:12px;font-weight:700;">‹</button>
+                    <div style="font-size:12px;font-weight:700;color:#1D2E73;min-width:140px;text-align:center;">${opsEsc(opsFechaCorta(lunes))} – ${opsEsc(opsFechaCorta(fin))}</div>
+                    <button onclick="opsGtelMoverSemana(7)" style="background:#f1f5f9;border:none;color:#334155;padding:6px 10px;border-radius:7px;cursor:pointer;font-size:12px;font-weight:700;">›</button>
+                </div>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:12px;">
+                <div style="background:#f8fafc;border-radius:10px;padding:10px 12px;"><div style="font-size:10.5px;color:#64748b;font-weight:700;text-transform:uppercase;">De guardia</div><div style="font-size:14px;font-weight:800;color:${quien ? "#1D2E73" : "#b45309"};">${opsEsc(quien ? quien.nombre : "Sin asignar")}</div></div>
+                <div style="background:#f8fafc;border-radius:10px;padding:10px 12px;"><div style="font-size:10.5px;color:#64748b;font-weight:700;text-transform:uppercase;">Atenciones esta semana</div><div style="font-size:14px;font-weight:800;color:#1D2E73;">${bit.length}${bit.filter(b => b.accion === "pendiente").length ? ` <span style="font-size:11px;color:#b45309;">· ${bit.filter(b => b.accion === "pendiente").length} pendiente(s)</span>` : ""}</div></div>
+                <div style="background:#f8fafc;border-radius:10px;padding:10px 12px;"><div style="font-size:10.5px;color:#64748b;font-weight:700;text-transform:uppercase;">Vales por pagar</div><div style="font-size:14px;font-weight:800;color:${porPagar.length ? "#b45309" : "#15803d"};">${porPagar.length} · ${opsViaDinero(porPagar.reduce((a, v) => a + Number(v.monto || 0), 0))}</div></div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+                ${gestion ? `<button onclick="opsGtelNuevaAtencion()" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Registrar atención</button>
+                <button onclick="opsGtelNuevoVale()" class="mkt-add-btn" style="background:#15803d;">${ICON.plus} Generar vale de guardia</button>
+                <button onclick="opsGtelConfig()" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;">Monto y firmas</button>` : ""}
+            </div>
+            <div style="font-size:11.5px;font-weight:700;color:#1D2E73;margin:6px 0;">Bitácora de la semana</div>
+            ${bit.length ? bit.map(b => `<div style="padding:8px 0;border-bottom:1px solid #eef1f5;font-size:12px;">
+                <div style="display:flex;justify-content:space-between;gap:8px;"><b>${opsEsc([b.estacion, b.cliente].filter(Boolean).join(" · ") || "Sin estación")}</b><span style="color:#94a3b8;font-size:11px;white-space:nowrap;">${opsEsc(opsFechaCorta(b.fecha))} ${opsEsc(b.hora || "")} · ${opsEsc(b.canal || "")}</span></div>
+                <div style="color:#334155;margin-top:2px;">${opsEsc(b.descripcion)}</div>
+                <div style="font-size:11px;color:${b.accion === "pendiente" ? "#b45309" : "#64748b"};margin-top:2px;">${opsEsc(OPS_GTEL_ACC[b.accion] || b.accion || "")}${b.folio_ref ? " · " + opsEsc(b.folio_ref) : ""} · atendió ${opsEsc(b.tecnico_nombre || "")}</div></div>`).join("") : `<div style="color:#94a3b8;font-size:12px;padding:6px 0 10px;">Sin atenciones registradas esta semana.</div>`}
+            <div style="font-size:11.5px;font-weight:700;color:#1D2E73;margin:14px 0 6px;">Vales de guardia</div>
+            ${vales.length ? `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;">
+                <thead><tr style="text-align:left;color:#64748b;font-size:10.5px;text-transform:uppercase;"><th style="padding:6px;">Técnico</th><th style="padding:6px;">Guardia</th><th style="padding:6px;text-align:right;">Monto</th><th style="padding:6px;">Estatus</th><th></th></tr></thead>
+                <tbody>${vales.slice(0, 40).map(v => `<tr style="border-top:1px solid #eef1f5;">
+                    <td style="padding:6px;"><b>${opsEsc(v.tecnico_nombre)}</b><div style="font-size:10.5px;color:#94a3b8;">${opsEsc(v.folio || "")}</div></td>
+                    <td style="padding:6px;">${opsEsc(opsFechaCorta(v.fecha_guardia))}</td><td style="padding:6px;text-align:right;">${opsViaDinero(v.monto)}</td>
+                    <td style="padding:6px;">${chipV(v.estatus)}${v.pagado_en ? `<div style="font-size:10.5px;color:#94a3b8;">${opsEsc(opsFechaCorta(v.pagado_en))}</div>` : ""}</td>
+                    <td style="padding:6px;white-space:nowrap;text-align:right;">
+                        <button onclick="opsGtelImprimirVale(${v.id})" style="background:#E9ECF5;border:none;color:#1D2E73;padding:4px 8px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">Vale</button>
+                        ${gestion && v.estatus === "Generado" ? `<button onclick="opsGtelEstatusVale(${v.id},'Entregado')" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:4px 8px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">Entregado</button>` : ""}
+                        ${gestion && v.estatus !== "Pagado" ? `<button onclick="opsGtelEstatusVale(${v.id},'Pagado')" style="background:#15803d;border:none;color:#fff;padding:4px 8px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">Pagado</button>
+                        <button onclick="opsGtelEstatusVale(${v.id},'Cancelado')" title="Cancelar vale" style="background:none;border:none;color:#94a3b8;cursor:pointer;display:inline-flex;vertical-align:middle;">${ICON.close}</button>` : ""}
+                    </td></tr>`).join("")}</tbody></table></div>` : `<div style="color:#94a3b8;font-size:12px;padding:6px 0;">Todavía no hay vales.</div>`}
+        </div>`;
+    }
+    window.opsGtelMoverSemana = function (d) { opsGtelSemana = opsSumarDias(opsGtelSemana || opsLunesDe(new Date()), d); opsGtelPintar(); };
+    function opsGtelSelTecnico(id, sel) {
+        return `<select id="${id}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">${opsTecOperativos().slice().sort((a, b) => String(a.nombre).localeCompare(String(b.nombre), "es")).map(t => `<option value="${t.id}" ${t.id === sel ? "selected" : ""}>${opsEsc(t.nombre)}</option>`).join("")}</select>`;
+    }
+    window.opsGtelNuevaAtencion = function () {
+        const quien = opsGtelDeGuardia(opsLunesDe(new Date()));
+        const lbl = t => `<label style="font-size:11.5px;color:#64748b;font-weight:600;">${t}</label>`;
+        const inp = (id, v, t) => `<input id="${id}" type="${t || "text"}" value="${opsEsc(v || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;box-sizing:border-box;">`;
+        document.getElementById("ops-modal-wrap").innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;">
+            <div style="background:#fff;border-radius:14px;width:480px;max-width:96vw;max-height:92vh;overflow-y:auto;padding:22px;">
+                <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:12px;">Registrar atención de guardia</div>
+                ${lbl("Atendió")}${opsGtelSelTecnico("gtel-tec", quien && quien.id)}
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0 8px;">
+                    <div>${lbl("Fecha")}${inp("gtel-fecha", opsHoy(), "date")}</div><div>${lbl("Hora")}${inp("gtel-hora", new Date().toTimeString().slice(0, 5), "time")}</div>
+                    <div>${lbl("Canal")}<select id="gtel-canal" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"><option>Llamada</option><option>WhatsApp</option><option>Mensaje</option></select></div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 8px;"><div>${lbl("Cliente")}${inp("gtel-cliente")}</div><div>${lbl("Estación")}${inp("gtel-estacion")}</div></div>
+                ${lbl("¿Qué reportaron y qué se hizo?")}<textarea id="gtel-desc" rows="3" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;font-family:inherit;"></textarea>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 8px;">
+                    <div>${lbl("Resultado")}<select id="gtel-acc" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">${Object.keys(OPS_GTEL_ACC).map(k => `<option value="${k}">${OPS_GTEL_ACC[k]}</option>`).join("")}</select></div>
+                    <div>${lbl("Folio (si se generó)")}${inp("gtel-folio")}</div>
+                </div>
+                <div style="display:flex;gap:8px;justify-content:flex-end;">
+                    <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
+                    <button onclick="opsGtelGuardarAtencion()" class="mkt-add-btn" style="background:#1D2E73;">Guardar</button>
+                </div>
+            </div>
+        </div>`;
+    };
+    window.opsGtelGuardarAtencion = async function () {
+        const g = id => (document.getElementById(id).value || "").trim();
+        if (!g("gtel-desc")) { alert("Describe qué reportaron y qué se hizo."); return; }
+        const tid = g("gtel-tec");
+        try {
+            const sb = await opsSb();
+            const { error } = await sb.from("ops_guardia_tel_bitacora").insert({ fecha: g("gtel-fecha") || opsHoy(), hora: g("gtel-hora") || null, tecnico_id: tid, tecnico_nombre: opsNombreTecnico(tid), canal: g("gtel-canal"), cliente: g("gtel-cliente") || null, estacion: g("gtel-estacion") || null, descripcion: g("gtel-desc"), accion: g("gtel-acc"), folio_ref: g("gtel-folio") || null, origen: "portal" });
+            if (error) throw error;
+            document.getElementById("ops-modal-wrap").innerHTML = "";
+            opsGtelPintar();
+        } catch (e) { alert("No se pudo guardar: " + (e.message || e)); }
+    };
+    window.opsGtelNuevoVale = function () {
+        const lunes = opsGtelSemana || opsLunesDe(new Date());
+        const quien = opsGtelDeGuardia(lunes);
+        const sab = opsSumarDias(lunes, 5), dom = opsSumarDias(lunes, 6);
+        const lbl = t => `<label style="font-size:11.5px;color:#64748b;font-weight:600;">${t}</label>`;
+        document.getElementById("ops-modal-wrap").innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;">
+            <div style="background:#fff;border-radius:14px;width:440px;max-width:96vw;padding:22px;">
+                <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:4px;">Generar vale de guardia</div>
+                <div style="font-size:11.5px;color:#64748b;margin-bottom:12px;">Un vale "NO DEDUCIBLE" por cada día de guardia. Si ya existe uno para esa persona y fecha, no se duplica.</div>
+                ${lbl("Técnico")}${opsGtelSelTecnico("gtel-v-tec", quien && quien.id)}
+                ${lbl("Días de guardia (marca uno o varios)")}
+                <div style="display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px;">${[0, 1, 2, 3, 4, 5, 6].map(i => { const d = opsSumarDias(lunes, i); return `<label style="display:flex;align-items:center;gap:5px;border:1px solid #e2e8f0;border-radius:8px;padding:5px 8px;font-size:12px;cursor:pointer;"><input type="checkbox" class="gtel-v-dia" value="${d}" ${d === sab || d === dom ? "checked" : ""}> ${opsEsc(opsFechaCorta(d))}</label>`; }).join("")}</div>
+                ${lbl("Monto por día $")}<input id="gtel-v-monto" type="number" step="0.01" min="0" value="${opsGtelCfg.montoDia}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;box-sizing:border-box;">
+                ${lbl("Autoriza (jefe inmediato)")}<input id="gtel-v-aut" value="${opsEsc(opsGtelCfg.autoriza || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 14px;box-sizing:border-box;">
+                <div style="display:flex;gap:8px;justify-content:flex-end;">
+                    <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
+                    <button onclick="opsGtelGuardarVales()" class="mkt-add-btn" style="background:#15803d;">Generar</button>
+                </div>
+            </div>
+        </div>`;
+    };
+    window.opsGtelGuardarVales = async function () {
+        const tid = document.getElementById("gtel-v-tec").value;
+        const dias = Array.from(document.querySelectorAll(".gtel-v-dia:checked")).map(c => c.value);
+        const monto = Number(document.getElementById("gtel-v-monto").value) || 0;
+        const autoriza = document.getElementById("gtel-v-aut").value.trim();
+        if (!dias.length) { alert("Marca al menos un día."); return; }
+        if (!(monto > 0)) { alert("Captura el monto."); return; }
+        const nombre = opsNombreTecnico(tid);
+        try {
+            const sb = await opsSb();
+            let hechos = 0, repetidos = 0;
+            for (const d of dias) {
+                const [a, m, dd] = d.split("-");
+                const r = await sb.from("ops_guardia_tel_vales").insert({ fecha_guardia: d, tecnico_id: tid, tecnico_nombre: nombre, monto, concepto: `GUARDIA TELEFÓNICA DEL ${dd}/${m}/${a}`, orden_servicio: "NA", autoriza, creado_por: opsUsuarioActual() }).select("id").single();
+                if (r.error) { if (String(r.error.code) === "23505") { repetidos++; continue; } throw r.error; }
+                await sb.from("ops_guardia_tel_vales").update({ folio: "GT-" + String(r.data.id).padStart(5, "0") }).eq("id", r.data.id);
+                hechos++;
+            }
+            document.getElementById("ops-modal-wrap").innerHTML = "";
+            opsViaToast(`${hechos} vale(s) generado(s)${repetidos ? ` · ${repetidos} ya existían` : ""}.`, "#15803d");
+            opsGtelPintar();
+        } catch (e) { alert("No se pudo generar: " + (e.message || e)); }
+    };
+    window.opsGtelEstatusVale = async function (id, estatus) {
+        if (estatus === "Cancelado" && !confirm("¿Cancelar este vale?")) return;
+        try {
+            const sb = await opsSb();
+            const { error } = await sb.from("ops_guardia_tel_vales").update({ estatus, pagado_en: estatus === "Pagado" ? opsHoy() : null }).eq("id", id);
+            if (error) throw error;
+            opsGtelPintar();
+        } catch (e) { alert("No se pudo actualizar: " + (e.message || e)); }
+    };
+    window.opsGtelConfig = function () {
+        const v = prompt("Monto por día de guardia ($):", opsGtelCfg.montoDia); if (v === null) return;
+        const a = prompt("¿Quién autoriza los vales? (jefe inmediato)", opsGtelCfg.autoriza || ""); if (a === null) return;
+        const datos = { ...opsGtelCfg, montoDia: Number(v) || opsGtelCfg.montoDia, autoriza: a.trim() };
+        opsSb().then(sb => sb.from("ops_config_guardia_tel").upsert({ id: "general", datos, actualizado_en: new Date().toISOString(), actualizado_por: opsUsuarioActual() }))
+            .then(r => { if (r && r.error) throw r.error; opsGtelCfg = datos; opsGtelPintar(); }).catch(e => alert("No se pudo guardar: " + (e.message || e)));
+    };
+    // Vale "NO DEDUCIBLE" con el mismo contenido que VALE_COBRO_GUARDIAS.docx.
+    window.opsGtelImprimirVale = function (id) {
+        const v = opsGtelVales.find(x => x.id === id); if (!v) return;
+        const w = window.open("", "_blank"); if (!w) { alert("Permite ventanas emergentes para imprimir."); return; }
+        const [a, m, d] = String(v.fecha_guardia).split("-");
+        const hoyD = new Date();
+        const fechaEmision = String(hoyD.getDate()).padStart(2, "0") + " / " + String(hoyD.getMonth() + 1).padStart(2, "0") + " / " + hoyD.getFullYear();
+        const vale = `<div class="v"><div class="t">NO DEDUCIBLE</div><div class="r">Fecha: <b>${fechaEmision}</b> &nbsp; Folio: <b>${opsEsc(v.folio || "")}</b></div>
+            <div class="r">Orden de servicio: <b>${opsEsc(v.orden_servicio || "NA")}</b> &nbsp;&nbsp; Valor: <b>${opsViaDinero(v.monto)}</b></div>
+            <p>Presento el siguiente documento con valor de <b>${opsViaDinero(v.monto)}</b> por concepto de gasto no deducible, al cual se anexa y/o comprobante a la que corresponde el presente gasto.</p>
+            <div class="r">Proyecto y/o estación área: <b>${opsEsc(opsGtelCfg.proyecto || "PUBLICACIÓN DE FOLIOS Y GUARDIA TÉCNICA")}</b></div>
+            <div class="r">Hora de salida, hora de regreso: <b>${d}/${m}/${a}</b></div>
+            <div class="r">Se entregó documento: &nbsp; Sí [ ] &nbsp; No [ ]</div>
+            <div class="r">Motivo: <b>${opsEsc(v.concepto || "")}</b></div>
+            <div class="f"><div><b>${opsEsc(v.autoriza || "")}</b><br>Autoriza<br>Jefe inmediato</div><div><b>${opsEsc(v.tecnico_nombre)}</b><br>Entrega<br>Técnico</div></div></div>`;
+        w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Vale ${opsEsc(v.folio || "")}</title><style>body{font-family:Arial,sans-serif;font-size:12.5px;margin:24px;color:#111}.v{border:1.5px solid #111;padding:16px 18px;margin-bottom:22px}.t{text-align:center;font-weight:bold;font-size:16px;letter-spacing:1px;margin-bottom:10px}.r{margin:6px 0}.f{display:flex;justify-content:space-around;margin-top:46px;text-align:center}.f div{border-top:1px solid #111;padding-top:4px;width:38%}@media print{button{display:none}}</style></head><body>${vale}${vale}<button onclick="print()" style="padding:8px 16px">Imprimir</button></body></html>`);
+        w.document.close();
     };
 
 })();
