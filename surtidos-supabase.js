@@ -614,7 +614,7 @@
   //  completo en `datos` (jsonb) y su id en `ref` (texto, conserva los ids
   //  originales de Firestore, que ya están congelados dentro de los pedidos).
   // ═══════════════════════════════════════════════════════════════════════
-  var TABLAS_DOCS = { puntos_referencia: 1, recolecciones_locales: 1, tv_avisos: 1 };
+  var TABLAS_DOCS = { puntos_referencia: 1, recolecciones_locales: 1, tv_avisos: 1, config_portal: 1, destinos_envio: 1 };
   function _chkTabla(t) { if (!TABLAS_DOCS[t]) throw new Error('Colección no migrada a Supabase: ' + t); }
   function _nuevoIdDoc() {
     var c = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789', s = '', a = new Uint8Array(20);

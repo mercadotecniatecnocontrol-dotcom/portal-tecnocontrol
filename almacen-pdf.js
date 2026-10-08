@@ -46,6 +46,71 @@
     ciudadEstado: 'Chihuahua, Chihuahua, M\u00e9xico',
     telefono: '614-417-0152'
   };
+  // ── Clasificación del pedido (oct-2026) ──
+  // La clave de cada partida decide a qué área va: Servicio y Viáticos → Operaciones,
+  // PRO (mercancía sobre pedido) → Compras, el resto → Almacén. Las listas de claves,
+  // las empresas y el WhatsApp de Compras se editan sin programar (botón "Claves").
+  var CLASIF_DEFAULT = {
+    clavesServicio: ['SERV','SERVEX','CALMV','CALST','CALMEDAF','1001','OPEYMTO'],
+    clavesViaticos: ['VIA','VIAT','1002'],
+    clavesPro: ['PRO'],
+    whatsappCompras: '526141567795',
+    nombreCompras: 'Ana (Compras)',
+    empresas: [
+      { clave: 'TECNOCONTROL', nombre: 'Hedma Tecnocontrol', buscar: ['HEDMA TECNOCONTROL','TECNOCONTROL','HTE1107133B3'] },
+      { clave: 'JOMAR', nombre: 'JOMAR Verificaciones', buscar: ['JOMAR VERIFICACIONES','JOMAR','JVE120530F55'] }
+    ]
+  };
+  var TIPOS_LINEA = { producto: 'Producto', servicio: 'Servicio', viaticos: 'Vi\u00e1ticos', pro: 'PRO (sobre pedido)' };
+  var CLASIF_INFO = {
+    productos:       { t: 'Solo productos',            c: '#0e7490', d: 'Flujo normal de Almac\u00e9n.' },
+    servicio:        { t: 'Servicio sin piezas',       c: '#7c3aed', d: 'Va a Operaciones para programarse. En Almac\u00e9n solo aparece en la cola de servicios (seguimiento).' },
+    servicio_piezas: { t: 'Servicio con piezas',       c: '#7c3aed', d: 'Va a Operaciones. Almac\u00e9n surte las piezas (no cuenta en m\u00e9tricas de Almac\u00e9n).' },
+    pro:             { t: 'PRO \u00b7 sobre pedido',    c: '#b45309', d: 'Va a Compras para pedirse al proveedor, con seguimiento visible para el vendedor.' },
+    pro_mixto:       { t: 'PRO + productos',           c: '#b45309', d: 'Las partidas PRO van a Compras; los productos normales siguen el flujo de Almac\u00e9n.' }
+  };
+  var _clasifCfg = null;
+  function cargarClasif(forzar) {
+    if (_clasifCfg && !forzar) return Promise.resolve(_clasifCfg);
+    if (!window.tcSbDocs) return Promise.resolve(CLASIF_DEFAULT);
+    return window.tcSbDocs.getDoc('config_portal', 'clasificacion_pedidos').then(function (snap) {
+      _clasifCfg = Object.assign({}, CLASIF_DEFAULT, snap && snap.exists() ? snap.data() : {});
+      return _clasifCfg;
+    }).catch(function (e) { console.warn('[almacen-pdf] config de claves no disponible:', e && e.message); return CLASIF_DEFAULT; });
+  }
+  function normClave(c) { return String(c || '').trim().toUpperCase(); }
+  function tipoLinea(p, cfg) {
+    cfg = cfg || _clasifCfg || CLASIF_DEFAULT;
+    var c = normClave(p.clave), d = String(p.desc || '').toUpperCase();
+    var en = function (lista) { return (lista || []).map(normClave).indexOf(c) >= 0; };
+    if (en(cfg.clavesPro)) return 'pro';
+    if (en(cfg.clavesViaticos) || /VI[AÁ]TICO/.test(d)) return 'viaticos';
+    if (en(cfg.clavesServicio) || /^SERVICIO\b/.test(d)) return 'servicio';
+    return 'producto';
+  }
+  function clasificarPedido(productos) {
+    var hay = { producto: false, servicio: false, viaticos: false, pro: false };
+    (productos || []).forEach(function (p) { hay[p.tipo || 'producto'] = true; });
+    var ops = hay.servicio || hay.viaticos;
+    if (ops) return (hay.producto || hay.pro) ? 'servicio_piezas' : 'servicio';
+    if (hay.pro) return hay.producto ? 'pro_mixto' : 'pro';
+    return 'productos';
+  }
+  // Empresa que emite el pedido: se busca en el encabezado (antes de "Datos del Cliente")
+  function detectarEmpresa(texto, cfg) {
+    cfg = cfg || _clasifCfg || CLASIF_DEFAULT;
+    var lineas = String(texto || '').split('\n'), cab = [];
+    for (var i = 0; i < lineas.length; i++) { if (/Datos\s+del\s+Cliente/i.test(lineas[i])) break; cab.push(lineas[i]); }
+    var t = ' ' + cab.join(' ').toUpperCase().replace(/\s+/g, ' ') + ' ';
+    var emp = cfg.empresas || [];
+    for (var j = 0; j < emp.length; j++) {
+      var b = emp[j].buscar || [emp[j].clave];
+      for (var k = 0; k < b.length; k++) { if (b[k] && t.indexOf(String(b[k]).toUpperCase()) >= 0) return emp[j].clave; }
+    }
+    return '';
+  }
+  window.tcClasifPedidos = { cargar: cargarClasif, tipoLinea: tipoLinea, clasificar: clasificarPedido, info: CLASIF_INFO, tipos: TIPOS_LINEA };
+
   // Si almacen.js ya se carg\u00f3 en la p\u00e1gina, se reusa su funci\u00f3n; si no, se lee directo.
   function listaAlmacenes(){
     if (window.__almListaAlmacenes) return window.__almListaAlmacenes();
@@ -293,8 +358,17 @@
  
     // ── Folio (anclado a "Folio:", NO a "Cotización") ──
     for (i = 0; i < lineas.length; i++) {
-      m = lineas[i].match(/Folio\s*:?\s*([A-Z]{2,4}\d{4,})/i);
+      m = lineas[i].match(/Folio\s*:?\s*([A-Z]{0,4}\d{4,})/i);
       if (m) { out.folio = m[1].toUpperCase(); break; }
+    }
+    // Respaldo (p. ej. JOMAR): el folio quedó en otra línea; se toma el primer número
+    // largo del encabezado que no sea la cotización.
+    if (!out.folio) {
+      for (i = 0; i < lineas.length; i++) {
+        if (/Cotizaci/i.test(lineas[i]) || /Datos\s+del\s+Cliente/i.test(lineas[i])) break;
+        m = lineas[i].match(/^\s*([A-Z]{0,4}\d{8,})\s*$/);
+        if (m) { out.folio = m[1].toUpperCase(); break; }
+      }
     }
  
     // ── Cliente (quita el "( NN )" y corta la columna de Datos Bancarios) ──
@@ -341,7 +415,9 @@
     // NOTA (fix): la clave admite además "-", "." y "/" porque hay claves de
     // proveedor tipo "852-199-5" que antes NO hacían match (solo se permitía
     // [A-Za-z0-9]) y la línea completa del producto se descartaba en silencio.
-    var reProd = /^(\d+(?:\.\d+)?)\s+([A-Za-z0-9\-\.\/]{2,14})\s+(.+?)\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})$/;
+    // P/U e importe aceptan más de 2 decimales (JOMAR los imprime con 6: 7,500.000000).
+    var reProd = /^(\d+(?:\.\d+)?)\s+([A-Za-z0-9\-\.\/]{2,14})\s+(.+?)\s+([\d,]+\.\d+)\s+([\d,]+\.\d+)$/;
+    var dosDec = function (v) { var n = parseFloat(String(v).replace(/,/g, '')); return isNaN(n) ? v : n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
     var enTabla = false;
     lineas.forEach(function (ln) {
       if (/Cantidad.*Clave.*Descrip/i.test(ln)) { enTabla = true; return; }
@@ -353,8 +429,13 @@
         if (cant === Math.floor(cant)) cant = Math.floor(cant);
         var desc = mp[3].replace(/\s{2,}/g, ' ').trim();
         if (cant > 0 && /[A-Za-zÁÉÍÓÚÑ]{2,}/.test(desc)) {
-          out.productos.push({ clave: mp[2], cant: cant, desc: desc, pu: mp[4], importe: mp[5] });
+          out.productos.push({ clave: mp[2], cant: cant, desc: desc, pu: dosDec(mp[4]), importe: dosDec(mp[5]) });
         }
+      } else if (out.productos.length && /[A-Za-zÁÉÍÓÚÑ]{2,}/.test(ln) && !/Cantidad.*Clave/i.test(ln)) {
+        // Renglón de especificación bajo la partida (ej. "Bota de seguridad talla 5",
+        // "REVISIÓN, DIAGNÓSTICO E INSTALACIÓN"); puede ocupar varias líneas.
+        var ult = out.productos[out.productos.length - 1];
+        ult.espec = ((ult.espec ? ult.espec + ' ' : '') + ln.replace(/\s{2,}/g, ' ').trim()).trim();
       }
     });
  
@@ -420,6 +501,16 @@
       + '.alm-estacion-selected button{margin-top:8px;border:1px solid #fecaca;background:#fff;color:#dc2626;border-radius:7px;padding:5px 10px;font-size:11.5px;font-weight:700;cursor:pointer;}'
       + '.alm-estacion-link{margin-top:8px;background:none;border:none;color:#0e7490;font-size:11.5px;font-weight:700;cursor:pointer;text-decoration:underline;padding:0;}'
       + '.alm-whatsapp-btn{background:#25D366;color:#fff;}'
+      + '.alm-tbl .ctipo{width:132px;} .alm-tbl .ctipo select{width:100%;font-size:11.5px;padding:5px 4px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;}'
+      + '.alm-espec{display:block;width:100%;margin-top:4px;font-size:11px;color:#475569;border:1px dashed #cbd5e1 !important;}'
+      + '.alm-clasif-box{border-radius:12px;padding:10px 14px;margin:10px 0 6px;border:1px solid;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;}'
+      + '.alm-clasif-box .t{font-size:13px;font-weight:800;} .alm-clasif-box .d{font-size:11.5px;color:#475569;flex-basis:100%;}'
+      + '.alm-clasif-box select{font-size:12px;padding:4px 6px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;}'
+      + '.alm-clasif-box .lnk{font-size:11px;font-weight:700;color:#1D2E73;background:none;border:none;cursor:pointer;text-decoration:underline;margin-left:auto;}'
+      + '.alm-cfg-ov{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px;}'
+      + '.alm-cfg-card{background:#fff;border-radius:14px;max-width:520px;width:100%;padding:18px;max-height:90vh;overflow:auto;}'
+      + '.alm-cfg-card label{display:block;font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin:12px 0 4px;}'
+      + '.alm-cfg-card textarea,.alm-cfg-card input{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:8px;font-size:12.5px;font-family:inherit;}'
       + '.alm-docs-box{border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;margin-bottom:14px;background:#f8fafc;}'
       + '.alm-doc-item{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:9px;margin-bottom:6px;font-size:12.5px;color:#334155;}'
       + '.alm-doc-item .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}'
@@ -479,8 +570,9 @@
       + '<button type="button" class="alm-addrow" onclick="document.getElementById(\'alm-docs-file\').click()">+ Agregar documento(s) o foto(s)</button>'
       + '<input type="file" id="alm-docs-file" accept="application/pdf,image/*" multiple style="display:none">'
       + '</div>'
+      + '<div id="alm-clasif"></div>'
       + '<div style="font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#64748b;margin:6px 0 2px;">Productos</div>'
-      + '<table class="alm-tbl"><thead><tr><th class="cclave">Clave</th><th class="ccant">Cant.</th><th>Descripción</th><th class="cdel"></th></tr></thead><tbody id="alm-rows"></tbody></table>'
+      + '<table class="alm-tbl"><thead><tr><th class="cclave">Clave</th><th class="ccant">Cant.</th><th>Descripción</th><th class="ctipo">Va a</th><th class="cdel"></th></tr></thead><tbody id="alm-rows"></tbody></table>'
       + '<button class="alm-addrow" onclick="window.__almPdfAddRow()">+ Agregar producto</button>'
       + '<details class="alm-raw"><summary>Ver texto extraído del PDF</summary><pre id="alm-raw"></pre></details>'
       + '</div>'
@@ -489,6 +581,7 @@
       + '<span class="alm-msg" id="alm-msg"></span>'
       + '<button class="alm-btn alm-btn-sec" id="alm-pdf-cancelbtn" onclick="window.__almPdfCerrar()">Cancelar</button>'
       + '<button class="alm-btn alm-whatsapp-btn" id="alm-whatsapp" style="display:none;" onclick="window.__almPdfWhatsApp()">Enviar por WhatsApp</button>'
+      + '<button class="alm-btn alm-whatsapp-btn" id="alm-wa-compras" style="display:none;" onclick="window.__almPdfWhatsCompras()">Enviar PRO a Compras</button>'
       + '<button class="alm-btn alm-btn-ok" id="alm-confirm" style="display:none;" onclick="window.__almPdfConfirmar()">Confirmar y crear surtido</button>'
       + '</div>'
       + '</div>';
@@ -547,12 +640,13 @@
       // Guarda una copia del PDF (para poder adjuntarlo luego); pdf.js puede "consumir"
       // el ArrayBuffer original al leerlo, así que se clona antes de pasárselo.
       try { estado.pdfBuffer = buf.slice(0); estado.pdfSize = f.size; } catch (e) { estado.pdfBuffer = null; estado.pdfSize = 0; }
-      cargarPdfJs()
-        .then(function (pdfjs) { return extraerTexto(pdfjs, buf); })
+      Promise.all([cargarPdfJs(), cargarClasif()])
+        .then(function (r) { return extraerTexto(r[0], buf); })
         .then(function (texto) {
           estado.rawText = texto;
           var parsed = parsearCHH(texto);
-          estado.productos = parsed.productos.slice();
+          estado.empresa = detectarEmpresa(texto);
+          estado.productos = parsed.productos.map(function (p) { return Object.assign({}, p, { tipo: tipoLinea(p) }); });
           estado.total = parsed.total || '';
           pintarRevision(parsed);
           msg(parsed.productos.length
@@ -589,14 +683,81 @@
     var tb = document.getElementById('alm-rows');
     if (!tb) return;
     tb.innerHTML = estado.productos.map(function (p, i) {
+      if (!p.tipo) p.tipo = tipoLinea(p);
       return '<tr>'
-        + '<td class="cclave"><input value="' + esc(p.clave) + '" oninput="window.__almPdfEdit(' + i + ',\'clave\',this.value)"></td>'
+        + '<td class="cclave"><input value="' + esc(p.clave) + '" oninput="window.__almPdfEdit(' + i + ',\'clave\',this.value)" onchange="window.__almPdfReclasificar(' + i + ')"></td>'
         + '<td class="ccant"><input type="number" min="0" step="any" inputmode="decimal" value="' + (p.cant || '') + '" oninput="window.__almPdfEdit(' + i + ',\'cant\',this.value)"></td>'
-        + '<td><input value="' + esc(p.desc) + '" oninput="window.__almPdfEdit(' + i + ',\'desc\',this.value)"></td>'
+        + '<td><input value="' + esc(p.desc) + '" oninput="window.__almPdfEdit(' + i + ',\'desc\',this.value)">'
+        +   '<input class="alm-espec" placeholder="Especificaci\u00f3n (opcional)" value="' + esc(p.espec || '') + '" oninput="window.__almPdfEdit(' + i + ',\'espec\',this.value)"></td>'
+        + '<td class="ctipo"><select onchange="window.__almPdfTipo(' + i + ',this.value)">'
+        +   Object.keys(TIPOS_LINEA).map(function (k) { return '<option value="' + k + '"' + (p.tipo === k ? ' selected' : '') + '>' + TIPOS_LINEA[k] + '</option>'; }).join('')
+        + '</select></td>'
         + '<td class="cdel"><button class="alm-del" title="Quitar" onclick="window.__almPdfDelRow(' + i + ')">&times;</button></td>'
         + '</tr>';
     }).join('');
+    renderClasif();
   }
+
+  // Recuadro con el tipo de pedido, la empresa y a dónde se va a mandar.
+  function renderClasif() {
+    var box = document.getElementById('alm-clasif');
+    if (!box) return;
+    var cfg = _clasifCfg || CLASIF_DEFAULT;
+    estado.clasificacion = clasificarPedido(estado.productos);
+    var inf = CLASIF_INFO[estado.clasificacion];
+    var yo = (window.auth && window.auth.currentUser && window.auth.currentUser.email) || '';
+    var puedeCfg = !!(window.esAdminTotal && window.esAdminTotal(yo));
+    var emp = (cfg.empresas || []).slice().sort(function (a, b) { return String(a.nombre).localeCompare(String(b.nombre)); });
+    box.innerHTML = '<div class="alm-clasif-box" style="border-color:' + inf.c + '55;background:' + inf.c + '0d;">'
+      + '<span class="t" style="color:' + inf.c + '">' + inf.t + '</span>'
+      + '<span style="font-size:12px;color:#64748b;">Empresa: <select onchange="window.__almPdfEmpresa(this.value)">'
+      +   '<option value="">Sin identificar</option>'
+      +   emp.map(function (e) { return '<option value="' + esc(e.clave) + '"' + (estado.empresa === e.clave ? ' selected' : '') + '>' + esc(e.nombre) + '</option>'; }).join('')
+      + '</select></span>'
+      + (puedeCfg ? '<button type="button" class="lnk" onclick="window.__almPdfConfigClaves()">Claves y empresas</button>' : '')
+      + '<span class="d">' + inf.d + ' Puedes corregir a d\u00f3nde va cada partida en la columna \u201cVa a\u201d.</span>'
+      + '</div>';
+  }
+  window.__almPdfTipo = function (i, v) { if (estado.productos[i]) { estado.productos[i].tipo = v; estado.productos[i].tipoManual = true; renderClasif(); } };
+  window.__almPdfReclasificar = function (i) { var p = estado.productos[i]; if (p && !p.tipoManual) { p.tipo = tipoLinea(p); renderRows(); } };
+  window.__almPdfEmpresa = function (v) { estado.empresa = v; };
+
+  // Pantalla de configuración (solo admins): claves por área, empresas y WhatsApp de Compras.
+  window.__almPdfConfigClaves = function () {
+    cargarClasif(true).then(function (cfg) {
+      var lista = function (a) { return (a || []).join(', '); };
+      var ov = document.createElement('div'); ov.className = 'alm-cfg-ov';
+      ov.innerHTML = '<div class="alm-cfg-card">'
+        + '<div style="font-size:15px;font-weight:800;color:#0f172a;">Claves y empresas de los pedidos</div>'
+        + '<div style="font-size:12px;color:#64748b;margin-top:4px;">Separa las claves con comas. Lo que no est\u00e9 en ninguna lista se trata como producto de Almac\u00e9n.</div>'
+        + '<label>Claves de servicio (van a Operaciones)</label><textarea id="cfg-serv" rows="2">' + esc(lista(cfg.clavesServicio)) + '</textarea>'
+        + '<label>Claves de vi\u00e1ticos (van a Operaciones)</label><textarea id="cfg-via" rows="2">' + esc(lista(cfg.clavesViaticos)) + '</textarea>'
+        + '<label>Claves PRO \u00b7 sobre pedido (van a Compras)</label><textarea id="cfg-pro" rows="2">' + esc(lista(cfg.clavesPro)) + '</textarea>'
+        + '<label>WhatsApp de Compras (con 52 al inicio)</label><input id="cfg-wa" value="' + esc(cfg.whatsappCompras || '') + '">'
+        + '<label>Empresas (una por l\u00ednea: CLAVE | Nombre | textos a buscar en el encabezado del PDF separados por coma)</label>'
+        + '<textarea id="cfg-emp" rows="6">' + esc((cfg.empresas || []).map(function (e) { return e.clave + ' | ' + e.nombre + ' | ' + (e.buscar || []).join(', '); }).join('\n')) + '</textarea>'
+        + '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">'
+        +   '<button class="alm-btn alm-btn-sec" id="cfg-cancel">Cancelar</button><button class="alm-btn alm-btn-ok" id="cfg-ok">Guardar</button>'
+        + '</div></div>';
+      document.body.appendChild(ov);
+      var aLista = function (id) { return document.getElementById(id).value.split(',').map(normClave).filter(Boolean); };
+      ov.querySelector('#cfg-cancel').onclick = function () { ov.remove(); };
+      ov.querySelector('#cfg-ok').onclick = function () {
+        var empresas = document.getElementById('cfg-emp').value.split('\n').map(function (l) {
+          var p = l.split('|').map(function (x) { return x.trim(); });
+          if (!p[0]) return null;
+          return { clave: p[0].toUpperCase(), nombre: p[1] || p[0], buscar: (p[2] || p[0]).split(',').map(function (x) { return x.trim(); }).filter(Boolean) };
+        }).filter(Boolean);
+        var datos = { clavesServicio: aLista('cfg-serv'), clavesViaticos: aLista('cfg-via'), clavesPro: aLista('cfg-pro'),
+          whatsappCompras: document.getElementById('cfg-wa').value.replace(/\D/g, ''), empresas: empresas };
+        window.tcSbDocs.updateDoc('config_portal', 'clasificacion_pedidos', datos).then(function () {
+          _clasifCfg = Object.assign({}, CLASIF_DEFAULT, cfg, datos);
+          estado.productos.forEach(function (p) { if (!p.tipoManual) p.tipo = tipoLinea(p); });
+          ov.remove(); renderRows();
+        }).catch(function (e) { alert('No se pudo guardar: ' + (e && e.message || e)); });
+      };
+    });
+  };
  
   function esc(s) {
     return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
@@ -1225,7 +1386,7 @@
     var fechaEntrega = (document.getElementById('alm-fecha-entrega').value || '').trim();
     var prioridad = document.getElementById('alm-prio').value || 'normal';
     var productos = estado.productos
-      .map(function (p) { var o = { clave: (p.clave || '').trim(), cant: parseFloat(p.cant) || 0, desc: (p.desc || '').trim(), pu: p.pu || '', importe: p.importe || '' }; if (p.unidad) o.unidad = p.unidad; return o; })
+      .map(function (p) { var o = { clave: (p.clave || '').trim(), cant: parseFloat(p.cant) || 0, desc: (p.desc || '').trim(), pu: p.pu || '', importe: p.importe || '', tipo: p.tipo || tipoLinea(p) }; if (p.unidad) o.unidad = p.unidad; if ((p.espec || '').trim()) o.espec = p.espec.trim(); return o; })
       .filter(function (p) { return p.cant > 0 && p.desc.length > 0; });
  
     // Destino de entrega (opcional, pero si se elige un tipo se guardan sus datos)
@@ -1312,6 +1473,8 @@
           productos: productos,
           tipo: 'venta',
           origen: 'pdf',
+          empresa: estado.empresa || '',
+          clasificacion: clasificarPedido(productos),
           creadoPor: yo,
           tienePdfOriginal: adjuntarPdf,
           createdAt: new Date().toISOString()
@@ -1333,9 +1496,12 @@
     .then(function () {
       msg('✔ Surtido ' + folio + ' creado.', '#059669');
       if (window.mostrarPush) window.mostrarPush('📦 Surtido creado', 'Folio ' + folio + ' · ' + cliente, '✅');
-      estado.ultimoGuardado = { folio: folio, cliente: cliente, prioridad: prioridad, fechaEntrega: fechaEntrega, destinoTipo: destinoTipo };
+      estado.ultimoGuardado = { folio: folio, cliente: cliente, vendedor: vendedor, prioridad: prioridad, fechaEntrega: fechaEntrega, destinoTipo: destinoTipo,
+        productos: productos, clasificacion: clasificarPedido(productos) };
       btn.style.display = 'none';
       var wa = document.getElementById('alm-whatsapp'); if (wa) wa.style.display = 'inline-block';
+      var hayPro = productos.some(function (p) { return p.tipo === 'pro'; });
+      var waC = document.getElementById('alm-wa-compras'); if (waC) waC.style.display = hayPro ? 'inline-block' : 'none';
       var cancelBtn = document.getElementById('alm-pdf-cancelbtn'); if (cancelBtn) cancelBtn.textContent = 'Cerrar';
     })
     .catch(function (e) {
@@ -1373,6 +1539,9 @@
     var cf = document.getElementById('alm-confirm');
     if (cf) { cf.style.display = 'none'; cf.innerHTML = 'Confirmar y crear surtido'; }
     var wa = document.getElementById('alm-whatsapp'); if (wa) wa.style.display = 'none';
+    var waC0 = document.getElementById('alm-wa-compras'); if (waC0) waC0.style.display = 'none';
+    estado.empresa = ''; estado.clasificacion = '';
+    var clb = document.getElementById('alm-clasif'); if (clb) clb.innerHTML = '';
     var cancelBtn = document.getElementById('alm-pdf-cancelbtn'); if (cancelBtn) cancelBtn.textContent = 'Cancelar';
     var fi = document.getElementById('alm-file');
     if (fi) fi.value = '';
@@ -1405,4 +1574,35 @@
     window.open('https://wa.me/?text=' + encodeURIComponent(texto), '_blank');
   };
  
+  // =====================================================================
+  //  WhatsApp a Compras (PRO): manda el PDF original y el resumen de partidas PRO.
+  //  En celular se comparte el archivo directo; en computadora se descarga el PDF
+  //  y se abre el chat de Compras con el texto listo para adjuntarlo.
+  // =====================================================================
+  window.__almPdfWhatsCompras = function () {
+    var g = estado.ultimoGuardado;
+    if (!g) return;
+    var cfg = _clasifCfg || CLASIF_DEFAULT;
+    var pro = (g.productos || []).filter(function (p) { return p.tipo === 'pro'; });
+    var lineas = ['Pedido sobre pedido (PRO) para Compras', 'Folio: ' + g.folio, 'Cliente: ' + g.cliente, 'Vendedor: ' + (g.vendedor || ''), 'Fecha de entrega: ' + g.fechaEntrega, ''];
+    pro.forEach(function (p) { lineas.push('- ' + p.cant + ' x ' + (p.espec || p.desc)); });
+    if (g.clasificacion === 'pro_mixto') lineas.push('', 'Nota: el pedido tambi\u00e9n trae productos de almac\u00e9n; esos los surte Almac\u00e9n.');
+    var texto = lineas.join('\n');
+    var num = String(cfg.whatsappCompras || '').replace(/\D/g, '');
+    var archivo = null;
+    try { if (estado.pdfBuffer) archivo = new File([estado.pdfBuffer], 'Pedido-' + g.folio + '.pdf', { type: 'application/pdf' }); } catch (e) {}
+    if (archivo && navigator.canShare && navigator.canShare({ files: [archivo] })) {
+      navigator.share({ files: [archivo], text: texto }).catch(function () {});
+      return;
+    }
+    if (archivo) {
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(archivo); a.download = archivo.name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
+      texto += '\n\n(Adjunto el PDF del pedido)';
+    }
+    window.open('https://wa.me/' + num + '?text=' + encodeURIComponent(texto), '_blank');
+  };
+
 })();
