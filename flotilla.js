@@ -7997,7 +7997,8 @@ async function flLeerArchivo(file, maxMB = 4) {
 // ═══════════════════════════════════════════════════════
 window.flVerArchivo = function(b64, nombre) {
   if (!b64) return;
-  const esPDF = b64.startsWith('data:application/pdf');
+  // base64 viejo o liga de Storage (los PDF movidos a Storage terminan en .pdf)
+  const esPDF = b64.startsWith('data:application/pdf') || /\.pdf(\?|$)/i.test(b64);
   const ov = document.createElement('div');
   ov.className = 'fl-ov'; ov.style.zIndex = '4000';
   ov.innerHTML = `<div class="fl-modal" style="max-width:${esPDF?'860':'660'}px;width:100%;${esPDF?'height:90vh;':''}display:flex;flex-direction:column;overflow:hidden">

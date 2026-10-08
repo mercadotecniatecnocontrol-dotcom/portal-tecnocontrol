@@ -215,7 +215,9 @@
     await Promise.all(Object.keys(porBucket).map(async function(b){
       try { firmas[b] = await firmarUrls(b, porBucket[b]); } catch(e) { console.warn('[tcFlSb] firmar', b, e); firmas[b] = {}; }
     }));
-    return rows.map(function(r){ return aFormaApp(r, firmas); });
+    const out = rows.map(function(r){ return aFormaApp(r, firmas); });
+    // Fotos/firmas movidas a Storage (flotilla-archivos, "sb://…") → ligas firmadas
+    return window.tcFlArchivos ? await window.tcFlArchivos.ligas(out) : out;
   }
 
   async function misSolicitudes(opts){
@@ -343,6 +345,8 @@
     });
     if (d.desc == null && d.descripcion != null) d.desc = d.descripcion;
     if (d.prior == null && d.prioridad != null) d.prior = d.prioridad;
+    // Fotos/firmas que viven en Storage (flotilla-archivos, "sb://…") → ligas firmadas
+    if (window.tcFlArchivos) Object.assign(d, await window.tcFlArchivos.ligas(d));
     // Fotos en línea (registros viejos): se les agregan las de Storage.
     // Si no hay en línea, se dejan sin definir: flCargarEvidenciasSol las trae de adjuntos/fotos.
     if (Array.isArray(d.evidencias) && evSol.length){
@@ -381,6 +385,8 @@
   async function reconciliarEvidencias(id, row, entrantes, entrantesMeta){
     entrantes = Array.isArray(entrantes) ? entrantes : [];
     entrantesMeta = Array.isArray(entrantesMeta) ? entrantesMeta : [];
+    // Las fotos que llegan como liga firmada de flotilla-archivos se comparan como "sb://…"
+    if (window.tcFlArchivos) entrantes = entrantes.map(window.tcFlArchivos.aSb);
     const datos = row.datos || {};
     const subRes = await rest(T_SUB + '?solicitud_id=eq.' + enc(id) + '&subcol=eq.adjuntos&doc_id=eq.fotos&select=data');
     const sub = subRes && subRes[0] ? subRes[0].data : null;
@@ -428,9 +434,10 @@
     return r && r[0] || null;
   }
   async function insertarSol(id, data, merge){
-    const limpio = quitarUndef(data);
+    let limpio = quitarUndef(data);
     NO_DATOS.forEach(function(k){ delete limpio[k]; });
     Object.keys(limpio).forEach(function(k){ if (esBorrar(data[k])) delete limpio[k]; });
+    if (window.tcFlArchivos) limpio = await window.tcFlArchivos.guardar('flotilla_solicitudes', id, limpio);
     const row = Object.assign({ id: id, estado: 'Solicitud', datos: limpio }, columnasDe(data, true));
     if (merge){
       const ya = await leerFila(id);
@@ -448,6 +455,7 @@
       delete patchDatos.evidencias; delete patchDatos.evidenciasMeta;
       if (c.evidencias){ patchDatos.evidencias = c.evidencias; patchDatos.evidenciasMeta = c.evidenciasMeta; }
     }
+    if (window.tcFlArchivos) patchDatos = await window.tcFlArchivos.guardar('flotilla_solicitudes', id, patchDatos);
     Object.keys(patchDatos).forEach(function(k){
       if (NO_DATOS.indexOf(k) >= 0) return;
       if (esBorrar(patchDatos[k])) { delete datos[k]; return; }
@@ -500,13 +508,19 @@
   }
   async function escribirSub(id, subcol, docId, data, merge){
     let final = quitarUndef(data);
+    if (window.tcFlArchivos) final = await window.tcFlArchivos.guardar('flotilla_sol_sub', id + '/' + subcol + '/' + docId, final);
     if (merge){ const ya = await leerSub(id, subcol, docId); if (ya) final = Object.assign({}, ya, final); }
     await rest(T_SUB + '?on_conflict=solicitud_id,subcol,doc_id', { method: 'POST', headers: { Prefer: 'return=minimal,resolution=merge-duplicates' }, body: { solicitud_id: id, subcol: subcol, doc_id: docId, data: final } });
   }
 
   // adjuntos/fotos + fotos de Storage (las que suben la app y el portal)
+  // Lectura para mostrar: con ligas firmadas en lugar de "sb://…"
+  async function leerSubLigas(id, subcol, docId){
+    const d = await leerSub(id, subcol, docId);
+    return d && window.tcFlArchivos ? await window.tcFlArchivos.ligas(d) : d;
+  }
   async function leerAdjuntosFotos(id){
-    const sub = await leerSub(id, 'adjuntos', 'fotos');
+    const sub = await leerSubLigas(id, 'adjuntos', 'fotos');
     const row = await leerFila(id);
     const ev = row ? (row[T_EVID] || []).filter(function(e){ return e.categoria !== 'servicio' && e.medio === 'foto'; }) : [];
     if (!ev.length) return sub;
@@ -560,6 +574,7 @@
     partes.push('order=' + orden);
     if (lim) partes.push(lim);
     const rows = await rest(T_SOL + '?' + partes.join('&')) || [];
+    if (window.tcFlArchivos) await window.tcFlArchivos.prefirmar(rows.map(function(r){ return r.datos; }));
     const docs = [];
     for (const r of rows) docs.push(docSnap(refDoc([T_SOL, r.id]), await filaADoc(r)));
     return querySnap(docs);
@@ -588,6 +603,7 @@
       for (let i = 0; i < cambiados.length; i += 60){
         const lote = cambiados.slice(i, i + 60);
         const rows = await rest(T_SOL + '?id=in.(' + lote.map(function(r){ return enc(q(r.id)); }).join(',') + ')&select=' + SEL_SOL) || [];
+        if (window.tcFlArchivos) await window.tcFlArchivos.prefirmar(rows.map(function(r){ return r.datos; }));
         for (const r of rows) cache.set(r.id, { act: r.actualizado_en, data: await filaADoc(r) });
         hubo = true;
       }
@@ -634,7 +650,7 @@
     const s = r.segs;
     if (s.length === 2){ const row = await leerFila(s[1]); return docSnap(r, row ? await filaADoc(row) : null); }
     if (s.length === 4){
-      const data = (s[2] === 'adjuntos' && s[3] === 'fotos') ? await leerAdjuntosFotos(s[1]) : await leerSub(s[1], s[2], s[3]);
+      const data = (s[2] === 'adjuntos' && s[3] === 'fotos') ? await leerAdjuntosFotos(s[1]) : await leerSubLigas(s[1], s[2], s[3]);
       return docSnap(r, data);
     }
     throw new Error('Ruta no soportada: ' + r.path);
@@ -643,7 +659,8 @@
     const s = r.segs;
     if (s.length === 1) return consultarSols(r);
     if (s.length === 3){
-      const rows = await rest(T_SUB + '?solicitud_id=eq.' + enc(s[1]) + '&subcol=eq.' + enc(s[2]) + '&select=doc_id,data&order=creado_en.asc') || [];
+      let rows = await rest(T_SUB + '?solicitud_id=eq.' + enc(s[1]) + '&subcol=eq.' + enc(s[2]) + '&select=doc_id,data&order=creado_en.asc') || [];
+      if (window.tcFlArchivos) rows = await window.tcFlArchivos.ligas(rows);
       return querySnap(rows.map(function(x){ return docSnap(refDoc([s[0], s[1], s[2], x.doc_id]), x.data); }));
     }
     throw new Error('Ruta no soportada: ' + r.path);
@@ -1013,6 +1030,29 @@
     function poner(v){ if (typeof v === 'string') return v.indexOf('sb://') === 0 ? ((_firmas[v.slice(5)] || {}).url || '') : v; if (Array.isArray(v)) return v.map(poner); if (v && typeof v === 'object'){ const o = {}; Object.keys(v).forEach(function(k){ o[k] = poner(v[k]); }); return o; } return v; }
     return items.map(function(it){ return { id: it.id, ver: it.ver, data: poner(it.data) }; });
   }
+
+  // Utilidades compartidas con las solicitudes (flotilla_solicitudes / flotilla_sol_sub)
+  function aSb(v){ if (typeof v !== 'string') return v; const m = RX_FIRMADA.exec(v); return m ? 'sb://' + decodeURIComponent(m[1]) : v; }
+  function juntarSb(v, rutas){
+    if (typeof v === 'string'){ if (v.indexOf('sb://') === 0) rutas.push(v.slice(5)); }
+    else if (Array.isArray(v)) v.forEach(function(x){ juntarSb(x, rutas); });
+    else if (v && typeof v === 'object') Object.keys(v).forEach(function(k){ juntarSb(v[k], rutas); });
+  }
+  function ponerLigas(v){
+    if (typeof v === 'string') return v.indexOf('sb://') === 0 ? ((_firmas[v.slice(5)] || {}).url || '') : v;
+    if (Array.isArray(v)) return v.map(ponerLigas);
+    if (v && typeof v === 'object'){ const o = {}; Object.keys(v).forEach(function(k){ o[k] = ponerLigas(v[k]); }); return o; }
+    return v;
+  }
+  window.tcFlArchivos = {
+    aSb: aSb,
+    // Firma de una vez todas las rutas "sb://" que haya en v (quedan en caché 7 días)
+    prefirmar: async function(v){ const r = []; juntarSb(v, r); if (r.length) await firmarRutas(r); },
+    // Copia de v con cada "sb://ruta" cambiado por su liga firmada
+    ligas: async function(v){ const r = []; juntarSb(v, r); if (!r.length) return v; await firmarRutas(r); return ponerLigas(v); },
+    // Antes de guardar: base64 → Storage y liga firmada → "sb://ruta"
+    guardar: function(col, ref, datos){ return guardarArchivos(col, ref, datos); },
+  };
 
   // ───────────────────────── fuentes: fl_docs y notificaciones ─────────────────────────
   function rutaJson(f){
