@@ -55,6 +55,10 @@
     if (_cssOk) return; _cssOk = true;
     var css = ''
     + '.mp-wrap{--r:14px;}'
+    + '.mp-area{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;border-left:3px solid var(--c);background:#f8fafc;border-radius:8px;padding:6px 10px;margin:6px 0;font-size:12px;color:#0f172a;}'
+    + '.mp-area .lb{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--c);flex-basis:100%;}'
+    + '.mp-area .dt{font-size:11px;color:#64748b;}'
+    + '.mp-mini{display:inline-block;font-size:9px;font-weight:800;color:#fff;border-radius:4px;padding:1px 5px;vertical-align:middle;}'
     + '.mp-aviso{display:flex;align-items:center;gap:10px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:12px;padding:12px 16px;margin-bottom:18px;font-size:12.5px;color:#92400E;font-weight:600;}'
     + '.mp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px;}'
     + '.mp-card{background:#fff;border:1px solid #e6ebf2;border-radius:var(--r);padding:14px 16px;box-shadow:0 1px 3px rgba(16,24,40,.04);}'
@@ -162,6 +166,12 @@
         + '</div></div>';
     });
     html += '</div>';
+    var notas = hist.filter(function(h){ return h.nota && /^(Compras:|Programado|Gestionado|Material sobre pedido)/.test(h.nota); });
+    if (notas.length){
+      html += '<div style="margin-top:6px;font-size:11.5px;color:#475569;">' + notas.map(function(h){
+        return '<div style="padding:4px 0;border-top:1px dashed #e6ebf2;"><b>'+esc(h.nota)+'</b><br><span style="color:#94a3b8;">'+fechaHora(h.ts)+(h.por?(' \u00b7 '+esc(h.por)):'')+'</span></div>';
+      }).join('') + '</div>';
+    }
     return html;
   }
 
@@ -206,6 +216,41 @@
     } else render();
   };
 
+  // ── Áreas que también atienden el pedido (oct-2026) ──
+  var PRO_TXT = { pendiente:'Por pedir al proveedor', pedido:'Pedido al proveedor', en_camino:'En camino', recibido:'Material recibido en almac\u00e9n' };
+  function esPro(p){ return p.clasificacion==='pro' || p.clasificacion==='pro_mixto'; }
+  function esServ(p){ return p.clasificacion==='servicio' || p.clasificacion==='servicio_piezas'; }
+  function bloqueArea(p){
+    var html='';
+    if (esPro(p)){
+      var paso = p.compraEstado || 'pendiente';
+      var det = [];
+      if (p.compraFechaEstimada && paso!=='recibido') det.push('llega aprox. '+esc(p.compraFechaEstimada));
+      if (p.compraGuia) det.push('gu\u00eda '+esc(p.compraGuia));
+      if (p.compraNotas) det.push(esc(p.compraNotas));
+      html += '<div class="mp-area" style="--c:#b45309"><span class="lb">Compras \u00b7 sobre pedido</span><b>'+esc(PRO_TXT[paso]||paso)+'</b>'
+        + (det.length?('<span class="dt">'+det.join(' \u00b7 ')+'</span>'):'')+'</div>';
+    }
+    if (esServ(p)){
+      html += '<div class="mp-area" style="--c:#7c3aed"><span class="lb">Operaciones \u00b7 servicio</span><b>'
+        + (p.opsGestionado ? 'Programado por Operaciones' : 'Por programar')+'</b>'
+        + (p.clasificacion==='servicio_piezas' ? '<span class="dt">Lleva piezas que surte Almac\u00e9n</span>' : '')+'</div>';
+    }
+    return html;
+  }
+  function estadoVisible(p){
+    if (p.clasificacion==='servicio') return { t: p.opsGestionado ? 'Programado' : 'En Operaciones', c: '#7c3aed' };
+    if (p.clasificacion==='pro' && p.compraEstado!=='recibido' && ['pendiente','en_preparacion'].indexOf(p.estado)!==-1) return { t:'En Compras', c:'#b45309' };
+    return { t: estadoLabel(p.estado), c: estadoColor(p.estado) };
+  }
+  window.__mpVerPdf = function(id){
+    var w=window.open('','_blank'); if(w) w.document.write('<p style="font-family:sans-serif;padding:20px">Cargando PDF\u2026</p>');
+    window.tcSbObtenerPdfOriginal(id).then(function(res){
+      if(!res||!res.archivo){ if(w) w.close(); alert('Este pedido no tiene PDF adjunto.'); return; }
+      if(w){ w.document.open(); w.document.write('<iframe src="'+res.archivo+'" style="border:none;position:fixed;inset:0;width:100%;height:100%"></iframe>'); w.document.close(); }
+    }).catch(function(){ if(w) w.close(); alert('No se pudo abrir el PDF.'); });
+  };
+
   function tarjeta(p){
     var abierta = !!expandido[p.id];
     var necesitaAtencion = !!p.entregaPendienteFirma;
@@ -221,7 +266,7 @@
       detalle += (_histCache[p.id] ? renderSeguimiento(p) : '<div style="font-size:11.5px;color:#94a3b8;margin:8px 0;">Cargando seguimiento\u2026</div>');
       var prods = Array.isArray(p.productos)?p.productos:[];
       detalle += '<div style="margin-top:8px;border-top:1px dashed #e6ebf2;padding-top:8px;font-size:12px;color:#334155;">'
-        + (prods.length ? prods.map(function(it){ return '<div>'+(it.unidad ? ((Number(it.cant)||0)+' '+esc(it.unidad)+' ') : ((Number(it.cant)||0)+'\u00d7 '))+esc(it.desc||'')+'</div>'; }).join('') : 'Sin productos capturados.')
+        + (prods.length ? prods.map(function(it){ return '<div>'+(it.unidad ? ((Number(it.cant)||0)+' '+esc(it.unidad)+' ') : ((Number(it.cant)||0)+'\u00d7 '))+esc(it.desc||'')+(it.espec?(' <span style="color:#64748b;">\u2014 '+esc(it.espec)+'</span>'):'')+(it.tipo==='pro'?' <span class="mp-mini" style="background:#b45309">PRO</span>':(it.tipo==='servicio'||it.tipo==='viaticos'?' <span class="mp-mini" style="background:#7c3aed">'+(it.tipo==='viaticos'?'Vi\u00e1ticos':'Servicio')+'</span>':''))+'</div>'; }).join('') : 'Sin productos capturados.')
         + '</div>';
       if (p.firma){
         detalle += '<div class="mp-firma-mini"><div style="font-size:10.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Firma de la solicitud</div><img src="'+esc(p.firma)+'" onclick="window.__mpVerImagen(\''+esc(p.firma)+'\')"></div>';
@@ -243,11 +288,12 @@
 
     return '<div class="mp-card'+(necesitaAtencion?' atencion':'')+'">'
       + '<div class="mp-top"><span class="mp-folio">'+esc(p.folio||'\u2014')+tipoTag+'</span>'
-      +   '<span class="mp-estado" style="background:'+estadoColor(p.estado)+'">'+esc(estadoLabel(p.estado))+'</span></div>'
+      +   '<span class="mp-estado" style="background:'+estadoVisible(p).c+'">'+esc(estadoVisible(p).t)+'</span></div>'
       + '<div class="mp-cli">'+esc(p.cliente||'Sin cliente')+'</div>'
       + '<div class="mp-meta">'+(p.fechaEntrega?('Entrega: '+esc(p.fechaEntrega)):'Sin fecha de entrega capturada')+'</div>'
-      + destinoHtml + comentarioHtml + atencionHtml
+      + bloqueArea(p) + destinoHtml + comentarioHtml + atencionHtml
       + '<button class="mp-btn" onclick="window.__mpToggle(\''+p.id+'\')">'+(abierta?'Ocultar detalle':'Ver seguimiento')+'</button>'
+      + (p.tienePdfOriginal ? ' <button class="mp-btn" onclick="window.__mpVerPdf(\''+p.id+'\')">Ver PDF</button>' : '')
       + detalle
       + '</div>';
   }
@@ -286,7 +332,11 @@
       destinoTipo: d.destinoTipo||'', destinoPaqueteria: d.destinoPaqueteria||'', destinoGuia: d.destinoGuia||'',
       destinoDireccion: d.destinoDireccion||'', destinoAlmacenOrigen: d.destinoAlmacenOrigen||'', destinoAlmacenDestino: d.destinoAlmacenDestino||'',
       comentariosAlmacen: d.comentariosAlmacen||'',
-      createdAt: d.createdAt||0
+      createdAt: d.createdAt||0,
+      clasificacion: d.clasificacion||'', empresa: d.empresa||'', tienePdfOriginal: !!d.tienePdfOriginal,
+      compraEstado: d.compraEstado||'', compraProveedor: d.compraProveedor||'', compraFechaEstimada: d.compraFechaEstimada||'',
+      compraGuia: d.compraGuia||'', compraNotas: d.compraNotas||'', compraRecibidoEn: d.compraRecibidoEn||'',
+      opsGestionado: !!d.opsGestionado, opsGestionadoEn: d.opsGestionadoEn||'', opsFolioId: d.opsFolioId||''
     };
   }
 

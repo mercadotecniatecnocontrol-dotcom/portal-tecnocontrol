@@ -536,7 +536,129 @@
       pintarShell(cont);
       escuchar();
       escucharSC();
+      escucharPro();
     }
+  };
+
+  // =====================================================================
+  //  SOBRE PEDIDO (PRO) — oct-2026
+  //  almacen-pdf.js marca las partidas con clave PRO. Compras las lleva paso
+  //  a paso (por pedir → pedido al proveedor → en camino → recibido) y cada
+  //  cambio queda en el historial del pedido, se ve en "Mis pedidos" del
+  //  vendedor y le llega aviso a la campana del portal.
+  // =====================================================================
+  var PRO_PASOS = [
+    { k:'pendiente', t:'Por pedir',            d:'Lleg\u00f3 de Ventas',          c:'#b45309' },
+    { k:'pedido',    t:'Pedido al proveedor',  d:'Ya se pidi\u00f3',              c:'#1473E6' },
+    { k:'en_camino', t:'En camino',            d:'Con gu\u00eda o fecha estimada', c:'#7c3aed' },
+    { k:'recibido',  t:'Recibido',             d:'\u00daltimos 30 d\u00edas \u00b7 pasa a Almac\u00e9n', c:'#15803d' }
+  ];
+  var _proLista = [], _proUnsub = null, _proTexto = '', _proFiltro = '';
+  function proPaso(p){ return p.compraEstado && PRO_PASOS.some(function(x){ return x.k===p.compraEstado; }) ? p.compraEstado : 'pendiente'; }
+  function proPartidas(p){ return (Array.isArray(p.productos)?p.productos:[]).filter(function(x){ return x.tipo==='pro'; }); }
+  function escucharPro(){
+    if(_proUnsub || !window.tcSbSuscribirSurtidos) return;
+    _proUnsub = window.tcSbSuscribirSurtidos(function(arr){
+      var hace30 = Date.now() - 30*86400000;
+      _proLista = (arr||[]).filter(function(p){
+        if(p.clasificacion!=='pro' && p.clasificacion!=='pro_mixto') return false;
+        if(p.estado==='cancelado' || p.eliminada) return false;
+        if(proPaso(p)==='recibido'){ var t=Date.parse(p.compraRecibidoEn||'')||0; return t>=hace30; }
+        return true;
+      });
+      var n = _proLista.filter(function(p){ return proPaso(p)!=='recibido'; }).length;
+      var b = document.getElementById('cp-mtab-pro-n'); if(b){ b.textContent=n; b.style.display=n?'inline-block':'none'; }
+      var v = document.getElementById('cp-vista-pro'); if(v && v.style.display!=='none' && !_cpEscribiendoEn('cp-pro-modal')) renderPro();
+    }, function(err){ console.warn('[compras] PRO:', err && err.message); });
+  }
+  window.__proTexto = function(v){ _proTexto=(v||'').toLowerCase(); renderPro(); };
+  window.__proFiltro = function(k){ _proFiltro = _proFiltro===k ? '' : k; renderPro(); };
+  function proDias(p){ var d=Math.floor((Date.now()-(p.createdAt||Date.now()))/86400000); return d<=0?'Hoy':(d===1?'Hace 1 d\u00eda':'Hace '+d+' d\u00edas'); }
+  function renderPro(){
+    var k=document.getElementById('cp-pro-kpis'), b=document.getElementById('cp-pro-board');
+    if(!k||!b) return;
+    var lista = _proLista.filter(function(p){
+      if(!_proTexto) return true;
+      var blob = [p.folio,p.cliente,p.vendedor,p.compraProveedor].concat(proPartidas(p).map(function(x){ return (x.desc||'')+' '+(x.espec||''); })).join(' ').toLowerCase();
+      return blob.indexOf(_proTexto)!==-1;
+    });
+    k.innerHTML = PRO_PASOS.map(function(x){
+      var n = lista.filter(function(p){ return proPaso(p)===x.k; }).length, on=_proFiltro===x.k;
+      return '<button type="button" onclick="window.__proFiltro(\''+x.k+'\')" class="cp-pro-kpi'+(on?' on':'')+'" style="--c:'+x.c+'"><span class="n">'+n+'</span><span class="t">'+x.t+'</span><span class="d">'+x.d+'</span></button>';
+    }).join('');
+    var pasos = _proFiltro ? PRO_PASOS.filter(function(x){ return x.k===_proFiltro; }) : PRO_PASOS;
+    b.innerHTML = '<div class="cp-pro-board" style="grid-template-columns:repeat('+pasos.length+',minmax(250px,1fr))">' + pasos.map(function(x){
+      var col = lista.filter(function(p){ return proPaso(p)===x.k; }).sort(function(a,c){ return (a.createdAt||0)-(c.createdAt||0); });
+      return '<div class="cp-pro-col"><div class="cp-pro-col-h"><span class="dot" style="background:'+x.c+'"></span>'+x.t+'<span class="c">'+col.length+'</span></div>'
+        + (col.length ? col.map(function(p){ return proTarjeta(p, x); }).join('') : '<div class="cp-pro-vacio">Nada aqu\u00ed</div>') + '</div>';
+    }).join('') + '</div>';
+  }
+  function proTarjeta(p, paso){
+    var parts = proPartidas(p);
+    var emp = p.empresa && p.empresa!=='TECNOCONTROL' ? '<span class="cp-pro-emp">'+esc(p.empresa)+'</span>' : '';
+    var info = [];
+    if(p.compraProveedor) info.push('Proveedor: <b>'+esc(p.compraProveedor)+'</b>');
+    if(p.compraFechaEstimada) info.push('Llega aprox.: <b>'+esc(p.compraFechaEstimada)+'</b>');
+    if(p.compraGuia) info.push('Gu\u00eda: <b>'+esc(p.compraGuia)+'</b>');
+    if(p.compraNotas) info.push(esc(p.compraNotas));
+    return '<div class="cp-pro-card" style="--c:'+paso.c+'">'
+      + '<div class="r1"><span class="fol">'+esc(p.folio||'\u2014')+'</span>'+emp+(p.clasificacion==='pro_mixto'?'<span class="cp-pro-mix">+ productos</span>':'')+'<span class="dias">'+proDias(p)+'</span></div>'
+      + '<div class="cli">'+esc(p.cliente||'Sin cliente')+'</div>'
+      + '<div class="ven">Vendedor: '+esc(p.vendedor||'\u2014')+(p.fechaEntrega?(' \u00b7 Compromiso: '+esc(p.fechaEntrega)):'')+'</div>'
+      + '<div class="parts">'+parts.map(function(x){
+          return '<div class="pt"><span class="q">'+esc(x.cant||1)+'\u00d7</span><span class="ds">'+esc(x.espec||x.desc||'')+'</span>'+(x.pu?'<span class="pu">$'+esc(x.pu)+'</span>':'')+'</div>';
+        }).join('')+'</div>'
+      + (info.length?'<div class="info">'+info.join('<br>')+'</div>':'')
+      + '<div class="acc">'
+      +   '<button type="button" class="cp-btn" onclick="window.__proActualizar(\''+p.id+'\')">Actualizar estatus</button>'
+      +   (p.tienePdfOriginal?'<button type="button" class="cp-btn" onclick="window.__proVerPdf(\''+p.id+'\')">Ver PDF</button>':'')
+      + '</div></div>';
+  }
+  window.__proVerPdf = function(id){
+    var w=window.open('','_blank'); if(w) w.document.write('<p style="font-family:sans-serif;padding:20px">Cargando PDF\u2026</p>');
+    window.tcSbObtenerPdfOriginal(id).then(function(res){
+      if(!res||!res.archivo){ if(w) w.close(); toast('Este pedido no tiene PDF adjunto'); return; }
+      if(w){ w.document.open(); w.document.write('<iframe src="'+res.archivo+'" style="border:none;position:fixed;inset:0;width:100%;height:100%"></iframe>'); w.document.close(); }
+    }).catch(function(e){ if(w) w.close(); toast('No se pudo abrir el PDF'); });
+  };
+  window.__proActualizar = function(id){
+    var p = _proLista.find(function(x){ return x.id===id; }); if(!p) return;
+    var actual = proPaso(p);
+    var ov = document.createElement('div'); ov.id='cp-pro-modal';
+    ov.style.cssText='position:fixed;inset:0;background:rgba(10,22,40,.55);z-index:2100;display:flex;align-items:center;justify-content:center;padding:18px';
+    ov.innerHTML = '<div style="background:#fff;border-radius:14px;max-width:460px;width:100%;padding:20px;max-height:90vh;overflow:auto">'
+      + '<div style="font-size:15px;font-weight:800;color:#0A1628">'+esc(p.folio||'')+' \u00b7 '+esc(p.cliente||'')+'</div>'
+      + '<div style="font-size:12px;color:#5C7089;margin:2px 0 12px">'+proPartidas(p).map(function(x){ return esc(x.cant)+'\u00d7 '+esc(x.espec||x.desc); }).join(' \u00b7 ')+'</div>'
+      + '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-bottom:12px">'+PRO_PASOS.map(function(x){
+          return '<label style="display:flex;align-items:center;gap:6px;border:1.5px solid '+(x.k===actual?x.c:'#E2E8F0')+';border-radius:9px;padding:8px 10px;font-size:12px;font-weight:700;color:#0A1628;cursor:pointer"><input type="radio" name="pro-paso" value="'+x.k+'"'+(x.k===actual?' checked':'')+'>'+x.t+'</label>';
+        }).join('')+'</div>'
+      + '<label class="cp-pro-lb">Proveedor</label><input id="pro-prov" class="cp-pro-in" value="'+esc(p.compraProveedor||'')+'" placeholder="A qui\u00e9n se le pidi\u00f3">'
+      + '<label class="cp-pro-lb">Fecha estimada de llegada</label><input id="pro-fecha" type="date" class="cp-pro-in" value="'+esc(p.compraFechaEstimada||'')+'">'
+      + '<label class="cp-pro-lb">Gu\u00eda / paqueter\u00eda</label><input id="pro-guia" class="cp-pro-in" value="'+esc(p.compraGuia||'')+'" placeholder="Opcional">'
+      + '<label class="cp-pro-lb">Nota para el vendedor</label><textarea id="pro-nota" class="cp-pro-in" rows="2" placeholder="Opcional">'+esc(p.compraNotas||'')+'</textarea>'
+      + '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px"><button type="button" class="cp-btn" id="pro-cancel">Cancelar</button>'
+      + '<button type="button" class="cp-btn" id="pro-ok" style="background:#0A1628;color:#fff;border-color:#0A1628">Guardar</button></div></div>';
+    document.body.appendChild(ov);
+    ov.querySelector('#pro-cancel').onclick=function(){ ov.remove(); };
+    ov.querySelector('#pro-ok').onclick=function(){
+      var paso = (ov.querySelector('input[name="pro-paso"]:checked')||{}).value || actual;
+      var yo = (window.auth&&window.auth.currentUser&&window.auth.currentUser.email)||'';
+      var nombre = (window.nombreUsuario?window.nombreUsuario(yo):'')||yo;
+      var datos = { compraEstado: paso, compraProveedor: ov.querySelector('#pro-prov').value.trim(), compraFechaEstimada: ov.querySelector('#pro-fecha').value,
+        compraGuia: ov.querySelector('#pro-guia').value.trim(), compraNotas: ov.querySelector('#pro-nota').value.trim(),
+        compraActualizadoPor: nombre, compraActualizadoEn: new Date().toISOString() };
+      if(paso==='recibido' && actual!=='recibido'){ datos.compraRecibidoPor=nombre; datos.compraRecibidoEn=new Date().toISOString(); }
+      var btn=ov.querySelector('#pro-ok'); btn.disabled=true; btn.textContent='Guardando\u2026';
+      window.tcSbActualizarSurtido(id, datos).then(function(){
+        var pasoTxt = (PRO_PASOS.find(function(x){ return x.k===paso; })||{}).t || paso;
+        var nota = 'Compras: '+pasoTxt+(datos.compraProveedor?(' \u00b7 '+datos.compraProveedor):'')+(datos.compraFechaEstimada?(' \u00b7 llega aprox. '+datos.compraFechaEstimada):'')+(datos.compraGuia?(' \u00b7 gu\u00eda '+datos.compraGuia):'');
+        if(window.tcSbAgregarHistorial) window.tcSbAgregarHistorial(id, { por:nombre, nota:nota }).catch(function(){});
+        if(paso!==actual && p.creadoPor && window.tcNotificar){
+          window.tcNotificar({ tipo:'pedido_pro', para:p.creadoPor, mensaje:'Tu pedido '+(p.folio||'')+' ('+(p.cliente||'')+'): '+pasoTxt+(datos.compraFechaEstimada?(', llega aprox. '+datos.compraFechaEstimada):'')+'.', modulo:'Compras', surtidoId:id }).catch(function(){});
+        }
+        Object.assign(p, datos); ov.remove(); renderPro(); toast('Estatus actualizado');
+      }).catch(function(e){ btn.disabled=false; btn.textContent='Guardar'; alert('No se pudo guardar: '+(e&&e.message||e)); });
+    };
   };
 
   function pintarShell(cont){
@@ -548,6 +670,7 @@
         '<div style="display:flex;gap:22px;margin-bottom:22px;border-bottom:1px solid #EEF2F7;overflow-x:auto">' +
           '<button id="cp-mtab-req" onclick="window.__cpSetVistaModulo(\'req\')" style="padding:10px 2px;border:none;background:none;font-size:13.5px;font-weight:700;color:#0A1628;border-bottom:2px solid #0A1628;cursor:pointer">Requisiciones</button>' +
           '<button id="cp-mtab-cot" onclick="window.__cpSetVistaModulo(\'cot\')" style="padding:10px 2px;border:none;background:none;font-size:13.5px;font-weight:700;color:#94A3B8;border-bottom:2px solid transparent;cursor:pointer;display:flex;align-items:center;gap:6px">Cotizaciones<span id="cp-mtab-cot-n" style="display:none;background:#E7402B;color:#fff;font-size:10px;font-weight:800;padding:1px 6px;border-radius:9px">0</span></button>' +
+          '<button id="cp-mtab-pro" onclick="window.__cpSetVistaModulo(\'pro\')" style="padding:10px 2px;border:none;background:none;font-size:13.5px;font-weight:700;color:#94A3B8;border-bottom:2px solid transparent;cursor:pointer;display:flex;align-items:center;gap:6px">Sobre pedido (PRO)<span id="cp-mtab-pro-n" style="display:none;background:#b45309;color:#fff;font-size:10px;font-weight:800;padding:1px 6px;border-radius:9px">0</span></button>' +
           '<button id="cp-mtab-ras" onclick="window.__cpSetVistaModulo(\'ras\')" style="padding:10px 2px;border:none;background:none;font-size:13.5px;font-weight:700;color:#94A3B8;border-bottom:2px solid transparent;cursor:pointer">Rastreo</button>' +
           '<button id="cp-mtab-prov" onclick="window.__cpSetVistaModulo(\'prov\')" style="padding:10px 2px;border:none;background:none;font-size:13.5px;font-weight:700;color:#94A3B8;border-bottom:2px solid transparent;cursor:pointer">Proveedores</button>' +
           '<button id="cp-mtab-cxp" onclick="window.__cpSetVistaModulo(\'cxp\')" style="padding:10px 2px;border:none;background:none;font-size:13.5px;font-weight:700;color:#94A3B8;border-bottom:2px solid transparent;cursor:pointer">Cuentas por pagar</button>' +
@@ -558,6 +681,25 @@
         '<style>' +
           '#cp-vista-req .cp-btn{padding:9px 14px;border-radius:9px;border:1px solid #E2E8F0;background:#fff;color:#0A1628;font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-family:inherit}' +
           '#cp-vista-req .cp-btn:hover{background:#F8FAFC}' +
+          '.cp-pro-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}' +
+          '.cp-pro-kpi{display:flex;flex-direction:column;align-items:flex-start;text-align:left;background:#F8FAFC;border:1.5px solid transparent;border-bottom:3px solid var(--c);border-radius:12px;padding:10px 14px;cursor:pointer;font-family:inherit}' +
+          '.cp-pro-kpi.on{background:#fff;border-color:var(--c);box-shadow:0 2px 8px rgba(10,22,40,.1)}' +
+          '.cp-pro-kpi .n{font-size:22px;font-weight:800;color:var(--c);line-height:1}.cp-pro-kpi .t{font-size:12px;font-weight:800;color:#0A1628;margin-top:4px}.cp-pro-kpi .d{font-size:10.5px;color:#5C7089;font-weight:600}' +
+          '.cp-pro-board{display:grid;gap:12px;overflow-x:auto;padding-bottom:6px}' +
+          '.cp-pro-col{background:#F8FAFC;border:1px solid #EEF2F7;border-radius:12px;padding:10px;min-height:120px;max-height:72vh;overflow-y:auto}' +
+          '.cp-pro-col-h{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:800;color:#0A1628;margin:2px 2px 10px}.cp-pro-col-h .dot{width:9px;height:9px;border-radius:50%}.cp-pro-col-h .c{margin-left:auto;background:#fff;border:1px solid #E2E8F0;border-radius:9px;padding:0 8px;font-size:11px}' +
+          '.cp-pro-card{background:#fff;border:1px solid #E5EAF1;border-left:4px solid var(--c);border-radius:10px;padding:10px 12px;margin-bottom:8px;font-size:12px;color:#334155}' +
+          '.cp-pro-card .r1{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.cp-pro-card .fol{font-weight:800;color:#0A1628}.cp-pro-card .dias{margin-left:auto;font-size:10.5px;color:#94A3B8;font-weight:700}' +
+          '.cp-pro-emp,.cp-pro-mix{font-size:9.5px;font-weight:800;color:#fff;background:#334155;border-radius:5px;padding:1px 6px}.cp-pro-mix{background:#0e7490}' +
+          '.cp-pro-card .cli{font-weight:800;color:#1D2E73;margin-top:4px}.cp-pro-card .ven{font-size:11px;color:#5C7089;margin:2px 0 6px}' +
+          '.cp-pro-card .pt{display:flex;gap:6px;align-items:flex-start;background:#FFF7ED;border-radius:7px;padding:5px 7px;margin-bottom:4px}.cp-pro-card .q{font-weight:800;color:#b45309}.cp-pro-card .ds{flex:1}.cp-pro-card .pu{font-size:10.5px;color:#5C7089;font-weight:700}' +
+          '.cp-pro-card .info{font-size:11px;color:#475569;background:#F1F5F9;border-radius:7px;padding:6px 8px;margin-top:4px}' +
+          '.cp-pro-card .acc{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}.cp-pro-card .acc .cp-btn{padding:6px 10px;font-size:11.5px}' +
+          '.cp-pro-vacio{font-size:11.5px;color:#94A3B8;text-align:center;padding:16px 0}' +
+          '.cp-pro-lb{display:block;font-size:10.5px;font-weight:800;color:#5C7089;text-transform:uppercase;letter-spacing:.3px;margin:10px 0 4px}' +
+          '.cp-pro-in{width:100%;box-sizing:border-box;border:1px solid #E2E8F0;border-radius:8px;padding:8px 10px;font-size:12.5px;font-family:inherit}' +
+          '#cp-vista-pro .cp-btn{padding:9px 14px;border-radius:9px;border:1px solid #E2E8F0;background:#fff;color:#0A1628;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit}' +
+          '@media(max-width:900px){.cp-pro-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}' +
           '#cp-vista-req .cp-btn:focus-visible,#cp-vista-req .cp-kpi:focus-visible,#cp-vista-req .cp-card:focus-visible,#cp-vista-req .cp-in:focus-visible{outline:3px solid rgba(20,115,230,.35);outline-offset:1px}' +
           '#cp-vista-req .cp-kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:16px}' +
           '@media(max-width:900px){#cp-vista-req .cp-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}' +
@@ -638,6 +780,14 @@
           '<div id="cp-sc-lista"></div>' +
         '</div>' +
 
+        '<div id="cp-vista-pro" class="cp-scope" style="display:none">' +
+          '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:14px"><div><h2 style="font-size:19px;font-weight:700;margin:0;color:#0A1628">Mercanc\u00eda sobre pedido (PRO)</h2>' +
+          '<p style="font-size:12px;color:#5C7089;margin:4px 0 0">Partidas PRO de los pedidos que Ventas subi\u00f3 a Almac\u00e9n. Actualiza cada paso: el vendedor lo ve en <b>Mis pedidos</b> y le llega aviso.</p></div></div>' +
+          '<div id="cp-pro-kpis" class="cp-pro-kpis"></div>' +
+          '<input class="cp-in" type="search" style="width:100%;margin-bottom:12px;padding:9px 12px;border:1px solid #E2E8F0;border-radius:9px;font-size:12.5px;box-sizing:border-box" placeholder="Buscar folio, cliente, vendedor o pieza\u2026" oninput="window.__proTexto(this.value)" aria-label="Buscar pedido PRO">' +
+          '<div id="cp-pro-board"></div>' +
+        '</div>' +
+
         '<div id="cp-vista-ras" class="cp-scope" style="display:none">' +
           '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:14px"><div><h2 style="font-size:19px;font-weight:700;margin:0;color:#0A1628">¿Dónde vienen mis compras?</h2>' +
           '<p style="font-size:12px;color:#5C7089;margin:4px 0 0">Todo lo que ya se compró y aún no llega. Captura la guía y avisa a quien lo pidió en cada cambio.</p></div>' +
@@ -678,7 +828,7 @@
   }
 
   window.__cpSetVistaModulo = function(vista){
-    ['req','cot','ras','prov','cxp','presup'].forEach(function(v){
+    ['req','cot','pro','ras','prov','cxp','presup'].forEach(function(v){
       document.getElementById('cp-vista-'+v).style.display = v===vista?'block':'none';
       var tab = document.getElementById('cp-mtab-'+v);
       tab.style.color = v===vista?'#0A1628':'#94A3B8';
@@ -686,6 +836,7 @@
     });
     if(vista==='cot'){ escucharSC(); _scProveedores(); renderCotizaciones(); }
     if(vista==='ras') renderRastreo();
+    if(vista==='pro'){ escucharPro(); renderPro(); }
     if(vista==='prov') cargarProveedores();
     if(vista==='cxp') cargarCuentasPorPagarVista();
     if(vista==='presup') cargarPresupuestos();
