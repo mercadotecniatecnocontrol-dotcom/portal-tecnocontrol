@@ -2030,7 +2030,9 @@ window.rhAsignarCorreo = async function(idViejo){
 // ── Actividad cruzada: Flotilla + Operaciones, solo lectura ────
 async function rhCargarActividadCruzada(correo){
     const resultado = { vehiculo:null, herramientas:[] };
-    const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+    const fsBase = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+    // fl_usuarios y flotilla_vehiculos viven en Supabase desde oct-2026
+    const fs = window.tcFlDocsShim ? window.tcFlDocsShim(fsBase) : fsBase;
 
     try {
         const uSnap = await fs.getDocs(fs.query(fs.collection(db,'fl_usuarios'), fs.where('email','==',correo)));

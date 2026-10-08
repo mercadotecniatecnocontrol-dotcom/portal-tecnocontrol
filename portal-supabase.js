@@ -259,19 +259,13 @@
     return sb().then(function (c) { return c.from('portal_notificaciones').insert(fila); })
       .then(function (r) { if (r.error) throw r.error; });
   };
-  // Doble envío mientras la app móvil de Flotilla (flotilla-movil.js) siga leyendo
-  // flotilla_notificaciones en Firestore: Supabase primero (lo que ve el portal);
-  // Firestore "de cortesía" sin esperar. Mismo creadaEn en ambos para que el portal
-  // no la muestre dos veces. Reemplaza a fs.addDoc(fs.collection(db,'flotilla_notificaciones'), datos).
+  // Oct-2026: la app de técnicos ya lee sus avisos de Supabase (portal_notificaciones,
+  // vía flotilla-supabase.js), así que ya NO se escribe copia en Firestore.
+  // Se conserva la firma (fs, db, datos) para no tocar a quien la llama.
   window.tcNotificar2 = function (fs, db, datos) {
     var d = Object.assign({}, datos || {});
     if (!d.creadaEn) d.creadaEn = new Date().toISOString();
-    var pFs = Promise.resolve().then(function () { return fs.addDoc(fs.collection(db, 'flotilla_notificaciones'), d); });
-    pFs.catch(function () {});
-    return window.tcNotificar(d).catch(function (e) {
-      console.warn('[tcNotificar2] Supabase falló, se espera Firestore:', e && e.message);
-      return pFs;
-    });
+    return window.tcNotificar(d);
   };
   function filaANotif(row) {
     var o = Object.assign({}, row.datos || {});

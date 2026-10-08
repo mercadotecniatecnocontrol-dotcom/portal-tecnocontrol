@@ -1194,7 +1194,9 @@
         await opsCargarPuente();
         let real = null;
         try { real = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js"); } catch (e) { console.warn("[Operaciones] Firestore no cargó; solo se usará Supabase:", e.message); }
-        const fs = await window.tcOpsFS(real);
+        let fs = await window.tcOpsFS(real);
+        // Flotilla (vehículos, fl_usuarios, ubicaciones) vive en Supabase desde oct-2026
+        if (window.tcFlDocsShim) fs = window.tcFlDocsShim(fs);
         opsFB = { db: window.db, fs };
         return opsFB;
     }

@@ -735,7 +735,8 @@
     S.updateDoc = function(r){ return esSb(r) ? updateDoc.apply(null, arguments) : F.updateDoc.apply(null, arguments); };
     S.deleteDoc = function(r){ return esSb(r) ? deleteDoc(r) : F.deleteDoc(r); };
     S.onSnapshot = function(r){ return esSb(r) ? onSnapshot.apply(null, arguments) : F.onSnapshot.apply(null, arguments); };
-    return S;
+    // Oct-2026: el resto de las colecciones de Flotilla también van a Supabase (ver abajo)
+    return window.tcFlDocsShim ? window.tcFlDocsShim(S) : S;
   };
   window.tcFlSbRefrescar = refrescar;
 
@@ -804,4 +805,654 @@
   };
 
   console.log('[tcFlSbShim] Adaptador de solicitudes → Supabase listo');
+})();
+
+/* ════════════════════════════════════════════════════════════════════
+   FLOTILLA — resto de colecciones → Supabase (tabla fl_docs, oct-2026)
+   ────────────────────────────────────────────────────────────────────
+   Saca de Firestore todo lo que Flotilla seguía leyendo/escribiendo ahí:
+     flotilla_vehiculos · flotilla_transferencias · flotilla_checklist_semanal
+     (+ subcolección fotos) · flotilla_config · flotilla_tareas · flotilla_usos
+     flotilla_comisiones · flotilla_siniestros · flotilla_ubicaciones
+     flotilla_eventos · flotilla_llantas · flotilla_gps · fl_usuarios
+     fl_colaboradores
+   y flotilla_notificaciones → tabla portal_notificaciones (la misma que
+   ya usa la campana del portal).
+
+   Cada documento es una fila de fl_docs: col (ruta de la colección),
+   ref (id de siempre de Firestore) y datos (el documento completo).
+   Los módulos NO cambian su código: este archivo imita la API de
+   Firestore —modular (portal) y "compat" (app de técnicos)— y solo
+   desvía estas colecciones; todo lo demás sigue igual.
+
+     window.tcFlDocsShim(moduloFirestore)  → mismo módulo, con desvío
+     window.tcFlDocsCompat(dbCompat)       → mismo db compat, con desvío
+     window.tcFlDocsColecciones            → lista de colecciones desviadas
+   ════════════════════════════════════════════════════════════════════ */
+(function(){
+  'use strict';
+  if (window.tcFlDocsShim) return;
+
+  const SB_URL = 'https://vlbyjoqessxcmkejcujp.supabase.co';
+  const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZsYnlqb3Flc3N4Y21rZWpjdWpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYxMjMzODcsImV4cCI6MjEwMTY5OTM4N30.T8rODqxRoj5HhDmvvDy9LtBBJS-fQZJRFLV3Mn10b_4';
+  const SB_PUB = 'sb_publishable_18A7j06AwZqdw3gmqUDJHQ_Twu0t2a8';
+  const T_DOCS = 'fl_docs', T_NOTIF = 'portal_notificaciones', NOTIF = 'flotilla_notificaciones';
+  const COLECCIONES = ['flotilla_vehiculos','flotilla_transferencias','flotilla_checklist_semanal','flotilla_config',
+    'flotilla_tareas','flotilla_usos','flotilla_comisiones','flotilla_siniestros','flotilla_ubicaciones',
+    'flotilla_eventos','flotilla_llantas','flotilla_gps','fl_usuarios','fl_colaboradores'];
+  const SET_COLS = new Set(COLECCIONES);
+  window.tcFlDocsColecciones = COLECCIONES.concat([NOTIF]);
+  const MARK = '__flDocs';
+  const BUCKET = 'flotilla-archivos';   // fotos y firmas que antes iban en base64 dentro del documento
+  const FIRMA_SEG = 7 * 24 * 3600;      // ligas firmadas válidas 7 días
+  const enc = encodeURIComponent;
+  const espera = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }); };
+
+  // ───────────────────────── REST con tiempo límite y reintentos ─────────────────────────
+  async function rest(path, opts){
+    opts = opts || {};
+    let ult = null;
+    const intentos = opts.intentos || 3;
+    for (let i = 0; i < intentos; i++){
+      const c = new AbortController();
+      const t = setTimeout(function(){ c.abort(); }, opts.ms || 30000);
+      try {
+        const r = await fetch(SB_URL + '/rest/v1/' + path, {
+          method: opts.method || 'GET',
+          headers: Object.assign({ apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json' }, opts.headers || {}),
+          body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+          signal: c.signal,
+        });
+        const txt = await r.text();
+        if (!r.ok){
+          let j = null; try { j = JSON.parse(txt); } catch(e) {}
+          const e = new Error('Supabase ' + r.status + ': ' + ((j && (j.message || j.error)) || txt));
+          e.status = r.status;
+          if (j && j.code === 'P0002'){ e.code = 'not-found'; e.final = true; }
+          if (r.status < 500) e.final = true;
+          throw e;
+        }
+        return txt ? JSON.parse(txt) : null;
+      } catch(e) {
+        ult = e.name === 'AbortError' ? new Error('Supabase no respondió a tiempo') : e;
+        if (e.final) throw ult;
+        if (i < intentos - 1) await espera(700 * (i + 1));
+      } finally { clearTimeout(t); }
+    }
+    throw ult;
+  }
+
+  // ───────────────────────── utilidades ─────────────────────────
+  function nuevoId(){
+    const c = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789', a = new Uint8Array(20);
+    if (window.crypto && crypto.getRandomValues) crypto.getRandomValues(a); else for (let i = 0; i < 20; i++) a[i] = Math.floor(Math.random() * 256);
+    let s = ''; for (let i = 0; i < 20; i++) s += c[a[i] % 62];
+    return s;
+  }
+  function uuid(){
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(ch){ const r = Math.random()*16|0; return (ch === 'x' ? r : (r&0x3|0x8)).toString(16); });
+  }
+  function esBorrar(v){
+    return !!(v && typeof v === 'object' && (v.__flSbDel || v._methodName === 'deleteField' || v._methodName === 'FieldValue.delete'));
+  }
+  function aJson(v){ return v === undefined ? null : JSON.parse(JSON.stringify(v)); }
+  // Separa un objeto de escritura en cambios + campos a borrar (deleteField)
+  function separar(data){
+    const patch = {}, borrar = [];
+    Object.keys(data || {}).forEach(function(k){
+      const v = data[k];
+      if (v === undefined) return;
+      if (esBorrar(v)) borrar.push(k); else patch[k] = v;
+    });
+    return { patch: aJson(patch), borrar: borrar };
+  }
+  function getRuta(o, f){
+    if (f === '__name__' || f === 'id') return o && o.__id;
+    const p = String(f).split('.');
+    let x = o;
+    for (let i = 0; i < p.length; i++){ if (x == null || typeof x !== 'object') return undefined; x = x[p[i]]; }
+    return x;
+  }
+  function setRuta(o, f, v){
+    const p = String(f).split('.'); let x = o;
+    for (let i = 0; i < p.length - 1; i++){ if (!x[p[i]] || typeof x[p[i]] !== 'object' || Array.isArray(x[p[i]])) x[p[i]] = {}; x = x[p[i]]; }
+    x[p[p.length - 1]] = v;
+  }
+  function igual(a, b){ return JSON.stringify(a) === JSON.stringify(b); }
+  function rango(t){ return t === null || t === undefined ? 0 : typeof t === 'boolean' ? 1 : typeof t === 'number' ? 2 : typeof t === 'string' ? 3 : 4; }
+  function comparar(a, b){
+    if (a === b) return 0;
+    const ra = rango(a), rb = rango(b);
+    if (ra !== rb) return ra - rb;
+    if (ra === 4) return JSON.stringify(a) < JSON.stringify(b) ? -1 : 1;
+    return a < b ? -1 : a > b ? 1 : 0;
+  }
+  function cumple(d, c){
+    const v = getRuta(d, c.f), x = c.v;
+    switch (c.op){
+      case '==': return igual(v, x);
+      case '!=': return v !== undefined && !igual(v, x);
+      case '<': return v !== undefined && rango(v) === rango(x) && comparar(v, x) < 0;
+      case '<=': return v !== undefined && rango(v) === rango(x) && comparar(v, x) <= 0;
+      case '>': return v !== undefined && rango(v) === rango(x) && comparar(v, x) > 0;
+      case '>=': return v !== undefined && rango(v) === rango(x) && comparar(v, x) >= 0;
+      case 'in': return (x || []).some(function(y){ return igual(v, y); });
+      case 'not-in': return v !== undefined && !(x || []).some(function(y){ return igual(v, y); });
+      case 'array-contains': return Array.isArray(v) && v.some(function(y){ return igual(y, x); });
+      case 'array-contains-any': return Array.isArray(v) && v.some(function(y){ return (x || []).some(function(z){ return igual(y, z); }); });
+      default: return true;
+    }
+  }
+  const esEscalar = function(v){ return v === null || ['string','number','boolean'].indexOf(typeof v) >= 0; };
+
+  // ───────────────────────── archivos: base64 ↔ Storage ─────────────────────────
+  // En la base solo se guarda "sb://ruta"; al leer se convierte en liga firmada
+  // y al escribir: base64 nuevo → se sube a Storage; liga firmada → "sb://ruta".
+  // Los documentos del vehículo (doc_tarjeta, doc_poliza…) se quedan como están:
+  // flDocPreview distingue PDF/imagen por el prefijo "data:".
+  const RX_FIRMADA = new RegExp('^' + SB_URL.replace(/[.]/g, '\\.') + '/storage/v1/object/sign/' + BUCKET + '/([^?]+)');
+  function hashTexto(t){ let h = 2166136261; for (let i = 0; i < t.length; i += 7){ h ^= t.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36) + t.length.toString(36); }
+  async function subirArchivo(ruta, dataUrl){
+    const blob = await (await fetch(dataUrl)).blob();
+    for (let i = 0; i < 3; i++){
+      try {
+        const r = await fetch(SB_URL + '/storage/v1/object/' + BUCKET + '/' + ruta.split('/').map(enc).join('/'), {
+          method: 'POST', headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': blob.type || 'application/octet-stream', 'x-upsert': 'true' }, body: blob });
+        if (r.ok) return;
+        if (r.status < 500) throw Object.assign(new Error('Storage ' + r.status + ': ' + (await r.text())), { final: true });
+        throw new Error('Storage ' + r.status);
+      } catch(e) { if (e.final || i === 2) throw e; await espera(800 * (i + 1)); }
+    }
+  }
+  function extDe(dataUrl){ const m = /^data:([^;,]+)/.exec(dataUrl) || []; const t = m[1] || ''; return t.indexOf('png') >= 0 ? 'png' : t.indexOf('pdf') >= 0 ? 'pdf' : t.indexOf('webp') >= 0 ? 'webp' : t.indexOf('jpeg') >= 0 || t.indexOf('jpg') >= 0 ? 'jpg' : 'bin'; }
+  async function guardarArchivos(col, ref, datos){
+    const subidas = [];
+    function andar(v, ruta){
+      if (typeof v === 'string'){
+        const m = RX_FIRMADA.exec(v);
+        if (m) return 'sb://' + decodeURIComponent(m[1]);
+        if (v.length > 1000 && v.indexOf('data:') === 0){
+          const destino = col + '/' + ref + '/' + ruta.replace(/[^A-Za-z0-9_.-]/g, '_') + '-' + hashTexto(v) + '.' + extDe(v);
+          subidas.push(subirArchivo(destino, v));
+          return 'sb://' + destino;
+        }
+        return v;
+      }
+      if (Array.isArray(v)) return v.map(function(x, i){ return andar(x, ruta + '.' + i); });
+      if (v && typeof v === 'object'){ const o = {}; Object.keys(v).forEach(function(k){ o[k] = andar(v[k], ruta ? ruta + '.' + k : k); }); return o; }
+      return v;
+    }
+    const o = {};
+    Object.keys(datos || {}).forEach(function(k){ o[k] = /^doc_/.test(k) ? datos[k] : andar(datos[k], k); });
+    await Promise.all(subidas);
+    return o;
+  }
+  const _firmas = {};   // ruta → {url, vence}
+  async function firmarRutas(rutas){
+    const ahora = Date.now();
+    const falta = Array.from(new Set(rutas)).filter(function(r){ return !_firmas[r] || _firmas[r].vence < ahora + 3600000; });
+    for (let i = 0; i < falta.length; i += 100){
+      const lote = falta.slice(i, i + 100);
+      try {
+        const r = await fetch(SB_URL + '/storage/v1/object/sign/' + BUCKET, { method: 'POST',
+          headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ expiresIn: FIRMA_SEG, paths: lote }) });
+        const arr = r.ok ? await r.json() : [];
+        (arr || []).forEach(function(x){ if (x && x.path && x.signedURL) _firmas[x.path] = { url: SB_URL + '/storage/v1' + x.signedURL, vence: ahora + (FIRMA_SEG - 3600) * 1000 }; });
+      } catch(e) { console.warn('[tcFlDocs] firmar', e && e.message); }
+    }
+  }
+  // Recibe [{id,ver,data}] y devuelve lo mismo con "sb://…" convertido en ligas
+  async function conLigas(items){
+    const rutas = [];
+    function juntar(v){ if (typeof v === 'string'){ if (v.indexOf('sb://') === 0) rutas.push(v.slice(5)); } else if (Array.isArray(v)) v.forEach(juntar); else if (v && typeof v === 'object') Object.keys(v).forEach(function(k){ juntar(v[k]); }); }
+    items.forEach(function(it){ juntar(it.data); });
+    if (!rutas.length) return items;
+    await firmarRutas(rutas);
+    function poner(v){ if (typeof v === 'string') return v.indexOf('sb://') === 0 ? ((_firmas[v.slice(5)] || {}).url || '') : v; if (Array.isArray(v)) return v.map(poner); if (v && typeof v === 'object'){ const o = {}; Object.keys(v).forEach(function(k){ o[k] = poner(v[k]); }); return o; } return v; }
+    return items.map(function(it){ return { id: it.id, ver: it.ver, data: poner(it.data) }; });
+  }
+
+  // ───────────────────────── fuentes: fl_docs y notificaciones ─────────────────────────
+  function rutaJson(f){
+    const p = String(f).split('.');
+    if (p.length === 1) return 'datos->>' + p[0];
+    return 'datos->' + p.slice(0, -1).join('->') + '->>' + p[p.length - 1];
+  }
+  const FUENTE_DOCS = {
+    tabla: T_DOCS,
+    base: function(col){ return 'col=eq.' + enc(col); },
+    selLite: 'ref,actualizado_en', selFull: 'ref,datos,actualizado_en',
+    id: function(r){ return r.ref; }, ver: function(r){ return r.actualizado_en; }, datos: function(r){ return r.datos || {}; },
+    porIds: function(ids){ return 'ref=in.(' + ids.map(function(x){ return enc('"' + String(x).replace(/"/g, '') + '"'); }).join(',') + ')'; },
+    porId: function(id){ return 'ref=eq.' + enc(id); },
+    campoOrden: function(f){ return f === '__name__' ? 'ref' : rutaJson(f); },
+    // == y array-contains van juntos en un solo "contiene" sobre datos
+    filtros: function(wheres){
+      const cont = {}, params = []; let exacto = true, hay = false;
+      wheres.forEach(function(c){
+        if (c.f === '__name__' || c.f === 'id'){ exacto = false; return; }
+        if (c.op === '==' && esEscalar(c.v)){ setRuta(cont, c.f, c.v); hay = true; }
+        else if (c.op === 'array-contains' && esEscalar(c.v)){ setRuta(cont, c.f, [c.v]); hay = true; }
+        else if (c.op === 'in' && Array.isArray(c.v) && c.v.length && c.v.every(function(x){ return typeof x === 'string'; })){
+          params.push(rutaJson(c.f) + '=in.(' + c.v.map(function(x){ return enc('"' + x.replace(/"/g, '') + '"'); }).join(',') + ')');
+        } else exacto = false;
+      });
+      if (hay) params.push('datos=cs.' + enc(JSON.stringify(cont)));
+      return { params: params, exacto: exacto };
+    },
+  };
+  // flotilla_notificaciones ↔ portal_notificaciones (columnas + datos)
+  const N_COL = { para: 'para', tipo: 'tipo', mensaje: 'mensaje', vehiculoEco: 'vehiculo_eco', leido: 'leido', creadaEn: 'creada_en' };
+  function notifADatos(r){
+    const o = Object.assign({}, r.datos || {});
+    o.tipo = r.tipo; o.para = r.para; o.mensaje = r.mensaje; o.vehiculoEco = r.vehiculo_eco;
+    o.leido = !!r.leido; o.creadaEn = r.creada_en ? new Date(r.creada_en).toISOString() : '';
+    return o;
+  }
+  function datosANotif(d){
+    const x = Object.assign({}, d || {}), fila = {};
+    if ('tipo' in x) fila.tipo = x.tipo == null ? null : String(x.tipo);
+    if ('para' in x) fila.para = x.para ? String(x.para).toLowerCase().trim() : null;
+    if ('mensaje' in x) fila.mensaje = x.mensaje == null ? null : String(x.mensaje);
+    if ('vehiculoEco' in x) fila.vehiculo_eco = x.vehiculoEco == null ? null : String(x.vehiculoEco);
+    if ('leido' in x) fila.leido = !!x.leido;
+    if ('creadaEn' in x && x.creadaEn && !isNaN(Date.parse(x.creadaEn))) fila.creada_en = new Date(x.creadaEn).toISOString();
+    Object.keys(N_COL).forEach(function(k){ delete x[k]; });
+    return { fila: fila, resto: aJson(x) };
+  }
+  const FUENTE_NOTIF = {
+    tabla: T_NOTIF,
+    base: function(){ return ''; },
+    selLite: 'id,leido', selFull: '*',
+    id: function(r){ return r.id; }, ver: function(r){ return String(!!r.leido); }, datos: notifADatos,
+    porIds: function(ids){ return 'id=in.(' + ids.map(enc).join(',') + ')'; },
+    porId: function(id){ return 'id=eq.' + enc(id); },
+    campoOrden: function(f){ return f === '__name__' ? 'id' : (N_COL[f] || rutaJson(f)); },
+    filtros: function(wheres){
+      const params = [], cont = {}; let exacto = true, hay = false;
+      wheres.forEach(function(c){
+        if (c.op === '==' && N_COL[c.f] && esEscalar(c.v)){
+          let v = c.v; if (c.f === 'para' && typeof v === 'string') v = v.toLowerCase().trim();
+          params.push(N_COL[c.f] + '=eq.' + enc(String(v)));
+        } else if (c.op === '==' && esEscalar(c.v)){ setRuta(cont, c.f, c.v); hay = true; }
+        else exacto = false;
+      });
+      if (hay) params.push('datos=cs.' + enc(JSON.stringify(cont)));
+      return { params: params, exacto: exacto };
+    },
+  };
+  function fuenteDe(segs){ return segs[0] === NOTIF ? FUENTE_NOTIF : FUENTE_DOCS; }
+  function enruta(nombre){ return SET_COLS.has(nombre) || nombre === NOTIF; }
+
+  // ───────────────────────── referencias internas ─────────────────────────
+  function refCol(segs, cons){ return { [MARK]: true, kind: 'col', segs: segs, cons: cons || [], id: segs[segs.length - 1], path: segs.join('/') }; }
+  function refDoc(segs){ return { [MARK]: true, kind: 'doc', segs: segs, id: segs[segs.length - 1], path: segs.join('/') }; }
+  const esMio = function(x){ return !!(x && x[MARK]); };
+  function colDe(ref){ return (ref.kind === 'doc' ? ref.segs.slice(0, -1) : ref.segs).join('/'); }
+
+  // ───────────────────────── lectura ─────────────────────────
+  function planear(ref){
+    const F = fuenteDe(ref.segs);
+    const cons = ref.cons || [];
+    const wheres = cons.filter(function(c){ return c.t === 'where'; });
+    const ordenes = cons.filter(function(c){ return c.t === 'orderBy'; });
+    const lim = cons.filter(function(c){ return c.t === 'limit'; }).pop();
+    const fl = F.filtros(wheres);
+    const params = [];
+    const b = F.base(colDe(ref)); if (b) params.push(b);
+    fl.params.forEach(function(p){ params.push(p); });
+    let orden = null, limite = null;
+    if (fl.exacto){
+      orden = ordenes.map(function(o){ return F.campoOrden(o.f) + '.' + (o.d === 'desc' ? 'desc' : 'asc') + '.nullslast'; })
+        .concat([(F === FUENTE_NOTIF ? 'id' : 'ref') + '.asc']).join(',');
+      if (lim) limite = lim.n;
+    }
+    return { F: F, params: params, wheres: wheres, ordenes: ordenes, lim: lim ? lim.n : null, orden: orden, limite: limite };
+  }
+  async function traer(plan, sel, extra){
+    const F = plan.F;
+    const base = plan.params.concat(extra || []);
+    let url = F.tabla + '?select=' + sel + (base.length ? '&' + base.join('&') : '');
+    if (plan.orden) url += '&order=' + plan.orden;
+    if (plan.limite != null) return await rest(url + '&limit=' + plan.limite) || [];
+    let out = [];
+    for (let off = 0; ; off += 1000){
+      const pag = await rest(url + '&limit=1000&offset=' + off) || [];
+      out = out.concat(pag);
+      if (pag.length < 1000) break;
+    }
+    return out;
+  }
+  // Aplica filtros/orden/límite en el navegador (respaldo exacto de lo de Firestore)
+  function terminar(plan, items){
+    let r = items.filter(function(it){
+      const d = Object.assign({ __id: it.id }, it.data);
+      return plan.wheres.every(function(c){ return cumple(d, c); });
+    });
+    if (plan.ordenes.length){
+      r = r.filter(function(it){ return plan.ordenes.every(function(o){ return o.f === '__name__' || getRuta(it.data, o.f) !== undefined; }); });
+      r.sort(function(a, b){
+        for (const o of plan.ordenes){
+          const x = o.f === '__name__' ? a.id : getRuta(a.data, o.f), y = o.f === '__name__' ? b.id : getRuta(b.data, o.f);
+          const c = comparar(x, y);
+          if (c) return o.d === 'desc' ? -c : c;
+        }
+        return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+      });
+    }
+    if (plan.lim != null) r = r.slice(0, plan.lim);
+    return r;
+  }
+  async function consultar(ref){
+    const plan = planear(ref);
+    const filas = await traer(plan, plan.F.selFull);
+    return conLigas(terminar(plan, filas.map(function(f){ return { id: plan.F.id(f), ver: plan.F.ver(f), data: plan.F.datos(f) }; })));
+  }
+  async function leerUno(ref){
+    const F = fuenteDe(ref.segs);
+    const b = F.base(colDe(ref));
+    const filas = await rest(F.tabla + '?select=' + F.selFull + (b ? '&' + b : '') + '&' + F.porId(ref.id)) || [];
+    if (!filas[0]) return null;
+    return (await conLigas([{ id: ref.id, ver: F.ver(filas[0]), data: F.datos(filas[0]) }]))[0];
+  }
+
+  // ───────────────────────── escritura ─────────────────────────
+  const _cambios = new Set();   // listeners a avisar tras escribir
+  function avisarCambio(col){ _oyentes.forEach(function(o){ if (o.col === col || o.tabla === T_NOTIF && col === NOTIF) o.pronto(); }); }
+
+  async function escribirSet(ref, data, merge){
+    const col = colDe(ref);
+    if (ref.segs[0] === NOTIF){
+      const sp = separar(data), n = datosANotif(sp.patch);
+      if (merge){ await escribirUpdate(ref, data, true); return; }
+      const fila = Object.assign({ id: ref.id, leido: false }, n.fila, { datos: Object.keys(n.resto).length ? n.resto : null });
+      await rest(T_NOTIF + '?on_conflict=id', { method: 'POST', headers: { Prefer: 'return=minimal,resolution=merge-duplicates' }, body: fila });
+    } else {
+      const sp = separar(data);
+      sp.patch = await guardarArchivos(col, ref.id, sp.patch);
+      await rest('rpc/fl_doc_set', { method: 'POST', body: { p_col: col, p_ref: ref.id, p_datos: sp.patch, p_merge: !!merge, p_borrar: sp.borrar } });
+    }
+    avisarCambio(col);
+  }
+  async function escribirUpdate(ref, data, crearSiFalta){
+    const col = colDe(ref);
+    if (ref.segs[0] === NOTIF){
+      const sp = separar(data), n = datosANotif(sp.patch);
+      const actual = (await rest(T_NOTIF + '?select=id,datos&id=eq.' + enc(ref.id)) || [])[0];
+      if (!actual && !crearSiFalta){ const e = new Error('No existe la notificación ' + ref.id); e.code = 'not-found'; throw e; }
+      const datos = Object.assign({}, (actual && actual.datos) || {}, n.resto);
+      sp.borrar.forEach(function(k){ delete datos[k]; });
+      const body = Object.assign({}, n.fila, { datos: Object.keys(datos).length ? datos : null });
+      if (actual) await rest(T_NOTIF + '?id=eq.' + enc(ref.id), { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: body });
+      else await rest(T_NOTIF, { method: 'POST', headers: { Prefer: 'return=minimal' }, body: Object.assign({ id: ref.id }, body) });
+    } else {
+      const sp = separar(data);
+      sp.patch = await guardarArchivos(col, ref.id, sp.patch);
+      await rest('rpc/fl_doc_update', { method: 'POST', body: { p_col: col, p_ref: ref.id, p_patch: sp.patch, p_borrar: sp.borrar } });
+    }
+    avisarCambio(col);
+  }
+  async function borrar(ref){
+    const col = colDe(ref);
+    if (ref.segs[0] === NOTIF) await rest(T_NOTIF + '?id=eq.' + enc(ref.id), { method: 'DELETE', headers: { Prefer: 'return=minimal' } });
+    else await rest(T_DOCS + '?col=eq.' + enc(col) + '&ref=eq.' + enc(ref.id), { method: 'DELETE', headers: { Prefer: 'return=minimal' } });
+    avisarCambio(col);
+  }
+  function idNuevoPara(segs){ return segs[0] === NOTIF ? uuid() : nuevoId(); }
+
+  // ───────────────────────── tiempo real ─────────────────────────
+  // Cada oyente: carga inicial; luego, ante un aviso de Realtime, al escribir,
+  // cada 30 s y al volver a la pestaña, compara versiones (consulta ligera)
+  // y solo baja los documentos que cambiaron.
+  const _oyentes = new Set();
+  let _cliProm = null, _canalListo = false;
+  function cliente(){
+    if (window.tcSupabase) return Promise.resolve(window.tcSupabase);
+    if (_cliProm) return _cliProm;
+    _cliProm = import('https://esm.sh/@supabase/supabase-js@2').then(function(m){
+      if (!window.tcSupabase) window.tcSupabase = m.createClient(SB_URL, SB_PUB);
+      return window.tcSupabase;
+    }).catch(function(e){ _cliProm = null; throw e; });
+    return _cliProm;
+  }
+  function abrirCanal(){
+    if (_canalListo) return;
+    _canalListo = true;
+    cliente().then(function(sb){
+      sb.channel('fl-docs-' + Math.random().toString(36).slice(2, 8))
+        .on('postgres_changes', { event: '*', schema: 'public', table: T_DOCS }, function(p){
+          const col = (p.new && p.new.col) || (p.old && p.old.col) || null;
+          _oyentes.forEach(function(o){ if (o.tabla === T_DOCS && (!col || o.col === col)) o.pronto(); });
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: T_NOTIF }, function(){
+          _oyentes.forEach(function(o){ if (o.tabla === T_NOTIF) o.pronto(); });
+        })
+        .subscribe(function(st){ if (st === 'SUBSCRIBED') _oyentes.forEach(function(o){ o.pronto(); }); });
+    }).catch(function(e){ _canalListo = false; console.warn('[tcFlDocs] Realtime no disponible, se revisa cada 30 s:', e && e.message); });
+  }
+  document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'visible') _oyentes.forEach(function(o){ o.pronto(); }); });
+  window.addEventListener('online', function(){ _oyentes.forEach(function(o){ o.pronto(); }); });
+  setInterval(function(){ _oyentes.forEach(function(o){ o.pronto(); }); }, 30000);
+
+  // emitir(items, cambios, primera) — items: [{id,ver,data}], cambios: [{type,id,oldIndex,newIndex}]
+  function escuchar(ref, emitir, alError){
+    const esDoc = ref.kind === 'doc';
+    const plan = esDoc ? null : planear(ref);
+    const F = fuenteDe(ref.segs);
+    const cache = new Map();     // id → {ver, data}
+    let previos = null;          // Map id → {ver, idx}
+    let corriendo = false, otra = false, timer = null, vivo = true, primera = true;
+    const o = { col: colDe(ref), tabla: F.tabla, pronto: function(){ if (!vivo) return; clearTimeout(timer); timer = setTimeout(sync, 350); } };
+
+    async function sync(){
+      if (!vivo) return;
+      if (corriendo){ otra = true; return; }
+      corriendo = true;
+      try {
+        let items;
+        if (esDoc){
+          const u = await leerUno(ref);
+          items = u ? [u] : [];
+        } else if (!plan.orden){
+          // filtros que no se pueden resolver en el servidor → se baja completo
+          items = terminar(plan, (await traer(plan, F.selFull)).map(function(f){ return { id: F.id(f), ver: F.ver(f), data: F.datos(f) }; }));
+        } else {
+          const lite = await traer(plan, F.selLite);
+          const faltan = lite.filter(function(r){ const c = cache.get(F.id(r)); return !c || c.ver !== F.ver(r); }).map(F.id);
+          for (let i = 0; i < faltan.length; i += 40){
+            const lote = faltan.slice(i, i + 40);
+            const filas = await traer({ F: F, params: [F.base(o.col)].filter(Boolean), orden: null, limite: null }, F.selFull, [F.porIds(lote)]);
+            filas.forEach(function(f){ cache.set(F.id(f), { ver: F.ver(f), data: F.datos(f) }); });
+          }
+          const vivos = new Set(lite.map(F.id));
+          Array.from(cache.keys()).forEach(function(k){ if (!vivos.has(k)) cache.delete(k); });
+          items = terminar(plan, lite.filter(function(r){ return cache.has(F.id(r)); }).map(function(r){ const c = cache.get(F.id(r)); return { id: F.id(r), ver: c.ver, data: c.data }; }));
+        }
+        if (!esDoc) items = await conLigas(items);
+        // ¿cambió algo respecto a lo último que se emitió?
+        const cambios = [];
+        const ahora = new Map(items.map(function(it, i){ return [it.id, { ver: it.ver, idx: i }]; }));
+        if (previos){
+          previos.forEach(function(v, id){ if (!ahora.has(id)) cambios.push({ type: 'removed', id: id, oldIndex: v.idx, newIndex: -1 }); });
+          items.forEach(function(it, i){
+            const p = previos.get(it.id);
+            if (!p) cambios.push({ type: 'added', id: it.id, oldIndex: -1, newIndex: i });
+            else if (p.ver !== it.ver || p.idx !== i) cambios.push({ type: 'modified', id: it.id, oldIndex: p.idx, newIndex: i });
+          });
+        } else items.forEach(function(it, i){ cambios.push({ type: 'added', id: it.id, oldIndex: -1, newIndex: i }); });
+        if (primera || cambios.length){
+          previos = ahora;
+          const fueLaPrimera = primera; primera = false;
+          try { emitir(items, cambios, fueLaPrimera); } catch(e) { console.error('[tcFlDocs] oyente', o.col, e); }
+        }
+      } catch(e) {
+        console.warn('[tcFlDocs] sync', o.col, e && e.message);
+        if (primera && alError){ try { alError(e); } catch(x) {} }
+      }
+      corriendo = false;
+      if (otra){ otra = false; sync(); }
+    }
+    _oyentes.add(o);
+    abrirCanal();
+    sync();
+    return function(){ vivo = false; clearTimeout(timer); _oyentes.delete(o); };
+  }
+
+  // ═════════════════════════ API MODULAR (portal) ═════════════════════════
+  function snapDocM(ref, data){
+    return { id: ref.id, ref: ref, exists: function(){ return data != null; }, data: function(){ return data == null ? undefined : JSON.parse(JSON.stringify(data)); },
+      get: function(k){ return data ? getRuta(data, k) : undefined; }, metadata: { hasPendingWrites: false, fromCache: false } };
+  }
+  function snapQueryM(ref, items, cambios){
+    const base = ref.kind === 'col' ? ref.segs : ref.segs.slice(0, -1);
+    const docs = items.map(function(it){ return snapDocM(refDoc(base.concat([it.id])), it.data); });
+    const porId = {}; docs.forEach(function(d){ porId[d.id] = d; });
+    return { docs: docs, size: docs.length, empty: !docs.length, query: ref, metadata: { hasPendingWrites: false, fromCache: false },
+      forEach: function(fn, ctx){ docs.forEach(fn, ctx); },
+      docChanges: function(){ return (cambios || docs.map(function(d, i){ return { type: 'added', id: d.id, oldIndex: -1, newIndex: i }; }))
+        .map(function(c){ return { type: c.type, oldIndex: c.oldIndex, newIndex: c.newIndex, doc: porId[c.id] || snapDocM(refDoc(base.concat([c.id])), null) }; }); } };
+  }
+
+  window.tcFlDocsShim = function(Fm){
+    if (!Fm || Fm.__flDocs) return Fm;
+    const S = Object.assign({}, Fm);
+    S.__flDocs = true;
+    S.collection = function(base){
+      const p = Array.prototype.slice.call(arguments, 1);
+      if (esMio(base)) return refCol(base.segs.concat(p));
+      if (p.length && typeof p[0] === 'string'){
+        const partes = p.join('/').split('/');
+        if (enruta(partes[0])) return refCol(partes);
+      }
+      return Fm.collection.apply(null, arguments);
+    };
+    S.doc = function(base){
+      const p = Array.prototype.slice.call(arguments, 1);
+      if (esMio(base)){
+        const segs = base.segs.concat(p);
+        if (base.kind === 'col' && !p.length) segs.push(idNuevoPara(segs));
+        return refDoc(segs);
+      }
+      if (p.length && typeof p[0] === 'string'){
+        const partes = p.join('/').split('/');
+        if (enruta(partes[0])){ if (partes.length % 2 === 1) partes.push(idNuevoPara(partes)); return refDoc(partes); }
+      }
+      return Fm.doc.apply(null, arguments);
+    };
+    const anotar = function(c, a){ c = c || {}; try { Object.defineProperty(c, '__flDocsC', { value: a }); } catch(e) {} return c; };
+    S.where = function(f, op, v){ return anotar(Fm.where ? Fm.where(f, op, v) : null, { t: 'where', f: String(f), op: op, v: v }); };
+    S.orderBy = function(f, d){ return anotar(Fm.orderBy ? Fm.orderBy(f, d) : null, { t: 'orderBy', f: String(f), d: d || 'asc' }); };
+    S.limit = function(n){ return anotar(Fm.limit ? Fm.limit(n) : null, { t: 'limit', n: n }); };
+    S.query = function(ref){
+      const cons = Array.prototype.slice.call(arguments, 1);
+      if (esMio(ref)) return refCol(ref.segs, (ref.cons || []).concat(cons.map(function(c){ return c && c.__flDocsC; }).filter(Boolean)));
+      return Fm.query.apply(null, arguments);
+    };
+    S.getDoc = function(r){ return esMio(r) ? leerUno(r).then(function(u){ return snapDocM(r, u ? u.data : null); }) : Fm.getDoc(r); };
+    S.getDocs = function(r){ return esMio(r) ? consultar(r).then(function(items){ return snapQueryM(r, items); }) : Fm.getDocs(r); };
+    S.addDoc = function(c, d){
+      if (!esMio(c)) return Fm.addDoc(c, d);
+      const ref = refDoc(c.segs.concat([idNuevoPara(c.segs)]));
+      return escribirSet(ref, d, false).then(function(){ return ref; });
+    };
+    S.setDoc = function(r, d, o){ return esMio(r) ? escribirSet(r, d, !!(o && (o.merge || o.mergeFields))) : Fm.setDoc(r, d, o); };
+    S.updateDoc = function(r, d){
+      if (!esMio(r)) return Fm.updateDoc.apply(null, arguments);
+      if (typeof d === 'string'){ const a = Array.prototype.slice.call(arguments, 1), o = {}; for (let i = 0; i < a.length; i += 2) o[a[i]] = a[i + 1]; d = o; }
+      return escribirUpdate(r, d, false);
+    };
+    S.deleteDoc = function(r){ return esMio(r) ? borrar(r) : Fm.deleteDoc(r); };
+    S.onSnapshot = function(r){
+      if (!esMio(r)) return Fm.onSnapshot.apply(null, arguments);
+      let a = Array.prototype.slice.call(arguments, 1);
+      if (a[0] && typeof a[0] === 'object' && typeof a[0].next !== 'function' && typeof a[1] !== 'undefined') a = a.slice(1); // opciones
+      let next = a[0], err = a[1];
+      if (next && typeof next === 'object'){ err = next.error && next.error.bind(next); next = next.next && next.next.bind(next); }
+      return escuchar(r, function(items, cambios){
+        if (r.kind === 'doc') next(snapDocM(r, items[0] ? items[0].data : null));
+        else next(snapQueryM(r, items, cambios));
+      }, err);
+    };
+    return S;
+  };
+
+  // ═════════════════════════ API COMPAT (app de técnicos) ═════════════════════════
+  function snapDocC(ref, data){
+    return { id: ref.id, ref: docC(ref.segs), exists: data != null, data: function(){ return data == null ? undefined : JSON.parse(JSON.stringify(data)); },
+      get: function(k){ return data ? getRuta(data, k) : undefined; }, metadata: { hasPendingWrites: false, fromCache: false } };
+  }
+  function snapQueryC(ref, items, cambios){
+    const base = ref.segs;
+    const docs = items.map(function(it){ return snapDocC(refDoc(base.concat([it.id])), it.data); });
+    const porId = {}; docs.forEach(function(d){ porId[d.id] = d; });
+    return { docs: docs, size: docs.length, empty: !docs.length, metadata: { hasPendingWrites: false, fromCache: false },
+      forEach: function(fn, ctx){ docs.forEach(fn, ctx); },
+      docChanges: function(){ return (cambios || docs.map(function(d, i){ return { type: 'added', id: d.id, oldIndex: -1, newIndex: i }; }))
+        .map(function(c){ return { type: c.type, oldIndex: c.oldIndex, newIndex: c.newIndex, doc: porId[c.id] || snapDocC(refDoc(base.concat([c.id])), null) }; }); } };
+  }
+  function argsOyente(a){
+    a = Array.prototype.slice.call(a);
+    if (a[0] && typeof a[0] === 'object' && typeof a[0].next !== 'function' && a.length > 1) a = a.slice(1);
+    let next = a[0], err = a[1];
+    if (next && typeof next === 'object'){ err = next.error && next.error.bind(next); next = next.next && next.next.bind(next); }
+    return { next: next, err: err };
+  }
+  function colC(segs, cons){
+    const ref = refCol(segs, cons);
+    const q = {
+      id: ref.id, path: ref.path, [MARK]: true,
+      doc: function(id){ return docC(segs.concat([id || idNuevoPara(segs)])); },
+      where: function(f, op, v){ return colC(segs, (cons || []).concat([{ t: 'where', f: String(f), op: op, v: v }])); },
+      orderBy: function(f, d){ return colC(segs, (cons || []).concat([{ t: 'orderBy', f: String(f), d: d || 'asc' }])); },
+      limit: function(n){ return colC(segs, (cons || []).concat([{ t: 'limit', n: n }])); },
+      get: function(){ return consultar(ref).then(function(items){ return snapQueryC(ref, items); }); },
+      add: function(d){ const r = refDoc(segs.concat([idNuevoPara(segs)])); return escribirSet(r, d, false).then(function(){ return docC(r.segs); }); },
+      onSnapshot: function(){
+        const h = argsOyente(arguments);
+        return escuchar(ref, function(items, cambios){ h.next(snapQueryC(ref, items, cambios)); }, h.err);
+      },
+    };
+    return q;
+  }
+  function docC(segs){
+    const ref = refDoc(segs);
+    return {
+      id: ref.id, path: ref.path, [MARK]: true,
+      get parent(){ return colC(segs.slice(0, -1)); },
+      collection: function(sub){ return colC(segs.concat(String(sub).split('/'))); },
+      get: function(){ return leerUno(ref).then(function(u){ return snapDocC(ref, u ? u.data : null); }); },
+      set: function(d, o){ return escribirSet(ref, d, !!(o && (o.merge || o.mergeFields))); },
+      update: function(d){
+        if (typeof d === 'string'){ const a = Array.prototype.slice.call(arguments), o = {}; for (let i = 0; i < a.length; i += 2) o[a[i]] = a[i + 1]; d = o; }
+        return escribirUpdate(ref, d, false);
+      },
+      delete: function(){ return borrar(ref); },
+      onSnapshot: function(){
+        const h = argsOyente(arguments);
+        return escuchar(ref, function(items){ h.next(snapDocC(ref, items[0] ? items[0].data : null)); }, h.err);
+      },
+    };
+  }
+  window.tcFlDocsCompat = function(dbReal){
+    if (!dbReal || dbReal.__flDocs) return dbReal;
+    return new Proxy(dbReal, {
+      get: function(t, p){
+        if (p === '__flDocs') return true;
+        if (p === 'collection') return function(nombre){
+          const partes = String(nombre).split('/');
+          return enruta(partes[0]) ? colC(partes) : t.collection(nombre);
+        };
+        if (p === 'doc') return function(ruta){
+          const partes = String(ruta).split('/');
+          return enruta(partes[0]) ? docC(partes) : t.doc(ruta);
+        };
+        const v = t[p];
+        return typeof v === 'function' ? v.bind(t) : v;
+      },
+    });
+  };
+
+  console.log('[tcFlDocs] Flotilla (vehículos, transferencias, checklists, tareas, usuarios, GPS, notificaciones…) → Supabase listo');
 })();
