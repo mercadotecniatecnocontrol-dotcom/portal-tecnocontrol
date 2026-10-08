@@ -660,7 +660,19 @@
     + '.alm-fchips{display:flex;gap:6px;flex-wrap:wrap;}'
     + '.alm-notif-btn{margin-left:auto;display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:9px;border:1px solid #e6ebf2;background:#fff;color:#475569;cursor:pointer;flex-shrink:0;}'
     + '.alm-notif-btn:hover{background:#f1f5f9;}'
-    + '.alm-fchip .alm-area-n{font-weight:800;opacity:.8;}'
+    + '.alm-areas{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:0 0 12px;}'
+    + '.alm-area{display:flex;align-items:center;gap:10px;text-align:left;background:#fff;border:1px solid #e6ebf2;border-radius:14px;padding:10px 12px;cursor:pointer;font-family:inherit;position:relative;overflow:hidden;transition:box-shadow .15s,border-color .15s,transform .15s;box-shadow:0 1px 2px rgba(15,23,42,.04);}'
+    + '.alm-area:hover{border-color:var(--ac);box-shadow:0 4px 14px rgba(15,23,42,.08);}'
+    + '.alm-area::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--ac);opacity:.25;}'
+    + '.alm-area .ic{width:34px;height:34px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--ac);background:#f1f5f9;}'
+    + '.alm-area .tx{display:flex;flex-direction:column;min-width:0;flex:1;}'
+    + '.alm-area .t{font-size:13px;font-weight:800;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}'
+    + '.alm-area .d{font-size:10.5px;font-weight:600;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}'
+    + '.alm-area .n{font-size:18px;font-weight:800;color:var(--ac);min-width:26px;text-align:right;}'
+    + '.alm-area.on{background:var(--ac);border-color:var(--ac);box-shadow:0 6px 18px rgba(15,23,42,.16);}'
+    + '.alm-area.on::after{opacity:0;}'
+    + '.alm-area.on .ic{background:rgba(255,255,255,.18);color:#fff;} .alm-area.on .t,.alm-area.on .n{color:#fff;} .alm-area.on .d{color:rgba(255,255,255,.8);}'
+    + '@media (max-width:1100px){.alm-areas{grid-template-columns:repeat(2,minmax(0,1fr));}}'
     + '.alm-fchip{cursor:pointer;border:1px solid #e6ebf2;background:#fff;color:#475569;border-radius:99px;font-size:11.5px;font-weight:800;padding:6px 12px;}'
     + '.alm-fchip.on{background:#0f172a;color:#fff;border-color:#0f172a;}'
     + '.alm-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px;margin:0 0 22px;}'
@@ -1126,16 +1138,11 @@
     var chipsTipo = '<span class="alm-fchip alm-fchip-tipo on" data-tipo="" onclick="window.__almTipo(\'\')">Todos</span>'
       + '<span class="alm-fchip alm-fchip-tipo" data-tipo="venta" onclick="window.__almTipo(\'venta\')">Venta</span>'
       + '<span class="alm-fchip alm-fchip-tipo" data-tipo="material" onclick="window.__almTipo(\'material\')">Material</span>';
-    var chipsArea = '<span class="alm-fchip alm-fchip-area on" data-area="" onclick="window.__almArea(\'\')">Todo</span>'
-      + '<span class="alm-fchip alm-fchip-area" data-area="almacen" onclick="window.__almArea(\'almacen\')">Almac\u00e9n <b class="alm-area-n" data-n="almacen"></b></span>'
-      + '<span class="alm-fchip alm-fchip-area" data-area="servicios" onclick="window.__almArea(\'servicios\')">Servicios <b class="alm-area-n" data-n="servicios"></b></span>'
-      + '<span class="alm-fchip alm-fchip-area" data-area="pro" onclick="window.__almArea(\'pro\')">PRO <b class="alm-area-n" data-n="pro"></b></span>';
     cont.innerHTML = '<div class="alm-wrap">'
       + '<div class="alm-bar" id="alm-toolbar">'
       +   '<span class="alm-live"><span class="p"></span>En vivo</span>'
       +   '<div class="alm-search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>'
       +     '<input id="alm-q" type="text" placeholder="Buscar folio, cliente o vendedor…" oninput="window.__almBuscar(this.value)"></div>'
-      +   '<div class="alm-fchips">'+chipsArea+'</div>'
       +   '<div class="alm-fchips">'+chipsTipo+'</div>'
       +   '<div class="alm-fchips">'+chips+'</div>'
       +   '<button id="alm-notif-btn" class="alm-notif-btn" title="Notificación sonora de pedidos nuevos" onclick="window.__almNotifToggle()">'+iconoCampana()+'</button>'
@@ -1147,7 +1154,7 @@
       + '</div>'
       + '<div class="alm-kpis" id="alm-kpis"></div>'
       + '<div style="display:flex;gap:14px;align-items:flex-start;">'
-      +   '<div class="alm-board" id="alm-board" style="flex:1;min-width:0;"></div>'
+      +   '<div style="flex:1;min-width:0;"><div id="alm-areas" class="alm-areas"></div><div class="alm-board" id="alm-board"></div></div>'
       +   '<div id="alm-mapa-rutas-panel" style="flex:0 0 32%;min-width:340px;background:#fff;border-radius:14px;overflow:hidden;display:flex;flex-direction:column;position:sticky;top:0;box-shadow:0 1px 3px rgba(0,0,0,0.06);">'
       +     '<div style="padding:10px 14px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;">'
       +       '<span style="font-weight:700;font-size:13px;color:#1e293b;">🗺️ Rutas pendientes</span>'
@@ -1177,10 +1184,7 @@
     var nServ = colsServicios().reduce(function(a,c){ return a+c.lista.length; },0);
     var nPro = todosActivos.filter(esPro).length;
     var nAlm = todosActivos.filter(function(p){ var c=clasif(p); return c==='productos'||c==='pro_mixto'; }).length;
-    cont.querySelectorAll('.alm-area-n').forEach(function(el){
-      var k=el.getAttribute('data-n'); var n = k==='servicios'?nServ:(k==='pro'?nPro:nAlm);
-      el.textContent = n ? ('\u00b7 '+n) : '';
-    });
+    pintarAreas({ '': todosActivos.filter(function(p){ return clasif(p)!=='servicio'; }).length, almacen: nAlm, servicios: nServ, pro: nPro });
 
     var kRecibidos = activos.filter(function(p){ return ['esperando_autorizacion','pendiente','en_preparacion'].indexOf(p.estado)!==-1; }).length;
     var kParcial = activos.filter(function(p){ return p.estado==='parcial'; }).length;
@@ -1221,6 +1225,28 @@
       html += '</div>';
     });
     boardEl.innerHTML=html;
+  }
+
+  // Pestañas de área justo encima del kanban
+  var AREAS = [
+    { k:'',          t:'Tablero completo', d:'Todo lo que surte Almac\u00e9n', c:'#1D2E73',
+      i:'<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>' },
+    { k:'almacen',   t:'Almac\u00e9n',       d:'Solo productos \u00b7 cuenta en m\u00e9tricas', c:'#0e7490',
+      i:'<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>' },
+    { k:'servicios', t:'Servicios',        d:'Para Operaciones', c:'#7c3aed',
+      i:'<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>' },
+    { k:'pro',       t:'PRO',              d:'Sobre pedido \u00b7 Compras', c:'#b45309',
+      i:'<circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>' }
+  ];
+  function pintarAreas(cuentas){
+    var el=document.getElementById('alm-areas'); if(!el) return;
+    el.innerHTML = AREAS.map(function(a){
+      var on = filtro.area===a.k, n = cuentas[a.k]||0;
+      return '<button type="button" class="alm-area'+(on?' on':'')+'" style="--ac:'+a.c+'" onclick="window.__almArea(\''+a.k+'\')">'
+        + '<span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+a.i+'</svg></span>'
+        + '<span class="tx"><span class="t">'+a.t+'</span><span class="d">'+a.d+'</span></span>'
+        + '<span class="n">'+n+'</span></button>';
+    }).join('');
   }
 
   function pasaBusqueda(p){
@@ -1623,11 +1649,7 @@
     }
   };
   window.__almCheck  = function(id,idx){ toggleCheck(id,idx); };
-  window.__almArea = function(v){
-    filtro.area=v||'';
-    var cont=contenedor(); if(cont){ cont.querySelectorAll('.alm-fchip-area').forEach(function(el){ el.classList.toggle('on', (el.getAttribute('data-area')||'')===filtro.area); }); }
-    render();
-  };
+  window.__almArea = function(v){ filtro.area=v||''; render(); };
   window.__almOpsGestionado = function(id){
     var p=buscarP(id); if(!p) return;
     if (!confirm('\u00bfMarcar el folio '+(p.folio||'')+' como gestionado por Operaciones? Saldr\u00e1 de esta lista.')) return;

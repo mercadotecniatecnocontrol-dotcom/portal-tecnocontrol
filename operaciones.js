@@ -1981,6 +1981,7 @@
             // con respaldo de sondeo cada 30s por si se pierde un evento en vivo.
             unsubSurt = window.tcSbSuscribirSurtidos(lista => {
                 cacheSurtidos = lista || [];
+                if (tabActual === "calendario") opsCalPintarPedidosVentas();
                 if (tabActual === "resumen") opsRenderResumen();
                 if (tabActual === "solicitudes") opsRenderSolicitudes();
                 if (tabActual === "alertas") opsRenderAlertas();
@@ -1990,6 +1991,7 @@
                     if (window.tcSbListarTodosSurtidos) {
                         window.tcSbListarTodosSurtidos().then(lista => {
                             cacheSurtidos = lista || [];
+                            if (tabActual === "calendario") opsCalPintarPedidosVentas();
                             if (tabActual === "resumen") opsRenderResumen();
                             if (tabActual === "solicitudes") opsRenderSolicitudes();
                             if (tabActual === "alertas") opsRenderAlertas();
@@ -5840,6 +5842,7 @@
                 ${tarjeta(enEjecucionHoy, "En ejecución hoy", "#579bfc", ICONOS_TARJETA.play)}
                 ${tarjeta(programadosSemana, "Programados esta semana", "#a25ddc", ICONOS_TARJETA.calendario)}
                 ${tarjeta(sinFecha.length, "Sin fecha programada", "#fdab3d", ICONOS_TARJETA.reloj)}
+                ${tarjeta(opsPedidosVentasPendientes().length, "Vendidos por programar", "#7c3aed", ICONOS_TARJETA.calendario)}
                 ${tarjeta(atrasados, "Atrasados / por vencer", "#e2445c", ICONOS_TARJETA.alerta)}
                 ${tarjeta(disponiblesHoy + "/" + tecActivos.length, "Técnicos disponibles hoy", "#00c875", ICONOS_TARJETA.equipo)}
                 ${tarjeta(choques, "Choques detectados", choques ? "#e2445c" : "#4eccc6", ICONOS_TARJETA.choque)}
@@ -5873,6 +5876,7 @@
 
             ${opsCalHTMLFiltros()}
             ${opsCalVerLeyenda ? opsCalHTMLLeyenda() : ""}
+            ${opsCalFull ? "" : '<div id="ops-cal-pedidos-ventas"></div>'}
             <div id="ops-cal-body"></div>
           ${opsCalFull ? "</div>" : ""}
 
@@ -5889,7 +5893,111 @@
           ${opsCalFull ? "" : "</div>"}
         `;
         opsCalRenderBody();
+        opsCalPintarPedidosVentas();
     }
+
+    // ═══ Servicios vendidos (pedidos PDF de Ventas) por programar — oct-2026 ═══
+    // almacen-pdf.js clasifica cada pedido por la clave de sus partidas: los que traen
+    // servicio o viáticos llegan aquí hasta que Operaciones los programa o los da por
+    // gestionados. Si el servicio lleva piezas, se muestra cómo va Almacén surtiéndolas.
+    const OPS_EMP_CORTA = { TECNOCONTROL: "Tecnocontrol", JOMAR: "JOMAR", TECNOLAB: "TecnoLab", AKURIS: "Akuris", VH: "VH" };
+    let opsPedVentasAbierto = true;
+    function opsPedidosVentasPendientes() {
+        return (cacheSurtidos || []).filter(p => (p.clasificacion === "servicio" || p.clasificacion === "servicio_piezas")
+            && !p.opsGestionado && p.estado !== "cancelado" && !p.eliminada)
+            .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+    }
+    function opsPedVentasEstadoPiezas(p) {
+        if (p.clasificacion === "servicio") return { t: "Sin piezas", c: "#64748b", bg: "#f1f5f9" };
+        if (p.estado === "entregado" || p.estado === "finalizado") return { t: "Piezas surtidas por Almacén", c: "#15803d", bg: "#dcfce7" };
+        if (p.estado === "parcial") return { t: "Piezas: entrega parcial", c: "#b45309", bg: "#fef3c7" };
+        return { t: "Almacén surtiendo piezas", c: "#1473E6", bg: "#e0edff" };
+    }
+    function opsPedVentasDias(p) {
+        const d = Math.floor((Date.now() - (p.createdAt || Date.now())) / 86400000);
+        return d <= 0 ? "Hoy" : d === 1 ? "Hace 1 día" : `Hace ${d} días`;
+    }
+    window.opsCalPintarPedidosVentas = function () { opsCalPintarPedidosVentas(); };
+    function opsCalPintarPedidosVentas() {
+        const box = document.getElementById("ops-cal-pedidos-ventas");
+        if (!box) return;
+        const lista = opsPedidosVentasPendientes();
+        if (!lista.length) { box.innerHTML = ""; return; }
+        const gestiona = opsPuedeGestionar();
+        const tarjetas = lista.map(p => {
+            const est = opsPedVentasEstadoPiezas(p);
+            const partidas = (Array.isArray(p.productos) ? p.productos : []);
+            const serv = partidas.filter(x => x.tipo === "servicio" || x.tipo === "viaticos");
+            const piezas = partidas.filter(x => x.tipo === "producto" || x.tipo === "pro");
+            const emp = p.empresa ? `<span style="font-size:9.5px;font-weight:800;color:#fff;background:#334155;border-radius:5px;padding:2px 6px;">${opsEsc(OPS_EMP_CORTA[p.empresa] || p.empresa)}</span>` : "";
+            return `<div style="background:#fff;border:1px solid #ede9fe;border-left:4px solid #7c3aed;border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:7px;min-width:0;">
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                    <span style="font-weight:800;font-size:12.5px;color:#1e293b;">${opsEsc(p.folio || "—")}</span>${emp}
+                    <span style="margin-left:auto;font-size:10.5px;color:#94a3b8;font-weight:700;">${opsPedVentasDias(p)}</span>
+                </div>
+                <div style="font-weight:700;font-size:13px;color:#1D2E73;line-height:1.25;">${opsEsc(p.cliente || "Sin cliente")}</div>
+                <div style="font-size:11px;color:#64748b;">Vendedor: ${opsEsc(p.vendedor || "—")}${p.fechaEntrega ? " · Compromiso: " + opsEsc(p.fechaEntrega) : ""}</div>
+                <div style="display:flex;flex-direction:column;gap:4px;">
+                    ${serv.map(x => `<div style="font-size:11.5px;color:#334155;background:#faf5ff;border-radius:8px;padding:6px 8px;">
+                        <b>${opsEsc(x.cant || 1)} × ${opsEsc(x.desc || x.clave || "")}</b>${x.espec ? `<div style="color:#6d28d9;font-weight:600;margin-top:2px;">${opsEsc(x.espec)}</div>` : ""}</div>`).join("")}
+                    ${piezas.length ? `<div style="font-size:10.5px;color:#64748b;">+ ${piezas.length} pieza(s): ${piezas.slice(0, 3).map(x => opsEsc((x.espec || x.desc || "").slice(0, 40))).join(", ")}${piezas.length > 3 ? "…" : ""}</div>` : ""}
+                </div>
+                <span style="align-self:flex-start;font-size:10.5px;font-weight:800;color:${est.c};background:${est.bg};border-radius:6px;padding:3px 8px;">${est.t}</span>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:2px;">
+                    ${gestiona ? `<button onclick="opsCalProgramarPedido('${p.id}')" style="background:#1D2E73;color:#fff;border:none;border-radius:8px;padding:7px 12px;font-size:11.5px;font-weight:700;cursor:pointer;">Programar</button>` : ""}
+                    ${p.tienePdfOriginal ? `<button onclick="opsCalVerPdfPedido('${p.id}')" style="background:#f8fafc;color:#334155;border:1px solid #e2e8f0;border-radius:8px;padding:7px 12px;font-size:11.5px;font-weight:700;cursor:pointer;">Ver PDF</button>` : ""}
+                    ${gestiona ? `<button onclick="opsCalPedidoGestionado('${p.id}')" title="Quitar de la lista sin crear servicio (ya se programó por otro lado)" style="background:#fff;color:#64748b;border:1px dashed #cbd5e1;border-radius:8px;padding:7px 10px;font-size:11px;font-weight:700;cursor:pointer;">Ya gestionado</button>` : ""}
+                </div>
+            </div>`;
+        }).join("");
+        box.innerHTML = `<div style="margin:0 0 10px;background:#fff;border-radius:14px;box-shadow:0 1px 2px rgba(15,23,42,.04),0 4px 14px rgba(15,23,42,.06);border-top:3px solid #7c3aed;overflow:hidden;">
+            <div onclick="opsCalTogglePedidosVentas()" style="display:flex;align-items:center;gap:10px;padding:11px 16px;cursor:pointer;">
+                <span style="width:28px;height:28px;border-radius:8px;background:#f3e8ff;color:#7c3aed;display:inline-flex;align-items:center;justify-content:center;">${'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>'}</span>
+                <div style="flex:1;min-width:0;">
+                    <div style="font-size:12.5px;font-weight:800;color:#5b21b6;">Servicios vendidos por programar <span style="background:#7c3aed;color:#fff;border-radius:99px;padding:1px 8px;margin-left:4px;font-size:11px;">${lista.length}</span></div>
+                    <div style="font-size:11px;color:#64748b;">Pedidos que Ventas subi\u00f3 a Almac\u00e9n con servicio o vi\u00e1ticos. Al programarlos salen de esta lista.</div>
+                </div>
+                <span style="color:#7c3aed;font-weight:800;font-size:16px;">${opsPedVentasAbierto ? "\u2212" : "+"}</span>
+            </div>
+            ${opsPedVentasAbierto ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;padding:0 14px 14px;">${tarjetas}</div>` : ""}
+        </div>`;
+    }
+    window.opsCalTogglePedidosVentas = function () { opsPedVentasAbierto = !opsPedVentasAbierto; opsCalPintarPedidosVentas(); };
+    window.opsCalVerPdfPedido = function (id) {
+        const w = window.open("", "_blank");
+        if (w) w.document.write('<p style="font-family:sans-serif;padding:20px;">Cargando PDF…</p>');
+        window.tcSbObtenerPdfOriginal(id).then(res => {
+            if (!res || !res.archivo) { if (w) w.close(); alert("Este pedido no tiene PDF adjunto."); return; }
+            if (w) { w.document.open(); w.document.write('<iframe src="' + res.archivo + '" style="border:none;position:fixed;inset:0;width:100%;height:100%;"></iframe>'); w.document.close(); }
+        }).catch(err => { if (w) w.close(); alert("No se pudo abrir el PDF: " + (err.message || err)); });
+    };
+    async function opsMarcarPedidoGestionado(id, folioOps) {
+        const datos = { opsGestionado: true, opsGestionadoPor: opsNombreActual(), opsGestionadoEn: new Date().toISOString() };
+        if (folioOps) datos.opsFolioId = folioOps;
+        await window.tcSbActualizarSurtido(id, datos);
+        if (window.tcSbAgregarHistorial) window.tcSbAgregarHistorial(id, { por: opsNombreActual(), nota: folioOps ? "Programado en Operaciones" : "Gestionado por Operaciones" }).catch(() => {});
+        const p = (cacheSurtidos || []).find(x => x.id === id); if (p) Object.assign(p, datos);
+        opsCalPintarPedidosVentas();
+    }
+    window.opsCalPedidoGestionado = function (id) {
+        const p = (cacheSurtidos || []).find(x => x.id === id); if (!p) return;
+        if (!confirm(`¿Marcar el pedido ${p.folio || ""} como ya gestionado? Saldrá de esta lista sin crear un servicio nuevo.`)) return;
+        opsMarcarPedidoGestionado(id, null).catch(err => alert("No se pudo guardar: " + (err.message || err)));
+    };
+    // Abre el alta de servicio ya llena con los datos del pedido; al guardar, el pedido sale de la lista.
+    window.opsCalProgramarPedido = function (id) {
+        const p = (cacheSurtidos || []).find(x => x.id === id); if (!p) return;
+        window.opsAbrirAltaServicio(opsCalFechaISO(new Date()));
+        if (!opsAS) return;
+        const serv = (p.productos || []).filter(x => x.tipo === "servicio" || x.tipo === "viaticos");
+        opsAS.os = p.folio || "";
+        opsAS.estTexto = p.cliente || "";
+        opsAS.comentarios = [`Pedido de Ventas ${p.folio || ""} (${p.vendedor ? "vendedor " + p.vendedor : "Ventas"}).`,
+            ...serv.map(x => `${x.cant || 1} × ${x.desc || x.clave}${x.espec ? " — " + x.espec : ""}`),
+            p.clasificacion === "servicio_piezas" ? "Lleva piezas surtidas por Almacén." : ""].filter(Boolean).join("\n");
+        opsAS.__surtidoId = p.id;
+        opsAsPintar();
+    };
 
     window.opsCalCambiarVista = function (v) { opsCalVista = v; opsRenderCalendario(); };
     window.opsCalMover = function (dir) {
@@ -9753,6 +9861,7 @@
             // Aviso con alarma a cada técnico asignado en la app de Flotilla (ligado por correo).
             const avisos = await opsAvisarTecnicosAsignados({ id: nuevo.id, ...datos }, tecs, s.tipo === "programacion" && s.servicios.length ? tipoTxt + " (" + opsProgServiciosTxt(s.servicios) + ")" : tipoTxt);
             const conViaticos = s.viaticos;
+            if (s.__surtidoId) opsMarcarPedidoGestionado(s.__surtidoId, nuevo.id).catch(err => console.warn("[Alta servicio] no se pudo ligar el pedido de Ventas:", err.message));
             opsAS = null;
             const fProg = datos.fechaProgramada.slice(0, 10);
             if (opsCalFiltroPlaza !== "todas" && opsCalFiltroPlaza !== datos.plaza) opsCalFiltroPlaza = datos.plaza;
@@ -9860,6 +9969,7 @@
         const avisos = await opsAvisarTecnicosAsignados({ ...primero, estacion: estTxt.length > 1 ? `${estTxt.length} estaciones (${estTxt.join(", ")})` : estTxt[0] }, tecs,
             tipoTxt + (multi ? ` del ${ventanaIni} al ${ventanaFin}, orden libre` : "") + (s.tipo === "programacion" && servTxt ? ` · ${servTxt}` : ""));
         const conViaticos = s.viaticos;
+        if (s.__surtidoId) opsMarcarPedidoGestionado(s.__surtidoId, primero.id || null).catch(err => console.warn("[Alta grupo] no se pudo ligar el pedido de Ventas:", err.message));
         opsAS = null;
         if (opsCalFiltroPlaza !== "todas" && opsCalFiltroPlaza !== primero.plaza) opsCalFiltroPlaza = primero.plaza;
         if (tabActual === "calendario" && typeof window.opsCalIrAFecha === "function") { try { window.opsCalIrAFecha(primero.fechaProgramada.slice(0, 10)); } catch (x) { /* solo navegación */ } }
