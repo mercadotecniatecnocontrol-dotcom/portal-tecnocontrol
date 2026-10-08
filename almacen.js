@@ -71,7 +71,23 @@
   var contId    = 'vista-almacen';
   var pedidos   = [];
   var expandido = {};                 // {id:true}
-  var filtro    = { q:'', prio:'', tipo:'' };   // búsqueda, prioridad y tipo
+  var filtro    = { q:'', prio:'', tipo:'', area:'' };   // búsqueda, prioridad, tipo y área (''=Todo, almacen, servicios, pro)
+
+  // ── Clasificación del pedido (la pone almacen-pdf.js al subirlo, oct-2026) ──
+  // Servicios → Operaciones; PRO (sobre pedido) → Compras. Solo los pedidos que
+  // Almacén surte por su cuenta cuentan en KPIs, SLA y alertas.
+  var CLASIF = {
+    productos:       { t:'Productos',            c:'#0e7490' },
+    servicio:        { t:'Servicio',             c:'#7c3aed' },
+    servicio_piezas: { t:'Servicio con piezas',  c:'#7c3aed' },
+    pro:             { t:'PRO \u00b7 sobre pedido', c:'#b45309' },
+    pro_mixto:       { t:'PRO + productos',      c:'#b45309' }
+  };
+  function clasif(p){ return (p && p.clasificacion && CLASIF[p.clasificacion]) ? p.clasificacion : 'productos'; }
+  function cuentaMetricas(p){ var c=clasif(p); return c!=='servicio' && c!=='servicio_piezas' && c!=='pro'; }
+  function esServicio(p){ var c=clasif(p); return c==='servicio' || c==='servicio_piezas'; }
+  function esPro(p){ var c=clasif(p); return c==='pro' || c==='pro_mixto'; }
+  var EMPRESA_CORTA = { TECNOCONTROL:'Tecnocontrol', JOMAR:'JOMAR', TECNOLAB:'TecnoLab', AKURIS:'Akuris', VH:'VH' };
   var _unsub  = null, _tick = null, _fs = null, _cssOk = false;
   var _conocidos = null;             // Set de ids ya vistos (null = aún no hubo primera carga)
   var _almacenes = null;             // lista de almacenes para traslados (config/almacenes en Firestore)
@@ -174,6 +190,7 @@
   var _alertRetrasado = {};
   function revisarAlertasSLA(){
     pedidos.forEach(function(p){
+      if (!cuentaMetricas(p)) return;
       var st = estadoSLA(p);
       if (st==='porvencer'){
         if (_notifOn && !_alertPorVencer[p.id]){
@@ -263,6 +280,10 @@
     });
   }
   function pasaFiltro(p){
+    var c = clasif(p);
+    if (filtro.area==='almacen' && c!=='productos' && c!=='pro_mixto') return false;
+    if (filtro.area==='pro' && !esPro(p)) return false;
+    if (!filtro.area && c==='servicio') return false;   // servicio sin piezas: solo en la vista Servicios
     if (filtro.prio && p.prioridad !== filtro.prio) return false;
     if (filtro.tipo && p.tipo !== filtro.tipo) return false;
     if (filtro.q){
@@ -639,6 +660,7 @@
     + '.alm-fchips{display:flex;gap:6px;flex-wrap:wrap;}'
     + '.alm-notif-btn{margin-left:auto;display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:9px;border:1px solid #e6ebf2;background:#fff;color:#475569;cursor:pointer;flex-shrink:0;}'
     + '.alm-notif-btn:hover{background:#f1f5f9;}'
+    + '.alm-fchip .alm-area-n{font-weight:800;opacity:.8;}'
     + '.alm-fchip{cursor:pointer;border:1px solid #e6ebf2;background:#fff;color:#475569;border-radius:99px;font-size:11.5px;font-weight:800;padding:6px 12px;}'
     + '.alm-fchip.on{background:#0f172a;color:#fff;border-color:#0f172a;}'
     + '.alm-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px;margin:0 0 22px;}'
@@ -1104,11 +1126,16 @@
     var chipsTipo = '<span class="alm-fchip alm-fchip-tipo on" data-tipo="" onclick="window.__almTipo(\'\')">Todos</span>'
       + '<span class="alm-fchip alm-fchip-tipo" data-tipo="venta" onclick="window.__almTipo(\'venta\')">Venta</span>'
       + '<span class="alm-fchip alm-fchip-tipo" data-tipo="material" onclick="window.__almTipo(\'material\')">Material</span>';
+    var chipsArea = '<span class="alm-fchip alm-fchip-area on" data-area="" onclick="window.__almArea(\'\')">Todo</span>'
+      + '<span class="alm-fchip alm-fchip-area" data-area="almacen" onclick="window.__almArea(\'almacen\')">Almac\u00e9n <b class="alm-area-n" data-n="almacen"></b></span>'
+      + '<span class="alm-fchip alm-fchip-area" data-area="servicios" onclick="window.__almArea(\'servicios\')">Servicios <b class="alm-area-n" data-n="servicios"></b></span>'
+      + '<span class="alm-fchip alm-fchip-area" data-area="pro" onclick="window.__almArea(\'pro\')">PRO <b class="alm-area-n" data-n="pro"></b></span>';
     cont.innerHTML = '<div class="alm-wrap">'
       + '<div class="alm-bar" id="alm-toolbar">'
       +   '<span class="alm-live"><span class="p"></span>En vivo</span>'
       +   '<div class="alm-search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>'
       +     '<input id="alm-q" type="text" placeholder="Buscar folio, cliente o vendedor…" oninput="window.__almBuscar(this.value)"></div>'
+      +   '<div class="alm-fchips">'+chipsArea+'</div>'
       +   '<div class="alm-fchips">'+chipsTipo+'</div>'
       +   '<div class="alm-fchips">'+chips+'</div>'
       +   '<button id="alm-notif-btn" class="alm-notif-btn" title="Notificación sonora de pedidos nuevos" onclick="window.__almNotifToggle()">'+iconoCampana()+'</button>'
@@ -1144,8 +1171,16 @@
     var kpisEl=cont.querySelector('#alm-kpis'), boardEl=cont.querySelector('#alm-board');
     if(!kpisEl||!boardEl) return;
 
-    var activos = pedidos.filter(function(p){ return ['finalizado','cancelado','entregado'].indexOf(p.estado)===-1; });
-    var visibles = activos.filter(pasaFiltro);
+    var todosActivos = pedidos.filter(function(p){ return ['finalizado','cancelado','entregado'].indexOf(p.estado)===-1; });
+    var activos = todosActivos.filter(cuentaMetricas);   // KPIs y SLA: solo lo que Almacén surte por su cuenta
+    var visibles = todosActivos.filter(pasaFiltro);
+    var nServ = colsServicios().reduce(function(a,c){ return a+c.lista.length; },0);
+    var nPro = todosActivos.filter(esPro).length;
+    var nAlm = todosActivos.filter(function(p){ var c=clasif(p); return c==='productos'||c==='pro_mixto'; }).length;
+    cont.querySelectorAll('.alm-area-n').forEach(function(el){
+      var k=el.getAttribute('data-n'); var n = k==='servicios'?nServ:(k==='pro'?nPro:nAlm);
+      el.textContent = n ? ('\u00b7 '+n) : '';
+    });
 
     var kRecibidos = activos.filter(function(p){ return ['esperando_autorizacion','pendiente','en_preparacion'].indexOf(p.estado)!==-1; }).length;
     var kParcial = activos.filter(function(p){ return p.estado==='parcial'; }).length;
@@ -1164,6 +1199,19 @@
       + kpi(COLORS.teal,    kEntregadosHoy, 'Entregados hoy');
 
     var html='';
+    if (filtro.area==='servicios' || filtro.area==='pro'){
+      var cols = filtro.area==='servicios' ? colsServicios() : colsPro(visibles);
+      cols.forEach(function(col){
+        var lista = ordenar(col.lista.filter(pasaBusqueda));
+        html += '<div class="alm-col"><div class="alm-col-h">'
+          + '<span class="t"><span class="a"><span class="dot" style="background:'+col.color+'"></span>'+col.titulo+'</span><span class="b">'+col.sub+'</span></span>'
+          + '<span class="c">'+lista.length+'</span></div>';
+        html += lista.length ? lista.map(col.card).join('') : '<div class="alm-empty">Sin pedidos</div>';
+        html += '</div>';
+      });
+      boardEl.innerHTML=html;
+      return;
+    }
     COLUMNAS.forEach(function(col){
       var lista=ordenar(visibles.filter(function(p){return col.estados.indexOf(p.estado)!==-1;}));
       html += '<div class="alm-col"><div class="alm-col-h">'
@@ -1173,6 +1221,75 @@
       html += '</div>';
     });
     boardEl.innerHTML=html;
+  }
+
+  function pasaBusqueda(p){
+    if (!filtro.q) return true;
+    var q=filtro.q.toLowerCase();
+    return ((p.folio||'')+' '+(p.cliente||'')+' '+(p.vendedor||'')).toLowerCase().indexOf(q)!==-1;
+  }
+  var ACTIVOS_ALM = ['esperando_autorizacion','pendiente','en_preparacion','parcial'];
+  // Vista Servicios: lo que Operaciones debe programar / gestionar.
+  function colsServicios(){
+    var vivos = pedidos.filter(function(p){ return esServicio(p) && p.estado!=='cancelado' && !p.eliminada && !p.opsGestionado; });
+    return [
+      { titulo:'Por programar', sub:'Servicio sin piezas \u00b7 Operaciones', color:'#7c3aed',
+        lista: vivos.filter(function(p){ return clasif(p)==='servicio'; }), card: function(p){ return tarjetaArea(p,'ops'); } },
+      { titulo:'Surtiendo material', sub:'Piezas para el servicio', color:'#1473E6',
+        lista: vivos.filter(function(p){ return clasif(p)==='servicio_piezas' && ACTIVOS_ALM.indexOf(p.estado)!==-1; }), card: tarjeta },
+      { titulo:'Surtido \u00b7 pendiente Operaciones', sub:'Almac\u00e9n ya entreg\u00f3', color:'#059669',
+        lista: vivos.filter(function(p){ return clasif(p)==='servicio_piezas' && (p.estado==='entregado'||p.estado==='finalizado'); }), card: function(p){ return tarjetaArea(p,'ops'); } }
+    ];
+  }
+  // Vista PRO: mercancía sobre pedido, esperando que llegue de Compras.
+  function colsPro(visibles){
+    var pro = visibles.filter(esPro);
+    return [
+      { titulo:'Esperando material', sub:'En Compras \u00b7 sobre pedido', color:'#b45309',
+        lista: pro.filter(function(p){ return p.compraEstado!=='recibido'; }), card: function(p){ return tarjetaArea(p,'pro'); } },
+      { titulo:'Material recibido', sub:'Listo para entregar', color:'#1473E6',
+        lista: pro.filter(function(p){ return p.compraEstado==='recibido'; }), card: tarjeta }
+    ];
+  }
+  function lineasPartidas(p, tipos){
+    var prods = Array.isArray(p.productos)?p.productos:[];
+    var sel = prods.filter(function(it){ return !tipos || tipos.indexOf(it.tipo||'producto')!==-1; });
+    if (!sel.length) return '';
+    return '<div class="alm-mat-lista">' + sel.map(function(it){
+      return '<div class="alm-mat-item"><span class="d">'+esc(it.desc||'\u2014')+(it.espec?('<br><span style="color:#64748b;font-weight:600;">'+esc(it.espec)+'</span>'):'')
+        + (it.clave?(' <span style="color:#94a3b8;">('+esc(it.clave)+')</span>'):'')+'</span><span class="c">\u00d7'+esc(it.cant||0)+'</span></div>';
+    }).join('') + '</div>';
+  }
+  function tagClasif(p){
+    var c=clasif(p); if (c==='productos') return '';
+    var inf=CLASIF[c];
+    return '<span class="alm-tipo-tag" style="background:'+inf.c+'">'+inf.t+'</span>';
+  }
+  function tagEmpresa(p){
+    if (!p.empresa || p.empresa==='TECNOCONTROL') return '';
+    return '<span class="alm-tipo-tag" style="background:#334155">'+esc(EMPRESA_CORTA[p.empresa]||p.empresa)+'</span>';
+  }
+  // Tarjeta compacta de seguimiento (servicios para Operaciones / PRO en Compras)
+  function tarjetaArea(p, modo){
+    var esOps = modo==='ops';
+    var boton = esOps
+      ? '<button class="alm-btn alm-btn-go" onclick="window.__almOpsGestionado(\''+p.id+'\')">Gestionado por Operaciones</button>'
+      : '<button class="alm-btn alm-btn-go" onclick="window.__almProRecibido(\''+p.id+'\')">Material recibido</button>';
+    var estadoTxt = esOps
+      ? (clasif(p)==='servicio' ? 'Pendiente de programar' : 'Piezas entregadas'+(p.recibioNombre?(' a '+esc(p.recibioNombre)):''))
+      : 'Pedido al proveedor';
+    return '<div class="alm-card" data-id="'+p.id+'" style="border-left-color:'+CLASIF[clasif(p)].c+'">'
+      + '<div class="top"><span class="folio">'+esc(p.folio||'\u2014')+'</span>'+tagClasif(p)+tagEmpresa(p)+'</div>'
+      + '<div class="cli">'+esc(p.cliente||'Sin cliente')+'</div>'
+      + '<div class="vend">Vendedor: '+esc(p.vendedor||'\u2014')+' \u00b7 '+estadoTxt+'</div>'
+      + lineasPartidas(p, esOps ? ['servicio','viaticos'] : ['pro'])
+      + '<div class="alm-actions">'
+      +   '<button class="alm-btn alm-btn-ghost alm-btn-icon" title="Ver historial" onclick="window.__almVerHistorial(\''+p.id+'\')">'
+      +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg></button>'
+      +   (p.tienePdfOriginal?('<button class="alm-btn alm-btn-ghost alm-btn-icon" title="Ver PDF original" onclick="window.__almVerPDF(\''+p.id+'\')">'
+      +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></button>'):'')
+      +   boton
+      + '</div></div>';
   }
 
   function kpi(color,n,label){
@@ -1240,7 +1357,9 @@
     return '<div class="alm-card'+(urg?' urg':'')+slaCls+'" data-id="'+p.id+'" style="border-left-color:'+ac+'">'
       + '<div class="top"><span class="folio">'+esc(p.folio||'—')+'</span>'
       +   '<span class="alm-chip'+(urg?' urg':'')+'" style="background:'+pc+'">'+esc(PRIO_LABEL[p.prioridad]||p.prioridad||'Normal')+'</span></div>'
-      + '<div class="cli">'+esc(p.cliente||'Sin cliente')+' '+tipoTag+badgePrep+'</div>'
+      + '<div class="cli">'+esc(p.cliente||'Sin cliente')+' '+tipoTag+tagClasif(p)+tagEmpresa(p)+badgePrep+'</div>'
+      + (clasif(p)==='servicio_piezas' ? '<div class="vend" style="color:#7c3aed;font-weight:700;">Surtiendo material para Operaciones \u00b7 no cuenta en m\u00e9tricas</div>' : '')
+      + (esPro(p) ? '<div class="vend" style="color:#b45309;font-weight:700;">'+(p.compraEstado==='recibido'?'Material sobre pedido recibido':'Sobre pedido \u00b7 esperando material de Compras')+'</div>' : '')
       + '<div class="vend">Vendedor: '+esc(p.vendedor||'—')+'</div>'
       + destinoHtml(p)
       + (p.comentariosAlmacen ? ('<div class="alm-destino"><span class="alm-destino-chip" style="background:#8B4FD61c;color:#8B4FD6;border-color:#8B4FD655;">\ud83d\udcac '+esc(p.comentariosAlmacen)+'</span></div>') : '')
@@ -1504,6 +1623,27 @@
     }
   };
   window.__almCheck  = function(id,idx){ toggleCheck(id,idx); };
+  window.__almArea = function(v){
+    filtro.area=v||'';
+    var cont=contenedor(); if(cont){ cont.querySelectorAll('.alm-fchip-area').forEach(function(el){ el.classList.toggle('on', (el.getAttribute('data-area')||'')===filtro.area); }); }
+    render();
+  };
+  window.__almOpsGestionado = function(id){
+    var p=buscarP(id); if(!p) return;
+    if (!confirm('\u00bfMarcar el folio '+(p.folio||'')+' como gestionado por Operaciones? Saldr\u00e1 de esta lista.')) return;
+    window.tcSbActualizarSurtido(id, { opsGestionado:true, opsGestionadoPor:yoNombre(), opsGestionadoEn:new Date().toISOString() }).then(function(){
+      window.tcSbAgregarHistorial(id, { de:p.estado, a:p.estado, por:yoNombre(), nota:'Gestionado por Operaciones' }).catch(function(){});
+      p.opsGestionado=true; render();
+    }).catch(function(err){ console.error('[almacen] ops gestionado:',err); if(window.mostrarPush) window.mostrarPush('Almac\u00e9n','No se pudo guardar','\u26a0\ufe0f'); });
+  };
+  window.__almProRecibido = function(id){
+    var p=buscarP(id); if(!p) return;
+    if (!confirm('\u00bfConfirmas que ya lleg\u00f3 el material sobre pedido del folio '+(p.folio||'')+'?')) return;
+    window.tcSbActualizarSurtido(id, { compraEstado:'recibido', compraRecibidoPor:yoNombre(), compraRecibidoEn:new Date().toISOString() }).then(function(){
+      window.tcSbAgregarHistorial(id, { de:p.estado, a:p.estado, por:yoNombre(), nota:'Material sobre pedido recibido' }).catch(function(){});
+      p.compraEstado='recibido'; render();
+    }).catch(function(err){ console.error('[almacen] pro recibido:',err); if(window.mostrarPush) window.mostrarPush('Almac\u00e9n','No se pudo guardar','\u26a0\ufe0f'); });
+  };
   window.__almBuscar = function(v){ filtro.q=v||''; render(); var i=document.getElementById('alm-q'); if(i){ i.focus(); i.value=filtro.q; } };
   window.__almPrio   = function(v){
     filtro.prio=v||'';
@@ -1797,6 +1937,7 @@
           remisionado: !!d.remisionado, remisionadoPor: d.remisionadoPor||'',
           remisionAspelFolio: d.remisionAspelFolio||'', remisionAspelFecha: d.remisionAspelFecha||null,
           tienePdfOriginal: !!d.tienePdfOriginal, caratulaEnvio: d.caratulaEnvio||null,
+          clasificacion: d.clasificacion||'',
           evidSalida: null, evidRemision: null, evidGeneral: null, numDocumentos: 0
         };
       });
@@ -2272,6 +2413,7 @@
 
     var entregados = _repEntregas.filter(function(e){
       if(e.estado!=='entregado' && e.estado!=='finalizado') return false;
+      if(!cuentaMetricas(e)) return false;   // servicios y PRO no cuentan en tiempos de Almacén
       if(!e.entregadoMs) return false;
       var f = e.entregadoMs;
       if(desde && f<desde) return false;

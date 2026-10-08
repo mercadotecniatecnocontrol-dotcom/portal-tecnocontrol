@@ -211,7 +211,7 @@
       </section>
     </section>
     <section class="panel panel-material">
-      <div class="panel-h"><span class="ptitle"><span class="pdot" style="background:var(--morado)"></span>SOLICITUDES DE MATERIAL</span><span class="pcount" id="mCount">0</span></div>
+      <div class="panel-h"><span class="ptitle"><span class="pdot" style="background:var(--morado)"></span>MATERIAL · FOLIOS DE OPERACIONES</span><span class="pcount" id="mCount">0</span></div>
       <section class="phero" id="mHero"></section>
       <section class="pqueue-wrap">
         <div class="pq-sub">EN COLA</div>
@@ -922,12 +922,14 @@ function render(force){
   // en su cola normal, marcado en rojo como ya lo hacía el sistema.)
   const vigentes = pedidos.filter(p=>!esVencido(p));
   const vencidos = pedidos.filter(esVencido);
-  const ventas   = ordenar(vigentes.filter(p=>p.tipo!=='material'));
+  // Las piezas para servicios de Operaciones van con las solicitudes de material.
+  const esOps = p => p.tipo==='material' || p.clasificacion==='servicio_piezas';
+  const ventas   = ordenar(vigentes.filter(p=>!esOps(p)));
   // Recolecciones locales se mezclan en el panel de Material, con su propia
   // etiqueta/color (rosa) — son "pedidos para recoger", no de venta.
-  const material = ordenar([...vigentes.filter(p=>p.tipo==='material'), ...recolecciones]);
-  const vencVenta    = ordenar(vencidos.filter(p=>p.tipo!=='material'));
-  const vencMaterial = ordenar(vencidos.filter(p=>p.tipo==='material'));
+  const material = ordenar([...vigentes.filter(esOps), ...recolecciones]);
+  const vencVenta    = ordenar(vencidos.filter(p=>!esOps(p)));
+  const vencMaterial = ordenar(vencidos.filter(esOps));
   syncVencRot('v', vencVenta, ventas.length===0);
   syncVencRot('m', vencMaterial, material.length===0);
   renderPanel('v', ventas, force);
@@ -1080,7 +1082,8 @@ function tickPanel(tk, list){
 }
 
 function updateChips(){
-  const a=pedidos.filter(p=>['finalizado','cancelado','entregado'].indexOf(p.estado)===-1);
+  // Contadores: solo lo que Almacén surte por su cuenta (sin piezas para servicios ni PRO).
+  const a=pedidos.filter(p=>['finalizado','cancelado','entregado'].indexOf(p.estado)===-1 && p.clasificacion!=='servicio_piezas' && p.clasificacion!=='pro');
   cActivos.textContent=a.length;
   const nParciales=a.filter(p=>p.estado==='parcial').length;
   cParciales.textContent=nParciales;
@@ -1155,6 +1158,46 @@ function vozNuevoPedido(){
 }
 // Algunos navegadores cargan la lista de voces async; la precalentamos.
 if('speechSynthesis' in window){ window.speechSynthesis.getVoices(); window.speechSynthesis.onvoiceschanged = ()=>window.speechSynthesis.getVoices(); }
+
+/* ===== Botón "Activar sonido" =====
+   Chrome no deja sonar pitidos NI la voz hasta que alguien toca la página al
+   menos una vez después de cargarla (y la voz lo exige aunque el sitio tenga
+   permiso de sonido). Si la TV se recarga sola (p. ej. tras perder conexión),
+   se vuelve a quedar muda. Este botón aparece solo mientras el audio está
+   bloqueado; con un toque queda activo hasta la siguiente recarga. */
+(function(){
+  function audioBloqueado(){
+    if(navigator.userActivation) return !navigator.userActivation.hasBeenActive;
+    return !_ac || _ac.state!=='running';
+  }
+  function quitarBoton(){ const b=document.getElementById('tvAudioBtn'); if(b) b.remove(); }
+  function mostrarBoton(){
+    if(document.getElementById('tvAudioBtn') || !audioBloqueado()) return;
+    const b=document.createElement('button');
+    b.id='tvAudioBtn';
+    b.innerHTML='<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:10px"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>Toca aqu\u00ed para activar el sonido y la voz de pedidos nuevos';
+    b.style.cssText='position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:99999;background:#E7402B;color:#fff;border:none;border-radius:16px;padding:18px 30px;font-size:22px;font-weight:800;box-shadow:0 10px 30px rgba(0,0,0,.35);cursor:pointer;font-family:inherit;animation:tvAudioPulso 1.4s ease-in-out infinite';
+    b.onclick=function(){
+      try{ AC(); }catch(e){}
+      beep();
+      try{
+        const u=new SpeechSynthesisUtterance('Sonido activado');
+        u.lang='es-MX';
+        const v=window.speechSynthesis.getVoices().find(x=>/es[-_]/i.test(x.lang)); if(v) u.voice=v;
+        window.speechSynthesis.cancel(); window.speechSynthesis.speak(u);
+      }catch(e){}
+      quitarBoton();
+    };
+    document.body.appendChild(b);
+  }
+  const st=document.createElement('style');
+  st.textContent='@keyframes tvAudioPulso{0%,100%{transform:translateX(-50%) scale(1)}50%{transform:translateX(-50%) scale(1.05)}}';
+  document.head.appendChild(st);
+  // Si alguien toca cualquier parte de la pantalla, el audio también queda activo.
+  ['click','touchstart','keydown'].forEach(ev=>document.addEventListener(ev,()=>setTimeout(()=>{ if(!audioBloqueado()) quitarBoton(); },50),{passive:true}));
+  window.addEventListener('load',()=>setTimeout(mostrarBoton,1500));
+  setInterval(mostrarBoton,30000);
+})();
 
 /* ===== Aviso visual de pedido nuevo (banner de esquina + aviso central
    grande + pitidos + voz). No muta datos. ===== */
@@ -1377,7 +1420,7 @@ render(true); setInterval(()=>render(false),1000);
 </script>
 
 <!-- surtidos ya vive en Supabase — este adaptador expone window.tcSb... -->
-<script src="surtidos-supabase.js?v=6"></script>
+<script src="surtidos-supabase.js?v=8"></script>
 
 <!-- ===== DATOS EN VIVO · Supabase · SOLO LECTURA (oct-2026: sin Firebase) =====
      surtidos, recolecciones_locales, puntos_referencia y tv_avisos viven en
@@ -1417,8 +1460,13 @@ function iniciarEscucha(){
     arr.forEach(d=>{
       const estado = d.estado || 'pendiente';
       if(estado === 'finalizado' || estado === 'cancelado' || estado === 'entregado') return;    // fuera del tablero
+      // Servicio sin piezas: lo programa Operaciones, Almacén no surte nada → no sale en la TV.
+      // PRO: solo aparece cuando el material sobre pedido ya llegó.
+      if(d.clasificacion === 'servicio') return;
+      if(d.clasificacion === 'pro' && d.compraEstado !== 'recibido') return;
       const p = {
         id: d.id,
+        clasificacion: d.clasificacion || '',
         folio: String(d.folio!=null ? d.folio : d.id),
         cliente: d.cliente || '\u2014',
         vendedor: d.vendedor || '\u2014',

@@ -300,6 +300,9 @@
 
   window.tcSbActualizarSurtido = function (id, datosCamelCase) {
     var columnas = aColumnas(datosCamelCase);
+    // Los campos sin columna propia van a "extra": se MEZCLAN con lo que ya tiene
+    // (un trigger en la base lo hace al ver __merge), así no se borran otros datos.
+    if (columnas.extra) columnas.extra = Object.assign({ __merge: true }, columnas.extra);
     return cargarSupabase().then(function (sb) {
       return sb.from('surtidos').update(columnas).eq('id', id);
     }).then(function (r) { if (r.error) throw r.error; });
